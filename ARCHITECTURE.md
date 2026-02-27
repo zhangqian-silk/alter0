@@ -28,6 +28,8 @@ Alter0 uses a task-centric orchestration model:
   - schema/version bootstrap
 - `app/core/scheduler/scheduler.go`
   - interval-based scheduler lifecycle (`Register`, `Start`, `Stop`)
+- `app/core/queue/queue.go`
+  - in-memory worker queue with retry, per-attempt timeout, and cancellation-aware shutdown
 - `app/configs/config.go`
   - runtime config manager
 
