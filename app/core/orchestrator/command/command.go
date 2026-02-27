@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 
@@ -34,12 +35,19 @@ func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string,
 		return "", false, nil
 	}
 	skillName := parts[0]
+	auditCommand(msg.UserID, cmd, "attempt", "")
 	switch skillName {
 	case "help":
+		auditCommand(msg.UserID, cmd, "allow", "")
 		return e.helpText(), true, nil
 	case "task":
 		out, err := e.executeTaskCommand(ctx, msg.UserID, parts[1:])
-		return out, true, err
+		if err != nil {
+			auditCommand(msg.UserID, cmd, "deny", err.Error())
+			return out, true, err
+		}
+		auditCommand(msg.UserID, cmd, "allow", "")
+		return out, true, nil
 	case "config", "executor":
 		args := map[string]interface{}{}
 		if len(parts) > 1 {
@@ -50,15 +58,31 @@ func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string,
 		}
 		result, err := e.skillMgr.Execute(ctx, skillName, args)
 		if err != nil {
+			auditCommand(msg.UserID, cmd, "deny", err.Error())
 			return "", true, err
 		}
+		auditCommand(msg.UserID, cmd, "allow", "")
 		if skillName == "config" {
 			return formatConfigResult(result), true, nil
 		}
 		return fmt.Sprintf("%v", result), true, nil
 	default:
-		return "", true, fmt.Errorf("unknown command: %s", skillName)
+		err := fmt.Errorf("unknown command: %s", skillName)
+		auditCommand(msg.UserID, cmd, "deny", err.Error())
+		return "", true, err
 	}
+}
+
+func auditCommand(userID string, command string, decision string, reason string) {
+	user := strings.TrimSpace(userID)
+	if user == "" {
+		user = "anonymous"
+	}
+	line := fmt.Sprintf("[AUDIT] user=%s decision=%s command=%q", user, decision, command)
+	if strings.TrimSpace(reason) != "" {
+		line += fmt.Sprintf(" reason=%q", reason)
+	}
+	log.Print(line)
 }
 
 func (e *Executor) helpText() string {
