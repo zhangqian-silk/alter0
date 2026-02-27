@@ -1,0 +1,55 @@
+# Alter0 Architecture
+
+## Core Design
+
+Alter0 uses a task-centric orchestration model:
+
+1. Channel receives a message (`cli`, `http`)
+2. Gateway forwards message to Agent
+3. Agent (Orchestrator):
+   - resolves target task (forced task > explicit task_id > model routing > new task)
+   - persists messages in SQLite
+   - delegates generation to executor
+   - decides whether to close task
+4. Gateway sends structured response back through originating channel
+
+## Components
+
+- `app/core/interaction/*`
+  - channel adapters (`cli`, `http`)
+  - `gateway` for channel registration and message dispatch
+- `app/core/orchestrator/agent`
+  - central orchestration flow
+- `app/core/orchestrator/task`
+  - task store, routing, close decision
+- `app/core/agent/executor.go`
+  - executor process invocation (`claude_code` or `codex`)
+- `app/core/orchestrator/db/sqlite.go`
+  - schema/version bootstrap
+- `app/configs/config.go`
+  - runtime config manager
+
+## Data Model
+
+SQLite schema:
+
+- `tasks`: task lifecycle and ownership
+- `messages`: task-scoped conversation messages
+- `user_state`: one-shot forced task overrides (`/task use`)
+- `schema_meta`: schema version marker
+
+## API
+
+`POST /api/message`
+
+Request:
+
+```json
+{"content":"...", "user_id":"...", "task_id":"optional"}
+```
+
+Response:
+
+```json
+{"task_id":"...", "response":"...", "closed":false, "decision":"existing|new"}
+```
