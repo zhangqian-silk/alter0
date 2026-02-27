@@ -16,8 +16,8 @@ Alter0 is a multi-channel task orchestrator that executes user requests via a co
 - `/help`
 - `/config`
 - `/config get [key]`
-- `/config set <key> <value>`
-- `/executor [name]`
+- `/config set <key> <value>`（仅管理员）
+- `/executor [name]`（仅管理员）
 - `/task list [open|closed|all]`
 - `/task current`
 - `/task use <task_id>`
@@ -42,6 +42,9 @@ The runtime config file is [`config/config.json`](./config/config.json):
     "close_confidence_threshold": 0.7,
     "cli_user_id": "local_user",
     "open_task_candidate_limit": 8
+  },
+  "security": {
+    "admin_user_ids": ["local_user"]
   }
 }
 ```

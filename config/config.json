@@ -13,5 +13,10 @@
     "close_confidence_threshold": 0.7,
     "cli_user_id": "local_user",
     "open_task_candidate_limit": 8
+  },
+  "security": {
+    "admin_user_ids": [
+      "local_user"
+    ]
   }
 }

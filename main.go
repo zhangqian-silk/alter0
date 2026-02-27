@@ -46,12 +46,13 @@ func main() {
 	taskStore := task.NewStore(database)
 	skillMgr := skills.NewManager()
 
-	brain := agent.NewAgent(cfg.Agent.Name, skillMgr, taskStore, cfg.Executor.Name, cfg.Task)
+	brain := agent.NewAgent(cfg.Agent.Name, skillMgr, taskStore, cfg.Executor.Name, cfg.Task, cfg.Security)
 
 	applyConfig := func(updated config.Config) error {
 		brain.SetName(updated.Agent.Name)
 		brain.SetExecutor(updated.Executor.Name)
 		brain.SetTaskConfig(updated.Task)
+		brain.SetSecurityConfig(updated.Security)
 		return nil
 	}
 

@@ -21,6 +21,7 @@ const (
 	keyTaskCloseThres = "task.close_confidence_threshold"
 	keyTaskCLIUserID  = "task.cli_user_id"
 	keyTaskCandLimit  = "task.open_task_candidate_limit"
+	keyAdminUserIDs   = "security.admin_user_ids"
 )
 
 type ConfigSkill struct {
@@ -143,6 +144,8 @@ func normalizeConfigKey(key string) string {
 		return keyTaskCLIUserID
 	case "task.open_task_candidate_limit":
 		return keyTaskCandLimit
+	case "security.admin_user_ids", "security.admins":
+		return keyAdminUserIDs
 	default:
 		return ""
 	}
@@ -156,6 +159,8 @@ func getConfigValue(cfg config.Config, key string) (interface{}, bool) {
 		return map[string]interface{}{"name": cfg.Executor.Name}, true
 	case "task":
 		return sanitizeTask(cfg.Task), true
+	case "security":
+		return sanitizeSecurity(cfg.Security), true
 	}
 	switch normalizeConfigKey(key) {
 	case keyAgentName:
@@ -176,6 +181,8 @@ func getConfigValue(cfg config.Config, key string) (interface{}, bool) {
 		return cfg.Task.CLIUserID, true
 	case keyTaskCandLimit:
 		return cfg.Task.OpenTaskCandidateLimit, true
+	case keyAdminUserIDs:
+		return cfg.Security.AdminUserIDs, true
 	default:
 		return nil, false
 	}
@@ -213,6 +220,17 @@ func applyConfigValue(c *config.Config, key string, value string) {
 		if n, err := strconv.Atoi(value); err == nil {
 			c.Task.OpenTaskCandidateLimit = n
 		}
+	case keyAdminUserIDs:
+		items := strings.Split(value, ",")
+		clean := make([]string, 0, len(items))
+		for _, item := range items {
+			trimmed := strings.TrimSpace(item)
+			if trimmed == "" {
+				continue
+			}
+			clean = append(clean, trimmed)
+		}
+		c.Security.AdminUserIDs = clean
 	}
 }
 
@@ -228,6 +246,12 @@ func sanitizeTask(t config.TaskConfig) map[string]interface{} {
 	}
 }
 
+func sanitizeSecurity(s config.SecurityConfig) map[string]interface{} {
+	return map[string]interface{}{
+		"admin_user_ids": s.AdminUserIDs,
+	}
+}
+
 func sanitizeConfig(cfg config.Config) map[string]interface{} {
 	return map[string]interface{}{
 		"agent": map[string]interface{}{
@@ -236,7 +260,8 @@ func sanitizeConfig(cfg config.Config) map[string]interface{} {
 		"executor": map[string]interface{}{
 			"name": cfg.Executor.Name,
 		},
-		"task": sanitizeTask(cfg.Task),
+		"task":     sanitizeTask(cfg.Task),
+		"security": sanitizeSecurity(cfg.Security),
 	}
 }
 

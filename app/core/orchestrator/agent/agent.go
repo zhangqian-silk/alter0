@@ -32,7 +32,7 @@ type DefaultAgent struct {
 	mu sync.RWMutex
 }
 
-func NewAgent(name string, skillMgr *skills.Manager, taskStore *task.Store, executorName string, taskConfig config.TaskConfig) *DefaultAgent {
+func NewAgent(name string, skillMgr *skills.Manager, taskStore *task.Store, executorName string, taskConfig config.TaskConfig, securityConfig config.SecurityConfig) *DefaultAgent {
 	a := &DefaultAgent{
 		name:         name,
 		executorName: executorName,
@@ -40,7 +40,7 @@ func NewAgent(name string, skillMgr *skills.Manager, taskStore *task.Store, exec
 		skillMgr:     skillMgr,
 		taskStore:    taskStore,
 	}
-	a.command = command.NewExecutor(skillMgr, taskStore)
+	a.command = command.NewExecutor(skillMgr, taskStore, securityConfig.AdminUserIDs)
 	a.router = task.NewRouter(taskConfig.RoutingTimeoutSec, taskConfig.RoutingConfidenceThreshold, taskConfig.OpenTaskCandidateLimit)
 	a.closer = task.NewCloser(taskConfig.CloseTimeoutSec, taskConfig.CloseConfidenceThreshold)
 	return a
@@ -403,6 +403,10 @@ func (a *DefaultAgent) SetTaskConfig(taskCfg config.TaskConfig) {
 	a.taskConfig = taskCfg
 	a.router = task.NewRouter(taskCfg.RoutingTimeoutSec, taskCfg.RoutingConfidenceThreshold, taskCfg.OpenTaskCandidateLimit)
 	a.closer = task.NewCloser(taskCfg.CloseTimeoutSec, taskCfg.CloseConfidenceThreshold)
+}
+
+func (a *DefaultAgent) SetSecurityConfig(securityCfg config.SecurityConfig) {
+	a.command.SetAdminUsers(securityCfg.AdminUserIDs)
 }
 
 func (a *DefaultAgent) getExecutorName() string {

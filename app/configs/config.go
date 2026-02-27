@@ -12,6 +12,7 @@ type Config struct {
 	Agent    AgentConfig    `json:"agent"`
 	Executor ExecutorConfig `json:"executor"`
 	Task     TaskConfig     `json:"task"`
+	Security SecurityConfig `json:"security"`
 }
 
 type AgentConfig struct {
@@ -30,6 +31,10 @@ type TaskConfig struct {
 	CloseConfidenceThreshold   float64 `json:"close_confidence_threshold"`
 	CLIUserID                  string  `json:"cli_user_id"`
 	OpenTaskCandidateLimit     int     `json:"open_task_candidate_limit"`
+}
+
+type SecurityConfig struct {
+	AdminUserIDs []string `json:"admin_user_ids"`
 }
 
 type Manager struct {
@@ -124,6 +129,9 @@ func defaultConfig() Config {
 			CLIUserID:                  "local_user",
 			OpenTaskCandidateLimit:     8,
 		},
+		Security: SecurityConfig{
+			AdminUserIDs: []string{"local_user"},
+		},
 	}
 }
 
@@ -155,4 +163,26 @@ func applyDefaults(cfg *Config) {
 	if cfg.Task.OpenTaskCandidateLimit <= 0 {
 		cfg.Task.OpenTaskCandidateLimit = 8
 	}
+
+	clean := make([]string, 0, len(cfg.Security.AdminUserIDs))
+	seen := map[string]struct{}{}
+	for _, userID := range cfg.Security.AdminUserIDs {
+		trimmed := strings.TrimSpace(userID)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		clean = append(clean, trimmed)
+	}
+	if len(clean) == 0 {
+		fallback := strings.TrimSpace(cfg.Task.CLIUserID)
+		if fallback == "" {
+			fallback = "local_user"
+		}
+		clean = append(clean, fallback)
+	}
+	cfg.Security.AdminUserIDs = clean
 }

@@ -22,7 +22,7 @@ Alter0 uses a task-centric orchestration model:
 - `app/core/orchestrator/agent`
   - central orchestration flow
 - `app/core/orchestrator/command`
-  - slash command handling with permission/audit logs
+  - slash command handling with admin permission checks and audit logs
 - `app/core/orchestrator/task`
   - task store, routing, close decision, and task memory snapshot persistence
 - `app/core/agent/executor.go`
