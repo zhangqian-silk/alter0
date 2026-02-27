@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
+	"sync"
 
 	"alter0/app/core/orchestrator/skills"
 	"alter0/app/core/orchestrator/task"
@@ -15,13 +17,32 @@ import (
 type Executor struct {
 	skillMgr  *skills.Manager
 	taskStore *task.Store
+
+	mu         sync.RWMutex
+	adminUsers map[string]struct{}
 }
 
-func NewExecutor(skillMgr *skills.Manager, taskStore *task.Store) *Executor {
-	return &Executor{
+func NewExecutor(skillMgr *skills.Manager, taskStore *task.Store, adminUserIDs []string) *Executor {
+	e := &Executor{
 		skillMgr:  skillMgr,
 		taskStore: taskStore,
 	}
+	e.SetAdminUsers(adminUserIDs)
+	return e
+}
+
+func (e *Executor) SetAdminUsers(adminUserIDs []string) {
+	clean := map[string]struct{}{}
+	for _, userID := range adminUserIDs {
+		trimmed := strings.TrimSpace(userID)
+		if trimmed == "" {
+			continue
+		}
+		clean[trimmed] = struct{}{}
+	}
+	e.mu.Lock()
+	e.adminUsers = clean
+	e.mu.Unlock()
 }
 
 func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string, bool, error) {
@@ -34,12 +55,23 @@ func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string,
 		return "", false, nil
 	}
 	skillName := parts[0]
+	auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "attempt", "")
+	if err := e.authorizeCommand(msg.UserID, parts); err != nil {
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
+		return "", true, err
+	}
 	switch skillName {
 	case "help":
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
 		return e.helpText(), true, nil
 	case "task":
 		out, err := e.executeTaskCommand(ctx, msg.UserID, parts[1:])
-		return out, true, err
+		if err != nil {
+			auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
+			return out, true, err
+		}
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
+		return out, true, nil
 	case "config", "executor":
 		args := map[string]interface{}{}
 		if len(parts) > 1 {
@@ -50,15 +82,77 @@ func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string,
 		}
 		result, err := e.skillMgr.Execute(ctx, skillName, args)
 		if err != nil {
+			auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
 			return "", true, err
 		}
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
 		if skillName == "config" {
 			return formatConfigResult(result), true, nil
 		}
 		return fmt.Sprintf("%v", result), true, nil
 	default:
-		return "", true, fmt.Errorf("unknown command: %s", skillName)
+		err := fmt.Errorf("unknown command: %s", skillName)
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
+		return "", true, err
 	}
+}
+
+func auditCommand(userID string, channelID string, requestID string, command string, decision string, reason string) {
+	log.Print(formatAuditCommandLine(userID, channelID, requestID, command, decision, reason))
+}
+
+func formatAuditCommandLine(userID string, channelID string, requestID string, command string, decision string, reason string) string {
+	user := strings.TrimSpace(userID)
+	if user == "" {
+		user = "anonymous"
+	}
+	channel := strings.TrimSpace(channelID)
+	if channel == "" {
+		channel = "unknown"
+	}
+	request := strings.TrimSpace(requestID)
+	if request == "" {
+		request = "n/a"
+	}
+	line := fmt.Sprintf("[AUDIT] user=%s channel=%s request=%s decision=%s command=%q", user, channel, request, decision, command)
+	if strings.TrimSpace(reason) != "" {
+		line += fmt.Sprintf(" reason=%q", reason)
+	}
+	return line
+}
+
+func (e *Executor) authorizeCommand(userID string, parts []string) error {
+	if len(parts) == 0 {
+		return nil
+	}
+	name := strings.ToLower(strings.TrimSpace(parts[0]))
+	requiresAdmin := false
+	switch name {
+	case "executor":
+		requiresAdmin = true
+	case "config":
+		if len(parts) > 1 && strings.EqualFold(parts[1], "set") {
+			requiresAdmin = true
+		}
+	}
+	if !requiresAdmin {
+		return nil
+	}
+	if e.isAdminUser(userID) {
+		return nil
+	}
+	return fmt.Errorf("permission denied: admin required for /%s", name)
+}
+
+func (e *Executor) isAdminUser(userID string) bool {
+	trimmed := strings.TrimSpace(userID)
+	if trimmed == "" {
+		return false
+	}
+	e.mu.RLock()
+	_, ok := e.adminUsers[trimmed]
+	e.mu.RUnlock()
+	return ok
 }
 
 func (e *Executor) helpText() string {
@@ -327,6 +421,13 @@ func formatConfigResult(result interface{}) string {
 				b.WriteString(fmt.Sprintf("%v", v))
 				b.WriteString("\n")
 			}
+		}
+	}
+	if securityCfg, ok := cfg["security"].(map[string]interface{}); ok {
+		if v, ok := securityCfg["admin_user_ids"]; ok {
+			b.WriteString("  security.admin_user_ids: ")
+			b.WriteString(fmt.Sprintf("%v", v))
+			b.WriteString("\n")
 		}
 	}
 	return strings.TrimSpace(b.String())
