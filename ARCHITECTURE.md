@@ -12,6 +12,7 @@ Alter0 uses a task-centric orchestration model:
    - delegates generation to executor
    - decides whether to close task
 4. Gateway sends structured response back through originating channel
+5. Main runtime wraps Gateway with retry/backoff restart loop for self-healing
 
 ## Components
 
