@@ -23,6 +23,8 @@ Alter0 is a multi-channel task orchestrator that executes user requests via a co
 - `/task use <task_id>`
 - `/task new [title]`
 - `/task close [task_id]`
+- `/task memory [task_id]`
+- `/task memory clear [task_id]`
 
 ## Config
 

@@ -22,6 +22,12 @@ type TaskMessage struct {
 	Meta      map[string]interface{}
 }
 
+type TaskMemory struct {
+	TaskID     string
+	Summary    string
+	UpdatedAt  int64
+}
+
 type RouteDecision struct {
 	Decision   string  `json:"decision"`
 	TaskID     string  `json:"task_id,omitempty"`

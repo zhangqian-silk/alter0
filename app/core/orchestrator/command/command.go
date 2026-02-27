@@ -85,6 +85,8 @@ func (e *Executor) helpText() string {
 		b.WriteString("  /task use <task_id>\n")
 		b.WriteString("  /task new [title]\n")
 		b.WriteString("  /task close [task_id]\n")
+		b.WriteString("  /task memory [task_id]\n")
+		b.WriteString("  /task memory clear [task_id]\n")
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -224,9 +226,63 @@ func (e *Executor) executeTaskCommand(ctx context.Context, userID string, args [
 			return "", err
 		}
 		return fmt.Sprintf("Closed task: %s", taskID), nil
+	case "memory":
+		if len(args) > 1 && strings.EqualFold(args[1], "clear") {
+			taskID, err := e.resolveTaskIDForMemory(ctx, userID, args[2:])
+			if err != nil {
+				return "", err
+			}
+			t, err := e.taskStore.GetTask(ctx, taskID)
+			if err != nil {
+				return "", fmt.Errorf("task not found: %s", taskID)
+			}
+			if t.UserID != userID {
+				return "", fmt.Errorf("task does not belong to user")
+			}
+			if err := e.taskStore.DeleteTaskMemory(ctx, taskID); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("Cleared task memory: %s", taskID), nil
+		}
+		taskID, err := e.resolveTaskIDForMemory(ctx, userID, args[1:])
+		if err != nil {
+			return "", err
+		}
+		t, err := e.taskStore.GetTask(ctx, taskID)
+		if err != nil {
+			return "", fmt.Errorf("task not found: %s", taskID)
+		}
+		if t.UserID != userID {
+			return "", fmt.Errorf("task does not belong to user")
+		}
+		memory, err := e.taskStore.GetTaskMemory(ctx, taskID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Sprintf("Task memory is empty: %s", taskID), nil
+			}
+			return "", err
+		}
+		return fmt.Sprintf("Task memory (%s):\n%s", taskID, memory.Summary), nil
 	default:
 		return "", fmt.Errorf("unknown task subcommand: %s", args[0])
 	}
+}
+
+func (e *Executor) resolveTaskIDForMemory(ctx context.Context, userID string, args []string) (string, error) {
+	if len(args) > 0 {
+		taskID := strings.TrimSpace(args[0])
+		if taskID != "" {
+			return taskID, nil
+		}
+	}
+	current, err := e.taskStore.GetLatestOpenTask(ctx, userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("no open task available")
+		}
+		return "", err
+	}
+	return current.ID, nil
 }
 
 func formatConfigResult(result interface{}) string {
