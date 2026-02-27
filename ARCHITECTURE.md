@@ -26,6 +26,8 @@ Alter0 uses a task-centric orchestration model:
   - executor process invocation (`claude_code` or `codex`)
 - `app/core/orchestrator/db/sqlite.go`
   - schema/version bootstrap
+- `app/core/scheduler/scheduler.go`
+  - interval-based scheduler lifecycle (`Register`, `Start`, `Stop`)
 - `app/configs/config.go`
   - runtime config manager
 

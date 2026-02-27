@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	config "alter0/app/configs"
 	"alter0/app/core/interaction/cli"
@@ -14,6 +15,7 @@ import (
 	"alter0/app/core/interaction/http"
 	"alter0/app/core/orchestrator/agent"
 	"alter0/app/core/orchestrator/db"
+	"alter0/app/core/scheduler"
 	"alter0/app/core/orchestrator/skills"
 	"alter0/app/core/orchestrator/skills/builtins"
 	"alter0/app/core/orchestrator/task"
@@ -68,6 +70,17 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	jobScheduler := scheduler.New()
+	if err := jobScheduler.Start(ctx); err != nil {
+		logger.Error("Failed to start scheduler: %v", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := jobScheduler.Stop(3 * time.Second); err != nil {
+			logger.Error("Scheduler shutdown timeout: %v", err)
+		}
+	}()
 
 	go func() {
 		if err := gw.Start(ctx); err != nil {
