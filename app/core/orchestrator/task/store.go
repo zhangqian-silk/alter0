@@ -215,6 +215,15 @@ func (s *Store) GetTaskMemory(ctx context.Context, taskID string) (TaskMemory, e
 	return memory, nil
 }
 
+func (s *Store) DeleteTaskMemory(ctx context.Context, taskID string) error {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return fmt.Errorf("task_id is required")
+	}
+	_, err := s.db.Conn().ExecContext(ctx, `DELETE FROM task_memory WHERE task_id = ?`, taskID)
+	return err
+}
+
 func (s *Store) CloseTask(ctx context.Context, taskID string) error {
 	now := time.Now().Unix()
 	query := `UPDATE tasks SET status = 'closed', closed_at = ?, updated_at = ? WHERE id = ? AND status != 'closed'`

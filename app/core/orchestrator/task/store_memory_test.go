@@ -75,3 +75,29 @@ func TestTaskMemoryGetMissing(t *testing.T) {
 		t.Fatalf("expected sql.ErrNoRows, got %v", err)
 	}
 }
+
+func TestTaskMemoryDelete(t *testing.T) {
+	tempDir := t.TempDir()
+	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	if err != nil {
+		t.Fatalf("init sqlite failed: %v", err)
+	}
+	defer database.Close()
+
+	store := NewStore(database)
+	ctx := context.Background()
+	task, err := store.CreateTask(ctx, "u-1", "task", "cli")
+	if err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+	if err := store.UpsertTaskMemory(ctx, task.ID, "snapshot"); err != nil {
+		t.Fatalf("upsert memory failed: %v", err)
+	}
+	if err := store.DeleteTaskMemory(ctx, task.ID); err != nil {
+		t.Fatalf("delete memory failed: %v", err)
+	}
+	_, err = store.GetTaskMemory(ctx, task.ID)
+	if err != sql.ErrNoRows {
+		t.Fatalf("expected sql.ErrNoRows after delete, got %v", err)
+	}
+}
