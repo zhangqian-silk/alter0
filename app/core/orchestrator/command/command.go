@@ -55,22 +55,22 @@ func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string,
 		return "", false, nil
 	}
 	skillName := parts[0]
-	auditCommand(msg.UserID, cmd, "attempt", "")
+	auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "attempt", "")
 	if err := e.authorizeCommand(msg.UserID, parts); err != nil {
-		auditCommand(msg.UserID, cmd, "deny", err.Error())
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
 		return "", true, err
 	}
 	switch skillName {
 	case "help":
-		auditCommand(msg.UserID, cmd, "allow", "")
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
 		return e.helpText(), true, nil
 	case "task":
 		out, err := e.executeTaskCommand(ctx, msg.UserID, parts[1:])
 		if err != nil {
-			auditCommand(msg.UserID, cmd, "deny", err.Error())
+			auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
 			return out, true, err
 		}
-		auditCommand(msg.UserID, cmd, "allow", "")
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
 		return out, true, nil
 	case "config", "executor":
 		args := map[string]interface{}{}
@@ -82,31 +82,43 @@ func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string,
 		}
 		result, err := e.skillMgr.Execute(ctx, skillName, args)
 		if err != nil {
-			auditCommand(msg.UserID, cmd, "deny", err.Error())
+			auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
 			return "", true, err
 		}
-		auditCommand(msg.UserID, cmd, "allow", "")
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
 		if skillName == "config" {
 			return formatConfigResult(result), true, nil
 		}
 		return fmt.Sprintf("%v", result), true, nil
 	default:
 		err := fmt.Errorf("unknown command: %s", skillName)
-		auditCommand(msg.UserID, cmd, "deny", err.Error())
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
 		return "", true, err
 	}
 }
 
-func auditCommand(userID string, command string, decision string, reason string) {
+func auditCommand(userID string, channelID string, requestID string, command string, decision string, reason string) {
+	log.Print(formatAuditCommandLine(userID, channelID, requestID, command, decision, reason))
+}
+
+func formatAuditCommandLine(userID string, channelID string, requestID string, command string, decision string, reason string) string {
 	user := strings.TrimSpace(userID)
 	if user == "" {
 		user = "anonymous"
 	}
-	line := fmt.Sprintf("[AUDIT] user=%s decision=%s command=%q", user, decision, command)
+	channel := strings.TrimSpace(channelID)
+	if channel == "" {
+		channel = "unknown"
+	}
+	request := strings.TrimSpace(requestID)
+	if request == "" {
+		request = "n/a"
+	}
+	line := fmt.Sprintf("[AUDIT] user=%s channel=%s request=%s decision=%s command=%q", user, channel, request, decision, command)
 	if strings.TrimSpace(reason) != "" {
 		line += fmt.Sprintf(" reason=%q", reason)
 	}
-	log.Print(line)
+	return line
 }
 
 func (e *Executor) authorizeCommand(userID string, parts []string) error {

@@ -33,3 +33,19 @@ func TestSetAdminUsers_TrimsAndDedupes(t *testing.T) {
 		t.Fatalf("carol should not be admin")
 	}
 }
+
+func TestFormatAuditCommandLine_DefaultsAndReason(t *testing.T) {
+	line := formatAuditCommandLine("", "", "", "config set executor.name codex", "deny", "permission denied")
+	expected := "[AUDIT] user=anonymous channel=unknown request=n/a decision=deny command=\"config set executor.name codex\" reason=\"permission denied\""
+	if line != expected {
+		t.Fatalf("unexpected audit line:\n got: %s\nwant: %s", line, expected)
+	}
+}
+
+func TestFormatAuditCommandLine_WithoutReason(t *testing.T) {
+	line := formatAuditCommandLine("u1", "cli", "req-1", "help", "allow", "")
+	expected := "[AUDIT] user=u1 channel=cli request=req-1 decision=allow command=\"help\""
+	if line != expected {
+		t.Fatalf("unexpected audit line:\n got: %s\nwant: %s", line, expected)
+	}
+}
