@@ -9,7 +9,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = "2"
+const currentSchemaVersion = "3"
 
 type DB struct {
 	conn *sql.DB
@@ -65,6 +65,9 @@ func (d *DB) initSchema() error {
 		if _, err := tx.Exec(`DROP TABLE IF EXISTS user_state`); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(`DROP TABLE IF EXISTS task_memory`); err != nil {
+			return err
+		}
 	}
 
 	createTasks := `
@@ -107,10 +110,23 @@ CREATE TABLE IF NOT EXISTS user_state (
 		return err
 	}
 
+	createTaskMemory := `
+CREATE TABLE IF NOT EXISTS task_memory (
+	task_id TEXT PRIMARY KEY,
+	summary TEXT NOT NULL,
+	updated_at INTEGER NOT NULL
+);`
+	if _, err := tx.Exec(createTaskMemory); err != nil {
+		return err
+	}
+
 	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_user_status_updated ON tasks(user_id, status, updated_at DESC)`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_task_created ON messages(task_id, created_at ASC)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_task_memory_updated ON task_memory(updated_at DESC)`); err != nil {
 		return err
 	}
 

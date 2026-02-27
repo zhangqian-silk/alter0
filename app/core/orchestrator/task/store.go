@@ -185,6 +185,36 @@ func (s *Store) GetTaskHistory(ctx context.Context, taskID string, limit int) ([
 	return items, nil
 }
 
+func (s *Store) UpsertTaskMemory(ctx context.Context, taskID string, summary string) error {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return fmt.Errorf("task_id is required")
+	}
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return fmt.Errorf("summary is required")
+	}
+	now := time.Now().Unix()
+	query := `
+INSERT INTO task_memory (task_id, summary, updated_at) VALUES (?, ?, ?)
+ON CONFLICT(task_id) DO UPDATE SET summary = excluded.summary, updated_at = excluded.updated_at`
+	_, err := s.db.Conn().ExecContext(ctx, query, taskID, summary, now)
+	return err
+}
+
+func (s *Store) GetTaskMemory(ctx context.Context, taskID string) (TaskMemory, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return TaskMemory{}, fmt.Errorf("task_id is required")
+	}
+	query := `SELECT task_id, summary, updated_at FROM task_memory WHERE task_id = ?`
+	var memory TaskMemory
+	if err := s.db.Conn().QueryRowContext(ctx, query, taskID).Scan(&memory.TaskID, &memory.Summary, &memory.UpdatedAt); err != nil {
+		return TaskMemory{}, err
+	}
+	return memory, nil
+}
+
 func (s *Store) CloseTask(ctx context.Context, taskID string) error {
 	now := time.Now().Unix()
 	query := `UPDATE tasks SET status = 'closed', closed_at = ?, updated_at = ? WHERE id = ? AND status != 'closed'`

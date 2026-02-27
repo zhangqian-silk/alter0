@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"strings"
@@ -119,7 +120,14 @@ func (a *DefaultAgent) processTaskMessage(ctx context.Context, msg types.Message
 		log.Printf("[Agent] Failed to load task history: %v", err)
 	}
 
-	prompt := a.buildGenerationPrompt(selectedTask, history, msg.Content)
+	memorySummary := ""
+	if memory, memErr := a.taskStore.GetTaskMemory(ctx, selectedTask.ID); memErr == nil {
+		memorySummary = memory.Summary
+	} else if memErr != sql.ErrNoRows {
+		log.Printf("[Agent] Failed to load task memory: %v", memErr)
+	}
+
+	prompt := a.buildGenerationPrompt(selectedTask, history, memorySummary, msg.Content)
 	taskCfg := a.getTaskConfig()
 	output, runErr := execlog.RunExecutorWithTimeout(
 		execlog.WithMeta(baseExecCtx, execlog.Meta{
@@ -155,6 +163,12 @@ func (a *DefaultAgent) processTaskMessage(ctx context.Context, msg types.Message
 	if err != nil {
 		log.Printf("[Agent] Failed to load latest history: %v", err)
 		latestHistory = history
+	}
+	memorySnapshot := buildTaskMemorySnapshot(latestHistory, 1200)
+	if memorySnapshot != "" {
+		if memErr := a.taskStore.UpsertTaskMemory(ctx, selectedTask.ID, memorySnapshot); memErr != nil {
+			log.Printf("[Agent] Failed to persist task memory: %v", memErr)
+		}
 	}
 
 	closeDecision := a.closer.Decide(
@@ -273,7 +287,47 @@ func deriveTaskTitle(text string) string {
 	return string(runes[:max])
 }
 
-func (a *DefaultAgent) buildGenerationPrompt(t task.Task, history []task.TaskMessage, userInput string) string {
+func buildTaskMemorySnapshot(history []task.TaskMessage, maxRunes int) string {
+	if len(history) == 0 {
+		return ""
+	}
+	if maxRunes <= 0 {
+		maxRunes = 1200
+	}
+	start := 0
+	if len(history) > 8 {
+		start = len(history) - 8
+	}
+	var b strings.Builder
+	for i := start; i < len(history); i++ {
+		m := history[i]
+		line := strings.TrimSpace(m.Content)
+		if line == "" {
+			continue
+		}
+		b.WriteString(m.Role)
+		b.WriteString(": ")
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	return truncateRunes(strings.TrimSpace(b.String()), maxRunes)
+}
+
+func truncateRunes(text string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(text) <= maxRunes {
+		return text
+	}
+	runes := []rune(text)
+	if maxRunes <= 1 {
+		return string(runes[:maxRunes])
+	}
+	return string(runes[:maxRunes-1]) + "..."
+}
+
+func (a *DefaultAgent) buildGenerationPrompt(t task.Task, history []task.TaskMessage, memorySummary string, userInput string) string {
 	var b strings.Builder
 	b.WriteString("You are ")
 	b.WriteString(a.Name())
@@ -284,6 +338,11 @@ func (a *DefaultAgent) buildGenerationPrompt(t task.Task, history []task.TaskMes
 	b.WriteString(fmt.Sprintf("- id: %s\n", t.ID))
 	b.WriteString(fmt.Sprintf("- title: %s\n", t.Title))
 	b.WriteString(fmt.Sprintf("- status: %s\n\n", t.Status))
+	if strings.TrimSpace(memorySummary) != "" {
+		b.WriteString("Task memory snapshot:\n")
+		b.WriteString(memorySummary)
+		b.WriteString("\n\n")
+	}
 	b.WriteString("Recent history:\n")
 	start := 0
 	if len(history) > 20 {

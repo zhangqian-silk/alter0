@@ -21,7 +21,7 @@ Alter0 uses a task-centric orchestration model:
 - `app/core/orchestrator/agent`
   - central orchestration flow
 - `app/core/orchestrator/task`
-  - task store, routing, close decision
+  - task store, routing, close decision, and task memory snapshot persistence
 - `app/core/agent/executor.go`
   - executor process invocation (`claude_code` or `codex`)
 - `app/core/orchestrator/db/sqlite.go`
@@ -40,6 +40,7 @@ SQLite schema:
 - `tasks`: task lifecycle and ownership
 - `messages`: task-scoped conversation messages
 - `user_state`: one-shot forced task overrides (`/task use`)
+- `task_memory`: compact per-task memory snapshot for prompt reuse
 - `schema_meta`: schema version marker
 
 ## API
