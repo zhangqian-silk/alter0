@@ -16,10 +16,11 @@ var (
 )
 
 type JobSpec struct {
-	Name     string
-	Interval time.Duration
-	Timeout  time.Duration
-	Run      func(context.Context) error
+	Name       string
+	Interval   time.Duration
+	Timeout    time.Duration
+	RunOnStart bool
+	Run        func(context.Context) error
 }
 
 type Scheduler struct {
@@ -113,6 +114,9 @@ func (s *Scheduler) Stop(timeout time.Duration) error {
 
 func (s *Scheduler) runLoop(ctx context.Context, job JobSpec) {
 	defer s.wg.Done()
+	if job.RunOnStart {
+		s.runOnce(ctx, job)
+	}
 	ticker := time.NewTicker(job.Interval)
 	defer ticker.Stop()
 
