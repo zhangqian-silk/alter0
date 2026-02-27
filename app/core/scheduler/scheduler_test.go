@@ -32,8 +32,9 @@ func TestStartAndStop(t *testing.T) {
 	var runs atomic.Int32
 
 	err := s.Register(JobSpec{
-		Name:     "counter",
-		Interval: 10 * time.Millisecond,
+		Name:       "counter",
+		Interval:   10 * time.Millisecond,
+		RunOnStart: true,
 		Run: func(context.Context) error {
 			runs.Add(1)
 			return nil
@@ -49,13 +50,46 @@ func TestStartAndStop(t *testing.T) {
 		t.Fatalf("start failed: %v", err)
 	}
 
-	time.Sleep(35 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	if runs.Load() == 0 {
-		t.Fatal("expected job to run at least once")
+		t.Fatal("expected job to run immediately when RunOnStart is true")
 	}
 
 	if err := s.Stop(200 * time.Millisecond); err != nil {
 		t.Fatalf("stop failed: %v", err)
+	}
+}
+
+func TestRunOnStartDefaultFalse(t *testing.T) {
+	s := New()
+	fired := make(chan struct{}, 1)
+
+	err := s.Register(JobSpec{
+		Name:     "lazy-start",
+		Interval: 50 * time.Millisecond,
+		Run: func(context.Context) error {
+			select {
+			case fired <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	defer s.Stop(200 * time.Millisecond)
+
+	select {
+	case <-fired:
+		t.Fatal("did not expect immediate run when RunOnStart is false")
+	case <-time.After(15 * time.Millisecond):
 	}
 }
 
