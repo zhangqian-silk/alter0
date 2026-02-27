@@ -1,0 +1,17 @@
+{
+  "agent": {
+    "name": "Alter0"
+  },
+  "executor": {
+    "name": "codex"
+  },
+  "task": {
+    "routing_timeout_sec": 15,
+    "close_timeout_sec": 10,
+    "generation_timeout_sec": 120,
+    "routing_confidence_threshold": 0.55,
+    "close_confidence_threshold": 0.7,
+    "cli_user_id": "local_user",
+    "open_task_candidate_limit": 8
+  }
+}
