@@ -82,12 +82,7 @@ func main() {
 		}
 	}()
 
-	go func() {
-		if err := gw.Start(ctx); err != nil {
-			logger.Error("Gateway crashed: %v", err)
-			os.Exit(1)
-		}
-	}()
+	go runGatewayWithRetry(ctx, gw)
 
 	logger.Info("Alter0 is ready to serve.")
 	fmt.Println("- CLI Interface: Interactive")
@@ -99,4 +94,25 @@ func main() {
 	sig := <-sigChan
 	logger.Info("Received signal: %v. Alter0 Shutting Down...", sig)
 	cancel()
+}
+
+func runGatewayWithRetry(ctx context.Context, gw *gateway.Gateway) {
+	backoff := time.Second
+	maxBackoff := 30 * time.Second
+	for {
+		err := gw.Start(ctx)
+		if err == nil || ctx.Err() != nil {
+			return
+		}
+		logger.Error("Gateway crashed, retrying in %s: %v", backoff, err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
 }
