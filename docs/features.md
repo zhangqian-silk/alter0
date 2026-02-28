@@ -47,12 +47,12 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 1. [x] README/ARCHITECTURE sync after each feature merge
 2. [x] Startup preflight checks (SQLite writable, executor installed, config validation)
 
-### P1 (Do next)
+### P1
 
 1. [x] Graceful shutdown drain policy for in-flight queue tasks with timeout metrics
-2. [ ] Regression tests for startup preflight failure paths
+2. [x] Regression tests for startup preflight failure paths
 
-Queue status: P1 graceful shutdown drain policy merged; preflight regression tests are next.
+Queue status: P1 current queue is complete; waiting for next prioritized requirement.
 
 ## 4) Change Rule
 
