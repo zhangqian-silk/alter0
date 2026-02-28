@@ -135,7 +135,7 @@ go run .
 - `/task memory clear [task_id]`
 - `/task stats`
 
-`/status` 输出统一运行时快照（gateway/scheduler/task/executors/command_audit_tail/git），与 HTTP `GET /api/status` 对齐。
+`/status` 输出统一运行时快照（gateway/scheduler/task/queue[in_flight]/executors/command_audit_tail/git），与 HTTP `GET /api/status` 对齐。
 
 管理员命令：
 
@@ -176,7 +176,7 @@ curl -X POST "http://localhost:8080/api/message?stream=1&chunk_size=800" \
 
 ### `GET /api/status`
 
-返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/executors/command_audit_tail/git）。
+返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/queue[in_flight]/executors/command_audit_tail/git）。
 
 ## Observability and Data Layout
 
