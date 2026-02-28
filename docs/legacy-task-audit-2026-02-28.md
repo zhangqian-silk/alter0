@@ -5,7 +5,7 @@
 - 分支范围：`feat/p0-*`（本地历史分支 + 远端历史分支）
 - worktree 范围：`/tmp/alter0-*`
 - 基线：`master@234c517`
-- 审查时间：2026-02-28 13:14 UTC
+- 审查时间：2026-02-28 13:21 UTC
 - 仓库同步：远端保留 `origin/feat/p0-9-legacy-audit-refresh`、`origin/feat/p0-10-legacy-audit-refresh`、`origin/feat/p0-11-legacy-audit-refresh`、`origin/feat/p0-12-legacy-audit-refresh`、`origin/feat/p0-13-legacy-audit-refresh`、`origin/feat/p0-14-legacy-audit-refresh`
 
 ## 分支盘点与结论
