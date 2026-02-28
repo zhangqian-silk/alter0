@@ -106,3 +106,25 @@ func TestMaxRetriesExhausted(t *testing.T) {
 		t.Fatalf("expected 2 attempts, got %d", got)
 	}
 }
+
+func TestEnqueueContextReturnsWhenQueueIsFull(t *testing.T) {
+	q := New(1)
+
+	if _, err := q.Enqueue(Job{Run: func(context.Context) error { return nil }}); err != nil {
+		t.Fatalf("first enqueue failed: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err := q.EnqueueContext(ctx, Job{Run: func(context.Context) error { return nil }})
+	if err == nil {
+		t.Fatal("expected enqueue timeout error")
+	}
+	if !errors.Is(err, ErrEnqueueCanceled) {
+		t.Fatalf("expected ErrEnqueueCanceled, got %v", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline exceeded, got %v", err)
+	}
+}
