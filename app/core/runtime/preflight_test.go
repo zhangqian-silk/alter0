@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	config "alter0/app/configs"
@@ -20,39 +21,67 @@ func TestRunPreflightPasses(t *testing.T) {
 	}
 }
 
-func TestRunPreflightRejectsInvalidConfig(t *testing.T) {
-	t.Setenv("PATH", prependFakeExecutable(t, "codex"))
-	cfg := validConfig("codex")
-	cfg.Task.RoutingConfidenceThreshold = 2
-
-	err := RunPreflight(context.Background(), cfg, t.TempDir())
-	if err == nil {
-		t.Fatalf("expected preflight failure for invalid config")
+func TestRunPreflightFailurePaths(t *testing.T) {
+	tests := []struct {
+		name        string
+		prepare     func(t *testing.T) (config.Config, string)
+		errContains []string
+	}{
+		{
+			name: "invalid config",
+			prepare: func(t *testing.T) (config.Config, string) {
+				t.Setenv("PATH", prependFakeExecutable(t, "codex"))
+				cfg := validConfig("codex")
+				cfg.Task.RoutingConfidenceThreshold = 2
+				return cfg, t.TempDir()
+			},
+			errContains: []string{"config validation failed", "routing_confidence_threshold"},
+		},
+		{
+			name: "unwritable sqlite path",
+			prepare: func(t *testing.T) (config.Config, string) {
+				t.Setenv("PATH", prependFakeExecutable(t, "codex"))
+				cfg := validConfig("codex")
+				base := t.TempDir()
+				filePath := filepath.Join(base, "blocked")
+				if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
+					t.Fatalf("write file: %v", err)
+				}
+				return cfg, filepath.Join(filePath, "db")
+			},
+			errContains: []string{"sqlite check failed"},
+		},
+		{
+			name: "missing executor binary",
+			prepare: func(t *testing.T) (config.Config, string) {
+				t.Setenv("PATH", t.TempDir())
+				return validConfig("codex"), t.TempDir()
+			},
+			errContains: []string{"executor check failed", "missing executable"},
+		},
+		{
+			name: "empty sqlite data dir",
+			prepare: func(t *testing.T) (config.Config, string) {
+				t.Setenv("PATH", prependFakeExecutable(t, "codex"))
+				return validConfig("codex"), "   "
+			},
+			errContains: []string{"sqlite check failed", "data dir is required"},
+		},
 	}
-}
 
-func TestRunPreflightRejectsUnwritableSQLitePath(t *testing.T) {
-	t.Setenv("PATH", prependFakeExecutable(t, "codex"))
-	cfg := validConfig("codex")
-	base := t.TempDir()
-	filePath := filepath.Join(base, "blocked")
-	if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-
-	err := RunPreflight(context.Background(), cfg, filepath.Join(filePath, "db"))
-	if err == nil {
-		t.Fatalf("expected preflight failure for unwritable sqlite path")
-	}
-}
-
-func TestRunPreflightRejectsMissingExecutorBinary(t *testing.T) {
-	cfg := validConfig("codex")
-	t.Setenv("PATH", t.TempDir())
-
-	err := RunPreflight(context.Background(), cfg, t.TempDir())
-	if err == nil {
-		t.Fatalf("expected preflight failure for missing executor")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, dataDir := tt.prepare(t)
+			err := RunPreflight(context.Background(), cfg, dataDir)
+			if err == nil {
+				t.Fatalf("expected preflight failure")
+			}
+			for _, want := range tt.errContains {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("expected error to contain %q, got %q", want, err)
+				}
+			}
+		})
 	}
 }
 
