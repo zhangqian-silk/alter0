@@ -74,7 +74,12 @@ func main() {
 	defer cancel()
 
 	jobScheduler := scheduler.New()
-	if err := runtime.RegisterMaintenanceJobs(jobScheduler, taskStore); err != nil {
+	if err := runtime.RegisterMaintenanceJobs(jobScheduler, taskStore, runtime.MaintenanceOptions{
+		Enabled:                 cfg.Runtime.Maintenance.Enabled,
+		TaskMemoryRetentionDays: cfg.Runtime.Maintenance.TaskMemoryRetentionDays,
+		PruneInterval:           time.Duration(cfg.Runtime.Maintenance.TaskMemoryPruneIntervalSec) * time.Second,
+		PruneTimeout:            time.Duration(cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec) * time.Second,
+	}); err != nil {
 		logger.Error("Failed to register maintenance jobs: %v", err)
 		os.Exit(1)
 	}

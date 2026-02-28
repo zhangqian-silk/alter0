@@ -14,6 +14,14 @@
     "cli_user_id": "local_user",
     "open_task_candidate_limit": 8
   },
+  "runtime": {
+    "maintenance": {
+      "enabled": true,
+      "task_memory_prune_interval_sec": 21600,
+      "task_memory_prune_timeout_sec": 20,
+      "task_memory_retention_days": 30
+    }
+  },
   "security": {
     "admin_user_ids": [
       "local_user"
