@@ -35,6 +35,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 ### Execution and Extensibility
 
 - [x] Executor abstraction (`codex`, `claude_code`)
+- [x] Executor capability registry in runtime status snapshot
 - [x] Skill manager and built-in skills
 - [x] Queue-driven async pipeline on core execution path
 
@@ -49,10 +50,10 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 ### P1
 
-1. [x] Graceful shutdown drain policy for in-flight queue tasks with timeout metrics
-2. [x] Regression tests for startup preflight failure paths
+1. [x] Runtime status snapshot includes executor capability registry (name/command/installed)
+2. [ ] Runtime status snapshot adds recent command audit tail for quick diagnostics
 
-Queue status: P1 current queue is complete; waiting for next prioritized requirement.
+Queue status: P1 item 2 is next in queue.
 
 ## 4) Change Rule
 

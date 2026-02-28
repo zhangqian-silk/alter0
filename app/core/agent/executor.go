@@ -33,6 +33,24 @@ type execTraceKey struct{}
 
 var codexExecMu sync.Mutex
 
+type ExecutorCapability struct {
+	Name      string   `json:"name"`
+	Command   string   `json:"command"`
+	Aliases   []string `json:"aliases,omitempty"`
+	Installed bool     `json:"installed"`
+}
+
+type executorSpec struct {
+	name    string
+	command string
+	aliases []string
+}
+
+var supportedExecutorSpecs = []executorSpec{
+	{name: "claude_code", command: "claude", aliases: []string{"claude"}},
+	{name: "codex", command: "codex"},
+}
+
 func WithExecTrace(ctx context.Context, trace ExecTrace) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -78,6 +96,27 @@ func ResolveExecutorCommand(name string) (string, []string, error) {
 	default:
 		return "", nil, fmt.Errorf("unknown executor: %s", name)
 	}
+}
+
+func ListExecutorCapabilities() []ExecutorCapability {
+	return listExecutorCapabilities(cmdutil.Exists)
+}
+
+func listExecutorCapabilities(exists func(string) bool) []ExecutorCapability {
+	capabilities := make([]ExecutorCapability, 0, len(supportedExecutorSpecs))
+	for _, spec := range supportedExecutorSpecs {
+		installed := false
+		if exists != nil {
+			installed = exists(spec.command)
+		}
+		capabilities = append(capabilities, ExecutorCapability{
+			Name:      spec.name,
+			Command:   spec.command,
+			Aliases:   append([]string(nil), spec.aliases...),
+			Installed: installed,
+		})
+	}
+	return capabilities
 }
 
 func EnsureExecutorInstalled(ctx context.Context, executorName string) (string, error) {
