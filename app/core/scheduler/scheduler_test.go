@@ -203,3 +203,51 @@ func TestUnregisterStopsJob(t *testing.T) {
 		}
 	}
 }
+
+func TestSnapshotTracksLastRunState(t *testing.T) {
+	s := New()
+	failed := errors.New("boom")
+
+	err := s.Register(JobSpec{
+		Name:       "status-job",
+		Interval:   100 * time.Millisecond,
+		RunOnStart: true,
+		Run: func(context.Context) error {
+			return failed
+		},
+	})
+	if err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	defer s.Stop(200 * time.Millisecond)
+
+	deadline := time.Now().Add(150 * time.Millisecond)
+	for {
+		snap := s.Snapshot()
+		if len(snap) == 1 && snap[0].Runs > 0 {
+			if snap[0].Name != "status-job" {
+				t.Fatalf("unexpected job name: %s", snap[0].Name)
+			}
+			if snap[0].LastError != failed.Error() {
+				t.Fatalf("unexpected last error: %s", snap[0].LastError)
+			}
+			if snap[0].LastStartAt.IsZero() || snap[0].LastEndAt.IsZero() {
+				t.Fatal("expected start and end time to be set")
+			}
+			if snap[0].LastDuration <= 0 {
+				t.Fatal("expected positive run duration")
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("snapshot did not observe job run: %+v", snap)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

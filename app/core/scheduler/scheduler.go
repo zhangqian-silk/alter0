@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 )
@@ -23,9 +24,19 @@ type JobSpec struct {
 	Run        func(context.Context) error
 }
 
+type JobStatus struct {
+	Name         string
+	Runs         int64
+	LastStartAt  time.Time
+	LastEndAt    time.Time
+	LastError    string
+	LastDuration time.Duration
+}
+
 type Scheduler struct {
 	mu      sync.Mutex
 	jobs    map[string]JobSpec
+	status  map[string]JobStatus
 	started bool
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -36,6 +47,7 @@ type Scheduler struct {
 func New() *Scheduler {
 	return &Scheduler{
 		jobs:    make(map[string]JobSpec),
+		status:  make(map[string]JobStatus),
 		jobStop: make(map[string]context.CancelFunc),
 	}
 }
@@ -51,6 +63,7 @@ func (s *Scheduler) Register(job JobSpec) error {
 		return fmt.Errorf("%w: %s", ErrJobExists, job.Name)
 	}
 	s.jobs[job.Name] = job
+	s.status[job.Name] = JobStatus{Name: job.Name}
 	if s.started {
 		s.startJobLocked(job)
 	}
@@ -64,6 +77,7 @@ func (s *Scheduler) Unregister(name string) error {
 		return fmt.Errorf("%w: %s", ErrJobNotFound, name)
 	}
 	delete(s.jobs, name)
+	delete(s.status, name)
 	if stop, exists := s.jobStop[name]; exists {
 		stop()
 		delete(s.jobStop, name)
@@ -128,6 +142,20 @@ func (s *Scheduler) Stop(timeout time.Duration) error {
 	}
 }
 
+func (s *Scheduler) Snapshot() []JobStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := make([]JobStatus, 0, len(s.status))
+	for _, st := range s.status {
+		items = append(items, st)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Name < items[j].Name
+	})
+	return items
+}
+
 func (s *Scheduler) startJobLocked(job JobSpec) {
 	if !s.started || s.ctx == nil {
 		return
@@ -160,6 +188,9 @@ func (s *Scheduler) runLoop(ctx context.Context, job JobSpec) {
 }
 
 func (s *Scheduler) runOnce(parent context.Context, job JobSpec) {
+	start := time.Now()
+	s.markJobStart(job.Name, start)
+
 	runCtx := parent
 	cancel := func() {}
 	if job.Timeout > 0 {
@@ -167,9 +198,42 @@ func (s *Scheduler) runOnce(parent context.Context, job JobSpec) {
 	}
 	defer cancel()
 
-	if err := job.Run(runCtx); err != nil {
+	err := job.Run(runCtx)
+	end := time.Now()
+	s.markJobEnd(job.Name, end, end.Sub(start), err)
+
+	if err != nil {
 		log.Printf("[Scheduler] job=%s failed: %v", job.Name, err)
 	}
+}
+
+func (s *Scheduler) markJobStart(name string, at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.status[name]
+	if !ok {
+		st = JobStatus{Name: name}
+	}
+	st.LastStartAt = at
+	s.status[name] = st
+}
+
+func (s *Scheduler) markJobEnd(name string, at time.Time, duration time.Duration, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.status[name]
+	if !ok {
+		st = JobStatus{Name: name}
+	}
+	st.Runs++
+	st.LastEndAt = at
+	st.LastDuration = duration
+	if err != nil {
+		st.LastError = err.Error()
+	} else {
+		st.LastError = ""
+	}
+	s.status[name] = st
 }
 
 func validateJob(job JobSpec) error {
