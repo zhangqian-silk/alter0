@@ -47,6 +47,7 @@ type Stats struct {
 	Started   bool   `json:"started"`
 	Depth     int    `json:"depth"`
 	Capacity  int    `json:"capacity"`
+	InFlight  int64  `json:"in_flight"`
 	Enqueued  uint64 `json:"enqueued"`
 	Completed uint64 `json:"completed"`
 	Failed    uint64 `json:"failed"`
@@ -111,6 +112,7 @@ func (q *Queue) Stats() Stats {
 		Started:   started,
 		Depth:     len(q.jobs),
 		Capacity:  cap(q.jobs),
+		InFlight:  q.inFlight.Load(),
 		Enqueued:  q.enqueued.Load(),
 		Completed: q.completed.Load(),
 		Failed:    q.failed.Load(),

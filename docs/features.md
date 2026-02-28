@@ -21,7 +21,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Gateway crash backoff restart loop
 - [x] Dynamic scheduler register/unregister + run-on-start
 - [x] Runtime maintenance jobs (task memory prune)
-- [x] Unified runtime status snapshot (gateway/scheduler/task/git)
+- [x] Unified runtime status snapshot (gateway/scheduler/task/queue/git)
 - [x] Startup preflight checks (SQLite writable, executor installed, config validation)
 - [x] Local backup/restore scripts for DB + config
 
@@ -53,6 +53,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 1. [x] Runtime status snapshot includes executor capability registry (name/command/installed)
 2. [x] Runtime status snapshot adds recent command audit tail for quick diagnostics
+3. [x] Queue stats expose in-flight worker count for `/status` and `/api/status` diagnostics
 
 Queue status: P0/P1 active queue is clear (all listed items merged).
 

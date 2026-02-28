@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"alter0/app/core/agent"
+	"alter0/app/core/queue"
 )
 
 func TestSnapshotIncludesExecutorCapabilities(t *testing.T) {
@@ -76,4 +78,47 @@ func TestSnapshotIncludesCommandAuditTail(t *testing.T) {
 	if tail[1].Reason != "permission denied" {
 		t.Fatalf("expected reason in latest entry, got %#v", tail[1])
 	}
+}
+
+func TestSnapshotIncludesQueueInFlight(t *testing.T) {
+	q := queue.New(2)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 1); err != nil {
+		t.Fatalf("start queue failed: %v", err)
+	}
+	defer q.Stop(200 * time.Millisecond)
+
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	if _, err := q.Enqueue(queue.Job{Run: func(context.Context) error {
+		started <- struct{}{}
+		<-release
+		return nil
+	}}); err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected queue job to start")
+	}
+
+	collector := &StatusCollector{Queue: q}
+	snap := collector.Snapshot(context.Background())
+	raw, ok := snap["queue"]
+	if !ok {
+		t.Fatal("expected queue stats in snapshot")
+	}
+
+	stats, ok := raw.(queue.Stats)
+	if !ok {
+		t.Fatalf("expected queue stats type, got %T", raw)
+	}
+	if stats.InFlight != 1 {
+		t.Fatalf("expected in_flight=1, got %+v", stats)
+	}
+
+	close(release)
 }

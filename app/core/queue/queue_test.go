@@ -281,6 +281,45 @@ func TestStopWithReportDrainsQueue(t *testing.T) {
 	}
 }
 
+func TestStatsIncludeInFlight(t *testing.T) {
+	q := New(4)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 1); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	defer q.Stop(200 * time.Millisecond)
+
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	if _, err := q.Enqueue(Job{Run: func(context.Context) error {
+		started <- struct{}{}
+		<-release
+		return nil
+	}}); err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected job to start")
+	}
+
+	stats := q.Stats()
+	if stats.InFlight != 1 {
+		t.Fatalf("expected in_flight=1, got %+v", stats)
+	}
+
+	close(release)
+	time.Sleep(30 * time.Millisecond)
+
+	stats = q.Stats()
+	if stats.InFlight != 0 {
+		t.Fatalf("expected in_flight=0 after completion, got %+v", stats)
+	}
+}
+
 func TestStopWithReportTimeout(t *testing.T) {
 	q := New(4)
 	ctx, cancel := context.WithCancel(context.Background())
