@@ -10,7 +10,8 @@ import (
 )
 
 var (
-	ErrQueueStarted = errors.New("queue: already started")
+	ErrQueueStarted    = errors.New("queue: already started")
+	ErrEnqueueCanceled = errors.New("queue: enqueue canceled")
 )
 
 type Job struct {
@@ -43,6 +44,13 @@ func New(buffer int) *Queue {
 }
 
 func (q *Queue) Enqueue(job Job) (string, error) {
+	return q.EnqueueContext(context.Background(), job)
+}
+
+func (q *Queue) EnqueueContext(ctx context.Context, job Job) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if err := validateJob(job); err != nil {
 		return "", err
 	}
@@ -54,8 +62,12 @@ func (q *Queue) Enqueue(job Job) (string, error) {
 	jobs := q.jobs
 	q.mu.Unlock()
 
-	jobs <- queuedJob{job: job, attempt: 0}
-	return job.ID, nil
+	select {
+	case jobs <- queuedJob{job: job, attempt: 0}:
+		return job.ID, nil
+	case <-ctx.Done():
+		return "", fmt.Errorf("%w: %w", ErrEnqueueCanceled, ctx.Err())
+	}
 }
 
 func (q *Queue) Start(parent context.Context, workers int) error {
