@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -69,5 +70,97 @@ func TestHandleStatusRejectsNonGet(t *testing.T) {
 
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405 for non-GET, got %d", rr.Code)
+	}
+}
+
+func TestHandleMessageReturnsJSONResponse(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	ch.handler = func(msg types.Message) {
+		err := ch.Send(context.Background(), types.Message{
+			RequestID: msg.RequestID,
+			TaskID:    "task-1",
+			Content:   "hello",
+			Meta: map[string]interface{}{
+				"closed":   false,
+				"decision": "existing",
+			},
+		})
+		if err != nil {
+			t.Fatalf("send response failed: %v", err)
+		}
+	}
+
+	body := []byte(`{"content":"hi","user_id":"u-1"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/message", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	ch.handleMessage(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status code: %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("unexpected content type: %s", rr.Header().Get("Content-Type"))
+	}
+
+	var payload outgoingResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if payload.TaskID != "task-1" || payload.Response != "hello" || payload.Closed || payload.Decision != "existing" {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
+func TestHandleMessageStreamModeReturnsChunks(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	ch.handler = func(msg types.Message) {
+		err := ch.Send(context.Background(), types.Message{
+			RequestID: msg.RequestID,
+			TaskID:    "task-9",
+			Content:   "abcdefghij",
+			Meta: map[string]interface{}{
+				"closed":   true,
+				"decision": "new",
+			},
+		})
+		if err != nil {
+			t.Fatalf("send response failed: %v", err)
+		}
+	}
+
+	body := []byte(`{"content":"hi","user_id":"u-1"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/message?stream=1&chunk_size=4", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	ch.handleMessage(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status code: %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Header().Get("Content-Type"), "application/x-ndjson") {
+		t.Fatalf("unexpected content type: %s", rr.Header().Get("Content-Type"))
+	}
+
+	decoder := json.NewDecoder(strings.NewReader(rr.Body.String()))
+	events := make([]streamResponseEvent, 0, 4)
+	for decoder.More() {
+		var ev streamResponseEvent
+		if err := decoder.Decode(&ev); err != nil {
+			t.Fatalf("decode stream event failed: %v", err)
+		}
+		events = append(events, ev)
+	}
+
+	if len(events) != 4 {
+		t.Fatalf("expected 4 events, got %d: %+v", len(events), events)
+	}
+	if events[0].Type != "chunk" || events[0].Chunk != "abcd" {
+		t.Fatalf("unexpected first event: %+v", events[0])
+	}
+	if events[1].Chunk != "efgh" || events[2].Chunk != "ij" {
+		t.Fatalf("unexpected chunk sequence: %+v", events)
+	}
+	done := events[3]
+	if done.Type != "done" || done.TaskID != "task-9" || done.Decision != "new" || !done.Closed || done.Total != 3 {
+		t.Fatalf("unexpected done event: %+v", done)
 	}
 }

@@ -12,8 +12,15 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"alter0/app/pkg/types"
+)
+
+const (
+	defaultResponseTimeout = 60 * time.Second
+	defaultChunkSizeRunes  = 1200
+	maxChunkSizeRunes      = 4000
 )
 
 type HTTPChannel struct {
@@ -105,6 +112,7 @@ type incomingRequest struct {
 	Content string `json:"content"`
 	UserID  string `json:"user_id"`
 	TaskID  string `json:"task_id,omitempty"`
+	Stream  bool   `json:"stream,omitempty"`
 }
 
 type outgoingResponse struct {
@@ -112,6 +120,16 @@ type outgoingResponse struct {
 	Response string `json:"response"`
 	Closed   bool   `json:"closed"`
 	Decision string `json:"decision"`
+}
+
+type streamResponseEvent struct {
+	Type     string `json:"type"`
+	TaskID   string `json:"task_id,omitempty"`
+	Decision string `json:"decision,omitempty"`
+	Closed   bool   `json:"closed,omitempty"`
+	Index    int    `json:"index,omitempty"`
+	Total    int    `json:"total,omitempty"`
+	Chunk    string `json:"chunk,omitempty"`
 }
 
 type statusResponse struct {
@@ -206,10 +224,18 @@ func (c *HTTPChannel) handleMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	c.handler(msg)
 
+	streamRequested := req.Stream || parseBoolQuery(r.URL.Query().Get("stream"))
+	chunkSize := parseChunkSize(r.URL.Query().Get("chunk_size"))
+
 	select {
 	case response := <-respCh:
 		closed, _ := response.Meta["closed"].(bool)
 		decision, _ := response.Meta["decision"].(string)
+		if streamRequested {
+			c.writeStreamResponse(w, response, decision, closed, chunkSize)
+			return
+		}
+
 		payload := outgoingResponse{
 			TaskID:   response.TaskID,
 			Response: response.Content,
@@ -219,9 +245,85 @@ func (c *HTTPChannel) handleMessage(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(payload)
-	case <-time.After(60 * time.Second):
+	case <-time.After(defaultResponseTimeout):
 		http.Error(w, "request timeout", http.StatusGatewayTimeout)
 	}
+}
+
+func (c *HTTPChannel) writeStreamResponse(w http.ResponseWriter, response types.Message, decision string, closed bool, chunkSize int) {
+	chunks := splitByRunes(response.Content, chunkSize)
+	if len(chunks) == 0 {
+		chunks = []string{""}
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	flusher, _ := w.(http.Flusher)
+	for i, chunk := range chunks {
+		_ = encoder.Encode(streamResponseEvent{
+			Type:  "chunk",
+			Index: i + 1,
+			Total: len(chunks),
+			Chunk: chunk,
+		})
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	_ = encoder.Encode(streamResponseEvent{
+		Type:     "done",
+		TaskID:   response.TaskID,
+		Decision: decision,
+		Closed:   closed,
+		Total:    len(chunks),
+	})
+	if flusher != nil {
+		flusher.Flush()
+	}
+}
+
+func splitByRunes(text string, chunkSize int) []string {
+	if chunkSize <= 0 {
+		chunkSize = defaultChunkSizeRunes
+	}
+	if utf8.RuneCountInString(text) <= chunkSize {
+		return []string{text}
+	}
+
+	runes := []rune(text)
+	chunks := make([]string, 0, (len(runes)+chunkSize-1)/chunkSize)
+	for start := 0; start < len(runes); start += chunkSize {
+		end := start + chunkSize
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunks = append(chunks, string(runes[start:end]))
+	}
+	return chunks
+}
+
+func parseBoolQuery(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseChunkSize(raw string) int {
+	size, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || size <= 0 {
+		return defaultChunkSizeRunes
+	}
+	if size > maxChunkSizeRunes {
+		return maxChunkSizeRunes
+	}
+	return size
 }
 
 func (c *HTTPChannel) newID(prefix string) string {

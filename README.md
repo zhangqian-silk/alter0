@@ -156,10 +156,18 @@ Response:
 {"task_id":"...", "response":"...", "closed":false, "decision":"existing|new"}
 ```
 
+可选流式分块输出（`stream=1`）：
+
+- 响应头：`Content-Type: application/x-ndjson`
+- 输出格式：多行 JSON，每行为一个 event
+- chunk event: `{"type":"chunk","index":1,"total":N,"chunk":"..."}`
+- done event: `{"type":"done","task_id":"...","decision":"existing|new","closed":false,"total":N}`
+- 可选参数：`chunk_size`（按 rune 分块，默认 1200，最大 4000）
+
 Example:
 
 ```bash
-curl -X POST http://localhost:8080/api/message \
+curl -X POST "http://localhost:8080/api/message?stream=1&chunk_size=800" \
   -H "Content-Type: application/json" \
   -d "{\"content\":\"帮我继续当前任务\",\"user_id\":\"local_user\"}"
 ```
@@ -237,7 +245,7 @@ make restore BACKUP=output/backups/alter0-backup-<timestamp>.tar.gz
 ### Current Technical Constraints
 
 1. 默认运行模型为单实例、本地优先，不内建分布式协调。
-2. HTTP 接口为同步响应模式，单请求超时为 60 秒。
+2. HTTP 接口默认同步响应；可通过 `stream=1` 使用 NDJSON 分块输出，单请求超时为 60 秒。
 3. Schema 版本升级时会触发表重建；升级前应备份 `output/db`。
 
 ## License
