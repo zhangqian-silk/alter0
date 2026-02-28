@@ -1,11 +1,16 @@
 package command
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"alter0/app/core/orchestrator/db"
+	"alter0/app/core/orchestrator/task"
 )
 
 func TestAuthorizeCommand_AdminOnlyCommands(t *testing.T) {
@@ -90,5 +95,47 @@ func TestAppendCommandAuditEntry_WritesJSONL(t *testing.T) {
 	}
 	if record.Reason != "permission denied" {
 		t.Fatalf("unexpected reason: %q", record.Reason)
+	}
+}
+
+func TestExecuteTaskCommand_Stats(t *testing.T) {
+	tempDir := t.TempDir()
+	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	if err != nil {
+		t.Fatalf("init sqlite failed: %v", err)
+	}
+	defer database.Close()
+
+	store := task.NewStore(database)
+	exec := NewExecutor(nil, store, nil)
+	ctx := context.Background()
+
+	task1, err := store.CreateTask(ctx, "u-1", "task one", "cli")
+	if err != nil {
+		t.Fatalf("create task1 failed: %v", err)
+	}
+	_, err = store.CreateTask(ctx, "u-1", "task two", "cli")
+	if err != nil {
+		t.Fatalf("create task2 failed: %v", err)
+	}
+	if err := store.CloseTask(ctx, task1.ID); err != nil {
+		t.Fatalf("close task failed: %v", err)
+	}
+	if err := store.SetForcedTask(ctx, "u-1", task1.ID); err != nil {
+		t.Fatalf("set forced task failed: %v", err)
+	}
+
+	out, err := exec.executeTaskCommand(ctx, "u-1", []string{"stats"})
+	if err != nil {
+		t.Fatalf("execute task stats failed: %v", err)
+	}
+	if !strings.Contains(out, "open: 1") {
+		t.Fatalf("expected open count in output: %s", out)
+	}
+	if !strings.Contains(out, "closed: 1") {
+		t.Fatalf("expected closed count in output: %s", out)
+	}
+	if !strings.Contains(out, task1.ID) {
+		t.Fatalf("expected forced task id in output: %s", out)
 	}
 }
