@@ -45,6 +45,8 @@ Channel (CLI / HTTP / Web)
 
 Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对话展开。系统将 Task 作为一等对象管理，覆盖任务创建、归属、状态流转和关闭；对输入的处理由模型决策驱动，包含任务路由与结题判断两个环节，并通过可配置置信度阈值控制误判风险。
 
+功能矩阵与执行队列请参考：[`docs/features.md`](./docs/features.md)。
+
 在执行层，Alter0 复用成熟 Agent CLI（`codex`、`claude_code`），自身聚焦编排与治理，不重建模型执行栈。接收器（CLI/HTTP/Web）与执行器通过稳定接口解耦，允许在不影响任务存储和路由策略的前提下独立扩展通道或替换执行后端。扩展能力以 Skill 为主入口，外部能力（如 MCP）可通过扩展层纳入执行链路。
 
 在运行治理方面，系统提供基础可观测能力，包括 Web Console、`/health` 探针、执行阶段日志与命令审计日志。为控制上下文开销，任务记忆采用快照式压缩策略，在 prompt 组装时优先保留高价值上下文，尽量降低冗余信息带来的推理噪声。
@@ -117,6 +119,7 @@ go run .
 通用命令：
 
 - `/help`
+- `/status`
 - `/config`
 - `/config get [key]`
 - `/task list [open|closed|all]`
@@ -127,6 +130,8 @@ go run .
 - `/task memory [task_id]`
 - `/task memory clear [task_id]`
 - `/task stats`
+
+`/status` 输出统一运行时快照（gateway/scheduler/task/git），与 HTTP `GET /api/status` 对齐。
 
 管理员命令：
 
@@ -156,6 +161,10 @@ curl -X POST http://localhost:8080/api/message \
   -H "Content-Type: application/json" \
   -d "{\"content\":\"帮我继续当前任务\",\"user_id\":\"local_user\"}"
 ```
+
+### `GET /api/status`
+
+返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/git）。
 
 ## Observability and Data Layout
 

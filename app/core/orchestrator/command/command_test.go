@@ -11,6 +11,7 @@ import (
 
 	"alter0/app/core/orchestrator/db"
 	"alter0/app/core/orchestrator/task"
+	"alter0/app/pkg/types"
 )
 
 func TestAuthorizeCommand_AdminOnlyCommands(t *testing.T) {
@@ -95,6 +96,60 @@ func TestAppendCommandAuditEntry_WritesJSONL(t *testing.T) {
 	}
 	if record.Reason != "permission denied" {
 		t.Fatalf("unexpected reason: %q", record.Reason)
+	}
+}
+
+func TestExecuteSlash_Status(t *testing.T) {
+	exec := NewExecutor(nil, nil, nil)
+	exec.SetStatusProvider(func(ctx context.Context) map[string]interface{} {
+		return map[string]interface{}{
+			"gateway": map[string]interface{}{"healthy": true},
+		}
+	})
+
+	out, handled, err := exec.ExecuteSlash(context.Background(), types.Message{
+		Content:   "/status",
+		UserID:    "u-1",
+		ChannelID: "cli",
+		RequestID: "req-1",
+	})
+	if err != nil {
+		t.Fatalf("execute slash status failed: %v", err)
+	}
+	if !handled {
+		t.Fatal("expected /status to be handled")
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("status output is not json: %v", err)
+	}
+	gateway, ok := payload["gateway"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected gateway payload, got %+v", payload)
+	}
+	healthy, ok := gateway["healthy"].(bool)
+	if !ok || !healthy {
+		t.Fatalf("expected gateway healthy=true, got %+v", gateway)
+	}
+}
+
+func TestExecuteSlash_StatusWithoutProvider(t *testing.T) {
+	exec := NewExecutor(nil, nil, nil)
+	_, handled, err := exec.ExecuteSlash(context.Background(), types.Message{
+		Content:   "/status",
+		UserID:    "u-1",
+		ChannelID: "cli",
+		RequestID: "req-1",
+	})
+	if !handled {
+		t.Fatal("expected /status to be handled")
+	}
+	if err == nil {
+		t.Fatal("expected missing provider error")
+	}
+	if !strings.Contains(err.Error(), "status provider") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

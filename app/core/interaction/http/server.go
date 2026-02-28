@@ -17,10 +17,11 @@ import (
 )
 
 type HTTPChannel struct {
-	id      string
-	port    int
-	server  *http.Server
-	handler func(types.Message)
+	id             string
+	port           int
+	server         *http.Server
+	handler        func(types.Message)
+	statusProvider func(context.Context) map[string]interface{}
 
 	pendingMu   sync.Mutex
 	pending     map[string]chan types.Message
@@ -38,6 +39,10 @@ func NewHTTPChannel(port int) *HTTPChannel {
 
 func (c *HTTPChannel) ID() string {
 	return c.id
+}
+
+func (c *HTTPChannel) SetStatusProvider(provider func(context.Context) map[string]interface{}) {
+	c.statusProvider = provider
 }
 
 func (c *HTTPChannel) Start(ctx context.Context, handler func(types.Message)) error {
@@ -110,10 +115,11 @@ type outgoingResponse struct {
 }
 
 type statusResponse struct {
-	ChannelID       string `json:"channel_id"`
-	PendingRequests int    `json:"pending_requests"`
-	StartedAt       string `json:"started_at,omitempty"`
-	UptimeSec       int64  `json:"uptime_sec"`
+	ChannelID       string                 `json:"channel_id"`
+	PendingRequests int                    `json:"pending_requests"`
+	StartedAt       string                 `json:"started_at,omitempty"`
+	UptimeSec       int64                  `json:"uptime_sec"`
+	Runtime         map[string]interface{} `json:"runtime,omitempty"`
 }
 
 func (c *HTTPChannel) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +140,9 @@ func (c *HTTPChannel) handleStatus(w http.ResponseWriter, r *http.Request) {
 		if resp.UptimeSec < 0 {
 			resp.UptimeSec = 0
 		}
+	}
+	if c.statusProvider != nil {
+		resp.Runtime = c.statusProvider(r.Context())
 	}
 
 	w.Header().Set("Content-Type", "application/json")

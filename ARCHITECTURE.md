@@ -373,3 +373,7 @@ P2:
 - dynamic plugin reload
 - artifact pipeline
 - optional distributed extensions
+
+## Feature Roadmap
+
+See `docs/features.md` for implemented capability matrix and active priority queue.

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,10 @@ func TestHandleStatusReturnsJSONSnapshot(t *testing.T) {
 	ch.pending["req-1"] = make(chan types.Message)
 	ch.pending["req-2"] = make(chan types.Message)
 	ch.pendingMu.Unlock()
+
+	ch.SetStatusProvider(func(ctx context.Context) map[string]interface{} {
+		return map[string]interface{}{"ok": true}
+	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	rr := httptest.NewRecorder()
@@ -46,6 +51,13 @@ func TestHandleStatusReturnsJSONSnapshot(t *testing.T) {
 	}
 	if payload.UptimeSec <= 0 {
 		t.Fatalf("expected positive uptime, got %d", payload.UptimeSec)
+	}
+	if payload.Runtime == nil {
+		t.Fatal("expected runtime payload")
+	}
+	ok, found := payload.Runtime["ok"].(bool)
+	if !found || !ok {
+		t.Fatalf("unexpected runtime payload: %+v", payload.Runtime)
 	}
 }
 

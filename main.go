@@ -93,6 +93,15 @@ func main() {
 		}
 	}()
 
+	statusCollector := &runtime.StatusCollector{
+		Gateway:   gw,
+		Scheduler: jobScheduler,
+		TaskStore: taskStore,
+		RepoPath:  ".",
+	}
+	httpChannel.SetStatusProvider(statusCollector.Snapshot)
+	brain.SetStatusProvider(statusCollector.Snapshot)
+
 	go runGatewayWithRetry(ctx, gw)
 
 	logger.Info("Alter0 is ready to serve.")
