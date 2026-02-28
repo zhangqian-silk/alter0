@@ -3,8 +3,11 @@ package gateway
 import (
 	"context"
 	"log"
+	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"alter0/app/pkg/types"
 )
@@ -13,6 +16,18 @@ type DefaultGateway struct {
 	agent    types.Agent
 	channels map[string]types.Channel
 	mu       sync.RWMutex
+
+	processedMessages uint64
+	lastMessageUnix   atomic.Int64
+	startedUnix       atomic.Int64
+}
+
+type HealthStatus struct {
+	Started            bool
+	StartedAt          time.Time
+	RegisteredChannels []string
+	ProcessedMessages  uint64
+	LastMessageAt      time.Time
 }
 
 func NewGateway(agent types.Agent) *DefaultGateway {
@@ -31,8 +46,11 @@ func (g *DefaultGateway) RegisterChannel(c types.Channel) {
 
 func (g *DefaultGateway) Start(ctx context.Context) error {
 	var wg sync.WaitGroup
+	g.startedUnix.Store(time.Now().Unix())
 
 	handler := func(msg types.Message) {
+		atomic.AddUint64(&g.processedMessages, 1)
+		g.lastMessageUnix.Store(time.Now().Unix())
 		log.Printf("[Gateway] Received message from channel=%s user=%s", msg.ChannelID, msg.UserID)
 		response, err := g.agent.Process(ctx, msg)
 		if err != nil {
@@ -107,4 +125,29 @@ func (g *DefaultGateway) Start(ctx context.Context) error {
 	log.Println("[Gateway] Started all channels")
 	wg.Wait()
 	return nil
+}
+
+func (g *DefaultGateway) HealthStatus() HealthStatus {
+	g.mu.RLock()
+	channels := make([]string, 0, len(g.channels))
+	for id := range g.channels {
+		channels = append(channels, id)
+	}
+	g.mu.RUnlock()
+	sort.Strings(channels)
+
+	status := HealthStatus{
+		RegisteredChannels: channels,
+		ProcessedMessages:  atomic.LoadUint64(&g.processedMessages),
+	}
+
+	if started := g.startedUnix.Load(); started > 0 {
+		status.Started = true
+		status.StartedAt = time.Unix(started, 0).UTC()
+	}
+	if last := g.lastMessageUnix.Load(); last > 0 {
+		status.LastMessageAt = time.Unix(last, 0).UTC()
+	}
+
+	return status
 }
