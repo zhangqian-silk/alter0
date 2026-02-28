@@ -181,3 +181,106 @@ func TestHandleMessageStreamModeReturnsChunks(t *testing.T) {
 		t.Fatalf("unexpected done event: %+v", done)
 	}
 }
+
+func TestAsyncTaskSubmitAndStatus(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	ch.handler = func(msg types.Message) {
+		err := ch.Send(context.Background(), types.Message{
+			RequestID: msg.RequestID,
+			TaskID:    "task-async",
+			Content:   "done",
+			Meta: map[string]interface{}{
+				"closed":   false,
+				"decision": "existing",
+			},
+		})
+		if err != nil {
+			t.Fatalf("send response failed: %v", err)
+		}
+	}
+
+	body := []byte(`{"content":"async","user_id":"u-2"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	ch.handleAsyncTasks(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("unexpected status code: %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var submit asyncSubmitResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &submit); err != nil {
+		t.Fatalf("decode submit response failed: %v", err)
+	}
+	if submit.RequestID == "" || submit.Status != "pending" {
+		t.Fatalf("unexpected submit payload: %+v", submit)
+	}
+
+	time.Sleep(30 * time.Millisecond)
+
+	statusReq := httptest.NewRequest(http.MethodGet, submit.StatusURL, nil)
+	statusRR := httptest.NewRecorder()
+	ch.handleAsyncTasks(statusRR, statusReq)
+	if statusRR.Code != http.StatusOK {
+		t.Fatalf("unexpected status code: %d body=%s", statusRR.Code, statusRR.Body.String())
+	}
+
+	var status asyncTaskResponse
+	if err := json.Unmarshal(statusRR.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode status response failed: %v", err)
+	}
+	if status.Status != "completed" {
+		t.Fatalf("expected completed status, got %+v", status)
+	}
+	if status.Result == nil || status.Result.TaskID != "task-async" || status.Result.Response != "done" {
+		t.Fatalf("unexpected async result: %+v", status.Result)
+	}
+}
+
+func TestAsyncTaskCancel(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	ch.handler = func(msg types.Message) {}
+
+	body := []byte(`{"content":"async","user_id":"u-2"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	ch.handleAsyncTasks(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("unexpected status code: %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var submit asyncSubmitResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &submit); err != nil {
+		t.Fatalf("decode submit response failed: %v", err)
+	}
+
+	cancelReq := httptest.NewRequest(http.MethodPost, submit.CancelURL, nil)
+	cancelRR := httptest.NewRecorder()
+	ch.handleAsyncTasks(cancelRR, cancelReq)
+	if cancelRR.Code != http.StatusOK {
+		t.Fatalf("unexpected cancel status: %d body=%s", cancelRR.Code, cancelRR.Body.String())
+	}
+
+	var canceled asyncTaskResponse
+	if err := json.Unmarshal(cancelRR.Body.Bytes(), &canceled); err != nil {
+		t.Fatalf("decode cancel response failed: %v", err)
+	}
+	if canceled.Status != "canceled" {
+		t.Fatalf("expected canceled status, got %+v", canceled)
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, submit.StatusURL, nil)
+	statusRR := httptest.NewRecorder()
+	ch.handleAsyncTasks(statusRR, statusReq)
+	if statusRR.Code != http.StatusOK {
+		t.Fatalf("unexpected status status: %d body=%s", statusRR.Code, statusRR.Body.String())
+	}
+	var status asyncTaskResponse
+	if err := json.Unmarshal(statusRR.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode status response failed: %v", err)
+	}
+	if status.Status != "canceled" {
+		t.Fatalf("expected canceled status, got %+v", status)
+	}
+}

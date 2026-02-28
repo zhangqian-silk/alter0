@@ -228,6 +228,30 @@ curl -X POST "http://localhost:8080/api/message?stream=1&chunk_size=800" \
   -d "{\"content\":\"帮我继续当前任务\",\"user_id\":\"local_user\"}"
 ```
 
+### `POST /api/tasks`
+
+异步提交任务，立即返回 `202 Accepted`。
+
+Request:
+
+```json
+{"content":"...", "user_id":"...", "task_id":"optional"}
+```
+
+Response:
+
+```json
+{"request_id":"req-...","status":"pending","status_url":"/api/tasks/req-...","cancel_url":"/api/tasks/req-.../cancel","accepted_at":"2026-03-01T00:00:00Z"}
+```
+
+### `GET /api/tasks/{request_id}`
+
+查询异步任务状态：`pending|completed|canceled|timeout`。当任务完成时，`result` 字段与同步接口响应结构一致。
+
+### `POST /api/tasks/{request_id}/cancel`
+
+取消仍处于 `pending` 的异步任务。
+
 ### `GET /api/status`
 
 返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/queue[workers,in_flight,last_shutdown]/executors/command_audit_tail/git）。
@@ -301,7 +325,7 @@ make restore BACKUP=output/backups/alter0-backup-<timestamp>.tar.gz
 ### Current Technical Constraints
 
 1. 默认运行模型为单实例、本地优先，不内建分布式协调。
-2. HTTP 接口默认同步响应；可通过 `stream=1` 使用 NDJSON 分块输出，单请求超时为 60 秒。
+2. HTTP 同步接口默认阻塞返回；可通过 `stream=1` 使用 NDJSON 分块输出，单请求超时为 60 秒。异步任务接口使用 `POST /api/tasks` + `GET /api/tasks/{id}` + `POST /api/tasks/{id}/cancel`。
 3. Schema 版本升级时会触发表重建；升级前应备份 `output/db`。
 
 ## License

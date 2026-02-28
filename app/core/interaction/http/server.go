@@ -35,6 +35,9 @@ type HTTPChannel struct {
 	pending     map[string]chan types.Message
 	counter     uint64
 	startedUnix atomic.Int64
+
+	asyncMu sync.Mutex
+	async   map[string]*asyncRequest
 }
 
 func NewHTTPChannel(port int) *HTTPChannel {
@@ -43,6 +46,7 @@ func NewHTTPChannel(port int) *HTTPChannel {
 		port:            port,
 		pending:         map[string]chan types.Message{},
 		shutdownTimeout: 5 * time.Second,
+		async:           map[string]*asyncRequest{},
 	}
 }
 
@@ -68,6 +72,8 @@ func (c *HTTPChannel) Start(ctx context.Context, handler func(types.Message)) er
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/message", c.handleMessage)
 	mux.HandleFunc("/api/status", c.handleStatus)
+	mux.HandleFunc("/api/tasks", c.handleAsyncTasks)
+	mux.HandleFunc("/api/tasks/", c.handleAsyncTasks)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -149,6 +155,30 @@ type statusResponse struct {
 	Runtime         map[string]interface{} `json:"runtime,omitempty"`
 }
 
+type asyncRequest struct {
+	RequestID string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Status    string
+	Result    *outgoingResponse
+}
+
+type asyncSubmitResponse struct {
+	RequestID string `json:"request_id"`
+	Status    string `json:"status"`
+	StatusURL string `json:"status_url"`
+	CancelURL string `json:"cancel_url"`
+	Accepted  string `json:"accepted_at"`
+}
+
+type asyncTaskResponse struct {
+	RequestID string            `json:"request_id"`
+	Status    string            `json:"status"`
+	CreatedAt string            `json:"created_at"`
+	UpdatedAt string            `json:"updated_at"`
+	Result    *outgoingResponse `json:"result,omitempty"`
+}
+
 func (c *HTTPChannel) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -199,33 +229,9 @@ func (c *HTTPChannel) handleMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "content is required", http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(req.UserID) == "" {
-		req.UserID = "local_user"
-	}
-
-	requestID := c.newID("req")
-	respCh := make(chan types.Message, 1)
-	c.pendingMu.Lock()
-	c.pending[requestID] = respCh
-	c.pendingMu.Unlock()
-	defer func() {
-		c.pendingMu.Lock()
-		delete(c.pending, requestID)
-		c.pendingMu.Unlock()
-	}()
-
-	msg := types.Message{
-		ID:        c.newID("http"),
-		Content:   req.Content,
-		Role:      "user",
-		ChannelID: c.id,
-		UserID:    req.UserID,
-		TaskID:    req.TaskID,
-		RequestID: requestID,
-		Meta: map[string]interface{}{
-			"user_id": req.UserID,
-		},
-	}
+	msg, respCh := c.prepareMessage(req)
+	requestID := msg.RequestID
+	defer c.removePendingRequest(requestID)
 
 	if c.handler == nil {
 		http.Error(w, "handler not ready", http.StatusServiceUnavailable)
@@ -257,6 +263,222 @@ func (c *HTTPChannel) handleMessage(w http.ResponseWriter, r *http.Request) {
 	case <-time.After(defaultResponseTimeout):
 		http.Error(w, "request timeout", http.StatusGatewayTimeout)
 	}
+}
+
+func (c *HTTPChannel) handleAsyncTasks(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api/tasks" {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		c.handleAsyncSubmit(w, r)
+		return
+	}
+
+	id, action, ok := parseTaskPath(r.URL.Path)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	switch action {
+	case "":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		c.handleAsyncStatus(w, r, id)
+	case "cancel":
+		if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		c.handleAsyncCancel(w, r, id)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (c *HTTPChannel) handleAsyncSubmit(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var req incomingRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		http.Error(w, "content is required", http.StatusBadRequest)
+		return
+	}
+	if c.handler == nil {
+		http.Error(w, "handler not ready", http.StatusServiceUnavailable)
+		return
+	}
+
+	msg, respCh := c.prepareMessage(req)
+	requestID := msg.RequestID
+	now := time.Now().UTC()
+
+	c.asyncMu.Lock()
+	c.async[requestID] = &asyncRequest{
+		RequestID: requestID,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Status:    "pending",
+	}
+	c.asyncMu.Unlock()
+
+	c.handler(msg)
+	go c.awaitAsyncResult(requestID, respCh)
+
+	resp := asyncSubmitResponse{
+		RequestID: requestID,
+		Status:    "pending",
+		StatusURL: "/api/tasks/" + requestID,
+		CancelURL: "/api/tasks/" + requestID + "/cancel",
+		Accepted:  now.Format(time.RFC3339),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (c *HTTPChannel) handleAsyncStatus(w http.ResponseWriter, r *http.Request, requestID string) {
+	c.asyncMu.Lock()
+	entry, ok := c.async[requestID]
+	c.asyncMu.Unlock()
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	payload := asyncTaskResponse{
+		RequestID: entry.RequestID,
+		Status:    entry.Status,
+		CreatedAt: entry.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: entry.UpdatedAt.Format(time.RFC3339),
+		Result:    entry.Result,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func (c *HTTPChannel) handleAsyncCancel(w http.ResponseWriter, r *http.Request, requestID string) {
+	c.asyncMu.Lock()
+	entry, ok := c.async[requestID]
+	if !ok {
+		c.asyncMu.Unlock()
+		http.NotFound(w, r)
+		return
+	}
+	if entry.Status == "pending" {
+		entry.Status = "canceled"
+		entry.UpdatedAt = time.Now().UTC()
+	}
+	payload := asyncTaskResponse{
+		RequestID: entry.RequestID,
+		Status:    entry.Status,
+		CreatedAt: entry.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: entry.UpdatedAt.Format(time.RFC3339),
+		Result:    entry.Result,
+	}
+	c.asyncMu.Unlock()
+
+	if payload.Status == "canceled" {
+		c.removePendingRequest(requestID)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func (c *HTTPChannel) awaitAsyncResult(requestID string, respCh <-chan types.Message) {
+	defer c.removePendingRequest(requestID)
+
+	select {
+	case response := <-respCh:
+		closed, _ := response.Meta["closed"].(bool)
+		decision, _ := response.Meta["decision"].(string)
+		result := &outgoingResponse{
+			TaskID:   response.TaskID,
+			Response: response.Content,
+			Closed:   closed,
+			Decision: decision,
+		}
+
+		c.asyncMu.Lock()
+		if entry, ok := c.async[requestID]; ok && entry.Status == "pending" {
+			entry.Status = "completed"
+			entry.Result = result
+			entry.UpdatedAt = time.Now().UTC()
+		}
+		c.asyncMu.Unlock()
+	case <-time.After(defaultResponseTimeout):
+		c.asyncMu.Lock()
+		if entry, ok := c.async[requestID]; ok && entry.Status == "pending" {
+			entry.Status = "timeout"
+			entry.UpdatedAt = time.Now().UTC()
+		}
+		c.asyncMu.Unlock()
+	}
+}
+
+func (c *HTTPChannel) prepareMessage(req incomingRequest) (types.Message, chan types.Message) {
+	if strings.TrimSpace(req.UserID) == "" {
+		req.UserID = "local_user"
+	}
+
+	requestID := c.newID("req")
+	respCh := make(chan types.Message, 1)
+	c.pendingMu.Lock()
+	c.pending[requestID] = respCh
+	c.pendingMu.Unlock()
+
+	msg := types.Message{
+		ID:        c.newID("http"),
+		Content:   req.Content,
+		Role:      "user",
+		ChannelID: c.id,
+		UserID:    req.UserID,
+		TaskID:    req.TaskID,
+		RequestID: requestID,
+		Meta: map[string]interface{}{
+			"user_id": req.UserID,
+		},
+	}
+	return msg, respCh
+}
+
+func (c *HTTPChannel) removePendingRequest(requestID string) {
+	c.pendingMu.Lock()
+	delete(c.pending, requestID)
+	c.pendingMu.Unlock()
+}
+
+func parseTaskPath(path string) (id string, action string, ok bool) {
+	if !strings.HasPrefix(path, "/api/tasks/") {
+		return "", "", false
+	}
+	tail := strings.Trim(strings.TrimPrefix(path, "/api/tasks/"), "/")
+	if tail == "" {
+		return "", "", false
+	}
+	parts := strings.Split(tail, "/")
+	if len(parts) == 1 {
+		return parts[0], "", true
+	}
+	if len(parts) == 2 {
+		return parts[0], parts[1], true
+	}
+	return "", "", false
 }
 
 func (c *HTTPChannel) writeStreamResponse(w http.ResponseWriter, response types.Message, decision string, closed bool, chunkSize int) {

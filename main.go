@@ -149,7 +149,7 @@ func main() {
 
 	logger.Info("Alter0 is ready to serve.")
 	fmt.Println("- CLI Interface: Interactive")
-	fmt.Println("- HTTP Interface: http://localhost:8080/api/message (POST)")
+	fmt.Println("- HTTP Interface: http://localhost:8080/api/message (POST), /api/tasks (POST)")
 	fmt.Println("- Web Console:    http://localhost:8080/")
 
 	sigChan := make(chan os.Signal, 1)
