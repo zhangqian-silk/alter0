@@ -2,10 +2,10 @@
 
 ## 审查范围
 
-- 分支范围：`feat/p0-*`（本地历史分支）
+- 分支范围：`feat/p0-*`（本地历史分支 + 远端历史分支）
 - worktree 范围：`/tmp/alter0-*`
-- 基线：`master@c4fea78`
-- 仓库同步：已执行 `git fetch --all --prune`，远端已无 `origin/feat/p0-*` 历史审查分支残留。
+- 基线：`master@97faefe`
+- 仓库同步：已执行 `git fetch --all --prune`，远端残留 `origin/feat/p0-legacy-task-audit-remote-cleanup`，与主线内容一致。
 
 ## 分支盘点与结论
 
@@ -31,6 +31,7 @@
 | feat/p0-8-runtime-gateway-health | 已合并完成 | 网关健康快照已进入主线（commit `a1d5a9e`）。 |
 | feat/p0-8-task-restore-transaction | 已合并完成 | 事务化恢复能力已进入主线（commit `6f156b6`）。 |
 | feat/p0-8-http-status-json | 已合并完成 | 状态 JSON 接口已进入主线（commit `95dfa7a`）。 |
+| origin/feat/p0-legacy-task-audit-remote-cleanup | 已被新方案覆盖 | 远端分支与 `master` 无内容差异，保留分支不影响主线执行。 |
 
 ## Worktree 盘点
 
