@@ -37,6 +37,12 @@ func main() {
 	}
 	cfg := cfgManager.Get()
 
+	if err := runtime.RunPreflight(context.Background(), cfg, "output/db"); err != nil {
+		logger.Error("Startup preflight failed: %v", err)
+		os.Exit(1)
+	}
+	logger.Info("Startup preflight checks passed")
+
 	database, err := db.NewSQLiteDB("output/db")
 	if err != nil {
 		logger.Error("Failed to initialize DB: %v", err)

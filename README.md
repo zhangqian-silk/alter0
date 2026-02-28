@@ -66,6 +66,8 @@ Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对�
 go run .
 ```
 
+启动时会先执行 preflight（配置合法性、SQLite 目录可写、执行器二进制可用），任一检查失败会直接退出并输出错误。
+
 默认端点：
 
 - Web Console: `http://localhost:8080/`
