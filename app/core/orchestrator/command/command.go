@@ -253,6 +253,7 @@ func (e *Executor) helpText() string {
 		b.WriteString("  /task close [task_id]\n")
 		b.WriteString("  /task memory [task_id]\n")
 		b.WriteString("  /task memory clear [task_id]\n")
+		b.WriteString("  /task stats\n")
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -392,6 +393,23 @@ func (e *Executor) executeTaskCommand(ctx context.Context, userID string, args [
 			return "", err
 		}
 		return fmt.Sprintf("Closed task: %s", taskID), nil
+	case "stats":
+		openTasks, err := e.taskStore.ListTasks(ctx, userID, "open", 1000)
+		if err != nil {
+			return "", err
+		}
+		closedTasks, err := e.taskStore.ListTasks(ctx, userID, "closed", 1000)
+		if err != nil {
+			return "", err
+		}
+		forcedTaskID, err := e.taskStore.PeekForcedTask(ctx, userID)
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(forcedTaskID) == "" {
+			forcedTaskID = "<none>"
+		}
+		return fmt.Sprintf("Task stats:\n  open: %d\n  closed: %d\n  next_forced: %s", len(openTasks), len(closedTasks), forcedTaskID), nil
 	case "memory":
 		if len(args) > 1 && strings.EqualFold(args[1], "clear") {
 			taskID, err := e.resolveTaskIDForMemory(ctx, userID, args[2:])
