@@ -175,6 +175,28 @@ curl -X POST http://localhost:8080/api/message \
 - `output/orchestrator/<date>/executor_*.jsonl`: 执行器阶段日志（router/gen/closer）
 - `output/audit/<date>/command_permission.jsonl`: 命令权限审计日志
 
+## Local Backup and Restore
+
+Alter0 提供本地脚本用于备份与恢复核心状态（SQLite + 运行配置）：
+
+- 备份数据库与配置：
+
+```bash
+make backup
+# or: ./scripts/backup-local.sh
+```
+
+备份文件输出到 `output/backups/alter0-backup-<UTC timestamp>.tar.gz`。
+
+- 从备份恢复：
+
+```bash
+make restore BACKUP=output/backups/alter0-backup-<timestamp>.tar.gz
+# or: ./scripts/restore-local.sh <archive>
+```
+
+恢复会覆盖当前 `output/db/alter0.db` 与 `config/config.json`。
+
 ## Extension Guide
 
 ### Add a New Channel

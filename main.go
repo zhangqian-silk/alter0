@@ -18,6 +18,7 @@ import (
 	"alter0/app/core/orchestrator/skills"
 	"alter0/app/core/orchestrator/skills/builtins"
 	"alter0/app/core/orchestrator/task"
+	"alter0/app/core/queue"
 	"alter0/app/core/runtime"
 	"alter0/app/core/scheduler"
 	"alter0/app/pkg/logger"
@@ -64,6 +65,26 @@ func main() {
 
 	gw := gateway.NewGateway(brain)
 
+	executionQueue := queue.New(cfg.Runtime.Queue.Buffer)
+	if cfg.Runtime.Queue.Enabled {
+		if err := executionQueue.Start(context.Background(), cfg.Runtime.Queue.Workers); err != nil {
+			logger.Error("Failed to start execution queue: %v", err)
+			os.Exit(1)
+		}
+		defer func() {
+			if err := executionQueue.Stop(3 * time.Second); err != nil {
+				logger.Error("Execution queue shutdown timeout: %v", err)
+			}
+		}()
+	}
+	gw.SetExecutionQueue(executionQueue, gateway.QueueOptions{
+		Enabled:        cfg.Runtime.Queue.Enabled,
+		EnqueueTimeout: time.Duration(cfg.Runtime.Queue.EnqueueTimeoutSec) * time.Second,
+		AttemptTimeout: time.Duration(cfg.Runtime.Queue.AttemptTimeoutSec) * time.Second,
+		MaxRetries:     cfg.Runtime.Queue.MaxRetries,
+		RetryDelay:     time.Duration(cfg.Runtime.Queue.RetryDelaySec) * time.Second,
+	})
+
 	cliChannel := cli.NewCLIChannel(cfg.Task.CLIUserID)
 	gw.RegisterChannel(cliChannel)
 
@@ -96,6 +117,7 @@ func main() {
 	statusCollector := &runtime.StatusCollector{
 		Gateway:   gw,
 		Scheduler: jobScheduler,
+		Queue:     executionQueue,
 		TaskStore: taskStore,
 		RepoPath:  ".",
 	}

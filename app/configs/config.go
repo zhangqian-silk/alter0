@@ -39,7 +39,8 @@ type SecurityConfig struct {
 }
 
 type RuntimeConfig struct {
-	Maintenance MaintenanceConfig `json:"maintenance"`
+	Maintenance MaintenanceConfig    `json:"maintenance"`
+	Queue       ExecutionQueueConfig `json:"queue"`
 }
 
 type MaintenanceConfig struct {
@@ -47,6 +48,16 @@ type MaintenanceConfig struct {
 	TaskMemoryPruneIntervalSec int  `json:"task_memory_prune_interval_sec"`
 	TaskMemoryPruneTimeoutSec  int  `json:"task_memory_prune_timeout_sec"`
 	TaskMemoryRetentionDays    int  `json:"task_memory_retention_days"`
+}
+
+type ExecutionQueueConfig struct {
+	Enabled           bool `json:"enabled"`
+	Workers           int  `json:"workers"`
+	Buffer            int  `json:"buffer"`
+	EnqueueTimeoutSec int  `json:"enqueue_timeout_sec"`
+	AttemptTimeoutSec int  `json:"attempt_timeout_sec"`
+	MaxRetries        int  `json:"max_retries"`
+	RetryDelaySec     int  `json:"retry_delay_sec"`
 }
 
 type Manager struct {
@@ -148,6 +159,15 @@ func defaultConfig() Config {
 				TaskMemoryPruneTimeoutSec:  20,
 				TaskMemoryRetentionDays:    30,
 			},
+			Queue: ExecutionQueueConfig{
+				Enabled:           true,
+				Workers:           2,
+				Buffer:            128,
+				EnqueueTimeoutSec: 3,
+				AttemptTimeoutSec: 180,
+				MaxRetries:        1,
+				RetryDelaySec:     2,
+			},
 		},
 		Security: SecurityConfig{
 			AdminUserIDs: []string{"local_user"},
@@ -194,6 +214,27 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Runtime.Maintenance.TaskMemoryRetentionDays <= 0 {
 		cfg.Runtime.Maintenance.TaskMemoryRetentionDays = 30
+	}
+	if !cfg.Runtime.Queue.Enabled && cfg.Runtime.Queue.Workers == 0 && cfg.Runtime.Queue.Buffer == 0 && cfg.Runtime.Queue.EnqueueTimeoutSec == 0 && cfg.Runtime.Queue.AttemptTimeoutSec == 0 && cfg.Runtime.Queue.MaxRetries == 0 && cfg.Runtime.Queue.RetryDelaySec == 0 {
+		cfg.Runtime.Queue.Enabled = true
+	}
+	if cfg.Runtime.Queue.Workers <= 0 {
+		cfg.Runtime.Queue.Workers = 2
+	}
+	if cfg.Runtime.Queue.Buffer <= 0 {
+		cfg.Runtime.Queue.Buffer = 128
+	}
+	if cfg.Runtime.Queue.EnqueueTimeoutSec <= 0 {
+		cfg.Runtime.Queue.EnqueueTimeoutSec = 3
+	}
+	if cfg.Runtime.Queue.AttemptTimeoutSec <= 0 {
+		cfg.Runtime.Queue.AttemptTimeoutSec = 180
+	}
+	if cfg.Runtime.Queue.MaxRetries <= 0 {
+		cfg.Runtime.Queue.MaxRetries = 1
+	}
+	if cfg.Runtime.Queue.RetryDelaySec <= 0 {
+		cfg.Runtime.Queue.RetryDelaySec = 2
 	}
 
 	clean := make([]string, 0, len(cfg.Security.AdminUserIDs))

@@ -22,6 +22,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Dynamic scheduler register/unregister + run-on-start
 - [x] Runtime maintenance jobs (task memory prune)
 - [x] Unified runtime status snapshot (gateway/scheduler/task/git)
+- [x] Local backup/restore scripts for DB + config
 
 ### Interaction and Observability
 
@@ -34,7 +35,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 
 - [x] Executor abstraction (`codex`, `claude_code`)
 - [x] Skill manager and built-in skills
-- [ ] Queue-driven async pipeline on core execution path
+- [x] Queue-driven async pipeline on core execution path
 
 ## 3) Active Priority Queue
 
@@ -42,9 +43,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 ### P0 (Do next)
 
-1. Queue-first execution path for long-running or retryable tasks
-2. Backup/restore scripts for local DB + config
-3. README/ARCHITECTURE sync after each feature merge
+1. README/ARCHITECTURE sync after each feature merge
 
 ### P1
 
