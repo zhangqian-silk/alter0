@@ -5,7 +5,7 @@
 - 分支范围：`feat/p0-*`（本地历史分支 + 远端历史分支）
 - worktree 范围：`/tmp/alter0-*`
 - 基线：`master@c5bf433`
-- 审查时间：2026-02-28 11:51 UTC
+- 审查时间：2026-02-28 12:01 UTC
 - 仓库同步：远端仅保留 `origin/feat/p0-9-legacy-audit-refresh`
 
 ## 分支盘点与结论
@@ -33,6 +33,7 @@
 | feat/p0-8-task-restore-transaction | 已合并完成 | 事务化恢复能力已进入主线。 |
 | feat/p0-8-http-status-json | 已合并完成 | 状态 JSON 接口已进入主线。 |
 | feat/p0-9-legacy-audit-refresh | 已被新方案覆盖 | 文档差异已由当前审查快照覆盖。 |
+| feat/p0-10-legacy-audit-refresh | 已被新方案覆盖 | 本轮仅用于刷新历史审查与执行队列，不引入独立运行能力。 |
 | origin/feat/p0-9-legacy-audit-refresh | 已被新方案覆盖 | 远端分支仅保留历史快照，不影响主线执行。 |
 
 ## Worktree 盘点
