@@ -8,9 +8,9 @@
 
 ## 历史遗留任务接续结果
 
-- 来源：`feat/p0-*` 历史分支与 `/tmp/alter0-*` worktree 复核（2026-02-28 13:42 UTC）
-- 远端残留：`origin/feat/p0-9-legacy-audit-refresh`、`origin/feat/p0-17-legacy-audit-refresh`（均已被当前审查覆盖）
-- 本地新增复核：`feat/p0-18-legacy-audit-refresh`（审查刷新分支，归类为已被新方案覆盖）
+- 来源：`feat/p0-*` 历史分支与 `/tmp/alter0-*` worktree 复核（2026-02-28 13:51 UTC）
+- 远端残留：`origin/feat/p0-9-legacy-audit-refresh`、`origin/feat/p0-17-legacy-audit-refresh`、`origin/feat/p0-18-legacy-audit-refresh`（均已被当前审查覆盖）
+- 本地新增复核：无
 - 仍需继续任务：无
 - 待执行队列补入：无
 - 冲突降级记录：无
