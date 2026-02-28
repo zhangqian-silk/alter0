@@ -4,9 +4,9 @@
 
 - 分支范围：`feat/p0-*`（本地历史分支 + 远端跟踪分支）
 - worktree 范围：`/tmp/alter0-*`
-- 基线：`master@f63188a`
-- 审查时间：2026-02-28 15:11 UTC
-- 远端引用快照：`origin/feat/p0-9-legacy-audit-refresh`、`origin/feat/p0-24-legacy-audit-refresh`
+- 基线：`master@ba2df0a`
+- 审查时间：2026-02-28 15:22 UTC
+- 远端引用快照：`origin/feat/p0-9-legacy-audit-refresh`
 
 ## 分支盘点与结论
 
@@ -38,7 +38,6 @@
 | feat/p0-23-legacy-audit-refresh | 已被新方案覆盖 | 当前轮次审查刷新分支，结果已写入最新审查快照。 |
 | feat/p0-24-legacy-audit-refresh | 已合并完成 | 与主线 `#42` 提交 patch 等价，已完成入主线。 |
 | origin/feat/p0-9-legacy-audit-refresh | 已被新方案覆盖 | 远端历史快照分支，不影响主线执行。 |
-| origin/feat/p0-24-legacy-audit-refresh | 已合并完成 | 对应变更已通过主线 `#42` 合并，远端分支可后续清理。 |
 
 ## Worktree 盘点
 
