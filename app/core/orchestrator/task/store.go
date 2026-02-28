@@ -252,6 +252,28 @@ WHERE task_id IN (
 	return affected, nil
 }
 
+func (s *Store) PruneTaskMemoryByOpenUpdatedAt(ctx context.Context, updatedBeforeUnix int64) (int64, error) {
+	if updatedBeforeUnix <= 0 {
+		return 0, fmt.Errorf("updated_before_unix must be greater than zero")
+	}
+	query := `
+DELETE FROM task_memory
+WHERE updated_at < ?
+AND task_id IN (
+	SELECT id FROM tasks
+	WHERE status = 'open'
+)`
+	result, err := s.db.Conn().ExecContext(ctx, query, updatedBeforeUnix)
+	if err != nil {
+		return 0, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return affected, nil
+}
+
 func (s *Store) ExportTaskMemorySnapshot(ctx context.Context, userID string, limit int) ([]TaskMemorySnapshot, error) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {

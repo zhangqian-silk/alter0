@@ -9,21 +9,26 @@ import (
 	"alter0/app/core/scheduler"
 )
 
-const defaultTaskMemoryRetentionDays = 30
+const (
+	defaultTaskMemoryRetentionDays     = 30
+	defaultTaskMemoryOpenRetentionDays = 0
+)
 
 type MaintenanceOptions struct {
-	Enabled                 bool
-	TaskMemoryRetentionDays int
-	PruneInterval           time.Duration
-	PruneTimeout            time.Duration
+	Enabled                     bool
+	TaskMemoryRetentionDays     int
+	TaskMemoryOpenRetentionDays int
+	PruneInterval               time.Duration
+	PruneTimeout                time.Duration
 }
 
 func DefaultMaintenanceOptions() MaintenanceOptions {
 	return MaintenanceOptions{
-		Enabled:                 true,
-		TaskMemoryRetentionDays: defaultTaskMemoryRetentionDays,
-		PruneInterval:           6 * time.Hour,
-		PruneTimeout:            20 * time.Second,
+		Enabled:                     true,
+		TaskMemoryRetentionDays:     defaultTaskMemoryRetentionDays,
+		TaskMemoryOpenRetentionDays: defaultTaskMemoryOpenRetentionDays,
+		PruneInterval:               6 * time.Hour,
+		PruneTimeout:                20 * time.Second,
 	}
 }
 
@@ -41,13 +46,25 @@ func RegisterMaintenanceJobs(jobScheduler *scheduler.Scheduler, taskStore *task.
 		Timeout:    opts.PruneTimeout,
 		RunOnStart: true,
 		Run: func(ctx context.Context) error {
-			cutoff := time.Now().Add(-time.Duration(opts.TaskMemoryRetentionDays) * 24 * time.Hour).Unix()
-			pruned, err := taskStore.PruneTaskMemoryByClosedAt(ctx, cutoff)
+			now := time.Now()
+			closedCutoff := now.Add(-time.Duration(opts.TaskMemoryRetentionDays) * 24 * time.Hour).Unix()
+			prunedClosed, err := taskStore.PruneTaskMemoryByClosedAt(ctx, closedCutoff)
 			if err != nil {
 				return err
 			}
-			if pruned > 0 {
-				log.Printf("[Maintenance] task-memory-prune removed=%d cutoff=%d", pruned, cutoff)
+			if prunedClosed > 0 {
+				log.Printf("[Maintenance] task-memory-prune scope=closed removed=%d cutoff=%d", prunedClosed, closedCutoff)
+			}
+
+			if opts.TaskMemoryOpenRetentionDays > 0 {
+				openCutoff := now.Add(-time.Duration(opts.TaskMemoryOpenRetentionDays) * 24 * time.Hour).Unix()
+				prunedOpen, err := taskStore.PruneTaskMemoryByOpenUpdatedAt(ctx, openCutoff)
+				if err != nil {
+					return err
+				}
+				if prunedOpen > 0 {
+					log.Printf("[Maintenance] task-memory-prune scope=open removed=%d cutoff=%d", prunedOpen, openCutoff)
+				}
 			}
 			return nil
 		},
@@ -56,7 +73,7 @@ func RegisterMaintenanceJobs(jobScheduler *scheduler.Scheduler, taskStore *task.
 
 func sanitizeMaintenanceOptions(options MaintenanceOptions) MaintenanceOptions {
 	defaults := DefaultMaintenanceOptions()
-	if !options.Enabled && options.PruneInterval == 0 && options.PruneTimeout == 0 && options.TaskMemoryRetentionDays == 0 {
+	if !options.Enabled && options.PruneInterval == 0 && options.PruneTimeout == 0 && options.TaskMemoryRetentionDays == 0 && options.TaskMemoryOpenRetentionDays == 0 {
 		options.Enabled = defaults.Enabled
 	}
 	if options.PruneInterval <= 0 {
@@ -67,6 +84,9 @@ func sanitizeMaintenanceOptions(options MaintenanceOptions) MaintenanceOptions {
 	}
 	if options.TaskMemoryRetentionDays <= 0 {
 		options.TaskMemoryRetentionDays = defaults.TaskMemoryRetentionDays
+	}
+	if options.TaskMemoryOpenRetentionDays < 0 {
+		options.TaskMemoryOpenRetentionDays = defaults.TaskMemoryOpenRetentionDays
 	}
 	return options
 }

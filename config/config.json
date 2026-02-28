@@ -19,7 +19,8 @@
       "enabled": true,
       "task_memory_prune_interval_sec": 21600,
       "task_memory_prune_timeout_sec": 20,
-      "task_memory_retention_days": 30
+      "task_memory_retention_days": 30,
+      "task_memory_open_retention_days": 0
     },
     "queue": {
       "enabled": true,

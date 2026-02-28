@@ -19,6 +19,9 @@ func TestApplyDefaultsSetsRuntimeMaintenanceDefaults(t *testing.T) {
 	if cfg.Runtime.Maintenance.TaskMemoryRetentionDays != 30 {
 		t.Fatalf("unexpected retention days: %d", cfg.Runtime.Maintenance.TaskMemoryRetentionDays)
 	}
+	if cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays != 0 {
+		t.Fatalf("unexpected open retention days: %d", cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays)
+	}
 }
 
 func TestApplyDefaultsKeepsExplicitMaintenanceDisable(t *testing.T) {
@@ -37,6 +40,22 @@ func TestApplyDefaultsKeepsExplicitMaintenanceDisable(t *testing.T) {
 
 	if cfg.Runtime.Maintenance.Enabled {
 		t.Fatalf("expected maintenance to remain disabled")
+	}
+}
+
+func TestApplyDefaultsSanitizesOpenRetentionDays(t *testing.T) {
+	cfg := Config{
+		Runtime: RuntimeConfig{
+			Maintenance: MaintenanceConfig{
+				TaskMemoryOpenRetentionDays: -5,
+			},
+		},
+	}
+
+	applyDefaults(&cfg)
+
+	if cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays != 0 {
+		t.Fatalf("expected open retention to be clamped to 0, got %d", cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays)
 	}
 }
 

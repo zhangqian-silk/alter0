@@ -44,10 +44,11 @@ type RuntimeConfig struct {
 }
 
 type MaintenanceConfig struct {
-	Enabled                    bool `json:"enabled"`
-	TaskMemoryPruneIntervalSec int  `json:"task_memory_prune_interval_sec"`
-	TaskMemoryPruneTimeoutSec  int  `json:"task_memory_prune_timeout_sec"`
-	TaskMemoryRetentionDays    int  `json:"task_memory_retention_days"`
+	Enabled                     bool `json:"enabled"`
+	TaskMemoryPruneIntervalSec  int  `json:"task_memory_prune_interval_sec"`
+	TaskMemoryPruneTimeoutSec   int  `json:"task_memory_prune_timeout_sec"`
+	TaskMemoryRetentionDays     int  `json:"task_memory_retention_days"`
+	TaskMemoryOpenRetentionDays int  `json:"task_memory_open_retention_days"`
 }
 
 type ExecutionQueueConfig struct {
@@ -154,10 +155,11 @@ func defaultConfig() Config {
 		},
 		Runtime: RuntimeConfig{
 			Maintenance: MaintenanceConfig{
-				Enabled:                    true,
-				TaskMemoryPruneIntervalSec: 6 * 60 * 60,
-				TaskMemoryPruneTimeoutSec:  20,
-				TaskMemoryRetentionDays:    30,
+				Enabled:                     true,
+				TaskMemoryPruneIntervalSec:  6 * 60 * 60,
+				TaskMemoryPruneTimeoutSec:   20,
+				TaskMemoryRetentionDays:     30,
+				TaskMemoryOpenRetentionDays: 0,
 			},
 			Queue: ExecutionQueueConfig{
 				Enabled:           true,
@@ -203,7 +205,7 @@ func applyDefaults(cfg *Config) {
 	if cfg.Task.OpenTaskCandidateLimit <= 0 {
 		cfg.Task.OpenTaskCandidateLimit = 8
 	}
-	if !cfg.Runtime.Maintenance.Enabled && cfg.Runtime.Maintenance.TaskMemoryPruneIntervalSec == 0 && cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec == 0 && cfg.Runtime.Maintenance.TaskMemoryRetentionDays == 0 {
+	if !cfg.Runtime.Maintenance.Enabled && cfg.Runtime.Maintenance.TaskMemoryPruneIntervalSec == 0 && cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec == 0 && cfg.Runtime.Maintenance.TaskMemoryRetentionDays == 0 && cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays == 0 {
 		cfg.Runtime.Maintenance.Enabled = true
 	}
 	if cfg.Runtime.Maintenance.TaskMemoryPruneIntervalSec <= 0 {
@@ -214,6 +216,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Runtime.Maintenance.TaskMemoryRetentionDays <= 0 {
 		cfg.Runtime.Maintenance.TaskMemoryRetentionDays = 30
+	}
+	if cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays < 0 {
+		cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays = 0
 	}
 	if !cfg.Runtime.Queue.Enabled && cfg.Runtime.Queue.Workers == 0 && cfg.Runtime.Queue.Buffer == 0 && cfg.Runtime.Queue.EnqueueTimeoutSec == 0 && cfg.Runtime.Queue.AttemptTimeoutSec == 0 && cfg.Runtime.Queue.MaxRetries == 0 && cfg.Runtime.Queue.RetryDelaySec == 0 {
 		cfg.Runtime.Queue.Enabled = true

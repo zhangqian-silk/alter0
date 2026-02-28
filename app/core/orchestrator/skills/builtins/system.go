@@ -12,20 +12,21 @@ import (
 )
 
 const (
-	keyAgentName           = "agent.name"
-	keyExecutorName        = "executor.name"
-	keyTaskRouteTO         = "task.routing_timeout_sec"
-	keyTaskCloseTO         = "task.close_timeout_sec"
-	keyTaskGenTO           = "task.generation_timeout_sec"
-	keyTaskRouteThres      = "task.routing_confidence_threshold"
-	keyTaskCloseThres      = "task.close_confidence_threshold"
-	keyTaskCLIUserID       = "task.cli_user_id"
-	keyTaskCandLimit       = "task.open_task_candidate_limit"
-	keyRuntimeMaintEnabled = "runtime.maintenance.enabled"
-	keyRuntimeMaintIntvSec = "runtime.maintenance.task_memory_prune_interval_sec"
-	keyRuntimeMaintTOsec   = "runtime.maintenance.task_memory_prune_timeout_sec"
-	keyRuntimeMaintRetDays = "runtime.maintenance.task_memory_retention_days"
-	keyAdminUserIDs        = "security.admin_user_ids"
+	keyAgentName               = "agent.name"
+	keyExecutorName            = "executor.name"
+	keyTaskRouteTO             = "task.routing_timeout_sec"
+	keyTaskCloseTO             = "task.close_timeout_sec"
+	keyTaskGenTO               = "task.generation_timeout_sec"
+	keyTaskRouteThres          = "task.routing_confidence_threshold"
+	keyTaskCloseThres          = "task.close_confidence_threshold"
+	keyTaskCLIUserID           = "task.cli_user_id"
+	keyTaskCandLimit           = "task.open_task_candidate_limit"
+	keyRuntimeMaintEnabled     = "runtime.maintenance.enabled"
+	keyRuntimeMaintIntvSec     = "runtime.maintenance.task_memory_prune_interval_sec"
+	keyRuntimeMaintTOsec       = "runtime.maintenance.task_memory_prune_timeout_sec"
+	keyRuntimeMaintRetDays     = "runtime.maintenance.task_memory_retention_days"
+	keyRuntimeMaintOpenRetDays = "runtime.maintenance.task_memory_open_retention_days"
+	keyAdminUserIDs            = "security.admin_user_ids"
 )
 
 type ConfigSkill struct {
@@ -156,6 +157,8 @@ func normalizeConfigKey(key string) string {
 		return keyRuntimeMaintTOsec
 	case "runtime.maintenance.task_memory_retention_days", "maintenance.task_memory_retention_days":
 		return keyRuntimeMaintRetDays
+	case "runtime.maintenance.task_memory_open_retention_days", "maintenance.task_memory_open_retention_days":
+		return keyRuntimeMaintOpenRetDays
 	case "security.admin_user_ids", "security.admins":
 		return keyAdminUserIDs
 	default:
@@ -203,6 +206,8 @@ func getConfigValue(cfg config.Config, key string) (interface{}, bool) {
 		return cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec, true
 	case keyRuntimeMaintRetDays:
 		return cfg.Runtime.Maintenance.TaskMemoryRetentionDays, true
+	case keyRuntimeMaintOpenRetDays:
+		return cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays, true
 	case keyAdminUserIDs:
 		return cfg.Security.AdminUserIDs, true
 	default:
@@ -261,6 +266,10 @@ func applyConfigValue(c *config.Config, key string, value string) {
 		if n, err := strconv.Atoi(value); err == nil {
 			c.Runtime.Maintenance.TaskMemoryRetentionDays = n
 		}
+	case keyRuntimeMaintOpenRetDays:
+		if n, err := strconv.Atoi(value); err == nil {
+			c.Runtime.Maintenance.TaskMemoryOpenRetentionDays = n
+		}
 	case keyAdminUserIDs:
 		items := strings.Split(value, ",")
 		clean := make([]string, 0, len(items))
@@ -290,10 +299,11 @@ func sanitizeTask(t config.TaskConfig) map[string]interface{} {
 func sanitizeRuntime(r config.RuntimeConfig) map[string]interface{} {
 	return map[string]interface{}{
 		"maintenance": map[string]interface{}{
-			"enabled":                        r.Maintenance.Enabled,
-			"task_memory_prune_interval_sec": r.Maintenance.TaskMemoryPruneIntervalSec,
-			"task_memory_prune_timeout_sec":  r.Maintenance.TaskMemoryPruneTimeoutSec,
-			"task_memory_retention_days":     r.Maintenance.TaskMemoryRetentionDays,
+			"enabled":                         r.Maintenance.Enabled,
+			"task_memory_prune_interval_sec":  r.Maintenance.TaskMemoryPruneIntervalSec,
+			"task_memory_prune_timeout_sec":   r.Maintenance.TaskMemoryPruneTimeoutSec,
+			"task_memory_retention_days":      r.Maintenance.TaskMemoryRetentionDays,
+			"task_memory_open_retention_days": r.Maintenance.TaskMemoryOpenRetentionDays,
 		},
 	}
 }
