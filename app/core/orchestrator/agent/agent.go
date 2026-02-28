@@ -409,6 +409,10 @@ func (a *DefaultAgent) SetSecurityConfig(securityCfg config.SecurityConfig) {
 	a.command.SetAdminUsers(securityCfg.AdminUserIDs)
 }
 
+func (a *DefaultAgent) SetStatusProvider(provider func(context.Context) map[string]interface{}) {
+	a.command.SetStatusProvider(provider)
+}
+
 func (a *DefaultAgent) getExecutorName() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

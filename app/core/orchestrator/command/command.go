@@ -19,8 +19,9 @@ import (
 )
 
 type Executor struct {
-	skillMgr  *skills.Manager
-	taskStore *task.Store
+	skillMgr       *skills.Manager
+	taskStore      *task.Store
+	statusProvider func(context.Context) map[string]interface{}
 
 	mu         sync.RWMutex
 	adminUsers map[string]struct{}
@@ -64,6 +65,10 @@ func (e *Executor) SetAdminUsers(adminUserIDs []string) {
 	e.mu.Unlock()
 }
 
+func (e *Executor) SetStatusProvider(provider func(context.Context) map[string]interface{}) {
+	e.statusProvider = provider
+}
+
 func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string, bool, error) {
 	cmd := strings.TrimSpace(strings.TrimPrefix(msg.Content, "/"))
 	if cmd == "" {
@@ -83,6 +88,14 @@ func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string,
 	case "help":
 		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
 		return e.helpText(), true, nil
+	case "status":
+		out, err := e.runtimeStatusOutput(ctx)
+		if err != nil {
+			auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
+			return "", true, err
+		}
+		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
+		return out, true, nil
 	case "task":
 		out, err := e.executeTaskCommand(ctx, msg.UserID, parts[1:])
 		if err != nil {
@@ -233,6 +246,7 @@ func (e *Executor) helpText() string {
 	var b strings.Builder
 	b.WriteString("Commands:\n")
 	b.WriteString("  /help\n")
+	b.WriteString("  /status\n")
 	b.WriteString("Config:\n")
 	for _, name := range configNames {
 		switch name {
@@ -271,6 +285,21 @@ func (e *Executor) splitCommands() ([]string, bool) {
 		}
 	}
 	return configNames, e.taskStore != nil
+}
+
+func (e *Executor) runtimeStatusOutput(ctx context.Context) (string, error) {
+	if e.statusProvider == nil {
+		return "", fmt.Errorf("status provider is not configured")
+	}
+	payload := e.statusProvider(ctx)
+	if payload == nil {
+		payload = map[string]interface{}{}
+	}
+	encoded, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
 }
 
 func (e *Executor) fillConfigArgs(parts []string, args map[string]interface{}) {
