@@ -2,10 +2,13 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"alter0/app/core/queue"
 	"alter0/app/pkg/types"
 )
 
@@ -105,6 +108,83 @@ func TestHealthStatusTracksProcessedMessages(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
+	if err := <-done; err != nil {
+		t.Fatalf("gateway start returned error: %v", err)
+	}
+}
+
+type flakyAgent struct {
+	calls atomic.Int32
+}
+
+func (a *flakyAgent) Process(_ context.Context, msg types.Message) (types.Message, error) {
+	if a.calls.Add(1) == 1 {
+		return types.Message{}, errors.New("temporary error")
+	}
+	return types.Message{Content: "ok", TaskID: msg.TaskID}, nil
+}
+
+func (a *flakyAgent) Name() string {
+	return "flaky"
+}
+
+func TestGatewayDispatchWithQueueRetries(t *testing.T) {
+	agent := &flakyAgent{}
+	gw := NewGateway(agent)
+	ch := &testChannel{id: "cli"}
+	ch.startFn = func(ctx context.Context, handler func(types.Message)) error {
+		handler(types.Message{
+			ID:        "m1",
+			Content:   "hello",
+			ChannelID: "cli",
+			UserID:    "u-1",
+			TaskID:    "t-1",
+		})
+		<-ctx.Done()
+		return nil
+	}
+	gw.RegisterChannel(ch)
+
+	q := queue.New(8)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 1); err != nil {
+		t.Fatalf("queue start failed: %v", err)
+	}
+	defer q.Stop(200 * time.Millisecond)
+
+	gw.SetExecutionQueue(q, QueueOptions{Enabled: true, MaxRetries: 1})
+
+	done := make(chan error, 1)
+	go func() { done <- gw.Start(ctx) }()
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for {
+		ch.sendMu.Lock()
+		sent := len(ch.sentMsgs)
+		ch.sendMu.Unlock()
+		if sent >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("expected queued reply")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if got := agent.calls.Load(); got != 2 {
+		cancel()
+		t.Fatalf("expected 2 attempts via queue retry, got %d", got)
+	}
+
+	stats := q.Stats()
+	if stats.Retried < 1 {
+		cancel()
+		t.Fatalf("expected retried stats >= 1, got %+v", stats)
+	}
+
+	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("gateway start returned error: %v", err)
 	}

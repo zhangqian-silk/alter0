@@ -39,3 +39,31 @@ func TestApplyDefaultsKeepsExplicitMaintenanceDisable(t *testing.T) {
 		t.Fatalf("expected maintenance to remain disabled")
 	}
 }
+
+func TestApplyDefaultsSetsQueueDefaults(t *testing.T) {
+	cfg := Config{}
+
+	applyDefaults(&cfg)
+
+	if !cfg.Runtime.Queue.Enabled {
+		t.Fatalf("expected execution queue enabled by default")
+	}
+	if cfg.Runtime.Queue.Workers != 2 {
+		t.Fatalf("unexpected workers: %d", cfg.Runtime.Queue.Workers)
+	}
+	if cfg.Runtime.Queue.Buffer != 128 {
+		t.Fatalf("unexpected buffer: %d", cfg.Runtime.Queue.Buffer)
+	}
+	if cfg.Runtime.Queue.EnqueueTimeoutSec != 3 {
+		t.Fatalf("unexpected enqueue timeout: %d", cfg.Runtime.Queue.EnqueueTimeoutSec)
+	}
+	if cfg.Runtime.Queue.AttemptTimeoutSec != 180 {
+		t.Fatalf("unexpected attempt timeout: %d", cfg.Runtime.Queue.AttemptTimeoutSec)
+	}
+	if cfg.Runtime.Queue.MaxRetries != 1 {
+		t.Fatalf("unexpected max retries: %d", cfg.Runtime.Queue.MaxRetries)
+	}
+	if cfg.Runtime.Queue.RetryDelaySec != 2 {
+		t.Fatalf("unexpected retry delay: %d", cfg.Runtime.Queue.RetryDelaySec)
+	}
+}

@@ -29,11 +29,26 @@ type Queue struct {
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 	nextID  atomic.Uint64
+
+	enqueued  atomic.Uint64
+	completed atomic.Uint64
+	failed    atomic.Uint64
+	retried   atomic.Uint64
 }
 
 type queuedJob struct {
 	job     Job
 	attempt int
+}
+
+type Stats struct {
+	Started   bool   `json:"started"`
+	Depth     int    `json:"depth"`
+	Capacity  int    `json:"capacity"`
+	Enqueued  uint64 `json:"enqueued"`
+	Completed uint64 `json:"completed"`
+	Failed    uint64 `json:"failed"`
+	Retried   uint64 `json:"retried"`
 }
 
 func New(buffer int) *Queue {
@@ -64,9 +79,26 @@ func (q *Queue) EnqueueContext(ctx context.Context, job Job) (string, error) {
 
 	select {
 	case jobs <- queuedJob{job: job, attempt: 0}:
+		q.enqueued.Add(1)
 		return job.ID, nil
 	case <-ctx.Done():
 		return "", fmt.Errorf("%w: %w", ErrEnqueueCanceled, ctx.Err())
+	}
+}
+
+func (q *Queue) Stats() Stats {
+	q.mu.Lock()
+	started := q.started
+	q.mu.Unlock()
+
+	return Stats{
+		Started:   started,
+		Depth:     len(q.jobs),
+		Capacity:  cap(q.jobs),
+		Enqueued:  q.enqueued.Load(),
+		Completed: q.completed.Load(),
+		Failed:    q.failed.Load(),
+		Retried:   q.retried.Load(),
 	}
 }
 
@@ -145,6 +177,7 @@ func (q *Queue) runOnce(parent context.Context, item queuedJob) {
 	err := item.job.Run(runCtx)
 	cancel()
 	if err == nil {
+		q.completed.Add(1)
 		return
 	}
 
@@ -153,8 +186,10 @@ func (q *Queue) runOnce(parent context.Context, item queuedJob) {
 	}
 
 	if attempt >= item.job.MaxRetries+1 {
+		q.failed.Add(1)
 		return
 	}
+	q.retried.Add(1)
 	if item.job.RetryDelay > 0 {
 		timer := time.NewTimer(item.job.RetryDelay)
 		defer timer.Stop()

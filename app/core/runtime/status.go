@@ -9,12 +9,14 @@ import (
 
 	"alter0/app/core/interaction/gateway"
 	"alter0/app/core/orchestrator/task"
+	"alter0/app/core/queue"
 	"alter0/app/core/scheduler"
 )
 
 type StatusCollector struct {
 	Gateway   *gateway.DefaultGateway
 	Scheduler *scheduler.Scheduler
+	Queue     *queue.Queue
 	TaskStore *task.Store
 	RepoPath  string
 }
@@ -32,6 +34,9 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 			"health": c.Scheduler.Health(),
 			"jobs":   c.Scheduler.Snapshot(),
 		}
+	}
+	if c.Queue != nil {
+		payload["queue"] = c.Queue.Stats()
 	}
 	if c.TaskStore != nil {
 		stats, err := c.TaskStore.GlobalStats(ctx)
