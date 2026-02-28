@@ -116,6 +116,9 @@ func TestSnapshotIncludesQueueInFlight(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected queue stats type, got %T", raw)
 	}
+	if stats.Workers != 1 {
+		t.Fatalf("expected workers=1, got %+v", stats)
+	}
 	if stats.InFlight != 1 {
 		t.Fatalf("expected in_flight=1, got %+v", stats)
 	}
