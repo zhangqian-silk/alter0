@@ -13,6 +13,23 @@ import (
 	"alter0/app/pkg/types"
 )
 
+func TestSetShutdownTimeout(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	if ch.shutdownTimeout != 5*time.Second {
+		t.Fatalf("unexpected default shutdown timeout: %s", ch.shutdownTimeout)
+	}
+
+	ch.SetShutdownTimeout(12 * time.Second)
+	if ch.shutdownTimeout != 12*time.Second {
+		t.Fatalf("unexpected shutdown timeout after set: %s", ch.shutdownTimeout)
+	}
+
+	ch.SetShutdownTimeout(0)
+	if ch.shutdownTimeout != 12*time.Second {
+		t.Fatalf("zero timeout should be ignored, got: %s", ch.shutdownTimeout)
+	}
+}
+
 func TestHandleStatusReturnsJSONSnapshot(t *testing.T) {
 	ch := NewHTTPChannel(8080)
 	ch.startedUnix.Store(time.Now().Add(-5 * time.Second).Unix())

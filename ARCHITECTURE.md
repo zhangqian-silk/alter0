@@ -273,7 +273,7 @@ Startup sequence:
 Shutdown sequence:
 
 1. stop new intake
-2. drain queue with timeout
+2. drain queue/scheduler/http with `runtime.shutdown.drain_timeout_sec`
 3. close plugins/connectors
 4. flush logs
 5. close store

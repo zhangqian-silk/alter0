@@ -100,6 +100,18 @@ go run .
       "task_memory_prune_timeout_sec": 20,
       "task_memory_retention_days": 30,
       "task_memory_open_retention_days": 0
+    },
+    "queue": {
+      "enabled": true,
+      "workers": 2,
+      "buffer": 128,
+      "enqueue_timeout_sec": 3,
+      "attempt_timeout_sec": 180,
+      "max_retries": 1,
+      "retry_delay_sec": 2
+    },
+    "shutdown": {
+      "drain_timeout_sec": 5
     }
   },
   "security": {
@@ -116,6 +128,8 @@ go run .
 - `task.open_task_candidate_limit`: 路由候选任务上限
 - `runtime.maintenance.*`: 维护任务开关、执行间隔、超时与闭合/开放任务记忆保留策略
 - `runtime.maintenance.task_memory_open_retention_days`: 开放任务记忆清理天数（`0` 表示禁用）
+- `runtime.queue.*`: 执行队列开关、并发、重试与超时策略
+- `runtime.shutdown.drain_timeout_sec`: 统一停机排空等待时间（queue/scheduler/http）
 - `security.admin_user_ids`: 管理命令授权用户
 
 ## Command Interface

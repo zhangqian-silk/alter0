@@ -85,4 +85,21 @@ func TestApplyDefaultsSetsQueueDefaults(t *testing.T) {
 	if cfg.Runtime.Queue.RetryDelaySec != 2 {
 		t.Fatalf("unexpected retry delay: %d", cfg.Runtime.Queue.RetryDelaySec)
 	}
+	if cfg.Runtime.Shutdown.DrainTimeoutSec != 5 {
+		t.Fatalf("unexpected shutdown drain timeout: %d", cfg.Runtime.Shutdown.DrainTimeoutSec)
+	}
+}
+
+func TestApplyDefaultsSetsShutdownDrainTimeout(t *testing.T) {
+	cfg := Config{
+		Runtime: RuntimeConfig{
+			Shutdown: ShutdownConfig{DrainTimeoutSec: 0},
+		},
+	}
+
+	applyDefaults(&cfg)
+
+	if cfg.Runtime.Shutdown.DrainTimeoutSec != 5 {
+		t.Fatalf("expected default drain timeout 5, got %d", cfg.Runtime.Shutdown.DrainTimeoutSec)
+	}
 }
