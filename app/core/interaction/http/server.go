@@ -24,11 +24,12 @@ const (
 )
 
 type HTTPChannel struct {
-	id             string
-	port           int
-	server         *http.Server
-	handler        func(types.Message)
-	statusProvider func(context.Context) map[string]interface{}
+	id              string
+	port            int
+	server          *http.Server
+	handler         func(types.Message)
+	statusProvider  func(context.Context) map[string]interface{}
+	shutdownTimeout time.Duration
 
 	pendingMu   sync.Mutex
 	pending     map[string]chan types.Message
@@ -38,9 +39,10 @@ type HTTPChannel struct {
 
 func NewHTTPChannel(port int) *HTTPChannel {
 	return &HTTPChannel{
-		id:      "http",
-		port:    port,
-		pending: map[string]chan types.Message{},
+		id:              "http",
+		port:            port,
+		pending:         map[string]chan types.Message{},
+		shutdownTimeout: 5 * time.Second,
 	}
 }
 
@@ -50,6 +52,13 @@ func (c *HTTPChannel) ID() string {
 
 func (c *HTTPChannel) SetStatusProvider(provider func(context.Context) map[string]interface{}) {
 	c.statusProvider = provider
+}
+
+func (c *HTTPChannel) SetShutdownTimeout(timeout time.Duration) {
+	if timeout <= 0 {
+		return
+	}
+	c.shutdownTimeout = timeout
 }
 
 func (c *HTTPChannel) Start(ctx context.Context, handler func(types.Message)) error {
@@ -73,7 +82,7 @@ func (c *HTTPChannel) Start(ctx context.Context, handler func(types.Message)) er
 
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), c.shutdownTimeout)
 		defer cancel()
 		if err := c.server.Shutdown(shutdownCtx); err != nil {
 			log.Printf("[HTTP] Shutdown error: %v", err)

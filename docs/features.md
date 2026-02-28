@@ -23,6 +23,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime maintenance jobs (task memory prune)
 - [x] Unified runtime status snapshot (gateway/scheduler/task/queue/git)
 - [x] Startup preflight checks (SQLite writable, executor installed, config validation)
+- [x] Configurable graceful shutdown drain timeout (queue/scheduler/http unified)
 - [x] Local backup/restore scripts for DB + config
 
 ### Interaction and Observability
@@ -48,6 +49,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 1. [x] README/ARCHITECTURE sync after each feature merge
 2. [x] Startup preflight checks (SQLite writable, executor installed, config validation)
+3. [x] Graceful shutdown drain timeout configurable and shared by queue/scheduler/http
 
 ### P1
 

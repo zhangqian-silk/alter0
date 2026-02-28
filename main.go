@@ -43,6 +43,8 @@ func main() {
 	}
 	logger.Info("Startup preflight checks passed")
 
+	shutdownTimeout := time.Duration(cfg.Runtime.Shutdown.DrainTimeoutSec) * time.Second
+
 	database, err := db.NewSQLiteDB("output/db")
 	if err != nil {
 		logger.Error("Failed to initialize DB: %v", err)
@@ -78,7 +80,7 @@ func main() {
 			os.Exit(1)
 		}
 		defer func() {
-			report, err := executionQueue.StopWithReport(3 * time.Second)
+			report, err := executionQueue.StopWithReport(shutdownTimeout)
 			logger.Info(
 				"Execution queue shutdown drain report: pending=%d in_flight=%d drained=%d timed_out=%t remaining_depth=%d remaining_in_flight=%d elapsed=%s",
 				report.PendingAtStart,
@@ -106,6 +108,7 @@ func main() {
 	gw.RegisterChannel(cliChannel)
 
 	httpChannel := http.NewHTTPChannel(8080)
+	httpChannel.SetShutdownTimeout(shutdownTimeout)
 	gw.RegisterChannel(httpChannel)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -127,7 +130,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() {
-		if err := jobScheduler.Stop(3 * time.Second); err != nil {
+		if err := jobScheduler.Stop(shutdownTimeout); err != nil {
 			logger.Error("Scheduler shutdown timeout: %v", err)
 		}
 	}()
@@ -152,7 +155,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigChan
-	logger.Info("Received signal: %v. Alter0 Shutting Down...", sig)
+	logger.Info("Received signal: %v. Alter0 shutting down with drain timeout=%s", sig, shutdownTimeout)
 	cancel()
 }
 

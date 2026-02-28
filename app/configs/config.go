@@ -41,6 +41,11 @@ type SecurityConfig struct {
 type RuntimeConfig struct {
 	Maintenance MaintenanceConfig    `json:"maintenance"`
 	Queue       ExecutionQueueConfig `json:"queue"`
+	Shutdown    ShutdownConfig       `json:"shutdown"`
+}
+
+type ShutdownConfig struct {
+	DrainTimeoutSec int `json:"drain_timeout_sec"`
 }
 
 type MaintenanceConfig struct {
@@ -170,6 +175,9 @@ func defaultConfig() Config {
 				MaxRetries:        1,
 				RetryDelaySec:     2,
 			},
+			Shutdown: ShutdownConfig{
+				DrainTimeoutSec: 5,
+			},
 		},
 		Security: SecurityConfig{
 			AdminUserIDs: []string{"local_user"},
@@ -240,6 +248,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Runtime.Queue.RetryDelaySec <= 0 {
 		cfg.Runtime.Queue.RetryDelaySec = 2
+	}
+	if cfg.Runtime.Shutdown.DrainTimeoutSec <= 0 {
+		cfg.Runtime.Shutdown.DrainTimeoutSec = 5
 	}
 
 	clean := make([]string, 0, len(cfg.Security.AdminUserIDs))
