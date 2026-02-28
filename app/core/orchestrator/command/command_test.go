@@ -1,6 +1,12 @@
 package command
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
 
 func TestAuthorizeCommand_AdminOnlyCommands(t *testing.T) {
 	exec := NewExecutor(nil, nil, []string{"admin_user"})
@@ -47,5 +53,42 @@ func TestFormatAuditCommandLine_WithoutReason(t *testing.T) {
 	expected := "[AUDIT] user=u1 channel=cli request=req-1 decision=allow command=\"help\""
 	if line != expected {
 		t.Fatalf("unexpected audit line:\n got: %s\nwant: %s", line, expected)
+	}
+}
+
+func TestAppendCommandAuditEntry_WritesJSONL(t *testing.T) {
+	baseDir := t.TempDir()
+	original := commandAuditBasePath
+	commandAuditBasePath = baseDir
+	t.Cleanup(func() {
+		commandAuditBasePath = original
+	})
+
+	ts := time.Date(2026, 2, 27, 23, 52, 0, 0, time.UTC)
+	if err := appendCommandAuditEntry(ts, "", "", "", " config set executor.name codex ", "deny", " permission denied "); err != nil {
+		t.Fatalf("appendCommandAuditEntry failed: %v", err)
+	}
+
+	logPath := filepath.Join(baseDir, "2026-02-27", "command_permission.jsonl")
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("failed to read audit log: %v", err)
+	}
+
+	var record commandAuditEntry
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatalf("failed to decode audit log: %v", err)
+	}
+	if record.UserID != "anonymous" || record.ChannelID != "unknown" || record.RequestID != "n/a" {
+		t.Fatalf("unexpected defaults: %+v", record)
+	}
+	if record.Command != "config set executor.name codex" {
+		t.Fatalf("unexpected command: %q", record.Command)
+	}
+	if record.Decision != "deny" {
+		t.Fatalf("unexpected decision: %q", record.Decision)
+	}
+	if record.Reason != "permission denied" {
+		t.Fatalf("unexpected reason: %q", record.Reason)
 	}
 }

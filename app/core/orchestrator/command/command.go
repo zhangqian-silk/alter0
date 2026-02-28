@@ -3,11 +3,15 @@ package command
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"alter0/app/core/orchestrator/skills"
 	"alter0/app/core/orchestrator/task"
@@ -21,6 +25,21 @@ type Executor struct {
 	mu         sync.RWMutex
 	adminUsers map[string]struct{}
 }
+
+type commandAuditEntry struct {
+	Timestamp string `json:"timestamp"`
+	UserID    string `json:"user_id"`
+	ChannelID string `json:"channel_id"`
+	RequestID string `json:"request_id"`
+	Command   string `json:"command"`
+	Decision  string `json:"decision"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+var (
+	commandAuditMu       sync.Mutex
+	commandAuditBasePath = filepath.Join("output", "audit")
+)
 
 func NewExecutor(skillMgr *skills.Manager, taskStore *task.Store, adminUserIDs []string) *Executor {
 	e := &Executor{
@@ -98,27 +117,80 @@ func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string,
 }
 
 func auditCommand(userID string, channelID string, requestID string, command string, decision string, reason string) {
-	log.Print(formatAuditCommandLine(userID, channelID, requestID, command, decision, reason))
+	line := formatAuditCommandLine(userID, channelID, requestID, command, decision, reason)
+	log.Print(line)
+	if err := appendCommandAuditEntry(time.Now(), userID, channelID, requestID, command, decision, reason); err != nil {
+		log.Printf("[AUDIT] failed to append command audit entry: %v", err)
+	}
 }
 
 func formatAuditCommandLine(userID string, channelID string, requestID string, command string, decision string, reason string) string {
-	user := strings.TrimSpace(userID)
-	if user == "" {
-		user = "anonymous"
-	}
-	channel := strings.TrimSpace(channelID)
-	if channel == "" {
-		channel = "unknown"
-	}
-	request := strings.TrimSpace(requestID)
-	if request == "" {
-		request = "n/a"
-	}
+	user := normalizeAuditUserID(userID)
+	channel := normalizeAuditChannelID(channelID)
+	request := normalizeAuditRequestID(requestID)
 	line := fmt.Sprintf("[AUDIT] user=%s channel=%s request=%s decision=%s command=%q", user, channel, request, decision, command)
 	if strings.TrimSpace(reason) != "" {
 		line += fmt.Sprintf(" reason=%q", reason)
 	}
 	return line
+}
+
+func appendCommandAuditEntry(ts time.Time, userID string, channelID string, requestID string, command string, decision string, reason string) error {
+	record := commandAuditEntry{
+		Timestamp: ts.UTC().Format(time.RFC3339Nano),
+		UserID:    normalizeAuditUserID(userID),
+		ChannelID: normalizeAuditChannelID(channelID),
+		RequestID: normalizeAuditRequestID(requestID),
+		Command:   strings.TrimSpace(command),
+		Decision:  strings.TrimSpace(decision),
+		Reason:    strings.TrimSpace(reason),
+	}
+	payload, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+
+	dayDir := filepath.Join(commandAuditBasePath, ts.Format("2006-01-02"))
+	if err := os.MkdirAll(dayDir, 0755); err != nil {
+		return err
+	}
+	logPath := filepath.Join(dayDir, "command_permission.jsonl")
+
+	commandAuditMu.Lock()
+	defer commandAuditMu.Unlock()
+
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = f.Write(append(payload, '\n'))
+	return err
+}
+
+func normalizeAuditUserID(userID string) string {
+	user := strings.TrimSpace(userID)
+	if user == "" {
+		return "anonymous"
+	}
+	return user
+}
+
+func normalizeAuditChannelID(channelID string) string {
+	channel := strings.TrimSpace(channelID)
+	if channel == "" {
+		return "unknown"
+	}
+	return channel
+}
+
+func normalizeAuditRequestID(requestID string) string {
+	request := strings.TrimSpace(requestID)
+	if request == "" {
+		return "n/a"
+	}
+	return request
 }
 
 func (e *Executor) authorizeCommand(userID string, parts []string) error {
