@@ -124,3 +124,82 @@ func TestJobTimeout(t *testing.T) {
 		t.Fatal("expected timeout to cancel job context")
 	}
 }
+
+func TestRegisterAfterStartRunsJob(t *testing.T) {
+	s := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	defer s.Stop(200 * time.Millisecond)
+
+	runs := make(chan struct{}, 1)
+	err := s.Register(JobSpec{
+		Name:       "late-job",
+		Interval:   20 * time.Millisecond,
+		RunOnStart: true,
+		Run: func(context.Context) error {
+			select {
+			case runs <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+
+	select {
+	case <-runs:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected dynamically registered job to run")
+	}
+}
+
+func TestUnregisterStopsJob(t *testing.T) {
+	s := New()
+	runs := make(chan struct{}, 8)
+	err := s.Register(JobSpec{
+		Name:     "removable",
+		Interval: 10 * time.Millisecond,
+		Run: func(context.Context) error {
+			select {
+			case runs <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	defer s.Stop(200 * time.Millisecond)
+
+	select {
+	case <-runs:
+	case <-time.After(80 * time.Millisecond):
+		t.Fatal("expected initial scheduler run")
+	}
+
+	if err := s.Unregister("removable"); err != nil {
+		t.Fatalf("unregister failed: %v", err)
+	}
+
+	time.Sleep(40 * time.Millisecond)
+	for {
+		select {
+		case <-runs:
+			t.Fatal("expected no runs after unregister")
+		default:
+			return
+		}
+	}
+}
