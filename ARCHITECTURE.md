@@ -6,7 +6,7 @@ Alter0 is a self-hosted, single-instance orchestration kernel for developers.
 The target architecture focuses on:
 
 1. Task-first orchestration instead of chat-thread-first orchestration.
-2. Stable 24x7 runtime on a single node with clear recovery behavior.
+2. Stable 24x7 runtime on a single node with clear recovery behavior and repeatable deployment assets (systemd/Docker).
 3. Pluggable execution/runtime capabilities for `agent`, `interaction`, `skill`, and `mcp`.
 4. Strong abstraction boundaries so modules evolve independently.
 5. Observable and maintainable operations without introducing unnecessary platform complexity.
@@ -291,6 +291,11 @@ Shutdown sequence:
 - execution latency/error rate
 - routing/closing decision distribution
 - plugin and MCP connector health
+
+Deployment reference assets:
+
+- `deploy/systemd/alter0.service` for long-running host deployment
+- `Dockerfile` + `.dockerignore` for containerized runtime packaging
 
 ### 9.3 Health Model
 

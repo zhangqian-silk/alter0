@@ -25,6 +25,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Startup preflight checks (SQLite writable, executor installed, config validation)
 - [x] Configurable graceful shutdown drain timeout (queue/scheduler/http unified)
 - [x] Local backup/restore scripts for DB + config
+- [x] Deployment assets for systemd service + Docker image
 
 ### Interaction and Observability
 
@@ -51,6 +52,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 1. [x] README/ARCHITECTURE sync after each feature merge
 2. [x] Startup preflight checks (SQLite writable, executor installed, config validation)
 3. [x] Graceful shutdown drain timeout configurable and shared by queue/scheduler/http
+4. [x] Deployment assets: systemd service template + Dockerfile runtime packaging
 
 ### P1
 
@@ -59,7 +61,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 3. [x] Queue stats expose in-flight worker count for `/status` and `/api/status` diagnostics
 4. [x] Queue stats expose configured worker count for `/status` and `/api/status` diagnostics
 
-Queue status: P0/P1 active queue is clear (all listed items merged); docs sync guard is now enforced via `scripts/check-doc-sync.sh`.
+Queue status: P0/P1 active queue is clear (all listed items merged); docs sync guard is enforced via `scripts/check-doc-sync.sh`, and deployment asset guard via `scripts/check-deploy-assets.sh`.
 
 ## 4) Change Rule
 
