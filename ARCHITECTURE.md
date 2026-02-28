@@ -248,7 +248,7 @@ Required modules:
 - `POST /api/tasks/submit`
 - `GET /api/tasks/{id}/status`
 - `POST /api/tasks/{id}/cancel`
-- `GET /api/status` aggregated runtime status
+- `GET /api/status` aggregated runtime status (includes recent command audit tail)
 
 ### 7.3 Command Surface
 
@@ -283,7 +283,7 @@ Shutdown sequence:
 ### 9.1 Logs
 
 - structured logs with `session_id`, `task_id`, `stage`, `executor`, `plugin_id`
-- dedicated audit streams for command and capability invocations
+- dedicated audit streams for command and capability invocations, and status snapshot tail aggregation for quick diagnostics
 
 ### 9.2 Metrics
 

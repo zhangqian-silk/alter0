@@ -1,9 +1,13 @@
 package runtime
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,11 +19,23 @@ import (
 )
 
 type StatusCollector struct {
-	Gateway   *gateway.DefaultGateway
-	Scheduler *scheduler.Scheduler
-	Queue     *queue.Queue
-	TaskStore *task.Store
-	RepoPath  string
+	Gateway              *gateway.DefaultGateway
+	Scheduler            *scheduler.Scheduler
+	Queue                *queue.Queue
+	TaskStore            *task.Store
+	RepoPath             string
+	CommandAuditBasePath string
+	CommandAuditTailSize int
+}
+
+type commandAuditTailEntry struct {
+	Timestamp string `json:"timestamp"`
+	UserID    string `json:"user_id"`
+	ChannelID string `json:"channel_id"`
+	RequestID string `json:"request_id"`
+	Command   string `json:"command"`
+	Decision  string `json:"decision"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
@@ -48,9 +64,90 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		}
 	}
 	payload["executors"] = agent.ListExecutorCapabilities()
+	payload["command_audit_tail"] = readCommandAuditTail(c.CommandAuditBasePath, c.CommandAuditTailSize)
 	payload["git"] = gitStatus(ctx, c.RepoPath)
 
 	return payload
+}
+
+func readCommandAuditTail(basePath string, tailSize int) []commandAuditTailEntry {
+	if tailSize <= 0 {
+		tailSize = 10
+	}
+	path := strings.TrimSpace(basePath)
+	if path == "" {
+		path = filepath.Join("output", "audit")
+	}
+
+	dirs, err := os.ReadDir(path)
+	if err != nil {
+		return []commandAuditTailEntry{}
+	}
+
+	dayDirs := make([]string, 0, len(dirs))
+	for _, entry := range dirs {
+		if !entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if _, err := time.Parse("2006-01-02", name); err != nil {
+			continue
+		}
+		dayDirs = append(dayDirs, name)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(dayDirs)))
+
+	tail := make([]commandAuditTailEntry, 0, tailSize)
+	for _, day := range dayDirs {
+		entries, err := readCommandAuditDay(filepath.Join(path, day, "command_permission.jsonl"), tailSize-len(tail))
+		if err != nil || len(entries) == 0 {
+			continue
+		}
+		tail = append(tail, entries...)
+		if len(tail) >= tailSize {
+			break
+		}
+	}
+
+	for i, j := 0, len(tail)-1; i < j; i, j = i+1, j-1 {
+		tail[i], tail[j] = tail[j], tail[i]
+	}
+	return tail
+}
+
+func readCommandAuditDay(path string, limit int) ([]commandAuditTailEntry, error) {
+	if limit <= 0 {
+		return []commandAuditTailEntry{}, nil
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	lines := make([]string, 0, limit)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	items := make([]commandAuditTailEntry, 0, limit)
+	for i := len(lines) - 1; i >= 0 && len(items) < limit; i-- {
+		var entry commandAuditTailEntry
+		if err := json.Unmarshal([]byte(lines[i]), &entry); err != nil {
+			continue
+		}
+		items = append(items, entry)
+	}
+	return items, nil
 }
 
 func gitStatus(ctx context.Context, repoPath string) map[string]interface{} {

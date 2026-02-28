@@ -30,6 +30,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] CLI channel + slash commands
 - [x] HTTP channel (`/api/message`, `/health`, `/api/status`)
 - [x] Command permission audit JSONL
+- [x] Runtime status snapshot command audit tail
 - [x] Executor stage JSONL logs
 
 ### Execution and Extensibility
@@ -51,9 +52,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P1
 
 1. [x] Runtime status snapshot includes executor capability registry (name/command/installed)
-2. [ ] Runtime status snapshot adds recent command audit tail for quick diagnostics
+2. [x] Runtime status snapshot adds recent command audit tail for quick diagnostics
 
-Queue status: P1 item 2 is next in queue.
+Queue status: P0/P1 active queue is clear (all listed items merged).
 
 ## 4) Change Rule
 
