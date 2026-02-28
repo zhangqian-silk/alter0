@@ -135,7 +135,7 @@ go run .
 - `/task memory clear [task_id]`
 - `/task stats`
 
-`/status` 输出统一运行时快照（gateway/scheduler/task/git），与 HTTP `GET /api/status` 对齐。
+`/status` 输出统一运行时快照（gateway/scheduler/task/executors/command_audit_tail/git），与 HTTP `GET /api/status` 对齐。
 
 管理员命令：
 
@@ -176,7 +176,7 @@ curl -X POST "http://localhost:8080/api/message?stream=1&chunk_size=800" \
 
 ### `GET /api/status`
 
-返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/git）。
+返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/executors/command_audit_tail/git）。
 
 ## Observability and Data Layout
 
@@ -185,7 +185,7 @@ curl -X POST "http://localhost:8080/api/message?stream=1&chunk_size=800" \
 - `output/db/alter0.db`: SQLite 数据库（tasks/messages/user_state/task_memory）
 - `output/logs/`: 应用日志
 - `output/orchestrator/<date>/executor_*.jsonl`: 执行器阶段日志（router/gen/closer）
-- `output/audit/<date>/command_permission.jsonl`: 命令权限审计日志
+- `output/audit/<date>/command_permission.jsonl`: 命令权限审计日志（`/status` 与 `/api/status` 会聚合最近 tail）
 
 ## Local Backup and Restore
 
