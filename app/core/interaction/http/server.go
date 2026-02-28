@@ -22,9 +22,10 @@ type HTTPChannel struct {
 	server  *http.Server
 	handler func(types.Message)
 
-	pendingMu sync.Mutex
-	pending   map[string]chan types.Message
-	counter   uint64
+	pendingMu   sync.Mutex
+	pending     map[string]chan types.Message
+	counter     uint64
+	startedUnix atomic.Int64
 }
 
 func NewHTTPChannel(port int) *HTTPChannel {
@@ -41,9 +42,11 @@ func (c *HTTPChannel) ID() string {
 
 func (c *HTTPChannel) Start(ctx context.Context, handler func(types.Message)) error {
 	c.handler = handler
+	c.startedUnix.Store(time.Now().Unix())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/message", c.handleMessage)
+	mux.HandleFunc("/api/status", c.handleStatus)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -104,6 +107,38 @@ type outgoingResponse struct {
 	Response string `json:"response"`
 	Closed   bool   `json:"closed"`
 	Decision string `json:"decision"`
+}
+
+type statusResponse struct {
+	ChannelID       string `json:"channel_id"`
+	PendingRequests int    `json:"pending_requests"`
+	StartedAt       string `json:"started_at,omitempty"`
+	UptimeSec       int64  `json:"uptime_sec"`
+}
+
+func (c *HTTPChannel) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	resp := statusResponse{ChannelID: c.id}
+	c.pendingMu.Lock()
+	resp.PendingRequests = len(c.pending)
+	c.pendingMu.Unlock()
+
+	if started := c.startedUnix.Load(); started > 0 {
+		startAt := time.Unix(started, 0).UTC()
+		resp.StartedAt = startAt.Format(time.RFC3339)
+		resp.UptimeSec = int64(time.Since(startAt).Seconds())
+		if resp.UptimeSec < 0 {
+			resp.UptimeSec = 0
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (c *HTTPChannel) handleMessage(w http.ResponseWriter, r *http.Request) {
