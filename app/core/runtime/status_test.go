@@ -125,3 +125,36 @@ func TestSnapshotIncludesQueueInFlight(t *testing.T) {
 
 	close(release)
 }
+
+func TestSnapshotIncludesQueueLastShutdownReport(t *testing.T) {
+	q := queue.New(2)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 1); err != nil {
+		t.Fatalf("start queue failed: %v", err)
+	}
+	if _, err := q.Enqueue(queue.Job{Run: func(context.Context) error { return nil }}); err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+	if _, err := q.StopWithReport(200 * time.Millisecond); err != nil {
+		t.Fatalf("stop queue failed: %v", err)
+	}
+
+	collector := &StatusCollector{Queue: q}
+	snap := collector.Snapshot(context.Background())
+	raw, ok := snap["queue"]
+	if !ok {
+		t.Fatal("expected queue stats in snapshot")
+	}
+
+	stats, ok := raw.(queue.Stats)
+	if !ok {
+		t.Fatalf("expected queue stats type, got %T", raw)
+	}
+	if stats.LastShutdown == nil {
+		t.Fatalf("expected last_shutdown report in queue stats, got %+v", stats)
+	}
+	if stats.LastShutdown.TimedOut {
+		t.Fatalf("expected graceful shutdown report, got %+v", stats.LastShutdown)
+	}
+}

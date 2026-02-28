@@ -24,19 +24,23 @@ type Job struct {
 }
 
 type Queue struct {
-	mu        sync.Mutex
-	jobs      chan queuedJob
-	started   bool
-	stopping  bool
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	nextID    atomic.Uint64
+	mu       sync.Mutex
+	jobs     chan queuedJob
+	started  bool
+	stopping bool
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	nextID   atomic.Uint64
+
 	inFlight    atomic.Int64
 	workerCount atomic.Int64
 	enqueued    atomic.Uint64
 	completed   atomic.Uint64
 	failed      atomic.Uint64
 	retried     atomic.Uint64
+
+	lastShutdownMu sync.RWMutex
+	lastShutdown   *ShutdownReport
 }
 
 type queuedJob struct {
@@ -45,15 +49,16 @@ type queuedJob struct {
 }
 
 type Stats struct {
-	Started     bool   `json:"started"`
-	Depth       int    `json:"depth"`
-	Capacity    int    `json:"capacity"`
-	Workers     int64  `json:"workers"`
-	InFlight    int64  `json:"in_flight"`
-	Enqueued    uint64 `json:"enqueued"`
-	Completed   uint64 `json:"completed"`
-	Failed      uint64 `json:"failed"`
-	Retried     uint64 `json:"retried"`
+	Started      bool            `json:"started"`
+	Depth        int             `json:"depth"`
+	Capacity     int             `json:"capacity"`
+	Workers      int64           `json:"workers"`
+	InFlight     int64           `json:"in_flight"`
+	Enqueued     uint64          `json:"enqueued"`
+	Completed    uint64          `json:"completed"`
+	Failed       uint64          `json:"failed"`
+	Retried      uint64          `json:"retried"`
+	LastShutdown *ShutdownReport `json:"last_shutdown,omitempty"`
 }
 
 type ShutdownReport struct {
@@ -111,16 +116,34 @@ func (q *Queue) Stats() Stats {
 	q.mu.Unlock()
 
 	return Stats{
-		Started:   started,
-		Depth:     len(q.jobs),
-		Capacity:  cap(q.jobs),
-		Workers:   q.workerCount.Load(),
-		InFlight:  q.inFlight.Load(),
-		Enqueued:  q.enqueued.Load(),
-		Completed: q.completed.Load(),
-		Failed:    q.failed.Load(),
-		Retried:   q.retried.Load(),
+		Started:      started,
+		Depth:        len(q.jobs),
+		Capacity:     cap(q.jobs),
+		Workers:      q.workerCount.Load(),
+		InFlight:     q.inFlight.Load(),
+		Enqueued:     q.enqueued.Load(),
+		Completed:    q.completed.Load(),
+		Failed:       q.failed.Load(),
+		Retried:      q.retried.Load(),
+		LastShutdown: q.lastShutdownSnapshot(),
 	}
+}
+
+func (q *Queue) lastShutdownSnapshot() *ShutdownReport {
+	q.lastShutdownMu.RLock()
+	defer q.lastShutdownMu.RUnlock()
+	if q.lastShutdown == nil {
+		return nil
+	}
+	cp := *q.lastShutdown
+	return &cp
+}
+
+func (q *Queue) setLastShutdown(report ShutdownReport) {
+	q.lastShutdownMu.Lock()
+	defer q.lastShutdownMu.Unlock()
+	cp := report
+	q.lastShutdown = &cp
 }
 
 func (q *Queue) Start(parent context.Context, workers int) error {
@@ -225,6 +248,7 @@ func (q *Queue) StopWithReport(timeout time.Duration) (ShutdownReport, error) {
 	q.stopping = false
 	q.mu.Unlock()
 
+	q.setLastShutdown(report)
 	if timedOut {
 		return report, fmt.Errorf("queue: stop timeout after %s", timeout)
 	}
