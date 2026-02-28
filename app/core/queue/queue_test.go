@@ -239,3 +239,84 @@ func TestQueueRecoversAfterJobFailure(t *testing.T) {
 		t.Fatalf("expected completed=1, got %+v", stats)
 	}
 }
+
+func TestStopWithReportDrainsQueue(t *testing.T) {
+	q := New(16)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 1); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	done := make(chan struct{}, 3)
+	for i := 0; i < 3; i++ {
+		if _, err := q.Enqueue(Job{Run: func(context.Context) error {
+			done <- struct{}{}
+			return nil
+		}}); err != nil {
+			t.Fatalf("enqueue %d failed: %v", i, err)
+		}
+	}
+
+	report, err := q.StopWithReport(300 * time.Millisecond)
+	if err != nil {
+		t.Fatalf("stop failed: %v", err)
+	}
+	if report.TimedOut {
+		t.Fatalf("expected graceful stop report, got %+v", report)
+	}
+	if report.DrainedJobs != 3 {
+		t.Fatalf("expected drained jobs=3, got %+v", report)
+	}
+	if report.RemainingDepth != 0 || report.RemainingFlight != 0 {
+		t.Fatalf("expected empty queue after stop, got %+v", report)
+	}
+
+	for i := 0; i < 3; i++ {
+		select {
+		case <-done:
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("expected all jobs to finish before stop returns")
+		}
+	}
+}
+
+func TestStopWithReportTimeout(t *testing.T) {
+	q := New(4)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 1); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	started := make(chan struct{}, 1)
+	if _, err := q.Enqueue(Job{Run: func(context.Context) error {
+		started <- struct{}{}
+		time.Sleep(120 * time.Millisecond)
+		return nil
+	}}); err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected job to start")
+	}
+
+	report, err := q.StopWithReport(20 * time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !report.TimedOut {
+		t.Fatalf("expected timeout report, got %+v", report)
+	}
+	if report.InFlightAtStart != 1 {
+		t.Fatalf("expected in-flight at stop start to be 1, got %+v", report)
+	}
+	if report.Elapsed < 20*time.Millisecond {
+		t.Fatalf("expected elapsed to include timeout, got %+v", report)
+	}
+
+	time.Sleep(150 * time.Millisecond)
+}

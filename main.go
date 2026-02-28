@@ -78,7 +78,18 @@ func main() {
 			os.Exit(1)
 		}
 		defer func() {
-			if err := executionQueue.Stop(3 * time.Second); err != nil {
+			report, err := executionQueue.StopWithReport(3 * time.Second)
+			logger.Info(
+				"Execution queue shutdown drain report: pending=%d in_flight=%d drained=%d timed_out=%t remaining_depth=%d remaining_in_flight=%d elapsed=%s",
+				report.PendingAtStart,
+				report.InFlightAtStart,
+				report.DrainedJobs,
+				report.TimedOut,
+				report.RemainingDepth,
+				report.RemainingFlight,
+				report.Elapsed,
+			)
+			if err != nil {
 				logger.Error("Execution queue shutdown timeout: %v", err)
 			}
 		}()
