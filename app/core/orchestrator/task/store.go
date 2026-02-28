@@ -17,6 +17,13 @@ type Store struct {
 	counter uint64
 }
 
+type Stats struct {
+	Open       int `json:"open"`
+	Closed     int `json:"closed"`
+	Total      int `json:"total"`
+	WithMemory int `json:"with_memory"`
+}
+
 func NewStore(database *db.DB) *Store {
 	return &Store{db: database}
 }
@@ -224,6 +231,27 @@ func (s *Store) DeleteTaskMemory(ctx context.Context, taskID string) error {
 	return err
 }
 
+func (s *Store) PruneTaskMemoryByClosedAt(ctx context.Context, closedBeforeUnix int64) (int64, error) {
+	if closedBeforeUnix <= 0 {
+		return 0, fmt.Errorf("closed_before_unix must be greater than zero")
+	}
+	query := `
+DELETE FROM task_memory
+WHERE task_id IN (
+	SELECT id FROM tasks
+	WHERE status = 'closed' AND COALESCE(closed_at, 0) > 0 AND closed_at < ?
+)`
+	result, err := s.db.Conn().ExecContext(ctx, query, closedBeforeUnix)
+	if err != nil {
+		return 0, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return affected, nil
+}
+
 func (s *Store) ExportTaskMemorySnapshot(ctx context.Context, userID string, limit int) ([]TaskMemorySnapshot, error) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
@@ -325,6 +353,38 @@ func (s *Store) CloseTask(ctx context.Context, taskID string) error {
 	query := `UPDATE tasks SET status = 'closed', closed_at = ?, updated_at = ? WHERE id = ? AND status != 'closed'`
 	_, err := s.db.Conn().ExecContext(ctx, query, now, now, taskID)
 	return err
+}
+
+func (s *Store) GlobalStats(ctx context.Context) (Stats, error) {
+	stats := Stats{}
+	rows, err := s.db.Conn().QueryContext(ctx, `SELECT status, COUNT(1) FROM tasks GROUP BY status`)
+	if err != nil {
+		return Stats{}, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return Stats{}, err
+		}
+		switch strings.ToLower(strings.TrimSpace(status)) {
+		case "open":
+			stats.Open = count
+		case "closed":
+			stats.Closed = count
+		}
+		stats.Total += count
+	}
+	if err := rows.Err(); err != nil {
+		return Stats{}, err
+	}
+
+	if err := s.db.Conn().QueryRowContext(ctx, `SELECT COUNT(1) FROM task_memory`).Scan(&stats.WithMemory); err != nil {
+		return Stats{}, err
+	}
+	return stats, nil
 }
 
 func (s *Store) SetForcedTask(ctx context.Context, userID string, taskID string) error {

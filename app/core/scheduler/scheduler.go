@@ -33,6 +33,13 @@ type JobStatus struct {
 	LastDuration time.Duration
 }
 
+type HealthStatus struct {
+	Started        bool      `json:"started"`
+	StartedAt      time.Time `json:"started_at"`
+	RegisteredJobs int       `json:"registered_jobs"`
+	RunningJobs    int       `json:"running_jobs"`
+}
+
 type Scheduler struct {
 	mu      sync.Mutex
 	jobs    map[string]JobSpec
@@ -42,6 +49,8 @@ type Scheduler struct {
 	cancel  context.CancelFunc
 	jobStop map[string]context.CancelFunc
 	wg      sync.WaitGroup
+
+	startedUnix int64
 }
 
 func New() *Scheduler {
@@ -95,6 +104,7 @@ func (s *Scheduler) Start(parent context.Context) error {
 	s.ctx = ctx
 	s.cancel = cancel
 	s.started = true
+	s.startedUnix = time.Now().Unix()
 	jobs := make([]JobSpec, 0, len(s.jobs))
 	for _, job := range s.jobs {
 		jobs = append(jobs, job)
@@ -119,6 +129,7 @@ func (s *Scheduler) Stop(timeout time.Duration) error {
 	s.ctx = nil
 	s.cancel = nil
 	s.started = false
+	s.startedUnix = 0
 	s.jobStop = make(map[string]context.CancelFunc)
 	s.mu.Unlock()
 
@@ -154,6 +165,21 @@ func (s *Scheduler) Snapshot() []JobStatus {
 		return items[i].Name < items[j].Name
 	})
 	return items
+}
+
+func (s *Scheduler) Health() HealthStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	health := HealthStatus{
+		Started:        s.started,
+		RegisteredJobs: len(s.jobs),
+		RunningJobs:    len(s.jobStop),
+	}
+	if s.startedUnix > 0 {
+		health.StartedAt = time.Unix(s.startedUnix, 0).UTC()
+	}
+	return health
 }
 
 func (s *Scheduler) startJobLocked(job JobSpec) {
