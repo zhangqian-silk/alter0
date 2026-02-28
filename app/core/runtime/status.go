@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"alter0/app/core/agent"
 	"alter0/app/core/interaction/gateway"
 	"alter0/app/core/orchestrator/task"
 	"alter0/app/core/queue"
@@ -46,6 +47,7 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 			payload["task"] = stats
 		}
 	}
+	payload["executors"] = agent.ListExecutorCapabilities()
 	payload["git"] = gitStatus(ctx, c.RepoPath)
 
 	return payload
