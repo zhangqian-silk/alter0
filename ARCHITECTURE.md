@@ -379,3 +379,8 @@ P2:
 ## Feature Roadmap
 
 See `docs/features.md` for implemented capability matrix and active priority queue.
+
+Documentation consistency rule:
+
+- Any PR that updates `docs/features.md` must also update `README.md` and `ARCHITECTURE.md` in the same change set.
+- Use `make docs-sync-check` before opening a PR. The check compares `origin/master...HEAD` and fails when only `docs/features.md` changed.
