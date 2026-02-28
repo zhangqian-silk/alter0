@@ -167,3 +167,40 @@ func TestTaskMemorySnapshotExportAndRestore(t *testing.T) {
 		t.Fatalf("unexpected restored summary for task1: %s", restored.Summary)
 	}
 }
+
+func TestTaskMemorySnapshotRestoreIsAtomic(t *testing.T) {
+	tempDir := t.TempDir()
+	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	if err != nil {
+		t.Fatalf("init sqlite failed: %v", err)
+	}
+	defer database.Close()
+
+	store := NewStore(database)
+	ctx := context.Background()
+
+	task1, err := store.CreateTask(ctx, "u-1", "task1", "cli")
+	if err != nil {
+		t.Fatalf("create task1 failed: %v", err)
+	}
+	task2, err := store.CreateTask(ctx, "u-2", "task2", "cli")
+	if err != nil {
+		t.Fatalf("create task2 failed: %v", err)
+	}
+
+	snapshots := []TaskMemorySnapshot{
+		{TaskID: task1.ID, Summary: "valid summary", UpdatedAt: 100},
+		{TaskID: task2.ID, Summary: "wrong owner", UpdatedAt: 101},
+	}
+
+	applied, err := store.RestoreTaskMemorySnapshot(ctx, "u-1", snapshots)
+	if err == nil {
+		t.Fatal("expected restore to fail when one snapshot belongs to another user")
+	}
+	if applied != 0 {
+		t.Fatalf("expected applied=0 on atomic failure, got %d", applied)
+	}
+	if _, err := store.GetTaskMemory(ctx, task1.ID); err != sql.ErrNoRows {
+		t.Fatalf("expected no memory persisted after rollback, got %v", err)
+	}
+}

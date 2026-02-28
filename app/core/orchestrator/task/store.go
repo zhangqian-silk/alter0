@@ -262,6 +262,13 @@ func (s *Store) RestoreTaskMemorySnapshot(ctx context.Context, userID string, sn
 	if userID == "" {
 		return 0, fmt.Errorf("user_id is required")
 	}
+
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
 	applied := 0
 	for _, item := range snapshots {
 		taskID := strings.TrimSpace(item.TaskID)
@@ -269,19 +276,48 @@ func (s *Store) RestoreTaskMemorySnapshot(ctx context.Context, userID string, sn
 		if taskID == "" || summary == "" {
 			continue
 		}
-		taskItem, err := s.GetTask(ctx, taskID)
+
+		taskOwner, err := s.lookupTaskOwnerTx(ctx, tx, taskID)
 		if err != nil {
-			return applied, fmt.Errorf("task not found for snapshot: %s", taskID)
+			if err == sql.ErrNoRows {
+				return 0, fmt.Errorf("task not found for snapshot: %s", taskID)
+			}
+			return 0, err
 		}
-		if taskItem.UserID != userID {
-			return applied, fmt.Errorf("task does not belong to user: %s", taskID)
+		if taskOwner != userID {
+			return 0, fmt.Errorf("task does not belong to user: %s", taskID)
 		}
-		if err := s.UpsertTaskMemory(ctx, taskID, summary); err != nil {
-			return applied, err
+
+		if err := s.upsertTaskMemoryTx(ctx, tx, taskID, summary, item.UpdatedAt); err != nil {
+			return 0, err
 		}
 		applied++
 	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
 	return applied, nil
+}
+
+func (s *Store) lookupTaskOwnerTx(ctx context.Context, tx *sql.Tx, taskID string) (string, error) {
+	var owner string
+	err := tx.QueryRowContext(ctx, `SELECT user_id FROM tasks WHERE id = ?`, taskID).Scan(&owner)
+	if err != nil {
+		return "", err
+	}
+	return owner, nil
+}
+
+func (s *Store) upsertTaskMemoryTx(ctx context.Context, tx *sql.Tx, taskID string, summary string, updatedAt int64) error {
+	if updatedAt <= 0 {
+		updatedAt = time.Now().Unix()
+	}
+	query := `
+INSERT INTO task_memory (task_id, summary, updated_at) VALUES (?, ?, ?)
+ON CONFLICT(task_id) DO UPDATE SET summary = excluded.summary, updated_at = excluded.updated_at`
+	_, err := tx.ExecContext(ctx, query, taskID, summary, updatedAt)
+	return err
 }
 
 func (s *Store) CloseTask(ctx context.Context, taskID string) error {
