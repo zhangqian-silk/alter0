@@ -30,7 +30,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 ### Interaction and Observability
 
 - [x] CLI channel + slash commands
-- [x] HTTP channel (`/api/message`, `/health`, `/api/status`)
+- [x] HTTP channel (`/api/message`, `/api/tasks`, `/health`, `/api/status`)
 - [x] Command permission audit JSONL
 - [x] Runtime status snapshot command audit tail
 - [x] Executor stage JSONL logs
@@ -62,6 +62,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 3. [x] Queue stats expose in-flight worker count for `/status` and `/api/status` diagnostics
 4. [x] Queue stats expose configured worker count for `/status` and `/api/status` diagnostics
 5. [x] Queue stats expose last shutdown drain report for `/status` and `/api/status` diagnostics
+6. [x] HTTP async task API supports submit/status/cancel endpoints (`POST /api/tasks`, `GET /api/tasks/{id}`, `POST /api/tasks/{id}/cancel`)
 
 Queue status: P0/P1 active queue is clear (all listed items merged); docs sync guard is enforced via `scripts/check-doc-sync.sh`, and deployment asset guard via `scripts/check-deploy-assets.sh`.
 

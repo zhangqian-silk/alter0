@@ -245,9 +245,9 @@ Required modules:
 
 ### 7.2 Async API
 
-- `POST /api/tasks/submit`
-- `GET /api/tasks/{id}/status`
-- `POST /api/tasks/{id}/cancel`
+- `POST /api/tasks` accepts async task requests and returns request id
+- `GET /api/tasks/{id}` returns task status (`pending|completed|canceled|timeout`) and completion payload
+- `POST /api/tasks/{id}/cancel` marks a pending async task as canceled
 - `GET /api/status` aggregated runtime status (includes recent command audit tail)
 
 ### 7.3 Command Surface
