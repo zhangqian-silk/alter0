@@ -140,7 +140,7 @@ func (q *Queue) runOnce(parent context.Context, item queuedJob) {
 		return
 	}
 
-	if attempt > item.job.MaxRetries+1 {
+	if attempt >= item.job.MaxRetries+1 {
 		return
 	}
 	if item.job.RetryDelay > 0 {
