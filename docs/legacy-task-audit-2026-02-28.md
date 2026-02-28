@@ -5,7 +5,7 @@
 - 分支范围：`feat/p0-*`（本地历史分支 + 远端跟踪分支）
 - worktree 范围：`/tmp/alter0-*`
 - 基线：`master@58a68c3`
-- 审查时间：2026-02-28 14:23 UTC
+- 审查时间：2026-02-28 14:34 UTC
 - 远端引用快照：`origin/feat/p0-9-legacy-audit-refresh`、`origin/feat/p0-21-legacy-audit-refresh`
 
 ## 分支盘点与结论
@@ -35,6 +35,7 @@
 | feat/p0-9-legacy-audit-refresh | 已被新方案覆盖 | 文档差异已由当前审查快照覆盖。 |
 | feat/p0-10-legacy-audit-refresh | 已被新方案覆盖 | 历史审查刷新分支，能力已由当前审查结果覆盖。 |
 | feat/p0-19-legacy-audit-refresh | 已被新方案覆盖 | 历史审查刷新分支，已由当前审查快照覆盖。 |
+| feat/p0-22-legacy-audit-refresh | 已被新方案覆盖 | 当前轮次审查刷新分支，结果已写入最新审查快照。 |
 | origin/feat/p0-9-legacy-audit-refresh | 已被新方案覆盖 | 远端历史快照分支，不影响主线执行。 |
 | origin/feat/p0-21-legacy-audit-refresh | 已被新方案覆盖 | 远端历史审查刷新分支，已被当前审查结果覆盖。 |
 
