@@ -49,10 +49,10 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 ### P1 (Do next)
 
-1. [ ] Graceful shutdown drain policy for in-flight queue tasks with timeout metrics
+1. [x] Graceful shutdown drain policy for in-flight queue tasks with timeout metrics
 2. [ ] Regression tests for startup preflight failure paths
 
-Queue status: P0 preflight requirement merged; P1 backlog refreshed.
+Queue status: P1 graceful shutdown drain policy merged; preflight regression tests are next.
 
 ## 4) Change Rule
 

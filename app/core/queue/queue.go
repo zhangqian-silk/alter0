@@ -11,6 +11,7 @@ import (
 
 var (
 	ErrQueueStarted    = errors.New("queue: already started")
+	ErrQueueStopped    = errors.New("queue: stopped")
 	ErrEnqueueCanceled = errors.New("queue: enqueue canceled")
 )
 
@@ -23,13 +24,14 @@ type Job struct {
 }
 
 type Queue struct {
-	mu      sync.Mutex
-	jobs    chan queuedJob
-	started bool
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	nextID  atomic.Uint64
-
+	mu        sync.Mutex
+	jobs      chan queuedJob
+	started   bool
+	stopping  bool
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	nextID    atomic.Uint64
+	inFlight  atomic.Int64
 	enqueued  atomic.Uint64
 	completed atomic.Uint64
 	failed    atomic.Uint64
@@ -49,6 +51,16 @@ type Stats struct {
 	Completed uint64 `json:"completed"`
 	Failed    uint64 `json:"failed"`
 	Retried   uint64 `json:"retried"`
+}
+
+type ShutdownReport struct {
+	PendingAtStart  int           `json:"pending_at_start"`
+	InFlightAtStart int64         `json:"in_flight_at_start"`
+	DrainedJobs     uint64        `json:"drained_jobs"`
+	TimedOut        bool          `json:"timed_out"`
+	RemainingDepth  int           `json:"remaining_depth"`
+	RemainingFlight int64         `json:"remaining_in_flight"`
+	Elapsed         time.Duration `json:"elapsed"`
 }
 
 func New(buffer int) *Queue {
@@ -75,7 +87,11 @@ func (q *Queue) EnqueueContext(ctx context.Context, job Job) (string, error) {
 
 	q.mu.Lock()
 	jobs := q.jobs
+	stopping := q.stopping
 	q.mu.Unlock()
+	if stopping {
+		return "", ErrQueueStopped
+	}
 
 	select {
 	case jobs <- queuedJob{job: job, attempt: 0}:
@@ -115,6 +131,7 @@ func (q *Queue) Start(parent context.Context, workers int) error {
 	ctx, cancel := context.WithCancel(parent)
 	q.cancel = cancel
 	q.started = true
+	q.stopping = false
 	q.mu.Unlock()
 
 	for i := 0; i < workers; i++ {
@@ -125,34 +142,86 @@ func (q *Queue) Start(parent context.Context, workers int) error {
 }
 
 func (q *Queue) Stop(timeout time.Duration) error {
+	_, err := q.StopWithReport(timeout)
+	return err
+}
+
+func (q *Queue) StopWithReport(timeout time.Duration) (ShutdownReport, error) {
 	q.mu.Lock()
 	if !q.started {
 		q.mu.Unlock()
-		return nil
+		return ShutdownReport{}, nil
 	}
 	cancel := q.cancel
 	q.cancel = nil
 	q.started = false
+	q.stopping = true
+	report := ShutdownReport{
+		PendingAtStart:  len(q.jobs),
+		InFlightAtStart: q.inFlight.Load(),
+	}
+	baseDone := q.completed.Load() + q.failed.Load()
 	q.mu.Unlock()
 
-	cancel()
+	startedAt := time.Now()
+	timedOut := false
 	if timeout <= 0 {
+		for {
+			if len(q.jobs) == 0 && q.inFlight.Load() == 0 {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		cancel()
 		q.wg.Wait()
-		return nil
+	} else {
+		deadline := time.NewTimer(timeout)
+		ticker := time.NewTicker(5 * time.Millisecond)
+	deferLoop:
+		for {
+			if len(q.jobs) == 0 && q.inFlight.Load() == 0 {
+				cancel()
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					q.wg.Wait()
+				}()
+				select {
+				case <-done:
+				case <-deadline.C:
+					timedOut = true
+				}
+				break deferLoop
+			}
+			select {
+			case <-deadline.C:
+				timedOut = true
+				cancel()
+				break deferLoop
+			case <-ticker.C:
+			}
+		}
+		deadline.Stop()
+		ticker.Stop()
 	}
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		q.wg.Wait()
-	}()
-
-	select {
-	case <-done:
-		return nil
-	case <-time.After(timeout):
-		return fmt.Errorf("queue: stop timeout after %s", timeout)
+	report.Elapsed = time.Since(startedAt)
+	nowDone := q.completed.Load() + q.failed.Load()
+	if nowDone > baseDone {
+		report.DrainedJobs = nowDone - baseDone
 	}
+	report.TimedOut = timedOut
+	report.RemainingDepth = len(q.jobs)
+	report.RemainingFlight = q.inFlight.Load()
+
+	q.mu.Lock()
+	q.stopping = false
+	q.mu.Unlock()
+
+	if timedOut {
+		return report, fmt.Errorf("queue: stop timeout after %s", timeout)
+	}
+	return report, nil
 }
 
 func (q *Queue) worker(ctx context.Context) {
@@ -162,7 +231,9 @@ func (q *Queue) worker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case item := <-q.jobs:
+			q.inFlight.Add(1)
 			q.runOnce(ctx, item)
+			q.inFlight.Add(-1)
 		}
 	}
 }
