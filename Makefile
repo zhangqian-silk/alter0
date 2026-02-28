@@ -1,4 +1,4 @@
-.PHONY: run build test fmt backup restore docs-sync-check
+.PHONY: run build test fmt backup restore docs-sync-check deploy-check
 .DEFAULT_GOAL := run
 
 run:
@@ -25,3 +25,6 @@ restore:
 
 docs-sync-check:
 	./scripts/check-doc-sync.sh
+
+deploy-check:
+	./scripts/check-deploy-assets.sh

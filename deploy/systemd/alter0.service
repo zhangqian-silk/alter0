@@ -1,0 +1,18 @@
+[Unit]
+Description=Alter0 task orchestration kernel
+After=network.target
+
+[Service]
+Type=simple
+User=alter0
+Group=alter0
+WorkingDirectory=/opt/alter0
+ExecStart=/usr/local/bin/alter0
+Restart=always
+RestartSec=3
+Environment=GOMAXPROCS=2
+StandardOutput=append:/opt/alter0/output/logs/systemd.log
+StandardError=append:/opt/alter0/output/logs/systemd.log
+
+[Install]
+WantedBy=multi-user.target

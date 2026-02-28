@@ -18,7 +18,7 @@ Alter0 采用以下设计域划分：
 
 | 设计域 | 目标 | 当前实现 |
 | --- | --- | --- |
-| 部署与运行模型 | 面向开发者自部署，降低接入和运维复杂度 | 单实例、本地优先；`go run .` 直接启动 |
+| 部署与运行模型 | 面向开发者自部署，降低接入和运维复杂度 | 单实例、本地优先；支持 `go run .`、systemd 模板与 Docker 镜像打包 |
 | 任务智能编排 | 用 LLM 进行任务归属与生命周期决策 | 路由（existing/new）+ 结题（close/open）双决策链 |
 | 执行与扩展架构 | 执行器可替换，能力可注入 | `codex` / `claude_code`；Channel/Skill 抽象 |
 | 可观测与上下文治理 | 支持运维排障并控制上下文冗余 | Web Console + `/health` + JSONL 日志 + 任务记忆快照 |
@@ -81,6 +81,38 @@ go run .
 - Web Console: `http://localhost:8080/`
 - API: `POST http://localhost:8080/api/message`
 - Health: `GET http://localhost:8080/health`
+
+## Deployment Options
+
+### systemd
+
+仓库内置服务模板：`deploy/systemd/alter0.service`。
+
+典型部署流程：
+
+```bash
+sudo useradd --system --home /opt/alter0 --shell /usr/sbin/nologin alter0
+sudo install -d -o alter0 -g alter0 /opt/alter0
+sudo cp alter0 /usr/local/bin/alter0
+sudo cp -r config /opt/alter0/
+sudo cp deploy/systemd/alter0.service /etc/systemd/system/alter0.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now alter0
+```
+
+### Docker
+
+仓库根目录提供 `Dockerfile` 与 `.dockerignore`：
+
+```bash
+docker build -t alter0:local .
+docker run --rm -p 8080:8080 \
+  -v $(pwd)/output:/opt/alter0/output \
+  -v $(pwd)/config/config.json:/opt/alter0/config/config.json:ro \
+  alter0:local
+```
+
+可通过 `make deploy-check` 校验部署资产是否齐全。
 
 ## Configuration
 
