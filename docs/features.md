@@ -47,9 +47,11 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 ### P1 (Do next)
 
-1. [ ] Optional streaming/chunked output path for long responses
+1. [x] Optional streaming/chunked output path for long responses
 2. [x] Task memory lifecycle policy (retention and cleanup controls)
 3. [x] Regression tests for parallel workflow and recovery paths
+
+Queue status: P0/P1 complete, awaiting next prioritized requirements.
 
 ## 4) Change Rule
 

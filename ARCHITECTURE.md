@@ -241,6 +241,7 @@ Required modules:
 ### 7.1 Sync API
 
 - `POST /api/message` for short-running interactions
+- optional `stream=1` query mode for NDJSON chunked output on long responses
 
 ### 7.2 Async API
 
