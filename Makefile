@@ -1,4 +1,4 @@
-.PHONY: run build test fmt backup restore
+.PHONY: run build test fmt backup restore docs-sync-check
 .DEFAULT_GOAL := run
 
 run:
@@ -22,3 +22,6 @@ restore:
 		exit 1; \
 	fi
 	./scripts/restore-local.sh "$(BACKUP)"
+
+docs-sync-check:
+	./scripts/check-doc-sync.sh

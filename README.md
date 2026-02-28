@@ -47,6 +47,14 @@ Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对�
 
 功能矩阵与执行队列请参考：[`docs/features.md`](./docs/features.md)。
 
+文档同步策略：当 `docs/features.md` 发生变更时，必须在同一 PR 同步更新 `README.md` 与 `ARCHITECTURE.md`。可以执行：
+
+```bash
+make docs-sync-check
+```
+
+该检查默认对比 `origin/master...HEAD`，若只改了 `docs/features.md` 会直接失败，避免能力矩阵与总览文档漂移。
+
 在执行层，Alter0 复用成熟 Agent CLI（`codex`、`claude_code`），自身聚焦编排与治理，不重建模型执行栈。接收器（CLI/HTTP/Web）与执行器通过稳定接口解耦，允许在不影响任务存储和路由策略的前提下独立扩展通道或替换执行后端。扩展能力以 Skill 为主入口，外部能力（如 MCP）可通过扩展层纳入执行链路。
 
 在运行治理方面，系统提供基础可观测能力，包括 Web Console、`/health` 探针、执行阶段日志与命令审计日志。为控制上下文开销，任务记忆采用快照式压缩策略，在 prompt 组装时优先保留高价值上下文，尽量降低冗余信息带来的推理噪声。

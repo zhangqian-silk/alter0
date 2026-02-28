@@ -57,7 +57,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 2. [x] Runtime status snapshot adds recent command audit tail for quick diagnostics
 3. [x] Queue stats expose in-flight worker count for `/status` and `/api/status` diagnostics
 
-Queue status: P0/P1 active queue is clear (all listed items merged).
+Queue status: P0/P1 active queue is clear (all listed items merged); docs sync guard is now enforced via `scripts/check-doc-sync.sh`.
 
 ## 4) Change Rule
 
@@ -66,3 +66,4 @@ When a feature is merged, update this file in the same PR:
 - Move item status ([ ], [~], [x])
 - Update active queue
 - Keep non-goals explicit
+- Run `make docs-sync-check BASE=origin/master` when a PR changes `docs/features.md`
