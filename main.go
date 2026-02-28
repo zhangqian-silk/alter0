@@ -97,7 +97,7 @@ func main() {
 	cancel()
 }
 
-func runGatewayWithRetry(ctx context.Context, gw *gateway.Gateway) {
+func runGatewayWithRetry(ctx context.Context, gw *gateway.DefaultGateway) {
 	backoff := time.Second
 	maxBackoff := 30 * time.Second
 	for {
