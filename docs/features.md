@@ -35,6 +35,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Web console async task panel (refresh/cancel/retry + task reuse)
 - [x] Command permission audit JSONL
 - [x] Runtime status snapshot command audit tail
+- [x] Runtime status snapshot git upstream divergence (`upstream/ahead/behind`)
 - [x] Executor stage JSONL logs
 
 ### Execution and Extensibility
@@ -67,6 +68,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 6. [x] HTTP async task API supports submit/status/cancel endpoints (`POST /api/tasks`, `GET /api/tasks/{id}`, `POST /api/tasks/{id}/cancel`)
 7. [x] HTTP async task API supports recent list endpoint (`GET /api/tasks?status=&limit=`)
 8. [x] Web console provides async task queue panel (refresh/cancel/retry + reuse task id)
+9. [x] Runtime status snapshot exposes git upstream/ahead/behind divergence for quick sync diagnostics
 
 Queue status: P0/P1 active queue is clear (all listed items merged); docs sync guard is enforced via `scripts/check-doc-sync.sh`, and deployment asset guard via `scripts/check-deploy-assets.sh`.
 

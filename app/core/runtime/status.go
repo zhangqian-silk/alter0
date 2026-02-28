@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -173,8 +174,35 @@ func gitStatus(ctx context.Context, repoPath string) map[string]interface{} {
 	if dirty, err := runGit(ctx, path, "status", "--porcelain"); err == nil {
 		status["dirty"] = strings.TrimSpace(dirty) != ""
 	}
+	if upstream, err := runGit(ctx, path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"); err == nil {
+		status["upstream"] = upstream
+		if behind, ahead, ok := gitAheadBehind(ctx, path, upstream); ok {
+			status["behind"] = behind
+			status["ahead"] = ahead
+		}
+	}
 
 	return status
+}
+
+func gitAheadBehind(ctx context.Context, repoPath, upstream string) (int, int, bool) {
+	out, err := runGit(ctx, repoPath, "rev-list", "--left-right", "--count", upstream+"...HEAD")
+	if err != nil {
+		return 0, 0, false
+	}
+	parts := strings.Fields(out)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	behind, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	ahead, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, false
+	}
+	return behind, ahead, true
 }
 
 func runGit(ctx context.Context, repoPath string, args ...string) (string, error) {

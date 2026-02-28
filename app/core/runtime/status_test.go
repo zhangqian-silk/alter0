@@ -3,7 +3,9 @@ package runtime
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,5 +158,78 @@ func TestSnapshotIncludesQueueLastShutdownReport(t *testing.T) {
 	}
 	if stats.LastShutdown.TimedOut {
 		t.Fatalf("expected graceful shutdown report, got %+v", stats.LastShutdown)
+	}
+}
+
+func TestSnapshotIncludesGitDivergenceAgainstUpstream(t *testing.T) {
+	base := t.TempDir()
+	remote := filepath.Join(base, "remote.git")
+	runGitCmd(t, base, "git", "init", "--bare", remote)
+
+	seed := filepath.Join(base, "seed")
+	runGitCmd(t, base, "git", "clone", remote, seed)
+	writeRepoFile(t, seed, "README.md", "seed\n")
+	runGitCmd(t, seed, "git", "add", "README.md")
+	runGitCmd(t, seed, "git", "commit", "-m", "seed")
+	runGitCmd(t, seed, "git", "push", "origin", "master")
+
+	local := filepath.Join(base, "local")
+	runGitCmd(t, base, "git", "clone", remote, local)
+	writeRepoFile(t, local, "local.txt", "local\n")
+	runGitCmd(t, local, "git", "add", "local.txt")
+	runGitCmd(t, local, "git", "commit", "-m", "local commit")
+
+	other := filepath.Join(base, "other")
+	runGitCmd(t, base, "git", "clone", remote, other)
+	writeRepoFile(t, other, "remote.txt", "remote\n")
+	runGitCmd(t, other, "git", "add", "remote.txt")
+	runGitCmd(t, other, "git", "commit", "-m", "remote commit")
+	runGitCmd(t, other, "git", "push", "origin", "master")
+
+	runGitCmd(t, local, "git", "fetch", "origin")
+
+	collector := &StatusCollector{RepoPath: local}
+	snap := collector.Snapshot(context.Background())
+	raw, ok := snap["git"]
+	if !ok {
+		t.Fatal("expected git status in snapshot")
+	}
+
+	git, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected git status map, got %T", raw)
+	}
+	if git["upstream"] != "origin/master" {
+		t.Fatalf("expected upstream origin/master, got %#v", git["upstream"])
+	}
+	if git["ahead"] != 1 {
+		t.Fatalf("expected ahead=1, got %#v", git["ahead"])
+	}
+	if git["behind"] != 1 {
+		t.Fatalf("expected behind=1, got %#v", git["behind"])
+	}
+}
+
+func runGitCmd(t *testing.T, dir string, name string, args ...string) {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=alter0-test",
+		"GIT_AUTHOR_EMAIL=alter0-test@example.com",
+		"GIT_COMMITTER_NAME=alter0-test",
+		"GIT_COMMITTER_EMAIL=alter0-test@example.com",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("command failed (%s %s): %v\n%s", name, strings.Join(args, " "), err, string(out))
+	}
+}
+
+func writeRepoFile(t *testing.T, repoPath, relPath, content string) {
+	t.Helper()
+	absPath := filepath.Join(repoPath, relPath)
+	if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write file failed: %v", err)
 	}
 }
