@@ -251,3 +251,48 @@ func TestSnapshotTracksLastRunState(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+func TestHealthReflectsLifecycle(t *testing.T) {
+	s := New()
+	err := s.Register(JobSpec{
+		Name:     "health-job",
+		Interval: 50 * time.Millisecond,
+		Run:      func(context.Context) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+
+	pre := s.Health()
+	if pre.Started {
+		t.Fatal("expected scheduler stopped before start")
+	}
+	if pre.RegisteredJobs != 1 {
+		t.Fatalf("unexpected registered jobs: %d", pre.RegisteredJobs)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	post := s.Health()
+	if !post.Started {
+		t.Fatal("expected started=true after start")
+	}
+	if post.StartedAt.IsZero() {
+		t.Fatal("expected started_at to be set")
+	}
+	if post.RunningJobs != 1 {
+		t.Fatalf("unexpected running jobs: %d", post.RunningJobs)
+	}
+
+	if err := s.Stop(200 * time.Millisecond); err != nil {
+		t.Fatalf("stop failed: %v", err)
+	}
+	stopped := s.Health()
+	if stopped.Started {
+		t.Fatal("expected started=false after stop")
+	}
+}

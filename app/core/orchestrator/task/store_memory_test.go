@@ -168,6 +168,76 @@ func TestTaskMemorySnapshotExportAndRestore(t *testing.T) {
 	}
 }
 
+func TestPruneTaskMemoryByClosedAt(t *testing.T) {
+	tempDir := t.TempDir()
+	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	if err != nil {
+		t.Fatalf("init sqlite failed: %v", err)
+	}
+	defer database.Close()
+
+	store := NewStore(database)
+	ctx := context.Background()
+
+	oldClosedTask, err := store.CreateTask(ctx, "u-1", "old-closed", "cli")
+	if err != nil {
+		t.Fatalf("create oldClosedTask failed: %v", err)
+	}
+	recentClosedTask, err := store.CreateTask(ctx, "u-1", "recent-closed", "cli")
+	if err != nil {
+		t.Fatalf("create recentClosedTask failed: %v", err)
+	}
+	openTask, err := store.CreateTask(ctx, "u-1", "open", "cli")
+	if err != nil {
+		t.Fatalf("create openTask failed: %v", err)
+	}
+
+	if err := store.CloseTask(ctx, oldClosedTask.ID); err != nil {
+		t.Fatalf("close old task failed: %v", err)
+	}
+	if err := store.CloseTask(ctx, recentClosedTask.ID); err != nil {
+		t.Fatalf("close recent task failed: %v", err)
+	}
+
+	now := time.Now().Unix()
+	_, err = database.Conn().ExecContext(ctx, `UPDATE tasks SET closed_at = ?, updated_at = ? WHERE id = ?`, now-86400*30, now-86400*30, oldClosedTask.ID)
+	if err != nil {
+		t.Fatalf("force old closed_at failed: %v", err)
+	}
+	_, err = database.Conn().ExecContext(ctx, `UPDATE tasks SET closed_at = ?, updated_at = ? WHERE id = ?`, now-3600, now-3600, recentClosedTask.ID)
+	if err != nil {
+		t.Fatalf("force recent closed_at failed: %v", err)
+	}
+
+	if err := store.UpsertTaskMemory(ctx, oldClosedTask.ID, "old memory"); err != nil {
+		t.Fatalf("upsert old memory failed: %v", err)
+	}
+	if err := store.UpsertTaskMemory(ctx, recentClosedTask.ID, "recent memory"); err != nil {
+		t.Fatalf("upsert recent memory failed: %v", err)
+	}
+	if err := store.UpsertTaskMemory(ctx, openTask.ID, "open memory"); err != nil {
+		t.Fatalf("upsert open memory failed: %v", err)
+	}
+
+	pruned, err := store.PruneTaskMemoryByClosedAt(ctx, now-86400)
+	if err != nil {
+		t.Fatalf("prune failed: %v", err)
+	}
+	if pruned != 1 {
+		t.Fatalf("expected pruned=1, got %d", pruned)
+	}
+
+	if _, err := store.GetTaskMemory(ctx, oldClosedTask.ID); err != sql.ErrNoRows {
+		t.Fatalf("expected old memory to be pruned, got %v", err)
+	}
+	if _, err := store.GetTaskMemory(ctx, recentClosedTask.ID); err != nil {
+		t.Fatalf("expected recent closed memory to stay, got %v", err)
+	}
+	if _, err := store.GetTaskMemory(ctx, openTask.ID); err != nil {
+		t.Fatalf("expected open task memory to stay, got %v", err)
+	}
+}
+
 func TestTaskMemorySnapshotRestoreIsAtomic(t *testing.T) {
 	tempDir := t.TempDir()
 	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))

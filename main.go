@@ -15,10 +15,11 @@ import (
 	"alter0/app/core/interaction/http"
 	"alter0/app/core/orchestrator/agent"
 	"alter0/app/core/orchestrator/db"
-	"alter0/app/core/scheduler"
 	"alter0/app/core/orchestrator/skills"
 	"alter0/app/core/orchestrator/skills/builtins"
 	"alter0/app/core/orchestrator/task"
+	"alter0/app/core/runtime"
+	"alter0/app/core/scheduler"
 	"alter0/app/pkg/logger"
 )
 
@@ -73,6 +74,10 @@ func main() {
 	defer cancel()
 
 	jobScheduler := scheduler.New()
+	if err := runtime.RegisterMaintenanceJobs(jobScheduler, taskStore); err != nil {
+		logger.Error("Failed to register maintenance jobs: %v", err)
+		os.Exit(1)
+	}
 	if err := jobScheduler.Start(ctx); err != nil {
 		logger.Error("Failed to start scheduler: %v", err)
 		os.Exit(1)
