@@ -27,12 +27,17 @@ type Scheduler struct {
 	mu      sync.Mutex
 	jobs    map[string]JobSpec
 	started bool
+	ctx     context.Context
 	cancel  context.CancelFunc
+	jobStop map[string]context.CancelFunc
 	wg      sync.WaitGroup
 }
 
 func New() *Scheduler {
-	return &Scheduler{jobs: make(map[string]JobSpec)}
+	return &Scheduler{
+		jobs:    make(map[string]JobSpec),
+		jobStop: make(map[string]context.CancelFunc),
+	}
 }
 
 func (s *Scheduler) Register(job JobSpec) error {
@@ -46,6 +51,9 @@ func (s *Scheduler) Register(job JobSpec) error {
 		return fmt.Errorf("%w: %s", ErrJobExists, job.Name)
 	}
 	s.jobs[job.Name] = job
+	if s.started {
+		s.startJobLocked(job)
+	}
 	return nil
 }
 
@@ -56,6 +64,10 @@ func (s *Scheduler) Unregister(name string) error {
 		return fmt.Errorf("%w: %s", ErrJobNotFound, name)
 	}
 	delete(s.jobs, name)
+	if stop, exists := s.jobStop[name]; exists {
+		stop()
+		delete(s.jobStop, name)
+	}
 	return nil
 }
 
@@ -66,6 +78,7 @@ func (s *Scheduler) Start(parent context.Context) error {
 		return ErrSchedulerStart
 	}
 	ctx, cancel := context.WithCancel(parent)
+	s.ctx = ctx
 	s.cancel = cancel
 	s.started = true
 	jobs := make([]JobSpec, 0, len(s.jobs))
@@ -75,8 +88,9 @@ func (s *Scheduler) Start(parent context.Context) error {
 	s.mu.Unlock()
 
 	for _, job := range jobs {
-		s.wg.Add(1)
-		go s.runLoop(ctx, job)
+		s.mu.Lock()
+		s.startJobLocked(job)
+		s.mu.Unlock()
 	}
 	return nil
 }
@@ -88,8 +102,10 @@ func (s *Scheduler) Stop(timeout time.Duration) error {
 		return nil
 	}
 	cancel := s.cancel
+	s.ctx = nil
 	s.cancel = nil
 	s.started = false
+	s.jobStop = make(map[string]context.CancelFunc)
 	s.mu.Unlock()
 
 	cancel()
@@ -110,6 +126,19 @@ func (s *Scheduler) Stop(timeout time.Duration) error {
 	case <-time.After(timeout):
 		return fmt.Errorf("scheduler: stop timeout after %s", timeout)
 	}
+}
+
+func (s *Scheduler) startJobLocked(job JobSpec) {
+	if !s.started || s.ctx == nil {
+		return
+	}
+	if _, exists := s.jobStop[job.Name]; exists {
+		return
+	}
+	jobCtx, stop := context.WithCancel(s.ctx)
+	s.jobStop[job.Name] = stop
+	s.wg.Add(1)
+	go s.runLoop(jobCtx, job)
 }
 
 func (s *Scheduler) runLoop(ctx context.Context, job JobSpec) {
