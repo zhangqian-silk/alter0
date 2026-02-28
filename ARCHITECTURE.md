@@ -287,7 +287,7 @@ Shutdown sequence:
 
 ### 9.2 Metrics
 
-- queue depth and in-flight workers
+- queue depth, configured workers, and in-flight workers
 - execution latency/error rate
 - routing/closing decision distribution
 - plugin and MCP connector health

@@ -271,6 +271,9 @@ func TestStopWithReportDrainsQueue(t *testing.T) {
 	if report.RemainingDepth != 0 || report.RemainingFlight != 0 {
 		t.Fatalf("expected empty queue after stop, got %+v", report)
 	}
+	if stats := q.Stats(); stats.Workers != 0 {
+		t.Fatalf("expected workers=0 after stop, got %+v", stats)
+	}
 
 	for i := 0; i < 3; i++ {
 		select {
@@ -307,6 +310,9 @@ func TestStatsIncludeInFlight(t *testing.T) {
 	}
 
 	stats := q.Stats()
+	if stats.Workers != 1 {
+		t.Fatalf("expected workers=1, got %+v", stats)
+	}
 	if stats.InFlight != 1 {
 		t.Fatalf("expected in_flight=1, got %+v", stats)
 	}

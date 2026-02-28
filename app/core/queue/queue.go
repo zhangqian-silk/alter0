@@ -31,11 +31,12 @@ type Queue struct {
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
 	nextID    atomic.Uint64
-	inFlight  atomic.Int64
-	enqueued  atomic.Uint64
-	completed atomic.Uint64
-	failed    atomic.Uint64
-	retried   atomic.Uint64
+	inFlight    atomic.Int64
+	workerCount atomic.Int64
+	enqueued    atomic.Uint64
+	completed   atomic.Uint64
+	failed      atomic.Uint64
+	retried     atomic.Uint64
 }
 
 type queuedJob struct {
@@ -44,14 +45,15 @@ type queuedJob struct {
 }
 
 type Stats struct {
-	Started   bool   `json:"started"`
-	Depth     int    `json:"depth"`
-	Capacity  int    `json:"capacity"`
-	InFlight  int64  `json:"in_flight"`
-	Enqueued  uint64 `json:"enqueued"`
-	Completed uint64 `json:"completed"`
-	Failed    uint64 `json:"failed"`
-	Retried   uint64 `json:"retried"`
+	Started     bool   `json:"started"`
+	Depth       int    `json:"depth"`
+	Capacity    int    `json:"capacity"`
+	Workers     int64  `json:"workers"`
+	InFlight    int64  `json:"in_flight"`
+	Enqueued    uint64 `json:"enqueued"`
+	Completed   uint64 `json:"completed"`
+	Failed      uint64 `json:"failed"`
+	Retried     uint64 `json:"retried"`
 }
 
 type ShutdownReport struct {
@@ -112,6 +114,7 @@ func (q *Queue) Stats() Stats {
 		Started:   started,
 		Depth:     len(q.jobs),
 		Capacity:  cap(q.jobs),
+		Workers:   q.workerCount.Load(),
 		InFlight:  q.inFlight.Load(),
 		Enqueued:  q.enqueued.Load(),
 		Completed: q.completed.Load(),
@@ -134,6 +137,7 @@ func (q *Queue) Start(parent context.Context, workers int) error {
 	q.cancel = cancel
 	q.started = true
 	q.stopping = false
+	q.workerCount.Store(int64(workers))
 	q.mu.Unlock()
 
 	for i := 0; i < workers; i++ {
@@ -158,6 +162,7 @@ func (q *Queue) StopWithReport(timeout time.Duration) (ShutdownReport, error) {
 	q.cancel = nil
 	q.started = false
 	q.stopping = true
+	q.workerCount.Store(0)
 	report := ShutdownReport{
 		PendingAtStart:  len(q.jobs),
 		InFlightAtStart: q.inFlight.Load(),
