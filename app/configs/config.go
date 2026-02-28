@@ -12,6 +12,7 @@ type Config struct {
 	Agent    AgentConfig    `json:"agent"`
 	Executor ExecutorConfig `json:"executor"`
 	Task     TaskConfig     `json:"task"`
+	Runtime  RuntimeConfig  `json:"runtime"`
 	Security SecurityConfig `json:"security"`
 }
 
@@ -35,6 +36,17 @@ type TaskConfig struct {
 
 type SecurityConfig struct {
 	AdminUserIDs []string `json:"admin_user_ids"`
+}
+
+type RuntimeConfig struct {
+	Maintenance MaintenanceConfig `json:"maintenance"`
+}
+
+type MaintenanceConfig struct {
+	Enabled                    bool `json:"enabled"`
+	TaskMemoryPruneIntervalSec int  `json:"task_memory_prune_interval_sec"`
+	TaskMemoryPruneTimeoutSec  int  `json:"task_memory_prune_timeout_sec"`
+	TaskMemoryRetentionDays    int  `json:"task_memory_retention_days"`
 }
 
 type Manager struct {
@@ -129,6 +141,14 @@ func defaultConfig() Config {
 			CLIUserID:                  "local_user",
 			OpenTaskCandidateLimit:     8,
 		},
+		Runtime: RuntimeConfig{
+			Maintenance: MaintenanceConfig{
+				Enabled:                    true,
+				TaskMemoryPruneIntervalSec: 6 * 60 * 60,
+				TaskMemoryPruneTimeoutSec:  20,
+				TaskMemoryRetentionDays:    30,
+			},
+		},
 		Security: SecurityConfig{
 			AdminUserIDs: []string{"local_user"},
 		},
@@ -162,6 +182,18 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Task.OpenTaskCandidateLimit <= 0 {
 		cfg.Task.OpenTaskCandidateLimit = 8
+	}
+	if !cfg.Runtime.Maintenance.Enabled && cfg.Runtime.Maintenance.TaskMemoryPruneIntervalSec == 0 && cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec == 0 && cfg.Runtime.Maintenance.TaskMemoryRetentionDays == 0 {
+		cfg.Runtime.Maintenance.Enabled = true
+	}
+	if cfg.Runtime.Maintenance.TaskMemoryPruneIntervalSec <= 0 {
+		cfg.Runtime.Maintenance.TaskMemoryPruneIntervalSec = 6 * 60 * 60
+	}
+	if cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec <= 0 {
+		cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec = 20
+	}
+	if cfg.Runtime.Maintenance.TaskMemoryRetentionDays <= 0 {
+		cfg.Runtime.Maintenance.TaskMemoryRetentionDays = 30
 	}
 
 	clean := make([]string, 0, len(cfg.Security.AdminUserIDs))

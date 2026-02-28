@@ -12,16 +12,20 @@ import (
 )
 
 const (
-	keyAgentName      = "agent.name"
-	keyExecutorName   = "executor.name"
-	keyTaskRouteTO    = "task.routing_timeout_sec"
-	keyTaskCloseTO    = "task.close_timeout_sec"
-	keyTaskGenTO      = "task.generation_timeout_sec"
-	keyTaskRouteThres = "task.routing_confidence_threshold"
-	keyTaskCloseThres = "task.close_confidence_threshold"
-	keyTaskCLIUserID  = "task.cli_user_id"
-	keyTaskCandLimit  = "task.open_task_candidate_limit"
-	keyAdminUserIDs   = "security.admin_user_ids"
+	keyAgentName           = "agent.name"
+	keyExecutorName        = "executor.name"
+	keyTaskRouteTO         = "task.routing_timeout_sec"
+	keyTaskCloseTO         = "task.close_timeout_sec"
+	keyTaskGenTO           = "task.generation_timeout_sec"
+	keyTaskRouteThres      = "task.routing_confidence_threshold"
+	keyTaskCloseThres      = "task.close_confidence_threshold"
+	keyTaskCLIUserID       = "task.cli_user_id"
+	keyTaskCandLimit       = "task.open_task_candidate_limit"
+	keyRuntimeMaintEnabled = "runtime.maintenance.enabled"
+	keyRuntimeMaintIntvSec = "runtime.maintenance.task_memory_prune_interval_sec"
+	keyRuntimeMaintTOsec   = "runtime.maintenance.task_memory_prune_timeout_sec"
+	keyRuntimeMaintRetDays = "runtime.maintenance.task_memory_retention_days"
+	keyAdminUserIDs        = "security.admin_user_ids"
 )
 
 type ConfigSkill struct {
@@ -144,6 +148,14 @@ func normalizeConfigKey(key string) string {
 		return keyTaskCLIUserID
 	case "task.open_task_candidate_limit":
 		return keyTaskCandLimit
+	case "runtime.maintenance.enabled", "maintenance.enabled":
+		return keyRuntimeMaintEnabled
+	case "runtime.maintenance.task_memory_prune_interval_sec", "maintenance.task_memory_prune_interval_sec":
+		return keyRuntimeMaintIntvSec
+	case "runtime.maintenance.task_memory_prune_timeout_sec", "maintenance.task_memory_prune_timeout_sec":
+		return keyRuntimeMaintTOsec
+	case "runtime.maintenance.task_memory_retention_days", "maintenance.task_memory_retention_days":
+		return keyRuntimeMaintRetDays
 	case "security.admin_user_ids", "security.admins":
 		return keyAdminUserIDs
 	default:
@@ -159,6 +171,8 @@ func getConfigValue(cfg config.Config, key string) (interface{}, bool) {
 		return map[string]interface{}{"name": cfg.Executor.Name}, true
 	case "task":
 		return sanitizeTask(cfg.Task), true
+	case "runtime":
+		return sanitizeRuntime(cfg.Runtime), true
 	case "security":
 		return sanitizeSecurity(cfg.Security), true
 	}
@@ -181,6 +195,14 @@ func getConfigValue(cfg config.Config, key string) (interface{}, bool) {
 		return cfg.Task.CLIUserID, true
 	case keyTaskCandLimit:
 		return cfg.Task.OpenTaskCandidateLimit, true
+	case keyRuntimeMaintEnabled:
+		return cfg.Runtime.Maintenance.Enabled, true
+	case keyRuntimeMaintIntvSec:
+		return cfg.Runtime.Maintenance.TaskMemoryPruneIntervalSec, true
+	case keyRuntimeMaintTOsec:
+		return cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec, true
+	case keyRuntimeMaintRetDays:
+		return cfg.Runtime.Maintenance.TaskMemoryRetentionDays, true
 	case keyAdminUserIDs:
 		return cfg.Security.AdminUserIDs, true
 	default:
@@ -220,6 +242,25 @@ func applyConfigValue(c *config.Config, key string, value string) {
 		if n, err := strconv.Atoi(value); err == nil {
 			c.Task.OpenTaskCandidateLimit = n
 		}
+	case keyRuntimeMaintEnabled:
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "1", "true", "yes", "on":
+			c.Runtime.Maintenance.Enabled = true
+		case "0", "false", "no", "off":
+			c.Runtime.Maintenance.Enabled = false
+		}
+	case keyRuntimeMaintIntvSec:
+		if n, err := strconv.Atoi(value); err == nil {
+			c.Runtime.Maintenance.TaskMemoryPruneIntervalSec = n
+		}
+	case keyRuntimeMaintTOsec:
+		if n, err := strconv.Atoi(value); err == nil {
+			c.Runtime.Maintenance.TaskMemoryPruneTimeoutSec = n
+		}
+	case keyRuntimeMaintRetDays:
+		if n, err := strconv.Atoi(value); err == nil {
+			c.Runtime.Maintenance.TaskMemoryRetentionDays = n
+		}
 	case keyAdminUserIDs:
 		items := strings.Split(value, ",")
 		clean := make([]string, 0, len(items))
@@ -246,6 +287,17 @@ func sanitizeTask(t config.TaskConfig) map[string]interface{} {
 	}
 }
 
+func sanitizeRuntime(r config.RuntimeConfig) map[string]interface{} {
+	return map[string]interface{}{
+		"maintenance": map[string]interface{}{
+			"enabled":                        r.Maintenance.Enabled,
+			"task_memory_prune_interval_sec": r.Maintenance.TaskMemoryPruneIntervalSec,
+			"task_memory_prune_timeout_sec":  r.Maintenance.TaskMemoryPruneTimeoutSec,
+			"task_memory_retention_days":     r.Maintenance.TaskMemoryRetentionDays,
+		},
+	}
+}
+
 func sanitizeSecurity(s config.SecurityConfig) map[string]interface{} {
 	return map[string]interface{}{
 		"admin_user_ids": s.AdminUserIDs,
@@ -261,6 +313,7 @@ func sanitizeConfig(cfg config.Config) map[string]interface{} {
 			"name": cfg.Executor.Name,
 		},
 		"task":     sanitizeTask(cfg.Task),
+		"runtime":  sanitizeRuntime(cfg.Runtime),
 		"security": sanitizeSecurity(cfg.Security),
 	}
 }

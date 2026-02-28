@@ -89,6 +89,14 @@ go run .
     "cli_user_id": "local_user",
     "open_task_candidate_limit": 8
   },
+  "runtime": {
+    "maintenance": {
+      "enabled": true,
+      "task_memory_prune_interval_sec": 21600,
+      "task_memory_prune_timeout_sec": 20,
+      "task_memory_retention_days": 30
+    }
+  },
   "security": {
     "admin_user_ids": ["local_user"]
   }
@@ -101,6 +109,7 @@ go run .
 - `task.routing_confidence_threshold`: 路由命中阈值
 - `task.close_confidence_threshold`: 自动结题阈值
 - `task.open_task_candidate_limit`: 路由候选任务上限
+- `runtime.maintenance.*`: 维护任务开关、执行间隔、超时与保留天数
 - `security.admin_user_ids`: 管理命令授权用户
 
 ## Command Interface
