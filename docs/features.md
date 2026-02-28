@@ -22,6 +22,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Dynamic scheduler register/unregister + run-on-start
 - [x] Runtime maintenance jobs (task memory prune)
 - [x] Unified runtime status snapshot (gateway/scheduler/task/git)
+- [x] Startup preflight checks (SQLite writable, executor installed, config validation)
 - [x] Local backup/restore scripts for DB + config
 
 ### Interaction and Observability
@@ -44,14 +45,14 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P0
 
 1. [x] README/ARCHITECTURE sync after each feature merge
+2. [x] Startup preflight checks (SQLite writable, executor installed, config validation)
 
 ### P1 (Do next)
 
-1. [x] Optional streaming/chunked output path for long responses
-2. [x] Task memory lifecycle policy (retention and cleanup controls)
-3. [x] Regression tests for parallel workflow and recovery paths
+1. [ ] Graceful shutdown drain policy for in-flight queue tasks with timeout metrics
+2. [ ] Regression tests for startup preflight failure paths
 
-Queue status: P0/P1 complete, awaiting next prioritized requirements.
+Queue status: P0 preflight requirement merged; P1 backlog refreshed.
 
 ## 4) Change Rule
 

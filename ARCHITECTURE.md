@@ -260,14 +260,15 @@ Required modules:
 
 Startup sequence:
 
-1. load config
-2. initialize logger
-3. open store and validate schema
-4. run migration/backup checks
-5. initialize plugin host + MCP bridge
-6. initialize executor registry
-7. start queue/scheduler
-8. start gateway/channels
+1. initialize logger
+2. load config
+3. run startup preflight (config validity, SQLite writable path, executor binary availability)
+4. open store and validate schema
+5. run migration/backup checks
+6. initialize plugin host + MCP bridge
+7. initialize executor registry
+8. start queue/scheduler
+9. start gateway/channels
 
 Shutdown sequence:
 
