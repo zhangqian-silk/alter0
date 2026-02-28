@@ -22,6 +22,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Dynamic scheduler register/unregister + run-on-start
 - [x] Runtime maintenance jobs (task memory prune)
 - [x] Unified runtime status snapshot (gateway/scheduler/task/git)
+- [x] Local backup/restore scripts for DB + config
 
 ### Interaction and Observability
 
@@ -42,8 +43,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 ### P0 (Do next)
 
-1. Backup/restore scripts for local DB + config
-2. README/ARCHITECTURE sync after each feature merge
+1. README/ARCHITECTURE sync after each feature merge
 
 ### P1
 
