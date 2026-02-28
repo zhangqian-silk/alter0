@@ -128,3 +128,114 @@ func TestEnqueueContextReturnsWhenQueueIsFull(t *testing.T) {
 		t.Fatalf("expected deadline exceeded, got %v", err)
 	}
 }
+
+func TestWorkersProcessJobsInParallel(t *testing.T) {
+	q := New(16)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 3); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	defer q.Stop(200 * time.Millisecond)
+
+	const totalJobs = 6
+	gate := make(chan struct{})
+	var running atomic.Int32
+	var peak atomic.Int32
+	var completed atomic.Int32
+
+	for i := 0; i < totalJobs; i++ {
+		_, err := q.Enqueue(Job{
+			Run: func(context.Context) error {
+				active := running.Add(1)
+				for {
+					max := peak.Load()
+					if active <= max || peak.CompareAndSwap(max, active) {
+						break
+					}
+				}
+				<-gate
+				running.Add(-1)
+				completed.Add(1)
+				return nil
+			},
+		})
+		if err != nil {
+			t.Fatalf("enqueue %d failed: %v", i, err)
+		}
+	}
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for peak.Load() < 3 {
+		if time.Now().After(deadline) {
+			t.Fatalf("expected peak parallelism to reach 3 workers, got %d", peak.Load())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	close(gate)
+
+	completeDeadline := time.Now().Add(300 * time.Millisecond)
+	for completed.Load() < totalJobs {
+		if time.Now().After(completeDeadline) {
+			t.Fatalf("expected all jobs to complete, completed=%d", completed.Load())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestQueueRecoversAfterJobFailure(t *testing.T) {
+	q := New(16)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 1); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	defer q.Stop(200 * time.Millisecond)
+
+	firstRan := make(chan struct{}, 1)
+	secondDone := make(chan struct{}, 1)
+
+	_, err := q.Enqueue(Job{
+		Run: func(context.Context) error {
+			select {
+			case firstRan <- struct{}{}:
+			default:
+			}
+			return errors.New("boom")
+		},
+	})
+	if err != nil {
+		t.Fatalf("enqueue first job failed: %v", err)
+	}
+
+	_, err = q.Enqueue(Job{
+		Run: func(context.Context) error {
+			secondDone <- struct{}{}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("enqueue second job failed: %v", err)
+	}
+
+	select {
+	case <-firstRan:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected first job to run")
+	}
+
+	select {
+	case <-secondDone:
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("expected queue to continue processing after a failed job")
+	}
+
+	stats := q.Stats()
+	if stats.Failed != 1 {
+		t.Fatalf("expected failed=1, got %+v", stats)
+	}
+	if stats.Completed != 1 {
+		t.Fatalf("expected completed=1, got %+v", stats)
+	}
+}
