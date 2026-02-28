@@ -8,7 +8,7 @@
 
 ## 历史遗留任务接续结果
 
-- 来源：`feat/p0-*` 历史分支与 `/tmp/alter0-*` worktree 复核（远端 `origin/feat/p0-*` 残留分支已清理）
+- 来源：`feat/p0-*` 历史分支与 `/tmp/alter0-*` worktree 复核（远端仅残留 `origin/feat/p0-9-legacy-audit-refresh`，其差异已被主线等价提交覆盖）
 - 仍需继续任务：无
 - 待执行队列补入：无
 - 冲突降级记录：无
