@@ -365,3 +365,35 @@ func TestStopWithReportTimeout(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 }
+
+func TestStatsIncludeLastShutdownReport(t *testing.T) {
+	q := New(4)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 1); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	if _, err := q.Enqueue(Job{Run: func(context.Context) error { return nil }}); err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+
+	report, err := q.StopWithReport(200 * time.Millisecond)
+	if err != nil {
+		t.Fatalf("stop failed: %v", err)
+	}
+
+	stats := q.Stats()
+	if stats.LastShutdown == nil {
+		t.Fatalf("expected last shutdown report in stats, got %+v", stats)
+	}
+	if stats.LastShutdown.TimedOut != report.TimedOut {
+		t.Fatalf("expected timed_out=%v, got %+v", report.TimedOut, stats.LastShutdown)
+	}
+	if stats.LastShutdown.DrainedJobs != report.DrainedJobs {
+		t.Fatalf("expected drained_jobs=%d, got %+v", report.DrainedJobs, stats.LastShutdown)
+	}
+	if stats.Workers != 0 {
+		t.Fatalf("expected workers=0 after stop, got %+v", stats)
+	}
+}

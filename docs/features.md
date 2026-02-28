@@ -42,6 +42,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Skill manager and built-in skills
 - [x] Queue-driven async pipeline on core execution path
 - [x] Queue status snapshot includes configured workers for runtime diagnostics
+- [x] Queue status snapshot includes last shutdown drain report for timeout diagnostics
 
 ## 3) Active Priority Queue
 
@@ -60,6 +61,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 2. [x] Runtime status snapshot adds recent command audit tail for quick diagnostics
 3. [x] Queue stats expose in-flight worker count for `/status` and `/api/status` diagnostics
 4. [x] Queue stats expose configured worker count for `/status` and `/api/status` diagnostics
+5. [x] Queue stats expose last shutdown drain report for `/status` and `/api/status` diagnostics
 
 Queue status: P0/P1 active queue is clear (all listed items merged); docs sync guard is enforced via `scripts/check-doc-sync.sh`, and deployment asset guard via `scripts/check-deploy-assets.sh`.
 
