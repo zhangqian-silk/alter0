@@ -224,6 +224,66 @@ func (s *Store) DeleteTaskMemory(ctx context.Context, taskID string) error {
 	return err
 }
 
+func (s *Store) ExportTaskMemorySnapshot(ctx context.Context, userID string, limit int) ([]TaskMemorySnapshot, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return nil, fmt.Errorf("user_id is required")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+
+	query := `
+SELECT t.user_id, m.task_id, m.summary, m.updated_at
+FROM task_memory m
+JOIN tasks t ON t.id = m.task_id
+WHERE t.user_id = ?
+ORDER BY m.updated_at DESC
+LIMIT ?`
+	rows, err := s.db.Conn().QueryContext(ctx, query, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]TaskMemorySnapshot, 0, limit)
+	for rows.Next() {
+		var item TaskMemorySnapshot
+		if err := rows.Scan(&item.UserID, &item.TaskID, &item.Summary, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) RestoreTaskMemorySnapshot(ctx context.Context, userID string, snapshots []TaskMemorySnapshot) (int, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return 0, fmt.Errorf("user_id is required")
+	}
+	applied := 0
+	for _, item := range snapshots {
+		taskID := strings.TrimSpace(item.TaskID)
+		summary := strings.TrimSpace(item.Summary)
+		if taskID == "" || summary == "" {
+			continue
+		}
+		taskItem, err := s.GetTask(ctx, taskID)
+		if err != nil {
+			return applied, fmt.Errorf("task not found for snapshot: %s", taskID)
+		}
+		if taskItem.UserID != userID {
+			return applied, fmt.Errorf("task does not belong to user: %s", taskID)
+		}
+		if err := s.UpsertTaskMemory(ctx, taskID, summary); err != nil {
+			return applied, err
+		}
+		applied++
+	}
+	return applied, nil
+}
+
 func (s *Store) CloseTask(ctx context.Context, taskID string) error {
 	now := time.Now().Unix()
 	query := `UPDATE tasks SET status = 'closed', closed_at = ?, updated_at = ? WHERE id = ? AND status != 'closed'`

@@ -23,9 +23,16 @@ type TaskMessage struct {
 }
 
 type TaskMemory struct {
-	TaskID     string
-	Summary    string
-	UpdatedAt  int64
+	TaskID    string
+	Summary   string
+	UpdatedAt int64
+}
+
+type TaskMemorySnapshot struct {
+	UserID    string
+	TaskID    string
+	Summary   string
+	UpdatedAt int64
 }
 
 type RouteDecision struct {
