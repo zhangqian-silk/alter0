@@ -55,6 +55,9 @@ func TestSanitizeMaintenanceOptions(t *testing.T) {
 	if got.TaskMemoryRetentionDays != 30 {
 		t.Fatalf("unexpected retention days: %d", got.TaskMemoryRetentionDays)
 	}
+	if got.TaskMemoryOpenRetentionDays != 0 {
+		t.Fatalf("unexpected open retention days: %d", got.TaskMemoryOpenRetentionDays)
+	}
 	if got.PruneInterval != 6*time.Hour {
 		t.Fatalf("unexpected interval: %s", got.PruneInterval)
 	}

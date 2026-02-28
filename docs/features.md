@@ -41,15 +41,15 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 
 Execution policy: complete one requirement end-to-end (`code -> test -> PR -> merge`) before picking next.
 
-### P0 (Do next)
+### P0
 
-1. README/ARCHITECTURE sync after each feature merge
+1. [x] README/ARCHITECTURE sync after each feature merge
 
-### P1
+### P1 (Do next)
 
-1. Task memory lifecycle policy (retention and cleanup controls)
-2. Regression tests for parallel workflow and recovery paths
-3. Optional streaming/chunked output path for long responses
+1. [x] Task memory lifecycle policy (retention and cleanup controls)
+2. [ ] Regression tests for parallel workflow and recovery paths
+3. [ ] Optional streaming/chunked output path for long responses
 
 ## 4) Change Rule
 

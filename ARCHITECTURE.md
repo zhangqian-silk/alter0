@@ -233,7 +233,7 @@ Required modules:
 
 - append-friendly message/execution logs
 - explicit schema versioning with non-destructive migrations
-- periodic compacting/retention jobs
+- periodic compacting/retention jobs (closed task retention + optional open task stale-memory cleanup)
 - backup-before-migration
 
 ## 7. API and Interaction Contracts
