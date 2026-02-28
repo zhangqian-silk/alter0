@@ -186,7 +186,22 @@ curl -X POST http://localhost:8080/api/message \
 
 ## Scope and Non-goals
 
-当前版本明确边界：
+### Deployment Boundary
+
+- 服务定位为开发者自部署、自使用，不面向多租户或公共开放场景。
+- 默认网络边界为本机或内网可信环境，当前不引入统一鉴权体系。
+
+### Stage Goal
+
+- 在单实例前提下，实现可连续运行（24x7）、可恢复、可维护的任务编排运行时。
+
+### Non-goals
+
+- 账号体系与身份管理
+- API 鉴权与访问控制
+- 限流、WAF、复杂 HTTP 抗压链路
+
+### Current Technical Constraints
 
 1. 默认运行模型为单实例、本地优先，不内建分布式协调。
 2. HTTP 接口为同步响应模式，单请求超时为 60 秒。
