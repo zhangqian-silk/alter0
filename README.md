@@ -1,39 +1,85 @@
 # Alter0
 
-Alter0 is a multi-channel task orchestrator that executes user requests via a configured executor (`claude_code` or `codex`).
+> Local-first Task Orchestration Kernel for Mature Coding Agents
 
-## Runtime Flow
+Alter0 是一个面向开发者自部署的任务编排内核。它默认运行在单实例、本地优先模式下，负责在多通道输入与成熟 Agent 执行器之间建立稳定的任务层：输入先被归入任务，再由执行器完成生成与执行。
 
-`Channel -> Gateway -> Orchestrator(Task Router + Task Store) -> Executor -> Orchestrator -> Channel`
+## Overview
 
-- Channels currently included: CLI + HTTP/Web
-- Conversation state is task-centric (not channel-centric)
-- Task routing and task closing are model-assisted
-- HTTP returns synchronous responses with `task_id`, `decision`, and `closed`
+与“对话优先”的 Agent 容器不同，Alter0 以 `Task` 作为一等对象，重点解决三类工程问题：
 
-## Commands
+- 如何把连续输入稳定映射到正确任务，而不是让上下文漂移。
+- 如何在不绑定单一模型的前提下复用成熟执行器能力。
+- 如何在长期运行中保持可观测、可审计、可维护。
 
-- `/help`
-- `/config`
-- `/config get [key]`
-- `/config set <key> <value>`（仅管理员）
-- `/executor [name]`（仅管理员）
-- `/task list [open|closed|all]`
-- `/task current`
-- `/task use <task_id>`
-- `/task new [title]`
-- `/task close [task_id]`
-- `/task memory [task_id]`
-- `/task memory clear [task_id]`
+## Design Domains
 
-## Config
+Alter0 采用以下设计域划分：
 
-The runtime config file is [`config/config.json`](./config/config.json):
+| 设计域 | 目标 | 当前实现 |
+| --- | --- | --- |
+| 部署与运行模型 | 面向开发者自部署，降低接入和运维复杂度 | 单实例、本地优先；`go run .` 直接启动 |
+| 任务智能编排 | 用 LLM 进行任务归属与生命周期决策 | 路由（existing/new）+ 结题（close/open）双决策链 |
+| 执行与扩展架构 | 执行器可替换，能力可注入 | `codex` / `claude_code`；Channel/Skill 抽象 |
+| 可观测与上下文治理 | 支持运维排障并控制上下文冗余 | Web Console + `/health` + JSONL 日志 + 任务记忆快照 |
+
+## Runtime Architecture
+
+```text
+Channel (CLI / HTTP / Web)
+  -> Gateway
+  -> Orchestrator (Task Router + Task Store + Task Closer)
+  -> Executor (codex / claude_code)
+  -> Orchestrator
+  -> Channel
+```
+
+任务选择优先级：
+
+1. 强制任务（`/task use`）
+2. 显式 `task_id`
+3. LLM 路由到已有开放任务
+4. 创建新任务
+
+## Core Capabilities
+
+Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对话展开。系统将 Task 作为一等对象管理，覆盖任务创建、归属、状态流转和关闭；对输入的处理由模型决策驱动，包含任务路由与结题判断两个环节，并通过可配置置信度阈值控制误判风险。
+
+在执行层，Alter0 复用成熟 Agent CLI（`codex`、`claude_code`），自身聚焦编排与治理，不重建模型执行栈。接收器（CLI/HTTP/Web）与执行器通过稳定接口解耦，允许在不影响任务存储和路由策略的前提下独立扩展通道或替换执行后端。扩展能力以 Skill 为主入口，外部能力（如 MCP）可通过扩展层纳入执行链路。
+
+在运行治理方面，系统提供基础可观测能力，包括 Web Console、`/health` 探针、执行阶段日志与命令审计日志。为控制上下文开销，任务记忆采用快照式压缩策略，在 prompt 组装时优先保留高价值上下文，尽量降低冗余信息带来的推理噪声。
+
+## Quick Start
+
+### Prerequisites
+
+- Go `1.25.7`（与 `go.mod` 保持一致）
+- 安装至少一种执行器，并确保在 `PATH` 可访问：
+  - `codex`
+  - `claude`
+
+### Run
+
+```bash
+go run .
+```
+
+默认端点：
+
+- Web Console: `http://localhost:8080/`
+- API: `POST http://localhost:8080/api/message`
+- Health: `GET http://localhost:8080/health`
+
+## Configuration
+
+配置文件路径：[`config/config.json`](./config/config.json)
+
+示例：
 
 ```json
 {
   "agent": {"name": "Alter0"},
-  "executor": {"name": "claude_code"},
+  "executor": {"name": "codex"},
   "task": {
     "routing_timeout_sec": 15,
     "close_timeout_sec": 10,
@@ -49,13 +95,94 @@ The runtime config file is [`config/config.json`](./config/config.json):
 }
 ```
 
-## Run
+关键项：
 
-```bash
-go run .
+- `executor.name`: 当前执行器（`codex` / `claude_code`）
+- `task.routing_confidence_threshold`: 路由命中阈值
+- `task.close_confidence_threshold`: 自动结题阈值
+- `task.open_task_candidate_limit`: 路由候选任务上限
+- `security.admin_user_ids`: 管理命令授权用户
+
+## Command Interface
+
+通用命令：
+
+- `/help`
+- `/config`
+- `/config get [key]`
+- `/task list [open|closed|all]`
+- `/task current`
+- `/task use <task_id>`
+- `/task new [title]`
+- `/task close [task_id]`
+- `/task memory [task_id]`
+- `/task memory clear [task_id]`
+- `/task stats`
+
+管理员命令：
+
+- `/config set <key> <value>`
+- `/executor [name]`
+
+## HTTP API
+
+### `POST /api/message`
+
+Request:
+
+```json
+{"content":"...", "user_id":"...", "task_id":"optional"}
 ```
 
-Then open:
+Response:
 
-- Web UI: `http://localhost:8080/`
-- API: `POST http://localhost:8080/api/message`
+```json
+{"task_id":"...", "response":"...", "closed":false, "decision":"existing|new"}
+```
+
+Example:
+
+```bash
+curl -X POST http://localhost:8080/api/message \
+  -H "Content-Type: application/json" \
+  -d "{\"content\":\"帮我继续当前任务\",\"user_id\":\"local_user\"}"
+```
+
+## Observability and Data Layout
+
+运行产物默认写入 `output/`：
+
+- `output/db/alter0.db`: SQLite 数据库（tasks/messages/user_state/task_memory）
+- `output/logs/`: 应用日志
+- `output/orchestrator/<date>/executor_*.jsonl`: 执行器阶段日志（router/gen/closer）
+- `output/audit/<date>/command_permission.jsonl`: 命令权限审计日志
+
+## Extension Guide
+
+### Add a New Channel
+
+1. 实现 `types.Channel`
+2. 在启动时注册到 Gateway
+
+### Add a New Executor
+
+1. 在执行器解析逻辑中新增名称映射
+2. 增加安装检测和调用命令定义
+
+### Add a New Skill
+
+1. 实现 `types.Skill`
+2. 注册到 Skill Manager
+3. 在命令层或编排层接入
+
+## Scope and Non-goals
+
+当前版本明确边界：
+
+1. 默认运行模型为单实例、本地优先，不内建分布式协调。
+2. HTTP 接口为同步响应模式，单请求超时为 60 秒。
+3. Schema 版本升级时会触发表重建；升级前应备份 `output/db`。
+
+## License
+
+[MIT](./LICENSE)
