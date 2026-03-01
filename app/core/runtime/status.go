@@ -123,14 +123,36 @@ type gatewayTraceEntry struct {
 }
 
 type gatewayTraceSummary struct {
-	WindowMinutes int
-	TotalEvents   int
-	ErrorEvents   int
-	ByEvent       map[string]int
-	ErrorByEvent  map[string]int
-	ByChannel     map[string]int
-	ErrorChannels map[string]int
-	LatestAt      string
+	WindowMinutes         int
+	TotalEvents           int
+	ErrorEvents           int
+	ByEvent               map[string]int
+	ErrorByEvent          map[string]int
+	ByChannel             map[string]int
+	ErrorChannels         map[string]int
+	DisconnectedByChannel map[string]int
+	LatestAt              string
+}
+
+type channelDegradationEntry struct {
+	ChannelID          string  `json:"channel_id"`
+	TotalEvents        int     `json:"total_events"`
+	ErrorEvents        int     `json:"error_events"`
+	ErrorRate          float64 `json:"error_rate"`
+	DisconnectedEvents int     `json:"disconnected_events"`
+	Severity           string  `json:"severity"`
+	Recommendation     string  `json:"recommendation"`
+}
+
+type channelDegradationSummary struct {
+	Status             string                    `json:"status"`
+	ObservedChannels   int                       `json:"observed_channels"`
+	HealthyChannels    int                       `json:"healthy_channels"`
+	DegradedChannels   int                       `json:"degraded_channels"`
+	CriticalChannels   int                       `json:"critical_channels"`
+	FallbackCandidates []string                  `json:"fallback_candidates"`
+	Channels           []channelDegradationEntry `json:"channels,omitempty"`
+	Reason             string                    `json:"reason,omitempty"`
 }
 
 type runtimeAlert struct {
@@ -215,15 +237,18 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 
 	traceSummary := summarizeGatewayTrace(c.GatewayTraceBasePath, now, c.GatewayTraceWindow)
 	payload["trace"] = map[string]interface{}{
-		"window_minutes": traceSummary.WindowMinutes,
-		"total_events":   traceSummary.TotalEvents,
-		"error_events":   traceSummary.ErrorEvents,
-		"by_event":       traceSummary.ByEvent,
-		"error_by_event": traceSummary.ErrorByEvent,
-		"by_channel":     traceSummary.ByChannel,
-		"error_channels": traceSummary.ErrorChannels,
-		"latest_at":      traceSummary.LatestAt,
+		"window_minutes":          traceSummary.WindowMinutes,
+		"total_events":            traceSummary.TotalEvents,
+		"error_events":            traceSummary.ErrorEvents,
+		"by_event":                traceSummary.ByEvent,
+		"error_by_event":          traceSummary.ErrorByEvent,
+		"by_channel":              traceSummary.ByChannel,
+		"error_channels":          traceSummary.ErrorChannels,
+		"disconnected_by_channel": traceSummary.DisconnectedByChannel,
+		"latest_at":               traceSummary.LatestAt,
 	}
+	channelDegradation := summarizeChannelDegradation(traceSummary)
+	payload["channel_degradation"] = channelDegradation
 
 	executors := executor.ListExecutorCapabilities()
 	payload["executors"] = executors
@@ -231,6 +256,7 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		Now:                        now,
 		Queue:                      c.Queue,
 		Trace:                      traceSummary,
+		ChannelDegradation:         channelDegradation,
 		Executors:                  executors,
 		RetryStormWindow:           c.AlertRetryStormWindow,
 		RetryStormMinimum:          c.AlertRetryStormMinimum,
@@ -268,6 +294,7 @@ type runtimeAlertInput struct {
 	Now                        time.Time
 	Queue                      *queue.Queue
 	Trace                      gatewayTraceSummary
+	ChannelDegradation         channelDegradationSummary
 	Executors                  []executor.ExecutorCapability
 	RetryStormWindow           time.Duration
 	RetryStormMinimum          int
@@ -343,6 +370,23 @@ func summarizeRuntimeAlerts(input runtimeAlertInput) []runtimeAlert {
 			Telemetry: map[string]interface{}{
 				"events":         input.Trace.ErrorByEvent["channel_disconnected"],
 				"error_channels": input.Trace.ErrorChannels,
+			},
+		})
+	}
+
+	if input.ChannelDegradation.Status == "degraded" || input.ChannelDegradation.Status == "critical" {
+		severity := input.ChannelDegradation.Status
+		alerts = append(alerts, runtimeAlert{
+			Code:     "channel_degradation",
+			Severity: severity,
+			Source:   "gateway",
+			Message:  fmt.Sprintf("%d/%d channels are degraded in trace window", input.ChannelDegradation.DegradedChannels, input.ChannelDegradation.ObservedChannels),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"healthy_channels":    input.ChannelDegradation.HealthyChannels,
+				"critical_channels":   input.ChannelDegradation.CriticalChannels,
+				"fallback_candidates": input.ChannelDegradation.FallbackCandidates,
+				"channels":            input.ChannelDegradation.Channels,
 			},
 		})
 	}
@@ -1013,6 +1057,76 @@ func clampFloat(value float64, min float64, max float64) float64 {
 	return value
 }
 
+func summarizeChannelDegradation(trace gatewayTraceSummary) channelDegradationSummary {
+	summary := channelDegradationSummary{
+		Status:             "insufficient_data",
+		ObservedChannels:   len(trace.ByChannel),
+		HealthyChannels:    0,
+		DegradedChannels:   0,
+		CriticalChannels:   0,
+		FallbackCandidates: []string{},
+		Channels:           []channelDegradationEntry{},
+	}
+	if len(trace.ByChannel) == 0 {
+		summary.Reason = "no channel traffic in trace window"
+		return summary
+	}
+
+	channelIDs := make([]string, 0, len(trace.ByChannel))
+	for channelID := range trace.ByChannel {
+		channelIDs = append(channelIDs, channelID)
+	}
+	sort.Strings(channelIDs)
+
+	for _, channelID := range channelIDs {
+		total := trace.ByChannel[channelID]
+		if total <= 0 {
+			continue
+		}
+		errors := trace.ErrorChannels[channelID]
+		disconnected := trace.DisconnectedByChannel[channelID]
+		errorRate := float64(errors) / float64(total)
+		errorRate = math.Round(errorRate*1000) / 1000
+
+		if errors == 0 && disconnected == 0 {
+			summary.HealthyChannels++
+			summary.FallbackCandidates = append(summary.FallbackCandidates, channelID)
+			continue
+		}
+
+		entry := channelDegradationEntry{
+			ChannelID:          channelID,
+			TotalEvents:        total,
+			ErrorEvents:        errors,
+			ErrorRate:          errorRate,
+			DisconnectedEvents: disconnected,
+			Severity:           "warning",
+			Recommendation:     "inspect adapter logs and retry with backoff",
+		}
+		if disconnected > 0 || (errors >= 3 && errorRate >= 0.5) {
+			entry.Severity = "critical"
+			entry.Recommendation = "prioritize reconnect and reroute outbound traffic to healthy channels"
+			summary.CriticalChannels++
+		}
+		summary.DegradedChannels++
+		summary.Channels = append(summary.Channels, entry)
+	}
+
+	if summary.DegradedChannels == 0 {
+		summary.Status = "ok"
+		return summary
+	}
+	if summary.CriticalChannels > 0 {
+		summary.Status = "critical"
+	} else {
+		summary.Status = "degraded"
+	}
+	if len(summary.FallbackCandidates) == 0 {
+		summary.Reason = "no healthy fallback channels observed"
+	}
+	return summary
+}
+
 func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration) gatewayTraceSummary {
 	if window <= 0 {
 		window = 30 * time.Minute
@@ -1020,11 +1134,12 @@ func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration)
 	since := now.Add(-window)
 	entries := readGatewayTraceSince(basePath, since)
 	summary := gatewayTraceSummary{
-		WindowMinutes: int(window / time.Minute),
-		ByEvent:       map[string]int{},
-		ErrorByEvent:  map[string]int{},
-		ByChannel:     map[string]int{},
-		ErrorChannels: map[string]int{},
+		WindowMinutes:         int(window / time.Minute),
+		ByEvent:               map[string]int{},
+		ErrorByEvent:          map[string]int{},
+		ByChannel:             map[string]int{},
+		ErrorChannels:         map[string]int{},
+		DisconnectedByChannel: map[string]int{},
 	}
 	latest := time.Time{}
 	for _, entry := range entries {
@@ -1052,6 +1167,9 @@ func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration)
 			summary.ErrorEvents++
 			summary.ErrorByEvent[event]++
 			summary.ErrorChannels[channel]++
+			if event == "channel_disconnected" {
+				summary.DisconnectedByChannel[channel]++
+			}
 		}
 		if latest.IsZero() || timestamp.After(latest) {
 			latest = timestamp

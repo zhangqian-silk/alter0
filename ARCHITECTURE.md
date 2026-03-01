@@ -307,7 +307,7 @@ Required modules:
 - `POST /api/subagents/{id}/messages` submits a turn to a `session` sub-agent
 - `POST /api/subagents/{id}/close` closes a `session` sub-agent
 - sub-agent requests may include `announce.channel_id + announce.to`, which triggers gateway direct delivery after each completed turn
-- `GET /api/status` aggregated runtime status (includes schedules/session/subagent/cost metrics, gateway trace summary, risk watchlist snapshot, runtime alerts, recent command audit tail, and git upstream divergence)
+- `GET /api/status` aggregated runtime status (includes schedules/session/subagent/cost metrics, gateway trace summary, channel degradation summary, risk watchlist snapshot, runtime alerts, recent command audit tail, and git upstream divergence)
 
 ### 7.3 Command Surface
 
@@ -351,7 +351,9 @@ Shutdown sequence:
 - schedule status/kind/delivery-mode counters, active overdue windows, and next active run marker
 - session and sub-agent activity windows (`total/active/by_channel`) from orchestrator execution logs
 - execution latency/error rate plus model usage estimates (`chars/tokens/cost`) with optional pricing config, and `cost.threshold_guidance` global + workload-tier recommendations
-- gateway trace window aggregates (`total/error/by_event/by_channel/latest_at`) and derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/executor_unavailable/session_cost_hotspot/session_compaction_pressure/risk_watchlist_{missing,invalid,stale,item_overdue}`)
+- gateway trace window aggregates (`total/error/by_event/by_channel/disconnected_by_channel/latest_at`)
+- channel degradation summary (`channel_degradation`) with per-channel severity, fallback candidates, and recovery recommendations
+- derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/channel_degradation/executor_unavailable/session_cost_hotspot/session_compaction_pressure/risk_watchlist_{missing,invalid,stale,item_overdue}`)
 - routing/closing decision distribution
 - plugin and MCP connector health
 

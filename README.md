@@ -263,9 +263,11 @@ docker run --rm -p 8080:8080 \
 - `/task memory clear [task_id]`
 - `/task stats`
 
-`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
+`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/channel_degradation/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
 
 成本治理字段 `cost.threshold_guidance` 现在同时提供全局 p90 建议与 `workload_tiers` 分层建议（按 token 量级 1x-2x、2x-4x、4x+）；`make cost-threshold-reconcile` 会基于该建议生成受限步长的阈值调优提案，并可通过 `--apply` 写回 `runtime.observability.cost` 配置，同时输出 `cadence.ready_rate/applied_rate/ready_streak` 并按 ISO 周归档历史快照。
+
+通道韧性字段 `channel_degradation` 会根据 trace 窗口输出每个异常通道的错误率/断连次数、严重度和恢复建议，并给出可回退的健康通道候选。
 
 管理员命令：
 
@@ -380,7 +382,7 @@ Response (`202 Accepted`):
 
 ### `GET /api/status`
 
-返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
+返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/channel_degradation/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
 
 ## Observability and Data Layout
 
