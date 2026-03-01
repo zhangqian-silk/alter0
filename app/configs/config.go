@@ -70,9 +70,20 @@ type MemoryPolicyConfig struct {
 }
 
 type RuntimeConfig struct {
-	Maintenance MaintenanceConfig    `json:"maintenance"`
-	Queue       ExecutionQueueConfig `json:"queue"`
-	Shutdown    ShutdownConfig       `json:"shutdown"`
+	Maintenance   MaintenanceConfig    `json:"maintenance"`
+	Queue         ExecutionQueueConfig `json:"queue"`
+	Shutdown      ShutdownConfig       `json:"shutdown"`
+	Observability ObservabilityConfig  `json:"observability"`
+}
+
+type ObservabilityConfig struct {
+	Cost CostGovernanceConfig `json:"cost"`
+}
+
+type CostGovernanceConfig struct {
+	SessionCostShareAlertThreshold  float64 `json:"session_cost_share_alert_threshold"`
+	PromptOutputRatioAlertThreshold float64 `json:"prompt_output_ratio_alert_threshold"`
+	HeavySessionMinTokens           int     `json:"heavy_session_min_tokens"`
 }
 
 type ShutdownConfig struct {
@@ -243,6 +254,13 @@ func defaultConfig() Config {
 			Shutdown: ShutdownConfig{
 				DrainTimeoutSec: 5,
 			},
+			Observability: ObservabilityConfig{
+				Cost: CostGovernanceConfig{
+					SessionCostShareAlertThreshold:  0.35,
+					PromptOutputRatioAlertThreshold: 6.0,
+					HeavySessionMinTokens:           1200,
+				},
+			},
 		},
 		Security: SecurityConfig{
 			AdminUserIDs: []string{"local_user"},
@@ -339,6 +357,15 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Runtime.Shutdown.DrainTimeoutSec <= 0 {
 		cfg.Runtime.Shutdown.DrainTimeoutSec = 5
+	}
+	if cfg.Runtime.Observability.Cost.SessionCostShareAlertThreshold <= 0 || cfg.Runtime.Observability.Cost.SessionCostShareAlertThreshold >= 1 {
+		cfg.Runtime.Observability.Cost.SessionCostShareAlertThreshold = 0.35
+	}
+	if cfg.Runtime.Observability.Cost.PromptOutputRatioAlertThreshold <= 0 {
+		cfg.Runtime.Observability.Cost.PromptOutputRatioAlertThreshold = 6.0
+	}
+	if cfg.Runtime.Observability.Cost.HeavySessionMinTokens <= 0 {
+		cfg.Runtime.Observability.Cost.HeavySessionMinTokens = 1200
 	}
 	if cfg.Channels.Telegram.PollIntervalSec <= 0 {
 		cfg.Channels.Telegram.PollIntervalSec = 2

@@ -88,6 +88,15 @@ func TestApplyDefaultsSetsQueueDefaults(t *testing.T) {
 	if cfg.Runtime.Shutdown.DrainTimeoutSec != 5 {
 		t.Fatalf("unexpected shutdown drain timeout: %d", cfg.Runtime.Shutdown.DrainTimeoutSec)
 	}
+	if cfg.Runtime.Observability.Cost.SessionCostShareAlertThreshold != 0.35 {
+		t.Fatalf("unexpected session share alert threshold: %f", cfg.Runtime.Observability.Cost.SessionCostShareAlertThreshold)
+	}
+	if cfg.Runtime.Observability.Cost.PromptOutputRatioAlertThreshold != 6.0 {
+		t.Fatalf("unexpected prompt/output ratio alert threshold: %f", cfg.Runtime.Observability.Cost.PromptOutputRatioAlertThreshold)
+	}
+	if cfg.Runtime.Observability.Cost.HeavySessionMinTokens != 1200 {
+		t.Fatalf("unexpected heavy session min tokens: %d", cfg.Runtime.Observability.Cost.HeavySessionMinTokens)
+	}
 }
 
 func TestApplyDefaultsSetsShutdownDrainTimeout(t *testing.T) {
@@ -101,6 +110,32 @@ func TestApplyDefaultsSetsShutdownDrainTimeout(t *testing.T) {
 
 	if cfg.Runtime.Shutdown.DrainTimeoutSec != 5 {
 		t.Fatalf("expected default drain timeout 5, got %d", cfg.Runtime.Shutdown.DrainTimeoutSec)
+	}
+}
+
+func TestApplyDefaultsSanitizesCostObservabilityThresholds(t *testing.T) {
+	cfg := Config{
+		Runtime: RuntimeConfig{
+			Observability: ObservabilityConfig{
+				Cost: CostGovernanceConfig{
+					SessionCostShareAlertThreshold:  1.2,
+					PromptOutputRatioAlertThreshold: -1,
+					HeavySessionMinTokens:           0,
+				},
+			},
+		},
+	}
+
+	applyDefaults(&cfg)
+
+	if cfg.Runtime.Observability.Cost.SessionCostShareAlertThreshold != 0.35 {
+		t.Fatalf("expected session share alert threshold default, got %f", cfg.Runtime.Observability.Cost.SessionCostShareAlertThreshold)
+	}
+	if cfg.Runtime.Observability.Cost.PromptOutputRatioAlertThreshold != 6.0 {
+		t.Fatalf("expected prompt/output ratio alert threshold default, got %f", cfg.Runtime.Observability.Cost.PromptOutputRatioAlertThreshold)
+	}
+	if cfg.Runtime.Observability.Cost.HeavySessionMinTokens != 1200 {
+		t.Fatalf("expected heavy session min tokens default, got %d", cfg.Runtime.Observability.Cost.HeavySessionMinTokens)
 	}
 }
 
