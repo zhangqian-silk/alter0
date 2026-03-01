@@ -1,0 +1,128 @@
+{
+  "updated_at": "2026-03-02T23:45:00Z",
+  "scenarios": [
+    {
+      "id": "single-disconnect-with-fallback",
+      "description": "single adapter disconnect still keeps one healthy fallback channel",
+      "window_minutes": 30,
+      "events": [
+        {
+          "offset_seconds": -45,
+          "channel_id": "slack",
+          "event": "channel_disconnected",
+          "status": "error",
+          "detail": "socket closed"
+        },
+        {
+          "offset_seconds": -30,
+          "channel_id": "slack",
+          "event": "inbound_received",
+          "status": "ok"
+        },
+        {
+          "offset_seconds": -15,
+          "channel_id": "telegram",
+          "event": "inbound_received",
+          "status": "ok"
+        }
+      ],
+      "expect": {
+        "status": "critical",
+        "min_degraded_channels": 1,
+        "min_fallback_candidates": 1,
+        "alert_codes": [
+          "channel_disconnected",
+          "channel_degradation"
+        ]
+      }
+    },
+    {
+      "id": "all-channels-degraded-no-fallback",
+      "description": "all observed channels are degraded and fallback list should stay empty",
+      "window_minutes": 30,
+      "events": [
+        {
+          "offset_seconds": -40,
+          "channel_id": "slack",
+          "event": "channel_disconnected",
+          "status": "error",
+          "detail": "socket closed"
+        },
+        {
+          "offset_seconds": -30,
+          "channel_id": "telegram",
+          "event": "agent_process",
+          "status": "error",
+          "detail": "rate limit"
+        },
+        {
+          "offset_seconds": -20,
+          "channel_id": "telegram",
+          "event": "agent_process",
+          "status": "error",
+          "detail": "rate limit"
+        },
+        {
+          "offset_seconds": -10,
+          "channel_id": "telegram",
+          "event": "agent_process",
+          "status": "error",
+          "detail": "rate limit"
+        }
+      ],
+      "expect": {
+        "status": "critical",
+        "min_degraded_channels": 2,
+        "max_degraded_channels": 2,
+        "min_fallback_candidates": 0,
+        "reason_contains": "no healthy fallback",
+        "alert_codes": [
+          "channel_disconnected",
+          "channel_degradation"
+        ]
+      }
+    },
+    {
+      "id": "error-spike-with-healthy-fallback",
+      "description": "error spike without disconnect should be degraded instead of critical when fallback is healthy",
+      "window_minutes": 30,
+      "events": [
+        {
+          "offset_seconds": -40,
+          "channel_id": "cli",
+          "event": "agent_process",
+          "status": "error",
+          "detail": "temporary"
+        },
+        {
+          "offset_seconds": -30,
+          "channel_id": "cli",
+          "event": "agent_process",
+          "status": "error",
+          "detail": "temporary"
+        },
+        {
+          "offset_seconds": -20,
+          "channel_id": "cli",
+          "event": "agent_process",
+          "status": "ok"
+        },
+        {
+          "offset_seconds": -10,
+          "channel_id": "http",
+          "event": "inbound_received",
+          "status": "ok"
+        }
+      ],
+      "expect": {
+        "status": "degraded",
+        "min_degraded_channels": 1,
+        "max_degraded_channels": 1,
+        "min_fallback_candidates": 1,
+        "alert_codes": [
+          "channel_degradation"
+        ]
+      }
+    }
+  ]
+}

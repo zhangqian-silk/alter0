@@ -1,4 +1,4 @@
-.PHONY: run build test test-stability check-config-boundary check-service-boundary config-governance cost-threshold-history cost-threshold-reconcile risk-benchmark competitor-tracking-refresh fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
+.PHONY: run build test test-stability check-config-boundary check-service-boundary config-governance cost-threshold-history cost-threshold-reconcile risk-benchmark channel-chaos-drill competitor-tracking-refresh fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
 .DEFAULT_GOAL := run
 
 run:
@@ -30,6 +30,9 @@ cost-threshold-reconcile:
 
 risk-benchmark:
 	./scripts/check-risk-benchmark.sh
+
+channel-chaos-drill:
+	./scripts/check-channel-chaos-drill.sh
 
 competitor-tracking-refresh:
 	./scripts/update-competitor-tracking.sh

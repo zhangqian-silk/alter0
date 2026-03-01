@@ -50,6 +50,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Threshold reconcile cadence archive and readiness trend (`output/cost/threshold-reconcile/<ISO-week>/` + `cadence.ready_rate/applied_rate/ready_streak`)
 - [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability + session cost hotspot/compaction pressure)
 - [x] Runtime channel degradation snapshot (`channel_degradation`) with per-channel severity, fallback candidates, and recovery recommendations
+- [x] Channel chaos drill gate for degradation/fallback regression (`make channel-chaos-drill` -> `config/channel-chaos-matrix.json` + `output/channel-chaos/drill-latest.json`)
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`), including threshold-history freshness checks
 - [x] Scenario benchmark matrix + competitor tracking gate extension (`config/scenario-benchmark-matrix.json`, `config/competitor-tracking.json`, `scripts/update-competitor-tracking.sh`)
@@ -69,7 +70,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 - [x] Gateway integration matrix automation (`make integration-matrix`)
-- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + cost threshold history/reconcile cadence (`make cost-threshold-history`, `make cost-threshold-reconcile`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
+- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + channel chaos drill (`make channel-chaos-drill`) + cost threshold history/reconcile cadence (`make cost-threshold-history`, `make cost-threshold-reconcile`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
 - [x] Config parameter governance audit for agents/bindings/session/tools (`make config-governance` -> `output/config/governance-latest.json`)
 - [x] Service-layer schedule facade (`app/core/service/schedule`) used by runtime/HTTP integration boundaries
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
@@ -114,8 +115,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P5 (Channel Resilience and Degrade Strategy)
 
 1. [x] N27 Channel degradation observability + fallback guidance (`channel_degradation` snapshot + alert `channel_degradation`)
+2. [x] N28 Channel chaos drill gate (`make channel-chaos-drill` validates fallback/degradation expectations from `config/channel-chaos-matrix.json`)
 
-Queue status: N27 merged; post-alignment backlog has no open blocking item.
+Queue status: N28 merged; post-alignment backlog has no open blocking item.
 
 ## 4) Change Rule
 
