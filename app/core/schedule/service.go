@@ -455,13 +455,13 @@ func (s *Service) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				s.dispatchDue(ctx)
+				s.DispatchDue(ctx)
 			}
 		}
 	}()
 }
 
-func (s *Service) dispatchDue(ctx context.Context) {
+func (s *Service) DispatchDue(ctx context.Context) {
 	if s.store == nil || s.dispatcher == nil {
 		return
 	}

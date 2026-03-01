@@ -60,7 +60,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 - [x] Gateway integration matrix automation (`make integration-matrix`)
-- [x] Release gates (`make release-gate`) with regression + rollback drill + docs/deploy checks
+- [x] Release gates (`make release-gate`) with test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
 
 ## 3) Active Priority Queue (Post-Alignment)
@@ -71,16 +71,16 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 1. [x] N9 Async task cancellation semantics hardening (pending/running interruption + canceled audit fields)
 2. [x] N10 Storage migration safety upgrade (incremental migration + backup/rollback path)
-3. [ ] N14 Test stability hardening (`go test ./...` deterministic pass)
+3. [x] N14 Test stability hardening (`go test ./...` deterministic pass)
 
 ### P1 (Structural Refactor)
 
-1. [ ] N11 HTTP layer responsibility convergence (state sinks to service layer)
-2. [ ] N12 Scheduler boundary unification (single scheduling loop authority)
+1. [x] N11 HTTP layer responsibility convergence (state sinks to service layer)
+2. [x] N12 Scheduler boundary unification (single scheduling loop authority)
 3. [ ] N13 Config layer dependency decoupling (`configs` no reverse dependency on runtime packages)
 4. [ ] N15 Service modularization (`core -> service -> infra` layering)
 
-Queue status: N10 is merged in this round. Next item is `P0/N14`.
+Queue status: N12 is merged in this round. Next item is `P1/N13`.
 
 ## 4) Change Rule
 

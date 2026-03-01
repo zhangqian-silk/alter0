@@ -3,11 +3,13 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
+
+	"alter0/app/service/httpstate"
 )
 
 const (
@@ -69,27 +71,6 @@ type subagentStatusResponse struct {
 
 type subagentListResponse struct {
 	Subagents []subagentStatusResponse `json:"subagents"`
-}
-
-type subagentRecord struct {
-	ID        string
-	Mode      string
-	Status    string
-	UserID    string
-	AgentID   string
-	Announce  *subagentAnnounceTarget
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Result    *outgoingResponse
-	Error     string
-	Turns     []subagentTurnRecord
-}
-
-type subagentTurnRecord struct {
-	Turn   int
-	Status string
-	Result *outgoingResponse
-	Error  string
 }
 
 func (c *HTTPChannel) SetSubagentAnnouncer(announcer func(context.Context, SubagentAnnouncement) error) {
@@ -167,26 +148,12 @@ func (c *HTTPChannel) handleSubagentCreate(w http.ResponseWriter, r *http.Reques
 	}
 
 	userID := strings.TrimSpace(req.UserID)
-	if userID == "" {
-		userID = "local_user"
+	now := time.Now().UTC()
+	record, err := c.subagentStore.Create(c.newID("subagent"), mode, userID, strings.TrimSpace(req.AgentID), toServiceAnnounceTarget(req.Announce), now)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	record := &subagentRecord{
-		ID:        c.newID("subagent"),
-		Mode:      mode,
-		Status:    "pending",
-		UserID:    userID,
-		AgentID:   strings.TrimSpace(req.AgentID),
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
-		Announce:  req.Announce,
-	}
-	if mode == subagentModeSession {
-		record.Status = "active"
-	}
-
-	c.subagentMu.Lock()
-	c.subagents[record.ID] = record
-	c.subagentMu.Unlock()
 
 	if mode == subagentModeRun {
 		timeout := c.subagentTurnTimeout(req.TimeoutSec)
@@ -208,30 +175,12 @@ func (c *HTTPChannel) handleSubagentList(w http.ResponseWriter, r *http.Request)
 	statusFilter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
 	modeFilter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mode")))
 
-	c.subagentMu.Lock()
-	items := make([]*subagentRecord, 0, len(c.subagents))
-	for _, record := range c.subagents {
-		if statusFilter != "" && statusFilter != "all" && record.Status != statusFilter {
-			continue
-		}
-		if modeFilter != "" && modeFilter != "all" && record.Mode != modeFilter {
-			continue
-		}
-		copyRecord := *record
-		items = append(items, &copyRecord)
-	}
-	c.subagentMu.Unlock()
-
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].CreatedAt.After(items[j].CreatedAt)
-	})
-	if len(items) > limit {
-		items = items[:limit]
-	}
+	items := c.subagentStore.List(statusFilter, modeFilter, limit)
 
 	resp := subagentListResponse{Subagents: make([]subagentStatusResponse, 0, len(items))}
 	for _, record := range items {
-		resp.Subagents = append(resp.Subagents, toSubagentStatusResponse(record))
+		recordCopy := record
+		resp.Subagents = append(resp.Subagents, toSubagentStatusResponse(&recordCopy))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -282,24 +231,16 @@ func (c *HTTPChannel) handleSubagentMessage(w http.ResponseWriter, r *http.Reque
 }
 
 func (c *HTTPChannel) handleSubagentClose(w http.ResponseWriter, r *http.Request, id string) {
-	c.subagentMu.Lock()
-	record, ok := c.subagents[id]
-	if !ok {
-		c.subagentMu.Unlock()
-		http.NotFound(w, r)
-		return
-	}
-	if record.Mode != subagentModeSession {
-		c.subagentMu.Unlock()
+	record, err := c.subagentStore.CloseSession(id, time.Now().UTC())
+	if err != nil {
+		if errors.Is(err, httpstate.ErrSubagentNotFound) {
+			http.NotFound(w, r)
+			return
+		}
 		http.Error(w, "only session mode supports close", http.StatusBadRequest)
 		return
 	}
-	if record.Status == "active" || record.Status == "pending" {
-		record.Status = "closed"
-		record.UpdatedAt = time.Now().UTC()
-	}
-	payload := toSubagentStatusResponse(record)
-	c.subagentMu.Unlock()
+	payload := toSubagentStatusResponse(&record)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -307,6 +248,7 @@ func (c *HTTPChannel) handleSubagentClose(w http.ResponseWriter, r *http.Request
 }
 
 func (c *HTTPChannel) executeSubagentTurn(ctx context.Context, id string, content string, timeout time.Duration, autoClose bool) (*subagentTurnResponse, int) {
+	_ = autoClose
 	if c.handler == nil {
 		return &subagentTurnResponse{SubagentID: id, Status: "failed", Error: "handler not ready"}, http.StatusServiceUnavailable
 	}
@@ -316,44 +258,44 @@ func (c *HTTPChannel) executeSubagentTurn(ctx context.Context, id string, conten
 		return &subagentTurnResponse{SubagentID: id, Status: "failed", Error: "content is required"}, http.StatusBadRequest
 	}
 
-	c.subagentMu.Lock()
-	record, ok := c.subagents[id]
-	if !ok {
-		c.subagentMu.Unlock()
-		return nil, http.StatusNotFound
+	start, err := c.subagentStore.BeginTurn(id, time.Now().UTC())
+	if err != nil {
+		switch {
+		case errors.Is(err, httpstate.ErrSubagentNotFound):
+			return nil, http.StatusNotFound
+		case errors.Is(err, httpstate.ErrSubagentSessionClosed):
+			record, ok := c.subagentStore.Get(id)
+			status := "closed"
+			if ok {
+				status = record.Status
+			}
+			return &subagentTurnResponse{SubagentID: id, Mode: subagentModeSession, Status: status, Error: "session is not active"}, http.StatusConflict
+		case errors.Is(err, httpstate.ErrSubagentRunAlreadyDone):
+			record, ok := c.subagentStore.Get(id)
+			status := "completed"
+			if ok {
+				status = record.Status
+			}
+			return &subagentTurnResponse{SubagentID: id, Mode: subagentModeRun, Status: status, Error: "run mode already finished"}, http.StatusConflict
+		default:
+			return &subagentTurnResponse{SubagentID: id, Status: "failed", Error: err.Error()}, http.StatusBadRequest
+		}
 	}
-	if record.Mode == subagentModeSession && record.Status != "active" {
-		status := record.Status
-		c.subagentMu.Unlock()
-		return &subagentTurnResponse{SubagentID: id, Mode: subagentModeSession, Status: status, Error: "session is not active"}, http.StatusConflict
-	}
-	if record.Mode == subagentModeRun && len(record.Turns) > 0 {
-		status := record.Status
-		c.subagentMu.Unlock()
-		return &subagentTurnResponse{SubagentID: id, Mode: subagentModeRun, Status: status, Error: "run mode already finished"}, http.StatusConflict
-	}
-	mode := record.Mode
-	turnIndex := len(record.Turns) + 1
-	record.Status = "running"
-	record.UpdatedAt = time.Now().UTC()
-	announce := record.Announce
-	userID := record.UserID
-	agentID := record.AgentID
-	c.subagentMu.Unlock()
 
-	incoming := incomingRequest{Content: content, UserID: userID, AgentID: agentID}
+	incoming := incomingRequest{Content: content, UserID: start.UserID, AgentID: start.AgentID}
 	msg, respCh := c.prepareMessage(incoming)
 	if msg.Meta == nil {
 		msg.Meta = map[string]interface{}{}
 	}
 	msg.Meta["subagent_id"] = id
-	msg.Meta["subagent_mode"] = mode
-	msg.Meta["subagent_turn"] = turnIndex
+	msg.Meta["subagent_mode"] = start.Mode
+	msg.Meta["subagent_turn"] = start.Turn
 
 	c.handler(msg)
 
 	status := "completed"
 	var result *outgoingResponse
+	var serviceResult *httpstate.TaskResult
 	var errMsg string
 
 	waitTimeout := timeout
@@ -371,47 +313,28 @@ func (c *HTTPChannel) executeSubagentTurn(ctx context.Context, id string, conten
 			Closed:   closed,
 			Decision: decision,
 		}
+		serviceResult = &httpstate.TaskResult{
+			TaskID:   response.TaskID,
+			Response: response.Content,
+			Closed:   closed,
+			Decision: decision,
+		}
 	case <-time.After(waitTimeout):
 		status = "timeout"
 		errMsg = "subagent turn timeout"
 	}
 	c.removePendingRequest(msg.RequestID)
 
-	c.subagentMu.Lock()
-	record, ok = c.subagents[id]
-	if ok {
-		record.UpdatedAt = time.Now().UTC()
-		record.Error = errMsg
-		record.Result = result
-		record.Turns = append(record.Turns, subagentTurnRecord{
-			Turn:   turnIndex,
-			Status: status,
-			Result: result,
-			Error:  errMsg,
-		})
-		if mode == subagentModeRun {
-			record.Status = status
-			if autoClose && record.Status == "completed" {
-				record.Status = "completed"
-			}
-		} else {
-			if status == "timeout" {
-				record.Status = "active"
-			} else {
-				record.Status = "active"
-			}
-		}
-	}
-	c.subagentMu.Unlock()
+	_, _ = c.subagentStore.FinishTurn(id, start.Turn, status, serviceResult, errMsg, time.Now().UTC())
 
-	if announce != nil {
+	if start.Announce != nil {
 		_ = c.emitSubagentAnnouncement(ctx, SubagentAnnouncement{
-			ChannelID:  announce.ChannelID,
-			To:         announce.To,
-			Message:    buildSubagentAnnouncementText(id, mode, turnIndex, status, result, errMsg),
+			ChannelID:  start.Announce.ChannelID,
+			To:         start.Announce.To,
+			Message:    buildSubagentAnnouncementText(id, start.Mode, start.Turn, status, result, errMsg),
 			SubagentID: id,
-			Mode:       mode,
-			Turn:       turnIndex,
+			Mode:       start.Mode,
+			Turn:       start.Turn,
 			Status:     status,
 		})
 	}
@@ -422,9 +345,9 @@ func (c *HTTPChannel) executeSubagentTurn(ctx context.Context, id string, conten
 	}
 	turn := &subagentTurnResponse{
 		SubagentID: id,
-		Mode:       mode,
+		Mode:       start.Mode,
 		Status:     status,
-		Turn:       turnIndex,
+		Turn:       start.Turn,
 		Result:     result,
 		Error:      errMsg,
 	}
@@ -442,17 +365,15 @@ func (c *HTTPChannel) emitSubagentAnnouncement(ctx context.Context, announcement
 }
 
 func (c *HTTPChannel) snapshotSubagent(id string) *subagentStatusResponse {
-	c.subagentMu.Lock()
-	defer c.subagentMu.Unlock()
-	record, ok := c.subagents[id]
+	record, ok := c.subagentStore.Get(id)
 	if !ok {
 		return nil
 	}
-	payload := toSubagentStatusResponse(record)
+	payload := toSubagentStatusResponse(&record)
 	return &payload
 }
 
-func toSubagentStatusResponse(record *subagentRecord) subagentStatusResponse {
+func toSubagentStatusResponse(record *httpstate.SubagentRecord) subagentStatusResponse {
 	payload := subagentStatusResponse{
 		SubagentID: record.ID,
 		Mode:       record.Mode,
@@ -462,11 +383,15 @@ func toSubagentStatusResponse(record *subagentRecord) subagentStatusResponse {
 		CreatedAt:  record.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:  record.UpdatedAt.Format(time.RFC3339),
 		Error:      record.Error,
-		Announce:   record.Announce,
+		Announce:   toHTTPAnnounceTarget(record.Announce),
 	}
 	if record.Result != nil {
-		copyResult := *record.Result
-		payload.Result = &copyResult
+		payload.Result = &outgoingResponse{
+			TaskID:   record.Result.TaskID,
+			Response: record.Result.Response,
+			Closed:   record.Result.Closed,
+			Decision: record.Result.Decision,
+		}
 	}
 	if len(record.Turns) > 0 {
 		payload.Turns = make([]subagentTurnResponse, 0, len(record.Turns))
@@ -479,13 +404,31 @@ func toSubagentStatusResponse(record *subagentRecord) subagentStatusResponse {
 				Error:      turn.Error,
 			}
 			if turn.Result != nil {
-				copyResult := *turn.Result
-				entry.Result = &copyResult
+				entry.Result = &outgoingResponse{
+					TaskID:   turn.Result.TaskID,
+					Response: turn.Result.Response,
+					Closed:   turn.Result.Closed,
+					Decision: turn.Result.Decision,
+				}
 			}
 			payload.Turns = append(payload.Turns, entry)
 		}
 	}
 	return payload
+}
+
+func toServiceAnnounceTarget(target *subagentAnnounceTarget) *httpstate.SubagentAnnounceTarget {
+	if target == nil {
+		return nil
+	}
+	return &httpstate.SubagentAnnounceTarget{ChannelID: target.ChannelID, To: target.To}
+}
+
+func toHTTPAnnounceTarget(target *httpstate.SubagentAnnounceTarget) *subagentAnnounceTarget {
+	if target == nil {
+		return nil
+	}
+	return &subagentAnnounceTarget{ChannelID: target.ChannelID, To: target.To}
 }
 
 func normalizeSubagentMode(raw string) string {
