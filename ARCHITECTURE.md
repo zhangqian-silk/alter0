@@ -246,6 +246,7 @@ Required modules:
 ### 7.2 Async API
 
 - `POST /api/tasks` accepts async task requests and returns request id
+- `GET /api/tasks` returns recent async requests with status filtering (`status`) and bounded pagination (`limit`)
 - `GET /api/tasks/{id}` returns task status (`pending|completed|canceled|timeout`) and completion payload
 - `POST /api/tasks/{id}/cancel` marks a pending async task as canceled
 - `GET /api/status` aggregated runtime status (includes recent command audit tail)
@@ -302,6 +303,11 @@ Deployment reference assets:
 - liveness: process alive
 - readiness: store + executor registry + plugin host + queue all ready
 - degraded: partial dependency failure with fallback path
+
+### 9.4 Console Operations
+
+- Web Console exposes recent async task queue cards backed by `GET /api/tasks`
+- operators can refresh statuses, cancel `pending` requests, and retry `timeout/canceled` requests without leaving the browser
 
 ## 10. Extensibility Rules
 
