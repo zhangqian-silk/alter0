@@ -14,6 +14,8 @@ import (
 	"alter0/app/pkg/types"
 )
 
+const defaultAgentID = "default"
+
 type QueueOptions struct {
 	Enabled        bool
 	EnqueueTimeout time.Duration
@@ -23,14 +25,16 @@ type QueueOptions struct {
 }
 
 type DefaultGateway struct {
-	agent    types.Agent
-	channels map[string]types.Channel
-	mu       sync.RWMutex
+	defaultAgentID string
+	agents         map[string]types.Agent
+	channels       map[string]types.Channel
+	mu             sync.RWMutex
 
 	executionQueue *queue.Queue
 	queueOptions   QueueOptions
 
 	processedMessages uint64
+	agentFallbacks    uint64
 	lastMessageUnix   atomic.Int64
 	startedUnix       atomic.Int64
 }
@@ -39,17 +43,58 @@ type HealthStatus struct {
 	Started            bool
 	StartedAt          time.Time
 	RegisteredChannels []string
+	RegisteredAgents   []string
+	DefaultAgentID     string
 	ProcessedMessages  uint64
+	AgentFallbacks     uint64
 	LastMessageAt      time.Time
 	QueueEnabled       bool
 	Queue              queue.Stats
 }
 
 func NewGateway(agent types.Agent) *DefaultGateway {
-	return &DefaultGateway{
-		agent:    agent,
-		channels: make(map[string]types.Channel),
+	agents := map[string]types.Agent{}
+	if agent != nil {
+		agents[defaultAgentID] = agent
 	}
+	return &DefaultGateway{
+		defaultAgentID: defaultAgentID,
+		agents:         agents,
+		channels:       make(map[string]types.Channel),
+	}
+}
+
+func (g *DefaultGateway) RegisterAgent(agentID string, agent types.Agent) error {
+	id := strings.TrimSpace(agentID)
+	if id == "" {
+		return fmt.Errorf("agent id is required")
+	}
+	if agent == nil {
+		return fmt.Errorf("agent is required")
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.agents[id] = agent
+	if g.defaultAgentID == "" {
+		g.defaultAgentID = id
+	}
+	return nil
+}
+
+func (g *DefaultGateway) SetDefaultAgent(agentID string) error {
+	id := strings.TrimSpace(agentID)
+	if id == "" {
+		return fmt.Errorf("default agent id is required")
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, ok := g.agents[id]; !ok {
+		return fmt.Errorf("default agent not found: %s", id)
+	}
+	g.defaultAgentID = id
+	return nil
 }
 
 func (g *DefaultGateway) RegisterChannel(c types.Channel) {
@@ -88,14 +133,15 @@ func (g *DefaultGateway) Start(ctx context.Context) error {
 		g.lastMessageUnix.Store(time.Now().Unix())
 		log.Printf("[Gateway] Received message from channel=%s user=%s", msg.ChannelID, msg.UserID)
 
+		routedMsg := g.routeMessageToAgent(msg)
 		if g.queueEnabled() {
-			g.dispatchWithQueue(ctx, msg)
+			g.dispatchWithQueue(ctx, routedMsg)
 			return
 		}
 
-		if err := g.processAndReply(ctx, msg); err != nil {
+		if err := g.processAndReply(ctx, routedMsg); err != nil {
 			log.Printf("[Gateway] Processing failed: %v", err)
-			_ = g.sendErrorReply(ctx, msg, "Error: "+err.Error())
+			_ = g.sendErrorReply(ctx, routedMsg, "Error: "+err.Error())
 		}
 	}
 
@@ -163,7 +209,12 @@ func (g *DefaultGateway) dispatchWithQueue(ctx context.Context, msg types.Messag
 }
 
 func (g *DefaultGateway) processAndReply(ctx context.Context, msg types.Message) error {
-	response, err := g.agent.Process(ctx, msg)
+	agent, _, err := g.resolveAgent(msg)
+	if err != nil {
+		return err
+	}
+
+	response, err := agent.Process(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("agent process: %w", err)
 	}
@@ -200,6 +251,85 @@ func (g *DefaultGateway) sendErrorReply(ctx context.Context, msg types.Message, 
 	}
 	normalizeReply(&response, msg)
 	return channel.Send(ctx, response)
+}
+
+func (g *DefaultGateway) routeMessageToAgent(msg types.Message) types.Message {
+	agent, resolvedAgentID, err := g.resolveAgent(msg)
+	if err != nil {
+		if msg.Meta == nil {
+			msg.Meta = map[string]interface{}{}
+		}
+		msg.Meta["route_error"] = err.Error()
+		return msg
+	}
+	_ = agent
+
+	requestedAgentID, requested := requestedAgentID(msg)
+	if msg.Meta == nil {
+		msg.Meta = map[string]interface{}{}
+	}
+	msg.Meta["agent_id"] = resolvedAgentID
+	if requested {
+		msg.Meta["requested_agent_id"] = requestedAgentID
+		if requestedAgentID != resolvedAgentID {
+			msg.Meta["agent_fallback"] = true
+		}
+	}
+	return msg
+}
+
+func (g *DefaultGateway) resolveAgent(msg types.Message) (types.Agent, string, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if len(g.agents) == 0 {
+		return nil, "", fmt.Errorf("gateway has no registered agents")
+	}
+
+	defaultAgentID := g.defaultAgentID
+	if strings.TrimSpace(defaultAgentID) == "" {
+		for id := range g.agents {
+			defaultAgentID = id
+			break
+		}
+	}
+	defaultAgent, ok := g.agents[defaultAgentID]
+	if !ok {
+		return nil, "", fmt.Errorf("default agent not found: %s", defaultAgentID)
+	}
+
+	requestedID, requested := requestedAgentID(msg)
+	if !requested {
+		return defaultAgent, defaultAgentID, nil
+	}
+
+	agent, ok := g.agents[requestedID]
+	if ok {
+		return agent, requestedID, nil
+	}
+
+	atomic.AddUint64(&g.agentFallbacks, 1)
+	log.Printf("[Gateway] Unknown agent requested=%s, fallback=%s", requestedID, defaultAgentID)
+	return defaultAgent, defaultAgentID, nil
+}
+
+func requestedAgentID(msg types.Message) (string, bool) {
+	if msg.Meta == nil {
+		return "", false
+	}
+	for _, key := range []string{"agent_id", "agentId"} {
+		raw, ok := msg.Meta[key]
+		if !ok {
+			continue
+		}
+		if value, ok := raw.(string); ok {
+			trimmed := strings.TrimSpace(value)
+			if trimmed != "" {
+				return trimmed, true
+			}
+		}
+	}
+	return "", false
 }
 
 func normalizeReply(response *types.Message, request types.Message) {
@@ -256,6 +386,11 @@ func (g *DefaultGateway) HealthStatus() HealthStatus {
 	for id := range g.channels {
 		channels = append(channels, id)
 	}
+	agents := make([]string, 0, len(g.agents))
+	for id := range g.agents {
+		agents = append(agents, id)
+	}
+	defaultAgentID := g.defaultAgentID
 	queueEnabled := g.queueOptions.Enabled && g.executionQueue != nil
 	var queueStats queue.Stats
 	if queueEnabled {
@@ -263,10 +398,14 @@ func (g *DefaultGateway) HealthStatus() HealthStatus {
 	}
 	g.mu.RUnlock()
 	sort.Strings(channels)
+	sort.Strings(agents)
 
 	status := HealthStatus{
 		RegisteredChannels: channels,
+		RegisteredAgents:   agents,
+		DefaultAgentID:     defaultAgentID,
 		ProcessedMessages:  atomic.LoadUint64(&g.processedMessages),
+		AgentFallbacks:     atomic.LoadUint64(&g.agentFallbacks),
 		QueueEnabled:       queueEnabled,
 		Queue:              queueStats,
 	}

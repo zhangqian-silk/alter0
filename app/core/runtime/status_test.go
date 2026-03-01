@@ -161,6 +161,31 @@ func TestSnapshotIncludesQueueLastShutdownReport(t *testing.T) {
 	}
 }
 
+func TestSnapshotIncludesAgentRegistry(t *testing.T) {
+	collector := &StatusCollector{
+		AgentEntries: []AgentEntry{
+			{AgentID: "beta", Workspace: "/tmp/w2", AgentDir: "/tmp/a2", Executor: "codex"},
+			{AgentID: "alpha", Workspace: "/tmp/w1", AgentDir: "/tmp/a1", Executor: "claude_code"},
+		},
+	}
+
+	snap := collector.Snapshot(context.Background())
+	raw, ok := snap["agents"]
+	if !ok {
+		t.Fatal("expected agents in snapshot")
+	}
+	items, ok := raw.([]AgentEntry)
+	if !ok {
+		t.Fatalf("expected []AgentEntry, got %T", raw)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 agents, got %d", len(items))
+	}
+	if items[0].AgentID != "alpha" || items[1].AgentID != "beta" {
+		t.Fatalf("expected sorted agents [alpha beta], got %+v", items)
+	}
+}
+
 func TestSnapshotIncludesGitDivergenceAgainstUpstream(t *testing.T) {
 	base := t.TempDir()
 	remote := filepath.Join(base, "remote.git")

@@ -63,6 +63,12 @@ func TestHealthStatusIncludesRegisteredChannels(t *testing.T) {
 	if status.RegisteredChannels[0] != "cli" || status.RegisteredChannels[1] != "http" {
 		t.Fatalf("channels should be sorted, got %v", status.RegisteredChannels)
 	}
+	if len(status.RegisteredAgents) != 1 || status.RegisteredAgents[0] != "default" {
+		t.Fatalf("unexpected registered agents: %v", status.RegisteredAgents)
+	}
+	if status.DefaultAgentID != "default" {
+		t.Fatalf("unexpected default agent id: %s", status.DefaultAgentID)
+	}
 }
 
 func TestHealthStatusTracksProcessedMessages(t *testing.T) {
@@ -110,6 +116,31 @@ func TestHealthStatusTracksProcessedMessages(t *testing.T) {
 
 	if err := <-done; err != nil {
 		t.Fatalf("gateway start returned error: %v", err)
+	}
+}
+
+func TestGatewayRoutesByAgentIDWithFallback(t *testing.T) {
+	gw := NewGateway(&testAgent{})
+	if err := gw.RegisterAgent("second", &testAgent{}); err != nil {
+		t.Fatalf("register second agent failed: %v", err)
+	}
+	if err := gw.SetDefaultAgent("second"); err != nil {
+		t.Fatalf("set default agent failed: %v", err)
+	}
+
+	msg := types.Message{Meta: map[string]interface{}{"agent_id": "missing"}}
+	routed := gw.routeMessageToAgent(msg)
+	if routed.Meta["agent_id"] != "second" {
+		t.Fatalf("expected fallback to second, got %#v", routed.Meta["agent_id"])
+	}
+	fallback, _ := routed.Meta["agent_fallback"].(bool)
+	if !fallback {
+		t.Fatalf("expected fallback flag, meta=%#v", routed.Meta)
+	}
+
+	status := gw.HealthStatus()
+	if status.AgentFallbacks != 1 {
+		t.Fatalf("expected one fallback in status, got %+v", status)
 	}
 }
 

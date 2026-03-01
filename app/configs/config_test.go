@@ -122,3 +122,59 @@ func TestApplyDefaultsSetsChannelDefaults(t *testing.T) {
 		t.Fatalf("unexpected slack event path: %s", cfg.Channels.Slack.EventPath)
 	}
 }
+
+func TestApplyDefaultsBuildsAgentRegistryDefaults(t *testing.T) {
+	cfg := Config{}
+
+	applyDefaults(&cfg)
+
+	if cfg.Agent.DefaultID != "default" {
+		t.Fatalf("expected default id 'default', got %q", cfg.Agent.DefaultID)
+	}
+	if len(cfg.Agent.Registry) != 1 {
+		t.Fatalf("expected 1 default agent entry, got %d", len(cfg.Agent.Registry))
+	}
+	entry := cfg.Agent.Registry[0]
+	if entry.ID != "default" {
+		t.Fatalf("unexpected agent id: %s", entry.ID)
+	}
+	if entry.Workspace != "." {
+		t.Fatalf("unexpected workspace: %s", entry.Workspace)
+	}
+	if entry.AgentDir == "" {
+		t.Fatal("expected non-empty agent dir")
+	}
+	if entry.Executor != cfg.Executor.Name {
+		t.Fatalf("unexpected executor fallback: %s", entry.Executor)
+	}
+}
+
+func TestApplyDefaultsAgentRegistryDedupAndFallbackDefault(t *testing.T) {
+	cfg := Config{
+		Agent: AgentConfig{
+			Name:      "Alter0",
+			DefaultID: "missing",
+			Registry: []AgentRegistryEntry{
+				{ID: "alpha", Workspace: "", AgentDir: "", Executor: ""},
+				{ID: "alpha", Workspace: "dup"},
+			},
+		},
+		Executor: ExecutorConfig{Name: "codex"},
+	}
+
+	applyDefaults(&cfg)
+
+	if len(cfg.Agent.Registry) != 1 {
+		t.Fatalf("expected deduped registry size 1, got %d", len(cfg.Agent.Registry))
+	}
+	entry := cfg.Agent.Registry[0]
+	if entry.ID != "alpha" {
+		t.Fatalf("unexpected agent id: %s", entry.ID)
+	}
+	if entry.Executor != "codex" {
+		t.Fatalf("expected executor fallback codex, got %s", entry.Executor)
+	}
+	if cfg.Agent.DefaultID != "alpha" {
+		t.Fatalf("expected default to fall back to alpha, got %s", cfg.Agent.DefaultID)
+	}
+}

@@ -19,6 +19,13 @@ import (
 	"alter0/app/core/scheduler"
 )
 
+type AgentEntry struct {
+	AgentID   string `json:"agent_id"`
+	Workspace string `json:"workspace"`
+	AgentDir  string `json:"agent_dir"`
+	Executor  string `json:"executor"`
+}
+
 type StatusCollector struct {
 	Gateway              *gateway.DefaultGateway
 	Scheduler            *scheduler.Scheduler
@@ -27,6 +34,7 @@ type StatusCollector struct {
 	RepoPath             string
 	CommandAuditBasePath string
 	CommandAuditTailSize int
+	AgentEntries         []AgentEntry
 }
 
 type commandAuditTailEntry struct {
@@ -67,6 +75,14 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	payload["executors"] = agent.ListExecutorCapabilities()
 	payload["command_audit_tail"] = readCommandAuditTail(c.CommandAuditBasePath, c.CommandAuditTailSize)
 	payload["git"] = gitStatus(ctx, c.RepoPath)
+	if len(c.AgentEntries) > 0 {
+		items := make([]AgentEntry, 0, len(c.AgentEntries))
+		items = append(items, c.AgentEntries...)
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].AgentID < items[j].AgentID
+		})
+		payload["agents"] = items
+	}
 
 	return payload
 }

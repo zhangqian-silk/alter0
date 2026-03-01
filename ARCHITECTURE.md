@@ -125,9 +125,12 @@ Responsibilities:
 
 - channel registration and lifecycle
 - message dispatch and reply correlation
+- multi-agent route resolution (`agent_id` -> registry, default fallback)
 - lightweight health aggregation and crash containment
 
 Gateway does not own task policy or execution policy.
+
+Current baseline: registry-backed agents are declared by `agentId/workspace/agentDir`; each agent keeps an isolated task store while sharing the same channel gateway process.
 
 ### 5.3 Orchestration Layer
 
