@@ -7,7 +7,7 @@ The target architecture focuses on:
 
 1. Task-first orchestration instead of chat-thread-first orchestration.
 2. Stable 24x7 runtime on a single node with clear recovery behavior and repeatable deployment assets (systemd/Docker).
-3. Pluggable execution/runtime capabilities for `agent`, `interaction`, `skill`, and `mcp`.
+3. Service-oriented capability isolation: reusable runtime capabilities are hosted in `app/service`.
 4. Strong abstraction boundaries so modules evolve independently.
 5. Observable and maintainable operations without introducing unnecessary platform complexity.
 
@@ -35,21 +35,19 @@ The target architecture focuses on:
                                v
 +---------------------------------------------------------------+
 | Orchestration Layer                                           |
-|  Task Resolver + Workflow Engine + Policy Engine + Commands   |
+|  Minimal Workflow Core: resolve -> execute -> close           |
 +------------------------------+--------------------------------+
                                |
-             +-----------------+-----------------+
-             v                                   v
-+------------------------------+   +-----------------------------+
-| Execution Layer              |   | Extension Layer             |
-|  Agent Adapter Runtime       |   | Skill Host + MCP Bridge     |
-+------------------------------+   +-----------------------------+
-             |                                   |
-             +-----------------+-----------------+
                                v
 +---------------------------------------------------------------+
-| Data & Runtime Layer                                          |
-|  Store, Queue, Scheduler, Observability, Maintenance          |
+| Service Layer (app/service)                                   |
+|  task/schedule/queue/store/executor/tool/runtime/status/audit |
++------------------------------+--------------------------------+
+                               |
+                               v
++---------------------------------------------------------------+
+| Infrastructure Layer                                          |
+|  SQLite, local FS logs/audit, external channels, executors    |
 +---------------------------------------------------------------+
 ```
 
@@ -136,20 +134,43 @@ Current baseline: registry-backed agents are declared by `agentId/workspace/agen
 
 Responsibilities:
 
-- command handling (`/task`, `/config`, `/executor`, future admin commands)
-- task resolve, context assembly, workflow transitions
-- policy evaluation (routing, closing, timeout, retry strategy)
-- orchestration-level audit logging
+- preserve only minimal orchestration logic (`route -> execute -> close`)
+- manage orchestration state transitions and decision chain only
+- invoke service interfaces, without owning persistence/runtime infrastructure
 
 Required submodules:
 
 - `orchestrator/agent` (main flow coordinator)
-- `orchestrator/command`
-- `orchestrator/task` (store + router + closer)
+- `orchestrator/task` (router + closer + core task model)
 - `orchestrator/policy` (target-state independent policy pack)
 - `orchestrator/context` (prompt/memory builder)
 
-### 5.4 Execution Layer (Agent Runtime)
+### 5.4 Service Layer (`app/service`)
+
+Responsibilities:
+
+- host independent reusable capabilities outside orchestration core
+- provide stable service contracts to gateway/orchestrator
+- centralize runtime ownership of store/queue/scheduler/log/audit/status
+
+Required modules:
+
+- `service/task` (task persistence + memory + task stats)
+- `service/command` (slash/admin command execution and permission checks)
+- `service/schedule` (at/cron center + delivery)
+- `service/queue` (job queue runtime and retry controls)
+- `service/store` (DB access, migrations, backup/restore)
+- `service/executor` (executor registry/check/invocation)
+- `service/tools` (tool policy/runtime/audit bridge)
+- `service/observability` (logger, audit streams, status aggregation)
+- `service/runtime` (preflight, maintenance, lifecycle integration)
+
+Layer boundary rule:
+
+- `core/orchestrator` depends on `service/*` interfaces only.
+- `service/*` must not depend on `core/orchestrator`.
+
+### 5.5 Execution Layer (Agent Runtime)
 
 Responsibilities:
 
@@ -167,7 +188,7 @@ type AgentExecutor interface {
 }
 ```
 
-### 5.5 Extension Layer (Skill + MCP)
+### 5.6 Extension Layer (Skill + MCP)
 
 This layer is first-class in the target architecture.
 
@@ -235,24 +256,19 @@ Long-term memory tools apply an additional context-safety rule:
 
 Audit records are appended to `output/audit/<date>/tool_execution.jsonl` with parameter/result summaries and source session metadata. Runtime status (`/status`, `/api/status`) exposes `tools.security_posture` with conflict/widened-scope checks for security review.
 
-### 5.6 Data & Runtime Layer
+### 5.7 Infrastructure Layer
 
 Responsibilities:
 
-- durable state store
-- async execution queue
-- scheduler and maintenance jobs
-- observability/audit persistence
-- backup/migration lifecycle
+- provide concrete infrastructure backends used by `app/service`
+- keep infra details isolated from orchestration core
 
 Required modules:
 
-- `store/sqlite` (default)
-- `queue`
-- `scheduler`
-- `runtime/maintenance`
-- `runtime/backup`
-- `runtime/migration`
+- `infra/store/sqlite` (default)
+- `infra/fs` (logs/audit/artifacts)
+- `infra/runtime` (maintenance/backup/migration workers)
+- `infra/adapters` (external channel/executor/protocol adapters)
 
 ## 6. Data Architecture
 
@@ -307,20 +323,21 @@ Startup sequence:
 1. initialize logger
 2. load config
 3. run startup preflight (config validity, SQLite writable path, executor binary availability)
-4. open store and validate schema
-5. run migration/backup checks
-6. initialize plugin host + MCP bridge
-7. initialize executor registry
-8. start queue/scheduler
-9. start gateway/channels
+4. initialize `service/store` and validate schema
+5. run migration/backup checks through `service/runtime`
+6. initialize `service/executor` and `service/tools`
+7. initialize `service/queue` and `service/schedule`
+8. initialize plugin host + MCP bridge
+9. initialize orchestration core with service dependencies
+10. start gateway/channels
 
 Shutdown sequence:
 
 1. stop new intake
-2. drain queue/scheduler/http with `runtime.shutdown.drain_timeout_sec`
+2. drain queue/scheduler/http through `service/runtime` with `runtime.shutdown.drain_timeout_sec`
 3. close plugins/connectors
-4. flush logs
-5. close store
+4. flush logs/audit services
+5. close store/runtime handles
 
 ## 9. Observability and Operability
 
@@ -390,9 +407,16 @@ app/
     interaction/
     gateway/
     orchestrator/
-    runtime/
+  service/
+    task/
+    command/
+    schedule/
     queue/
-    scheduler/
+    store/
+    executor/
+    tools/
+    observability/
+    runtime/
   executors/
     codex/
     claude_code/
@@ -404,12 +428,12 @@ app/
     mcp/
       bridge/
       connectors/
-  store/
-    sqlite/
-    migrations/
-  observability/
-    logging/
-    metrics/
+  infra/
+    store/
+      sqlite/
+      migrations/
+    fs/
+    adapters/
 ```
 
 ## 12. Implementation Priorities

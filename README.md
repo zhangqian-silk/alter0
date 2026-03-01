@@ -28,8 +28,9 @@ Alter0 采用以下设计域划分：
 ```text
 Channel (CLI / HTTP / Telegram / Slack / Web)
   -> Gateway
-  -> Orchestrator (Task Router + Task Store + Task Closer)
-  -> Executor (codex / claude_code)
+  -> Orchestrator Core (Task Router + Task Closer)
+  -> Service Layer (task/queue/schedule/store/runtime/tools/observability)
+  -> Executor (codex / claude_code, via service)
   -> Orchestrator
   -> Channel
 ```
@@ -42,6 +43,12 @@ Channel (CLI / HTTP / Telegram / Slack / Web)
 2. 显式 `task_id`
 3. LLM 路由到已有开放任务
 4. 创建新任务
+
+目标分层边界：
+
+- `app/core/orchestrator`：仅保留最核心编排逻辑（route -> execute -> close）。
+- `app/service`：承载独立能力模块（任务调度、队列管理、数据库、日志审计、运行时维护等）。
+- `app/core/interaction` 与 `app/core/gateway`：保持传输与路由职责，不持有业务基础设施状态。
 
 ## Core Capabilities
 
