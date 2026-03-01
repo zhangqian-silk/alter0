@@ -69,6 +69,12 @@ func main() {
 	logger.Info("Initialized %d agents, default=%s", len(agents), defaultAgent.ID)
 
 	gw := gateway.NewGateway(nil)
+	traceRecorder, err := gateway.NewTraceRecorder(filepath.Join("output", "trace"))
+	if err != nil {
+		logger.Error("Failed to initialize gateway trace recorder: %v", err)
+		os.Exit(1)
+	}
+	gw.SetTraceRecorder(traceRecorder)
 	for _, item := range agents {
 		if err := gw.RegisterAgent(item.ID, item.Brain); err != nil {
 			logger.Error("Failed to register agent %s: %v", item.ID, err)
@@ -195,14 +201,21 @@ func main() {
 	}, filepath.Join("output", "audit"))
 
 	statusCollector := &runtime.StatusCollector{
-		Gateway:         gw,
-		Scheduler:       jobScheduler,
-		Queue:           executionQueue,
-		TaskStore:       defaultAgent.TaskStore,
-		ScheduleService: scheduleService,
-		RepoPath:        ".",
-		AgentEntries:    runtimeAgentEntries(agents),
-		ToolRuntime:     toolRuntime,
+		Gateway:                 gw,
+		Scheduler:               jobScheduler,
+		Queue:                   executionQueue,
+		TaskStore:               defaultAgent.TaskStore,
+		ScheduleService:         scheduleService,
+		RepoPath:                ".",
+		GatewayTraceBasePath:    filepath.Join("output", "trace"),
+		GatewayTraceWindow:      30 * time.Minute,
+		AlertRetryStormWindow:   10 * time.Minute,
+		AlertRetryStormMinimum:  3,
+		AlertQueueBacklogRatio:  0.8,
+		AlertQueueBacklogDepth:  8,
+		AlertExecutorStrictMode: true,
+		AgentEntries:            runtimeAgentEntries(agents),
+		ToolRuntime:             toolRuntime,
 	}
 	httpChannel.SetStatusProvider(statusCollector.Snapshot)
 	for _, item := range agents {

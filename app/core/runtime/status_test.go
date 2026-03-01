@@ -429,6 +429,78 @@ func TestSnapshotIncludesAgentRegistry(t *testing.T) {
 	}
 }
 
+func TestSnapshotIncludesTraceSummaryAndAlerts(t *testing.T) {
+	now := time.Now().UTC()
+	traceBase := t.TempDir()
+	dayDir := filepath.Join(traceBase, now.Format("2006-01-02"))
+	if err := os.MkdirAll(dayDir, 0755); err != nil {
+		t.Fatalf("create trace dir failed: %v", err)
+	}
+	entries := []string{
+		fmt.Sprintf(`{"timestamp":"%s","channel_id":"cli","event":"inbound_received","status":"ok"}`, now.Add(-3*time.Minute).Format(time.RFC3339Nano)),
+		fmt.Sprintf(`{"timestamp":"%s","channel_id":"cli","event":"agent_process","status":"error","detail":"temporary"}`, now.Add(-2*time.Minute).Format(time.RFC3339Nano)),
+		fmt.Sprintf(`{"timestamp":"%s","channel_id":"cli","event":"agent_process","status":"error","detail":"temporary"}`, now.Add(-90*time.Second).Format(time.RFC3339Nano)),
+		fmt.Sprintf(`{"timestamp":"%s","channel_id":"telegram","event":"agent_process","status":"error","detail":"temporary"}`, now.Add(-45*time.Second).Format(time.RFC3339Nano)),
+		fmt.Sprintf(`{"timestamp":"%s","channel_id":"slack","event":"channel_disconnected","status":"error","detail":"connection dropped"}`, now.Add(-30*time.Second).Format(time.RFC3339Nano)),
+	}
+	if err := os.WriteFile(filepath.Join(dayDir, "gateway_events.jsonl"), []byte(strings.Join(entries, "\n")+"\n"), 0644); err != nil {
+		t.Fatalf("write trace file failed: %v", err)
+	}
+
+	q := queue.New(10)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, 1); err != nil {
+		t.Fatalf("queue start failed: %v", err)
+	}
+	defer q.Stop(200 * time.Millisecond)
+	for i := 0; i < 8; i++ {
+		if _, err := q.Enqueue(queue.Job{Run: func(context.Context) error {
+			time.Sleep(200 * time.Millisecond)
+			return nil
+		}}); err != nil {
+			t.Fatalf("enqueue job failed: %v", err)
+		}
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	collector := &StatusCollector{
+		Queue:                   q,
+		GatewayTraceBasePath:    traceBase,
+		GatewayTraceWindow:      10 * time.Minute,
+		AlertRetryStormMinimum:  3,
+		AlertQueueBacklogRatio:  0.7,
+		AlertQueueBacklogDepth:  6,
+		AlertExecutorStrictMode: true,
+	}
+
+	snap := collector.Snapshot(context.Background())
+	trace, ok := snap["trace"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected trace summary map, got %T", snap["trace"])
+	}
+	if got := intValue(t, trace["error_events"]); got != 4 {
+		t.Fatalf("expected trace error events=4, got %d", got)
+	}
+
+	alerts, ok := snap["alerts"].([]runtimeAlert)
+	if !ok {
+		t.Fatalf("expected typed runtime alerts, got %T", snap["alerts"])
+	}
+	if len(alerts) < 3 {
+		t.Fatalf("expected at least 3 alerts, got %+v", alerts)
+	}
+	codes := map[string]bool{}
+	for _, alert := range alerts {
+		codes[alert.Code] = true
+	}
+	for _, code := range []string{"queue_backlog", "retry_storm", "channel_disconnected"} {
+		if !codes[code] {
+			t.Fatalf("expected alert %q in %+v", code, alerts)
+		}
+	}
+}
+
 func TestSnapshotIncludesGitDivergenceAgainstUpstream(t *testing.T) {
 	base := t.TempDir()
 	remote := filepath.Join(base, "remote.git")

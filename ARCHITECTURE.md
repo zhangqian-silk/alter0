@@ -292,7 +292,7 @@ Required modules:
 - `POST /api/subagents/{id}/messages` submits a turn to a `session` sub-agent
 - `POST /api/subagents/{id}/close` closes a `session` sub-agent
 - sub-agent requests may include `announce.channel_id + announce.to`, which triggers gateway direct delivery after each completed turn
-- `GET /api/status` aggregated runtime status (includes schedules/session/subagent/cost metrics, recent command audit tail, and git upstream divergence)
+- `GET /api/status` aggregated runtime status (includes schedules/session/subagent/cost metrics, gateway trace summary, runtime alerts, recent command audit tail, and git upstream divergence)
 
 ### 7.3 Command Surface
 
@@ -335,6 +335,7 @@ Shutdown sequence:
 - schedule status/kind/delivery-mode counters, active overdue windows, and next active run marker
 - session and sub-agent activity windows (`total/active/by_channel`) from orchestrator execution logs
 - execution latency/error rate plus model usage estimates (`chars/tokens/cost`) with optional pricing config
+- gateway trace window aggregates (`total/error/by_event/by_channel/latest_at`) and derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/executor_unavailable`)
 - routing/closing decision distribution
 - plugin and MCP connector health
 

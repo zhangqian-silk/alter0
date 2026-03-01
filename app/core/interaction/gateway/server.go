@@ -30,6 +30,7 @@ type DefaultGateway struct {
 	agents         map[string]types.Agent
 	channels       map[string]types.Channel
 	mu             sync.RWMutex
+	tracer         TraceRecorder
 
 	executionQueue *queue.Queue
 	queueOptions   QueueOptions
@@ -105,6 +106,12 @@ func (g *DefaultGateway) RegisterChannel(c types.Channel) {
 	log.Printf("[Gateway] Registered channel: %s", c.ID())
 }
 
+func (g *DefaultGateway) SetTraceRecorder(tracer TraceRecorder) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.tracer = tracer
+}
+
 func (g *DefaultGateway) SetExecutionQueue(q *queue.Queue, opts QueueOptions) {
 	if opts.MaxRetries < 0 {
 		opts.MaxRetries = 0
@@ -133,14 +140,21 @@ func (g *DefaultGateway) Start(ctx context.Context) error {
 		atomic.AddUint64(&g.processedMessages, 1)
 		g.lastMessageUnix.Store(time.Now().Unix())
 		log.Printf("[Gateway] Received message from channel=%s user=%s", msg.ChannelID, msg.UserID)
+		g.trace(msg, "", "inbound_received", "ok", "")
 
 		routedMsg := g.routeMessageToAgent(msg)
+		agentID := metaString(routedMsg.Meta, "agent_id")
+		if routeErr := metaString(routedMsg.Meta, "route_error"); routeErr != "" {
+			g.trace(routedMsg, agentID, "route_selected", "error", routeErr)
+		} else {
+			g.trace(routedMsg, agentID, "route_selected", "ok", "")
+		}
 		if g.queueEnabled() {
-			g.dispatchWithQueue(ctx, routedMsg)
+			g.dispatchWithQueue(ctx, routedMsg, agentID)
 			return
 		}
 
-		if err := g.processAndReply(ctx, routedMsg); err != nil {
+		if err := g.processAndReply(ctx, routedMsg, agentID); err != nil {
 			log.Printf("[Gateway] Processing failed: %v", err)
 			_ = g.sendErrorReply(ctx, routedMsg, "Error: "+err.Error())
 		}
@@ -153,6 +167,9 @@ func (g *DefaultGateway) Start(ctx context.Context) error {
 			defer wg.Done()
 			if err := ch.Start(ctx, handler); err != nil {
 				log.Printf("[Gateway] Channel %s error: %v", ch.ID(), err)
+				if ctx.Err() == nil {
+					g.trace(types.Message{ChannelID: ch.ID()}, "", "channel_disconnected", "error", err.Error())
+				}
 			}
 		}(c)
 	}
@@ -169,7 +186,7 @@ func (g *DefaultGateway) queueEnabled() bool {
 	return g.queueOptions.Enabled && g.executionQueue != nil
 }
 
-func (g *DefaultGateway) dispatchWithQueue(ctx context.Context, msg types.Message) {
+func (g *DefaultGateway) dispatchWithQueue(ctx context.Context, msg types.Message, agentID string) {
 	g.mu.RLock()
 	q := g.executionQueue
 	opts := g.queueOptions
@@ -182,7 +199,7 @@ func (g *DefaultGateway) dispatchWithQueue(ctx context.Context, msg types.Messag
 		AttemptTimeout: opts.AttemptTimeout,
 		Run: func(runCtx context.Context) error {
 			attempt++
-			err := g.processAndReply(runCtx, msg)
+			err := g.processAndReply(runCtx, msg, agentID)
 			if err == nil {
 				return nil
 			}
@@ -205,33 +222,42 @@ func (g *DefaultGateway) dispatchWithQueue(ctx context.Context, msg types.Messag
 
 	if _, err := q.EnqueueContext(enqueueCtx, job); err != nil {
 		log.Printf("[Gateway] Queue enqueue failed: %v", err)
+		g.trace(msg, agentID, "queue_enqueue", "error", err.Error())
 		_ = g.sendErrorReply(ctx, msg, fmt.Sprintf("Gateway queue unavailable: %v", err))
+		return
 	}
+	g.trace(msg, agentID, "queue_enqueue", "ok", "")
 }
 
-func (g *DefaultGateway) processAndReply(ctx context.Context, msg types.Message) error {
+func (g *DefaultGateway) processAndReply(ctx context.Context, msg types.Message, agentID string) error {
 	agent, _, err := g.resolveAgent(msg)
 	if err != nil {
+		g.trace(msg, agentID, "agent_process", "error", err.Error())
 		return err
 	}
 
 	response, err := agent.Process(ctx, msg)
 	if err != nil {
+		g.trace(msg, agentID, "agent_process", "error", err.Error())
 		return fmt.Errorf("agent process: %w", err)
 	}
+	g.trace(msg, agentID, "agent_process", "ok", "")
 	if strings.TrimSpace(msg.Content) == "" && strings.TrimSpace(response.Content) == "" {
 		return nil
 	}
 
 	channel, exists := g.channelByID(msg.ChannelID)
 	if !exists {
+		g.trace(msg, agentID, "deliver_reply", "error", "channel not found for reply")
 		return fmt.Errorf("channel not found for reply: %s", msg.ChannelID)
 	}
 
 	normalizeReply(&response, msg)
 	if err := channel.Send(ctx, response); err != nil {
+		g.trace(response, agentID, "deliver_reply", "error", err.Error())
 		return fmt.Errorf("send reply: %w", err)
 	}
+	g.trace(response, agentID, "deliver_reply", "ok", "")
 	return nil
 }
 
@@ -251,7 +277,12 @@ func (g *DefaultGateway) sendErrorReply(ctx context.Context, msg types.Message, 
 		Meta:      map[string]interface{}{},
 	}
 	normalizeReply(&response, msg)
-	return channel.Send(ctx, response)
+	if err := channel.Send(ctx, response); err != nil {
+		g.trace(response, metaString(msg.Meta, "agent_id"), "deliver_error_reply", "error", err.Error())
+		return err
+	}
+	g.trace(response, metaString(msg.Meta, "agent_id"), "deliver_error_reply", "ok", "")
+	return nil
 }
 
 func (g *DefaultGateway) DeliverDirect(ctx context.Context, channelID string, to string, content string, meta map[string]interface{}) error {
@@ -341,7 +372,7 @@ func (g *DefaultGateway) DeliverAgentTurn(ctx context.Context, channelID string,
 	for k, v := range meta {
 		msg.Meta[k] = v
 	}
-	return g.processAndReply(ctx, msg)
+	return g.processAndReply(ctx, msg, strings.TrimSpace(agentID))
 }
 
 func (g *DefaultGateway) routeMessageToAgent(msg types.Message) types.Message {
@@ -421,6 +452,47 @@ func requestedAgentID(msg types.Message) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func (g *DefaultGateway) trace(msg types.Message, agentID, event, status, detail string) {
+	g.mu.RLock()
+	tracer := g.tracer
+	g.mu.RUnlock()
+	if tracer == nil {
+		return
+	}
+
+	traceEvent := TraceEvent{
+		RequestID: strings.TrimSpace(msg.RequestID),
+		MessageID: strings.TrimSpace(msg.ID),
+		ChannelID: strings.TrimSpace(msg.ChannelID),
+		UserID:    strings.TrimSpace(msg.UserID),
+		AgentID:   strings.TrimSpace(agentID),
+		Event:     strings.TrimSpace(event),
+		Status:    strings.TrimSpace(status),
+		Detail:    strings.TrimSpace(detail),
+	}
+	if traceEvent.Event == "" {
+		traceEvent.Event = "unknown"
+	}
+	if traceEvent.Status == "" {
+		traceEvent.Status = "ok"
+	}
+	if err := tracer.Record(traceEvent); err != nil {
+		log.Printf("[Gateway] Trace write failed: %v", err)
+	}
+}
+
+func metaString(meta map[string]interface{}, key string) string {
+	if len(meta) == 0 {
+		return ""
+	}
+	raw, ok := meta[key]
+	if !ok {
+		return ""
+	}
+	value, _ := raw.(string)
+	return strings.TrimSpace(value)
 }
 
 func normalizeReply(response *types.Message, request types.Message) {
