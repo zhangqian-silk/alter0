@@ -45,9 +45,10 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime status expansion for sessions/subagents/schedules/cost metrics
 - [x] Runtime cost hotspot telemetry (`cost.session_hotspots`) with compaction pressure visibility (`prompt_output_ratio`)
 - [x] Runtime cost threshold guidance (`cost.threshold_guidance`) for p90-based share/ratio tuning with drift hints
+- [x] Weekly cost threshold history archive with alert hit-rate regression (`make cost-threshold-history` -> `output/cost/threshold-history-latest.json` + `output/cost/threshold-history/<ISO-week>/`)
 - [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability + session cost hotspot/compaction pressure)
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
-- [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`)
+- [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`), including threshold-history freshness checks
 - [x] Scenario benchmark matrix + competitor tracking gate extension (`config/scenario-benchmark-matrix.json`, `config/competitor-tracking.json`, `scripts/update-competitor-tracking.sh`)
 - [x] Sub-agent run/session modes with result announce chain
 - [x] Executor stage JSONL logs
@@ -65,7 +66,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 - [x] Gateway integration matrix automation (`make integration-matrix`)
-- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + governance cadence (`make config-governance-cadence`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
+- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + cost threshold history (`make cost-threshold-history`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
 - [x] Config parameter governance audit for agents/bindings/session/tools (`make config-governance` -> `output/config/governance-latest.json`)
 - [x] Service-layer schedule facade (`app/core/service/schedule`) used by runtime/HTTP integration boundaries
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
@@ -102,8 +103,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 1. [x] N21 Session cost hotspot and compaction pressure alerts (`cost.session_hotspots` + `alerts.session_{cost_hotspot,compaction_pressure}`)
 2. [x] N22 Session cost threshold guidance (`cost.threshold_guidance` with p90 recommendations and drift deltas)
+3. [x] N23 Weekly threshold-history regression automation (`make cost-threshold-history` + risk benchmark linkage)
 
-Queue status: N22 merged; next candidate is N23 threshold-history automation.
+Queue status: N23 merged; runtime cost governance backlog has no open blocking item.
 
 ## 4) Change Rule
 

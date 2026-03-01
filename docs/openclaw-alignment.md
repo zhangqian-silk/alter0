@@ -11,8 +11,8 @@ This checklist tracks Alter0 parity against the OpenClaw gateway baseline by del
 | Scheduling | One-shot `at` + recurring `cron` with direct delivery | aligned | `app/core/schedule/service_test.go` |
 | Tool runtime | Normalized protocol + policy gates + audit | aligned | `app/core/tools/runtime_test.go` |
 | Memory safety | Trusted-channel memory isolation (`memory_search/memory_get`) | aligned | `app/core/tools/runtime_test.go` |
-| Runtime ops | Trace/alerts + queue/scheduler/subagent metrics + session cost hotspot/compaction pressure signals + threshold guidance (`cost.threshold_guidance`) | aligned | `app/core/runtime/status_test.go` |
-| Release safety | Integration matrix + risk benchmark + config governance cadence + rollback drill + docs sync gates | aligned | `scripts/run-integration-matrix.sh`, `scripts/check-risk-benchmark.sh`, `scripts/check-config-governance.sh`, `scripts/check-config-governance-cadence.sh`, `config/scenario-benchmark-matrix.json`, `config/competitor-tracking.json`, `scripts/update-competitor-tracking.sh`, `scripts/check-release-gates.sh` |
+| Runtime ops | Trace/alerts + queue/scheduler/subagent metrics + session cost hotspot/compaction pressure signals + threshold guidance (`cost.threshold_guidance`) + weekly threshold-history regression archive | aligned | `app/core/runtime/status_test.go`, `app/cmd/cost-threshold-history/main.go` |
+| Release safety | Integration matrix + risk benchmark + cost threshold history + rollback drill + docs sync gates | aligned | `scripts/run-integration-matrix.sh`, `scripts/check-risk-benchmark.sh`, `scripts/check-cost-threshold-history.sh`, `scripts/check-config-governance.sh`, `config/scenario-benchmark-matrix.json`, `config/competitor-tracking.json`, `scripts/update-competitor-tracking.sh`, `scripts/check-release-gates.sh` |
 
 ## Gap Policy
 

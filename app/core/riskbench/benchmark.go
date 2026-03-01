@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const benchmarkVersion = "2026.03-n18"
+const benchmarkVersion = "2026.03-n23"
 
 var defaultRequiredCategories = []string{"provider_policy", "supply_chain"}
 
@@ -26,22 +26,26 @@ type Config struct {
 	RequiredScenarioWorkload []string
 	ScenarioMaxStaleDays     int
 	CompetitorMaxStaleDays   int
+	ThresholdHistoryPath     string
+	ThresholdMaxStaleDays    int
 	RequireScenarioMatrix    bool
 	RequireCompetitorTrack   bool
+	RequireThresholdHistory  bool
 }
 
 type Report struct {
-	BenchmarkVersion   string                     `json:"benchmark_version"`
-	GeneratedAt        string                     `json:"generated_at"`
-	WatchlistPath      string                     `json:"watchlist_path"`
-	RunbookPath        string                     `json:"runbook_path"`
-	Summary            Summary                    `json:"summary"`
-	Categories         map[string]CategorySummary `json:"categories"`
-	Drifts             []DriftEvent               `json:"drifts,omitempty"`
-	ScenarioMatrix     *ScenarioMatrixReport      `json:"scenario_matrix,omitempty"`
-	CompetitorTracking *CompetitorTrackingReport  `json:"competitor_tracking,omitempty"`
-	Gate               GateResult                 `json:"gate"`
-	NextSteps          []string                   `json:"next_steps"`
+	BenchmarkVersion     string                      `json:"benchmark_version"`
+	GeneratedAt          string                      `json:"generated_at"`
+	WatchlistPath        string                      `json:"watchlist_path"`
+	RunbookPath          string                      `json:"runbook_path"`
+	Summary              Summary                     `json:"summary"`
+	Categories           map[string]CategorySummary  `json:"categories"`
+	Drifts               []DriftEvent                `json:"drifts,omitempty"`
+	ScenarioMatrix       *ScenarioMatrixReport       `json:"scenario_matrix,omitempty"`
+	CompetitorTracking   *CompetitorTrackingReport   `json:"competitor_tracking,omitempty"`
+	CostThresholdHistory *CostThresholdHistoryReport `json:"cost_threshold_history,omitempty"`
+	Gate                 GateResult                  `json:"gate"`
+	NextSteps            []string                    `json:"next_steps"`
 }
 
 type Summary struct {
@@ -213,6 +217,13 @@ func EvaluatePaths(watchlistPath string, runbookPath string, cfg Config) (Report
 	report.Gate.Failures = append(report.Gate.Failures, competitorFailures...)
 	report.Gate.Warnings = append(report.Gate.Warnings, competitorWarnings...)
 
+	thresholdReport, thresholdFailures, thresholdWarnings := evaluateCostThresholdHistory(normalized, now)
+	if thresholdReport != nil {
+		report.CostThresholdHistory = thresholdReport
+	}
+	report.Gate.Failures = append(report.Gate.Failures, thresholdFailures...)
+	report.Gate.Warnings = append(report.Gate.Warnings, thresholdWarnings...)
+
 	sort.Slice(report.Drifts, func(i, j int) bool {
 		left := report.Drifts[i]
 		right := report.Drifts[j]
@@ -251,6 +262,9 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if normalized.CompetitorMaxStaleDays <= 0 {
 		normalized.CompetitorMaxStaleDays = 31
+	}
+	if normalized.ThresholdMaxStaleDays <= 0 {
+		normalized.ThresholdMaxStaleDays = 8
 	}
 	return normalized
 }
@@ -301,6 +315,9 @@ func buildNextSteps(report Report) []string {
 		if report.CompetitorTracking != nil {
 			steps = append(steps, fmt.Sprintf("Competitor tracking snapshot checked at %s.", report.CompetitorTracking.Path))
 		}
+		if report.CostThresholdHistory != nil {
+			steps = append(steps, fmt.Sprintf("Cost threshold history snapshot checked at %s.", report.CostThresholdHistory.Path))
+		}
 		return steps
 	}
 
@@ -324,6 +341,9 @@ func buildNextSteps(report Report) []string {
 	}
 	if report.CompetitorTracking != nil {
 		steps = append(steps, fmt.Sprintf("Competitor tracking snapshot checked at %s.", report.CompetitorTracking.Path))
+	}
+	if report.CostThresholdHistory != nil {
+		steps = append(steps, fmt.Sprintf("Cost threshold history snapshot checked at %s.", report.CostThresholdHistory.Path))
 	}
 	return steps
 }

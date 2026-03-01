@@ -15,7 +15,7 @@
 
 ## 2. 当前未完成需求（Active Gaps）
 
-- N23（待启动）：成本阈值历史回归自动化（将 `/status.cost.threshold_guidance` 按周归档并和风险基准联动）。
+- 运行时成本治理主链路已闭环，当前无阻塞型功能缺口。
 - 外部依赖仍需保持可用（GitHub 网络与 token），避免阻塞 PR/merge 链路。
 
 ## 3. 优先级与执行队列
@@ -46,17 +46,18 @@
 
 1. [x] N21 长会话成本热点与压缩压力告警（`/status` 成本热点 + alerts `session_cost_hotspot` / `session_compaction_pressure`）
 2. [x] N22 成本阈值校准指引（`/status.cost.threshold_guidance` 给出 p90 建议阈值与偏移量）
+3. [x] N23 成本阈值历史回归自动化（`make cost-threshold-history` 周归档 + 告警命中率回归 + `make risk-benchmark` 联动校验）
 
-当前状态：N22 已闭环，进入 N23（阈值历史回归自动化）准备阶段。
+当前状态：N23 已闭环，运行时成本治理阶段完成。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-02）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：针对研究报告 5.1“长会话 token 成本与 compaction 权衡”，在 N21 告警基础上新增 N22 阈值校准指引（`cost.threshold_guidance` 提供 p90 建议值与漂移量）。
-- 当前缺口：研究报告 5.2 建议项已全量落地；5.1 功能项已补齐，剩余为阈值历史沉淀与运营自动化（N23）。
-- 下一步：按周归档 `threshold_guidance` 与 alerts 命中率，形成阈值回归基线并接入风险基准巡检。
+- 本轮新增对齐：针对研究报告 5.1“长会话 token 成本与 compaction 权衡”，在 N21/N22 基础上补齐 N23——`threshold_guidance` 周归档、`session_cost_hotspot`/`session_compaction_pressure` 命中率回归、风险基准门禁联动。
+- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 相关功能与运营自动化均已落地，暂无新增强制缺口。
+- 下一步：观察 2-4 周历史样本稳定性，再决定是否新增自适应阈值策略（按工作负载分层阈值）。
 
 ## 5. 执行规则
 
