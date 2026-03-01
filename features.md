@@ -47,17 +47,18 @@
 1. [x] N21 长会话成本热点与压缩压力告警（`/status` 成本热点 + alerts `session_cost_hotspot` / `session_compaction_pressure`）
 2. [x] N22 成本阈值校准指引（`/status.cost.threshold_guidance` 给出 p90 建议阈值与偏移量）
 3. [x] N23 成本阈值历史回归自动化（`make cost-threshold-history` 周归档 + 告警命中率回归 + `make risk-benchmark` 联动校验）
+4. [x] N24 分层阈值建议（`/status.cost.threshold_guidance.workload_tiers` 按 token 量级给出分层建议）
 
-当前状态：N23 已闭环，运行时成本治理阶段完成。
+当前状态：N24 已闭环，运行时成本治理阶段完成。
 
-## 4. 与 OpenClaw 研究报告对比（2026-03-02）
+## 4. 与 OpenClaw 研究报告对比（2026-03-01 UTC）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：针对研究报告 5.1“长会话 token 成本与 compaction 权衡”，在 N21/N22 基础上补齐 N23——`threshold_guidance` 周归档、`session_cost_hotspot`/`session_compaction_pressure` 命中率回归、风险基准门禁联动。
-- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 相关功能与运营自动化均已落地，暂无新增强制缺口。
-- 下一步：观察 2-4 周历史样本稳定性，再决定是否新增自适应阈值策略（按工作负载分层阈值）。
+- 本轮新增对齐：针对研究报告 5.1“长会话 token 成本与 compaction 权衡”，在 N21/N22/N23 基础上补齐 N24 分层阈值建议——`threshold_guidance.workload_tiers` 输出 1x-2x、2x-4x、4x+ token 量级的阈值建议与漂移量。
+- 当前缺口：研究报告 5.2 建议项已保持全量落地；5.1 相关功能与运营自动化已闭环，暂无新增强制缺口。
+- 下一步：连续观察 2-4 周分层样本稳定性，再决定是否引入“自动写回配置”的自适应阈值策略。
 
 ## 5. 执行规则
 

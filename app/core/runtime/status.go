@@ -91,6 +91,17 @@ type runtimeSessionCostHotspot struct {
 	LastSeenAt        string  `json:"last_seen_at,omitempty"`
 }
 
+type runtimeWorkloadTierGuidance struct {
+	Name           string             `json:"name"`
+	TokenRange     string             `json:"token_range"`
+	MinTokens      int                `json:"min_tokens"`
+	MaxTokens      int                `json:"max_tokens,omitempty"`
+	SampleSessions int                `json:"sample_sessions"`
+	Recommended    map[string]float64 `json:"recommended"`
+	Drift          map[string]float64 `json:"drift"`
+	NeedsTuning    bool               `json:"needs_tuning"`
+}
+
 type runtimeUsageSummary struct {
 	Sessions        map[string]interface{}
 	Subagent        map[string]interface{}
@@ -838,6 +849,7 @@ func summarizeSessionCostThresholdGuidance(all []runtimeSessionCostHotspot, curr
 			"session_cost_share":  math.Round(currentShare*1000) / 1000,
 			"prompt_output_ratio": math.Round(currentPromptRatio*100) / 100,
 		},
+		"workload_tiers": summarizeWorkloadTierThresholdGuidance(all, currentShare, currentPromptRatio, minTokens),
 	}
 	if len(shares) == 0 || len(ratios) == 0 {
 		guidance["status"] = "insufficient_data"
@@ -861,6 +873,111 @@ func summarizeSessionCostThresholdGuidance(all []runtimeSessionCostHotspot, curr
 	}
 	guidance["needs_tuning"] = math.Abs(shareDelta) >= 0.05 || math.Abs(ratioDelta) >= 1.0
 	return guidance
+}
+
+func summarizeWorkloadTierThresholdGuidance(all []runtimeSessionCostHotspot, currentShare float64, currentPromptRatio float64, minTokens int) map[string]interface{} {
+	tiers := []struct {
+		Name          string
+		MinMultiplier int
+		MaxMultiplier int
+	}{
+		{Name: "1x_to_2x_min_tokens", MinMultiplier: 1, MaxMultiplier: 2},
+		{Name: "2x_to_4x_min_tokens", MinMultiplier: 2, MaxMultiplier: 4},
+		{Name: "4x_plus_min_tokens", MinMultiplier: 4, MaxMultiplier: 0},
+	}
+
+	guidance := map[string]interface{}{
+		"status":                "insufficient_data",
+		"basis":                 "p90_by_token_volume_buckets",
+		"required_min_tokens":   minTokens,
+		"tier_policy":           "1x-2x, 2x-4x, 4x+ of required_min_tokens",
+		"sample_heavy_sessions": 0,
+		"tiers":                 []runtimeWorkloadTierGuidance{},
+	}
+
+	heavy := make([]runtimeSessionCostHotspot, 0, len(all))
+	for _, item := range all {
+		if item.TotalTokens < minTokens {
+			continue
+		}
+		heavy = append(heavy, item)
+	}
+	guidance["sample_heavy_sessions"] = len(heavy)
+	if len(heavy) == 0 {
+		guidance["reason"] = "no heavy sessions reached token threshold in window"
+		return guidance
+	}
+
+	results := make([]runtimeWorkloadTierGuidance, 0, len(tiers))
+	needsTuning := false
+	for _, tier := range tiers {
+		tierMin := minTokens * tier.MinMultiplier
+		tierMax := 0
+		if tier.MaxMultiplier > 0 {
+			tierMax = minTokens * tier.MaxMultiplier
+		}
+
+		tierShares := make([]float64, 0, len(heavy))
+		tierRatios := make([]float64, 0, len(heavy))
+		for _, item := range heavy {
+			if item.TotalTokens < tierMin {
+				continue
+			}
+			if tierMax > 0 && item.TotalTokens >= tierMax {
+				continue
+			}
+			tierShares = append(tierShares, item.Share)
+			if item.PromptOutputRatio > 0 {
+				tierRatios = append(tierRatios, item.PromptOutputRatio)
+			}
+		}
+		if len(tierShares) == 0 || len(tierRatios) == 0 {
+			continue
+		}
+
+		recommendedShare := clampFloat(math.Round(percentileFloat(tierShares, 0.9)*1000)/1000, 0.2, 0.9)
+		recommendedRatio := clampFloat(math.Round(percentileFloat(tierRatios, 0.9)*100)/100, 2.0, 20.0)
+		shareDelta := math.Round((recommendedShare-currentShare)*1000) / 1000
+		ratioDelta := math.Round((recommendedRatio-currentPromptRatio)*100) / 100
+		tierNeedsTuning := math.Abs(shareDelta) >= 0.05 || math.Abs(ratioDelta) >= 1.0
+		if tierNeedsTuning {
+			needsTuning = true
+		}
+
+		result := runtimeWorkloadTierGuidance{
+			Name:           tier.Name,
+			TokenRange:     formatTierTokenRange(tierMin, tierMax),
+			MinTokens:      tierMin,
+			MaxTokens:      tierMax,
+			SampleSessions: len(tierShares),
+			Recommended: map[string]float64{
+				"session_cost_share":  recommendedShare,
+				"prompt_output_ratio": recommendedRatio,
+			},
+			Drift: map[string]float64{
+				"session_cost_share":  shareDelta,
+				"prompt_output_ratio": ratioDelta,
+			},
+			NeedsTuning: tierNeedsTuning,
+		}
+		results = append(results, result)
+	}
+
+	if len(results) == 0 {
+		guidance["reason"] = "no heavy sessions matched workload tiers"
+		return guidance
+	}
+	guidance["status"] = "ok"
+	guidance["tiers"] = results
+	guidance["needs_tuning"] = needsTuning
+	return guidance
+}
+
+func formatTierTokenRange(minTokens int, maxTokens int) string {
+	if maxTokens <= 0 {
+		return fmt.Sprintf(">=%d", minTokens)
+	}
+	return fmt.Sprintf("%d-%d", minTokens, maxTokens-1)
 }
 
 func percentileFloat(values []float64, percentile float64) float64 {

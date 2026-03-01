@@ -44,7 +44,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime status snapshot git upstream divergence (`upstream/ahead/behind`)
 - [x] Runtime status expansion for sessions/subagents/schedules/cost metrics
 - [x] Runtime cost hotspot telemetry (`cost.session_hotspots`) with compaction pressure visibility (`prompt_output_ratio`)
-- [x] Runtime cost threshold guidance (`cost.threshold_guidance`) for p90-based share/ratio tuning with drift hints
+- [x] Runtime cost threshold guidance (`cost.threshold_guidance`) for p90-based share/ratio tuning with drift hints, including workload-tier recommendations (`workload_tiers`)
 - [x] Weekly cost threshold history archive with alert hit-rate regression (`make cost-threshold-history` -> `output/cost/threshold-history-latest.json` + `output/cost/threshold-history/<ISO-week>/`)
 - [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability + session cost hotspot/compaction pressure)
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
@@ -104,8 +104,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 1. [x] N21 Session cost hotspot and compaction pressure alerts (`cost.session_hotspots` + `alerts.session_{cost_hotspot,compaction_pressure}`)
 2. [x] N22 Session cost threshold guidance (`cost.threshold_guidance` with p90 recommendations and drift deltas)
 3. [x] N23 Weekly threshold-history regression automation (`make cost-threshold-history` + risk benchmark linkage)
+4. [x] N24 Workload-tier threshold guidance (`cost.threshold_guidance.workload_tiers` by token-volume buckets)
 
-Queue status: N23 merged; runtime cost governance backlog has no open blocking item.
+Queue status: N24 merged; runtime cost governance backlog has no open blocking item.
 
 ## 4) Change Rule
 

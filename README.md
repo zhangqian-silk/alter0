@@ -264,6 +264,8 @@ docker run --rm -p 8080:8080 \
 
 `/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
 
+成本治理字段 `cost.threshold_guidance` 现在同时提供全局 p90 建议与 `workload_tiers` 分层建议（按 token 量级 1x-2x、2x-4x、4x+）。
+
 管理员命令：
 
 - `/config set <key> <value>`
