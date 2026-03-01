@@ -16,13 +16,33 @@ func TestNormalizeToolName(t *testing.T) {
 }
 
 func TestPolicyGateRequiresConfirmationByConfig(t *testing.T) {
-	gate := NewPolicyGate(Config{RequireConfirm: []string{"message"}})
-	decision := gate.Evaluate(Request{Tool: "message", AgentID: "default"})
+	gate := NewPolicyGate(Config{RequireConfirm: []string{"tts"}})
+	decision := gate.Evaluate(Request{Tool: "tts", AgentID: "default"})
 	if decision.Allowed {
 		t.Fatal("expected tool to be blocked without confirmation")
 	}
 	if decision.Code != ErrorCodeConfirmRequired {
 		t.Fatalf("expected confirm required code, got %s", decision.Code)
+	}
+
+	confirmed := gate.Evaluate(Request{Tool: "tts", AgentID: "default", Confirmed: true})
+	if !confirmed.Allowed {
+		t.Fatalf("expected confirmed request to pass, got %+v", confirmed)
+	}
+}
+
+func TestPolicyGateRequiresConfirmationForHighRiskToolByDefault(t *testing.T) {
+	gate := NewPolicyGate(Config{})
+
+	decision := gate.Evaluate(Request{Tool: "message", AgentID: "default"})
+	if decision.Allowed {
+		t.Fatal("expected high-risk tool to require confirmation")
+	}
+	if decision.Code != ErrorCodeConfirmRequired {
+		t.Fatalf("expected confirm required code, got %+v", decision)
+	}
+	if decision.Reason != "high-risk tool requires confirmation" {
+		t.Fatalf("unexpected decision reason: %+v", decision)
 	}
 
 	confirmed := gate.Evaluate(Request{Tool: "message", AgentID: "default", Confirmed: true})
@@ -117,6 +137,36 @@ func TestPolicyGateAllowsMemoryGetOnTrustedMainChannel(t *testing.T) {
 	}
 }
 
+func TestPolicyGatePostureSnapshotIncludesConflicts(t *testing.T) {
+	gate := NewPolicyGate(Config{
+		GlobalAllow: []string{"web_search", "message"},
+		GlobalDeny:  []string{"message"},
+	})
+
+	raw := gate.PostureSnapshot()
+	if ok, _ := raw["ok"].(bool); ok {
+		t.Fatalf("expected posture snapshot to report issues, got %+v", raw)
+	}
+	issues, ok := raw["issues"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected typed issues, got %T", raw["issues"])
+	}
+	if len(issues) == 0 {
+		t.Fatalf("expected at least one issue, got %+v", raw)
+	}
+
+	foundConflict := false
+	for _, issue := range issues {
+		if issue["id"] == "allow_deny_conflict" {
+			foundConflict = true
+			break
+		}
+	}
+	if !foundConflict {
+		t.Fatalf("expected allow_deny_conflict issue, got %+v", issues)
+	}
+}
+
 func TestRuntimeInvokeWritesAuditAndNormalizesResult(t *testing.T) {
 	auditDir := t.TempDir()
 	r := NewRuntime(Config{RequireConfirm: []string{"message"}}, auditDir)
@@ -140,7 +190,14 @@ func TestRuntimeInvokeWritesAuditAndNormalizesResult(t *testing.T) {
 		t.Fatalf("expected retryable status, got %+v", retryable)
 	}
 
-	failed := r.Invoke(context.Background(), Request{Tool: "browser", AgentID: "default", Confirmed: true}, func(context.Context, Request) (interface{}, error) {
+	failed := r.Invoke(context.Background(), Request{
+		Tool:      "browser",
+		AgentID:   "default",
+		Confirmed: true,
+		Args: map[string]interface{}{
+			"action": "status",
+		},
+	}, func(context.Context, Request) (interface{}, error) {
 		return nil, errors.New("boom")
 	})
 	if failed.Status != ResultStatusFailed || failed.Code != ErrorCodeExecutionFailed {
@@ -170,6 +227,82 @@ func TestRuntimeInvokeWritesAuditAndNormalizesResult(t *testing.T) {
 	}
 	if entry.Tool != "message" || entry.Decision != "deny" {
 		t.Fatalf("unexpected first audit entry: %+v", entry)
+	}
+}
+
+func TestRuntimeInvokeValidatesStructuredToolArgs(t *testing.T) {
+	r := NewRuntime(Config{}, t.TempDir())
+
+	invalidBrowser := r.Invoke(context.Background(), Request{
+		Tool:      "browser",
+		AgentID:   "default",
+		Confirmed: true,
+		Args: map[string]interface{}{
+			"action": "act",
+			"request": map[string]interface{}{
+				"kind": "tap",
+			},
+		},
+	}, func(context.Context, Request) (interface{}, error) {
+		t.Fatal("execute should not be called when args are invalid")
+		return nil, nil
+	})
+	if invalidBrowser.Status != ResultStatusFailed {
+		t.Fatalf("expected failed status, got %+v", invalidBrowser)
+	}
+	if invalidBrowser.Code != ErrorCodeInvalidArgs {
+		t.Fatalf("expected invalid args code, got %+v", invalidBrowser)
+	}
+
+	invalidNodes := r.Invoke(context.Background(), Request{
+		Tool:      "nodes",
+		AgentID:   "default",
+		Confirmed: true,
+		Args: map[string]interface{}{
+			"action": "run",
+		},
+	}, func(context.Context, Request) (interface{}, error) {
+		t.Fatal("execute should not be called when args are invalid")
+		return nil, nil
+	})
+	if invalidNodes.Code != ErrorCodeInvalidArgs {
+		t.Fatalf("expected invalid args code, got %+v", invalidNodes)
+	}
+
+	validNodes := r.Invoke(context.Background(), Request{
+		Tool:      "nodes",
+		AgentID:   "default",
+		Confirmed: true,
+		Args: map[string]interface{}{
+			"action":  "run",
+			"command": []interface{}{"uname", "-a"},
+		},
+	}, func(context.Context, Request) (interface{}, error) {
+		return map[string]interface{}{"ok": true}, nil
+	})
+	if validNodes.Status != ResultStatusSuccess {
+		t.Fatalf("expected success status, got %+v", validNodes)
+	}
+}
+
+func TestRuntimeStatusSnapshotIncludesToolchainSchema(t *testing.T) {
+	r := NewRuntime(Config{}, t.TempDir())
+	snapshot := r.StatusSnapshot()
+
+	protocol, ok := snapshot["protocol"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected protocol section, got %T", snapshot["protocol"])
+	}
+	toolchain, ok := protocol["toolchain"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected toolchain section, got %T", protocol["toolchain"])
+	}
+	browser, ok := toolchain["browser"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected browser schema, got %T", toolchain["browser"])
+	}
+	if _, exists := browser["act_kinds"]; !exists {
+		t.Fatalf("expected browser act_kinds in schema, got %+v", browser)
 	}
 }
 

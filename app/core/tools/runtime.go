@@ -23,6 +23,7 @@ const (
 	ErrorCodeUnsupportedTool   = "TOOL_UNSUPPORTED"
 	ErrorCodePolicyDenied      = "TOOL_POLICY_DENIED"
 	ErrorCodeConfirmRequired   = "TOOL_CONFIRM_REQUIRED"
+	ErrorCodeInvalidArgs       = "TOOL_INVALID_ARGS"
 	ErrorCodeExecutionFailed   = "TOOL_EXECUTION_FAILED"
 	ErrorCodeContextRestricted = "TOOL_CONTEXT_RESTRICTED"
 )
@@ -158,6 +159,12 @@ func (r *Runtime) Invoke(ctx context.Context, req Request, execute ExecutionFunc
 		return result
 	}
 
+	if err := validateStructuredToolArgs(toolName, req.Args); err != nil {
+		result := fromExecutionError(toolName, err, time.Since(started).Milliseconds())
+		r.appendAudit(started, req, decision, result)
+		return result
+	}
+
 	payload, err := execute(ctx, req)
 	if err != nil {
 		result := fromExecutionError(toolName, err, time.Since(started).Milliseconds())
@@ -185,9 +192,101 @@ func (r *Runtime) StatusSnapshot() map[string]interface{} {
 		"protocol": map[string]interface{}{
 			"version": 1,
 			"tools":   specs,
+			"toolchain": map[string]interface{}{
+				"browser": browserActionSchema,
+				"canvas":  canvasActionSchema,
+				"nodes":   nodesActionSchema,
+			},
 		},
-		"policy": r.policy.Snapshot(),
+		"policy":           r.policy.Snapshot(),
+		"security_posture": r.policy.PostureSnapshot(),
 	}
+}
+
+func validateStructuredToolArgs(toolName string, args map[string]interface{}) error {
+	schema, ok := actionSchemas[toolName]
+	if !ok {
+		return nil
+	}
+	action := strings.ToLower(strings.TrimSpace(getStringArg(args, "action")))
+	if action == "" {
+		return &ToolError{Code: ErrorCodeInvalidArgs, Message: fmt.Sprintf("%s requires args.action", toolName)}
+	}
+	if _, exists := schema[action]; !exists {
+		return &ToolError{Code: ErrorCodeInvalidArgs, Message: fmt.Sprintf("unsupported %s action: %s", toolName, action)}
+	}
+	if toolName == "browser" && action == "act" {
+		request, _ := args["request"].(map[string]interface{})
+		kind := strings.ToLower(strings.TrimSpace(getStringArg(request, "kind")))
+		if kind == "" {
+			return &ToolError{Code: ErrorCodeInvalidArgs, Message: "browser action act requires args.request.kind"}
+		}
+		if _, ok := browserActKinds[kind]; !ok {
+			return &ToolError{Code: ErrorCodeInvalidArgs, Message: fmt.Sprintf("unsupported browser act kind: %s", kind)}
+		}
+	}
+	if toolName == "nodes" {
+		switch action {
+		case "run":
+			if len(getStringSliceArg(args, "command")) == 0 {
+				return &ToolError{Code: ErrorCodeInvalidArgs, Message: "nodes action run requires args.command"}
+			}
+		case "invoke":
+			if strings.TrimSpace(getStringArg(args, "invokeCommand")) == "" {
+				return &ToolError{Code: ErrorCodeInvalidArgs, Message: "nodes action invoke requires args.invokeCommand"}
+			}
+		}
+	}
+	return nil
+}
+
+func getStringArg(payload map[string]interface{}, key string) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	raw, _ := payload[key]
+	if text, ok := raw.(string); ok {
+		return text
+	}
+	return ""
+}
+
+func getStringSliceArg(payload map[string]interface{}, key string) []string {
+	if len(payload) == 0 {
+		return nil
+	}
+	raw, exists := payload[key]
+	if !exists || raw == nil {
+		return nil
+	}
+	if items, ok := raw.([]string); ok {
+		clean := make([]string, 0, len(items))
+		for _, item := range items {
+			trimmed := strings.TrimSpace(item)
+			if trimmed == "" {
+				continue
+			}
+			clean = append(clean, trimmed)
+		}
+		return clean
+	}
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	clean := make([]string, 0, len(items))
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(text)
+		if trimmed == "" {
+			continue
+		}
+		clean = append(clean, trimmed)
+	}
+	return clean
 }
 
 func fromExecutionError(toolName string, err error, durationMS int64) Result {
@@ -344,6 +443,7 @@ type PolicyGate struct {
 	globalAllow    map[string]struct{}
 	globalDeny     map[string]struct{}
 	requireConfirm map[string]struct{}
+	highRisk       map[string]struct{}
 	agent          map[string]agentRule
 	memory         memoryRule
 }
@@ -363,6 +463,7 @@ func NewPolicyGate(cfg Config) *PolicyGate {
 		globalAllow:    toSet(cfg.GlobalAllow),
 		globalDeny:     toSet(cfg.GlobalDeny),
 		requireConfirm: toSet(cfg.RequireConfirm),
+		highRisk:       highRiskToolSet(),
 		agent:          map[string]agentRule{},
 		memory:         newMemoryRule(cfg.Memory),
 	}
@@ -400,6 +501,14 @@ func (p *PolicyGate) Evaluate(req Request) Decision {
 	if decision := p.evaluateMemoryIsolation(req, toolName); !decision.Allowed {
 		return decision
 	}
+	if inSet(p.highRisk, toolName) && !req.Confirmed {
+		return Decision{
+			Allowed:              false,
+			Code:                 ErrorCodeConfirmRequired,
+			Reason:               "high-risk tool requires confirmation",
+			RequiresConfirmation: true,
+		}
+	}
 	if inSet(p.requireConfirm, toolName) && !req.Confirmed {
 		return Decision{
 			Allowed:              false,
@@ -432,12 +541,90 @@ func (p *PolicyGate) Snapshot() map[string]interface{} {
 		"global_allow":    setToSlice(p.globalAllow),
 		"global_deny":     setToSlice(p.globalDeny),
 		"require_confirm": setToSlice(p.requireConfirm),
+		"high_risk":       setToSlice(p.highRisk),
 		"agent":           agentPolicy,
 		"memory": map[string]interface{}{
 			"trusted_channels": setToSlice(p.memory.trustedChannels),
 			"restricted_paths": append([]string(nil), p.memory.restrictedPaths...),
 		},
 	}
+}
+
+func (p *PolicyGate) PostureSnapshot() map[string]interface{} {
+	if p == nil {
+		return map[string]interface{}{}
+	}
+
+	issues := make([]map[string]interface{}, 0, 4)
+	if len(p.globalAllow) == 0 {
+		issues = append(issues, map[string]interface{}{
+			"id":             "global_allow_not_set",
+			"severity":       "medium",
+			"message":        "global tool allowlist is not configured",
+			"recommendation": "set security.tools.global_allow to reduce exposed tool surface",
+		})
+	}
+	conflicts := intersectSets(p.globalAllow, p.globalDeny)
+	if len(conflicts) > 0 {
+		issues = append(issues, map[string]interface{}{
+			"id":             "allow_deny_conflict",
+			"severity":       "high",
+			"message":        "some tools exist in both global_allow and global_deny",
+			"conflict_tools": conflicts,
+			"recommendation": "remove conflicting tools from one side to avoid policy ambiguity",
+		})
+	}
+	if len(p.memory.trustedChannels) == 0 {
+		issues = append(issues, map[string]interface{}{
+			"id":             "memory_trusted_channels_empty",
+			"severity":       "high",
+			"message":        "memory trusted channels is empty",
+			"recommendation": "set security.memory.trusted_channels to at least cli/http",
+		})
+	}
+	if len(p.memory.restrictedPaths) == 0 {
+		issues = append(issues, map[string]interface{}{
+			"id":             "memory_restricted_paths_empty",
+			"severity":       "high",
+			"message":        "memory restricted paths is empty",
+			"recommendation": "set security.memory.restricted_paths to include MEMORY.md",
+		})
+	}
+
+	return map[string]interface{}{
+		"ok":                     len(issues) == 0,
+		"issues":                 issues,
+		"baseline_high_risk":     setToSlice(p.highRisk),
+		"config_require_confirm": setToSlice(p.requireConfirm),
+		"guardrails": map[string]interface{}{
+			"high_risk_confirmation": true,
+			"memory_isolation":       true,
+		},
+	}
+}
+
+func highRiskToolSet() map[string]struct{} {
+	set := map[string]struct{}{}
+	for _, spec := range supportedTools {
+		if strings.EqualFold(strings.TrimSpace(spec.RiskLevel), "high") {
+			set[spec.Name] = struct{}{}
+		}
+	}
+	return set
+}
+
+func intersectSets(a map[string]struct{}, b map[string]struct{}) []string {
+	if len(a) == 0 || len(b) == 0 {
+		return []string{}
+	}
+	items := make([]string, 0)
+	for key := range a {
+		if _, ok := b[key]; ok {
+			items = append(items, key)
+		}
+	}
+	sort.Strings(items)
+	return items
 }
 
 func toSet(items []string) map[string]struct{} {
@@ -551,6 +738,61 @@ func (p *PolicyGate) isMainSurface(req Request) bool {
 		return false
 	}
 	return inSet(p.memory.trustedChannels, channel)
+}
+
+var browserActionSchema = map[string]interface{}{
+	"required_args": []string{"action"},
+	"actions":       sortedSchemaActions(browserActions),
+	"act_kinds":     sortedSchemaActions(browserActKinds),
+}
+
+var canvasActionSchema = map[string]interface{}{
+	"required_args": []string{"action"},
+	"actions":       sortedSchemaActions(canvasActions),
+}
+
+var nodesActionSchema = map[string]interface{}{
+	"required_args": []string{"action"},
+	"actions":       sortedSchemaActions(nodesActions),
+	"required_by_action": map[string][]string{
+		"invoke": {"invokeCommand"},
+		"run":    {"command"},
+	},
+}
+
+var actionSchemas = map[string]map[string]struct{}{
+	"browser": browserActions,
+	"canvas":  canvasActions,
+	"nodes":   nodesActions,
+}
+
+var browserActions = makeActionSet([]string{"status", "start", "stop", "profiles", "tabs", "open", "focus", "close", "snapshot", "screenshot", "navigate", "console", "pdf", "upload", "dialog", "act"})
+
+var browserActKinds = makeActionSet([]string{"click", "type", "press", "hover", "drag", "select", "fill", "resize", "wait", "evaluate", "close"})
+
+var canvasActions = makeActionSet([]string{"present", "hide", "navigate", "eval", "snapshot", "a2ui_push", "a2ui_reset"})
+
+var nodesActions = makeActionSet([]string{"status", "describe", "pending", "approve", "reject", "notify", "camera_snap", "camera_list", "camera_clip", "screen_record", "location_get", "run", "invoke"})
+
+func makeActionSet(items []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		name := strings.ToLower(strings.TrimSpace(item))
+		if name == "" {
+			continue
+		}
+		set[name] = struct{}{}
+	}
+	return set
+}
+
+func sortedSchemaActions(set map[string]struct{}) []string {
+	items := make([]string, 0, len(set))
+	for item := range set {
+		items = append(items, item)
+	}
+	sort.Strings(items)
+	return items
 }
 
 var supportedTools = []Spec{

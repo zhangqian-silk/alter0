@@ -223,8 +223,9 @@ docker run --rm -p 8080:8080 \
 - `runtime.shutdown.drain_timeout_sec`: 统一停机排空等待时间（queue/scheduler/http）
 - `security.admin_user_ids`: 管理命令授权用户
 - `security.tools.global_allow/global_deny`: 网关级工具 allow/deny 列表
-- `security.tools.require_confirm`: 高风险工具二次确认清单（默认 `browser/canvas/nodes/message`）
+- `security.tools.require_confirm`: 额外二次确认清单（高风险工具 `browser/canvas/nodes/message` 无论配置都会强制确认）
 - `security.tools.agent.<agent_id>.allow/deny`: Agent 级工具策略覆盖
+- `tools.protocol.toolchain`: 运行时暴露 `browser/canvas/nodes` 动作 schema（含必填字段与动作白名单）
 - `security.memory.trusted_channels`: 允许访问完整长期记忆（`MEMORY.md`）的主会话通道
 - `security.memory.restricted_paths`: 共享场景默认限制访问的长期记忆路径前缀
 - `channels.telegram.*`: Telegram bot 轮询收发配置（`enabled` + `bot_token` 为最小启用集）
@@ -247,7 +248,7 @@ docker run --rm -p 8080:8080 \
 - `/task memory clear [task_id]`
 - `/task stats`
 
-`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+policy]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
+`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
 
 管理员命令：
 
@@ -362,7 +363,7 @@ Response (`202 Accepted`):
 
 ### `GET /api/status`
 
-返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+policy]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
+返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
 
 ## Observability and Data Layout
 
