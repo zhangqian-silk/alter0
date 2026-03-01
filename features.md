@@ -15,8 +15,8 @@
 
 ## 2. 当前未完成需求（Active Gaps）
 
-- 当前主线无未完成需求（N20/N21 已完成并进入运维观察期）。
-- 下轮若新增需求，优先补齐外部依赖（GitHub 网络与 token）后再启动功能开发。
+- N23（待启动）：成本阈值历史回归自动化（将 `/status.cost.threshold_guidance` 按周归档并和风险基准联动）。
+- 外部依赖仍需保持可用（GitHub 网络与 token），避免阻塞 PR/merge 链路。
 
 ## 3. 优先级与执行队列
 
@@ -45,17 +45,18 @@
 ### P4（运行时成本治理）
 
 1. [x] N21 长会话成本热点与压缩压力告警（`/status` 成本热点 + alerts `session_cost_hotspot` / `session_compaction_pressure`）
+2. [x] N22 成本阈值校准指引（`/status.cost.threshold_guidance` 给出 p90 建议阈值与偏移量）
 
-当前状态：主线需求清空，进入运维观测与阈值校准阶段。
+当前状态：N22 已闭环，进入 N23（阈值历史回归自动化）准备阶段。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-02）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：针对研究报告 5.1“长会话 token 成本与 compaction 权衡”新增 N21 运行时成本热点与压缩压力告警。
-- 当前缺口：研究报告 5.2 建议项已全量落地，5.1 中剩余项主要为阈值运营优化（非功能缺失）。
-- 下一步：按周复盘 `/status` 的 `session_hotspots` 与新增 alerts 命中率，校准 `AlertSessionCost*` 阈值并回灌风险基准。
+- 本轮新增对齐：针对研究报告 5.1“长会话 token 成本与 compaction 权衡”，在 N21 告警基础上新增 N22 阈值校准指引（`cost.threshold_guidance` 提供 p90 建议值与漂移量）。
+- 当前缺口：研究报告 5.2 建议项已全量落地；5.1 功能项已补齐，剩余为阈值历史沉淀与运营自动化（N23）。
+- 下一步：按周归档 `threshold_guidance` 与 alerts 命中率，形成阈值回归基线并接入风险基准巡检。
 
 ## 5. 执行规则
 
@@ -69,4 +70,4 @@
 - 2026-03-02（UTC）：`make risk-benchmark` 初次执行因缺少 N18 基准文件失败（`config/scenario-benchmark-matrix.json`、`config/competitor-tracking.json`）；已在同轮补齐并通过门禁，无待重试项。
 - 2026-03-02（UTC）：`make competitor-tracking-refresh` 在未配置 `GH_TOKEN/GITHUB_TOKEN` 时触发 GitHub API 403 rate limit；已改为默认降级不中断并记录 warning，下一轮优先在带 token 环境执行一次完整刷新。
 - 2026-03-01（UTC）：本轮执行 `git fetch origin` 连续超时（无输出后被超时终止），无法确认远端 `master` 最新提交；已改为基于本地 `master` 继续开发，下一轮优先重试网络连通后再同步远端。
-- 2026-03-01（UTC）：`git push -u origin feat/n21-session-cost-pressure-alerts` 两次失败（`Failure when receiving data from the peer` / `Failed to connect to github.com:443`），导致 PR/merge 链路阻塞；下一轮优先重试推送并补齐 PR 合并。
+- 2026-03-01（UTC）：`git push -u origin feat/n21-session-cost-pressure-alerts` 曾两次失败（`Failure when receiving data from the peer` / `Failed to connect to github.com:443`）；已在 2026-03-01 晚间恢复并完成 PR #89 合并。

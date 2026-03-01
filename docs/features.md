@@ -44,6 +44,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime status snapshot git upstream divergence (`upstream/ahead/behind`)
 - [x] Runtime status expansion for sessions/subagents/schedules/cost metrics
 - [x] Runtime cost hotspot telemetry (`cost.session_hotspots`) with compaction pressure visibility (`prompt_output_ratio`)
+- [x] Runtime cost threshold guidance (`cost.threshold_guidance`) for p90-based share/ratio tuning with drift hints
 - [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability + session cost hotspot/compaction pressure)
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`)
@@ -100,8 +101,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P4 (Runtime Cost Governance)
 
 1. [x] N21 Session cost hotspot and compaction pressure alerts (`cost.session_hotspots` + `alerts.session_{cost_hotspot,compaction_pressure}`)
+2. [x] N22 Session cost threshold guidance (`cost.threshold_guidance` with p90 recommendations and drift deltas)
 
-Queue status: P3/P4 are merged; no active delivery gap remains.
+Queue status: N22 merged; next candidate is N23 threshold-history automation.
 
 ## 4) Change Rule
 
