@@ -224,14 +224,16 @@ Gateway runtime now ships a normalized tool protocol for:
 - `memory_search`
 - `memory_get`
 
-Each tool invocation should pass through a shared policy gate (`global_allow/global_deny/agent allow-deny/require_confirm`) and produce a unified result contract (`success/failed/retryable/blocked` + structured error code).
+Each tool invocation passes through a shared policy gate (`global_allow/global_deny/agent allow-deny/require_confirm`) and produces a unified result contract (`success/failed/retryable/blocked` + structured error code). High-risk tools (`browser/canvas/nodes/message`) always require explicit confirmation as baseline guardrails.
+
+For deep toolchain alignment, runtime status also publishes `tools.protocol.toolchain` action schemas for `browser/canvas/nodes`, and runtime rejects unsupported actions / missing required nested fields (for example `browser act` requires `request.kind`, `nodes run` requires `command`, `nodes invoke` requires `invokeCommand`).
 
 Long-term memory tools apply an additional context-safety rule:
 
 - trusted channels (`security.memory.trusted_channels`) may access full long-term memory
 - shared surfaces are blocked from restricted paths (`security.memory.restricted_paths`, default `MEMORY.md`)
 
-Audit records are appended to `output/audit/<date>/tool_execution.jsonl` with parameter/result summaries and source session metadata.
+Audit records are appended to `output/audit/<date>/tool_execution.jsonl` with parameter/result summaries and source session metadata. Runtime status (`/status`, `/api/status`) exposes `tools.security_posture` with conflict/widened-scope checks for security review.
 
 ### 5.6 Data & Runtime Layer
 
