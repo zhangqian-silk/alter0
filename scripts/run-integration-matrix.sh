@@ -27,6 +27,9 @@ run "scheduler + tool protocol matrix" \
 run "fault injection matrix (disconnect/retry/queue/db-lock)" \
   go test ./app/core/interaction/gateway -run 'TestGatewayTracesChannelDisconnect|TestGatewayDispatchWithQueueRetries'
 
+run "channel chaos drill matrix" \
+  go test ./app/core/channelchaos -run 'TestRunMatrixPassesScenario|TestRunMatrixFailsWhenFallbackMissing'
+
 run "restart recovery matrix" \
   go test ./app/core/orchestrator/task -run 'TestTaskMemorySnapshotRestoreIsAtomic|TestPruneTaskMemoryByClosedAt'
 

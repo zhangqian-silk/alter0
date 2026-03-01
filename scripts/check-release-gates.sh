@@ -22,6 +22,7 @@ run "config parameter governance gate" "$ROOT_DIR/scripts/check-config-governanc
 run "test stability gate" "$ROOT_DIR/scripts/check-test-stability.sh"
 run "integration matrix" "$ROOT_DIR/scripts/run-integration-matrix.sh"
 run "risk benchmark gate" "$ROOT_DIR/scripts/check-risk-benchmark.sh"
+run "channel chaos drill gate" "$ROOT_DIR/scripts/check-channel-chaos-drill.sh"
 run "backup/restore rollback drill" "$ROOT_DIR/scripts/drill-backup-restore.sh"
 run "deployment asset checks" "$ROOT_DIR/scripts/check-deploy-assets.sh"
 run "documentation sync gate" "$ROOT_DIR/scripts/check-doc-sync.sh" "$BASE_REF"

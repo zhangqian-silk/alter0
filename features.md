@@ -11,11 +11,12 @@
 - 部署形态：继续保持自部署优先，先做单节点高可用，再考虑分布式扩展。
 - 安全边界：默认私有网络可用，但新增能力必须带最小可行权限控制与审计。
 - 兼容策略：保留现有 Task 编排主链路（`route -> execute -> close`），新增能力以可插拔方式接入。
-- 阶段目标：在核心能力已对齐 OpenClaw 基线后，固化第 5.2 章建议并补齐第 5.1 章提出的长会话成本漂移监测。
+- 阶段目标：在核心能力已对齐 OpenClaw 基线后，固化第 5.2 章建议，并把第 5.1 风险项推进到“可观测 + 演练 + 周期复盘”闭环。
 
 ## 2. 当前未完成需求（Active Gaps）
 
 - 运行时成本治理主链路已闭环，当前无阻塞型功能缺口。
+- 通道韧性治理已补齐“降级观测 + chaos drill 演练门禁”，下一阶段重点是基于真实故障样本校准阈值，降低误报噪声。
 - 自适应阈值回写已具备“提案 + 周归档 + 命中率观测”能力，仍保持人工确认后落地（默认不自动改配置）。
 - 外部依赖仍需保持可用（GitHub 网络与 token），避免阻塞 PR/merge 链路。
 
@@ -55,17 +56,18 @@
 ### P5（多通道韧性治理）
 
 1. [x] N27 通道降级观测与回退建议（`/status.channel_degradation` 输出每通道退化等级、fallback 候选与恢复建议，并新增 `alerts.channel_degradation`）
+2. [x] N28 通道 chaos drill 门禁（`make channel-chaos-drill` 基于 `config/channel-chaos-matrix.json` 执行断连/错误尖峰场景回归，输出 `output/channel-chaos/drill-latest.json`）
 
-当前状态：N27 已闭环，运行时治理从“成本阈值”扩展到“多通道降级可观测 + 回退指引”。
+当前状态：N28 已闭环，运行时治理从“成本阈值”扩展到“多通道降级可观测 + 回退指引 + 演练门禁”。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-01 UTC）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：针对研究报告 5.1 剩余项“多通道故障时的降级策略与可观测性完整度”，新增 N27 通道降级观测层，`/status.channel_degradation` 现可输出每通道 error/disconnect 严重度、fallback 候选与恢复建议，并通过 `alerts.channel_degradation` 给出统一告警。
-- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 现已具备“成本治理 + 多通道降级观测”双闭环，暂无阻塞级功能缺口。
-- 下一步：在生产样本累积后补充通道级 chaos drill（按通道注入断连）并回填 `channel_degradation` 阈值参数，验证告警噪声与误报率。
+- 本轮新增对齐：针对研究报告 5.1 剩余项“多通道故障时的降级策略与可观测性完整度”，新增 N28 通道 chaos drill 门禁，按场景注入断连与错误尖峰并校验 `channel_degradation` / `alerts.channel_degradation` 结果，形成可重复回归链路。
+- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已具备“成本治理 + 通道降级观测 + chaos drill 门禁”三段闭环，当前无阻塞级功能缺口。
+- 下一步：在生产样本累积后回填 `channel_degradation` 阈值参数（按通道误报率分层），并把真实故障片段纳入 `config/channel-chaos-matrix.json` 的周度回归。
 
 ## 5. 执行规则
 

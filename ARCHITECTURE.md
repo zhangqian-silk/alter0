@@ -353,6 +353,7 @@ Shutdown sequence:
 - execution latency/error rate plus model usage estimates (`chars/tokens/cost`) with optional pricing config, and `cost.threshold_guidance` global + workload-tier recommendations
 - gateway trace window aggregates (`total/error/by_event/by_channel/disconnected_by_channel/latest_at`)
 - channel degradation summary (`channel_degradation`) with per-channel severity, fallback candidates, and recovery recommendations
+- channel chaos drill regression artifact (`output/channel-chaos/drill-latest.json`) generated from `config/channel-chaos-matrix.json`
 - derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/channel_degradation/executor_unavailable/session_cost_hotspot/session_compaction_pressure/risk_watchlist_{missing,invalid,stale,item_overdue}`)
 - routing/closing decision distribution
 - plugin and MCP connector health
@@ -452,7 +453,7 @@ P2 (Advanced Operations):
 - N6 end-to-end tracing + alerting hardening
 - N8 integration matrix and release gate automation
 
-Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance are merged through N26 (threshold reconcile cadence archive), and the next delivery focus is gating scheduled apply with sustained ready-streak + proposal hit-rate thresholds.
+Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance + P5 channel resilience are merged through N28 (channel chaos drill gate), and the next delivery focus is calibrating channel degradation thresholds from real production incidents while keeping alert noise bounded.
 
 ## Feature Roadmap
 
@@ -464,4 +465,4 @@ Documentation consistency rule:
 
 - Any PR that updates `docs/features.md` must also update `README.md` and `ARCHITECTURE.md` in the same change set.
 - Use `make docs-sync-check` before opening a PR. The check compares `origin/master...HEAD` and fails when only `docs/features.md` changed.
-- Use `make release-gate` before merging release-scoped changes; it enforces config-boundary checks (`make check-config-boundary`), service-boundary checks (`make check-service-boundary`), parameter-governance checks (`make config-governance`), test-stability checks (`make test-stability` with hotspot stress + Windows compile regression), integration matrix, risk benchmark gate (`make risk-benchmark`, including cost threshold history/reconcile checks), rollback drill, deployment checks, and doc sync gate in one pass.
+- Use `make release-gate` before merging release-scoped changes; it enforces config-boundary checks (`make check-config-boundary`), service-boundary checks (`make check-service-boundary`), parameter-governance checks (`make config-governance`), test-stability checks (`make test-stability` with hotspot stress + Windows compile regression), integration matrix, risk benchmark gate (`make risk-benchmark`, including cost threshold history/reconcile checks), channel chaos drill gate (`make channel-chaos-drill`), rollback drill, deployment checks, and doc sync gate in one pass.
