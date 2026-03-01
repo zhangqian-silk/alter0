@@ -697,6 +697,41 @@ func TestSnapshotIncludesSessionCostPressureAlerts(t *testing.T) {
 	if hotspots[0].Share < 0.8 {
 		t.Fatalf("expected heavy hotspot share >= 0.8, got %#v", hotspots[0])
 	}
+
+	guidance, ok := cost["threshold_guidance"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected threshold guidance map, got %T", cost["threshold_guidance"])
+	}
+	if guidance["status"] != "ok" {
+		t.Fatalf("expected threshold guidance status ok, got %#v", guidance["status"])
+	}
+	if sample := intValue(t, guidance["sample_sessions"]); sample != 1 {
+		t.Fatalf("expected one heavy session sample, got %d", sample)
+	}
+	recommended, ok := guidance["recommended"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected recommended threshold map, got %T", guidance["recommended"])
+	}
+	if share, ok := recommended["session_cost_share"].(float64); !ok || share < 0.8 {
+		t.Fatalf("expected recommended share >= 0.8, got %#v", recommended["session_cost_share"])
+	}
+}
+
+func TestSnapshotSessionCostThresholdGuidanceInsufficientData(t *testing.T) {
+	collector := &StatusCollector{}
+	snap := collector.Snapshot(context.Background())
+
+	cost, ok := snap["cost"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected cost map, got %T", snap["cost"])
+	}
+	guidance, ok := cost["threshold_guidance"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected threshold guidance map, got %T", cost["threshold_guidance"])
+	}
+	if guidance["status"] != "insufficient_data" {
+		t.Fatalf("expected insufficient_data guidance, got %#v", guidance["status"])
+	}
 }
 
 func TestSnapshotIncludesGitDivergenceAgainstUpstream(t *testing.T) {

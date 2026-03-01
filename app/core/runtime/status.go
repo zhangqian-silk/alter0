@@ -92,10 +92,11 @@ type runtimeSessionCostHotspot struct {
 }
 
 type runtimeUsageSummary struct {
-	Sessions     map[string]interface{}
-	Subagent     map[string]interface{}
-	Cost         map[string]interface{}
-	CostHotspots []runtimeSessionCostHotspot
+	Sessions        map[string]interface{}
+	Subagent        map[string]interface{}
+	Cost            map[string]interface{}
+	CostHotspots    []runtimeSessionCostHotspot
+	CostAllSessions []runtimeSessionCostHotspot
 }
 
 type gatewayTraceEntry struct {
@@ -192,6 +193,14 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	payload["sessions"] = usage.Sessions
 	payload["subagents"] = usage.Subagent
 	payload["cost"] = usage.Cost
+	if costSection, ok := payload["cost"].(map[string]interface{}); ok {
+		costSection["threshold_guidance"] = summarizeSessionCostThresholdGuidance(
+			usage.CostAllSessions,
+			c.AlertSessionCostShare,
+			c.AlertSessionPromptOutRatio,
+			c.AlertSessionCostMinTokens,
+		)
+	}
 
 	traceSummary := summarizeGatewayTrace(c.GatewayTraceBasePath, now, c.GatewayTraceWindow)
 	payload["trace"] = map[string]interface{}{
@@ -707,7 +716,8 @@ func summarizeRuntimeUsage(basePath string, now time.Time, window time.Duration,
 	totalTokens := inputTokens + outputTokens
 	pricingConfigured := inputCostPer1K > 0 || outputCostPer1K > 0
 	estimatedCost := ((float64(inputTokens) / 1000.0) * inputCostPer1K) + ((float64(outputTokens) / 1000.0) * outputCostPer1K)
-	hotspots := summarizeSessionCostHotspots(sessionLastSeen, sessionPromptChars, sessionOutputChars, totalTokens)
+	allSessionCosts := summarizeSessionCostHotspots(sessionLastSeen, sessionPromptChars, sessionOutputChars, totalTokens, 0)
+	hotspots := summarizeSessionCostHotspots(sessionLastSeen, sessionPromptChars, sessionOutputChars, totalTokens, 3)
 
 	return runtimeUsageSummary{
 		Sessions: map[string]interface{}{
@@ -738,7 +748,8 @@ func summarizeRuntimeUsage(basePath string, now time.Time, window time.Duration,
 			"by_executor":             executorRuns,
 			"session_hotspots":        hotspots,
 		},
-		CostHotspots: hotspots,
+		CostHotspots:    hotspots,
+		CostAllSessions: allSessionCosts,
 	}
 }
 
@@ -747,6 +758,7 @@ func summarizeSessionCostHotspots(
 	sessionPromptChars map[string]int,
 	sessionOutputChars map[string]int,
 	totalTokens int,
+	limit int,
 ) []runtimeSessionCostHotspot {
 	if totalTokens <= 0 {
 		return []runtimeSessionCostHotspot{}
@@ -789,10 +801,99 @@ func summarizeSessionCostHotspots(
 		}
 		return hotspots[i].TotalTokens > hotspots[j].TotalTokens
 	})
-	if len(hotspots) > 3 {
-		hotspots = hotspots[:3]
+	if limit > 0 && len(hotspots) > limit {
+		hotspots = hotspots[:limit]
 	}
 	return hotspots
+}
+
+func summarizeSessionCostThresholdGuidance(all []runtimeSessionCostHotspot, currentShare float64, currentPromptRatio float64, minTokens int) map[string]interface{} {
+	if currentShare <= 0 {
+		currentShare = 0.35
+	}
+	if currentPromptRatio <= 0 {
+		currentPromptRatio = 6.0
+	}
+	if minTokens <= 0 {
+		minTokens = 1200
+	}
+
+	shares := make([]float64, 0, len(all))
+	ratios := make([]float64, 0, len(all))
+	for _, item := range all {
+		if item.TotalTokens < minTokens {
+			continue
+		}
+		shares = append(shares, item.Share)
+		if item.PromptOutputRatio > 0 {
+			ratios = append(ratios, item.PromptOutputRatio)
+		}
+	}
+
+	guidance := map[string]interface{}{
+		"sample_sessions":     len(shares),
+		"required_min_tokens": minTokens,
+		"basis":               "p90_of_heavy_sessions",
+		"current": map[string]interface{}{
+			"session_cost_share":  math.Round(currentShare*1000) / 1000,
+			"prompt_output_ratio": math.Round(currentPromptRatio*100) / 100,
+		},
+	}
+	if len(shares) == 0 || len(ratios) == 0 {
+		guidance["status"] = "insufficient_data"
+		guidance["reason"] = "no heavy sessions reached token threshold in window"
+		return guidance
+	}
+
+	recommendedShare := clampFloat(math.Round(percentileFloat(shares, 0.9)*1000)/1000, 0.2, 0.9)
+	recommendedRatio := clampFloat(math.Round(percentileFloat(ratios, 0.9)*100)/100, 2.0, 20.0)
+	shareDelta := math.Round((recommendedShare-currentShare)*1000) / 1000
+	ratioDelta := math.Round((recommendedRatio-currentPromptRatio)*100) / 100
+
+	guidance["status"] = "ok"
+	guidance["recommended"] = map[string]interface{}{
+		"session_cost_share":  recommendedShare,
+		"prompt_output_ratio": recommendedRatio,
+	}
+	guidance["drift"] = map[string]interface{}{
+		"session_cost_share":  shareDelta,
+		"prompt_output_ratio": ratioDelta,
+	}
+	guidance["needs_tuning"] = math.Abs(shareDelta) >= 0.05 || math.Abs(ratioDelta) >= 1.0
+	return guidance
+}
+
+func percentileFloat(values []float64, percentile float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sortedValues := make([]float64, len(values))
+	copy(sortedValues, values)
+	sort.Float64s(sortedValues)
+	if percentile <= 0 {
+		return sortedValues[0]
+	}
+	if percentile >= 1 {
+		return sortedValues[len(sortedValues)-1]
+	}
+	position := percentile * float64(len(sortedValues)-1)
+	lower := int(math.Floor(position))
+	upper := int(math.Ceil(position))
+	if lower == upper {
+		return sortedValues[lower]
+	}
+	weight := position - float64(lower)
+	return sortedValues[lower] + (sortedValues[upper]-sortedValues[lower])*weight
+}
+
+func clampFloat(value float64, min float64, max float64) float64 {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration) gatewayTraceSummary {
