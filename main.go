@@ -188,6 +188,10 @@ func main() {
 		GlobalDeny:     cfg.Security.Tools.GlobalDeny,
 		RequireConfirm: cfg.Security.Tools.RequireConfirm,
 		Agent:          toToolAgentPolicies(cfg.Security.Tools.Agent),
+		Memory: toolruntime.MemoryPolicy{
+			TrustedChannels: append([]string(nil), cfg.Security.Memory.TrustedChannels...),
+			RestrictedPaths: append([]string(nil), cfg.Security.Memory.RestrictedPaths...),
+		},
 	}, filepath.Join("output", "audit"))
 
 	statusCollector := &runtime.StatusCollector{

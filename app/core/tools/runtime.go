@@ -20,10 +20,11 @@ const (
 )
 
 const (
-	ErrorCodeUnsupportedTool = "TOOL_UNSUPPORTED"
-	ErrorCodePolicyDenied    = "TOOL_POLICY_DENIED"
-	ErrorCodeConfirmRequired = "TOOL_CONFIRM_REQUIRED"
-	ErrorCodeExecutionFailed = "TOOL_EXECUTION_FAILED"
+	ErrorCodeUnsupportedTool   = "TOOL_UNSUPPORTED"
+	ErrorCodePolicyDenied      = "TOOL_POLICY_DENIED"
+	ErrorCodeConfirmRequired   = "TOOL_CONFIRM_REQUIRED"
+	ErrorCodeExecutionFailed   = "TOOL_EXECUTION_FAILED"
+	ErrorCodeContextRestricted = "TOOL_CONTEXT_RESTRICTED"
 )
 
 type Spec struct {
@@ -40,6 +41,7 @@ type Request struct {
 	RequestID string                 `json:"request_id,omitempty"`
 	UserID    string                 `json:"user_id,omitempty"`
 	ChannelID string                 `json:"channel_id,omitempty"`
+	Surface   string                 `json:"surface,omitempty"`
 	Confirmed bool                   `json:"confirmed,omitempty"`
 }
 
@@ -86,11 +88,17 @@ type Config struct {
 	GlobalDeny     []string               `json:"global_deny,omitempty"`
 	RequireConfirm []string               `json:"require_confirm,omitempty"`
 	Agent          map[string]AgentPolicy `json:"agent,omitempty"`
+	Memory         MemoryPolicy           `json:"memory,omitempty"`
 }
 
 type AgentPolicy struct {
 	Allow []string `json:"allow,omitempty"`
 	Deny  []string `json:"deny,omitempty"`
+}
+
+type MemoryPolicy struct {
+	TrustedChannels []string `json:"trusted_channels,omitempty"`
+	RestrictedPaths []string `json:"restricted_paths,omitempty"`
 }
 
 type Runtime struct {
@@ -226,6 +234,7 @@ func (r *Runtime) appendAudit(ts time.Time, req Request, decision Decision, resu
 		RequestID:            fallbackText(req.RequestID, "n/a"),
 		UserID:               fallbackText(req.UserID, "anonymous"),
 		ChannelID:            fallbackText(req.ChannelID, "unknown"),
+		Surface:              fallbackText(req.Surface, "default"),
 		Decision:             boolToDecision(decision.Allowed),
 		DecisionCode:         strings.TrimSpace(decision.Code),
 		DecisionReason:       strings.TrimSpace(decision.Reason),
@@ -336,6 +345,12 @@ type PolicyGate struct {
 	globalDeny     map[string]struct{}
 	requireConfirm map[string]struct{}
 	agent          map[string]agentRule
+	memory         memoryRule
+}
+
+type memoryRule struct {
+	trustedChannels map[string]struct{}
+	restrictedPaths []string
 }
 
 type agentRule struct {
@@ -349,6 +364,7 @@ func NewPolicyGate(cfg Config) *PolicyGate {
 		globalDeny:     toSet(cfg.GlobalDeny),
 		requireConfirm: toSet(cfg.RequireConfirm),
 		agent:          map[string]agentRule{},
+		memory:         newMemoryRule(cfg.Memory),
 	}
 	for agentID, policy := range cfg.Agent {
 		id := strings.TrimSpace(agentID)
@@ -380,6 +396,9 @@ func (p *PolicyGate) Evaluate(req Request) Decision {
 	}
 	if len(p.globalAllow) > 0 && !inSet(p.globalAllow, toolName) {
 		return Decision{Allowed: false, Code: ErrorCodePolicyDenied, Reason: "tool not in global allowlist"}
+	}
+	if decision := p.evaluateMemoryIsolation(req, toolName); !decision.Allowed {
+		return decision
 	}
 	if inSet(p.requireConfirm, toolName) && !req.Confirmed {
 		return Decision{
@@ -414,6 +433,10 @@ func (p *PolicyGate) Snapshot() map[string]interface{} {
 		"global_deny":     setToSlice(p.globalDeny),
 		"require_confirm": setToSlice(p.requireConfirm),
 		"agent":           agentPolicy,
+		"memory": map[string]interface{}{
+			"trusted_channels": setToSlice(p.memory.trustedChannels),
+			"restricted_paths": append([]string(nil), p.memory.restrictedPaths...),
+		},
 	}
 }
 
@@ -446,6 +469,90 @@ func inSet(set map[string]struct{}, name string) bool {
 	return ok
 }
 
+func newMemoryRule(cfg MemoryPolicy) memoryRule {
+	trustedChannels := toSet(cfg.TrustedChannels)
+	if len(trustedChannels) == 0 {
+		trustedChannels = toSet([]string{"cli", "http"})
+	}
+	restrictedPaths := normalizeRestrictedPaths(cfg.RestrictedPaths)
+	if len(restrictedPaths) == 0 {
+		restrictedPaths = []string{"memory.md"}
+	}
+	return memoryRule{trustedChannels: trustedChannels, restrictedPaths: restrictedPaths}
+}
+
+func normalizeRestrictedPaths(paths []string) []string {
+	if len(paths) == 0 {
+		return []string{}
+	}
+	set := map[string]struct{}{}
+	items := make([]string, 0, len(paths))
+	for _, raw := range paths {
+		normalized := normalizeMemoryPath(raw)
+		if normalized == "" {
+			continue
+		}
+		if _, exists := set[normalized]; exists {
+			continue
+		}
+		set[normalized] = struct{}{}
+		items = append(items, normalized)
+	}
+	sort.Strings(items)
+	return items
+}
+
+func normalizeMemoryPath(raw string) string {
+	cleaned := strings.TrimSpace(strings.ToLower(strings.ReplaceAll(raw, "\\", "/")))
+	cleaned = strings.TrimPrefix(cleaned, "./")
+	for strings.Contains(cleaned, "//") {
+		cleaned = strings.ReplaceAll(cleaned, "//", "/")
+	}
+	return cleaned
+}
+
+func (p *PolicyGate) evaluateMemoryIsolation(req Request, toolName string) Decision {
+	if toolName != "memory_get" && toolName != "memory_search" {
+		return Decision{Allowed: true}
+	}
+	if p.isMainSurface(req) {
+		return Decision{Allowed: true}
+	}
+	if toolName == "memory_search" {
+		includeLongTerm, _ := req.Args["include_long_term"].(bool)
+		if includeLongTerm {
+			return Decision{Allowed: false, Code: ErrorCodeContextRestricted, Reason: "shared surface cannot access long-term memory"}
+		}
+		return Decision{Allowed: true}
+	}
+	path, _ := req.Args["path"].(string)
+	normalizedPath := normalizeMemoryPath(path)
+	if normalizedPath == "" {
+		return Decision{Allowed: false, Code: ErrorCodeContextRestricted, Reason: "memory_get path is required on shared surface"}
+	}
+	for _, restricted := range p.memory.restrictedPaths {
+		if normalizedPath == restricted || strings.HasPrefix(normalizedPath, restricted+"/") {
+			return Decision{Allowed: false, Code: ErrorCodeContextRestricted, Reason: "memory path restricted on shared surface"}
+		}
+	}
+	return Decision{Allowed: true}
+}
+
+func (p *PolicyGate) isMainSurface(req Request) bool {
+	surface := strings.ToLower(strings.TrimSpace(req.Surface))
+	switch surface {
+	case "main", "private", "direct":
+		return true
+	case "shared", "group", "public":
+		return false
+	}
+	channel := NormalizeToolName(req.ChannelID)
+	if channel == "" {
+		return false
+	}
+	return inSet(p.memory.trustedChannels, channel)
+}
+
 var supportedTools = []Spec{
 	{Name: "web_search", Description: "Search the web and return ranked results.", RiskLevel: "low"},
 	{Name: "web_fetch", Description: "Fetch and extract readable content from a URL.", RiskLevel: "low"},
@@ -454,6 +561,8 @@ var supportedTools = []Spec{
 	{Name: "nodes", Description: "Control paired devices (camera, screen, location, run).", RiskLevel: "high"},
 	{Name: "message", Description: "Send outbound messages and channel actions.", RiskLevel: "high"},
 	{Name: "tts", Description: "Convert text to speech output.", RiskLevel: "medium"},
+	{Name: "memory_search", Description: "Search MEMORY.md and memory/*.md for relevant snippets.", RiskLevel: "medium"},
+	{Name: "memory_get", Description: "Read specific line ranges from MEMORY.md or memory/*.md.", RiskLevel: "medium"},
 }
 
 var supportedToolMap = buildSupportedToolMap()
@@ -490,6 +599,7 @@ type AuditEntry struct {
 	RequestID            string            `json:"request_id"`
 	UserID               string            `json:"user_id"`
 	ChannelID            string            `json:"channel_id"`
+	Surface              string            `json:"surface"`
 	Decision             string            `json:"decision"`
 	DecisionCode         string            `json:"decision_code,omitempty"`
 	DecisionReason       string            `json:"decision_reason,omitempty"`

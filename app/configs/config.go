@@ -49,8 +49,9 @@ type TaskConfig struct {
 }
 
 type SecurityConfig struct {
-	AdminUserIDs []string         `json:"admin_user_ids"`
-	Tools        ToolPolicyConfig `json:"tools"`
+	AdminUserIDs []string           `json:"admin_user_ids"`
+	Tools        ToolPolicyConfig   `json:"tools"`
+	Memory       MemoryPolicyConfig `json:"memory"`
 }
 
 type ToolPolicyConfig struct {
@@ -63,6 +64,11 @@ type ToolPolicyConfig struct {
 type ToolAgentPolicy struct {
 	Allow []string `json:"allow"`
 	Deny  []string `json:"deny"`
+}
+
+type MemoryPolicyConfig struct {
+	TrustedChannels []string `json:"trusted_channels"`
+	RestrictedPaths []string `json:"restricted_paths"`
 }
 
 type RuntimeConfig struct {
@@ -246,6 +252,10 @@ func defaultConfig() Config {
 				RequireConfirm: []string{"browser", "canvas", "nodes", "message"},
 				Agent:          map[string]ToolAgentPolicy{},
 			},
+			Memory: MemoryPolicyConfig{
+				TrustedChannels: []string{"cli", "http"},
+				RestrictedPaths: []string{"MEMORY.md"},
+			},
 		},
 		Channels: ChannelConfig{
 			Telegram: TelegramChannelConfig{
@@ -428,6 +438,7 @@ func applyDefaults(cfg *Config) {
 	}
 	cfg.Security.AdminUserIDs = clean
 	cfg.Security.Tools = sanitizeToolPolicy(cfg.Security.Tools)
+	cfg.Security.Memory = sanitizeMemoryPolicy(cfg.Security.Memory)
 }
 
 func sanitizeToolPolicy(policy ToolPolicyConfig) ToolPolicyConfig {
@@ -454,6 +465,34 @@ func sanitizeToolPolicy(policy ToolPolicyConfig) ToolPolicyConfig {
 		}
 	}
 	policy.Agent = cleanAgent
+	return policy
+}
+
+func sanitizeMemoryPolicy(policy MemoryPolicyConfig) MemoryPolicyConfig {
+	policy.TrustedChannels = normalizeToolList(policy.TrustedChannels)
+	if len(policy.TrustedChannels) == 0 {
+		policy.TrustedChannels = []string{"cli", "http"}
+	}
+
+	restrictedSet := map[string]struct{}{}
+	restricted := make([]string, 0, len(policy.RestrictedPaths))
+	for _, raw := range policy.RestrictedPaths {
+		normalized := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/")))
+		normalized = strings.TrimPrefix(normalized, "./")
+		if normalized == "" {
+			continue
+		}
+		if _, exists := restrictedSet[normalized]; exists {
+			continue
+		}
+		restrictedSet[normalized] = struct{}{}
+		restricted = append(restricted, normalized)
+	}
+	if len(restricted) == 0 {
+		restricted = []string{"memory.md"}
+	}
+	sort.Strings(restricted)
+	policy.RestrictedPaths = restricted
 	return policy
 }
 

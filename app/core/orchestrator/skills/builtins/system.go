@@ -311,6 +311,15 @@ func sanitizeRuntime(r config.RuntimeConfig) map[string]interface{} {
 func sanitizeSecurity(s config.SecurityConfig) map[string]interface{} {
 	return map[string]interface{}{
 		"admin_user_ids": s.AdminUserIDs,
+		"tools": map[string]interface{}{
+			"global_allow":    append([]string(nil), s.Tools.GlobalAllow...),
+			"global_deny":     append([]string(nil), s.Tools.GlobalDeny...),
+			"require_confirm": append([]string(nil), s.Tools.RequireConfirm...),
+		},
+		"memory": map[string]interface{}{
+			"trusted_channels": append([]string(nil), s.Memory.TrustedChannels...),
+			"restricted_paths": append([]string(nil), s.Memory.RestrictedPaths...),
+		},
 	}
 }
 

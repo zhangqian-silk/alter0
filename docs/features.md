@@ -52,7 +52,8 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Queue-driven async pipeline on core execution path
 - [x] Queue status snapshot includes configured workers for runtime diagnostics
 - [x] Queue status snapshot includes last shutdown drain report for timeout diagnostics
-- [x] Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts`) with policy gates and execution audit JSONL
+- [x] Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts/memory_search/memory_get`) with policy gates and execution audit JSONL
+- [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 
 ## 3) Active Priority Queue (OpenClaw Alignment)
 
@@ -69,7 +70,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 1. [x] N2 Sub-agent run/session modes with result announce chain
 2. [x] N4 Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts`) + policy gates
-3. [ ] N5 Long-term memory retrieval and context-safety isolation by surface
+3. [x] N5 Long-term memory retrieval and context-safety isolation by surface
 4. [ ] N7 Security posture checks and high-risk operation guards
 
 ### P2 (Advanced Operations)
@@ -78,7 +79,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 2. [ ] N6 End-to-end tracing and alerting hardening
 3. [ ] N8 Full integration matrix and release gates for rollback-safe delivery
 
-Queue status: P0 queue is complete; P1-1 (`N2` sub-agent run/session modes with result announce chain) and P1-2 (`N4` tool protocol normalization + policy gates) are complete; next priority is P1-3 (`N5` long-term memory retrieval + surface isolation).
+Queue status: P0 queue is complete; P1-1 (`N2` sub-agent run/session modes with result announce chain), P1-2 (`N4` tool protocol normalization + policy gates), and P1-3 (`N5` long-term memory retrieval + surface isolation) are complete; next priority is P1-4 (`N7` security posture checks + high-risk operation guards).
 
 ## 4) Change Rule
 

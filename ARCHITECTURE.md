@@ -221,8 +221,17 @@ Gateway runtime now ships a normalized tool protocol for:
 - `nodes`
 - `message`
 - `tts`
+- `memory_search`
+- `memory_get`
 
-Each tool invocation should pass through a shared policy gate (`global_allow/global_deny/agent allow-deny/require_confirm`) and produce a unified result contract (`success/failed/retryable/blocked` + structured error code). Audit records are appended to `output/audit/<date>/tool_execution.jsonl` with parameter/result summaries and source session metadata.
+Each tool invocation should pass through a shared policy gate (`global_allow/global_deny/agent allow-deny/require_confirm`) and produce a unified result contract (`success/failed/retryable/blocked` + structured error code).
+
+Long-term memory tools apply an additional context-safety rule:
+
+- trusted channels (`security.memory.trusted_channels`) may access full long-term memory
+- shared surfaces are blocked from restricted paths (`security.memory.restricted_paths`, default `MEMORY.md`)
+
+Audit records are appended to `output/audit/<date>/tool_execution.jsonl` with parameter/result summaries and source session metadata.
 
 ### 5.6 Data & Runtime Layer
 

@@ -74,8 +74,8 @@ func TestSnapshotIncludesToolProtocolSnapshot(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected typed tool specs, got %T", protocol["tools"])
 	}
-	if len(entries) != 7 {
-		t.Fatalf("expected 7 tool specs, got %d", len(entries))
+	if len(entries) != 9 {
+		t.Fatalf("expected 9 tool specs, got %d", len(entries))
 	}
 }
 
