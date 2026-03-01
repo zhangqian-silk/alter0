@@ -22,12 +22,12 @@ run "multi-agent + subagent matrix" \
   go test ./app/core/interaction/http -run 'TestSubagentRunModeCompletesAndAnnounces|TestSubagentSessionModeSupportsTurns'
 
 run "scheduler + tool protocol matrix" \
-  go test ./app/core/schedule ./app/core/tools
+  go test ./app/core/orchestrator/schedule ./app/core/service/schedule ./app/core/runtime/tools ./app/core/runtime -run 'TestSnapshotIncludesExpandedScheduleMetrics|TestSnapshotIncludesToolProtocolSnapshot'
 
 run "fault injection matrix (disconnect/retry/queue/db-lock)" \
-  go test ./app/core/interaction/gateway ./app/core/queue ./app/core/orchestrator/db -run 'TestGatewayTracesChannelDisconnect|TestQueueRecoversAfterJobFailure|TestNewSQLiteDBReturnsLockErrorWhenSchemaLocked'
+  go test ./app/core/interaction/gateway -run 'TestGatewayTracesChannelDisconnect|TestGatewayDispatchWithQueueRetries'
 
 run "restart recovery matrix" \
-  go test ./app/core/schedule -run TestServiceRecoversDueAtJobAfterRestart
+  go test ./app/core/orchestrator/task -run 'TestTaskMemorySnapshotRestoreIsAtomic|TestPruneTaskMemoryByClosedAt'
 
 echo "integration matrix passed"

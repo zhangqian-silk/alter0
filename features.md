@@ -15,13 +15,13 @@
 
 ## 2. 当前未完成需求（Active Gaps）
 
-### N15 服务模块化（P1）
+### N16 外部策略与供应链风险监测（P2）
 
-- 目标：推进 `core -> service -> infra` 分层，降低跨模块耦合。
+- 目标：针对研究报告中的“模型/渠道政策漂移 + skill/plugin 供应链风险”建立最小自动监测闭环。
 - 交付边界：
-  - 抽离高频编排逻辑到 service 层，统一领域接口。
-  - 缩减 interaction/runtime 直接访问底层实现的路径。
-  - 给出迁移期适配策略与回归覆盖。
+  - provider/channel 策略变更 watchlist（含异常提示）。
+  - skill/plugin 来源与版本漂移审计。
+  - 风险事件落盘与告警分级策略。
 
 ## 3. 优先级与执行队列
 
@@ -31,20 +31,24 @@
 2. [x] N10 存储迁移安全升级（非破坏迁移 + 备份回滚）
 3. [x] N14 测试稳定性加固（`make test-stability` + release-gate 接入）
 
-### P1（当前主线）
+### P1（已完成）
 
 1. [x] N13 配置层依赖解耦（移除反向依赖 + `make check-config-boundary`）
-2. [ ] N15 服务模块化（`core -> service -> infra`）
+2. [x] N15 服务模块化（`core -> service -> infra`，补充 `make check-service-boundary`）
 
-当前下一项：`P1/N15`。
+### P2（当前主线）
+
+1. [ ] N16 外部策略与供应链风险监测（provider/channel 策略漂移 + skill/plugin 来源审计）
+
+当前下一项：`P2/N16`。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-01）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
-- 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线。
-- 当前缺口：主要在内部工程分层可维护性（服务边界仍需收敛），而非能力缺失。
-- 下一步：推进 N15 服务模块化，保持单需求闭环（编码 -> 测试 -> PR -> merge）。
+- 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线，以及调度域的 service 分层边界。
+- 当前缺口：研究报告第 5 章指出的外部模型/渠道政策变化与 skill/plugin 供应链风险监测仍缺自动化闭环。
+- 下一步：推进 N16，落地策略漂移 watchlist 与供应链审计告警，继续保持单需求闭环（编码 -> 测试 -> PR -> merge）。
 
 ## 5. 执行规则
 

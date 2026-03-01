@@ -1,4 +1,4 @@
-.PHONY: run build test test-stability check-config-boundary fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
+.PHONY: run build test test-stability check-config-boundary check-service-boundary fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
 .DEFAULT_GOAL := run
 
 run:
@@ -15,6 +15,9 @@ test-stability:
 
 check-config-boundary:
 	./scripts/check-config-boundary.sh
+
+check-service-boundary:
+	./scripts/check-service-boundary.sh
 
 fmt:
 	gofmt -w .

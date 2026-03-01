@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"alter0/app/core/executor"
-	orcschedule "alter0/app/core/orchestrator/schedule"
 	orctask "alter0/app/core/orchestrator/task"
 	toolruntime "alter0/app/core/runtime/tools"
+	schedulesvc "alter0/app/core/service/schedule"
 	"alter0/app/pkg/queue"
 	"alter0/app/pkg/scheduler"
 )
@@ -34,7 +34,7 @@ type StatusCollector struct {
 	Scheduler               *scheduler.Scheduler
 	Queue                   *queue.Queue
 	TaskStore               *orctask.Store
-	ScheduleService         *orcschedule.Service
+	ScheduleService         *schedulesvc.Service
 	RepoPath                string
 	CommandAuditBasePath    string
 	CommandAuditTailSize    int
@@ -307,7 +307,7 @@ func summarizeRuntimeAlerts(input runtimeAlertInput) []runtimeAlert {
 	return alerts
 }
 
-func summarizeSchedules(items []orcschedule.Job, now time.Time) map[string]interface{} {
+func summarizeSchedules(items []schedulesvc.Job, now time.Time) map[string]interface{} {
 	statusCounts := map[string]int{}
 	kindCounts := map[string]int{}
 	deliveryModeCounts := map[string]int{}
@@ -321,11 +321,11 @@ func summarizeSchedules(items []orcschedule.Job, now time.Time) map[string]inter
 
 		deliveryMode := strings.TrimSpace(item.Payload.Mode)
 		if deliveryMode == "" {
-			deliveryMode = orcschedule.ModeDirect
+			deliveryMode = schedulesvc.ModeDirect
 		}
 		deliveryModeCounts[deliveryMode]++
 
-		if item.Status != orcschedule.StatusActive || item.NextRunAt.IsZero() {
+		if item.Status != schedulesvc.StatusActive || item.NextRunAt.IsZero() {
 			continue
 		}
 		runAt := item.NextRunAt.UTC()
