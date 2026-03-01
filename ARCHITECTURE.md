@@ -434,12 +434,16 @@ P2 (Advanced Operations):
 - N6 end-to-end tracing + alerting hardening
 - N8 integration matrix and release gate automation
 
+Current status: P0/P1/P2 queues are complete. New roadmap items should start from a release-gated baseline (`make release-gate`).
+
 ## Feature Roadmap
 
 See `docs/features.md` for implemented capability matrix and active queue.
+See `docs/openclaw-alignment.md` for versioned OpenClaw parity checkpoints.
 See `features.md` for the OpenClaw-aligned backlog of unshipped requirements.
 
 Documentation consistency rule:
 
 - Any PR that updates `docs/features.md` must also update `README.md` and `ARCHITECTURE.md` in the same change set.
 - Use `make docs-sync-check` before opening a PR. The check compares `origin/master...HEAD` and fails when only `docs/features.md` changed.
+- Use `make release-gate` before merging release-scoped changes; it enforces regression, integration matrix, rollback drill, deployment checks, and doc sync gate in one pass.

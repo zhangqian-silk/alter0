@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="${ALTER0_ROOT:-$SCRIPT_ROOT}"
 DB_FILE="$ROOT_DIR/output/db/alter0.db"
 CONFIG_FILE="$ROOT_DIR/config/config.json"
 BACKUP_DIR="$ROOT_DIR/output/backups"

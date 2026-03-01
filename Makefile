@@ -1,4 +1,4 @@
-.PHONY: run build test fmt backup restore docs-sync-check deploy-check
+.PHONY: run build test fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
 .DEFAULT_GOAL := run
 
 run:
@@ -28,3 +28,12 @@ docs-sync-check:
 
 deploy-check:
 	./scripts/check-deploy-assets.sh
+
+integration-matrix:
+	./scripts/run-integration-matrix.sh
+
+rollback-drill:
+	./scripts/drill-backup-restore.sh
+
+release-gate:
+	./scripts/check-release-gates.sh

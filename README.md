@@ -48,17 +48,20 @@ Channel (CLI / HTTP / Telegram / Slack / Web)
 Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对话展开。系统将 Task 作为一等对象管理，覆盖任务创建、归属、状态流转和关闭；对输入的处理由模型决策驱动，包含任务路由与结题判断两个环节，并通过可配置置信度阈值控制误判风险。
 
 已交付能力矩阵与活跃执行队列请参考：[`docs/features.md`](./docs/features.md)。
+OpenClaw 对齐版本清单请参考：[`docs/openclaw-alignment.md`](./docs/openclaw-alignment.md)。
 面向 OpenClaw 对齐的未完成需求清单请参考：[`features.md`](./features.md)。
 
-当前优先级口径：从历史单机编排收口转向网关化能力建设，P0 聚焦多通道、多 Agent、计划任务与统一状态面。
+当前优先级口径：P0/P1/P2 队列已全部收敛，当前基线进入发布门禁模式（先过回归矩阵与回滚演练，再推进下一批需求）。
 
 文档同步策略：当 `docs/features.md` 发生变更时，必须在同一 PR 同步更新 `README.md` 与 `ARCHITECTURE.md`。可以执行：
 
 ```bash
 make docs-sync-check
+make integration-matrix
+make release-gate
 ```
 
-该检查默认对比 `origin/master...HEAD`，若只改了 `docs/features.md` 会直接失败，避免能力矩阵与总览文档漂移。
+该检查默认对比 `origin/master...HEAD`，若只改了 `docs/features.md` 会直接失败，避免能力矩阵与总览文档漂移。`make integration-matrix` 用于执行网关级集成矩阵（多通道、多 Agent、子代理、定时任务、工具与故障注入）；`make release-gate` 会串联全量回归、集成矩阵、回滚演练、部署资产检查与文档门禁。
 
 在执行层，Alter0 复用成熟 Agent CLI（`codex`、`claude_code`），自身聚焦编排与治理，不重建模型执行栈。接收器（CLI/HTTP/Web）与执行器通过稳定接口解耦，允许在不影响任务存储和路由策略的前提下独立扩展通道或替换执行后端。当前主线新增了 Telegram（long polling）与 Slack（Events API）外部通道适配器，并沿用统一 `Message.Envelope` 处理文本/图片等多媒体出入站消息。扩展能力以 Skill 为主入口，外部能力（如 MCP）可通过扩展层纳入执行链路。
 

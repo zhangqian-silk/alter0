@@ -27,6 +27,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Multi-agent registry and session isolation (`agentId/workspace/agentDir` with default fallback)
 - [x] Configurable graceful shutdown drain timeout (queue/scheduler/http unified)
 - [x] Local backup/restore scripts for DB + config
+- [x] Backup/restore rollback drill automation (`make rollback-drill`)
 - [x] Deployment assets for systemd service + Docker image
 
 ### Interaction and Observability
@@ -57,6 +58,9 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts/memory_search/memory_get`) with policy gates and execution audit JSONL
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
+- [x] Gateway integration matrix automation (`make integration-matrix`)
+- [x] Release gates (`make release-gate`) with regression + rollback drill + docs/deploy checks
+- [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
 
 ## 3) Active Priority Queue (OpenClaw Alignment)
 
@@ -80,9 +84,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 1. [x] N4 Deep node/browser/canvas toolchain integration (action schema + structured validation + runtime live adapter wiring)
 2. [x] N6 End-to-end tracing and alerting hardening
-3. [ ] N8 Full integration matrix and release gates for rollback-safe delivery
+3. [x] N8 Full integration matrix and release gates for rollback-safe delivery
 
-Queue status: P0 queue is complete; P1 queue is complete (`N2/N4/N5/N7` all merged); P2-1 (`N4` deep node/browser/canvas toolchain integration) and P2-2 (`N6` end-to-end tracing + alerting hardening) are merged, next requirement is P2-3 (`N8` full integration matrix and release gates).
+Queue status: P0 queue is complete; P1 queue is complete (`N2/N4/N5/N7` all merged); P2 queue is complete (`N4/N6/N8` all merged). Active Priority Queue is empty and ready for the next roadmap requirement.
 
 ## 4) Change Rule
 
