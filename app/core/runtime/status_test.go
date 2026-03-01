@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	executor "alter0/app/service/executor"
-	"alter0/app/service/queue"
-	"alter0/app/service/schedule"
-	"alter0/app/service/tools"
+	executor "alter0/app/core/executor"
+	"alter0/app/core/orchestrator/schedule"
+	"alter0/app/core/runtime/tools"
+	"alter0/app/pkg/queue"
 	_ "modernc.org/sqlite"
 )
 

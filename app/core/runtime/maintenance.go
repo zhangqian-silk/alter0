@@ -6,7 +6,7 @@ import (
 	"time"
 
 	orctask "alter0/app/core/orchestrator/task"
-	"alter0/app/service/scheduler"
+	"alter0/app/pkg/scheduler"
 )
 
 const (

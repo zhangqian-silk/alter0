@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
+	"alter0/app/core/orchestrator/command/slash"
 	orctask "alter0/app/core/orchestrator/task"
 	"alter0/app/pkg/types"
-	servicecommand "alter0/app/service/command"
 )
 
 type SkillManager interface {
@@ -21,7 +21,7 @@ type SkillManager interface {
 type Executor struct {
 	skillMgr  SkillManager
 	taskStore *orctask.Store
-	slash     *servicecommand.Executor
+	slash     *slash.Executor
 
 	mu         sync.RWMutex
 	adminUsers map[string]struct{}
@@ -31,7 +31,7 @@ func NewExecutor(skillMgr SkillManager, taskStore *orctask.Store, adminUserIDs [
 	e := &Executor{
 		skillMgr:  skillMgr,
 		taskStore: taskStore,
-		slash:     servicecommand.NewExecutor(),
+		slash:     slash.NewExecutor(),
 	}
 	e.SetAdminUsers(adminUserIDs)
 	e.registerHandlers()

@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	servicequeue "alter0/app/pkg/queue"
 	"alter0/app/pkg/types"
-	servicequeue "alter0/app/service/queue"
 )
 
 const defaultAgentID = "default"

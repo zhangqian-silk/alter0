@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	servicequeue "alter0/app/pkg/queue"
 	"alter0/app/pkg/types"
-	servicequeue "alter0/app/service/queue"
 )
 
 type testAgent struct{}

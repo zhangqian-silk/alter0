@@ -4,13 +4,11 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-
-	servicestore "alter0/app/service/store"
 )
 
 func TestGlobalStats(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := servicestore.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}
@@ -58,7 +56,7 @@ func TestGlobalStats(t *testing.T) {
 
 func TestGlobalStatsEmptyStore(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := servicestore.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}

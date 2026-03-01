@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"alter0/app/service/schedule"
-	"alter0/app/service/scheduler"
+	"alter0/app/core/orchestrator/schedule"
+	"alter0/app/pkg/scheduler"
 )
 
 const (

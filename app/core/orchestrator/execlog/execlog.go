@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	serviceexecutor "alter0/app/service/executor"
+	coreexecutor "alter0/app/core/executor"
 )
 
 const (
@@ -76,7 +76,7 @@ func RunExecutorWithTimeout(ctx context.Context, executor string, prompt string,
 		meta.Stage = "unknown"
 	}
 
-	execCtx := serviceexecutor.WithExecTrace(ctx, serviceexecutor.ExecTrace{
+	execCtx := coreexecutor.WithExecTrace(ctx, coreexecutor.ExecTrace{
 		SessionID: meta.SessionID,
 		Stage:     meta.Stage,
 		TaskID:    meta.TaskID,
@@ -85,7 +85,7 @@ func RunExecutorWithTimeout(ctx context.Context, executor string, prompt string,
 		ChannelID: meta.ChannelID,
 	})
 
-	output, err := serviceexecutor.RunExecutorWithTimeout(execCtx, executor, prompt, timeout)
+	output, err := coreexecutor.RunExecutorWithTimeout(execCtx, executor, prompt, timeout)
 	_ = appendHourlyLog(start, strings.TrimSpace(executor), meta, prompt, output, err, time.Since(start))
 	return output, err
 }

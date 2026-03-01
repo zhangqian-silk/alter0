@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	config "alter0/app/configs"
-	executor "alter0/app/service/executor"
+	executor "alter0/app/core/executor"
 )
 
 func RunPreflight(ctx context.Context, cfg config.Config, dataDir string) error {

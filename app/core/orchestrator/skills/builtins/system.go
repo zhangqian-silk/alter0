@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	config "alter0/app/configs"
+	executor "alter0/app/core/executor"
 	"alter0/app/pkg/types"
-	executor "alter0/app/service/executor"
 )
 
 const (

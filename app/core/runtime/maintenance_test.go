@@ -1,22 +1,13 @@
 package runtime
 
 import (
-	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"alter0/app/service/scheduler"
+	orctask "alter0/app/core/orchestrator/task"
+	"alter0/app/pkg/scheduler"
 )
-
-type noopTaskPruner struct{}
-
-func (noopTaskPruner) PruneTaskMemoryByClosedAt(context.Context, int64) (int64, error) {
-	return 0, nil
-}
-
-func (noopTaskPruner) PruneTaskMemoryByOpenUpdatedAt(context.Context, int64) (int64, error) {
-	return 0, nil
-}
 
 func TestRegisterMaintenanceJobsDisabled(t *testing.T) {
 	s := scheduler.New()
@@ -31,8 +22,14 @@ func TestRegisterMaintenanceJobsDisabled(t *testing.T) {
 
 func TestRegisterMaintenanceJobsWithDefaults(t *testing.T) {
 	s := scheduler.New()
+	db, err := orctask.NewSQLiteDB(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatalf("new sqlite db failed: %v", err)
+	}
+	defer db.Close()
+	taskStore := orctask.NewStore(db)
 
-	if err := RegisterMaintenanceJobs(s, noopTaskPruner{}, MaintenanceOptions{}); err != nil {
+	if err := RegisterMaintenanceJobs(s, taskStore, MaintenanceOptions{}); err != nil {
 		t.Fatalf("register maintenance jobs: %v", err)
 	}
 	if got := s.Health().RegisteredJobs; got != 1 {
