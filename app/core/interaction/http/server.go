@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"alter0/app/core/interaction/http/httpstate"
 	orcschedule "alter0/app/core/orchestrator/schedule"
 	"alter0/app/pkg/types"
 )
@@ -25,6 +25,7 @@ const (
 	defaultResponseTimeout = 60 * time.Second
 	defaultChunkSizeRunes  = 1200
 	maxChunkSizeRunes      = 4000
+	asyncCancelContextKey  = "_http_async_cancel_context"
 )
 
 type HTTPChannel struct {
@@ -40,11 +41,9 @@ type HTTPChannel struct {
 	counter     uint64
 	startedUnix atomic.Int64
 
-	asyncMu sync.Mutex
-	async   map[string]*asyncRequest
+	asyncStore *httpstate.AsyncStore
 
-	subagentMu        sync.Mutex
-	subagents         map[string]*subagentRecord
+	subagentStore     *httpstate.SubagentStore
 	subagentAnnouncer func(context.Context, SubagentAnnouncement) error
 
 	scheduleService *orcschedule.Service
@@ -56,8 +55,8 @@ func NewHTTPChannel(port int) *HTTPChannel {
 		port:            port,
 		pending:         map[string]chan types.Message{},
 		shutdownTimeout: 5 * time.Second,
-		async:           map[string]*asyncRequest{},
-		subagents:       map[string]*subagentRecord{},
+		asyncStore:      httpstate.NewAsyncStore(),
+		subagentStore:   httpstate.NewSubagentStore(),
 	}
 }
 
@@ -175,17 +174,6 @@ type statusResponse struct {
 	Runtime         map[string]interface{} `json:"runtime,omitempty"`
 }
 
-type asyncRequest struct {
-	RequestID string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Status    string
-	Content   string
-	UserID    string
-	TaskID    string
-	Result    *outgoingResponse
-}
-
 type asyncSubmitResponse struct {
 	RequestID string `json:"request_id"`
 	Status    string `json:"status"`
@@ -195,14 +183,16 @@ type asyncSubmitResponse struct {
 }
 
 type asyncTaskResponse struct {
-	RequestID string            `json:"request_id"`
-	Status    string            `json:"status"`
-	CreatedAt string            `json:"created_at"`
-	UpdatedAt string            `json:"updated_at"`
-	Content   string            `json:"content,omitempty"`
-	UserID    string            `json:"user_id,omitempty"`
-	TaskID    string            `json:"task_id,omitempty"`
-	Result    *outgoingResponse `json:"result,omitempty"`
+	RequestID    string            `json:"request_id"`
+	Status       string            `json:"status"`
+	CreatedAt    string            `json:"created_at"`
+	UpdatedAt    string            `json:"updated_at"`
+	Content      string            `json:"content,omitempty"`
+	UserID       string            `json:"user_id,omitempty"`
+	TaskID       string            `json:"task_id,omitempty"`
+	Result       *outgoingResponse `json:"result,omitempty"`
+	CanceledAt   string            `json:"canceled_at,omitempty"`
+	CancelReason string            `json:"cancel_reason,omitempty"`
 }
 
 type asyncTaskListResponse struct {
@@ -500,21 +490,15 @@ func (c *HTTPChannel) handleAsyncSubmit(w http.ResponseWriter, r *http.Request) 
 	msg, respCh := c.prepareMessage(req)
 	requestID := msg.RequestID
 	now := time.Now().UTC()
-
-	c.asyncMu.Lock()
-	c.async[requestID] = &asyncRequest{
-		RequestID: requestID,
-		CreatedAt: now,
-		UpdatedAt: now,
-		Status:    "pending",
-		Content:   req.Content,
-		UserID:    msg.UserID,
-		TaskID:    strings.TrimSpace(req.TaskID),
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	if msg.Meta == nil {
+		msg.Meta = map[string]interface{}{}
 	}
-	c.asyncMu.Unlock()
+	msg.Meta[asyncCancelContextKey] = cancelCtx
 
-	c.handler(msg)
-	go c.awaitAsyncResult(requestID, respCh)
+	c.asyncStore.Create(requestID, now, req.Content, msg.UserID, strings.TrimSpace(req.TaskID), cancel)
+
+	go c.dispatchAsyncRequest(requestID, msg, respCh)
 
 	resp := asyncSubmitResponse{
 		RequestID: requestID,
@@ -535,37 +519,12 @@ func (c *HTTPChannel) handleAsyncList(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := parseListLimit(r.URL.Query().Get("limit"))
 
-	c.asyncMu.Lock()
-	items := make([]*asyncRequest, 0, len(c.async))
-	for _, entry := range c.async {
-		if statusFilter != "all" && entry.Status != statusFilter {
-			continue
-		}
-		copyEntry := *entry
-		items = append(items, &copyEntry)
-	}
-	c.asyncMu.Unlock()
-
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].CreatedAt.After(items[j].CreatedAt)
-	})
-
-	if len(items) > limit {
-		items = items[:limit]
-	}
+	items := c.asyncStore.List(statusFilter, limit)
 
 	resp := asyncTaskListResponse{Tasks: make([]asyncTaskResponse, 0, len(items))}
 	for _, entry := range items {
-		resp.Tasks = append(resp.Tasks, asyncTaskResponse{
-			RequestID: entry.RequestID,
-			Status:    entry.Status,
-			CreatedAt: entry.CreatedAt.Format(time.RFC3339),
-			UpdatedAt: entry.UpdatedAt.Format(time.RFC3339),
-			Content:   entry.Content,
-			UserID:    entry.UserID,
-			TaskID:    entry.TaskID,
-			Result:    entry.Result,
-		})
+		entryCopy := entry
+		resp.Tasks = append(resp.Tasks, toAsyncTaskResponse(&entryCopy))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -574,52 +533,28 @@ func (c *HTTPChannel) handleAsyncList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *HTTPChannel) handleAsyncStatus(w http.ResponseWriter, r *http.Request, requestID string) {
-	c.asyncMu.Lock()
-	entry, ok := c.async[requestID]
-	c.asyncMu.Unlock()
+	entry, ok := c.asyncStore.Get(requestID)
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 
-	payload := asyncTaskResponse{
-		RequestID: entry.RequestID,
-		Status:    entry.Status,
-		CreatedAt: entry.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: entry.UpdatedAt.Format(time.RFC3339),
-		Content:   entry.Content,
-		UserID:    entry.UserID,
-		TaskID:    entry.TaskID,
-		Result:    entry.Result,
-	}
+	payload := toAsyncTaskResponse(&entry)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func (c *HTTPChannel) handleAsyncCancel(w http.ResponseWriter, r *http.Request, requestID string) {
-	c.asyncMu.Lock()
-	entry, ok := c.async[requestID]
+	entry, ok, cancel := c.asyncStore.Cancel(requestID, time.Now().UTC(), "user_requested")
 	if !ok {
-		c.asyncMu.Unlock()
 		http.NotFound(w, r)
 		return
 	}
-	if entry.Status == "pending" {
-		entry.Status = "canceled"
-		entry.UpdatedAt = time.Now().UTC()
+	if cancel != nil {
+		cancel()
 	}
-	payload := asyncTaskResponse{
-		RequestID: entry.RequestID,
-		Status:    entry.Status,
-		CreatedAt: entry.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: entry.UpdatedAt.Format(time.RFC3339),
-		Content:   entry.Content,
-		UserID:    entry.UserID,
-		TaskID:    entry.TaskID,
-		Result:    entry.Result,
-	}
-	c.asyncMu.Unlock()
+	payload := toAsyncTaskResponse(&entry)
 
 	if payload.Status == "canceled" {
 		c.removePendingRequest(requestID)
@@ -630,6 +565,47 @@ func (c *HTTPChannel) handleAsyncCancel(w http.ResponseWriter, r *http.Request, 
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func (c *HTTPChannel) dispatchAsyncRequest(requestID string, msg types.Message, respCh <-chan types.Message) {
+	entry, moved := c.asyncStore.MarkRunning(requestID, time.Now().UTC())
+	if !moved {
+		if entry.Status == "canceled" {
+			c.removePendingRequest(requestID)
+		}
+		return
+	}
+
+	c.handler(msg)
+	c.awaitAsyncResult(requestID, respCh)
+}
+
+func toAsyncTaskResponse(entry *httpstate.AsyncRecord) asyncTaskResponse {
+	if entry == nil {
+		return asyncTaskResponse{}
+	}
+	payload := asyncTaskResponse{
+		RequestID: entry.RequestID,
+		Status:    entry.Status,
+		CreatedAt: entry.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: entry.UpdatedAt.Format(time.RFC3339),
+		Content:   entry.Content,
+		UserID:    entry.UserID,
+		TaskID:    entry.TaskID,
+	}
+	if entry.Result != nil {
+		payload.Result = &outgoingResponse{
+			TaskID:   entry.Result.TaskID,
+			Response: entry.Result.Response,
+			Closed:   entry.Result.Closed,
+			Decision: entry.Result.Decision,
+		}
+	}
+	if entry.CanceledAt != nil && !entry.CanceledAt.IsZero() {
+		payload.CanceledAt = entry.CanceledAt.Format(time.RFC3339)
+	}
+	payload.CancelReason = strings.TrimSpace(entry.CancelReason)
+	return payload
+}
+
 func (c *HTTPChannel) awaitAsyncResult(requestID string, respCh <-chan types.Message) {
 	defer c.removePendingRequest(requestID)
 
@@ -637,27 +613,14 @@ func (c *HTTPChannel) awaitAsyncResult(requestID string, respCh <-chan types.Mes
 	case response := <-respCh:
 		closed, _ := response.Meta["closed"].(bool)
 		decision, _ := response.Meta["decision"].(string)
-		result := &outgoingResponse{
+		_, _ = c.asyncStore.Complete(requestID, time.Now().UTC(), httpstate.TaskResult{
 			TaskID:   response.TaskID,
 			Response: response.Content,
 			Closed:   closed,
 			Decision: decision,
-		}
-
-		c.asyncMu.Lock()
-		if entry, ok := c.async[requestID]; ok && entry.Status == "pending" {
-			entry.Status = "completed"
-			entry.Result = result
-			entry.UpdatedAt = time.Now().UTC()
-		}
-		c.asyncMu.Unlock()
+		})
 	case <-time.After(defaultResponseTimeout):
-		c.asyncMu.Lock()
-		if entry, ok := c.async[requestID]; ok && entry.Status == "pending" {
-			entry.Status = "timeout"
-			entry.UpdatedAt = time.Now().UTC()
-		}
-		c.asyncMu.Unlock()
+		_, _ = c.asyncStore.Timeout(requestID, time.Now().UTC())
 	}
 }
 

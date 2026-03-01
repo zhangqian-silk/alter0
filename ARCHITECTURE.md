@@ -299,8 +299,8 @@ Required modules:
 
 - `POST /api/tasks` accepts async task requests and returns request id
 - `GET /api/tasks` returns recent async requests with status filtering (`status`) and bounded pagination (`limit`)
-- `GET /api/tasks/{id}` returns task status (`pending|completed|canceled|timeout`) and completion payload
-- `POST /api/tasks/{id}/cancel` marks a pending async task as canceled
+- `GET /api/tasks/{id}` returns task status (`pending|running|completed|canceled|timeout`), completion payload, and canceled audit fields (`canceled_at/cancel_reason`)
+- `POST /api/tasks/{id}/cancel` cancels pending/running async tasks with execution-context interruption semantics
 - `POST /api/subagents` creates a sub-agent in `run|session` mode (`run` is async, `session` is long-lived)
 - `GET /api/subagents` lists sub-agents with `status/mode/limit` filtering
 - `GET /api/subagents/{id}` returns sub-agent state, latest result, and turn history
@@ -369,7 +369,7 @@ Deployment reference assets:
 ### 9.4 Console Operations
 
 - Web Console exposes recent async task queue cards backed by `GET /api/tasks`
-- operators can refresh statuses, cancel `pending` requests, and retry `timeout/canceled` requests without leaving the browser
+- operators can refresh statuses, cancel `pending/running` requests, and retry `timeout/canceled` requests without leaving the browser
 
 ## 10. Extensibility Rules
 

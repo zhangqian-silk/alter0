@@ -452,10 +452,6 @@ func (s *Service) SetBatchSize(batchSize int) {
 }
 
 func (s *Service) DispatchDue(ctx context.Context) {
-	s.dispatchDue(ctx)
-}
-
-func (s *Service) dispatchDue(ctx context.Context) {
 	if s.store == nil || s.dispatcher == nil {
 		return
 	}
