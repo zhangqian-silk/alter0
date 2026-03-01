@@ -4,16 +4,18 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	config "alter0/app/configs"
 )
 
-const reconcileVersion = "2026.03-n25"
+const reconcileVersion = "2026.03-n26"
 
 type thresholdHistoryDocument struct {
 	GeneratedAt       string                 `json:"generated_at"`
@@ -46,18 +48,35 @@ type reconcilePlan struct {
 	Delta       thresholdValues `json:"delta"`
 }
 
+type reconcileArchive struct {
+	Root           string `json:"root,omitempty"`
+	Week           string `json:"week,omitempty"`
+	Snapshot       string `json:"snapshot,omitempty"`
+	HistorySamples int    `json:"history_samples"`
+}
+
+type reconcileCadence struct {
+	Samples     int            `json:"samples"`
+	StatusCount map[string]int `json:"status_count"`
+	ReadyRate   float64        `json:"ready_rate"`
+	AppliedRate float64        `json:"applied_rate"`
+	ReadyStreak int            `json:"ready_streak"`
+}
+
 type reconcileReport struct {
-	ReconcileVersion    string        `json:"reconcile_version"`
-	GeneratedAt         string        `json:"generated_at"`
-	HistoryPath         string        `json:"history_path"`
-	HistoryGeneratedAt  string        `json:"history_generated_at,omitempty"`
-	ConfigPath          string        `json:"config_path"`
-	ApplyRequested      bool          `json:"apply_requested"`
-	Applied             bool          `json:"applied"`
-	ApplyError          string        `json:"apply_error,omitempty"`
-	GuidanceStatus      string        `json:"guidance_status"`
-	GuidanceNeedsTuning bool          `json:"guidance_needs_tuning"`
-	Plan                reconcilePlan `json:"plan"`
+	ReconcileVersion    string           `json:"reconcile_version"`
+	GeneratedAt         string           `json:"generated_at"`
+	HistoryPath         string           `json:"history_path"`
+	HistoryGeneratedAt  string           `json:"history_generated_at,omitempty"`
+	ConfigPath          string           `json:"config_path"`
+	ApplyRequested      bool             `json:"apply_requested"`
+	Applied             bool             `json:"applied"`
+	ApplyError          string           `json:"apply_error,omitempty"`
+	GuidanceStatus      string           `json:"guidance_status"`
+	GuidanceNeedsTuning bool             `json:"guidance_needs_tuning"`
+	Plan                reconcilePlan    `json:"plan"`
+	Cadence             reconcileCadence `json:"cadence"`
+	Archive             reconcileArchive `json:"archive"`
 }
 
 type planOptions struct {
@@ -65,13 +84,29 @@ type planOptions struct {
 	MaxRatioStep float64
 }
 
+type archivedReconcileRecord struct {
+	GeneratedAt string `json:"generated_at"`
+	Applied     bool   `json:"applied"`
+	Plan        struct {
+		Status string `json:"status"`
+	} `json:"plan"`
+}
+
+type reconcileSample struct {
+	Timestamp time.Time
+	Status    string
+	Applied   bool
+}
+
 func main() {
 	historyPath := flag.String("history", filepath.Join("output", "cost", "threshold-history-latest.json"), "path to threshold-history report")
 	configPath := flag.String("config", config.DefaultPath(), "path to runtime config json")
 	outputPath := flag.String("output", filepath.Join("output", "cost", "threshold-reconcile-latest.json"), "path to write reconcile report (use - for stdout)")
+	archiveRoot := flag.String("archive-root", filepath.Join("output", "cost", "threshold-reconcile"), "path to weekly archive root")
 	apply := flag.Bool("apply", false, "persist proposed thresholds into runtime config")
 	maxShareStep := flag.Float64("max-share-step", 0.10, "max absolute delta for session_cost_share_alert_threshold per run")
 	maxRatioStep := flag.Float64("max-ratio-step", 2.0, "max absolute delta for prompt_output_ratio_alert_threshold per run")
+	maxSamples := flag.Int("max-samples", 12, "max archived samples used for cadence summary")
 	flag.Parse()
 
 	doc, guidance, err := loadGuidance(*historyPath)
@@ -93,9 +128,10 @@ func main() {
 	}
 
 	plan := buildPlan(current, guidance, planOptions{MaxShareStep: *maxShareStep, MaxRatioStep: *maxRatioStep})
+	now := time.Now().UTC()
 	report := reconcileReport{
 		ReconcileVersion:    reconcileVersion,
-		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
+		GeneratedAt:         now.Format(time.RFC3339),
 		HistoryPath:         strings.TrimSpace(*historyPath),
 		HistoryGeneratedAt:  strings.TrimSpace(doc.GeneratedAt),
 		ConfigPath:          strings.TrimSpace(*configPath),
@@ -113,6 +149,29 @@ func main() {
 			report.Applied = true
 			report.Plan.Status = "applied"
 			report.Plan.Reason = "thresholds persisted to config"
+		}
+	}
+
+	historySamples, err := readReconcileSamples(*archiveRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cost threshold reconcile failed: %v\n", err)
+		os.Exit(2)
+	}
+	report.Cadence = summarizeCadence(historySamples, reconcileSampleFromReport(report), *maxSamples)
+
+	archiveRootTrimmed := strings.TrimSpace(*archiveRoot)
+	if archiveRootTrimmed != "" {
+		week := isoWeekID(now)
+		snapshotPath := filepath.Join(archiveRootTrimmed, week, fmt.Sprintf("threshold-reconcile-%s.json", now.Format("20060102T150405Z")))
+		report.Archive = reconcileArchive{
+			Root:           archiveRootTrimmed,
+			Week:           week,
+			Snapshot:       snapshotPath,
+			HistorySamples: report.Cadence.Samples,
+		}
+		if err := writeReport(snapshotPath, report); err != nil {
+			fmt.Fprintf(os.Stderr, "cost threshold reconcile failed: %v\n", err)
+			os.Exit(2)
 		}
 	}
 
@@ -246,6 +305,115 @@ func applyPlan(configPath string, proposed thresholdValues) error {
 	return nil
 }
 
+func readReconcileSamples(root string) ([]reconcileSample, error) {
+	trimmedRoot := strings.TrimSpace(root)
+	if trimmedRoot == "" {
+		return nil, nil
+	}
+
+	samples := make([]reconcileSample, 0)
+	err := filepath.WalkDir(trimmedRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(d.Name())), ".json") {
+			return nil
+		}
+		payload, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		var item archivedReconcileRecord
+		if err := json.Unmarshal(payload, &item); err != nil {
+			return nil
+		}
+		timestamp, ok := parseRFC3339(item.GeneratedAt)
+		if !ok {
+			return nil
+		}
+		status := strings.ToLower(strings.TrimSpace(item.Plan.Status))
+		if status == "" {
+			status = "unknown"
+		}
+		samples = append(samples, reconcileSample{
+			Timestamp: timestamp,
+			Status:    status,
+			Applied:   item.Applied,
+		})
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("scan archive root %s: %w", trimmedRoot, err)
+	}
+	sort.Slice(samples, func(i, j int) bool {
+		return samples[i].Timestamp.Before(samples[j].Timestamp)
+	})
+	return samples, nil
+}
+
+func summarizeCadence(history []reconcileSample, current reconcileSample, maxSamples int) reconcileCadence {
+	samples := append([]reconcileSample{}, history...)
+	if !current.Timestamp.IsZero() {
+		samples = append(samples, current)
+	}
+	if maxSamples > 0 && len(samples) > maxSamples {
+		samples = samples[len(samples)-maxSamples:]
+	}
+	if len(samples) == 0 {
+		return reconcileCadence{StatusCount: map[string]int{}}
+	}
+
+	statusCount := map[string]int{}
+	readyCount := 0
+	appliedCount := 0
+	readyStreak := 0
+	for _, sample := range samples {
+		status := strings.ToLower(strings.TrimSpace(sample.Status))
+		if status == "" {
+			status = "unknown"
+		}
+		statusCount[status]++
+		if status == "ready" || status == "applied" {
+			readyCount++
+		}
+		if sample.Applied {
+			appliedCount++
+		}
+	}
+	for i := len(samples) - 1; i >= 0; i-- {
+		status := strings.ToLower(strings.TrimSpace(samples[i].Status))
+		if status == "ready" || status == "applied" {
+			readyStreak++
+			continue
+		}
+		break
+	}
+
+	total := float64(len(samples))
+	return reconcileCadence{
+		Samples:     len(samples),
+		StatusCount: statusCount,
+		ReadyRate:   roundFloat(float64(readyCount)/total, 3),
+		AppliedRate: roundFloat(float64(appliedCount)/total, 3),
+		ReadyStreak: readyStreak,
+	}
+}
+
+func reconcileSampleFromReport(report reconcileReport) reconcileSample {
+	timestamp, ok := parseRFC3339(report.GeneratedAt)
+	if !ok {
+		timestamp = time.Now().UTC()
+	}
+	return reconcileSample{
+		Timestamp: timestamp,
+		Status:    strings.ToLower(strings.TrimSpace(report.Plan.Status)),
+		Applied:   report.Applied,
+	}
+}
+
 func writeReport(path string, payload reconcileReport) error {
 	if strings.TrimSpace(path) == "" {
 		return fmt.Errorf("output path is required")
@@ -266,6 +434,25 @@ func writeReport(path string, payload reconcileReport) error {
 		return fmt.Errorf("write report: %w", err)
 	}
 	return nil
+}
+
+func parseRFC3339(raw string) (time.Time, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, false
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, trimmed); err == nil {
+		return parsed.UTC(), true
+	}
+	if parsed, err := time.Parse(time.RFC3339, trimmed); err == nil {
+		return parsed.UTC(), true
+	}
+	return time.Time{}, false
+}
+
+func isoWeekID(now time.Time) string {
+	year, week := now.ISOWeek()
+	return fmt.Sprintf("%04d-W%02d", year, week)
 }
 
 func clampDelta(value float64, maxAbs float64) float64 {

@@ -450,7 +450,7 @@ P2 (Advanced Operations):
 - N6 end-to-end tracing + alerting hardening
 - N8 integration matrix and release gate automation
 
-Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance are merged through N25 (threshold reconcile coordinator), and the next delivery focus is proposal hit-rate observation before enabling scheduled apply.
+Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance are merged through N26 (threshold reconcile cadence archive), and the next delivery focus is gating scheduled apply with sustained ready-streak + proposal hit-rate thresholds.
 
 ## Feature Roadmap
 

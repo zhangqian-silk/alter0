@@ -47,6 +47,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime cost threshold guidance (`cost.threshold_guidance`) for p90-based share/ratio tuning with drift hints, including workload-tier recommendations (`workload_tiers`)
 - [x] Weekly cost threshold history archive with alert hit-rate regression (`make cost-threshold-history` -> `output/cost/threshold-history-latest.json` + `output/cost/threshold-history/<ISO-week>/`)
 - [x] Threshold reconcile coordinator with bounded proposal/apply workflow (`make cost-threshold-reconcile` -> `output/cost/threshold-reconcile-latest.json` + optional `--apply`)
+- [x] Threshold reconcile cadence archive and readiness trend (`output/cost/threshold-reconcile/<ISO-week>/` + `cadence.ready_rate/applied_rate/ready_streak`)
 - [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability + session cost hotspot/compaction pressure)
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`), including threshold-history freshness checks
@@ -67,7 +68,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 - [x] Gateway integration matrix automation (`make integration-matrix`)
-- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + cost threshold history/reconcile (`make cost-threshold-history`, `make cost-threshold-reconcile`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
+- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + cost threshold history/reconcile cadence (`make cost-threshold-history`, `make cost-threshold-reconcile`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
 - [x] Config parameter governance audit for agents/bindings/session/tools (`make config-governance` -> `output/config/governance-latest.json`)
 - [x] Service-layer schedule facade (`app/core/service/schedule`) used by runtime/HTTP integration boundaries
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
@@ -107,8 +108,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 3. [x] N23 Weekly threshold-history regression automation (`make cost-threshold-history` + risk benchmark linkage)
 4. [x] N24 Workload-tier threshold guidance (`cost.threshold_guidance.workload_tiers` by token-volume buckets)
 5. [x] N25 Threshold reconcile coordinator (`make cost-threshold-reconcile` generates bounded proposals with optional `--apply` config write-back)
+6. [x] N26 Threshold reconcile cadence archive (`make cost-threshold-reconcile` now archives weekly snapshots and computes readiness trends)
 
-Queue status: N25 merged; runtime cost governance backlog has no open blocking item.
+Queue status: N26 merged; runtime cost governance backlog has no open blocking item.
 
 ## 4) Change Rule
 

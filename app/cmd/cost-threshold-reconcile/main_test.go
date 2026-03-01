@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestBuildPlanSkipsWhenGuidanceNotReady(t *testing.T) {
 	current := thresholdValues{
@@ -81,5 +84,42 @@ func TestBuildPlanNoChangeWhenAlreadyAligned(t *testing.T) {
 
 	if plan.Status != "no_change" {
 		t.Fatalf("expected no_change status, got %q", plan.Status)
+	}
+}
+
+func TestSummarizeCadenceUsesRecentWindowAndReadyStreak(t *testing.T) {
+	history := []reconcileSample{
+		{Timestamp: time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC), Status: "skipped", Applied: false},
+		{Timestamp: time.Date(2026, 3, 1, 11, 0, 0, 0, time.UTC), Status: "ready", Applied: false},
+		{Timestamp: time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC), Status: "ready", Applied: false},
+	}
+	current := reconcileSample{Timestamp: time.Date(2026, 3, 1, 13, 0, 0, 0, time.UTC), Status: "applied", Applied: true}
+
+	summary := summarizeCadence(history, current, 3)
+
+	if summary.Samples != 3 {
+		t.Fatalf("expected samples=3, got %d", summary.Samples)
+	}
+	if summary.StatusCount["ready"] != 2 || summary.StatusCount["applied"] != 1 {
+		t.Fatalf("unexpected status counts: %#v", summary.StatusCount)
+	}
+	if summary.ReadyRate != 1 {
+		t.Fatalf("expected ready rate 1, got %f", summary.ReadyRate)
+	}
+	if summary.AppliedRate != 0.333 {
+		t.Fatalf("expected applied rate 0.333, got %f", summary.AppliedRate)
+	}
+	if summary.ReadyStreak != 3 {
+		t.Fatalf("expected ready streak 3, got %d", summary.ReadyStreak)
+	}
+}
+
+func TestSummarizeCadenceEmpty(t *testing.T) {
+	summary := summarizeCadence(nil, reconcileSample{}, 10)
+	if summary.Samples != 0 {
+		t.Fatalf("expected samples=0, got %d", summary.Samples)
+	}
+	if len(summary.StatusCount) != 0 {
+		t.Fatalf("expected empty status count, got %#v", summary.StatusCount)
 	}
 }
