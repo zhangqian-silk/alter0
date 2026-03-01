@@ -1,12 +1,12 @@
 package runtime
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
-	"alter0/app/core/orchestrator/db"
-	"alter0/app/core/orchestrator/task"
-	"alter0/app/core/scheduler"
+	orctask "alter0/app/core/orchestrator/task"
+	"alter0/app/pkg/scheduler"
 )
 
 func TestRegisterMaintenanceJobsDisabled(t *testing.T) {
@@ -21,17 +21,15 @@ func TestRegisterMaintenanceJobsDisabled(t *testing.T) {
 }
 
 func TestRegisterMaintenanceJobsWithDefaults(t *testing.T) {
-	tmp := t.TempDir()
-	database, err := db.NewSQLiteDB(tmp)
-	if err != nil {
-		t.Fatalf("new db: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
-
-	store := task.NewStore(database)
 	s := scheduler.New()
+	db, err := orctask.NewSQLiteDB(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatalf("new sqlite db failed: %v", err)
+	}
+	defer db.Close()
+	taskStore := orctask.NewStore(db)
 
-	if err := RegisterMaintenanceJobs(s, store, MaintenanceOptions{}); err != nil {
+	if err := RegisterMaintenanceJobs(s, taskStore, MaintenanceOptions{}); err != nil {
 		t.Fatalf("register maintenance jobs: %v", err)
 	}
 	if got := s.Health().RegisteredJobs; got != 1 {

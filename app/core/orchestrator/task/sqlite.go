@@ -1,4 +1,4 @@
-package db
+package task
 
 import (
 	"database/sql"

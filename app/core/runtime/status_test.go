@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"alter0/app/core/agent"
-	"alter0/app/core/queue"
-	"alter0/app/core/schedule"
-	"alter0/app/core/tools"
+	executor "alter0/app/core/executor"
+	"alter0/app/core/orchestrator/schedule"
+	"alter0/app/core/runtime/tools"
+	"alter0/app/pkg/queue"
 	_ "modernc.org/sqlite"
 )
 
@@ -28,7 +28,7 @@ func TestSnapshotIncludesExecutorCapabilities(t *testing.T) {
 		t.Fatalf("expected executors in snapshot")
 	}
 
-	executors, ok := raw.([]agent.ExecutorCapability)
+	executors, ok := raw.([]executor.ExecutorCapability)
 	if !ok {
 		t.Fatalf("expected executors to be []agent.ExecutorCapability, got %T", raw)
 	}

@@ -6,13 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"alter0/app/core/orchestrator/db"
 )
 
 func TestTaskMemoryUpsertAndGet(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}
@@ -60,7 +58,7 @@ func TestTaskMemoryUpsertAndGet(t *testing.T) {
 
 func TestTaskMemoryGetMissing(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}
@@ -78,7 +76,7 @@ func TestTaskMemoryGetMissing(t *testing.T) {
 
 func TestTaskMemoryDelete(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}
@@ -104,7 +102,7 @@ func TestTaskMemoryDelete(t *testing.T) {
 
 func TestTaskMemorySnapshotExportAndRestore(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}
@@ -170,7 +168,7 @@ func TestTaskMemorySnapshotExportAndRestore(t *testing.T) {
 
 func TestPruneTaskMemoryByClosedAt(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}
@@ -240,7 +238,7 @@ func TestPruneTaskMemoryByClosedAt(t *testing.T) {
 
 func TestPruneTaskMemoryByOpenUpdatedAt(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}
@@ -310,7 +308,7 @@ func TestPruneTaskMemoryByOpenUpdatedAt(t *testing.T) {
 
 func TestTaskMemorySnapshotRestoreIsAtomic(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}

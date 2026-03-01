@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"alter0/app/core/queue"
+	servicequeue "alter0/app/pkg/queue"
 	"alter0/app/pkg/types"
 )
 
@@ -36,7 +36,7 @@ type DefaultGateway struct {
 	mu             sync.RWMutex
 	tracer         TraceRecorder
 
-	executionQueue *queue.Queue
+	executionQueue *servicequeue.Queue
 	queueOptions   QueueOptions
 
 	processedMessages uint64
@@ -55,7 +55,7 @@ type HealthStatus struct {
 	AgentFallbacks     uint64
 	LastMessageAt      time.Time
 	QueueEnabled       bool
-	Queue              queue.Stats
+	Queue              servicequeue.Stats
 }
 
 func NewGateway(agent types.Agent) *DefaultGateway {
@@ -116,7 +116,7 @@ func (g *DefaultGateway) SetTraceRecorder(tracer TraceRecorder) {
 	g.tracer = tracer
 }
 
-func (g *DefaultGateway) SetExecutionQueue(q *queue.Queue, opts QueueOptions) {
+func (g *DefaultGateway) SetExecutionQueue(q *servicequeue.Queue, opts QueueOptions) {
 	if opts.MaxRetries < 0 {
 		opts.MaxRetries = 0
 	}
@@ -203,7 +203,7 @@ func (g *DefaultGateway) dispatchWithQueue(ctx context.Context, msg types.Messag
 	g.mu.RUnlock()
 
 	attempt := 0
-	job := queue.Job{
+	job := servicequeue.Job{
 		MaxRetries:     opts.MaxRetries,
 		RetryDelay:     opts.RetryDelay,
 		AttemptTimeout: opts.AttemptTimeout,
@@ -609,7 +609,7 @@ func (g *DefaultGateway) HealthStatus() HealthStatus {
 	}
 	defaultAgentID := g.defaultAgentID
 	queueEnabled := g.queueOptions.Enabled && g.executionQueue != nil
-	var queueStats queue.Stats
+	var queueStats servicequeue.Stats
 	if queueEnabled {
 		queueStats = g.executionQueue.Stats()
 	}

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"alter0/app/service/httpstate"
+	"alter0/app/core/interaction/http/httpstate"
 )
 
 const (

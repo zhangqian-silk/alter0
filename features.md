@@ -27,7 +27,7 @@
 
 - 目标：削减 `interaction/http` 中的业务编排状态，恢复传输适配层定位。
 - 交付边界：
-  - async/subagent/schedule 的核心状态与生命周期下沉到服务层。
+  - async/subagent/schedule 的核心状态与生命周期下沉到 `app/core` 能力模块。
   - HTTP 层仅保留协议解析、鉴别、响应组装与错误映射。
   - 统一接口契约，保持现有 API 兼容。
 
@@ -55,14 +55,6 @@
   - 增加 Windows 环境稳定性回归验证。
   - 作为 release-gate 前置条件纳入检查。
 
-### N15 Service 模块化重构（P1）
-
-- 目标：新增 `app/service` 作为独立能力层，`core/orchestrator` 仅保留最核心编排逻辑。
-- 交付边界：
-  - 将任务调度、队列管理、数据库、日志审计、运行时维护等能力迁移至 `app/service`。
-  - `core/orchestrator` 收敛为 route/execute/close 编排内核，仅依赖 service 接口。
-  - 明确依赖方向：`core -> service -> infra`，禁止 `service -> core/orchestrator` 反向依赖。
-
 ## 3. 优先级与执行队列（新）
 
 ### P0（立即处理）
@@ -76,7 +68,6 @@
 1. [x] N11 HTTP 层职责收敛（状态下沉与编排解耦）
 2. [x] N12 调度能力边界统一（单一调度主循环）
 3. [ ] N13 配置层依赖解耦（移除反向依赖）
-4. [ ] N15 Service 模块化重构（`core -> service -> infra` 分层落地）
 
 ## 4. 执行规则
 

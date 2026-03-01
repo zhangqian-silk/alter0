@@ -14,13 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"alter0/app/core/agent"
-	"alter0/app/core/interaction/gateway"
-	"alter0/app/core/orchestrator/task"
-	"alter0/app/core/queue"
-	"alter0/app/core/schedule"
-	"alter0/app/core/scheduler"
-	"alter0/app/core/tools"
+	"alter0/app/core/executor"
+	orcschedule "alter0/app/core/orchestrator/schedule"
+	orctask "alter0/app/core/orchestrator/task"
+	toolruntime "alter0/app/core/runtime/tools"
+	"alter0/app/pkg/queue"
+	"alter0/app/pkg/scheduler"
 )
 
 type AgentEntry struct {
@@ -31,11 +30,11 @@ type AgentEntry struct {
 }
 
 type StatusCollector struct {
-	Gateway                 *gateway.DefaultGateway
+	GatewayStatusProvider   func() interface{}
 	Scheduler               *scheduler.Scheduler
 	Queue                   *queue.Queue
-	TaskStore               *task.Store
-	ScheduleService         *schedule.Service
+	TaskStore               *orctask.Store
+	ScheduleService         *orcschedule.Service
 	RepoPath                string
 	CommandAuditBasePath    string
 	CommandAuditTailSize    int
@@ -45,7 +44,7 @@ type StatusCollector struct {
 	CostInputPer1K          float64
 	CostOutputPer1K         float64
 	AgentEntries            []AgentEntry
-	ToolRuntime             *tools.Runtime
+	ToolRuntime             *toolruntime.Runtime
 	GatewayTraceBasePath    string
 	GatewayTraceWindow      time.Duration
 	AlertRetryStormWindow   time.Duration
@@ -120,8 +119,8 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	if c.Gateway != nil {
-		payload["gateway"] = c.Gateway.HealthStatus()
+	if c.GatewayStatusProvider != nil {
+		payload["gateway"] = c.GatewayStatusProvider()
 	}
 	if c.Scheduler != nil {
 		payload["scheduler"] = map[string]interface{}{
@@ -174,7 +173,7 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		"latest_at":      traceSummary.LatestAt,
 	}
 
-	executors := agent.ListExecutorCapabilities()
+	executors := executor.ListExecutorCapabilities()
 	payload["executors"] = executors
 	payload["alerts"] = summarizeRuntimeAlerts(runtimeAlertInput{
 		Now:                     now,
@@ -208,7 +207,7 @@ type runtimeAlertInput struct {
 	Now                     time.Time
 	Queue                   *queue.Queue
 	Trace                   gatewayTraceSummary
-	Executors               []agent.ExecutorCapability
+	Executors               []executor.ExecutorCapability
 	RetryStormWindow        time.Duration
 	RetryStormMinimum       int
 	QueueBacklogRatio       float64
@@ -308,7 +307,7 @@ func summarizeRuntimeAlerts(input runtimeAlertInput) []runtimeAlert {
 	return alerts
 }
 
-func summarizeSchedules(items []schedule.Job, now time.Time) map[string]interface{} {
+func summarizeSchedules(items []orcschedule.Job, now time.Time) map[string]interface{} {
 	statusCounts := map[string]int{}
 	kindCounts := map[string]int{}
 	deliveryModeCounts := map[string]int{}
@@ -322,11 +321,11 @@ func summarizeSchedules(items []schedule.Job, now time.Time) map[string]interfac
 
 		deliveryMode := strings.TrimSpace(item.Payload.Mode)
 		if deliveryMode == "" {
-			deliveryMode = schedule.ModeDirect
+			deliveryMode = orcschedule.ModeDirect
 		}
 		deliveryModeCounts[deliveryMode]++
 
-		if item.Status != schedule.StatusActive || item.NextRunAt.IsZero() {
+		if item.Status != orcschedule.StatusActive || item.NextRunAt.IsZero() {
 			continue
 		}
 		runAt := item.NextRunAt.UTC()

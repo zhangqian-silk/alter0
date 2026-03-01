@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-
-	toolcore "alter0/app/core/tools"
 )
 
 type Config struct {
@@ -502,7 +500,7 @@ func normalizeToolList(items []string) []string {
 	}
 	set := map[string]struct{}{}
 	for _, item := range items {
-		name := toolcore.NormalizeToolName(item)
+		name := normalizeToolName(item)
 		if strings.TrimSpace(name) == "" {
 			continue
 		}
@@ -517,4 +515,11 @@ func normalizeToolList(items []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func normalizeToolName(name string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(name))
+	trimmed = strings.ReplaceAll(trimmed, "-", "_")
+	trimmed = strings.ReplaceAll(trimmed, " ", "_")
+	return trimmed
 }

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"alter0/app/core/queue"
+	servicequeue "alter0/app/pkg/queue"
 	"alter0/app/pkg/types"
 )
 
@@ -223,7 +223,7 @@ func TestGatewayDispatchWithQueueRetries(t *testing.T) {
 	}
 	gw.RegisterChannel(ch)
 
-	q := queue.New(8)
+	q := servicequeue.New(8)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if err := q.Start(ctx, 1); err != nil {

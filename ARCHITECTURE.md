@@ -7,7 +7,7 @@ The target architecture focuses on:
 
 1. Task-first orchestration instead of chat-thread-first orchestration.
 2. Stable 24x7 runtime on a single node with clear recovery behavior and repeatable deployment assets (systemd/Docker).
-3. Service-oriented capability isolation: reusable runtime capabilities are hosted in `app/service`.
+3. Capability isolation: reusable runtime capabilities are hosted in `app/pkg`, while business orchestration stays in `app/core`.
 4. Strong abstraction boundaries so modules evolve independently.
 5. Observable and maintainable operations without introducing unnecessary platform complexity.
 
@@ -40,8 +40,8 @@ The target architecture focuses on:
                                |
                                v
 +---------------------------------------------------------------+
-| Service Layer (app/service)                                   |
-|  task/schedule/queue/store/executor/tool/runtime/status/audit |
+| Capability Modules (app/pkg + app/core)                      |
+|  queue/scheduler/logger + runtime/tools/schedule/task         |
 +------------------------------+--------------------------------+
                                |
                                v
@@ -136,7 +136,7 @@ Responsibilities:
 
 - preserve only minimal orchestration logic (`route -> execute -> close`)
 - manage orchestration state transitions and decision chain only
-- invoke service interfaces, without owning persistence/runtime infrastructure
+- invoke capability interfaces (`app/pkg` + `app/core/runtime`), without owning persistence/runtime infrastructure
 
 Required submodules:
 
@@ -145,7 +145,7 @@ Required submodules:
 - `orchestrator/policy` (target-state independent policy pack)
 - `orchestrator/context` (prompt/memory builder)
 
-### 5.4 Service Layer (`app/service`)
+### 5.4 Capability Modules (`app/pkg` + `app/core`)
 
 Responsibilities:
 
@@ -155,20 +155,19 @@ Responsibilities:
 
 Required modules:
 
-- `service/task` (task persistence + memory + task stats)
-- `service/command` (slash/admin command execution and permission checks)
-- `service/schedule` (at/cron center + delivery)
-- `service/queue` (job queue runtime and retry controls)
-- `service/store` (DB access, migrations, backup/restore)
-- `service/executor` (executor registry/check/invocation)
-- `service/tools` (tool policy/runtime/audit bridge)
-- `service/observability` (logger, audit streams, status aggregation)
-- `service/runtime` (preflight, maintenance, lifecycle integration)
+- `pkg/queue` (job queue runtime and retry controls)
+- `pkg/scheduler` (job scheduling runtime)
+- `pkg/logger` (shared logger)
+- `core/orchestrator/schedule` (at/cron center + delivery)
+- `core/orchestrator/task` (task persistence + memory + task stats)
+- `core/orchestrator/command` (slash/admin command execution and permission checks)
+- `core/runtime` (preflight, maintenance, lifecycle integration)
+- `core/runtime/tools` (tool policy/runtime/audit bridge)
 
 Layer boundary rule:
 
-- `core/orchestrator` depends on `service/*` interfaces only.
-- `service/*` must not depend on `core/orchestrator`.
+- `core/orchestrator` may depend on `pkg/*` reusable capabilities.
+- `pkg/*` must not depend on `core/orchestrator`.
 
 ### 5.5 Execution Layer (Agent Runtime)
 
@@ -260,7 +259,7 @@ Audit records are appended to `output/audit/<date>/tool_execution.jsonl` with pa
 
 Responsibilities:
 
-- provide concrete infrastructure backends used by `app/service`
+- provide concrete infrastructure backends used by `app/pkg` and `app/core` capability modules
 - keep infra details isolated from orchestration core
 
 Required modules:
@@ -323,18 +322,18 @@ Startup sequence:
 1. initialize logger
 2. load config
 3. run startup preflight (config validity, SQLite writable path, executor binary availability)
-4. initialize `service/store` and validate schema
-5. run migration/backup checks through `service/runtime`
-6. initialize `service/executor` and `service/tools`
-7. initialize `service/queue` and `service/schedule`
+4. initialize task/schedule stores and validate schema
+5. run migration/backup checks through `core/runtime`
+6. initialize executor/tool runtime modules
+7. initialize `pkg/queue`, `pkg/scheduler`, and schedule runtime
 8. initialize plugin host + MCP bridge
-9. initialize orchestration core with service dependencies
+9. initialize orchestration core with capability dependencies
 10. start gateway/channels
 
 Shutdown sequence:
 
 1. stop new intake
-2. drain queue/scheduler/http through `service/runtime` with `runtime.shutdown.drain_timeout_sec`
+2. drain queue/scheduler/http with `runtime.shutdown.drain_timeout_sec`
 3. close plugins/connectors
 4. flush logs/audit services
 5. close store/runtime handles
@@ -403,37 +402,30 @@ Deployment reference assets:
 
 ```text
 app/
+  configs/
   core/
-    interaction/
-    gateway/
-    orchestrator/
-  service/
-    task/
-    command/
-    schedule/
-    queue/
-    store/
     executor/
-    tools/
-    observability/
+    interaction/
+      cli/
+      gateway/
+      http/
+      telegram/
+      slack/
+    orchestrator/
+      agent/
+      command/
+      execlog/
+      schedule/
+      skills/
+      task/
     runtime/
-  executors/
-    codex/
-    claude_code/
-    <future>
-  extensions/
-    skills/
-      builtins/
-      plugins/
-    mcp/
-      bridge/
-      connectors/
-  infra/
-    store/
-      sqlite/
-      migrations/
-    fs/
-    adapters/
+      tools/
+  pkg/
+    cmdutil/
+    logger/
+    queue/
+    scheduler/
+    types/
 ```
 
 ## 12. Implementation Priorities

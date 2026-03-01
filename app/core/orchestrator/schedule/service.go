@@ -429,7 +429,6 @@ type Dispatcher interface {
 type Service struct {
 	store      *Store
 	dispatcher Dispatcher
-	tick       time.Duration
 	batchSize  int
 
 	runMu   sync.Mutex
@@ -440,25 +439,16 @@ func NewService(store *Store, dispatcher Dispatcher) *Service {
 	return &Service{
 		store:      store,
 		dispatcher: dispatcher,
-		tick:       time.Second,
 		batchSize:  20,
 		running:    map[string]struct{}{},
 	}
 }
 
-func (s *Service) Start(ctx context.Context) {
-	ticker := time.NewTicker(s.tick)
-	go func() {
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				s.DispatchDue(ctx)
-			}
-		}
-	}()
+func (s *Service) SetBatchSize(batchSize int) {
+	if s == nil || batchSize <= 0 {
+		return
+	}
+	s.batchSize = batchSize
 }
 
 func (s *Service) DispatchDue(ctx context.Context) {

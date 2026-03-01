@@ -29,8 +29,8 @@ Alter0 采用以下设计域划分：
 Channel (CLI / HTTP / Telegram / Slack / Web)
   -> Gateway
   -> Orchestrator Core (Task Router + Task Closer)
-  -> Service Layer (task/queue/schedule/store/runtime/tools/observability)
-  -> Executor (codex / claude_code, via service)
+  -> Capability Modules (pkg + core)
+  -> Executor (codex / claude_code)
   -> Orchestrator
   -> Channel
 ```
@@ -47,8 +47,8 @@ Channel (CLI / HTTP / Telegram / Slack / Web)
 目标分层边界：
 
 - `app/core/orchestrator`：仅保留最核心编排逻辑（route -> execute -> close）。
-- `app/service`：承载独立能力模块（任务调度、队列管理、数据库、日志审计、运行时维护等）。
-- `app/core/interaction` 与 `app/core/gateway`：保持传输与路由职责，不持有业务基础设施状态。
+- `app/pkg`：承载通用能力模块（如 queue、scheduler、logger）。
+- `app/core/interaction`（含 gateway）保持传输与路由职责，不持有业务基础设施状态。
 
 ## Core Capabilities
 
@@ -58,7 +58,7 @@ Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对�
 OpenClaw 对齐版本清单请参考：[`docs/openclaw-alignment.md`](./docs/openclaw-alignment.md)。
 面向 OpenClaw 对齐的未完成需求清单请参考：[`features.md`](./features.md)。
 
-当前优先级口径：P0/P1/P2 队列已全部收敛，当前基线进入发布门禁模式（先过回归矩阵与回滚演练，再推进下一批需求）。
+当前优先级以 [`features.md`](./features.md) 为准，发布节奏按 release-gate 管控（回归矩阵、回滚演练、部署检查、文档同步）。
 
 文档同步策略：当 `docs/features.md` 发生变更时，必须在同一 PR 同步更新 `README.md` 与 `ARCHITECTURE.md`。可以执行：
 
@@ -451,3 +451,4 @@ make restore BACKUP=output/backups/alter0-backup-<timestamp>.tar.gz
 ## License
 
 [MIT](./LICENSE)
+

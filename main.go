@@ -12,21 +12,20 @@ import (
 
 	config "alter0/app/configs"
 	"alter0/app/core/interaction/cli"
-	"alter0/app/core/interaction/gateway"
+	coregateway "alter0/app/core/interaction/gateway"
 	"alter0/app/core/interaction/http"
 	"alter0/app/core/interaction/slack"
 	"alter0/app/core/interaction/telegram"
 	"alter0/app/core/orchestrator/agent"
-	"alter0/app/core/orchestrator/db"
+	"alter0/app/core/orchestrator/schedule"
 	"alter0/app/core/orchestrator/skills"
 	"alter0/app/core/orchestrator/skills/builtins"
-	"alter0/app/core/orchestrator/task"
-	"alter0/app/core/queue"
-	"alter0/app/core/runtime"
-	"alter0/app/core/schedule"
-	"alter0/app/core/scheduler"
-	toolruntime "alter0/app/core/tools"
+	orctask "alter0/app/core/orchestrator/task"
+	coreruntime "alter0/app/core/runtime"
+	toolruntime "alter0/app/core/runtime/tools"
 	"alter0/app/pkg/logger"
+	"alter0/app/pkg/queue"
+	"alter0/app/pkg/scheduler"
 )
 
 type registeredAgent struct {
@@ -35,8 +34,8 @@ type registeredAgent struct {
 	AgentDir  string
 	Executor  string
 	Brain     *agent.DefaultAgent
-	TaskStore *task.Store
-	Database  *db.DB
+	TaskStore *orctask.Store
+	Database  *orctask.DB
 }
 
 func main() {
@@ -52,7 +51,7 @@ func main() {
 	}
 	cfg := cfgManager.Get()
 
-	if err := runtime.RunPreflight(context.Background(), cfg, "output/db"); err != nil {
+	if err := coreruntime.RunPreflight(context.Background(), cfg, "output/db"); err != nil {
 		logger.Error("Startup preflight failed: %v", err)
 		os.Exit(1)
 	}
@@ -68,8 +67,8 @@ func main() {
 	defer closeAgentDatabases(agents)
 	logger.Info("Initialized %d agents, default=%s", len(agents), defaultAgent.ID)
 
-	gw := gateway.NewGateway(nil)
-	traceRecorder, err := gateway.NewTraceRecorder(filepath.Join("output", "trace"))
+	gw := coregateway.NewGateway(nil)
+	traceRecorder, err := coregateway.NewTraceRecorder(filepath.Join("output", "trace"))
 	if err != nil {
 		logger.Error("Failed to initialize gateway trace recorder: %v", err)
 		os.Exit(1)
@@ -109,7 +108,7 @@ func main() {
 			}
 		}()
 	}
-	gw.SetExecutionQueue(executionQueue, gateway.QueueOptions{
+	gw.SetExecutionQueue(executionQueue, coregateway.QueueOptions{
 		Enabled:        cfg.Runtime.Queue.Enabled,
 		EnqueueTimeout: time.Duration(cfg.Runtime.Queue.EnqueueTimeoutSec) * time.Second,
 		AttemptTimeout: time.Duration(cfg.Runtime.Queue.AttemptTimeoutSec) * time.Second,
@@ -160,16 +159,7 @@ func main() {
 	defer cancel()
 
 	jobScheduler := scheduler.New()
-
-	scheduleStore, err := schedule.NewStore(defaultAgent.Database.Conn())
-	if err != nil {
-		logger.Error("Failed to initialize schedule store: %v", err)
-		os.Exit(1)
-	}
-	scheduleService := schedule.NewService(scheduleStore, gw)
-	httpChannel.SetScheduleService(scheduleService)
-
-	if err := runtime.RegisterMaintenanceJobs(jobScheduler, defaultAgent.TaskStore, runtime.MaintenanceOptions{
+	if err := coreruntime.RegisterMaintenanceJobs(jobScheduler, defaultAgent.TaskStore, coreruntime.MaintenanceOptions{
 		Enabled:                     cfg.Runtime.Maintenance.Enabled,
 		TaskMemoryRetentionDays:     cfg.Runtime.Maintenance.TaskMemoryRetentionDays,
 		TaskMemoryOpenRetentionDays: cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays,
@@ -179,17 +169,14 @@ func main() {
 		logger.Error("Failed to register maintenance jobs: %v", err)
 		os.Exit(1)
 	}
-	if err := jobScheduler.Register(scheduler.JobSpec{
-		Name:       "schedule.dispatch_due",
-		Interval:   time.Second,
-		Timeout:    30 * time.Second,
-		RunOnStart: true,
-		Run: func(runCtx context.Context) error {
-			scheduleService.DispatchDue(runCtx)
-			return nil
-		},
-	}); err != nil {
-		logger.Error("Failed to register schedule dispatcher job: %v", err)
+	scheduleStore, err := schedule.NewStore(defaultAgent.Database.Conn())
+	if err != nil {
+		logger.Error("Failed to initialize schedule store: %v", err)
+		os.Exit(1)
+	}
+	scheduleService := schedule.NewService(scheduleStore, gw)
+	if err := coreruntime.RegisterScheduleJobs(jobScheduler, scheduleService, coreruntime.ScheduleOptions{}); err != nil {
+		logger.Error("Failed to register schedule jobs: %v", err)
 		os.Exit(1)
 	}
 	if err := jobScheduler.Start(ctx); err != nil {
@@ -201,6 +188,7 @@ func main() {
 			logger.Error("Scheduler shutdown timeout: %v", err)
 		}
 	}()
+	httpChannel.SetScheduleService(scheduleService)
 
 	toolRuntime := toolruntime.NewRuntime(toolruntime.Config{
 		GlobalAllow:    cfg.Security.Tools.GlobalAllow,
@@ -213,8 +201,8 @@ func main() {
 		},
 	}, filepath.Join("output", "audit"))
 
-	statusCollector := &runtime.StatusCollector{
-		Gateway:                 gw,
+	statusCollector := &coreruntime.StatusCollector{
+		GatewayStatusProvider:   func() interface{} { return gw.HealthStatus() },
 		Scheduler:               jobScheduler,
 		Queue:                   executionQueue,
 		TaskStore:               defaultAgent.TaskStore,
@@ -265,11 +253,11 @@ func buildAgents(cfgManager *config.Manager, cfg config.Config) ([]registeredAge
 		executorName := stringsOrDefault(entry.Executor, cfg.Executor.Name)
 		agentName := stringsOrDefault(entry.Name, cfg.Agent.Name)
 
-		database, err := db.NewSQLiteDB(filepath.Join(agentDir, "db"))
+		database, err := orctask.NewSQLiteDB(filepath.Join(agentDir, "db"))
 		if err != nil {
 			return nil, registeredAgent{}, fmt.Errorf("agent %s: %w", entry.ID, err)
 		}
-		taskStore := task.NewStore(database)
+		taskStore := orctask.NewStore(database)
 		skillMgr := skills.NewManager()
 		brain := agent.NewAgent(agentName, skillMgr, taskStore, executorName, cfg.Task, cfg.Security)
 
@@ -322,10 +310,10 @@ func closeAgentDatabases(agents []registeredAgent) {
 	}
 }
 
-func runtimeAgentEntries(agents []registeredAgent) []runtime.AgentEntry {
-	items := make([]runtime.AgentEntry, 0, len(agents))
+func runtimeAgentEntries(agents []registeredAgent) []coreruntime.AgentEntry {
+	items := make([]coreruntime.AgentEntry, 0, len(agents))
 	for _, item := range agents {
-		items = append(items, runtime.AgentEntry{
+		items = append(items, coreruntime.AgentEntry{
 			AgentID:   item.ID,
 			Workspace: item.Workspace,
 			AgentDir:  item.AgentDir,
@@ -349,7 +337,7 @@ func toToolAgentPolicies(raw map[string]config.ToolAgentPolicy) map[string]toolr
 	return out
 }
 
-func runGatewayWithRetry(ctx context.Context, gw *gateway.DefaultGateway) {
+func runGatewayWithRetry(ctx context.Context, gw *coregateway.DefaultGateway) {
 	backoff := time.Second
 	maxBackoff := 30 * time.Second
 	for {

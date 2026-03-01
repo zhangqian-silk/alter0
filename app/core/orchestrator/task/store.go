@@ -8,12 +8,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"alter0/app/core/orchestrator/db"
 )
 
 type Store struct {
-	db      *db.DB
+	db      *DB
 	counter uint64
 }
 
@@ -24,7 +22,7 @@ type Stats struct {
 	WithMemory int `json:"with_memory"`
 }
 
-func NewStore(database *db.DB) *Store {
+func NewStore(database *DB) *Store {
 	return &Store{db: database}
 }
 
