@@ -594,22 +594,66 @@ func TestSnapshotIncludesTraceSummaryAndAlerts(t *testing.T) {
 	if got := intValue(t, trace["error_events"]); got != 4 {
 		t.Fatalf("expected trace error events=4, got %d", got)
 	}
+	disconnectedByChannel, ok := trace["disconnected_by_channel"].(map[string]int)
+	if !ok {
+		t.Fatalf("expected disconnected_by_channel map[string]int, got %T", trace["disconnected_by_channel"])
+	}
+	if disconnectedByChannel["slack"] != 1 {
+		t.Fatalf("expected slack disconnected count=1, got %#v", disconnectedByChannel)
+	}
+
+	channelDegradation, ok := snap["channel_degradation"].(channelDegradationSummary)
+	if !ok {
+		t.Fatalf("expected channel_degradation summary, got %T", snap["channel_degradation"])
+	}
+	if channelDegradation.Status != "critical" {
+		t.Fatalf("expected channel_degradation status critical, got %#v", channelDegradation.Status)
+	}
+	if channelDegradation.DegradedChannels == 0 {
+		t.Fatalf("expected degraded channels > 0, got %#v", channelDegradation)
+	}
 
 	alerts, ok := snap["alerts"].([]runtimeAlert)
 	if !ok {
 		t.Fatalf("expected typed runtime alerts, got %T", snap["alerts"])
 	}
-	if len(alerts) < 3 {
-		t.Fatalf("expected at least 3 alerts, got %+v", alerts)
+	if len(alerts) < 4 {
+		t.Fatalf("expected at least 4 alerts, got %+v", alerts)
 	}
 	codes := map[string]bool{}
 	for _, alert := range alerts {
 		codes[alert.Code] = true
 	}
-	for _, code := range []string{"queue_backlog", "retry_storm", "channel_disconnected"} {
+	for _, code := range []string{"queue_backlog", "retry_storm", "channel_disconnected", "channel_degradation"} {
 		if !codes[code] {
 			t.Fatalf("expected alert %q in %+v", code, alerts)
 		}
+	}
+}
+
+func TestSummarizeChannelDegradationFallbackCandidates(t *testing.T) {
+	summary := summarizeChannelDegradation(gatewayTraceSummary{
+		ByChannel: map[string]int{
+			"slack":    4,
+			"telegram": 5,
+		},
+		ErrorChannels: map[string]int{
+			"slack": 2,
+		},
+		DisconnectedByChannel: map[string]int{},
+	})
+
+	if summary.Status != "degraded" {
+		t.Fatalf("expected degraded status, got %#v", summary.Status)
+	}
+	if summary.HealthyChannels != 1 {
+		t.Fatalf("expected one healthy channel, got %#v", summary.HealthyChannels)
+	}
+	if len(summary.FallbackCandidates) != 1 || summary.FallbackCandidates[0] != "telegram" {
+		t.Fatalf("expected telegram fallback candidate, got %#v", summary.FallbackCandidates)
+	}
+	if len(summary.Channels) != 1 || summary.Channels[0].ChannelID != "slack" {
+		t.Fatalf("expected slack degradation entry, got %#v", summary.Channels)
 	}
 }
 

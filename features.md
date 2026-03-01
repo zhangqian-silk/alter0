@@ -52,16 +52,20 @@
 5. [x] N25 阈值回写协调器（`make cost-threshold-reconcile` 生成阈值调优提案，支持 `--apply` 受控写回 `config/config.json`）
 6. [x] N26 阈值回写节奏归档（`make cost-threshold-reconcile` 周归档 `output/cost/threshold-reconcile/<ISO-week>/`，并输出 `cadence.ready_rate/applied_rate/ready_streak`）
 
-当前状态：N26 已闭环，运行时成本治理进入“建议生成 + 命中率观测 + 受控落地”阶段。
+### P5（多通道韧性治理）
+
+1. [x] N27 通道降级观测与回退建议（`/status.channel_degradation` 输出每通道退化等级、fallback 候选与恢复建议，并新增 `alerts.channel_degradation`）
+
+当前状态：N27 已闭环，运行时治理从“成本阈值”扩展到“多通道降级可观测 + 回退指引”。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-01 UTC）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：针对研究报告 5.1“长会话 token 成本与 compaction 权衡”，在 N21/N22/N23/N24/N25 基础上补齐 N26 阈值回写节奏归档——`cost-threshold-reconcile` 现在会按 ISO 周归档快照，并输出 `cadence.ready_rate/applied_rate/ready_streak` 用于连续观测。
-- 当前缺口：研究报告 5.2 建议项已保持全量落地；5.1 已具备“监测 -> 建议 -> 受控回写 -> 命中率观测”闭环，暂无阻塞级缺口。
-- 下一步：当 `ready_streak` 与提案命中率连续满足阈值后，再评估是否启用定时 `--apply`（仍需保留人工审批开关）。
+- 本轮新增对齐：针对研究报告 5.1 剩余项“多通道故障时的降级策略与可观测性完整度”，新增 N27 通道降级观测层，`/status.channel_degradation` 现可输出每通道 error/disconnect 严重度、fallback 候选与恢复建议，并通过 `alerts.channel_degradation` 给出统一告警。
+- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 现已具备“成本治理 + 多通道降级观测”双闭环，暂无阻塞级功能缺口。
+- 下一步：在生产样本累积后补充通道级 chaos drill（按通道注入断连）并回填 `channel_degradation` 阈值参数，验证告警噪声与误报率。
 
 ## 5. 执行规则
 
@@ -71,6 +75,7 @@
 
 ## 6. 失败记录与优先重试
 
+- 2026-03-01（UTC）：本轮 `git fetch origin --prune` 前 2 次失败（`Failure when receiving data from the peer`），第 4 次重试恢复；后续已完成远端同步与开发链路。
 - 2026-03-01（UTC）：`git push -u origin feat/p2-n16-risk-watchlist-automation` 连续两次超时失败（无法连接 `github.com:443`），导致 PR/merge 链路阻塞；已在后续轮次恢复并完成 N16 合并。
 - 2026-03-02（UTC）：`make risk-benchmark` 初次执行因缺少 N18 基准文件失败（`config/scenario-benchmark-matrix.json`、`config/competitor-tracking.json`）；已在同轮补齐并通过门禁，无待重试项。
 - 2026-03-02（UTC）：`make competitor-tracking-refresh` 在未配置 `GH_TOKEN/GITHUB_TOKEN` 时触发 GitHub API 403 rate limit；已改为默认降级不中断并记录 warning，下一轮优先在带 token 环境执行一次完整刷新。
