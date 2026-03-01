@@ -303,6 +303,43 @@ Response:
 
 取消仍处于 `pending` 的异步任务。
 
+### `POST /api/subagents`
+
+创建子代理执行单元，支持两种模式：
+
+- `mode=run`：一次性执行（异步），完成后状态进入 `completed|timeout`。
+- `mode=session`：创建长会话，后续通过 `/api/subagents/{id}/messages` 继续发送回合。
+
+Request:
+
+```json
+{"mode":"run","content":"总结今天日志","user_id":"local_user","agent_id":"default","timeout_sec":45,"announce":{"channel_id":"telegram","to":"123456"}}
+```
+
+Response (`202 Accepted`):
+
+```json
+{"subagent_id":"subagent-...","mode":"run","status":"pending","created_at":"...","updated_at":"..."}
+```
+
+说明：`announce` 为可选，配置后每次回合结束会通过网关 `DeliverDirect` 主动投递结果摘要。
+
+### `GET /api/subagents`
+
+列出子代理执行单元，支持 `status`、`mode`、`limit` 过滤。
+
+### `GET /api/subagents/{id}`
+
+查询单个子代理详情（包含最近结果与回合历史）。
+
+### `POST /api/subagents/{id}/messages`
+
+向 `session` 模式子代理发送新回合输入，返回该回合执行结果。
+
+### `POST /api/subagents/{id}/close`
+
+关闭 `session` 模式子代理会话，状态转为 `closed`。
+
 ### `GET /api/status`
 
 返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/queue[workers,in_flight,last_shutdown]/executors/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。

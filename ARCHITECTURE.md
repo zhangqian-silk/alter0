@@ -261,6 +261,12 @@ Required modules:
 - `GET /api/tasks` returns recent async requests with status filtering (`status`) and bounded pagination (`limit`)
 - `GET /api/tasks/{id}` returns task status (`pending|completed|canceled|timeout`) and completion payload
 - `POST /api/tasks/{id}/cancel` marks a pending async task as canceled
+- `POST /api/subagents` creates a sub-agent in `run|session` mode (`run` is async, `session` is long-lived)
+- `GET /api/subagents` lists sub-agents with `status/mode/limit` filtering
+- `GET /api/subagents/{id}` returns sub-agent state, latest result, and turn history
+- `POST /api/subagents/{id}/messages` submits a turn to a `session` sub-agent
+- `POST /api/subagents/{id}/close` closes a `session` sub-agent
+- sub-agent requests may include `announce.channel_id + announce.to`, which triggers gateway direct delivery after each completed turn
 - `GET /api/status` aggregated runtime status (includes schedules/session/subagent/cost metrics, recent command audit tail, and git upstream divergence)
 
 ### 7.3 Command Surface

@@ -43,6 +43,10 @@ type HTTPChannel struct {
 	asyncMu sync.Mutex
 	async   map[string]*asyncRequest
 
+	subagentMu        sync.Mutex
+	subagents         map[string]*subagentRecord
+	subagentAnnouncer func(context.Context, SubagentAnnouncement) error
+
 	scheduleService *schedule.Service
 }
 
@@ -53,6 +57,7 @@ func NewHTTPChannel(port int) *HTTPChannel {
 		pending:         map[string]chan types.Message{},
 		shutdownTimeout: 5 * time.Second,
 		async:           map[string]*asyncRequest{},
+		subagents:       map[string]*subagentRecord{},
 	}
 }
 
@@ -84,6 +89,8 @@ func (c *HTTPChannel) Start(ctx context.Context, handler func(types.Message)) er
 	mux.HandleFunc("/api/status", c.handleStatus)
 	mux.HandleFunc("/api/tasks", c.handleAsyncTasks)
 	mux.HandleFunc("/api/tasks/", c.handleAsyncTasks)
+	mux.HandleFunc("/api/subagents", c.handleSubagents)
+	mux.HandleFunc("/api/subagents/", c.handleSubagents)
 	mux.HandleFunc("/api/schedules", c.handleSchedules)
 	mux.HandleFunc("/api/schedules/", c.handleSchedules)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

@@ -41,6 +41,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime status snapshot command audit tail
 - [x] Runtime status snapshot git upstream divergence (`upstream/ahead/behind`)
 - [x] Runtime status expansion for sessions/subagents/schedules/cost metrics
+- [x] Sub-agent run/session modes with result announce chain
 - [x] Executor stage JSONL logs
 
 ### Execution and Extensibility
@@ -65,7 +66,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 ### P1 (Orchestration Upgrade)
 
-1. [ ] N2 Sub-agent run/session modes with result announce chain
+1. [x] N2 Sub-agent run/session modes with result announce chain
 2. [ ] N4 Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts`) + policy gates
 3. [ ] N5 Long-term memory retrieval and context-safety isolation by surface
 4. [ ] N7 Security posture checks and high-risk operation guards
@@ -76,7 +77,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 2. [ ] N6 End-to-end tracing and alerting hardening
 3. [ ] N8 Full integration matrix and release gates for rollback-safe delivery
 
-Queue status: P0 queue is complete; next priority is P1-1 (`N2` sub-agent run/session modes with result announce chain).
+Queue status: P0 queue is complete; P1-1 (`N2` sub-agent run/session modes with result announce chain) is complete; next priority is P1-2 (`N4` tool protocol normalization + policy gates).
 
 ## 4) Change Rule
 
