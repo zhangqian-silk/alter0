@@ -69,3 +69,4 @@
 - 2026-03-02（UTC）：`make risk-benchmark` 初次执行因缺少 N18 基准文件失败（`config/scenario-benchmark-matrix.json`、`config/competitor-tracking.json`）；已在同轮补齐并通过门禁，无待重试项。
 - 2026-03-02（UTC）：`make competitor-tracking-refresh` 在未配置 `GH_TOKEN/GITHUB_TOKEN` 时触发 GitHub API 403 rate limit；已改为默认降级不中断并记录 warning，下一轮优先在带 token 环境执行一次完整刷新。
 - 2026-03-01（UTC）：本轮执行 `git fetch origin` 连续超时（无输出后被超时终止），无法确认远端 `master` 最新提交；已改为基于本地 `master` 继续开发，下一轮优先重试网络连通后再同步远端。
+- 2026-03-01（UTC）：`git push -u origin feat/n21-session-cost-pressure-alerts` 两次失败（`Failure when receiving data from the peer` / `Failed to connect to github.com:443`），导致 PR/merge 链路阻塞；下一轮优先重试推送并补齐 PR 合并。
