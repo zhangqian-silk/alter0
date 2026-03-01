@@ -14,6 +14,7 @@ type Config struct {
 	Task     TaskConfig     `json:"task"`
 	Runtime  RuntimeConfig  `json:"runtime"`
 	Security SecurityConfig `json:"security"`
+	Channels ChannelConfig  `json:"channels"`
 }
 
 type AgentConfig struct {
@@ -64,6 +65,30 @@ type ExecutionQueueConfig struct {
 	AttemptTimeoutSec int  `json:"attempt_timeout_sec"`
 	MaxRetries        int  `json:"max_retries"`
 	RetryDelaySec     int  `json:"retry_delay_sec"`
+}
+
+type ChannelConfig struct {
+	Telegram TelegramChannelConfig `json:"telegram"`
+	Slack    SlackChannelConfig    `json:"slack"`
+}
+
+type TelegramChannelConfig struct {
+	Enabled         bool   `json:"enabled"`
+	BotToken        string `json:"bot_token"`
+	DefaultChatID   string `json:"default_chat_id"`
+	PollIntervalSec int    `json:"poll_interval_sec"`
+	TimeoutSec      int    `json:"timeout_sec"`
+	APIBaseURL      string `json:"api_base_url"`
+}
+
+type SlackChannelConfig struct {
+	Enabled          bool   `json:"enabled"`
+	BotToken         string `json:"bot_token"`
+	AppID            string `json:"app_id"`
+	EventListenPort  int    `json:"event_listen_port"`
+	EventPath        string `json:"event_path"`
+	DefaultChannelID string `json:"default_channel_id"`
+	APIBaseURL       string `json:"api_base_url"`
 }
 
 type Manager struct {
@@ -182,6 +207,18 @@ func defaultConfig() Config {
 		Security: SecurityConfig{
 			AdminUserIDs: []string{"local_user"},
 		},
+		Channels: ChannelConfig{
+			Telegram: TelegramChannelConfig{
+				Enabled:         false,
+				PollIntervalSec: 2,
+				TimeoutSec:      20,
+			},
+			Slack: SlackChannelConfig{
+				Enabled:         false,
+				EventListenPort: 8091,
+				EventPath:       "/events/slack",
+			},
+		},
 	}
 }
 
@@ -251,6 +288,18 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Runtime.Shutdown.DrainTimeoutSec <= 0 {
 		cfg.Runtime.Shutdown.DrainTimeoutSec = 5
+	}
+	if cfg.Channels.Telegram.PollIntervalSec <= 0 {
+		cfg.Channels.Telegram.PollIntervalSec = 2
+	}
+	if cfg.Channels.Telegram.TimeoutSec <= 0 {
+		cfg.Channels.Telegram.TimeoutSec = 20
+	}
+	if cfg.Channels.Slack.EventListenPort <= 0 {
+		cfg.Channels.Slack.EventListenPort = 8091
+	}
+	if strings.TrimSpace(cfg.Channels.Slack.EventPath) == "" {
+		cfg.Channels.Slack.EventPath = "/events/slack"
 	}
 
 	clean := make([]string, 0, len(cfg.Security.AdminUserIDs))

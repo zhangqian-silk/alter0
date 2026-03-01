@@ -46,12 +46,23 @@ func (c *CLIChannel) Start(ctx context.Context, handler func(types.Message)) err
 				return nil
 			}
 
+			msgID := fmt.Sprintf("cli-%d", time.Now().UnixNano())
 			msg := types.Message{
-				ID:        fmt.Sprintf("cli-%d", time.Now().UnixNano()),
+				ID:        msgID,
 				Content:   text,
-				Role:      "user",
+				Role:      types.MessageRoleUser,
 				ChannelID: c.id,
 				UserID:    c.userID,
+				Envelope: &types.MessageEnvelope{
+					Direction: types.EnvelopeDirectionInbound,
+					Channel:   c.id,
+					PeerID:    c.userID,
+					PeerType:  "user",
+					MessageID: msgID,
+					Parts: []types.EnvelopePart{
+						{Type: types.EnvelopePartText, Text: text},
+					},
+				},
 				Meta: map[string]interface{}{
 					"user_id": c.userID,
 				},

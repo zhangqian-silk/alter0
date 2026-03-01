@@ -13,6 +13,8 @@ import (
 	"alter0/app/core/interaction/cli"
 	"alter0/app/core/interaction/gateway"
 	"alter0/app/core/interaction/http"
+	"alter0/app/core/interaction/slack"
+	"alter0/app/core/interaction/telegram"
 	"alter0/app/core/orchestrator/agent"
 	"alter0/app/core/orchestrator/db"
 	"alter0/app/core/orchestrator/skills"
@@ -110,6 +112,29 @@ func main() {
 	httpChannel := http.NewHTTPChannel(8080)
 	httpChannel.SetShutdownTimeout(shutdownTimeout)
 	gw.RegisterChannel(httpChannel)
+
+	if cfg.Channels.Telegram.Enabled {
+		telegramChannel := telegram.NewChannel(telegram.Config{
+			BotToken:       cfg.Channels.Telegram.BotToken,
+			PollInterval:   time.Duration(cfg.Channels.Telegram.PollIntervalSec) * time.Second,
+			TimeoutSeconds: cfg.Channels.Telegram.TimeoutSec,
+			DefaultChatID:  cfg.Channels.Telegram.DefaultChatID,
+			APIRoot:        cfg.Channels.Telegram.APIBaseURL,
+		})
+		gw.RegisterChannel(telegramChannel)
+	}
+
+	if cfg.Channels.Slack.Enabled {
+		slackChannel := slack.NewChannel(slack.Config{
+			BotToken:       cfg.Channels.Slack.BotToken,
+			AppID:          cfg.Channels.Slack.AppID,
+			ListenPort:     cfg.Channels.Slack.EventListenPort,
+			EventPath:      cfg.Channels.Slack.EventPath,
+			DefaultChannel: cfg.Channels.Slack.DefaultChannelID,
+			APIRoot:        cfg.Channels.Slack.APIBaseURL,
+		})
+		gw.RegisterChannel(slackChannel)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

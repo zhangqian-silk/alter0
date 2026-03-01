@@ -191,7 +191,7 @@ func (g *DefaultGateway) sendErrorReply(ctx context.Context, msg types.Message, 
 	response := types.Message{
 		ID:        "resp-" + msg.ID,
 		Content:   reason,
-		Role:      "assistant",
+		Role:      types.MessageRoleAssistant,
 		ChannelID: msg.ChannelID,
 		UserID:    msg.UserID,
 		TaskID:    msg.TaskID,
@@ -210,7 +210,7 @@ func normalizeReply(response *types.Message, request types.Message) {
 		response.ChannelID = request.ChannelID
 	}
 	if response.Role == "" {
-		response.Role = "assistant"
+		response.Role = types.MessageRoleAssistant
 	}
 	if response.UserID == "" {
 		response.UserID = request.UserID
@@ -220,6 +220,18 @@ func normalizeReply(response *types.Message, request types.Message) {
 	}
 	if response.TaskID == "" {
 		response.TaskID = request.TaskID
+	}
+	response.CloneEnvelopeFrom(request)
+	envelope := response.EnsureEnvelope()
+	envelope.Direction = types.EnvelopeDirectionOutbound
+	if envelope.Channel == "" {
+		envelope.Channel = response.ChannelID
+	}
+	if envelope.PeerID == "" {
+		envelope.PeerID = response.UserID
+	}
+	if envelope.MessageID == "" {
+		envelope.MessageID = response.ID
 	}
 	if response.Meta == nil {
 		response.Meta = map[string]interface{}{}

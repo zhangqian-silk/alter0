@@ -92,10 +92,19 @@ Responsibilities:
 - expose consistent sync/async interfaces
 - maintain channel-local UX and transport concerns only
 
+Current baseline (implemented):
+
+- `types.Message` now carries transport-neutral `Envelope`
+- `Envelope.Parts` uses typed units (`text/image/audio/file/reference`) for cross-channel normalization
+- CLI/HTTP adapters populate inbound envelope fields, and gateway normalizes outbound envelope direction
+- Telegram (long polling) + Slack (Events API) adapters provide external channel baseline with media-capable outbound envelope mapping
+
 Required modules:
 
 - `interaction/cli`
 - `interaction/http`
+- `interaction/telegram`
+- `interaction/slack`
 - `interaction/web`
 - `interaction/<future-channel>`
 
@@ -368,28 +377,30 @@ app/
 
 ## 12. Implementation Priorities
 
-P0:
+P0 (Gateway Foundation):
 
-- stable runtime lifecycle
-- async task execution contract
-- non-destructive migration and backup
-- executor registry abstraction
+- N1 multi-channel gateway baseline with deterministic route binding
+- N2 multi-agent registry and session isolation
+- N3 at/cron scheduling with direct channel delivery
+- N6 runtime status expansion (sessions/subagents/schedules/cost)
 
-P1:
+P1 (Orchestration Upgrade):
 
-- plugin host and capability registry
-- MCP bridge and connector lifecycle
-- richer status and observability aggregation
+- N2 sub-agent run/session lifecycle with announce chain
+- N4 normalized tool protocol and policy gates
+- N5 long-term memory retrieval and context-safety isolation
+- N7 security posture checks and high-risk guard rails
 
-P2:
+P2 (Advanced Operations):
 
-- dynamic plugin reload
-- artifact pipeline
-- optional distributed extensions
+- N4 deep node/browser/canvas integration
+- N6 end-to-end tracing + alerting hardening
+- N8 integration matrix and release gate automation
 
 ## Feature Roadmap
 
-See `docs/features.md` for implemented capability matrix and active priority queue.
+See `docs/features.md` for implemented capability matrix and active queue.
+See `features.md` for the OpenClaw-aligned backlog of unshipped requirements.
 
 Documentation consistency rule:
 
