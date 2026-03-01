@@ -58,6 +58,8 @@ type Result struct {
 
 type ExecutionFunc func(context.Context, Request) (interface{}, error)
 
+type ToolchainAdapterMap map[string]ExecutionFunc
+
 type ToolError struct {
 	Code      string
 	Message   string
@@ -107,6 +109,9 @@ type Runtime struct {
 	auditor  *Auditor
 	specs    []Spec
 	specByID map[string]Spec
+
+	mu       sync.RWMutex
+	adapters ToolchainAdapterMap
 }
 
 func NewRuntime(cfg Config, auditBasePath string) *Runtime {
@@ -120,6 +125,7 @@ func NewRuntime(cfg Config, auditBasePath string) *Runtime {
 		auditor:  NewAuditor(auditBasePath),
 		specs:    specs,
 		specByID: specByID,
+		adapters: ToolchainAdapterMap{},
 	}
 }
 
@@ -128,6 +134,44 @@ func (r *Runtime) Evaluate(req Request) Decision {
 		return Decision{Allowed: false, Code: ErrorCodePolicyDenied, Reason: "tool runtime not configured"}
 	}
 	return r.policy.Evaluate(req)
+}
+
+func (r *Runtime) RegisterAdapter(toolName string, adapter ExecutionFunc) {
+	if r == nil {
+		return
+	}
+	name := NormalizeToolName(toolName)
+	if name == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.adapters == nil {
+		r.adapters = ToolchainAdapterMap{}
+	}
+	if adapter == nil {
+		delete(r.adapters, name)
+		return
+	}
+	r.adapters[name] = adapter
+}
+
+func (r *Runtime) RegisterAdapters(adapters ToolchainAdapterMap) {
+	if r == nil {
+		return
+	}
+	for toolName, adapter := range adapters {
+		r.RegisterAdapter(toolName, adapter)
+	}
+}
+
+func (r *Runtime) adapterFor(toolName string) ExecutionFunc {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.adapters[NormalizeToolName(toolName)]
 }
 
 func (r *Runtime) Invoke(ctx context.Context, req Request, execute ExecutionFunc) Result {
@@ -147,6 +191,9 @@ func (r *Runtime) Invoke(ctx context.Context, req Request, execute ExecutionFunc
 		return result
 	}
 
+	if execute == nil {
+		execute = r.adapterFor(toolName)
+	}
 	if execute == nil {
 		result := Result{
 			Tool:       toolName,
@@ -193,14 +240,24 @@ func (r *Runtime) StatusSnapshot() map[string]interface{} {
 			"version": 1,
 			"tools":   specs,
 			"toolchain": map[string]interface{}{
-				"browser": browserActionSchema,
-				"canvas":  canvasActionSchema,
-				"nodes":   nodesActionSchema,
+				"browser":     browserActionSchema,
+				"canvas":      canvasActionSchema,
+				"nodes":       nodesActionSchema,
+				"live_wiring": r.liveWiringSnapshot(),
 			},
 		},
 		"policy":           r.policy.Snapshot(),
 		"security_posture": r.policy.PostureSnapshot(),
 	}
+}
+
+func (r *Runtime) liveWiringSnapshot() map[string]bool {
+	status := map[string]bool{
+		"browser": r.adapterFor("browser") != nil,
+		"canvas":  r.adapterFor("canvas") != nil,
+		"nodes":   r.adapterFor("nodes") != nil,
+	}
+	return status
 }
 
 func validateStructuredToolArgs(toolName string, args map[string]interface{}) error {

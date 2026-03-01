@@ -226,7 +226,7 @@ Gateway runtime now ships a normalized tool protocol for:
 
 Each tool invocation passes through a shared policy gate (`global_allow/global_deny/agent allow-deny/require_confirm`) and produces a unified result contract (`success/failed/retryable/blocked` + structured error code). High-risk tools (`browser/canvas/nodes/message`) always require explicit confirmation as baseline guardrails.
 
-For deep toolchain alignment, runtime status also publishes `tools.protocol.toolchain` action schemas for `browser/canvas/nodes`, and runtime rejects unsupported actions / missing required nested fields (for example `browser act` requires `request.kind`, `nodes run` requires `command`, `nodes invoke` requires `invokeCommand`).
+For deep toolchain alignment, runtime status also publishes `tools.protocol.toolchain` action schemas for `browser/canvas/nodes`, plus a `live_wiring` map indicating whether each high-risk tool has been wired to a runtime adapter. Runtime rejects unsupported actions / missing required nested fields (for example `browser act` requires `request.kind`, `nodes run` requires `command`, `nodes invoke` requires `invokeCommand`), and can dispatch to registered adapters when invocation callback is omitted.
 
 Long-term memory tools apply an additional context-safety rule:
 
