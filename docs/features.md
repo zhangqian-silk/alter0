@@ -45,6 +45,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime status expansion for sessions/subagents/schedules/cost metrics
 - [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability)
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
+- [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`)
 - [x] Sub-agent run/session modes with result announce chain
 - [x] Executor stage JSONL logs
 - [x] Security posture checks with high-risk operation guardrails (`tools.security_posture` + baseline confirmation)
@@ -85,9 +86,10 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P2 (Risk Hardening)
 
 1. [x] N16 External policy/supply-chain watchlist automation (`config/risk-watchlist.json` + runtime stale/overdue alerts)
-2. [ ] N17 Risk execution benchmark + drift triage runbook (from research report follow-up chapter 5.2)
+2. [x] N17 Risk execution benchmark + drift triage runbook (`make risk-benchmark` + release-gate integration)
+3. [ ] N18 Scenario benchmark matrix + monthly competitor tracking automation (research report chapter 5.2 follow-up)
 
-Queue status: N16 is merged in this round. Next item is `P2/N17`.
+Queue status: N17 is merged in this round. Next item is `P2/N18`.
 
 ## 4) Change Rule
 

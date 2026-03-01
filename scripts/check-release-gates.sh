@@ -20,6 +20,7 @@ run "config dependency boundary gate" "$ROOT_DIR/scripts/check-config-boundary.s
 run "service dependency boundary gate" "$ROOT_DIR/scripts/check-service-boundary.sh"
 run "test stability gate" "$ROOT_DIR/scripts/check-test-stability.sh"
 run "integration matrix" "$ROOT_DIR/scripts/run-integration-matrix.sh"
+run "risk benchmark gate" "$ROOT_DIR/scripts/check-risk-benchmark.sh"
 run "backup/restore rollback drill" "$ROOT_DIR/scripts/drill-backup-restore.sh"
 run "deployment asset checks" "$ROOT_DIR/scripts/check-deploy-assets.sh"
 run "documentation sync gate" "$ROOT_DIR/scripts/check-doc-sync.sh" "$BASE_REF"
