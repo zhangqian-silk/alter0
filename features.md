@@ -11,17 +11,17 @@
 - 部署形态：继续保持自部署优先，先做单节点高可用，再考虑分布式扩展。
 - 安全边界：默认私有网络可用，但新增能力必须带最小可行权限控制与审计。
 - 兼容策略：保留现有 Task 编排主链路（`route -> execute -> close`），新增能力以可插拔方式接入。
-- 阶段目标：在核心能力已对齐 OpenClaw 基线后，优先补齐研究报告第 5.2 章剩余缺口（场景基准对比 + 持续竞品追踪）。
+- 阶段目标：在核心能力已对齐 OpenClaw 基线后，继续补齐研究报告第 5.2 章建议并固化为可持续维护流程。
 
 ## 2. 当前未完成需求（Active Gaps）
 
-### N18 场景基准矩阵与竞品追踪自动化（P2）
+### N19 配置模型参数级解剖（P3）
 
-- 目标：在 N17 已交付的风险基准能力上，补齐研究报告第 5.2 章剩余建议，形成长期可执行的月度追踪机制。
+- 目标：补齐研究报告第 5.2 章中“agents/bindings/session/tools 参数级解剖”建议。
 - 交付边界：
-  - 新增三类 workload（个人助理 / 团队协作 / 自动巡检）基准输入与结果模板。
-  - 建立竞品追踪清单（活跃度、发布频率、核心 feature 变化）自动化抓取或半自动更新脚本。
-  - 将场景基准与竞品追踪结果接入运维检查命令或 release-gate 的可选扩展项。
+  - 输出参数级说明与默认值治理策略。
+  - 为高风险参数补充变更审计与校验建议。
+  - 将结论接入现有文档与发布门禁流程。
 
 ## 3. 优先级与执行队列
 
@@ -36,21 +36,21 @@
 1. [x] N13 配置层依赖解耦（移除反向依赖 + `make check-config-boundary`）
 2. [x] N15 服务模块化（`core -> service -> infra`，补充 `make check-service-boundary`）
 
-### P2（当前主线）
+### P2（已完成）
 
 1. [x] N16 外部策略与供应链风险监测（provider/channel 策略漂移 + skill/plugin 来源审计）
 2. [x] N17 风险执行基准与漂移处置手册（`make risk-benchmark` + runbook + release-gate 接入）
-3. [ ] N18 场景基准矩阵与竞品追踪自动化
+3. [x] N18 场景基准矩阵与竞品追踪自动化（`config/scenario-benchmark-matrix.json`、`config/competitor-tracking.json`、`make competitor-tracking-refresh`）
 
-当前下一项：`P2/N18 场景基准矩阵与竞品追踪自动化`。
+当前下一项：`P3/N19 配置模型参数级解剖`。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-02）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
-- 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook。
-- 当前缺口：研究报告第 5.2 章中的“场景基准对比”与“按月竞品追踪清单”尚未形成工程化更新链路。
-- 下一步：推进 N18，补齐 workload benchmark matrix 与竞品追踪自动化，并定义可持续维护频率。
+- 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路。
+- 当前缺口：研究报告第 5.2 章中的“OpenClaw 配置模型参数级解剖”仍缺工程化落地文档与校验机制。
+- 下一步：推进 N19，沉淀参数级治理清单并接入发布检查。
 
 ## 5. 执行规则
 
@@ -61,3 +61,5 @@
 ## 6. 失败记录与优先重试
 
 - 2026-03-01（UTC）：`git push -u origin feat/p2-n16-risk-watchlist-automation` 连续两次超时失败（无法连接 `github.com:443`），导致 PR/merge 链路阻塞；已在后续轮次恢复并完成 N16 合并。
+- 2026-03-02（UTC）：`make risk-benchmark` 初次执行因缺少 N18 基准文件失败（`config/scenario-benchmark-matrix.json`、`config/competitor-tracking.json`）；已在同轮补齐并通过门禁，无待重试项。
+- 2026-03-02（UTC）：`make competitor-tracking-refresh` 在未配置 `GH_TOKEN/GITHUB_TOKEN` 时触发 GitHub API 403 rate limit；已改为默认降级不中断并记录 warning，下一轮优先在带 token 环境执行一次完整刷新。

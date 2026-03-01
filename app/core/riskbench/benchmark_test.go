@@ -55,6 +55,141 @@ func TestEvaluatePathsPassesWithFreshCoverage(t *testing.T) {
 	}
 }
 
+func TestEvaluatePathsPassesWithScenarioAndCompetitorCoverage(t *testing.T) {
+	now := time.Date(2026, 3, 2, 18, 0, 0, 0, time.UTC)
+	watchlistPath, runbookPath := writeFixtureFiles(t, watchlistDocument{
+		UpdatedAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+		Items: []watchlistItem{
+			{
+				ID:           "provider-policy-drift",
+				Category:     "provider_policy",
+				Severity:     "high",
+				Status:       "watch",
+				NextReviewAt: now.Add(24 * time.Hour).Format(time.RFC3339),
+				Owner:        "runtime",
+			},
+			{
+				ID:           "plugin-provenance",
+				Category:     "supply_chain",
+				Severity:     "medium",
+				Status:       "watch",
+				NextReviewAt: now.Add(36 * time.Hour).Format(time.RFC3339),
+				Owner:        "runtime",
+			},
+		},
+	})
+
+	dir := t.TempDir()
+	scenarioPath := filepath.Join(dir, "scenario-benchmark-matrix.json")
+	competitorPath := filepath.Join(dir, "competitor-tracking.json")
+
+	writeJSONFixture(t, scenarioPath, scenarioMatrixDocument{
+		UpdatedAt: now.Add(-1 * time.Hour).Format(time.RFC3339),
+		Workloads: []scenarioWorkloadEntry{
+			{
+				ID:              "personal_assistant",
+				Name:            "Personal Assistant",
+				InputTemplate:   "daily briefing",
+				LastBenchmarkAt: now.Add(-1 * time.Hour).Format(time.RFC3339),
+				Baseline:        scenarioResult{SuccessRate: 0.95, P95LatencyMS: 2800, AvgCostUSD: 0.014},
+				Latest:          scenarioResult{SuccessRate: 0.94, P95LatencyMS: 2920, AvgCostUSD: 0.015},
+			},
+			{
+				ID:              "team_collaboration",
+				Name:            "Team Collaboration",
+				InputTemplate:   "group mention follow-up",
+				LastBenchmarkAt: now.Add(-1 * time.Hour).Format(time.RFC3339),
+				Baseline:        scenarioResult{SuccessRate: 0.93, P95LatencyMS: 3300, AvgCostUSD: 0.019},
+				Latest:          scenarioResult{SuccessRate: 0.92, P95LatencyMS: 3410, AvgCostUSD: 0.02},
+			},
+			{
+				ID:              "auto_patrol",
+				Name:            "Auto Patrol",
+				InputTemplate:   "heartbeat + release checks",
+				LastBenchmarkAt: now.Add(-1 * time.Hour).Format(time.RFC3339),
+				Baseline:        scenarioResult{SuccessRate: 0.91, P95LatencyMS: 4100, AvgCostUSD: 0.024},
+				Latest:          scenarioResult{SuccessRate: 0.9, P95LatencyMS: 4220, AvgCostUSD: 0.025},
+			},
+		},
+	})
+
+	writeJSONFixture(t, competitorPath, competitorTrackingDocument{
+		UpdatedAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+		Projects: []competitorTrackingRecord{
+			{
+				ID:            "openclaw",
+				Name:          "OpenClaw",
+				Repo:          "openclaw/openclaw",
+				LastCheckedAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+				Stars:         3000,
+				Activity: competitorActivity{
+					LastCommitAt: now.Add(-3 * time.Hour).Format(time.RFC3339),
+					Commits30d:   90,
+				},
+				Release: competitorRelease{
+					LastReleaseAt: now.Add(-24 * time.Hour).Format(time.RFC3339),
+					Releases90d:   4,
+				},
+				FeatureChanges: []competitorFeatureChange{{Date: "2026-03-01", Summary: "Browser relay enhancements", Area: "browser"}},
+			},
+			{
+				ID:            "langchain",
+				Name:          "LangChain",
+				Repo:          "langchain-ai/langchain",
+				LastCheckedAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+				Stars:         100000,
+				Activity: competitorActivity{
+					LastCommitAt: now.Add(-4 * time.Hour).Format(time.RFC3339),
+					Commits30d:   450,
+				},
+				Release: competitorRelease{
+					LastReleaseAt: now.Add(-72 * time.Hour).Format(time.RFC3339),
+					Releases90d:   8,
+				},
+				FeatureChanges: []competitorFeatureChange{{Date: "2026-02-28", Summary: "Agent observability update", Area: "agent-runtime"}},
+			},
+			{
+				ID:            "dify",
+				Name:          "Dify",
+				Repo:          "langgenius/dify",
+				LastCheckedAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+				Stars:         80000,
+				Activity: competitorActivity{
+					LastCommitAt: now.Add(-5 * time.Hour).Format(time.RFC3339),
+					Commits30d:   170,
+				},
+				Release: competitorRelease{
+					LastReleaseAt: now.Add(-48 * time.Hour).Format(time.RFC3339),
+					Releases90d:   6,
+				},
+				FeatureChanges: []competitorFeatureChange{{Date: "2026-02-25", Summary: "Workflow governance refresh", Area: "workflow"}},
+			},
+		},
+	})
+
+	report, err := EvaluatePaths(watchlistPath, runbookPath, Config{
+		Now:                    now,
+		MaxStaleHours:          48,
+		FailOnOverdue:          true,
+		ScenarioMatrixPath:     scenarioPath,
+		CompetitorTrackingPath: competitorPath,
+		RequireScenarioMatrix:  true,
+		RequireCompetitorTrack: true,
+	})
+	if err != nil {
+		t.Fatalf("EvaluatePaths returned error: %v", err)
+	}
+	if !report.Gate.Passed {
+		t.Fatalf("expected gate pass, got failures=%v warnings=%v", report.Gate.Failures, report.Gate.Warnings)
+	}
+	if report.ScenarioMatrix == nil || report.ScenarioMatrix.Summary.TotalWorkloads != 3 {
+		t.Fatalf("expected 3 scenario workloads, got %#v", report.ScenarioMatrix)
+	}
+	if report.CompetitorTracking == nil || report.CompetitorTracking.Summary.TotalProjects != 3 {
+		t.Fatalf("expected 3 competitor projects, got %#v", report.CompetitorTracking)
+	}
+}
+
 func TestEvaluatePathsFailsOnMissingCategoryAndOverdue(t *testing.T) {
 	now := time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC)
 	watchlistPath, runbookPath := writeFixtureFiles(t, watchlistDocument{
@@ -93,6 +228,126 @@ func TestEvaluatePathsFailsOnMissingCategoryAndOverdue(t *testing.T) {
 	}
 	if report.Drifts[0].DriftLevel != "critical" {
 		t.Fatalf("expected critical drift level, got %s", report.Drifts[0].DriftLevel)
+	}
+}
+
+func TestEvaluatePathsFailsScenarioAndCompetitorGates(t *testing.T) {
+	now := time.Date(2026, 3, 2, 18, 0, 0, 0, time.UTC)
+	watchlistPath, runbookPath := writeFixtureFiles(t, watchlistDocument{
+		UpdatedAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+		Items: []watchlistItem{
+			{
+				ID:           "provider-policy-drift",
+				Category:     "provider_policy",
+				Severity:     "high",
+				Status:       "watch",
+				NextReviewAt: now.Add(24 * time.Hour).Format(time.RFC3339),
+			},
+			{
+				ID:           "plugin-provenance",
+				Category:     "supply_chain",
+				Severity:     "medium",
+				Status:       "watch",
+				NextReviewAt: now.Add(24 * time.Hour).Format(time.RFC3339),
+			},
+		},
+	})
+
+	dir := t.TempDir()
+	scenarioPath := filepath.Join(dir, "scenario-benchmark-matrix.json")
+	competitorPath := filepath.Join(dir, "competitor-tracking.json")
+
+	writeJSONFixture(t, scenarioPath, scenarioMatrixDocument{
+		UpdatedAt: now.Add(-60 * 24 * time.Hour).Format(time.RFC3339),
+		Workloads: []scenarioWorkloadEntry{
+			{
+				ID:              "personal_assistant",
+				Name:            "Personal Assistant",
+				InputTemplate:   "daily briefing",
+				LastBenchmarkAt: now.Add(-60 * 24 * time.Hour).Format(time.RFC3339),
+				Baseline:        scenarioResult{SuccessRate: 0.95, P95LatencyMS: 2800, AvgCostUSD: 0.014},
+				Latest:          scenarioResult{SuccessRate: 0.9, P95LatencyMS: 3200, AvgCostUSD: 0.017},
+			},
+			{
+				ID:              "team_collaboration",
+				Name:            "Team Collaboration",
+				InputTemplate:   "group mention follow-up",
+				LastBenchmarkAt: now.Add(-60 * 24 * time.Hour).Format(time.RFC3339),
+				Baseline:        scenarioResult{SuccessRate: 0.93, P95LatencyMS: 3300, AvgCostUSD: 0.019},
+				Latest:          scenarioResult{SuccessRate: 0.89, P95LatencyMS: 3800, AvgCostUSD: 0.023},
+			},
+		},
+	})
+
+	writeJSONFixture(t, competitorPath, competitorTrackingDocument{
+		UpdatedAt: now.Add(-40 * 24 * time.Hour).Format(time.RFC3339),
+		Projects: []competitorTrackingRecord{
+			{
+				ID:            "openclaw",
+				Name:          "OpenClaw",
+				Repo:          "openclaw/openclaw",
+				LastCheckedAt: now.Add(-40 * 24 * time.Hour).Format(time.RFC3339),
+				Stars:         3000,
+				Activity: competitorActivity{
+					LastCommitAt: now.Add(-7 * 24 * time.Hour).Format(time.RFC3339),
+					Commits30d:   90,
+				},
+				Release: competitorRelease{
+					LastReleaseAt: now.Add(-20 * 24 * time.Hour).Format(time.RFC3339),
+					Releases90d:   4,
+				},
+				FeatureChanges: []competitorFeatureChange{},
+			},
+			{
+				ID:            "langchain",
+				Name:          "LangChain",
+				Repo:          "langchain-ai/langchain",
+				LastCheckedAt: now.Add(-5 * time.Hour).Format(time.RFC3339),
+				Stars:         100000,
+				Activity: competitorActivity{
+					LastCommitAt: now.Add(-6 * time.Hour).Format(time.RFC3339),
+					Commits30d:   450,
+				},
+				Release: competitorRelease{
+					LastReleaseAt: now.Add(-48 * time.Hour).Format(time.RFC3339),
+					Releases90d:   8,
+				},
+				FeatureChanges: []competitorFeatureChange{{Date: "2026-03-01", Summary: "Agent observability update", Area: "agent-runtime"}},
+			},
+		},
+	})
+
+	report, err := EvaluatePaths(watchlistPath, runbookPath, Config{
+		Now:                    now,
+		MaxStaleHours:          48,
+		FailOnOverdue:          true,
+		ScenarioMatrixPath:     scenarioPath,
+		CompetitorTrackingPath: competitorPath,
+		ScenarioMaxStaleDays:   45,
+		CompetitorMaxStaleDays: 31,
+		RequireScenarioMatrix:  true,
+		RequireCompetitorTrack: true,
+	})
+	if err != nil {
+		t.Fatalf("EvaluatePaths returned error: %v", err)
+	}
+	if report.Gate.Passed {
+		t.Fatalf("expected gate fail")
+	}
+	if !containsSubstring(report.Gate.Failures, "scenario matrix: scenario benchmark matrix is stale") {
+		t.Fatalf("expected scenario stale failure, got %v", report.Gate.Failures)
+	}
+	if !containsSubstring(report.Gate.Failures, "scenario matrix: missing required workloads: auto_patrol") {
+		t.Fatalf("expected missing workload failure, got %v", report.Gate.Failures)
+	}
+	if !containsSubstring(report.Gate.Failures, "competitor tracking: competitor tracking requires at least 3 projects") {
+		t.Fatalf("expected competitor project-count failure, got %v", report.Gate.Failures)
+	}
+	if !containsSubstring(report.Gate.Failures, "competitor tracking: competitor tracking has stale project entries") {
+		t.Fatalf("expected competitor stale failure, got %v", report.Gate.Failures)
+	}
+	if !containsSubstring(report.Gate.Failures, "competitor tracking: competitor tracking has projects without feature_changes") {
+		t.Fatalf("expected competitor feature-change failure, got %v", report.Gate.Failures)
 	}
 }
 
@@ -139,22 +394,36 @@ func writeFixtureFiles(t *testing.T, doc watchlistDocument) (string, string) {
 	dir := t.TempDir()
 	watchlistPath := filepath.Join(dir, "risk-watchlist.json")
 	runbookPath := filepath.Join(dir, "risk-runbook.md")
-	payload, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatalf("marshal watchlist: %v", err)
-	}
-	if err := os.WriteFile(watchlistPath, payload, 0644); err != nil {
-		t.Fatalf("write watchlist: %v", err)
-	}
+	writeJSONFixture(t, watchlistPath, doc)
 	if err := os.WriteFile(runbookPath, []byte("# runbook\n"), 0644); err != nil {
 		t.Fatalf("write runbook: %v", err)
 	}
 	return watchlistPath, runbookPath
 }
 
+func writeJSONFixture(t *testing.T, path string, payload any) {
+	t.Helper()
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal fixture: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("write fixture %s: %v", path, err)
+	}
+}
+
 func contains(items []string, target string) bool {
 	for _, item := range items {
 		if item == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSubstring(items []string, target string) bool {
+	for _, item := range items {
+		if strings.Contains(item, target) {
 			return true
 		}
 	}

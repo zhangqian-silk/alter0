@@ -13,14 +13,26 @@ import (
 func main() {
 	watchlistPath := flag.String("watchlist", filepath.Join("config", "risk-watchlist.json"), "path to risk watchlist json")
 	runbookPath := flag.String("runbook", filepath.Join("docs", "runbooks", "risk-drift-triage.md"), "path to drift triage runbook")
+	scenarioPath := flag.String("scenario-matrix", filepath.Join("config", "scenario-benchmark-matrix.json"), "path to scenario benchmark matrix json")
+	competitorPath := flag.String("competitor-tracking", filepath.Join("config", "competitor-tracking.json"), "path to competitor tracking snapshot json")
 	outputPath := flag.String("output", filepath.Join("output", "risk", "benchmark-latest.json"), "path to write benchmark report (use - for stdout)")
 	maxStaleHours := flag.Int("max-stale-hours", 96, "max allowed watchlist age in hours")
-	allowOverdue := flag.Bool("allow-overdue", false, "allow overdue items without failing gate")
+	scenarioMaxStaleDays := flag.Int("scenario-max-stale-days", 45, "max allowed scenario matrix age in days")
+	competitorMaxStaleDays := flag.Int("competitor-max-stale-days", 31, "max allowed competitor tracking age in days")
+	allowOverdue := flag.Bool("allow-overdue", false, "allow overdue watchlist items without failing gate")
+	skipScenario := flag.Bool("skip-scenario", false, "skip scenario benchmark matrix validation")
+	skipCompetitor := flag.Bool("skip-competitor", false, "skip competitor tracking validation")
 	flag.Parse()
 
 	report, err := riskbench.EvaluatePaths(*watchlistPath, *runbookPath, riskbench.Config{
-		MaxStaleHours: *maxStaleHours,
-		FailOnOverdue: !*allowOverdue,
+		MaxStaleHours:          *maxStaleHours,
+		FailOnOverdue:          !*allowOverdue,
+		ScenarioMatrixPath:     *scenarioPath,
+		CompetitorTrackingPath: *competitorPath,
+		ScenarioMaxStaleDays:   *scenarioMaxStaleDays,
+		CompetitorMaxStaleDays: *competitorMaxStaleDays,
+		RequireScenarioMatrix:  !*skipScenario,
+		RequireCompetitorTrack: !*skipCompetitor,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "risk benchmark failed: %v\n", err)

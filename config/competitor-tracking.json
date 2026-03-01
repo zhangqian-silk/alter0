@@ -1,0 +1,74 @@
+{
+  "updated_at": "2026-03-01T18:58:26Z",
+  "projects": [
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "repo": "openclaw/openclaw",
+      "last_checked_at": "2026-03-01T18:58:26Z",
+      "stars": 242688,
+      "activity": {
+        "last_commit_at": "2026-03-01T18:48:53Z",
+        "commits_30d": 100
+      },
+      "release": {
+        "last_release_at": "2026-02-27T00:01:43Z",
+        "releases_90d": 49
+      },
+      "feature_changes": [
+        {
+          "date": "2026-02-21",
+          "summary": "Expanded browser relay profile handoff and tab attachment diagnostics.",
+          "area": "browser"
+        }
+      ],
+      "notes": "Primary upstream reference for feature parity and behavior changes."
+    },
+    {
+      "id": "langchain",
+      "name": "LangChain",
+      "repo": "langchain-ai/langchain",
+      "last_checked_at": "2026-03-01T18:58:26Z",
+      "stars": 127836,
+      "activity": {
+        "last_commit_at": "2026-03-01T17:21:29Z",
+        "commits_30d": 100
+      },
+      "release": {
+        "last_release_at": "2026-02-25T16:27:43Z",
+        "releases_90d": 71
+      },
+      "feature_changes": [
+        {
+          "date": "2026-02-28",
+          "summary": "Introduced additional agent observability hooks and evaluator workflows.",
+          "area": "agent-runtime"
+        }
+      ],
+      "notes": "High-velocity benchmark for orchestration and evaluation ecosystem changes."
+    },
+    {
+      "id": "dify",
+      "name": "Dify",
+      "repo": "langgenius/dify",
+      "last_checked_at": "2026-03-01T18:58:26Z",
+      "stars": 130787,
+      "activity": {
+        "last_commit_at": "2026-03-01T18:01:43Z",
+        "commits_30d": 100
+      },
+      "release": {
+        "last_release_at": "2026-02-14T09:28:47Z",
+        "releases_90d": 10
+      },
+      "feature_changes": [
+        {
+          "date": "2026-02-25",
+          "summary": "Updated workflow deployment controls and plugin governance settings.",
+          "area": "workflow"
+        }
+      ],
+      "notes": "Tracks adjacent self-hosted agent platform direction and release cadence."
+    }
+  ]
+}

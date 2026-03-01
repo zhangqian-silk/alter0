@@ -10,27 +10,38 @@ import (
 	"time"
 )
 
-const benchmarkVersion = "2026.03-n17"
+const benchmarkVersion = "2026.03-n18"
 
 var defaultRequiredCategories = []string{"provider_policy", "supply_chain"}
 
+var defaultRequiredScenarioWorkloads = []string{"personal_assistant", "team_collaboration", "auto_patrol"}
+
 type Config struct {
-	Now                time.Time
-	MaxStaleHours      int
-	RequiredCategories []string
-	FailOnOverdue      bool
+	Now                      time.Time
+	MaxStaleHours            int
+	RequiredCategories       []string
+	FailOnOverdue            bool
+	ScenarioMatrixPath       string
+	CompetitorTrackingPath   string
+	RequiredScenarioWorkload []string
+	ScenarioMaxStaleDays     int
+	CompetitorMaxStaleDays   int
+	RequireScenarioMatrix    bool
+	RequireCompetitorTrack   bool
 }
 
 type Report struct {
-	BenchmarkVersion string                     `json:"benchmark_version"`
-	GeneratedAt      string                     `json:"generated_at"`
-	WatchlistPath    string                     `json:"watchlist_path"`
-	RunbookPath      string                     `json:"runbook_path"`
-	Summary          Summary                    `json:"summary"`
-	Categories       map[string]CategorySummary `json:"categories"`
-	Drifts           []DriftEvent               `json:"drifts,omitempty"`
-	Gate             GateResult                 `json:"gate"`
-	NextSteps        []string                   `json:"next_steps"`
+	BenchmarkVersion   string                     `json:"benchmark_version"`
+	GeneratedAt        string                     `json:"generated_at"`
+	WatchlistPath      string                     `json:"watchlist_path"`
+	RunbookPath        string                     `json:"runbook_path"`
+	Summary            Summary                    `json:"summary"`
+	Categories         map[string]CategorySummary `json:"categories"`
+	Drifts             []DriftEvent               `json:"drifts,omitempty"`
+	ScenarioMatrix     *ScenarioMatrixReport      `json:"scenario_matrix,omitempty"`
+	CompetitorTracking *CompetitorTrackingReport  `json:"competitor_tracking,omitempty"`
+	Gate               GateResult                 `json:"gate"`
+	NextSteps          []string                   `json:"next_steps"`
 }
 
 type Summary struct {
@@ -188,6 +199,20 @@ func EvaluatePaths(watchlistPath string, runbookPath string, cfg Config) (Report
 		report.Gate.Failures = append(report.Gate.Failures, fmt.Sprintf("overdue risk items detected: %d", report.Summary.OverdueItems))
 	}
 
+	scenarioReport, scenarioFailures, scenarioWarnings := evaluateScenarioMatrix(normalized, now)
+	if scenarioReport != nil {
+		report.ScenarioMatrix = scenarioReport
+	}
+	report.Gate.Failures = append(report.Gate.Failures, scenarioFailures...)
+	report.Gate.Warnings = append(report.Gate.Warnings, scenarioWarnings...)
+
+	competitorReport, competitorFailures, competitorWarnings := evaluateCompetitorTracking(normalized, now)
+	if competitorReport != nil {
+		report.CompetitorTracking = competitorReport
+	}
+	report.Gate.Failures = append(report.Gate.Failures, competitorFailures...)
+	report.Gate.Warnings = append(report.Gate.Warnings, competitorWarnings...)
+
 	sort.Slice(report.Drifts, func(i, j int) bool {
 		left := report.Drifts[i]
 		right := report.Drifts[j]
@@ -217,6 +242,15 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if len(normalized.RequiredCategories) == 0 {
 		normalized.RequiredCategories = append([]string{}, defaultRequiredCategories...)
+	}
+	if len(normalized.RequiredScenarioWorkload) == 0 {
+		normalized.RequiredScenarioWorkload = append([]string{}, defaultRequiredScenarioWorkloads...)
+	}
+	if normalized.ScenarioMaxStaleDays <= 0 {
+		normalized.ScenarioMaxStaleDays = 45
+	}
+	if normalized.CompetitorMaxStaleDays <= 0 {
+		normalized.CompetitorMaxStaleDays = 31
 	}
 	return normalized
 }
@@ -261,6 +295,12 @@ func buildNextSteps(report Report) []string {
 	}
 	if len(report.Drifts) == 0 {
 		steps = append(steps, "No active drift. Keep periodic review cadence for provider_policy and supply_chain watchlist items.")
+		if report.ScenarioMatrix != nil {
+			steps = append(steps, fmt.Sprintf("Scenario benchmark matrix snapshot checked at %s.", report.ScenarioMatrix.Path))
+		}
+		if report.CompetitorTracking != nil {
+			steps = append(steps, fmt.Sprintf("Competitor tracking snapshot checked at %s.", report.CompetitorTracking.Path))
+		}
 		return steps
 	}
 
@@ -278,6 +318,12 @@ func buildNextSteps(report Report) []string {
 		steps = append(steps, "Execute L2 triage: notify owners within 1 hour and start mitigation plan.")
 	default:
 		steps = append(steps, "Execute L1 triage: owner review within 24 hours and confirm recovery window.")
+	}
+	if report.ScenarioMatrix != nil {
+		steps = append(steps, fmt.Sprintf("Scenario benchmark matrix snapshot checked at %s.", report.ScenarioMatrix.Path))
+	}
+	if report.CompetitorTracking != nil {
+		steps = append(steps, fmt.Sprintf("Competitor tracking snapshot checked at %s.", report.CompetitorTracking.Path))
 	}
 	return steps
 }
