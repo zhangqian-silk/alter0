@@ -215,6 +215,8 @@ func main() {
 		AlertQueueBacklogRatio:  0.8,
 		AlertQueueBacklogDepth:  8,
 		AlertExecutorStrictMode: true,
+		RiskWatchlistPath:       filepath.Join("config", "risk-watchlist.json"),
+		RiskWatchlistStaleAfter: 72 * time.Hour,
 		AgentEntries:            runtimeAgentEntries(agents),
 		ToolRuntime:             toolRuntime,
 	}

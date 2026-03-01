@@ -1,0 +1,25 @@
+{
+  "updated_at": "2026-03-01T15:35:00Z",
+  "items": [
+    {
+      "id": "provider-policy-drift",
+      "category": "provider_policy",
+      "severity": "high",
+      "status": "watch",
+      "last_checked_at": "2026-03-01T15:35:00Z",
+      "next_review_at": "2026-03-03T15:35:00Z",
+      "owner": "runtime",
+      "notes": "Track model/channel access policy changes that can block gateway execution."
+    },
+    {
+      "id": "skill-plugin-provenance",
+      "category": "supply_chain",
+      "severity": "medium",
+      "status": "watch",
+      "last_checked_at": "2026-03-01T15:35:00Z",
+      "next_review_at": "2026-03-04T15:35:00Z",
+      "owner": "runtime",
+      "notes": "Track unreviewed skill/plugin source and unexpected version drift."
+    }
+  ]
+}

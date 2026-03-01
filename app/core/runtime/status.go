@@ -52,6 +52,8 @@ type StatusCollector struct {
 	AlertQueueBacklogRatio  float64
 	AlertQueueBacklogDepth  int
 	AlertExecutorStrictMode bool
+	RiskWatchlistPath       string
+	RiskWatchlistStaleAfter time.Duration
 }
 
 type commandAuditTailEntry struct {
@@ -112,6 +114,22 @@ type runtimeAlert struct {
 	Message   string                 `json:"message"`
 	Detected  string                 `json:"detected_at"`
 	Telemetry map[string]interface{} `json:"telemetry,omitempty"`
+}
+
+type riskWatchlistDocument struct {
+	UpdatedAt string              `json:"updated_at"`
+	Items     []riskWatchlistItem `json:"items"`
+}
+
+type riskWatchlistItem struct {
+	ID           string `json:"id"`
+	Category     string `json:"category"`
+	Severity     string `json:"severity"`
+	Status       string `json:"status"`
+	LastChecked  string `json:"last_checked_at"`
+	NextReviewAt string `json:"next_review_at"`
+	Owner        string `json:"owner"`
+	Notes        string `json:"notes"`
 }
 
 func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
@@ -175,7 +193,7 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 
 	executors := executor.ListExecutorCapabilities()
 	payload["executors"] = executors
-	payload["alerts"] = summarizeRuntimeAlerts(runtimeAlertInput{
+	alerts := summarizeRuntimeAlerts(runtimeAlertInput{
 		Now:                     now,
 		Queue:                   c.Queue,
 		Trace:                   traceSummary,
@@ -186,6 +204,11 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		QueueBacklogDepth:       c.AlertQueueBacklogDepth,
 		ExecutorStrictAvailable: c.AlertExecutorStrictMode,
 	})
+	if riskSummary, riskAlerts := summarizeRiskWatchlist(c.RiskWatchlistPath, now, c.RiskWatchlistStaleAfter); riskSummary != nil {
+		payload["risk_watchlist"] = riskSummary
+		alerts = append(alerts, riskAlerts...)
+	}
+	payload["alerts"] = alerts
 	if c.ToolRuntime != nil {
 		payload["tools"] = c.ToolRuntime.StatusSnapshot()
 	}
@@ -305,6 +328,170 @@ func summarizeRuntimeAlerts(input runtimeAlertInput) []runtimeAlert {
 	}
 
 	return alerts
+}
+
+func summarizeRiskWatchlist(path string, now time.Time, staleAfter time.Duration) (map[string]interface{}, []runtimeAlert) {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return nil, nil
+	}
+
+	summary := map[string]interface{}{
+		"path": trimmedPath,
+	}
+	alerts := make([]runtimeAlert, 0)
+
+	data, err := os.ReadFile(trimmedPath)
+	if err != nil {
+		summary["status"] = "missing"
+		summary["error"] = err.Error()
+		if !os.IsNotExist(err) {
+			summary["status"] = "error"
+		}
+		alerts = append(alerts, runtimeAlert{
+			Code:     "risk_watchlist_missing",
+			Severity: "warning",
+			Source:   "risk_watchlist",
+			Message:  fmt.Sprintf("risk watchlist is unavailable: %s", trimmedPath),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"path": trimmedPath,
+			},
+		})
+		return summary, alerts
+	}
+
+	var doc riskWatchlistDocument
+	if err := json.Unmarshal(data, &doc); err != nil {
+		summary["status"] = "invalid"
+		summary["error"] = err.Error()
+		alerts = append(alerts, runtimeAlert{
+			Code:     "risk_watchlist_invalid",
+			Severity: "warning",
+			Source:   "risk_watchlist",
+			Message:  fmt.Sprintf("risk watchlist JSON is invalid: %s", trimmedPath),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"path": trimmedPath,
+			},
+		})
+		return summary, alerts
+	}
+
+	summary["status"] = "ok"
+	summary["total_items"] = len(doc.Items)
+	if doc.UpdatedAt != "" {
+		summary["updated_at"] = doc.UpdatedAt
+	}
+
+	if staleAfter <= 0 {
+		staleAfter = 7 * 24 * time.Hour
+	}
+	if updatedAt, ok := parseRiskWatchlistTime(doc.UpdatedAt); ok {
+		age := now.Sub(updatedAt)
+		summary["stale_after_hours"] = int(staleAfter.Hours())
+		summary["age_hours"] = int(age.Hours())
+		if age > staleAfter {
+			summary["stale"] = true
+			alerts = append(alerts, runtimeAlert{
+				Code:     "risk_watchlist_stale",
+				Severity: "warning",
+				Source:   "risk_watchlist",
+				Message:  fmt.Sprintf("risk watchlist has not been updated for %dh", int(age.Hours())),
+				Detected: now.Format(time.RFC3339),
+				Telemetry: map[string]interface{}{
+					"updated_at": doc.UpdatedAt,
+					"path":       trimmedPath,
+				},
+			})
+		} else {
+			summary["stale"] = false
+		}
+	}
+
+	byCategory := map[string]int{}
+	bySeverity := map[string]int{}
+	overdue := 0
+	overdueAlerts := 0
+	const maxOverdueAlerts = 5
+	for _, item := range doc.Items {
+		category := strings.TrimSpace(item.Category)
+		if category == "" {
+			category = "uncategorized"
+		}
+		byCategory[category]++
+
+		severityKey := strings.ToLower(strings.TrimSpace(item.Severity))
+		if severityKey == "" {
+			severityKey = "unknown"
+		}
+		bySeverity[severityKey]++
+
+		status := strings.ToLower(strings.TrimSpace(item.Status))
+		if status == "mitigated" || status == "closed" {
+			continue
+		}
+		nextReview, ok := parseRiskWatchlistTime(item.NextReviewAt)
+		if !ok || !nextReview.Before(now) {
+			continue
+		}
+		overdue++
+		if overdueAlerts >= maxOverdueAlerts {
+			continue
+		}
+		overdueAlerts++
+		severity := normalizeRiskAlertSeverity(item.Severity)
+		itemID := strings.TrimSpace(item.ID)
+		if itemID == "" {
+			itemID = "(unnamed)"
+		}
+		alerts = append(alerts, runtimeAlert{
+			Code:     "risk_watchlist_item_overdue",
+			Severity: severity,
+			Source:   "risk_watchlist",
+			Message:  fmt.Sprintf("risk item %s is overdue for review", itemID),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"item_id":        itemID,
+				"category":       category,
+				"next_review_at": item.NextReviewAt,
+				"owner":          strings.TrimSpace(item.Owner),
+			},
+		})
+	}
+	summary["by_category"] = byCategory
+	summary["by_severity"] = bySeverity
+	summary["overdue_items"] = overdue
+	if overdue > overdueAlerts {
+		summary["overdue_alerts_truncated"] = overdue - overdueAlerts
+	}
+
+	return summary, alerts
+}
+
+func parseRiskWatchlistTime(raw string) (time.Time, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return time.Time{}, false
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return parsed.UTC(), true
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed.UTC(), true
+	}
+	return time.Time{}, false
+}
+
+func normalizeRiskAlertSeverity(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "critical", "high":
+		return "critical"
+	case "medium", "warning":
+		return "warning"
+	default:
+		return "warning"
+	}
 }
 
 func summarizeSchedules(items []schedulesvc.Job, now time.Time) map[string]interface{} {
