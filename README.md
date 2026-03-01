@@ -58,17 +58,18 @@ Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对�
 OpenClaw 对齐版本清单请参考：[`docs/openclaw-alignment.md`](./docs/openclaw-alignment.md)。
 面向 OpenClaw 对齐的未完成需求清单请参考：[`features.md`](./features.md)。
 
-当前优先级以 [`features.md`](./features.md) 为准，发布节奏按 release-gate 管控（回归矩阵、回滚演练、部署检查、文档同步）。
+当前优先级以 [`features.md`](./features.md) 为准，发布节奏按 release-gate 管控（回归矩阵、回滚演练、部署检查、文档同步）；当前队列已从 P0 转入 P1（下一项 N11：HTTP 层职责收敛）。
 
 文档同步策略：当 `docs/features.md` 发生变更时，必须在同一 PR 同步更新 `README.md` 与 `ARCHITECTURE.md`。可以执行：
 
 ```bash
 make docs-sync-check
+make test-stability
 make integration-matrix
 make release-gate
 ```
 
-该检查默认对比 `origin/master...HEAD`，若只改了 `docs/features.md` 会直接失败，避免能力矩阵与总览文档漂移。`make integration-matrix` 用于执行网关级集成矩阵（多通道、多 Agent、子代理、定时任务、工具与故障注入）；`make release-gate` 会串联全量回归、集成矩阵、回滚演练、部署资产检查与文档门禁。
+该检查默认对比 `origin/master...HEAD`，若只改了 `docs/features.md` 会直接失败，避免能力矩阵与总览文档漂移。`make integration-matrix` 用于执行网关级集成矩阵（多通道、多 Agent、子代理、定时任务、工具与故障注入）；`make release-gate` 会串联测试稳定性门禁（含 `make test-stability` 与 Windows 编译回归）、集成矩阵、回滚演练、部署资产检查与文档门禁。
 
 在执行层，Alter0 复用成熟 Agent CLI（`codex`、`claude_code`），自身聚焦编排与治理，不重建模型执行栈。接收器（CLI/HTTP/Web）与执行器通过稳定接口解耦，允许在不影响任务存储和路由策略的前提下独立扩展通道或替换执行后端。当前主线新增了 Telegram（long polling）与 Slack（Events API）外部通道适配器，并沿用统一 `Message.Envelope` 处理文本/图片等多媒体出入站消息。扩展能力以 Skill 为主入口，外部能力（如 MCP）可通过扩展层纳入执行链路。
 

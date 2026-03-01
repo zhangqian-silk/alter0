@@ -16,7 +16,7 @@ run() {
 
 cd "$ROOT_DIR"
 
-run "full regression" go test ./...
+run "test stability gate" "$ROOT_DIR/scripts/check-test-stability.sh"
 run "integration matrix" "$ROOT_DIR/scripts/run-integration-matrix.sh"
 run "backup/restore rollback drill" "$ROOT_DIR/scripts/drill-backup-restore.sh"
 run "deployment asset checks" "$ROOT_DIR/scripts/check-deploy-assets.sh"

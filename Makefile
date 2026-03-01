@@ -1,4 +1,4 @@
-.PHONY: run build test fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
+.PHONY: run build test test-stability fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
 .DEFAULT_GOAL := run
 
 run:
@@ -8,7 +8,10 @@ build:
 	go build -o bin/alter0 .
 
 test:
-	go test ./...
+	GOTOOLCHAIN=$${GOTOOLCHAIN:-auto} GOSUMDB=$${GOSUMDB:-sum.golang.org} go test ./... -count=1
+
+test-stability:
+	./scripts/check-test-stability.sh
 
 fmt:
 	gofmt -w .
