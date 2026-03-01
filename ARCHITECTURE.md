@@ -261,7 +261,7 @@ Required modules:
 - `GET /api/tasks` returns recent async requests with status filtering (`status`) and bounded pagination (`limit`)
 - `GET /api/tasks/{id}` returns task status (`pending|completed|canceled|timeout`) and completion payload
 - `POST /api/tasks/{id}/cancel` marks a pending async task as canceled
-- `GET /api/status` aggregated runtime status (includes recent command audit tail and git upstream divergence)
+- `GET /api/status` aggregated runtime status (includes schedules/session/subagent/cost metrics, recent command audit tail, and git upstream divergence)
 
 ### 7.3 Command Surface
 
@@ -301,7 +301,9 @@ Shutdown sequence:
 ### 9.2 Metrics
 
 - queue depth, configured workers, in-flight workers, and last shutdown drain report
-- execution latency/error rate
+- schedule status/kind/delivery-mode counters, active overdue windows, and next active run marker
+- session and sub-agent activity windows (`total/active/by_channel`) from orchestrator execution logs
+- execution latency/error rate plus model usage estimates (`chars/tokens/cost`) with optional pricing config
 - routing/closing decision distribution
 - plugin and MCP connector health
 
