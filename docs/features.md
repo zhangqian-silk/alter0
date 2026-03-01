@@ -70,7 +70,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P0 (Current Delivery)
 
 1. [x] N9 Async task cancellation semantics hardening (pending/running interruption + canceled audit fields)
-2. [ ] N10 Storage migration safety upgrade (incremental migration + backup/rollback path)
+2. [x] N10 Storage migration safety upgrade (incremental migration + backup/rollback path)
 3. [ ] N14 Test stability hardening (`go test ./...` deterministic pass)
 
 ### P1 (Structural Refactor)
@@ -80,7 +80,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 3. [ ] N13 Config layer dependency decoupling (`configs` no reverse dependency on runtime packages)
 4. [ ] N15 Service modularization (`core -> service -> infra` layering)
 
-Queue status: N9 is merged in this round. Next item is `P0/N10`.
+Queue status: N10 is merged in this round. Next item is `P0/N14`.
 
 ## 4) Change Rule
 
