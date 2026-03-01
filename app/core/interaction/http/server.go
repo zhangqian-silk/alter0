@@ -17,7 +17,7 @@ import (
 	"unicode/utf8"
 
 	"alter0/app/core/interaction/http/httpstate"
-	orcschedule "alter0/app/core/orchestrator/schedule"
+	schedulesvc "alter0/app/core/service/schedule"
 	"alter0/app/pkg/types"
 )
 
@@ -46,7 +46,7 @@ type HTTPChannel struct {
 	subagentStore     *httpstate.SubagentStore
 	subagentAnnouncer func(context.Context, SubagentAnnouncement) error
 
-	scheduleService *orcschedule.Service
+	scheduleService *schedulesvc.Service
 }
 
 func NewHTTPChannel(port int) *HTTPChannel {
@@ -75,7 +75,7 @@ func (c *HTTPChannel) SetShutdownTimeout(timeout time.Duration) {
 	c.shutdownTimeout = timeout
 }
 
-func (c *HTTPChannel) SetScheduleService(service *orcschedule.Service) {
+func (c *HTTPChannel) SetScheduleService(service *schedulesvc.Service) {
 	c.scheduleService = service
 }
 
@@ -200,11 +200,11 @@ type asyncTaskListResponse struct {
 }
 
 type scheduleListResponse struct {
-	Schedules []orcschedule.Job `json:"schedules"`
+	Schedules []schedulesvc.Job `json:"schedules"`
 }
 
 type scheduleRunsResponse struct {
-	Runs []orcschedule.RunRecord `json:"runs"`
+	Runs []schedulesvc.RunRecord `json:"runs"`
 }
 
 func (c *HTTPChannel) handleSchedules(w http.ResponseWriter, r *http.Request) {
@@ -232,7 +232,7 @@ func (c *HTTPChannel) handleSchedules(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			defer r.Body.Close()
-			var req orcschedule.CreateRequest
+			var req schedulesvc.CreateRequest
 			if err := json.Unmarshal(body, &req); err != nil {
 				http.Error(w, "Invalid JSON", http.StatusBadRequest)
 				return

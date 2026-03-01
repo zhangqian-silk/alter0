@@ -17,12 +17,12 @@ import (
 	"alter0/app/core/interaction/slack"
 	"alter0/app/core/interaction/telegram"
 	"alter0/app/core/orchestrator/agent"
-	"alter0/app/core/orchestrator/schedule"
 	"alter0/app/core/orchestrator/skills"
 	"alter0/app/core/orchestrator/skills/builtins"
 	orctask "alter0/app/core/orchestrator/task"
 	coreruntime "alter0/app/core/runtime"
 	toolruntime "alter0/app/core/runtime/tools"
+	schedulesvc "alter0/app/core/service/schedule"
 	"alter0/app/pkg/logger"
 	"alter0/app/pkg/queue"
 	"alter0/app/pkg/scheduler"
@@ -169,12 +169,12 @@ func main() {
 		logger.Error("Failed to register maintenance jobs: %v", err)
 		os.Exit(1)
 	}
-	scheduleStore, err := schedule.NewStore(defaultAgent.Database.Conn())
+	scheduleStore, err := schedulesvc.NewStore(defaultAgent.Database.Conn())
 	if err != nil {
 		logger.Error("Failed to initialize schedule store: %v", err)
 		os.Exit(1)
 	}
-	scheduleService := schedule.NewService(scheduleStore, gw)
+	scheduleService := schedulesvc.NewService(scheduleStore, gw)
 	if err := coreruntime.RegisterScheduleJobs(jobScheduler, scheduleService, coreruntime.ScheduleOptions{}); err != nil {
 		logger.Error("Failed to register schedule jobs: %v", err)
 		os.Exit(1)

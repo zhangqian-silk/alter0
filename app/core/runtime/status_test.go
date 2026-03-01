@@ -13,8 +13,8 @@ import (
 	"time"
 
 	executor "alter0/app/core/executor"
-	"alter0/app/core/orchestrator/schedule"
 	"alter0/app/core/runtime/tools"
+	schedulesvc "alter0/app/core/service/schedule"
 	"alter0/app/pkg/queue"
 	_ "modernc.org/sqlite"
 )
@@ -244,35 +244,35 @@ func TestSnapshotIncludesExpandedScheduleMetrics(t *testing.T) {
 	}
 	defer db.Close()
 
-	store, err := schedule.NewStore(db)
+	store, err := schedulesvc.NewStore(db)
 	if err != nil {
 		t.Fatalf("create schedule store failed: %v", err)
 	}
 
 	now := time.Now().UTC()
-	seed := []schedule.Job{
+	seed := []schedulesvc.Job{
 		{
 			ID:        "at-active-overdue",
-			Kind:      schedule.KindAt,
+			Kind:      schedulesvc.KindAt,
 			Spec:      now.Add(-1 * time.Minute).Format(time.RFC3339),
-			Status:    schedule.StatusActive,
-			Payload:   schedule.DeliveryPayload{Mode: schedule.ModeDirect, ChannelID: "cli", To: "u1", Content: "ping"},
+			Status:    schedulesvc.StatusActive,
+			Payload:   schedulesvc.DeliveryPayload{Mode: schedulesvc.ModeDirect, ChannelID: "cli", To: "u1", Content: "ping"},
 			NextRunAt: now.Add(-1 * time.Minute),
 		},
 		{
 			ID:        "cron-active-soon",
-			Kind:      schedule.KindCron,
+			Kind:      schedulesvc.KindCron,
 			Spec:      "*/5 * * * *",
-			Status:    schedule.StatusActive,
-			Payload:   schedule.DeliveryPayload{Mode: schedule.ModeAgentTurn, ChannelID: "cli", To: "u1", Content: "ping", AgentID: "default"},
+			Status:    schedulesvc.StatusActive,
+			Payload:   schedulesvc.DeliveryPayload{Mode: schedulesvc.ModeAgentTurn, ChannelID: "cli", To: "u1", Content: "ping", AgentID: "default"},
 			NextRunAt: now.Add(3 * time.Minute),
 		},
 		{
 			ID:      "paused",
-			Kind:    schedule.KindCron,
+			Kind:    schedulesvc.KindCron,
 			Spec:    "*/10 * * * *",
-			Status:  schedule.StatusPaused,
-			Payload: schedule.DeliveryPayload{Mode: schedule.ModeDirect, ChannelID: "cli", To: "u1", Content: "paused"},
+			Status:  schedulesvc.StatusPaused,
+			Payload: schedulesvc.DeliveryPayload{Mode: schedulesvc.ModeDirect, ChannelID: "cli", To: "u1", Content: "paused"},
 		},
 	}
 	for _, item := range seed {
@@ -281,7 +281,7 @@ func TestSnapshotIncludesExpandedScheduleMetrics(t *testing.T) {
 		}
 	}
 
-	service := schedule.NewService(store, nil)
+	service := schedulesvc.NewService(store, nil)
 	collector := &StatusCollector{RepoPath: ".", ScheduleService: service}
 
 	snap := collector.Snapshot(context.Background())
@@ -307,7 +307,7 @@ func TestSnapshotIncludesExpandedScheduleMetrics(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected kind map[string]int, got %T", stats["kind"])
 	}
-	if kind[schedule.KindAt] != 1 || kind[schedule.KindCron] != 2 {
+	if kind[schedulesvc.KindAt] != 1 || kind[schedulesvc.KindCron] != 2 {
 		t.Fatalf("unexpected kind metrics: %#v", kind)
 	}
 
@@ -315,7 +315,7 @@ func TestSnapshotIncludesExpandedScheduleMetrics(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected delivery_mode map[string]int, got %T", stats["delivery_mode"])
 	}
-	if deliveryMode[schedule.ModeDirect] != 2 || deliveryMode[schedule.ModeAgentTurn] != 1 {
+	if deliveryMode[schedulesvc.ModeDirect] != 2 || deliveryMode[schedulesvc.ModeAgentTurn] != 1 {
 		t.Fatalf("unexpected delivery_mode metrics: %#v", deliveryMode)
 	}
 

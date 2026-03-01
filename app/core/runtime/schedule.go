@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"alter0/app/core/orchestrator/schedule"
+	schedulesvc "alter0/app/core/service/schedule"
 	"alter0/app/pkg/scheduler"
 )
 
@@ -31,7 +31,7 @@ func DefaultScheduleOptions() ScheduleOptions {
 	}
 }
 
-func RegisterScheduleJobs(jobScheduler *scheduler.Scheduler, scheduleService *schedule.Service, options ScheduleOptions) error {
+func RegisterScheduleJobs(jobScheduler *scheduler.Scheduler, scheduleService *schedulesvc.Service, options ScheduleOptions) error {
 	if jobScheduler == nil || scheduleService == nil {
 		return nil
 	}
