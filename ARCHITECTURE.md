@@ -450,7 +450,7 @@ P2 (Advanced Operations):
 - N6 end-to-end tracing + alerting hardening
 - N8 integration matrix and release gate automation
 
-Current status: P0/P1 queues are complete; P2 risk-hardening has N16 + N17 merged (watchlist automation + risk benchmark/runbook), and next delivery item is N18 scenario benchmark matrix + competitor tracking automation from a release-gated baseline (`make release-gate`).
+Current status: P0/P1 queues are complete; P2 risk-hardening has N16 + N17 + N18 merged (watchlist automation + risk benchmark/runbook + scenario/competitor automation), and the next delivery candidate is N19 parameter-level config governance from a release-gated baseline (`make release-gate`).
 
 ## Feature Roadmap
 
