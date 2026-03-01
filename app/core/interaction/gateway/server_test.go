@@ -1,8 +1,13 @@
 package gateway
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -261,4 +266,117 @@ func TestGatewayDispatchWithQueueRetries(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("gateway start returned error: %v", err)
 	}
+}
+
+func TestGatewayWritesEndToEndTraceEvents(t *testing.T) {
+	traceDir := t.TempDir()
+	recorder, err := NewTraceRecorder(traceDir)
+	if err != nil {
+		t.Fatalf("new trace recorder failed: %v", err)
+	}
+
+	gw := NewGateway(&testAgent{})
+	gw.SetTraceRecorder(recorder)
+	ch := &testChannel{id: "cli"}
+	ch.startFn = func(ctx context.Context, handler func(types.Message)) error {
+		handler(types.Message{ID: "m1", Content: "hello", ChannelID: "cli", UserID: "u-1", RequestID: "req-1", TaskID: "t-1"})
+		<-ctx.Done()
+		return nil
+	}
+	gw.RegisterChannel(ch)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- gw.Start(ctx) }()
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for {
+		ch.sendMu.Lock()
+		sent := len(ch.sentMsgs)
+		ch.sendMu.Unlock()
+		if sent >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("expected reply to be sent")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("gateway start returned error: %v", err)
+	}
+
+	logPath := filepath.Join(traceDir, time.Now().UTC().Format("2006-01-02"), "gateway_events.jsonl")
+	f, err := os.Open(logPath)
+	if err != nil {
+		t.Fatalf("open trace log failed: %v", err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	events := map[string]bool{}
+	for scanner.Scan() {
+		line := scanner.Text()
+		var entry TraceEvent
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("decode trace entry failed: %v", err)
+		}
+		events[entry.Event] = true
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan trace log failed: %v", err)
+	}
+
+	for _, expected := range []string{"inbound_received", "route_selected", "agent_process", "deliver_reply"} {
+		if !events[expected] {
+			t.Fatalf("expected trace event %q, got %#v", expected, events)
+		}
+	}
+}
+
+func TestGatewayTracesChannelDisconnect(t *testing.T) {
+	traceDir := t.TempDir()
+	recorder, err := NewTraceRecorder(traceDir)
+	if err != nil {
+		t.Fatalf("new trace recorder failed: %v", err)
+	}
+
+	gw := NewGateway(&testAgent{})
+	gw.SetTraceRecorder(recorder)
+	gw.RegisterChannel(&testChannel{id: "cli", startFn: func(context.Context, func(types.Message)) error {
+		return errors.New("connection dropped")
+	}})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err = gw.Start(ctx)
+	if err != nil {
+		t.Fatalf("gateway start returned error: %v", err)
+	}
+
+	logPath := filepath.Join(traceDir, time.Now().UTC().Format("2006-01-02"), "gateway_events.jsonl")
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read trace log failed: %v", err)
+	}
+	if !containsTraceEvent(content, "channel_disconnected") {
+		t.Fatalf("expected channel_disconnected event, got %s", string(content))
+	}
+}
+
+func containsTraceEvent(content []byte, event string) bool {
+	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		var entry TraceEvent
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry.Event == event {
+			return true
+		}
+	}
+	return false
 }

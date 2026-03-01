@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
@@ -45,6 +46,13 @@ type StatusCollector struct {
 	CostOutputPer1K         float64
 	AgentEntries            []AgentEntry
 	ToolRuntime             *tools.Runtime
+	GatewayTraceBasePath    string
+	GatewayTraceWindow      time.Duration
+	AlertRetryStormWindow   time.Duration
+	AlertRetryStormMinimum  int
+	AlertQueueBacklogRatio  float64
+	AlertQueueBacklogDepth  int
+	AlertExecutorStrictMode bool
 }
 
 type commandAuditTailEntry struct {
@@ -73,6 +81,38 @@ type runtimeUsageSummary struct {
 	Sessions map[string]interface{}
 	Subagent map[string]interface{}
 	Cost     map[string]interface{}
+}
+
+type gatewayTraceEntry struct {
+	Timestamp string `json:"timestamp"`
+	RequestID string `json:"request_id"`
+	MessageID string `json:"message_id"`
+	ChannelID string `json:"channel_id"`
+	UserID    string `json:"user_id"`
+	AgentID   string `json:"agent_id"`
+	Event     string `json:"event"`
+	Status    string `json:"status"`
+	Detail    string `json:"detail"`
+}
+
+type gatewayTraceSummary struct {
+	WindowMinutes int
+	TotalEvents   int
+	ErrorEvents   int
+	ByEvent       map[string]int
+	ErrorByEvent  map[string]int
+	ByChannel     map[string]int
+	ErrorChannels map[string]int
+	LatestAt      string
+}
+
+type runtimeAlert struct {
+	Code      string                 `json:"code"`
+	Severity  string                 `json:"severity"`
+	Source    string                 `json:"source"`
+	Message   string                 `json:"message"`
+	Detected  string                 `json:"detected_at"`
+	Telemetry map[string]interface{} `json:"telemetry,omitempty"`
 }
 
 func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
@@ -109,9 +149,10 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		}
 	}
 
+	now := time.Now().UTC()
 	usage := summarizeRuntimeUsage(
 		c.OrchestratorLogBasePath,
-		time.Now().UTC(),
+		now,
 		c.SessionWindow,
 		c.ActiveSessionWindow,
 		c.CostInputPer1K,
@@ -121,7 +162,31 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	payload["subagents"] = usage.Subagent
 	payload["cost"] = usage.Cost
 
-	payload["executors"] = agent.ListExecutorCapabilities()
+	traceSummary := summarizeGatewayTrace(c.GatewayTraceBasePath, now, c.GatewayTraceWindow)
+	payload["trace"] = map[string]interface{}{
+		"window_minutes": traceSummary.WindowMinutes,
+		"total_events":   traceSummary.TotalEvents,
+		"error_events":   traceSummary.ErrorEvents,
+		"by_event":       traceSummary.ByEvent,
+		"error_by_event": traceSummary.ErrorByEvent,
+		"by_channel":     traceSummary.ByChannel,
+		"error_channels": traceSummary.ErrorChannels,
+		"latest_at":      traceSummary.LatestAt,
+	}
+
+	executors := agent.ListExecutorCapabilities()
+	payload["executors"] = executors
+	payload["alerts"] = summarizeRuntimeAlerts(runtimeAlertInput{
+		Now:                     now,
+		Queue:                   c.Queue,
+		Trace:                   traceSummary,
+		Executors:               executors,
+		RetryStormWindow:        c.AlertRetryStormWindow,
+		RetryStormMinimum:       c.AlertRetryStormMinimum,
+		QueueBacklogRatio:       c.AlertQueueBacklogRatio,
+		QueueBacklogDepth:       c.AlertQueueBacklogDepth,
+		ExecutorStrictAvailable: c.AlertExecutorStrictMode,
+	})
 	if c.ToolRuntime != nil {
 		payload["tools"] = c.ToolRuntime.StatusSnapshot()
 	}
@@ -137,6 +202,110 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	}
 
 	return payload
+}
+
+type runtimeAlertInput struct {
+	Now                     time.Time
+	Queue                   *queue.Queue
+	Trace                   gatewayTraceSummary
+	Executors               []agent.ExecutorCapability
+	RetryStormWindow        time.Duration
+	RetryStormMinimum       int
+	QueueBacklogRatio       float64
+	QueueBacklogDepth       int
+	ExecutorStrictAvailable bool
+}
+
+func summarizeRuntimeAlerts(input runtimeAlertInput) []runtimeAlert {
+	now := input.Now.UTC()
+	alerts := make([]runtimeAlert, 0)
+
+	if input.Queue != nil {
+		stats := input.Queue.Stats()
+		depthThreshold := input.QueueBacklogDepth
+		if depthThreshold <= 0 {
+			depthThreshold = 8
+		}
+		ratioThreshold := input.QueueBacklogRatio
+		if ratioThreshold <= 0 {
+			ratioThreshold = 0.8
+		}
+		ratio := 0.0
+		if stats.Capacity > 0 {
+			ratio = float64(stats.Depth) / float64(stats.Capacity)
+		}
+		if stats.Started && stats.Depth >= depthThreshold && ratio >= ratioThreshold {
+			alerts = append(alerts, runtimeAlert{
+				Code:     "queue_backlog",
+				Severity: "warning",
+				Source:   "queue",
+				Message:  fmt.Sprintf("queue depth=%d/%d exceeds backlog threshold", stats.Depth, stats.Capacity),
+				Detected: now.Format(time.RFC3339),
+				Telemetry: map[string]interface{}{
+					"depth":    stats.Depth,
+					"capacity": stats.Capacity,
+					"ratio":    math.Round(ratio*1000) / 1000,
+				},
+			})
+		}
+	}
+
+	retryStormMinimum := input.RetryStormMinimum
+	if retryStormMinimum <= 0 {
+		retryStormMinimum = 3
+	}
+	if input.Trace.ErrorByEvent["agent_process"] >= retryStormMinimum {
+		alerts = append(alerts, runtimeAlert{
+			Code:     "retry_storm",
+			Severity: "critical",
+			Source:   "gateway",
+			Message:  fmt.Sprintf("agent_process errors reached %d in trace window", input.Trace.ErrorByEvent["agent_process"]),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"event":          "agent_process",
+				"error_count":    input.Trace.ErrorByEvent["agent_process"],
+				"window_minutes": input.Trace.WindowMinutes,
+			},
+		})
+	}
+
+	if input.Trace.ErrorByEvent["channel_disconnected"] > 0 {
+		alerts = append(alerts, runtimeAlert{
+			Code:     "channel_disconnected",
+			Severity: "critical",
+			Source:   "gateway",
+			Message:  "one or more channels exited unexpectedly",
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"events":         input.Trace.ErrorByEvent["channel_disconnected"],
+				"error_channels": input.Trace.ErrorChannels,
+			},
+		})
+	}
+
+	if input.ExecutorStrictAvailable {
+		missing := make([]string, 0)
+		for _, entry := range input.Executors {
+			if !entry.Installed {
+				missing = append(missing, entry.Name)
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			alerts = append(alerts, runtimeAlert{
+				Code:     "executor_unavailable",
+				Severity: "warning",
+				Source:   "executor",
+				Message:  fmt.Sprintf("missing executor binaries: %s", strings.Join(missing, ", ")),
+				Detected: now.Format(time.RFC3339),
+				Telemetry: map[string]interface{}{
+					"missing": missing,
+				},
+			})
+		}
+	}
+
+	return alerts
 }
 
 func summarizeSchedules(items []schedule.Job, now time.Time) map[string]interface{} {
@@ -310,6 +479,127 @@ func summarizeRuntimeUsage(basePath string, now time.Time, window time.Duration,
 			"by_executor":             executorRuns,
 		},
 	}
+}
+
+func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration) gatewayTraceSummary {
+	if window <= 0 {
+		window = 30 * time.Minute
+	}
+	since := now.Add(-window)
+	entries := readGatewayTraceSince(basePath, since)
+	summary := gatewayTraceSummary{
+		WindowMinutes: int(window / time.Minute),
+		ByEvent:       map[string]int{},
+		ErrorByEvent:  map[string]int{},
+		ByChannel:     map[string]int{},
+		ErrorChannels: map[string]int{},
+	}
+	latest := time.Time{}
+	for _, entry := range entries {
+		timestamp, err := parseRFC3339Any(entry.Timestamp)
+		if err != nil {
+			continue
+		}
+		if timestamp.Before(since) {
+			continue
+		}
+		summary.TotalEvents++
+		event := strings.TrimSpace(entry.Event)
+		if event == "" {
+			event = "unknown"
+		}
+		summary.ByEvent[event]++
+
+		channel := strings.TrimSpace(entry.ChannelID)
+		if channel == "" {
+			channel = "unknown"
+		}
+		summary.ByChannel[channel]++
+
+		if strings.EqualFold(strings.TrimSpace(entry.Status), "error") {
+			summary.ErrorEvents++
+			summary.ErrorByEvent[event]++
+			summary.ErrorChannels[channel]++
+		}
+		if latest.IsZero() || timestamp.After(latest) {
+			latest = timestamp
+		}
+	}
+	if !latest.IsZero() {
+		summary.LatestAt = latest.UTC().Format(time.RFC3339)
+	}
+	return summary
+}
+
+func readGatewayTraceSince(basePath string, since time.Time) []gatewayTraceEntry {
+	path := strings.TrimSpace(basePath)
+	if path == "" {
+		path = filepath.Join("output", "trace")
+	}
+	dirs, err := os.ReadDir(path)
+	if err != nil {
+		return []gatewayTraceEntry{}
+	}
+
+	dayDirs := make([]string, 0, len(dirs))
+	for _, entry := range dirs {
+		if !entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if _, err := time.Parse("2006-01-02", name); err != nil {
+			continue
+		}
+		dayDirs = append(dayDirs, name)
+	}
+	sort.Strings(dayDirs)
+
+	entries := make([]gatewayTraceEntry, 0)
+	for _, day := range dayDirs {
+		dayAt, err := time.Parse("2006-01-02", day)
+		if err != nil {
+			continue
+		}
+		if dayAt.Add(24 * time.Hour).Before(since) {
+			continue
+		}
+		items, err := readGatewayTraceFile(filepath.Join(path, day, "gateway_events.jsonl"), since)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, items...)
+	}
+	return entries
+}
+
+func readGatewayTraceFile(path string, since time.Time) ([]gatewayTraceEntry, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	out := make([]gatewayTraceEntry, 0, 64)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry gatewayTraceEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		ts, err := parseRFC3339Any(entry.Timestamp)
+		if err != nil || ts.Before(since) {
+			continue
+		}
+		out = append(out, entry)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func estimateTokens(chars int) int {

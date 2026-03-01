@@ -41,6 +41,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime status snapshot command audit tail
 - [x] Runtime status snapshot git upstream divergence (`upstream/ahead/behind`)
 - [x] Runtime status expansion for sessions/subagents/schedules/cost metrics
+- [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability)
 - [x] Sub-agent run/session modes with result announce chain
 - [x] Executor stage JSONL logs
 - [x] Security posture checks with high-risk operation guardrails (`tools.security_posture` + baseline confirmation)
@@ -78,10 +79,10 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P2 (Advanced Operations)
 
 1. [x] N4 Deep node/browser/canvas toolchain integration (action schema + structured validation + runtime live adapter wiring)
-2. [ ] N6 End-to-end tracing and alerting hardening
+2. [x] N6 End-to-end tracing and alerting hardening
 3. [ ] N8 Full integration matrix and release gates for rollback-safe delivery
 
-Queue status: P0 queue is complete; P1 queue is complete (`N2/N4/N5/N7` all merged); P2-1 (`N4` deep node/browser/canvas toolchain integration) is merged, next requirement is P2-2 (`N6` end-to-end tracing and alerting hardening).
+Queue status: P0 queue is complete; P1 queue is complete (`N2/N4/N5/N7` all merged); P2-1 (`N4` deep node/browser/canvas toolchain integration) and P2-2 (`N6` end-to-end tracing + alerting hardening) are merged, next requirement is P2-3 (`N8` full integration matrix and release gates).
 
 ## 4) Change Rule
 
