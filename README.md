@@ -179,10 +179,14 @@ docker run --rm -p 8080:8080 \
       "require_confirm": ["browser", "canvas", "nodes", "message"],
       "agent": {
         "default": {
-          "allow": ["web_search", "web_fetch"],
+          "allow": ["web_search", "web_fetch", "memory_search", "memory_get"],
           "deny": ["nodes"]
         }
       }
+    },
+    "memory": {
+      "trusted_channels": ["cli", "http"],
+      "restricted_paths": ["memory.md"]
     }
   },
   "channels": {
@@ -221,6 +225,8 @@ docker run --rm -p 8080:8080 \
 - `security.tools.global_allow/global_deny`: 网关级工具 allow/deny 列表
 - `security.tools.require_confirm`: 高风险工具二次确认清单（默认 `browser/canvas/nodes/message`）
 - `security.tools.agent.<agent_id>.allow/deny`: Agent 级工具策略覆盖
+- `security.memory.trusted_channels`: 允许访问完整长期记忆（`MEMORY.md`）的主会话通道
+- `security.memory.restricted_paths`: 共享场景默认限制访问的长期记忆路径前缀
 - `channels.telegram.*`: Telegram bot 轮询收发配置（`enabled` + `bot_token` 为最小启用集）
 - `channels.slack.*`: Slack Events 接收与回复配置（`enabled` + `bot_token` + `event_listen_port`）
 

@@ -47,6 +47,76 @@ func TestPolicyGateAppliesAgentAllowlist(t *testing.T) {
 	}
 }
 
+func TestPolicyGateBlocksSensitiveMemoryPathOnSharedSurface(t *testing.T) {
+	gate := NewPolicyGate(Config{})
+
+	blocked := gate.Evaluate(Request{
+		Tool:      "memory_get",
+		ChannelID: "telegram",
+		Surface:   "shared",
+		Args: map[string]interface{}{
+			"path": "MEMORY.md",
+		},
+	})
+	if blocked.Allowed {
+		t.Fatalf("expected memory_get blocked on shared surface, got %+v", blocked)
+	}
+	if blocked.Code != ErrorCodeContextRestricted {
+		t.Fatalf("expected context restriction code, got %+v", blocked)
+	}
+}
+
+func TestPolicyGateAllowsDailyMemoryPathOnSharedSurface(t *testing.T) {
+	gate := NewPolicyGate(Config{})
+
+	decision := gate.Evaluate(Request{
+		Tool:      "memory_get",
+		ChannelID: "telegram",
+		Surface:   "shared",
+		Args: map[string]interface{}{
+			"path": "memory/2026-03-01.md",
+		},
+	})
+	if !decision.Allowed {
+		t.Fatalf("expected memory_get allowed for daily memory path, got %+v", decision)
+	}
+}
+
+func TestPolicyGateBlocksLongTermSearchOnSharedSurface(t *testing.T) {
+	gate := NewPolicyGate(Config{})
+
+	decision := gate.Evaluate(Request{
+		Tool:      "memory_search",
+		ChannelID: "slack",
+		Surface:   "group",
+		Args: map[string]interface{}{
+			"query":             "roadmap",
+			"include_long_term": true,
+		},
+	})
+	if decision.Allowed {
+		t.Fatalf("expected long-term memory search denied on shared surface, got %+v", decision)
+	}
+	if decision.Code != ErrorCodeContextRestricted {
+		t.Fatalf("expected context restriction code, got %+v", decision)
+	}
+}
+
+func TestPolicyGateAllowsMemoryGetOnTrustedMainChannel(t *testing.T) {
+	gate := NewPolicyGate(Config{})
+
+	decision := gate.Evaluate(Request{
+		Tool:      "memory_get",
+		ChannelID: "cli",
+		Args: map[string]interface{}{
+			"path": "MEMORY.md",
+		},
+	})
+	if !decision.Allowed {
+		t.Fatalf("expected memory_get allowed on trusted channel, got %+v", decision)
+	}
+}
+
 func TestRuntimeInvokeWritesAuditAndNormalizesResult(t *testing.T) {
 	auditDir := t.TempDir()
 	r := NewRuntime(Config{RequireConfirm: []string{"message"}}, auditDir)

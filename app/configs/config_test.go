@@ -232,3 +232,42 @@ func TestApplyDefaultsToolPolicyNormalizesAgentRules(t *testing.T) {
 		t.Fatalf("unexpected agent deny list: %#v", policy.Deny)
 	}
 }
+
+func TestApplyDefaultsMemoryPolicyDefaults(t *testing.T) {
+	cfg := Config{}
+
+	applyDefaults(&cfg)
+
+	if len(cfg.Security.Memory.TrustedChannels) != 2 {
+		t.Fatalf("expected trusted channels defaults, got %#v", cfg.Security.Memory.TrustedChannels)
+	}
+	if cfg.Security.Memory.TrustedChannels[0] != "cli" || cfg.Security.Memory.TrustedChannels[1] != "http" {
+		t.Fatalf("unexpected trusted channel defaults: %#v", cfg.Security.Memory.TrustedChannels)
+	}
+	if len(cfg.Security.Memory.RestrictedPaths) != 1 || cfg.Security.Memory.RestrictedPaths[0] != "memory.md" {
+		t.Fatalf("unexpected restricted path defaults: %#v", cfg.Security.Memory.RestrictedPaths)
+	}
+}
+
+func TestApplyDefaultsMemoryPolicySanitizesValues(t *testing.T) {
+	cfg := Config{
+		Security: SecurityConfig{
+			Memory: MemoryPolicyConfig{
+				TrustedChannels: []string{" Telegram ", "telegram"},
+				RestrictedPaths: []string{" ./MEMORY.md ", "memory\\private.md", ""},
+			},
+		},
+	}
+
+	applyDefaults(&cfg)
+
+	if len(cfg.Security.Memory.TrustedChannels) != 1 || cfg.Security.Memory.TrustedChannels[0] != "telegram" {
+		t.Fatalf("unexpected trusted channels sanitization: %#v", cfg.Security.Memory.TrustedChannels)
+	}
+	if len(cfg.Security.Memory.RestrictedPaths) != 2 {
+		t.Fatalf("unexpected restricted path sanitization: %#v", cfg.Security.Memory.RestrictedPaths)
+	}
+	if cfg.Security.Memory.RestrictedPaths[0] != "memory.md" || cfg.Security.Memory.RestrictedPaths[1] != "memory/private.md" {
+		t.Fatalf("unexpected restricted path values: %#v", cfg.Security.Memory.RestrictedPaths)
+	}
+}

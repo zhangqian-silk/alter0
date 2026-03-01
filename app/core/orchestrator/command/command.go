@@ -559,6 +559,17 @@ func formatConfigResult(result interface{}) string {
 				}
 			}
 		}
+		if memoryCfg, ok := securityCfg["memory"].(map[string]interface{}); ok {
+			for _, key := range []string{"trusted_channels", "restricted_paths"} {
+				if v, ok := memoryCfg[key]; ok {
+					b.WriteString("  security.memory.")
+					b.WriteString(key)
+					b.WriteString(": ")
+					b.WriteString(fmt.Sprintf("%v", v))
+					b.WriteString("\n")
+				}
+			}
+		}
 	}
 	return strings.TrimSpace(b.String())
 }
