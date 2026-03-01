@@ -18,6 +18,7 @@ cd "$ROOT_DIR"
 
 run "config dependency boundary gate" "$ROOT_DIR/scripts/check-config-boundary.sh"
 run "service dependency boundary gate" "$ROOT_DIR/scripts/check-service-boundary.sh"
+run "config parameter governance gate" "$ROOT_DIR/scripts/check-config-governance.sh"
 run "test stability gate" "$ROOT_DIR/scripts/check-test-stability.sh"
 run "integration matrix" "$ROOT_DIR/scripts/run-integration-matrix.sh"
 run "risk benchmark gate" "$ROOT_DIR/scripts/check-risk-benchmark.sh"

@@ -63,7 +63,8 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 - [x] Gateway integration matrix automation (`make integration-matrix`)
-- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
+- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
+- [x] Config parameter governance audit for agents/bindings/session/tools (`make config-governance` -> `output/config/governance-latest.json`)
 - [x] Service-layer schedule facade (`app/core/service/schedule`) used by runtime/HTTP integration boundaries
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
 
@@ -90,7 +91,12 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 2. [x] N17 Risk execution benchmark + drift triage runbook (`make risk-benchmark` + release-gate integration)
 3. [x] N18 Scenario benchmark matrix + monthly competitor tracking automation (`config/scenario-benchmark-matrix.json` + `config/competitor-tracking.json` + `make competitor-tracking-refresh`)
 
-Queue status: P2/N18 is merged. Next candidate should focus on report chapter 5.2 parameter-level config deep dive.
+### P3 (Governance Deep Dive)
+
+1. [x] N19 Parameter-level config governance for agents/bindings/session/tools (`make config-governance` + release-gate integration)
+2. [ ] N20 Monthly governance cadence automation (snapshot archive + drift reminder)
+
+Queue status: P3/N19 is merged. Next candidate is `P3/N20` monthly governance cadence automation.
 
 ## 4) Change Rule
 
