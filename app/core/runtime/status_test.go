@@ -235,6 +235,16 @@ func TestSnapshotIncludesSessionSubagentAndCostMetrics(t *testing.T) {
 	if got, ok := cost["pricing_configured"].(bool); !ok || !got {
 		t.Fatalf("expected pricing_configured=true, got %#v", cost["pricing_configured"])
 	}
+	hotspots, ok := cost["session_hotspots"].([]runtimeSessionCostHotspot)
+	if !ok {
+		t.Fatalf("expected session_hotspots as []runtimeSessionCostHotspot, got %T", cost["session_hotspots"])
+	}
+	if len(hotspots) != 3 {
+		t.Fatalf("expected 3 hotspots, got %#v", hotspots)
+	}
+	if hotspots[0].SessionID != "subagent-42" {
+		t.Fatalf("expected top hotspot to be subagent-42, got %#v", hotspots[0])
+	}
 }
 
 func TestSnapshotIncludesExpandedScheduleMetrics(t *testing.T) {
@@ -600,6 +610,92 @@ func TestSnapshotIncludesTraceSummaryAndAlerts(t *testing.T) {
 		if !codes[code] {
 			t.Fatalf("expected alert %q in %+v", code, alerts)
 		}
+	}
+}
+
+func TestSnapshotIncludesSessionCostPressureAlerts(t *testing.T) {
+	now := time.Now().UTC()
+	baseDir := t.TempDir()
+	dayDir := filepath.Join(baseDir, now.Format("2006-01-02"))
+	if err := os.MkdirAll(dayDir, 0755); err != nil {
+		t.Fatalf("failed to create orchestrator log dir: %v", err)
+	}
+
+	entries := []map[string]interface{}{
+		{
+			"timestamp":    now.Add(-3 * time.Minute).Format(time.RFC3339Nano),
+			"session_id":   "session-heavy",
+			"stage":        "gen",
+			"executor":     "codex",
+			"status":       "ok",
+			"prompt_chars": 12000,
+			"output_chars": 160,
+			"user_id":      "u1",
+			"channel_id":   "cli",
+		},
+		{
+			"timestamp":    now.Add(-2 * time.Minute).Format(time.RFC3339Nano),
+			"session_id":   "session-light",
+			"stage":        "gen",
+			"executor":     "claude_code",
+			"status":       "ok",
+			"prompt_chars": 500,
+			"output_chars": 800,
+			"user_id":      "u2",
+			"channel_id":   "http",
+		},
+	}
+
+	logPath := filepath.Join(dayDir, fmt.Sprintf("executor_%s.jsonl", now.Format("20060102-15")))
+	var lines []string
+	for _, item := range entries {
+		payload, err := json.Marshal(item)
+		if err != nil {
+			t.Fatalf("marshal log entry failed: %v", err)
+		}
+		lines = append(lines, string(payload))
+	}
+	if err := os.WriteFile(logPath, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+		t.Fatalf("write orchestrator log failed: %v", err)
+	}
+
+	collector := &StatusCollector{
+		OrchestratorLogBasePath:    baseDir,
+		SessionWindow:              24 * time.Hour,
+		ActiveSessionWindow:        30 * time.Minute,
+		AlertSessionCostShare:      0.4,
+		AlertSessionCostMinTokens:  1000,
+		AlertSessionPromptOutRatio: 8,
+	}
+	snap := collector.Snapshot(context.Background())
+
+	alerts, ok := snap["alerts"].([]runtimeAlert)
+	if !ok {
+		t.Fatalf("expected typed runtime alerts, got %T", snap["alerts"])
+	}
+	codes := map[string]bool{}
+	for _, alert := range alerts {
+		codes[alert.Code] = true
+	}
+	for _, code := range []string{"session_cost_hotspot", "session_compaction_pressure"} {
+		if !codes[code] {
+			t.Fatalf("expected alert %q in %+v", code, alerts)
+		}
+	}
+
+	cost, ok := snap["cost"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected cost map, got %T", snap["cost"])
+	}
+	hotspots, ok := cost["session_hotspots"].([]runtimeSessionCostHotspot)
+	if !ok || len(hotspots) == 0 {
+		t.Fatalf("expected session hotspots in cost map, got %#v", cost["session_hotspots"])
+	}
+	if hotspots[0].SessionID != "session-heavy" {
+		t.Fatalf("expected session-heavy hotspot first, got %#v", hotspots[0])
+	}
+	if hotspots[0].Share < 0.8 {
+		t.Fatalf("expected heavy hotspot share >= 0.8, got %#v", hotspots[0])
 	}
 }
 
