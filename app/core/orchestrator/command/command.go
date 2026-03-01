@@ -548,6 +548,17 @@ func formatConfigResult(result interface{}) string {
 			b.WriteString(fmt.Sprintf("%v", v))
 			b.WriteString("\n")
 		}
+		if toolsCfg, ok := securityCfg["tools"].(map[string]interface{}); ok {
+			for _, key := range []string{"global_allow", "global_deny", "require_confirm"} {
+				if v, ok := toolsCfg[key]; ok {
+					b.WriteString("  security.tools.")
+					b.WriteString(key)
+					b.WriteString(": ")
+					b.WriteString(fmt.Sprintf("%v", v))
+					b.WriteString("\n")
+				}
+			}
+		}
 	}
 	return strings.TrimSpace(b.String())
 }

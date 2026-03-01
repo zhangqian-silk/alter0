@@ -52,6 +52,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Queue-driven async pipeline on core execution path
 - [x] Queue status snapshot includes configured workers for runtime diagnostics
 - [x] Queue status snapshot includes last shutdown drain report for timeout diagnostics
+- [x] Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts`) with policy gates and execution audit JSONL
 
 ## 3) Active Priority Queue (OpenClaw Alignment)
 
@@ -67,7 +68,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P1 (Orchestration Upgrade)
 
 1. [x] N2 Sub-agent run/session modes with result announce chain
-2. [ ] N4 Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts`) + policy gates
+2. [x] N4 Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts`) + policy gates
 3. [ ] N5 Long-term memory retrieval and context-safety isolation by surface
 4. [ ] N7 Security posture checks and high-risk operation guards
 
@@ -77,7 +78,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 2. [ ] N6 End-to-end tracing and alerting hardening
 3. [ ] N8 Full integration matrix and release gates for rollback-safe delivery
 
-Queue status: P0 queue is complete; P1-1 (`N2` sub-agent run/session modes with result announce chain) is complete; next priority is P1-2 (`N4` tool protocol normalization + policy gates).
+Queue status: P0 queue is complete; P1-1 (`N2` sub-agent run/session modes with result announce chain) and P1-2 (`N4` tool protocol normalization + policy gates) are complete; next priority is P1-3 (`N5` long-term memory retrieval + surface isolation).
 
 ## 4) Change Rule
 

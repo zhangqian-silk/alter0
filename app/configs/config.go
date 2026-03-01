@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+
+	toolcore "alter0/app/core/tools"
 )
 
 type Config struct {
@@ -46,7 +49,20 @@ type TaskConfig struct {
 }
 
 type SecurityConfig struct {
-	AdminUserIDs []string `json:"admin_user_ids"`
+	AdminUserIDs []string         `json:"admin_user_ids"`
+	Tools        ToolPolicyConfig `json:"tools"`
+}
+
+type ToolPolicyConfig struct {
+	GlobalAllow    []string                   `json:"global_allow"`
+	GlobalDeny     []string                   `json:"global_deny"`
+	RequireConfirm []string                   `json:"require_confirm"`
+	Agent          map[string]ToolAgentPolicy `json:"agent"`
+}
+
+type ToolAgentPolicy struct {
+	Allow []string `json:"allow"`
+	Deny  []string `json:"deny"`
 }
 
 type RuntimeConfig struct {
@@ -226,6 +242,10 @@ func defaultConfig() Config {
 		},
 		Security: SecurityConfig{
 			AdminUserIDs: []string{"local_user"},
+			Tools: ToolPolicyConfig{
+				RequireConfirm: []string{"browser", "canvas", "nodes", "message"},
+				Agent:          map[string]ToolAgentPolicy{},
+			},
 		},
 		Channels: ChannelConfig{
 			Telegram: TelegramChannelConfig{
@@ -407,4 +427,55 @@ func applyDefaults(cfg *Config) {
 		clean = append(clean, fallback)
 	}
 	cfg.Security.AdminUserIDs = clean
+	cfg.Security.Tools = sanitizeToolPolicy(cfg.Security.Tools)
+}
+
+func sanitizeToolPolicy(policy ToolPolicyConfig) ToolPolicyConfig {
+	policy.GlobalAllow = normalizeToolList(policy.GlobalAllow)
+	policy.GlobalDeny = normalizeToolList(policy.GlobalDeny)
+	policy.RequireConfirm = normalizeToolList(policy.RequireConfirm)
+	if len(policy.RequireConfirm) == 0 {
+		policy.RequireConfirm = []string{"browser", "canvas", "nodes", "message"}
+	}
+
+	if policy.Agent == nil {
+		policy.Agent = map[string]ToolAgentPolicy{}
+		return policy
+	}
+	cleanAgent := map[string]ToolAgentPolicy{}
+	for rawID, rawPolicy := range policy.Agent {
+		agentID := strings.TrimSpace(rawID)
+		if agentID == "" {
+			continue
+		}
+		cleanAgent[agentID] = ToolAgentPolicy{
+			Allow: normalizeToolList(rawPolicy.Allow),
+			Deny:  normalizeToolList(rawPolicy.Deny),
+		}
+	}
+	policy.Agent = cleanAgent
+	return policy
+}
+
+func normalizeToolList(items []string) []string {
+	if len(items) == 0 {
+		return []string{}
+	}
+	set := map[string]struct{}{}
+	for _, item := range items {
+		name := toolcore.NormalizeToolName(item)
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		set[name] = struct{}{}
+	}
+	if len(set) == 0 {
+		return []string{}
+	}
+	out := make([]string, 0, len(set))
+	for item := range set {
+		out = append(out, item)
+	}
+	sort.Strings(out)
+	return out
 }
