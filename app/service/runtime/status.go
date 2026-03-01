@@ -18,7 +18,6 @@ import (
 	"alter0/app/service/queue"
 	"alter0/app/service/schedule"
 	"alter0/app/service/scheduler"
-	"alter0/app/service/task"
 	"alter0/app/service/tools"
 )
 
@@ -33,7 +32,7 @@ type StatusCollector struct {
 	GatewayStatusProvider   func() interface{}
 	Scheduler               *scheduler.Scheduler
 	Queue                   *queue.Queue
-	TaskStore               *task.Store
+	TaskStatsProvider       func(context.Context) (interface{}, error)
 	ScheduleService         *schedule.Service
 	RepoPath                string
 	CommandAuditBasePath    string
@@ -131,8 +130,8 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	if c.Queue != nil {
 		payload["queue"] = c.Queue.Stats()
 	}
-	if c.TaskStore != nil {
-		stats, err := c.TaskStore.GlobalStats(ctx)
+	if c.TaskStatsProvider != nil {
+		stats, err := c.TaskStatsProvider(ctx)
 		if err != nil {
 			payload["task"] = map[string]interface{}{"error": err.Error()}
 		} else {

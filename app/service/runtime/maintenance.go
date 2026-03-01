@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"alter0/app/service/scheduler"
-	"alter0/app/service/task"
 )
 
 const (
@@ -22,6 +21,11 @@ type MaintenanceOptions struct {
 	PruneTimeout                time.Duration
 }
 
+type TaskMemoryPruner interface {
+	PruneTaskMemoryByClosedAt(context.Context, int64) (int64, error)
+	PruneTaskMemoryByOpenUpdatedAt(context.Context, int64) (int64, error)
+}
+
 func DefaultMaintenanceOptions() MaintenanceOptions {
 	return MaintenanceOptions{
 		Enabled:                     true,
@@ -32,7 +36,7 @@ func DefaultMaintenanceOptions() MaintenanceOptions {
 	}
 }
 
-func RegisterMaintenanceJobs(jobScheduler *scheduler.Scheduler, taskStore *task.Store, options MaintenanceOptions) error {
+func RegisterMaintenanceJobs(jobScheduler *scheduler.Scheduler, taskStore TaskMemoryPruner, options MaintenanceOptions) error {
 	if jobScheduler == nil || taskStore == nil {
 		return nil
 	}

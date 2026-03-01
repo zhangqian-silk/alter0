@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,39 +11,149 @@ import (
 	"time"
 
 	"alter0/app/pkg/types"
-	servicestore "alter0/app/service/store"
-	servicetask "alter0/app/service/task"
 )
 
-func TestAuthorizeCommand_AdminOnlyCommands(t *testing.T) {
-	exec := NewExecutor(nil, nil, []string{"admin_user"})
+func TestExecuteSlash_CustomHandler(t *testing.T) {
+	exec := NewExecutor()
+	exec.Register("ping", func(ctx context.Context, msg types.Message, args []string) (string, error) {
+		if len(args) == 0 {
+			return "pong", nil
+		}
+		return "pong:" + strings.Join(args, ","), nil
+	})
 
-	if err := exec.authorizeCommand("guest", []string{"executor"}); err == nil {
-		t.Fatalf("expected /executor to require admin")
+	out, handled, err := exec.ExecuteSlash(context.Background(), types.Message{
+		Content:   "/ping a b",
+		UserID:    "u-1",
+		ChannelID: "cli",
+		RequestID: "req-1",
+	})
+	if err != nil {
+		t.Fatalf("execute slash failed: %v", err)
 	}
-	if err := exec.authorizeCommand("guest", []string{"config", "set", "executor.name", "codex"}); err == nil {
-		t.Fatalf("expected /config set to require admin")
+	if !handled {
+		t.Fatal("expected command to be handled")
 	}
-	if err := exec.authorizeCommand("guest", []string{"config", "get"}); err != nil {
-		t.Fatalf("expected /config get to be allowed: %v", err)
-	}
-	if err := exec.authorizeCommand("admin_user", []string{"executor"}); err != nil {
-		t.Fatalf("expected admin to pass /executor check: %v", err)
+	if out != "pong:a,b" {
+		t.Fatalf("unexpected output: %s", out)
 	}
 }
 
-func TestSetAdminUsers_TrimsAndDedupes(t *testing.T) {
-	exec := NewExecutor(nil, nil, nil)
-	exec.SetAdminUsers([]string{"  alice ", "alice", "", "bob"})
+func TestExecuteSlash_Authorizer(t *testing.T) {
+	exec := NewExecutor()
+	exec.Register("admin", func(ctx context.Context, msg types.Message, args []string) (string, error) {
+		return "ok", nil
+	})
+	exec.SetAuthorizer(func(userID string, parts []string) error {
+		if len(parts) > 0 && parts[0] == "admin" && userID != "root" {
+			return fmt.Errorf("permission denied")
+		}
+		return nil
+	})
 
-	if !exec.isAdminUser("alice") {
-		t.Fatalf("alice should be admin")
+	_, handled, err := exec.ExecuteSlash(context.Background(), types.Message{Content: "/admin", UserID: "guest"})
+	if !handled {
+		t.Fatal("expected /admin to be handled")
 	}
-	if !exec.isAdminUser("bob") {
-		t.Fatalf("bob should be admin")
+	if err == nil {
+		t.Fatal("expected permission error")
 	}
-	if exec.isAdminUser("carol") {
-		t.Fatalf("carol should not be admin")
+
+	out, handled, err := exec.ExecuteSlash(context.Background(), types.Message{Content: "/admin", UserID: "root"})
+	if err != nil {
+		t.Fatalf("expected root to pass: %v", err)
+	}
+	if !handled || out != "ok" {
+		t.Fatalf("unexpected result handled=%t out=%q", handled, out)
+	}
+}
+
+func TestHelpText_DefaultAndCustom(t *testing.T) {
+	exec := NewExecutor()
+	exec.Register("ping", func(ctx context.Context, msg types.Message, args []string) (string, error) {
+		return "pong", nil
+	})
+
+	out, handled, err := exec.ExecuteSlash(context.Background(), types.Message{Content: "/help"})
+	if err != nil || !handled {
+		t.Fatalf("default help failed handled=%t err=%v", handled, err)
+	}
+	if !strings.Contains(out, "/ping") {
+		t.Fatalf("expected default help to include /ping, got: %s", out)
+	}
+
+	exec.SetHelpProvider(func() string { return "custom help" })
+	out, handled, err = exec.ExecuteSlash(context.Background(), types.Message{Content: "/help"})
+	if err != nil || !handled {
+		t.Fatalf("custom help failed handled=%t err=%v", handled, err)
+	}
+	if out != "custom help" {
+		t.Fatalf("expected custom help, got: %s", out)
+	}
+}
+
+func TestExecuteSlash_Status(t *testing.T) {
+	exec := NewExecutor()
+	exec.SetStatusProvider(func(ctx context.Context) map[string]interface{} {
+		return map[string]interface{}{
+			"gateway": map[string]interface{}{"healthy": true},
+		}
+	})
+
+	out, handled, err := exec.ExecuteSlash(context.Background(), types.Message{
+		Content:   "/status",
+		UserID:    "u-1",
+		ChannelID: "cli",
+		RequestID: "req-1",
+	})
+	if err != nil {
+		t.Fatalf("execute slash status failed: %v", err)
+	}
+	if !handled {
+		t.Fatal("expected /status to be handled")
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("status output is not json: %v", err)
+	}
+	gateway, ok := payload["gateway"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected gateway payload, got %+v", payload)
+	}
+	healthy, ok := gateway["healthy"].(bool)
+	if !ok || !healthy {
+		t.Fatalf("expected gateway healthy=true, got %+v", gateway)
+	}
+}
+
+func TestExecuteSlash_StatusWithoutProvider(t *testing.T) {
+	exec := NewExecutor()
+	_, handled, err := exec.ExecuteSlash(context.Background(), types.Message{
+		Content:   "/status",
+		UserID:    "u-1",
+		ChannelID: "cli",
+		RequestID: "req-1",
+	})
+	if !handled {
+		t.Fatal("expected /status to be handled")
+	}
+	if err == nil {
+		t.Fatal("expected missing provider error")
+	}
+	if !strings.Contains(err.Error(), "status provider") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExecuteSlash_UnknownCommand(t *testing.T) {
+	exec := NewExecutor()
+	_, handled, err := exec.ExecuteSlash(context.Background(), types.Message{Content: "/unknown"})
+	if !handled {
+		t.Fatal("expected unknown command to be handled as slash")
+	}
+	if err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("expected unknown command error, got: %v", err)
 	}
 }
 
@@ -96,101 +207,5 @@ func TestAppendCommandAuditEntry_WritesJSONL(t *testing.T) {
 	}
 	if record.Reason != "permission denied" {
 		t.Fatalf("unexpected reason: %q", record.Reason)
-	}
-}
-
-func TestExecuteSlash_Status(t *testing.T) {
-	exec := NewExecutor(nil, nil, nil)
-	exec.SetStatusProvider(func(ctx context.Context) map[string]interface{} {
-		return map[string]interface{}{
-			"gateway": map[string]interface{}{"healthy": true},
-		}
-	})
-
-	out, handled, err := exec.ExecuteSlash(context.Background(), types.Message{
-		Content:   "/status",
-		UserID:    "u-1",
-		ChannelID: "cli",
-		RequestID: "req-1",
-	})
-	if err != nil {
-		t.Fatalf("execute slash status failed: %v", err)
-	}
-	if !handled {
-		t.Fatal("expected /status to be handled")
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(out), &payload); err != nil {
-		t.Fatalf("status output is not json: %v", err)
-	}
-	gateway, ok := payload["gateway"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected gateway payload, got %+v", payload)
-	}
-	healthy, ok := gateway["healthy"].(bool)
-	if !ok || !healthy {
-		t.Fatalf("expected gateway healthy=true, got %+v", gateway)
-	}
-}
-
-func TestExecuteSlash_StatusWithoutProvider(t *testing.T) {
-	exec := NewExecutor(nil, nil, nil)
-	_, handled, err := exec.ExecuteSlash(context.Background(), types.Message{
-		Content:   "/status",
-		UserID:    "u-1",
-		ChannelID: "cli",
-		RequestID: "req-1",
-	})
-	if !handled {
-		t.Fatal("expected /status to be handled")
-	}
-	if err == nil {
-		t.Fatal("expected missing provider error")
-	}
-	if !strings.Contains(err.Error(), "status provider") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestExecuteTaskCommand_Stats(t *testing.T) {
-	tempDir := t.TempDir()
-	database, err := servicestore.NewSQLiteDB(filepath.Join(tempDir, "db"))
-	if err != nil {
-		t.Fatalf("init sqlite failed: %v", err)
-	}
-	defer database.Close()
-
-	store := servicetask.NewStore(database)
-	exec := NewExecutor(nil, store, nil)
-	ctx := context.Background()
-
-	task1, err := store.CreateTask(ctx, "u-1", "task one", "cli")
-	if err != nil {
-		t.Fatalf("create task1 failed: %v", err)
-	}
-	_, err = store.CreateTask(ctx, "u-1", "task two", "cli")
-	if err != nil {
-		t.Fatalf("create task2 failed: %v", err)
-	}
-	if err := store.CloseTask(ctx, task1.ID); err != nil {
-		t.Fatalf("close task failed: %v", err)
-	}
-	if err := store.SetForcedTask(ctx, "u-1", task1.ID); err != nil {
-		t.Fatalf("set forced task failed: %v", err)
-	}
-
-	out, err := exec.executeTaskCommand(ctx, "u-1", []string{"stats"})
-	if err != nil {
-		t.Fatalf("execute task stats failed: %v", err)
-	}
-	if !strings.Contains(out, "open: 1") {
-		t.Fatalf("expected open count in output: %s", out)
-	}
-	if !strings.Contains(out, "closed: 1") {
-		t.Fatalf("expected closed count in output: %s", out)
-	}
-	if !strings.Contains(out, task1.ID) {
-		t.Fatalf("expected forced task id in output: %s", out)
 	}
 }

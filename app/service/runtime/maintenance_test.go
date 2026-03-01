@@ -1,13 +1,22 @@
 package runtime
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"alter0/app/service/scheduler"
-	servicestore "alter0/app/service/store"
-	"alter0/app/service/task"
 )
+
+type noopTaskPruner struct{}
+
+func (noopTaskPruner) PruneTaskMemoryByClosedAt(context.Context, int64) (int64, error) {
+	return 0, nil
+}
+
+func (noopTaskPruner) PruneTaskMemoryByOpenUpdatedAt(context.Context, int64) (int64, error) {
+	return 0, nil
+}
 
 func TestRegisterMaintenanceJobsDisabled(t *testing.T) {
 	s := scheduler.New()
@@ -21,17 +30,9 @@ func TestRegisterMaintenanceJobsDisabled(t *testing.T) {
 }
 
 func TestRegisterMaintenanceJobsWithDefaults(t *testing.T) {
-	tmp := t.TempDir()
-	database, err := servicestore.NewSQLiteDB(tmp)
-	if err != nil {
-		t.Fatalf("new db: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
-
-	store := task.NewStore(database)
 	s := scheduler.New()
 
-	if err := RegisterMaintenanceJobs(s, store, MaintenanceOptions{}); err != nil {
+	if err := RegisterMaintenanceJobs(s, noopTaskPruner{}, MaintenanceOptions{}); err != nil {
 		t.Fatalf("register maintenance jobs: %v", err)
 	}
 	if got := s.Health().RegisteredJobs; got != 1 {

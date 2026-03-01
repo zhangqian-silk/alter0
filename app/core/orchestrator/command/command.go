@@ -3,18 +3,14 @@ package command
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	orctask "alter0/app/core/orchestrator/task"
 	"alter0/app/pkg/types"
+	servicecommand "alter0/app/service/command"
 )
 
 type SkillManager interface {
@@ -23,36 +19,44 @@ type SkillManager interface {
 }
 
 type Executor struct {
-	skillMgr       SkillManager
-	taskStore      *orctask.Store
-	statusProvider func(context.Context) map[string]interface{}
+	skillMgr  SkillManager
+	taskStore *orctask.Store
+	slash     *servicecommand.Executor
 
 	mu         sync.RWMutex
 	adminUsers map[string]struct{}
 }
 
-type commandAuditEntry struct {
-	Timestamp string `json:"timestamp"`
-	UserID    string `json:"user_id"`
-	ChannelID string `json:"channel_id"`
-	RequestID string `json:"request_id"`
-	Command   string `json:"command"`
-	Decision  string `json:"decision"`
-	Reason    string `json:"reason,omitempty"`
-}
-
-var (
-	commandAuditMu       sync.Mutex
-	commandAuditBasePath = filepath.Join("output", "audit")
-)
-
 func NewExecutor(skillMgr SkillManager, taskStore *orctask.Store, adminUserIDs []string) *Executor {
 	e := &Executor{
 		skillMgr:  skillMgr,
 		taskStore: taskStore,
+		slash:     servicecommand.NewExecutor(),
 	}
 	e.SetAdminUsers(adminUserIDs)
+	e.registerHandlers()
+	e.slash.SetAuthorizer(e.authorizeCommand)
+	e.slash.SetHelpProvider(e.helpText)
 	return e
+}
+
+func (e *Executor) registerHandlers() {
+	e.slash.Register("task", func(ctx context.Context, msg types.Message, args []string) (string, error) {
+		return e.executeTaskCommand(ctx, msg.UserID, args)
+	})
+	e.slash.Register("config", func(ctx context.Context, msg types.Message, args []string) (string, error) {
+		return e.executeConfigCommand(ctx, args)
+	})
+	e.slash.Register("executor", func(ctx context.Context, msg types.Message, args []string) (string, error) {
+		return e.executeExecutorCommand(ctx, args)
+	})
+}
+
+func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string, bool, error) {
+	if e == nil || e.slash == nil {
+		return "", false, nil
+	}
+	return e.slash.ExecuteSlash(ctx, msg)
 }
 
 func (e *Executor) SetAdminUsers(adminUserIDs []string) {
@@ -70,149 +74,10 @@ func (e *Executor) SetAdminUsers(adminUserIDs []string) {
 }
 
 func (e *Executor) SetStatusProvider(provider func(context.Context) map[string]interface{}) {
-	e.statusProvider = provider
-}
-
-func (e *Executor) ExecuteSlash(ctx context.Context, msg types.Message) (string, bool, error) {
-	cmd := strings.TrimSpace(strings.TrimPrefix(msg.Content, "/"))
-	if cmd == "" {
-		return "", false, nil
+	if e == nil || e.slash == nil {
+		return
 	}
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return "", false, nil
-	}
-	skillName := parts[0]
-	auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "attempt", "")
-	if err := e.authorizeCommand(msg.UserID, parts); err != nil {
-		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
-		return "", true, err
-	}
-	switch skillName {
-	case "help":
-		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
-		return e.helpText(), true, nil
-	case "status":
-		out, err := e.runtimeStatusOutput(ctx)
-		if err != nil {
-			auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
-			return "", true, err
-		}
-		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
-		return out, true, nil
-	case "task":
-		out, err := e.executeTaskCommand(ctx, msg.UserID, parts[1:])
-		if err != nil {
-			auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
-			return out, true, err
-		}
-		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
-		return out, true, nil
-	case "config", "executor":
-		if e.skillMgr == nil {
-			err := fmt.Errorf("skill manager is not configured")
-			auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
-			return "", true, err
-		}
-		args := map[string]interface{}{}
-		if len(parts) > 1 {
-			args["command"] = strings.Join(parts[1:], " ")
-		}
-		if skillName == "config" {
-			e.fillConfigArgs(parts, args)
-		}
-		result, err := e.skillMgr.Execute(ctx, skillName, args)
-		if err != nil {
-			auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
-			return "", true, err
-		}
-		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "allow", "")
-		if skillName == "config" {
-			return formatConfigResult(result), true, nil
-		}
-		return fmt.Sprintf("%v", result), true, nil
-	default:
-		err := fmt.Errorf("unknown command: %s", skillName)
-		auditCommand(msg.UserID, msg.ChannelID, msg.RequestID, cmd, "deny", err.Error())
-		return "", true, err
-	}
-}
-
-func auditCommand(userID string, channelID string, requestID string, command string, decision string, reason string) {
-	line := formatAuditCommandLine(userID, channelID, requestID, command, decision, reason)
-	log.Print(line)
-	if err := appendCommandAuditEntry(time.Now(), userID, channelID, requestID, command, decision, reason); err != nil {
-		log.Printf("[AUDIT] failed to append command audit entry: %v", err)
-	}
-}
-
-func formatAuditCommandLine(userID string, channelID string, requestID string, command string, decision string, reason string) string {
-	user := normalizeAuditUserID(userID)
-	channel := normalizeAuditChannelID(channelID)
-	request := normalizeAuditRequestID(requestID)
-	line := fmt.Sprintf("[AUDIT] user=%s channel=%s request=%s decision=%s command=%q", user, channel, request, decision, command)
-	if strings.TrimSpace(reason) != "" {
-		line += fmt.Sprintf(" reason=%q", reason)
-	}
-	return line
-}
-
-func appendCommandAuditEntry(ts time.Time, userID string, channelID string, requestID string, command string, decision string, reason string) error {
-	record := commandAuditEntry{
-		Timestamp: ts.UTC().Format(time.RFC3339Nano),
-		UserID:    normalizeAuditUserID(userID),
-		ChannelID: normalizeAuditChannelID(channelID),
-		RequestID: normalizeAuditRequestID(requestID),
-		Command:   strings.TrimSpace(command),
-		Decision:  strings.TrimSpace(decision),
-		Reason:    strings.TrimSpace(reason),
-	}
-	payload, err := json.Marshal(record)
-	if err != nil {
-		return err
-	}
-
-	dayDir := filepath.Join(commandAuditBasePath, ts.Format("2006-01-02"))
-	if err := os.MkdirAll(dayDir, 0755); err != nil {
-		return err
-	}
-	logPath := filepath.Join(dayDir, "command_permission.jsonl")
-
-	commandAuditMu.Lock()
-	defer commandAuditMu.Unlock()
-
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	_, err = f.Write(append(payload, '\n'))
-	return err
-}
-
-func normalizeAuditUserID(userID string) string {
-	user := strings.TrimSpace(userID)
-	if user == "" {
-		return "anonymous"
-	}
-	return user
-}
-
-func normalizeAuditChannelID(channelID string) string {
-	channel := strings.TrimSpace(channelID)
-	if channel == "" {
-		return "unknown"
-	}
-	return channel
-}
-
-func normalizeAuditRequestID(requestID string) string {
-	request := strings.TrimSpace(requestID)
-	if request == "" {
-		return "n/a"
-	}
-	return request
+	e.slash.SetStatusProvider(provider)
 }
 
 func (e *Executor) authorizeCommand(userID string, parts []string) error {
@@ -299,41 +164,57 @@ func (e *Executor) splitCommands() ([]string, bool) {
 	return configNames, e.taskStore != nil
 }
 
-func (e *Executor) runtimeStatusOutput(ctx context.Context) (string, error) {
-	if e.statusProvider == nil {
-		return "", fmt.Errorf("status provider is not configured")
+func (e *Executor) executeConfigCommand(ctx context.Context, args []string) (string, error) {
+	if e.skillMgr == nil {
+		return "", fmt.Errorf("skill manager is not configured")
 	}
-	payload := e.statusProvider(ctx)
-	if payload == nil {
-		payload = map[string]interface{}{}
+	params := map[string]interface{}{}
+	if len(args) > 0 {
+		params["command"] = strings.Join(args, " ")
 	}
-	encoded, err := json.MarshalIndent(payload, "", "  ")
+	e.fillConfigArgs(args, params)
+	result, err := e.skillMgr.Execute(ctx, "config", params)
 	if err != nil {
 		return "", err
 	}
-	return string(encoded), nil
+	return formatConfigResult(result), nil
 }
 
-func (e *Executor) fillConfigArgs(parts []string, args map[string]interface{}) {
-	if len(parts) == 1 {
-		args["action"] = "get"
+func (e *Executor) executeExecutorCommand(ctx context.Context, args []string) (string, error) {
+	if e.skillMgr == nil {
+		return "", fmt.Errorf("skill manager is not configured")
+	}
+	params := map[string]interface{}{}
+	if len(args) > 0 {
+		params["command"] = strings.Join(args, " ")
+	}
+	result, err := e.skillMgr.Execute(ctx, "executor", params)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%v", result), nil
+}
+
+func (e *Executor) fillConfigArgs(args []string, params map[string]interface{}) {
+	if len(args) == 0 {
+		params["action"] = "get"
 		return
 	}
-	action := strings.ToLower(parts[1])
+	action := strings.ToLower(args[0])
 	if action == "get" || action == "set" {
-		args["action"] = action
-		if len(parts) >= 3 {
-			args["key"] = parts[2]
-			if len(parts) > 3 {
-				args["value"] = strings.Join(parts[3:], " ")
+		params["action"] = action
+		if len(args) >= 2 {
+			params["key"] = args[1]
+			if len(args) > 2 {
+				params["value"] = strings.Join(args[2:], " ")
 			} else {
-				args["value"] = ""
+				params["value"] = ""
 			}
 		}
 		return
 	}
-	args["action"] = "get"
-	args["key"] = parts[1]
+	params["action"] = "get"
+	params["key"] = args[0]
 }
 
 func (e *Executor) executeTaskCommand(ctx context.Context, userID string, args []string) (string, error) {
