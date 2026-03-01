@@ -34,6 +34,8 @@ Channel (CLI / HTTP / Telegram / Slack / Web)
   -> Channel
 ```
 
+网关层现在支持 `agent_id` 路由：通过 `agent.default_id + agent.registry[]` 管理多个隔离 Agent（独立 `workspace/agent_dir`），未匹配时自动回退到默认 Agent，并在运行状态中记录 fallback 计数。
+
 任务选择优先级：
 
 1. 强制任务（`/task use`）
@@ -125,7 +127,19 @@ docker run --rm -p 8080:8080 \
 
 ```json
 {
-  "agent": {"name": "Alter0"},
+  "agent": {
+    "name": "Alter0",
+    "default_id": "default",
+    "registry": [
+      {
+        "id": "default",
+        "name": "Alter0",
+        "workspace": ".",
+        "agent_dir": "output/agents/default",
+        "executor": "codex"
+      }
+    ]
+  },
   "executor": {"name": "codex"},
   "task": {
     "routing_timeout_sec": 15,

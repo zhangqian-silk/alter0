@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -25,6 +26,16 @@ import (
 	"alter0/app/core/scheduler"
 	"alter0/app/pkg/logger"
 )
+
+type registeredAgent struct {
+	ID        string
+	Workspace string
+	AgentDir  string
+	Executor  string
+	Brain     *agent.DefaultAgent
+	TaskStore *task.Store
+	Database  *db.DB
+}
 
 func main() {
 	if err := logger.Init("output/logs"); err != nil {
@@ -47,33 +58,25 @@ func main() {
 
 	shutdownTimeout := time.Duration(cfg.Runtime.Shutdown.DrainTimeoutSec) * time.Second
 
-	database, err := db.NewSQLiteDB("output/db")
+	agents, defaultAgent, err := buildAgents(cfgManager, cfg)
 	if err != nil {
-		logger.Error("Failed to initialize DB: %v", err)
+		logger.Error("Failed to initialize agents: %v", err)
 		os.Exit(1)
 	}
-	defer database.Close()
-	logger.Info("Database initialized successfully")
+	defer closeAgentDatabases(agents)
+	logger.Info("Initialized %d agents, default=%s", len(agents), defaultAgent.ID)
 
-	taskStore := task.NewStore(database)
-	skillMgr := skills.NewManager()
-
-	brain := agent.NewAgent(cfg.Agent.Name, skillMgr, taskStore, cfg.Executor.Name, cfg.Task, cfg.Security)
-
-	applyConfig := func(updated config.Config) error {
-		brain.SetName(updated.Agent.Name)
-		brain.SetExecutor(updated.Executor.Name)
-		brain.SetTaskConfig(updated.Task)
-		brain.SetSecurityConfig(updated.Security)
-		return nil
+	gw := gateway.NewGateway(nil)
+	for _, item := range agents {
+		if err := gw.RegisterAgent(item.ID, item.Brain); err != nil {
+			logger.Error("Failed to register agent %s: %v", item.ID, err)
+			os.Exit(1)
+		}
 	}
-
-	configSkill := builtins.NewConfigSkill(cfgManager, applyConfig)
-	executorSkill := builtins.NewExecutorSkill(cfgManager, applyConfig)
-	skillMgr.Register(configSkill)
-	skillMgr.Register(executorSkill)
-
-	gw := gateway.NewGateway(brain)
+	if err := gw.SetDefaultAgent(cfg.Agent.DefaultID); err != nil {
+		logger.Error("Failed to set default agent %s: %v", cfg.Agent.DefaultID, err)
+		os.Exit(1)
+	}
 
 	executionQueue := queue.New(cfg.Runtime.Queue.Buffer)
 	if cfg.Runtime.Queue.Enabled {
@@ -140,7 +143,7 @@ func main() {
 	defer cancel()
 
 	jobScheduler := scheduler.New()
-	if err := runtime.RegisterMaintenanceJobs(jobScheduler, taskStore, runtime.MaintenanceOptions{
+	if err := runtime.RegisterMaintenanceJobs(jobScheduler, defaultAgent.TaskStore, runtime.MaintenanceOptions{
 		Enabled:                     cfg.Runtime.Maintenance.Enabled,
 		TaskMemoryRetentionDays:     cfg.Runtime.Maintenance.TaskMemoryRetentionDays,
 		TaskMemoryOpenRetentionDays: cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays,
@@ -161,14 +164,17 @@ func main() {
 	}()
 
 	statusCollector := &runtime.StatusCollector{
-		Gateway:   gw,
-		Scheduler: jobScheduler,
-		Queue:     executionQueue,
-		TaskStore: taskStore,
-		RepoPath:  ".",
+		Gateway:      gw,
+		Scheduler:    jobScheduler,
+		Queue:        executionQueue,
+		TaskStore:    defaultAgent.TaskStore,
+		RepoPath:     ".",
+		AgentEntries: runtimeAgentEntries(agents),
 	}
 	httpChannel.SetStatusProvider(statusCollector.Snapshot)
-	brain.SetStatusProvider(statusCollector.Snapshot)
+	for _, item := range agents {
+		item.Brain.SetStatusProvider(statusCollector.Snapshot)
+	}
 
 	go runGatewayWithRetry(ctx, gw)
 
@@ -182,6 +188,92 @@ func main() {
 	sig := <-sigChan
 	logger.Info("Received signal: %v. Alter0 shutting down with drain timeout=%s", sig, shutdownTimeout)
 	cancel()
+}
+
+func buildAgents(cfgManager *config.Manager, cfg config.Config) ([]registeredAgent, registeredAgent, error) {
+	agents := make([]registeredAgent, 0, len(cfg.Agent.Registry))
+	var defaultAgent registeredAgent
+
+	for _, entry := range cfg.Agent.Registry {
+		workspace := stringsOrDefault(entry.Workspace, ".")
+		if !filepath.IsAbs(workspace) {
+			workspace = filepath.Clean(filepath.Join(".", workspace))
+		}
+		agentDir := stringsOrDefault(entry.AgentDir, filepath.Join("output", "agents", entry.ID))
+		if !filepath.IsAbs(agentDir) {
+			agentDir = filepath.Clean(filepath.Join(".", agentDir))
+		}
+		executorName := stringsOrDefault(entry.Executor, cfg.Executor.Name)
+		agentName := stringsOrDefault(entry.Name, cfg.Agent.Name)
+
+		database, err := db.NewSQLiteDB(filepath.Join(agentDir, "db"))
+		if err != nil {
+			return nil, registeredAgent{}, fmt.Errorf("agent %s: %w", entry.ID, err)
+		}
+		taskStore := task.NewStore(database)
+		skillMgr := skills.NewManager()
+		brain := agent.NewAgent(agentName, skillMgr, taskStore, executorName, cfg.Task, cfg.Security)
+
+		applyConfig := func(updated config.Config) error {
+			brain.SetName(updated.Agent.Name)
+			brain.SetExecutor(updated.Executor.Name)
+			brain.SetTaskConfig(updated.Task)
+			brain.SetSecurityConfig(updated.Security)
+			return nil
+		}
+		skillMgr.Register(builtins.NewConfigSkill(cfgManager, applyConfig))
+		skillMgr.Register(builtins.NewExecutorSkill(cfgManager, applyConfig))
+
+		item := registeredAgent{
+			ID:        entry.ID,
+			Workspace: workspace,
+			AgentDir:  agentDir,
+			Executor:  executorName,
+			Brain:     brain,
+			TaskStore: taskStore,
+			Database:  database,
+		}
+		agents = append(agents, item)
+		if entry.ID == cfg.Agent.DefaultID {
+			defaultAgent = item
+		}
+	}
+
+	if defaultAgent.ID == "" {
+		return nil, registeredAgent{}, fmt.Errorf("default agent not found in registry: %s", cfg.Agent.DefaultID)
+	}
+	return agents, defaultAgent, nil
+}
+
+func stringsOrDefault(v string, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
+}
+
+func closeAgentDatabases(agents []registeredAgent) {
+	for _, item := range agents {
+		if item.Database == nil {
+			continue
+		}
+		if err := item.Database.Close(); err != nil {
+			logger.Error("Failed to close DB for agent=%s: %v", item.ID, err)
+		}
+	}
+}
+
+func runtimeAgentEntries(agents []registeredAgent) []runtime.AgentEntry {
+	items := make([]runtime.AgentEntry, 0, len(agents))
+	for _, item := range agents {
+		items = append(items, runtime.AgentEntry{
+			AgentID:   item.ID,
+			Workspace: item.Workspace,
+			AgentDir:  item.AgentDir,
+			Executor:  item.Executor,
+		})
+	}
+	return items
 }
 
 func runGatewayWithRetry(ctx context.Context, gw *gateway.DefaultGateway) {

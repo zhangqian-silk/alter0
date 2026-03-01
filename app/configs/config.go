@@ -18,7 +18,17 @@ type Config struct {
 }
 
 type AgentConfig struct {
-	Name string `json:"name"`
+	Name      string               `json:"name"`
+	DefaultID string               `json:"default_id"`
+	Registry  []AgentRegistryEntry `json:"registry"`
+}
+
+type AgentRegistryEntry struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Workspace string `json:"workspace"`
+	AgentDir  string `json:"agent_dir"`
+	Executor  string `json:"executor"`
 }
 
 type ExecutorConfig struct {
@@ -169,7 +179,17 @@ func (m *Manager) saveLocked() error {
 func defaultConfig() Config {
 	return Config{
 		Agent: AgentConfig{
-			Name: "Alter0",
+			Name:      "Alter0",
+			DefaultID: "default",
+			Registry: []AgentRegistryEntry{
+				{
+					ID:        "default",
+					Name:      "Alter0",
+					Workspace: ".",
+					AgentDir:  filepath.Join("output", "agents", "default"),
+					Executor:  "claude_code",
+				},
+			},
 		},
 		Executor: ExecutorConfig{
 			Name: "claude_code",
@@ -225,6 +245,9 @@ func defaultConfig() Config {
 func applyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.Agent.Name) == "" {
 		cfg.Agent.Name = "Alter0"
+	}
+	if strings.TrimSpace(cfg.Agent.DefaultID) == "" {
+		cfg.Agent.DefaultID = "default"
 	}
 	if strings.TrimSpace(cfg.Executor.Name) == "" {
 		cfg.Executor.Name = "claude_code"
@@ -301,6 +324,67 @@ func applyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.Channels.Slack.EventPath) == "" {
 		cfg.Channels.Slack.EventPath = "/events/slack"
 	}
+
+	registry := make([]AgentRegistryEntry, 0, len(cfg.Agent.Registry))
+	seenAgentIDs := map[string]struct{}{}
+	for _, entry := range cfg.Agent.Registry {
+		id := strings.TrimSpace(entry.ID)
+		if id == "" {
+			continue
+		}
+		if _, exists := seenAgentIDs[id]; exists {
+			continue
+		}
+		seenAgentIDs[id] = struct{}{}
+
+		item := entry
+		item.ID = id
+		if strings.TrimSpace(item.Name) == "" {
+			if id == "default" {
+				item.Name = cfg.Agent.Name
+			} else {
+				item.Name = "Alter0-" + id
+			}
+		}
+		if strings.TrimSpace(item.Workspace) == "" {
+			item.Workspace = "."
+		}
+		if strings.TrimSpace(item.AgentDir) == "" {
+			item.AgentDir = filepath.Join("output", "agents", id)
+		}
+		if strings.TrimSpace(item.Executor) == "" {
+			item.Executor = cfg.Executor.Name
+		}
+		registry = append(registry, item)
+	}
+
+	if len(registry) == 0 {
+		registry = append(registry, AgentRegistryEntry{
+			ID:        "default",
+			Name:      cfg.Agent.Name,
+			Workspace: ".",
+			AgentDir:  filepath.Join("output", "agents", "default"),
+			Executor:  cfg.Executor.Name,
+		})
+	}
+
+	requestedDefault := strings.TrimSpace(cfg.Agent.DefaultID)
+	if requestedDefault == "" {
+		requestedDefault = registry[0].ID
+	}
+	foundDefault := false
+	for _, item := range registry {
+		if item.ID == requestedDefault {
+			foundDefault = true
+			break
+		}
+	}
+	if !foundDefault {
+		requestedDefault = registry[0].ID
+	}
+
+	cfg.Agent.DefaultID = requestedDefault
+	cfg.Agent.Registry = registry
 
 	clean := make([]string, 0, len(cfg.Security.AdminUserIDs))
 	seen := map[string]struct{}{}

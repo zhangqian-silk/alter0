@@ -128,6 +128,7 @@ type incomingRequest struct {
 	Content string `json:"content"`
 	UserID  string `json:"user_id"`
 	TaskID  string `json:"task_id,omitempty"`
+	AgentID string `json:"agent_id,omitempty"`
 	Stream  bool   `json:"stream,omitempty"`
 }
 
@@ -511,6 +512,13 @@ func (c *HTTPChannel) prepareMessage(req incomingRequest) (types.Message, chan t
 	c.pendingMu.Unlock()
 
 	msgID := c.newID("http")
+	meta := map[string]interface{}{
+		"user_id": req.UserID,
+	}
+	if strings.TrimSpace(req.AgentID) != "" {
+		meta["agent_id"] = strings.TrimSpace(req.AgentID)
+	}
+
 	msg := types.Message{
 		ID:        msgID,
 		Content:   req.Content,
@@ -529,9 +537,7 @@ func (c *HTTPChannel) prepareMessage(req incomingRequest) (types.Message, chan t
 				{Type: types.EnvelopePartText, Text: req.Content},
 			},
 		},
-		Meta: map[string]interface{}{
-			"user_id": req.UserID,
-		},
+		Meta: meta,
 	}
 	return msg, respCh
 }

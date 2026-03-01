@@ -23,6 +23,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime maintenance jobs (task memory prune)
 - [x] Unified runtime status snapshot (gateway/scheduler/task/queue/git)
 - [x] Startup preflight checks (SQLite writable, executor installed, config validation)
+- [x] Multi-agent registry and session isolation (`agentId/workspace/agentDir` with default fallback)
 - [x] Configurable graceful shutdown drain timeout (queue/scheduler/http unified)
 - [x] Local backup/restore scripts for DB + config
 - [x] Deployment assets for systemd service + Docker image
@@ -56,7 +57,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P0 (Gateway Foundation)
 
 1. [x] N1 Multi-channel gateway baseline with at least two external chat channels
-2. [ ] N2 Multi-agent registry and session isolation (`agentId/workspace/agentDir`)
+2. [x] N2 Multi-agent registry and session isolation (`agentId/workspace/agentDir`)
 3. [ ] N3 Scheduler center for one-shot `at` + recurring `cron` with direct channel delivery
 4. [ ] N6 Runtime status expansion (sessions/subagents/schedules/cost metrics)
 
