@@ -312,6 +312,85 @@ func TestAsyncTaskCancel(t *testing.T) {
 	}
 }
 
+func TestAsyncCancelPreventsResultOverwriteAndCapturesAuditFields(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	started := make(chan struct{}, 1)
+	ch.handler = func(msg types.Message) {
+		started <- struct{}{}
+		time.Sleep(25 * time.Millisecond)
+		err := ch.Send(context.Background(), types.Message{
+			RequestID: msg.RequestID,
+			TaskID:    "task-after-cancel",
+			Content:   "late-result",
+			Meta: map[string]interface{}{
+				"closed":   false,
+				"decision": "existing",
+			},
+		})
+		if err != nil {
+			t.Fatalf("send response failed: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewReader([]byte(`{"content":"async","user_id":"u-2"}`)))
+	rr := httptest.NewRecorder()
+	ch.handleAsyncTasks(rr, req)
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("unexpected status code: %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var submit asyncSubmitResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &submit); err != nil {
+		t.Fatalf("decode submit response failed: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("handler did not start in time")
+	}
+
+	cancelReq := httptest.NewRequest(http.MethodPost, submit.CancelURL, nil)
+	cancelRR := httptest.NewRecorder()
+	ch.handleAsyncTasks(cancelRR, cancelReq)
+	if cancelRR.Code != http.StatusOK {
+		t.Fatalf("unexpected cancel status: %d body=%s", cancelRR.Code, cancelRR.Body.String())
+	}
+
+	var canceled asyncTaskResponse
+	if err := json.Unmarshal(cancelRR.Body.Bytes(), &canceled); err != nil {
+		t.Fatalf("decode cancel response failed: %v", err)
+	}
+	if canceled.Status != "canceled" {
+		t.Fatalf("expected canceled status, got %+v", canceled)
+	}
+	if canceled.CanceledAt == "" {
+		t.Fatalf("expected canceled_at to be populated, got %+v", canceled)
+	}
+	if canceled.CancelReason != "user_requested" {
+		t.Fatalf("expected user_requested cancel reason, got %+v", canceled)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	statusReq := httptest.NewRequest(http.MethodGet, submit.StatusURL, nil)
+	statusRR := httptest.NewRecorder()
+	ch.handleAsyncTasks(statusRR, statusReq)
+	if statusRR.Code != http.StatusOK {
+		t.Fatalf("unexpected status status: %d body=%s", statusRR.Code, statusRR.Body.String())
+	}
+	var status asyncTaskResponse
+	if err := json.Unmarshal(statusRR.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode status response failed: %v", err)
+	}
+	if status.Status != "canceled" {
+		t.Fatalf("expected canceled status, got %+v", status)
+	}
+	if status.Result != nil {
+		t.Fatalf("expected canceled task result to stay empty, got %+v", status.Result)
+	}
+}
+
 func TestAsyncTaskListIncludesLatestFirst(t *testing.T) {
 	ch := NewHTTPChannel(8080)
 	ch.handler = func(msg types.Message) {}

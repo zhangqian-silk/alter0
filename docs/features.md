@@ -37,6 +37,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] External chat channel adapters (Telegram polling + Slack events with outbound media envelope support)
 - [x] Channel Adapter V2 envelope baseline (`Message.Envelope` with typed text/image/audio/file/reference parts)
 - [x] Async task list API (`GET /api/tasks`) for recent request diagnostics
+- [x] Async task cancellation runtime semantics (`POST /api/tasks/{id}/cancel` supports pending/running interruption + canceled audit fields)
 - [x] Web console async task panel (refresh/cancel/retry + task reuse)
 - [x] Command permission audit JSONL
 - [x] Runtime status snapshot command audit tail
@@ -62,31 +63,24 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Release gates (`make release-gate`) with regression + rollback drill + docs/deploy checks
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
 
-## 3) Active Priority Queue (OpenClaw Alignment)
+## 3) Active Priority Queue (Post-Alignment)
 
 Execution policy: complete one requirement end-to-end (`code -> test -> PR -> merge`) before picking next.
 
-### P0 (Gateway Foundation)
+### P0 (Current Delivery)
 
-1. [x] N1 Multi-channel gateway baseline with at least two external chat channels
-2. [x] N2 Multi-agent registry and session isolation (`agentId/workspace/agentDir`)
-3. [x] N3 Scheduler center for one-shot `at` + recurring `cron` with direct channel delivery
-4. [x] N6 Runtime status expansion (sessions/subagents/schedules/cost metrics)
+1. [x] N9 Async task cancellation semantics hardening (pending/running interruption + canceled audit fields)
+2. [ ] N10 Storage migration safety upgrade (incremental migration + backup/rollback path)
+3. [ ] N14 Test stability hardening (`go test ./...` deterministic pass)
 
-### P1 (Orchestration Upgrade)
+### P1 (Structural Refactor)
 
-1. [x] N2 Sub-agent run/session modes with result announce chain
-2. [x] N4 Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts`) + policy gates
-3. [x] N5 Long-term memory retrieval and context-safety isolation by surface
-4. [x] N7 Security posture checks and high-risk operation guards
+1. [ ] N11 HTTP layer responsibility convergence (state sinks to service layer)
+2. [ ] N12 Scheduler boundary unification (single scheduling loop authority)
+3. [ ] N13 Config layer dependency decoupling (`configs` no reverse dependency on runtime packages)
+4. [ ] N15 Service modularization (`core -> service -> infra` layering)
 
-### P2 (Advanced Operations)
-
-1. [x] N4 Deep node/browser/canvas toolchain integration (action schema + structured validation + runtime live adapter wiring)
-2. [x] N6 End-to-end tracing and alerting hardening
-3. [x] N8 Full integration matrix and release gates for rollback-safe delivery
-
-Queue status: P0 queue is complete; P1 queue is complete (`N2/N4/N5/N7` all merged); P2 queue is complete (`N4/N6/N8` all merged). Active Priority Queue is empty and ready for the next roadmap requirement.
+Queue status: N9 is merged in this round. Next item is `P0/N10`.
 
 ## 4) Change Rule
 
