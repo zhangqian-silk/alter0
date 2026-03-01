@@ -30,11 +30,33 @@
       "attempt_timeout_sec": 180,
       "max_retries": 1,
       "retry_delay_sec": 2
+    },
+    "shutdown": {
+      "drain_timeout_sec": 5
     }
   },
   "security": {
     "admin_user_ids": [
       "local_user"
     ]
+  },
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "bot_token": "",
+      "default_chat_id": "",
+      "poll_interval_sec": 2,
+      "timeout_sec": 20,
+      "api_base_url": ""
+    },
+    "slack": {
+      "enabled": false,
+      "bot_token": "",
+      "app_id": "",
+      "event_listen_port": 8091,
+      "event_path": "/events/slack",
+      "default_channel_id": "",
+      "api_base_url": ""
+    }
   }
 }

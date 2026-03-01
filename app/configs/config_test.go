@@ -103,3 +103,22 @@ func TestApplyDefaultsSetsShutdownDrainTimeout(t *testing.T) {
 		t.Fatalf("expected default drain timeout 5, got %d", cfg.Runtime.Shutdown.DrainTimeoutSec)
 	}
 }
+
+func TestApplyDefaultsSetsChannelDefaults(t *testing.T) {
+	cfg := Config{}
+
+	applyDefaults(&cfg)
+
+	if cfg.Channels.Telegram.PollIntervalSec != 2 {
+		t.Fatalf("unexpected telegram poll interval: %d", cfg.Channels.Telegram.PollIntervalSec)
+	}
+	if cfg.Channels.Telegram.TimeoutSec != 20 {
+		t.Fatalf("unexpected telegram timeout: %d", cfg.Channels.Telegram.TimeoutSec)
+	}
+	if cfg.Channels.Slack.EventListenPort != 8091 {
+		t.Fatalf("unexpected slack listen port: %d", cfg.Channels.Slack.EventListenPort)
+	}
+	if cfg.Channels.Slack.EventPath != "/events/slack" {
+		t.Fatalf("unexpected slack event path: %s", cfg.Channels.Slack.EventPath)
+	}
+}

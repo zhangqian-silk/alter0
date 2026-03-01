@@ -26,7 +26,7 @@ Alter0 采用以下设计域划分：
 ## Runtime Architecture
 
 ```text
-Channel (CLI / HTTP / Web)
+Channel (CLI / HTTP / Telegram / Slack / Web)
   -> Gateway
   -> Orchestrator (Task Router + Task Store + Task Closer)
   -> Executor (codex / claude_code)
@@ -58,7 +58,7 @@ make docs-sync-check
 
 该检查默认对比 `origin/master...HEAD`，若只改了 `docs/features.md` 会直接失败，避免能力矩阵与总览文档漂移。
 
-在执行层，Alter0 复用成熟 Agent CLI（`codex`、`claude_code`），自身聚焦编排与治理，不重建模型执行栈。接收器（CLI/HTTP/Web）与执行器通过稳定接口解耦，允许在不影响任务存储和路由策略的前提下独立扩展通道或替换执行后端。扩展能力以 Skill 为主入口，外部能力（如 MCP）可通过扩展层纳入执行链路。
+在执行层，Alter0 复用成熟 Agent CLI（`codex`、`claude_code`），自身聚焦编排与治理，不重建模型执行栈。接收器（CLI/HTTP/Web）与执行器通过稳定接口解耦，允许在不影响任务存储和路由策略的前提下独立扩展通道或替换执行后端。当前主线新增了 Telegram（long polling）与 Slack（Events API）外部通道适配器，并沿用统一 `Message.Envelope` 处理文本/图片等多媒体出入站消息。扩展能力以 Skill 为主入口，外部能力（如 MCP）可通过扩展层纳入执行链路。
 
 在运行治理方面，系统提供基础可观测能力，包括 Web Console、`/health` 探针、执行阶段日志与命令审计日志。Web Console 现在内置异步任务面板，可查看最近请求、刷新状态、取消 pending 请求，并对 timeout/canceled 任务一键重试。为控制上下文开销，任务记忆采用快照式压缩策略，在 prompt 组装时优先保留高价值上下文，尽量降低冗余信息带来的推理噪声。
 
@@ -159,6 +159,25 @@ docker run --rm -p 8080:8080 \
   },
   "security": {
     "admin_user_ids": ["local_user"]
+  },
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "bot_token": "",
+      "default_chat_id": "",
+      "poll_interval_sec": 2,
+      "timeout_sec": 20,
+      "api_base_url": ""
+    },
+    "slack": {
+      "enabled": false,
+      "bot_token": "",
+      "app_id": "",
+      "event_listen_port": 8091,
+      "event_path": "/events/slack",
+      "default_channel_id": "",
+      "api_base_url": ""
+    }
   }
 }
 ```
@@ -174,6 +193,8 @@ docker run --rm -p 8080:8080 \
 - `runtime.queue.*`: 执行队列开关、并发、重试与超时策略
 - `runtime.shutdown.drain_timeout_sec`: 统一停机排空等待时间（queue/scheduler/http）
 - `security.admin_user_ids`: 管理命令授权用户
+- `channels.telegram.*`: Telegram bot 轮询收发配置（`enabled` + `bot_token` 为最小启用集）
+- `channels.slack.*`: Slack Events 接收与回复配置（`enabled` + `bot_token` + `event_listen_port`）
 
 ## Command Interface
 

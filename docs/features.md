@@ -31,6 +31,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 
 - [x] CLI channel + slash commands
 - [x] HTTP channel (`/api/message`, `/api/tasks`, `/health`, `/api/status`)
+- [x] External chat channel adapters (Telegram polling + Slack events with outbound media envelope support)
 - [x] Channel Adapter V2 envelope baseline (`Message.Envelope` with typed text/image/audio/file/reference parts)
 - [x] Async task list API (`GET /api/tasks`) for recent request diagnostics
 - [x] Web console async task panel (refresh/cancel/retry + task reuse)
@@ -54,7 +55,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 ### P0 (Gateway Foundation)
 
-1. [ ] N1 Multi-channel gateway baseline with at least two external chat channels
+1. [x] N1 Multi-channel gateway baseline with at least two external chat channels
 2. [ ] N2 Multi-agent registry and session isolation (`agentId/workspace/agentDir`)
 3. [ ] N3 Scheduler center for one-shot `at` + recurring `cron` with direct channel delivery
 4. [ ] N6 Runtime status expansion (sessions/subagents/schedules/cost metrics)

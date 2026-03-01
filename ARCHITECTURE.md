@@ -97,11 +97,14 @@ Current baseline (implemented):
 - `types.Message` now carries transport-neutral `Envelope`
 - `Envelope.Parts` uses typed units (`text/image/audio/file/reference`) for cross-channel normalization
 - CLI/HTTP adapters populate inbound envelope fields, and gateway normalizes outbound envelope direction
+- Telegram (long polling) + Slack (Events API) adapters provide external channel baseline with media-capable outbound envelope mapping
 
 Required modules:
 
 - `interaction/cli`
 - `interaction/http`
+- `interaction/telegram`
+- `interaction/slack`
 - `interaction/web`
 - `interaction/<future-channel>`
 
