@@ -715,6 +715,24 @@ func TestSnapshotIncludesSessionCostPressureAlerts(t *testing.T) {
 	if share, ok := recommended["session_cost_share"].(float64); !ok || share < 0.8 {
 		t.Fatalf("expected recommended share >= 0.8, got %#v", recommended["session_cost_share"])
 	}
+
+	workloadTiers, ok := guidance["workload_tiers"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected workload_tiers map, got %T", guidance["workload_tiers"])
+	}
+	if workloadTiers["status"] != "ok" {
+		t.Fatalf("expected workload_tiers status ok, got %#v", workloadTiers["status"])
+	}
+	tiers, ok := workloadTiers["tiers"].([]runtimeWorkloadTierGuidance)
+	if !ok || len(tiers) == 0 {
+		t.Fatalf("expected workload tier guidance entries, got %#v", workloadTiers["tiers"])
+	}
+	if tiers[0].Name != "2x_to_4x_min_tokens" {
+		t.Fatalf("expected heavy session in 2x_to_4x_min_tokens, got %#v", tiers[0])
+	}
+	if tiers[0].SampleSessions != 1 {
+		t.Fatalf("expected one tier sample, got %#v", tiers[0].SampleSessions)
+	}
 }
 
 func TestSnapshotSessionCostThresholdGuidanceInsufficientData(t *testing.T) {
@@ -731,6 +749,13 @@ func TestSnapshotSessionCostThresholdGuidanceInsufficientData(t *testing.T) {
 	}
 	if guidance["status"] != "insufficient_data" {
 		t.Fatalf("expected insufficient_data guidance, got %#v", guidance["status"])
+	}
+	workloadTiers, ok := guidance["workload_tiers"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected workload_tiers map, got %T", guidance["workload_tiers"])
+	}
+	if workloadTiers["status"] != "insufficient_data" {
+		t.Fatalf("expected workload_tiers insufficient_data, got %#v", workloadTiers["status"])
 	}
 }
 
