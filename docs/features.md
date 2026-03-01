@@ -31,6 +31,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 
 - [x] CLI channel + slash commands
 - [x] HTTP channel (`/api/message`, `/api/tasks`, `/health`, `/api/status`)
+- [x] Channel Adapter V2 envelope baseline (`Message.Envelope` with typed text/image/audio/file/reference parts)
 - [x] Async task list API (`GET /api/tasks`) for recent request diagnostics
 - [x] Web console async task panel (refresh/cancel/retry + task reuse)
 - [x] Command permission audit JSONL
@@ -47,36 +48,38 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Queue status snapshot includes configured workers for runtime diagnostics
 - [x] Queue status snapshot includes last shutdown drain report for timeout diagnostics
 
-## 3) Active Priority Queue
+## 3) Active Priority Queue (OpenClaw Alignment)
 
 Execution policy: complete one requirement end-to-end (`code -> test -> PR -> merge`) before picking next.
 
-### P0
+### P0 (Gateway Foundation)
 
-1. [x] README/ARCHITECTURE sync after each feature merge
-2. [x] Startup preflight checks (SQLite writable, executor installed, config validation)
-3. [x] Graceful shutdown drain timeout configurable and shared by queue/scheduler/http
-4. [x] Deployment assets: systemd service template + Dockerfile runtime packaging
+1. [ ] N1 Multi-channel gateway baseline with at least two external chat channels
+2. [ ] N2 Multi-agent registry and session isolation (`agentId/workspace/agentDir`)
+3. [ ] N3 Scheduler center for one-shot `at` + recurring `cron` with direct channel delivery
+4. [ ] N6 Runtime status expansion (sessions/subagents/schedules/cost metrics)
 
-### P1
+### P1 (Orchestration Upgrade)
 
-1. [x] Runtime status snapshot includes executor capability registry (name/command/installed)
-2. [x] Runtime status snapshot adds recent command audit tail for quick diagnostics
-3. [x] Queue stats expose in-flight worker count for `/status` and `/api/status` diagnostics
-4. [x] Queue stats expose configured worker count for `/status` and `/api/status` diagnostics
-5. [x] Queue stats expose last shutdown drain report for `/status` and `/api/status` diagnostics
-6. [x] HTTP async task API supports submit/status/cancel endpoints (`POST /api/tasks`, `GET /api/tasks/{id}`, `POST /api/tasks/{id}/cancel`)
-7. [x] HTTP async task API supports recent list endpoint (`GET /api/tasks?status=&limit=`)
-8. [x] Web console provides async task queue panel (refresh/cancel/retry + reuse task id)
-9. [x] Runtime status snapshot exposes git upstream/ahead/behind divergence for quick sync diagnostics
+1. [ ] N2 Sub-agent run/session modes with result announce chain
+2. [ ] N4 Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts`) + policy gates
+3. [ ] N5 Long-term memory retrieval and context-safety isolation by surface
+4. [ ] N7 Security posture checks and high-risk operation guards
 
-Queue status: P0/P1 active queue is clear (all listed items merged); docs sync guard is enforced via `scripts/check-doc-sync.sh`, and deployment asset guard via `scripts/check-deploy-assets.sh`.
+### P2 (Advanced Operations)
+
+1. [ ] N4 Deep node/browser/canvas toolchain integration
+2. [ ] N6 End-to-end tracing and alerting hardening
+3. [ ] N8 Full integration matrix and release gates for rollback-safe delivery
+
+Queue status: historical P0/P1 items are merged and retained in Capability Matrix; active queue now tracks OpenClaw-aligned gateway requirements only.
 
 ## 4) Change Rule
 
-When a feature is merged, update this file in the same PR:
+When a feature state changes, update this file in the same PR:
 
-- Move item status ([ ], [~], [x])
-- Update active queue
+- Keep capability matrix and active queue in sync
+- Update item status ([ ], [~], [x])
 - Keep non-goals explicit
+- Sync roadmap narrative in `features.md`
 - Run `make docs-sync-check BASE=origin/master` when a PR changes `docs/features.md`

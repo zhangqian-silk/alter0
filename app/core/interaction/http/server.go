@@ -510,14 +510,25 @@ func (c *HTTPChannel) prepareMessage(req incomingRequest) (types.Message, chan t
 	c.pending[requestID] = respCh
 	c.pendingMu.Unlock()
 
+	msgID := c.newID("http")
 	msg := types.Message{
-		ID:        c.newID("http"),
+		ID:        msgID,
 		Content:   req.Content,
-		Role:      "user",
+		Role:      types.MessageRoleUser,
 		ChannelID: c.id,
 		UserID:    req.UserID,
 		TaskID:    req.TaskID,
 		RequestID: requestID,
+		Envelope: &types.MessageEnvelope{
+			Direction: types.EnvelopeDirectionInbound,
+			Channel:   c.id,
+			PeerID:    req.UserID,
+			PeerType:  "user",
+			MessageID: msgID,
+			Parts: []types.EnvelopePart{
+				{Type: types.EnvelopePartText, Text: req.Content},
+			},
+		},
 		Meta: map[string]interface{}{
 			"user_id": req.UserID,
 		},

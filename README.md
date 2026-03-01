@@ -45,7 +45,10 @@ Channel (CLI / HTTP / Web)
 
 Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对话展开。系统将 Task 作为一等对象管理，覆盖任务创建、归属、状态流转和关闭；对输入的处理由模型决策驱动，包含任务路由与结题判断两个环节，并通过可配置置信度阈值控制误判风险。
 
-功能矩阵与执行队列请参考：[`docs/features.md`](./docs/features.md)。
+已交付能力矩阵与活跃执行队列请参考：[`docs/features.md`](./docs/features.md)。
+面向 OpenClaw 对齐的未完成需求清单请参考：[`features.md`](./features.md)。
+
+当前优先级口径：从历史单机编排收口转向网关化能力建设，P0 聚焦多通道、多 Agent、计划任务与统一状态面。
 
 文档同步策略：当 `docs/features.md` 发生变更时，必须在同一 PR 同步更新 `README.md` 与 `ARCHITECTURE.md`。可以执行：
 

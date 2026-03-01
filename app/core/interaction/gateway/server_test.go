@@ -113,6 +113,48 @@ func TestHealthStatusTracksProcessedMessages(t *testing.T) {
 	}
 }
 
+func TestNormalizeReplyClonesEnvelopeAndMarksOutbound(t *testing.T) {
+	request := types.Message{
+		ID:        "m-1",
+		ChannelID: "http",
+		UserID:    "u-1",
+		RequestID: "r-1",
+		TaskID:    "t-1",
+		Envelope: &types.MessageEnvelope{
+			Direction: types.EnvelopeDirectionInbound,
+			Channel:   "http",
+			PeerID:    "u-1",
+			MessageID: "m-1",
+			Parts: []types.EnvelopePart{
+				{Type: types.EnvelopePartText, Text: "hello"},
+			},
+		},
+		Meta: map[string]interface{}{"k": "v"},
+	}
+	response := types.Message{Content: "ok"}
+
+	normalizeReply(&response, request)
+
+	if response.Role != types.MessageRoleAssistant {
+		t.Fatalf("unexpected role: %s", response.Role)
+	}
+	if response.Envelope == nil {
+		t.Fatal("expected envelope clone")
+	}
+	if response.Envelope == request.Envelope {
+		t.Fatal("response envelope should be a clone")
+	}
+	if response.Envelope.Direction != types.EnvelopeDirectionOutbound {
+		t.Fatalf("unexpected direction: %s", response.Envelope.Direction)
+	}
+	if response.Envelope.Channel != "http" || response.Envelope.PeerID != "u-1" {
+		t.Fatalf("unexpected envelope routing fields: %+v", response.Envelope)
+	}
+	if len(response.Envelope.Parts) != 1 || response.Envelope.Parts[0].Text != "hello" {
+		t.Fatalf("unexpected envelope parts: %+v", response.Envelope.Parts)
+	}
+}
+
 type flakyAgent struct {
 	calls atomic.Int32
 }

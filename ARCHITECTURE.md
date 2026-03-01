@@ -92,6 +92,12 @@ Responsibilities:
 - expose consistent sync/async interfaces
 - maintain channel-local UX and transport concerns only
 
+Current baseline (implemented):
+
+- `types.Message` now carries transport-neutral `Envelope`
+- `Envelope.Parts` uses typed units (`text/image/audio/file/reference`) for cross-channel normalization
+- CLI/HTTP adapters populate inbound envelope fields, and gateway normalizes outbound envelope direction
+
 Required modules:
 
 - `interaction/cli`

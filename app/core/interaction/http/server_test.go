@@ -90,6 +90,30 @@ func TestHandleStatusRejectsNonGet(t *testing.T) {
 	}
 }
 
+func TestPrepareMessageBuildsInboundEnvelope(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	msg, _ := ch.prepareMessage(incomingRequest{Content: "hello", UserID: "u-9"})
+
+	if msg.Role != types.MessageRoleUser {
+		t.Fatalf("unexpected role: %s", msg.Role)
+	}
+	if msg.Envelope == nil {
+		t.Fatal("expected envelope to be present")
+	}
+	if msg.Envelope.Direction != types.EnvelopeDirectionInbound {
+		t.Fatalf("unexpected direction: %s", msg.Envelope.Direction)
+	}
+	if msg.Envelope.Channel != "http" {
+		t.Fatalf("unexpected channel: %s", msg.Envelope.Channel)
+	}
+	if msg.Envelope.PeerID != "u-9" {
+		t.Fatalf("unexpected peer id: %s", msg.Envelope.PeerID)
+	}
+	if len(msg.Envelope.Parts) != 1 || msg.Envelope.Parts[0].Type != types.EnvelopePartText || msg.Envelope.Parts[0].Text != "hello" {
+		t.Fatalf("unexpected envelope parts: %+v", msg.Envelope.Parts)
+	}
+}
+
 func TestHandleMessageReturnsJSONResponse(t *testing.T) {
 	ch := NewHTTPChannel(8080)
 	ch.handler = func(msg types.Message) {
