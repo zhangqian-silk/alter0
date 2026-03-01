@@ -19,6 +19,7 @@ import (
 	"alter0/app/core/queue"
 	"alter0/app/core/schedule"
 	"alter0/app/core/scheduler"
+	"alter0/app/core/tools"
 )
 
 type AgentEntry struct {
@@ -43,6 +44,7 @@ type StatusCollector struct {
 	CostInputPer1K          float64
 	CostOutputPer1K         float64
 	AgentEntries            []AgentEntry
+	ToolRuntime             *tools.Runtime
 }
 
 type commandAuditTailEntry struct {
@@ -120,6 +122,9 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	payload["cost"] = usage.Cost
 
 	payload["executors"] = agent.ListExecutorCapabilities()
+	if c.ToolRuntime != nil {
+		payload["tools"] = c.ToolRuntime.StatusSnapshot()
+	}
 	payload["command_audit_tail"] = readCommandAuditTail(c.CommandAuditBasePath, c.CommandAuditTailSize)
 	payload["git"] = gitStatus(ctx, c.RepoPath)
 	if len(c.AgentEntries) > 0 {
@@ -278,12 +283,12 @@ func summarizeRuntimeUsage(basePath string, now time.Time, window time.Duration,
 
 	return runtimeUsageSummary{
 		Sessions: map[string]interface{}{
-			"window_hours":    int(window / time.Hour),
-			"total":           len(sessionLastSeen),
-			"active":          activeSessions,
+			"window_hours":     int(window / time.Hour),
+			"total":            len(sessionLastSeen),
+			"active":           activeSessions,
 			"active_window_ms": activeWindow.Milliseconds(),
-			"unique_users":    len(uniqueUsers),
-			"by_channel":      byChannel,
+			"unique_users":     len(uniqueUsers),
+			"by_channel":       byChannel,
 		},
 		Subagent: map[string]interface{}{
 			"window_hours":     int(window / time.Hour),

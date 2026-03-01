@@ -15,6 +15,7 @@ import (
 	"alter0/app/core/agent"
 	"alter0/app/core/queue"
 	"alter0/app/core/schedule"
+	"alter0/app/core/tools"
 	_ "modernc.org/sqlite"
 )
 
@@ -42,6 +43,39 @@ func TestSnapshotIncludesExecutorCapabilities(t *testing.T) {
 		if item.Command == "" {
 			t.Fatalf("executor entry missing command: %#v", item)
 		}
+	}
+}
+
+func TestSnapshotIncludesToolProtocolSnapshot(t *testing.T) {
+	collector := &StatusCollector{
+		RepoPath: ".",
+		ToolRuntime: tools.NewRuntime(tools.Config{
+			RequireConfirm: []string{"message"},
+		}, t.TempDir()),
+	}
+
+	snap := collector.Snapshot(context.Background())
+	raw, ok := snap["tools"]
+	if !ok {
+		t.Fatal("expected tools in snapshot")
+	}
+	payload, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected tools snapshot as map, got %T", raw)
+	}
+	protocol, ok := payload["protocol"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected protocol section, got %T", payload["protocol"])
+	}
+	if protocol["version"] != 1 {
+		t.Fatalf("expected protocol version 1, got %#v", protocol["version"])
+	}
+	entries, ok := protocol["tools"].([]tools.Spec)
+	if !ok {
+		t.Fatalf("expected typed tool specs, got %T", protocol["tools"])
+	}
+	if len(entries) != 7 {
+		t.Fatalf("expected 7 tool specs, got %d", len(entries))
 	}
 }
 

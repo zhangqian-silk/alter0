@@ -25,6 +25,7 @@ import (
 	"alter0/app/core/runtime"
 	"alter0/app/core/schedule"
 	"alter0/app/core/scheduler"
+	toolruntime "alter0/app/core/tools"
 	"alter0/app/pkg/logger"
 )
 
@@ -182,6 +183,13 @@ func main() {
 	scheduleService.Start(ctx)
 	httpChannel.SetScheduleService(scheduleService)
 
+	toolRuntime := toolruntime.NewRuntime(toolruntime.Config{
+		GlobalAllow:    cfg.Security.Tools.GlobalAllow,
+		GlobalDeny:     cfg.Security.Tools.GlobalDeny,
+		RequireConfirm: cfg.Security.Tools.RequireConfirm,
+		Agent:          toToolAgentPolicies(cfg.Security.Tools.Agent),
+	}, filepath.Join("output", "audit"))
+
 	statusCollector := &runtime.StatusCollector{
 		Gateway:         gw,
 		Scheduler:       jobScheduler,
@@ -190,6 +198,7 @@ func main() {
 		ScheduleService: scheduleService,
 		RepoPath:        ".",
 		AgentEntries:    runtimeAgentEntries(agents),
+		ToolRuntime:     toolRuntime,
 	}
 	httpChannel.SetStatusProvider(statusCollector.Snapshot)
 	for _, item := range agents {
@@ -294,6 +303,20 @@ func runtimeAgentEntries(agents []registeredAgent) []runtime.AgentEntry {
 		})
 	}
 	return items
+}
+
+func toToolAgentPolicies(raw map[string]config.ToolAgentPolicy) map[string]toolruntime.AgentPolicy {
+	if len(raw) == 0 {
+		return map[string]toolruntime.AgentPolicy{}
+	}
+	out := make(map[string]toolruntime.AgentPolicy, len(raw))
+	for agentID, policy := range raw {
+		out[agentID] = toolruntime.AgentPolicy{
+			Allow: append([]string(nil), policy.Allow...),
+			Deny:  append([]string(nil), policy.Deny...),
+		}
+	}
+	return out
 }
 
 func runGatewayWithRetry(ctx context.Context, gw *gateway.DefaultGateway) {

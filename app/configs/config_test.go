@@ -178,3 +178,57 @@ func TestApplyDefaultsAgentRegistryDedupAndFallbackDefault(t *testing.T) {
 		t.Fatalf("expected default to fall back to alpha, got %s", cfg.Agent.DefaultID)
 	}
 }
+
+func TestApplyDefaultsToolPolicyDefaultsAndSanitization(t *testing.T) {
+	cfg := Config{}
+
+	applyDefaults(&cfg)
+
+	if len(cfg.Security.Tools.RequireConfirm) == 0 {
+		t.Fatal("expected default require_confirm tools")
+	}
+	if cfg.Security.Tools.Agent == nil {
+		t.Fatal("expected initialized agent policy map")
+	}
+}
+
+func TestApplyDefaultsToolPolicyNormalizesAgentRules(t *testing.T) {
+	cfg := Config{
+		Security: SecurityConfig{
+			Tools: ToolPolicyConfig{
+				GlobalAllow:    []string{"Web-Search", "web_search"},
+				GlobalDeny:     []string{" MESSAGE "},
+				RequireConfirm: []string{"Nodes", "nodes"},
+				Agent: map[string]ToolAgentPolicy{
+					" alpha ": {
+						Allow: []string{"web fetch", "WEB_FETCH"},
+						Deny:  []string{"Browser"},
+					},
+					"": {Allow: []string{"web_search"}},
+				},
+			},
+		},
+	}
+
+	applyDefaults(&cfg)
+
+	if len(cfg.Security.Tools.GlobalAllow) != 1 || cfg.Security.Tools.GlobalAllow[0] != "web_search" {
+		t.Fatalf("unexpected global allow list: %#v", cfg.Security.Tools.GlobalAllow)
+	}
+	if len(cfg.Security.Tools.GlobalDeny) != 1 || cfg.Security.Tools.GlobalDeny[0] != "message" {
+		t.Fatalf("unexpected global deny list: %#v", cfg.Security.Tools.GlobalDeny)
+	}
+	if len(cfg.Security.Tools.RequireConfirm) != 1 || cfg.Security.Tools.RequireConfirm[0] != "nodes" {
+		t.Fatalf("unexpected require_confirm list: %#v", cfg.Security.Tools.RequireConfirm)
+	}
+	policy, ok := cfg.Security.Tools.Agent["alpha"]
+	if !ok {
+		t.Fatalf("expected alpha agent policy, got %#v", cfg.Security.Tools.Agent)
+	}
+	if len(policy.Allow) != 1 || policy.Allow[0] != "web_fetch" {
+		t.Fatalf("unexpected agent allow list: %#v", policy.Allow)
+	}
+	if len(policy.Deny) != 1 || policy.Deny[0] != "browser" {
+		t.Fatalf("unexpected agent deny list: %#v", policy.Deny)
+	}
+}

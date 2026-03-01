@@ -172,7 +172,18 @@ docker run --rm -p 8080:8080 \
     }
   },
   "security": {
-    "admin_user_ids": ["local_user"]
+    "admin_user_ids": ["local_user"],
+    "tools": {
+      "global_allow": [],
+      "global_deny": [],
+      "require_confirm": ["browser", "canvas", "nodes", "message"],
+      "agent": {
+        "default": {
+          "allow": ["web_search", "web_fetch"],
+          "deny": ["nodes"]
+        }
+      }
+    }
   },
   "channels": {
     "telegram": {
@@ -207,6 +218,9 @@ docker run --rm -p 8080:8080 \
 - `runtime.queue.*`: 执行队列开关、并发、重试与超时策略
 - `runtime.shutdown.drain_timeout_sec`: 统一停机排空等待时间（queue/scheduler/http）
 - `security.admin_user_ids`: 管理命令授权用户
+- `security.tools.global_allow/global_deny`: 网关级工具 allow/deny 列表
+- `security.tools.require_confirm`: 高风险工具二次确认清单（默认 `browser/canvas/nodes/message`）
+- `security.tools.agent.<agent_id>.allow/deny`: Agent 级工具策略覆盖
 - `channels.telegram.*`: Telegram bot 轮询收发配置（`enabled` + `bot_token` 为最小启用集）
 - `channels.slack.*`: Slack Events 接收与回复配置（`enabled` + `bot_token` + `event_listen_port`）
 
@@ -227,7 +241,7 @@ docker run --rm -p 8080:8080 \
 - `/task memory clear [task_id]`
 - `/task stats`
 
-`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/queue[workers,in_flight,last_shutdown]/executors/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
+`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+policy]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
 
 管理员命令：
 
@@ -342,7 +356,7 @@ Response (`202 Accepted`):
 
 ### `GET /api/status`
 
-返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/queue[workers,in_flight,last_shutdown]/executors/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
+返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+policy]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
 
 ## Observability and Data Layout
 
@@ -352,6 +366,7 @@ Response (`202 Accepted`):
 - `output/logs/`: 应用日志
 - `output/orchestrator/<date>/executor_*.jsonl`: 执行器阶段日志（router/gen/closer）
 - `output/audit/<date>/command_permission.jsonl`: 命令权限审计日志（`/status` 与 `/api/status` 会聚合最近 tail）
+- `output/audit/<date>/tool_execution.jsonl`: 工具执行审计日志（参数摘要、策略决策、耗时、结果摘要）
 
 ## Local Backup and Restore
 

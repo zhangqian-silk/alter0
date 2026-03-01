@@ -210,6 +210,20 @@ All callable capabilities are registered under one runtime index:
 
 This enables policy-driven tool selection without coupling to source type.
 
+#### Tool Protocol Baseline (Implemented)
+
+Gateway runtime now ships a normalized tool protocol for:
+
+- `web_search`
+- `web_fetch`
+- `browser`
+- `canvas`
+- `nodes`
+- `message`
+- `tts`
+
+Each tool invocation should pass through a shared policy gate (`global_allow/global_deny/agent allow-deny/require_confirm`) and produce a unified result contract (`success/failed/retryable/blocked` + structured error code). Audit records are appended to `output/audit/<date>/tool_execution.jsonl` with parameter/result summaries and source session metadata.
+
 ### 5.6 Data & Runtime Layer
 
 Responsibilities:
