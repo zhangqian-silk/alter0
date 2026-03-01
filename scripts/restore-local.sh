@@ -12,7 +12,8 @@ if [[ ! -f "$ARCHIVE_PATH" ]]; then
   exit 1
 fi
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="${ALTER0_ROOT:-$SCRIPT_ROOT}"
 TARGET_DB="$ROOT_DIR/output/db/alter0.db"
 TARGET_CONFIG="$ROOT_DIR/config/config.json"
 

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -175,5 +177,68 @@ func TestCreateWithIdempotencyKeyReturnsExisting(t *testing.T) {
 	}
 	if first.ID != second.ID {
 		t.Fatalf("expected same id, got %s vs %s", first.ID, second.ID)
+	}
+}
+
+func TestServiceRecoversDueAtJobAfterRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "schedule-restart.db")
+	conn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer conn.Close()
+
+	store, err := NewStore(conn)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	ctx := context.Background()
+	dispatcher := &fakeDispatcher{}
+	svc := NewService(store, dispatcher)
+	svc.tick = 10 * time.Millisecond
+
+	job, err := svc.Create(ctx, CreateRequest{
+		Kind: KindAt,
+		At:   time.Now().UTC().Add(-time.Second).Format(time.RFC3339),
+		Payload: DeliveryPayload{
+			Mode:      ModeDirect,
+			ChannelID: "cli",
+			To:        "user-1",
+			Content:   "restart-recovery",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+
+	restartCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	restarted := NewService(store, dispatcher)
+	restarted.tick = 10 * time.Millisecond
+	restarted.Start(restartCtx)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		current, err := restarted.Get(ctx, job.ID)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "locked") {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			t.Fatalf("get schedule after restart: %v", err)
+		}
+		if current.Status == StatusCompleted {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected completed status after restart, got %s", current.Status)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	dispatcher.mu.Lock()
+	defer dispatcher.mu.Unlock()
+	if dispatcher.direct == 0 {
+		t.Fatalf("expected resumed service to dispatch due schedule")
 	}
 }
