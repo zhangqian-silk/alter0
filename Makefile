@@ -1,4 +1,4 @@
-.PHONY: run build test test-stability check-config-boundary check-service-boundary risk-benchmark competitor-tracking-refresh fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
+.PHONY: run build test test-stability check-config-boundary check-service-boundary config-governance risk-benchmark competitor-tracking-refresh fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
 .DEFAULT_GOAL := run
 
 run:
@@ -18,6 +18,9 @@ check-config-boundary:
 
 check-service-boundary:
 	./scripts/check-service-boundary.sh
+
+config-governance:
+	./scripts/check-config-governance.sh
 
 risk-benchmark:
 	./scripts/check-risk-benchmark.sh

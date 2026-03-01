@@ -450,7 +450,7 @@ P2 (Advanced Operations):
 - N6 end-to-end tracing + alerting hardening
 - N8 integration matrix and release gate automation
 
-Current status: P0/P1 queues are complete; P2 risk-hardening has N16 + N17 + N18 merged (watchlist automation + risk benchmark/runbook + scenario/competitor automation), and the next delivery candidate is N19 parameter-level config governance from a release-gated baseline (`make release-gate`).
+Current status: P0/P1 queues are complete; P2 risk-hardening and P3 parameter governance baseline are merged (N16-N19), and the next delivery candidate is N20 monthly governance cadence automation from a release-gated baseline (`make release-gate`).
 
 ## Feature Roadmap
 
@@ -462,4 +462,4 @@ Documentation consistency rule:
 
 - Any PR that updates `docs/features.md` must also update `README.md` and `ARCHITECTURE.md` in the same change set.
 - Use `make docs-sync-check` before opening a PR. The check compares `origin/master...HEAD` and fails when only `docs/features.md` changed.
-- Use `make release-gate` before merging release-scoped changes; it enforces config-boundary checks (`make check-config-boundary`), test-stability checks (`make test-stability` with hotspot stress + Windows compile regression), integration matrix, risk benchmark gate (`make risk-benchmark`), rollback drill, deployment checks, and doc sync gate in one pass.
+- Use `make release-gate` before merging release-scoped changes; it enforces config-boundary checks (`make check-config-boundary`), service-boundary checks (`make check-service-boundary`), parameter-governance checks (`make config-governance`), test-stability checks (`make test-stability` with hotspot stress + Windows compile regression), integration matrix, risk benchmark gate (`make risk-benchmark`), rollback drill, deployment checks, and doc sync gate in one pass.
