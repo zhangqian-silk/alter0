@@ -268,6 +268,76 @@ func TestGatewayDispatchWithQueueRetries(t *testing.T) {
 	}
 }
 
+type cancelAwareAgent struct {
+	started chan struct{}
+}
+
+func (a *cancelAwareAgent) Process(ctx context.Context, msg types.Message) (types.Message, error) {
+	if a.started != nil {
+		select {
+		case a.started <- struct{}{}:
+		default:
+		}
+	}
+	<-ctx.Done()
+	return types.Message{}, ctx.Err()
+}
+
+func (a *cancelAwareAgent) Name() string {
+	return "cancel-aware"
+}
+
+func TestGatewayHonorsAsyncCancelContext(t *testing.T) {
+	agent := &cancelAwareAgent{started: make(chan struct{}, 1)}
+	gw := NewGateway(agent)
+	ch := &testChannel{id: "cli"}
+	ch.startFn = func(ctx context.Context, handler func(types.Message)) error {
+		cancelCtx, cancel := context.WithCancel(context.Background())
+		handler(types.Message{
+			ID:        "m1",
+			Content:   "hello",
+			ChannelID: "cli",
+			UserID:    "u-1",
+			TaskID:    "t-1",
+			RequestID: "req-1",
+			Meta: map[string]interface{}{
+				asyncCancelContextKey: cancelCtx,
+			},
+		})
+		select {
+		case <-agent.started:
+		case <-time.After(200 * time.Millisecond):
+			return errors.New("agent did not start")
+		}
+		cancel()
+		timer := time.NewTimer(60 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+		case <-timer.C:
+		}
+		return nil
+	}
+	gw.RegisterChannel(ch)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- gw.Start(ctx) }()
+
+	time.Sleep(120 * time.Millisecond)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("gateway start returned error: %v", err)
+	}
+
+	ch.sendMu.Lock()
+	sent := len(ch.sentMsgs)
+	ch.sendMu.Unlock()
+	if sent != 0 {
+		t.Fatalf("expected no replies for canceled request, got %d", sent)
+	}
+}
+
 func TestGatewayWritesEndToEndTraceEvents(t *testing.T) {
 	traceDir := t.TempDir()
 	recorder, err := NewTraceRecorder(traceDir)

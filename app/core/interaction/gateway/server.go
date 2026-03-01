@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -15,7 +16,10 @@ import (
 	"alter0/app/pkg/types"
 )
 
-const defaultAgentID = "default"
+const (
+	defaultAgentID        = "default"
+	asyncCancelContextKey = "_http_async_cancel_context"
+)
 
 type QueueOptions struct {
 	Enabled        bool
@@ -154,9 +158,15 @@ func (g *DefaultGateway) Start(ctx context.Context) error {
 			return
 		}
 
-		if err := g.processAndReply(ctx, routedMsg, agentID); err != nil {
+		effectiveCtx, stop := contextFromMessage(ctx, routedMsg)
+		defer stop()
+		if err := g.processAndReply(effectiveCtx, routedMsg, agentID); err != nil {
+			if errors.Is(err, context.Canceled) {
+				log.Printf("[Gateway] Request canceled request=%s", routedMsg.RequestID)
+				return
+			}
 			log.Printf("[Gateway] Processing failed: %v", err)
-			_ = g.sendErrorReply(ctx, routedMsg, "Error: "+err.Error())
+			_ = g.sendErrorReply(effectiveCtx, routedMsg, "Error: "+err.Error())
 		}
 	}
 
@@ -199,8 +209,14 @@ func (g *DefaultGateway) dispatchWithQueue(ctx context.Context, msg types.Messag
 		AttemptTimeout: opts.AttemptTimeout,
 		Run: func(runCtx context.Context) error {
 			attempt++
-			err := g.processAndReply(runCtx, msg, agentID)
+			effectiveCtx, stop := contextFromMessage(runCtx, msg)
+			defer stop()
+			err := g.processAndReply(effectiveCtx, msg, agentID)
 			if err == nil {
+				return nil
+			}
+			if errors.Is(err, context.Canceled) {
+				log.Printf("[Gateway] Queue job canceled request=%s", msg.RequestID)
 				return nil
 			}
 			if attempt <= opts.MaxRetries {
@@ -208,15 +224,16 @@ func (g *DefaultGateway) dispatchWithQueue(ctx context.Context, msg types.Messag
 				return err
 			}
 			log.Printf("[Gateway] Queue job failed request=%s after %d attempts: %v", msg.RequestID, attempt, err)
-			_ = g.sendErrorReply(runCtx, msg, "Error: "+err.Error())
+			_ = g.sendErrorReply(effectiveCtx, msg, "Error: "+err.Error())
 			return nil
 		},
 	}
 
-	enqueueCtx := ctx
+	enqueueCtx, stop := contextFromMessage(ctx, msg)
+	defer stop()
 	cancel := func() {}
 	if opts.EnqueueTimeout > 0 {
-		enqueueCtx, cancel = context.WithTimeout(ctx, opts.EnqueueTimeout)
+		enqueueCtx, cancel = context.WithTimeout(enqueueCtx, opts.EnqueueTimeout)
 	}
 	defer cancel()
 
@@ -230,6 +247,11 @@ func (g *DefaultGateway) dispatchWithQueue(ctx context.Context, msg types.Messag
 }
 
 func (g *DefaultGateway) processAndReply(ctx context.Context, msg types.Message, agentID string) error {
+	if err := ctx.Err(); err != nil {
+		g.trace(msg, agentID, "agent_process", "error", err.Error())
+		return err
+	}
+
 	agent, _, err := g.resolveAgent(msg)
 	if err != nil {
 		g.trace(msg, agentID, "agent_process", "error", err.Error())
@@ -240,6 +262,10 @@ func (g *DefaultGateway) processAndReply(ctx context.Context, msg types.Message,
 	if err != nil {
 		g.trace(msg, agentID, "agent_process", "error", err.Error())
 		return fmt.Errorf("agent process: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		g.trace(msg, agentID, "agent_process", "error", err.Error())
+		return err
 	}
 	g.trace(msg, agentID, "agent_process", "ok", "")
 	if strings.TrimSpace(msg.Content) == "" && strings.TrimSpace(response.Content) == "" {
@@ -253,6 +279,10 @@ func (g *DefaultGateway) processAndReply(ctx context.Context, msg types.Message,
 	}
 
 	normalizeReply(&response, msg)
+	if err := ctx.Err(); err != nil {
+		g.trace(response, agentID, "deliver_reply", "error", err.Error())
+		return err
+	}
 	if err := channel.Send(ctx, response); err != nil {
 		g.trace(response, agentID, "deliver_reply", "error", err.Error())
 		return fmt.Errorf("send reply: %w", err)
@@ -480,6 +510,30 @@ func (g *DefaultGateway) trace(msg types.Message, agentID, event, status, detail
 	}
 	if err := tracer.Record(traceEvent); err != nil {
 		log.Printf("[Gateway] Trace write failed: %v", err)
+	}
+}
+
+func contextFromMessage(parent context.Context, msg types.Message) (context.Context, func()) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	if len(msg.Meta) == 0 {
+		return parent, func() {}
+	}
+	raw, ok := msg.Meta[asyncCancelContextKey]
+	if !ok {
+		return parent, func() {}
+	}
+	cancelCtx, ok := raw.(context.Context)
+	if !ok || cancelCtx == nil {
+		return parent, func() {}
+	}
+
+	ctx, cancel := context.WithCancel(parent)
+	stop := context.AfterFunc(cancelCtx, cancel)
+	return ctx, func() {
+		stop()
+		cancel()
 	}
 }
 
