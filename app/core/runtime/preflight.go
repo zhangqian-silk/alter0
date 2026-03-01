@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	config "alter0/app/configs"
-	"alter0/app/core/agent"
+	executor "alter0/app/service/executor"
 )
 
 func RunPreflight(ctx context.Context, cfg config.Config, dataDir string) error {
@@ -18,7 +18,7 @@ func RunPreflight(ctx context.Context, cfg config.Config, dataDir string) error 
 	if err := checkSQLiteWritable(dataDir); err != nil {
 		return fmt.Errorf("sqlite check failed: %w", err)
 	}
-	if _, err := agent.EnsureExecutorInstalled(ctx, cfg.Executor.Name); err != nil {
+	if _, err := executor.EnsureExecutorInstalled(ctx, cfg.Executor.Name); err != nil {
 		return fmt.Errorf("executor check failed: %w", err)
 	}
 	return nil
@@ -28,7 +28,7 @@ func ValidateConfig(cfg config.Config) error {
 	if strings.TrimSpace(cfg.Agent.Name) == "" {
 		return fmt.Errorf("agent.name is required")
 	}
-	if agent.NormalizeExecutorName(cfg.Executor.Name) == "" {
+	if executor.NormalizeExecutorName(cfg.Executor.Name) == "" {
 		return fmt.Errorf("executor.name is invalid: %s", cfg.Executor.Name)
 	}
 	if cfg.Task.RoutingTimeoutSec <= 0 {

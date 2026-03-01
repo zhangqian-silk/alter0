@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	orctask "alter0/app/core/orchestrator/task"
 	"alter0/app/service/executor"
 	"alter0/app/service/queue"
 	"alter0/app/service/schedule"
 	"alter0/app/service/scheduler"
+	"alter0/app/service/task"
 	"alter0/app/service/tools"
 )
 
@@ -33,7 +33,7 @@ type StatusCollector struct {
 	GatewayStatusProvider   func() interface{}
 	Scheduler               *scheduler.Scheduler
 	Queue                   *queue.Queue
-	TaskStore               *orctask.Store
+	TaskStore               *task.Store
 	ScheduleService         *schedule.Service
 	RepoPath                string
 	CommandAuditBasePath    string

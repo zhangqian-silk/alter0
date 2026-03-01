@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"alter0/app/core/orchestrator/db"
-	"alter0/app/core/orchestrator/task"
 	"alter0/app/pkg/types"
+	servicestore "alter0/app/service/store"
+	servicetask "alter0/app/service/task"
 )
 
 func TestAuthorizeCommand_AdminOnlyCommands(t *testing.T) {
@@ -155,13 +155,13 @@ func TestExecuteSlash_StatusWithoutProvider(t *testing.T) {
 
 func TestExecuteTaskCommand_Stats(t *testing.T) {
 	tempDir := t.TempDir()
-	database, err := db.NewSQLiteDB(filepath.Join(tempDir, "db"))
+	database, err := servicestore.NewSQLiteDB(filepath.Join(tempDir, "db"))
 	if err != nil {
 		t.Fatalf("init sqlite failed: %v", err)
 	}
 	defer database.Close()
 
-	store := task.NewStore(database)
+	store := servicetask.NewStore(database)
 	exec := NewExecutor(nil, store, nil)
 	ctx := context.Background()
 

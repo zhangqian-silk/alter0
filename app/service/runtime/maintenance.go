@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	orctask "alter0/app/core/orchestrator/task"
 	"alter0/app/service/scheduler"
+	"alter0/app/service/task"
 )
 
 const (
@@ -32,7 +32,7 @@ func DefaultMaintenanceOptions() MaintenanceOptions {
 	}
 }
 
-func RegisterMaintenanceJobs(jobScheduler *scheduler.Scheduler, taskStore *orctask.Store, options MaintenanceOptions) error {
+func RegisterMaintenanceJobs(jobScheduler *scheduler.Scheduler, taskStore *task.Store, options MaintenanceOptions) error {
 	if jobScheduler == nil || taskStore == nil {
 		return nil
 	}

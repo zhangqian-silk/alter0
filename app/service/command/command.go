@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	orctask "alter0/app/core/orchestrator/task"
 	"alter0/app/pkg/types"
+	servicetask "alter0/app/service/task"
 )
 
 type SkillManager interface {
@@ -24,7 +24,7 @@ type SkillManager interface {
 
 type Executor struct {
 	skillMgr       SkillManager
-	taskStore      *orctask.Store
+	taskStore      *servicetask.Store
 	statusProvider func(context.Context) map[string]interface{}
 
 	mu         sync.RWMutex
@@ -46,7 +46,7 @@ var (
 	commandAuditBasePath = filepath.Join("output", "audit")
 )
 
-func NewExecutor(skillMgr SkillManager, taskStore *orctask.Store, adminUserIDs []string) *Executor {
+func NewExecutor(skillMgr SkillManager, taskStore *servicetask.Store, adminUserIDs []string) *Executor {
 	e := &Executor{
 		skillMgr:  skillMgr,
 		taskStore: taskStore,

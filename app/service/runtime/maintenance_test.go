@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"alter0/app/core/orchestrator/db"
-	"alter0/app/core/orchestrator/task"
-	"alter0/app/core/scheduler"
+	"alter0/app/service/scheduler"
+	servicestore "alter0/app/service/store"
+	"alter0/app/service/task"
 )
 
 func TestRegisterMaintenanceJobsDisabled(t *testing.T) {
@@ -22,7 +22,7 @@ func TestRegisterMaintenanceJobsDisabled(t *testing.T) {
 
 func TestRegisterMaintenanceJobsWithDefaults(t *testing.T) {
 	tmp := t.TempDir()
-	database, err := db.NewSQLiteDB(tmp)
+	database, err := servicestore.NewSQLiteDB(tmp)
 	if err != nil {
 		t.Fatalf("new db: %v", err)
 	}

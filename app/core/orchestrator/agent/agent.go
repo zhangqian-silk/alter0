@@ -14,7 +14,7 @@ import (
 	"alter0/app/core/orchestrator/command"
 	"alter0/app/core/orchestrator/execlog"
 	"alter0/app/core/orchestrator/skills"
-	"alter0/app/core/orchestrator/task"
+	orctask "alter0/app/core/orchestrator/task"
 	"alter0/app/pkg/types"
 )
 
@@ -24,15 +24,15 @@ type DefaultAgent struct {
 	taskConfig   config.TaskConfig
 
 	skillMgr  *skills.Manager
-	taskStore *task.Store
+	taskStore *orctask.Store
 	command   *command.Executor
-	router    *task.Router
-	closer    *task.Closer
+	router    *orctask.Router
+	closer    *orctask.Closer
 
 	mu sync.RWMutex
 }
 
-func NewAgent(name string, skillMgr *skills.Manager, taskStore *task.Store, executorName string, taskConfig config.TaskConfig, securityConfig config.SecurityConfig) *DefaultAgent {
+func NewAgent(name string, skillMgr *skills.Manager, taskStore *orctask.Store, executorName string, taskConfig config.TaskConfig, securityConfig config.SecurityConfig) *DefaultAgent {
 	a := &DefaultAgent{
 		name:         name,
 		executorName: executorName,
@@ -41,8 +41,8 @@ func NewAgent(name string, skillMgr *skills.Manager, taskStore *task.Store, exec
 		taskStore:    taskStore,
 	}
 	a.command = command.NewExecutor(skillMgr, taskStore, securityConfig.AdminUserIDs)
-	a.router = task.NewRouter(taskConfig.RoutingTimeoutSec, taskConfig.RoutingConfidenceThreshold, taskConfig.OpenTaskCandidateLimit)
-	a.closer = task.NewCloser(taskConfig.CloseTimeoutSec, taskConfig.CloseConfidenceThreshold)
+	a.router = orctask.NewRouter(taskConfig.RoutingTimeoutSec, taskConfig.RoutingConfidenceThreshold, taskConfig.OpenTaskCandidateLimit)
+	a.closer = orctask.NewCloser(taskConfig.CloseTimeoutSec, taskConfig.CloseConfidenceThreshold)
 	return a
 }
 
@@ -204,7 +204,7 @@ func (a *DefaultAgent) processTaskMessage(ctx context.Context, msg types.Message
 	return reply
 }
 
-func (a *DefaultAgent) selectTask(ctx context.Context, msg types.Message) (task.Task, task.RouteDecision) {
+func (a *DefaultAgent) selectTask(ctx context.Context, msg types.Message) (orctask.Task, orctask.RouteDecision) {
 	userID := msg.UserID
 	channelID := msg.ChannelID
 	userInput := msg.Content
@@ -212,7 +212,7 @@ func (a *DefaultAgent) selectTask(ctx context.Context, msg types.Message) (task.
 	// explicit task id has highest priority
 	if explicitID := strings.TrimSpace(msg.TaskID); explicitID != "" {
 		if t, err := a.taskStore.GetTask(ctx, explicitID); err == nil && t.UserID == userID && t.Status == "open" {
-			return t, task.RouteDecision{
+			return t, orctask.RouteDecision{
 				Decision:   "existing",
 				TaskID:     t.ID,
 				Confidence: 1,
@@ -224,7 +224,7 @@ func (a *DefaultAgent) selectTask(ctx context.Context, msg types.Message) (task.
 	// one-shot forced task from command override
 	if forcedID, err := a.taskStore.ConsumeForcedTask(ctx, userID); err == nil && strings.TrimSpace(forcedID) != "" {
 		if t, getErr := a.taskStore.GetTask(ctx, forcedID); getErr == nil && t.UserID == userID && t.Status == "open" {
-			return t, task.RouteDecision{
+			return t, orctask.RouteDecision{
 				Decision:   "existing",
 				TaskID:     t.ID,
 				Confidence: 1,
@@ -264,7 +264,7 @@ func (a *DefaultAgent) selectTask(ctx context.Context, msg types.Message) (task.
 	created, err := a.taskStore.CreateTask(ctx, userID, title, channelID)
 	if err != nil {
 		log.Printf("[Agent] Failed to create task: %v", err)
-		return task.Task{}, task.RouteDecision{Decision: "new", Reason: "task_create_failed"}
+		return orctask.Task{}, orctask.RouteDecision{Decision: "new", Reason: "task_create_failed"}
 	}
 	decision.Decision = "new"
 	decision.TaskID = created.ID
@@ -287,7 +287,7 @@ func deriveTaskTitle(text string) string {
 	return string(runes[:max])
 }
 
-func buildTaskMemorySnapshot(history []task.TaskMessage, maxRunes int) string {
+func buildTaskMemorySnapshot(history []orctask.TaskMessage, maxRunes int) string {
 	if len(history) == 0 {
 		return ""
 	}
@@ -327,7 +327,7 @@ func truncateRunes(text string, maxRunes int) string {
 	return string(runes[:maxRunes-1]) + "..."
 }
 
-func (a *DefaultAgent) buildGenerationPrompt(t task.Task, history []task.TaskMessage, memorySummary string, userInput string) string {
+func (a *DefaultAgent) buildGenerationPrompt(t orctask.Task, history []orctask.TaskMessage, memorySummary string, userInput string) string {
 	var b strings.Builder
 	b.WriteString("You are ")
 	b.WriteString(a.Name())
@@ -401,8 +401,8 @@ func (a *DefaultAgent) SetTaskConfig(taskCfg config.TaskConfig) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.taskConfig = taskCfg
-	a.router = task.NewRouter(taskCfg.RoutingTimeoutSec, taskCfg.RoutingConfidenceThreshold, taskCfg.OpenTaskCandidateLimit)
-	a.closer = task.NewCloser(taskCfg.CloseTimeoutSec, taskCfg.CloseConfidenceThreshold)
+	a.router = orctask.NewRouter(taskCfg.RoutingTimeoutSec, taskCfg.RoutingConfidenceThreshold, taskCfg.OpenTaskCandidateLimit)
+	a.closer = orctask.NewCloser(taskCfg.CloseTimeoutSec, taskCfg.CloseConfidenceThreshold)
 }
 
 func (a *DefaultAgent) SetSecurityConfig(securityCfg config.SecurityConfig) {

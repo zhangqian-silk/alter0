@@ -17,8 +17,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"alter0/app/core/schedule"
 	"alter0/app/pkg/types"
+	serviceschedule "alter0/app/service/schedule"
 )
 
 const (
@@ -47,7 +47,7 @@ type HTTPChannel struct {
 	subagents         map[string]*subagentRecord
 	subagentAnnouncer func(context.Context, SubagentAnnouncement) error
 
-	scheduleService *schedule.Service
+	scheduleService *serviceschedule.Service
 }
 
 func NewHTTPChannel(port int) *HTTPChannel {
@@ -76,7 +76,7 @@ func (c *HTTPChannel) SetShutdownTimeout(timeout time.Duration) {
 	c.shutdownTimeout = timeout
 }
 
-func (c *HTTPChannel) SetScheduleService(service *schedule.Service) {
+func (c *HTTPChannel) SetScheduleService(service *serviceschedule.Service) {
 	c.scheduleService = service
 }
 
@@ -210,11 +210,11 @@ type asyncTaskListResponse struct {
 }
 
 type scheduleListResponse struct {
-	Schedules []schedule.Job `json:"schedules"`
+	Schedules []serviceschedule.Job `json:"schedules"`
 }
 
 type scheduleRunsResponse struct {
-	Runs []schedule.RunRecord `json:"runs"`
+	Runs []serviceschedule.RunRecord `json:"runs"`
 }
 
 func (c *HTTPChannel) handleSchedules(w http.ResponseWriter, r *http.Request) {
@@ -242,7 +242,7 @@ func (c *HTTPChannel) handleSchedules(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			defer r.Body.Close()
-			var req schedule.CreateRequest
+			var req serviceschedule.CreateRequest
 			if err := json.Unmarshal(body, &req); err != nil {
 				http.Error(w, "Invalid JSON", http.StatusBadRequest)
 				return

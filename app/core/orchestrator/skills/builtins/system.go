@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	config "alter0/app/configs"
-	"alter0/app/core/agent"
 	"alter0/app/pkg/types"
+	executor "alter0/app/service/executor"
 )
 
 const (
@@ -84,11 +84,11 @@ func (s *ConfigSkill) Execute(ctx context.Context, args map[string]interface{}) 
 			return nil, fmt.Errorf("unknown key: %s", key)
 		}
 		if normalizedKey == keyExecutorName {
-			normalized := agent.NormalizeExecutorName(value)
+			normalized := executor.NormalizeExecutorName(value)
 			if normalized == "" {
 				return nil, fmt.Errorf("invalid executor: %s", value)
 			}
-			if _, err := agent.EnsureExecutorInstalled(ctx, normalized); err != nil {
+			if _, err := executor.EnsureExecutorInstalled(ctx, normalized); err != nil {
 				return nil, err
 			}
 			value = normalized
@@ -368,11 +368,11 @@ func (s *ExecutorSkill) Execute(ctx context.Context, args map[string]interface{}
 	if executorName == "" {
 		return formatExecutors(cfg), nil
 	}
-	normalized := agent.NormalizeExecutorName(executorName)
+	normalized := executor.NormalizeExecutorName(executorName)
 	if normalized == "" {
 		return nil, fmt.Errorf("unknown executor: %s", executorName)
 	}
-	if _, err := agent.EnsureExecutorInstalled(ctx, normalized); err != nil {
+	if _, err := executor.EnsureExecutorInstalled(ctx, normalized); err != nil {
 		return nil, err
 	}
 	updated, err := s.manager.Update(func(c *config.Config) {
@@ -393,7 +393,7 @@ func formatExecutors(cfg config.Config) string {
 	b.WriteString("Executors:\n")
 	for _, name := range executors {
 		status := "missing"
-		if _, _, err := agent.ResolveExecutorCommand(name); err == nil {
+		if _, _, err := executor.ResolveExecutorCommand(name); err == nil {
 			status = "installed"
 		}
 		b.WriteString("  ")

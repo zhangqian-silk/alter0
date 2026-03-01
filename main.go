@@ -12,21 +12,21 @@ import (
 
 	config "alter0/app/configs"
 	"alter0/app/core/interaction/cli"
-	"alter0/app/core/interaction/gateway"
+	coregateway "alter0/app/core/interaction/gateway"
 	"alter0/app/core/interaction/http"
 	"alter0/app/core/interaction/slack"
 	"alter0/app/core/interaction/telegram"
 	"alter0/app/core/orchestrator/agent"
-	"alter0/app/core/orchestrator/db"
 	"alter0/app/core/orchestrator/skills"
 	"alter0/app/core/orchestrator/skills/builtins"
-	"alter0/app/core/orchestrator/task"
-	"alter0/app/core/queue"
-	"alter0/app/core/runtime"
-	"alter0/app/core/schedule"
-	"alter0/app/core/scheduler"
-	toolruntime "alter0/app/core/tools"
-	"alter0/app/pkg/logger"
+	orctask "alter0/app/core/orchestrator/task"
+	coreruntime "alter0/app/core/runtime"
+	"alter0/app/service/observability"
+	"alter0/app/service/queue"
+	"alter0/app/service/schedule"
+	"alter0/app/service/scheduler"
+	"alter0/app/service/store"
+	toolruntime "alter0/app/service/tools"
 )
 
 type registeredAgent struct {
@@ -35,66 +35,66 @@ type registeredAgent struct {
 	AgentDir  string
 	Executor  string
 	Brain     *agent.DefaultAgent
-	TaskStore *task.Store
-	Database  *db.DB
+	TaskStore *orctask.Store
+	Database  *store.DB
 }
 
 func main() {
-	if err := logger.Init("output/logs"); err != nil {
+	if err := observability.Init("output/logs"); err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
-	logger.Info("Alter0 Kernel Starting...")
+	observability.Info("Alter0 Kernel Starting...")
 
 	cfgManager, err := config.NewManager(config.DefaultPath())
 	if err != nil {
-		logger.Error("Failed to load config: %v", err)
+		observability.Error("Failed to load config: %v", err)
 		os.Exit(1)
 	}
 	cfg := cfgManager.Get()
 
-	if err := runtime.RunPreflight(context.Background(), cfg, "output/db"); err != nil {
-		logger.Error("Startup preflight failed: %v", err)
+	if err := coreruntime.RunPreflight(context.Background(), cfg, "output/db"); err != nil {
+		observability.Error("Startup preflight failed: %v", err)
 		os.Exit(1)
 	}
-	logger.Info("Startup preflight checks passed")
+	observability.Info("Startup preflight checks passed")
 
 	shutdownTimeout := time.Duration(cfg.Runtime.Shutdown.DrainTimeoutSec) * time.Second
 
 	agents, defaultAgent, err := buildAgents(cfgManager, cfg)
 	if err != nil {
-		logger.Error("Failed to initialize agents: %v", err)
+		observability.Error("Failed to initialize agents: %v", err)
 		os.Exit(1)
 	}
 	defer closeAgentDatabases(agents)
-	logger.Info("Initialized %d agents, default=%s", len(agents), defaultAgent.ID)
+	observability.Info("Initialized %d agents, default=%s", len(agents), defaultAgent.ID)
 
-	gw := gateway.NewGateway(nil)
-	traceRecorder, err := gateway.NewTraceRecorder(filepath.Join("output", "trace"))
+	gw := coregateway.NewGateway(nil)
+	traceRecorder, err := coregateway.NewTraceRecorder(filepath.Join("output", "trace"))
 	if err != nil {
-		logger.Error("Failed to initialize gateway trace recorder: %v", err)
+		observability.Error("Failed to initialize gateway trace recorder: %v", err)
 		os.Exit(1)
 	}
 	gw.SetTraceRecorder(traceRecorder)
 	for _, item := range agents {
 		if err := gw.RegisterAgent(item.ID, item.Brain); err != nil {
-			logger.Error("Failed to register agent %s: %v", item.ID, err)
+			observability.Error("Failed to register agent %s: %v", item.ID, err)
 			os.Exit(1)
 		}
 	}
 	if err := gw.SetDefaultAgent(cfg.Agent.DefaultID); err != nil {
-		logger.Error("Failed to set default agent %s: %v", cfg.Agent.DefaultID, err)
+		observability.Error("Failed to set default agent %s: %v", cfg.Agent.DefaultID, err)
 		os.Exit(1)
 	}
 
 	executionQueue := queue.New(cfg.Runtime.Queue.Buffer)
 	if cfg.Runtime.Queue.Enabled {
 		if err := executionQueue.Start(context.Background(), cfg.Runtime.Queue.Workers); err != nil {
-			logger.Error("Failed to start execution queue: %v", err)
+			observability.Error("Failed to start execution queue: %v", err)
 			os.Exit(1)
 		}
 		defer func() {
 			report, err := executionQueue.StopWithReport(shutdownTimeout)
-			logger.Info(
+			observability.Info(
 				"Execution queue shutdown drain report: pending=%d in_flight=%d drained=%d timed_out=%t remaining_depth=%d remaining_in_flight=%d elapsed=%s",
 				report.PendingAtStart,
 				report.InFlightAtStart,
@@ -105,11 +105,11 @@ func main() {
 				report.Elapsed,
 			)
 			if err != nil {
-				logger.Error("Execution queue shutdown timeout: %v", err)
+				observability.Error("Execution queue shutdown timeout: %v", err)
 			}
 		}()
 	}
-	gw.SetExecutionQueue(executionQueue, gateway.QueueOptions{
+	gw.SetExecutionQueue(executionQueue, coregateway.QueueOptions{
 		Enabled:        cfg.Runtime.Queue.Enabled,
 		EnqueueTimeout: time.Duration(cfg.Runtime.Queue.EnqueueTimeoutSec) * time.Second,
 		AttemptTimeout: time.Duration(cfg.Runtime.Queue.AttemptTimeoutSec) * time.Second,
@@ -160,33 +160,35 @@ func main() {
 	defer cancel()
 
 	jobScheduler := scheduler.New()
-	if err := runtime.RegisterMaintenanceJobs(jobScheduler, defaultAgent.TaskStore, runtime.MaintenanceOptions{
+	if err := coreruntime.RegisterMaintenanceJobs(jobScheduler, defaultAgent.TaskStore, coreruntime.MaintenanceOptions{
 		Enabled:                     cfg.Runtime.Maintenance.Enabled,
 		TaskMemoryRetentionDays:     cfg.Runtime.Maintenance.TaskMemoryRetentionDays,
 		TaskMemoryOpenRetentionDays: cfg.Runtime.Maintenance.TaskMemoryOpenRetentionDays,
 		PruneInterval:               time.Duration(cfg.Runtime.Maintenance.TaskMemoryPruneIntervalSec) * time.Second,
 		PruneTimeout:                time.Duration(cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec) * time.Second,
 	}); err != nil {
-		logger.Error("Failed to register maintenance jobs: %v", err)
+		observability.Error("Failed to register maintenance jobs: %v", err)
+		os.Exit(1)
+	}
+	scheduleStore, err := schedule.NewStore(defaultAgent.Database.Conn())
+	if err != nil {
+		observability.Error("Failed to initialize schedule store: %v", err)
+		os.Exit(1)
+	}
+	scheduleService := schedule.NewService(scheduleStore, gw)
+	if err := coreruntime.RegisterScheduleJobs(jobScheduler, scheduleService, coreruntime.ScheduleOptions{}); err != nil {
+		observability.Error("Failed to register schedule jobs: %v", err)
 		os.Exit(1)
 	}
 	if err := jobScheduler.Start(ctx); err != nil {
-		logger.Error("Failed to start scheduler: %v", err)
+		observability.Error("Failed to start scheduler: %v", err)
 		os.Exit(1)
 	}
 	defer func() {
 		if err := jobScheduler.Stop(shutdownTimeout); err != nil {
-			logger.Error("Scheduler shutdown timeout: %v", err)
+			observability.Error("Scheduler shutdown timeout: %v", err)
 		}
 	}()
-
-	scheduleStore, err := schedule.NewStore(defaultAgent.Database.Conn())
-	if err != nil {
-		logger.Error("Failed to initialize schedule store: %v", err)
-		os.Exit(1)
-	}
-	scheduleService := schedule.NewService(scheduleStore, gw)
-	scheduleService.Start(ctx)
 	httpChannel.SetScheduleService(scheduleService)
 
 	toolRuntime := toolruntime.NewRuntime(toolruntime.Config{
@@ -200,8 +202,8 @@ func main() {
 		},
 	}, filepath.Join("output", "audit"))
 
-	statusCollector := &runtime.StatusCollector{
-		Gateway:                 gw,
+	statusCollector := &coreruntime.StatusCollector{
+		GatewayStatusProvider:   func() interface{} { return gw.HealthStatus() },
 		Scheduler:               jobScheduler,
 		Queue:                   executionQueue,
 		TaskStore:               defaultAgent.TaskStore,
@@ -224,7 +226,7 @@ func main() {
 
 	go runGatewayWithRetry(ctx, gw)
 
-	logger.Info("Alter0 is ready to serve.")
+	observability.Info("Alter0 is ready to serve.")
 	fmt.Println("- CLI Interface: Interactive")
 	fmt.Println("- HTTP Interface: http://localhost:8080/api/message (POST), /api/tasks (POST)")
 	fmt.Println("- Web Console:    http://localhost:8080/")
@@ -232,7 +234,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigChan
-	logger.Info("Received signal: %v. Alter0 shutting down with drain timeout=%s", sig, shutdownTimeout)
+	observability.Info("Received signal: %v. Alter0 shutting down with drain timeout=%s", sig, shutdownTimeout)
 	cancel()
 }
 
@@ -252,11 +254,11 @@ func buildAgents(cfgManager *config.Manager, cfg config.Config) ([]registeredAge
 		executorName := stringsOrDefault(entry.Executor, cfg.Executor.Name)
 		agentName := stringsOrDefault(entry.Name, cfg.Agent.Name)
 
-		database, err := db.NewSQLiteDB(filepath.Join(agentDir, "db"))
+		database, err := store.NewSQLiteDB(filepath.Join(agentDir, "db"))
 		if err != nil {
 			return nil, registeredAgent{}, fmt.Errorf("agent %s: %w", entry.ID, err)
 		}
-		taskStore := task.NewStore(database)
+		taskStore := orctask.NewStore(database)
 		skillMgr := skills.NewManager()
 		brain := agent.NewAgent(agentName, skillMgr, taskStore, executorName, cfg.Task, cfg.Security)
 
@@ -304,15 +306,15 @@ func closeAgentDatabases(agents []registeredAgent) {
 			continue
 		}
 		if err := item.Database.Close(); err != nil {
-			logger.Error("Failed to close DB for agent=%s: %v", item.ID, err)
+			observability.Error("Failed to close DB for agent=%s: %v", item.ID, err)
 		}
 	}
 }
 
-func runtimeAgentEntries(agents []registeredAgent) []runtime.AgentEntry {
-	items := make([]runtime.AgentEntry, 0, len(agents))
+func runtimeAgentEntries(agents []registeredAgent) []coreruntime.AgentEntry {
+	items := make([]coreruntime.AgentEntry, 0, len(agents))
 	for _, item := range agents {
-		items = append(items, runtime.AgentEntry{
+		items = append(items, coreruntime.AgentEntry{
 			AgentID:   item.ID,
 			Workspace: item.Workspace,
 			AgentDir:  item.AgentDir,
@@ -336,7 +338,7 @@ func toToolAgentPolicies(raw map[string]config.ToolAgentPolicy) map[string]toolr
 	return out
 }
 
-func runGatewayWithRetry(ctx context.Context, gw *gateway.DefaultGateway) {
+func runGatewayWithRetry(ctx context.Context, gw *coregateway.DefaultGateway) {
 	backoff := time.Second
 	maxBackoff := 30 * time.Second
 	for {
@@ -344,7 +346,7 @@ func runGatewayWithRetry(ctx context.Context, gw *gateway.DefaultGateway) {
 		if err == nil || ctx.Err() != nil {
 			return
 		}
-		logger.Error("Gateway crashed, retrying in %s: %v", backoff, err)
+		observability.Error("Gateway crashed, retrying in %s: %v", backoff, err)
 		select {
 		case <-ctx.Done():
 			return
