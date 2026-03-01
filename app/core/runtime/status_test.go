@@ -429,6 +429,108 @@ func TestSnapshotIncludesAgentRegistry(t *testing.T) {
 	}
 }
 
+func TestSnapshotIncludesRiskWatchlistSummaryAndAlerts(t *testing.T) {
+	now := time.Now().UTC()
+	watchlistPath := filepath.Join(t.TempDir(), "risk-watchlist.json")
+	doc := riskWatchlistDocument{
+		UpdatedAt: now.Add(-96 * time.Hour).Format(time.RFC3339),
+		Items: []riskWatchlistItem{
+			{
+				ID:           "provider-policy-drift",
+				Category:     "provider_policy",
+				Severity:     "high",
+				Status:       "watch",
+				NextReviewAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+				Owner:        "runtime",
+			},
+			{
+				ID:           "skill-provenance",
+				Category:     "supply_chain",
+				Severity:     "medium",
+				Status:       "mitigated",
+				NextReviewAt: now.Add(-1 * time.Hour).Format(time.RFC3339),
+				Owner:        "runtime",
+			},
+		},
+	}
+	payload, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal watchlist failed: %v", err)
+	}
+	if err := os.WriteFile(watchlistPath, payload, 0644); err != nil {
+		t.Fatalf("write watchlist failed: %v", err)
+	}
+
+	collector := &StatusCollector{
+		RiskWatchlistPath:       watchlistPath,
+		RiskWatchlistStaleAfter: 72 * time.Hour,
+	}
+	snap := collector.Snapshot(context.Background())
+
+	risk, ok := snap["risk_watchlist"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected risk_watchlist map, got %T", snap["risk_watchlist"])
+	}
+	if risk["status"] != "ok" {
+		t.Fatalf("expected risk watchlist status ok, got %#v", risk["status"])
+	}
+	if got := intValue(t, risk["overdue_items"]); got != 1 {
+		t.Fatalf("expected overdue_items=1, got %d", got)
+	}
+
+	alerts, ok := snap["alerts"].([]runtimeAlert)
+	if !ok {
+		t.Fatalf("expected alerts list, got %T", snap["alerts"])
+	}
+	codes := map[string]bool{}
+	criticalOverdue := false
+	for _, alert := range alerts {
+		codes[alert.Code] = true
+		if alert.Code == "risk_watchlist_item_overdue" && alert.Severity == "critical" {
+			criticalOverdue = true
+		}
+	}
+	if !codes["risk_watchlist_stale"] {
+		t.Fatalf("expected risk_watchlist_stale in alerts: %+v", alerts)
+	}
+	if !codes["risk_watchlist_item_overdue"] {
+		t.Fatalf("expected risk_watchlist_item_overdue in alerts: %+v", alerts)
+	}
+	if !criticalOverdue {
+		t.Fatalf("expected critical overdue alert, got %+v", alerts)
+	}
+}
+
+func TestSnapshotIncludesRiskWatchlistMissingAlert(t *testing.T) {
+	collector := &StatusCollector{
+		RiskWatchlistPath: filepath.Join(t.TempDir(), "missing.json"),
+	}
+	snap := collector.Snapshot(context.Background())
+
+	risk, ok := snap["risk_watchlist"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected risk_watchlist map, got %T", snap["risk_watchlist"])
+	}
+	if risk["status"] != "missing" {
+		t.Fatalf("expected missing risk watchlist status, got %#v", risk["status"])
+	}
+
+	alerts, ok := snap["alerts"].([]runtimeAlert)
+	if !ok {
+		t.Fatalf("expected alerts list, got %T", snap["alerts"])
+	}
+	missingAlert := false
+	for _, alert := range alerts {
+		if alert.Code == "risk_watchlist_missing" {
+			missingAlert = true
+			break
+		}
+	}
+	if !missingAlert {
+		t.Fatalf("expected risk_watchlist_missing alert, got %+v", alerts)
+	}
+}
+
 func TestSnapshotIncludesTraceSummaryAndAlerts(t *testing.T) {
 	now := time.Now().UTC()
 	traceBase := t.TempDir()
