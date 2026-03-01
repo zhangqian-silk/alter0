@@ -43,7 +43,8 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime status snapshot command audit tail
 - [x] Runtime status snapshot git upstream divergence (`upstream/ahead/behind`)
 - [x] Runtime status expansion for sessions/subagents/schedules/cost metrics
-- [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability)
+- [x] Runtime cost hotspot telemetry (`cost.session_hotspots`) with compaction pressure visibility (`prompt_output_ratio`)
+- [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability + session cost hotspot/compaction pressure)
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`)
 - [x] Scenario benchmark matrix + competitor tracking gate extension (`config/scenario-benchmark-matrix.json`, `config/competitor-tracking.json`, `scripts/update-competitor-tracking.sh`)
@@ -63,7 +64,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 - [x] Gateway integration matrix automation (`make integration-matrix`)
-- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
+- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + governance cadence (`make config-governance-cadence`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
 - [x] Config parameter governance audit for agents/bindings/session/tools (`make config-governance` -> `output/config/governance-latest.json`)
 - [x] Service-layer schedule facade (`app/core/service/schedule`) used by runtime/HTTP integration boundaries
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
@@ -94,9 +95,13 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P3 (Governance Deep Dive)
 
 1. [x] N19 Parameter-level config governance for agents/bindings/session/tools (`make config-governance` + release-gate integration)
-2. [ ] N20 Monthly governance cadence automation (snapshot archive + drift reminder)
+2. [x] N20 Monthly governance cadence automation (snapshot archive + drift reminder)
 
-Queue status: P3/N19 is merged. Next candidate is `P3/N20` monthly governance cadence automation.
+### P4 (Runtime Cost Governance)
+
+1. [x] N21 Session cost hotspot and compaction pressure alerts (`cost.session_hotspots` + `alerts.session_{cost_hotspot,compaction_pressure}`)
+
+Queue status: P3/P4 are merged; no active delivery gap remains.
 
 ## 4) Change Rule
 

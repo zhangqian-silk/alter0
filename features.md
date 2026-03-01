@@ -11,17 +11,12 @@
 - 部署形态：继续保持自部署优先，先做单节点高可用，再考虑分布式扩展。
 - 安全边界：默认私有网络可用，但新增能力必须带最小可行权限控制与审计。
 - 兼容策略：保留现有 Task 编排主链路（`route -> execute -> close`），新增能力以可插拔方式接入。
-- 阶段目标：在核心能力已对齐 OpenClaw 基线后，固化第 5.2 章建议的长期维护流程。
+- 阶段目标：在核心能力已对齐 OpenClaw 基线后，固化第 5.2 章建议并补齐第 5.1 章提出的长会话成本漂移监测。
 
 ## 2. 当前未完成需求（Active Gaps）
 
-### N20 配置治理月度巡检自动化（P3）
-
-- 目标：在 N19 参数级治理门禁落地后，补齐月度巡检与趋势回看机制。
-- 交付边界：
-  - 沉淀参数审计快照归档策略（按月存档 + 差异摘要）。
-  - 为关键参数漂移提供自动提醒入口（cron/heartbeat 任选其一）。
-  - 将巡检结果接入运维例行检查流程。
+- 当前主线无未完成需求（N20/N21 已完成并进入运维观察期）。
+- 下轮若新增需求，优先补齐外部依赖（GitHub 网络与 token）后再启动功能开发。
 
 ## 3. 优先级与执行队列
 
@@ -42,20 +37,25 @@
 2. [x] N17 风险执行基准与漂移处置手册（`make risk-benchmark` + runbook + release-gate 接入）
 3. [x] N18 场景基准矩阵与竞品追踪自动化（`config/scenario-benchmark-matrix.json`、`config/competitor-tracking.json`、`make competitor-tracking-refresh`）
 
-### P3（治理深化）
+### P3（治理深化，已完成）
 
 1. [x] N19 配置模型参数级解剖与门禁（`make config-governance` + `output/config/governance-latest.json`）
-2. [ ] N20 配置治理月度巡检自动化
+2. [x] N20 配置治理月度巡检自动化（`make config-governance-cadence` + `output/config/governance-cadence-latest.json` + `output/config/governance-history/`）
 
-当前下一项：`P3/N20 配置治理月度巡检自动化`。
+### P4（运行时成本治理）
+
+1. [x] N21 长会话成本热点与压缩压力告警（`/status` 成本热点 + alerts `session_cost_hotspot` / `session_compaction_pressure`）
+
+当前状态：主线需求清空，进入运维观测与阈值校准阶段。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-02）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
-- 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 配置模型参数级治理门禁。
-- 当前缺口：研究报告第 5.2 章功能性建议已对齐，剩余工程化缺口集中在“月度治理节奏自动化”。
-- 下一步：推进 N20，将参数治理结果纳入持续巡检链路。
+- 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
+- 本轮新增对齐：针对研究报告 5.1“长会话 token 成本与 compaction 权衡”新增 N21 运行时成本热点与压缩压力告警。
+- 当前缺口：研究报告 5.2 建议项已全量落地，5.1 中剩余项主要为阈值运营优化（非功能缺失）。
+- 下一步：按周复盘 `/status` 的 `session_hotspots` 与新增 alerts 命中率，校准 `AlertSessionCost*` 阈值并回灌风险基准。
 
 ## 5. 执行规则
 
@@ -68,3 +68,4 @@
 - 2026-03-01（UTC）：`git push -u origin feat/p2-n16-risk-watchlist-automation` 连续两次超时失败（无法连接 `github.com:443`），导致 PR/merge 链路阻塞；已在后续轮次恢复并完成 N16 合并。
 - 2026-03-02（UTC）：`make risk-benchmark` 初次执行因缺少 N18 基准文件失败（`config/scenario-benchmark-matrix.json`、`config/competitor-tracking.json`）；已在同轮补齐并通过门禁，无待重试项。
 - 2026-03-02（UTC）：`make competitor-tracking-refresh` 在未配置 `GH_TOKEN/GITHUB_TOKEN` 时触发 GitHub API 403 rate limit；已改为默认降级不中断并记录 warning，下一轮优先在带 token 环境执行一次完整刷新。
+- 2026-03-01（UTC）：本轮执行 `git fetch origin` 连续超时（无输出后被超时终止），无法确认远端 `master` 最新提交；已改为基于本地 `master` 继续开发，下一轮优先重试网络连通后再同步远端。

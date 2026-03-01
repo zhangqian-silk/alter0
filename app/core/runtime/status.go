@@ -30,30 +30,33 @@ type AgentEntry struct {
 }
 
 type StatusCollector struct {
-	GatewayStatusProvider   func() interface{}
-	Scheduler               *scheduler.Scheduler
-	Queue                   *queue.Queue
-	TaskStore               *orctask.Store
-	ScheduleService         *schedulesvc.Service
-	RepoPath                string
-	CommandAuditBasePath    string
-	CommandAuditTailSize    int
-	OrchestratorLogBasePath string
-	SessionWindow           time.Duration
-	ActiveSessionWindow     time.Duration
-	CostInputPer1K          float64
-	CostOutputPer1K         float64
-	AgentEntries            []AgentEntry
-	ToolRuntime             *toolruntime.Runtime
-	GatewayTraceBasePath    string
-	GatewayTraceWindow      time.Duration
-	AlertRetryStormWindow   time.Duration
-	AlertRetryStormMinimum  int
-	AlertQueueBacklogRatio  float64
-	AlertQueueBacklogDepth  int
-	AlertExecutorStrictMode bool
-	RiskWatchlistPath       string
-	RiskWatchlistStaleAfter time.Duration
+	GatewayStatusProvider      func() interface{}
+	Scheduler                  *scheduler.Scheduler
+	Queue                      *queue.Queue
+	TaskStore                  *orctask.Store
+	ScheduleService            *schedulesvc.Service
+	RepoPath                   string
+	CommandAuditBasePath       string
+	CommandAuditTailSize       int
+	OrchestratorLogBasePath    string
+	SessionWindow              time.Duration
+	ActiveSessionWindow        time.Duration
+	CostInputPer1K             float64
+	CostOutputPer1K            float64
+	AgentEntries               []AgentEntry
+	ToolRuntime                *toolruntime.Runtime
+	GatewayTraceBasePath       string
+	GatewayTraceWindow         time.Duration
+	AlertRetryStormWindow      time.Duration
+	AlertRetryStormMinimum     int
+	AlertQueueBacklogRatio     float64
+	AlertQueueBacklogDepth     int
+	AlertExecutorStrictMode    bool
+	AlertSessionCostShare      float64
+	AlertSessionCostMinTokens  int
+	AlertSessionPromptOutRatio float64
+	RiskWatchlistPath          string
+	RiskWatchlistStaleAfter    time.Duration
 }
 
 type commandAuditTailEntry struct {
@@ -78,10 +81,21 @@ type orchestratorLogEntry struct {
 	ChannelID   string `json:"channel_id"`
 }
 
+type runtimeSessionCostHotspot struct {
+	SessionID         string  `json:"session_id"`
+	TotalTokens       int     `json:"total_tokens"`
+	PromptTokens      int     `json:"prompt_tokens"`
+	OutputTokens      int     `json:"output_tokens"`
+	Share             float64 `json:"share"`
+	PromptOutputRatio float64 `json:"prompt_output_ratio"`
+	LastSeenAt        string  `json:"last_seen_at,omitempty"`
+}
+
 type runtimeUsageSummary struct {
-	Sessions map[string]interface{}
-	Subagent map[string]interface{}
-	Cost     map[string]interface{}
+	Sessions     map[string]interface{}
+	Subagent     map[string]interface{}
+	Cost         map[string]interface{}
+	CostHotspots []runtimeSessionCostHotspot
 }
 
 type gatewayTraceEntry struct {
@@ -194,15 +208,19 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	executors := executor.ListExecutorCapabilities()
 	payload["executors"] = executors
 	alerts := summarizeRuntimeAlerts(runtimeAlertInput{
-		Now:                     now,
-		Queue:                   c.Queue,
-		Trace:                   traceSummary,
-		Executors:               executors,
-		RetryStormWindow:        c.AlertRetryStormWindow,
-		RetryStormMinimum:       c.AlertRetryStormMinimum,
-		QueueBacklogRatio:       c.AlertQueueBacklogRatio,
-		QueueBacklogDepth:       c.AlertQueueBacklogDepth,
-		ExecutorStrictAvailable: c.AlertExecutorStrictMode,
+		Now:                        now,
+		Queue:                      c.Queue,
+		Trace:                      traceSummary,
+		Executors:                  executors,
+		RetryStormWindow:           c.AlertRetryStormWindow,
+		RetryStormMinimum:          c.AlertRetryStormMinimum,
+		QueueBacklogRatio:          c.AlertQueueBacklogRatio,
+		QueueBacklogDepth:          c.AlertQueueBacklogDepth,
+		ExecutorStrictAvailable:    c.AlertExecutorStrictMode,
+		CostHotspots:               usage.CostHotspots,
+		SessionCostShareThreshold:  c.AlertSessionCostShare,
+		SessionCostMinTokens:       c.AlertSessionCostMinTokens,
+		SessionPromptRatioMaxAlert: c.AlertSessionPromptOutRatio,
 	})
 	if riskSummary, riskAlerts := summarizeRiskWatchlist(c.RiskWatchlistPath, now, c.RiskWatchlistStaleAfter); riskSummary != nil {
 		payload["risk_watchlist"] = riskSummary
@@ -227,15 +245,19 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 }
 
 type runtimeAlertInput struct {
-	Now                     time.Time
-	Queue                   *queue.Queue
-	Trace                   gatewayTraceSummary
-	Executors               []executor.ExecutorCapability
-	RetryStormWindow        time.Duration
-	RetryStormMinimum       int
-	QueueBacklogRatio       float64
-	QueueBacklogDepth       int
-	ExecutorStrictAvailable bool
+	Now                        time.Time
+	Queue                      *queue.Queue
+	Trace                      gatewayTraceSummary
+	Executors                  []executor.ExecutorCapability
+	RetryStormWindow           time.Duration
+	RetryStormMinimum          int
+	QueueBacklogRatio          float64
+	QueueBacklogDepth          int
+	ExecutorStrictAvailable    bool
+	CostHotspots               []runtimeSessionCostHotspot
+	SessionCostShareThreshold  float64
+	SessionCostMinTokens       int
+	SessionPromptRatioMaxAlert float64
 }
 
 func summarizeRuntimeAlerts(input runtimeAlertInput) []runtimeAlert {
@@ -322,6 +344,52 @@ func summarizeRuntimeAlerts(input runtimeAlertInput) []runtimeAlert {
 				Detected: now.Format(time.RFC3339),
 				Telemetry: map[string]interface{}{
 					"missing": missing,
+				},
+			})
+		}
+	}
+
+	sessionCostShareThreshold := input.SessionCostShareThreshold
+	if sessionCostShareThreshold <= 0 {
+		sessionCostShareThreshold = 0.35
+	}
+	sessionCostMinTokens := input.SessionCostMinTokens
+	if sessionCostMinTokens <= 0 {
+		sessionCostMinTokens = 1200
+	}
+	sessionPromptRatioMaxAlert := input.SessionPromptRatioMaxAlert
+	if sessionPromptRatioMaxAlert <= 0 {
+		sessionPromptRatioMaxAlert = 6.0
+	}
+	if len(input.CostHotspots) > 0 {
+		hotspot := input.CostHotspots[0]
+		if hotspot.TotalTokens >= sessionCostMinTokens && hotspot.Share >= sessionCostShareThreshold {
+			alerts = append(alerts, runtimeAlert{
+				Code:     "session_cost_hotspot",
+				Severity: "warning",
+				Source:   "cost",
+				Message:  fmt.Sprintf("session %s consumed %.1f%% of tokens in the runtime window", hotspot.SessionID, hotspot.Share*100),
+				Detected: now.Format(time.RFC3339),
+				Telemetry: map[string]interface{}{
+					"session_id":          hotspot.SessionID,
+					"total_tokens":        hotspot.TotalTokens,
+					"share":               hotspot.Share,
+					"prompt_output_ratio": hotspot.PromptOutputRatio,
+				},
+			})
+		}
+		if hotspot.TotalTokens >= sessionCostMinTokens && hotspot.PromptOutputRatio >= sessionPromptRatioMaxAlert {
+			alerts = append(alerts, runtimeAlert{
+				Code:     "session_compaction_pressure",
+				Severity: "warning",
+				Source:   "cost",
+				Message:  fmt.Sprintf("session %s prompt/output ratio %.2f suggests compaction pressure", hotspot.SessionID, hotspot.PromptOutputRatio),
+				Detected: now.Format(time.RFC3339),
+				Telemetry: map[string]interface{}{
+					"session_id":          hotspot.SessionID,
+					"prompt_tokens":       hotspot.PromptTokens,
+					"output_tokens":       hotspot.OutputTokens,
+					"prompt_output_ratio": hotspot.PromptOutputRatio,
 				},
 			})
 		}
@@ -557,6 +625,8 @@ func summarizeRuntimeUsage(basePath string, now time.Time, window time.Duration,
 	sessionLastSeen := map[string]time.Time{}
 	sessionChannel := map[string]string{}
 	sessionUser := map[string]string{}
+	sessionPromptChars := map[string]int{}
+	sessionOutputChars := map[string]int{}
 	subagentLastSeen := map[string]time.Time{}
 	executorRuns := map[string]int{}
 
@@ -601,9 +671,11 @@ func summarizeRuntimeUsage(basePath string, now time.Time, window time.Duration,
 		}
 		if entry.PromptChars > 0 {
 			promptChars += entry.PromptChars
+			sessionPromptChars[sessionID] += entry.PromptChars
 		}
 		if entry.OutputChars > 0 {
 			outputChars += entry.OutputChars
+			sessionOutputChars[sessionID] += entry.OutputChars
 		}
 	}
 
@@ -635,6 +707,7 @@ func summarizeRuntimeUsage(basePath string, now time.Time, window time.Duration,
 	totalTokens := inputTokens + outputTokens
 	pricingConfigured := inputCostPer1K > 0 || outputCostPer1K > 0
 	estimatedCost := ((float64(inputTokens) / 1000.0) * inputCostPer1K) + ((float64(outputTokens) / 1000.0) * outputCostPer1K)
+	hotspots := summarizeSessionCostHotspots(sessionLastSeen, sessionPromptChars, sessionOutputChars, totalTokens)
 
 	return runtimeUsageSummary{
 		Sessions: map[string]interface{}{
@@ -663,8 +736,63 @@ func summarizeRuntimeUsage(basePath string, now time.Time, window time.Duration,
 			"estimated_cost_usd":      math.Round(estimatedCost*10000) / 10000,
 			"pricing_configured":      pricingConfigured,
 			"by_executor":             executorRuns,
+			"session_hotspots":        hotspots,
 		},
+		CostHotspots: hotspots,
 	}
+}
+
+func summarizeSessionCostHotspots(
+	sessionLastSeen map[string]time.Time,
+	sessionPromptChars map[string]int,
+	sessionOutputChars map[string]int,
+	totalTokens int,
+) []runtimeSessionCostHotspot {
+	if totalTokens <= 0 {
+		return []runtimeSessionCostHotspot{}
+	}
+	sessionIDs := map[string]struct{}{}
+	for sessionID := range sessionPromptChars {
+		sessionIDs[sessionID] = struct{}{}
+	}
+	for sessionID := range sessionOutputChars {
+		sessionIDs[sessionID] = struct{}{}
+	}
+	hotspots := make([]runtimeSessionCostHotspot, 0, len(sessionIDs))
+	for sessionID := range sessionIDs {
+		promptTokens := estimateTokens(sessionPromptChars[sessionID])
+		outputTokens := estimateTokens(sessionOutputChars[sessionID])
+		total := promptTokens + outputTokens
+		if total <= 0 {
+			continue
+		}
+		ratio := float64(promptTokens)
+		if outputTokens > 0 {
+			ratio = float64(promptTokens) / float64(outputTokens)
+		}
+		hotspot := runtimeSessionCostHotspot{
+			SessionID:         sessionID,
+			TotalTokens:       total,
+			PromptTokens:      promptTokens,
+			OutputTokens:      outputTokens,
+			Share:             math.Round((float64(total)/float64(totalTokens))*1000) / 1000,
+			PromptOutputRatio: math.Round(ratio*100) / 100,
+		}
+		if seenAt, ok := sessionLastSeen[sessionID]; ok && !seenAt.IsZero() {
+			hotspot.LastSeenAt = seenAt.UTC().Format(time.RFC3339)
+		}
+		hotspots = append(hotspots, hotspot)
+	}
+	sort.Slice(hotspots, func(i, j int) bool {
+		if hotspots[i].TotalTokens == hotspots[j].TotalTokens {
+			return hotspots[i].SessionID < hotspots[j].SessionID
+		}
+		return hotspots[i].TotalTokens > hotspots[j].TotalTokens
+	})
+	if len(hotspots) > 3 {
+		hotspots = hotspots[:3]
+	}
+	return hotspots
 }
 
 func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration) gatewayTraceSummary {

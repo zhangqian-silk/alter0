@@ -351,7 +351,7 @@ Shutdown sequence:
 - schedule status/kind/delivery-mode counters, active overdue windows, and next active run marker
 - session and sub-agent activity windows (`total/active/by_channel`) from orchestrator execution logs
 - execution latency/error rate plus model usage estimates (`chars/tokens/cost`) with optional pricing config
-- gateway trace window aggregates (`total/error/by_event/by_channel/latest_at`) and derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/executor_unavailable/risk_watchlist_{missing,invalid,stale,item_overdue}`)
+- gateway trace window aggregates (`total/error/by_event/by_channel/latest_at`) and derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/executor_unavailable/session_cost_hotspot/session_compaction_pressure/risk_watchlist_{missing,invalid,stale,item_overdue}`)
 - routing/closing decision distribution
 - plugin and MCP connector health
 
