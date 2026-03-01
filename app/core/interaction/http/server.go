@@ -2,7 +2,9 @@ package http
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"alter0/app/core/schedule"
 	"alter0/app/pkg/types"
 )
 
@@ -39,6 +42,8 @@ type HTTPChannel struct {
 
 	asyncMu sync.Mutex
 	async   map[string]*asyncRequest
+
+	scheduleService *schedule.Service
 }
 
 func NewHTTPChannel(port int) *HTTPChannel {
@@ -66,6 +71,10 @@ func (c *HTTPChannel) SetShutdownTimeout(timeout time.Duration) {
 	c.shutdownTimeout = timeout
 }
 
+func (c *HTTPChannel) SetScheduleService(service *schedule.Service) {
+	c.scheduleService = service
+}
+
 func (c *HTTPChannel) Start(ctx context.Context, handler func(types.Message)) error {
 	c.handler = handler
 	c.startedUnix.Store(time.Now().Unix())
@@ -75,6 +84,8 @@ func (c *HTTPChannel) Start(ctx context.Context, handler func(types.Message)) er
 	mux.HandleFunc("/api/status", c.handleStatus)
 	mux.HandleFunc("/api/tasks", c.handleAsyncTasks)
 	mux.HandleFunc("/api/tasks/", c.handleAsyncTasks)
+	mux.HandleFunc("/api/schedules", c.handleSchedules)
+	mux.HandleFunc("/api/schedules/", c.handleSchedules)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -189,6 +200,149 @@ type asyncTaskResponse struct {
 
 type asyncTaskListResponse struct {
 	Tasks []asyncTaskResponse `json:"tasks"`
+}
+
+type scheduleListResponse struct {
+	Schedules []schedule.Job `json:"schedules"`
+}
+
+type scheduleRunsResponse struct {
+	Runs []schedule.RunRecord `json:"runs"`
+}
+
+func (c *HTTPChannel) handleSchedules(w http.ResponseWriter, r *http.Request) {
+	if c.scheduleService == nil {
+		http.Error(w, "schedule service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	if r.URL.Path == "/api/schedules" {
+		switch r.Method {
+		case http.MethodGet:
+			limit := parseListLimit(r.URL.Query().Get("limit"))
+			items, err := c.scheduleService.List(r.Context(), limit)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(scheduleListResponse{Schedules: items})
+		case http.MethodPost:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "Bad request", http.StatusBadRequest)
+				return
+			}
+			defer r.Body.Close()
+			var req schedule.CreateRequest
+			if err := json.Unmarshal(body, &req); err != nil {
+				http.Error(w, "Invalid JSON", http.StatusBadRequest)
+				return
+			}
+			job, err := c.scheduleService.Create(r.Context(), req)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(job)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
+	}
+
+	id, action, ok := parseSchedulePath(r.URL.Path)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	switch action {
+	case "":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := c.scheduleService.Get(r.Context(), id)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(item)
+	case "pause":
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := c.scheduleService.Pause(r.Context(), id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case "resume":
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := c.scheduleService.Resume(r.Context(), id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case "runs":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		limit := parseListLimit(r.URL.Query().Get("limit"))
+		runs, err := c.scheduleService.Runs(r.Context(), id, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(scheduleRunsResponse{Runs: runs})
+	case "cancel":
+		if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := c.scheduleService.Cancel(r.Context(), id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func parseSchedulePath(path string) (id string, action string, ok bool) {
+	if !strings.HasPrefix(path, "/api/schedules/") {
+		return "", "", false
+	}
+	tail := strings.Trim(strings.TrimPrefix(path, "/api/schedules/"), "/")
+	if tail == "" {
+		return "", "", false
+	}
+	parts := strings.Split(tail, "/")
+	if len(parts) == 1 {
+		return parts[0], "", true
+	}
+	if len(parts) == 2 {
+		return parts[0], parts[1], true
+	}
+	return "", "", false
 }
 
 func (c *HTTPChannel) handleStatus(w http.ResponseWriter, r *http.Request) {

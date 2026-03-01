@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -251,6 +252,96 @@ func (g *DefaultGateway) sendErrorReply(ctx context.Context, msg types.Message, 
 	}
 	normalizeReply(&response, msg)
 	return channel.Send(ctx, response)
+}
+
+func (g *DefaultGateway) DeliverDirect(ctx context.Context, channelID string, to string, content string, meta map[string]interface{}) error {
+	channelID = strings.TrimSpace(channelID)
+	to = strings.TrimSpace(to)
+	content = strings.TrimSpace(content)
+	if channelID == "" {
+		return fmt.Errorf("channel id is required")
+	}
+	if to == "" {
+		return fmt.Errorf("delivery target is required")
+	}
+	if content == "" {
+		return fmt.Errorf("delivery content is required")
+	}
+
+	channel, exists := g.channelByID(channelID)
+	if !exists {
+		return fmt.Errorf("channel not found: %s", channelID)
+	}
+
+	msg := types.Message{
+		ID:        "sched-direct-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		Content:   content,
+		Role:      types.MessageRoleAssistant,
+		ChannelID: channelID,
+		UserID:    to,
+		Meta:      map[string]interface{}{},
+		Envelope: &types.MessageEnvelope{
+			Direction: types.EnvelopeDirectionOutbound,
+			Channel:   channelID,
+			PeerID:    to,
+			PeerType:  "user",
+			MessageID: "sched-direct-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			Parts: []types.EnvelopePart{{
+				Type: types.EnvelopePartText,
+				Text: content,
+			}},
+		},
+	}
+	for k, v := range meta {
+		msg.Meta[k] = v
+	}
+	return channel.Send(ctx, msg)
+}
+
+func (g *DefaultGateway) DeliverAgentTurn(ctx context.Context, channelID string, to string, content string, agentID string, meta map[string]interface{}) error {
+	channelID = strings.TrimSpace(channelID)
+	to = strings.TrimSpace(to)
+	content = strings.TrimSpace(content)
+	agentID = strings.TrimSpace(agentID)
+	if channelID == "" {
+		return fmt.Errorf("channel id is required")
+	}
+	if to == "" {
+		return fmt.Errorf("delivery target is required")
+	}
+	if content == "" {
+		return fmt.Errorf("agent turn content is required")
+	}
+
+	now := strconv.FormatInt(time.Now().UnixNano(), 10)
+	requestID := "sched-turn-req-" + now
+	msg := types.Message{
+		ID:        "sched-turn-msg-" + now,
+		Content:   content,
+		Role:      types.MessageRoleUser,
+		ChannelID: channelID,
+		UserID:    to,
+		RequestID: requestID,
+		Envelope: &types.MessageEnvelope{
+			Direction: types.EnvelopeDirectionInbound,
+			Channel:   channelID,
+			PeerID:    to,
+			PeerType:  "user",
+			MessageID: "sched-turn-msg-" + now,
+			Parts: []types.EnvelopePart{{
+				Type: types.EnvelopePartText,
+				Text: content,
+			}},
+		},
+		Meta: map[string]interface{}{},
+	}
+	if agentID != "" {
+		msg.Meta["agent_id"] = agentID
+	}
+	for k, v := range meta {
+		msg.Meta[k] = v
+	}
+	return g.processAndReply(ctx, msg)
 }
 
 func (g *DefaultGateway) routeMessageToAgent(msg types.Message) types.Message {

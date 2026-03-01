@@ -23,6 +23,7 @@ import (
 	"alter0/app/core/orchestrator/task"
 	"alter0/app/core/queue"
 	"alter0/app/core/runtime"
+	"alter0/app/core/schedule"
 	"alter0/app/core/scheduler"
 	"alter0/app/pkg/logger"
 )
@@ -163,13 +164,23 @@ func main() {
 		}
 	}()
 
+	scheduleStore, err := schedule.NewStore(defaultAgent.Database.Conn())
+	if err != nil {
+		logger.Error("Failed to initialize schedule store: %v", err)
+		os.Exit(1)
+	}
+	scheduleService := schedule.NewService(scheduleStore, gw)
+	scheduleService.Start(ctx)
+	httpChannel.SetScheduleService(scheduleService)
+
 	statusCollector := &runtime.StatusCollector{
-		Gateway:      gw,
-		Scheduler:    jobScheduler,
-		Queue:        executionQueue,
-		TaskStore:    defaultAgent.TaskStore,
-		RepoPath:     ".",
-		AgentEntries: runtimeAgentEntries(agents),
+		Gateway:         gw,
+		Scheduler:       jobScheduler,
+		Queue:           executionQueue,
+		TaskStore:       defaultAgent.TaskStore,
+		ScheduleService: scheduleService,
+		RepoPath:        ".",
+		AgentEntries:    runtimeAgentEntries(agents),
 	}
 	httpChannel.SetStatusProvider(statusCollector.Snapshot)
 	for _, item := range agents {

@@ -16,6 +16,7 @@ import (
 	"alter0/app/core/interaction/gateway"
 	"alter0/app/core/orchestrator/task"
 	"alter0/app/core/queue"
+	"alter0/app/core/schedule"
 	"alter0/app/core/scheduler"
 )
 
@@ -31,6 +32,7 @@ type StatusCollector struct {
 	Scheduler            *scheduler.Scheduler
 	Queue                *queue.Queue
 	TaskStore            *task.Store
+	ScheduleService      *schedule.Service
 	RepoPath             string
 	CommandAuditBasePath string
 	CommandAuditTailSize int
@@ -70,6 +72,21 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 			payload["task"] = map[string]interface{}{"error": err.Error()}
 		} else {
 			payload["task"] = stats
+		}
+	}
+	if c.ScheduleService != nil {
+		items, err := c.ScheduleService.List(ctx, 200)
+		if err != nil {
+			payload["schedules"] = map[string]interface{}{"error": err.Error()}
+		} else {
+			counts := map[string]int{}
+			for _, item := range items {
+				counts[item.Status]++
+			}
+			payload["schedules"] = map[string]interface{}{
+				"total":  len(items),
+				"status": counts,
+			}
 		}
 	}
 	payload["executors"] = agent.ListExecutorCapabilities()
