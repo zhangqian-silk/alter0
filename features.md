@@ -38,16 +38,16 @@
 
 ### P2（当前主线）
 
-1. [x] N16 外部策略与供应链风险监测（provider/channel 策略漂移 + skill/plugin 来源审计）
+1. [ ] N16 外部策略与供应链风险监测（provider/channel 策略漂移 + skill/plugin 来源审计，代码/测试已完成，待远端发布链路）
 2. [ ] N17 风险执行基准与漂移处置手册（风险巡检基准 + 漂移分级 runbook）
 
-当前下一项：`P2/N17`。
+当前下一项：`P2/N16 发布链路重试（push -> PR -> merge）`。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-01）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
-- 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界，以及风险 watchlist 自动告警闭环（N16）。
+- 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界；N16 风险 watchlist 自动告警闭环已在功能分支实现，待合并主线。
 - 当前缺口：研究报告第 5.2 章“场景基准对比 + 持续竞品/风险追踪”尚未形成工程化执行基准与处置手册。
 - 下一步：推进 N17，落地风险巡检 benchmark 与漂移分级 runbook，并把结果纳入 release-gate/运维检查流程。
 
@@ -56,3 +56,7 @@
 - 单需求闭环：每次只推进一个需求到"编码 + 测试 + 文档"完成态。
 - 文档同步：需求状态变化后，必须同步 `docs/features.md` 与本文件。
 - 变更可回滚：涉及存储、会话、任务调度的改动必须附带回滚说明。
+
+## 6. 失败记录与优先重试
+
+- 2026-03-01（UTC）：`git push -u origin feat/p2-n16-risk-watchlist-automation` 连续两次超时失败（无法连接 `github.com:443`），导致 PR/merge 链路阻塞；下一轮优先重试发布链路。
