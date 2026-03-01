@@ -1,4 +1,4 @@
-.PHONY: run build test test-stability check-config-boundary check-service-boundary config-governance cost-threshold-history risk-benchmark competitor-tracking-refresh fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
+.PHONY: run build test test-stability check-config-boundary check-service-boundary config-governance cost-threshold-history cost-threshold-reconcile risk-benchmark competitor-tracking-refresh fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
 .DEFAULT_GOAL := run
 
 run:
@@ -24,6 +24,9 @@ config-governance:
 
 cost-threshold-history:
 	./scripts/check-cost-threshold-history.sh
+
+cost-threshold-reconcile:
+	./scripts/check-cost-threshold-reconcile.sh
 
 risk-benchmark:
 	./scripts/check-risk-benchmark.sh

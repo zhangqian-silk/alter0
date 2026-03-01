@@ -58,7 +58,7 @@ Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对�
 OpenClaw 对齐版本清单请参考：[`docs/openclaw-alignment.md`](./docs/openclaw-alignment.md)。
 面向 OpenClaw 对齐的未完成需求清单请参考：[`features.md`](./features.md)。
 
-当前优先级以 [`features.md`](./features.md) 为准，发布节奏按 release-gate 管控（回归矩阵、风险基准、配置参数治理、回滚演练、部署检查、文档同步）；当前主线已完成 P3/N19，下一项候选为 N20（月度配置治理巡检自动化）。
+当前优先级以 [`features.md`](./features.md) 为准，发布节奏按 release-gate 管控（回归矩阵、风险基准、配置参数治理、回滚演练、部署检查、文档同步）；当前主线已完成 P4/N25（阈值回写协调器），下一项关注为“阈值提案命中率观察 + 是否启用定时受控 apply”。
 
 文档同步策略：当 `docs/features.md` 发生变更时，必须在同一 PR 同步更新 `README.md` 与 `ARCHITECTURE.md`。可以执行：
 
@@ -71,7 +71,7 @@ make config-governance
 make release-gate
 ```
 
-该检查默认对比 `origin/master...HEAD`，若只改了 `docs/features.md` 会直接失败，避免能力矩阵与总览文档漂移。`make integration-matrix` 用于执行网关级集成矩阵（多通道、多 Agent、子代理、定时任务、工具与故障注入）；`make risk-benchmark` 用于执行 `provider_policy/supply_chain` 风险巡检基准，并扩展校验场景基准矩阵（`config/scenario-benchmark-matrix.json`）与竞品追踪快照（`config/competitor-tracking.json`），生成 `output/risk/benchmark-latest.json`。`make config-governance` 用于输出配置参数级审计报告（`output/config/governance-latest.json`），覆盖 agents/bindings/session/tools 四大域的高风险参数校验。`make competitor-tracking-refresh` 提供竞品活跃度/发布频率半自动刷新（建议配置 `GH_TOKEN` 或 `GITHUB_TOKEN` 以避免 API 限流）。`make release-gate` 会串联配置边界门禁（`make check-config-boundary`）、服务边界门禁（`make check-service-boundary`）、配置参数治理门禁（`make config-governance`）、测试稳定性门禁（含 `make test-stability` 与 Windows 编译回归）、集成矩阵、风险基准门禁、回滚演练、部署资产检查与文档门禁。
+该检查默认对比 `origin/master...HEAD`，若只改了 `docs/features.md` 会直接失败，避免能力矩阵与总览文档漂移。`make integration-matrix` 用于执行网关级集成矩阵（多通道、多 Agent、子代理、定时任务、工具与故障注入）；`make risk-benchmark` 用于执行 `provider_policy/supply_chain` 风险巡检基准，并扩展校验场景基准矩阵（`config/scenario-benchmark-matrix.json`）与竞品追踪快照（`config/competitor-tracking.json`），生成 `output/risk/benchmark-latest.json`。风险基准链路现在会串联 `make cost-threshold-history` 与 `make cost-threshold-reconcile`，输出 `output/cost/threshold-history-latest.json` 与 `output/cost/threshold-reconcile-latest.json`。`make config-governance` 用于输出配置参数级审计报告（`output/config/governance-latest.json`），覆盖 agents/bindings/session/tools 四大域的高风险参数校验。`make competitor-tracking-refresh` 提供竞品活跃度/发布频率半自动刷新（建议配置 `GH_TOKEN` 或 `GITHUB_TOKEN` 以避免 API 限流）。`make release-gate` 会串联配置边界门禁（`make check-config-boundary`）、服务边界门禁（`make check-service-boundary`）、配置参数治理门禁（`make config-governance`）、测试稳定性门禁（含 `make test-stability` 与 Windows 编译回归）、集成矩阵、风险基准门禁（含阈值历史/回写协调检查）、回滚演练、部署资产检查与文档门禁。
 
 在执行层，Alter0 复用成熟 Agent CLI（`codex`、`claude_code`），自身聚焦编排与治理，不重建模型执行栈。接收器（CLI/HTTP/Web）与执行器通过稳定接口解耦，允许在不影响任务存储和路由策略的前提下独立扩展通道或替换执行后端。当前主线新增了 Telegram（long polling）与 Slack（Events API）外部通道适配器，并沿用统一 `Message.Envelope` 处理文本/图片等多媒体出入站消息。扩展能力以 Skill 为主入口，外部能力（如 MCP）可通过扩展层纳入执行链路。
 
@@ -235,6 +235,7 @@ docker run --rm -p 8080:8080 \
 - `runtime.maintenance.task_memory_open_retention_days`: 开放任务记忆清理天数（`0` 表示禁用）
 - `runtime.queue.*`: 执行队列开关、并发、重试与超时策略
 - `runtime.shutdown.drain_timeout_sec`: 统一停机排空等待时间（queue/scheduler/http）
+- `runtime.observability.cost.*`: 成本告警阈值（session share / prompt-output ratio / heavy-session min tokens）
 - `security.admin_user_ids`: 管理命令授权用户
 - `security.tools.global_allow/global_deny`: 网关级工具 allow/deny 列表
 - `security.tools.require_confirm`: 额外二次确认清单（高风险工具 `browser/canvas/nodes/message` 无论配置都会强制确认）
@@ -264,7 +265,7 @@ docker run --rm -p 8080:8080 \
 
 `/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
 
-成本治理字段 `cost.threshold_guidance` 现在同时提供全局 p90 建议与 `workload_tiers` 分层建议（按 token 量级 1x-2x、2x-4x、4x+）。
+成本治理字段 `cost.threshold_guidance` 现在同时提供全局 p90 建议与 `workload_tiers` 分层建议（按 token 量级 1x-2x、2x-4x、4x+）；`make cost-threshold-reconcile` 会基于该建议生成受限步长的阈值调优提案，并可通过 `--apply` 写回 `runtime.observability.cost` 配置。
 
 管理员命令：
 
