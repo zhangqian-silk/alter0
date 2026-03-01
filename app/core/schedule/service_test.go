@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"alter0/app/core/scheduler"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -103,6 +105,68 @@ func TestServiceExecutesAtJob(t *testing.T) {
 	defer dispatcher.mu.Unlock()
 	if dispatcher.direct == 0 {
 		t.Fatalf("expected direct delivery")
+	}
+}
+
+func TestServiceDispatchWithSchedulerLoop(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	store := openTestStore(t)
+	dispatcher := &fakeDispatcher{}
+	svc := NewService(store, dispatcher)
+
+	job, err := svc.Create(ctx, CreateRequest{
+		Kind: KindAt,
+		At:   time.Now().UTC().Add(20 * time.Millisecond).Format(time.RFC3339),
+		Payload: DeliveryPayload{
+			Mode:      ModeDirect,
+			ChannelID: "cli",
+			To:        "user-1",
+			Content:   "hello",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+
+	jobScheduler := scheduler.New()
+	if err := jobScheduler.Register(scheduler.JobSpec{
+		Name:     "schedule.dispatch_due",
+		Interval: 10 * time.Millisecond,
+		Run: func(runCtx context.Context) error {
+			svc.DispatchDue(runCtx)
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("register scheduler job: %v", err)
+	}
+	if err := jobScheduler.Start(ctx); err != nil {
+		t.Fatalf("start scheduler: %v", err)
+	}
+	defer func() {
+		_ = jobScheduler.Stop(time.Second)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		current, err := svc.Get(ctx, job.ID)
+		if err != nil {
+			t.Fatalf("get schedule: %v", err)
+		}
+		if current.Status == StatusCompleted {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected completed status, got %s", current.Status)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	dispatcher.mu.Lock()
+	defer dispatcher.mu.Unlock()
+	if dispatcher.direct == 0 {
+		t.Fatalf("expected direct delivery via scheduler loop")
 	}
 }
 

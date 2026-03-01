@@ -76,11 +76,11 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 ### P1 (Structural Refactor)
 
 1. [x] N11 HTTP layer responsibility convergence (state sinks to service layer)
-2. [ ] N12 Scheduler boundary unification (single scheduling loop authority)
+2. [x] N12 Scheduler boundary unification (single scheduling loop authority)
 3. [ ] N13 Config layer dependency decoupling (`configs` no reverse dependency on runtime packages)
 4. [ ] N15 Service modularization (`core -> service -> infra` layering)
 
-Queue status: N11 is merged in this round. Next item is `P1/N12`.
+Queue status: N12 is merged in this round. Next item is `P1/N13`.
 
 ## 4) Change Rule
 

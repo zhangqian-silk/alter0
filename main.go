@@ -160,6 +160,15 @@ func main() {
 	defer cancel()
 
 	jobScheduler := scheduler.New()
+
+	scheduleStore, err := schedule.NewStore(defaultAgent.Database.Conn())
+	if err != nil {
+		logger.Error("Failed to initialize schedule store: %v", err)
+		os.Exit(1)
+	}
+	scheduleService := schedule.NewService(scheduleStore, gw)
+	httpChannel.SetScheduleService(scheduleService)
+
 	if err := runtime.RegisterMaintenanceJobs(jobScheduler, defaultAgent.TaskStore, runtime.MaintenanceOptions{
 		Enabled:                     cfg.Runtime.Maintenance.Enabled,
 		TaskMemoryRetentionDays:     cfg.Runtime.Maintenance.TaskMemoryRetentionDays,
@@ -168,6 +177,19 @@ func main() {
 		PruneTimeout:                time.Duration(cfg.Runtime.Maintenance.TaskMemoryPruneTimeoutSec) * time.Second,
 	}); err != nil {
 		logger.Error("Failed to register maintenance jobs: %v", err)
+		os.Exit(1)
+	}
+	if err := jobScheduler.Register(scheduler.JobSpec{
+		Name:       "schedule.dispatch_due",
+		Interval:   time.Second,
+		Timeout:    30 * time.Second,
+		RunOnStart: true,
+		Run: func(runCtx context.Context) error {
+			scheduleService.DispatchDue(runCtx)
+			return nil
+		},
+	}); err != nil {
+		logger.Error("Failed to register schedule dispatcher job: %v", err)
 		os.Exit(1)
 	}
 	if err := jobScheduler.Start(ctx); err != nil {
@@ -179,15 +201,6 @@ func main() {
 			logger.Error("Scheduler shutdown timeout: %v", err)
 		}
 	}()
-
-	scheduleStore, err := schedule.NewStore(defaultAgent.Database.Conn())
-	if err != nil {
-		logger.Error("Failed to initialize schedule store: %v", err)
-		os.Exit(1)
-	}
-	scheduleService := schedule.NewService(scheduleStore, gw)
-	scheduleService.Start(ctx)
-	httpChannel.SetScheduleService(scheduleService)
 
 	toolRuntime := toolruntime.NewRuntime(toolruntime.Config{
 		GlobalAllow:    cfg.Security.Tools.GlobalAllow,
