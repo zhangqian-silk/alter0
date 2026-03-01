@@ -7,21 +7,33 @@
     <style>
         :root {
             --bg-color: #0d1117;
-            --chat-bg: #161b22;
+            --panel-bg: #161b22;
             --text-color: #c9d1d9;
             --accent-color: #58a6ff;
             --user-msg-bg: #1f6feb;
             --ai-msg-bg: #21262d;
             --border-color: #30363d;
+            --warn-color: #f2cc60;
+            --danger-color: #f85149;
+            --ok-color: #2ea043;
         }
+        * { box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
+            height: 100vh;
+        }
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 340px;
+            height: 100vh;
+        }
+        .chat-shell {
             display: flex;
             flex-direction: column;
-            height: 100vh;
+            min-width: 0;
         }
         header {
             padding: 1rem;
@@ -31,7 +43,12 @@
             justify-content: space-between;
         }
         h1 { margin: 0; font-size: 1.2rem; }
-        #task-hint { font-size: 0.8rem; color: #8b949e; }
+        #task-hint {
+            font-size: 0.8rem;
+            color: #8b949e;
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
         #chat-container {
             flex: 1;
             overflow-y: auto;
@@ -43,7 +60,7 @@
         .message {
             max-width: 85%;
             padding: 0.8rem 1rem;
-            border-radius: 6px;
+            border-radius: 8px;
             line-height: 1.5;
             white-space: pre-wrap;
         }
@@ -60,58 +77,180 @@
         #input-area {
             padding: 1rem;
             border-top: 1px solid var(--border-color);
-            background-color: var(--chat-bg);
+            background-color: var(--panel-bg);
             display: flex;
-            gap: 0.5rem;
+            flex-direction: column;
+            gap: 0.75rem;
         }
         textarea {
-            flex: 1;
+            width: 100%;
             background-color: var(--bg-color);
             border: 1px solid var(--border-color);
             color: var(--text-color);
-            padding: 0.5rem;
+            padding: 0.6rem;
             border-radius: 6px;
             resize: none;
-            height: 2.5rem;
+            min-height: 3rem;
             font-family: inherit;
         }
         textarea:focus {
             outline: none;
             border-color: var(--accent-color);
         }
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
         button {
             background-color: var(--accent-color);
             color: #fff;
             border: none;
-            padding: 0 1.5rem;
+            padding: 0.5rem 1rem;
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
         }
+        button.secondary {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+        }
+        button.warn {
+            background-color: transparent;
+            border: 1px solid var(--warn-color);
+            color: var(--warn-color);
+        }
+        button.danger {
+            background-color: transparent;
+            border: 1px solid var(--danger-color);
+            color: var(--danger-color);
+        }
         button:hover { opacity: 0.9; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .async-panel {
+            border-left: 1px solid var(--border-color);
+            background: #0f141b;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .panel-head {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .panel-head h2 {
+            margin: 0;
+            font-size: 1rem;
+        }
+        #async-list {
+            list-style: none;
+            margin: 0;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .task-item {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.7rem;
+            background: #10151d;
+        }
+        .task-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+        }
+        .task-id {
+            color: #8b949e;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .task-status {
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-pending { color: var(--warn-color); }
+        .status-completed { color: var(--ok-color); }
+        .status-canceled, .status-timeout { color: var(--danger-color); }
+        .task-content {
+            margin: 0.5rem 0;
+            font-size: 0.85rem;
+            color: #b9c2cc;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .task-actions {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 960px) {
+            .layout {
+                grid-template-columns: 1fr;
+                grid-template-rows: minmax(0, 1fr) 280px;
+            }
+            .async-panel {
+                border-left: none;
+                border-top: 1px solid var(--border-color);
+            }
+        }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Alter0 / Web Console</h1>
-        <span id="status" style="color: #2ea043; font-size: 0.8rem;">● Online</span>
-    </header>
-    <div id="task-hint">Current task: <span id="task-id">&lt;auto&gt;</span></div>
-    <div id="chat-container">
-        <div class="message ai-message">System: ready.</div>
-    </div>
-    <div id="input-area">
-        <textarea id="message-input" placeholder="Type a message..."></textarea>
-        <button id="send-btn">Send</button>
+    <div class="layout">
+        <section class="chat-shell">
+            <header>
+                <h1>Alter0 / Web Console</h1>
+                <span id="status" style="color: var(--ok-color); font-size: 0.8rem;">● Online</span>
+            </header>
+            <div id="task-hint">Current task: <span id="task-id">&lt;auto&gt;</span></div>
+            <div id="chat-container">
+                <div class="message ai-message">System: ready.</div>
+            </div>
+            <div id="input-area">
+                <textarea id="message-input" placeholder="Type a message..."></textarea>
+                <div class="actions">
+                    <button id="send-sync-btn">Send Sync</button>
+                    <button id="send-async-btn" class="secondary">Queue Async</button>
+                </div>
+            </div>
+        </section>
+
+        <aside class="async-panel">
+            <div class="panel-head">
+                <h2>Async Tasks</h2>
+                <div class="actions">
+                    <button id="refresh-async-btn" class="secondary">Refresh</button>
+                </div>
+            </div>
+            <ul id="async-list">
+                <li class="task-item">No async tasks yet.</li>
+            </ul>
+        </aside>
     </div>
 
     <script>
         const chatContainer = document.getElementById('chat-container');
         const messageInput = document.getElementById('message-input');
-        const sendBtn = document.getElementById('send-btn');
+        const sendSyncBtn = document.getElementById('send-sync-btn');
+        const sendAsyncBtn = document.getElementById('send-async-btn');
+        const refreshAsyncBtn = document.getElementById('refresh-async-btn');
+        const asyncList = document.getElementById('async-list');
         const statusIndicator = document.getElementById('status');
         const taskIdLabel = document.getElementById('task-id');
+
         let currentTaskId = '';
         const userId = 'local_user';
 
@@ -123,55 +262,233 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
-        async function sendMessage() {
+        function updateTaskHint(taskId) {
+            if (!taskId) {
+                return;
+            }
+            currentTaskId = taskId;
+            taskIdLabel.textContent = taskId;
+        }
+
+        function buildPayload(content, taskIdOverride) {
+            const payload = {
+                content,
+                user_id: userId
+            };
+            const selectedTask = taskIdOverride || currentTaskId;
+            if (selectedTask) {
+                payload.task_id = selectedTask;
+            }
+            return payload;
+        }
+
+        async function sendSyncMessage() {
             const text = messageInput.value.trim();
             if (!text) return;
 
             messageInput.value = '';
             appendMessage(text, true);
-            sendBtn.disabled = true;
+            sendSyncBtn.disabled = true;
+            sendAsyncBtn.disabled = true;
 
             try {
-                const payload = {
-                    content: text,
-                    user_id: userId
-                };
-                if (currentTaskId) {
-                    payload.task_id = currentTaskId;
-                }
-
                 const response = await fetch('/api/message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(buildPayload(text, ''))
                 });
 
                 if (!response.ok) throw new Error('HTTP ' + response.status);
 
                 const data = await response.json();
-                if (data.task_id) {
-                    currentTaskId = data.task_id;
-                    taskIdLabel.textContent = currentTaskId;
-                }
+                updateTaskHint(data.task_id);
                 const closeHint = data.closed ? '\n[Task closed]' : '';
                 appendMessage(data.response + closeHint, false);
             } catch (error) {
                 appendMessage(`Error: ${error.message}`, false);
-                statusIndicator.style.color = '#da3633';
+                statusIndicator.style.color = 'var(--danger-color)';
                 statusIndicator.textContent = '● Error';
             } finally {
-                sendBtn.disabled = false;
+                sendSyncBtn.disabled = false;
+                sendAsyncBtn.disabled = false;
                 messageInput.focus();
             }
         }
 
-        sendBtn.addEventListener('click', sendMessage);
+        async function submitAsyncTask(content, taskIdOverride) {
+            const response = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(buildPayload(content, taskIdOverride))
+            });
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            return response.json();
+        }
+
+        async function queueAsyncMessage() {
+            const text = messageInput.value.trim();
+            if (!text) return;
+
+            messageInput.value = '';
+            appendMessage(`[queued] ${text}`, true);
+            sendSyncBtn.disabled = true;
+            sendAsyncBtn.disabled = true;
+
+            try {
+                const data = await submitAsyncTask(text, '');
+                appendMessage(`Async accepted: ${data.request_id}`, false);
+                await refreshAsyncTasks();
+            } catch (error) {
+                appendMessage(`Async submit failed: ${error.message}`, false);
+            } finally {
+                sendSyncBtn.disabled = false;
+                sendAsyncBtn.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        async function cancelAsyncTask(requestId) {
+            const response = await fetch(`/api/tasks/${requestId}/cancel`, {
+                method: 'POST'
+            });
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            await refreshAsyncTasks();
+        }
+
+        async function retryAsyncTask(item) {
+            const seedTaskId = item.task_id || (item.result && item.result.task_id) || '';
+            await submitAsyncTask(item.content, seedTaskId);
+            await refreshAsyncTasks();
+        }
+
+        function renderAsyncTasks(items) {
+            asyncList.innerHTML = '';
+            if (!Array.isArray(items) || items.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'task-item';
+                li.textContent = 'No async tasks yet.';
+                asyncList.appendChild(li);
+                return;
+            }
+
+            items.forEach((item) => {
+                const li = document.createElement('li');
+                li.className = 'task-item';
+
+                const headRow = document.createElement('div');
+                headRow.className = 'task-row';
+
+                const idEl = document.createElement('span');
+                idEl.className = 'task-id';
+                idEl.textContent = item.request_id || '-';
+                headRow.appendChild(idEl);
+
+                const statusEl = document.createElement('span');
+                statusEl.className = `task-status status-${item.status || 'pending'}`;
+                statusEl.textContent = item.status || 'pending';
+                headRow.appendChild(statusEl);
+                li.appendChild(headRow);
+
+                const contentEl = document.createElement('div');
+                contentEl.className = 'task-content';
+                contentEl.textContent = (item.content || '').trim() || '<empty>';
+                li.appendChild(contentEl);
+
+                const tailRow = document.createElement('div');
+                tailRow.className = 'task-row';
+                const updatedEl = document.createElement('span');
+                updatedEl.className = 'task-id';
+                updatedEl.textContent = `updated ${item.updated_at || '-'}`;
+                tailRow.appendChild(updatedEl);
+                li.appendChild(tailRow);
+
+                const actions = document.createElement('div');
+                actions.className = 'task-actions';
+
+                if (item.status === 'pending') {
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.className = 'danger';
+                    cancelBtn.textContent = 'Cancel';
+                    cancelBtn.addEventListener('click', async () => {
+                        cancelBtn.disabled = true;
+                        try {
+                            await cancelAsyncTask(item.request_id);
+                        } catch (error) {
+                            appendMessage(`Cancel failed: ${error.message}`, false);
+                        } finally {
+                            cancelBtn.disabled = false;
+                        }
+                    });
+                    actions.appendChild(cancelBtn);
+                }
+
+                if (item.status === 'timeout' || item.status === 'canceled') {
+                    const retryBtn = document.createElement('button');
+                    retryBtn.className = 'warn';
+                    retryBtn.textContent = 'Retry';
+                    retryBtn.addEventListener('click', async () => {
+                        retryBtn.disabled = true;
+                        try {
+                            await retryAsyncTask(item);
+                        } catch (error) {
+                            appendMessage(`Retry failed: ${error.message}`, false);
+                        } finally {
+                            retryBtn.disabled = false;
+                        }
+                    });
+                    actions.appendChild(retryBtn);
+                }
+
+                if (item.status === 'completed' && item.result && item.result.task_id) {
+                    const openBtn = document.createElement('button');
+                    openBtn.className = 'secondary';
+                    openBtn.textContent = 'Use Task';
+                    openBtn.addEventListener('click', () => {
+                        updateTaskHint(item.result.task_id);
+                    });
+                    actions.appendChild(openBtn);
+                }
+
+                if (actions.children.length > 0) {
+                    li.appendChild(actions);
+                }
+                asyncList.appendChild(li);
+            });
+        }
+
+        async function refreshAsyncTasks() {
+            refreshAsyncBtn.disabled = true;
+            try {
+                const response = await fetch('/api/tasks?limit=20');
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                const payload = await response.json();
+                renderAsyncTasks(payload.tasks || []);
+            } catch (error) {
+                appendMessage(`Async refresh failed: ${error.message}`, false);
+            } finally {
+                refreshAsyncBtn.disabled = false;
+            }
+        }
+
+        sendSyncBtn.addEventListener('click', sendSyncMessage);
+        sendAsyncBtn.addEventListener('click', queueAsyncMessage);
+        refreshAsyncBtn.addEventListener('click', refreshAsyncTasks);
+
         messageInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage();
+                sendSyncMessage();
             }
         });
+
+        refreshAsyncTasks();
+        setInterval(refreshAsyncTasks, 10000);
     </script>
 </body>
 </html>

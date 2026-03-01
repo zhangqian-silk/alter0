@@ -235,6 +235,9 @@ func TestAsyncTaskSubmitAndStatus(t *testing.T) {
 	if status.Result == nil || status.Result.TaskID != "task-async" || status.Result.Response != "done" {
 		t.Fatalf("unexpected async result: %+v", status.Result)
 	}
+	if status.Content != "async" || status.UserID != "u-2" {
+		t.Fatalf("unexpected async metadata: %+v", status)
+	}
 }
 
 func TestAsyncTaskCancel(t *testing.T) {
@@ -282,5 +285,58 @@ func TestAsyncTaskCancel(t *testing.T) {
 	}
 	if status.Status != "canceled" {
 		t.Fatalf("expected canceled status, got %+v", status)
+	}
+}
+
+func TestAsyncTaskListIncludesLatestFirst(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	ch.handler = func(msg types.Message) {}
+
+	firstReq := httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewReader([]byte(`{"content":"first","user_id":"u-1"}`)))
+	firstRR := httptest.NewRecorder()
+	ch.handleAsyncTasks(firstRR, firstReq)
+	if firstRR.Code != http.StatusAccepted {
+		t.Fatalf("unexpected first submit status: %d", firstRR.Code)
+	}
+
+	time.Sleep(2 * time.Millisecond)
+
+	secondReq := httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewReader([]byte(`{"content":"second","user_id":"u-1"}`)))
+	secondRR := httptest.NewRecorder()
+	ch.handleAsyncTasks(secondRR, secondReq)
+	if secondRR.Code != http.StatusAccepted {
+		t.Fatalf("unexpected second submit status: %d", secondRR.Code)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/tasks?limit=1", nil)
+	listRR := httptest.NewRecorder()
+	ch.handleAsyncTasks(listRR, listReq)
+	if listRR.Code != http.StatusOK {
+		t.Fatalf("unexpected list status: %d body=%s", listRR.Code, listRR.Body.String())
+	}
+
+	var listed asyncTaskListResponse
+	if err := json.Unmarshal(listRR.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode list response failed: %v", err)
+	}
+	if len(listed.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(listed.Tasks))
+	}
+	if listed.Tasks[0].Content != "second" {
+		t.Fatalf("expected latest task first, got %+v", listed.Tasks[0])
+	}
+
+	statusFilterReq := httptest.NewRequest(http.MethodGet, "/api/tasks?status=completed", nil)
+	statusFilterRR := httptest.NewRecorder()
+	ch.handleAsyncTasks(statusFilterRR, statusFilterReq)
+	if statusFilterRR.Code != http.StatusOK {
+		t.Fatalf("unexpected filtered list status: %d", statusFilterRR.Code)
+	}
+	var filtered asyncTaskListResponse
+	if err := json.Unmarshal(statusFilterRR.Body.Bytes(), &filtered); err != nil {
+		t.Fatalf("decode filtered list failed: %v", err)
+	}
+	if len(filtered.Tasks) != 0 {
+		t.Fatalf("expected no completed tasks, got %d", len(filtered.Tasks))
 	}
 }

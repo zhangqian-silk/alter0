@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -160,6 +161,9 @@ type asyncRequest struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Status    string
+	Content   string
+	UserID    string
+	TaskID    string
 	Result    *outgoingResponse
 }
 
@@ -176,7 +180,14 @@ type asyncTaskResponse struct {
 	Status    string            `json:"status"`
 	CreatedAt string            `json:"created_at"`
 	UpdatedAt string            `json:"updated_at"`
+	Content   string            `json:"content,omitempty"`
+	UserID    string            `json:"user_id,omitempty"`
+	TaskID    string            `json:"task_id,omitempty"`
 	Result    *outgoingResponse `json:"result,omitempty"`
+}
+
+type asyncTaskListResponse struct {
+	Tasks []asyncTaskResponse `json:"tasks"`
 }
 
 func (c *HTTPChannel) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -267,11 +278,14 @@ func (c *HTTPChannel) handleMessage(w http.ResponseWriter, r *http.Request) {
 
 func (c *HTTPChannel) handleAsyncTasks(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/tasks" {
-		if r.Method != http.MethodPost {
+		switch r.Method {
+		case http.MethodPost:
+			c.handleAsyncSubmit(w, r)
+		case http.MethodGet:
+			c.handleAsyncList(w, r)
+		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
 		}
-		c.handleAsyncSubmit(w, r)
 		return
 	}
 
@@ -331,6 +345,9 @@ func (c *HTTPChannel) handleAsyncSubmit(w http.ResponseWriter, r *http.Request) 
 		CreatedAt: now,
 		UpdatedAt: now,
 		Status:    "pending",
+		Content:   req.Content,
+		UserID:    msg.UserID,
+		TaskID:    strings.TrimSpace(req.TaskID),
 	}
 	c.asyncMu.Unlock()
 
@@ -349,6 +366,51 @@ func (c *HTTPChannel) handleAsyncSubmit(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+func (c *HTTPChannel) handleAsyncList(w http.ResponseWriter, r *http.Request) {
+	statusFilter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
+	if statusFilter == "" {
+		statusFilter = "all"
+	}
+	limit := parseListLimit(r.URL.Query().Get("limit"))
+
+	c.asyncMu.Lock()
+	items := make([]*asyncRequest, 0, len(c.async))
+	for _, entry := range c.async {
+		if statusFilter != "all" && entry.Status != statusFilter {
+			continue
+		}
+		copyEntry := *entry
+		items = append(items, &copyEntry)
+	}
+	c.asyncMu.Unlock()
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+
+	if len(items) > limit {
+		items = items[:limit]
+	}
+
+	resp := asyncTaskListResponse{Tasks: make([]asyncTaskResponse, 0, len(items))}
+	for _, entry := range items {
+		resp.Tasks = append(resp.Tasks, asyncTaskResponse{
+			RequestID: entry.RequestID,
+			Status:    entry.Status,
+			CreatedAt: entry.CreatedAt.Format(time.RFC3339),
+			UpdatedAt: entry.UpdatedAt.Format(time.RFC3339),
+			Content:   entry.Content,
+			UserID:    entry.UserID,
+			TaskID:    entry.TaskID,
+			Result:    entry.Result,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 func (c *HTTPChannel) handleAsyncStatus(w http.ResponseWriter, r *http.Request, requestID string) {
 	c.asyncMu.Lock()
 	entry, ok := c.async[requestID]
@@ -363,6 +425,9 @@ func (c *HTTPChannel) handleAsyncStatus(w http.ResponseWriter, r *http.Request, 
 		Status:    entry.Status,
 		CreatedAt: entry.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: entry.UpdatedAt.Format(time.RFC3339),
+		Content:   entry.Content,
+		UserID:    entry.UserID,
+		TaskID:    entry.TaskID,
 		Result:    entry.Result,
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -387,6 +452,9 @@ func (c *HTTPChannel) handleAsyncCancel(w http.ResponseWriter, r *http.Request, 
 		Status:    entry.Status,
 		CreatedAt: entry.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: entry.UpdatedAt.Format(time.RFC3339),
+		Content:   entry.Content,
+		UserID:    entry.UserID,
+		TaskID:    entry.TaskID,
 		Result:    entry.Result,
 	}
 	c.asyncMu.Unlock()
@@ -553,6 +621,21 @@ func parseChunkSize(raw string) int {
 	}
 	if size > maxChunkSizeRunes {
 		return maxChunkSizeRunes
+	}
+	return size
+}
+
+func parseListLimit(raw string) int {
+	const (
+		defaultLimit = 20
+		maxLimit     = 100
+	)
+	size, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || size <= 0 {
+		return defaultLimit
+	}
+	if size > maxLimit {
+		return maxLimit
 	}
 	return size
 }

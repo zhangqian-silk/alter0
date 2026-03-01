@@ -57,7 +57,7 @@ make docs-sync-check
 
 在执行层，Alter0 复用成熟 Agent CLI（`codex`、`claude_code`），自身聚焦编排与治理，不重建模型执行栈。接收器（CLI/HTTP/Web）与执行器通过稳定接口解耦，允许在不影响任务存储和路由策略的前提下独立扩展通道或替换执行后端。扩展能力以 Skill 为主入口，外部能力（如 MCP）可通过扩展层纳入执行链路。
 
-在运行治理方面，系统提供基础可观测能力，包括 Web Console、`/health` 探针、执行阶段日志与命令审计日志。为控制上下文开销，任务记忆采用快照式压缩策略，在 prompt 组装时优先保留高价值上下文，尽量降低冗余信息带来的推理噪声。
+在运行治理方面，系统提供基础可观测能力，包括 Web Console、`/health` 探针、执行阶段日志与命令审计日志。Web Console 现在内置异步任务面板，可查看最近请求、刷新状态、取消 pending 请求，并对 timeout/canceled 任务一键重试。为控制上下文开销，任务记忆采用快照式压缩策略，在 prompt 组装时优先保留高价值上下文，尽量降低冗余信息带来的推理噪声。
 
 ## Quick Start
 
@@ -244,9 +244,22 @@ Response:
 {"request_id":"req-...","status":"pending","status_url":"/api/tasks/req-...","cancel_url":"/api/tasks/req-.../cancel","accepted_at":"2026-03-01T00:00:00Z"}
 ```
 
+### `GET /api/tasks`
+
+列出最近异步任务（默认最近 20 条，按创建时间倒序）。支持：
+
+- `status`：`all|pending|completed|canceled|timeout`
+- `limit`：返回数量上限（最大 100）
+
+Response:
+
+```json
+{"tasks":[{"request_id":"req-...","status":"pending","created_at":"...","updated_at":"...","content":"...","user_id":"...","task_id":"optional"}]}
+```
+
 ### `GET /api/tasks/{request_id}`
 
-查询异步任务状态：`pending|completed|canceled|timeout`。当任务完成时，`result` 字段与同步接口响应结构一致。
+查询异步任务状态：`pending|completed|canceled|timeout`。返回包含原始提交上下文（`content/user_id/task_id`）；当任务完成时，`result` 字段与同步接口响应结构一致。
 
 ### `POST /api/tasks/{request_id}/cancel`
 
