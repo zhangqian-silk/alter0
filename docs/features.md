@@ -40,6 +40,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Command permission audit JSONL
 - [x] Runtime status snapshot command audit tail
 - [x] Runtime status snapshot git upstream divergence (`upstream/ahead/behind`)
+- [x] Runtime status expansion for sessions/subagents/schedules/cost metrics
 - [x] Executor stage JSONL logs
 
 ### Execution and Extensibility
@@ -60,7 +61,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 1. [x] N1 Multi-channel gateway baseline with at least two external chat channels
 2. [x] N2 Multi-agent registry and session isolation (`agentId/workspace/agentDir`)
 3. [x] N3 Scheduler center for one-shot `at` + recurring `cron` with direct channel delivery
-4. [ ] N6 Runtime status expansion (sessions/subagents/schedules/cost metrics)
+4. [x] N6 Runtime status expansion (sessions/subagents/schedules/cost metrics)
 
 ### P1 (Orchestration Upgrade)
 
@@ -75,7 +76,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 2. [ ] N6 End-to-end tracing and alerting hardening
 3. [ ] N8 Full integration matrix and release gates for rollback-safe delivery
 
-Queue status: historical P0/P1 items are merged and retained in Capability Matrix; active queue now tracks OpenClaw-aligned gateway requirements only.
+Queue status: P0 queue is complete; next priority is P1-1 (`N2` sub-agent run/session modes with result announce chain).
 
 ## 4) Change Rule
 

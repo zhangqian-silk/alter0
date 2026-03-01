@@ -2,6 +2,9 @@ package runtime
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +14,8 @@ import (
 
 	"alter0/app/core/agent"
 	"alter0/app/core/queue"
+	"alter0/app/core/schedule"
+	_ "modernc.org/sqlite"
 )
 
 func TestSnapshotIncludesExecutorCapabilities(t *testing.T) {
@@ -79,6 +84,210 @@ func TestSnapshotIncludesCommandAuditTail(t *testing.T) {
 	}
 	if tail[1].Reason != "permission denied" {
 		t.Fatalf("expected reason in latest entry, got %#v", tail[1])
+	}
+}
+
+func TestSnapshotIncludesSessionSubagentAndCostMetrics(t *testing.T) {
+	now := time.Now().UTC()
+	baseDir := t.TempDir()
+	dayDir := filepath.Join(baseDir, now.Format("2006-01-02"))
+	if err := os.MkdirAll(dayDir, 0755); err != nil {
+		t.Fatalf("failed to create orchestrator log dir: %v", err)
+	}
+
+	entries := []map[string]interface{}{
+		{
+			"timestamp":    now.Add(-10 * time.Minute).Format(time.RFC3339Nano),
+			"session_id":   "session-main-1",
+			"stage":        "gen",
+			"executor":     "codex",
+			"status":       "ok",
+			"prompt_chars": 400,
+			"output_chars": 120,
+			"user_id":      "u1",
+			"channel_id":   "cli",
+		},
+		{
+			"timestamp":    now.Add(-5 * time.Minute).Format(time.RFC3339Nano),
+			"session_id":   "subagent-42",
+			"stage":        "subagent-gen",
+			"executor":     "codex",
+			"status":       "error",
+			"prompt_chars": 800,
+			"output_chars": 40,
+			"user_id":      "u1",
+			"channel_id":   "cli",
+		},
+		{
+			"timestamp":    now.Add(-2 * time.Hour).Format(time.RFC3339Nano),
+			"session_id":   "session-main-2",
+			"stage":        "gen",
+			"executor":     "claude_code",
+			"status":       "ok",
+			"prompt_chars": 160,
+			"output_chars": 200,
+			"user_id":      "u2",
+			"channel_id":   "http",
+		},
+	}
+
+	logPath := filepath.Join(dayDir, fmt.Sprintf("executor_%s.jsonl", now.Format("20060102-15")))
+	var lines []string
+	for _, item := range entries {
+		payload, err := json.Marshal(item)
+		if err != nil {
+			t.Fatalf("marshal log entry failed: %v", err)
+		}
+		lines = append(lines, string(payload))
+	}
+	if err := os.WriteFile(logPath, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+		t.Fatalf("write orchestrator log failed: %v", err)
+	}
+
+	collector := &StatusCollector{
+		RepoPath:                ".",
+		OrchestratorLogBasePath: baseDir,
+		SessionWindow:           24 * time.Hour,
+		ActiveSessionWindow:     30 * time.Minute,
+		CostInputPer1K:          0.002,
+		CostOutputPer1K:         0.006,
+	}
+
+	snap := collector.Snapshot(context.Background())
+
+	sessions, ok := snap["sessions"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sessions map, got %T", snap["sessions"])
+	}
+	if got := intValue(t, sessions["total"]); got != 3 {
+		t.Fatalf("expected sessions total=3, got %d", got)
+	}
+	if got := intValue(t, sessions["active"]); got != 2 {
+		t.Fatalf("expected active sessions=2, got %d", got)
+	}
+
+	byChannel, ok := sessions["by_channel"].(map[string]int)
+	if !ok {
+		t.Fatalf("expected by_channel map[string]int, got %T", sessions["by_channel"])
+	}
+	if byChannel["cli"] != 2 || byChannel["http"] != 1 {
+		t.Fatalf("unexpected by_channel stats: %#v", byChannel)
+	}
+
+	subagents, ok := snap["subagents"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected subagents map, got %T", snap["subagents"])
+	}
+	if got := intValue(t, subagents["total_sessions"]); got != 1 {
+		t.Fatalf("expected subagent sessions=1, got %d", got)
+	}
+	if got := intValue(t, subagents["active_sessions"]); got != 1 {
+		t.Fatalf("expected active subagent sessions=1, got %d", got)
+	}
+
+	cost, ok := snap["cost"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected cost map, got %T", snap["cost"])
+	}
+	if got := intValue(t, cost["executions"]); got != 3 {
+		t.Fatalf("expected executions=3, got %d", got)
+	}
+	if got := intValue(t, cost["error_executions"]); got != 1 {
+		t.Fatalf("expected error_executions=1, got %d", got)
+	}
+	if got := intValue(t, cost["estimated_total_tokens"]); got != 430 {
+		t.Fatalf("expected estimated_total_tokens=430, got %d", got)
+	}
+	if got, ok := cost["pricing_configured"].(bool); !ok || !got {
+		t.Fatalf("expected pricing_configured=true, got %#v", cost["pricing_configured"])
+	}
+}
+
+func TestSnapshotIncludesExpandedScheduleMetrics(t *testing.T) {
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:runtime-status-%d?mode=memory&cache=shared", time.Now().UnixNano()))
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer db.Close()
+
+	store, err := schedule.NewStore(db)
+	if err != nil {
+		t.Fatalf("create schedule store failed: %v", err)
+	}
+
+	now := time.Now().UTC()
+	seed := []schedule.Job{
+		{
+			ID:        "at-active-overdue",
+			Kind:      schedule.KindAt,
+			Spec:      now.Add(-1 * time.Minute).Format(time.RFC3339),
+			Status:    schedule.StatusActive,
+			Payload:   schedule.DeliveryPayload{Mode: schedule.ModeDirect, ChannelID: "cli", To: "u1", Content: "ping"},
+			NextRunAt: now.Add(-1 * time.Minute),
+		},
+		{
+			ID:        "cron-active-soon",
+			Kind:      schedule.KindCron,
+			Spec:      "*/5 * * * *",
+			Status:    schedule.StatusActive,
+			Payload:   schedule.DeliveryPayload{Mode: schedule.ModeAgentTurn, ChannelID: "cli", To: "u1", Content: "ping", AgentID: "default"},
+			NextRunAt: now.Add(3 * time.Minute),
+		},
+		{
+			ID:      "paused",
+			Kind:    schedule.KindCron,
+			Spec:    "*/10 * * * *",
+			Status:  schedule.StatusPaused,
+			Payload: schedule.DeliveryPayload{Mode: schedule.ModeDirect, ChannelID: "cli", To: "u1", Content: "paused"},
+		},
+	}
+	for _, item := range seed {
+		if _, err := store.Create(context.Background(), item); err != nil {
+			t.Fatalf("seed schedule failed: %v", err)
+		}
+	}
+
+	service := schedule.NewService(store, nil)
+	collector := &StatusCollector{RepoPath: ".", ScheduleService: service}
+
+	snap := collector.Snapshot(context.Background())
+	raw, ok := snap["schedules"]
+	if !ok {
+		t.Fatal("expected schedules section in snapshot")
+	}
+	stats, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected schedules map, got %T", raw)
+	}
+	if got := intValue(t, stats["total"]); got != 3 {
+		t.Fatalf("expected total schedules=3, got %d", got)
+	}
+	if got := intValue(t, stats["active_overdue"]); got != 1 {
+		t.Fatalf("expected active_overdue=1, got %d", got)
+	}
+	if got := intValue(t, stats["active_due_in_5m"]); got != 1 {
+		t.Fatalf("expected active_due_in_5m=1, got %d", got)
+	}
+
+	kind, ok := stats["kind"].(map[string]int)
+	if !ok {
+		t.Fatalf("expected kind map[string]int, got %T", stats["kind"])
+	}
+	if kind[schedule.KindAt] != 1 || kind[schedule.KindCron] != 2 {
+		t.Fatalf("unexpected kind metrics: %#v", kind)
+	}
+
+	deliveryMode, ok := stats["delivery_mode"].(map[string]int)
+	if !ok {
+		t.Fatalf("expected delivery_mode map[string]int, got %T", stats["delivery_mode"])
+	}
+	if deliveryMode[schedule.ModeDirect] != 2 || deliveryMode[schedule.ModeAgentTurn] != 1 {
+		t.Fatalf("unexpected delivery_mode metrics: %#v", deliveryMode)
+	}
+
+	nextRunAt, ok := stats["next_active_run_at"].(string)
+	if !ok || strings.TrimSpace(nextRunAt) == "" {
+		t.Fatalf("expected next_active_run_at to be non-empty string, got %#v", stats["next_active_run_at"])
 	}
 }
 
@@ -256,5 +465,20 @@ func writeRepoFile(t *testing.T, repoPath, relPath, content string) {
 	absPath := filepath.Join(repoPath, relPath)
 	if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
 		t.Fatalf("write file failed: %v", err)
+	}
+}
+
+func intValue(t *testing.T, v interface{}) int {
+	t.Helper()
+	switch value := v.(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		t.Fatalf("expected numeric value, got %T", v)
+		return 0
 	}
 }
