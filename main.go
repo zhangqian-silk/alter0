@@ -115,6 +115,15 @@ func main() {
 
 	httpChannel := http.NewHTTPChannel(8080)
 	httpChannel.SetShutdownTimeout(shutdownTimeout)
+	httpChannel.SetSubagentAnnouncer(func(ctx context.Context, announcement http.SubagentAnnouncement) error {
+		meta := map[string]interface{}{
+			"subagent_id": announcement.SubagentID,
+			"mode":        announcement.Mode,
+			"turn":        announcement.Turn,
+			"status":      announcement.Status,
+		}
+		return gw.DeliverDirect(ctx, announcement.ChannelID, announcement.To, announcement.Message, meta)
+	})
 	gw.RegisterChannel(httpChannel)
 
 	if cfg.Channels.Telegram.Enabled {

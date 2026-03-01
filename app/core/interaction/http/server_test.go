@@ -364,3 +364,141 @@ func TestAsyncTaskListIncludesLatestFirst(t *testing.T) {
 		t.Fatalf("expected no completed tasks, got %d", len(filtered.Tasks))
 	}
 }
+
+func TestSubagentRunModeCompletesAndAnnounces(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	ch.handler = func(msg types.Message) {
+		err := ch.Send(context.Background(), types.Message{
+			RequestID: msg.RequestID,
+			TaskID:    "task-sub-run",
+			Content:   "subagent-result",
+			Meta: map[string]interface{}{
+				"closed":   false,
+				"decision": "existing",
+			},
+		})
+		if err != nil {
+			t.Fatalf("send response failed: %v", err)
+		}
+	}
+
+	announced := make(chan SubagentAnnouncement, 1)
+	ch.SetSubagentAnnouncer(func(ctx context.Context, announcement SubagentAnnouncement) error {
+		announced <- announcement
+		return nil
+	})
+
+	body := []byte(`{"mode":"run","content":"do it","user_id":"u-sub","announce":{"channel_id":"telegram","to":"chat-1"}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/subagents", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	ch.handleSubagents(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("unexpected status code: %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var created subagentStatusResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+	if created.SubagentID == "" {
+		t.Fatalf("expected subagent id, got %+v", created)
+	}
+
+	time.Sleep(30 * time.Millisecond)
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/subagents/"+created.SubagentID, nil)
+	statusRR := httptest.NewRecorder()
+	ch.handleSubagents(statusRR, statusReq)
+	if statusRR.Code != http.StatusOK {
+		t.Fatalf("unexpected status code: %d body=%s", statusRR.Code, statusRR.Body.String())
+	}
+
+	var status subagentStatusResponse
+	if err := json.Unmarshal(statusRR.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode status failed: %v", err)
+	}
+	if status.Status != "completed" {
+		t.Fatalf("expected completed status, got %+v", status)
+	}
+	if status.Result == nil || status.Result.Response != "subagent-result" {
+		t.Fatalf("unexpected subagent result: %+v", status.Result)
+	}
+
+	select {
+	case announcement := <-announced:
+		if announcement.ChannelID != "telegram" || announcement.To != "chat-1" {
+			t.Fatalf("unexpected announce target: %+v", announcement)
+		}
+		if announcement.SubagentID != created.SubagentID || announcement.Mode != "run" || announcement.Status != "completed" {
+			t.Fatalf("unexpected announce payload: %+v", announcement)
+		}
+		if !strings.Contains(announcement.Message, "subagent-result") {
+			t.Fatalf("expected result in announcement message, got: %s", announcement.Message)
+		}
+	default:
+		t.Fatal("expected one announcement")
+	}
+}
+
+func TestSubagentSessionModeSupportsTurns(t *testing.T) {
+	ch := NewHTTPChannel(8080)
+	ch.handler = func(msg types.Message) {
+		err := ch.Send(context.Background(), types.Message{
+			RequestID: msg.RequestID,
+			TaskID:    "task-sub-session",
+			Content:   "turn:" + msg.Content,
+			Meta: map[string]interface{}{
+				"closed":   false,
+				"decision": "existing",
+			},
+		})
+		if err != nil {
+			t.Fatalf("send response failed: %v", err)
+		}
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/subagents", bytes.NewReader([]byte(`{"mode":"session","user_id":"u-s"}`)))
+	createRR := httptest.NewRecorder()
+	ch.handleSubagents(createRR, createReq)
+	if createRR.Code != http.StatusAccepted {
+		t.Fatalf("unexpected create status: %d body=%s", createRR.Code, createRR.Body.String())
+	}
+
+	var created subagentStatusResponse
+	if err := json.Unmarshal(createRR.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+	if created.Status != "active" {
+		t.Fatalf("expected active session, got %+v", created)
+	}
+
+	turnReq := httptest.NewRequest(http.MethodPost, "/api/subagents/"+created.SubagentID+"/messages", bytes.NewReader([]byte(`{"content":"hello"}`)))
+	turnRR := httptest.NewRecorder()
+	ch.handleSubagents(turnRR, turnReq)
+	if turnRR.Code != http.StatusOK {
+		t.Fatalf("unexpected turn status: %d body=%s", turnRR.Code, turnRR.Body.String())
+	}
+
+	var turn subagentTurnResponse
+	if err := json.Unmarshal(turnRR.Body.Bytes(), &turn); err != nil {
+		t.Fatalf("decode turn response failed: %v", err)
+	}
+	if turn.Status != "completed" || turn.Result == nil || turn.Result.Response != "turn:hello" {
+		t.Fatalf("unexpected turn response: %+v", turn)
+	}
+
+	closeReq := httptest.NewRequest(http.MethodPost, "/api/subagents/"+created.SubagentID+"/close", nil)
+	closeRR := httptest.NewRecorder()
+	ch.handleSubagents(closeRR, closeReq)
+	if closeRR.Code != http.StatusOK {
+		t.Fatalf("unexpected close status: %d body=%s", closeRR.Code, closeRR.Body.String())
+	}
+
+	var closed subagentStatusResponse
+	if err := json.Unmarshal(closeRR.Body.Bytes(), &closed); err != nil {
+		t.Fatalf("decode close response failed: %v", err)
+	}
+	if closed.Status != "closed" {
+		t.Fatalf("expected closed status, got %+v", closed)
+	}
+}
