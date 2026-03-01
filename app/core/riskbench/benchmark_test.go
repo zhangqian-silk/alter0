@@ -190,6 +190,165 @@ func TestEvaluatePathsPassesWithScenarioAndCompetitorCoverage(t *testing.T) {
 	}
 }
 
+func TestEvaluatePathsPassesWithCostThresholdHistoryCoverage(t *testing.T) {
+	now := time.Date(2026, 3, 2, 18, 0, 0, 0, time.UTC)
+	watchlistPath, runbookPath := writeFixtureFiles(t, watchlistDocument{
+		UpdatedAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+		Items: []watchlistItem{
+			{
+				ID:           "provider-policy-drift",
+				Category:     "provider_policy",
+				Severity:     "high",
+				Status:       "watch",
+				NextReviewAt: now.Add(24 * time.Hour).Format(time.RFC3339),
+			},
+			{
+				ID:           "plugin-provenance",
+				Category:     "supply_chain",
+				Severity:     "medium",
+				Status:       "watch",
+				NextReviewAt: now.Add(24 * time.Hour).Format(time.RFC3339),
+			},
+		},
+	})
+
+	dir := t.TempDir()
+	thresholdPath := filepath.Join(dir, "threshold-history-latest.json")
+	writeJSONFixture(t, thresholdPath, costThresholdHistoryDocument{
+		GeneratedAt: now.Add(-90 * time.Minute).Format(time.RFC3339),
+		ThresholdGuidance: struct {
+			Status         string `json:"status"`
+			SampleSessions int    `json:"sample_sessions"`
+			NeedsTuning    bool   `json:"needs_tuning"`
+		}{
+			Status:         "ok",
+			SampleSessions: 3,
+			NeedsTuning:    false,
+		},
+		Alerts: struct {
+			HitRate struct {
+				Samples                   int     `json:"samples"`
+				SessionCostHotspot        float64 `json:"session_cost_hotspot"`
+				SessionCompactionPressure float64 `json:"session_compaction_pressure"`
+			} `json:"hit_rate"`
+		}{
+			HitRate: struct {
+				Samples                   int     `json:"samples"`
+				SessionCostHotspot        float64 `json:"session_cost_hotspot"`
+				SessionCompactionPressure float64 `json:"session_compaction_pressure"`
+			}{
+				Samples:                   6,
+				SessionCostHotspot:        0.33,
+				SessionCompactionPressure: 0.17,
+			},
+		},
+		Archive: struct {
+			Week string `json:"week"`
+		}{
+			Week: "2026-W10",
+		},
+	})
+
+	report, err := EvaluatePaths(watchlistPath, runbookPath, Config{
+		Now:                     now,
+		MaxStaleHours:           48,
+		FailOnOverdue:           true,
+		ThresholdHistoryPath:    thresholdPath,
+		ThresholdMaxStaleDays:   8,
+		RequireThresholdHistory: true,
+	})
+	if err != nil {
+		t.Fatalf("EvaluatePaths returned error: %v", err)
+	}
+	if !report.Gate.Passed {
+		t.Fatalf("expected gate pass, got failures=%v warnings=%v", report.Gate.Failures, report.Gate.Warnings)
+	}
+	if report.CostThresholdHistory == nil {
+		t.Fatalf("expected cost threshold history in report")
+	}
+	if report.CostThresholdHistory.Summary.GuidanceStatus != "ok" {
+		t.Fatalf("expected guidance status ok, got %#v", report.CostThresholdHistory.Summary.GuidanceStatus)
+	}
+}
+
+func TestEvaluatePathsFailsWithStaleCostThresholdHistory(t *testing.T) {
+	now := time.Date(2026, 3, 2, 18, 0, 0, 0, time.UTC)
+	watchlistPath, runbookPath := writeFixtureFiles(t, watchlistDocument{
+		UpdatedAt: now.Add(-2 * time.Hour).Format(time.RFC3339),
+		Items: []watchlistItem{
+			{
+				ID:           "provider-policy-drift",
+				Category:     "provider_policy",
+				Severity:     "high",
+				Status:       "watch",
+				NextReviewAt: now.Add(24 * time.Hour).Format(time.RFC3339),
+			},
+			{
+				ID:           "plugin-provenance",
+				Category:     "supply_chain",
+				Severity:     "medium",
+				Status:       "watch",
+				NextReviewAt: now.Add(24 * time.Hour).Format(time.RFC3339),
+			},
+		},
+	})
+
+	dir := t.TempDir()
+	thresholdPath := filepath.Join(dir, "threshold-history-latest.json")
+	writeJSONFixture(t, thresholdPath, costThresholdHistoryDocument{
+		GeneratedAt: now.Add(-12 * 24 * time.Hour).Format(time.RFC3339),
+		ThresholdGuidance: struct {
+			Status         string `json:"status"`
+			SampleSessions int    `json:"sample_sessions"`
+			NeedsTuning    bool   `json:"needs_tuning"`
+		}{
+			Status:         "ok",
+			SampleSessions: 2,
+			NeedsTuning:    false,
+		},
+		Alerts: struct {
+			HitRate struct {
+				Samples                   int     `json:"samples"`
+				SessionCostHotspot        float64 `json:"session_cost_hotspot"`
+				SessionCompactionPressure float64 `json:"session_compaction_pressure"`
+			} `json:"hit_rate"`
+		}{
+			HitRate: struct {
+				Samples                   int     `json:"samples"`
+				SessionCostHotspot        float64 `json:"session_cost_hotspot"`
+				SessionCompactionPressure float64 `json:"session_compaction_pressure"`
+			}{
+				Samples:                   4,
+				SessionCostHotspot:        0.5,
+				SessionCompactionPressure: 0.25,
+			},
+		},
+		Archive: struct {
+			Week string `json:"week"`
+		}{
+			Week: "2026-W08",
+		},
+	})
+
+	report, err := EvaluatePaths(watchlistPath, runbookPath, Config{
+		Now:                     now,
+		MaxStaleHours:           48,
+		FailOnOverdue:           true,
+		ThresholdHistoryPath:    thresholdPath,
+		ThresholdMaxStaleDays:   8,
+		RequireThresholdHistory: true,
+	})
+	if err != nil {
+		t.Fatalf("EvaluatePaths returned error: %v", err)
+	}
+	if report.Gate.Passed {
+		t.Fatalf("expected gate fail")
+	}
+	if !containsSubstring(report.Gate.Failures, "cost threshold history: cost threshold history is stale") {
+		t.Fatalf("expected stale threshold history failure, got %v", report.Gate.Failures)
+	}
+}
+
 func TestEvaluatePathsFailsOnMissingCategoryAndOverdue(t *testing.T) {
 	now := time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC)
 	watchlistPath, runbookPath := writeFixtureFiles(t, watchlistDocument{
