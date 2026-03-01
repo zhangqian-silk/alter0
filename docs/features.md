@@ -54,7 +54,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Queue status snapshot includes configured workers for runtime diagnostics
 - [x] Queue status snapshot includes last shutdown drain report for timeout diagnostics
 - [x] Tool protocol normalization (`web_search/web_fetch/browser/canvas/nodes/message/tts/memory_search/memory_get`) with policy gates and execution audit JSONL
-- [~] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
+- [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 
 ## 3) Active Priority Queue (OpenClaw Alignment)
@@ -77,11 +77,11 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 ### P2 (Advanced Operations)
 
-1. [~] N4 Deep node/browser/canvas toolchain integration (action schema + request validation slice merged)
+1. [x] N4 Deep node/browser/canvas toolchain integration (action schema + structured validation + runtime live adapter wiring)
 2. [ ] N6 End-to-end tracing and alerting hardening
 3. [ ] N8 Full integration matrix and release gates for rollback-safe delivery
 
-Queue status: P0 queue is complete; P1 queue is complete (`N2/N4/N5/N7` all merged); P2-1 (`N4` deep node/browser/canvas toolchain integration) is in progress, next slice should extend runtime wiring from schema validation to live adapter execution.
+Queue status: P0 queue is complete; P1 queue is complete (`N2/N4/N5/N7` all merged); P2-1 (`N4` deep node/browser/canvas toolchain integration) is merged, next requirement is P2-2 (`N6` end-to-end tracing and alerting hardening).
 
 ## 4) Change Rule
 

@@ -225,7 +225,7 @@ docker run --rm -p 8080:8080 \
 - `security.tools.global_allow/global_deny`: 网关级工具 allow/deny 列表
 - `security.tools.require_confirm`: 额外二次确认清单（高风险工具 `browser/canvas/nodes/message` 无论配置都会强制确认）
 - `security.tools.agent.<agent_id>.allow/deny`: Agent 级工具策略覆盖
-- `tools.protocol.toolchain`: 运行时暴露 `browser/canvas/nodes` 动作 schema（含必填字段与动作白名单）
+- `tools.protocol.toolchain`: 运行时暴露 `browser/canvas/nodes` 动作 schema（含必填字段与动作白名单），并通过 `live_wiring` 标记各工具是否已接入实际执行适配器
 - `security.memory.trusted_channels`: 允许访问完整长期记忆（`MEMORY.md`）的主会话通道
 - `security.memory.restricted_paths`: 共享场景默认限制访问的长期记忆路径前缀
 - `channels.telegram.*`: Telegram bot 轮询收发配置（`enabled` + `bot_token` 为最小启用集）

@@ -285,6 +285,32 @@ func TestRuntimeInvokeValidatesStructuredToolArgs(t *testing.T) {
 	}
 }
 
+func TestRuntimeInvokeUsesRegisteredAdapterWhenCallbackMissing(t *testing.T) {
+	r := NewRuntime(Config{}, t.TempDir())
+	r.RegisterAdapter("browser", func(context.Context, Request) (interface{}, error) {
+		return map[string]interface{}{"connected": true}, nil
+	})
+
+	result := r.Invoke(context.Background(), Request{
+		Tool:      "browser",
+		AgentID:   "default",
+		Confirmed: true,
+		Args: map[string]interface{}{
+			"action": "status",
+		},
+	}, nil)
+	if result.Status != ResultStatusSuccess {
+		t.Fatalf("expected success status, got %+v", result)
+	}
+	data, ok := result.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected map data, got %T", result.Data)
+	}
+	if connected, _ := data["connected"].(bool); !connected {
+		t.Fatalf("expected registered adapter payload, got %+v", data)
+	}
+}
+
 func TestRuntimeStatusSnapshotIncludesToolchainSchema(t *testing.T) {
 	r := NewRuntime(Config{}, t.TempDir())
 	snapshot := r.StatusSnapshot()
@@ -303,6 +329,27 @@ func TestRuntimeStatusSnapshotIncludesToolchainSchema(t *testing.T) {
 	}
 	if _, exists := browser["act_kinds"]; !exists {
 		t.Fatalf("expected browser act_kinds in schema, got %+v", browser)
+	}
+	live, ok := toolchain["live_wiring"].(map[string]bool)
+	if !ok {
+		t.Fatalf("expected live_wiring section, got %T", toolchain["live_wiring"])
+	}
+	if live["browser"] || live["canvas"] || live["nodes"] {
+		t.Fatalf("expected default live wiring false, got %+v", live)
+	}
+
+	r.RegisterAdapter("nodes", func(context.Context, Request) (interface{}, error) {
+		return map[string]interface{}{"ok": true}, nil
+	})
+	updated := r.StatusSnapshot()
+	updatedProtocol, _ := updated["protocol"].(map[string]interface{})
+	updatedToolchain, _ := updatedProtocol["toolchain"].(map[string]interface{})
+	updatedLive, ok := updatedToolchain["live_wiring"].(map[string]bool)
+	if !ok {
+		t.Fatalf("expected updated live_wiring section, got %T", updatedToolchain["live_wiring"])
+	}
+	if !updatedLive["nodes"] || updatedLive["browser"] || updatedLive["canvas"] {
+		t.Fatalf("expected only nodes wired, got %+v", updatedLive)
 	}
 }
 
