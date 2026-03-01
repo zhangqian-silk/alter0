@@ -58,7 +58,7 @@ Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对�
 OpenClaw 对齐版本清单请参考：[`docs/openclaw-alignment.md`](./docs/openclaw-alignment.md)。
 面向 OpenClaw 对齐的未完成需求清单请参考：[`features.md`](./features.md)。
 
-当前优先级以 [`features.md`](./features.md) 为准，发布节奏按 release-gate 管控（回归矩阵、回滚演练、部署检查、文档同步）；当前队列位于 P1（下一项 N15：服务模块化）。
+当前优先级以 [`features.md`](./features.md) 为准，发布节奏按 release-gate 管控（回归矩阵、回滚演练、部署检查、文档同步）；当前队列位于 P2（下一项 N17：风险执行基准与漂移处置手册）。
 
 文档同步策略：当 `docs/features.md` 发生变更时，必须在同一 PR 同步更新 `README.md` 与 `ARCHITECTURE.md`。可以执行：
 
@@ -259,7 +259,7 @@ docker run --rm -p 8080:8080 \
 - `/task memory clear [task_id]`
 - `/task stats`
 
-`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
+`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
 
 管理员命令：
 
@@ -374,7 +374,7 @@ Response (`202 Accepted`):
 
 ### `GET /api/status`
 
-返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
+返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
 
 ## Observability and Data Layout
 

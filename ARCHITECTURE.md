@@ -307,7 +307,7 @@ Required modules:
 - `POST /api/subagents/{id}/messages` submits a turn to a `session` sub-agent
 - `POST /api/subagents/{id}/close` closes a `session` sub-agent
 - sub-agent requests may include `announce.channel_id + announce.to`, which triggers gateway direct delivery after each completed turn
-- `GET /api/status` aggregated runtime status (includes schedules/session/subagent/cost metrics, gateway trace summary, runtime alerts, recent command audit tail, and git upstream divergence)
+- `GET /api/status` aggregated runtime status (includes schedules/session/subagent/cost metrics, gateway trace summary, risk watchlist snapshot, runtime alerts, recent command audit tail, and git upstream divergence)
 
 ### 7.3 Command Surface
 
@@ -351,7 +351,7 @@ Shutdown sequence:
 - schedule status/kind/delivery-mode counters, active overdue windows, and next active run marker
 - session and sub-agent activity windows (`total/active/by_channel`) from orchestrator execution logs
 - execution latency/error rate plus model usage estimates (`chars/tokens/cost`) with optional pricing config
-- gateway trace window aggregates (`total/error/by_event/by_channel/latest_at`) and derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/executor_unavailable`)
+- gateway trace window aggregates (`total/error/by_event/by_channel/latest_at`) and derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/executor_unavailable/risk_watchlist_{missing,invalid,stale,item_overdue}`)
 - routing/closing decision distribution
 - plugin and MCP connector health
 
@@ -450,7 +450,7 @@ P2 (Advanced Operations):
 - N6 end-to-end tracing + alerting hardening
 - N8 integration matrix and release gate automation
 
-Current status: P0 queue is complete; P1 execution now has N11/N12/N13 merged, and next delivery item is N15 service modularization from a release-gated baseline (`make release-gate`).
+Current status: P0/P1 queues are complete; P2 risk-hardening now has N16 merged, and next delivery item is N17 risk execution benchmark + drift triage runbook from a release-gated baseline (`make release-gate`).
 
 ## Feature Roadmap
 
