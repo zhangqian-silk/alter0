@@ -355,7 +355,7 @@ Shutdown sequence:
 - channel degradation summary (`channel_degradation`) with per-channel severity, fallback candidates, recovery recommendations, threshold policy payload (`thresholds`), and suppressed-noise accounting (`suppressed_channels` + per-entry `threshold_profile`)
 - channel chaos drill regression artifact (`output/channel-chaos/drill-latest.json`) generated from `config/channel-chaos-matrix.json`, including scenario-level threshold-profile assertions (`min_suppressed_channels` / `required_threshold_profile`)
 - trace-to-chaos candidate extraction artifact (`output/channel-chaos/candidates-latest.json`) sampled from `output/trace` for weekly review and matrix backfill (archived under `output/channel-chaos/candidates/<ISO-week>/`)
-- weekly channel-chaos calibration artifact (`output/channel-chaos/calibration-latest.json`) combining candidate adoption rate and threshold false-positive reduction trend
+- weekly channel-chaos calibration artifact (`output/channel-chaos/calibration-latest.json`) combining candidate adoption rate, matrix source-candidate coverage (`tag_coverage`/`missing_scenario_tags`/`matrix_unseen_candidates`), per-channel attribution (`adoption_by_channel`), and threshold false-positive reduction trend
 - derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/channel_degradation/executor_unavailable/session_cost_hotspot/session_compaction_pressure/risk_watchlist_{missing,invalid,stale,item_overdue}`)
 - routing/closing decision distribution
 - plugin and MCP connector health
@@ -455,7 +455,7 @@ P2 (Advanced Operations):
 - N6 end-to-end tracing + alerting hardening
 - N8 integration matrix and release gate automation
 
-Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance + P5 channel resilience are merged through N32 (channel degradation threshold governance + threshold-profile chaos regression + trace-to-scenario candidate extraction + weekly calibration telemetry). Next delivery focus is continuous weekly calibration execution and matrix adoption tracking.
+Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance + P5 channel resilience are merged through N33 (channel degradation threshold governance + threshold-profile chaos regression + trace-to-scenario candidate extraction + weekly calibration telemetry + source-candidate coverage/channel attribution). Next delivery focus is continuous weekly calibration execution and matrix adoption tracking.
 
 ## Feature Roadmap
 
