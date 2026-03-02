@@ -97,6 +97,21 @@ func TestApplyDefaultsSetsQueueDefaults(t *testing.T) {
 	if cfg.Runtime.Observability.Cost.HeavySessionMinTokens != 1200 {
 		t.Fatalf("unexpected heavy session min tokens: %d", cfg.Runtime.Observability.Cost.HeavySessionMinTokens)
 	}
+	if cfg.Runtime.Observability.ChannelDegradation.MinEvents != 1 {
+		t.Fatalf("unexpected channel degradation min_events: %d", cfg.Runtime.Observability.ChannelDegradation.MinEvents)
+	}
+	if cfg.Runtime.Observability.ChannelDegradation.WarningErrorRateThreshold != 0.001 {
+		t.Fatalf("unexpected channel degradation warning threshold: %f", cfg.Runtime.Observability.ChannelDegradation.WarningErrorRateThreshold)
+	}
+	if cfg.Runtime.Observability.ChannelDegradation.CriticalErrorRateThreshold != 0.5 {
+		t.Fatalf("unexpected channel degradation critical error rate threshold: %f", cfg.Runtime.Observability.ChannelDegradation.CriticalErrorRateThreshold)
+	}
+	if cfg.Runtime.Observability.ChannelDegradation.CriticalErrorCountThreshold != 3 {
+		t.Fatalf("unexpected channel degradation critical error count threshold: %d", cfg.Runtime.Observability.ChannelDegradation.CriticalErrorCountThreshold)
+	}
+	if cfg.Runtime.Observability.ChannelDegradation.CriticalDisconnectedThreshold != 1 {
+		t.Fatalf("unexpected channel degradation critical disconnected threshold: %d", cfg.Runtime.Observability.ChannelDegradation.CriticalDisconnectedThreshold)
+	}
 }
 
 func TestApplyDefaultsSetsShutdownDrainTimeout(t *testing.T) {
@@ -136,6 +151,66 @@ func TestApplyDefaultsSanitizesCostObservabilityThresholds(t *testing.T) {
 	}
 	if cfg.Runtime.Observability.Cost.HeavySessionMinTokens != 1200 {
 		t.Fatalf("expected heavy session min tokens default, got %d", cfg.Runtime.Observability.Cost.HeavySessionMinTokens)
+	}
+}
+
+func TestApplyDefaultsSanitizesChannelDegradationObservabilityThresholds(t *testing.T) {
+	cfg := Config{
+		Runtime: RuntimeConfig{
+			Observability: ObservabilityConfig{
+				ChannelDegradation: ChannelDegradationGovConfig{
+					MinEvents:                     0,
+					WarningErrorRateThreshold:     -1,
+					CriticalErrorRateThreshold:    2,
+					CriticalErrorCountThreshold:   0,
+					CriticalDisconnectedThreshold: 0,
+					ChannelOverrides: map[string]ChannelDegradationOverride{
+						" Slack ": {
+							MinEvents:                     0,
+							WarningErrorRateThreshold:     0.2,
+							CriticalErrorRateThreshold:    0.1,
+							CriticalErrorCountThreshold:   0,
+							CriticalDisconnectedThreshold: 0,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	applyDefaults(&cfg)
+
+	channelCfg := cfg.Runtime.Observability.ChannelDegradation
+	if channelCfg.MinEvents != 1 {
+		t.Fatalf("expected min_events default 1, got %d", channelCfg.MinEvents)
+	}
+	if channelCfg.WarningErrorRateThreshold != 0.001 {
+		t.Fatalf("expected warning threshold default 0.001, got %f", channelCfg.WarningErrorRateThreshold)
+	}
+	if channelCfg.CriticalErrorRateThreshold != 0.5 {
+		t.Fatalf("expected critical error rate default 0.5, got %f", channelCfg.CriticalErrorRateThreshold)
+	}
+	if channelCfg.CriticalErrorCountThreshold != 3 {
+		t.Fatalf("expected critical error count default 3, got %d", channelCfg.CriticalErrorCountThreshold)
+	}
+	if channelCfg.CriticalDisconnectedThreshold != 1 {
+		t.Fatalf("expected critical disconnected default 1, got %d", channelCfg.CriticalDisconnectedThreshold)
+	}
+	slack, ok := channelCfg.ChannelOverrides["slack"]
+	if !ok {
+		t.Fatalf("expected normalized channel override key slack, got %#v", channelCfg.ChannelOverrides)
+	}
+	if slack.MinEvents != channelCfg.MinEvents {
+		t.Fatalf("expected slack min_events inherit %d, got %d", channelCfg.MinEvents, slack.MinEvents)
+	}
+	if slack.CriticalErrorRateThreshold != slack.WarningErrorRateThreshold {
+		t.Fatalf("expected slack critical threshold >= warning threshold, got warning=%f critical=%f", slack.WarningErrorRateThreshold, slack.CriticalErrorRateThreshold)
+	}
+	if slack.CriticalErrorCountThreshold != channelCfg.CriticalErrorCountThreshold {
+		t.Fatalf("expected slack critical error count inherit %d, got %d", channelCfg.CriticalErrorCountThreshold, slack.CriticalErrorCountThreshold)
+	}
+	if slack.CriticalDisconnectedThreshold != channelCfg.CriticalDisconnectedThreshold {
+		t.Fatalf("expected slack disconnected threshold inherit %d, got %d", channelCfg.CriticalDisconnectedThreshold, slack.CriticalDisconnectedThreshold)
 	}
 }
 

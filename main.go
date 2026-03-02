@@ -218,10 +218,18 @@ func main() {
 		AlertSessionCostShare:      cfg.Runtime.Observability.Cost.SessionCostShareAlertThreshold,
 		AlertSessionCostMinTokens:  cfg.Runtime.Observability.Cost.HeavySessionMinTokens,
 		AlertSessionPromptOutRatio: cfg.Runtime.Observability.Cost.PromptOutputRatioAlertThreshold,
-		RiskWatchlistPath:          filepath.Join("config", "risk-watchlist.json"),
-		RiskWatchlistStaleAfter:    72 * time.Hour,
-		AgentEntries:               runtimeAgentEntries(agents),
-		ToolRuntime:                toolRuntime,
+		ChannelDegradationDefaults: coreruntime.ChannelDegradationThresholds{
+			MinEvents:                     cfg.Runtime.Observability.ChannelDegradation.MinEvents,
+			WarningErrorRateThreshold:     cfg.Runtime.Observability.ChannelDegradation.WarningErrorRateThreshold,
+			CriticalErrorRateThreshold:    cfg.Runtime.Observability.ChannelDegradation.CriticalErrorRateThreshold,
+			CriticalErrorCountThreshold:   cfg.Runtime.Observability.ChannelDegradation.CriticalErrorCountThreshold,
+			CriticalDisconnectedThreshold: cfg.Runtime.Observability.ChannelDegradation.CriticalDisconnectedThreshold,
+		},
+		ChannelDegradationChannelOverride: toRuntimeChannelDegradationOverrides(cfg.Runtime.Observability.ChannelDegradation.ChannelOverrides),
+		RiskWatchlistPath:                 filepath.Join("config", "risk-watchlist.json"),
+		RiskWatchlistStaleAfter:           72 * time.Hour,
+		AgentEntries:                      runtimeAgentEntries(agents),
+		ToolRuntime:                       toolRuntime,
 	}
 	httpChannel.SetStatusProvider(statusCollector.Snapshot)
 	for _, item := range agents {
@@ -337,6 +345,23 @@ func toToolAgentPolicies(raw map[string]config.ToolAgentPolicy) map[string]toolr
 		out[agentID] = toolruntime.AgentPolicy{
 			Allow: append([]string(nil), policy.Allow...),
 			Deny:  append([]string(nil), policy.Deny...),
+		}
+	}
+	return out
+}
+
+func toRuntimeChannelDegradationOverrides(raw map[string]config.ChannelDegradationOverride) map[string]coreruntime.ChannelDegradationThresholds {
+	if len(raw) == 0 {
+		return map[string]coreruntime.ChannelDegradationThresholds{}
+	}
+	out := make(map[string]coreruntime.ChannelDegradationThresholds, len(raw))
+	for channelID, cfg := range raw {
+		out[channelID] = coreruntime.ChannelDegradationThresholds{
+			MinEvents:                     cfg.MinEvents,
+			WarningErrorRateThreshold:     cfg.WarningErrorRateThreshold,
+			CriticalErrorRateThreshold:    cfg.CriticalErrorRateThreshold,
+			CriticalErrorCountThreshold:   cfg.CriticalErrorCountThreshold,
+			CriticalDisconnectedThreshold: cfg.CriticalDisconnectedThreshold,
 		}
 	}
 	return out

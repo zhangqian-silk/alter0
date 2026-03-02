@@ -77,13 +77,31 @@ type RuntimeConfig struct {
 }
 
 type ObservabilityConfig struct {
-	Cost CostGovernanceConfig `json:"cost"`
+	Cost               CostGovernanceConfig        `json:"cost"`
+	ChannelDegradation ChannelDegradationGovConfig `json:"channel_degradation"`
 }
 
 type CostGovernanceConfig struct {
 	SessionCostShareAlertThreshold  float64 `json:"session_cost_share_alert_threshold"`
 	PromptOutputRatioAlertThreshold float64 `json:"prompt_output_ratio_alert_threshold"`
 	HeavySessionMinTokens           int     `json:"heavy_session_min_tokens"`
+}
+
+type ChannelDegradationGovConfig struct {
+	MinEvents                     int                                   `json:"min_events"`
+	WarningErrorRateThreshold     float64                               `json:"warning_error_rate_threshold"`
+	CriticalErrorRateThreshold    float64                               `json:"critical_error_rate_threshold"`
+	CriticalErrorCountThreshold   int                                   `json:"critical_error_count_threshold"`
+	CriticalDisconnectedThreshold int                                   `json:"critical_disconnected_threshold"`
+	ChannelOverrides              map[string]ChannelDegradationOverride `json:"channel_overrides"`
+}
+
+type ChannelDegradationOverride struct {
+	MinEvents                     int     `json:"min_events"`
+	WarningErrorRateThreshold     float64 `json:"warning_error_rate_threshold"`
+	CriticalErrorRateThreshold    float64 `json:"critical_error_rate_threshold"`
+	CriticalErrorCountThreshold   int     `json:"critical_error_count_threshold"`
+	CriticalDisconnectedThreshold int     `json:"critical_disconnected_threshold"`
 }
 
 type ShutdownConfig struct {
@@ -260,6 +278,14 @@ func defaultConfig() Config {
 					PromptOutputRatioAlertThreshold: 6.0,
 					HeavySessionMinTokens:           1200,
 				},
+				ChannelDegradation: ChannelDegradationGovConfig{
+					MinEvents:                     1,
+					WarningErrorRateThreshold:     0.001,
+					CriticalErrorRateThreshold:    0.5,
+					CriticalErrorCountThreshold:   3,
+					CriticalDisconnectedThreshold: 1,
+					ChannelOverrides:              map[string]ChannelDegradationOverride{},
+				},
 			},
 		},
 		Security: SecurityConfig{
@@ -367,6 +393,7 @@ func applyDefaults(cfg *Config) {
 	if cfg.Runtime.Observability.Cost.HeavySessionMinTokens <= 0 {
 		cfg.Runtime.Observability.Cost.HeavySessionMinTokens = 1200
 	}
+	cfg.Runtime.Observability.ChannelDegradation = sanitizeChannelDegradationConfig(cfg.Runtime.Observability.ChannelDegradation)
 	if cfg.Channels.Telegram.PollIntervalSec <= 0 {
 		cfg.Channels.Telegram.PollIntervalSec = 2
 	}
@@ -519,6 +546,66 @@ func sanitizeMemoryPolicy(policy MemoryPolicyConfig) MemoryPolicyConfig {
 	sort.Strings(restricted)
 	policy.RestrictedPaths = restricted
 	return policy
+}
+
+func sanitizeChannelDegradationConfig(raw ChannelDegradationGovConfig) ChannelDegradationGovConfig {
+	out := raw
+	if out.MinEvents <= 0 {
+		out.MinEvents = 1
+	}
+	if out.WarningErrorRateThreshold <= 0 || out.WarningErrorRateThreshold > 1 {
+		out.WarningErrorRateThreshold = 0.001
+	}
+	if out.CriticalErrorRateThreshold <= 0 || out.CriticalErrorRateThreshold > 1 {
+		out.CriticalErrorRateThreshold = 0.5
+	}
+	if out.CriticalErrorRateThreshold < out.WarningErrorRateThreshold {
+		out.CriticalErrorRateThreshold = out.WarningErrorRateThreshold
+	}
+	if out.CriticalErrorCountThreshold <= 0 {
+		out.CriticalErrorCountThreshold = 3
+	}
+	if out.CriticalDisconnectedThreshold <= 0 {
+		out.CriticalDisconnectedThreshold = 1
+	}
+
+	base := ChannelDegradationOverride{
+		MinEvents:                     out.MinEvents,
+		WarningErrorRateThreshold:     out.WarningErrorRateThreshold,
+		CriticalErrorRateThreshold:    out.CriticalErrorRateThreshold,
+		CriticalErrorCountThreshold:   out.CriticalErrorCountThreshold,
+		CriticalDisconnectedThreshold: out.CriticalDisconnectedThreshold,
+	}
+
+	overrides := map[string]ChannelDegradationOverride{}
+	for rawChannel, override := range raw.ChannelOverrides {
+		channelID := strings.ToLower(strings.TrimSpace(rawChannel))
+		if channelID == "" {
+			continue
+		}
+		item := override
+		if item.MinEvents <= 0 {
+			item.MinEvents = base.MinEvents
+		}
+		if item.WarningErrorRateThreshold <= 0 || item.WarningErrorRateThreshold > 1 {
+			item.WarningErrorRateThreshold = base.WarningErrorRateThreshold
+		}
+		if item.CriticalErrorRateThreshold <= 0 || item.CriticalErrorRateThreshold > 1 {
+			item.CriticalErrorRateThreshold = base.CriticalErrorRateThreshold
+		}
+		if item.CriticalErrorRateThreshold < item.WarningErrorRateThreshold {
+			item.CriticalErrorRateThreshold = item.WarningErrorRateThreshold
+		}
+		if item.CriticalErrorCountThreshold <= 0 {
+			item.CriticalErrorCountThreshold = base.CriticalErrorCountThreshold
+		}
+		if item.CriticalDisconnectedThreshold <= 0 {
+			item.CriticalDisconnectedThreshold = base.CriticalDisconnectedThreshold
+		}
+		overrides[channelID] = item
+	}
+	out.ChannelOverrides = overrides
+	return out
 }
 
 func normalizeToolList(items []string) []string {

@@ -50,6 +50,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Threshold reconcile cadence archive and readiness trend (`output/cost/threshold-reconcile/<ISO-week>/` + `cadence.ready_rate/applied_rate/ready_streak`)
 - [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability + session cost hotspot/compaction pressure)
 - [x] Runtime channel degradation snapshot (`channel_degradation`) with per-channel severity, fallback candidates, and recovery recommendations
+- [x] Channel degradation threshold governance (`runtime.observability.channel_degradation`) with default + per-channel override profiles, suppressed-noise counters, and threshold profile traceability in status output
 - [x] Channel chaos drill gate for degradation/fallback regression (`make channel-chaos-drill` -> `config/channel-chaos-matrix.json` + `output/channel-chaos/drill-latest.json`)
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`), including threshold-history freshness checks
@@ -116,8 +117,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 1. [x] N27 Channel degradation observability + fallback guidance (`channel_degradation` snapshot + alert `channel_degradation`)
 2. [x] N28 Channel chaos drill gate (`make channel-chaos-drill` validates fallback/degradation expectations from `config/channel-chaos-matrix.json`)
+3. [x] N29 Channel degradation threshold governance (`runtime.observability.channel_degradation` with defaults + per-channel overrides; status output adds `thresholds`, `suppressed_channels`, `threshold_profile`)
 
-Queue status: N28 merged; post-alignment backlog has no open blocking item.
+Queue status: N29 merged; post-alignment backlog has no open blocking item.
 
 ## 4) Change Rule
 

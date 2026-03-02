@@ -657,6 +657,76 @@ func TestSummarizeChannelDegradationFallbackCandidates(t *testing.T) {
 	}
 }
 
+func TestSummarizeChannelDegradationWithThresholdOverrides(t *testing.T) {
+	summary := summarizeChannelDegradationWithThresholds(
+		gatewayTraceSummary{
+			ByChannel: map[string]int{
+				"cli":      6,
+				"slack":    3,
+				"telegram": 5,
+			},
+			ErrorChannels: map[string]int{
+				"slack":    1,
+				"telegram": 3,
+			},
+			DisconnectedByChannel: map[string]int{},
+		},
+		ChannelDegradationThresholds{
+			MinEvents:                     1,
+			WarningErrorRateThreshold:     0.001,
+			CriticalErrorRateThreshold:    0.5,
+			CriticalErrorCountThreshold:   3,
+			CriticalDisconnectedThreshold: 1,
+		},
+		map[string]ChannelDegradationThresholds{
+			"slack": {
+				MinEvents:                     5,
+				WarningErrorRateThreshold:     0.3,
+				CriticalErrorRateThreshold:    0.7,
+				CriticalErrorCountThreshold:   4,
+				CriticalDisconnectedThreshold: 1,
+			},
+		},
+	)
+
+	if summary.Status != "critical" {
+		t.Fatalf("expected critical status, got %#v", summary.Status)
+	}
+	if summary.DegradedChannels != 1 {
+		t.Fatalf("expected one degraded channel, got %#v", summary.DegradedChannels)
+	}
+	if summary.CriticalChannels != 1 {
+		t.Fatalf("expected one critical channel, got %#v", summary.CriticalChannels)
+	}
+	if summary.SuppressedChannels != 1 {
+		t.Fatalf("expected one suppressed channel, got %#v", summary.SuppressedChannels)
+	}
+	if len(summary.FallbackCandidates) != 1 || summary.FallbackCandidates[0] != "cli" {
+		t.Fatalf("expected cli fallback candidate, got %#v", summary.FallbackCandidates)
+	}
+
+	var slackEntry channelDegradationEntry
+	var telegramEntry channelDegradationEntry
+	for _, entry := range summary.Channels {
+		switch entry.ChannelID {
+		case "slack":
+			slackEntry = entry
+		case "telegram":
+			telegramEntry = entry
+		}
+	}
+
+	if slackEntry.Severity != "suppressed" {
+		t.Fatalf("expected slack severity suppressed, got %#v", slackEntry)
+	}
+	if slackEntry.ThresholdProfile != "channel:slack" {
+		t.Fatalf("expected slack threshold profile override, got %#v", slackEntry.ThresholdProfile)
+	}
+	if telegramEntry.Severity != "critical" {
+		t.Fatalf("expected telegram severity critical, got %#v", telegramEntry)
+	}
+}
+
 func TestSnapshotIncludesSessionCostPressureAlerts(t *testing.T) {
 	now := time.Now().UTC()
 	baseDir := t.TempDir()
