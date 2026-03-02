@@ -19,11 +19,19 @@ type Matrix struct {
 }
 
 type Scenario struct {
-	ID            string       `json:"id"`
-	Description   string       `json:"description,omitempty"`
-	WindowMinutes int          `json:"window_minutes,omitempty"`
-	Events        []TraceEvent `json:"events"`
-	Expect        Expectation  `json:"expect"`
+	ID            string          `json:"id"`
+	Description   string          `json:"description,omitempty"`
+	WindowMinutes int             `json:"window_minutes,omitempty"`
+	Events        []TraceEvent    `json:"events"`
+	Thresholds    ThresholdPolicy `json:"thresholds,omitempty"`
+	Expect        Expectation     `json:"expect"`
+}
+
+// ThresholdPolicy allows each chaos scenario to inject a dedicated
+// channel-degradation threshold profile, including optional channel overrides.
+type ThresholdPolicy struct {
+	Default   runtime.ChannelDegradationThresholds            `json:"default"`
+	Overrides map[string]runtime.ChannelDegradationThresholds `json:"overrides,omitempty"`
 }
 
 type TraceEvent struct {
@@ -35,12 +43,15 @@ type TraceEvent struct {
 }
 
 type Expectation struct {
-	Status                string   `json:"status,omitempty"`
-	MinDegradedChannels   *int     `json:"min_degraded_channels,omitempty"`
-	MaxDegradedChannels   *int     `json:"max_degraded_channels,omitempty"`
-	MinFallbackCandidates *int     `json:"min_fallback_candidates,omitempty"`
-	ReasonContains        string   `json:"reason_contains,omitempty"`
-	AlertCodes            []string `json:"alert_codes,omitempty"`
+	Status                  string   `json:"status,omitempty"`
+	MinDegradedChannels     *int     `json:"min_degraded_channels,omitempty"`
+	MaxDegradedChannels     *int     `json:"max_degraded_channels,omitempty"`
+	MinSuppressedChannels   *int     `json:"min_suppressed_channels,omitempty"`
+	MaxSuppressedChannels   *int     `json:"max_suppressed_channels,omitempty"`
+	MinFallbackCandidates   *int     `json:"min_fallback_candidates,omitempty"`
+	ReasonContains          string   `json:"reason_contains,omitempty"`
+	AlertCodes              []string `json:"alert_codes,omitempty"`
+	RequiredThresholdPolicy []string `json:"required_threshold_profile,omitempty"`
 }
 
 type Report struct {
@@ -64,7 +75,9 @@ type Observed struct {
 	Status             string   `json:"status"`
 	DegradedChannels   int      `json:"degraded_channels"`
 	CriticalChannels   int      `json:"critical_channels"`
+	SuppressedChannels int      `json:"suppressed_channels"`
 	FallbackCandidates []string `json:"fallback_candidates"`
+	ThresholdProfiles  []string `json:"threshold_profiles"`
 	Reason             string   `json:"reason,omitempty"`
 	AlertCodes         []string `json:"alert_codes"`
 }
@@ -74,8 +87,12 @@ type snapshotPayload struct {
 		Status             string   `json:"status"`
 		DegradedChannels   int      `json:"degraded_channels"`
 		CriticalChannels   int      `json:"critical_channels"`
+		SuppressedChannels int      `json:"suppressed_channels"`
 		FallbackCandidates []string `json:"fallback_candidates"`
 		Reason             string   `json:"reason"`
+		Channels           []struct {
+			ThresholdProfile string `json:"threshold_profile"`
+		} `json:"channels"`
 	} `json:"channel_degradation"`
 	Alerts []struct {
 		Code string `json:"code"`
@@ -132,6 +149,7 @@ func runScenario(ctx context.Context, scenario Scenario) ScenarioResult {
 		Passed:      false,
 		Observed: Observed{
 			FallbackCandidates: []string{},
+			ThresholdProfiles:  []string{},
 			AlertCodes:         []string{},
 		},
 	}
@@ -157,8 +175,10 @@ func runScenario(ctx context.Context, scenario Scenario) ScenarioResult {
 		window = time.Duration(scenario.WindowMinutes) * time.Minute
 	}
 	collector := &runtime.StatusCollector{
-		GatewayTraceBasePath: basePath,
-		GatewayTraceWindow:   window,
+		GatewayTraceBasePath:              basePath,
+		GatewayTraceWindow:                window,
+		ChannelDegradationDefaults:        scenario.Thresholds.Default,
+		ChannelDegradationChannelOverride: scenario.Thresholds.Overrides,
 	}
 	observed, err := collectObserved(ctx, collector)
 	if err != nil {
@@ -249,11 +269,28 @@ func collectObserved(ctx context.Context, collector *runtime.StatusCollector) (O
 	fallback := append([]string{}, payload.ChannelDegradation.FallbackCandidates...)
 	sort.Strings(fallback)
 
+	profilesSeen := map[string]struct{}{}
+	profiles := make([]string, 0, len(payload.ChannelDegradation.Channels))
+	for _, entry := range payload.ChannelDegradation.Channels {
+		profile := strings.TrimSpace(entry.ThresholdProfile)
+		if profile == "" {
+			continue
+		}
+		if _, ok := profilesSeen[profile]; ok {
+			continue
+		}
+		profilesSeen[profile] = struct{}{}
+		profiles = append(profiles, profile)
+	}
+	sort.Strings(profiles)
+
 	return Observed{
 		Status:             strings.TrimSpace(payload.ChannelDegradation.Status),
 		DegradedChannels:   payload.ChannelDegradation.DegradedChannels,
 		CriticalChannels:   payload.ChannelDegradation.CriticalChannels,
+		SuppressedChannels: payload.ChannelDegradation.SuppressedChannels,
 		FallbackCandidates: fallback,
+		ThresholdProfiles:  profiles,
 		Reason:             strings.TrimSpace(payload.ChannelDegradation.Reason),
 		AlertCodes:         alertCodes,
 	}, nil
@@ -269,11 +306,38 @@ func evaluateExpectation(expect Expectation, observed Observed) error {
 	if expect.MaxDegradedChannels != nil && observed.DegradedChannels > *expect.MaxDegradedChannels {
 		return fmt.Errorf("expected degraded_channels <= %d, got %d", *expect.MaxDegradedChannels, observed.DegradedChannels)
 	}
+	if expect.MinSuppressedChannels != nil && observed.SuppressedChannels < *expect.MinSuppressedChannels {
+		return fmt.Errorf("expected suppressed_channels >= %d, got %d", *expect.MinSuppressedChannels, observed.SuppressedChannels)
+	}
+	if expect.MaxSuppressedChannels != nil && observed.SuppressedChannels > *expect.MaxSuppressedChannels {
+		return fmt.Errorf("expected suppressed_channels <= %d, got %d", *expect.MaxSuppressedChannels, observed.SuppressedChannels)
+	}
 	if expect.MinFallbackCandidates != nil && len(observed.FallbackCandidates) < *expect.MinFallbackCandidates {
 		return fmt.Errorf("expected fallback_candidates >= %d, got %d", *expect.MinFallbackCandidates, len(observed.FallbackCandidates))
 	}
 	if reason := strings.TrimSpace(expect.ReasonContains); reason != "" && !strings.Contains(strings.ToLower(observed.Reason), strings.ToLower(reason)) {
 		return fmt.Errorf("expected reason to contain %q, got %q", reason, observed.Reason)
+	}
+
+	if len(expect.RequiredThresholdPolicy) > 0 {
+		present := map[string]struct{}{}
+		for _, profile := range observed.ThresholdProfiles {
+			present[strings.TrimSpace(profile)] = struct{}{}
+		}
+		missing := make([]string, 0)
+		for _, required := range expect.RequiredThresholdPolicy {
+			profile := strings.TrimSpace(required)
+			if profile == "" {
+				continue
+			}
+			if _, ok := present[profile]; !ok {
+				missing = append(missing, profile)
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			return fmt.Errorf("expected threshold profile missing: %s", strings.Join(missing, ", "))
+		}
 	}
 
 	if len(expect.AlertCodes) > 0 {
