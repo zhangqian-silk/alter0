@@ -61,6 +61,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Provider-policy incident telemetry from gateway trace (`provider_policy_incidents` + `alerts.provider_policy_drift` with category/channel attribution samples)
 - [x] Provider-policy critical threshold governance (`runtime.observability.provider_policy.critical_signal_threshold`)
+- [x] GitHub delivery dependency observability (`make github-dependency-check` -> `output/delivery/github-dependency-latest.json`, surfaced via `/status.github_dependency` + `alerts.github_dependency_*`)
 - [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`), including threshold-history freshness checks
 - [x] Scenario benchmark matrix + competitor tracking gate extension (`config/scenario-benchmark-matrix.json`, `config/competitor-tracking.json`, `scripts/update-competitor-tracking.sh`)
 - [x] Sub-agent run/session modes with result announce chain
@@ -79,7 +80,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 - [x] Gateway integration matrix automation (`make integration-matrix`)
-- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + channel chaos drill/candidate/calibration extraction (`make channel-chaos-drill`, `make channel-chaos-candidates`, `make channel-chaos-calibration`) + cost threshold history/reconcile cadence (`make cost-threshold-history`, `make cost-threshold-reconcile`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
+- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + channel chaos drill/candidate/calibration extraction (`make channel-chaos-drill`, `make channel-chaos-candidates`, `make channel-chaos-calibration`) + cost threshold history/reconcile cadence (`make cost-threshold-history`, `make cost-threshold-reconcile`) + github dependency gate (`make github-dependency-check`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
 - [x] Config parameter governance audit for agents/bindings/session/tools (`make config-governance` -> `output/config/governance-latest.json`)
 - [x] Service-layer schedule facade (`app/core/service/schedule`) used by runtime/HTTP integration boundaries
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
@@ -135,7 +136,56 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 7. [x] N33 Source-candidate coverage and channel attribution telemetry (`make channel-chaos-calibration` now reports matrix tag coverage, missing tags, and per-channel adoption buckets)
 8. [x] N37 Pending candidate prioritization insights (`make channel-chaos-calibration` now reports `pending_by_channel` and top `priority_candidates` with severity/disconnect recurrence scoring plus recommended matrix actions)
 
-Queue status: N37 merged; post-alignment backlog has no open blocking item.
+### P6 (Delivery Pipeline Resilience)
+
+1. [x] N38 GitHub dependency availability gate (`make github-dependency-check` + `output/delivery/github-dependency-latest.json` + runtime `/status.github_dependency` alerts)
+
+### P7 (OpenClaw 2026-03-02 Incremental Alignment)
+
+1. [ ] N39 Config preflight validation gate (0.5d)
+   - Status: todo
+   - Priority: P0
+   - Acceptance: `make config-validate-preflight` + `output/config/validate-latest.json` + release-gate integration.
+   - Dependency: config schema loader, release-gate script.
+   - Risk: false failure when config path absent in CI.
+   - Next: add missing-config fallback fixture.
+2. [ ] N40 Web-search provider fallback chain (1d)
+   - Status: todo
+   - Priority: P0
+   - Acceptance: provider priority/fallback policy + provider-level success/failure telemetry in `/status.tools.web_search`.
+   - Dependency: tools policy parser, observability snapshot.
+   - Risk: heterogeneous provider error semantics.
+   - Next: standardize provider error taxonomy.
+3. [ ] N41 Session bootstrap cache invalidation (1d)
+   - Status: todo
+   - Priority: P1
+   - Acceptance: mtime+TTL invalidation with regression tests for cron/subagent/manual file edits.
+   - Dependency: session cache manager and workspace file access path.
+   - Risk: extra fs stat overhead.
+   - Next: add overhead sampling before default-on.
+4. [ ] N42 Channel media integrity probe (1.5d)
+   - Status: todo
+   - Priority: P1
+   - Acceptance: byte-size/decodability/transcription-sanity checks + `alerts.media_integrity`.
+   - Dependency: media pipeline and alert bus.
+   - Risk: noisy alerts on edge codecs.
+   - Next: WhatsApp-first canary rollout.
+5. [ ] N43 Inbound hook coverage metric (1d)
+   - Status: todo
+   - Priority: P1
+   - Acceptance: per-channel/session hook coverage metric + threshold alert.
+   - Dependency: trace/hook instrumentation.
+   - Risk: short-window sampling volatility.
+   - Next: start with 24h sliding window baseline.
+6. [ ] N44 Channel-aware tool profile injection (2d)
+   - Status: todo
+   - Priority: P2
+   - Acceptance: `tools.profile.by_surface` with A/B report for token/latency/success-rate deltas.
+   - Dependency: surface classifier + tool policy merge logic.
+   - Risk: accidental tool suppression in critical flows.
+   - Next: ship dry-run mode before enforce mode.
+
+Queue status: N38 merged; P7 (N39-N44) opened for incremental OpenClaw sync delivery.
 
 ## 4) Change Rule
 
