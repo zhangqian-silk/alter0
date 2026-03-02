@@ -1,4 +1,4 @@
-.PHONY: run build test test-stability check-config-boundary check-service-boundary config-governance cost-threshold-history cost-threshold-reconcile risk-benchmark channel-chaos-drill channel-chaos-candidates competitor-tracking-refresh fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
+.PHONY: run build test test-stability check-config-boundary check-service-boundary config-governance cost-threshold-history cost-threshold-reconcile risk-benchmark channel-chaos-drill channel-chaos-candidates channel-chaos-calibration competitor-tracking-refresh fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
 .DEFAULT_GOAL := run
 
 run:
@@ -36,6 +36,9 @@ channel-chaos-drill:
 
 channel-chaos-candidates:
 	./scripts/check-channel-chaos-candidates.sh
+
+channel-chaos-calibration:
+	./scripts/check-channel-chaos-calibration.sh
 
 competitor-tracking-refresh:
 	./scripts/update-competitor-tracking.sh
