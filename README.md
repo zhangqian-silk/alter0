@@ -93,20 +93,29 @@ go version
 ### Run Runtime
 
 ```bash
+make
+# or
+make run
+# custom port
+make run WEB_ADDR=127.0.0.1:<your-port>
+# or
 go run ./cmd/alter0
+# or
+go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 ```
 
 运行时默认行为：
 
 1. 同时启动 Web 与 CLI 两个输入通道。
-2. Web 地址固定为 `127.0.0.1:8088`。
-3. 存储后端默认本地文件（目录 `.alter0`）。
-4. 存储格式按业务场景选择：Control 配置使用 `json`，Scheduler 状态使用 `json`。
+2. Web 地址默认 `127.0.0.1:18088`，可通过 `-web-addr` 参数覆盖。
+3. 如果使用自定义端口，后续示例中的 URL 也需同步替换端口。
+4. 存储后端默认本地文件（目录 `.alter0`）。
+5. 存储格式按业务场景选择：Control 配置使用 `json`，Scheduler 状态使用 `json`。
 
 发送消息：
 
 ```bash
-curl -X POST http://127.0.0.1:8088/api/messages \
+curl -X POST http://127.0.0.1:18088/api/messages \
   -H "Content-Type: application/json" \
   -d '{"session_id":"s1","channel_id":"web-default","content":"/help"}'
 ```
@@ -125,10 +134,10 @@ go run ./cmd/alter0
 
 ```bash
 # 列表
-curl http://127.0.0.1:8088/api/control/channels
+curl http://127.0.0.1:18088/api/control/channels
 
 # 创建/更新
-curl -X PUT http://127.0.0.1:8088/api/control/channels/web-default \
+curl -X PUT http://127.0.0.1:18088/api/control/channels/web-default \
   -H "Content-Type: application/json" \
   -d '{"type":"web","enabled":true}'
 ```
@@ -137,10 +146,10 @@ curl -X PUT http://127.0.0.1:8088/api/control/channels/web-default \
 
 ```bash
 # 列表
-curl http://127.0.0.1:8088/api/control/skills
+curl http://127.0.0.1:18088/api/control/skills
 
 # 创建/更新
-curl -X PUT http://127.0.0.1:8088/api/control/skills/summary \
+curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
   -H "Content-Type: application/json" \
   -d '{"name":"summary","enabled":true}'
 ```
@@ -149,10 +158,10 @@ curl -X PUT http://127.0.0.1:8088/api/control/skills/summary \
 
 ```bash
 # 列表
-curl http://127.0.0.1:8088/api/control/cron/jobs
+curl http://127.0.0.1:18088/api/control/cron/jobs
 
 # 创建/更新（interval 使用 Go duration: 30s/5m）
-curl -X PUT http://127.0.0.1:8088/api/control/cron/jobs/job1 \
+curl -X PUT http://127.0.0.1:18088/api/control/cron/jobs/job1 \
   -H "Content-Type: application/json" \
   -d '{"interval":"30s","session_id":"cron-session","content":"/time","enabled":true}'
 ```

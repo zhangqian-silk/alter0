@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -39,9 +40,16 @@ var defaultStorageProfile = storageProfile{
 	SchedulerFormat: localstorage.FormatJSON,
 }
 
-const defaultWebAddr = "127.0.0.1:8088"
+const defaultWebAddr = "127.0.0.1:18088"
 
 func main() {
+	webAddr := flag.String("web-addr", defaultWebAddr, "web server listen address")
+	flag.Parse()
+	listenAddr := strings.TrimSpace(*webAddr)
+	if listenAddr == "" {
+		listenAddr = defaultWebAddr
+	}
+
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -88,7 +96,7 @@ func main() {
 	mustRegister(registry, orchinfra.NewTimeCommandHandler())
 
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
-	processor := execinfra.NewTemplateNLProcessor()
+	processor := execinfra.NewCodexCLIProcessor()
 	executor := execapp.NewService(processor)
 	orchestrator := orchapp.NewService(
 		classifier,
@@ -105,10 +113,10 @@ func main() {
 	}
 	scheduler.Start(rootCtx)
 
-	server := web.NewServer(defaultWebAddr, orchestrator, telemetry, idGen, control, scheduler, logger)
+	server := web.NewServer(listenAddr, orchestrator, telemetry, idGen, control, scheduler, logger)
 	webErrCh := make(chan error, 1)
 	go func() {
-		logger.Info("starting web server", slog.String("addr", defaultWebAddr))
+		logger.Info("starting web server", slog.String("addr", listenAddr))
 		webErrCh <- server.Run(rootCtx)
 	}()
 
