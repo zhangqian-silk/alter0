@@ -16,7 +16,7 @@
 ## 2. 当前未完成需求（Active Gaps）
 
 - 运行时成本治理主链路已闭环，当前无阻塞型功能缺口。
-- 通道韧性治理已补齐“降级观测 + chaos drill 演练门禁”，下一阶段重点是基于真实故障样本校准阈值，降低误报噪声。
+- 通道韧性治理已补齐“降级观测 + chaos drill 演练门禁 + 阈值分层抑噪”，当前重点转为基于真实故障样本持续迭代每通道阈值。
 - 自适应阈值回写已具备“提案 + 周归档 + 命中率观测”能力，仍保持人工确认后落地（默认不自动改配置）。
 - 外部依赖仍需保持可用（GitHub 网络与 token），避免阻塞 PR/merge 链路。
 
@@ -57,17 +57,18 @@
 
 1. [x] N27 通道降级观测与回退建议（`/status.channel_degradation` 输出每通道退化等级、fallback 候选与恢复建议，并新增 `alerts.channel_degradation`）
 2. [x] N28 通道 chaos drill 门禁（`make channel-chaos-drill` 基于 `config/channel-chaos-matrix.json` 执行断连/错误尖峰场景回归，输出 `output/channel-chaos/drill-latest.json`）
+3. [x] N29 通道降级阈值分层治理（新增 `runtime.observability.channel_degradation` 配置与 channel override，`/status.channel_degradation` 输出 `thresholds` / `suppressed_channels` / `threshold_profile`，抑制低样本误报）
 
-当前状态：N28 已闭环，运行时治理从“成本阈值”扩展到“多通道降级可观测 + 回退指引 + 演练门禁”。
+当前状态：N29 已闭环，运行时治理从“成本阈值”扩展到“多通道降级可观测 + 回退指引 + 演练门禁 + 阈值分层抑噪”。
 
-## 4. 与 OpenClaw 研究报告对比（2026-03-01 UTC）
+## 4. 与 OpenClaw 研究报告对比（2026-03-02 UTC）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：针对研究报告 5.1 剩余项“多通道故障时的降级策略与可观测性完整度”，新增 N28 通道 chaos drill 门禁，按场景注入断连与错误尖峰并校验 `channel_degradation` / `alerts.channel_degradation` 结果，形成可重复回归链路。
-- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已具备“成本治理 + 通道降级观测 + chaos drill 门禁”三段闭环，当前无阻塞级功能缺口。
-- 下一步：在生产样本累积后回填 `channel_degradation` 阈值参数（按通道误报率分层），并把真实故障片段纳入 `config/channel-chaos-matrix.json` 的周度回归。
+- 本轮新增对齐：针对研究报告 5.1 剩余项“多通道故障时的降级策略与可观测性完整度”，新增 N29 通道阈值分层治理能力；支持全局阈值 + 每通道 override，并在 `/status.channel_degradation` 输出 `thresholds`、`suppressed_channels`、`threshold_profile`，将低样本和低错误率信号降级为监控态，减少误报噪声。
+- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪”四段闭环，当前无阻塞级功能缺口。
+- 下一步：把真实故障片段持续纳入 `config/channel-chaos-matrix.json` 周度回归，并按渠道误报率跟踪 `channel_degradation.thresholds.overrides` 的命中效果。
 
 ## 5. 执行规则
 
@@ -83,3 +84,4 @@
 - 2026-03-02（UTC）：`make competitor-tracking-refresh` 在未配置 `GH_TOKEN/GITHUB_TOKEN` 时触发 GitHub API 403 rate limit；已改为默认降级不中断并记录 warning，下一轮优先在带 token 环境执行一次完整刷新。
 - 2026-03-01（UTC）：本轮执行 `git fetch origin` 连续超时（无输出后被超时终止），无法确认远端 `master` 最新提交；已改为基于本地 `master` 继续开发，下一轮优先重试网络连通后再同步远端。
 - 2026-03-01（UTC）：`git push -u origin feat/n21-session-cost-pressure-alerts` 曾两次失败（`Failure when receiving data from the peer` / `Failed to connect to github.com:443`）；已在 2026-03-01 晚间恢复并完成 PR #89 合并。
+- 2026-03-02（UTC）：本轮首次执行 `go test ./...` 失败（本机默认 `GOTOOLCHAIN=local` 且 `GOSUMDB=off`，无法拉取 `go1.25.7` 工具链）；已切换为 `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org` 重试并通过，后续测试统一沿用该环境参数。

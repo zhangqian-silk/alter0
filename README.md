@@ -237,6 +237,7 @@ docker run --rm -p 8080:8080 \
 - `runtime.queue.*`: 执行队列开关、并发、重试与超时策略
 - `runtime.shutdown.drain_timeout_sec`: 统一停机排空等待时间（queue/scheduler/http）
 - `runtime.observability.cost.*`: 成本告警阈值（session share / prompt-output ratio / heavy-session min tokens）
+- `runtime.observability.channel_degradation.*`: 通道退化阈值治理（全局 `min_events`/错误率阈值/断连阈值 + `channel_overrides` 分通道覆盖）
 - `security.admin_user_ids`: 管理命令授权用户
 - `security.tools.global_allow/global_deny`: 网关级工具 allow/deny 列表
 - `security.tools.require_confirm`: 额外二次确认清单（高风险工具 `browser/canvas/nodes/message` 无论配置都会强制确认）
@@ -268,7 +269,7 @@ docker run --rm -p 8080:8080 \
 
 成本治理字段 `cost.threshold_guidance` 现在同时提供全局 p90 建议与 `workload_tiers` 分层建议（按 token 量级 1x-2x、2x-4x、4x+）；`make cost-threshold-reconcile` 会基于该建议生成受限步长的阈值调优提案，并可通过 `--apply` 写回 `runtime.observability.cost` 配置，同时输出 `cadence.ready_rate/applied_rate/ready_streak` 并按 ISO 周归档历史快照。
 
-通道韧性字段 `channel_degradation` 会根据 trace 窗口输出每个异常通道的错误率/断连次数、严重度和恢复建议，并给出可回退的健康通道候选。通道演练门禁可通过 `make channel-chaos-drill` 复现固定故障矩阵并校验告警输出。
+通道韧性字段 `channel_degradation` 会根据 trace 窗口输出每个异常通道的错误率/断连次数、严重度和恢复建议，并给出可回退的健康通道候选。新版本会同时输出阈值策略（`thresholds`）、噪声抑制计数（`suppressed_channels`）以及命中配置来源（`threshold_profile`），用于按通道校准误报。通道演练门禁可通过 `make channel-chaos-drill` 复现固定故障矩阵并校验告警输出。
 
 管理员命令：
 

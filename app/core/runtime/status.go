@@ -30,33 +30,35 @@ type AgentEntry struct {
 }
 
 type StatusCollector struct {
-	GatewayStatusProvider      func() interface{}
-	Scheduler                  *scheduler.Scheduler
-	Queue                      *queue.Queue
-	TaskStore                  *orctask.Store
-	ScheduleService            *schedulesvc.Service
-	RepoPath                   string
-	CommandAuditBasePath       string
-	CommandAuditTailSize       int
-	OrchestratorLogBasePath    string
-	SessionWindow              time.Duration
-	ActiveSessionWindow        time.Duration
-	CostInputPer1K             float64
-	CostOutputPer1K            float64
-	AgentEntries               []AgentEntry
-	ToolRuntime                *toolruntime.Runtime
-	GatewayTraceBasePath       string
-	GatewayTraceWindow         time.Duration
-	AlertRetryStormWindow      time.Duration
-	AlertRetryStormMinimum     int
-	AlertQueueBacklogRatio     float64
-	AlertQueueBacklogDepth     int
-	AlertExecutorStrictMode    bool
-	AlertSessionCostShare      float64
-	AlertSessionCostMinTokens  int
-	AlertSessionPromptOutRatio float64
-	RiskWatchlistPath          string
-	RiskWatchlistStaleAfter    time.Duration
+	GatewayStatusProvider             func() interface{}
+	Scheduler                         *scheduler.Scheduler
+	Queue                             *queue.Queue
+	TaskStore                         *orctask.Store
+	ScheduleService                   *schedulesvc.Service
+	RepoPath                          string
+	CommandAuditBasePath              string
+	CommandAuditTailSize              int
+	OrchestratorLogBasePath           string
+	SessionWindow                     time.Duration
+	ActiveSessionWindow               time.Duration
+	CostInputPer1K                    float64
+	CostOutputPer1K                   float64
+	AgentEntries                      []AgentEntry
+	ToolRuntime                       *toolruntime.Runtime
+	GatewayTraceBasePath              string
+	GatewayTraceWindow                time.Duration
+	AlertRetryStormWindow             time.Duration
+	AlertRetryStormMinimum            int
+	AlertQueueBacklogRatio            float64
+	AlertQueueBacklogDepth            int
+	AlertExecutorStrictMode           bool
+	AlertSessionCostShare             float64
+	AlertSessionCostMinTokens         int
+	AlertSessionPromptOutRatio        float64
+	ChannelDegradationDefaults        ChannelDegradationThresholds
+	ChannelDegradationChannelOverride map[string]ChannelDegradationThresholds
+	RiskWatchlistPath                 string
+	RiskWatchlistStaleAfter           time.Duration
 }
 
 type commandAuditTailEntry struct {
@@ -134,6 +136,19 @@ type gatewayTraceSummary struct {
 	LatestAt              string
 }
 
+type ChannelDegradationThresholds struct {
+	MinEvents                     int     `json:"min_events"`
+	WarningErrorRateThreshold     float64 `json:"warning_error_rate_threshold"`
+	CriticalErrorRateThreshold    float64 `json:"critical_error_rate_threshold"`
+	CriticalErrorCountThreshold   int     `json:"critical_error_count_threshold"`
+	CriticalDisconnectedThreshold int     `json:"critical_disconnected_threshold"`
+}
+
+type channelDegradationPolicy struct {
+	Default   ChannelDegradationThresholds            `json:"default"`
+	Overrides map[string]ChannelDegradationThresholds `json:"overrides,omitempty"`
+}
+
 type channelDegradationEntry struct {
 	ChannelID          string  `json:"channel_id"`
 	TotalEvents        int     `json:"total_events"`
@@ -142,6 +157,7 @@ type channelDegradationEntry struct {
 	DisconnectedEvents int     `json:"disconnected_events"`
 	Severity           string  `json:"severity"`
 	Recommendation     string  `json:"recommendation"`
+	ThresholdProfile   string  `json:"threshold_profile,omitempty"`
 }
 
 type channelDegradationSummary struct {
@@ -150,8 +166,10 @@ type channelDegradationSummary struct {
 	HealthyChannels    int                       `json:"healthy_channels"`
 	DegradedChannels   int                       `json:"degraded_channels"`
 	CriticalChannels   int                       `json:"critical_channels"`
+	SuppressedChannels int                       `json:"suppressed_channels"`
 	FallbackCandidates []string                  `json:"fallback_candidates"`
 	Channels           []channelDegradationEntry `json:"channels,omitempty"`
+	Thresholds         channelDegradationPolicy  `json:"thresholds"`
 	Reason             string                    `json:"reason,omitempty"`
 }
 
@@ -247,7 +265,11 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		"disconnected_by_channel": traceSummary.DisconnectedByChannel,
 		"latest_at":               traceSummary.LatestAt,
 	}
-	channelDegradation := summarizeChannelDegradation(traceSummary)
+	channelDegradation := summarizeChannelDegradationWithThresholds(
+		traceSummary,
+		c.ChannelDegradationDefaults,
+		c.ChannelDegradationChannelOverride,
+	)
 	payload["channel_degradation"] = channelDegradation
 
 	executors := executor.ListExecutorCapabilities()
@@ -1057,15 +1079,96 @@ func clampFloat(value float64, min float64, max float64) float64 {
 	return value
 }
 
+func defaultChannelDegradationThresholds() ChannelDegradationThresholds {
+	return ChannelDegradationThresholds{
+		MinEvents:                     1,
+		WarningErrorRateThreshold:     0.001,
+		CriticalErrorRateThreshold:    0.5,
+		CriticalErrorCountThreshold:   3,
+		CriticalDisconnectedThreshold: 1,
+	}
+}
+
+func normalizeChannelDegradationThresholds(raw ChannelDegradationThresholds, fallback ChannelDegradationThresholds) ChannelDegradationThresholds {
+	base := fallback
+	defaults := defaultChannelDegradationThresholds()
+	if base.MinEvents <= 0 {
+		base.MinEvents = defaults.MinEvents
+	}
+	if base.WarningErrorRateThreshold <= 0 || base.WarningErrorRateThreshold > 1 {
+		base.WarningErrorRateThreshold = defaults.WarningErrorRateThreshold
+	}
+	if base.CriticalErrorRateThreshold <= 0 || base.CriticalErrorRateThreshold > 1 {
+		base.CriticalErrorRateThreshold = defaults.CriticalErrorRateThreshold
+	}
+	if base.CriticalErrorCountThreshold <= 0 {
+		base.CriticalErrorCountThreshold = defaults.CriticalErrorCountThreshold
+	}
+	if base.CriticalDisconnectedThreshold <= 0 {
+		base.CriticalDisconnectedThreshold = defaults.CriticalDisconnectedThreshold
+	}
+	if base.CriticalErrorRateThreshold < base.WarningErrorRateThreshold {
+		base.CriticalErrorRateThreshold = base.WarningErrorRateThreshold
+	}
+
+	out := raw
+	if out.MinEvents <= 0 {
+		out.MinEvents = base.MinEvents
+	}
+	if out.WarningErrorRateThreshold <= 0 || out.WarningErrorRateThreshold > 1 {
+		out.WarningErrorRateThreshold = base.WarningErrorRateThreshold
+	}
+	if out.CriticalErrorRateThreshold <= 0 || out.CriticalErrorRateThreshold > 1 {
+		out.CriticalErrorRateThreshold = base.CriticalErrorRateThreshold
+	}
+	if out.CriticalErrorCountThreshold <= 0 {
+		out.CriticalErrorCountThreshold = base.CriticalErrorCountThreshold
+	}
+	if out.CriticalDisconnectedThreshold <= 0 {
+		out.CriticalDisconnectedThreshold = base.CriticalDisconnectedThreshold
+	}
+	if out.CriticalErrorRateThreshold < out.WarningErrorRateThreshold {
+		out.CriticalErrorRateThreshold = out.WarningErrorRateThreshold
+	}
+	return out
+}
+
+func normalizeChannelDegradationOverrides(raw map[string]ChannelDegradationThresholds, defaults ChannelDegradationThresholds) map[string]ChannelDegradationThresholds {
+	if len(raw) == 0 {
+		return map[string]ChannelDegradationThresholds{}
+	}
+	out := make(map[string]ChannelDegradationThresholds, len(raw))
+	for channelID, override := range raw {
+		normalizedChannelID := strings.ToLower(strings.TrimSpace(channelID))
+		if normalizedChannelID == "" {
+			continue
+		}
+		out[normalizedChannelID] = normalizeChannelDegradationThresholds(override, defaults)
+	}
+	return out
+}
+
 func summarizeChannelDegradation(trace gatewayTraceSummary) channelDegradationSummary {
+	return summarizeChannelDegradationWithThresholds(trace, ChannelDegradationThresholds{}, nil)
+}
+
+func summarizeChannelDegradationWithThresholds(trace gatewayTraceSummary, defaults ChannelDegradationThresholds, overrides map[string]ChannelDegradationThresholds) channelDegradationSummary {
+	resolvedDefaults := normalizeChannelDegradationThresholds(defaults, defaultChannelDegradationThresholds())
+	resolvedOverrides := normalizeChannelDegradationOverrides(overrides, resolvedDefaults)
+
 	summary := channelDegradationSummary{
 		Status:             "insufficient_data",
 		ObservedChannels:   len(trace.ByChannel),
 		HealthyChannels:    0,
 		DegradedChannels:   0,
 		CriticalChannels:   0,
+		SuppressedChannels: 0,
 		FallbackCandidates: []string{},
 		Channels:           []channelDegradationEntry{},
+		Thresholds: channelDegradationPolicy{
+			Default:   resolvedDefaults,
+			Overrides: resolvedOverrides,
+		},
 	}
 	if len(trace.ByChannel) == 0 {
 		summary.Reason = "no channel traffic in trace window"
@@ -1088,6 +1191,13 @@ func summarizeChannelDegradation(trace gatewayTraceSummary) channelDegradationSu
 		errorRate := float64(errors) / float64(total)
 		errorRate = math.Round(errorRate*1000) / 1000
 
+		threshold := resolvedDefaults
+		profile := "default"
+		if override, ok := resolvedOverrides[strings.ToLower(channelID)]; ok {
+			threshold = override
+			profile = "channel:" + strings.ToLower(channelID)
+		}
+
 		if errors == 0 && disconnected == 0 {
 			summary.HealthyChannels++
 			summary.FallbackCandidates = append(summary.FallbackCandidates, channelID)
@@ -1102,8 +1212,26 @@ func summarizeChannelDegradation(trace gatewayTraceSummary) channelDegradationSu
 			DisconnectedEvents: disconnected,
 			Severity:           "warning",
 			Recommendation:     "inspect adapter logs and retry with backoff",
+			ThresholdProfile:   profile,
 		}
-		if disconnected > 0 || (errors >= 3 && errorRate >= 0.5) {
+
+		if total < threshold.MinEvents && disconnected < threshold.CriticalDisconnectedThreshold {
+			entry.Severity = "suppressed"
+			entry.Recommendation = fmt.Sprintf("collect at least %d events before marking channel degraded", threshold.MinEvents)
+			summary.SuppressedChannels++
+			summary.Channels = append(summary.Channels, entry)
+			continue
+		}
+
+		if errorRate < threshold.WarningErrorRateThreshold && disconnected < threshold.CriticalDisconnectedThreshold {
+			entry.Severity = "suppressed"
+			entry.Recommendation = fmt.Sprintf("error_rate %.3f is below warning threshold %.3f", errorRate, threshold.WarningErrorRateThreshold)
+			summary.SuppressedChannels++
+			summary.Channels = append(summary.Channels, entry)
+			continue
+		}
+
+		if disconnected >= threshold.CriticalDisconnectedThreshold || (errors >= threshold.CriticalErrorCountThreshold && errorRate >= threshold.CriticalErrorRateThreshold) {
 			entry.Severity = "critical"
 			entry.Recommendation = "prioritize reconnect and reroute outbound traffic to healthy channels"
 			summary.CriticalChannels++
@@ -1113,6 +1241,13 @@ func summarizeChannelDegradation(trace gatewayTraceSummary) channelDegradationSu
 	}
 
 	if summary.DegradedChannels == 0 {
+		if summary.SuppressedChannels > 0 {
+			summary.Status = "monitoring"
+			if len(summary.FallbackCandidates) == 0 {
+				summary.Reason = "degradation signals suppressed by configured thresholds"
+			}
+			return summary
+		}
 		summary.Status = "ok"
 		return summary
 	}

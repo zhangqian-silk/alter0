@@ -39,6 +39,14 @@
         "session_cost_share_alert_threshold": 0.35,
         "prompt_output_ratio_alert_threshold": 6,
         "heavy_session_min_tokens": 1200
+      },
+      "channel_degradation": {
+        "min_events": 1,
+        "warning_error_rate_threshold": 0.001,
+        "critical_error_rate_threshold": 0.5,
+        "critical_error_count_threshold": 3,
+        "critical_disconnected_threshold": 1,
+        "channel_overrides": {}
       }
     }
   },
