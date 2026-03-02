@@ -267,11 +267,13 @@ docker run --rm -p 8080:8080 \
 - `/task memory clear [task_id]`
 - `/task stats`
 
-`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/channel_degradation/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
+`/status` 输出统一运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/provider_policy_incidents/channel_degradation/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]），与 HTTP `GET /api/status` 对齐。
 
 成本治理字段 `cost.threshold_guidance` 现在同时提供全局 p90 建议与 `workload_tiers` 分层建议（按 token 量级 1x-2x、2x-4x、4x+）；`make cost-threshold-reconcile` 会基于该建议生成受限步长的阈值调优提案，并可通过 `--apply` 写回 `runtime.observability.cost` 配置，同时输出 `cadence.ready_rate/applied_rate/ready_streak` 并按 ISO 周归档历史快照。
 
 通道韧性字段 `channel_degradation` 会根据 trace 窗口输出每个异常通道的错误率/断连次数、严重度和恢复建议，并给出可回退的健康通道候选。新版本会同时输出阈值策略（`thresholds`）、噪声抑制计数（`suppressed_channels`）以及命中配置来源（`threshold_profile`），用于按通道校准误报。通道演练门禁可通过 `make channel-chaos-drill` 复现固定故障矩阵并校验告警输出，且支持在单场景内注入阈值画像并断言抑噪结果；`make channel-chaos-candidates` 生成的候选会携带 `source_candidate` 稳定标识，供矩阵回填追踪采纳；`make channel-chaos-calibration` 则按周计算候选采纳率与误报回落率，并补充 `tag_coverage`、`missing_scenario_tags`、`adoption_by_channel`、`matrix_unseen_candidates`，形成可追踪的采纳归因指标。
+
+外部策略风险字段 `provider_policy_incidents` 会从 trace 错误细节中识别 `quota_limited`、`access_blocked`、`policy_denied` 三类信号，按类别/通道聚合并保留最近样本；当窗口内出现信号时会新增 `alerts.provider_policy_drift`，用于快速定位模型账号策略变化、额度限制或合规拒绝导致的执行中断。
 
 管理员命令：
 
@@ -386,7 +388,7 @@ Response (`202 Accepted`):
 
 ### `GET /api/status`
 
-返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/channel_degradation/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
+返回当前 HTTP 通道状态，并附带运行时快照（gateway/scheduler/task/schedules/sessions/subagents/cost/trace/provider_policy_incidents/channel_degradation/risk_watchlist/alerts/queue[workers,in_flight,last_shutdown]/executors/tools[protocol+toolchain+policy+security_posture]/command_audit_tail/git[branch/commit/dirty/upstream/ahead/behind]）。
 
 ## Observability and Data Layout
 
