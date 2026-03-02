@@ -230,6 +230,8 @@ func main() {
 		ChannelDegradationChannelOverride: toRuntimeChannelDegradationOverrides(cfg.Runtime.Observability.ChannelDegradation.ChannelOverrides),
 		RiskWatchlistPath:                 filepath.Join("config", "risk-watchlist.json"),
 		RiskWatchlistStaleAfter:           72 * time.Hour,
+		GitHubDependencyReportPath:        filepath.Join("output", "delivery", "github-dependency-latest.json"),
+		GitHubDependencyStaleAfter:        24 * time.Hour,
 		AgentEntries:                      runtimeAgentEntries(agents),
 		ToolRuntime:                       toolRuntime,
 	}

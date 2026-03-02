@@ -61,6 +61,8 @@ type StatusCollector struct {
 	ProviderPolicyCriticalSignals     int
 	RiskWatchlistPath                 string
 	RiskWatchlistStaleAfter           time.Duration
+	GitHubDependencyReportPath        string
+	GitHubDependencyStaleAfter        time.Duration
 }
 
 type commandAuditTailEntry struct {
@@ -235,6 +237,18 @@ type riskWatchlistItem struct {
 	Notes        string `json:"notes"`
 }
 
+type githubDependencyReport struct {
+	GeneratedAt   string `json:"generated_at"`
+	Remote        string `json:"remote"`
+	RemoteURL     string `json:"remote_url"`
+	Status        string `json:"status"`
+	Ready         bool   `json:"ready"`
+	Attempts      int    `json:"attempts"`
+	NetworkOK     bool   `json:"network_ok"`
+	TokenPresent  bool   `json:"token_present"`
+	TokenRequired bool   `json:"token_required"`
+}
+
 func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	payload := map[string]interface{}{
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
@@ -345,6 +359,10 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	if riskSummary, riskAlerts := summarizeRiskWatchlist(c.RiskWatchlistPath, now, c.RiskWatchlistStaleAfter); riskSummary != nil {
 		payload["risk_watchlist"] = riskSummary
 		alerts = append(alerts, riskAlerts...)
+	}
+	if githubDependency, githubDependencyAlerts := summarizeGitHubDependency(c.GitHubDependencyReportPath, now, c.GitHubDependencyStaleAfter); githubDependency != nil {
+		payload["github_dependency"] = githubDependency
+		alerts = append(alerts, githubDependencyAlerts...)
 	}
 	payload["alerts"] = alerts
 	if c.ToolRuntime != nil {
@@ -713,6 +731,124 @@ func summarizeRiskWatchlist(path string, now time.Time, staleAfter time.Duration
 	summary["overdue_items"] = overdue
 	if overdue > overdueAlerts {
 		summary["overdue_alerts_truncated"] = overdue - overdueAlerts
+	}
+
+	return summary, alerts
+}
+
+func summarizeGitHubDependency(path string, now time.Time, staleAfter time.Duration) (map[string]interface{}, []runtimeAlert) {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return nil, nil
+	}
+
+	summary := map[string]interface{}{
+		"path": trimmedPath,
+	}
+	alerts := make([]runtimeAlert, 0)
+
+	data, err := os.ReadFile(trimmedPath)
+	if err != nil {
+		summary["status"] = "missing"
+		summary["error"] = err.Error()
+		if !os.IsNotExist(err) {
+			summary["status"] = "error"
+		}
+		alerts = append(alerts, runtimeAlert{
+			Code:     "github_dependency_missing",
+			Severity: "warning",
+			Source:   "github_dependency",
+			Message:  fmt.Sprintf("github dependency report is unavailable: %s", trimmedPath),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"path": trimmedPath,
+			},
+		})
+		return summary, alerts
+	}
+
+	var report githubDependencyReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		summary["status"] = "invalid"
+		summary["error"] = err.Error()
+		alerts = append(alerts, runtimeAlert{
+			Code:     "github_dependency_invalid",
+			Severity: "warning",
+			Source:   "github_dependency",
+			Message:  fmt.Sprintf("github dependency report JSON is invalid: %s", trimmedPath),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"path": trimmedPath,
+			},
+		})
+		return summary, alerts
+	}
+
+	status := strings.TrimSpace(report.Status)
+	if status == "" {
+		status = "unknown"
+	}
+	summary["status"] = status
+	summary["ready"] = report.Ready
+	summary["attempts"] = report.Attempts
+	summary["network_ok"] = report.NetworkOK
+	summary["token_present"] = report.TokenPresent
+	summary["token_required"] = report.TokenRequired
+	if report.Remote != "" {
+		summary["remote"] = report.Remote
+	}
+	if report.RemoteURL != "" {
+		summary["remote_url"] = report.RemoteURL
+	}
+
+	if report.GeneratedAt != "" {
+		summary["updated_at"] = report.GeneratedAt
+		if staleAfter <= 0 {
+			staleAfter = 24 * time.Hour
+		}
+		if updatedAt, ok := parseRiskWatchlistTime(report.GeneratedAt); ok {
+			age := now.Sub(updatedAt)
+			summary["age_hours"] = int(age.Hours())
+			summary["stale_after_hours"] = int(staleAfter.Hours())
+			if age > staleAfter {
+				summary["stale"] = true
+				alerts = append(alerts, runtimeAlert{
+					Code:     "github_dependency_stale",
+					Severity: "warning",
+					Source:   "github_dependency",
+					Message:  fmt.Sprintf("github dependency report is stale: age=%dh", int(age.Hours())),
+					Detected: now.Format(time.RFC3339),
+					Telemetry: map[string]interface{}{
+						"path":       trimmedPath,
+						"updated_at": report.GeneratedAt,
+					},
+				})
+			} else {
+				summary["stale"] = false
+			}
+		}
+	}
+
+	if !report.Ready {
+		severity := "warning"
+		if status == "network_unreachable" || status == "missing_remote" {
+			severity = "critical"
+		}
+		alerts = append(alerts, runtimeAlert{
+			Code:     "github_dependency_unhealthy",
+			Severity: severity,
+			Source:   "github_dependency",
+			Message:  fmt.Sprintf("github dependency check is not ready: status=%s", status),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"path":           trimmedPath,
+				"status":         status,
+				"attempts":       report.Attempts,
+				"network_ok":     report.NetworkOK,
+				"token_present":  report.TokenPresent,
+				"token_required": report.TokenRequired,
+			},
+		})
 	}
 
 	return summary, alerts
