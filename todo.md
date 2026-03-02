@@ -15,12 +15,12 @@
 
 ## 2. 当前未完成需求（Active Gaps）
 
-- 运行时成本治理主链路已闭环，并新增会话压缩质量漂移画像（`/status.cost.compaction_quality` + `alerts.session_compaction_quality_drift`），当前无阻塞型功能缺口。
+- 运行时成本治理主链路已闭环，并新增会话压缩质量漂移画像（`/status.cost.compaction_quality` + `alerts.session_compaction_quality_drift`）；本轮转入 P7 增量对齐（配置预检、provider 回退、缓存一致性）。
 - 通道韧性治理已补齐“降级观测 + chaos drill 演练门禁 + 阈值分层抑噪 + trace 抽样候选 + 周校准复盘指标 + source_candidate 覆盖/采纳归因画像”，当前重点转为稳定执行周节奏并推动候选场景采纳。
 - 自适应阈值回写已具备“提案 + 周归档 + 命中率观测”能力，仍保持人工确认后落地（默认不自动改配置）。
 - 研究报告 5.1 中“外部模型/渠道政策突变”已补齐 trace 侧 `provider_policy_incidents` 观测与 `alerts.provider_policy_drift` 告警归因，可按类别/通道定位异常源。
 - 研究报告 5.1 中“长会话 token 成本与 compaction 质量权衡”已补齐聚合观测，支持按重负载会话识别 `drift_share`、`top_drift_sessions` 并触发质量漂移告警。
-- 外部依赖仍需保持可用（GitHub 网络与 token），避免阻塞 PR/merge 链路。
+- GitHub 交付链路已新增依赖门禁（`make github-dependency-check` + `output/delivery/github-dependency-latest.json` + `/status.github_dependency`），但外网抖动仍会阻塞 fetch/push，需按重试策略优先恢复。
 
 ## 3. 优先级与执行队列
 
@@ -69,16 +69,70 @@
 7. [x] N33 候选采纳归因画像（`make channel-chaos-calibration` 新增 `tag_coverage`、`missing_scenario_tags`、`adoption_by_channel`、`matrix_unseen_candidates`，可直接识别 matrix 标记缺口与通道采纳分布）
 8. [x] N37 候选采纳优先级画像（`make channel-chaos-calibration` 新增 `pending_by_channel`、`priority_candidates`，按严重度/断连/复发频次评分并给出推荐回填动作）
 
-当前状态：N37 已闭环，运行时治理具备“成本热点 + 压缩压力 + 压缩质量漂移 + 降级观测 + 演练门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像 + 采纳优先级画像 + 外部策略异常归因 + 策略异常阈值治理”闭环能力。
+### P6（交付链路韧性治理）
+
+1. [x] N38 GitHub 依赖可用性门禁（`make github-dependency-check` 产出 `output/delivery/github-dependency-latest.json`，并在 `/status.github_dependency` + `alerts.github_dependency_*` 暴露可用性/陈旧度）
+
+### P7（OpenClaw 2026-03-02 增量对齐，进行中）
+
+1. [ ] N39 配置预检门禁（0.5d）
+   - 状态：todo
+   - 优先级：P0
+   - 验收标准：新增 `make config-validate-preflight`，失败返回非零；输出 `output/config/validate-latest.json`；`make release-gate` 默认串联该门禁。
+   - 依赖：现有 `config` schema 与 release-gate 脚本框架。
+   - 风险：环境缺少 config 文件时可能误报失败。
+   - 下一步：补脚本与空配置兜底测试用例。
+
+2. [ ] N40 工具搜索 provider 回退链（1d）
+   - 状态：todo
+   - 优先级：P0
+   - 验收标准：实现 `web_search` provider 优先级配置与失败回退；`/status.tools.web_search` 暴露 provider 级成功率/失败原因。
+   - 依赖：现有 tool 协议归一化与 observability 输出。
+   - 风险：多 provider 错误码语义不一致，分类容易失真。
+   - 下一步：先定义统一错误 taxonomy，再接入 status 聚合。
+
+3. [ ] N41 会话 bootstrap 缓存失效策略（1d）
+   - 状态：todo
+   - 优先级：P1
+   - 验收标准：缓存增加 `mtime + TTL` 双失效；覆盖 3 个并发场景（cron 写入、subagent 写入、人工编辑）；新增回归测试。
+   - 依赖：session 管理与文件读取路径。
+   - 风险：高频 `stat` 可能带来轻微性能开销。
+   - 下一步：先增加采样统计，验证开销再默认开启。
+
+4. [ ] N42 渠道媒体完整性探针（1.5d）
+   - 状态：todo
+   - 优先级：P1
+   - 验收标准：新增媒体文件完整性检测（最小字节、可解码性、转写有效性）；异常写入 `alerts.media_integrity`。
+   - 依赖：媒体下载链路与告警框架。
+   - 风险：误报会影响正常消息吞吐。
+   - 下一步：先在 WhatsApp 场景灰度，设置可调阈值。
+
+5. [ ] N43 入口 hook 覆盖率监控（1d）
+   - 状态：todo
+   - 优先级：P1
+   - 验收标准：输出按渠道/会话类型的 `message_received_hook_coverage` 指标；低于阈值触发告警。
+   - 依赖：现有 tracing 与 hooks instrumentation。
+   - 风险：采样窗口过短会导致波动告警。
+   - 下一步：先以 24h 滑窗统计并校准阈值。
+
+6. [ ] N44 渠道化工具注入策略（2d）
+   - 状态：todo
+   - 优先级：P2
+   - 验收标准：支持 `tools.profile.by_surface`（cron/chat/web）；完成成本 A/B（token、时延、成功率）并形成报告。
+   - 依赖：tools policy 解析与 session surface 判定。
+   - 风险：策略错误可能导致关键工具缺失。
+   - 下一步：先做只读 dry-run 模式，确认策略命中再切换强制执行。
+
+当前状态：N38 已闭环，运行时治理进入 P7 增量对齐阶段；优先推进 N39/N40/N41，目标在不破坏主链路的前提下补齐配置预检、工具回退与会话上下文一致性。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-02 UTC）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：补齐 N37，`make channel-chaos-calibration` 新增 `pending_by_channel` 与 `priority_candidates`，可按严重度/断连/复发频次对待采纳候选排序并输出推荐回填动作。
-- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 压缩质量漂移治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像 + 采纳优先级画像 + 外部策略异常归因 + 策略异常阈值治理”十二段闭环，当前无阻塞级功能缺口。
-- 下一步：持续周度执行 `make channel-chaos-calibration` 与策略异常巡检，优先处理 `priority_candidates` 高分条目并回填 `config/channel-chaos-matrix.json` 的 `source_candidate`，并结合 `cost.compaction_quality.drift_share` 与 `provider_policy_incidents.by_category` 热点继续校准相关阈值。
+- 本轮新增对齐：补齐 N38，新增 `make github-dependency-check` 与 `output/delivery/github-dependency-latest.json`，并将交付依赖健康度接入 `/status.github_dependency` 和 `alerts.github_dependency_*`，把研究报告 5.1“外部依赖阻塞交付链路”风险纳入运行时可观测域。
+- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 压缩质量漂移治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像 + 采纳优先级画像 + 外部策略异常归因 + 策略异常阈值治理 + GitHub 交付依赖门禁”十三段闭环；本轮新增 P7 六项微粒度对齐需求（N39-N44）。
+- 下一步：持续周度执行 `make channel-chaos-calibration` 与 `make github-dependency-check`；优先处理 `priority_candidates` 高分条目并回填 `config/channel-chaos-matrix.json` 的 `source_candidate`，同时在网络恢复后优先重试 fetch/push/PR 链路。
 
 ## 5. 执行规则
 
@@ -88,6 +142,7 @@
 
 ## 6. 失败记录与优先重试
 
+- 2026-03-02（UTC）：本轮执行 `git fetch origin` / `git pull --rebase origin master` 失败（`Failure when receiving data from the peer`、`Failed to connect to github.com:443`），远端同步与后续 push/PR/merge 暂时阻塞；已落地 N38 GitHub 依赖门禁并记录到 `output/delivery/github-dependency-latest.json`，下一轮优先重试远端链路。
 - 2026-03-02（UTC）：本轮首次执行 `gh pr create` 误用 `-C` 参数（当前 gh 版本不支持），导致 PR 创建失败；已切换为在仓库工作目录执行 `gh pr create --body-file` 重试成功，后续统一避免依赖 `gh -C`。
 - 2026-03-02（UTC）：本轮 `git push -u origin feat/n33-channel-chaos-source-coverage` 前 3 次失败（`Failure when receiving data from the peer` / `Failed to connect to github.com:443`），第 4 次重试成功；后续同类网络抖动继续按“至少 4 次重试 + 间隔连通性探测”策略执行。
 - 2026-03-02（UTC）：`gh pr create --body` 初次执行因 markdown 反引号被 shell 命令替换导致 PR 描述注入失败；已改为 `--body-file` 重试修复（PR #99），后续创建 PR 统一使用 body 文件避免复发。
