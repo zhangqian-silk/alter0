@@ -18,7 +18,7 @@ type Orchestrator interface {
 	Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error)
 }
 
-type Persistence interface {
+type Store interface {
 	Load(ctx context.Context) ([]schedulerdomain.Job, error)
 	Save(ctx context.Context, jobs []schedulerdomain.Job) error
 }
@@ -28,7 +28,7 @@ type Manager struct {
 	telemetry    sharedapp.Telemetry
 	idGenerator  sharedapp.IDGenerator
 	logger       *slog.Logger
-	store        Persistence
+	store        Store
 
 	mu      sync.Mutex
 	baseCtx context.Context
@@ -46,13 +46,13 @@ func NewManager(
 	return newManager(orchestrator, telemetry, idGenerator, logger, nil)
 }
 
-func NewManagerWithPersistence(
+func NewManagerWithStore(
 	ctx context.Context,
 	orchestrator Orchestrator,
 	telemetry sharedapp.Telemetry,
 	idGenerator sharedapp.IDGenerator,
 	logger *slog.Logger,
-	store Persistence,
+	store Store,
 ) (*Manager, error) {
 	manager := newManager(orchestrator, telemetry, idGenerator, logger, store)
 	if store == nil {
@@ -65,7 +65,7 @@ func NewManagerWithPersistence(
 	}
 	for _, job := range jobs {
 		if err := job.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid job in persistence: %w", err)
+			return nil, fmt.Errorf("invalid job in store: %w", err)
 		}
 		job.ID = normalize(job.ID)
 		if strings.TrimSpace(job.Name) == "" {
@@ -81,7 +81,7 @@ func newManager(
 	telemetry sharedapp.Telemetry,
 	idGenerator sharedapp.IDGenerator,
 	logger *slog.Logger,
-	store Persistence,
+	store Store,
 ) *Manager {
 	return &Manager{
 		orchestrator: orchestrator,
@@ -131,7 +131,7 @@ func (m *Manager) Upsert(job schedulerdomain.Job) error {
 	if m.started && job.Enabled {
 		m.startRunnerLocked(job)
 	}
-	if err := m.persistLocked(); err != nil {
+	if err := m.storeLocked(); err != nil {
 		m.stopRunnerLocked(job.ID)
 		if existed {
 			m.jobs[job.ID] = previous
@@ -157,7 +157,7 @@ func (m *Manager) Delete(id string) bool {
 	}
 	delete(m.jobs, key)
 	m.stopRunnerLocked(key)
-	if err := m.persistLocked(); err != nil {
+	if err := m.storeLocked(); err != nil {
 		m.jobs[key] = previous
 		if m.started && previous.Enabled {
 			m.startRunnerLocked(previous)
@@ -280,12 +280,12 @@ func normalize(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-func (m *Manager) persistLocked() error {
+func (m *Manager) storeLocked() error {
 	if m.store == nil {
 		return nil
 	}
 	if err := m.store.Save(context.Background(), snapshotJobs(m.jobs)); err != nil {
-		return fmt.Errorf("persist scheduler state: %w", err)
+		return fmt.Errorf("store scheduler state: %w", err)
 	}
 	return nil
 }

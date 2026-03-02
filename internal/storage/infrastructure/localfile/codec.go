@@ -71,7 +71,7 @@ func unmarshalPayload(format Format, raw []byte, out any) error {
 func extractMarkdownJSON(content string) (string, error) {
 	start := strings.Index(content, "```json")
 	if start < 0 {
-		return "", errors.New("markdown persistence missing json code block")
+		return "", errors.New("markdown storage missing json code block")
 	}
 	body := content[start+len("```json"):]
 	if strings.HasPrefix(body, "\r\n") {
@@ -82,7 +82,7 @@ func extractMarkdownJSON(content string) (string, error) {
 
 	end := strings.Index(body, "```")
 	if end < 0 {
-		return "", errors.New("markdown persistence has unclosed json code block")
+		return "", errors.New("markdown storage has unclosed json code block")
 	}
 	return strings.TrimSpace(body[:end]), nil
 }

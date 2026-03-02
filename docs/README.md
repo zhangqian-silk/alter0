@@ -17,5 +17,5 @@
 ## 维护约定
 
 1. 功能改动涉及领域边界或主链路时，必须同步更新 `architecture.md`。
-2. 新增中大型能力（如持久化、鉴权、多租户）时，先更新 `technical-solution.md` 再落代码。
+2. 新增中大型能力（如存储、鉴权、多租户）时，先更新 `technical-solution.md` 再落代码。
 3. 每次里程碑发版前，更新 `requirements.md` 的状态列（`supported` / `planned` / `in-progress`）。

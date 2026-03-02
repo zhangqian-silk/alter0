@@ -10,7 +10,7 @@ import (
 	controldomain "alter0/internal/control/domain"
 )
 
-type Persistence interface {
+type Store interface {
 	Load(ctx context.Context) (channels []controldomain.Channel, skills []controldomain.Skill, err error)
 	Save(ctx context.Context, channels []controldomain.Channel, skills []controldomain.Skill) error
 }
@@ -19,14 +19,14 @@ type Service struct {
 	mu       sync.RWMutex
 	channels map[string]controldomain.Channel
 	skills   map[string]controldomain.Skill
-	store    Persistence
+	store    Store
 }
 
 func NewService() *Service {
 	return newService(nil)
 }
 
-func NewServiceWithPersistence(ctx context.Context, store Persistence) (*Service, error) {
+func NewServiceWithStore(ctx context.Context, store Store) (*Service, error) {
 	service := newService(store)
 	if store == nil {
 		return service, nil
@@ -39,20 +39,20 @@ func NewServiceWithPersistence(ctx context.Context, store Persistence) (*Service
 
 	for _, channel := range channels {
 		if err := channel.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid channel in persistence: %w", err)
+			return nil, fmt.Errorf("invalid channel in store: %w", err)
 		}
 		service.channels[normalize(channel.ID)] = channel
 	}
 	for _, skill := range skills {
 		if err := skill.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid skill in persistence: %w", err)
+			return nil, fmt.Errorf("invalid skill in store: %w", err)
 		}
 		service.skills[normalize(skill.ID)] = skill
 	}
 	return service, nil
 }
 
-func newService(store Persistence) *Service {
+func newService(store Store) *Service {
 	return &Service{
 		channels: map[string]controldomain.Channel{},
 		skills:   map[string]controldomain.Skill{},
@@ -70,7 +70,7 @@ func (s *Service) UpsertChannel(channel controldomain.Channel) error {
 	defer s.mu.Unlock()
 	previous, existed := s.channels[key]
 	s.channels[key] = channel
-	if err := s.persistLocked(); err != nil {
+	if err := s.storeLocked(); err != nil {
 		if existed {
 			s.channels[key] = previous
 		} else {
@@ -97,7 +97,7 @@ func (s *Service) DeleteChannel(id string) bool {
 		return false
 	}
 	delete(s.channels, key)
-	if err := s.persistLocked(); err != nil {
+	if err := s.storeLocked(); err != nil {
 		s.channels[key] = previous
 		return false
 	}
@@ -131,7 +131,7 @@ func (s *Service) UpsertSkill(skill controldomain.Skill) error {
 	defer s.mu.Unlock()
 	previous, existed := s.skills[key]
 	s.skills[key] = skill
-	if err := s.persistLocked(); err != nil {
+	if err := s.storeLocked(); err != nil {
 		if existed {
 			s.skills[key] = previous
 		} else {
@@ -158,7 +158,7 @@ func (s *Service) DeleteSkill(id string) bool {
 		return false
 	}
 	delete(s.skills, key)
-	if err := s.persistLocked(); err != nil {
+	if err := s.storeLocked(); err != nil {
 		s.skills[key] = previous
 		return false
 	}
@@ -186,12 +186,12 @@ func normalize(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-func (s *Service) persistLocked() error {
+func (s *Service) storeLocked() error {
 	if s.store == nil {
 		return nil
 	}
 	if err := s.store.Save(context.Background(), snapshotChannels(s.channels), snapshotSkills(s.skills)); err != nil {
-		return fmt.Errorf("persist control state: %w", err)
+		return fmt.Errorf("store control state: %w", err)
 	}
 	return nil
 }

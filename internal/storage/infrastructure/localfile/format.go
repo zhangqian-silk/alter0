@@ -20,7 +20,7 @@ func ParseFormat(raw string) (Format, error) {
 	case "md", "markdown":
 		return FormatMarkdown, nil
 	default:
-		return "", fmt.Errorf("unsupported persistence format %q", raw)
+		return "", fmt.Errorf("unsupported storage format %q", raw)
 	}
 }
 

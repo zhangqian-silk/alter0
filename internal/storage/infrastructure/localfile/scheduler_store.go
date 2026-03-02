@@ -40,7 +40,7 @@ func NewSchedulerStore(baseDir string, format Format) *SchedulerStore {
 	}
 }
 
-var _ schedulerapp.Persistence = (*SchedulerStore)(nil)
+var _ schedulerapp.Store = (*SchedulerStore)(nil)
 
 func (s *SchedulerStore) Load(_ context.Context) ([]schedulerdomain.Job, error) {
 	s.mu.Lock()

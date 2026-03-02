@@ -61,6 +61,7 @@ internal/orchestration/infrastructure
 internal/execution/domain          # 执行领域接口
 internal/execution/application     # 执行应用服务
 internal/execution/infrastructure  # NL 执行器实现（示例）
+internal/storage/infrastructure    # 存储适配实现（本地文件等）
 internal/shared/domain             # UnifiedMessage / OrchestrationResult
 internal/shared/infrastructure     # ID、日志、metrics
 ```
@@ -89,19 +90,18 @@ go version
 
 建议 Go `1.25+`。
 
-### Run in Web Mode
+### Run Runtime
 
 ```bash
-go run ./cmd/alter0 -mode=web -addr=127.0.0.1:8088
+go run ./cmd/alter0
 ```
 
-可选参数：`-cron-every 30s -cron-content "/time" -cron-session cron-system`
+运行时默认行为：
 
-持久化参数：
-
-1. `-persist-backend local|none`（默认 `local`）
-2. `-persist-dir .alter0`（默认写入本地目录）
-3. `-persist-format json|markdown`（默认 `json`）
+1. 同时启动 Web 与 CLI 两个输入通道。
+2. Web 地址固定为 `127.0.0.1:8088`。
+3. 存储后端默认本地文件（目录 `.alter0`）。
+4. 存储格式按业务场景选择：Control 配置使用 `json`，Scheduler 状态使用 `json`。
 
 发送消息：
 
@@ -114,7 +114,7 @@ curl -X POST http://127.0.0.1:8088/api/messages \
 ### Run in CLI Mode
 
 ```bash
-go run ./cmd/alter0 -mode=cli
+go run ./cmd/alter0
 ```
 
 输入 `/quit` 或 `/exit` 退出。
@@ -166,7 +166,7 @@ go test ./...
 ## Roadmap
 
 1. Skill 配置与执行链路打通（按 skill 选择执行器/参数）。
-2. Control 持久化（SQLite/PostgreSQL）与热更新。
+2. Control 存储（SQLite/PostgreSQL）与热更新。
 3. Channel 扩展（IM/HTTP 回调）与统一回投能力。
 4. 任务调度增强（Cron 表达式、重试、幂等、死信）。
 5. 鉴权与多租户。

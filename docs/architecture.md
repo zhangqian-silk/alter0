@@ -35,7 +35,8 @@
 
 1. `internal/control/*`
 - 负责 `Channel` / `Skill` 配置管理。
-- 通过持久化接口解耦，默认使用本地文件存储（支持 `json`/`markdown`）。
+- 通过存储接口解耦，默认使用本地文件存储。
+- 存储格式按场景选择：Control 配置使用 `json`，Scheduler 状态使用 `json`。
 
 2. `internal/interfaces/web`
 - 暴露 Control API：
@@ -101,10 +102,10 @@
 2. 新技能：在 `control` 增加技能配置，再在 `execution/orchestration` 接入选择策略。
 3. 新调度引擎：替换 `scheduler` 内部触发实现，不影响编排层接口。
 4. 新存储：将 `control` 与 `scheduler` 的内存状态迁移到 DB/配置中心。
-5. 新持久化后端：通过 `persist-backend` 装配不同实现，不改业务服务代码。
+5. 新存储后端：通过 `storage` 模块装配不同实现，不改业务服务代码。
 
 ## 7. 当前边界与限制
 
 1. 无鉴权与多租户。
-2. 默认仅提供单机本地文件持久化，不含分布式一致性能力。
+2. 默认仅提供单机本地文件存储，不含分布式一致性能力。
 3. Skill 配置已支持管理，尚未完全接入执行路径选择。

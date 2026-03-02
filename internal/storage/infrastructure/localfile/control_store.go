@@ -27,7 +27,7 @@ func NewControlStore(baseDir string, format Format) *ControlStore {
 	}
 }
 
-var _ controlapp.Persistence = (*ControlStore)(nil)
+var _ controlapp.Store = (*ControlStore)(nil)
 
 func (s *ControlStore) Load(_ context.Context) ([]controldomain.Channel, []controldomain.Skill, error) {
 	s.mu.Lock()

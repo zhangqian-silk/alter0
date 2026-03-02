@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
@@ -20,25 +18,30 @@ import (
 	orchapp "alter0/internal/orchestration/application"
 	orchdomain "alter0/internal/orchestration/domain"
 	orchinfra "alter0/internal/orchestration/infrastructure"
-	localpersistence "alter0/internal/persistence/infrastructure/localfile"
 	schedulerapp "alter0/internal/scheduler/application"
-	schedulerdomain "alter0/internal/scheduler/domain"
 	shareddomain "alter0/internal/shared/domain"
 	sharedinfra "alter0/internal/shared/infrastructure/id"
 	"alter0/internal/shared/infrastructure/observability"
+	localstorage "alter0/internal/storage/infrastructure/localfile"
 )
 
-func main() {
-	mode := flag.String("mode", "web", "run mode: web | cli")
-	addr := flag.String("addr", "127.0.0.1:8088", "web server listen address")
-	cronEvery := flag.String("cron-every", "", "optional default cron interval, e.g. 30s or 5m")
-	cronContent := flag.String("cron-content", "/time", "content to send for the default cron job")
-	cronSession := flag.String("cron-session", "cron-system", "session id used by the default cron job")
-	persistBackend := flag.String("persist-backend", "local", "persistence backend: local | none")
-	persistDir := flag.String("persist-dir", ".alter0", "local persistence directory")
-	persistFormat := flag.String("persist-format", "json", "local persistence format: json | markdown")
-	flag.Parse()
+type storageProfile struct {
+	Backend         string
+	Dir             string
+	ControlFormat   localstorage.Format
+	SchedulerFormat localstorage.Format
+}
 
+var defaultStorageProfile = storageProfile{
+	Backend:         "local",
+	Dir:             ".alter0",
+	ControlFormat:   localstorage.FormatJSON,
+	SchedulerFormat: localstorage.FormatJSON,
+}
+
+const defaultWebAddr = "127.0.0.1:8088"
+
+func main() {
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -46,9 +49,9 @@ func main() {
 	telemetry := observability.NewTelemetry()
 	idGen := sharedinfra.NewRandomIDGenerator()
 
-	controlStore, schedulerStore, err := buildPersistence(*persistBackend, *persistDir, *persistFormat)
+	controlStore, schedulerStore, err := buildStorage(defaultStorageProfile)
 	if err != nil {
-		logger.Error("failed to initialize persistence", slog.String("error", err.Error()))
+		logger.Error("failed to initialize storage", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
 
@@ -101,28 +104,34 @@ func main() {
 		os.Exit(2)
 	}
 	scheduler.Start(rootCtx)
-	if err := maybeCreateDefaultCronJob(*cronEvery, *cronContent, *cronSession, scheduler); err != nil {
-		logger.Error("failed to configure default cron job", slog.String("error", err.Error()))
-		os.Exit(2)
-	}
 
-	switch *mode {
-	case "web":
-		server := web.NewServer(*addr, orchestrator, telemetry, idGen, control, scheduler, logger)
-		logger.Info("starting web server", slog.String("addr", *addr))
-		if err := server.Run(rootCtx); err != nil {
-			logger.Error("web server exited with error", slog.String("error", err.Error()))
-			os.Exit(1)
-		}
-	case "cli":
+	server := web.NewServer(defaultWebAddr, orchestrator, telemetry, idGen, control, scheduler, logger)
+	webErrCh := make(chan error, 1)
+	go func() {
+		logger.Info("starting web server", slog.String("addr", defaultWebAddr))
+		webErrCh <- server.Run(rootCtx)
+	}()
+
+	go func() {
 		runner := cli.NewRunner(orchestrator, telemetry, idGen, logger)
 		if err := runner.Run(rootCtx); err != nil {
 			logger.Error("cli exited with error", slog.String("error", err.Error()))
+			return
+		}
+		logger.Info("cli adapter stopped")
+	}()
+
+	select {
+	case err := <-webErrCh:
+		if err != nil {
+			logger.Error("web server exited with error", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
-	default:
-		fmt.Fprintf(os.Stderr, "unsupported mode %q, expected web or cli\n", *mode)
-		os.Exit(2)
+	case <-rootCtx.Done():
+		if err := <-webErrCh; err != nil {
+			logger.Error("web server exited with error", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
 	}
 }
 
@@ -144,64 +153,26 @@ func mustUpsertSkill(control *controlapp.Service, skill controldomain.Skill) {
 	}
 }
 
-func maybeCreateDefaultCronJob(
-	cronEvery string,
-	cronContent string,
-	cronSession string,
-	scheduler *schedulerapp.Manager,
-) error {
-	cronEvery = strings.TrimSpace(cronEvery)
-	if cronEvery == "" {
-		return nil
-	}
-
-	interval, err := time.ParseDuration(cronEvery)
-	if err != nil {
-		return fmt.Errorf("invalid -cron-every: %w", err)
-	}
-
-	return scheduler.Upsert(schedulerdomain.Job{
-		ID:        "default",
-		Name:      "default",
-		Interval:  interval,
-		Enabled:   true,
-		SessionID: strings.TrimSpace(cronSession),
-		ChannelID: "scheduler-default",
-		Content:   cronContent,
-		Metadata: map[string]string{
-			"managed_by": "startup_flag",
-		},
-	})
-}
-
-func buildPersistence(
-	backend string,
-	persistDir string,
-	format string,
-) (controlapp.Persistence, schedulerapp.Persistence, error) {
-	switch strings.ToLower(strings.TrimSpace(backend)) {
+func buildStorage(profile storageProfile) (controlapp.Store, schedulerapp.Store, error) {
+	switch strings.ToLower(strings.TrimSpace(profile.Backend)) {
 	case "none", "memory", "inmemory":
 		return nil, nil, nil
 	case "", "local":
-		parsedFormat, err := localpersistence.ParseFormat(format)
-		if err != nil {
-			return nil, nil, err
-		}
-		dir := strings.TrimSpace(persistDir)
+		dir := strings.TrimSpace(profile.Dir)
 		if dir == "" {
 			dir = ".alter0"
 		}
-		return localpersistence.NewControlStore(dir, parsedFormat), localpersistence.NewSchedulerStore(dir, parsedFormat), nil
+		return localstorage.NewControlStore(dir, profile.ControlFormat), localstorage.NewSchedulerStore(dir, profile.SchedulerFormat), nil
 	default:
-		return nil, nil, fmt.Errorf("unsupported persistence backend %q", backend)
+		return nil, nil, fmt.Errorf("unsupported storage backend %q", profile.Backend)
 	}
 }
 
-func newControlService(ctx context.Context, store controlapp.Persistence) (*controlapp.Service, error) {
+func newControlService(ctx context.Context, store controlapp.Store) (*controlapp.Service, error) {
 	if store == nil {
 		return controlapp.NewService(), nil
 	}
-	return controlapp.NewServiceWithPersistence(ctx, store)
+	return controlapp.NewServiceWithStore(ctx, store)
 }
 
 func newSchedulerManager(
@@ -210,10 +181,10 @@ func newSchedulerManager(
 	telemetry *observability.Telemetry,
 	idGen *sharedinfra.RandomIDGenerator,
 	logger *slog.Logger,
-	store schedulerapp.Persistence,
+	store schedulerapp.Store,
 ) (*schedulerapp.Manager, error) {
 	if store == nil {
 		return schedulerapp.NewManager(orchestrator, telemetry, idGen, logger), nil
 	}
-	return schedulerapp.NewManagerWithPersistence(ctx, orchestrator, telemetry, idGen, logger, store)
+	return schedulerapp.NewManagerWithStore(ctx, orchestrator, telemetry, idGen, logger, store)
 }
