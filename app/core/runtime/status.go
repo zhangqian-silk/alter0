@@ -124,6 +124,25 @@ type gatewayTraceEntry struct {
 	Detail    string `json:"detail"`
 }
 
+type providerPolicyIncident struct {
+	Timestamp string `json:"timestamp"`
+	ChannelID string `json:"channel_id"`
+	Event     string `json:"event"`
+	Category  string `json:"category"`
+	Detail    string `json:"detail,omitempty"`
+}
+
+type providerPolicyIncidentSummary struct {
+	Status        string                   `json:"status"`
+	WindowMinutes int                      `json:"window_minutes"`
+	Signals       int                      `json:"signals"`
+	ByCategory    map[string]int           `json:"by_category"`
+	ByChannel     map[string]int           `json:"by_channel"`
+	LatestAt      string                   `json:"latest_at,omitempty"`
+	Samples       []providerPolicyIncident `json:"samples,omitempty"`
+	Reason        string                   `json:"reason,omitempty"`
+}
+
 type gatewayTraceSummary struct {
 	WindowMinutes         int
 	TotalEvents           int
@@ -134,6 +153,7 @@ type gatewayTraceSummary struct {
 	ErrorChannels         map[string]int
 	DisconnectedByChannel map[string]int
 	LatestAt              string
+	ProviderPolicy        providerPolicyIncidentSummary
 }
 
 type ChannelDegradationThresholds struct {
@@ -265,6 +285,7 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		"disconnected_by_channel": traceSummary.DisconnectedByChannel,
 		"latest_at":               traceSummary.LatestAt,
 	}
+	payload["provider_policy_incidents"] = traceSummary.ProviderPolicy
 	channelDegradation := summarizeChannelDegradationWithThresholds(
 		traceSummary,
 		c.ChannelDegradationDefaults,
@@ -278,6 +299,7 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		Now:                        now,
 		Queue:                      c.Queue,
 		Trace:                      traceSummary,
+		ProviderPolicy:             traceSummary.ProviderPolicy,
 		ChannelDegradation:         channelDegradation,
 		Executors:                  executors,
 		RetryStormWindow:           c.AlertRetryStormWindow,
@@ -316,6 +338,7 @@ type runtimeAlertInput struct {
 	Now                        time.Time
 	Queue                      *queue.Queue
 	Trace                      gatewayTraceSummary
+	ProviderPolicy             providerPolicyIncidentSummary
 	ChannelDegradation         channelDegradationSummary
 	Executors                  []executor.ExecutorCapability
 	RetryStormWindow           time.Duration
@@ -392,6 +415,27 @@ func summarizeRuntimeAlerts(input runtimeAlertInput) []runtimeAlert {
 			Telemetry: map[string]interface{}{
 				"events":         input.Trace.ErrorByEvent["channel_disconnected"],
 				"error_channels": input.Trace.ErrorChannels,
+			},
+		})
+	}
+
+	if input.ProviderPolicy.Signals > 0 {
+		severity := "warning"
+		if input.ProviderPolicy.Status == "critical" {
+			severity = "critical"
+		}
+		alerts = append(alerts, runtimeAlert{
+			Code:     "provider_policy_drift",
+			Severity: severity,
+			Source:   "provider_policy",
+			Message:  fmt.Sprintf("detected %d provider policy incident signal(s) in trace window", input.ProviderPolicy.Signals),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"window_minutes": input.ProviderPolicy.WindowMinutes,
+				"by_category":    input.ProviderPolicy.ByCategory,
+				"by_channel":     input.ProviderPolicy.ByChannel,
+				"latest_at":      input.ProviderPolicy.LatestAt,
+				"samples":        input.ProviderPolicy.Samples,
 			},
 		})
 	}
@@ -1275,6 +1319,13 @@ func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration)
 		ByChannel:             map[string]int{},
 		ErrorChannels:         map[string]int{},
 		DisconnectedByChannel: map[string]int{},
+		ProviderPolicy: providerPolicyIncidentSummary{
+			Status:        "ok",
+			WindowMinutes: int(window / time.Minute),
+			ByCategory:    map[string]int{},
+			ByChannel:     map[string]int{},
+			Samples:       []providerPolicyIncident{},
+		},
 	}
 	latest := time.Time{}
 	for _, entry := range entries {
@@ -1305,6 +1356,23 @@ func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration)
 			if event == "channel_disconnected" {
 				summary.DisconnectedByChannel[channel]++
 			}
+			if category, ok := classifyProviderPolicyIncident(entry.Detail); ok {
+				summary.ProviderPolicy.Signals++
+				summary.ProviderPolicy.ByCategory[category]++
+				summary.ProviderPolicy.ByChannel[channel]++
+				summary.ProviderPolicy.LatestAt = timestamp.UTC().Format(time.RFC3339)
+				sample := providerPolicyIncident{
+					Timestamp: timestamp.UTC().Format(time.RFC3339),
+					ChannelID: channel,
+					Event:     event,
+					Category:  category,
+					Detail:    strings.TrimSpace(entry.Detail),
+				}
+				summary.ProviderPolicy.Samples = append(summary.ProviderPolicy.Samples, sample)
+				if len(summary.ProviderPolicy.Samples) > 5 {
+					summary.ProviderPolicy.Samples = summary.ProviderPolicy.Samples[len(summary.ProviderPolicy.Samples)-5:]
+				}
+			}
 		}
 		if latest.IsZero() || timestamp.After(latest) {
 			latest = timestamp
@@ -1313,7 +1381,45 @@ func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration)
 	if !latest.IsZero() {
 		summary.LatestAt = latest.UTC().Format(time.RFC3339)
 	}
+	summary.ProviderPolicy = finalizeProviderPolicyIncidentSummary(summary.ProviderPolicy, summary.TotalEvents)
 	return summary
+}
+
+func finalizeProviderPolicyIncidentSummary(summary providerPolicyIncidentSummary, totalEvents int) providerPolicyIncidentSummary {
+	if totalEvents == 0 {
+		summary.Status = "insufficient_data"
+		summary.Reason = "no gateway events in trace window"
+		return summary
+	}
+	if summary.Signals == 0 {
+		summary.Status = "ok"
+		summary.Reason = "no provider policy incidents detected"
+		return summary
+	}
+	if summary.ByCategory["access_blocked"] > 0 || summary.ByCategory["policy_denied"] > 0 || summary.Signals >= 5 {
+		summary.Status = "critical"
+		return summary
+	}
+	summary.Status = "warning"
+	return summary
+}
+
+func classifyProviderPolicyIncident(detail string) (string, bool) {
+	text := strings.ToLower(strings.TrimSpace(detail))
+	if text == "" {
+		return "", false
+	}
+
+	if strings.Contains(text, "rate limit") || strings.Contains(text, "too many requests") || strings.Contains(text, "insufficient_quota") || strings.Contains(text, "quota") || strings.Contains(text, "429") {
+		return "quota_limited", true
+	}
+	if strings.Contains(text, "account restricted") || strings.Contains(text, "access denied") || strings.Contains(text, "permission denied") || strings.Contains(text, "unauthorized") || strings.Contains(text, "forbidden") || strings.Contains(text, "oauth") || strings.Contains(text, "invalid api key") || strings.Contains(text, "api key revoked") {
+		return "access_blocked", true
+	}
+	if strings.Contains(text, "terms of service") || strings.Contains(text, "policy") || strings.Contains(text, "compliance") || strings.Contains(text, "not allowed") || strings.Contains(text, "safety") || strings.Contains(text, "content_filter") {
+		return "policy_denied", true
+	}
+	return "", false
 }
 
 func readGatewayTraceSince(basePath string, since time.Time) []gatewayTraceEntry {
