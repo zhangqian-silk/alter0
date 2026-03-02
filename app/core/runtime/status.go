@@ -55,6 +55,7 @@ type StatusCollector struct {
 	AlertSessionCostShare             float64
 	AlertSessionCostMinTokens         int
 	AlertSessionPromptOutRatio        float64
+	AlertCompactionDriftShare         float64
 	ChannelDegradationDefaults        ChannelDegradationThresholds
 	ChannelDegradationChannelOverride map[string]ChannelDegradationThresholds
 	ProviderPolicyCriticalSignals     int
@@ -103,6 +104,21 @@ type runtimeWorkloadTierGuidance struct {
 	Recommended    map[string]float64 `json:"recommended"`
 	Drift          map[string]float64 `json:"drift"`
 	NeedsTuning    bool               `json:"needs_tuning"`
+}
+
+type runtimeCompactionQualitySummary struct {
+	Status               string                      `json:"status"`
+	SampleSessions       int                         `json:"sample_sessions"`
+	HeavySessions        int                         `json:"heavy_sessions"`
+	DriftSessions        int                         `json:"drift_sessions"`
+	DriftShare           float64                     `json:"drift_share"`
+	AlertThreshold       float64                     `json:"alert_threshold"`
+	PromptRatioThreshold float64                     `json:"prompt_ratio_threshold"`
+	P50PromptOutputRatio float64                     `json:"p50_prompt_output_ratio,omitempty"`
+	P90PromptOutputRatio float64                     `json:"p90_prompt_output_ratio,omitempty"`
+	NeedsTuning          bool                        `json:"needs_tuning"`
+	TopDriftSessions     []runtimeSessionCostHotspot `json:"top_drift_sessions,omitempty"`
+	Reason               string                      `json:"reason,omitempty"`
 }
 
 type runtimeUsageSummary struct {
@@ -265,6 +281,12 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 	payload["sessions"] = usage.Sessions
 	payload["subagents"] = usage.Subagent
 	payload["cost"] = usage.Cost
+	compactionQuality := summarizeCompactionQuality(
+		usage.CostAllSessions,
+		c.AlertSessionPromptOutRatio,
+		c.AlertSessionCostMinTokens,
+		c.AlertCompactionDriftShare,
+	)
 	if costSection, ok := payload["cost"].(map[string]interface{}); ok {
 		costSection["threshold_guidance"] = summarizeSessionCostThresholdGuidance(
 			usage.CostAllSessions,
@@ -272,6 +294,7 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 			c.AlertSessionPromptOutRatio,
 			c.AlertSessionCostMinTokens,
 		)
+		costSection["compaction_quality"] = compactionQuality
 	}
 
 	traceSummary := summarizeGatewayTraceWithProviderPolicyThreshold(
@@ -314,6 +337,7 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		QueueBacklogDepth:          c.AlertQueueBacklogDepth,
 		ExecutorStrictAvailable:    c.AlertExecutorStrictMode,
 		CostHotspots:               usage.CostHotspots,
+		CompactionQuality:          compactionQuality,
 		SessionCostShareThreshold:  c.AlertSessionCostShare,
 		SessionCostMinTokens:       c.AlertSessionCostMinTokens,
 		SessionPromptRatioMaxAlert: c.AlertSessionPromptOutRatio,
@@ -353,6 +377,7 @@ type runtimeAlertInput struct {
 	QueueBacklogDepth          int
 	ExecutorStrictAvailable    bool
 	CostHotspots               []runtimeSessionCostHotspot
+	CompactionQuality          runtimeCompactionQualitySummary
 	SessionCostShareThreshold  float64
 	SessionCostMinTokens       int
 	SessionPromptRatioMaxAlert float64
@@ -529,6 +554,26 @@ func summarizeRuntimeAlerts(input runtimeAlertInput) []runtimeAlert {
 				},
 			})
 		}
+	}
+
+	if input.CompactionQuality.Status == "warning" || input.CompactionQuality.Status == "critical" {
+		severity := input.CompactionQuality.Status
+		alerts = append(alerts, runtimeAlert{
+			Code:     "session_compaction_quality_drift",
+			Severity: severity,
+			Source:   "cost",
+			Message:  fmt.Sprintf("%d/%d heavy sessions exceed compaction ratio threshold %.2f", input.CompactionQuality.DriftSessions, input.CompactionQuality.HeavySessions, input.CompactionQuality.PromptRatioThreshold),
+			Detected: now.Format(time.RFC3339),
+			Telemetry: map[string]interface{}{
+				"sample_sessions":        input.CompactionQuality.SampleSessions,
+				"heavy_sessions":         input.CompactionQuality.HeavySessions,
+				"drift_sessions":         input.CompactionQuality.DriftSessions,
+				"drift_share":            input.CompactionQuality.DriftShare,
+				"alert_threshold":        input.CompactionQuality.AlertThreshold,
+				"prompt_ratio_threshold": input.CompactionQuality.PromptRatioThreshold,
+				"top_drift_sessions":     input.CompactionQuality.TopDriftSessions,
+			},
+		})
 	}
 
 	return alerts
@@ -989,6 +1034,77 @@ func summarizeSessionCostThresholdGuidance(all []runtimeSessionCostHotspot, curr
 	}
 	guidance["needs_tuning"] = math.Abs(shareDelta) >= 0.05 || math.Abs(ratioDelta) >= 1.0
 	return guidance
+}
+
+func summarizeCompactionQuality(all []runtimeSessionCostHotspot, promptRatioThreshold float64, minTokens int, driftShareThreshold float64) runtimeCompactionQualitySummary {
+	if promptRatioThreshold <= 0 {
+		promptRatioThreshold = 6.0
+	}
+	if minTokens <= 0 {
+		minTokens = 1200
+	}
+	if driftShareThreshold <= 0 || driftShareThreshold > 1 {
+		driftShareThreshold = 0.4
+	}
+
+	summary := runtimeCompactionQualitySummary{
+		Status:               "insufficient_data",
+		SampleSessions:       len(all),
+		HeavySessions:        0,
+		DriftSessions:        0,
+		DriftShare:           0,
+		AlertThreshold:       math.Round(driftShareThreshold*1000) / 1000,
+		PromptRatioThreshold: math.Round(promptRatioThreshold*100) / 100,
+		NeedsTuning:          false,
+		TopDriftSessions:     []runtimeSessionCostHotspot{},
+	}
+
+	heavy := make([]runtimeSessionCostHotspot, 0, len(all))
+	for _, item := range all {
+		if item.TotalTokens < minTokens {
+			continue
+		}
+		heavy = append(heavy, item)
+	}
+	summary.HeavySessions = len(heavy)
+	if len(heavy) == 0 {
+		summary.Reason = "no heavy sessions reached token threshold in window"
+		return summary
+	}
+
+	ratios := make([]float64, 0, len(heavy))
+	topDrift := make([]runtimeSessionCostHotspot, 0, 3)
+	for _, item := range heavy {
+		ratios = append(ratios, item.PromptOutputRatio)
+		if item.PromptOutputRatio < promptRatioThreshold {
+			continue
+		}
+		summary.DriftSessions++
+		if len(topDrift) < 3 {
+			topDrift = append(topDrift, item)
+		}
+	}
+
+	summary.DriftShare = math.Round((float64(summary.DriftSessions)/float64(len(heavy)))*1000) / 1000
+	summary.P50PromptOutputRatio = math.Round(percentileFloat(ratios, 0.5)*100) / 100
+	summary.P90PromptOutputRatio = math.Round(percentileFloat(ratios, 0.9)*100) / 100
+	summary.NeedsTuning = summary.DriftShare >= summary.AlertThreshold
+	summary.TopDriftSessions = topDrift
+
+	if !summary.NeedsTuning {
+		summary.Status = "ok"
+		return summary
+	}
+
+	criticalThreshold := summary.AlertThreshold + 0.25
+	if criticalThreshold > 1 {
+		criticalThreshold = 1
+	}
+	summary.Status = "warning"
+	if summary.DriftSessions >= 2 && summary.DriftShare >= criticalThreshold {
+		summary.Status = "critical"
+	}
+	return summary
 }
 
 func summarizeWorkloadTierThresholdGuidance(all []runtimeSessionCostHotspot, currentShare float64, currentPromptRatio float64, minTokens int) map[string]interface{} {

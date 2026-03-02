@@ -44,11 +44,12 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime status snapshot git upstream divergence (`upstream/ahead/behind`)
 - [x] Runtime status expansion for sessions/subagents/schedules/cost metrics
 - [x] Runtime cost hotspot telemetry (`cost.session_hotspots`) with compaction pressure visibility (`prompt_output_ratio`)
+- [x] Runtime compaction quality drift telemetry (`cost.compaction_quality`) with heavy-session drift share and top drift-session attribution
 - [x] Runtime cost threshold guidance (`cost.threshold_guidance`) for p90-based share/ratio tuning with drift hints, including workload-tier recommendations (`workload_tiers`)
 - [x] Weekly cost threshold history archive with alert hit-rate regression (`make cost-threshold-history` -> `output/cost/threshold-history-latest.json` + `output/cost/threshold-history/<ISO-week>/`)
 - [x] Threshold reconcile coordinator with bounded proposal/apply workflow (`make cost-threshold-reconcile` -> `output/cost/threshold-reconcile-latest.json` + optional `--apply`)
 - [x] Threshold reconcile cadence archive and readiness trend (`output/cost/threshold-reconcile/<ISO-week>/` + `cadence.ready_rate/applied_rate/ready_streak`)
-- [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability + session cost hotspot/compaction pressure)
+- [x] End-to-end gateway tracing + runtime alerts (`output/trace` + `/status` alerts for queue backlog/retry storm/channel disconnect/executor availability + session cost hotspot/compaction pressure/compaction quality drift)
 - [x] Runtime channel degradation snapshot (`channel_degradation`) with per-channel severity, fallback candidates, and recovery recommendations
 - [x] Channel degradation threshold governance (`runtime.observability.channel_degradation`) with default + per-channel override profiles, suppressed-noise counters, and threshold profile traceability in status output
 - [x] Channel chaos drill gate for degradation/fallback regression (`make channel-chaos-drill` -> `config/channel-chaos-matrix.json` + `output/channel-chaos/drill-latest.json`)
@@ -120,6 +121,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 4. [x] N24 Workload-tier threshold guidance (`cost.threshold_guidance.workload_tiers` by token-volume buckets)
 5. [x] N25 Threshold reconcile coordinator (`make cost-threshold-reconcile` generates bounded proposals with optional `--apply` config write-back)
 6. [x] N26 Threshold reconcile cadence archive (`make cost-threshold-reconcile` now archives weekly snapshots and computes readiness trends)
+7. [x] N36 Session compaction quality drift governance (`/status.cost.compaction_quality` + `alerts.session_compaction_quality_drift` with configurable `runtime.observability.cost.compaction_drift_share_threshold`)
 
 ### P5 (Channel Resilience and Degrade Strategy)
 
@@ -131,7 +133,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 6. [x] N32 Weekly calibration telemetry (`make channel-chaos-calibration` links candidate archive + threshold cadence to output candidate adoption / false-positive reduction indicators)
 7. [x] N33 Source-candidate coverage and channel attribution telemetry (`make channel-chaos-calibration` now reports matrix tag coverage, missing tags, and per-channel adoption buckets)
 
-Queue status: N35 merged; post-alignment backlog has no open blocking item.
+Queue status: N36 merged; post-alignment backlog has no open blocking item.
 
 ## 4) Change Rule
 

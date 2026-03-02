@@ -38,7 +38,8 @@
       "cost": {
         "session_cost_share_alert_threshold": 0.35,
         "prompt_output_ratio_alert_threshold": 6,
-        "heavy_session_min_tokens": 1200
+        "heavy_session_min_tokens": 1200,
+        "compaction_drift_share_threshold": 0.4
       },
       "channel_degradation": {
         "min_events": 1,
