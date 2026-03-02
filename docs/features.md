@@ -55,6 +55,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Channel chaos threshold-profile regression (scenario-level `thresholds.default/overrides`, `min_suppressed_channels`, `required_threshold_profile` assertions)
 - [x] Trace-to-chaos candidate extraction (`make channel-chaos-candidates` -> `output/channel-chaos/candidates-latest.json`) for real-incident scenario proposal
 - [x] Weekly channel-chaos calibration telemetry (`make channel-chaos-calibration` -> `output/channel-chaos/calibration-latest.json`) with candidate adoption rate and false-positive reduction trend
+- [x] Channel-chaos source-candidate coverage and adoption attribution telemetry (`tag_coverage`, `missing_scenario_tags`, `adoption_by_channel`, `matrix_unseen_candidates`) for matrix traceability
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`), including threshold-history freshness checks
 - [x] Scenario benchmark matrix + competitor tracking gate extension (`config/scenario-benchmark-matrix.json`, `config/competitor-tracking.json`, `scripts/update-competitor-tracking.sh`)
@@ -124,8 +125,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 4. [x] N30 Channel chaos threshold-profile regression (`channel-chaos` scenarios accept threshold policy and assert suppression/profile hit behavior)
 5. [x] N31 Trace-to-chaos candidate extraction (`make channel-chaos-candidates` samples `output/trace` and emits review-ready scenarios to `output/channel-chaos/candidates-latest.json`)
 6. [x] N32 Weekly calibration telemetry (`make channel-chaos-calibration` links candidate archive + threshold cadence to output candidate adoption / false-positive reduction indicators)
+7. [x] N33 Source-candidate coverage and channel attribution telemetry (`make channel-chaos-calibration` now reports matrix tag coverage, missing tags, and per-channel adoption buckets)
 
-Queue status: N32 merged; post-alignment backlog has no open blocking item.
+Queue status: N33 merged; post-alignment backlog has no open blocking item.
 
 ## 4) Change Rule
 

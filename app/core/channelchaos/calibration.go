@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const CalibrationVersion = "2026.03-n32"
+const CalibrationVersion = "2026.03-n33"
 
 type CalibrationOptions struct {
 	Now                    time.Time
@@ -40,12 +40,24 @@ type CalibrationReport struct {
 }
 
 type CandidateCalibration struct {
-	Reports           int      `json:"reports"`
-	UniqueCandidates  int      `json:"unique_candidates"`
-	MatrixMapped      int      `json:"matrix_mapped"`
-	AdoptedCandidates int      `json:"adopted_candidates"`
-	AdoptionRate      float64  `json:"adoption_rate"`
-	PendingCandidates []string `json:"pending_candidates,omitempty"`
+	Reports                int                           `json:"reports"`
+	UniqueCandidates       int                           `json:"unique_candidates"`
+	MatrixMapped           int                           `json:"matrix_mapped"`
+	MatrixScenarios        int                           `json:"matrix_scenarios"`
+	TaggedScenarios        int                           `json:"tagged_scenarios"`
+	TagCoverage            float64                       `json:"tag_coverage"`
+	AdoptedCandidates      int                           `json:"adopted_candidates"`
+	AdoptionRate           float64                       `json:"adoption_rate"`
+	MatrixUnseenCandidates int                           `json:"matrix_unseen_candidates"`
+	AdoptionByChannel      []CandidateChannelCalibration `json:"adoption_by_channel,omitempty"`
+	MissingScenarioTags    []string                      `json:"missing_scenario_tags,omitempty"`
+	PendingCandidates      []string                      `json:"pending_candidates,omitempty"`
+}
+
+type CandidateChannelCalibration struct {
+	Channel string `json:"channel"`
+	Seen    int    `json:"seen"`
+	Adopted int    `json:"adopted"`
 }
 
 type ThresholdCalibration struct {
@@ -101,14 +113,30 @@ func BuildCalibrationReport(opts CalibrationOptions) (CalibrationReport, error) 
 		return report, fmt.Errorf("load matrix: %w", err)
 	}
 	matrixMapped := map[string]struct{}{}
+	missingScenarioTags := make([]string, 0)
 	for _, scenario := range matrix.Scenarios {
+		report.Candidate.MatrixScenarios++
 		key := strings.TrimSpace(scenario.SourceCandidate)
 		if key == "" {
+			id := strings.TrimSpace(scenario.ID)
+			if id == "" {
+				id = "(unnamed)"
+			}
+			missingScenarioTags = append(missingScenarioTags, id)
 			continue
 		}
+		report.Candidate.TaggedScenarios++
 		matrixMapped[key] = struct{}{}
 	}
+	sort.Strings(missingScenarioTags)
 	report.Candidate.MatrixMapped = len(matrixMapped)
+	report.Candidate.MissingScenarioTags = missingScenarioTags
+	if report.Candidate.MatrixScenarios > 0 {
+		report.Candidate.TagCoverage = roundCalibrationFloat(float64(report.Candidate.TaggedScenarios)/float64(report.Candidate.MatrixScenarios), 3)
+	}
+	if len(missingScenarioTags) > 0 {
+		report.Notes = append(report.Notes, fmt.Sprintf("matrix has %d/%d scenarios without source_candidate tags", len(missingScenarioTags), report.Candidate.MatrixScenarios))
+	}
 	if report.Candidate.MatrixMapped == 0 {
 		report.Notes = append(report.Notes, "matrix has no source_candidate tags; adoption rate will stay 0 until scenarios link to sampled candidates")
 	}
@@ -122,9 +150,19 @@ func BuildCalibrationReport(opts CalibrationOptions) (CalibrationReport, error) 
 
 	adopted := 0
 	pending := make([]string, 0)
+	channelStats := map[string]*CandidateChannelCalibration{}
 	for key := range candidateSet {
+		channel := parseSourceCandidateChannel(key)
+		stats := channelStats[channel]
+		if stats == nil {
+			stats = &CandidateChannelCalibration{Channel: channel}
+			channelStats[channel] = stats
+		}
+		stats.Seen++
+
 		if _, ok := matrixMapped[key]; ok {
 			adopted++
+			stats.Adopted++
 			continue
 		}
 		pending = append(pending, key)
@@ -134,6 +172,30 @@ func BuildCalibrationReport(opts CalibrationOptions) (CalibrationReport, error) 
 	report.Candidate.PendingCandidates = pending
 	if report.Candidate.UniqueCandidates > 0 {
 		report.Candidate.AdoptionRate = roundCalibrationFloat(float64(adopted)/float64(report.Candidate.UniqueCandidates), 3)
+	}
+
+	matrixUnseen := 0
+	for key := range matrixMapped {
+		if _, ok := candidateSet[key]; ok {
+			continue
+		}
+		matrixUnseen++
+	}
+	report.Candidate.MatrixUnseenCandidates = matrixUnseen
+	if report.Candidate.MatrixMapped > 0 && report.Candidate.UniqueCandidates == 0 {
+		report.Notes = append(report.Notes, "matrix has source_candidate tags but no sampled candidates in selected window")
+	}
+
+	if len(channelStats) > 0 {
+		channels := make([]string, 0, len(channelStats))
+		for channel := range channelStats {
+			channels = append(channels, channel)
+		}
+		sort.Strings(channels)
+		report.Candidate.AdoptionByChannel = make([]CandidateChannelCalibration, 0, len(channels))
+		for _, channel := range channels {
+			report.Candidate.AdoptionByChannel = append(report.Candidate.AdoptionByChannel, *channelStats[channel])
+		}
 	}
 
 	historySamples, err := readThresholdHistorySamples(opts.ThresholdHistoryRoot, since)
@@ -380,6 +442,21 @@ func parseCalibrationTimestamp(raw string) (time.Time, bool) {
 		return parsed.UTC(), true
 	}
 	return time.Time{}, false
+}
+
+func parseSourceCandidateChannel(key string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(key))
+	if trimmed == "" {
+		return "unknown"
+	}
+	parts := strings.Split(trimmed, ":")
+	if len(parts) >= 2 && parts[0] == "trace" {
+		channel := strings.TrimSpace(parts[1])
+		if channel != "" {
+			return channel
+		}
+	}
+	return "unknown"
 }
 
 func roundCalibrationFloat(value float64, places int) float64 {

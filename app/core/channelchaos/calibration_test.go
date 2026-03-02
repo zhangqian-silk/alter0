@@ -104,6 +104,27 @@ func TestBuildCalibrationReportComputesAdoptionAndReduction(t *testing.T) {
 	if len(report.Candidate.PendingCandidates) != 2 {
 		t.Fatalf("expected 2 pending candidates, got %#v", report.Candidate.PendingCandidates)
 	}
+	if report.Candidate.MatrixScenarios != 1 || report.Candidate.TaggedScenarios != 1 {
+		t.Fatalf("expected matrix/tagged scenarios 1/1, got %d/%d", report.Candidate.MatrixScenarios, report.Candidate.TaggedScenarios)
+	}
+	if report.Candidate.TagCoverage != 1 {
+		t.Fatalf("expected tag coverage 1, got %f", report.Candidate.TagCoverage)
+	}
+	if report.Candidate.MatrixUnseenCandidates != 0 {
+		t.Fatalf("expected matrix unseen candidates 0, got %d", report.Candidate.MatrixUnseenCandidates)
+	}
+	if len(report.Candidate.AdoptionByChannel) != 3 {
+		t.Fatalf("expected 3 channel adoption buckets, got %#v", report.Candidate.AdoptionByChannel)
+	}
+	if report.Candidate.AdoptionByChannel[0].Channel != "http" || report.Candidate.AdoptionByChannel[0].Seen != 1 || report.Candidate.AdoptionByChannel[0].Adopted != 1 {
+		t.Fatalf("unexpected http adoption bucket: %#v", report.Candidate.AdoptionByChannel[0])
+	}
+	if report.Candidate.AdoptionByChannel[1].Channel != "slack" || report.Candidate.AdoptionByChannel[1].Seen != 1 || report.Candidate.AdoptionByChannel[1].Adopted != 0 {
+		t.Fatalf("unexpected slack adoption bucket: %#v", report.Candidate.AdoptionByChannel[1])
+	}
+	if report.Candidate.AdoptionByChannel[2].Channel != "telegram" || report.Candidate.AdoptionByChannel[2].Seen != 1 || report.Candidate.AdoptionByChannel[2].Adopted != 0 {
+		t.Fatalf("unexpected telegram adoption bucket: %#v", report.Candidate.AdoptionByChannel[2])
+	}
 
 	if report.FalsePositive.Status != "improved" {
 		t.Fatalf("expected false-positive status improved, got %q", report.FalsePositive.Status)
@@ -150,13 +171,19 @@ func TestBuildCalibrationReportNoData(t *testing.T) {
 	if report.Candidate.UniqueCandidates != 0 {
 		t.Fatalf("expected no candidates, got %d", report.Candidate.UniqueCandidates)
 	}
+	if report.Candidate.MatrixScenarios != 1 || report.Candidate.TaggedScenarios != 0 {
+		t.Fatalf("expected matrix/tagged scenarios 1/0, got %d/%d", report.Candidate.MatrixScenarios, report.Candidate.TaggedScenarios)
+	}
+	if len(report.Candidate.MissingScenarioTags) != 1 || report.Candidate.MissingScenarioTags[0] != "manual" {
+		t.Fatalf("expected missing scenario tag for manual, got %#v", report.Candidate.MissingScenarioTags)
+	}
 	if report.FalsePositive.Status != "no_data" {
 		t.Fatalf("expected false-positive no_data, got %q", report.FalsePositive.Status)
 	}
 	if report.Threshold.Samples != 0 {
 		t.Fatalf("expected no threshold samples, got %d", report.Threshold.Samples)
 	}
-	if len(report.Notes) < 3 {
+	if len(report.Notes) < 4 {
 		t.Fatalf("expected explanatory notes, got %#v", report.Notes)
 	}
 }
