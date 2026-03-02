@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const CalibrationVersion = "2026.03-n33"
+const CalibrationVersion = "2026.03-n37"
 
 type CalibrationOptions struct {
 	Now                    time.Time
@@ -50,6 +50,8 @@ type CandidateCalibration struct {
 	AdoptionRate           float64                       `json:"adoption_rate"`
 	MatrixUnseenCandidates int                           `json:"matrix_unseen_candidates"`
 	AdoptionByChannel      []CandidateChannelCalibration `json:"adoption_by_channel,omitempty"`
+	PendingByChannel       []CandidateChannelPending     `json:"pending_by_channel,omitempty"`
+	PriorityCandidates     []PendingCandidateInsight     `json:"priority_candidates,omitempty"`
 	MissingScenarioTags    []string                      `json:"missing_scenario_tags,omitempty"`
 	PendingCandidates      []string                      `json:"pending_candidates,omitempty"`
 }
@@ -58,6 +60,24 @@ type CandidateChannelCalibration struct {
 	Channel string `json:"channel"`
 	Seen    int    `json:"seen"`
 	Adopted int    `json:"adopted"`
+}
+
+type CandidateChannelPending struct {
+	Channel      string `json:"channel"`
+	Pending      int    `json:"pending"`
+	Critical     int    `json:"critical"`
+	Disconnected int    `json:"disconnected"`
+}
+
+type PendingCandidateInsight struct {
+	SourceCandidate   string `json:"source_candidate"`
+	Channel           string `json:"channel"`
+	Severity          string `json:"severity"`
+	Disconnected      bool   `json:"disconnected"`
+	Occurrences       int    `json:"occurrences"`
+	LastSeen          string `json:"last_seen"`
+	PriorityScore     int    `json:"priority_score"`
+	RecommendedAction string `json:"recommended_action"`
 }
 
 type ThresholdCalibration struct {
@@ -83,6 +103,21 @@ type thresholdReconcileSample struct {
 	Timestamp time.Time
 	Status    string
 	Applied   bool
+}
+
+type sourceCandidateMeta struct {
+	Channel      string
+	Severity     string
+	Disconnected bool
+}
+
+type candidateObservation struct {
+	Key          string
+	Channel      string
+	Severity     string
+	Disconnected bool
+	Occurrences  int
+	LastSeen     time.Time
 }
 
 func BuildCalibrationReport(opts CalibrationOptions) (CalibrationReport, error) {
@@ -141,18 +176,23 @@ func BuildCalibrationReport(opts CalibrationOptions) (CalibrationReport, error) 
 		report.Notes = append(report.Notes, "matrix has no source_candidate tags; adoption rate will stay 0 until scenarios link to sampled candidates")
 	}
 
-	candidateReports, candidateSet, err := readCandidateArchive(opts.CandidateArchiveRoot, since)
+	candidateReports, candidateObservations, err := readCandidateArchive(opts.CandidateArchiveRoot, since)
 	if err != nil {
 		return report, fmt.Errorf("read candidate archive: %w", err)
 	}
 	report.Candidate.Reports = candidateReports
-	report.Candidate.UniqueCandidates = len(candidateSet)
+	report.Candidate.UniqueCandidates = len(candidateObservations)
 
 	adopted := 0
 	pending := make([]string, 0)
+	pendingInsights := make([]PendingCandidateInsight, 0)
+	pendingByChannel := map[string]*CandidateChannelPending{}
 	channelStats := map[string]*CandidateChannelCalibration{}
-	for key := range candidateSet {
-		channel := parseSourceCandidateChannel(key)
+	for key, observation := range candidateObservations {
+		channel := strings.TrimSpace(observation.Channel)
+		if channel == "" {
+			channel = "unknown"
+		}
 		stats := channelStats[channel]
 		if stats == nil {
 			stats = &CandidateChannelCalibration{Channel: channel}
@@ -166,17 +206,33 @@ func BuildCalibrationReport(opts CalibrationOptions) (CalibrationReport, error) 
 			continue
 		}
 		pending = append(pending, key)
+		pendingInsights = append(pendingInsights, buildPendingCandidateInsight(observation))
+
+		pendingStats := pendingByChannel[channel]
+		if pendingStats == nil {
+			pendingStats = &CandidateChannelPending{Channel: channel}
+			pendingByChannel[channel] = pendingStats
+		}
+		pendingStats.Pending++
+		if observation.Severity == "critical" {
+			pendingStats.Critical++
+		}
+		if observation.Disconnected {
+			pendingStats.Disconnected++
+		}
 	}
 	sort.Strings(pending)
 	report.Candidate.AdoptedCandidates = adopted
 	report.Candidate.PendingCandidates = pending
+	report.Candidate.PendingByChannel = buildPendingByChannelList(pendingByChannel)
+	report.Candidate.PriorityCandidates = prioritizePendingCandidates(pendingInsights, 5)
 	if report.Candidate.UniqueCandidates > 0 {
 		report.Candidate.AdoptionRate = roundCalibrationFloat(float64(adopted)/float64(report.Candidate.UniqueCandidates), 3)
 	}
 
 	matrixUnseen := 0
 	for key := range matrixMapped {
-		if _, ok := candidateSet[key]; ok {
+		if _, ok := candidateObservations[key]; ok {
 			continue
 		}
 		matrixUnseen++
@@ -184,6 +240,9 @@ func BuildCalibrationReport(opts CalibrationOptions) (CalibrationReport, error) 
 	report.Candidate.MatrixUnseenCandidates = matrixUnseen
 	if report.Candidate.MatrixMapped > 0 && report.Candidate.UniqueCandidates == 0 {
 		report.Notes = append(report.Notes, "matrix has source_candidate tags but no sampled candidates in selected window")
+	}
+	if len(report.Candidate.PriorityCandidates) > 0 {
+		report.Notes = append(report.Notes, fmt.Sprintf("%d pending source_candidate entries are prioritized for next matrix sync", len(pending)))
 	}
 
 	if len(channelStats) > 0 {
@@ -225,14 +284,14 @@ func BuildCalibrationReport(opts CalibrationOptions) (CalibrationReport, error) 
 	return report, nil
 }
 
-func readCandidateArchive(root string, since time.Time) (int, map[string]struct{}, error) {
+func readCandidateArchive(root string, since time.Time) (int, map[string]candidateObservation, error) {
 	files, err := collectJSONFiles(root)
 	if err != nil {
 		return 0, nil, err
 	}
 
 	reports := 0
-	keys := map[string]struct{}{}
+	observations := map[string]candidateObservation{}
 	for _, path := range files {
 		payload, err := os.ReadFile(path)
 		if err != nil {
@@ -255,10 +314,35 @@ func readCandidateArchive(root string, since time.Time) (int, map[string]struct{
 			if key == "" {
 				continue
 			}
-			keys[key] = struct{}{}
+			meta := parseSourceCandidateMeta(key)
+			observation := observations[key]
+			if observation.Key == "" {
+				observation = candidateObservation{
+					Key:          key,
+					Channel:      meta.Channel,
+					Severity:     meta.Severity,
+					Disconnected: meta.Disconnected,
+					Occurrences:  0,
+					LastSeen:     timestamp,
+				}
+			}
+			observation.Occurrences++
+			if timestamp.After(observation.LastSeen) {
+				observation.LastSeen = timestamp
+			}
+			if observation.Channel == "unknown" && meta.Channel != "unknown" {
+				observation.Channel = meta.Channel
+			}
+			if observation.Severity != "critical" && meta.Severity == "critical" {
+				observation.Severity = "critical"
+			} else if strings.TrimSpace(observation.Severity) == "" {
+				observation.Severity = meta.Severity
+			}
+			observation.Disconnected = observation.Disconnected || meta.Disconnected
+			observations[key] = observation
 		}
 	}
-	return reports, keys, nil
+	return reports, observations, nil
 }
 
 func readThresholdHistorySamples(root string, since time.Time) ([]thresholdHistorySample, error) {
@@ -445,18 +529,148 @@ func parseCalibrationTimestamp(raw string) (time.Time, bool) {
 }
 
 func parseSourceCandidateChannel(key string) string {
+	return parseSourceCandidateMeta(key).Channel
+}
+
+func parseSourceCandidateMeta(key string) sourceCandidateMeta {
+	meta := sourceCandidateMeta{Channel: "unknown", Severity: "degraded", Disconnected: false}
 	trimmed := strings.TrimSpace(strings.ToLower(key))
 	if trimmed == "" {
-		return "unknown"
+		meta.Severity = "unknown"
+		return meta
 	}
 	parts := strings.Split(trimmed, ":")
 	if len(parts) >= 2 && parts[0] == "trace" {
 		channel := strings.TrimSpace(parts[1])
 		if channel != "" {
-			return channel
+			meta.Channel = channel
 		}
 	}
-	return "unknown"
+	if len(parts) >= 3 {
+		severity := strings.TrimSpace(parts[2])
+		switch severity {
+		case "critical", "degraded":
+			meta.Severity = severity
+		case "":
+			meta.Severity = "unknown"
+		default:
+			meta.Severity = severity
+		}
+	}
+	if len(parts) >= 4 {
+		switch strings.TrimSpace(parts[3]) {
+		case "1", "true", "yes", "y":
+			meta.Disconnected = true
+		}
+	}
+	return meta
+}
+
+func buildPendingCandidateInsight(observation candidateObservation) PendingCandidateInsight {
+	channel := strings.TrimSpace(observation.Channel)
+	if channel == "" {
+		channel = "unknown"
+	}
+	severity := strings.TrimSpace(observation.Severity)
+	if severity == "" {
+		severity = "unknown"
+	}
+	lastSeen := ""
+	if !observation.LastSeen.IsZero() {
+		lastSeen = observation.LastSeen.UTC().Format(time.RFC3339)
+	}
+	return PendingCandidateInsight{
+		SourceCandidate:   observation.Key,
+		Channel:           channel,
+		Severity:          severity,
+		Disconnected:      observation.Disconnected,
+		Occurrences:       observation.Occurrences,
+		LastSeen:          lastSeen,
+		PriorityScore:     pendingCandidatePriorityScore(observation),
+		RecommendedAction: recommendPendingCandidateAction(observation),
+	}
+}
+
+func pendingCandidatePriorityScore(observation candidateObservation) int {
+	score := 1
+	if observation.Severity == "critical" {
+		score += 3
+	} else if observation.Severity == "degraded" {
+		score += 1
+	}
+	if observation.Disconnected {
+		score += 2
+	}
+	if observation.Occurrences > 1 {
+		increase := observation.Occurrences - 1
+		if increase > 3 {
+			increase = 3
+		}
+		score += increase
+	}
+	return score
+}
+
+func recommendPendingCandidateAction(observation candidateObservation) string {
+	channel := strings.TrimSpace(observation.Channel)
+	if channel == "" {
+		channel = "unknown"
+	}
+	if observation.Disconnected {
+		return fmt.Sprintf("add disconnect-focused fallback drill for channel %s and tag source_candidate", channel)
+	}
+	if observation.Severity == "critical" {
+		return fmt.Sprintf("add critical degradation drill for channel %s and tag source_candidate", channel)
+	}
+	return fmt.Sprintf("add degraded regression drill for channel %s and tag source_candidate", channel)
+}
+
+func buildPendingByChannelList(channelStats map[string]*CandidateChannelPending) []CandidateChannelPending {
+	if len(channelStats) == 0 {
+		return nil
+	}
+	channels := make([]string, 0, len(channelStats))
+	for channel := range channelStats {
+		channels = append(channels, channel)
+	}
+	sort.Slice(channels, func(i, j int) bool {
+		left := channelStats[channels[i]]
+		right := channelStats[channels[j]]
+		if left.Pending != right.Pending {
+			return left.Pending > right.Pending
+		}
+		if left.Critical != right.Critical {
+			return left.Critical > right.Critical
+		}
+		return channels[i] < channels[j]
+	})
+	result := make([]CandidateChannelPending, 0, len(channels))
+	for _, channel := range channels {
+		result = append(result, *channelStats[channel])
+	}
+	return result
+}
+
+func prioritizePendingCandidates(candidates []PendingCandidateInsight, limit int) []PendingCandidateInsight {
+	if len(candidates) == 0 {
+		return nil
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].PriorityScore != candidates[j].PriorityScore {
+			return candidates[i].PriorityScore > candidates[j].PriorityScore
+		}
+		if candidates[i].Occurrences != candidates[j].Occurrences {
+			return candidates[i].Occurrences > candidates[j].Occurrences
+		}
+		if candidates[i].LastSeen != candidates[j].LastSeen {
+			return candidates[i].LastSeen > candidates[j].LastSeen
+		}
+		return candidates[i].SourceCandidate < candidates[j].SourceCandidate
+	})
+	if limit <= 0 || len(candidates) <= limit {
+		return candidates
+	}
+	return candidates[:limit]
 }
 
 func roundCalibrationFloat(value float64, places int) float64 {

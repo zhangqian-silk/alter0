@@ -57,6 +57,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Trace-to-chaos candidate extraction (`make channel-chaos-candidates` -> `output/channel-chaos/candidates-latest.json`) for real-incident scenario proposal
 - [x] Weekly channel-chaos calibration telemetry (`make channel-chaos-calibration` -> `output/channel-chaos/calibration-latest.json`) with candidate adoption rate and false-positive reduction trend
 - [x] Channel-chaos source-candidate coverage and adoption attribution telemetry (`tag_coverage`, `missing_scenario_tags`, `adoption_by_channel`, `matrix_unseen_candidates`) for matrix traceability
+- [x] Channel-chaos pending candidate prioritization insights (`pending_by_channel`, `priority_candidates` with severity/disconnect recurrence scoring and recommended actions) to accelerate matrix adoption sync
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Provider-policy incident telemetry from gateway trace (`provider_policy_incidents` + `alerts.provider_policy_drift` with category/channel attribution samples)
 - [x] Provider-policy critical threshold governance (`runtime.observability.provider_policy.critical_signal_threshold`)
@@ -132,8 +133,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 5. [x] N31 Trace-to-chaos candidate extraction (`make channel-chaos-candidates` samples `output/trace` and emits review-ready scenarios to `output/channel-chaos/candidates-latest.json`)
 6. [x] N32 Weekly calibration telemetry (`make channel-chaos-calibration` links candidate archive + threshold cadence to output candidate adoption / false-positive reduction indicators)
 7. [x] N33 Source-candidate coverage and channel attribution telemetry (`make channel-chaos-calibration` now reports matrix tag coverage, missing tags, and per-channel adoption buckets)
+8. [x] N37 Pending candidate prioritization insights (`make channel-chaos-calibration` now reports `pending_by_channel` and top `priority_candidates` with severity/disconnect recurrence scoring plus recommended matrix actions)
 
-Queue status: N36 merged; post-alignment backlog has no open blocking item.
+Queue status: N37 merged; post-alignment backlog has no open blocking item.
 
 ## 4) Change Rule
 

@@ -67,17 +67,18 @@
 5. [x] N31 真实故障样本自动抽样候选（`make channel-chaos-candidates` 从 `output/trace` 采样异常通道，输出 `output/channel-chaos/candidates-latest.json` 供 review 后回填 matrix）
 6. [x] N32 周度校准复盘指标（`make channel-chaos-calibration` 关联候选归档 + 阈值节奏，输出 `output/channel-chaos/calibration-latest.json` 的候选采纳率/误报回落率）
 7. [x] N33 候选采纳归因画像（`make channel-chaos-calibration` 新增 `tag_coverage`、`missing_scenario_tags`、`adoption_by_channel`、`matrix_unseen_candidates`，可直接识别 matrix 标记缺口与通道采纳分布）
+8. [x] N37 候选采纳优先级画像（`make channel-chaos-calibration` 新增 `pending_by_channel`、`priority_candidates`，按严重度/断连/复发频次评分并给出推荐回填动作）
 
-当前状态：N36 已闭环，运行时治理具备“成本热点 + 压缩压力 + 压缩质量漂移 + 降级观测 + 演练门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像 + 外部策略异常归因 + 策略异常阈值治理”闭环能力。
+当前状态：N37 已闭环，运行时治理具备“成本热点 + 压缩压力 + 压缩质量漂移 + 降级观测 + 演练门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像 + 采纳优先级画像 + 外部策略异常归因 + 策略异常阈值治理”闭环能力。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-02 UTC）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：补齐 N36，新增 `runtime.observability.cost.compaction_drift_share_threshold`，将重负载会话压缩质量以 `cost.compaction_quality` 聚合输出，并通过 `alerts.session_compaction_quality_drift` 统一告警。
-- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 压缩质量漂移治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像 + 外部策略异常归因 + 策略异常阈值治理”十一段闭环，当前无阻塞级功能缺口。
-- 下一步：持续周度执行 `make channel-chaos-calibration` 与策略异常巡检，优先处理 `missing_scenario_tags` 清单并回填 `config/channel-chaos-matrix.json` 的 `source_candidate`，并结合 `cost.compaction_quality.drift_share` 与 `provider_policy_incidents.by_category` 热点继续校准相关阈值。
+- 本轮新增对齐：补齐 N37，`make channel-chaos-calibration` 新增 `pending_by_channel` 与 `priority_candidates`，可按严重度/断连/复发频次对待采纳候选排序并输出推荐回填动作。
+- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 压缩质量漂移治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像 + 采纳优先级画像 + 外部策略异常归因 + 策略异常阈值治理”十二段闭环，当前无阻塞级功能缺口。
+- 下一步：持续周度执行 `make channel-chaos-calibration` 与策略异常巡检，优先处理 `priority_candidates` 高分条目并回填 `config/channel-chaos-matrix.json` 的 `source_candidate`，并结合 `cost.compaction_quality.drift_share` 与 `provider_policy_incidents.by_category` 热点继续校准相关阈值。
 
 ## 5. 执行规则
 

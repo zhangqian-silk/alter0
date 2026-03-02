@@ -104,6 +104,24 @@ func TestBuildCalibrationReportComputesAdoptionAndReduction(t *testing.T) {
 	if len(report.Candidate.PendingCandidates) != 2 {
 		t.Fatalf("expected 2 pending candidates, got %#v", report.Candidate.PendingCandidates)
 	}
+	if len(report.Candidate.PendingByChannel) != 2 {
+		t.Fatalf("expected 2 pending-by-channel buckets, got %#v", report.Candidate.PendingByChannel)
+	}
+	if report.Candidate.PendingByChannel[0].Channel != "slack" || report.Candidate.PendingByChannel[0].Pending != 1 || report.Candidate.PendingByChannel[0].Critical != 1 || report.Candidate.PendingByChannel[0].Disconnected != 1 {
+		t.Fatalf("unexpected slack pending bucket: %#v", report.Candidate.PendingByChannel[0])
+	}
+	if report.Candidate.PendingByChannel[1].Channel != "telegram" || report.Candidate.PendingByChannel[1].Pending != 1 || report.Candidate.PendingByChannel[1].Critical != 0 || report.Candidate.PendingByChannel[1].Disconnected != 0 {
+		t.Fatalf("unexpected telegram pending bucket: %#v", report.Candidate.PendingByChannel[1])
+	}
+	if len(report.Candidate.PriorityCandidates) != 2 {
+		t.Fatalf("expected 2 priority candidates, got %#v", report.Candidate.PriorityCandidates)
+	}
+	if report.Candidate.PriorityCandidates[0].SourceCandidate != "trace:slack:critical:true" || report.Candidate.PriorityCandidates[0].PriorityScore != 6 {
+		t.Fatalf("unexpected top priority candidate: %#v", report.Candidate.PriorityCandidates[0])
+	}
+	if report.Candidate.PriorityCandidates[1].SourceCandidate != "trace:telegram:degraded:false" || report.Candidate.PriorityCandidates[1].PriorityScore != 2 {
+		t.Fatalf("unexpected second priority candidate: %#v", report.Candidate.PriorityCandidates[1])
+	}
 	if report.Candidate.MatrixScenarios != 1 || report.Candidate.TaggedScenarios != 1 {
 		t.Fatalf("expected matrix/tagged scenarios 1/1, got %d/%d", report.Candidate.MatrixScenarios, report.Candidate.TaggedScenarios)
 	}
