@@ -144,5 +144,5 @@ When a feature state changes, update this file in the same PR:
 - Keep capability matrix and active queue in sync
 - Update item status ([ ], [~], [x])
 - Keep non-goals explicit
-- Sync roadmap narrative in `features.md`
+- Sync roadmap narrative in `todo.md`
 - Run `make docs-sync-check BASE=origin/master` when a PR changes `docs/features.md`

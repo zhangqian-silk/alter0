@@ -461,7 +461,7 @@ Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P
 
 See `docs/features.md` for implemented capability matrix and active queue.
 See `docs/openclaw-alignment.md` for versioned OpenClaw parity checkpoints.
-See `features.md` for the OpenClaw-aligned backlog of unshipped requirements.
+See `todo.md` for the OpenClaw-aligned backlog of unshipped requirements.
 
 Documentation consistency rule:
 
