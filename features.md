@@ -82,6 +82,7 @@
 
 ## 6. 失败记录与优先重试
 
+- 2026-03-02（UTC）：本轮 `git push -u origin feat/n33-channel-chaos-source-coverage` 前 3 次失败（`Failure when receiving data from the peer` / `Failed to connect to github.com:443`），第 4 次重试成功；后续同类网络抖动继续按“至少 4 次重试 + 间隔连通性探测”策略执行。
 - 2026-03-02（UTC）：`gh pr create --body` 初次执行因 markdown 反引号被 shell 命令替换导致 PR 描述注入失败；已改为 `--body-file` 重试修复（PR #99），后续创建 PR 统一使用 body 文件避免复发。
 - 2026-03-01（UTC）：本轮 `git fetch origin --prune` 前 2 次失败（`Failure when receiving data from the peer`），第 4 次重试恢复；后续已完成远端同步与开发链路。
 - 2026-03-01（UTC）：`git push -u origin feat/p2-n16-risk-watchlist-automation` 连续两次超时失败（无法连接 `github.com:443`），导致 PR/merge 链路阻塞；已在后续轮次恢复并完成 N16 合并。
