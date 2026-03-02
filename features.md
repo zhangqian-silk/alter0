@@ -16,7 +16,7 @@
 ## 2. 当前未完成需求（Active Gaps）
 
 - 运行时成本治理主链路已闭环，当前无阻塞型功能缺口。
-- 通道韧性治理已补齐“降级观测 + chaos drill 演练门禁 + 阈值分层抑噪 + trace 抽样候选 + 周校准复盘指标”，当前重点转为稳定执行周节奏并推动候选场景采纳。
+- 通道韧性治理已补齐“降级观测 + chaos drill 演练门禁 + 阈值分层抑噪 + trace 抽样候选 + 周校准复盘指标 + source_candidate 覆盖/采纳归因画像”，当前重点转为稳定执行周节奏并推动候选场景采纳。
 - 自适应阈值回写已具备“提案 + 周归档 + 命中率观测”能力，仍保持人工确认后落地（默认不自动改配置）。
 - 外部依赖仍需保持可用（GitHub 网络与 token），避免阻塞 PR/merge 链路。
 
@@ -61,17 +61,18 @@
 4. [x] N30 通道 chaos drill 阈值画像回归（`config/channel-chaos-matrix.json` 支持 `thresholds.default/overrides`、`expect.min_suppressed_channels`、`expect.required_threshold_profile`，把阈值策略命中纳入回归门禁）
 5. [x] N31 真实故障样本自动抽样候选（`make channel-chaos-candidates` 从 `output/trace` 采样异常通道，输出 `output/channel-chaos/candidates-latest.json` 供 review 后回填 matrix）
 6. [x] N32 周度校准复盘指标（`make channel-chaos-calibration` 关联候选归档 + 阈值节奏，输出 `output/channel-chaos/calibration-latest.json` 的候选采纳率/误报回落率）
+7. [x] N33 候选采纳归因画像（`make channel-chaos-calibration` 新增 `tag_coverage`、`missing_scenario_tags`、`adoption_by_channel`、`matrix_unseen_candidates`，可直接识别 matrix 标记缺口与通道采纳分布）
 
-当前状态：N32 已闭环，运行时治理具备“降级观测 + 演练门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标”闭环能力。
+当前状态：N33 已闭环，运行时治理具备“降级观测 + 演练门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像”闭环能力。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-02 UTC）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：在 N31 基础上补齐 N32，新增 `make channel-chaos-calibration`，把候选归档（`output/channel-chaos/candidates/`）与阈值节奏归档（`output/cost/threshold-{history,reconcile}/`）联动，输出周度“候选采纳率/误报回落率”复盘指标（`output/channel-chaos/calibration-latest.json`）。
-- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标”七段闭环，当前无阻塞级功能缺口。
-- 下一步：持续周度执行 `make channel-chaos-calibration`，并在 `config/channel-chaos-matrix.json` 为采纳场景补充 `source_candidate` 标记，提升采纳率指标可解释性。
+- 本轮新增对齐：在 N32 基础上补齐 N33，增强 `make channel-chaos-calibration` 输出，新增 `tag_coverage`、`missing_scenario_tags`、`adoption_by_channel`、`matrix_unseen_candidates`，把候选采纳率进一步拆解到“矩阵标记覆盖 + 通道维度采纳归因”。
+- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像”八段闭环，当前无阻塞级功能缺口。
+- 下一步：持续周度执行 `make channel-chaos-calibration`，优先处理 `missing_scenario_tags` 清单并回填 `config/channel-chaos-matrix.json` 的 `source_candidate`，再按 `adoption_by_channel` 做候选采纳节奏校准。
 
 ## 5. 执行规则
 
@@ -81,6 +82,7 @@
 
 ## 6. 失败记录与优先重试
 
+- 2026-03-02（UTC）：本轮 `git push -u origin feat/n33-channel-chaos-source-coverage` 前 3 次失败（`Failure when receiving data from the peer` / `Failed to connect to github.com:443`），第 4 次重试成功；后续同类网络抖动继续按“至少 4 次重试 + 间隔连通性探测”策略执行。
 - 2026-03-02（UTC）：`gh pr create --body` 初次执行因 markdown 反引号被 shell 命令替换导致 PR 描述注入失败；已改为 `--body-file` 重试修复（PR #99），后续创建 PR 统一使用 body 文件避免复发。
 - 2026-03-01（UTC）：本轮 `git fetch origin --prune` 前 2 次失败（`Failure when receiving data from the peer`），第 4 次重试恢复；后续已完成远端同步与开发链路。
 - 2026-03-01（UTC）：`git push -u origin feat/p2-n16-risk-watchlist-automation` 连续两次超时失败（无法连接 `github.com:443`），导致 PR/merge 链路阻塞；已在后续轮次恢复并完成 N16 合并。
