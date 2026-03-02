@@ -39,6 +39,9 @@ func TestBuildCandidatesFromTraceGeneratesFallbackScenario(t *testing.T) {
 	if candidate.Expect.Status != "critical" {
 		t.Fatalf("expected critical status, got %#v", candidate.Expect.Status)
 	}
+	if candidate.SourceCandidate != "trace:slack:critical:true" {
+		t.Fatalf("unexpected source candidate key: %q", candidate.SourceCandidate)
+	}
 	if candidate.Expect.MinFallbackCandidates == nil || *candidate.Expect.MinFallbackCandidates != 1 {
 		t.Fatalf("expected min fallback candidates=1, got %#v", candidate.Expect.MinFallbackCandidates)
 	}

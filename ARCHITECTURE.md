@@ -354,7 +354,8 @@ Shutdown sequence:
 - gateway trace window aggregates (`total/error/by_event/by_channel/disconnected_by_channel/latest_at`)
 - channel degradation summary (`channel_degradation`) with per-channel severity, fallback candidates, recovery recommendations, threshold policy payload (`thresholds`), and suppressed-noise accounting (`suppressed_channels` + per-entry `threshold_profile`)
 - channel chaos drill regression artifact (`output/channel-chaos/drill-latest.json`) generated from `config/channel-chaos-matrix.json`, including scenario-level threshold-profile assertions (`min_suppressed_channels` / `required_threshold_profile`)
-- trace-to-chaos candidate extraction artifact (`output/channel-chaos/candidates-latest.json`) sampled from `output/trace` for weekly review and matrix backfill
+- trace-to-chaos candidate extraction artifact (`output/channel-chaos/candidates-latest.json`) sampled from `output/trace` for weekly review and matrix backfill (archived under `output/channel-chaos/candidates/<ISO-week>/`)
+- weekly channel-chaos calibration artifact (`output/channel-chaos/calibration-latest.json`) combining candidate adoption rate and threshold false-positive reduction trend
 - derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/channel_degradation/executor_unavailable/session_cost_hotspot/session_compaction_pressure/risk_watchlist_{missing,invalid,stale,item_overdue}`)
 - routing/closing decision distribution
 - plugin and MCP connector health
@@ -454,7 +455,7 @@ P2 (Advanced Operations):
 - N6 end-to-end tracing + alerting hardening
 - N8 integration matrix and release gate automation
 
-Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance + P5 channel resilience are merged through N31 (channel degradation threshold governance + threshold-profile chaos regression + trace-to-scenario candidate extraction). Next delivery focus is weekly calibration with candidate adoption rate and false-positive reduction telemetry.
+Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance + P5 channel resilience are merged through N32 (channel degradation threshold governance + threshold-profile chaos regression + trace-to-scenario candidate extraction + weekly calibration telemetry). Next delivery focus is continuous weekly calibration execution and matrix adoption tracking.
 
 ## Feature Roadmap
 
@@ -466,4 +467,4 @@ Documentation consistency rule:
 
 - Any PR that updates `docs/features.md` must also update `README.md` and `ARCHITECTURE.md` in the same change set.
 - Use `make docs-sync-check` before opening a PR. The check compares `origin/master...HEAD` and fails when only `docs/features.md` changed.
-- Use `make release-gate` before merging release-scoped changes; it enforces config-boundary checks (`make check-config-boundary`), service-boundary checks (`make check-service-boundary`), parameter-governance checks (`make config-governance`), test-stability checks (`make test-stability` with hotspot stress + Windows compile regression), integration matrix, risk benchmark gate (`make risk-benchmark`, including cost threshold history/reconcile checks), channel chaos drill/candidate gates (`make channel-chaos-drill`, `make channel-chaos-candidates`), rollback drill, deployment checks, and doc sync gate in one pass.
+- Use `make release-gate` before merging release-scoped changes; it enforces config-boundary checks (`make check-config-boundary`), service-boundary checks (`make check-service-boundary`), parameter-governance checks (`make config-governance`), test-stability checks (`make test-stability` with hotspot stress + Windows compile regression), integration matrix, risk benchmark gate (`make risk-benchmark`, including cost threshold history/reconcile checks), channel chaos drill/candidate/calibration gates (`make channel-chaos-drill`, `make channel-chaos-candidates`, `make channel-chaos-calibration`), rollback drill, deployment checks, and doc sync gate in one pass.

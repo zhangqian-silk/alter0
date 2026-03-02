@@ -19,12 +19,13 @@ type Matrix struct {
 }
 
 type Scenario struct {
-	ID            string          `json:"id"`
-	Description   string          `json:"description,omitempty"`
-	WindowMinutes int             `json:"window_minutes,omitempty"`
-	Events        []TraceEvent    `json:"events"`
-	Thresholds    ThresholdPolicy `json:"thresholds,omitempty"`
-	Expect        Expectation     `json:"expect"`
+	ID              string          `json:"id"`
+	SourceCandidate string          `json:"source_candidate,omitempty"`
+	Description     string          `json:"description,omitempty"`
+	WindowMinutes   int             `json:"window_minutes,omitempty"`
+	Events          []TraceEvent    `json:"events"`
+	Thresholds      ThresholdPolicy `json:"thresholds,omitempty"`
+	Expect          Expectation     `json:"expect"`
 }
 
 // ThresholdPolicy allows each chaos scenario to inject a dedicated

@@ -12,6 +12,7 @@ MIN_ERRORS="${MIN_ERRORS:-2}"
 MAX_CANDIDATES="${MAX_CANDIDATES:-5}"
 MAX_EVENTS="${MAX_EVENTS:-8}"
 OUTPUT_PATH="${OUTPUT_PATH:-output/channel-chaos/candidates-latest.json}"
+ARCHIVE_ROOT="${ARCHIVE_ROOT:-output/channel-chaos/candidates}"
 
 cd "$ROOT_DIR"
 
@@ -21,6 +22,7 @@ go run ./app/cmd/channel-chaos-candidates \
   --min-errors "$MIN_ERRORS" \
   --max-candidates "$MAX_CANDIDATES" \
   --max-events "$MAX_EVENTS" \
-  --output "$OUTPUT_PATH"
+  --output "$OUTPUT_PATH" \
+  --archive-root "$ARCHIVE_ROOT"
 
 echo "channel chaos candidate checks passed"

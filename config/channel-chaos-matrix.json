@@ -1,8 +1,9 @@
 {
-  "updated_at": "2026-03-02T00:40:00Z",
+  "updated_at": "2026-03-02T01:09:00Z",
   "scenarios": [
     {
       "id": "single-disconnect-with-fallback",
+      "source_candidate": "trace:slack:critical:true",
       "description": "single adapter disconnect still keeps one healthy fallback channel",
       "window_minutes": 30,
       "events": [
@@ -84,6 +85,7 @@
     },
     {
       "id": "error-spike-with-healthy-fallback",
+      "source_candidate": "trace:cli:degraded:false",
       "description": "error spike without disconnect should be degraded instead of critical when fallback is healthy",
       "window_minutes": 30,
       "events": [

@@ -211,13 +211,15 @@ func BuildCandidatesFromTrace(basePath string, options CandidateOptions) (Candid
 			expect.ReasonContains = "no healthy fallback"
 		}
 
+		sourceCandidate := buildSourceCandidateKey(summary)
 		scenarioID := fmt.Sprintf("trace-sample-%s-%s-%02d", sanitizeCandidateID(summary.ChannelID), now.Format("20060102t150405z"), idx+1)
 		report.Candidates = append(report.Candidates, Scenario{
-			ID:            scenarioID,
-			Description:   fmt.Sprintf("auto-sampled from trace window: channel=%s errors=%d disconnected=%d", summary.ChannelID, summary.ErrorEvents, summary.Disconnected),
-			WindowMinutes: report.WindowMinutes,
-			Events:        scenarioEvents,
-			Expect:        expect,
+			ID:              scenarioID,
+			SourceCandidate: sourceCandidate,
+			Description:     fmt.Sprintf("auto-sampled from trace window: channel=%s errors=%d disconnected=%d", summary.ChannelID, summary.ErrorEvents, summary.Disconnected),
+			WindowMinutes:   report.WindowMinutes,
+			Events:          scenarioEvents,
+			Expect:          expect,
 		})
 	}
 
@@ -258,6 +260,14 @@ func findFallbackHealthyEvent(healthy []candidateChannelSummary, degradedChannel
 		return &event
 	}
 	return nil
+}
+
+func buildSourceCandidateKey(summary candidateChannelSummary) string {
+	status := "degraded"
+	if summary.Disconnected > 0 || summary.ErrorEvents >= 3 {
+		status = "critical"
+	}
+	return fmt.Sprintf("trace:%s:%s:%t", sanitizeCandidateID(summary.ChannelID), status, summary.Disconnected > 0)
 }
 
 func sanitizeCandidateID(channelID string) string {
