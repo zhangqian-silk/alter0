@@ -16,7 +16,7 @@
 ## 2. 当前未完成需求（Active Gaps）
 
 - 运行时成本治理主链路已闭环，当前无阻塞型功能缺口。
-- 通道韧性治理已补齐“降级观测 + chaos drill 演练门禁 + 阈值分层抑噪”，当前重点转为基于真实故障样本持续迭代每通道阈值。
+- 通道韧性治理已补齐“降级观测 + chaos drill 演练门禁 + 阈值分层抑噪 + trace 抽样候选”，当前重点转为把候选场景与阈值调优形成周节奏复盘。
 - 自适应阈值回写已具备“提案 + 周归档 + 命中率观测”能力，仍保持人工确认后落地（默认不自动改配置）。
 - 外部依赖仍需保持可用（GitHub 网络与 token），避免阻塞 PR/merge 链路。
 
@@ -59,17 +59,18 @@
 2. [x] N28 通道 chaos drill 门禁（`make channel-chaos-drill` 基于 `config/channel-chaos-matrix.json` 执行断连/错误尖峰场景回归，输出 `output/channel-chaos/drill-latest.json`）
 3. [x] N29 通道降级阈值分层治理（新增 `runtime.observability.channel_degradation` 配置与 channel override，`/status.channel_degradation` 输出 `thresholds` / `suppressed_channels` / `threshold_profile`，抑制低样本误报）
 4. [x] N30 通道 chaos drill 阈值画像回归（`config/channel-chaos-matrix.json` 支持 `thresholds.default/overrides`、`expect.min_suppressed_channels`、`expect.required_threshold_profile`，把阈值策略命中纳入回归门禁）
+5. [x] N31 真实故障样本自动抽样候选（`make channel-chaos-candidates` 从 `output/trace` 采样异常通道，输出 `output/channel-chaos/candidates-latest.json` 供 review 后回填 matrix）
 
-当前状态：N30 已闭环，运行时治理具备“降级观测 + 演练门禁 + 阈值分层抑噪 + 阈值画像回归”闭环能力。
+当前状态：N31 已闭环，运行时治理具备“降级观测 + 演练门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选”闭环能力。
 
 ## 4. 与 OpenClaw 研究报告对比（2026-03-02 UTC）
 
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：在 N29 基础上补齐 N30，把阈值策略纳入 chaos drill 回归门禁；`channel-chaos` 场景支持 `thresholds.default/overrides`，可断言 `min_suppressed_channels` 与 `required_threshold_profile`，确保阈值画像在演练中可验证。
-- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归”五段闭环，当前无阻塞级功能缺口。
-- 下一步：引入真实故障样本自动抽样流程（trace -> 场景候选），把人工维护 `config/channel-chaos-matrix.json` 降为 review 阶段确认。
+- 本轮新增对齐：在 N30 基础上补齐 N31，新增 `make channel-chaos-candidates`，可从 `output/trace` 自动抽样异常通道并生成 review-ready chaos 场景候选（`output/channel-chaos/candidates-latest.json`），把“真实故障 -> 演练候选”链路工程化。
+- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选”六段闭环，当前无阻塞级功能缺口。
+- 下一步：将候选场景与阈值提案（`make cost-threshold-reconcile`）建立周节奏联动，产出“候选采纳率/误报回落率”复盘指标。
 
 ## 5. 执行规则
 

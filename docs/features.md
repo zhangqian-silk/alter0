@@ -53,6 +53,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Channel degradation threshold governance (`runtime.observability.channel_degradation`) with default + per-channel override profiles, suppressed-noise counters, and threshold profile traceability in status output
 - [x] Channel chaos drill gate for degradation/fallback regression (`make channel-chaos-drill` -> `config/channel-chaos-matrix.json` + `output/channel-chaos/drill-latest.json`)
 - [x] Channel chaos threshold-profile regression (scenario-level `thresholds.default/overrides`, `min_suppressed_channels`, `required_threshold_profile` assertions)
+- [x] Trace-to-chaos candidate extraction (`make channel-chaos-candidates` -> `output/channel-chaos/candidates-latest.json`) for real-incident scenario proposal
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`), including threshold-history freshness checks
 - [x] Scenario benchmark matrix + competitor tracking gate extension (`config/scenario-benchmark-matrix.json`, `config/competitor-tracking.json`, `scripts/update-competitor-tracking.sh`)
@@ -72,7 +73,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 - [x] Gateway integration matrix automation (`make integration-matrix`)
-- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + channel chaos drill (`make channel-chaos-drill`) + cost threshold history/reconcile cadence (`make cost-threshold-history`, `make cost-threshold-reconcile`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
+- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + channel chaos drill/candidate extraction (`make channel-chaos-drill`, `make channel-chaos-candidates`) + cost threshold history/reconcile cadence (`make cost-threshold-history`, `make cost-threshold-reconcile`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
 - [x] Config parameter governance audit for agents/bindings/session/tools (`make config-governance` -> `output/config/governance-latest.json`)
 - [x] Service-layer schedule facade (`app/core/service/schedule`) used by runtime/HTTP integration boundaries
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
@@ -120,8 +121,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 2. [x] N28 Channel chaos drill gate (`make channel-chaos-drill` validates fallback/degradation expectations from `config/channel-chaos-matrix.json`)
 3. [x] N29 Channel degradation threshold governance (`runtime.observability.channel_degradation` with defaults + per-channel overrides; status output adds `thresholds`, `suppressed_channels`, `threshold_profile`)
 4. [x] N30 Channel chaos threshold-profile regression (`channel-chaos` scenarios accept threshold policy and assert suppression/profile hit behavior)
+5. [x] N31 Trace-to-chaos candidate extraction (`make channel-chaos-candidates` samples `output/trace` and emits review-ready scenarios to `output/channel-chaos/candidates-latest.json`)
 
-Queue status: N30 merged; post-alignment backlog has no open blocking item.
+Queue status: N31 merged; post-alignment backlog has no open blocking item.
 
 ## 4) Change Rule
 
