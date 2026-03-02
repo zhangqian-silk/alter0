@@ -112,6 +112,12 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 4. 存储后端默认本地文件（目录 `.alter0`）。
 5. 存储格式按业务场景选择：Control 配置使用 `json`，Scheduler 状态使用 `json`。
 
+浏览器访问：
+
+```text
+http://127.0.0.1:18088/chat
+```
+
 发送消息：
 
 ```bash

@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -17,6 +19,9 @@ import (
 	shareddomain "alter0/internal/shared/domain"
 	"alter0/internal/shared/infrastructure/observability"
 )
+
+//go:embed static/*
+var webStaticFS embed.FS
 
 type Orchestrator interface {
 	Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error)
@@ -109,6 +114,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.Handle("/metrics", s.telemetry.MetricsHandler())
 	mux.HandleFunc("/healthz", s.healthHandler)
 	mux.HandleFunc("/readyz", s.readyHandler)
+	mux.HandleFunc("/", s.rootHandler)
+	mux.HandleFunc("/chat", s.chatPageHandler)
 	mux.HandleFunc("/api/messages", s.messageHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
@@ -116,6 +123,12 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/skills/", s.skillItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
+
+	assetsFS, err := fs.Sub(webStaticFS, "static/assets")
+	if err != nil {
+		return err
+	}
+	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS))))
 
 	server := &http.Server{
 		Addr:    s.addr,
@@ -129,11 +142,40 @@ func (s *Server) Run(ctx context.Context) error {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	err := server.ListenAndServe()
+	err = server.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return err
+}
+
+func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, "/chat", http.StatusTemporaryRedirect)
+}
+
+func (s *Server) chatPageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/chat" {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	content, err := webStaticFS.ReadFile("static/chat.html")
+	if err != nil {
+		s.logger.Error("chat page unavailable", slog.String("error", err.Error()))
+		http.Error(w, "chat page unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(content)
 }
 
 func (s *Server) healthHandler(w http.ResponseWriter, _ *http.Request) {

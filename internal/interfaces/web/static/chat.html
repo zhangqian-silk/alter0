@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>alter0 Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/chat.css">
+</head>
+<body>
+  <div class="app-shell" id="appShell">
+    <aside class="primary-nav">
+      <div class="brand">
+        <div class="brand-copy">
+          <strong>alter0</strong>
+          <small>v0.1.0</small>
+        </div>
+      </div>
+
+      <nav class="menu">
+        <section class="menu-group">
+          <h2>Chat</h2>
+          <button class="menu-item active" type="button" data-route="chat">Chat</button>
+        </section>
+        <section class="menu-group">
+          <h2>Control</h2>
+          <button class="menu-item" type="button" data-route="channels">Channels</button>
+          <button class="menu-item" type="button" data-route="sessions">Sessions</button>
+          <button class="menu-item" type="button" data-route="cron-jobs">Cron Jobs</button>
+        </section>
+        <section class="menu-group">
+          <h2>Agent</h2>
+          <button class="menu-item" type="button" data-route="workspace">Workspace</button>
+          <button class="menu-item" type="button" data-route="skills">Skills</button>
+          <button class="menu-item" type="button" data-route="mcp">MCP</button>
+          <button class="menu-item" type="button" data-route="configuration">Configuration</button>
+        </section>
+        <section class="menu-group">
+          <h2>Settings</h2>
+          <button class="menu-item" type="button" data-route="models">Models</button>
+          <button class="menu-item" type="button" data-route="environments">Environments</button>
+        </section>
+      </nav>
+    </aside>
+
+    <aside class="session-pane">
+      <header class="session-header">
+        <h1>Work with alter0</h1>
+        <button class="pane-action" id="togglePaneButton" type="button" aria-label="Toggle panel">关闭</button>
+      </header>
+
+      <button class="new-chat" id="newChatButton" type="button">New Chat</button>
+
+      <div class="session-list-wrap">
+        <p class="session-title">Recent Sessions</p>
+        <div id="sessionList" class="session-list" role="listbox" aria-label="Conversation sessions"></div>
+        <p class="session-empty" id="sessionEmpty">暂无会话，点击 New Chat 开始。</p>
+      </div>
+    </aside>
+
+    <main class="chat-pane">
+      <header class="chat-header">
+        <button class="nav-toggle" id="navToggle" type="button" aria-label="Toggle navigation">Menu</button>
+        <div class="chat-header-copy">
+          <h2 id="sessionHeading">Chat</h2>
+          <p id="sessionSubheading">准备好开始新的会话</p>
+        </div>
+        <div class="chat-header-actions">
+          <button class="panel-toggle" id="sessionToggle" type="button" aria-label="Sessions">会话</button>
+          <button class="locale" type="button" aria-label="Language">English</button>
+        </div>
+      </header>
+
+      <div class="chat-view" id="chatView">
+        <section class="welcome-screen" id="welcomeScreen">
+          <p class="welcome-tag">alter0 assistant</p>
+          <h3>Hello, how can I help you today?</h3>
+          <p>I am a helpful assistant that can help you with your questions.</p>
+          <div class="prompt-grid">
+            <button class="prompt" type="button" data-prompt="让我们开启一段新的旅程吧！">
+              <span>让我们开启一段新的旅程吧！</span>
+            </button>
+            <button class="prompt" type="button" data-prompt="能告诉我你有哪些技能吗？">
+              <span>能告诉我你有哪些技能吗？</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="message-area" id="messageArea" aria-live="polite"></section>
+
+        <footer class="composer-shell">
+          <form class="composer" id="chatForm">
+            <label class="sr-only" for="composerInput">Input your message</label>
+            <textarea id="composerInput" maxlength="10000" placeholder="Input your message here..." rows="2"></textarea>
+            <div class="composer-actions">
+              <span id="charCount">0/10000</span>
+              <button id="sendButton" type="submit" aria-label="Send message">Send</button>
+            </div>
+          </form>
+          <p class="composer-note">Works for you, grows with you</p>
+        </footer>
+      </div>
+
+      <section class="route-view" id="routeView" hidden>
+        <h3 id="routeTitle">Page</h3>
+        <p id="routeSubtitle">Page content</p>
+        <div id="routeBody" class="route-body"></div>
+      </section>
+    </main>
+  </div>
+  <script src="/assets/chat.js" defer></script>
+</body>
+</html>
