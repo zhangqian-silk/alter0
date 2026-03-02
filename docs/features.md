@@ -80,7 +80,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Deep node/browser/canvas action schema exposure + structured argument validation (`tools.protocol.toolchain`)
 - [x] Long-term memory retrieval protocol (`memory_search/memory_get`) with shared-surface safety isolation (`security.memory`)
 - [x] Gateway integration matrix automation (`make integration-matrix`)
-- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + risk benchmark (`make risk-benchmark`) + channel chaos drill/candidate/calibration extraction (`make channel-chaos-drill`, `make channel-chaos-candidates`, `make channel-chaos-calibration`) + cost threshold history/reconcile cadence (`make cost-threshold-history`, `make cost-threshold-reconcile`) + github dependency gate (`make github-dependency-check`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
+- [x] Release gates (`make release-gate`) with config boundary (`make check-config-boundary`) + service boundary (`make check-service-boundary`) + config parameter governance (`make config-governance`) + config preflight validation (`make config-validate-preflight`) + risk benchmark (`make risk-benchmark`) + channel chaos drill/candidate/calibration extraction (`make channel-chaos-drill`, `make channel-chaos-candidates`, `make channel-chaos-calibration`) + cost threshold history/reconcile cadence (`make cost-threshold-history`, `make cost-threshold-reconcile`) + github dependency gate (`make github-dependency-check`) + test stability (`make test-stability`, Windows compile check) + rollback drill + docs/deploy checks
 - [x] Config parameter governance audit for agents/bindings/session/tools (`make config-governance` -> `output/config/governance-latest.json`)
 - [x] Service-layer schedule facade (`app/core/service/schedule`) used by runtime/HTTP integration boundaries
 - [x] OpenClaw alignment checklist by release version (`docs/openclaw-alignment.md`)
@@ -142,13 +142,12 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 
 ### P7 (OpenClaw 2026-03-02 Incremental Alignment)
 
-1. [ ] N39 Config preflight validation gate (0.5d)
-   - Status: todo
+1. [x] N39 Config preflight validation gate (0.5d)
+   - Status: done
    - Priority: P0
    - Acceptance: `make config-validate-preflight` + `output/config/validate-latest.json` + release-gate integration.
-   - Dependency: config schema loader, release-gate script.
-   - Risk: false failure when config path absent in CI.
-   - Next: add missing-config fallback fixture.
+   - Delivery: 新增 `scripts/check-config-validate-preflight.sh` + `app/cmd/config-validate-preflight` + `app/core/configpreflight`，缺失配置时默认回退默认配置并输出 `used_default_config` 标记，避免 CI 误报。
+   - Evidence: `app/core/configpreflight/evaluate_test.go`, `scripts/check-release-gates.sh`, `Makefile`. 
 2. [ ] N40 Web-search provider fallback chain (1d)
    - Status: todo
    - Priority: P0
@@ -185,7 +184,7 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
    - Risk: accidental tool suppression in critical flows.
    - Next: ship dry-run mode before enforce mode.
 
-Queue status: N38 merged; P7 (N39-N44) opened for incremental OpenClaw sync delivery.
+Queue status: N39 delivered; P7 当前优先推进 N40/N41（provider 回退链 + session bootstrap 缓存失效）。
 
 ## 4) Change Rule
 

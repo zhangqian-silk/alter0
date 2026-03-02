@@ -1,4 +1,4 @@
-.PHONY: run build test test-stability check-config-boundary check-service-boundary config-governance cost-threshold-history cost-threshold-reconcile risk-benchmark channel-chaos-drill channel-chaos-candidates channel-chaos-calibration competitor-tracking-refresh github-dependency-check fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
+.PHONY: run build test test-stability check-config-boundary check-service-boundary config-governance config-validate-preflight cost-threshold-history cost-threshold-reconcile risk-benchmark channel-chaos-drill channel-chaos-candidates channel-chaos-calibration competitor-tracking-refresh github-dependency-check fmt backup restore docs-sync-check deploy-check integration-matrix rollback-drill release-gate
 .DEFAULT_GOAL := run
 
 run:
@@ -21,6 +21,9 @@ check-service-boundary:
 
 config-governance:
 	./scripts/check-config-governance.sh
+
+config-validate-preflight:
+	./scripts/check-config-validate-preflight.sh
 
 cost-threshold-history:
 	./scripts/check-cost-threshold-history.sh
