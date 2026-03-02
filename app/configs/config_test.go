@@ -97,6 +97,9 @@ func TestApplyDefaultsSetsQueueDefaults(t *testing.T) {
 	if cfg.Runtime.Observability.Cost.HeavySessionMinTokens != 1200 {
 		t.Fatalf("unexpected heavy session min tokens: %d", cfg.Runtime.Observability.Cost.HeavySessionMinTokens)
 	}
+	if cfg.Runtime.Observability.Cost.CompactionDriftShareThreshold != 0.4 {
+		t.Fatalf("unexpected compaction drift share threshold: %f", cfg.Runtime.Observability.Cost.CompactionDriftShareThreshold)
+	}
 	if cfg.Runtime.Observability.ChannelDegradation.MinEvents != 1 {
 		t.Fatalf("unexpected channel degradation min_events: %d", cfg.Runtime.Observability.ChannelDegradation.MinEvents)
 	}
@@ -139,6 +142,7 @@ func TestApplyDefaultsSanitizesCostObservabilityThresholds(t *testing.T) {
 					SessionCostShareAlertThreshold:  1.2,
 					PromptOutputRatioAlertThreshold: -1,
 					HeavySessionMinTokens:           0,
+					CompactionDriftShareThreshold:   -0.2,
 				},
 			},
 		},
@@ -154,6 +158,9 @@ func TestApplyDefaultsSanitizesCostObservabilityThresholds(t *testing.T) {
 	}
 	if cfg.Runtime.Observability.Cost.HeavySessionMinTokens != 1200 {
 		t.Fatalf("expected heavy session min tokens default, got %d", cfg.Runtime.Observability.Cost.HeavySessionMinTokens)
+	}
+	if cfg.Runtime.Observability.Cost.CompactionDriftShareThreshold != 0.4 {
+		t.Fatalf("expected compaction drift share threshold default, got %f", cfg.Runtime.Observability.Cost.CompactionDriftShareThreshold)
 	}
 }
 

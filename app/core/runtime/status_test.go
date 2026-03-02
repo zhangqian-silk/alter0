@@ -953,6 +953,109 @@ func TestSnapshotIncludesSessionCostPressureAlerts(t *testing.T) {
 	}
 }
 
+func TestSnapshotIncludesCompactionQualityDriftAlert(t *testing.T) {
+	now := time.Now().UTC()
+	baseDir := t.TempDir()
+	dayDir := filepath.Join(baseDir, now.Format("2006-01-02"))
+	if err := os.MkdirAll(dayDir, 0755); err != nil {
+		t.Fatalf("failed to create orchestrator log dir: %v", err)
+	}
+
+	entries := []map[string]interface{}{
+		{
+			"timestamp":    now.Add(-3 * time.Minute).Format(time.RFC3339Nano),
+			"session_id":   "session-heavy-a",
+			"stage":        "gen",
+			"executor":     "codex",
+			"status":       "ok",
+			"prompt_chars": 12000,
+			"output_chars": 160,
+			"user_id":      "u1",
+			"channel_id":   "cli",
+		},
+		{
+			"timestamp":    now.Add(-2 * time.Minute).Format(time.RFC3339Nano),
+			"session_id":   "session-heavy-b",
+			"stage":        "gen",
+			"executor":     "claude_code",
+			"status":       "ok",
+			"prompt_chars": 8000,
+			"output_chars": 120,
+			"user_id":      "u2",
+			"channel_id":   "http",
+		},
+		{
+			"timestamp":    now.Add(-90 * time.Second).Format(time.RFC3339Nano),
+			"session_id":   "session-light",
+			"stage":        "gen",
+			"executor":     "codex",
+			"status":       "ok",
+			"prompt_chars": 400,
+			"output_chars": 2000,
+			"user_id":      "u3",
+			"channel_id":   "cli",
+		},
+	}
+
+	logPath := filepath.Join(dayDir, fmt.Sprintf("executor_%s.jsonl", now.Format("20060102-15")))
+	var lines []string
+	for _, item := range entries {
+		payload, err := json.Marshal(item)
+		if err != nil {
+			t.Fatalf("marshal log entry failed: %v", err)
+		}
+		lines = append(lines, string(payload))
+	}
+	if err := os.WriteFile(logPath, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+		t.Fatalf("write orchestrator log failed: %v", err)
+	}
+
+	collector := &StatusCollector{
+		OrchestratorLogBasePath:    baseDir,
+		SessionWindow:              24 * time.Hour,
+		ActiveSessionWindow:        30 * time.Minute,
+		AlertSessionCostMinTokens:  1000,
+		AlertSessionPromptOutRatio: 8,
+		AlertCompactionDriftShare:  0.5,
+	}
+	snap := collector.Snapshot(context.Background())
+
+	cost, ok := snap["cost"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected cost map, got %T", snap["cost"])
+	}
+	quality, ok := cost["compaction_quality"].(runtimeCompactionQualitySummary)
+	if !ok {
+		t.Fatalf("expected compaction_quality summary, got %T", cost["compaction_quality"])
+	}
+	if quality.Status != "critical" {
+		t.Fatalf("expected compaction quality status critical, got %#v", quality)
+	}
+	if quality.HeavySessions != 2 || quality.DriftSessions != 2 {
+		t.Fatalf("expected heavy/drift sessions 2/2, got %#v", quality)
+	}
+	if quality.DriftShare != 1 {
+		t.Fatalf("expected drift share 1.0, got %#v", quality.DriftShare)
+	}
+	if len(quality.TopDriftSessions) != 2 {
+		t.Fatalf("expected 2 top drift sessions, got %#v", quality.TopDriftSessions)
+	}
+
+	alerts, ok := snap["alerts"].([]runtimeAlert)
+	if !ok {
+		t.Fatalf("expected alerts list, got %T", snap["alerts"])
+	}
+	for _, alert := range alerts {
+		if alert.Code == "session_compaction_quality_drift" {
+			if alert.Severity != "critical" {
+				t.Fatalf("expected critical compaction quality alert, got %#v", alert)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected session_compaction_quality_drift alert, got %+v", alerts)
+}
+
 func TestSnapshotSessionCostThresholdGuidanceInsufficientData(t *testing.T) {
 	collector := &StatusCollector{}
 	snap := collector.Snapshot(context.Background())

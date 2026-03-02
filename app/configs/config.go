@@ -86,6 +86,7 @@ type CostGovernanceConfig struct {
 	SessionCostShareAlertThreshold  float64 `json:"session_cost_share_alert_threshold"`
 	PromptOutputRatioAlertThreshold float64 `json:"prompt_output_ratio_alert_threshold"`
 	HeavySessionMinTokens           int     `json:"heavy_session_min_tokens"`
+	CompactionDriftShareThreshold   float64 `json:"compaction_drift_share_threshold"`
 }
 
 type ChannelDegradationGovConfig struct {
@@ -282,6 +283,7 @@ func defaultConfig() Config {
 					SessionCostShareAlertThreshold:  0.35,
 					PromptOutputRatioAlertThreshold: 6.0,
 					HeavySessionMinTokens:           1200,
+					CompactionDriftShareThreshold:   0.4,
 				},
 				ChannelDegradation: ChannelDegradationGovConfig{
 					MinEvents:                     1,
@@ -400,6 +402,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Runtime.Observability.Cost.HeavySessionMinTokens <= 0 {
 		cfg.Runtime.Observability.Cost.HeavySessionMinTokens = 1200
+	}
+	if cfg.Runtime.Observability.Cost.CompactionDriftShareThreshold <= 0 || cfg.Runtime.Observability.Cost.CompactionDriftShareThreshold > 1 {
+		cfg.Runtime.Observability.Cost.CompactionDriftShareThreshold = 0.4
 	}
 	cfg.Runtime.Observability.ChannelDegradation = sanitizeChannelDegradationConfig(cfg.Runtime.Observability.ChannelDegradation)
 	cfg.Runtime.Observability.ProviderPolicy = sanitizeProviderPolicyConfig(cfg.Runtime.Observability.ProviderPolicy)

@@ -218,6 +218,7 @@ func main() {
 		AlertSessionCostShare:         cfg.Runtime.Observability.Cost.SessionCostShareAlertThreshold,
 		AlertSessionCostMinTokens:     cfg.Runtime.Observability.Cost.HeavySessionMinTokens,
 		AlertSessionPromptOutRatio:    cfg.Runtime.Observability.Cost.PromptOutputRatioAlertThreshold,
+		AlertCompactionDriftShare:     cfg.Runtime.Observability.Cost.CompactionDriftShareThreshold,
 		ProviderPolicyCriticalSignals: cfg.Runtime.Observability.ProviderPolicy.CriticalSignalThreshold,
 		ChannelDegradationDefaults: coreruntime.ChannelDegradationThresholds{
 			MinEvents:                     cfg.Runtime.Observability.ChannelDegradation.MinEvents,
