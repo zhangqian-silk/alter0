@@ -689,6 +689,52 @@ func TestSnapshotIncludesProviderPolicyIncidentsAndAlert(t *testing.T) {
 	}
 }
 
+func TestSnapshotProviderPolicyThresholdOverride(t *testing.T) {
+	now := time.Now().UTC()
+	traceBase := t.TempDir()
+	dayDir := filepath.Join(traceBase, now.Format("2006-01-02"))
+	if err := os.MkdirAll(dayDir, 0755); err != nil {
+		t.Fatalf("create trace dir failed: %v", err)
+	}
+	entries := []string{
+		fmt.Sprintf(`{"timestamp":"%s","channel_id":"telegram","event":"agent_process","status":"error","detail":"rate limit exceeded"}`, now.Add(-2*time.Minute).Format(time.RFC3339Nano)),
+		fmt.Sprintf(`{"timestamp":"%s","channel_id":"telegram","event":"agent_process","status":"error","detail":"quota reached"}`, now.Add(-90*time.Second).Format(time.RFC3339Nano)),
+		fmt.Sprintf(`{"timestamp":"%s","channel_id":"telegram","event":"agent_process","status":"error","detail":"429 too many requests"}`, now.Add(-30*time.Second).Format(time.RFC3339Nano)),
+	}
+	if err := os.WriteFile(filepath.Join(dayDir, "gateway_events.jsonl"), []byte(strings.Join(entries, "\n")+"\n"), 0644); err != nil {
+		t.Fatalf("write trace file failed: %v", err)
+	}
+
+	collector := &StatusCollector{
+		GatewayTraceBasePath:          traceBase,
+		GatewayTraceWindow:            10 * time.Minute,
+		ProviderPolicyCriticalSignals: 3,
+	}
+
+	snap := collector.Snapshot(context.Background())
+	policy, ok := snap["provider_policy_incidents"].(providerPolicyIncidentSummary)
+	if !ok {
+		t.Fatalf("expected provider_policy_incidents summary, got %T", snap["provider_policy_incidents"])
+	}
+	if policy.Status != "critical" {
+		t.Fatalf("expected policy incident status critical under custom threshold, got %#v", policy.Status)
+	}
+
+	alerts, ok := snap["alerts"].([]runtimeAlert)
+	if !ok {
+		t.Fatalf("expected alerts list, got %T", snap["alerts"])
+	}
+	for _, alert := range alerts {
+		if alert.Code == "provider_policy_drift" {
+			if alert.Severity != "critical" {
+				t.Fatalf("expected provider_policy_drift severity critical, got %#v", alert)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected provider_policy_drift alert, got %+v", alerts)
+}
+
 func TestSummarizeChannelDegradationFallbackCandidates(t *testing.T) {
 	summary := summarizeChannelDegradation(gatewayTraceSummary{
 		ByChannel: map[string]int{

@@ -57,6 +57,7 @@ type StatusCollector struct {
 	AlertSessionPromptOutRatio        float64
 	ChannelDegradationDefaults        ChannelDegradationThresholds
 	ChannelDegradationChannelOverride map[string]ChannelDegradationThresholds
+	ProviderPolicyCriticalSignals     int
 	RiskWatchlistPath                 string
 	RiskWatchlistStaleAfter           time.Duration
 }
@@ -273,7 +274,12 @@ func (c *StatusCollector) Snapshot(ctx context.Context) map[string]interface{} {
 		)
 	}
 
-	traceSummary := summarizeGatewayTrace(c.GatewayTraceBasePath, now, c.GatewayTraceWindow)
+	traceSummary := summarizeGatewayTraceWithProviderPolicyThreshold(
+		c.GatewayTraceBasePath,
+		now,
+		c.GatewayTraceWindow,
+		c.ProviderPolicyCriticalSignals,
+	)
 	payload["trace"] = map[string]interface{}{
 		"window_minutes":          traceSummary.WindowMinutes,
 		"total_events":            traceSummary.TotalEvents,
@@ -1307,6 +1313,10 @@ func summarizeChannelDegradationWithThresholds(trace gatewayTraceSummary, defaul
 }
 
 func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration) gatewayTraceSummary {
+	return summarizeGatewayTraceWithProviderPolicyThreshold(basePath, now, window, 0)
+}
+
+func summarizeGatewayTraceWithProviderPolicyThreshold(basePath string, now time.Time, window time.Duration, providerPolicyCriticalSignals int) gatewayTraceSummary {
 	if window <= 0 {
 		window = 30 * time.Minute
 	}
@@ -1381,11 +1391,11 @@ func summarizeGatewayTrace(basePath string, now time.Time, window time.Duration)
 	if !latest.IsZero() {
 		summary.LatestAt = latest.UTC().Format(time.RFC3339)
 	}
-	summary.ProviderPolicy = finalizeProviderPolicyIncidentSummary(summary.ProviderPolicy, summary.TotalEvents)
+	summary.ProviderPolicy = finalizeProviderPolicyIncidentSummary(summary.ProviderPolicy, summary.TotalEvents, providerPolicyCriticalSignals)
 	return summary
 }
 
-func finalizeProviderPolicyIncidentSummary(summary providerPolicyIncidentSummary, totalEvents int) providerPolicyIncidentSummary {
+func finalizeProviderPolicyIncidentSummary(summary providerPolicyIncidentSummary, totalEvents int, criticalSignalThreshold int) providerPolicyIncidentSummary {
 	if totalEvents == 0 {
 		summary.Status = "insufficient_data"
 		summary.Reason = "no gateway events in trace window"
@@ -1396,7 +1406,10 @@ func finalizeProviderPolicyIncidentSummary(summary providerPolicyIncidentSummary
 		summary.Reason = "no provider policy incidents detected"
 		return summary
 	}
-	if summary.ByCategory["access_blocked"] > 0 || summary.ByCategory["policy_denied"] > 0 || summary.Signals >= 5 {
+	if criticalSignalThreshold <= 0 {
+		criticalSignalThreshold = 5
+	}
+	if summary.ByCategory["access_blocked"] > 0 || summary.ByCategory["policy_denied"] > 0 || summary.Signals >= criticalSignalThreshold {
 		summary.Status = "critical"
 		return summary
 	}

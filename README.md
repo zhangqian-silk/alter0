@@ -240,6 +240,7 @@ docker run --rm -p 8080:8080 \
 - `runtime.shutdown.drain_timeout_sec`: 统一停机排空等待时间（queue/scheduler/http）
 - `runtime.observability.cost.*`: 成本告警阈值（session share / prompt-output ratio / heavy-session min tokens）
 - `runtime.observability.channel_degradation.*`: 通道退化阈值治理（全局 `min_events`/错误率阈值/断连阈值 + `channel_overrides` 分通道覆盖）
+- `runtime.observability.provider_policy.critical_signal_threshold`: provider 策略异常升级阈值（无 access/policy blocking 时，信号数达到阈值会标记 `provider_policy_incidents.status=critical`）
 - `security.admin_user_ids`: 管理命令授权用户
 - `security.tools.global_allow/global_deny`: 网关级工具 allow/deny 列表
 - `security.tools.require_confirm`: 额外二次确认清单（高风险工具 `browser/canvas/nodes/message` 无论配置都会强制确认）
@@ -273,7 +274,7 @@ docker run --rm -p 8080:8080 \
 
 通道韧性字段 `channel_degradation` 会根据 trace 窗口输出每个异常通道的错误率/断连次数、严重度和恢复建议，并给出可回退的健康通道候选。新版本会同时输出阈值策略（`thresholds`）、噪声抑制计数（`suppressed_channels`）以及命中配置来源（`threshold_profile`），用于按通道校准误报。通道演练门禁可通过 `make channel-chaos-drill` 复现固定故障矩阵并校验告警输出，且支持在单场景内注入阈值画像并断言抑噪结果；`make channel-chaos-candidates` 生成的候选会携带 `source_candidate` 稳定标识，供矩阵回填追踪采纳；`make channel-chaos-calibration` 则按周计算候选采纳率与误报回落率，并补充 `tag_coverage`、`missing_scenario_tags`、`adoption_by_channel`、`matrix_unseen_candidates`，形成可追踪的采纳归因指标。
 
-外部策略风险字段 `provider_policy_incidents` 会从 trace 错误细节中识别 `quota_limited`、`access_blocked`、`policy_denied` 三类信号，按类别/通道聚合并保留最近样本；当窗口内出现信号时会新增 `alerts.provider_policy_drift`，用于快速定位模型账号策略变化、额度限制或合规拒绝导致的执行中断。
+外部策略风险字段 `provider_policy_incidents` 会从 trace 错误细节中识别 `quota_limited`、`access_blocked`、`policy_denied` 三类信号，按类别/通道聚合并保留最近样本；当窗口内出现信号时会新增 `alerts.provider_policy_drift`，用于快速定位模型账号策略变化、额度限制或合规拒绝导致的执行中断。`quota_limited` 的 critical 升级阈值可通过 `runtime.observability.provider_policy.critical_signal_threshold` 调整。
 
 管理员命令：
 

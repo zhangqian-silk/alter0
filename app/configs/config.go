@@ -79,6 +79,7 @@ type RuntimeConfig struct {
 type ObservabilityConfig struct {
 	Cost               CostGovernanceConfig        `json:"cost"`
 	ChannelDegradation ChannelDegradationGovConfig `json:"channel_degradation"`
+	ProviderPolicy     ProviderPolicyGovConfig     `json:"provider_policy"`
 }
 
 type CostGovernanceConfig struct {
@@ -102,6 +103,10 @@ type ChannelDegradationOverride struct {
 	CriticalErrorRateThreshold    float64 `json:"critical_error_rate_threshold"`
 	CriticalErrorCountThreshold   int     `json:"critical_error_count_threshold"`
 	CriticalDisconnectedThreshold int     `json:"critical_disconnected_threshold"`
+}
+
+type ProviderPolicyGovConfig struct {
+	CriticalSignalThreshold int `json:"critical_signal_threshold"`
 }
 
 type ShutdownConfig struct {
@@ -286,6 +291,9 @@ func defaultConfig() Config {
 					CriticalDisconnectedThreshold: 1,
 					ChannelOverrides:              map[string]ChannelDegradationOverride{},
 				},
+				ProviderPolicy: ProviderPolicyGovConfig{
+					CriticalSignalThreshold: 5,
+				},
 			},
 		},
 		Security: SecurityConfig{
@@ -394,6 +402,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Runtime.Observability.Cost.HeavySessionMinTokens = 1200
 	}
 	cfg.Runtime.Observability.ChannelDegradation = sanitizeChannelDegradationConfig(cfg.Runtime.Observability.ChannelDegradation)
+	cfg.Runtime.Observability.ProviderPolicy = sanitizeProviderPolicyConfig(cfg.Runtime.Observability.ProviderPolicy)
 	if cfg.Channels.Telegram.PollIntervalSec <= 0 {
 		cfg.Channels.Telegram.PollIntervalSec = 2
 	}
@@ -605,6 +614,14 @@ func sanitizeChannelDegradationConfig(raw ChannelDegradationGovConfig) ChannelDe
 		overrides[channelID] = item
 	}
 	out.ChannelOverrides = overrides
+	return out
+}
+
+func sanitizeProviderPolicyConfig(raw ProviderPolicyGovConfig) ProviderPolicyGovConfig {
+	out := raw
+	if out.CriticalSignalThreshold <= 0 {
+		out.CriticalSignalThreshold = 5
+	}
 	return out
 }
 

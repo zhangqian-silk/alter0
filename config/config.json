@@ -47,6 +47,9 @@
         "critical_error_count_threshold": 3,
         "critical_disconnected_threshold": 1,
         "channel_overrides": {}
+      },
+      "provider_policy": {
+        "critical_signal_threshold": 5
       }
     }
   },

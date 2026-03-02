@@ -112,6 +112,9 @@ func TestApplyDefaultsSetsQueueDefaults(t *testing.T) {
 	if cfg.Runtime.Observability.ChannelDegradation.CriticalDisconnectedThreshold != 1 {
 		t.Fatalf("unexpected channel degradation critical disconnected threshold: %d", cfg.Runtime.Observability.ChannelDegradation.CriticalDisconnectedThreshold)
 	}
+	if cfg.Runtime.Observability.ProviderPolicy.CriticalSignalThreshold != 5 {
+		t.Fatalf("unexpected provider policy critical signal threshold: %d", cfg.Runtime.Observability.ProviderPolicy.CriticalSignalThreshold)
+	}
 }
 
 func TestApplyDefaultsSetsShutdownDrainTimeout(t *testing.T) {
@@ -211,6 +214,22 @@ func TestApplyDefaultsSanitizesChannelDegradationObservabilityThresholds(t *test
 	}
 	if slack.CriticalDisconnectedThreshold != channelCfg.CriticalDisconnectedThreshold {
 		t.Fatalf("expected slack disconnected threshold inherit %d, got %d", channelCfg.CriticalDisconnectedThreshold, slack.CriticalDisconnectedThreshold)
+	}
+}
+
+func TestApplyDefaultsSanitizesProviderPolicyObservabilityThreshold(t *testing.T) {
+	cfg := Config{
+		Runtime: RuntimeConfig{
+			Observability: ObservabilityConfig{
+				ProviderPolicy: ProviderPolicyGovConfig{CriticalSignalThreshold: 0},
+			},
+		},
+	}
+
+	applyDefaults(&cfg)
+
+	if cfg.Runtime.Observability.ProviderPolicy.CriticalSignalThreshold != 5 {
+		t.Fatalf("expected provider policy critical signal threshold default 5, got %d", cfg.Runtime.Observability.ProviderPolicy.CriticalSignalThreshold)
 	}
 }
 
