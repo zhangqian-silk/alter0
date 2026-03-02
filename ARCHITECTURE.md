@@ -353,7 +353,7 @@ Shutdown sequence:
 - execution latency/error rate plus model usage estimates (`chars/tokens/cost`) with optional pricing config, and `cost.threshold_guidance` global + workload-tier recommendations
 - gateway trace window aggregates (`total/error/by_event/by_channel/disconnected_by_channel/latest_at`)
 - channel degradation summary (`channel_degradation`) with per-channel severity, fallback candidates, recovery recommendations, threshold policy payload (`thresholds`), and suppressed-noise accounting (`suppressed_channels` + per-entry `threshold_profile`)
-- channel chaos drill regression artifact (`output/channel-chaos/drill-latest.json`) generated from `config/channel-chaos-matrix.json`
+- channel chaos drill regression artifact (`output/channel-chaos/drill-latest.json`) generated from `config/channel-chaos-matrix.json`, including scenario-level threshold-profile assertions (`min_suppressed_channels` / `required_threshold_profile`)
 - derived runtime alerts (`queue_backlog/retry_storm/channel_disconnected/channel_degradation/executor_unavailable/session_cost_hotspot/session_compaction_pressure/risk_watchlist_{missing,invalid,stale,item_overdue}`)
 - routing/closing decision distribution
 - plugin and MCP connector health
@@ -453,7 +453,7 @@ P2 (Advanced Operations):
 - N6 end-to-end tracing + alerting hardening
 - N8 integration matrix and release gate automation
 
-Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance + P5 channel resilience are merged through N29 (channel degradation threshold governance). Next delivery focus is continuous threshold calibration from real production incidents and feeding validated samples into recurring chaos-drill coverage.
+Current status: P0/P1 queues are complete; P2 risk-hardening + P3 governance + P4 runtime cost governance + P5 channel resilience are merged through N30 (channel degradation threshold governance + threshold-profile chaos regression). Next delivery focus is continuous threshold calibration from real production incidents and automated trace-to-scenario candidate generation.
 
 ## Feature Roadmap
 

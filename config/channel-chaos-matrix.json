@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-03-02T23:45:00Z",
+  "updated_at": "2026-03-02T00:40:00Z",
   "scenarios": [
     {
       "id": "single-disconnect-with-fallback",
@@ -121,6 +121,59 @@
         "min_fallback_candidates": 1,
         "alert_codes": [
           "channel_degradation"
+        ]
+      }
+    },
+    {
+      "id": "threshold-override-suppresses-low-sample-noise",
+      "description": "channel-specific override suppresses low-sample error noise and keeps scenario in monitoring state",
+      "window_minutes": 30,
+      "events": [
+        {
+          "offset_seconds": -40,
+          "channel_id": "slack",
+          "event": "agent_process",
+          "status": "error",
+          "detail": "retryable"
+        },
+        {
+          "offset_seconds": -25,
+          "channel_id": "slack",
+          "event": "agent_process",
+          "status": "ok"
+        },
+        {
+          "offset_seconds": -10,
+          "channel_id": "cli",
+          "event": "inbound_received",
+          "status": "ok"
+        }
+      ],
+      "thresholds": {
+        "default": {
+          "min_events": 1,
+          "warning_error_rate_threshold": 0.001,
+          "critical_error_rate_threshold": 0.5,
+          "critical_error_count_threshold": 3,
+          "critical_disconnected_threshold": 1
+        },
+        "overrides": {
+          "slack": {
+            "min_events": 5,
+            "warning_error_rate_threshold": 0.5,
+            "critical_error_rate_threshold": 0.8,
+            "critical_error_count_threshold": 4,
+            "critical_disconnected_threshold": 1
+          }
+        }
+      },
+      "expect": {
+        "status": "monitoring",
+        "max_degraded_channels": 0,
+        "min_suppressed_channels": 1,
+        "min_fallback_candidates": 1,
+        "required_threshold_profile": [
+          "channel:slack"
         ]
       }
     }

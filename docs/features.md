@@ -52,6 +52,7 @@ Alter0 is a single-user, self-hosted task orchestration kernel.
 - [x] Runtime channel degradation snapshot (`channel_degradation`) with per-channel severity, fallback candidates, and recovery recommendations
 - [x] Channel degradation threshold governance (`runtime.observability.channel_degradation`) with default + per-channel override profiles, suppressed-noise counters, and threshold profile traceability in status output
 - [x] Channel chaos drill gate for degradation/fallback regression (`make channel-chaos-drill` -> `config/channel-chaos-matrix.json` + `output/channel-chaos/drill-latest.json`)
+- [x] Channel chaos threshold-profile regression (scenario-level `thresholds.default/overrides`, `min_suppressed_channels`, `required_threshold_profile` assertions)
 - [x] Runtime risk watchlist snapshot (`config/risk-watchlist.json`) with stale/overdue policy/supply-chain alerts
 - [x] Risk execution benchmark gate (`make risk-benchmark`) with JSON report output (`output/risk/benchmark-latest.json`) and drift triage runbook (`docs/runbooks/risk-drift-triage.md`), including threshold-history freshness checks
 - [x] Scenario benchmark matrix + competitor tracking gate extension (`config/scenario-benchmark-matrix.json`, `config/competitor-tracking.json`, `scripts/update-competitor-tracking.sh`)
@@ -118,8 +119,9 @@ Execution policy: complete one requirement end-to-end (`code -> test -> PR -> me
 1. [x] N27 Channel degradation observability + fallback guidance (`channel_degradation` snapshot + alert `channel_degradation`)
 2. [x] N28 Channel chaos drill gate (`make channel-chaos-drill` validates fallback/degradation expectations from `config/channel-chaos-matrix.json`)
 3. [x] N29 Channel degradation threshold governance (`runtime.observability.channel_degradation` with defaults + per-channel overrides; status output adds `thresholds`, `suppressed_channels`, `threshold_profile`)
+4. [x] N30 Channel chaos threshold-profile regression (`channel-chaos` scenarios accept threshold policy and assert suppression/profile hit behavior)
 
-Queue status: N29 merged; post-alignment backlog has no open blocking item.
+Queue status: N30 merged; post-alignment backlog has no open blocking item.
 
 ## 4) Change Rule
 
