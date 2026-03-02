@@ -197,11 +197,13 @@ func TestHandleUnknownCommand(t *testing.T) {
 
 func validMessage(content string) shareddomain.UnifiedMessage {
 	return shareddomain.UnifiedMessage{
-		MessageID:  "m1",
-		SessionID:  "s1",
-		Source:     shareddomain.SourceCLI,
-		Content:    content,
-		TraceID:    "t1",
-		ReceivedAt: time.Now().UTC(),
+		MessageID:   "m1",
+		SessionID:   "s1",
+		ChannelID:   "cli-default",
+		ChannelType: shareddomain.ChannelTypeCLI,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     content,
+		TraceID:     "t1",
+		ReceivedAt:  time.Now().UTC(),
 	}
 }

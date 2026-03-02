@@ -42,6 +42,7 @@ func NewRunner(
 func (r *Runner) Run(ctx context.Context) error {
 	scanner := bufio.NewScanner(os.Stdin)
 	sessionID := r.idGenerator.NewID()
+	channelID := "cli-default"
 
 	fmt.Printf("alter0 cli session: %s\n", sessionID)
 	fmt.Println("input /quit to exit.")
@@ -61,15 +62,17 @@ func (r *Runner) Run(ctx context.Context) error {
 		}
 
 		msg := shareddomain.UnifiedMessage{
-			MessageID:  r.idGenerator.NewID(),
-			SessionID:  sessionID,
-			Source:     shareddomain.SourceCLI,
-			Content:    input,
-			TraceID:    r.idGenerator.NewID(),
-			ReceivedAt: time.Now().UTC(),
+			MessageID:   r.idGenerator.NewID(),
+			SessionID:   sessionID,
+			ChannelID:   channelID,
+			ChannelType: shareddomain.ChannelTypeCLI,
+			TriggerType: shareddomain.TriggerTypeUser,
+			Content:     input,
+			TraceID:     r.idGenerator.NewID(),
+			ReceivedAt:  time.Now().UTC(),
 		}
 
-		r.telemetry.CountGateway(string(msg.Source))
+		r.telemetry.CountGateway(string(msg.ChannelType))
 		result, err := r.orchestrator.Handle(ctx, msg)
 		if err != nil {
 			r.logger.Error("cli message failed",

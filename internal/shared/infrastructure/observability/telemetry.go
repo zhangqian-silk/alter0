@@ -34,10 +34,10 @@ func NewTelemetry() *Telemetry {
 	}
 }
 
-func (t *Telemetry) CountGateway(source string) {
+func (t *Telemetry) CountGateway(channelType string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.gatewayCount[source]++
+	t.gatewayCount[channelType]++
 }
 
 func (t *Telemetry) CountRoute(route string) {
@@ -80,7 +80,7 @@ func (t *Telemetry) MetricsHandler() http.Handler {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 		builder := &strings.Builder{}
 
-		writeCounter(builder, "alter0_gateway_messages_total", "source", gatewayCount)
+		writeCounter(builder, "alter0_gateway_messages_total", "channel_type", gatewayCount)
 		writeCounter(builder, "alter0_route_requests_total", "route", routeCount)
 		writeCounter(builder, "alter0_command_requests_total", "command", commandCount)
 		writeCounter(builder, "alter0_route_errors_total", "route", errorCount)
