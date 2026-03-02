@@ -58,7 +58,7 @@ Alter0 的能力体系围绕任务编排内核展开，而不是围绕单次对�
 OpenClaw 对齐版本清单请参考：[`docs/openclaw-alignment.md`](./docs/openclaw-alignment.md)。
 面向 OpenClaw 对齐的未完成需求清单请参考：[`todo.md`](./todo.md)。
 
-当前优先级以 [`todo.md`](./todo.md) 为准，发布节奏按 release-gate 管控（回归矩阵、风险基准、通道 chaos drill、trace 候选抽样、周度校准复盘、配置参数治理、回滚演练、部署检查、文档同步）；当前主线已完成 P5/N32（候选采纳率 + 误报回落率周度校准链路），后续聚焦周度复盘执行与候选场景采纳。
+当前优先级以 [`todo.md`](./todo.md) 为准，发布节奏按 release-gate 管控（回归矩阵、风险基准、通道 chaos drill、trace 候选抽样、周度校准复盘、GitHub 依赖门禁、配置参数治理、回滚演练、部署检查、文档同步）；当前主线已完成 P6/N38（GitHub 交付依赖可观测 + 门禁链路），后续聚焦周度复盘执行与候选场景采纳。
 
 文档同步策略：当 `docs/features.md` 发生变更时，必须在同一 PR 同步更新 `README.md` 与 `ARCHITECTURE.md`。可以执行：
 
@@ -70,6 +70,7 @@ make risk-benchmark
 make channel-chaos-drill
 make channel-chaos-candidates
 make channel-chaos-calibration
+make github-dependency-check
 make config-governance
 make release-gate
 ```

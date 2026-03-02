@@ -541,6 +541,113 @@ func TestSnapshotIncludesRiskWatchlistMissingAlert(t *testing.T) {
 	}
 }
 
+func TestSnapshotIncludesGitHubDependencySummaryAndAlerts(t *testing.T) {
+	now := time.Now().UTC()
+	reportPath := filepath.Join(t.TempDir(), "github-dependency-latest.json")
+	report := githubDependencyReport{
+		GeneratedAt:   now.Add(-30 * time.Hour).Format(time.RFC3339),
+		Remote:        "origin",
+		RemoteURL:     "https://github.com/example/alter0.git",
+		Status:        "network_unreachable",
+		Ready:         false,
+		Attempts:      4,
+		NetworkOK:     false,
+		TokenPresent:  false,
+		TokenRequired: false,
+	}
+	payload, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal report failed: %v", err)
+	}
+	if err := os.WriteFile(reportPath, payload, 0644); err != nil {
+		t.Fatalf("write report failed: %v", err)
+	}
+
+	collector := &StatusCollector{
+		GitHubDependencyReportPath: reportPath,
+		GitHubDependencyStaleAfter: 24 * time.Hour,
+	}
+	snap := collector.Snapshot(context.Background())
+
+	githubDependency, ok := snap["github_dependency"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected github_dependency map, got %T", snap["github_dependency"])
+	}
+	if githubDependency["status"] != "network_unreachable" {
+		t.Fatalf("expected network_unreachable status, got %#v", githubDependency["status"])
+	}
+	ready, ok := githubDependency["ready"].(bool)
+	if !ok {
+		t.Fatalf("expected bool ready, got %T", githubDependency["ready"])
+	}
+	if ready {
+		t.Fatalf("expected github dependency not ready, got %#v", githubDependency)
+	}
+
+	alerts, ok := snap["alerts"].([]runtimeAlert)
+	if !ok {
+		t.Fatalf("expected alerts list, got %T", snap["alerts"])
+	}
+	codes := map[string]bool{}
+	for _, alert := range alerts {
+		codes[alert.Code] = true
+	}
+	if !codes["github_dependency_unhealthy"] {
+		t.Fatalf("expected github_dependency_unhealthy alert, got %+v", alerts)
+	}
+	if !codes["github_dependency_stale"] {
+		t.Fatalf("expected github_dependency_stale alert, got %+v", alerts)
+	}
+}
+
+func TestSnapshotIncludesGitHubDependencyHealthySummary(t *testing.T) {
+	now := time.Now().UTC()
+	reportPath := filepath.Join(t.TempDir(), "github-dependency-latest.json")
+	report := githubDependencyReport{
+		GeneratedAt:   now.Add(-1 * time.Hour).Format(time.RFC3339),
+		Remote:        "origin",
+		RemoteURL:     "https://github.com/example/alter0.git",
+		Status:        "ok",
+		Ready:         true,
+		Attempts:      1,
+		NetworkOK:     true,
+		TokenPresent:  true,
+		TokenRequired: false,
+	}
+	payload, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal report failed: %v", err)
+	}
+	if err := os.WriteFile(reportPath, payload, 0644); err != nil {
+		t.Fatalf("write report failed: %v", err)
+	}
+
+	collector := &StatusCollector{GitHubDependencyReportPath: reportPath}
+	snap := collector.Snapshot(context.Background())
+
+	githubDependency, ok := snap["github_dependency"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected github_dependency map, got %T", snap["github_dependency"])
+	}
+	if githubDependency["status"] != "ok" {
+		t.Fatalf("expected ok status, got %#v", githubDependency["status"])
+	}
+	ready, ok := githubDependency["ready"].(bool)
+	if !ok || !ready {
+		t.Fatalf("expected github dependency ready=true, got %#v", githubDependency["ready"])
+	}
+
+	alerts, ok := snap["alerts"].([]runtimeAlert)
+	if !ok {
+		t.Fatalf("expected alerts list, got %T", snap["alerts"])
+	}
+	for _, alert := range alerts {
+		if strings.HasPrefix(alert.Code, "github_dependency_") {
+			t.Fatalf("unexpected github dependency alert: %+v", alert)
+		}
+	}
+}
+
 func TestSnapshotIncludesTraceSummaryAndAlerts(t *testing.T) {
 	now := time.Now().UTC()
 	traceBase := t.TempDir()

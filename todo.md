@@ -20,7 +20,7 @@
 - 自适应阈值回写已具备“提案 + 周归档 + 命中率观测”能力，仍保持人工确认后落地（默认不自动改配置）。
 - 研究报告 5.1 中“外部模型/渠道政策突变”已补齐 trace 侧 `provider_policy_incidents` 观测与 `alerts.provider_policy_drift` 告警归因，可按类别/通道定位异常源。
 - 研究报告 5.1 中“长会话 token 成本与 compaction 质量权衡”已补齐聚合观测，支持按重负载会话识别 `drift_share`、`top_drift_sessions` 并触发质量漂移告警。
-- GitHub 交付链路已新增依赖门禁（`make github-dependency-check` + `output/delivery/github-dependency-latest.json` + `/status.github_dependency`），但外网抖动仍会阻塞 fetch/push，需按重试策略优先恢复。
+- GitHub 交付链路依赖门禁已落地主线（`make github-dependency-check` + `output/delivery/github-dependency-latest.json` + `/status.github_dependency`），当前缺口收敛为“外网抖动导致 strict 门禁失败”，需按重试策略优先恢复 fetch/push/PR 链路。
 
 ## 3. 优先级与执行队列
 
@@ -130,9 +130,9 @@
 对照 `../cs-note/ai/agent/openclaw_research_report.md`：
 
 - 已对齐：多通道网关、会话/子代理编排、工具协议与安全门禁、memory 检索、release-gate 基线、服务分层边界、N16 风险 watchlist 自动告警、N17 风险巡检 benchmark + 漂移分级 runbook、N18 场景基准矩阵与竞品月度追踪链路、N19 参数级配置治理门禁、N20 月度治理节奏自动化。
-- 本轮新增对齐：补齐 N38，新增 `make github-dependency-check` 与 `output/delivery/github-dependency-latest.json`，并将交付依赖健康度接入 `/status.github_dependency` 和 `alerts.github_dependency_*`，把研究报告 5.1“外部依赖阻塞交付链路”风险纳入运行时可观测域。
-- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 压缩质量漂移治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像 + 采纳优先级画像 + 外部策略异常归因 + 策略异常阈值治理 + GitHub 交付依赖门禁”十三段闭环；本轮新增 P7 六项微粒度对齐需求（N39-N44）。
-- 下一步：持续周度执行 `make channel-chaos-calibration` 与 `make github-dependency-check`；优先处理 `priority_candidates` 高分条目并回填 `config/channel-chaos-matrix.json` 的 `source_candidate`，同时在网络恢复后优先重试 fetch/push/PR 链路。
+- 本轮新增对齐：N38 已完成编码与测试闭环，`make github-dependency-check` 产物已接入 `/status.github_dependency` + `alerts.github_dependency_*`，把研究报告 5.1“外部依赖阻塞交付链路”风险纳入运行时可观测域。
+- 当前缺口：研究报告 5.2 建议项保持全量落地；5.1 已形成“成本治理 + 压缩质量漂移治理 + 通道降级观测 + chaos drill 门禁 + 阈值分层抑噪 + 阈值画像回归 + trace 抽样候选 + 周度校准指标 + 采纳归因画像 + 采纳优先级画像 + 外部策略异常归因 + 策略异常阈值治理 + GitHub 交付依赖门禁”十三段闭环，剩余工程缺口集中在 P7（N39-N44）。
+- 下一步：P0 优先推进 N39（配置预检门禁）与 N40（provider 回退链），并持续周度执行 `make channel-chaos-calibration` + `make github-dependency-check`；网络恢复后优先重试 strict fetch/push/PR 链路。
 
 ## 5. 执行规则
 
@@ -142,6 +142,7 @@
 
 ## 6. 失败记录与优先重试
 
+- 2026-03-02（UTC）：本轮执行 `make github-dependency-check`（strict 模式）失败，状态 `network_unreachable`；已用 `GITHUB_DEP_ALLOW_NETWORK_FAILURE=1` 验证降级模式可产出报告并继续流水线，下一轮优先在网络恢复后重试 strict 门禁。
 - 2026-03-02（UTC）：本轮执行 `git fetch origin` / `git pull --rebase origin master` 失败（`Failure when receiving data from the peer`、`Failed to connect to github.com:443`），远端同步与后续 push/PR/merge 暂时阻塞；已落地 N38 GitHub 依赖门禁并记录到 `output/delivery/github-dependency-latest.json`，下一轮优先重试远端链路。
 - 2026-03-02（UTC）：本轮首次执行 `gh pr create` 误用 `-C` 参数（当前 gh 版本不支持），导致 PR 创建失败；已切换为在仓库工作目录执行 `gh pr create --body-file` 重试成功，后续统一避免依赖 `gh -C`。
 - 2026-03-02（UTC）：本轮 `git push -u origin feat/n33-channel-chaos-source-coverage` 前 3 次失败（`Failure when receiving data from the peer` / `Failed to connect to github.com:443`），第 4 次重试成功；后续同类网络抖动继续按“至少 4 次重试 + 间隔连通性探测”策略执行。
