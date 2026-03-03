@@ -2,6 +2,7 @@ package application
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -21,6 +22,15 @@ const (
 	defaultSessionMemoryCompressionRetainTurns    = 4
 	defaultSessionMemoryCompressionMaxFacts       = 8
 	defaultSessionMemoryCompressionReferenceLimit = 160
+	defaultSessionMemoryDailyL1MaxEntryLength     = 180
+	defaultSessionMemoryDailyL2MaxEntryLength     = 220
+	defaultSessionMemoryDailyL3MaxEntryLength     = 280
+	defaultSessionMemoryDailyL1MaxLayerTokens     = 900
+	defaultSessionMemoryDailyL2MaxLayerTokens     = 2200
+	defaultSessionMemoryDailyL3MaxLayerTokens     = 4600
+	defaultSessionMemoryDailyL1TTL                = 36 * time.Hour
+	defaultSessionMemoryDailyL2TTL                = 12 * 24 * time.Hour
+	defaultSessionMemoryDailyL3TTL                = 45 * 24 * time.Hour
 )
 
 var (
@@ -36,6 +46,17 @@ type SessionMemoryOptions struct {
 	CompressionSummaryTokens int
 	CompressionRetainTurns   int
 	CompressionMaxFacts      int
+	DailyMemoryDir           string
+	DailyLongTermDir         string
+	L1                       SessionMemoryTierOptions
+	L2                       SessionMemoryTierOptions
+	L3                       SessionMemoryTierOptions
+}
+
+type SessionMemoryTierOptions struct {
+	MaxEntryLength int
+	MaxLayerTokens int
+	TTL            time.Duration
 }
 
 type sessionMemoryTurn struct {
@@ -123,14 +144,17 @@ type sessionMemoryStore struct {
 	mu       sync.Mutex
 	options  SessionMemoryOptions
 	sessions map[string]*sessionMemorySession
+	daily    *sessionMemoryDailyStore
 }
 
 func newSessionMemoryStore(options SessionMemoryOptions) *sessionMemoryStore {
 	normalized := normalizeSessionMemoryOptions(options)
-	return &sessionMemoryStore{
+	store := &sessionMemoryStore{
 		options:  normalized,
 		sessions: map[string]*sessionMemorySession{},
 	}
+	store.daily = newSessionMemoryDailyStore(normalized)
+	return store
 }
 
 func normalizeSessionMemoryOptions(options SessionMemoryOptions) SessionMemoryOptions {
@@ -161,7 +185,55 @@ func normalizeSessionMemoryOptions(options SessionMemoryOptions) SessionMemoryOp
 	if options.CompressionMaxFacts <= 0 {
 		options.CompressionMaxFacts = defaultSessionMemoryCompressionMaxFacts
 	}
+	options.DailyMemoryDir = strings.TrimSpace(options.DailyMemoryDir)
+	options.DailyLongTermDir = strings.TrimSpace(options.DailyLongTermDir)
+	if options.DailyMemoryDir != "" {
+		options.DailyMemoryDir = filepath.Clean(options.DailyMemoryDir)
+		options.L1 = normalizeSessionMemoryTierOptions(options.L1, SessionMemoryTierOptions{
+			MaxEntryLength: defaultSessionMemoryDailyL1MaxEntryLength,
+			MaxLayerTokens: defaultSessionMemoryDailyL1MaxLayerTokens,
+			TTL:            defaultSessionMemoryDailyL1TTL,
+		})
+		options.L2 = normalizeSessionMemoryTierOptions(options.L2, SessionMemoryTierOptions{
+			MaxEntryLength: defaultSessionMemoryDailyL2MaxEntryLength,
+			MaxLayerTokens: defaultSessionMemoryDailyL2MaxLayerTokens,
+			TTL:            defaultSessionMemoryDailyL2TTL,
+		})
+		options.L3 = normalizeSessionMemoryTierOptions(options.L3, SessionMemoryTierOptions{
+			MaxEntryLength: defaultSessionMemoryDailyL3MaxEntryLength,
+			MaxLayerTokens: defaultSessionMemoryDailyL3MaxLayerTokens,
+			TTL:            defaultSessionMemoryDailyL3TTL,
+		})
+		if options.DailyLongTermDir == "" {
+			options.DailyLongTermDir = filepath.Join(options.DailyMemoryDir, "long-term")
+		}
+		options.DailyLongTermDir = filepath.Clean(options.DailyLongTermDir)
+	}
 	return options
+}
+
+func normalizeSessionMemoryTierOptions(options SessionMemoryTierOptions, defaults SessionMemoryTierOptions) SessionMemoryTierOptions {
+	if options.MaxEntryLength <= 0 {
+		options.MaxEntryLength = defaults.MaxEntryLength
+	}
+	if options.MaxLayerTokens <= 0 {
+		options.MaxLayerTokens = defaults.MaxLayerTokens
+	}
+	if options.TTL <= 0 {
+		options.TTL = defaults.TTL
+	}
+	return options
+}
+
+func (o SessionMemoryOptions) dailyTierOptions(tier string) SessionMemoryTierOptions {
+	switch tier {
+	case sessionMemoryDailyTierL1:
+		return o.L1
+	case sessionMemoryDailyTierL2:
+		return o.L2
+	default:
+		return o.L3
+	}
 }
 
 func (s *sessionMemoryStore) Snapshot(sessionID string, input string, now time.Time) sessionMemorySnapshot {
@@ -214,7 +286,6 @@ func (s *sessionMemoryStore) Record(msg shareddomain.UnifiedMessage, route share
 	turn.PlanHint = extractPlanHint(turn.AssistantOutput, turn.UserInput, s.options.MaxSnippets)
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	session := s.pruneAndGetSessionLocked(sessionID, now)
 	if session == nil {
@@ -236,6 +307,12 @@ func (s *sessionMemoryStore) Record(msg shareddomain.UnifiedMessage, route share
 	}
 	if len(session.Turns) == 0 && len(session.Fragments) == 0 {
 		delete(s.sessions, sessionID)
+	}
+	fragments := copyFragments(session.Fragments)
+	s.mu.Unlock()
+
+	if s.daily != nil {
+		s.daily.Record(sessionID, turn, fragments)
 	}
 }
 
