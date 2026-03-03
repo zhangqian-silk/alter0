@@ -41,7 +41,7 @@
 | R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex 执行上下文，支持选择、排序与冲突处理 |
 | R-023 | 用户配置 MCP 接入 Codex | supported | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | supported | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
-| R-025 | 天级记忆与长期记忆（Markdown 统一存储） | planned | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
+| R-025 | 天级记忆与长期记忆（Markdown 统一存储） | supported | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
 | R-026 | 强制要求上下文文件（如 SOUL.md） | supported | 支持独立上下文文件存储用户强制要求，启动与会话初始化高优先级加载，并在冲突场景下覆盖普通记忆 |
 
 ### 2.1 需求细化（草案）
@@ -282,6 +282,20 @@
 4. 统一存储格式：包括 R-017~R-024 在内的记忆存储均使用 Markdown（`.md`），禁止引入独立二进制记忆格式。
 5. 支持分级容量约束：按 L1/L2/L3 分别配置天级条目长度上限、层容量上限与保留时长。
 6. 验收：连续多天运行后可按日期检索历史；当天压缩任务可稳定执行；长期记忆可跨会话命中且 Markdown 文件可直接审阅。
+
+##### Traceability
+
+- 实现文件：`internal/orchestration/application/session_memory.go`、`internal/orchestration/application/session_memory_daily_markdown.go`、`internal/orchestration/application/long_term_memory.go`、`internal/orchestration/application/memory_markdown_codec.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/orchestration/application/session_memory_test.go`、`internal/orchestration/application/long_term_memory_test.go`、`internal/orchestration/application/daily_long_term_memory_markdown_acceptance_test.go`
+- 运行参数：
+  - `-daily-memory-dir`
+  - `-long-term-memory-path`
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./internal/orchestration/application`
+- 验证记录：
+  - 2026-03-03：会话记忆新增天级 Markdown 落盘，按 `memory/YYYY-MM-DD.md` 记录 L1/L2/L3 分层内容、摘要与关键事实。
+  - 2026-03-03：上下文压缩片段在当日自动回写到天级文件，并同步生成 `memory/long-term/YYYY-MM-DD.md` 长期记忆候选。
+  - 2026-03-03：长期记忆持久化由 `.json` 升级为 `MEMORY.md` Markdown 存储，重启后可恢复并继续跨会话命中。
+  - 2026-03-03：天级记忆支持分层单条长度、层容量与保留时长约束，超限或过期条目按层级策略自动清理。
 
 #### R-026 强制要求上下文文件（如 SOUL.md）
 
