@@ -29,6 +29,8 @@ const rootStyle = document.documentElement.style;
 const MAX_CHARS = 10000;
 const DEFAULT_ROUTE = "chat";
 const SWIPE_CLOSE_THRESHOLD = 46;
+const STREAM_ENDPOINT = "/api/messages/stream";
+const MESSAGE_ENDPOINT = "/api/messages";
 
 const ROUTES = {
   chat: {
@@ -228,23 +230,92 @@ function updateSessionTitle(session, fallbackText) {
 }
 
 function appendMessage(role, text, options = {}) {
-  let session = getSession();
+  const sessionID = options.sessionID || state.activeSessionID;
+  let session = getSession(sessionID);
   if (!session) {
     session = createSession();
   }
   if (role === "user") {
     updateSessionTitle(session, text);
   }
-  session.messages.push({
+
+  const message = {
+    id: makeID(),
     role,
     text,
     at: Date.now(),
     route: options.route || "",
-    error: Boolean(options.error)
-  });
+    error: Boolean(options.error),
+    status: options.status || (options.error ? "error" : "done")
+  };
+  session.messages.push(message);
   renderSessions();
   renderMessages();
   syncHeader();
+  return message.id;
+}
+
+function updateMessage(sessionID, messageID, patch) {
+  const session = getSession(sessionID);
+  if (!session) {
+    return;
+  }
+
+  const target = session.messages.find((item) => item.id === messageID);
+  if (!target) {
+    return;
+  }
+
+  if (typeof patch.text === "string") {
+    target.text = patch.text;
+  }
+  if (typeof patch.route === "string") {
+    target.route = patch.route;
+  }
+  if (typeof patch.error === "boolean") {
+    target.error = patch.error;
+  }
+  if (typeof patch.status === "string") {
+    target.status = patch.status;
+  }
+  target.at = Date.now();
+
+  renderSessions();
+  renderMessages();
+  syncHeader();
+}
+
+function appendDeltaToMessage(sessionID, messageID, delta) {
+  const session = getSession(sessionID);
+  if (!session) {
+    return "";
+  }
+  const target = session.messages.find((item) => item.id === messageID);
+  if (!target) {
+    return "";
+  }
+  target.text = `${target.text || ""}${delta}`;
+  target.status = "in-progress";
+  target.error = false;
+  target.at = Date.now();
+
+  renderSessions();
+  renderMessages();
+  syncHeader();
+  return target.text;
+}
+
+function messageStatusLabel(msg) {
+  if (msg.status === "in-progress") {
+    return "进行中";
+  }
+  if (msg.status === "error" || msg.error) {
+    return "失败";
+  }
+  if (msg.status === "done") {
+    return "完成";
+  }
+  return "";
 }
 
 function renderMessages() {
@@ -265,13 +336,20 @@ function renderMessages() {
   for (const msg of active.messages) {
     const container = document.createElement("article");
     container.className = `msg ${msg.role}`;
+    if (msg.status) {
+      container.classList.add(msg.status);
+    }
     if (msg.error) {
       container.classList.add("error");
     }
 
     const bubble = document.createElement("div");
     bubble.className = "msg-bubble";
-    bubble.textContent = msg.text;
+    if (msg.role === "assistant" && msg.status === "in-progress" && !msg.text) {
+      bubble.textContent = "处理中...";
+    } else {
+      bubble.textContent = msg.text;
+    }
 
     const meta = document.createElement("div");
     meta.className = "msg-meta";
@@ -281,6 +359,16 @@ function renderMessages() {
       pill.className = "route-pill";
       pill.textContent = msg.route.toUpperCase();
       meta.appendChild(pill);
+    }
+
+    if (msg.role === "assistant") {
+      const statusText = messageStatusLabel(msg);
+      if (statusText) {
+        const status = document.createElement("span");
+        status.className = `status-pill ${msg.status || "done"}`;
+        status.textContent = statusText;
+        meta.appendChild(status);
+      }
     }
 
     const time = document.createElement("span");
@@ -294,42 +382,6 @@ function renderMessages() {
 
   messageArea.innerHTML = "";
   messageArea.appendChild(list);
-  messageArea.scrollTop = messageArea.scrollHeight;
-}
-
-function renderTyping(show) {
-  if (!show) {
-    const exists = document.getElementById("typingPlaceholder");
-    if (exists) {
-      exists.remove();
-    }
-    return;
-  }
-  const root = messageArea.querySelector(".message-list");
-  if (!root) {
-    return;
-  }
-  if (document.getElementById("typingPlaceholder")) {
-    return;
-  }
-
-  const item = document.createElement("article");
-  item.id = "typingPlaceholder";
-  item.className = "msg assistant typing";
-
-  const bubble = document.createElement("div");
-  bubble.className = "msg-bubble";
-  bubble.textContent = "处理中...";
-
-  const meta = document.createElement("div");
-  meta.className = "msg-meta";
-  const time = document.createElement("span");
-  time.textContent = timeLabel();
-  meta.appendChild(time);
-
-  item.appendChild(bubble);
-  item.appendChild(meta);
-  root.appendChild(item);
   messageArea.scrollTop = messageArea.scrollHeight;
 }
 
@@ -356,51 +408,267 @@ async function sendMessage(rawContent) {
     return;
   }
 
-  appendMessage("user", content);
+  const session = getSession() || createSession();
+  const sessionID = session.id;
+
+  appendMessage("user", content, { sessionID });
+  const assistantMessageID = appendMessage("assistant", "", {
+    sessionID,
+    status: "in-progress"
+  });
+
   input.value = "";
   updateCharCount();
   setPending(true);
-  renderTyping(true);
-
-  const active = getSession();
   const payload = {
-    session_id: active ? active.id : "",
+    session_id: sessionID,
     channel_id: "web-default",
     content
   };
 
   try {
-    const response = await fetch("/api/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    let body = {};
-    try {
-      body = await response.json();
-    } catch {
-      body = {};
+    const streamMode = await sendMessageViaStream(payload, sessionID, assistantMessageID);
+    if (streamMode === "fallback") {
+      await sendMessageViaJSON(payload, sessionID, assistantMessageID);
     }
-
-    if (!response.ok) {
-      const failure = body.error || body?.result?.error_code || `HTTP ${response.status}`;
-      appendMessage("assistant", `请求失败：${failure}`, { error: true, route: body?.result?.route });
-      return;
-    }
-
-    const output = (body?.result?.output || "").trim() || "已收到请求，但当前没有输出内容。";
-    appendMessage("assistant", output, { route: body?.result?.route });
   } catch (err) {
     const message = err instanceof Error ? err.message : "未知网络异常";
-    appendMessage("assistant", `网络异常：${message}`, { error: true });
+    updateMessage(sessionID, assistantMessageID, {
+      text: `请求失败：${message}`,
+      error: true,
+      status: "error"
+    });
   } finally {
-    renderTyping(false);
     setPending(false);
     input.focus();
   }
+}
+
+function safeJSONParse(raw, fallback = {}) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function parseSSEBlock(block) {
+  const lines = block.split("\n");
+  let event = "message";
+  const dataLines = [];
+
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) {
+      continue;
+    }
+    const separator = line.indexOf(":");
+    const field = separator >= 0 ? line.slice(0, separator) : line;
+    let value = separator >= 0 ? line.slice(separator + 1) : "";
+    if (value.startsWith(" ")) {
+      value = value.slice(1);
+    }
+
+    if (field === "event") {
+      event = value;
+      continue;
+    }
+    if (field === "data") {
+      dataLines.push(value);
+    }
+  }
+
+  if (!dataLines.length && event === "message") {
+    return null;
+  }
+  return {
+    event,
+    data: dataLines.join("\n")
+  };
+}
+
+async function readSSEEvents(response, onEvent) {
+  if (!response.body || typeof response.body.getReader !== "function") {
+    throw new Error("当前环境不支持流式读取");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const raw = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const parsed = parseSSEBlock(raw);
+      if (parsed) {
+        onEvent(parsed);
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+
+  buffer += decoder.decode();
+  buffer = buffer.replace(/\r\n/g, "\n");
+  if (buffer.trim()) {
+    const parsed = parseSSEBlock(buffer.trim());
+    if (parsed) {
+      onEvent(parsed);
+    }
+  }
+}
+
+async function extractErrorMessage(response) {
+  const contentType = response.headers.get("Content-Type") || "";
+  if (contentType.includes("application/json")) {
+    try {
+      const body = await response.json();
+      return body.error || body?.result?.error_code || `HTTP ${response.status}`;
+    } catch {
+      return `HTTP ${response.status}`;
+    }
+  }
+
+  try {
+    const text = (await response.text()).trim();
+    return text || `HTTP ${response.status}`;
+  } catch {
+    return `HTTP ${response.status}`;
+  }
+}
+
+async function sendMessageViaJSON(payload, sessionID, messageID) {
+  const response = await fetch(MESSAGE_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  let body = {};
+  try {
+    body = await response.json();
+  } catch {
+    body = {};
+  }
+
+  if (!response.ok) {
+    const failure = body.error || body?.result?.error_code || `HTTP ${response.status}`;
+    updateMessage(sessionID, messageID, {
+      text: `请求失败：${failure}`,
+      route: body?.result?.route || "",
+      error: true,
+      status: "error"
+    });
+    return;
+  }
+
+  const output = (body?.result?.output || "").trim() || "已收到请求，但当前没有输出内容。";
+  updateMessage(sessionID, messageID, {
+    text: output,
+    route: body?.result?.route || "",
+    error: false,
+    status: "done"
+  });
+}
+
+async function sendMessageViaStream(payload, sessionID, messageID) {
+  const response = await fetch(STREAM_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (response.status === 404 || response.status === 405 || response.status === 501) {
+    return "fallback";
+  }
+
+  const contentType = response.headers.get("Content-Type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    if (response.ok) {
+      return "fallback";
+    }
+    const failure = await extractErrorMessage(response);
+    throw new Error(failure);
+  }
+  if (!response.ok) {
+    const failure = await extractErrorMessage(response);
+    throw new Error(failure);
+  }
+
+  let done = false;
+  let streamError = "";
+  let fullText = "";
+
+  await readSSEEvents(response, (evt) => {
+    const payloadData = safeJSONParse(evt.data, {});
+
+    if (evt.event === "start") {
+      updateMessage(sessionID, messageID, {
+        text: "",
+        error: false,
+        status: "in-progress"
+      });
+      return;
+    }
+
+    if (evt.event === "delta") {
+      const delta = typeof payloadData.delta === "string" ? payloadData.delta : "";
+      if (!delta) {
+        return;
+      }
+      fullText = appendDeltaToMessage(sessionID, messageID, delta);
+      return;
+    }
+
+    if (evt.event === "error") {
+      streamError = payloadData.error || "流式响应失败";
+      const message = fullText ? `${fullText}\n\n请求失败：${streamError}` : `请求失败：${streamError}`;
+      updateMessage(sessionID, messageID, {
+        text: message,
+        route: payloadData?.result?.route || "",
+        error: true,
+        status: "error"
+      });
+      return;
+    }
+
+    if (evt.event === "done") {
+      const result = payloadData.result || {};
+      const output = typeof result.output === "string" ? result.output : fullText;
+      const finalText = output.trim() || "已收到请求，但当前没有输出内容。";
+      updateMessage(sessionID, messageID, {
+        text: finalText,
+        route: result.route || "",
+        error: false,
+        status: "done"
+      });
+      done = true;
+    }
+  });
+
+  if (streamError) {
+    return "stream-error";
+  }
+  if (!done) {
+    const message = fullText ? `${fullText}\n\n请求失败：流式连接中断，请重试` : "请求失败：流式连接中断，请重试";
+    updateMessage(sessionID, messageID, {
+      text: message,
+      error: true,
+      status: "error"
+    });
+    return "stream-error";
+  }
+  return "stream";
 }
 
 function activeMenuRoute(route) {

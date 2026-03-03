@@ -5,6 +5,8 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -89,6 +91,26 @@ type cronJobResponse struct {
 	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
+type streamStartEvent struct {
+	MessageID string `json:"message_id"`
+	SessionID string `json:"session_id"`
+	TraceID   string `json:"trace_id"`
+}
+
+type streamDeltaEvent struct {
+	Index int    `json:"index"`
+	Delta string `json:"delta"`
+}
+
+type streamDoneEvent struct {
+	Result shareddomain.OrchestrationResult `json:"result"`
+}
+
+type streamErrorEvent struct {
+	Error  string                           `json:"error"`
+	Result shareddomain.OrchestrationResult `json:"result,omitempty"`
+}
+
 func NewServer(
 	addr string,
 	orchestrator Orchestrator,
@@ -117,6 +139,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/", s.rootHandler)
 	mux.HandleFunc("/chat", s.chatPageHandler)
 	mux.HandleFunc("/api/messages", s.messageHandler)
+	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
 	mux.HandleFunc("/api/control/skills", s.skillListHandler)
@@ -194,72 +217,17 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer r.Body.Close()
-	var req messageRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+	msg, statusCode, err := s.parseIncomingMessage(r)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
 		return
 	}
 
-	if strings.TrimSpace(req.Content) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content is required"})
-		return
-	}
-
-	sessionID := strings.TrimSpace(req.SessionID)
-	if sessionID == "" {
-		sessionID = s.idGenerator.NewID()
-	}
-
-	channelID := strings.TrimSpace(req.ChannelID)
-	if channelID == "" {
-		channelID = "web-default"
-	}
-
-	channelType := shareddomain.ChannelTypeWeb
-	if s.control != nil {
-		channel, ok := s.control.ResolveChannel(channelID)
-		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "channel not found"})
-			return
-		}
-		if !channel.Enabled {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "channel is disabled"})
-			return
-		}
-		channelType = channel.Type
-	}
-
-	msg := shareddomain.UnifiedMessage{
-		MessageID:     s.idGenerator.NewID(),
-		SessionID:     sessionID,
-		UserID:        req.UserID,
-		ChannelID:     channelID,
-		ChannelType:   channelType,
-		TriggerType:   shareddomain.TriggerTypeUser,
-		Content:       req.Content,
-		Metadata:      req.Metadata,
-		TraceID:       s.idGenerator.NewID(),
-		CorrelationID: strings.TrimSpace(req.CorrelationID),
-		ReceivedAt:    time.Now().UTC(),
-	}
-
-	s.telemetry.CountGateway(string(msg.ChannelType))
+	s.countGateway(msg.ChannelType)
 	result, err := s.orchestrator.Handle(r.Context(), msg)
 	if err != nil {
-		statusCode := http.StatusBadRequest
-		if result.ErrorCode == "command_failed" || result.ErrorCode == "nl_execution_failed" {
-			statusCode = http.StatusInternalServerError
-		}
-		s.logger.Error("web message failed",
-			slog.String("trace_id", msg.TraceID),
-			slog.String("session_id", msg.SessionID),
-			slog.String("message_id", msg.MessageID),
-			slog.String("channel_id", msg.ChannelID),
-			slog.String("channel_type", string(msg.ChannelType)),
-			slog.String("error", err.Error()),
-		)
-		writeJSON(w, statusCode, messageResponse{
+		s.logMessageFailure(msg, err)
+		writeJSON(w, resultHTTPStatus(result), messageResponse{
 			Result: result,
 			Error:  err.Error(),
 		})
@@ -269,6 +237,71 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, messageResponse{
 		Result: result,
 	})
+}
+
+func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	msg, statusCode, err := s.parseIncomingMessage(r)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming unsupported"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	s.countGateway(msg.ChannelType)
+	if err := writeSSEEvent(w, "start", streamStartEvent{
+		MessageID: msg.MessageID,
+		SessionID: msg.SessionID,
+		TraceID:   msg.TraceID,
+	}); err != nil {
+		return
+	}
+	flusher.Flush()
+
+	result, err := s.orchestrator.Handle(r.Context(), msg)
+	if err != nil {
+		s.logMessageFailure(msg, err)
+		_ = writeSSEEvent(w, "error", streamErrorEvent{
+			Error:  err.Error(),
+			Result: result,
+		})
+		flusher.Flush()
+		return
+	}
+
+	chunks := splitTextChunks(result.Output, 24)
+	for idx, chunk := range chunks {
+		if r.Context().Err() != nil {
+			return
+		}
+		if err := writeSSEEvent(w, "delta", streamDeltaEvent{
+			Index: idx,
+			Delta: chunk,
+		}); err != nil {
+			return
+		}
+		flusher.Flush()
+	}
+
+	if err := writeSSEEvent(w, "done", streamDoneEvent{Result: result}); err != nil {
+		return
+	}
+	flusher.Flush()
 }
 
 func (s *Server) channelListHandler(w http.ResponseWriter, r *http.Request) {
@@ -480,6 +513,123 @@ func toCronJobResponse(job schedulerdomain.Job) cronJobResponse {
 		Content:   job.Content,
 		Metadata:  job.Metadata,
 	}
+}
+
+func (s *Server) parseIncomingMessage(r *http.Request) (shareddomain.UnifiedMessage, int, error) {
+	defer r.Body.Close()
+
+	var req messageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("invalid json body")
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("content is required")
+	}
+
+	sessionID := strings.TrimSpace(req.SessionID)
+	if sessionID == "" {
+		sessionID = s.newID()
+	}
+
+	channelID := strings.TrimSpace(req.ChannelID)
+	if channelID == "" {
+		channelID = "web-default"
+	}
+
+	channelType := shareddomain.ChannelTypeWeb
+	if s.control != nil {
+		channel, ok := s.control.ResolveChannel(channelID)
+		if !ok {
+			return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("channel not found")
+		}
+		if !channel.Enabled {
+			return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("channel is disabled")
+		}
+		channelType = channel.Type
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:     s.newID(),
+		SessionID:     sessionID,
+		UserID:        strings.TrimSpace(req.UserID),
+		ChannelID:     channelID,
+		ChannelType:   channelType,
+		TriggerType:   shareddomain.TriggerTypeUser,
+		Content:       req.Content,
+		Metadata:      req.Metadata,
+		TraceID:       s.newID(),
+		CorrelationID: strings.TrimSpace(req.CorrelationID),
+		ReceivedAt:    time.Now().UTC(),
+	}
+	return msg, http.StatusOK, nil
+}
+
+func (s *Server) newID() string {
+	if s.idGenerator != nil {
+		return s.idGenerator.NewID()
+	}
+	return fmt.Sprintf("web-%d", time.Now().UnixNano())
+}
+
+func (s *Server) countGateway(channelType shareddomain.ChannelType) {
+	if s.telemetry == nil {
+		return
+	}
+	s.telemetry.CountGateway(string(channelType))
+}
+
+func resultHTTPStatus(result shareddomain.OrchestrationResult) int {
+	if result.ErrorCode == "command_failed" || result.ErrorCode == "nl_execution_failed" {
+		return http.StatusInternalServerError
+	}
+	return http.StatusBadRequest
+}
+
+func (s *Server) logMessageFailure(msg shareddomain.UnifiedMessage, err error) {
+	if s.logger == nil {
+		return
+	}
+	s.logger.Error("web message failed",
+		slog.String("trace_id", msg.TraceID),
+		slog.String("session_id", msg.SessionID),
+		slog.String("message_id", msg.MessageID),
+		slog.String("channel_id", msg.ChannelID),
+		slog.String("channel_type", string(msg.ChannelType)),
+		slog.String("error", err.Error()),
+	)
+}
+
+func splitTextChunks(text string, chunkSize int) []string {
+	if text == "" {
+		return nil
+	}
+	if chunkSize <= 0 {
+		chunkSize = 24
+	}
+	runes := []rune(text)
+	chunks := make([]string, 0, (len(runes)+chunkSize-1)/chunkSize)
+	for i := 0; i < len(runes); i += chunkSize {
+		end := i + chunkSize
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunks = append(chunks, string(runes[i:end]))
+	}
+	return chunks
+}
+
+func writeSSEEvent(w io.Writer, event string, payload any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "event: %s\n", strings.TrimSpace(event)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", body); err != nil {
+		return err
+	}
+	return nil
 }
 
 func resourceID(path, prefix string) (string, bool) {
