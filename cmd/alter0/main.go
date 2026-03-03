@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
@@ -20,6 +21,7 @@ import (
 	orchdomain "alter0/internal/orchestration/domain"
 	orchinfra "alter0/internal/orchestration/infrastructure"
 	schedulerapp "alter0/internal/scheduler/application"
+	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 	sharedinfra "alter0/internal/shared/infrastructure/id"
 	"alter0/internal/shared/infrastructure/observability"
@@ -44,6 +46,9 @@ const defaultWebAddr = "127.0.0.1:18088"
 
 func main() {
 	webAddr := flag.String("web-addr", defaultWebAddr, "web server listen address")
+	workerPoolSize := flag.Int("worker-pool-size", 4, "global worker pool size")
+	maxQueueSize := flag.Int("max-queue-size", 128, "max waiting queue size")
+	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
 	flag.Parse()
 	listenAddr := strings.TrimSpace(*webAddr)
 	if listenAddr == "" {
@@ -98,12 +103,24 @@ func main() {
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
 	processor := execinfra.NewCodexCLIProcessor()
 	executor := execapp.NewService(processor)
-	orchestrator := orchapp.NewService(
+	baseOrchestrator := orchapp.NewService(
 		classifier,
 		registry,
 		executor,
 		telemetry,
 		logger,
+	)
+	orchestrator := orchapp.NewConcurrentService(
+		rootCtx,
+		baseOrchestrator,
+		telemetry,
+		logger,
+		orchapp.ConcurrencyOptions{
+			WorkerCount:    *workerPoolSize,
+			MaxQueueSize:   *maxQueueSize,
+			QueueTimeout:   *queueTimeout,
+			OverloadPolicy: orchapp.OverloadPolicyRejectNew,
+		},
 	)
 
 	scheduler, err := newSchedulerManager(rootCtx, orchestrator, telemetry, idGen, logger, schedulerStore)
@@ -185,9 +202,9 @@ func newControlService(ctx context.Context, store controlapp.Store) (*controlapp
 
 func newSchedulerManager(
 	ctx context.Context,
-	orchestrator *orchapp.Service,
+	orchestrator schedulerapp.Orchestrator,
 	telemetry *observability.Telemetry,
-	idGen *sharedinfra.RandomIDGenerator,
+	idGen sharedapp.IDGenerator,
 	logger *slog.Logger,
 	store schedulerapp.Store,
 ) (*schedulerapp.Manager, error) {

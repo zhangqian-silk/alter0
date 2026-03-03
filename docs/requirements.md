@@ -32,7 +32,7 @@
 | R-013 | 流式传输能力 | ready | 提供端到端流式响应：后端增量推送生成内容，前端实时渲染并可感知进行中/完成/失败状态 |
 | R-014 | 移动端真机适配增强 | supported | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭与手势交互），确保 iOS/Android 浏览器下稳定可用 |
 | R-015 | 移动端会话创建与信息完整性 | planned | 确保移动端可稳定新建会话，并完整展示会话必要信息（标题、入口状态、空态提示） |
-| R-016 | 会话级并发控制与全局限流 | planned | 支持多会话并发处理，同时保证同一会话顺序一致，并提供系统级并发上限、排队与超时降级能力 |
+| R-016 | 会话级并发控制与全局限流 | supported | 支持多会话并发处理，同时保证同一会话顺序一致，并提供系统级并发上限、排队与超时降级能力 |
 | R-017 | 会话短期记忆 | planned | 在单会话内维护可控窗口的上下文记忆，提升多轮对话连续性与指代解析能力 |
 | R-018 | 跨会话长期记忆 | planned | 支持跨会话沉淀用户偏好与长期事实，并按范围检索注入上下文 |
 | R-019 | 会话内容持久化 | planned | 将会话消息、元数据与状态持久化存储，支持重启恢复与历史查询 |
@@ -96,6 +96,12 @@
 3. 队列提供超时与取消机制：超时返回明确错误码，并保留可观测日志字段（session_id、queue_wait_ms、timeout）。
 4. 当系统进入高压状态时支持降级策略（拒绝新请求或快速失败），避免资源被耗尽。
 5. 验收：并发压测下跨会话吞吐提升；同一会话无乱序响应；达到阈值时可观测到限流/超时事件。
+
+##### Traceability
+
+- 实现文件：`internal/orchestration/application/concurrent_service.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`、`internal/interfaces/web/server.go`、`internal/shared/infrastructure/observability/telemetry.go`
+- 测试覆盖：`internal/orchestration/application/concurrent_service_test.go`
+- 验证：`go test ./...`
 
 #### R-017 会话短期记忆
 
@@ -185,4 +191,3 @@
 
 - 实现文件：`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
 - 验证：`go test ./...`
-

@@ -248,8 +248,15 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.orchestrator.Handle(r.Context(), msg)
 	if err != nil {
 		statusCode := http.StatusBadRequest
-		if result.ErrorCode == "command_failed" || result.ErrorCode == "nl_execution_failed" {
+		switch result.ErrorCode {
+		case "command_failed", "nl_execution_failed":
 			statusCode = http.StatusInternalServerError
+		case "queue_timeout":
+			statusCode = http.StatusGatewayTimeout
+		case "rate_limited":
+			statusCode = http.StatusTooManyRequests
+		case "queue_canceled":
+			statusCode = http.StatusRequestTimeout
 		}
 		s.logger.Error("web message failed",
 			slog.String("trace_id", msg.TraceID),

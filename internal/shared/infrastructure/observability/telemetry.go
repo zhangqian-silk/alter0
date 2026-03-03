@@ -14,6 +14,11 @@ type routeLatency struct {
 	SumNs int64
 }
 
+type waitLatency struct {
+	Count int64
+	SumNs int64
+}
+
 type Telemetry struct {
 	mu sync.Mutex
 
@@ -22,6 +27,10 @@ type Telemetry struct {
 	commandCount map[string]int64
 	errorCount   map[string]int64
 	routeLatency map[string]routeLatency
+	queueEvents  map[string]int64
+	queueWait    waitLatency
+	queueDepth   int64
+	workerFlight int64
 }
 
 func NewTelemetry() *Telemetry {
@@ -31,6 +40,7 @@ func NewTelemetry() *Telemetry {
 		commandCount: map[string]int64{},
 		errorCount:   map[string]int64{},
 		routeLatency: map[string]routeLatency{},
+		queueEvents:  map[string]int64{},
 	}
 }
 
@@ -67,6 +77,31 @@ func (t *Telemetry) ObserveDuration(route string, d time.Duration) {
 	t.routeLatency[route] = latency
 }
 
+func (t *Telemetry) CountQueueEvent(event string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.queueEvents[event]++
+}
+
+func (t *Telemetry) ObserveQueueWait(d time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.queueWait.Count++
+	t.queueWait.SumNs += d.Nanoseconds()
+}
+
+func (t *Telemetry) SetQueueDepth(depth int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.queueDepth = int64(depth)
+}
+
+func (t *Telemetry) SetWorkerInFlight(inFlight int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.workerFlight = int64(inFlight)
+}
+
 func (t *Telemetry) MetricsHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.mu.Lock()
@@ -75,6 +110,10 @@ func (t *Telemetry) MetricsHandler() http.Handler {
 		commandCount := cloneMap(t.commandCount)
 		errorCount := cloneMap(t.errorCount)
 		routeLatency := cloneLatencyMap(t.routeLatency)
+		queueEvents := cloneMap(t.queueEvents)
+		queueWait := t.queueWait
+		queueDepth := t.queueDepth
+		workerFlight := t.workerFlight
 		t.mu.Unlock()
 
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -85,6 +124,10 @@ func (t *Telemetry) MetricsHandler() http.Handler {
 		writeCounter(builder, "alter0_command_requests_total", "command", commandCount)
 		writeCounter(builder, "alter0_route_errors_total", "route", errorCount)
 		writeLatency(builder, routeLatency)
+		writeCounter(builder, "alter0_queue_events_total", "event", queueEvents)
+		writeWait(builder, queueWait)
+		fmt.Fprintf(builder, "alter0_queue_depth %d\n", queueDepth)
+		fmt.Fprintf(builder, "alter0_worker_inflight %d\n", workerFlight)
 
 		_, _ = w.Write([]byte(builder.String()))
 	})
@@ -131,4 +174,12 @@ func writeLatency(builder *strings.Builder, values map[string]routeLatency) {
 		}
 		fmt.Fprintf(builder, "alter0_route_duration_seconds_avg{route=%q} %f\n", key, avg)
 	}
+}
+
+func writeWait(builder *strings.Builder, metric waitLatency) {
+	avg := 0.0
+	if metric.Count > 0 {
+		avg = float64(metric.SumNs) / float64(metric.Count) / float64(time.Second)
+	}
+	fmt.Fprintf(builder, "alter0_queue_wait_seconds_avg %f\n", avg)
 }

@@ -16,6 +16,10 @@ type ExecutionPort interface {
 	ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.UnifiedMessage) (string, error)
 }
 
+type Orchestrator interface {
+	Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error)
+}
+
 type Service struct {
 	classifier orchdomain.IntentClassifier
 	registry   orchdomain.CommandRegistry
