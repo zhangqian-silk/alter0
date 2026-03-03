@@ -25,6 +25,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
+  height: 100%;
 }
 
 body {
@@ -35,8 +36,10 @@ body {
 
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   grid-template-columns: 246px 300px minmax(0, 1fr);
+  position: relative;
 }
 
 .app-shell.route-mode {
@@ -45,6 +48,7 @@ body {
 
 .primary-nav {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg-nav);
   border-right: 1px solid var(--line-soft);
   padding: 16px 10px 12px;
@@ -55,6 +59,10 @@ body {
 
 .brand {
   padding: 4px 8px 2px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .brand-copy strong {
@@ -68,6 +76,20 @@ body {
 .brand-copy small {
   color: var(--ink-muted);
   font-size: 11px;
+}
+
+.nav-collapse {
+  border: 1px solid var(--line-mid);
+  border-radius: 999px;
+  height: 30px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--ink-body);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: none;
 }
 
 .menu {
@@ -116,6 +138,7 @@ body {
 
 .session-pane {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg-session);
   border-right: 1px solid var(--line-soft);
   padding: 16px 12px 12px;
@@ -231,6 +254,7 @@ body {
 
 .chat-pane {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -242,6 +266,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+  background: rgba(238, 242, 248, 0.82);
 }
 
 .chat-header-copy h2 {
@@ -541,6 +570,10 @@ body {
   color: var(--danger);
 }
 
+.mobile-backdrop {
+  display: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -563,8 +596,8 @@ body {
     top: 0;
     left: 0;
     bottom: 0;
-    width: 246px;
-    z-index: 40;
+    width: min(82vw, 280px);
+    z-index: 42;
     transform: translateX(-102%);
     transition: transform 180ms ease;
     box-shadow: 0 14px 32px rgba(15, 24, 39, 0.18);
@@ -579,8 +612,8 @@ body {
     top: 0;
     left: 0;
     bottom: 0;
-    width: 300px;
-    z-index: 41;
+    width: min(88vw, 340px);
+    z-index: 43;
     transform: translateX(-102%);
     transition: transform 180ms ease;
     box-shadow: 0 14px 32px rgba(15, 24, 39, 0.2);
@@ -592,7 +625,8 @@ body {
 
   .nav-toggle,
   .panel-toggle,
-  .pane-action {
+  .pane-action,
+  .nav-collapse {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -603,17 +637,48 @@ body {
   }
 
   .chat-header {
-    height: 58px;
+    height: 60px;
   }
 
   .welcome-screen {
     margin-top: 9vh;
   }
+
+  .mobile-backdrop {
+    position: fixed;
+    inset: 0;
+    border: none;
+    margin: 0;
+    padding: 0;
+    background: rgba(16, 24, 40, 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease;
+    z-index: 39;
+    display: block;
+  }
+
+  .app-shell.nav-open .mobile-backdrop,
+  .app-shell.panel-open .mobile-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 @media (max-width: 760px) {
+  .primary-nav {
+    width: min(86vw, 320px);
+  }
+
+  .session-pane {
+    width: min(92vw, 360px);
+  }
+
   .chat-header {
-    width: calc(100% - 14px);
+    width: calc(100% - 12px);
+    min-height: 56px;
+    height: auto;
+    padding: 8px 0;
   }
 
   .chat-header-copy p,
@@ -622,20 +687,30 @@ body {
   }
 
   .chat-header-copy h2 {
-    font-size: 24px;
+    font-size: 22px;
+  }
+
+  .chat-header-actions {
+    gap: 6px;
+  }
+
+  .nav-toggle,
+  .panel-toggle {
+    height: 36px;
+    padding: 0 12px;
   }
 
   .welcome-screen {
-    width: calc(100% - 14px);
-    margin-top: 8vh;
+    width: calc(100% - 12px);
+    margin-top: clamp(28px, 6vh, 56px);
   }
 
   .welcome-tag {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .welcome-screen h3 {
-    font-size: 40px;
+    font-size: clamp(30px, 10vw, 40px);
   }
 
   .welcome-screen p {
@@ -647,12 +722,46 @@ body {
     padding: 8px 13px;
   }
 
+  .message-area {
+    padding: 8px 6px 10px;
+  }
+
+  .msg {
+    max-width: 92%;
+  }
+
   .composer-shell {
-    padding-left: 8px;
-    padding-right: 8px;
+    position: sticky;
+    bottom: 0;
+    z-index: 9;
+    background: linear-gradient(180deg, rgba(238, 242, 248, 0) 0%, rgba(238, 242, 248, 0.95) 36%);
+    padding: 6px 6px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .composer {
+    border-radius: 18px;
+    padding: 10px 11px 8px;
+  }
+
+  .composer textarea {
+    font-size: 16px;
+    min-height: 42px;
+  }
+
+  .composer-actions button {
+    height: 32px;
   }
 
   .route-view {
-    width: calc(100% - 14px);
+    width: calc(100% - 12px);
+    margin-top: 10px;
+  }
+
+  .route-body {
+    grid-template-columns: 1fr;
+  }
+
+  .route-card {
+    padding: 12px;
   }
 }
