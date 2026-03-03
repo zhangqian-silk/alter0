@@ -35,7 +35,7 @@
 | R-016 | 会话级并发控制与全局限流 | supported | 支持多会话并发处理，同时保证同一会话顺序一致，并提供系统级并发上限、排队与超时降级能力 |
 | R-017 | 会话短期记忆 | supported | 在单会话内维护可控窗口的上下文记忆，提升多轮对话连续性与指代解析能力 |
 | R-018 | 跨会话长期记忆 | supported | 支持跨会话沉淀用户偏好与长期事实，并按用户/租户范围检索后按相关性注入上下文 |
-| R-019 | 会话内容持久化 | planned | 将会话消息、元数据与状态持久化存储，支持重启恢复与历史查询 |
+| R-019 | 会话内容持久化 | supported | 持久化用户/助手消息主数据与路由结果，支持重启恢复、会话分页与按时间范围检索 |
 | R-020 | 上下文压缩 | planned | 对超长上下文进行分层压缩与摘要回写，在控制 token 成本的同时保留关键信息 |
 | R-021 | Skills/MCP 标准化能力模型 | supported | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
 | R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex 执行上下文，支持选择、排序与冲突处理 |
@@ -164,6 +164,19 @@
 2. 支持服务重启后恢复历史会话，并可按会话分页查询。
 3. 支持最小化索引能力（按 session_id、时间范围）以支撑检索与回放。
 4. 验收：重启后会话内容不丢失，可按会话完整回放最近消息。
+
+##### Traceability
+
+- 实现文件：`internal/session/domain/message.go`、`internal/session/application/service.go`、`internal/orchestration/application/session_persistence_service.go`、`internal/storage/infrastructure/localfile/session_store.go`、`internal/interfaces/web/server.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/session/application/service_test.go`、`internal/orchestration/application/session_persistence_service_test.go`、`internal/storage/infrastructure/localfile/session_store_test.go`、`internal/interfaces/web/server_session_test.go`
+- 新增接口：
+  - `GET /api/sessions`：按会话维度分页查询，支持 `page`/`page_size`/`start_at`/`end_at`
+  - `GET /api/sessions/{session_id}/messages`：按会话分页回放消息，支持时间范围过滤
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-03：消息链路新增持久化装饰器，落盘字段覆盖 `message_id/session_id/role/content/timestamp/route_result`。
+  - 2026-03-03：服务重启后通过本地文件恢复会话历史，并可按会话分页查询与回放。
+  - 2026-03-03：会话查询支持 `session_id + 时间范围` 索引检索，用于检索与历史重放。
 
 #### R-020 上下文压缩
 
