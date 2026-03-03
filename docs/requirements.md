@@ -39,7 +39,7 @@
 | R-020 | 上下文压缩 | planned | 对超长上下文进行分层压缩与摘要回写，在控制 token 成本的同时保留关键信息 |
 | R-021 | Skills/MCP 标准化能力模型 | supported | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
 | R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex 执行上下文，支持选择、排序与冲突处理 |
-| R-023 | 用户配置 MCP 接入 Codex | planned | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
+| R-023 | 用户配置 MCP 接入 Codex | supported | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | planned | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | planned | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
 | R-026 | 强制要求上下文文件（如 SOUL.md） | planned | 支持独立上下文文件存储用户强制要求，启动时高优先级加载并对后续会话持续生效 |
@@ -209,6 +209,18 @@
 2. 支持按会话或请求粒度启用 MCP，避免全局污染与越权调用。
 3. 对 MCP 接入过程补齐安全控制：白名单、超时、失败隔离、访问审计。
 4. 验收：用户新增 MCP 配置后，可在指定会话中被 Codex 正确调用，且日志可追踪。
+
+##### Traceability
+
+- 实现文件：`internal/execution/domain/mcp_context.go`、`internal/execution/application/mcp_context_resolver.go`、`internal/execution/application/service.go`、`internal/execution/infrastructure/codex_cli_processor.go`
+- 测试覆盖：`internal/execution/application/service_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`
+- 协议约束：`alter0.mcp-context/v1`，注入结构固定为 `protocol`、`servers[].transport/command/args/url/headers/tool_whitelist/timeout_ms/failure_isolation`、`audit[]`；通过 `alter0.mcp_context` 元数据注入，执行载荷统一为 `alter0.codex-exec/v1`。
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-03：`mcp.transport` 支持 `stdio/http` 映射，分别输出 `command/args/env` 与 `url/headers` 到 Codex 执行载荷。
+  - 2026-03-03：会话级启用通过 `alter0.mcp.session.enable` 绑定 `session_id`，请求级启用通过 `alter0.mcp.request.enable` 按次生效，跨会话不共享。
+  - 2026-03-03：`mcp.tools.whitelist`、`mcp.timeout_ms`、`mcp.failure_isolation` 生效；异常配置按 Server 级隔离并写入 `mcp.audit`。
+  - 2026-03-03：执行结果元数据新增 `mcp.injected_ids`、`mcp.injected_count`、`mcp.audit_count`、`mcp.audit`，日志输出 `mcp resolved` 支持访问审计追踪。
 
 #### R-024 跨会话持久化记忆分级管理（参考 CPU Cache）
 

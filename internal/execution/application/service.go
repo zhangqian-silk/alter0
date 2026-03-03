@@ -14,6 +14,7 @@ import (
 type Service struct {
 	processor     execdomain.NLProcessor
 	skillResolver *skillContextResolver
+	mcpResolver   *mcpContextResolver
 	logger        *slog.Logger
 }
 
@@ -24,6 +25,12 @@ const (
 	resultSkillConflictKey    = "skills.conflict_count"
 	resultSkillConflictTypes  = "skills.conflict_types"
 	resultSkillConflictDetail = "skills.conflicts"
+
+	resultMCPInjectedIDsKey = "mcp.injected_ids"
+	resultMCPInjectedKey    = "mcp.injected_count"
+	resultMCPProtocolKey    = "mcp.protocol"
+	resultMCPAuditCountKey  = "mcp.audit_count"
+	resultMCPAuditDetailKey = "mcp.audit"
 )
 
 func NewService(processor execdomain.NLProcessor) *Service {
@@ -38,6 +45,7 @@ func NewServiceWithSkills(
 	return &Service{
 		processor:     processor,
 		skillResolver: newSkillContextResolver(skillSource),
+		mcpResolver:   newMCPContextResolver(skillSource),
 		logger:        logger,
 	}
 }
@@ -82,6 +90,47 @@ func (s *Service) ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.U
 				slog.Int("skills_conflicts", len(skillContext.Conflicts)),
 				slog.String("skills_injected_ids", strings.Join(resolution.InjectedIDs, ",")),
 				slog.String("skills_conflict_types", strings.Join(resolution.ConflictTypes, ",")),
+			)
+		}
+	}
+	if s.mcpResolver != nil {
+		resolution := s.mcpResolver.Resolve(msg)
+		mcpContext := resolution.Context
+		if len(mcpContext.Servers) > 0 {
+			rawMCPContext, err := json.Marshal(mcpContext)
+			if err != nil {
+				return shareddomain.ExecutionResult{}, err
+			}
+			metadata[execdomain.MCPContextMetadataKey] = string(rawMCPContext)
+			resultMetadata[resultMCPProtocolKey] = mcpContext.Protocol
+			resultMetadata[resultMCPInjectedIDsKey] = strings.Join(resolution.InjectedIDs, ",")
+		}
+		resultMetadata[resultMCPInjectedKey] = strconv.Itoa(len(mcpContext.Servers))
+		resultMetadata[resultMCPAuditCountKey] = strconv.Itoa(len(mcpContext.Audit))
+		if len(mcpContext.Audit) > 0 {
+			rawAudit, err := json.Marshal(mcpContext.Audit)
+			if err != nil {
+				return shareddomain.ExecutionResult{}, err
+			}
+			resultMetadata[resultMCPAuditDetailKey] = string(rawAudit)
+		}
+		if s.logger != nil {
+			logHandler := s.logger.Info
+			blocked := 0
+			for _, item := range mcpContext.Audit {
+				if item.Decision != "enabled" {
+					blocked++
+				}
+			}
+			if blocked > 0 {
+				logHandler = s.logger.Warn
+			}
+			logHandler("mcp resolved",
+				slog.String("session_id", msg.SessionID),
+				slog.String("message_id", msg.MessageID),
+				slog.Int("mcp_injected", len(mcpContext.Servers)),
+				slog.Int("mcp_blocked", blocked),
+				slog.String("mcp_injected_ids", strings.Join(resolution.InjectedIDs, ",")),
 			)
 		}
 	}
