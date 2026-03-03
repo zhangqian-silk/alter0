@@ -40,7 +40,7 @@
 | R-021 | Skills/MCP 标准化能力模型 | supported | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
 | R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex 执行上下文，支持选择、排序与冲突处理 |
 | R-023 | 用户配置 MCP 接入 Codex | supported | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
-| R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | planned | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
+| R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | supported | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | planned | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
 | R-026 | 强制要求上下文文件（如 SOUL.md） | supported | 支持独立上下文文件存储用户强制要求，启动与会话初始化高优先级加载，并在冲突场景下覆盖普通记忆 |
 
@@ -257,6 +257,22 @@
 4. 支持“缓存迁移”机制：高频命中或被显式标记的重要记忆可晋升（`L3 -> L2 -> L1`）；长期未命中项可降级。
 5. 支持写入策略配置（如 write-through / write-back 风格）：保证持久化一致性与性能平衡。
 6. 验收：跨会话与重启后记忆可恢复；命中链路与晋升降级可观测；在相同 token 预算下高价值记忆命中率提升。
+
+##### Traceability
+
+- 实现文件：`internal/orchestration/application/long_term_memory.go`、`internal/orchestration/application/mandatory_context.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/orchestration/application/long_term_memory_test.go`、`internal/orchestration/application/tiered_long_term_memory_acceptance_test.go`、`internal/orchestration/application/service_test.go`
+- 运行参数：
+  - `-long-term-memory-path`
+  - `-long-term-memory-write-policy`
+  - `-long-term-memory-writeback-flush`
+  - `-long-term-memory-token-budget`
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-03：长期记忆升级为 `L1/L2/L3` 分层模型，支持分层单条长度、总容量、TTL 与 `LRU/score` 淘汰策略。
+  - 2026-03-03：查询注入固定命中链路 `L1 -> L2 -> L3`，并在 token 预算不足时按层级优先级截断，输出链路与预算元数据。
+  - 2026-03-03：命中反馈支持高频晋升与长期未命中降级，显式 `memory_long_term_important=true` 可直接进入高优先层，晋升/降级计数可观测。
+  - 2026-03-03：支持 `write_through/write_back` 写入策略与重启恢复，验收测试确认同等预算下高价值记忆命中率提升。
 
 #### R-025 天级记忆与长期记忆（Markdown 统一存储）
 
