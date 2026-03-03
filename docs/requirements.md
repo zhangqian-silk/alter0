@@ -6,6 +6,7 @@
 
 1. `supported`：已在主干代码可用
 2. `planned`：已确认方向，待排期
+3. `ready`：需求已完成拆分与细化，进入可执行状态
 
 ## 1. 当前已支持需求
 
@@ -27,7 +28,7 @@
 
 | ID | 需求 | 状态 | 目标 |
 | --- | --- | --- | --- |
-| R-012 | Web 侧边栏交互优化 | planned | 点击侧边栏项后进入“信息展示模式”：主区域仅展示对应信息，不再弹出或保留对话框；侧边栏在展开态提供显式折叠按钮 |
+| R-012 | Web 侧边栏交互优化 | ready | 点击侧边栏项后进入“信息展示模式”：主区域仅展示对应信息，不再弹出或保留对话框；侧边栏在展开态提供显式折叠按钮 |
 | R-013 | 流式传输能力 | planned | 提供端到端流式响应：后端增量推送生成内容，前端实时渲染并可感知进行中/完成/失败状态 |
 | R-014 | 移动端真机适配增强 | planned | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭与手势交互），确保 iOS/Android 浏览器下稳定可用 |
 | R-015 | 移动端会话创建与信息完整性 | planned | 确保移动端可稳定新建会话，并完整展示会话必要信息（标题、入口状态、空态提示） |
@@ -51,6 +52,16 @@
 2. 侧边栏展开时显示“折叠”按钮；折叠后仅保留图标轨道。
 3. 移动端在选择菜单项后自动折叠侧边栏，避免遮挡主内容。
 4. 验收：连续切换 3 个侧边栏入口，页面不出现叠层对话框，且可随时展开/折叠。
+##### Task Breakdown (auto-managed)
+
+1. Scope split
+   - Clarify boundaries under existing requirement description; do not create new requirement IDs.
+2. Delivery plan
+   - Split into M1/M2 milestones with concrete acceptance checks.
+3. Status workflow
+   - Keep lifecycle as planned -> ready -> supported; update this row only.
+4. Traceability
+   - Keep change notes and verification criteria inside this requirement section.
 
 #### R-013 流式传输能力
 
