@@ -24,6 +24,10 @@ const (
 	defaultLongTermMemoryL1TTL              = 12 * time.Hour
 	defaultLongTermMemoryL2TTL              = 7 * 24 * time.Hour
 	defaultLongTermMemoryL3TTL              = 45 * 24 * time.Hour
+	defaultLongTermMemoryL1DemoteIdle       = 6 * time.Hour
+	defaultLongTermMemoryL2DemoteIdle       = 72 * time.Hour
+	defaultLongTermMemoryL2PromoteHits      = 3
+	defaultLongTermMemoryL3PromoteHits      = 2
 	defaultLongTermMemoryTenantID           = "default"
 	defaultLongTermMemoryUserID             = "anonymous"
 	longTermMemoryTenantMetadataKey         = "tenant_id"
@@ -34,6 +38,7 @@ const (
 	longTermMemoryStrategyMetadataKey       = "memory_long_term_strategy"
 	longTermMemoryTierMetadataKey           = "memory_long_term_tier"
 	longTermMemoryTokenBudgetMetadataKey    = "memory_long_term_token_budget"
+	longTermMemoryImportantMetadataKey      = "memory_long_term_important"
 	longTermMemoryCurrentInputMarker        = "\nCurrent user input:\n"
 )
 
@@ -62,6 +67,8 @@ type LongTermMemoryTierOptions struct {
 	MaxEntryLength int
 	MaxLayerTokens int
 	TTL            time.Duration
+	DemoteIdleTTL  time.Duration
+	PromoteHits    int
 	EvictionPolicy LongTermMemoryEvictionPolicy
 }
 
@@ -122,6 +129,7 @@ type longTermMemoryEntry struct {
 	ID              string
 	Scope           longTermMemoryScope
 	Tier            LongTermMemoryTier
+	Important       bool
 	Kind            longTermMemoryKind
 	Key             string
 	Value           string
@@ -146,9 +154,18 @@ type longTermMemorySnapshot struct {
 	Hits              []longTermMemoryHit
 	TierHits          map[LongTermMemoryTier][]longTermMemoryHit
 	CandidateTierHits map[LongTermMemoryTier][]longTermMemoryHit
+	Promotions        []longTermMemoryMigration
+	Demotions         []longTermMemoryMigration
 	TokenBudget       int
 	TokenUsed         int
 	Truncated         bool
+}
+
+type longTermMemoryMigration struct {
+	EntryID string
+	From    LongTermMemoryTier
+	To      LongTermMemoryTier
+	Reason  string
 }
 
 func (s longTermMemorySnapshot) Metadata() map[string]string {
@@ -164,6 +181,8 @@ func (s longTermMemorySnapshot) Metadata() map[string]string {
 		"memory_long_term_token_budget":           strconv.Itoa(s.TokenBudget),
 		"memory_long_term_token_used":             strconv.Itoa(s.TokenUsed),
 		"memory_long_term_truncated":              strconv.FormatBool(s.Truncated),
+		"memory_long_term_promotion_count":        strconv.Itoa(len(s.Promotions)),
+		"memory_long_term_demotion_count":         strconv.Itoa(len(s.Demotions)),
 	}
 	if len(s.Hits) > 0 {
 		metadata["memory_long_term_scope_resolved"] = "true"
@@ -176,16 +195,19 @@ func (s longTermMemorySnapshot) ResultMetadata() map[string]string {
 		return nil
 	}
 	return map[string]string{
-		"memory_long_term_injected":   "true",
-		"memory_long_term_hit_count":  strconv.Itoa(len(s.Hits)),
-		"memory_long_term_token_used": strconv.Itoa(s.TokenUsed),
-		"memory_long_term_truncated":  strconv.FormatBool(s.Truncated),
+		"memory_long_term_injected":        "true",
+		"memory_long_term_hit_count":       strconv.Itoa(len(s.Hits)),
+		"memory_long_term_token_used":      strconv.Itoa(s.TokenUsed),
+		"memory_long_term_truncated":       strconv.FormatBool(s.Truncated),
+		"memory_long_term_promotion_count": strconv.Itoa(len(s.Promotions)),
+		"memory_long_term_demotion_count":  strconv.Itoa(len(s.Demotions)),
 	}
 }
 
 type longTermMemoryUpdate struct {
 	Strategy        longTermMemoryStrategy
 	Tier            LongTermMemoryTier
+	Important       bool
 	Kind            longTermMemoryKind
 	Key             string
 	Value           string
@@ -233,18 +255,22 @@ func normalizeLongTermMemoryOptions(options LongTermMemoryOptions) LongTermMemor
 		MaxEntryLength: options.MaxSnippet,
 		MaxLayerTokens: defaultLongTermMemoryL1MaxLayerTokens,
 		TTL:            defaultLongTermMemoryL1TTL,
+		DemoteIdleTTL:  defaultLongTermMemoryL1DemoteIdle,
 		EvictionPolicy: longTermMemoryEvictionPolicyLRU,
 	})
 	options.L2 = normalizeLongTermMemoryTierOptions(options.L2, LongTermMemoryTierOptions{
 		MaxEntryLength: options.MaxSnippet,
 		MaxLayerTokens: defaultLongTermMemoryL2MaxLayerTokens,
 		TTL:            defaultLongTermMemoryL2TTL,
+		DemoteIdleTTL:  defaultLongTermMemoryL2DemoteIdle,
+		PromoteHits:    defaultLongTermMemoryL2PromoteHits,
 		EvictionPolicy: longTermMemoryEvictionPolicyLRU,
 	})
 	options.L3 = normalizeLongTermMemoryTierOptions(options.L3, LongTermMemoryTierOptions{
 		MaxEntryLength: options.MaxSnippet,
 		MaxLayerTokens: defaultLongTermMemoryL3MaxLayerTokens,
 		TTL:            defaultLongTermMemoryL3TTL,
+		PromoteHits:    defaultLongTermMemoryL3PromoteHits,
 		EvictionPolicy: longTermMemoryEvictionPolicyLRU,
 	})
 	return options
@@ -259,6 +285,12 @@ func normalizeLongTermMemoryTierOptions(options LongTermMemoryTierOptions, defau
 	}
 	if options.TTL <= 0 {
 		options.TTL = defaults.TTL
+	}
+	if options.DemoteIdleTTL <= 0 {
+		options.DemoteIdleTTL = defaults.DemoteIdleTTL
+	}
+	if options.PromoteHits <= 0 {
+		options.PromoteHits = defaults.PromoteHits
 	}
 	switch options.EvictionPolicy {
 	case longTermMemoryEvictionPolicyScore:
@@ -286,25 +318,30 @@ func (s *longTermMemoryStore) Snapshot(msg shareddomain.UnifiedMessage, query st
 	}
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	scopeKey := scope.Key()
 	entries := copyLongTermMemoryEntries(s.scopes[scopeKey])
 	entries = applyLongTermMemoryTTL(entries, s.options, now)
+	entries, demotions := applyLongTermMemoryDemotion(entries, s.options, now)
+
+	candidateTierHits := buildLongTermMemoryTierHits(entries, query, s.options.MaxHits, now)
+	tokenBudget := resolveLongTermMemoryTokenBudget(msg.Metadata, s.options.InjectionTokenBudget)
+	hits, tierHits, tokenUsed, truncated := trimLongTermMemoryTierHitsByBudget(candidateTierHits, tokenBudget, s.options.MaxHits)
+	entries, promotions := applyLongTermMemoryHitFeedback(entries, hits, s.options, now)
 	entries = enforceLongTermMemoryTierCapacity(entries, s.options, now)
 	if len(entries) == 0 {
 		delete(s.scopes, scopeKey)
 	} else {
 		s.scopes[scopeKey] = copyLongTermMemoryEntries(entries)
 	}
-	s.mu.Unlock()
-
-	candidateTierHits := buildLongTermMemoryTierHits(entries, query, s.options.MaxHits, now)
-	tokenBudget := resolveLongTermMemoryTokenBudget(msg.Metadata, s.options.InjectionTokenBudget)
-	hits, tierHits, tokenUsed, truncated := trimLongTermMemoryTierHitsByBudget(candidateTierHits, tokenBudget, s.options.MaxHits)
 	return longTermMemorySnapshot{
 		Scope:             scope,
 		Hits:              hits,
 		TierHits:          tierHits,
 		CandidateTierHits: candidateTierHits,
+		Promotions:        promotions,
+		Demotions:         demotions,
 		TokenBudget:       tokenBudget,
 		TokenUsed:         tokenUsed,
 		Truncated:         truncated,
@@ -330,6 +367,7 @@ func (s *longTermMemoryStore) Record(msg shareddomain.UnifiedMessage, route shar
 
 	entries := s.scopes[scopeKey]
 	entries = applyLongTermMemoryTTL(entries, s.options, now)
+	entries, _ = applyLongTermMemoryDemotion(entries, s.options, now)
 	for _, update := range updates {
 		entries = applyLongTermMemoryUpdate(entries, scope, update, &s.sequence, s.options)
 	}
@@ -409,6 +447,7 @@ func parseExplicitLongTermMemoryUpdate(
 	return longTermMemoryUpdate{
 		Strategy:        strategy,
 		Tier:            normalizeLongTermMemoryTier(msg.Metadata[longTermMemoryTierMetadataKey]),
+		Important:       parseLongTermMemoryImportant(msg.Metadata[longTermMemoryImportantMetadataKey]),
 		Kind:            kind,
 		Key:             key,
 		Value:           value,
@@ -544,6 +583,7 @@ func applyLongTermMemoryUpdate(
 		ID:              fmt.Sprintf("ltm-%d", *sequence),
 		Scope:           scope,
 		Tier:            update.Tier,
+		Important:       update.Important,
 		Kind:            update.Kind,
 		Key:             update.Key,
 		Value:           update.Value,
@@ -731,6 +771,126 @@ func activeLongTermMemoryEntryCount(entries []longTermMemoryEntry) int {
 	return count
 }
 
+func applyLongTermMemoryDemotion(
+	entries []longTermMemoryEntry,
+	options LongTermMemoryOptions,
+	now time.Time,
+) ([]longTermMemoryEntry, []longTermMemoryMigration) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	updated := copyLongTermMemoryEntries(entries)
+	migrations := make([]longTermMemoryMigration, 0)
+	for idx := range updated {
+		entry := updated[idx]
+		if entry.Status != longTermMemoryStatusActive {
+			continue
+		}
+		tierOptions := options.TierOptions(entry.Tier)
+		if tierOptions.DemoteIdleTTL <= 0 {
+			continue
+		}
+		idleMarker := longTermMemoryLRUAt(entry)
+		if idleMarker.IsZero() || now.Sub(idleMarker) < tierOptions.DemoteIdleTTL {
+			continue
+		}
+		nextTier := demoteLongTermMemoryTier(entry.Tier)
+		if nextTier == entry.Tier {
+			continue
+		}
+		updated[idx].Tier = nextTier
+		updated[idx].HitCount = 0
+		updated[idx].UpdatedAt = now
+		migrations = append(migrations, longTermMemoryMigration{
+			EntryID: entry.ID,
+			From:    entry.Tier,
+			To:      nextTier,
+			Reason:  "idle_demotion",
+		})
+	}
+	return updated, migrations
+}
+
+func applyLongTermMemoryHitFeedback(
+	entries []longTermMemoryEntry,
+	hits []longTermMemoryHit,
+	options LongTermMemoryOptions,
+	now time.Time,
+) ([]longTermMemoryEntry, []longTermMemoryMigration) {
+	if len(entries) == 0 || len(hits) == 0 {
+		return entries, nil
+	}
+	updated := copyLongTermMemoryEntries(entries)
+	indexByID := make(map[string]int, len(updated))
+	for idx, entry := range updated {
+		indexByID[entry.ID] = idx
+	}
+
+	migrations := make([]longTermMemoryMigration, 0)
+	for _, hit := range hits {
+		idx, ok := indexByID[hit.Entry.ID]
+		if !ok {
+			continue
+		}
+		entry := updated[idx]
+		if entry.Status != longTermMemoryStatusActive {
+			continue
+		}
+		entry.LastAccessAt = now
+		entry.HitCount++
+
+		shouldPromote := entry.Important && entry.Tier != longTermMemoryTierL1
+		if !shouldPromote {
+			promoteHits := options.TierOptions(entry.Tier).PromoteHits
+			if promoteHits > 0 && entry.HitCount >= promoteHits {
+				shouldPromote = true
+			}
+		}
+		if shouldPromote {
+			nextTier := promoteLongTermMemoryTier(entry.Tier)
+			if nextTier != entry.Tier {
+				entry.HitCount = 0
+				entry.Tier = nextTier
+				maxEntryLength := options.TierOptions(nextTier).MaxEntryLength
+				if maxEntryLength <= 0 {
+					maxEntryLength = options.MaxSnippet
+				}
+				entry.Value = normalizeSnippet(entry.Value, maxEntryLength)
+				migrations = append(migrations, longTermMemoryMigration{
+					EntryID: entry.ID,
+					From:    updated[idx].Tier,
+					To:      nextTier,
+					Reason:  "hit_promotion",
+				})
+			}
+		}
+		updated[idx] = entry
+	}
+	return updated, migrations
+}
+
+func promoteLongTermMemoryTier(tier LongTermMemoryTier) LongTermMemoryTier {
+	switch tier {
+	case longTermMemoryTierL3:
+		return longTermMemoryTierL2
+	case longTermMemoryTierL2:
+		return longTermMemoryTierL1
+	default:
+		return longTermMemoryTierL1
+	}
+}
+
+func demoteLongTermMemoryTier(tier LongTermMemoryTier) LongTermMemoryTier {
+	switch tier {
+	case longTermMemoryTierL1:
+		return longTermMemoryTierL2
+	case longTermMemoryTierL2:
+		return longTermMemoryTierL3
+	default:
+		return longTermMemoryTierL3
+	}
+}
+
 func buildLongTermMemoryTierHits(
 	entries []longTermMemoryEntry,
 	query string,
@@ -897,6 +1057,9 @@ func scoreLongTermMemoryHit(
 	case longTermMemoryKindPreference:
 		score += 0.2
 	}
+	if entry.Important {
+		score += 0.8
+	}
 	score += float64(entry.HitCount) * 0.1
 
 	ageHours := now.Sub(longTermMemoryLRUAt(entry)).Hours()
@@ -947,6 +1110,11 @@ func renderLongTermMemorySection(snapshot longTermMemorySnapshot) string {
 	builder.WriteString(strconv.Itoa(snapshot.TokenUsed))
 	builder.WriteString("/")
 	builder.WriteString(strconv.Itoa(snapshot.TokenBudget))
+	builder.WriteString("\n")
+	builder.WriteString("Migrations: promotions=")
+	builder.WriteString(strconv.Itoa(len(snapshot.Promotions)))
+	builder.WriteString(", demotions=")
+	builder.WriteString(strconv.Itoa(len(snapshot.Demotions)))
 	builder.WriteString("\n")
 	builder.WriteString("Relevant entries:\n")
 	for idx, hit := range snapshot.Hits {
@@ -1036,6 +1204,15 @@ func resolveLongTermMemoryTokenBudget(metadata map[string]string, fallback int) 
 	return parsed
 }
 
+func parseLongTermMemoryImportant(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "important", "high":
+		return true
+	default:
+		return false
+	}
+}
+
 func normalizeLongTermMemoryStrategy(raw string) longTermMemoryStrategy {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case string(longTermMemoryStrategyOverwrite):
@@ -1070,6 +1247,9 @@ func normalizeLongTermMemoryTier(raw string) LongTermMemoryTier {
 }
 
 func resolveLongTermMemoryUpdateTier(update longTermMemoryUpdate) LongTermMemoryTier {
+	if update.Important {
+		return longTermMemoryTierL1
+	}
 	if tier := normalizeLongTermMemoryTier(string(update.Tier)); tier != longTermMemoryTierL3 || strings.TrimSpace(string(update.Tier)) != "" {
 		return tier
 	}

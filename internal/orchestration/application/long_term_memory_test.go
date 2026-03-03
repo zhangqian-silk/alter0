@@ -325,6 +325,94 @@ func TestLongTermMemoryHitChainAndBudgetTruncation(t *testing.T) {
 	}
 }
 
+func TestLongTermMemoryPromotionAndDemotionObservable(t *testing.T) {
+	store := newLongTermMemoryStore(LongTermMemoryOptions{
+		MaxEntriesPerScope:   24,
+		MaxHits:              6,
+		MaxSnippet:           200,
+		InjectionTokenBudget: 160,
+		L1: LongTermMemoryTierOptions{
+			MaxEntryLength: 200,
+			MaxLayerTokens: 200,
+			TTL:            time.Hour,
+			DemoteIdleTTL:  5 * time.Minute,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+		L2: LongTermMemoryTierOptions{
+			MaxEntryLength: 200,
+			MaxLayerTokens: 400,
+			TTL:            time.Hour,
+			DemoteIdleTTL:  10 * time.Minute,
+			PromoteHits:    1,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+		L3: LongTermMemoryTierOptions{
+			MaxEntryLength: 200,
+			MaxLayerTokens: 600,
+			TTL:            time.Hour,
+			PromoteHits:    2,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+	})
+	now := time.Date(2026, 3, 3, 16, 0, 0, 0, time.UTC)
+
+	store.Record(longTermMessage("promote-seed", "u-1", "tenant-a", "seed", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryKeyMetadataKey:      "release-checklist",
+		longTermMemoryValueMetadataKey:    "canary and rollback",
+	}), shareddomain.RouteNL, "")
+	store.Record(longTermMessage("important-seed", "u-1", "tenant-a", "important seed", now.Add(time.Second), map[string]string{
+		longTermMemoryStrategyMetadataKey:  "add",
+		longTermMemoryKindMetadataKey:      "fact",
+		longTermMemoryImportantMetadataKey: "true",
+		longTermMemoryKeyMetadataKey:       "critical-policy",
+		longTermMemoryValueMetadataKey:     "always verify before rollout",
+	}), shareddomain.RouteNL, "")
+
+	scope := resolveLongTermMemoryScope(longTermMessage("scope-promote", "u-1", "tenant-a", "", now, nil), store.options)
+	entries := getScopeEntries(store, scope)
+	hasImportantL1 := false
+	for _, entry := range entries {
+		if entry.Key == "critical-policy" && entry.Tier == longTermMemoryTierL1 {
+			hasImportantL1 = true
+		}
+	}
+	if !hasImportantL1 {
+		t.Fatalf("expected important memory promoted directly to L1")
+	}
+
+	first := longTermMessage("query-1", "u-1", "tenant-a", "release checklist", now.Add(2*time.Minute), nil)
+	firstSnapshot := store.Snapshot(first, first.Content, first.ReceivedAt)
+	if len(firstSnapshot.Promotions) != 0 {
+		t.Fatalf("expected no promotion on first hit, got %d", len(firstSnapshot.Promotions))
+	}
+
+	second := longTermMessage("query-2", "u-1", "tenant-a", "release checklist", now.Add(3*time.Minute), nil)
+	secondSnapshot := store.Snapshot(second, second.Content, second.ReceivedAt)
+	if len(secondSnapshot.Promotions) == 0 {
+		t.Fatalf("expected L3 to L2 promotion on repeated hits")
+	}
+	if secondSnapshot.Metadata()["memory_long_term_promotion_count"] == "0" {
+		t.Fatalf("expected promotion count metadata")
+	}
+
+	third := longTermMessage("query-3", "u-1", "tenant-a", "release checklist", now.Add(4*time.Minute), nil)
+	thirdSnapshot := store.Snapshot(third, third.Content, third.ReceivedAt)
+	if len(thirdSnapshot.Promotions) == 0 {
+		t.Fatalf("expected L2 to L1 promotion")
+	}
+
+	idleQuery := longTermMessage("query-idle", "u-1", "tenant-a", "release checklist", now.Add(20*time.Minute), nil)
+	idleSnapshot := store.Snapshot(idleQuery, idleQuery.Content, idleQuery.ReceivedAt)
+	if len(idleSnapshot.Demotions) == 0 {
+		t.Fatalf("expected idle demotion to be observable")
+	}
+	if idleSnapshot.Metadata()["memory_long_term_demotion_count"] == "0" {
+		t.Fatalf("expected demotion count metadata")
+	}
+}
+
 func longTermMessage(
 	sessionID string,
 	userID string,
