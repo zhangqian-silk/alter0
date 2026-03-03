@@ -24,9 +24,11 @@ const routeTitle = document.getElementById("routeTitle");
 const routeSubtitle = document.getElementById("routeSubtitle");
 const routeBody = document.getElementById("routeBody");
 const menuRouteItems = document.querySelectorAll(".menu-item[data-route]");
+const rootStyle = document.documentElement.style;
 
 const MAX_CHARS = 10000;
 const DEFAULT_ROUTE = "chat";
+const SWIPE_CLOSE_THRESHOLD = 46;
 
 const ROUTES = {
   chat: {
@@ -419,13 +421,61 @@ function isMobileViewport() {
   return window.matchMedia("(max-width: 1100px)").matches;
 }
 
+function syncOverlayState() {
+  const opened = appShell.classList.contains("nav-open") || appShell.classList.contains("panel-open");
+  appShell.classList.toggle("overlay-open", opened);
+}
+
 function closeTransientPanels() {
   appShell.classList.remove("nav-open");
   appShell.classList.remove("panel-open");
+  syncOverlayState();
+}
+
+function updateKeyboardInset() {
+  if (!isMobileViewport() || !window.visualViewport) {
+    rootStyle.setProperty("--keyboard-offset", "0px");
+    return;
+  }
+
+  const viewport = window.visualViewport;
+  const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+  rootStyle.setProperty("--keyboard-offset", `${Math.round(inset)}px`);
+}
+
+function bindSwipeClose(panel, panelClassName) {
+  if (!panel) {
+    return;
+  }
+
+  let startX = 0;
+  let tracking = false;
+
+  panel.addEventListener("touchstart", (event) => {
+    if (!isMobileViewport() || !appShell.classList.contains(panelClassName)) {
+      return;
+    }
+    tracking = true;
+    startX = event.changedTouches[0].clientX;
+  }, { passive: true });
+
+  panel.addEventListener("touchend", (event) => {
+    if (!tracking) {
+      return;
+    }
+    tracking = false;
+    const deltaX = event.changedTouches[0].clientX - startX;
+    if (deltaX < -SWIPE_CLOSE_THRESHOLD) {
+      closeTransientPanels();
+    }
+  }, { passive: true });
 }
 
 function navigateToRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
+  if (isMobileViewport()) {
+    closeTransientPanels();
+  }
   const targetHash = `#${safe}`;
   if (window.location.hash !== targetHash) {
     window.location.hash = targetHash;
@@ -523,6 +573,8 @@ async function renderRoute(route) {
     closeTransientPanels();
   } else {
     appShell.classList.remove("nav-open");
+    appShell.classList.remove("panel-open");
+    syncOverlayState();
   }
 
   const config = ROUTES[safe];
@@ -588,6 +640,7 @@ function bindEvents() {
     closeTransientPanels();
     if (open) {
       appShell.classList.add("nav-open");
+      syncOverlayState();
     }
   });
 
@@ -599,19 +652,26 @@ function bindEvents() {
     closeTransientPanels();
     if (open) {
       appShell.classList.add("panel-open");
+      syncOverlayState();
     }
   });
 
   togglePaneButton.addEventListener("click", () => {
-    appShell.classList.remove("panel-open");
+    closeTransientPanels();
   });
 
   navCloseButton.addEventListener("click", () => {
-    appShell.classList.remove("nav-open");
+    closeTransientPanels();
   });
 
   mobileBackdrop.addEventListener("click", () => {
     closeTransientPanels();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeTransientPanels();
+    }
   });
 
   chatPane.addEventListener("click", (event) => {
@@ -649,13 +709,36 @@ function bindEvents() {
     if (!isMobileViewport()) {
       closeTransientPanels();
     }
+    updateKeyboardInset();
   });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", updateKeyboardInset);
+    window.visualViewport.addEventListener("scroll", updateKeyboardInset);
+  }
+
+  input.addEventListener("focus", () => {
+    updateKeyboardInset();
+    if (isMobileViewport()) {
+      requestAnimationFrame(() => {
+        input.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    window.setTimeout(updateKeyboardInset, 80);
+  });
+
+  bindSwipeClose(primaryNav, "nav-open");
+  bindSwipeClose(sessionPane, "panel-open");
 }
 
 function init() {
   createSession();
   bindEvents();
   updateCharCount();
+  updateKeyboardInset();
   void renderRoute(parseHashRoute());
   input.focus();
 }
