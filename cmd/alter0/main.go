@@ -51,6 +51,7 @@ func main() {
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
 	sessionMemoryTurns := flag.Int("session-memory-turns", 6, "short-term memory window size per session")
 	sessionMemoryTTL := flag.Duration("session-memory-ttl", 20*time.Minute, "short-term memory ttl per session")
+	mandatoryContextFile := flag.String("mandatory-context-file", "SOUL.md", "mandatory context file path")
 	flag.Parse()
 	listenAddr := strings.TrimSpace(*webAddr)
 	if listenAddr == "" {
@@ -114,6 +115,9 @@ func main() {
 		orchapp.WithSessionMemoryOptions(orchapp.SessionMemoryOptions{
 			MaxTurns: *sessionMemoryTurns,
 			TTL:      *sessionMemoryTTL,
+		}),
+		orchapp.WithMandatoryContextOptions(orchapp.MandatoryContextOptions{
+			FilePath: *mandatoryContextFile,
 		}),
 	)
 	orchestrator := orchapp.NewConcurrentService(
