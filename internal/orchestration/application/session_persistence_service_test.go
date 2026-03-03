@@ -1,0 +1,130 @@
+package application
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"testing"
+	"time"
+
+	sessiondomain "alter0/internal/session/domain"
+	shareddomain "alter0/internal/shared/domain"
+)
+
+type stubPersistenceDownstream struct {
+	result shareddomain.OrchestrationResult
+	err    error
+}
+
+func (s *stubPersistenceDownstream) Handle(_ context.Context, _ shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+	return s.result, s.err
+}
+
+type spySessionRecorder struct {
+	records []sessiondomain.MessageRecord
+	err     error
+}
+
+func (s *spySessionRecorder) Append(records ...sessiondomain.MessageRecord) error {
+	s.records = append(s.records, records...)
+	return s.err
+}
+
+type fixedIDGenerator struct {
+	nextID string
+}
+
+func (g *fixedIDGenerator) NewID() string {
+	return g.nextID
+}
+
+func TestSessionPersistenceServiceRecordsUserAndAssistantMessages(t *testing.T) {
+	downstream := &stubPersistenceDownstream{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-1",
+			SessionID: "s-1",
+			Route:     shareddomain.RouteNL,
+			Output:    "answer",
+		},
+	}
+	recorder := &spySessionRecorder{}
+	service := &SessionPersistenceService{
+		downstream:  downstream,
+		recorder:    recorder,
+		idGenerator: &fixedIDGenerator{nextID: "assistant-1"},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:   "msg-1",
+		SessionID:   "s-1",
+		Content:     "question",
+		ReceivedAt:  time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC),
+		TriggerType: shareddomain.TriggerTypeUser,
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TraceID:     "trace-1",
+	}
+
+	if _, err := service.Handle(context.Background(), msg); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+	if len(recorder.records) != 2 {
+		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
+	}
+	if recorder.records[0].Role != sessiondomain.MessageRoleUser || recorder.records[1].Role != sessiondomain.MessageRoleAssistant {
+		t.Fatalf("unexpected roles: %+v", recorder.records)
+	}
+	if recorder.records[1].MessageID != "assistant-1" {
+		t.Fatalf("expected assistant message id assistant-1, got %q", recorder.records[1].MessageID)
+	}
+	if recorder.records[1].RouteResult.Route != shareddomain.RouteNL {
+		t.Fatalf("expected route nl, got %q", recorder.records[1].RouteResult.Route)
+	}
+}
+
+func TestSessionPersistenceServiceKeepsResultWhenStoreFails(t *testing.T) {
+	expectedErr := errors.New("nl failed")
+	downstream := &stubPersistenceDownstream{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-1",
+			SessionID: "s-1",
+			Route:     shareddomain.RouteNL,
+			ErrorCode: "nl_execution_failed",
+		},
+		err: expectedErr,
+	}
+	recorder := &spySessionRecorder{err: errors.New("disk unavailable")}
+	service := &SessionPersistenceService{
+		downstream:  downstream,
+		recorder:    recorder,
+		idGenerator: &fixedIDGenerator{nextID: "assistant-1"},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:   "msg-1",
+		SessionID:   "s-1",
+		Content:     "question",
+		ReceivedAt:  time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC),
+		TriggerType: shareddomain.TriggerTypeUser,
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TraceID:     "trace-1",
+	}
+
+	result, err := service.Handle(context.Background(), msg)
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected downstream error %v, got %v", expectedErr, err)
+	}
+	if result.ErrorCode != "nl_execution_failed" {
+		t.Fatalf("expected error_code nl_execution_failed, got %q", result.ErrorCode)
+	}
+	if len(recorder.records) != 2 {
+		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
+	}
+	if recorder.records[1].Content != expectedErr.Error() {
+		t.Fatalf("expected assistant content %q, got %q", expectedErr.Error(), recorder.records[1].Content)
+	}
+}

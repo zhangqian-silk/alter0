@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	controldomain "alter0/internal/control/domain"
 	schedulerapp "alter0/internal/scheduler/application"
 	schedulerdomain "alter0/internal/scheduler/domain"
+	sessionapp "alter0/internal/session/application"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 	"alter0/internal/shared/infrastructure/observability"
@@ -34,7 +36,13 @@ type Server struct {
 	idGenerator  sharedapp.IDGenerator
 	control      *controlapp.Service
 	scheduler    *schedulerapp.Manager
+	sessions     sessionHistoryService
 	logger       *slog.Logger
+}
+
+type sessionHistoryService interface {
+	ListSessions(query sessionapp.SessionQuery) sessionapp.SessionPage
+	ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage
 }
 
 type messageRequest struct {
@@ -122,6 +130,7 @@ func NewServer(
 	idGenerator sharedapp.IDGenerator,
 	control *controlapp.Service,
 	scheduler *schedulerapp.Manager,
+	sessions sessionHistoryService,
 	logger *slog.Logger,
 ) *Server {
 	return &Server{
@@ -131,6 +140,7 @@ func NewServer(
 		idGenerator:  idGenerator,
 		control:      control,
 		scheduler:    scheduler,
+		sessions:     sessions,
 		logger:       logger,
 	}
 }
@@ -144,6 +154,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/chat", s.chatPageHandler)
 	mux.HandleFunc("/api/messages", s.messageHandler)
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
+	mux.HandleFunc("/api/sessions", s.sessionListHandler)
+	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
 	mux.HandleFunc("/api/control/capabilities", s.capabilityListHandler)
@@ -316,6 +328,48 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	_ = writeSSE(w, "done", streamDoneResponse{Result: result})
 	flusher.Flush()
+}
+
+func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	query, statusCode, err := parseSessionQuery(r)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.sessions.ListSessions(query))
+}
+
+func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	sessionID, ok := sessionMessageResourceID(r.URL.Path)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
+		return
+	}
+
+	query, statusCode, err := parseMessageQuery(r, sessionID)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.sessions.ListMessages(query))
 }
 
 func (s *Server) channelListHandler(w http.ResponseWriter, r *http.Request) {
@@ -706,6 +760,23 @@ func resourceID(path, prefix string) (string, bool) {
 	return id, true
 }
 
+func sessionMessageResourceID(path string) (string, bool) {
+	const prefix = "/api/sessions/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", false
+	}
+	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) != 2 || parts[1] != "messages" {
+		return "", false
+	}
+	sessionID := strings.TrimSpace(parts[0])
+	if sessionID == "" {
+		return "", false
+	}
+	return sessionID, true
+}
+
 func typedResourceID(path, prefix string) (controldomain.CapabilityType, string, bool) {
 	if !strings.HasPrefix(path, prefix) {
 		return "", "", false
@@ -724,6 +795,91 @@ func typedResourceID(path, prefix string) (controldomain.CapabilityType, string,
 		return "", "", false
 	}
 	return capabilityType, id, true
+}
+
+func parseSessionQuery(r *http.Request) (sessionapp.SessionQuery, int, error) {
+	page, pageSize, statusCode, err := parsePaginationQuery(r)
+	if err != nil {
+		return sessionapp.SessionQuery{}, statusCode, err
+	}
+	startAt, endAt, statusCode, err := parseTimeRangeQuery(r)
+	if err != nil {
+		return sessionapp.SessionQuery{}, statusCode, err
+	}
+
+	return sessionapp.SessionQuery{
+		StartAt:  startAt,
+		EndAt:    endAt,
+		Page:     page,
+		PageSize: pageSize,
+	}, http.StatusOK, nil
+}
+
+func parseMessageQuery(r *http.Request, sessionID string) (sessionapp.MessageQuery, int, error) {
+	page, pageSize, statusCode, err := parsePaginationQuery(r)
+	if err != nil {
+		return sessionapp.MessageQuery{}, statusCode, err
+	}
+	startAt, endAt, statusCode, err := parseTimeRangeQuery(r)
+	if err != nil {
+		return sessionapp.MessageQuery{}, statusCode, err
+	}
+
+	return sessionapp.MessageQuery{
+		SessionID: sessionID,
+		StartAt:   startAt,
+		EndAt:     endAt,
+		Page:      page,
+		PageSize:  pageSize,
+	}, http.StatusOK, nil
+}
+
+func parsePaginationQuery(r *http.Request) (int, int, int, error) {
+	page, err := parsePositiveInt(r.URL.Query().Get("page"))
+	if err != nil {
+		return 0, 0, http.StatusBadRequest, errors.New("page must be a positive integer")
+	}
+	pageSize, err := parsePositiveInt(r.URL.Query().Get("page_size"))
+	if err != nil {
+		return 0, 0, http.StatusBadRequest, errors.New("page_size must be a positive integer")
+	}
+	return page, pageSize, http.StatusOK, nil
+}
+
+func parseTimeRangeQuery(r *http.Request) (time.Time, time.Time, int, error) {
+	startAt, err := parseRFC3339Time(r.URL.Query().Get("start_at"))
+	if err != nil {
+		return time.Time{}, time.Time{}, http.StatusBadRequest, errors.New("start_at must be RFC3339 format")
+	}
+	endAt, err := parseRFC3339Time(r.URL.Query().Get("end_at"))
+	if err != nil {
+		return time.Time{}, time.Time{}, http.StatusBadRequest, errors.New("end_at must be RFC3339 format")
+	}
+	return startAt, endAt, http.StatusOK, nil
+}
+
+func parsePositiveInt(raw string) (int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(trimmed)
+	if err != nil || value <= 0 {
+		return 0, errors.New("invalid positive integer")
+	}
+	return value, nil
+}
+
+func parseRFC3339Time(raw string) (time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, trimmed)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed.UTC(), nil
 }
 
 func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, int, error) {

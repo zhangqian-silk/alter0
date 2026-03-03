@@ -21,6 +21,7 @@ import (
 	orchdomain "alter0/internal/orchestration/domain"
 	orchinfra "alter0/internal/orchestration/infrastructure"
 	schedulerapp "alter0/internal/scheduler/application"
+	sessionapp "alter0/internal/session/application"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 	sharedinfra "alter0/internal/shared/infrastructure/id"
@@ -33,6 +34,7 @@ type storageProfile struct {
 	Dir             string
 	ControlFormat   localstorage.Format
 	SchedulerFormat localstorage.Format
+	SessionFormat   localstorage.Format
 }
 
 var defaultStorageProfile = storageProfile{
@@ -40,6 +42,7 @@ var defaultStorageProfile = storageProfile{
 	Dir:             ".alter0",
 	ControlFormat:   localstorage.FormatJSON,
 	SchedulerFormat: localstorage.FormatJSON,
+	SessionFormat:   localstorage.FormatJSON,
 }
 
 const defaultWebAddr = "127.0.0.1:18088"
@@ -64,7 +67,7 @@ func main() {
 	telemetry := observability.NewTelemetry()
 	idGen := sharedinfra.NewRandomIDGenerator()
 
-	controlStore, schedulerStore, err := buildStorage(defaultStorageProfile)
+	controlStore, schedulerStore, sessionStore, err := buildStorage(defaultStorageProfile)
 	if err != nil {
 		logger.Error("failed to initialize storage", slog.String("error", err.Error()))
 		os.Exit(2)
@@ -73,6 +76,11 @@ func main() {
 	control, err := newControlService(rootCtx, controlStore)
 	if err != nil {
 		logger.Error("failed to initialize control service", slog.String("error", err.Error()))
+		os.Exit(2)
+	}
+	sessionHistory, err := newSessionHistory(rootCtx, sessionStore)
+	if err != nil {
+		logger.Error("failed to initialize session history service", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
 	mustUpsertChannel(control, controldomain.Channel{
@@ -116,9 +124,10 @@ func main() {
 			TTL:      *sessionMemoryTTL,
 		}),
 	)
+	persistentOrchestrator := orchapp.NewSessionPersistenceService(baseOrchestrator, sessionHistory, idGen, logger)
 	orchestrator := orchapp.NewConcurrentService(
 		rootCtx,
-		baseOrchestrator,
+		persistentOrchestrator,
 		telemetry,
 		logger,
 		orchapp.ConcurrencyOptions{
@@ -136,7 +145,7 @@ func main() {
 	}
 	scheduler.Start(rootCtx)
 
-	server := web.NewServer(listenAddr, orchestrator, telemetry, idGen, control, scheduler, logger)
+	server := web.NewServer(listenAddr, orchestrator, telemetry, idGen, control, scheduler, sessionHistory, logger)
 	webErrCh := make(chan error, 1)
 	go func() {
 		logger.Info("starting web server", slog.String("addr", listenAddr))
@@ -184,18 +193,18 @@ func mustUpsertSkill(control *controlapp.Service, skill controldomain.Skill) {
 	}
 }
 
-func buildStorage(profile storageProfile) (controlapp.Store, schedulerapp.Store, error) {
+func buildStorage(profile storageProfile) (controlapp.Store, schedulerapp.Store, sessionapp.Store, error) {
 	switch strings.ToLower(strings.TrimSpace(profile.Backend)) {
 	case "none", "memory", "inmemory":
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	case "", "local":
 		dir := strings.TrimSpace(profile.Dir)
 		if dir == "" {
 			dir = ".alter0"
 		}
-		return localstorage.NewControlStore(dir, profile.ControlFormat), localstorage.NewSchedulerStore(dir, profile.SchedulerFormat), nil
+		return localstorage.NewControlStore(dir, profile.ControlFormat), localstorage.NewSchedulerStore(dir, profile.SchedulerFormat), localstorage.NewSessionStore(dir, profile.SessionFormat), nil
 	default:
-		return nil, nil, fmt.Errorf("unsupported storage backend %q", profile.Backend)
+		return nil, nil, nil, fmt.Errorf("unsupported storage backend %q", profile.Backend)
 	}
 }
 
@@ -218,4 +227,11 @@ func newSchedulerManager(
 		return schedulerapp.NewManager(orchestrator, telemetry, idGen, logger), nil
 	}
 	return schedulerapp.NewManagerWithStore(ctx, orchestrator, telemetry, idGen, logger, store)
+}
+
+func newSessionHistory(ctx context.Context, store sessionapp.Store) (*sessionapp.Service, error) {
+	if store == nil {
+		return sessionapp.NewService(), nil
+	}
+	return sessionapp.NewServiceWithStore(ctx, store)
 }
