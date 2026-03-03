@@ -49,6 +49,8 @@ func main() {
 	workerPoolSize := flag.Int("worker-pool-size", 4, "global worker pool size")
 	maxQueueSize := flag.Int("max-queue-size", 128, "max waiting queue size")
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
+	sessionMemoryTurns := flag.Int("session-memory-turns", 6, "short-term memory window size per session")
+	sessionMemoryTTL := flag.Duration("session-memory-ttl", 20*time.Minute, "short-term memory ttl per session")
 	flag.Parse()
 	listenAddr := strings.TrimSpace(*webAddr)
 	if listenAddr == "" {
@@ -103,12 +105,16 @@ func main() {
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
 	processor := execinfra.NewCodexCLIProcessor()
 	executor := execapp.NewService(processor)
-	baseOrchestrator := orchapp.NewService(
+	baseOrchestrator := orchapp.NewServiceWithOptions(
 		classifier,
 		registry,
 		executor,
 		telemetry,
 		logger,
+		orchapp.WithSessionMemoryOptions(orchapp.SessionMemoryOptions{
+			MaxTurns: *sessionMemoryTurns,
+			TTL:      *sessionMemoryTTL,
+		}),
 	)
 	orchestrator := orchapp.NewConcurrentService(
 		rootCtx,

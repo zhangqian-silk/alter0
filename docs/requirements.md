@@ -33,7 +33,7 @@
 | R-014 | 移动端真机适配增强 | supported | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭与手势交互），确保 iOS/Android 浏览器下稳定可用 |
 | R-015 | 移动端会话创建与信息完整性 | planned | 确保移动端可稳定新建会话，并完整展示会话必要信息（标题、入口状态、空态提示） |
 | R-016 | 会话级并发控制与全局限流 | supported | 支持多会话并发处理，同时保证同一会话顺序一致，并提供系统级并发上限、排队与超时降级能力 |
-| R-017 | 会话短期记忆 | planned | 在单会话内维护可控窗口的上下文记忆，提升多轮对话连续性与指代解析能力 |
+| R-017 | 会话短期记忆 | supported | 在单会话内维护可控窗口的上下文记忆，提升多轮对话连续性与指代解析能力 |
 | R-018 | 跨会话长期记忆 | planned | 支持跨会话沉淀用户偏好与长期事实，并按范围检索注入上下文 |
 | R-019 | 会话内容持久化 | planned | 将会话消息、元数据与状态持久化存储，支持重启恢复与历史查询 |
 | R-020 | 上下文压缩 | planned | 对超长上下文进行分层压缩与摘要回写，在控制 token 成本的同时保留关键信息 |
@@ -124,6 +124,12 @@
 2. 对引用关系（如“这个”“刚才那个方案”）提供会话内指代解析能力。
 3. 支持短期记忆的 TTL 或轮次上限，避免上下文无限增长。
 4. 验收：同一会话连续多轮追问时，模型能稳定引用前文关键内容。
+
+##### Traceability
+
+- 实现文件：`internal/orchestration/application/session_memory.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/orchestration/application/session_memory_test.go`、`internal/orchestration/application/service_test.go`
+- 验证记录：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
 
 #### R-018 跨会话长期记忆
 
