@@ -10,7 +10,7 @@ import (
 
 func TestTieredLongTermMemoryAcceptancePersistenceAndLifecycleObservability(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "tiered_memory.json")
+	path := filepath.Join(dir, "tiered_memory.md")
 	options := LongTermMemoryOptions{
 		MaxEntriesPerScope:   32,
 		MaxHits:              6,

@@ -367,7 +367,7 @@ func (s *longTermMemoryStore) persistLocked(now time.Time, force bool) error {
 		})
 	}
 
-	payload, err := json.MarshalIndent(state, "", "  ")
+	payload, err := renderLongTermMemoryPersistentMarkdown(state, now)
 	if err != nil {
 		return err
 	}
@@ -406,7 +406,7 @@ func (s *longTermMemoryStore) loadPersistentStateLocked() {
 	}
 
 	state := longTermMemoryPersistentState{}
-	if err := json.Unmarshal(raw, &state); err != nil {
+	if err := parseLongTermMemoryPersistentState(raw, &state); err != nil {
 		return
 	}
 	if state.Sequence > 0 {
@@ -448,6 +448,84 @@ func (s *longTermMemoryStore) loadPersistentStateLocked() {
 	}
 	s.lastFlushAt = time.Now().UTC()
 	s.dirty = false
+}
+
+func renderLongTermMemoryPersistentMarkdown(state longTermMemoryPersistentState, now time.Time) ([]byte, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	payload, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	var builder strings.Builder
+	builder.WriteString("# Long-Term Memory\n\n")
+	builder.WriteString("GeneratedAt: ")
+	builder.WriteString(now.UTC().Format(time.RFC3339))
+	builder.WriteByte('\n')
+	builder.WriteString("Sequence: ")
+	builder.WriteString(strconv.FormatInt(state.Sequence, 10))
+	builder.WriteString("\n\n")
+	builder.WriteString("## Scopes\n")
+	if len(state.Scopes) == 0 {
+		builder.WriteString("- none\n")
+	} else {
+		for _, scope := range state.Scopes {
+			builder.WriteString("- tenant=")
+			builder.WriteString(scope.TenantID)
+			builder.WriteString(", user=")
+			builder.WriteString(scope.UserID)
+			builder.WriteString(", entries=")
+			builder.WriteString(strconv.Itoa(len(scope.Entries)))
+			builder.WriteByte('\n')
+
+			entries := copyLongTermMemoryEntries(scope.Entries)
+			sort.Slice(entries, func(i, j int) bool {
+				if entries[i].Tier == entries[j].Tier {
+					if entries[i].UpdatedAt.Equal(entries[j].UpdatedAt) {
+						return entries[i].ID > entries[j].ID
+					}
+					return entries[i].UpdatedAt.After(entries[j].UpdatedAt)
+				}
+				return longTermMemoryTierRank(entries[i].Tier) < longTermMemoryTierRank(entries[j].Tier)
+			})
+
+			for _, entry := range entries {
+				builder.WriteString("  - [")
+				builder.WriteString(string(entry.Tier))
+				builder.WriteString("/")
+				builder.WriteString(string(entry.Kind))
+				builder.WriteString("] ")
+				builder.WriteString(entry.Key)
+				builder.WriteString(": ")
+				builder.WriteString(entry.Value)
+				builder.WriteString(" (status=")
+				builder.WriteString(string(entry.Status))
+				builder.WriteString(", updated_at=")
+				builder.WriteString(entry.UpdatedAt.UTC().Format(time.RFC3339))
+				builder.WriteString(")\n")
+			}
+		}
+	}
+	builder.WriteString("\n## Structured State\n\n```json\n")
+	builder.Write(payload)
+	builder.WriteString("\n```\n")
+	return []byte(builder.String()), nil
+}
+
+func parseLongTermMemoryPersistentState(raw []byte, out *longTermMemoryPersistentState) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, out); err == nil {
+		return nil
+	}
+	markdownPayload, err := extractMarkdownJSONPayload(string(raw))
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal([]byte(markdownPayload), out)
 }
 
 func normalizeLongTermMemoryTierOptions(options LongTermMemoryTierOptions, defaults LongTermMemoryTierOptions) LongTermMemoryTierOptions {

@@ -417,7 +417,7 @@ func TestLongTermMemoryPromotionAndDemotionObservable(t *testing.T) {
 
 func TestLongTermMemoryPersistenceAcrossRestart(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "long_term_memory.json")
+	path := filepath.Join(dir, "MEMORY.md")
 	options := LongTermMemoryOptions{
 		MaxEntriesPerScope:   24,
 		MaxHits:              6,
@@ -439,6 +439,13 @@ func TestLongTermMemoryPersistenceAcrossRestart(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected persistence file after write-through record: %v", err)
 	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read markdown persistence file: %v", err)
+	}
+	if !strings.Contains(string(content), "# Long-Term Memory") {
+		t.Fatalf("expected markdown persistence heading, got %q", string(content))
+	}
 
 	reloaded := newLongTermMemoryStore(options)
 	query := longTermMessage("persist-query", "u-1", "tenant-a", "keep concise", now.Add(time.Minute), nil)
@@ -453,7 +460,7 @@ func TestLongTermMemoryPersistenceAcrossRestart(t *testing.T) {
 
 func TestLongTermMemoryWriteBackRequiresFlush(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "long_term_memory_writeback.json")
+	path := filepath.Join(dir, "memory_writeback.md")
 	options := LongTermMemoryOptions{
 		MaxEntriesPerScope:   24,
 		MaxHits:              6,
