@@ -328,6 +328,13 @@ body {
   font-size: 12px;
 }
 
+.session-error {
+  display: none;
+  margin: 8px 2px 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
 .chat-pane {
   min-height: 100vh;
   min-height: 100dvh;
@@ -370,6 +377,7 @@ body {
 
 .nav-toggle,
 .panel-toggle,
+.mobile-new-chat,
 .locale {
   border: 1px solid var(--line-mid);
   border-radius: 999px;
@@ -388,6 +396,14 @@ body {
 
 .panel-toggle {
   display: none;
+}
+
+.mobile-new-chat {
+  display: none;
+  border-color: transparent;
+  background: linear-gradient(95deg, #2f67f6 0%, #4b7efa 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(47, 103, 246, 0.22);
 }
 
 .chat-view {
@@ -744,6 +760,7 @@ body {
 
   .nav-toggle,
   .panel-toggle,
+  .mobile-new-chat,
   .pane-action,
   .nav-collapse {
     display: inline-flex;
@@ -814,7 +831,8 @@ body {
   }
 
   .nav-toggle,
-  .panel-toggle {
+  .panel-toggle,
+  .mobile-new-chat {
     height: 36px;
     padding: 0 12px;
   }
