@@ -36,7 +36,7 @@
 | R-017 | 会话短期记忆 | supported | 在单会话内维护可控窗口的上下文记忆，提升多轮对话连续性与指代解析能力 |
 | R-018 | 跨会话长期记忆 | supported | 支持跨会话沉淀用户偏好与长期事实，并按用户/租户范围检索后按相关性注入上下文 |
 | R-019 | 会话内容持久化 | supported | 持久化用户/助手消息主数据与路由结果，支持重启恢复、会话分页与按时间范围检索 |
-| R-020 | 上下文压缩 | planned | 对超长上下文进行分层压缩与摘要回写，在控制 token 成本的同时保留关键信息 |
+| R-020 | 上下文压缩 | supported | 超长上下文触发分层压缩，结构化回写摘要与关键事实并保留消息引用关系，降低长会话 token 成本 |
 | R-021 | Skills/MCP 标准化能力模型 | supported | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
 | R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex 执行上下文，支持选择、排序与冲突处理 |
 | R-023 | 用户配置 MCP 接入 Codex | supported | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
@@ -137,7 +137,7 @@
 
 ##### Traceability
 
-- 实现文件：`internal/orchestration/application/session_memory.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`
+- 实现文件：`internal/orchestration/application/session_memory.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/orchestration/application/session_memory_test.go`、`internal/orchestration/application/service_test.go`
 - 验证记录：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
 
@@ -184,6 +184,20 @@
 2. 压缩结果回写为结构化记忆片段，并保留原始消息引用关系。
 3. 压缩策略需可配置（触发阈值、摘要长度、保留轮次）。
 4. 验收：长会话下 token 消耗下降且回答质量不明显退化。
+
+##### Traceability
+
+- 实现文件：`internal/orchestration/application/session_memory.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/orchestration/application/session_memory_test.go`、`internal/orchestration/application/context_compression_acceptance_test.go`
+- 运行参数：
+  - `-context-compression-threshold`
+  - `-context-compression-summary-tokens`
+  - `-context-compression-retain-turns`
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-03：会话上下文超过阈值时自动触发压缩，生成结构化片段（`summary`、`key_facts`、`source_turn_refs`）并回写内存。
+  - 2026-03-03：压缩片段保留原始消息引用关系（`user_message_id -> assistant_reply_ref`），多轮追问仍可解析“这个方案”等指代。
+  - 2026-03-03：工程化验收 `TestContextCompressionAcceptanceTokenReductionAndQuality` 显示长会话提示词 token 估算从 `420` 降至 `275`（约 `34.52%`），质量评分退化不超过 1 个关键事实。
 
 #### R-021 Skills/MCP 标准化能力模型
 
