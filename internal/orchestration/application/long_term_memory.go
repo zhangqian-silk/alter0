@@ -17,6 +17,7 @@ const (
 	defaultLongTermMemoryMaxEntriesPerScope = 128
 	defaultLongTermMemoryMaxHits            = 6
 	defaultLongTermMemoryMaxSnippet         = 240
+	defaultLongTermMemoryInjectionBudget    = 220
 	defaultLongTermMemoryL1MaxLayerTokens   = 240
 	defaultLongTermMemoryL2MaxLayerTokens   = 640
 	defaultLongTermMemoryL3MaxLayerTokens   = 1400
@@ -32,6 +33,7 @@ const (
 	longTermMemoryTagsMetadataKey           = "memory_long_term_tags"
 	longTermMemoryStrategyMetadataKey       = "memory_long_term_strategy"
 	longTermMemoryTierMetadataKey           = "memory_long_term_tier"
+	longTermMemoryTokenBudgetMetadataKey    = "memory_long_term_token_budget"
 	longTermMemoryCurrentInputMarker        = "\nCurrent user input:\n"
 )
 
@@ -45,14 +47,15 @@ var (
 )
 
 type LongTermMemoryOptions struct {
-	MaxEntriesPerScope int
-	MaxHits            int
-	MaxSnippet         int
-	DefaultTenantID    string
-	DefaultUserID      string
-	L1                 LongTermMemoryTierOptions
-	L2                 LongTermMemoryTierOptions
-	L3                 LongTermMemoryTierOptions
+	MaxEntriesPerScope   int
+	MaxHits              int
+	MaxSnippet           int
+	InjectionTokenBudget int
+	DefaultTenantID      string
+	DefaultUserID        string
+	L1                   LongTermMemoryTierOptions
+	L2                   LongTermMemoryTierOptions
+	L3                   LongTermMemoryTierOptions
 }
 
 type LongTermMemoryTierOptions struct {
@@ -139,18 +142,28 @@ type longTermMemoryHit struct {
 }
 
 type longTermMemorySnapshot struct {
-	Scope    longTermMemoryScope
-	Hits     []longTermMemoryHit
-	TierHits map[LongTermMemoryTier][]longTermMemoryHit
+	Scope             longTermMemoryScope
+	Hits              []longTermMemoryHit
+	TierHits          map[LongTermMemoryTier][]longTermMemoryHit
+	CandidateTierHits map[LongTermMemoryTier][]longTermMemoryHit
+	TokenBudget       int
+	TokenUsed         int
+	Truncated         bool
 }
 
 func (s longTermMemorySnapshot) Metadata() map[string]string {
 	metadata := map[string]string{
-		"memory_long_term_hit_count":    strconv.Itoa(len(s.Hits)),
-		"memory_long_term_hit_count_l1": strconv.Itoa(len(s.TierHits[longTermMemoryTierL1])),
-		"memory_long_term_hit_count_l2": strconv.Itoa(len(s.TierHits[longTermMemoryTierL2])),
-		"memory_long_term_hit_count_l3": strconv.Itoa(len(s.TierHits[longTermMemoryTierL3])),
-		"memory_long_term_hit_chain":    "L1>L2>L3",
+		"memory_long_term_hit_count":              strconv.Itoa(len(s.Hits)),
+		"memory_long_term_hit_count_l1":           strconv.Itoa(len(s.TierHits[longTermMemoryTierL1])),
+		"memory_long_term_hit_count_l2":           strconv.Itoa(len(s.TierHits[longTermMemoryTierL2])),
+		"memory_long_term_hit_count_l3":           strconv.Itoa(len(s.TierHits[longTermMemoryTierL3])),
+		"memory_long_term_candidate_hit_count_l1": strconv.Itoa(len(s.CandidateTierHits[longTermMemoryTierL1])),
+		"memory_long_term_candidate_hit_count_l2": strconv.Itoa(len(s.CandidateTierHits[longTermMemoryTierL2])),
+		"memory_long_term_candidate_hit_count_l3": strconv.Itoa(len(s.CandidateTierHits[longTermMemoryTierL3])),
+		"memory_long_term_hit_chain":              "L1>L2>L3",
+		"memory_long_term_token_budget":           strconv.Itoa(s.TokenBudget),
+		"memory_long_term_token_used":             strconv.Itoa(s.TokenUsed),
+		"memory_long_term_truncated":              strconv.FormatBool(s.Truncated),
 	}
 	if len(s.Hits) > 0 {
 		metadata["memory_long_term_scope_resolved"] = "true"
@@ -163,8 +176,10 @@ func (s longTermMemorySnapshot) ResultMetadata() map[string]string {
 		return nil
 	}
 	return map[string]string{
-		"memory_long_term_injected":  "true",
-		"memory_long_term_hit_count": strconv.Itoa(len(s.Hits)),
+		"memory_long_term_injected":   "true",
+		"memory_long_term_hit_count":  strconv.Itoa(len(s.Hits)),
+		"memory_long_term_token_used": strconv.Itoa(s.TokenUsed),
+		"memory_long_term_truncated":  strconv.FormatBool(s.Truncated),
 	}
 }
 
@@ -204,6 +219,9 @@ func normalizeLongTermMemoryOptions(options LongTermMemoryOptions) LongTermMemor
 	}
 	if options.MaxSnippet <= 0 {
 		options.MaxSnippet = defaultLongTermMemoryMaxSnippet
+	}
+	if options.InjectionTokenBudget <= 0 {
+		options.InjectionTokenBudget = defaultLongTermMemoryInjectionBudget
 	}
 	if strings.TrimSpace(options.DefaultTenantID) == "" {
 		options.DefaultTenantID = defaultLongTermMemoryTenantID
@@ -279,12 +297,17 @@ func (s *longTermMemoryStore) Snapshot(msg shareddomain.UnifiedMessage, query st
 	}
 	s.mu.Unlock()
 
-	hits := buildLongTermMemoryHits(entries, query, s.options.MaxHits, now)
-	tierHits := groupLongTermMemoryHitsByTier(hits)
+	candidateTierHits := buildLongTermMemoryTierHits(entries, query, s.options.MaxHits, now)
+	tokenBudget := resolveLongTermMemoryTokenBudget(msg.Metadata, s.options.InjectionTokenBudget)
+	hits, tierHits, tokenUsed, truncated := trimLongTermMemoryTierHitsByBudget(candidateTierHits, tokenBudget, s.options.MaxHits)
 	return longTermMemorySnapshot{
-		Scope:    scope,
-		Hits:     hits,
-		TierHits: tierHits,
+		Scope:             scope,
+		Hits:              hits,
+		TierHits:          tierHits,
+		CandidateTierHits: candidateTierHits,
+		TokenBudget:       tokenBudget,
+		TokenUsed:         tokenUsed,
+		Truncated:         truncated,
 	}
 }
 
@@ -708,21 +731,26 @@ func activeLongTermMemoryEntryCount(entries []longTermMemoryEntry) int {
 	return count
 }
 
-func buildLongTermMemoryHits(
+func buildLongTermMemoryTierHits(
 	entries []longTermMemoryEntry,
 	query string,
 	limit int,
 	now time.Time,
-) []longTermMemoryHit {
+) map[LongTermMemoryTier][]longTermMemoryHit {
+	grouped := map[LongTermMemoryTier][]longTermMemoryHit{
+		longTermMemoryTierL1: {},
+		longTermMemoryTierL2: {},
+		longTermMemoryTierL3: {},
+	}
 	if limit <= 0 || len(entries) == 0 {
-		return nil
+		return grouped
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil
+		return grouped
 	}
 
 	queryLower := strings.ToLower(query)
@@ -745,14 +773,7 @@ func buildLongTermMemoryHits(
 			Score: score,
 		})
 	}
-	if len(hits) == 0 {
-		return nil
-	}
-
 	sort.Slice(hits, func(i, j int) bool {
-		if hits[i].Entry.Tier != hits[j].Entry.Tier {
-			return longTermMemoryTierRank(hits[i].Entry.Tier) < longTermMemoryTierRank(hits[j].Entry.Tier)
-		}
 		if hits[i].Score == hits[j].Score {
 			if hits[i].Entry.UpdatedAt.Equal(hits[j].Entry.UpdatedAt) {
 				return hits[i].Entry.ID > hits[j].Entry.ID
@@ -761,13 +782,73 @@ func buildLongTermMemoryHits(
 		}
 		return hits[i].Score > hits[j].Score
 	})
-	if len(hits) > limit {
-		hits = hits[:limit]
+	for _, hit := range hits {
+		tier := normalizeLongTermMemoryTier(string(hit.Entry.Tier))
+		grouped[tier] = append(grouped[tier], hit)
 	}
-	return hits
+	for _, tier := range longTermMemoryTierOrder {
+		if len(grouped[tier]) > limit {
+			grouped[tier] = grouped[tier][:limit]
+		}
+	}
+	return grouped
 }
 
-func groupLongTermMemoryHitsByTier(hits []longTermMemoryHit) map[LongTermMemoryTier][]longTermMemoryHit {
+func trimLongTermMemoryTierHitsByBudget(
+	candidateTierHits map[LongTermMemoryTier][]longTermMemoryHit,
+	tokenBudget int,
+	limit int,
+) ([]longTermMemoryHit, map[LongTermMemoryTier][]longTermMemoryHit, int, bool) {
+	selectedTierHits := map[LongTermMemoryTier][]longTermMemoryHit{
+		longTermMemoryTierL1: {},
+		longTermMemoryTierL2: {},
+		longTermMemoryTierL3: {},
+	}
+	if limit <= 0 {
+		return nil, selectedTierHits, 0, false
+	}
+
+	selected := make([]longTermMemoryHit, 0, limit)
+	tokenUsed := 0
+	truncated := false
+
+	for _, tier := range longTermMemoryTierOrder {
+		candidates := candidateTierHits[tier]
+		for _, hit := range candidates {
+			if len(selected) >= limit {
+				truncated = true
+				break
+			}
+			cost := estimateLongTermMemoryEntryTokens(hit.Entry)
+			if tokenBudget > 0 && tokenUsed+cost > tokenBudget {
+				truncated = true
+				continue
+			}
+			selected = append(selected, hit)
+			selectedTierHits[tier] = append(selectedTierHits[tier], hit)
+			tokenUsed += cost
+		}
+	}
+
+	if len(selected) == 0 {
+		for _, tier := range longTermMemoryTierOrder {
+			candidates := candidateTierHits[tier]
+			if len(candidates) == 0 {
+				continue
+			}
+			selected = append(selected, candidates[0])
+			selectedTierHits[tier] = append(selectedTierHits[tier], candidates[0])
+			tokenUsed = estimateLongTermMemoryEntryTokens(candidates[0].Entry)
+			if tokenBudget > 0 && tokenUsed > tokenBudget {
+				truncated = true
+			}
+			break
+		}
+	}
+	return selected, selectedTierHits, tokenUsed, truncated
+}
+
+func groupSelectedLongTermMemoryHitsByTier(hits []longTermMemoryHit) map[LongTermMemoryTier][]longTermMemoryHit {
 	grouped := map[LongTermMemoryTier][]longTermMemoryHit{
 		longTermMemoryTierL1: {},
 		longTermMemoryTierL2: {},
@@ -861,6 +942,12 @@ func renderLongTermMemorySection(snapshot longTermMemorySnapshot) string {
 	builder.WriteString(", user=")
 	builder.WriteString(snapshot.Scope.UserID)
 	builder.WriteByte('\n')
+	builder.WriteString("Hit chain: L1 -> L2 -> L3\n")
+	builder.WriteString("Token budget: ")
+	builder.WriteString(strconv.Itoa(snapshot.TokenUsed))
+	builder.WriteString("/")
+	builder.WriteString(strconv.Itoa(snapshot.TokenBudget))
+	builder.WriteString("\n")
 	builder.WriteString("Relevant entries:\n")
 	for idx, hit := range snapshot.Hits {
 		builder.WriteString(fmt.Sprintf("%d) [%s/%s] %s: %s\n", idx+1, hit.Entry.Tier, hit.Entry.Kind, hit.Entry.Key, hit.Entry.Value))
@@ -929,6 +1016,24 @@ func parseLongTermMemoryTags(raw string) []string {
 	}
 	parts := longTermMemorySeparatorPatterns.Split(raw, -1)
 	return normalizeLongTermMemoryTags(parts)
+}
+
+func resolveLongTermMemoryTokenBudget(metadata map[string]string, fallback int) int {
+	if fallback <= 0 {
+		fallback = defaultLongTermMemoryInjectionBudget
+	}
+	if len(metadata) == 0 {
+		return fallback
+	}
+	raw := strings.TrimSpace(metadata[longTermMemoryTokenBudgetMetadataKey])
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }
 
 func normalizeLongTermMemoryStrategy(raw string) longTermMemoryStrategy {

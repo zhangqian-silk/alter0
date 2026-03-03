@@ -268,6 +268,63 @@ func TestLongTermMemoryTierConstraintsWithTTLAndLRUEviction(t *testing.T) {
 	}
 }
 
+func TestLongTermMemoryHitChainAndBudgetTruncation(t *testing.T) {
+	store := newLongTermMemoryStore(LongTermMemoryOptions{
+		MaxEntriesPerScope:   24,
+		MaxHits:              6,
+		MaxSnippet:           200,
+		InjectionTokenBudget: 20,
+		DefaultTenantID:      "tenant-a",
+		DefaultUserID:        "u-1",
+	})
+	now := time.Date(2026, 3, 3, 15, 0, 0, 0, time.UTC)
+
+	store.Record(longTermMessage("hit-l1", "u-1", "tenant-a", "remember l1", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L1",
+		longTermMemoryKeyMetadataKey:      "release-plan-hot",
+		longTermMemoryValueMetadataKey:    "priority rollout owner",
+	}), shareddomain.RouteNL, "")
+	store.Record(longTermMessage("hit-l2", "u-1", "tenant-a", "remember l2", now.Add(10*time.Second), map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L2",
+		longTermMemoryKeyMetadataKey:      "release-plan-warm",
+		longTermMemoryValueMetadataKey:    "weekly status context",
+	}), shareddomain.RouteNL, "")
+	store.Record(longTermMessage("hit-l3", "u-1", "tenant-a", "remember l3", now.Add(20*time.Second), map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L3",
+		longTermMemoryKeyMetadataKey:      "release-plan-archive",
+		longTermMemoryValueMetadataKey:    "legacy migration runbook",
+	}), shareddomain.RouteNL, "")
+
+	query := longTermMessage("query", "u-1", "tenant-a", "Need release plan context", now.Add(time.Minute), nil)
+	snapshot := store.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.CandidateTierHits[longTermMemoryTierL1]) != 1 ||
+		len(snapshot.CandidateTierHits[longTermMemoryTierL2]) != 1 ||
+		len(snapshot.CandidateTierHits[longTermMemoryTierL3]) != 1 {
+		t.Fatalf("expected hit chain candidates in all tiers, got l1=%d l2=%d l3=%d",
+			len(snapshot.CandidateTierHits[longTermMemoryTierL1]),
+			len(snapshot.CandidateTierHits[longTermMemoryTierL2]),
+			len(snapshot.CandidateTierHits[longTermMemoryTierL3]))
+	}
+	if len(snapshot.Hits) == 0 {
+		t.Fatalf("expected selected hits under budget")
+	}
+	if snapshot.Hits[0].Entry.Tier != longTermMemoryTierL1 {
+		t.Fatalf("expected L1 prioritized first hit, got %q", snapshot.Hits[0].Entry.Tier)
+	}
+	if len(snapshot.TierHits[longTermMemoryTierL3]) > 0 {
+		t.Fatalf("expected low-priority L3 truncated under budget, got %d hits", len(snapshot.TierHits[longTermMemoryTierL3]))
+	}
+	if snapshot.Metadata()["memory_long_term_truncated"] != "true" {
+		t.Fatalf("expected truncation metadata true, got %q", snapshot.Metadata()["memory_long_term_truncated"])
+	}
+}
+
 func longTermMessage(
 	sessionID string,
 	userID string,
