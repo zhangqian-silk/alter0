@@ -13,7 +13,7 @@ import (
 )
 
 type ExecutionPort interface {
-	ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.UnifiedMessage) (string, error)
+	ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error)
 }
 
 type Orchestrator interface {
@@ -137,16 +137,17 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 		execMessage := msg
 		execMessage.Content = buildSessionMemoryPrompt(msg.Content, snapshot)
 		execMessage.Metadata = mergeStringMap(msg.Metadata, snapshot.Metadata())
-		output, err := s.executor.ExecuteNaturalLanguage(ctx, execMessage)
+		nlResult, err := s.executor.ExecuteNaturalLanguage(ctx, execMessage)
 		if err != nil {
 			s.onError(msg, result.Route, startedAt, err)
 			result.ErrorCode = "nl_execution_failed"
 			return result, err
 		}
 
-		result.Output = output
+		result.Output = nlResult.Output
 		result.Metadata = mergeStringMap(result.Metadata, snapshot.ResultMetadata())
-		s.memory.Record(msg, result.Route, output)
+		result.Metadata = mergeStringMap(result.Metadata, nlResult.Metadata)
+		s.memory.Record(msg, result.Route, nlResult.Output)
 		s.onSuccess(msg, result.Route, startedAt)
 		return result, nil
 	default:

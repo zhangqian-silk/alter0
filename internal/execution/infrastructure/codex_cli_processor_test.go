@@ -2,10 +2,13 @@ package infrastructure
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
+
+	execdomain "alter0/internal/execution/domain"
 )
 
 func TestCodexCLIProcessorProcessSuccess(t *testing.T) {
@@ -56,6 +59,41 @@ func TestCodexCLIProcessorProcessEmptyContent(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "content is required") {
 		t.Fatalf("Process() error = %q, want content validation", err.Error())
+	}
+}
+
+func TestCodexCLIProcessorProcessWithSkillContextPayload(t *testing.T) {
+	skillContext := execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills: []execdomain.SkillSpec{
+			{
+				ID:          "summary",
+				Name:        "Summary",
+				Description: "summary docs",
+				Priority:    200,
+				ParameterTemplate: map[string]string{
+					"lang": "zh-CN",
+				},
+				Constraints: []string{"max:300"},
+			},
+		},
+	}
+	rawSkillContext, err := json.Marshal(skillContext)
+	if err != nil {
+		t.Fatalf("marshal skill context: %v", err)
+	}
+
+	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","skill_context":{"protocol":"alter0.skill-context/v1","skills":[{"id":"summary","name":"Summary","description":"summary docs","priority":200,"parameter_template":{"lang":"zh-CN"},"constraints":["max:300"]}]}}`
+	processor := newTestProcessor("success", expectedPrompt)
+
+	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
+		execdomain.SkillContextMetadataKey: string(rawSkillContext),
+	})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
 	}
 }
 
