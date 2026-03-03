@@ -15,3 +15,8 @@ type OrchestrationResult struct {
 	ErrorCode string            `json:"error_code,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
 }
+
+type ExecutionResult struct {
+	Output   string            `json:"output"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}

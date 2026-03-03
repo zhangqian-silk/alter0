@@ -104,7 +104,7 @@ func main() {
 
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
 	processor := execinfra.NewCodexCLIProcessor()
-	executor := execapp.NewService(processor)
+	executor := execapp.NewServiceWithSkills(processor, control, logger)
 	baseOrchestrator := orchapp.NewServiceWithOptions(
 		classifier,
 		registry,

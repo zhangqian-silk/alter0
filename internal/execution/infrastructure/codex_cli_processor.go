@@ -3,11 +3,14 @@ package infrastructure
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	execdomain "alter0/internal/execution/domain"
 )
 
 const defaultCodexCommand = "codex"
@@ -19,6 +22,12 @@ type CodexCLIProcessor struct {
 	runner  commandRunner
 }
 
+type codexExecutionPayload struct {
+	Protocol    string                   `json:"protocol"`
+	UserPrompt  string                   `json:"user_prompt"`
+	SkillPolicy *execdomain.SkillContext `json:"skill_context,omitempty"`
+}
+
 func NewCodexCLIProcessor() *CodexCLIProcessor {
 	return &CodexCLIProcessor{
 		command: defaultCodexCommand,
@@ -26,10 +35,14 @@ func NewCodexCLIProcessor() *CodexCLIProcessor {
 	}
 }
 
-func (p *CodexCLIProcessor) Process(ctx context.Context, content string, _ map[string]string) (string, error) {
+func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadata map[string]string) (string, error) {
 	prompt := strings.TrimSpace(content)
 	if prompt == "" {
 		return "", errors.New("content is required")
+	}
+	renderedPrompt, err := buildCodexPrompt(prompt, metadata)
+	if err != nil {
+		return "", err
 	}
 
 	outputFile, err := os.CreateTemp("", "alter0-codex-output-*.txt")
@@ -59,7 +72,7 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, _ map[s
 		"--color", "never",
 		"--skip-git-repo-check",
 		"-o", outputPath,
-		prompt,
+		renderedPrompt,
 	}
 	cmd := runner(ctx, commandName, args...)
 
@@ -87,4 +100,37 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, _ map[s
 		return "", errors.New("codex returned empty output")
 	}
 	return result, nil
+}
+
+func buildCodexPrompt(prompt string, metadata map[string]string) (string, error) {
+	rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey))
+	if rawSkillContext == "" {
+		return prompt, nil
+	}
+
+	var skillContext execdomain.SkillContext
+	if err := json.Unmarshal([]byte(rawSkillContext), &skillContext); err != nil {
+		return "", fmt.Errorf("invalid skill context metadata: %w", err)
+	}
+	if len(skillContext.Skills) == 0 {
+		return prompt, nil
+	}
+
+	payload := codexExecutionPayload{
+		Protocol:    "alter0.codex-exec/v1",
+		UserPrompt:  prompt,
+		SkillPolicy: &skillContext,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal codex prompt payload: %w", err)
+	}
+	return string(encoded), nil
+}
+
+func metadataValue(metadata map[string]string, key string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	return metadata[key]
 }

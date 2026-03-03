@@ -69,19 +69,23 @@ func (h *stubHandler) Execute(_ context.Context, _ orchdomain.CommandRequest) (o
 type stubExecutor struct {
 	output      string
 	outputs     []string
+	meta        map[string]string
 	called      int
 	lastMessage shareddomain.UnifiedMessage
 }
 
-func (e *stubExecutor) ExecuteNaturalLanguage(_ context.Context, msg shareddomain.UnifiedMessage) (string, error) {
+func (e *stubExecutor) ExecuteNaturalLanguage(_ context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error) {
 	e.called++
 	e.lastMessage = msg
+	output := e.output
 	if len(e.outputs) > 0 {
-		output := e.outputs[0]
+		output = e.outputs[0]
 		e.outputs = e.outputs[1:]
-		return output, nil
 	}
-	return e.output, nil
+	return shareddomain.ExecutionResult{
+		Output:   output,
+		Metadata: e.meta,
+	}, nil
 }
 
 type spyTelemetry struct {
@@ -174,8 +178,39 @@ func TestHandleNL(t *testing.T) {
 	if result.Output != "nl response" {
 		t.Fatalf("unexpected output: %q", result.Output)
 	}
+	if result.Metadata != nil {
+		t.Fatalf("expected nil metadata, got %+v", result.Metadata)
+	}
 	if executor.called != 1 {
 		t.Fatalf("executor should be called exactly once, got %d", executor.called)
+	}
+}
+
+func TestHandleNLPassesExecutionMetadata(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		output: "nl response",
+		meta: map[string]string{
+			"skills.injected_count": "1",
+		},
+	}
+	service := NewService(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+
+	result, err := service.Handle(context.Background(), validMessage("hello"))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got := result.Metadata["skills.injected_count"]; got != "1" {
+		t.Fatalf("expected skills.injected_count metadata, got %q", got)
 	}
 }
 
