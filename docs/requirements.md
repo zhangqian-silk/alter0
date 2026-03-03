@@ -34,7 +34,7 @@
 | R-015 | 移动端会话创建与信息完整性 | supported | 确保移动端可稳定新建会话，并完整展示会话必要信息（标题、入口状态、空态提示） |
 | R-016 | 会话级并发控制与全局限流 | supported | 支持多会话并发处理，同时保证同一会话顺序一致，并提供系统级并发上限、排队与超时降级能力 |
 | R-017 | 会话短期记忆 | supported | 在单会话内维护可控窗口的上下文记忆，提升多轮对话连续性与指代解析能力 |
-| R-018 | 跨会话长期记忆 | planned | 支持跨会话沉淀用户偏好与长期事实，并按范围检索注入上下文 |
+| R-018 | 跨会话长期记忆 | supported | 支持跨会话沉淀用户偏好与长期事实，并按用户/租户范围检索后按相关性注入上下文 |
 | R-019 | 会话内容持久化 | planned | 将会话消息、元数据与状态持久化存储，支持重启恢复与历史查询 |
 | R-020 | 上下文压缩 | planned | 对超长上下文进行分层压缩与摘要回写，在控制 token 成本的同时保留关键信息 |
 | R-021 | Skills/MCP 标准化能力模型 | supported | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
@@ -147,6 +147,16 @@
 2. 支持按用户/租户范围检索长期记忆并按相关性注入请求上下文。
 3. 支持记忆更新策略（新增、覆盖、失效）与审计字段（来源会话、更新时间）。
 4. 验收：新会话中可命中历史偏好并正确生效，且不污染无关用户数据。
+
+##### Traceability
+
+- 实现文件：`internal/orchestration/application/long_term_memory.go`、`internal/orchestration/application/service.go`
+- 测试覆盖：`internal/orchestration/application/long_term_memory_test.go`、`internal/orchestration/application/service_test.go`
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-03：新增长期记忆实体模型，支持 `preference/fact/constraint` 分类、标签管理、审计字段（`source_session_id`、`updated_at`）与更新策略（`add/overwrite/invalidate`）。
+  - 2026-03-03：同一用户在新会话请求中可按相关性命中历史偏好并注入 `[LONG TERM MEMORY]` 上下文。
+  - 2026-03-03：跨用户写入后检索保持隔离，未出现租户内用户间记忆污染。
 
 #### R-019 会话内容持久化
 
