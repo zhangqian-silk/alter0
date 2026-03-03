@@ -8,6 +8,7 @@ import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
+from urllib.parse import quote_plus
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = ROOT / "docs"
@@ -23,6 +24,15 @@ REPO_CANDIDATES = [
     "openai/openai-agents-python",
     "modelcontextprotocol/modelcontextprotocol",
     "openclaw/openclaw",
+]
+
+AI_HOTSPOT_QUERIES = [
+    ("agent", "ai agent framework"),
+    ("coding", "ai coding assistant"),
+    ("mcp", "model context protocol mcp"),
+    ("rag", "retrieval augmented generation ai"),
+    ("infra", "llm inference serving"),
+    ("multimodal", "multimodal ai vision audio"),
 ]
 
 SH_TZ = dt.timezone(dt.timedelta(hours=8))
@@ -73,6 +83,51 @@ def fetch_repo_stats():
             }
         )
     return rows
+
+
+def fetch_ai_hotspots():
+    cutoff = (dt.datetime.now(SH_TZ) - dt.timedelta(days=14)).strftime("%Y-%m-%d")
+    repos = {}
+
+    for signal, phrase in AI_HOTSPOT_QUERIES:
+        query = f"{phrase} stars:>150 pushed:>={cutoff}"
+        path = f"search/repositories?q={quote_plus(query)}&sort=updated&order=desc&per_page=8"
+        payload = gh_api(path, check=False) or {}
+        for item in payload.get("items", []):
+            full_name = item.get("full_name")
+            if not full_name:
+                continue
+            row = repos.get(full_name)
+            if not row:
+                row = {
+                    "repo": full_name,
+                    "stars": item.get("stargazers_count", 0),
+                    "updated_at": item.get("updated_at", ""),
+                    "pushed_at": item.get("pushed_at", ""),
+                    "signals": set(),
+                }
+                repos[full_name] = row
+            row["signals"].add(signal)
+            if item.get("updated_at", "") > row["updated_at"]:
+                row["updated_at"] = item.get("updated_at", "")
+            if item.get("pushed_at", "") > row["pushed_at"]:
+                row["pushed_at"] = item.get("pushed_at", "")
+            if item.get("stargazers_count", 0) > row["stars"]:
+                row["stars"] = item.get("stargazers_count", 0)
+
+    rows = []
+    for row in repos.values():
+        rows.append(
+            {
+                "repo": row["repo"],
+                "stars": row["stars"],
+                "updated_at": row["updated_at"],
+                "pushed_at": row["pushed_at"],
+                "signals": ",".join(sorted(row["signals"])),
+            }
+        )
+    rows.sort(key=lambda x: (x["updated_at"], x["stars"]), reverse=True)
+    return rows[:15]
 
 
 def fetch_openclaw_highlights():
@@ -130,7 +185,7 @@ def short_iso(ts):
     return ts.replace("T", " ").replace("Z", " UTC")
 
 
-def build_report(today, stats, highlights, prs, requirements):
+def build_report(today, stats, hotspots, highlights, prs, requirements):
     now_cst = dt.datetime.now(SH_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
     supported = [r for r in requirements if r["status"] == "supported"]
     planned = [r for r in requirements if r["status"] == "planned"]
@@ -147,7 +202,7 @@ def build_report(today, stats, highlights, prs, requirements):
     lines.append("")
     lines.append(f"> Generated at: {now_cst}")
     lines.append("")
-    lines.append("## 1) 行业前沿快照（AI Agent / AI Coding / OpenClaw）")
+    lines.append("## 1) 行业前沿快照（核心样本）")
     lines.append("")
     lines.append("| Repo | Stars | Last Push | Last Update |")
     lines.append("| --- | ---: | --- | --- |")
@@ -156,26 +211,36 @@ def build_report(today, stats, highlights, prs, requirements):
             f"| `{row['repo']}` | {row['stars']} | {short_iso(row['pushed_at'])} | {short_iso(row['updated_at'])} |"
         )
     lines.append("")
+
+    lines.append("## 2) 自动抓取 AI 热点（不限 AI Agent/AI Coding/OpenClaw）")
+    lines.append("")
+    lines.append("| Repo | Signals | Stars | Last Push | Last Update |")
+    lines.append("| --- | --- | ---: | --- | --- |")
+    for row in hotspots[:12]:
+        lines.append(
+            f"| `{row['repo']}` | `{row['signals']}` | {row['stars']} | {short_iso(row['pushed_at'])} | {short_iso(row['updated_at'])} |"
+        )
+    lines.append("")
     lines.append("趋势观察：")
-    lines.append("1. AI Coding 工具链继续高频迭代，`openai/codex`、`anthropics/claude-code`、`Aider-AI/aider` 保持活跃更新。")
-    lines.append("2. Agent 编排生态持续增长，`langgraph`、`autogen`、`openai-agents-python` 在工程化方向快速推进。")
-    lines.append("3. MCP 标准化进展明显，`modelcontextprotocol` 生态在工具互操作方面持续扩张。")
+    lines.append("1. 热点采样来源于多查询自动抓取（agent/coding/mcp/rag/infra/multimodal），不再绑定固定少量主题。")
+    lines.append("2. 高活跃仓库以最近 14 天持续更新为主，能够反映当前工程落地节奏。")
+    lines.append("3. 结合 OpenClaw 社区 PR 热点，可形成“外部趋势 + 内部需求”双向对照。")
     lines.append("")
 
-    lines.append("## 2) OpenClaw 已支持能力（抽样）")
+    lines.append("## 3) OpenClaw 已支持能力（抽样）")
     lines.append("")
     for item in highlights[:8]:
         lines.append(f"- {item[2:] if item.startswith('- ') else item}")
     lines.append("")
 
-    lines.append("## 3) OpenClaw 社区近期需求信号（来自开放 PR）")
+    lines.append("## 4) OpenClaw 社区近期需求信号（来自开放 PR）")
     lines.append("")
     lines.append(f"- 热点标签：{top_labels}")
     for pr in prs[:10]:
         lines.append(f"- #{pr['number']} {pr['title']} ({pr['url']})")
     lines.append("")
 
-    lines.append("## 4) 与 alter0 能力对比")
+    lines.append("## 5) 与 alter0 能力对比")
     lines.append("")
     lines.append(f"- alter0 当前已支持需求：{len(supported)} 项；规划中：{len(planned)} 项。")
     lines.append("- 对比结论：")
@@ -185,7 +250,7 @@ def build_report(today, stats, highlights, prs, requirements):
     lines.append("  - Web 体验：alter0 已明确移动端、流式、侧栏交互优化路线（R-012~R-015），具备快速补齐基础。")
     lines.append("")
 
-    lines.append("## 5) 对 alter0 的建议落地顺序")
+    lines.append("## 6) 对 alter0 的建议落地顺序")
     lines.append("")
     lines.append("1. 先完成 R-013 + R-016（流式 + 并发治理），保障核心交互稳定性。")
     lines.append("2. 并行推进 R-021~R-023（Skills/MCP 标准化与 Codex 接入），形成扩展能力基座。")
@@ -312,11 +377,12 @@ def main():
 
     RESEARCH_DIR.mkdir(parents=True, exist_ok=True)
     stats = fetch_repo_stats()
+    hotspots = fetch_ai_hotspots()
     highlights = fetch_openclaw_highlights()
     prs = fetch_openclaw_recent_prs()
     requirements = parse_alter0_requirements()
 
-    report = build_report(today, stats, highlights, prs, requirements)
+    report = build_report(today, stats, hotspots, highlights, prs, requirements)
     report_path = RESEARCH_DIR / f"{today}.md"
     report_path.write_text(report, encoding="utf-8")
     update_research_index(today)
