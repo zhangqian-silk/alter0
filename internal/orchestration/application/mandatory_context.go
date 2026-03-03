@@ -383,6 +383,11 @@ func applyMandatoryContextToLongTermMemory(
 		return snapshot, nil
 	}
 	snapshot.Hits = filteredHits
+	snapshot.TierHits = groupSelectedLongTermMemoryHitsByTier(filteredHits)
+	snapshot.TokenUsed = 0
+	for _, hit := range filteredHits {
+		snapshot.TokenUsed += estimateLongTermMemoryEntryTokens(hit.Entry)
+	}
 	return snapshot, conflicts
 }
 

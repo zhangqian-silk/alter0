@@ -2,6 +2,8 @@ package application
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -196,6 +198,296 @@ func TestLongTermMemoryImplicitPreferencePersistsAcrossSessions(t *testing.T) {
 	}
 	if snapshot.Hits[0].Entry.Key != "default_preference" {
 		t.Fatalf("expected default_preference key, got %q", snapshot.Hits[0].Entry.Key)
+	}
+}
+
+func TestLongTermMemoryTierConstraintsWithTTLAndLRUEviction(t *testing.T) {
+	store := newLongTermMemoryStore(LongTermMemoryOptions{
+		MaxEntriesPerScope: 16,
+		MaxHits:            6,
+		MaxSnippet:         200,
+		L1: LongTermMemoryTierOptions{
+			MaxEntryLength: 12,
+			MaxLayerTokens: 16,
+			TTL:            time.Minute,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+		L2: LongTermMemoryTierOptions{
+			MaxEntryLength: 160,
+			MaxLayerTokens: 200,
+			TTL:            time.Hour,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+		L3: LongTermMemoryTierOptions{
+			MaxEntryLength: 160,
+			MaxLayerTokens: 200,
+			TTL:            time.Hour,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+	})
+	now := time.Date(2026, 3, 3, 14, 0, 0, 0, time.UTC)
+
+	store.Record(longTermMessage("l1-a", "u-1", "tenant-a", "save high priority", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L1",
+		longTermMemoryKeyMetadataKey:      "critical-note",
+		longTermMemoryValueMetadataKey:    "abcdefghijklmno",
+	}), shareddomain.RouteNL, "")
+
+	scope := resolveLongTermMemoryScope(longTermMessage("scope", "u-1", "tenant-a", "", now, nil), store.options)
+	entries := getScopeEntries(store, scope)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Tier != longTermMemoryTierL1 {
+		t.Fatalf("expected l1 tier entry, got %q", entries[0].Tier)
+	}
+	if entries[0].Value != "abcdefghijkl..." {
+		t.Fatalf("expected value truncated by tier max entry length, got %q", entries[0].Value)
+	}
+
+	store.Record(longTermMessage("l1-b", "u-1", "tenant-a", "save second", now.Add(10*time.Second), map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L1",
+		longTermMemoryKeyMetadataKey:      "second-note",
+		longTermMemoryValueMetadataKey:    "second",
+	}), shareddomain.RouteNL, "")
+
+	entries = getScopeEntries(store, scope)
+	if len(entries) != 1 {
+		t.Fatalf("expected l1 token capacity to evict oldest entry, got %d entries", len(entries))
+	}
+	if entries[0].Key != "second-note" {
+		t.Fatalf("expected oldest l1 entry evicted by LRU, got key %q", entries[0].Key)
+	}
+
+	query := longTermMessage("l1-query", "u-1", "tenant-a", "second-note", now.Add(2*time.Minute), nil)
+	snapshot := store.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.Hits) != 0 {
+		t.Fatalf("expected l1 entry expired by ttl after 2m, got %d hits", len(snapshot.Hits))
+	}
+}
+
+func TestLongTermMemoryHitChainAndBudgetTruncation(t *testing.T) {
+	store := newLongTermMemoryStore(LongTermMemoryOptions{
+		MaxEntriesPerScope:   24,
+		MaxHits:              6,
+		MaxSnippet:           200,
+		InjectionTokenBudget: 20,
+		DefaultTenantID:      "tenant-a",
+		DefaultUserID:        "u-1",
+	})
+	now := time.Date(2026, 3, 3, 15, 0, 0, 0, time.UTC)
+
+	store.Record(longTermMessage("hit-l1", "u-1", "tenant-a", "remember l1", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L1",
+		longTermMemoryKeyMetadataKey:      "release-plan-hot",
+		longTermMemoryValueMetadataKey:    "priority rollout owner",
+	}), shareddomain.RouteNL, "")
+	store.Record(longTermMessage("hit-l2", "u-1", "tenant-a", "remember l2", now.Add(10*time.Second), map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L2",
+		longTermMemoryKeyMetadataKey:      "release-plan-warm",
+		longTermMemoryValueMetadataKey:    "weekly status context",
+	}), shareddomain.RouteNL, "")
+	store.Record(longTermMessage("hit-l3", "u-1", "tenant-a", "remember l3", now.Add(20*time.Second), map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L3",
+		longTermMemoryKeyMetadataKey:      "release-plan-archive",
+		longTermMemoryValueMetadataKey:    "legacy migration runbook",
+	}), shareddomain.RouteNL, "")
+
+	query := longTermMessage("query", "u-1", "tenant-a", "Need release plan context", now.Add(time.Minute), nil)
+	snapshot := store.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.CandidateTierHits[longTermMemoryTierL1]) != 1 ||
+		len(snapshot.CandidateTierHits[longTermMemoryTierL2]) != 1 ||
+		len(snapshot.CandidateTierHits[longTermMemoryTierL3]) != 1 {
+		t.Fatalf("expected hit chain candidates in all tiers, got l1=%d l2=%d l3=%d",
+			len(snapshot.CandidateTierHits[longTermMemoryTierL1]),
+			len(snapshot.CandidateTierHits[longTermMemoryTierL2]),
+			len(snapshot.CandidateTierHits[longTermMemoryTierL3]))
+	}
+	if len(snapshot.Hits) == 0 {
+		t.Fatalf("expected selected hits under budget")
+	}
+	if snapshot.Hits[0].Entry.Tier != longTermMemoryTierL1 {
+		t.Fatalf("expected L1 prioritized first hit, got %q", snapshot.Hits[0].Entry.Tier)
+	}
+	if len(snapshot.TierHits[longTermMemoryTierL3]) > 0 {
+		t.Fatalf("expected low-priority L3 truncated under budget, got %d hits", len(snapshot.TierHits[longTermMemoryTierL3]))
+	}
+	if snapshot.Metadata()["memory_long_term_truncated"] != "true" {
+		t.Fatalf("expected truncation metadata true, got %q", snapshot.Metadata()["memory_long_term_truncated"])
+	}
+}
+
+func TestLongTermMemoryPromotionAndDemotionObservable(t *testing.T) {
+	store := newLongTermMemoryStore(LongTermMemoryOptions{
+		MaxEntriesPerScope:   24,
+		MaxHits:              6,
+		MaxSnippet:           200,
+		InjectionTokenBudget: 160,
+		L1: LongTermMemoryTierOptions{
+			MaxEntryLength: 200,
+			MaxLayerTokens: 200,
+			TTL:            time.Hour,
+			DemoteIdleTTL:  5 * time.Minute,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+		L2: LongTermMemoryTierOptions{
+			MaxEntryLength: 200,
+			MaxLayerTokens: 400,
+			TTL:            time.Hour,
+			DemoteIdleTTL:  10 * time.Minute,
+			PromoteHits:    1,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+		L3: LongTermMemoryTierOptions{
+			MaxEntryLength: 200,
+			MaxLayerTokens: 600,
+			TTL:            time.Hour,
+			PromoteHits:    2,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+	})
+	now := time.Date(2026, 3, 3, 16, 0, 0, 0, time.UTC)
+
+	store.Record(longTermMessage("promote-seed", "u-1", "tenant-a", "seed", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryKeyMetadataKey:      "release-checklist",
+		longTermMemoryValueMetadataKey:    "canary and rollback",
+	}), shareddomain.RouteNL, "")
+	store.Record(longTermMessage("important-seed", "u-1", "tenant-a", "important seed", now.Add(time.Second), map[string]string{
+		longTermMemoryStrategyMetadataKey:  "add",
+		longTermMemoryKindMetadataKey:      "fact",
+		longTermMemoryImportantMetadataKey: "true",
+		longTermMemoryKeyMetadataKey:       "critical-policy",
+		longTermMemoryValueMetadataKey:     "always verify before rollout",
+	}), shareddomain.RouteNL, "")
+
+	scope := resolveLongTermMemoryScope(longTermMessage("scope-promote", "u-1", "tenant-a", "", now, nil), store.options)
+	entries := getScopeEntries(store, scope)
+	hasImportantL1 := false
+	for _, entry := range entries {
+		if entry.Key == "critical-policy" && entry.Tier == longTermMemoryTierL1 {
+			hasImportantL1 = true
+		}
+	}
+	if !hasImportantL1 {
+		t.Fatalf("expected important memory promoted directly to L1")
+	}
+
+	first := longTermMessage("query-1", "u-1", "tenant-a", "release checklist", now.Add(2*time.Minute), nil)
+	firstSnapshot := store.Snapshot(first, first.Content, first.ReceivedAt)
+	if len(firstSnapshot.Promotions) != 0 {
+		t.Fatalf("expected no promotion on first hit, got %d", len(firstSnapshot.Promotions))
+	}
+
+	second := longTermMessage("query-2", "u-1", "tenant-a", "release checklist", now.Add(3*time.Minute), nil)
+	secondSnapshot := store.Snapshot(second, second.Content, second.ReceivedAt)
+	if len(secondSnapshot.Promotions) == 0 {
+		t.Fatalf("expected L3 to L2 promotion on repeated hits")
+	}
+	if secondSnapshot.Metadata()["memory_long_term_promotion_count"] == "0" {
+		t.Fatalf("expected promotion count metadata")
+	}
+
+	third := longTermMessage("query-3", "u-1", "tenant-a", "release checklist", now.Add(4*time.Minute), nil)
+	thirdSnapshot := store.Snapshot(third, third.Content, third.ReceivedAt)
+	if len(thirdSnapshot.Promotions) == 0 {
+		t.Fatalf("expected L2 to L1 promotion")
+	}
+
+	idleQuery := longTermMessage("query-idle", "u-1", "tenant-a", "release checklist", now.Add(20*time.Minute), nil)
+	idleSnapshot := store.Snapshot(idleQuery, idleQuery.Content, idleQuery.ReceivedAt)
+	if len(idleSnapshot.Demotions) == 0 {
+		t.Fatalf("expected idle demotion to be observable")
+	}
+	if idleSnapshot.Metadata()["memory_long_term_demotion_count"] == "0" {
+		t.Fatalf("expected demotion count metadata")
+	}
+}
+
+func TestLongTermMemoryPersistenceAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "long_term_memory.json")
+	options := LongTermMemoryOptions{
+		MaxEntriesPerScope:   24,
+		MaxHits:              6,
+		MaxSnippet:           200,
+		InjectionTokenBudget: 120,
+		PersistencePath:      path,
+		WritePolicy:          longTermMemoryWritePolicyWriteThrough,
+	}
+	now := time.Date(2026, 3, 3, 17, 0, 0, 0, time.UTC)
+
+	store := newLongTermMemoryStore(options)
+	store.Record(longTermMessage("persist-seed", "u-1", "tenant-a", "remember setting", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "preference",
+		longTermMemoryKeyMetadataKey:      "response-style",
+		longTermMemoryValueMetadataKey:    "concise bullets",
+	}), shareddomain.RouteNL, "")
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected persistence file after write-through record: %v", err)
+	}
+
+	reloaded := newLongTermMemoryStore(options)
+	query := longTermMessage("persist-query", "u-1", "tenant-a", "keep concise", now.Add(time.Minute), nil)
+	snapshot := reloaded.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.Hits) == 0 {
+		t.Fatalf("expected memory recovered after restart")
+	}
+	if !strings.Contains(snapshot.Hits[0].Entry.Value, "concise") {
+		t.Fatalf("expected recovered value to contain concise, got %q", snapshot.Hits[0].Entry.Value)
+	}
+}
+
+func TestLongTermMemoryWriteBackRequiresFlush(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "long_term_memory_writeback.json")
+	options := LongTermMemoryOptions{
+		MaxEntriesPerScope:   24,
+		MaxHits:              6,
+		MaxSnippet:           200,
+		InjectionTokenBudget: 120,
+		PersistencePath:      path,
+		WritePolicy:          longTermMemoryWritePolicyWriteBack,
+		WriteBackFlush:       time.Hour,
+	}
+	now := time.Date(2026, 3, 3, 17, 30, 0, 0, time.UTC)
+
+	store := newLongTermMemoryStore(options)
+	store.Record(longTermMessage("wb-seed", "u-1", "tenant-a", "remember setting", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryKeyMetadataKey:      "timezone",
+		longTermMemoryValueMetadataKey:    "UTC+8",
+	}), shareddomain.RouteNL, "")
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected no persisted file before write-back flush, got err=%v", err)
+	}
+	if err := store.Flush(); err != nil {
+		t.Fatalf("flush write-back memory: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected persisted file after flush: %v", err)
+	}
+
+	reloaded := newLongTermMemoryStore(options)
+	query := longTermMessage("wb-query", "u-1", "tenant-a", "timezone", now.Add(time.Minute), nil)
+	snapshot := reloaded.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.Hits) == 0 {
+		t.Fatalf("expected write-back data recovered after flush and restart")
 	}
 }
 
