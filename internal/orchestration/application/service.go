@@ -24,8 +24,16 @@ type Service struct {
 	classifier orchdomain.IntentClassifier
 	registry   orchdomain.CommandRegistry
 	executor   ExecutionPort
+	memory     sessionMemory
 	telemetry  sharedapp.Telemetry
 	logger     *slog.Logger
+}
+
+type ServiceOption func(*Service)
+
+type sessionMemory interface {
+	Snapshot(sessionID string, input string, now time.Time) sessionMemorySnapshot
+	Record(msg shareddomain.UnifiedMessage, route shareddomain.Route, output string)
 }
 
 func NewService(
@@ -35,12 +43,47 @@ func NewService(
 	telemetry sharedapp.Telemetry,
 	logger *slog.Logger,
 ) *Service {
-	return &Service{
+	service := &Service{
 		classifier: classifier,
 		registry:   registry,
 		executor:   executor,
+		memory:     newSessionMemoryStore(SessionMemoryOptions{}),
 		telemetry:  telemetry,
 		logger:     logger,
+	}
+	return service
+}
+
+func NewServiceWithOptions(
+	classifier orchdomain.IntentClassifier,
+	registry orchdomain.CommandRegistry,
+	executor ExecutionPort,
+	telemetry sharedapp.Telemetry,
+	logger *slog.Logger,
+	options ...ServiceOption,
+) *Service {
+	service := NewService(classifier, registry, executor, telemetry, logger)
+	for _, option := range options {
+		if option == nil {
+			continue
+		}
+		option(service)
+	}
+	if service.memory == nil {
+		service.memory = newSessionMemoryStore(SessionMemoryOptions{})
+	}
+	return service
+}
+
+func WithSessionMemoryOptions(options SessionMemoryOptions) ServiceOption {
+	return func(service *Service) {
+		service.memory = newSessionMemoryStore(options)
+	}
+}
+
+func WithSessionMemory(memory sessionMemory) ServiceOption {
+	return func(service *Service) {
+		service.memory = memory
 	}
 }
 
@@ -84,12 +127,17 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 
 		result.Output = cmdResult.Output
 		result.Metadata = cmdResult.Metadata
+		s.memory.Record(msg, result.Route, result.Output)
 		s.onSuccess(msg, result.Route, startedAt)
 		return result, nil
 	case orchdomain.IntentTypeNL:
 		result.Route = shareddomain.RouteNL
 		s.telemetry.CountRoute(string(result.Route))
-		output, err := s.executor.ExecuteNaturalLanguage(ctx, msg)
+		snapshot := s.memory.Snapshot(msg.SessionID, msg.Content, msg.ReceivedAt)
+		execMessage := msg
+		execMessage.Content = buildSessionMemoryPrompt(msg.Content, snapshot)
+		execMessage.Metadata = mergeStringMap(msg.Metadata, snapshot.Metadata())
+		output, err := s.executor.ExecuteNaturalLanguage(ctx, execMessage)
 		if err != nil {
 			s.onError(msg, result.Route, startedAt, err)
 			result.ErrorCode = "nl_execution_failed"
@@ -97,6 +145,8 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 		}
 
 		result.Output = output
+		result.Metadata = mergeStringMap(result.Metadata, snapshot.ResultMetadata())
+		s.memory.Record(msg, result.Route, output)
 		s.onSuccess(msg, result.Route, startedAt)
 		return result, nil
 	default:
