@@ -42,7 +42,7 @@
 | R-023 | 用户配置 MCP 接入 Codex | supported | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | planned | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | planned | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
-| R-026 | 强制要求上下文文件（如 SOUL.md） | planned | 支持独立上下文文件存储用户强制要求，启动时高优先级加载并对后续会话持续生效 |
+| R-026 | 强制要求上下文文件（如 SOUL.md） | supported | 支持独立上下文文件存储用户强制要求，启动与会话初始化高优先级加载，并在冲突场景下覆盖普通记忆 |
 
 ### 2.1 需求细化（草案）
 
@@ -248,6 +248,17 @@
 4. 该文件与记忆体系隔离：不参与自动摘要压缩，不被 L1/L2/L3 淘汰策略清理。
 5. 支持冲突处理规则：当强制要求与普通记忆冲突时，以强制要求文件为准并产生日志告警。
 6. 验收：修改 `SOUL.md` 后新会话可立即体现强制要求；跨会话重启后仍稳定生效。
+
+##### Traceability
+
+- 实现文件：`internal/orchestration/application/mandatory_context.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/orchestration/application/mandatory_context_test.go`、`internal/orchestration/application/service_test.go`
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-03：启动参数新增 `-mandatory-context-file`，默认读取 `SOUL.md`，会话初始化时优先注入 `[MANDATORY CONTEXT]` 到请求构造。
+  - 2026-03-03：上下文文件支持热更新，后续请求自动加载最新内容并输出 `mandatory_context.version`、`mandatory_context.updated_at`、`mandatory_context.loaded_at` 审计元数据。
+  - 2026-03-03：与会话/长期记忆冲突时按键规则裁决，冲突记忆被过滤或覆盖，结果元数据记录 `mandatory_context.conflict_count` 并输出告警日志。
+  - 2026-03-03：强制要求上下文独立于普通记忆注入链路，标记 `mandatory_context.isolated=true`，不进入记忆摘要与分层淘汰路径。
 
 #### R-014 移动端真机适配增强
 
