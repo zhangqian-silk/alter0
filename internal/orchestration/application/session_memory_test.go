@@ -1,6 +1,8 @@
 package application
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -170,6 +172,104 @@ func TestSessionMemoryCompressionPreservesReferenceResolutionFromFragments(t *te
 	}
 	if !strings.Contains(prompt, "source_turn_refs:") {
 		t.Fatalf("expected prompt include source turn references, got %q", prompt)
+	}
+}
+
+func TestSessionMemoryDailyMarkdownPersistenceAndLongTermCandidates(t *testing.T) {
+	dir := t.TempDir()
+	store := newSessionMemoryStore(SessionMemoryOptions{
+		MaxTurns:                 8,
+		TTL:                      time.Hour,
+		MaxSnippets:              220,
+		CompressionTriggerTokens: 70,
+		CompressionSummaryTokens: 60,
+		CompressionRetainTurns:   2,
+		CompressionMaxFacts:      6,
+		DailyMemoryDir:           dir,
+	})
+
+	now := time.Date(2026, 3, 3, 11, 0, 0, 0, time.UTC)
+	longTail := strings.Repeat(" release guardrail", 10)
+	store.Record(memoryMessageWithID("s-day", "m1", "release_window: friday 22:00"+longTail, now.Add(-3*time.Minute)), shareddomain.RouteNL, "plan alpha: phase 1")
+	store.Record(memoryMessageWithID("s-day", "m2", "rollback_owner: sre-oncall"+longTail, now.Add(-2*time.Minute)), shareddomain.RouteNL, "plan alpha: phase 2")
+	store.Record(memoryMessageWithID("s-day", "m3", "slo_target: 99.95%"+longTail, now.Add(-time.Minute)), shareddomain.RouteNL, "plan alpha: phase 3")
+
+	dayFile := filepath.Join(dir, "2026-03-03.md")
+	raw, err := os.ReadFile(dayFile)
+	if err != nil {
+		t.Fatalf("expected day-level markdown memory file: %v", err)
+	}
+	content := string(raw)
+	if !strings.Contains(content, "# Daily Memory 2026-03-03") {
+		t.Fatalf("expected day-level heading, got %q", content)
+	}
+	if !strings.Contains(content, "## L2") {
+		t.Fatalf("expected compressed tier section in day-level file, got %q", content)
+	}
+	if !strings.Contains(content, "key_facts:") {
+		t.Fatalf("expected key facts persisted in markdown, got %q", content)
+	}
+
+	candidateFile := filepath.Join(dir, "long-term", "2026-03-03.md")
+	candidateRaw, err := os.ReadFile(candidateFile)
+	if err != nil {
+		t.Fatalf("expected long-term candidate markdown file: %v", err)
+	}
+	if !strings.Contains(string(candidateRaw), "# Long-Term Memory Candidates 2026-03-03") {
+		t.Fatalf("expected candidate markdown heading, got %q", string(candidateRaw))
+	}
+}
+
+func TestSessionMemoryDailyTierConstraintsApplyLengthCapacityAndTTL(t *testing.T) {
+	dir := t.TempDir()
+	store := newSessionMemoryStore(SessionMemoryOptions{
+		MaxTurns:                 8,
+		TTL:                      24 * time.Hour,
+		MaxSnippets:              320,
+		CompressionTriggerTokens: 20_000,
+		CompressionSummaryTokens: 120,
+		CompressionRetainTurns:   6,
+		CompressionMaxFacts:      4,
+		DailyMemoryDir:           dir,
+		L1: SessionMemoryTierOptions{
+			MaxEntryLength: 18,
+			MaxLayerTokens: 12,
+			TTL:            time.Hour,
+		},
+		L2: SessionMemoryTierOptions{
+			MaxEntryLength: 60,
+			MaxLayerTokens: 200,
+			TTL:            48 * time.Hour,
+		},
+		L3: SessionMemoryTierOptions{
+			MaxEntryLength: 80,
+			MaxLayerTokens: 200,
+			TTL:            72 * time.Hour,
+		},
+	})
+
+	now := time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC)
+	store.Record(memoryMessageWithID("s-cap", "old", "very old entry should expire", now.Add(-3*time.Hour)), shareddomain.RouteNL, "assistant old summary should be dropped")
+	store.Record(memoryMessageWithID("s-cap", "new", "latest release checklist entry", now), shareddomain.RouteNL, "assistant latest response")
+
+	dayFile := filepath.Join(dir, "2026-03-03.md")
+	state := sessionMemoryDailyState{}
+	raw, err := os.ReadFile(dayFile)
+	if err != nil {
+		t.Fatalf("read day markdown file: %v", err)
+	}
+	if err := parseSessionMemoryDailyState(raw, &state); err != nil {
+		t.Fatalf("parse day markdown structured state: %v", err)
+	}
+	l1 := state.TierValues[sessionMemoryDailyTierL1]
+	if len(l1) != 1 {
+		t.Fatalf("expected expired l1 entry pruned and capacity enforced, got %d entries", len(l1))
+	}
+	if strings.Contains(l1[0].Summary, "very old") {
+		t.Fatalf("expected old entry removed by l1 ttl, got %q", l1[0].Summary)
+	}
+	if len([]rune(l1[0].Summary)) > 21 {
+		t.Fatalf("expected l1 summary truncated by max entry length, got %q", l1[0].Summary)
 	}
 }
 
