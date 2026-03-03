@@ -15,6 +15,7 @@
   --danger-soft: rgba(178, 74, 74, 0.15);
   --shadow-soft: 0 8px 28px rgba(17, 26, 44, 0.08);
   --content-width: 760px;
+  --keyboard-offset: 0px;
 }
 
 * {
@@ -40,6 +41,10 @@ body {
   display: grid;
   grid-template-columns: 246px 300px minmax(0, 1fr);
   position: relative;
+}
+
+.app-shell.overlay-open {
+  overscroll-behavior: none;
 }
 
 .app-shell.route-mode {
@@ -601,6 +606,8 @@ body {
     transform: translateX(-102%);
     transition: transform 180ms ease;
     box-shadow: 0 14px 32px rgba(15, 24, 39, 0.18);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    touch-action: pan-y;
   }
 
   .app-shell.nav-open .primary-nav {
@@ -617,6 +624,8 @@ body {
     transform: translateX(-102%);
     transition: transform 180ms ease;
     box-shadow: 0 14px 32px rgba(15, 24, 39, 0.2);
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    touch-action: pan-y;
   }
 
   .app-shell.panel-open:not(.route-mode) .session-pane {
@@ -723,7 +732,7 @@ body {
   }
 
   .message-area {
-    padding: 8px 6px 10px;
+    padding: 8px 6px calc(10px + env(safe-area-inset-bottom));
   }
 
   .msg {
@@ -735,7 +744,8 @@ body {
     bottom: 0;
     z-index: 9;
     background: linear-gradient(180deg, rgba(238, 242, 248, 0) 0%, rgba(238, 242, 248, 0.95) 36%);
-    padding: 6px 6px calc(10px + env(safe-area-inset-bottom));
+    padding: 6px 6px calc(10px + env(safe-area-inset-bottom) + var(--keyboard-offset));
+    transition: padding-bottom 120ms ease;
   }
 
   .composer {
