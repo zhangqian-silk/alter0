@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -479,6 +481,148 @@ func TestHandleNLLongTermMemoryPreventsCrossUserPollution(t *testing.T) {
 	}
 	if strings.Contains(prompt, "verbose narrative") {
 		t.Fatalf("expected user b memory to be isolated, got %q", prompt)
+	}
+}
+
+func TestHandleNLMandatoryContextOverridesConflictingLongTermMemory(t *testing.T) {
+	dir := t.TempDir()
+	contextPath := filepath.Join(dir, "SOUL.md")
+	if err := os.WriteFile(contextPath, []byte("response_style: concise bullet answers\n"), 0o644); err != nil {
+		t.Fatalf("write mandatory context file: %v", err)
+	}
+
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		outputs: []string{
+			"preference stored",
+			"response generated",
+		},
+	}
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithLongTermMemoryOptions(LongTermMemoryOptions{
+			MaxEntriesPerScope: 32,
+			MaxHits:            3,
+			MaxSnippet:         180,
+		}),
+		WithMandatoryContextOptions(MandatoryContextOptions{
+			FilePath: contextPath,
+		}),
+	)
+
+	writeMessage := validMessage("remember my response style")
+	writeMessage.SessionID = "session-write"
+	writeMessage.UserID = "user-r026"
+	writeMessage.Metadata = map[string]string{
+		longTermMemoryTenantMetadataKey:   "tenant-r026",
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "preference",
+		longTermMemoryKeyMetadataKey:      "response-style",
+		longTermMemoryValueMetadataKey:    "detailed narrative",
+	}
+	if _, err := service.Handle(context.Background(), writeMessage); err != nil {
+		t.Fatalf("write message failed: %v", err)
+	}
+
+	queryMessage := validMessage("please keep response style")
+	queryMessage.SessionID = "session-query"
+	queryMessage.UserID = "user-r026"
+	queryMessage.Metadata = map[string]string{
+		longTermMemoryTenantMetadataKey: "tenant-r026",
+	}
+	result, err := service.Handle(context.Background(), queryMessage)
+	if err != nil {
+		t.Fatalf("query message failed: %v", err)
+	}
+
+	prompt := executor.lastMessage.Content
+	if !strings.Contains(prompt, "[MANDATORY CONTEXT]") {
+		t.Fatalf("expected mandatory context section in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "response_style: concise bullet answers") {
+		t.Fatalf("expected mandatory context content in prompt, got %q", prompt)
+	}
+	if strings.Contains(prompt, "detailed narrative") {
+		t.Fatalf("expected conflicting long-term memory removed from prompt, got %q", prompt)
+	}
+	if result.Metadata[mandatoryContextConflictCountMetadataKey] != "1" {
+		t.Fatalf("expected conflict count metadata 1, got %q", result.Metadata[mandatoryContextConflictCountMetadataKey])
+	}
+	if result.Metadata[mandatoryContextInjectedMetadataKey] != "true" {
+		t.Fatalf("expected mandatory context injected metadata, got %q", result.Metadata[mandatoryContextInjectedMetadataKey])
+	}
+	if result.Metadata[mandatoryContextVersionMetadataKey] == "" {
+		t.Fatalf("expected mandatory context version metadata")
+	}
+}
+
+func TestHandleNLMandatoryContextHotReloadAcrossSessions(t *testing.T) {
+	dir := t.TempDir()
+	contextPath := filepath.Join(dir, "SOUL.md")
+	if err := os.WriteFile(contextPath, []byte("language: zh-cn\n"), 0o644); err != nil {
+		t.Fatalf("write first mandatory context file: %v", err)
+	}
+
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		outputs: []string{
+			"first response",
+			"second response",
+		},
+	}
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithMandatoryContextOptions(MandatoryContextOptions{
+			FilePath: contextPath,
+		}),
+	)
+
+	firstMessage := validMessage("hello from session one")
+	firstMessage.SessionID = "session-1"
+	firstResult, err := service.Handle(context.Background(), firstMessage)
+	if err != nil {
+		t.Fatalf("first message failed: %v", err)
+	}
+	if !strings.Contains(executor.lastMessage.Content, "language: zh-cn") {
+		t.Fatalf("expected first prompt include initial mandatory context, got %q", executor.lastMessage.Content)
+	}
+	firstVersion := firstResult.Metadata[mandatoryContextVersionMetadataKey]
+	if firstVersion == "" {
+		t.Fatalf("expected first result has mandatory context version")
+	}
+
+	if err := os.WriteFile(contextPath, []byte("language: en-us\n"), 0o644); err != nil {
+		t.Fatalf("write second mandatory context file: %v", err)
+	}
+
+	secondMessage := validMessage("hello from session two")
+	secondMessage.SessionID = "session-2"
+	secondResult, err := service.Handle(context.Background(), secondMessage)
+	if err != nil {
+		t.Fatalf("second message failed: %v", err)
+	}
+	if !strings.Contains(executor.lastMessage.Content, "language: en-us") {
+		t.Fatalf("expected second prompt include reloaded context, got %q", executor.lastMessage.Content)
+	}
+	if strings.Contains(executor.lastMessage.Content, "language: zh-cn") {
+		t.Fatalf("expected old mandatory context removed after reload, got %q", executor.lastMessage.Content)
+	}
+	if secondResult.Metadata[mandatoryContextVersionMetadataKey] == firstVersion {
+		t.Fatalf("expected version change after hot reload")
 	}
 }
 
