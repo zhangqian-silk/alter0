@@ -341,6 +341,147 @@ func TestHandleNLMemoryKeepsStableReferenceAcrossFollowUps(t *testing.T) {
 	}
 }
 
+func TestHandleNLInjectsLongTermMemoryAcrossSessions(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		outputs: []string{
+			"Preference saved.",
+			"Here is the plan.",
+		},
+	}
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithSessionMemoryOptions(SessionMemoryOptions{
+			MaxTurns:    4,
+			TTL:         30 * time.Minute,
+			MaxSnippets: 180,
+		}),
+		WithLongTermMemoryOptions(LongTermMemoryOptions{
+			MaxEntriesPerScope: 64,
+			MaxHits:            3,
+			MaxSnippet:         180,
+		}),
+	)
+
+	firstMessage := validMessage("remember my response style")
+	firstMessage.SessionID = "history-session"
+	firstMessage.UserID = "user-a"
+	firstMessage.Metadata = map[string]string{
+		longTermMemoryTenantMetadataKey:   "tenant-a",
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "preference",
+		longTermMemoryKeyMetadataKey:      "response-style",
+		longTermMemoryValueMetadataKey:    "concise bullet answers",
+		longTermMemoryTagsMetadataKey:     "style, concise",
+	}
+	if _, err := service.Handle(context.Background(), firstMessage); err != nil {
+		t.Fatalf("first message failed: %v", err)
+	}
+
+	secondMessage := validMessage("Please keep concise style for this new session")
+	secondMessage.SessionID = "new-session"
+	secondMessage.UserID = "user-a"
+	secondMessage.Metadata = map[string]string{
+		longTermMemoryTenantMetadataKey: "tenant-a",
+	}
+	result, err := service.Handle(context.Background(), secondMessage)
+	if err != nil {
+		t.Fatalf("second message failed: %v", err)
+	}
+
+	prompt := executor.lastMessage.Content
+	if !strings.Contains(prompt, "[LONG TERM MEMORY]") {
+		t.Fatalf("expected long-term memory section in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "concise bullet answers") {
+		t.Fatalf("expected long-term preference in prompt, got %q", prompt)
+	}
+	if result.Metadata["memory_long_term_injected"] != "true" {
+		t.Fatalf("expected memory_long_term_injected=true, got %q", result.Metadata["memory_long_term_injected"])
+	}
+}
+
+func TestHandleNLLongTermMemoryPreventsCrossUserPollution(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		outputs: []string{
+			"saved user a preference",
+			"saved user b preference",
+			"response for user a",
+		},
+	}
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithLongTermMemoryOptions(LongTermMemoryOptions{
+			MaxEntriesPerScope: 64,
+			MaxHits:            3,
+			MaxSnippet:         180,
+		}),
+	)
+
+	userA := validMessage("store user a preference")
+	userA.SessionID = "session-a1"
+	userA.UserID = "user-a"
+	userA.Metadata = map[string]string{
+		longTermMemoryTenantMetadataKey:   "tenant-a",
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "preference",
+		longTermMemoryKeyMetadataKey:      "response-style",
+		longTermMemoryValueMetadataKey:    "concise bullet answers",
+		longTermMemoryTagsMetadataKey:     "style, concise",
+	}
+	if _, err := service.Handle(context.Background(), userA); err != nil {
+		t.Fatalf("user a write failed: %v", err)
+	}
+
+	userB := validMessage("store user b preference")
+	userB.SessionID = "session-b1"
+	userB.UserID = "user-b"
+	userB.Metadata = map[string]string{
+		longTermMemoryTenantMetadataKey:   "tenant-a",
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "preference",
+		longTermMemoryKeyMetadataKey:      "response-style",
+		longTermMemoryValueMetadataKey:    "verbose narrative",
+		longTermMemoryTagsMetadataKey:     "style, verbose",
+	}
+	if _, err := service.Handle(context.Background(), userB); err != nil {
+		t.Fatalf("user b write failed: %v", err)
+	}
+
+	query := validMessage("Please use concise style")
+	query.SessionID = "session-a2"
+	query.UserID = "user-a"
+	query.Metadata = map[string]string{
+		longTermMemoryTenantMetadataKey: "tenant-a",
+	}
+	if _, err := service.Handle(context.Background(), query); err != nil {
+		t.Fatalf("user a query failed: %v", err)
+	}
+
+	prompt := executor.lastMessage.Content
+	if !strings.Contains(prompt, "concise bullet answers") {
+		t.Fatalf("expected user a memory in prompt, got %q", prompt)
+	}
+	if strings.Contains(prompt, "verbose narrative") {
+		t.Fatalf("expected user b memory to be isolated, got %q", prompt)
+	}
+}
+
 func validMessage(content string) shareddomain.UnifiedMessage {
 	return shareddomain.UnifiedMessage{
 		MessageID:   "m1",

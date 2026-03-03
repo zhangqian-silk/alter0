@@ -25,6 +25,7 @@ type Service struct {
 	registry   orchdomain.CommandRegistry
 	executor   ExecutionPort
 	memory     sessionMemory
+	longTerm   longTermMemory
 	telemetry  sharedapp.Telemetry
 	logger     *slog.Logger
 }
@@ -33,6 +34,11 @@ type ServiceOption func(*Service)
 
 type sessionMemory interface {
 	Snapshot(sessionID string, input string, now time.Time) sessionMemorySnapshot
+	Record(msg shareddomain.UnifiedMessage, route shareddomain.Route, output string)
+}
+
+type longTermMemory interface {
+	Snapshot(msg shareddomain.UnifiedMessage, query string, now time.Time) longTermMemorySnapshot
 	Record(msg shareddomain.UnifiedMessage, route shareddomain.Route, output string)
 }
 
@@ -48,6 +54,7 @@ func NewService(
 		registry:   registry,
 		executor:   executor,
 		memory:     newSessionMemoryStore(SessionMemoryOptions{}),
+		longTerm:   newLongTermMemoryStore(LongTermMemoryOptions{}),
 		telemetry:  telemetry,
 		logger:     logger,
 	}
@@ -72,6 +79,9 @@ func NewServiceWithOptions(
 	if service.memory == nil {
 		service.memory = newSessionMemoryStore(SessionMemoryOptions{})
 	}
+	if service.longTerm == nil {
+		service.longTerm = newLongTermMemoryStore(LongTermMemoryOptions{})
+	}
 	return service
 }
 
@@ -84,6 +94,18 @@ func WithSessionMemoryOptions(options SessionMemoryOptions) ServiceOption {
 func WithSessionMemory(memory sessionMemory) ServiceOption {
 	return func(service *Service) {
 		service.memory = memory
+	}
+}
+
+func WithLongTermMemoryOptions(options LongTermMemoryOptions) ServiceOption {
+	return func(service *Service) {
+		service.longTerm = newLongTermMemoryStore(options)
+	}
+}
+
+func WithLongTermMemory(memory longTermMemory) ServiceOption {
+	return func(service *Service) {
+		service.longTerm = memory
 	}
 }
 
@@ -128,15 +150,21 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 		result.Output = cmdResult.Output
 		result.Metadata = cmdResult.Metadata
 		s.memory.Record(msg, result.Route, result.Output)
+		s.longTerm.Record(msg, result.Route, result.Output)
 		s.onSuccess(msg, result.Route, startedAt)
 		return result, nil
 	case orchdomain.IntentTypeNL:
 		result.Route = shareddomain.RouteNL
 		s.telemetry.CountRoute(string(result.Route))
 		snapshot := s.memory.Snapshot(msg.SessionID, msg.Content, msg.ReceivedAt)
+		longTermSnapshot := s.longTerm.Snapshot(msg, msg.Content, msg.ReceivedAt)
 		execMessage := msg
 		execMessage.Content = buildSessionMemoryPrompt(msg.Content, snapshot)
-		execMessage.Metadata = mergeStringMap(msg.Metadata, snapshot.Metadata())
+		execMessage.Content = buildLongTermMemoryPrompt(execMessage.Content, longTermSnapshot)
+		execMessage.Metadata = mergeStringMap(
+			msg.Metadata,
+			mergeStringMap(snapshot.Metadata(), longTermSnapshot.Metadata()),
+		)
 		nlResult, err := s.executor.ExecuteNaturalLanguage(ctx, execMessage)
 		if err != nil {
 			s.onError(msg, result.Route, startedAt, err)
@@ -146,8 +174,10 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 
 		result.Output = nlResult.Output
 		result.Metadata = mergeStringMap(result.Metadata, snapshot.ResultMetadata())
+		result.Metadata = mergeStringMap(result.Metadata, longTermSnapshot.ResultMetadata())
 		result.Metadata = mergeStringMap(result.Metadata, nlResult.Metadata)
 		s.memory.Record(msg, result.Route, nlResult.Output)
+		s.longTerm.Record(msg, result.Route, nlResult.Output)
 		s.onSuccess(msg, result.Route, startedAt)
 		return result, nil
 	default:
