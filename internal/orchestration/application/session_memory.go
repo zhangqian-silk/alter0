@@ -301,12 +301,19 @@ func (s *sessionMemoryStore) compressSessionLocked(session *sessionMemorySession
 
 		compressible := len(session.Turns) - s.options.CompressionRetainTurns
 		if compressible <= 0 {
+			if len(session.Fragments) > 1 {
+				s.mergeFragmentsLocked(session, now)
+				continue
+			}
 			return
 		}
 
 		turnsToCompress := copyTurns(session.Turns[:compressible])
 		fragment := s.buildFragmentLocked(session, turnsToCompress, now)
 		session.Fragments = append(session.Fragments, fragment)
+		if len(session.Fragments) > 1 {
+			s.mergeFragmentsLocked(session, now)
+		}
 		session.Turns = copyTurns(session.Turns[compressible:])
 	}
 }
@@ -338,6 +345,60 @@ func (s *sessionMemoryStore) buildFragmentLocked(
 		CreatedAt:   now,
 		LastSource:  lastSource,
 	}
+}
+
+func (s *sessionMemoryStore) mergeFragmentsLocked(session *sessionMemorySession, now time.Time) {
+	if session == nil || len(session.Fragments) <= 1 {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	summaries := make([]string, 0, len(session.Fragments))
+	facts := make([]sessionMemoryFact, 0, s.options.CompressionMaxFacts)
+	factSeen := map[string]struct{}{}
+	references := make([]sessionMemoryTurnReference, 0)
+	lastSource := time.Time{}
+
+	appendFact := func(fact sessionMemoryFact) {
+		if len(facts) >= s.options.CompressionMaxFacts {
+			return
+		}
+		if fact.Key == "" || fact.Value == "" {
+			return
+		}
+		identity := fact.Key + "=" + fact.Value
+		if _, exists := factSeen[identity]; exists {
+			return
+		}
+		factSeen[identity] = struct{}{}
+		facts = append(facts, fact)
+	}
+
+	for _, fragment := range session.Fragments {
+		if fragment.Summary != "" {
+			summaries = append(summaries, fragment.Summary)
+		}
+		for _, fact := range fragment.KeyFacts {
+			appendFact(fact)
+		}
+		references = append(references, fragment.SourceTurns...)
+		if fragment.LastSource.After(lastSource) {
+			lastSource = fragment.LastSource
+		}
+	}
+
+	session.NextFragmentSequence++
+	merged := sessionMemoryFragment{
+		FragmentID:  fmt.Sprintf("fragment-%d", session.NextFragmentSequence),
+		Summary:     truncateToTokenCount(strings.Join(summaries, " | "), s.options.CompressionSummaryTokens),
+		KeyFacts:    facts,
+		SourceTurns: references,
+		CreatedAt:   now,
+		LastSource:  lastSource,
+	}
+	session.Fragments = []sessionMemoryFragment{merged}
 }
 
 func buildKeyState(turns []sessionMemoryTurn, fragments []sessionMemoryFragment) map[string]string {
@@ -717,6 +778,10 @@ func extractKeyFactsFromTurns(turns []sessionMemoryTurn, maxFacts int, maxSnippe
 	if maxFacts <= 0 || len(turns) == 0 {
 		return nil
 	}
+	factSnippetLimit := maxSnippet / 3
+	if factSnippetLimit < 48 {
+		factSnippetLimit = 48
+	}
 	facts := make([]sessionMemoryFact, 0, maxFacts)
 	seen := map[string]struct{}{}
 	appendFact := func(fact sessionMemoryFact) {
@@ -732,13 +797,13 @@ func extractKeyFactsFromTurns(turns []sessionMemoryTurn, maxFacts int, maxSnippe
 	}
 
 	for _, turn := range turns {
-		for _, fact := range extractFactsFromText(turn.UserInput, maxSnippet) {
+		for _, fact := range extractFactsFromText(turn.UserInput, factSnippetLimit) {
 			appendFact(fact)
 			if len(facts) >= maxFacts {
 				return facts
 			}
 		}
-		for _, fact := range extractFactsFromText(turn.AssistantOutput, maxSnippet) {
+		for _, fact := range extractFactsFromText(turn.AssistantOutput, factSnippetLimit) {
 			appendFact(fact)
 			if len(facts) >= maxFacts {
 				return facts
@@ -747,7 +812,7 @@ func extractKeyFactsFromTurns(turns []sessionMemoryTurn, maxFacts int, maxSnippe
 		if turn.PlanHint != "" {
 			appendFact(sessionMemoryFact{
 				Key:   "plan_hint",
-				Value: normalizeSnippet(turn.PlanHint, maxSnippet),
+				Value: normalizeSnippet(turn.PlanHint, factSnippetLimit),
 			})
 			if len(facts) >= maxFacts {
 				return facts
@@ -759,7 +824,7 @@ func extractKeyFactsFromTurns(turns []sessionMemoryTurn, maxFacts int, maxSnippe
 		last := turns[len(turns)-1]
 		facts = append(facts, sessionMemoryFact{
 			Key:   "conversation_focus",
-			Value: normalizeSnippet(last.UserInput, maxSnippet),
+			Value: normalizeSnippet(last.UserInput, factSnippetLimit),
 		})
 	}
 	return facts
@@ -776,13 +841,37 @@ func extractFactsFromText(content string, maxSnippet int) []sessionMemoryFact {
 			continue
 		}
 		key := normalizeFactKey(match[1])
-		value := normalizeSnippet(match[2], maxSnippet)
+		value := compactFactValue(match[2], maxSnippet)
 		if key == "" || value == "" {
 			continue
 		}
 		facts = append(facts, sessionMemoryFact{Key: key, Value: value})
 	}
 	return facts
+}
+
+func compactFactValue(value string, maxSnippet int) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	lower := strings.ToLower(trimmed)
+	separators := []string{
+		" and ",
+		" with ",
+		" before ",
+		" after ",
+		" please ",
+	}
+	for _, separator := range separators {
+		idx := strings.Index(lower, separator)
+		if idx <= 0 {
+			continue
+		}
+		trimmed = strings.TrimSpace(trimmed[:idx])
+		break
+	}
+	return normalizeSnippet(trimmed, maxSnippet)
 }
 
 func normalizeFactKey(key string) string {
