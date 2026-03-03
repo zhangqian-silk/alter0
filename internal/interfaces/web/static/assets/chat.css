@@ -47,7 +47,7 @@ body {
   overscroll-behavior: none;
 }
 
-.app-shell.route-mode {
+.app-shell.info-mode {
   grid-template-columns: 246px minmax(0, 1fr);
 }
 
@@ -153,7 +153,7 @@ body {
   overflow: hidden;
 }
 
-.app-shell.route-mode .session-pane {
+.app-shell.info-mode .session-pane {
   display: none;
 }
 
@@ -631,7 +631,7 @@ body {
 
 @media (max-width: 1100px) {
   .app-shell,
-  .app-shell.route-mode {
+  .app-shell.info-mode {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -667,7 +667,7 @@ body {
     touch-action: pan-y;
   }
 
-  .app-shell.panel-open:not(.route-mode) .session-pane {
+  .app-shell.panel-open:not(.info-mode) .session-pane {
     transform: translateX(0);
   }
 
@@ -680,7 +680,7 @@ body {
     justify-content: center;
   }
 
-  .app-shell.route-mode .panel-toggle {
+  .app-shell.info-mode .panel-toggle {
     display: none;
   }
 

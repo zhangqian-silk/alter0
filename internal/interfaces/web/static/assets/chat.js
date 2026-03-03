@@ -671,6 +671,13 @@ function bindSwipeClose(panel, panelClassName) {
   }, { passive: true });
 }
 
+function setMainContentMode(mode) {
+  const infoMode = mode === "page";
+  appShell.classList.toggle("info-mode", infoMode);
+  chatView.hidden = infoMode;
+  routeView.hidden = !infoMode;
+}
+
 function navigateToRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
   if (isMobileViewport()) {
@@ -798,17 +805,13 @@ async function renderRoute(route) {
 
   const config = ROUTES[safe];
   if (config.mode === "chat") {
-    appShell.classList.remove("route-mode");
-    chatView.hidden = false;
-    routeView.hidden = true;
+    setMainContentMode("chat");
     syncHeader();
     return;
   }
 
-  appShell.classList.add("route-mode");
+  setMainContentMode("page");
   closeTransientPanels();
-  chatView.hidden = true;
-  routeView.hidden = false;
   routeTitle.textContent = config.title;
   routeSubtitle.textContent = config.subtitle;
   routeBody.innerHTML = '<p class="route-loading">Loading...</p>';
