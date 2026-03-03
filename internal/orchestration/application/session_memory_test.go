@@ -83,9 +83,104 @@ func TestSessionMemoryResolvesInSessionReference(t *testing.T) {
 	}
 }
 
+func TestSessionMemoryCompressionBuildsStructuredFragments(t *testing.T) {
+	store := newSessionMemoryStore(SessionMemoryOptions{
+		MaxTurns:                 8,
+		TTL:                      time.Hour,
+		MaxSnippets:              220,
+		CompressionTriggerTokens: 80,
+		CompressionSummaryTokens: 60,
+		CompressionRetainTurns:   2,
+		CompressionMaxFacts:      6,
+	})
+
+	now := time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC)
+	longTail := strings.Repeat(" rollout verification checklist", 10)
+
+	store.Record(memoryMessageWithID("s1", "m1", "release_window: friday 22:00 slo_target: 99.95%"+longTail, now.Add(-4*time.Minute)), shareddomain.RouteNL, "plan alpha: phase 1")
+	store.Record(memoryMessageWithID("s1", "m2", "rollback_owner: sre-oncall region: us-east-1"+longTail, now.Add(-3*time.Minute)), shareddomain.RouteNL, "plan alpha: phase 2")
+	store.Record(memoryMessageWithID("s1", "m3", "canary_ratio: 10% approval_owner: platform-lead"+longTail, now.Add(-2*time.Minute)), shareddomain.RouteNL, "plan alpha: phase 3")
+	store.Record(memoryMessageWithID("s1", "m4", "incident_channel: #release-war-room check_window: 30m"+longTail, now.Add(-1*time.Minute)), shareddomain.RouteNL, "plan alpha: phase 4")
+
+	snapshot := store.Snapshot("s1", "continue release plan", now)
+	if len(snapshot.Fragments) == 0 {
+		t.Fatalf("expected compressed fragment, got none")
+	}
+	if len(snapshot.RecentTurns) != 2 {
+		t.Fatalf("expected retain 2 recent turns after compression, got %d", len(snapshot.RecentTurns))
+	}
+
+	fragment := snapshot.Fragments[0]
+	if fragment.Summary == "" {
+		t.Fatalf("expected fragment summary")
+	}
+	if len(fragment.KeyFacts) == 0 {
+		t.Fatalf("expected key facts extracted from compressed turns")
+	}
+	sourceRefCount := 0
+	for _, item := range snapshot.Fragments {
+		sourceRefCount += len(item.SourceTurns)
+	}
+	if sourceRefCount < 2 {
+		t.Fatalf("expected source turn refs keep compressed history, got %d", sourceRefCount)
+	}
+	if fragment.SourceTurns[0].UserMessageID != "m1" {
+		t.Fatalf("expected first source turn to keep original message id, got %q", fragment.SourceTurns[0].UserMessageID)
+	}
+	if len(fragment.SourceTurns) == 0 || fragment.SourceTurns[0].AssistantReplyRef == "" {
+		t.Fatalf("expected assistant reply reference kept in compressed fragment")
+	}
+}
+
+func TestSessionMemoryCompressionPreservesReferenceResolutionFromFragments(t *testing.T) {
+	store := newSessionMemoryStore(SessionMemoryOptions{
+		MaxTurns:                 6,
+		TTL:                      time.Hour,
+		MaxSnippets:              200,
+		CompressionTriggerTokens: 70,
+		CompressionSummaryTokens: 40,
+		CompressionRetainTurns:   1,
+		CompressionMaxFacts:      4,
+	})
+
+	now := time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC)
+	longTail := strings.Repeat(" release guardrail", 12)
+
+	store.Record(memoryMessageWithID("s1", "m1", "给我一个发布方案"+longTail, now.Add(-3*time.Minute)), shareddomain.RouteNL, "方案A：蓝绿发布")
+	store.Record(memoryMessageWithID("s1", "m2", "owner: sre-team rollback_window: 30m"+longTail, now.Add(-2*time.Minute)), shareddomain.RouteNL, "方案A：补充灰度计划")
+	store.Record(memoryMessageWithID("s1", "m3", "请继续补充验证步骤"+longTail, now.Add(-1*time.Minute)), shareddomain.RouteNL, "方案A：增加验证清单")
+
+	snapshot := store.Snapshot("s1", "这个方案还有什么风险", now)
+	if len(snapshot.Fragments) == 0 {
+		t.Fatalf("expected compressed fragments for long session")
+	}
+	if snapshot.Reference == "" {
+		t.Fatalf("expected reference resolved from compressed memory")
+	}
+	if !strings.Contains(snapshot.Reference, "方案A") {
+		t.Fatalf("expected reference keep historical plan hint, got %q", snapshot.Reference)
+	}
+	if snapshot.Metadata()["memory_context_compressed"] != "true" {
+		t.Fatalf("expected compressed metadata=true, got %+v", snapshot.Metadata())
+	}
+
+	prompt := buildSessionMemoryPrompt("这个方案还有什么风险", snapshot)
+	if !strings.Contains(prompt, "Compressed memory fragments:") {
+		t.Fatalf("expected prompt include compressed fragment section, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "source_turn_refs:") {
+		t.Fatalf("expected prompt include source turn references, got %q", prompt)
+	}
+}
+
 func memoryMessage(sessionID, content string, at time.Time) shareddomain.UnifiedMessage {
+	messageID := "m-" + sessionID + "-" + strings.ReplaceAll(content, " ", "-")
+	return memoryMessageWithID(sessionID, messageID, content, at)
+}
+
+func memoryMessageWithID(sessionID, messageID, content string, at time.Time) shareddomain.UnifiedMessage {
 	return shareddomain.UnifiedMessage{
-		MessageID:   "m-" + sessionID + "-" + strings.ReplaceAll(content, " ", "-"),
+		MessageID:   messageID,
 		SessionID:   sessionID,
 		ChannelID:   "web-default",
 		ChannelType: shareddomain.ChannelTypeWeb,
