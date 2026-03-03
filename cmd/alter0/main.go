@@ -54,6 +54,9 @@ func main() {
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
 	sessionMemoryTurns := flag.Int("session-memory-turns", 6, "short-term memory window size per session")
 	sessionMemoryTTL := flag.Duration("session-memory-ttl", 20*time.Minute, "short-term memory ttl per session")
+	contextCompressionThreshold := flag.Int("context-compression-threshold", 1200, "estimated token threshold to trigger session context compression")
+	contextCompressionSummaryTokens := flag.Int("context-compression-summary-tokens", 220, "estimated token budget per compressed summary fragment")
+	contextCompressionRetainTurns := flag.Int("context-compression-retain-turns", 4, "recent turns retained before compressing historical turns")
 	mandatoryContextFile := flag.String("mandatory-context-file", "SOUL.md", "mandatory context file path")
 	flag.Parse()
 	listenAddr := strings.TrimSpace(*webAddr)
@@ -121,8 +124,11 @@ func main() {
 		telemetry,
 		logger,
 		orchapp.WithSessionMemoryOptions(orchapp.SessionMemoryOptions{
-			MaxTurns: *sessionMemoryTurns,
-			TTL:      *sessionMemoryTTL,
+			MaxTurns:                 *sessionMemoryTurns,
+			TTL:                      *sessionMemoryTTL,
+			CompressionTriggerTokens: *contextCompressionThreshold,
+			CompressionSummaryTokens: *contextCompressionSummaryTokens,
+			CompressionRetainTurns:   *contextCompressionRetainTurns,
 		}),
 		orchapp.WithMandatoryContextOptions(orchapp.MandatoryContextOptions{
 			FilePath: *mandatoryContextFile,
