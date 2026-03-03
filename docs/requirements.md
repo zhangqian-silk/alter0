@@ -38,7 +38,7 @@
 | R-019 | 会话内容持久化 | planned | 将会话消息、元数据与状态持久化存储，支持重启恢复与历史查询 |
 | R-020 | 上下文压缩 | planned | 对超长上下文进行分层压缩与摘要回写，在控制 token 成本的同时保留关键信息 |
 | R-021 | Skills/MCP 标准化能力模型 | supported | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
-| R-022 | 用户配置 Skills 接入 Codex | planned | 将启用的用户 Skills 以标准协议注入 Codex 执行上下文，支持选择、排序与冲突处理 |
+| R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex 执行上下文，支持选择、排序与冲突处理 |
 | R-023 | 用户配置 MCP 接入 Codex | planned | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | planned | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | planned | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
@@ -171,6 +171,17 @@
 2. 定义 Skills 注入协议（名称、描述、参数模板、约束）以避免自由文本拼接。
 3. 提供冲突处理策略（同名 skill、重复能力、参数冲突）并可观测。
 4. 验收：关闭某 Skill 后不再注入；开启后可在 Codex 执行结果中体现其能力影响。
+
+##### Traceability
+
+- 实现文件：`internal/execution/domain/skill_context.go`、`internal/execution/application/skill_context_resolver.go`、`internal/execution/application/service.go`、`internal/execution/infrastructure/codex_cli_processor.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/execution/application/service_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/orchestration/application/service_test.go`
+- 协议约束：`alter0.skill-context/v1`，注入结构固定为 `protocol`、`skills[].name/description/parameter_template/constraints`、`resolved_parameters`、`conflicts`；通过 `alter0.skill_context` 元数据注入，禁止自由文本拼接。
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-03：仅注入 `enabled=true` 的 Skills，按 `skill.priority` 降序注入；关闭 Skill 后 `skills.injected_count` 与注入上下文立即收敛。
+  - 2026-03-03：同名 Skill、重复能力、参数值冲突按优先级保留高优先级项，冲突明细写入 `skills.conflicts` 与 `skills.conflict_types`。
+  - 2026-03-03：Codex 执行参数切换为结构化 JSON 载荷（`alter0.codex-exec/v1`），执行结果元数据可观测 `skills.injected_ids`、`skills.injected_count`、`skills.conflict_count`。
 
 #### R-023 用户配置 MCP 接入 Codex
 
