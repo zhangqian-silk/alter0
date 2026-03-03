@@ -29,7 +29,7 @@
 | ID | 需求 | 状态 | 目标 |
 | --- | --- | --- | --- |
 | R-012 | Web 侧边栏交互优化 | ready | 点击侧边栏项后进入“信息展示模式”：主区域仅展示对应信息，不再弹出或保留对话框；侧边栏在展开态提供显式折叠按钮 |
-| R-013 | 流式传输能力 | planned | 提供端到端流式响应：后端增量推送生成内容，前端实时渲染并可感知进行中/完成/失败状态 |
+| R-013 | 流式传输能力 | ready | 提供端到端流式响应：后端增量推送生成内容，前端实时渲染并可感知进行中/完成/失败状态 |
 | R-014 | 移动端真机适配增强 | planned | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭与手势交互），确保 iOS/Android 浏览器下稳定可用 |
 | R-015 | 移动端会话创建与信息完整性 | planned | 确保移动端可稳定新建会话，并完整展示会话必要信息（标题、入口状态、空态提示） |
 | R-016 | 会话级并发控制与全局限流 | planned | 支持多会话并发处理，同时保证同一会话顺序一致，并提供系统级并发上限、排队与超时降级能力 |
@@ -70,6 +70,16 @@
 3. 前端在流式过程中实时追加渲染，`done` 后收敛为完整消息；`error` 时展示可重试提示。
 4. 保留非流式回退路径（旧接口或开关控制），确保兼容现有调用方。
 5. 验收：一次正常流式响应可看到逐步输出；断流或异常时前端有明确失败状态。
+##### Task Breakdown (auto-managed)
+
+1. Scope split
+   - Clarify boundaries under existing requirement description; do not create new requirement IDs.
+2. Delivery plan
+   - Split into M1/M2 milestones with concrete acceptance checks.
+3. Status workflow
+   - Keep lifecycle as planned -> ready -> supported; update this row only.
+4. Traceability
+   - Keep change notes and verification criteria inside this requirement section.
 
 #### R-015 移动端会话创建与信息完整性
 
