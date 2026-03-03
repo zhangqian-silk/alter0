@@ -422,9 +422,9 @@ body {
   box-shadow: var(--shadow-soft);
 }
 
-.msg.assistant.in-progress .msg-bubble {
-  border-color: rgba(47, 103, 246, 0.3);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(237, 244, 255, 0.96) 100%);
+.msg.assistant.streaming .msg-bubble {
+  border-color: rgba(47, 103, 246, 0.34);
+  background: linear-gradient(135deg, rgba(47, 103, 246, 0.08) 0%, #ffffff 75%);
 }
 
 .msg.assistant.error .msg-bubble {
@@ -458,19 +458,31 @@ body {
   font-weight: 700;
 }
 
-.status-pill.in-progress {
-  color: #1f56d3;
-  background: rgba(47, 103, 246, 0.14);
+.status-pill.done {
+  background: rgba(63, 92, 151, 0.12);
+  color: #33528f;
 }
 
-.status-pill.done {
-  color: #176741;
-  background: rgba(43, 174, 110, 0.14);
+.status-pill.streaming {
+  background: rgba(47, 103, 246, 0.16);
+  color: #2348bd;
+  animation: streamPulse 1.2s ease-in-out infinite;
 }
 
 .status-pill.error {
-  color: #8f3030;
   background: rgba(178, 74, 74, 0.2);
+  color: #9e2c2c;
+}
+
+@keyframes streamPulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 .composer-shell {

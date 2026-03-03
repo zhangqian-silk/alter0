@@ -5,8 +5,6 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -53,6 +51,27 @@ type messageResponse struct {
 	Error  string                           `json:"error,omitempty"`
 }
 
+type streamStartResponse struct {
+	MessageID string `json:"message_id"`
+	SessionID string `json:"session_id"`
+	ChannelID string `json:"channel_id"`
+	TraceID   string `json:"trace_id"`
+}
+
+type streamDeltaResponse struct {
+	Delta string             `json:"delta"`
+	Route shareddomain.Route `json:"route,omitempty"`
+}
+
+type streamDoneResponse struct {
+	Result shareddomain.OrchestrationResult `json:"result"`
+}
+
+type streamErrorResponse struct {
+	Error  string                           `json:"error"`
+	Result shareddomain.OrchestrationResult `json:"result,omitempty"`
+}
+
 type channelUpsertRequest struct {
 	Type        string            `json:"type"`
 	Enabled     *bool             `json:"enabled,omitempty"`
@@ -89,26 +108,6 @@ type cronJobResponse struct {
 	ChannelID string            `json:"channel_id,omitempty"`
 	Content   string            `json:"content"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
-}
-
-type streamStartEvent struct {
-	MessageID string `json:"message_id"`
-	SessionID string `json:"session_id"`
-	TraceID   string `json:"trace_id"`
-}
-
-type streamDeltaEvent struct {
-	Index int    `json:"index"`
-	Delta string `json:"delta"`
-}
-
-type streamDoneEvent struct {
-	Result shareddomain.OrchestrationResult `json:"result"`
-}
-
-type streamErrorEvent struct {
-	Error  string                           `json:"error"`
-	Result shareddomain.OrchestrationResult `json:"result,omitempty"`
 }
 
 func NewServer(
@@ -217,17 +216,21 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, statusCode, err := s.parseIncomingMessage(r)
+	msg, statusCode, err := s.prepareMessage(r)
 	if err != nil {
 		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
 		return
 	}
 
-	s.countGateway(msg.ChannelType)
+	s.countGateway(string(msg.ChannelType))
 	result, err := s.orchestrator.Handle(r.Context(), msg)
 	if err != nil {
-		s.logMessageFailure(msg, err)
-		writeJSON(w, resultHTTPStatus(result), messageResponse{
+		statusCode := http.StatusBadRequest
+		if result.ErrorCode == "command_failed" || result.ErrorCode == "nl_execution_failed" {
+			statusCode = http.StatusInternalServerError
+		}
+		s.logWebMessageFailure(msg, err)
+		writeJSON(w, statusCode, messageResponse{
 			Result: result,
 			Error:  err.Error(),
 		})
@@ -245,7 +248,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, statusCode, err := s.parseIncomingMessage(r)
+	msg, statusCode, err := s.prepareMessage(r)
 	if err != nil {
 		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
 		return
@@ -253,54 +256,48 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming unsupported"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
 
-	s.countGateway(msg.ChannelType)
-	if err := writeSSEEvent(w, "start", streamStartEvent{
+	s.countGateway(string(msg.ChannelType))
+	if err := writeSSE(w, "start", streamStartResponse{
 		MessageID: msg.MessageID,
 		SessionID: msg.SessionID,
+		ChannelID: msg.ChannelID,
 		TraceID:   msg.TraceID,
 	}); err != nil {
 		return
 	}
 	flusher.Flush()
 
-	result, err := s.orchestrator.Handle(r.Context(), msg)
-	if err != nil {
-		s.logMessageFailure(msg, err)
-		_ = writeSSEEvent(w, "error", streamErrorEvent{
-			Error:  err.Error(),
+	result, handleErr := s.orchestrator.Handle(r.Context(), msg)
+	if handleErr != nil {
+		s.logWebMessageFailure(msg, handleErr)
+		_ = writeSSE(w, "error", streamErrorResponse{
+			Error:  handleErr.Error(),
 			Result: result,
 		})
 		flusher.Flush()
 		return
 	}
 
-	chunks := splitTextChunks(result.Output, 24)
-	for idx, chunk := range chunks {
-		if r.Context().Err() != nil {
-			return
-		}
-		if err := writeSSEEvent(w, "delta", streamDeltaEvent{
-			Index: idx,
+	for _, chunk := range chunkText(result.Output, 24) {
+		if err := writeSSE(w, "delta", streamDeltaResponse{
 			Delta: chunk,
+			Route: result.Route,
 		}); err != nil {
 			return
 		}
 		flusher.Flush()
 	}
 
-	if err := writeSSEEvent(w, "done", streamDoneEvent{Result: result}); err != nil {
-		return
-	}
+	_ = writeSSE(w, "done", streamDoneResponse{Result: result})
 	flusher.Flush()
 }
 
@@ -515,7 +512,18 @@ func toCronJobResponse(job schedulerdomain.Job) cronJobResponse {
 	}
 }
 
-func (s *Server) parseIncomingMessage(r *http.Request) (shareddomain.UnifiedMessage, int, error) {
+func resourceID(path, prefix string) (string, bool) {
+	if !strings.HasPrefix(path, prefix) {
+		return "", false
+	}
+	id := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if id == "" || strings.Contains(id, "/") {
+		return "", false
+	}
+	return id, true
+}
+
+func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, int, error) {
 	defer r.Body.Close()
 
 	var req messageRequest
@@ -528,7 +536,7 @@ func (s *Server) parseIncomingMessage(r *http.Request) (shareddomain.UnifiedMess
 
 	sessionID := strings.TrimSpace(req.SessionID)
 	if sessionID == "" {
-		sessionID = s.newID()
+		sessionID = s.idGenerator.NewID()
 	}
 
 	channelID := strings.TrimSpace(req.ChannelID)
@@ -548,44 +556,29 @@ func (s *Server) parseIncomingMessage(r *http.Request) (shareddomain.UnifiedMess
 		channelType = channel.Type
 	}
 
-	msg := shareddomain.UnifiedMessage{
-		MessageID:     s.newID(),
+	return shareddomain.UnifiedMessage{
+		MessageID:     s.idGenerator.NewID(),
 		SessionID:     sessionID,
-		UserID:        strings.TrimSpace(req.UserID),
+		UserID:        req.UserID,
 		ChannelID:     channelID,
 		ChannelType:   channelType,
 		TriggerType:   shareddomain.TriggerTypeUser,
 		Content:       req.Content,
 		Metadata:      req.Metadata,
-		TraceID:       s.newID(),
+		TraceID:       s.idGenerator.NewID(),
 		CorrelationID: strings.TrimSpace(req.CorrelationID),
 		ReceivedAt:    time.Now().UTC(),
-	}
-	return msg, http.StatusOK, nil
+	}, http.StatusOK, nil
 }
 
-func (s *Server) newID() string {
-	if s.idGenerator != nil {
-		return s.idGenerator.NewID()
-	}
-	return fmt.Sprintf("web-%d", time.Now().UnixNano())
-}
-
-func (s *Server) countGateway(channelType shareddomain.ChannelType) {
+func (s *Server) countGateway(channelType string) {
 	if s.telemetry == nil {
 		return
 	}
-	s.telemetry.CountGateway(string(channelType))
+	s.telemetry.CountGateway(channelType)
 }
 
-func resultHTTPStatus(result shareddomain.OrchestrationResult) int {
-	if result.ErrorCode == "command_failed" || result.ErrorCode == "nl_execution_failed" {
-		return http.StatusInternalServerError
-	}
-	return http.StatusBadRequest
-}
-
-func (s *Server) logMessageFailure(msg shareddomain.UnifiedMessage, err error) {
+func (s *Server) logWebMessageFailure(msg shareddomain.UnifiedMessage, err error) {
 	if s.logger == nil {
 		return
 	}
@@ -599,48 +592,38 @@ func (s *Server) logMessageFailure(msg shareddomain.UnifiedMessage, err error) {
 	)
 }
 
-func splitTextChunks(text string, chunkSize int) []string {
-	if text == "" {
-		return nil
-	}
-	if chunkSize <= 0 {
-		chunkSize = 24
-	}
-	runes := []rune(text)
-	chunks := make([]string, 0, (len(runes)+chunkSize-1)/chunkSize)
-	for i := 0; i < len(runes); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runes) {
-			end = len(runes)
-		}
-		chunks = append(chunks, string(runes[i:end]))
-	}
-	return chunks
-}
-
-func writeSSEEvent(w io.Writer, event string, payload any) error {
-	body, err := json.Marshal(payload)
+func writeSSE(w http.ResponseWriter, event string, payload any) error {
+	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "event: %s\n", strings.TrimSpace(event)); err != nil {
+	if _, err := w.Write([]byte("event: " + event + "\n")); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", body); err != nil {
+	if _, err := w.Write([]byte("data: " + string(data) + "\n\n")); err != nil {
 		return err
 	}
 	return nil
 }
 
-func resourceID(path, prefix string) (string, bool) {
-	if !strings.HasPrefix(path, prefix) {
-		return "", false
+func chunkText(content string, maxRunes int) []string {
+	if maxRunes <= 0 {
+		maxRunes = 1
 	}
-	id := strings.Trim(strings.TrimPrefix(path, prefix), "/")
-	if id == "" || strings.Contains(id, "/") {
-		return "", false
+	runes := []rune(content)
+	if len(runes) == 0 {
+		return nil
 	}
-	return id, true
+
+	chunks := make([]string, 0, (len(runes)+maxRunes-1)/maxRunes)
+	for start := 0; start < len(runes); start += maxRunes {
+		end := start + maxRunes
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunks = append(chunks, string(runes[start:end]))
+	}
+	return chunks
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, value any) {

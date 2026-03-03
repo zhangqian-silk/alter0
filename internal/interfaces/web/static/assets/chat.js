@@ -30,7 +30,7 @@ const MAX_CHARS = 10000;
 const DEFAULT_ROUTE = "chat";
 const SWIPE_CLOSE_THRESHOLD = 46;
 const STREAM_ENDPOINT = "/api/messages/stream";
-const MESSAGE_ENDPOINT = "/api/messages";
+const FALLBACK_ENDPOINT = "/api/messages";
 
 const ROUTES = {
   chat: {
@@ -230,15 +230,13 @@ function updateSessionTitle(session, fallbackText) {
 }
 
 function appendMessage(role, text, options = {}) {
-  const sessionID = options.sessionID || state.activeSessionID;
-  let session = getSession(sessionID);
+  let session = getSession();
   if (!session) {
     session = createSession();
   }
   if (role === "user") {
     updateSessionTitle(session, text);
   }
-
   const message = {
     id: makeID(),
     role,
@@ -246,76 +244,33 @@ function appendMessage(role, text, options = {}) {
     at: Date.now(),
     route: options.route || "",
     error: Boolean(options.error),
-    status: options.status || (options.error ? "error" : "done")
+    status: options.status || (options.error ? "error" : "done"),
+    retryable: Boolean(options.retryable)
   };
   session.messages.push(message);
   renderSessions();
   renderMessages();
   syncHeader();
-  return message.id;
+  return message;
 }
 
-function updateMessage(sessionID, messageID, patch) {
-  const session = getSession(sessionID);
-  if (!session) {
+function updateMessage(message, patch = {}) {
+  if (!message) {
     return;
   }
-
-  const target = session.messages.find((item) => item.id === messageID);
-  if (!target) {
-    return;
-  }
-
-  if (typeof patch.text === "string") {
-    target.text = patch.text;
-  }
-  if (typeof patch.route === "string") {
-    target.route = patch.route;
-  }
-  if (typeof patch.error === "boolean") {
-    target.error = patch.error;
-  }
-  if (typeof patch.status === "string") {
-    target.status = patch.status;
-  }
-  target.at = Date.now();
-
-  renderSessions();
+  Object.assign(message, patch);
   renderMessages();
   syncHeader();
 }
 
-function appendDeltaToMessage(sessionID, messageID, delta) {
-  const session = getSession(sessionID);
-  if (!session) {
-    return "";
-  }
-  const target = session.messages.find((item) => item.id === messageID);
-  if (!target) {
-    return "";
-  }
-  target.text = `${target.text || ""}${delta}`;
-  target.status = "in-progress";
-  target.error = false;
-  target.at = Date.now();
-
-  renderSessions();
-  renderMessages();
-  syncHeader();
-  return target.text;
-}
-
-function messageStatusLabel(msg) {
-  if (msg.status === "in-progress") {
+function assistantStatusLabel(status) {
+  if (status === "streaming") {
     return "进行中";
   }
-  if (msg.status === "error" || msg.error) {
+  if (status === "error") {
     return "失败";
   }
-  if (msg.status === "done") {
-    return "完成";
-  }
-  return "";
+  return "已完成";
 }
 
 function renderMessages() {
@@ -336,20 +291,16 @@ function renderMessages() {
   for (const msg of active.messages) {
     const container = document.createElement("article");
     container.className = `msg ${msg.role}`;
-    if (msg.status) {
-      container.classList.add(msg.status);
-    }
     if (msg.error) {
       container.classList.add("error");
+    }
+    if (msg.status === "streaming") {
+      container.classList.add("streaming");
     }
 
     const bubble = document.createElement("div");
     bubble.className = "msg-bubble";
-    if (msg.role === "assistant" && msg.status === "in-progress" && !msg.text) {
-      bubble.textContent = "处理中...";
-    } else {
-      bubble.textContent = msg.text;
-    }
+    bubble.textContent = msg.text;
 
     const meta = document.createElement("div");
     meta.className = "msg-meta";
@@ -362,13 +313,10 @@ function renderMessages() {
     }
 
     if (msg.role === "assistant") {
-      const statusText = messageStatusLabel(msg);
-      if (statusText) {
-        const status = document.createElement("span");
-        status.className = `status-pill ${msg.status || "done"}`;
-        status.textContent = statusText;
-        meta.appendChild(status);
-      }
+      const status = document.createElement("span");
+      status.className = `status-pill ${msg.status || "done"}`;
+      status.textContent = assistantStatusLabel(msg.status);
+      meta.appendChild(status);
     }
 
     const time = document.createElement("span");
@@ -399,6 +347,205 @@ function updateCharCount() {
   charCount.textContent = `${value.length}/${MAX_CHARS}`;
 }
 
+async function safeReadJSON(response) {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
+}
+
+function parseSSEBlock(block) {
+  const lines = block.split("\n");
+  let event = "message";
+  const dataLines = [];
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) {
+      continue;
+    }
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+
+  if (!dataLines.length) {
+    return null;
+  }
+
+  const rawData = dataLines.join("\n");
+  try {
+    return { event, data: JSON.parse(rawData) };
+  } catch {
+    return { event, data: { raw: rawData } };
+  }
+}
+
+async function sendMessageStream(payload, assistantMessage) {
+  let sawEvent = false;
+  let sawDone = false;
+  let routeHint = "";
+  let output = "";
+
+  try {
+    const response = await fetch(STREAM_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Accept: "text/event-stream",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const body = await safeReadJSON(response);
+      const failure = body.error || body?.result?.error_code || `HTTP ${response.status}`;
+      return { ok: false, canFallback: true, error: failure };
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("text/event-stream") || !response.body) {
+      return { ok: false, canFallback: true, error: "streaming endpoint unavailable" };
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let streamError = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        buffer += "\n\n";
+      } else {
+        buffer += decoder.decode(value, { stream: true });
+      }
+
+      let splitAt = buffer.indexOf("\n\n");
+      while (splitAt >= 0) {
+        const block = buffer.slice(0, splitAt).replace(/\r/g, "");
+        buffer = buffer.slice(splitAt + 2);
+
+        const parsed = parseSSEBlock(block);
+        if (parsed) {
+          sawEvent = true;
+          if (parsed.event === "start") {
+            updateMessage(assistantMessage, {
+              status: "streaming",
+              error: false,
+              retryable: false,
+              text: output || "处理中..."
+            });
+          } else if (parsed.event === "delta") {
+            const delta = typeof parsed.data.delta === "string" ? parsed.data.delta : "";
+            if (typeof parsed.data.route === "string" && parsed.data.route) {
+              routeHint = parsed.data.route;
+            }
+            if (delta) {
+              output += delta;
+              updateMessage(assistantMessage, {
+                text: output,
+                route: routeHint,
+                status: "streaming",
+                at: Date.now()
+              });
+            }
+          } else if (parsed.event === "done") {
+            const result = parsed.data && typeof parsed.data === "object" ? parsed.data.result || {} : {};
+            const route = typeof result.route === "string" && result.route ? result.route : routeHint;
+            const finalOutput = typeof result.output === "string" ? result.output : output;
+            updateMessage(assistantMessage, {
+              text: finalOutput.trim() || "已收到请求，但当前没有输出内容。",
+              route,
+              error: false,
+              status: "done",
+              retryable: false,
+              at: Date.now()
+            });
+            sawDone = true;
+          } else if (parsed.event === "error") {
+            const result = parsed.data && typeof parsed.data === "object" ? parsed.data.result || {} : {};
+            if (typeof result.route === "string" && result.route) {
+              routeHint = result.route;
+            }
+            const message = typeof parsed.data.error === "string" && parsed.data.error ? parsed.data.error : "流式连接异常";
+            updateMessage(assistantMessage, {
+              text: `流式请求失败：${message}，请重试。`,
+              route: routeHint,
+              error: true,
+              status: "error",
+              retryable: true,
+              at: Date.now()
+            });
+            streamError = message;
+          }
+        }
+
+        splitAt = buffer.indexOf("\n\n");
+      }
+
+      if (streamError) {
+        await reader.cancel();
+        return { ok: false, canFallback: false, error: streamError };
+      }
+      if (done) {
+        break;
+      }
+    }
+
+    if (sawDone) {
+      return { ok: true, canFallback: false, error: "" };
+    }
+
+    return {
+      ok: false,
+      canFallback: !sawEvent,
+      error: sawEvent ? "流式连接中断" : "streaming endpoint unavailable"
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "未知网络异常";
+    return { ok: false, canFallback: !sawEvent, error: message };
+  }
+}
+
+async function sendMessageFallback(payload, assistantMessage) {
+  const response = await fetch(FALLBACK_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const body = await safeReadJSON(response);
+  if (!response.ok) {
+    const failure = body.error || body?.result?.error_code || `HTTP ${response.status}`;
+    updateMessage(assistantMessage, {
+      text: `请求失败：${failure}，请重试。`,
+      route: body?.result?.route || "",
+      error: true,
+      status: "error",
+      retryable: true,
+      at: Date.now()
+    });
+    return;
+  }
+
+  const output = (body?.result?.output || "").trim() || "已收到请求，但当前没有输出内容。";
+  updateMessage(assistantMessage, {
+    text: output,
+    route: body?.result?.route || "",
+    error: false,
+    status: "done",
+    retryable: false,
+    at: Date.now()
+  });
+}
+
 async function sendMessage(rawContent) {
   if (state.currentRoute !== "chat") {
     navigateToRoute("chat");
@@ -408,267 +555,52 @@ async function sendMessage(rawContent) {
     return;
   }
 
-  const session = getSession() || createSession();
-  const sessionID = session.id;
-
-  appendMessage("user", content, { sessionID });
-  const assistantMessageID = appendMessage("assistant", "", {
-    sessionID,
-    status: "in-progress"
-  });
-
+  appendMessage("user", content);
   input.value = "";
   updateCharCount();
   setPending(true);
+
+  const active = getSession();
   const payload = {
-    session_id: sessionID,
+    session_id: active ? active.id : "",
     channel_id: "web-default",
     content
   };
+  const assistantMessage = appendMessage("assistant", "处理中...", { status: "streaming" });
 
   try {
-    const streamMode = await sendMessageViaStream(payload, sessionID, assistantMessageID);
-    if (streamMode === "fallback") {
-      await sendMessageViaJSON(payload, sessionID, assistantMessageID);
+    const streamResult = await sendMessageStream(payload, assistantMessage);
+    if (streamResult.ok) {
+      return;
+    }
+
+    if (streamResult.canFallback) {
+      await sendMessageFallback(payload, assistantMessage);
+      return;
+    }
+
+    if (assistantMessage.status !== "error") {
+      updateMessage(assistantMessage, {
+        text: `流式请求失败：${streamResult.error || "未知异常"}，请重试。`,
+        error: true,
+        status: "error",
+        retryable: true,
+        at: Date.now()
+      });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "未知网络异常";
-    updateMessage(sessionID, assistantMessageID, {
-      text: `请求失败：${message}`,
+    updateMessage(assistantMessage, {
+      text: `网络异常：${message}，请重试。`,
       error: true,
-      status: "error"
+      status: "error",
+      retryable: true,
+      at: Date.now()
     });
   } finally {
     setPending(false);
     input.focus();
   }
-}
-
-function safeJSONParse(raw, fallback = {}) {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-}
-
-function parseSSEBlock(block) {
-  const lines = block.split("\n");
-  let event = "message";
-  const dataLines = [];
-
-  for (const line of lines) {
-    if (!line || line.startsWith(":")) {
-      continue;
-    }
-    const separator = line.indexOf(":");
-    const field = separator >= 0 ? line.slice(0, separator) : line;
-    let value = separator >= 0 ? line.slice(separator + 1) : "";
-    if (value.startsWith(" ")) {
-      value = value.slice(1);
-    }
-
-    if (field === "event") {
-      event = value;
-      continue;
-    }
-    if (field === "data") {
-      dataLines.push(value);
-    }
-  }
-
-  if (!dataLines.length && event === "message") {
-    return null;
-  }
-  return {
-    event,
-    data: dataLines.join("\n")
-  };
-}
-
-async function readSSEEvents(response, onEvent) {
-  if (!response.body || typeof response.body.getReader !== "function") {
-    throw new Error("当前环境不支持流式读取");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      const raw = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      const parsed = parseSSEBlock(raw);
-      if (parsed) {
-        onEvent(parsed);
-      }
-      boundary = buffer.indexOf("\n\n");
-    }
-  }
-
-  buffer += decoder.decode();
-  buffer = buffer.replace(/\r\n/g, "\n");
-  if (buffer.trim()) {
-    const parsed = parseSSEBlock(buffer.trim());
-    if (parsed) {
-      onEvent(parsed);
-    }
-  }
-}
-
-async function extractErrorMessage(response) {
-  const contentType = response.headers.get("Content-Type") || "";
-  if (contentType.includes("application/json")) {
-    try {
-      const body = await response.json();
-      return body.error || body?.result?.error_code || `HTTP ${response.status}`;
-    } catch {
-      return `HTTP ${response.status}`;
-    }
-  }
-
-  try {
-    const text = (await response.text()).trim();
-    return text || `HTTP ${response.status}`;
-  } catch {
-    return `HTTP ${response.status}`;
-  }
-}
-
-async function sendMessageViaJSON(payload, sessionID, messageID) {
-  const response = await fetch(MESSAGE_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-
-  let body = {};
-  try {
-    body = await response.json();
-  } catch {
-    body = {};
-  }
-
-  if (!response.ok) {
-    const failure = body.error || body?.result?.error_code || `HTTP ${response.status}`;
-    updateMessage(sessionID, messageID, {
-      text: `请求失败：${failure}`,
-      route: body?.result?.route || "",
-      error: true,
-      status: "error"
-    });
-    return;
-  }
-
-  const output = (body?.result?.output || "").trim() || "已收到请求，但当前没有输出内容。";
-  updateMessage(sessionID, messageID, {
-    text: output,
-    route: body?.result?.route || "",
-    error: false,
-    status: "done"
-  });
-}
-
-async function sendMessageViaStream(payload, sessionID, messageID) {
-  const response = await fetch(STREAM_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-
-  if (response.status === 404 || response.status === 405 || response.status === 501) {
-    return "fallback";
-  }
-
-  const contentType = response.headers.get("Content-Type") || "";
-  if (!contentType.includes("text/event-stream")) {
-    if (response.ok) {
-      return "fallback";
-    }
-    const failure = await extractErrorMessage(response);
-    throw new Error(failure);
-  }
-  if (!response.ok) {
-    const failure = await extractErrorMessage(response);
-    throw new Error(failure);
-  }
-
-  let done = false;
-  let streamError = "";
-  let fullText = "";
-
-  await readSSEEvents(response, (evt) => {
-    const payloadData = safeJSONParse(evt.data, {});
-
-    if (evt.event === "start") {
-      updateMessage(sessionID, messageID, {
-        text: "",
-        error: false,
-        status: "in-progress"
-      });
-      return;
-    }
-
-    if (evt.event === "delta") {
-      const delta = typeof payloadData.delta === "string" ? payloadData.delta : "";
-      if (!delta) {
-        return;
-      }
-      fullText = appendDeltaToMessage(sessionID, messageID, delta);
-      return;
-    }
-
-    if (evt.event === "error") {
-      streamError = payloadData.error || "流式响应失败";
-      const message = fullText ? `${fullText}\n\n请求失败：${streamError}` : `请求失败：${streamError}`;
-      updateMessage(sessionID, messageID, {
-        text: message,
-        route: payloadData?.result?.route || "",
-        error: true,
-        status: "error"
-      });
-      return;
-    }
-
-    if (evt.event === "done") {
-      const result = payloadData.result || {};
-      const output = typeof result.output === "string" ? result.output : fullText;
-      const finalText = output.trim() || "已收到请求，但当前没有输出内容。";
-      updateMessage(sessionID, messageID, {
-        text: finalText,
-        route: result.route || "",
-        error: false,
-        status: "done"
-      });
-      done = true;
-    }
-  });
-
-  if (streamError) {
-    return "stream-error";
-  }
-  if (!done) {
-    const message = fullText ? `${fullText}\n\n请求失败：流式连接中断，请重试` : "请求失败：流式连接中断，请重试";
-    updateMessage(sessionID, messageID, {
-      text: message,
-      error: true,
-      status: "error"
-    });
-    return "stream-error";
-  }
-  return "stream";
 }
 
 function activeMenuRoute(route) {

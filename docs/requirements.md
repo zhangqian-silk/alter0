@@ -81,6 +81,11 @@
 4. Traceability
    - Keep change notes and verification criteria inside this requirement section.
 
+##### Traceability
+
+- 实现文件：`internal/interfaces/web/server.go`、`internal/interfaces/web/server_message_test.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
+- 验证：`go test ./...`
+
 #### R-015 移动端会话创建与信息完整性
 
 1. 在移动端视口中，`New Chat` 入口需始终可达（不被遮挡、不依赖桌面交互路径）。
