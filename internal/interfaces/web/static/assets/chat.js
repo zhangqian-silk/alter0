@@ -641,6 +641,13 @@ function closeTransientPanels() {
   syncOverlayState();
 }
 
+function collapseMobileSidebar() {
+  if (!isMobileViewport()) {
+    return;
+  }
+  closeTransientPanels();
+}
+
 function updateKeyboardInset() {
   if (!isMobileViewport() || !window.visualViewport) {
     rootStyle.setProperty("--keyboard-offset", "0px");
@@ -689,9 +696,7 @@ function setMainContentMode(mode) {
 
 function navigateToRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
-  if (isMobileViewport()) {
-    closeTransientPanels();
-  }
+  collapseMobileSidebar();
   const targetHash = `#${safe}`;
   if (window.location.hash !== targetHash) {
     window.location.hash = targetHash;
@@ -804,9 +809,8 @@ async function renderRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
   state.currentRoute = safe;
   activeMenuRoute(safe);
-  if (isMobileViewport()) {
-    closeTransientPanels();
-  } else {
+  collapseMobileSidebar();
+  if (!isMobileViewport()) {
     appShell.classList.remove("nav-open");
     appShell.classList.remove("panel-open");
     syncOverlayState();
@@ -862,6 +866,7 @@ function bindEvents() {
   for (const node of menuRouteItems) {
     node.addEventListener("click", () => {
       const route = node.dataset.route || DEFAULT_ROUTE;
+      collapseMobileSidebar();
       navigateToRoute(route);
     });
   }

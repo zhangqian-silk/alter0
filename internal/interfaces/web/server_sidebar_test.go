@@ -62,8 +62,10 @@ func TestSidebarCollapseStateHooksPresent(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	markers := []string{
 		"function setSidebarCollapsed(collapsed)",
+		"function collapseMobileSidebar()",
 		`appShell.classList.toggle("nav-collapsed", collapsed)`,
 		`navCollapseButton.addEventListener("click", () => {`,
+		"collapseMobileSidebar();",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
