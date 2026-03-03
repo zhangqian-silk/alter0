@@ -43,3 +43,43 @@ func TestSidebarInfoModeStylesPresent(t *testing.T) {
 		}
 	}
 }
+
+func TestSidebarCollapseEntryPresent(t *testing.T) {
+	html := readEmbeddedAsset(t, "static/chat.html")
+	markers := []string{
+		`id="navCollapseButton"`,
+		`class="menu-icon"`,
+		`class="menu-label"`,
+	}
+	for _, marker := range markers {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("expected html marker %q", marker)
+		}
+	}
+}
+
+func TestSidebarCollapseStateHooksPresent(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"function setSidebarCollapsed(collapsed)",
+		`appShell.classList.toggle("nav-collapsed", collapsed)`,
+		`navCollapseButton.addEventListener("click", () => {`,
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	styleMarkers := []string{
+		".app-shell.nav-collapsed {",
+		".app-shell.nav-collapsed .menu-label {",
+		".menu-icon {",
+	}
+	for _, marker := range styleMarkers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}

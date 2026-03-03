@@ -11,7 +11,7 @@ const newChatButton = document.getElementById("newChatButton");
 const navToggle = document.getElementById("navToggle");
 const sessionToggle = document.getElementById("sessionToggle");
 const togglePaneButton = document.getElementById("togglePaneButton");
-const navCloseButton = document.getElementById("navCloseButton");
+const navCollapseButton = document.getElementById("navCollapseButton");
 const mobileBackdrop = document.getElementById("mobileBackdrop");
 const sessionHeading = document.getElementById("sessionHeading");
 const sessionSubheading = document.getElementById("sessionSubheading");
@@ -99,7 +99,8 @@ const state = {
   currentRoute: DEFAULT_ROUTE,
   sessions: [],
   pending: false,
-  pageRenderToken: 0
+  pageRenderToken: 0,
+  navCollapsed: false
 };
 
 function makeID() {
@@ -621,6 +622,14 @@ function isMobileViewport() {
   return window.matchMedia("(max-width: 1100px)").matches;
 }
 
+function setSidebarCollapsed(collapsed) {
+  state.navCollapsed = collapsed;
+  appShell.classList.toggle("nav-collapsed", collapsed);
+  navCollapseButton.textContent = collapsed ? "展开" : "收起";
+  navCollapseButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  navCollapseButton.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
+}
+
 function syncOverlayState() {
   const opened = appShell.classList.contains("nav-open") || appShell.classList.contains("panel-open");
   appShell.classList.toggle("overlay-open", opened);
@@ -882,8 +891,12 @@ function bindEvents() {
     closeTransientPanels();
   });
 
-  navCloseButton.addEventListener("click", () => {
-    closeTransientPanels();
+  navCollapseButton.addEventListener("click", () => {
+    if (isMobileViewport()) {
+      closeTransientPanels();
+      return;
+    }
+    setSidebarCollapsed(!state.navCollapsed);
   });
 
   mobileBackdrop.addEventListener("click", () => {
@@ -928,6 +941,9 @@ function bindEvents() {
   });
 
   window.addEventListener("resize", () => {
+    if (isMobileViewport() && state.navCollapsed) {
+      setSidebarCollapsed(false);
+    }
     if (!isMobileViewport()) {
       closeTransientPanels();
     }
@@ -957,6 +973,13 @@ function bindEvents() {
 }
 
 function init() {
+  for (const node of menuRouteItems) {
+    const label = node.querySelector(".menu-label");
+    if (label && label.textContent) {
+      node.setAttribute("title", label.textContent.trim());
+    }
+  }
+  setSidebarCollapsed(false);
   createSession();
   bindEvents();
   updateCharCount();
