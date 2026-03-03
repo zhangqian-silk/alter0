@@ -199,6 +199,75 @@ func TestLongTermMemoryImplicitPreferencePersistsAcrossSessions(t *testing.T) {
 	}
 }
 
+func TestLongTermMemoryTierConstraintsWithTTLAndLRUEviction(t *testing.T) {
+	store := newLongTermMemoryStore(LongTermMemoryOptions{
+		MaxEntriesPerScope: 16,
+		MaxHits:            6,
+		MaxSnippet:         200,
+		L1: LongTermMemoryTierOptions{
+			MaxEntryLength: 12,
+			MaxLayerTokens: 16,
+			TTL:            time.Minute,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+		L2: LongTermMemoryTierOptions{
+			MaxEntryLength: 160,
+			MaxLayerTokens: 200,
+			TTL:            time.Hour,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+		L3: LongTermMemoryTierOptions{
+			MaxEntryLength: 160,
+			MaxLayerTokens: 200,
+			TTL:            time.Hour,
+			EvictionPolicy: longTermMemoryEvictionPolicyLRU,
+		},
+	})
+	now := time.Date(2026, 3, 3, 14, 0, 0, 0, time.UTC)
+
+	store.Record(longTermMessage("l1-a", "u-1", "tenant-a", "save high priority", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L1",
+		longTermMemoryKeyMetadataKey:      "critical-note",
+		longTermMemoryValueMetadataKey:    "abcdefghijklmno",
+	}), shareddomain.RouteNL, "")
+
+	scope := resolveLongTermMemoryScope(longTermMessage("scope", "u-1", "tenant-a", "", now, nil), store.options)
+	entries := getScopeEntries(store, scope)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Tier != longTermMemoryTierL1 {
+		t.Fatalf("expected l1 tier entry, got %q", entries[0].Tier)
+	}
+	if entries[0].Value != "abcdefghijkl..." {
+		t.Fatalf("expected value truncated by tier max entry length, got %q", entries[0].Value)
+	}
+
+	store.Record(longTermMessage("l1-b", "u-1", "tenant-a", "save second", now.Add(10*time.Second), map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryTierMetadataKey:     "L1",
+		longTermMemoryKeyMetadataKey:      "second-note",
+		longTermMemoryValueMetadataKey:    "second",
+	}), shareddomain.RouteNL, "")
+
+	entries = getScopeEntries(store, scope)
+	if len(entries) != 1 {
+		t.Fatalf("expected l1 token capacity to evict oldest entry, got %d entries", len(entries))
+	}
+	if entries[0].Key != "second-note" {
+		t.Fatalf("expected oldest l1 entry evicted by LRU, got key %q", entries[0].Key)
+	}
+
+	query := longTermMessage("l1-query", "u-1", "tenant-a", "second-note", now.Add(2*time.Minute), nil)
+	snapshot := store.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.Hits) != 0 {
+		t.Fatalf("expected l1 entry expired by ttl after 2m, got %d hits", len(snapshot.Hits))
+	}
+}
+
 func longTermMessage(
 	sessionID string,
 	userID string,
