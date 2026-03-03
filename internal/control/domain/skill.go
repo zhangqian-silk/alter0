@@ -1,25 +1,43 @@
 package domain
 
-import (
-	"errors"
-	"strings"
-)
-
 type Skill struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Enabled     bool              `json:"enabled"`
-	Description string            `json:"description,omitempty"`
-	Version     string            `json:"version,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Type     CapabilityType    `json:"type"`
+	Enabled  bool              `json:"enabled"`
+	Scope    CapabilityScope   `json:"scope"`
+	Version  string            `json:"version"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+func (s Skill) AsCapability() Capability {
+	capabilityType := s.Type
+	if capabilityType == "" {
+		capabilityType = CapabilityTypeSkill
+	}
+	return Capability{
+		ID:       s.ID,
+		Name:     s.Name,
+		Type:     capabilityType,
+		Enabled:  s.Enabled,
+		Scope:    s.Scope,
+		Version:  s.Version,
+		Metadata: s.Metadata,
+	}
 }
 
 func (s Skill) Validate() error {
-	if strings.TrimSpace(s.ID) == "" {
-		return errors.New("skill id is required")
+	return s.AsCapability().Validate()
+}
+
+func SkillFromCapability(capability Capability) Skill {
+	return Skill{
+		ID:       capability.ID,
+		Name:     capability.Name,
+		Type:     capability.Type,
+		Enabled:  capability.Enabled,
+		Scope:    capability.Scope,
+		Version:  capability.Version,
+		Metadata: capability.Metadata,
 	}
-	if strings.TrimSpace(s.Name) == "" {
-		return errors.New("skill name is required")
-	}
-	return nil
 }
