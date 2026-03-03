@@ -11,9 +11,12 @@ const newChatButton = document.getElementById("newChatButton");
 const navToggle = document.getElementById("navToggle");
 const sessionToggle = document.getElementById("sessionToggle");
 const togglePaneButton = document.getElementById("togglePaneButton");
+const navCloseButton = document.getElementById("navCloseButton");
+const mobileBackdrop = document.getElementById("mobileBackdrop");
 const sessionHeading = document.getElementById("sessionHeading");
 const sessionSubheading = document.getElementById("sessionSubheading");
 const sessionPane = document.querySelector(".session-pane");
+const primaryNav = document.querySelector(".primary-nav");
 const chatPane = document.querySelector(".chat-pane");
 const chatView = document.getElementById("chatView");
 const routeView = document.getElementById("routeView");
@@ -205,7 +208,7 @@ function renderSessions() {
       renderSessions();
       renderMessages();
       syncHeader();
-      appShell.classList.remove("panel-open");
+      closeTransientPanels();
     });
     sessionList.appendChild(card);
   }
@@ -412,6 +415,15 @@ function parseHashRoute() {
   return ROUTES[raw] ? raw : DEFAULT_ROUTE;
 }
 
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 1100px)").matches;
+}
+
+function closeTransientPanels() {
+  appShell.classList.remove("nav-open");
+  appShell.classList.remove("panel-open");
+}
+
 function navigateToRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
   const targetHash = `#${safe}`;
@@ -507,7 +519,11 @@ async function renderRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
   state.currentRoute = safe;
   activeMenuRoute(safe);
-  appShell.classList.remove("nav-open");
+  if (isMobileViewport()) {
+    closeTransientPanels();
+  } else {
+    appShell.classList.remove("nav-open");
+  }
 
   const config = ROUTES[safe];
   if (config.mode === "chat") {
@@ -519,7 +535,7 @@ async function renderRoute(route) {
   }
 
   appShell.classList.add("route-mode");
-  appShell.classList.remove("panel-open");
+  closeTransientPanels();
   chatView.hidden = true;
   routeView.hidden = false;
   routeTitle.textContent = config.title;
@@ -557,7 +573,7 @@ function bindEvents() {
     createSession();
     navigateToRoute("chat");
     input.focus();
-    appShell.classList.remove("panel-open");
+    closeTransientPanels();
   });
 
   for (const node of menuRouteItems) {
@@ -568,28 +584,48 @@ function bindEvents() {
   }
 
   navToggle.addEventListener("click", () => {
-    appShell.classList.toggle("nav-open");
+    const open = !appShell.classList.contains("nav-open");
+    closeTransientPanels();
+    if (open) {
+      appShell.classList.add("nav-open");
+    }
   });
 
   sessionToggle.addEventListener("click", () => {
     if (state.currentRoute !== "chat") {
       return;
     }
-    appShell.classList.toggle("panel-open");
+    const open = !appShell.classList.contains("panel-open");
+    closeTransientPanels();
+    if (open) {
+      appShell.classList.add("panel-open");
+    }
   });
 
   togglePaneButton.addEventListener("click", () => {
     appShell.classList.remove("panel-open");
   });
 
+  navCloseButton.addEventListener("click", () => {
+    appShell.classList.remove("nav-open");
+  });
+
+  mobileBackdrop.addEventListener("click", () => {
+    closeTransientPanels();
+  });
+
   chatPane.addEventListener("click", (event) => {
-    if (!appShell.classList.contains("panel-open")) {
+    const hasOverlay = appShell.classList.contains("panel-open") || appShell.classList.contains("nav-open");
+    if (!hasOverlay) {
       return;
     }
     if (sessionPane && sessionPane.contains(event.target)) {
       return;
     }
-    appShell.classList.remove("panel-open");
+    if (primaryNav && primaryNav.contains(event.target)) {
+      return;
+    }
+    closeTransientPanels();
   });
 
   const quickPrompts = document.querySelectorAll(".prompt[data-prompt]");
@@ -607,6 +643,12 @@ function bindEvents() {
 
   window.addEventListener("hashchange", () => {
     void renderRoute(parseHashRoute());
+  });
+
+  window.addEventListener("resize", () => {
+    if (!isMobileViewport()) {
+      closeTransientPanels();
+    }
   });
 }
 
