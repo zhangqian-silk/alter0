@@ -26,6 +26,7 @@ type Service struct {
 	executor   ExecutionPort
 	memory     sessionMemory
 	longTerm   longTermMemory
+	mandatory  mandatoryContext
 	telemetry  sharedapp.Telemetry
 	logger     *slog.Logger
 }
@@ -55,6 +56,7 @@ func NewService(
 		executor:   executor,
 		memory:     newSessionMemoryStore(SessionMemoryOptions{}),
 		longTerm:   newLongTermMemoryStore(LongTermMemoryOptions{}),
+		mandatory:  newMandatoryContextStore(MandatoryContextOptions{}),
 		telemetry:  telemetry,
 		logger:     logger,
 	}
@@ -82,6 +84,9 @@ func NewServiceWithOptions(
 	if service.longTerm == nil {
 		service.longTerm = newLongTermMemoryStore(LongTermMemoryOptions{})
 	}
+	if service.mandatory == nil {
+		service.mandatory = newMandatoryContextStore(MandatoryContextOptions{})
+	}
 	return service
 }
 
@@ -106,6 +111,18 @@ func WithLongTermMemoryOptions(options LongTermMemoryOptions) ServiceOption {
 func WithLongTermMemory(memory longTermMemory) ServiceOption {
 	return func(service *Service) {
 		service.longTerm = memory
+	}
+}
+
+func WithMandatoryContextOptions(options MandatoryContextOptions) ServiceOption {
+	return func(service *Service) {
+		service.mandatory = newMandatoryContextStore(options)
+	}
+}
+
+func WithMandatoryContext(mandatory mandatoryContext) ServiceOption {
+	return func(service *Service) {
+		service.mandatory = mandatory
 	}
 }
 
@@ -158,12 +175,32 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 		s.telemetry.CountRoute(string(result.Route))
 		snapshot := s.memory.Snapshot(msg.SessionID, msg.Content, msg.ReceivedAt)
 		longTermSnapshot := s.longTerm.Snapshot(msg, msg.Content, msg.ReceivedAt)
+		mandatorySnapshot := s.mandatory.Snapshot(msg.ReceivedAt)
+		snapshot, sessionConflicts := applyMandatoryContextToSessionMemory(snapshot, mandatorySnapshot)
+		longTermSnapshot, longTermConflicts := applyMandatoryContextToLongTermMemory(longTermSnapshot, mandatorySnapshot)
+		conflicts := append(sessionConflicts, longTermConflicts...)
+		conflictMetadata := mandatoryContextConflictMetadata(conflicts)
+
+		if len(conflicts) > 0 && s.logger != nil {
+			s.logger.Warn("mandatory context overrides memory",
+				slog.String("session_id", msg.SessionID),
+				slog.String("message_id", msg.MessageID),
+				slog.String("mandatory_context_version", mandatorySnapshot.Version),
+				slog.String("mandatory_context_file", mandatorySnapshot.FilePath),
+				slog.String("mandatory_conflicts", conflictMetadata[mandatoryContextConflictDetailMetadataKey]),
+				slog.Int("mandatory_conflict_count", len(conflicts)),
+			)
+		}
 		execMessage := msg
 		execMessage.Content = buildSessionMemoryPrompt(msg.Content, snapshot)
 		execMessage.Content = buildLongTermMemoryPrompt(execMessage.Content, longTermSnapshot)
+		execMessage.Content = buildMandatoryContextPrompt(execMessage.Content, mandatorySnapshot)
 		execMessage.Metadata = mergeStringMap(
 			msg.Metadata,
-			mergeStringMap(snapshot.Metadata(), longTermSnapshot.Metadata()),
+			mergeStringMap(
+				mergeStringMap(snapshot.Metadata(), longTermSnapshot.Metadata()),
+				mergeStringMap(mandatorySnapshot.Metadata(), conflictMetadata),
+			),
 		)
 		nlResult, err := s.executor.ExecuteNaturalLanguage(ctx, execMessage)
 		if err != nil {
@@ -175,6 +212,8 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 		result.Output = nlResult.Output
 		result.Metadata = mergeStringMap(result.Metadata, snapshot.ResultMetadata())
 		result.Metadata = mergeStringMap(result.Metadata, longTermSnapshot.ResultMetadata())
+		result.Metadata = mergeStringMap(result.Metadata, mandatorySnapshot.ResultMetadata())
+		result.Metadata = mergeStringMap(result.Metadata, conflictMetadata)
 		result.Metadata = mergeStringMap(result.Metadata, nlResult.Metadata)
 		s.memory.Record(msg, result.Route, nlResult.Output)
 		s.longTerm.Record(msg, result.Route, nlResult.Output)
