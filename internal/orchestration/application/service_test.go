@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,12 +67,20 @@ func (h *stubHandler) Execute(_ context.Context, _ orchdomain.CommandRequest) (o
 }
 
 type stubExecutor struct {
-	output string
-	called int
+	output      string
+	outputs     []string
+	called      int
+	lastMessage shareddomain.UnifiedMessage
 }
 
-func (e *stubExecutor) ExecuteNaturalLanguage(_ context.Context, _ shareddomain.UnifiedMessage) (string, error) {
+func (e *stubExecutor) ExecuteNaturalLanguage(_ context.Context, msg shareddomain.UnifiedMessage) (string, error) {
 	e.called++
+	e.lastMessage = msg
+	if len(e.outputs) > 0 {
+		output := e.outputs[0]
+		e.outputs = e.outputs[1:]
+		return output, nil
+	}
 	return e.output, nil
 }
 
@@ -192,6 +201,108 @@ func TestHandleUnknownCommand(t *testing.T) {
 	}
 	if result.ErrorCode != "command_not_found" {
 		t.Fatalf("expected command_not_found, got %q", result.ErrorCode)
+	}
+}
+
+func TestHandleNLInjectsSessionMemory(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		outputs: []string{
+			"plan alpha: blue green rollout",
+			"refined execution plan",
+		},
+	}
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithSessionMemoryOptions(SessionMemoryOptions{
+			MaxTurns:    4,
+			TTL:         30 * time.Minute,
+			MaxSnippets: 180,
+		}),
+	)
+
+	firstMessage := validMessage("Give me a release plan for this sprint")
+	firstMessage.SessionID = "session-memory"
+	if _, err := service.Handle(context.Background(), firstMessage); err != nil {
+		t.Fatalf("first message failed: %v", err)
+	}
+
+	secondMessage := validMessage("Please expand that plan with rollback details")
+	secondMessage.SessionID = "session-memory"
+	result, err := service.Handle(context.Background(), secondMessage)
+	if err != nil {
+		t.Fatalf("second message failed: %v", err)
+	}
+
+	prompt := executor.lastMessage.Content
+	if !strings.Contains(prompt, "Recent turns:") {
+		t.Fatalf("expected recent turns in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "release plan for this sprint") {
+		t.Fatalf("expected previous user message in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "plan alpha: blue green rollout") {
+		t.Fatalf("expected previous assistant output in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "Reference resolution:") {
+		t.Fatalf("expected reference resolution section, got %q", prompt)
+	}
+	if result.Metadata["memory_reference_resolved"] != "true" {
+		t.Fatalf("expected memory_reference_resolved=true, got %q", result.Metadata["memory_reference_resolved"])
+	}
+}
+
+func TestHandleNLMemoryKeepsStableReferenceAcrossFollowUps(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		outputs: []string{
+			"plan alpha: baseline rollout",
+			"plan alpha: add canary validation",
+			"plan alpha: include release calendar",
+		},
+	}
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithSessionMemoryOptions(SessionMemoryOptions{
+			MaxTurns:    3,
+			TTL:         time.Hour,
+			MaxSnippets: 180,
+		}),
+	)
+
+	messages := []string{
+		"Draft a release plan",
+		"Refine that plan with verification gates",
+		"For that plan, add owner and timeline",
+	}
+	for _, content := range messages {
+		msg := validMessage(content)
+		msg.SessionID = "session-stable"
+		if _, err := service.Handle(context.Background(), msg); err != nil {
+			t.Fatalf("handle message %q failed: %v", content, err)
+		}
+	}
+
+	prompt := executor.lastMessage.Content
+	if !strings.Contains(prompt, "plan alpha: add canary validation") {
+		t.Fatalf("expected latest plan context in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "Reference resolution:") {
+		t.Fatalf("expected reference resolution in prompt, got %q", prompt)
 	}
 }
 
