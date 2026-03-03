@@ -30,7 +30,7 @@
 | --- | --- | --- | --- |
 | R-012 | Web 侧边栏交互优化 | ready | 点击侧边栏项后进入“信息展示模式”：主区域仅展示对应信息，不再弹出或保留对话框；侧边栏在展开态提供显式折叠按钮 |
 | R-013 | 流式传输能力 | ready | 提供端到端流式响应：后端增量推送生成内容，前端实时渲染并可感知进行中/完成/失败状态 |
-| R-014 | 移动端真机适配增强 | ready | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭与手势交互），确保 iOS/Android 浏览器下稳定可用 |
+| R-014 | 移动端真机适配增强 | supported | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭与手势交互），确保 iOS/Android 浏览器下稳定可用 |
 | R-015 | 移动端会话创建与信息完整性 | planned | 确保移动端可稳定新建会话，并完整展示会话必要信息（标题、入口状态、空态提示） |
 | R-016 | 会话级并发控制与全局限流 | planned | 支持多会话并发处理，同时保证同一会话顺序一致，并提供系统级并发上限、排队与超时降级能力 |
 | R-017 | 会话短期记忆 | planned | 在单会话内维护可控窗口的上下文记忆，提升多轮对话连续性与指代解析能力 |
@@ -175,16 +175,14 @@
 
 #### R-014 移动端真机适配增强
 
-1. Pending detailed breakdown.
+1. 小屏安全区适配：移动端导航抽屉、会话面板、消息区与输入区统一纳入 `env(safe-area-inset-bottom)`，避免底部刘海/手势区遮挡。
+2. 键盘跟随：基于 `VisualViewport` 实时计算软键盘占位高度并写入 `--keyboard-offset`，输入区在 iOS/Android 键盘弹起时持续可见。
+3. 遮罩关闭与手势交互：支持点击遮罩、按下 `Escape`、以及在导航/会话抽屉内左滑手势关闭覆盖层。
+4. 路由切换一致性：移动端点击侧边栏菜单后立即收起抽屉并进入目标信息页，防止面板残留遮挡主内容。
+5. 验收：在移动端连续执行“打开抽屉 -> 切换页面 -> 输入框聚焦 -> 键盘收起”流程，页面无错位、无遮挡、可稳定关闭覆盖层。
 
-##### Task Breakdown (auto-managed)
+##### Traceability
 
-1. Scope split
-   - Clarify boundaries under existing requirement description; do not create new requirement IDs.
-2. Delivery plan
-   - Split into M1/M2 milestones with concrete acceptance checks.
-3. Status workflow
-   - Keep lifecycle as planned -> ready -> supported; update this row only.
-4. Traceability
-   - Keep change notes and verification criteria inside this requirement section.
+- 实现文件：`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
+- 验证：`go test ./...`
 
