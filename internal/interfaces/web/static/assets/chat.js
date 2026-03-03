@@ -11,7 +11,7 @@ const newChatButton = document.getElementById("newChatButton");
 const navToggle = document.getElementById("navToggle");
 const sessionToggle = document.getElementById("sessionToggle");
 const togglePaneButton = document.getElementById("togglePaneButton");
-const navCloseButton = document.getElementById("navCloseButton");
+const navCollapseButton = document.getElementById("navCollapseButton");
 const mobileBackdrop = document.getElementById("mobileBackdrop");
 const sessionHeading = document.getElementById("sessionHeading");
 const sessionSubheading = document.getElementById("sessionSubheading");
@@ -99,7 +99,8 @@ const state = {
   currentRoute: DEFAULT_ROUTE,
   sessions: [],
   pending: false,
-  pageRenderToken: 0
+  pageRenderToken: 0,
+  navCollapsed: false
 };
 
 function makeID() {
@@ -621,6 +622,14 @@ function isMobileViewport() {
   return window.matchMedia("(max-width: 1100px)").matches;
 }
 
+function setSidebarCollapsed(collapsed) {
+  state.navCollapsed = collapsed;
+  appShell.classList.toggle("nav-collapsed", collapsed);
+  navCollapseButton.textContent = collapsed ? "展开" : "收起";
+  navCollapseButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  navCollapseButton.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
+}
+
 function syncOverlayState() {
   const opened = appShell.classList.contains("nav-open") || appShell.classList.contains("panel-open");
   appShell.classList.toggle("overlay-open", opened);
@@ -630,6 +639,13 @@ function closeTransientPanels() {
   appShell.classList.remove("nav-open");
   appShell.classList.remove("panel-open");
   syncOverlayState();
+}
+
+function collapseMobileSidebar() {
+  if (!isMobileViewport()) {
+    return;
+  }
+  closeTransientPanels();
 }
 
 function updateKeyboardInset() {
@@ -671,11 +687,16 @@ function bindSwipeClose(panel, panelClassName) {
   }, { passive: true });
 }
 
+function setMainContentMode(mode) {
+  const infoMode = mode === "page";
+  appShell.classList.toggle("info-mode", infoMode);
+  chatView.hidden = infoMode;
+  routeView.hidden = !infoMode;
+}
+
 function navigateToRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
-  if (isMobileViewport()) {
-    closeTransientPanels();
-  }
+  collapseMobileSidebar();
   const targetHash = `#${safe}`;
   if (window.location.hash !== targetHash) {
     window.location.hash = targetHash;
@@ -788,9 +809,8 @@ async function renderRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
   state.currentRoute = safe;
   activeMenuRoute(safe);
-  if (isMobileViewport()) {
-    closeTransientPanels();
-  } else {
+  collapseMobileSidebar();
+  if (!isMobileViewport()) {
     appShell.classList.remove("nav-open");
     appShell.classList.remove("panel-open");
     syncOverlayState();
@@ -798,17 +818,13 @@ async function renderRoute(route) {
 
   const config = ROUTES[safe];
   if (config.mode === "chat") {
-    appShell.classList.remove("route-mode");
-    chatView.hidden = false;
-    routeView.hidden = true;
+    setMainContentMode("chat");
     syncHeader();
     return;
   }
 
-  appShell.classList.add("route-mode");
+  setMainContentMode("page");
   closeTransientPanels();
-  chatView.hidden = true;
-  routeView.hidden = false;
   routeTitle.textContent = config.title;
   routeSubtitle.textContent = config.subtitle;
   routeBody.innerHTML = '<p class="route-loading">Loading...</p>';
@@ -850,6 +866,7 @@ function bindEvents() {
   for (const node of menuRouteItems) {
     node.addEventListener("click", () => {
       const route = node.dataset.route || DEFAULT_ROUTE;
+      collapseMobileSidebar();
       navigateToRoute(route);
     });
   }
@@ -879,8 +896,12 @@ function bindEvents() {
     closeTransientPanels();
   });
 
-  navCloseButton.addEventListener("click", () => {
-    closeTransientPanels();
+  navCollapseButton.addEventListener("click", () => {
+    if (isMobileViewport()) {
+      closeTransientPanels();
+      return;
+    }
+    setSidebarCollapsed(!state.navCollapsed);
   });
 
   mobileBackdrop.addEventListener("click", () => {
@@ -925,6 +946,9 @@ function bindEvents() {
   });
 
   window.addEventListener("resize", () => {
+    if (isMobileViewport() && state.navCollapsed) {
+      setSidebarCollapsed(false);
+    }
     if (!isMobileViewport()) {
       closeTransientPanels();
     }
@@ -954,6 +978,13 @@ function bindEvents() {
 }
 
 function init() {
+  for (const node of menuRouteItems) {
+    const label = node.querySelector(".menu-label");
+    if (label && label.textContent) {
+      node.setAttribute("title", label.textContent.trim());
+    }
+  }
+  setSidebarCollapsed(false);
   createSession();
   bindEvents();
   updateCharCount();

@@ -28,7 +28,7 @@
 
 | ID | 需求 | 状态 | 目标 |
 | --- | --- | --- | --- |
-| R-012 | Web 侧边栏交互优化 | ready | 点击侧边栏项后进入“信息展示模式”：主区域仅展示对应信息，不再弹出或保留对话框；侧边栏在展开态提供显式折叠按钮 |
+| R-012 | Web 侧边栏交互优化 | supported | 点击侧边栏项后进入“信息展示模式”：主区域仅展示对应信息，不再弹出或保留对话框；侧边栏在展开态提供显式折叠按钮 |
 | R-013 | 流式传输能力 | supported | 提供端到端流式响应：后端增量推送生成内容，前端实时渲染并可感知进行中/完成/失败状态 |
 | R-014 | 移动端真机适配增强 | supported | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭与手势交互），确保 iOS/Android 浏览器下稳定可用 |
 | R-015 | 移动端会话创建与信息完整性 | planned | 确保移动端可稳定新建会话，并完整展示会话必要信息（标题、入口状态、空态提示） |
@@ -62,6 +62,16 @@
    - Keep lifecycle as planned -> ready -> supported; update this row only.
 4. Traceability
    - Keep change notes and verification criteria inside this requirement section.
+
+##### Traceability
+
+- 实现文件：`internal/interfaces/web/static/chat.html`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
+- 测试覆盖：`internal/interfaces/web/server_sidebar_test.go`
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-03：点击侧边栏入口后进入信息展示模式，仅显示 `route-view`，不保留对话框容器。
+  - 2026-03-03：桌面端侧边栏展开态显示“收起”按钮，折叠后进入图标轨道，支持再次“展开”。
+  - 2026-03-03：移动端选择任一菜单项后自动收起侧边栏；连续切换 `Channels -> Skills -> MCP` 未出现叠层对话框，可随时展开/折叠。
 
 #### R-013 流式传输能力
 

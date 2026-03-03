@@ -17,31 +17,61 @@
           <strong>alter0</strong>
           <small>v0.1.0</small>
         </div>
-        <button class="nav-collapse" id="navCloseButton" type="button" aria-label="Collapse navigation">收起</button>
+        <button class="nav-collapse" id="navCollapseButton" type="button" aria-label="Collapse navigation" aria-expanded="true">收起</button>
       </div>
 
       <nav class="menu">
         <section class="menu-group">
           <h2>Chat</h2>
-          <button class="menu-item active" type="button" data-route="chat">Chat</button>
+          <button class="menu-item active" type="button" data-route="chat" data-abbr="C">
+            <span class="menu-icon" aria-hidden="true">C</span>
+            <span class="menu-label">Chat</span>
+          </button>
         </section>
         <section class="menu-group">
           <h2>Control</h2>
-          <button class="menu-item" type="button" data-route="channels">Channels</button>
-          <button class="menu-item" type="button" data-route="sessions">Sessions</button>
-          <button class="menu-item" type="button" data-route="cron-jobs">Cron Jobs</button>
+          <button class="menu-item" type="button" data-route="channels" data-abbr="CH">
+            <span class="menu-icon" aria-hidden="true">CH</span>
+            <span class="menu-label">Channels</span>
+          </button>
+          <button class="menu-item" type="button" data-route="sessions" data-abbr="SE">
+            <span class="menu-icon" aria-hidden="true">SE</span>
+            <span class="menu-label">Sessions</span>
+          </button>
+          <button class="menu-item" type="button" data-route="cron-jobs" data-abbr="CR">
+            <span class="menu-icon" aria-hidden="true">CR</span>
+            <span class="menu-label">Cron Jobs</span>
+          </button>
         </section>
         <section class="menu-group">
           <h2>Agent</h2>
-          <button class="menu-item" type="button" data-route="workspace">Workspace</button>
-          <button class="menu-item" type="button" data-route="skills">Skills</button>
-          <button class="menu-item" type="button" data-route="mcp">MCP</button>
-          <button class="menu-item" type="button" data-route="configuration">Configuration</button>
+          <button class="menu-item" type="button" data-route="workspace" data-abbr="WS">
+            <span class="menu-icon" aria-hidden="true">WS</span>
+            <span class="menu-label">Workspace</span>
+          </button>
+          <button class="menu-item" type="button" data-route="skills" data-abbr="SK">
+            <span class="menu-icon" aria-hidden="true">SK</span>
+            <span class="menu-label">Skills</span>
+          </button>
+          <button class="menu-item" type="button" data-route="mcp" data-abbr="MC">
+            <span class="menu-icon" aria-hidden="true">MC</span>
+            <span class="menu-label">MCP</span>
+          </button>
+          <button class="menu-item" type="button" data-route="configuration" data-abbr="CF">
+            <span class="menu-icon" aria-hidden="true">CF</span>
+            <span class="menu-label">Configuration</span>
+          </button>
         </section>
         <section class="menu-group">
           <h2>Settings</h2>
-          <button class="menu-item" type="button" data-route="models">Models</button>
-          <button class="menu-item" type="button" data-route="environments">Environments</button>
+          <button class="menu-item" type="button" data-route="models" data-abbr="MO">
+            <span class="menu-icon" aria-hidden="true">MO</span>
+            <span class="menu-label">Models</span>
+          </button>
+          <button class="menu-item" type="button" data-route="environments" data-abbr="EN">
+            <span class="menu-icon" aria-hidden="true">EN</span>
+            <span class="menu-label">Environments</span>
+          </button>
         </section>
       </nav>
     </aside>
