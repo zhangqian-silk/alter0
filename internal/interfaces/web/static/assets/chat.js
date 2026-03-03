@@ -26,75 +26,279 @@ const chatView = document.getElementById("chatView");
 const routeView = document.getElementById("routeView");
 const routeTitle = document.getElementById("routeTitle");
 const routeSubtitle = document.getElementById("routeSubtitle");
+const routeActionButton = document.getElementById("routeActionButton");
 const routeBody = document.getElementById("routeBody");
 const menuRouteItems = document.querySelectorAll(".menu-item[data-route]");
+const navTooltipTargets = [...menuRouteItems, navCollapseButton];
 const rootStyle = document.documentElement.style;
 
 const MAX_CHARS = 10000;
 const DEFAULT_ROUTE = "chat";
 const SWIPE_CLOSE_THRESHOLD = 46;
+const NAV_TOOLTIP_SHOW_DELAY = 90;
+const NAV_TOOLTIP_HIDE_DELAY = 40;
+const NAV_TOOLTIP_OFFSET = 12;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
-const DEFAULT_WELCOME_HEADING = "Hello, how can I help you today?";
+const I18N = {
+  en: {
+    // Navigation
+    "nav.chat": "Chat",
+    "nav.channels": "Channels",
+    "nav.sessions": "Sessions",
+    "nav.cron-jobs": "Cron Jobs",
+    "nav.workspace": "Workspace",
+    "nav.skills": "Skills",
+    "nav.mcp": "MCP",
+    "nav.configuration": "Configuration",
+    "nav.models": "Models",
+    "nav.environments": "Environments",
+    "nav.expand": "Expand navigation",
+    "nav.collapse": "Collapse navigation",
+    
+    // Session Pane
+    "session.header": "Work with alter0",
+    "session.close": "Close",
+    "session.new": "New Chat",
+    "session.recent": "Recent Sessions",
+    "session.empty": "No sessions yet. Click New Chat to start.",
+    
+    // Chat Header
+    "chat.menu": "Menu",
+    "chat.title": "Chat",
+    "chat.subtitle": "Ready to start a new conversation",
+    "chat.sessions": "Sessions",
+    "chat.lang": "English",
+    
+    // Welcome Screen
+    "welcome.tag": "alter0 assistant",
+    "welcome.heading": "Hello, how can I help you today?",
+    "welcome.desc": "I am a helpful assistant that can help you with your questions.",
+    "prompt.journey": "Let's start a new journey!",
+    "prompt.skills": "Can you tell me what skills you have?",
+    
+    // Composer
+    "composer.placeholder": "Input your message here...",
+    "composer.send": "Send",
+    "composer.note": "Works for you, grows with you",
+    
+    // Dynamic
+    "time.just_now": "just now",
+    "time.m_ago": "m ago",
+    "time.h_ago": "h ago",
+    "time.d_ago": "d ago",
+    "msg.processing": "Processing...",
+    "msg.received_empty": "Received request, but no output content.",
+    "msg.stream_error": "Stream connection error",
+    "msg.stream_failed": "Stream failed: {error}, please retry.",
+    "msg.request_failed": "Request failed: {error}, please retry.",
+    "msg.network_error": "Network error: {error}, please retry.",
+    "session.new_title": "New Chat",
+    "session.empty_sub": "Empty session, waiting for your first message",
+    "session.no_active": "No active session. Click New Chat to start.",
+    "session.empty_body": "This session is empty. Type a message to start.",
+    "status.in_progress": "In Progress",
+    "status.failed": "Failed",
+    "status.done": "Done",
+    "status.enabled": "Enabled",
+    "status.disabled": "Disabled",
+    "field.type": "Type",
+    "field.description": "Description",
+    "field.name": "Name",
+    "field.scope": "Scope",
+    "field.version": "Version",
+    "field.interval": "Interval",
+    "field.session": "Session",
+    "field.id": "ID",
+    "field.messages": "Messages",
+    "field.created": "Created",
+    
+    // Routes
+    "route.chat.title": "Chat",
+    "route.chat.subtitle": "Ready to start a new conversation",
+    "route.channels.title": "Channels",
+    "route.channels.subtitle": "Manage connection channels",
+    "route.channels.action": "+ Add Channel",
+    "route.channels.empty": "No Channels available.",
+    "route.sessions.title": "Sessions",
+    "route.sessions.subtitle": "View current session list",
+    "route.sessions.empty": "No local sessions available.",
+    "route.cron.title": "Cron Jobs",
+    "route.cron.subtitle": "View scheduled jobs",
+    "route.cron.empty": "No Cron Jobs available.",
+    "route.workspace.title": "Workspace",
+    "route.workspace.subtitle": "Workspace information",
+    "route.skills.title": "Skills",
+    "route.skills.subtitle": "Skills configuration",
+    "route.skills.empty": "No Skills available.",
+    "route.mcp.title": "MCP",
+    "route.mcp.subtitle": "Model Context Protocol configuration",
+    "route.mcp.empty": "No MCP available.",
+    "route.config.title": "Configuration",
+    "route.config.subtitle": "Runtime configuration overview",
+    "route.models.title": "Models",
+    "route.models.subtitle": "Model capabilities",
+    "route.envs.title": "Environments",
+    "route.envs.subtitle": "Environment and deployment settings",
+    "route.connected": "Page Connected",
+    "route.connected_desc": "This page route is active. Content can be expanded by module.",
+    "loading": "Loading...",
+    "load_failed": "Load failed: {error}"
+  },
+  zh: {
+    // Navigation
+    "nav.chat": "对话",
+    "nav.channels": "通道",
+    "nav.sessions": "会话列表",
+    "nav.cron-jobs": "定时任务",
+    "nav.workspace": "工作区",
+    "nav.skills": "技能",
+    "nav.mcp": "MCP 协议",
+    "nav.configuration": "配置",
+    "nav.models": "模型",
+    "nav.environments": "环境",
+    "nav.expand": "展开导航",
+    "nav.collapse": "收起导航",
+    
+    // Session Pane
+    "session.header": "与 alter0 协作",
+    "session.close": "关闭",
+    "session.new": "新对话",
+    "session.recent": "最近会话",
+    "session.empty": "暂无会话，点击“新对话”开始。",
+    
+    // Chat Header
+    "chat.menu": "菜单",
+    "chat.title": "对话",
+    "chat.subtitle": "准备好开始新的对话",
+    "chat.sessions": "会话",
+    "chat.lang": "中文",
+    
+    // Welcome Screen
+    "welcome.tag": "alter0 助手",
+    "welcome.heading": "你好，今天有什么可以帮你？",
+    "welcome.desc": "我是你的全能助手，随时准备回答你的问题。",
+    "prompt.journey": "让我们开启一段新的旅程吧！",
+    "prompt.skills": "能告诉我你有哪些技能吗？",
+    
+    // Composer
+    "composer.placeholder": "在此输入消息...",
+    "composer.send": "发送",
+    "composer.note": "为你效劳，伴你成长",
+    
+    // Dynamic
+    "time.just_now": "刚刚",
+    "time.m_ago": "分钟前",
+    "time.h_ago": "小时前",
+    "time.d_ago": "天前",
+    "msg.processing": "处理中...",
+    "msg.received_empty": "已收到请求，但没有输出内容。",
+    "msg.stream_error": "流式连接错误",
+    "msg.stream_failed": "流式请求失败：{error}，请重试。",
+    "msg.request_failed": "请求失败：{error}，请重试。",
+    "msg.network_error": "网络错误：{error}，请重试。",
+    "session.new_title": "新对话",
+    "session.empty_sub": "空会话，等待你的第一条消息",
+    "session.no_active": "没有活动会话。点击“新对话”开始。",
+    "session.empty_body": "当前会话为空。输入消息开始对话。",
+    "status.in_progress": "进行中",
+    "status.failed": "失败",
+    "status.done": "完成",
+    "status.enabled": "启用",
+    "status.disabled": "停用",
+    "field.type": "类型",
+    "field.description": "描述",
+    "field.name": "名称",
+    "field.scope": "范围",
+    "field.version": "版本",
+    "field.interval": "间隔",
+    "field.session": "会话",
+    "field.id": "ID",
+    "field.messages": "消息数",
+    "field.created": "创建时间",
+    
+    // Routes
+    "route.chat.title": "对话",
+    "route.chat.subtitle": "准备好开始新的对话",
+    "route.channels.title": "通道",
+    "route.channels.subtitle": "管理连接通道",
+    "route.channels.action": "+ 新建通道",
+    "route.channels.empty": "暂无可用通道。",
+    "route.sessions.title": "会话列表",
+    "route.sessions.subtitle": "查看当前会话列表",
+    "route.sessions.empty": "暂无本地会话。",
+    "route.cron.title": "定时任务",
+    "route.cron.subtitle": "查看计划任务",
+    "route.cron.empty": "暂无定时任务。",
+    "route.workspace.title": "工作区",
+    "route.workspace.subtitle": "工作区信息",
+    "route.skills.title": "技能",
+    "route.skills.subtitle": "技能配置",
+    "route.skills.empty": "暂无可用技能。",
+    "route.mcp.title": "MCP 协议",
+    "route.mcp.subtitle": "Model Context Protocol 配置",
+    "route.mcp.empty": "暂无 MCP 配置。",
+    "route.config.title": "配置",
+    "route.config.subtitle": "运行时配置概览",
+    "route.models.title": "模型",
+    "route.models.subtitle": "模型能力",
+    "route.envs.title": "环境",
+    "route.envs.subtitle": "环境与部署设置",
+    "route.connected": "页面已连接",
+    "route.connected_desc": "该页面路由已激活。内容可按模块扩展。",
+    "loading": "加载中...",
+    "load_failed": "加载失败：{error}"
+  }
+};
 
 const ROUTES = {
   chat: {
-    title: "Chat",
-    subtitle: "准备好开始新的会话",
+    key: "chat",
     mode: "chat"
   },
   channels: {
-    title: "Channels",
-    subtitle: "管理接入通道配置",
+    key: "channels",
     mode: "page",
     loader: loadChannelsView
   },
   sessions: {
-    title: "Sessions",
-    subtitle: "查看当前会话列表",
+    key: "sessions",
     mode: "page",
     loader: loadSessionsView
   },
   "cron-jobs": {
-    title: "Cron Jobs",
-    subtitle: "查看调度任务配置",
+    key: "cron",
     mode: "page",
     loader: loadCronJobsView
   },
   workspace: {
-    title: "Workspace",
-    subtitle: "工作区信息",
+    key: "workspace",
     mode: "page",
     loader: loadPlaceholderView
   },
   skills: {
-    title: "Skills",
-    subtitle: "技能配置列表",
+    key: "skills",
     mode: "page",
     loader: loadSkillsView
   },
   mcp: {
-    title: "MCP",
-    subtitle: "Model Context Protocol 配置",
+    key: "mcp",
     mode: "page",
     loader: loadMCPView
   },
   configuration: {
-    title: "Configuration",
-    subtitle: "运行时配置概览",
+    key: "config",
     mode: "page",
     loader: loadPlaceholderView
   },
   models: {
-    title: "Models",
-    subtitle: "模型能力入口",
+    key: "models",
     mode: "page",
     loader: loadPlaceholderView
   },
   environments: {
-    title: "Environments",
-    subtitle: "环境与部署设置",
+    key: "envs",
     mode: "page",
     loader: loadPlaceholderView
   }
@@ -107,8 +311,267 @@ const state = {
   sessionLoadError: "",
   pending: false,
   pageRenderToken: 0,
-  navCollapsed: false
+  navCollapsed: false,
+  lang: "en" // default
 };
+
+let navTooltipNode = null;
+let navTooltipTarget = null;
+let navTooltipShowTimer = 0;
+let navTooltipHideTimer = 0;
+
+function t(key, params = {}) {
+  const dict = I18N[state.lang] || I18N.en;
+  let val = dict[key] || key;
+  for (const [k, v] of Object.entries(params)) {
+    val = val.replace(`{${k}}`, v);
+  }
+  return val;
+}
+
+function navCollapseLabel() {
+  return state.navCollapsed ? t("nav.expand") : t("nav.collapse");
+}
+
+function syncMenuItemTooltips() {
+  for (const node of menuRouteItems) {
+    const label = node.querySelector(".menu-label");
+    const text = label && label.textContent ? label.textContent.trim() : "";
+    if (!text) {
+      node.removeAttribute("data-tooltip");
+      node.removeAttribute("title");
+      node.removeAttribute("aria-label");
+      continue;
+    }
+    node.setAttribute("data-tooltip", text);
+    node.removeAttribute("title");
+    node.setAttribute("aria-label", text);
+  }
+
+  navCollapseButton.setAttribute("data-tooltip", navCollapseLabel());
+  navCollapseButton.removeAttribute("title");
+
+  if (!navTooltipTarget) {
+    return;
+  }
+  if (!shouldShowNavTooltipFor(navTooltipTarget)) {
+    hideNavTooltip(true);
+    return;
+  }
+  const text = tooltipTextForNode(navTooltipTarget);
+  if (!text) {
+    hideNavTooltip(true);
+    return;
+  }
+  const tooltip = ensureNavTooltipNode();
+  tooltip.textContent = text;
+  positionNavTooltip(navTooltipTarget);
+}
+
+function ensureNavTooltipNode() {
+  if (navTooltipNode) {
+    return navTooltipNode;
+  }
+  const node = document.createElement("div");
+  node.className = "nav-tooltip";
+  node.setAttribute("role", "tooltip");
+  node.setAttribute("aria-hidden", "true");
+  document.body.appendChild(node);
+  navTooltipNode = node;
+  return node;
+}
+
+function tooltipTextForNode(node) {
+  if (!node) {
+    return "";
+  }
+  if (node === navCollapseButton) {
+    return navCollapseLabel();
+  }
+  const label = node.querySelector(".menu-label");
+  return label && label.textContent ? label.textContent.trim() : "";
+}
+
+function shouldShowNavTooltipFor(node) {
+  if (!node || isMobileViewport()) {
+    return false;
+  }
+  if (node === navCollapseButton) {
+    return true;
+  }
+  return state.navCollapsed;
+}
+
+function positionNavTooltip(target) {
+  if (!navTooltipNode || !target) {
+    return;
+  }
+  const rect = target.getBoundingClientRect();
+  const viewportMargin = 8;
+  const top = Math.min(
+    Math.max(rect.top + (rect.height / 2), viewportMargin),
+    window.innerHeight - viewportMargin
+  );
+  const maxLeft = Math.max(viewportMargin, window.innerWidth - navTooltipNode.offsetWidth - viewportMargin);
+  const left = Math.min(Math.max(rect.right + NAV_TOOLTIP_OFFSET, viewportMargin), maxLeft);
+  navTooltipNode.style.top = `${top}px`;
+  navTooltipNode.style.left = `${left}px`;
+}
+
+function showNavTooltip(target) {
+  if (!shouldShowNavTooltipFor(target)) {
+    hideNavTooltip(true);
+    return;
+  }
+  const text = tooltipTextForNode(target);
+  if (!text) {
+    hideNavTooltip(true);
+    return;
+  }
+  const tooltip = ensureNavTooltipNode();
+  tooltip.textContent = text;
+  tooltip.classList.add("visible");
+  tooltip.setAttribute("aria-hidden", "false");
+  navTooltipTarget = target;
+  positionNavTooltip(target);
+}
+
+function queueNavTooltip(target, immediate = false) {
+  if (!target || !shouldShowNavTooltipFor(target)) {
+    hideNavTooltip(true);
+    return;
+  }
+  if (navTooltipHideTimer) {
+    window.clearTimeout(navTooltipHideTimer);
+    navTooltipHideTimer = 0;
+  }
+  if (immediate) {
+    if (navTooltipShowTimer) {
+      window.clearTimeout(navTooltipShowTimer);
+      navTooltipShowTimer = 0;
+    }
+    showNavTooltip(target);
+    return;
+  }
+  if (navTooltipShowTimer) {
+    window.clearTimeout(navTooltipShowTimer);
+  }
+  navTooltipShowTimer = window.setTimeout(() => {
+    navTooltipShowTimer = 0;
+    showNavTooltip(target);
+  }, NAV_TOOLTIP_SHOW_DELAY);
+}
+
+function hideNavTooltip(immediate = false) {
+  if (navTooltipShowTimer) {
+    window.clearTimeout(navTooltipShowTimer);
+    navTooltipShowTimer = 0;
+  }
+  if (!navTooltipNode) {
+    navTooltipTarget = null;
+    return;
+  }
+  const close = () => {
+    if (!navTooltipNode) {
+      return;
+    }
+    navTooltipNode.classList.remove("visible");
+    navTooltipNode.setAttribute("aria-hidden", "true");
+    navTooltipTarget = null;
+    navTooltipHideTimer = 0;
+  };
+  if (immediate) {
+    if (navTooltipHideTimer) {
+      window.clearTimeout(navTooltipHideTimer);
+      navTooltipHideTimer = 0;
+    }
+    close();
+    return;
+  }
+  if (navTooltipHideTimer) {
+    window.clearTimeout(navTooltipHideTimer);
+  }
+  navTooltipHideTimer = window.setTimeout(close, NAV_TOOLTIP_HIDE_DELAY);
+}
+
+function bindNavTooltipEvents() {
+  for (const node of navTooltipTargets) {
+    if (!node) {
+      continue;
+    }
+    node.addEventListener("mouseenter", () => {
+      queueNavTooltip(node);
+    });
+    node.addEventListener("mouseleave", () => {
+      hideNavTooltip();
+    });
+    node.addEventListener("focus", () => {
+      queueNavTooltip(node, true);
+    });
+    node.addEventListener("blur", () => {
+      hideNavTooltip(true);
+    });
+    node.addEventListener("pointerdown", () => {
+      hideNavTooltip(true);
+    });
+  }
+  window.addEventListener("scroll", () => {
+    if (!navTooltipTarget) {
+      return;
+    }
+    if (!shouldShowNavTooltipFor(navTooltipTarget)) {
+      hideNavTooltip(true);
+      return;
+    }
+    positionNavTooltip(navTooltipTarget);
+  }, true);
+}
+
+function setLanguage(lang) {
+  if (!I18N[lang]) return;
+  state.lang = lang;
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  
+  // Update static elements
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    if (key) {
+      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+        el.placeholder = t(key);
+      } else {
+        // preserve child elements if any (like icons) - wait, icons are usually separate.
+        // If element has only text, textContent is fine.
+        // If element has icon + text, we need to be careful.
+        // For menu items, the text is in .menu-label
+        el.textContent = t(key);
+      }
+    }
+  });
+
+  // Update dynamic views
+  renderSessions();
+  syncHeader();
+  syncWelcomeCopy();
+  
+  // Re-render current route if it's a page
+  if (state.currentRoute !== "chat") {
+    renderRoute(state.currentRoute);
+  }
+  
+  // Update button text
+  const localeBtn = document.querySelector(".locale");
+  if (localeBtn) {
+    localeBtn.textContent = state.lang === "en" ? "English" : "中文";
+    localeBtn.setAttribute("data-short-lang", state.lang === "en" ? "EN" : "中");
+  }
+  navCollapseButton.setAttribute("aria-label", navCollapseLabel());
+  syncMenuItemTooltips();
+}
+
+function toggleLanguage() {
+  const next = state.lang === "en" ? "zh" : "en";
+  setLanguage(next);
+}
 
 function makeID() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -118,7 +581,7 @@ function makeID() {
 }
 
 function timeLabel(epochMillis = Date.now()) {
-  return new Date(epochMillis).toLocaleTimeString("zh-CN", {
+  return new Date(epochMillis).toLocaleTimeString(state.lang === "zh" ? "zh-CN" : "en-US", {
     hour: "2-digit",
     minute: "2-digit"
   });
@@ -139,17 +602,17 @@ function formatSince(epochMillis) {
   const delta = Date.now() - epochMillis;
   const minutes = Math.floor(delta / 60000);
   if (minutes < 1) {
-    return "刚刚";
+    return t("time.just_now");
   }
   if (minutes < 60) {
-    return `${minutes} 分钟前`;
+    return `${minutes} ${t("time.m_ago")}`;
   }
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
-    return `${hours} 小时前`;
+    return `${hours} ${t("time.h_ago")}`;
   }
   const days = Math.floor(hours / 24);
-  return `${days} 天前`;
+  return `${days} ${t("time.d_ago")}`;
 }
 
 function getSessionStorage() {
@@ -188,7 +651,7 @@ function normalizeStoredSession(item) {
     return null;
   }
   const id = typeof item.id === "string" && item.id ? item.id : makeID();
-  const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "新对话";
+  const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "New Chat";
   const createdAt = Number.isFinite(item.createdAt) ? item.createdAt : Date.now();
   const rawMessages = Array.isArray(item.messages) ? item.messages : [];
   const messages = [];
@@ -215,11 +678,11 @@ function loadSessionsFromStorage() {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("本地存储数据损坏");
+    throw new Error("local_storage_corrupted");
   }
 
   if (!Array.isArray(parsed)) {
-    throw new Error("本地存储数据格式无效");
+    throw new Error("local_storage_invalid");
   }
 
   const sessions = [];
@@ -242,7 +705,7 @@ function persistSessions() {
     storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(state.sessions));
     state.sessionLoadError = "";
   } catch {
-    state.sessionLoadError = "会话列表保存失败，请检查浏览器存储权限。";
+    state.sessionLoadError = "session_save_failed";
   }
   syncSessionLoadHint();
 }
@@ -259,8 +722,8 @@ function bootstrapSessions() {
       state.activeSessionID = sessions[0].id;
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : "未知错误";
-    state.sessionLoadError = `会话列表加载失败：${message}`;
+    const message = err instanceof Error ? err.message : "unknown_error";
+    state.sessionLoadError = message;
   }
 }
 
@@ -268,7 +731,7 @@ function createSession() {
   const createdAt = Date.now();
   const item = {
     id: makeID(),
-    title: "新对话",
+    title: t("session.new_title"),
     createdAt,
     messages: []
   };
@@ -284,21 +747,25 @@ function createSession() {
 
 function syncHeader() {
   const route = ROUTES[state.currentRoute] || ROUTES.chat;
+
   if (route.mode !== "chat") {
-    sessionHeading.textContent = route.title;
-    sessionSubheading.textContent = route.subtitle;
+    sessionHeading.textContent = "alter0";
+    sessionSubheading.textContent = t("chat.menu");
     return;
   }
 
+  const routeKey = route.key || "chat";
+  const titleKey = `route.${routeKey}.title`;
+  const subtitleKey = `route.${routeKey}.subtitle`;
   const active = getSession();
   if (!active) {
-    sessionHeading.textContent = route.title;
-    sessionSubheading.textContent = route.subtitle;
+    sessionHeading.textContent = t(titleKey);
+    sessionSubheading.textContent = t(subtitleKey);
     return;
   }
   sessionHeading.textContent = active.title;
   if (active.messages.length === 0) {
-    sessionSubheading.textContent = "空会话，等待你的第一条消息";
+    sessionSubheading.textContent = t("session.empty_sub");
     return;
   }
   sessionSubheading.textContent = `${active.messages.length} messages`;
@@ -307,12 +774,12 @@ function syncHeader() {
 function syncWelcomeCopy() {
   const active = getSession();
   if (!active) {
-    welcomeHeading.textContent = DEFAULT_WELCOME_HEADING;
-    welcomeDescription.textContent = "暂无会话，点击 New Chat 创建后即可发送消息。";
+    welcomeHeading.textContent = t("welcome.heading");
+    welcomeDescription.textContent = t("session.no_active");
     return;
   }
-  welcomeHeading.textContent = active.title;
-  welcomeDescription.textContent = "当前会话暂无消息，输入内容即可发送。";
+  welcomeHeading.textContent = t("welcome.heading");
+  welcomeDescription.textContent = t("welcome.desc");
 }
 
 function syncSessionLoadHint() {
@@ -324,7 +791,7 @@ function renderSessions() {
   sessionList.innerHTML = "";
   syncSessionLoadHint();
   if (!state.sessions.length) {
-    sessionEmpty.textContent = "会话列表为空，点击 New Chat 创建会话。";
+    sessionEmpty.textContent = t("session.empty");
     sessionEmpty.style.display = "block";
     return;
   }
@@ -363,7 +830,7 @@ function renderSessions() {
 }
 
 function updateSessionTitle(session, fallbackText) {
-  if (session.title !== "新对话") {
+  if (session.title !== t("session.new_title") && session.title !== "New Chat" && session.title !== "新对话") {
     return;
   }
   const text = fallbackText.trim();
@@ -412,12 +879,12 @@ function updateMessage(message, patch = {}) {
 
 function assistantStatusLabel(status) {
   if (status === "streaming") {
-    return "进行中";
+    return t("status.in_progress");
   }
   if (status === "error") {
-    return "失败";
+    return t("status.failed");
   }
-  return "已完成";
+  return t("status.done");
 }
 
 function renderMessages() {
@@ -586,7 +1053,7 @@ async function sendMessageStream(payload, assistantMessage) {
               status: "streaming",
               error: false,
               retryable: false,
-              text: output || "处理中..."
+              text: output || t("msg.processing")
             });
           } else if (parsed.event === "delta") {
             const delta = typeof parsed.data.delta === "string" ? parsed.data.delta : "";
@@ -607,7 +1074,7 @@ async function sendMessageStream(payload, assistantMessage) {
             const route = typeof result.route === "string" && result.route ? result.route : routeHint;
             const finalOutput = typeof result.output === "string" ? result.output : output;
             updateMessage(assistantMessage, {
-              text: finalOutput.trim() || "已收到请求，但当前没有输出内容。",
+              text: finalOutput.trim() || t("msg.received_empty"),
               route,
               error: false,
               status: "done",
@@ -620,9 +1087,9 @@ async function sendMessageStream(payload, assistantMessage) {
             if (typeof result.route === "string" && result.route) {
               routeHint = result.route;
             }
-            const message = typeof parsed.data.error === "string" && parsed.data.error ? parsed.data.error : "流式连接异常";
+            const message = typeof parsed.data.error === "string" && parsed.data.error ? parsed.data.error : t("msg.stream_error");
             updateMessage(assistantMessage, {
-              text: `流式请求失败：${message}，请重试。`,
+              text: t("msg.stream_failed", { error: message }),
               route: routeHint,
               error: true,
               status: "error",
@@ -652,10 +1119,10 @@ async function sendMessageStream(payload, assistantMessage) {
     return {
       ok: false,
       canFallback: !sawEvent,
-      error: sawEvent ? "流式连接中断" : "streaming endpoint unavailable"
+      error: sawEvent ? "Stream connection interrupted" : "streaming endpoint unavailable"
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "未知网络异常";
+    const message = err instanceof Error ? err.message : "Unknown network error";
     return { ok: false, canFallback: !sawEvent, error: message };
   }
 }
@@ -673,7 +1140,7 @@ async function sendMessageFallback(payload, assistantMessage) {
   if (!response.ok) {
     const failure = body.error || body?.result?.error_code || `HTTP ${response.status}`;
     updateMessage(assistantMessage, {
-      text: `请求失败：${failure}，请重试。`,
+      text: t("msg.request_failed", { error: failure }),
       route: body?.result?.route || "",
       error: true,
       status: "error",
@@ -683,7 +1150,7 @@ async function sendMessageFallback(payload, assistantMessage) {
     return;
   }
 
-  const output = (body?.result?.output || "").trim() || "已收到请求，但当前没有输出内容。";
+  const output = (body?.result?.output || "").trim() || t("msg.received_empty");
   updateMessage(assistantMessage, {
     text: output,
     route: body?.result?.route || "",
@@ -714,7 +1181,7 @@ async function sendMessage(rawContent) {
     channel_id: "web-default",
     content
   };
-  const assistantMessage = appendMessage("assistant", "处理中...", { status: "streaming" });
+  const assistantMessage = appendMessage("assistant", t("msg.processing"), { status: "streaming" });
 
   try {
     const streamResult = await sendMessageStream(payload, assistantMessage);
@@ -729,7 +1196,7 @@ async function sendMessage(rawContent) {
 
     if (assistantMessage.status !== "error") {
       updateMessage(assistantMessage, {
-        text: `流式请求失败：${streamResult.error || "未知异常"}，请重试。`,
+        text: t("msg.stream_failed", { error: streamResult.error || "unknown" }),
         error: true,
         status: "error",
         retryable: true,
@@ -737,9 +1204,9 @@ async function sendMessage(rawContent) {
       });
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : "未知网络异常";
+    const message = err instanceof Error ? err.message : "unknown_network_error";
     updateMessage(assistantMessage, {
-      text: `网络异常：${message}，请重试。`,
+      text: t("msg.network_error", { error: message }),
       error: true,
       status: "error",
       retryable: true,
@@ -772,9 +1239,16 @@ function isMobileViewport() {
 function setSidebarCollapsed(collapsed) {
   state.navCollapsed = collapsed;
   appShell.classList.toggle("nav-collapsed", collapsed);
-  navCollapseButton.textContent = collapsed ? "展开" : "收起";
   navCollapseButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  navCollapseButton.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
+  navCollapseButton.setAttribute("aria-label", navCollapseLabel());
+  syncMenuItemTooltips();
+  if (navTooltipTarget) {
+    if (!shouldShowNavTooltipFor(navTooltipTarget)) {
+      hideNavTooltip(true);
+      return;
+    }
+    showNavTooltip(navTooltipTarget);
+  }
 }
 
 function syncOverlayState() {
@@ -783,6 +1257,7 @@ function syncOverlayState() {
 }
 
 function closeTransientPanels() {
+  hideNavTooltip(true);
   appShell.classList.remove("nav-open");
   appShell.classList.remove("panel-open");
   syncOverlayState();
@@ -837,6 +1312,7 @@ function bindSwipeClose(panel, panelClassName) {
 function setMainContentMode(mode) {
   const infoMode = mode === "page";
   appShell.classList.toggle("info-mode", infoMode);
+  chatPane.classList.toggle("page-mode", infoMode);
   chatView.hidden = infoMode;
   routeView.hidden = !infoMode;
 }
@@ -868,6 +1344,74 @@ function renderRouteCards(items, emptyText, renderItem) {
   return items.map((item) => renderItem(item)).join("");
 }
 
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => {
+    if (char === "&") return "&amp;";
+    if (char === "<") return "&lt;";
+    if (char === ">") return "&gt;";
+    if (char === '"') return "&quot;";
+    return "&#39;";
+  });
+}
+
+function normalizeText(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || "-";
+}
+
+function routeTypeIcon(type) {
+  const normalized = String(type || "").toLowerCase();
+  if (normalized.includes("cron") || normalized.includes("time")) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg>`;
+  }
+  if (normalized.includes("http") || normalized.includes("web")) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a15 15 0 0 1 0 18"></path><path d="M12 3a15 15 0 0 0 0 18"></path></svg>`;
+  }
+  if (normalized.includes("mcp") || normalized.includes("proto")) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3z"></path><path d="m4 7.5 8 4.5 8-4.5"></path><path d="M12 12v9"></path></svg>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17h16"></path><path d="M7 17V7h10v10"></path><path d="m9.5 10.5 1.8 1.8-1.8 1.8"></path><path d="M13.2 14.1h2.3"></path></svg>`;
+}
+
+function routeFieldRow(labelKey, value) {
+  return `<p><span>${t(labelKey)}</span><strong>${escapeHTML(normalizeText(value))}</strong></p>`;
+}
+
+function routeStatusBadge(enabled) {
+  const active = Boolean(enabled);
+  return `<div class="status-badge ${active ? "" : "disabled"}">
+    <span class="status-dot"></span>
+    <span>${active ? t("status.enabled") : t("status.disabled")}</span>
+  </div>`;
+}
+
+function routeCardTemplate(title, type, fields = [], enabled = false) {
+  return `<article class="route-card">
+    <div class="route-card-head">
+      <div class="route-card-icon" aria-hidden="true">${routeTypeIcon(type)}</div>
+      <h4>${escapeHTML(normalizeText(title))}</h4>
+    </div>
+    ${routeStatusBadge(enabled)}
+    <div class="route-meta">
+      ${fields.join("")}
+    </div>
+  </article>`;
+}
+
+function syncRouteAction(route) {
+  if (!routeActionButton) {
+    return;
+  }
+  if (route === "channels") {
+    routeActionButton.hidden = false;
+    routeActionButton.textContent = t("route.channels.action");
+    routeActionButton.dataset.route = "configuration";
+    return;
+  }
+  routeActionButton.hidden = true;
+  routeActionButton.dataset.route = "";
+}
+
 async function fetchJSON(path) {
   const response = await fetch(path, { method: "GET" });
   if (!response.ok) {
@@ -881,13 +1425,16 @@ async function loadChannelsView(container) {
   const items = Array.isArray(data.items) ? data.items : [];
   container.innerHTML = renderRouteCards(
     items,
-    "暂无 Channel。",
-    (item) => `<article class="route-card">
-      <h4>${item.id}</h4>
-      <p>Type: ${item.type || "-"}</p>
-      <p>Enabled: ${item.enabled ? "true" : "false"}</p>
-      <p>Description: ${item.description || "-"}</p>
-    </article>`
+    t("route.channels.empty"),
+    (item) => routeCardTemplate(
+      item.id,
+      item.type,
+      [
+        routeFieldRow("field.type", item.type),
+        routeFieldRow("field.description", item.description)
+      ],
+      item.enabled
+    )
   );
 }
 
@@ -896,15 +1443,18 @@ async function loadSkillsView(container) {
   const items = Array.isArray(data.items) ? data.items : [];
   container.innerHTML = renderRouteCards(
     items,
-    "暂无 Skill。",
-    (item) => `<article class="route-card">
-      <h4>${item.id}</h4>
-      <p>Type: ${item.type || "-"}</p>
-      <p>Name: ${item.name || "-"}</p>
-      <p>Scope: ${item.scope || "-"}</p>
-      <p>Version: ${item.version || "-"}</p>
-      <p>Enabled: ${item.enabled ? "true" : "false"}</p>
-    </article>`
+    t("route.skills.empty"),
+    (item) => routeCardTemplate(
+      item.id,
+      item.type,
+      [
+        routeFieldRow("field.type", item.type),
+        routeFieldRow("field.name", item.name),
+        routeFieldRow("field.scope", item.scope),
+        routeFieldRow("field.version", item.version)
+      ],
+      item.enabled
+    )
   );
 }
 
@@ -913,15 +1463,18 @@ async function loadMCPView(container) {
   const items = Array.isArray(data.items) ? data.items : [];
   container.innerHTML = renderRouteCards(
     items,
-    "暂无 MCP。",
-    (item) => `<article class="route-card">
-      <h4>${item.id}</h4>
-      <p>Type: ${item.type || "-"}</p>
-      <p>Name: ${item.name || "-"}</p>
-      <p>Scope: ${item.scope || "-"}</p>
-      <p>Version: ${item.version || "-"}</p>
-      <p>Enabled: ${item.enabled ? "true" : "false"}</p>
-    </article>`
+    t("route.mcp.empty"),
+    (item) => routeCardTemplate(
+      item.id,
+      item.type,
+      [
+        routeFieldRow("field.type", item.type),
+        routeFieldRow("field.name", item.name),
+        routeFieldRow("field.scope", item.scope),
+        routeFieldRow("field.version", item.version)
+      ],
+      item.enabled
+    )
   );
 }
 
@@ -930,13 +1483,16 @@ async function loadCronJobsView(container) {
   const items = Array.isArray(data.items) ? data.items : [];
   container.innerHTML = renderRouteCards(
     items,
-    "暂无 Cron Job。",
-    (item) => `<article class="route-card">
-      <h4>${item.id}</h4>
-      <p>Interval: ${item.interval || "-"}</p>
-      <p>Session: ${item.session_id || "-"}</p>
-      <p>Enabled: ${item.enabled ? "true" : "false"}</p>
-    </article>`
+    t("route.cron.empty"),
+    (item) => routeCardTemplate(
+      item.id,
+      "cron",
+      [
+        routeFieldRow("field.interval", item.interval),
+        routeFieldRow("field.session", item.session_id)
+      ],
+      item.enabled
+    )
   );
 }
 
@@ -944,21 +1500,27 @@ async function loadSessionsView(container) {
   const items = state.sessions;
   container.innerHTML = renderRouteCards(
     items,
-    "暂无本地会话。",
-    (item) => `<article class="route-card">
-      <h4>${item.title}</h4>
-      <p>ID: ${item.id}</p>
-      <p>Messages: ${item.messages.length}</p>
-      <p>Created: ${formatSince(item.createdAt)}</p>
-    </article>`
+    t("route.sessions.empty"),
+    (item) => routeCardTemplate(
+      item.title,
+      "session",
+      [
+        routeFieldRow("field.id", item.id),
+        routeFieldRow("field.messages", item.messages.length),
+        routeFieldRow("field.created", formatSince(item.createdAt))
+      ],
+      true
+    )
   );
 }
 
 async function loadPlaceholderView(container) {
-  container.innerHTML = `<article class="route-card">
-    <h4>页面已接入路由</h4>
-    <p>该页面入口已可跳转，业务内容可按模块逐步扩展。</p>
-  </article>`;
+  container.innerHTML = routeCardTemplate(
+    t("route.connected"),
+    "web",
+    [routeFieldRow("field.description", t("route.connected_desc"))],
+    true
+  );
 }
 
 async function renderRoute(route) {
@@ -973,17 +1535,26 @@ async function renderRoute(route) {
   }
 
   const config = ROUTES[safe];
+  const routeKey = config.key || "chat"; // fallback
+  
+  // Update titles using translation keys
+  // Assuming keys follow pattern route.{key}.title
+  const titleKey = `route.${routeKey}.title`;
+  const subtitleKey = `route.${routeKey}.subtitle`;
+  
   if (config.mode === "chat") {
     setMainContentMode("chat");
+    syncRouteAction("");
     syncHeader();
     return;
   }
 
   setMainContentMode("page");
   closeTransientPanels();
-  routeTitle.textContent = config.title;
-  routeSubtitle.textContent = config.subtitle;
-  routeBody.innerHTML = '<p class="route-loading">Loading...</p>';
+  routeTitle.textContent = t(titleKey);
+  routeSubtitle.textContent = t(subtitleKey);
+  syncRouteAction(safe);
+  routeBody.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
   syncHeader();
 
   const token = ++state.pageRenderToken;
@@ -993,12 +1564,14 @@ async function renderRoute(route) {
     if (token !== state.pageRenderToken) {
       return;
     }
-    const message = err instanceof Error ? err.message : "unknown error";
-    routeBody.innerHTML = `<p class="route-error">加载失败：${message}</p>`;
+    const message = err instanceof Error ? err.message : "unknown_error";
+    routeBody.innerHTML = `<p class="route-error">${t("load_failed", { error: message })}</p>`;
   }
 }
 
 function bindEvents() {
+  bindNavTooltipEvents();
+
   chatForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     await sendMessage(input.value);
@@ -1025,7 +1598,18 @@ function bindEvents() {
     });
   }
 
-  navToggle.addEventListener("click", () => {
+  if (routeActionButton) {
+    routeActionButton.addEventListener("click", () => {
+      const targetRoute = routeActionButton.dataset.route;
+      if (!targetRoute) {
+        return;
+      }
+      navigateToRoute(targetRoute);
+    });
+  }
+
+  navToggle.addEventListener("click", (event) => {
+    event.stopPropagation();
     const open = !appShell.classList.contains("nav-open");
     closeTransientPanels();
     if (open) {
@@ -1034,7 +1618,8 @@ function bindEvents() {
     }
   });
 
-  sessionToggle.addEventListener("click", () => {
+  sessionToggle.addEventListener("click", (event) => {
+    event.stopPropagation();
     if (state.currentRoute !== "chat") {
       return;
     }
@@ -1106,6 +1691,13 @@ function bindEvents() {
     if (!isMobileViewport()) {
       closeTransientPanels();
     }
+    if (navTooltipTarget) {
+      if (!shouldShowNavTooltipFor(navTooltipTarget)) {
+        hideNavTooltip(true);
+      } else {
+        positionNavTooltip(navTooltipTarget);
+      }
+    }
     updateKeyboardInset();
   });
 
@@ -1132,12 +1724,6 @@ function bindEvents() {
 }
 
 function init() {
-  for (const node of menuRouteItems) {
-    const label = node.querySelector(".menu-label");
-    if (label && label.textContent) {
-      node.setAttribute("title", label.textContent.trim());
-    }
-  }
   setSidebarCollapsed(false);
   bootstrapSessions();
   renderSessions();
