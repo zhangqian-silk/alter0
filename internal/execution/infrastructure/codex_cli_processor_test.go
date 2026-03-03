@@ -97,6 +97,92 @@ func TestCodexCLIProcessorProcessWithSkillContextPayload(t *testing.T) {
 	}
 }
 
+func TestCodexCLIProcessorProcessWithMCPContextPayload(t *testing.T) {
+	mcpContext := execdomain.MCPContext{
+		Protocol: execdomain.MCPContextProtocolVersion,
+		Servers: []execdomain.MCPServer{
+			{
+				ID:               "github-mcp",
+				Name:             "GitHub MCP",
+				Scope:            "request",
+				Transport:        "http",
+				URL:              "https://mcp.example.com",
+				TimeoutMS:        9000,
+				FailureIsolation: true,
+			},
+		},
+	}
+	rawMCPContext, err := json.Marshal(mcpContext)
+	if err != nil {
+		t.Fatalf("marshal mcp context: %v", err)
+	}
+
+	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","mcp_context":{"protocol":"alter0.mcp-context/v1","servers":[{"id":"github-mcp","name":"GitHub MCP","scope":"request","transport":"http","url":"https://mcp.example.com","timeout_ms":9000,"failure_isolation":true}]}}`
+	processor := newTestProcessor("success", expectedPrompt)
+
+	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
+		execdomain.MCPContextMetadataKey: string(rawMCPContext),
+	})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
+	}
+}
+
+func TestCodexCLIProcessorProcessWithSkillAndMCPContextPayload(t *testing.T) {
+	skillContext := execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills: []execdomain.SkillSpec{
+			{
+				ID:          "summary",
+				Name:        "Summary",
+				Description: "summary docs",
+				Priority:    200,
+			},
+		},
+	}
+	rawSkillContext, err := json.Marshal(skillContext)
+	if err != nil {
+		t.Fatalf("marshal skill context: %v", err)
+	}
+
+	mcpContext := execdomain.MCPContext{
+		Protocol: execdomain.MCPContextProtocolVersion,
+		Servers: []execdomain.MCPServer{
+			{
+				ID:               "filesystem",
+				Name:             "Filesystem",
+				Scope:            "session",
+				Transport:        "stdio",
+				Command:          "npx",
+				Args:             []string{"-y", "@modelcontextprotocol/server-filesystem"},
+				TimeoutMS:        10000,
+				FailureIsolation: true,
+			},
+		},
+	}
+	rawMCPContext, err := json.Marshal(mcpContext)
+	if err != nil {
+		t.Fatalf("marshal mcp context: %v", err)
+	}
+
+	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","skill_context":{"protocol":"alter0.skill-context/v1","skills":[{"id":"summary","name":"Summary","description":"summary docs","priority":200}]},"mcp_context":{"protocol":"alter0.mcp-context/v1","servers":[{"id":"filesystem","name":"Filesystem","scope":"session","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem"],"timeout_ms":10000,"failure_isolation":true}]}}`
+	processor := newTestProcessor("success", expectedPrompt)
+
+	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
+		execdomain.SkillContextMetadataKey: string(rawSkillContext),
+		execdomain.MCPContextMetadataKey:   string(rawMCPContext),
+	})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
+	}
+}
+
 func newTestProcessor(mode, expectedPrompt string) *CodexCLIProcessor {
 	return &CodexCLIProcessor{
 		command: "codex",

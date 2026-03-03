@@ -26,6 +26,7 @@ type codexExecutionPayload struct {
 	Protocol    string                   `json:"protocol"`
 	UserPrompt  string                   `json:"user_prompt"`
 	SkillPolicy *execdomain.SkillContext `json:"skill_context,omitempty"`
+	MCPPolicy   *execdomain.MCPContext   `json:"mcp_context,omitempty"`
 }
 
 func NewCodexCLIProcessor() *CodexCLIProcessor {
@@ -104,22 +105,38 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 
 func buildCodexPrompt(prompt string, metadata map[string]string) (string, error) {
 	rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey))
-	if rawSkillContext == "" {
-		return prompt, nil
+	rawMCPContext := strings.TrimSpace(metadataValue(metadata, execdomain.MCPContextMetadataKey))
+
+	var skillContext *execdomain.SkillContext
+	if rawSkillContext != "" {
+		parsedSkillContext := execdomain.SkillContext{}
+		if err := json.Unmarshal([]byte(rawSkillContext), &parsedSkillContext); err != nil {
+			return "", fmt.Errorf("invalid skill context metadata: %w", err)
+		}
+		if len(parsedSkillContext.Skills) > 0 {
+			skillContext = &parsedSkillContext
+		}
 	}
 
-	var skillContext execdomain.SkillContext
-	if err := json.Unmarshal([]byte(rawSkillContext), &skillContext); err != nil {
-		return "", fmt.Errorf("invalid skill context metadata: %w", err)
+	var mcpContext *execdomain.MCPContext
+	if rawMCPContext != "" {
+		parsedMCPContext := execdomain.MCPContext{}
+		if err := json.Unmarshal([]byte(rawMCPContext), &parsedMCPContext); err != nil {
+			return "", fmt.Errorf("invalid mcp context metadata: %w", err)
+		}
+		if len(parsedMCPContext.Servers) > 0 {
+			mcpContext = &parsedMCPContext
+		}
 	}
-	if len(skillContext.Skills) == 0 {
+	if skillContext == nil && mcpContext == nil {
 		return prompt, nil
 	}
 
 	payload := codexExecutionPayload{
 		Protocol:    "alter0.codex-exec/v1",
 		UserPrompt:  prompt,
-		SkillPolicy: &skillContext,
+		SkillPolicy: skillContext,
+		MCPPolicy:   mcpContext,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
