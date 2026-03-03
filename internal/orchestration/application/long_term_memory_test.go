@@ -1,0 +1,239 @@
+package application
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	shareddomain "alter0/internal/shared/domain"
+)
+
+func TestLongTermMemoryRecordAndScopedRetrieval(t *testing.T) {
+	store := newLongTermMemoryStore(LongTermMemoryOptions{
+		MaxEntriesPerScope: 16,
+		MaxHits:            3,
+		MaxSnippet:         160,
+	})
+	now := time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC)
+
+	store.Record(longTermMessage("s-a", "u-1", "tenant-a", "remember my style", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "preference",
+		longTermMemoryKeyMetadataKey:      "response style",
+		longTermMemoryValueMetadataKey:    "concise bullet answers",
+		longTermMemoryTagsMetadataKey:     "style, concise",
+	}), shareddomain.RouteNL, "")
+	store.Record(longTermMessage("s-b", "u-2", "tenant-a", "remember my style", now.Add(30*time.Second), map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "preference",
+		longTermMemoryKeyMetadataKey:      "response style",
+		longTermMemoryValueMetadataKey:    "detailed narrative",
+		longTermMemoryTagsMetadataKey:     "style, detailed",
+	}), shareddomain.RouteNL, "")
+	store.Record(longTermMessage("s-c", "u-1", "tenant-b", "remember my style", now.Add(time.Minute), map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "preference",
+		longTermMemoryKeyMetadataKey:      "response style",
+		longTermMemoryValueMetadataKey:    "formal tone",
+		longTermMemoryTagsMetadataKey:     "style, formal",
+	}), shareddomain.RouteNL, "")
+
+	query := longTermMessage("s-new", "u-1", "tenant-a", "Can you keep concise style?", now.Add(2*time.Minute), nil)
+	snapshot := store.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.Hits) != 1 {
+		t.Fatalf("expected 1 long-term memory hit, got %d", len(snapshot.Hits))
+	}
+	hit := snapshot.Hits[0]
+	if !strings.Contains(hit.Entry.Value, "concise") {
+		t.Fatalf("expected concise preference hit, got %q", hit.Entry.Value)
+	}
+	if hit.Entry.Scope.UserID != "u-1" || hit.Entry.Scope.TenantID != "tenant-a" {
+		t.Fatalf("unexpected hit scope: tenant=%q user=%q", hit.Entry.Scope.TenantID, hit.Entry.Scope.UserID)
+	}
+	if snapshot.Metadata()["memory_long_term_hit_count"] != "1" {
+		t.Fatalf("expected hit count metadata 1, got %q", snapshot.Metadata()["memory_long_term_hit_count"])
+	}
+}
+
+func TestLongTermMemoryUpdateStrategiesAndAuditFields(t *testing.T) {
+	store := newLongTermMemoryStore(LongTermMemoryOptions{
+		MaxEntriesPerScope: 16,
+		MaxHits:            3,
+		MaxSnippet:         160,
+	})
+	now := time.Date(2026, 3, 3, 11, 0, 0, 0, time.UTC)
+
+	addMessage := longTermMessage("session-add", "u-1", "tenant-a", "store timezone", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryKeyMetadataKey:      "timezone",
+		longTermMemoryValueMetadataKey:    "UTC+8",
+		longTermMemoryTagsMetadataKey:     "profile, timezone",
+	})
+	store.Record(addMessage, shareddomain.RouteNL, "")
+
+	overwriteAt := now.Add(time.Minute)
+	overwriteMessage := longTermMessage("session-overwrite", "u-1", "tenant-a", "update timezone", overwriteAt, map[string]string{
+		longTermMemoryStrategyMetadataKey: "overwrite",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryKeyMetadataKey:      "timezone",
+		longTermMemoryValueMetadataKey:    "UTC+1",
+		longTermMemoryTagsMetadataKey:     "profile, timezone, latest",
+	})
+	store.Record(overwriteMessage, shareddomain.RouteNL, "")
+
+	scope := resolveLongTermMemoryScope(overwriteMessage, store.options)
+	entries := getScopeEntries(store, scope)
+	if len(entries) != 2 {
+		t.Fatalf("expected two entries after overwrite, got %d", len(entries))
+	}
+
+	activeCount := 0
+	invalidatedCount := 0
+	for _, entry := range entries {
+		switch entry.Status {
+		case longTermMemoryStatusActive:
+			activeCount++
+			if entry.Value != "UTC+1" {
+				t.Fatalf("expected active entry value UTC+1, got %q", entry.Value)
+			}
+			if entry.SourceSessionID != "session-overwrite" {
+				t.Fatalf("expected active entry source session session-overwrite, got %q", entry.SourceSessionID)
+			}
+			if !entry.UpdatedAt.Equal(overwriteAt) {
+				t.Fatalf("expected active entry updated at overwrite time, got %s", entry.UpdatedAt)
+			}
+		case longTermMemoryStatusInvalidated:
+			invalidatedCount++
+			if entry.UpdatedBy != longTermMemoryStrategyOverwrite {
+				t.Fatalf("expected invalidated entry updated by overwrite, got %q", entry.UpdatedBy)
+			}
+			if !entry.UpdatedAt.Equal(overwriteAt) {
+				t.Fatalf("expected invalidated entry updated at overwrite time, got %s", entry.UpdatedAt)
+			}
+			if entry.SourceSessionID != "session-overwrite" {
+				t.Fatalf("expected invalidated entry source session session-overwrite, got %q", entry.SourceSessionID)
+			}
+		default:
+			t.Fatalf("unexpected entry status: %q", entry.Status)
+		}
+	}
+	if activeCount != 1 || invalidatedCount != 1 {
+		t.Fatalf("expected one active and one invalidated entry, got active=%d invalidated=%d", activeCount, invalidatedCount)
+	}
+
+	invalidateAt := overwriteAt.Add(time.Minute)
+	invalidateMessage := longTermMessage("session-invalidate", "u-1", "tenant-a", "timezone invalid", invalidateAt, map[string]string{
+		longTermMemoryStrategyMetadataKey: "invalidate",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryKeyMetadataKey:      "timezone",
+	})
+	store.Record(invalidateMessage, shareddomain.RouteNL, "")
+
+	snapshot := store.Snapshot(invalidateMessage, "timezone", invalidateAt.Add(time.Second))
+	if len(snapshot.Hits) != 0 {
+		t.Fatalf("expected no active hits after invalidate, got %d", len(snapshot.Hits))
+	}
+
+	entries = getScopeEntries(store, scope)
+	for _, entry := range entries {
+		if entry.Status != longTermMemoryStatusInvalidated {
+			t.Fatalf("expected all entries invalidated after invalidate strategy, got %q", entry.Status)
+		}
+	}
+}
+
+func TestBuildLongTermMemoryPromptInjectsSection(t *testing.T) {
+	snapshot := longTermMemorySnapshot{
+		Scope: longTermMemoryScope{
+			TenantID: "tenant-a",
+			UserID:   "u-1",
+		},
+		Hits: []longTermMemoryHit{
+			{
+				Entry: longTermMemoryEntry{
+					Kind:            longTermMemoryKindPreference,
+					Key:             "response_style",
+					Value:           "concise bullet answers",
+					Tags:            []string{"concise", "style"},
+					SourceSessionID: "s-1",
+					UpdatedAt:       time.Date(2026, 3, 3, 9, 0, 0, 0, time.UTC),
+				},
+				Score: 3.4,
+			},
+		},
+	}
+	basePrompt := "[SESSION SHORT TERM MEMORY]\nScope: current session only.\nRecent turns:\n1) user: hello\n   assistant: hi\nCurrent user input:\nPlease answer with rollout details"
+
+	prompt := buildLongTermMemoryPrompt(basePrompt, snapshot)
+	if !strings.Contains(prompt, "[LONG TERM MEMORY]") {
+		t.Fatalf("expected long-term memory section in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "response_style: concise bullet answers") {
+		t.Fatalf("expected memory entry in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "Current user input:\nPlease answer with rollout details") {
+		t.Fatalf("expected current user input preserved, got %q", prompt)
+	}
+}
+
+func TestLongTermMemoryImplicitPreferencePersistsAcrossSessions(t *testing.T) {
+	store := newLongTermMemoryStore(LongTermMemoryOptions{
+		MaxEntriesPerScope: 16,
+		MaxHits:            3,
+		MaxSnippet:         160,
+	})
+	now := time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC)
+
+	writeMessage := longTermMessage("session-preference", "u-7", "tenant-x", "I prefer concise responses", now, nil)
+	store.Record(writeMessage, shareddomain.RouteNL, "")
+
+	query := longTermMessage("session-new", "u-7", "tenant-x", "Can you keep concise format?", now.Add(time.Minute), nil)
+	snapshot := store.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.Hits) == 0 {
+		t.Fatalf("expected implicit preference memory to be retrieved")
+	}
+	if snapshot.Hits[0].Entry.Key != "default_preference" {
+		t.Fatalf("expected default_preference key, got %q", snapshot.Hits[0].Entry.Key)
+	}
+}
+
+func longTermMessage(
+	sessionID string,
+	userID string,
+	tenantID string,
+	content string,
+	receivedAt time.Time,
+	metadata map[string]string,
+) shareddomain.UnifiedMessage {
+	meta := map[string]string{}
+	for key, value := range metadata {
+		meta[key] = value
+	}
+	if strings.TrimSpace(tenantID) != "" {
+		meta[longTermMemoryTenantMetadataKey] = tenantID
+	}
+	if len(meta) == 0 {
+		meta = nil
+	}
+
+	return shareddomain.UnifiedMessage{
+		MessageID:   fmt.Sprintf("m-%s", sessionID),
+		SessionID:   sessionID,
+		UserID:      userID,
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     content,
+		Metadata:    meta,
+		TraceID:     fmt.Sprintf("trace-%s", sessionID),
+		ReceivedAt:  receivedAt,
+	}
+}
+
+func getScopeEntries(store *longTermMemoryStore, scope longTermMemoryScope) []longTermMemoryEntry {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	return copyLongTermMemoryEntries(store.scopes[scope.Key()])
+}
