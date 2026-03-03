@@ -1,6 +1,7 @@
 const appShell = document.getElementById("appShell");
 const sessionList = document.getElementById("sessionList");
 const sessionEmpty = document.getElementById("sessionEmpty");
+const sessionLoadError = document.getElementById("sessionLoadError");
 const welcomeScreen = document.getElementById("welcomeScreen");
 const messageArea = document.getElementById("messageArea");
 const chatForm = document.getElementById("chatForm");
@@ -34,6 +35,8 @@ const DEFAULT_ROUTE = "chat";
 const SWIPE_CLOSE_THRESHOLD = 46;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
+const SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
+const DEFAULT_WELCOME_HEADING = "Hello, how can I help you today?";
 
 const ROUTES = {
   chat: {
@@ -101,6 +104,7 @@ const state = {
   activeSessionID: "",
   currentRoute: DEFAULT_ROUTE,
   sessions: [],
+  sessionLoadError: "",
   pending: false,
   pageRenderToken: 0,
   navCollapsed: false
@@ -148,6 +152,118 @@ function formatSince(epochMillis) {
   return `${days} 天前`;
 }
 
+function getSessionStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeStoredMessage(item, fallbackAt) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const text = typeof item.text === "string" ? item.text : "";
+  if (!text) {
+    return null;
+  }
+  const role = item.role === "assistant" ? "assistant" : "user";
+  const at = Number.isFinite(item.at) ? item.at : fallbackAt;
+  const status = typeof item.status === "string" && item.status ? item.status : "done";
+  return {
+    id: typeof item.id === "string" && item.id ? item.id : makeID(),
+    role,
+    text,
+    at,
+    route: typeof item.route === "string" ? item.route : "",
+    error: Boolean(item.error),
+    status,
+    retryable: Boolean(item.retryable)
+  };
+}
+
+function normalizeStoredSession(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const id = typeof item.id === "string" && item.id ? item.id : makeID();
+  const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "新对话";
+  const createdAt = Number.isFinite(item.createdAt) ? item.createdAt : Date.now();
+  const rawMessages = Array.isArray(item.messages) ? item.messages : [];
+  const messages = [];
+  for (const raw of rawMessages) {
+    const normalized = normalizeStoredMessage(raw, createdAt);
+    if (normalized) {
+      messages.push(normalized);
+    }
+  }
+  return { id, title, createdAt, messages };
+}
+
+function loadSessionsFromStorage() {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return [];
+  }
+  const raw = storage.getItem(SESSION_STORAGE_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("本地存储数据损坏");
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("本地存储数据格式无效");
+  }
+
+  const sessions = [];
+  for (const entry of parsed) {
+    const normalized = normalizeStoredSession(entry);
+    if (normalized) {
+      sessions.push(normalized);
+    }
+  }
+  sessions.sort((left, right) => right.createdAt - left.createdAt);
+  return sessions;
+}
+
+function persistSessions() {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(state.sessions));
+    state.sessionLoadError = "";
+  } catch {
+    state.sessionLoadError = "会话列表保存失败，请检查浏览器存储权限。";
+  }
+  syncSessionLoadHint();
+}
+
+function bootstrapSessions() {
+  state.sessionLoadError = "";
+  state.sessions = [];
+  state.activeSessionID = "";
+
+  try {
+    const sessions = loadSessionsFromStorage();
+    state.sessions = sessions;
+    if (sessions.length) {
+      state.activeSessionID = sessions[0].id;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "未知错误";
+    state.sessionLoadError = `会话列表加载失败：${message}`;
+  }
+}
+
 function createSession() {
   const createdAt = Date.now();
   const item = {
@@ -162,6 +278,7 @@ function createSession() {
   renderMessages();
   syncHeader();
   syncWelcomeCopy();
+  persistSessions();
   return item;
 }
 
@@ -190,17 +307,24 @@ function syncHeader() {
 function syncWelcomeCopy() {
   const active = getSession();
   if (!active) {
-    welcomeHeading.textContent = "Hello, how can I help you today?";
-    welcomeDescription.textContent = "I am a helpful assistant that can help you with your questions.";
+    welcomeHeading.textContent = DEFAULT_WELCOME_HEADING;
+    welcomeDescription.textContent = "暂无会话，点击 New Chat 创建后即可发送消息。";
     return;
   }
   welcomeHeading.textContent = active.title;
   welcomeDescription.textContent = "当前会话暂无消息，输入内容即可发送。";
 }
 
+function syncSessionLoadHint() {
+  sessionLoadError.textContent = state.sessionLoadError;
+  sessionLoadError.style.display = state.sessionLoadError ? "block" : "none";
+}
+
 function renderSessions() {
   sessionList.innerHTML = "";
+  syncSessionLoadHint();
   if (!state.sessions.length) {
+    sessionEmpty.textContent = "会话列表为空，点击 New Chat 创建会话。";
     sessionEmpty.style.display = "block";
     return;
   }
@@ -247,6 +371,7 @@ function updateSessionTitle(session, fallbackText) {
     return;
   }
   session.title = shorten(text, 18);
+  persistSessions();
 }
 
 function appendMessage(role, text, options = {}) {
@@ -271,6 +396,7 @@ function appendMessage(role, text, options = {}) {
   renderSessions();
   renderMessages();
   syncHeader();
+  persistSessions();
   return message;
 }
 
@@ -281,6 +407,7 @@ function updateMessage(message, patch = {}) {
   Object.assign(message, patch);
   renderMessages();
   syncHeader();
+  persistSessions();
 }
 
 function assistantStatusLabel(status) {
@@ -1012,7 +1139,10 @@ function init() {
     }
   }
   setSidebarCollapsed(false);
-  createSession();
+  bootstrapSessions();
+  renderSessions();
+  renderMessages();
+  syncHeader();
   bindEvents();
   updateCharCount();
   updateKeyboardInset();

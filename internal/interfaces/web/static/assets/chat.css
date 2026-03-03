@@ -328,6 +328,13 @@ body {
   font-size: 12px;
 }
 
+.session-error {
+  display: none;
+  margin: 8px 2px 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
 .chat-pane {
   min-height: 100vh;
   min-height: 100dvh;
