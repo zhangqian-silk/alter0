@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -57,6 +58,10 @@ func main() {
 	contextCompressionThreshold := flag.Int("context-compression-threshold", 1200, "estimated token threshold to trigger session context compression")
 	contextCompressionSummaryTokens := flag.Int("context-compression-summary-tokens", 220, "estimated token budget per compressed summary fragment")
 	contextCompressionRetainTurns := flag.Int("context-compression-retain-turns", 4, "recent turns retained before compressing historical turns")
+	longTermMemoryPath := flag.String("long-term-memory-path", filepath.Join(defaultStorageProfile.Dir, "long_term_memory.json"), "tiered long-term memory persistence file path")
+	longTermMemoryWritePolicy := flag.String("long-term-memory-write-policy", "write_through", "tiered long-term memory write policy: write_through/write_back")
+	longTermMemoryWriteBackFlush := flag.Duration("long-term-memory-writeback-flush", 2*time.Second, "write-back flush interval for long-term memory persistence")
+	longTermMemoryTokenBudget := flag.Int("long-term-memory-token-budget", 220, "long-term memory injection token budget")
 	mandatoryContextFile := flag.String("mandatory-context-file", "SOUL.md", "mandatory context file path")
 	flag.Parse()
 	listenAddr := strings.TrimSpace(*webAddr)
@@ -129,6 +134,12 @@ func main() {
 			CompressionTriggerTokens: *contextCompressionThreshold,
 			CompressionSummaryTokens: *contextCompressionSummaryTokens,
 			CompressionRetainTurns:   *contextCompressionRetainTurns,
+		}),
+		orchapp.WithLongTermMemoryOptions(orchapp.LongTermMemoryOptions{
+			InjectionTokenBudget: *longTermMemoryTokenBudget,
+			PersistencePath:      strings.TrimSpace(*longTermMemoryPath),
+			WritePolicy:          orchapp.LongTermMemoryWritePolicy(strings.ToLower(strings.TrimSpace(*longTermMemoryWritePolicy))),
+			WriteBackFlush:       *longTermMemoryWriteBackFlush,
 		}),
 		orchapp.WithMandatoryContextOptions(orchapp.MandatoryContextOptions{
 			FilePath: *mandatoryContextFile,

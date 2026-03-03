@@ -1,7 +1,10 @@
 package application
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -28,6 +31,7 @@ const (
 	defaultLongTermMemoryL2DemoteIdle       = 72 * time.Hour
 	defaultLongTermMemoryL2PromoteHits      = 3
 	defaultLongTermMemoryL3PromoteHits      = 2
+	defaultLongTermMemoryWriteBackFlush     = 2 * time.Second
 	defaultLongTermMemoryTenantID           = "default"
 	defaultLongTermMemoryUserID             = "anonymous"
 	longTermMemoryTenantMetadataKey         = "tenant_id"
@@ -56,6 +60,9 @@ type LongTermMemoryOptions struct {
 	MaxHits              int
 	MaxSnippet           int
 	InjectionTokenBudget int
+	PersistencePath      string
+	WritePolicy          LongTermMemoryWritePolicy
+	WriteBackFlush       time.Duration
 	DefaultTenantID      string
 	DefaultUserID        string
 	L1                   LongTermMemoryTierOptions
@@ -91,6 +98,13 @@ type LongTermMemoryEvictionPolicy string
 const (
 	longTermMemoryEvictionPolicyLRU   LongTermMemoryEvictionPolicy = "lru"
 	longTermMemoryEvictionPolicyScore LongTermMemoryEvictionPolicy = "score"
+)
+
+type LongTermMemoryWritePolicy string
+
+const (
+	longTermMemoryWritePolicyWriteThrough LongTermMemoryWritePolicy = "write_through"
+	longTermMemoryWritePolicyWriteBack    LongTermMemoryWritePolicy = "write_back"
 )
 
 type longTermMemoryStrategy string
@@ -218,18 +232,33 @@ type longTermMemoryUpdate struct {
 }
 
 type longTermMemoryStore struct {
-	mu       sync.Mutex
-	options  LongTermMemoryOptions
-	sequence int64
-	scopes   map[string][]longTermMemoryEntry
+	mu          sync.Mutex
+	options     LongTermMemoryOptions
+	sequence    int64
+	scopes      map[string][]longTermMemoryEntry
+	dirty       bool
+	lastFlushAt time.Time
+}
+
+type longTermMemoryPersistentState struct {
+	Sequence int64                           `json:"sequence"`
+	Scopes   []longTermMemoryPersistentScope `json:"scopes"`
+}
+
+type longTermMemoryPersistentScope struct {
+	TenantID string                `json:"tenant_id"`
+	UserID   string                `json:"user_id"`
+	Entries  []longTermMemoryEntry `json:"entries"`
 }
 
 func newLongTermMemoryStore(options LongTermMemoryOptions) *longTermMemoryStore {
 	normalized := normalizeLongTermMemoryOptions(options)
-	return &longTermMemoryStore{
+	store := &longTermMemoryStore{
 		options: normalized,
 		scopes:  map[string][]longTermMemoryEntry{},
 	}
+	store.loadPersistentStateLocked()
+	return store
 }
 
 func normalizeLongTermMemoryOptions(options LongTermMemoryOptions) LongTermMemoryOptions {
@@ -244,6 +273,10 @@ func normalizeLongTermMemoryOptions(options LongTermMemoryOptions) LongTermMemor
 	}
 	if options.InjectionTokenBudget <= 0 {
 		options.InjectionTokenBudget = defaultLongTermMemoryInjectionBudget
+	}
+	options.WritePolicy = normalizeLongTermMemoryWritePolicy(string(options.WritePolicy))
+	if options.WriteBackFlush <= 0 {
+		options.WriteBackFlush = defaultLongTermMemoryWriteBackFlush
 	}
 	if strings.TrimSpace(options.DefaultTenantID) == "" {
 		options.DefaultTenantID = defaultLongTermMemoryTenantID
@@ -274,6 +307,147 @@ func normalizeLongTermMemoryOptions(options LongTermMemoryOptions) LongTermMemor
 		EvictionPolicy: longTermMemoryEvictionPolicyLRU,
 	})
 	return options
+}
+
+func (s *longTermMemoryStore) Flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.persistLocked(time.Now().UTC(), true)
+}
+
+func (s *longTermMemoryStore) schedulePersistLocked(now time.Time, force bool) {
+	if strings.TrimSpace(s.options.PersistencePath) == "" {
+		return
+	}
+	s.dirty = true
+	switch s.options.WritePolicy {
+	case longTermMemoryWritePolicyWriteBack:
+		if !force {
+			if s.lastFlushAt.IsZero() {
+				s.lastFlushAt = now
+				return
+			}
+			if now.Sub(s.lastFlushAt) < s.options.WriteBackFlush {
+				return
+			}
+		}
+		_ = s.persistLocked(now, force)
+	default:
+		_ = s.persistLocked(now, true)
+	}
+}
+
+func (s *longTermMemoryStore) persistLocked(now time.Time, force bool) error {
+	if strings.TrimSpace(s.options.PersistencePath) == "" {
+		return nil
+	}
+	if !force && !s.dirty {
+		return nil
+	}
+
+	state := longTermMemoryPersistentState{
+		Sequence: s.sequence,
+		Scopes:   make([]longTermMemoryPersistentScope, 0, len(s.scopes)),
+	}
+	scopeKeys := make([]string, 0, len(s.scopes))
+	for scopeKey := range s.scopes {
+		scopeKeys = append(scopeKeys, scopeKey)
+	}
+	sort.Strings(scopeKeys)
+	for _, scopeKey := range scopeKeys {
+		entries := copyLongTermMemoryEntries(s.scopes[scopeKey])
+		if len(entries) == 0 {
+			continue
+		}
+		scope := entries[0].Scope
+		state.Scopes = append(state.Scopes, longTermMemoryPersistentScope{
+			TenantID: scope.TenantID,
+			UserID:   scope.UserID,
+			Entries:  entries,
+		})
+	}
+
+	payload, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	path := strings.TrimSpace(s.options.PersistencePath)
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, payload, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	s.dirty = false
+	s.lastFlushAt = now
+	return nil
+}
+
+func (s *longTermMemoryStore) loadPersistentStateLocked() {
+	path := strings.TrimSpace(s.options.PersistencePath)
+	if path == "" {
+		return
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		return
+	}
+
+	state := longTermMemoryPersistentState{}
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return
+	}
+	if state.Sequence > 0 {
+		s.sequence = state.Sequence
+	}
+	for _, scope := range state.Scopes {
+		resolvedScope := longTermMemoryScope{
+			TenantID: strings.TrimSpace(scope.TenantID),
+			UserID:   strings.TrimSpace(scope.UserID),
+		}
+		if resolvedScope.TenantID == "" || resolvedScope.UserID == "" {
+			continue
+		}
+		scopeKey := resolvedScope.Key()
+		normalizedEntries := make([]longTermMemoryEntry, 0, len(scope.Entries))
+		for _, entry := range scope.Entries {
+			entry.Scope = resolvedScope
+			entry.Tier = normalizeLongTermMemoryTier(string(entry.Tier))
+			entry.Kind = normalizeLongTermMemoryKind(string(entry.Kind))
+			entry.Key = normalizeLongTermMemoryKey(entry.Key)
+			if entry.Key == "" {
+				continue
+			}
+			maxEntryLength := s.options.TierOptions(entry.Tier).MaxEntryLength
+			if maxEntryLength <= 0 {
+				maxEntryLength = s.options.MaxSnippet
+			}
+			entry.Value = normalizeSnippet(entry.Value, maxEntryLength)
+			entry.Tags = normalizeLongTermMemoryTags(entry.Tags)
+			if entry.Status == "" {
+				entry.Status = longTermMemoryStatusActive
+			}
+			normalizedEntries = append(normalizedEntries, entry)
+		}
+		if len(normalizedEntries) == 0 {
+			continue
+		}
+		s.scopes[scopeKey] = normalizedEntries
+	}
+	s.lastFlushAt = time.Now().UTC()
+	s.dirty = false
 }
 
 func normalizeLongTermMemoryTierOptions(options LongTermMemoryTierOptions, defaults LongTermMemoryTierOptions) LongTermMemoryTierOptions {
@@ -322,6 +496,7 @@ func (s *longTermMemoryStore) Snapshot(msg shareddomain.UnifiedMessage, query st
 
 	scopeKey := scope.Key()
 	entries := copyLongTermMemoryEntries(s.scopes[scopeKey])
+	originalCount := len(entries)
 	entries = applyLongTermMemoryTTL(entries, s.options, now)
 	entries, demotions := applyLongTermMemoryDemotion(entries, s.options, now)
 
@@ -330,10 +505,14 @@ func (s *longTermMemoryStore) Snapshot(msg shareddomain.UnifiedMessage, query st
 	hits, tierHits, tokenUsed, truncated := trimLongTermMemoryTierHitsByBudget(candidateTierHits, tokenBudget, s.options.MaxHits)
 	entries, promotions := applyLongTermMemoryHitFeedback(entries, hits, s.options, now)
 	entries = enforceLongTermMemoryTierCapacity(entries, s.options, now)
+	mutated := originalCount != len(entries) || len(demotions) > 0 || len(promotions) > 0 || len(hits) > 0
 	if len(entries) == 0 {
 		delete(s.scopes, scopeKey)
 	} else {
 		s.scopes[scopeKey] = copyLongTermMemoryEntries(entries)
+	}
+	if mutated {
+		s.schedulePersistLocked(now, false)
 	}
 	return longTermMemorySnapshot{
 		Scope:             scope,
@@ -366,6 +545,7 @@ func (s *longTermMemoryStore) Record(msg shareddomain.UnifiedMessage, route shar
 	defer s.mu.Unlock()
 
 	entries := s.scopes[scopeKey]
+	originalCount := len(entries)
 	entries = applyLongTermMemoryTTL(entries, s.options, now)
 	entries, _ = applyLongTermMemoryDemotion(entries, s.options, now)
 	for _, update := range updates {
@@ -373,12 +553,19 @@ func (s *longTermMemoryStore) Record(msg shareddomain.UnifiedMessage, route shar
 	}
 
 	entries = enforceLongTermMemoryTierCapacity(entries, s.options, now)
+	mutated := len(updates) > 0 || len(entries) != originalCount
 	if len(entries) == 0 {
 		delete(s.scopes, scopeKey)
+		if mutated {
+			s.schedulePersistLocked(now, false)
+		}
 		return
 	}
 
 	s.scopes[scopeKey] = copyLongTermMemoryEntries(entries)
+	if mutated {
+		s.schedulePersistLocked(now, false)
+	}
 }
 
 func resolveLongTermMemoryScope(msg shareddomain.UnifiedMessage, options LongTermMemoryOptions) longTermMemoryScope {
@@ -1221,6 +1408,15 @@ func normalizeLongTermMemoryStrategy(raw string) longTermMemoryStrategy {
 		return longTermMemoryStrategyInvalidate
 	default:
 		return longTermMemoryStrategyAdd
+	}
+}
+
+func normalizeLongTermMemoryWritePolicy(raw string) LongTermMemoryWritePolicy {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case string(longTermMemoryWritePolicyWriteBack):
+		return longTermMemoryWritePolicyWriteBack
+	default:
+		return longTermMemoryWritePolicyWriteThrough
 	}
 }
 

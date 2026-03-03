@@ -2,6 +2,8 @@ package application
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -410,6 +412,82 @@ func TestLongTermMemoryPromotionAndDemotionObservable(t *testing.T) {
 	}
 	if idleSnapshot.Metadata()["memory_long_term_demotion_count"] == "0" {
 		t.Fatalf("expected demotion count metadata")
+	}
+}
+
+func TestLongTermMemoryPersistenceAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "long_term_memory.json")
+	options := LongTermMemoryOptions{
+		MaxEntriesPerScope:   24,
+		MaxHits:              6,
+		MaxSnippet:           200,
+		InjectionTokenBudget: 120,
+		PersistencePath:      path,
+		WritePolicy:          longTermMemoryWritePolicyWriteThrough,
+	}
+	now := time.Date(2026, 3, 3, 17, 0, 0, 0, time.UTC)
+
+	store := newLongTermMemoryStore(options)
+	store.Record(longTermMessage("persist-seed", "u-1", "tenant-a", "remember setting", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "preference",
+		longTermMemoryKeyMetadataKey:      "response-style",
+		longTermMemoryValueMetadataKey:    "concise bullets",
+	}), shareddomain.RouteNL, "")
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected persistence file after write-through record: %v", err)
+	}
+
+	reloaded := newLongTermMemoryStore(options)
+	query := longTermMessage("persist-query", "u-1", "tenant-a", "keep concise", now.Add(time.Minute), nil)
+	snapshot := reloaded.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.Hits) == 0 {
+		t.Fatalf("expected memory recovered after restart")
+	}
+	if !strings.Contains(snapshot.Hits[0].Entry.Value, "concise") {
+		t.Fatalf("expected recovered value to contain concise, got %q", snapshot.Hits[0].Entry.Value)
+	}
+}
+
+func TestLongTermMemoryWriteBackRequiresFlush(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "long_term_memory_writeback.json")
+	options := LongTermMemoryOptions{
+		MaxEntriesPerScope:   24,
+		MaxHits:              6,
+		MaxSnippet:           200,
+		InjectionTokenBudget: 120,
+		PersistencePath:      path,
+		WritePolicy:          longTermMemoryWritePolicyWriteBack,
+		WriteBackFlush:       time.Hour,
+	}
+	now := time.Date(2026, 3, 3, 17, 30, 0, 0, time.UTC)
+
+	store := newLongTermMemoryStore(options)
+	store.Record(longTermMessage("wb-seed", "u-1", "tenant-a", "remember setting", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryKeyMetadataKey:      "timezone",
+		longTermMemoryValueMetadataKey:    "UTC+8",
+	}), shareddomain.RouteNL, "")
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected no persisted file before write-back flush, got err=%v", err)
+	}
+	if err := store.Flush(); err != nil {
+		t.Fatalf("flush write-back memory: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected persisted file after flush: %v", err)
+	}
+
+	reloaded := newLongTermMemoryStore(options)
+	query := longTermMessage("wb-query", "u-1", "tenant-a", "timezone", now.Add(time.Minute), nil)
+	snapshot := reloaded.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.Hits) == 0 {
+		t.Fatalf("expected write-back data recovered after flush and restart")
 	}
 }
 
