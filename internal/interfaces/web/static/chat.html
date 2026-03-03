@@ -100,6 +100,7 @@
         </div>
         <div class="chat-header-actions">
           <button class="panel-toggle" id="sessionToggle" type="button" aria-label="Sessions">会话</button>
+          <button class="mobile-new-chat" id="mobileNewChatButton" type="button" aria-label="Create new chat">New Chat</button>
           <button class="locale" type="button" aria-label="Language">English</button>
         </div>
       </header>
@@ -107,8 +108,8 @@
       <div class="chat-view" id="chatView">
         <section class="welcome-screen" id="welcomeScreen">
           <p class="welcome-tag">alter0 assistant</p>
-          <h3>Hello, how can I help you today?</h3>
-          <p>I am a helpful assistant that can help you with your questions.</p>
+          <h3 id="welcomeHeading">Hello, how can I help you today?</h3>
+          <p id="welcomeDescription">I am a helpful assistant that can help you with your questions.</p>
           <div class="prompt-grid">
             <button class="prompt" type="button" data-prompt="让我们开启一段新的旅程吧！">
               <span>让我们开启一段新的旅程吧！</span>

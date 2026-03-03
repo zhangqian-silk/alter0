@@ -8,6 +8,7 @@ const input = document.getElementById("composerInput");
 const sendButton = document.getElementById("sendButton");
 const charCount = document.getElementById("charCount");
 const newChatButton = document.getElementById("newChatButton");
+const mobileNewChatButton = document.getElementById("mobileNewChatButton");
 const navToggle = document.getElementById("navToggle");
 const sessionToggle = document.getElementById("sessionToggle");
 const togglePaneButton = document.getElementById("togglePaneButton");
@@ -15,6 +16,8 @@ const navCollapseButton = document.getElementById("navCollapseButton");
 const mobileBackdrop = document.getElementById("mobileBackdrop");
 const sessionHeading = document.getElementById("sessionHeading");
 const sessionSubheading = document.getElementById("sessionSubheading");
+const welcomeHeading = document.getElementById("welcomeHeading");
+const welcomeDescription = document.getElementById("welcomeDescription");
 const sessionPane = document.querySelector(".session-pane");
 const primaryNav = document.querySelector(".primary-nav");
 const chatPane = document.querySelector(".chat-pane");
@@ -158,6 +161,7 @@ function createSession() {
   renderSessions();
   renderMessages();
   syncHeader();
+  syncWelcomeCopy();
   return item;
 }
 
@@ -176,7 +180,22 @@ function syncHeader() {
     return;
   }
   sessionHeading.textContent = active.title;
+  if (active.messages.length === 0) {
+    sessionSubheading.textContent = "空会话，等待你的第一条消息";
+    return;
+  }
   sessionSubheading.textContent = `${active.messages.length} messages`;
+}
+
+function syncWelcomeCopy() {
+  const active = getSession();
+  if (!active) {
+    welcomeHeading.textContent = "Hello, how can I help you today?";
+    welcomeDescription.textContent = "I am a helpful assistant that can help you with your questions.";
+    return;
+  }
+  welcomeHeading.textContent = active.title;
+  welcomeDescription.textContent = "当前会话暂无消息，输入内容即可发送。";
 }
 
 function renderSessions() {
@@ -282,6 +301,7 @@ function renderMessages() {
   chatPane.classList.toggle("empty-state", !hasMessages);
 
   if (!hasMessages) {
+    syncWelcomeCopy();
     messageArea.innerHTML = "";
     return;
   }
@@ -705,6 +725,15 @@ function navigateToRoute(route) {
   void renderRoute(safe);
 }
 
+function startNewChatSession() {
+  createSession();
+  navigateToRoute("chat");
+  closeTransientPanels();
+  window.requestAnimationFrame(() => {
+    input.focus();
+  });
+}
+
 function renderRouteCards(items, emptyText, renderItem) {
   if (!items.length) {
     return `<p class="route-empty">${emptyText}</p>`;
@@ -856,12 +885,10 @@ function bindEvents() {
     }
   });
 
-  newChatButton.addEventListener("click", () => {
-    createSession();
-    navigateToRoute("chat");
-    input.focus();
-    closeTransientPanels();
-  });
+  newChatButton.addEventListener("click", startNewChatSession);
+  if (mobileNewChatButton) {
+    mobileNewChatButton.addEventListener("click", startNewChatSession);
+  }
 
   for (const node of menuRouteItems) {
     node.addEventListener("click", () => {
