@@ -80,11 +80,16 @@ type channelUpsertRequest struct {
 }
 
 type skillUpsertRequest struct {
-	Name        string            `json:"name"`
-	Enabled     *bool             `json:"enabled,omitempty"`
-	Description string            `json:"description,omitempty"`
-	Version     string            `json:"version,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Name     string            `json:"name"`
+	Type     string            `json:"type,omitempty"`
+	Enabled  *bool             `json:"enabled,omitempty"`
+	Scope    string            `json:"scope,omitempty"`
+	Version  string            `json:"version,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+type capabilityLifecycleRequest struct {
+	Action string `json:"action"`
 }
 
 type cronJobUpsertRequest struct {
@@ -141,8 +146,13 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
+	mux.HandleFunc("/api/control/capabilities", s.capabilityListHandler)
+	mux.HandleFunc("/api/control/capabilities/audit", s.capabilityAuditListHandler)
+	mux.HandleFunc("/api/control/capabilities/", s.capabilityItemHandler)
 	mux.HandleFunc("/api/control/skills", s.skillListHandler)
 	mux.HandleFunc("/api/control/skills/", s.skillItemHandler)
+	mux.HandleFunc("/api/control/mcps", s.mcpListHandler)
+	mux.HandleFunc("/api/control/mcps/", s.mcpItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
 
@@ -368,6 +378,87 @@ func (s *Server) channelItemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) capabilityListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.control == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	filterType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
+	if filterType == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListCapabilities()})
+		return
+	}
+	capabilityType := controldomain.CapabilityType(filterType)
+	if !capabilityType.IsSupported() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill or mcp"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListCapabilitiesByType(capabilityType)})
+}
+
+func (s *Server) capabilityAuditListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.control == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	filterType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
+	items := s.control.ListCapabilityAudits()
+	if filterType != "" {
+		capabilityType := controldomain.CapabilityType(filterType)
+		if !capabilityType.IsSupported() {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill or mcp"})
+			return
+		}
+		filtered := make([]controldomain.CapabilityAudit, 0, len(items))
+		for _, item := range items {
+			if item.CapabilityType == capabilityType {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s *Server) capabilityItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.control == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
+		return
+	}
+
+	capabilityType, capabilityID, ok := typedResourceID(r.URL.Path, "/api/control/capabilities/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid capability path"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		s.upsertTypedCapability(w, r, capabilityID, capabilityType)
+	case http.MethodPost:
+		s.applyCapabilityLifecycle(w, r, capabilityID, capabilityType)
+	case http.MethodDelete:
+		if !s.control.DeleteCapability(capabilityType, capabilityID) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "capability not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
 func (s *Server) skillListHandler(w http.ResponseWriter, r *http.Request) {
 	if s.control == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
@@ -377,7 +468,7 @@ func (s *Server) skillListHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListSkills()})
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListCapabilitiesByType(controldomain.CapabilityTypeSkill)})
 }
 
 func (s *Server) skillItemHandler(w http.ResponseWriter, r *http.Request) {
@@ -394,30 +485,9 @@ func (s *Server) skillItemHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
-		defer r.Body.Close()
-		var req skillUpsertRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
-			return
-		}
-
-		enabled := true
-		if req.Enabled != nil {
-			enabled = *req.Enabled
-		}
-		skill := controldomain.Skill{
-			ID:          skillID,
-			Name:        strings.TrimSpace(req.Name),
-			Enabled:     enabled,
-			Description: strings.TrimSpace(req.Description),
-			Version:     strings.TrimSpace(req.Version),
-			Metadata:    req.Metadata,
-		}
-		if err := s.control.UpsertSkill(skill); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, skill)
+		s.upsertTypedCapability(w, r, skillID, controldomain.CapabilityTypeSkill)
+	case http.MethodPost:
+		s.applyCapabilityLifecycle(w, r, skillID, controldomain.CapabilityTypeSkill)
 	case http.MethodDelete:
 		if !s.control.DeleteSkill(skillID) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
@@ -426,6 +496,112 @@ func (s *Server) skillItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) mcpListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.control == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListMCPs()})
+}
+
+func (s *Server) mcpItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.control == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
+		return
+	}
+
+	mcpID, ok := resourceID(r.URL.Path, "/api/control/mcps/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid mcp path"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		s.upsertTypedCapability(w, r, mcpID, controldomain.CapabilityTypeMCP)
+	case http.MethodPost:
+		s.applyCapabilityLifecycle(w, r, mcpID, controldomain.CapabilityTypeMCP)
+	case http.MethodDelete:
+		if !s.control.DeleteMCP(mcpID) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "mcp not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) upsertTypedCapability(w http.ResponseWriter, r *http.Request, capabilityID string, forcedType controldomain.CapabilityType) {
+	defer r.Body.Close()
+	var req skillUpsertRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+
+	capabilityType := forcedType
+	if capabilityType == "" {
+		capabilityType = controldomain.CapabilityType(strings.ToLower(strings.TrimSpace(req.Type)))
+	}
+	if req.Type != "" && forcedType != "" && strings.ToLower(strings.TrimSpace(req.Type)) != string(forcedType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "capability type mismatch"})
+		return
+	}
+
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	capability := controldomain.Capability{
+		ID:       capabilityID,
+		Name:     strings.TrimSpace(req.Name),
+		Type:     capabilityType,
+		Enabled:  enabled,
+		Scope:    controldomain.CapabilityScope(strings.ToLower(strings.TrimSpace(req.Scope))),
+		Version:  strings.TrimSpace(req.Version),
+		Metadata: req.Metadata,
+	}
+	if err := s.control.UpsertCapability(capability); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, capability.Normalized())
+}
+
+func (s *Server) applyCapabilityLifecycle(w http.ResponseWriter, r *http.Request, capabilityID string, capabilityType controldomain.CapabilityType) {
+	defer r.Body.Close()
+	var req capabilityLifecycleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+
+	action := strings.ToLower(strings.TrimSpace(req.Action))
+	switch action {
+	case string(controldomain.CapabilityLifecycleEnable):
+		capability, err := s.control.SetCapabilityEnabled(capabilityType, capabilityID, true)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "capability not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, capability)
+	case string(controldomain.CapabilityLifecycleDisable):
+		capability, err := s.control.SetCapabilityEnabled(capabilityType, capabilityID, false)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "capability not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, capability)
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be enable or disable"})
 	}
 }
 
@@ -528,6 +704,26 @@ func resourceID(path, prefix string) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+func typedResourceID(path, prefix string) (controldomain.CapabilityType, string, bool) {
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
+	}
+	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	capabilityType := controldomain.CapabilityType(strings.ToLower(strings.TrimSpace(parts[0])))
+	if !capabilityType.IsSupported() {
+		return "", "", false
+	}
+	id := strings.TrimSpace(parts[1])
+	if id == "" {
+		return "", "", false
+	}
+	return capabilityType, id, true
 }
 
 func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, int, error) {

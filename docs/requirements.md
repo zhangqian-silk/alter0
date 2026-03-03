@@ -37,7 +37,7 @@
 | R-018 | 跨会话长期记忆 | planned | 支持跨会话沉淀用户偏好与长期事实，并按范围检索注入上下文 |
 | R-019 | 会话内容持久化 | planned | 将会话消息、元数据与状态持久化存储，支持重启恢复与历史查询 |
 | R-020 | 上下文压缩 | planned | 对超长上下文进行分层压缩与摘要回写，在控制 token 成本的同时保留关键信息 |
-| R-021 | Skills/MCP 标准化能力模型 | planned | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
+| R-021 | Skills/MCP 标准化能力模型 | supported | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
 | R-022 | 用户配置 Skills 接入 Codex | planned | 将启用的用户 Skills 以标准协议注入 Codex 执行上下文，支持选择、排序与冲突处理 |
 | R-023 | 用户配置 MCP 接入 Codex | planned | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | planned | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
@@ -142,6 +142,12 @@
 2. 提供一致的配置校验与版本规则，避免不同能力类型出现结构漂移。
 3. 支持标准化生命周期动作（启用、禁用、更新、删除）与变更审计。
 4. 验收：同一套 API/存储约束可同时管理 Skills 与 MCP 能力对象。
+
+##### Traceability
+
+- 实现文件：`internal/control/domain/capability.go`、`internal/control/application/service.go`、`internal/storage/infrastructure/localfile/control_store.go`、`internal/interfaces/web/server.go`
+- 前端展示：`internal/interfaces/web/static/assets/chat.js`
+- 验证：`go test ./...`
 
 #### R-022 用户配置 Skills 接入 Codex
 

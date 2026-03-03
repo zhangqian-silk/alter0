@@ -72,7 +72,7 @@ const ROUTES = {
     title: "MCP",
     subtitle: "Model Context Protocol 配置",
     mode: "page",
-    loader: loadPlaceholderView
+    loader: loadMCPView
   },
   configuration: {
     title: "Configuration",
@@ -722,7 +722,26 @@ async function loadSkillsView(container) {
     "暂无 Skill。",
     (item) => `<article class="route-card">
       <h4>${item.id}</h4>
+      <p>Type: ${item.type || "-"}</p>
       <p>Name: ${item.name || "-"}</p>
+      <p>Scope: ${item.scope || "-"}</p>
+      <p>Version: ${item.version || "-"}</p>
+      <p>Enabled: ${item.enabled ? "true" : "false"}</p>
+    </article>`
+  );
+}
+
+async function loadMCPView(container) {
+  const data = await fetchJSON("/api/control/mcps");
+  const items = Array.isArray(data.items) ? data.items : [];
+  container.innerHTML = renderRouteCards(
+    items,
+    "暂无 MCP。",
+    (item) => `<article class="route-card">
+      <h4>${item.id}</h4>
+      <p>Type: ${item.type || "-"}</p>
+      <p>Name: ${item.name || "-"}</p>
+      <p>Scope: ${item.scope || "-"}</p>
       <p>Version: ${item.version || "-"}</p>
       <p>Enabled: ${item.enabled ? "true" : "false"}</p>
     </article>`
