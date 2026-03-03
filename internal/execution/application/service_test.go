@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	controldomain "alter0/internal/control/domain"
@@ -100,6 +101,9 @@ func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
 	if got := result.Metadata[resultSkillProtocolKey]; got != execdomain.SkillContextProtocolVersion {
 		t.Fatalf("skills protocol = %q, want %q", got, execdomain.SkillContextProtocolVersion)
 	}
+	if got := result.Metadata[resultSkillConflictKey]; got != "0" {
+		t.Fatalf("skills conflict count = %q, want 0", got)
+	}
 
 	rawSkillContext := processor.lastMetadata[execdomain.SkillContextMetadataKey]
 	if rawSkillContext == "" {
@@ -156,5 +160,94 @@ func TestExecuteNaturalLanguageRespectsIncludeExcludeSelection(t *testing.T) {
 	}
 	if got := result.Metadata[resultSkillInjectedKey]; got != "1" {
 		t.Fatalf("skills injected count = %q, want 1", got)
+	}
+	if got := result.Metadata[resultSkillConflictKey]; got != "0" {
+		t.Fatalf("skills conflict count = %q, want 0", got)
+	}
+}
+
+func TestExecuteNaturalLanguageResolvesSkillConflicts(t *testing.T) {
+	processor := &stubProcessor{output: "ok"}
+	source := &stubSkillSource{items: []controldomain.Capability{
+		{
+			ID:      "writer-core",
+			Name:    "Writer",
+			Type:    controldomain.CapabilityTypeSkill,
+			Enabled: true,
+			Metadata: map[string]string{
+				skillPriorityKey:          "300",
+				skillAbilitiesKey:         "draft, edit",
+				skillParameterTemplateKey: `{"tone":"formal","lang":"zh-CN"}`,
+			},
+		},
+		{
+			ID:      "writer-legacy",
+			Name:    "Writer",
+			Type:    controldomain.CapabilityTypeSkill,
+			Enabled: true,
+			Metadata: map[string]string{
+				skillPriorityKey:          "200",
+				skillAbilitiesKey:         "draft",
+				skillParameterTemplateKey: `{"tone":"casual"}`,
+			},
+		},
+		{
+			ID:      "reviewer",
+			Name:    "Reviewer",
+			Type:    controldomain.CapabilityTypeSkill,
+			Enabled: true,
+			Metadata: map[string]string{
+				skillPriorityKey:          "150",
+				skillAbilitiesKey:         "edit, qa",
+				skillParameterTemplateKey: `{"tone":"strict","check":"true"}`,
+			},
+		},
+	}}
+	service := NewServiceWithSkills(processor, source, nil)
+
+	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m1",
+		SessionID:   "s1",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "prepare plan",
+		TraceID:     "t1",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+	if got := result.Metadata[resultSkillInjectedIDsKey]; got != "writer-core,reviewer" {
+		t.Fatalf("skills injected ids = %q, want writer-core,reviewer", got)
+	}
+	if got := result.Metadata[resultSkillConflictKey]; got != "3" {
+		t.Fatalf("skills conflict count = %q, want 3", got)
+	}
+	if got := result.Metadata[resultSkillConflictTypes]; got != "duplicate_name,duplicate_ability,parameter_conflict" {
+		t.Fatalf("skills conflict types = %q, want duplicate_name,duplicate_ability,parameter_conflict", got)
+	}
+	if strings.TrimSpace(result.Metadata[resultSkillConflictDetail]) == "" {
+		t.Fatalf("expected skills conflict detail metadata")
+	}
+
+	rawSkillContext := processor.lastMetadata[execdomain.SkillContextMetadataKey]
+	var skillContext execdomain.SkillContext
+	if err := json.Unmarshal([]byte(rawSkillContext), &skillContext); err != nil {
+		t.Fatalf("unmarshal skill context: %v", err)
+	}
+	if len(skillContext.Skills) != 2 {
+		t.Fatalf("skill context size = %d, want 2", len(skillContext.Skills))
+	}
+	if len(skillContext.Conflicts) != 3 {
+		t.Fatalf("skill conflicts size = %d, want 3", len(skillContext.Conflicts))
+	}
+	if got := skillContext.Skills[1].ParameterTemplate["tone"]; got != "" {
+		t.Fatalf("expected reviewer tone parameter dropped, got %q", got)
+	}
+	if len(skillContext.Skills[1].Abilities) != 1 || skillContext.Skills[1].Abilities[0] != "qa" {
+		t.Fatalf("expected reviewer only keeps qa ability, got %+v", skillContext.Skills[1].Abilities)
+	}
+	if got := skillContext.ResolvedParameters["tone"]; got != "formal" {
+		t.Fatalf("resolved tone = %q, want formal", got)
 	}
 }

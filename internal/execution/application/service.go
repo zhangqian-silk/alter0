@@ -21,6 +21,9 @@ const (
 	resultSkillInjectedIDsKey = "skills.injected_ids"
 	resultSkillInjectedKey    = "skills.injected_count"
 	resultSkillProtocolKey    = "skills.protocol"
+	resultSkillConflictKey    = "skills.conflict_count"
+	resultSkillConflictTypes  = "skills.conflict_types"
+	resultSkillConflictDetail = "skills.conflicts"
 )
 
 func NewService(processor execdomain.NLProcessor) *Service {
@@ -44,7 +47,8 @@ func (s *Service) ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.U
 	metadata := cloneMetadata(msg.Metadata)
 	resultMetadata := map[string]string{}
 	if s.skillResolver != nil {
-		skillContext, injectedIDs := s.skillResolver.Resolve(msg)
+		resolution := s.skillResolver.Resolve(msg)
+		skillContext := resolution.Context
 		if len(skillContext.Skills) > 0 {
 			rawSkillContext, err := json.Marshal(skillContext)
 			if err != nil {
@@ -52,14 +56,32 @@ func (s *Service) ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.U
 			}
 			metadata[execdomain.SkillContextMetadataKey] = string(rawSkillContext)
 			resultMetadata[resultSkillProtocolKey] = skillContext.Protocol
-			resultMetadata[resultSkillInjectedIDsKey] = strings.Join(injectedIDs, ",")
+			resultMetadata[resultSkillInjectedIDsKey] = strings.Join(resolution.InjectedIDs, ",")
 		}
 		resultMetadata[resultSkillInjectedKey] = strconv.Itoa(len(skillContext.Skills))
+		resultMetadata[resultSkillConflictKey] = strconv.Itoa(len(skillContext.Conflicts))
+		if len(resolution.ConflictTypes) > 0 {
+			resultMetadata[resultSkillConflictTypes] = strings.Join(resolution.ConflictTypes, ",")
+		}
+		if len(skillContext.Conflicts) > 0 {
+			rawConflicts, err := json.Marshal(skillContext.Conflicts)
+			if err != nil {
+				return shareddomain.ExecutionResult{}, err
+			}
+			resultMetadata[resultSkillConflictDetail] = string(rawConflicts)
+		}
 		if s.logger != nil {
-			s.logger.Info("skills injected",
+			logHandler := s.logger.Info
+			if len(skillContext.Conflicts) > 0 {
+				logHandler = s.logger.Warn
+			}
+			logHandler("skills injected",
 				slog.String("session_id", msg.SessionID),
 				slog.String("message_id", msg.MessageID),
 				slog.Int("skills_injected", len(skillContext.Skills)),
+				slog.Int("skills_conflicts", len(skillContext.Conflicts)),
+				slog.String("skills_injected_ids", strings.Join(resolution.InjectedIDs, ",")),
+				slog.String("skills_conflict_types", strings.Join(resolution.ConflictTypes, ",")),
 			)
 		}
 	}
