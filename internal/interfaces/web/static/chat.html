@@ -15,108 +15,131 @@
       <div class="brand">
         <div class="brand-copy">
           <strong>alter0</strong>
-          <small>v0.1.0</small>
         </div>
-        <button class="nav-collapse" id="navCollapseButton" type="button" aria-label="Collapse navigation" aria-expanded="true">收起</button>
+        <button class="nav-collapse" id="navCollapseButton" type="button" aria-label="Collapse navigation" aria-expanded="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
       </div>
 
       <nav class="menu">
         <section class="menu-group">
-          <h2>Chat</h2>
+          <h2 data-i18n="nav.chat">Chat</h2>
           <button class="menu-item active" type="button" data-route="chat" data-abbr="C">
-            <span class="menu-icon" aria-hidden="true">C</span>
-            <span class="menu-label">Chat</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.chat">Chat</span>
           </button>
         </section>
         <section class="menu-group">
-          <h2>Control</h2>
+          <h2 data-i18n="chat.menu">Control</h2>
           <button class="menu-item" type="button" data-route="channels" data-abbr="CH">
-            <span class="menu-icon" aria-hidden="true">CH</span>
-            <span class="menu-label">Channels</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m2 12 5-5m0 0 5 5"></path></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.channels">Channels</span>
           </button>
           <button class="menu-item" type="button" data-route="sessions" data-abbr="SE">
-            <span class="menu-icon" aria-hidden="true">SE</span>
-            <span class="menu-label">Sessions</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.sessions">Sessions</span>
           </button>
           <button class="menu-item" type="button" data-route="cron-jobs" data-abbr="CR">
-            <span class="menu-icon" aria-hidden="true">CR</span>
-            <span class="menu-label">Cron Jobs</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.cron-jobs">Cron Jobs</span>
           </button>
         </section>
         <section class="menu-group">
-          <h2>Agent</h2>
+          <h2 data-i18n="chat.menu">Agent</h2>
           <button class="menu-item" type="button" data-route="workspace" data-abbr="WS">
-            <span class="menu-icon" aria-hidden="true">WS</span>
-            <span class="menu-label">Workspace</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.workspace">Workspace</span>
           </button>
           <button class="menu-item" type="button" data-route="skills" data-abbr="SK">
-            <span class="menu-icon" aria-hidden="true">SK</span>
-            <span class="menu-label">Skills</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.skills">Skills</span>
           </button>
           <button class="menu-item" type="button" data-route="mcp" data-abbr="MC">
-            <span class="menu-icon" aria-hidden="true">MC</span>
-            <span class="menu-label">MCP</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.mcp">MCP</span>
           </button>
           <button class="menu-item" type="button" data-route="configuration" data-abbr="CF">
-            <span class="menu-icon" aria-hidden="true">CF</span>
-            <span class="menu-label">Configuration</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.configuration">Configuration</span>
           </button>
         </section>
-        <section class="menu-group">
-          <h2>Settings</h2>
+        <section class="menu-group menu-group-bottom">
+          <h2 data-i18n="chat.menu">Settings</h2>
           <button class="menu-item" type="button" data-route="models" data-abbr="MO">
-            <span class="menu-icon" aria-hidden="true">MO</span>
-            <span class="menu-label">Models</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.models">Models</span>
           </button>
           <button class="menu-item" type="button" data-route="environments" data-abbr="EN">
-            <span class="menu-icon" aria-hidden="true">EN</span>
-            <span class="menu-label">Environments</span>
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.environments">Environments</span>
           </button>
         </section>
       </nav>
+      <div class="nav-locale">
+        <button class="locale nav-locale-button" type="button" aria-label="Language" data-short-lang="EN" onclick="toggleLanguage()">English</button>
+      </div>
     </aside>
 
     <aside class="session-pane">
       <header class="session-header">
-        <h1>Work with alter0</h1>
-        <button class="pane-action" id="togglePaneButton" type="button" aria-label="Toggle panel">关闭</button>
+        <h1 data-i18n="session.header">Work with alter0</h1>
+        <button class="pane-action" id="togglePaneButton" type="button" aria-label="Toggle panel" data-i18n="session.close">Close</button>
       </header>
 
-      <button class="new-chat" id="newChatButton" type="button">New Chat</button>
+      <button class="new-chat" id="newChatButton" type="button" data-i18n="session.new">New Chat</button>
 
       <div class="session-list-wrap">
-        <p class="session-title">Recent Sessions</p>
+        <p class="session-title" data-i18n="session.recent">Recent Sessions</p>
         <div id="sessionList" class="session-list" role="listbox" aria-label="Conversation sessions"></div>
-        <p class="session-empty" id="sessionEmpty">暂无会话，点击 New Chat 开始。</p>
+        <p class="session-empty" id="sessionEmpty" data-i18n="session.empty">No sessions yet. Click New Chat to start.</p>
         <p class="session-error" id="sessionLoadError" role="status" aria-live="polite"></p>
       </div>
     </aside>
 
     <main class="chat-pane">
       <header class="chat-header">
-        <button class="nav-toggle" id="navToggle" type="button" aria-label="Toggle navigation">Menu</button>
+        <button class="nav-toggle" id="navToggle" type="button" aria-label="Toggle navigation" data-i18n="chat.menu">Menu</button>
         <div class="chat-header-copy">
-          <h2 id="sessionHeading">Chat</h2>
-          <p id="sessionSubheading">准备好开始新的会话</p>
+          <h2 id="sessionHeading" data-i18n="chat.title">Chat</h2>
+          <p id="sessionSubheading" data-i18n="chat.subtitle">Ready to start a new conversation</p>
         </div>
         <div class="chat-header-actions">
-          <button class="panel-toggle" id="sessionToggle" type="button" aria-label="Sessions">会话</button>
-          <button class="mobile-new-chat" id="mobileNewChatButton" type="button" aria-label="Create new chat">New Chat</button>
-          <button class="locale" type="button" aria-label="Language">English</button>
+          <button class="panel-toggle" id="sessionToggle" type="button" aria-label="Sessions" data-i18n="chat.sessions">Sessions</button>
+          <button class="mobile-new-chat" id="mobileNewChatButton" type="button" aria-label="Create new chat" data-i18n="session.new">New Chat</button>
         </div>
       </header>
 
       <div class="chat-view" id="chatView">
         <section class="welcome-screen" id="welcomeScreen">
-          <p class="welcome-tag">alter0 assistant</p>
-          <h3 id="welcomeHeading">Hello, how can I help you today?</h3>
-          <p id="welcomeDescription">I am a helpful assistant that can help you with your questions.</p>
+          <p class="welcome-tag" data-i18n="welcome.tag">alter0 assistant</p>
+          <h3 id="welcomeHeading" data-i18n="welcome.heading">Hello, how can I help you today?</h3>
+          <p id="welcomeDescription" data-i18n="welcome.desc">I am a helpful assistant that can help you with your questions.</p>
           <div class="prompt-grid">
-            <button class="prompt" type="button" data-prompt="让我们开启一段新的旅程吧！">
-              <span>让我们开启一段新的旅程吧！</span>
+            <button class="prompt" type="button" data-prompt="Let's start a new journey!">
+              <span data-i18n="prompt.journey">Let's start a new journey!</span>
             </button>
-            <button class="prompt" type="button" data-prompt="能告诉我你有哪些技能吗？">
-              <span>能告诉我你有哪些技能吗？</span>
+            <button class="prompt" type="button" data-prompt="Can you tell me what skills you have?">
+              <span data-i18n="prompt.skills">Can you tell me what skills you have?</span>
             </button>
           </div>
         </section>
@@ -126,19 +149,24 @@
         <footer class="composer-shell">
           <form class="composer" id="chatForm">
             <label class="sr-only" for="composerInput">Input your message</label>
-            <textarea id="composerInput" maxlength="10000" placeholder="Input your message here..." rows="2"></textarea>
+            <textarea id="composerInput" maxlength="10000" placeholder="Input your message here..." rows="2" data-i18n="composer.placeholder"></textarea>
             <div class="composer-actions">
               <span id="charCount">0/10000</span>
-              <button id="sendButton" type="submit" aria-label="Send message">Send</button>
+              <button id="sendButton" type="submit" aria-label="Send message" data-i18n="composer.send">Send</button>
             </div>
           </form>
-          <p class="composer-note">Works for you, grows with you</p>
+          <p class="composer-note" data-i18n="composer.note">Works for you, grows with you</p>
         </footer>
       </div>
 
       <section class="route-view" id="routeView" hidden>
-        <h3 id="routeTitle">Page</h3>
-        <p id="routeSubtitle">Page content</p>
+        <header class="route-head">
+          <div class="route-copy">
+            <h3 id="routeTitle">Page</h3>
+            <p id="routeSubtitle">Page content</p>
+          </div>
+          <button class="route-action" id="routeActionButton" type="button" hidden>+ Add Channel</button>
+        </header>
         <div id="routeBody" class="route-body"></div>
       </section>
     </main>

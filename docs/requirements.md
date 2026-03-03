@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-03-03
+> Last update: 2026-03-04
 
 状态说明：
 
@@ -8,7 +8,7 @@
 2. `planned`：已确认方向，待排期
 3. `ready`：需求已完成拆分与细化，进入可执行状态
 
-## 1. 当前已支持需求
+## 需求列表
 
 | ID | 需求 | 状态 | 说明 |
 | --- | --- | --- | --- |
@@ -23,11 +23,6 @@
 | R-009 | 定时任务管理 | supported | `GET/PUT/DELETE /api/control/cron/jobs/*` |
 | R-010 | 定时任务触发执行 | supported | Scheduler 触发消息并复用编排链路 |
 | R-011 | 本地文件存储 | supported | Control/Scheduler 支持 `json`/`markdown` 本地存储 |
-
-## 2. 规划中需求
-
-| ID | 需求 | 状态 | 目标 |
-| --- | --- | --- | --- |
 | R-012 | Web 侧边栏交互优化 | supported | 点击侧边栏项后进入“信息展示模式”：主区域仅展示对应信息，不再弹出或保留对话框；侧边栏在展开态提供显式折叠按钮 |
 | R-013 | 流式传输能力 | supported | 提供端到端流式响应：后端增量推送生成内容，前端实时渲染并可感知进行中/完成/失败状态 |
 | R-014 | 移动端真机适配增强 | supported | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭与手势交互），确保 iOS/Android 浏览器下稳定可用 |
@@ -43,16 +38,18 @@
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | supported | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | supported | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
 | R-026 | 强制要求上下文文件（如 SOUL.md） | supported | 支持独立上下文文件存储用户强制要求，启动与会话初始化高优先级加载，并在冲突场景下覆盖普通记忆 |
+| R-027 | Agent Memory 模块与页面收敛 | ready | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
 
-### 2.1 需求细化（草案）
+## 需求细化（草案）
 
-#### R-012 Web 侧边栏交互优化
+### R-012 Web 侧边栏交互优化
 
 1. 点击任一侧边栏入口后，主区域切换到对应信息面板，不显示对话框容器。
 2. 侧边栏展开时显示“折叠”按钮；折叠后仅保留图标轨道。
 3. 移动端在选择菜单项后自动折叠侧边栏，避免遮挡主内容。
 4. 验收：连续切换 3 个侧边栏入口，页面不出现叠层对话框，且可随时展开/折叠。
-##### Task Breakdown (auto-managed)
+
+#### Task Breakdown (auto-managed)
 
 1. Scope split
    - Clarify boundaries under existing requirement description; do not create new requirement IDs.
@@ -63,7 +60,7 @@
 4. Traceability
    - Keep change notes and verification criteria inside this requirement section.
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/interfaces/web/static/chat.html`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
 - 测试覆盖：`internal/interfaces/web/server_sidebar_test.go`
@@ -73,14 +70,15 @@
   - 2026-03-03：桌面端侧边栏展开态显示“收起”按钮，折叠后进入图标轨道，支持再次“展开”。
   - 2026-03-03：移动端选择任一菜单项后自动收起侧边栏；连续切换 `Channels -> Skills -> MCP` 未出现叠层对话框，可随时展开/折叠。
 
-#### R-013 流式传输能力
+### R-013 流式传输能力
 
 1. 增加流式接口（建议 SSE），响应头为 `text/event-stream`，按片段持续推送。
 2. 事件至少包含：`start`（开始）、`delta`（增量内容）、`done`（完成）、`error`（失败）。
 3. 前端在流式过程中实时追加渲染，`done` 后收敛为完整消息；`error` 时展示可重试提示。
 4. 保留非流式回退路径（旧接口或开关控制），确保兼容现有调用方。
 5. 验收：一次正常流式响应可看到逐步输出；断流或异常时前端有明确失败状态。
-##### Task Breakdown (auto-managed)
+
+#### Task Breakdown (auto-managed)
 
 1. Scope split
    - Clarify boundaries under existing requirement description; do not create new requirement IDs.
@@ -91,12 +89,12 @@
 4. Traceability
    - Keep change notes and verification criteria inside this requirement section.
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/interfaces/web/server.go`、`internal/interfaces/web/server_message_test.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
 - 验证：`go test ./...`
 
-#### R-015 移动端会话创建与信息完整性
+### R-015 移动端会话创建与信息完整性
 
 1. 在移动端视口中，`New Chat` 入口需始终可达（不被遮挡、不依赖桌面交互路径）。
 2. 点击 `New Chat` 后必须立即创建会话并切换到新会话上下文。
@@ -104,7 +102,7 @@
 4. 当会话列表为空或加载失败时，给出明确提示，避免出现“空白但无反馈”。
 5. 验收：在 iOS Safari 与 Android Chrome 下，连续 3 次新建会话均成功，且信息展示完整。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/interfaces/web/static/chat.html`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
 - 测试覆盖：`internal/interfaces/web/server_mobile_session_test.go`
@@ -114,7 +112,7 @@
   - 2026-03-03：`New Chat` 连续触发后均即时创建新会话并切换上下文，展示会话标题、空态文案与输入区。
   - 2026-03-03：会话列表为空时展示“会话列表为空，点击 New Chat 创建会话。”；会话加载失败时展示“会话列表加载失败”错误提示。
 
-#### R-016 会话级并发控制与全局限流
+### R-016 会话级并发控制与全局限流
 
 1. 支持“多会话并发、同会话串行”模型：不同 `session_id` 可并发执行，同一 `session_id` 按入队顺序处理。
 2. 增加全局并发上限（worker pool），超过上限的请求进入等待队列，并记录排队时长。
@@ -122,33 +120,33 @@
 4. 当系统进入高压状态时支持降级策略（拒绝新请求或快速失败），避免资源被耗尽。
 5. 验收：并发压测下跨会话吞吐提升；同一会话无乱序响应；达到阈值时可观测到限流/超时事件。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/orchestration/application/concurrent_service.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`、`internal/interfaces/web/server.go`、`internal/shared/infrastructure/observability/telemetry.go`
 - 测试覆盖：`internal/orchestration/application/concurrent_service_test.go`
 - 验证：`go test ./...`
 
-#### R-017 会话短期记忆
+### R-017 会话短期记忆
 
 1. 在单个 `session_id` 维度维护短期记忆窗口（最近 N 轮消息 + 关键状态）。
 2. 对引用关系（如“这个”“刚才那个方案”）提供会话内指代解析能力。
 3. 支持短期记忆的 TTL 或轮次上限，避免上下文无限增长。
 4. 验收：同一会话连续多轮追问时，模型能稳定引用前文关键内容。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/orchestration/application/session_memory.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/orchestration/application/session_memory_test.go`、`internal/orchestration/application/service_test.go`
 - 验证记录：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
 
-#### R-018 跨会话长期记忆
+### R-018 跨会话长期记忆
 
 1. 提供长期记忆实体模型（用户偏好、长期事实、约束规则等）并支持标签化管理。
 2. 支持按用户/租户范围检索长期记忆并按相关性注入请求上下文。
 3. 支持记忆更新策略（新增、覆盖、失效）与审计字段（来源会话、更新时间）。
 4. 验收：新会话中可命中历史偏好并正确生效，且不污染无关用户数据。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/orchestration/application/long_term_memory.go`、`internal/orchestration/application/service.go`
 - 测试覆盖：`internal/orchestration/application/long_term_memory_test.go`、`internal/orchestration/application/service_test.go`
@@ -158,14 +156,14 @@
   - 2026-03-03：同一用户在新会话请求中可按相关性命中历史偏好并注入 `[LONG TERM MEMORY]` 上下文。
   - 2026-03-03：跨用户写入后检索保持隔离，未出现租户内用户间记忆污染。
 
-#### R-019 会话内容持久化
+### R-019 会话内容持久化
 
 1. 持久化消息主数据：`message_id`、`session_id`、角色、内容、时间戳、路由结果。
 2. 支持服务重启后恢复历史会话，并可按会话分页查询。
 3. 支持最小化索引能力（按 session_id、时间范围）以支撑检索与回放。
 4. 验收：重启后会话内容不丢失，可按会话完整回放最近消息。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/session/domain/message.go`、`internal/session/application/service.go`、`internal/orchestration/application/session_persistence_service.go`、`internal/storage/infrastructure/localfile/session_store.go`、`internal/interfaces/web/server.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/session/application/service_test.go`、`internal/orchestration/application/session_persistence_service_test.go`、`internal/storage/infrastructure/localfile/session_store_test.go`、`internal/interfaces/web/server_session_test.go`
@@ -178,14 +176,14 @@
   - 2026-03-03：服务重启后通过本地文件恢复会话历史，并可按会话分页查询与回放。
   - 2026-03-03：会话查询支持 `session_id + 时间范围` 索引检索，用于检索与历史重放。
 
-#### R-020 上下文压缩
+### R-020 上下文压缩
 
 1. 当上下文超过阈值时自动触发压缩（摘要 + 关键事实抽取）。
 2. 压缩结果回写为结构化记忆片段，并保留原始消息引用关系。
 3. 压缩策略需可配置（触发阈值、摘要长度、保留轮次）。
 4. 验收：长会话下 token 消耗下降且回答质量不明显退化。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/orchestration/application/session_memory.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/orchestration/application/session_memory_test.go`、`internal/orchestration/application/context_compression_acceptance_test.go`
@@ -199,27 +197,27 @@
   - 2026-03-03：压缩片段保留原始消息引用关系（`user_message_id -> assistant_reply_ref`），多轮追问仍可解析“这个方案”等指代。
   - 2026-03-03：工程化验收 `TestContextCompressionAcceptanceTokenReductionAndQuality` 显示长会话提示词 token 估算从 `420` 降至 `275`（约 `34.52%`），质量评分退化不超过 1 个关键事实。
 
-#### R-021 Skills/MCP 标准化能力模型
+### R-021 Skills/MCP 标准化能力模型
 
 1. 定义统一能力模型：`id`、`name`、`type`（skill/mcp）、`enabled`、`scope`、`metadata`。
 2. 提供一致的配置校验与版本规则，避免不同能力类型出现结构漂移。
 3. 支持标准化生命周期动作（启用、禁用、更新、删除）与变更审计。
 4. 验收：同一套 API/存储约束可同时管理 Skills 与 MCP 能力对象。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/control/domain/capability.go`、`internal/control/application/service.go`、`internal/storage/infrastructure/localfile/control_store.go`、`internal/interfaces/web/server.go`
 - 前端展示：`internal/interfaces/web/static/assets/chat.js`
 - 验证：`go test ./...`
 
-#### R-022 用户配置 Skills 接入 Codex
+### R-022 用户配置 Skills 接入 Codex
 
 1. 根据用户配置筛选启用的 Skills，并按优先级注入 Codex 执行上下文。
 2. 定义 Skills 注入协议（名称、描述、参数模板、约束）以避免自由文本拼接。
 3. 提供冲突处理策略（同名 skill、重复能力、参数冲突）并可观测。
 4. 验收：关闭某 Skill 后不再注入；开启后可在 Codex 执行结果中体现其能力影响。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/execution/domain/skill_context.go`、`internal/execution/application/skill_context_resolver.go`、`internal/execution/application/service.go`、`internal/execution/infrastructure/codex_cli_processor.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/execution/application/service_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/orchestration/application/service_test.go`
@@ -230,14 +228,14 @@
   - 2026-03-03：同名 Skill、重复能力、参数值冲突按优先级保留高优先级项，冲突明细写入 `skills.conflicts` 与 `skills.conflict_types`。
   - 2026-03-03：Codex 执行参数切换为结构化 JSON 载荷（`alter0.codex-exec/v1`），执行结果元数据可观测 `skills.injected_ids`、`skills.injected_count`、`skills.conflict_count`。
 
-#### R-023 用户配置 MCP 接入 Codex
+### R-023 用户配置 MCP 接入 Codex
 
 1. 将用户配置的 MCP Server 映射到 Codex 可识别配置，支持 stdio 与 HTTP 两类传输。
 2. 支持按会话或请求粒度启用 MCP，避免全局污染与越权调用。
 3. 对 MCP 接入过程补齐安全控制：白名单、超时、失败隔离、访问审计。
 4. 验收：用户新增 MCP 配置后，可在指定会话中被 Codex 正确调用，且日志可追踪。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/execution/domain/mcp_context.go`、`internal/execution/application/mcp_context_resolver.go`、`internal/execution/application/service.go`、`internal/execution/infrastructure/codex_cli_processor.go`
 - 测试覆盖：`internal/execution/application/service_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`
@@ -249,7 +247,7 @@
   - 2026-03-03：`mcp.tools.whitelist`、`mcp.timeout_ms`、`mcp.failure_isolation` 生效；异常配置按 Server 级隔离并写入 `mcp.audit`。
   - 2026-03-03：执行结果元数据新增 `mcp.injected_ids`、`mcp.injected_count`、`mcp.audit_count`、`mcp.audit`，日志输出 `mcp resolved` 支持访问审计追踪。
 
-#### R-024 跨会话持久化记忆分级管理（参考 CPU Cache）
+### R-024 跨会话持久化记忆分级管理（参考 CPU Cache）
 
 1. 采用类缓存分层模型：`L1` 作为热记忆层（高价值、低延迟、最小容量），`L2` 作为平衡层（中等容量与时效），`L3` 作为归档层（大容量、低频访问）。
 2. 每层独立配置约束：单条长度上限、层总容量上限、保留时长（TTL）、淘汰策略（优先 LRU，可扩展评分淘汰）。
@@ -258,7 +256,7 @@
 5. 支持写入策略配置（如 write-through / write-back 风格）：保证持久化一致性与性能平衡。
 6. 验收：跨会话与重启后记忆可恢复；命中链路与晋升降级可观测；在相同 token 预算下高价值记忆命中率提升。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/orchestration/application/long_term_memory.go`、`internal/orchestration/application/mandatory_context.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/orchestration/application/long_term_memory_test.go`、`internal/orchestration/application/tiered_long_term_memory_acceptance_test.go`、`internal/orchestration/application/service_test.go`
@@ -274,7 +272,7 @@
   - 2026-03-03：命中反馈支持高频晋升与长期未命中降级，显式 `memory_long_term_important=true` 可直接进入高优先层，晋升/降级计数可观测。
   - 2026-03-03：支持 `write_through/write_back` 写入策略与重启恢复，验收测试确认同等预算下高价值记忆命中率提升。
 
-#### R-025 天级记忆与长期记忆（Markdown 统一存储）
+### R-025 天级记忆与长期记忆（Markdown 统一存储）
 
 1. 支持天级记忆落盘：按日期切分存储（例如 `memory/YYYY-MM-DD.md`），记录当日会话沉淀与关键事实。
 2. 支持长期记忆存储：将跨天稳定事实与偏好沉淀到长期记忆文件（例如 `MEMORY.md` 或 `memory/long-term/*.md`）。
@@ -283,7 +281,7 @@
 5. 支持分级容量约束：按 L1/L2/L3 分别配置天级条目长度上限、层容量上限与保留时长。
 6. 验收：连续多天运行后可按日期检索历史；当天压缩任务可稳定执行；长期记忆可跨会话命中且 Markdown 文件可直接审阅。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/orchestration/application/session_memory.go`、`internal/orchestration/application/session_memory_daily_markdown.go`、`internal/orchestration/application/long_term_memory.go`、`internal/orchestration/application/memory_markdown_codec.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/orchestration/application/session_memory_test.go`、`internal/orchestration/application/long_term_memory_test.go`、`internal/orchestration/application/daily_long_term_memory_markdown_acceptance_test.go`
@@ -297,7 +295,7 @@
   - 2026-03-03：长期记忆持久化由 `.json` 升级为 `MEMORY.md` Markdown 存储，重启后可恢复并继续跨会话命中。
   - 2026-03-03：天级记忆支持分层单条长度、层容量与保留时长约束，超限或过期条目按层级策略自动清理。
 
-#### R-026 强制要求上下文文件（如 SOUL.md）
+### R-026 强制要求上下文文件（如 SOUL.md）
 
 1. 支持独立的“强制要求”上下文文件（例如 `SOUL.md`），用于存储用户不可违背的长期指令与偏好。
 2. 启动与会话初始化时优先加载该文件，并在请求构造时高优先级注入上下文。
@@ -306,7 +304,7 @@
 5. 支持冲突处理规则：当强制要求与普通记忆冲突时，以强制要求文件为准并产生日志告警。
 6. 验收：修改 `SOUL.md` 后新会话可立即体现强制要求；跨会话重启后仍稳定生效。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/orchestration/application/mandatory_context.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/orchestration/application/mandatory_context_test.go`、`internal/orchestration/application/service_test.go`
@@ -317,7 +315,32 @@
   - 2026-03-03：与会话/长期记忆冲突时按键规则裁决，冲突记忆被过滤或覆盖，结果元数据记录 `mandatory_context.conflict_count` 并输出告警日志。
   - 2026-03-03：强制要求上下文独立于普通记忆注入链路，标记 `mandatory_context.isolated=true`，不进入记忆摘要与分层淘汰路径。
 
-#### R-014 移动端真机适配增强
+### R-027 Agent Memory 模块与页面收敛
+
+1. 页面收敛：前端导航与路由中移除 `Workspace`、`Configuration` 两个页面入口，避免与 Agent 视图并行造成信息割裂。
+2. Agent 模块扩展：在 `Agent` 下新增 `Memory` 页面入口，作为统一记忆可视化界面。
+3. `Memory` 页面展示三类数据：
+   - 长期记忆：展示跨会话长期记忆（含分层信息与更新时间）。
+   - 天级记忆：按日期展示日记忆文件（如 `memory/YYYY-MM-DD.md`）及摘要。
+   - 持久化记忆：展示 `SOUL.md` 当前生效内容与最近更新时间。
+4. 交互要求：支持在同一页面完成三类记忆切换查看；移动端与桌面端均可达且不依赖隐藏入口。
+5. 边界约束：`Memory` 页面默认只读展示，不在本需求内引入在线编辑能力。
+6. 验收：侧边栏不再出现 `Workspace`、`Configuration`；`Agent -> Memory` 可稳定展示三类记忆数据，空态与加载失败态均有明确提示。
+
+#### Task Breakdown (auto-managed)
+
+1. Scope split
+   - Remove `Workspace`/`Configuration` route and menu entries.
+   - Introduce `Agent -> Memory` information architecture and rendering boundaries.
+2. Delivery plan
+   - M1: Navigation and routing convergence.
+   - M2: Memory visualization for long-term, daily and `SOUL.md`.
+3. Status workflow
+   - Keep lifecycle as planned -> ready -> supported; update this row only.
+4. Traceability
+   - Keep implementation and verification records in this section after delivery.
+
+### R-014 移动端真机适配增强
 
 1. 小屏安全区适配：移动端导航抽屉、会话面板、消息区与输入区统一纳入 `env(safe-area-inset-bottom)`，避免底部刘海/手势区遮挡。
 2. 键盘跟随：基于 `VisualViewport` 实时计算软键盘占位高度并写入 `--keyboard-offset`，输入区在 iOS/Android 键盘弹起时持续可见。
@@ -325,7 +348,7 @@
 4. 路由切换一致性：移动端点击侧边栏菜单后立即收起抽屉并进入目标信息页，防止面板残留遮挡主内容。
 5. 验收：在移动端连续执行“打开抽屉 -> 切换页面 -> 输入框聚焦 -> 键盘收起”流程，页面无错位、无遮挡、可稳定关闭覆盖层。
 
-##### Traceability
+#### Traceability
 
 - 实现文件：`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
 - 验证：`go test ./...`
