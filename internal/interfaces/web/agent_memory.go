@@ -12,6 +12,7 @@ const (
 	defaultWebLongTermMemoryPath = ".alter0/memory/long-term/MEMORY.md"
 	defaultWebDailyMemoryDir     = ".alter0/memory"
 	defaultWebMandatoryFilePath  = "SOUL.md"
+	defaultWebSpecFilePath       = "docs/memory/persistent-memory-module-spec.md"
 	defaultWebDailyMemoryLimit   = 30
 )
 
@@ -19,6 +20,7 @@ type AgentMemoryOptions struct {
 	LongTermPath         string
 	DailyDir             string
 	MandatoryContextPath string
+	SpecPath             string
 	DailyLimit           int
 }
 
@@ -27,9 +29,10 @@ type agentMemoryService struct {
 }
 
 type agentMemoryResponse struct {
-	LongTerm  agentMemoryDocument `json:"long_term"`
-	Daily     agentMemoryDaily    `json:"daily"`
-	Mandatory agentMemoryDocument `json:"mandatory"`
+	LongTerm      agentMemoryDocument `json:"long_term"`
+	Daily         agentMemoryDaily    `json:"daily"`
+	Mandatory     agentMemoryDocument `json:"mandatory"`
+	Specification agentMemoryDocument `json:"specification"`
 }
 
 type agentMemoryDocument struct {
@@ -73,6 +76,10 @@ func normalizeAgentMemoryOptions(options AgentMemoryOptions) AgentMemoryOptions 
 	if mandatoryContextPath == "" {
 		mandatoryContextPath = defaultWebMandatoryFilePath
 	}
+	specPath := strings.TrimSpace(options.SpecPath)
+	if specPath == "" {
+		specPath = defaultWebSpecFilePath
+	}
 	dailyLimit := options.DailyLimit
 	if dailyLimit <= 0 {
 		dailyLimit = defaultWebDailyMemoryLimit
@@ -81,15 +88,17 @@ func normalizeAgentMemoryOptions(options AgentMemoryOptions) AgentMemoryOptions 
 		LongTermPath:         filepath.Clean(longTermPath),
 		DailyDir:             filepath.Clean(dailyDir),
 		MandatoryContextPath: filepath.Clean(mandatoryContextPath),
+		SpecPath:             filepath.Clean(specPath),
 		DailyLimit:           dailyLimit,
 	}
 }
 
 func (s *agentMemoryService) Snapshot() agentMemoryResponse {
 	return agentMemoryResponse{
-		LongTerm:  s.readDocument(s.options.LongTermPath),
-		Daily:     s.readDailyMemory(),
-		Mandatory: s.readDocument(s.options.MandatoryContextPath),
+		LongTerm:      s.readDocument(s.options.LongTermPath),
+		Daily:         s.readDailyMemory(),
+		Mandatory:     s.readDocument(s.options.MandatoryContextPath),
+		Specification: s.readDocument(s.options.SpecPath),
 	}
 }
 
