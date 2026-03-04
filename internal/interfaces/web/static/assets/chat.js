@@ -2,6 +2,8 @@ const appShell = document.getElementById("appShell");
 const sessionList = document.getElementById("sessionList");
 const sessionEmpty = document.getElementById("sessionEmpty");
 const sessionLoadError = document.getElementById("sessionLoadError");
+const sessionHistoryPanel = document.getElementById("sessionHistoryPanel");
+const sessionHistoryToggle = document.getElementById("sessionHistoryToggle");
 const welcomeScreen = document.getElementById("welcomeScreen");
 const messageArea = document.getElementById("messageArea");
 const chatForm = document.getElementById("chatForm");
@@ -63,6 +65,8 @@ const I18N = {
     "session.new": "New Chat",
     "session.delete": "Delete",
     "session.recent": "Recent Sessions",
+    "session.history.collapse": "Collapse",
+    "session.history.expand": "Expand",
     "session.empty": "No sessions yet. Click New Chat to start.",
     
     // Chat Header
@@ -234,6 +238,8 @@ const I18N = {
     "session.new": "新对话",
     "session.delete": "删除",
     "session.recent": "最近会话",
+    "session.history.collapse": "折叠",
+    "session.history.expand": "展开",
     "session.empty": "暂无会话，点击“新对话”开始。",
     
     // Chat Header
@@ -443,6 +449,7 @@ const state = {
   currentRoute: DEFAULT_ROUTE,
   sessions: [],
   sessionLoadError: "",
+  sessionHistoryCollapsed: false,
   pending: false,
   pageRenderToken: 0,
   navCollapsed: false,
@@ -465,6 +472,31 @@ function t(key, params = {}) {
 
 function navCollapseLabel() {
   return state.navCollapsed ? t("nav.expand") : t("nav.collapse");
+}
+
+function sessionHistoryToggleLabel() {
+  return state.sessionHistoryCollapsed ? t("session.history.expand") : t("session.history.collapse");
+}
+
+function syncSessionHistoryPanel() {
+  if (!sessionHistoryPanel || !sessionHistoryToggle) {
+    return;
+  }
+  const collapsed = state.sessionHistoryCollapsed;
+  if (sessionPane) {
+    sessionPane.classList.toggle("history-collapsed", collapsed);
+  }
+  sessionHistoryPanel.hidden = collapsed;
+  sessionHistoryToggle.dataset.collapsedState = collapsed ? "collapsed" : "expanded";
+  sessionHistoryToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  const label = sessionHistoryToggleLabel();
+  sessionHistoryToggle.textContent = label;
+  sessionHistoryToggle.setAttribute("aria-label", label);
+}
+
+function setSessionHistoryCollapsed(collapsed) {
+  state.sessionHistoryCollapsed = collapsed;
+  syncSessionHistoryPanel();
 }
 
 function syncMenuItemTooltips() {
@@ -700,6 +732,7 @@ function setLanguage(lang) {
   }
   navCollapseButton.setAttribute("aria-label", navCollapseLabel());
   syncMenuItemTooltips();
+  syncSessionHistoryPanel();
 }
 
 function toggleLanguage() {
@@ -2654,6 +2687,11 @@ function bindEvents() {
   if (mobileNewChatButton) {
     mobileNewChatButton.addEventListener("click", startNewChatSession);
   }
+  if (sessionHistoryToggle) {
+    sessionHistoryToggle.addEventListener("click", () => {
+      setSessionHistoryCollapsed(!state.sessionHistoryCollapsed);
+    });
+  }
 
   for (const node of menuRouteItems) {
     node.addEventListener("click", () => {
@@ -2790,6 +2828,7 @@ function bindEvents() {
 
 function init() {
   setSidebarCollapsed(false);
+  setSessionHistoryCollapsed(false);
   bootstrapSessions();
   renderSessions();
   renderMessages();

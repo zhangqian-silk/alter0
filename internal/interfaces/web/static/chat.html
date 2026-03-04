@@ -109,10 +109,15 @@
       <button class="new-chat" id="newChatButton" type="button" data-i18n="session.new">New Chat</button>
 
       <div class="session-list-wrap">
-        <p class="session-title" data-i18n="session.recent">Recent Sessions</p>
-        <div id="sessionList" class="session-list" role="listbox" aria-label="Conversation sessions"></div>
-        <p class="session-empty" id="sessionEmpty" data-i18n="session.empty">No sessions yet. Click New Chat to start.</p>
-        <p class="session-error" id="sessionLoadError" role="status" aria-live="polite"></p>
+        <div class="session-history-head">
+          <p class="session-title" data-i18n="session.recent">Recent Sessions</p>
+          <button class="session-history-toggle" id="sessionHistoryToggle" type="button" aria-controls="sessionHistoryPanel" aria-expanded="true">Collapse</button>
+        </div>
+        <div class="session-history-panel" id="sessionHistoryPanel">
+          <div id="sessionList" class="session-list" role="listbox" aria-label="Conversation sessions"></div>
+          <p class="session-empty" id="sessionEmpty" data-i18n="session.empty">No sessions yet. Click New Chat to start.</p>
+          <p class="session-error" id="sessionLoadError" role="status" aria-live="polite"></p>
+        </div>
       </div>
     </aside>
 
