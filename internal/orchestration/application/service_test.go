@@ -12,6 +12,8 @@ import (
 
 	orchdomain "alter0/internal/orchestration/domain"
 	shareddomain "alter0/internal/shared/domain"
+	taskdomain "alter0/internal/task/domain"
+	tasksummaryapp "alter0/internal/tasksummary/application"
 )
 
 type stubClassifier struct {
@@ -94,6 +96,7 @@ type spyTelemetry struct {
 	routeCount map[string]int
 	commandCnt map[string]int
 	errorCount map[string]int
+	memoryEvent map[string]int
 }
 
 func newSpyTelemetry() *spyTelemetry {
@@ -101,6 +104,7 @@ func newSpyTelemetry() *spyTelemetry {
 		routeCount: map[string]int{},
 		commandCnt: map[string]int{},
 		errorCount: map[string]int{},
+		memoryEvent: map[string]int{},
 	}
 }
 
@@ -119,6 +123,10 @@ func (t *spyTelemetry) CountError(route string) {
 }
 
 func (t *spyTelemetry) ObserveDuration(_ string, _ time.Duration) {}
+
+func (t *spyTelemetry) CountMemoryEvent(event string) {
+	t.memoryEvent[event]++
+}
 
 func TestHandleCommand(t *testing.T) {
 	registry := &stubRegistry{
@@ -623,6 +631,194 @@ func TestHandleNLMandatoryContextHotReloadAcrossSessions(t *testing.T) {
 	}
 	if secondResult.Metadata[mandatoryContextVersionMetadataKey] == firstVersion {
 		t.Fatalf("expected version change after hot reload")
+	}
+}
+
+func TestHandleNLInjectsRecentTaskSummariesByDefault(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		output: "response",
+	}
+	taskMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{
+		RecentWindow: 5,
+		DeepTopK:     5,
+	})
+	now := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+	taskMemory.Record(buildTaskMemoryTask("task-r031-1", "session-task-1", taskdomain.TaskStatusSuccess, "release", "release finished", now.Add(-5*time.Minute)))
+	taskMemory.Record(buildTaskMemoryTask("task-r031-2", "session-task-2", taskdomain.TaskStatusSuccess, "release", "release verified", now.Add(-4*time.Minute)))
+	taskMemory.Record(buildTaskMemoryTask("task-r031-3", "session-task-3", taskdomain.TaskStatusFailed, "migration", "rollback executed", now.Add(-3*time.Minute)))
+	taskMemory.Record(buildTaskMemoryTask("task-r031-4", "session-task-4", taskdomain.TaskStatusSuccess, "ops", "incident mitigated", now.Add(-2*time.Minute)))
+	taskMemory.Record(buildTaskMemoryTask("task-r031-5", "session-task-5", taskdomain.TaskStatusSuccess, "ops", "postmortem generated", now.Add(-time.Minute)))
+	taskMemory.Record(buildTaskMemoryTask("task-r031-6", "session-task-6", taskdomain.TaskStatusSuccess, "docs", "spec updated", now))
+
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithTaskSummaryMemory(taskMemory),
+	)
+	msg := validMessage("继续当前任务，不需要历史任务")
+	msg.SessionID = "session-live"
+	msg.ReceivedAt = now
+	result, err := service.Handle(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("handle message failed: %v", err)
+	}
+	if got := result.Metadata["task_summary_injected_count"]; got != "5" {
+		t.Fatalf("expected 5 injected summaries, got %q", got)
+	}
+	if got := result.Metadata["task_summary_retrieval_mode"]; got != "recent" {
+		t.Fatalf("expected recent mode, got %q", got)
+	}
+	prompt := executor.lastMessage.Content
+	if !strings.Contains(prompt, "[TASK SUMMARY MEMORY]") {
+		t.Fatalf("expected task summary memory prompt section, got %q", prompt)
+	}
+	if strings.Contains(prompt, "task-r031-1") {
+		t.Fatalf("expected only latest 5 summaries injected, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "task-r031-6") {
+		t.Fatalf("expected latest summary injected, got %q", prompt)
+	}
+}
+
+func TestHandleNLTriggersDeepRetrievalWithHistoryIntent(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		output: "response",
+	}
+	taskMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{
+		RecentWindow: 5,
+		DeepTopK:     5,
+	})
+	now := time.Date(2026, 3, 4, 11, 0, 0, 0, time.UTC)
+	taskMemory.Record(buildTaskMemoryTask("task-recent", "session-new", taskdomain.TaskStatusSuccess, "release", "recent release", now.Add(-time.Hour)))
+	legacy := buildTaskMemoryTask("task-legacy", "session-old", taskdomain.TaskStatusFailed, "migration", "legacy migration failed", now.Add(-7*24*time.Hour))
+	legacy.Logs = append(legacy.Logs,
+		taskdomain.TaskLog{Timestamp: now.Add(-7*24*time.Hour + time.Minute), Level: taskdomain.TaskLogLevelError, Message: "schema mismatch"},
+		taskdomain.TaskLog{Timestamp: now.Add(-7*24*time.Hour + 2*time.Minute), Level: taskdomain.TaskLogLevelWarn, Message: "rollback executed"},
+	)
+	legacy.Artifacts = append(legacy.Artifacts, taskdomain.TaskArtifact{
+		ArtifactID:  "artifact-legacy",
+		Name:        "migration.log",
+		ContentType: "text/plain",
+		Content:     "legacy stacktrace",
+		CreatedAt:   now.Add(-7*24*time.Hour + 3*time.Minute),
+	})
+	taskMemory.Record(legacy)
+
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithTaskSummaryMemory(taskMemory),
+	)
+	msg := validMessage("回顾上周 migration 任务，给我 task-legacy 的日志细节")
+	msg.SessionID = "session-query"
+	msg.ReceivedAt = now
+	result, err := service.Handle(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("handle message failed: %v", err)
+	}
+	if got := result.Metadata["task_summary_retrieval_mode"]; got != "deep" {
+		t.Fatalf("expected deep mode, got %q", got)
+	}
+	if got := result.Metadata["deep_retrieval_triggered"]; got != "true" {
+		t.Fatalf("expected deep retrieval triggered metadata, got %q", got)
+	}
+	if got := telemetry.memoryEvent["deep_retrieval_triggered"]; got != 1 {
+		t.Fatalf("expected deep_retrieval_triggered telemetry count 1, got %d", got)
+	}
+	prompt := executor.lastMessage.Content
+	if !strings.Contains(prompt, "task-legacy") {
+		t.Fatalf("expected deep retrieval hit in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "logs:") || !strings.Contains(prompt, "artifacts:") {
+		t.Fatalf("expected detail drill-down logs and artifacts in prompt, got %q", prompt)
+	}
+}
+
+func TestHandleNLOverridesDeepRetrievalWithNegation(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		output: "response",
+	}
+	taskMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{
+		RecentWindow: 5,
+		DeepTopK:     5,
+	})
+	now := time.Date(2026, 3, 4, 12, 0, 0, 0, time.UTC)
+	taskMemory.Record(buildTaskMemoryTask("task-now", "session-now", taskdomain.TaskStatusSuccess, "release", "release done", now.Add(-time.Hour)))
+
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithTaskSummaryMemory(taskMemory),
+	)
+	msg := validMessage("不要查历史任务，只看当前任务进度")
+	msg.SessionID = "session-query"
+	msg.ReceivedAt = now
+	result, err := service.Handle(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("handle message failed: %v", err)
+	}
+	if got := result.Metadata["task_summary_retrieval_mode"]; got != "recent" {
+		t.Fatalf("expected recent mode when negated, got %q", got)
+	}
+	if got := result.Metadata["deep_retrieval_overridden"]; got != "true" {
+		t.Fatalf("expected deep retrieval overridden metadata, got %q", got)
+	}
+	if got := result.Metadata["deep_retrieval_triggered"]; got != "false" {
+		t.Fatalf("expected deep retrieval not triggered, got %q", got)
+	}
+	if got := telemetry.memoryEvent["deep_retrieval_overridden"]; got != 1 {
+		t.Fatalf("expected deep_retrieval_overridden telemetry count 1, got %d", got)
+	}
+}
+
+func buildTaskMemoryTask(taskID string, sessionID string, status taskdomain.TaskStatus, taskType string, result string, finishedAt time.Time) taskdomain.Task {
+	return taskdomain.Task{
+		ID:             taskID,
+		SessionID:      sessionID,
+		MessageID:      "msg-" + taskID,
+		Status:         status,
+		Progress:       100,
+		RetryCount:     0,
+		MaxRetries:     1,
+		TimeoutMS:      90000,
+		CreatedAt:      finishedAt.Add(-time.Minute),
+		UpdatedAt:      finishedAt,
+		FinishedAt:     finishedAt,
+		RequestContent: "handle " + taskID,
+		RequestMetadata: map[string]string{
+			"alter0.task.type": taskType,
+		},
+		Summary: "summary " + taskID,
+		TaskSummary: taskdomain.TaskSummary{
+			TaskID:     taskID,
+			TaskType:   taskType,
+			Goal:       "handle " + taskID,
+			Result:     result,
+			Status:     status,
+			FinishedAt: finishedAt,
+			Tags:       []string{"task", string(status), taskType},
+		},
 	}
 }
 

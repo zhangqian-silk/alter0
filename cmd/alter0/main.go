@@ -29,6 +29,7 @@ import (
 	"alter0/internal/shared/infrastructure/observability"
 	localstorage "alter0/internal/storage/infrastructure/localfile"
 	taskapp "alter0/internal/task/application"
+	tasksummaryapp "alter0/internal/tasksummary/application"
 )
 
 type storageProfile struct {
@@ -130,6 +131,7 @@ func main() {
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
 	processor := execinfra.NewCodexCLIProcessor()
 	executor := execapp.NewServiceWithSkills(processor, control, logger)
+	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
 	baseOrchestrator := orchapp.NewServiceWithOptions(
 		classifier,
 		registry,
@@ -153,6 +155,7 @@ func main() {
 		orchapp.WithMandatoryContextOptions(orchapp.MandatoryContextOptions{
 			FilePath: *mandatoryContextFile,
 		}),
+		orchapp.WithTaskSummaryMemory(taskSummaryMemory),
 	)
 	persistentOrchestrator := orchapp.NewSessionPersistenceService(baseOrchestrator, sessionHistory, idGen, logger)
 	orchestrator := orchapp.NewConcurrentService(
@@ -172,6 +175,7 @@ func main() {
 		Timeout:              *asyncTaskTimeout,
 		MaxRetries:           *asyncTaskMaxRetries,
 		LongContentThreshold: *asyncLongContentThreshold,
+		SummaryMemory:        taskSummaryMemory,
 	})
 	if err != nil {
 		logger.Error("failed to initialize task service", slog.String("error", err.Error()))

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -47,6 +48,16 @@ type TaskResult struct {
 	Metadata  map[string]string  `json:"metadata,omitempty"`
 }
 
+type TaskSummary struct {
+	TaskID     string     `json:"task_id"`
+	TaskType   string     `json:"task_type"`
+	Goal       string     `json:"goal"`
+	Result     string     `json:"result"`
+	Status     TaskStatus `json:"status"`
+	FinishedAt time.Time  `json:"finished_at"`
+	Tags       []string   `json:"tags,omitempty"`
+}
+
 type Task struct {
 	ID              string            `json:"id"`
 	SessionID       string            `json:"session_id"`
@@ -63,6 +74,7 @@ type Task struct {
 	RequestContent  string            `json:"request_content"`
 	RequestMetadata map[string]string `json:"request_metadata,omitempty"`
 	Summary         string            `json:"summary,omitempty"`
+	TaskSummary     TaskSummary       `json:"task_summary,omitempty"`
 	ErrorCode       string            `json:"error_code,omitempty"`
 	ErrorMessage    string            `json:"error_message,omitempty"`
 	Result          TaskResult        `json:"result,omitempty"`
@@ -90,6 +102,38 @@ func (l TaskLogLevel) IsValid() bool {
 	default:
 		return false
 	}
+}
+
+func (s TaskSummary) IsZero() bool {
+	return strings.TrimSpace(s.TaskID) == "" &&
+		strings.TrimSpace(s.TaskType) == "" &&
+		strings.TrimSpace(s.Goal) == "" &&
+		strings.TrimSpace(s.Result) == "" &&
+		strings.TrimSpace(string(s.Status)) == "" &&
+		s.FinishedAt.IsZero() &&
+		len(s.Tags) == 0
+}
+
+func (s TaskSummary) Validate() error {
+	if strings.TrimSpace(s.TaskID) == "" {
+		return errors.New("task_summary.task_id is required")
+	}
+	if strings.TrimSpace(s.TaskType) == "" {
+		return errors.New("task_summary.task_type is required")
+	}
+	if strings.TrimSpace(s.Goal) == "" {
+		return errors.New("task_summary.goal is required")
+	}
+	if strings.TrimSpace(s.Result) == "" {
+		return errors.New("task_summary.result is required")
+	}
+	if !s.Status.IsValid() {
+		return errors.New("task_summary.status is invalid")
+	}
+	if s.FinishedAt.IsZero() {
+		return errors.New("task_summary.finished_at is required")
+	}
+	return nil
 }
 
 func (t Task) Validate() error {
@@ -150,6 +194,14 @@ func (t Task) Validate() error {
 		}
 		if item.CreatedAt.IsZero() {
 			return errors.New("artifact created_at is required")
+		}
+	}
+	if !t.TaskSummary.IsZero() {
+		if err := t.TaskSummary.Validate(); err != nil {
+			return fmt.Errorf("task summary invalid: %w", err)
+		}
+		if strings.TrimSpace(t.TaskSummary.TaskID) != strings.TrimSpace(t.ID) {
+			return errors.New("task_summary.task_id must match task id")
 		}
 	}
 	return nil

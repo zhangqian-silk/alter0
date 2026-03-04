@@ -53,12 +53,17 @@ type sessionRecorder interface {
 	Append(records ...sessiondomain.MessageRecord) error
 }
 
+type TaskSummaryRecorder interface {
+	Record(task taskdomain.Task)
+}
+
 type Options struct {
 	WorkerCount          int
 	Timeout              time.Duration
 	MaxRetries           int
 	LongContentThreshold int
 	ArtifactKeywords     []string
+	SummaryMemory        TaskSummaryRecorder
 }
 
 type Service struct {
@@ -68,6 +73,7 @@ type Service struct {
 	idGenerator sharedapp.IDGenerator
 	logger      *slog.Logger
 	options     Options
+	summary     TaskSummaryRecorder
 
 	mu           sync.RWMutex
 	cond         *sync.Cond
@@ -105,6 +111,7 @@ func NewService(
 		idGenerator:  idGenerator,
 		logger:       logger,
 		options:      normalizeOptions(options),
+		summary:      options.SummaryMemory,
 		tasks:        map[string]taskdomain.Task{},
 		queue:        []string{},
 		sessionIndex: map[string][]string{},
@@ -189,6 +196,9 @@ func (s *Service) loadStore(ctx context.Context) error {
 			return fmt.Errorf("duplicate task id in store: %s", normalized.ID)
 		}
 		s.tasks[normalized.ID] = cloneTask(normalized)
+		if normalized.Status.IsTerminal() && s.summary != nil {
+			s.summary.Record(cloneTask(normalized))
+		}
 		key := normalizeKey(normalized.SessionID)
 		s.sessionIndex[key] = append(s.sessionIndex[key], normalized.ID)
 	}
@@ -276,6 +286,10 @@ func (s *Service) normalizeStoredTask(task taskdomain.Task) (taskdomain.Task, bo
 	}
 	if strings.TrimSpace(task.Summary) == "" && task.Status.IsTerminal() {
 		task.Summary = buildTaskSummary(task, nil)
+		changed = true
+	}
+	if task.Status.IsTerminal() && task.TaskSummary.IsZero() {
+		task.TaskSummary = buildTaskStructuredSummary(task)
 		changed = true
 	}
 	if strings.TrimSpace(task.RequestContent) == "" {
@@ -447,6 +461,7 @@ func (s *Service) Cancel(taskID string) (taskdomain.Task, error) {
 		task.ErrorMessage = "task canceled before execution"
 		task.Result.ErrorCode = task.ErrorCode
 		task.Summary = buildTaskSummary(task, nil)
+		task.TaskSummary = buildTaskStructuredSummary(task)
 		task.Logs = append(task.Logs, taskdomain.TaskLog{
 			Timestamp: now,
 			Level:     taskdomain.TaskLogLevelInfo,
@@ -473,6 +488,7 @@ func (s *Service) Cancel(taskID string) (taskdomain.Task, error) {
 	}
 	if item.Status == taskdomain.TaskStatusCanceled {
 		s.appendSummaryToSession(item)
+		s.recordTaskSummary(item)
 	}
 	return item, nil
 }
@@ -518,6 +534,7 @@ func (s *Service) nextTask(ctx context.Context, workerID int) (string, shareddom
 			task.ErrorMessage = "task request payload is unavailable"
 			task.Result.ErrorCode = task.ErrorCode
 			task.Summary = buildTaskSummary(task, nil)
+			task.TaskSummary = buildTaskStructuredSummary(task)
 			task.Logs = append(task.Logs, taskdomain.TaskLog{
 				Timestamp: now,
 				Level:     taskdomain.TaskLogLevelError,
@@ -528,6 +545,7 @@ func (s *Service) nextTask(ctx context.Context, workerID int) (string, shareddom
 			item := cloneTask(task)
 			s.mu.Unlock()
 			s.appendSummaryToSession(item)
+			s.recordTaskSummary(item)
 			continue
 		}
 
@@ -578,6 +596,7 @@ func (s *Service) executeTask(taskID string, msg shareddomain.UnifiedMessage, ru
 		if lastErr == nil {
 			task := s.completeTask(taskID, taskdomain.TaskStatusSuccess, lastResult, nil, "task completed", taskdomain.TaskLogLevelInfo, 100)
 			s.appendSummaryToSession(task)
+			s.recordTaskSummary(task)
 			return
 		}
 
@@ -595,6 +614,7 @@ func (s *Service) executeTask(taskID string, msg shareddomain.UnifiedMessage, ru
 			}
 			task := s.completeTask(taskID, status, lastResult, lastErr, logMessage, level, progress, errorCode)
 			s.appendSummaryToSession(task)
+			s.recordTaskSummary(task)
 			return
 		}
 
@@ -604,11 +624,13 @@ func (s *Service) executeTask(taskID string, msg shareddomain.UnifiedMessage, ru
 		}
 		task := s.completeTask(taskID, taskdomain.TaskStatusFailed, lastResult, lastErr, "task execution failed", taskdomain.TaskLogLevelError, 100)
 		s.appendSummaryToSession(task)
+		s.recordTaskSummary(task)
 		return
 	}
 
 	task := s.completeTask(taskID, taskdomain.TaskStatusFailed, lastResult, lastErr, "task execution failed", taskdomain.TaskLogLevelError, 100)
 	s.appendSummaryToSession(task)
+	s.recordTaskSummary(task)
 }
 
 func (s *Service) recordRetry(taskID string, retryCount int, workerID int, err error) {
@@ -710,6 +732,7 @@ func (s *Service) completeTask(
 		Message:   strings.TrimSpace(logMessage),
 	})
 	task.Summary = buildTaskSummary(task, handleErr)
+	task.TaskSummary = buildTaskStructuredSummary(task)
 	s.tasks[taskID] = cloneTask(task)
 
 	if err := s.storeLocked(); err != nil && s.logger != nil {
@@ -747,6 +770,16 @@ func (s *Service) appendSummaryToSession(task taskdomain.Task) {
 			slog.String("error", err.Error()),
 		)
 	}
+}
+
+func (s *Service) recordTaskSummary(task taskdomain.Task) {
+	if s.summary == nil {
+		return
+	}
+	if !task.Status.IsTerminal() {
+		return
+	}
+	s.summary.Record(task)
 }
 
 func (s *Service) finishRuntime(taskID string) {
@@ -797,6 +830,102 @@ func buildTaskSummary(task taskdomain.Task, handleErr error) string {
 	default:
 		return fmt.Sprintf("async task %s status: %s", task.ID, task.Status)
 	}
+}
+
+func buildTaskStructuredSummary(task taskdomain.Task) taskdomain.TaskSummary {
+	finishedAt := task.FinishedAt
+	if finishedAt.IsZero() {
+		finishedAt = task.UpdatedAt
+	}
+	if finishedAt.IsZero() {
+		finishedAt = time.Now().UTC()
+	}
+	taskType := resolveTaskType(task)
+	goal := summarySnippet(task.RequestContent, 180)
+	if goal == "" {
+		goal = "task goal unavailable"
+	}
+	result := resolveTaskSummaryResult(task)
+	return taskdomain.TaskSummary{
+		TaskID:     strings.TrimSpace(task.ID),
+		TaskType:   taskType,
+		Goal:       goal,
+		Result:     result,
+		Status:     task.Status,
+		FinishedAt: finishedAt,
+		Tags:       buildTaskSummaryTags(task, taskType),
+	}
+}
+
+func resolveTaskType(task taskdomain.Task) string {
+	taskType := strings.TrimSpace(metadataValue(task.RequestMetadata, metadataTaskTypeKey))
+	if taskType != "" {
+		return strings.ToLower(taskType)
+	}
+	switch task.Result.Route {
+	case shareddomain.RouteCommand:
+		return "command"
+	case shareddomain.RouteNL:
+		return "natural_language"
+	default:
+		return "task"
+	}
+}
+
+func resolveTaskSummaryResult(task taskdomain.Task) string {
+	switch task.Status {
+	case taskdomain.TaskStatusSuccess:
+		if snippet := summarySnippet(task.Result.Output, 220); snippet != "" {
+			return snippet
+		}
+		return "completed without textual output"
+	case taskdomain.TaskStatusCanceled:
+		if reason := summarySnippet(task.ErrorMessage, 220); reason != "" {
+			return reason
+		}
+		return "task canceled"
+	case taskdomain.TaskStatusFailed:
+		if reason := summarySnippet(task.ErrorMessage, 220); reason != "" {
+			return reason
+		}
+		if code := strings.TrimSpace(task.ErrorCode); code != "" {
+			return code
+		}
+		return "task failed"
+	default:
+		return summarySnippet(task.Summary, 220)
+	}
+}
+
+func buildTaskSummaryTags(task taskdomain.Task, taskType string) []string {
+	tags := []string{
+		"task",
+		strings.ToLower(strings.TrimSpace(string(task.Status))),
+		strings.ToLower(strings.TrimSpace(taskType)),
+	}
+	if route := strings.TrimSpace(string(task.Result.Route)); route != "" {
+		tags = append(tags, "route:"+strings.ToLower(route))
+	}
+	if code := strings.TrimSpace(task.ErrorCode); code != "" {
+		tags = append(tags, "error:"+strings.ToLower(code))
+	}
+	seen := map[string]struct{}{}
+	cleaned := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		normalized := strings.TrimSpace(tag)
+		if normalized == "" {
+			continue
+		}
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		cleaned = append(cleaned, normalized)
+	}
+	if len(cleaned) == 0 {
+		return []string{"task"}
+	}
+	return cleaned
 }
 
 func summarySnippet(content string, maxRunes int) string {
@@ -871,6 +1000,15 @@ func (s *Service) newMessageID(taskID string) string {
 func cloneTask(task taskdomain.Task) taskdomain.Task {
 	out := task
 	out.RequestMetadata = cloneStringMap(task.RequestMetadata)
+	out.TaskSummary = taskdomain.TaskSummary{
+		TaskID:     task.TaskSummary.TaskID,
+		TaskType:   task.TaskSummary.TaskType,
+		Goal:       task.TaskSummary.Goal,
+		Result:     task.TaskSummary.Result,
+		Status:     task.TaskSummary.Status,
+		FinishedAt: task.TaskSummary.FinishedAt,
+		Tags:       append([]string(nil), task.TaskSummary.Tags...),
+	}
 	out.Result = taskdomain.TaskResult{
 		Route:     task.Result.Route,
 		Output:    task.Result.Output,

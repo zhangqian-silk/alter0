@@ -29,10 +29,11 @@ func (s *stubOrchestrator) Handle(_ context.Context, msg shareddomain.UnifiedMes
 
 type noopTelemetry struct{}
 
-func (n *noopTelemetry) CountGateway(_ string) {}
-func (n *noopTelemetry) CountRoute(_ string)   {}
-func (n *noopTelemetry) CountCommand(_ string) {}
-func (n *noopTelemetry) CountError(_ string)   {}
+func (n *noopTelemetry) CountGateway(_ string)     {}
+func (n *noopTelemetry) CountRoute(_ string)       {}
+func (n *noopTelemetry) CountCommand(_ string)     {}
+func (n *noopTelemetry) CountError(_ string)       {}
+func (n *noopTelemetry) CountMemoryEvent(_ string) {}
 func (n *noopTelemetry) ObserveDuration(_ string, _ time.Duration) {
 }
 

@@ -26,6 +26,7 @@ type Telemetry struct {
 	routeCount   map[string]int64
 	commandCount map[string]int64
 	errorCount   map[string]int64
+	memoryEvents map[string]int64
 	routeLatency map[string]routeLatency
 	queueEvents  map[string]int64
 	queueWait    waitLatency
@@ -39,6 +40,7 @@ func NewTelemetry() *Telemetry {
 		routeCount:   map[string]int64{},
 		commandCount: map[string]int64{},
 		errorCount:   map[string]int64{},
+		memoryEvents: map[string]int64{},
 		routeLatency: map[string]routeLatency{},
 		queueEvents:  map[string]int64{},
 	}
@@ -66,6 +68,12 @@ func (t *Telemetry) CountError(route string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.errorCount[route]++
+}
+
+func (t *Telemetry) CountMemoryEvent(event string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.memoryEvents[event]++
 }
 
 func (t *Telemetry) ObserveDuration(route string, d time.Duration) {
@@ -109,6 +117,7 @@ func (t *Telemetry) MetricsHandler() http.Handler {
 		routeCount := cloneMap(t.routeCount)
 		commandCount := cloneMap(t.commandCount)
 		errorCount := cloneMap(t.errorCount)
+		memoryEvents := cloneMap(t.memoryEvents)
 		routeLatency := cloneLatencyMap(t.routeLatency)
 		queueEvents := cloneMap(t.queueEvents)
 		queueWait := t.queueWait
@@ -123,6 +132,7 @@ func (t *Telemetry) MetricsHandler() http.Handler {
 		writeCounter(builder, "alter0_route_requests_total", "route", routeCount)
 		writeCounter(builder, "alter0_command_requests_total", "command", commandCount)
 		writeCounter(builder, "alter0_route_errors_total", "route", errorCount)
+		writeCounter(builder, "alter0_memory_events_total", "event", memoryEvents)
 		writeLatency(builder, routeLatency)
 		writeCounter(builder, "alter0_queue_events_total", "event", queueEvents)
 		writeWait(builder, queueWait)
