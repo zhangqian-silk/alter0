@@ -39,6 +39,7 @@
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | supported | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
 | R-026 | 强制要求上下文文件（如 SOUL.md） | supported | 支持独立上下文文件存储用户强制要求，启动与会话初始化高优先级加载，并在冲突场景下覆盖普通记忆 |
 | R-027 | Agent Memory 模块与页面收敛 | supported | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
+| R-028 | Memory 模块说明文档持久化与可视化 | supported | 持久化 `docs/memory/persistent-memory-module-spec.md` 并在 `Agent -> Memory` 新增说明文档只读视图，支持结构化分段、空态与加载失败态，且与长期/天级/SOUL 视图可切换并存 |
 | R-029 | 新对话空白会话唯一性约束 | supported | 空白会话（`messages.length==0`）在任意时刻最多保留一个；`New Chat` 优先复用最近空白会话，仅在不存在空白会话时新建 |
 
 ## 需求细化（草案）
@@ -352,6 +353,25 @@
   - 2026-03-04：`Memory` 页面新增三类页签（长期记忆 / 天级记忆 / SOUL.md），同页只读切换展示，桌面端与移动端均可访问。
   - 2026-03-04：后端新增 `/api/agent/memory` 聚合读取长期记忆文件、天级记忆目录与 `SOUL.md`，对缺失文件返回空态数据。
   - 2026-03-04：新增侧边栏收敛与 Agent Memory 接口测试，覆盖入口收敛、页签样式与数据返回结构。
+
+### R-028 Memory 模块说明文档持久化与可视化
+
+1. 持久化并维护 `docs/memory/persistent-memory-module-spec.md`，明确 `USER.md`、`AGENTS.md`、`MEMORY.md`、`memory/YYYY-MM-DD.md`、`SOUL.md` 职责与映射关系。
+2. 在 `Agent -> Memory` 新增“说明文档”只读视图入口，稳定展示说明文档全文。
+3. 说明文档视图支持结构化分段、空态与加载失败态，避免无反馈空白页。
+4. 保持与长期记忆、天级记忆、`SOUL.md` 视图同页切换并存。
+5. 验收：`Memory` 页面四类视图可切换；说明文档可完整展示；文档缺失与读取失败均有明确状态反馈。
+
+#### Traceability
+
+- 实现文件：`docs/memory/persistent-memory-module-spec.md`、`docs/README.md`、`internal/interfaces/web/agent_memory.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
+- 测试覆盖：`internal/interfaces/web/server_memory_test.go`、`internal/interfaces/web/server_sidebar_test.go`
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-04：新增持久化说明文档 `docs/memory/persistent-memory-module-spec.md`，定义五类核心文档职责、优先级与 Agent Memory 映射。
+  - 2026-03-04：`/api/agent/memory` 响应新增 `specification` 字段，统一聚合说明文档读取结果（路径、更新时间、内容、错误）。
+  - 2026-03-04：`Memory` 页面新增“说明文档”页签，基于 Markdown 标题结构化分段展示全文；对缺失文件展示空态，对读取异常展示失败态。
+  - 2026-03-04：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...` 全量通过。
 
 ### R-029 新对话空白会话唯一性约束
 

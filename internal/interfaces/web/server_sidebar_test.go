@@ -115,6 +115,8 @@ func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
 		"loader: loadMemoryView",
 		`"/api/agent/memory"`,
 		`data-memory-tab`,
+		`route.memory.tab.specification`,
+		`data-memory-panel="specification"`,
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -139,6 +141,7 @@ func TestSidebarAgentMemoryTabStylesPresent(t *testing.T) {
 		".memory-tabs {",
 		".memory-tab.active {",
 		".memory-content {",
+		".memory-spec-sections {",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(styles, marker) {

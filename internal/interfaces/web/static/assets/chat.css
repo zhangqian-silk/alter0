@@ -1139,6 +1139,14 @@ body {
   gap: 10px;
 }
 
+.memory-panel-spec {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.memory-panel-spec .route-card {
+  width: 100%;
+}
+
 .memory-content {
   margin: 0;
   border: 1px solid var(--line-soft);
@@ -1173,6 +1181,22 @@ body {
   text-align: right;
   font-weight: 600;
   word-break: break-word;
+}
+
+.memory-spec-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-spec-section {
+  display: grid;
+  gap: 8px;
+}
+
+.memory-spec-title {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-strong);
 }
 
 .memory-daily-list {
