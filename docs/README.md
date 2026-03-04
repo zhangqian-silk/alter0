@@ -13,9 +13,7 @@
 1. [架构设计](./architecture.md)
 2. [技术方案](./technical-solution.md)
 3. [需求清单](./requirements.md)
-4. [GitHub App 提交流程（Verified）](./github-app-submission.md)
-5. [Persistent Memory 模块说明](./memory/persistent-memory-module-spec.md)
-6. [研究报告](./research/README.md)
+4. [研究报告](./research/README.md)
 
 ## 维护约定
 

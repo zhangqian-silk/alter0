@@ -20,20 +20,3 @@ Conventional Commits: `<type>(<scope>): <description>`
 
 类型: `feat` `fix` `docs` `refactor` `style` `test` `chore`
 
-## GitHub App 提交流程（强制）
-
-- 目标：满足受保护分支 `Commits must have verified signatures`，统一采用 GitHub App 可验证签名链路。
-- 禁止：不再使用本地 `git commit` + `git push` 作为远端提交流程。
-- 强制链路：使用 GitHub App installation token，通过 GitHub API 直接创建提交与 PR。
-
-执行步骤：
-
-1. 基于目标分支获取最新 `base_sha`。
-2. 通过 API 提交文件变更（推荐 GraphQL `createCommitOnBranch`，或 REST Contents API）。
-3. 请求中不传自定义 `author` / `committer` / `signature` 字段，确保由 GitHub 代表 App 生成可验证签名提交。
-4. 创建或更新 PR，并补齐 assignee/reviewer。
-
-约束：
-
-- 所有自动化提交必须可在 GitHub 页面显示 `Verified`。
-- 若提交未验证，视为流程失败，必须重走 API 提交流程，不做手工绕过。
