@@ -218,6 +218,33 @@ type memoryTaskListQuery struct {
 	PageSize int
 }
 
+type taskControlActionState struct {
+	AllowedStatuses []taskdomain.TaskStatus `json:"allowed_statuses"`
+	Enabled         bool                    `json:"enabled"`
+	Reason          string                  `json:"reason,omitempty"`
+}
+
+type taskControlActions struct {
+	Retry  taskControlActionState `json:"retry"`
+	Cancel taskControlActionState `json:"cancel"`
+}
+
+type taskSessionLink struct {
+	TaskID              string `json:"task_id"`
+	SessionID           string `json:"session_id"`
+	RequestMessageID    string `json:"request_message_id,omitempty"`
+	ResultMessageID     string `json:"result_message_id,omitempty"`
+	TaskDetailPath      string `json:"task_detail_path"`
+	SessionTasksPath    string `json:"session_tasks_path,omitempty"`
+	SessionMessagesPath string `json:"session_messages_path,omitempty"`
+}
+
+type taskControlView struct {
+	Task    taskdomain.Task    `json:"task"`
+	Actions taskControlActions `json:"actions"`
+	Link    taskSessionLink    `json:"link"`
+}
+
 func NewServer(
 	addr string,
 	orchestrator Orchestrator,
@@ -519,6 +546,18 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		items := s.tasks.ListBySession(sessionID)
+		messageID := strings.TrimSpace(r.URL.Query().Get("message_id"))
+		if messageID != "" {
+			filtered := make([]taskdomain.Task, 0, len(items))
+			for _, item := range items {
+				if strings.TrimSpace(item.SourceMessageID) == messageID ||
+					strings.TrimSpace(item.MessageLink.RequestMessageID) == messageID ||
+					strings.TrimSpace(item.MessageLink.ResultMessageID) == messageID {
+					filtered = append(filtered, item)
+				}
+			}
+			items = filtered
+		}
 		latestRaw := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("latest")))
 		if (latestRaw == "true" || latestRaw == "1" || latestRaw == "yes") && len(items) > 1 {
 			items = items[:1]
@@ -701,6 +740,27 @@ func (s *Server) controlTaskItemHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	switch {
+	case action == "" && subAction == "" && r.Method == http.MethodGet:
+		item, exists := s.tasks.Get(taskID)
+		if !exists {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, toTaskControlView(item))
+	case action == "retry" && subAction == "" && r.Method == http.MethodPost:
+		item, err := s.tasks.Retry(taskID)
+		if err != nil {
+			s.writeTaskControlError(w, taskID, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, toTaskControlView(item))
+	case action == "cancel" && subAction == "" && r.Method == http.MethodPost:
+		item, err := s.tasks.Cancel(taskID)
+		if err != nil {
+			s.writeTaskControlError(w, taskID, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, toTaskControlView(item))
 	case action == "logs" && subAction == "" && r.Method == http.MethodGet:
 		cursor, limit, statusCode, err := parseTaskLogQuery(r)
 		if err != nil {
@@ -718,6 +778,84 @@ func (s *Server) controlTaskItemHandler(w http.ResponseWriter, r *http.Request) 
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func (s *Server) writeTaskControlError(w http.ResponseWriter, taskID string, err error) {
+	if errors.Is(err, taskapp.ErrTaskNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+	if errors.Is(err, taskapp.ErrTaskConflict) {
+		if item, exists := s.tasks.Get(taskID); exists {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error": err.Error(),
+				"view":  toTaskControlView(item),
+			})
+			return
+		}
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+}
+
+func toTaskControlView(task taskdomain.Task) taskControlView {
+	return taskControlView{
+		Task:    task,
+		Actions: resolveTaskControlActions(task),
+		Link:    resolveTaskSessionLink(task),
+	}
+}
+
+func resolveTaskControlActions(task taskdomain.Task) taskControlActions {
+	allowedRetry := []taskdomain.TaskStatus{taskdomain.TaskStatusFailed, taskdomain.TaskStatusCanceled}
+	allowedCancel := []taskdomain.TaskStatus{taskdomain.TaskStatusQueued, taskdomain.TaskStatusRunning}
+	retryEnabled := task.Status == taskdomain.TaskStatusFailed || task.Status == taskdomain.TaskStatusCanceled
+	cancelEnabled := task.Status == taskdomain.TaskStatusQueued || task.Status == taskdomain.TaskStatusRunning
+
+	retryReason := ""
+	if !retryEnabled {
+		retryReason = "retry is allowed only when task status is failed or canceled"
+	}
+	cancelReason := ""
+	if !cancelEnabled {
+		cancelReason = "cancel is allowed only when task status is queued or running"
+	}
+
+	return taskControlActions{
+		Retry: taskControlActionState{
+			AllowedStatuses: allowedRetry,
+			Enabled:         retryEnabled,
+			Reason:          retryReason,
+		},
+		Cancel: taskControlActionState{
+			AllowedStatuses: allowedCancel,
+			Enabled:         cancelEnabled,
+			Reason:          cancelReason,
+		},
+	}
+}
+
+func resolveTaskSessionLink(task taskdomain.Task) taskSessionLink {
+	sessionID := strings.TrimSpace(task.SessionID)
+	taskID := strings.TrimSpace(task.ID)
+	link := taskSessionLink{
+		TaskID:              taskID,
+		SessionID:           sessionID,
+		RequestMessageID:    strings.TrimSpace(task.MessageLink.RequestMessageID),
+		ResultMessageID:     strings.TrimSpace(task.MessageLink.ResultMessageID),
+		TaskDetailPath:      "/api/control/tasks/" + taskID,
+		SessionTasksPath:    "/api/sessions/" + sessionID + "/tasks",
+		SessionMessagesPath: "/api/sessions/" + sessionID + "/messages",
+	}
+	if link.RequestMessageID == "" {
+		link.RequestMessageID = strings.TrimSpace(task.SourceMessageID)
+	}
+	if sessionID == "" {
+		link.SessionTasksPath = ""
+		link.SessionMessagesPath = ""
+	}
+	return link
 }
 
 func (s *Server) streamTaskLogs(w http.ResponseWriter, r *http.Request, taskID string) {

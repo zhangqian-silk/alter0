@@ -530,6 +530,109 @@ func TestControlTaskLogStreamSupportsCursorReplay(t *testing.T) {
 	}
 }
 
+func TestControlTaskViewAndActionConstraints(t *testing.T) {
+	now := time.Date(2026, 3, 4, 4, 0, 0, 0, time.UTC)
+	taskSvc := &stubWebTaskService{
+		items: map[string]taskdomain.Task{
+			"task-1": {
+				ID:              "task-1",
+				SessionID:       "session-a",
+				SourceMessageID: "msg-user-1",
+				Status:          taskdomain.TaskStatusFailed,
+				CreatedAt:       now,
+				UpdatedAt:       now,
+				RequestContent:  "generate report",
+				MessageLink: taskdomain.TaskMessageLink{
+					TaskID:           "task-1",
+					SessionID:        "session-a",
+					RequestMessageID: "msg-user-1",
+					ResultMessageID:  "msg-assistant-1",
+				},
+			},
+		},
+	}
+	server := &Server{
+		tasks:  taskSvc,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/control/tasks/task-1", nil)
+	getRec := httptest.NewRecorder()
+	server.controlTaskItemHandler(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getRec.Code)
+	}
+	body := getRec.Body.String()
+	if !strings.Contains(body, `"allowed_statuses":["failed","canceled"]`) {
+		t.Fatalf("expected retry constraint payload, got %s", body)
+	}
+	if !strings.Contains(body, `"task_detail_path":"/api/control/tasks/task-1"`) {
+		t.Fatalf("expected task detail link, got %s", body)
+	}
+	if !strings.Contains(body, `"session_messages_path":"/api/sessions/session-a/messages"`) {
+		t.Fatalf("expected session message link, got %s", body)
+	}
+
+	taskSvc.retryErr = taskapp.ErrTaskConflict
+	retryReq := httptest.NewRequest(http.MethodPost, "/api/control/tasks/task-1/retry", nil)
+	retryRec := httptest.NewRecorder()
+	server.controlTaskItemHandler(retryRec, retryReq)
+	if retryRec.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d", http.StatusConflict, retryRec.Code)
+	}
+	if !strings.Contains(retryRec.Body.String(), `"view"`) {
+		t.Fatalf("expected conflict view payload, got %s", retryRec.Body.String())
+	}
+}
+
+func TestSessionTaskMessageIDBacklinkQuery(t *testing.T) {
+	taskSvc := &stubWebTaskService{
+		bySession: map[string][]taskdomain.Task{
+			"session-a": {
+				{
+					ID:              "task-1",
+					SessionID:       "session-a",
+					SourceMessageID: "msg-user-1",
+					Status:          taskdomain.TaskStatusSuccess,
+					MessageLink: taskdomain.TaskMessageLink{
+						TaskID:           "task-1",
+						SessionID:        "session-a",
+						RequestMessageID: "msg-user-1",
+						ResultMessageID:  "msg-assistant-1",
+					},
+				},
+				{
+					ID:              "task-2",
+					SessionID:       "session-a",
+					SourceMessageID: "msg-user-2",
+					Status:          taskdomain.TaskStatusQueued,
+					MessageLink: taskdomain.TaskMessageLink{
+						TaskID:           "task-2",
+						SessionID:        "session-a",
+						RequestMessageID: "msg-user-2",
+						ResultMessageID:  "",
+					},
+				},
+			},
+		},
+	}
+	server := &Server{
+		tasks:  taskSvc,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/session-a/tasks?message_id=msg-user-2", nil)
+	rec := httptest.NewRecorder()
+	server.sessionMessageListHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"task-2"`) || strings.Contains(body, `"task-1"`) {
+		t.Fatalf("expected filtered task payload, got %s", body)
+	}
+}
+
 func TestSessionTaskLatestQuery(t *testing.T) {
 	taskSvc := &stubWebTaskService{
 		bySession: map[string][]taskdomain.Task{
