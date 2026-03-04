@@ -121,6 +121,29 @@ type streamErrorResponse struct {
 	Result shareddomain.OrchestrationResult `json:"result,omitempty"`
 }
 
+type taskLogStreamStartResponse struct {
+	TaskID string `json:"task_id"`
+	Cursor int    `json:"cursor"`
+}
+
+type taskLogStreamEvent struct {
+	TaskID     string             `json:"task_id"`
+	Cursor     int                `json:"cursor"`
+	NextCursor int                `json:"next_cursor"`
+	Log        taskdomain.TaskLog `json:"log"`
+}
+
+type taskLogStreamDoneResponse struct {
+	TaskID     string                `json:"task_id"`
+	Status     taskdomain.TaskStatus `json:"status"`
+	NextCursor int                   `json:"next_cursor"`
+}
+
+type taskLogStreamErrorResponse struct {
+	Error      string `json:"error"`
+	NextCursor int    `json:"next_cursor"`
+}
+
 type channelUpsertRequest struct {
 	Type        string            `json:"type"`
 	Enabled     *bool             `json:"enabled,omitempty"`
@@ -237,6 +260,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/agent/memory", s.agentMemoryHandler)
 	mux.HandleFunc("/api/memory/tasks", s.memoryTaskCollectionHandler)
 	mux.HandleFunc("/api/memory/tasks/", s.memoryTaskItemHandler)
+	mux.HandleFunc("/api/control/tasks/", s.controlTaskItemHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
 	mux.HandleFunc("/api/control/capabilities", s.capabilityListHandler)
@@ -661,6 +685,117 @@ func (s *Server) taskItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusAccepted, item)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) controlTaskItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.tasks == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
+		return
+	}
+
+	taskID, action, subAction, ok := controlTaskResourceID(r.URL.Path)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid control task path"})
+		return
+	}
+
+	switch {
+	case action == "logs" && subAction == "" && r.Method == http.MethodGet:
+		cursor, limit, statusCode, err := parseTaskLogQuery(r)
+		if err != nil {
+			writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+			return
+		}
+		page, err := s.tasks.ListLogs(taskID, cursor, limit)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, page)
+	case action == "logs" && subAction == "stream" && r.Method == http.MethodGet:
+		s.streamTaskLogs(w, r, taskID)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) streamTaskLogs(w http.ResponseWriter, r *http.Request, taskID string) {
+	cursor, err := parseNonNegativeInt(r.URL.Query().Get("cursor"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cursor must be a non-negative integer"})
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+		return
+	}
+
+	if _, exists := s.tasks.Get(taskID); !exists {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	if err := writeSSE(w, "start", taskLogStreamStartResponse{TaskID: taskID, Cursor: cursor}); err != nil {
+		return
+	}
+	flusher.Flush()
+
+	ticker := time.NewTicker(350 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		page, listErr := s.tasks.ListLogs(taskID, cursor, 200)
+		if listErr != nil {
+			_ = writeSSE(w, "error", taskLogStreamErrorResponse{Error: "task not found", NextCursor: cursor})
+			flusher.Flush()
+			return
+		}
+		for _, item := range page.Items {
+			nextCursor := cursor + 1
+			if err := writeSSE(w, "log", taskLogStreamEvent{
+				TaskID:     taskID,
+				Cursor:     cursor,
+				NextCursor: nextCursor,
+				Log:        item,
+			}); err != nil {
+				return
+			}
+			cursor = nextCursor
+			flusher.Flush()
+		}
+
+		if page.NextCursor > cursor {
+			cursor = page.NextCursor
+		}
+		if page.HasMore {
+			continue
+		}
+
+		task, exists := s.tasks.Get(taskID)
+		if !exists {
+			_ = writeSSE(w, "error", taskLogStreamErrorResponse{Error: "task not found", NextCursor: cursor})
+			flusher.Flush()
+			return
+		}
+		if task.Status.IsTerminal() {
+			_ = writeSSE(w, "done", taskLogStreamDoneResponse{TaskID: taskID, Status: task.Status, NextCursor: cursor})
+			flusher.Flush()
+			return
+		}
+
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+		}
 	}
 }
 
@@ -1404,6 +1539,41 @@ func taskResourceID(path string) (string, string, bool) {
 		return taskID, action, true
 	}
 	return "", "", false
+}
+
+func controlTaskResourceID(path string) (string, string, string, bool) {
+	const prefix = "/api/control/tasks/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", "", false
+	}
+
+	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) == 1 {
+		taskID := strings.TrimSpace(parts[0])
+		if taskID == "" {
+			return "", "", "", false
+		}
+		return taskID, "", "", true
+	}
+	if len(parts) == 2 {
+		taskID := strings.TrimSpace(parts[0])
+		action := strings.TrimSpace(parts[1])
+		if taskID == "" || action == "" {
+			return "", "", "", false
+		}
+		return taskID, action, "", true
+	}
+	if len(parts) == 3 {
+		taskID := strings.TrimSpace(parts[0])
+		action := strings.TrimSpace(parts[1])
+		subAction := strings.TrimSpace(parts[2])
+		if taskID == "" || action == "" || subAction == "" {
+			return "", "", "", false
+		}
+		return taskID, action, subAction, true
+	}
+	return "", "", "", false
 }
 
 func memoryTaskResourceID(path string) (string, string, bool) {
