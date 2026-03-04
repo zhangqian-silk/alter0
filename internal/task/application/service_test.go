@@ -85,20 +85,68 @@ func TestServiceShouldRunAsyncByRule(t *testing.T) {
 	}
 
 	forced := testTaskMessage("s-1", "short", map[string]string{MetadataTaskAsyncMode: "force"})
+	forcedAssessment := svc.AssessComplexity(forced)
 	if !svc.ShouldRunAsync(forced) {
 		t.Fatalf("expected force mode to run async")
 	}
+	if forcedAssessment.ExecutionMode != ExecutionModeAsync {
+		t.Fatalf("expected async execution mode, got %q", forcedAssessment.ExecutionMode)
+	}
+	if forcedAssessment.EstimatedDurationSeconds <= 30 {
+		t.Fatalf("expected forced estimate > 30s, got %d", forcedAssessment.EstimatedDurationSeconds)
+	}
 	disabled := testTaskMessage("s-1", "this is very long", map[string]string{MetadataTaskAsyncMode: "sync"})
+	disabledAssessment := svc.AssessComplexity(disabled)
 	if svc.ShouldRunAsync(disabled) {
 		t.Fatalf("expected sync mode to disable async")
 	}
+	if disabledAssessment.ExecutionMode != ExecutionModeStreaming {
+		t.Fatalf("expected streaming mode, got %q", disabledAssessment.ExecutionMode)
+	}
 	artifact := testTaskMessage("s-1", "short", map[string]string{MetadataTaskArtifact: "true"})
+	artifactAssessment := svc.AssessComplexity(artifact)
 	if !svc.ShouldRunAsync(artifact) {
 		t.Fatalf("expected artifact flag to run async")
 	}
+	if artifactAssessment.ComplexityLevel != ComplexityLevelHigh {
+		t.Fatalf("expected high complexity for artifact task, got %q", artifactAssessment.ComplexityLevel)
+	}
 	longText := testTaskMessage("s-1", "long-content", nil)
+	longTextAssessment := svc.AssessComplexity(longText)
 	if !svc.ShouldRunAsync(longText) {
 		t.Fatalf("expected long text to run async")
+	}
+	if longTextAssessment.EstimatedDurationSeconds <= 30 {
+		t.Fatalf("expected long-text estimate > 30s, got %d", longTextAssessment.EstimatedDurationSeconds)
+	}
+}
+
+func TestServiceAssessComplexityFallbackDefaultsToAsync(t *testing.T) {
+	svc, err := NewService(
+		context.Background(),
+		&stubTaskOrchestrator{},
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	msg := testTaskMessage("s-fallback", "simple ping", map[string]string{
+		MetadataComplexityPredictorMode: "timeout",
+	})
+	assessment := svc.AssessComplexity(msg)
+	if !assessment.Fallback {
+		t.Fatalf("expected fallback assessment")
+	}
+	if assessment.ExecutionMode != ExecutionModeAsync {
+		t.Fatalf("expected async fallback execution mode, got %q", assessment.ExecutionMode)
+	}
+	if assessment.EstimatedDurationSeconds <= 30 {
+		t.Fatalf("expected fallback estimate > 30s, got %d", assessment.EstimatedDurationSeconds)
 	}
 }
 

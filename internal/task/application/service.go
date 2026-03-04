@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	sessiondomain "alter0/internal/session/domain"
 	sharedapp "alter0/internal/shared/application"
@@ -391,33 +390,8 @@ func (s *Service) normalizeStoredTask(task taskdomain.Task) (taskdomain.Task, bo
 }
 
 func (s *Service) ShouldRunAsync(msg shareddomain.UnifiedMessage) bool {
-	mode := strings.ToLower(strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskAsyncMode)))
-	switch mode {
-	case "sync", "inline", "off", "disable":
-		return false
-	case "force", "async", "background":
-		return true
-	}
-
-	if isTruthy(metadataValue(msg.Metadata, MetadataTaskArtifact)) {
-		return true
-	}
-	taskType := strings.ToLower(strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskTypeKey)))
-	if strings.Contains(taskType, "artifact") || strings.Contains(taskType, "export") {
-		return true
-	}
-
-	trimmed := strings.TrimSpace(msg.Content)
-	if utf8.RuneCountInString(trimmed) >= s.options.LongContentThreshold {
-		return true
-	}
-	lowerContent := strings.ToLower(trimmed)
-	for _, keyword := range s.options.ArtifactKeywords {
-		if strings.Contains(lowerContent, strings.ToLower(strings.TrimSpace(keyword))) {
-			return true
-		}
-	}
-	return false
+	assessment := s.AssessComplexity(msg)
+	return assessment.ExecutionMode == ExecutionModeAsync
 }
 
 func (s *Service) Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, error) {
