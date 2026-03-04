@@ -39,6 +39,7 @@
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | supported | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
 | R-026 | 强制要求上下文文件（如 SOUL.md） | supported | 支持独立上下文文件存储用户强制要求，启动与会话初始化高优先级加载，并在冲突场景下覆盖普通记忆 |
 | R-027 | Agent Memory 模块与页面收敛 | supported | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
+| R-029 | 新对话空白会话唯一性约束 | supported | 空白会话（`messages.length==0`）在任意时刻最多保留一个；`New Chat` 优先复用最近空白会话，仅在不存在空白会话时新建 |
 
 ## 需求细化（草案）
 
@@ -351,6 +352,28 @@
   - 2026-03-04：`Memory` 页面新增三类页签（长期记忆 / 天级记忆 / SOUL.md），同页只读切换展示，桌面端与移动端均可访问。
   - 2026-03-04：后端新增 `/api/agent/memory` 聚合读取长期记忆文件、天级记忆目录与 `SOUL.md`，对缺失文件返回空态数据。
   - 2026-03-04：新增侧边栏收敛与 Agent Memory 接口测试，覆盖入口收敛、页签样式与数据返回结构。
+
+### R-029 新对话空白会话唯一性约束
+
+1. 空白会话定义为 `messages.length == 0`。
+2. 点击 `New Chat` 时，若存在空白会话，复用“最近创建”的空白会话并聚焦，不新建会话。
+3. 仅当不存在空白会话时才创建新会话。
+4. 删除会话与首条消息写入后，空白会话状态实时更新并保持唯一性。
+5. 页面刷新后保持同一约束：存在空白会话即复用，不存在才创建。
+6. 验收：连续点击 `New Chat` 5 次最多仅有 1 个空白会话；发送首条消息后再次 `New Chat` 才会创建新空白会话。
+
+#### Traceability
+
+- 实现文件：`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
+- 测试覆盖：`internal/interfaces/web/server_mobile_session_test.go`
+- 验证命令：
+  - `GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./internal/interfaces/web -run 'Session|Mobile|Sidebar|Chat'`
+  - `GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./internal/interfaces/web`
+- 验证记录：
+  - 2026-03-04：`New Chat` 接入空白会话复用逻辑，存在空白会话时聚焦最近创建项，不新增会话。
+  - 2026-03-04：会话状态新增空白会话唯一性收敛，刷新加载与消息写入后均保证最多一个空白会话。
+  - 2026-03-04：会话列表新增删除入口，删除会话后立即重算空白会话与活动会话焦点。
+  - 2026-03-04：`web/session` 用例覆盖空白会话复用、删除入口与样式标记，相关测试通过。
 
 ### R-014 移动端真机适配增强
 

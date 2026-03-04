@@ -29,10 +29,14 @@ func TestMobileNewChatEntryReachable(t *testing.T) {
 	}
 }
 
-func TestNewChatCreatesSessionAndSwitchesContext(t *testing.T) {
+func TestNewChatReusesLatestBlankSessionAndSwitchesContext(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	markers := []string{
 		"function startNewChatSession()",
+		"function getLatestBlankSession()",
+		"function enforceSingleBlankSession()",
+		"const existingBlank = getLatestBlankSession();",
+		"focusSession(existingBlank.id);",
 		"createSession();",
 		`navigateToRoute("chat");`,
 		"newChatButton.addEventListener(\"click\", startNewChatSession);",
@@ -54,9 +58,9 @@ func TestSessionListShowsEmptyAndLoadFailureFeedback(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
 		"function loadSessionsFromStorage()",
-		`state.sessionLoadError = "会话列表保存失败，请检查浏览器存储权限。";`,
-		"state.sessionLoadError = `会话列表加载失败：${message}`;",
-		`sessionEmpty.textContent = "会话列表为空，点击 New Chat 创建会话。";`,
+		`state.sessionLoadError = "session_save_failed";`,
+		"state.sessionLoadError = message;",
+		`sessionEmpty.textContent = t("session.empty");`,
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -67,5 +71,31 @@ func TestSessionListShowsEmptyAndLoadFailureFeedback(t *testing.T) {
 	styles := readEmbeddedAsset(t, "static/assets/chat.css")
 	if !strings.Contains(styles, ".session-error {") {
 		t.Fatalf("expected style marker %q", ".session-error {")
+	}
+}
+
+func TestSessionDeleteHooksAndStylesPresent(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	scriptMarkers := []string{
+		"function removeSession(sessionID)",
+		`row.className = "session-card-row"`,
+		`deleteButton.className = "session-card-delete"`,
+		"removeSession(item.id);",
+	}
+	for _, marker := range scriptMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	styleMarkers := []string{
+		".session-card-row {",
+		".session-card-delete {",
+	}
+	for _, marker := range styleMarkers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
 	}
 }
