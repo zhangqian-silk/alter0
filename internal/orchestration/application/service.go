@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	orchdomain "alter0/internal/orchestration/domain"
@@ -15,6 +16,14 @@ import (
 
 type ExecutionPort interface {
 	ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error)
+}
+
+type streamExecutionPort interface {
+	ExecuteNaturalLanguageStream(
+		ctx context.Context,
+		msg shareddomain.UnifiedMessage,
+		onDelta func(string) error,
+	) (shareddomain.ExecutionResult, error)
 }
 
 type Orchestrator interface {
@@ -143,6 +152,22 @@ func WithMandatoryContext(mandatory mandatoryContext) ServiceOption {
 }
 
 func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+	return s.handle(ctx, msg, nil)
+}
+
+func (s *Service) HandleStream(
+	ctx context.Context,
+	msg shareddomain.UnifiedMessage,
+	onDelta func(string) error,
+) (shareddomain.OrchestrationResult, error) {
+	return s.handle(ctx, msg, onDelta)
+}
+
+func (s *Service) handle(
+	ctx context.Context,
+	msg shareddomain.UnifiedMessage,
+	onDelta func(string) error,
+) (shareddomain.OrchestrationResult, error) {
 	startedAt := time.Now()
 	result := shareddomain.OrchestrationResult{
 		MessageID: msg.MessageID,
@@ -182,6 +207,13 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 
 		result.Output = cmdResult.Output
 		result.Metadata = cmdResult.Metadata
+		if onDelta != nil && strings.TrimSpace(result.Output) != "" {
+			if err := onDelta(result.Output); err != nil {
+				s.onError(msg, result.Route, startedAt, err)
+				result.ErrorCode = "stream_write_failed"
+				return result, err
+			}
+		}
 		s.memory.Record(msg, result.Route, result.Output)
 		s.longTerm.Record(msg, result.Route, result.Output)
 		s.onSuccess(msg, result.Route, startedAt)
@@ -224,7 +256,24 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 				mergeStringMap(mandatorySnapshot.Metadata(), conflictMetadata),
 			),
 		)
-		nlResult, err := s.executor.ExecuteNaturalLanguage(ctx, execMessage)
+		var nlResult shareddomain.ExecutionResult
+		var err error
+		if onDelta != nil {
+			if streamExecutor, ok := s.executor.(streamExecutionPort); ok {
+				nlResult, err = streamExecutor.ExecuteNaturalLanguageStream(ctx, execMessage, onDelta)
+			} else {
+				nlResult, err = s.executor.ExecuteNaturalLanguage(ctx, execMessage)
+				if err == nil && strings.TrimSpace(nlResult.Output) != "" {
+					if streamErr := onDelta(nlResult.Output); streamErr != nil {
+						s.onError(msg, result.Route, startedAt, streamErr)
+						result.ErrorCode = "stream_write_failed"
+						return result, streamErr
+					}
+				}
+			}
+		} else {
+			nlResult, err = s.executor.ExecuteNaturalLanguage(ctx, execMessage)
+		}
 		if err != nil {
 			s.onError(msg, result.Route, startedAt, err)
 			result.ErrorCode = "nl_execution_failed"

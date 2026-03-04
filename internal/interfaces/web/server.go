@@ -32,6 +32,14 @@ type Orchestrator interface {
 	Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error)
 }
 
+type StreamOrchestrator interface {
+	HandleStream(
+		ctx context.Context,
+		msg shareddomain.UnifiedMessage,
+		onDelta func(string) error,
+	) (shareddomain.OrchestrationResult, error)
+}
+
 type Server struct {
 	addr         string
 	orchestrator Orchestrator
@@ -495,7 +503,27 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, handleErr := s.orchestrator.Handle(r.Context(), msg)
+	handleStream := func(
+		callback func(delta string) error,
+	) (shareddomain.OrchestrationResult, error) {
+		if orchestrator, ok := s.orchestrator.(StreamOrchestrator); ok {
+			return orchestrator.HandleStream(r.Context(), msg, callback)
+		}
+		return s.orchestrator.Handle(r.Context(), msg)
+	}
+
+	result, handleErr := handleStream(func(delta string) error {
+		if strings.TrimSpace(delta) == "" {
+			return nil
+		}
+		if err := writeSSE(w, "delta", streamDeltaResponse{
+			Delta: delta,
+		}); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	})
 	if handleErr != nil {
 		s.logWebMessageFailure(msg, handleErr)
 		_ = writeSSE(w, "error", streamErrorResponse{
@@ -506,14 +534,16 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, chunk := range chunkText(result.Output, 24) {
-		if err := writeSSE(w, "delta", streamDeltaResponse{
-			Delta: chunk,
-			Route: result.Route,
-		}); err != nil {
-			return
+	if _, ok := s.orchestrator.(StreamOrchestrator); !ok {
+		for _, chunk := range chunkText(result.Output, 24) {
+			if err := writeSSE(w, "delta", streamDeltaResponse{
+				Delta: chunk,
+				Route: result.Route,
+			}); err != nil {
+				return
+			}
+			flusher.Flush()
 		}
-		flusher.Flush()
 	}
 
 	_ = writeSSE(w, "done", streamDoneResponse{Result: result})

@@ -1,19 +1,30 @@
 package infrastructure
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	execdomain "alter0/internal/execution/domain"
 )
 
-const defaultCodexCommand = "codex"
+const (
+	defaultCodexCommand       = "codex"
+	defaultWorkspaceRootDir   = ".alter0"
+	workspaceDirectoryName    = "workspaces"
+	workspaceSessionsDirName  = "sessions"
+	workspaceTasksDirName     = "tasks"
+	taskIDMetadataKey         = "task_id"
+	sessionIDMetadataFallback = "session_id"
+)
 
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
 
@@ -29,6 +40,17 @@ type codexExecutionPayload struct {
 	MCPPolicy   *execdomain.MCPContext   `json:"mcp_context,omitempty"`
 }
 
+type codexJSONEvent struct {
+	Type string          `json:"type"`
+	Item *codexEventItem `json:"item,omitempty"`
+}
+
+type codexEventItem struct {
+	Type  string `json:"type"`
+	Text  string `json:"text,omitempty"`
+	Delta string `json:"delta,omitempty"`
+}
+
 func NewCodexCLIProcessor() *CodexCLIProcessor {
 	return &CodexCLIProcessor{
 		command: defaultCodexCommand,
@@ -42,6 +64,10 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		return "", errors.New("content is required")
 	}
 	renderedPrompt, err := buildCodexPrompt(prompt, metadata)
+	if err != nil {
+		return "", err
+	}
+	workspaceDir, err := resolveCodexWorkspace(metadata)
 	if err != nil {
 		return "", err
 	}
@@ -76,6 +102,9 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		renderedPrompt,
 	}
 	cmd := runner(ctx, commandName, args...)
+	if workspaceDir != "" {
+		cmd.Dir = workspaceDir
+	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -101,6 +130,159 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		return "", errors.New("codex returned empty output")
 	}
 	return result, nil
+}
+
+func (p *CodexCLIProcessor) ProcessStream(
+	ctx context.Context,
+	content string,
+	metadata map[string]string,
+	emit func(event execdomain.StreamEvent) error,
+) (string, error) {
+	prompt := strings.TrimSpace(content)
+	if prompt == "" {
+		return "", errors.New("content is required")
+	}
+	renderedPrompt, err := buildCodexPrompt(prompt, metadata)
+	if err != nil {
+		return "", err
+	}
+	workspaceDir, err := resolveCodexWorkspace(metadata)
+	if err != nil {
+		return "", err
+	}
+
+	commandName := strings.TrimSpace(p.command)
+	if commandName == "" {
+		commandName = defaultCodexCommand
+	}
+	runner := p.runner
+	if runner == nil {
+		runner = exec.CommandContext
+	}
+
+	args := []string{
+		"exec",
+		"--color", "never",
+		"--skip-git-repo-check",
+		"--json",
+		"--progress-cursor",
+		renderedPrompt,
+	}
+	cmd := runner(ctx, commandName, args...)
+	if workspaceDir != "" {
+		cmd.Dir = workspaceDir
+	}
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("create codex stdout pipe: %w", err)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		details := strings.TrimSpace(stderr.String())
+		if details == "" {
+			return "", fmt.Errorf("codex command failed: %w", err)
+		}
+		return "", fmt.Errorf("codex command failed: %w: %s", err, details)
+	}
+
+	output, scanErr := collectStreamOutput(stdoutPipe, emit)
+	waitErr := cmd.Wait()
+	if scanErr != nil {
+		return "", scanErr
+	}
+	if waitErr != nil {
+		details := strings.TrimSpace(stderr.String())
+		if details == "" {
+			return "", fmt.Errorf("codex command failed: %w", waitErr)
+		}
+		return "", fmt.Errorf("codex command failed: %w: %s", waitErr, details)
+	}
+	result := strings.TrimSpace(output)
+	if result == "" {
+		return "", errors.New("codex returned empty output")
+	}
+	return result, nil
+}
+
+func collectStreamOutput(
+	reader io.Reader,
+	emit func(event execdomain.StreamEvent) error,
+) (string, error) {
+	scanner := bufio.NewScanner(reader)
+	// Allow larger JSONL events for long model outputs.
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+
+	emittedOutput := ""
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		event := codexJSONEvent{}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		if event.Item == nil || event.Item.Type != "agent_message" {
+			continue
+		}
+
+		text := event.Item.Text
+		delta := event.Item.Delta
+
+		switch event.Type {
+		case "item.delta":
+			if strings.TrimSpace(delta) == "" {
+				continue
+			}
+			if err := emitStreamDelta(emit, delta); err != nil {
+				return "", err
+			}
+			emittedOutput += delta
+		case "item.updated", "item.completed":
+			if strings.TrimSpace(text) == "" {
+				continue
+			}
+			nextDelta := resolveStreamDelta(emittedOutput, text)
+			if nextDelta == "" {
+				continue
+			}
+			if err := emitStreamDelta(emit, nextDelta); err != nil {
+				return "", err
+			}
+			emittedOutput += nextDelta
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read codex stream output: %w", err)
+	}
+	return emittedOutput, nil
+}
+
+func emitStreamDelta(emit func(event execdomain.StreamEvent) error, delta string) error {
+	if emit == nil {
+		return nil
+	}
+	if strings.TrimSpace(delta) == "" {
+		return nil
+	}
+	return emit(execdomain.StreamEvent{
+		Type: execdomain.StreamEventTypeOutput,
+		Text: delta,
+	})
+}
+
+func resolveStreamDelta(previous string, next string) string {
+	if previous == "" {
+		return next
+	}
+	if strings.HasPrefix(next, previous) {
+		return next[len(previous):]
+	}
+	return next
 }
 
 func buildCodexPrompt(prompt string, metadata map[string]string) (string, error) {
@@ -150,4 +332,78 @@ func metadataValue(metadata map[string]string, key string) string {
 		return ""
 	}
 	return metadata[key]
+}
+
+func resolveCodexWorkspace(metadata map[string]string) (string, error) {
+	sessionID := sanitizeWorkspaceSegment(firstNonEmpty(
+		metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey),
+		metadataValue(metadata, sessionIDMetadataFallback),
+	))
+	if sessionID == "" {
+		return "", nil
+	}
+
+	parts := []string{
+		defaultWorkspaceRootDir,
+		workspaceDirectoryName,
+		workspaceSessionsDirName,
+		sessionID,
+	}
+	taskID := sanitizeWorkspaceSegment(metadataValue(metadata, taskIDMetadataKey))
+	if taskID != "" {
+		parts = append(parts, workspaceTasksDirName, taskID)
+	}
+	workspaceDir := filepath.Join(parts...)
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		return "", fmt.Errorf("prepare codex workspace: %w", err)
+	}
+	absolute, err := filepath.Abs(workspaceDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve codex workspace path: %w", err)
+	}
+	return absolute, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		return trimmed
+	}
+	return ""
+}
+
+func sanitizeWorkspaceSegment(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	var builder strings.Builder
+	builder.Grow(len(trimmed))
+	hyphenPending := false
+	for _, ch := range trimmed {
+		if (ch >= 'a' && ch <= 'z') ||
+			(ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') ||
+			ch == '-' || ch == '_' || ch == '.' {
+			builder.WriteRune(ch)
+			hyphenPending = false
+			continue
+		}
+		if hyphenPending {
+			continue
+		}
+		builder.WriteByte('-')
+		hyphenPending = true
+	}
+	sanitized := strings.Trim(builder.String(), "-._")
+	if sanitized == "" {
+		return ""
+	}
+	if len(sanitized) > 96 {
+		sanitized = sanitized[:96]
+	}
+	return strings.ToLower(sanitized)
 }

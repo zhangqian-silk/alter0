@@ -28,6 +28,39 @@ func (s *stubProcessor) Process(_ context.Context, content string, metadata map[
 	return s.output, nil
 }
 
+func TestExecuteNaturalLanguageInjectsRuntimeMetadata(t *testing.T) {
+	processor := &stubProcessor{output: "ok"}
+	service := NewService(processor)
+
+	_, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "msg-runtime",
+		SessionID:   "session-runtime",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "runtime metadata",
+		TraceID:     "trace-runtime",
+		Metadata: map[string]string{
+			"task_id": "task-runtime",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+	if got := processor.lastMetadata[execdomain.RuntimeSessionIDMetadataKey]; got != "session-runtime" {
+		t.Fatalf("runtime session metadata = %q, want session-runtime", got)
+	}
+	if got := processor.lastMetadata[execdomain.RuntimeMessageIDMetadataKey]; got != "msg-runtime" {
+		t.Fatalf("runtime message metadata = %q, want msg-runtime", got)
+	}
+	if got := processor.lastMetadata[execdomain.RuntimeTraceIDMetadataKey]; got != "trace-runtime" {
+		t.Fatalf("runtime trace metadata = %q, want trace-runtime", got)
+	}
+	if got := processor.lastMetadata["task_id"]; got != "task-runtime" {
+		t.Fatalf("task metadata = %q, want task-runtime", got)
+	}
+}
+
 type stubSkillSource struct {
 	items    []controldomain.Capability
 	mcpItems []controldomain.Capability

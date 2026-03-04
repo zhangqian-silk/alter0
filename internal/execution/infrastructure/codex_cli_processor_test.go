@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -183,7 +184,73 @@ func TestCodexCLIProcessorProcessWithSkillAndMCPContextPayload(t *testing.T) {
 	}
 }
 
-func newTestProcessor(mode, expectedPrompt string) *CodexCLIProcessor {
+func TestCodexCLIProcessorProcessUsesSessionTaskWorkspace(t *testing.T) {
+	expectedWorkspace := filepath.Join(".alter0", "workspaces", "sessions", "session-a", "tasks", "task-a")
+	processor := newTestProcessor("success", "reply: hello", expectedWorkspace)
+
+	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "session-a",
+		"task_id":                              "task-a",
+	})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
+	}
+}
+
+func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
+	processor := newTestProcessor("stream-success", "reply: hello")
+	deltas := make([]string, 0, 2)
+
+	output, err := processor.ProcessStream(context.Background(), "reply: hello", nil, func(event execdomain.StreamEvent) error {
+		deltas = append(deltas, event.Text)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ProcessStream() error = %v", err)
+	}
+	if output != "mock streamed response" {
+		t.Fatalf("ProcessStream() output = %q, want %q", output, "mock streamed response")
+	}
+	if len(deltas) == 0 {
+		t.Fatalf("expected stream deltas, got none")
+	}
+}
+
+func TestCodexCLIProcessorProcessStreamCommandFailure(t *testing.T) {
+	processor := newTestProcessor("stream-failure", "reply: hello")
+
+	_, err := processor.ProcessStream(context.Background(), "reply: hello", nil, nil)
+	if err == nil {
+		t.Fatal("ProcessStream() error = nil, want failure")
+	}
+	if !strings.Contains(err.Error(), "codex command failed") {
+		t.Fatalf("ProcessStream() error = %q, want command failure marker", err.Error())
+	}
+}
+
+func TestCodexCLIProcessorProcessStreamUsesSessionWorkspace(t *testing.T) {
+	expectedWorkspace := filepath.Join(".alter0", "workspaces", "sessions", "stream-session")
+	processor := newTestProcessor("stream-success", "reply: hello", expectedWorkspace)
+
+	output, err := processor.ProcessStream(context.Background(), "reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "stream-session",
+	}, nil)
+	if err != nil {
+		t.Fatalf("ProcessStream() error = %v", err)
+	}
+	if output != "mock streamed response" {
+		t.Fatalf("ProcessStream() output = %q, want %q", output, "mock streamed response")
+	}
+}
+
+func newTestProcessor(mode, expectedPrompt string, expectedWorkspaceSuffix ...string) *CodexCLIProcessor {
+	expectedWorkspace := ""
+	if len(expectedWorkspaceSuffix) > 0 {
+		expectedWorkspace = strings.TrimSpace(expectedWorkspaceSuffix[0])
+	}
 	return &CodexCLIProcessor{
 		command: "codex",
 		runner: func(ctx context.Context, name string, args ...string) *exec.Cmd {
@@ -194,6 +261,7 @@ func newTestProcessor(mode, expectedPrompt string) *CodexCLIProcessor {
 				"GO_WANT_CODEX_HELPER_PROCESS=1",
 				"CODEX_HELPER_MODE="+mode,
 				"CODEX_HELPER_EXPECT_PROMPT="+expectedPrompt,
+				"CODEX_HELPER_EXPECT_WORKSPACE_SUFFIX="+expectedWorkspace,
 			)
 			return cmd
 		},
@@ -229,6 +297,26 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		}
 	}
 
+	prompt := forwarded[len(forwarded)-1]
+	expectedPrompt := os.Getenv("CODEX_HELPER_EXPECT_PROMPT")
+	if expectedPrompt != "" && prompt != expectedPrompt {
+		os.Exit(2)
+	}
+	expectedWorkspace := strings.TrimSpace(os.Getenv("CODEX_HELPER_EXPECT_WORKSPACE_SUFFIX"))
+	if expectedWorkspace != "" {
+		workingDir, err := os.Getwd()
+		if err != nil {
+			os.Exit(2)
+		}
+		actual := strings.ToLower(strings.ReplaceAll(filepath.Clean(workingDir), "\\", "/"))
+		expected := strings.ToLower(strings.ReplaceAll(filepath.Clean(expectedWorkspace), "\\", "/"))
+		if !strings.HasSuffix(actual, expected) {
+			os.Exit(2)
+		}
+	}
+
+	mode := os.Getenv("CODEX_HELPER_MODE")
+
 	outputPath := ""
 	for i := 0; i < len(forwarded)-1; i++ {
 		if forwarded[i] == "-o" && i+1 < len(forwarded) {
@@ -236,17 +324,11 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 			break
 		}
 	}
-	if strings.TrimSpace(outputPath) == "" {
+	if !strings.HasPrefix(mode, "stream-") && strings.TrimSpace(outputPath) == "" {
 		os.Exit(2)
 	}
 
-	prompt := forwarded[len(forwarded)-1]
-	expectedPrompt := os.Getenv("CODEX_HELPER_EXPECT_PROMPT")
-	if expectedPrompt != "" && prompt != expectedPrompt {
-		os.Exit(2)
-	}
-
-	switch os.Getenv("CODEX_HELPER_MODE") {
+	switch mode {
 	case "success":
 		_ = os.WriteFile(outputPath, []byte("mock response\n"), 0o600)
 		os.Exit(0)
@@ -255,6 +337,14 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		os.Exit(0)
 	case "failure":
 		_, _ = os.Stderr.WriteString("mock failure")
+		os.Exit(19)
+	case "stream-success":
+		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\"}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"item.delta\",\"item\":{\"type\":\"agent_message\",\"delta\":\"mock \"}}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock streamed response\"}}\n")
+		os.Exit(0)
+	case "stream-failure":
+		_, _ = os.Stderr.WriteString("mock stream failure")
 		os.Exit(19)
 	default:
 		os.Exit(2)
