@@ -48,10 +48,9 @@ const I18N = {
     "nav.channels": "Channels",
     "nav.sessions": "Sessions",
     "nav.cron-jobs": "Cron Jobs",
-    "nav.workspace": "Workspace",
+    "nav.memory": "Memory",
     "nav.skills": "Skills",
     "nav.mcp": "MCP",
-    "nav.configuration": "Configuration",
     "nav.models": "Models",
     "nav.environments": "Environments",
     "nav.expand": "Expand navigation",
@@ -113,13 +112,16 @@ const I18N = {
     "field.id": "ID",
     "field.messages": "Messages",
     "field.created": "Created",
+    "field.path": "Path",
+    "field.updated": "Updated",
+    "field.date": "Date",
+    "field.read_only": "Mode",
     
     // Routes
     "route.chat.title": "Chat",
     "route.chat.subtitle": "Ready to start a new conversation",
     "route.channels.title": "Channels",
     "route.channels.subtitle": "Manage connection channels",
-    "route.channels.action": "+ Add Channel",
     "route.channels.empty": "No Channels available.",
     "route.sessions.title": "Sessions",
     "route.sessions.subtitle": "View current session list",
@@ -127,16 +129,23 @@ const I18N = {
     "route.cron.title": "Cron Jobs",
     "route.cron.subtitle": "View scheduled jobs",
     "route.cron.empty": "No Cron Jobs available.",
-    "route.workspace.title": "Workspace",
-    "route.workspace.subtitle": "Workspace information",
+    "route.memory.title": "Memory",
+    "route.memory.subtitle": "Read-only memory view for long-term, daily, and SOUL.md",
+    "route.memory.tab.long_term": "Long-Term",
+    "route.memory.tab.daily": "Daily",
+    "route.memory.tab.mandatory": "SOUL.md",
+    "route.memory.empty.long_term": "No long-term memory file available.",
+    "route.memory.empty.daily": "No daily memory files available.",
+    "route.memory.empty.mandatory": "No SOUL.md file available.",
+    "route.memory.read_only": "Read-only",
+    "route.memory.daily.source": "Source directory",
+    "route.memory.daily.summary": "Summary",
     "route.skills.title": "Skills",
     "route.skills.subtitle": "Skills configuration",
     "route.skills.empty": "No Skills available.",
     "route.mcp.title": "MCP",
     "route.mcp.subtitle": "Model Context Protocol configuration",
     "route.mcp.empty": "No MCP available.",
-    "route.config.title": "Configuration",
-    "route.config.subtitle": "Runtime configuration overview",
     "route.models.title": "Models",
     "route.models.subtitle": "Model capabilities",
     "route.envs.title": "Environments",
@@ -152,10 +161,9 @@ const I18N = {
     "nav.channels": "通道",
     "nav.sessions": "会话列表",
     "nav.cron-jobs": "定时任务",
-    "nav.workspace": "工作区",
+    "nav.memory": "记忆",
     "nav.skills": "技能",
     "nav.mcp": "MCP 协议",
-    "nav.configuration": "配置",
     "nav.models": "模型",
     "nav.environments": "环境",
     "nav.expand": "展开导航",
@@ -217,13 +225,16 @@ const I18N = {
     "field.id": "ID",
     "field.messages": "消息数",
     "field.created": "创建时间",
+    "field.path": "路径",
+    "field.updated": "更新时间",
+    "field.date": "日期",
+    "field.read_only": "模式",
     
     // Routes
     "route.chat.title": "对话",
     "route.chat.subtitle": "准备好开始新的对话",
     "route.channels.title": "通道",
     "route.channels.subtitle": "管理连接通道",
-    "route.channels.action": "+ 新建通道",
     "route.channels.empty": "暂无可用通道。",
     "route.sessions.title": "会话列表",
     "route.sessions.subtitle": "查看当前会话列表",
@@ -231,16 +242,23 @@ const I18N = {
     "route.cron.title": "定时任务",
     "route.cron.subtitle": "查看计划任务",
     "route.cron.empty": "暂无定时任务。",
-    "route.workspace.title": "工作区",
-    "route.workspace.subtitle": "工作区信息",
+    "route.memory.title": "记忆",
+    "route.memory.subtitle": "统一只读查看长期记忆、天级记忆与 SOUL.md",
+    "route.memory.tab.long_term": "长期记忆",
+    "route.memory.tab.daily": "天级记忆",
+    "route.memory.tab.mandatory": "SOUL.md",
+    "route.memory.empty.long_term": "暂无长期记忆文件。",
+    "route.memory.empty.daily": "暂无天级记忆文件。",
+    "route.memory.empty.mandatory": "暂无 SOUL.md 文件。",
+    "route.memory.read_only": "只读",
+    "route.memory.daily.source": "来源目录",
+    "route.memory.daily.summary": "摘要",
     "route.skills.title": "技能",
     "route.skills.subtitle": "技能配置",
     "route.skills.empty": "暂无可用技能。",
     "route.mcp.title": "MCP 协议",
     "route.mcp.subtitle": "Model Context Protocol 配置",
     "route.mcp.empty": "暂无 MCP 配置。",
-    "route.config.title": "配置",
-    "route.config.subtitle": "运行时配置概览",
     "route.models.title": "模型",
     "route.models.subtitle": "模型能力",
     "route.envs.title": "环境",
@@ -272,10 +290,10 @@ const ROUTES = {
     mode: "page",
     loader: loadCronJobsView
   },
-  workspace: {
-    key: "workspace",
+  memory: {
+    key: "memory",
     mode: "page",
-    loader: loadPlaceholderView
+    loader: loadMemoryView
   },
   skills: {
     key: "skills",
@@ -286,11 +304,6 @@ const ROUTES = {
     key: "mcp",
     mode: "page",
     loader: loadMCPView
-  },
-  configuration: {
-    key: "config",
-    mode: "page",
-    loader: loadPlaceholderView
   },
   models: {
     key: "models",
@@ -1385,7 +1398,7 @@ function routeStatusBadge(enabled) {
   </div>`;
 }
 
-function routeCardTemplate(title, type, fields = [], enabled = false) {
+function routeCardTemplate(title, type, fields = [], enabled = false, body = "") {
   return `<article class="route-card">
     <div class="route-card-head">
       <div class="route-card-icon" aria-hidden="true">${routeTypeIcon(type)}</div>
@@ -1395,17 +1408,12 @@ function routeCardTemplate(title, type, fields = [], enabled = false) {
     <div class="route-meta">
       ${fields.join("")}
     </div>
+    ${body ? `<div class="memory-card-body">${body}</div>` : ""}
   </article>`;
 }
 
 function syncRouteAction(route) {
   if (!routeActionButton) {
-    return;
-  }
-  if (route === "channels") {
-    routeActionButton.hidden = false;
-    routeActionButton.textContent = t("route.channels.action");
-    routeActionButton.dataset.route = "configuration";
     return;
   }
   routeActionButton.hidden = true;
@@ -1512,6 +1520,152 @@ async function loadSessionsView(container) {
       true
     )
   );
+}
+
+function formatDateTime(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) {
+    return "-";
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    return text;
+  }
+  return parsed.toLocaleString(state.lang === "zh" ? "zh-CN" : "en-US", {
+    hour12: false
+  });
+}
+
+function summarizeMemoryContent(content) {
+  const text = typeof content === "string" ? content.trim() : "";
+  if (!text) {
+    return "-";
+  }
+  const rows = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!rows.length) {
+    return "-";
+  }
+  return shorten(rows[0], 72);
+}
+
+function renderMemoryDocumentCard(title, type, payload, emptyKey) {
+  const path = typeof payload?.path === "string" ? payload.path : "";
+  const updatedAt = typeof payload?.updated_at === "string" ? payload.updated_at : "";
+  const content = typeof payload?.content === "string" ? payload.content : "";
+  const error = typeof payload?.error === "string" ? payload.error : "";
+  const fields = [
+    routeFieldRow("field.path", path || "-"),
+    routeFieldRow("field.updated", formatDateTime(updatedAt)),
+    routeFieldRow("field.read_only", t("route.memory.read_only"))
+  ];
+
+  let body = `<p class="route-empty">${t(emptyKey)}</p>`;
+  if (error) {
+    body = `<p class="route-error">${t("load_failed", { error })}</p>`;
+  } else if (payload?.exists && content.trim()) {
+    body = `<pre class="memory-content">${escapeHTML(content)}</pre>`;
+  }
+
+  return routeCardTemplate(title, type, fields, true, body);
+}
+
+function renderDailyMemoryCards(payload) {
+  if (typeof payload?.error === "string" && payload.error.trim()) {
+    return `<p class="route-error">${t("load_failed", { error: payload.error })}</p>`;
+  }
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.memory.empty.daily")}</p>`;
+  }
+  return items.map((item) => {
+    const date = typeof item?.date === "string" ? item.date : "-";
+    const path = typeof item?.path === "string" ? item.path : "";
+    const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
+    const content = typeof item?.content === "string" ? item.content : "";
+    const error = typeof item?.error === "string" ? item.error : "";
+    const fields = [
+      routeFieldRow("field.date", date),
+      routeFieldRow("field.path", path || "-"),
+      routeFieldRow("field.updated", formatDateTime(updatedAt)),
+      routeFieldRow("field.read_only", t("route.memory.read_only"))
+    ];
+    let body = `<p class="route-empty">${t("route.memory.empty.daily")}</p>`;
+    if (error) {
+      body = `<p class="route-error">${t("load_failed", { error })}</p>`;
+    } else if (content.trim()) {
+      body = `<p class="memory-summary"><span>${t("route.memory.daily.summary")}</span><strong>${escapeHTML(summarizeMemoryContent(content))}</strong></p>
+<pre class="memory-content">${escapeHTML(content)}</pre>`;
+    }
+    return routeCardTemplate(date, "memory", fields, true, body);
+  }).join("");
+}
+
+function bindMemoryTabSwitch(container) {
+  const tabs = container.querySelectorAll("[data-memory-tab]");
+  const panels = container.querySelectorAll("[data-memory-panel]");
+  const activate = (tabName) => {
+    tabs.forEach((tab) => {
+      const active = tab.dataset.memoryTab === tabName;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    panels.forEach((panel) => {
+      const active = panel.dataset.memoryPanel === tabName;
+      panel.classList.toggle("active", active);
+      panel.hidden = !active;
+    });
+  };
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => activate(tab.dataset.memoryTab || "long_term"));
+  });
+  activate("long_term");
+}
+
+async function loadMemoryView(container) {
+  const payload = await fetchJSON("/api/agent/memory");
+  const tabs = [
+    { id: "long_term", label: t("route.memory.tab.long_term") },
+    { id: "daily", label: t("route.memory.tab.daily") },
+    { id: "mandatory", label: t("route.memory.tab.mandatory") }
+  ];
+  const dailySourceDir = typeof payload?.daily?.directory === "string"
+    ? payload.daily.directory
+    : "-";
+
+  container.innerHTML = `<section class="memory-view">
+    <div class="memory-tabs" role="tablist" aria-label="${t("route.memory.title")}">
+      ${tabs.map((tab) => `<button class="memory-tab" type="button" role="tab" data-memory-tab="${tab.id}" aria-selected="false">${escapeHTML(tab.label)}</button>`).join("")}
+    </div>
+    <section class="memory-panel" data-memory-panel="long_term" hidden>
+      ${renderMemoryDocumentCard(
+        t("route.memory.tab.long_term"),
+        "memory",
+        payload?.long_term,
+        "route.memory.empty.long_term"
+      )}
+    </section>
+    <section class="memory-panel" data-memory-panel="daily" hidden>
+      ${routeCardTemplate(
+        t("route.memory.tab.daily"),
+        "memory",
+        [routeFieldRow("route.memory.daily.source", dailySourceDir)],
+        true
+      )}
+      <div class="memory-daily-list">${renderDailyMemoryCards(payload?.daily)}</div>
+    </section>
+    <section class="memory-panel" data-memory-panel="mandatory" hidden>
+      ${renderMemoryDocumentCard(
+        t("route.memory.tab.mandatory"),
+        "memory",
+        payload?.mandatory,
+        "route.memory.empty.mandatory"
+      )}
+    </section>
+  </section>`;
+  bindMemoryTabSwitch(container);
 }
 
 async function loadPlaceholderView(container) {
