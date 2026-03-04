@@ -18,6 +18,7 @@ const (
 type RouteResult struct {
 	Route     shareddomain.Route `json:"route,omitempty"`
 	ErrorCode string             `json:"error_code,omitempty"`
+	TaskID    string             `json:"task_id,omitempty"`
 }
 
 type MessageRecord struct {

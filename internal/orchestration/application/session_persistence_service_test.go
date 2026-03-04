@@ -128,3 +128,46 @@ func TestSessionPersistenceServiceKeepsResultWhenStoreFails(t *testing.T) {
 		t.Fatalf("expected assistant content %q, got %q", expectedErr.Error(), recorder.records[1].Content)
 	}
 }
+
+func TestSessionPersistenceServicePersistsTaskIDFromMetadata(t *testing.T) {
+	downstream := &stubPersistenceDownstream{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-task",
+			SessionID: "s-task",
+			Route:     shareddomain.RouteNL,
+			Output:    "done",
+		},
+	}
+	recorder := &spySessionRecorder{}
+	service := &SessionPersistenceService{
+		downstream:  downstream,
+		recorder:    recorder,
+		idGenerator: &fixedIDGenerator{nextID: "assistant-task"},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:   "msg-task",
+		SessionID:   "s-task",
+		Content:     "question",
+		Metadata:    map[string]string{"task_id": "task-123"},
+		ReceivedAt:  time.Date(2026, 3, 3, 13, 0, 0, 0, time.UTC),
+		TriggerType: shareddomain.TriggerTypeUser,
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TraceID:     "trace-task",
+	}
+
+	if _, err := service.Handle(context.Background(), msg); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+	if len(recorder.records) != 2 {
+		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
+	}
+	if recorder.records[0].RouteResult.TaskID != "task-123" {
+		t.Fatalf("expected user record task id task-123, got %q", recorder.records[0].RouteResult.TaskID)
+	}
+	if recorder.records[1].RouteResult.TaskID != "task-123" {
+		t.Fatalf("expected assistant record task id task-123, got %q", recorder.records[1].RouteResult.TaskID)
+	}
+}

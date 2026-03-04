@@ -360,6 +360,7 @@ func cloneRecord(record sessiondomain.MessageRecord) sessiondomain.MessageRecord
 		RouteResult: sessiondomain.RouteResult{
 			Route:     record.RouteResult.Route,
 			ErrorCode: record.RouteResult.ErrorCode,
+			TaskID:    record.RouteResult.TaskID,
 		},
 	}
 }
