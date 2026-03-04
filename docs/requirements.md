@@ -44,7 +44,10 @@
 | R-030 | 会话与异步任务映射模型 | supported | 建立 `session_id` 与 `task_id` 的标准映射，支持长耗时请求异步化执行（快速应答 + 后台任务 + 任务日志回读），避免对话链路阻塞与上下文膨胀 |
 | R-031 | 任务摘要跨会话记忆与按需深检索 | supported | 默认仅注入最近 3-5 条任务摘要控制上下文体积；当用户询问更早历史时自动切换深检索，从全量任务摘要库召回并按需下钻任务详情 |
 | R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | ready | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
-| R-033 | Control 任务观测台与流式日志 | planned | 在 `Control` 页面新增任务观测台，集中展示任务状态、进度、日志、产物与触发来源标识，支持流式日志观测与任务控制（retry/cancel） |
+| R-033 | Control 任务观测台基础视图 | planned | 在 `Control` 页面新增 `Tasks` 入口，提供任务列表、详情抽屉与基础筛选能力，形成统一任务观测入口 |
+| R-034 | 任务触发来源标识与溯源视图 | planned | 为任务补齐并展示 `trigger_type/channel_type/channel_id/correlation_id` 等来源字段；定时任务补充 `job_id/job_name/fired_at` |
+| R-035 | 任务日志流式观测与断线续读 | planned | 提供任务日志 SSE 流式观测能力，支持游标断点续读与回补查询，满足长任务实时观测 |
+| R-036 | 任务控制动作与会话回链 | planned | 提供 `retry/cancel` 控制面板与任务-会话双向跳转，保证问题定位与重试闭环 |
 
 ## 需求细化（草案）
 
@@ -639,49 +642,74 @@
 - 关联需求：`R-028`、`R-030`、`R-031`
 - 验证口径：目录规范、摘要回链、前端可查阅、Git 隔离
 
-### R-033 Control 任务观测台与流式日志
+### R-033 Control 任务观测台基础视图
 
-1. 入口位置：在 `Control` 一级导航新增 `Tasks` 页面，不放在 `Agent/Memory` 下。
-2. 列表观测：任务列表支持按 `session_id`、`status`、`trigger_type`、`channel_type`、`time_range` 过滤，默认按最近更新时间倒序。
-3. 详情观测：详情抽屉展示 `task_id`、`session_id`、状态机、进度、重试次数、错误信息、产物引用。
-4. 来源标识：每个任务必须展示触发来源字段，至少包括 `trigger_type(user/cron/system)`、`channel_type(web/cli/scheduler)`、`channel_id`、`correlation_id`；若为定时任务还需展示 `job_id`、`job_name`、`fired_at`。
-5. 流式日志：支持日志流式观测（SSE），首屏展示最近日志片段，断线后可按游标续读。
-6. 控制动作：在详情页提供 `retry`、`cancel`，并明确状态约束（仅终态可重试、仅 `queued/running` 可取消）。
-7. 回链能力：任务详情可跳转到对应会话消息；会话消息可回跳任务详情。
-8. 验收：在同一页面可实时观察任务从 `queued -> running -> success/failed/canceled` 的状态变化与日志流，并可区分 user/cron/system 等来源，无需切换到 Memory 页面。
-
-#### 接口拆分（草案）
-
-1. 任务列表接口
-   - `GET /api/control/tasks?session_id=&status=&trigger_type=&channel_type=&start_at=&end_at=&page=&page_size=`
-2. 任务详情接口
-   - `GET /api/control/tasks/{task_id}`（返回 `trigger_type`、`channel_type`、`channel_id`、`correlation_id`，cron 场景附带 `job_id/job_name/fired_at`）
-3. 任务日志流接口（SSE）
-   - `GET /api/control/tasks/{task_id}/logs/stream?cursor=`
-4. 任务日志回补接口（断线续读）
-   - `GET /api/control/tasks/{task_id}/logs?cursor=&limit=`
-5. 任务控制接口
-   - `POST /api/control/tasks/{task_id}/retry`
-   - `POST /api/control/tasks/{task_id}/cancel`
-
-#### Task Breakdown (auto-managed)
-
-1. Scope split
-   - Define Control task observability page information architecture and interaction model.
-   - Define streaming log protocol, cursor resume, and status synchronization contract.
-2. Delivery plan
-   - M1: Control task list/detail/read model and API aggregation.
-   - M2: SSE log stream, reconnect resume, and retry/cancel operation panel.
-3. Status workflow
-   - Keep lifecycle as planned -> ready -> supported; update this row only.
-4. Traceability
-   - Keep implementation and verification records in this section after delivery.
+1. 在 `Control` 一级导航新增 `Tasks` 页面，作为任务运行观测统一入口。
+2. 提供任务列表与详情抽屉两层信息架构，避免在多个页面分散查找。
+3. 列表支持基础筛选：`session_id`、`status`、`time_range`，默认按 `updated_at` 倒序。
+4. 详情展示基础字段：`task_id`、`session_id`、`status`、`progress`、`retry_count`、`created_at`、`finished_at`、`error`。
+5. 验收：运维人员可在 `Control -> Tasks` 单页完成任务检索与状态定位。
 
 #### Traceability
 
-- 核心对象：`task_id`、`session_id`、`trigger_type`、`channel_type`、`channel_id`、`correlation_id`、`status`、`progress`、`logs`、`artifacts`
-- 依赖需求：`R-030`、`R-031`、`R-032`
-- 验证口径：流式可观测性、状态一致性、断线续读、控制动作可用性
+- 核心对象：`task_id`、`session_id`、`status`、`progress`
+- 依赖需求：`R-030`
+- 验证口径：入口可用性、列表筛选正确性、详情字段完整性
+
+### R-034 任务触发来源标识与溯源视图
+
+1. 每个任务需展示触发来源字段：`trigger_type`（`user/cron/system`）、`channel_type`、`channel_id`、`correlation_id`。
+2. 定时任务需额外展示调度来源字段：`job_id`、`job_name`、`fired_at`。
+3. 列表支持 `trigger_type`、`channel_type` 过滤，便于区分人工触发与自动任务。
+4. 验收：同一任务列表中可直接区分用户会话触发、定时任务触发及系统触发来源。
+
+#### Traceability
+
+- 核心对象：`trigger_type`、`channel_type`、`channel_id`、`correlation_id`、`job_id`
+- 依赖需求：`R-030`、`R-032`
+- 验证口径：来源字段覆盖率、过滤准确率、cron 溯源完整性
+
+### R-035 任务日志流式观测与断线续读
+
+1. 提供任务日志 SSE 流式接口，支持实时接收增量日志。
+2. 提供日志回补接口，支持断线后基于 `cursor` 续读。
+3. 前端首屏默认展示最近日志片段，滚动按需加载历史日志。
+4. 验收：任务运行中页面可持续更新日志；网络短断后可恢复并不丢日志序列。
+
+#### 接口拆分（草案）
+
+1. 日志流接口
+   - `GET /api/control/tasks/{task_id}/logs/stream?cursor=`
+2. 日志回补接口
+   - `GET /api/control/tasks/{task_id}/logs?cursor=&limit=`
+
+#### Traceability
+
+- 核心对象：`task_id`、`seq`、`cursor`、`logs`
+- 依赖需求：`R-030`
+- 验证口径：流式稳定性、续读正确性、日志顺序一致性
+
+### R-036 任务控制动作与会话回链
+
+1. 详情页提供 `retry`、`cancel` 控制能力，并显式展示可操作状态约束。
+2. 约束规则：仅 `failed/canceled` 可 `retry`，仅 `queued/running` 可 `cancel`。
+3. 提供任务到会话消息、会话消息到任务详情的双向跳转。
+4. 验收：从失败任务可直接重试并观察新状态；从会话记录可定位对应任务执行轨迹。
+
+#### 接口拆分（草案）
+
+1. 控制动作接口
+   - `POST /api/control/tasks/{task_id}/retry`
+   - `POST /api/control/tasks/{task_id}/cancel`
+2. 回链查询接口
+   - `GET /api/control/tasks/{task_id}`（包含会话回链字段）
+   - `GET /api/sessions/{session_id}/tasks?latest=true`
+
+#### Traceability
+
+- 核心对象：`task_id`、`session_id`、`retry`、`cancel`、`message_link`
+- 依赖需求：`R-030`、`R-031`
+- 验证口径：动作约束正确性、重试成功率、回链可达性
 
 ### R-014 移动端真机适配增强
 
