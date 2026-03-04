@@ -7,5 +7,6 @@ type Telemetry interface {
 	CountRoute(route string)
 	CountCommand(command string)
 	CountError(route string)
+	CountMemoryEvent(event string)
 	ObserveDuration(route string, d time.Duration)
 }

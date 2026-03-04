@@ -10,6 +10,7 @@ import (
 	orchdomain "alter0/internal/orchestration/domain"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
+	tasksummaryapp "alter0/internal/tasksummary/application"
 )
 
 type ExecutionPort interface {
@@ -26,6 +27,7 @@ type Service struct {
 	executor   ExecutionPort
 	memory     sessionMemory
 	longTerm   longTermMemory
+	taskMemory taskSummaryMemory
 	mandatory  mandatoryContext
 	telemetry  sharedapp.Telemetry
 	logger     *slog.Logger
@@ -43,6 +45,10 @@ type longTermMemory interface {
 	Record(msg shareddomain.UnifiedMessage, route shareddomain.Route, output string)
 }
 
+type taskSummaryMemory interface {
+	Snapshot(query string, now time.Time) tasksummaryapp.Snapshot
+}
+
 func NewService(
 	classifier orchdomain.IntentClassifier,
 	registry orchdomain.CommandRegistry,
@@ -56,6 +62,7 @@ func NewService(
 		executor:   executor,
 		memory:     newSessionMemoryStore(SessionMemoryOptions{}),
 		longTerm:   newLongTermMemoryStore(LongTermMemoryOptions{}),
+		taskMemory: tasksummaryapp.NewStore(tasksummaryapp.Options{}),
 		mandatory:  newMandatoryContextStore(MandatoryContextOptions{}),
 		telemetry:  telemetry,
 		logger:     logger,
@@ -84,6 +91,9 @@ func NewServiceWithOptions(
 	if service.longTerm == nil {
 		service.longTerm = newLongTermMemoryStore(LongTermMemoryOptions{})
 	}
+	if service.taskMemory == nil {
+		service.taskMemory = tasksummaryapp.NewStore(tasksummaryapp.Options{})
+	}
 	if service.mandatory == nil {
 		service.mandatory = newMandatoryContextStore(MandatoryContextOptions{})
 	}
@@ -111,6 +121,12 @@ func WithLongTermMemoryOptions(options LongTermMemoryOptions) ServiceOption {
 func WithLongTermMemory(memory longTermMemory) ServiceOption {
 	return func(service *Service) {
 		service.longTerm = memory
+	}
+}
+
+func WithTaskSummaryMemory(memory taskSummaryMemory) ServiceOption {
+	return func(service *Service) {
+		service.taskMemory = memory
 	}
 }
 
@@ -175,6 +191,8 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 		s.telemetry.CountRoute(string(result.Route))
 		snapshot := s.memory.Snapshot(msg.SessionID, msg.Content, msg.ReceivedAt)
 		longTermSnapshot := s.longTerm.Snapshot(msg, msg.Content, msg.ReceivedAt)
+		taskSnapshot := s.taskMemory.Snapshot(msg.Content, msg.ReceivedAt)
+		s.observeTaskSummarySnapshot(taskSnapshot)
 		mandatorySnapshot := s.mandatory.Snapshot(msg.ReceivedAt)
 		snapshot, sessionConflicts := applyMandatoryContextToSessionMemory(snapshot, mandatorySnapshot)
 		longTermSnapshot, longTermConflicts := applyMandatoryContextToLongTermMemory(longTermSnapshot, mandatorySnapshot)
@@ -194,11 +212,15 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 		execMessage := msg
 		execMessage.Content = buildSessionMemoryPrompt(msg.Content, snapshot)
 		execMessage.Content = buildLongTermMemoryPrompt(execMessage.Content, longTermSnapshot)
+		execMessage.Content = buildTaskSummaryPrompt(execMessage.Content, taskSnapshot)
 		execMessage.Content = buildMandatoryContextPrompt(execMessage.Content, mandatorySnapshot)
 		execMessage.Metadata = mergeStringMap(
 			msg.Metadata,
 			mergeStringMap(
-				mergeStringMap(snapshot.Metadata(), longTermSnapshot.Metadata()),
+				mergeStringMap(
+					mergeStringMap(snapshot.Metadata(), longTermSnapshot.Metadata()),
+					taskSnapshot.Metadata(),
+				),
 				mergeStringMap(mandatorySnapshot.Metadata(), conflictMetadata),
 			),
 		)
@@ -212,6 +234,7 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 		result.Output = nlResult.Output
 		result.Metadata = mergeStringMap(result.Metadata, snapshot.ResultMetadata())
 		result.Metadata = mergeStringMap(result.Metadata, longTermSnapshot.ResultMetadata())
+		result.Metadata = mergeStringMap(result.Metadata, taskSnapshot.ResultMetadata())
 		result.Metadata = mergeStringMap(result.Metadata, mandatorySnapshot.ResultMetadata())
 		result.Metadata = mergeStringMap(result.Metadata, conflictMetadata)
 		result.Metadata = mergeStringMap(result.Metadata, nlResult.Metadata)
@@ -241,6 +264,21 @@ func (s *Service) onSuccess(msg shareddomain.UnifiedMessage, route shareddomain.
 		slog.String("route", string(route)),
 		slog.Int64("duration_ms", duration.Milliseconds()),
 	)
+}
+
+func (s *Service) observeTaskSummarySnapshot(snapshot tasksummaryapp.Snapshot) {
+	if s.telemetry == nil {
+		return
+	}
+	if snapshot.DeepTriggered {
+		s.telemetry.CountMemoryEvent("deep_retrieval_triggered")
+	}
+	if snapshot.DeepOverridden {
+		s.telemetry.CountMemoryEvent("deep_retrieval_overridden")
+	}
+	if snapshot.DeepMiss {
+		s.telemetry.CountMemoryEvent("deep_retrieval_miss")
+	}
 }
 
 func (s *Service) onError(msg shareddomain.UnifiedMessage, route shareddomain.Route, startedAt time.Time, err error) {

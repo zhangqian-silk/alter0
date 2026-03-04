@@ -53,12 +53,17 @@ type sessionRecorder interface {
 	Append(records ...sessiondomain.MessageRecord) error
 }
 
+type TaskSummaryRecorder interface {
+	Record(task taskdomain.Task)
+}
+
 type Options struct {
 	WorkerCount          int
 	Timeout              time.Duration
 	MaxRetries           int
 	LongContentThreshold int
 	ArtifactKeywords     []string
+	SummaryMemory        TaskSummaryRecorder
 }
 
 type Service struct {
@@ -68,6 +73,7 @@ type Service struct {
 	idGenerator sharedapp.IDGenerator
 	logger      *slog.Logger
 	options     Options
+	summary     TaskSummaryRecorder
 
 	mu           sync.RWMutex
 	cond         *sync.Cond
@@ -105,6 +111,7 @@ func NewService(
 		idGenerator:  idGenerator,
 		logger:       logger,
 		options:      normalizeOptions(options),
+		summary:      options.SummaryMemory,
 		tasks:        map[string]taskdomain.Task{},
 		queue:        []string{},
 		sessionIndex: map[string][]string{},
@@ -189,6 +196,9 @@ func (s *Service) loadStore(ctx context.Context) error {
 			return fmt.Errorf("duplicate task id in store: %s", normalized.ID)
 		}
 		s.tasks[normalized.ID] = cloneTask(normalized)
+		if normalized.Status.IsTerminal() && s.summary != nil {
+			s.summary.Record(cloneTask(normalized))
+		}
 		key := normalizeKey(normalized.SessionID)
 		s.sessionIndex[key] = append(s.sessionIndex[key], normalized.ID)
 	}
@@ -478,6 +488,7 @@ func (s *Service) Cancel(taskID string) (taskdomain.Task, error) {
 	}
 	if item.Status == taskdomain.TaskStatusCanceled {
 		s.appendSummaryToSession(item)
+		s.recordTaskSummary(item)
 	}
 	return item, nil
 }
@@ -534,6 +545,7 @@ func (s *Service) nextTask(ctx context.Context, workerID int) (string, shareddom
 			item := cloneTask(task)
 			s.mu.Unlock()
 			s.appendSummaryToSession(item)
+			s.recordTaskSummary(item)
 			continue
 		}
 
@@ -584,6 +596,7 @@ func (s *Service) executeTask(taskID string, msg shareddomain.UnifiedMessage, ru
 		if lastErr == nil {
 			task := s.completeTask(taskID, taskdomain.TaskStatusSuccess, lastResult, nil, "task completed", taskdomain.TaskLogLevelInfo, 100)
 			s.appendSummaryToSession(task)
+			s.recordTaskSummary(task)
 			return
 		}
 
@@ -601,6 +614,7 @@ func (s *Service) executeTask(taskID string, msg shareddomain.UnifiedMessage, ru
 			}
 			task := s.completeTask(taskID, status, lastResult, lastErr, logMessage, level, progress, errorCode)
 			s.appendSummaryToSession(task)
+			s.recordTaskSummary(task)
 			return
 		}
 
@@ -610,11 +624,13 @@ func (s *Service) executeTask(taskID string, msg shareddomain.UnifiedMessage, ru
 		}
 		task := s.completeTask(taskID, taskdomain.TaskStatusFailed, lastResult, lastErr, "task execution failed", taskdomain.TaskLogLevelError, 100)
 		s.appendSummaryToSession(task)
+		s.recordTaskSummary(task)
 		return
 	}
 
 	task := s.completeTask(taskID, taskdomain.TaskStatusFailed, lastResult, lastErr, "task execution failed", taskdomain.TaskLogLevelError, 100)
 	s.appendSummaryToSession(task)
+	s.recordTaskSummary(task)
 }
 
 func (s *Service) recordRetry(taskID string, retryCount int, workerID int, err error) {
@@ -754,6 +770,16 @@ func (s *Service) appendSummaryToSession(task taskdomain.Task) {
 			slog.String("error", err.Error()),
 		)
 	}
+}
+
+func (s *Service) recordTaskSummary(task taskdomain.Task) {
+	if s.summary == nil {
+		return
+	}
+	if !task.Status.IsTerminal() {
+		return
+	}
+	s.summary.Record(task)
 }
 
 func (s *Service) finishRuntime(taskID string) {

@@ -29,16 +29,16 @@ const (
 )
 
 type Options struct {
-	RecentWindow       int
-	DeepTopK           int
-	DetailLogLimit     int
+	RecentWindow        int
+	DeepTopK            int
+	DetailLogLimit      int
 	DetailArtifactLimit int
 }
 
 type TaskDetail struct {
-	TaskID    string               `json:"task_id"`
-	Status    taskdomain.TaskStatus `json:"status"`
-	Logs      []taskdomain.TaskLog  `json:"logs,omitempty"`
+	TaskID    string                    `json:"task_id"`
+	Status    taskdomain.TaskStatus     `json:"status"`
+	Logs      []taskdomain.TaskLog      `json:"logs,omitempty"`
 	Artifacts []taskdomain.TaskArtifact `json:"artifacts,omitempty"`
 }
 
@@ -53,6 +53,14 @@ type Snapshot struct {
 }
 
 func (s Snapshot) Metadata() map[string]string {
+	if len(s.Summaries) == 0 &&
+		len(s.Details) == 0 &&
+		!s.DeepTriggered &&
+		!s.DeepOverridden &&
+		!s.DeepMiss &&
+		!s.Truncated {
+		return nil
+	}
 	return map[string]string{
 		"task_summary_injected_count": strconv.Itoa(len(s.Summaries)),
 		"task_summary_retrieval_mode": string(s.Mode),
@@ -530,9 +538,9 @@ func buildDetails(entries []taskSummaryEntry, intent retrievalIntent, options Op
 			break
 		}
 		detail := TaskDetail{
-			TaskID: entry.summary.TaskID,
-			Status: entry.summary.Status,
-			Logs:   tailLogs(entry.task.Logs, options.DetailLogLimit),
+			TaskID:    entry.summary.TaskID,
+			Status:    entry.summary.Status,
+			Logs:      tailLogs(entry.task.Logs, options.DetailLogLimit),
 			Artifacts: tailArtifacts(entry.task.Artifacts, options.DetailArtifactLimit),
 		}
 		details = append(details, detail)
