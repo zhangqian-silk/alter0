@@ -41,8 +41,8 @@
 | R-027 | Agent Memory 模块与页面收敛 | supported | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
 | R-028 | Memory 模块说明文档持久化与可视化 | supported | 新增记忆体系说明文档并持久化纳入仓库；前端 `Agent -> Memory` 提供文档视图入口，支持稳定查看 `USER.md`、`AGENTS.md`、`MEMORY.md`、`memory/YYYY-MM-DD.md`、`SOUL.md` 的职责说明与映射关系 |
 | R-029 | 新对话空白会话唯一性约束 | supported | 前端与会话创建链路不允许生成多个“空白会话”；当已存在空白会话时，`New Chat` 必须复用并聚焦该会话，而不是继续新建 |
-| R-030 | 会话与异步任务映射模型 | supported | 建立 `session_id` 与 `task_id` 的标准映射，支持长耗时请求异步化执行（快速应答 + 后台任务 + 任务日志回读），避免对话链路阻塞与上下文膨胀 |
-| R-031 | 任务摘要跨会话记忆与按需深检索 | ready | 默认仅注入最近 3-5 条任务摘要控制上下文体积；当用户询问更早历史时自动切换深检索，从全量任务摘要库召回并按需下钻任务详情 |
+| R-030 | 会话与异步任务映射模型 | ready | 建立 `session_id` 与 `task_id` 的标准映射，支持长耗时请求异步化执行（快速应答 + 后台任务 + 任务日志回读），避免对话链路阻塞与上下文膨胀 |
+| R-031 | 任务摘要跨会话记忆与按需深检索 | supported | 默认仅注入最近 3-5 条任务摘要控制上下文体积；当用户询问更早历史时自动切换深检索，从全量任务摘要库召回并按需下钻任务详情 |
 | R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | ready | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
 
 ## 需求细化（草案）
@@ -532,6 +532,16 @@
 
 #### Traceability
 
+- 实现文件：`internal/task/domain/task.go`、`internal/task/application/service.go`、`internal/tasksummary/application/store.go`、`internal/orchestration/application/service.go`、`internal/orchestration/application/task_summary_prompt.go`、`internal/shared/application/telemetry.go`、`internal/shared/infrastructure/observability/telemetry.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/tasksummary/application/store_test.go`、`internal/orchestration/application/service_test.go`、`internal/task/application/service_test.go`
+- 验证命令：
+  - `GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./internal/tasksummary/application ./internal/task/application ./internal/orchestration/application ./internal/scheduler/application ./cmd/alter0`
+  - `GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-04：任务进入终态后生成结构化摘要（`task_id/task_type/goal/result/status/finished_at/tags`），并写入跨会话任务摘要记忆层。
+  - 2026-03-04：默认注入窗口固定最近 5 条任务摘要，不注入日志与产物详情，控制上下文体积。
+  - 2026-03-04：历史追问命中后触发深检索并支持按需下钻；仅在明确“细节/日志/报错原因/完整过程”语义时注入日志与产物摘要。
+  - 2026-03-04：误触发保护生效（否定语义、当前任务优先、双信号门槛、预算截断与 miss 回退），并输出 `deep_retrieval_triggered`、`deep_retrieval_overridden`、`deep_retrieval_miss` 指标。
 - 核心对象：`task_summary`、`task_id`、`session_id`、`history_query_intent`
 - 关联需求：`R-018`、`R-025`、`R-030`
 - 验证口径：默认注入窗口、深检索命中率、误触发率、详情下钻可用性、摘要轨与主数据轨一致性
