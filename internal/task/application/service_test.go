@@ -143,6 +143,24 @@ func TestServiceSubmitAndCompleteSuccess(t *testing.T) {
 	if completed.Progress != 100 {
 		t.Fatalf("expected progress 100, got %d", completed.Progress)
 	}
+	if completed.TaskSummary.TaskID != queued.ID {
+		t.Fatalf("expected task summary task_id %q, got %q", queued.ID, completed.TaskSummary.TaskID)
+	}
+	if completed.TaskSummary.TaskType == "" {
+		t.Fatalf("expected task summary task_type")
+	}
+	if completed.TaskSummary.Goal == "" || completed.TaskSummary.Result == "" {
+		t.Fatalf("expected task summary goal/result populated, got %+v", completed.TaskSummary)
+	}
+	if completed.TaskSummary.Status != taskdomain.TaskStatusSuccess {
+		t.Fatalf("expected task summary status success, got %q", completed.TaskSummary.Status)
+	}
+	if completed.TaskSummary.FinishedAt.IsZero() {
+		t.Fatalf("expected task summary finished_at populated")
+	}
+	if len(completed.TaskSummary.Tags) == 0 {
+		t.Fatalf("expected task summary tags populated")
+	}
 	if len(completed.Artifacts) == 0 {
 		t.Fatalf("expected persisted artifact")
 	}
