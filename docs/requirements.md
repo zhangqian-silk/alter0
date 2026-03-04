@@ -38,7 +38,7 @@
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | supported | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | supported | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
 | R-026 | 强制要求上下文文件（如 SOUL.md） | supported | 支持独立上下文文件存储用户强制要求，启动与会话初始化高优先级加载，并在冲突场景下覆盖普通记忆 |
-| R-027 | Agent Memory 模块与页面收敛 | ready | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
+| R-027 | Agent Memory 模块与页面收敛 | supported | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
 
 ## 需求细化（草案）
 
@@ -339,6 +339,18 @@
    - Keep lifecycle as planned -> ready -> supported; update this row only.
 4. Traceability
    - Keep implementation and verification records in this section after delivery.
+
+#### Traceability
+
+- 实现文件：`internal/interfaces/web/static/chat.html`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`、`internal/interfaces/web/agent_memory.go`、`internal/interfaces/web/server.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/interfaces/web/server_sidebar_test.go`、`internal/interfaces/web/server_memory_test.go`
+- 新增接口：`GET /api/agent/memory`
+- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-04：侧边栏 `Agent` 分组移除 `Workspace`、`Configuration`，新增 `Memory` 入口并接入统一路由渲染。
+  - 2026-03-04：`Memory` 页面新增三类页签（长期记忆 / 天级记忆 / SOUL.md），同页只读切换展示，桌面端与移动端均可访问。
+  - 2026-03-04：后端新增 `/api/agent/memory` 聚合读取长期记忆文件、天级记忆目录与 `SOUL.md`，对缺失文件返回空态数据。
+  - 2026-03-04：新增侧边栏收敛与 Agent Memory 接口测试，覆盖入口收敛、页签样式与数据返回结构。
 
 ### R-014 移动端真机适配增强
 
