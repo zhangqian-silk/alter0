@@ -84,15 +84,15 @@ func TestServiceShouldRunAsyncByRule(t *testing.T) {
 		t.Fatalf("new service: %v", err)
 	}
 
-	forced := testTaskMessage("s-1", "short", map[string]string{metadataAsyncModeKey: "force"})
+	forced := testTaskMessage("s-1", "short", map[string]string{MetadataTaskAsyncMode: "force"})
 	if !svc.ShouldRunAsync(forced) {
 		t.Fatalf("expected force mode to run async")
 	}
-	disabled := testTaskMessage("s-1", "this is very long", map[string]string{metadataAsyncModeKey: "sync"})
+	disabled := testTaskMessage("s-1", "this is very long", map[string]string{MetadataTaskAsyncMode: "sync"})
 	if svc.ShouldRunAsync(disabled) {
 		t.Fatalf("expected sync mode to disable async")
 	}
-	artifact := testTaskMessage("s-1", "short", map[string]string{metadataTaskArtifactKey: "true"})
+	artifact := testTaskMessage("s-1", "short", map[string]string{MetadataTaskArtifact: "true"})
 	if !svc.ShouldRunAsync(artifact) {
 		t.Fatalf("expected artifact flag to run async")
 	}
@@ -143,6 +143,9 @@ func TestServiceSubmitAndCompleteSuccess(t *testing.T) {
 	if completed.Progress != 100 {
 		t.Fatalf("expected progress 100, got %d", completed.Progress)
 	}
+	if completed.SourceMessageID == "" {
+		t.Fatalf("expected source_message_id populated")
+	}
 	if completed.TaskSummary.TaskID != queued.ID {
 		t.Fatalf("expected task summary task_id %q, got %q", queued.ID, completed.TaskSummary.TaskID)
 	}
@@ -170,9 +173,170 @@ func TestServiceSubmitAndCompleteSuccess(t *testing.T) {
 	}
 
 	waitForRecorderCount(t, recorder, 1, 2*time.Second)
+	latest, ok := svc.Get(queued.ID)
+	if !ok {
+		t.Fatalf("expected task %q in service", queued.ID)
+	}
+	if latest.MessageLink.RequestMessageID == "" || latest.MessageLink.ResultMessageID == "" {
+		t.Fatalf("expected message link populated, got %+v", latest.MessageLink)
+	}
 	records := recorder.list()
 	if records[0].RouteResult.TaskID != queued.ID {
 		t.Fatalf("expected summary route task_id %q, got %q", queued.ID, records[0].RouteResult.TaskID)
+	}
+}
+
+func TestServiceSubmitIdempotencyReturnsExistingTask(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	svc, err := NewService(
+		ctx,
+		&stubTaskOrchestrator{},
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{WorkerCount: 1, Timeout: 2 * time.Second, MaxRetries: 0},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	msg := testTaskMessage("s-idem", "generate release note", map[string]string{
+		MetadataTaskIdempotencyKey: "idem-1",
+		MetadataTaskTypeKey:        "artifact",
+	})
+	first, err := svc.Submit(msg)
+	if err != nil {
+		t.Fatalf("submit first: %v", err)
+	}
+	second, err := svc.Submit(msg)
+	if err != nil {
+		t.Fatalf("submit second: %v", err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("expected idempotent submit to reuse task id, got %q vs %q", first.ID, second.ID)
+	}
+}
+
+func TestServiceListAndReadbackEndpoints(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	svc, err := NewService(
+		ctx,
+		&stubTaskOrchestrator{},
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{WorkerCount: 1, Timeout: 2 * time.Second, MaxRetries: 0},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	task, err := svc.Submit(testTaskMessage("s-read", "create checklist", map[string]string{
+		MetadataTaskTypeKey: "artifact",
+	}))
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	completed := waitTaskStatus(t, svc, task.ID, taskdomain.TaskStatusSuccess, 2*time.Second)
+	if completed.TaskType != "artifact" {
+		t.Fatalf("expected task_type artifact, got %q", completed.TaskType)
+	}
+
+	page := svc.List(ListQuery{
+		SessionID: "s-read",
+		Status:    taskdomain.TaskStatusSuccess,
+		Page:      1,
+		PageSize:  10,
+	})
+	if len(page.Items) != 1 || page.Items[0].ID != task.ID {
+		t.Fatalf("expected task in list page, got %+v", page)
+	}
+
+	logPage, err := svc.ListLogs(task.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("list logs: %v", err)
+	}
+	if len(logPage.Items) == 0 || logPage.Items[0].Seq <= 0 {
+		t.Fatalf("expected sequenced logs, got %+v", logPage.Items)
+	}
+	if logPage.Items[0].CreatedAt.IsZero() {
+		t.Fatalf("expected log created_at")
+	}
+
+	artifacts, err := svc.ListArtifacts(task.ID)
+	if err != nil {
+		t.Fatalf("list artifacts: %v", err)
+	}
+	if len(artifacts) == 0 || artifacts[0].URI == "" {
+		t.Fatalf("expected artifact references, got %+v", artifacts)
+	}
+}
+
+func TestServiceRetryTerminalTask(t *testing.T) {
+	var attempts int
+	orch := &stubTaskOrchestrator{
+		handler: func(_ context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+			attempts++
+			if attempts == 1 {
+				return shareddomain.OrchestrationResult{
+					MessageID: msg.MessageID,
+					SessionID: msg.SessionID,
+					Route:     shareddomain.RouteNL,
+					ErrorCode: "task_failed",
+				}, errors.New("first failed")
+			}
+			return shareddomain.OrchestrationResult{
+				MessageID: msg.MessageID,
+				SessionID: msg.SessionID,
+				Route:     shareddomain.RouteNL,
+				Output:    "recovered",
+			}, nil
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	svc, err := NewService(
+		ctx,
+		orch,
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{WorkerCount: 1, Timeout: 2 * time.Second, MaxRetries: 0},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	task, err := svc.Submit(testTaskMessage("s-retry-terminal", "run task", nil))
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	_ = waitTaskStatus(t, svc, task.ID, taskdomain.TaskStatusFailed, 2*time.Second)
+
+	requeued, err := svc.Retry(task.ID)
+	if err != nil {
+		t.Fatalf("retry task: %v", err)
+	}
+	if requeued.Status != taskdomain.TaskStatusQueued {
+		t.Fatalf("expected queued after retry, got %q", requeued.Status)
+	}
+	if requeued.RetryCount == 0 {
+		t.Fatalf("expected retry_count incremented")
+	}
+
+	completed := waitTaskStatus(t, svc, task.ID, taskdomain.TaskStatusSuccess, 2*time.Second)
+	if completed.RetryCount == 0 {
+		t.Fatalf("expected retry_count kept after success")
+	}
+
+	if _, err := svc.Cancel(task.ID); !errors.Is(err, ErrTaskConflict) {
+		t.Fatalf("expected cancel conflict on terminal task, got %v", err)
 	}
 }
 

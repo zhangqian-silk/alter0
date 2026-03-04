@@ -28,17 +28,23 @@ const (
 )
 
 type TaskLog struct {
-	Timestamp time.Time    `json:"timestamp"`
+	Seq       int          `json:"seq"`
+	Stage     string       `json:"stage,omitempty"`
+	CreatedAt time.Time    `json:"created_at,omitempty"`
+	Timestamp time.Time    `json:"timestamp,omitempty"`
 	Level     TaskLogLevel `json:"level"`
 	Message   string       `json:"message"`
 }
 
 type TaskArtifact struct {
-	ArtifactID  string    `json:"artifact_id"`
-	Name        string    `json:"name"`
-	ContentType string    `json:"content_type"`
-	Content     string    `json:"content"`
-	CreatedAt   time.Time `json:"created_at"`
+	ArtifactID   string    `json:"artifact_id"`
+	ArtifactType string    `json:"artifact_type,omitempty"`
+	Name         string    `json:"name"`
+	ContentType  string    `json:"content_type"`
+	Content      string    `json:"content"`
+	URI          string    `json:"uri,omitempty"`
+	Summary      string    `json:"summary,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type TaskResult struct {
@@ -58,15 +64,25 @@ type TaskSummary struct {
 	Tags       []string   `json:"tags,omitempty"`
 }
 
+type TaskMessageLink struct {
+	TaskID           string `json:"task_id,omitempty"`
+	SessionID        string `json:"session_id,omitempty"`
+	RequestMessageID string `json:"request_message_id,omitempty"`
+	ResultMessageID  string `json:"result_message_id,omitempty"`
+}
+
 type Task struct {
 	ID              string            `json:"id"`
 	SessionID       string            `json:"session_id"`
-	MessageID       string            `json:"message_id"`
+	SourceMessageID string            `json:"source_message_id"`
+	MessageID       string            `json:"message_id,omitempty"`
+	TaskType        string            `json:"task_type,omitempty"`
 	Status          TaskStatus        `json:"status"`
 	Progress        int               `json:"progress"`
 	RetryCount      int               `json:"retry_count"`
 	MaxRetries      int               `json:"max_retries"`
 	TimeoutMS       int64             `json:"timeout_ms"`
+	TimeoutAt       time.Time         `json:"timeout_at,omitempty"`
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
 	StartedAt       time.Time         `json:"started_at,omitempty"`
@@ -80,6 +96,7 @@ type Task struct {
 	Result          TaskResult        `json:"result,omitempty"`
 	Logs            []TaskLog         `json:"logs,omitempty"`
 	Artifacts       []TaskArtifact    `json:"artifacts,omitempty"`
+	MessageLink     TaskMessageLink   `json:"message_link,omitempty"`
 }
 
 func (s TaskStatus) IsValid() bool {
@@ -143,8 +160,12 @@ func (t Task) Validate() error {
 	if strings.TrimSpace(t.SessionID) == "" {
 		return errors.New("session_id is required")
 	}
-	if strings.TrimSpace(t.MessageID) == "" {
-		return errors.New("message_id is required")
+	sourceMessageID := strings.TrimSpace(t.SourceMessageID)
+	if sourceMessageID == "" {
+		sourceMessageID = strings.TrimSpace(t.MessageID)
+	}
+	if sourceMessageID == "" {
+		return errors.New("source_message_id is required")
 	}
 	if !t.Status.IsValid() {
 		return errors.New("task status is invalid")
@@ -172,8 +193,11 @@ func (t Task) Validate() error {
 	}
 
 	for _, item := range t.Logs {
-		if item.Timestamp.IsZero() {
-			return errors.New("task log timestamp is required")
+		if item.Seq < 0 {
+			return errors.New("task log seq must be non-negative")
+		}
+		if item.CreatedAt.IsZero() && item.Timestamp.IsZero() {
+			return errors.New("task log created_at is required")
 		}
 		if !item.Level.IsValid() {
 			return errors.New("task log level is invalid")
@@ -183,7 +207,7 @@ func (t Task) Validate() error {
 		}
 	}
 	for _, item := range t.Artifacts {
-		if strings.TrimSpace(item.ArtifactID) == "" {
+		if strings.TrimSpace(item.ArtifactID) == "" && strings.TrimSpace(item.URI) == "" {
 			return errors.New("artifact_id is required")
 		}
 		if strings.TrimSpace(item.Name) == "" {
@@ -203,6 +227,12 @@ func (t Task) Validate() error {
 		if strings.TrimSpace(t.TaskSummary.TaskID) != strings.TrimSpace(t.ID) {
 			return errors.New("task_summary.task_id must match task id")
 		}
+	}
+	if strings.TrimSpace(t.MessageLink.TaskID) != "" && strings.TrimSpace(t.MessageLink.TaskID) != strings.TrimSpace(t.ID) {
+		return errors.New("message_link.task_id must match task id")
+	}
+	if strings.TrimSpace(t.MessageLink.SessionID) != "" && strings.TrimSpace(t.MessageLink.SessionID) != strings.TrimSpace(t.SessionID) {
+		return errors.New("message_link.session_id must match session id")
 	}
 	return nil
 }

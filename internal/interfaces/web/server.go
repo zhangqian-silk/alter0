@@ -52,9 +52,13 @@ type sessionHistoryService interface {
 type taskService interface {
 	ShouldRunAsync(msg shareddomain.UnifiedMessage) bool
 	Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, error)
+	List(query taskapp.ListQuery) taskapp.TaskPage
 	Get(taskID string) (taskdomain.Task, bool)
 	ListBySession(sessionID string) []taskdomain.Task
+	ListLogs(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
+	ListArtifacts(taskID string) ([]taskdomain.TaskArtifact, error)
 	Cancel(taskID string) (taskdomain.Task, error)
+	Retry(taskID string) (taskdomain.Task, error)
 }
 
 type messageRequest struct {
@@ -66,11 +70,31 @@ type messageRequest struct {
 	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
+type taskCreateRequest struct {
+	SessionID       string            `json:"session_id"`
+	SourceMessageID string            `json:"source_message_id,omitempty"`
+	TaskType        string            `json:"task_type,omitempty"`
+	Input           string            `json:"input"`
+	IdempotencyKey  string            `json:"idempotency_key,omitempty"`
+	AsyncHint       string            `json:"async_hint,omitempty"`
+	UserID          string            `json:"user_id,omitempty"`
+	ChannelID       string            `json:"channel_id,omitempty"`
+	CorrelationID   string            `json:"correlation_id,omitempty"`
+	Metadata        map[string]string `json:"metadata,omitempty"`
+}
+
 type messageResponse struct {
 	Result     shareddomain.OrchestrationResult `json:"result"`
 	TaskID     string                           `json:"task_id,omitempty"`
 	TaskStatus string                           `json:"task_status,omitempty"`
 	Error      string                           `json:"error,omitempty"`
+}
+
+type taskCreateResponse struct {
+	TaskID          string `json:"task_id"`
+	Status          string `json:"status"`
+	AcceptedAt      string `json:"accepted_at"`
+	EstimatedWaitMS int64  `json:"estimated_wait_ms"`
 }
 
 type streamStartResponse struct {
@@ -176,6 +200,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
+	mux.HandleFunc("/api/tasks", s.taskCollectionHandler)
 	mux.HandleFunc("/api/tasks/", s.taskItemHandler)
 	mux.HandleFunc("/api/agent/memory", s.agentMemoryHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
@@ -435,10 +460,99 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": s.tasks.ListBySession(sessionID)})
+		items := s.tasks.ListBySession(sessionID)
+		latestRaw := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("latest")))
+		if (latestRaw == "true" || latestRaw == "1" || latestRaw == "yes") && len(items) > 1 {
+			items = items[:1]
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
+	}
+}
+
+func (s *Server) taskCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.tasks == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		query, statusCode, err := parseTaskListQuery(r)
+		if err != nil {
+			writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, s.tasks.List(query))
+	case http.MethodPost:
+		defer r.Body.Close()
+		var req taskCreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		sessionID := strings.TrimSpace(req.SessionID)
+		if sessionID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "session_id is required"})
+			return
+		}
+		input := strings.TrimSpace(req.Input)
+		if input == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input is required"})
+			return
+		}
+		channelID := strings.TrimSpace(req.ChannelID)
+		if channelID == "" {
+			channelID = "web-default"
+		}
+
+		metadata := cloneStringMap(req.Metadata)
+		metadata[taskapp.MetadataTaskTypeKey] = strings.TrimSpace(req.TaskType)
+		metadata[taskapp.MetadataTaskIdempotencyKey] = strings.TrimSpace(req.IdempotencyKey)
+		metadata[taskapp.MetadataTaskAsyncMode] = strings.TrimSpace(req.AsyncHint)
+		if strings.TrimSpace(metadata[taskapp.MetadataTaskAsyncMode]) == "" {
+			metadata[taskapp.MetadataTaskAsyncMode] = "force"
+		}
+
+		sourceMessageID := strings.TrimSpace(req.SourceMessageID)
+		if sourceMessageID == "" {
+			sourceMessageID = s.idGenerator.NewID()
+		}
+		metadata[taskapp.MetadataTaskSourceMessageID] = sourceMessageID
+
+		msg := shareddomain.UnifiedMessage{
+			MessageID:     sourceMessageID,
+			SessionID:     sessionID,
+			UserID:        strings.TrimSpace(req.UserID),
+			ChannelID:     channelID,
+			ChannelType:   shareddomain.ChannelTypeWeb,
+			TriggerType:   shareddomain.TriggerTypeUser,
+			Content:       input,
+			Metadata:      metadata,
+			TraceID:       s.idGenerator.NewID(),
+			CorrelationID: strings.TrimSpace(req.CorrelationID),
+			ReceivedAt:    time.Now().UTC(),
+		}
+		task, err := s.tasks.Submit(msg)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+
+		estimatedWaitMS := int64(0)
+		if task.TimeoutMS > 0 {
+			estimatedWaitMS = task.TimeoutMS
+		}
+		writeJSON(w, http.StatusAccepted, taskCreateResponse{
+			TaskID:          task.ID,
+			Status:          string(task.Status),
+			AcceptedAt:      task.CreatedAt.Format(time.RFC3339Nano),
+			EstimatedWaitMS: estimatedWaitMS,
+		})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
 }
 
@@ -462,13 +576,55 @@ func (s *Server) taskItemHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, item)
-	case action == "cancel" && r.Method == http.MethodPost:
-		item, err := s.tasks.Cancel(taskID)
+	case action == "logs" && r.Method == http.MethodGet:
+		cursor, limit, statusCode, err := parseTaskLogQuery(r)
+		if err != nil {
+			writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+			return
+		}
+		page, err := s.tasks.ListLogs(taskID, cursor, limit)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
 			return
 		}
+		writeJSON(w, http.StatusOK, page)
+	case action == "artifacts" && r.Method == http.MethodGet:
+		items, err := s.tasks.ListArtifacts(taskID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	case action == "cancel" && r.Method == http.MethodPost:
+		item, err := s.tasks.Cancel(taskID)
+		if err != nil {
+			if errors.Is(err, taskapp.ErrTaskNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+				return
+			}
+			if errors.Is(err, taskapp.ErrTaskConflict) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusOK, item)
+	case action == "retry" && r.Method == http.MethodPost:
+		item, err := s.tasks.Retry(taskID)
+		if err != nil {
+			if errors.Is(err, taskapp.ErrTaskNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+				return
+			}
+			if errors.Is(err, taskapp.ErrTaskConflict) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, item)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -978,6 +1134,45 @@ func parseMessageQuery(r *http.Request, sessionID string) (sessionapp.MessageQue
 	}, http.StatusOK, nil
 }
 
+func parseTaskListQuery(r *http.Request) (taskapp.ListQuery, int, error) {
+	page, pageSize, statusCode, err := parsePaginationQuery(r)
+	if err != nil {
+		return taskapp.ListQuery{}, statusCode, err
+	}
+	query := taskapp.ListQuery{
+		SessionID: strings.TrimSpace(r.URL.Query().Get("session_id")),
+		Page:      page,
+		PageSize:  pageSize,
+	}
+	rawStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
+	if rawStatus != "" {
+		status := taskdomain.TaskStatus(rawStatus)
+		if !status.IsValid() {
+			return taskapp.ListQuery{}, http.StatusBadRequest, errors.New("status must be queued/running/success/failed/canceled")
+		}
+		query.Status = status
+	}
+	return query, http.StatusOK, nil
+}
+
+func parseTaskLogQuery(r *http.Request) (int, int, int, error) {
+	cursor, err := parseNonNegativeInt(r.URL.Query().Get("cursor"))
+	if err != nil {
+		return 0, 0, http.StatusBadRequest, errors.New("cursor must be a non-negative integer")
+	}
+	limit, err := parsePositiveInt(r.URL.Query().Get("limit"))
+	if err != nil {
+		return 0, 0, http.StatusBadRequest, errors.New("limit must be a positive integer")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	return cursor, limit, http.StatusOK, nil
+}
+
 func parsePaginationQuery(r *http.Request) (int, int, int, error) {
 	page, err := parsePositiveInt(r.URL.Query().Get("page"))
 	if err != nil {
@@ -1010,6 +1205,18 @@ func parsePositiveInt(raw string) (int, error) {
 	value, err := strconv.Atoi(trimmed)
 	if err != nil || value <= 0 {
 		return 0, errors.New("invalid positive integer")
+	}
+	return value, nil
+}
+
+func parseNonNegativeInt(raw string) (int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(trimmed)
+	if err != nil || value < 0 {
+		return 0, errors.New("invalid non-negative integer")
 	}
 	return value, nil
 }
@@ -1162,4 +1369,15 @@ func writeJSON(w http.ResponseWriter, statusCode int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func cloneStringMap(source map[string]string) map[string]string {
+	if len(source) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(source))
+	for key, value := range source {
+		out[key] = value
+	}
+	return out
 }

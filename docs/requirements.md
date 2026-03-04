@@ -41,7 +41,7 @@
 | R-027 | Agent Memory 模块与页面收敛 | supported | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
 | R-028 | Memory 模块说明文档持久化与可视化 | supported | 新增记忆体系说明文档并持久化纳入仓库；前端 `Agent -> Memory` 提供文档视图入口，支持稳定查看 `USER.md`、`AGENTS.md`、`MEMORY.md`、`memory/YYYY-MM-DD.md`、`SOUL.md` 的职责说明与映射关系 |
 | R-029 | 新对话空白会话唯一性约束 | supported | 前端与会话创建链路不允许生成多个“空白会话”；当已存在空白会话时，`New Chat` 必须复用并聚焦该会话，而不是继续新建 |
-| R-030 | 会话与异步任务映射模型 | ready | 建立 `session_id` 与 `task_id` 的标准映射，支持长耗时请求异步化执行（快速应答 + 后台任务 + 任务日志回读），避免对话链路阻塞与上下文膨胀 |
+| R-030 | 会话与异步任务映射模型 | supported | 建立 `session_id` 与 `task_id` 的标准映射，支持长耗时请求异步化执行（快速应答 + 后台任务 + 任务日志回读），避免对话链路阻塞与上下文膨胀 |
 | R-031 | 任务摘要跨会话记忆与按需深检索 | supported | 默认仅注入最近 3-5 条任务摘要控制上下文体积；当用户询问更早历史时自动切换深检索，从全量任务摘要库召回并按需下钻任务详情 |
 | R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | ready | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
 
@@ -471,6 +471,22 @@
 - 核心对象：`session_id`、`task_id`、`source_message_id`
 - 关联需求：`R-016`、`R-019`、`R-029`
 - 验证口径：异步判定、快速应答、任务查询、结果回流
+- 实现文件：`internal/task/domain/task.go`、`internal/task/application/service.go`、`internal/interfaces/web/server.go`
+- 测试覆盖：`internal/task/application/service_test.go`、`internal/interfaces/web/server_task_test.go`
+- 新增接口：
+  - `POST /api/tasks`
+  - `GET /api/tasks?session_id=&status=&page=&page_size=`
+  - `GET /api/tasks/{task_id}/logs?cursor=&limit=`
+  - `GET /api/tasks/{task_id}/artifacts`
+  - `POST /api/tasks/{task_id}/retry`
+- 验证命令：
+  - `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org go test ./internal/task/... ./internal/interfaces/web/...`
+  - `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org go test ./...`
+- 验证记录：
+  - 2026-03-04：任务主模型补齐 `source_message_id/task_type/timeout_at/message_link`，同一 `session_id` 下保持 `1:N` 任务映射并支持 `idempotency_key` 去重。
+  - 2026-03-04：异步任务状态机覆盖 `queued -> running -> success/failed/canceled`，补齐重试、超时、取消转移与阶段日志序号化持久化。
+  - 2026-03-04：会话链路支持快速应答返回 `task_id/task_status`，任务完成后摘要回写原会话并保留 `task_id -> request_message_id/result_message_id` 回链。
+  - 2026-03-04：任务回读接口支持按会话筛选、按 `task_id` 查询详情、游标日志读取、产物读取与失败任务重试。
 
 ### R-031 任务摘要跨会话记忆与按需深检索
 
