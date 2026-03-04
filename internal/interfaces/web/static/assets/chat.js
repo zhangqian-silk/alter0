@@ -48,6 +48,9 @@ const I18N = {
   en: {
     // Navigation
     "nav.chat": "Chat",
+    "nav.control": "Control",
+    "nav.agent": "Agent",
+    "nav.settings": "Settings",
     "nav.channels": "Channels",
     "nav.sessions": "Sessions",
     "nav.tasks": "Tasks",
@@ -236,6 +239,9 @@ const I18N = {
   zh: {
     // Navigation
     "nav.chat": "对话",
+    "nav.control": "控制台",
+    "nav.agent": "智能体",
+    "nav.settings": "设置",
     "nav.channels": "通道",
     "nav.sessions": "会话列表",
     "nav.tasks": "任务观测",

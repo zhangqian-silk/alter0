@@ -75,6 +75,71 @@ func TestSidebarCollapseEntryPresent(t *testing.T) {
 	}
 }
 
+func TestSidebarChannelsRouteMovesToSettingsGroup(t *testing.T) {
+	html := readEmbeddedAsset(t, "static/chat.html")
+	controlMarker := `data-i18n="nav.control"`
+	agentMarker := `data-i18n="nav.agent"`
+	settingsMarker := `data-i18n="nav.settings"`
+	channelsMarker := `data-route="channels"`
+	modelsMarker := `data-route="models"`
+
+	controlIndex := strings.Index(html, controlMarker)
+	agentIndex := strings.Index(html, agentMarker)
+	settingsIndex := strings.Index(html, settingsMarker)
+	channelsIndex := strings.Index(html, channelsMarker)
+	modelsIndex := strings.Index(html, modelsMarker)
+	if controlIndex == -1 || agentIndex == -1 || settingsIndex == -1 || channelsIndex == -1 || modelsIndex == -1 {
+		t.Fatalf("expected menu markers for control/agent/settings/channels/models")
+	}
+	if !(controlIndex < agentIndex && agentIndex < settingsIndex) {
+		t.Fatalf("expected menu groups order control -> agent -> settings")
+	}
+	if channelsIndex < settingsIndex {
+		t.Fatalf("expected channels route under settings group")
+	}
+	if channelsIndex > modelsIndex {
+		t.Fatalf("expected channels route before models in settings group")
+	}
+
+	controlSection := html[controlIndex:agentIndex]
+	if strings.Contains(controlSection, channelsMarker) {
+		t.Fatalf("unexpected channels route in control group")
+	}
+	settingsSection := html[settingsIndex:]
+	if !strings.Contains(settingsSection, channelsMarker) {
+		t.Fatalf("expected channels route in settings group")
+	}
+}
+
+func TestSidebarGroupTitlesHaveDedicatedI18NKeys(t *testing.T) {
+	html := readEmbeddedAsset(t, "static/chat.html")
+	htmlMarkers := []string{
+		`data-i18n="nav.control"`,
+		`data-i18n="nav.agent"`,
+		`data-i18n="nav.settings"`,
+	}
+	for _, marker := range htmlMarkers {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("expected html marker %q", marker)
+		}
+	}
+
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	scriptMarkers := []string{
+		`"nav.control": "Control"`,
+		`"nav.agent": "Agent"`,
+		`"nav.settings": "Settings"`,
+		`"nav.control": "控制台"`,
+		`"nav.agent": "智能体"`,
+		`"nav.settings": "设置"`,
+	}
+	for _, marker := range scriptMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+}
+
 func TestSidebarCollapseStateHooksPresent(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	markers := []string{
