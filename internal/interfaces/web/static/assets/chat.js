@@ -131,16 +131,19 @@ const I18N = {
     "route.cron.subtitle": "View scheduled jobs",
     "route.cron.empty": "No Cron Jobs available.",
     "route.memory.title": "Memory",
-    "route.memory.subtitle": "Read-only memory view for long-term, daily, and SOUL.md",
+    "route.memory.subtitle": "Read-only memory view for long-term, daily, SOUL.md and specification",
     "route.memory.tab.long_term": "Long-Term",
     "route.memory.tab.daily": "Daily",
     "route.memory.tab.mandatory": "SOUL.md",
+    "route.memory.tab.specification": "Specification",
     "route.memory.empty.long_term": "No long-term memory file available.",
     "route.memory.empty.daily": "No daily memory files available.",
     "route.memory.empty.mandatory": "No SOUL.md file available.",
+    "route.memory.empty.specification": "No memory specification document available.",
     "route.memory.read_only": "Read-only",
     "route.memory.daily.source": "Source directory",
     "route.memory.daily.summary": "Summary",
+    "route.memory.spec.section.default": "Document",
     "route.skills.title": "Skills",
     "route.skills.subtitle": "Skills configuration",
     "route.skills.empty": "No Skills available.",
@@ -245,16 +248,19 @@ const I18N = {
     "route.cron.subtitle": "查看计划任务",
     "route.cron.empty": "暂无定时任务。",
     "route.memory.title": "记忆",
-    "route.memory.subtitle": "统一只读查看长期记忆、天级记忆与 SOUL.md",
+    "route.memory.subtitle": "统一只读查看长期记忆、天级记忆、SOUL.md 与说明文档",
     "route.memory.tab.long_term": "长期记忆",
     "route.memory.tab.daily": "天级记忆",
     "route.memory.tab.mandatory": "SOUL.md",
+    "route.memory.tab.specification": "说明文档",
     "route.memory.empty.long_term": "暂无长期记忆文件。",
     "route.memory.empty.daily": "暂无天级记忆文件。",
     "route.memory.empty.mandatory": "暂无 SOUL.md 文件。",
+    "route.memory.empty.specification": "暂无记忆模块说明文档。",
     "route.memory.read_only": "只读",
     "route.memory.daily.source": "来源目录",
     "route.memory.daily.summary": "摘要",
+    "route.memory.spec.section.default": "文档内容",
     "route.skills.title": "技能",
     "route.skills.subtitle": "技能配置",
     "route.skills.empty": "暂无可用技能。",
@@ -1655,6 +1661,70 @@ function summarizeMemoryContent(content) {
   return shorten(rows[0], 72);
 }
 
+function splitMarkdownSections(content) {
+  const text = typeof content === "string" ? content.replace(/\r\n/g, "\n") : "";
+  if (!text.trim()) {
+    return [];
+  }
+  const rows = text.split("\n");
+  const sections = [];
+  let current = null;
+  const pushCurrent = () => {
+    if (!current) {
+      return;
+    }
+    const value = (current.content || "").trim();
+    if (!current.title && !value) {
+      return;
+    }
+    sections.push({
+      title: current.title || t("route.memory.spec.section.default"),
+      content: current.content || ""
+    });
+  };
+
+  for (const row of rows) {
+    const heading = row.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      pushCurrent();
+      current = {
+        title: heading[2].trim(),
+        content: ""
+      };
+      continue;
+    }
+
+    if (!current) {
+      current = {
+        title: t("route.memory.spec.section.default"),
+        content: ""
+      };
+    }
+    current.content += `${row}\n`;
+  }
+  pushCurrent();
+  return sections;
+}
+
+function renderMemorySpecificationBody(content) {
+  const text = typeof content === "string" ? content.trim() : "";
+  if (!text) {
+    return "";
+  }
+
+  const sections = splitMarkdownSections(content);
+  if (!sections.length) {
+    return `<pre class="memory-content">${escapeHTML(content)}</pre>`;
+  }
+
+  return `<div class="memory-spec-sections">
+    ${sections.map((section) => `<section class="memory-spec-section">
+      <h5 class="memory-spec-title">${escapeHTML(section.title)}</h5>
+      <pre class="memory-content">${escapeHTML(section.content.trim())}</pre>
+    </section>`).join("")}
+  </div>`;
+}
+
 function renderMemoryDocumentCard(title, type, payload, emptyKey) {
   const path = typeof payload?.path === "string" ? payload.path : "";
   const updatedAt = typeof payload?.updated_at === "string" ? payload.updated_at : "";
@@ -1674,6 +1744,33 @@ function renderMemoryDocumentCard(title, type, payload, emptyKey) {
   }
 
   return routeCardTemplate(title, type, fields, true, body);
+}
+
+function renderMemorySpecificationCard(payload) {
+  const path = typeof payload?.path === "string" ? payload.path : "";
+  const updatedAt = typeof payload?.updated_at === "string" ? payload.updated_at : "";
+  const content = typeof payload?.content === "string" ? payload.content : "";
+  const error = typeof payload?.error === "string" ? payload.error : "";
+  const fields = [
+    routeFieldRow("field.path", path || "-"),
+    routeFieldRow("field.updated", formatDateTime(updatedAt)),
+    routeFieldRow("field.read_only", t("route.memory.read_only"))
+  ];
+
+  let body = `<p class="route-empty">${t("route.memory.empty.specification")}</p>`;
+  if (error) {
+    body = `<p class="route-error">${t("load_failed", { error })}</p>`;
+  } else if (payload?.exists && content.trim()) {
+    body = renderMemorySpecificationBody(content);
+  }
+
+  return routeCardTemplate(
+    t("route.memory.tab.specification"),
+    "memory",
+    fields,
+    true,
+    body
+  );
 }
 
 function renderDailyMemoryCards(payload) {
@@ -1733,7 +1830,8 @@ async function loadMemoryView(container) {
   const tabs = [
     { id: "long_term", label: t("route.memory.tab.long_term") },
     { id: "daily", label: t("route.memory.tab.daily") },
-    { id: "mandatory", label: t("route.memory.tab.mandatory") }
+    { id: "mandatory", label: t("route.memory.tab.mandatory") },
+    { id: "specification", label: t("route.memory.tab.specification") }
   ];
   const dailySourceDir = typeof payload?.daily?.directory === "string"
     ? payload.daily.directory
@@ -1767,6 +1865,9 @@ async function loadMemoryView(container) {
         payload?.mandatory,
         "route.memory.empty.mandatory"
       )}
+    </section>
+    <section class="memory-panel memory-panel-spec" data-memory-panel="specification" hidden>
+      ${renderMemorySpecificationCard(payload?.specification)}
     </section>
   </section>`;
   bindMemoryTabSwitch(container);
