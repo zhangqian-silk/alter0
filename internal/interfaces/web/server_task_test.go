@@ -30,6 +30,8 @@ type stubWebTaskService struct {
 	lastList    taskapp.ListQuery
 	cancelErr   error
 	retryErr    error
+	getFn       func(taskID string) (taskdomain.Task, bool)
+	listLogsFn  func(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
 }
 
 func (s *stubWebTaskService) ShouldRunAsync(_ shareddomain.UnifiedMessage) bool {
@@ -49,6 +51,9 @@ func (s *stubWebTaskService) List(query taskapp.ListQuery) taskapp.TaskPage {
 }
 
 func (s *stubWebTaskService) Get(taskID string) (taskdomain.Task, bool) {
+	if s.getFn != nil {
+		return s.getFn(taskID)
+	}
 	if s.items == nil {
 		return taskdomain.Task{}, false
 	}
@@ -77,7 +82,10 @@ func (s *stubWebTaskService) Cancel(taskID string) (taskdomain.Task, error) {
 	return item, nil
 }
 
-func (s *stubWebTaskService) ListLogs(taskID string, _ int, _ int) (taskapp.TaskLogPage, error) {
+func (s *stubWebTaskService) ListLogs(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error) {
+	if s.listLogsFn != nil {
+		return s.listLogsFn(taskID, cursor, limit)
+	}
 	if s.logPages == nil {
 		return taskapp.TaskLogPage{}, taskapp.ErrTaskNotFound
 	}
@@ -411,6 +419,114 @@ func TestTaskItemLogsArtifactsAndRetryEndpoints(t *testing.T) {
 	}
 	if !strings.Contains(retryRec.Body.String(), `"status":"queued"`) {
 		t.Fatalf("expected queued status after retry, got %s", retryRec.Body.String())
+	}
+}
+
+func TestControlTaskLogsBackfillEndpoint(t *testing.T) {
+	now := time.Date(2026, 3, 4, 6, 0, 0, 0, time.UTC)
+	taskSvc := &stubWebTaskService{
+		logPages: map[string]taskapp.TaskLogPage{
+			"task-control-1": {
+				Items: []taskdomain.TaskLog{
+					{Seq: 3, Stage: "running", CreatedAt: now, Level: taskdomain.TaskLogLevelInfo, Message: "step-3"},
+				},
+				Cursor:     2,
+				NextCursor: 3,
+				HasMore:    false,
+			},
+		},
+	}
+	server := &Server{
+		tasks:  taskSvc,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/control/tasks/task-control-1/logs?cursor=2&limit=10", nil)
+	rec := httptest.NewRecorder()
+	server.controlTaskItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"seq":3`) {
+		t.Fatalf("expected seq=3 in payload, got %s", rec.Body.String())
+	}
+}
+
+func TestControlTaskLogStreamSupportsCursorReplay(t *testing.T) {
+	now := time.Date(2026, 3, 4, 7, 0, 0, 0, time.UTC)
+	logs := []taskdomain.TaskLog{
+		{Seq: 1, Stage: "accept", CreatedAt: now, Level: taskdomain.TaskLogLevelInfo, Message: "accepted"},
+		{Seq: 2, Stage: "running", CreatedAt: now.Add(time.Second), Level: taskdomain.TaskLogLevelInfo, Message: "running"},
+		{Seq: 3, Stage: "success", CreatedAt: now.Add(2 * time.Second), Level: taskdomain.TaskLogLevelInfo, Message: "done"},
+	}
+	taskSvc := &stubWebTaskService{
+		getFn: func(taskID string) (taskdomain.Task, bool) {
+			if taskID != "task-control-stream" {
+				return taskdomain.Task{}, false
+			}
+			return taskdomain.Task{ID: taskID, Status: taskdomain.TaskStatusSuccess}, true
+		},
+		listLogsFn: func(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error) {
+			if taskID != "task-control-stream" {
+				return taskapp.TaskLogPage{}, taskapp.ErrTaskNotFound
+			}
+			if cursor < 0 {
+				cursor = 0
+			}
+			if cursor > len(logs) {
+				cursor = len(logs)
+			}
+			if limit <= 0 {
+				limit = 50
+			}
+			end := cursor + limit
+			if end > len(logs) {
+				end = len(logs)
+			}
+			items := make([]taskdomain.TaskLog, 0, end-cursor)
+			items = append(items, logs[cursor:end]...)
+			return taskapp.TaskLogPage{
+				Items:      items,
+				Cursor:     cursor,
+				NextCursor: end,
+				HasMore:    end < len(logs),
+			}, nil
+		},
+	}
+	server := &Server{
+		tasks:  taskSvc,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/control/tasks/task-control-stream/logs/stream?cursor=1", nil)
+	rec := httptest.NewRecorder()
+	server.controlTaskItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if contentType := rec.Header().Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
+		t.Fatalf("expected text/event-stream content type, got %q", contentType)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: start\n") {
+		t.Fatalf("expected start event, got %q", body)
+	}
+	if !strings.Contains(body, "event: log\n") {
+		t.Fatalf("expected log event, got %q", body)
+	}
+	if strings.Contains(body, `"seq":1`) {
+		t.Fatalf("did not expect seq=1 after cursor replay, got %q", body)
+	}
+	if !strings.Contains(body, `"seq":2`) || !strings.Contains(body, `"seq":3`) {
+		t.Fatalf("expected seq=2 and seq=3 in stream payload, got %q", body)
+	}
+	if !strings.Contains(body, "event: done\n") {
+		t.Fatalf("expected done event, got %q", body)
+	}
+	if !strings.Contains(body, `"next_cursor":3`) {
+		t.Fatalf("expected next_cursor=3 in done payload, got %q", body)
 	}
 }
 
