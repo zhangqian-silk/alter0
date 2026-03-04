@@ -132,6 +132,11 @@ func main() {
 	processor := execinfra.NewCodexCLIProcessor()
 	executor := execapp.NewServiceWithSkills(processor, control, logger)
 	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
+	taskSummaryRuntime := tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
+		DailyDir:    strings.TrimSpace(*dailyMemoryDir),
+		LongTermDir: filepath.Join(strings.TrimSpace(*dailyMemoryDir), "long-term"),
+	})
+	taskSummaryRecorder := tasksummaryapp.NewRecorderGroup(taskSummaryMemory, taskSummaryRuntime)
 	baseOrchestrator := orchapp.NewServiceWithOptions(
 		classifier,
 		registry,
@@ -175,7 +180,7 @@ func main() {
 		Timeout:              *asyncTaskTimeout,
 		MaxRetries:           *asyncTaskMaxRetries,
 		LongContentThreshold: *asyncLongContentThreshold,
-		SummaryMemory:        taskSummaryMemory,
+		SummaryMemory:        taskSummaryRecorder,
 	})
 	if err != nil {
 		logger.Error("failed to initialize task service", slog.String("error", err.Error()))
@@ -202,6 +207,7 @@ func main() {
 			LongTermPath:         strings.TrimSpace(*longTermMemoryPath),
 			DailyDir:             strings.TrimSpace(*dailyMemoryDir),
 			MandatoryContextPath: strings.TrimSpace(*mandatoryContextFile),
+			TaskSummaryRuntime:   taskSummaryRuntime,
 		},
 		logger,
 	)
