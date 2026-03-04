@@ -168,7 +168,21 @@ func main() {
 	}
 	scheduler.Start(rootCtx)
 
-	server := web.NewServer(listenAddr, orchestrator, telemetry, idGen, control, scheduler, sessionHistory, logger)
+	server := web.NewServer(
+		listenAddr,
+		orchestrator,
+		telemetry,
+		idGen,
+		control,
+		scheduler,
+		sessionHistory,
+		web.AgentMemoryOptions{
+			LongTermPath:         strings.TrimSpace(*longTermMemoryPath),
+			DailyDir:             strings.TrimSpace(*dailyMemoryDir),
+			MandatoryContextPath: strings.TrimSpace(*mandatoryContextFile),
+		},
+		logger,
+	)
 	webErrCh := make(chan error, 1)
 	go func() {
 		logger.Info("starting web server", slog.String("addr", listenAddr))

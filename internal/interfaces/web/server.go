@@ -37,6 +37,7 @@ type Server struct {
 	control      *controlapp.Service
 	scheduler    *schedulerapp.Manager
 	sessions     sessionHistoryService
+	memory       *agentMemoryService
 	logger       *slog.Logger
 }
 
@@ -131,6 +132,7 @@ func NewServer(
 	control *controlapp.Service,
 	scheduler *schedulerapp.Manager,
 	sessions sessionHistoryService,
+	memoryOptions AgentMemoryOptions,
 	logger *slog.Logger,
 ) *Server {
 	return &Server{
@@ -141,6 +143,7 @@ func NewServer(
 		control:      control,
 		scheduler:    scheduler,
 		sessions:     sessions,
+		memory:       newAgentMemoryService(memoryOptions),
 		logger:       logger,
 	}
 }
@@ -156,6 +159,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
+	mux.HandleFunc("/api/agent/memory", s.agentMemoryHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
 	mux.HandleFunc("/api/control/capabilities", s.capabilityListHandler)
@@ -370,6 +374,18 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, s.sessions.ListMessages(query))
+}
+
+func (s *Server) agentMemoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if s.memory == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent memory unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.memory.Snapshot())
 }
 
 func (s *Server) channelListHandler(w http.ResponseWriter, r *http.Request) {
