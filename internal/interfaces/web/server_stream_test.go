@@ -34,6 +34,31 @@ func (s *stubOrchestrator) Handle(_ context.Context, msg shareddomain.UnifiedMes
 	return s.result, s.err
 }
 
+type stubStreamOrchestrator struct {
+	stubOrchestrator
+	events []string
+}
+
+func (s *stubStreamOrchestrator) HandleStream(
+	_ context.Context,
+	msg shareddomain.UnifiedMessage,
+	onDelta func(string) error,
+) (shareddomain.OrchestrationResult, error) {
+	s.last = msg
+	for _, item := range s.events {
+		if err := onDelta(item); err != nil {
+			return shareddomain.OrchestrationResult{}, err
+		}
+	}
+	if s.result.MessageID == "" {
+		s.result.MessageID = msg.MessageID
+	}
+	if s.result.SessionID == "" {
+		s.result.SessionID = msg.SessionID
+	}
+	return s.result, s.err
+}
+
 type incrementalIDGenerator struct {
 	next int
 }
@@ -159,5 +184,37 @@ func TestMessageStreamHandlerMethodNotAllowed(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, rec.Code)
+	}
+}
+
+func TestMessageStreamHandlerUsesStreamingOrchestrator(t *testing.T) {
+	orch := &stubStreamOrchestrator{
+		stubOrchestrator: stubOrchestrator{
+			result: shareddomain.OrchestrationResult{
+				Route:  shareddomain.RouteNL,
+				Output: "stream-finished",
+			},
+		},
+		events: []string{"part-1", "part-2"},
+	}
+	server := testWebServer(orch)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/stream", strings.NewReader(`{"session_id":"session-stream","content":"hello"}`))
+	rec := httptest.NewRecorder()
+
+	server.messageStreamHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Count(body, "event: delta") != 2 {
+		t.Fatalf("expected two streamed delta events, got body %q", body)
+	}
+	if !strings.Contains(body, `"delta":"part-1"`) || !strings.Contains(body, `"delta":"part-2"`) {
+		t.Fatalf("expected streamed delta payloads, got body %q", body)
+	}
+	if !strings.Contains(body, "event: done") {
+		t.Fatalf("expected done event, got body %q", body)
 	}
 }

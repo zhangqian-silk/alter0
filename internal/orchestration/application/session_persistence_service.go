@@ -23,6 +23,14 @@ type SessionPersistenceService struct {
 	logger      *slog.Logger
 }
 
+type streamPersistenceOrchestrator interface {
+	HandleStream(
+		ctx context.Context,
+		msg shareddomain.UnifiedMessage,
+		onDelta func(string) error,
+	) (shareddomain.OrchestrationResult, error)
+}
+
 func NewSessionPersistenceService(
 	downstream Orchestrator,
 	recorder *sessionapp.Service,
@@ -42,8 +50,40 @@ func NewSessionPersistenceService(
 
 func (s *SessionPersistenceService) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
 	result, err := s.downstream.Handle(ctx, msg)
+	s.persistResult(msg, result, err)
+	return result, err
+}
+
+func (s *SessionPersistenceService) HandleStream(
+	ctx context.Context,
+	msg shareddomain.UnifiedMessage,
+	onDelta func(string) error,
+) (shareddomain.OrchestrationResult, error) {
+	var (
+		result shareddomain.OrchestrationResult
+		err    error
+	)
+	if downstream, ok := s.downstream.(streamPersistenceOrchestrator); ok {
+		result, err = downstream.HandleStream(ctx, msg, onDelta)
+	} else {
+		result, err = s.downstream.Handle(ctx, msg)
+		if err == nil && onDelta != nil && strings.TrimSpace(result.Output) != "" {
+			if streamErr := onDelta(result.Output); streamErr != nil {
+				err = streamErr
+			}
+		}
+	}
+	s.persistResult(msg, result, err)
+	return result, err
+}
+
+func (s *SessionPersistenceService) persistResult(
+	msg shareddomain.UnifiedMessage,
+	result shareddomain.OrchestrationResult,
+	err error,
+) {
 	if s.recorder == nil {
-		return result, err
+		return
 	}
 
 	userTimestamp := normalizePersistTimestamp(msg.ReceivedAt)
@@ -99,8 +139,6 @@ func (s *SessionPersistenceService) Handle(ctx context.Context, msg shareddomain
 			slog.String("error", persistErr.Error()),
 		)
 	}
-
-	return result, err
 }
 
 func (s *SessionPersistenceService) newAssistantMessageID(fallback string) string {

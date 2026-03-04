@@ -51,6 +51,7 @@ type queuedRequest struct {
 	msg        shareddomain.UnifiedMessage
 	enqueuedAt time.Time
 	done       chan queuedResponse
+	stream     func(string) error
 }
 
 type queuedResponse struct {
@@ -81,6 +82,14 @@ type ConcurrentService struct {
 	stopped      bool
 
 	inFlight int64
+}
+
+type streamOrchestrator interface {
+	HandleStream(
+		ctx context.Context,
+		msg shareddomain.UnifiedMessage,
+		onDelta func(string) error,
+	) (shareddomain.OrchestrationResult, error)
 }
 
 func NewConcurrentService(
@@ -145,6 +154,22 @@ func normalizeConcurrencyOptions(options ConcurrencyOptions) ConcurrencyOptions 
 }
 
 func (s *ConcurrentService) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+	return s.handleQueued(ctx, msg, nil)
+}
+
+func (s *ConcurrentService) HandleStream(
+	ctx context.Context,
+	msg shareddomain.UnifiedMessage,
+	onDelta func(string) error,
+) (shareddomain.OrchestrationResult, error) {
+	return s.handleQueued(ctx, msg, onDelta)
+}
+
+func (s *ConcurrentService) handleQueued(
+	ctx context.Context,
+	msg shareddomain.UnifiedMessage,
+	onDelta func(string) error,
+) (shareddomain.OrchestrationResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -158,6 +183,7 @@ func (s *ConcurrentService) Handle(ctx context.Context, msg shareddomain.Unified
 		msg:        msg,
 		enqueuedAt: time.Now(),
 		done:       make(chan queuedResponse, 1),
+		stream:     onDelta,
 	}
 
 	depth, err := s.enqueue(req)
@@ -223,7 +249,22 @@ func (s *ConcurrentService) runWorker(ctx context.Context) {
 		inFlight := int(atomic.AddInt64(&s.inFlight, 1))
 		s.setWorkerInFlight(inFlight)
 
-		result, err := s.downstream.Handle(req.ctx, req.msg)
+		var result shareddomain.OrchestrationResult
+		var err error
+		if req.stream != nil {
+			if downstream, ok := s.downstream.(streamOrchestrator); ok {
+				result, err = downstream.HandleStream(req.ctx, req.msg, req.stream)
+			} else {
+				result, err = s.downstream.Handle(req.ctx, req.msg)
+				if err == nil && result.Output != "" {
+					if streamErr := req.stream(result.Output); streamErr != nil {
+						err = streamErr
+					}
+				}
+			}
+		} else {
+			result, err = s.downstream.Handle(req.ctx, req.msg)
+		}
 		if result.MessageID == "" {
 			result.MessageID = req.msg.MessageID
 		}
