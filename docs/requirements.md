@@ -44,7 +44,7 @@
 | R-031 | 任务摘要跨会话记忆与按需深检索 | supported | 默认仅注入最近 3-5 条任务摘要控制上下文体积；当用户询问更早历史时自动切换深检索，从全量任务摘要库召回并按需下钻任务详情 |
 | R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | supported | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
 | R-033 | Control 任务观测台基础视图 | supported | 在 `Control` 页面新增 `Tasks` 入口，提供任务列表、详情抽屉与基础筛选能力，形成统一任务观测入口 |
-| R-034 | 任务触发来源标识与溯源视图 | planned | 为任务补齐并展示 `trigger_type/channel_type/channel_id/correlation_id` 等来源字段；定时任务补充 `job_id/job_name/fired_at` |
+| R-034 | 任务触发来源标识与溯源视图 | supported | 为任务补齐并展示 `trigger_type/channel_type/channel_id/correlation_id` 等来源字段；定时任务补充 `job_id/job_name/fired_at` |
 | R-035 | 任务日志流式观测与断线续读 | supported | 提供任务日志 SSE 流式观测能力，支持游标断点续读与回补查询，满足长任务实时观测 |
 | R-036 | 任务控制动作与会话回链 | supported | 提供 `retry/cancel` 控制面板与任务-会话双向跳转，保证问题定位与重试闭环 |
 | R-037 | Web 产物可访问交付层（替代本地路径暴露） | planned | Web 会话不再向用户返回本地文件路径；通过任务产物引用与下载/预览接口完成交付，保障可访问性与路径安全 |

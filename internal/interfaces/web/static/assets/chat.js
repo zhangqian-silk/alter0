@@ -129,6 +129,13 @@ const I18N = {
     "field.read_only": "Mode",
     "field.status": "Status",
     "field.task_type": "Task Type",
+    "field.trigger_type": "Trigger Type",
+    "field.channel_type": "Channel Type",
+    "field.channel_id": "Channel ID",
+    "field.correlation_id": "Correlation ID",
+    "field.job_id": "Job ID",
+    "field.job_name": "Job Name",
+    "field.fired_at": "Fired At",
     "field.goal": "Goal",
     "field.result": "Result",
     "field.finished": "Finished",
@@ -149,10 +156,12 @@ const I18N = {
     "route.sessions.subtitle": "View current session list",
     "route.sessions.empty": "No local sessions available.",
     "route.tasks.title": "Tasks",
-    "route.tasks.subtitle": "Observe runtime tasks with status and timeline filters",
+    "route.tasks.subtitle": "Observe runtime tasks with source, status, and timeline filters",
     "route.tasks.empty": "No tasks found.",
     "route.tasks.filter.session": "Session ID",
     "route.tasks.filter.status": "Status",
+    "route.tasks.filter.trigger_type": "Trigger Type",
+    "route.tasks.filter.channel_type": "Channel Type",
     "route.tasks.filter.start_at": "Start",
     "route.tasks.filter.end_at": "End",
     "route.tasks.filter.apply": "Apply",
@@ -163,6 +172,12 @@ const I18N = {
     "route.tasks.drawer.close": "Close",
     "route.tasks.page.label": "Page",
     "route.tasks.page.next": "Next Page",
+    "trigger.user": "User",
+    "trigger.cron": "Cron",
+    "trigger.system": "System",
+    "channel.cli": "CLI",
+    "channel.web": "Web",
+    "channel.scheduler": "Scheduler",
     "route.cron.title": "Cron Jobs",
     "route.cron.subtitle": "View scheduled jobs",
     "route.cron.empty": "No Cron Jobs available.",
@@ -302,6 +317,13 @@ const I18N = {
     "field.read_only": "模式",
     "field.status": "状态",
     "field.task_type": "任务类型",
+    "field.trigger_type": "触发类型",
+    "field.channel_type": "通道类型",
+    "field.channel_id": "通道 ID",
+    "field.correlation_id": "关联 ID",
+    "field.job_id": "作业 ID",
+    "field.job_name": "作业名称",
+    "field.fired_at": "触发时间",
     "field.goal": "目标",
     "field.result": "结果",
     "field.finished": "完成时间",
@@ -322,10 +344,12 @@ const I18N = {
     "route.sessions.subtitle": "查看当前会话列表",
     "route.sessions.empty": "暂无本地会话。",
     "route.tasks.title": "任务观测",
-    "route.tasks.subtitle": "基于会话、状态和时间范围观测运行任务",
+    "route.tasks.subtitle": "基于来源、状态和时间范围观测运行任务",
     "route.tasks.empty": "暂无任务记录。",
     "route.tasks.filter.session": "会话 ID",
     "route.tasks.filter.status": "状态",
+    "route.tasks.filter.trigger_type": "触发类型",
+    "route.tasks.filter.channel_type": "通道类型",
     "route.tasks.filter.start_at": "开始时间",
     "route.tasks.filter.end_at": "结束时间",
     "route.tasks.filter.apply": "筛选",
@@ -336,6 +360,12 @@ const I18N = {
     "route.tasks.drawer.close": "关闭",
     "route.tasks.page.label": "页码",
     "route.tasks.page.next": "下一页",
+    "trigger.user": "用户触发",
+    "trigger.cron": "定时触发",
+    "trigger.system": "系统触发",
+    "channel.cli": "CLI",
+    "channel.web": "Web",
+    "channel.scheduler": "Scheduler",
     "route.cron.title": "定时任务",
     "route.cron.subtitle": "查看计划任务",
     "route.cron.empty": "暂无定时任务。",
@@ -1831,6 +1861,12 @@ function controlTaskListQuery(filters = {}, page = 1, pageSize = 20) {
   if (filters.status) {
     params.push(`status=${escapeQueryValue(filters.status)}`);
   }
+  if (filters.triggerType) {
+    params.push(`trigger_type=${escapeQueryValue(filters.triggerType)}`);
+  }
+  if (filters.channelType) {
+    params.push(`channel_type=${escapeQueryValue(filters.channelType)}`);
+  }
   if (filters.startAt && filters.endAt) {
     params.push(`time_range=${escapeQueryValue(`${filters.startAt},${filters.endAt}`)}`);
   } else {
@@ -1853,10 +1889,19 @@ function renderControlTaskList(payload) {
     const taskID = typeof item?.task_id === "string" ? item.task_id : "-";
     const sessionID = typeof item?.session_id === "string" ? item.session_id : "-";
     const status = typeof item?.status === "string" ? item.status : "";
+    const triggerType = typeof item?.trigger_type === "string" ? item.trigger_type : "";
+    const channelType = typeof item?.channel_type === "string" ? item.channel_type : "";
+    const channelID = typeof item?.channel_id === "string" ? item.channel_id : "";
     const progress = Number(item?.progress || 0);
     const retryCount = Number(item?.retry_count || 0);
     const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
+    const firedAt = typeof item?.fired_at === "string" ? item.fired_at : "";
+    const jobID = typeof item?.job_id === "string" ? item.job_id : "";
     const error = typeof item?.error === "string" ? item.error.trim() : "";
+    const cronRow = triggerType === "cron"
+      ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>
+        <p><span>${t("field.fired_at")}</span><strong>${escapeHTML(formatDateTime(firedAt))}</strong></p>`
+      : "";
     const errorRow = error
       ? `<p><span>Error</span><strong>${escapeHTML(normalizeText(error))}</strong></p>`
       : "";
@@ -1867,9 +1912,13 @@ function renderControlTaskList(payload) {
       </header>
       <div class="task-summary-meta">
         <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(sessionID))}</strong></p>
+        <p><span>${t("field.trigger_type")}</span><strong>${escapeHTML(formatTriggerType(triggerType))}</strong></p>
+        <p><span>${t("field.channel_type")}</span><strong>${escapeHTML(formatChannelType(channelType))}</strong></p>
+        <p><span>${t("field.channel_id")}</span><strong>${escapeHTML(normalizeText(channelID))}</strong></p>
         <p><span>${t("field.progress")}</span><strong>${escapeHTML(`${progress}%`)}</strong></p>
         <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(retryCount)}</strong></p>
         <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(updatedAt))}</strong></p>
+        ${cronRow}
         ${errorRow}
       </div>
       <button class="task-summary-open" type="button" data-control-task-open="${escapeHTML(taskID)}">${t("route.tasks.open_detail")}</button>
@@ -1891,9 +1940,22 @@ function renderControlTaskPagination(payload) {
 
 function renderControlTaskDetail(view) {
   const task = view?.task || {};
+  const source = view?.source || {};
   const link = view?.link || {};
   const taskID = typeof task?.id === "string" ? task.id : "-";
   const status = typeof task?.status === "string" ? task.status : "";
+  const triggerType = typeof source?.trigger_type === "string" ? source.trigger_type : "";
+  const channelType = typeof source?.channel_type === "string" ? source.channel_type : "";
+  const channelID = typeof source?.channel_id === "string" ? source.channel_id : "";
+  const correlationID = typeof source?.correlation_id === "string" ? source.correlation_id : "";
+  const jobID = typeof source?.job_id === "string" ? source.job_id : "";
+  const jobName = typeof source?.job_name === "string" ? source.job_name : "";
+  const firedAt = typeof source?.fired_at === "string" ? source.fired_at : "";
+  const cronRows = triggerType === "cron"
+    ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>
+      <p><span>${t("field.job_name")}</span><strong>${escapeHTML(normalizeText(jobName))}</strong></p>
+      <p><span>${t("field.fired_at")}</span><strong>${escapeHTML(formatDateTime(firedAt))}</strong></p>`
+    : "";
   const errorText = normalizeText(task?.error_message || task?.error_code || "-");
   return `<section class="task-detail-card" data-control-task-detail-id="${escapeHTML(taskID)}">
     <header class="task-detail-head">
@@ -1908,7 +1970,12 @@ function renderControlTaskDetail(view) {
       <p><span>${t("field.created")}</span><strong>${escapeHTML(formatDateTime(task?.created_at))}</strong></p>
       <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(task?.updated_at))}</strong></p>
       <p><span>${t("field.finished")}</span><strong>${escapeHTML(formatDateTime(task?.finished_at))}</strong></p>
+      <p><span>${t("field.trigger_type")}</span><strong>${escapeHTML(formatTriggerType(triggerType))}</strong></p>
+      <p><span>${t("field.channel_type")}</span><strong>${escapeHTML(formatChannelType(channelType))}</strong></p>
+      <p><span>${t("field.channel_id")}</span><strong>${escapeHTML(normalizeText(channelID))}</strong></p>
+      <p><span>${t("field.correlation_id")}</span><strong>${escapeHTML(normalizeText(correlationID))}</strong></p>
       <p><span>${t("field.source_message")}</span><strong>${escapeHTML(normalizeText(task?.source_message_id))}</strong></p>
+      ${cronRows}
       <p><span>Error</span><strong>${escapeHTML(errorText)}</strong></p>
       <p><span>Detail API</span><strong>${escapeHTML(normalizeText(link?.task_detail_path))}</strong></p>
     </div>
@@ -1926,7 +1993,7 @@ function bindControlTaskView(container, initialPayload) {
   const drawer = view.querySelector("[data-control-task-drawer]");
   const drawerBody = view.querySelector("[data-control-task-drawer-body]");
   const localState = {
-    filters: { sessionID: "", status: "", startAt: "", endAt: "" },
+    filters: { sessionID: "", status: "", triggerType: "", channelType: "", startAt: "", endAt: "" },
     page: 1,
     pageSize: 20,
     activeTaskID: ""
@@ -1976,6 +2043,8 @@ function bindControlTaskView(container, initialPayload) {
       const formData = new FormData(form);
       localState.filters.sessionID = String(formData.get("session_id") || "").trim();
       localState.filters.status = String(formData.get("status") || "").trim();
+      localState.filters.triggerType = String(formData.get("trigger_type") || "").trim();
+      localState.filters.channelType = String(formData.get("channel_type") || "").trim();
       localState.filters.startAt = parseDateTimeFilter(formData.get("start_at"));
       localState.filters.endAt = parseDateTimeFilter(formData.get("end_at"));
       localState.page = 1;
@@ -1986,7 +2055,7 @@ function bindControlTaskView(container, initialPayload) {
     if (resetButton) {
       resetButton.addEventListener("click", async () => {
         form.reset();
-        localState.filters = { sessionID: "", status: "", startAt: "", endAt: "" };
+        localState.filters = { sessionID: "", status: "", triggerType: "", channelType: "", startAt: "", endAt: "" };
         localState.page = 1;
         await loadList();
       });
@@ -2031,6 +2100,22 @@ async function loadControlTasksView(container) {
           <option value="success">${t("status.success")}</option>
           <option value="failed">${t("status.failed")}</option>
           <option value="canceled">${t("status.canceled")}</option>
+        </select>
+      </label>
+      <label><span>${t("route.tasks.filter.trigger_type")}</span>
+        <select name="trigger_type">
+          <option value="">-</option>
+          <option value="user">${t("trigger.user")}</option>
+          <option value="cron">${t("trigger.cron")}</option>
+          <option value="system">${t("trigger.system")}</option>
+        </select>
+      </label>
+      <label><span>${t("route.tasks.filter.channel_type")}</span>
+        <select name="channel_type">
+          <option value="">-</option>
+          <option value="cli">${t("channel.cli")}</option>
+          <option value="web">${t("channel.web")}</option>
+          <option value="scheduler">${t("channel.scheduler")}</option>
         </select>
       </label>
       <label><span>${t("route.tasks.filter.start_at")}</span><input type="datetime-local" name="start_at"></label>
@@ -2078,6 +2163,26 @@ function formatTaskStatus(value) {
   const key = `status.${status}`;
   const translated = t(key);
   return translated === key ? status : translated;
+}
+
+function formatTriggerType(value) {
+  const triggerType = String(value || "").trim().toLowerCase();
+  if (!triggerType) {
+    return "-";
+  }
+  const key = `trigger.${triggerType}`;
+  const translated = t(key);
+  return translated === key ? triggerType : translated;
+}
+
+function formatChannelType(value) {
+  const channelType = String(value || "").trim().toLowerCase();
+  if (!channelType) {
+    return "-";
+  }
+  const key = `channel.${channelType}`;
+  const translated = t(key);
+  return translated === key ? channelType : translated;
 }
 
 function escapeQueryValue(value) {

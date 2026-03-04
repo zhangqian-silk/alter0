@@ -546,6 +546,15 @@ func TestControlTaskViewAndActionConstraints(t *testing.T) {
 				CreatedAt:       now,
 				UpdatedAt:       now,
 				RequestContent:  "generate report",
+				RequestMetadata: map[string]string{
+					taskapp.MetadataTaskTriggerTypeKey: "cron",
+					taskapp.MetadataTaskChannelTypeKey: "scheduler",
+					taskapp.MetadataTaskChannelIDKey:   "scheduler-default",
+					taskapp.MetadataTaskCorrelationKey: "job-nightly",
+					"job_id":                           "job-nightly",
+					"job_name":                         "Nightly Sync",
+					"fired_at":                         "2026-03-04T03:45:00Z",
+				},
 				MessageLink: taskdomain.TaskMessageLink{
 					TaskID:           "task-1",
 					SessionID:        "session-a",
@@ -576,6 +585,12 @@ func TestControlTaskViewAndActionConstraints(t *testing.T) {
 	if !strings.Contains(body, `"session_messages_path":"/api/sessions/session-a/messages"`) {
 		t.Fatalf("expected session message link, got %s", body)
 	}
+	if !strings.Contains(body, `"trigger_type":"cron"`) || !strings.Contains(body, `"channel_type":"scheduler"`) {
+		t.Fatalf("expected source payload in detail view, got %s", body)
+	}
+	if !strings.Contains(body, `"job_id":"job-nightly"`) || !strings.Contains(body, `"fired_at":"2026-03-04T03:45:00Z"`) {
+		t.Fatalf("expected cron source fields in detail view, got %s", body)
+	}
 
 	taskSvc.retryErr = taskapp.ErrTaskConflict
 	retryReq := httptest.NewRequest(http.MethodPost, "/api/control/tasks/task-1/retry", nil)
@@ -603,6 +618,12 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 			FinishedAt:     now.Add(-3 * time.Hour),
 			RequestContent: "build report",
 			ErrorCode:      "task_failed",
+			RequestMetadata: map[string]string{
+				taskapp.MetadataTaskTriggerTypeKey: "user",
+				taskapp.MetadataTaskChannelTypeKey: "web",
+				taskapp.MetadataTaskChannelIDKey:   "web-primary",
+				taskapp.MetadataTaskCorrelationKey: "corr-user-a",
+			},
 		},
 		{
 			ID:             "task-b",
@@ -615,6 +636,15 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 			FinishedAt:     now.Add(-90 * time.Minute),
 			RequestContent: "build report",
 			ErrorMessage:   "network timeout",
+			RequestMetadata: map[string]string{
+				taskapp.MetadataTaskTriggerTypeKey: "cron",
+				taskapp.MetadataTaskChannelTypeKey: "scheduler",
+				taskapp.MetadataTaskChannelIDKey:   "scheduler-default",
+				taskapp.MetadataTaskCorrelationKey: "job-nightly",
+				"job_id":                           "job-nightly",
+				"job_name":                         "Nightly Build",
+				"fired_at":                         "2026-03-04T07:20:00Z",
+			},
 		},
 		{
 			ID:             "task-c",
@@ -625,6 +655,11 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 			CreatedAt:      now.Add(-2 * time.Hour),
 			UpdatedAt:      now.Add(-30 * time.Minute),
 			RequestContent: "other session",
+			RequestMetadata: map[string]string{
+				taskapp.MetadataTaskTriggerTypeKey: "system",
+				taskapp.MetadataTaskChannelTypeKey: "cli",
+				taskapp.MetadataTaskChannelIDKey:   "cli-default",
+			},
 		},
 	}
 	taskSvc := &stubWebTaskService{
@@ -655,7 +690,7 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/control/tasks?session_id=session-a&status=failed&time_range=2026-03-04T05:00:00Z,2026-03-04T08:00:00Z&page=1&page_size=10", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/control/tasks?session_id=session-a&status=failed&trigger_type=cron&channel_type=scheduler&time_range=2026-03-04T05:00:00Z,2026-03-04T08:00:00Z&page=1&page_size=10", nil)
 	rec := httptest.NewRecorder()
 	server.controlTaskCollectionHandler(rec, req)
 	if rec.Code != http.StatusOK {
@@ -669,16 +704,25 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode control task page failed: %v", err)
 	}
-	if len(payload.Items) != 2 {
-		t.Fatalf("expected 2 tasks in filtered page, got %d", len(payload.Items))
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 task in filtered page, got %d", len(payload.Items))
 	}
-	if payload.Items[0].TaskID != "task-b" || payload.Items[1].TaskID != "task-a" {
-		t.Fatalf("expected updated desc order task-b/task-a, got %+v", payload.Items)
+	if payload.Items[0].TaskID != "task-b" {
+		t.Fatalf("expected filtered task-b, got %+v", payload.Items)
 	}
 	if payload.Items[0].Error != "network timeout" {
 		t.Fatalf("expected error_message in list item, got %+v", payload.Items[0])
 	}
-	if payload.Pagination.Total != 2 || payload.Pagination.HasNext {
+	if payload.Items[0].TriggerType != shareddomain.TriggerTypeCron || payload.Items[0].ChannelType != shareddomain.ChannelTypeScheduler {
+		t.Fatalf("expected trigger/channel fields in list item, got %+v", payload.Items[0])
+	}
+	if payload.Items[0].JobID != "job-nightly" || payload.Items[0].JobName != "Nightly Build" {
+		t.Fatalf("expected cron fields in list item, got %+v", payload.Items[0])
+	}
+	if payload.Items[0].FiredAt.Format(time.RFC3339) != "2026-03-04T07:20:00Z" {
+		t.Fatalf("expected fired_at in list item, got %+v", payload.Items[0])
+	}
+	if payload.Pagination.Total != 1 || payload.Pagination.HasNext {
 		t.Fatalf("unexpected pagination %+v", payload.Pagination)
 	}
 }
@@ -690,6 +734,26 @@ func TestControlTaskCollectionRejectsInvalidTimeRange(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet, "/api/control/tasks?time_range=invalid", nil)
 	rec := httptest.NewRecorder()
+	server.controlTaskCollectionHandler(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestControlTaskCollectionRejectsInvalidSourceFilters(t *testing.T) {
+	server := &Server{
+		tasks:  &stubWebTaskService{},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/control/tasks?trigger_type=manual", nil)
+	rec := httptest.NewRecorder()
+	server.controlTaskCollectionHandler(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/control/tasks?channel_type=mobile", nil)
+	rec = httptest.NewRecorder()
 	server.controlTaskCollectionHandler(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)

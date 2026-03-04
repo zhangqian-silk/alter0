@@ -28,6 +28,13 @@ import (
 //go:embed static/*
 var webStaticFS embed.FS
 
+const (
+	controlTaskMetadataJobIDKey   = "job_id"
+	controlTaskMetadataJobNameKey = "job_name"
+	controlTaskMetadataFiredAtKey = "fired_at"
+	defaultControlTaskChannelID   = "web-default"
+)
+
 type Orchestrator interface {
 	Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error)
 }
@@ -227,24 +234,43 @@ type memoryTaskListQuery struct {
 }
 
 type controlTaskListQuery struct {
-	SessionID string
-	Status    taskdomain.TaskStatus
-	StartAt   time.Time
-	EndAt     time.Time
-	Page      int
-	PageSize  int
+	SessionID   string
+	Status      taskdomain.TaskStatus
+	TriggerType shareddomain.TriggerType
+	ChannelType shareddomain.ChannelType
+	StartAt     time.Time
+	EndAt       time.Time
+	Page        int
+	PageSize    int
+}
+
+type controlTaskSource struct {
+	TriggerType   shareddomain.TriggerType `json:"trigger_type"`
+	ChannelType   shareddomain.ChannelType `json:"channel_type"`
+	ChannelID     string                   `json:"channel_id"`
+	CorrelationID string                   `json:"correlation_id,omitempty"`
+	JobID         string                   `json:"job_id,omitempty"`
+	JobName       string                   `json:"job_name,omitempty"`
+	FiredAt       time.Time                `json:"fired_at,omitempty"`
 }
 
 type controlTaskListItem struct {
-	TaskID     string                `json:"task_id"`
-	SessionID  string                `json:"session_id"`
-	Status     taskdomain.TaskStatus `json:"status"`
-	Progress   int                   `json:"progress"`
-	RetryCount int                   `json:"retry_count"`
-	CreatedAt  time.Time             `json:"created_at"`
-	UpdatedAt  time.Time             `json:"updated_at"`
-	FinishedAt time.Time             `json:"finished_at,omitempty"`
-	Error      string                `json:"error,omitempty"`
+	TaskID        string                   `json:"task_id"`
+	SessionID     string                   `json:"session_id"`
+	Status        taskdomain.TaskStatus    `json:"status"`
+	Progress      int                      `json:"progress"`
+	RetryCount    int                      `json:"retry_count"`
+	TriggerType   shareddomain.TriggerType `json:"trigger_type"`
+	ChannelType   shareddomain.ChannelType `json:"channel_type"`
+	ChannelID     string                   `json:"channel_id"`
+	CorrelationID string                   `json:"correlation_id,omitempty"`
+	JobID         string                   `json:"job_id,omitempty"`
+	JobName       string                   `json:"job_name,omitempty"`
+	FiredAt       time.Time                `json:"fired_at,omitempty"`
+	CreatedAt     time.Time                `json:"created_at"`
+	UpdatedAt     time.Time                `json:"updated_at"`
+	FinishedAt    time.Time                `json:"finished_at,omitempty"`
+	Error         string                   `json:"error,omitempty"`
 }
 
 type taskControlActionState struct {
@@ -270,6 +296,7 @@ type taskSessionLink struct {
 
 type taskControlView struct {
 	Task    taskdomain.Task    `json:"task"`
+	Source  controlTaskSource  `json:"source"`
 	Actions taskControlActions `json:"actions"`
 	Link    taskSessionLink    `json:"link"`
 }
@@ -897,6 +924,7 @@ func (s *Server) writeTaskControlError(w http.ResponseWriter, taskID string, err
 func toTaskControlView(task taskdomain.Task) taskControlView {
 	return taskControlView{
 		Task:    task,
+		Source:  resolveControlTaskSource(task),
 		Actions: resolveTaskControlActions(task),
 		Link:    resolveTaskSessionLink(task),
 	}
@@ -1209,11 +1237,7 @@ func (s *Server) collectTasksForControl(query controlTaskListQuery) []taskdomain
 			break
 		}
 		for _, item := range result.Items {
-			at := resolveControlTaskUpdatedAt(item)
-			if !query.StartAt.IsZero() && at.Before(query.StartAt) {
-				continue
-			}
-			if !query.EndAt.IsZero() && at.After(query.EndAt) {
+			if !matchControlTaskFilters(item, query) {
 				continue
 			}
 			items = append(items, item)
@@ -1234,16 +1258,24 @@ func toControlTaskListItem(task taskdomain.Task) controlTaskListItem {
 	if errorText == "" {
 		errorText = strings.TrimSpace(task.ErrorCode)
 	}
+	source := resolveControlTaskSource(task)
 	return controlTaskListItem{
-		TaskID:     strings.TrimSpace(task.ID),
-		SessionID:  strings.TrimSpace(task.SessionID),
-		Status:     task.Status,
-		Progress:   task.Progress,
-		RetryCount: task.RetryCount,
-		CreatedAt:  task.CreatedAt.UTC(),
-		UpdatedAt:  resolveControlTaskUpdatedAt(task),
-		FinishedAt: task.FinishedAt.UTC(),
-		Error:      errorText,
+		TaskID:        strings.TrimSpace(task.ID),
+		SessionID:     strings.TrimSpace(task.SessionID),
+		Status:        task.Status,
+		Progress:      task.Progress,
+		RetryCount:    task.RetryCount,
+		TriggerType:   source.TriggerType,
+		ChannelType:   source.ChannelType,
+		ChannelID:     source.ChannelID,
+		CorrelationID: source.CorrelationID,
+		JobID:         source.JobID,
+		JobName:       source.JobName,
+		FiredAt:       source.FiredAt,
+		CreatedAt:     task.CreatedAt.UTC(),
+		UpdatedAt:     resolveControlTaskUpdatedAt(task),
+		FinishedAt:    task.FinishedAt.UTC(),
+		Error:         errorText,
 	}
 }
 
@@ -1258,6 +1290,77 @@ func resolveControlTaskUpdatedAt(task taskdomain.Task) time.Time {
 		return task.CreatedAt.UTC()
 	}
 	return time.Now().UTC()
+}
+
+func matchControlTaskFilters(task taskdomain.Task, query controlTaskListQuery) bool {
+	source := resolveControlTaskSource(task)
+	if strings.TrimSpace(string(query.TriggerType)) != "" && source.TriggerType != query.TriggerType {
+		return false
+	}
+	if strings.TrimSpace(string(query.ChannelType)) != "" && source.ChannelType != query.ChannelType {
+		return false
+	}
+	at := resolveControlTaskUpdatedAt(task)
+	if !query.StartAt.IsZero() && at.Before(query.StartAt) {
+		return false
+	}
+	if !query.EndAt.IsZero() && at.After(query.EndAt) {
+		return false
+	}
+	return true
+}
+
+func resolveControlTaskSource(task taskdomain.Task) controlTaskSource {
+	metadata := task.RequestMetadata
+	triggerType := parseControlTriggerType(metadata[taskapp.MetadataTaskTriggerTypeKey])
+	channelType := parseControlChannelType(metadata[taskapp.MetadataTaskChannelTypeKey])
+	channelID := strings.TrimSpace(metadata[taskapp.MetadataTaskChannelIDKey])
+	if channelID == "" {
+		channelID = defaultControlTaskChannelID
+	}
+	source := controlTaskSource{
+		TriggerType:   triggerType,
+		ChannelType:   channelType,
+		ChannelID:     channelID,
+		CorrelationID: strings.TrimSpace(metadata[taskapp.MetadataTaskCorrelationKey]),
+	}
+	if source.TriggerType == shareddomain.TriggerTypeCron {
+		source.JobID = strings.TrimSpace(metadata[controlTaskMetadataJobIDKey])
+		source.JobName = strings.TrimSpace(metadata[controlTaskMetadataJobNameKey])
+		if source.CorrelationID == "" {
+			source.CorrelationID = source.JobID
+		}
+		if firedAt, err := parseRFC3339Time(metadata[controlTaskMetadataFiredAtKey]); err == nil {
+			source.FiredAt = firedAt
+		}
+	}
+	return source
+}
+
+func parseControlTriggerType(raw string) shareddomain.TriggerType {
+	switch shareddomain.TriggerType(strings.ToLower(strings.TrimSpace(raw))) {
+	case shareddomain.TriggerTypeUser:
+		return shareddomain.TriggerTypeUser
+	case shareddomain.TriggerTypeCron:
+		return shareddomain.TriggerTypeCron
+	case shareddomain.TriggerTypeSystem:
+		return shareddomain.TriggerTypeSystem
+	default:
+		return shareddomain.TriggerTypeUser
+	}
+}
+
+func parseControlChannelType(raw string) shareddomain.ChannelType {
+	switch shareddomain.ChannelType(strings.ToLower(strings.TrimSpace(raw))) {
+	case shareddomain.ChannelTypeCLI:
+		return shareddomain.ChannelTypeCLI
+	case shareddomain.ChannelTypeWeb:
+		return shareddomain.ChannelTypeWeb
+	case shareddomain.ChannelTypeScheduler:
+		return shareddomain.ChannelTypeScheduler
+	default:
+		return shareddomain.ChannelTypeWeb
+	}
 }
 
 func matchMemoryTaskFilters(task taskdomain.Task, query memoryTaskListQuery) bool {
@@ -2073,6 +2176,26 @@ func parseControlTaskListQuery(r *http.Request) (controlTaskListQuery, int, erro
 			return controlTaskListQuery{}, http.StatusBadRequest, errors.New("status must be queued/running/success/failed/canceled")
 		}
 		query.Status = status
+	}
+	rawTriggerType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("trigger_type")))
+	if rawTriggerType != "" {
+		triggerType := shareddomain.TriggerType(rawTriggerType)
+		switch triggerType {
+		case shareddomain.TriggerTypeUser, shareddomain.TriggerTypeCron, shareddomain.TriggerTypeSystem:
+			query.TriggerType = triggerType
+		default:
+			return controlTaskListQuery{}, http.StatusBadRequest, errors.New("trigger_type must be user/cron/system")
+		}
+	}
+	rawChannelType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("channel_type")))
+	if rawChannelType != "" {
+		channelType := shareddomain.ChannelType(rawChannelType)
+		switch channelType {
+		case shareddomain.ChannelTypeCLI, shareddomain.ChannelTypeWeb, shareddomain.ChannelTypeScheduler:
+			query.ChannelType = channelType
+		default:
+			return controlTaskListQuery{}, http.StatusBadRequest, errors.New("channel_type must be cli/web/scheduler")
+		}
 	}
 	return query, http.StatusOK, nil
 }
