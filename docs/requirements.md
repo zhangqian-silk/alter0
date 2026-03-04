@@ -46,8 +46,8 @@
 | R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | supported | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
 | R-033 | Control 任务观测台基础视图 | planned | 在 `Control` 页面新增 `Tasks` 入口，提供任务列表、详情抽屉与基础筛选能力，形成统一任务观测入口 |
 | R-034 | 任务触发来源标识与溯源视图 | planned | 为任务补齐并展示 `trigger_type/channel_type/channel_id/correlation_id` 等来源字段；定时任务补充 `job_id/job_name/fired_at` |
-| R-035 | 任务日志流式观测与断线续读 | planned | 提供任务日志 SSE 流式观测能力，支持游标断点续读与回补查询，满足长任务实时观测 |
-| R-036 | 任务控制动作与会话回链 | planned | 提供 `retry/cancel` 控制面板与任务-会话双向跳转，保证问题定位与重试闭环 |
+| R-035 | 任务日志流式观测与断线续读 | supported | 提供任务日志 SSE 流式观测能力，支持游标断点续读与回补查询，满足长任务实时观测 |
+| R-036 | 任务控制动作与会话回链 | supported | 提供 `retry/cancel` 控制面板与任务-会话双向跳转，保证问题定位与重试闭环 |
 
 ## 需求细化（草案）
 
