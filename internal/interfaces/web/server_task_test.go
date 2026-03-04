@@ -20,6 +20,7 @@ import (
 
 type stubWebTaskService struct {
 	shouldAsync bool
+	assessment  taskapp.ComplexityAssessment
 	submitTask  taskdomain.Task
 	submitErr   error
 	items       map[string]taskdomain.Task
@@ -35,8 +36,27 @@ type stubWebTaskService struct {
 	listLogsFn  func(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
 }
 
+func (s *stubWebTaskService) AssessComplexity(_ shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
+	if s.assessment.ExecutionMode != "" {
+		return s.assessment
+	}
+	if s.shouldAsync {
+		return taskapp.ComplexityAssessment{
+			EstimatedDurationSeconds: 42,
+			ComplexityLevel:          taskapp.ComplexityLevelHigh,
+			ExecutionMode:            taskapp.ExecutionModeAsync,
+		}
+	}
+	return taskapp.ComplexityAssessment{
+		EstimatedDurationSeconds: 12,
+		ComplexityLevel:          taskapp.ComplexityLevelLow,
+		ExecutionMode:            taskapp.ExecutionModeStreaming,
+	}
+}
+
 func (s *stubWebTaskService) ShouldRunAsync(_ shareddomain.UnifiedMessage) bool {
-	return s.shouldAsync
+	assessment := s.AssessComplexity(shareddomain.UnifiedMessage{})
+	return assessment.ExecutionMode == taskapp.ExecutionModeAsync
 }
 
 func (s *stubWebTaskService) Submit(_ shareddomain.UnifiedMessage) (taskdomain.Task, error) {
@@ -164,6 +184,24 @@ func TestMessageHandlerReturnsAcceptedForAsyncTask(t *testing.T) {
 	if body.Result.ErrorCode != "task_accepted" {
 		t.Fatalf("expected task_accepted, got %q", body.Result.ErrorCode)
 	}
+	if body.ExecutionMode != taskapp.ExecutionModeAsync {
+		t.Fatalf("expected execution_mode async, got %q", body.ExecutionMode)
+	}
+	if body.EstimatedDurationSeconds <= 30 {
+		t.Fatalf("expected estimated_duration_seconds > 30, got %d", body.EstimatedDurationSeconds)
+	}
+	if body.ComplexityLevel != taskapp.ComplexityLevelHigh {
+		t.Fatalf("expected complexity_level high, got %q", body.ComplexityLevel)
+	}
+	if body.TaskCard == nil {
+		t.Fatalf("expected task card in async response")
+	}
+	if body.TaskCard.TaskID != "task-accepted" {
+		t.Fatalf("expected task card task id task-accepted, got %q", body.TaskCard.TaskID)
+	}
+	if !strings.Contains(body.TaskCard.TaskDetailURL, "/api/control/tasks/task-accepted") {
+		t.Fatalf("expected task detail url in task card, got %q", body.TaskCard.TaskDetailURL)
+	}
 	if orchestrator.lastMessage.MessageID != "" {
 		t.Fatalf("expected orchestrator not called")
 	}
@@ -206,6 +244,12 @@ func TestMessageStreamHandlerReturnsDoneForAsyncTask(t *testing.T) {
 	}
 	if !strings.Contains(body, `"task_id":"task-stream"`) {
 		t.Fatalf("expected task id in done payload, got body %q", body)
+	}
+	if !strings.Contains(body, `"execution_mode":"async"`) {
+		t.Fatalf("expected execution_mode in done payload, got body %q", body)
+	}
+	if !strings.Contains(body, `"task_card":{"notice":"`) {
+		t.Fatalf("expected task_card in done payload, got body %q", body)
 	}
 }
 

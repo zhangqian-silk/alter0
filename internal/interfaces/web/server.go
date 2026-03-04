@@ -66,6 +66,7 @@ type sessionHistoryService interface {
 }
 
 type taskService interface {
+	AssessComplexity(msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment
 	ShouldRunAsync(msg shareddomain.UnifiedMessage) bool
 	Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, error)
 	List(query taskapp.ListQuery) taskapp.TaskPage
@@ -100,10 +101,14 @@ type taskCreateRequest struct {
 }
 
 type messageResponse struct {
-	Result     shareddomain.OrchestrationResult `json:"result"`
-	TaskID     string                           `json:"task_id,omitempty"`
-	TaskStatus string                           `json:"task_status,omitempty"`
-	Error      string                           `json:"error,omitempty"`
+	Result                   shareddomain.OrchestrationResult `json:"result"`
+	TaskID                   string                           `json:"task_id,omitempty"`
+	TaskStatus               string                           `json:"task_status,omitempty"`
+	ExecutionMode            string                           `json:"execution_mode,omitempty"`
+	EstimatedDurationSeconds int                              `json:"estimated_duration_seconds,omitempty"`
+	ComplexityLevel          string                           `json:"complexity_level,omitempty"`
+	TaskCard                 *taskCardResponse                `json:"task_card,omitempty"`
+	Error                    string                           `json:"error,omitempty"`
 }
 
 type taskCreateResponse struct {
@@ -126,9 +131,20 @@ type streamDeltaResponse struct {
 }
 
 type streamDoneResponse struct {
-	Result     shareddomain.OrchestrationResult `json:"result"`
-	TaskID     string                           `json:"task_id,omitempty"`
-	TaskStatus string                           `json:"task_status,omitempty"`
+	Result                   shareddomain.OrchestrationResult `json:"result"`
+	TaskID                   string                           `json:"task_id,omitempty"`
+	TaskStatus               string                           `json:"task_status,omitempty"`
+	ExecutionMode            string                           `json:"execution_mode,omitempty"`
+	EstimatedDurationSeconds int                              `json:"estimated_duration_seconds,omitempty"`
+	ComplexityLevel          string                           `json:"complexity_level,omitempty"`
+	TaskCard                 *taskCardResponse                `json:"task_card,omitempty"`
+}
+
+type taskCardResponse struct {
+	Notice        string `json:"notice"`
+	TaskID        string `json:"task_id"`
+	TaskSummary   string `json:"task_summary"`
+	TaskDetailURL string `json:"task_detail_url"`
 }
 
 type streamErrorResponse struct {
@@ -434,24 +450,35 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.countGateway(string(msg.ChannelType))
-	if task, accepted, submitErr := s.submitAsyncTask(msg); accepted {
+	assessment := s.assessComplexity(msg)
+	if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
+		taskCard := buildTaskCard(msg, task)
 		if submitErr != nil {
 			s.logWebMessageFailure(msg, submitErr)
 			writeJSON(w, http.StatusInternalServerError, messageResponse{
-				Result: asyncAcceptedResult(msg, task),
-				Error:  submitErr.Error(),
+				Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+				ExecutionMode:            assessment.ExecutionMode,
+				EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+				ComplexityLevel:          assessment.ComplexityLevel,
+				TaskCard:                 taskCard,
+				Error:                    submitErr.Error(),
 			})
 			return
 		}
 		writeJSON(w, http.StatusAccepted, messageResponse{
-			Result:     asyncAcceptedResult(msg, task),
-			TaskID:     task.ID,
-			TaskStatus: string(task.Status),
+			Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+			TaskID:                   task.ID,
+			TaskStatus:               string(task.Status),
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
+			TaskCard:                 taskCard,
 		})
 		return
 	}
 
 	result, err := s.orchestrator.Handle(r.Context(), msg)
+	result = attachComplexityMetadata(result, assessment, nil)
 	if err != nil {
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
@@ -466,14 +493,20 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		s.logWebMessageFailure(msg, err)
 		writeJSON(w, statusCode, messageResponse{
-			Result: result,
-			Error:  err.Error(),
+			Result:                   result,
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
+			Error:                    err.Error(),
 		})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, messageResponse{
-		Result: result,
+		Result:                   result,
+		ExecutionMode:            assessment.ExecutionMode,
+		EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+		ComplexityLevel:          assessment.ComplexityLevel,
 	})
 }
 
@@ -511,20 +544,26 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
-	if task, accepted, submitErr := s.submitAsyncTask(msg); accepted {
+	assessment := s.assessComplexity(msg)
+	if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
+		taskCard := buildTaskCard(msg, task)
 		if submitErr != nil {
 			s.logWebMessageFailure(msg, submitErr)
 			_ = writeSSE(w, "error", streamErrorResponse{
 				Error:  submitErr.Error(),
-				Result: asyncAcceptedResult(msg, task),
+				Result: asyncAcceptedResult(msg, task, assessment, taskCard),
 			})
 			flusher.Flush()
 			return
 		}
 		_ = writeSSE(w, "done", streamDoneResponse{
-			Result:     asyncAcceptedResult(msg, task),
-			TaskID:     task.ID,
-			TaskStatus: string(task.Status),
+			Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+			TaskID:                   task.ID,
+			TaskStatus:               string(task.Status),
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
+			TaskCard:                 taskCard,
 		})
 		flusher.Flush()
 		return
@@ -551,6 +590,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 		return nil
 	})
+	result = attachComplexityMetadata(result, assessment, nil)
 	if handleErr != nil {
 		s.logWebMessageFailure(msg, handleErr)
 		_ = writeSSE(w, "error", streamErrorResponse{
@@ -573,7 +613,12 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_ = writeSSE(w, "done", streamDoneResponse{Result: result})
+	_ = writeSSE(w, "done", streamDoneResponse{
+		Result:                   result,
+		ExecutionMode:            assessment.ExecutionMode,
+		EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+		ComplexityLevel:          assessment.ComplexityLevel,
+	})
 	flusher.Flush()
 }
 
@@ -2353,11 +2398,11 @@ func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, i
 	}, http.StatusOK, nil
 }
 
-func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage) (taskdomain.Task, bool, error) {
+func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage, assessment taskapp.ComplexityAssessment) (taskdomain.Task, bool, error) {
 	if s.tasks == nil {
 		return taskdomain.Task{}, false, nil
 	}
-	if !s.tasks.ShouldRunAsync(msg) {
+	if strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) != taskapp.ExecutionModeAsync {
 		return taskdomain.Task{}, false, nil
 	}
 	item, err := s.tasks.Submit(msg)
@@ -2367,19 +2412,103 @@ func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage) (taskdomain.Ta
 	return item, true, nil
 }
 
-func asyncAcceptedResult(msg shareddomain.UnifiedMessage, task taskdomain.Task) shareddomain.OrchestrationResult {
+func (s *Server) assessComplexity(msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
+	if s.tasks == nil {
+		return taskapp.ComplexityAssessment{
+			EstimatedDurationSeconds: 10,
+			ComplexityLevel:          taskapp.ComplexityLevelLow,
+			ExecutionMode:            taskapp.ExecutionModeStreaming,
+		}
+	}
+	return s.tasks.AssessComplexity(msg)
+}
+
+func buildTaskCard(msg shareddomain.UnifiedMessage, task taskdomain.Task) *taskCardResponse {
+	taskID := strings.TrimSpace(task.ID)
+	if taskID == "" {
+		return nil
+	}
+	taskSummary := summaryText(strings.TrimSpace(msg.Content), 120)
+	if taskSummary == "" {
+		taskSummary = "任务摘要待补充"
+	}
+	return &taskCardResponse{
+		Notice:        "当前任务较复杂，已创建后台任务执行，请稍后",
+		TaskID:        taskID,
+		TaskSummary:   taskSummary,
+		TaskDetailURL: "/api/control/tasks/" + taskID,
+	}
+}
+
+func asyncAcceptedResult(
+	msg shareddomain.UnifiedMessage,
+	task taskdomain.Task,
+	assessment taskapp.ComplexityAssessment,
+	taskCard *taskCardResponse,
+) shareddomain.OrchestrationResult {
 	metadata := map[string]string{
 		taskapp.MetadataTaskIDKey: task.ID,
 	}
 	if strings.TrimSpace(string(task.Status)) != "" {
 		metadata[taskapp.MetadataTaskStatusKey] = string(task.Status)
 	}
+	metadata[taskapp.MetadataExecutionMode] = taskapp.ExecutionModeAsync
+	metadata[taskapp.MetadataComplexityLevel] = strings.TrimSpace(assessment.ComplexityLevel)
+	metadata[taskapp.MetadataEstimatedDurationSeconds] = strconv.Itoa(assessment.EstimatedDurationSeconds)
+	if assessment.Fallback {
+		metadata[taskapp.MetadataComplexityFallback] = "true"
+	}
+	output := ""
+	if taskCard != nil {
+		output = taskCard.Notice + "\n"
+		output += "task_id: " + taskCard.TaskID + "\n"
+		output += "task_summary: " + taskCard.TaskSummary + "\n"
+		output += "task_detail_url: " + taskCard.TaskDetailURL
+		metadata["task_summary"] = taskCard.TaskSummary
+		metadata["task_detail_url"] = taskCard.TaskDetailURL
+	}
 	return shareddomain.OrchestrationResult{
 		MessageID: msg.MessageID,
 		SessionID: msg.SessionID,
 		ErrorCode: "task_accepted",
+		Output:    output,
 		Metadata:  metadata,
 	}
+}
+
+func attachComplexityMetadata(
+	result shareddomain.OrchestrationResult,
+	assessment taskapp.ComplexityAssessment,
+	taskCard *taskCardResponse,
+) shareddomain.OrchestrationResult {
+	metadata := cloneStringMap(result.Metadata)
+	metadata[taskapp.MetadataExecutionMode] = strings.TrimSpace(assessment.ExecutionMode)
+	metadata[taskapp.MetadataComplexityLevel] = strings.TrimSpace(assessment.ComplexityLevel)
+	metadata[taskapp.MetadataEstimatedDurationSeconds] = strconv.Itoa(assessment.EstimatedDurationSeconds)
+	if assessment.Fallback {
+		metadata[taskapp.MetadataComplexityFallback] = "true"
+	}
+	if taskCard != nil {
+		metadata["task_summary"] = strings.TrimSpace(taskCard.TaskSummary)
+		metadata["task_detail_url"] = strings.TrimSpace(taskCard.TaskDetailURL)
+	}
+	result.Metadata = metadata
+	return result
+}
+
+func summaryText(content string, maxRunes int) string {
+	if maxRunes <= 0 {
+		maxRunes = 120
+	}
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return ""
+	}
+	runes := []rune(trimmed)
+	if len(runes) <= maxRunes {
+		return trimmed
+	}
+	return string(runes[:maxRunes]) + "..."
 }
 
 func (s *Server) countGateway(channelType string) {
