@@ -186,6 +186,16 @@
 
 #### Traceability
 
+- 实现文件：`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/task/application/service.go`
+- 测试覆盖：`internal/interfaces/web/server_task_test.go`
+- 验证命令：
+  - `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org go test ./internal/interfaces/web ./internal/task/application`
+  - `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org go test ./internal/interfaces/web`
+- 验证记录：
+  - 2026-03-04：`GET /api/control/tasks` 列表项补齐 `trigger_type/channel_type/channel_id/correlation_id`，并对 cron 任务回传 `job_id/job_name/fired_at`。
+  - 2026-03-04：任务详情视图新增 `source` 结构，统一承载触发来源与 cron 调度溯源字段。
+  - 2026-03-04：列表过滤新增 `trigger_type`、`channel_type`，并对非法枚举返回 `400`。
+  - 2026-03-04：`Control -> Tasks` 前端新增来源筛选与溯源字段展示，可在同一列表中区分 `user/cron/system` 触发任务。
 - 核心对象：`trigger_type`、`channel_type`、`channel_id`、`correlation_id`、`job_id`
 - 依赖需求：`R-030`、`R-032`
 - 验证口径：来源字段覆盖率、过滤准确率、cron 溯源完整性
