@@ -27,13 +27,13 @@ const (
 	MetadataTaskArtifact        = "alter0.task.artifact"
 	MetadataTaskIdempotencyKey  = "alter0.task.idempotency_key"
 	MetadataTaskSourceMessageID = "alter0.task.source_message_id"
+	MetadataTaskChannelIDKey    = "alter0.task.channel_id"
+	MetadataTaskChannelTypeKey  = "alter0.task.channel_type"
+	MetadataTaskTriggerTypeKey  = "alter0.task.trigger_type"
+	MetadataTaskUserIDKey       = "alter0.task.user_id"
+	MetadataTaskTraceIDKey      = "alter0.task.trace_id"
+	MetadataTaskCorrelationKey  = "alter0.task.correlation_id"
 
-	metadataTaskChannelIDKey    = "alter0.task.channel_id"
-	metadataTaskChannelTypeKey  = "alter0.task.channel_type"
-	metadataTaskTriggerTypeKey  = "alter0.task.trigger_type"
-	metadataTaskUserIDKey       = "alter0.task.user_id"
-	metadataTaskTraceIDKey      = "alter0.task.trace_id"
-	metadataTaskCorrelationKey  = "alter0.task.correlation_id"
 	defaultLongContentThreshold = 240
 )
 
@@ -427,12 +427,12 @@ func (s *Service) Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, erro
 
 	now := time.Now().UTC()
 	metadata := normalizeTaskRequestMetadata(msg.Metadata)
-	metadata[metadataTaskChannelIDKey] = strings.TrimSpace(msg.ChannelID)
-	metadata[metadataTaskChannelTypeKey] = strings.TrimSpace(string(msg.ChannelType))
-	metadata[metadataTaskTriggerTypeKey] = strings.TrimSpace(string(msg.TriggerType))
-	metadata[metadataTaskUserIDKey] = strings.TrimSpace(msg.UserID)
-	metadata[metadataTaskTraceIDKey] = strings.TrimSpace(msg.TraceID)
-	metadata[metadataTaskCorrelationKey] = strings.TrimSpace(msg.CorrelationID)
+	metadata[MetadataTaskChannelIDKey] = strings.TrimSpace(msg.ChannelID)
+	metadata[MetadataTaskChannelTypeKey] = strings.TrimSpace(string(msg.ChannelType))
+	metadata[MetadataTaskTriggerTypeKey] = strings.TrimSpace(string(msg.TriggerType))
+	metadata[MetadataTaskUserIDKey] = strings.TrimSpace(msg.UserID)
+	metadata[MetadataTaskTraceIDKey] = strings.TrimSpace(msg.TraceID)
+	metadata[MetadataTaskCorrelationKey] = strings.TrimSpace(msg.CorrelationID)
 	sourceMessageID := strings.TrimSpace(metadataValue(metadata, MetadataTaskSourceMessageID))
 	if sourceMessageID == "" {
 		sourceMessageID = strings.TrimSpace(msg.MessageID)
@@ -1315,13 +1315,13 @@ func buildMessageFromTask(task taskdomain.Task) shareddomain.UnifiedMessage {
 	if messageID == "" {
 		messageID = strings.TrimSpace(task.ID) + "-source"
 	}
-	channelID := strings.TrimSpace(metadata[metadataTaskChannelIDKey])
+	channelID := strings.TrimSpace(metadata[MetadataTaskChannelIDKey])
 	if channelID == "" {
 		channelID = "web-default"
 	}
-	channelType := parseChannelType(metadata[metadataTaskChannelTypeKey])
-	triggerType := parseTriggerType(metadata[metadataTaskTriggerTypeKey])
-	traceID := strings.TrimSpace(metadata[metadataTaskTraceIDKey])
+	channelType := parseChannelType(metadata[MetadataTaskChannelTypeKey])
+	triggerType := parseTriggerType(metadata[MetadataTaskTriggerTypeKey])
+	traceID := strings.TrimSpace(metadata[MetadataTaskTraceIDKey])
 	if traceID == "" {
 		traceID = strings.TrimSpace(task.ID) + "-trace"
 	}
@@ -1333,14 +1333,14 @@ func buildMessageFromTask(task taskdomain.Task) shareddomain.UnifiedMessage {
 	return shareddomain.UnifiedMessage{
 		MessageID:     messageID,
 		SessionID:     strings.TrimSpace(task.SessionID),
-		UserID:        strings.TrimSpace(metadata[metadataTaskUserIDKey]),
+		UserID:        strings.TrimSpace(metadata[MetadataTaskUserIDKey]),
 		ChannelID:     channelID,
 		ChannelType:   channelType,
 		TriggerType:   triggerType,
 		Content:       strings.TrimSpace(task.RequestContent),
 		Metadata:      metadata,
 		TraceID:       traceID,
-		CorrelationID: strings.TrimSpace(metadata[metadataTaskCorrelationKey]),
+		CorrelationID: strings.TrimSpace(metadata[MetadataTaskCorrelationKey]),
 		ReceivedAt:    receivedAt,
 	}
 }
