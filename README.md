@@ -194,8 +194,6 @@ go test ./...
 go test ./...
 ```
 
-受保护分支开启 `Commits must have verified signatures` 时，自动化提交流程需使用 GitHub App API 生成 `Verified` 提交，详见：`docs/github-app-submission.md`。
-
 ## License
 
 MIT, see [LICENSE](./LICENSE).
