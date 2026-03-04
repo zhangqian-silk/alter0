@@ -103,6 +103,10 @@ const I18N = {
     "status.done": "Done",
     "status.enabled": "Enabled",
     "status.disabled": "Disabled",
+    "status.queued": "Queued",
+    "status.running": "Running",
+    "status.success": "Success",
+    "status.canceled": "Canceled",
     "field.type": "Type",
     "field.description": "Description",
     "field.name": "Name",
@@ -117,6 +121,16 @@ const I18N = {
     "field.updated": "Updated",
     "field.date": "Date",
     "field.read_only": "Mode",
+    "field.status": "Status",
+    "field.task_type": "Task Type",
+    "field.goal": "Goal",
+    "field.result": "Result",
+    "field.finished": "Finished",
+    "field.progress": "Progress",
+    "field.retry_count": "Retry Count",
+    "field.source_message": "Source Message",
+    "field.finished_at": "Finished At",
+    "field.tags": "Tags",
     
     // Routes
     "route.chat.title": "Chat",
@@ -131,9 +145,10 @@ const I18N = {
     "route.cron.subtitle": "View scheduled jobs",
     "route.cron.empty": "No Cron Jobs available.",
     "route.memory.title": "Memory",
-    "route.memory.subtitle": "Read-only memory view for long-term, daily, SOUL.md and specification",
+    "route.memory.subtitle": "Summary-first memory view with task history drill-down",
     "route.memory.tab.long_term": "Long-Term",
     "route.memory.tab.daily": "Daily",
+    "route.memory.tab.tasks": "Task History",
     "route.memory.tab.mandatory": "SOUL.md",
     "route.memory.tab.specification": "Specification",
     "route.memory.empty.long_term": "No long-term memory file available.",
@@ -144,6 +159,28 @@ const I18N = {
     "route.memory.daily.source": "Source directory",
     "route.memory.daily.summary": "Summary",
     "route.memory.spec.section.default": "Document",
+    "route.memory.tasks.empty": "No task history.",
+    "route.memory.tasks.filter.status": "Status",
+    "route.memory.tasks.filter.task_type": "Task Type",
+    "route.memory.tasks.filter.start_at": "Start",
+    "route.memory.tasks.filter.end_at": "End",
+    "route.memory.tasks.filter.apply": "Apply",
+    "route.memory.tasks.filter.reset": "Reset",
+    "route.memory.tasks.open_detail": "View Detail",
+    "route.memory.tasks.detail.title": "Task Detail",
+    "route.memory.tasks.detail.empty": "Select a task summary to view detail.",
+    "route.memory.tasks.logs.load": "Load Logs",
+    "route.memory.tasks.logs.more": "Load More Logs",
+    "route.memory.tasks.page.label": "Page",
+    "route.memory.tasks.page.next": "Next Page",
+    "route.memory.tasks.logs.empty": "No logs available.",
+    "route.memory.tasks.artifacts.load": "Load Artifacts",
+    "route.memory.tasks.artifacts.empty": "No artifacts available.",
+    "route.memory.tasks.back": "Back to Summary",
+    "route.memory.tasks.rebuild": "Rebuild Summary",
+    "route.memory.tasks.rebuild_ok": "Summary rebuilt.",
+    "route.memory.tasks.rebuild_fail": "Summary rebuild failed: {error}",
+    "route.memory.tasks.logs_hint": "Logs unavailable. You can rebuild summary.",
     "route.skills.title": "Skills",
     "route.skills.subtitle": "Skills configuration",
     "route.skills.empty": "No Skills available.",
@@ -220,6 +257,10 @@ const I18N = {
     "status.done": "完成",
     "status.enabled": "启用",
     "status.disabled": "停用",
+    "status.queued": "排队中",
+    "status.running": "运行中",
+    "status.success": "成功",
+    "status.canceled": "已取消",
     "field.type": "类型",
     "field.description": "描述",
     "field.name": "名称",
@@ -234,6 +275,16 @@ const I18N = {
     "field.updated": "更新时间",
     "field.date": "日期",
     "field.read_only": "模式",
+    "field.status": "状态",
+    "field.task_type": "任务类型",
+    "field.goal": "目标",
+    "field.result": "结果",
+    "field.finished": "完成时间",
+    "field.progress": "进度",
+    "field.retry_count": "重试次数",
+    "field.source_message": "源消息",
+    "field.finished_at": "完成于",
+    "field.tags": "标签",
     
     // Routes
     "route.chat.title": "对话",
@@ -248,9 +299,10 @@ const I18N = {
     "route.cron.subtitle": "查看计划任务",
     "route.cron.empty": "暂无定时任务。",
     "route.memory.title": "记忆",
-    "route.memory.subtitle": "统一只读查看长期记忆、天级记忆、SOUL.md 与说明文档",
+    "route.memory.subtitle": "任务摘要优先展示，支持按需下钻日志与产物",
     "route.memory.tab.long_term": "长期记忆",
     "route.memory.tab.daily": "天级记忆",
+    "route.memory.tab.tasks": "任务历史",
     "route.memory.tab.mandatory": "SOUL.md",
     "route.memory.tab.specification": "说明文档",
     "route.memory.empty.long_term": "暂无长期记忆文件。",
@@ -261,6 +313,28 @@ const I18N = {
     "route.memory.daily.source": "来源目录",
     "route.memory.daily.summary": "摘要",
     "route.memory.spec.section.default": "文档内容",
+    "route.memory.tasks.empty": "暂无任务历史。",
+    "route.memory.tasks.filter.status": "状态",
+    "route.memory.tasks.filter.task_type": "任务类型",
+    "route.memory.tasks.filter.start_at": "开始时间",
+    "route.memory.tasks.filter.end_at": "结束时间",
+    "route.memory.tasks.filter.apply": "筛选",
+    "route.memory.tasks.filter.reset": "重置",
+    "route.memory.tasks.open_detail": "查看详情",
+    "route.memory.tasks.detail.title": "任务详情",
+    "route.memory.tasks.detail.empty": "选择一条任务摘要查看详情。",
+    "route.memory.tasks.logs.load": "加载日志",
+    "route.memory.tasks.logs.more": "加载更多日志",
+    "route.memory.tasks.page.label": "页码",
+    "route.memory.tasks.page.next": "下一页",
+    "route.memory.tasks.logs.empty": "暂无日志。",
+    "route.memory.tasks.artifacts.load": "加载产物",
+    "route.memory.tasks.artifacts.empty": "暂无产物。",
+    "route.memory.tasks.back": "返回摘要",
+    "route.memory.tasks.rebuild": "重建摘要",
+    "route.memory.tasks.rebuild_ok": "摘要重建完成。",
+    "route.memory.tasks.rebuild_fail": "摘要重建失败：{error}",
+    "route.memory.tasks.logs_hint": "日志不可用，可执行摘要重建。",
     "route.skills.title": "技能",
     "route.skills.subtitle": "技能配置",
     "route.skills.empty": "暂无可用技能。",
@@ -1646,6 +1720,43 @@ function formatDateTime(value) {
   });
 }
 
+function formatTaskStatus(value) {
+  const status = String(value || "").trim().toLowerCase();
+  if (!status) {
+    return "-";
+  }
+  const key = `status.${status}`;
+  const translated = t(key);
+  return translated === key ? status : translated;
+}
+
+function escapeQueryValue(value) {
+  return encodeURIComponent(String(value ?? "").trim());
+}
+
+function taskHistoryQuery(filters = {}, page = 1, pageSize = 10) {
+  const params = [];
+  params.push(`page=${Math.max(page, 1)}`);
+  params.push(`page_size=${Math.max(pageSize, 1)}`);
+  if (filters.status) {
+    params.push(`status=${escapeQueryValue(filters.status)}`);
+  }
+  if (filters.taskType) {
+    params.push(`task_type=${escapeQueryValue(filters.taskType.toLowerCase())}`);
+  }
+  if (filters.startAt) {
+    params.push(`start_at=${escapeQueryValue(filters.startAt)}`);
+  }
+  if (filters.endAt) {
+    params.push(`end_at=${escapeQueryValue(filters.endAt)}`);
+  }
+  return `/api/memory/tasks?${params.join("&")}`;
+}
+
+function taskSummaryAnchorID(taskID) {
+  return `task-summary-${String(taskID || "").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
 function summarizeMemoryContent(content) {
   const text = typeof content === "string" ? content.trim() : "";
   if (!text) {
@@ -1804,6 +1915,292 @@ function renderDailyMemoryCards(payload) {
   }).join("");
 }
 
+function renderTaskSummaryCards(payload) {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.memory.tasks.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const taskID = typeof item?.task_id === "string" ? item.task_id : "-";
+    const taskType = typeof item?.task_type === "string" ? item.task_type : "-";
+    const goal = typeof item?.goal === "string" ? item.goal : "-";
+    const result = typeof item?.result === "string" ? item.result : "-";
+    const status = typeof item?.status === "string" ? item.status : "";
+    const finishedAt = typeof item?.finished_at === "string" ? item.finished_at : "";
+    const tags = Array.isArray(item?.tags) ? item.tags : [];
+    const anchorID = taskSummaryAnchorID(taskID);
+    return `<article class="task-summary-card" id="${escapeHTML(anchorID)}" data-task-summary-id="${escapeHTML(taskID)}">
+      <header class="task-summary-head">
+        <h5>${escapeHTML(taskID)}</h5>
+        <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
+      </header>
+      <div class="task-summary-meta">
+        <p><span>${t("field.task_type")}</span><strong>${escapeHTML(normalizeText(taskType))}</strong></p>
+        <p><span>${t("field.goal")}</span><strong>${escapeHTML(normalizeText(goal))}</strong></p>
+        <p><span>${t("field.result")}</span><strong>${escapeHTML(normalizeText(result))}</strong></p>
+        <p><span>${t("field.finished")}</span><strong>${escapeHTML(formatDateTime(finishedAt))}</strong></p>
+        <p><span>${t("field.tags")}</span><strong>${escapeHTML(tags.length ? tags.join(", ") : "-")}</strong></p>
+      </div>
+      <button class="task-summary-open" type="button" data-task-open="${escapeHTML(taskID)}">${t("route.memory.tasks.open_detail")}</button>
+    </article>`;
+  }).join("");
+}
+
+function renderTaskSummaryPagination(payload) {
+  const pagination = payload?.pagination || {};
+  const hasNext = Boolean(pagination?.has_next);
+  const page = Number(pagination?.page || 1);
+  const total = Number(pagination?.total || 0);
+  return `<div class="task-summary-pagination">
+    <p><span>${t("field.messages")}</span><strong>${escapeHTML(total)}</strong></p>
+    <p><span>${t("route.memory.tasks.page.label")}</span><strong>${escapeHTML(page)}</strong></p>
+    <button class="task-summary-next" type="button" data-task-page-next ${hasNext ? "" : "disabled"}>${t("route.memory.tasks.page.next")}</button>
+  </div>`;
+}
+
+function renderTaskDetail(meta, refs) {
+  const taskID = typeof meta?.task_id === "string" ? meta.task_id : "-";
+  const status = typeof meta?.status === "string" ? meta.status : "";
+  const taskType = typeof meta?.task_type === "string" ? meta.task_type : "-";
+  const refsList = Array.isArray(refs) ? refs : [];
+  const refsBody = refsList.length
+    ? `<ul class="task-detail-refs">
+      ${refsList.map((item) => `<li><strong>${escapeHTML(normalizeText(item.tier))}</strong><span>${escapeHTML(normalizeText(item.date))}</span><code>${escapeHTML(normalizeText(item.path))}</code></li>`).join("")}
+    </ul>`
+    : `<p class="route-empty">-</p>`;
+  return `<section class="task-detail-card" data-task-detail-id="${escapeHTML(taskID)}">
+    <header class="task-detail-head">
+      <h5>${escapeHTML(taskID)}</h5>
+      <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
+    </header>
+    <div class="task-detail-meta">
+      <p><span>${t("field.task_type")}</span><strong>${escapeHTML(normalizeText(taskType))}</strong></p>
+      <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(meta?.session_id))}</strong></p>
+      <p><span>${t("field.source_message")}</span><strong>${escapeHTML(normalizeText(meta?.source_message_id))}</strong></p>
+      <p><span>${t("field.progress")}</span><strong>${escapeHTML(normalizeText(meta?.progress))}</strong></p>
+      <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(normalizeText(meta?.retry_count))}</strong></p>
+      <p><span>${t("field.created")}</span><strong>${escapeHTML(formatDateTime(meta?.created_at))}</strong></p>
+      <p><span>${t("field.finished_at")}</span><strong>${escapeHTML(formatDateTime(meta?.finished_at))}</strong></p>
+    </div>
+    <section class="task-detail-section">
+      <h6>Summary Refs</h6>
+      ${refsBody}
+    </section>
+    <div class="task-detail-actions">
+      <button type="button" data-task-load-logs>${t("route.memory.tasks.logs.load")}</button>
+      <button type="button" data-task-load-artifacts>${t("route.memory.tasks.artifacts.load")}</button>
+      <button type="button" data-task-rebuild>${t("route.memory.tasks.rebuild")}</button>
+      <button type="button" data-task-back>${t("route.memory.tasks.back")}</button>
+    </div>
+    <section class="task-detail-section">
+      <h6>Logs</h6>
+      <div class="task-detail-logs" data-task-logs>${t("route.memory.tasks.logs.empty")}</div>
+    </section>
+    <section class="task-detail-section">
+      <h6>Artifacts</h6>
+      <div class="task-detail-artifacts" data-task-artifacts>${t("route.memory.tasks.artifacts.empty")}</div>
+    </section>
+  </section>`;
+}
+
+function renderTaskLogs(payload) {
+  if (payload?.error_code) {
+    return `<p class="route-error">${escapeHTML(t("route.memory.tasks.logs_hint"))}</p>`;
+  }
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.memory.tasks.logs.empty")}</p>`;
+  }
+  const list = `<ul class="task-detail-log-list">
+    ${items.map((item) => `<li>
+      <p><strong>#${escapeHTML(normalizeText(item.seq))}</strong><span>${escapeHTML(normalizeText(item.stage))}</span><span>${escapeHTML(normalizeText(formatTaskStatus(item.level)))}</span><span>${escapeHTML(formatDateTime(item.created_at || item.timestamp))}</span></p>
+      <pre>${escapeHTML(normalizeText(item.message))}</pre>
+    </li>`).join("")}
+  </ul>`;
+  if (!payload?.has_more) {
+    return list;
+  }
+  return `${list}<button type="button" class="task-summary-next" data-task-load-more-logs>${t("route.memory.tasks.logs.more")}</button>`;
+}
+
+function renderTaskArtifacts(payload) {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.memory.tasks.artifacts.empty")}</p>`;
+  }
+  return `<ul class="task-detail-artifact-list">
+    ${items.map((item) => `<li>
+      <p><strong>${escapeHTML(normalizeText(item.artifact_type || item.name))}</strong><span>${escapeHTML(formatDateTime(item.created_at))}</span></p>
+      <p>${escapeHTML(normalizeText(item.summary || item.uri || item.content_type))}</p>
+    </li>`).join("")}
+  </ul>`;
+}
+
+function parseDateTimeFilter(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  return parsed.toISOString();
+}
+
+function bindTaskHistoryView(container, initialPayload) {
+  const view = container.querySelector("[data-task-history-view]");
+  if (!view) {
+    return;
+  }
+  const listNode = view.querySelector("[data-task-summary-list]");
+  const paginationNode = view.querySelector("[data-task-summary-pagination]");
+  const detailNode = view.querySelector("[data-task-detail]");
+  const form = view.querySelector("[data-task-filter-form]");
+  const state = {
+    filters: { status: "", taskType: "", startAt: "", endAt: "" },
+    page: 1,
+    pageSize: 10,
+    activeTaskID: "",
+    nextLogCursor: 0
+  };
+
+  const paintList = (payload) => {
+    listNode.innerHTML = renderTaskSummaryCards(payload);
+    paginationNode.innerHTML = renderTaskSummaryPagination(payload);
+  };
+
+  const loadList = async () => {
+    const payload = await fetchJSON(taskHistoryQuery(state.filters, state.page, state.pageSize));
+    paintList(payload);
+  };
+
+  const loadDetail = async (taskID) => {
+    state.activeTaskID = taskID;
+    state.nextLogCursor = 0;
+    const payload = await fetchJSON(`/api/memory/tasks/${encodeURIComponent(taskID)}`);
+    detailNode.innerHTML = renderTaskDetail(payload?.meta, payload?.summary_refs);
+  };
+
+  const loadLogs = async (append = false) => {
+    if (!state.activeTaskID) {
+      return;
+    }
+    const cursor = append ? state.nextLogCursor : 0;
+    const payload = await fetchJSON(`/api/memory/tasks/${encodeURIComponent(state.activeTaskID)}/logs?cursor=${cursor}&limit=20`);
+    const target = detailNode.querySelector("[data-task-logs]");
+    if (!target) {
+      return;
+    }
+    if (!append) {
+      target.innerHTML = renderTaskLogs(payload);
+    } else {
+      const current = target.querySelector(".task-detail-log-list");
+      const incoming = Array.isArray(payload?.items) ? payload.items : [];
+      if (current && incoming.length) {
+        const fragment = incoming.map((item) => `<li>
+          <p><strong>#${escapeHTML(normalizeText(item.seq))}</strong><span>${escapeHTML(normalizeText(item.stage))}</span><span>${escapeHTML(normalizeText(formatTaskStatus(item.level)))}</span><span>${escapeHTML(formatDateTime(item.created_at || item.timestamp))}</span></p>
+          <pre>${escapeHTML(normalizeText(item.message))}</pre>
+        </li>`).join("");
+        current.insertAdjacentHTML("beforeend", fragment);
+      } else {
+        target.innerHTML = renderTaskLogs(payload);
+      }
+      const moreButton = target.querySelector("[data-task-load-more-logs]");
+      if (moreButton && !payload?.has_more) {
+        moreButton.remove();
+      }
+    }
+    state.nextLogCursor = Number(payload?.next_cursor || 0);
+  };
+
+  const loadArtifacts = async () => {
+    if (!state.activeTaskID) {
+      return;
+    }
+    const payload = await fetchJSON(`/api/memory/tasks/${encodeURIComponent(state.activeTaskID)}/artifacts`);
+    const target = detailNode.querySelector("[data-task-artifacts]");
+    if (!target) {
+      return;
+    }
+    target.innerHTML = renderTaskArtifacts(payload);
+  };
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(form);
+    state.filters.status = String(formData.get("status") || "").trim();
+    state.filters.taskType = String(formData.get("task_type") || "").trim();
+    state.filters.startAt = parseDateTimeFilter(formData.get("start_at"));
+    state.filters.endAt = parseDateTimeFilter(formData.get("end_at"));
+    state.page = 1;
+    await loadList();
+  });
+
+  const resetButton = form.querySelector("[data-task-filter-reset]");
+  if (resetButton) {
+    resetButton.addEventListener("click", async () => {
+      form.reset();
+      state.filters = { status: "", taskType: "", startAt: "", endAt: "" };
+      state.page = 1;
+      await loadList();
+    });
+  }
+
+  view.addEventListener("click", async (event) => {
+    const target = event.target.closest("button");
+    if (!target) {
+      return;
+    }
+    if (target.hasAttribute("data-task-open")) {
+      await loadDetail(target.getAttribute("data-task-open") || "");
+      return;
+    }
+    if (target.hasAttribute("data-task-page-next")) {
+      if (target.disabled) {
+        return;
+      }
+      state.page += 1;
+      await loadList();
+      return;
+    }
+    if (target.hasAttribute("data-task-load-logs")) {
+      await loadLogs(false);
+      return;
+    }
+    if (target.hasAttribute("data-task-load-more-logs")) {
+      await loadLogs(true);
+      return;
+    }
+    if (target.hasAttribute("data-task-load-artifacts")) {
+      await loadArtifacts();
+      return;
+    }
+    if (target.hasAttribute("data-task-rebuild")) {
+      if (!state.activeTaskID) {
+        return;
+      }
+      try {
+        await fetch(`/api/memory/tasks/${encodeURIComponent(state.activeTaskID)}/rebuild-summary`, { method: "POST" });
+        await loadDetail(state.activeTaskID);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown_error";
+        alert(t("route.memory.tasks.rebuild_fail", { error: message }));
+      }
+      return;
+    }
+    if (target.hasAttribute("data-task-back")) {
+      const anchor = document.getElementById(taskSummaryAnchorID(state.activeTaskID));
+      if (anchor) {
+        anchor.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return;
+    }
+  });
+
+  paintList(initialPayload || { items: [], pagination: { page: 1, total: 0, has_next: false } });
+}
+
 function bindMemoryTabSwitch(container) {
   const tabs = container.querySelectorAll("[data-memory-tab]");
   const panels = container.querySelectorAll("[data-memory-panel]");
@@ -1822,12 +2219,17 @@ function bindMemoryTabSwitch(container) {
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => activate(tab.dataset.memoryTab || "long_term"));
   });
-  activate("long_term");
+  const hasTasks = Array.from(tabs).some((tab) => tab.dataset.memoryTab === "tasks");
+  activate(hasTasks ? "tasks" : "long_term");
 }
 
 async function loadMemoryView(container) {
-  const payload = await fetchJSON("/api/agent/memory");
+  const [payload, taskPayload] = await Promise.all([
+    fetchJSON("/api/agent/memory"),
+    fetchJSON(taskHistoryQuery({}, 1, 10))
+  ]);
   const tabs = [
+    { id: "tasks", label: t("route.memory.tab.tasks") },
     { id: "long_term", label: t("route.memory.tab.long_term") },
     { id: "daily", label: t("route.memory.tab.daily") },
     { id: "mandatory", label: t("route.memory.tab.mandatory") },
@@ -1841,6 +2243,35 @@ async function loadMemoryView(container) {
     <div class="memory-tabs" role="tablist" aria-label="${t("route.memory.title")}">
       ${tabs.map((tab) => `<button class="memory-tab" type="button" role="tab" data-memory-tab="${tab.id}" aria-selected="false">${escapeHTML(tab.label)}</button>`).join("")}
     </div>
+    <section class="memory-panel memory-panel-tasks" data-memory-panel="tasks" hidden>
+      <section class="task-history-view" data-task-history-view>
+        <form class="task-filter-form" data-task-filter-form>
+          <label><span>${t("route.memory.tasks.filter.status")}</span>
+            <select name="status">
+              <option value="">-</option>
+              <option value="queued">${t("status.queued")}</option>
+              <option value="running">${t("status.running")}</option>
+              <option value="success">${t("status.success")}</option>
+              <option value="failed">${t("status.failed")}</option>
+              <option value="canceled">${t("status.canceled")}</option>
+            </select>
+          </label>
+          <label><span>${t("route.memory.tasks.filter.task_type")}</span><input type="text" name="task_type" placeholder="release"></label>
+          <label><span>${t("route.memory.tasks.filter.start_at")}</span><input type="datetime-local" name="start_at"></label>
+          <label><span>${t("route.memory.tasks.filter.end_at")}</span><input type="datetime-local" name="end_at"></label>
+          <div class="task-filter-actions">
+            <button type="submit">${t("route.memory.tasks.filter.apply")}</button>
+            <button type="button" data-task-filter-reset>${t("route.memory.tasks.filter.reset")}</button>
+          </div>
+        </form>
+        <div class="task-summary-list" data-task-summary-list></div>
+        <div class="task-summary-pagination-wrap" data-task-summary-pagination></div>
+        <section class="task-detail-wrap">
+          <h4>${t("route.memory.tasks.detail.title")}</h4>
+          <div class="task-detail-body" data-task-detail>${t("route.memory.tasks.detail.empty")}</div>
+        </section>
+      </section>
+    </section>
     <section class="memory-panel" data-memory-panel="long_term" hidden>
       ${renderMemoryDocumentCard(
         t("route.memory.tab.long_term"),
@@ -1871,6 +2302,7 @@ async function loadMemoryView(container) {
     </section>
   </section>`;
   bindMemoryTabSwitch(container);
+  bindTaskHistoryView(container, taskPayload);
 }
 
 async function loadPlaceholderView(container) {
