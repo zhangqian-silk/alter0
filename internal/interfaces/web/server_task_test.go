@@ -28,6 +28,7 @@ type stubWebTaskService struct {
 	artifacts   map[string][]taskdomain.TaskArtifact
 	listPage    taskapp.TaskPage
 	lastList    taskapp.ListQuery
+	listFn      func(query taskapp.ListQuery) taskapp.TaskPage
 	cancelErr   error
 	retryErr    error
 	getFn       func(taskID string) (taskdomain.Task, bool)
@@ -47,6 +48,9 @@ func (s *stubWebTaskService) Submit(_ shareddomain.UnifiedMessage) (taskdomain.T
 
 func (s *stubWebTaskService) List(query taskapp.ListQuery) taskapp.TaskPage {
 	s.lastList = query
+	if s.listFn != nil {
+		return s.listFn(query)
+	}
 	return s.listPage
 }
 
@@ -582,6 +586,113 @@ func TestControlTaskViewAndActionConstraints(t *testing.T) {
 	}
 	if !strings.Contains(retryRec.Body.String(), `"view"`) {
 		t.Fatalf("expected conflict view payload, got %s", retryRec.Body.String())
+	}
+}
+
+func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
+	now := time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
+	source := []taskdomain.Task{
+		{
+			ID:             "task-a",
+			SessionID:      "session-a",
+			Status:         taskdomain.TaskStatusFailed,
+			Progress:       60,
+			RetryCount:     1,
+			CreatedAt:      now.Add(-4 * time.Hour),
+			UpdatedAt:      now.Add(-3 * time.Hour),
+			FinishedAt:     now.Add(-3 * time.Hour),
+			RequestContent: "build report",
+			ErrorCode:      "task_failed",
+		},
+		{
+			ID:             "task-b",
+			SessionID:      "session-a",
+			Status:         taskdomain.TaskStatusFailed,
+			Progress:       80,
+			RetryCount:     0,
+			CreatedAt:      now.Add(-2 * time.Hour),
+			UpdatedAt:      now.Add(-90 * time.Minute),
+			FinishedAt:     now.Add(-90 * time.Minute),
+			RequestContent: "build report",
+			ErrorMessage:   "network timeout",
+		},
+		{
+			ID:             "task-c",
+			SessionID:      "session-b",
+			Status:         taskdomain.TaskStatusRunning,
+			Progress:       30,
+			RetryCount:     0,
+			CreatedAt:      now.Add(-2 * time.Hour),
+			UpdatedAt:      now.Add(-30 * time.Minute),
+			RequestContent: "other session",
+		},
+	}
+	taskSvc := &stubWebTaskService{
+		listFn: func(query taskapp.ListQuery) taskapp.TaskPage {
+			items := make([]taskdomain.Task, 0, len(source))
+			for _, item := range source {
+				if query.SessionID != "" && item.SessionID != query.SessionID {
+					continue
+				}
+				if query.Status.IsValid() && item.Status != query.Status {
+					continue
+				}
+				items = append(items, item)
+			}
+			return taskapp.TaskPage{
+				Items: items,
+				Pagination: taskapp.Pagination{
+					Page:     query.Page,
+					PageSize: query.PageSize,
+					Total:    len(items),
+					HasNext:  false,
+				},
+			}
+		},
+	}
+	server := &Server{
+		tasks:  taskSvc,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/control/tasks?session_id=session-a&status=failed&time_range=2026-03-04T05:00:00Z,2026-03-04T08:00:00Z&page=1&page_size=10", nil)
+	rec := httptest.NewRecorder()
+	server.controlTaskCollectionHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload struct {
+		Items      []controlTaskListItem `json:"items"`
+		Pagination taskapp.Pagination    `json:"pagination"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode control task page failed: %v", err)
+	}
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected 2 tasks in filtered page, got %d", len(payload.Items))
+	}
+	if payload.Items[0].TaskID != "task-b" || payload.Items[1].TaskID != "task-a" {
+		t.Fatalf("expected updated desc order task-b/task-a, got %+v", payload.Items)
+	}
+	if payload.Items[0].Error != "network timeout" {
+		t.Fatalf("expected error_message in list item, got %+v", payload.Items[0])
+	}
+	if payload.Pagination.Total != 2 || payload.Pagination.HasNext {
+		t.Fatalf("unexpected pagination %+v", payload.Pagination)
+	}
+}
+
+func TestControlTaskCollectionRejectsInvalidTimeRange(t *testing.T) {
+	server := &Server{
+		tasks:  &stubWebTaskService{},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/control/tasks?time_range=invalid", nil)
+	rec := httptest.NewRecorder()
+	server.controlTaskCollectionHandler(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
 	}
 }
 

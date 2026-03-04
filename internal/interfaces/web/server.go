@@ -218,6 +218,27 @@ type memoryTaskListQuery struct {
 	PageSize int
 }
 
+type controlTaskListQuery struct {
+	SessionID string
+	Status    taskdomain.TaskStatus
+	StartAt   time.Time
+	EndAt     time.Time
+	Page      int
+	PageSize  int
+}
+
+type controlTaskListItem struct {
+	TaskID     string                `json:"task_id"`
+	SessionID  string                `json:"session_id"`
+	Status     taskdomain.TaskStatus `json:"status"`
+	Progress   int                   `json:"progress"`
+	RetryCount int                   `json:"retry_count"`
+	CreatedAt  time.Time             `json:"created_at"`
+	UpdatedAt  time.Time             `json:"updated_at"`
+	FinishedAt time.Time             `json:"finished_at,omitempty"`
+	Error      string                `json:"error,omitempty"`
+}
+
 type taskControlActionState struct {
 	AllowedStatuses []taskdomain.TaskStatus `json:"allowed_statuses"`
 	Enabled         bool                    `json:"enabled"`
@@ -287,6 +308,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/agent/memory", s.agentMemoryHandler)
 	mux.HandleFunc("/api/memory/tasks", s.memoryTaskCollectionHandler)
 	mux.HandleFunc("/api/memory/tasks/", s.memoryTaskItemHandler)
+	mux.HandleFunc("/api/control/tasks", s.controlTaskCollectionHandler)
 	mux.HandleFunc("/api/control/tasks/", s.controlTaskItemHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
@@ -780,6 +802,49 @@ func (s *Server) controlTaskItemHandler(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+func (s *Server) controlTaskCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.tasks == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	query, statusCode, err := parseControlTaskListQuery(r)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+
+	tasks := s.collectTasksForControl(query)
+	items := make([]controlTaskListItem, 0, len(tasks))
+	for _, item := range tasks {
+		items = append(items, toControlTaskListItem(item))
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+			return items[i].TaskID > items[j].TaskID
+		}
+		return items[i].UpdatedAt.After(items[j].UpdatedAt)
+	})
+
+	from, to := memoryTaskPageBounds(len(items), query.Page, query.PageSize)
+	pageItems := make([]controlTaskListItem, 0, to-from)
+	pageItems = append(pageItems, items[from:to]...)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": pageItems,
+		"pagination": taskapp.Pagination{
+			Page:     query.Page,
+			PageSize: query.PageSize,
+			Total:    len(items),
+			HasNext:  to < len(items),
+		},
+	})
+}
+
 func (s *Server) writeTaskControlError(w http.ResponseWriter, taskID string, err error) {
 	if errors.Is(err, taskapp.ErrTaskNotFound) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
@@ -1098,6 +1163,71 @@ func (s *Server) collectTasksForMemory(status taskdomain.TaskStatus) []taskdomai
 		}
 	}
 	return items
+}
+
+func (s *Server) collectTasksForControl(query controlTaskListQuery) []taskdomain.Task {
+	items := make([]taskdomain.Task, 0, 64)
+	page := 1
+	for {
+		result := s.tasks.List(taskapp.ListQuery{
+			SessionID: query.SessionID,
+			Status:    query.Status,
+			Page:      page,
+			PageSize:  200,
+		})
+		if len(result.Items) == 0 {
+			break
+		}
+		for _, item := range result.Items {
+			at := resolveControlTaskUpdatedAt(item)
+			if !query.StartAt.IsZero() && at.Before(query.StartAt) {
+				continue
+			}
+			if !query.EndAt.IsZero() && at.After(query.EndAt) {
+				continue
+			}
+			items = append(items, item)
+		}
+		if !result.Pagination.HasNext {
+			break
+		}
+		page++
+		if page > 10000 {
+			break
+		}
+	}
+	return items
+}
+
+func toControlTaskListItem(task taskdomain.Task) controlTaskListItem {
+	errorText := strings.TrimSpace(task.ErrorMessage)
+	if errorText == "" {
+		errorText = strings.TrimSpace(task.ErrorCode)
+	}
+	return controlTaskListItem{
+		TaskID:     strings.TrimSpace(task.ID),
+		SessionID:  strings.TrimSpace(task.SessionID),
+		Status:     task.Status,
+		Progress:   task.Progress,
+		RetryCount: task.RetryCount,
+		CreatedAt:  task.CreatedAt.UTC(),
+		UpdatedAt:  resolveControlTaskUpdatedAt(task),
+		FinishedAt: task.FinishedAt.UTC(),
+		Error:      errorText,
+	}
+}
+
+func resolveControlTaskUpdatedAt(task taskdomain.Task) time.Time {
+	if !task.UpdatedAt.IsZero() {
+		return task.UpdatedAt.UTC()
+	}
+	if !task.FinishedAt.IsZero() {
+		return task.FinishedAt.UTC()
+	}
+	if !task.CreatedAt.IsZero() {
+		return task.CreatedAt.UTC()
+	}
+	return time.Now().UTC()
 }
 
 func matchMemoryTaskFilters(task taskdomain.Task, query memoryTaskListQuery) bool {
@@ -1855,6 +1985,93 @@ func parseMemoryTaskListQuery(r *http.Request) (memoryTaskListQuery, int, error)
 		query.Status = status
 	}
 	return query, http.StatusOK, nil
+}
+
+func parseControlTaskListQuery(r *http.Request) (controlTaskListQuery, int, error) {
+	page, err := parsePositiveInt(r.URL.Query().Get("page"))
+	if err != nil {
+		return controlTaskListQuery{}, http.StatusBadRequest, errors.New("page must be a positive integer")
+	}
+	pageSize, err := parsePositiveInt(r.URL.Query().Get("page_size"))
+	if err != nil {
+		return controlTaskListQuery{}, http.StatusBadRequest, errors.New("page_size must be a positive integer")
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+
+	startAt, endAt, statusCode, err := parseTimeRangeQuery(r)
+	if err != nil {
+		return controlTaskListQuery{}, statusCode, err
+	}
+
+	rawTimeRange := strings.TrimSpace(r.URL.Query().Get("time_range"))
+	if rawTimeRange != "" {
+		parsedStart, parsedEnd, parseErr := parseControlTimeRange(rawTimeRange)
+		if parseErr != nil {
+			return controlTaskListQuery{}, http.StatusBadRequest, parseErr
+		}
+		if !parsedStart.IsZero() {
+			startAt = parsedStart
+		}
+		if !parsedEnd.IsZero() {
+			endAt = parsedEnd
+		}
+	}
+
+	if !startAt.IsZero() && !endAt.IsZero() && endAt.Before(startAt) {
+		return controlTaskListQuery{}, http.StatusBadRequest, errors.New("time range is invalid")
+	}
+
+	query := controlTaskListQuery{
+		SessionID: strings.TrimSpace(r.URL.Query().Get("session_id")),
+		StartAt:   startAt,
+		EndAt:     endAt,
+		Page:      page,
+		PageSize:  pageSize,
+	}
+	rawStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
+	if rawStatus != "" {
+		status := taskdomain.TaskStatus(rawStatus)
+		if !status.IsValid() {
+			return controlTaskListQuery{}, http.StatusBadRequest, errors.New("status must be queued/running/success/failed/canceled")
+		}
+		query.Status = status
+	}
+	return query, http.StatusOK, nil
+}
+
+func parseControlTimeRange(raw string) (time.Time, time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	now := time.Now().UTC()
+	switch strings.ToLower(trimmed) {
+	case "last_1h":
+		return now.Add(-1 * time.Hour), now, nil
+	case "last_24h":
+		return now.Add(-24 * time.Hour), now, nil
+	case "last_7d":
+		return now.Add(-7 * 24 * time.Hour), now, nil
+	}
+
+	parts := strings.Split(trimmed, ",")
+	if len(parts) != 2 {
+		return time.Time{}, time.Time{}, errors.New("time_range must be last_1h/last_24h/last_7d or start,end in RFC3339")
+	}
+	startAt, err := parseRFC3339Time(parts[0])
+	if err != nil {
+		return time.Time{}, time.Time{}, errors.New("time_range start must be RFC3339 format")
+	}
+	endAt, err := parseRFC3339Time(parts[1])
+	if err != nil {
+		return time.Time{}, time.Time{}, errors.New("time_range end must be RFC3339 format")
+	}
+	return startAt, endAt, nil
 }
 
 func parseTaskLogQuery(r *http.Request) (int, int, int, error) {

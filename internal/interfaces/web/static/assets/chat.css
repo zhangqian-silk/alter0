@@ -1517,6 +1517,61 @@ body {
   font-size: 11px;
 }
 
+.control-task-view {
+  display: grid;
+  gap: 14px;
+}
+
+.control-task-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 480px);
+}
+
+.control-task-drawer-backdrop {
+  border: none;
+  margin: 0;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.36);
+  cursor: pointer;
+}
+
+.control-task-drawer-panel {
+  background: #ffffff;
+  border-left: 1px solid var(--line-soft);
+  box-shadow: -12px 0 28px -18px rgba(15, 23, 42, 0.45);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  transform: translateX(100%);
+  transition: transform 180ms ease;
+}
+
+.control-task-drawer.open .control-task-drawer-panel {
+  transform: translateX(0);
+}
+
+.control-task-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.control-task-drawer-head h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-strong);
+}
+
+.control-task-drawer-body {
+  overflow: auto;
+  padding: 14px;
+}
+
 .nav-tooltip {
   position: fixed;
   z-index: 90;
@@ -1787,5 +1842,13 @@ body {
 
   .task-summary-pagination {
     flex-wrap: wrap;
+  }
+
+  .control-task-drawer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .control-task-drawer-panel {
+    max-width: none;
   }
 }

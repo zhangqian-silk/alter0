@@ -47,6 +47,7 @@ const I18N = {
     "nav.chat": "Chat",
     "nav.channels": "Channels",
     "nav.sessions": "Sessions",
+    "nav.tasks": "Tasks",
     "nav.cron-jobs": "Cron Jobs",
     "nav.memory": "Memory",
     "nav.skills": "Skills",
@@ -131,6 +132,7 @@ const I18N = {
     "field.source_message": "Source Message",
     "field.finished_at": "Finished At",
     "field.tags": "Tags",
+    "field.time_range": "Time Range",
     
     // Routes
     "route.chat.title": "Chat",
@@ -141,6 +143,21 @@ const I18N = {
     "route.sessions.title": "Sessions",
     "route.sessions.subtitle": "View current session list",
     "route.sessions.empty": "No local sessions available.",
+    "route.tasks.title": "Tasks",
+    "route.tasks.subtitle": "Observe runtime tasks with status and timeline filters",
+    "route.tasks.empty": "No tasks found.",
+    "route.tasks.filter.session": "Session ID",
+    "route.tasks.filter.status": "Status",
+    "route.tasks.filter.start_at": "Start",
+    "route.tasks.filter.end_at": "End",
+    "route.tasks.filter.apply": "Apply",
+    "route.tasks.filter.reset": "Reset",
+    "route.tasks.open_detail": "Open Drawer",
+    "route.tasks.drawer.title": "Task Detail",
+    "route.tasks.drawer.empty": "Select a task to view detail.",
+    "route.tasks.drawer.close": "Close",
+    "route.tasks.page.label": "Page",
+    "route.tasks.page.next": "Next Page",
     "route.cron.title": "Cron Jobs",
     "route.cron.subtitle": "View scheduled jobs",
     "route.cron.empty": "No Cron Jobs available.",
@@ -201,6 +218,7 @@ const I18N = {
     "nav.chat": "对话",
     "nav.channels": "通道",
     "nav.sessions": "会话列表",
+    "nav.tasks": "任务观测",
     "nav.cron-jobs": "定时任务",
     "nav.memory": "记忆",
     "nav.skills": "技能",
@@ -285,6 +303,7 @@ const I18N = {
     "field.source_message": "源消息",
     "field.finished_at": "完成于",
     "field.tags": "标签",
+    "field.time_range": "时间范围",
     
     // Routes
     "route.chat.title": "对话",
@@ -295,6 +314,21 @@ const I18N = {
     "route.sessions.title": "会话列表",
     "route.sessions.subtitle": "查看当前会话列表",
     "route.sessions.empty": "暂无本地会话。",
+    "route.tasks.title": "任务观测",
+    "route.tasks.subtitle": "基于会话、状态和时间范围观测运行任务",
+    "route.tasks.empty": "暂无任务记录。",
+    "route.tasks.filter.session": "会话 ID",
+    "route.tasks.filter.status": "状态",
+    "route.tasks.filter.start_at": "开始时间",
+    "route.tasks.filter.end_at": "结束时间",
+    "route.tasks.filter.apply": "筛选",
+    "route.tasks.filter.reset": "重置",
+    "route.tasks.open_detail": "查看详情",
+    "route.tasks.drawer.title": "任务详情",
+    "route.tasks.drawer.empty": "选择任务后展示详情。",
+    "route.tasks.drawer.close": "关闭",
+    "route.tasks.page.label": "页码",
+    "route.tasks.page.next": "下一页",
     "route.cron.title": "定时任务",
     "route.cron.subtitle": "查看计划任务",
     "route.cron.empty": "暂无定时任务。",
@@ -366,6 +400,11 @@ const ROUTES = {
     key: "sessions",
     mode: "page",
     loader: loadSessionsView
+  },
+  tasks: {
+    key: "tasks",
+    mode: "page",
+    loader: loadControlTasksView
   },
   "cron-jobs": {
     key: "cron",
@@ -1704,6 +1743,241 @@ async function loadSessionsView(container) {
       true
     )
   );
+}
+
+function controlTaskListQuery(filters = {}, page = 1, pageSize = 20) {
+  const params = [];
+  params.push(`page=${Math.max(page, 1)}`);
+  params.push(`page_size=${Math.max(pageSize, 1)}`);
+  if (filters.sessionID) {
+    params.push(`session_id=${escapeQueryValue(filters.sessionID)}`);
+  }
+  if (filters.status) {
+    params.push(`status=${escapeQueryValue(filters.status)}`);
+  }
+  if (filters.startAt && filters.endAt) {
+    params.push(`time_range=${escapeQueryValue(`${filters.startAt},${filters.endAt}`)}`);
+  } else {
+    if (filters.startAt) {
+      params.push(`start_at=${escapeQueryValue(filters.startAt)}`);
+    }
+    if (filters.endAt) {
+      params.push(`end_at=${escapeQueryValue(filters.endAt)}`);
+    }
+  }
+  return `/api/control/tasks?${params.join("&")}`;
+}
+
+function renderControlTaskList(payload) {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.tasks.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const taskID = typeof item?.task_id === "string" ? item.task_id : "-";
+    const sessionID = typeof item?.session_id === "string" ? item.session_id : "-";
+    const status = typeof item?.status === "string" ? item.status : "";
+    const progress = Number(item?.progress || 0);
+    const retryCount = Number(item?.retry_count || 0);
+    const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
+    const error = typeof item?.error === "string" ? item.error.trim() : "";
+    const errorRow = error
+      ? `<p><span>Error</span><strong>${escapeHTML(normalizeText(error))}</strong></p>`
+      : "";
+    return `<article class="task-summary-card" data-control-task-id="${escapeHTML(taskID)}">
+      <header class="task-summary-head">
+        <h5>${escapeHTML(taskID)}</h5>
+        <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
+      </header>
+      <div class="task-summary-meta">
+        <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(sessionID))}</strong></p>
+        <p><span>${t("field.progress")}</span><strong>${escapeHTML(`${progress}%`)}</strong></p>
+        <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(retryCount)}</strong></p>
+        <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(updatedAt))}</strong></p>
+        ${errorRow}
+      </div>
+      <button class="task-summary-open" type="button" data-control-task-open="${escapeHTML(taskID)}">${t("route.tasks.open_detail")}</button>
+    </article>`;
+  }).join("");
+}
+
+function renderControlTaskPagination(payload) {
+  const pagination = payload?.pagination || {};
+  const hasNext = Boolean(pagination?.has_next);
+  const page = Number(pagination?.page || 1);
+  const total = Number(pagination?.total || 0);
+  return `<div class="task-summary-pagination">
+    <p><span>${t("field.messages")}</span><strong>${escapeHTML(total)}</strong></p>
+    <p><span>${t("route.tasks.page.label")}</span><strong>${escapeHTML(page)}</strong></p>
+    <button class="task-summary-next" type="button" data-control-task-page-next ${hasNext ? "" : "disabled"}>${t("route.tasks.page.next")}</button>
+  </div>`;
+}
+
+function renderControlTaskDetail(view) {
+  const task = view?.task || {};
+  const link = view?.link || {};
+  const taskID = typeof task?.id === "string" ? task.id : "-";
+  const status = typeof task?.status === "string" ? task.status : "";
+  const errorText = normalizeText(task?.error_message || task?.error_code || "-");
+  return `<section class="task-detail-card" data-control-task-detail-id="${escapeHTML(taskID)}">
+    <header class="task-detail-head">
+      <h5>${escapeHTML(taskID)}</h5>
+      <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
+    </header>
+    <div class="task-detail-meta">
+      <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(task?.session_id))}</strong></p>
+      <p><span>${t("field.task_type")}</span><strong>${escapeHTML(normalizeText(task?.task_type))}</strong></p>
+      <p><span>${t("field.progress")}</span><strong>${escapeHTML(normalizeText(task?.progress))}</strong></p>
+      <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(normalizeText(task?.retry_count))}</strong></p>
+      <p><span>${t("field.created")}</span><strong>${escapeHTML(formatDateTime(task?.created_at))}</strong></p>
+      <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(task?.updated_at))}</strong></p>
+      <p><span>${t("field.finished")}</span><strong>${escapeHTML(formatDateTime(task?.finished_at))}</strong></p>
+      <p><span>${t("field.source_message")}</span><strong>${escapeHTML(normalizeText(task?.source_message_id))}</strong></p>
+      <p><span>Error</span><strong>${escapeHTML(errorText)}</strong></p>
+      <p><span>Detail API</span><strong>${escapeHTML(normalizeText(link?.task_detail_path))}</strong></p>
+    </div>
+  </section>`;
+}
+
+function bindControlTaskView(container, initialPayload) {
+  const view = container.querySelector("[data-control-task-view]");
+  if (!view) {
+    return;
+  }
+  const listNode = view.querySelector("[data-control-task-list]");
+  const paginationNode = view.querySelector("[data-control-task-pagination]");
+  const form = view.querySelector("[data-control-task-filter-form]");
+  const drawer = view.querySelector("[data-control-task-drawer]");
+  const drawerBody = view.querySelector("[data-control-task-drawer-body]");
+  const localState = {
+    filters: { sessionID: "", status: "", startAt: "", endAt: "" },
+    page: 1,
+    pageSize: 20,
+    activeTaskID: ""
+  };
+
+  const closeDrawer = () => {
+    if (!drawer) {
+      return;
+    }
+    drawer.classList.remove("open");
+    drawer.hidden = true;
+  };
+
+  const openDrawer = () => {
+    if (!drawer) {
+      return;
+    }
+    drawer.hidden = false;
+    requestAnimationFrame(() => {
+      drawer.classList.add("open");
+    });
+  };
+
+  const paint = (payload) => {
+    listNode.innerHTML = renderControlTaskList(payload);
+    paginationNode.innerHTML = renderControlTaskPagination(payload);
+  };
+
+  const loadList = async () => {
+    const payload = await fetchJSON(controlTaskListQuery(localState.filters, localState.page, localState.pageSize));
+    paint(payload);
+  };
+
+  const loadDetail = async (taskID) => {
+    if (!taskID) {
+      return;
+    }
+    localState.activeTaskID = taskID;
+    const payload = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}`);
+    drawerBody.innerHTML = renderControlTaskDetail(payload);
+    openDrawer();
+  };
+
+  if (form) {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      localState.filters.sessionID = String(formData.get("session_id") || "").trim();
+      localState.filters.status = String(formData.get("status") || "").trim();
+      localState.filters.startAt = parseDateTimeFilter(formData.get("start_at"));
+      localState.filters.endAt = parseDateTimeFilter(formData.get("end_at"));
+      localState.page = 1;
+      await loadList();
+    });
+
+    const resetButton = form.querySelector("[data-control-task-filter-reset]");
+    if (resetButton) {
+      resetButton.addEventListener("click", async () => {
+        form.reset();
+        localState.filters = { sessionID: "", status: "", startAt: "", endAt: "" };
+        localState.page = 1;
+        await loadList();
+      });
+    }
+  }
+
+  view.addEventListener("click", async (event) => {
+    const target = event.target.closest("button");
+    if (!target) {
+      return;
+    }
+    if (target.hasAttribute("data-control-task-open")) {
+      await loadDetail(target.getAttribute("data-control-task-open") || "");
+      return;
+    }
+    if (target.hasAttribute("data-control-task-page-next")) {
+      if (target.disabled) {
+        return;
+      }
+      localState.page += 1;
+      await loadList();
+      return;
+    }
+    if (target.hasAttribute("data-control-task-close")) {
+      closeDrawer();
+    }
+  });
+
+  paint(initialPayload || { items: [], pagination: { page: 1, total: 0, has_next: false } });
+}
+
+async function loadControlTasksView(container) {
+  const payload = await fetchJSON(controlTaskListQuery({}, 1, 20));
+  container.innerHTML = `<section class="control-task-view" data-control-task-view>
+    <form class="task-filter-form" data-control-task-filter-form>
+      <label><span>${t("route.tasks.filter.session")}</span><input type="text" name="session_id" placeholder="session-123"></label>
+      <label><span>${t("route.tasks.filter.status")}</span>
+        <select name="status">
+          <option value="">-</option>
+          <option value="queued">${t("status.queued")}</option>
+          <option value="running">${t("status.running")}</option>
+          <option value="success">${t("status.success")}</option>
+          <option value="failed">${t("status.failed")}</option>
+          <option value="canceled">${t("status.canceled")}</option>
+        </select>
+      </label>
+      <label><span>${t("route.tasks.filter.start_at")}</span><input type="datetime-local" name="start_at"></label>
+      <label><span>${t("route.tasks.filter.end_at")}</span><input type="datetime-local" name="end_at"></label>
+      <div class="task-filter-actions">
+        <button type="submit">${t("route.tasks.filter.apply")}</button>
+        <button type="button" data-control-task-filter-reset>${t("route.tasks.filter.reset")}</button>
+      </div>
+    </form>
+    <div class="task-summary-list" data-control-task-list></div>
+    <div class="task-summary-pagination-wrap" data-control-task-pagination></div>
+    <section class="control-task-drawer" data-control-task-drawer hidden>
+      <button class="control-task-drawer-backdrop" type="button" aria-label="close" data-control-task-close></button>
+      <aside class="control-task-drawer-panel">
+        <header class="control-task-drawer-head">
+          <h4>${t("route.tasks.drawer.title")}</h4>
+          <button class="task-summary-next" type="button" data-control-task-close>${t("route.tasks.drawer.close")}</button>
+        </header>
+        <div class="control-task-drawer-body" data-control-task-drawer-body>${t("route.tasks.drawer.empty")}</div>
+      </aside>
+    </section>
+  </section>`;
+  bindControlTaskView(container, payload);
 }
 
 function formatDateTime(value) {
