@@ -22,6 +22,7 @@ func TestAgentMemoryHandlerReturnsUnifiedPayload(t *testing.T) {
 		t.Fatalf("create long-term dir: %v", err)
 	}
 	mandatoryPath := filepath.Join(root, "SOUL.md")
+	specPath := filepath.Join(root, "docs", "memory", "persistent-memory-module-spec.md")
 
 	if err := os.WriteFile(longTermPath, []byte("# Long-Term Memory\n- key: value"), 0o644); err != nil {
 		t.Fatalf("write long-term memory: %v", err)
@@ -32,12 +33,19 @@ func TestAgentMemoryHandlerReturnsUnifiedPayload(t *testing.T) {
 	if err := os.WriteFile(mandatoryPath, []byte("# SOUL\n- tone: concise"), 0o644); err != nil {
 		t.Fatalf("write mandatory memory: %v", err)
 	}
+	if err := os.MkdirAll(filepath.Dir(specPath), 0o755); err != nil {
+		t.Fatalf("create spec dir: %v", err)
+	}
+	if err := os.WriteFile(specPath, []byte("# Persistent Memory Module\n## Mapping\n- USER.md"), 0o644); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
 
 	server := &Server{
 		memory: newAgentMemoryService(AgentMemoryOptions{
 			LongTermPath:         longTermPath,
 			DailyDir:             dailyDir,
 			MandatoryContextPath: mandatoryPath,
+			SpecPath:             specPath,
 		}),
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
@@ -65,6 +73,12 @@ func TestAgentMemoryHandlerReturnsUnifiedPayload(t *testing.T) {
 	}
 	if !body.Mandatory.Exists {
 		t.Fatal("expected mandatory memory exists")
+	}
+	if !body.Specification.Exists {
+		t.Fatal("expected specification exists")
+	}
+	if body.Specification.Content == "" {
+		t.Fatal("expected specification content")
 	}
 }
 
@@ -108,6 +122,9 @@ func TestAgentMemoryHandlerMissingFileReturnsEmptyState(t *testing.T) {
 	}
 	if body.LongTerm.Exists || body.Mandatory.Exists {
 		t.Fatal("expected missing files to produce empty state")
+	}
+	if body.Specification.Exists {
+		t.Fatal("expected missing specification file to produce empty state")
 	}
 	if len(body.Daily.Items) != 0 {
 		t.Fatalf("expected empty daily memory list, got %d items", len(body.Daily.Items))
