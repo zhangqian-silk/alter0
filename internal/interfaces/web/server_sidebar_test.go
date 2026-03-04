@@ -44,6 +44,23 @@ func TestSidebarInfoModeStylesPresent(t *testing.T) {
 	}
 }
 
+func TestSidebarScrollIsolationStylesPresent(t *testing.T) {
+	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	markers := []string{
+		"@media (min-width: 1101px) {",
+		"html,\n  body {\n    overflow: hidden;",
+		".app-shell {\n    min-height: 0;\n    height: 100vh;",
+		".menu {\n    overflow-y: auto;",
+		".session-list,\n  .message-area,\n  .route-view {\n    overscroll-behavior: contain;",
+		".route-view {\n    flex: 1;\n    min-height: 0;\n    overflow-y: auto;",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}
+
 func TestSidebarCollapseEntryPresent(t *testing.T) {
 	html := readEmbeddedAsset(t, "static/chat.html")
 	markers := []string{

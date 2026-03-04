@@ -1649,6 +1649,50 @@ body {
   border: 0;
 }
 
+@media (min-width: 1101px) {
+  html,
+  body {
+    overflow: hidden;
+  }
+
+  .app-shell {
+    min-height: 0;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .primary-nav,
+  .session-pane,
+  .chat-pane {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .menu {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .session-list,
+  .message-area,
+  .route-view {
+    overscroll-behavior: contain;
+  }
+
+  .chat-pane {
+    overflow: hidden;
+  }
+
+  .route-view {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    margin: 0 auto;
+    padding: 24px 0 48px;
+  }
+}
+
 @media (max-width: 1100px) {
   .app-shell,
   .app-shell.info-mode {
