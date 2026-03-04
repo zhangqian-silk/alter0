@@ -85,3 +85,64 @@ func TestSidebarCollapseStateHooksPresent(t *testing.T) {
 		}
 	}
 }
+
+func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
+	html := readEmbeddedAsset(t, "static/chat.html")
+	expected := []string{
+		`data-route="memory"`,
+		`data-i18n="nav.memory"`,
+	}
+	for _, marker := range expected {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("expected html marker %q", marker)
+		}
+	}
+	forbidden := []string{
+		`data-route="workspace"`,
+		`data-route="configuration"`,
+		`data-i18n="nav.workspace"`,
+		`data-i18n="nav.configuration"`,
+	}
+	for _, marker := range forbidden {
+		if strings.Contains(html, marker) {
+			t.Fatalf("unexpected html marker %q", marker)
+		}
+	}
+
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	scriptMarkers := []string{
+		`memory: {`,
+		"loader: loadMemoryView",
+		`"/api/agent/memory"`,
+		`data-memory-tab`,
+	}
+	for _, marker := range scriptMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+	scriptForbidden := []string{
+		"workspace: {",
+		"configuration: {",
+	}
+	for _, marker := range scriptForbidden {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected script marker %q", marker)
+		}
+	}
+}
+
+func TestSidebarAgentMemoryTabStylesPresent(t *testing.T) {
+	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	markers := []string{
+		".memory-view {",
+		".memory-tabs {",
+		".memory-tab.active {",
+		".memory-content {",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}
