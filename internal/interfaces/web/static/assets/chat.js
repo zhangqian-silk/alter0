@@ -43,6 +43,7 @@ const NAV_TOOLTIP_OFFSET = 12;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
+const SESSION_HISTORY_PANEL_STORAGE_KEY = "alter0.web.session-history-panel.v1";
 const I18N = {
   en: {
     // Navigation
@@ -829,6 +830,48 @@ function getSessionStorage() {
     return window.localStorage;
   } catch {
     return null;
+  }
+}
+
+function getBrowserSessionStorage() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function loadSessionHistoryCollapsedState() {
+  const storage = getBrowserSessionStorage();
+  if (!storage) {
+    return false;
+  }
+  const raw = storage.getItem(SESSION_HISTORY_PANEL_STORAGE_KEY);
+  if (!raw) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.collapsed_state === "boolean") {
+      return parsed.collapsed_state;
+    }
+  } catch {
+    return raw === "1";
+  }
+  return false;
+}
+
+function persistSessionHistoryCollapsedState() {
+  const storage = getBrowserSessionStorage();
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(SESSION_HISTORY_PANEL_STORAGE_KEY, JSON.stringify({
+      collapsed_state: state.sessionHistoryCollapsed
+    }));
+  } catch {
   }
 }
 
@@ -2690,6 +2733,7 @@ function bindEvents() {
   if (sessionHistoryToggle) {
     sessionHistoryToggle.addEventListener("click", () => {
       setSessionHistoryCollapsed(!state.sessionHistoryCollapsed);
+      persistSessionHistoryCollapsedState();
     });
   }
 
@@ -2828,7 +2872,7 @@ function bindEvents() {
 
 function init() {
   setSidebarCollapsed(false);
-  setSessionHistoryCollapsed(false);
+  setSessionHistoryCollapsed(loadSessionHistoryCollapsedState());
   bootstrapSessions();
   renderSessions();
   renderMessages();
