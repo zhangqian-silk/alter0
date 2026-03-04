@@ -62,6 +62,10 @@ func (s *SessionPersistenceService) Handle(ctx context.Context, msg shareddomain
 	}
 
 	assistantMessageID := s.newAssistantMessageID(msg.MessageID)
+	taskID := ""
+	if len(msg.Metadata) > 0 {
+		taskID = strings.TrimSpace(msg.Metadata["task_id"])
+	}
 	persistErr := s.recorder.Append(
 		sessiondomain.MessageRecord{
 			MessageID: msg.MessageID,
@@ -72,6 +76,7 @@ func (s *SessionPersistenceService) Handle(ctx context.Context, msg shareddomain
 			RouteResult: sessiondomain.RouteResult{
 				Route:     result.Route,
 				ErrorCode: result.ErrorCode,
+				TaskID:    taskID,
 			},
 		},
 		sessiondomain.MessageRecord{
@@ -83,6 +88,7 @@ func (s *SessionPersistenceService) Handle(ctx context.Context, msg shareddomain
 			RouteResult: sessiondomain.RouteResult{
 				Route:     result.Route,
 				ErrorCode: result.ErrorCode,
+				TaskID:    taskID,
 			},
 		},
 	)

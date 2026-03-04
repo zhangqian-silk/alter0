@@ -41,7 +41,7 @@
 | R-027 | Agent Memory 模块与页面收敛 | ready | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
 | R-028 | Memory 模块说明文档持久化与可视化 | ready | 新增记忆体系说明文档并持久化纳入仓库；前端 `Agent -> Memory` 提供文档视图入口，支持稳定查看 `USER.md`、`AGENTS.md`、`MEMORY.md`、`memory/YYYY-MM-DD.md`、`SOUL.md` 的职责说明与映射关系 |
 | R-029 | 新对话空白会话唯一性约束 | ready | 前端与会话创建链路不允许生成多个“空白会话”；当已存在空白会话时，`New Chat` 必须复用并聚焦该会话，而不是继续新建 |
-| R-030 | 会话与异步任务映射模型 | ready | 建立 `session_id` 与 `task_id` 的标准映射，支持长耗时请求异步化执行（快速应答 + 后台任务 + 任务日志回读），避免对话链路阻塞与上下文膨胀 |
+| R-030 | 会话与异步任务映射模型 | supported | 建立 `session_id -> task_id` 1:N 映射；长耗时/产物流程异步执行，支持任务状态机、日志与产物持久化、按任务回读与会话摘要回写 |
 | R-031 | 任务摘要跨会话记忆与按需深检索 | ready | 默认仅注入最近 3-5 条任务摘要控制上下文体积；当用户询问更早历史时自动切换深检索，从全量任务摘要库召回并按需下钻任务详情 |
 | R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | ready | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
 
@@ -460,9 +460,21 @@
 
 #### Traceability
 
-- 核心对象：`session_id`、`task_id`、`source_message_id`
-- 关联需求：`R-016`、`R-019`、`R-029`
-- 验证口径：异步判定、快速应答、任务查询、结果回流
+- 实现文件：`internal/task/domain/task.go`、`internal/task/application/service.go`、`internal/storage/infrastructure/localfile/task_store.go`、`internal/interfaces/web/server.go`、`internal/session/domain/message.go`、`internal/session/application/service.go`、`internal/orchestration/application/session_persistence_service.go`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/task/application/service_test.go`、`internal/storage/infrastructure/localfile/task_store_test.go`、`internal/interfaces/web/server_task_test.go`、`internal/orchestration/application/session_persistence_service_test.go`
+- 新增接口：
+  - `GET /api/tasks/{task_id}`：读取任务状态、进度、重试、日志与产物
+  - `POST /api/tasks/{task_id}/cancel`：取消 `queued/running` 任务
+  - `GET /api/sessions/{session_id}/tasks`：按会话回读任务列表（1:N）
+- 验证命令：
+  - `GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./internal/task/application ./internal/storage/infrastructure/localfile ./internal/interfaces/web ./internal/orchestration/application -run 'Task|SessionPersistence|Message|Session'`
+  - `GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
+- 验证记录：
+  - 2026-03-04：`/api/messages` 与 `/api/messages/stream` 在异步判定命中时返回 `task_id` 与初始状态，主链路响应不等待长任务完成。
+  - 2026-03-04：任务服务实现 `queued/running/success/failed/canceled` 状态机，覆盖重试（`retry_count`）、超时（`task_timeout`）与取消（`task_canceled`）。
+  - 2026-03-04：任务日志与产物持久化到本地任务存储（`tasks.json|md`），可通过 `GET /api/tasks/{task_id}` 完整回读。
+  - 2026-03-04：会话维度支持 `GET /api/sessions/{session_id}/tasks` 读取任务列表，形成 `session_id -> task_id` 1:N 映射。
+  - 2026-03-04：任务执行链路在会话持久化记录与摘要回写中保留 `route_result.task_id`，支持会话内追踪异步任务结果。
 
 ### R-031 任务摘要跨会话记忆与按需深检索
 

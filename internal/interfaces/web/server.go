@@ -20,6 +20,8 @@ import (
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 	"alter0/internal/shared/infrastructure/observability"
+	taskapp "alter0/internal/task/application"
+	taskdomain "alter0/internal/task/domain"
 )
 
 //go:embed static/*
@@ -37,6 +39,7 @@ type Server struct {
 	control      *controlapp.Service
 	scheduler    *schedulerapp.Manager
 	sessions     sessionHistoryService
+	tasks        taskService
 	memory       *agentMemoryService
 	logger       *slog.Logger
 }
@@ -44,6 +47,14 @@ type Server struct {
 type sessionHistoryService interface {
 	ListSessions(query sessionapp.SessionQuery) sessionapp.SessionPage
 	ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage
+}
+
+type taskService interface {
+	ShouldRunAsync(msg shareddomain.UnifiedMessage) bool
+	Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, error)
+	Get(taskID string) (taskdomain.Task, bool)
+	ListBySession(sessionID string) []taskdomain.Task
+	Cancel(taskID string) (taskdomain.Task, error)
 }
 
 type messageRequest struct {
@@ -56,8 +67,10 @@ type messageRequest struct {
 }
 
 type messageResponse struct {
-	Result shareddomain.OrchestrationResult `json:"result"`
-	Error  string                           `json:"error,omitempty"`
+	Result     shareddomain.OrchestrationResult `json:"result"`
+	TaskID     string                           `json:"task_id,omitempty"`
+	TaskStatus string                           `json:"task_status,omitempty"`
+	Error      string                           `json:"error,omitempty"`
 }
 
 type streamStartResponse struct {
@@ -73,7 +86,9 @@ type streamDeltaResponse struct {
 }
 
 type streamDoneResponse struct {
-	Result shareddomain.OrchestrationResult `json:"result"`
+	Result     shareddomain.OrchestrationResult `json:"result"`
+	TaskID     string                           `json:"task_id,omitempty"`
+	TaskStatus string                           `json:"task_status,omitempty"`
 }
 
 type streamErrorResponse struct {
@@ -132,6 +147,7 @@ func NewServer(
 	control *controlapp.Service,
 	scheduler *schedulerapp.Manager,
 	sessions sessionHistoryService,
+	tasks taskService,
 	memoryOptions AgentMemoryOptions,
 	logger *slog.Logger,
 ) *Server {
@@ -143,6 +159,7 @@ func NewServer(
 		control:      control,
 		scheduler:    scheduler,
 		sessions:     sessions,
+		tasks:        tasks,
 		memory:       newAgentMemoryService(memoryOptions),
 		logger:       logger,
 	}
@@ -159,6 +176,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
+	mux.HandleFunc("/api/tasks/", s.taskItemHandler)
 	mux.HandleFunc("/api/agent/memory", s.agentMemoryHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
@@ -249,6 +267,23 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.countGateway(string(msg.ChannelType))
+	if task, accepted, submitErr := s.submitAsyncTask(msg); accepted {
+		if submitErr != nil {
+			s.logWebMessageFailure(msg, submitErr)
+			writeJSON(w, http.StatusInternalServerError, messageResponse{
+				Result: asyncAcceptedResult(msg, task),
+				Error:  submitErr.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, messageResponse{
+			Result:     asyncAcceptedResult(msg, task),
+			TaskID:     task.ID,
+			TaskStatus: string(task.Status),
+		})
+		return
+	}
+
 	result, err := s.orchestrator.Handle(r.Context(), msg)
 	if err != nil {
 		statusCode := http.StatusBadRequest
@@ -309,6 +344,25 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
+	if task, accepted, submitErr := s.submitAsyncTask(msg); accepted {
+		if submitErr != nil {
+			s.logWebMessageFailure(msg, submitErr)
+			_ = writeSSE(w, "error", streamErrorResponse{
+				Error:  submitErr.Error(),
+				Result: asyncAcceptedResult(msg, task),
+			})
+			flusher.Flush()
+			return
+		}
+		_ = writeSSE(w, "done", streamDoneResponse{
+			Result:     asyncAcceptedResult(msg, task),
+			TaskID:     task.ID,
+			TaskStatus: string(task.Status),
+		})
+		flusher.Flush()
+		return
+	}
+
 	result, handleErr := s.orchestrator.Handle(r.Context(), msg)
 	if handleErr != nil {
 		s.logWebMessageFailure(msg, handleErr)
@@ -353,27 +407,71 @@ func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Request) {
-	if s.sessions == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
-		return
-	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 
-	sessionID, ok := sessionMessageResourceID(r.URL.Path)
+	sessionID, resource, ok := sessionResourceID(r.URL.Path)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
 	}
 
-	query, statusCode, err := parseMessageQuery(r, sessionID)
-	if err != nil {
-		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+	switch resource {
+	case "messages":
+		if s.sessions == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
+			return
+		}
+		query, statusCode, err := parseMessageQuery(r, sessionID)
+		if err != nil {
+			writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, s.sessions.ListMessages(query))
+	case "tasks":
+		if s.tasks == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": s.tasks.ListBySession(sessionID)})
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
 	}
-	writeJSON(w, http.StatusOK, s.sessions.ListMessages(query))
+}
+
+func (s *Server) taskItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.tasks == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
+		return
+	}
+
+	taskID, action, ok := taskResourceID(r.URL.Path)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid task path"})
+		return
+	}
+
+	switch {
+	case action == "" && r.Method == http.MethodGet:
+		item, exists := s.tasks.Get(taskID)
+		if !exists {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+	case action == "cancel" && r.Method == http.MethodPost:
+		item, err := s.tasks.Cancel(taskID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
 }
 
 func (s *Server) agentMemoryHandler(w http.ResponseWriter, r *http.Request) {
@@ -776,21 +874,51 @@ func resourceID(path, prefix string) (string, bool) {
 	return id, true
 }
 
-func sessionMessageResourceID(path string) (string, bool) {
+func sessionResourceID(path string) (string, string, bool) {
 	const prefix = "/api/sessions/"
 	if !strings.HasPrefix(path, prefix) {
-		return "", false
+		return "", "", false
 	}
 	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
 	parts := strings.Split(trimmed, "/")
-	if len(parts) != 2 || parts[1] != "messages" {
-		return "", false
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	resource := strings.TrimSpace(parts[1])
+	if resource != "messages" && resource != "tasks" {
+		return "", "", false
 	}
 	sessionID := strings.TrimSpace(parts[0])
 	if sessionID == "" {
-		return "", false
+		return "", "", false
 	}
-	return sessionID, true
+	return sessionID, resource, true
+}
+
+func taskResourceID(path string) (string, string, bool) {
+	const prefix = "/api/tasks/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
+	}
+
+	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) == 1 {
+		taskID := strings.TrimSpace(parts[0])
+		if taskID == "" {
+			return "", "", false
+		}
+		return taskID, "", true
+	}
+	if len(parts) == 2 {
+		taskID := strings.TrimSpace(parts[0])
+		action := strings.TrimSpace(parts[1])
+		if taskID == "" || action == "" {
+			return "", "", false
+		}
+		return taskID, action, true
+	}
+	return "", "", false
 }
 
 func typedResourceID(path, prefix string) (controldomain.CapabilityType, string, bool) {
@@ -944,6 +1072,35 @@ func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, i
 		CorrelationID: strings.TrimSpace(req.CorrelationID),
 		ReceivedAt:    time.Now().UTC(),
 	}, http.StatusOK, nil
+}
+
+func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage) (taskdomain.Task, bool, error) {
+	if s.tasks == nil {
+		return taskdomain.Task{}, false, nil
+	}
+	if !s.tasks.ShouldRunAsync(msg) {
+		return taskdomain.Task{}, false, nil
+	}
+	item, err := s.tasks.Submit(msg)
+	if err != nil {
+		return taskdomain.Task{}, true, err
+	}
+	return item, true, nil
+}
+
+func asyncAcceptedResult(msg shareddomain.UnifiedMessage, task taskdomain.Task) shareddomain.OrchestrationResult {
+	metadata := map[string]string{
+		taskapp.MetadataTaskIDKey: task.ID,
+	}
+	if strings.TrimSpace(string(task.Status)) != "" {
+		metadata[taskapp.MetadataTaskStatusKey] = string(task.Status)
+	}
+	return shareddomain.OrchestrationResult{
+		MessageID: msg.MessageID,
+		SessionID: msg.SessionID,
+		ErrorCode: "task_accepted",
+		Metadata:  metadata,
+	}
 }
 
 func (s *Server) countGateway(channelType string) {

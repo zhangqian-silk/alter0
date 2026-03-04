@@ -28,6 +28,7 @@ import (
 	sharedinfra "alter0/internal/shared/infrastructure/id"
 	"alter0/internal/shared/infrastructure/observability"
 	localstorage "alter0/internal/storage/infrastructure/localfile"
+	taskapp "alter0/internal/task/application"
 )
 
 type storageProfile struct {
@@ -36,6 +37,7 @@ type storageProfile struct {
 	ControlFormat   localstorage.Format
 	SchedulerFormat localstorage.Format
 	SessionFormat   localstorage.Format
+	TaskFormat      localstorage.Format
 }
 
 var defaultStorageProfile = storageProfile{
@@ -44,6 +46,7 @@ var defaultStorageProfile = storageProfile{
 	ControlFormat:   localstorage.FormatJSON,
 	SchedulerFormat: localstorage.FormatJSON,
 	SessionFormat:   localstorage.FormatJSON,
+	TaskFormat:      localstorage.FormatJSON,
 }
 
 const defaultWebAddr = "127.0.0.1:18088"
@@ -53,6 +56,10 @@ func main() {
 	workerPoolSize := flag.Int("worker-pool-size", 4, "global worker pool size")
 	maxQueueSize := flag.Int("max-queue-size", 128, "max waiting queue size")
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
+	asyncTaskWorkers := flag.Int("async-task-workers", 2, "background async task worker count")
+	asyncTaskTimeout := flag.Duration("async-task-timeout", 90*time.Second, "background async task timeout")
+	asyncTaskMaxRetries := flag.Int("async-task-max-retries", 1, "background async task max retries")
+	asyncLongContentThreshold := flag.Int("async-long-content-threshold", 240, "request content length threshold to trigger async task")
 	sessionMemoryTurns := flag.Int("session-memory-turns", 6, "short-term memory window size per session")
 	sessionMemoryTTL := flag.Duration("session-memory-ttl", 20*time.Minute, "short-term memory ttl per session")
 	contextCompressionThreshold := flag.Int("context-compression-threshold", 1200, "estimated token threshold to trigger session context compression")
@@ -77,7 +84,7 @@ func main() {
 	telemetry := observability.NewTelemetry()
 	idGen := sharedinfra.NewRandomIDGenerator()
 
-	controlStore, schedulerStore, sessionStore, err := buildStorage(defaultStorageProfile)
+	controlStore, schedulerStore, sessionStore, taskStore, err := buildStorage(defaultStorageProfile)
 	if err != nil {
 		logger.Error("failed to initialize storage", slog.String("error", err.Error()))
 		os.Exit(2)
@@ -160,6 +167,16 @@ func main() {
 			OverloadPolicy: orchapp.OverloadPolicyRejectNew,
 		},
 	)
+	taskService, err := newTaskService(rootCtx, orchestrator, sessionHistory, idGen, logger, taskStore, taskapp.Options{
+		WorkerCount:          *asyncTaskWorkers,
+		Timeout:              *asyncTaskTimeout,
+		MaxRetries:           *asyncTaskMaxRetries,
+		LongContentThreshold: *asyncLongContentThreshold,
+	})
+	if err != nil {
+		logger.Error("failed to initialize task service", slog.String("error", err.Error()))
+		os.Exit(2)
+	}
 
 	scheduler, err := newSchedulerManager(rootCtx, orchestrator, telemetry, idGen, logger, schedulerStore)
 	if err != nil {
@@ -176,6 +193,7 @@ func main() {
 		control,
 		scheduler,
 		sessionHistory,
+		taskService,
 		web.AgentMemoryOptions{
 			LongTermPath:         strings.TrimSpace(*longTermMemoryPath),
 			DailyDir:             strings.TrimSpace(*dailyMemoryDir),
@@ -230,18 +248,18 @@ func mustUpsertSkill(control *controlapp.Service, skill controldomain.Skill) {
 	}
 }
 
-func buildStorage(profile storageProfile) (controlapp.Store, schedulerapp.Store, sessionapp.Store, error) {
+func buildStorage(profile storageProfile) (controlapp.Store, schedulerapp.Store, sessionapp.Store, taskapp.Store, error) {
 	switch strings.ToLower(strings.TrimSpace(profile.Backend)) {
 	case "none", "memory", "inmemory":
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	case "", "local":
 		dir := strings.TrimSpace(profile.Dir)
 		if dir == "" {
 			dir = ".alter0"
 		}
-		return localstorage.NewControlStore(dir, profile.ControlFormat), localstorage.NewSchedulerStore(dir, profile.SchedulerFormat), localstorage.NewSessionStore(dir, profile.SessionFormat), nil
+		return localstorage.NewControlStore(dir, profile.ControlFormat), localstorage.NewSchedulerStore(dir, profile.SchedulerFormat), localstorage.NewSessionStore(dir, profile.SessionFormat), localstorage.NewTaskStore(dir, profile.TaskFormat), nil
 	default:
-		return nil, nil, nil, fmt.Errorf("unsupported storage backend %q", profile.Backend)
+		return nil, nil, nil, nil, fmt.Errorf("unsupported storage backend %q", profile.Backend)
 	}
 }
 
@@ -271,4 +289,16 @@ func newSessionHistory(ctx context.Context, store sessionapp.Store) (*sessionapp
 		return sessionapp.NewService(), nil
 	}
 	return sessionapp.NewServiceWithStore(ctx, store)
+}
+
+func newTaskService(
+	ctx context.Context,
+	orchestrator taskapp.Orchestrator,
+	recorder *sessionapp.Service,
+	idGen sharedapp.IDGenerator,
+	logger *slog.Logger,
+	store taskapp.Store,
+	options taskapp.Options,
+) (*taskapp.Service, error) {
+	return taskapp.NewService(ctx, orchestrator, recorder, idGen, logger, store, options)
 }
