@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -163,6 +164,37 @@ type cronJobResponse struct {
 	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
+type memoryTaskSummaryItem struct {
+	TaskID     string                `json:"task_id"`
+	TaskType   string                `json:"task_type"`
+	Goal       string                `json:"goal"`
+	Result     string                `json:"result"`
+	Status     taskdomain.TaskStatus `json:"status"`
+	FinishedAt time.Time             `json:"finished_at"`
+	Tags       []string              `json:"tags,omitempty"`
+}
+
+type memoryTaskMeta struct {
+	TaskID          string                `json:"task_id"`
+	SessionID       string                `json:"session_id"`
+	SourceMessageID string                `json:"source_message_id"`
+	Status          taskdomain.TaskStatus `json:"status"`
+	Progress        int                   `json:"progress"`
+	CreatedAt       time.Time             `json:"created_at"`
+	FinishedAt      time.Time             `json:"finished_at,omitempty"`
+	RetryCount      int                   `json:"retry_count"`
+	TaskType        string                `json:"task_type"`
+}
+
+type memoryTaskListQuery struct {
+	Status   taskdomain.TaskStatus
+	TaskType string
+	StartAt  time.Time
+	EndAt    time.Time
+	Page     int
+	PageSize int
+}
+
 func NewServer(
 	addr string,
 	orchestrator Orchestrator,
@@ -203,6 +235,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/tasks", s.taskCollectionHandler)
 	mux.HandleFunc("/api/tasks/", s.taskItemHandler)
 	mux.HandleFunc("/api/agent/memory", s.agentMemoryHandler)
+	mux.HandleFunc("/api/memory/tasks", s.memoryTaskCollectionHandler)
+	mux.HandleFunc("/api/memory/tasks/", s.memoryTaskItemHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
 	mux.HandleFunc("/api/control/capabilities", s.capabilityListHandler)
@@ -642,6 +676,301 @@ func (s *Server) agentMemoryHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.memory.Snapshot())
 }
 
+func (s *Server) memoryTaskCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.tasks == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	query, statusCode, err := parseMemoryTaskListQuery(r)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+
+	tasks := s.collectTasksForMemory(query.Status)
+	items := make([]memoryTaskSummaryItem, 0, len(tasks))
+	for _, item := range tasks {
+		if !matchMemoryTaskFilters(item, query) {
+			continue
+		}
+		items = append(items, resolveMemoryTaskSummary(item))
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].FinishedAt.Equal(items[j].FinishedAt) {
+			return items[i].TaskID > items[j].TaskID
+		}
+		return items[i].FinishedAt.After(items[j].FinishedAt)
+	})
+
+	from, to := memoryTaskPageBounds(len(items), query.Page, query.PageSize)
+	pageItems := make([]memoryTaskSummaryItem, 0, to-from)
+	pageItems = append(pageItems, items[from:to]...)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": pageItems,
+		"pagination": taskapp.Pagination{
+			Page:     query.Page,
+			PageSize: query.PageSize,
+			Total:    len(items),
+			HasNext:  to < len(items),
+		},
+	})
+}
+
+func (s *Server) memoryTaskItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.tasks == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
+		return
+	}
+	taskID, action, ok := memoryTaskResourceID(r.URL.Path)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid memory task path"})
+		return
+	}
+
+	switch {
+	case action == "" && r.Method == http.MethodGet:
+		item, exists := s.tasks.Get(taskID)
+		if !exists {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		refs := []any{}
+		if s.memory != nil {
+			runtimeRefs := s.memory.TaskSummaryRefs(taskID)
+			refs = make([]any, 0, len(runtimeRefs))
+			for _, ref := range runtimeRefs {
+				refs = append(refs, ref)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"meta":         resolveMemoryTaskMeta(item),
+			"summary_refs": refs,
+		})
+	case action == "logs" && r.Method == http.MethodGet:
+		cursor, limit, statusCode, err := parseTaskLogQuery(r)
+		if err != nil {
+			writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+			return
+		}
+		page, err := s.tasks.ListLogs(taskID, cursor, limit)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"items":        []taskdomain.TaskLog{},
+				"cursor":       cursor,
+				"next_cursor":  cursor,
+				"has_more":     false,
+				"error_code":   "task_logs_unavailable",
+				"rebuild_hint": "日志缺失或文件损坏，可执行摘要重建",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, page)
+	case action == "artifacts" && r.Method == http.MethodGet:
+		items, err := s.tasks.ListArtifacts(taskID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	case action == "rebuild-summary" && r.Method == http.MethodPost:
+		if s.memory == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent memory unavailable"})
+			return
+		}
+		item, exists := s.tasks.Get(taskID)
+		if !exists {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		refs, err := s.memory.RebuildTaskSummary(item)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"task_id":      taskID,
+			"status":       "rebuilt",
+			"summary_refs": refs,
+		})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) collectTasksForMemory(status taskdomain.TaskStatus) []taskdomain.Task {
+	items := make([]taskdomain.Task, 0, 64)
+	page := 1
+	for {
+		result := s.tasks.List(taskapp.ListQuery{
+			Status:   status,
+			Page:     page,
+			PageSize: 200,
+		})
+		if len(result.Items) == 0 {
+			break
+		}
+		items = append(items, result.Items...)
+		if !result.Pagination.HasNext {
+			break
+		}
+		page++
+		if page > 10000 {
+			break
+		}
+	}
+	return items
+}
+
+func matchMemoryTaskFilters(task taskdomain.Task, query memoryTaskListQuery) bool {
+	if strings.TrimSpace(string(query.Status)) != "" && task.Status != query.Status {
+		return false
+	}
+	if strings.TrimSpace(query.TaskType) != "" {
+		if !strings.EqualFold(resolveMemoryTaskType(task), strings.TrimSpace(query.TaskType)) {
+			return false
+		}
+	}
+	at := resolveMemoryTaskTime(task)
+	if !query.StartAt.IsZero() && at.Before(query.StartAt) {
+		return false
+	}
+	if !query.EndAt.IsZero() && at.After(query.EndAt) {
+		return false
+	}
+	return true
+}
+
+func resolveMemoryTaskSummary(task taskdomain.Task) memoryTaskSummaryItem {
+	summary := task.TaskSummary
+	if summary.IsZero() {
+		finished := task.FinishedAt
+		if finished.IsZero() {
+			finished = task.UpdatedAt
+		}
+		if finished.IsZero() {
+			finished = task.CreatedAt
+		}
+		if finished.IsZero() {
+			finished = time.Now().UTC()
+		}
+		summary = taskdomain.TaskSummary{
+			TaskID:     strings.TrimSpace(task.ID),
+			TaskType:   resolveMemoryTaskType(task),
+			Goal:       strings.TrimSpace(task.RequestContent),
+			Result:     strings.TrimSpace(task.Summary),
+			Status:     task.Status,
+			FinishedAt: finished,
+			Tags:       []string{"task", strings.ToLower(strings.TrimSpace(string(task.Status))), resolveMemoryTaskType(task)},
+		}
+	}
+	if summary.FinishedAt.IsZero() {
+		summary.FinishedAt = resolveMemoryTaskTime(task)
+	}
+	if strings.TrimSpace(summary.Result) == "" {
+		summary.Result = strings.TrimSpace(task.Summary)
+	}
+	if strings.TrimSpace(summary.Result) == "" {
+		summary.Result = strings.TrimSpace(task.Result.Output)
+	}
+	if strings.TrimSpace(summary.Result) == "" {
+		summary.Result = strings.TrimSpace(task.ErrorMessage)
+	}
+	if strings.TrimSpace(summary.Result) == "" {
+		summary.Result = "-"
+	}
+	if strings.TrimSpace(summary.Goal) == "" {
+		summary.Goal = strings.TrimSpace(task.RequestContent)
+	}
+	if strings.TrimSpace(summary.Goal) == "" {
+		summary.Goal = "-"
+	}
+	if !summary.Status.IsValid() {
+		summary.Status = task.Status
+	}
+	return memoryTaskSummaryItem{
+		TaskID:     strings.TrimSpace(summary.TaskID),
+		TaskType:   strings.TrimSpace(summary.TaskType),
+		Goal:       strings.TrimSpace(summary.Goal),
+		Result:     strings.TrimSpace(summary.Result),
+		Status:     summary.Status,
+		FinishedAt: summary.FinishedAt.UTC(),
+		Tags:       append([]string(nil), summary.Tags...),
+	}
+}
+
+func resolveMemoryTaskMeta(task taskdomain.Task) memoryTaskMeta {
+	return memoryTaskMeta{
+		TaskID:          strings.TrimSpace(task.ID),
+		SessionID:       strings.TrimSpace(task.SessionID),
+		SourceMessageID: strings.TrimSpace(task.SourceMessageID),
+		Status:          task.Status,
+		Progress:        task.Progress,
+		CreatedAt:       task.CreatedAt.UTC(),
+		FinishedAt:      task.FinishedAt.UTC(),
+		RetryCount:      task.RetryCount,
+		TaskType:        resolveMemoryTaskType(task),
+	}
+}
+
+func resolveMemoryTaskType(task taskdomain.Task) string {
+	if value := strings.TrimSpace(task.TaskSummary.TaskType); value != "" {
+		return strings.ToLower(value)
+	}
+	if value := strings.TrimSpace(task.TaskType); value != "" {
+		return strings.ToLower(value)
+	}
+	if value := strings.TrimSpace(task.RequestMetadata[taskapp.MetadataTaskTypeKey]); value != "" {
+		return strings.ToLower(value)
+	}
+	if value := strings.TrimSpace(string(task.Result.Route)); value != "" {
+		return strings.ToLower(value)
+	}
+	return "task"
+}
+
+func resolveMemoryTaskTime(task taskdomain.Task) time.Time {
+	if !task.TaskSummary.FinishedAt.IsZero() {
+		return task.TaskSummary.FinishedAt.UTC()
+	}
+	if !task.FinishedAt.IsZero() {
+		return task.FinishedAt.UTC()
+	}
+	if !task.UpdatedAt.IsZero() {
+		return task.UpdatedAt.UTC()
+	}
+	if !task.CreatedAt.IsZero() {
+		return task.CreatedAt.UTC()
+	}
+	return time.Now().UTC()
+}
+
+func memoryTaskPageBounds(total int, page int, pageSize int) (int, int) {
+	if total <= 0 {
+		return 0, 0
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	offset := (page - 1) * pageSize
+	if offset >= total {
+		return total, total
+	}
+	end := offset + pageSize
+	if end > total {
+		end = total
+	}
+	return offset, end
+}
+
 func (s *Server) channelListHandler(w http.ResponseWriter, r *http.Request) {
 	if s.control == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
@@ -1077,6 +1406,31 @@ func taskResourceID(path string) (string, string, bool) {
 	return "", "", false
 }
 
+func memoryTaskResourceID(path string) (string, string, bool) {
+	const prefix = "/api/memory/tasks/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
+	}
+	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) == 1 {
+		taskID := strings.TrimSpace(parts[0])
+		if taskID == "" {
+			return "", "", false
+		}
+		return taskID, "", true
+	}
+	if len(parts) == 2 {
+		taskID := strings.TrimSpace(parts[0])
+		action := strings.TrimSpace(parts[1])
+		if taskID == "" || action == "" {
+			return "", "", false
+		}
+		return taskID, action, true
+	}
+	return "", "", false
+}
+
 func typedResourceID(path, prefix string) (controldomain.CapabilityType, string, bool) {
 	if !strings.HasPrefix(path, prefix) {
 		return "", "", false
@@ -1149,6 +1503,46 @@ func parseTaskListQuery(r *http.Request) (taskapp.ListQuery, int, error) {
 		status := taskdomain.TaskStatus(rawStatus)
 		if !status.IsValid() {
 			return taskapp.ListQuery{}, http.StatusBadRequest, errors.New("status must be queued/running/success/failed/canceled")
+		}
+		query.Status = status
+	}
+	return query, http.StatusOK, nil
+}
+
+func parseMemoryTaskListQuery(r *http.Request) (memoryTaskListQuery, int, error) {
+	page, err := parsePositiveInt(r.URL.Query().Get("page"))
+	if err != nil {
+		return memoryTaskListQuery{}, http.StatusBadRequest, errors.New("page must be a positive integer")
+	}
+	pageSize, err := parsePositiveInt(r.URL.Query().Get("page_size"))
+	if err != nil {
+		return memoryTaskListQuery{}, http.StatusBadRequest, errors.New("page_size must be a positive integer")
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	startAt, endAt, statusCode, err := parseTimeRangeQuery(r)
+	if err != nil {
+		return memoryTaskListQuery{}, statusCode, err
+	}
+	query := memoryTaskListQuery{
+		TaskType: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("task_type"))),
+		StartAt:  startAt,
+		EndAt:    endAt,
+		Page:     page,
+		PageSize: pageSize,
+	}
+	rawStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
+	if rawStatus != "" {
+		status := taskdomain.TaskStatus(rawStatus)
+		if !status.IsValid() {
+			return memoryTaskListQuery{}, http.StatusBadRequest, errors.New("status must be queued/running/success/failed/canceled")
 		}
 		query.Status = status
 	}
