@@ -44,6 +44,7 @@
 | R-030 | 会话与异步任务映射模型 | supported | 建立 `session_id` 与 `task_id` 的标准映射，支持长耗时请求异步化执行（快速应答 + 后台任务 + 任务日志回读），避免对话链路阻塞与上下文膨胀 |
 | R-031 | 任务摘要跨会话记忆与按需深检索 | supported | 默认仅注入最近 3-5 条任务摘要控制上下文体积；当用户询问更早历史时自动切换深检索，从全量任务摘要库召回并按需下钻任务详情 |
 | R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | ready | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
+| R-033 | Control 任务观测台与流式日志 | planned | 在 `Control` 页面新增任务观测台，集中展示任务状态、进度、日志与产物，支持流式日志观测与任务控制（retry/cancel） |
 
 ## 需求细化（草案）
 
@@ -637,6 +638,49 @@
 - 核心对象：`.alter0/tasks/*`、`.alter0/memory/*`、`task_id`
 - 关联需求：`R-028`、`R-030`、`R-031`
 - 验证口径：目录规范、摘要回链、前端可查阅、Git 隔离
+
+### R-033 Control 任务观测台与流式日志
+
+1. 入口位置：在 `Control` 一级导航新增 `Tasks` 页面，不放在 `Agent/Memory` 下。
+2. 列表观测：任务列表支持按 `session_id`、`status`、`time_range` 过滤，默认按最近更新时间倒序。
+3. 详情观测：详情抽屉展示 `task_id`、`session_id`、状态机、进度、重试次数、错误信息、产物引用。
+4. 流式日志：支持日志流式观测（SSE），首屏展示最近日志片段，断线后可按游标续读。
+5. 控制动作：在详情页提供 `retry`、`cancel`，并明确状态约束（仅终态可重试、仅 `queued/running` 可取消）。
+6. 回链能力：任务详情可跳转到对应会话消息；会话消息可回跳任务详情。
+7. 验收：在同一页面可实时观察任务从 `queued -> running -> success/failed/canceled` 的状态变化与日志流，无需切换到 Memory 页面。
+
+#### 接口拆分（草案）
+
+1. 任务列表接口
+   - `GET /api/control/tasks?session_id=&status=&start_at=&end_at=&page=&page_size=`
+2. 任务详情接口
+   - `GET /api/control/tasks/{task_id}`
+3. 任务日志流接口（SSE）
+   - `GET /api/control/tasks/{task_id}/logs/stream?cursor=`
+4. 任务日志回补接口（断线续读）
+   - `GET /api/control/tasks/{task_id}/logs?cursor=&limit=`
+5. 任务控制接口
+   - `POST /api/control/tasks/{task_id}/retry`
+   - `POST /api/control/tasks/{task_id}/cancel`
+
+#### Task Breakdown (auto-managed)
+
+1. Scope split
+   - Define Control task observability page information architecture and interaction model.
+   - Define streaming log protocol, cursor resume, and status synchronization contract.
+2. Delivery plan
+   - M1: Control task list/detail/read model and API aggregation.
+   - M2: SSE log stream, reconnect resume, and retry/cancel operation panel.
+3. Status workflow
+   - Keep lifecycle as planned -> ready -> supported; update this row only.
+4. Traceability
+   - Keep implementation and verification records in this section after delivery.
+
+#### Traceability
+
+- 核心对象：`task_id`、`session_id`、`status`、`progress`、`logs`、`artifacts`
+- 依赖需求：`R-030`、`R-031`、`R-032`
+- 验证口径：流式可观测性、状态一致性、断线续读、控制动作可用性
 
 ### R-014 移动端真机适配增强
 
