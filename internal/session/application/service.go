@@ -9,6 +9,7 @@ import (
 	"time"
 
 	sessiondomain "alter0/internal/session/domain"
+	shareddomain "alter0/internal/shared/domain"
 )
 
 const (
@@ -31,10 +32,12 @@ type Pagination struct {
 }
 
 type SessionQuery struct {
-	StartAt  time.Time
-	EndAt    time.Time
-	Page     int
-	PageSize int
+	StartAt     time.Time
+	EndAt       time.Time
+	TriggerType shareddomain.TriggerType
+	JobID       string
+	Page        int
+	PageSize    int
 }
 
 type MessageQuery struct {
@@ -158,6 +161,13 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 		}
 		first := s.records[indexes[start]]
 		last := s.records[indexes[end-1]]
+		triggerType, jobID, firedAt := s.resolveSessionSource(indexes[start:end])
+		if query.TriggerType != "" && triggerType != query.TriggerType {
+			continue
+		}
+		if strings.TrimSpace(query.JobID) != "" && normalizeKey(jobID) != normalizeKey(query.JobID) {
+			continue
+		}
 		summaries = append(summaries, sessiondomain.SessionSummary{
 			SessionID:     first.SessionID,
 			MessageCount:  end - start,
@@ -167,6 +177,9 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 			LastRoute:     string(last.RouteResult.Route),
 			LastErrorCode: last.RouteResult.ErrorCode,
 			LastPreview:   summarizePreview(last.Content),
+			TriggerType:   triggerType,
+			JobID:         jobID,
+			FiredAt:       firedAt,
 		})
 	}
 
@@ -242,7 +255,9 @@ func (s *Service) ListMessages(query MessageQuery) MessagePage {
 func sanitizeRecord(record sessiondomain.MessageRecord) (sessiondomain.MessageRecord, error) {
 	record.MessageID = strings.TrimSpace(record.MessageID)
 	record.SessionID = strings.TrimSpace(record.SessionID)
+	record.JobID = strings.TrimSpace(record.JobID)
 	record.Timestamp = normalizeTime(record.Timestamp)
+	record.FiredAt = normalizeTime(record.FiredAt)
 	if err := record.Validate(); err != nil {
 		return sessiondomain.MessageRecord{}, err
 	}
@@ -350,13 +365,38 @@ func normalizeTime(ts time.Time) time.Time {
 	return ts.UTC()
 }
 
+func (s *Service) resolveSessionSource(indexes []int) (shareddomain.TriggerType, string, time.Time) {
+	triggerType := shareddomain.TriggerType("")
+	jobID := ""
+	firedAt := time.Time{}
+	for _, idx := range indexes {
+		record := s.records[idx]
+		if triggerType == "" && record.TriggerType != "" {
+			triggerType = record.TriggerType
+		}
+		if jobID == "" && strings.TrimSpace(record.JobID) != "" {
+			jobID = strings.TrimSpace(record.JobID)
+		}
+		if firedAt.IsZero() && !record.FiredAt.IsZero() {
+			firedAt = record.FiredAt.UTC()
+		}
+		if triggerType != "" && (triggerType != shareddomain.TriggerTypeCron || (jobID != "" && !firedAt.IsZero())) {
+			break
+		}
+	}
+	return triggerType, jobID, firedAt
+}
+
 func cloneRecord(record sessiondomain.MessageRecord) sessiondomain.MessageRecord {
 	return sessiondomain.MessageRecord{
-		MessageID: record.MessageID,
-		SessionID: record.SessionID,
-		Role:      record.Role,
-		Content:   record.Content,
-		Timestamp: record.Timestamp,
+		MessageID:   record.MessageID,
+		SessionID:   record.SessionID,
+		Role:        record.Role,
+		Content:     record.Content,
+		Timestamp:   record.Timestamp,
+		TriggerType: record.TriggerType,
+		JobID:       record.JobID,
+		FiredAt:     record.FiredAt,
 		RouteResult: sessiondomain.RouteResult{
 			Route:     record.RouteResult.Route,
 			ErrorCode: record.RouteResult.ErrorCode,

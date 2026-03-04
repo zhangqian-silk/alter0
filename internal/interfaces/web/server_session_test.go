@@ -73,6 +73,38 @@ func TestSessionListHandlerReturnsPagedData(t *testing.T) {
 	}
 }
 
+func TestSessionListHandlerSupportsSourceFilters(t *testing.T) {
+	history := &stubSessionHistory{
+		sessionPage: sessionapp.SessionPage{
+			Items: []sessiondomain.SessionSummary{
+				{
+					SessionID:   "cron-s-1",
+					TriggerType: shareddomain.TriggerTypeCron,
+					JobID:       "job-nightly",
+				},
+			},
+		},
+	}
+	server := &Server{
+		sessions: history,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions?trigger_type=cron&job_id=job-nightly", nil)
+	rec := httptest.NewRecorder()
+	server.sessionListHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if history.lastSessionQuery.TriggerType != shareddomain.TriggerTypeCron {
+		t.Fatalf("expected trigger_type cron, got %s", history.lastSessionQuery.TriggerType)
+	}
+	if history.lastSessionQuery.JobID != "job-nightly" {
+		t.Fatalf("expected job_id job-nightly, got %s", history.lastSessionQuery.JobID)
+	}
+}
+
 func TestSessionMessageListHandlerSupportsTimeRange(t *testing.T) {
 	history := &stubSessionHistory{
 		messagePage: sessionapp.MessagePage{
@@ -139,5 +171,12 @@ func TestSessionHandlersValidateInputs(t *testing.T) {
 	server.sessionMessageListHandler(invalidPathRec, invalidPathReq)
 	if invalidPathRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, invalidPathRec.Code)
+	}
+
+	invalidTriggerReq := httptest.NewRequest(http.MethodGet, "/api/sessions?trigger_type=manual", nil)
+	invalidTriggerRec := httptest.NewRecorder()
+	server.sessionListHandler(invalidTriggerRec, invalidTriggerReq)
+	if invalidTriggerRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, invalidTriggerRec.Code)
 	}
 }

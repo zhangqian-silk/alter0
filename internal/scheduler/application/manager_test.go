@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -65,7 +66,6 @@ func TestManagerTriggersCronMessage(t *testing.T) {
 		Name:      "job-a",
 		Interval:  20 * time.Millisecond,
 		Enabled:   true,
-		SessionID: "cron-session",
 		ChannelID: "scheduler-default",
 		Content:   "/time",
 	})
@@ -83,6 +83,22 @@ func TestManagerTriggersCronMessage(t *testing.T) {
 		}
 		if msg.CorrelationID != "job-a" {
 			t.Fatalf("expected correlation id job-a, got %s", msg.CorrelationID)
+		}
+		if !strings.HasPrefix(msg.SessionID, "cron-job-a-") {
+			t.Fatalf("expected dedicated cron session id, got %s", msg.SessionID)
+		}
+		runs := manager.ListRuns("job-a")
+		if len(runs) == 0 {
+			t.Fatalf("expected at least one cron run")
+		}
+		if runs[0].JobID != "job-a" {
+			t.Fatalf("expected run job id job-a, got %s", runs[0].JobID)
+		}
+		if runs[0].Status != schedulerdomain.RunStatusSuccess {
+			t.Fatalf("expected run status success, got %s", runs[0].Status)
+		}
+		if runs[0].SessionID == "" {
+			t.Fatalf("expected non-empty run session id")
 		}
 	case <-time.After(300 * time.Millisecond):
 		t.Fatal("expected cron trigger message but timed out")

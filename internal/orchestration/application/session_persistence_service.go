@@ -106,13 +106,29 @@ func (s *SessionPersistenceService) persistResult(
 	if len(msg.Metadata) > 0 {
 		taskID = strings.TrimSpace(msg.Metadata["task_id"])
 	}
+	triggerType := msg.TriggerType
+	jobID := ""
+	firedAt := time.Time{}
+	if len(msg.Metadata) > 0 {
+		jobID = strings.TrimSpace(msg.Metadata["job_id"])
+		rawFiredAt := strings.TrimSpace(msg.Metadata["fired_at"])
+		if rawFiredAt != "" {
+			if parsedFiredAt, parseErr := time.Parse(time.RFC3339, rawFiredAt); parseErr == nil {
+				firedAt = parsedFiredAt.UTC()
+			}
+		}
+	}
+
 	persistErr := s.recorder.Append(
 		sessiondomain.MessageRecord{
-			MessageID: msg.MessageID,
-			SessionID: msg.SessionID,
-			Role:      sessiondomain.MessageRoleUser,
-			Content:   msg.Content,
-			Timestamp: userTimestamp,
+			MessageID:   msg.MessageID,
+			SessionID:   msg.SessionID,
+			Role:        sessiondomain.MessageRoleUser,
+			Content:     msg.Content,
+			Timestamp:   userTimestamp,
+			TriggerType: triggerType,
+			JobID:       jobID,
+			FiredAt:     firedAt,
 			RouteResult: sessiondomain.RouteResult{
 				Route:     result.Route,
 				ErrorCode: result.ErrorCode,
@@ -120,11 +136,14 @@ func (s *SessionPersistenceService) persistResult(
 			},
 		},
 		sessiondomain.MessageRecord{
-			MessageID: assistantMessageID,
-			SessionID: msg.SessionID,
-			Role:      sessiondomain.MessageRoleAssistant,
-			Content:   assistantContent,
-			Timestamp: assistantTimestamp,
+			MessageID:   assistantMessageID,
+			SessionID:   msg.SessionID,
+			Role:        sessiondomain.MessageRoleAssistant,
+			Content:     assistantContent,
+			Timestamp:   assistantTimestamp,
+			TriggerType: triggerType,
+			JobID:       jobID,
+			FiredAt:     firedAt,
 			RouteResult: sessiondomain.RouteResult{
 				Route:     result.Route,
 				ErrorCode: result.ErrorCode,

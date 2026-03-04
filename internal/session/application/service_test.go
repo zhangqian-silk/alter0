@@ -121,6 +121,47 @@ func TestServiceLoadsFromStoreAndBuildsIndex(t *testing.T) {
 	}
 }
 
+func TestServiceListSessionsSupportsSourceFilters(t *testing.T) {
+	service := NewService()
+	base := time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
+
+	cronRecord := newRecord("m-cron", "s-cron", sessiondomain.MessageRoleUser, "cron", base, shareddomain.RouteNL, "")
+	cronRecord.TriggerType = shareddomain.TriggerTypeCron
+	cronRecord.JobID = "job-nightly"
+	cronRecord.FiredAt = base
+
+	userRecord := newRecord("m-user", "s-user", sessiondomain.MessageRoleUser, "hello", base.Add(1*time.Minute), shareddomain.RouteNL, "")
+	userRecord.TriggerType = shareddomain.TriggerTypeUser
+
+	if err := service.Append(cronRecord, userRecord); err != nil {
+		t.Fatalf("append failed: %v", err)
+	}
+
+	cronPage := service.ListSessions(SessionQuery{
+		TriggerType: shareddomain.TriggerTypeCron,
+		Page:        1,
+		PageSize:    20,
+	})
+	if len(cronPage.Items) != 1 {
+		t.Fatalf("expected 1 cron session, got %d", len(cronPage.Items))
+	}
+	if cronPage.Items[0].SessionID != "s-cron" {
+		t.Fatalf("unexpected cron session %+v", cronPage.Items[0])
+	}
+	if cronPage.Items[0].JobID != "job-nightly" {
+		t.Fatalf("expected job-nightly, got %s", cronPage.Items[0].JobID)
+	}
+
+	jobFilterPage := service.ListSessions(SessionQuery{
+		JobID:    "job-nightly",
+		Page:     1,
+		PageSize: 20,
+	})
+	if len(jobFilterPage.Items) != 1 || jobFilterPage.Items[0].SessionID != "s-cron" {
+		t.Fatalf("expected filtered cron session, got %+v", jobFilterPage.Items)
+	}
+}
+
 func TestServiceAppendRollbackWhenStoreFails(t *testing.T) {
 	store := &stubStore{saveErr: errors.New("disk full")}
 	service, err := NewServiceWithStore(context.Background(), store)

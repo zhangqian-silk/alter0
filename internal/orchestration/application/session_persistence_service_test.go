@@ -171,3 +171,54 @@ func TestSessionPersistenceServicePersistsTaskIDFromMetadata(t *testing.T) {
 		t.Fatalf("expected assistant record task id task-123, got %q", recorder.records[1].RouteResult.TaskID)
 	}
 }
+
+func TestSessionPersistenceServicePersistsCronSourceMetadata(t *testing.T) {
+	downstream := &stubPersistenceDownstream{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-cron",
+			SessionID: "cron-session",
+			Route:     shareddomain.RouteNL,
+			Output:    "ok",
+		},
+	}
+	recorder := &spySessionRecorder{}
+	service := &SessionPersistenceService{
+		downstream:  downstream,
+		recorder:    recorder,
+		idGenerator: &fixedIDGenerator{nextID: "assistant-cron"},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID: "msg-cron",
+		SessionID: "cron-session",
+		Content:   "cron message",
+		Metadata: map[string]string{
+			"job_id":   "job-nightly",
+			"fired_at": "2026-03-04T09:30:00Z",
+		},
+		ReceivedAt:  time.Date(2026, 3, 4, 9, 30, 0, 0, time.UTC),
+		TriggerType: shareddomain.TriggerTypeCron,
+		ChannelID:   "scheduler-default",
+		ChannelType: shareddomain.ChannelTypeScheduler,
+		TraceID:     "trace-cron",
+	}
+
+	if _, err := service.Handle(context.Background(), msg); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+	if len(recorder.records) != 2 {
+		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
+	}
+	for _, record := range recorder.records {
+		if record.TriggerType != shareddomain.TriggerTypeCron {
+			t.Fatalf("expected trigger_type cron, got %s", record.TriggerType)
+		}
+		if record.JobID != "job-nightly" {
+			t.Fatalf("expected job_id job-nightly, got %s", record.JobID)
+		}
+		if record.FiredAt.Format(time.RFC3339) != "2026-03-04T09:30:00Z" {
+			t.Fatalf("unexpected fired_at %s", record.FiredAt.Format(time.RFC3339))
+		}
+	}
+}

@@ -22,23 +22,29 @@ type RouteResult struct {
 }
 
 type MessageRecord struct {
-	MessageID   string      `json:"message_id"`
-	SessionID   string      `json:"session_id"`
-	Role        MessageRole `json:"role"`
-	Content     string      `json:"content"`
-	Timestamp   time.Time   `json:"timestamp"`
-	RouteResult RouteResult `json:"route_result,omitempty"`
+	MessageID   string                   `json:"message_id"`
+	SessionID   string                   `json:"session_id"`
+	Role        MessageRole              `json:"role"`
+	Content     string                   `json:"content"`
+	Timestamp   time.Time                `json:"timestamp"`
+	TriggerType shareddomain.TriggerType `json:"trigger_type,omitempty"`
+	JobID       string                   `json:"job_id,omitempty"`
+	FiredAt     time.Time                `json:"fired_at,omitempty"`
+	RouteResult RouteResult              `json:"route_result,omitempty"`
 }
 
 type SessionSummary struct {
-	SessionID     string    `json:"session_id"`
-	MessageCount  int       `json:"message_count"`
-	StartedAt     time.Time `json:"started_at"`
-	LastMessageAt time.Time `json:"last_message_at"`
-	LastMessageID string    `json:"last_message_id"`
-	LastRoute     string    `json:"last_route,omitempty"`
-	LastErrorCode string    `json:"last_error_code,omitempty"`
-	LastPreview   string    `json:"last_preview"`
+	SessionID     string                   `json:"session_id"`
+	MessageCount  int                      `json:"message_count"`
+	StartedAt     time.Time                `json:"started_at"`
+	LastMessageAt time.Time                `json:"last_message_at"`
+	LastMessageID string                   `json:"last_message_id"`
+	LastRoute     string                   `json:"last_route,omitempty"`
+	LastErrorCode string                   `json:"last_error_code,omitempty"`
+	LastPreview   string                   `json:"last_preview"`
+	TriggerType   shareddomain.TriggerType `json:"trigger_type,omitempty"`
+	JobID         string                   `json:"job_id,omitempty"`
+	FiredAt       time.Time                `json:"fired_at,omitempty"`
 }
 
 func (r MessageRole) IsValid() bool {
@@ -60,6 +66,13 @@ func (r MessageRecord) Validate() error {
 	}
 	if r.Timestamp.IsZero() {
 		return errors.New("timestamp is required")
+	}
+	if r.TriggerType != "" {
+		switch r.TriggerType {
+		case shareddomain.TriggerTypeUser, shareddomain.TriggerTypeCron, shareddomain.TriggerTypeSystem:
+		default:
+			return errors.New("trigger_type must be user, cron, or system")
+		}
 	}
 	return nil
 }

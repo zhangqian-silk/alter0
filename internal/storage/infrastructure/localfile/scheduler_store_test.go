@@ -64,3 +64,44 @@ func TestSchedulerStoreMarkdownRoundTrip(t *testing.T) {
 		t.Fatalf("expected 1m interval, got %s", jobs[0].Interval)
 	}
 }
+
+func TestSchedulerStoreCronExpressionRoundTrip(t *testing.T) {
+	store := NewSchedulerStore(t.TempDir(), FormatJSON)
+	err := store.Save(context.Background(), []schedulerdomain.Job{
+		{
+			ID:             "job-cron",
+			Name:           "job-cron",
+			ScheduleMode:   schedulerdomain.ScheduleModeDaily,
+			CronExpression: "30 9 * * *",
+			Timezone:       "Asia/Shanghai",
+			Enabled:        true,
+			Content:        "/time",
+			TaskConfig: schedulerdomain.TaskConfig{
+				RetryStrategy: "once",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	jobs, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+	if jobs[0].ScheduleMode != schedulerdomain.ScheduleModeDaily {
+		t.Fatalf("expected daily mode, got %s", jobs[0].ScheduleMode)
+	}
+	if jobs[0].CronExpression != "30 9 * * *" {
+		t.Fatalf("unexpected expression %q", jobs[0].CronExpression)
+	}
+	if jobs[0].Timezone != "Asia/Shanghai" {
+		t.Fatalf("unexpected timezone %q", jobs[0].Timezone)
+	}
+	if jobs[0].TaskConfig.RetryStrategy != "once" {
+		t.Fatalf("unexpected retry strategy %q", jobs[0].TaskConfig.RetryStrategy)
+	}
+}

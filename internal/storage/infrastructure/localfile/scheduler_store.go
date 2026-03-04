@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,15 +13,19 @@ import (
 )
 
 type persistedJob struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Interval  string            `json:"interval"`
-	Enabled   bool              `json:"enabled"`
-	SessionID string            `json:"session_id"`
-	UserID    string            `json:"user_id,omitempty"`
-	ChannelID string            `json:"channel_id,omitempty"`
-	Content   string            `json:"content"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
+	ID             string                       `json:"id"`
+	Name           string                       `json:"name"`
+	Interval       string                       `json:"interval,omitempty"`
+	ScheduleMode   schedulerdomain.ScheduleMode `json:"schedule_mode,omitempty"`
+	CronExpression string                       `json:"cron_expression,omitempty"`
+	Timezone       string                       `json:"timezone,omitempty"`
+	Enabled        bool                         `json:"enabled"`
+	SessionID      string                       `json:"session_id,omitempty"`
+	UserID         string                       `json:"user_id,omitempty"`
+	ChannelID      string                       `json:"channel_id,omitempty"`
+	Content        string                       `json:"content"`
+	TaskConfig     schedulerdomain.TaskConfig   `json:"task_config,omitempty"`
+	Metadata       map[string]string            `json:"metadata,omitempty"`
 }
 
 type schedulerState struct {
@@ -61,20 +66,28 @@ func (s *SchedulerStore) Load(_ context.Context) ([]schedulerdomain.Job, error) 
 
 	jobs := make([]schedulerdomain.Job, 0, len(state.Jobs))
 	for _, item := range state.Jobs {
-		interval, err := time.ParseDuration(item.Interval)
-		if err != nil {
-			return nil, fmt.Errorf("invalid interval for job %q: %w", item.ID, err)
+		interval := time.Duration(0)
+		if strings.TrimSpace(item.Interval) != "" {
+			parsedInterval, err := time.ParseDuration(item.Interval)
+			if err != nil {
+				return nil, fmt.Errorf("invalid interval for job %q: %w", item.ID, err)
+			}
+			interval = parsedInterval
 		}
 		jobs = append(jobs, schedulerdomain.Job{
-			ID:        item.ID,
-			Name:      item.Name,
-			Interval:  interval,
-			Enabled:   item.Enabled,
-			SessionID: item.SessionID,
-			UserID:    item.UserID,
-			ChannelID: item.ChannelID,
-			Content:   item.Content,
-			Metadata:  item.Metadata,
+			ID:             item.ID,
+			Name:           item.Name,
+			Interval:       interval,
+			ScheduleMode:   item.ScheduleMode,
+			CronExpression: item.CronExpression,
+			Timezone:       item.Timezone,
+			Enabled:        item.Enabled,
+			SessionID:      item.SessionID,
+			UserID:         item.UserID,
+			ChannelID:      item.ChannelID,
+			Content:        item.Content,
+			TaskConfig:     item.TaskConfig,
+			Metadata:       item.Metadata,
 		})
 	}
 	return jobs, nil
@@ -86,16 +99,25 @@ func (s *SchedulerStore) Save(_ context.Context, jobs []schedulerdomain.Job) err
 
 	items := make([]persistedJob, 0, len(jobs))
 	for _, job := range jobs {
+		normalized := job.Normalized()
+		interval := ""
+		if normalized.Interval > 0 {
+			interval = normalized.Interval.String()
+		}
 		items = append(items, persistedJob{
-			ID:        job.ID,
-			Name:      job.Name,
-			Interval:  job.Interval.String(),
-			Enabled:   job.Enabled,
-			SessionID: job.SessionID,
-			UserID:    job.UserID,
-			ChannelID: job.ChannelID,
-			Content:   job.Content,
-			Metadata:  job.Metadata,
+			ID:             normalized.ID,
+			Name:           normalized.Name,
+			Interval:       interval,
+			ScheduleMode:   normalized.ScheduleMode,
+			CronExpression: normalized.CronExpression,
+			Timezone:       normalized.Timezone,
+			Enabled:        normalized.Enabled,
+			SessionID:      normalized.SessionID,
+			UserID:         normalized.UserID,
+			ChannelID:      normalized.ChannelID,
+			Content:        normalized.Content,
+			TaskConfig:     normalized.TaskConfig,
+			Metadata:       normalized.Metadata,
 		})
 	}
 
