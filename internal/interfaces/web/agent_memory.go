@@ -6,6 +6,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	taskdomain "alter0/internal/task/domain"
+	tasksummaryapp "alter0/internal/tasksummary/application"
 )
 
 const (
@@ -22,10 +25,17 @@ type AgentMemoryOptions struct {
 	MandatoryContextPath string
 	SpecPath             string
 	DailyLimit           int
+	TaskSummaryRuntime   TaskSummaryRuntime
+}
+
+type TaskSummaryRuntime interface {
+	FindSummaryRefs(taskID string) []tasksummaryapp.SummaryReference
+	Rebuild(task taskdomain.Task) ([]tasksummaryapp.SummaryReference, error)
 }
 
 type agentMemoryService struct {
-	options AgentMemoryOptions
+	options            AgentMemoryOptions
+	taskSummaryRuntime TaskSummaryRuntime
 }
 
 type agentMemoryResponse struct {
@@ -58,8 +68,17 @@ type agentMemoryDailyItem struct {
 }
 
 func newAgentMemoryService(options AgentMemoryOptions) *agentMemoryService {
+	normalized := normalizeAgentMemoryOptions(options)
+	runtime := normalized.TaskSummaryRuntime
+	if runtime == nil {
+		runtime = tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
+			DailyDir:    normalized.DailyDir,
+			LongTermDir: filepath.Join(normalized.DailyDir, "long-term"),
+		})
+	}
 	return &agentMemoryService{
-		options: normalizeAgentMemoryOptions(options),
+		options:            normalized,
+		taskSummaryRuntime: runtime,
 	}
 }
 
@@ -100,6 +119,35 @@ func (s *agentMemoryService) Snapshot() agentMemoryResponse {
 		Mandatory:     s.readDocument(s.options.MandatoryContextPath),
 		Specification: s.readDocument(s.options.SpecPath),
 	}
+}
+
+func (s *agentMemoryService) TaskSummaryRefs(taskID string) []tasksummaryapp.SummaryReference {
+	if s == nil || s.taskSummaryRuntime == nil {
+		return []tasksummaryapp.SummaryReference{}
+	}
+	refs := s.taskSummaryRuntime.FindSummaryRefs(strings.TrimSpace(taskID))
+	if len(refs) == 0 {
+		return []tasksummaryapp.SummaryReference{}
+	}
+	items := make([]tasksummaryapp.SummaryReference, 0, len(refs))
+	items = append(items, refs...)
+	return items
+}
+
+func (s *agentMemoryService) RebuildTaskSummary(task taskdomain.Task) ([]tasksummaryapp.SummaryReference, error) {
+	if s == nil || s.taskSummaryRuntime == nil {
+		return []tasksummaryapp.SummaryReference{}, nil
+	}
+	refs, err := s.taskSummaryRuntime.Rebuild(task)
+	if err != nil {
+		return nil, err
+	}
+	if len(refs) == 0 {
+		return []tasksummaryapp.SummaryReference{}, nil
+	}
+	items := make([]tasksummaryapp.SummaryReference, 0, len(refs))
+	items = append(items, refs...)
+	return items, nil
 }
 
 func (s *agentMemoryService) readDocument(path string) agentMemoryDocument {

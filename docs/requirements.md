@@ -43,7 +43,7 @@
 | R-029 | 新对话空白会话唯一性约束 | supported | 前端与会话创建链路不允许生成多个“空白会话”；当已存在空白会话时，`New Chat` 必须复用并聚焦该会话，而不是继续新建 |
 | R-030 | 会话与异步任务映射模型 | supported | 建立 `session_id` 与 `task_id` 的标准映射，支持长耗时请求异步化执行（快速应答 + 后台任务 + 任务日志回读），避免对话链路阻塞与上下文膨胀 |
 | R-031 | 任务摘要跨会话记忆与按需深检索 | supported | 默认仅注入最近 3-5 条任务摘要控制上下文体积；当用户询问更早历史时自动切换深检索，从全量任务摘要库召回并按需下钻任务详情 |
-| R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | ready | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
+| R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | supported | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
 | R-033 | Control 任务观测台基础视图 | planned | 在 `Control` 页面新增 `Tasks` 入口，提供任务列表、详情抽屉与基础筛选能力，形成统一任务观测入口 |
 | R-034 | 任务触发来源标识与溯源视图 | planned | 为任务补齐并展示 `trigger_type/channel_type/channel_id/correlation_id` 等来源字段；定时任务补充 `job_id/job_name/fired_at` |
 | R-035 | 任务日志流式观测与断线续读 | planned | 提供任务日志 SSE 流式观测能力，支持游标断点续读与回补查询，满足长任务实时观测 |
@@ -637,7 +637,16 @@
 
 #### Traceability
 
-- 规范文档：`docs/memory/runtime-task-memory-spec.md`
+- 实现文件：`internal/storage/infrastructure/localfile/task_store.go`、`internal/tasksummary/application/runtime_markdown_store.go`、`internal/tasksummary/application/recorder_group.go`、`internal/interfaces/web/agent_memory.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/storage/infrastructure/localfile/task_store_test.go`、`internal/tasksummary/application/runtime_markdown_store_test.go`、`internal/interfaces/web/server_memory_task_test.go`
+- 验证命令：
+  - `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org go test ./internal/storage/infrastructure/localfile ./internal/tasksummary/application ./internal/interfaces/web ./cmd/alter0`
+  - `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org go test ./...`
+- 验证记录：
+  - 2026-03-04：任务运行态落盘切换为 `.alter0/tasks/index.json + {task_id}/meta.json + logs.jsonl + artifacts.json`，并保持旧版 `tasks.json/tasks.md` 兼容迁移。
+  - 2026-03-04：任务摘要在终态写入 `.alter0/memory/YYYY-MM-DD.md` 与 `.alter0/memory/long-term/YYYY-MM-DD.md`，摘要条目包含 `task_id` 与任务主数据回链路径。
+  - 2026-03-04：新增 `GET /api/memory/tasks*` 与 `POST /api/memory/tasks/{task_id}/rebuild-summary`，支持摘要列表筛选、详情回链、日志/产物按需加载与摘要重建。
+  - 2026-03-04：`Agent -> Memory` 默认展示任务摘要列表，支持 `status/task_type/time_range` 筛选，详情面板按需加载日志与产物，日志缺失时展示重建提示且不阻断摘要查看。
 - 核心对象：`.alter0/tasks/*`、`.alter0/memory/*`、`task_id`
 - 关联需求：`R-028`、`R-030`、`R-031`
 - 验证口径：目录规范、摘要回链、前端可查阅、Git 隔离
