@@ -60,6 +60,7 @@ const I18N = {
     "session.header": "Work with alter0",
     "session.close": "Close",
     "session.new": "New Chat",
+    "session.delete": "Delete",
     "session.recent": "Recent Sessions",
     "session.empty": "No sessions yet. Click New Chat to start.",
     
@@ -173,6 +174,7 @@ const I18N = {
     "session.header": "与 alter0 协作",
     "session.close": "关闭",
     "session.new": "新对话",
+    "session.delete": "删除",
     "session.recent": "最近会话",
     "session.empty": "暂无会话，点击“新对话”开始。",
     
@@ -611,6 +613,48 @@ function getSession(id = state.activeSessionID) {
   return state.sessions.find((item) => item.id === id);
 }
 
+function sortSessionsByCreatedAtDesc(items) {
+  items.sort((left, right) => right.createdAt - left.createdAt);
+}
+
+function isBlankSession(item) {
+  return Boolean(item) && Array.isArray(item.messages) && item.messages.length === 0;
+}
+
+function getLatestBlankSession() {
+  const blankSessions = state.sessions.filter((item) => isBlankSession(item));
+  if (!blankSessions.length) {
+    return null;
+  }
+  sortSessionsByCreatedAtDesc(blankSessions);
+  return blankSessions[0];
+}
+
+function enforceSingleBlankSession() {
+  const latestBlank = getLatestBlankSession();
+  if (!latestBlank) {
+    return false;
+  }
+  const originalCount = state.sessions.length;
+  state.sessions = state.sessions.filter((item) => !isBlankSession(item) || item.id === latestBlank.id);
+  if (state.activeSessionID && !getSession(state.activeSessionID)) {
+    state.activeSessionID = latestBlank.id;
+  }
+  return state.sessions.length !== originalCount;
+}
+
+function focusSession(sessionID) {
+  if (!getSession(sessionID)) {
+    return;
+  }
+  state.activeSessionID = sessionID;
+  navigateToRoute("chat");
+  renderSessions();
+  renderMessages();
+  syncHeader();
+  closeTransientPanels();
+}
+
 function formatSince(epochMillis) {
   const delta = Date.now() - epochMillis;
   const minutes = Math.floor(delta / 60000);
@@ -705,7 +749,7 @@ function loadSessionsFromStorage() {
       sessions.push(normalized);
     }
   }
-  sessions.sort((left, right) => right.createdAt - left.createdAt);
+  sortSessionsByCreatedAtDesc(sessions);
   return sessions;
 }
 
@@ -731,8 +775,11 @@ function bootstrapSessions() {
   try {
     const sessions = loadSessionsFromStorage();
     state.sessions = sessions;
-    if (sessions.length) {
-      state.activeSessionID = sessions[0].id;
+    if (enforceSingleBlankSession()) {
+      persistSessions();
+    }
+    if (state.sessions.length) {
+      state.activeSessionID = state.sessions[0].id;
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
@@ -741,6 +788,16 @@ function bootstrapSessions() {
 }
 
 function createSession() {
+  const latestBlank = getLatestBlankSession();
+  if (latestBlank) {
+    state.activeSessionID = latestBlank.id;
+    renderSessions();
+    renderMessages();
+    syncHeader();
+    persistSessions();
+    return latestBlank;
+  }
+
   const createdAt = Date.now();
   const item = {
     id: makeID(),
@@ -756,6 +813,31 @@ function createSession() {
   syncWelcomeCopy();
   persistSessions();
   return item;
+}
+
+function removeSession(sessionID) {
+  const nextSessions = state.sessions.filter((item) => item.id !== sessionID);
+  if (nextSessions.length === state.sessions.length) {
+    return;
+  }
+
+  state.sessions = nextSessions;
+  if (state.activeSessionID === sessionID || !getSession(state.activeSessionID)) {
+    const latestBlank = getLatestBlankSession();
+    if (latestBlank) {
+      state.activeSessionID = latestBlank.id;
+    } else if (state.sessions.length) {
+      state.activeSessionID = state.sessions[0].id;
+    } else {
+      state.activeSessionID = "";
+    }
+  }
+
+  enforceSingleBlankSession();
+  renderSessions();
+  renderMessages();
+  syncHeader();
+  persistSessions();
 }
 
 function syncHeader() {
@@ -811,6 +893,9 @@ function renderSessions() {
   sessionEmpty.style.display = "none";
 
   for (const item of state.sessions) {
+    const row = document.createElement("div");
+    row.className = "session-card-row";
+
     const card = document.createElement("button");
     card.type = "button";
     card.className = "session-card";
@@ -831,14 +916,22 @@ function renderSessions() {
     card.appendChild(title);
     card.appendChild(meta);
     card.addEventListener("click", () => {
-      state.activeSessionID = item.id;
-      navigateToRoute("chat");
-      renderSessions();
-      renderMessages();
-      syncHeader();
-      closeTransientPanels();
+      focusSession(item.id);
     });
-    sessionList.appendChild(card);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "session-card-delete";
+    deleteButton.textContent = t("session.delete");
+    deleteButton.setAttribute("aria-label", t("session.delete"));
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      removeSession(item.id);
+    });
+
+    row.appendChild(card);
+    row.appendChild(deleteButton);
+    sessionList.appendChild(row);
   }
 }
 
@@ -857,7 +950,12 @@ function updateSessionTitle(session, fallbackText) {
 function appendMessage(role, text, options = {}) {
   let session = getSession();
   if (!session) {
-    session = createSession();
+    session = getLatestBlankSession();
+    if (session) {
+      state.activeSessionID = session.id;
+    } else {
+      session = createSession();
+    }
   }
   if (role === "user") {
     updateSessionTitle(session, text);
@@ -873,6 +971,7 @@ function appendMessage(role, text, options = {}) {
     retryable: Boolean(options.retryable)
   };
   session.messages.push(message);
+  enforceSingleBlankSession();
   renderSessions();
   renderMessages();
   syncHeader();
@@ -1342,7 +1441,12 @@ function navigateToRoute(route) {
 }
 
 function startNewChatSession() {
-  createSession();
+  const existingBlank = getLatestBlankSession();
+  if (existingBlank) {
+    focusSession(existingBlank.id);
+  } else {
+    createSession();
+  }
   navigateToRoute("chat");
   closeTransientPanels();
   window.requestAnimationFrame(() => {
