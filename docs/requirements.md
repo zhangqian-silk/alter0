@@ -38,9 +38,12 @@
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | supported | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | supported | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
 | R-026 | 强制要求上下文文件（如 SOUL.md） | supported | 支持独立上下文文件存储用户强制要求，启动与会话初始化高优先级加载，并在冲突场景下覆盖普通记忆 |
-| R-027 | Agent Memory 模块与页面收敛 | supported | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
-| R-028 | Memory 模块说明文档持久化与可视化 | supported | 持久化 `docs/memory/persistent-memory-module-spec.md` 并在 `Agent -> Memory` 新增说明文档只读视图，支持结构化分段、空态与加载失败态，且与长期/天级/SOUL 视图可切换并存 |
-| R-029 | 新对话空白会话唯一性约束 | supported | 空白会话（`messages.length==0`）在任意时刻最多保留一个；`New Chat` 优先复用最近空白会话，仅在不存在空白会话时新建 |
+| R-027 | Agent Memory 模块与页面收敛 | ready | 前端移除 `Workspace` 与 `Configuration` 页面；在 `Agent` 下新增 `Memory` 模块，可视化长期记忆、天级记忆与持久化记忆（`SOUL.md`） |
+| R-028 | Memory 模块说明文档持久化与可视化 | ready | 新增记忆体系说明文档并持久化纳入仓库；前端 `Agent -> Memory` 提供文档视图入口，支持稳定查看 `USER.md`、`AGENTS.md`、`MEMORY.md`、`memory/YYYY-MM-DD.md`、`SOUL.md` 的职责说明与映射关系 |
+| R-029 | 新对话空白会话唯一性约束 | ready | 前端与会话创建链路不允许生成多个“空白会话”；当已存在空白会话时，`New Chat` 必须复用并聚焦该会话，而不是继续新建 |
+| R-030 | 会话与异步任务映射模型 | ready | 建立 `session_id` 与 `task_id` 的标准映射，支持长耗时请求异步化执行（快速应答 + 后台任务 + 任务日志回读），避免对话链路阻塞与上下文膨胀 |
+| R-031 | 任务摘要跨会话记忆与按需深检索 | ready | 默认仅注入最近 3-5 条任务摘要控制上下文体积；当用户询问更早历史时自动切换深检索，从全量任务摘要库召回并按需下钻任务详情 |
+| R-032 | `.alter0` 任务历史存储规范与 Memory 查阅 | ready | 统一任务运行态数据在 `.alter0` 下的目录结构、留存策略与回链规则；前端 `Agent -> Memory` 新增任务历史查阅能力（摘要默认可见、日志按需下钻） |
 
 ## 需求细化（草案）
 
@@ -342,58 +345,264 @@
 4. Traceability
    - Keep implementation and verification records in this section after delivery.
 
-#### Traceability
-
-- 实现文件：`internal/interfaces/web/static/chat.html`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`、`internal/interfaces/web/agent_memory.go`、`internal/interfaces/web/server.go`、`cmd/alter0/main.go`
-- 测试覆盖：`internal/interfaces/web/server_sidebar_test.go`、`internal/interfaces/web/server_memory_test.go`
-- 新增接口：`GET /api/agent/memory`
-- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
-- 验证记录：
-  - 2026-03-04：侧边栏 `Agent` 分组移除 `Workspace`、`Configuration`，新增 `Memory` 入口并接入统一路由渲染。
-  - 2026-03-04：`Memory` 页面新增三类页签（长期记忆 / 天级记忆 / SOUL.md），同页只读切换展示，桌面端与移动端均可访问。
-  - 2026-03-04：后端新增 `/api/agent/memory` 聚合读取长期记忆文件、天级记忆目录与 `SOUL.md`，对缺失文件返回空态数据。
-  - 2026-03-04：新增侧边栏收敛与 Agent Memory 接口测试，覆盖入口收敛、页签样式与数据返回结构。
-
 ### R-028 Memory 模块说明文档持久化与可视化
 
-1. 持久化并维护 `docs/memory/persistent-memory-module-spec.md`，明确 `USER.md`、`AGENTS.md`、`MEMORY.md`、`memory/YYYY-MM-DD.md`、`SOUL.md` 职责与映射关系。
-2. 在 `Agent -> Memory` 新增“说明文档”只读视图入口，稳定展示说明文档全文。
-3. 说明文档视图支持结构化分段、空态与加载失败态，避免无反馈空白页。
-4. 保持与长期记忆、天级记忆、`SOUL.md` 视图同页切换并存。
-5. 验收：`Memory` 页面四类视图可切换；说明文档可完整展示；文档缺失与读取失败均有明确状态反馈。
+1. 新增记忆体系说明文档 `docs/memory/persistent-memory-module-spec.md`，作为项目内长期保留的产品与工程基线文档。
+2. 文档明确五类核心文件职责与边界：`USER.md`（用户画像）、`AGENTS.md`（代理执行规范）、`MEMORY.md`（长期记忆）、`memory/YYYY-MM-DD.md`（天级记忆）、`SOUL.md`（强制上下文）。
+3. 文档定义“持久化可见”原则：文档本身纳入仓库版本管理；运行时记忆数据继续落盘到 `.alter0/memory/*`，不并入业务代码提交。
+4. `Agent -> Memory` 页面补充“说明文档”视图入口，支持稳定展示该文档全文，并可关联到上述文件类型的说明锚点。
+5. 页面展示边界：本需求仅覆盖只读展示、结构化分段、空态与加载失败态，不引入在线编辑。
+6. 验收：在同一页面可切换查看长期记忆、天级记忆、持久化记忆与说明文档四类视图，且说明文档内容与仓库文件保持一致。
+
+#### Task Breakdown (auto-managed)
+
+1. Scope split
+   - Persist and version a dedicated memory module specification document.
+   - Extend Memory module IA with a read-only `Documentation` view.
+2. Delivery plan
+   - M1: Finalize document schema, file responsibilities, and persistence boundaries.
+   - M2: Align frontend Memory view contract with document visibility requirements.
+3. Status workflow
+   - Keep lifecycle as planned -> ready -> supported; update this row only.
+4. Traceability
+   - Keep implementation and verification records in this section after delivery.
 
 #### Traceability
 
-- 实现文件：`docs/memory/persistent-memory-module-spec.md`、`docs/README.md`、`internal/interfaces/web/agent_memory.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
-- 测试覆盖：`internal/interfaces/web/server_memory_test.go`、`internal/interfaces/web/server_sidebar_test.go`
-- 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
-- 验证记录：
-  - 2026-03-04：新增持久化说明文档 `docs/memory/persistent-memory-module-spec.md`，定义五类核心文档职责、优先级与 Agent Memory 映射。
-  - 2026-03-04：`/api/agent/memory` 响应新增 `specification` 字段，统一聚合说明文档读取结果（路径、更新时间、内容、错误）。
-  - 2026-03-04：`Memory` 页面新增“说明文档”页签，基于 Markdown 标题结构化分段展示全文；对缺失文件展示空态，对读取异常展示失败态。
-  - 2026-03-04：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...` 全量通过。
+- 说明文档：`docs/memory/persistent-memory-module-spec.md`
+- 关联需求：`R-017`、`R-018`、`R-025`、`R-026`、`R-027`
+- 可视化目标：`Agent -> Memory`
 
 ### R-029 新对话空白会话唯一性约束
 
-1. 空白会话定义为 `messages.length == 0`。
-2. 点击 `New Chat` 时，若存在空白会话，复用“最近创建”的空白会话并聚焦，不新建会话。
-3. 仅当不存在空白会话时才创建新会话。
-4. 删除会话与首条消息写入后，空白会话状态实时更新并保持唯一性。
-5. 页面刷新后保持同一约束：存在空白会话即复用，不存在才创建。
-6. 验收：连续点击 `New Chat` 5 次最多仅有 1 个空白会话；发送首条消息后再次 `New Chat` 才会创建新空白会话。
+1. 定义“空白会话”：会话内没有任何用户消息与助手消息（`messages.length == 0`）。
+2. `New Chat` 行为约束：当存在任意空白会话时，不得创建新会话；必须复用最近创建的空白会话并切换为活动会话。
+3. 仅当当前不存在空白会话时，`New Chat` 才允许创建新的会话记录。
+4. 会话删除或首条消息写入后，空白会话状态实时更新，后续 `New Chat` 按最新状态判定。
+5. 页面刷新后规则保持一致：本地恢复会话列表后仍遵守“最多一个空白会话”的约束。
+6. 验收：连续点击 `New Chat` 5 次，最多只保留 1 个空白会话；发送首条消息后再次点击 `New Chat` 才会生成下一空白会话。
+
+#### Task Breakdown (auto-managed)
+
+1. Scope split
+   - Define blank-session detection and uniqueness contract.
+   - Apply uniqueness rule to all New Chat entry points.
+2. Delivery plan
+   - M1: Frontend creation guard and focus reuse behavior.
+   - M2: Recovery-path consistency after local persistence reload.
+3. Status workflow
+   - Keep lifecycle as planned -> ready -> supported; update this row only.
+4. Traceability
+   - Keep implementation and verification records in this section after delivery.
 
 #### Traceability
 
-- 实现文件：`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
-- 测试覆盖：`internal/interfaces/web/server_mobile_session_test.go`
-- 验证命令：
-  - `GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./internal/interfaces/web -run 'Session|Mobile|Sidebar|Chat'`
-  - `GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./internal/interfaces/web`
-- 验证记录：
-  - 2026-03-04：`New Chat` 接入空白会话复用逻辑，存在空白会话时聚焦最近创建项，不新增会话。
-  - 2026-03-04：会话状态新增空白会话唯一性收敛，刷新加载与消息写入后均保证最多一个空白会话。
-  - 2026-03-04：会话列表新增删除入口，删除会话后立即重算空白会话与活动会话焦点。
-  - 2026-03-04：`web/session` 用例覆盖空白会话复用、删除入口与样式标记，相关测试通过。
+- 目标模块：`internal/interfaces/web/static/assets/chat.js`
+- 关联需求：`R-015`、`R-019`
+- 验证口径：`New Chat` 连续触发、刷新恢复、首条消息后再创建
+
+### R-030 会话与异步任务映射模型
+
+1. 建立统一映射关系：一个 `session` 可关联多个 `task`（`1:N`），每个任务必须持有 `session_id` 与 `source_message_id`。
+2. 新增异步判定门槛：预计耗时超过阈值或属于产物型/多步骤流程时，消息路由转为后台任务执行。
+3. 对话层快速应答：命中异步后立即返回 `task_id` 与初始状态（`queued/running`），不阻塞会话响应。
+4. 任务状态机标准化：`queued -> running -> success/failed/canceled`，并支持进度、重试、超时、取消。
+5. 任务日志与产物持久化：后台执行写入阶段日志、错误原因、产物引用；对话模块可按 `task_id` 回读并生成用户可读摘要。
+6. 结果回流规则：任务完成后将摘要结果回写原 `session`，保留 `task_id` 与消息关联，支持“查任务进度/查任务结果”指令。
+7. 验收：同一会话连续发起多个长任务时，会话可持续交互；每个任务可独立查询状态、日志和最终结果，且不会导致会话上下文异常膨胀。
+
+#### Task Breakdown (auto-managed)
+
+1. Scope split
+   - Define session-task data model and id mapping contract.
+   - Define async routing trigger and response contract.
+2. Delivery plan
+   - M1: Task lifecycle APIs and persistence model.
+   - M2: Chat readback flow and completion writeback behavior.
+3. Status workflow
+   - Keep lifecycle as planned -> ready -> supported; update this row only.
+4. Traceability
+   - Keep implementation and verification records in this section after delivery.
+
+#### 接口拆分（草案）
+
+1. 任务创建与快速应答
+   - `POST /api/tasks`
+   - 入参：`session_id`、`source_message_id`、`task_type`、`input`、`idempotency_key`、`async_hint`
+   - 出参：`task_id`、`status`、`accepted_at`、`estimated_wait_ms`
+   - 约束：同一 `idempotency_key` 重复提交时返回已存在任务，不重复创建。
+2. 任务查询与列表
+   - `GET /api/tasks/{task_id}`
+   - `GET /api/tasks?session_id=&status=&page=&page_size=`
+   - 能力：返回状态机节点、进度百分比、开始/结束时间、错误摘要。
+3. 任务日志与产物查询
+   - `GET /api/tasks/{task_id}/logs?cursor=&limit=`
+   - `GET /api/tasks/{task_id}/artifacts`
+   - 能力：按游标增量读取日志，产物返回可审计引用（文件路径、PR 链接、报告链接）。
+4. 任务控制动作
+   - `POST /api/tasks/{task_id}/cancel`
+   - `POST /api/tasks/{task_id}/retry`
+   - 约束：仅 `queued/running` 可取消，仅 `failed/canceled` 可重试。
+5. 会话回读接口
+   - `GET /api/sessions/{session_id}/tasks?latest=true`
+   - 对话请求命中异步判定时，原会话响应必须附带 `task_id` 与 `task_status`，前端据此跳转任务详情或轮询。
+
+#### 数据模型拆分（草案）
+
+- `Task`
+  - 关键字段：`task_id`、`session_id`、`source_message_id`、`task_type`、`status`、`progress`、`retry_count`、`timeout_at`
+- `TaskLog`
+  - 关键字段：`task_id`、`seq`、`stage`、`level`、`message`、`created_at`
+- `TaskArtifact`
+  - 关键字段：`task_id`、`artifact_type`、`uri`、`summary`、`created_at`
+- `TaskMessageLink`
+  - 关键字段：`task_id`、`session_id`、`request_message_id`、`result_message_id`
+
+#### Traceability
+
+- 核心对象：`session_id`、`task_id`、`source_message_id`
+- 关联需求：`R-016`、`R-019`、`R-029`
+- 验证口径：异步判定、快速应答、任务查询、结果回流
+
+### R-031 任务摘要跨会话记忆与按需深检索
+
+1. 任务完成后必须产出结构化摘要并写入跨会话记忆层，摘要至少包含：`task_id`、`task_type`、`goal`、`result`、`status`、`finished_at`、`tags`。
+2. 默认注入策略：新会话与普通问答仅注入最近 `3-5` 条高价值任务摘要，不注入详细执行日志。
+3. 深检索触发策略：当用户问题包含“更早/历史/之前/上周/首个任务”等历史信号时，自动切换到全量摘要库检索，不受 `3-5` 条默认窗口限制。
+4. 命中回填策略：深检索命中的历史摘要临时注入当前回答上下文，并在回复中标注可继续按 `task_id` 下钻详情。
+5. 详情下钻边界：仅在用户明确请求细节时读取任务日志/产物，避免详细信息默认进入对话上下文。
+6. 验收：默认模式下上下文体积稳定；历史追问可召回早期任务摘要；按 `task_id` 可继续查询完整任务日志与产物。
+
+#### 触发词词表（草案）
+
+- 中文：`更早`、`之前`、`历史`、`上次`、`上周`、`上个月`、`最早`、`第一条`、`当时`、`那次`。
+- 英文：`earlier`、`previous`、`history`、`last time`、`last week`、`first task`、`older`。
+- 时间表达：显式日期（如 `2026-03-01`）、相对时间（如 `三天前`、`两周前`）。
+- 指代增强：当句子同时包含 `任务/需求/PR/执行` 与历史词时，强制启用深检索。
+
+#### 检索排序规则（草案）
+
+1. 先按语义相关度排序（query 与 `goal/result/tags` 的匹配分）。
+2. 再按业务价值加权：`success` 与关键失败（有明确原因/产物）优先于噪声记录。
+3. 再按时间衰减：默认优先近 30 天；若用户给定时间范围，则以范围约束优先。
+4. 最终去重：同一 `task_id` 多条摘要仅保留最高分版本。
+5. 返回策略：默认返回 `top 5` 摘要；用户明确要求“全部”时可分页继续拉取。
+
+#### 任务历史双轨记忆策略（草案）
+
+1. 主数据轨（Task Log）：任务系统保存完整执行日志、阶段状态、错误信息与产物引用，作为审计与排障唯一真源。
+2. 摘要轨（Task Summary Memory）：任务进入终态（`success/failed/canceled`）时自动生成结构化摘要，写入跨会话记忆与天级记忆。
+3. 摘要写入位置：
+   - 天级摘要：`memory/YYYY-MM-DD.md`
+   - 长期候选：`memory/long-term/YYYY-MM-DD.md`
+   - 摘要记录必须包含 `task_id`，用于回链主数据轨。
+4. 默认检索路径：先检索摘要轨并返回精简结论；不直接加载任务日志细节。
+5. 按需下钻路径：仅当用户明确要求“细节/日志/报错原因/完整过程”时，基于 `task_id` 回查主数据轨并补充回答。
+6. 一致性保障：若摘要轨与主数据轨状态不一致，以主数据轨为准并触发摘要重建。
+
+#### 误触发保护规则（草案）
+
+1. 否定语义保护：出现“不要查历史/不看以前/只看当前”等否定表达时，禁止深检索。
+2. 当前上下文优先：若问题明确锚定当前任务（如“这个任务现在进度”），即便包含历史词也保持默认注入模式。
+3. 双信号门槛：仅当“历史词”与“任务域词（任务/需求/PR/执行）”同时出现，或用户明确指定时间范围时触发深检索。
+4. 预算保护：当深检索命中结果过多时，先返回摘要分页提示，不一次性注入超量历史内容。
+5. 回退机制：深检索无命中时，自动回退到默认 `3-5` 条注入并提示可换关键词重试。
+6. 可观测指标：记录 `deep_retrieval_triggered`、`deep_retrieval_overridden`、`deep_retrieval_miss`，用于评估误触发率。
+
+#### Task Breakdown (auto-managed)
+
+1. Scope split
+   - Define task summary schema for cross-session memory.
+   - Define default injection and deep-retrieval trigger rules.
+2. Delivery plan
+   - M1: Summary writeback pipeline and default top-k injection.
+   - M2: Query-intent deep retrieval and task-detail drill-down flow.
+3. Status workflow
+   - Keep lifecycle as planned -> ready -> supported; update this row only.
+4. Traceability
+   - Keep implementation and verification records in this section after delivery.
+
+#### Traceability
+
+- 核心对象：`task_summary`、`task_id`、`session_id`、`history_query_intent`
+- 关联需求：`R-018`、`R-025`、`R-030`
+- 验证口径：默认注入窗口、深检索命中率、误触发率、详情下钻可用性、摘要轨与主数据轨一致性
+
+### R-032 `.alter0` 任务历史存储规范与 Memory 查阅
+
+1. 任务历史运行态数据统一落盘到 `.alter0/`，默认不纳入仓库提交，避免业务代码与运行数据混杂。
+2. 目录规范：
+   - `.alter0/tasks/index.json`：任务索引（`task_id`、`session_id`、`source_message_id`、`status`、`created_at`、`finished_at`）
+   - `.alter0/tasks/{task_id}/meta.json`：任务主信息与状态机快照
+   - `.alter0/tasks/{task_id}/logs.jsonl`：任务阶段日志（append-only）
+   - `.alter0/tasks/{task_id}/artifacts.json`：产物引用（PR/文件/报告）
+   - `.alter0/memory/YYYY-MM-DD.md`：任务摘要天级记忆
+   - `.alter0/memory/long-term/YYYY-MM-DD.md`：长期候选摘要
+3. 回链规范：摘要记录必须包含 `task_id`，可从 Memory 视图一跳回查任务详情；任务详情页必须反向展示其摘要引用。
+4. 留存策略：
+   - `logs.jsonl` 按任务保留（默认 90 天，可配置）
+   - `index.json` 与 `meta.json` 保留任务生命周期全量索引
+   - 天级摘要长期可读，超期归档不删除 `task_id` 映射
+5. 前端 `Agent -> Memory` 查阅规范：
+   - 默认展示任务摘要列表（按时间倒序）
+   - 支持筛选 `status/task_type/time_range`
+   - 支持按 `task_id` 打开详情抽屉，按需加载 `logs/artifacts`
+   - 默认不展开原始日志，避免信息过载
+6. 空态与异常态：
+   - 无任务历史时显示“暂无任务历史”
+   - 日志缺失或文件损坏时显示可重建提示，不影响摘要列表展示
+7. 验收：`Memory` 页面可查阅 `.alter0` 中任务摘要并下钻详情；同一 `task_id` 可在摘要与日志间双向跳转，且运行态数据不进入 Git 变更。
+
+#### 后端接口拆解（MVP）
+
+1. 任务摘要列表接口
+   - `GET /api/memory/tasks?status=&task_type=&start_at=&end_at=&page=&page_size=`
+   - 返回：`items[]`（摘要字段）+ `pagination`（分页游标/总数）
+2. 任务详情接口
+   - `GET /api/memory/tasks/{task_id}`
+   - 返回：`meta`（状态机快照）+ `summary_refs`（摘要回链）
+3. 任务日志接口（按需加载）
+   - `GET /api/memory/tasks/{task_id}/logs?cursor=&limit=`
+   - 返回：增量日志片段，支持游标续读
+4. 任务产物接口（按需加载）
+   - `GET /api/memory/tasks/{task_id}/artifacts`
+   - 返回：产物列表（类型、链接、摘要、生成时间）
+5. 任务摘要重建接口（运维/修复）
+   - `POST /api/memory/tasks/{task_id}/rebuild-summary`
+   - 用于处理摘要轨与主数据轨不一致场景
+
+#### 前端字段清单（MVP）
+
+1. 摘要列表项字段
+   - `task_id`、`task_type`、`goal`、`result`、`status`、`finished_at`、`tags`
+2. 详情抽屉基础字段
+   - `task_id`、`session_id`、`source_message_id`、`status`、`progress`、`created_at`、`finished_at`、`retry_count`
+3. 日志视图字段
+   - `seq`、`stage`、`level`、`message`、`created_at`
+4. 产物视图字段
+   - `artifact_type`、`uri`、`summary`、`created_at`
+5. 交互状态字段
+   - `isLoading`、`isLogLoading`、`hasMoreLogs`、`errorCode`、`activeTaskId`
+
+#### Task Breakdown (auto-managed)
+
+1. Scope split
+   - Define `.alter0` runtime task storage layout and retention rules.
+   - Define Memory module read model for summary-first and drill-down.
+2. Delivery plan
+   - M1: Runtime persistence schema and task-summary linking.
+   - M2: Frontend Memory task-history browse and detail loading behavior.
+3. Status workflow
+   - Keep lifecycle as planned -> ready -> supported; update this row only.
+4. Traceability
+   - Keep implementation and verification records in this section after delivery.
+
+#### Traceability
+
+- 规范文档：`docs/memory/runtime-task-memory-spec.md`
+- 核心对象：`.alter0/tasks/*`、`.alter0/memory/*`、`task_id`
+- 关联需求：`R-028`、`R-030`、`R-031`
+- 验证口径：目录规范、摘要回链、前端可查阅、Git 隔离
 
 ### R-014 移动端真机适配增强
 
