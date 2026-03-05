@@ -2386,11 +2386,13 @@ func parseSessionQuery(r *http.Request) (sessionapp.SessionQuery, int, error) {
 	}
 
 	query := sessionapp.SessionQuery{
-		StartAt:  startAt,
-		EndAt:    endAt,
-		Page:     page,
-		PageSize: pageSize,
-		JobID:    strings.TrimSpace(r.URL.Query().Get("job_id")),
+		StartAt:   startAt,
+		EndAt:     endAt,
+		Page:      page,
+		PageSize:  pageSize,
+		ChannelID: strings.TrimSpace(r.URL.Query().Get("channel_id")),
+		MessageID: strings.TrimSpace(r.URL.Query().Get("message_id")),
+		JobID:     strings.TrimSpace(r.URL.Query().Get("job_id")),
 	}
 	rawTriggerType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("trigger_type")))
 	if rawTriggerType != "" {
@@ -2404,6 +2406,16 @@ func parseSessionQuery(r *http.Request) (sessionapp.SessionQuery, int, error) {
 	}
 	if query.JobID != "" && query.TriggerType == "" {
 		query.TriggerType = shareddomain.TriggerTypeCron
+	}
+	rawChannelType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("channel_type")))
+	if rawChannelType != "" {
+		channelType := shareddomain.ChannelType(rawChannelType)
+		switch channelType {
+		case shareddomain.ChannelTypeCLI, shareddomain.ChannelTypeWeb, shareddomain.ChannelTypeScheduler:
+			query.ChannelType = channelType
+		default:
+			return sessionapp.SessionQuery{}, http.StatusBadRequest, errors.New("channel_type must be cli/web/scheduler")
+		}
 	}
 
 	return query, http.StatusOK, nil
