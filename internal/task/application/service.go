@@ -23,6 +23,7 @@ const (
 	MetadataTaskStatusKey       = "task_status"
 	MetadataTaskTypeKey         = "alter0.task.type"
 	MetadataTaskTimeoutMS       = "alter0.task.timeout_ms"
+	MetadataTaskTerminalFlagKey = "alter0.task.terminal_interactive"
 	MetadataTaskAsyncMode       = "alter0.async.mode"
 	MetadataTaskArtifact        = "alter0.task.artifact"
 	MetadataTaskIdempotencyKey  = "alter0.task.idempotency_key"
@@ -38,9 +39,11 @@ const (
 )
 
 const (
-	defaultWorkerCount = asyncExecutorMaxConcurrency
-	defaultTimeout     = 90 * time.Second
-	defaultMaxRetries  = 1
+	defaultWorkerCount         = asyncExecutorMaxConcurrency
+	defaultTimeout             = 90 * time.Second
+	defaultTerminalTaskTimeout = 4 * time.Hour
+	defaultMaxRetries          = 1
+	terminalTaskTypeValue      = "terminal"
 )
 
 var (
@@ -1255,8 +1258,11 @@ func (s *Service) resolveTaskTimeout(msg shareddomain.UnifiedMessage) time.Durat
 }
 
 func (s *Service) resolveTaskTimeoutByMetadata(metadata map[string]string) time.Duration {
+	terminalTask := isTerminalTaskMetadata(metadata)
 	timeout := s.options.Timeout
-	if timeout <= 0 {
+	if terminalTask {
+		timeout = defaultTerminalTaskTimeout
+	} else if timeout <= 0 {
 		timeout = defaultTimeout
 	}
 	raw := strings.TrimSpace(metadataValue(metadata, MetadataTaskTimeoutMS))
@@ -1267,7 +1273,30 @@ func (s *Service) resolveTaskTimeoutByMetadata(metadata map[string]string) time.
 	if err != nil || value <= 0 {
 		return timeout
 	}
-	return time.Duration(value) * time.Millisecond
+	resolved := time.Duration(value) * time.Millisecond
+	if terminalTask && resolved > defaultTerminalTaskTimeout {
+		return defaultTerminalTaskTimeout
+	}
+	return resolved
+}
+
+func isTerminalTaskMetadata(metadata map[string]string) bool {
+	if len(metadata) == 0 {
+		return false
+	}
+	if parseTruthy(metadataValue(metadata, MetadataTaskTerminalFlagKey)) {
+		return true
+	}
+	return normalizeTaskType(metadataValue(metadata, MetadataTaskTypeKey)) == terminalTaskTypeValue
+}
+
+func parseTruthy(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeTaskArtifacts(taskID string, artifacts []taskdomain.TaskArtifact) ([]taskdomain.TaskArtifact, bool) {

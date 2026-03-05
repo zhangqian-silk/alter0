@@ -93,19 +93,59 @@ func (e *stubExecutor) ExecuteNaturalLanguage(_ context.Context, msg shareddomai
 }
 
 type spyTelemetry struct {
-	routeCount map[string]int
-	commandCnt map[string]int
-	errorCount map[string]int
+	routeCount  map[string]int
+	commandCnt  map[string]int
+	errorCount  map[string]int
 	memoryEvent map[string]int
 }
 
 func newSpyTelemetry() *spyTelemetry {
 	return &spyTelemetry{
-		routeCount: map[string]int{},
-		commandCnt: map[string]int{},
-		errorCount: map[string]int{},
+		routeCount:  map[string]int{},
+		commandCnt:  map[string]int{},
+		errorCount:  map[string]int{},
 		memoryEvent: map[string]int{},
 	}
+}
+
+type stubSessionMemoryStore struct {
+	snapshotCalls int
+	recordCalls   int
+	snapshot      sessionMemorySnapshot
+}
+
+func (s *stubSessionMemoryStore) Snapshot(_ string, _ string, _ time.Time) sessionMemorySnapshot {
+	s.snapshotCalls++
+	return s.snapshot
+}
+
+func (s *stubSessionMemoryStore) Record(_ shareddomain.UnifiedMessage, _ shareddomain.Route, _ string) {
+	s.recordCalls++
+}
+
+type stubLongTermMemoryStore struct {
+	snapshotCalls int
+	recordCalls   int
+	snapshot      longTermMemorySnapshot
+}
+
+func (s *stubLongTermMemoryStore) Snapshot(_ shareddomain.UnifiedMessage, _ string, _ time.Time) longTermMemorySnapshot {
+	s.snapshotCalls++
+	return s.snapshot
+}
+
+func (s *stubLongTermMemoryStore) Record(_ shareddomain.UnifiedMessage, _ shareddomain.Route, _ string) {
+	s.recordCalls++
+}
+
+type stubTaskSummaryMemoryStore struct {
+	snapshotCalls int
+	snapshot      tasksummaryapp.Snapshot
+}
+
+func (s *stubTaskSummaryMemoryStore) Snapshot(_ string, _ time.Time) tasksummaryapp.Snapshot {
+	s.snapshotCalls++
+	return s.snapshot
 }
 
 func (t *spyTelemetry) CountGateway(_ string) {}
@@ -246,6 +286,158 @@ func TestHandleUnknownCommand(t *testing.T) {
 	}
 	if result.ErrorCode != "command_not_found" {
 		t.Fatalf("expected command_not_found, got %q", result.ErrorCode)
+	}
+}
+
+func TestHandleNLTerminalTaskBypassesHistoryMemory(t *testing.T) {
+	dir := t.TempDir()
+	contextPath := filepath.Join(dir, "SOUL.md")
+	if err := os.WriteFile(contextPath, []byte("response_style: concise\n"), 0o644); err != nil {
+		t.Fatalf("write mandatory context file: %v", err)
+	}
+
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		output: "terminal response",
+	}
+	sessionStore := &stubSessionMemoryStore{
+		snapshot: sessionMemorySnapshot{
+			RecentTurns: []sessionMemoryTurn{
+				{
+					UserInput: "previous context from history",
+				},
+			},
+		},
+	}
+	longTermStore := &stubLongTermMemoryStore{
+		snapshot: longTermMemorySnapshot{
+			Hits: []longTermMemoryHit{
+				{
+					Entry: longTermMemoryEntry{
+						Kind:  longTermMemoryKindPreference,
+						Key:   "tone",
+						Value: "verbose",
+					},
+				},
+			},
+		},
+	}
+	taskStore := &stubTaskSummaryMemoryStore{
+		snapshot: tasksummaryapp.Snapshot{
+			Summaries: []taskdomain.TaskSummary{
+				{
+					TaskID:   "task-1",
+					TaskType: "release",
+					Goal:     "prepare release",
+					Result:   "done",
+					Status:   taskdomain.TaskStatusSuccess,
+				},
+			},
+		},
+	}
+
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithSessionMemory(sessionStore),
+		WithLongTermMemory(longTermStore),
+		WithTaskSummaryMemory(taskStore),
+		WithMandatoryContextOptions(MandatoryContextOptions{
+			FilePath: contextPath,
+		}),
+	)
+
+	msg := validMessage("continue current terminal session")
+	msg.Metadata = map[string]string{
+		terminalTaskTypeMetadataKey: terminalTaskTypeValue,
+	}
+	result, err := service.Handle(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("handle message failed: %v", err)
+	}
+
+	prompt := executor.lastMessage.Content
+	if strings.Contains(prompt, "Recent turns:") {
+		t.Fatalf("expected session history not injected, got %q", prompt)
+	}
+	if strings.Contains(prompt, "[LONG TERM MEMORY]") {
+		t.Fatalf("expected long-term memory not injected, got %q", prompt)
+	}
+	if strings.Contains(prompt, "[TASK SUMMARY MEMORY]") {
+		t.Fatalf("expected task summary memory not injected, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "[MANDATORY CONTEXT]") {
+		t.Fatalf("expected mandatory context injected, got %q", prompt)
+	}
+	if got := sessionStore.snapshotCalls; got != 0 {
+		t.Fatalf("expected no session memory snapshot call, got %d", got)
+	}
+	if got := longTermStore.snapshotCalls; got != 0 {
+		t.Fatalf("expected no long-term memory snapshot call, got %d", got)
+	}
+	if got := taskStore.snapshotCalls; got != 0 {
+		t.Fatalf("expected no task summary snapshot call, got %d", got)
+	}
+	if got := sessionStore.recordCalls; got != 0 {
+		t.Fatalf("expected no session memory record call, got %d", got)
+	}
+	if got := longTermStore.recordCalls; got != 0 {
+		t.Fatalf("expected no long-term memory record call, got %d", got)
+	}
+	if got := result.Metadata[memoryHistoryBypassedMetadataKey]; got != "true" {
+		t.Fatalf("expected memory_history_bypassed=true, got %q", got)
+	}
+	if got := result.Metadata[memoryHistoryScopeMetadataKey]; got != memoryHistoryScopeTerminalSession {
+		t.Fatalf("expected memory_history_scope=terminal_session, got %q", got)
+	}
+}
+
+func TestHandleCommandTerminalTaskSkipsMemoryRecord(t *testing.T) {
+	registry := &stubRegistry{
+		handlers: map[string]orchdomain.CommandHandler{
+			"echo": &stubHandler{name: "echo", output: "ok"},
+		},
+	}
+	telemetry := newSpyTelemetry()
+	sessionStore := &stubSessionMemoryStore{}
+	longTermStore := &stubLongTermMemoryStore{}
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{
+				Type:        orchdomain.IntentTypeCommand,
+				CommandName: "echo",
+			},
+		},
+		registry,
+		&stubExecutor{output: "nl"},
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithSessionMemory(sessionStore),
+		WithLongTermMemory(longTermStore),
+	)
+
+	msg := validMessage("/echo hi")
+	msg.Metadata = map[string]string{
+		terminalTaskInteractiveMetadataKey: "true",
+	}
+	result, err := service.Handle(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Route != shareddomain.RouteCommand {
+		t.Fatalf("expected command route, got %s", result.Route)
+	}
+	if got := sessionStore.recordCalls; got != 0 {
+		t.Fatalf("expected no session memory record call, got %d", got)
+	}
+	if got := longTermStore.recordCalls; got != 0 {
+		t.Fatalf("expected no long-term memory record call, got %d", got)
 	}
 }
 

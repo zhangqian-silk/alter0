@@ -44,6 +44,7 @@ const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
 const SESSION_HISTORY_PANEL_STORAGE_KEY = "alter0.web.session-history-panel.v1";
+const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v1";
 const I18N = {
   en: {
     // Navigation
@@ -54,6 +55,7 @@ const I18N = {
     "nav.channels": "Channels",
     "nav.sessions": "Sessions",
     "nav.tasks": "Tasks",
+    "nav.terminal": "Terminal",
     "nav.cron-jobs": "Cron Jobs",
     "nav.memory": "Memory",
     "nav.skills": "Skills",
@@ -231,6 +233,25 @@ const I18N = {
     "route.tasks.actions.retry": "Retry",
     "route.tasks.actions.cancel": "Cancel",
     "route.tasks.result.title": "Result Output",
+    "route.terminal.title": "Terminal",
+    "route.terminal.subtitle": "Chat-style terminal proxy with continuous session chaining",
+    "route.terminal.new": "New Terminal Session",
+    "route.terminal.empty": "No terminal sessions yet. Create one and send your first command.",
+    "route.terminal.pick": "Select a terminal session to start.",
+    "route.terminal.input": "Type command or follow-up...",
+    "route.terminal.send": "Send",
+    "route.terminal.sending": "Sending...",
+    "route.terminal.session": "Session",
+    "route.terminal.anchor_task": "Anchor Task",
+    "route.terminal.active_task": "Active Task",
+    "route.terminal.status": "Status",
+    "route.terminal.logs.heading": "Task Execution Logs ({task})",
+    "route.terminal.logs.empty": "No terminal logs yet.",
+    "route.terminal.followup.title": "AI Follow-up",
+    "route.terminal.limit_reached": "Terminal session limit reached ({max}). Please finish an active session first.",
+    "route.terminal.send_failed": "Send failed: {error}",
+    "route.terminal.logs_failed": "Load terminal logs failed: {error}",
+    "route.terminal.loading": "Loading terminal session...",
     "trigger.user": "User",
     "trigger.cron": "Cron",
     "trigger.system": "System",
@@ -372,6 +393,7 @@ const I18N = {
     "nav.channels": "通道",
     "nav.sessions": "会话列表",
     "nav.tasks": "任务观测",
+    "nav.terminal": "终端代理",
     "nav.cron-jobs": "定时任务",
     "nav.memory": "记忆",
     "nav.skills": "技能",
@@ -549,6 +571,25 @@ const I18N = {
     "route.tasks.actions.retry": "重试",
     "route.tasks.actions.cancel": "取消",
     "route.tasks.result.title": "终态输出",
+    "route.terminal.title": "终端",
+    "route.terminal.subtitle": "以对话方式代理终端操作，并在同一终端会话内连续串联",
+    "route.terminal.new": "新建终端会话",
+    "route.terminal.empty": "暂无终端会话。创建后可直接发送第一条命令。",
+    "route.terminal.pick": "选择一个终端会话开始交互。",
+    "route.terminal.input": "输入命令或追问继续...",
+    "route.terminal.send": "发送",
+    "route.terminal.sending": "发送中...",
+    "route.terminal.session": "会话",
+    "route.terminal.anchor_task": "锚点任务",
+    "route.terminal.active_task": "当前任务",
+    "route.terminal.status": "状态",
+    "route.terminal.logs.heading": "任务执行日志（{task}）",
+    "route.terminal.logs.empty": "暂无终端日志。",
+    "route.terminal.followup.title": "AI 交互建议",
+    "route.terminal.limit_reached": "终端会话已达上限（{max}），请先结束一个活跃会话。",
+    "route.terminal.send_failed": "发送失败：{error}",
+    "route.terminal.logs_failed": "终端日志加载失败：{error}",
+    "route.terminal.loading": "正在加载终端会话...",
     "trigger.user": "用户触发",
     "trigger.cron": "定时触发",
     "trigger.system": "系统触发",
@@ -702,6 +743,11 @@ const ROUTES = {
     key: "tasks",
     mode: "page",
     loader: loadControlTasksView
+  },
+  terminal: {
+    key: "terminal",
+    mode: "page",
+    loader: loadTerminalView
   },
   "cron-jobs": {
     key: "cron",
@@ -3545,6 +3591,698 @@ async function loadControlTasksView(container) {
     </section>
   </section>`;
   bindControlTaskView(container, payload);
+}
+
+function normalizeTerminalStoredEntry(item, fallbackAt) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const role = String(item.role || "").trim().toLowerCase();
+  if (!["user", "terminal", "system", "assistant"].includes(role)) {
+    return null;
+  }
+  const text = typeof item.text === "string" ? item.text.trim() : "";
+  if (!text) {
+    return null;
+  }
+  const taskID = typeof item.task_id === "string" ? item.task_id.trim() : "";
+  const at = Number.isFinite(item.at) ? item.at : fallbackAt;
+  const kind = typeof item.kind === "string" ? item.kind.trim().toLowerCase() : "";
+  const stage = typeof item.stage === "string" ? item.stage.trim().toLowerCase() : "";
+  return {
+    id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : makeID(),
+    role,
+    text,
+    task_id: taskID,
+    at,
+    kind,
+    stage
+  };
+}
+
+function normalizeTerminalStoredSession(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const now = Date.now();
+  const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : makeID();
+  const createdAt = Number.isFinite(item.created_at) ? item.created_at : now;
+  const updatedAt = Number.isFinite(item.updated_at) ? item.updated_at : createdAt;
+  const taskCursor = item.task_cursor && typeof item.task_cursor === "object" ? item.task_cursor : {};
+  const safeCursor = {};
+  for (const [taskID, cursor] of Object.entries(taskCursor)) {
+    const safeTaskID = String(taskID || "").trim();
+    const safeCursorValue = Number(cursor || 0);
+    if (!safeTaskID || !Number.isFinite(safeCursorValue) || safeCursorValue < 0) {
+      continue;
+    }
+    safeCursor[safeTaskID] = safeCursorValue;
+  }
+  const taskOrderRaw = Array.isArray(item.task_order) ? item.task_order : [];
+  const taskOrder = taskOrderRaw.map((taskID) => String(taskID || "").trim()).filter(Boolean);
+  const entriesRaw = Array.isArray(item.entries) ? item.entries : [];
+  const entries = [];
+  for (const row of entriesRaw) {
+    const parsed = normalizeTerminalStoredEntry(row, createdAt);
+    if (parsed) {
+      entries.push(parsed);
+    }
+  }
+  const runtimeSessionID = String(item.runtime_session_id || "").trim() || `terminal-runtime-${id}`;
+  const terminalSessionID = String(item.terminal_session_id || "").trim() || `terminal-${id}`;
+  const title = String(item.title || "").trim() || t("route.terminal.new");
+  const status = String(item.status || "").trim().toLowerCase();
+  return {
+    id,
+    title,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    runtime_session_id: runtimeSessionID,
+    terminal_session_id: terminalSessionID,
+    anchor_task_id: String(item.anchor_task_id || "").trim(),
+    active_task_id: String(item.active_task_id || "").trim(),
+    status: status || "idle",
+    log_collapsed: typeof item.log_collapsed === "boolean" ? item.log_collapsed : null,
+    task_order: taskOrder,
+    task_cursor: safeCursor,
+    entries
+  };
+}
+
+function loadTerminalSessionsFromStorage() {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return [];
+  }
+  const raw = storage.getItem(TERMINAL_STORAGE_KEY);
+  if (!raw) {
+    return [];
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const sessions = [];
+  for (const item of parsed) {
+    const normalized = normalizeTerminalStoredSession(item);
+    if (normalized) {
+      sessions.push(normalized);
+    }
+  }
+  sessions.sort((left, right) => Number(right.updated_at || 0) - Number(left.updated_at || 0));
+  return sessions;
+}
+
+function persistTerminalSessionsToStorage(sessions) {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(TERMINAL_STORAGE_KEY, JSON.stringify(sessions));
+  } catch {
+  }
+}
+
+function renderTerminalStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (!normalized || normalized === "idle") {
+    return "-";
+  }
+  return formatTaskStatus(normalized);
+}
+
+function isTerminalTaskActiveStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return ["queued", "running", "in_progress", "processing"].includes(normalized);
+}
+
+function resolveTerminalLogCollapsed(session) {
+  if (!session) {
+    return false;
+  }
+  if (typeof session.log_collapsed === "boolean") {
+    return session.log_collapsed;
+  }
+  return !isTerminalTaskActiveStatus(session.status);
+}
+
+function normalizeTerminalLine(text, max = 240) {
+  const safe = String(text || "").replace(/\s+/g, " ").trim();
+  if (!safe) {
+    return "";
+  }
+  if (safe.length <= max) {
+    return safe;
+  }
+  return `${safe.slice(0, max - 1)}...`;
+}
+
+function classifyTerminalLogKind(entry) {
+  const role = String(entry?.role || "").trim().toLowerCase();
+  const stage = String(entry?.stage || "").trim().toLowerCase();
+  const text = String(entry?.text || "");
+  if (role === "user") {
+    return "command";
+  }
+  if (role === "system") {
+    return "action";
+  }
+  if (stage && ["accept", "accepted", "running", "success", "failed", "error", "warn", "info"].includes(stage)) {
+    return "tag";
+  }
+  if (/^\s*\[[a-z_]+\]/i.test(text)) {
+    return "tag";
+  }
+  if (/^(accepted|已运行|executed|executing|run |running )/i.test(text)) {
+    return "action";
+  }
+  return "output";
+}
+
+function isAssistantFollowupLog(stage, message) {
+  const safeStage = String(stage || "").trim().toLowerCase();
+  const safeMessage = String(message || "").trim();
+  if (!safeMessage) {
+    return false;
+  }
+  if (safeStage && !["terminal", "assistant", "chat", "nl"].includes(safeStage)) {
+    return false;
+  }
+  if (/^\s*\[[a-z_]+\]\s+/i.test(safeMessage)) {
+    return false;
+  }
+  if (/^(accepted|已运行|任务|task |running|success|failed|error|warning|stderr|stdout|\$ |>)/i.test(safeMessage.toLowerCase())) {
+    return false;
+  }
+  if (/^(要不要|是否|我可以|你希望|Would you|Do you want|Shall I|Should I|I can|Let me)/i.test(safeMessage)) {
+    return true;
+  }
+  if (/[?？]\s*$/.test(safeMessage) && safeMessage.length >= 8) {
+    return true;
+  }
+  return false;
+}
+
+function buildTerminalLogLine(item) {
+  const stage = String(item?.stage || "").trim().toLowerCase();
+  const message = String(item?.message || "").trim();
+  if (!message) {
+    return "";
+  }
+  if (!stage || stage === "terminal" || stage === "stdout" || stage === "stderr") {
+    return message;
+  }
+  return `[${stage}] ${message}`;
+}
+
+function renderTerminalSessionCards(sessions, activeSessionID) {
+  if (!sessions.length) {
+    return `<p class="terminal-session-empty">${escapeHTML(t("route.terminal.empty"))}</p>`;
+  }
+  return sessions.map((session) => {
+    const title = normalizeText(session.title);
+    const sessionID = normalizeText(session.terminal_session_id);
+    const active = session.id === activeSessionID;
+    return `<button class="terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}">
+      <span class="terminal-session-title">${escapeHTML(title)}</span>
+      <span class="terminal-session-meta">${escapeHTML(shorten(sessionID, 30))}</span>
+      <span class="terminal-session-meta">${escapeHTML(renderTerminalStatus(session.status))} · ${escapeHTML(formatDateTime(new Date(Number(session.updated_at || 0)).toISOString()))}</span>
+    </button>`;
+  }).join("");
+}
+
+function splitTerminalEntries(entries) {
+  const logs = [];
+  const followups = [];
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const role = String(entry?.role || "").trim().toLowerCase();
+    if (role === "assistant") {
+      followups.push(entry);
+      return;
+    }
+    logs.push(entry);
+  });
+  return { logs, followups };
+}
+
+function renderTerminalLogRows(entries) {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  if (!safeEntries.length) {
+    return `<div class="terminal-log-empty">${escapeHTML(t("route.terminal.logs.empty"))}</div>`;
+  }
+  return safeEntries.map((entry) => {
+    const kind = classifyTerminalLogKind(entry);
+    const rowClass = `terminal-log-row kind-${escapeHTML(kind)}`;
+    const text = normalizeText(entry?.text || "");
+    const prefix = kind === "command" ? "$" : "";
+    const safeText = text === "-" ? "" : text;
+    if (!safeText) {
+      return "";
+    }
+    return `<div class="${rowClass}">
+      <div class="terminal-log-main">
+        ${prefix ? `<span class="terminal-log-prefix">${escapeHTML(prefix)}</span>` : ""}
+        <span class="terminal-log-text">${escapeHTML(safeText)}</span>
+      </div>
+      <span class="terminal-log-time">${escapeHTML(timeLabel(entry?.at))}</span>
+    </div>`;
+  }).join("");
+}
+
+function renderTerminalFollowupRows(entries) {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  if (!safeEntries.length) {
+    return "";
+  }
+  return `<section class="terminal-followup-list">
+    <h6>${escapeHTML(t("route.terminal.followup.title"))}</h6>
+    ${safeEntries.map((entry) => `<article class="terminal-followup-bubble">
+      <div class="terminal-followup-text">${escapeHTML(normalizeText(entry?.text || ""))}</div>
+      <div class="terminal-followup-meta">
+        <span>${escapeHTML(timeLabel(entry?.at))}</span>
+      </div>
+    </article>`).join("")}
+  </section>`;
+}
+
+function renderTerminalWorkspace(session, sending) {
+  if (!session) {
+    return `<section class="terminal-workspace-empty">
+      <p>${escapeHTML(t("route.terminal.pick"))}</p>
+    </section>`;
+  }
+  const collapsed = resolveTerminalLogCollapsed(session);
+  const logToggleIcon = collapsed ? "▶" : "▼";
+  const logTaskRef = normalizeText(session.active_task_id || session.anchor_task_id || session.terminal_session_id);
+  const logTitle = t("route.terminal.logs.heading", { task: shorten(logTaskRef === "-" ? "n/a" : logTaskRef, 32) });
+  const split = splitTerminalEntries(session.entries);
+  return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}">
+    <header class="terminal-workspace-head">
+      <p><span>${t("route.terminal.session")}</span><strong>${escapeHTML(normalizeText(session.terminal_session_id))}</strong></p>
+      <p><span>${t("route.terminal.anchor_task")}</span><strong>${escapeHTML(normalizeText(session.anchor_task_id))}</strong></p>
+      <p><span>${t("route.terminal.active_task")}</span><strong>${escapeHTML(normalizeText(session.active_task_id))}</strong></p>
+      <p><span>${t("route.terminal.status")}</span><strong>${escapeHTML(renderTerminalStatus(session.status))}</strong></p>
+    </header>
+    <section class="terminal-log-block">
+      <button class="terminal-log-toggle" type="button" data-terminal-log-toggle aria-expanded="${collapsed ? "false" : "true"}">
+        <span class="terminal-log-toggle-icon">${logToggleIcon}</span>
+        <span class="terminal-log-toggle-text">${escapeHTML(logTitle)}</span>
+      </button>
+      <div class="terminal-chat-screen ${collapsed ? "is-collapsed" : ""}" data-terminal-chat-screen ${collapsed ? "hidden" : ""}>
+        <div class="terminal-log-tree">
+          ${renderTerminalLogRows(split.logs)}
+        </div>
+      </div>
+    </section>
+    ${renderTerminalFollowupRows(split.followups)}
+    <form class="terminal-chat-form" data-terminal-input-form>
+      <input type="text" data-terminal-input maxlength="6000" placeholder="${escapeHTML(t("route.terminal.input"))}" ${sending ? "disabled" : ""}>
+      <button type="submit" data-terminal-submit ${sending ? "disabled" : ""}>${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}</button>
+    </form>
+  </section>`;
+}
+
+async function loadTerminalView(container) {
+  const localState = {
+    sessions: loadTerminalSessionsFromStorage(),
+    activeSessionID: "",
+    sending: false,
+    polling: false,
+    timer: 0
+  };
+  localState.activeSessionID = localState.sessions[0] ? localState.sessions[0].id : "";
+
+  const getActiveSession = () => {
+    return localState.sessions.find((item) => item.id === localState.activeSessionID) || null;
+  };
+
+  const touchSession = (session) => {
+    if (!session) {
+      return;
+    }
+    session.updated_at = Date.now();
+    localState.sessions.sort((left, right) => Number(right.updated_at || 0) - Number(left.updated_at || 0));
+  };
+
+  const persist = () => {
+    persistTerminalSessionsToStorage(localState.sessions);
+  };
+
+  const appendEntry = (session, role, text, taskID = "", options = {}) => {
+    const content = String(text || "").trim();
+    if (!session || !content) {
+      return;
+    }
+    session.entries.push({
+      id: makeID(),
+      role,
+      text: content,
+      task_id: String(taskID || "").trim(),
+      at: Date.now(),
+      kind: String(options.kind || "").trim().toLowerCase(),
+      stage: String(options.stage || "").trim().toLowerCase()
+    });
+    if (session.entries.length > 1200) {
+      session.entries = session.entries.slice(session.entries.length - 1200);
+    }
+    touchSession(session);
+  };
+
+  const ensureTaskTracked = (session, taskID) => {
+    const safeTaskID = String(taskID || "").trim();
+    if (!session || !safeTaskID) {
+      return;
+    }
+    if (!Array.isArray(session.task_order)) {
+      session.task_order = [];
+    }
+    if (!session.task_order.includes(safeTaskID)) {
+      session.task_order.push(safeTaskID);
+    }
+    if (!session.task_cursor || typeof session.task_cursor !== "object") {
+      session.task_cursor = {};
+    }
+    if (!Number.isFinite(Number(session.task_cursor[safeTaskID]))) {
+      session.task_cursor[safeTaskID] = 0;
+    }
+  };
+
+  const createNewTerminalSession = () => {
+    const id = makeID();
+    const createdAt = Date.now();
+    const session = {
+      id,
+      title: t("route.terminal.new"),
+      created_at: createdAt,
+      updated_at: createdAt,
+      runtime_session_id: `terminal-runtime-${id}`,
+      terminal_session_id: `terminal-${id}`,
+      anchor_task_id: "",
+      active_task_id: "",
+      status: "idle",
+      log_collapsed: false,
+      task_order: [],
+      task_cursor: {},
+      entries: []
+    };
+    localState.sessions.unshift(session);
+    localState.activeSessionID = session.id;
+    persist();
+    return session;
+  };
+
+  const stopPolling = () => {
+    if (localState.timer) {
+      window.clearInterval(localState.timer);
+      localState.timer = 0;
+    }
+  };
+
+  const paint = () => {
+    const active = getActiveSession();
+    container.innerHTML = `<section class="terminal-view" data-terminal-view>
+      <aside class="terminal-session-pane">
+        <button class="terminal-session-create" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new"))}</button>
+        <div class="terminal-session-list">${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
+      </aside>
+      <section class="terminal-workspace">
+        ${renderTerminalWorkspace(active, localState.sending)}
+      </section>
+    </section>`;
+  };
+
+  const appendLogItems = (session, taskID, logs) => {
+    if (!session || !Array.isArray(logs) || !logs.length) {
+      return;
+    }
+    logs.forEach((item) => {
+      const stage = String(item?.stage || "").trim().toLowerCase();
+      const line = buildTerminalLogLine(item);
+      if (!line) {
+        return;
+      }
+      if (isAssistantFollowupLog(stage, line)) {
+        appendEntry(session, "assistant", line, taskID, { kind: "followup", stage });
+        return;
+      }
+      appendEntry(session, "terminal", line, taskID, { kind: classifyTerminalLogKind({ role: "terminal", stage, text: line }), stage });
+    });
+  };
+
+  const pollLogsForTask = async (session, taskID) => {
+    if (!session || !taskID) {
+      return;
+    }
+    ensureTaskTracked(session, taskID);
+    let cursor = Number(session.task_cursor[taskID] || 0);
+    let hasMore = true;
+    let guard = 0;
+    while (hasMore && guard < 20) {
+      guard += 1;
+      const page = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}/logs?cursor=${Math.max(cursor, 0)}&limit=200`);
+      const items = Array.isArray(page?.items) ? page.items : [];
+      appendLogItems(session, taskID, items);
+      const nextCursor = Number(page?.next_cursor || cursor);
+      cursor = Number.isFinite(nextCursor) && nextCursor >= 0 ? nextCursor : cursor;
+      hasMore = Boolean(page?.has_more);
+    }
+    session.task_cursor[taskID] = cursor;
+  };
+
+  const refreshActiveTaskStatus = async (session) => {
+    const taskID = String(session?.active_task_id || "").trim();
+    if (!session || !taskID) {
+      return;
+    }
+    const payload = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}`);
+    session.status = normalizeText(payload?.task?.status || "idle").toLowerCase();
+    if (typeof session.log_collapsed !== "boolean") {
+      session.log_collapsed = !isTerminalTaskActiveStatus(session.status);
+    }
+    const linkTerminalSessionID = normalizeText(payload?.link?.terminal_session_id || "");
+    if (linkTerminalSessionID !== "-") {
+      session.terminal_session_id = linkTerminalSessionID;
+    }
+  };
+
+  const pollActiveSession = async () => {
+    if (localState.polling) {
+      return;
+    }
+    if (state.currentRoute !== "terminal" || !document.body.contains(container)) {
+      stopPolling();
+      return;
+    }
+    const session = getActiveSession();
+    const activeTaskID = String(session?.active_task_id || "").trim();
+    if (!session || !activeTaskID) {
+      stopPolling();
+      return;
+    }
+    localState.polling = true;
+    try {
+      await pollLogsForTask(session, activeTaskID);
+      await refreshActiveTaskStatus(session);
+      touchSession(session);
+      persist();
+      paint();
+      const chatNode = container.querySelector("[data-terminal-chat-screen]");
+      if (chatNode) {
+        chatNode.scrollTop = chatNode.scrollHeight;
+      }
+      if (["success", "failed", "canceled", "done"].includes(String(session.status || "").toLowerCase())) {
+        stopPolling();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_error";
+      appendEntry(session, "system", t("route.terminal.logs_failed", { error: message }));
+      session.status = "failed";
+      touchSession(session);
+      persist();
+      paint();
+      stopPolling();
+    } finally {
+      localState.polling = false;
+    }
+  };
+
+  const startPolling = async () => {
+    stopPolling();
+    await pollActiveSession();
+    const session = getActiveSession();
+    const activeTaskID = String(session?.active_task_id || "").trim();
+    if (!activeTaskID) {
+      return;
+    }
+    localState.timer = window.setInterval(() => {
+      void pollActiveSession();
+    }, 1200);
+  };
+
+  const sendTerminalInput = async (content) => {
+    const text = String(content || "").trim();
+    if (!text || localState.sending) {
+      return;
+    }
+    let session = getActiveSession();
+    if (!session) {
+      session = createNewTerminalSession();
+    }
+
+    session.log_collapsed = false;
+    appendEntry(session, "user", normalizeTerminalLine(text), "", { kind: "command", stage: "command" });
+    localState.sending = true;
+    paint();
+    try {
+      const currentTaskID = String(session.active_task_id || "").trim();
+      if (!currentTaskID) {
+        const response = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: session.runtime_session_id,
+            task_type: "terminal",
+            async_hint: "force",
+            input: text,
+            metadata: {
+              "alter0.task.terminal_session_id": session.terminal_session_id,
+              "alter0.task.terminal_interactive": "true"
+            }
+          })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
+          throw new Error(message);
+        }
+        const newTaskID = normalizeText(payload?.task_id || "");
+        if (newTaskID === "-") {
+          throw new Error("task_id missing");
+        }
+        session.anchor_task_id = newTaskID;
+        session.active_task_id = newTaskID;
+        session.status = normalizeText(payload?.status || "queued").toLowerCase();
+        ensureTaskTracked(session, newTaskID);
+        appendEntry(session, "system", `accepted ${newTaskID}`, newTaskID, { kind: "action", stage: "accept" });
+      } else {
+        const anchorTaskID = String(session.anchor_task_id || "").trim() || currentTaskID;
+        const response = await fetch(`/api/control/tasks/${encodeURIComponent(currentTaskID)}/terminal/input`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input: text,
+            reuse_task: true,
+            anchor_task_id: anchorTaskID
+          })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if ((payload?.error_code || "") === "terminal_session_limit_reached") {
+            const maxSessions = Number(payload?.max_sessions || 5);
+            window.alert(t("route.terminal.limit_reached", { max: String(maxSessions) }));
+            return;
+          }
+          const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
+          throw new Error(message);
+        }
+        const newTaskID = normalizeText(payload?.task_id || "");
+        const anchorTask = normalizeText(payload?.anchor_task_id || anchorTaskID || newTaskID);
+        if (newTaskID === "-") {
+          throw new Error("task_id missing");
+        }
+        session.anchor_task_id = anchorTask === "-" ? session.anchor_task_id : anchorTask;
+        session.active_task_id = newTaskID;
+        session.status = normalizeText(payload?.status || "queued").toLowerCase();
+        const terminalSessionID = normalizeText(payload?.terminal_session_id || "");
+        if (terminalSessionID !== "-") {
+          session.terminal_session_id = terminalSessionID;
+        }
+        ensureTaskTracked(session, newTaskID);
+        appendEntry(session, "system", `accepted ${newTaskID}`, newTaskID, { kind: "action", stage: "accept" });
+      }
+      touchSession(session);
+      persist();
+      paint();
+      await startPolling();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_error";
+      appendEntry(session, "system", t("route.terminal.send_failed", { error: message }), session.active_task_id, { kind: "tag", stage: "error" });
+      touchSession(session);
+      persist();
+      paint();
+    } finally {
+      localState.sending = false;
+      paint();
+      const inputNode = container.querySelector("[data-terminal-input]");
+      if (inputNode) {
+        inputNode.focus();
+      }
+      const chatNode = container.querySelector("[data-terminal-chat-screen]");
+      if (chatNode && !chatNode.hidden) {
+        chatNode.scrollTop = chatNode.scrollHeight;
+      }
+    }
+  };
+
+  paint();
+  const initialSession = getActiveSession();
+  if (initialSession && String(initialSession.active_task_id || "").trim()) {
+    await startPolling();
+  }
+
+  container.onclick = (event) => {
+    const target = event.target.closest("button");
+    if (!target) {
+      return;
+    }
+    if (target.hasAttribute("data-terminal-create")) {
+      createNewTerminalSession();
+      paint();
+      return;
+    }
+    if (target.hasAttribute("data-terminal-log-toggle")) {
+      const active = getActiveSession();
+      if (active) {
+        active.log_collapsed = !resolveTerminalLogCollapsed(active);
+        persist();
+        paint();
+      }
+      return;
+    }
+    if (target.hasAttribute("data-terminal-session-select")) {
+      const sessionID = normalizeText(target.getAttribute("data-terminal-session-select"));
+      if (sessionID !== "-") {
+        localState.activeSessionID = sessionID;
+        paint();
+        const active = getActiveSession();
+        if (active && String(active.active_task_id || "").trim()) {
+          void startPolling();
+        } else {
+          stopPolling();
+        }
+      }
+    }
+  };
+
+  container.onsubmit = async (event) => {
+    const form = event.target.closest("[data-terminal-input-form]");
+    if (!form) {
+      return;
+    }
+    event.preventDefault();
+    const inputNode = form.querySelector("[data-terminal-input]");
+    const value = inputNode ? String(inputNode.value || "") : "";
+    if (inputNode) {
+      inputNode.value = "";
+    }
+    await sendTerminalInput(value);
+  };
 }
 
 function formatDateTime(value) {

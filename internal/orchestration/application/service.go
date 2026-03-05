@@ -14,6 +14,15 @@ import (
 	tasksummaryapp "alter0/internal/tasksummary/application"
 )
 
+const (
+	terminalTaskInteractiveMetadataKey = "alter0.task.terminal_interactive"
+	terminalTaskTypeMetadataKey        = "alter0.task.type"
+	terminalTaskTypeValue              = "terminal"
+	memoryHistoryBypassedMetadataKey   = "memory_history_bypassed"
+	memoryHistoryScopeMetadataKey      = "memory_history_scope"
+	memoryHistoryScopeTerminalSession  = "terminal_session"
+)
+
 type ExecutionPort interface {
 	ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error)
 }
@@ -169,6 +178,7 @@ func (s *Service) handle(
 	onDelta func(string) error,
 ) (shareddomain.OrchestrationResult, error) {
 	startedAt := time.Now()
+	terminalSessionOnly := isTerminalSessionContextOnly(msg.Metadata)
 	result := shareddomain.OrchestrationResult{
 		MessageID: msg.MessageID,
 		SessionID: msg.SessionID,
@@ -214,48 +224,64 @@ func (s *Service) handle(
 				return result, err
 			}
 		}
-		s.memory.Record(msg, result.Route, result.Output)
-		s.longTerm.Record(msg, result.Route, result.Output)
+		if !terminalSessionOnly {
+			s.memory.Record(msg, result.Route, result.Output)
+			s.longTerm.Record(msg, result.Route, result.Output)
+		}
 		s.onSuccess(msg, result.Route, startedAt)
 		return result, nil
 	case orchdomain.IntentTypeNL:
 		result.Route = shareddomain.RouteNL
 		s.telemetry.CountRoute(string(result.Route))
-		snapshot := s.memory.Snapshot(msg.SessionID, msg.Content, msg.ReceivedAt)
-		longTermSnapshot := s.longTerm.Snapshot(msg, msg.Content, msg.ReceivedAt)
-		taskSnapshot := s.taskMemory.Snapshot(msg.Content, msg.ReceivedAt)
-		s.observeTaskSummarySnapshot(taskSnapshot)
 		mandatorySnapshot := s.mandatory.Snapshot(msg.ReceivedAt)
-		snapshot, sessionConflicts := applyMandatoryContextToSessionMemory(snapshot, mandatorySnapshot)
-		longTermSnapshot, longTermConflicts := applyMandatoryContextToLongTermMemory(longTermSnapshot, mandatorySnapshot)
-		conflicts := append(sessionConflicts, longTermConflicts...)
-		conflictMetadata := mandatoryContextConflictMetadata(conflicts)
-
-		if len(conflicts) > 0 && s.logger != nil {
-			s.logger.Warn("mandatory context overrides memory",
-				slog.String("session_id", msg.SessionID),
-				slog.String("message_id", msg.MessageID),
-				slog.String("mandatory_context_version", mandatorySnapshot.Version),
-				slog.String("mandatory_context_file", mandatorySnapshot.FilePath),
-				slog.String("mandatory_conflicts", conflictMetadata[mandatoryContextConflictDetailMetadataKey]),
-				slog.Int("mandatory_conflict_count", len(conflicts)),
-			)
-		}
 		execMessage := msg
-		execMessage.Content = buildSessionMemoryPrompt(msg.Content, snapshot)
-		execMessage.Content = buildLongTermMemoryPrompt(execMessage.Content, longTermSnapshot)
-		execMessage.Content = buildTaskSummaryPrompt(execMessage.Content, taskSnapshot)
-		execMessage.Content = buildMandatoryContextPrompt(execMessage.Content, mandatorySnapshot)
-		execMessage.Metadata = mergeStringMap(
-			msg.Metadata,
-			mergeStringMap(
+		conflictMetadata := map[string]string{}
+		if terminalSessionOnly {
+			execMessage.Content = buildMandatoryContextPrompt(msg.Content, mandatorySnapshot)
+			execMessage.Metadata = mergeStringMap(
+				msg.Metadata,
+				mergeStringMap(mandatorySnapshot.Metadata(), terminalSessionOnlyMetadata()),
+			)
+		} else {
+			snapshot := s.memory.Snapshot(msg.SessionID, msg.Content, msg.ReceivedAt)
+			longTermSnapshot := s.longTerm.Snapshot(msg, msg.Content, msg.ReceivedAt)
+			taskSnapshot := s.taskMemory.Snapshot(msg.Content, msg.ReceivedAt)
+			s.observeTaskSummarySnapshot(taskSnapshot)
+			snapshot, sessionConflicts := applyMandatoryContextToSessionMemory(snapshot, mandatorySnapshot)
+			longTermSnapshot, longTermConflicts := applyMandatoryContextToLongTermMemory(longTermSnapshot, mandatorySnapshot)
+			conflicts := append(sessionConflicts, longTermConflicts...)
+			conflictMetadata = mandatoryContextConflictMetadata(conflicts)
+
+			if len(conflicts) > 0 && s.logger != nil {
+				s.logger.Warn("mandatory context overrides memory",
+					slog.String("session_id", msg.SessionID),
+					slog.String("message_id", msg.MessageID),
+					slog.String("mandatory_context_version", mandatorySnapshot.Version),
+					slog.String("mandatory_context_file", mandatorySnapshot.FilePath),
+					slog.String("mandatory_conflicts", conflictMetadata[mandatoryContextConflictDetailMetadataKey]),
+					slog.Int("mandatory_conflict_count", len(conflicts)),
+				)
+			}
+
+			execMessage.Content = buildSessionMemoryPrompt(msg.Content, snapshot)
+			execMessage.Content = buildLongTermMemoryPrompt(execMessage.Content, longTermSnapshot)
+			execMessage.Content = buildTaskSummaryPrompt(execMessage.Content, taskSnapshot)
+			execMessage.Content = buildMandatoryContextPrompt(execMessage.Content, mandatorySnapshot)
+			execMessage.Metadata = mergeStringMap(
+				msg.Metadata,
 				mergeStringMap(
-					mergeStringMap(snapshot.Metadata(), longTermSnapshot.Metadata()),
-					taskSnapshot.Metadata(),
+					mergeStringMap(
+						mergeStringMap(snapshot.Metadata(), longTermSnapshot.Metadata()),
+						taskSnapshot.Metadata(),
+					),
+					mergeStringMap(mandatorySnapshot.Metadata(), conflictMetadata),
 				),
-				mergeStringMap(mandatorySnapshot.Metadata(), conflictMetadata),
-			),
-		)
+			)
+			result.Metadata = mergeStringMap(result.Metadata, snapshot.ResultMetadata())
+			result.Metadata = mergeStringMap(result.Metadata, longTermSnapshot.ResultMetadata())
+			result.Metadata = mergeStringMap(result.Metadata, taskSnapshot.ResultMetadata())
+			result.Metadata = mergeStringMap(result.Metadata, conflictMetadata)
+		}
 		var nlResult shareddomain.ExecutionResult
 		var err error
 		if onDelta != nil {
@@ -281,14 +307,15 @@ func (s *Service) handle(
 		}
 
 		result.Output = nlResult.Output
-		result.Metadata = mergeStringMap(result.Metadata, snapshot.ResultMetadata())
-		result.Metadata = mergeStringMap(result.Metadata, longTermSnapshot.ResultMetadata())
-		result.Metadata = mergeStringMap(result.Metadata, taskSnapshot.ResultMetadata())
+		if terminalSessionOnly {
+			result.Metadata = mergeStringMap(result.Metadata, terminalSessionOnlyMetadata())
+		}
 		result.Metadata = mergeStringMap(result.Metadata, mandatorySnapshot.ResultMetadata())
-		result.Metadata = mergeStringMap(result.Metadata, conflictMetadata)
 		result.Metadata = mergeStringMap(result.Metadata, nlResult.Metadata)
-		s.memory.Record(msg, result.Route, nlResult.Output)
-		s.longTerm.Record(msg, result.Route, nlResult.Output)
+		if !terminalSessionOnly {
+			s.memory.Record(msg, result.Route, nlResult.Output)
+			s.longTerm.Record(msg, result.Route, nlResult.Output)
+		}
 		s.onSuccess(msg, result.Route, startedAt)
 		return result, nil
 	default:
@@ -296,6 +323,35 @@ func (s *Service) handle(
 		s.onError(msg, "unknown", startedAt, err)
 		result.ErrorCode = "intent_unsupported"
 		return result, err
+	}
+}
+
+func isTerminalSessionContextOnly(metadata map[string]string) bool {
+	if len(metadata) == 0 {
+		return false
+	}
+	if parseTruthyString(metadata[terminalTaskInteractiveMetadataKey]) {
+		return true
+	}
+	return strings.EqualFold(
+		strings.TrimSpace(metadata[terminalTaskTypeMetadataKey]),
+		terminalTaskTypeValue,
+	)
+}
+
+func parseTruthyString(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func terminalSessionOnlyMetadata() map[string]string {
+	return map[string]string{
+		memoryHistoryBypassedMetadataKey: "true",
+		memoryHistoryScopeMetadataKey:    memoryHistoryScopeTerminalSession,
 	}
 }
 
