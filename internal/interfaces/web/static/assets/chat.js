@@ -131,6 +131,7 @@ const I18N = {
     "field.date": "Date",
     "field.read_only": "Mode",
     "field.status": "Status",
+    "field.phase": "Phase",
     "field.task_type": "Task Type",
     "field.trigger_type": "Trigger Type",
     "field.channel_type": "Channel Type",
@@ -142,7 +143,11 @@ const I18N = {
     "field.goal": "Goal",
     "field.result": "Result",
     "field.finished": "Finished",
+    "field.accepted_at": "Accepted At",
+    "field.started_at": "Started At",
     "field.progress": "Progress",
+    "field.queue_position": "Queue Position",
+    "field.queue_wait_ms": "Queue Wait",
     "field.retry_count": "Retry Count",
     "field.source_message": "Source Message",
     "field.finished_at": "Finished At",
@@ -175,6 +180,16 @@ const I18N = {
     "route.tasks.drawer.close": "Close",
     "route.tasks.page.label": "Page",
     "route.tasks.page.next": "Next Page",
+    "route.tasks.logs.title": "Execution Logs",
+    "route.tasks.logs.empty": "No execution logs.",
+    "route.tasks.logs.streaming": "Streaming latest logs...",
+    "route.tasks.logs.done": "Log stream completed.",
+    "route.tasks.logs.disconnected": "Log stream disconnected. You can reconnect.",
+    "route.tasks.logs.reconnect": "Reconnect",
+    "route.tasks.logs.replay": "Replay",
+    "route.tasks.actions.retry": "Retry",
+    "route.tasks.actions.cancel": "Cancel",
+    "route.tasks.result.title": "Result Output",
     "trigger.user": "User",
     "trigger.cron": "Cron",
     "trigger.system": "System",
@@ -322,6 +337,7 @@ const I18N = {
     "field.date": "日期",
     "field.read_only": "模式",
     "field.status": "状态",
+    "field.phase": "阶段",
     "field.task_type": "任务类型",
     "field.trigger_type": "触发类型",
     "field.channel_type": "通道类型",
@@ -333,7 +349,11 @@ const I18N = {
     "field.goal": "目标",
     "field.result": "结果",
     "field.finished": "完成时间",
+    "field.accepted_at": "受理时间",
+    "field.started_at": "开始时间",
     "field.progress": "进度",
+    "field.queue_position": "排队位次",
+    "field.queue_wait_ms": "排队耗时",
     "field.retry_count": "重试次数",
     "field.source_message": "源消息",
     "field.finished_at": "完成于",
@@ -366,6 +386,16 @@ const I18N = {
     "route.tasks.drawer.close": "关闭",
     "route.tasks.page.label": "页码",
     "route.tasks.page.next": "下一页",
+    "route.tasks.logs.title": "执行日志",
+    "route.tasks.logs.empty": "暂无执行日志。",
+    "route.tasks.logs.streaming": "日志实时拉取中...",
+    "route.tasks.logs.done": "日志流已结束。",
+    "route.tasks.logs.disconnected": "日志流已断开，可手动重连。",
+    "route.tasks.logs.reconnect": "重连",
+    "route.tasks.logs.replay": "回放",
+    "route.tasks.actions.retry": "重试",
+    "route.tasks.actions.cancel": "取消",
+    "route.tasks.result.title": "终态输出",
     "trigger.user": "用户触发",
     "trigger.cron": "定时触发",
     "trigger.system": "系统触发",
@@ -1895,9 +1925,12 @@ function renderControlTaskList(payload) {
     const taskID = typeof item?.task_id === "string" ? item.task_id : "-";
     const sessionID = typeof item?.session_id === "string" ? item.session_id : "-";
     const status = typeof item?.status === "string" ? item.status : "";
+    const phase = typeof item?.phase === "string" ? item.phase : "";
     const triggerType = typeof item?.trigger_type === "string" ? item.trigger_type : "";
     const channelType = typeof item?.channel_type === "string" ? item.channel_type : "";
     const channelID = typeof item?.channel_id === "string" ? item.channel_id : "";
+    const queuePosition = Number(item?.queue_position || 0);
+    const queueWaitMS = Number(item?.queue_wait_ms || 0);
     const progress = Number(item?.progress || 0);
     const retryCount = Number(item?.retry_count || 0);
     const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
@@ -1911,6 +1944,9 @@ function renderControlTaskList(payload) {
     const errorRow = error
       ? `<p><span>Error</span><strong>${escapeHTML(normalizeText(error))}</strong></p>`
       : "";
+    const queueRows = status === "queued"
+      ? `<p><span>${t("field.queue_position")}</span><strong>${escapeHTML(queuePosition > 0 ? queuePosition : "-")}</strong></p>`
+      : `<p><span>${t("field.queue_wait_ms")}</span><strong>${escapeHTML(formatDurationMS(queueWaitMS))}</strong></p>`;
     return `<article class="task-summary-card" data-control-task-id="${escapeHTML(taskID)}">
       <header class="task-summary-head">
         <h5>${escapeHTML(taskID)}</h5>
@@ -1918,9 +1954,11 @@ function renderControlTaskList(payload) {
       </header>
       <div class="task-summary-meta">
         <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(sessionID))}</strong></p>
+        <p><span>${t("field.phase")}</span><strong>${escapeHTML(normalizeText(phase || status || "-"))}</strong></p>
         <p><span>${t("field.trigger_type")}</span><strong>${escapeHTML(formatTriggerType(triggerType))}</strong></p>
         <p><span>${t("field.channel_type")}</span><strong>${escapeHTML(formatChannelType(channelType))}</strong></p>
         <p><span>${t("field.channel_id")}</span><strong>${escapeHTML(normalizeText(channelID))}</strong></p>
+        ${queueRows}
         <p><span>${t("field.progress")}</span><strong>${escapeHTML(`${progress}%`)}</strong></p>
         <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(retryCount)}</strong></p>
         <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(updatedAt))}</strong></p>
@@ -1947,9 +1985,11 @@ function renderControlTaskPagination(payload) {
 function renderControlTaskDetail(view) {
   const task = view?.task || {};
   const source = view?.source || {};
+  const actions = view?.actions || {};
   const link = view?.link || {};
   const taskID = typeof task?.id === "string" ? task.id : "-";
   const status = typeof task?.status === "string" ? task.status : "";
+  const phase = typeof task?.phase === "string" && task.phase.trim() ? task.phase : status;
   const triggerType = typeof source?.trigger_type === "string" ? source.trigger_type : "";
   const channelType = typeof source?.channel_type === "string" ? source.channel_type : "";
   const channelID = typeof source?.channel_id === "string" ? source.channel_id : "";
@@ -1957,6 +1997,13 @@ function renderControlTaskDetail(view) {
   const jobID = typeof source?.job_id === "string" ? source.job_id : "";
   const jobName = typeof source?.job_name === "string" ? source.job_name : "";
   const firedAt = typeof source?.fired_at === "string" ? source.fired_at : "";
+  const queuePosition = Number(task?.queue_position || 0);
+  const queueWaitMS = Number(task?.queue_wait_ms || 0);
+  const resultOutput = typeof task?.result?.output === "string" ? task.result.output : "";
+  const retryEnabled = Boolean(actions?.retry?.enabled);
+  const cancelEnabled = Boolean(actions?.cancel?.enabled);
+  const retryReason = typeof actions?.retry?.reason === "string" ? actions.retry.reason : "";
+  const cancelReason = typeof actions?.cancel?.reason === "string" ? actions.cancel.reason : "";
   const cronRows = triggerType === "cron"
     ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>
       <p><span>${t("field.job_name")}</span><strong>${escapeHTML(normalizeText(jobName))}</strong></p>
@@ -1971,6 +2018,11 @@ function renderControlTaskDetail(view) {
     <div class="task-detail-meta">
       <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(task?.session_id))}</strong></p>
       <p><span>${t("field.task_type")}</span><strong>${escapeHTML(normalizeText(task?.task_type))}</strong></p>
+      <p><span>${t("field.phase")}</span><strong>${escapeHTML(normalizeText(phase || "-"))}</strong></p>
+      <p><span>${t("field.queue_position")}</span><strong>${escapeHTML(queuePosition > 0 ? queuePosition : "-")}</strong></p>
+      <p><span>${t("field.queue_wait_ms")}</span><strong>${escapeHTML(formatDurationMS(queueWaitMS))}</strong></p>
+      <p><span>${t("field.accepted_at")}</span><strong>${escapeHTML(formatDateTime(task?.accepted_at))}</strong></p>
+      <p><span>${t("field.started_at")}</span><strong>${escapeHTML(formatDateTime(task?.started_at))}</strong></p>
       <p><span>${t("field.progress")}</span><strong>${escapeHTML(normalizeText(task?.progress))}</strong></p>
       <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(normalizeText(task?.retry_count))}</strong></p>
       <p><span>${t("field.created")}</span><strong>${escapeHTML(formatDateTime(task?.created_at))}</strong></p>
@@ -1985,6 +2037,21 @@ function renderControlTaskDetail(view) {
       <p><span>Error</span><strong>${escapeHTML(errorText)}</strong></p>
       <p><span>Detail API</span><strong>${escapeHTML(normalizeText(link?.task_detail_path))}</strong></p>
     </div>
+    <div class="task-detail-actions">
+      <button type="button" data-control-task-action="retry" ${retryEnabled ? "" : "disabled"} title="${escapeHTML(retryEnabled ? "" : normalizeText(retryReason))}">${t("route.tasks.actions.retry")}</button>
+      <button type="button" data-control-task-action="cancel" ${cancelEnabled ? "" : "disabled"} title="${escapeHTML(cancelEnabled ? "" : normalizeText(cancelReason))}">${t("route.tasks.actions.cancel")}</button>
+      <button type="button" data-control-task-log-reconnect>${t("route.tasks.logs.reconnect")}</button>
+      <button type="button" data-control-task-log-replay>${t("route.tasks.logs.replay")}</button>
+    </div>
+    <section class="task-detail-section">
+      <h6>${t("route.tasks.logs.title")}</h6>
+      <p class="control-task-log-state" data-control-task-log-status>${t("route.tasks.logs.empty")}</p>
+      <div class="control-task-log-stream" data-control-task-log-stream>${t("route.tasks.logs.empty")}</div>
+    </section>
+    <section class="task-detail-section">
+      <h6>${t("route.tasks.result.title")}</h6>
+      <pre class="control-task-result-output">${escapeHTML(normalizeText(resultOutput || "-"))}</pre>
+    </section>
   </section>`;
 }
 
@@ -2002,10 +2069,24 @@ function bindControlTaskView(container, initialPayload) {
     filters: { sessionID: "", status: "", triggerType: "", channelType: "", startAt: "", endAt: "" },
     page: 1,
     pageSize: 20,
-    activeTaskID: ""
+    activeTaskID: "",
+    logCursor: 0,
+    logDone: false,
+    logItems: [],
+    logSeqSet: new Set(),
+    logStream: null
+  };
+
+  const stopLogStream = () => {
+    if (!localState.logStream) {
+      return;
+    }
+    localState.logStream.close();
+    localState.logStream = null;
   };
 
   const closeDrawer = () => {
+    stopLogStream();
     if (!drawer) {
       return;
     }
@@ -2023,6 +2104,129 @@ function bindControlTaskView(container, initialPayload) {
     });
   };
 
+  const setLogStatus = (message) => {
+    const statusNode = drawerBody.querySelector("[data-control-task-log-status]");
+    if (!statusNode) {
+      return;
+    }
+    statusNode.textContent = normalizeText(message || t("route.tasks.logs.empty"));
+  };
+
+  const paintLogs = () => {
+    const streamNode = drawerBody.querySelector("[data-control-task-log-stream]");
+    if (!streamNode) {
+      return;
+    }
+    streamNode.innerHTML = renderControlTaskLogStream(localState.logItems);
+    streamNode.scrollTop = streamNode.scrollHeight;
+  };
+
+  const resetLogs = () => {
+    localState.logCursor = 0;
+    localState.logDone = false;
+    localState.logItems = [];
+    localState.logSeqSet = new Set();
+    setLogStatus(t("route.tasks.logs.empty"));
+    paintLogs();
+  };
+
+  const appendLogs = (items) => {
+    if (!Array.isArray(items) || !items.length) {
+      return;
+    }
+    items.forEach((item) => {
+      const seq = Number(item?.seq || 0);
+      const seqKey = seq > 0 ? `seq:${seq}` : `${item?.timestamp || item?.created_at || ""}:${item?.message || ""}`;
+      if (localState.logSeqSet.has(seqKey)) {
+        return;
+      }
+      localState.logSeqSet.add(seqKey);
+      localState.logItems.push(item);
+    });
+    localState.logItems.sort((left, right) => Number(left?.seq || 0) - Number(right?.seq || 0));
+  };
+
+  const fetchLogPage = async (taskID, cursor, limit = 200) => {
+    return fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}/logs?cursor=${Math.max(cursor, 0)}&limit=${Math.max(limit, 1)}`);
+  };
+
+  const loadLogBackfill = async (taskID, cursor = 0) => {
+    let nextCursor = Math.max(cursor, 0);
+    let hasMore = true;
+    let guard = 0;
+    while (hasMore && guard < 40) {
+      guard += 1;
+      const page = await fetchLogPage(taskID, nextCursor, 200);
+      appendLogs(Array.isArray(page?.items) ? page.items : []);
+      nextCursor = Number(page?.next_cursor || nextCursor);
+      hasMore = Boolean(page?.has_more);
+      if (!hasMore) {
+        break;
+      }
+    }
+    localState.logCursor = nextCursor;
+    paintLogs();
+  };
+
+  const startLogStream = (taskID, cursor = 0) => {
+    stopLogStream();
+    const safeTaskID = normalizeText(taskID);
+    if (!safeTaskID || safeTaskID === "-") {
+      return;
+    }
+    localState.logDone = false;
+    const streamURL = `/api/control/tasks/${encodeURIComponent(safeTaskID)}/logs/stream?cursor=${Math.max(cursor, 0)}`;
+    const stream = new EventSource(streamURL);
+    localState.logStream = stream;
+    setLogStatus(t("route.tasks.logs.streaming"));
+
+    stream.addEventListener("start", (event) => {
+      const payload = parseJSONPayload(event.data);
+      if (!payload) {
+        return;
+      }
+      const cursorValue = Number(payload?.cursor || localState.logCursor);
+      if (Number.isFinite(cursorValue) && cursorValue >= 0) {
+        localState.logCursor = cursorValue;
+      }
+      setLogStatus(t("route.tasks.logs.streaming"));
+    });
+
+    stream.addEventListener("log", (event) => {
+      const payload = parseJSONPayload(event.data);
+      if (!payload) {
+        return;
+      }
+      appendLogs([payload?.log || {}]);
+      const nextCursor = Number(payload?.next_cursor || localState.logCursor + 1);
+      if (Number.isFinite(nextCursor) && nextCursor >= 0) {
+        localState.logCursor = nextCursor;
+      }
+      paintLogs();
+    });
+
+    stream.addEventListener("done", (event) => {
+      const payload = parseJSONPayload(event.data);
+      if (payload) {
+        const nextCursor = Number(payload?.next_cursor || localState.logCursor);
+        if (Number.isFinite(nextCursor) && nextCursor >= 0) {
+          localState.logCursor = nextCursor;
+        }
+      }
+      localState.logDone = true;
+      setLogStatus(t("route.tasks.logs.done"));
+      stopLogStream();
+    });
+
+    stream.addEventListener("error", () => {
+      if (localState.logDone) {
+        return;
+      }
+      setLogStatus(t("route.tasks.logs.disconnected"));
+      stopLogStream();
+    });
+  };
+
   const paint = (payload) => {
     listNode.innerHTML = renderControlTaskList(payload);
     paginationNode.innerHTML = renderControlTaskPagination(payload);
@@ -2033,14 +2237,40 @@ function bindControlTaskView(container, initialPayload) {
     paint(payload);
   };
 
-  const loadDetail = async (taskID) => {
+  const loadDetail = async (taskID, options = {}) => {
     if (!taskID) {
       return;
     }
     localState.activeTaskID = taskID;
     const payload = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}`);
     drawerBody.innerHTML = renderControlTaskDetail(payload);
+    if (!options.preserveLogs) {
+      resetLogs();
+      await loadLogBackfill(taskID, 0);
+    } else {
+      paintLogs();
+    }
+    startLogStream(taskID, localState.logCursor);
     openDrawer();
+  };
+
+  const invokeControlTaskAction = async (action) => {
+    const taskID = localState.activeTaskID;
+    if (!taskID) {
+      return;
+    }
+    const response = await fetch(`/api/control/tasks/${encodeURIComponent(taskID)}/${action}`, { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok && !payload?.view) {
+      const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+    const detailPayload = payload?.view || payload;
+    drawerBody.innerHTML = renderControlTaskDetail(detailPayload);
+    resetLogs();
+    await loadLogBackfill(taskID, 0);
+    startLogStream(taskID, localState.logCursor);
+    await loadList();
   };
 
   if (form) {
@@ -2087,6 +2317,36 @@ function bindControlTaskView(container, initialPayload) {
     }
     if (target.hasAttribute("data-control-task-close")) {
       closeDrawer();
+      return;
+    }
+    if (target.hasAttribute("data-control-task-action")) {
+      const action = normalizeText(target.getAttribute("data-control-task-action")).toLowerCase();
+      if (!action || action === "-") {
+        return;
+      }
+      try {
+        await invokeControlTaskAction(action);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error || "unknown error");
+        alert(t("load_failed", { error: message }));
+      }
+      return;
+    }
+    if (target.hasAttribute("data-control-task-log-reconnect")) {
+      if (!localState.activeTaskID) {
+        return;
+      }
+      startLogStream(localState.activeTaskID, localState.logCursor);
+      return;
+    }
+    if (target.hasAttribute("data-control-task-log-replay")) {
+      if (!localState.activeTaskID) {
+        return;
+      }
+      stopLogStream();
+      resetLogs();
+      await loadLogBackfill(localState.activeTaskID, 0);
+      startLogStream(localState.activeTaskID, localState.logCursor);
     }
   });
 
@@ -2189,6 +2449,53 @@ function formatChannelType(value) {
   const key = `channel.${channelType}`;
   const translated = t(key);
   return translated === key ? channelType : translated;
+}
+
+function formatDurationMS(value) {
+  const duration = Number(value || 0);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return "-";
+  }
+  if (duration < 1000) {
+    return `${Math.round(duration)}ms`;
+  }
+  const seconds = duration / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${remainSeconds}s`;
+}
+
+function parseJSONPayload(raw) {
+  if (typeof raw !== "string" || !raw.trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return null;
+  }
+}
+
+function renderControlTaskLogItem(item) {
+  const timestamp = formatDateTime(item?.timestamp || item?.created_at || "");
+  const stage = normalizeText(item?.stage || "runtime");
+  const level = normalizeText(item?.level || "info");
+  const message = normalizeText(item?.message || "-");
+  const seq = normalizeText(item?.seq || "-");
+  return `<article class="control-task-log-item">
+    <p><span>#${escapeHTML(seq)}</span><span>${escapeHTML(stage)}</span><span>${escapeHTML(level)}</span><span>${escapeHTML(timestamp)}</span></p>
+    <pre>${escapeHTML(message)}</pre>
+  </article>`;
+}
+
+function renderControlTaskLogStream(logs) {
+  if (!Array.isArray(logs) || !logs.length) {
+    return `<p class="route-empty">${t("route.tasks.logs.empty")}</p>`;
+  }
+  return logs.map((item) => renderControlTaskLogItem(item)).join("");
 }
 
 function escapeQueryValue(value) {

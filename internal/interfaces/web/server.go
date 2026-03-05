@@ -112,10 +112,10 @@ type messageResponse struct {
 }
 
 type taskCreateResponse struct {
-	TaskID          string `json:"task_id"`
-	Status          string `json:"status"`
-	AcceptedAt      string `json:"accepted_at"`
-	EstimatedWaitMS int64  `json:"estimated_wait_ms"`
+	TaskID        string `json:"task_id"`
+	Status        string `json:"status"`
+	QueuePosition int    `json:"queue_position,omitempty"`
+	AcceptedAt    string `json:"accepted_at"`
 }
 
 type streamStartResponse struct {
@@ -274,7 +274,10 @@ type controlTaskListItem struct {
 	TaskID        string                   `json:"task_id"`
 	SessionID     string                   `json:"session_id"`
 	Status        taskdomain.TaskStatus    `json:"status"`
+	Phase         string                   `json:"phase,omitempty"`
 	Progress      int                      `json:"progress"`
+	QueuePosition int                      `json:"queue_position,omitempty"`
+	QueueWaitMS   int64                    `json:"queue_wait_ms,omitempty"`
 	RetryCount    int                      `json:"retry_count"`
 	TriggerType   shareddomain.TriggerType `json:"trigger_type"`
 	ChannelType   shareddomain.ChannelType `json:"channel_type"`
@@ -284,6 +287,7 @@ type controlTaskListItem struct {
 	JobName       string                   `json:"job_name,omitempty"`
 	FiredAt       time.Time                `json:"fired_at,omitempty"`
 	CreatedAt     time.Time                `json:"created_at"`
+	StartedAt     time.Time                `json:"started_at,omitempty"`
 	UpdatedAt     time.Time                `json:"updated_at"`
 	FinishedAt    time.Time                `json:"finished_at,omitempty"`
 	Error         string                   `json:"error,omitempty"`
@@ -762,15 +766,15 @@ func (s *Server) taskCollectionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		estimatedWaitMS := int64(0)
-		if task.TimeoutMS > 0 {
-			estimatedWaitMS = task.TimeoutMS
+		acceptedAt := task.AcceptedAt
+		if acceptedAt.IsZero() {
+			acceptedAt = task.CreatedAt
 		}
 		writeJSON(w, http.StatusAccepted, taskCreateResponse{
-			TaskID:          task.ID,
-			Status:          string(task.Status),
-			AcceptedAt:      task.CreatedAt.Format(time.RFC3339Nano),
-			EstimatedWaitMS: estimatedWaitMS,
+			TaskID:        task.ID,
+			Status:        string(task.Status),
+			QueuePosition: task.QueuePosition,
+			AcceptedAt:    acceptedAt.Format(time.RFC3339Nano),
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -1308,7 +1312,10 @@ func toControlTaskListItem(task taskdomain.Task) controlTaskListItem {
 		TaskID:        strings.TrimSpace(task.ID),
 		SessionID:     strings.TrimSpace(task.SessionID),
 		Status:        task.Status,
+		Phase:         strings.TrimSpace(task.Phase),
 		Progress:      task.Progress,
+		QueuePosition: task.QueuePosition,
+		QueueWaitMS:   task.QueueWaitMS,
 		RetryCount:    task.RetryCount,
 		TriggerType:   source.TriggerType,
 		ChannelType:   source.ChannelType,
@@ -1318,6 +1325,7 @@ func toControlTaskListItem(task taskdomain.Task) controlTaskListItem {
 		JobName:       source.JobName,
 		FiredAt:       source.FiredAt,
 		CreatedAt:     task.CreatedAt.UTC(),
+		StartedAt:     task.StartedAt.UTC(),
 		UpdatedAt:     resolveControlTaskUpdatedAt(task),
 		FinishedAt:    task.FinishedAt.UTC(),
 		Error:         errorText,
