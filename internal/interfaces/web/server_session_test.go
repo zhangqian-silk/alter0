@@ -53,7 +53,7 @@ func TestSessionListHandlerReturnsPagedData(t *testing.T) {
 		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/sessions?page=2&page_size=10", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions?page=2&page_size=10&trigger_type=cron&job_id=job-daily", nil)
 	rec := httptest.NewRecorder()
 	server.sessionListHandler(rec, req)
 
@@ -62,6 +62,12 @@ func TestSessionListHandlerReturnsPagedData(t *testing.T) {
 	}
 	if history.lastSessionQuery.Page != 2 || history.lastSessionQuery.PageSize != 10 {
 		t.Fatalf("unexpected query %+v", history.lastSessionQuery)
+	}
+	if history.lastSessionQuery.TriggerType != shareddomain.TriggerTypeCron {
+		t.Fatalf("expected trigger_type cron, got %s", history.lastSessionQuery.TriggerType)
+	}
+	if history.lastSessionQuery.JobID != "job-daily" {
+		t.Fatalf("expected job_id job-daily, got %s", history.lastSessionQuery.JobID)
 	}
 
 	var body sessionapp.SessionPage
@@ -139,5 +145,12 @@ func TestSessionHandlersValidateInputs(t *testing.T) {
 	server.sessionMessageListHandler(invalidPathRec, invalidPathReq)
 	if invalidPathRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, invalidPathRec.Code)
+	}
+
+	invalidTriggerReq := httptest.NewRequest(http.MethodGet, "/api/sessions?trigger_type=timer", nil)
+	invalidTriggerRec := httptest.NewRecorder()
+	server.sessionListHandler(invalidTriggerRec, invalidTriggerReq)
+	if invalidTriggerRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, invalidTriggerRec.Code)
 	}
 }

@@ -12,6 +12,12 @@ import (
 	shareddomain "alter0/internal/shared/domain"
 )
 
+const (
+	sessionSourceMetadataJobIDKey   = "job_id"
+	sessionSourceMetadataJobNameKey = "job_name"
+	sessionSourceMetadataFiredAtKey = "fired_at"
+)
+
 type sessionRecorder interface {
 	Append(records ...sessiondomain.MessageRecord) error
 }
@@ -106,6 +112,7 @@ func (s *SessionPersistenceService) persistResult(
 	if len(msg.Metadata) > 0 {
 		taskID = strings.TrimSpace(msg.Metadata["task_id"])
 	}
+	source := buildSessionSource(msg)
 	persistErr := s.recorder.Append(
 		sessiondomain.MessageRecord{
 			MessageID: msg.MessageID,
@@ -113,6 +120,7 @@ func (s *SessionPersistenceService) persistResult(
 			Role:      sessiondomain.MessageRoleUser,
 			Content:   msg.Content,
 			Timestamp: userTimestamp,
+			Source:    source,
 			RouteResult: sessiondomain.RouteResult{
 				Route:     result.Route,
 				ErrorCode: result.ErrorCode,
@@ -125,6 +133,7 @@ func (s *SessionPersistenceService) persistResult(
 			Role:      sessiondomain.MessageRoleAssistant,
 			Content:   assistantContent,
 			Timestamp: assistantTimestamp,
+			Source:    source,
 			RouteResult: sessiondomain.RouteResult{
 				Route:     result.Route,
 				ErrorCode: result.ErrorCode,
@@ -160,4 +169,37 @@ func normalizePersistTimestamp(ts time.Time) time.Time {
 		return time.Now().UTC()
 	}
 	return ts.UTC()
+}
+
+func buildSessionSource(msg shareddomain.UnifiedMessage) sessiondomain.MessageSource {
+	source := sessiondomain.MessageSource{
+		TriggerType:   msg.TriggerType,
+		ChannelType:   msg.ChannelType,
+		ChannelID:     strings.TrimSpace(msg.ChannelID),
+		CorrelationID: strings.TrimSpace(msg.CorrelationID),
+	}
+	if msg.TriggerType != shareddomain.TriggerTypeCron {
+		return source
+	}
+	source.JobID = strings.TrimSpace(msg.Metadata[sessionSourceMetadataJobIDKey])
+	source.JobName = strings.TrimSpace(msg.Metadata[sessionSourceMetadataJobNameKey])
+	if source.CorrelationID == "" {
+		source.CorrelationID = source.JobID
+	}
+	if firedAt, err := parseSessionSourceFiredAt(msg.Metadata[sessionSourceMetadataFiredAtKey]); err == nil {
+		source.FiredAt = firedAt
+	}
+	return source
+}
+
+func parseSessionSourceFiredAt(raw string) (time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, trimmed)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed.UTC(), nil
 }
