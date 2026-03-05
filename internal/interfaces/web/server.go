@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -210,6 +211,11 @@ type capabilityLifecycleRequest struct {
 	Action string `json:"action"`
 }
 
+type environmentUpsertRequest struct {
+	Operator string         `json:"operator,omitempty"`
+	Values   map[string]any `json:"values"`
+}
+
 type cronJobUpsertRequest struct {
 	Name      string            `json:"name,omitempty"`
 	Interval  string            `json:"interval"`
@@ -380,6 +386,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/memory/tasks/", s.memoryTaskItemHandler)
 	mux.HandleFunc("/api/control/tasks", s.controlTaskCollectionHandler)
 	mux.HandleFunc("/api/control/tasks/", s.controlTaskItemHandler)
+	mux.HandleFunc("/api/control/environments", s.environmentConfigHandler)
+	mux.HandleFunc("/api/control/environments/audits", s.environmentAuditListHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
 	mux.HandleFunc("/api/control/capabilities", s.capabilityListHandler)
@@ -1660,6 +1668,53 @@ func memoryTaskPageBounds(total int, page int, pageSize int) (int, int) {
 	return offset, end
 }
 
+func (s *Server) environmentConfigHandler(w http.ResponseWriter, r *http.Request) {
+	if s.control == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		revealSensitive := parseBoolFlag(r.URL.Query().Get("reveal_sensitive"))
+		items := s.control.ListEnvironmentConfigs(revealSensitive)
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	case http.MethodPut:
+		defer r.Body.Close()
+		var req environmentUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		values := normalizeEnvironmentValues(req.Values)
+		if len(values) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "values are required"})
+			return
+		}
+		result, err := s.control.UpdateEnvironmentConfigs(values, req.Operator)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) environmentAuditListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.control == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	revealSensitive := parseBoolFlag(r.URL.Query().Get("reveal_sensitive"))
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListEnvironmentAudits(revealSensitive)})
+}
+
 func (s *Server) channelListHandler(w http.ResponseWriter, r *http.Request) {
 	if s.control == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
@@ -2748,6 +2803,45 @@ func sanitizeArtifactFilename(name string, fallback string) string {
 	value = strings.ReplaceAll(value, "/", "_")
 	value = strings.ReplaceAll(value, "\\", "_")
 	return value
+}
+
+func parseBoolFlag(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeEnvironmentValues(input map[string]any) map[string]string {
+	if len(input) == 0 {
+		return map[string]string{}
+	}
+	values := make(map[string]string, len(input))
+	for key, raw := range input {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			continue
+		}
+		switch value := raw.(type) {
+		case string:
+			values[trimmedKey] = value
+		case float64:
+			if value == float64(int64(value)) {
+				values[trimmedKey] = strconv.FormatInt(int64(value), 10)
+			} else {
+				values[trimmedKey] = strconv.FormatFloat(value, 'f', -1, 64)
+			}
+		case bool:
+			values[trimmedKey] = strconv.FormatBool(value)
+		case nil:
+			values[trimmedKey] = ""
+		default:
+			values[trimmedKey] = strings.TrimSpace(fmt.Sprintf("%v", value))
+		}
+	}
+	return values
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, value any) {
