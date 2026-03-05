@@ -127,3 +127,59 @@ func TestUnifiedSkillAndMCPStorage(t *testing.T) {
 		t.Fatalf("unexpected mcp list: %+v", mcps)
 	}
 }
+
+func TestEnvironmentConfigUpdateAndAudit(t *testing.T) {
+	service := NewService()
+	service.SetEnvironmentRuntime(map[string]string{
+		"worker_pool_size":     "4",
+		"async_task_workers":   "5",
+		"async_task_timeout":   "1m30s",
+		"async_task_max_retries": "1",
+	})
+
+	result, err := service.UpdateEnvironmentConfigs(map[string]string{
+		"worker_pool_size":   "8",
+		"async_task_workers": "3",
+	}, "tester")
+	if err != nil {
+		t.Fatalf("update environments failed: %v", err)
+	}
+	if !result.NeedsRestart {
+		t.Fatalf("expected restart required")
+	}
+	if len(result.Changed) != 2 {
+		t.Fatalf("expected 2 changes, got %d", len(result.Changed))
+	}
+
+	items := service.ListEnvironmentConfigs(false)
+	if len(items) == 0 {
+		t.Fatalf("expected environment items")
+	}
+	found := false
+	for _, item := range items {
+		if item.Definition.Key != "worker_pool_size" {
+			continue
+		}
+		found = true
+		if item.Value != "8" {
+			t.Fatalf("expected configured value 8, got %s", item.Value)
+		}
+		if item.EffectiveValue != "4" {
+			t.Fatalf("expected effective value 4, got %s", item.EffectiveValue)
+		}
+		if !item.PendingRestart {
+			t.Fatalf("expected pending restart")
+		}
+	}
+	if !found {
+		t.Fatalf("worker_pool_size not found")
+	}
+
+	audits := service.ListEnvironmentAudits(false)
+	if len(audits) != 1 {
+		t.Fatalf("expected one environment audit, got %d", len(audits))
+	}
+	if audits[0].Operator != "tester" {
+		t.Fatalf("unexpected operator: %s", audits[0].Operator)
+	}
+}

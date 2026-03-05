@@ -23,12 +23,24 @@ func TestControlStoreJSONRoundTrip(t *testing.T) {
 		[]controldomain.CapabilityAudit{
 			{CapabilityID: "summary", CapabilityType: controldomain.CapabilityTypeSkill, Action: controldomain.CapabilityLifecycleUpdate, Version: "v1.0.0", Scope: controldomain.CapabilityScopeGlobal},
 		},
+		map[string]string{
+			"worker_pool_size": "8",
+		},
+		[]controldomain.EnvironmentAudit{
+			{
+				Operator: "tester",
+				Changes: []controldomain.EnvironmentAuditChange{
+					{Key: "worker_pool_size", OldValue: "4", NewValue: "8", ApplyMode: controldomain.EnvironmentApplyModeRestart},
+				},
+				RequiresRestart: true,
+			},
+		},
 	)
 	if err != nil {
 		t.Fatalf("save failed: %v", err)
 	}
 
-	channels, capabilities, audits, err := store.Load(context.Background())
+	channels, capabilities, audits, environments, environmentAudits, err := store.Load(context.Background())
 	if err != nil {
 		t.Fatalf("load failed: %v", err)
 	}
@@ -40,6 +52,12 @@ func TestControlStoreJSONRoundTrip(t *testing.T) {
 	}
 	if len(audits) != 1 || audits[0].CapabilityID != "summary" {
 		t.Fatalf("unexpected audits: %+v", audits)
+	}
+	if environments["worker_pool_size"] != "8" {
+		t.Fatalf("unexpected environments: %+v", environments)
+	}
+	if len(environmentAudits) != 1 || environmentAudits[0].Operator != "tester" {
+		t.Fatalf("unexpected environment audits: %+v", environmentAudits)
 	}
 }
 
@@ -53,12 +71,14 @@ func TestControlStoreMarkdownRoundTrip(t *testing.T) {
 			{ID: "default-nl", Name: "Default NL", Type: controldomain.CapabilityTypeSkill, Enabled: true, Scope: controldomain.CapabilityScopeGlobal, Version: "v1.0.0"},
 		},
 		[]controldomain.CapabilityAudit{},
+		map[string]string{},
+		[]controldomain.EnvironmentAudit{},
 	)
 	if err != nil {
 		t.Fatalf("save failed: %v", err)
 	}
 
-	channels, capabilities, audits, err := store.Load(context.Background())
+	channels, capabilities, audits, environments, environmentAudits, err := store.Load(context.Background())
 	if err != nil {
 		t.Fatalf("load failed: %v", err)
 	}
@@ -70,6 +90,12 @@ func TestControlStoreMarkdownRoundTrip(t *testing.T) {
 	}
 	if len(audits) != 0 {
 		t.Fatalf("unexpected audits: %+v", audits)
+	}
+	if len(environments) != 0 {
+		t.Fatalf("unexpected environments: %+v", environments)
+	}
+	if len(environmentAudits) != 0 {
+		t.Fatalf("unexpected environment audits: %+v", environmentAudits)
 	}
 }
 
@@ -92,7 +118,7 @@ func TestControlStoreLoadLegacySkills(t *testing.T) {
 		t.Fatalf("write legacy failed: %v", err)
 	}
 
-	_, capabilities, _, err := store.Load(context.Background())
+	_, capabilities, _, _, _, err := store.Load(context.Background())
 	if err != nil {
 		t.Fatalf("load failed: %v", err)
 	}
