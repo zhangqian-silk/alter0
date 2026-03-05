@@ -166,10 +166,26 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 # 列表
 curl http://127.0.0.1:18088/api/control/cron/jobs
 
-# 创建/更新（interval 使用 Go duration: 30s/5m）
+# 创建/更新（可视化字段 + cron_expression）
 curl -X PUT http://127.0.0.1:18088/api/control/cron/jobs/job1 \
   -H "Content-Type: application/json" \
-  -d '{"interval":"30s","session_id":"cron-session","content":"/time","enabled":true}'
+  -d '{
+    "name":"daily-summary",
+    "enabled":true,
+    "timezone":"Asia/Shanghai",
+    "schedule_mode":"daily",
+    "cron_expression":"30 9 * * *",
+    "task_config":{
+      "input":"summarize yesterday tasks",
+      "retry_limit":1
+    }
+  }'
+
+# 查看指定 cron job 的触发记录与会话回链
+curl http://127.0.0.1:18088/api/control/cron/jobs/job1/runs
+
+# 按 cron 来源筛选会话历史
+curl "http://127.0.0.1:18088/api/sessions?trigger_type=cron&job_id=job1"
 ```
 
 ## Testing
