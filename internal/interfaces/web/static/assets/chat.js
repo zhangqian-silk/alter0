@@ -204,6 +204,14 @@ const I18N = {
     "route.tasks.drawer.title": "Task Detail",
     "route.tasks.drawer.empty": "Select a task to view detail.",
     "route.tasks.drawer.close": "Close",
+    "route.tasks.drawer.identifiers": "Identifiers",
+    "route.tasks.drawer.runtime": "Runtime Details",
+    "route.tasks.drawer.quick_actions": "Quick Actions",
+    "route.tasks.drawer.quick_timeline": "Generate timeline version",
+    "route.tasks.drawer.quick_interview": "Generate interview brief",
+    "route.tasks.actions.retry_tip": "Retry: run the task again from scratch.",
+    "route.tasks.actions.replay_tip": "Replay: reload and replay current task logs only.",
+    "route.tasks.progress": "Progress",
     "route.tasks.page.label": "Page",
     "route.tasks.page.next": "Next Page",
     "route.tasks.logs.title": "Execution Logs",
@@ -217,7 +225,8 @@ const I18N = {
     "route.tasks.terminal.input_placeholder": "Type command or prompt...",
     "route.tasks.terminal.send": "Send",
     "route.tasks.terminal.sending": "Sending...",
-    "route.tasks.terminal.hint": "Supports follow-up interaction in current task session (max {max} concurrent sessions).",
+    "route.tasks.terminal.hint": "Supports follow-up interaction in current terminal session (max {max} concurrent sessions).",
+    "route.tasks.terminal.followup_note": "Each Send may create a child task, but stays in the same shell session.",
     "route.tasks.terminal.limit_reached": "Terminal session limit reached ({max}). Please finish an active session first.",
     "route.tasks.actions.retry": "Retry",
     "route.tasks.actions.cancel": "Cancel",
@@ -513,6 +522,14 @@ const I18N = {
     "route.tasks.drawer.title": "任务详情",
     "route.tasks.drawer.empty": "选择任务后展示详情。",
     "route.tasks.drawer.close": "关闭",
+    "route.tasks.drawer.identifiers": "标识信息",
+    "route.tasks.drawer.runtime": "运行信息",
+    "route.tasks.drawer.quick_actions": "快捷操作",
+    "route.tasks.drawer.quick_timeline": "生成时间轴版",
+    "route.tasks.drawer.quick_interview": "生成面试速记版",
+    "route.tasks.actions.retry_tip": "重试：从头重新执行该任务。",
+    "route.tasks.actions.replay_tip": "回放：仅重新拉取并播放当前任务日志。",
+    "route.tasks.progress": "进度",
     "route.tasks.page.label": "页码",
     "route.tasks.page.next": "下一页",
     "route.tasks.logs.title": "执行日志",
@@ -526,7 +543,8 @@ const I18N = {
     "route.tasks.terminal.input_placeholder": "输入命令或追问继续交互...",
     "route.tasks.terminal.send": "发送",
     "route.tasks.terminal.sending": "发送中...",
-    "route.tasks.terminal.hint": "支持在当前任务会话中继续交互（最多并发 {max} 个终端会话）。",
+    "route.tasks.terminal.hint": "支持在当前终端会话中继续交互（最多并发 {max} 个终端会话）。",
+    "route.tasks.terminal.followup_note": "每次发送可能生成子任务，但仍在同一个 Shell 会话内连续处理。",
     "route.tasks.terminal.limit_reached": "终端会话已达上限（{max}），请先结束一个活跃会话。",
     "route.tasks.actions.retry": "重试",
     "route.tasks.actions.cancel": "取消",
@@ -2863,13 +2881,17 @@ function renderControlTaskPagination(payload) {
   </div>`;
 }
 
-function renderControlTaskDetail(view) {
+function renderControlTaskDetail(view, displayTaskID = "") {
   const task = view?.task || {};
   const source = view?.source || {};
   const actions = view?.actions || {};
   const link = view?.link || {};
   const taskID = typeof task?.id === "string" ? task.id : "-";
+  const pinnedTaskID = normalizeText(displayTaskID);
+  const shownTaskID = pinnedTaskID && pinnedTaskID !== "-" ? pinnedTaskID : taskID;
   const status = typeof task?.status === "string" ? task.status : "";
+  const statusValue = String(status || "").trim().toLowerCase();
+  const statusClassName = taskStatusClassName(status);
   const phase = typeof task?.phase === "string" && task.phase.trim() ? task.phase : status;
   const triggerType = typeof source?.trigger_type === "string" ? source.trigger_type : "";
   const channelType = typeof source?.channel_type === "string" ? source.channel_type : "";
@@ -2889,63 +2911,89 @@ function renderControlTaskDetail(view) {
   const resultOutput = typeof task?.result?.output === "string" ? task.result.output : "";
   const retryEnabled = Boolean(actions?.retry?.enabled);
   const cancelEnabled = Boolean(actions?.cancel?.enabled);
+  const showCancelAction = cancelEnabled || !["success", "done", "failed", "error", "canceled"].includes(statusValue);
   const retryReason = typeof actions?.retry?.reason === "string" ? actions.retry.reason : "";
   const cancelReason = typeof actions?.cancel?.reason === "string" ? actions.cancel.reason : "";
+  const progressRaw = Number(task?.progress);
+  const progressValue = Number.isFinite(progressRaw) ? Math.min(100, Math.max(0, progressRaw)) : 0;
+  const taskIDShort = shorten(shownTaskID, 24);
   const cronRows = triggerType === "cron"
     ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>
       <p><span>${t("field.job_name")}</span><strong>${escapeHTML(normalizeText(jobName))}</strong></p>
       <p><span>${t("field.fired_at")}</span><strong>${escapeHTML(formatDateTime(firedAt))}</strong></p>`
     : "";
   const errorText = normalizeText(task?.error_message || task?.error_code || "-");
-  return `<section class="task-detail-card" data-control-task-detail-id="${escapeHTML(taskID)}" data-control-task-session-id="${escapeHTML(normalizeText(task?.session_id))}" data-control-task-terminal-session-id="${escapeHTML(normalizeText(terminalSessionID))}" data-control-task-terminal-max-sessions="${escapeHTML(terminalMaxSessions)}">
-    <header class="task-detail-head">
-      <h5>${escapeHTML(taskID)}</h5>
-      <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
-    </header>
-    <div class="task-detail-meta">
-      <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(task?.session_id))}</strong></p>
-      <p><span>${t("field.task_type")}</span><strong>${escapeHTML(normalizeText(task?.task_type))}</strong></p>
-      <p><span>${t("field.phase")}</span><strong>${escapeHTML(normalizeText(phase || "-"))}</strong></p>
-      <p><span>${t("field.queue_position")}</span><strong>${escapeHTML(queuePosition > 0 ? queuePosition : "-")}</strong></p>
+  const runtimeRows = `<p><span>${t("field.queue_position")}</span><strong>${escapeHTML(queuePosition > 0 ? queuePosition : "-")}</strong></p>
       <p><span>${t("field.queue_wait_ms")}</span><strong>${escapeHTML(formatDurationMS(queueWaitMS))}</strong></p>
       <p><span>${t("field.accepted_at")}</span><strong>${escapeHTML(formatDateTime(task?.accepted_at))}</strong></p>
       <p><span>${t("field.started_at")}</span><strong>${escapeHTML(formatDateTime(task?.started_at))}</strong></p>
-      <p><span>${t("field.progress")}</span><strong>${escapeHTML(normalizeText(task?.progress))}</strong></p>
-      <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(normalizeText(task?.retry_count))}</strong></p>
       <p><span>${t("field.created")}</span><strong>${escapeHTML(formatDateTime(task?.created_at))}</strong></p>
       <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(task?.updated_at))}</strong></p>
       <p><span>${t("field.finished")}</span><strong>${escapeHTML(formatDateTime(task?.finished_at))}</strong></p>
       <p><span>${t("field.trigger_type")}</span><strong>${escapeHTML(formatTriggerType(triggerType))}</strong></p>
       <p><span>${t("field.channel_type")}</span><strong>${escapeHTML(formatChannelType(channelType))}</strong></p>
-      <p><span>${t("field.channel_id")}</span><strong>${escapeHTML(normalizeText(channelID))}</strong></p>
+      ${cronRows}`;
+  const identifierRows = `<p><span>${t("field.channel_id")}</span><strong>${escapeHTML(normalizeText(channelID))}</strong></p>
       <p><span>${t("field.correlation_id")}</span><strong>${escapeHTML(normalizeText(correlationID))}</strong></p>
       <p><span>${t("field.source_message")}</span><strong>${escapeHTML(normalizeText(task?.source_message_id))}</strong></p>
       <p><span>${t("field.message_id")}</span><strong>${escapeHTML(normalizeText(messageID))}</strong></p>
       <p><span>${t("field.request_message_id")}</span><strong>${escapeHTML(normalizeText(requestMessageID))}</strong></p>
       <p><span>${t("field.result_message_id")}</span><strong>${escapeHTML(normalizeText(resultMessageID))}</strong></p>
-      ${cronRows}
       <p><span>Error</span><strong>${escapeHTML(errorText)}</strong></p>
-      <p><span>Detail API</span><strong>${escapeHTML(normalizeText(link?.task_detail_path))}</strong></p>
+      <p><span>Detail API</span><strong>${escapeHTML(normalizeText(link?.task_detail_path))}</strong></p>`;
+  return `<section class="task-detail-card" data-control-task-detail-id="${escapeHTML(taskID)}" data-control-task-session-id="${escapeHTML(normalizeText(task?.session_id))}" data-control-task-terminal-session-id="${escapeHTML(normalizeText(terminalSessionID))}" data-control-task-terminal-max-sessions="${escapeHTML(terminalMaxSessions)}">
+    <header class="task-detail-head">
+      <div class="task-detail-id-wrap">
+        <h5 title="${escapeHTML(shownTaskID)}">${escapeHTML(`${t("field.id")}: ${taskIDShort}`)}</h5>
+        <button class="task-summary-copy" type="button" data-control-task-copy-id="${escapeHTML(shownTaskID)}" title="${t("route.tasks.copy_task_id")}" aria-label="${t("route.tasks.copy_task_id")}">${renderCopyIcon()}</button>
+      </div>
+      <span class="task-summary-status ${statusClassName}">${escapeHTML(formatTaskStatus(status))}</span>
+    </header>
+    <div class="task-detail-meta">
+      <div class="task-detail-meta-core">
+        <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(task?.session_id))}</strong></p>
+        <p><span>${t("field.task_type")}</span><strong>${escapeHTML(normalizeText(task?.task_type))}</strong></p>
+        <p><span>${t("field.phase")}</span><strong>${escapeHTML(normalizeText(phase || "-"))}</strong></p>
+        <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(normalizeText(task?.retry_count))}</strong></p>
+      </div>
+      <div class="task-detail-progress">
+        <p><span>${t("route.tasks.progress")}</span><strong>${escapeHTML(`${progressValue}%`)}</strong></p>
+        <div class="task-detail-progress-track"><span class="task-detail-progress-fill" style="width:${escapeHTML(progressValue)}%"></span></div>
+      </div>
+      <details class="task-detail-meta-fold">
+        <summary>${t("route.tasks.drawer.runtime")}</summary>
+        <div class="task-detail-meta-fold-body">${runtimeRows}</div>
+      </details>
+      <details class="task-detail-meta-fold">
+        <summary>${t("route.tasks.drawer.identifiers")}</summary>
+        <div class="task-detail-meta-fold-body">${identifierRows}</div>
+      </details>
     </div>
     <div class="task-detail-actions">
-      <button type="button" data-control-task-action="retry" ${retryEnabled ? "" : "disabled"} title="${escapeHTML(retryEnabled ? "" : normalizeText(retryReason))}">${t("route.tasks.actions.retry")}</button>
-      <button type="button" data-control-task-action="cancel" ${cancelEnabled ? "" : "disabled"} title="${escapeHTML(cancelEnabled ? "" : normalizeText(cancelReason))}">${t("route.tasks.actions.cancel")}</button>
+      <button type="button" data-control-task-action="retry" ${retryEnabled ? "" : "disabled"} title="${escapeHTML(retryEnabled ? t("route.tasks.actions.retry_tip") : normalizeText(retryReason))}">${t("route.tasks.actions.retry")}</button>
+      ${showCancelAction ? `<button type="button" data-control-task-action="cancel" ${cancelEnabled ? "" : "disabled"} title="${escapeHTML(cancelEnabled ? "" : normalizeText(cancelReason))}">${t("route.tasks.actions.cancel")}</button>` : ""}
       <button type="button" data-control-task-log-reconnect>${t("route.tasks.logs.reconnect")}</button>
-      <button type="button" data-control-task-log-replay>${t("route.tasks.logs.replay")}</button>
+      <button type="button" data-control-task-log-replay title="${escapeHTML(t("route.tasks.actions.replay_tip"))}">${t("route.tasks.logs.replay")}</button>
     </div>
     <section class="task-detail-section">
       <h6>${t("route.tasks.terminal.title")}</h6>
       <p class="control-task-log-state" data-control-task-log-status>${t("route.tasks.logs.empty")}</p>
       <div class="control-task-log-stream" data-control-task-log-stream>${t("route.tasks.logs.empty")}</div>
+      <div class="control-task-quick-actions">
+        <span>${t("route.tasks.drawer.quick_actions")}</span>
+        <button type="button" data-control-task-quick-input="${escapeHTML(t("route.tasks.drawer.quick_timeline"))}">${t("route.tasks.drawer.quick_timeline")}</button>
+        <button type="button" data-control-task-quick-input="${escapeHTML(t("route.tasks.drawer.quick_interview"))}">${t("route.tasks.drawer.quick_interview")}</button>
+      </div>
       <form class="control-task-terminal-input" data-control-task-terminal-input-form>
         <input type="text" data-control-task-terminal-input maxlength="6000" placeholder="${escapeHTML(t("route.tasks.terminal.input_placeholder"))}">
         <button type="submit" data-control-task-terminal-submit>${t("route.tasks.terminal.send")}</button>
       </form>
       <p class="control-task-terminal-hint">${escapeHTML(t("route.tasks.terminal.hint", { max: String(terminalMaxSessions) }))}</p>
+      <p class="control-task-terminal-note">${escapeHTML(t("route.tasks.terminal.followup_note"))}</p>
     </section>
     <section class="task-detail-section">
       <h6>${t("route.tasks.result.title")}</h6>
-      <pre class="control-task-result-output">${escapeHTML(normalizeText(resultOutput || "-"))}</pre>
+      <div class="control-task-result-output">${renderControlTaskResultOutput(resultOutput)}</div>
     </section>
   </section>`;
 }
@@ -2977,6 +3025,7 @@ function bindControlTaskView(container, initialPayload) {
     page: 1,
     pageSize: 20,
     activeTaskID: "",
+    terminalAnchorTaskID: "",
     logCursor: 0,
     logDone: false,
     logItems: [],
@@ -3020,6 +3069,8 @@ function bindControlTaskView(container, initialPayload) {
 
   const closeDrawer = () => {
     stopLogStream();
+    localState.activeTaskID = "";
+    localState.terminalAnchorTaskID = "";
     if (!drawer) {
       return;
     }
@@ -3210,10 +3261,15 @@ function bindControlTaskView(container, initialPayload) {
     localState.terminalSubmitting = true;
     setTerminalInputState(true);
     try {
+      const anchorTaskID = normalizeText(localState.terminalAnchorTaskID || localState.activeTaskID || taskID);
       const response = await fetch(`/api/control/tasks/${encodeURIComponent(taskID)}/terminal/input`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: content })
+        body: JSON.stringify({
+          input: content,
+          reuse_task: true,
+          anchor_task_id: anchorTaskID
+        })
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -3226,9 +3282,13 @@ function bindControlTaskView(container, initialPayload) {
         return;
       }
       const nextTaskID = normalizeText(payload?.task_id || "");
+      const nextAnchorTaskID = normalizeText(payload?.anchor_task_id || anchorTaskID || nextTaskID);
       if (nextTaskID && nextTaskID !== "-") {
-        await loadDetail(nextTaskID, { preserveLogs: false });
-        await loadList();
+        await loadDetail(nextTaskID, {
+          preserveLogs: false,
+          anchorTaskID: nextAnchorTaskID,
+          displayTaskID: nextAnchorTaskID
+        });
       }
     } finally {
       localState.terminalSubmitting = false;
@@ -3241,8 +3301,15 @@ function bindControlTaskView(container, initialPayload) {
       return;
     }
     localState.activeTaskID = taskID;
+    const explicitAnchorTaskID = normalizeText(options.anchorTaskID || "");
+    if (explicitAnchorTaskID && explicitAnchorTaskID !== "-") {
+      localState.terminalAnchorTaskID = explicitAnchorTaskID;
+    } else {
+      localState.terminalAnchorTaskID = taskID;
+    }
+    const displayTaskID = normalizeText(options.displayTaskID || localState.terminalAnchorTaskID || taskID);
     const payload = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}`);
-    drawerBody.innerHTML = renderControlTaskDetail(payload);
+    drawerBody.innerHTML = renderControlTaskDetail(payload, displayTaskID);
     setTerminalInputState(localState.terminalSubmitting);
     if (!options.preserveLogs) {
       resetLogs();
@@ -3266,7 +3333,8 @@ function bindControlTaskView(container, initialPayload) {
       throw new Error(message);
     }
     const detailPayload = payload?.view || payload;
-    drawerBody.innerHTML = renderControlTaskDetail(detailPayload);
+    const displayTaskID = normalizeText(localState.terminalAnchorTaskID || taskID);
+    drawerBody.innerHTML = renderControlTaskDetail(detailPayload, displayTaskID);
     resetLogs();
     await loadLogBackfill(taskID, 0);
     startLogStream(taskID, localState.logCursor);
@@ -3358,7 +3426,15 @@ function bindControlTaskView(container, initialPayload) {
       return;
     }
     if (target.hasAttribute("data-control-task-open")) {
-      await loadDetail(target.getAttribute("data-control-task-open") || "");
+      const openTaskID = normalizeText(target.getAttribute("data-control-task-open") || "");
+      await loadDetail(openTaskID, { anchorTaskID: openTaskID, displayTaskID: openTaskID });
+      return;
+    }
+    if (target.hasAttribute("data-control-task-quick-input")) {
+      const prompt = normalizeText(target.getAttribute("data-control-task-quick-input"));
+      if (prompt && prompt !== "-") {
+        await submitTerminalInput(prompt);
+      }
       return;
     }
     if (target.hasAttribute("data-control-task-page-next")) {
@@ -3606,13 +3682,63 @@ function renderControlTaskLogLine(item) {
 
 function renderControlTaskLogStream(logs) {
   if (!Array.isArray(logs) || !logs.length) {
-    return `<pre class="control-task-terminal-screen is-empty">${escapeHTML(t("route.tasks.logs.empty"))}</pre>`;
+    return `<div class="control-task-terminal-screen is-empty">${escapeHTML(t("route.tasks.logs.empty"))}</div>`;
   }
-  const lines = logs.map((item) => renderControlTaskLogLine(item)).filter(Boolean);
+  const lines = logs
+    .map((item) => {
+      const line = renderControlTaskLogLine(item);
+      const match = line.match(/^\[([a-z_]+)\]\s*(.*)$/i);
+      if (!match) {
+        return `<div class="control-task-log-line"><span class="control-task-log-message">${escapeHTML(line)}</span></div>`;
+      }
+      const rawTag = String(match[1] || "").toLowerCase();
+      const message = String(match[2] || "");
+      const tagClass = rawTag === "success"
+        ? "is-success"
+        : (rawTag === "running" ? "is-running" : (rawTag === "accept" || rawTag === "accepted" ? "is-accept" : "is-default"));
+      return `<div class="control-task-log-line"><span class="control-task-log-tag ${tagClass}">[${escapeHTML(rawTag)}]</span><span class="control-task-log-message">${escapeHTML(message)}</span></div>`;
+    })
+    .filter(Boolean);
   if (!lines.length) {
-    return `<pre class="control-task-terminal-screen is-empty">${escapeHTML(t("route.tasks.logs.empty"))}</pre>`;
+    return `<div class="control-task-terminal-screen is-empty">${escapeHTML(t("route.tasks.logs.empty"))}</div>`;
   }
-  return `<pre class="control-task-terminal-screen">${escapeHTML(lines.join("\n"))}</pre>`;
+  return `<div class="control-task-terminal-screen">${lines.join("")}</div>`;
+}
+
+function renderControlTaskResultOutput(content) {
+  const text = typeof content === "string" ? content.replace(/\r\n/g, "\n").trim() : "";
+  if (!text) {
+    return `<p>${escapeHTML("-")}</p>`;
+  }
+  const lines = text.split("\n").map((line) => line.trim());
+  const blocks = [];
+  let listItems = [];
+  const flushList = () => {
+    if (!listItems.length) {
+      return;
+    }
+    blocks.push(`<ul>${listItems.join("")}</ul>`);
+    listItems = [];
+  };
+  const renderInline = (line) => {
+    const parts = String(line || "").split("**");
+    return parts.map((part, index) => index % 2 === 1 ? `<strong>${escapeHTML(part)}</strong>` : escapeHTML(part)).join("");
+  };
+  for (const line of lines) {
+    if (!line) {
+      flushList();
+      continue;
+    }
+    const bullet = line.match(/^-+\s+(.+)$/);
+    if (bullet) {
+      listItems.push(`<li>${renderInline(bullet[1])}</li>`);
+      continue;
+    }
+    flushList();
+    blocks.push(`<p>${renderInline(line)}</p>`);
+  }
+  flushList();
+  return blocks.join("");
 }
 
 function escapeQueryValue(value) {

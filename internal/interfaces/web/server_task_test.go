@@ -818,6 +818,13 @@ func TestControlTaskTerminalInputCreatesFollowUpTask(t *testing.T) {
 	now := time.Date(2026, 3, 5, 11, 0, 0, 0, time.UTC)
 	taskSvc := &stubWebTaskService{
 		items: map[string]taskdomain.Task{
+			"task-root": {
+				ID:        "task-root",
+				SessionID: "session-a",
+				Status:    taskdomain.TaskStatusSuccess,
+				CreatedAt: now.Add(-2 * time.Minute),
+				UpdatedAt: now.Add(-2 * time.Minute),
+			},
 			"task-1": {
 				ID:        "task-1",
 				SessionID: "session-a",
@@ -847,7 +854,7 @@ func TestControlTaskTerminalInputCreatesFollowUpTask(t *testing.T) {
 		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/control/tasks/task-1/terminal/input", strings.NewReader(`{"input":"continue with next step"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/control/tasks/task-1/terminal/input", strings.NewReader(`{"input":"continue with next step","reuse_task":true}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	server.controlTaskItemHandler(rec, req)
@@ -872,6 +879,9 @@ func TestControlTaskTerminalInputCreatesFollowUpTask(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"task_id":"task-2"`) {
 		t.Fatalf("expected follow-up task id in response, got %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"anchor_task_id":"task-root"`) {
+		t.Fatalf("expected terminal anchor task id in response, got %s", rec.Body.String())
 	}
 }
 

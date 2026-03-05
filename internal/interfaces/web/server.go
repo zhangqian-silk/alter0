@@ -127,11 +127,14 @@ type taskCreateResponse struct {
 }
 
 type controlTaskTerminalInputRequest struct {
-	Input string `json:"input"`
+	Input        string `json:"input"`
+	ReuseTask    bool   `json:"reuse_task,omitempty"`
+	AnchorTaskID string `json:"anchor_task_id,omitempty"`
 }
 
 type controlTaskTerminalInputResponse struct {
 	TaskID            string `json:"task_id"`
+	AnchorTaskID      string `json:"anchor_task_id,omitempty"`
 	Status            string `json:"status"`
 	SessionID         string `json:"session_id"`
 	TerminalSessionID string `json:"terminal_session_id"`
@@ -1146,8 +1149,20 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	anchorTaskID := ""
+	if req.ReuseTask {
+		anchorTaskID = strings.TrimSpace(req.AnchorTaskID)
+		if anchorTaskID == "" {
+			anchorTaskID = s.resolveTerminalAnchorTaskID(baseTask)
+		}
+		if anchorTaskID == "" {
+			anchorTaskID = strings.TrimSpace(baseTask.ID)
+		}
+	}
+
 	writeJSON(w, http.StatusAccepted, controlTaskTerminalInputResponse{
 		TaskID:            task.ID,
+		AnchorTaskID:      anchorTaskID,
 		Status:            string(task.Status),
 		SessionID:         task.SessionID,
 		TerminalSessionID: terminalSessionID,
@@ -1198,6 +1213,32 @@ func (s *Server) collectActiveTerminalSessions() map[string]struct{} {
 		}
 	}
 	return sessions
+}
+
+func (s *Server) resolveTerminalAnchorTaskID(task taskdomain.Task) string {
+	current := task
+	visited := map[string]struct{}{}
+	for hops := 0; hops < 32; hops++ {
+		currentID := strings.TrimSpace(current.ID)
+		if currentID == "" {
+			break
+		}
+		if _, exists := visited[currentID]; exists {
+			break
+		}
+		visited[currentID] = struct{}{}
+
+		parentID := strings.TrimSpace(current.RequestMetadata[controlTaskTerminalParentIDKey])
+		if parentID == "" || parentID == currentID {
+			return currentID
+		}
+		parent, exists := s.tasks.Get(parentID)
+		if !exists {
+			return currentID
+		}
+		current = parent
+	}
+	return strings.TrimSpace(task.ID)
 }
 
 func (s *Server) controlTaskCollectionHandler(w http.ResponseWriter, r *http.Request) {
