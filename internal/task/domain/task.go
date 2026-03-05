@@ -41,9 +41,12 @@ type TaskArtifact struct {
 	ArtifactType string    `json:"artifact_type,omitempty"`
 	Name         string    `json:"name"`
 	ContentType  string    `json:"content_type"`
+	Size         int64     `json:"size"`
 	Content      string    `json:"content"`
 	URI          string    `json:"uri,omitempty"`
 	Summary      string    `json:"summary,omitempty"`
+	DownloadURL  string    `json:"download_url,omitempty"`
+	PreviewURL   string    `json:"preview_url,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -232,6 +235,9 @@ func (t Task) Validate() error {
 		}
 		if strings.TrimSpace(item.ContentType) == "" {
 			return errors.New("artifact content_type is required")
+		}
+		if item.Size < 0 {
+			return errors.New("artifact size must be non-negative")
 		}
 		if item.CreatedAt.IsZero() {
 			return errors.New("artifact created_at is required")
