@@ -807,16 +807,17 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 	now := time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
 	source := []taskdomain.Task{
 		{
-			ID:             "task-a",
-			SessionID:      "session-a",
-			Status:         taskdomain.TaskStatusFailed,
-			Progress:       60,
-			RetryCount:     1,
-			CreatedAt:      now.Add(-4 * time.Hour),
-			UpdatedAt:      now.Add(-3 * time.Hour),
-			FinishedAt:     now.Add(-3 * time.Hour),
-			RequestContent: "build report",
-			ErrorCode:      "task_failed",
+			ID:              "task-a",
+			SessionID:       "session-a",
+			SourceMessageID: "msg-user-a",
+			Status:          taskdomain.TaskStatusFailed,
+			Progress:        60,
+			RetryCount:      1,
+			CreatedAt:       now.Add(-4 * time.Hour),
+			UpdatedAt:       now.Add(-3 * time.Hour),
+			FinishedAt:      now.Add(-3 * time.Hour),
+			RequestContent:  "build report",
+			ErrorCode:       "task_failed",
 			RequestMetadata: map[string]string{
 				taskapp.MetadataTaskTriggerTypeKey: "user",
 				taskapp.MetadataTaskChannelTypeKey: "web",
@@ -825,16 +826,17 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 			},
 		},
 		{
-			ID:             "task-b",
-			SessionID:      "session-a",
-			Status:         taskdomain.TaskStatusFailed,
-			Progress:       80,
-			RetryCount:     0,
-			CreatedAt:      now.Add(-2 * time.Hour),
-			UpdatedAt:      now.Add(-90 * time.Minute),
-			FinishedAt:     now.Add(-90 * time.Minute),
-			RequestContent: "build report",
-			ErrorMessage:   "network timeout",
+			ID:              "task-b",
+			SessionID:       "session-a",
+			SourceMessageID: "msg-user-b",
+			Status:          taskdomain.TaskStatusFailed,
+			Progress:        80,
+			RetryCount:      0,
+			CreatedAt:       now.Add(-2 * time.Hour),
+			UpdatedAt:       now.Add(-90 * time.Minute),
+			FinishedAt:      now.Add(-90 * time.Minute),
+			RequestContent:  "build report",
+			ErrorMessage:    "network timeout",
 			RequestMetadata: map[string]string{
 				taskapp.MetadataTaskTriggerTypeKey: "cron",
 				taskapp.MetadataTaskChannelTypeKey: "scheduler",
@@ -844,16 +846,23 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 				"job_name":                         "Nightly Build",
 				"fired_at":                         "2026-03-04T07:20:00Z",
 			},
+			MessageLink: taskdomain.TaskMessageLink{
+				TaskID:           "task-b",
+				SessionID:        "session-a",
+				RequestMessageID: "msg-user-b",
+				ResultMessageID:  "msg-assistant-b",
+			},
 		},
 		{
-			ID:             "task-c",
-			SessionID:      "session-b",
-			Status:         taskdomain.TaskStatusRunning,
-			Progress:       30,
-			RetryCount:     0,
-			CreatedAt:      now.Add(-2 * time.Hour),
-			UpdatedAt:      now.Add(-30 * time.Minute),
-			RequestContent: "other session",
+			ID:              "task-c",
+			SessionID:       "session-b",
+			SourceMessageID: "msg-user-c",
+			Status:          taskdomain.TaskStatusRunning,
+			Progress:        30,
+			RetryCount:      0,
+			CreatedAt:       now.Add(-2 * time.Hour),
+			UpdatedAt:       now.Add(-30 * time.Minute),
+			RequestContent:  "other session",
 			RequestMetadata: map[string]string{
 				taskapp.MetadataTaskTriggerTypeKey: "system",
 				taskapp.MetadataTaskChannelTypeKey: "cli",
@@ -889,7 +898,11 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/control/tasks?session_id=session-a&status=failed&trigger_type=cron&channel_type=scheduler&time_range=2026-03-04T05:00:00Z,2026-03-04T08:00:00Z&page=1&page_size=10", nil)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/control/tasks?session_id=session-a&status=failed&trigger_type=cron&channel_type=scheduler&channel_id=scheduler-default&source_message_id=msg-user-b&message_id=msg-assistant-b&time_range=2026-03-04T05:00:00Z,2026-03-04T08:00:00Z&page=1&page_size=10",
+		nil,
+	)
 	rec := httptest.NewRecorder()
 	server.controlTaskCollectionHandler(rec, req)
 	if rec.Code != http.StatusOK {
@@ -908,6 +921,9 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 	}
 	if payload.Items[0].TaskID != "task-b" {
 		t.Fatalf("expected filtered task-b, got %+v", payload.Items)
+	}
+	if payload.Items[0].SourceMessageID != "msg-user-b" {
+		t.Fatalf("expected source_message_id msg-user-b, got %+v", payload.Items[0])
 	}
 	if payload.Items[0].Error != "network timeout" {
 		t.Fatalf("expected error_message in list item, got %+v", payload.Items[0])
