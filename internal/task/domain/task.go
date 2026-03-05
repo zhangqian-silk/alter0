@@ -78,11 +78,16 @@ type Task struct {
 	MessageID       string            `json:"message_id,omitempty"`
 	TaskType        string            `json:"task_type,omitempty"`
 	Status          TaskStatus        `json:"status"`
+	Phase           string            `json:"phase,omitempty"`
 	Progress        int               `json:"progress"`
+	QueuePosition   int               `json:"queue_position,omitempty"`
+	QueueWaitMS     int64             `json:"queue_wait_ms,omitempty"`
 	RetryCount      int               `json:"retry_count"`
 	MaxRetries      int               `json:"max_retries"`
 	TimeoutMS       int64             `json:"timeout_ms"`
 	TimeoutAt       time.Time         `json:"timeout_at,omitempty"`
+	AcceptedAt      time.Time         `json:"accepted_at,omitempty"`
+	PhaseUpdatedAt  time.Time         `json:"phase_updated_at,omitempty"`
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
 	StartedAt       time.Time         `json:"started_at,omitempty"`
@@ -170,8 +175,20 @@ func (t Task) Validate() error {
 	if !t.Status.IsValid() {
 		return errors.New("task status is invalid")
 	}
+	if strings.TrimSpace(t.Phase) == "" {
+		return errors.New("phase is required")
+	}
 	if t.Progress < 0 || t.Progress > 100 {
 		return errors.New("progress must be within 0..100")
+	}
+	if t.QueuePosition < 0 {
+		return errors.New("queue_position must be non-negative")
+	}
+	if t.QueueWaitMS < 0 {
+		return errors.New("queue_wait_ms must be non-negative")
+	}
+	if t.Status != TaskStatusQueued && t.QueuePosition > 0 {
+		return errors.New("queue_position is only valid for queued status")
 	}
 	if t.RetryCount < 0 {
 		return errors.New("retry_count must be non-negative")

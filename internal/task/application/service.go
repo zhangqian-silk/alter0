@@ -37,7 +37,7 @@ const (
 )
 
 const (
-	defaultWorkerCount = 2
+	defaultWorkerCount = asyncExecutorMaxConcurrency
 	defaultTimeout     = 90 * time.Second
 	defaultMaxRetries  = 1
 )
@@ -110,10 +110,9 @@ type Service struct {
 	summary     TaskSummaryRecorder
 
 	mu           sync.RWMutex
-	cond         *sync.Cond
 	stopped      bool
+	executor     *asyncExecutor
 	tasks        map[string]taskdomain.Task
-	queue        []string
 	sessionIndex map[string][]string
 	idempotency  map[string]string
 	requests     map[string]shareddomain.UnifiedMessage
@@ -148,27 +147,23 @@ func NewService(
 		options:      normalizeOptions(options),
 		summary:      options.SummaryMemory,
 		tasks:        map[string]taskdomain.Task{},
-		queue:        []string{},
 		sessionIndex: map[string][]string{},
 		idempotency:  map[string]string{},
 		requests:     map[string]shareddomain.UnifiedMessage{},
 		inflight:     map[string]context.CancelFunc{},
 	}
-	service.cond = sync.NewCond(&service.mu)
+	service.executor = newAsyncExecutor(service.options.WorkerCount, service.runQueuedTask)
 
 	if err := service.loadStore(ctx); err != nil {
 		return nil, err
 	}
-	for workerID := 0; workerID < service.options.WorkerCount; workerID++ {
-		go service.runWorker(ctx, workerID+1)
-	}
+	service.executor.start(ctx)
 
 	go func() {
 		<-ctx.Done()
 		service.mu.Lock()
 		service.stopped = true
 		service.mu.Unlock()
-		service.cond.Broadcast()
 	}()
 
 	return service, nil
@@ -177,6 +172,9 @@ func NewService(
 func normalizeOptions(options Options) Options {
 	if options.WorkerCount <= 0 {
 		options.WorkerCount = defaultWorkerCount
+	}
+	if options.WorkerCount > asyncExecutorMaxConcurrency {
+		options.WorkerCount = asyncExecutorMaxConcurrency
 	}
 	if options.Timeout <= 0 {
 		options.Timeout = defaultTimeout
@@ -282,6 +280,26 @@ func (s *Service) normalizeStoredTask(task taskdomain.Task) (taskdomain.Task, bo
 		task.UpdatedAt = task.CreatedAt
 		changed = true
 	}
+	if task.AcceptedAt.IsZero() {
+		task.AcceptedAt = task.CreatedAt
+		changed = true
+	}
+	if strings.TrimSpace(task.Phase) == "" {
+		task.Phase = string(task.Status)
+		changed = true
+	}
+	if task.PhaseUpdatedAt.IsZero() {
+		task.PhaseUpdatedAt = task.UpdatedAt
+		changed = true
+	}
+	if task.QueueWaitMS < 0 {
+		task.QueueWaitMS = 0
+		changed = true
+	}
+	if task.Status != taskdomain.TaskStatusQueued && task.QueuePosition != 0 {
+		task.QueuePosition = 0
+		changed = true
+	}
 	if task.Progress < 0 {
 		task.Progress = 0
 		changed = true
@@ -340,9 +358,12 @@ func (s *Service) normalizeStoredTask(task taskdomain.Task) (taskdomain.Task, bo
 
 	if task.Status == taskdomain.TaskStatusQueued || task.Status == taskdomain.TaskStatusRunning {
 		task.Status = taskdomain.TaskStatusFailed
+		task.Phase = string(taskdomain.TaskStatusFailed)
 		task.Progress = 100
 		task.FinishedAt = now
 		task.UpdatedAt = now
+		task.PhaseUpdatedAt = now
+		task.QueuePosition = 0
 		task.ErrorCode = "task_interrupted"
 		task.ErrorMessage = "task interrupted by service restart"
 		task.Result.ErrorCode = task.ErrorCode
@@ -353,6 +374,10 @@ func (s *Service) normalizeStoredTask(task taskdomain.Task) (taskdomain.Task, bo
 
 	if task.Status.IsTerminal() && task.FinishedAt.IsZero() {
 		task.FinishedAt = task.UpdatedAt
+		changed = true
+	}
+	if task.Status.IsTerminal() && task.Phase != string(task.Status) {
+		task.Phase = string(task.Status)
 		changed = true
 	}
 	if task.Status.IsTerminal() && task.Progress < 100 {
@@ -437,11 +462,14 @@ func (s *Service) Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, erro
 		MessageID:       sourceMessageID,
 		TaskType:        taskType,
 		Status:          taskdomain.TaskStatusQueued,
+		Phase:           string(taskdomain.TaskStatusQueued),
 		Progress:        0,
 		RetryCount:      0,
 		MaxRetries:      s.options.MaxRetries,
 		TimeoutMS:       timeout.Milliseconds(),
 		TimeoutAt:       now.Add(timeout),
+		AcceptedAt:      now,
+		PhaseUpdatedAt:  now,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		RequestContent:  strings.TrimSpace(msg.Content),
@@ -455,10 +483,18 @@ func (s *Service) Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, erro
 	task.MessageLink.TaskID = task.ID
 	task.Logs = appendTaskLog(task.Logs, "accept", taskdomain.TaskLogLevelInfo, "task accepted", now)
 
+	queuePosition := 0
+	if s.executor != nil {
+		queuePosition = s.executor.enqueue(task.ID)
+	}
+	if queuePosition <= 0 {
+		return taskdomain.Task{}, ErrTaskStopped
+	}
+	task.QueuePosition = queuePosition
+
 	s.tasks[task.ID] = cloneTask(task)
 	sessionKey := normalizeKey(task.SessionID)
 	s.sessionIndex[sessionKey] = append(s.sessionIndex[sessionKey], task.ID)
-	s.queue = append(s.queue, task.ID)
 	s.requests[task.ID] = buildMessageFromTask(task)
 	if idempotencyKey != "" {
 		s.idempotency[idempotencyKey] = task.ID
@@ -466,14 +502,15 @@ func (s *Service) Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, erro
 	if err := s.storeLocked(); err != nil {
 		delete(s.tasks, task.ID)
 		delete(s.requests, task.ID)
-		s.removeFromQueueLocked(task.ID)
+		if s.executor != nil {
+			s.executor.remove(task.ID)
+		}
 		s.removeFromSessionIndexLocked(sessionKey, task.ID)
 		if idempotencyKey != "" {
 			delete(s.idempotency, idempotencyKey)
 		}
 		return taskdomain.Task{}, err
 	}
-	s.cond.Signal()
 	return cloneTask(task), nil
 }
 
@@ -489,7 +526,9 @@ func (s *Service) Get(taskID string) (taskdomain.Task, bool) {
 	if !ok {
 		return taskdomain.Task{}, false
 	}
-	return cloneTask(item), true
+	cloned := cloneTask(item)
+	s.refreshTaskQueueState(&cloned)
+	return cloned, true
 }
 
 func (s *Service) ListBySession(sessionID string) []taskdomain.Task {
@@ -512,7 +551,9 @@ func (s *Service) ListBySession(sessionID string) []taskdomain.Task {
 		if !ok {
 			continue
 		}
-		items = append(items, cloneTask(task))
+		cloned := cloneTask(task)
+		s.refreshTaskQueueState(&cloned)
+		items = append(items, cloned)
 	}
 	return items
 }
@@ -533,7 +574,9 @@ func (s *Service) List(query ListQuery) TaskPage {
 		if strings.TrimSpace(string(status)) != "" && item.Status != status {
 			continue
 		}
-		filtered = append(filtered, cloneTask(item))
+		cloned := cloneTask(item)
+		s.refreshTaskQueueState(&cloned)
+		filtered = append(filtered, cloned)
 	}
 
 	sort.SliceStable(filtered, func(i, j int) bool {
@@ -638,12 +681,17 @@ func (s *Service) Retry(taskID string) (taskdomain.Task, error) {
 	now := time.Now().UTC()
 	timeout := s.resolveTaskTimeoutByMetadata(task.RequestMetadata)
 	task.Status = taskdomain.TaskStatusQueued
+	task.Phase = string(taskdomain.TaskStatusQueued)
 	task.Progress = 0
 	task.ErrorCode = ""
 	task.ErrorMessage = ""
 	task.Result.ErrorCode = ""
 	task.Result.Output = ""
 	task.FinishedAt = time.Time{}
+	task.StartedAt = time.Time{}
+	task.QueueWaitMS = 0
+	task.AcceptedAt = now
+	task.PhaseUpdatedAt = now
 	task.UpdatedAt = now
 	task.TimeoutMS = timeout.Milliseconds()
 	task.TimeoutAt = now.Add(timeout)
@@ -661,15 +709,25 @@ func (s *Service) Retry(taskID string) (taskdomain.Task, error) {
 		task.MessageLink.RequestMessageID = task.SourceMessageID
 	}
 
+	queuePosition := 0
+	if s.executor != nil {
+		queuePosition = s.executor.enqueue(task.ID)
+	}
+	if queuePosition <= 0 {
+		return taskdomain.Task{}, ErrTaskStopped
+	}
+	task.QueuePosition = queuePosition
+
 	s.tasks[task.ID] = cloneTask(task)
-	s.queue = append(s.queue, task.ID)
 	if _, exists := s.requests[task.ID]; !exists {
 		s.requests[task.ID] = buildMessageFromTask(task)
 	}
 	if err := s.storeLocked(); err != nil {
+		if s.executor != nil {
+			s.executor.remove(task.ID)
+		}
 		return taskdomain.Task{}, err
 	}
-	s.cond.Signal()
 	return cloneTask(task), nil
 }
 
@@ -696,12 +754,17 @@ func (s *Service) Cancel(taskID string) (taskdomain.Task, error) {
 
 	switch task.Status {
 	case taskdomain.TaskStatusQueued:
-		s.removeFromQueueLocked(task.ID)
+		if s.executor != nil {
+			s.executor.remove(task.ID)
+		}
 		delete(s.requests, task.ID)
 		task.Status = taskdomain.TaskStatusCanceled
+		task.Phase = string(taskdomain.TaskStatusCanceled)
 		task.Progress = 100
 		task.UpdatedAt = now
 		task.FinishedAt = now
+		task.PhaseUpdatedAt = now
+		task.QueuePosition = 0
 		task.ErrorCode = "task_canceled"
 		task.ErrorMessage = "task canceled before execution"
 		task.Result.ErrorCode = task.ErrorCode
@@ -733,88 +796,112 @@ func (s *Service) Cancel(taskID string) (taskdomain.Task, error) {
 	return item, nil
 }
 
-func (s *Service) runWorker(ctx context.Context, workerID int) {
-	for {
-		taskID, msg, runCtx, cancel, ok := s.nextTask(ctx, workerID)
-		if !ok {
-			return
-		}
-		s.executeTask(taskID, msg, runCtx, workerID)
-		cancel()
-		s.finishRuntime(taskID)
+func (s *Service) runQueuedTask(ctx context.Context, taskID string, workerID int) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return
 	}
+	msg, runCtx, cancel, ok := s.prepareQueuedTask(taskID, ctx, workerID)
+	if !ok {
+		s.finishRuntime(taskID)
+		return
+	}
+	s.executeTask(taskID, msg, runCtx, workerID)
+	cancel()
+	s.finishRuntime(taskID)
 }
 
-func (s *Service) nextTask(ctx context.Context, workerID int) (string, shareddomain.UnifiedMessage, context.Context, context.CancelFunc, bool) {
-	for {
-		s.mu.Lock()
-		for len(s.queue) == 0 && !s.stopped && ctx.Err() == nil {
-			s.cond.Wait()
-		}
-		if s.stopped || ctx.Err() != nil {
-			s.mu.Unlock()
-			return "", shareddomain.UnifiedMessage{}, nil, nil, false
-		}
-
-		taskID := s.queue[0]
-		s.queue = s.queue[1:]
-		task, ok := s.tasks[taskID]
-		if !ok {
-			s.mu.Unlock()
-			continue
-		}
-		msg, ok := s.requests[taskID]
-		if !ok {
-			msg = buildMessageFromTask(task)
-		}
-		if err := msg.Validate(); err != nil {
-			now := time.Now().UTC()
-			task.Status = taskdomain.TaskStatusFailed
-			task.Progress = 100
-			task.UpdatedAt = now
-			task.FinishedAt = now
-			task.ErrorCode = "task_payload_missing"
-			task.ErrorMessage = "task request payload is unavailable"
-			task.Result.ErrorCode = task.ErrorCode
-			task.Summary = buildTaskSummary(task, nil)
-			task.TaskSummary = buildTaskStructuredSummary(task)
-			task.Logs = appendTaskLog(task.Logs, "prepare", taskdomain.TaskLogLevelError, "task failed before execution: payload unavailable", now)
-			s.tasks[taskID] = cloneTask(task)
-			_ = s.storeLocked()
-			item := cloneTask(task)
-			s.mu.Unlock()
-			s.appendSummaryToSession(item)
-			s.recordTaskSummary(item)
-			continue
-		}
-		s.requests[taskID] = cloneMessage(msg)
-
-		now := time.Now().UTC()
-		task.Status = taskdomain.TaskStatusRunning
-		if task.StartedAt.IsZero() {
-			task.StartedAt = now
-		}
-		if task.Progress < 10 {
-			task.Progress = 10
-		}
-		task.UpdatedAt = now
-		task.Logs = appendTaskLog(task.Logs, "running", taskdomain.TaskLogLevelInfo, fmt.Sprintf("task started by worker-%d", workerID), now)
-		timeout := s.resolveTaskTimeout(msg)
-		task.TimeoutMS = timeout.Milliseconds()
-		task.TimeoutAt = now.Add(timeout)
-		s.tasks[taskID] = cloneTask(task)
-
-		runCtx, cancel := context.WithTimeout(ctx, timeout)
-		s.inflight[taskID] = cancel
-		if err := s.storeLocked(); err != nil && s.logger != nil {
-			s.logger.Warn("persist running task state failed",
-				slog.String("task_id", taskID),
-				slog.String("error", err.Error()),
-			)
-		}
+func (s *Service) prepareQueuedTask(
+	taskID string,
+	ctx context.Context,
+	workerID int,
+) (shareddomain.UnifiedMessage, context.Context, context.CancelFunc, bool) {
+	s.mu.Lock()
+	if s.stopped || ctx.Err() != nil {
 		s.mu.Unlock()
-		return taskID, cloneMessage(msg), runCtx, cancel, true
+		return shareddomain.UnifiedMessage{}, nil, nil, false
 	}
+
+	task, ok := s.tasks[taskID]
+	if !ok {
+		s.mu.Unlock()
+		return shareddomain.UnifiedMessage{}, nil, nil, false
+	}
+	if task.Status != taskdomain.TaskStatusQueued {
+		s.mu.Unlock()
+		return shareddomain.UnifiedMessage{}, nil, nil, false
+	}
+
+	msg, ok := s.requests[taskID]
+	if !ok {
+		msg = buildMessageFromTask(task)
+	}
+	if err := msg.Validate(); err != nil {
+		now := time.Now().UTC()
+		task.Status = taskdomain.TaskStatusFailed
+		task.Phase = string(taskdomain.TaskStatusFailed)
+		task.Progress = 100
+		task.UpdatedAt = now
+		task.FinishedAt = now
+		task.PhaseUpdatedAt = now
+		task.QueuePosition = 0
+		task.ErrorCode = "task_payload_missing"
+		task.ErrorMessage = "task request payload is unavailable"
+		task.Result.ErrorCode = task.ErrorCode
+		task.Summary = buildTaskSummary(task, nil)
+		task.TaskSummary = buildTaskStructuredSummary(task)
+		task.Logs = appendTaskLog(task.Logs, "prepare", taskdomain.TaskLogLevelError, "task failed before execution: payload unavailable", now)
+		s.tasks[taskID] = cloneTask(task)
+		_ = s.storeLocked()
+		item := cloneTask(task)
+		s.mu.Unlock()
+		s.appendSummaryToSession(item)
+		s.recordTaskSummary(item)
+		return shareddomain.UnifiedMessage{}, nil, nil, false
+	}
+	s.requests[taskID] = cloneMessage(msg)
+
+	now := time.Now().UTC()
+	task.Status = taskdomain.TaskStatusRunning
+	task.Phase = string(taskdomain.TaskStatusRunning)
+	task.PhaseUpdatedAt = now
+	if task.StartedAt.IsZero() {
+		task.StartedAt = now
+	}
+	acceptedAt := task.AcceptedAt
+	if acceptedAt.IsZero() {
+		acceptedAt = task.CreatedAt
+		task.AcceptedAt = acceptedAt
+	}
+	if !acceptedAt.IsZero() {
+		waitDuration := now.Sub(acceptedAt)
+		if waitDuration < 0 {
+			waitDuration = 0
+		}
+		task.QueueWaitMS = waitDuration.Milliseconds()
+	}
+	task.QueuePosition = 0
+	if task.Progress < 10 {
+		task.Progress = 10
+	}
+	task.UpdatedAt = now
+	task.Logs = appendTaskLog(task.Logs, "running", taskdomain.TaskLogLevelInfo, fmt.Sprintf("task started by worker-%d", workerID), now)
+	task.Logs = appendTaskLog(task.Logs, "terminal", taskdomain.TaskLogLevelInfo, "已运行 "+task.RequestContent, now)
+	timeout := s.resolveTaskTimeout(msg)
+	task.TimeoutMS = timeout.Milliseconds()
+	task.TimeoutAt = now.Add(timeout)
+	s.tasks[taskID] = cloneTask(task)
+
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	s.inflight[taskID] = cancel
+	if err := s.storeLocked(); err != nil && s.logger != nil {
+		s.logger.Warn("persist running task state failed",
+			slog.String("task_id", taskID),
+			slog.String("error", err.Error()),
+		)
+	}
+	s.mu.Unlock()
+	return cloneMessage(msg), runCtx, cancel, true
 }
 
 func (s *Service) executeTask(taskID string, msg shareddomain.UnifiedMessage, runCtx context.Context, workerID int) {
@@ -823,6 +910,9 @@ func (s *Service) executeTask(taskID string, msg shareddomain.UnifiedMessage, ru
 	var lastErr error
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			s.markTaskPhase(taskID, string(taskdomain.TaskStatusRunning))
+		}
 		execMessage := cloneMessage(msg)
 		execMessage.Metadata = cloneStringMap(execMessage.Metadata)
 		execMessage.Metadata[MetadataTaskIDKey] = taskID
@@ -889,6 +979,8 @@ func (s *Service) recordRetry(taskID string, workerID int, err error) {
 	if task.Progress < nextProgress {
 		task.Progress = nextProgress
 	}
+	task.Phase = "retrying"
+	task.PhaseUpdatedAt = now
 	task.Logs = appendTaskLog(task.Logs, "retry", taskdomain.TaskLogLevelWarn, fmt.Sprintf("worker-%d retry %d/%d: %s", workerID, retryCount, task.MaxRetries, strings.TrimSpace(err.Error())), now)
 	s.tasks[taskID] = cloneTask(task)
 	if saveErr := s.storeLocked(); saveErr != nil && s.logger != nil {
@@ -919,9 +1011,12 @@ func (s *Service) completeTask(
 
 	now := time.Now().UTC()
 	task.Status = status
+	task.Phase = string(status)
 	task.Progress = progress
 	task.UpdatedAt = now
 	task.FinishedAt = now
+	task.PhaseUpdatedAt = now
+	task.QueuePosition = 0
 	task.TimeoutAt = time.Time{}
 	task.Result = toTaskResult(result)
 
@@ -972,6 +1067,10 @@ func (s *Service) completeTask(
 		stage = "failed"
 	case taskdomain.TaskStatusCanceled:
 		stage = "canceled"
+	}
+	task.Logs = appendTaskTerminalLogs(task.Logs, result.Output, now)
+	if handleErr != nil {
+		task.Logs = appendTaskTerminalLogs(task.Logs, handleErr.Error(), now)
 	}
 	task.Logs = appendTaskLog(task.Logs, stage, logLevel, strings.TrimSpace(logMessage), now)
 	task.Summary = buildTaskSummary(task, handleErr)
@@ -1066,6 +1165,30 @@ func (s *Service) finishRuntime(taskID string) {
 	defer s.mu.Unlock()
 	delete(s.requests, taskID)
 	delete(s.inflight, taskID)
+}
+
+func (s *Service) markTaskPhase(taskID string, phase string) {
+	taskID = strings.TrimSpace(taskID)
+	phase = strings.TrimSpace(phase)
+	if taskID == "" || phase == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	task, ok := s.tasks[taskID]
+	if !ok {
+		return
+	}
+	task.Phase = phase
+	task.PhaseUpdatedAt = time.Now().UTC()
+	s.tasks[taskID] = cloneTask(task)
+	if err := s.storeLocked(); err != nil && s.logger != nil {
+		s.logger.Warn("persist task phase failed",
+			slog.String("task_id", taskID),
+			slog.String("phase", phase),
+			slog.String("error", err.Error()),
+		)
+	}
 }
 
 func (s *Service) resolveTaskTimeout(msg shareddomain.UnifiedMessage) time.Duration {
@@ -1246,15 +1369,49 @@ func appendTaskLog(logs []taskdomain.TaskLog, stage string, level taskdomain.Tas
 	if !level.IsValid() {
 		level = taskdomain.TaskLogLevelInfo
 	}
+	stage = strings.TrimSpace(stage)
+	if stage == "" {
+		stage = "runtime"
+	}
+	messageValue := message
+	if strings.TrimSpace(messageValue) == "" {
+		messageValue = "task log"
+	}
 	seq := len(logs) + 1
 	return append(logs, taskdomain.TaskLog{
 		Seq:       seq,
-		Stage:     strings.TrimSpace(stage),
+		Stage:     stage,
 		CreatedAt: timestamp,
 		Timestamp: timestamp,
 		Level:     level,
-		Message:   strings.TrimSpace(message),
+		Message:   messageValue,
 	})
+}
+
+func appendTaskTerminalLogs(logs []taskdomain.TaskLog, output string, timestamp time.Time) []taskdomain.TaskLog {
+	lines := splitTaskTerminalOutput(output)
+	if len(lines) == 0 {
+		return logs
+	}
+	for idx, line := range lines {
+		logTime := timestamp.Add(time.Duration(idx) * time.Millisecond)
+		logs = appendTaskLog(logs, "terminal", taskdomain.TaskLogLevelInfo, line, logTime)
+	}
+	return logs
+}
+
+func splitTaskTerminalOutput(content string) []string {
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	rawLines := strings.Split(normalized, "\n")
+	lines := make([]string, 0, len(rawLines))
+	for _, line := range rawLines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func normalizeTaskType(taskType string) string {
@@ -1495,16 +1652,6 @@ func isTruthy(raw string) bool {
 	}
 }
 
-func (s *Service) removeFromQueueLocked(taskID string) {
-	for idx := range s.queue {
-		if s.queue[idx] != taskID {
-			continue
-		}
-		s.queue = append(s.queue[:idx], s.queue[idx+1:]...)
-		return
-	}
-}
-
 func (s *Service) removeFromSessionIndexLocked(key, taskID string) {
 	items := s.sessionIndex[key]
 	if len(items) == 0 {
@@ -1522,4 +1669,22 @@ func (s *Service) removeFromSessionIndexLocked(key, taskID string) {
 		}
 		return
 	}
+}
+
+func (s *Service) refreshTaskQueueState(task *taskdomain.Task) {
+	if task == nil {
+		return
+	}
+	if task.Status != taskdomain.TaskStatusQueued {
+		task.QueuePosition = 0
+		return
+	}
+	if s.executor == nil {
+		if task.QueuePosition <= 0 {
+			task.QueuePosition = 1
+		}
+		return
+	}
+	position := s.executor.position(task.ID)
+	task.QueuePosition = position
 }

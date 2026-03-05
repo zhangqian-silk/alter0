@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -150,6 +151,27 @@ func TestServiceAssessComplexityFallbackDefaultsToAsync(t *testing.T) {
 	}
 }
 
+func TestServiceWorkerCountCapsAtFive(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	svc, err := NewService(
+		ctx,
+		&stubTaskOrchestrator{},
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{WorkerCount: 99},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	if svc.options.WorkerCount != asyncExecutorMaxConcurrency {
+		t.Fatalf("expected worker count cap %d, got %d", asyncExecutorMaxConcurrency, svc.options.WorkerCount)
+	}
+}
+
 func TestServiceSubmitAndCompleteSuccess(t *testing.T) {
 	recorder := &stubTaskRecorder{}
 	orch := &stubTaskOrchestrator{
@@ -231,6 +253,134 @@ func TestServiceSubmitAndCompleteSuccess(t *testing.T) {
 	records := recorder.list()
 	if records[0].RouteResult.TaskID != queued.ID {
 		t.Fatalf("expected summary route task_id %q, got %q", queued.ID, records[0].RouteResult.TaskID)
+	}
+}
+
+func TestServiceQueuePositionAndQueueWait(t *testing.T) {
+	blockCh := make(chan struct{})
+	orch := &stubTaskOrchestrator{
+		handler: func(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+			if strings.Contains(msg.Content, "first") {
+				select {
+				case <-blockCh:
+				case <-ctx.Done():
+					return shareddomain.OrchestrationResult{
+						MessageID: msg.MessageID,
+						SessionID: msg.SessionID,
+						Route:     shareddomain.RouteNL,
+					}, ctx.Err()
+				}
+			}
+			return shareddomain.OrchestrationResult{
+				MessageID: msg.MessageID,
+				SessionID: msg.SessionID,
+				Route:     shareddomain.RouteNL,
+				Output:    "done",
+			}, nil
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	svc, err := NewService(
+		ctx,
+		orch,
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{WorkerCount: 1, Timeout: 3 * time.Second, MaxRetries: 0},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	first, err := svc.Submit(testTaskMessage("s-queue", "first queued", nil))
+	if err != nil {
+		t.Fatalf("submit first: %v", err)
+	}
+	_ = waitTaskStatus(t, svc, first.ID, taskdomain.TaskStatusRunning, 2*time.Second)
+
+	second, err := svc.Submit(testTaskMessage("s-queue", "second queued", nil))
+	if err != nil {
+		t.Fatalf("submit second: %v", err)
+	}
+	if second.QueuePosition != 1 {
+		t.Fatalf("expected queue position 1, got %d", second.QueuePosition)
+	}
+	current, ok := svc.Get(second.ID)
+	if !ok {
+		t.Fatalf("expected second task exist")
+	}
+	if current.QueuePosition != 1 {
+		t.Fatalf("expected queue position 1 from get, got %d", current.QueuePosition)
+	}
+	if current.Phase != string(taskdomain.TaskStatusQueued) {
+		t.Fatalf("expected queued phase, got %q", current.Phase)
+	}
+
+	time.Sleep(120 * time.Millisecond)
+	close(blockCh)
+	done := waitTaskStatus(t, svc, second.ID, taskdomain.TaskStatusSuccess, 3*time.Second)
+	if done.QueueWaitMS <= 0 {
+		t.Fatalf("expected queue_wait_ms > 0, got %d", done.QueueWaitMS)
+	}
+	if done.QueuePosition != 0 {
+		t.Fatalf("expected queue position reset to 0, got %d", done.QueuePosition)
+	}
+	if done.Phase != string(taskdomain.TaskStatusSuccess) {
+		t.Fatalf("expected success phase, got %q", done.Phase)
+	}
+}
+
+func TestServiceCapturesTerminalOutputLogs(t *testing.T) {
+	orch := &stubTaskOrchestrator{
+		handler: func(_ context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+			return shareddomain.OrchestrationResult{
+				MessageID: msg.MessageID,
+				SessionID: msg.SessionID,
+				Route:     shareddomain.RouteNL,
+				Output:    "已运行 ls -la\n  - README.md\n  - cmd/",
+			}, nil
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	svc, err := NewService(
+		ctx,
+		orch,
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{WorkerCount: 1, Timeout: 2 * time.Second, MaxRetries: 0},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	task, err := svc.Submit(testTaskMessage("s-logs", "列出当前目录", nil))
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	done := waitTaskStatus(t, svc, task.ID, taskdomain.TaskStatusSuccess, 2*time.Second)
+	terminalMessages := []string{}
+	for _, item := range done.Logs {
+		if item.Stage != "terminal" {
+			continue
+		}
+		terminalMessages = append(terminalMessages, item.Message)
+	}
+	if len(terminalMessages) < 3 {
+		t.Fatalf("expected terminal logs captured, got %+v", terminalMessages)
+	}
+	if terminalMessages[0] != "已运行 列出当前目录" {
+		t.Fatalf("expected execute event log, got %+v", terminalMessages)
+	}
+	if terminalMessages[1] != "已运行 ls -la" {
+		t.Fatalf("expected first terminal output line, got %+v", terminalMessages)
+	}
+	if terminalMessages[2] != "  - README.md" {
+		t.Fatalf("expected preserved output hierarchy, got %+v", terminalMessages)
 	}
 }
 

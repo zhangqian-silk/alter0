@@ -364,11 +364,13 @@ func TestTaskCollectionEndpoints(t *testing.T) {
 	now := time.Date(2026, 3, 4, 2, 0, 0, 0, time.UTC)
 	taskSvc := &stubWebTaskService{
 		submitTask: taskdomain.Task{
-			ID:        "task-created",
-			SessionID: "session-a",
-			Status:    taskdomain.TaskStatusQueued,
-			CreatedAt: now,
-			TimeoutMS: 8000,
+			ID:            "task-created",
+			SessionID:     "session-a",
+			Status:        taskdomain.TaskStatusQueued,
+			Phase:         string(taskdomain.TaskStatusQueued),
+			QueuePosition: 2,
+			CreatedAt:     now,
+			AcceptedAt:    now,
 		},
 		listPage: taskapp.TaskPage{
 			Items: []taskdomain.Task{
@@ -396,6 +398,9 @@ func TestTaskCollectionEndpoints(t *testing.T) {
 	}
 	if !strings.Contains(createRec.Body.String(), `"accepted_at":"`) {
 		t.Fatalf("expected accepted_at in response, got %s", createRec.Body.String())
+	}
+	if !strings.Contains(createRec.Body.String(), `"queue_position":2`) {
+		t.Fatalf("expected queue_position in response, got %s", createRec.Body.String())
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/api/tasks?session_id=session-a&status=queued&page=1&page_size=10", nil)
@@ -467,6 +472,49 @@ func TestTaskItemLogsArtifactsAndRetryEndpoints(t *testing.T) {
 	}
 	if !strings.Contains(retryRec.Body.String(), `"status":"queued"`) {
 		t.Fatalf("expected queued status after retry, got %s", retryRec.Body.String())
+	}
+}
+
+func TestTaskItemEndpointIncludesAsyncExecutionFields(t *testing.T) {
+	now := time.Date(2026, 3, 4, 5, 0, 0, 0, time.UTC)
+	taskSvc := &stubWebTaskService{
+		items: map[string]taskdomain.Task{
+			"task-async-1": {
+				ID:             "task-async-1",
+				SessionID:      "session-a",
+				Status:         taskdomain.TaskStatusRunning,
+				Phase:          "running",
+				QueueWaitMS:    320,
+				QueuePosition:  0,
+				AcceptedAt:     now.Add(-time.Second),
+				StartedAt:      now,
+				CreatedAt:      now.Add(-2 * time.Second),
+				UpdatedAt:      now,
+				RequestContent: "run deploy",
+			},
+		},
+	}
+	server := &Server{
+		tasks:  taskSvc,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks/task-async-1", nil)
+	rec := httptest.NewRecorder()
+	server.taskItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"phase":"running"`) {
+		t.Fatalf("expected phase field in payload, got %s", body)
+	}
+	if !strings.Contains(body, `"queue_wait_ms":320`) {
+		t.Fatalf("expected queue_wait_ms field in payload, got %s", body)
+	}
+	if !strings.Contains(body, `"accepted_at":"`) || !strings.Contains(body, `"started_at":"`) {
+		t.Fatalf("expected accepted_at/started_at fields in payload, got %s", body)
 	}
 }
 

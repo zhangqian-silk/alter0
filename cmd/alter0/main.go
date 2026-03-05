@@ -57,7 +57,7 @@ func main() {
 	workerPoolSize := flag.Int("worker-pool-size", 4, "global worker pool size")
 	maxQueueSize := flag.Int("max-queue-size", 128, "max waiting queue size")
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
-	asyncTaskWorkers := flag.Int("async-task-workers", 2, "background async task worker count")
+	asyncTaskWorkers := flag.Int("async-task-workers", 5, "background async task worker count (max 5)")
 	asyncTaskTimeout := flag.Duration("async-task-timeout", 90*time.Second, "background async task timeout")
 	asyncTaskMaxRetries := flag.Int("async-task-max-retries", 1, "background async task max retries")
 	asyncLongContentThreshold := flag.Int("async-long-content-threshold", 240, "request content length threshold to trigger async task")
