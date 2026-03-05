@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,9 +44,11 @@ const (
 )
 
 var (
-	ErrTaskNotFound = errors.New("task not found")
-	ErrTaskStopped  = errors.New("task service stopped")
-	ErrTaskConflict = errors.New("task state transition conflict")
+	ErrTaskNotFound          = errors.New("task not found")
+	ErrTaskStopped           = errors.New("task service stopped")
+	ErrTaskConflict          = errors.New("task state transition conflict")
+	ErrArtifactNotFound      = errors.New("artifact not found")
+	ErrArtifactContentAbsent = errors.New("artifact content unavailable")
 )
 
 type Orchestrator interface {
@@ -55,6 +58,10 @@ type Orchestrator interface {
 type Store interface {
 	Load(ctx context.Context) ([]taskdomain.Task, error)
 	Save(ctx context.Context, tasks []taskdomain.Task) error
+}
+
+type artifactStore interface {
+	ReadArtifact(ctx context.Context, taskID string, artifactID string) (taskdomain.TaskArtifact, []byte, error)
 }
 
 type sessionRecorder interface {
@@ -408,6 +415,11 @@ func (s *Service) normalizeStoredTask(task taskdomain.Task) (taskdomain.Task, bo
 		task.MessageLink.RequestMessageID = task.SourceMessageID
 		changed = true
 	}
+	normalizedArtifacts, artifactsChanged := normalizeTaskArtifacts(task.ID, task.Artifacts)
+	task.Artifacts = normalizedArtifacts
+	if artifactsChanged {
+		changed = true
+	}
 	if err := task.Validate(); err != nil {
 		return taskdomain.Task{}, false, err
 	}
@@ -650,12 +662,56 @@ func (s *Service) ListArtifacts(taskID string) ([]taskdomain.TaskArtifact, error
 	if !ok {
 		return nil, ErrTaskNotFound
 	}
-	if len(task.Artifacts) == 0 {
+	artifacts, _ := normalizeTaskArtifacts(task.ID, task.Artifacts)
+	if len(artifacts) == 0 {
 		return []taskdomain.TaskArtifact{}, nil
 	}
-	items := make([]taskdomain.TaskArtifact, 0, len(task.Artifacts))
-	items = append(items, task.Artifacts...)
+	items := make([]taskdomain.TaskArtifact, 0, len(artifacts))
+	items = append(items, artifacts...)
 	return items, nil
+}
+
+func (s *Service) ReadArtifact(ctx context.Context, taskID string, artifactID string) (taskdomain.TaskArtifact, []byte, error) {
+	key := strings.TrimSpace(taskID)
+	artifactKey := strings.TrimSpace(artifactID)
+	if key == "" || artifactKey == "" {
+		return taskdomain.TaskArtifact{}, nil, ErrArtifactNotFound
+	}
+
+	s.mu.RLock()
+	task, ok := s.tasks[key]
+	s.mu.RUnlock()
+	if !ok {
+		return taskdomain.TaskArtifact{}, nil, ErrTaskNotFound
+	}
+
+	items, _ := normalizeTaskArtifacts(task.ID, task.Artifacts)
+	artifact, exists := findArtifactByID(items, artifactKey)
+	if !exists {
+		return taskdomain.TaskArtifact{}, nil, ErrArtifactNotFound
+	}
+
+	if reader, ok := s.store.(artifactStore); ok {
+		resolved, raw, err := reader.ReadArtifact(ctx, key, artifactKey)
+		if err != nil {
+			return taskdomain.TaskArtifact{}, nil, err
+		}
+		normalized, _ := normalizeTaskArtifacts(key, []taskdomain.TaskArtifact{resolved})
+		if len(normalized) == 1 {
+			resolved = normalized[0]
+		}
+		if resolved.Size <= 0 {
+			resolved.Size = int64(len(raw))
+		}
+		return resolved, raw, nil
+	}
+
+	if strings.TrimSpace(artifact.Content) == "" {
+		return taskdomain.TaskArtifact{}, nil, ErrArtifactContentAbsent
+	}
+	raw := []byte(artifact.Content)
+	artifact.Size = int64(len(raw))
+	return artifact, raw, nil
 }
 
 func (s *Service) Retry(taskID string) (taskdomain.Task, error) {
@@ -1030,6 +1086,7 @@ func (s *Service) completeTask(
 				ArtifactType: "result",
 				Name:         "result.txt",
 				ContentType:  "text/plain",
+				Size:         int64(len([]byte(output))),
 				Content:      output,
 				URI:          "inline://result.txt",
 				Summary:      summarySnippet(output, 120),
@@ -1073,6 +1130,7 @@ func (s *Service) completeTask(
 		task.Logs = appendTaskTerminalLogs(task.Logs, handleErr.Error(), now)
 	}
 	task.Logs = appendTaskLog(task.Logs, stage, logLevel, strings.TrimSpace(logMessage), now)
+	task.Artifacts, _ = normalizeTaskArtifacts(task.ID, task.Artifacts)
 	task.Summary = buildTaskSummary(task, handleErr)
 	task.TaskSummary = buildTaskStructuredSummary(task)
 	s.tasks[taskID] = cloneTask(task)
@@ -1211,9 +1269,106 @@ func (s *Service) resolveTaskTimeoutByMetadata(metadata map[string]string) time.
 	return time.Duration(value) * time.Millisecond
 }
 
+func normalizeTaskArtifacts(taskID string, artifacts []taskdomain.TaskArtifact) ([]taskdomain.TaskArtifact, bool) {
+	if len(artifacts) == 0 {
+		return []taskdomain.TaskArtifact{}, false
+	}
+	normalized := make([]taskdomain.TaskArtifact, 0, len(artifacts))
+	changed := false
+	taskKey := strings.TrimSpace(taskID)
+	for idx, item := range artifacts {
+		artifact := item
+		artifactID := strings.TrimSpace(artifact.ArtifactID)
+		if artifactID == "" {
+			artifactID = fmt.Sprintf("%s-artifact-%d", taskKey, idx+1)
+			artifact.ArtifactID = artifactID
+			changed = true
+		}
+		if artifact.Size <= 0 && strings.TrimSpace(artifact.Content) != "" {
+			artifact.Size = int64(len([]byte(artifact.Content)))
+			changed = true
+		}
+		downloadURL, previewURL := buildArtifactURLs(taskKey, artifactID)
+		if strings.TrimSpace(artifact.DownloadURL) == "" {
+			artifact.DownloadURL = downloadURL
+			changed = true
+		}
+		if supportsArtifactPreview(artifact.ContentType) {
+			if strings.TrimSpace(artifact.PreviewURL) == "" {
+				artifact.PreviewURL = previewURL
+				changed = true
+			}
+		} else if strings.TrimSpace(artifact.PreviewURL) != "" {
+			artifact.PreviewURL = ""
+			changed = true
+		}
+		normalized = append(normalized, artifact)
+	}
+	return normalized, changed
+}
+
+func findArtifactByID(items []taskdomain.TaskArtifact, artifactID string) (taskdomain.TaskArtifact, bool) {
+	needle := strings.TrimSpace(artifactID)
+	if needle == "" {
+		return taskdomain.TaskArtifact{}, false
+	}
+	for _, item := range items {
+		if strings.TrimSpace(item.ArtifactID) == needle {
+			return item, true
+		}
+	}
+	return taskdomain.TaskArtifact{}, false
+}
+
+func buildArtifactURLs(taskID string, artifactID string) (string, string) {
+	taskKey := url.PathEscape(strings.TrimSpace(taskID))
+	artifactKey := url.PathEscape(strings.TrimSpace(artifactID))
+	downloadURL := "/api/tasks/" + taskKey + "/artifacts/" + artifactKey + "/download"
+	previewURL := "/api/tasks/" + taskKey + "/artifacts/" + artifactKey + "/preview"
+	return downloadURL, previewURL
+}
+
+func supportsArtifactPreview(contentType string) bool {
+	lower := strings.ToLower(strings.TrimSpace(contentType))
+	if lower == "" {
+		return false
+	}
+	if strings.HasPrefix(lower, "text/") || strings.HasPrefix(lower, "image/") {
+		return true
+	}
+	switch lower {
+	case "application/json", "application/xml", "application/yaml", "application/x-yaml", "application/javascript", "application/pdf", "application/xhtml+xml":
+		return true
+	default:
+		return false
+	}
+}
+
 func buildTaskSummary(task taskdomain.Task, handleErr error) string {
 	switch task.Status {
 	case taskdomain.TaskStatusSuccess:
+		if len(task.Artifacts) > 0 {
+			refs := make([]string, 0, len(task.Artifacts))
+			for _, artifact := range task.Artifacts {
+				artifactID := strings.TrimSpace(artifact.ArtifactID)
+				if artifactID == "" {
+					continue
+				}
+				downloadURL := strings.TrimSpace(artifact.DownloadURL)
+				previewURL := strings.TrimSpace(artifact.PreviewURL)
+				if downloadURL == "" {
+					downloadURL, previewURL = buildArtifactURLs(task.ID, artifactID)
+				}
+				reference := fmt.Sprintf("task_id=%s artifact_id=%s download_url=%s", task.ID, artifactID, downloadURL)
+				if previewURL != "" {
+					reference += " preview_url=" + previewURL
+				}
+				refs = append(refs, reference)
+			}
+			if len(refs) > 0 {
+				return fmt.Sprintf("async task %s completed with artifacts: %s", task.ID, strings.Join(refs, "; "))
+			}
+		}
 		snippet := summarySnippet(task.Result.Output, 160)
 		if snippet == "" {
 			snippet = "completed without textual output"

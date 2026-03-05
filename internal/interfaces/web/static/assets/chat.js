@@ -231,6 +231,9 @@ const I18N = {
     "route.memory.tasks.logs.empty": "No logs available.",
     "route.memory.tasks.artifacts.load": "Load Artifacts",
     "route.memory.tasks.artifacts.empty": "No artifacts available.",
+    "route.memory.tasks.artifacts.download": "Download",
+    "route.memory.tasks.artifacts.preview": "Preview",
+    "route.memory.tasks.artifacts.download_fail": "Download failed: {error}",
     "route.memory.tasks.back": "Back to Summary",
     "route.memory.tasks.rebuild": "Rebuild Summary",
     "route.memory.tasks.rebuild_ok": "Summary rebuilt.",
@@ -437,6 +440,9 @@ const I18N = {
     "route.memory.tasks.logs.empty": "暂无日志。",
     "route.memory.tasks.artifacts.load": "加载产物",
     "route.memory.tasks.artifacts.empty": "暂无产物。",
+    "route.memory.tasks.artifacts.download": "下载",
+    "route.memory.tasks.artifacts.preview": "预览",
+    "route.memory.tasks.artifacts.download_fail": "下载失败：{error}",
     "route.memory.tasks.back": "返回摘要",
     "route.memory.tasks.rebuild": "重建摘要",
     "route.memory.tasks.rebuild_ok": "摘要重建完成。",
@@ -1793,6 +1799,39 @@ async function fetchJSON(path) {
   return response.json();
 }
 
+function resolveDownloadFilename(headerValue, fallbackName) {
+  const raw = String(headerValue || "");
+  const encodedMatch = raw.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encodedMatch && encodedMatch[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1]);
+    } catch {
+    }
+  }
+  const plainMatch = raw.match(/filename=\"?([^\";]+)\"?/i);
+  if (plainMatch && plainMatch[1]) {
+    return plainMatch[1];
+  }
+  return normalizeText(fallbackName || "artifact.bin");
+}
+
+async function downloadTaskArtifact(downloadURL, fallbackName) {
+  const response = await fetch(downloadURL, { method: "GET" });
+  if (!response.ok) {
+    const body = await safeReadJSON(response);
+    throw new Error(body.error || body.error_code || `HTTP ${response.status}`);
+  }
+  const blob = await response.blob();
+  const objectURL = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectURL;
+  anchor.download = resolveDownloadFilename(response.headers.get("Content-Disposition"), fallbackName);
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectURL);
+}
+
 async function loadChannelsView(container) {
   const data = await fetchJSON("/api/control/channels");
   const items = Array.isArray(data.items) ? data.items : [];
@@ -2792,6 +2831,9 @@ function renderTaskLogs(payload) {
 }
 
 function renderTaskArtifacts(payload) {
+  if (typeof payload?.error === "string" && payload.error.trim()) {
+    return `<p class="route-error">${t("load_failed", { error: payload.error })}</p>`;
+  }
   const items = Array.isArray(payload?.items) ? payload.items : [];
   if (!items.length) {
     return `<p class="route-empty">${t("route.memory.tasks.artifacts.empty")}</p>`;
@@ -2799,7 +2841,15 @@ function renderTaskArtifacts(payload) {
   return `<ul class="task-detail-artifact-list">
     ${items.map((item) => `<li>
       <p><strong>${escapeHTML(normalizeText(item.artifact_type || item.name))}</strong><span>${escapeHTML(formatDateTime(item.created_at))}</span></p>
-      <p>${escapeHTML(normalizeText(item.summary || item.uri || item.content_type))}</p>
+      <p>${escapeHTML(normalizeText(item.summary || item.content_type))}</p>
+      <p class="task-artifact-actions">
+        ${item.download_url
+    ? `<button type="button" data-task-artifact-download="${escapeHTML(item.download_url)}" data-task-artifact-name="${escapeHTML(normalizeText(item.name || item.artifact_id || "artifact.bin"))}">${t("route.memory.tasks.artifacts.download")}</button>`
+    : ""}
+        ${item.preview_url
+    ? `<button type="button" data-task-artifact-preview="${escapeHTML(item.preview_url)}">${t("route.memory.tasks.artifacts.preview")}</button>`
+    : ""}
+      </p>
     </li>`).join("")}
   </ul>`;
 }
@@ -2942,6 +2992,28 @@ function bindTaskHistoryView(container, initialPayload) {
     }
     if (target.hasAttribute("data-task-load-artifacts")) {
       await loadArtifacts();
+      return;
+    }
+    if (target.hasAttribute("data-task-artifact-download")) {
+      const downloadURL = target.getAttribute("data-task-artifact-download") || "";
+      const artifactName = target.getAttribute("data-task-artifact-name") || "artifact.bin";
+      if (!downloadURL) {
+        return;
+      }
+      try {
+        await downloadTaskArtifact(downloadURL, artifactName);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown_error";
+        alert(t("route.memory.tasks.artifacts.download_fail", { error: message }));
+      }
+      return;
+    }
+    if (target.hasAttribute("data-task-artifact-preview")) {
+      const previewURL = target.getAttribute("data-task-artifact-preview") || "";
+      if (!previewURL) {
+        return;
+      }
+      window.open(previewURL, "_blank", "noopener,noreferrer");
       return;
     }
     if (target.hasAttribute("data-task-rebuild")) {

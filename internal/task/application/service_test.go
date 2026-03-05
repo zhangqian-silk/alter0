@@ -470,7 +470,7 @@ func TestServiceListAndReadbackEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list artifacts: %v", err)
 	}
-	if len(artifacts) == 0 || artifacts[0].URI == "" {
+	if len(artifacts) == 0 || artifacts[0].DownloadURL == "" {
 		t.Fatalf("expected artifact references, got %+v", artifacts)
 	}
 }

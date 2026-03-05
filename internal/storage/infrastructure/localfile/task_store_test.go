@@ -48,6 +48,7 @@ func TestTaskStorePersistsTaskLayoutRoundTrip(t *testing.T) {
 					ArtifactType: "report",
 					Name:         "result.txt",
 					ContentType:  "text/plain",
+					Size:         int64(len([]byte("report ready"))),
 					Content:      "report ready",
 					URI:          "inline://result.txt",
 					CreatedAt:    base.Add(4 * time.Second),
@@ -63,6 +64,7 @@ func TestTaskStorePersistsTaskLayoutRoundTrip(t *testing.T) {
 	assertFileExists(t, filepath.Join(dir, "tasks", "task-1", "meta.json"))
 	assertFileExists(t, filepath.Join(dir, "tasks", "task-1", "logs.jsonl"))
 	assertFileExists(t, filepath.Join(dir, "tasks", "task-1", "artifacts.json"))
+	assertFileExists(t, filepath.Join(dir, "tasks", "task-1", "files", "task-1-result"))
 
 	loaded, err := store.Load(context.Background())
 	if err != nil {
@@ -83,6 +85,55 @@ func TestTaskStorePersistsTaskLayoutRoundTrip(t *testing.T) {
 	}
 	if len(item.Artifacts) != 1 || item.Artifacts[0].ArtifactID != "task-1-result" {
 		t.Fatalf("unexpected artifacts: %+v", item.Artifacts)
+	}
+	if item.Artifacts[0].DownloadURL == "" {
+		t.Fatalf("expected artifact download url, got %+v", item.Artifacts[0])
+	}
+	if item.Artifacts[0].URI != "" {
+		t.Fatalf("expected persisted artifact uri hidden, got %+v", item.Artifacts[0])
+	}
+}
+
+func TestTaskStoreReadArtifactFromSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	store := NewTaskStore(dir, FormatJSON)
+	now := time.Date(2026, 3, 4, 2, 2, 2, 0, time.UTC)
+	task := taskdomain.Task{
+		ID:              "task-artifact-read",
+		SessionID:       "session-artifact-read",
+		SourceMessageID: "message-artifact-read",
+		MessageID:       "message-artifact-read",
+		Status:          taskdomain.TaskStatusSuccess,
+		Progress:        100,
+		MaxRetries:      1,
+		TimeoutMS:       60000,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		FinishedAt:      now,
+		RequestContent:  "generate artifact",
+		Artifacts: []taskdomain.TaskArtifact{
+			{
+				ArtifactID:  "artifact-a",
+				Name:        "artifact.txt",
+				ContentType: "text/plain",
+				Content:     "artifact content",
+				CreatedAt:   now,
+			},
+		},
+	}
+	if err := store.Save(context.Background(), []taskdomain.Task{task}); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	artifact, raw, err := store.ReadArtifact(context.Background(), "task-artifact-read", "artifact-a")
+	if err != nil {
+		t.Fatalf("read artifact failed: %v", err)
+	}
+	if artifact.DownloadURL == "" {
+		t.Fatalf("expected download_url in artifact metadata, got %+v", artifact)
+	}
+	if got := string(raw); got != "artifact content" {
+		t.Fatalf("expected artifact content, got %q", got)
 	}
 }
 

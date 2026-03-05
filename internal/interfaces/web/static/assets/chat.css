@@ -1536,6 +1536,24 @@ body {
   margin: 0;
 }
 
+.task-artifact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-artifact-actions button {
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: #ffffff;
+  color: var(--ink-body);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .task-detail-log-list p {
   display: flex;
   flex-wrap: wrap;

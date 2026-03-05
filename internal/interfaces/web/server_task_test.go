@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -27,6 +28,7 @@ type stubWebTaskService struct {
 	bySession   map[string][]taskdomain.Task
 	logPages    map[string]taskapp.TaskLogPage
 	artifacts   map[string][]taskdomain.TaskArtifact
+	artifactRaw map[string][]byte
 	listPage    taskapp.TaskPage
 	lastList    taskapp.ListQuery
 	listFn      func(query taskapp.ListQuery) taskapp.TaskPage
@@ -131,6 +133,29 @@ func (s *stubWebTaskService) ListArtifacts(taskID string) ([]taskdomain.TaskArti
 	out := make([]taskdomain.TaskArtifact, 0, len(items))
 	out = append(out, items...)
 	return out, nil
+}
+
+func (s *stubWebTaskService) ReadArtifact(_ context.Context, taskID string, artifactID string) (taskdomain.TaskArtifact, []byte, error) {
+	items, err := s.ListArtifacts(taskID)
+	if err != nil {
+		return taskdomain.TaskArtifact{}, nil, err
+	}
+	for _, item := range items {
+		if strings.TrimSpace(item.ArtifactID) != strings.TrimSpace(artifactID) {
+			continue
+		}
+		key := taskID + "/" + artifactID
+		if s.artifactRaw != nil {
+			if raw, ok := s.artifactRaw[key]; ok {
+				return item, append([]byte{}, raw...), nil
+			}
+		}
+		if strings.TrimSpace(item.Content) != "" {
+			return item, []byte(item.Content), nil
+		}
+		return taskdomain.TaskArtifact{}, nil, taskapp.ErrArtifactNotFound
+	}
+	return taskdomain.TaskArtifact{}, nil, taskapp.ErrArtifactNotFound
 }
 
 func (s *stubWebTaskService) Retry(taskID string) (taskdomain.Task, error) {
@@ -435,7 +460,18 @@ func TestTaskItemLogsArtifactsAndRetryEndpoints(t *testing.T) {
 		},
 		artifacts: map[string][]taskdomain.TaskArtifact{
 			"task-1": {
-				{ArtifactID: "a-1", ArtifactType: "report", Name: "report.md", ContentType: "text/markdown", URI: "file:///tmp/report.md", CreatedAt: now},
+				{
+					ArtifactID:   "a-1",
+					ArtifactType: "report",
+					Name:         "report.md",
+					ContentType:  "text/markdown",
+					Summary:      "weekly report",
+					Size:         42,
+					DownloadURL:  "/api/tasks/task-1/artifacts/a-1/download",
+					PreviewURL:   "/api/tasks/task-1/artifacts/a-1/preview",
+					URI:          "file:///tmp/report.md",
+					CreatedAt:    now,
+				},
 			},
 		},
 	}
@@ -462,6 +498,12 @@ func TestTaskItemLogsArtifactsAndRetryEndpoints(t *testing.T) {
 	}
 	if !strings.Contains(artifactRec.Body.String(), `"artifact_id":"a-1"`) {
 		t.Fatalf("expected artifact payload, got %s", artifactRec.Body.String())
+	}
+	if strings.Contains(artifactRec.Body.String(), "file:///tmp/report.md") {
+		t.Fatalf("expected local path hidden in artifact payload, got %s", artifactRec.Body.String())
+	}
+	if !strings.Contains(artifactRec.Body.String(), `"download_url":"/api/tasks/task-1/artifacts/a-1/download"`) {
+		t.Fatalf("expected artifact download url in payload, got %s", artifactRec.Body.String())
 	}
 
 	retryReq := httptest.NewRequest(http.MethodPost, "/api/tasks/task-1/retry", nil)
@@ -515,6 +557,71 @@ func TestTaskItemEndpointIncludesAsyncExecutionFields(t *testing.T) {
 	}
 	if !strings.Contains(body, `"accepted_at":"`) || !strings.Contains(body, `"started_at":"`) {
 		t.Fatalf("expected accepted_at/started_at fields in payload, got %s", body)
+	}
+}
+
+func TestTaskArtifactDownloadAndPreviewEndpoints(t *testing.T) {
+	now := time.Date(2026, 3, 4, 4, 0, 0, 0, time.UTC)
+	taskSvc := &stubWebTaskService{
+		artifacts: map[string][]taskdomain.TaskArtifact{
+			"task-1": {
+				{
+					ArtifactID:  "a-1",
+					Name:        "report.txt",
+					ContentType: "text/plain",
+					DownloadURL: "/api/tasks/task-1/artifacts/a-1/download",
+					PreviewURL:  "/api/tasks/task-1/artifacts/a-1/preview",
+					CreatedAt:   now,
+				},
+				{
+					ArtifactID:  "a-2",
+					Name:        "bundle.zip",
+					ContentType: "application/zip",
+					DownloadURL: "/api/tasks/task-1/artifacts/a-2/download",
+					CreatedAt:   now,
+				},
+			},
+		},
+		artifactRaw: map[string][]byte{
+			"task-1/a-1": []byte("hello artifact"),
+			"task-1/a-2": []byte("PK"),
+		},
+	}
+	server := &Server{
+		tasks:  taskSvc,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	downloadReq := httptest.NewRequest(http.MethodGet, "/api/tasks/task-1/artifacts/a-1/download", nil)
+	downloadRec := httptest.NewRecorder()
+	server.taskItemHandler(downloadRec, downloadReq)
+	if downloadRec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, downloadRec.Code)
+	}
+	if body := downloadRec.Body.String(); body != "hello artifact" {
+		t.Fatalf("expected downloaded artifact body, got %q", body)
+	}
+	if contentDisposition := downloadRec.Header().Get("Content-Disposition"); !strings.Contains(contentDisposition, "report.txt") {
+		t.Fatalf("expected attachment filename report.txt, got %q", contentDisposition)
+	}
+
+	previewReq := httptest.NewRequest(http.MethodGet, "/api/tasks/task-1/artifacts/a-1/preview", nil)
+	previewRec := httptest.NewRecorder()
+	server.taskItemHandler(previewRec, previewReq)
+	if previewRec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, previewRec.Code)
+	}
+	if body := previewRec.Body.String(); body != "hello artifact" {
+		t.Fatalf("expected preview artifact body, got %q", body)
+	}
+
+	unsupportedPreviewReq := httptest.NewRequest(http.MethodGet, "/api/tasks/task-1/artifacts/a-2/preview", nil)
+	unsupportedPreviewRec := httptest.NewRecorder()
+	server.taskItemHandler(unsupportedPreviewRec, unsupportedPreviewReq)
+	if unsupportedPreviewRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, unsupportedPreviewRec.Code)
+	}
+	if !strings.Contains(unsupportedPreviewRec.Body.String(), `"error_code":"artifact_preview_not_supported"`) {
+		t.Fatalf("expected preview unsupported error code, got %s", unsupportedPreviewRec.Body.String())
 	}
 }
 

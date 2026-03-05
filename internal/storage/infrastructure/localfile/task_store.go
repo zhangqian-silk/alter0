@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,7 +19,10 @@ import (
 	taskdomain "alter0/internal/task/domain"
 )
 
-const defaultTaskLogRetention = 90 * 24 * time.Hour
+const (
+	defaultTaskLogRetention = 90 * 24 * time.Hour
+	taskArtifactFilesDir    = "files"
+)
 
 type taskState struct {
 	Tasks []taskdomain.Task `json:"tasks"`
@@ -162,6 +166,13 @@ func (s *TaskStore) loadTaskEntry(index taskIndexItem) (taskdomain.Task, error) 
 	if err != nil {
 		return taskdomain.Task{}, err
 	}
+	artifacts, err = s.snapshotTaskArtifacts(taskDir, item.ID, artifacts)
+	if err != nil {
+		return taskdomain.Task{}, err
+	}
+	if err := writeTaskArtifacts(filepath.Join(taskDir, "artifacts.json"), artifacts); err != nil {
+		return taskdomain.Task{}, err
+	}
 	item.Artifacts = artifacts
 	item = enrichTaskWithIndex(item, index)
 	return cloneTask(item), nil
@@ -225,7 +236,11 @@ func (s *TaskStore) saveTaskLayout(tasks []taskdomain.Task) error {
 		if err := appendTaskLogs(filepath.Join(taskDir, "logs.jsonl"), item.Logs); err != nil {
 			return err
 		}
-		if err := writeTaskArtifacts(filepath.Join(taskDir, "artifacts.json"), item.Artifacts); err != nil {
+		artifacts, err := s.snapshotTaskArtifacts(taskDir, item.ID, item.Artifacts)
+		if err != nil {
+			return err
+		}
+		if err := writeTaskArtifacts(filepath.Join(taskDir, "artifacts.json"), artifacts); err != nil {
 			return err
 		}
 		index.Items = append(index.Items, taskIndexItem{
@@ -248,6 +263,293 @@ func (s *TaskStore) saveTaskLayout(tasks []taskdomain.Task) error {
 	}
 	_ = os.Remove(s.legacyPath)
 	return nil
+}
+
+func (s *TaskStore) ReadArtifact(ctx context.Context, taskID string, artifactID string) (taskdomain.TaskArtifact, []byte, error) {
+	taskKey := strings.TrimSpace(taskID)
+	artifactKey := strings.TrimSpace(artifactID)
+	if taskKey == "" || artifactKey == "" || !isSafeArtifactID(artifactKey) {
+		return taskdomain.TaskArtifact{}, nil, taskapp.ErrArtifactNotFound
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	taskDir := filepath.Join(s.tasksDir, taskKey)
+	artifactsPath := filepath.Join(taskDir, "artifacts.json")
+	artifacts, err := readTaskArtifacts(artifactsPath)
+	if err != nil {
+		return taskdomain.TaskArtifact{}, nil, err
+	}
+	artifacts, err = s.snapshotTaskArtifacts(taskDir, taskKey, artifacts)
+	if err != nil {
+		return taskdomain.TaskArtifact{}, nil, err
+	}
+	if err := writeTaskArtifacts(artifactsPath, artifacts); err != nil {
+		return taskdomain.TaskArtifact{}, nil, err
+	}
+
+	artifact, ok := findStoredArtifact(artifacts, artifactKey)
+	if !ok {
+		return taskdomain.TaskArtifact{}, nil, taskapp.ErrArtifactNotFound
+	}
+
+	snapshotPath, err := resolveArtifactSnapshotPath(taskDir, artifactKey)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return taskdomain.TaskArtifact{}, nil, taskapp.ErrArtifactNotFound
+		}
+		return taskdomain.TaskArtifact{}, nil, err
+	}
+	raw, err := readFileWithContext(ctx, snapshotPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return taskdomain.TaskArtifact{}, nil, taskapp.ErrArtifactNotFound
+		}
+		return taskdomain.TaskArtifact{}, nil, err
+	}
+	artifact.Size = int64(len(raw))
+	return artifact, raw, nil
+}
+
+func (s *TaskStore) snapshotTaskArtifacts(taskDir string, taskID string, items []taskdomain.TaskArtifact) ([]taskdomain.TaskArtifact, error) {
+	filesDir := filepath.Join(taskDir, taskArtifactFilesDir)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		if err := cleanupArtifactSnapshotDir(filesDir, map[string]struct{}{}); err != nil {
+			return nil, err
+		}
+		return []taskdomain.TaskArtifact{}, nil
+	}
+
+	taskKey := strings.TrimSpace(taskID)
+	normalized := make([]taskdomain.TaskArtifact, 0, len(items))
+	kept := make(map[string]struct{}, len(items))
+
+	for idx, item := range items {
+		artifact := item
+		artifactID := strings.TrimSpace(artifact.ArtifactID)
+		if artifactID == "" {
+			artifactID = fmt.Sprintf("%s-artifact-%d", taskKey, idx+1)
+		}
+		if !isSafeArtifactID(artifactID) {
+			return nil, fmt.Errorf("invalid artifact id %q", artifactID)
+		}
+
+		snapshotPath := filepath.Join(filesDir, artifactID)
+		content, err := resolveArtifactSnapshotBytes(artifact)
+		if err != nil {
+			return nil, fmt.Errorf("snapshot artifact %s: %w", artifactID, err)
+		}
+		if len(content) == 0 {
+			existing, readErr := os.ReadFile(snapshotPath)
+			if readErr == nil {
+				content = existing
+			} else if !errors.Is(readErr, os.ErrNotExist) {
+				return nil, readErr
+			}
+		}
+		if err := writeFile(snapshotPath, content); err != nil {
+			return nil, err
+		}
+
+		artifact.ArtifactID = artifactID
+		artifact.Size = int64(len(content))
+		artifact.DownloadURL, artifact.PreviewURL = buildArtifactDeliveryURLs(taskKey, artifactID, artifact.ContentType)
+		artifact.URI = ""
+		artifact.Content = ""
+		normalized = append(normalized, artifact)
+		kept[artifactID] = struct{}{}
+	}
+
+	if err := cleanupArtifactSnapshotDir(filesDir, kept); err != nil {
+		return nil, err
+	}
+	return normalized, nil
+}
+
+func resolveArtifactSnapshotBytes(artifact taskdomain.TaskArtifact) ([]byte, error) {
+	if text := strings.TrimSpace(artifact.Content); text != "" {
+		return []byte(artifact.Content), nil
+	}
+	source := strings.TrimSpace(artifact.URI)
+	if source == "" {
+		return []byte{}, nil
+	}
+	path, ok := resolveArtifactSourcePath(source)
+	if !ok {
+		return []byte{}, nil
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return content, nil
+}
+
+func resolveArtifactSourcePath(value string) (string, bool) {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return "", false
+	}
+	if strings.HasPrefix(strings.ToLower(text), "file://") {
+		parsed, err := url.Parse(text)
+		if err != nil {
+			return "", false
+		}
+		path := strings.TrimSpace(parsed.Path)
+		if path == "" {
+			return "", false
+		}
+		return path, true
+	}
+	if strings.Contains(text, "://") {
+		return "", false
+	}
+	return text, true
+}
+
+func cleanupArtifactSnapshotDir(filesDir string, kept map[string]struct{}) error {
+	entries, err := os.ReadDir(filesDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := strings.TrimSpace(entry.Name())
+		if name == "" {
+			continue
+		}
+		if _, exists := kept[name]; exists {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(filesDir, name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isSafeArtifactID(value string) bool {
+	id := strings.TrimSpace(value)
+	if id == "" || id == "." || id == ".." {
+		return false
+	}
+	if strings.ContainsRune(id, '/') || strings.ContainsRune(id, '\\') {
+		return false
+	}
+	return filepath.Clean(id) == id
+}
+
+func buildArtifactDeliveryURLs(taskID string, artifactID string, contentType string) (string, string) {
+	taskKey := url.PathEscape(strings.TrimSpace(taskID))
+	artifactKey := url.PathEscape(strings.TrimSpace(artifactID))
+	downloadURL := "/api/tasks/" + taskKey + "/artifacts/" + artifactKey + "/download"
+	if !supportsArtifactPreview(contentType) {
+		return downloadURL, ""
+	}
+	return downloadURL, "/api/tasks/" + taskKey + "/artifacts/" + artifactKey + "/preview"
+}
+
+func supportsArtifactPreview(contentType string) bool {
+	lower := strings.ToLower(strings.TrimSpace(contentType))
+	if lower == "" {
+		return false
+	}
+	if strings.HasPrefix(lower, "text/") || strings.HasPrefix(lower, "image/") {
+		return true
+	}
+	switch lower {
+	case "application/json", "application/xml", "application/yaml", "application/x-yaml", "application/javascript", "application/pdf", "application/xhtml+xml":
+		return true
+	default:
+		return false
+	}
+}
+
+func findStoredArtifact(items []taskdomain.TaskArtifact, artifactID string) (taskdomain.TaskArtifact, bool) {
+	needle := strings.TrimSpace(artifactID)
+	if needle == "" {
+		return taskdomain.TaskArtifact{}, false
+	}
+	for _, item := range items {
+		if strings.TrimSpace(item.ArtifactID) == needle {
+			return item, true
+		}
+	}
+	return taskdomain.TaskArtifact{}, false
+}
+
+func resolveArtifactSnapshotPath(taskDir string, artifactID string) (string, error) {
+	if !isSafeArtifactID(artifactID) {
+		return "", taskapp.ErrArtifactNotFound
+	}
+	taskRealDir, err := filepath.EvalSymlinks(taskDir)
+	if err != nil {
+		return "", err
+	}
+
+	filesDir := filepath.Join(taskDir, taskArtifactFilesDir)
+	filesRealDir, err := filepath.EvalSymlinks(filesDir)
+	if err != nil {
+		return "", err
+	}
+	if !isWithinPath(taskRealDir, filesRealDir) {
+		return "", errors.New("artifact files path escaped task directory")
+	}
+
+	candidate := filepath.Join(filesDir, artifactID)
+	artifactRealPath, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", err
+	}
+	if !isWithinPath(filesRealDir, artifactRealPath) {
+		return "", errors.New("artifact path escaped snapshot directory")
+	}
+	info, err := os.Stat(artifactRealPath)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "", errors.New("artifact snapshot is directory")
+	}
+	return artifactRealPath, nil
+}
+
+func isWithinPath(basePath string, targetPath string) bool {
+	rel, err := filepath.Rel(basePath, targetPath)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
+func readFileWithContext(ctx context.Context, path string) ([]byte, error) {
+	type result struct {
+		raw []byte
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		raw, err := os.ReadFile(path)
+		done <- result{raw: raw, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case out := <-done:
+		return out.raw, out.err
+	}
 }
 
 func writeTaskMeta(path string, task taskdomain.Task) error {
