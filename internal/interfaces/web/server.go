@@ -33,6 +33,9 @@ const (
 	controlTaskMetadataJobNameKey = "job_name"
 	controlTaskMetadataFiredAtKey = "fired_at"
 	defaultControlTaskChannelID   = "web-default"
+	maxTaskArtifactCount          = 128
+	maxTaskArtifactSizeBytes      = 8 * 1024 * 1024
+	taskArtifactReadTimeout       = 3 * time.Second
 )
 
 type Orchestrator interface {
@@ -74,6 +77,7 @@ type taskService interface {
 	ListBySession(sessionID string) []taskdomain.Task
 	ListLogs(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
 	ListArtifacts(taskID string) ([]taskdomain.TaskArtifact, error)
+	ReadArtifact(ctx context.Context, taskID string, artifactID string) (taskdomain.TaskArtifact, []byte, error)
 	Cancel(taskID string) (taskdomain.Task, error)
 	Retry(taskID string) (taskdomain.Task, error)
 }
@@ -173,6 +177,17 @@ type taskLogStreamDoneResponse struct {
 type taskLogStreamErrorResponse struct {
 	Error      string `json:"error"`
 	NextCursor int    `json:"next_cursor"`
+}
+
+type taskArtifactResponse struct {
+	ArtifactID  string    `json:"artifact_id"`
+	Name        string    `json:"name"`
+	ContentType string    `json:"content_type"`
+	Size        int64     `json:"size"`
+	Summary     string    `json:"summary,omitempty"`
+	DownloadURL string    `json:"download_url"`
+	PreviewURL  string    `json:"preview_url,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type channelUpsertRequest struct {
@@ -787,7 +802,7 @@ func (s *Server) taskItemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	taskID, action, ok := taskResourceID(r.URL.Path)
+	taskID, action, artifactID, subAction, ok := taskResourceID(r.URL.Path)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid task path"})
 		return
@@ -813,13 +828,22 @@ func (s *Server) taskItemHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, page)
-	case action == "artifacts" && r.Method == http.MethodGet:
+	case action == "artifacts" && artifactID == "" && subAction == "" && r.Method == http.MethodGet:
 		items, err := s.tasks.ListArtifacts(taskID)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		artifactItems, errCode, errMessage, statusCode := mapTaskArtifacts(items)
+		if statusCode != 0 {
+			writeJSON(w, statusCode, map[string]string{"error": errMessage, "error_code": errCode})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": artifactItems})
+	case action == "artifacts" && artifactID != "" && subAction == "download" && r.Method == http.MethodGet:
+		s.taskArtifactDeliveryHandler(w, r, taskID, artifactID, false)
+	case action == "artifacts" && artifactID != "" && subAction == "preview" && r.Method == http.MethodGet:
+		s.taskArtifactDeliveryHandler(w, r, taskID, artifactID, true)
 	case action == "cancel" && r.Method == http.MethodPost:
 		item, err := s.tasks.Cancel(taskID)
 		if err != nil {
@@ -853,6 +877,77 @@ func (s *Server) taskItemHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func (s *Server) taskArtifactDeliveryHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+	taskID string,
+	artifactID string,
+	preview bool,
+) {
+	ctx, cancel := context.WithTimeout(r.Context(), taskArtifactReadTimeout)
+	defer cancel()
+
+	artifact, raw, err := s.tasks.ReadArtifact(ctx, taskID, artifactID)
+	if err != nil {
+		switch {
+		case errors.Is(err, taskapp.ErrTaskNotFound), errors.Is(err, taskapp.ErrArtifactNotFound), errors.Is(err, taskapp.ErrArtifactContentAbsent):
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error":      "artifact not found",
+				"error_code": "artifact_not_found",
+			})
+		case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+			writeJSON(w, http.StatusGatewayTimeout, map[string]string{
+				"error":      "artifact read timeout",
+				"error_code": "artifact_read_timeout",
+			})
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"error":      "artifact read failed",
+				"error_code": "artifact_read_failed",
+			})
+		}
+		return
+	}
+
+	artifactSize := artifact.Size
+	if artifactSize <= 0 {
+		artifactSize = int64(len(raw))
+	}
+	if artifactSize > maxTaskArtifactSizeBytes || int64(len(raw)) > maxTaskArtifactSizeBytes {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{
+			"error":      "artifact is too large",
+			"error_code": "artifact_too_large",
+		})
+		return
+	}
+
+	contentType := strings.TrimSpace(artifact.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if preview {
+		if !supportsArtifactPreviewContentType(contentType) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error":      "artifact preview is not supported",
+				"error_code": "artifact_preview_not_supported",
+			})
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Content-Length", strconv.Itoa(len(raw)))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+		return
+	}
+
+	filename := sanitizeArtifactFilename(artifact.Name, artifact.ArtifactID)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Length", strconv.Itoa(len(raw)))
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
 }
 
 func (s *Server) controlTaskItemHandler(w http.ResponseWriter, r *http.Request) {
@@ -1222,7 +1317,12 @@ func (s *Server) memoryTaskItemHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		artifactItems, errCode, errMessage, statusCode := mapTaskArtifacts(items)
+		if statusCode != 0 {
+			writeJSON(w, statusCode, map[string]string{"error": errMessage, "error_code": errCode})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": artifactItems})
 	case action == "rebuild-summary" && r.Method == http.MethodPost:
 		if s.memory == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent memory unavailable"})
@@ -1969,10 +2069,10 @@ func sessionResourceID(path string) (string, string, bool) {
 	return sessionID, resource, true
 }
 
-func taskResourceID(path string) (string, string, bool) {
+func taskResourceID(path string) (string, string, string, string, bool) {
 	const prefix = "/api/tasks/"
 	if !strings.HasPrefix(path, prefix) {
-		return "", "", false
+		return "", "", "", "", false
 	}
 
 	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
@@ -1980,19 +2080,29 @@ func taskResourceID(path string) (string, string, bool) {
 	if len(parts) == 1 {
 		taskID := strings.TrimSpace(parts[0])
 		if taskID == "" {
-			return "", "", false
+			return "", "", "", "", false
 		}
-		return taskID, "", true
+		return taskID, "", "", "", true
 	}
 	if len(parts) == 2 {
 		taskID := strings.TrimSpace(parts[0])
 		action := strings.TrimSpace(parts[1])
 		if taskID == "" || action == "" {
-			return "", "", false
+			return "", "", "", "", false
 		}
-		return taskID, action, true
+		return taskID, action, "", "", true
 	}
-	return "", "", false
+	if len(parts) == 4 {
+		taskID := strings.TrimSpace(parts[0])
+		action := strings.TrimSpace(parts[1])
+		artifactID := strings.TrimSpace(parts[2])
+		subAction := strings.TrimSpace(parts[3])
+		if taskID == "" || action != "artifacts" || artifactID == "" || subAction == "" {
+			return "", "", "", "", false
+		}
+		return taskID, action, artifactID, subAction, true
+	}
+	return "", "", "", "", false
 }
 
 func controlTaskResourceID(path string) (string, string, string, bool) {
@@ -2572,6 +2682,72 @@ func chunkText(content string, maxRunes int) []string {
 		chunks = append(chunks, string(runes[start:end]))
 	}
 	return chunks
+}
+
+func mapTaskArtifacts(items []taskdomain.TaskArtifact) ([]taskArtifactResponse, string, string, int) {
+	if len(items) == 0 {
+		return []taskArtifactResponse{}, "", "", 0
+	}
+	if len(items) > maxTaskArtifactCount {
+		return nil, "artifact_count_exceeded", "artifact count exceeded", http.StatusRequestEntityTooLarge
+	}
+	out := make([]taskArtifactResponse, 0, len(items))
+	for _, item := range items {
+		downloadURL := strings.TrimSpace(item.DownloadURL)
+		if downloadURL == "" {
+			continue
+		}
+		artifact := taskArtifactResponse{
+			ArtifactID:  strings.TrimSpace(item.ArtifactID),
+			Name:        strings.TrimSpace(item.Name),
+			ContentType: strings.TrimSpace(item.ContentType),
+			Size:        item.Size,
+			Summary:     strings.TrimSpace(item.Summary),
+			DownloadURL: downloadURL,
+			PreviewURL:  strings.TrimSpace(item.PreviewURL),
+			CreatedAt:   item.CreatedAt,
+		}
+		if artifact.ContentType == "" {
+			artifact.ContentType = "application/octet-stream"
+		}
+		if artifact.Name == "" {
+			artifact.Name = artifact.ArtifactID
+		}
+		out = append(out, artifact)
+	}
+	return out, "", "", 0
+}
+
+func supportsArtifactPreviewContentType(contentType string) bool {
+	lower := strings.ToLower(strings.TrimSpace(contentType))
+	if lower == "" {
+		return false
+	}
+	if strings.HasPrefix(lower, "text/") || strings.HasPrefix(lower, "image/") {
+		return true
+	}
+	switch lower {
+	case "application/json", "application/xml", "application/yaml", "application/x-yaml", "application/javascript", "application/pdf", "application/xhtml+xml":
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizeArtifactFilename(name string, fallback string) string {
+	value := strings.TrimSpace(name)
+	if value == "" {
+		value = strings.TrimSpace(fallback)
+	}
+	if value == "" {
+		value = "artifact.bin"
+	}
+	value = strings.ReplaceAll(value, "\"", "_")
+	value = strings.ReplaceAll(value, "\n", "_")
+	value = strings.ReplaceAll(value, "\r", "_")
+	value = strings.ReplaceAll(value, "/", "_")
+	value = strings.ReplaceAll(value, "\\", "_")
+	return value
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, value any) {
