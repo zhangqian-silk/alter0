@@ -216,27 +216,53 @@ type environmentUpsertRequest struct {
 	Values   map[string]any `json:"values"`
 }
 
+type cronTaskConfigRequest struct {
+	Input      string `json:"input,omitempty"`
+	RetryLimit *int   `json:"retry_limit,omitempty"`
+}
+
+type cronTaskConfigResponse struct {
+	Input      string `json:"input"`
+	RetryLimit int    `json:"retry_limit,omitempty"`
+}
+
 type cronJobUpsertRequest struct {
-	Name      string            `json:"name,omitempty"`
-	Interval  string            `json:"interval"`
-	Enabled   *bool             `json:"enabled,omitempty"`
-	SessionID string            `json:"session_id"`
-	UserID    string            `json:"user_id,omitempty"`
-	ChannelID string            `json:"channel_id,omitempty"`
-	Content   string            `json:"content"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
+	Name           string                `json:"name,omitempty"`
+	Enabled        *bool                 `json:"enabled,omitempty"`
+	Timezone       string                `json:"timezone,omitempty"`
+	ScheduleMode   string                `json:"schedule_mode,omitempty"`
+	CronExpression string                `json:"cron_expression,omitempty"`
+	TaskConfig     cronTaskConfigRequest `json:"task_config,omitempty"`
+	UserID         string                `json:"user_id,omitempty"`
+	ChannelID      string                `json:"channel_id,omitempty"`
+	Metadata       map[string]string     `json:"metadata,omitempty"`
+	Interval       string                `json:"interval,omitempty"`
+	SessionID      string                `json:"session_id,omitempty"`
+	Content        string                `json:"content,omitempty"`
 }
 
 type cronJobResponse struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Interval  string            `json:"interval"`
-	Enabled   bool              `json:"enabled"`
-	SessionID string            `json:"session_id"`
-	UserID    string            `json:"user_id,omitempty"`
-	ChannelID string            `json:"channel_id,omitempty"`
-	Content   string            `json:"content"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Enabled        bool                   `json:"enabled"`
+	Timezone       string                 `json:"timezone"`
+	ScheduleMode   string                 `json:"schedule_mode"`
+	CronExpression string                 `json:"cron_expression"`
+	TaskConfig     cronTaskConfigResponse `json:"task_config"`
+	UserID         string                 `json:"user_id,omitempty"`
+	ChannelID      string                 `json:"channel_id,omitempty"`
+	Metadata       map[string]string      `json:"metadata,omitempty"`
+	Interval       string                 `json:"interval,omitempty"`
+	SessionID      string                 `json:"session_id,omitempty"`
+	Content        string                 `json:"content,omitempty"`
+}
+
+type cronJobRunResponse struct {
+	RunID     string    `json:"run_id"`
+	JobID     string    `json:"job_id"`
+	FiredAt   time.Time `json:"fired_at"`
+	SessionID string    `json:"session_id"`
+	Status    string    `json:"status"`
 }
 
 type memoryTaskSummaryItem struct {
@@ -2026,8 +2052,16 @@ func (s *Server) cronJobItemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobID, ok := resourceID(r.URL.Path, "/api/control/cron/jobs/")
+	jobID, subResource, ok := cronJobResourceID(r.URL.Path)
 	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cron job path"})
+		return
+	}
+	if subResource == "runs" {
+		s.cronJobRunsHandler(w, r, jobID)
+		return
+	}
+	if subResource != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cron job path"})
 		return
 	}
@@ -2041,32 +2075,53 @@ func (s *Server) cronJobItemHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		interval, err := time.ParseDuration(strings.TrimSpace(req.Interval))
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid interval, e.g. 30s or 5m"})
-			return
+		interval := time.Duration(0)
+		intervalRaw := strings.TrimSpace(req.Interval)
+		if intervalRaw != "" {
+			parsed, err := time.ParseDuration(intervalRaw)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid interval, e.g. 5m or 1h"})
+				return
+			}
+			interval = parsed
 		}
 
 		enabled := true
 		if req.Enabled != nil {
 			enabled = *req.Enabled
 		}
-		job := schedulerdomain.Job{
-			ID:        jobID,
-			Name:      strings.TrimSpace(req.Name),
-			Interval:  interval,
-			Enabled:   enabled,
-			SessionID: strings.TrimSpace(req.SessionID),
-			UserID:    strings.TrimSpace(req.UserID),
-			ChannelID: strings.TrimSpace(req.ChannelID),
-			Content:   req.Content,
-			Metadata:  req.Metadata,
+		retryLimit := 0
+		if req.TaskConfig.RetryLimit != nil {
+			retryLimit = *req.TaskConfig.RetryLimit
 		}
-		if err := s.scheduler.Upsert(job); err != nil {
+		job := schedulerdomain.Job{
+			ID:             jobID,
+			Name:           strings.TrimSpace(req.Name),
+			Interval:       interval,
+			Enabled:        enabled,
+			SessionID:      strings.TrimSpace(req.SessionID),
+			UserID:         strings.TrimSpace(req.UserID),
+			ChannelID:      strings.TrimSpace(req.ChannelID),
+			Content:        strings.TrimSpace(req.Content),
+			Metadata:       cloneStringMap(req.Metadata),
+			ScheduleMode:   schedulerdomain.ScheduleMode(strings.ToLower(strings.TrimSpace(req.ScheduleMode))),
+			Timezone:       strings.TrimSpace(req.Timezone),
+			CronExpression: strings.TrimSpace(req.CronExpression),
+			TaskConfig: schedulerdomain.TaskConfig{
+				Input:      strings.TrimSpace(req.TaskConfig.Input),
+				RetryLimit: retryLimit,
+			},
+		}
+		normalized, err := job.Normalize()
+		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, toCronJobResponse(job))
+		if err := s.scheduler.Upsert(normalized); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, toCronJobResponse(normalized))
 	case http.MethodDelete:
 		if !s.scheduler.Delete(jobID) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "cron job not found"})
@@ -2078,17 +2133,72 @@ func (s *Server) cronJobItemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) cronJobRunsHandler(w http.ResponseWriter, r *http.Request, jobID string) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if s.sessions == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
+		return
+	}
+
+	query, statusCode, err := parseSessionQuery(r)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+	query.TriggerType = shareddomain.TriggerTypeCron
+	query.JobID = strings.TrimSpace(jobID)
+
+	page := s.sessions.ListSessions(query)
+	items := make([]cronJobRunResponse, 0, len(page.Items))
+	for _, session := range page.Items {
+		status := "success"
+		if strings.TrimSpace(session.LastErrorCode) != "" {
+			status = "failed"
+		}
+		firedAt := session.FiredAt
+		if firedAt.IsZero() {
+			firedAt = session.StartedAt
+		}
+		items = append(items, cronJobRunResponse{
+			RunID:     strings.TrimSpace(session.SessionID),
+			JobID:     strings.TrimSpace(jobID),
+			FiredAt:   firedAt.UTC(),
+			SessionID: strings.TrimSpace(session.SessionID),
+			Status:    status,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":      items,
+		"pagination": page.Pagination,
+	})
+}
+
 func toCronJobResponse(job schedulerdomain.Job) cronJobResponse {
+	interval := ""
+	if job.Interval > 0 {
+		interval = job.Interval.String()
+	}
 	return cronJobResponse{
-		ID:        job.ID,
-		Name:      job.Name,
-		Interval:  job.Interval.String(),
-		Enabled:   job.Enabled,
-		SessionID: job.SessionID,
+		ID:             job.ID,
+		Name:           job.Name,
+		Enabled:        job.Enabled,
+		Timezone:       job.Timezone,
+		ScheduleMode:   string(job.ScheduleMode),
+		CronExpression: job.CronExpression,
+		TaskConfig: cronTaskConfigResponse{
+			Input:      job.TaskConfig.Input,
+			RetryLimit: job.TaskConfig.RetryLimit,
+		},
 		UserID:    job.UserID,
 		ChannelID: job.ChannelID,
-		Content:   job.Content,
 		Metadata:  job.Metadata,
+		Interval:  interval,
+		SessionID: job.SessionID,
+		Content:   job.Content,
 	}
 }
 
@@ -2101,6 +2211,31 @@ func resourceID(path, prefix string) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+func cronJobResourceID(path string) (string, string, bool) {
+	const prefix = "/api/control/cron/jobs/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
+	}
+	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) == 1 {
+		id := strings.TrimSpace(parts[0])
+		if id == "" {
+			return "", "", false
+		}
+		return id, "", true
+	}
+	if len(parts) == 2 {
+		id := strings.TrimSpace(parts[0])
+		subResource := strings.TrimSpace(parts[1])
+		if id == "" || subResource == "" {
+			return "", "", false
+		}
+		return id, subResource, true
+	}
+	return "", "", false
 }
 
 func sessionResourceID(path string) (string, string, bool) {
@@ -2250,12 +2385,28 @@ func parseSessionQuery(r *http.Request) (sessionapp.SessionQuery, int, error) {
 		return sessionapp.SessionQuery{}, statusCode, err
 	}
 
-	return sessionapp.SessionQuery{
+	query := sessionapp.SessionQuery{
 		StartAt:  startAt,
 		EndAt:    endAt,
 		Page:     page,
 		PageSize: pageSize,
-	}, http.StatusOK, nil
+		JobID:    strings.TrimSpace(r.URL.Query().Get("job_id")),
+	}
+	rawTriggerType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("trigger_type")))
+	if rawTriggerType != "" {
+		triggerType := shareddomain.TriggerType(rawTriggerType)
+		switch triggerType {
+		case shareddomain.TriggerTypeUser, shareddomain.TriggerTypeCron, shareddomain.TriggerTypeSystem:
+			query.TriggerType = triggerType
+		default:
+			return sessionapp.SessionQuery{}, http.StatusBadRequest, errors.New("trigger_type must be user/cron/system")
+		}
+	}
+	if query.JobID != "" && query.TriggerType == "" {
+		query.TriggerType = shareddomain.TriggerTypeCron
+	}
+
+	return query, http.StatusOK, nil
 }
 
 func parseMessageQuery(r *http.Request, sessionID string) (sessionapp.MessageQuery, int, error) {

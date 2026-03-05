@@ -98,6 +98,77 @@ func TestServiceListSessionsPagination(t *testing.T) {
 	}
 }
 
+func TestServiceListSessionsSupportsSourceFilters(t *testing.T) {
+	service := NewService()
+	base := time.Date(2026, 3, 5, 8, 0, 0, 0, time.UTC)
+
+	if err := service.Append(
+		newRecord(
+			"m-1",
+			"s-cron-a",
+			sessiondomain.MessageRoleUser,
+			"cron task",
+			base,
+			shareddomain.RouteCommand,
+			"",
+			sessiondomain.MessageSource{
+				TriggerType: shareddomain.TriggerTypeCron,
+				ChannelType: shareddomain.ChannelTypeScheduler,
+				ChannelID:   "scheduler-default",
+				JobID:       "job-a",
+			},
+		),
+		newRecord(
+			"m-2",
+			"s-user",
+			sessiondomain.MessageRoleUser,
+			"user task",
+			base.Add(1*time.Minute),
+			shareddomain.RouteNL,
+			"",
+			sessiondomain.MessageSource{
+				TriggerType: shareddomain.TriggerTypeUser,
+				ChannelType: shareddomain.ChannelTypeWeb,
+				ChannelID:   "web-default",
+			},
+		),
+	); err != nil {
+		t.Fatalf("append failed: %v", err)
+	}
+
+	cronOnly := service.ListSessions(SessionQuery{
+		TriggerType: shareddomain.TriggerTypeCron,
+		Page:        1,
+		PageSize:    10,
+	})
+	if len(cronOnly.Items) != 1 {
+		t.Fatalf("expected 1 cron session, got %d", len(cronOnly.Items))
+	}
+	if cronOnly.Items[0].SessionID != "s-cron-a" {
+		t.Fatalf("expected cron session s-cron-a, got %s", cronOnly.Items[0].SessionID)
+	}
+
+	cronByJob := service.ListSessions(SessionQuery{
+		TriggerType: shareddomain.TriggerTypeCron,
+		JobID:       "job-a",
+		Page:        1,
+		PageSize:    10,
+	})
+	if len(cronByJob.Items) != 1 || cronByJob.Items[0].JobID != "job-a" {
+		t.Fatalf("expected cron job job-a, got %+v", cronByJob.Items)
+	}
+
+	noMatch := service.ListSessions(SessionQuery{
+		TriggerType: shareddomain.TriggerTypeCron,
+		JobID:       "job-b",
+		Page:        1,
+		PageSize:    10,
+	})
+	if len(noMatch.Items) != 0 {
+		t.Fatalf("expected no sessions, got %d", len(noMatch.Items))
+	}
+}
+
 func TestServiceLoadsFromStoreAndBuildsIndex(t *testing.T) {
 	base := time.Date(2026, 3, 3, 6, 0, 0, 0, time.UTC)
 	store := &stubStore{
@@ -151,7 +222,12 @@ func newRecord(
 	ts time.Time,
 	route shareddomain.Route,
 	errorCode string,
+	source ...sessiondomain.MessageSource,
 ) sessiondomain.MessageRecord {
+	recordSource := sessiondomain.MessageSource{}
+	if len(source) > 0 {
+		recordSource = source[0]
+	}
 	return sessiondomain.MessageRecord{
 		MessageID: messageID,
 		SessionID: sessionID,
@@ -162,5 +238,6 @@ func newRecord(
 			Route:     route,
 			ErrorCode: errorCode,
 		},
+		Source: recordSource,
 	}
 }
