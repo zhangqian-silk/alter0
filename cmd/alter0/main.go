@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -96,6 +97,53 @@ func main() {
 		logger.Error("failed to initialize control service", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
+
+	listenAddr = control.ResolveEnvironmentString("web_addr", listenAddr)
+	if strings.TrimSpace(listenAddr) == "" {
+		listenAddr = defaultWebAddr
+	}
+
+	resolvedWorkerPoolSize := control.ResolveEnvironmentInt("worker_pool_size", *workerPoolSize)
+	resolvedMaxQueueSize := control.ResolveEnvironmentInt("max_queue_size", *maxQueueSize)
+	resolvedQueueTimeout := control.ResolveEnvironmentDuration("queue_timeout", *queueTimeout)
+	resolvedAsyncTaskWorkers := control.ResolveEnvironmentInt("async_task_workers", *asyncTaskWorkers)
+	resolvedAsyncTaskTimeout := control.ResolveEnvironmentDuration("async_task_timeout", *asyncTaskTimeout)
+	resolvedAsyncTaskMaxRetries := control.ResolveEnvironmentInt("async_task_max_retries", *asyncTaskMaxRetries)
+	resolvedAsyncLongContentThreshold := control.ResolveEnvironmentInt("async_long_content_threshold", *asyncLongContentThreshold)
+	resolvedSessionMemoryTurns := control.ResolveEnvironmentInt("session_memory_turns", *sessionMemoryTurns)
+	resolvedSessionMemoryTTL := control.ResolveEnvironmentDuration("session_memory_ttl", *sessionMemoryTTL)
+	resolvedContextCompressionThreshold := control.ResolveEnvironmentInt("context_compression_threshold", *contextCompressionThreshold)
+	resolvedContextCompressionSummaryTokens := control.ResolveEnvironmentInt("context_compression_summary_tokens", *contextCompressionSummaryTokens)
+	resolvedContextCompressionRetainTurns := control.ResolveEnvironmentInt("context_compression_retain_turns", *contextCompressionRetainTurns)
+	resolvedDailyMemoryDir := control.ResolveEnvironmentString("daily_memory_dir", strings.TrimSpace(*dailyMemoryDir))
+	resolvedLongTermMemoryPath := control.ResolveEnvironmentString("long_term_memory_path", strings.TrimSpace(*longTermMemoryPath))
+	resolvedLongTermMemoryWritePolicy := control.ResolveEnvironmentString("long_term_memory_write_policy", strings.TrimSpace(*longTermMemoryWritePolicy))
+	resolvedLongTermMemoryWriteBackFlush := control.ResolveEnvironmentDuration("long_term_memory_writeback_flush", *longTermMemoryWriteBackFlush)
+	resolvedLongTermMemoryTokenBudget := control.ResolveEnvironmentInt("long_term_memory_token_budget", *longTermMemoryTokenBudget)
+	resolvedMandatoryContextFile := control.ResolveEnvironmentString("mandatory_context_file", strings.TrimSpace(*mandatoryContextFile))
+
+	control.SetEnvironmentRuntime(map[string]string{
+		"web_addr":                           listenAddr,
+		"worker_pool_size":                   strconv.Itoa(resolvedWorkerPoolSize),
+		"max_queue_size":                     strconv.Itoa(resolvedMaxQueueSize),
+		"queue_timeout":                      resolvedQueueTimeout.String(),
+		"async_task_workers":                 strconv.Itoa(resolvedAsyncTaskWorkers),
+		"async_task_timeout":                 resolvedAsyncTaskTimeout.String(),
+		"async_task_max_retries":             strconv.Itoa(resolvedAsyncTaskMaxRetries),
+		"async_long_content_threshold":       strconv.Itoa(resolvedAsyncLongContentThreshold),
+		"session_memory_turns":               strconv.Itoa(resolvedSessionMemoryTurns),
+		"session_memory_ttl":                 resolvedSessionMemoryTTL.String(),
+		"context_compression_threshold":      strconv.Itoa(resolvedContextCompressionThreshold),
+		"context_compression_summary_tokens": strconv.Itoa(resolvedContextCompressionSummaryTokens),
+		"context_compression_retain_turns":   strconv.Itoa(resolvedContextCompressionRetainTurns),
+		"daily_memory_dir":                   resolvedDailyMemoryDir,
+		"long_term_memory_path":              resolvedLongTermMemoryPath,
+		"long_term_memory_write_policy":      resolvedLongTermMemoryWritePolicy,
+		"long_term_memory_writeback_flush":   resolvedLongTermMemoryWriteBackFlush.String(),
+		"long_term_memory_token_budget":      strconv.Itoa(resolvedLongTermMemoryTokenBudget),
+		"mandatory_context_file":             resolvedMandatoryContextFile,
+	})
+
 	sessionHistory, err := newSessionHistory(rootCtx, sessionStore)
 	if err != nil {
 		logger.Error("failed to initialize session history service", slog.String("error", err.Error()))
@@ -133,8 +181,8 @@ func main() {
 	executor := execapp.NewServiceWithSkills(processor, control, logger)
 	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
 	taskSummaryRuntime := tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
-		DailyDir:    strings.TrimSpace(*dailyMemoryDir),
-		LongTermDir: filepath.Join(strings.TrimSpace(*dailyMemoryDir), "long-term"),
+		DailyDir:    resolvedDailyMemoryDir,
+		LongTermDir: filepath.Join(resolvedDailyMemoryDir, "long-term"),
 	})
 	taskSummaryRecorder := tasksummaryapp.NewRecorderGroup(taskSummaryMemory, taskSummaryRuntime)
 	baseOrchestrator := orchapp.NewServiceWithOptions(
@@ -144,21 +192,21 @@ func main() {
 		telemetry,
 		logger,
 		orchapp.WithSessionMemoryOptions(orchapp.SessionMemoryOptions{
-			MaxTurns:                 *sessionMemoryTurns,
-			TTL:                      *sessionMemoryTTL,
-			CompressionTriggerTokens: *contextCompressionThreshold,
-			CompressionSummaryTokens: *contextCompressionSummaryTokens,
-			CompressionRetainTurns:   *contextCompressionRetainTurns,
-			DailyMemoryDir:           strings.TrimSpace(*dailyMemoryDir),
+			MaxTurns:                 resolvedSessionMemoryTurns,
+			TTL:                      resolvedSessionMemoryTTL,
+			CompressionTriggerTokens: resolvedContextCompressionThreshold,
+			CompressionSummaryTokens: resolvedContextCompressionSummaryTokens,
+			CompressionRetainTurns:   resolvedContextCompressionRetainTurns,
+			DailyMemoryDir:           resolvedDailyMemoryDir,
 		}),
 		orchapp.WithLongTermMemoryOptions(orchapp.LongTermMemoryOptions{
-			InjectionTokenBudget: *longTermMemoryTokenBudget,
-			PersistencePath:      strings.TrimSpace(*longTermMemoryPath),
-			WritePolicy:          orchapp.LongTermMemoryWritePolicy(strings.ToLower(strings.TrimSpace(*longTermMemoryWritePolicy))),
-			WriteBackFlush:       *longTermMemoryWriteBackFlush,
+			InjectionTokenBudget: resolvedLongTermMemoryTokenBudget,
+			PersistencePath:      resolvedLongTermMemoryPath,
+			WritePolicy:          orchapp.LongTermMemoryWritePolicy(strings.ToLower(strings.TrimSpace(resolvedLongTermMemoryWritePolicy))),
+			WriteBackFlush:       resolvedLongTermMemoryWriteBackFlush,
 		}),
 		orchapp.WithMandatoryContextOptions(orchapp.MandatoryContextOptions{
-			FilePath: *mandatoryContextFile,
+			FilePath: resolvedMandatoryContextFile,
 		}),
 		orchapp.WithTaskSummaryMemory(taskSummaryMemory),
 	)
@@ -169,17 +217,17 @@ func main() {
 		telemetry,
 		logger,
 		orchapp.ConcurrencyOptions{
-			WorkerCount:    *workerPoolSize,
-			MaxQueueSize:   *maxQueueSize,
-			QueueTimeout:   *queueTimeout,
+			WorkerCount:    resolvedWorkerPoolSize,
+			MaxQueueSize:   resolvedMaxQueueSize,
+			QueueTimeout:   resolvedQueueTimeout,
 			OverloadPolicy: orchapp.OverloadPolicyRejectNew,
 		},
 	)
 	taskService, err := newTaskService(rootCtx, orchestrator, sessionHistory, idGen, logger, taskStore, taskapp.Options{
-		WorkerCount:          *asyncTaskWorkers,
-		Timeout:              *asyncTaskTimeout,
-		MaxRetries:           *asyncTaskMaxRetries,
-		LongContentThreshold: *asyncLongContentThreshold,
+		WorkerCount:          resolvedAsyncTaskWorkers,
+		Timeout:              resolvedAsyncTaskTimeout,
+		MaxRetries:           resolvedAsyncTaskMaxRetries,
+		LongContentThreshold: resolvedAsyncLongContentThreshold,
 		SummaryMemory:        taskSummaryRecorder,
 	})
 	if err != nil {
@@ -204,9 +252,9 @@ func main() {
 		sessionHistory,
 		taskService,
 		web.AgentMemoryOptions{
-			LongTermPath:         strings.TrimSpace(*longTermMemoryPath),
-			DailyDir:             strings.TrimSpace(*dailyMemoryDir),
-			MandatoryContextPath: strings.TrimSpace(*mandatoryContextFile),
+			LongTermPath:         resolvedLongTermMemoryPath,
+			DailyDir:             resolvedDailyMemoryDir,
+			MandatoryContextPath: resolvedMandatoryContextFile,
 			TaskSummaryRuntime:   taskSummaryRuntime,
 		},
 		logger,
