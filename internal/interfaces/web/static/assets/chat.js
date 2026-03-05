@@ -122,6 +122,11 @@ const I18N = {
     "field.scope": "Scope",
     "field.version": "Version",
     "field.interval": "Interval",
+    "field.cron_expression": "Cron Expression",
+    "field.schedule_mode": "Schedule Mode",
+    "field.timezone": "Timezone",
+    "field.input": "Input",
+    "field.retry_limit": "Retry Limit",
     "field.session": "Session",
     "field.id": "ID",
     "field.messages": "Messages",
@@ -161,8 +166,12 @@ const I18N = {
     "route.channels.subtitle": "Manage connection channels",
     "route.channels.empty": "No Channels available.",
     "route.sessions.title": "Sessions",
-    "route.sessions.subtitle": "View current session list",
-    "route.sessions.empty": "No local sessions available.",
+    "route.sessions.subtitle": "View archived sessions with source filters",
+    "route.sessions.empty": "No sessions found.",
+    "route.sessions.filter.trigger_type": "Trigger Type",
+    "route.sessions.filter.job_id": "Job ID",
+    "route.sessions.filter.apply": "Apply",
+    "route.sessions.filter.reset": "Reset",
     "route.tasks.title": "Tasks",
     "route.tasks.subtitle": "Observe runtime tasks with source, status, and timeline filters",
     "route.tasks.empty": "No tasks found.",
@@ -197,8 +206,46 @@ const I18N = {
     "channel.web": "Web",
     "channel.scheduler": "Scheduler",
     "route.cron.title": "Cron Jobs",
-    "route.cron.subtitle": "View scheduled jobs",
+    "route.cron.subtitle": "Configure schedules and trace fired sessions",
     "route.cron.empty": "No Cron Jobs available.",
+    "route.cron.form.title": "Create / Update Cron Job",
+    "route.cron.form.job_id": "Job ID",
+    "route.cron.form.name": "Task Name",
+    "route.cron.form.input": "Prompt / Input",
+    "route.cron.form.retry": "Retry Limit",
+    "route.cron.form.timezone": "Timezone",
+    "route.cron.form.mode": "Schedule Mode",
+    "route.cron.form.every": "Every",
+    "route.cron.form.unit": "Unit",
+    "route.cron.form.time": "Time",
+    "route.cron.form.weekday": "Weekday",
+    "route.cron.form.expression": "Cron Expression",
+    "route.cron.form.enabled": "Enabled",
+    "route.cron.form.submit": "Save Job",
+    "route.cron.form.reset": "Reset",
+    "route.cron.list.title": "Configured Jobs",
+    "route.cron.mode.every": "Every",
+    "route.cron.mode.daily": "Daily",
+    "route.cron.mode.weekly": "Weekly",
+    "route.cron.unit.minute": "Minute",
+    "route.cron.unit.hour": "Hour",
+    "route.cron.unit.day": "Day",
+    "route.cron.weekday.0": "Sunday",
+    "route.cron.weekday.1": "Monday",
+    "route.cron.weekday.2": "Tuesday",
+    "route.cron.weekday.3": "Wednesday",
+    "route.cron.weekday.4": "Thursday",
+    "route.cron.weekday.5": "Friday",
+    "route.cron.weekday.6": "Saturday",
+    "route.cron.action.edit": "Edit",
+    "route.cron.action.delete": "Delete",
+    "route.cron.action.runs": "Runs",
+    "route.cron.runs.empty": "No runs yet.",
+    "route.cron.runs.open_sessions": "View Sessions",
+    "route.cron.expression_invalid": "Expression is not in supported visual pattern.",
+    "route.cron.save_failed": "Save failed: {error}",
+    "route.cron.delete_failed": "Delete failed: {error}",
+    "route.cron.runs_failed": "Load runs failed: {error}",
     "route.memory.title": "Memory",
     "route.memory.subtitle": "Summary-first memory view with task history drill-down",
     "route.memory.tab.long_term": "Long-Term",
@@ -361,6 +408,11 @@ const I18N = {
     "field.scope": "范围",
     "field.version": "版本",
     "field.interval": "间隔",
+    "field.cron_expression": "Cron 表达式",
+    "field.schedule_mode": "调度模式",
+    "field.timezone": "时区",
+    "field.input": "输入",
+    "field.retry_limit": "重试次数",
     "field.session": "会话",
     "field.id": "ID",
     "field.messages": "消息数",
@@ -400,8 +452,12 @@ const I18N = {
     "route.channels.subtitle": "管理连接通道",
     "route.channels.empty": "暂无可用通道。",
     "route.sessions.title": "会话列表",
-    "route.sessions.subtitle": "查看当前会话列表",
-    "route.sessions.empty": "暂无本地会话。",
+    "route.sessions.subtitle": "查看归档会话并按来源筛选",
+    "route.sessions.empty": "暂无会话记录。",
+    "route.sessions.filter.trigger_type": "触发类型",
+    "route.sessions.filter.job_id": "任务 ID",
+    "route.sessions.filter.apply": "应用",
+    "route.sessions.filter.reset": "重置",
     "route.tasks.title": "任务观测",
     "route.tasks.subtitle": "基于来源、状态和时间范围观测运行任务",
     "route.tasks.empty": "暂无任务记录。",
@@ -436,8 +492,46 @@ const I18N = {
     "channel.web": "Web",
     "channel.scheduler": "Scheduler",
     "route.cron.title": "定时任务",
-    "route.cron.subtitle": "查看计划任务",
+    "route.cron.subtitle": "配置调度并追踪触发会话",
     "route.cron.empty": "暂无定时任务。",
+    "route.cron.form.title": "创建 / 更新定时任务",
+    "route.cron.form.job_id": "任务 ID",
+    "route.cron.form.name": "任务名称",
+    "route.cron.form.input": "提示词 / 输入",
+    "route.cron.form.retry": "重试次数",
+    "route.cron.form.timezone": "时区",
+    "route.cron.form.mode": "调度模式",
+    "route.cron.form.every": "每隔",
+    "route.cron.form.unit": "单位",
+    "route.cron.form.time": "时间",
+    "route.cron.form.weekday": "星期",
+    "route.cron.form.expression": "Cron 表达式",
+    "route.cron.form.enabled": "启用",
+    "route.cron.form.submit": "保存任务",
+    "route.cron.form.reset": "重置",
+    "route.cron.list.title": "已配置任务",
+    "route.cron.mode.every": "周期执行",
+    "route.cron.mode.daily": "每日固定时间",
+    "route.cron.mode.weekly": "每周固定时间",
+    "route.cron.unit.minute": "分钟",
+    "route.cron.unit.hour": "小时",
+    "route.cron.unit.day": "天",
+    "route.cron.weekday.0": "周日",
+    "route.cron.weekday.1": "周一",
+    "route.cron.weekday.2": "周二",
+    "route.cron.weekday.3": "周三",
+    "route.cron.weekday.4": "周四",
+    "route.cron.weekday.5": "周五",
+    "route.cron.weekday.6": "周六",
+    "route.cron.action.edit": "编辑",
+    "route.cron.action.delete": "删除",
+    "route.cron.action.runs": "触发记录",
+    "route.cron.runs.empty": "暂无触发记录。",
+    "route.cron.runs.open_sessions": "查看会话",
+    "route.cron.expression_invalid": "该表达式不在可视化支持范围内。",
+    "route.cron.save_failed": "保存失败：{error}",
+    "route.cron.delete_failed": "删除失败：{error}",
+    "route.cron.runs_failed": "加载触发记录失败：{error}",
     "route.memory.title": "记忆",
     "route.memory.subtitle": "任务摘要优先展示，支持按需下钻日志与产物",
     "route.memory.tab.long_term": "长期记忆",
@@ -581,6 +675,10 @@ const state = {
   activeSessionID: "",
   currentRoute: DEFAULT_ROUTE,
   sessions: [],
+  sessionRouteFilters: {
+    triggerType: "",
+    jobID: ""
+  },
   sessionLoadError: "",
   sessionHistoryCollapsed: false,
   pending: false,
@@ -1950,40 +2048,619 @@ async function loadMCPView(container) {
   );
 }
 
-async function loadCronJobsView(container) {
-  const data = await fetchJSON("/api/control/cron/jobs");
-  const items = Array.isArray(data.items) ? data.items : [];
-  container.innerHTML = renderRouteCards(
-    items,
-    t("route.cron.empty"),
-    (item) => routeCardTemplate(
-      item.id,
-      "cron",
+function normalizeSessionRouteFilters(filters = {}) {
+  const triggerType = String(filters.triggerType || "").trim().toLowerCase();
+  const jobID = String(filters.jobID || "").trim();
+  return {
+    triggerType,
+    jobID
+  };
+}
+
+function sessionListQuery(filters = {}, page = 1, pageSize = 50) {
+  const normalized = normalizeSessionRouteFilters(filters);
+  const params = [];
+  params.push(`page=${Math.max(page, 1)}`);
+  params.push(`page_size=${Math.max(pageSize, 1)}`);
+  if (normalized.triggerType) {
+    params.push(`trigger_type=${escapeQueryValue(normalized.triggerType)}`);
+  }
+  if (normalized.jobID) {
+    params.push(`job_id=${escapeQueryValue(normalized.jobID)}`);
+  }
+  return `/api/sessions?${params.join("&")}`;
+}
+
+function parseCronExpressionVisual(expression) {
+  const normalized = String(expression || "").trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return null;
+  }
+  const parts = normalized.split(" ");
+  if (parts.length !== 5) {
+    return null;
+  }
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  if (month !== "*") {
+    return null;
+  }
+
+  const parseStep = (value) => {
+    const match = /^\*\/(\d+)$/.exec(value);
+    if (!match) {
+      return null;
+    }
+    const parsed = Number.parseInt(match[1], 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return null;
+    }
+    return parsed;
+  };
+  const parseRangeInt = (value, min, max) => {
+    if (!/^\d+$/.test(value)) {
+      return null;
+    }
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+      return null;
+    }
+    return parsed;
+  };
+
+  const minuteStep = parseStep(minute);
+  if (minuteStep !== null && hour === "*" && dayOfMonth === "*" && dayOfWeek === "*") {
+    return {
+      mode: "every",
+      every: minuteStep,
+      unit: "minute",
+      time: "09:00",
+      weekday: 1
+    };
+  }
+
+  if (minute === "0") {
+    const hourStep = parseStep(hour);
+    if (hourStep !== null && dayOfMonth === "*" && dayOfWeek === "*") {
+      return {
+        mode: "every",
+        every: hourStep,
+        unit: "hour",
+        time: "09:00",
+        weekday: 1
+      };
+    }
+    if (hour === "0") {
+      const dayStep = parseStep(dayOfMonth);
+      if (dayStep !== null && dayOfWeek === "*") {
+        return {
+          mode: "every",
+          every: dayStep,
+          unit: "day",
+          time: "09:00",
+          weekday: 1
+        };
+      }
+    }
+  }
+
+  const parsedMinute = parseRangeInt(minute, 0, 59);
+  const parsedHour = parseRangeInt(hour, 0, 23);
+  if (parsedMinute === null || parsedHour === null) {
+    return null;
+  }
+
+  const timeValue = `${String(parsedHour).padStart(2, "0")}:${String(parsedMinute).padStart(2, "0")}`;
+  if (dayOfMonth === "*" && dayOfWeek === "*") {
+    return {
+      mode: "daily",
+      every: 1,
+      unit: "day",
+      time: timeValue,
+      weekday: 1
+    };
+  }
+  if (dayOfMonth === "*") {
+    const parsedWeekday = parseRangeInt(dayOfWeek, 0, 7);
+    if (parsedWeekday === null) {
+      return null;
+    }
+    return {
+      mode: "weekly",
+      every: 1,
+      unit: "day",
+      time: timeValue,
+      weekday: parsedWeekday === 7 ? 0 : parsedWeekday
+    };
+  }
+  return null;
+}
+
+function buildCronExpressionVisual(options = {}) {
+  const mode = String(options.mode || "every").trim().toLowerCase();
+  const unit = String(options.unit || "minute").trim().toLowerCase();
+  const everyValueRaw = Number.parseInt(options.every, 10);
+  const everyValue = Number.isFinite(everyValueRaw) && everyValueRaw > 0 ? everyValueRaw : 1;
+  const timeValue = String(options.time || "09:00").trim();
+  const timeMatch = /^(\d{1,2}):(\d{1,2})$/.exec(timeValue);
+  const hour = timeMatch ? Math.min(Math.max(Number.parseInt(timeMatch[1], 10), 0), 23) : 9;
+  const minute = timeMatch ? Math.min(Math.max(Number.parseInt(timeMatch[2], 10), 0), 59) : 0;
+  const weekdayRaw = Number.parseInt(options.weekday, 10);
+  const weekday = Number.isFinite(weekdayRaw) && weekdayRaw >= 0 && weekdayRaw <= 6 ? weekdayRaw : 1;
+
+  if (mode === "daily") {
+    return `${minute} ${hour} * * *`;
+  }
+  if (mode === "weekly") {
+    return `${minute} ${hour} * * ${weekday}`;
+  }
+
+  if (unit === "hour") {
+    return `0 */${everyValue} * * *`;
+  }
+  if (unit === "day") {
+    return `0 0 */${everyValue} * *`;
+  }
+  return `*/${everyValue} * * * *`;
+}
+
+function renderSessionRouteCards(items) {
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.sessions.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const sessionID = typeof item?.session_id === "string" ? item.session_id : "";
+    const messageCount = Number(item?.message_count || 0);
+    const triggerType = typeof item?.trigger_type === "string" ? item.trigger_type : "";
+    const jobID = typeof item?.job_id === "string" ? item.job_id : "";
+    const firedAt = typeof item?.fired_at === "string" ? item.fired_at : "";
+    const lastErrorCode = typeof item?.last_error_code === "string" ? item.last_error_code : "";
+    const status = lastErrorCode ? "failed" : "success";
+    const title = sessionID || t("route.sessions.title");
+    return routeCardTemplate(
+      title,
+      "session",
       [
-        routeFieldRow("field.interval", item.interval),
-        routeFieldRow("field.session", item.session_id)
+        routeFieldRow("field.id", sessionID),
+        routeFieldRow("field.messages", messageCount),
+        routeFieldRow("field.status", formatTaskStatus(status)),
+        routeFieldRow("field.trigger_type", formatTriggerType(triggerType)),
+        routeFieldRow("field.job_id", jobID),
+        routeFieldRow("field.fired_at", formatDateTime(firedAt)),
+        routeFieldRow("field.created", formatDateTime(item?.started_at)),
+        routeFieldRow("field.updated", formatDateTime(item?.last_message_at))
       ],
-      item.enabled
-    )
-  );
+      true
+    );
+  }).join("");
 }
 
 async function loadSessionsView(container) {
-  const items = state.sessions;
-  container.innerHTML = renderRouteCards(
-    items,
-    t("route.sessions.empty"),
-    (item) => routeCardTemplate(
-      item.title,
-      "session",
+  const filters = normalizeSessionRouteFilters(state.sessionRouteFilters || {});
+  state.sessionRouteFilters = filters;
+  const data = await fetchJSON(sessionListQuery(filters, 1, 50));
+  const items = Array.isArray(data.items) ? data.items : [];
+  container.innerHTML = `<section class="session-history-view">
+    <form class="task-filter-form" data-session-filter-form>
+      <label>
+        <span>${t("route.sessions.filter.trigger_type")}</span>
+        <select name="trigger_type">
+          <option value="">-</option>
+          <option value="user">${t("trigger.user")}</option>
+          <option value="cron">${t("trigger.cron")}</option>
+          <option value="system">${t("trigger.system")}</option>
+        </select>
+      </label>
+      <label>
+        <span>${t("route.sessions.filter.job_id")}</span>
+        <input type="text" name="job_id" placeholder="job-daily-report">
+      </label>
+      <div class="task-filter-actions">
+        <button type="submit">${t("route.sessions.filter.apply")}</button>
+        <button type="button" data-session-filter-reset>${t("route.sessions.filter.reset")}</button>
+      </div>
+    </form>
+    <div class="task-summary-list">${renderSessionRouteCards(items)}</div>
+  </section>`;
+
+  const form = container.querySelector("[data-session-filter-form]");
+  if (!form) {
+    return;
+  }
+  form.trigger_type.value = filters.triggerType;
+  form.job_id.value = filters.jobID;
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.sessionRouteFilters = normalizeSessionRouteFilters({
+      triggerType: form.trigger_type.value,
+      jobID: form.job_id.value
+    });
+    void renderRoute("sessions");
+  });
+
+  const resetButton = form.querySelector("[data-session-filter-reset]");
+  if (resetButton) {
+    resetButton.addEventListener("click", () => {
+      state.sessionRouteFilters = normalizeSessionRouteFilters({});
+      void renderRoute("sessions");
+    });
+  }
+}
+
+function renderCronJobCards(items) {
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.cron.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const jobID = typeof item?.id === "string" ? item.id : "";
+    const jobName = typeof item?.name === "string" && item.name.trim() ? item.name : jobID;
+    const expression = typeof item?.cron_expression === "string" ? item.cron_expression : "";
+    const scheduleMode = typeof item?.schedule_mode === "string" ? item.schedule_mode : "";
+    const timezone = typeof item?.timezone === "string" ? item.timezone : "";
+    const taskInput = typeof item?.task_config?.input === "string" ? item.task_config.input : item?.content;
+    const retryLimit = Number(item?.task_config?.retry_limit || 0);
+    const actionBody = `<div class="cron-job-actions">
+      <button type="button" data-cron-edit="${escapeHTML(jobID)}">${t("route.cron.action.edit")}</button>
+      <button type="button" data-cron-runs-btn="${escapeHTML(jobID)}">${t("route.cron.action.runs")}</button>
+      <button type="button" data-cron-delete="${escapeHTML(jobID)}">${t("route.cron.action.delete")}</button>
+    </div>
+    <div class="cron-run-list" data-cron-runs="${escapeHTML(jobID)}" hidden></div>`;
+
+    return routeCardTemplate(
+      jobName,
+      "cron",
       [
-        routeFieldRow("field.id", item.id),
-        routeFieldRow("field.messages", item.messages.length),
-        routeFieldRow("field.created", formatSince(item.createdAt))
+        routeFieldRow("field.id", jobID),
+        routeFieldRow("field.schedule_mode", normalizeText(scheduleMode)),
+        routeFieldRow("field.cron_expression", expression),
+        routeFieldRow("field.timezone", timezone),
+        routeFieldRow("field.input", taskInput),
+        routeFieldRow("field.retry_limit", retryLimit)
       ],
-      true
-    )
-  );
+      item.enabled,
+      actionBody
+    );
+  }).join("");
+}
+
+function renderCronRunsList(items, jobID) {
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.cron.runs.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const runID = typeof item?.run_id === "string" ? item.run_id : "";
+    const sessionID = typeof item?.session_id === "string" ? item.session_id : "";
+    const status = typeof item?.status === "string" ? item.status : "";
+    const firedAt = typeof item?.fired_at === "string" ? item.fired_at : "";
+    return `<article class="cron-run-item">
+      <div class="cron-run-meta">
+        <p><span>${t("field.id")}</span><strong>${escapeHTML(normalizeText(runID))}</strong></p>
+        <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(sessionID))}</strong></p>
+        <p><span>${t("field.fired_at")}</span><strong>${escapeHTML(formatDateTime(firedAt))}</strong></p>
+        <p><span>${t("field.status")}</span><strong>${escapeHTML(formatTaskStatus(status))}</strong></p>
+      </div>
+      <button type="button" data-cron-open-sessions="${escapeHTML(jobID)}">${t("route.cron.runs.open_sessions")}</button>
+    </article>`;
+  }).join("");
+}
+
+async function loadCronJobsView(container) {
+  const data = await fetchJSON("/api/control/cron/jobs");
+  const items = Array.isArray(data.items) ? data.items : [];
+  const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  container.innerHTML = `<section class="cron-view">
+    <form class="task-filter-form cron-form" data-cron-form>
+      <h4 class="cron-form-title">${t("route.cron.form.title")}</h4>
+      <label><span>${t("route.cron.form.job_id")}</span><input type="text" name="job_id" required></label>
+      <label><span>${t("route.cron.form.name")}</span><input type="text" name="name" required></label>
+      <label><span>${t("route.cron.form.timezone")}</span><input type="text" name="timezone" value="${escapeHTML(defaultTimezone)}"></label>
+      <label><span>${t("route.cron.form.retry")}</span><input type="number" min="0" name="retry_limit" value="0"></label>
+      <label class="cron-form-wide"><span>${t("route.cron.form.input")}</span><textarea name="input" rows="3" required></textarea></label>
+      <label><span>${t("route.cron.form.mode")}</span>
+        <select name="schedule_mode">
+          <option value="every">${t("route.cron.mode.every")}</option>
+          <option value="daily">${t("route.cron.mode.daily")}</option>
+          <option value="weekly">${t("route.cron.mode.weekly")}</option>
+        </select>
+      </label>
+      <label data-cron-every-wrap><span>${t("route.cron.form.every")}</span><input type="number" min="1" name="every" value="1"></label>
+      <label data-cron-unit-wrap><span>${t("route.cron.form.unit")}</span>
+        <select name="unit">
+          <option value="minute">${t("route.cron.unit.minute")}</option>
+          <option value="hour">${t("route.cron.unit.hour")}</option>
+          <option value="day">${t("route.cron.unit.day")}</option>
+        </select>
+      </label>
+      <label data-cron-time-wrap hidden><span>${t("route.cron.form.time")}</span><input type="time" name="fixed_time" value="09:00"></label>
+      <label data-cron-weekday-wrap hidden><span>${t("route.cron.form.weekday")}</span>
+        <select name="weekday">
+          <option value="0">${t("route.cron.weekday.0")}</option>
+          <option value="1">${t("route.cron.weekday.1")}</option>
+          <option value="2">${t("route.cron.weekday.2")}</option>
+          <option value="3">${t("route.cron.weekday.3")}</option>
+          <option value="4">${t("route.cron.weekday.4")}</option>
+          <option value="5">${t("route.cron.weekday.5")}</option>
+          <option value="6">${t("route.cron.weekday.6")}</option>
+        </select>
+      </label>
+      <label class="cron-form-wide"><span>${t("route.cron.form.expression")}</span><input type="text" name="cron_expression" required></label>
+      <label class="cron-enabled-wrap"><span>${t("route.cron.form.enabled")}</span><input type="checkbox" name="enabled" checked></label>
+      <p class="cron-form-note" data-cron-note></p>
+      <div class="task-filter-actions cron-form-actions">
+        <button type="submit">${t("route.cron.form.submit")}</button>
+        <button type="button" data-cron-reset>${t("route.cron.form.reset")}</button>
+      </div>
+    </form>
+    <section class="cron-list-wrap">
+      <h4 class="cron-form-title">${t("route.cron.list.title")}</h4>
+      <div class="cron-job-grid">${renderCronJobCards(items)}</div>
+    </section>
+  </section>`;
+
+  const form = container.querySelector("[data-cron-form]");
+  if (!form) {
+    return;
+  }
+  const note = form.querySelector("[data-cron-note]");
+  const everyWrap = form.querySelector("[data-cron-every-wrap]");
+  const unitWrap = form.querySelector("[data-cron-unit-wrap]");
+  const timeWrap = form.querySelector("[data-cron-time-wrap]");
+  const weekdayWrap = form.querySelector("[data-cron-weekday-wrap]");
+  const modeInput = form.schedule_mode;
+  const expressionInput = form.cron_expression;
+
+  const syncModeVisibility = () => {
+    const mode = String(modeInput.value || "every").trim().toLowerCase();
+    const everyMode = mode === "every";
+    const weeklyMode = mode === "weekly";
+    if (everyWrap) {
+      everyWrap.hidden = !everyMode;
+    }
+    if (unitWrap) {
+      unitWrap.hidden = !everyMode;
+    }
+    if (timeWrap) {
+      timeWrap.hidden = everyMode;
+    }
+    if (weekdayWrap) {
+      weekdayWrap.hidden = !weeklyMode;
+    }
+  };
+
+  const syncExpressionFromVisual = () => {
+    expressionInput.value = buildCronExpressionVisual({
+      mode: modeInput.value,
+      every: form.every.value,
+      unit: form.unit.value,
+      time: form.fixed_time.value,
+      weekday: form.weekday.value
+    });
+    if (note) {
+      note.textContent = "";
+    }
+  };
+
+  const syncVisualFromExpression = () => {
+    const parsed = parseCronExpressionVisual(expressionInput.value);
+    if (!parsed) {
+      if (note) {
+        note.textContent = t("route.cron.expression_invalid");
+      }
+      return;
+    }
+    modeInput.value = parsed.mode;
+    form.every.value = parsed.every;
+    form.unit.value = parsed.unit;
+    form.fixed_time.value = parsed.time;
+    form.weekday.value = parsed.weekday;
+    syncModeVisibility();
+    if (note) {
+      note.textContent = "";
+    }
+  };
+
+  const setFormFromJob = (job) => {
+    const jobID = typeof job?.id === "string" ? job.id : "";
+    const jobName = typeof job?.name === "string" ? job.name : "";
+    const timezone = typeof job?.timezone === "string" && job.timezone.trim() ? job.timezone : defaultTimezone;
+    const expression = typeof job?.cron_expression === "string" ? job.cron_expression : "";
+    const mode = typeof job?.schedule_mode === "string" ? job.schedule_mode : "every";
+    const taskInput = typeof job?.task_config?.input === "string" ? job.task_config.input : (job?.content || "");
+    const retryLimit = Number(job?.task_config?.retry_limit || 0);
+    form.job_id.value = jobID;
+    form.name.value = jobName;
+    form.timezone.value = timezone;
+    form.input.value = taskInput;
+    form.retry_limit.value = retryLimit;
+    form.enabled.checked = Boolean(job?.enabled);
+    modeInput.value = mode || "every";
+    expressionInput.value = expression;
+    syncVisualFromExpression();
+    if (!parseCronExpressionVisual(expression)) {
+      syncExpressionFromVisual();
+    }
+  };
+
+  const resetForm = () => {
+    form.reset();
+    form.enabled.checked = true;
+    form.timezone.value = defaultTimezone;
+    form.fixed_time.value = "09:00";
+    modeInput.value = "every";
+    form.every.value = "1";
+    form.unit.value = "minute";
+    form.weekday.value = "1";
+    syncModeVisibility();
+    syncExpressionFromVisual();
+  };
+
+  syncModeVisibility();
+  syncExpressionFromVisual();
+
+  modeInput.addEventListener("change", () => {
+    syncModeVisibility();
+    syncExpressionFromVisual();
+  });
+  form.every.addEventListener("input", syncExpressionFromVisual);
+  form.unit.addEventListener("change", syncExpressionFromVisual);
+  form.fixed_time.addEventListener("change", syncExpressionFromVisual);
+  form.weekday.addEventListener("change", syncExpressionFromVisual);
+  expressionInput.addEventListener("change", syncVisualFromExpression);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const jobID = String(form.job_id.value || "").trim();
+    const cronExpression = String(form.cron_expression.value || "").trim();
+    if (!jobID || !cronExpression) {
+      return;
+    }
+    const retryLimit = Number.parseInt(form.retry_limit.value, 10);
+    const safeRetryLimit = Number.isFinite(retryLimit) && retryLimit >= 0 ? retryLimit : 0;
+    const payload = {
+      name: String(form.name.value || "").trim(),
+      enabled: Boolean(form.enabled.checked),
+      timezone: String(form.timezone.value || "").trim() || defaultTimezone,
+      schedule_mode: String(modeInput.value || "every").trim().toLowerCase(),
+      cron_expression: cronExpression,
+      task_config: {
+        input: String(form.input.value || "").trim(),
+        retry_limit: safeRetryLimit
+      }
+    };
+
+    try {
+      const response = await fetch(`/api/control/cron/jobs/${encodeURIComponent(jobID)}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        let reason = `HTTP ${response.status}`;
+        try {
+          const body = await response.json();
+          if (body && typeof body.error === "string" && body.error.trim()) {
+            reason = body.error;
+          }
+        } catch {}
+        throw new Error(reason);
+      }
+      await loadCronJobsView(container);
+    } catch (error) {
+      if (note) {
+        const reason = error instanceof Error ? error.message : "unknown_error";
+        note.textContent = t("route.cron.save_failed", { error: reason });
+      }
+    }
+  });
+
+  const resetButton = form.querySelector("[data-cron-reset]");
+  if (resetButton) {
+    resetButton.addEventListener("click", resetForm);
+  }
+
+  const findJobByID = (jobID) => items.find((item) => String(item?.id || "") === jobID);
+  const findRunsContainer = (jobID) => {
+    const nodes = container.querySelectorAll("[data-cron-runs]");
+    for (const node of nodes) {
+      if (node.dataset.cronRuns === jobID) {
+        return node;
+      }
+    }
+    return null;
+  };
+
+  const bindOpenSessionsAction = (scope = container) => {
+    const buttons = scope.querySelectorAll("[data-cron-open-sessions]");
+    for (const button of buttons) {
+      button.addEventListener("click", () => {
+        const jobID = String(button.dataset.cronOpenSessions || "").trim();
+        state.sessionRouteFilters = normalizeSessionRouteFilters({
+          triggerType: "cron",
+          jobID
+        });
+        navigateToRoute("sessions");
+      });
+    }
+  };
+
+  const editButtons = container.querySelectorAll("[data-cron-edit]");
+  for (const button of editButtons) {
+    button.addEventListener("click", () => {
+      const jobID = String(button.dataset.cronEdit || "").trim();
+      const job = findJobByID(jobID);
+      if (!job) {
+        return;
+      }
+      setFormFromJob(job);
+      window.requestAnimationFrame(() => {
+        form.job_id.focus();
+      });
+    });
+  }
+
+  const deleteButtons = container.querySelectorAll("[data-cron-delete]");
+  for (const button of deleteButtons) {
+    button.addEventListener("click", async () => {
+      const jobID = String(button.dataset.cronDelete || "").trim();
+      if (!jobID) {
+        return;
+      }
+      try {
+        const response = await fetch(`/api/control/cron/jobs/${encodeURIComponent(jobID)}`, {
+          method: "DELETE"
+        });
+        if (!response.ok) {
+          let reason = `HTTP ${response.status}`;
+          try {
+            const body = await response.json();
+            if (body && typeof body.error === "string" && body.error.trim()) {
+              reason = body.error;
+            }
+          } catch {}
+          throw new Error(reason);
+        }
+        await loadCronJobsView(container);
+      } catch (error) {
+        if (note) {
+          const reason = error instanceof Error ? error.message : "unknown_error";
+          note.textContent = t("route.cron.delete_failed", { error: reason });
+        }
+      }
+    });
+  }
+
+  const runsButtons = container.querySelectorAll("[data-cron-runs-btn]");
+  for (const button of runsButtons) {
+    button.addEventListener("click", async () => {
+      const jobID = String(button.dataset.cronRunsBtn || "").trim();
+      const runsContainer = findRunsContainer(jobID);
+      if (!runsContainer) {
+        return;
+      }
+      if (!runsContainer.hidden) {
+        runsContainer.hidden = true;
+        return;
+      }
+      if (runsContainer.dataset.loaded === "true") {
+        runsContainer.hidden = false;
+        return;
+      }
+      try {
+        const data = await fetchJSON(`/api/control/cron/jobs/${encodeURIComponent(jobID)}/runs?page=1&page_size=20`);
+        const runItems = Array.isArray(data.items) ? data.items : [];
+        runsContainer.innerHTML = renderCronRunsList(runItems, jobID);
+        runsContainer.dataset.loaded = "true";
+        runsContainer.hidden = false;
+        bindOpenSessionsAction(runsContainer);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "unknown_error";
+        runsContainer.innerHTML = `<p class="route-error">${t("route.cron.runs_failed", { error: reason })}</p>`;
+        runsContainer.hidden = false;
+      }
+    });
+  }
 }
 
 function controlTaskListQuery(filters = {}, page = 1, pageSize = 20) {
