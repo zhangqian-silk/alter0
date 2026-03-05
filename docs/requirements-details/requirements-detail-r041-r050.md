@@ -1,6 +1,6 @@
 # Requirements Details (R-041 ~ R-050)
 
-> Last update: 2026-03-05
+> Last update: 2026-03-06
 
 ## 需求细化（草案）
 
@@ -185,8 +185,36 @@
 - 验证口径：字段完整性、筛选可用性、跨页面回链可达性、历史数据兼容性
 
 ### R-046
+1. 前端新增独立 `Terminal` 模块入口，用户可在该模块内直接发起和持续进行终端会话，不依赖 `Tasks` 抽屉作为入口。
+2. 终端会话模型要求：
+   - 每个会话拥有稳定 `terminal_session_id`；
+   - 会话内保留 `anchor_task_id` 与当前 `active_task_id`；
+   - 新输入默认复用当前会话上下文，保持同一 Shell 连续执行语义。
+3. 交互要求：模块内提供类 Chat 的输入输出区域，用户输入、任务受理结果、终端日志输出按时间顺序连续展示。
+4. 串联要求：同一终端会话中的多次输入必须串联到同一会话轨迹，避免每次输入被视为独立无关联任务。
+5. 状态要求：模块需可见当前会话关键字段（`terminal_session_id`、`anchor_task_id`、`active_task_id`、`status`），并实时刷新执行状态。
+6. 可恢复性要求：页面刷新后可恢复终端会话列表和最近上下文，保证继续交互时链路不丢失。
+7. 异常处理要求：达到终端会话并发上限时，模块需提示明确错误并阻止继续提交；日志/发送失败时需展示可感知错误信息。
+8. 验收：用户在 `Terminal` 模块创建会话后可连续发送多轮命令与追问；界面持续展示同一会话链路的输入/输出，且会话上下文保持连续。
 
-暂无细化内容。
+#### 接口拆分（草案）
+
+1. 终端首轮任务创建
+   - `POST /api/tasks`
+   - 请求元数据包含 `alter0.task.terminal_session_id` 与 `alter0.task.terminal_interactive=true`
+2. 终端会话续写
+   - `POST /api/control/tasks/{task_id}/terminal/input`
+   - 入参：`input`、`reuse_task=true`、`anchor_task_id`
+3. 终端日志回读
+   - `GET /api/control/tasks/{task_id}/logs?cursor=&limit=`
+4. 终端状态刷新
+   - `GET /api/control/tasks/{task_id}`
+
+#### Traceability
+
+- 核心对象：`terminal_session_id`、`anchor_task_id`、`active_task_id`、`terminal_interactive`、`terminal_logs`
+- 依赖需求：`R-035`、`R-042`
+- 验证口径：会话串联连续性、输入输出可读性、刷新恢复能力、限流错误可感知性
 
 ### R-047
 

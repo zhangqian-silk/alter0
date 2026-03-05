@@ -786,6 +786,43 @@ func TestServiceTimeoutTransitionsToFailed(t *testing.T) {
 	}
 }
 
+func TestResolveTaskTimeoutTerminalDefaultsToFourHours(t *testing.T) {
+	svc := &Service{
+		options: normalizeOptions(Options{Timeout: 90 * time.Second}),
+	}
+	timeout := svc.resolveTaskTimeoutByMetadata(map[string]string{
+		MetadataTaskTypeKey: terminalTaskTypeValue,
+	})
+	if timeout != 4*time.Hour {
+		t.Fatalf("expected terminal default timeout 4h, got %s", timeout)
+	}
+}
+
+func TestResolveTaskTimeoutTerminalCapsAtFourHours(t *testing.T) {
+	svc := &Service{
+		options: normalizeOptions(Options{Timeout: 90 * time.Second}),
+	}
+	timeout := svc.resolveTaskTimeoutByMetadata(map[string]string{
+		MetadataTaskTerminalFlagKey: "true",
+		MetadataTaskTimeoutMS:       strconv.FormatInt((5 * time.Hour).Milliseconds(), 10),
+	})
+	if timeout != 4*time.Hour {
+		t.Fatalf("expected terminal timeout capped at 4h, got %s", timeout)
+	}
+}
+
+func TestResolveTaskTimeoutNonTerminalUsesConfiguredTimeout(t *testing.T) {
+	svc := &Service{
+		options: normalizeOptions(Options{Timeout: 3 * time.Minute}),
+	}
+	timeout := svc.resolveTaskTimeoutByMetadata(map[string]string{
+		MetadataTaskTypeKey: "artifact",
+	})
+	if timeout != 3*time.Minute {
+		t.Fatalf("expected non-terminal timeout use configured value, got %s", timeout)
+	}
+}
+
 func waitTaskStatus(t *testing.T, svc *Service, taskID string, expected taskdomain.TaskStatus, timeout time.Duration) taskdomain.Task {
 	t.Helper()
 	deadline := time.Now().Add(timeout)

@@ -291,3 +291,42 @@ func TestSidebarAgentMemoryTabStylesPresent(t *testing.T) {
 		}
 	}
 }
+
+func TestSidebarTerminalModulePresent(t *testing.T) {
+	html := readEmbeddedAsset(t, "static/chat.html")
+	htmlMarkers := []string{
+		`data-route="terminal"`,
+		`data-i18n="nav.terminal"`,
+	}
+	for _, marker := range htmlMarkers {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("expected html marker %q", marker)
+		}
+	}
+
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	scriptMarkers := []string{
+		`const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v1";`,
+		`terminal: {`,
+		`loader: loadTerminalView`,
+		`"route.terminal.title"`,
+		`"route.terminal.send"`,
+	}
+	for _, marker := range scriptMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	styleMarkers := []string{
+		".terminal-view {",
+		".terminal-session-card {",
+		".terminal-chat-form {",
+	}
+	for _, marker := range styleMarkers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}

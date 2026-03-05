@@ -15,7 +15,7 @@ import (
 func TestCodexCLIProcessorProcessSuccess(t *testing.T) {
 	processor := newTestProcessor("success", "reply: hello")
 
-	output, err := processor.Process(context.Background(), "reply: hello", nil)
+	output, err := processor.Process(context.Background(), "reply: hello", testRuntimeMetadata())
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
@@ -27,7 +27,7 @@ func TestCodexCLIProcessorProcessSuccess(t *testing.T) {
 func TestCodexCLIProcessorProcessCommandFailure(t *testing.T) {
 	processor := newTestProcessor("failure", "reply: hello")
 
-	_, err := processor.Process(context.Background(), "reply: hello", nil)
+	_, err := processor.Process(context.Background(), "reply: hello", testRuntimeMetadata())
 	if err == nil {
 		t.Fatal("Process() error = nil, want failure")
 	}
@@ -42,7 +42,7 @@ func TestCodexCLIProcessorProcessCommandFailure(t *testing.T) {
 func TestCodexCLIProcessorProcessEmptyOutput(t *testing.T) {
 	processor := newTestProcessor("empty", "reply: hello")
 
-	_, err := processor.Process(context.Background(), "reply: hello", nil)
+	_, err := processor.Process(context.Background(), "reply: hello", testRuntimeMetadata())
 	if err == nil {
 		t.Fatal("Process() error = nil, want empty output error")
 	}
@@ -88,7 +88,8 @@ func TestCodexCLIProcessorProcessWithSkillContextPayload(t *testing.T) {
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
-		execdomain.SkillContextMetadataKey: string(rawSkillContext),
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
 	})
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
@@ -122,7 +123,8 @@ func TestCodexCLIProcessorProcessWithMCPContextPayload(t *testing.T) {
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
-		execdomain.MCPContextMetadataKey: string(rawMCPContext),
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
 	})
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
@@ -173,8 +175,9 @@ func TestCodexCLIProcessorProcessWithSkillAndMCPContextPayload(t *testing.T) {
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
-		execdomain.SkillContextMetadataKey: string(rawSkillContext),
-		execdomain.MCPContextMetadataKey:   string(rawMCPContext),
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
+		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
 	})
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
@@ -204,7 +207,7 @@ func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
 	processor := newTestProcessor("stream-success", "reply: hello")
 	deltas := make([]string, 0, 2)
 
-	output, err := processor.ProcessStream(context.Background(), "reply: hello", nil, func(event execdomain.StreamEvent) error {
+	output, err := processor.ProcessStream(context.Background(), "reply: hello", testRuntimeMetadata(), func(event execdomain.StreamEvent) error {
 		deltas = append(deltas, event.Text)
 		return nil
 	})
@@ -222,7 +225,7 @@ func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
 func TestCodexCLIProcessorProcessStreamCommandFailure(t *testing.T) {
 	processor := newTestProcessor("stream-failure", "reply: hello")
 
-	_, err := processor.ProcessStream(context.Background(), "reply: hello", nil, nil)
+	_, err := processor.ProcessStream(context.Background(), "reply: hello", testRuntimeMetadata(), nil)
 	if err == nil {
 		t.Fatal("ProcessStream() error = nil, want failure")
 	}
@@ -243,6 +246,24 @@ func TestCodexCLIProcessorProcessStreamUsesSessionWorkspace(t *testing.T) {
 	}
 	if output != "mock streamed response" {
 		t.Fatalf("ProcessStream() output = %q, want %q", output, "mock streamed response")
+	}
+}
+
+func TestCodexCLIProcessorProcessRequiresWorkspaceContext(t *testing.T) {
+	processor := NewCodexCLIProcessor()
+
+	_, err := processor.Process(context.Background(), "reply: hello", nil)
+	if err == nil {
+		t.Fatal("Process() error = nil, want workspace validation error")
+	}
+	if !strings.Contains(err.Error(), "workspace session context is required") {
+		t.Fatalf("Process() error = %q, want workspace validation", err.Error())
+	}
+}
+
+func testRuntimeMetadata() map[string]string {
+	return map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
 	}
 }
 
@@ -295,6 +316,9 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		if arg == "-a" || arg == "--ask-for-approval" {
 			os.Exit(2)
 		}
+	}
+	if !containsArgPair(forwarded, "--sandbox", "workspace-write") {
+		os.Exit(2)
 	}
 
 	prompt := forwarded[len(forwarded)-1]
@@ -349,4 +373,13 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 	default:
 		os.Exit(2)
 	}
+}
+
+func containsArgPair(args []string, key string, value string) bool {
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == key && args[i+1] == value {
+			return true
+		}
+	}
+	return false
 }

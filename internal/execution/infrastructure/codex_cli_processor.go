@@ -18,6 +18,7 @@ import (
 
 const (
 	defaultCodexCommand       = "codex"
+	defaultCodexSandboxMode   = "workspace-write"
 	defaultWorkspaceRootDir   = ".alter0"
 	workspaceDirectoryName    = "workspaces"
 	workspaceSessionsDirName  = "sessions"
@@ -98,6 +99,7 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		"exec",
 		"--color", "never",
 		"--skip-git-repo-check",
+		"--sandbox", defaultCodexSandboxMode,
 		"-o", outputPath,
 		renderedPrompt,
 	}
@@ -164,6 +166,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 		"exec",
 		"--color", "never",
 		"--skip-git-repo-check",
+		"--sandbox", defaultCodexSandboxMode,
 		"--json",
 		"--progress-cursor",
 		renderedPrompt,
@@ -340,7 +343,7 @@ func resolveCodexWorkspace(metadata map[string]string) (string, error) {
 		metadataValue(metadata, sessionIDMetadataFallback),
 	))
 	if sessionID == "" {
-		return "", nil
+		return "", errors.New("workspace session context is required")
 	}
 
 	parts := []string{
