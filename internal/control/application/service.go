@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,16 +36,16 @@ type Store interface {
 }
 
 type Service struct {
-	mu                sync.RWMutex
-	channels          map[string]controldomain.Channel
-	capabilities      map[string]controldomain.Capability
-	audits            []controldomain.CapabilityAudit
-	environments      map[string]string
+	mu                 sync.RWMutex
+	channels           map[string]controldomain.Channel
+	capabilities       map[string]controldomain.Capability
+	audits             []controldomain.CapabilityAudit
+	environments       map[string]string
 	environmentRuntime map[string]string
-	environmentAudits []controldomain.EnvironmentAudit
-	environmentDefs   map[string]controldomain.EnvironmentDefinition
-	environmentOrder  []string
-	store             Store
+	environmentAudits  []controldomain.EnvironmentAudit
+	environmentDefs    map[string]controldomain.EnvironmentDefinition
+	environmentOrder   []string
+	store              Store
 }
 
 func NewService() *Service {

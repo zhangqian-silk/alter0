@@ -31,15 +31,15 @@ type EnvironmentValidation struct {
 }
 
 type EnvironmentDefinition struct {
-	Key          string               `json:"key"`
-	Name         string               `json:"name"`
-	Module       string               `json:"module"`
-	Description  string               `json:"description,omitempty"`
-	Type         EnvironmentValueType `json:"type"`
-	DefaultValue string               `json:"default_value"`
-	Sensitive    bool                 `json:"sensitive"`
-	HotReload    bool                 `json:"hot_reload"`
-	ApplyMode    EnvironmentApplyMode `json:"apply_mode"`
+	Key          string                `json:"key"`
+	Name         string                `json:"name"`
+	Module       string                `json:"module"`
+	Description  string                `json:"description,omitempty"`
+	Type         EnvironmentValueType  `json:"type"`
+	DefaultValue string                `json:"default_value"`
+	Sensitive    bool                  `json:"sensitive"`
+	HotReload    bool                  `json:"hot_reload"`
+	ApplyMode    EnvironmentApplyMode  `json:"apply_mode"`
 	Validation   EnvironmentValidation `json:"validation"`
 }
 
@@ -60,10 +60,10 @@ type EnvironmentAuditChange struct {
 }
 
 type EnvironmentAudit struct {
-	Operator       string                   `json:"operator"`
-	OccurredAt     time.Time                `json:"occurred_at"`
-	Changes        []EnvironmentAuditChange `json:"changes"`
-	RequiresRestart bool                    `json:"requires_restart"`
+	Operator        string                   `json:"operator"`
+	OccurredAt      time.Time                `json:"occurred_at"`
+	Changes         []EnvironmentAuditChange `json:"changes"`
+	RequiresRestart bool                     `json:"requires_restart"`
 }
 
 type EnvironmentUpdateResult struct {

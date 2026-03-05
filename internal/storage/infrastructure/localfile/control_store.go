@@ -11,13 +11,13 @@ import (
 )
 
 type controlState struct {
-	Channels          []controldomain.Channel         `json:"channels"`
-	Capabilities      []controldomain.Capability      `json:"capabilities,omitempty"`
-	CapabilityAudits  []controldomain.CapabilityAudit `json:"capability_audits,omitempty"`
-	Environments      map[string]string               `json:"environments,omitempty"`
+	Channels          []controldomain.Channel          `json:"channels"`
+	Capabilities      []controldomain.Capability       `json:"capabilities,omitempty"`
+	CapabilityAudits  []controldomain.CapabilityAudit  `json:"capability_audits,omitempty"`
+	Environments      map[string]string                `json:"environments,omitempty"`
 	EnvironmentAudits []controldomain.EnvironmentAudit `json:"environment_audits,omitempty"`
-	Skills            []controldomain.Skill           `json:"skills,omitempty"`
-	MCPs              []controldomain.Capability      `json:"mcps,omitempty"`
+	Skills            []controldomain.Skill            `json:"skills,omitempty"`
+	MCPs              []controldomain.Capability       `json:"mcps,omitempty"`
 }
 
 type ControlStore struct {

@@ -131,9 +131,9 @@ func TestUnifiedSkillAndMCPStorage(t *testing.T) {
 func TestEnvironmentConfigUpdateAndAudit(t *testing.T) {
 	service := NewService()
 	service.SetEnvironmentRuntime(map[string]string{
-		"worker_pool_size":     "4",
-		"async_task_workers":   "5",
-		"async_task_timeout":   "1m30s",
+		"worker_pool_size":       "4",
+		"async_task_workers":     "5",
+		"async_task_timeout":     "1m30s",
 		"async_task_max_retries": "1",
 	})
 
