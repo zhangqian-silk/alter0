@@ -64,6 +64,18 @@ type taskTestIDGenerator struct {
 	next int
 }
 
+type stubComplexityPredictor struct {
+	assessment ComplexityAssessment
+	err        error
+}
+
+func (s *stubComplexityPredictor) Predict(_ context.Context, _ shareddomain.UnifiedMessage) (ComplexityAssessment, error) {
+	if s.err != nil {
+		return ComplexityAssessment{}, s.err
+	}
+	return s.assessment, nil
+}
+
 func (g *taskTestIDGenerator) NewID() string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -142,6 +154,96 @@ func TestServiceAssessComplexityFallbackDefaultsToAsync(t *testing.T) {
 	assessment := svc.AssessComplexity(msg)
 	if !assessment.Fallback {
 		t.Fatalf("expected fallback assessment")
+	}
+	if assessment.ExecutionMode != ExecutionModeAsync {
+		t.Fatalf("expected async fallback execution mode, got %q", assessment.ExecutionMode)
+	}
+	if assessment.EstimatedDurationSeconds <= 30 {
+		t.Fatalf("expected fallback estimate > 30s, got %d", assessment.EstimatedDurationSeconds)
+	}
+}
+
+func TestServiceAssessComplexityDocumentIntentRunsAsync(t *testing.T) {
+	svc, err := NewService(
+		context.Background(),
+		&stubTaskOrchestrator{},
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	msg := testTaskMessage("s-doc", "生成一篇介绍 ngram 的文档", nil)
+	assessment := svc.AssessComplexity(msg)
+	if assessment.ExecutionMode != ExecutionModeAsync {
+		t.Fatalf("expected async execution mode, got %q", assessment.ExecutionMode)
+	}
+	if !svc.ShouldRunAsync(msg) {
+		t.Fatalf("expected document-generation intent to run async")
+	}
+	if assessment.EstimatedDurationSeconds <= 30 {
+		t.Fatalf("expected estimate > 30s for document-generation intent, got %d", assessment.EstimatedDurationSeconds)
+	}
+}
+
+func TestServiceAssessComplexityUsesPredictorResult(t *testing.T) {
+	svc, err := NewService(
+		context.Background(),
+		&stubTaskOrchestrator{},
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{
+			ComplexityPredictor: &stubComplexityPredictor{
+				assessment: ComplexityAssessment{
+					EstimatedDurationSeconds: 14,
+					ComplexityLevel:          ComplexityLevelLow,
+					ExecutionMode:            ExecutionModeStreaming,
+				},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	msg := testTaskMessage("s-predictor", "hello predictor", nil)
+	assessment := svc.AssessComplexity(msg)
+	if assessment.ExecutionMode != ExecutionModeStreaming {
+		t.Fatalf("expected streaming execution mode from predictor, got %q", assessment.ExecutionMode)
+	}
+	if assessment.EstimatedDurationSeconds != 14 {
+		t.Fatalf("expected estimate 14 from predictor, got %d", assessment.EstimatedDurationSeconds)
+	}
+	if assessment.ComplexityLevel != ComplexityLevelLow {
+		t.Fatalf("expected low complexity from predictor, got %q", assessment.ComplexityLevel)
+	}
+}
+
+func TestServiceAssessComplexityPredictorFailureFallsBackToAsync(t *testing.T) {
+	svc, err := NewService(
+		context.Background(),
+		&stubTaskOrchestrator{},
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{
+			ComplexityPredictor: &stubComplexityPredictor{err: errors.New("predictor timeout")},
+		},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	assessment := svc.AssessComplexity(testTaskMessage("s-predictor-fallback", "hello", nil))
+	if !assessment.Fallback {
+		t.Fatalf("expected fallback assessment when predictor fails")
 	}
 	if assessment.ExecutionMode != ExecutionModeAsync {
 		t.Fatalf("expected async fallback execution mode, got %q", assessment.ExecutionMode)
