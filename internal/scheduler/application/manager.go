@@ -64,14 +64,11 @@ func NewManagerWithStore(
 		return nil, fmt.Errorf("load scheduler state: %w", err)
 	}
 	for _, job := range jobs {
-		if err := job.Validate(); err != nil {
+		normalized, err := job.Normalize()
+		if err != nil {
 			return nil, fmt.Errorf("invalid job in store: %w", err)
 		}
-		job.ID = normalize(job.ID)
-		if strings.TrimSpace(job.Name) == "" {
-			job.Name = job.ID
-		}
-		manager.jobs[job.ID] = job
+		manager.jobs[normalized.ID] = normalized
 	}
 	return manager, nil
 }
@@ -113,33 +110,29 @@ func (m *Manager) Start(ctx context.Context) {
 }
 
 func (m *Manager) Upsert(job schedulerdomain.Job) error {
-	if err := job.Validate(); err != nil {
+	normalized, err := job.Normalize()
+	if err != nil {
 		return err
-	}
-
-	job.ID = normalize(job.ID)
-	if strings.TrimSpace(job.Name) == "" {
-		job.Name = job.ID
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	previous, existed := m.jobs[job.ID]
-	m.jobs[job.ID] = job
-	m.stopRunnerLocked(job.ID)
-	if m.started && job.Enabled {
-		m.startRunnerLocked(job)
+	previous, existed := m.jobs[normalized.ID]
+	m.jobs[normalized.ID] = normalized
+	m.stopRunnerLocked(normalized.ID)
+	if m.started && normalized.Enabled {
+		m.startRunnerLocked(normalized)
 	}
 	if err := m.storeLocked(); err != nil {
-		m.stopRunnerLocked(job.ID)
+		m.stopRunnerLocked(normalized.ID)
 		if existed {
-			m.jobs[job.ID] = previous
+			m.jobs[normalized.ID] = previous
 			if m.started && previous.Enabled {
 				m.startRunnerLocked(previous)
 			}
 		} else {
-			delete(m.jobs, job.ID)
+			delete(m.jobs, normalized.ID)
 		}
 		return err
 	}
@@ -191,19 +184,35 @@ func (m *Manager) startRunnerLocked(job schedulerdomain.Job) {
 	ctx, cancel := context.WithCancel(m.baseCtx)
 	m.runners[job.ID] = cancel
 
-	go func() {
-		ticker := time.NewTicker(job.Interval)
-		defer ticker.Stop()
-
+	go func(item schedulerdomain.Job) {
 		for {
+			nextRun, err := item.NextRun(time.Now().UTC())
+			if err != nil {
+				m.logger.Error("cron schedule parse failed",
+					slog.String("job_id", item.ID),
+					slog.String("job_name", item.Name),
+					slog.String("error", err.Error()),
+				)
+				if waitContextDone(ctx, time.Minute) {
+					return
+				}
+				continue
+			}
+
+			waitFor := time.Until(nextRun)
+			if waitFor < 0 {
+				waitFor = 0
+			}
+			timer := time.NewTimer(waitFor)
 			select {
 			case <-ctx.Done():
+				timer.Stop()
 				return
-			case firedAt := <-ticker.C:
-				m.triggerJob(ctx, job, firedAt.UTC())
+			case firedAt := <-timer.C:
+				m.triggerJob(ctx, item, firedAt.UTC())
 			}
 		}
-	}()
+	}(job)
 }
 
 func (m *Manager) stopRunnerLocked(jobID string) {
@@ -221,19 +230,22 @@ func (m *Manager) triggerJob(ctx context.Context, job schedulerdomain.Job, fired
 		channelID = "scheduler-default"
 	}
 
+	sessionID := m.newCronSessionID(job, firedAt)
+
 	metadata := cloneMap(job.Metadata)
 	metadata["job_id"] = job.ID
 	metadata["job_name"] = job.Name
 	metadata["fired_at"] = firedAt.Format(time.RFC3339)
+	metadata["session_id"] = sessionID
 
 	msg := shareddomain.UnifiedMessage{
 		MessageID:     m.idGenerator.NewID(),
-		SessionID:     job.SessionID,
+		SessionID:     sessionID,
 		UserID:        job.UserID,
 		ChannelID:     channelID,
 		ChannelType:   shareddomain.ChannelTypeScheduler,
 		TriggerType:   shareddomain.TriggerTypeCron,
-		Content:       job.Content,
+		Content:       job.TaskConfig.Input,
 		Metadata:      metadata,
 		TraceID:       m.idGenerator.NewID(),
 		CorrelationID: job.ID,
@@ -263,6 +275,31 @@ func (m *Manager) triggerJob(ctx context.Context, job schedulerdomain.Job, fired
 		slog.String("message_id", msg.MessageID),
 		slog.String("route", string(result.Route)),
 	)
+}
+
+func (m *Manager) newCronSessionID(job schedulerdomain.Job, firedAt time.Time) string {
+	prefix := normalize(job.ID)
+	if prefix == "" {
+		prefix = "job"
+	}
+	seed := fmt.Sprintf("%d", firedAt.UTC().UnixNano())
+	if m.idGenerator != nil {
+		if nextID := strings.TrimSpace(m.idGenerator.NewID()); nextID != "" {
+			seed = normalize(nextID)
+		}
+	}
+	return fmt.Sprintf("cron-%s-%s-%s", prefix, firedAt.UTC().Format("20060102t150405z"), seed)
+}
+
+func waitContextDone(ctx context.Context, duration time.Duration) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return true
+	case <-timer.C:
+		return false
+	}
 }
 
 func cloneMap(src map[string]string) map[string]string {
