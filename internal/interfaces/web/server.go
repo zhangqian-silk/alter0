@@ -30,13 +30,16 @@ import (
 var webStaticFS embed.FS
 
 const (
-	controlTaskMetadataJobIDKey   = "job_id"
-	controlTaskMetadataJobNameKey = "job_name"
-	controlTaskMetadataFiredAtKey = "fired_at"
-	defaultControlTaskChannelID   = "web-default"
-	maxTaskArtifactCount          = 128
-	maxTaskArtifactSizeBytes      = 8 * 1024 * 1024
-	taskArtifactReadTimeout       = 3 * time.Second
+	controlTaskMetadataJobIDKey       = "job_id"
+	controlTaskMetadataJobNameKey     = "job_name"
+	controlTaskMetadataFiredAtKey     = "fired_at"
+	controlTaskTerminalParentIDKey    = "alter0.task.terminal_parent_id"
+	controlTaskTerminalSessionIDKey   = "alter0.task.terminal_session_id"
+	controlTaskTerminalInteractiveKey = "alter0.task.terminal_interactive"
+	defaultControlTaskChannelID       = "web-default"
+	maxTaskArtifactCount              = 128
+	maxTaskArtifactSizeBytes          = 8 * 1024 * 1024
+	taskArtifactReadTimeout           = 3 * time.Second
 )
 
 type Orchestrator interface {
@@ -121,6 +124,20 @@ type taskCreateResponse struct {
 	Status        string `json:"status"`
 	QueuePosition int    `json:"queue_position,omitempty"`
 	AcceptedAt    string `json:"accepted_at"`
+}
+
+type controlTaskTerminalInputRequest struct {
+	Input string `json:"input"`
+}
+
+type controlTaskTerminalInputResponse struct {
+	TaskID            string `json:"task_id"`
+	Status            string `json:"status"`
+	SessionID         string `json:"session_id"`
+	TerminalSessionID string `json:"terminal_session_id"`
+	MaxSessions       int    `json:"max_sessions"`
+	ActiveSessions    int    `json:"active_sessions"`
+	TaskDetailPath    string `json:"task_detail_path"`
 }
 
 type streamStartResponse struct {
@@ -358,6 +375,8 @@ type taskControlActions struct {
 type taskSessionLink struct {
 	TaskID              string `json:"task_id"`
 	SessionID           string `json:"session_id"`
+	TerminalSessionID   string `json:"terminal_session_id,omitempty"`
+	TerminalMaxSessions int    `json:"terminal_max_sessions,omitempty"`
 	RequestMessageID    string `json:"request_message_id,omitempty"`
 	ResultMessageID     string `json:"result_message_id,omitempty"`
 	TaskDetailPath      string `json:"task_detail_path"`
@@ -1007,21 +1026,21 @@ func (s *Server) controlTaskItemHandler(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
 			return
 		}
-		writeJSON(w, http.StatusOK, toTaskControlView(item))
+		writeJSON(w, http.StatusOK, s.toTaskControlView(item))
 	case action == "retry" && subAction == "" && r.Method == http.MethodPost:
 		item, err := s.tasks.Retry(taskID)
 		if err != nil {
 			s.writeTaskControlError(w, taskID, err)
 			return
 		}
-		writeJSON(w, http.StatusAccepted, toTaskControlView(item))
+		writeJSON(w, http.StatusAccepted, s.toTaskControlView(item))
 	case action == "cancel" && subAction == "" && r.Method == http.MethodPost:
 		item, err := s.tasks.Cancel(taskID)
 		if err != nil {
 			s.writeTaskControlError(w, taskID, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, toTaskControlView(item))
+		writeJSON(w, http.StatusOK, s.toTaskControlView(item))
 	case action == "logs" && subAction == "" && r.Method == http.MethodGet:
 		cursor, limit, statusCode, err := parseTaskLogQuery(r)
 		if err != nil {
@@ -1036,9 +1055,149 @@ func (s *Server) controlTaskItemHandler(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusOK, page)
 	case action == "logs" && subAction == "stream" && r.Method == http.MethodGet:
 		s.streamTaskLogs(w, r, taskID)
+	case action == "terminal" && subAction == "input" && r.Method == http.MethodPost:
+		s.controlTaskTerminalInputHandler(w, r, taskID)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.Request, taskID string) {
+	defer r.Body.Close()
+
+	baseTask, exists := s.tasks.Get(taskID)
+	if !exists {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
+	var req controlTaskTerminalInputRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+
+	input := strings.TrimSpace(req.Input)
+	if input == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input is required"})
+		return
+	}
+
+	terminalSessionID := strings.TrimSpace(baseTask.RequestMetadata[controlTaskTerminalSessionIDKey])
+	if terminalSessionID == "" {
+		terminalSessionID = strings.TrimSpace(baseTask.SessionID)
+	}
+	if terminalSessionID == "" {
+		terminalSessionID = strings.TrimSpace(baseTask.ID)
+	}
+
+	maxSessions := s.resolveTerminalSessionLimit()
+	activeSessions := s.collectActiveTerminalSessions()
+	if _, exists := activeSessions[terminalSessionID]; !exists && len(activeSessions) >= maxSessions {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":               fmt.Sprintf("terminal session limit reached (%d)", maxSessions),
+			"error_code":          "terminal_session_limit_reached",
+			"max_sessions":        maxSessions,
+			"active_sessions":     len(activeSessions),
+			"terminal_session_id": terminalSessionID,
+		})
+		return
+	}
+
+	source := resolveControlTaskSource(baseTask)
+	channelID := strings.TrimSpace(source.ChannelID)
+	if channelID == "" {
+		channelID = defaultControlTaskChannelID
+	}
+	channelType := source.ChannelType
+	if channelType == "" {
+		channelType = shareddomain.ChannelTypeWeb
+	}
+
+	sourceMessageID := s.idGenerator.NewID()
+	metadata := cloneStringMap(baseTask.RequestMetadata)
+	metadata[taskapp.MetadataTaskAsyncMode] = "force"
+	metadata[taskapp.MetadataTaskSourceMessageID] = sourceMessageID
+	metadata[taskapp.MetadataTaskChannelIDKey] = channelID
+	metadata[taskapp.MetadataTaskChannelTypeKey] = string(channelType)
+	metadata[taskapp.MetadataTaskTriggerTypeKey] = string(shareddomain.TriggerTypeUser)
+	metadata[taskapp.MetadataTaskTraceIDKey] = s.idGenerator.NewID()
+	metadata[controlTaskTerminalSessionIDKey] = terminalSessionID
+	metadata[controlTaskTerminalParentIDKey] = strings.TrimSpace(baseTask.ID)
+	metadata[controlTaskTerminalInteractiveKey] = "true"
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:     sourceMessageID,
+		SessionID:     strings.TrimSpace(baseTask.SessionID),
+		UserID:        strings.TrimSpace(metadata[taskapp.MetadataTaskUserIDKey]),
+		ChannelID:     channelID,
+		ChannelType:   channelType,
+		TriggerType:   shareddomain.TriggerTypeUser,
+		Content:       input,
+		Metadata:      metadata,
+		TraceID:       metadata[taskapp.MetadataTaskTraceIDKey],
+		CorrelationID: strings.TrimSpace(metadata[taskapp.MetadataTaskCorrelationKey]),
+		ReceivedAt:    time.Now().UTC(),
+	}
+
+	task, err := s.tasks.Submit(msg)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, controlTaskTerminalInputResponse{
+		TaskID:            task.ID,
+		Status:            string(task.Status),
+		SessionID:         task.SessionID,
+		TerminalSessionID: terminalSessionID,
+		MaxSessions:       maxSessions,
+		ActiveSessions:    len(activeSessions),
+		TaskDetailPath:    "/api/control/tasks/" + strings.TrimSpace(task.ID),
+	})
+}
+
+func (s *Server) resolveTerminalSessionLimit() int {
+	limit := 5
+	if s.control != nil {
+		configured := s.control.ResolveEnvironmentInt("task_terminal_max_sessions", 0)
+		if configured > 0 {
+			limit = configured
+		} else {
+			limit = s.control.ResolveEnvironmentInt("async_task_workers", limit)
+		}
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > 5 {
+		limit = 5
+	}
+	return limit
+}
+
+func (s *Server) collectActiveTerminalSessions() map[string]struct{} {
+	sessions := map[string]struct{}{}
+	statuses := []taskdomain.TaskStatus{taskdomain.TaskStatusQueued, taskdomain.TaskStatusRunning}
+	for _, status := range statuses {
+		for page := 1; page <= 16; page++ {
+			result := s.tasks.List(taskapp.ListQuery{Status: status, Page: page, PageSize: 200})
+			for _, item := range result.Items {
+				sessionID := strings.TrimSpace(item.RequestMetadata[controlTaskTerminalSessionIDKey])
+				if sessionID == "" {
+					sessionID = strings.TrimSpace(item.SessionID)
+				}
+				if sessionID == "" {
+					continue
+				}
+				sessions[sessionID] = struct{}{}
+			}
+			if !result.Pagination.HasNext {
+				break
+			}
+		}
+	}
+	return sessions
 }
 
 func (s *Server) controlTaskCollectionHandler(w http.ResponseWriter, r *http.Request) {
@@ -1093,7 +1252,7 @@ func (s *Server) writeTaskControlError(w http.ResponseWriter, taskID string, err
 		if item, exists := s.tasks.Get(taskID); exists {
 			writeJSON(w, http.StatusConflict, map[string]any{
 				"error": err.Error(),
-				"view":  toTaskControlView(item),
+				"view":  s.toTaskControlView(item),
 			})
 			return
 		}
@@ -1103,12 +1262,12 @@ func (s *Server) writeTaskControlError(w http.ResponseWriter, taskID string, err
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 }
 
-func toTaskControlView(task taskdomain.Task) taskControlView {
+func (s *Server) toTaskControlView(task taskdomain.Task) taskControlView {
 	return taskControlView{
 		Task:    task,
 		Source:  resolveControlTaskSource(task),
 		Actions: resolveTaskControlActions(task),
-		Link:    resolveTaskSessionLink(task),
+		Link:    s.resolveTaskSessionLink(task),
 	}
 }
 
@@ -1141,12 +1300,18 @@ func resolveTaskControlActions(task taskdomain.Task) taskControlActions {
 	}
 }
 
-func resolveTaskSessionLink(task taskdomain.Task) taskSessionLink {
+func (s *Server) resolveTaskSessionLink(task taskdomain.Task) taskSessionLink {
 	sessionID := strings.TrimSpace(task.SessionID)
 	taskID := strings.TrimSpace(task.ID)
+	terminalSessionID := strings.TrimSpace(task.RequestMetadata[controlTaskTerminalSessionIDKey])
+	if terminalSessionID == "" {
+		terminalSessionID = sessionID
+	}
 	link := taskSessionLink{
 		TaskID:              taskID,
 		SessionID:           sessionID,
+		TerminalSessionID:   terminalSessionID,
+		TerminalMaxSessions: s.resolveTerminalSessionLimit(),
 		RequestMessageID:    strings.TrimSpace(task.MessageLink.RequestMessageID),
 		ResultMessageID:     strings.TrimSpace(task.MessageLink.ResultMessageID),
 		TaskDetailPath:      "/api/control/tasks/" + taskID,
