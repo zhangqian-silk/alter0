@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,22 +21,24 @@ import (
 )
 
 type stubWebTaskService struct {
-	shouldAsync bool
-	assessment  taskapp.ComplexityAssessment
-	submitTask  taskdomain.Task
-	submitErr   error
-	items       map[string]taskdomain.Task
-	bySession   map[string][]taskdomain.Task
-	logPages    map[string]taskapp.TaskLogPage
-	artifacts   map[string][]taskdomain.TaskArtifact
-	artifactRaw map[string][]byte
-	listPage    taskapp.TaskPage
-	lastList    taskapp.ListQuery
-	listFn      func(query taskapp.ListQuery) taskapp.TaskPage
-	cancelErr   error
-	retryErr    error
-	getFn       func(taskID string) (taskdomain.Task, bool)
-	listLogsFn  func(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
+	shouldAsync     bool
+	assessment      taskapp.ComplexityAssessment
+	submitTask      taskdomain.Task
+	submitErr       error
+	lastSubmitMsg   shareddomain.UnifiedMessage
+	submitCallCount int
+	items           map[string]taskdomain.Task
+	bySession       map[string][]taskdomain.Task
+	logPages        map[string]taskapp.TaskLogPage
+	artifacts       map[string][]taskdomain.TaskArtifact
+	artifactRaw     map[string][]byte
+	listPage        taskapp.TaskPage
+	lastList        taskapp.ListQuery
+	listFn          func(query taskapp.ListQuery) taskapp.TaskPage
+	cancelErr       error
+	retryErr        error
+	getFn           func(taskID string) (taskdomain.Task, bool)
+	listLogsFn      func(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
 }
 
 func (s *stubWebTaskService) AssessComplexity(_ shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
@@ -61,7 +64,9 @@ func (s *stubWebTaskService) ShouldRunAsync(_ shareddomain.UnifiedMessage) bool 
 	return assessment.ExecutionMode == taskapp.ExecutionModeAsync
 }
 
-func (s *stubWebTaskService) Submit(_ shareddomain.UnifiedMessage) (taskdomain.Task, error) {
+func (s *stubWebTaskService) Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, error) {
+	s.lastSubmitMsg = msg
+	s.submitCallCount++
 	if s.submitErr != nil {
 		return taskdomain.Task{}, s.submitErr
 	}
@@ -784,6 +789,12 @@ func TestControlTaskViewAndActionConstraints(t *testing.T) {
 	if !strings.Contains(body, `"session_messages_path":"/api/sessions/session-a/messages"`) {
 		t.Fatalf("expected session message link, got %s", body)
 	}
+	if !strings.Contains(body, `"terminal_session_id":"session-a"`) {
+		t.Fatalf("expected terminal session id in detail view, got %s", body)
+	}
+	if !strings.Contains(body, `"terminal_max_sessions":5`) {
+		t.Fatalf("expected terminal max sessions in detail view, got %s", body)
+	}
 	if !strings.Contains(body, `"trigger_type":"cron"`) || !strings.Contains(body, `"channel_type":"scheduler"`) {
 		t.Fatalf("expected source payload in detail view, got %s", body)
 	}
@@ -800,6 +811,120 @@ func TestControlTaskViewAndActionConstraints(t *testing.T) {
 	}
 	if !strings.Contains(retryRec.Body.String(), `"view"`) {
 		t.Fatalf("expected conflict view payload, got %s", retryRec.Body.String())
+	}
+}
+
+func TestControlTaskTerminalInputCreatesFollowUpTask(t *testing.T) {
+	now := time.Date(2026, 3, 5, 11, 0, 0, 0, time.UTC)
+	taskSvc := &stubWebTaskService{
+		items: map[string]taskdomain.Task{
+			"task-1": {
+				ID:        "task-1",
+				SessionID: "session-a",
+				Status:    taskdomain.TaskStatusRunning,
+				CreatedAt: now,
+				UpdatedAt: now,
+				RequestMetadata: map[string]string{
+					taskapp.MetadataTaskUserIDKey:      "user-a",
+					taskapp.MetadataTaskCorrelationKey: "corr-a",
+					taskapp.MetadataTaskChannelTypeKey: "web",
+					taskapp.MetadataTaskChannelIDKey:   "web-default",
+					controlTaskTerminalSessionIDKey:    "terminal-a",
+					controlTaskTerminalInteractiveKey:  "true",
+					controlTaskTerminalParentIDKey:     "task-root",
+				},
+			},
+		},
+		submitTask: taskdomain.Task{
+			ID:        "task-2",
+			SessionID: "session-a",
+			Status:    taskdomain.TaskStatusQueued,
+		},
+	}
+	server := &Server{
+		tasks:       taskSvc,
+		idGenerator: &sequenceIDGenerator{ids: []string{"msg-followup", "trace-followup"}},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/tasks/task-1/terminal/input", strings.NewReader(`{"input":"continue with next step"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.controlTaskItemHandler(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d", http.StatusAccepted, rec.Code)
+	}
+	if taskSvc.submitCallCount != 1 {
+		t.Fatalf("expected submit called once, got %d", taskSvc.submitCallCount)
+	}
+	if taskSvc.lastSubmitMsg.Content != "continue with next step" {
+		t.Fatalf("expected forwarded input content, got %q", taskSvc.lastSubmitMsg.Content)
+	}
+	if got := taskSvc.lastSubmitMsg.Metadata[controlTaskTerminalSessionIDKey]; got != "terminal-a" {
+		t.Fatalf("expected terminal session metadata terminal-a, got %q", got)
+	}
+	if got := taskSvc.lastSubmitMsg.Metadata[controlTaskTerminalParentIDKey]; got != "task-1" {
+		t.Fatalf("expected terminal parent metadata task-1, got %q", got)
+	}
+	if got := taskSvc.lastSubmitMsg.Metadata[controlTaskTerminalInteractiveKey]; got != "true" {
+		t.Fatalf("expected interactive metadata true, got %q", got)
+	}
+	if !strings.Contains(rec.Body.String(), `"task_id":"task-2"`) {
+		t.Fatalf("expected follow-up task id in response, got %s", rec.Body.String())
+	}
+}
+
+func TestControlTaskTerminalInputRejectsWhenLimitReached(t *testing.T) {
+	taskSvc := &stubWebTaskService{
+		items: map[string]taskdomain.Task{
+			"task-target": {
+				ID:        "task-target",
+				SessionID: "session-target",
+				Status:    taskdomain.TaskStatusRunning,
+				RequestMetadata: map[string]string{
+					controlTaskTerminalSessionIDKey: "session-target",
+				},
+			},
+		},
+		listFn: func(query taskapp.ListQuery) taskapp.TaskPage {
+			if query.Status != taskdomain.TaskStatusQueued {
+				return taskapp.TaskPage{Items: []taskdomain.Task{}, Pagination: taskapp.Pagination{Page: query.Page, PageSize: query.PageSize, Total: 0, HasNext: false}}
+			}
+			items := []taskdomain.Task{}
+			for i := 1; i <= 5; i++ {
+				suffix := strconv.Itoa(i)
+				items = append(items, taskdomain.Task{
+					ID:        "task-active-" + suffix,
+					SessionID: "session-active-" + suffix,
+					Status:    taskdomain.TaskStatusQueued,
+					RequestMetadata: map[string]string{
+						controlTaskTerminalSessionIDKey: "session-active-" + suffix,
+					},
+				})
+			}
+			return taskapp.TaskPage{Items: items, Pagination: taskapp.Pagination{Page: query.Page, PageSize: query.PageSize, Total: len(items), HasNext: false}}
+		},
+	}
+	server := &Server{
+		tasks:       taskSvc,
+		idGenerator: &sequenceIDGenerator{ids: []string{"msg-followup", "trace-followup"}},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/tasks/task-target/terminal/input", strings.NewReader(`{"input":"run"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.controlTaskItemHandler(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d", http.StatusConflict, rec.Code)
+	}
+	if taskSvc.submitCallCount != 0 {
+		t.Fatalf("expected submit not called when limit reached, got %d", taskSvc.submitCallCount)
+	}
+	if !strings.Contains(rec.Body.String(), `"error_code":"terminal_session_limit_reached"`) {
+		t.Fatalf("expected terminal limit error code, got %s", rec.Body.String())
 	}
 }
 

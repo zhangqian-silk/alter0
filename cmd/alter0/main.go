@@ -59,6 +59,7 @@ func main() {
 	maxQueueSize := flag.Int("max-queue-size", 128, "max waiting queue size")
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
 	asyncTaskWorkers := flag.Int("async-task-workers", 5, "background async task worker count (max 5)")
+	taskTerminalMaxSessions := flag.Int("task-terminal-max-sessions", 5, "max concurrent terminal task sessions (max 5)")
 	asyncTaskTimeout := flag.Duration("async-task-timeout", 90*time.Second, "background async task timeout")
 	asyncTaskMaxRetries := flag.Int("async-task-max-retries", 1, "background async task max retries")
 	asyncLongContentThreshold := flag.Int("async-long-content-threshold", 240, "request content length threshold to trigger async task")
@@ -107,6 +108,7 @@ func main() {
 	resolvedMaxQueueSize := control.ResolveEnvironmentInt("max_queue_size", *maxQueueSize)
 	resolvedQueueTimeout := control.ResolveEnvironmentDuration("queue_timeout", *queueTimeout)
 	resolvedAsyncTaskWorkers := control.ResolveEnvironmentInt("async_task_workers", *asyncTaskWorkers)
+	resolvedTaskTerminalMaxSessions := control.ResolveEnvironmentInt("task_terminal_max_sessions", *taskTerminalMaxSessions)
 	resolvedAsyncTaskTimeout := control.ResolveEnvironmentDuration("async_task_timeout", *asyncTaskTimeout)
 	resolvedAsyncTaskMaxRetries := control.ResolveEnvironmentInt("async_task_max_retries", *asyncTaskMaxRetries)
 	resolvedAsyncLongContentThreshold := control.ResolveEnvironmentInt("async_long_content_threshold", *asyncLongContentThreshold)
@@ -122,12 +124,20 @@ func main() {
 	resolvedLongTermMemoryTokenBudget := control.ResolveEnvironmentInt("long_term_memory_token_budget", *longTermMemoryTokenBudget)
 	resolvedMandatoryContextFile := control.ResolveEnvironmentString("mandatory_context_file", strings.TrimSpace(*mandatoryContextFile))
 
+	if resolvedTaskTerminalMaxSessions <= 0 {
+		resolvedTaskTerminalMaxSessions = 5
+	}
+	if resolvedTaskTerminalMaxSessions > 5 {
+		resolvedTaskTerminalMaxSessions = 5
+	}
+
 	control.SetEnvironmentRuntime(map[string]string{
 		"web_addr":                           listenAddr,
 		"worker_pool_size":                   strconv.Itoa(resolvedWorkerPoolSize),
 		"max_queue_size":                     strconv.Itoa(resolvedMaxQueueSize),
 		"queue_timeout":                      resolvedQueueTimeout.String(),
 		"async_task_workers":                 strconv.Itoa(resolvedAsyncTaskWorkers),
+		"task_terminal_max_sessions":         strconv.Itoa(resolvedTaskTerminalMaxSessions),
 		"async_task_timeout":                 resolvedAsyncTaskTimeout.String(),
 		"async_task_max_retries":             strconv.Itoa(resolvedAsyncTaskMaxRetries),
 		"async_long_content_threshold":       strconv.Itoa(resolvedAsyncLongContentThreshold),
