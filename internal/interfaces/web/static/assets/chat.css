@@ -1293,6 +1293,126 @@ body {
   cursor: pointer;
 }
 
+.session-history-view {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 14px;
+}
+
+.cron-view {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 14px;
+}
+
+.cron-form {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.cron-form-title {
+  margin: 0;
+  grid-column: 1 / -1;
+  font-size: 14px;
+  color: var(--ink-strong);
+}
+
+.cron-form-wide {
+  grid-column: 1 / -1;
+}
+
+.cron-form textarea {
+  min-height: 78px;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+  background: #ffffff;
+  color: var(--ink-body);
+}
+
+.cron-enabled-wrap input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 8px;
+}
+
+.cron-form-note {
+  margin: 0;
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.cron-form-actions {
+  grid-column: 1 / -1;
+}
+
+.cron-list-wrap {
+  display: grid;
+  gap: 12px;
+}
+
+.cron-job-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+}
+
+.cron-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cron-job-actions button,
+.cron-run-item button {
+  min-height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: #ffffff;
+  color: var(--ink-body);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.cron-run-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line-soft);
+}
+
+.cron-run-item {
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.cron-run-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.cron-run-meta p {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.cron-run-meta span {
+  color: var(--ink-muted);
+}
+
 .task-summary-list {
   display: grid;
   gap: 12px;
