@@ -183,6 +183,7 @@ const I18N = {
     "route.tasks.title": "Tasks",
     "route.tasks.subtitle": "Observe runtime tasks with source, status, and timeline filters",
     "route.tasks.empty": "No tasks found.",
+    "route.tasks.empty_hint": "Try adjusting filters or check back in a moment.",
     "route.tasks.filter.session": "Session ID",
     "route.tasks.filter.status": "Status",
     "route.tasks.filter.trigger_type": "Trigger Type",
@@ -485,6 +486,7 @@ const I18N = {
     "route.tasks.title": "任务观测",
     "route.tasks.subtitle": "基于来源、状态和时间范围观测运行任务",
     "route.tasks.empty": "暂无任务记录。",
+    "route.tasks.empty_hint": "试试调整筛选条件，或稍后再试。",
     "route.tasks.filter.session": "会话 ID",
     "route.tasks.filter.status": "状态",
     "route.tasks.filter.trigger_type": "触发类型",
@@ -2797,7 +2799,11 @@ function controlTaskListQuery(filters = {}, page = 1, pageSize = 20) {
 function renderControlTaskList(payload) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   if (!items.length) {
-    return `<p class="route-empty">${t("route.tasks.empty")}</p>`;
+    return `<div class="task-empty-state">
+      <div class="task-empty-icon" aria-hidden="true">${renderTaskEmptyIcon()}</div>
+      <p class="task-empty-title">${t("route.tasks.empty")}</p>
+      <p class="task-empty-hint">${t("route.tasks.empty_hint")}</p>
+    </div>`;
   }
   return items.map((item) => {
     const taskID = typeof item?.task_id === "string" ? item.task_id : "-";
@@ -2841,7 +2847,7 @@ function renderControlTaskPagination(payload) {
   return `<div class="task-summary-pagination">
     <p><span>${t("field.messages")}</span><strong>${escapeHTML(total)}</strong></p>
     <p><span>${t("route.tasks.page.label")}</span><strong>${escapeHTML(page)}</strong></p>
-    <button class="task-summary-next" type="button" data-control-task-page-next ${hasNext ? "" : "disabled"}>${t("route.tasks.page.next")}</button>
+    <button class="task-summary-next" type="button" data-control-task-page-next ${hasNext ? "" : "disabled"}><span>${t("route.tasks.page.next")}</span><span class="task-summary-next-icon" aria-hidden="true">${renderChevronRightIcon()}</span></button>
   </div>`;
 }
 
@@ -2965,9 +2971,7 @@ function bindControlTaskView(container, initialPayload) {
     }
     if (advancedToggleButton) {
       advancedToggleButton.setAttribute("aria-expanded", localState.advancedOpen ? "true" : "false");
-      advancedToggleButton.textContent = localState.advancedOpen
-        ? t("route.tasks.filter.advanced_hide")
-        : t("route.tasks.filter.advanced_show");
+      advancedToggleButton.innerHTML = renderAdvancedToggleLabel(localState.advancedOpen);
     }
   };
 
@@ -3327,10 +3331,10 @@ async function loadControlTasksView(container) {
           </select>
         </label>
         <div class="task-filter-primary-actions">
-          <button class="task-filter-advanced-toggle" type="button" data-control-task-advanced-toggle aria-expanded="false">${t("route.tasks.filter.advanced_show")}</button>
+          <button class="task-filter-advanced-toggle" type="button" data-control-task-advanced-toggle aria-expanded="false">${renderAdvancedToggleLabel(false)}</button>
           <div class="task-filter-actions">
-            <button type="submit">${t("route.tasks.filter.apply")}</button>
-            <button type="button" data-control-task-filter-reset>${t("route.tasks.filter.reset")}</button>
+            <button class="task-filter-apply" type="submit">${t("route.tasks.filter.apply")}</button>
+            <button class="task-filter-reset" type="button" data-control-task-filter-reset>${t("route.tasks.filter.reset")}</button>
           </div>
         </div>
       </div>
@@ -3410,6 +3414,23 @@ function renderCopyIcon() {
 
 function renderPanelRightOpenIcon() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M15 3v18"></path><path d="m10 9 3 3-3 3"></path></svg>`;
+}
+
+function renderSettings2Icon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"></path><path d="M14 17H4"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>`;
+}
+
+function renderChevronRightIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>`;
+}
+
+function renderTaskEmptyIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h10"></path><path d="M9 12h10"></path><path d="M9 18h7"></path><path d="M4 6h.01"></path><path d="M4 12h.01"></path><path d="M4 18h.01"></path></svg>`;
+}
+
+function renderAdvancedToggleLabel(expanded) {
+  const label = expanded ? t("route.tasks.filter.advanced_hide") : t("route.tasks.filter.advanced_show");
+  return `<span class="task-filter-advanced-icon" aria-hidden="true">${renderSettings2Icon()}</span><span>${escapeHTML(label)}</span>`;
 }
 
 function renderControlTaskSkeleton(count = 6) {
