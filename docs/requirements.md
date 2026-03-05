@@ -55,7 +55,7 @@
 | R-042 | 异步任务执行模块与前端全量执行明细 | supported | 建立专门异步执行模块并限制最多 5 个任务并发执行；前端任务模块按当前界面风格展示任务执行明细，并完整回传终端运行细节（如“已运行 xxx”） |
 | R-043 | Environments 关键配置统一管理 | supported | 完善 Environments 模块，支持对任务并发等关键运行参数进行可视化配置、校验与持久化，并将当前可配置项统一纳入同一管理入口 |
 | R-044 | Channels 迁移至 Settings 模块 | supported | 前端导航将 `Channels` 从 `Control` 分组迁移到 `Settings` 分组，保持页面能力与接口不变并兼容原有直达路由 |
-| R-045 | Session/Task 关键信息披露增强 | planned | 在 Session、Task 等页面补充展示必要上下文字段（如 `channel`、`message_id`、`channel_id`、`trigger_type`），提升问题定位与执行链路可追溯性 |
+| R-045 | Session/Task 关键信息披露增强 | supported | 在 Session、Task 等页面补充展示必要上下文字段（如 `channel`、`message_id`、`channel_id`、`trigger_type`），提升问题定位与执行链路可追溯性 |
 
 ## 需求细化（分文件）
 

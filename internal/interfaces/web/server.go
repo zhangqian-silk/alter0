@@ -297,14 +297,17 @@ type memoryTaskListQuery struct {
 }
 
 type controlTaskListQuery struct {
-	SessionID   string
-	Status      taskdomain.TaskStatus
-	TriggerType shareddomain.TriggerType
-	ChannelType shareddomain.ChannelType
-	StartAt     time.Time
-	EndAt       time.Time
-	Page        int
-	PageSize    int
+	SessionID       string
+	Status          taskdomain.TaskStatus
+	TriggerType     shareddomain.TriggerType
+	ChannelType     shareddomain.ChannelType
+	ChannelID       string
+	MessageID       string
+	SourceMessageID string
+	StartAt         time.Time
+	EndAt           time.Time
+	Page            int
+	PageSize        int
 }
 
 type controlTaskSource struct {
@@ -318,26 +321,27 @@ type controlTaskSource struct {
 }
 
 type controlTaskListItem struct {
-	TaskID        string                   `json:"task_id"`
-	SessionID     string                   `json:"session_id"`
-	Status        taskdomain.TaskStatus    `json:"status"`
-	Phase         string                   `json:"phase,omitempty"`
-	Progress      int                      `json:"progress"`
-	QueuePosition int                      `json:"queue_position,omitempty"`
-	QueueWaitMS   int64                    `json:"queue_wait_ms,omitempty"`
-	RetryCount    int                      `json:"retry_count"`
-	TriggerType   shareddomain.TriggerType `json:"trigger_type"`
-	ChannelType   shareddomain.ChannelType `json:"channel_type"`
-	ChannelID     string                   `json:"channel_id"`
-	CorrelationID string                   `json:"correlation_id,omitempty"`
-	JobID         string                   `json:"job_id,omitempty"`
-	JobName       string                   `json:"job_name,omitempty"`
-	FiredAt       time.Time                `json:"fired_at,omitempty"`
-	CreatedAt     time.Time                `json:"created_at"`
-	StartedAt     time.Time                `json:"started_at,omitempty"`
-	UpdatedAt     time.Time                `json:"updated_at"`
-	FinishedAt    time.Time                `json:"finished_at,omitempty"`
-	Error         string                   `json:"error,omitempty"`
+	TaskID          string                   `json:"task_id"`
+	SessionID       string                   `json:"session_id"`
+	SourceMessageID string                   `json:"source_message_id,omitempty"`
+	Status          taskdomain.TaskStatus    `json:"status"`
+	Phase           string                   `json:"phase,omitempty"`
+	Progress        int                      `json:"progress"`
+	QueuePosition   int                      `json:"queue_position,omitempty"`
+	QueueWaitMS     int64                    `json:"queue_wait_ms,omitempty"`
+	RetryCount      int                      `json:"retry_count"`
+	TriggerType     shareddomain.TriggerType `json:"trigger_type"`
+	ChannelType     shareddomain.ChannelType `json:"channel_type"`
+	ChannelID       string                   `json:"channel_id"`
+	CorrelationID   string                   `json:"correlation_id,omitempty"`
+	JobID           string                   `json:"job_id,omitempty"`
+	JobName         string                   `json:"job_name,omitempty"`
+	FiredAt         time.Time                `json:"fired_at,omitempty"`
+	CreatedAt       time.Time                `json:"created_at"`
+	StartedAt       time.Time                `json:"started_at,omitempty"`
+	UpdatedAt       time.Time                `json:"updated_at"`
+	FinishedAt      time.Time                `json:"finished_at,omitempty"`
+	Error           string                   `json:"error,omitempty"`
 }
 
 type taskControlActionState struct {
@@ -1443,26 +1447,27 @@ func toControlTaskListItem(task taskdomain.Task) controlTaskListItem {
 	}
 	source := resolveControlTaskSource(task)
 	return controlTaskListItem{
-		TaskID:        strings.TrimSpace(task.ID),
-		SessionID:     strings.TrimSpace(task.SessionID),
-		Status:        task.Status,
-		Phase:         strings.TrimSpace(task.Phase),
-		Progress:      task.Progress,
-		QueuePosition: task.QueuePosition,
-		QueueWaitMS:   task.QueueWaitMS,
-		RetryCount:    task.RetryCount,
-		TriggerType:   source.TriggerType,
-		ChannelType:   source.ChannelType,
-		ChannelID:     source.ChannelID,
-		CorrelationID: source.CorrelationID,
-		JobID:         source.JobID,
-		JobName:       source.JobName,
-		FiredAt:       source.FiredAt,
-		CreatedAt:     task.CreatedAt.UTC(),
-		StartedAt:     task.StartedAt.UTC(),
-		UpdatedAt:     resolveControlTaskUpdatedAt(task),
-		FinishedAt:    task.FinishedAt.UTC(),
-		Error:         errorText,
+		TaskID:          strings.TrimSpace(task.ID),
+		SessionID:       strings.TrimSpace(task.SessionID),
+		SourceMessageID: resolveTaskSourceMessageID(task),
+		Status:          task.Status,
+		Phase:           strings.TrimSpace(task.Phase),
+		Progress:        task.Progress,
+		QueuePosition:   task.QueuePosition,
+		QueueWaitMS:     task.QueueWaitMS,
+		RetryCount:      task.RetryCount,
+		TriggerType:     source.TriggerType,
+		ChannelType:     source.ChannelType,
+		ChannelID:       source.ChannelID,
+		CorrelationID:   source.CorrelationID,
+		JobID:           source.JobID,
+		JobName:         source.JobName,
+		FiredAt:         source.FiredAt,
+		CreatedAt:       task.CreatedAt.UTC(),
+		StartedAt:       task.StartedAt.UTC(),
+		UpdatedAt:       resolveControlTaskUpdatedAt(task),
+		FinishedAt:      task.FinishedAt.UTC(),
+		Error:           errorText,
 	}
 }
 
@@ -1487,6 +1492,15 @@ func matchControlTaskFilters(task taskdomain.Task, query controlTaskListQuery) b
 	if strings.TrimSpace(string(query.ChannelType)) != "" && source.ChannelType != query.ChannelType {
 		return false
 	}
+	if query.ChannelID != "" && !strings.EqualFold(source.ChannelID, query.ChannelID) {
+		return false
+	}
+	if query.SourceMessageID != "" && !strings.EqualFold(resolveTaskSourceMessageID(task), query.SourceMessageID) {
+		return false
+	}
+	if query.MessageID != "" && !matchTaskMessageID(task, query.MessageID) {
+		return false
+	}
 	at := resolveControlTaskUpdatedAt(task)
 	if !query.StartAt.IsZero() && at.Before(query.StartAt) {
 		return false
@@ -1495,6 +1509,38 @@ func matchControlTaskFilters(task taskdomain.Task, query controlTaskListQuery) b
 		return false
 	}
 	return true
+}
+
+func resolveTaskSourceMessageID(task taskdomain.Task) string {
+	if sourceMessageID := strings.TrimSpace(task.SourceMessageID); sourceMessageID != "" {
+		return sourceMessageID
+	}
+	if requestMessageID := strings.TrimSpace(task.MessageLink.RequestMessageID); requestMessageID != "" {
+		return requestMessageID
+	}
+	if messageID := strings.TrimSpace(task.MessageID); messageID != "" {
+		return messageID
+	}
+	return ""
+}
+
+func matchTaskMessageID(task taskdomain.Task, messageID string) bool {
+	target := strings.TrimSpace(messageID)
+	if target == "" {
+		return true
+	}
+	candidates := []string{
+		strings.TrimSpace(task.SourceMessageID),
+		strings.TrimSpace(task.MessageID),
+		strings.TrimSpace(task.MessageLink.RequestMessageID),
+		strings.TrimSpace(task.MessageLink.ResultMessageID),
+	}
+	for _, candidate := range candidates {
+		if strings.EqualFold(candidate, target) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveControlTaskSource(task taskdomain.Task) controlTaskSource {
@@ -2386,11 +2432,13 @@ func parseSessionQuery(r *http.Request) (sessionapp.SessionQuery, int, error) {
 	}
 
 	query := sessionapp.SessionQuery{
-		StartAt:  startAt,
-		EndAt:    endAt,
-		Page:     page,
-		PageSize: pageSize,
-		JobID:    strings.TrimSpace(r.URL.Query().Get("job_id")),
+		StartAt:   startAt,
+		EndAt:     endAt,
+		Page:      page,
+		PageSize:  pageSize,
+		ChannelID: strings.TrimSpace(r.URL.Query().Get("channel_id")),
+		MessageID: strings.TrimSpace(r.URL.Query().Get("message_id")),
+		JobID:     strings.TrimSpace(r.URL.Query().Get("job_id")),
 	}
 	rawTriggerType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("trigger_type")))
 	if rawTriggerType != "" {
@@ -2404,6 +2452,16 @@ func parseSessionQuery(r *http.Request) (sessionapp.SessionQuery, int, error) {
 	}
 	if query.JobID != "" && query.TriggerType == "" {
 		query.TriggerType = shareddomain.TriggerTypeCron
+	}
+	rawChannelType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("channel_type")))
+	if rawChannelType != "" {
+		channelType := shareddomain.ChannelType(rawChannelType)
+		switch channelType {
+		case shareddomain.ChannelTypeCLI, shareddomain.ChannelTypeWeb, shareddomain.ChannelTypeScheduler:
+			query.ChannelType = channelType
+		default:
+			return sessionapp.SessionQuery{}, http.StatusBadRequest, errors.New("channel_type must be cli/web/scheduler")
+		}
 	}
 
 	return query, http.StatusOK, nil
@@ -2532,11 +2590,14 @@ func parseControlTaskListQuery(r *http.Request) (controlTaskListQuery, int, erro
 	}
 
 	query := controlTaskListQuery{
-		SessionID: strings.TrimSpace(r.URL.Query().Get("session_id")),
-		StartAt:   startAt,
-		EndAt:     endAt,
-		Page:      page,
-		PageSize:  pageSize,
+		SessionID:       strings.TrimSpace(r.URL.Query().Get("session_id")),
+		ChannelID:       strings.TrimSpace(r.URL.Query().Get("channel_id")),
+		MessageID:       strings.TrimSpace(r.URL.Query().Get("message_id")),
+		SourceMessageID: strings.TrimSpace(r.URL.Query().Get("source_message_id")),
+		StartAt:         startAt,
+		EndAt:           endAt,
+		Page:            page,
+		PageSize:        pageSize,
 	}
 	rawStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
 	if rawStatus != "" {

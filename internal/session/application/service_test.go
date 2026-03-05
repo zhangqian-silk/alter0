@@ -132,6 +132,20 @@ func TestServiceListSessionsSupportsSourceFilters(t *testing.T) {
 				ChannelID:   "web-default",
 			},
 		),
+		newRecord(
+			"m-3",
+			"s-user",
+			sessiondomain.MessageRoleAssistant,
+			"done",
+			base.Add(2*time.Minute),
+			shareddomain.RouteNL,
+			"",
+			sessiondomain.MessageSource{
+				TriggerType: shareddomain.TriggerTypeUser,
+				ChannelType: shareddomain.ChannelTypeWeb,
+				ChannelID:   "web-default",
+			},
+		),
 	); err != nil {
 		t.Fatalf("append failed: %v", err)
 	}
@@ -156,6 +170,25 @@ func TestServiceListSessionsSupportsSourceFilters(t *testing.T) {
 	})
 	if len(cronByJob.Items) != 1 || cronByJob.Items[0].JobID != "job-a" {
 		t.Fatalf("expected cron job job-a, got %+v", cronByJob.Items)
+	}
+
+	userByChannel := service.ListSessions(SessionQuery{
+		ChannelType: shareddomain.ChannelTypeWeb,
+		ChannelID:   "web-default",
+		Page:        1,
+		PageSize:    10,
+	})
+	if len(userByChannel.Items) != 1 || userByChannel.Items[0].SessionID != "s-user" {
+		t.Fatalf("expected web session s-user, got %+v", userByChannel.Items)
+	}
+
+	userByMessage := service.ListSessions(SessionQuery{
+		MessageID: "m-3",
+		Page:      1,
+		PageSize:  10,
+	})
+	if len(userByMessage.Items) != 1 || userByMessage.Items[0].SessionID != "s-user" {
+		t.Fatalf("expected message filtered session s-user, got %+v", userByMessage.Items)
 	}
 
 	noMatch := service.ListSessions(SessionQuery{

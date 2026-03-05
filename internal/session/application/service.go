@@ -35,6 +35,9 @@ type SessionQuery struct {
 	StartAt     time.Time
 	EndAt       time.Time
 	TriggerType shareddomain.TriggerType
+	ChannelType shareddomain.ChannelType
+	ChannelID   string
+	MessageID   string
 	JobID       string
 	Page        int
 	PageSize    int
@@ -147,6 +150,9 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 	startAt := normalizeTime(query.StartAt)
 	endAt := normalizeTime(query.EndAt)
 	triggerType := shareddomain.TriggerType(strings.ToLower(strings.TrimSpace(string(query.TriggerType))))
+	channelType := shareddomain.ChannelType(strings.ToLower(strings.TrimSpace(string(query.ChannelType))))
+	channelID := strings.TrimSpace(query.ChannelID)
+	messageID := strings.TrimSpace(query.MessageID)
 	jobID := strings.TrimSpace(query.JobID)
 
 	s.mu.RLock()
@@ -181,7 +187,10 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 			JobName:       source.JobName,
 			FiredAt:       source.FiredAt,
 		}
-		if !matchSessionSourceFilters(summary, triggerType, jobID) {
+		if !matchSessionSourceFilters(summary, triggerType, channelType, channelID, jobID) {
+			continue
+		}
+		if messageID != "" && !matchSessionMessageIDFilter(s.records, indexes[start:end], messageID) {
 			continue
 		}
 		summaries = append(summaries, summary)
@@ -437,12 +446,34 @@ func normalizeMessageSource(source sessiondomain.MessageSource) sessiondomain.Me
 	return source
 }
 
-func matchSessionSourceFilters(summary sessiondomain.SessionSummary, triggerType shareddomain.TriggerType, jobID string) bool {
+func matchSessionSourceFilters(
+	summary sessiondomain.SessionSummary,
+	triggerType shareddomain.TriggerType,
+	channelType shareddomain.ChannelType,
+	channelID string,
+	jobID string,
+) bool {
 	if triggerType != "" && summary.TriggerType != triggerType {
+		return false
+	}
+	if channelType != "" && summary.ChannelType != channelType {
+		return false
+	}
+	if channelID != "" && !strings.EqualFold(summary.ChannelID, channelID) {
 		return false
 	}
 	if jobID != "" && !strings.EqualFold(summary.JobID, jobID) {
 		return false
 	}
 	return true
+}
+
+func matchSessionMessageIDFilter(records []sessiondomain.MessageRecord, indexes []int, messageID string) bool {
+	for _, idx := range indexes {
+		record := records[idx]
+		if strings.EqualFold(strings.TrimSpace(record.MessageID), messageID) {
+			return true
+		}
+	}
+	return false
 }

@@ -53,7 +53,11 @@ func TestSessionListHandlerReturnsPagedData(t *testing.T) {
 		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/sessions?page=2&page_size=10&trigger_type=cron&job_id=job-daily", nil)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/sessions?page=2&page_size=10&trigger_type=cron&channel_type=scheduler&channel_id=scheduler-default&message_id=msg-1&job_id=job-daily",
+		nil,
+	)
 	rec := httptest.NewRecorder()
 	server.sessionListHandler(rec, req)
 
@@ -65,6 +69,15 @@ func TestSessionListHandlerReturnsPagedData(t *testing.T) {
 	}
 	if history.lastSessionQuery.TriggerType != shareddomain.TriggerTypeCron {
 		t.Fatalf("expected trigger_type cron, got %s", history.lastSessionQuery.TriggerType)
+	}
+	if history.lastSessionQuery.ChannelType != shareddomain.ChannelTypeScheduler {
+		t.Fatalf("expected channel_type scheduler, got %s", history.lastSessionQuery.ChannelType)
+	}
+	if history.lastSessionQuery.ChannelID != "scheduler-default" {
+		t.Fatalf("expected channel_id scheduler-default, got %s", history.lastSessionQuery.ChannelID)
+	}
+	if history.lastSessionQuery.MessageID != "msg-1" {
+		t.Fatalf("expected message_id msg-1, got %s", history.lastSessionQuery.MessageID)
 	}
 	if history.lastSessionQuery.JobID != "job-daily" {
 		t.Fatalf("expected job_id job-daily, got %s", history.lastSessionQuery.JobID)
@@ -152,5 +165,12 @@ func TestSessionHandlersValidateInputs(t *testing.T) {
 	server.sessionListHandler(invalidTriggerRec, invalidTriggerReq)
 	if invalidTriggerRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, invalidTriggerRec.Code)
+	}
+
+	invalidChannelReq := httptest.NewRequest(http.MethodGet, "/api/sessions?channel_type=mobile", nil)
+	invalidChannelRec := httptest.NewRecorder()
+	server.sessionListHandler(invalidChannelRec, invalidChannelReq)
+	if invalidChannelRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, invalidChannelRec.Code)
 	}
 }
