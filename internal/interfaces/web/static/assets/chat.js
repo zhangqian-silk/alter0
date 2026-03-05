@@ -249,6 +249,36 @@ const I18N = {
     "route.models.subtitle": "Model capabilities",
     "route.envs.title": "Environments",
     "route.envs.subtitle": "Environment and deployment settings",
+    "route.envs.save": "Save Changes",
+    "route.envs.refresh": "Reload",
+    "route.envs.show_sensitive": "Reveal Sensitive",
+    "route.envs.hide_sensitive": "Hide Sensitive",
+    "route.envs.current_value": "Configured",
+    "route.envs.default_value": "Default",
+    "route.envs.effective_value": "Effective",
+    "route.envs.apply_mode": "Apply Mode",
+    "route.envs.source": "Source",
+    "route.envs.validation": "Validation",
+    "route.envs.pending_restart": "Pending Restart",
+    "route.envs.hot_reload": "Hot Reload",
+    "route.envs.no_changes": "No configuration changes.",
+    "route.envs.saved": "Environment configuration saved.",
+    "route.envs.save_failed": "Save failed: {error}",
+    "route.envs.loading": "Loading environments...",
+    "route.envs.audit.title": "Change Audits",
+    "route.envs.audit.empty": "No environment audits.",
+    "route.envs.audit.operator": "Operator",
+    "route.envs.audit.at": "Changed At",
+    "route.envs.audit.requires_restart": "Requires Restart",
+    "route.envs.audit.change": "{key}: {old} → {new} ({mode})",
+    "route.envs.restart_notice": "Some changes require restart: {keys}",
+    "route.envs.apply.immediate": "Immediate",
+    "route.envs.apply.restart": "Restart",
+    "route.envs.source.default": "Default",
+    "route.envs.source.runtime": "Runtime",
+    "route.envs.source.persisted": "Persisted",
+    "route.envs.validation.none": "No constraints",
+    "route.envs.hidden": "Hidden value",
     "route.connected": "Page Connected",
     "route.connected_desc": "This page route is active. Content can be expanded by module.",
     "loading": "Loading...",
@@ -458,6 +488,36 @@ const I18N = {
     "route.models.subtitle": "模型能力",
     "route.envs.title": "环境",
     "route.envs.subtitle": "环境与部署设置",
+    "route.envs.save": "保存变更",
+    "route.envs.refresh": "重新加载",
+    "route.envs.show_sensitive": "显示敏感项",
+    "route.envs.hide_sensitive": "隐藏敏感项",
+    "route.envs.current_value": "配置值",
+    "route.envs.default_value": "默认值",
+    "route.envs.effective_value": "生效值",
+    "route.envs.apply_mode": "生效方式",
+    "route.envs.source": "来源",
+    "route.envs.validation": "校验规则",
+    "route.envs.pending_restart": "待重启生效",
+    "route.envs.hot_reload": "热更新",
+    "route.envs.no_changes": "没有配置变更。",
+    "route.envs.saved": "环境配置已保存。",
+    "route.envs.save_failed": "保存失败：{error}",
+    "route.envs.loading": "正在加载环境配置...",
+    "route.envs.audit.title": "变更审计",
+    "route.envs.audit.empty": "暂无环境配置审计。",
+    "route.envs.audit.operator": "操作人",
+    "route.envs.audit.at": "变更时间",
+    "route.envs.audit.requires_restart": "需要重启",
+    "route.envs.audit.change": "{key}: {old} → {new}（{mode}）",
+    "route.envs.restart_notice": "以下配置需重启后生效：{keys}",
+    "route.envs.apply.immediate": "即时生效",
+    "route.envs.apply.restart": "重启生效",
+    "route.envs.source.default": "默认值",
+    "route.envs.source.runtime": "运行时",
+    "route.envs.source.persisted": "持久化",
+    "route.envs.validation.none": "无约束",
+    "route.envs.hidden": "隐藏值",
     "route.connected": "页面已连接",
     "route.connected_desc": "该页面路由已激活。内容可按模块扩展。",
     "loading": "加载中...",
@@ -513,7 +573,7 @@ const ROUTES = {
   environments: {
     key: "envs",
     mode: "page",
-    loader: loadPlaceholderView
+    loader: loadEnvironmentsView
   }
 };
 
@@ -3143,6 +3203,287 @@ async function loadMemoryView(container) {
   </section>`;
   bindMemoryTabSwitch(container);
   bindTaskHistoryView(container, taskPayload);
+}
+
+function formatEnvironmentApplyMode(mode) {
+  const normalized = String(mode || "").trim().toLowerCase();
+  if (normalized === "immediate") {
+    return t("route.envs.apply.immediate");
+  }
+  return t("route.envs.apply.restart");
+}
+
+function formatEnvironmentSource(source) {
+  const normalized = String(source || "").trim().toLowerCase();
+  if (normalized === "persisted") {
+    return t("route.envs.source.persisted");
+  }
+  if (normalized === "runtime") {
+    return t("route.envs.source.runtime");
+  }
+  return t("route.envs.source.default");
+}
+
+function renderEnvironmentValidation(definition) {
+  const validation = definition?.validation || {};
+  const parts = [];
+  if (validation?.required) {
+    parts.push("required");
+  }
+  if (typeof validation?.min === "string" && validation.min.trim()) {
+    parts.push(`min=${validation.min.trim()}`);
+  }
+  if (typeof validation?.max === "string" && validation.max.trim()) {
+    parts.push(`max=${validation.max.trim()}`);
+  }
+  const allowed = Array.isArray(validation?.allowed) ? validation.allowed.filter((item) => String(item || "").trim()) : [];
+  if (allowed.length) {
+    parts.push(`allowed=${allowed.join("|")}`);
+  }
+  if (!parts.length) {
+    return t("route.envs.validation.none");
+  }
+  return parts.join(", ");
+}
+
+function renderEnvironmentInput(item) {
+  const definition = item?.definition || {};
+  const key = normalizeText(definition?.key || "");
+  const type = normalizeText(definition?.type || "string").toLowerCase();
+  const value = normalizeText(item?.value || "");
+  const masked = Boolean(item?.masked);
+  const validation = definition?.validation || {};
+  const requiredAttr = validation?.required ? "required" : "";
+  const disabledAttr = masked ? "disabled" : "";
+  const originalValue = escapeHTML(value);
+  const baseAttrs = `name="${escapeHTML(key)}" data-env-input data-env-key="${escapeHTML(key)}" data-original="${originalValue}" ${requiredAttr} ${disabledAttr}`;
+
+  if (type === "integer") {
+    const minAttr = typeof validation?.min === "string" && validation.min.trim()
+      ? `min="${escapeHTML(validation.min.trim())}"`
+      : "";
+    const maxAttr = typeof validation?.max === "string" && validation.max.trim()
+      ? `max="${escapeHTML(validation.max.trim())}"`
+      : "";
+    return `<input type="number" ${baseAttrs} value="${originalValue}" ${minAttr} ${maxAttr}>`;
+  }
+
+  if (type === "enum") {
+    const allowed = Array.isArray(validation?.allowed) ? validation.allowed.filter((itemValue) => String(itemValue || "").trim()) : [];
+    if (!allowed.includes(value)) {
+      allowed.unshift(value);
+    }
+    return `<select ${baseAttrs}>
+      ${allowed.map((option) => `<option value="${escapeHTML(option)}" ${option === value ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
+    </select>`;
+  }
+
+  const placeholderAttr = masked ? `placeholder="${escapeHTML(t("route.envs.hidden"))}"` : "";
+  return `<input type="${masked ? "password" : "text"}" ${baseAttrs} value="${masked ? "" : originalValue}" ${placeholderAttr}>`;
+}
+
+function renderEnvironmentItem(item) {
+  const definition = item?.definition || {};
+  const key = normalizeText(definition?.key || "-");
+  const name = normalizeText(definition?.name || key);
+  const currentValue = normalizeText(item?.value || "");
+  const effectiveValue = normalizeText(item?.effective_value || "");
+  const defaultValue = normalizeText(definition?.default_value || "");
+  const pendingRestart = Boolean(item?.pending_restart);
+  const hotReload = Boolean(definition?.hot_reload);
+  const applyMode = formatEnvironmentApplyMode(definition?.apply_mode);
+  const source = formatEnvironmentSource(item?.value_source);
+  const validation = renderEnvironmentValidation(definition);
+  const inputControl = renderEnvironmentInput(item);
+  const pendingBadge = pendingRestart
+    ? `<span class="environment-pending">${t("route.envs.pending_restart")}</span>`
+    : "";
+  return `<article class="environment-item" data-environment-item="${escapeHTML(key)}">
+    <header class="environment-item-head">
+      <h5>${escapeHTML(name)}</h5>
+      <code>${escapeHTML(key)}</code>
+      ${pendingBadge}
+    </header>
+    <label class="environment-input-row">
+      <span>${t("route.envs.current_value")}</span>
+      ${inputControl}
+    </label>
+    <div class="environment-meta">
+      <p><span>${t("route.envs.default_value")}</span><strong>${escapeHTML(defaultValue || "-")}</strong></p>
+      <p><span>${t("route.envs.effective_value")}</span><strong>${escapeHTML(effectiveValue || "-")}</strong></p>
+      <p><span>${t("route.envs.apply_mode")}</span><strong>${escapeHTML(applyMode)}</strong></p>
+      <p><span>${t("route.envs.source")}</span><strong>${escapeHTML(source)}</strong></p>
+      <p><span>${t("route.envs.validation")}</span><strong>${escapeHTML(validation)}</strong></p>
+      <p><span>${t("route.envs.hot_reload")}</span><strong>${escapeHTML(hotReload ? t("status.enabled") : t("status.disabled"))}</strong></p>
+    </div>
+    ${pendingRestart ? `<p class="environment-item-notice">${escapeHTML(t("route.envs.restart_notice", { keys: key }))}</p>` : ""}
+    <input type="hidden" data-env-current-value="${escapeHTML(key)}" value="${escapeHTML(currentValue)}">
+  </article>`;
+}
+
+function renderEnvironmentModules(items) {
+  const safeItems = Array.isArray(items) ? items : [];
+  if (!safeItems.length) {
+    return `<p class="route-empty">${t("route.envs.loading")}</p>`;
+  }
+  const modules = [];
+  const moduleMap = new Map();
+  safeItems.forEach((item) => {
+    const moduleName = normalizeText(item?.definition?.module || "General");
+    if (!moduleMap.has(moduleName)) {
+      moduleMap.set(moduleName, []);
+      modules.push(moduleName);
+    }
+    moduleMap.get(moduleName).push(item);
+  });
+  return modules.map((moduleName) => {
+    const moduleItems = moduleMap.get(moduleName) || [];
+    return `<section class="environment-module">
+      <h4>${escapeHTML(moduleName)}</h4>
+      <div class="environment-module-grid">
+        ${moduleItems.map((item) => renderEnvironmentItem(item)).join("")}
+      </div>
+    </section>`;
+  }).join("");
+}
+
+function renderEnvironmentAudits(items) {
+  const safeItems = Array.isArray(items) ? items : [];
+  if (!safeItems.length) {
+    return `<p class="route-empty">${t("route.envs.audit.empty")}</p>`;
+  }
+  return `<div class="environment-audit-list">
+    ${safeItems.map((item) => {
+      const changes = Array.isArray(item?.changes) ? item.changes : [];
+      const changesBody = changes.length
+        ? `<ul>${changes.map((change) => `<li>${escapeHTML(t("route.envs.audit.change", {
+          key: normalizeText(change?.key || "-"),
+          old: normalizeText(change?.old_value || "-"),
+          new: normalizeText(change?.new_value || "-"),
+          mode: formatEnvironmentApplyMode(change?.apply_mode)
+        }))}</li>`).join("")}</ul>`
+        : `<p>-</p>`;
+      return `<article class="environment-audit-item">
+        <p><span>${t("route.envs.audit.operator")}</span><strong>${escapeHTML(normalizeText(item?.operator || "-"))}</strong></p>
+        <p><span>${t("route.envs.audit.at")}</span><strong>${escapeHTML(formatDateTime(item?.occurred_at))}</strong></p>
+        <p><span>${t("route.envs.audit.requires_restart")}</span><strong>${escapeHTML(item?.requires_restart ? t("status.enabled") : t("status.disabled"))}</strong></p>
+        ${changesBody}
+      </article>`;
+    }).join("")}
+  </div>`;
+}
+
+async function loadEnvironmentsView(container) {
+  const localState = { revealSensitive: false };
+
+  const fetchEnvironments = async () => {
+    const query = localState.revealSensitive ? "?reveal_sensitive=true" : "";
+    const [configPayload, auditPayload] = await Promise.all([
+      fetchJSON(`/api/control/environments${query}`),
+      fetchJSON(`/api/control/environments/audits${query}`)
+    ]);
+    return {
+      configItems: Array.isArray(configPayload?.items) ? configPayload.items : [],
+      audits: Array.isArray(auditPayload?.items) ? auditPayload.items : []
+    };
+  };
+
+  const paint = (configItems, audits, statusMessage = "") => {
+    const revealButtonLabel = localState.revealSensitive ? t("route.envs.hide_sensitive") : t("route.envs.show_sensitive");
+    container.innerHTML = `<section class="environment-view" data-environment-view>
+      <form class="environment-form" data-environment-form>
+        <div class="environment-toolbar">
+          <p class="environment-status" data-environment-status>${escapeHTML(statusMessage)}</p>
+          <div class="task-filter-actions">
+            <button type="button" data-environment-reveal>${escapeHTML(revealButtonLabel)}</button>
+            <button type="button" data-environment-refresh>${t("route.envs.refresh")}</button>
+            <button type="submit">${t("route.envs.save")}</button>
+          </div>
+        </div>
+        <div class="environment-modules" data-environment-modules>${renderEnvironmentModules(configItems)}</div>
+      </form>
+      <section class="environment-audits" data-environment-audits>
+        <h4>${t("route.envs.audit.title")}</h4>
+        ${renderEnvironmentAudits(audits)}
+      </section>
+    </section>`;
+  };
+
+  const reload = async (statusMessage = "") => {
+    const payload = await fetchEnvironments();
+    paint(payload.configItems, payload.audits, statusMessage);
+    bindView();
+  };
+
+  const submitChanges = async (form) => {
+    const controls = form.querySelectorAll("[data-env-input]");
+    const changes = {};
+    controls.forEach((control) => {
+      if (control.disabled) {
+        return;
+      }
+      const key = normalizeText(control.getAttribute("data-env-key") || control.name || "");
+      if (!key) {
+        return;
+      }
+      const original = normalizeText(control.getAttribute("data-original") || "");
+      const value = normalizeText(control.value || "");
+      if (value !== original) {
+        changes[key] = value;
+      }
+    });
+
+    if (!Object.keys(changes).length) {
+      await reload(t("route.envs.no_changes"));
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/control/environments", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator: "web-ui", values: changes })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
+        throw new Error(message);
+      }
+      const restartKeys = Array.isArray(payload?.restart_keys) ? payload.restart_keys : [];
+      let message = t("route.envs.saved");
+      if (payload?.needs_restart && restartKeys.length) {
+        message = t("route.envs.restart_notice", { keys: restartKeys.join(", ") });
+      }
+      await reload(message);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown_error";
+      await reload(t("route.envs.save_failed", { error: message }));
+    }
+  };
+
+  const bindView = () => {
+    const form = container.querySelector("[data-environment-form]");
+    const refreshButton = container.querySelector("[data-environment-refresh]");
+    const revealButton = container.querySelector("[data-environment-reveal]");
+    if (!form || !refreshButton || !revealButton) {
+      return;
+    }
+    refreshButton.addEventListener("click", async () => {
+      await reload("");
+    });
+    revealButton.addEventListener("click", async () => {
+      localState.revealSensitive = !localState.revealSensitive;
+      await reload("");
+    });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await submitChanges(form);
+    });
+  };
+
+  const initialPayload = await fetchEnvironments();
+  paint(initialPayload.configItems, initialPayload.audits, "");
+  bindView();
 }
 
 async function loadPlaceholderView(container) {
