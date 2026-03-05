@@ -213,6 +213,12 @@ const I18N = {
     "route.tasks.logs.disconnected": "Log stream disconnected. You can reconnect.",
     "route.tasks.logs.reconnect": "Reconnect",
     "route.tasks.logs.replay": "Replay",
+    "route.tasks.terminal.title": "Terminal",
+    "route.tasks.terminal.input_placeholder": "Type command or prompt...",
+    "route.tasks.terminal.send": "Send",
+    "route.tasks.terminal.sending": "Sending...",
+    "route.tasks.terminal.hint": "Supports follow-up interaction in current task session (max {max} concurrent sessions).",
+    "route.tasks.terminal.limit_reached": "Terminal session limit reached ({max}). Please finish an active session first.",
     "route.tasks.actions.retry": "Retry",
     "route.tasks.actions.cancel": "Cancel",
     "route.tasks.result.title": "Result Output",
@@ -516,6 +522,12 @@ const I18N = {
     "route.tasks.logs.disconnected": "日志流已断开，可手动重连。",
     "route.tasks.logs.reconnect": "重连",
     "route.tasks.logs.replay": "回放",
+    "route.tasks.terminal.title": "终端",
+    "route.tasks.terminal.input_placeholder": "输入命令或追问继续交互...",
+    "route.tasks.terminal.send": "发送",
+    "route.tasks.terminal.sending": "发送中...",
+    "route.tasks.terminal.hint": "支持在当前任务会话中继续交互（最多并发 {max} 个终端会话）。",
+    "route.tasks.terminal.limit_reached": "终端会话已达上限（{max}），请先结束一个活跃会话。",
     "route.tasks.actions.retry": "重试",
     "route.tasks.actions.cancel": "取消",
     "route.tasks.result.title": "终态输出",
@@ -2869,6 +2881,9 @@ function renderControlTaskDetail(view) {
   const messageID = typeof task?.message_id === "string" ? task.message_id : "";
   const requestMessageID = typeof link?.request_message_id === "string" ? link.request_message_id : "";
   const resultMessageID = typeof link?.result_message_id === "string" ? link.result_message_id : "";
+  const terminalSessionID = typeof link?.terminal_session_id === "string" ? link.terminal_session_id : "";
+  const terminalMaxSessionsRaw = Number(link?.terminal_max_sessions || 5);
+  const terminalMaxSessions = Number.isFinite(terminalMaxSessionsRaw) && terminalMaxSessionsRaw > 0 ? terminalMaxSessionsRaw : 5;
   const queuePosition = Number(task?.queue_position || 0);
   const queueWaitMS = Number(task?.queue_wait_ms || 0);
   const resultOutput = typeof task?.result?.output === "string" ? task.result.output : "";
@@ -2882,7 +2897,7 @@ function renderControlTaskDetail(view) {
       <p><span>${t("field.fired_at")}</span><strong>${escapeHTML(formatDateTime(firedAt))}</strong></p>`
     : "";
   const errorText = normalizeText(task?.error_message || task?.error_code || "-");
-  return `<section class="task-detail-card" data-control-task-detail-id="${escapeHTML(taskID)}">
+  return `<section class="task-detail-card" data-control-task-detail-id="${escapeHTML(taskID)}" data-control-task-session-id="${escapeHTML(normalizeText(task?.session_id))}" data-control-task-terminal-session-id="${escapeHTML(normalizeText(terminalSessionID))}" data-control-task-terminal-max-sessions="${escapeHTML(terminalMaxSessions)}">
     <header class="task-detail-head">
       <h5>${escapeHTML(taskID)}</h5>
       <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
@@ -2919,9 +2934,14 @@ function renderControlTaskDetail(view) {
       <button type="button" data-control-task-log-replay>${t("route.tasks.logs.replay")}</button>
     </div>
     <section class="task-detail-section">
-      <h6>${t("route.tasks.logs.title")}</h6>
+      <h6>${t("route.tasks.terminal.title")}</h6>
       <p class="control-task-log-state" data-control-task-log-status>${t("route.tasks.logs.empty")}</p>
       <div class="control-task-log-stream" data-control-task-log-stream>${t("route.tasks.logs.empty")}</div>
+      <form class="control-task-terminal-input" data-control-task-terminal-input-form>
+        <input type="text" data-control-task-terminal-input maxlength="6000" placeholder="${escapeHTML(t("route.tasks.terminal.input_placeholder"))}">
+        <button type="submit" data-control-task-terminal-submit>${t("route.tasks.terminal.send")}</button>
+      </form>
+      <p class="control-task-terminal-hint">${escapeHTML(t("route.tasks.terminal.hint", { max: String(terminalMaxSessions) }))}</p>
     </section>
     <section class="task-detail-section">
       <h6>${t("route.tasks.result.title")}</h6>
@@ -2962,6 +2982,7 @@ function bindControlTaskView(container, initialPayload) {
     logItems: [],
     logSeqSet: new Set(),
     logStream: null,
+    terminalSubmitting: false,
     advancedOpen: false
   };
 
@@ -3029,8 +3050,18 @@ function bindControlTaskView(container, initialPayload) {
     if (!streamNode) {
       return;
     }
+    const prevScrollTop = Number(streamNode.scrollTop || 0);
+    const prevScrollHeight = Number(streamNode.scrollHeight || 0);
+    const prevClientHeight = Number(streamNode.clientHeight || 0);
+    const stickToBottom = prevScrollTop + prevClientHeight >= prevScrollHeight - 20;
+
     streamNode.innerHTML = renderControlTaskLogStream(localState.logItems);
-    streamNode.scrollTop = streamNode.scrollHeight;
+
+    if (stickToBottom) {
+      streamNode.scrollTop = streamNode.scrollHeight;
+      return;
+    }
+    streamNode.scrollTop = prevScrollTop;
   };
 
   const resetLogs = () => {
@@ -3150,6 +3181,61 @@ function bindControlTaskView(container, initialPayload) {
     paint(payload);
   };
 
+  const setTerminalInputState = (submitting) => {
+    const inputNode = drawerBody.querySelector("[data-control-task-terminal-input]");
+    const submitNode = drawerBody.querySelector("[data-control-task-terminal-submit]");
+    if (inputNode) {
+      inputNode.disabled = submitting;
+    }
+    if (submitNode) {
+      submitNode.disabled = submitting;
+      submitNode.textContent = submitting ? t("route.tasks.terminal.sending") : t("route.tasks.terminal.send");
+    }
+  };
+
+  const submitTerminalInput = async (rawInput) => {
+    const taskID = normalizeText(localState.activeTaskID);
+    if (!taskID || taskID === "-") {
+      return;
+    }
+    const detailNode = drawerBody.querySelector("[data-control-task-detail-id]");
+    const terminalMaxSessionsRaw = Number(detailNode?.dataset?.controlTaskTerminalMaxSessions || 5);
+    const terminalMaxSessions = Number.isFinite(terminalMaxSessionsRaw) && terminalMaxSessionsRaw > 0 ? terminalMaxSessionsRaw : 5;
+
+    const content = normalizeText(rawInput);
+    if (!content || content === "-") {
+      return;
+    }
+
+    localState.terminalSubmitting = true;
+    setTerminalInputState(true);
+    try {
+      const response = await fetch(`/api/control/tasks/${encodeURIComponent(taskID)}/terminal/input`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: content })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if ((payload?.error_code || "") === "terminal_session_limit_reached") {
+          window.alert(t("route.tasks.terminal.limit_reached", { max: String(terminalMaxSessions) }));
+          return;
+        }
+        const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
+        window.alert(message);
+        return;
+      }
+      const nextTaskID = normalizeText(payload?.task_id || "");
+      if (nextTaskID && nextTaskID !== "-") {
+        await loadDetail(nextTaskID, { preserveLogs: false });
+        await loadList();
+      }
+    } finally {
+      localState.terminalSubmitting = false;
+      setTerminalInputState(false);
+    }
+  };
+
   const loadDetail = async (taskID, options = {}) => {
     if (!taskID) {
       return;
@@ -3157,6 +3243,7 @@ function bindControlTaskView(container, initialPayload) {
     localState.activeTaskID = taskID;
     const payload = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}`);
     drawerBody.innerHTML = renderControlTaskDetail(payload);
+    setTerminalInputState(localState.terminalSubmitting);
     if (!options.preserveLogs) {
       resetLogs();
       await loadLogBackfill(taskID, 0);
@@ -3225,6 +3312,20 @@ function bindControlTaskView(container, initialPayload) {
       });
     }
   }
+
+  view.addEventListener("submit", async (event) => {
+    const terminalForm = event.target.closest("[data-control-task-terminal-input-form]");
+    if (!terminalForm) {
+      return;
+    }
+    event.preventDefault();
+    const inputNode = terminalForm.querySelector("[data-control-task-terminal-input]");
+    const value = inputNode ? String(inputNode.value || "") : "";
+    if (inputNode) {
+      inputNode.value = "";
+    }
+    await submitTerminalInput(value);
+  });
 
   view.addEventListener("click", async (event) => {
     const target = event.target.closest("button");
@@ -3491,23 +3592,27 @@ function parseJSONPayload(raw) {
   }
 }
 
-function renderControlTaskLogItem(item) {
-  const timestamp = formatDateTime(item?.timestamp || item?.created_at || "");
-  const stage = normalizeText(item?.stage || "runtime");
-  const level = normalizeText(item?.level || "info");
-  const message = normalizeText(item?.message || "-");
-  const seq = normalizeText(item?.seq || "-");
-  return `<article class="control-task-log-item">
-    <p><span>#${escapeHTML(seq)}</span><span>${escapeHTML(stage)}</span><span>${escapeHTML(level)}</span><span>${escapeHTML(timestamp)}</span></p>
-    <pre>${escapeHTML(message)}</pre>
-  </article>`;
+function renderControlTaskLogLine(item) {
+  const stage = normalizeText(item?.stage || "runtime").toLowerCase();
+  const message = normalizeText(item?.message || "");
+  if (!message) {
+    return "";
+  }
+  if (stage === "terminal") {
+    return message;
+  }
+  return `[${stage}] ${message}`;
 }
 
 function renderControlTaskLogStream(logs) {
   if (!Array.isArray(logs) || !logs.length) {
-    return `<p class="route-empty">${t("route.tasks.logs.empty")}</p>`;
+    return `<pre class="control-task-terminal-screen is-empty">${escapeHTML(t("route.tasks.logs.empty"))}</pre>`;
   }
-  return logs.map((item) => renderControlTaskLogItem(item)).join("");
+  const lines = logs.map((item) => renderControlTaskLogLine(item)).filter(Boolean);
+  if (!lines.length) {
+    return `<pre class="control-task-terminal-screen is-empty">${escapeHTML(t("route.tasks.logs.empty"))}</pre>`;
+  }
+  return `<pre class="control-task-terminal-screen">${escapeHTML(lines.join("\n"))}</pre>`;
 }
 
 function escapeQueryValue(value) {
