@@ -192,8 +192,13 @@ const I18N = {
     "route.tasks.filter.source_message_id": "Source Message ID",
     "route.tasks.filter.start_at": "Start",
     "route.tasks.filter.end_at": "End",
+    "route.tasks.filter.advanced": "Advanced Filters",
+    "route.tasks.filter.advanced_show": "Show Advanced Filters",
+    "route.tasks.filter.advanced_hide": "Hide Advanced Filters",
+    "route.tasks.filter.applying": "Applying filters...",
     "route.tasks.filter.apply": "Apply",
     "route.tasks.filter.reset": "Reset",
+    "route.tasks.copy_task_id": "Copy Task ID",
     "route.tasks.open_detail": "Open Drawer",
     "route.tasks.drawer.title": "Task Detail",
     "route.tasks.drawer.empty": "Select a task to view detail.",
@@ -489,8 +494,13 @@ const I18N = {
     "route.tasks.filter.source_message_id": "源消息 ID",
     "route.tasks.filter.start_at": "开始时间",
     "route.tasks.filter.end_at": "结束时间",
+    "route.tasks.filter.advanced": "高级筛选",
+    "route.tasks.filter.advanced_show": "展开高级筛选",
+    "route.tasks.filter.advanced_hide": "收起高级筛选",
+    "route.tasks.filter.applying": "筛选中...",
     "route.tasks.filter.apply": "筛选",
     "route.tasks.filter.reset": "重置",
+    "route.tasks.copy_task_id": "复制任务 ID",
     "route.tasks.open_detail": "查看详情",
     "route.tasks.drawer.title": "任务详情",
     "route.tasks.drawer.empty": "选择任务后展示详情。",
@@ -2798,13 +2808,17 @@ function renderControlTaskList(payload) {
     const sourceMessageID = typeof item?.source_message_id === "string" ? item.source_message_id : "";
     const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
     const jobID = typeof item?.job_id === "string" ? item.job_id : "";
+    const statusClassName = taskStatusClassName(status);
     const cronRow = triggerType === "cron"
       ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>`
       : "";
     return `<article class="task-summary-card" data-control-task-id="${escapeHTML(taskID)}">
       <header class="task-summary-head">
-        <h5>${escapeHTML(taskID)}</h5>
-        <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
+        <div class="task-summary-id-wrap">
+          <h5 class="task-summary-id" title="${escapeHTML(taskID)}">${escapeHTML(taskID)}</h5>
+          <button class="task-summary-copy" type="button" data-control-task-copy-id="${escapeHTML(taskID)}" title="${t("route.tasks.copy_task_id")}" aria-label="${t("route.tasks.copy_task_id")}">${renderCopyIcon()}</button>
+        </div>
+        <span class="task-summary-status ${statusClassName}">${escapeHTML(formatTaskStatus(status))}</span>
       </header>
       <div class="task-summary-meta">
         <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(sessionID))}</strong></p>
@@ -2814,7 +2828,7 @@ function renderControlTaskList(payload) {
         <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(updatedAt))}</strong></p>
         ${cronRow}
       </div>
-      <button class="task-summary-open" type="button" data-control-task-open="${escapeHTML(taskID)}">${t("route.tasks.open_detail")}</button>
+      <button class="task-summary-open" type="button" data-control-task-open="${escapeHTML(taskID)}"><span class="task-summary-open-icon" aria-hidden="true">${renderPanelRightOpenIcon()}</span><span>${t("route.tasks.open_detail")}</span></button>
     </article>`;
   }).join("");
 }
@@ -2918,6 +2932,8 @@ function bindControlTaskView(container, initialPayload) {
   const listNode = view.querySelector("[data-control-task-list]");
   const paginationNode = view.querySelector("[data-control-task-pagination]");
   const form = view.querySelector("[data-control-task-filter-form]");
+  const advancedFiltersNode = view.querySelector("[data-control-task-advanced]");
+  const advancedToggleButton = view.querySelector("[data-control-task-advanced-toggle]");
   const drawer = view.querySelector("[data-control-task-drawer]");
   const drawerBody = view.querySelector("[data-control-task-drawer-body]");
   const localState = {
@@ -2939,8 +2955,35 @@ function bindControlTaskView(container, initialPayload) {
     logDone: false,
     logItems: [],
     logSeqSet: new Set(),
-    logStream: null
+    logStream: null,
+    advancedOpen: false
   };
+
+  const syncAdvancedToggle = () => {
+    if (advancedFiltersNode) {
+      advancedFiltersNode.hidden = !localState.advancedOpen;
+    }
+    if (advancedToggleButton) {
+      advancedToggleButton.setAttribute("aria-expanded", localState.advancedOpen ? "true" : "false");
+      advancedToggleButton.textContent = localState.advancedOpen
+        ? t("route.tasks.filter.advanced_hide")
+        : t("route.tasks.filter.advanced_show");
+    }
+  };
+
+  const setFilterApplyingState = () => {
+    listNode.innerHTML = renderControlTaskSkeleton(6);
+    paginationNode.innerHTML = `<div class="task-summary-pagination"><p><span>${t("route.tasks.filter.applying")}</span></p></div>`;
+  };
+
+  syncAdvancedToggle();
+
+  if (advancedToggleButton) {
+    advancedToggleButton.addEventListener("click", () => {
+      localState.advancedOpen = !localState.advancedOpen;
+      syncAdvancedToggle();
+    });
+  }
 
   const stopLogStream = () => {
     if (!localState.logStream) {
@@ -3098,6 +3141,7 @@ function bindControlTaskView(container, initialPayload) {
   };
 
   const loadList = async () => {
+    setFilterApplyingState();
     const payload = await fetchJSON(controlTaskListQuery(localState.filters, localState.page, localState.pageSize));
     paint(payload);
   };
@@ -3171,6 +3215,8 @@ function bindControlTaskView(container, initialPayload) {
           endAt: ""
         };
         localState.page = 1;
+        localState.advancedOpen = false;
+        syncAdvancedToggle();
         await loadList();
       });
     }
@@ -3179,6 +3225,31 @@ function bindControlTaskView(container, initialPayload) {
   view.addEventListener("click", async (event) => {
     const target = event.target.closest("button");
     if (!target) {
+      return;
+    }
+    if (target.hasAttribute("data-control-task-copy-id")) {
+      const taskID = target.getAttribute("data-control-task-copy-id") || "";
+      if (taskID) {
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(taskID);
+          } else {
+            const fallback = document.createElement("textarea");
+            fallback.value = taskID;
+            fallback.setAttribute("readonly", "readonly");
+            fallback.style.position = "absolute";
+            fallback.style.left = "-9999px";
+            document.body.appendChild(fallback);
+            fallback.select();
+            document.execCommand("copy");
+            fallback.remove();
+          }
+          target.classList.add("copied");
+          window.setTimeout(() => target.classList.remove("copied"), 900);
+        } catch (error) {
+          console.warn("copy task id failed", error);
+        }
+      }
       return;
     }
     if (target.hasAttribute("data-control-task-open")) {
@@ -3235,41 +3306,48 @@ async function loadControlTasksView(container) {
   const payload = await fetchJSON(controlTaskListQuery({}, 1, 20));
   container.innerHTML = `<section class="control-task-view" data-control-task-view>
     <form class="task-filter-form" data-control-task-filter-form>
-      <label><span>${t("route.tasks.filter.session")}</span><input type="text" name="session_id" placeholder="session-123"></label>
-      <label><span>${t("route.tasks.filter.status")}</span>
-        <select name="status">
-          <option value="">-</option>
-          <option value="queued">${t("status.queued")}</option>
-          <option value="running">${t("status.running")}</option>
-          <option value="success">${t("status.success")}</option>
-          <option value="failed">${t("status.failed")}</option>
-          <option value="canceled">${t("status.canceled")}</option>
-        </select>
-      </label>
-      <label><span>${t("route.tasks.filter.trigger_type")}</span>
-        <select name="trigger_type">
-          <option value="">-</option>
-          <option value="user">${t("trigger.user")}</option>
-          <option value="cron">${t("trigger.cron")}</option>
-          <option value="system">${t("trigger.system")}</option>
-        </select>
-      </label>
-      <label><span>${t("route.tasks.filter.channel_type")}</span>
-        <select name="channel_type">
-          <option value="">-</option>
-          <option value="cli">${t("channel.cli")}</option>
-          <option value="web">${t("channel.web")}</option>
-          <option value="scheduler">${t("channel.scheduler")}</option>
-        </select>
-      </label>
-      <label><span>${t("route.tasks.filter.channel_id")}</span><input type="text" name="channel_id" placeholder="web-default"></label>
-      <label><span>${t("route.tasks.filter.message_id")}</span><input type="text" name="message_id" placeholder="msg-123"></label>
-      <label><span>${t("route.tasks.filter.source_message_id")}</span><input type="text" name="source_message_id" placeholder="msg-source-123"></label>
-      <label><span>${t("route.tasks.filter.start_at")}</span><input type="datetime-local" name="start_at"></label>
-      <label><span>${t("route.tasks.filter.end_at")}</span><input type="datetime-local" name="end_at"></label>
-      <div class="task-filter-actions">
-        <button type="submit">${t("route.tasks.filter.apply")}</button>
-        <button type="button" data-control-task-filter-reset>${t("route.tasks.filter.reset")}</button>
+      <div class="task-filter-primary-row">
+        <label><span>${t("route.tasks.filter.session")}</span><input type="text" name="session_id" placeholder="session-123"></label>
+        <label><span>${t("route.tasks.filter.status")}</span>
+          <select name="status">
+            <option value="">-</option>
+            <option value="queued">${t("status.queued")}</option>
+            <option value="running">${t("status.running")}</option>
+            <option value="success">${t("status.success")}</option>
+            <option value="failed">${t("status.failed")}</option>
+            <option value="canceled">${t("status.canceled")}</option>
+          </select>
+        </label>
+        <label><span>${t("route.tasks.filter.trigger_type")}</span>
+          <select name="trigger_type">
+            <option value="">-</option>
+            <option value="user">${t("trigger.user")}</option>
+            <option value="cron">${t("trigger.cron")}</option>
+            <option value="system">${t("trigger.system")}</option>
+          </select>
+        </label>
+        <div class="task-filter-primary-actions">
+          <button class="task-filter-advanced-toggle" type="button" data-control-task-advanced-toggle aria-expanded="false">${t("route.tasks.filter.advanced_show")}</button>
+          <div class="task-filter-actions">
+            <button type="submit">${t("route.tasks.filter.apply")}</button>
+            <button type="button" data-control-task-filter-reset>${t("route.tasks.filter.reset")}</button>
+          </div>
+        </div>
+      </div>
+      <div class="task-filter-advanced" data-control-task-advanced hidden>
+        <label><span>${t("route.tasks.filter.channel_type")}</span>
+          <select name="channel_type">
+            <option value="">-</option>
+            <option value="cli">${t("channel.cli")}</option>
+            <option value="web">${t("channel.web")}</option>
+            <option value="scheduler">${t("channel.scheduler")}</option>
+          </select>
+        </label>
+        <label><span>${t("route.tasks.filter.channel_id")}</span><input type="text" name="channel_id" placeholder="web-default"></label>
+        <label><span>${t("route.tasks.filter.message_id")}</span><input type="text" name="message_id" placeholder="msg-123"></label>
+        <label><span>${t("route.tasks.filter.source_message_id")}</span><input type="text" name="source_message_id" placeholder="msg-source-123"></label>
+        <label><span>${t("route.tasks.filter.start_at")}</span><input type="datetime-local" name="start_at"></label>
+        <label><span>${t("route.tasks.filter.end_at")}</span><input type="datetime-local" name="end_at"></label>
       </div>
     </form>
     <div class="task-summary-list" data-control-task-list></div>
@@ -3310,6 +3388,38 @@ function formatTaskStatus(value) {
   const key = `status.${status}`;
   const translated = t(key);
   return translated === key ? status : translated;
+}
+
+function taskStatusClassName(value) {
+  const status = String(value || "").trim().toLowerCase();
+  if (["success", "done"].includes(status)) {
+    return "status-success";
+  }
+  if (["queued", "running", "pending", "in_progress"].includes(status)) {
+    return "status-pending";
+  }
+  if (["failed", "error", "canceled"].includes(status)) {
+    return "status-failed";
+  }
+  return "status-neutral";
+}
+
+function renderCopyIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+}
+
+function renderPanelRightOpenIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M15 3v18"></path><path d="m10 9 3 3-3 3"></path></svg>`;
+}
+
+function renderControlTaskSkeleton(count = 6) {
+  return Array.from({ length: Math.max(count, 1) }).map(() => `<article class="task-summary-card task-skeleton-card" aria-hidden="true">
+    <div class="task-skeleton-line task-skeleton-line-title"></div>
+    <div class="task-skeleton-line task-skeleton-line-meta"></div>
+    <div class="task-skeleton-line task-skeleton-line-meta"></div>
+    <div class="task-skeleton-line task-skeleton-line-meta"></div>
+    <div class="task-skeleton-line task-skeleton-line-button"></div>
+  </article>`).join("");
 }
 
 function formatTriggerType(value) {
