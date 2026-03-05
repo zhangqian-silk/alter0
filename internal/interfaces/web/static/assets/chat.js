@@ -142,6 +142,10 @@ const I18N = {
     "field.channel_type": "Channel Type",
     "field.channel_id": "Channel ID",
     "field.correlation_id": "Correlation ID",
+    "field.message_id": "Message ID",
+    "field.last_message_id": "Last Message ID",
+    "field.request_message_id": "Request Message ID",
+    "field.result_message_id": "Result Message ID",
     "field.job_id": "Job ID",
     "field.job_name": "Job Name",
     "field.fired_at": "Fired At",
@@ -169,9 +173,13 @@ const I18N = {
     "route.sessions.subtitle": "View archived sessions with source filters",
     "route.sessions.empty": "No sessions found.",
     "route.sessions.filter.trigger_type": "Trigger Type",
+    "route.sessions.filter.channel_type": "Channel Type",
+    "route.sessions.filter.channel_id": "Channel ID",
+    "route.sessions.filter.message_id": "Message ID",
     "route.sessions.filter.job_id": "Job ID",
     "route.sessions.filter.apply": "Apply",
     "route.sessions.filter.reset": "Reset",
+    "route.sessions.open_detail": "View Detail",
     "route.tasks.title": "Tasks",
     "route.tasks.subtitle": "Observe runtime tasks with source, status, and timeline filters",
     "route.tasks.empty": "No tasks found.",
@@ -179,6 +187,9 @@ const I18N = {
     "route.tasks.filter.status": "Status",
     "route.tasks.filter.trigger_type": "Trigger Type",
     "route.tasks.filter.channel_type": "Channel Type",
+    "route.tasks.filter.channel_id": "Channel ID",
+    "route.tasks.filter.message_id": "Message ID",
+    "route.tasks.filter.source_message_id": "Source Message ID",
     "route.tasks.filter.start_at": "Start",
     "route.tasks.filter.end_at": "End",
     "route.tasks.filter.apply": "Apply",
@@ -428,6 +439,10 @@ const I18N = {
     "field.channel_type": "通道类型",
     "field.channel_id": "通道 ID",
     "field.correlation_id": "关联 ID",
+    "field.message_id": "消息 ID",
+    "field.last_message_id": "最近消息 ID",
+    "field.request_message_id": "请求消息 ID",
+    "field.result_message_id": "结果消息 ID",
     "field.job_id": "作业 ID",
     "field.job_name": "作业名称",
     "field.fired_at": "触发时间",
@@ -455,9 +470,13 @@ const I18N = {
     "route.sessions.subtitle": "查看归档会话并按来源筛选",
     "route.sessions.empty": "暂无会话记录。",
     "route.sessions.filter.trigger_type": "触发类型",
+    "route.sessions.filter.channel_type": "通道类型",
+    "route.sessions.filter.channel_id": "通道 ID",
+    "route.sessions.filter.message_id": "消息 ID",
     "route.sessions.filter.job_id": "任务 ID",
     "route.sessions.filter.apply": "应用",
     "route.sessions.filter.reset": "重置",
+    "route.sessions.open_detail": "查看详情",
     "route.tasks.title": "任务观测",
     "route.tasks.subtitle": "基于来源、状态和时间范围观测运行任务",
     "route.tasks.empty": "暂无任务记录。",
@@ -465,6 +484,9 @@ const I18N = {
     "route.tasks.filter.status": "状态",
     "route.tasks.filter.trigger_type": "触发类型",
     "route.tasks.filter.channel_type": "通道类型",
+    "route.tasks.filter.channel_id": "通道 ID",
+    "route.tasks.filter.message_id": "消息 ID",
+    "route.tasks.filter.source_message_id": "源消息 ID",
     "route.tasks.filter.start_at": "开始时间",
     "route.tasks.filter.end_at": "结束时间",
     "route.tasks.filter.apply": "筛选",
@@ -677,6 +699,9 @@ const state = {
   sessions: [],
   sessionRouteFilters: {
     triggerType: "",
+    channelType: "",
+    channelID: "",
+    messageID: "",
     jobID: ""
   },
   sessionLoadError: "",
@@ -1897,7 +1922,10 @@ function escapeHTML(value) {
 }
 
 function normalizeText(value) {
-  const text = typeof value === "string" ? value.trim() : "";
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  const text = String(value).trim();
   return text || "-";
 }
 
@@ -2050,9 +2078,15 @@ async function loadMCPView(container) {
 
 function normalizeSessionRouteFilters(filters = {}) {
   const triggerType = String(filters.triggerType || "").trim().toLowerCase();
+  const channelType = String(filters.channelType || "").trim().toLowerCase();
+  const channelID = String(filters.channelID || "").trim();
+  const messageID = String(filters.messageID || "").trim();
   const jobID = String(filters.jobID || "").trim();
   return {
     triggerType,
+    channelType,
+    channelID,
+    messageID,
     jobID
   };
 }
@@ -2064,6 +2098,15 @@ function sessionListQuery(filters = {}, page = 1, pageSize = 50) {
   params.push(`page_size=${Math.max(pageSize, 1)}`);
   if (normalized.triggerType) {
     params.push(`trigger_type=${escapeQueryValue(normalized.triggerType)}`);
+  }
+  if (normalized.channelType) {
+    params.push(`channel_type=${escapeQueryValue(normalized.channelType)}`);
+  }
+  if (normalized.channelID) {
+    params.push(`channel_id=${escapeQueryValue(normalized.channelID)}`);
+  }
+  if (normalized.messageID) {
+    params.push(`message_id=${escapeQueryValue(normalized.messageID)}`);
   }
   if (normalized.jobID) {
     params.push(`job_id=${escapeQueryValue(normalized.jobID)}`);
@@ -2209,27 +2252,44 @@ function renderSessionRouteCards(items) {
   }
   return items.map((item) => {
     const sessionID = typeof item?.session_id === "string" ? item.session_id : "";
+    const channelType = typeof item?.channel_type === "string" ? item.channel_type : "";
+    const channelID = typeof item?.channel_id === "string" ? item.channel_id : "";
+    const lastMessageID = typeof item?.last_message_id === "string" ? item.last_message_id : "";
+    const updatedAt = typeof item?.updated_at === "string" && item.updated_at.trim()
+      ? item.updated_at
+      : item?.last_message_at;
+    const createdAt = typeof item?.created_at === "string" && item.created_at.trim()
+      ? item.created_at
+      : item?.started_at;
     const messageCount = Number(item?.message_count || 0);
     const triggerType = typeof item?.trigger_type === "string" ? item.trigger_type : "";
     const jobID = typeof item?.job_id === "string" ? item.job_id : "";
+    const jobName = typeof item?.job_name === "string" ? item.job_name : "";
     const firedAt = typeof item?.fired_at === "string" ? item.fired_at : "";
-    const lastErrorCode = typeof item?.last_error_code === "string" ? item.last_error_code : "";
-    const status = lastErrorCode ? "failed" : "success";
     const title = sessionID || t("route.sessions.title");
+    const detailBody = `<details class="session-route-detail">
+      <summary>${t("route.sessions.open_detail")}</summary>
+      <div class="route-meta">
+        ${routeFieldRow("field.channel_id", channelID)}
+        ${routeFieldRow("field.created", formatDateTime(createdAt))}
+        ${routeFieldRow("field.messages", messageCount)}
+        ${routeFieldRow("field.trigger_type", formatTriggerType(triggerType))}
+        ${routeFieldRow("field.job_id", jobID)}
+        ${routeFieldRow("field.job_name", jobName)}
+        ${routeFieldRow("field.fired_at", formatDateTime(firedAt))}
+      </div>
+    </details>`;
     return routeCardTemplate(
       title,
       "session",
       [
         routeFieldRow("field.id", sessionID),
-        routeFieldRow("field.messages", messageCount),
-        routeFieldRow("field.status", formatTaskStatus(status)),
-        routeFieldRow("field.trigger_type", formatTriggerType(triggerType)),
-        routeFieldRow("field.job_id", jobID),
-        routeFieldRow("field.fired_at", formatDateTime(firedAt)),
-        routeFieldRow("field.created", formatDateTime(item?.started_at)),
-        routeFieldRow("field.updated", formatDateTime(item?.last_message_at))
+        routeFieldRow("field.channel_type", formatChannelType(channelType)),
+        routeFieldRow("field.last_message_id", lastMessageID),
+        routeFieldRow("field.updated", formatDateTime(updatedAt))
       ],
-      true
+      true,
+      detailBody
     );
   }).join("");
 }
@@ -2251,6 +2311,23 @@ async function loadSessionsView(container) {
         </select>
       </label>
       <label>
+        <span>${t("route.sessions.filter.channel_type")}</span>
+        <select name="channel_type">
+          <option value="">-</option>
+          <option value="cli">${t("channel.cli")}</option>
+          <option value="web">${t("channel.web")}</option>
+          <option value="scheduler">${t("channel.scheduler")}</option>
+        </select>
+      </label>
+      <label>
+        <span>${t("route.sessions.filter.channel_id")}</span>
+        <input type="text" name="channel_id" placeholder="web-default">
+      </label>
+      <label>
+        <span>${t("route.sessions.filter.message_id")}</span>
+        <input type="text" name="message_id" placeholder="msg-123">
+      </label>
+      <label>
         <span>${t("route.sessions.filter.job_id")}</span>
         <input type="text" name="job_id" placeholder="job-daily-report">
       </label>
@@ -2267,12 +2344,18 @@ async function loadSessionsView(container) {
     return;
   }
   form.trigger_type.value = filters.triggerType;
+  form.channel_type.value = filters.channelType;
+  form.channel_id.value = filters.channelID;
+  form.message_id.value = filters.messageID;
   form.job_id.value = filters.jobID;
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     state.sessionRouteFilters = normalizeSessionRouteFilters({
       triggerType: form.trigger_type.value,
+      channelType: form.channel_type.value,
+      channelID: form.channel_id.value,
+      messageID: form.message_id.value,
       jobID: form.job_id.value
     });
     void renderRoute("sessions");
@@ -2679,6 +2762,15 @@ function controlTaskListQuery(filters = {}, page = 1, pageSize = 20) {
   if (filters.channelType) {
     params.push(`channel_type=${escapeQueryValue(filters.channelType)}`);
   }
+  if (filters.channelID) {
+    params.push(`channel_id=${escapeQueryValue(filters.channelID)}`);
+  }
+  if (filters.messageID) {
+    params.push(`message_id=${escapeQueryValue(filters.messageID)}`);
+  }
+  if (filters.sourceMessageID) {
+    params.push(`source_message_id=${escapeQueryValue(filters.sourceMessageID)}`);
+  }
   if (filters.startAt && filters.endAt) {
     params.push(`time_range=${escapeQueryValue(`${filters.startAt},${filters.endAt}`)}`);
   } else {
@@ -2701,28 +2793,14 @@ function renderControlTaskList(payload) {
     const taskID = typeof item?.task_id === "string" ? item.task_id : "-";
     const sessionID = typeof item?.session_id === "string" ? item.session_id : "-";
     const status = typeof item?.status === "string" ? item.status : "";
-    const phase = typeof item?.phase === "string" ? item.phase : "";
     const triggerType = typeof item?.trigger_type === "string" ? item.trigger_type : "";
     const channelType = typeof item?.channel_type === "string" ? item.channel_type : "";
-    const channelID = typeof item?.channel_id === "string" ? item.channel_id : "";
-    const queuePosition = Number(item?.queue_position || 0);
-    const queueWaitMS = Number(item?.queue_wait_ms || 0);
-    const progress = Number(item?.progress || 0);
-    const retryCount = Number(item?.retry_count || 0);
+    const sourceMessageID = typeof item?.source_message_id === "string" ? item.source_message_id : "";
     const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
-    const firedAt = typeof item?.fired_at === "string" ? item.fired_at : "";
     const jobID = typeof item?.job_id === "string" ? item.job_id : "";
-    const error = typeof item?.error === "string" ? item.error.trim() : "";
     const cronRow = triggerType === "cron"
-      ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>
-        <p><span>${t("field.fired_at")}</span><strong>${escapeHTML(formatDateTime(firedAt))}</strong></p>`
+      ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>`
       : "";
-    const errorRow = error
-      ? `<p><span>Error</span><strong>${escapeHTML(normalizeText(error))}</strong></p>`
-      : "";
-    const queueRows = status === "queued"
-      ? `<p><span>${t("field.queue_position")}</span><strong>${escapeHTML(queuePosition > 0 ? queuePosition : "-")}</strong></p>`
-      : `<p><span>${t("field.queue_wait_ms")}</span><strong>${escapeHTML(formatDurationMS(queueWaitMS))}</strong></p>`;
     return `<article class="task-summary-card" data-control-task-id="${escapeHTML(taskID)}">
       <header class="task-summary-head">
         <h5>${escapeHTML(taskID)}</h5>
@@ -2730,16 +2808,11 @@ function renderControlTaskList(payload) {
       </header>
       <div class="task-summary-meta">
         <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(sessionID))}</strong></p>
-        <p><span>${t("field.phase")}</span><strong>${escapeHTML(normalizeText(phase || status || "-"))}</strong></p>
         <p><span>${t("field.trigger_type")}</span><strong>${escapeHTML(formatTriggerType(triggerType))}</strong></p>
         <p><span>${t("field.channel_type")}</span><strong>${escapeHTML(formatChannelType(channelType))}</strong></p>
-        <p><span>${t("field.channel_id")}</span><strong>${escapeHTML(normalizeText(channelID))}</strong></p>
-        ${queueRows}
-        <p><span>${t("field.progress")}</span><strong>${escapeHTML(`${progress}%`)}</strong></p>
-        <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(retryCount)}</strong></p>
+        <p><span>${t("field.source_message")}</span><strong>${escapeHTML(normalizeText(sourceMessageID))}</strong></p>
         <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(updatedAt))}</strong></p>
         ${cronRow}
-        ${errorRow}
       </div>
       <button class="task-summary-open" type="button" data-control-task-open="${escapeHTML(taskID)}">${t("route.tasks.open_detail")}</button>
     </article>`;
@@ -2773,6 +2846,9 @@ function renderControlTaskDetail(view) {
   const jobID = typeof source?.job_id === "string" ? source.job_id : "";
   const jobName = typeof source?.job_name === "string" ? source.job_name : "";
   const firedAt = typeof source?.fired_at === "string" ? source.fired_at : "";
+  const messageID = typeof task?.message_id === "string" ? task.message_id : "";
+  const requestMessageID = typeof link?.request_message_id === "string" ? link.request_message_id : "";
+  const resultMessageID = typeof link?.result_message_id === "string" ? link.result_message_id : "";
   const queuePosition = Number(task?.queue_position || 0);
   const queueWaitMS = Number(task?.queue_wait_ms || 0);
   const resultOutput = typeof task?.result?.output === "string" ? task.result.output : "";
@@ -2809,6 +2885,9 @@ function renderControlTaskDetail(view) {
       <p><span>${t("field.channel_id")}</span><strong>${escapeHTML(normalizeText(channelID))}</strong></p>
       <p><span>${t("field.correlation_id")}</span><strong>${escapeHTML(normalizeText(correlationID))}</strong></p>
       <p><span>${t("field.source_message")}</span><strong>${escapeHTML(normalizeText(task?.source_message_id))}</strong></p>
+      <p><span>${t("field.message_id")}</span><strong>${escapeHTML(normalizeText(messageID))}</strong></p>
+      <p><span>${t("field.request_message_id")}</span><strong>${escapeHTML(normalizeText(requestMessageID))}</strong></p>
+      <p><span>${t("field.result_message_id")}</span><strong>${escapeHTML(normalizeText(resultMessageID))}</strong></p>
       ${cronRows}
       <p><span>Error</span><strong>${escapeHTML(errorText)}</strong></p>
       <p><span>Detail API</span><strong>${escapeHTML(normalizeText(link?.task_detail_path))}</strong></p>
@@ -2842,7 +2921,17 @@ function bindControlTaskView(container, initialPayload) {
   const drawer = view.querySelector("[data-control-task-drawer]");
   const drawerBody = view.querySelector("[data-control-task-drawer-body]");
   const localState = {
-    filters: { sessionID: "", status: "", triggerType: "", channelType: "", startAt: "", endAt: "" },
+    filters: {
+      sessionID: "",
+      status: "",
+      triggerType: "",
+      channelType: "",
+      channelID: "",
+      messageID: "",
+      sourceMessageID: "",
+      startAt: "",
+      endAt: ""
+    },
     page: 1,
     pageSize: 20,
     activeTaskID: "",
@@ -3057,6 +3146,9 @@ function bindControlTaskView(container, initialPayload) {
       localState.filters.status = String(formData.get("status") || "").trim();
       localState.filters.triggerType = String(formData.get("trigger_type") || "").trim();
       localState.filters.channelType = String(formData.get("channel_type") || "").trim();
+      localState.filters.channelID = String(formData.get("channel_id") || "").trim();
+      localState.filters.messageID = String(formData.get("message_id") || "").trim();
+      localState.filters.sourceMessageID = String(formData.get("source_message_id") || "").trim();
       localState.filters.startAt = parseDateTimeFilter(formData.get("start_at"));
       localState.filters.endAt = parseDateTimeFilter(formData.get("end_at"));
       localState.page = 1;
@@ -3067,7 +3159,17 @@ function bindControlTaskView(container, initialPayload) {
     if (resetButton) {
       resetButton.addEventListener("click", async () => {
         form.reset();
-        localState.filters = { sessionID: "", status: "", triggerType: "", channelType: "", startAt: "", endAt: "" };
+        localState.filters = {
+          sessionID: "",
+          status: "",
+          triggerType: "",
+          channelType: "",
+          channelID: "",
+          messageID: "",
+          sourceMessageID: "",
+          startAt: "",
+          endAt: ""
+        };
         localState.page = 1;
         await loadList();
       });
@@ -3160,6 +3262,9 @@ async function loadControlTasksView(container) {
           <option value="scheduler">${t("channel.scheduler")}</option>
         </select>
       </label>
+      <label><span>${t("route.tasks.filter.channel_id")}</span><input type="text" name="channel_id" placeholder="web-default"></label>
+      <label><span>${t("route.tasks.filter.message_id")}</span><input type="text" name="message_id" placeholder="msg-123"></label>
+      <label><span>${t("route.tasks.filter.source_message_id")}</span><input type="text" name="source_message_id" placeholder="msg-source-123"></label>
       <label><span>${t("route.tasks.filter.start_at")}</span><input type="datetime-local" name="start_at"></label>
       <label><span>${t("route.tasks.filter.end_at")}</span><input type="datetime-local" name="end_at"></label>
       <div class="task-filter-actions">
