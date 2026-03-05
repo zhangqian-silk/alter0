@@ -2190,6 +2190,7 @@ body {
   box-shadow: -12px 0 28px -18px rgba(15, 23, 42, 0.45);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
   transform: translateX(100%);
   transition: transform 180ms ease;
 }
@@ -2214,7 +2215,12 @@ body {
 }
 
 .control-task-drawer-body {
-  overflow: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
   padding: 14px;
 }
 
@@ -2225,43 +2231,70 @@ body {
 }
 
 .control-task-log-stream {
-  border: 1px solid var(--line-soft);
+  max-height: min(46vh, 380px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  border: 1px solid #0f172a;
   border-radius: 10px;
-  background: #f8fafc;
-  padding: 10px;
-  max-height: min(44vh, 360px);
-  overflow: auto;
-  display: grid;
-  gap: 8px;
+  background: #020617;
 }
 
-.control-task-log-item {
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 8px;
-  display: grid;
-  gap: 6px;
-}
-
-.control-task-log-item p {
+.control-task-terminal-screen {
   margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--ink-muted);
-}
-
-.control-task-log-item pre {
-  margin: 0;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: #f8fafc;
-  font-size: 11px;
+  min-height: 140px;
+  padding: 12px;
+  color: #e2e8f0;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.control-task-terminal-screen.is-empty {
+  color: #94a3b8;
+}
+
+.control-task-terminal-input {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.control-task-terminal-input input {
+  flex: 1;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  padding: 0 12px;
+}
+
+.control-task-terminal-input button {
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.control-task-terminal-input button:disabled,
+.control-task-terminal-input input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.control-task-terminal-hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .control-task-result-output {
@@ -2481,6 +2514,19 @@ body {
   .task-filter-actions {
     justify-content: flex-start;
   }
+
+  .control-task-drawer-body {
+    padding: 12px;
+  }
+
+  .control-task-log-stream {
+    max-height: min(34vh, 260px);
+  }
+
+  .control-task-terminal-screen {
+    min-height: 112px;
+    padding: 10px;
+  }
 }
 
 @media (max-width: 760px) {
@@ -2627,5 +2673,14 @@ body {
 
   .control-task-drawer-panel {
     max-width: none;
+  }
+
+  .control-task-terminal-input {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .control-task-terminal-input button {
+    width: 100%;
   }
 }
