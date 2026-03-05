@@ -105,6 +105,7 @@ type Options struct {
 	LongContentThreshold int
 	ArtifactKeywords     []string
 	SummaryMemory        TaskSummaryRecorder
+	ComplexityPredictor  ComplexityPredictor
 }
 
 type Service struct {

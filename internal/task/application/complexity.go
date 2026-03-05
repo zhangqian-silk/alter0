@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"unicode/utf8"
@@ -35,6 +36,10 @@ type ComplexityAssessment struct {
 	Fallback                 bool   `json:"fallback,omitempty"`
 }
 
+type ComplexityPredictor interface {
+	Predict(ctx context.Context, msg shareddomain.UnifiedMessage) (ComplexityAssessment, error)
+}
+
 func (s *Service) AssessComplexity(msg shareddomain.UnifiedMessage) ComplexityAssessment {
 	assessment, err := s.predictComplexity(msg)
 	if err != nil {
@@ -57,14 +62,28 @@ func (s *Service) predictComplexity(msg shareddomain.UnifiedMessage) (Complexity
 	lowerContent := strings.ToLower(trimmed)
 	taskType := strings.ToLower(strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskTypeKey)))
 	mode := strings.ToLower(strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskAsyncMode)))
-
-	estimated := estimateDurationSeconds(trimmed, s.options.LongContentThreshold)
 	hasArtifactHint := hasArtifactSignal(msg.Metadata, taskType, lowerContent, s.options.ArtifactKeywords)
+
+	assessment := ComplexityAssessment{}
+	if s.options.ComplexityPredictor != nil {
+		predicted, err := s.options.ComplexityPredictor.Predict(context.Background(), msg)
+		if err != nil {
+			return ComplexityAssessment{}, errComplexityPredictorUnavailable
+		}
+		assessment = normalizeComplexityAssessment(predicted)
+	} else {
+		assessment = predictComplexityByRules(trimmed, hasArtifactHint, s.options.LongContentThreshold)
+	}
+
+	estimated := assessment.EstimatedDurationSeconds
+	if estimated <= 0 {
+		estimated = estimateDurationSeconds(trimmed, s.options.LongContentThreshold)
+	}
+	executionMode := strings.ToLower(strings.TrimSpace(assessment.ExecutionMode))
 	if hasArtifactHint && estimated <= defaultAsyncRouteThresholdSeconds {
 		estimated = defaultAsyncRouteThresholdSeconds + 12
 	}
 
-	executionMode := ExecutionModeStreaming
 	switch mode {
 	case "sync", "inline", "off", "disable":
 		executionMode = ExecutionModeStreaming
@@ -77,8 +96,13 @@ func (s *Service) predictComplexity(msg shareddomain.UnifiedMessage) (Complexity
 			estimated = defaultAsyncRouteThresholdSeconds + 15
 		}
 	default:
-		if estimated > defaultAsyncRouteThresholdSeconds || hasArtifactHint {
+		if estimated > defaultAsyncRouteThresholdSeconds || hasArtifactHint || executionMode == ExecutionModeAsync {
 			executionMode = ExecutionModeAsync
+			if estimated <= defaultAsyncRouteThresholdSeconds {
+				estimated = defaultAsyncRouteThresholdSeconds + 1
+			}
+		} else {
+			executionMode = ExecutionModeStreaming
 		}
 	}
 
@@ -87,6 +111,22 @@ func (s *Service) predictComplexity(msg shareddomain.UnifiedMessage) (Complexity
 		ComplexityLevel:          resolveComplexityLevel(estimated),
 		ExecutionMode:            executionMode,
 	}, nil
+}
+
+func predictComplexityByRules(content string, hasArtifactHint bool, threshold int) ComplexityAssessment {
+	estimated := estimateDurationSeconds(content, threshold)
+	executionMode := ExecutionModeStreaming
+	if hasArtifactHint && estimated <= defaultAsyncRouteThresholdSeconds {
+		estimated = defaultAsyncRouteThresholdSeconds + 12
+	}
+	if estimated > defaultAsyncRouteThresholdSeconds || hasArtifactHint {
+		executionMode = ExecutionModeAsync
+	}
+	return ComplexityAssessment{
+		EstimatedDurationSeconds: estimated,
+		ComplexityLevel:          resolveComplexityLevel(estimated),
+		ExecutionMode:            executionMode,
+	}
 }
 
 func isComplexityPredictorUnavailable(msg shareddomain.UnifiedMessage) bool {
@@ -106,12 +146,73 @@ func hasArtifactSignal(metadata map[string]string, taskType string, lowerContent
 	if strings.Contains(taskType, "artifact") || strings.Contains(taskType, "export") {
 		return true
 	}
+	if hasFileGenerationIntent(lowerContent) {
+		return true
+	}
 	for _, keyword := range artifactKeywords {
 		normalized := strings.ToLower(strings.TrimSpace(keyword))
 		if normalized == "" {
 			continue
 		}
 		if strings.Contains(lowerContent, normalized) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasFileGenerationIntent(lowerContent string) bool {
+	content := strings.TrimSpace(lowerContent)
+	if content == "" {
+		return false
+	}
+
+	verbs := []string{
+		"generate",
+		"create",
+		"write",
+		"save",
+		"export",
+		"produce",
+		"draft",
+		"生成",
+		"创建",
+		"写入",
+		"输出",
+		"导出",
+		"产出",
+		"整理",
+	}
+	targets := []string{
+		"file",
+		"document",
+		"doc",
+		"markdown",
+		"readme",
+		"report",
+		"artifact",
+		"zip",
+		".md",
+		"文档",
+		"文件",
+		"报告",
+		"产物",
+		"压缩包",
+	}
+
+	hasVerb := false
+	for _, verb := range verbs {
+		if strings.Contains(content, verb) {
+			hasVerb = true
+			break
+		}
+	}
+	if !hasVerb {
+		return false
+	}
+
+	for _, target := range targets {
+		if strings.Contains(content, target) {
 			return true
 		}
 	}

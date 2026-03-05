@@ -229,6 +229,7 @@ func main() {
 		MaxRetries:           resolvedAsyncTaskMaxRetries,
 		LongContentThreshold: resolvedAsyncLongContentThreshold,
 		SummaryMemory:        taskSummaryRecorder,
+		ComplexityPredictor:  taskapp.NewCodexQuickComplexityPredictor(),
 	})
 	if err != nil {
 		logger.Error("failed to initialize task service", slog.String("error", err.Error()))
