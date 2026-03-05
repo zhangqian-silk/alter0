@@ -9,6 +9,7 @@ import (
 	"time"
 
 	sessiondomain "alter0/internal/session/domain"
+	shareddomain "alter0/internal/shared/domain"
 )
 
 const (
@@ -31,10 +32,12 @@ type Pagination struct {
 }
 
 type SessionQuery struct {
-	StartAt  time.Time
-	EndAt    time.Time
-	Page     int
-	PageSize int
+	StartAt     time.Time
+	EndAt       time.Time
+	TriggerType shareddomain.TriggerType
+	JobID       string
+	Page        int
+	PageSize    int
 }
 
 type MessageQuery struct {
@@ -143,6 +146,8 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 	pagination := normalizePagination(query.Page, query.PageSize)
 	startAt := normalizeTime(query.StartAt)
 	endAt := normalizeTime(query.EndAt)
+	triggerType := shareddomain.TriggerType(strings.ToLower(strings.TrimSpace(string(query.TriggerType))))
+	jobID := strings.TrimSpace(query.JobID)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -158,7 +163,8 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 		}
 		first := s.records[indexes[start]]
 		last := s.records[indexes[end-1]]
-		summaries = append(summaries, sessiondomain.SessionSummary{
+		source := s.resolveSessionSourceLocked(indexes)
+		summary := sessiondomain.SessionSummary{
 			SessionID:     first.SessionID,
 			MessageCount:  end - start,
 			StartedAt:     first.Timestamp,
@@ -167,7 +173,18 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 			LastRoute:     string(last.RouteResult.Route),
 			LastErrorCode: last.RouteResult.ErrorCode,
 			LastPreview:   summarizePreview(last.Content),
-		})
+			TriggerType:   source.TriggerType,
+			ChannelType:   source.ChannelType,
+			ChannelID:     source.ChannelID,
+			CorrelationID: source.CorrelationID,
+			JobID:         source.JobID,
+			JobName:       source.JobName,
+			FiredAt:       source.FiredAt,
+		}
+		if !matchSessionSourceFilters(summary, triggerType, jobID) {
+			continue
+		}
+		summaries = append(summaries, summary)
 	}
 
 	sort.SliceStable(summaries, func(i, j int) bool {
@@ -243,6 +260,7 @@ func sanitizeRecord(record sessiondomain.MessageRecord) (sessiondomain.MessageRe
 	record.MessageID = strings.TrimSpace(record.MessageID)
 	record.SessionID = strings.TrimSpace(record.SessionID)
 	record.Timestamp = normalizeTime(record.Timestamp)
+	record.Source = normalizeMessageSource(record.Source)
 	if err := record.Validate(); err != nil {
 		return sessiondomain.MessageRecord{}, err
 	}
@@ -288,6 +306,22 @@ func (s *Service) rangeBoundsLocked(indexes []int, startAt, endAt time.Time) (in
 		return start, start
 	}
 	return start, end
+}
+
+func (s *Service) resolveSessionSourceLocked(indexes []int) sessiondomain.MessageSource {
+	for _, idx := range indexes {
+		source := normalizeMessageSource(s.records[idx].Source)
+		if source.TriggerType != "" ||
+			source.ChannelType != "" ||
+			source.ChannelID != "" ||
+			source.CorrelationID != "" ||
+			source.JobID != "" ||
+			source.JobName != "" ||
+			!source.FiredAt.IsZero() {
+			return source
+		}
+	}
+	return sessiondomain.MessageSource{}
 }
 
 func (s *Service) storeLocked() error {
@@ -362,6 +396,15 @@ func cloneRecord(record sessiondomain.MessageRecord) sessiondomain.MessageRecord
 			ErrorCode: record.RouteResult.ErrorCode,
 			TaskID:    record.RouteResult.TaskID,
 		},
+		Source: sessiondomain.MessageSource{
+			TriggerType:   record.Source.TriggerType,
+			ChannelType:   record.Source.ChannelType,
+			ChannelID:     record.Source.ChannelID,
+			CorrelationID: record.Source.CorrelationID,
+			JobID:         record.Source.JobID,
+			JobName:       record.Source.JobName,
+			FiredAt:       record.Source.FiredAt,
+		},
 	}
 }
 
@@ -381,4 +424,25 @@ func cloneSessionIndexes(source map[string][]int) map[string][]int {
 		out[key] = copied
 	}
 	return out
+}
+
+func normalizeMessageSource(source sessiondomain.MessageSource) sessiondomain.MessageSource {
+	source.TriggerType = shareddomain.TriggerType(strings.ToLower(strings.TrimSpace(string(source.TriggerType))))
+	source.ChannelType = shareddomain.ChannelType(strings.ToLower(strings.TrimSpace(string(source.ChannelType))))
+	source.ChannelID = strings.TrimSpace(source.ChannelID)
+	source.CorrelationID = strings.TrimSpace(source.CorrelationID)
+	source.JobID = strings.TrimSpace(source.JobID)
+	source.JobName = strings.TrimSpace(source.JobName)
+	source.FiredAt = normalizeTime(source.FiredAt)
+	return source
+}
+
+func matchSessionSourceFilters(summary sessiondomain.SessionSummary, triggerType shareddomain.TriggerType, jobID string) bool {
+	if triggerType != "" && summary.TriggerType != triggerType {
+		return false
+	}
+	if jobID != "" && !strings.EqualFold(summary.JobID, jobID) {
+		return false
+	}
+	return true
 }

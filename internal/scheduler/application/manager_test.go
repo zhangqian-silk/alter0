@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -84,7 +85,54 @@ func TestManagerTriggersCronMessage(t *testing.T) {
 		if msg.CorrelationID != "job-a" {
 			t.Fatalf("expected correlation id job-a, got %s", msg.CorrelationID)
 		}
+		if !strings.HasPrefix(msg.SessionID, "cron-job-a-") {
+			t.Fatalf("expected cron session prefix, got %s", msg.SessionID)
+		}
 	case <-time.After(300 * time.Millisecond):
 		t.Fatal("expected cron trigger message but timed out")
+	}
+}
+
+func TestManagerUsesDedicatedSessionPerTrigger(t *testing.T) {
+	orchestrator := &stubOrchestrator{
+		messages: make(chan shareddomain.UnifiedMessage, 8),
+	}
+	manager := NewManager(
+		orchestrator,
+		&noopTelemetry{},
+		&atomicIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager.Start(ctx)
+
+	if err := manager.Upsert(schedulerdomain.Job{
+		ID:       "job-b",
+		Name:     "job-b",
+		Interval: 15 * time.Millisecond,
+		Enabled:  true,
+		TaskConfig: schedulerdomain.TaskConfig{
+			Input: "/help",
+		},
+	}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	var first shareddomain.UnifiedMessage
+	select {
+	case first = <-orchestrator.messages:
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("expected first cron trigger message but timed out")
+	}
+
+	select {
+	case second := <-orchestrator.messages:
+		if first.SessionID == second.SessionID {
+			t.Fatalf("expected different session id, got %s", first.SessionID)
+		}
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("expected second cron trigger message but timed out")
 	}
 }

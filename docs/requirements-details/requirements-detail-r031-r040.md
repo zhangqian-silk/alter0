@@ -335,6 +335,16 @@
 
 #### Traceability
 
+- 实现文件：`internal/scheduler/domain/schedule.go`、`internal/scheduler/domain/job.go`、`internal/scheduler/application/manager.go`、`internal/storage/infrastructure/localfile/scheduler_store.go`、`internal/session/domain/message.go`、`internal/session/application/service.go`、`internal/orchestration/application/session_persistence_service.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
+- 测试覆盖：`internal/scheduler/domain/schedule_test.go`、`internal/scheduler/application/manager_test.go`、`internal/storage/infrastructure/localfile/scheduler_store_test.go`、`internal/session/application/service_test.go`、`internal/orchestration/application/session_persistence_service_test.go`、`internal/interfaces/web/server_cron_test.go`、`internal/interfaces/web/server_session_test.go`
+- 验证命令：
+  - `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org go test ./internal/scheduler/domain ./internal/scheduler/application ./internal/storage/infrastructure/localfile ./internal/session/application ./internal/orchestration/application ./internal/interfaces/web`
+  - `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org go test ./...`
+- 验证记录：
+  - 2026-03-05：`Control -> Cron Jobs` 新增可视化配置表单，支持 `every/daily/weekly` 三种模式与 `cron_expression` 双向联动回填。
+  - 2026-03-05：Cron 配置模型扩展 `schedule_mode/timezone/cron_expression/task_config`，并保持旧版 `interval/content` 兼容导入。
+  - 2026-03-05：Scheduler 每次触发生成独立 `session_id`，会话元数据记录 `trigger_type=cron`、`job_id`、`job_name`、`fired_at`。
+  - 2026-03-05：新增 `GET /api/control/cron/jobs/{job_id}/runs`，并支持 `GET /api/sessions?trigger_type=cron&job_id=...` 归档筛选与会话回链。
 - 核心对象：`cron_expression`、`schedule_mode`、`job_id`、`fired_at`、`session_id`
 - 依赖需求：`R-009`、`R-010`、`R-034`
 - 验证口径：可视化配置可用性、表达式联动正确性、触发会话可追溯性

@@ -82,6 +82,12 @@ func TestSessionPersistenceServiceRecordsUserAndAssistantMessages(t *testing.T) 
 	if recorder.records[1].RouteResult.Route != shareddomain.RouteNL {
 		t.Fatalf("expected route nl, got %q", recorder.records[1].RouteResult.Route)
 	}
+	if recorder.records[0].Source.TriggerType != shareddomain.TriggerTypeUser {
+		t.Fatalf("expected trigger_type user, got %s", recorder.records[0].Source.TriggerType)
+	}
+	if recorder.records[0].Source.ChannelType != shareddomain.ChannelTypeWeb {
+		t.Fatalf("expected channel_type web, got %s", recorder.records[0].Source.ChannelType)
+	}
 }
 
 func TestSessionPersistenceServiceKeepsResultWhenStoreFails(t *testing.T) {
@@ -169,5 +175,60 @@ func TestSessionPersistenceServicePersistsTaskIDFromMetadata(t *testing.T) {
 	}
 	if recorder.records[1].RouteResult.TaskID != "task-123" {
 		t.Fatalf("expected assistant record task id task-123, got %q", recorder.records[1].RouteResult.TaskID)
+	}
+}
+
+func TestSessionPersistenceServicePersistsCronSourceMetadata(t *testing.T) {
+	downstream := &stubPersistenceDownstream{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-cron",
+			SessionID: "s-cron",
+			Route:     shareddomain.RouteCommand,
+			Output:    "done",
+		},
+	}
+	recorder := &spySessionRecorder{}
+	service := &SessionPersistenceService{
+		downstream:  downstream,
+		recorder:    recorder,
+		idGenerator: &fixedIDGenerator{nextID: "assistant-cron"},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:     "msg-cron",
+		SessionID:     "s-cron",
+		Content:       "/time",
+		ReceivedAt:    time.Date(2026, 3, 5, 10, 0, 0, 0, time.UTC),
+		TriggerType:   shareddomain.TriggerTypeCron,
+		ChannelID:     "scheduler-default",
+		ChannelType:   shareddomain.ChannelTypeScheduler,
+		CorrelationID: "job-daily",
+		TraceID:       "trace-cron",
+		Metadata: map[string]string{
+			"job_id":   "job-daily",
+			"job_name": "Daily Report",
+			"fired_at": "2026-03-05T10:00:00Z",
+		},
+	}
+
+	if _, err := service.Handle(context.Background(), msg); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+	if len(recorder.records) != 2 {
+		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
+	}
+	source := recorder.records[0].Source
+	if source.TriggerType != shareddomain.TriggerTypeCron {
+		t.Fatalf("expected trigger_type cron, got %s", source.TriggerType)
+	}
+	if source.JobID != "job-daily" {
+		t.Fatalf("expected job id job-daily, got %s", source.JobID)
+	}
+	if source.JobName != "Daily Report" {
+		t.Fatalf("expected job name Daily Report, got %s", source.JobName)
+	}
+	if source.FiredAt.IsZero() {
+		t.Fatalf("expected fired_at to be set")
 	}
 }
