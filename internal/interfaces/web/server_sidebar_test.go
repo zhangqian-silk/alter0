@@ -330,3 +330,31 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 		}
 	}
 }
+
+func TestControlTaskLogStreamMobileStickMarkersPresent(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	scriptMarkers := []string{
+		"logStickToBottom: true",
+		"const isNearLogBottom = (node, threshold = 24) => {",
+		"const scrollLogToBottom = (node) => {",
+		"const bindLogStreamNode = (streamNode) => {",
+		"event.preventDefault();",
+	}
+	for _, marker := range scriptMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	styleMarkers := []string{
+		".control-task-log-stream {",
+		"overscroll-behavior-y: none;",
+		"overflow-anchor: none;",
+	}
+	for _, marker := range styleMarkers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -55,6 +56,9 @@ const defaultWebAddr = "127.0.0.1:18088"
 
 func main() {
 	webAddr := flag.String("web-addr", defaultWebAddr, "web server listen address")
+	webBindLocalhostOnly := flag.Bool("web-bind-localhost-only", true, "force web server to bind loopback only")
+	webLoginPasswordDefault := strings.TrimSpace(os.Getenv("ALTER0_WEB_LOGIN_PASSWORD"))
+	webLoginPassword := flag.String("web-login-password", webLoginPasswordDefault, "web login password (empty to disable login page)")
 	workerPoolSize := flag.Int("worker-pool-size", 4, "global worker pool size")
 	maxQueueSize := flag.Int("max-queue-size", 128, "max waiting queue size")
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
@@ -103,6 +107,11 @@ func main() {
 	if strings.TrimSpace(listenAddr) == "" {
 		listenAddr = defaultWebAddr
 	}
+	resolvedWebBindLocalhostOnly := resolveEnvironmentBool(control, "web_bind_localhost_only", *webBindLocalhostOnly)
+	if resolvedWebBindLocalhostOnly {
+		listenAddr = forceLoopbackListenAddr(listenAddr)
+	}
+	resolvedWebLoginPassword := strings.TrimSpace(control.ResolveEnvironmentString("web_login_password", strings.TrimSpace(*webLoginPassword)))
 
 	resolvedWorkerPoolSize := control.ResolveEnvironmentInt("worker_pool_size", *workerPoolSize)
 	resolvedMaxQueueSize := control.ResolveEnvironmentInt("max_queue_size", *maxQueueSize)
@@ -133,6 +142,8 @@ func main() {
 
 	control.SetEnvironmentRuntime(map[string]string{
 		"web_addr":                           listenAddr,
+		"web_bind_localhost_only":            strconv.FormatBool(resolvedWebBindLocalhostOnly),
+		"web_login_password":                 resolvedWebLoginPassword,
 		"worker_pool_size":                   strconv.Itoa(resolvedWorkerPoolSize),
 		"max_queue_size":                     strconv.Itoa(resolvedMaxQueueSize),
 		"queue_timeout":                      resolvedQueueTimeout.String(),
@@ -268,6 +279,10 @@ func main() {
 			MandatoryContextPath: resolvedMandatoryContextFile,
 			TaskSummaryRuntime:   taskSummaryRuntime,
 		},
+		web.WebSecurityOptions{
+			LoginPassword: resolvedWebLoginPassword,
+			BindLocalhost: resolvedWebBindLocalhostOnly,
+		},
 		logger,
 	)
 	webErrCh := make(chan error, 1)
@@ -315,6 +330,51 @@ func mustUpsertSkill(control *controlapp.Service, skill controldomain.Skill) {
 	if err := control.UpsertSkill(skill); err != nil {
 		panic(err)
 	}
+}
+
+func resolveEnvironmentBool(control *controlapp.Service, key string, fallback bool) bool {
+	resolved := strings.TrimSpace(control.ResolveEnvironmentString(key, strconv.FormatBool(fallback)))
+	if resolved == "" {
+		return fallback
+	}
+	value, err := strconv.ParseBool(resolved)
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+func forceLoopbackListenAddr(raw string) string {
+	addr := strings.TrimSpace(raw)
+	if addr == "" {
+		return defaultWebAddr
+	}
+	if strings.HasPrefix(addr, ":") {
+		return "127.0.0.1" + addr
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return defaultWebAddr
+	}
+	if !isLoopbackHost(host) {
+		return net.JoinHostPort("127.0.0.1", port)
+	}
+	return addr
+}
+
+func isLoopbackHost(rawHost string) bool {
+	host := strings.Trim(strings.TrimSpace(rawHost), "[]")
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback()
 }
 
 func buildStorage(profile storageProfile) (controlapp.Store, schedulerapp.Store, sessionapp.Store, taskapp.Store, error) {

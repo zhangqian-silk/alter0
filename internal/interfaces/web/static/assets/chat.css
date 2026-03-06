@@ -2302,7 +2302,9 @@ body {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: none;
+  overscroll-behavior: none;
+  overflow-anchor: none;
   border: 1px solid #0f172a;
   border-radius: 10px;
   background: #020617;

@@ -14,6 +14,7 @@
 2. [技术方案](./technical-solution.md)
 3. [需求清单](./requirements.md)
 4. [研究报告](./research/README.md)
+5. [Nginx 反向代理与登录保护](./deployment/nginx.md)
 
 ## 维护约定
 

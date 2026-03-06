@@ -2,13 +2,16 @@ package web
 
 import (
 	"context"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +43,8 @@ const (
 	maxTaskArtifactCount              = 128
 	maxTaskArtifactSizeBytes          = 8 * 1024 * 1024
 	taskArtifactReadTimeout           = 3 * time.Second
+	webLoginCookieName                = "alter0_web_session"
+	webLoginCookieTTL                 = 24 * time.Hour
 )
 
 type Orchestrator interface {
@@ -55,16 +60,20 @@ type StreamOrchestrator interface {
 }
 
 type Server struct {
-	addr         string
-	orchestrator Orchestrator
-	telemetry    *observability.Telemetry
-	idGenerator  sharedapp.IDGenerator
-	control      *controlapp.Service
-	scheduler    *schedulerapp.Manager
-	sessions     sessionHistoryService
-	tasks        taskService
-	memory       *agentMemoryService
-	logger       *slog.Logger
+	addr             string
+	orchestrator     Orchestrator
+	telemetry        *observability.Telemetry
+	idGenerator      sharedapp.IDGenerator
+	control          *controlapp.Service
+	scheduler        *schedulerapp.Manager
+	sessions         sessionHistoryService
+	tasks            taskService
+	memory           *agentMemoryService
+	logger           *slog.Logger
+	webLoginPassword string
+	webSessionToken  string
+	webLoginEnabled  bool
+	webBindLocalhost bool
 }
 
 type sessionHistoryService interface {
@@ -394,6 +403,11 @@ type taskControlView struct {
 	Link    taskSessionLink    `json:"link"`
 }
 
+type WebSecurityOptions struct {
+	LoginPassword string
+	BindLocalhost bool
+}
+
 func NewServer(
 	addr string,
 	orchestrator Orchestrator,
@@ -404,19 +418,35 @@ func NewServer(
 	sessions sessionHistoryService,
 	tasks taskService,
 	memoryOptions AgentMemoryOptions,
+	securityOptions WebSecurityOptions,
 	logger *slog.Logger,
 ) *Server {
+	resolvedPassword := strings.TrimSpace(securityOptions.LoginPassword)
+	resolvedBindLocalhost := securityOptions.BindLocalhost
+	webSessionToken := ""
+	if resolvedPassword != "" {
+		if idGenerator != nil {
+			webSessionToken = strings.TrimSpace(idGenerator.NewID())
+		}
+		if webSessionToken == "" {
+			webSessionToken = strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
+		}
+	}
 	return &Server{
-		addr:         addr,
-		orchestrator: orchestrator,
-		telemetry:    telemetry,
-		idGenerator:  idGenerator,
-		control:      control,
-		scheduler:    scheduler,
-		sessions:     sessions,
-		tasks:        tasks,
-		memory:       newAgentMemoryService(memoryOptions),
-		logger:       logger,
+		addr:             addr,
+		orchestrator:     orchestrator,
+		telemetry:        telemetry,
+		idGenerator:      idGenerator,
+		control:          control,
+		scheduler:        scheduler,
+		sessions:         sessions,
+		tasks:            tasks,
+		memory:           newAgentMemoryService(memoryOptions),
+		logger:           logger,
+		webLoginPassword: resolvedPassword,
+		webSessionToken:  webSessionToken,
+		webLoginEnabled:  resolvedPassword != "",
+		webBindLocalhost: resolvedBindLocalhost,
 	}
 }
 
@@ -425,6 +455,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.Handle("/metrics", s.telemetry.MetricsHandler())
 	mux.HandleFunc("/healthz", s.healthHandler)
 	mux.HandleFunc("/readyz", s.readyHandler)
+	mux.HandleFunc("/login", s.loginHandler)
+	mux.HandleFunc("/logout", s.logoutHandler)
 	mux.HandleFunc("/", s.rootHandler)
 	mux.HandleFunc("/chat", s.chatPageHandler)
 	mux.HandleFunc("/api/messages", s.messageHandler)
@@ -458,9 +490,14 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS))))
 
+	handler := http.Handler(mux)
+	if s.webLoginEnabled {
+		handler = s.authMiddleware(handler)
+	}
+
 	server := &http.Server{
 		Addr:    s.addr,
-		Handler: mux,
+		Handler: handler,
 	}
 
 	go func() {
@@ -483,6 +520,208 @@ func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/chat", http.StatusTemporaryRedirect)
+}
+
+func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
+	if !s.webLoginEnabled {
+		http.Redirect(w, r, "/chat", http.StatusTemporaryRedirect)
+		return
+	}
+	if r.URL.Path != "/login" {
+		http.NotFound(w, r)
+		return
+	}
+
+	nextPath := normalizeLoginNext(r.URL.Query().Get("next"))
+	switch r.Method {
+	case http.MethodGet:
+		s.renderLoginPage(w, "", nextPath)
+		return
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			s.renderLoginPage(w, "请求格式错误", nextPath)
+			return
+		}
+		password := r.FormValue("password")
+		nextFromForm := normalizeLoginNext(r.FormValue("next"))
+		if nextFromForm != "" {
+			nextPath = nextFromForm
+		}
+		if !secureStringEqual(strings.TrimSpace(password), strings.TrimSpace(s.webLoginPassword)) {
+			w.WriteHeader(http.StatusUnauthorized)
+			s.renderLoginPage(w, "密码错误，请重试。", nextPath)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     webLoginCookieName,
+			Value:    s.webSessionToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   requestUsesHTTPS(r),
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int(webLoginCookieTTL.Seconds()),
+		})
+		http.Redirect(w, r, nextPath, http.StatusSeeOther)
+		return
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+}
+
+func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/logout" {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     webLoginCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   requestUsesHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nextPath string) {
+	if nextPath == "" {
+		nextPath = "/chat"
+	}
+	alert := ""
+	if strings.TrimSpace(errorMessage) != "" {
+		alert = `<p style="margin:0;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;">` + html.EscapeString(strings.TrimSpace(errorMessage)) + `</p>`
+	}
+	page := `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>alter0 登录</title>
+  <style>
+    body{margin:0;background:#f8fafc;color:#0f172a;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{width:100%;max-width:360px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;display:grid;gap:12px;box-shadow:0 10px 24px -20px rgba(15,23,42,.55)}
+    h1{margin:0;font-size:18px}
+    p{margin:0;color:#475569}
+    label{font-weight:600;color:#334155}
+    input{height:40px;border:1px solid #cbd5e1;border-radius:10px;padding:0 12px;font:inherit}
+    button{height:40px;border:1px solid #1d4ed8;background:#1d4ed8;color:#fff;border-radius:10px;font:inherit;font-weight:700;cursor:pointer}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <form class="card" method="post" action="/login">
+      <h1>alter0 控制台登录</h1>
+      <p>请输入访问密码后继续。</p>
+      ` + alert + `
+      <input type="hidden" name="next" value="` + html.EscapeString(nextPath) + `">
+      <label for="password">密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">登录</button>
+    </form>
+  </main>
+</body>
+</html>`
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(page))
+}
+
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.webLoginEnabled {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if isAuthExemptPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if s.isAuthenticated(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if shouldRedirectToLogin(r) {
+			nextPath := normalizeLoginNext(r.URL.RequestURI())
+			http.Redirect(w, r, "/login?next="+url.QueryEscape(nextPath), http.StatusTemporaryRedirect)
+			return
+		}
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+	})
+}
+
+func (s *Server) isAuthenticated(r *http.Request) bool {
+	cookie, err := r.Cookie(webLoginCookieName)
+	if err != nil {
+		return false
+	}
+	return secureStringEqual(strings.TrimSpace(cookie.Value), strings.TrimSpace(s.webSessionToken))
+}
+
+func expectsHTMLNavigation(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	accept := strings.ToLower(strings.TrimSpace(r.Header.Get("Accept")))
+	if strings.Contains(accept, "text/html") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Mode")), "navigate")
+}
+
+func shouldRedirectToLogin(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	if isInteractivePagePath(r.URL.Path) {
+		return true
+	}
+	return expectsHTMLNavigation(r)
+}
+
+func isInteractivePagePath(path string) bool {
+	normalized := strings.TrimSpace(path)
+	return normalized == "/" || normalized == "/chat"
+}
+
+func isAuthExemptPath(path string) bool {
+	normalized := strings.TrimSpace(path)
+	if normalized == "/healthz" || normalized == "/readyz" || normalized == "/login" || normalized == "/favicon.ico" {
+		return true
+	}
+	return false
+}
+
+func normalizeLoginNext(raw string) string {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		return "/chat"
+	}
+	if !strings.HasPrefix(candidate, "/") || strings.HasPrefix(candidate, "//") || strings.HasPrefix(candidate, "/login") {
+		return "/chat"
+	}
+	return candidate
+}
+
+func secureStringEqual(a string, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func requestUsesHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	proto := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")))
+	return proto == "https"
 }
 
 func (s *Server) chatPageHandler(w http.ResponseWriter, r *http.Request) {

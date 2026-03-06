@@ -3077,6 +3077,9 @@ function bindControlTaskView(container, initialPayload) {
     logItems: [],
     logSeqSet: new Set(),
     logStream: null,
+    logStickToBottom: true,
+    logStreamNode: null,
+    logTouchStartY: null,
     terminalSubmitting: false,
     advancedOpen: false
   };
@@ -3117,6 +3120,9 @@ function bindControlTaskView(container, initialPayload) {
     stopLogStream();
     localState.activeTaskID = "";
     localState.terminalAnchorTaskID = "";
+    localState.logStreamNode = null;
+    localState.logTouchStartY = null;
+    localState.logStickToBottom = true;
     if (!drawer) {
       return;
     }
@@ -3142,23 +3148,82 @@ function bindControlTaskView(container, initialPayload) {
     statusNode.textContent = normalizeText(message || t("route.tasks.logs.empty"));
   };
 
+  const isNearLogBottom = (node, threshold = 24) => {
+    if (!node) {
+      return true;
+    }
+    const scrollTop = Math.max(0, Number(node.scrollTop || 0));
+    const scrollHeight = Math.max(0, Number(node.scrollHeight || 0));
+    const clientHeight = Math.max(0, Number(node.clientHeight || 0));
+    return scrollTop + clientHeight >= scrollHeight - threshold;
+  };
+
+  const scrollLogToBottom = (node) => {
+    if (!node) {
+      return;
+    }
+    const apply = () => {
+      node.scrollTop = node.scrollHeight;
+    };
+    apply();
+    requestAnimationFrame(apply);
+  };
+
+  const bindLogStreamNode = (streamNode) => {
+    if (!streamNode || localState.logStreamNode === streamNode) {
+      return;
+    }
+    localState.logStreamNode = streamNode;
+    localState.logStickToBottom = true;
+    localState.logTouchStartY = null;
+
+    streamNode.addEventListener("scroll", () => {
+      localState.logStickToBottom = isNearLogBottom(streamNode);
+    }, { passive: true });
+
+    streamNode.addEventListener("touchstart", (event) => {
+      const touch = event.touches && event.touches[0];
+      localState.logTouchStartY = touch ? Number(touch.clientY) : null;
+    }, { passive: true });
+
+    streamNode.addEventListener("touchmove", (event) => {
+      const touch = event.touches && event.touches[0];
+      if (!touch || !Number.isFinite(localState.logTouchStartY)) {
+        return;
+      }
+      const currentY = Number(touch.clientY);
+      const deltaY = currentY - localState.logTouchStartY;
+      const scrollTop = Math.max(0, Number(streamNode.scrollTop || 0));
+      const maxScrollTop = Math.max(0, Number(streamNode.scrollHeight || 0) - Number(streamNode.clientHeight || 0));
+      const atTop = scrollTop <= 0;
+      const atBottom = scrollTop >= maxScrollTop - 1;
+      if ((atTop && deltaY > 0) || (atBottom && deltaY < 0)) {
+        event.preventDefault();
+      }
+    }, { passive: false });
+  };
+
   const paintLogs = () => {
     const streamNode = drawerBody.querySelector("[data-control-task-log-stream]");
     if (!streamNode) {
       return;
     }
-    const prevScrollTop = Number(streamNode.scrollTop || 0);
-    const prevScrollHeight = Number(streamNode.scrollHeight || 0);
-    const prevClientHeight = Number(streamNode.clientHeight || 0);
-    const stickToBottom = prevScrollTop + prevClientHeight >= prevScrollHeight - 20;
+    bindLogStreamNode(streamNode);
+    const prevScrollTop = Math.max(0, Number(streamNode.scrollTop || 0));
+    const prevScrollHeight = Math.max(0, Number(streamNode.scrollHeight || 0));
+    const prevClientHeight = Math.max(0, Number(streamNode.clientHeight || 0));
+    const stickToBottom = localState.logStickToBottom || (prevScrollTop + prevClientHeight >= prevScrollHeight - 20);
 
     streamNode.innerHTML = renderControlTaskLogStream(localState.logItems);
 
     if (stickToBottom) {
-      streamNode.scrollTop = streamNode.scrollHeight;
+      localState.logStickToBottom = true;
+      scrollLogToBottom(streamNode);
       return;
     }
-    streamNode.scrollTop = prevScrollTop;
+    const maxScrollTop = Math.max(0, Number(streamNode.scrollHeight || 0) - Number(streamNode.clientHeight || 0));
+    streamNode.scrollTop = Math.min(prevScrollTop, maxScrollTop);
+    localState.logStickToBottom = isNearLogBottom(streamNode);
   };
 
   const resetLogs = () => {
@@ -3166,6 +3231,8 @@ function bindControlTaskView(container, initialPayload) {
     localState.logDone = false;
     localState.logItems = [];
     localState.logSeqSet = new Set();
+    localState.logStickToBottom = true;
+    localState.logTouchStartY = null;
     setLogStatus(t("route.tasks.logs.empty"));
     paintLogs();
   };
@@ -3356,6 +3423,8 @@ function bindControlTaskView(container, initialPayload) {
     const displayTaskID = normalizeText(options.displayTaskID || localState.terminalAnchorTaskID || taskID);
     const payload = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}`);
     drawerBody.innerHTML = renderControlTaskDetail(payload, displayTaskID);
+    localState.logStreamNode = null;
+    localState.logTouchStartY = null;
     setTerminalInputState(localState.terminalSubmitting);
     if (!options.preserveLogs) {
       resetLogs();
@@ -3381,6 +3450,8 @@ function bindControlTaskView(container, initialPayload) {
     const detailPayload = payload?.view || payload;
     const displayTaskID = normalizeText(localState.terminalAnchorTaskID || taskID);
     drawerBody.innerHTML = renderControlTaskDetail(detailPayload, displayTaskID);
+    localState.logStreamNode = null;
+    localState.logTouchStartY = null;
     resetLogs();
     await loadLogBackfill(taskID, 0);
     startLogStream(taskID, localState.logCursor);
