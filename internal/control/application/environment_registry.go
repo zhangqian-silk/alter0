@@ -17,6 +17,32 @@ func defaultEnvironmentDefinitions() []controldomain.EnvironmentDefinition {
 			},
 		},
 		{
+			Key:          "web_bind_localhost_only",
+			Name:         "Web Bind Loopback Only",
+			Module:       "Web & Queue",
+			Description:  "是否强制仅监听本机回环地址（建议 Nginx 反向代理时开启）",
+			Type:         controldomain.EnvironmentValueTypeEnum,
+			DefaultValue: "true",
+			ApplyMode:    controldomain.EnvironmentApplyModeRestart,
+			Validation: controldomain.EnvironmentValidation{
+				Required: true,
+				Allowed:  []string{"true", "false"},
+			},
+		},
+		{
+			Key:          "web_login_password",
+			Name:         "Web Login Password",
+			Module:       "Web & Queue",
+			Description:  "Web 登录密码（留空表示关闭登录页面）",
+			Type:         controldomain.EnvironmentValueTypeString,
+			DefaultValue: "",
+			Sensitive:    true,
+			ApplyMode:    controldomain.EnvironmentApplyModeRestart,
+			Validation: controldomain.EnvironmentValidation{
+				Required: false,
+			},
+		},
+		{
 			Key:          "worker_pool_size",
 			Name:         "Worker Pool Size",
 			Module:       "Web & Queue",
