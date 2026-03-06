@@ -39,6 +39,10 @@ const (
 	controlTaskTerminalParentIDKey    = "alter0.task.terminal_parent_id"
 	controlTaskTerminalSessionIDKey   = "alter0.task.terminal_session_id"
 	controlTaskTerminalInteractiveKey = "alter0.task.terminal_interactive"
+	codexSandboxMetadataKey           = "codex_sandbox"
+	codexWorkspaceModeMetadataKey     = "codex_workspace_mode"
+	codexWorkspaceModeRepoRoot        = "repo-root"
+	codexSandboxDangerFullAccess      = "danger-full-access"
 	defaultControlTaskChannelID       = "web-default"
 	maxTaskArtifactCount              = 128
 	maxTaskArtifactSizeBytes          = 8 * 1024 * 1024
@@ -1054,6 +1058,7 @@ func (s *Server) taskCollectionHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(metadata[taskapp.MetadataTaskAsyncMode]) == "" {
 			metadata[taskapp.MetadataTaskAsyncMode] = "force"
 		}
+		s.applyTerminalExecutionDefaults(metadata)
 
 		sourceMessageID := strings.TrimSpace(req.SourceMessageID)
 		if sourceMessageID == "" {
@@ -1092,6 +1097,23 @@ func (s *Server) taskCollectionHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) applyTerminalExecutionDefaults(metadata map[string]string) {
+	if len(metadata) == 0 {
+		return
+	}
+	taskType := strings.ToLower(strings.TrimSpace(metadata[taskapp.MetadataTaskTypeKey]))
+	interactive := strings.ToLower(strings.TrimSpace(metadata[taskapp.MetadataTaskTerminalFlagKey]))
+	if taskType != "terminal" || interactive != "true" {
+		return
+	}
+	if strings.TrimSpace(metadata[codexSandboxMetadataKey]) == "" {
+		metadata[codexSandboxMetadataKey] = codexSandboxDangerFullAccess
+	}
+	if strings.TrimSpace(metadata[codexWorkspaceModeMetadataKey]) == "" {
+		metadata[codexWorkspaceModeMetadataKey] = codexWorkspaceModeRepoRoot
 	}
 }
 
