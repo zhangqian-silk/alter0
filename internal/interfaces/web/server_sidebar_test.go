@@ -111,6 +111,42 @@ func TestSidebarChannelsRouteMovesToSettingsGroup(t *testing.T) {
 	}
 }
 
+func TestSidebarTerminalRouteMovesToChatGroup(t *testing.T) {
+	html := readEmbeddedAsset(t, "static/chat.html")
+	chatMarker := `data-i18n="nav.chat"`
+	controlMarker := `data-i18n="nav.control"`
+	agentMarker := `data-i18n="nav.agent"`
+	terminalMarker := `data-route="terminal"`
+	chatRouteMarker := `data-route="chat"`
+
+	chatIndex := strings.Index(html, chatMarker)
+	controlIndex := strings.Index(html, controlMarker)
+	agentIndex := strings.Index(html, agentMarker)
+	terminalIndex := strings.Index(html, terminalMarker)
+	chatRouteIndex := strings.Index(html, chatRouteMarker)
+	if chatIndex == -1 || controlIndex == -1 || agentIndex == -1 || terminalIndex == -1 || chatRouteIndex == -1 {
+		t.Fatalf("expected menu markers for chat/control/agent/terminal")
+	}
+	if chatIndex >= controlIndex {
+		t.Fatalf("expected chat group before control group")
+	}
+	if terminalIndex < chatIndex || terminalIndex > controlIndex {
+		t.Fatalf("expected terminal route under chat group")
+	}
+	if terminalIndex < chatRouteIndex {
+		t.Fatalf("expected terminal route after chat route in chat group")
+	}
+
+	chatSection := html[chatIndex:controlIndex]
+	if !strings.Contains(chatSection, terminalMarker) {
+		t.Fatalf("expected terminal route in chat group")
+	}
+	controlSection := html[controlIndex:agentIndex]
+	if strings.Contains(controlSection, terminalMarker) {
+		t.Fatalf("unexpected terminal route in control group")
+	}
+}
+
 func TestSidebarGroupTitlesHaveDedicatedI18NKeys(t *testing.T) {
 	html := readEmbeddedAsset(t, "static/chat.html")
 	htmlMarkers := []string{
