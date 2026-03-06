@@ -112,6 +112,21 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 4. 存储后端默认本地文件（目录 `.alter0`）。
 5. 存储格式按业务场景选择：Control 配置使用 `json`，Scheduler 状态使用 `json`。
 
+### Public Deployment Baseline
+
+公网部署建议使用 Nginx 反向代理，并开启应用内登录页：
+
+```bash
+export ALTER0_WEB_LOGIN_PASSWORD='请替换为强密码'
+
+go run ./cmd/alter0 \
+  -web-addr 127.0.0.1:18088 \
+  -web-bind-localhost-only=true \
+  -web-login-password "$ALTER0_WEB_LOGIN_PASSWORD"
+```
+
+对应 Nginx 配置与运行权限方案见：`docs/deployment/nginx.md`。
+
 浏览器访问：
 
 ```text
