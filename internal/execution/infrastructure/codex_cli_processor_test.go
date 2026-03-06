@@ -203,6 +203,36 @@ func TestCodexCLIProcessorProcessUsesSessionTaskWorkspace(t *testing.T) {
 	}
 }
 
+func TestResolveCodexWorkspaceSupportsRepoRootMode(t *testing.T) {
+	workspace, err := resolveCodexWorkspace(map[string]string{
+		codexWorkspaceModeMetadataKey: codexWorkspaceModeRepoRoot,
+	})
+	if err != nil {
+		t.Fatalf("resolveCodexWorkspace() error = %v", err)
+	}
+	expected, absErr := filepath.Abs(".")
+	if absErr != nil {
+		t.Fatalf("resolve expected workspace: %v", absErr)
+	}
+	if workspace != expected {
+		t.Fatalf("resolveCodexWorkspace() = %q, want %q", workspace, expected)
+	}
+}
+
+func TestCodexCLIProcessorProcessAllowsRepoRootModeWithoutSessionContext(t *testing.T) {
+	processor := newTestProcessor("success", "reply: hello")
+
+	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
+		codexWorkspaceModeMetadataKey: codexWorkspaceModeRepoRoot,
+	})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
+	}
+}
+
 func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
 	processor := newTestProcessor("stream-success", "reply: hello")
 	deltas := make([]string, 0, 2)
@@ -317,7 +347,7 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 	}
-	if !containsArgPair(forwarded, "--sandbox", "workspace-write") {
+	if !containsArgPair(forwarded, "--sandbox", defaultCodexSandboxMode) {
 		os.Exit(2)
 	}
 
