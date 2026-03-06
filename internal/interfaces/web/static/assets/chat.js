@@ -4223,7 +4223,9 @@ async function loadTerminalView(container) {
             input: text,
             metadata: {
               "alter0.task.terminal_session_id": session.terminal_session_id,
-              "alter0.task.terminal_interactive": "true"
+              "alter0.task.terminal_interactive": "true",
+              codex_sandbox: "danger-full-access",
+              codex_workspace_mode: "repo-root"
             }
           })
         });

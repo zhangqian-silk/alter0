@@ -447,6 +447,35 @@ func TestTaskCollectionEndpoints(t *testing.T) {
 	}
 }
 
+func TestTaskCollectionAppliesTerminalExecutionDefaults(t *testing.T) {
+	taskSvc := &stubWebTaskService{
+		submitTask: taskdomain.Task{
+			ID:        "task-terminal-created",
+			SessionID: "terminal-session-a",
+			Status:    taskdomain.TaskStatusQueued,
+		},
+	}
+	server := &Server{
+		tasks:       taskSvc,
+		idGenerator: &sequenceIDGenerator{ids: []string{"trace-1"}},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/tasks", strings.NewReader(`{"session_id":"terminal-session-a","task_type":"terminal","input":"ls -la","metadata":{"alter0.task.terminal_session_id":"terminal-a","alter0.task.terminal_interactive":"true"}}`))
+	createRec := httptest.NewRecorder()
+	server.taskCollectionHandler(createRec, createReq)
+
+	if createRec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d", http.StatusAccepted, createRec.Code)
+	}
+	if got := taskSvc.lastSubmitMsg.Metadata[codexSandboxMetadataKey]; got != codexSandboxDangerFullAccess {
+		t.Fatalf("expected codex sandbox %q, got %q", codexSandboxDangerFullAccess, got)
+	}
+	if got := taskSvc.lastSubmitMsg.Metadata[codexWorkspaceModeMetadataKey]; got != codexWorkspaceModeRepoRoot {
+		t.Fatalf("expected codex workspace mode %q, got %q", codexWorkspaceModeRepoRoot, got)
+	}
+}
+
 func TestTaskItemLogsArtifactsAndRetryEndpoints(t *testing.T) {
 	now := time.Date(2026, 3, 4, 3, 0, 0, 0, time.UTC)
 	taskSvc := &stubWebTaskService{
