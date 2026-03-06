@@ -17,14 +17,22 @@ import (
 )
 
 const (
-	defaultCodexCommand       = "codex"
-	defaultCodexSandboxMode   = "workspace-write"
-	defaultWorkspaceRootDir   = ".alter0"
-	workspaceDirectoryName    = "workspaces"
-	workspaceSessionsDirName  = "sessions"
-	workspaceTasksDirName     = "tasks"
-	taskIDMetadataKey         = "task_id"
-	sessionIDMetadataFallback = "session_id"
+	defaultCodexCommand              = "codex"
+	defaultCodexSandboxMode          = "danger-full-access"
+	codexSandboxEnvKey               = "ALTER0_CODEX_SANDBOX"
+	codexSandboxMetadataKey          = "codex_sandbox"
+	codexWorkspaceModeEnvKey         = "ALTER0_CODEX_WORKSPACE_MODE"
+	codexWorkspaceModeMetadataKey    = "codex_workspace_mode"
+	codexWorkspaceRootDirEnvKey      = "ALTER0_CODEX_WORKSPACE_ROOT"
+	codexWorkspaceRootDirMetadataKey = "codex_workspace_root"
+	codexWorkspaceModeSession        = "session"
+	codexWorkspaceModeRepoRoot       = "repo-root"
+	defaultWorkspaceRootDir          = ".alter0"
+	workspaceDirectoryName           = "workspaces"
+	workspaceSessionsDirName         = "sessions"
+	workspaceTasksDirName            = "tasks"
+	taskIDMetadataKey                = "task_id"
+	sessionIDMetadataFallback        = "session_id"
 )
 
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
@@ -99,7 +107,7 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		"exec",
 		"--color", "never",
 		"--skip-git-repo-check",
-		"--sandbox", defaultCodexSandboxMode,
+		"--sandbox", resolveCodexSandboxMode(metadata),
 		"-o", outputPath,
 		renderedPrompt,
 	}
@@ -166,7 +174,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 		"exec",
 		"--color", "never",
 		"--skip-git-repo-check",
-		"--sandbox", defaultCodexSandboxMode,
+		"--sandbox", resolveCodexSandboxMode(metadata),
 		"--json",
 		"--progress-cursor",
 		renderedPrompt,
@@ -337,7 +345,56 @@ func metadataValue(metadata map[string]string, key string) string {
 	return metadata[key]
 }
 
+func resolveCodexSandboxMode(metadata map[string]string) string {
+	candidate := strings.TrimSpace(firstNonEmpty(
+		metadataValue(metadata, codexSandboxMetadataKey),
+		os.Getenv(codexSandboxEnvKey),
+		defaultCodexSandboxMode,
+	))
+	switch candidate {
+	case "read-only", "workspace-write", "danger-full-access":
+		return candidate
+	default:
+		return defaultCodexSandboxMode
+	}
+}
+
+func resolveCodexWorkspaceMode(metadata map[string]string) string {
+	candidate := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		metadataValue(metadata, codexWorkspaceModeMetadataKey),
+		os.Getenv(codexWorkspaceModeEnvKey),
+		codexWorkspaceModeSession,
+	)))
+	switch candidate {
+	case codexWorkspaceModeSession, codexWorkspaceModeRepoRoot:
+		return candidate
+	default:
+		return codexWorkspaceModeSession
+	}
+}
+
 func resolveCodexWorkspace(metadata map[string]string) (string, error) {
+	workspaceMode := resolveCodexWorkspaceMode(metadata)
+	if workspaceMode == codexWorkspaceModeRepoRoot {
+		repoRoot := strings.TrimSpace(firstNonEmpty(
+			metadataValue(metadata, codexWorkspaceRootDirMetadataKey),
+			os.Getenv(codexWorkspaceRootDirEnvKey),
+			".",
+		))
+		absolute, err := filepath.Abs(repoRoot)
+		if err != nil {
+			return "", fmt.Errorf("resolve codex workspace path: %w", err)
+		}
+		info, statErr := os.Stat(absolute)
+		if statErr != nil {
+			return "", fmt.Errorf("resolve codex workspace path: %w", statErr)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("resolve codex workspace path: %s is not a directory", absolute)
+		}
+		return absolute, nil
+	}
+
 	sessionID := sanitizeWorkspaceSegment(firstNonEmpty(
 		metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey),
 		metadataValue(metadata, sessionIDMetadataFallback),
