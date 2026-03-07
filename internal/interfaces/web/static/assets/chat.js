@@ -3677,12 +3677,12 @@ async function loadControlTasksView(container) {
             <option value="system">${t("trigger.system")}</option>
           </select>
         </label>
-        <div class="task-filter-primary-actions">
-          <button class="task-filter-advanced-toggle" type="button" data-control-task-advanced-toggle aria-expanded="false">${renderAdvancedToggleLabel(false)}</button>
-          <div class="task-filter-actions">
-            <button class="task-filter-apply" type="submit">${t("route.tasks.filter.apply")}</button>
-            <button class="task-filter-reset" type="button" data-control-task-filter-reset>${t("route.tasks.filter.reset")}</button>
-          </div>
+      </div>
+      <div class="task-filter-primary-actions">
+        <button class="task-filter-advanced-toggle" type="button" data-control-task-advanced-toggle aria-expanded="false">${renderAdvancedToggleLabel(false)}</button>
+        <div class="task-filter-actions">
+          <button class="task-filter-apply" type="submit">${t("route.tasks.filter.apply")}</button>
+          <button class="task-filter-reset" type="button" data-control-task-filter-reset>${t("route.tasks.filter.reset")}</button>
         </div>
       </div>
       <div class="task-filter-advanced" data-control-task-advanced hidden>
