@@ -182,6 +182,7 @@ const I18N = {
     "route.sessions.filter.apply": "Apply",
     "route.sessions.filter.reset": "Reset",
     "route.sessions.open_detail": "View Detail",
+    "route.copy_value": "Copy value",
     "route.tasks.title": "Tasks",
     "route.tasks.subtitle": "Observe runtime tasks with source, status, and timeline filters",
     "route.tasks.empty": "No tasks found.",
@@ -520,6 +521,7 @@ const I18N = {
     "route.sessions.filter.apply": "应用",
     "route.sessions.filter.reset": "重置",
     "route.sessions.open_detail": "查看详情",
+    "route.copy_value": "复制内容",
     "route.tasks.title": "任务观测",
     "route.tasks.subtitle": "基于来源、状态和时间范围观测运行任务",
     "route.tasks.empty": "暂无任务记录。",
@@ -2031,8 +2033,49 @@ function routeTypeIcon(type) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17h16"></path><path d="M7 17V7h10v10"></path><path d="m9.5 10.5 1.8 1.8-1.8 1.8"></path><path d="M13.2 14.1h2.3"></path></svg>`;
 }
 
-function routeFieldRow(labelKey, value) {
-  return `<p><span>${t(labelKey)}</span><strong>${escapeHTML(normalizeText(value))}</strong></p>`;
+function routeFieldRow(labelKey, value, options = {}) {
+  const safeValue = normalizeText(value);
+  const copyable = Boolean(options?.copyable) && safeValue !== "-";
+  const multiline = Boolean(options?.multiline);
+  const mono = Boolean(options?.mono);
+  const classNames = ["route-field-value"];
+  if (multiline) {
+    classNames.push("is-multiline");
+  }
+  if (mono) {
+    classNames.push("is-mono");
+  }
+  const copyButton = copyable
+    ? `<button class="route-field-copy" type="button" data-copy-value="${escapeHTML(safeValue)}" title="${escapeHTML(t("route.copy_value"))}" aria-label="${escapeHTML(t("route.copy_value"))}">${renderCopyIcon()}</button>`
+    : "";
+  return `<p class="route-field-row">
+    <span>${t(labelKey)}</span>
+    <span class="route-field-value-wrap">
+      <strong class="${classNames.join(" ")}" title="${escapeHTML(safeValue)}">${escapeHTML(safeValue)}</strong>
+      ${copyButton}
+    </span>
+  </p>`;
+}
+
+async function copyTextValue(value) {
+  const text = normalizeText(value);
+  if (text === "-") {
+    return false;
+  }
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+  const fallback = document.createElement("textarea");
+  fallback.value = text;
+  fallback.setAttribute("readonly", "readonly");
+  fallback.style.position = "absolute";
+  fallback.style.left = "-9999px";
+  document.body.appendChild(fallback);
+  fallback.select();
+  const copied = document.execCommand("copy");
+  fallback.remove();
+  return copied;
 }
 
 function routeStatusBadge(enabled) {
@@ -2046,10 +2089,12 @@ function routeStatusBadge(enabled) {
 function routeCardTemplate(title, type, fields = [], enabled = false, body = "") {
   return `<article class="route-card">
     <div class="route-card-head">
-      <div class="route-card-icon" aria-hidden="true">${routeTypeIcon(type)}</div>
-      <h4>${escapeHTML(normalizeText(title))}</h4>
+      <div class="route-card-title-wrap">
+        <div class="route-card-icon" aria-hidden="true">${routeTypeIcon(type)}</div>
+        <h4 title="${escapeHTML(normalizeText(title))}">${escapeHTML(normalizeText(title))}</h4>
+      </div>
+      ${routeStatusBadge(enabled)}
     </div>
-    ${routeStatusBadge(enabled)}
     <div class="route-meta">
       ${fields.join("")}
     </div>
@@ -2116,8 +2161,9 @@ async function loadChannelsView(container) {
       item.id,
       item.type,
       [
+        routeFieldRow("field.id", item.id, { copyable: true, mono: true }),
         routeFieldRow("field.type", item.type),
-        routeFieldRow("field.description", item.description)
+        routeFieldRow("field.description", item.description, { multiline: true })
       ],
       item.enabled
     )
@@ -2134,6 +2180,7 @@ async function loadSkillsView(container) {
       item.id,
       item.type,
       [
+        routeFieldRow("field.id", item.id, { copyable: true, mono: true }),
         routeFieldRow("field.type", item.type),
         routeFieldRow("field.name", item.name),
         routeFieldRow("field.scope", item.scope),
@@ -2154,6 +2201,7 @@ async function loadMCPView(container) {
       item.id,
       item.type,
       [
+        routeFieldRow("field.id", item.id, { copyable: true, mono: true }),
         routeFieldRow("field.type", item.type),
         routeFieldRow("field.name", item.name),
         routeFieldRow("field.scope", item.scope),
@@ -2227,6 +2275,7 @@ function parseCronExpressionVisual(expression) {
     }
     return parsed;
   };
+
   const parseRangeInt = (value, min, max) => {
     if (!/^\d+$/.test(value)) {
       return null;
@@ -2324,7 +2373,6 @@ function buildCronExpressionVisual(options = {}) {
   if (mode === "weekly") {
     return `${minute} ${hour} * * ${weekday}`;
   }
-
   if (unit === "hour") {
     return `0 */${everyValue} * * *`;
   }
@@ -2358,27 +2406,31 @@ function renderSessionRouteCards(items) {
     const detailBody = `<details class="session-route-detail">
       <summary>${t("route.sessions.open_detail")}</summary>
       <div class="route-meta">
-        ${routeFieldRow("field.channel_id", channelID)}
+        ${routeFieldRow("field.channel_id", channelID, { copyable: true, mono: true })}
         ${routeFieldRow("field.created", formatDateTime(createdAt))}
         ${routeFieldRow("field.messages", messageCount)}
         ${routeFieldRow("field.trigger_type", formatTriggerType(triggerType))}
-        ${routeFieldRow("field.job_id", jobID)}
+        ${routeFieldRow("field.job_id", jobID, { copyable: true, mono: true })}
         ${routeFieldRow("field.job_name", jobName)}
         ${routeFieldRow("field.fired_at", formatDateTime(firedAt))}
       </div>
     </details>`;
-    return routeCardTemplate(
-      title,
-      "session",
-      [
-        routeFieldRow("field.id", sessionID),
-        routeFieldRow("field.channel_type", formatChannelType(channelType)),
-        routeFieldRow("field.last_message_id", lastMessageID),
-        routeFieldRow("field.updated", formatDateTime(updatedAt))
-      ],
-      true,
-      detailBody
-    );
+    return `<article class="route-card session-route-card">
+      <div class="route-card-head session-route-head">
+        <div class="session-route-title-wrap">
+          <div class="route-card-icon" aria-hidden="true">${routeTypeIcon("session")}</div>
+          <h4 title="${escapeHTML(normalizeText(title))}">${escapeHTML(normalizeText(title))}</h4>
+        </div>
+        ${routeStatusBadge(true)}
+      </div>
+      <div class="route-meta session-route-meta">
+        ${routeFieldRow("field.id", sessionID, { copyable: true, mono: true })}
+        ${routeFieldRow("field.channel_type", formatChannelType(channelType))}
+        ${routeFieldRow("field.last_message_id", lastMessageID, { copyable: true, mono: true })}
+        ${routeFieldRow("field.updated", formatDateTime(updatedAt))}
+      </div>
+      <div class="memory-card-body">${detailBody}</div>
+    </article>`;
   }).join("");
 }
 
@@ -2388,7 +2440,7 @@ async function loadSessionsView(container) {
   const data = await fetchJSON(sessionListQuery(filters, 1, 50));
   const items = Array.isArray(data.items) ? data.items : [];
   container.innerHTML = `<section class="session-history-view">
-    <form class="task-filter-form" data-session-filter-form>
+    <form class="task-filter-form page-filter-form page-filter-grid-3 session-filter-form" data-session-filter-form>
       <label>
         <span>${t("route.sessions.filter.trigger_type")}</span>
         <select name="trigger_type">
@@ -2419,7 +2471,7 @@ async function loadSessionsView(container) {
         <span>${t("route.sessions.filter.job_id")}</span>
         <input type="text" name="job_id" placeholder="job-daily-report">
       </label>
-      <div class="task-filter-actions">
+      <div class="task-filter-actions session-filter-actions">
         <button type="submit">${t("route.sessions.filter.apply")}</button>
         <button type="button" data-session-filter-reset>${t("route.sessions.filter.reset")}</button>
       </div>
@@ -2456,6 +2508,7 @@ async function loadSessionsView(container) {
       void renderRoute("sessions");
     });
   }
+
 }
 
 function renderCronJobCards(items) {
@@ -2481,11 +2534,11 @@ function renderCronJobCards(items) {
       jobName,
       "cron",
       [
-        routeFieldRow("field.id", jobID),
+        routeFieldRow("field.id", jobID, { copyable: true, mono: true }),
         routeFieldRow("field.schedule_mode", normalizeText(scheduleMode)),
-        routeFieldRow("field.cron_expression", expression),
+        routeFieldRow("field.cron_expression", expression, { multiline: true, mono: true }),
         routeFieldRow("field.timezone", timezone),
-        routeFieldRow("field.input", taskInput),
+        routeFieldRow("field.input", taskInput, { multiline: true }),
         routeFieldRow("field.retry_limit", retryLimit)
       ],
       item.enabled,
@@ -2503,12 +2556,12 @@ function renderCronRunsList(items, jobID) {
     const sessionID = typeof item?.session_id === "string" ? item.session_id : "";
     const status = typeof item?.status === "string" ? item.status : "";
     const firedAt = typeof item?.fired_at === "string" ? item.fired_at : "";
-    return `<article class="cron-run-item">
-      <div class="cron-run-meta">
-        <p><span>${t("field.id")}</span><strong>${escapeHTML(normalizeText(runID))}</strong></p>
-        <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(sessionID))}</strong></p>
-        <p><span>${t("field.fired_at")}</span><strong>${escapeHTML(formatDateTime(firedAt))}</strong></p>
-        <p><span>${t("field.status")}</span><strong>${escapeHTML(formatTaskStatus(status))}</strong></p>
+    return `<article class="route-card cron-run-item">
+      <div class="route-meta cron-run-meta">
+        ${routeFieldRow("field.id", runID, { copyable: true, mono: true })}
+        ${routeFieldRow("field.session", sessionID, { copyable: true, mono: true })}
+        ${routeFieldRow("field.fired_at", formatDateTime(firedAt))}
+        ${routeFieldRow("field.status", formatTaskStatus(status))}
       </div>
       <button type="button" data-cron-open-sessions="${escapeHTML(jobID)}">${t("route.cron.runs.open_sessions")}</button>
     </article>`;
@@ -2520,7 +2573,7 @@ async function loadCronJobsView(container) {
   const items = Array.isArray(data.items) ? data.items : [];
   const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   container.innerHTML = `<section class="cron-view">
-    <form class="task-filter-form cron-form" data-cron-form>
+    <form class="task-filter-form page-filter-form page-filter-grid-3 cron-form" data-cron-form>
       <h4 class="cron-form-title">${t("route.cron.form.title")}</h4>
       <label><span>${t("route.cron.form.job_id")}</span><input type="text" name="job_id" required></label>
       <label><span>${t("route.cron.form.name")}</span><input type="text" name="name" required></label>
@@ -3603,7 +3656,7 @@ function bindControlTaskView(container, initialPayload) {
 async function loadControlTasksView(container) {
   const payload = await fetchJSON(controlTaskListQuery({}, 1, 20));
   container.innerHTML = `<section class="control-task-view" data-control-task-view>
-    <form class="task-filter-form" data-control-task-filter-form>
+    <form class="task-filter-form page-filter-form" data-control-task-filter-form>
       <div class="task-filter-primary-row">
         <label><span>${t("route.tasks.filter.session")}</span><input type="text" name="session_id" placeholder="session-123"></label>
         <label><span>${t("route.tasks.filter.status")}</span>
@@ -3883,7 +3936,7 @@ function renderTerminalSessionCards(sessions, activeSessionID) {
     return `<button class="terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}">
       <span class="terminal-session-title">${escapeHTML(title)}</span>
       <span class="terminal-session-meta">${escapeHTML(shorten(sessionID, 30))}</span>
-      <span class="terminal-session-meta">${escapeHTML(renderTerminalStatus(session.status))} · ${escapeHTML(formatDateTime(new Date(Number(session.updated_at || 0)).toISOString()))}</span>
+      <span class="terminal-session-meta">${escapeHTML(renderTerminalStatus(session.status))} | ${escapeHTML(formatDateTime(new Date(Number(session.updated_at || 0)).toISOString()))}</span>
     </button>`;
   }).join("");
 }
@@ -3949,18 +4002,24 @@ function renderTerminalWorkspace(session, sending) {
     </section>`;
   }
   const collapsed = resolveTerminalLogCollapsed(session);
-  const logToggleIcon = collapsed ? "▶" : "▼";
+  const logToggleIcon = collapsed ? ">" : "v";
   const logTaskRef = normalizeText(session.active_task_id || session.anchor_task_id || session.terminal_session_id);
   const logTitle = t("route.terminal.logs.heading", { task: shorten(logTaskRef === "-" ? "n/a" : logTaskRef, 32) });
   const split = splitTerminalEntries(session.entries);
   return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}">
     <header class="terminal-workspace-head">
-      <p><span>${t("route.terminal.session")}</span><strong>${escapeHTML(normalizeText(session.terminal_session_id))}</strong></p>
-      <p><span>${t("route.terminal.anchor_task")}</span><strong>${escapeHTML(normalizeText(session.anchor_task_id))}</strong></p>
-      <p><span>${t("route.terminal.active_task")}</span><strong>${escapeHTML(normalizeText(session.active_task_id))}</strong></p>
-      <p><span>${t("route.terminal.status")}</span><strong>${escapeHTML(renderTerminalStatus(session.status))}</strong></p>
+      <div class="terminal-workspace-copy">
+        <h4>${escapeHTML(logTitle)}</h4>
+        <p>${escapeHTML(normalizeText(session.title))}</p>
+      </div>
+      <div class="terminal-workspace-badges">
+        <span class="terminal-context-badge"><em>${t("route.terminal.session")}</em><strong>${escapeHTML(normalizeText(session.terminal_session_id))}</strong></span>
+        <span class="terminal-context-badge"><em>${t("route.terminal.anchor_task")}</em><strong>${escapeHTML(normalizeText(session.anchor_task_id))}</strong></span>
+        <span class="terminal-context-badge"><em>${t("route.terminal.active_task")}</em><strong>${escapeHTML(normalizeText(session.active_task_id))}</strong></span>
+        <span class="terminal-context-badge is-status"><em>${t("route.terminal.status")}</em><strong>${escapeHTML(renderTerminalStatus(session.status))}</strong></span>
+      </div>
     </header>
-    <section class="terminal-log-block">
+    <section class="terminal-console-panel">
       <button class="terminal-log-toggle" type="button" data-terminal-log-toggle aria-expanded="${collapsed ? "false" : "true"}">
         <span class="terminal-log-toggle-icon">${logToggleIcon}</span>
         <span class="terminal-log-toggle-text">${escapeHTML(logTitle)}</span>
@@ -3970,12 +4029,12 @@ function renderTerminalWorkspace(session, sending) {
           ${renderTerminalLogRows(split.logs)}
         </div>
       </div>
+      ${renderTerminalFollowupRows(split.followups)}
+      <form class="terminal-chat-form" data-terminal-input-form>
+        <input type="text" data-terminal-input maxlength="6000" placeholder="${escapeHTML(t("route.terminal.input"))}" ${sending ? "disabled" : ""}>
+        <button type="submit" data-terminal-submit ${sending ? "disabled" : ""}>${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}</button>
+      </form>
     </section>
-    ${renderTerminalFollowupRows(split.followups)}
-    <form class="terminal-chat-form" data-terminal-input-form>
-      <input type="text" data-terminal-input maxlength="6000" placeholder="${escapeHTML(t("route.terminal.input"))}" ${sending ? "disabled" : ""}>
-      <button type="submit" data-terminal-submit ${sending ? "disabled" : ""}>${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}</button>
-    </form>
   </section>`;
 }
 
@@ -4664,7 +4723,7 @@ function renderMemoryDocumentCard(title, type, payload, emptyKey) {
   const content = typeof payload?.content === "string" ? payload.content : "";
   const error = typeof payload?.error === "string" ? payload.error : "";
   const fields = [
-    routeFieldRow("field.path", path || "-"),
+    routeFieldRow("field.path", path || "-", { copyable: true, multiline: true, mono: true }),
     routeFieldRow("field.updated", formatDateTime(updatedAt)),
     routeFieldRow("field.read_only", t("route.memory.read_only"))
   ];
@@ -4685,7 +4744,7 @@ function renderMemorySpecificationCard(payload) {
   const content = typeof payload?.content === "string" ? payload.content : "";
   const error = typeof payload?.error === "string" ? payload.error : "";
   const fields = [
-    routeFieldRow("field.path", path || "-"),
+    routeFieldRow("field.path", path || "-", { copyable: true, multiline: true, mono: true }),
     routeFieldRow("field.updated", formatDateTime(updatedAt)),
     routeFieldRow("field.read_only", t("route.memory.read_only"))
   ];
@@ -4722,7 +4781,7 @@ function renderDailyMemoryCards(payload) {
     const error = typeof item?.error === "string" ? item.error : "";
     const fields = [
       routeFieldRow("field.date", date),
-      routeFieldRow("field.path", path || "-"),
+      routeFieldRow("field.path", path || "-", { copyable: true, multiline: true, mono: true }),
       routeFieldRow("field.updated", formatDateTime(updatedAt)),
       routeFieldRow("field.read_only", t("route.memory.read_only"))
     ];
@@ -4795,14 +4854,14 @@ function renderTaskDetail(meta, refs) {
       <h5>${escapeHTML(taskID)}</h5>
       <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
     </header>
-    <div class="task-detail-meta">
-      <p><span>${t("field.task_type")}</span><strong>${escapeHTML(normalizeText(taskType))}</strong></p>
-      <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(meta?.session_id))}</strong></p>
-      <p><span>${t("field.source_message")}</span><strong>${escapeHTML(normalizeText(meta?.source_message_id))}</strong></p>
-      <p><span>${t("field.progress")}</span><strong>${escapeHTML(normalizeText(meta?.progress))}</strong></p>
-      <p><span>${t("field.retry_count")}</span><strong>${escapeHTML(normalizeText(meta?.retry_count))}</strong></p>
-      <p><span>${t("field.created")}</span><strong>${escapeHTML(formatDateTime(meta?.created_at))}</strong></p>
-      <p><span>${t("field.finished_at")}</span><strong>${escapeHTML(formatDateTime(meta?.finished_at))}</strong></p>
+    <div class="task-detail-meta route-meta">
+      ${routeFieldRow("field.task_type", taskType)}
+      ${routeFieldRow("field.session", meta?.session_id, { copyable: true, mono: true })}
+      ${routeFieldRow("field.source_message", meta?.source_message_id, { copyable: true, mono: true })}
+      ${routeFieldRow("field.progress", meta?.progress)}
+      ${routeFieldRow("field.retry_count", meta?.retry_count)}
+      ${routeFieldRow("field.created", formatDateTime(meta?.created_at))}
+      ${routeFieldRow("field.finished_at", formatDateTime(meta?.finished_at))}
     </div>
     <section class="task-detail-section">
       <h6>Summary Refs</h6>
@@ -4834,9 +4893,14 @@ function renderTaskLogs(payload) {
     return `<p class="route-empty">${t("route.memory.tasks.logs.empty")}</p>`;
   }
   const list = `<ul class="task-detail-log-list">
-    ${items.map((item) => `<li>
-      <p><strong>#${escapeHTML(normalizeText(item.seq))}</strong><span>${escapeHTML(normalizeText(item.stage))}</span><span>${escapeHTML(normalizeText(formatTaskStatus(item.level)))}</span><span>${escapeHTML(formatDateTime(item.created_at || item.timestamp))}</span></p>
-      <pre>${escapeHTML(normalizeText(item.message))}</pre>
+    ${items.map((item) => `<li class="task-detail-list-item">
+      <div class="task-detail-list-head">
+        <strong>#${escapeHTML(normalizeText(item.seq))}</strong>
+        <span>${escapeHTML(normalizeText(item.stage))}</span>
+        <span>${escapeHTML(normalizeText(formatTaskStatus(item.level)))}</span>
+        <span>${escapeHTML(formatDateTime(item.created_at || item.timestamp))}</span>
+      </div>
+      <pre class="task-detail-list-content">${escapeHTML(normalizeText(item.message))}</pre>
     </li>`).join("")}
   </ul>`;
   if (!payload?.has_more) {
@@ -4854,9 +4918,12 @@ function renderTaskArtifacts(payload) {
     return `<p class="route-empty">${t("route.memory.tasks.artifacts.empty")}</p>`;
   }
   return `<ul class="task-detail-artifact-list">
-    ${items.map((item) => `<li>
-      <p><strong>${escapeHTML(normalizeText(item.artifact_type || item.name))}</strong><span>${escapeHTML(formatDateTime(item.created_at))}</span></p>
-      <p>${escapeHTML(normalizeText(item.summary || item.content_type))}</p>
+    ${items.map((item) => `<li class="task-detail-list-item">
+      <div class="task-detail-list-head">
+        <strong>${escapeHTML(normalizeText(item.artifact_type || item.name))}</strong>
+        <span>${escapeHTML(formatDateTime(item.created_at))}</span>
+      </div>
+      <p class="task-detail-list-content">${escapeHTML(normalizeText(item.summary || item.content_type))}</p>
       <p class="task-artifact-actions">
         ${item.download_url
     ? `<button type="button" data-task-artifact-download="${escapeHTML(item.download_url)}" data-task-artifact-name="${escapeHTML(normalizeText(item.name || item.artifact_id || "artifact.bin"))}">${t("route.memory.tasks.artifacts.download")}</button>`
@@ -5100,7 +5167,7 @@ async function loadMemoryView(container) {
     </div>
     <section class="memory-panel memory-panel-tasks" data-memory-panel="tasks" hidden>
       <section class="task-history-view" data-task-history-view>
-        <form class="task-filter-form" data-task-filter-form>
+        <form class="task-filter-form page-filter-form page-filter-grid-2" data-task-filter-form>
           <label><span>${t("route.memory.tasks.filter.status")}</span>
             <select name="status">
               <option value="">-</option>
@@ -5139,7 +5206,7 @@ async function loadMemoryView(container) {
       ${routeCardTemplate(
         t("route.memory.tab.daily"),
         "memory",
-        [routeFieldRow("route.memory.daily.source", dailySourceDir)],
+        [routeFieldRow("route.memory.daily.source", dailySourceDir, { copyable: true, multiline: true, mono: true })],
         true
       )}
       <div class="memory-daily-list">${renderDailyMemoryCards(payload?.daily)}</div>
@@ -5253,23 +5320,31 @@ function renderEnvironmentItem(item) {
   const pendingBadge = pendingRestart
     ? `<span class="environment-pending">${t("route.envs.pending_restart")}</span>`
     : "";
-  return `<article class="environment-item" data-environment-item="${escapeHTML(key)}">
-    <header class="environment-item-head">
-      <h5>${escapeHTML(name)}</h5>
-      <code>${escapeHTML(key)}</code>
+  return `<article class="route-card environment-item" data-environment-item="${escapeHTML(key)}">
+    <header class="route-card-head environment-item-head">
+      <div class="route-card-title-wrap environment-item-title">
+        <div class="route-card-icon" aria-hidden="true">${routeTypeIcon("env")}</div>
+        <div class="environment-item-title-copy">
+          <h4 title="${escapeHTML(name)}">${escapeHTML(name)}</h4>
+          <span class="environment-item-key">
+            <code title="${escapeHTML(key)}">${escapeHTML(key)}</code>
+            <button class="route-field-copy" type="button" data-copy-value="${escapeHTML(key)}" title="${escapeHTML(t("route.copy_value"))}" aria-label="${escapeHTML(t("route.copy_value"))}">${renderCopyIcon()}</button>
+          </span>
+        </div>
+      </div>
       ${pendingBadge}
     </header>
     <label class="environment-input-row">
       <span>${t("route.envs.current_value")}</span>
       ${inputControl}
     </label>
-    <div class="environment-meta">
-      <p><span>${t("route.envs.default_value")}</span><strong>${escapeHTML(defaultValue || "-")}</strong></p>
-      <p><span>${t("route.envs.effective_value")}</span><strong>${escapeHTML(effectiveValue || "-")}</strong></p>
-      <p><span>${t("route.envs.apply_mode")}</span><strong>${escapeHTML(applyMode)}</strong></p>
-      <p><span>${t("route.envs.source")}</span><strong>${escapeHTML(source)}</strong></p>
-      <p><span>${t("route.envs.validation")}</span><strong>${escapeHTML(validation)}</strong></p>
-      <p><span>${t("route.envs.hot_reload")}</span><strong>${escapeHTML(hotReload ? t("status.enabled") : t("status.disabled"))}</strong></p>
+    <div class="route-meta environment-meta">
+      ${routeFieldRow("route.envs.default_value", defaultValue || "-", { multiline: true, mono: true, copyable: defaultValue && defaultValue !== "-" })}
+      ${routeFieldRow("route.envs.effective_value", effectiveValue || "-", { multiline: true, mono: true, copyable: effectiveValue && effectiveValue !== "-" })}
+      ${routeFieldRow("route.envs.apply_mode", applyMode)}
+      ${routeFieldRow("route.envs.source", source)}
+      ${routeFieldRow("route.envs.validation", validation, { multiline: true, mono: true })}
+      ${routeFieldRow("route.envs.hot_reload", hotReload ? t("status.enabled") : t("status.disabled"))}
     </div>
     ${pendingRestart ? `<p class="environment-item-notice">${escapeHTML(t("route.envs.restart_notice", { keys: key }))}</p>` : ""}
     <input type="hidden" data-env-current-value="${escapeHTML(key)}" value="${escapeHTML(currentValue)}">
@@ -5318,10 +5393,12 @@ function renderEnvironmentAudits(items) {
           mode: formatEnvironmentApplyMode(change?.apply_mode)
         }))}</li>`).join("")}</ul>`
         : `<p>-</p>`;
-      return `<article class="environment-audit-item">
-        <p><span>${t("route.envs.audit.operator")}</span><strong>${escapeHTML(normalizeText(item?.operator || "-"))}</strong></p>
-        <p><span>${t("route.envs.audit.at")}</span><strong>${escapeHTML(formatDateTime(item?.occurred_at))}</strong></p>
-        <p><span>${t("route.envs.audit.requires_restart")}</span><strong>${escapeHTML(item?.requires_restart ? t("status.enabled") : t("status.disabled"))}</strong></p>
+      return `<article class="route-card environment-audit-item">
+        <div class="route-meta">
+          ${routeFieldRow("route.envs.audit.operator", normalizeText(item?.operator || "-"))}
+          ${routeFieldRow("route.envs.audit.at", formatDateTime(item?.occurred_at))}
+          ${routeFieldRow("route.envs.audit.requires_restart", item?.requires_restart ? t("status.enabled") : t("status.disabled"))}
+        </div>
         ${changesBody}
       </article>`;
     }).join("")}
@@ -5347,7 +5424,7 @@ async function loadEnvironmentsView(container) {
     const revealButtonLabel = localState.revealSensitive ? t("route.envs.hide_sensitive") : t("route.envs.show_sensitive");
     container.innerHTML = `<section class="environment-view" data-environment-view>
       <form class="environment-form" data-environment-form>
-        <div class="environment-toolbar">
+        <div class="environment-toolbar route-card">
           <p class="environment-status" data-environment-status>${escapeHTML(statusMessage)}</p>
           <div class="task-filter-actions">
             <button type="button" data-environment-reveal>${escapeHTML(revealButtonLabel)}</button>
@@ -5478,6 +5555,11 @@ async function renderRoute(route) {
 
   setMainContentMode("page");
   closeTransientPanels();
+  chatPane.dataset.route = safe;
+  routeView.dataset.route = safe;
+  routeBody.dataset.route = safe;
+  routeView.classList.toggle("terminal-route", safe === "terminal");
+  routeBody.classList.toggle("terminal-route-body", safe === "terminal");
   routeTitle.textContent = t(titleKey);
   routeSubtitle.textContent = t(subtitleKey);
   syncRouteAction(safe);
@@ -5498,6 +5580,27 @@ async function renderRoute(route) {
 
 function bindEvents() {
   bindNavTooltipEvents();
+
+  routeBody.addEventListener("click", async (event) => {
+    const target = event.target.closest("[data-copy-value]");
+    if (!target) {
+      return;
+    }
+    const value = target.getAttribute("data-copy-value") || "";
+    if (!value) {
+      return;
+    }
+    try {
+      const copied = await copyTextValue(value);
+      if (!copied) {
+        return;
+      }
+      target.classList.add("copied");
+      window.setTimeout(() => target.classList.remove("copied"), 900);
+    } catch (error) {
+      console.warn("copy value failed", error);
+    }
+  });
 
   chatForm.addEventListener("submit", async (event) => {
     event.preventDefault();

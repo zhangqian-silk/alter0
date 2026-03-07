@@ -30,6 +30,57 @@ func TestSidebarRoutesSwitchToInfoMode(t *testing.T) {
 	}
 }
 
+func TestSidebarPageRouteRuntimeDependenciesPresent(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"function syncRouteAction(route)",
+		"async function fetchJSON(path)",
+		"async function renderRoute(route)",
+		"await config.loader(routeBody);",
+		"routeBody.innerHTML = `<p class=\"route-loading\">${t(\"loading\")}</p>`;",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected route runtime marker %q", marker)
+		}
+	}
+}
+
+func TestCronVisualHelpersPresent(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"function parseCronExpressionVisual(expression)",
+		"function buildCronExpressionVisual(options = {})",
+		"expressionInput.value = buildCronExpressionVisual({",
+		"const parsed = parseCronExpressionVisual(expressionInput.value);",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected cron helper marker %q", marker)
+		}
+	}
+}
+
+func TestPageSharedHelpersPresent(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"function routeFieldRow(labelKey, value, options = {})",
+		"async function copyTextValue(value)",
+		"function routeCardTemplate(title, type, fields = [], enabled = false, body = \"\")",
+		"function escapeQueryValue(value)",
+		"async function safeReadJSON(response)",
+		"function renderAdvancedToggleLabel(expanded)",
+		"async function downloadTaskArtifact(downloadURL, fallbackName)",
+		"routeBody.addEventListener(\"click\", async (event) => {",
+		"const target = event.target.closest(\"[data-copy-value]\");",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected shared helper marker %q", marker)
+		}
+	}
+}
+
 func TestSidebarInfoModeStylesPresent(t *testing.T) {
 	styles := readEmbeddedAsset(t, "static/assets/chat.css")
 	markers := []string{
