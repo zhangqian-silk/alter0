@@ -4956,6 +4956,7 @@ function bindTaskHistoryView(container, initialPayload) {
   const listNode = view.querySelector("[data-task-summary-list]");
   const paginationNode = view.querySelector("[data-task-summary-pagination]");
   const detailNode = view.querySelector("[data-task-detail]");
+  const detailWrap = view.querySelector(".task-detail-wrap");
   const form = view.querySelector("[data-task-filter-form]");
   const state = {
     filters: { status: "", taskType: "", startAt: "", endAt: "" },
@@ -4963,6 +4964,16 @@ function bindTaskHistoryView(container, initialPayload) {
     pageSize: 10,
     activeTaskID: "",
     nextLogCursor: 0
+  };
+
+  const syncDetailState = (open) => {
+    view.classList.toggle("is-detail-open", open);
+    if (detailWrap) {
+      detailWrap.hidden = !open;
+    }
+    if (!open && detailNode) {
+      detailNode.innerHTML = t("route.memory.tasks.detail.empty");
+    }
   };
 
   const paintList = (payload) => {
@@ -4980,6 +4991,7 @@ function bindTaskHistoryView(container, initialPayload) {
     state.nextLogCursor = 0;
     const payload = await fetchJSON(`/api/memory/tasks/${encodeURIComponent(taskID)}`);
     detailNode.innerHTML = renderTaskDetail(payload?.meta, payload?.summary_refs);
+    syncDetailState(true);
   };
 
   const loadLogs = async (append = false) => {
@@ -5112,7 +5124,11 @@ function bindTaskHistoryView(container, initialPayload) {
       return;
     }
     if (target.hasAttribute("data-task-back")) {
-      const anchor = document.getElementById(taskSummaryAnchorID(state.activeTaskID));
+      const previousTaskID = state.activeTaskID;
+      state.activeTaskID = "";
+      state.nextLogCursor = 0;
+      syncDetailState(false);
+      const anchor = document.getElementById(taskSummaryAnchorID(previousTaskID));
       if (anchor) {
         anchor.scrollIntoView({ behavior: "smooth", block: "center" });
       }
@@ -5120,6 +5136,7 @@ function bindTaskHistoryView(container, initialPayload) {
     }
   });
 
+  syncDetailState(false);
   paintList(initialPayload || { items: [], pagination: { page: 1, total: 0, has_next: false } });
 }
 
