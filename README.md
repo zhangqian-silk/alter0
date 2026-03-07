@@ -25,6 +25,13 @@
 2. [Technical Solution](./docs/technical-solution.md)
 3. [Requirements](./docs/requirements.md)
 
+## Output Convention
+
+1. 所有临时产物统一写入 `output/` 目录。
+2. 包含但不限于测试结果、截图、Smoke 测试记录、调试导出文件、临时脚本输出与本地排查产物。
+3. 不在仓库根目录或业务目录散落创建临时文件、日志文件与一次性调试文件。
+4. 需要保留的正式文档、示例数据与工程代码，仍按原有目录结构维护，不放入 `output/`。
+
 ## Architecture
 
 系统由两条主线组成：

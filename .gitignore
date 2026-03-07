@@ -30,6 +30,10 @@ go.work.sum
 # local runtime persistence
 .alter0/
 
+# temporary outputs, test artifacts, debug files
+output/
+test-results/
+
 # Editor/IDE
 # .idea/
 # .vscode/
