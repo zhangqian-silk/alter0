@@ -40,8 +40,12 @@
 html,
 body {
   margin: 0;
+  width: 100%;
+  max-width: 100%;
   min-height: 100%;
   height: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {
@@ -52,6 +56,8 @@ body {
 }
 
 .app-shell {
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
@@ -517,6 +523,7 @@ body {
 .session-card-row {
   display: flex;
   align-items: stretch;
+  min-width: 0;
   gap: 6px;
 }
 
@@ -592,6 +599,7 @@ body {
 }
 
 .chat-pane {
+  min-width: 0;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
@@ -602,6 +610,7 @@ body {
 
 .chat-header {
   width: 100%;
+  min-width: 0;
   min-height: 66px;
   padding: 12px 24px;
   display: flex;
@@ -617,6 +626,7 @@ body {
 }
 
 .chat-header-copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -627,6 +637,7 @@ body {
   font-size: 30px;
   line-height: 1.05;
   letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
 }
 
 .chat-header-copy p {
@@ -636,9 +647,12 @@ body {
 }
 
 .chat-header-actions {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .chat-pane.page-mode .chat-header-copy {
@@ -740,6 +754,7 @@ body {
 }
 
 .prompt {
+  max-width: 100%;
   border: 1px solid var(--line-mid);
   border-radius: 999px;
   background: rgba(248, 250, 252, 0.7);
@@ -924,6 +939,7 @@ body {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
   color: var(--ink-muted);
   font-size: 11px;
 }
@@ -959,6 +975,7 @@ body {
 
 .route-view {
   width: min(1200px, calc(100% - 48px));
+  max-width: 100%;
   margin: 24px auto 48px;
   animation: fadeIn 0.3s ease-out;
   display: flex;
@@ -1000,6 +1017,7 @@ body {
 }
 
 .route-head {
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1007,6 +1025,7 @@ body {
 }
 
 .route-copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1122,6 +1141,7 @@ body {
   text-align: right;
   color: var(--ink-body);
   word-break: break-word;
+  overflow-wrap: anywhere;
   font-weight: 600;
 }
 
@@ -1176,6 +1196,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .memory-tab {
@@ -1342,6 +1363,7 @@ body {
   display: inline-flex;
   align-items: end;
   gap: 8px;
+  flex-wrap: wrap;
   justify-self: end;
 }
 
@@ -1370,6 +1392,7 @@ body {
   gap: 8px;
   align-items: end;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .task-filter-actions button,
@@ -3015,17 +3038,21 @@ body {
 
 @media (max-width: 760px) {
   .primary-nav {
-    width: min(80vw, 280px);
+    width: min(calc(100vw - 24px), 280px);
+    max-width: calc(100vw - 24px);
   }
 
   .session-pane {
-    width: min(92vw, 360px);
+    width: min(calc(100vw - 16px), 360px);
+    max-width: calc(100vw - 16px);
   }
 
   .chat-header {
     min-height: 56px;
     height: auto;
     padding: 8px 10px;
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
 
   .chat-header-copy p {
@@ -3037,18 +3064,25 @@ body {
   }
 
   .chat-header-actions {
+    width: 100%;
     gap: 6px;
+    justify-content: flex-start;
+  }
+
+  .chat-header-actions > * {
+    flex: 0 1 auto;
   }
 
   .nav-toggle,
   .panel-toggle,
   .mobile-new-chat {
     height: 36px;
+    max-width: 100%;
     padding: 0 12px;
   }
 
   .welcome-screen {
-    width: calc(100% - 20px);
+    width: min(var(--content-width), calc(100% - 20px));
     margin-top: clamp(28px, 6vh, 56px);
   }
 
@@ -3065,6 +3099,7 @@ body {
   }
 
   .prompt {
+    width: 100%;
     font-size: 12px;
     padding: 8px 13px;
   }
@@ -3096,9 +3131,14 @@ body {
     height: 32px;
   }
 
+  .composer-actions {
+    justify-content: space-between;
+  }
+
   .route-view {
-    width: calc(100% - 20px);
+    width: min(1200px, calc(100% - 20px));
     margin-top: 10px;
+    padding: 12px;
   }
 
   .route-head {
@@ -3115,8 +3155,8 @@ body {
   }
 
   .memory-tab {
-    flex: 1 1 calc(33.333% - 8px);
-    min-width: 110px;
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
   }
 
   .memory-panel,
@@ -3140,6 +3180,11 @@ body {
 
   .task-filter-actions {
     justify-content: flex-start;
+  }
+
+  .task-filter-actions button,
+  .task-filter-advanced-toggle {
+    width: 100%;
   }
 
   .task-summary-meta p {
