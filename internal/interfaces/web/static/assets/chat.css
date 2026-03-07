@@ -1788,6 +1788,7 @@ body {
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
   padding: 14px;
+  min-width: 0;
   display: grid;
   gap: 10px;
   transition: box-shadow 180ms ease, border-color 180ms ease;
@@ -1803,10 +1804,12 @@ body {
   justify-content: space-between;
   gap: 8px;
   align-items: center;
+  min-width: 0;
 }
 
 .task-summary-id-wrap {
   min-width: 0;
+  flex: 1 1 auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1815,7 +1818,7 @@ body {
 .task-summary-id {
   margin: 0;
   min-width: 0;
-  max-width: 360px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1851,6 +1854,7 @@ body {
 
 .task-summary-status {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   padding: 3px 10px;
@@ -1908,6 +1912,7 @@ body {
   color: #0f172a;
   text-align: left;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .task-summary-open {
@@ -2536,6 +2541,7 @@ body {
 .terminal-session-card {
   align-self: start;
   width: 100%;
+  min-width: 0;
   border: 1px solid var(--line-soft);
   border-radius: 10px;
   background: #ffffff;
@@ -2555,11 +2561,13 @@ body {
   color: #0f172a;
   font-size: 13px;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .terminal-session-meta {
   color: #64748b;
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .terminal-workspace {
@@ -2603,6 +2611,7 @@ body {
   margin: 0;
   display: grid;
   gap: 2px;
+  min-width: 0;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #f8fafc;
@@ -2618,6 +2627,7 @@ body {
   color: #0f172a;
   font-size: 12px;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .terminal-log-block {
@@ -3055,6 +3065,12 @@ body {
     flex-wrap: wrap;
   }
 
+  .chat-pane.page-mode .chat-header {
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+
   .chat-header-copy p {
     display: none;
   }
@@ -3073,12 +3089,21 @@ body {
     flex: 0 1 auto;
   }
 
+  .chat-pane.page-mode .chat-header-actions {
+    width: auto;
+    margin-left: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+
   .nav-toggle,
   .panel-toggle,
   .mobile-new-chat {
     height: 36px;
-    max-width: 100%;
+    flex: 0 1 auto;
+    max-width: calc(50vw - 18px);
     padding: 0 12px;
+    white-space: nowrap;
   }
 
   .welcome-screen {
@@ -3172,6 +3197,14 @@ body {
     padding: 12px;
   }
 
+  .task-filter-form input,
+  .task-filter-form select,
+  .task-filter-actions button,
+  .task-filter-advanced-toggle {
+    width: 100%;
+    min-width: 0;
+  }
+
   .task-filter-primary-actions {
     flex-direction: column;
     align-items: stretch;
@@ -3190,6 +3223,15 @@ body {
   .task-summary-meta p {
     grid-template-columns: 1fr;
     gap: 3px;
+  }
+
+  .task-summary-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .task-summary-status {
+    max-width: 100%;
   }
 
   .task-summary-pagination {
@@ -3215,6 +3257,10 @@ body {
 
   .terminal-view {
     grid-template-columns: 1fr;
+  }
+
+  .terminal-workspace-head {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .terminal-chat-form {
