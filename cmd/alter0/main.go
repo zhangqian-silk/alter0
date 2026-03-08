@@ -32,6 +32,7 @@ import (
 	localstorage "alter0/internal/storage/infrastructure/localfile"
 	taskapp "alter0/internal/task/application"
 	tasksummaryapp "alter0/internal/tasksummary/application"
+	terminalapp "alter0/internal/terminal/application"
 )
 
 type storageProfile struct {
@@ -64,6 +65,7 @@ func main() {
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
 	asyncTaskWorkers := flag.Int("async-task-workers", 5, "background async task worker count (max 5)")
 	taskTerminalMaxSessions := flag.Int("task-terminal-max-sessions", 5, "max concurrent terminal task sessions (max 5)")
+	taskTerminalShell := flag.String("task-terminal-shell", "", "terminal shell executable path or command name (Windows known shells auto-enable UTF-8 bootstrap)")
 	asyncTaskTimeout := flag.Duration("async-task-timeout", 90*time.Second, "background async task timeout")
 	asyncTaskMaxRetries := flag.Int("async-task-max-retries", 1, "background async task max retries")
 	asyncLongContentThreshold := flag.Int("async-long-content-threshold", 240, "request content length threshold to trigger async task")
@@ -118,6 +120,7 @@ func main() {
 	resolvedQueueTimeout := control.ResolveEnvironmentDuration("queue_timeout", *queueTimeout)
 	resolvedAsyncTaskWorkers := control.ResolveEnvironmentInt("async_task_workers", *asyncTaskWorkers)
 	resolvedTaskTerminalMaxSessions := control.ResolveEnvironmentInt("task_terminal_max_sessions", *taskTerminalMaxSessions)
+	resolvedTaskTerminalShell := strings.TrimSpace(control.ResolveEnvironmentString("task_terminal_shell", strings.TrimSpace(*taskTerminalShell)))
 	resolvedAsyncTaskTimeout := control.ResolveEnvironmentDuration("async_task_timeout", *asyncTaskTimeout)
 	resolvedAsyncTaskMaxRetries := control.ResolveEnvironmentInt("async_task_max_retries", *asyncTaskMaxRetries)
 	resolvedAsyncLongContentThreshold := control.ResolveEnvironmentInt("async_long_content_threshold", *asyncLongContentThreshold)
@@ -149,6 +152,7 @@ func main() {
 		"queue_timeout":                      resolvedQueueTimeout.String(),
 		"async_task_workers":                 strconv.Itoa(resolvedAsyncTaskWorkers),
 		"task_terminal_max_sessions":         strconv.Itoa(resolvedTaskTerminalMaxSessions),
+		"task_terminal_shell":                resolvedTaskTerminalShell,
 		"async_task_timeout":                 resolvedAsyncTaskTimeout.String(),
 		"async_task_max_retries":             strconv.Itoa(resolvedAsyncTaskMaxRetries),
 		"async_long_content_threshold":       strconv.Itoa(resolvedAsyncLongContentThreshold),
@@ -256,6 +260,10 @@ func main() {
 		logger.Error("failed to initialize task service", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
+	terminalService := terminalapp.NewService(rootCtx, idGen, logger, terminalapp.Options{
+		MaxSessions: resolvedTaskTerminalMaxSessions,
+		Shell:       resolvedTaskTerminalShell,
+	})
 
 	scheduler, err := newSchedulerManager(rootCtx, orchestrator, telemetry, idGen, logger, schedulerStore)
 	if err != nil {
@@ -273,6 +281,7 @@ func main() {
 		scheduler,
 		sessionHistory,
 		taskService,
+		terminalService,
 		web.AgentMemoryOptions{
 			LongTermPath:         resolvedLongTermMemoryPath,
 			DailyDir:             resolvedDailyMemoryDir,

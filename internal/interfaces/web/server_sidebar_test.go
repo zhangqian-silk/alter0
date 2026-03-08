@@ -15,6 +15,10 @@ func readEmbeddedAsset(t *testing.T, path string) string {
 	return string(content)
 }
 
+func normalizeEmbeddedAsset(content string) string {
+	return strings.ReplaceAll(content, "\r\n", "\n")
+}
+
 func TestSidebarRoutesSwitchToInfoMode(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	markers := []string{
@@ -96,7 +100,7 @@ func TestSidebarInfoModeStylesPresent(t *testing.T) {
 }
 
 func TestSidebarScrollIsolationStylesPresent(t *testing.T) {
-	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	styles := normalizeEmbeddedAsset(readEmbeddedAsset(t, "static/assets/chat.css"))
 	markers := []string{
 		"@media (min-width: 1101px) {",
 		"html,\n  body {\n    overflow: hidden;",
@@ -393,11 +397,12 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
-		`const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v1";`,
+		`const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";`,
 		`terminal: {`,
 		`loader: loadTerminalView`,
 		`"route.terminal.title"`,
 		`"route.terminal.send"`,
+		`"route.terminal.close"`,
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -410,6 +415,7 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 		".terminal-view {",
 		".terminal-session-card {",
 		".terminal-chat-form {",
+		".terminal-session-close {",
 	}
 	for _, marker := range styleMarkers {
 		if !strings.Contains(styles, marker) {

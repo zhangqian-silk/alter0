@@ -27,6 +27,8 @@ import (
 	"alter0/internal/shared/infrastructure/observability"
 	taskapp "alter0/internal/task/application"
 	taskdomain "alter0/internal/task/domain"
+	terminalapp "alter0/internal/terminal/application"
+	terminaldomain "alter0/internal/terminal/domain"
 )
 
 //go:embed static/*
@@ -72,6 +74,7 @@ type Server struct {
 	scheduler        *schedulerapp.Manager
 	sessions         sessionHistoryService
 	tasks            taskService
+	terminals        terminalService
 	memory           *agentMemoryService
 	logger           *slog.Logger
 	webLoginPassword string
@@ -97,6 +100,16 @@ type taskService interface {
 	ReadArtifact(ctx context.Context, taskID string, artifactID string) (taskdomain.TaskArtifact, []byte, error)
 	Cancel(taskID string) (taskdomain.Task, error)
 	Retry(taskID string) (taskdomain.Task, error)
+}
+
+type terminalService interface {
+	Create(req terminalapp.CreateRequest) (terminaldomain.Session, error)
+	List(ownerID string) []terminaldomain.Session
+	Get(ownerID string, sessionID string) (terminaldomain.Session, bool)
+	ListEntries(ownerID string, sessionID string, cursor int, limit int) (terminalapp.EntryPage, error)
+	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
+	Close(ownerID string, sessionID string) (terminaldomain.Session, error)
+	MaxSessions() int
 }
 
 type messageRequest struct {
@@ -421,6 +434,7 @@ func NewServer(
 	scheduler *schedulerapp.Manager,
 	sessions sessionHistoryService,
 	tasks taskService,
+	terminals terminalService,
 	memoryOptions AgentMemoryOptions,
 	securityOptions WebSecurityOptions,
 	logger *slog.Logger,
@@ -445,6 +459,7 @@ func NewServer(
 		scheduler:        scheduler,
 		sessions:         sessions,
 		tasks:            tasks,
+		terminals:        terminals,
 		memory:           newAgentMemoryService(memoryOptions),
 		logger:           logger,
 		webLoginPassword: resolvedPassword,
@@ -487,6 +502,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/mcps/", s.mcpItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
+	mux.HandleFunc("/api/terminal/sessions", s.terminalSessionCollectionHandler)
+	mux.HandleFunc("/api/terminal/sessions/", s.terminalSessionItemHandler)
 
 	assetsFS, err := fs.Sub(webStaticFS, "static/assets")
 	if err != nil {

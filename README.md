@@ -156,6 +156,12 @@ go run ./cmd/alter0
 
 输入 `/quit` 或 `/exit` 退出。
 
+### Terminal Shell
+
+- 默认终端会话在 Windows 下使用 `powershell.exe`，并在启动时自动切换到 UTF-8 输出
+- 如需固定 shell，可通过启动参数 `-task-terminal-shell` 或运行时环境键 `task_terminal_shell` 指定
+- Windows 下显式指定 `cmd.exe` 时会补充 UTF-8 代码页初始化；如需稳定中文输出，优先使用 `powershell.exe`
+
 ## Control API
 
 ### Channel

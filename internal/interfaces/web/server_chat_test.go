@@ -65,3 +65,45 @@ func TestEmbeddedAssetsAvailable(t *testing.T) {
 		t.Fatal("expected embedded chat.js content")
 	}
 }
+
+func TestChatComposerUsesReusableComponent(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"function createReusableComposer() {",
+		"const COMPOSER_DRAFT_STORAGE_KEY = \"alter0.web.composer.drafts.v1\";",
+		"const composerNavigationRegistry = new Map();",
+		"function confirmComposerNavigation() {",
+		"suppressHashRouteConfirm: \"\",",
+		"function readComposerDraftValue(storage, key) {",
+		"function writeComposerDraftValue(storage, key, value) {",
+		"function getMainChatDraftKey(sessionID = state.activeSessionID) {",
+		"function clearMainChatDraft(sessionID) {",
+		"const mainChatComposer = createReusableComposer();",
+		"function syncMainChatComposerDraft(sessionID = state.activeSessionID, options = {}) {",
+		"mainChatComposer.bind(input, chatForm, {",
+		"draftStorage: \"session\",",
+		"draftKey: () => getMainChatDraftKey(),",
+		"switchDraftKey(nextKey, options = {}) {",
+		"card.dataset.sessionId = item.id;",
+		"counterNode: charCount,",
+		"submitNode: sendButton,",
+		`document.body.setAttribute("data-composer-unsaved-state", hasDraft ? "dirty" : "clean");`,
+		`document.body.setAttribute("data-composer-unsaved-confirm", String(state || "idle"));`,
+		`inputNode.setAttribute("data-composer-ready", "true");`,
+		`stableName: "chat-main",`,
+		`stableName: "cron-prompt",`,
+		`stableName: "terminal-runtime",`,
+		`data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}"`,
+		"document.body.setAttribute(\"data-app-ready\", \"true\");",
+		"const cronComposer = createReusableComposer();",
+		"cronComposer.bind(promptInput, form, {",
+		"const controlTaskTerminalComposer = createReusableComposer();",
+		"controlTaskTerminalComposer.bind(inputNode, formNode, {",
+		"window.addEventListener(\"beforeunload\", (event) => {",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected reusable composer marker %q", marker)
+		}
+	}
+}
