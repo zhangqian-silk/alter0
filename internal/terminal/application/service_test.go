@@ -1,7 +1,11 @@
 package application
 
 import (
-	"path/filepath"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -9,100 +13,96 @@ import (
 	terminaldomain "alter0/internal/terminal/domain"
 )
 
-func TestResolveShellCommandForOSUsesUTF8PowerShellOnWindows(t *testing.T) {
-	command := resolveShellCommandForOS("windows", Options{}, func(file string) (string, error) {
-		if file == "powershell.exe" {
-			return filepath.Join(`C:\Windows\System32`, "WindowsPowerShell", "v1.0", "powershell.exe"), nil
-		}
-		return "", filepath.ErrBadPattern
+func TestResolveCodexCommandUsesDefaultCommand(t *testing.T) {
+	command := resolveCodexCommand(Options{})
+
+	if command.path != defaultCodexCommand {
+		t.Fatalf("expected default codex command, got %q", command.path)
+	}
+	if command.label != "codex exec" {
+		t.Fatalf("expected codex exec label, got %q", command.label)
+	}
+}
+
+func TestBuildCodexTurnArgsUsesResumeWhenThreadExists(t *testing.T) {
+	command := resolveCodexCommand(Options{
+		Shell:     "codex.exe",
+		ShellArgs: []string{"--profile", "test"},
 	})
 
-	if !strings.EqualFold(filepath.Base(command.path), "powershell.exe") {
-		t.Fatalf("expected powershell.exe, got %q", command.path)
-	}
-	if len(command.args) < 4 {
-		t.Fatalf("expected powershell bootstrap args, got %v", command.args)
-	}
-	if !containsArg(command.args, "-NoExit") {
-		t.Fatalf("expected -NoExit in args, got %v", command.args)
-	}
-	if !containsJoined(command.args, "UTF8Encoding") {
-		t.Fatalf("expected UTF-8 bootstrap command, got %v", command.args)
-	}
-	if !containsJoined(command.args, "chcp.com 65001") {
-		t.Fatalf("expected code page bootstrap, got %v", command.args)
+	args := buildCodexTurnArgs(command, "thread-123", "reply exactly")
+
+	expected := []string{"--profile", "test", "exec", "resume", "--json", "--skip-git-repo-check", "thread-123", "reply exactly"}
+	if strings.Join(args, " ") != strings.Join(expected, " ") {
+		t.Fatalf("unexpected args: %v", args)
 	}
 }
 
-func TestResolveShellCommandForOSIgnoresPwshAsDefaultOnWindows(t *testing.T) {
-	command := resolveShellCommandForOS("windows", Options{}, func(file string) (string, error) {
-		if file == "powershell.exe" {
-			return filepath.Join(`C:\Windows\System32`, "WindowsPowerShell", "v1.0", "powershell.exe"), nil
-		}
-		if file == "pwsh.exe" {
-			return filepath.Join(`C:\Program Files\PowerShell`, "7", "pwsh.exe"), nil
-		}
-		return "", filepath.ErrBadPattern
+func TestNormalizeOptionsParsesShellArgsLine(t *testing.T) {
+	options := normalizeOptions(Options{
+		Shell:         "bash",
+		ShellArgsLine: `"./fixtures/codex mock.sh" --profile test`,
 	})
 
-	if !strings.EqualFold(filepath.Base(command.path), "powershell.exe") {
-		t.Fatalf("expected powershell.exe as default, got %q", command.path)
+	expected := []string{"./fixtures/codex mock.sh", "--profile", "test"}
+	if strings.Join(options.ShellArgs, "|") != strings.Join(expected, "|") {
+		t.Fatalf("expected parsed shell args %v, got %v", expected, options.ShellArgs)
 	}
 }
 
-func TestResolveShellCommandForOSPreservesExplicitShell(t *testing.T) {
-	command := resolveShellCommandForOS("linux", Options{
-		Shell:     "cmd.exe",
-		ShellArgs: []string{"/Q"},
-	}, nil)
+func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
+	service := newTestService("success")
 
-	if command.path != "cmd.exe" {
-		t.Fatalf("expected explicit shell path, got %q", command.path)
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-a",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
 	}
-	if len(command.args) != 1 || command.args[0] != "/Q" {
-		t.Fatalf("expected explicit shell args, got %v", command.args)
+
+	if _, err := service.Input("owner-a", session.ID, "first prompt"); err != nil {
+		t.Fatalf("first input: %v", err)
 	}
-	if command.label != "cmd.exe /Q" {
-		t.Fatalf("expected explicit shell label, got %q", command.label)
+
+	firstSnapshot, firstEntries := waitForSessionEntries(t, service, "owner-a", session.ID, 2)
+	if firstSnapshot.TerminalSessionID != "thread-first-prompt" {
+		t.Fatalf("expected runtime thread id, got %q", firstSnapshot.TerminalSessionID)
+	}
+	if firstSnapshot.Status != terminaldomain.SessionStatusRunning {
+		t.Fatalf("expected running after first turn, got %q", firstSnapshot.Status)
+	}
+	if got := firstEntries[1].Text; got != "mock:first prompt" {
+		t.Fatalf("expected first reply, got %q", got)
+	}
+
+	if _, err := service.Input("owner-a", session.ID, "second prompt"); err != nil {
+		t.Fatalf("second input: %v", err)
+	}
+
+	secondSnapshot, secondEntries := waitForSessionEntries(t, service, "owner-a", session.ID, 4)
+	if secondSnapshot.TerminalSessionID != "thread-first-prompt" {
+		t.Fatalf("expected resumed thread id, got %q", secondSnapshot.TerminalSessionID)
+	}
+	if got := secondEntries[3].Text; got != "mock:second prompt" {
+		t.Fatalf("expected second reply, got %q", got)
 	}
 }
 
-func TestResolveShellCommandForOSBootstrapsCmdEncodingOnWindows(t *testing.T) {
-	command := resolveShellCommandForOS("windows", Options{
-		Shell: "cmd.exe",
-	}, nil)
+func TestServiceInputRejectsConcurrentTurns(t *testing.T) {
+	service := newTestService("sleep")
 
-	if command.path != "cmd.exe" {
-		t.Fatalf("expected explicit shell path, got %q", command.path)
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-b",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
 	}
-	if len(command.args) != 3 {
-		t.Fatalf("expected cmd bootstrap args, got %v", command.args)
-	}
-	if command.args[0] != "/D" || command.args[1] != "/K" {
-		t.Fatalf("expected cmd bootstrap switches, got %v", command.args)
-	}
-	if !containsJoined(command.args, "65001") {
-		t.Fatalf("expected UTF-8 codepage bootstrap, got %v", command.args)
-	}
-	if command.label != "cmd.exe" {
-		t.Fatalf("expected compact label, got %q", command.label)
-	}
-}
 
-func TestResolveShellCommandForOSPreservesExplicitWindowsArgs(t *testing.T) {
-	command := resolveShellCommandForOS("windows", Options{
-		Shell:     "powershell.exe",
-		ShellArgs: []string{"-NoLogo", "-NoExit"},
-	}, nil)
-
-	if command.path != "powershell.exe" {
-		t.Fatalf("expected explicit shell path, got %q", command.path)
+	if _, err := service.Input("owner-b", session.ID, "long prompt"); err != nil {
+		t.Fatalf("first input: %v", err)
 	}
-	if len(command.args) != 2 || command.args[0] != "-NoLogo" || command.args[1] != "-NoExit" {
-		t.Fatalf("expected explicit shell args, got %v", command.args)
-	}
-	if command.label != "powershell.exe -NoLogo -NoExit" {
-		t.Fatalf("expected explicit shell label, got %q", command.label)
+	if _, err := service.Input("owner-b", session.ID, "second prompt"); !errors.Is(err, ErrSessionBusy) {
+		t.Fatalf("expected busy error, got %v", err)
 	}
 }
 
@@ -149,17 +149,17 @@ func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *
 		},
 	}
 
-	session.appendEntryLocked("system", "shell started")
+	session.appendEntryLocked("system", "session ready")
 	if !session.summary.LastOutputAt.IsZero() {
 		t.Fatalf("expected system entry to keep last_output_at empty, got %s", session.summary.LastOutputAt)
 	}
 
-	session.appendEntryLocked("input", "pwd")
+	session.appendEntryLocked("input", "prompt")
 	if !session.summary.LastOutputAt.IsZero() {
 		t.Fatalf("expected input entry to keep last_output_at empty, got %s", session.summary.LastOutputAt)
 	}
 
-	session.appendEntryLocked("stdout", "workspace")
+	session.appendEntryLocked("stdout", "assistant output")
 	if session.summary.LastOutputAt.IsZero() {
 		t.Fatalf("expected stdout entry to update last_output_at")
 	}
@@ -171,20 +171,90 @@ func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *
 	}
 }
 
-func containsArg(args []string, target string) bool {
-	for _, item := range args {
-		if item == target {
-			return true
-		}
+func newTestService(mode string) *Service {
+	service := NewService(context.Background(), nil, nil, Options{
+		WorkingDir: "D:/GitHubRepositories/alter0",
+	})
+	service.runner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		cmdArgs := append([]string{"-test.run=TestTerminalServiceHelperProcess", "--", name}, args...)
+		cmd := exec.CommandContext(ctx, os.Args[0], cmdArgs...)
+		cmd.Env = append(
+			os.Environ(),
+			"GO_WANT_TERMINAL_HELPER_PROCESS=1",
+			"TERMINAL_HELPER_MODE="+mode,
+		)
+		return cmd
 	}
-	return false
+	return service
 }
 
-func containsJoined(args []string, fragment string) bool {
-	for _, item := range args {
-		if strings.Contains(item, fragment) {
-			return true
+func waitForSessionEntries(t *testing.T, service *Service, ownerID string, sessionID string, want int) (terminaldomain.Session, []terminaldomain.Entry) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, ok := service.Get(ownerID, sessionID)
+		if !ok {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		page, err := service.ListEntries(ownerID, sessionID, 0, 32)
+		if err != nil {
+			t.Fatalf("list entries: %v", err)
+		}
+		if len(page.Items) >= want && snapshot.Status == terminaldomain.SessionStatusRunning {
+			return snapshot, page.Items
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %d terminal entries", want)
+	return terminaldomain.Session{}, nil
+}
+
+func TestTerminalServiceHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_TERMINAL_HELPER_PROCESS") != "1" {
+		return
+	}
+
+	separatorIndex := -1
+	for i, arg := range os.Args {
+		if arg == "--" {
+			separatorIndex = i
+			break
 		}
 	}
-	return false
+	if separatorIndex < 0 || separatorIndex+1 >= len(os.Args) {
+		os.Exit(2)
+	}
+
+	forwarded := os.Args[separatorIndex+1:]
+	if len(forwarded) < 2 || forwarded[0] != defaultCodexCommand || forwarded[1] != "exec" {
+		os.Exit(2)
+	}
+
+	mode := os.Getenv("TERMINAL_HELPER_MODE")
+	if mode == "sleep" {
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	if len(forwarded) >= 3 && forwarded[2] == "resume" {
+		if len(forwarded) < 7 {
+			os.Exit(2)
+		}
+		threadID := forwarded[len(forwarded)-2]
+		prompt := forwarded[len(forwarded)-1]
+		fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
+		fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)
+		fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":%q}}\n", "mock:"+prompt)
+		fmt.Fprintln(os.Stdout, `{"type":"turn.completed"}`)
+		os.Exit(0)
+	}
+
+	prompt := forwarded[len(forwarded)-1]
+	threadID := "thread-" + strings.ReplaceAll(prompt, " ", "-")
+	fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
+	fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)
+	fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":%q}}\n", "mock:"+prompt)
+	fmt.Fprintln(os.Stdout, `{"type":"turn.completed"}`)
+	os.Exit(0)
 }

@@ -8,6 +8,16 @@ export function createTerminalPage(page: Page): {
   closeButton(): Locator;
   workspace(): Locator;
   chatScreen(): Locator;
+  jumpBottomButton(): Locator;
+  turnCards(): Locator;
+  turnCard(turnID: string): Locator;
+  processToggles(): Locator;
+  processToggle(turnID: string): Locator;
+  stepItems(): Locator;
+  stepItem(stepID: string): Locator;
+  stepToggles(): Locator;
+  stepToggle(stepID: string): Locator;
+  finalOutputs(): Locator;
   sessionList(): SessionListComponent;
   sessionListContainer(): Locator;
 } {
@@ -22,6 +32,16 @@ export function createTerminalPage(page: Page): {
     closeButton: () => page.locator("[data-terminal-close]"),
     workspace: () => page.locator("[data-terminal-workspace]"),
     chatScreen: () => page.locator("[data-terminal-chat-screen]"),
+    jumpBottomButton: () => page.locator("[data-terminal-jump-bottom]"),
+    turnCards: () => page.locator("[data-terminal-turn]"),
+    turnCard: (turnID: string) => page.locator(`[data-terminal-turn="${turnID}"]`),
+    processToggles: () => page.locator("[data-terminal-process-toggle]"),
+    processToggle: (turnID: string) => page.locator(`[data-terminal-process-toggle="${turnID}"]`),
+    stepItems: () => page.locator("[data-terminal-step-item]"),
+    stepItem: (stepID: string) => page.locator(`[data-terminal-step-item="${stepID}"]`),
+    stepToggles: () => page.locator("[data-terminal-step-toggle]"),
+    stepToggle: (stepID: string) => page.locator(`[data-terminal-step-toggle="${stepID}"]`),
+    finalOutputs: () => page.locator(".terminal-final-output"),
     sessionList: () => sessionList,
     sessionListContainer: () => page.locator("[data-terminal-session-list]"),
   };

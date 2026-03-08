@@ -113,4 +113,15 @@ test.describe("Chat composer", () => {
     await expectComposerValue(composer, "浣?");
     await expectComposerState(composer, { composing: false, draft: "dirty" });
   });
+  test("clears composer value and draft after sending", async ({ page }) => {
+    const { chatPage, composer } = await openChatWorkspace(page);
+    const input = composer.input();
+
+    await input.fill("clear-after-send");
+    await composer.submitButton().click();
+
+    await expect(chatPage.latestUserBubble()).toContainText("clear-after-send");
+    await expectComposerValue(composer, "");
+    await expectComposerState(composer, { draft: "empty" });
+  });
 });
