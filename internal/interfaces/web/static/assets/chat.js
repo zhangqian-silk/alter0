@@ -254,6 +254,8 @@ const I18N = {
     "route.terminal.shell": "Shell",
     "route.terminal.path": "Path",
     "route.terminal.status": "Status",
+    "route.terminal.last_output": "Last output {time}",
+    "route.terminal.no_output": "No output yet",
     "route.terminal.logs.heading": "Terminal Output ({session})",
     "route.terminal.logs.empty": "No terminal output yet.",
     "route.terminal.limit_reached": "Terminal session limit reached ({max}). Please finish an active session first.",
@@ -828,7 +830,7 @@ let navTooltipHideTimer = 0;
 
 function t(key, params = {}) {
   const dict = I18N[state.lang] || I18N.en;
-  let val = dict[key] || key;
+  let val = dict[key] || I18N.en[key] || key;
   for (const [k, v] of Object.entries(params)) {
     val = val.replace(`{${k}}`, v);
   }
@@ -4269,6 +4271,7 @@ function createTerminalSessionSnapshot(id) {
     id: safeID,
     title: t("route.terminal.new"),
     created_at: now,
+    last_output_at: 0,
     updated_at: now,
     terminal_session_id: safeID,
     status: "starting",
@@ -4308,6 +4311,7 @@ function applyTerminalSessionSnapshot(session, snapshot) {
   }
   session.title = String(snapshot.title || "").trim() || session.title || t("route.terminal.new");
   session.created_at = parseTerminalTime(snapshot.created_at, session.created_at || now);
+  session.last_output_at = parseTerminalTime(snapshot.last_output_at, session.last_output_at || 0);
   session.updated_at = parseTerminalTime(snapshot.updated_at, session.updated_at || session.created_at || now);
   session.status = String(snapshot.status || session.status || "interrupted").trim().toLowerCase();
   session.shell = String(snapshot.shell || "").trim();
@@ -4367,7 +4371,7 @@ function loadTerminalSessionsFromStorage() {
       sessions.push(normalized);
     }
   }
-  sessions.sort((left, right) => Number(right.updated_at || 0) - Number(left.updated_at || 0));
+  sessions.sort(compareTerminalSessions);
   return sessions;
 }
 
@@ -4410,6 +4414,49 @@ function renderTerminalStatus(status) {
 function isTerminalSessionLiveStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
   return ["starting", "running"].includes(normalized);
+}
+
+function getTerminalSessionLastOutputAt(session) {
+  const snapshotLastOutputAt = Number(session?.last_output_at || 0);
+  let lastOutputAt = Number.isFinite(snapshotLastOutputAt) && snapshotLastOutputAt > 0 ? snapshotLastOutputAt : 0;
+  const entries = Array.isArray(session?.entries) ? session.entries : [];
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (String(entry?.role || "").trim().toLowerCase() !== "output") {
+      continue;
+    }
+    const at = Number(entry?.at || 0);
+    if (Number.isFinite(at) && at > 0) {
+      lastOutputAt = Math.max(lastOutputAt, at);
+      break;
+    }
+  }
+  return lastOutputAt;
+}
+
+function getTerminalSessionSortAt(session) {
+  const lastOutputAt = getTerminalSessionLastOutputAt(session);
+  if (lastOutputAt > 0) {
+    return lastOutputAt;
+  }
+  const createdAt = Number(session?.created_at || 0);
+  if (Number.isFinite(createdAt) && createdAt > 0) {
+    return createdAt;
+  }
+  const updatedAt = Number(session?.updated_at || 0);
+  return Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : 0;
+}
+
+function compareTerminalSessions(left, right) {
+  const sortDiff = getTerminalSessionSortAt(right) - getTerminalSessionSortAt(left);
+  if (sortDiff !== 0) {
+    return sortDiff;
+  }
+  const createdDiff = Number(right?.created_at || 0) - Number(left?.created_at || 0);
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+  return String(right?.id || "").localeCompare(String(left?.id || ""));
 }
 
 function resolveTerminalLogCollapsed(session) {
@@ -4456,10 +4503,15 @@ function renderTerminalSessionCards(sessions, activeSessionID) {
     const title = normalizeText(session.title);
     const sessionID = normalizeText(session.terminal_session_id);
     const active = session.id === activeSessionID;
+    const listTimestamp = getTerminalSessionSortAt(session);
+    const listTimeLabel = listTimestamp > 0 ? formatDateTime(new Date(listTimestamp).toISOString()) : "-";
+    const lastOutputMeta = getTerminalSessionLastOutputAt(session) > 0
+      ? t("route.terminal.last_output", { time: listTimeLabel })
+      : t("route.terminal.no_output");
     return `<button class="terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
       <span class="terminal-session-title">${escapeHTML(title)}</span>
       <span class="terminal-session-meta">${escapeHTML(shorten(sessionID, 30))}</span>
-      <span class="terminal-session-meta">${escapeHTML(renderTerminalStatus(session.status))} | ${escapeHTML(formatDateTime(new Date(Number(session.updated_at || 0)).toISOString()))}</span>
+      <span class="terminal-session-meta">${escapeHTML(renderTerminalStatus(session.status))} · ${escapeHTML(lastOutputMeta)}</span>
     </button>`;
   }).join("");
 }
@@ -4549,6 +4601,8 @@ async function loadTerminalView(container) {
     focusedInputSelectionStart: -1,
     focusedInputSelectionEnd: -1,
     composingInputSessionID: "",
+    sessionListScrollTop: 0,
+    revealActiveSessionCard: false,
     pendingPaint: false,
     pendingScrollToBottom: false
   };
@@ -4559,12 +4613,16 @@ async function loadTerminalView(container) {
     return localState.sessions.find((item) => item.id === localState.activeSessionID) || null;
   };
 
-  const touchSession = (session) => {
+  const sortTerminalSessions = () => {
+    localState.sessions.sort(compareTerminalSessions);
+  };
+
+  const markTerminalSessionActivity = (session, at = Date.now()) => {
     if (!session) {
       return;
     }
-    session.updated_at = Math.max(Number(session.updated_at || 0), Date.now());
-    localState.sessions.sort((left, right) => Number(right.updated_at || 0) - Number(left.updated_at || 0));
+    session.updated_at = Math.max(Number(session.updated_at || 0), Number(at || 0));
+    sortTerminalSessions();
   };
 
   const persist = () => {
@@ -4633,6 +4691,10 @@ async function loadTerminalView(container) {
     }
   };
 
+  const requestRevealActiveSessionCard = () => {
+    localState.revealActiveSessionCard = true;
+  };
+
   const appendEntry = (session, role, text, options = {}) => {
     const content = String(text || "");
     if (!session || !content) {
@@ -4650,7 +4712,11 @@ async function loadTerminalView(container) {
     if (session.entries.length > 1200) {
       session.entries = session.entries.slice(session.entries.length - 1200);
     }
-    touchSession(session);
+    if (String(role || "").trim().toLowerCase() === "output") {
+      const outputAt = Number.isFinite(Number(options.at)) ? Number(options.at) : Date.now();
+      session.last_output_at = Math.max(Number(session.last_output_at || 0), outputAt);
+    }
+    markTerminalSessionActivity(session, Number.isFinite(Number(options.at)) ? Number(options.at) : Date.now());
   };
 
   const requestTerminalJSON = async (path, options = {}) => {
@@ -4686,7 +4752,7 @@ async function loadTerminalView(container) {
       localState.sessions.unshift(session);
     }
     applyTerminalSessionSnapshot(session, snapshot);
-    touchSession(session);
+    sortTerminalSessions();
     return session;
   };
 
@@ -4703,7 +4769,7 @@ async function loadTerminalView(container) {
       });
       session.disconnected_notice = true;
     }
-    touchSession(session);
+    sortTerminalSessions();
   };
 
   const createNewTerminalSession = async () => {
@@ -4717,6 +4783,7 @@ async function loadTerminalView(container) {
     }
     session.log_collapsed = false;
     localState.activeSessionID = session.id;
+    requestRevealActiveSessionCard();
     persist();
     return session;
   };
@@ -4777,9 +4844,11 @@ async function loadTerminalView(container) {
   const paint = () => {
     const active = getActiveSession();
     const previousWorkspace = container.querySelector("[data-terminal-workspace]");
+    const previousSessionList = container.querySelector("[data-terminal-session-list]");
     const previousSessionID = normalizeText(previousWorkspace ? previousWorkspace.getAttribute("data-terminal-session-id") : "");
     const previousInput = container.querySelector("[data-terminal-input]");
     const previousValue = previousInput ? String(previousInput.value || "") : "";
+    localState.sessionListScrollTop = previousSessionList ? previousSessionList.scrollTop : localState.sessionListScrollTop;
     if (previousSessionID && previousInput && document.activeElement === previousInput) {
       rememberTerminalInputFocus(previousSessionID, previousInput);
     }
@@ -4792,12 +4861,24 @@ async function loadTerminalView(container) {
     container.innerHTML = `<section class="terminal-view" data-terminal-view>
       <aside class="terminal-session-pane">
         <button class="terminal-session-create" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new"))}</button>
-        <div class="terminal-session-list">${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
+        <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
       </aside>
       <section class="terminal-workspace">
         ${renderTerminalWorkspace(active, localState.sending, localState.closing)}
       </section>
     </section>`;
+    const sessionListNode = container.querySelector("[data-terminal-session-list]");
+    if (sessionListNode) {
+      sessionListNode.scrollTop = Math.max(Number(localState.sessionListScrollTop || 0), 0);
+      if (localState.revealActiveSessionCard) {
+        const activeCard = sessionListNode.querySelector(".terminal-session-card.active");
+        if (activeCard) {
+          activeCard.scrollIntoView({ block: "nearest" });
+        }
+        localState.sessionListScrollTop = sessionListNode.scrollTop;
+      }
+    }
+    localState.revealActiveSessionCard = false;
     const inputNode = container.querySelector("[data-terminal-input]");
     if (active && inputNode) {
       const draft = readTerminalDraft(active.id) || (previousSessionID === normalizeText(active.id) ? previousValue : "");
@@ -4965,7 +5046,7 @@ async function loadTerminalView(container) {
       await syncSessionList();
       await pollEntriesForSession(session);
       await refreshSessionState(session);
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       requestTerminalPaint({ scrollToBottom: true });
       if (!isTerminalSessionLiveStatus(session.status)) {
@@ -5002,7 +5083,7 @@ async function loadTerminalView(container) {
       });
       applyTerminalSessionSnapshot(session, payload?.session || {});
       stopPolling();
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       paint();
     } catch (error) {
@@ -5014,7 +5095,7 @@ async function loadTerminalView(container) {
         kind: "tag",
         stream: "system"
       });
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       paint();
     } finally {
@@ -5025,9 +5106,13 @@ async function loadTerminalView(container) {
 
   const startPolling = async () => {
     stopPolling();
-    await pollActiveSession();
     const session = getActiveSession();
     if (!session || !isTerminalSessionLiveStatus(session.status)) {
+      return;
+    }
+    await pollActiveSession();
+    const activeSession = getActiveSession();
+    if (!activeSession || !isTerminalSessionLiveStatus(activeSession.status)) {
       return;
     }
     localState.timer = window.setInterval(() => {
@@ -5065,7 +5150,7 @@ async function loadTerminalView(container) {
         })
       });
       applyTerminalSessionSnapshot(session, payload?.session || {});
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       requestTerminalPaint();
       await startPolling();
@@ -5083,7 +5168,7 @@ async function loadTerminalView(container) {
         kind: "tag",
         stream: "system"
       });
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       requestTerminalPaint();
     } finally {

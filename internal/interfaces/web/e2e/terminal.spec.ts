@@ -6,8 +6,11 @@ import {
   expectComposerValue,
 } from "./helpers/asserts/composer";
 import { commitIMEInput, startIMEInput } from "./helpers/interactions/ime";
+import { openTerminalRoute } from "./helpers/flows/routes";
 import { selectTerminalSession } from "./helpers/flows/terminal-session";
 import { waitForTerminalPoll, waitForTerminalPollAndRepaint } from "./helpers/flows/terminal-runtime";
+import { bindTerminalClient, createTerminalClientID, seedTerminalSessions } from "./helpers/flows/terminal-session";
+import { createTerminalPage } from "./helpers/pages/terminal";
 import {
   openInterruptedTerminalWorkspace,
   openReadyTerminalWorkspace,
@@ -110,6 +113,134 @@ test.describe("Terminal route", () => {
 
     await selectTerminalSession(page, sessionB.id);
     await expectComposerValue(composer, "draft-for-session-b");
+  });
+
+  test("keeps session order stable when selecting without new activity", async ({ page }) => {
+    const clientID = createTerminalClientID("ordering");
+    const now = Date.now();
+    const olderSession = {
+      id: "terminal-ordering-older",
+      title: "terminal-ordering-older",
+      terminal_session_id: "terminal-ordering-older",
+      status: "interrupted",
+      shell: "C:\\WINDOWS\\system32\\cmd.exe",
+      working_dir: "D:\\GitHubRepositories\\alter0",
+      created_at: now - 5_000,
+      last_output_at: now - 1_000,
+      updated_at: now - 500,
+      log_collapsed: false,
+      entry_cursor: 0,
+      disconnected_notice: true,
+      entries: [
+        {
+          id: "terminal-ordering-older-output",
+          role: "output",
+          text: "older-session-output",
+          at: now - 1_000,
+          kind: "stdout",
+          stream: "stdout",
+          cursor: 1,
+        },
+      ],
+    };
+    const newerSession = {
+      id: "terminal-ordering-newer",
+      title: "terminal-ordering-newer",
+      terminal_session_id: "terminal-ordering-newer",
+      status: "interrupted",
+      shell: "C:\\WINDOWS\\system32\\cmd.exe",
+      working_dir: "D:\\GitHubRepositories\\alter0",
+      created_at: now - 4_000,
+      last_output_at: now - 2_000,
+      updated_at: now - 4_000,
+      log_collapsed: false,
+      entry_cursor: 0,
+      disconnected_notice: true,
+      entries: [
+        {
+          id: "terminal-ordering-newer-output",
+          role: "output",
+          text: "newer-session-output",
+          at: now - 2_000,
+          kind: "stdout",
+          stream: "stdout",
+          cursor: 1,
+        },
+      ],
+    };
+
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [olderSession, newerSession]);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    await expect(terminalPage.sessionList().items()).toHaveCount(2);
+
+    const beforeOrder = await Promise.all(
+      [0, 1].map((index) => terminalPage.sessionList().itemAt(index).getAttribute("data-terminal-session-select"))
+    );
+
+    await selectTerminalSession(page, olderSession.id);
+    await page.waitForTimeout(1500);
+
+    const afterOrder = await Promise.all(
+      [0, 1].map((index) => terminalPage.sessionList().itemAt(index).getAttribute("data-terminal-session-select"))
+    );
+
+    expect(beforeOrder).toEqual([olderSession.id, newerSession.id]);
+    expect(afterOrder).toEqual(beforeOrder);
+    await expect(terminalPage.sessionList().itemByValue?.(olderSession.id) || terminalPage.sessionList().itemAt(0)).toHaveClass(/active/);
+    await expect(terminalPage.sessionList().itemAt(0)).toContainText("Last output");
+  });
+
+  test("preserves session list scroll position when switching sessions", async ({ page }) => {
+    const clientID = createTerminalClientID("scroll");
+    const now = Date.now();
+    const sessions = Array.from({ length: 12 }, (_value, index) => ({
+      id: `terminal-scroll-${index}`,
+      title: `terminal-scroll-${index}`,
+      terminal_session_id: `terminal-scroll-${index}`,
+      status: "interrupted",
+      shell: "C:\\WINDOWS\\system32\\cmd.exe",
+      working_dir: "D:\\GitHubRepositories\\alter0",
+      created_at: now - (index + 1) * 1_000,
+      last_output_at: now - (index + 1) * 1_000,
+      updated_at: now - index * 500,
+      log_collapsed: false,
+      entry_cursor: 1,
+      disconnected_notice: true,
+      entries: [
+        {
+          id: `terminal-scroll-${index}-output`,
+          role: "output",
+          text: `output-${index}`,
+          at: now - (index + 1) * 1_000,
+          kind: "stdout",
+          stream: "stdout",
+          cursor: 1,
+        },
+      ],
+    }));
+
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, sessions);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    const sessionListContainer = terminalPage.sessionListContainer();
+    await expect(terminalPage.sessionList().items()).toHaveCount(12);
+
+    await sessionListContainer.evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
+    const beforeScrollTop = await sessionListContainer.evaluate((node) => node.scrollTop);
+
+    await selectTerminalSession(page, "terminal-scroll-11");
+    const afterScrollTop = await sessionListContainer.evaluate((node) => node.scrollTop);
+
+    expect(beforeScrollTop).toBeGreaterThan(0);
+    expect(afterScrollTop).toBeGreaterThan(0);
+    expect(Math.abs(afterScrollTop - beforeScrollTop)).toBeLessThan(24);
   });
 
   test("marks stored live sessions as interrupted when runtime is unavailable", async ({ page }) => {

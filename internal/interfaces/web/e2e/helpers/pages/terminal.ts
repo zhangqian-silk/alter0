@@ -9,6 +9,7 @@ export function createTerminalPage(page: Page): {
   workspace(): Locator;
   chatScreen(): Locator;
   sessionList(): SessionListComponent;
+  sessionListContainer(): Locator;
 } {
   const composer = createComposerComponent(page, "terminal-runtime");
   const sessionList = createSessionListComponent(page, {
@@ -22,5 +23,6 @@ export function createTerminalPage(page: Page): {
     workspace: () => page.locator("[data-terminal-workspace]"),
     chatScreen: () => page.locator("[data-terminal-chat-screen]"),
     sessionList: () => sessionList,
+    sessionListContainer: () => page.locator("[data-terminal-session-list]"),
   };
 }

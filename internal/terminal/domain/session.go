@@ -27,6 +27,7 @@ type Session struct {
 	WorkingDir   string        `json:"working_dir,omitempty"`
 	Status       SessionStatus `json:"status"`
 	CreatedAt    time.Time     `json:"created_at,omitempty"`
+	LastOutputAt time.Time     `json:"last_output_at,omitempty"`
 	UpdatedAt    time.Time     `json:"updated_at,omitempty"`
 	FinishedAt   time.Time     `json:"finished_at,omitempty"`
 	ExitCode     *int          `json:"exit_code,omitempty"`

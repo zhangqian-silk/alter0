@@ -4,6 +4,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	terminaldomain "alter0/internal/terminal/domain"
 )
 
 func TestResolveShellCommandForOSUsesUTF8PowerShellOnWindows(t *testing.T) {
@@ -100,6 +103,71 @@ func TestResolveShellCommandForOSPreservesExplicitWindowsArgs(t *testing.T) {
 	}
 	if command.label != "powershell.exe -NoLogo -NoExit" {
 		t.Fatalf("expected explicit shell label, got %q", command.label)
+	}
+}
+
+func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	service := &Service{
+		sessions: map[string]*runtimeSession{
+			"terminal-output-newer": {
+				summary: terminaldomain.Session{
+					ID:           "terminal-output-newer",
+					OwnerID:      "owner-a",
+					CreatedAt:    now.Add(-10 * time.Minute),
+					LastOutputAt: now.Add(-2 * time.Minute),
+					UpdatedAt:    now.Add(-4 * time.Minute),
+				},
+			},
+			"terminal-updated-newer": {
+				summary: terminaldomain.Session{
+					ID:           "terminal-updated-newer",
+					OwnerID:      "owner-a",
+					CreatedAt:    now.Add(-9 * time.Minute),
+					LastOutputAt: now.Add(-3 * time.Minute),
+					UpdatedAt:    now.Add(-1 * time.Minute),
+				},
+			},
+		},
+	}
+
+	items := service.List("owner-a")
+	if len(items) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(items))
+	}
+	if items[0].ID != "terminal-output-newer" {
+		t.Fatalf("expected last output ordering, got first session %q", items[0].ID)
+	}
+}
+
+func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *testing.T) {
+	session := &runtimeSession{
+		summary: terminaldomain.Session{
+			ID:        "terminal-output-flags",
+			OwnerID:   "owner-a",
+			CreatedAt: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
+		},
+	}
+
+	session.appendEntryLocked("system", "shell started")
+	if !session.summary.LastOutputAt.IsZero() {
+		t.Fatalf("expected system entry to keep last_output_at empty, got %s", session.summary.LastOutputAt)
+	}
+
+	session.appendEntryLocked("input", "pwd")
+	if !session.summary.LastOutputAt.IsZero() {
+		t.Fatalf("expected input entry to keep last_output_at empty, got %s", session.summary.LastOutputAt)
+	}
+
+	session.appendEntryLocked("stdout", "workspace")
+	if session.summary.LastOutputAt.IsZero() {
+		t.Fatalf("expected stdout entry to update last_output_at")
+	}
+
+	lastOutputAt := session.summary.LastOutputAt
+	session.appendEntryLocked("stderr", "warning")
+	if session.summary.LastOutputAt.IsZero() || session.summary.LastOutputAt.Before(lastOutputAt) {
+		t.Fatalf("expected stderr entry to preserve or advance last_output_at")
 	}
 }
 

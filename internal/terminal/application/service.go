@@ -191,12 +191,39 @@ func (s *Service) List(ownerID string) []terminaldomain.Session {
 		items = append(items, snapshot)
 	}
 	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
-			return items[i].ID > items[j].ID
+		leftAt := terminalSessionSortAt(items[i])
+		rightAt := terminalSessionSortAt(items[j])
+		if leftAt.Equal(rightAt) {
+			if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+				return items[i].ID > items[j].ID
+			}
+			return items[i].CreatedAt.After(items[j].CreatedAt)
 		}
-		return items[i].UpdatedAt.After(items[j].UpdatedAt)
+		return leftAt.After(rightAt)
 	})
 	return items
+}
+
+func terminalSessionSortAt(session terminaldomain.Session) time.Time {
+	if !session.LastOutputAt.IsZero() {
+		return session.LastOutputAt.UTC()
+	}
+	if !session.CreatedAt.IsZero() {
+		return session.CreatedAt.UTC()
+	}
+	if !session.UpdatedAt.IsZero() {
+		return session.UpdatedAt.UTC()
+	}
+	return time.Time{}
+}
+
+func isTerminalOutputStream(stream string) bool {
+	switch strings.ToLower(strings.TrimSpace(stream)) {
+	case "stdout", "stderr":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) Get(ownerID string, sessionID string) (terminaldomain.Session, bool) {
@@ -604,6 +631,9 @@ func (s *runtimeSession) appendEntryLocked(stream string, text string) {
 		CreatedAt: now,
 	})
 	s.nextID++
+	if isTerminalOutputStream(stream) {
+		s.summary.LastOutputAt = now
+	}
 	s.summary.UpdatedAt = now
 }
 

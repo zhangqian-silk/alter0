@@ -73,12 +73,13 @@ func (s *stubWebTerminalService) MaxSessions() int {
 func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	service := &stubWebTerminalService{
 		createResp: terminaldomain.Session{
-			ID:        "terminal-1",
-			OwnerID:   "client-a",
-			Title:     "terminal-1",
-			Status:    terminaldomain.SessionStatusRunning,
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			ID:           "terminal-1",
+			OwnerID:      "client-a",
+			Title:        "terminal-1",
+			Status:       terminaldomain.SessionStatusRunning,
+			CreatedAt:    time.Now().UTC(),
+			LastOutputAt: time.Now().UTC(),
+			UpdatedAt:    time.Now().UTC(),
 		},
 	}
 	server := &Server{terminals: service}
@@ -106,6 +107,9 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	}
 	if session["id"] != "terminal-1" {
 		t.Fatalf("expected terminal id terminal-1, got %v", session["id"])
+	}
+	if _, ok := session["last_output_at"].(string); !ok {
+		t.Fatalf("expected last_output_at in session payload, got %v", session["last_output_at"])
 	}
 }
 
