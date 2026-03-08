@@ -2,6 +2,7 @@ import { expectComposerReady } from "../asserts/composer";
 import { openTerminalRoute } from "../flows/routes";
 import {
   bindTerminalClient,
+  clearTerminalSessions,
   createTerminalClientID,
   createTerminalSession,
   seedTerminalSessions,
@@ -10,6 +11,7 @@ import {
 import { waitForTerminalPollAndRepaint } from "../flows/terminal-runtime";
 import { createTerminalPage } from "../pages/terminal";
 import { type APIRequestContext, type Page } from "@playwright/test";
+import { interruptedTerminalPrompt, terminalRepoRoot } from "../support/terminal-env";
 
 export async function openTerminalWorkspace(
   page: Page,
@@ -40,6 +42,7 @@ export async function openTerminalWorkspaceWithSessions(
   terminalPage: ReturnType<typeof createTerminalPage>;
 }> {
   const clientID = createTerminalClientID(options.scope);
+  await clearTerminalSessions(request, clientID);
   await bindTerminalClient(page, clientID);
   const sessionCount = options.count ?? 1;
   const sessions: TerminalSessionRecord[] = [];
@@ -85,20 +88,19 @@ export async function openInterruptedTerminalWorkspace(
   const session: TerminalSessionRecord = {
     id: "terminal-stale-session",
     title: "terminal-stale-session",
-    terminal_session_id: "terminal-stale-session",
+    terminal_session_id: "mock-thread-terminal-stale-session",
     status: "running",
-    shell: "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-    working_dir: "D:\\GitHubRepositories\\alter0",
+    shell: "codex exec",
+    working_dir: terminalRepoRoot,
     created_at: now - 1000,
     updated_at: now,
-    log_collapsed: false,
     entry_cursor: 1,
     disconnected_notice: false,
     entries: [
       {
         id: "entry-1",
         role: "output",
-        text: "PS D:\\GitHubRepositories\\alter0>",
+        text: interruptedTerminalPrompt,
         at: now - 500,
         kind: "stdout",
         stream: "stdout",

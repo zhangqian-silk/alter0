@@ -106,6 +106,8 @@ type terminalService interface {
 	Create(req terminalapp.CreateRequest) (terminaldomain.Session, error)
 	List(ownerID string) []terminaldomain.Session
 	Get(ownerID string, sessionID string) (terminaldomain.Session, bool)
+	ListTurns(ownerID string, sessionID string) ([]terminalapp.TurnSummary, error)
+	GetStepDetail(ownerID string, sessionID string, turnID string, stepID string) (terminalapp.StepDetail, error)
 	ListEntries(ownerID string, sessionID string, cursor int, limit int) (terminalapp.EntryPage, error)
 	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
 	Close(ownerID string, sessionID string) (terminaldomain.Session, error)

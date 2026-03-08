@@ -23,12 +23,13 @@ export async function waitForTerminalRepaint(page: Page, timeout = 5000): Promis
 
 export async function waitForTerminalPoll(page: Page, sessionID: string, timeout = 5000): Promise<void> {
   const encodedSessionID = encodeURIComponent(sessionID);
-  const matchesSessionState = (url: string) => url.includes(`/api/terminal/sessions/${encodedSessionID}`) && !url.includes("/entries?");
-  const matchesSessionEntries = (url: string) => url.includes(`/api/terminal/sessions/${encodedSessionID}/entries?`);
-  await Promise.all([
-    page.waitForResponse((response) => response.request().method() === "GET" && response.ok() && matchesSessionEntries(response.url()), { timeout }),
-    page.waitForResponse((response) => response.request().method() === "GET" && response.ok() && matchesSessionState(response.url()), { timeout })
-  ]);
+  const matchesSessionState = (url: string) => {
+    if (!url.includes(`/api/terminal/sessions/${encodedSessionID}`)) {
+      return false;
+    }
+    return !url.includes("/entries?") && !url.includes("/steps/");
+  };
+  await page.waitForResponse((response) => response.request().method() === "GET" && response.ok() && matchesSessionState(response.url()), { timeout });
 }
 
 export async function waitForTerminalPollAndRepaint(page: Page, sessionID: string, timeout = 5000): Promise<void> {

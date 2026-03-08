@@ -29,6 +29,10 @@ type terminalSessionListEnvelope struct {
 	Items []any `json:"items"`
 }
 
+type terminalStepEnvelope struct {
+	Step any `json:"step"`
+}
+
 func (s *Server) terminalSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
 	if s.terminals == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "terminal service unavailable"})
@@ -61,7 +65,7 @@ func (s *Server) terminalSessionCollectionHandler(w http.ResponseWriter, r *http
 			s.writeTerminalError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, map[string]any{"session": session})
+		writeJSON(w, http.StatusCreated, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -90,7 +94,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 				s.writeTerminalError(w, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"session": session})
+			writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
 			return
 		}
 		if r.Method != http.MethodGet {
@@ -105,11 +109,39 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"session": session})
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
 		return
 	}
 
 	switch parts[1] {
+	case "turns":
+		if len(parts) == 2 {
+			if r.Method != http.MethodGet {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+				return
+			}
+			items, err := s.terminals.ListTurns(ownerID, sessionID)
+			if err != nil {
+				s.writeTerminalError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+			return
+		}
+		if len(parts) == 5 && parts[3] == "steps" {
+			if r.Method != http.MethodGet {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+				return
+			}
+			detail, err := s.terminals.GetStepDetail(ownerID, sessionID, strings.TrimSpace(parts[2]), strings.TrimSpace(parts[4]))
+			if err != nil {
+				s.writeTerminalError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"step": detail})
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})
 	case "entries":
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -139,10 +171,33 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			s.writeTerminalError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"session": session})
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})
 	}
+}
+
+func (s *Server) buildTerminalSessionDetail(ownerID string, session any) any {
+	if s.terminals == nil {
+		return session
+	}
+	sessionMap := map[string]any{}
+	encoded, err := json.Marshal(session)
+	if err != nil {
+		return session
+	}
+	if err := json.Unmarshal(encoded, &sessionMap); err != nil {
+		return session
+	}
+	sessionID := strings.TrimSpace(fmt.Sprintf("%v", sessionMap["id"]))
+	if sessionID == "" {
+		return session
+	}
+	turns, err := s.terminals.ListTurns(ownerID, sessionID)
+	if err == nil {
+		sessionMap["turns"] = turns
+	}
+	return sessionMap
 }
 
 func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
@@ -151,6 +206,11 @@ func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error":      err.Error(),
 			"error_code": "terminal_client_required",
+		})
+	case errors.Is(err, terminalapp.ErrSessionInputRequired):
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error":      err.Error(),
+			"error_code": "terminal_input_required",
 		})
 	case errors.Is(err, terminalapp.ErrSessionLimitReached):
 		maxSessions := 5
@@ -166,6 +226,21 @@ func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error":      err.Error(),
 			"error_code": "terminal_session_not_found",
+		})
+	case errors.Is(err, terminalapp.ErrTurnNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"error":      err.Error(),
+			"error_code": "terminal_turn_not_found",
+		})
+	case errors.Is(err, terminalapp.ErrStepNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"error":      err.Error(),
+			"error_code": "terminal_step_not_found",
+		})
+	case errors.Is(err, terminalapp.ErrSessionBusy):
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error":      err.Error(),
+			"error_code": "terminal_session_busy",
 		})
 	case errors.Is(err, terminalapp.ErrSessionNotRunning):
 		writeJSON(w, http.StatusConflict, map[string]string{

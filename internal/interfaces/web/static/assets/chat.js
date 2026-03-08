@@ -37,6 +37,8 @@ const rootStyle = document.documentElement.style;
 const MAX_CHARS = 10000;
 const DEFAULT_ROUTE = "chat";
 const SWIPE_CLOSE_THRESHOLD = 46;
+const TERMINAL_SCROLL_STICKY_THRESHOLD = 32;
+const TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD = 480;
 const NAV_TOOLTIP_SHOW_DELAY = 90;
 const NAV_TOOLTIP_HIDE_DELAY = 40;
 const NAV_TOOLTIP_OFFSET = 12;
@@ -235,34 +237,46 @@ const I18N = {
     "route.tasks.terminal.send": "Send",
     "route.tasks.terminal.sending": "Sending...",
     "route.tasks.terminal.hint": "Supports follow-up interaction in current terminal session (max {max} concurrent sessions).",
-    "route.tasks.terminal.followup_note": "Each Send may create a child task, but stays in the same shell session.",
+    "route.tasks.terminal.followup_note": "Each Send stays in the same Codex session thread.",
     "route.tasks.terminal.limit_reached": "Terminal session limit reached ({max}). Please finish an active session first.",
     "route.tasks.actions.retry": "Retry",
     "route.tasks.actions.cancel": "Cancel",
     "route.tasks.result.title": "Result Output",
     "route.terminal.title": "Terminal",
-    "route.terminal.subtitle": "Dedicated shell sessions with runtime-aligned status",
-    "route.terminal.new": "New Terminal Session",
-    "route.terminal.empty": "No terminal sessions yet. Create a session to start a dedicated shell.",
-    "route.terminal.pick": "Select a terminal session to start.",
-    "route.terminal.input": "Type a command...",
+    "route.terminal.subtitle": "Persistent Codex CLI sessions with runtime-aligned status",
+    "route.terminal.new": "New Codex Session",
+    "route.terminal.empty": "No Codex sessions yet. Create a session to start a CLI thread.",
+    "route.terminal.pick": "Select a Codex session to continue.",
+    "route.terminal.input": "Ask Codex...",
     "route.terminal.send": "Send",
     "route.terminal.sending": "Sending...",
     "route.terminal.close": "Close",
     "route.terminal.closing": "Closing...",
     "route.terminal.session": "Session",
-    "route.terminal.shell": "Shell",
+    "route.terminal.shell": "CLI",
     "route.terminal.path": "Path",
     "route.terminal.status": "Status",
-    "route.terminal.logs.heading": "Terminal Output ({session})",
-    "route.terminal.logs.empty": "No terminal output yet.",
+    "route.terminal.last_output": "Last output {time}",
+    "route.terminal.no_output": "No output yet",
+    "route.terminal.logs.heading": "Codex Activity ({session})",
+    "route.terminal.logs.empty": "Codex session ready. Send a prompt to start.",
+    "route.terminal.process.label": "Process",
+    "route.terminal.process.header": "Processed {duration}",
+    "route.terminal.process.steps": "{count} steps",
+    "route.terminal.process.empty": "No process steps yet.",
+    "route.terminal.process.loading": "Waiting for Codex...",
+    "route.terminal.final.heading": "Final Output",
+    "route.terminal.jump_bottom": "Latest",
+    "route.terminal.step.loading": "Loading step details...",
+    "route.terminal.step.error": "Load step failed: {error}",
+    "route.terminal.step.search": "Search in output",
     "route.terminal.limit_reached": "Terminal session limit reached ({max}). Please finish an active session first.",
     "route.terminal.send_failed": "Send failed: {error}",
     "route.terminal.logs_failed": "Load terminal output failed: {error}",
     "route.terminal.close_failed": "Close terminal failed: {error}",
     "route.terminal.loading": "Loading terminal session...",
-    "route.terminal.interrupted": "Terminal session interrupted and cannot be reopened.",
-    "route.terminal.closed": "Terminal session closed. Create a new session to continue.",
+    "route.terminal.interrupted": "Codex session interrupted and cannot be resumed here.",
+    "route.terminal.closed": "Codex session closed. Create a new session to continue.",
     "trigger.user": "User",
     "trigger.cron": "Cron",
     "trigger.system": "System",
@@ -603,6 +617,9 @@ const I18N = {
     "route.terminal.status": "状态",
     "route.terminal.logs.heading": "终端输出（{session}）",
     "route.terminal.logs.empty": "暂无终端输出。",
+    "route.terminal.process.label": "过程",
+    "route.terminal.process.steps": "{count} 步",
+    "route.terminal.jump_bottom": "回到底部",
     "route.terminal.limit_reached": "终端会话已达上限（{max}），请先结束一个活跃会话。",
     "route.terminal.send_failed": "发送失败：{error}",
     "route.terminal.logs_failed": "终端输出加载失败：{error}",
@@ -828,7 +845,7 @@ let navTooltipHideTimer = 0;
 
 function t(key, params = {}) {
   const dict = I18N[state.lang] || I18N.en;
-  let val = dict[key] || key;
+  let val = dict[key] || I18N.en[key] || key;
   for (const [k, v] of Object.entries(params)) {
     val = val.replace(`{${k}}`, v);
   }
@@ -2314,6 +2331,7 @@ async function sendMessage(rawContent) {
 
   appendMessage("user", content);
   input.value = "";
+  mainChatComposer.clearDraft();
   updateCharCount();
   setPending(true);
 
@@ -3933,7 +3951,7 @@ function bindControlTaskView(container, initialPayload) {
       disabled: localState.terminalSubmitting,
       onSubmit: async (currentInputNode) => {
         const value = String(currentInputNode.value || "");
-        currentInputNode.value = "";
+        controlTaskTerminalComposer.clearDraft();
         await submitTerminalInput(value);
       }
     });
@@ -4262,6 +4280,93 @@ function normalizeTerminalStoredEntry(item, fallbackAt) {
   };
 }
 
+function createTerminalTurnSnapshot(id) {
+  const now = Date.now();
+  return {
+    id: String(id || "").trim() || `turn-${makeID()}`,
+    prompt: "",
+    status: "running",
+    started_at: now,
+    finished_at: 0,
+    duration_ms: 0,
+    final_output: "",
+    steps: []
+  };
+}
+
+function createTerminalStepSnapshot(id) {
+  const now = Date.now();
+  return {
+    id: String(id || "").trim() || `step-${makeID()}`,
+    type: "message",
+    title: "",
+    status: "running",
+    started_at: now,
+    finished_at: 0,
+    duration_ms: 0,
+    preview: "",
+    has_detail: false
+  };
+}
+
+function normalizeTerminalStoredStep(item, fallbackAt) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const step = createTerminalStepSnapshot(item.id);
+  step.type = String(item.type || step.type || "message").trim().toLowerCase() || "message";
+  step.title = String(item.title || "").trim() || step.title || t("route.terminal.process.empty");
+  step.status = String(item.status || step.status || "completed").trim().toLowerCase() || "completed";
+  step.started_at = parseTerminalTime(item.started_at, fallbackAt);
+  step.finished_at = parseTerminalTime(item.finished_at, 0);
+  step.duration_ms = Number.isFinite(Number(item.duration_ms)) ? Math.max(Number(item.duration_ms), 0) : 0;
+  step.preview = String(item.preview || "").trim();
+  step.has_detail = Boolean(item.has_detail);
+  return step;
+}
+
+function normalizeTerminalStoredTurn(item, fallbackAt) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const turn = createTerminalTurnSnapshot(item.id);
+  turn.prompt = String(item.prompt || "").trim();
+  turn.status = String(item.status || turn.status || "completed").trim().toLowerCase() || "completed";
+  turn.started_at = parseTerminalTime(item.started_at, fallbackAt);
+  turn.finished_at = parseTerminalTime(item.finished_at, 0);
+  turn.duration_ms = Number.isFinite(Number(item.duration_ms)) ? Math.max(Number(item.duration_ms), 0) : 0;
+  turn.final_output = typeof item.final_output === "string" ? item.final_output : "";
+  const stepsRaw = Array.isArray(item.steps) ? item.steps : [];
+  turn.steps = stepsRaw.map((step) => normalizeTerminalStoredStep(step, turn.started_at || fallbackAt)).filter(Boolean);
+  return turn;
+}
+
+function normalizeTerminalStoredStepDetail(item, fallbackAt) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const summary = normalizeTerminalStoredStep(item.step || item, fallbackAt);
+  if (!summary) {
+    return null;
+  }
+  const blocksRaw = Array.isArray(item.blocks) ? item.blocks : [];
+  return {
+    turn_id: String(item.turn_id || "").trim(),
+    step: summary,
+    searchable: Boolean(item.searchable),
+    blocks: blocksRaw.map((block) => ({
+      type: String(block?.type || "text").trim().toLowerCase() || "text",
+      title: String(block?.title || "").trim(),
+      content: typeof block?.content === "string" ? block.content : "",
+      language: String(block?.language || "").trim(),
+      file: String(block?.file || "").trim(),
+      start_line: Number.isFinite(Number(block?.start_line)) ? Number(block.start_line) : 0,
+      status: String(block?.status || "").trim().toLowerCase(),
+      exit_code: Number.isFinite(Number(block?.exit_code)) ? Number(block.exit_code) : null
+    }))
+  };
+}
+
 function createTerminalSessionSnapshot(id) {
   const now = Date.now();
   const safeID = String(id || "").trim() || `terminal-${makeID()}`;
@@ -4269,6 +4374,7 @@ function createTerminalSessionSnapshot(id) {
     id: safeID,
     title: t("route.terminal.new"),
     created_at: now,
+    last_output_at: 0,
     updated_at: now,
     terminal_session_id: safeID,
     status: "starting",
@@ -4276,10 +4382,21 @@ function createTerminalSessionSnapshot(id) {
     working_dir: "",
     exit_code: null,
     error_message: "",
-    log_collapsed: false,
     entry_cursor: 0,
     disconnected_notice: false,
-    entries: []
+    entries: [],
+    turns: [],
+    process_collapsed: {},
+    expanded_steps: {},
+    step_details: {},
+    step_errors: {},
+    step_loading: {},
+    step_search: {},
+    chat_scroll_top: 0,
+    chat_bottom_offset: 0,
+    chat_has_unread_output: false,
+    chat_last_seen_output_at: 0,
+    chat_stick_to_bottom: true
   };
 }
 
@@ -4301,20 +4418,104 @@ function applyTerminalSessionSnapshot(session, snapshot) {
     return session;
   }
   const now = Date.now();
-  const sessionID = String(snapshot.id || snapshot.terminal_session_id || session.id || "").trim();
+  const previousLastOutputAt = Number(session.last_output_at || 0);
+  const sessionID = String(snapshot.id || session.id || snapshot.terminal_session_id || "").trim();
+  const runtimeSessionID = String(snapshot.terminal_session_id || session.terminal_session_id || sessionID).trim();
   if (sessionID) {
     session.id = sessionID;
-    session.terminal_session_id = sessionID;
   }
+  session.terminal_session_id = runtimeSessionID || sessionID;
   session.title = String(snapshot.title || "").trim() || session.title || t("route.terminal.new");
   session.created_at = parseTerminalTime(snapshot.created_at, session.created_at || now);
+  session.last_output_at = parseTerminalTime(snapshot.last_output_at, session.last_output_at || 0);
   session.updated_at = parseTerminalTime(snapshot.updated_at, session.updated_at || session.created_at || now);
   session.status = String(snapshot.status || session.status || "interrupted").trim().toLowerCase();
   session.shell = String(snapshot.shell || "").trim();
   session.working_dir = String(snapshot.working_dir || "").trim();
   session.error_message = String(snapshot.error_message || "").trim();
   session.exit_code = Number.isFinite(Number(snapshot.exit_code)) ? Number(snapshot.exit_code) : null;
+  const nextLastOutputAt = Number(session.last_output_at || 0);
+  if (session.chat_stick_to_bottom === false) {
+    const knownLastSeenOutputAt = Number(session.chat_last_seen_output_at || 0);
+    if (nextLastOutputAt > Math.max(previousLastOutputAt, knownLastSeenOutputAt)) {
+      session.chat_has_unread_output = true;
+    }
+  } else {
+    session.chat_last_seen_output_at = nextLastOutputAt;
+    session.chat_has_unread_output = false;
+  }
+  if (Array.isArray(snapshot.turns)) {
+    mergeTerminalTurnSummaries(session, snapshot.turns);
+  }
   return session;
+}
+
+function resolveTerminalProcessCollapsed(session, turn) {
+  if (!session || !turn) {
+    return false;
+  }
+  const turnID = String(turn.id || "").trim();
+  if (!turnID) {
+    return false;
+  }
+  if (session.process_collapsed && Object.prototype.hasOwnProperty.call(session.process_collapsed, turnID)) {
+    return Boolean(session.process_collapsed[turnID]);
+  }
+  return ["completed", "failed", "interrupted"].includes(String(turn.status || "").trim().toLowerCase());
+}
+
+function pruneTerminalStateMap(map, allowedKeys) {
+  const next = {};
+  if (!map || typeof map !== "object") {
+    return next;
+  }
+  allowedKeys.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(map, key)) {
+      next[key] = map[key];
+    }
+  });
+  return next;
+}
+
+function mergeTerminalTurnSummaries(session, turnsRaw) {
+  if (!session) {
+    return;
+  }
+  const items = Array.isArray(turnsRaw) ? turnsRaw : [];
+  const previousProcess = session.process_collapsed && typeof session.process_collapsed === "object" ? session.process_collapsed : {};
+  const previousExpanded = session.expanded_steps && typeof session.expanded_steps === "object" ? session.expanded_steps : {};
+  const previousDetails = session.step_details && typeof session.step_details === "object" ? session.step_details : {};
+  const previousErrors = session.step_errors && typeof session.step_errors === "object" ? session.step_errors : {};
+  const previousLoading = session.step_loading && typeof session.step_loading === "object" ? session.step_loading : {};
+  const previousSearch = session.step_search && typeof session.step_search === "object" ? session.step_search : {};
+  const turns = [];
+  const allowedTurnIDs = [];
+  const allowedStepIDs = [];
+
+  items.forEach((item) => {
+    const turn = normalizeTerminalStoredTurn(item, session.created_at || Date.now());
+    if (!turn) {
+      return;
+    }
+    turns.push(turn);
+    allowedTurnIDs.push(turn.id);
+    turn.steps.forEach((step) => {
+      allowedStepIDs.push(step.id);
+    });
+  });
+
+  session.turns = turns;
+  session.process_collapsed = pruneTerminalStateMap(previousProcess, allowedTurnIDs);
+  turns.forEach((turn) => {
+    if (!Object.prototype.hasOwnProperty.call(session.process_collapsed, turn.id)) {
+      session.process_collapsed[turn.id] = ["completed", "failed", "interrupted"].includes(String(turn.status || "").trim().toLowerCase());
+    }
+  });
+  session.expanded_steps = pruneTerminalStateMap(previousExpanded, allowedStepIDs);
+  session.step_errors = pruneTerminalStateMap(previousErrors, allowedStepIDs);
+  session.step_loading = pruneTerminalStateMap(previousLoading, allowedStepIDs);
+  session.step_search = pruneTerminalStateMap(previousSearch, allowedStepIDs);
+  session.step_details = pruneTerminalStateMap(previousDetails, allowedStepIDs);
 }
 
 function normalizeTerminalStoredSession(item) {
@@ -4327,9 +4528,28 @@ function normalizeTerminalStoredSession(item) {
   }
   const session = createTerminalSessionSnapshot(baseID);
   applyTerminalSessionSnapshot(session, item);
-  session.log_collapsed = typeof item.log_collapsed === "boolean" ? item.log_collapsed : null;
   session.entry_cursor = Number.isFinite(Number(item.entry_cursor)) && Number(item.entry_cursor) >= 0 ? Number(item.entry_cursor) : 0;
   session.disconnected_notice = Boolean(item.disconnected_notice);
+  session.process_collapsed = item.process_collapsed && typeof item.process_collapsed === "object" ? { ...item.process_collapsed } : {};
+  session.expanded_steps = item.expanded_steps && typeof item.expanded_steps === "object" ? { ...item.expanded_steps } : {};
+  session.step_errors = item.step_errors && typeof item.step_errors === "object" ? { ...item.step_errors } : {};
+  session.step_loading = item.step_loading && typeof item.step_loading === "object" ? { ...item.step_loading } : {};
+  session.step_search = item.step_search && typeof item.step_search === "object" ? { ...item.step_search } : {};
+  session.chat_scroll_top = Number.isFinite(Number(item.chat_scroll_top)) ? Math.max(Number(item.chat_scroll_top), 0) : 0;
+  session.chat_bottom_offset = Number.isFinite(Number(item.chat_bottom_offset)) ? Math.max(Number(item.chat_bottom_offset), 0) : 0;
+  session.chat_has_unread_output = Boolean(item.chat_has_unread_output);
+  session.chat_last_seen_output_at = Number.isFinite(Number(item.chat_last_seen_output_at)) ? Math.max(Number(item.chat_last_seen_output_at), 0) : 0;
+  session.chat_stick_to_bottom = typeof item.chat_stick_to_bottom === "boolean" ? item.chat_stick_to_bottom : true;
+  const stepDetails = {};
+  if (item.step_details && typeof item.step_details === "object") {
+    Object.entries(item.step_details).forEach(([stepID, detail]) => {
+      const parsed = normalizeTerminalStoredStepDetail(detail, session.created_at || Date.now());
+      if (parsed) {
+        stepDetails[String(stepID || "").trim()] = parsed;
+      }
+    });
+  }
+  session.step_details = stepDetails;
   const entriesRaw = Array.isArray(item.entries) ? item.entries : [];
   const entries = [];
   for (const row of entriesRaw) {
@@ -4339,6 +4559,8 @@ function normalizeTerminalStoredSession(item) {
     }
   }
   session.entries = entries;
+  const turnsRaw = Array.isArray(item.turns) ? item.turns : [];
+  mergeTerminalTurnSummaries(session, turnsRaw);
   return session;
 }
 
@@ -4367,7 +4589,7 @@ function loadTerminalSessionsFromStorage() {
       sessions.push(normalized);
     }
   }
-  sessions.sort((left, right) => Number(right.updated_at || 0) - Number(left.updated_at || 0));
+  sessions.sort(compareTerminalSessions);
   return sessions;
 }
 
@@ -4412,14 +4634,47 @@ function isTerminalSessionLiveStatus(status) {
   return ["starting", "running"].includes(normalized);
 }
 
-function resolveTerminalLogCollapsed(session) {
-  if (!session) {
-    return false;
+function getTerminalSessionLastOutputAt(session) {
+  const snapshotLastOutputAt = Number(session?.last_output_at || 0);
+  let lastOutputAt = Number.isFinite(snapshotLastOutputAt) && snapshotLastOutputAt > 0 ? snapshotLastOutputAt : 0;
+  const entries = Array.isArray(session?.entries) ? session.entries : [];
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (String(entry?.role || "").trim().toLowerCase() !== "output") {
+      continue;
+    }
+    const at = Number(entry?.at || 0);
+    if (Number.isFinite(at) && at > 0) {
+      lastOutputAt = Math.max(lastOutputAt, at);
+      break;
+    }
   }
-  if (typeof session.log_collapsed === "boolean") {
-    return session.log_collapsed;
+  return lastOutputAt;
+}
+
+function getTerminalSessionSortAt(session) {
+  const lastOutputAt = getTerminalSessionLastOutputAt(session);
+  if (lastOutputAt > 0) {
+    return lastOutputAt;
   }
-  return !isTerminalSessionLiveStatus(session.status);
+  const createdAt = Number(session?.created_at || 0);
+  if (Number.isFinite(createdAt) && createdAt > 0) {
+    return createdAt;
+  }
+  const updatedAt = Number(session?.updated_at || 0);
+  return Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : 0;
+}
+
+function compareTerminalSessions(left, right) {
+  const sortDiff = getTerminalSessionSortAt(right) - getTerminalSessionSortAt(left);
+  if (sortDiff !== 0) {
+    return sortDiff;
+  }
+  const createdDiff = Number(right?.created_at || 0) - Number(left?.created_at || 0);
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+  return String(right?.id || "").localeCompare(String(left?.id || ""));
 }
 
 function normalizeTerminalLine(text, max = 240) {
@@ -4456,10 +4711,15 @@ function renderTerminalSessionCards(sessions, activeSessionID) {
     const title = normalizeText(session.title);
     const sessionID = normalizeText(session.terminal_session_id);
     const active = session.id === activeSessionID;
+    const listTimestamp = getTerminalSessionSortAt(session);
+    const listTimeLabel = listTimestamp > 0 ? formatDateTime(new Date(listTimestamp).toISOString()) : "-";
+    const lastOutputMeta = getTerminalSessionLastOutputAt(session) > 0
+      ? t("route.terminal.last_output", { time: listTimeLabel })
+      : t("route.terminal.no_output");
     return `<button class="terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
       <span class="terminal-session-title">${escapeHTML(title)}</span>
       <span class="terminal-session-meta">${escapeHTML(shorten(sessionID, 30))}</span>
-      <span class="terminal-session-meta">${escapeHTML(renderTerminalStatus(session.status))} | ${escapeHTML(formatDateTime(new Date(Number(session.updated_at || 0)).toISOString()))}</span>
+      <span class="terminal-session-meta">${escapeHTML(renderTerminalStatus(session.status))} · ${escapeHTML(lastOutputMeta)}</span>
     </button>`;
   }).join("");
 }
@@ -4473,7 +4733,7 @@ function renderTerminalLogRows(entries) {
     const kind = classifyTerminalLogKind(entry);
     const rowClass = `terminal-log-row kind-${escapeHTML(kind)}`;
     const text = String(entry?.text || "");
-    const prefix = kind === "command" ? "$" : "";
+    const prefix = kind === "command" ? ">" : "";
     if (!text) {
       return "";
     }
@@ -4487,14 +4747,197 @@ function renderTerminalLogRows(entries) {
   }).join("");
 }
 
+function formatTerminalDuration(durationMS, startedAt = 0, finishedAt = 0) {
+  let total = Number(durationMS || 0);
+  if ((!Number.isFinite(total) || total <= 0) && Number.isFinite(Number(startedAt)) && Number(startedAt) > 0) {
+    const end = Number.isFinite(Number(finishedAt)) && Number(finishedAt) > 0 ? Number(finishedAt) : Date.now();
+    total = Math.max(0, end - Number(startedAt));
+  }
+  if (!Number.isFinite(total) || total <= 0) {
+    return "<1s";
+  }
+  const seconds = Math.max(1, Math.round(total / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainSeconds = seconds % 60;
+  if (minutes < 60) {
+    return remainSeconds > 0 ? `${minutes}m ${remainSeconds}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = minutes % 60;
+  return remainMinutes > 0 ? `${hours}h ${remainMinutes}m` : `${hours}h`;
+}
+
+function escapeHTMLWithHighlight(text, query = "") {
+  const source = String(text || "");
+  const needle = String(query || "").trim();
+  if (!needle) {
+    return escapeHTML(source);
+  }
+  const lowerSource = source.toLowerCase();
+  const lowerNeedle = needle.toLowerCase();
+  let cursor = 0;
+  let html = "";
+  while (cursor < source.length) {
+    const index = lowerSource.indexOf(lowerNeedle, cursor);
+    if (index < 0) {
+      html += escapeHTML(source.slice(cursor));
+      break;
+    }
+    html += escapeHTML(source.slice(cursor, index));
+    html += `<mark>${escapeHTML(source.slice(index, index + needle.length))}</mark>`;
+    cursor = index + needle.length;
+  }
+  return html;
+}
+
+function renderTerminalNumberedBlock(content, searchQuery = "") {
+  const text = String(content || "");
+  if (!text) {
+    return `<div class="terminal-rich-empty">-</div>`;
+  }
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  return `<div class="terminal-numbered-block">${lines.map((line, index) => `<div class="terminal-numbered-line"><span class="terminal-numbered-index">${String(index + 1)}</span><span class="terminal-numbered-text">${escapeHTMLWithHighlight(line, searchQuery)}</span></div>`).join("")}</div>`;
+}
+
+function renderTerminalDiffBlock(content, searchQuery = "") {
+  const text = String(content || "");
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  return `<div class="terminal-diff-block">${lines.map((line, index) => {
+    const marker = line.startsWith("+") ? "add" : line.startsWith("-") ? "remove" : "context";
+    return `<div class="terminal-diff-line kind-${marker}"><span class="terminal-numbered-index">${String(index + 1)}</span><span class="terminal-numbered-text">${escapeHTMLWithHighlight(line, searchQuery)}</span></div>`;
+  }).join("")}</div>`;
+}
+
+function renderTerminalRichBlock(stepID, block, searchQuery = "") {
+  const type = String(block?.type || "text").trim().toLowerCase();
+  const title = String(block?.title || "").trim();
+  const status = String(block?.status || "").trim().toLowerCase();
+  const exitCode = Number.isFinite(Number(block?.exit_code)) ? Number(block.exit_code) : null;
+  const fileLabel = String(block?.file || "").trim();
+  const lineLabel = Number.isFinite(Number(block?.start_line)) && Number(block.start_line) > 0
+    ? `:${String(Number(block.start_line))}`
+    : "";
+  const blockHeader = title || status || exitCode !== null
+    ? `<div class="terminal-rich-head">
+        <div class="terminal-rich-copy">
+          ${title ? `<strong>${escapeHTML(title)}</strong>` : ""}
+          ${fileLabel ? `<span>${escapeHTML(`${fileLabel}${lineLabel}`)}</span>` : ""}
+        </div>
+        <div class="terminal-rich-meta">
+          ${status ? `<span class="terminal-step-status status-${escapeHTML(status)}">${escapeHTML(renderTerminalStatus(status))}</span>` : ""}
+          ${exitCode !== null ? `<span class="terminal-rich-exit">exit ${escapeHTML(String(exitCode))}</span>` : ""}
+        </div>
+      </div>`
+    : "";
+  let body = "";
+  if (type === "terminal") {
+    body = `<pre class="terminal-rich-pre">${escapeHTML(String(block?.content || ""))}</pre>`;
+  } else if (type === "diff") {
+    body = renderTerminalDiffBlock(block?.content || "", searchQuery);
+  } else {
+    body = renderTerminalNumberedBlock(block?.content || "", searchQuery);
+  }
+  return `<section class="terminal-rich-block type-${escapeHTML(type)}">${blockHeader}${body}</section>`;
+}
+
+function renderTerminalStepDetail(session, turn, step) {
+  const stepID = normalizeText(step?.id);
+  const detail = session?.step_details?.[stepID] || null;
+  const loading = Boolean(session?.step_loading?.[stepID]);
+  const error = String(session?.step_errors?.[stepID] || "").trim();
+  const searchQuery = String(session?.step_search?.[stepID] || "");
+  if (loading) {
+    return `<div class="terminal-step-detail-state">${escapeHTML(t("route.terminal.step.loading"))}</div>`;
+  }
+  if (error) {
+    return `<div class="terminal-step-detail-state is-error">${escapeHTML(t("route.terminal.step.error", { error }))}</div>`;
+  }
+  if (!detail) {
+    return "";
+  }
+  const blocks = Array.isArray(detail.blocks) ? detail.blocks : [];
+  return `<div class="terminal-step-detail">
+    ${detail.searchable ? `<div class="terminal-step-search"><input type="search" data-terminal-step-search="${escapeHTML(stepID)}" value="${escapeHTML(searchQuery)}" placeholder="${escapeHTML(t("route.terminal.step.search"))}"></div>` : ""}
+    ${blocks.length ? blocks.map((block) => renderTerminalRichBlock(stepID, block, searchQuery)).join("") : `<div class="terminal-step-detail-state">${escapeHTML(t("route.terminal.process.empty"))}</div>`}
+  </div>`;
+}
+
+function renderTerminalStepItems(session, turn) {
+  const steps = Array.isArray(turn?.steps) ? turn.steps : [];
+  if (!steps.length) {
+    const waiting = String(turn?.status || "").trim().toLowerCase() === "running";
+    return `<div class="terminal-process-empty">${escapeHTML(waiting ? t("route.terminal.process.loading") : t("route.terminal.process.empty"))}</div>`;
+  }
+  return steps.map((step) => {
+    const stepID = normalizeText(step.id);
+    const expanded = Boolean(session?.expanded_steps?.[stepID]);
+    const duration = formatTerminalDuration(step.duration_ms, step.started_at, step.finished_at);
+    const preview = String(step.preview || "").trim();
+    return `<article class="terminal-step-item" data-terminal-step-item="${escapeHTML(stepID)}">
+      <button class="terminal-step-toggle" type="button" data-terminal-step-toggle="${escapeHTML(stepID)}" data-terminal-turn-id="${escapeHTML(normalizeText(turn.id))}" aria-expanded="${expanded ? "true" : "false"}">
+        <span class="terminal-step-toggle-icon">${expanded ? "v" : ">"}</span>
+        <span class="terminal-step-summary">
+          <span class="terminal-step-title">${escapeHTML(step.title || "-")}</span>
+          ${preview ? `<span class="terminal-step-preview">${escapeHTML(preview)}</span>` : ""}
+        </span>
+        <span class="terminal-step-meta">
+          <span class="terminal-step-duration">${escapeHTML(duration)}</span>
+          <span class="terminal-step-status status-${escapeHTML(String(step.status || "completed"))}">${escapeHTML(renderTerminalStatus(step.status))}</span>
+        </span>
+      </button>
+      <div class="terminal-step-body" ${expanded ? "" : "hidden"}>
+        ${renderTerminalStepDetail(session, turn, step)}
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function renderTerminalTurnProcess(session, turn) {
+  const turnID = normalizeText(turn?.id);
+  const collapsed = resolveTerminalProcessCollapsed(session, turn);
+  const duration = formatTerminalDuration(turn?.duration_ms, turn?.started_at, turn?.finished_at);
+  const stepCount = Array.isArray(turn?.steps) ? turn.steps.length : 0;
+  return `<section class="terminal-process-shell ${collapsed ? "is-collapsed" : ""}" data-terminal-process-shell="${escapeHTML(turnID)}">
+    <button class="terminal-process-toggle" type="button" data-terminal-process-toggle="${escapeHTML(turnID)}" aria-expanded="${collapsed ? "false" : "true"}">
+      <span class="terminal-step-toggle-icon">${collapsed ? ">" : "v"}</span>
+      <span class="terminal-process-copy">
+        <span class="terminal-process-title">${escapeHTML(t("route.terminal.process.label"))}</span>
+        <span class="terminal-process-summary">${escapeHTML(t("route.terminal.process.steps", { count: String(stepCount) }))}</span>
+      </span>
+      <span class="terminal-process-meta">${escapeHTML(duration)}</span>
+    </button>
+    <div class="terminal-process-body" ${collapsed ? "hidden" : ""}>
+      ${renderTerminalStepItems(session, turn)}
+    </div>
+  </section>`;
+}
+
+function renderTerminalTurns(session) {
+  const turns = Array.isArray(session?.turns) ? session.turns : [];
+  if (!turns.length) {
+    return renderTerminalLogRows(session?.entries || []);
+  }
+  return turns.map((turn) => {
+    const promptText = String(turn?.prompt || "").trim();
+    const finalOutput = typeof turn?.final_output === "string" ? turn.final_output : "";
+    const hasProcess = Array.isArray(turn?.steps) && turn.steps.length > 0;
+    return `<article class="terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
+      ${promptText ? `<div class="terminal-log-row kind-command"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
+      ${hasProcess || String(turn?.status || "").trim().toLowerCase() === "running" ? renderTerminalTurnProcess(session, turn) : ""}
+      ${finalOutput ? `<section class="terminal-final-output"><h6>${escapeHTML(t("route.terminal.final.heading"))}</h6><div class="terminal-final-text">${escapeHTML(finalOutput)}</div></section>` : ""}
+    </article>`;
+  }).join("");
+}
+
 function renderTerminalWorkspace(session, sending, closing = false) {
   if (!session) {
     return `<section class="terminal-workspace-empty">
       <p>${escapeHTML(t("route.terminal.pick"))}</p>
     </section>`;
   }
-  const collapsed = resolveTerminalLogCollapsed(session);
-  const logToggleIcon = collapsed ? ">" : "v";
   const logRef = normalizeText(session.terminal_session_id);
   const logTitle = t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 32) });
   const canInput = isTerminalSessionLiveStatus(session.status);
@@ -4502,6 +4945,7 @@ function renderTerminalWorkspace(session, sending, closing = false) {
   const note = session.status === "interrupted" ? t("route.terminal.interrupted") : (!canInput ? t("route.terminal.closed") : "");
   const detail = session.error_message || (Number.isFinite(Number(session.exit_code)) ? `exit code ${String(session.exit_code)}` : "");
   const closeDisabled = sending || closing || !canInput;
+  const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
   return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${canInput ? "true" : "false"}">
     <header class="terminal-workspace-head">
       <div class="terminal-workspace-copy">
@@ -4516,16 +4960,16 @@ function renderTerminalWorkspace(session, sending, closing = false) {
         <button class="terminal-session-close" type="button" data-terminal-close ${closeDisabled ? "disabled" : ""}>${escapeHTML(closing ? t("route.terminal.closing") : t("route.terminal.close"))}</button>
       </div>
     </header>
-    <section class="terminal-console-panel">
-      <button class="terminal-log-toggle" type="button" data-terminal-log-toggle aria-expanded="${collapsed ? "false" : "true"}">
-        <span class="terminal-log-toggle-icon">${logToggleIcon}</span>
-        <span class="terminal-log-toggle-text">${escapeHTML(logTitle)}</span>
-      </button>
-      <div class="terminal-chat-screen ${collapsed ? "is-collapsed" : ""}" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}" ${collapsed ? "hidden" : ""}>
+    <section class="terminal-console-panel" data-terminal-console-panel>
+      <div class="terminal-chat-screen" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
         <div class="terminal-log-tree">
-          ${renderTerminalLogRows(session.entries)}
+          ${renderTerminalTurns(session)}
         </div>
       </div>
+      <button class="terminal-jump-bottom ${showJumpBottom ? "is-visible" : ""} ${session?.chat_has_unread_output ? "has-unread" : ""}" type="button" data-terminal-jump-bottom aria-label="${escapeHTML(t("route.terminal.jump_bottom"))}">
+        <span class="terminal-jump-bottom-icon" aria-hidden="true">&darr;</span>
+        <span class="terminal-jump-bottom-label">${escapeHTML(t("route.terminal.jump_bottom"))}</span>
+      </button>
       <form class="terminal-chat-form" data-terminal-input-form data-composer-form="terminal-runtime">
         <input type="text" data-terminal-input data-composer-input="terminal-runtime" maxlength="6000" placeholder="${escapeHTML(placeholder)}" ${(sending || !canInput) ? "disabled" : ""}>
         <button type="submit" data-terminal-submit data-composer-submit="terminal-runtime" ${(sending || !canInput) ? "disabled" : ""}>${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}</button>
@@ -4549,6 +4993,8 @@ async function loadTerminalView(container) {
     focusedInputSelectionStart: -1,
     focusedInputSelectionEnd: -1,
     composingInputSessionID: "",
+    sessionListScrollTop: 0,
+    revealActiveSessionCard: false,
     pendingPaint: false,
     pendingScrollToBottom: false
   };
@@ -4559,12 +5005,16 @@ async function loadTerminalView(container) {
     return localState.sessions.find((item) => item.id === localState.activeSessionID) || null;
   };
 
-  const touchSession = (session) => {
+  const sortTerminalSessions = () => {
+    localState.sessions.sort(compareTerminalSessions);
+  };
+
+  const markTerminalSessionActivity = (session, at = Date.now()) => {
     if (!session) {
       return;
     }
-    session.updated_at = Math.max(Number(session.updated_at || 0), Date.now());
-    localState.sessions.sort((left, right) => Number(right.updated_at || 0) - Number(left.updated_at || 0));
+    session.updated_at = Math.max(Number(session.updated_at || 0), Number(at || 0));
+    sortTerminalSessions();
   };
 
   const persist = () => {
@@ -4626,11 +5076,87 @@ async function loadTerminalView(container) {
     localState.composingInputSessionID = "";
   };
 
-  const scrollTerminalChatToBottom = () => {
-    const chatNode = container.querySelector("[data-terminal-chat-screen]");
-    if (chatNode && !chatNode.hidden) {
-      chatNode.scrollTop = chatNode.scrollHeight;
+  const captureTerminalChatScroll = (sessionID, chatNode = null) => {
+    const key = normalizeText(sessionID);
+    if (!key) {
+      return;
     }
+    const session = localState.sessions.find((item) => normalizeText(item.id) === key) || null;
+    if (!session) {
+      return;
+    }
+    const node = chatNode || container.querySelector("[data-terminal-chat-screen]");
+    if (!node || node.hidden) {
+      return;
+    }
+    session.chat_scroll_top = Math.max(Number(node.scrollTop || 0), 0);
+    const remaining = Math.max(Number(node.scrollHeight || 0) - Number(node.scrollTop || 0) - Number(node.clientHeight || 0), 0);
+    session.chat_bottom_offset = remaining;
+    session.chat_stick_to_bottom = remaining <= TERMINAL_SCROLL_STICKY_THRESHOLD;
+    if (session.chat_stick_to_bottom) {
+      session.chat_last_seen_output_at = Number(session.last_output_at || 0);
+      session.chat_has_unread_output = false;
+    }
+    const activeSession = getActiveSession();
+    if (activeSession && normalizeText(activeSession.id) === key) {
+      const jumpButton = container.querySelector("[data-terminal-jump-bottom]");
+      if (jumpButton) {
+        const shouldShow = session.chat_has_unread_output || remaining > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
+        jumpButton.classList.toggle("is-visible", shouldShow);
+        jumpButton.classList.toggle("has-unread", session.chat_has_unread_output);
+      }
+    }
+  };
+
+  const scrollTerminalChatToBottom = () => {
+    const activeSession = getActiveSession();
+    const chatNode = container.querySelector("[data-terminal-chat-screen]");
+    if (chatNode && !chatNode.hidden && (!activeSession || activeSession.chat_stick_to_bottom !== false)) {
+      chatNode.scrollTop = chatNode.scrollHeight;
+      if (activeSession) {
+        activeSession.chat_scroll_top = Math.max(Number(chatNode.scrollTop || 0), 0);
+        activeSession.chat_bottom_offset = 0;
+        activeSession.chat_last_seen_output_at = Number(activeSession.last_output_at || 0);
+        activeSession.chat_has_unread_output = false;
+        activeSession.chat_stick_to_bottom = true;
+      }
+    }
+  };
+
+  const canScrollNode = (node, deltaY) => {
+    if (!node) {
+      return false;
+    }
+    const scrollTop = Math.max(Number(node.scrollTop || 0), 0);
+    const maxScrollTop = Math.max(Number(node.scrollHeight || 0) - Number(node.clientHeight || 0), 0);
+    if (maxScrollTop <= 0) {
+      return false;
+    }
+    if (deltaY < 0) {
+      return scrollTop > 0;
+    }
+    if (deltaY > 0) {
+      return scrollTop < maxScrollTop;
+    }
+    return false;
+  };
+
+  const findScrollableAncestorWithin = (target, boundary) => {
+    let current = target instanceof Element ? target : null;
+    while (current && current !== boundary) {
+      const style = window.getComputedStyle(current);
+      const overflowY = String(style.overflowY || "").toLowerCase();
+      const scrollable = ["auto", "scroll", "overlay"].includes(overflowY) && current.scrollHeight > current.clientHeight + 1;
+      if (scrollable) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  };
+
+  const requestRevealActiveSessionCard = () => {
+    localState.revealActiveSessionCard = true;
   };
 
   const appendEntry = (session, role, text, options = {}) => {
@@ -4650,7 +5176,36 @@ async function loadTerminalView(container) {
     if (session.entries.length > 1200) {
       session.entries = session.entries.slice(session.entries.length - 1200);
     }
-    touchSession(session);
+    if (String(role || "").trim().toLowerCase() === "output") {
+      const outputAt = Number.isFinite(Number(options.at)) ? Number(options.at) : Date.now();
+      session.last_output_at = Math.max(Number(session.last_output_at || 0), outputAt);
+    }
+    markTerminalSessionActivity(session, Number.isFinite(Number(options.at)) ? Number(options.at) : Date.now());
+  };
+
+  const fetchTerminalStepDetail = async (session, turnID, stepID) => {
+    if (!session || !turnID || !stepID) {
+      return null;
+    }
+    const key = normalizeText(stepID);
+    session.step_loading[key] = true;
+    delete session.step_errors[key];
+    requestTerminalPaint();
+    try {
+      const payload = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}/turns/${encodeURIComponent(turnID)}/steps/${encodeURIComponent(stepID)}`);
+      const detail = normalizeTerminalStoredStepDetail(payload?.step || {}, Date.now());
+      if (detail) {
+        session.step_details[key] = detail;
+      }
+      return detail;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_error";
+      session.step_errors[key] = message;
+      throw error;
+    } finally {
+      session.step_loading[key] = false;
+      requestTerminalPaint();
+    }
   };
 
   const requestTerminalJSON = async (path, options = {}) => {
@@ -4686,7 +5241,7 @@ async function loadTerminalView(container) {
       localState.sessions.unshift(session);
     }
     applyTerminalSessionSnapshot(session, snapshot);
-    touchSession(session);
+    sortTerminalSessions();
     return session;
   };
 
@@ -4703,7 +5258,7 @@ async function loadTerminalView(container) {
       });
       session.disconnected_notice = true;
     }
-    touchSession(session);
+    sortTerminalSessions();
   };
 
   const createNewTerminalSession = async () => {
@@ -4715,32 +5270,10 @@ async function loadTerminalView(container) {
     if (!session) {
       throw new Error("terminal session missing");
     }
-    session.log_collapsed = false;
     localState.activeSessionID = session.id;
+    requestRevealActiveSessionCard();
     persist();
     return session;
-  };
-
-  const appendEntryFromServer = (session, item) => {
-    if (!session || !item || typeof item !== "object") {
-      return;
-    }
-    const text = typeof item.text === "string" ? item.text : "";
-    if (!text) {
-      return;
-    }
-    const cursor = Number.isFinite(Number(item.cursor)) ? Number(item.cursor) : -1;
-    if (cursor >= 0 && session.entries.some((entry) => Number(entry?.cursor) === cursor)) {
-      return;
-    }
-    const stream = String(item.stream || "").trim().toLowerCase();
-    const role = stream === "input" ? "input" : stream === "system" ? "system" : "output";
-    appendEntry(session, role, text, {
-      kind: stream || role,
-      stream,
-      cursor,
-      at: parseTerminalTime(item.created_at, Date.now())
-    });
   };
 
   const mergeRuntimeSessions = (items) => {
@@ -4777,9 +5310,15 @@ async function loadTerminalView(container) {
   const paint = () => {
     const active = getActiveSession();
     const previousWorkspace = container.querySelector("[data-terminal-workspace]");
+    const previousSessionList = container.querySelector("[data-terminal-session-list]");
+    const previousChatNode = container.querySelector("[data-terminal-chat-screen]");
     const previousSessionID = normalizeText(previousWorkspace ? previousWorkspace.getAttribute("data-terminal-session-id") : "");
     const previousInput = container.querySelector("[data-terminal-input]");
     const previousValue = previousInput ? String(previousInput.value || "") : "";
+    localState.sessionListScrollTop = previousSessionList ? previousSessionList.scrollTop : localState.sessionListScrollTop;
+    if (previousSessionID && previousChatNode) {
+      captureTerminalChatScroll(previousSessionID, previousChatNode);
+    }
     if (previousSessionID && previousInput && document.activeElement === previousInput) {
       rememberTerminalInputFocus(previousSessionID, previousInput);
     }
@@ -4792,12 +5331,50 @@ async function loadTerminalView(container) {
     container.innerHTML = `<section class="terminal-view" data-terminal-view>
       <aside class="terminal-session-pane">
         <button class="terminal-session-create" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new"))}</button>
-        <div class="terminal-session-list">${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
+        <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
       </aside>
       <section class="terminal-workspace">
         ${renderTerminalWorkspace(active, localState.sending, localState.closing)}
       </section>
     </section>`;
+    const sessionListNode = container.querySelector("[data-terminal-session-list]");
+    if (sessionListNode) {
+      sessionListNode.scrollTop = Math.max(Number(localState.sessionListScrollTop || 0), 0);
+      if (localState.revealActiveSessionCard) {
+        const activeCard = sessionListNode.querySelector(".terminal-session-card.active");
+        if (activeCard) {
+          activeCard.scrollIntoView({ block: "nearest" });
+        }
+        localState.sessionListScrollTop = sessionListNode.scrollTop;
+      }
+    }
+    localState.revealActiveSessionCard = false;
+    const chatNode = container.querySelector("[data-terminal-chat-screen]");
+    if (active && chatNode) {
+      if (active.chat_stick_to_bottom === false) {
+        chatNode.scrollTop = Math.max(Number(active.chat_scroll_top || 0), 0);
+      } else {
+        chatNode.scrollTop = chatNode.scrollHeight;
+      }
+      chatNode.onscroll = () => {
+        captureTerminalChatScroll(active.id, chatNode);
+      };
+      chatNode.onwheel = (event) => {
+        if (!(event.target instanceof Element)) {
+          return;
+        }
+        const nearestScrollable = findScrollableAncestorWithin(event.target, chatNode);
+        if (nearestScrollable && canScrollNode(nearestScrollable, event.deltaY)) {
+          return;
+        }
+        if (!canScrollNode(chatNode, event.deltaY)) {
+          return;
+        }
+        chatNode.scrollTop += event.deltaY;
+        captureTerminalChatScroll(active.id, chatNode);
+        event.preventDefault();
+      };
+    }
     const inputNode = container.querySelector("[data-terminal-input]");
     if (active && inputNode) {
       const draft = readTerminalDraft(active.id) || (previousSessionID === normalizeText(active.id) ? previousValue : "");
@@ -4831,7 +5408,7 @@ async function loadTerminalView(container) {
       return false;
     }
     paint();
-    if (scrollToBottom) {
+    if (scrollToBottom && (!active || active.chat_stick_to_bottom !== false)) {
       scrollTerminalChatToBottom();
     }
     return true;
@@ -4845,7 +5422,8 @@ async function loadTerminalView(container) {
     localState.pendingPaint = false;
     localState.pendingScrollToBottom = false;
     paint();
-    if (scrollToBottom) {
+    const active = getActiveSession();
+    if (scrollToBottom && (!active || active.chat_stick_to_bottom !== false)) {
       scrollTerminalChatToBottom();
     }
   };
@@ -4906,7 +5484,7 @@ async function loadTerminalView(container) {
       },
       onSubmit: async (currentInputNode) => {
         const value = String(currentInputNode.value || "");
-        currentInputNode.value = "";
+        terminalComposer.clearDraft();
         if (session) {
           writeTerminalDraft(session.id, "");
         }
@@ -4917,34 +5495,12 @@ async function loadTerminalView(container) {
     });
   };
 
-  const pollEntriesForSession = async (session) => {
-    if (!session) {
-      return;
-    }
-    let cursor = Number(session.entry_cursor || 0);
-    let hasMore = true;
-    let guard = 0;
-    while (hasMore && guard < 20) {
-      guard += 1;
-      const page = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}/entries?cursor=${Math.max(cursor, 0)}&limit=200`);
-      const items = Array.isArray(page?.items) ? page.items : [];
-      items.forEach((item) => appendEntryFromServer(session, item));
-      const nextCursor = Number(page?.next_cursor || cursor);
-      cursor = Number.isFinite(nextCursor) && nextCursor >= 0 ? nextCursor : cursor;
-      hasMore = Boolean(page?.has_more);
-    }
-    session.entry_cursor = cursor;
-  };
-
   const refreshSessionState = async (session) => {
     if (!session) {
       return;
     }
     const payload = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}`);
     applyTerminalSessionSnapshot(session, payload?.session || {});
-    if (typeof session.log_collapsed !== "boolean") {
-      session.log_collapsed = !isTerminalSessionLiveStatus(session.status);
-    }
   };
 
   const pollActiveSession = async () => {
@@ -4963,9 +5519,8 @@ async function loadTerminalView(container) {
     localState.polling = true;
     try {
       await syncSessionList();
-      await pollEntriesForSession(session);
       await refreshSessionState(session);
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       requestTerminalPaint({ scrollToBottom: true });
       if (!isTerminalSessionLiveStatus(session.status)) {
@@ -5002,7 +5557,7 @@ async function loadTerminalView(container) {
       });
       applyTerminalSessionSnapshot(session, payload?.session || {});
       stopPolling();
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       paint();
     } catch (error) {
@@ -5014,7 +5569,7 @@ async function loadTerminalView(container) {
         kind: "tag",
         stream: "system"
       });
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       paint();
     } finally {
@@ -5025,9 +5580,13 @@ async function loadTerminalView(container) {
 
   const startPolling = async () => {
     stopPolling();
-    await pollActiveSession();
     const session = getActiveSession();
     if (!session || !isTerminalSessionLiveStatus(session.status)) {
+      return;
+    }
+    await pollActiveSession();
+    const activeSession = getActiveSession();
+    if (!activeSession || !isTerminalSessionLiveStatus(activeSession.status)) {
       return;
     }
     localState.timer = window.setInterval(() => {
@@ -5054,7 +5613,6 @@ async function loadTerminalView(container) {
       return;
     }
 
-    session.log_collapsed = false;
     localState.sending = true;
     requestTerminalPaint();
     try {
@@ -5065,7 +5623,7 @@ async function loadTerminalView(container) {
         })
       });
       applyTerminalSessionSnapshot(session, payload?.session || {});
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       requestTerminalPaint();
       await startPolling();
@@ -5083,7 +5641,7 @@ async function loadTerminalView(container) {
         kind: "tag",
         stream: "system"
       });
-      touchSession(session);
+      sortTerminalSessions();
       persist();
       requestTerminalPaint();
     } finally {
@@ -5131,12 +5689,50 @@ async function loadTerminalView(container) {
       })();
       return;
     }
-    if (target.hasAttribute("data-terminal-log-toggle")) {
+    if (target.hasAttribute("data-terminal-process-toggle")) {
       const active = getActiveSession();
-      if (active) {
-        active.log_collapsed = !resolveTerminalLogCollapsed(active);
+      if (!active) {
+        return;
+      }
+      const turnID = normalizeText(target.getAttribute("data-terminal-process-toggle"));
+      if (turnID !== "-") {
+        active.process_collapsed[turnID] = !resolveTerminalProcessCollapsed(active, active.turns.find((turn) => normalizeText(turn?.id) === turnID));
         persist();
-        paint();
+        requestTerminalPaint();
+      }
+      return;
+    }
+    if (target.hasAttribute("data-terminal-jump-bottom")) {
+      const active = getActiveSession();
+      if (!active) {
+        return;
+      }
+      active.chat_stick_to_bottom = true;
+      scrollTerminalChatToBottom();
+      persist();
+      requestTerminalPaint({ scrollToBottom: true });
+      return;
+    }
+    if (target.hasAttribute("data-terminal-step-toggle")) {
+      const active = getActiveSession();
+      if (!active) {
+        return;
+      }
+      const stepID = normalizeText(target.getAttribute("data-terminal-step-toggle"));
+      const turnID = normalizeText(target.getAttribute("data-terminal-turn-id"));
+      if (stepID === "-" || turnID === "-") {
+        return;
+      }
+      const currentlyExpanded = Boolean(active.expanded_steps[stepID]);
+      active.expanded_steps[stepID] = !currentlyExpanded;
+      persist();
+      requestTerminalPaint();
+      if (!currentlyExpanded && !active.step_details[stepID] && !active.step_loading[stepID]) {
+        void fetchTerminalStepDetail(active, turnID, stepID).then(() => {
+          persist();
+        }).catch(() => {
+          persist();
+        });
       }
       return;
     }
@@ -5161,6 +5757,29 @@ async function loadTerminalView(container) {
       }
     }
   };
+
+  const handleTerminalStepSearch = (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+      return;
+    }
+    if (!target.hasAttribute("data-terminal-step-search")) {
+      return;
+    }
+    const active = getActiveSession();
+    if (!active) {
+      return;
+    }
+    const stepID = normalizeText(target.getAttribute("data-terminal-step-search"));
+    if (stepID === "-") {
+      return;
+    }
+    active.step_search[stepID] = String(target.value || "");
+    persist();
+    requestTerminalPaint();
+  };
+  container.oninput = handleTerminalStepSearch;
+  container.onchange = handleTerminalStepSearch;
 
 }
 

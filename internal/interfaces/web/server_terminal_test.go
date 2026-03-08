@@ -24,6 +24,10 @@ type stubWebTerminalService struct {
 	inputErr    error
 	closeResp   terminaldomain.Session
 	closeErr    error
+	turnsResp   []terminalapp.TurnSummary
+	turnsErr    error
+	stepResp    terminalapp.StepDetail
+	stepErr     error
 	entryPage   terminalapp.EntryPage
 	entryErr    error
 	lastOwnerID string
@@ -45,6 +49,18 @@ func (s *stubWebTerminalService) Get(ownerID string, sessionID string) (terminal
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
 	return s.getResp, s.getOK
+}
+
+func (s *stubWebTerminalService) ListTurns(ownerID string, sessionID string) ([]terminalapp.TurnSummary, error) {
+	s.lastOwnerID = ownerID
+	s.lastID = sessionID
+	return append([]terminalapp.TurnSummary{}, s.turnsResp...), s.turnsErr
+}
+
+func (s *stubWebTerminalService) GetStepDetail(ownerID string, sessionID string, turnID string, stepID string) (terminalapp.StepDetail, error) {
+	s.lastOwnerID = ownerID
+	s.lastID = sessionID + ":" + turnID + ":" + stepID
+	return s.stepResp, s.stepErr
 }
 
 func (s *stubWebTerminalService) ListEntries(ownerID string, sessionID string, _ int, _ int) (terminalapp.EntryPage, error) {
@@ -73,12 +89,13 @@ func (s *stubWebTerminalService) MaxSessions() int {
 func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	service := &stubWebTerminalService{
 		createResp: terminaldomain.Session{
-			ID:        "terminal-1",
-			OwnerID:   "client-a",
-			Title:     "terminal-1",
-			Status:    terminaldomain.SessionStatusRunning,
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			ID:           "terminal-1",
+			OwnerID:      "client-a",
+			Title:        "terminal-1",
+			Status:       terminaldomain.SessionStatusRunning,
+			CreatedAt:    time.Now().UTC(),
+			LastOutputAt: time.Now().UTC(),
+			UpdatedAt:    time.Now().UTC(),
 		},
 	}
 	server := &Server{terminals: service}
@@ -106,6 +123,9 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	}
 	if session["id"] != "terminal-1" {
 		t.Fatalf("expected terminal id terminal-1, got %v", session["id"])
+	}
+	if _, ok := session["last_output_at"].(string); !ok {
+		t.Fatalf("expected last_output_at in session payload, got %v", session["last_output_at"])
 	}
 }
 
@@ -170,6 +190,97 @@ func TestTerminalSessionItemHandlerClosesSession(t *testing.T) {
 	}
 	if service.lastID != "terminal-3" {
 		t.Fatalf("expected session terminal-3, got %q", service.lastID)
+	}
+}
+
+func TestTerminalSessionItemHandlerReturnsTurnsInSessionDetail(t *testing.T) {
+	service := &stubWebTerminalService{
+		getResp: terminaldomain.Session{
+			ID:        "terminal-4",
+			OwnerID:   "client-d",
+			Title:     "terminal-4",
+			Status:    terminaldomain.SessionStatusRunning,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+		getOK: true,
+		turnsResp: []terminalapp.TurnSummary{{
+			ID:          "turn-1",
+			Prompt:      "pwd",
+			Status:      "completed",
+			FinalOutput: "/workspace/alter0",
+		}},
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4", nil)
+	req.Header.Set(terminalClientIDHeader, "client-d")
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	session, ok := payload["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session payload, got %v", payload)
+	}
+	turns, ok := session["turns"].([]any)
+	if !ok || len(turns) != 1 {
+		t.Fatalf("expected turns payload, got %v", session["turns"])
+	}
+}
+
+func TestTerminalSessionItemHandlerReturnsStepDetail(t *testing.T) {
+	service := &stubWebTerminalService{
+		stepResp: terminalapp.StepDetail{
+			TurnID: "turn-1",
+			Step: terminalapp.StepSummary{
+				ID:     "step-1",
+				Type:   "command",
+				Title:  "pwd",
+				Status: "completed",
+			},
+			Blocks: []terminalapp.StepDetailBlock{{
+				Type:    "terminal",
+				Title:   "Shell",
+				Content: "pwd\n\n/workspace/alter0",
+				Status:  "completed",
+			}},
+			Searchable: true,
+		},
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4/turns/turn-1/steps/step-1", nil)
+	req.Header.Set(terminalClientIDHeader, "client-d")
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if service.lastID != "terminal-4:turn-1:step-1" {
+		t.Fatalf("expected step lookup path, got %q", service.lastID)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	step, ok := payload["step"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected step payload, got %v", payload)
+	}
+	if step["turn_id"] != "turn-1" {
+		t.Fatalf("expected turn_id turn-1, got %v", step["turn_id"])
 	}
 }
 
