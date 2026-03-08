@@ -15,6 +15,7 @@
 3. [需求清单](./requirements.md)
 4. [研究报告](./research/README.md)
 5. [Nginx 反向代理与登录保护](./deployment/nginx.md)
+6. [Playwright 浏览器自动化测试](./testing/playwright.md)
 
 ## 维护约定
 

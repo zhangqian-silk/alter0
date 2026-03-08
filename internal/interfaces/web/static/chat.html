@@ -158,12 +158,12 @@
         <section class="message-area" id="messageArea" aria-live="polite"></section>
 
         <footer class="composer-shell">
-          <form class="composer" id="chatForm">
+          <form class="composer" id="chatForm" data-composer-form="chat-main">
             <label class="sr-only" for="composerInput">Input your message</label>
-            <textarea id="composerInput" maxlength="10000" placeholder="Input your message here..." rows="2" data-i18n="composer.placeholder"></textarea>
+            <textarea id="composerInput" maxlength="10000" placeholder="Input your message here..." rows="2" data-i18n="composer.placeholder" data-composer-input="chat-main"></textarea>
             <div class="composer-actions">
-              <span id="charCount">0/10000</span>
-              <button id="sendButton" type="submit" aria-label="Send message" data-i18n="composer.send">Send</button>
+              <span id="charCount" data-composer-counter="chat-main">0/10000</span>
+              <button id="sendButton" type="submit" aria-label="Send message" data-i18n="composer.send" data-composer-submit="chat-main">Send</button>
             </div>
           </form>
           <p class="composer-note" data-i18n="composer.note">Works for you, grows with you</p>

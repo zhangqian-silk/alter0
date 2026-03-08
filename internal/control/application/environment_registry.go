@@ -141,6 +141,32 @@ func defaultEnvironmentDefinitions() []controldomain.EnvironmentDefinition {
 			},
 		},
 		{
+			Key:          "task_terminal_max_sessions",
+			Name:         "Terminal Max Sessions",
+			Module:       "Terminal",
+			Description:  "终端会话最大并发数",
+			Type:         controldomain.EnvironmentValueTypeInteger,
+			DefaultValue: "5",
+			ApplyMode:    controldomain.EnvironmentApplyModeRestart,
+			Validation: controldomain.EnvironmentValidation{
+				Required: true,
+				Min:      "1",
+				Max:      "5",
+			},
+		},
+		{
+			Key:          "task_terminal_shell",
+			Name:         "Terminal Shell",
+			Module:       "Terminal",
+			Description:  "终端会话使用的 shell；Windows 下已知 shell 会自动启用 UTF-8 启动逻辑",
+			Type:         controldomain.EnvironmentValueTypeString,
+			DefaultValue: "",
+			ApplyMode:    controldomain.EnvironmentApplyModeRestart,
+			Validation: controldomain.EnvironmentValidation{
+				Required: false,
+			},
+		},
+		{
 			Key:          "session_memory_turns",
 			Name:         "Session Memory Turns",
 			Module:       "Session Memory",

@@ -44,7 +44,9 @@ const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
 const SESSION_HISTORY_PANEL_STORAGE_KEY = "alter0.web.session-history-panel.v1";
-const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v1";
+const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
+const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";
+const TERMINAL_CLIENT_STORAGE_KEY = "alter0.web.terminal.client.v1";
 const I18N = {
   en: {
     // Navigation
@@ -64,6 +66,7 @@ const I18N = {
     "nav.environments": "Environments",
     "nav.expand": "Expand navigation",
     "nav.collapse": "Collapse navigation",
+    "composer.unsaved_confirm": "You have unsent content. Leave anyway?",
     
     // Session Pane
     "session.header": "Work with alter0",
@@ -116,8 +119,11 @@ const I18N = {
     "status.disabled": "Disabled",
     "status.queued": "Queued",
     "status.running": "Running",
+    "status.starting": "Starting",
     "status.success": "Success",
     "status.canceled": "Canceled",
+    "status.exited": "Exited",
+    "status.interrupted": "Interrupted",
     "field.type": "Type",
     "field.description": "Description",
     "field.name": "Name",
@@ -235,24 +241,28 @@ const I18N = {
     "route.tasks.actions.cancel": "Cancel",
     "route.tasks.result.title": "Result Output",
     "route.terminal.title": "Terminal",
-    "route.terminal.subtitle": "Chat-style terminal proxy with continuous session chaining",
+    "route.terminal.subtitle": "Dedicated shell sessions with runtime-aligned status",
     "route.terminal.new": "New Terminal Session",
-    "route.terminal.empty": "No terminal sessions yet. Create one and send your first command.",
+    "route.terminal.empty": "No terminal sessions yet. Create a session to start a dedicated shell.",
     "route.terminal.pick": "Select a terminal session to start.",
-    "route.terminal.input": "Type command or follow-up...",
+    "route.terminal.input": "Type a command...",
     "route.terminal.send": "Send",
     "route.terminal.sending": "Sending...",
+    "route.terminal.close": "Close",
+    "route.terminal.closing": "Closing...",
     "route.terminal.session": "Session",
-    "route.terminal.anchor_task": "Anchor Task",
-    "route.terminal.active_task": "Active Task",
+    "route.terminal.shell": "Shell",
+    "route.terminal.path": "Path",
     "route.terminal.status": "Status",
-    "route.terminal.logs.heading": "Task Execution Logs ({task})",
-    "route.terminal.logs.empty": "No terminal logs yet.",
-    "route.terminal.followup.title": "AI Follow-up",
+    "route.terminal.logs.heading": "Terminal Output ({session})",
+    "route.terminal.logs.empty": "No terminal output yet.",
     "route.terminal.limit_reached": "Terminal session limit reached ({max}). Please finish an active session first.",
     "route.terminal.send_failed": "Send failed: {error}",
-    "route.terminal.logs_failed": "Load terminal logs failed: {error}",
+    "route.terminal.logs_failed": "Load terminal output failed: {error}",
+    "route.terminal.close_failed": "Close terminal failed: {error}",
     "route.terminal.loading": "Loading terminal session...",
+    "route.terminal.interrupted": "Terminal session interrupted and cannot be reopened.",
+    "route.terminal.closed": "Terminal session closed. Create a new session to continue.",
     "trigger.user": "User",
     "trigger.cron": "Cron",
     "trigger.system": "System",
@@ -403,6 +413,7 @@ const I18N = {
     "nav.environments": "环境",
     "nav.expand": "展开导航",
     "nav.collapse": "收起导航",
+    "composer.unsaved_confirm": "当前有未发送内容，仍要离开吗？",
     
     // Session Pane
     "session.header": "与 alter0 协作",
@@ -455,8 +466,11 @@ const I18N = {
     "status.disabled": "停用",
     "status.queued": "排队中",
     "status.running": "运行中",
+    "status.starting": "启动中",
     "status.success": "成功",
     "status.canceled": "已取消",
+    "status.exited": "已退出",
+    "status.interrupted": "已中断",
     "field.type": "类型",
     "field.description": "描述",
     "field.name": "名称",
@@ -574,24 +588,28 @@ const I18N = {
     "route.tasks.actions.cancel": "取消",
     "route.tasks.result.title": "终态输出",
     "route.terminal.title": "终端",
-    "route.terminal.subtitle": "以对话方式代理终端操作，并在同一终端会话内连续串联",
+    "route.terminal.subtitle": "独立终端会话，状态与实际 shell 进程保持一致",
     "route.terminal.new": "新建终端会话",
-    "route.terminal.empty": "暂无终端会话。创建后可直接发送第一条命令。",
+    "route.terminal.empty": "暂无终端会话。创建后即可启动独立 shell。",
     "route.terminal.pick": "选择一个终端会话开始交互。",
-    "route.terminal.input": "输入命令或追问继续...",
+    "route.terminal.input": "输入命令...",
     "route.terminal.send": "发送",
     "route.terminal.sending": "发送中...",
+    "route.terminal.close": "关闭",
+    "route.terminal.closing": "关闭中...",
     "route.terminal.session": "会话",
-    "route.terminal.anchor_task": "锚点任务",
-    "route.terminal.active_task": "当前任务",
+    "route.terminal.shell": "Shell",
+    "route.terminal.path": "路径",
     "route.terminal.status": "状态",
-    "route.terminal.logs.heading": "任务执行日志（{task}）",
-    "route.terminal.logs.empty": "暂无终端日志。",
-    "route.terminal.followup.title": "AI 交互建议",
+    "route.terminal.logs.heading": "终端输出（{session}）",
+    "route.terminal.logs.empty": "暂无终端输出。",
     "route.terminal.limit_reached": "终端会话已达上限（{max}），请先结束一个活跃会话。",
     "route.terminal.send_failed": "发送失败：{error}",
-    "route.terminal.logs_failed": "终端日志加载失败：{error}",
+    "route.terminal.logs_failed": "终端输出加载失败：{error}",
+    "route.terminal.close_failed": "终端关闭失败：{error}",
     "route.terminal.loading": "正在加载终端会话...",
+    "route.terminal.interrupted": "终端会话已中断，且不能重新打开。",
+    "route.terminal.closed": "终端会话已结束，请新建会话继续。",
     "trigger.user": "用户触发",
     "trigger.cron": "定时触发",
     "trigger.system": "系统触发",
@@ -799,6 +817,7 @@ const state = {
   pending: false,
   pageRenderToken: 0,
   navCollapsed: false,
+  suppressHashRouteConfirm: "",
   lang: "en" // default
 };
 
@@ -1145,8 +1164,13 @@ function focusSession(sessionID) {
   if (!getSession(sessionID)) {
     return;
   }
+  const switchingSession = Boolean(state.activeSessionID && state.activeSessionID !== sessionID);
+  if (switchingSession && !confirmComposerNavigation()) {
+    return;
+  }
   state.activeSessionID = sessionID;
-  navigateToRoute("chat");
+  syncMainChatComposerDraft(sessionID);
+  navigateToRoute("chat", { skipConfirm: switchingSession });
   renderSessions();
   renderMessages();
   syncHeader();
@@ -1184,6 +1208,453 @@ function getBrowserSessionStorage() {
   } catch {
     return null;
   }
+}
+
+function readComposerDraftValue(storage, key) {
+  if (!storage || !key) {
+    return "";
+  }
+  try {
+    const raw = storage.getItem(COMPOSER_DRAFT_STORAGE_KEY);
+    if (!raw) {
+      return "";
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return "";
+    }
+    const value = parsed[key];
+    return typeof value === "string" ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeComposerDraftValue(storage, key, value) {
+  if (!storage || !key) {
+    return;
+  }
+  try {
+    const raw = storage.getItem(COMPOSER_DRAFT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const next = parsed && typeof parsed === "object" ? parsed : {};
+    const normalized = String(value || "");
+    if (normalized) {
+      next[key] = normalized;
+    } else {
+      delete next[key];
+    }
+    storage.setItem(COMPOSER_DRAFT_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+  }
+}
+
+function getMainChatDraftKey(sessionID = state.activeSessionID) {
+  return `chat.main:${normalizeText(sessionID || "default")}`;
+}
+
+function clearMainChatDraft(sessionID) {
+  writeComposerDraftValue(getBrowserSessionStorage(), getMainChatDraftKey(sessionID), "");
+}
+
+const composerNavigationRegistry = new Map();
+
+function registerComposerNavigationGuard(key, controller) {
+  const guardKey = String(key || "").trim();
+  if (!guardKey || !controller || typeof controller.hasDraft !== "function") {
+    return;
+  }
+  composerNavigationRegistry.set(guardKey, controller);
+}
+
+function unregisterComposerNavigationGuard(key) {
+  const guardKey = String(key || "").trim();
+  if (!guardKey) {
+    return;
+  }
+  composerNavigationRegistry.delete(guardKey);
+}
+
+function hasBlockingComposerDraft() {
+  for (const controller of composerNavigationRegistry.values()) {
+    if (!controller || typeof controller.hasDraft !== "function") {
+      continue;
+    }
+    if (controller.hasDraft()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function syncComposerGuardState() {
+  if (!document.body) {
+    return;
+  }
+  const hasDraft = hasBlockingComposerDraft();
+  document.body.setAttribute("data-composer-unsaved-state", hasDraft ? "dirty" : "clean");
+}
+
+function setComposerConfirmState(state) {
+  if (!document.body) {
+    return;
+  }
+  document.body.setAttribute("data-composer-unsaved-confirm", String(state || "idle"));
+}
+
+function confirmComposerNavigation() {
+  if (!hasBlockingComposerDraft()) {
+    setComposerConfirmState("idle");
+    return true;
+  }
+  setComposerConfirmState("pending");
+  const confirmed = window.confirm(t("composer.unsaved_confirm"));
+  setComposerConfirmState(confirmed ? "accepted" : "dismissed");
+  return confirmed;
+}
+
+function createReusableComposer() {
+  const state = {
+    cleanup: null,
+    inputNode: null,
+    formNode: null,
+    composing: false,
+    submitting: false,
+    disabled: false,
+    submitNodes: [],
+    counterNode: null,
+    maxLength: 0,
+    draftStorage: null,
+    draftKey: "",
+    navigationGuardKey: ""
+  };
+
+  const syncNodeState = () => {
+    if (!state.inputNode) {
+      syncComposerGuardState();
+      return;
+    }
+    const draftState = String(state.inputNode.value || "").trim() ? "dirty" : "empty";
+    state.inputNode.setAttribute("data-composer-draft-state", draftState);
+    state.inputNode.setAttribute("data-composer-composing", state.composing ? "true" : "false");
+    state.inputNode.setAttribute("data-composer-pending", state.submitting ? "true" : "false");
+    state.inputNode.setAttribute("data-composer-disabled", state.inputNode.disabled ? "true" : "false");
+    syncComposerGuardState();
+  };
+
+  const reset = () => {
+    state.inputNode = null;
+    state.formNode = null;
+    state.composing = false;
+    state.submitting = false;
+    state.disabled = false;
+    state.submitNodes = [];
+    state.counterNode = null;
+    state.maxLength = 0;
+    state.draftStorage = null;
+    state.draftKey = "";
+    state.navigationGuardKey = "";
+  };
+
+  const unbind = () => {
+    unregisterComposerNavigationGuard(state.navigationGuardKey);
+    if (typeof state.cleanup === "function") {
+      state.cleanup();
+    }
+    state.cleanup = null;
+    if (state.inputNode) {
+      state.inputNode.removeAttribute("data-composer-draft-state");
+      state.inputNode.removeAttribute("data-composer-composing");
+      state.inputNode.removeAttribute("data-composer-pending");
+      state.inputNode.removeAttribute("data-composer-disabled");
+    }
+    reset();
+    syncComposerGuardState();
+  };
+
+  const invokeSubmit = async (hooks, event) => {
+    if (state.submitting || state.composing || typeof hooks?.onSubmit !== "function" || !state.inputNode) {
+      return;
+    }
+    state.submitting = true;
+    if (typeof hooks.onPendingChange === "function") {
+      hooks.onPendingChange(true, state.inputNode);
+    } else {
+      updateDisabledState(true);
+    }
+    try {
+      await hooks.onSubmit(state.inputNode, event, {
+        isComposing: () => state.composing
+      });
+      if (hooks.clearDraftOnSubmit) {
+        state.inputNode.value = String(state.inputNode.value || "");
+        persistDraft("");
+      } else {
+        persistDraft(state.inputNode.value);
+      }
+      syncCounter();
+    } finally {
+      state.submitting = false;
+      if (typeof hooks.onPendingChange === "function") {
+        hooks.onPendingChange(false, state.inputNode);
+      } else {
+        updateDisabledState(false);
+      }
+    }
+  };
+
+  const resolveStorage = (mode) => {
+    if (mode === "local") {
+      return getSessionStorage();
+    }
+    if (mode === "session") {
+      return getBrowserSessionStorage();
+    }
+    return null;
+  };
+
+  const persistDraft = (value) => {
+    writeComposerDraftValue(state.draftStorage, state.draftKey, value);
+  };
+
+  const restoreDraft = () => {
+    if (!state.inputNode) {
+      return "";
+    }
+    const restoredDraft = readComposerDraftValue(state.draftStorage, state.draftKey);
+    state.inputNode.value = restoredDraft;
+    syncCounter();
+    return restoredDraft;
+  };
+
+  const syncCounter = () => {
+    if (!state.counterNode || !state.inputNode || !state.maxLength) {
+      return;
+    }
+    state.counterNode.textContent = `${String(state.inputNode.value || "").length}/${state.maxLength}`;
+  };
+
+  const updateDisabledState = (pending) => {
+    const disabled = Boolean(pending || state.disabled);
+    if (state.inputNode) {
+      state.inputNode.disabled = disabled;
+    }
+    state.submitNodes.forEach((node) => {
+      if (node) {
+        node.disabled = disabled;
+      }
+    });
+    syncNodeState();
+  };
+
+  return {
+    bind(inputNode, formNode, hooks = {}) {
+      unbind();
+      if (!inputNode) {
+        return;
+      }
+      state.inputNode = inputNode;
+      state.formNode = formNode || null;
+      state.counterNode = hooks.counterNode || null;
+      state.maxLength = Number(hooks.maxLength || inputNode.maxLength || 0);
+      state.submitNodes = Array.isArray(hooks.submitNodes)
+        ? hooks.submitNodes.filter(Boolean)
+        : [hooks.submitNode || (formNode ? formNode.querySelector("[type=\"submit\"]") : null)].filter(Boolean);
+      state.draftStorage = resolveStorage(String(hooks.draftStorage || "").trim().toLowerCase());
+      state.draftKey = typeof hooks.draftKey === "function" ? String(hooks.draftKey() || "").trim() : String(hooks.draftKey || "").trim();
+      state.navigationGuardKey = String(hooks.navigationGuardKey || state.draftKey || "").trim();
+      state.disabled = Boolean(hooks.disabled);
+      const stableName = String(hooks.stableName || "").trim();
+      if (stableName) {
+        inputNode.setAttribute("data-composer-input", stableName);
+        if (formNode) {
+          formNode.setAttribute("data-composer-form", stableName);
+        }
+        if (state.counterNode) {
+          state.counterNode.setAttribute("data-composer-counter", stableName);
+        }
+        state.submitNodes.forEach((node) => node.setAttribute("data-composer-submit", stableName));
+      }
+      inputNode.setAttribute("data-composer-ready", "true");
+      const submitOnEnter = hooks.submitOnEnter !== false;
+      const allowShiftEnter = Boolean(hooks.allowShiftEnter);
+      const submitStrategy = hooks.submitStrategy === "keydown" ? "keydown" : "form";
+
+      const restoredDraft = readComposerDraftValue(state.draftStorage, state.draftKey);
+      if (!String(inputNode.value || "") && restoredDraft) {
+        inputNode.value = restoredDraft;
+        if (typeof hooks.onDraftRestore === "function") {
+          hooks.onDraftRestore(inputNode, restoredDraft);
+        }
+      }
+      registerComposerNavigationGuard(state.navigationGuardKey, {
+        hasDraft: () => {
+          if (!state.inputNode || !document.body.contains(state.inputNode)) {
+            return false;
+          }
+          return String(state.inputNode.value || "").trim() !== "";
+        }
+      });
+      syncCounter();
+      updateDisabledState(false);
+      syncNodeState();
+
+      const handleInput = (event) => {
+        persistDraft(inputNode.value);
+        syncCounter();
+        syncNodeState();
+        if (typeof hooks.onInput === "function") {
+          hooks.onInput(inputNode, event, {
+            isComposing: () => state.composing
+          });
+        }
+      };
+
+      const handleFocus = (event) => {
+        if (typeof hooks.onFocus === "function") {
+          hooks.onFocus(inputNode, event, {
+            isComposing: () => state.composing
+          });
+        }
+      };
+
+      const handleBlur = (event) => {
+        window.setTimeout(() => {
+          if (document.activeElement === inputNode) {
+            return;
+          }
+          if (typeof hooks.onBlur === "function") {
+            hooks.onBlur(inputNode, event, {
+              isComposing: () => state.composing
+            });
+          }
+        }, 0);
+      };
+
+      const handleCompositionStart = (event) => {
+        state.composing = true;
+        syncNodeState();
+        if (typeof hooks.onCompositionStart === "function") {
+          hooks.onCompositionStart(inputNode, event, {
+            isComposing: () => state.composing
+          });
+        }
+      };
+
+      const handleCompositionEnd = (event) => {
+        window.setTimeout(() => {
+          state.composing = false;
+          persistDraft(inputNode.value);
+          syncCounter();
+          syncNodeState();
+          if (typeof hooks.onCompositionEnd === "function") {
+            hooks.onCompositionEnd(inputNode, event, {
+              isComposing: () => state.composing
+            });
+          }
+        }, 0);
+      };
+
+      const handleKeyDown = (event) => {
+        if (event.key !== "Enter" || !submitOnEnter) {
+          return;
+        }
+        if (event.isComposing || state.composing) {
+          event.preventDefault();
+          return;
+        }
+        if (allowShiftEnter && event.shiftKey) {
+          return;
+        }
+        if (submitStrategy !== "keydown") {
+          return;
+        }
+        event.preventDefault();
+        void invokeSubmit(hooks, event);
+      };
+
+      const handleSubmit = (event) => {
+        event.preventDefault();
+        if (state.composing) {
+          return;
+        }
+        void invokeSubmit(hooks, event);
+      };
+
+      inputNode.addEventListener("input", handleInput);
+      inputNode.addEventListener("focus", handleFocus);
+      inputNode.addEventListener("blur", handleBlur);
+      inputNode.addEventListener("compositionstart", handleCompositionStart);
+      inputNode.addEventListener("compositionend", handleCompositionEnd);
+      inputNode.addEventListener("keydown", handleKeyDown);
+      if (formNode) {
+        formNode.addEventListener("submit", handleSubmit);
+      }
+
+      state.cleanup = () => {
+        inputNode.removeEventListener("input", handleInput);
+        inputNode.removeEventListener("focus", handleFocus);
+        inputNode.removeEventListener("blur", handleBlur);
+        inputNode.removeEventListener("compositionstart", handleCompositionStart);
+        inputNode.removeEventListener("compositionend", handleCompositionEnd);
+        inputNode.removeEventListener("keydown", handleKeyDown);
+        if (formNode) {
+          formNode.removeEventListener("submit", handleSubmit);
+        }
+      };
+    },
+    isComposing() {
+      return state.composing;
+    },
+    setDisabled(flag) {
+      state.disabled = Boolean(flag);
+      updateDisabledState(false);
+    },
+    syncDraft(value = null) {
+      if (!state.inputNode) {
+        return;
+      }
+      persistDraft(value === null ? state.inputNode.value : value);
+    },
+    clearDraft() {
+      if (!state.inputNode) {
+        persistDraft("");
+        syncComposerGuardState();
+        return;
+      }
+      state.inputNode.value = "";
+      persistDraft("");
+      syncCounter();
+      syncNodeState();
+    },
+    hasDraft() {
+      if (!state.inputNode || !document.body.contains(state.inputNode)) {
+        return false;
+      }
+      return String(state.inputNode.value || "").trim() !== "";
+    },
+    getDraftKey() {
+      return state.draftKey;
+    },
+    switchDraftKey(nextKey, options = {}) {
+      const resolvedKey = String(nextKey || "").trim();
+      const preserveCurrent = options.preserveCurrent !== false;
+      if (preserveCurrent && state.inputNode && state.draftKey) {
+        persistDraft(state.inputNode.value);
+      }
+      state.draftKey = resolvedKey;
+      restoreDraft();
+      syncNodeState();
+    },
+    syncCounter,
+    unbind
+  };
+}
+
+const mainChatComposer = createReusableComposer();
+
+function syncMainChatComposerDraft(sessionID = state.activeSessionID, options = {}) {
+  mainChatComposer.switchDraftKey(getMainChatDraftKey(sessionID), options);
 }
 
 function loadSessionHistoryCollapsedState() {
@@ -1331,6 +1802,7 @@ function createSession() {
   const latestBlank = getLatestBlankSession();
   if (latestBlank) {
     state.activeSessionID = latestBlank.id;
+    syncMainChatComposerDraft(latestBlank.id);
     renderSessions();
     renderMessages();
     syncHeader();
@@ -1347,6 +1819,7 @@ function createSession() {
   };
   state.sessions.unshift(item);
   state.activeSessionID = item.id;
+  syncMainChatComposerDraft(item.id);
   renderSessions();
   renderMessages();
   syncHeader();
@@ -1356,6 +1829,10 @@ function createSession() {
 }
 
 function removeSession(sessionID) {
+  const removedActiveSession = state.activeSessionID === sessionID;
+  if (state.activeSessionID === sessionID && !confirmComposerNavigation()) {
+    return;
+  }
   const nextSessions = state.sessions.filter((item) => item.id !== sessionID);
   if (nextSessions.length === state.sessions.length) {
     return;
@@ -1373,6 +1850,10 @@ function removeSession(sessionID) {
     }
   }
 
+  clearMainChatDraft(sessionID);
+  if (removedActiveSession) {
+    syncMainChatComposerDraft(state.activeSessionID, { preserveCurrent: false });
+  }
   enforceSingleBlankSession();
   renderSessions();
   renderMessages();
@@ -1439,6 +1920,7 @@ function renderSessions() {
     const card = document.createElement("button");
     card.type = "button";
     card.className = "session-card";
+    card.dataset.sessionId = item.id;
     card.setAttribute("role", "option");
     card.setAttribute("aria-selected", item.id === state.activeSessionID ? "true" : "false");
     if (item.id === state.activeSessionID) {
@@ -1602,11 +2084,19 @@ function renderMessages() {
 
 function setPending(flag) {
   state.pending = flag;
+  if (mainChatComposer) {
+    mainChatComposer.setDisabled(flag);
+    return;
+  }
   sendButton.disabled = flag;
   input.disabled = flag;
 }
 
 function updateCharCount() {
+  if (mainChatComposer) {
+    mainChatComposer.syncCounter();
+    return;
+  }
   const value = input.value.slice(0, MAX_CHARS);
   if (value.length !== input.value.length) {
     input.value = value;
@@ -1969,11 +2459,15 @@ function setMainContentMode(mode) {
   routeView.hidden = !infoMode;
 }
 
-function navigateToRoute(route) {
+function navigateToRoute(route, options = {}) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
+  if (!options.skipConfirm && safe !== state.currentRoute && !confirmComposerNavigation()) {
+    return;
+  }
   collapseMobileSidebar();
   const targetHash = `#${safe}`;
   if (window.location.hash !== targetHash) {
+    state.suppressHashRouteConfirm = safe;
     window.location.hash = targetHash;
     return;
   }
@@ -1985,9 +2479,12 @@ function startNewChatSession() {
   if (existingBlank) {
     focusSession(existingBlank.id);
   } else {
+    if (!confirmComposerNavigation()) {
+      return;
+    }
     createSession();
   }
-  navigateToRoute("chat");
+  navigateToRoute("chat", { skipConfirm: true });
   closeTransientPanels();
   window.requestAnimationFrame(() => {
     input.focus();
@@ -2625,6 +3122,7 @@ async function loadCronJobsView(container) {
   if (!form) {
     return;
   }
+  const cronComposer = createReusableComposer();
   const note = form.querySelector("[data-cron-note]");
   const everyWrap = form.querySelector("[data-cron-every-wrap]");
   const unitWrap = form.querySelector("[data-cron-unit-wrap]");
@@ -2632,6 +3130,7 @@ async function loadCronJobsView(container) {
   const weekdayWrap = form.querySelector("[data-cron-weekday-wrap]");
   const modeInput = form.schedule_mode;
   const expressionInput = form.cron_expression;
+  const promptInput = form.input;
 
   const syncModeVisibility = () => {
     const mode = String(modeInput.value || "every").trim().toLowerCase();
@@ -2730,6 +3229,13 @@ async function loadCronJobsView(container) {
   form.fixed_time.addEventListener("change", syncExpressionFromVisual);
   form.weekday.addEventListener("change", syncExpressionFromVisual);
   expressionInput.addEventListener("change", syncVisualFromExpression);
+
+  cronComposer.bind(promptInput, form, {
+    stableName: "cron-prompt",
+    submitOnEnter: false,
+    draftStorage: "session",
+    draftKey: "cron.prompt"
+  });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -3136,6 +3642,7 @@ function bindControlTaskView(container, initialPayload) {
     terminalSubmitting: false,
     advancedOpen: false
   };
+  const controlTaskTerminalComposer = createReusableComposer();
 
   const syncAdvancedToggle = () => {
     if (advancedFiltersNode) {
@@ -3171,6 +3678,7 @@ function bindControlTaskView(container, initialPayload) {
 
   const closeDrawer = () => {
     stopLogStream();
+    controlTaskTerminalComposer.unbind();
     localState.activeTaskID = "";
     localState.terminalAnchorTaskID = "";
     localState.logStreamNode = null;
@@ -3399,6 +3907,7 @@ function bindControlTaskView(container, initialPayload) {
   };
 
   const setTerminalInputState = (submitting) => {
+    controlTaskTerminalComposer.setDisabled(submitting);
     const inputNode = drawerBody.querySelector("[data-control-task-terminal-input]");
     const submitNode = drawerBody.querySelector("[data-control-task-terminal-submit]");
     if (inputNode) {
@@ -3408,6 +3917,26 @@ function bindControlTaskView(container, initialPayload) {
       submitNode.disabled = submitting;
       submitNode.textContent = submitting ? t("route.tasks.terminal.sending") : t("route.tasks.terminal.send");
     }
+  };
+
+  const bindControlTaskTerminalComposer = () => {
+    const formNode = drawerBody.querySelector("[data-control-task-terminal-input-form]");
+    const inputNode = drawerBody.querySelector("[data-control-task-terminal-input]");
+    controlTaskTerminalComposer.bind(inputNode, formNode, {
+      stableName: "control-task-terminal",
+      submitOnEnter: true,
+      submitStrategy: "form",
+      draftStorage: "session",
+      draftKey: () => `control-task-terminal:${normalizeText(localState.terminalAnchorTaskID || localState.activeTaskID || "default")}`,
+      clearDraftOnSubmit: true,
+      submitNode: drawerBody.querySelector("[data-control-task-terminal-submit]"),
+      disabled: localState.terminalSubmitting,
+      onSubmit: async (currentInputNode) => {
+        const value = String(currentInputNode.value || "");
+        currentInputNode.value = "";
+        await submitTerminalInput(value);
+      }
+    });
   };
 
   const submitTerminalInput = async (rawInput) => {
@@ -3479,6 +4008,7 @@ function bindControlTaskView(container, initialPayload) {
     localState.logStreamNode = null;
     localState.logTouchStartY = null;
     setTerminalInputState(localState.terminalSubmitting);
+    bindControlTaskTerminalComposer();
     if (!options.preserveLogs) {
       resetLogs();
       await loadLogBackfill(taskID, 0);
@@ -3505,6 +4035,7 @@ function bindControlTaskView(container, initialPayload) {
     drawerBody.innerHTML = renderControlTaskDetail(detailPayload, displayTaskID);
     localState.logStreamNode = null;
     localState.logTouchStartY = null;
+    bindControlTaskTerminalComposer();
     resetLogs();
     await loadLogBackfill(taskID, 0);
     startLogStream(taskID, localState.logCursor);
@@ -3550,20 +4081,6 @@ function bindControlTaskView(container, initialPayload) {
       });
     }
   }
-
-  view.addEventListener("submit", async (event) => {
-    const terminalForm = event.target.closest("[data-control-task-terminal-input-form]");
-    if (!terminalForm) {
-      return;
-    }
-    event.preventDefault();
-    const inputNode = terminalForm.querySelector("[data-control-task-terminal-input]");
-    const value = inputNode ? String(inputNode.value || "") : "";
-    if (inputNode) {
-      inputNode.value = "";
-    }
-    await submitTerminalInput(value);
-  });
 
   view.addEventListener("click", async (event) => {
     const target = event.target.closest("button");
@@ -3722,75 +4239,107 @@ function normalizeTerminalStoredEntry(item, fallbackAt) {
     return null;
   }
   const role = String(item.role || "").trim().toLowerCase();
-  if (!["user", "terminal", "system", "assistant"].includes(role)) {
+  const normalizedRole = role === "user" ? "input" : role === "terminal" ? "output" : role;
+  if (!["input", "output", "system"].includes(normalizedRole)) {
     return null;
   }
-  const text = typeof item.text === "string" ? item.text.trim() : "";
+  const text = typeof item.text === "string" ? item.text : "";
   if (!text) {
     return null;
   }
-  const taskID = typeof item.task_id === "string" ? item.task_id.trim() : "";
   const at = Number.isFinite(item.at) ? item.at : fallbackAt;
   const kind = typeof item.kind === "string" ? item.kind.trim().toLowerCase() : "";
-  const stage = typeof item.stage === "string" ? item.stage.trim().toLowerCase() : "";
+  const stream = typeof item.stream === "string" ? item.stream.trim().toLowerCase() : kind;
+  const cursor = Number.isFinite(item.cursor) ? Number(item.cursor) : -1;
   return {
     id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : makeID(),
-    role,
+    role: normalizedRole,
     text,
-    task_id: taskID,
     at,
     kind,
-    stage
+    stream,
+    cursor
   };
+}
+
+function createTerminalSessionSnapshot(id) {
+  const now = Date.now();
+  const safeID = String(id || "").trim() || `terminal-${makeID()}`;
+  return {
+    id: safeID,
+    title: t("route.terminal.new"),
+    created_at: now,
+    updated_at: now,
+    terminal_session_id: safeID,
+    status: "starting",
+    shell: "",
+    working_dir: "",
+    exit_code: null,
+    error_message: "",
+    log_collapsed: false,
+    entry_cursor: 0,
+    disconnected_notice: false,
+    entries: []
+  };
+}
+
+function parseTerminalTime(value, fallbackValue) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallbackValue;
+}
+
+function applyTerminalSessionSnapshot(session, snapshot) {
+  if (!session || !snapshot || typeof snapshot !== "object") {
+    return session;
+  }
+  const now = Date.now();
+  const sessionID = String(snapshot.id || snapshot.terminal_session_id || session.id || "").trim();
+  if (sessionID) {
+    session.id = sessionID;
+    session.terminal_session_id = sessionID;
+  }
+  session.title = String(snapshot.title || "").trim() || session.title || t("route.terminal.new");
+  session.created_at = parseTerminalTime(snapshot.created_at, session.created_at || now);
+  session.updated_at = parseTerminalTime(snapshot.updated_at, session.updated_at || session.created_at || now);
+  session.status = String(snapshot.status || session.status || "interrupted").trim().toLowerCase();
+  session.shell = String(snapshot.shell || "").trim();
+  session.working_dir = String(snapshot.working_dir || "").trim();
+  session.error_message = String(snapshot.error_message || "").trim();
+  session.exit_code = Number.isFinite(Number(snapshot.exit_code)) ? Number(snapshot.exit_code) : null;
+  return session;
 }
 
 function normalizeTerminalStoredSession(item) {
   if (!item || typeof item !== "object") {
     return null;
   }
-  const now = Date.now();
-  const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : makeID();
-  const createdAt = Number.isFinite(item.created_at) ? item.created_at : now;
-  const updatedAt = Number.isFinite(item.updated_at) ? item.updated_at : createdAt;
-  const taskCursor = item.task_cursor && typeof item.task_cursor === "object" ? item.task_cursor : {};
-  const safeCursor = {};
-  for (const [taskID, cursor] of Object.entries(taskCursor)) {
-    const safeTaskID = String(taskID || "").trim();
-    const safeCursorValue = Number(cursor || 0);
-    if (!safeTaskID || !Number.isFinite(safeCursorValue) || safeCursorValue < 0) {
-      continue;
-    }
-    safeCursor[safeTaskID] = safeCursorValue;
+  const baseID = String(item.id || item.terminal_session_id || "").trim();
+  if (!baseID) {
+    return null;
   }
-  const taskOrderRaw = Array.isArray(item.task_order) ? item.task_order : [];
-  const taskOrder = taskOrderRaw.map((taskID) => String(taskID || "").trim()).filter(Boolean);
+  const session = createTerminalSessionSnapshot(baseID);
+  applyTerminalSessionSnapshot(session, item);
+  session.log_collapsed = typeof item.log_collapsed === "boolean" ? item.log_collapsed : null;
+  session.entry_cursor = Number.isFinite(Number(item.entry_cursor)) && Number(item.entry_cursor) >= 0 ? Number(item.entry_cursor) : 0;
+  session.disconnected_notice = Boolean(item.disconnected_notice);
   const entriesRaw = Array.isArray(item.entries) ? item.entries : [];
   const entries = [];
   for (const row of entriesRaw) {
-    const parsed = normalizeTerminalStoredEntry(row, createdAt);
+    const parsed = normalizeTerminalStoredEntry(row, session.created_at || Date.now());
     if (parsed) {
       entries.push(parsed);
     }
   }
-  const runtimeSessionID = String(item.runtime_session_id || "").trim() || `terminal-runtime-${id}`;
-  const terminalSessionID = String(item.terminal_session_id || "").trim() || `terminal-${id}`;
-  const title = String(item.title || "").trim() || t("route.terminal.new");
-  const status = String(item.status || "").trim().toLowerCase();
-  return {
-    id,
-    title,
-    created_at: createdAt,
-    updated_at: updatedAt,
-    runtime_session_id: runtimeSessionID,
-    terminal_session_id: terminalSessionID,
-    anchor_task_id: String(item.anchor_task_id || "").trim(),
-    active_task_id: String(item.active_task_id || "").trim(),
-    status: status || "idle",
-    log_collapsed: typeof item.log_collapsed === "boolean" ? item.log_collapsed : null,
-    task_order: taskOrder,
-    task_cursor: safeCursor,
-    entries
-  };
+  session.entries = entries;
+  return session;
 }
 
 function loadTerminalSessionsFromStorage() {
@@ -3833,17 +4382,34 @@ function persistTerminalSessionsToStorage(sessions) {
   }
 }
 
+function getTerminalClientID() {
+  const storage = getBrowserSessionStorage();
+  const fallback = `terminal-client-${makeID()}`;
+  if (!storage) {
+    return fallback;
+  }
+  const existing = String(storage.getItem(TERMINAL_CLIENT_STORAGE_KEY) || "").trim();
+  if (existing) {
+    return existing;
+  }
+  try {
+    storage.setItem(TERMINAL_CLIENT_STORAGE_KEY, fallback);
+  } catch {
+  }
+  return fallback;
+}
+
 function renderTerminalStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
-  if (!normalized || normalized === "idle") {
+  if (!normalized) {
     return "-";
   }
   return formatTaskStatus(normalized);
 }
 
-function isTerminalTaskActiveStatus(status) {
+function isTerminalSessionLiveStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
-  return ["queued", "running", "in_progress", "processing"].includes(normalized);
+  return ["starting", "running"].includes(normalized);
 }
 
 function resolveTerminalLogCollapsed(session) {
@@ -3853,11 +4419,11 @@ function resolveTerminalLogCollapsed(session) {
   if (typeof session.log_collapsed === "boolean") {
     return session.log_collapsed;
   }
-  return !isTerminalTaskActiveStatus(session.status);
+  return !isTerminalSessionLiveStatus(session.status);
 }
 
 function normalizeTerminalLine(text, max = 240) {
-  const safe = String(text || "").replace(/\s+/g, " ").trim();
+  const safe = String(text || "").trim();
   if (!safe) {
     return "";
   }
@@ -3869,60 +4435,17 @@ function normalizeTerminalLine(text, max = 240) {
 
 function classifyTerminalLogKind(entry) {
   const role = String(entry?.role || "").trim().toLowerCase();
-  const stage = String(entry?.stage || "").trim().toLowerCase();
-  const text = String(entry?.text || "");
-  if (role === "user") {
+  const stream = String(entry?.stream || entry?.kind || "").trim().toLowerCase();
+  if (role === "input" || stream === "input") {
     return "command";
   }
-  if (role === "system") {
-    return "action";
-  }
-  if (stage && ["accept", "accepted", "running", "success", "failed", "error", "warn", "info"].includes(stage)) {
+  if (role === "system" || stream === "system") {
     return "tag";
   }
-  if (/^\s*\[[a-z_]+\]/i.test(text)) {
-    return "tag";
-  }
-  if (/^(accepted|已运行|executed|executing|run |running )/i.test(text)) {
+  if (stream === "stderr") {
     return "action";
   }
   return "output";
-}
-
-function isAssistantFollowupLog(stage, message) {
-  const safeStage = String(stage || "").trim().toLowerCase();
-  const safeMessage = String(message || "").trim();
-  if (!safeMessage) {
-    return false;
-  }
-  if (safeStage && !["terminal", "assistant", "chat", "nl"].includes(safeStage)) {
-    return false;
-  }
-  if (/^\s*\[[a-z_]+\]\s+/i.test(safeMessage)) {
-    return false;
-  }
-  if (/^(accepted|已运行|任务|task |running|success|failed|error|warning|stderr|stdout|\$ |>)/i.test(safeMessage.toLowerCase())) {
-    return false;
-  }
-  if (/^(要不要|是否|我可以|你希望|Would you|Do you want|Shall I|Should I|I can|Let me)/i.test(safeMessage)) {
-    return true;
-  }
-  if (/[?？]\s*$/.test(safeMessage) && safeMessage.length >= 8) {
-    return true;
-  }
-  return false;
-}
-
-function buildTerminalLogLine(item) {
-  const stage = String(item?.stage || "").trim().toLowerCase();
-  const message = String(item?.message || "").trim();
-  if (!message) {
-    return "";
-  }
-  if (!stage || stage === "terminal" || stage === "stdout" || stage === "stderr") {
-    return message;
-  }
-  return `[${stage}] ${message}`;
 }
 
 function renderTerminalSessionCards(sessions, activeSessionID) {
@@ -3933,26 +4456,12 @@ function renderTerminalSessionCards(sessions, activeSessionID) {
     const title = normalizeText(session.title);
     const sessionID = normalizeText(session.terminal_session_id);
     const active = session.id === activeSessionID;
-    return `<button class="terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}">
+    return `<button class="terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
       <span class="terminal-session-title">${escapeHTML(title)}</span>
       <span class="terminal-session-meta">${escapeHTML(shorten(sessionID, 30))}</span>
       <span class="terminal-session-meta">${escapeHTML(renderTerminalStatus(session.status))} | ${escapeHTML(formatDateTime(new Date(Number(session.updated_at || 0)).toISOString()))}</span>
     </button>`;
   }).join("");
-}
-
-function splitTerminalEntries(entries) {
-  const logs = [];
-  const followups = [];
-  (Array.isArray(entries) ? entries : []).forEach((entry) => {
-    const role = String(entry?.role || "").trim().toLowerCase();
-    if (role === "assistant") {
-      followups.push(entry);
-      return;
-    }
-    logs.push(entry);
-  });
-  return { logs, followups };
 }
 
 function renderTerminalLogRows(entries) {
@@ -3963,39 +4472,22 @@ function renderTerminalLogRows(entries) {
   return safeEntries.map((entry) => {
     const kind = classifyTerminalLogKind(entry);
     const rowClass = `terminal-log-row kind-${escapeHTML(kind)}`;
-    const text = normalizeText(entry?.text || "");
+    const text = String(entry?.text || "");
     const prefix = kind === "command" ? "$" : "";
-    const safeText = text === "-" ? "" : text;
-    if (!safeText) {
+    if (!text) {
       return "";
     }
     return `<div class="${rowClass}">
       <div class="terminal-log-main">
         ${prefix ? `<span class="terminal-log-prefix">${escapeHTML(prefix)}</span>` : ""}
-        <span class="terminal-log-text">${escapeHTML(safeText)}</span>
+        <span class="terminal-log-text">${escapeHTML(text)}</span>
       </div>
       <span class="terminal-log-time">${escapeHTML(timeLabel(entry?.at))}</span>
     </div>`;
   }).join("");
 }
 
-function renderTerminalFollowupRows(entries) {
-  const safeEntries = Array.isArray(entries) ? entries : [];
-  if (!safeEntries.length) {
-    return "";
-  }
-  return `<section class="terminal-followup-list">
-    <h6>${escapeHTML(t("route.terminal.followup.title"))}</h6>
-    ${safeEntries.map((entry) => `<article class="terminal-followup-bubble">
-      <div class="terminal-followup-text">${escapeHTML(normalizeText(entry?.text || ""))}</div>
-      <div class="terminal-followup-meta">
-        <span>${escapeHTML(timeLabel(entry?.at))}</span>
-      </div>
-    </article>`).join("")}
-  </section>`;
-}
-
-function renderTerminalWorkspace(session, sending) {
+function renderTerminalWorkspace(session, sending, closing = false) {
   if (!session) {
     return `<section class="terminal-workspace-empty">
       <p>${escapeHTML(t("route.terminal.pick"))}</p>
@@ -4003,10 +4495,14 @@ function renderTerminalWorkspace(session, sending) {
   }
   const collapsed = resolveTerminalLogCollapsed(session);
   const logToggleIcon = collapsed ? ">" : "v";
-  const logTaskRef = normalizeText(session.active_task_id || session.anchor_task_id || session.terminal_session_id);
-  const logTitle = t("route.terminal.logs.heading", { task: shorten(logTaskRef === "-" ? "n/a" : logTaskRef, 32) });
-  const split = splitTerminalEntries(session.entries);
-  return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}">
+  const logRef = normalizeText(session.terminal_session_id);
+  const logTitle = t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 32) });
+  const canInput = isTerminalSessionLiveStatus(session.status);
+  const placeholder = canInput ? t("route.terminal.input") : t("route.terminal.closed");
+  const note = session.status === "interrupted" ? t("route.terminal.interrupted") : (!canInput ? t("route.terminal.closed") : "");
+  const detail = session.error_message || (Number.isFinite(Number(session.exit_code)) ? `exit code ${String(session.exit_code)}` : "");
+  const closeDisabled = sending || closing || !canInput;
+  return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${canInput ? "true" : "false"}">
     <header class="terminal-workspace-head">
       <div class="terminal-workspace-copy">
         <h4>${escapeHTML(logTitle)}</h4>
@@ -4014,9 +4510,10 @@ function renderTerminalWorkspace(session, sending) {
       </div>
       <div class="terminal-workspace-badges">
         <span class="terminal-context-badge"><em>${t("route.terminal.session")}</em><strong>${escapeHTML(normalizeText(session.terminal_session_id))}</strong></span>
-        <span class="terminal-context-badge"><em>${t("route.terminal.anchor_task")}</em><strong>${escapeHTML(normalizeText(session.anchor_task_id))}</strong></span>
-        <span class="terminal-context-badge"><em>${t("route.terminal.active_task")}</em><strong>${escapeHTML(normalizeText(session.active_task_id))}</strong></span>
+        <span class="terminal-context-badge"><em>${t("route.terminal.shell")}</em><strong>${escapeHTML(normalizeText(session.shell))}</strong></span>
+        <span class="terminal-context-badge"><em>${t("route.terminal.path")}</em><strong>${escapeHTML(normalizeText(session.working_dir))}</strong></span>
         <span class="terminal-context-badge is-status"><em>${t("route.terminal.status")}</em><strong>${escapeHTML(renderTerminalStatus(session.status))}</strong></span>
+        <button class="terminal-session-close" type="button" data-terminal-close ${closeDisabled ? "disabled" : ""}>${escapeHTML(closing ? t("route.terminal.closing") : t("route.terminal.close"))}</button>
       </div>
     </header>
     <section class="terminal-console-panel">
@@ -4024,28 +4521,38 @@ function renderTerminalWorkspace(session, sending) {
         <span class="terminal-log-toggle-icon">${logToggleIcon}</span>
         <span class="terminal-log-toggle-text">${escapeHTML(logTitle)}</span>
       </button>
-      <div class="terminal-chat-screen ${collapsed ? "is-collapsed" : ""}" data-terminal-chat-screen ${collapsed ? "hidden" : ""}>
+      <div class="terminal-chat-screen ${collapsed ? "is-collapsed" : ""}" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}" ${collapsed ? "hidden" : ""}>
         <div class="terminal-log-tree">
-          ${renderTerminalLogRows(split.logs)}
+          ${renderTerminalLogRows(session.entries)}
         </div>
       </div>
-      ${renderTerminalFollowupRows(split.followups)}
-      <form class="terminal-chat-form" data-terminal-input-form>
-        <input type="text" data-terminal-input maxlength="6000" placeholder="${escapeHTML(t("route.terminal.input"))}" ${sending ? "disabled" : ""}>
-        <button type="submit" data-terminal-submit ${sending ? "disabled" : ""}>${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}</button>
+      <form class="terminal-chat-form" data-terminal-input-form data-composer-form="terminal-runtime">
+        <input type="text" data-terminal-input data-composer-input="terminal-runtime" maxlength="6000" placeholder="${escapeHTML(placeholder)}" ${(sending || !canInput) ? "disabled" : ""}>
+        <button type="submit" data-terminal-submit data-composer-submit="terminal-runtime" ${(sending || !canInput) ? "disabled" : ""}>${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}</button>
       </form>
+      ${note || detail ? `<div class="terminal-log-empty" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
     </section>
   </section>`;
 }
 
 async function loadTerminalView(container) {
   const localState = {
+    clientID: getTerminalClientID(),
     sessions: loadTerminalSessionsFromStorage(),
     activeSessionID: "",
     sending: false,
+    closing: false,
     polling: false,
-    timer: 0
+    timer: 0,
+    drafts: {},
+    focusedInputSessionID: "",
+    focusedInputSelectionStart: -1,
+    focusedInputSelectionEnd: -1,
+    composingInputSessionID: "",
+    pendingPaint: false,
+    pendingScrollToBottom: false
   };
+  const terminalComposer = createReusableComposer();
   localState.activeSessionID = localState.sessions[0] ? localState.sessions[0].id : "";
 
   const getActiveSession = () => {
@@ -4056,7 +4563,7 @@ async function loadTerminalView(container) {
     if (!session) {
       return;
     }
-    session.updated_at = Date.now();
+    session.updated_at = Math.max(Number(session.updated_at || 0), Date.now());
     localState.sessions.sort((left, right) => Number(right.updated_at || 0) - Number(left.updated_at || 0));
   };
 
@@ -4064,8 +4571,70 @@ async function loadTerminalView(container) {
     persistTerminalSessionsToStorage(localState.sessions);
   };
 
-  const appendEntry = (session, role, text, taskID = "", options = {}) => {
-    const content = String(text || "").trim();
+  const readTerminalDraft = (sessionID) => {
+    const key = normalizeText(sessionID);
+    if (!key || !Object.prototype.hasOwnProperty.call(localState.drafts, key)) {
+      return "";
+    }
+    return String(localState.drafts[key] || "");
+  };
+
+  const writeTerminalDraft = (sessionID, value) => {
+    const key = normalizeText(sessionID);
+    if (!key) {
+      return;
+    }
+    const normalized = String(value || "");
+    if (normalized) {
+      localState.drafts[key] = normalized;
+      return;
+    }
+    delete localState.drafts[key];
+  };
+
+  const rememberTerminalInputFocus = (sessionID, inputNode = null) => {
+    localState.focusedInputSessionID = normalizeText(sessionID);
+    if (inputNode && Number.isFinite(inputNode.selectionStart) && Number.isFinite(inputNode.selectionEnd)) {
+      localState.focusedInputSelectionStart = Number(inputNode.selectionStart);
+      localState.focusedInputSelectionEnd = Number(inputNode.selectionEnd);
+      return;
+    }
+    localState.focusedInputSelectionStart = -1;
+    localState.focusedInputSelectionEnd = -1;
+  };
+
+  const clearTerminalInputFocus = () => {
+    localState.focusedInputSessionID = "";
+    localState.focusedInputSelectionStart = -1;
+    localState.focusedInputSelectionEnd = -1;
+  };
+
+  const isTerminalInputComposing = (sessionID) => {
+    const key = normalizeText(sessionID);
+    return key !== "" && key === normalizeText(localState.composingInputSessionID);
+  };
+
+  const rememberTerminalInputComposition = (sessionID) => {
+    localState.composingInputSessionID = normalizeText(sessionID);
+  };
+
+  const clearTerminalInputComposition = (sessionID = "") => {
+    const key = normalizeText(sessionID);
+    if (key && key !== normalizeText(localState.composingInputSessionID)) {
+      return;
+    }
+    localState.composingInputSessionID = "";
+  };
+
+  const scrollTerminalChatToBottom = () => {
+    const chatNode = container.querySelector("[data-terminal-chat-screen]");
+    if (chatNode && !chatNode.hidden) {
+      chatNode.scrollTop = chatNode.scrollHeight;
+    }
+  };
+
+  const appendEntry = (session, role, text, options = {}) => {
+    const content = String(text || "");
     if (!session || !content) {
       return;
     }
@@ -4073,10 +4642,10 @@ async function loadTerminalView(container) {
       id: makeID(),
       role,
       text: content,
-      task_id: String(taskID || "").trim(),
-      at: Date.now(),
+      at: Number.isFinite(Number(options.at)) ? Number(options.at) : Date.now(),
       kind: String(options.kind || "").trim().toLowerCase(),
-      stage: String(options.stage || "").trim().toLowerCase()
+      stream: String(options.stream || options.kind || "").trim().toLowerCase(),
+      cursor: Number.isFinite(Number(options.cursor)) ? Number(options.cursor) : -1
     });
     if (session.entries.length > 1200) {
       session.entries = session.entries.slice(session.entries.length - 1200);
@@ -4084,47 +4653,118 @@ async function loadTerminalView(container) {
     touchSession(session);
   };
 
-  const ensureTaskTracked = (session, taskID) => {
-    const safeTaskID = String(taskID || "").trim();
-    if (!session || !safeTaskID) {
-      return;
+  const requestTerminalJSON = async (path, options = {}) => {
+    const headers = new Headers(options.headers || {});
+    headers.set("X-Alter0-Terminal-Client", localState.clientID);
+    if (options.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
     }
-    if (!Array.isArray(session.task_order)) {
-      session.task_order = [];
+    const response = await fetch(path, {
+      method: options.method || "GET",
+      body: options.body,
+      headers
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`);
+      error.code = typeof payload?.error_code === "string" ? payload.error_code : "";
+      error.status = response.status;
+      error.payload = payload;
+      throw error;
     }
-    if (!session.task_order.includes(safeTaskID)) {
-      session.task_order.push(safeTaskID);
-    }
-    if (!session.task_cursor || typeof session.task_cursor !== "object") {
-      session.task_cursor = {};
-    }
-    if (!Number.isFinite(Number(session.task_cursor[safeTaskID]))) {
-      session.task_cursor[safeTaskID] = 0;
-    }
+    return payload;
   };
 
-  const createNewTerminalSession = () => {
-    const id = makeID();
-    const createdAt = Date.now();
-    const session = {
-      id,
-      title: t("route.terminal.new"),
-      created_at: createdAt,
-      updated_at: createdAt,
-      runtime_session_id: `terminal-runtime-${id}`,
-      terminal_session_id: `terminal-${id}`,
-      anchor_task_id: "",
-      active_task_id: "",
-      status: "idle",
-      log_collapsed: false,
-      task_order: [],
-      task_cursor: {},
-      entries: []
-    };
-    localState.sessions.unshift(session);
+  const upsertSession = (snapshot) => {
+    const sessionID = String(snapshot?.id || snapshot?.terminal_session_id || "").trim();
+    if (!sessionID) {
+      return null;
+    }
+    let session = localState.sessions.find((item) => item.id === sessionID) || null;
+    if (!session) {
+      session = createTerminalSessionSnapshot(sessionID);
+      localState.sessions.unshift(session);
+    }
+    applyTerminalSessionSnapshot(session, snapshot);
+    touchSession(session);
+    return session;
+  };
+
+  const markSessionInterrupted = (session, message) => {
+    if (!session) {
+      return;
+    }
+    session.status = "interrupted";
+    session.error_message = String(message || t("route.terminal.interrupted"));
+    if (!session.disconnected_notice) {
+      appendEntry(session, "system", t("route.terminal.interrupted"), {
+        kind: "tag",
+        stream: "system"
+      });
+      session.disconnected_notice = true;
+    }
+    touchSession(session);
+  };
+
+  const createNewTerminalSession = async () => {
+    const payload = await requestTerminalJSON("/api/terminal/sessions", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    const session = upsertSession(payload?.session || {});
+    if (!session) {
+      throw new Error("terminal session missing");
+    }
+    session.log_collapsed = false;
     localState.activeSessionID = session.id;
     persist();
     return session;
+  };
+
+  const appendEntryFromServer = (session, item) => {
+    if (!session || !item || typeof item !== "object") {
+      return;
+    }
+    const text = typeof item.text === "string" ? item.text : "";
+    if (!text) {
+      return;
+    }
+    const cursor = Number.isFinite(Number(item.cursor)) ? Number(item.cursor) : -1;
+    if (cursor >= 0 && session.entries.some((entry) => Number(entry?.cursor) === cursor)) {
+      return;
+    }
+    const stream = String(item.stream || "").trim().toLowerCase();
+    const role = stream === "input" ? "input" : stream === "system" ? "system" : "output";
+    appendEntry(session, role, text, {
+      kind: stream || role,
+      stream,
+      cursor,
+      at: parseTerminalTime(item.created_at, Date.now())
+    });
+  };
+
+  const mergeRuntimeSessions = (items) => {
+    const activeRuntimeIDs = new Set();
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const session = upsertSession(item);
+      if (session) {
+        activeRuntimeIDs.add(session.id);
+      }
+    });
+    localState.sessions.forEach((session) => {
+      if (!activeRuntimeIDs.has(session.id) && isTerminalSessionLiveStatus(session.status)) {
+        markSessionInterrupted(session, t("route.terminal.interrupted"));
+      }
+    });
+    if (!localState.activeSessionID && localState.sessions[0]) {
+      localState.activeSessionID = localState.sessions[0].id;
+    }
+    persist();
+  };
+
+  const syncSessionList = async () => {
+    const payload = await requestTerminalJSON("/api/terminal/sessions");
+    mergeRuntimeSessions(Array.isArray(payload?.items) ? payload.items : []);
   };
 
   const stopPolling = () => {
@@ -4136,68 +4776,174 @@ async function loadTerminalView(container) {
 
   const paint = () => {
     const active = getActiveSession();
+    const previousWorkspace = container.querySelector("[data-terminal-workspace]");
+    const previousSessionID = normalizeText(previousWorkspace ? previousWorkspace.getAttribute("data-terminal-session-id") : "");
+    const previousInput = container.querySelector("[data-terminal-input]");
+    const previousValue = previousInput ? String(previousInput.value || "") : "";
+    if (previousSessionID && previousInput && document.activeElement === previousInput) {
+      rememberTerminalInputFocus(previousSessionID, previousInput);
+    }
+    const shouldRestoreFocus = active && normalizeText(active.id) === normalizeText(localState.focusedInputSessionID);
+    const selectionStart = shouldRestoreFocus ? localState.focusedInputSelectionStart : -1;
+    const selectionEnd = shouldRestoreFocus ? localState.focusedInputSelectionEnd : -1;
+    if (previousSessionID && previousInput) {
+      writeTerminalDraft(previousSessionID, previousInput.value);
+    }
     container.innerHTML = `<section class="terminal-view" data-terminal-view>
       <aside class="terminal-session-pane">
         <button class="terminal-session-create" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new"))}</button>
         <div class="terminal-session-list">${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
       </aside>
       <section class="terminal-workspace">
-        ${renderTerminalWorkspace(active, localState.sending)}
+        ${renderTerminalWorkspace(active, localState.sending, localState.closing)}
       </section>
     </section>`;
+    const inputNode = container.querySelector("[data-terminal-input]");
+    if (active && inputNode) {
+      const draft = readTerminalDraft(active.id) || (previousSessionID === normalizeText(active.id) ? previousValue : "");
+      if (draft) {
+        inputNode.value = draft;
+        writeTerminalDraft(active.id, draft);
+      }
+    }
+    bindTerminalComposer(active);
+    if (shouldRestoreFocus && active && inputNode && !inputNode.disabled) {
+      window.requestAnimationFrame(() => {
+        const nextInput = container.querySelector("[data-terminal-input]");
+        if (!nextInput || nextInput.disabled) {
+          return;
+        }
+        nextInput.focus({ preventScroll: true });
+        if (selectionStart >= 0 && selectionEnd >= 0) {
+          const maxLength = nextInput.value.length;
+          nextInput.setSelectionRange(Math.min(selectionStart, maxLength), Math.min(selectionEnd, maxLength));
+        }
+      });
+    }
   };
 
-  const appendLogItems = (session, taskID, logs) => {
-    if (!session || !Array.isArray(logs) || !logs.length) {
+  const requestTerminalPaint = (options = {}) => {
+    const active = getActiveSession();
+    const scrollToBottom = Boolean(options.scrollToBottom);
+    if (active && isTerminalInputComposing(active.id)) {
+      localState.pendingPaint = true;
+      localState.pendingScrollToBottom = localState.pendingScrollToBottom || scrollToBottom;
+      return false;
+    }
+    paint();
+    if (scrollToBottom) {
+      scrollTerminalChatToBottom();
+    }
+    return true;
+  };
+
+  const flushDeferredTerminalPaint = () => {
+    if (!localState.pendingPaint) {
       return;
     }
-    logs.forEach((item) => {
-      const stage = String(item?.stage || "").trim().toLowerCase();
-      const line = buildTerminalLogLine(item);
-      if (!line) {
-        return;
+    const scrollToBottom = localState.pendingScrollToBottom;
+    localState.pendingPaint = false;
+    localState.pendingScrollToBottom = false;
+    paint();
+    if (scrollToBottom) {
+      scrollTerminalChatToBottom();
+    }
+  };
+
+  const bindTerminalComposer = (session) => {
+    const formNode = container.querySelector("[data-terminal-input-form]");
+    const inputNode = container.querySelector("[data-terminal-input]");
+    terminalComposer.bind(inputNode, formNode, {
+      stableName: "terminal-runtime",
+      submitOnEnter: true,
+      submitStrategy: "form",
+      draftStorage: "local",
+      draftKey: () => `terminal:${normalizeText(session?.id || "default")}`,
+      clearDraftOnSubmit: true,
+      submitNode: container.querySelector("[data-terminal-submit]"),
+      disabled: localState.sending || !session || !isTerminalSessionLiveStatus(session.status),
+      onDraftRestore: (_inputNode, restoredDraft) => {
+        if (!session) {
+          return;
+        }
+        writeTerminalDraft(session.id, restoredDraft);
+      },
+      onInput: (currentInputNode) => {
+        if (!session) {
+          return;
+        }
+        rememberTerminalInputFocus(session.id, currentInputNode);
+        writeTerminalDraft(session.id, currentInputNode.value);
+      },
+      onFocus: (currentInputNode) => {
+        if (!session) {
+          return;
+        }
+        rememberTerminalInputFocus(session.id, currentInputNode);
+      },
+      onBlur: () => {
+        clearTerminalInputComposition();
+        clearTerminalInputFocus();
+      },
+      onCompositionStart: (currentInputNode) => {
+        if (!session) {
+          return;
+        }
+        rememberTerminalInputFocus(session.id, currentInputNode);
+        rememberTerminalInputComposition(session.id);
+        writeTerminalDraft(session.id, currentInputNode.value);
+      },
+      onCompositionEnd: (currentInputNode) => {
+        if (!session) {
+          clearTerminalInputComposition();
+          flushDeferredTerminalPaint();
+          return;
+        }
+        rememberTerminalInputFocus(session.id, currentInputNode);
+        writeTerminalDraft(session.id, currentInputNode.value);
+        clearTerminalInputComposition(session.id);
+        flushDeferredTerminalPaint();
+      },
+      onSubmit: async (currentInputNode) => {
+        const value = String(currentInputNode.value || "");
+        currentInputNode.value = "";
+        if (session) {
+          writeTerminalDraft(session.id, "");
+        }
+        clearTerminalInputFocus();
+        clearTerminalInputComposition(session ? session.id : "");
+        await sendTerminalInput(value);
       }
-      if (isAssistantFollowupLog(stage, line)) {
-        appendEntry(session, "assistant", line, taskID, { kind: "followup", stage });
-        return;
-      }
-      appendEntry(session, "terminal", line, taskID, { kind: classifyTerminalLogKind({ role: "terminal", stage, text: line }), stage });
     });
   };
 
-  const pollLogsForTask = async (session, taskID) => {
-    if (!session || !taskID) {
+  const pollEntriesForSession = async (session) => {
+    if (!session) {
       return;
     }
-    ensureTaskTracked(session, taskID);
-    let cursor = Number(session.task_cursor[taskID] || 0);
+    let cursor = Number(session.entry_cursor || 0);
     let hasMore = true;
     let guard = 0;
     while (hasMore && guard < 20) {
       guard += 1;
-      const page = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}/logs?cursor=${Math.max(cursor, 0)}&limit=200`);
+      const page = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}/entries?cursor=${Math.max(cursor, 0)}&limit=200`);
       const items = Array.isArray(page?.items) ? page.items : [];
-      appendLogItems(session, taskID, items);
+      items.forEach((item) => appendEntryFromServer(session, item));
       const nextCursor = Number(page?.next_cursor || cursor);
       cursor = Number.isFinite(nextCursor) && nextCursor >= 0 ? nextCursor : cursor;
       hasMore = Boolean(page?.has_more);
     }
-    session.task_cursor[taskID] = cursor;
+    session.entry_cursor = cursor;
   };
 
-  const refreshActiveTaskStatus = async (session) => {
-    const taskID = String(session?.active_task_id || "").trim();
-    if (!session || !taskID) {
+  const refreshSessionState = async (session) => {
+    if (!session) {
       return;
     }
-    const payload = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}`);
-    session.status = normalizeText(payload?.task?.status || "idle").toLowerCase();
+    const payload = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}`);
+    applyTerminalSessionSnapshot(session, payload?.session || {});
     if (typeof session.log_collapsed !== "boolean") {
-      session.log_collapsed = !isTerminalTaskActiveStatus(session.status);
-    }
-    const linkTerminalSessionID = normalizeText(payload?.link?.terminal_session_id || "");
-    if (linkTerminalSessionID !== "-") {
-      session.terminal_session_id = linkTerminalSessionID;
+      session.log_collapsed = !isTerminalSessionLiveStatus(session.status);
     }
   };
 
@@ -4210,35 +4956,70 @@ async function loadTerminalView(container) {
       return;
     }
     const session = getActiveSession();
-    const activeTaskID = String(session?.active_task_id || "").trim();
-    if (!session || !activeTaskID) {
+    if (!session) {
       stopPolling();
       return;
     }
     localState.polling = true;
     try {
-      await pollLogsForTask(session, activeTaskID);
-      await refreshActiveTaskStatus(session);
+      await syncSessionList();
+      await pollEntriesForSession(session);
+      await refreshSessionState(session);
       touchSession(session);
       persist();
-      paint();
-      const chatNode = container.querySelector("[data-terminal-chat-screen]");
-      if (chatNode) {
-        chatNode.scrollTop = chatNode.scrollHeight;
-      }
-      if (["success", "failed", "canceled", "done"].includes(String(session.status || "").toLowerCase())) {
+      requestTerminalPaint({ scrollToBottom: true });
+      if (!isTerminalSessionLiveStatus(session.status)) {
         stopPolling();
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "unknown_error";
-      appendEntry(session, "system", t("route.terminal.logs_failed", { error: message }));
-      session.status = "failed";
+      if (Number(error?.status) === 404) {
+        markSessionInterrupted(session, t("route.terminal.interrupted"));
+      } else {
+        const message = error instanceof Error ? error.message : "unknown_error";
+        appendEntry(session, "system", t("route.terminal.logs_failed", { error: message }), {
+          kind: "tag",
+          stream: "system"
+        });
+      }
       touchSession(session);
       persist();
-      paint();
+      requestTerminalPaint();
       stopPolling();
     } finally {
       localState.polling = false;
+    }
+  };
+
+  const closeTerminalSession = async (session) => {
+    if (!session || localState.closing || !isTerminalSessionLiveStatus(session.status)) {
+      return;
+    }
+    localState.closing = true;
+    paint();
+    try {
+      const payload = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}`, {
+        method: "DELETE"
+      });
+      applyTerminalSessionSnapshot(session, payload?.session || {});
+      stopPolling();
+      touchSession(session);
+      persist();
+      paint();
+    } catch (error) {
+      if (Number(error?.status) === 404) {
+        markSessionInterrupted(session, t("route.terminal.interrupted"));
+      }
+      const message = error instanceof Error ? error.message : "unknown_error";
+      appendEntry(session, "system", t("route.terminal.close_failed", { error: message }), {
+        kind: "tag",
+        stream: "system"
+      });
+      touchSession(session);
+      persist();
+      paint();
+    } finally {
+      localState.closing = false;
+      paint();
     }
   };
 
@@ -4246,8 +5027,7 @@ async function loadTerminalView(container) {
     stopPolling();
     await pollActiveSession();
     const session = getActiveSession();
-    const activeTaskID = String(session?.active_task_id || "").trim();
-    if (!activeTaskID) {
+    if (!session || !isTerminalSessionLiveStatus(session.status)) {
       return;
     }
     localState.timer = window.setInterval(() => {
@@ -4262,109 +5042,69 @@ async function loadTerminalView(container) {
     }
     let session = getActiveSession();
     if (!session) {
-      session = createNewTerminalSession();
+      try {
+        session = await createNewTerminalSession();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "unknown_error";
+        window.alert(t("route.terminal.send_failed", { error: message }));
+        return;
+      }
+    }
+    if (!isTerminalSessionLiveStatus(session.status)) {
+      return;
     }
 
     session.log_collapsed = false;
-    appendEntry(session, "user", normalizeTerminalLine(text), "", { kind: "command", stage: "command" });
     localState.sending = true;
-    paint();
+    requestTerminalPaint();
     try {
-      const currentTaskID = String(session.active_task_id || "").trim();
-      if (!currentTaskID) {
-        const response = await fetch("/api/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: session.runtime_session_id,
-            task_type: "terminal",
-            async_hint: "force",
-            input: text,
-            metadata: {
-              "alter0.task.terminal_session_id": session.terminal_session_id,
-              "alter0.task.terminal_interactive": "true",
-              codex_sandbox: "danger-full-access",
-              codex_workspace_mode: "repo-root"
-            }
-          })
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
-          throw new Error(message);
-        }
-        const newTaskID = normalizeText(payload?.task_id || "");
-        if (newTaskID === "-") {
-          throw new Error("task_id missing");
-        }
-        session.anchor_task_id = newTaskID;
-        session.active_task_id = newTaskID;
-        session.status = normalizeText(payload?.status || "queued").toLowerCase();
-        ensureTaskTracked(session, newTaskID);
-        appendEntry(session, "system", `accepted ${newTaskID}`, newTaskID, { kind: "action", stage: "accept" });
-      } else {
-        const anchorTaskID = String(session.anchor_task_id || "").trim() || currentTaskID;
-        const response = await fetch(`/api/control/tasks/${encodeURIComponent(currentTaskID)}/terminal/input`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            input: text,
-            reuse_task: true,
-            anchor_task_id: anchorTaskID
-          })
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          if ((payload?.error_code || "") === "terminal_session_limit_reached") {
-            const maxSessions = Number(payload?.max_sessions || 5);
-            window.alert(t("route.terminal.limit_reached", { max: String(maxSessions) }));
-            return;
-          }
-          const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
-          throw new Error(message);
-        }
-        const newTaskID = normalizeText(payload?.task_id || "");
-        const anchorTask = normalizeText(payload?.anchor_task_id || anchorTaskID || newTaskID);
-        if (newTaskID === "-") {
-          throw new Error("task_id missing");
-        }
-        session.anchor_task_id = anchorTask === "-" ? session.anchor_task_id : anchorTask;
-        session.active_task_id = newTaskID;
-        session.status = normalizeText(payload?.status || "queued").toLowerCase();
-        const terminalSessionID = normalizeText(payload?.terminal_session_id || "");
-        if (terminalSessionID !== "-") {
-          session.terminal_session_id = terminalSessionID;
-        }
-        ensureTaskTracked(session, newTaskID);
-        appendEntry(session, "system", `accepted ${newTaskID}`, newTaskID, { kind: "action", stage: "accept" });
-      }
+      const payload = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}/input`, {
+        method: "POST",
+        body: JSON.stringify({
+          input: normalizeTerminalLine(text, 6000)
+        })
+      });
+      applyTerminalSessionSnapshot(session, payload?.session || {});
       touchSession(session);
       persist();
-      paint();
+      requestTerminalPaint();
       await startPolling();
     } catch (error) {
+      if ((error?.code || "") === "terminal_session_limit_reached") {
+        const maxSessions = Number(error?.payload?.max_sessions || 5);
+        window.alert(t("route.terminal.limit_reached", { max: String(maxSessions) }));
+        return;
+      }
+      if (Number(error?.status) === 404) {
+        markSessionInterrupted(session, t("route.terminal.interrupted"));
+      }
       const message = error instanceof Error ? error.message : "unknown_error";
-      appendEntry(session, "system", t("route.terminal.send_failed", { error: message }), session.active_task_id, { kind: "tag", stage: "error" });
+      appendEntry(session, "system", t("route.terminal.send_failed", { error: message }), {
+        kind: "tag",
+        stream: "system"
+      });
       touchSession(session);
       persist();
-      paint();
+      requestTerminalPaint();
     } finally {
       localState.sending = false;
-      paint();
+      requestTerminalPaint();
       const inputNode = container.querySelector("[data-terminal-input]");
       if (inputNode) {
         inputNode.focus();
       }
-      const chatNode = container.querySelector("[data-terminal-chat-screen]");
-      if (chatNode && !chatNode.hidden) {
-        chatNode.scrollTop = chatNode.scrollHeight;
-      }
+      scrollTerminalChatToBottom();
     }
   };
 
   paint();
+  try {
+    await syncSessionList();
+  } catch {
+  }
+  paint();
   const initialSession = getActiveSession();
-  if (initialSession && String(initialSession.active_task_id || "").trim()) {
+  if (initialSession) {
     await startPolling();
   }
 
@@ -4374,8 +5114,21 @@ async function loadTerminalView(container) {
       return;
     }
     if (target.hasAttribute("data-terminal-create")) {
-      createNewTerminalSession();
-      paint();
+      void (async () => {
+        try {
+          await createNewTerminalSession();
+          paint();
+          await startPolling();
+        } catch (error) {
+          if ((error?.code || "") === "terminal_session_limit_reached") {
+            const maxSessions = Number(error?.payload?.max_sessions || 5);
+            window.alert(t("route.terminal.limit_reached", { max: String(maxSessions) }));
+            return;
+          }
+          const message = error instanceof Error ? error.message : "unknown_error";
+          window.alert(t("route.terminal.send_failed", { error: message }));
+        }
+      })();
       return;
     }
     if (target.hasAttribute("data-terminal-log-toggle")) {
@@ -4387,34 +5140,28 @@ async function loadTerminalView(container) {
       }
       return;
     }
+    if (target.hasAttribute("data-terminal-close")) {
+      const active = getActiveSession();
+      if (active) {
+        void closeTerminalSession(active);
+      }
+      return;
+    }
     if (target.hasAttribute("data-terminal-session-select")) {
       const sessionID = normalizeText(target.getAttribute("data-terminal-session-select"));
       if (sessionID !== "-") {
         localState.activeSessionID = sessionID;
         paint();
         const active = getActiveSession();
-        if (active && String(active.active_task_id || "").trim()) {
+        if (active) {
           void startPolling();
-        } else {
-          stopPolling();
+          return;
         }
+        stopPolling();
       }
     }
   };
 
-  container.onsubmit = async (event) => {
-    const form = event.target.closest("[data-terminal-input-form]");
-    if (!form) {
-      return;
-    }
-    event.preventDefault();
-    const inputNode = form.querySelector("[data-terminal-input]");
-    const value = inputNode ? String(inputNode.value || "") : "";
-    if (inputNode) {
-      inputNode.value = "";
-    }
-    await sendTerminalInput(value);
-  };
 }
 
 function formatDateTime(value) {
@@ -5619,16 +6366,33 @@ function bindEvents() {
     }
   });
 
-  chatForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    await sendMessage(input.value);
-  });
-
-  input.addEventListener("input", updateCharCount);
-  input.addEventListener("keydown", async (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      await sendMessage(input.value);
+  mainChatComposer.bind(input, chatForm, {
+    stableName: "chat-main",
+    submitOnEnter: true,
+    submitStrategy: "keydown",
+    allowShiftEnter: true,
+    draftStorage: "session",
+    draftKey: () => getMainChatDraftKey(),
+    counterNode: charCount,
+    maxLength: MAX_CHARS,
+    submitNode: sendButton,
+    clearDraftOnSubmit: true,
+    onInput: () => {
+      updateCharCount();
+    },
+    onSubmit: async (composerInput) => {
+      await sendMessage(composerInput.value);
+    },
+    onFocus: () => {
+      updateKeyboardInset();
+      if (isMobileViewport()) {
+        requestAnimationFrame(() => {
+          input.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
+      }
+    },
+    onBlur: () => {
+      window.setTimeout(updateKeyboardInset, 80);
     }
   });
 
@@ -5734,7 +6498,29 @@ function bindEvents() {
   }
 
   window.addEventListener("hashchange", () => {
-    void renderRoute(parseHashRoute());
+    const nextRoute = parseHashRoute();
+    if (state.suppressHashRouteConfirm === nextRoute) {
+      state.suppressHashRouteConfirm = "";
+      void renderRoute(nextRoute);
+      return;
+    }
+    state.suppressHashRouteConfirm = "";
+    if (nextRoute !== state.currentRoute && !confirmComposerNavigation()) {
+      const fallbackHash = `#${state.currentRoute || DEFAULT_ROUTE}`;
+      if (window.location.hash !== fallbackHash) {
+        window.location.hash = fallbackHash;
+      }
+      return;
+    }
+    void renderRoute(nextRoute);
+  });
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!hasBlockingComposerDraft()) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = t("composer.unsaved_confirm");
   });
 
   window.addEventListener("resize", () => {
@@ -5759,24 +6545,12 @@ function bindEvents() {
     window.visualViewport.addEventListener("scroll", updateKeyboardInset);
   }
 
-  input.addEventListener("focus", () => {
-    updateKeyboardInset();
-    if (isMobileViewport()) {
-      requestAnimationFrame(() => {
-        input.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      });
-    }
-  });
-
-  input.addEventListener("blur", () => {
-    window.setTimeout(updateKeyboardInset, 80);
-  });
-
   bindSwipeClose(primaryNav, "nav-open");
   bindSwipeClose(sessionPane, "panel-open");
 }
 
 function init() {
+  setComposerConfirmState("idle");
   setSidebarCollapsed(false);
   setSessionHistoryCollapsed(loadSessionHistoryCollapsedState());
   bootstrapSessions();
@@ -5786,7 +6560,9 @@ function init() {
   bindEvents();
   updateCharCount();
   updateKeyboardInset();
+  syncComposerGuardState();
   void renderRoute(parseHashRoute());
+  document.body.setAttribute("data-app-ready", "true");
   input.focus();
 }
 

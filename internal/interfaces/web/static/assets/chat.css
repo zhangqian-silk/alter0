@@ -2894,6 +2894,29 @@ body {
   background: rgba(37, 99, 235, 0.08);
 }
 
+.terminal-session-close {
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.terminal-session-close:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.26);
+}
+
+.terminal-session-close:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
 .terminal-console-panel {
   min-width: 0;
   min-height: 0;
