@@ -793,7 +793,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	s.countGateway(string(msg.ChannelType))
 	assessment := s.assessComplexity(msg)
 	if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
-		taskCard := buildTaskCard(msg, task)
+		taskCard := buildTaskCard(msg, assessment, task)
 		if submitErr != nil {
 			s.logWebMessageFailure(msg, submitErr)
 			writeJSON(w, http.StatusInternalServerError, messageResponse{
@@ -887,7 +887,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	assessment := s.assessComplexity(msg)
 	if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
-		taskCard := buildTaskCard(msg, task)
+		taskCard := buildTaskCard(msg, assessment, task)
 		if submitErr != nil {
 			s.logWebMessageFailure(msg, submitErr)
 			_ = writeSSE(w, "error", streamErrorResponse{
@@ -3276,7 +3276,7 @@ func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage, assessment tas
 	if strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) != taskapp.ExecutionModeAsync {
 		return taskdomain.Task{}, false, nil
 	}
-	item, err := s.tasks.Submit(msg)
+	item, err := s.tasks.Submit(enrichMessageWithComplexityMetadata(msg, assessment))
 	if err != nil {
 		return taskdomain.Task{}, true, err
 	}
@@ -3294,12 +3294,15 @@ func (s *Server) assessComplexity(msg shareddomain.UnifiedMessage) taskapp.Compl
 	return s.tasks.AssessComplexity(msg)
 }
 
-func buildTaskCard(msg shareddomain.UnifiedMessage, task taskdomain.Task) *taskCardResponse {
+func buildTaskCard(msg shareddomain.UnifiedMessage, assessment taskapp.ComplexityAssessment, task taskdomain.Task) *taskCardResponse {
 	taskID := strings.TrimSpace(task.ID)
 	if taskID == "" {
 		return nil
 	}
-	taskSummary := summaryText(strings.TrimSpace(msg.Content), 120)
+	taskSummary := strings.TrimSpace(assessment.TaskSummary)
+	if taskSummary == "" {
+		taskSummary = summaryText(strings.TrimSpace(msg.Content), 120)
+	}
 	if taskSummary == "" {
 		taskSummary = "任务摘要待补充"
 	}
@@ -3326,6 +3329,12 @@ func asyncAcceptedResult(
 	metadata[taskapp.MetadataExecutionMode] = taskapp.ExecutionModeAsync
 	metadata[taskapp.MetadataComplexityLevel] = strings.TrimSpace(assessment.ComplexityLevel)
 	metadata[taskapp.MetadataEstimatedDurationSeconds] = strconv.Itoa(assessment.EstimatedDurationSeconds)
+	if strings.TrimSpace(assessment.TaskSummary) != "" {
+		metadata[taskapp.MetadataTaskSummary] = strings.TrimSpace(assessment.TaskSummary)
+	}
+	if strings.TrimSpace(assessment.TaskApproach) != "" {
+		metadata[taskapp.MetadataTaskApproach] = strings.TrimSpace(assessment.TaskApproach)
+	}
 	if assessment.Fallback {
 		metadata[taskapp.MetadataComplexityFallback] = "true"
 	}
@@ -3334,8 +3343,14 @@ func asyncAcceptedResult(
 		output = taskCard.Notice + "\n"
 		output += "task_id: " + taskCard.TaskID + "\n"
 		output += "task_summary: " + taskCard.TaskSummary + "\n"
+		if strings.TrimSpace(assessment.TaskApproach) != "" {
+			output += "task_approach: " + strings.TrimSpace(assessment.TaskApproach) + "\n"
+		}
 		output += "task_detail_url: " + taskCard.TaskDetailURL
 		metadata["task_summary"] = taskCard.TaskSummary
+		if strings.TrimSpace(assessment.TaskApproach) != "" {
+			metadata["task_approach"] = strings.TrimSpace(assessment.TaskApproach)
+		}
 		metadata["task_detail_url"] = taskCard.TaskDetailURL
 	}
 	return shareddomain.OrchestrationResult{
@@ -3356,6 +3371,12 @@ func attachComplexityMetadata(
 	metadata[taskapp.MetadataExecutionMode] = strings.TrimSpace(assessment.ExecutionMode)
 	metadata[taskapp.MetadataComplexityLevel] = strings.TrimSpace(assessment.ComplexityLevel)
 	metadata[taskapp.MetadataEstimatedDurationSeconds] = strconv.Itoa(assessment.EstimatedDurationSeconds)
+	if strings.TrimSpace(assessment.TaskSummary) != "" {
+		metadata[taskapp.MetadataTaskSummary] = strings.TrimSpace(assessment.TaskSummary)
+	}
+	if strings.TrimSpace(assessment.TaskApproach) != "" {
+		metadata[taskapp.MetadataTaskApproach] = strings.TrimSpace(assessment.TaskApproach)
+	}
 	if assessment.Fallback {
 		metadata[taskapp.MetadataComplexityFallback] = "true"
 	}
@@ -3365,6 +3386,27 @@ func attachComplexityMetadata(
 	}
 	result.Metadata = metadata
 	return result
+}
+
+func enrichMessageWithComplexityMetadata(
+	msg shareddomain.UnifiedMessage,
+	assessment taskapp.ComplexityAssessment,
+) shareddomain.UnifiedMessage {
+	metadata := cloneStringMap(msg.Metadata)
+	metadata[taskapp.MetadataExecutionMode] = strings.TrimSpace(assessment.ExecutionMode)
+	metadata[taskapp.MetadataComplexityLevel] = strings.TrimSpace(assessment.ComplexityLevel)
+	metadata[taskapp.MetadataEstimatedDurationSeconds] = strconv.Itoa(assessment.EstimatedDurationSeconds)
+	if strings.TrimSpace(assessment.TaskSummary) != "" {
+		metadata[taskapp.MetadataTaskSummary] = strings.TrimSpace(assessment.TaskSummary)
+	}
+	if strings.TrimSpace(assessment.TaskApproach) != "" {
+		metadata[taskapp.MetadataTaskApproach] = strings.TrimSpace(assessment.TaskApproach)
+	}
+	if assessment.Fallback {
+		metadata[taskapp.MetadataComplexityFallback] = "true"
+	}
+	msg.Metadata = metadata
+	return msg
 }
 
 func summaryText(content string, maxRunes int) string {

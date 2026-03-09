@@ -47,7 +47,9 @@ func (s *stubWebTaskService) AssessComplexity(_ shareddomain.UnifiedMessage) tas
 	}
 	if s.shouldAsync {
 		return taskapp.ComplexityAssessment{
-			EstimatedDurationSeconds: 42,
+			TaskSummary:              "生成异步任务卡片",
+			TaskApproach:             "先评估请求，再转入后台任务执行。",
+			EstimatedDurationSeconds: 420,
 			ComplexityLevel:          taskapp.ComplexityLevelHigh,
 			ExecutionMode:            taskapp.ExecutionModeAsync,
 		}
@@ -217,8 +219,8 @@ func TestMessageHandlerReturnsAcceptedForAsyncTask(t *testing.T) {
 	if body.ExecutionMode != taskapp.ExecutionModeAsync {
 		t.Fatalf("expected execution_mode async, got %q", body.ExecutionMode)
 	}
-	if body.EstimatedDurationSeconds <= 30 {
-		t.Fatalf("expected estimated_duration_seconds > 30, got %d", body.EstimatedDurationSeconds)
+	if body.EstimatedDurationSeconds <= 300 {
+		t.Fatalf("expected estimated_duration_seconds > 300, got %d", body.EstimatedDurationSeconds)
 	}
 	if body.ComplexityLevel != taskapp.ComplexityLevelHigh {
 		t.Fatalf("expected complexity_level high, got %q", body.ComplexityLevel)
@@ -226,11 +228,20 @@ func TestMessageHandlerReturnsAcceptedForAsyncTask(t *testing.T) {
 	if body.TaskCard == nil {
 		t.Fatalf("expected task card in async response")
 	}
+	if body.TaskCard.TaskSummary != "生成异步任务卡片" {
+		t.Fatalf("expected task summary from complexity assessment, got %q", body.TaskCard.TaskSummary)
+	}
 	if body.TaskCard.TaskID != "task-accepted" {
 		t.Fatalf("expected task card task id task-accepted, got %q", body.TaskCard.TaskID)
 	}
 	if !strings.Contains(body.TaskCard.TaskDetailURL, "/api/control/tasks/task-accepted") {
 		t.Fatalf("expected task detail url in task card, got %q", body.TaskCard.TaskDetailURL)
+	}
+	if taskSvc.lastSubmitMsg.Metadata[taskapp.MetadataTaskSummary] != "生成异步任务卡片" {
+		t.Fatalf("expected submit metadata to include task summary, got %+v", taskSvc.lastSubmitMsg.Metadata)
+	}
+	if taskSvc.lastSubmitMsg.Metadata[taskapp.MetadataTaskApproach] == "" {
+		t.Fatalf("expected submit metadata to include task approach, got %+v", taskSvc.lastSubmitMsg.Metadata)
 	}
 	if orchestrator.lastMessage.MessageID != "" {
 		t.Fatalf("expected orchestrator not called")
