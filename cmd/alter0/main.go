@@ -69,6 +69,7 @@ func main() {
 	taskTerminalShellArgs := flag.String("task-terminal-shell-args", "", "terminal Codex CLI extra arguments")
 	asyncTaskTimeout := flag.Duration("async-task-timeout", 90*time.Second, "background async task timeout")
 	asyncTaskMaxRetries := flag.Int("async-task-max-retries", 1, "background async task max retries")
+	asyncTaskTriggerThreshold := flag.Duration("async-task-trigger-threshold", 5*time.Minute, "estimated duration threshold to route request into async task")
 	asyncLongContentThreshold := flag.Int("async-long-content-threshold", 240, "request content length threshold to trigger async task")
 	sessionMemoryTurns := flag.Int("session-memory-turns", 6, "short-term memory window size per session")
 	sessionMemoryTTL := flag.Duration("session-memory-ttl", 20*time.Minute, "short-term memory ttl per session")
@@ -125,6 +126,7 @@ func main() {
 	resolvedTaskTerminalShellArgs := strings.TrimSpace(control.ResolveEnvironmentString("task_terminal_shell_args", strings.TrimSpace(*taskTerminalShellArgs)))
 	resolvedAsyncTaskTimeout := control.ResolveEnvironmentDuration("async_task_timeout", *asyncTaskTimeout)
 	resolvedAsyncTaskMaxRetries := control.ResolveEnvironmentInt("async_task_max_retries", *asyncTaskMaxRetries)
+	resolvedAsyncTaskTriggerThreshold := control.ResolveEnvironmentDuration("async_task_trigger_threshold", *asyncTaskTriggerThreshold)
 	resolvedAsyncLongContentThreshold := control.ResolveEnvironmentInt("async_long_content_threshold", *asyncLongContentThreshold)
 	resolvedSessionMemoryTurns := control.ResolveEnvironmentInt("session_memory_turns", *sessionMemoryTurns)
 	resolvedSessionMemoryTTL := control.ResolveEnvironmentDuration("session_memory_ttl", *sessionMemoryTTL)
@@ -158,6 +160,7 @@ func main() {
 		"task_terminal_shell_args":           resolvedTaskTerminalShellArgs,
 		"async_task_timeout":                 resolvedAsyncTaskTimeout.String(),
 		"async_task_max_retries":             strconv.Itoa(resolvedAsyncTaskMaxRetries),
+		"async_task_trigger_threshold":       resolvedAsyncTaskTriggerThreshold.String(),
 		"async_long_content_threshold":       strconv.Itoa(resolvedAsyncLongContentThreshold),
 		"session_memory_turns":               strconv.Itoa(resolvedSessionMemoryTurns),
 		"session_memory_ttl":                 resolvedSessionMemoryTTL.String(),
@@ -252,12 +255,13 @@ func main() {
 		},
 	)
 	taskService, err := newTaskService(rootCtx, orchestrator, sessionHistory, idGen, logger, taskStore, taskapp.Options{
-		WorkerCount:          resolvedAsyncTaskWorkers,
-		Timeout:              resolvedAsyncTaskTimeout,
-		MaxRetries:           resolvedAsyncTaskMaxRetries,
-		LongContentThreshold: resolvedAsyncLongContentThreshold,
-		SummaryMemory:        taskSummaryRecorder,
-		ComplexityPredictor:  taskapp.NewCodexQuickComplexityPredictor(),
+		WorkerCount:           resolvedAsyncTaskWorkers,
+		Timeout:               resolvedAsyncTaskTimeout,
+		MaxRetries:            resolvedAsyncTaskMaxRetries,
+		AsyncTriggerThreshold: resolvedAsyncTaskTriggerThreshold,
+		LongContentThreshold:  resolvedAsyncLongContentThreshold,
+		SummaryMemory:         taskSummaryRecorder,
+		ComplexityPredictor:   taskapp.NewCodexQuickComplexityPredictor(),
 	})
 	if err != nil {
 		logger.Error("failed to initialize task service", slog.String("error", err.Error()))

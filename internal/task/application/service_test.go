@@ -105,8 +105,8 @@ func TestServiceShouldRunAsyncByRule(t *testing.T) {
 	if forcedAssessment.ExecutionMode != ExecutionModeAsync {
 		t.Fatalf("expected async execution mode, got %q", forcedAssessment.ExecutionMode)
 	}
-	if forcedAssessment.EstimatedDurationSeconds <= 30 {
-		t.Fatalf("expected forced estimate > 30s, got %d", forcedAssessment.EstimatedDurationSeconds)
+	if forcedAssessment.EstimatedDurationSeconds <= 300 {
+		t.Fatalf("expected forced estimate > 300s, got %d", forcedAssessment.EstimatedDurationSeconds)
 	}
 	disabled := testTaskMessage("s-1", "this is very long", map[string]string{MetadataTaskAsyncMode: "sync"})
 	disabledAssessment := svc.AssessComplexity(disabled)
@@ -118,23 +118,23 @@ func TestServiceShouldRunAsyncByRule(t *testing.T) {
 	}
 	artifact := testTaskMessage("s-1", "short", map[string]string{MetadataTaskArtifact: "true"})
 	artifactAssessment := svc.AssessComplexity(artifact)
-	if !svc.ShouldRunAsync(artifact) {
-		t.Fatalf("expected artifact flag to run async")
+	if svc.ShouldRunAsync(artifact) {
+		t.Fatalf("expected short artifact task to stay in current session")
 	}
-	if artifactAssessment.ComplexityLevel != ComplexityLevelHigh {
-		t.Fatalf("expected high complexity for artifact task, got %q", artifactAssessment.ComplexityLevel)
+	if artifactAssessment.ExecutionMode != ExecutionModeStreaming {
+		t.Fatalf("expected streaming mode for short artifact task, got %q", artifactAssessment.ExecutionMode)
 	}
-	longText := testTaskMessage("s-1", "long-content", nil)
+	longText := testTaskMessage("s-1", strings.Repeat("long-content ", 260), nil)
 	longTextAssessment := svc.AssessComplexity(longText)
 	if !svc.ShouldRunAsync(longText) {
 		t.Fatalf("expected long text to run async")
 	}
-	if longTextAssessment.EstimatedDurationSeconds <= 30 {
-		t.Fatalf("expected long-text estimate > 30s, got %d", longTextAssessment.EstimatedDurationSeconds)
+	if longTextAssessment.EstimatedDurationSeconds <= 300 {
+		t.Fatalf("expected long-text estimate > 300s, got %d", longTextAssessment.EstimatedDurationSeconds)
 	}
 }
 
-func TestServiceAssessComplexityFallbackDefaultsToAsync(t *testing.T) {
+func TestServiceAssessComplexityFallbackUsesRuleEstimate(t *testing.T) {
 	svc, err := NewService(
 		context.Background(),
 		&stubTaskOrchestrator{},
@@ -155,15 +155,18 @@ func TestServiceAssessComplexityFallbackDefaultsToAsync(t *testing.T) {
 	if !assessment.Fallback {
 		t.Fatalf("expected fallback assessment")
 	}
-	if assessment.ExecutionMode != ExecutionModeAsync {
-		t.Fatalf("expected async fallback execution mode, got %q", assessment.ExecutionMode)
+	if assessment.ExecutionMode != ExecutionModeStreaming {
+		t.Fatalf("expected streaming fallback execution mode, got %q", assessment.ExecutionMode)
 	}
-	if assessment.EstimatedDurationSeconds <= 30 {
-		t.Fatalf("expected fallback estimate > 30s, got %d", assessment.EstimatedDurationSeconds)
+	if assessment.EstimatedDurationSeconds >= 300 {
+		t.Fatalf("expected fallback estimate below 300s, got %d", assessment.EstimatedDurationSeconds)
+	}
+	if assessment.TaskSummary == "" || assessment.TaskApproach == "" {
+		t.Fatalf("expected fallback summary and approach, got %+v", assessment)
 	}
 }
 
-func TestServiceAssessComplexityDocumentIntentRunsAsync(t *testing.T) {
+func TestServiceAssessComplexityDocumentIntentStaysStreamingWhenBelowThreshold(t *testing.T) {
 	svc, err := NewService(
 		context.Background(),
 		&stubTaskOrchestrator{},
@@ -179,14 +182,14 @@ func TestServiceAssessComplexityDocumentIntentRunsAsync(t *testing.T) {
 
 	msg := testTaskMessage("s-doc", "生成一篇介绍 ngram 的文档", nil)
 	assessment := svc.AssessComplexity(msg)
-	if assessment.ExecutionMode != ExecutionModeAsync {
-		t.Fatalf("expected async execution mode, got %q", assessment.ExecutionMode)
+	if assessment.ExecutionMode != ExecutionModeStreaming {
+		t.Fatalf("expected streaming execution mode, got %q", assessment.ExecutionMode)
 	}
-	if !svc.ShouldRunAsync(msg) {
-		t.Fatalf("expected document-generation intent to run async")
+	if svc.ShouldRunAsync(msg) {
+		t.Fatalf("expected short document-generation intent to stay streaming")
 	}
-	if assessment.EstimatedDurationSeconds <= 30 {
-		t.Fatalf("expected estimate > 30s for document-generation intent, got %d", assessment.EstimatedDurationSeconds)
+	if assessment.EstimatedDurationSeconds >= 300 {
+		t.Fatalf("expected estimate below 300s for short document-generation intent, got %d", assessment.EstimatedDurationSeconds)
 	}
 }
 
@@ -201,6 +204,8 @@ func TestServiceAssessComplexityUsesPredictorResult(t *testing.T) {
 		Options{
 			ComplexityPredictor: &stubComplexityPredictor{
 				assessment: ComplexityAssessment{
+					TaskSummary:              "整理预测结果",
+					TaskApproach:             "先读取输入，再直接返回结论。",
 					EstimatedDurationSeconds: 14,
 					ComplexityLevel:          ComplexityLevelLow,
 					ExecutionMode:            ExecutionModeStreaming,
@@ -223,9 +228,12 @@ func TestServiceAssessComplexityUsesPredictorResult(t *testing.T) {
 	if assessment.ComplexityLevel != ComplexityLevelLow {
 		t.Fatalf("expected low complexity from predictor, got %q", assessment.ComplexityLevel)
 	}
+	if assessment.TaskSummary != "整理预测结果" || assessment.TaskApproach == "" {
+		t.Fatalf("expected predictor summary and approach, got %+v", assessment)
+	}
 }
 
-func TestServiceAssessComplexityPredictorFailureFallsBackToAsync(t *testing.T) {
+func TestServiceAssessComplexityPredictorFailureFallsBackToAsyncForLargeTask(t *testing.T) {
 	svc, err := NewService(
 		context.Background(),
 		&stubTaskOrchestrator{},
@@ -241,15 +249,15 @@ func TestServiceAssessComplexityPredictorFailureFallsBackToAsync(t *testing.T) {
 		t.Fatalf("new service: %v", err)
 	}
 
-	assessment := svc.AssessComplexity(testTaskMessage("s-predictor-fallback", "hello", nil))
+	assessment := svc.AssessComplexity(testTaskMessage("s-predictor-fallback", strings.Repeat("very long task description ", 120), nil))
 	if !assessment.Fallback {
 		t.Fatalf("expected fallback assessment when predictor fails")
 	}
 	if assessment.ExecutionMode != ExecutionModeAsync {
 		t.Fatalf("expected async fallback execution mode, got %q", assessment.ExecutionMode)
 	}
-	if assessment.EstimatedDurationSeconds <= 30 {
-		t.Fatalf("expected fallback estimate > 30s, got %d", assessment.EstimatedDurationSeconds)
+	if assessment.EstimatedDurationSeconds <= 300 {
+		t.Fatalf("expected fallback estimate > 300s, got %d", assessment.EstimatedDurationSeconds)
 	}
 }
 

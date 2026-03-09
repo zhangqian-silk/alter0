@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	shareddomain "alter0/internal/shared/domain"
@@ -15,6 +16,8 @@ const (
 	MetadataExecutionMode            = "execution_mode"
 	MetadataComplexityFallback       = "complexity_fallback"
 	MetadataComplexityPredictorMode  = "alter0.complexity.predictor_mode"
+	MetadataTaskSummary              = "task_summary"
+	MetadataTaskApproach             = "task_approach"
 
 	ExecutionModeStreaming = "streaming"
 	ExecutionModeAsync     = "async"
@@ -23,13 +26,18 @@ const (
 	ComplexityLevelMedium = "medium"
 	ComplexityLevelHigh   = "high"
 
-	defaultAsyncRouteThresholdSeconds = 30
-	defaultFallbackEstimateSeconds    = 45
+	defaultAsyncRouteThreshold        = 5 * time.Minute
+	defaultAsyncRouteThresholdSeconds = int(defaultAsyncRouteThreshold / time.Second)
+	defaultMinimumEstimateSeconds     = 10
+	defaultMaximumEstimateSeconds     = 60 * 60
+	defaultArtifactDurationBoost      = 90
 )
 
 var errComplexityPredictorUnavailable = errors.New("complexity predictor unavailable")
 
 type ComplexityAssessment struct {
+	TaskSummary              string `json:"task_summary,omitempty"`
+	TaskApproach             string `json:"task_approach,omitempty"`
 	EstimatedDurationSeconds int    `json:"estimated_duration_seconds"`
 	ComplexityLevel          string `json:"complexity_level"`
 	ExecutionMode            string `json:"execution_mode"`
@@ -43,14 +51,15 @@ type ComplexityPredictor interface {
 func (s *Service) AssessComplexity(msg shareddomain.UnifiedMessage) ComplexityAssessment {
 	assessment, err := s.predictComplexity(msg)
 	if err != nil {
-		return ComplexityAssessment{
-			EstimatedDurationSeconds: defaultFallbackEstimateSeconds,
-			ComplexityLevel:          ComplexityLevelHigh,
-			ExecutionMode:            ExecutionModeAsync,
-			Fallback:                 true,
-		}
+		assessment = fallbackComplexityAssessment(
+			msg,
+			s.options.LongContentThreshold,
+			s.asyncTriggerThresholdSeconds(),
+			s.options.ArtifactKeywords,
+		)
+		assessment.Fallback = true
 	}
-	return normalizeComplexityAssessment(assessment)
+	return s.finalizeComplexityAssessment(msg, assessment)
 }
 
 func (s *Service) predictComplexity(msg shareddomain.UnifiedMessage) (ComplexityAssessment, error) {
@@ -61,72 +70,115 @@ func (s *Service) predictComplexity(msg shareddomain.UnifiedMessage) (Complexity
 	trimmed := strings.TrimSpace(msg.Content)
 	lowerContent := strings.ToLower(trimmed)
 	taskType := strings.ToLower(strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskTypeKey)))
-	mode := strings.ToLower(strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskAsyncMode)))
 	hasArtifactHint := hasArtifactSignal(msg.Metadata, taskType, lowerContent, s.options.ArtifactKeywords)
+	triggerThresholdSeconds := s.asyncTriggerThresholdSeconds()
 
-	assessment := ComplexityAssessment{}
 	if s.options.ComplexityPredictor != nil {
 		predicted, err := s.options.ComplexityPredictor.Predict(context.Background(), msg)
 		if err != nil {
 			return ComplexityAssessment{}, errComplexityPredictorUnavailable
 		}
-		assessment = normalizeComplexityAssessment(predicted)
-	} else {
-		assessment = predictComplexityByRules(trimmed, hasArtifactHint, s.options.LongContentThreshold)
+		return normalizeComplexityAssessment(
+			predicted,
+			trimmed,
+			hasArtifactHint,
+			s.options.LongContentThreshold,
+			triggerThresholdSeconds,
+		), nil
 	}
 
-	estimated := assessment.EstimatedDurationSeconds
-	if estimated <= 0 {
-		estimated = estimateDurationSeconds(trimmed, s.options.LongContentThreshold)
-	}
-	executionMode := strings.ToLower(strings.TrimSpace(assessment.ExecutionMode))
-	if hasArtifactHint && estimated <= defaultAsyncRouteThresholdSeconds {
-		estimated = defaultAsyncRouteThresholdSeconds + 12
-	}
+	return predictComplexityByRules(
+		trimmed,
+		hasArtifactHint,
+		s.options.LongContentThreshold,
+		triggerThresholdSeconds,
+	), nil
+}
+
+func (s *Service) finalizeComplexityAssessment(
+	msg shareddomain.UnifiedMessage,
+	assessment ComplexityAssessment,
+) ComplexityAssessment {
+	trimmed := strings.TrimSpace(msg.Content)
+	lowerContent := strings.ToLower(trimmed)
+	taskType := strings.ToLower(strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskTypeKey)))
+	mode := strings.ToLower(strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskAsyncMode)))
+	hasArtifactHint := hasArtifactSignal(msg.Metadata, taskType, lowerContent, s.options.ArtifactKeywords)
+	triggerThresholdSeconds := s.asyncTriggerThresholdSeconds()
+
+	assessment = normalizeComplexityAssessment(
+		assessment,
+		trimmed,
+		hasArtifactHint,
+		s.options.LongContentThreshold,
+		triggerThresholdSeconds,
+	)
 
 	switch mode {
 	case "sync", "inline", "off", "disable":
-		executionMode = ExecutionModeStreaming
-		if estimated > defaultAsyncRouteThresholdSeconds {
-			estimated = defaultAsyncRouteThresholdSeconds - 2
+		assessment.ExecutionMode = ExecutionModeStreaming
+		if assessment.EstimatedDurationSeconds >= triggerThresholdSeconds {
+			assessment.EstimatedDurationSeconds = maxInt(defaultMinimumEstimateSeconds, triggerThresholdSeconds-1)
 		}
 	case "force", "async", "background":
-		executionMode = ExecutionModeAsync
-		if estimated <= defaultAsyncRouteThresholdSeconds {
-			estimated = defaultAsyncRouteThresholdSeconds + 15
+		assessment.ExecutionMode = ExecutionModeAsync
+		if assessment.EstimatedDurationSeconds <= triggerThresholdSeconds {
+			assessment.EstimatedDurationSeconds = triggerThresholdSeconds + 60
 		}
 	default:
-		if estimated > defaultAsyncRouteThresholdSeconds || hasArtifactHint || executionMode == ExecutionModeAsync {
-			executionMode = ExecutionModeAsync
-			if estimated <= defaultAsyncRouteThresholdSeconds {
-				estimated = defaultAsyncRouteThresholdSeconds + 1
-			}
+		if assessment.EstimatedDurationSeconds > triggerThresholdSeconds {
+			assessment.ExecutionMode = ExecutionModeAsync
 		} else {
-			executionMode = ExecutionModeStreaming
+			assessment.ExecutionMode = ExecutionModeStreaming
 		}
 	}
 
-	return ComplexityAssessment{
-		EstimatedDurationSeconds: estimated,
-		ComplexityLevel:          resolveComplexityLevel(estimated),
-		ExecutionMode:            executionMode,
-	}, nil
+	assessment.ComplexityLevel = resolveComplexityLevel(
+		assessment.EstimatedDurationSeconds,
+		triggerThresholdSeconds,
+	)
+	return assessment
 }
 
-func predictComplexityByRules(content string, hasArtifactHint bool, threshold int) ComplexityAssessment {
-	estimated := estimateDurationSeconds(content, threshold)
+func fallbackComplexityAssessment(
+	msg shareddomain.UnifiedMessage,
+	threshold int,
+	asyncThresholdSeconds int,
+	artifactKeywords []string,
+) ComplexityAssessment {
+	trimmed := strings.TrimSpace(msg.Content)
+	lowerContent := strings.ToLower(trimmed)
+	taskType := strings.ToLower(strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskTypeKey)))
+	hasArtifactHint := hasArtifactSignal(msg.Metadata, taskType, lowerContent, artifactKeywords)
+	return predictComplexityByRules(trimmed, hasArtifactHint, threshold, asyncThresholdSeconds)
+}
+
+func predictComplexityByRules(
+	content string,
+	hasArtifactHint bool,
+	threshold int,
+	asyncThresholdSeconds int,
+) ComplexityAssessment {
+	estimated := estimateDurationSeconds(content, threshold, hasArtifactHint, asyncThresholdSeconds)
 	executionMode := ExecutionModeStreaming
-	if hasArtifactHint && estimated <= defaultAsyncRouteThresholdSeconds {
-		estimated = defaultAsyncRouteThresholdSeconds + 12
-	}
-	if estimated > defaultAsyncRouteThresholdSeconds || hasArtifactHint {
+	if estimated > asyncThresholdSeconds {
 		executionMode = ExecutionModeAsync
 	}
 	return ComplexityAssessment{
+		TaskSummary:              buildTaskSummaryName(content),
+		TaskApproach:             buildTaskApproach(content, hasArtifactHint),
 		EstimatedDurationSeconds: estimated,
-		ComplexityLevel:          resolveComplexityLevel(estimated),
+		ComplexityLevel:          resolveComplexityLevel(estimated, asyncThresholdSeconds),
 		ExecutionMode:            executionMode,
 	}
+}
+
+func (s *Service) asyncTriggerThresholdSeconds() int {
+	threshold := int(s.options.AsyncTriggerThreshold / time.Second)
+	if threshold <= 0 {
+		return defaultAsyncRouteThresholdSeconds
+	}
+	return threshold
 }
 
 func isComplexityPredictorUnavailable(msg shareddomain.UnifiedMessage) bool {
@@ -219,55 +271,105 @@ func hasFileGenerationIntent(lowerContent string) bool {
 	return false
 }
 
-func estimateDurationSeconds(content string, threshold int) int {
+func estimateDurationSeconds(
+	content string,
+	threshold int,
+	hasArtifactHint bool,
+	asyncThresholdSeconds int,
+) int {
 	if threshold <= 0 {
 		threshold = defaultLongContentThreshold
 	}
+	if asyncThresholdSeconds <= 0 {
+		asyncThresholdSeconds = defaultAsyncRouteThresholdSeconds
+	}
+
 	trimmed := strings.TrimSpace(content)
 	runeCount := utf8.RuneCountInString(trimmed)
 	if runeCount <= 0 {
-		return 8
+		return defaultMinimumEstimateSeconds
 	}
 
-	estimate := 8 + runeCount/12
-	if runeCount >= threshold && estimate <= defaultAsyncRouteThresholdSeconds {
-		estimate = defaultAsyncRouteThresholdSeconds + 1 + (runeCount-threshold)/18
+	estimate := defaultMinimumEstimateSeconds + runeCount/6
+	if runeCount >= threshold {
+		estimate += 30 + (runeCount-threshold)/4
 	}
-	if strings.Contains(trimmed, "\n") {
-		estimate += 3
+
+	lineBreaks := strings.Count(trimmed, "\n")
+	if lineBreaks > 0 {
+		estimate += 12 + minInt(lineBreaks, 12)*4
 	}
 	if strings.Contains(trimmed, "```") {
-		estimate += 6
+		estimate += 45
 	}
-	if estimate > 180 {
-		estimate = 180
+	if strings.Contains(trimmed, "http://") || strings.Contains(trimmed, "https://") {
+		estimate += 25
 	}
-	if estimate < 6 {
-		estimate = 6
+	if hasArtifactHint {
+		estimate += defaultArtifactDurationBoost
+	}
+	if runeCount >= threshold*4 {
+		estimate += asyncThresholdSeconds / 3
+	}
+
+	if estimate > defaultMaximumEstimateSeconds {
+		estimate = defaultMaximumEstimateSeconds
+	}
+	if estimate < defaultMinimumEstimateSeconds {
+		estimate = defaultMinimumEstimateSeconds
 	}
 	return estimate
 }
 
-func resolveComplexityLevel(estimatedSeconds int) string {
+func resolveComplexityLevel(estimatedSeconds int, asyncThresholdSeconds int) string {
+	if asyncThresholdSeconds <= 0 {
+		asyncThresholdSeconds = defaultAsyncRouteThresholdSeconds
+	}
+
+	lowThreshold := asyncThresholdSeconds / 3
+	if lowThreshold < 30 {
+		lowThreshold = 30
+	}
+	if lowThreshold > 90 {
+		lowThreshold = 90
+	}
+
 	switch {
-	case estimatedSeconds <= 15:
+	case estimatedSeconds <= lowThreshold:
 		return ComplexityLevelLow
-	case estimatedSeconds <= defaultAsyncRouteThresholdSeconds:
+	case estimatedSeconds <= asyncThresholdSeconds:
 		return ComplexityLevelMedium
 	default:
 		return ComplexityLevelHigh
 	}
 }
 
-func normalizeComplexityAssessment(assessment ComplexityAssessment) ComplexityAssessment {
+func normalizeComplexityAssessment(
+	assessment ComplexityAssessment,
+	content string,
+	hasArtifactHint bool,
+	threshold int,
+	asyncThresholdSeconds int,
+) ComplexityAssessment {
 	if assessment.EstimatedDurationSeconds <= 0 {
-		assessment.EstimatedDurationSeconds = 10
+		assessment.EstimatedDurationSeconds = estimateDurationSeconds(
+			content,
+			threshold,
+			hasArtifactHint,
+			asyncThresholdSeconds,
+		)
 	}
-	switch strings.ToLower(strings.TrimSpace(assessment.ComplexityLevel)) {
-	case ComplexityLevelLow, ComplexityLevelMedium, ComplexityLevelHigh:
-	default:
-		assessment.ComplexityLevel = resolveComplexityLevel(assessment.EstimatedDurationSeconds)
+	if assessment.EstimatedDurationSeconds > defaultMaximumEstimateSeconds {
+		assessment.EstimatedDurationSeconds = defaultMaximumEstimateSeconds
 	}
+	if assessment.EstimatedDurationSeconds < defaultMinimumEstimateSeconds {
+		assessment.EstimatedDurationSeconds = defaultMinimumEstimateSeconds
+	}
+
+	assessment.TaskSummary = normalizeAssessmentSummary(assessment.TaskSummary, content)
+	assessment.TaskApproach = normalizeAssessmentApproach(assessment.TaskApproach, content, hasArtifactHint)
+	assessment.ComplexityLevel = resolveComplexityLevel(assessment.EstimatedDurationSeconds, asyncThresholdSeconds)
+
 	switch strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) {
 	case ExecutionModeAsync:
 		assessment.ExecutionMode = ExecutionModeAsync
@@ -275,4 +377,57 @@ func normalizeComplexityAssessment(assessment ComplexityAssessment) ComplexityAs
 		assessment.ExecutionMode = ExecutionModeStreaming
 	}
 	return assessment
+}
+
+func normalizeAssessmentSummary(summary string, content string) string {
+	normalized := strings.TrimSpace(summary)
+	if normalized != "" {
+		return normalized
+	}
+	return buildTaskSummaryName(content)
+}
+
+func normalizeAssessmentApproach(approach string, content string, hasArtifactHint bool) string {
+	normalized := strings.TrimSpace(approach)
+	if normalized != "" {
+		return normalized
+	}
+	return buildTaskApproach(content, hasArtifactHint)
+}
+
+func buildTaskSummaryName(content string) string {
+	snippet := strings.TrimSpace(summarySnippet(content, 24))
+	snippet = strings.Trim(snippet, " \t\r\n,.;:!?，。；：！？'\"`()[]{}<>")
+	if snippet == "" {
+		return "处理当前请求"
+	}
+	return "处理「" + snippet + "」"
+}
+
+func buildTaskApproach(content string, hasArtifactHint bool) string {
+	trimmed := strings.TrimSpace(content)
+	switch {
+	case hasArtifactHint:
+		return "先梳理需求与交付边界，再分步执行生成或修改，最后校验结果并整理可交付物。"
+	case strings.Contains(trimmed, "```") || strings.Contains(trimmed, "\n"):
+		return "先分析上下文与约束，再拆分主要步骤执行，最后汇总结果与后续动作。"
+	case utf8.RuneCountInString(trimmed) >= 240:
+		return "先提炼目标和关键限制，再按优先级逐步处理，最后输出精简结论。"
+	default:
+		return "直接理解目标并完成必要操作，随后返回结果。"
+	}
+}
+
+func minInt(left int, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func maxInt(left int, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }

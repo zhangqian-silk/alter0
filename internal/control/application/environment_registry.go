@@ -127,6 +127,20 @@ func defaultEnvironmentDefinitions() []controldomain.EnvironmentDefinition {
 			},
 		},
 		{
+			Key:          "async_task_trigger_threshold",
+			Name:         "Async Task Trigger Threshold",
+			Module:       "Async Tasks",
+			Description:  "异步任务分流的预计耗时阈值",
+			Type:         controldomain.EnvironmentValueTypeDuration,
+			DefaultValue: "5m",
+			ApplyMode:    controldomain.EnvironmentApplyModeRestart,
+			Validation: controldomain.EnvironmentValidation{
+				Required: true,
+				Min:      "10s",
+				Max:      "24h",
+			},
+		},
+		{
 			Key:          "async_long_content_threshold",
 			Name:         "Async Long Content Threshold",
 			Module:       "Async Tasks",
