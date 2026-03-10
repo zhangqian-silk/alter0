@@ -41,6 +41,25 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.workspace()).toContainText("Running");
   });
 
+  test("keeps the terminal composer anchored to the bottom bar", async ({ page, request }) => {
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "layout" });
+
+    const chatScreen = terminalPage.chatScreen();
+    const composerForm = terminalPage.composer().form();
+    const submitButton = terminalPage.composer().submitButton();
+
+    const chatBox = await chatScreen.boundingBox();
+    const formBox = await composerForm.boundingBox();
+    const buttonBox = await submitButton.boundingBox();
+
+    expect(chatBox).not.toBeNull();
+    expect(formBox).not.toBeNull();
+    expect(buttonBox).not.toBeNull();
+    expect(formBox?.height ?? 0).toBeLessThan(96);
+    expect(buttonBox?.height ?? 0).toBeLessThan(56);
+    expect((chatBox?.height ?? 0)).toBeGreaterThan((formBox?.height ?? 0) * 4);
+  });
+
   test("keeps input focus and draft across polling refresh", async ({ page, request }) => {
     const { session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "focus" });
 

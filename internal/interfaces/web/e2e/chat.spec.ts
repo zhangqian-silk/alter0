@@ -21,6 +21,22 @@ import {
 } from "./helpers/scenarios/chat";
 
 test.describe("Chat composer", () => {
+  test("keeps empty session hint near the session list header", async ({ page }) => {
+    await openChatWorkspace(page);
+
+    const historyPanel = page.locator("#sessionHistoryPanel");
+    const emptyHint = page.locator("#sessionEmpty");
+
+    await expect(emptyHint).toBeVisible();
+
+    const panelBox = await historyPanel.boundingBox();
+    const emptyBox = await emptyHint.boundingBox();
+
+    expect(panelBox).not.toBeNull();
+    expect(emptyBox).not.toBeNull();
+    expect((emptyBox?.y ?? 0) - (panelBox?.y ?? 0)).toBeLessThan(120);
+  });
+
   test("prompts before leaving with unsent content", async ({ page }) => {
     const { appShellPage, composer } = await openChatWorkspaceWithDraft(page, "unsent draft");
     await expectComposerState(composer, { draft: "dirty" });
