@@ -33,7 +33,25 @@ const (
 	workspaceTasksDirName            = "tasks"
 	taskIDMetadataKey                = "task_id"
 	sessionIDMetadataFallback        = "session_id"
+	codexAddDirsMetadataKey               = "codex_add_dirs"
+	codexAddDirsEnvKey                    = "ALTER0_CODEX_ADD_DIRS"
+	codexAddDirRulesMetadataKey           = "codex_add_dir_rules"
+	codexAddDirRulesEnvKey                = "ALTER0_CODEX_ADD_DIR_RULES"
 )
+
+type codexAddDirRule struct {
+	Path    string `json:"path"`
+	Enabled *bool  `json:"enabled,omitempty"`
+}
+
+var defaultAddDirRules = []codexAddDirRule{
+	{Path: "/bin", Enabled: boolPtr(true)},
+	{Path: "/usr/bin", Enabled: boolPtr(true)},
+	{Path: "/usr/local/bin", Enabled: boolPtr(true)},
+	{Path: "/usr/sbin", Enabled: boolPtr(true)},
+	{Path: "/sbin", Enabled: boolPtr(true)},
+	{Path: "/tmp", Enabled: boolPtr(true)},
+}
 
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
 
@@ -108,9 +126,11 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		"--color", "never",
 		"--skip-git-repo-check",
 		"--sandbox", resolveCodexSandboxMode(metadata),
-		"-o", outputPath,
-		renderedPrompt,
 	}
+	for _, dir := range resolveCodexAddDirs(metadata) {
+		args = append(args, "--add-dir", dir)
+	}
+	args = append(args, "-o", outputPath, renderedPrompt)
 	cmd := runner(ctx, commandName, args...)
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
@@ -175,10 +195,11 @@ func (p *CodexCLIProcessor) ProcessStream(
 		"--color", "never",
 		"--skip-git-repo-check",
 		"--sandbox", resolveCodexSandboxMode(metadata),
-		"--json",
-		"--progress-cursor",
-		renderedPrompt,
 	}
+	for _, dir := range resolveCodexAddDirs(metadata) {
+		args = append(args, "--add-dir", dir)
+	}
+	args = append(args, "--json", "--progress-cursor", renderedPrompt)
 	cmd := runner(ctx, commandName, args...)
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
@@ -357,6 +378,79 @@ func resolveCodexSandboxMode(metadata map[string]string) string {
 	default:
 		return defaultCodexSandboxMode
 	}
+}
+
+func resolveCodexAddDirs(metadata map[string]string) []string {
+	enabledByPath := make(map[string]bool)
+	order := make([]string, 0)
+
+	addRule := func(path string, enabled bool) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if _, ok := enabledByPath[path]; !ok {
+			order = append(order, path)
+		}
+		enabledByPath[path] = enabled
+	}
+
+	for _, rule := range defaultAddDirRules {
+		enabled := true
+		if rule.Enabled != nil {
+			enabled = *rule.Enabled
+		}
+		addRule(rule.Path, enabled)
+	}
+
+	for _, rule := range resolveConfiguredAddDirRules(metadata) {
+		enabled := true
+		if rule.Enabled != nil {
+			enabled = *rule.Enabled
+		}
+		addRule(rule.Path, enabled)
+	}
+
+	raw := strings.TrimSpace(firstNonEmpty(
+		metadataValue(metadata, codexAddDirsMetadataKey),
+		os.Getenv(codexAddDirsEnvKey),
+	))
+	if raw != "" {
+		for _, part := range strings.Split(raw, ",") {
+			addRule(part, true)
+		}
+	}
+
+	result := make([]string, 0, len(order))
+	for _, path := range order {
+		if !enabledByPath[path] {
+			continue
+		}
+		if _, err := os.Stat(path); err == nil {
+			result = append(result, path)
+		}
+	}
+	return result
+}
+
+func resolveConfiguredAddDirRules(metadata map[string]string) []codexAddDirRule {
+	raw := strings.TrimSpace(firstNonEmpty(
+		metadataValue(metadata, codexAddDirRulesMetadataKey),
+		os.Getenv(codexAddDirRulesEnvKey),
+	))
+	if raw == "" {
+		return nil
+	}
+	var rules []codexAddDirRule
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return nil
+	}
+	return rules
+}
+
+func boolPtr(value bool) *bool {
+	v := value
+	return &v
 }
 
 func resolveCodexWorkspaceMode(metadata map[string]string) string {
