@@ -3449,7 +3449,7 @@ function controlTaskListQuery(filters = {}, page = 1, pageSize = 20) {
   return `/api/control/tasks?${params.join("&")}`;
 }
 
-function renderControlTaskList(payload) {
+function renderControlTaskList(payload, activeTaskID = "") {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   if (!items.length) {
     return `<div class="task-empty-state">
@@ -3460,6 +3460,7 @@ function renderControlTaskList(payload) {
   }
   return items.map((item) => {
     const taskID = typeof item?.task_id === "string" ? item.task_id : "-";
+    const active = taskID && taskID === activeTaskID;
     const sessionID = typeof item?.session_id === "string" ? item.session_id : "-";
     const status = typeof item?.status === "string" ? item.status : "";
     const triggerType = typeof item?.trigger_type === "string" ? item.trigger_type : "";
@@ -3471,7 +3472,7 @@ function renderControlTaskList(payload) {
     const cronRow = triggerType === "cron"
       ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>`
       : "";
-    return `<article class="task-summary-card" data-control-task-id="${escapeHTML(taskID)}">
+    return `<article class="task-summary-card ${active ? "active" : ""}" data-control-task-id="${escapeHTML(taskID)}" ${active ? 'aria-current="true"' : ""}>
       <header class="task-summary-head">
         <div class="task-summary-id-wrap">
           <h5 class="task-summary-id" title="${escapeHTML(taskID)}">${escapeHTML(taskID)}</h5>
@@ -3629,6 +3630,7 @@ function bindControlTaskView(container, initialPayload) {
   const listNode = view.querySelector("[data-control-task-list]");
   const paginationNode = view.querySelector("[data-control-task-pagination]");
   const form = view.querySelector("[data-control-task-filter-form]");
+  const layoutNode = view.querySelector("[data-control-task-layout]");
   const advancedFiltersNode = view.querySelector("[data-control-task-advanced]");
   const advancedToggleButton = view.querySelector("[data-control-task-advanced-toggle]");
   const drawer = view.querySelector("[data-control-task-drawer]");
@@ -3677,6 +3679,20 @@ function bindControlTaskView(container, initialPayload) {
     paginationNode.innerHTML = `<div class="task-summary-pagination"><p><span>${t("route.tasks.filter.applying")}</span></p></div>`;
   };
 
+  const syncActiveTaskCards = () => {
+    const cards = view.querySelectorAll("[data-control-task-id]");
+    cards.forEach((card) => {
+      const taskID = normalizeText(card.getAttribute("data-control-task-id") || "");
+      const active = Boolean(localState.activeTaskID) && taskID === localState.activeTaskID;
+      card.classList.toggle("active", active);
+      if (active) {
+        card.setAttribute("aria-current", "true");
+      } else {
+        card.removeAttribute("aria-current");
+      }
+    });
+  };
+
   syncAdvancedToggle();
 
   if (advancedToggleButton) {
@@ -3705,8 +3721,13 @@ function bindControlTaskView(container, initialPayload) {
     if (!drawer) {
       return;
     }
+    view.classList.remove("is-detail-open");
     drawer.classList.remove("open");
     drawer.hidden = true;
+    syncActiveTaskCards();
+    if (drawerBody) {
+      drawerBody.innerHTML = t("route.tasks.drawer.empty");
+    }
   };
 
   const openDrawer = () => {
@@ -3714,8 +3735,13 @@ function bindControlTaskView(container, initialPayload) {
       return;
     }
     drawer.hidden = false;
+    view.classList.add("is-detail-open");
     requestAnimationFrame(() => {
       drawer.classList.add("open");
+      if (window.matchMedia("(max-width: 1100px)").matches) {
+        const target = layoutNode || drawer;
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     });
   };
 
@@ -3914,8 +3940,9 @@ function bindControlTaskView(container, initialPayload) {
   };
 
   const paint = (payload) => {
-    listNode.innerHTML = renderControlTaskList(payload);
+    listNode.innerHTML = renderControlTaskList(payload, localState.activeTaskID);
     paginationNode.innerHTML = renderControlTaskPagination(payload);
+    syncActiveTaskCards();
   };
 
   const loadList = async () => {
@@ -4023,6 +4050,7 @@ function bindControlTaskView(container, initialPayload) {
     const displayTaskID = normalizeText(options.displayTaskID || localState.terminalAnchorTaskID || taskID);
     const payload = await fetchJSON(`/api/control/tasks/${encodeURIComponent(taskID)}`);
     drawerBody.innerHTML = renderControlTaskDetail(payload, displayTaskID);
+    syncActiveTaskCards();
     localState.logStreamNode = null;
     localState.logTouchStartY = null;
     setTerminalInputState(localState.terminalSubmitting);
@@ -4074,6 +4102,7 @@ function bindControlTaskView(container, initialPayload) {
       localState.filters.startAt = parseDateTimeFilter(formData.get("start_at"));
       localState.filters.endAt = parseDateTimeFilter(formData.get("end_at"));
       localState.page = 1;
+      closeDrawer();
       await loadList();
     });
 
@@ -4095,6 +4124,7 @@ function bindControlTaskView(container, initialPayload) {
         localState.page = 1;
         localState.advancedOpen = false;
         syncAdvancedToggle();
+        closeDrawer();
         await loadList();
       });
     }
@@ -4147,6 +4177,7 @@ function bindControlTaskView(container, initialPayload) {
         return;
       }
       localState.page += 1;
+      closeDrawer();
       await loadList();
       return;
     }
@@ -4191,8 +4222,8 @@ function bindControlTaskView(container, initialPayload) {
 async function loadControlTasksView(container) {
   const payload = await fetchJSON(controlTaskListQuery({}, 1, 20));
   container.innerHTML = `<section class="control-task-view" data-control-task-view>
-    <form class="task-filter-form page-filter-form" data-control-task-filter-form>
-      <div class="task-filter-primary-row">
+    <form class="task-filter-form page-filter-form control-task-filter-form" data-control-task-filter-form>
+      <div class="task-filter-primary-row control-task-filter-primary">
         <label><span>${t("route.tasks.filter.session")}</span><input type="text" name="session_id" placeholder="session-123"></label>
         <label><span>${t("route.tasks.filter.status")}</span>
           <select name="status">
@@ -4213,14 +4244,14 @@ async function loadControlTasksView(container) {
           </select>
         </label>
       </div>
-      <div class="task-filter-primary-actions">
+      <div class="task-filter-primary-actions control-task-filter-toolbar">
         <button class="task-filter-advanced-toggle" type="button" data-control-task-advanced-toggle aria-expanded="false">${renderAdvancedToggleLabel(false)}</button>
         <div class="task-filter-actions">
           <button class="task-filter-apply" type="submit">${t("route.tasks.filter.apply")}</button>
           <button class="task-filter-reset" type="button" data-control-task-filter-reset>${t("route.tasks.filter.reset")}</button>
         </div>
       </div>
-      <div class="task-filter-advanced" data-control-task-advanced hidden>
+      <div class="task-filter-advanced control-task-filter-advanced-panel" data-control-task-advanced hidden>
         <label><span>${t("route.tasks.filter.channel_type")}</span>
           <select name="channel_type">
             <option value="">-</option>
@@ -4236,17 +4267,20 @@ async function loadControlTasksView(container) {
         <label><span>${t("route.tasks.filter.end_at")}</span><input type="datetime-local" name="end_at"></label>
       </div>
     </form>
-    <div class="task-summary-list" data-control-task-list></div>
-    <div class="task-summary-pagination-wrap" data-control-task-pagination></div>
-    <section class="control-task-drawer" data-control-task-drawer hidden>
-      <button class="control-task-drawer-backdrop" type="button" aria-label="close" data-control-task-close></button>
-      <aside class="control-task-drawer-panel">
-        <header class="control-task-drawer-head">
-          <h4>${t("route.tasks.drawer.title")}</h4>
-          <button class="task-summary-next" type="button" data-control-task-close>${t("route.tasks.drawer.close")}</button>
-        </header>
-        <div class="control-task-drawer-body" data-control-task-drawer-body>${t("route.tasks.drawer.empty")}</div>
-      </aside>
+    <section class="control-task-layout" data-control-task-layout>
+      <div class="control-task-main">
+        <div class="task-summary-list" data-control-task-list></div>
+        <div class="task-summary-pagination-wrap" data-control-task-pagination></div>
+      </div>
+      <section class="control-task-drawer" data-control-task-drawer hidden>
+        <aside class="control-task-drawer-panel">
+          <header class="control-task-drawer-head">
+            <h4>${t("route.tasks.drawer.title")}</h4>
+            <button class="task-summary-next" type="button" data-control-task-close>${t("route.tasks.drawer.close")}</button>
+          </header>
+          <div class="control-task-drawer-body" data-control-task-drawer-body>${t("route.tasks.drawer.empty")}</div>
+        </aside>
+      </section>
     </section>
   </section>`;
   bindControlTaskView(container, payload);

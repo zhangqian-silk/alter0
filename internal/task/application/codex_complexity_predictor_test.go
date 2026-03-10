@@ -9,13 +9,19 @@ import (
 )
 
 func TestParseCodexComplexityOutputParsesJSONFence(t *testing.T) {
-	raw := "```json\n{\"estimated_duration_seconds\":42,\"complexity_level\":\"high\",\"execution_mode\":\"async\"}\n```"
+	raw := "```json\n{\"task_summary\":\"生成发布计划\",\"task_approach\":\"先梳理需求，再输出步骤。\",\"estimated_duration_seconds\":420,\"complexity_level\":\"high\",\"execution_mode\":\"async\"}\n```"
 	assessment, err := parseCodexComplexityOutput(raw)
 	if err != nil {
 		t.Fatalf("parse output: %v", err)
 	}
-	if assessment.EstimatedDurationSeconds != 42 {
-		t.Fatalf("expected estimate 42, got %d", assessment.EstimatedDurationSeconds)
+	if assessment.TaskSummary != "生成发布计划" {
+		t.Fatalf("expected task_summary parsed, got %q", assessment.TaskSummary)
+	}
+	if assessment.TaskApproach == "" {
+		t.Fatalf("expected task_approach parsed, got %+v", assessment)
+	}
+	if assessment.EstimatedDurationSeconds != 420 {
+		t.Fatalf("expected estimate 420, got %d", assessment.EstimatedDurationSeconds)
 	}
 	if assessment.ComplexityLevel != "high" {
 		t.Fatalf("expected complexity high, got %q", assessment.ComplexityLevel)
@@ -36,7 +42,10 @@ func TestBuildCodexComplexityPromptRequiresNonThinkingMode(t *testing.T) {
 	if !strings.Contains(prompt, "非思考模式") {
 		t.Fatalf("expected prompt to require non-thinking mode, got %q", prompt)
 	}
-	if !strings.Contains(prompt, "仅输出一行 JSON") {
+	if !strings.Contains(prompt, "task_summary") || !strings.Contains(prompt, "task_approach") {
+		t.Fatalf("expected prompt to require summary and approach fields, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "只输出单行 JSON") {
 		t.Fatalf("expected strict json output instruction, got %q", prompt)
 	}
 }

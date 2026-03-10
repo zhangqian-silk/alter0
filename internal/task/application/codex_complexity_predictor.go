@@ -135,7 +135,7 @@ func (p *CodexQuickComplexityPredictor) Predict(ctx context.Context, msg sharedd
 	if err != nil {
 		return ComplexityAssessment{}, err
 	}
-	return normalizeComplexityAssessment(assessment), nil
+	return assessment, nil
 }
 
 func (p *CodexQuickComplexityPredictor) nextTimeout() time.Duration {
@@ -153,7 +153,7 @@ func (p *CodexQuickComplexityPredictor) currentTimeoutLocked() time.Duration {
 	if alpha <= 0 || alpha >= 1 {
 		alpha = defaultCodexComplexityEWMAAlpha
 	}
-	_ = alpha // alpha is validated here for observeExecution; keep both paths consistent.
+	_ = alpha
 	factor := p.safetyFactor
 	if factor < 1 {
 		factor = defaultCodexComplexitySafetyFactor
@@ -239,15 +239,18 @@ func buildCodexComplexityPrompt(msg shareddomain.UnifiedMessage) string {
 	asyncHint := strings.TrimSpace(metadataValue(msg.Metadata, MetadataTaskAsyncMode))
 
 	return strings.TrimSpace(
-		`你是 alter0 的复杂度判定器。
+		`你是 alter0 的快速任务评估器。
 要求：
 1) 使用非思考模式，不输出推理过程。
-2) 仅输出一行 JSON，不要 markdown，不要额外文本。
+2) 只输出单行 JSON，不要 markdown，不要额外文本。
 3) JSON 字段固定为：
-   - estimated_duration_seconds: int（6-180）
+   - task_summary: string（中文任务总结名称，10-24 字优先）
+   - task_approach: string（中文简述执行思路，1-2 句）
+   - estimated_duration_seconds: int（10-3600）
    - complexity_level: "low"|"medium"|"high"
    - execution_mode: "streaming"|"async"
-4) 当预计耗时 > 30 秒时 execution_mode 必须为 "async"，否则为 "streaming"。
+4) estimated_duration_seconds 表示完成任务的大致总耗时，单位是秒。
+5) execution_mode 仅作为建议值，依然要基于 estimated_duration_seconds 判断。
 
 task_type: ` + taskType + `
 async_hint: ` + asyncHint + `
@@ -277,6 +280,8 @@ func parseCodexComplexityOutput(raw string) (ComplexityAssessment, error) {
 		return ComplexityAssessment{}, err
 	}
 	return ComplexityAssessment{
+		TaskSummary:              strings.TrimSpace(stringValue(payload["task_summary"])),
+		TaskApproach:             strings.TrimSpace(stringValue(payload["task_approach"])),
 		EstimatedDurationSeconds: estimated,
 		ComplexityLevel:          strings.ToLower(strings.TrimSpace(stringValue(payload["complexity_level"]))),
 		ExecutionMode:            strings.ToLower(strings.TrimSpace(stringValue(payload["execution_mode"]))),

@@ -102,13 +102,14 @@ type TaskLogPage struct {
 }
 
 type Options struct {
-	WorkerCount          int
-	Timeout              time.Duration
-	MaxRetries           int
-	LongContentThreshold int
-	ArtifactKeywords     []string
-	SummaryMemory        TaskSummaryRecorder
-	ComplexityPredictor  ComplexityPredictor
+	WorkerCount           int
+	Timeout               time.Duration
+	MaxRetries            int
+	LongContentThreshold  int
+	AsyncTriggerThreshold time.Duration
+	ArtifactKeywords      []string
+	SummaryMemory         TaskSummaryRecorder
+	ComplexityPredictor   ComplexityPredictor
 }
 
 type Service struct {
@@ -195,6 +196,9 @@ func normalizeOptions(options Options) Options {
 	}
 	if options.LongContentThreshold <= 0 {
 		options.LongContentThreshold = defaultLongContentThreshold
+	}
+	if options.AsyncTriggerThreshold <= 0 {
+		options.AsyncTriggerThreshold = defaultAsyncRouteThreshold
 	}
 	if len(options.ArtifactKeywords) == 0 {
 		options.ArtifactKeywords = []string{
