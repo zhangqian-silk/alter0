@@ -33,19 +33,24 @@ const (
 	workspaceTasksDirName            = "tasks"
 	taskIDMetadataKey                = "task_id"
 	sessionIDMetadataFallback        = "session_id"
-	codexAddDirsMetadataKey             = "codex_add_dirs"
-	codexAddDirsEnvKey                  = "ALTER0_CODEX_ADD_DIRS"
-	codexDefaultAddDirsEnabledMetadataKey = "codex_default_add_dirs_enabled"
-	codexDefaultAddDirsEnabledEnvKey      = "ALTER0_CODEX_DEFAULT_ADD_DIRS_ENABLED"
+	codexAddDirsMetadataKey               = "codex_add_dirs"
+	codexAddDirsEnvKey                    = "ALTER0_CODEX_ADD_DIRS"
+	codexAddDirRulesMetadataKey           = "codex_add_dir_rules"
+	codexAddDirRulesEnvKey                = "ALTER0_CODEX_ADD_DIR_RULES"
 )
 
-var defaultAddDirs = []string{
-	"/bin",
-	"/usr/bin",
-	"/usr/local/bin",
-	"/usr/sbin",
-	"/sbin",
-	"/tmp",
+type codexAddDirRule struct {
+	Path    string `json:"path"`
+	Enabled *bool  `json:"enabled,omitempty"`
+}
+
+var defaultAddDirRules = []codexAddDirRule{
+	{Path: "/bin", Enabled: boolPtr(true)},
+	{Path: "/usr/bin", Enabled: boolPtr(true)},
+	{Path: "/usr/local/bin", Enabled: boolPtr(true)},
+	{Path: "/usr/sbin", Enabled: boolPtr(true)},
+	{Path: "/sbin", Enabled: boolPtr(true)},
+	{Path: "/tmp", Enabled: boolPtr(true)},
 }
 
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
@@ -376,14 +381,34 @@ func resolveCodexSandboxMode(metadata map[string]string) string {
 }
 
 func resolveCodexAddDirs(metadata map[string]string) []string {
-	dirs := make(map[string]struct{})
+	enabledByPath := make(map[string]bool)
+	order := make([]string, 0)
 
-	if resolveCodexDefaultAddDirsEnabled(metadata) {
-		for _, dir := range defaultAddDirs {
-			if _, err := os.Stat(dir); err == nil {
-				dirs[dir] = struct{}{}
-			}
+	addRule := func(path string, enabled bool) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
 		}
+		if _, ok := enabledByPath[path]; !ok {
+			order = append(order, path)
+		}
+		enabledByPath[path] = enabled
+	}
+
+	for _, rule := range defaultAddDirRules {
+		enabled := true
+		if rule.Enabled != nil {
+			enabled = *rule.Enabled
+		}
+		addRule(rule.Path, enabled)
+	}
+
+	for _, rule := range resolveConfiguredAddDirRules(metadata) {
+		enabled := true
+		if rule.Enabled != nil {
+			enabled = *rule.Enabled
+		}
+		addRule(rule.Path, enabled)
 	}
 
 	raw := strings.TrimSpace(firstNonEmpty(
@@ -392,32 +417,40 @@ func resolveCodexAddDirs(metadata map[string]string) []string {
 	))
 	if raw != "" {
 		for _, part := range strings.Split(raw, ",") {
-			p := strings.TrimSpace(part)
-			if p != "" {
-				dirs[p] = struct{}{}
-			}
+			addRule(part, true)
 		}
 	}
 
-	result := make([]string, 0, len(dirs))
-	for dir := range dirs {
-		result = append(result, dir)
+	result := make([]string, 0, len(order))
+	for _, path := range order {
+		if !enabledByPath[path] {
+			continue
+		}
+		if _, err := os.Stat(path); err == nil {
+			result = append(result, path)
+		}
 	}
 	return result
 }
 
-func resolveCodexDefaultAddDirsEnabled(metadata map[string]string) bool {
-	candidate := strings.ToLower(strings.TrimSpace(firstNonEmpty(
-		metadataValue(metadata, codexDefaultAddDirsEnabledMetadataKey),
-		os.Getenv(codexDefaultAddDirsEnabledEnvKey),
-		"true",
-	)))
-	switch candidate {
-	case "0", "false", "off", "no", "disabled":
-		return false
-	default:
-		return true
+func resolveConfiguredAddDirRules(metadata map[string]string) []codexAddDirRule {
+	raw := strings.TrimSpace(firstNonEmpty(
+		metadataValue(metadata, codexAddDirRulesMetadataKey),
+		os.Getenv(codexAddDirRulesEnvKey),
+	))
+	if raw == "" {
+		return nil
 	}
+	var rules []codexAddDirRule
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return nil
+	}
+	return rules
+}
+
+func boolPtr(value bool) *bool {
+	v := value
+	return &v
 }
 
 func resolveCodexWorkspaceMode(metadata map[string]string) string {
