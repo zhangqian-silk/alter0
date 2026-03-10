@@ -1,11 +1,12 @@
 package web
 
 import (
+	"path"
 	"strings"
 	"testing"
 )
 
-func readEmbeddedAsset(t *testing.T, path string) string {
+func readEmbeddedAssetRaw(t *testing.T, path string) string {
 	t.Helper()
 
 	content, err := webStaticFS.ReadFile(path)
@@ -13,6 +14,54 @@ func readEmbeddedAsset(t *testing.T, path string) string {
 		t.Fatalf("read asset %s: %v", path, err)
 	}
 	return string(content)
+}
+
+func readEmbeddedAsset(t *testing.T, assetPath string) string {
+	t.Helper()
+
+	content := readEmbeddedAssetRaw(t, assetPath)
+	if !strings.HasSuffix(assetPath, ".css") {
+		return content
+	}
+	return expandEmbeddedCSSImports(t, assetPath, content, map[string]bool{assetPath: true})
+}
+
+func expandEmbeddedCSSImports(t *testing.T, assetPath, content string, seen map[string]bool) string {
+	t.Helper()
+
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	var builder strings.Builder
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		importPath, ok := parseEmbeddedCSSImport(trimmed)
+		if !ok {
+			builder.WriteString(line)
+			builder.WriteByte('\n')
+			continue
+		}
+		resolved := path.Clean(path.Join(path.Dir(assetPath), importPath))
+		if seen[resolved] {
+			continue
+		}
+		seen[resolved] = true
+		builder.WriteString(expandEmbeddedCSSImports(t, resolved, readEmbeddedAssetRaw(t, resolved), seen))
+	}
+	return builder.String()
+}
+
+func parseEmbeddedCSSImport(line string) (string, bool) {
+	const prefix = "@import url(\""
+	const suffix = "\");"
+	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
+		return "", false
+	}
+	pathValue := strings.TrimSuffix(strings.TrimPrefix(line, prefix), suffix)
+	pathValue = strings.TrimSpace(pathValue)
+	if pathValue == "" {
+		return "", false
+	}
+	return pathValue, true
 }
 
 func normalizeEmbeddedAsset(content string) string {

@@ -2553,6 +2553,10 @@ function routeFieldRow(labelKey, value, options = {}) {
   const copyable = Boolean(options?.copyable) && safeValue !== "-";
   const multiline = Boolean(options?.multiline);
   const mono = Boolean(options?.mono);
+  const preview = Boolean(options?.preview);
+  const clampLines = Number.isFinite(Number(options?.clampLines))
+    ? Math.max(2, Number(options.clampLines))
+    : 0;
   const classNames = ["route-field-value"];
   if (multiline) {
     classNames.push("is-multiline");
@@ -2560,13 +2564,17 @@ function routeFieldRow(labelKey, value, options = {}) {
   if (mono) {
     classNames.push("is-mono");
   }
+  if (preview || clampLines > 0) {
+    classNames.push("is-preview");
+  }
   const copyButton = copyable
     ? `<button class="route-field-copy" type="button" data-copy-value="${escapeHTML(safeValue)}" title="${escapeHTML(t("route.copy_value"))}" aria-label="${escapeHTML(t("route.copy_value"))}">${renderCopyIcon()}</button>`
     : "";
+  const clampStyle = clampLines > 0 ? ` style="--line-clamp:${clampLines}"` : "";
   return `<p class="route-field-row">
     <span>${t(labelKey)}</span>
     <span class="route-field-value-wrap">
-      <strong class="${classNames.join(" ")}" title="${escapeHTML(safeValue)}">${escapeHTML(safeValue)}</strong>
+      <strong class="${classNames.join(" ")}" title="${escapeHTML(safeValue)}"${clampStyle}>${escapeHTML(safeValue)}</strong>
       ${copyButton}
     </span>
   </p>`;
@@ -2601,19 +2609,72 @@ function routeStatusBadge(enabled) {
   </div>`;
 }
 
+function renderRouteTagList(tags) {
+  const safeTags = Array.isArray(tags)
+    ? tags.map((item) => String(item || "").trim()).filter((item) => item && item !== "-")
+    : [];
+  if (!safeTags.length) {
+    return `<span class="route-tag-placeholder">-</span>`;
+  }
+  return `<div class="route-tag-list">
+    ${safeTags.map((tag) => `<span class="route-tag">${escapeHTML(tag)}</span>`).join("")}
+  </div>`;
+}
+
+function renderRouteTagSection(labelKey, tags, className = "") {
+  const classNames = ["route-card-tag-section"];
+  if (className) {
+    classNames.push(className);
+  }
+  return `<div class="${classNames.join(" ")}">
+    <span>${t(labelKey)}</span>
+    ${renderRouteTagList(tags)}
+  </div>`;
+}
+
+function renderRouteSection(title, body, options = {}) {
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const classNames = ["route-section"];
+  if (safeOptions.className) {
+    classNames.push(safeOptions.className);
+  }
+  const titleTag = safeOptions.titleTag || "h6";
+  return `<section class="${classNames.join(" ")}">
+    <${titleTag} class="route-section-title">${escapeHTML(normalizeText(title))}</${titleTag}>
+    ${body}
+  </section>`;
+}
+
 function routeCardTemplate(title, type, fields = [], enabled = false, body = "") {
-  return `<article class="route-card">
+  const options = arguments.length > 5 ? arguments[5] : {};
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const classNames = ["route-card"];
+  if (safeOptions.className) {
+    classNames.push(safeOptions.className);
+  }
+  const badgeHTML = typeof safeOptions.badgeHTML === "string"
+    ? safeOptions.badgeHTML
+    : routeStatusBadge(enabled);
+  const bodyClassName = safeOptions.bodyClassName || "route-card-body";
+  const footerClassName = safeOptions.footerClassName
+    ? ` route-card-footer ${safeOptions.footerClassName}`
+    : " route-card-footer";
+  return `<article class="${classNames.join(" ")}">
     <div class="route-card-head">
       <div class="route-card-title-wrap">
-        <div class="route-card-icon" aria-hidden="true">${routeTypeIcon(type)}</div>
-        <h4 title="${escapeHTML(normalizeText(title))}">${escapeHTML(normalizeText(title))}</h4>
+      <div class="route-card-icon" aria-hidden="true">${routeTypeIcon(type)}</div>
+        <div class="route-card-title-copy">
+          <h4 title="${escapeHTML(normalizeText(title))}">${escapeHTML(normalizeText(title))}</h4>
+          ${typeof safeOptions.titleMetaHTML === "string" ? safeOptions.titleMetaHTML : ""}
+        </div>
       </div>
-      ${routeStatusBadge(enabled)}
+      ${badgeHTML}
     </div>
     <div class="route-meta">
       ${fields.join("")}
     </div>
-    ${body ? `<div class="memory-card-body">${body}</div>` : ""}
+    ${body ? `<div class="${bodyClassName}">${body}</div>` : ""}
+    ${safeOptions.footer ? `<footer class="${footerClassName.trim()}">${safeOptions.footer}</footer>` : ""}
   </article>`;
 }
 
@@ -2678,7 +2739,7 @@ async function loadChannelsView(container) {
       [
         routeFieldRow("field.id", item.id, { copyable: true, mono: true }),
         routeFieldRow("field.type", item.type),
-        routeFieldRow("field.description", item.description, { multiline: true })
+        routeFieldRow("field.description", item.description, { multiline: true, preview: true, clampLines: 3 })
       ],
       item.enabled
     )
@@ -2918,6 +2979,10 @@ function renderSessionRouteCards(items) {
     const jobName = typeof item?.job_name === "string" ? item.job_name : "";
     const firedAt = typeof item?.fired_at === "string" ? item.fired_at : "";
     const title = sessionID || t("route.sessions.title");
+    const tags = [formatTriggerType(triggerType), formatChannelType(channelType)];
+    if (jobName) {
+      tags.push(jobName);
+    }
     const detailBody = `<details class="session-route-detail">
       <summary>${t("route.sessions.open_detail")}</summary>
       <div class="route-meta">
@@ -2930,22 +2995,22 @@ function renderSessionRouteCards(items) {
         ${routeFieldRow("field.fired_at", formatDateTime(firedAt))}
       </div>
     </details>`;
-    return `<article class="route-card session-route-card">
-      <div class="route-card-head session-route-head">
-        <div class="session-route-title-wrap">
-          <div class="route-card-icon" aria-hidden="true">${routeTypeIcon("session")}</div>
-          <h4 title="${escapeHTML(normalizeText(title))}">${escapeHTML(normalizeText(title))}</h4>
-        </div>
-        ${routeStatusBadge(true)}
-      </div>
-      <div class="route-meta session-route-meta">
-        ${routeFieldRow("field.id", sessionID, { copyable: true, mono: true })}
-        ${routeFieldRow("field.channel_type", formatChannelType(channelType))}
-        ${routeFieldRow("field.last_message_id", lastMessageID, { copyable: true, mono: true })}
-        ${routeFieldRow("field.updated", formatDateTime(updatedAt))}
-      </div>
-      <div class="memory-card-body">${detailBody}</div>
-    </article>`;
+    return routeCardTemplate(
+      title,
+      "session",
+      [
+        routeFieldRow("field.id", sessionID, { copyable: true, mono: true }),
+        routeFieldRow("field.channel_type", formatChannelType(channelType)),
+        routeFieldRow("field.last_message_id", lastMessageID, { copyable: true, mono: true }),
+        routeFieldRow("field.updated", formatDateTime(updatedAt))
+      ],
+      true,
+      detailBody,
+      {
+        className: "session-route-card",
+        footer: renderRouteTagSection("field.tags", tags)
+      }
+    );
   }).join("");
 }
 
@@ -2955,7 +3020,7 @@ async function loadSessionsView(container) {
   const data = await fetchJSON(sessionListQuery(filters, 1, 50));
   const items = Array.isArray(data.items) ? data.items : [];
   container.innerHTML = `<section class="session-history-view">
-    <form class="task-filter-form page-filter-form page-filter-grid-3 session-filter-form" data-session-filter-form>
+    <form class="task-filter-form page-filter-form page-filter-grid-4 session-filter-form" data-session-filter-form>
       <label>
         <span>${t("route.sessions.filter.trigger_type")}</span>
         <select name="trigger_type">
@@ -3038,12 +3103,12 @@ function renderCronJobCards(items) {
     const timezone = typeof item?.timezone === "string" ? item.timezone : "";
     const taskInput = typeof item?.task_config?.input === "string" ? item.task_config.input : item?.content;
     const retryLimit = Number(item?.task_config?.retry_limit || 0);
-    const actionBody = `<div class="cron-job-actions">
+    const actionButtons = `<div class="route-card-actions">
       <button type="button" data-cron-edit="${escapeHTML(jobID)}">${t("route.cron.action.edit")}</button>
       <button type="button" data-cron-runs-btn="${escapeHTML(jobID)}">${t("route.cron.action.runs")}</button>
       <button type="button" data-cron-delete="${escapeHTML(jobID)}">${t("route.cron.action.delete")}</button>
-    </div>
-    <div class="cron-run-list" data-cron-runs="${escapeHTML(jobID)}" hidden></div>`;
+    </div>`;
+    const runsBody = `<div class="cron-run-list" data-cron-runs="${escapeHTML(jobID)}" hidden></div>`;
 
     return routeCardTemplate(
       jobName,
@@ -3053,11 +3118,15 @@ function renderCronJobCards(items) {
         routeFieldRow("field.schedule_mode", normalizeText(scheduleMode)),
         routeFieldRow("field.cron_expression", expression, { multiline: true, mono: true }),
         routeFieldRow("field.timezone", timezone),
-        routeFieldRow("field.input", taskInput, { multiline: true }),
+        routeFieldRow("field.input", taskInput, { multiline: true, preview: true, clampLines: 4 }),
         routeFieldRow("field.retry_limit", retryLimit)
       ],
       item.enabled,
-      actionBody
+      runsBody,
+      {
+        footer: `${renderRouteTagSection("field.tags", [normalizeText(scheduleMode), normalizeText(timezone)])}${actionButtons}`,
+        footerClassName: "route-card-footer-spread"
+      }
     );
   }).join("");
 }
@@ -3088,7 +3157,7 @@ async function loadCronJobsView(container) {
   const items = Array.isArray(data.items) ? data.items : [];
   const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   container.innerHTML = `<section class="cron-view">
-    <form class="task-filter-form page-filter-form page-filter-grid-3 cron-form" data-cron-form>
+    <form class="task-filter-form page-filter-form page-filter-grid-4 cron-form" data-cron-form>
       <h4 class="cron-form-title">${t("route.cron.form.title")}</h4>
       <label><span>${t("route.cron.form.job_id")}</span><input type="text" name="job_id" required></label>
       <label><span>${t("route.cron.form.name")}</span><input type="text" name="name" required></label>
@@ -3469,10 +3538,14 @@ function renderControlTaskList(payload, activeTaskID = "") {
     const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
     const jobID = typeof item?.job_id === "string" ? item.job_id : "";
     const statusClassName = taskStatusClassName(status);
-    const cronRow = triggerType === "cron"
-      ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>`
-      : "";
-    return `<article class="task-summary-card ${active ? "active" : ""}" data-control-task-id="${escapeHTML(taskID)}" ${active ? 'aria-current="true"' : ""}>
+    const summaryTags = [
+      formatTriggerType(triggerType),
+      formatChannelType(channelType)
+    ];
+    if (triggerType === "cron" && normalizeText(jobID) !== "-") {
+      summaryTags.push(`${t("field.job_id")}: ${normalizeText(jobID)}`);
+    }
+    return `<article class="route-card task-summary-card ${active ? "active" : ""}" data-control-task-id="${escapeHTML(taskID)}" ${active ? 'aria-current="true"' : ""}>
       <header class="task-summary-head">
         <div class="task-summary-id-wrap">
           <h5 class="task-summary-id" title="${escapeHTML(taskID)}">${escapeHTML(taskID)}</h5>
@@ -3481,14 +3554,14 @@ function renderControlTaskList(payload, activeTaskID = "") {
         <span class="task-summary-status ${statusClassName}">${escapeHTML(formatTaskStatus(status))}</span>
       </header>
       <div class="task-summary-meta">
-        <p><span>${t("field.session")}</span><strong>${escapeHTML(normalizeText(sessionID))}</strong></p>
-        <p><span>${t("field.trigger_type")}</span><strong>${escapeHTML(formatTriggerType(triggerType))}</strong></p>
-        <p><span>${t("field.channel_type")}</span><strong>${escapeHTML(formatChannelType(channelType))}</strong></p>
-        <p><span>${t("field.source_message")}</span><strong>${escapeHTML(normalizeText(sourceMessageID))}</strong></p>
-        <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(updatedAt))}</strong></p>
-        ${cronRow}
+        ${renderTaskSummaryMetaRow("field.session", sessionID, { mono: true })}
+        ${renderTaskSummaryMetaRow("field.source_message", sourceMessageID, { mono: true })}
+        ${renderTaskSummaryMetaRow("field.updated", formatDateTime(updatedAt))}
       </div>
-      <button class="task-summary-open" type="button" data-control-task-open="${escapeHTML(taskID)}"><span class="task-summary-open-icon" aria-hidden="true">${renderPanelRightOpenIcon()}</span><span>${t("route.tasks.open_detail")}</span></button>
+      <footer class="route-card-footer control-task-summary-footer">
+        ${renderRouteTagSection("field.tags", summaryTags, "control-task-summary-tags")}
+        <button class="task-summary-open" type="button" data-control-task-open="${escapeHTML(taskID)}"><span class="task-summary-open-icon" aria-hidden="true">${renderPanelRightOpenIcon()}</span><span>${t("route.tasks.open_detail")}</span></button>
+      </footer>
     </article>`;
   }).join("");
 }
@@ -3541,6 +3614,10 @@ function renderControlTaskDetail(view, displayTaskID = "") {
   const progressRaw = Number(task?.progress);
   const progressValue = Number.isFinite(progressRaw) ? Math.min(100, Math.max(0, progressRaw)) : 0;
   const taskIDShort = shorten(shownTaskID, 24);
+  const detailTags = [formatTriggerType(triggerType), formatChannelType(channelType)];
+  if (terminalSessionID) {
+    detailTags.push(terminalSessionID);
+  }
   const cronRows = triggerType === "cron"
     ? `<p><span>${t("field.job_id")}</span><strong>${escapeHTML(normalizeText(jobID))}</strong></p>
       <p><span>${t("field.job_name")}</span><strong>${escapeHTML(normalizeText(jobName))}</strong></p>
@@ -3593,14 +3670,14 @@ function renderControlTaskDetail(view, displayTaskID = "") {
         <div class="task-detail-meta-fold-body">${identifierRows}</div>
       </details>
     </div>
+    ${renderRouteTagSection("field.tags", detailTags, "task-detail-tag-section")}
     <div class="task-detail-actions">
       <button type="button" data-control-task-action="retry" ${retryEnabled ? "" : "disabled"} title="${escapeHTML(retryEnabled ? t("route.tasks.actions.retry_tip") : normalizeText(retryReason))}">${t("route.tasks.actions.retry")}</button>
       ${showCancelAction ? `<button type="button" data-control-task-action="cancel" ${cancelEnabled ? "" : "disabled"} title="${escapeHTML(cancelEnabled ? "" : normalizeText(cancelReason))}">${t("route.tasks.actions.cancel")}</button>` : ""}
       <button type="button" data-control-task-log-reconnect>${t("route.tasks.logs.reconnect")}</button>
       <button type="button" data-control-task-log-replay title="${escapeHTML(t("route.tasks.actions.replay_tip"))}">${t("route.tasks.logs.replay")}</button>
     </div>
-    <section class="task-detail-section">
-      <h6>${t("route.tasks.terminal.title")}</h6>
+    ${renderRouteSection(t("route.tasks.terminal.title"), `
       <p class="control-task-log-state" data-control-task-log-status>${t("route.tasks.logs.empty")}</p>
       <div class="control-task-log-stream" data-control-task-log-stream>${t("route.tasks.logs.empty")}</div>
       <div class="control-task-quick-actions">
@@ -3614,11 +3691,10 @@ function renderControlTaskDetail(view, displayTaskID = "") {
       </form>
       <p class="control-task-terminal-hint">${escapeHTML(t("route.tasks.terminal.hint", { max: String(terminalMaxSessions) }))}</p>
       <p class="control-task-terminal-note">${escapeHTML(t("route.tasks.terminal.followup_note"))}</p>
-    </section>
-    <section class="task-detail-section">
-      <h6>${t("route.tasks.result.title")}</h6>
+    `, { className: "task-detail-section" })}
+    ${renderRouteSection(t("route.tasks.result.title"), `
       <div class="control-task-result-output">${renderControlTaskResultOutput(resultOutput)}</div>
-    </section>
+    `, { className: "task-detail-section" })}
   </section>`;
 }
 
@@ -4243,6 +4319,14 @@ async function loadControlTasksView(container) {
             <option value="system">${t("trigger.system")}</option>
           </select>
         </label>
+        <label><span>${t("route.tasks.filter.channel_type")}</span>
+          <select name="channel_type">
+            <option value="">-</option>
+            <option value="cli">${t("channel.cli")}</option>
+            <option value="web">${t("channel.web")}</option>
+            <option value="scheduler">${t("channel.scheduler")}</option>
+          </select>
+        </label>
       </div>
       <div class="task-filter-primary-actions control-task-filter-toolbar">
         <button class="task-filter-advanced-toggle" type="button" data-control-task-advanced-toggle aria-expanded="false">${renderAdvancedToggleLabel(false)}</button>
@@ -4252,14 +4336,6 @@ async function loadControlTasksView(container) {
         </div>
       </div>
       <div class="task-filter-advanced control-task-filter-advanced-panel" data-control-task-advanced hidden>
-        <label><span>${t("route.tasks.filter.channel_type")}</span>
-          <select name="channel_type">
-            <option value="">-</option>
-            <option value="cli">${t("channel.cli")}</option>
-            <option value="web">${t("channel.web")}</option>
-            <option value="scheduler">${t("channel.scheduler")}</option>
-          </select>
-        </label>
         <label><span>${t("route.tasks.filter.channel_id")}</span><input type="text" name="channel_id" placeholder="web-default"></label>
         <label><span>${t("route.tasks.filter.message_id")}</span><input type="text" name="message_id" placeholder="msg-123"></label>
         <label><span>${t("route.tasks.filter.source_message_id")}</span><input type="text" name="source_message_id" placeholder="msg-source-123"></label>
@@ -4739,21 +4815,27 @@ function classifyTerminalLogKind(entry) {
 
 function renderTerminalSessionCards(sessions, activeSessionID) {
   if (!sessions.length) {
-    return `<p class="terminal-session-empty">${escapeHTML(t("route.terminal.empty"))}</p>`;
+    return `<p class="route-empty-panel terminal-session-empty">${escapeHTML(t("route.terminal.empty"))}</p>`;
   }
   return sessions.map((session) => {
     const title = normalizeText(session.title);
     const sessionID = normalizeText(session.terminal_session_id);
     const active = session.id === activeSessionID;
+    const statusClassName = taskStatusClassName(session.status);
     const listTimestamp = getTerminalSessionSortAt(session);
     const listTimeLabel = listTimestamp > 0 ? formatDateTime(new Date(listTimestamp).toISOString()) : "-";
     const lastOutputMeta = getTerminalSessionLastOutputAt(session) > 0
       ? t("route.terminal.last_output", { time: listTimeLabel })
       : t("route.terminal.no_output");
-    return `<button class="terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
-      <span class="terminal-session-title">${escapeHTML(title)}</span>
-      <span class="terminal-session-meta">${escapeHTML(shorten(sessionID, 30))}</span>
-      <span class="terminal-session-meta">${escapeHTML(renderTerminalStatus(session.status))} · ${escapeHTML(lastOutputMeta)}</span>
+    return `<button class="route-card route-card-button terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}" ${active ? 'aria-current="true"' : ""}>
+      <span class="terminal-session-head">
+        <span class="route-card-title-copy">
+          <span class="terminal-session-title">${escapeHTML(title)}</span>
+          <span class="terminal-session-meta">${escapeHTML(shorten(sessionID, 30))}</span>
+        </span>
+        <span class="task-summary-status ${statusClassName}">${escapeHTML(renderTerminalStatus(session.status))}</span>
+      </span>
+      <span class="terminal-session-meta">${escapeHTML(lastOutputMeta)}</span>
     </button>`;
   }).join("");
 }
@@ -4874,7 +4956,7 @@ function renderTerminalRichBlock(stepID, block, searchQuery = "") {
   } else {
     body = renderTerminalNumberedBlock(block?.content || "", searchQuery);
   }
-  return `<section class="terminal-rich-block type-${escapeHTML(type)}">${blockHeader}${body}</section>`;
+  return `<section class="route-surface-dark terminal-rich-block type-${escapeHTML(type)}">${blockHeader}${body}</section>`;
 }
 
 function renderTerminalStepDetail(session, turn, step) {
@@ -4958,7 +5040,7 @@ function renderTerminalTurns(session) {
     const promptText = String(turn?.prompt || "").trim();
     const finalOutput = typeof turn?.final_output === "string" ? turn.final_output : "";
     const hasProcess = Array.isArray(turn?.steps) && turn.steps.length > 0;
-    return `<article class="terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
+    return `<article class="route-surface-dark terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
       ${promptText ? `<div class="terminal-log-row kind-command"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
       ${hasProcess || String(turn?.status || "").trim().toLowerCase() === "running" ? renderTerminalTurnProcess(session, turn) : ""}
       ${finalOutput ? `<section class="terminal-final-output"><h6>${escapeHTML(t("route.terminal.final.heading"))}</h6><div class="terminal-final-text">${escapeHTML(finalOutput)}</div></section>` : ""}
@@ -4968,7 +5050,7 @@ function renderTerminalTurns(session) {
 
 function renderTerminalWorkspace(session, sending, closing = false) {
   if (!session) {
-    return `<section class="terminal-workspace-empty">
+    return `<section class="route-empty-panel terminal-workspace-empty">
       <p>${escapeHTML(t("route.terminal.pick"))}</p>
     </section>`;
   }
@@ -4994,7 +5076,7 @@ function renderTerminalWorkspace(session, sending, closing = false) {
         <button class="terminal-session-close" type="button" data-terminal-close ${closeDisabled ? "disabled" : ""}>${escapeHTML(closing ? t("route.terminal.closing") : t("route.terminal.close"))}</button>
       </div>
     </header>
-    <section class="terminal-console-panel" data-terminal-console-panel>
+    <section class="route-surface-dark terminal-console-panel" data-terminal-console-panel>
       <div class="terminal-chat-screen" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
         <div class="terminal-log-tree">
           ${renderTerminalTurns(session)}
@@ -5363,8 +5445,8 @@ async function loadTerminalView(container) {
       writeTerminalDraft(previousSessionID, previousInput.value);
     }
     container.innerHTML = `<section class="terminal-view" data-terminal-view>
-      <aside class="terminal-session-pane">
-        <button class="terminal-session-create" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new"))}</button>
+      <aside class="route-surface terminal-session-pane">
+        <button class="route-primary-button terminal-session-create" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new"))}</button>
         <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
       </aside>
       <section class="terminal-workspace">
@@ -6196,7 +6278,29 @@ function renderDailyMemoryCards(payload) {
   }).join("");
 }
 
-function renderTaskSummaryCards(payload) {
+function renderTaskSummaryMetaRow(labelKey, value, options = {}) {
+  const safeValue = normalizeText(value);
+  const classNames = ["task-summary-value"];
+  if (options?.mono) {
+    classNames.push("is-mono");
+  }
+  return `<p><span>${t(labelKey)}</span><strong class="${classNames.join(" ")}" title="${escapeHTML(safeValue)}">${escapeHTML(safeValue)}</strong></p>`;
+}
+
+function renderTaskSummaryPreview(labelKey, value, options = {}) {
+  const safeValue = normalizeText(value);
+  const lineClamp = Math.max(2, Number(options?.lineClamp || (options?.log ? 4 : 3)));
+  const classNames = ["task-summary-preview"];
+  if (options?.log) {
+    classNames.push("is-log");
+  }
+  return `<div class="task-summary-meta-block">
+    <span>${t(labelKey)}</span>
+    <div class="${classNames.join(" ")}" style="--line-clamp:${lineClamp}" title="${escapeHTML(safeValue)}">${escapeHTML(safeValue)}</div>
+  </div>`;
+}
+
+function renderTaskSummaryCards(payload, activeTaskID = "") {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   if (!items.length) {
     return `<p class="route-empty">${t("route.memory.tasks.empty")}</p>`;
@@ -6210,19 +6314,25 @@ function renderTaskSummaryCards(payload) {
     const finishedAt = typeof item?.finished_at === "string" ? item.finished_at : "";
     const tags = Array.isArray(item?.tags) ? item.tags : [];
     const anchorID = taskSummaryAnchorID(taskID);
-    return `<article class="task-summary-card" id="${escapeHTML(anchorID)}" data-task-summary-id="${escapeHTML(taskID)}">
+    const active = taskID && taskID === activeTaskID;
+    const statusClassName = taskStatusClassName(status);
+    return `<article class="route-card task-summary-card ${active ? "active" : ""}" id="${escapeHTML(anchorID)}" data-task-summary-id="${escapeHTML(taskID)}" ${active ? 'aria-current="true"' : ""}>
       <header class="task-summary-head">
-        <h5>${escapeHTML(taskID)}</h5>
-        <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
+        <div class="task-summary-id-wrap">
+          <h5 class="task-summary-id" title="${escapeHTML(taskID)}">${escapeHTML(taskID)}</h5>
+        </div>
+        <span class="task-summary-status ${statusClassName}">${escapeHTML(formatTaskStatus(status))}</span>
       </header>
       <div class="task-summary-meta">
-        <p><span>${t("field.task_type")}</span><strong>${escapeHTML(normalizeText(taskType))}</strong></p>
-        <p><span>${t("field.goal")}</span><strong>${escapeHTML(normalizeText(goal))}</strong></p>
-        <p><span>${t("field.result")}</span><strong>${escapeHTML(normalizeText(result))}</strong></p>
-        <p><span>${t("field.finished")}</span><strong>${escapeHTML(formatDateTime(finishedAt))}</strong></p>
-        <p><span>${t("field.tags")}</span><strong>${escapeHTML(tags.length ? tags.join(", ") : "-")}</strong></p>
+        ${renderTaskSummaryMetaRow("field.task_type", taskType)}
+        ${renderTaskSummaryPreview("field.goal", goal, { lineClamp: 3 })}
+        ${renderTaskSummaryPreview("field.result", result, { lineClamp: 4, log: true })}
+        ${renderTaskSummaryMetaRow("field.finished", formatDateTime(finishedAt))}
       </div>
-      <button class="task-summary-open" type="button" data-task-open="${escapeHTML(taskID)}">${t("route.memory.tasks.open_detail")}</button>
+      <footer class="route-card-footer">
+        ${renderRouteTagSection("field.tags", tags)}
+        <button class="task-summary-open" type="button" data-task-open="${escapeHTML(taskID)}"><span class="task-summary-open-icon" aria-hidden="true">${renderPanelRightOpenIcon()}</span><span>${t("route.memory.tasks.open_detail")}</span></button>
+      </footer>
     </article>`;
   }).join("");
 }
@@ -6243,6 +6353,7 @@ function renderTaskDetail(meta, refs) {
   const taskID = typeof meta?.task_id === "string" ? meta.task_id : "-";
   const status = typeof meta?.status === "string" ? meta.status : "";
   const taskType = typeof meta?.task_type === "string" ? meta.task_type : "-";
+  const statusClassName = taskStatusClassName(status);
   const refsList = Array.isArray(refs) ? refs : [];
   const refsBody = refsList.length
     ? `<ul class="task-detail-refs">
@@ -6251,8 +6362,10 @@ function renderTaskDetail(meta, refs) {
     : `<p class="route-empty">-</p>`;
   return `<section class="task-detail-card" data-task-detail-id="${escapeHTML(taskID)}">
     <header class="task-detail-head">
-      <h5>${escapeHTML(taskID)}</h5>
-      <span class="task-summary-status">${escapeHTML(formatTaskStatus(status))}</span>
+      <div class="task-detail-id-wrap">
+        <h5 class="task-summary-id" title="${escapeHTML(taskID)}">${escapeHTML(taskID)}</h5>
+      </div>
+      <span class="task-summary-status ${statusClassName}">${escapeHTML(formatTaskStatus(status))}</span>
     </header>
     <div class="task-detail-meta route-meta">
       ${routeFieldRow("field.task_type", taskType)}
@@ -6263,24 +6376,21 @@ function renderTaskDetail(meta, refs) {
       ${routeFieldRow("field.created", formatDateTime(meta?.created_at))}
       ${routeFieldRow("field.finished_at", formatDateTime(meta?.finished_at))}
     </div>
-    <section class="task-detail-section">
-      <h6>Summary Refs</h6>
+    ${renderRouteSection("Summary Refs", `
       ${refsBody}
-    </section>
+    `, { className: "task-detail-section" })}
     <div class="task-detail-actions">
       <button type="button" data-task-load-logs>${t("route.memory.tasks.logs.load")}</button>
       <button type="button" data-task-load-artifacts>${t("route.memory.tasks.artifacts.load")}</button>
       <button type="button" data-task-rebuild>${t("route.memory.tasks.rebuild")}</button>
       <button type="button" data-task-back>${t("route.memory.tasks.back")}</button>
     </div>
-    <section class="task-detail-section">
-      <h6>Logs</h6>
+    ${renderRouteSection("Logs", `
       <div class="task-detail-logs" data-task-logs>${t("route.memory.tasks.logs.empty")}</div>
-    </section>
-    <section class="task-detail-section">
-      <h6>Artifacts</h6>
+    `, { className: "task-detail-section" })}
+    ${renderRouteSection("Artifacts", `
       <div class="task-detail-artifacts" data-task-artifacts>${t("route.memory.tasks.artifacts.empty")}</div>
-    </section>
+    `, { className: "task-detail-section" })}
   </section>`;
 }
 
@@ -6376,9 +6486,24 @@ function bindTaskHistoryView(container, initialPayload) {
     }
   };
 
+  const syncActiveTaskCards = () => {
+    const cards = view.querySelectorAll("[data-task-summary-id]");
+    cards.forEach((card) => {
+      const taskID = normalizeText(card.getAttribute("data-task-summary-id") || "");
+      const active = Boolean(state.activeTaskID) && taskID === state.activeTaskID;
+      card.classList.toggle("active", active);
+      if (active) {
+        card.setAttribute("aria-current", "true");
+      } else {
+        card.removeAttribute("aria-current");
+      }
+    });
+  };
+
   const paintList = (payload) => {
-    listNode.innerHTML = renderTaskSummaryCards(payload);
+    listNode.innerHTML = renderTaskSummaryCards(payload, state.activeTaskID);
     paginationNode.innerHTML = renderTaskSummaryPagination(payload);
+    syncActiveTaskCards();
   };
 
   const loadList = async () => {
@@ -6392,6 +6517,7 @@ function bindTaskHistoryView(container, initialPayload) {
     const payload = await fetchJSON(`/api/memory/tasks/${encodeURIComponent(taskID)}`);
     detailNode.innerHTML = renderTaskDetail(payload?.meta, payload?.summary_refs);
     syncDetailState(true);
+    syncActiveTaskCards();
   };
 
   const loadLogs = async (append = false) => {
@@ -6528,6 +6654,7 @@ function bindTaskHistoryView(container, initialPayload) {
       state.activeTaskID = "";
       state.nextLogCursor = 0;
       syncDetailState(false);
+      syncActiveTaskCards();
       const anchor = document.getElementById(taskSummaryAnchorID(previousTaskID));
       if (anchor) {
         anchor.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -6584,7 +6711,7 @@ async function loadMemoryView(container) {
     </div>
     <section class="memory-panel memory-panel-tasks" data-memory-panel="tasks" hidden>
       <section class="task-history-view" data-task-history-view>
-        <form class="task-filter-form page-filter-form page-filter-grid-2" data-task-filter-form>
+        <form class="task-filter-form page-filter-form page-filter-grid-4" data-task-filter-form>
           <label><span>${t("route.memory.tasks.filter.status")}</span>
             <select name="status">
               <option value="">-</option>
@@ -6737,35 +6864,37 @@ function renderEnvironmentItem(item) {
   const pendingBadge = pendingRestart
     ? `<span class="environment-pending">${t("route.envs.pending_restart")}</span>`
     : "";
-  return `<article class="route-card environment-item" data-environment-item="${escapeHTML(key)}">
-    <header class="route-card-head environment-item-head">
-      <div class="route-card-title-wrap environment-item-title">
-        <div class="route-card-icon" aria-hidden="true">${routeTypeIcon("env")}</div>
-        <div class="environment-item-title-copy">
-          <h4 title="${escapeHTML(name)}">${escapeHTML(name)}</h4>
-          <span class="environment-item-key">
-            <code title="${escapeHTML(key)}">${escapeHTML(key)}</code>
-            <button class="route-field-copy" type="button" data-copy-value="${escapeHTML(key)}" title="${escapeHTML(t("route.copy_value"))}" aria-label="${escapeHTML(t("route.copy_value"))}">${renderCopyIcon()}</button>
-          </span>
-        </div>
-      </div>
-      ${pendingBadge}
-    </header>
-    <label class="environment-input-row">
+  const titleMetaHTML = `<span class="environment-item-key">
+    <code title="${escapeHTML(key)}">${escapeHTML(key)}</code>
+    <button class="route-field-copy" type="button" data-copy-value="${escapeHTML(key)}" title="${escapeHTML(t("route.copy_value"))}" aria-label="${escapeHTML(t("route.copy_value"))}">${renderCopyIcon()}</button>
+  </span>`;
+  const body = `<label class="environment-input-row">
       <span>${t("route.envs.current_value")}</span>
       ${inputControl}
-    </label>
-    <div class="route-meta environment-meta">
-      ${routeFieldRow("route.envs.default_value", defaultValue || "-", { multiline: true, mono: true, copyable: defaultValue && defaultValue !== "-" })}
-      ${routeFieldRow("route.envs.effective_value", effectiveValue || "-", { multiline: true, mono: true, copyable: effectiveValue && effectiveValue !== "-" })}
-      ${routeFieldRow("route.envs.apply_mode", applyMode)}
-      ${routeFieldRow("route.envs.source", source)}
-      ${routeFieldRow("route.envs.validation", validation, { multiline: true, mono: true })}
-      ${routeFieldRow("route.envs.hot_reload", hotReload ? t("status.enabled") : t("status.disabled"))}
-    </div>
-    ${pendingRestart ? `<p class="environment-item-notice">${escapeHTML(t("route.envs.restart_notice", { keys: key }))}</p>` : ""}
-    <input type="hidden" data-env-current-value="${escapeHTML(key)}" value="${escapeHTML(currentValue)}">
-  </article>`;
+    </label>`;
+  const fields = [
+      routeFieldRow("route.envs.default_value", defaultValue || "-", { multiline: true, mono: true, copyable: defaultValue && defaultValue !== "-" }),
+      routeFieldRow("route.envs.effective_value", effectiveValue || "-", { multiline: true, mono: true, copyable: effectiveValue && effectiveValue !== "-" }),
+      routeFieldRow("route.envs.apply_mode", applyMode),
+      routeFieldRow("route.envs.source", source),
+      routeFieldRow("route.envs.validation", validation, { multiline: true, mono: true }),
+      routeFieldRow("route.envs.hot_reload", hotReload ? t("status.enabled") : t("status.disabled"))
+    ];
+  const footer = `${renderRouteTagSection("field.tags", [applyMode, source, hotReload ? t("status.enabled") : t("status.disabled")])}${pendingRestart ? `<p class="environment-item-notice">${escapeHTML(t("route.envs.restart_notice", { keys: key }))}</p>` : ""}`;
+  return routeCardTemplate(
+    name,
+    "env",
+    fields,
+    true,
+    body,
+    {
+      className: "environment-item",
+      titleMetaHTML,
+      badgeHTML: pendingBadge,
+      footer,
+      footerClassName: "route-card-footer-spread"
+    }
+  );
 }
 
 function renderEnvironmentModules(items) {
@@ -6810,14 +6939,21 @@ function renderEnvironmentAudits(items) {
           mode: formatEnvironmentApplyMode(change?.apply_mode)
         }))}</li>`).join("")}</ul>`
         : `<p>-</p>`;
-      return `<article class="route-card environment-audit-item">
-        <div class="route-meta">
-          ${routeFieldRow("route.envs.audit.operator", normalizeText(item?.operator || "-"))}
-          ${routeFieldRow("route.envs.audit.at", formatDateTime(item?.occurred_at))}
-          ${routeFieldRow("route.envs.audit.requires_restart", item?.requires_restart ? t("status.enabled") : t("status.disabled"))}
-        </div>
-        ${changesBody}
-      </article>`;
+      return routeCardTemplate(
+        normalizeText(item?.operator || t("route.envs.audit.title")),
+        "env",
+        [
+          routeFieldRow("route.envs.audit.operator", normalizeText(item?.operator || "-")),
+          routeFieldRow("route.envs.audit.at", formatDateTime(item?.occurred_at)),
+          routeFieldRow("route.envs.audit.requires_restart", item?.requires_restart ? t("status.enabled") : t("status.disabled"))
+        ],
+        true,
+        changesBody,
+        {
+          className: "environment-audit-item",
+          footer: renderRouteTagSection("field.tags", [item?.requires_restart ? t("status.enabled") : t("status.disabled")])
+        }
+      );
     }).join("")}
   </div>`;
 }
