@@ -33,6 +33,8 @@ const (
 	workspaceTasksDirName            = "tasks"
 	taskIDMetadataKey                = "task_id"
 	sessionIDMetadataFallback        = "session_id"
+	codexAddDirsMetadataKey          = "codex_add_dirs"
+	codexAddDirsEnvKey               = "ALTER0_CODEX_ADD_DIRS"
 )
 
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
@@ -108,9 +110,11 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		"--color", "never",
 		"--skip-git-repo-check",
 		"--sandbox", resolveCodexSandboxMode(metadata),
-		"-o", outputPath,
-		renderedPrompt,
 	}
+	for _, dir := range resolveCodexAddDirs(metadata) {
+		args = append(args, "--add-dir", dir)
+	}
+	args = append(args, "-o", outputPath, renderedPrompt)
 	cmd := runner(ctx, commandName, args...)
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
@@ -175,10 +179,11 @@ func (p *CodexCLIProcessor) ProcessStream(
 		"--color", "never",
 		"--skip-git-repo-check",
 		"--sandbox", resolveCodexSandboxMode(metadata),
-		"--json",
-		"--progress-cursor",
-		renderedPrompt,
 	}
+	for _, dir := range resolveCodexAddDirs(metadata) {
+		args = append(args, "--add-dir", dir)
+	}
+	args = append(args, "--json", "--progress-cursor", renderedPrompt)
 	cmd := runner(ctx, commandName, args...)
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
@@ -357,6 +362,24 @@ func resolveCodexSandboxMode(metadata map[string]string) string {
 	default:
 		return defaultCodexSandboxMode
 	}
+}
+
+func resolveCodexAddDirs(metadata map[string]string) []string {
+	raw := strings.TrimSpace(firstNonEmpty(
+		metadataValue(metadata, codexAddDirsMetadataKey),
+		os.Getenv(codexAddDirsEnvKey),
+	))
+	if raw == "" {
+		return nil
+	}
+	var dirs []string
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if p != "" {
+			dirs = append(dirs, p)
+		}
+	}
+	return dirs
 }
 
 func resolveCodexWorkspaceMode(metadata map[string]string) string {
