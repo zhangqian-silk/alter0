@@ -33,8 +33,10 @@ const (
 	workspaceTasksDirName            = "tasks"
 	taskIDMetadataKey                = "task_id"
 	sessionIDMetadataFallback        = "session_id"
-	codexAddDirsMetadataKey          = "codex_add_dirs"
-	codexAddDirsEnvKey               = "ALTER0_CODEX_ADD_DIRS"
+	codexAddDirsMetadataKey             = "codex_add_dirs"
+	codexAddDirsEnvKey                  = "ALTER0_CODEX_ADD_DIRS"
+	codexDefaultAddDirsEnabledMetadataKey = "codex_default_add_dirs_enabled"
+	codexDefaultAddDirsEnabledEnvKey      = "ALTER0_CODEX_DEFAULT_ADD_DIRS_ENABLED"
 )
 
 var defaultAddDirs = []string{
@@ -375,15 +377,15 @@ func resolveCodexSandboxMode(metadata map[string]string) string {
 
 func resolveCodexAddDirs(metadata map[string]string) []string {
 	dirs := make(map[string]struct{})
-	
-	// Add default directories that exist
-	for _, dir := range defaultAddDirs {
-		if _, err := os.Stat(dir); err == nil {
-			dirs[dir] = struct{}{}
+
+	if resolveCodexDefaultAddDirsEnabled(metadata) {
+		for _, dir := range defaultAddDirs {
+			if _, err := os.Stat(dir); err == nil {
+				dirs[dir] = struct{}{}
+			}
 		}
 	}
-	
-	// Add user-specified directories
+
 	raw := strings.TrimSpace(firstNonEmpty(
 		metadataValue(metadata, codexAddDirsMetadataKey),
 		os.Getenv(codexAddDirsEnvKey),
@@ -396,13 +398,26 @@ func resolveCodexAddDirs(metadata map[string]string) []string {
 			}
 		}
 	}
-	
-	// Convert to slice
+
 	result := make([]string, 0, len(dirs))
 	for dir := range dirs {
 		result = append(result, dir)
 	}
 	return result
+}
+
+func resolveCodexDefaultAddDirsEnabled(metadata map[string]string) bool {
+	candidate := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		metadataValue(metadata, codexDefaultAddDirsEnabledMetadataKey),
+		os.Getenv(codexDefaultAddDirsEnabledEnvKey),
+		"true",
+	)))
+	switch candidate {
+	case "0", "false", "off", "no", "disabled":
+		return false
+	default:
+		return true
+	}
 }
 
 func resolveCodexWorkspaceMode(metadata map[string]string) string {
