@@ -37,6 +37,15 @@ const (
 	codexAddDirsEnvKey               = "ALTER0_CODEX_ADD_DIRS"
 )
 
+var defaultAddDirs = []string{
+	"/bin",
+	"/usr/bin",
+	"/usr/local/bin",
+	"/usr/sbin",
+	"/sbin",
+	"/tmp",
+}
+
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
 
 type CodexCLIProcessor struct {
@@ -365,21 +374,35 @@ func resolveCodexSandboxMode(metadata map[string]string) string {
 }
 
 func resolveCodexAddDirs(metadata map[string]string) []string {
+	dirs := make(map[string]struct{})
+	
+	// Add default directories that exist
+	for _, dir := range defaultAddDirs {
+		if _, err := os.Stat(dir); err == nil {
+			dirs[dir] = struct{}{}
+		}
+	}
+	
+	// Add user-specified directories
 	raw := strings.TrimSpace(firstNonEmpty(
 		metadataValue(metadata, codexAddDirsMetadataKey),
 		os.Getenv(codexAddDirsEnvKey),
 	))
-	if raw == "" {
-		return nil
-	}
-	var dirs []string
-	for _, part := range strings.Split(raw, ",") {
-		p := strings.TrimSpace(part)
-		if p != "" {
-			dirs = append(dirs, p)
+	if raw != "" {
+		for _, part := range strings.Split(raw, ",") {
+			p := strings.TrimSpace(part)
+			if p != "" {
+				dirs[p] = struct{}{}
+			}
 		}
 	}
-	return dirs
+	
+	// Convert to slice
+	result := make([]string, 0, len(dirs))
+	for dir := range dirs {
+		result = append(result, dir)
+	}
+	return result
 }
 
 func resolveCodexWorkspaceMode(metadata map[string]string) string {
