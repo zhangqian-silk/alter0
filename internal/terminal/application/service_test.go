@@ -32,7 +32,21 @@ func TestBuildCodexTurnArgsUsesResumeWhenThreadExists(t *testing.T) {
 
 	args := buildCodexTurnArgs(command, "thread-123", "reply exactly")
 
-	expected := []string{"--profile", "test", "exec", "resume", "--json", "--skip-git-repo-check", "thread-123", "reply exactly"}
+	expected := []string{"--profile", "test", "exec", "--enable", defaultLinuxSandboxBwrapFeature, "resume", "--json", "--skip-git-repo-check", "thread-123", "reply exactly"}
+	if strings.Join(args, " ") != strings.Join(expected, " ") {
+		t.Fatalf("unexpected args: %v", args)
+	}
+}
+
+func TestBuildCodexTurnArgsEnablesLinuxSandboxBwrapForNewTurns(t *testing.T) {
+	command := resolveCodexCommand(Options{
+		Shell:     "codex",
+		ShellArgs: []string{"--profile", "test"},
+	})
+
+	args := buildCodexTurnArgs(command, "", "reply exactly")
+
+	expected := []string{"--profile", "test", "exec", "--enable", defaultLinuxSandboxBwrapFeature, "--json", "--color", "never", "--skip-git-repo-check", "--sandbox", defaultCodexSandbox, "reply exactly"}
 	if strings.Join(args, " ") != strings.Join(expected, " ") {
 		t.Fatalf("unexpected args: %v", args)
 	}

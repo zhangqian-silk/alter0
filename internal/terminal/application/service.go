@@ -20,9 +20,10 @@ import (
 )
 
 const (
-	defaultCodexCommand = "codex"
-	defaultCodexSandbox = "danger-full-access"
-	maxEntryPageLimit   = 200
+	defaultCodexCommand            = "codex"
+	defaultCodexSandbox            = "danger-full-access"
+	defaultLinuxSandboxBwrapFeature = "use_linux_sandbox_bwrap"
+	maxEntryPageLimit              = 200
 )
 
 var (
@@ -1001,7 +1002,7 @@ func resolveCodexCommand(options Options) codexCommand {
 
 func buildCodexTurnArgs(command codexCommand, threadID string, prompt string) []string {
 	args := append([]string{}, command.globalArgs...)
-	args = append(args, "exec")
+	args = append(args, "exec", "--enable", defaultLinuxSandboxBwrapFeature)
 	if strings.TrimSpace(threadID) != "" {
 		args = append(args, "resume", "--json", "--skip-git-repo-check", threadID, prompt)
 		return args
