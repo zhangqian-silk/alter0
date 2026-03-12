@@ -2791,29 +2791,58 @@ func cronJobResourceID(path string) (string, string, bool) {
 // LLM Provider handlers
 
 func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
 	if s.llm == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "llm service unavailable"})
 		return
 	}
 
 	ctx := r.Context()
-	providers, err := s.llm.GetEnabledProviders(ctx)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
 
-	// Mask API keys
-	items := make([]llmProviderResponse, 0, len(providers))
-	for _, p := range providers {
-		items = append(items, toLLMProviderResponse(p, true))
-	}
+	switch r.Method {
+	case http.MethodGet:
+		providers, err := s.llm.GetEnabledProviders(ctx)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		// Mask API keys
+		items := make([]llmProviderResponse, 0, len(providers))
+		for _, p := range providers {
+			items = append(items, toLLMProviderResponse(p, true))
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+
+	case http.MethodPost:
+		// Create new provider
+		var req llmProviderCreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		provider := llmdomain.ModelProvider{
+			ID:           req.ID,
+			Name:         req.Name,
+			BaseURL:      req.BaseURL,
+			APIKey:       req.APIKey,
+			DefaultModel: req.DefaultModel,
+			Models:       req.Models,
+			IsEnabled:    req.IsEnabled,
+		}
+
+		if err := s.llm.AddProvider(ctx, provider); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		created, _ := s.llm.GetProvider(ctx, req.ID)
+		writeJSON(w, http.StatusCreated, toLLMProviderResponse(*created, true))
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
 }
 
 func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) {
@@ -2920,6 +2949,16 @@ type llmProviderResponse struct {
 }
 
 type llmProviderUpdateRequest struct {
+	Name         string                `json:"name"`
+	BaseURL      string                `json:"base_url"`
+	APIKey       string                `json:"api_key"`
+	DefaultModel string                `json:"default_model"`
+	Models       []llmdomain.ModelInfo `json:"models"`
+	IsEnabled    bool                  `json:"is_enabled"`
+}
+
+type llmProviderCreateRequest struct {
+	ID           string                `json:"id"`
 	Name         string                `json:"name"`
 	BaseURL      string                `json:"base_url"`
 	APIKey       string                `json:"api_key"`

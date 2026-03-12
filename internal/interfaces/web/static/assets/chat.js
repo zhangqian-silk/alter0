@@ -809,7 +809,7 @@ const ROUTES = {
   models: {
     key: "models",
     mode: "page",
-    loader: loadPlaceholderView
+    loader: loadModelsView
   },
   environments: {
     key: "envs",
@@ -7069,6 +7069,153 @@ async function loadEnvironmentsView(container) {
   const initialPayload = await fetchEnvironments();
   paint(initialPayload.configItems, initialPayload.audits, "");
   bindView();
+}
+
+async function loadModelsView(container) {
+  let providers = [];
+  const localState = { showModal: false, editingProvider: null };
+  
+  const fetchProviders = async () => {
+    try {
+      const payload = await fetchJSON("/api/control/llm/providers");
+      return Array.isArray(payload && payload.items) ? payload.items : [];
+    } catch (e) {
+      console.error("fetchProviders error:", e);
+      return [];
+    }
+  };
+
+  const renderProviderCard = (provider) => {
+    const statusClass = provider.is_enabled ? "provider-enabled" : "provider-disabled";
+    const defaultBadge = provider.is_default ? '<span class="badge-default">默认</span>' : "";
+    return '<div class="provider-card ' + statusClass + '">' +
+      '<div class="provider-header">' +
+        '<h3>' + escapeHTML(provider.name || provider.id) + ' ' + defaultBadge + '</h3>' +
+        '<span class="provider-status">' + (provider.is_enabled ? "已启用" : "已禁用") + '</span>' +
+      '</div>' +
+      '<div class="provider-info">' +
+        '<p><strong>Base URL:</strong> ' + escapeHTML(provider.base_url || "-") + '</p>' +
+        '<p><strong>默认模型:</strong> ' + escapeHTML(provider.default_model || "-") + '</p>' +
+      '</div>' +
+      '<div class="provider-actions">' +
+        '<button type="button" data-action="edit" data-id="' + escapeHTML(provider.id) + '">编辑</button>' +
+        (provider.is_default ? "" : '<button type="button" data-action="default" data-id="' + escapeHTML(provider.id) + '">设为默认</button>') +
+        '<button type="button" data-action="' + (provider.is_enabled ? "disable" : "enable") + '" data-id="' + escapeHTML(provider.id) + '">' + (provider.is_enabled ? "禁用" : "启用") + '</button>' +
+        '<button type="button" data-action="delete" data-id="' + escapeHTML(provider.id) + '">删除</button>' +
+      '</div>' +
+    '</div>';
+  };
+
+  const showModal = (provider) => {
+    localState.showModal = true;
+    localState.editingProvider = provider;
+  };
+
+  const hideModal = () => {
+    localState.showModal = false;
+    localState.editingProvider = null;
+  };
+
+  const paint = (providers) => {
+    const cards = providers.map(renderProviderCard).join("");
+    let modalHtml = "";
+    if (localState.showModal) {
+      const form = localState.editingProvider || { id: "", name: "", base_url: "", api_key: "", default_model: "", is_enabled: true };
+      modalHtml = '<div class="modal-backdrop" data-modal>' +
+        '<div class="modal-dialog">' +
+          '<div class="modal-header"><h3>' + (localState.editingProvider ? "编辑" : "新增") + ' Provider</h3><button type="button" data-close>&times;</button></div>' +
+          '<form data-form>' +
+            '<label>ID <input name="id" value="' + escapeHTML(form.id) + '" ' + (localState.editingProvider ? "disabled" : "") + ' required></label>' +
+            '<label>名称 <input name="name" value="' + escapeHTML(form.name || "") + '"></label>' +
+            '<label>Base URL <input name="base_url" value="' + escapeHTML(form.base_url || "") + '" required></label>' +
+            '<label>API Key <input type="password" name="api_key" required></label>' +
+            '<label>默认模型 <input name="default_model" value="' + escapeHTML(form.default_model || "") + '"></label>' +
+            '<label><input type="checkbox" name="is_enabled" ' + (form.is_enabled ? "checked" : "") + '> 启用</label>' +
+            '<div class="modal-footer"><button type="button" data-close>取消</button><button type="submit">保存</button></div>' +
+          '</form>' +
+        '</div>' +
+      '</div>';
+    }
+    container.innerHTML = '<section class="route-view models-view">' +
+      '<div class="route-card toolbar">' +
+        '<h2>LLM Providers</h2>' +
+        '<button type="button" class="btn-primary" data-action="add">+ 新增 Provider</button>' +
+      '</div>' +
+      '<div class="providers-list">' + (cards || "<p>暂无 Provider</p>") + '</div>' +
+      modalHtml +
+    '</section>';
+  };
+
+  const bindEvents = () => {
+    const addBtn = container.querySelector('[data-action="add"]');
+    if (addBtn) {
+      addBtn.addEventListener("click", () => { showModal(null); paint(providers); bindEvents(); });
+    }
+    container.querySelectorAll("[data-close]").forEach(function(el) {
+      el.addEventListener("click", function() { hideModal(); paint(providers); bindEvents(); });
+    });
+    const modalBackdrop = container.querySelector("[data-modal]");
+    if (modalBackdrop) {
+      modalBackdrop.addEventListener("click", function(e) {
+        if (e.target.hasAttribute("data-modal")) { hideModal(); paint(providers); bindEvents(); }
+      });
+    }
+    container.querySelectorAll("[data-action]:not([data-action='add'])").forEach(function(btn) {
+      btn.addEventListener("click", async function() {
+        const action = btn.getAttribute("data-action");
+        const id = btn.getAttribute("data-id");
+        const url = "/api/control/llm/providers/" + encodeURIComponent(id);
+        try {
+          if (action === "edit") {
+            const p = providers.find(function(x) { return x.id === id; });
+            showModal(p);
+            paint(providers);
+            bindEvents();
+          } else if (action === "default") {
+            await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set-default" }) });
+            providers = await fetchProviders();
+            paint(providers);
+            bindEvents();
+          } else if (action === "enable") {
+            await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "enable" }) });
+            providers = await fetchProviders();
+            paint(providers);
+            bindEvents();
+          } else if (action === "disable") {
+            await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "disable" }) });
+            providers = await fetchProviders();
+            paint(providers);
+            bindEvents();
+          } else if (action === "delete" && confirm("确定删除?")) {
+            await fetch(url, { method: "DELETE" });
+            providers = await fetchProviders();
+            paint(providers);
+            bindEvents();
+          }
+        } catch (err) { alert("操作失败: " + err.message); }
+      });
+    });
+    const form = container.querySelector("[data-form]");
+    if (form) {
+      form.addEventListener("submit", async function(e) {
+        e.preventDefault();
+        const fd = new FormData(form);
+        const body = { id: fd.get("id"), name: fd.get("name"), base_url: fd.get("base_url"), api_key: fd.get("api_key"), default_model: fd.get("default_model"), models: [], is_enabled: fd.get("is_enabled") === "on" };
+        try {
+          const url = localState.editingProvider ? "/api/control/llm/providers/" + encodeURIComponent(body.id) : "/api/control/llm/providers";
+          await fetch(url, { method: localState.editingProvider ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          hideModal();
+          providers = await fetchProviders();
+          paint(providers);
+          bindEvents();
+        } catch (err) { alert("保存失败: " + err.message); }
+      });
+    }
+  };
+
+  providers = await fetchProviders();
+  paint(providers);
+  bindEvents();
 }
 
 async function loadPlaceholderView(container) {
