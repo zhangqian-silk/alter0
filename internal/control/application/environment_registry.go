@@ -327,5 +327,70 @@ func defaultEnvironmentDefinitions() []controldomain.EnvironmentDefinition {
 				Required: true,
 			},
 		},
+		// LLM Configuration
+		{
+			Key:          "llm_default_provider",
+			Name:         "Default LLM Provider",
+			Module:       "LLM",
+			Description:  "默认 LLM Provider ID（在 LLM Providers 页面配置）",
+			Type:         controldomain.EnvironmentValueTypeString,
+			DefaultValue: "",
+			ApplyMode:    controldomain.EnvironmentApplyModeImmediate,
+			Validation: controldomain.EnvironmentValidation{
+				Required: false,
+			},
+		},
+		{
+			Key:          "llm_default_model",
+			Name:         "Default Model",
+			Module:       "LLM",
+			Description:  "默认模型名称（留空使用 Provider 默认）",
+			Type:         controldomain.EnvironmentValueTypeString,
+			DefaultValue: "",
+			ApplyMode:    controldomain.EnvironmentApplyModeImmediate,
+			Validation: controldomain.EnvironmentValidation{
+				Required: false,
+			},
+		},
+		{
+			Key:          "llm_temperature",
+			Name:         "Temperature",
+			Module:       "LLM",
+			Description:  "模型生成温度（0-2）",
+			Type:         controldomain.EnvironmentValueTypeString,
+			DefaultValue: "0.7",
+			ApplyMode:    controldomain.EnvironmentApplyModeImmediate,
+			Validation: controldomain.EnvironmentValidation{
+				Required: false,
+			},
+		},
+		{
+			Key:          "llm_max_tokens",
+			Name:         "Max Tokens",
+			Module:       "LLM",
+			Description:  "最大生成 token 数",
+			Type:         controldomain.EnvironmentValueTypeInteger,
+			DefaultValue: "4096",
+			ApplyMode:    controldomain.EnvironmentApplyModeImmediate,
+			Validation: controldomain.EnvironmentValidation{
+				Required: false,
+				Min:      "1",
+				Max:      "1000000",
+			},
+		},
+		{
+			Key:          "llm_react_max_iterations",
+			Name:         "ReAct Max Iterations",
+			Module:       "LLM",
+			Description:  "ReAct Agent 最大迭代次数",
+			Type:         controldomain.EnvironmentValueTypeInteger,
+			DefaultValue: "10",
+			ApplyMode:    controldomain.EnvironmentApplyModeImmediate,
+			Validation: controldomain.EnvironmentValidation{
+				Required: true,
+				Min:      "1",
+				Max:      "100",
+			},
+		},
 	}
 }
