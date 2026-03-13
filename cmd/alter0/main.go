@@ -18,6 +18,8 @@ import (
 	controldomain "alter0/internal/control/domain"
 	execapp "alter0/internal/execution/application"
 	execinfra "alter0/internal/execution/infrastructure"
+	llmapp "alter0/internal/llm/application"
+	llminfra "alter0/internal/llm/infrastructure"
 	"alter0/internal/interfaces/cli"
 	"alter0/internal/interfaces/web"
 	orchapp "alter0/internal/orchestration/application"
@@ -280,6 +282,10 @@ func main() {
 	}
 	scheduler.Start(rootCtx)
 
+	// Initialize LLM service
+	llmStorage := llminfra.NewModelConfigStorage(".alter0/model_config.json")
+	llmService := llmapp.NewModelConfigService(llmStorage)
+
 	server := web.NewServer(
 		listenAddr,
 		orchestrator,
@@ -300,6 +306,7 @@ func main() {
 			LoginPassword: resolvedWebLoginPassword,
 			BindLocalhost: resolvedWebBindLocalhostOnly,
 		},
+		llmService,
 		logger,
 	)
 	webErrCh := make(chan error, 1)
