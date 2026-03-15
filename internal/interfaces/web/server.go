@@ -19,6 +19,7 @@ import (
 
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
+	llmdomain "alter0/internal/llm/domain"
 	schedulerapp "alter0/internal/scheduler/application"
 	schedulerdomain "alter0/internal/scheduler/domain"
 	sessionapp "alter0/internal/session/application"
@@ -76,11 +77,24 @@ type Server struct {
 	tasks            taskService
 	terminals        terminalService
 	memory           *agentMemoryService
+	llm              llmService
 	logger           *slog.Logger
 	webLoginPassword string
 	webSessionToken  string
 	webLoginEnabled  bool
 	webBindLocalhost bool
+}
+
+type llmService interface {
+	GetConfig(ctx context.Context) (*llmdomain.ModelConfig, error)
+	GetProvider(ctx context.Context, providerID string) (*llmdomain.ModelProvider, error)
+	GetDefaultProvider(ctx context.Context) (*llmdomain.ModelProvider, error)
+	GetEnabledProviders(ctx context.Context) ([]llmdomain.ModelProvider, error)
+	AddProvider(ctx context.Context, provider llmdomain.ModelProvider) error
+	UpdateProvider(ctx context.Context, provider llmdomain.ModelProvider) error
+	RemoveProvider(ctx context.Context, providerID string) error
+	SetDefaultProvider(ctx context.Context, providerID string) error
+	EnableProvider(ctx context.Context, providerID string, enabled bool) error
 }
 
 type sessionHistoryService interface {
@@ -439,6 +453,7 @@ func NewServer(
 	terminals terminalService,
 	memoryOptions AgentMemoryOptions,
 	securityOptions WebSecurityOptions,
+	llm llmService,
 	logger *slog.Logger,
 ) *Server {
 	resolvedPassword := strings.TrimSpace(securityOptions.LoginPassword)
@@ -463,6 +478,7 @@ func NewServer(
 		tasks:            tasks,
 		terminals:        terminals,
 		memory:           newAgentMemoryService(memoryOptions),
+		llm:              llm,
 		logger:           logger,
 		webLoginPassword: resolvedPassword,
 		webSessionToken:  webSessionToken,
@@ -504,6 +520,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/mcps/", s.mcpItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
+	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
+	mux.HandleFunc("/api/control/llm/providers/", s.llmProviderItemHandler)
 	mux.HandleFunc("/api/terminal/sessions", s.terminalSessionCollectionHandler)
 	mux.HandleFunc("/api/terminal/sessions/", s.terminalSessionItemHandler)
 
@@ -2768,6 +2786,221 @@ func cronJobResourceID(path string) (string, string, bool) {
 		return id, subResource, true
 	}
 	return "", "", false
+}
+
+// LLM Provider handlers
+
+func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.llm == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "llm service unavailable"})
+		return
+	}
+
+	ctx := r.Context()
+
+	switch r.Method {
+	case http.MethodGet:
+		config, err := s.llm.GetConfig(ctx)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		providers := []llmdomain.ModelProvider{}
+		if config != nil {
+			providers = config.Providers
+		}
+
+		// Mask API keys
+		items := make([]llmProviderResponse, 0, len(providers))
+		for _, p := range providers {
+			items = append(items, toLLMProviderResponse(p, true))
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+
+	case http.MethodPost:
+		// Create new provider
+		var req llmProviderCreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		provider := llmdomain.ModelProvider{
+			ID:           req.ID,
+			Name:         req.Name,
+			BaseURL:      req.BaseURL,
+			APIKey:       req.APIKey,
+			DefaultModel: req.DefaultModel,
+			Models:       req.Models,
+			IsEnabled:    req.IsEnabled,
+		}
+
+		if err := s.llm.AddProvider(ctx, provider); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		created, _ := s.llm.GetProvider(ctx, req.ID)
+		writeJSON(w, http.StatusCreated, toLLMProviderResponse(*created, true))
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.llm == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "llm service unavailable"})
+		return
+	}
+
+	providerID, ok := resourceID(r.URL.Path, "/api/control/llm/providers/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid provider id"})
+		return
+	}
+
+	ctx := r.Context()
+
+	switch r.Method {
+	case http.MethodGet:
+		provider, err := s.llm.GetProvider(ctx, providerID)
+		if err != nil || provider == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "provider not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, toLLMProviderResponse(*provider, true))
+
+	case http.MethodPut:
+		var req llmProviderUpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		existing, err := s.llm.GetProvider(ctx, providerID)
+		if err != nil || existing == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "provider not found"})
+			return
+		}
+		apiKey := strings.TrimSpace(req.APIKey)
+		if apiKey == "" {
+			apiKey = existing.APIKey
+		}
+
+		provider := llmdomain.ModelProvider{
+			ID:           providerID,
+			Name:         req.Name,
+			BaseURL:      req.BaseURL,
+			APIKey:       apiKey,
+			DefaultModel: req.DefaultModel,
+			Models:       req.Models,
+			IsEnabled:    req.IsEnabled,
+		}
+
+		if err := s.llm.UpdateProvider(ctx, provider); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		updated, _ := s.llm.GetProvider(ctx, providerID)
+		writeJSON(w, http.StatusOK, toLLMProviderResponse(*updated, true))
+
+	case http.MethodDelete:
+		if err := s.llm.RemoveProvider(ctx, providerID); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+
+	case http.MethodPost:
+		// Handle sub-actions: set-default, enable, disable
+		var req llmProviderActionRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		switch req.Action {
+		case "set-default":
+			if err := s.llm.SetDefaultProvider(ctx, providerID); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+		case "enable":
+			if err := s.llm.EnableProvider(ctx, providerID, true); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+		case "disable":
+			if err := s.llm.EnableProvider(ctx, providerID, false); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown action"})
+			return
+		}
+
+		updated, _ := s.llm.GetProvider(ctx, providerID)
+		writeJSON(w, http.StatusOK, toLLMProviderResponse(*updated, true))
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+type llmProviderResponse struct {
+	ID           string                `json:"id"`
+	Name         string                `json:"name"`
+	BaseURL      string                `json:"base_url"`
+	APIKey       string                `json:"api_key"` // Masked
+	DefaultModel string                `json:"default_model"`
+	Models       []llmdomain.ModelInfo `json:"models"`
+	IsEnabled    bool                  `json:"is_enabled"`
+	IsDefault    bool                  `json:"is_default"`
+}
+
+type llmProviderUpdateRequest struct {
+	Name         string                `json:"name"`
+	BaseURL      string                `json:"base_url"`
+	APIKey       string                `json:"api_key"`
+	DefaultModel string                `json:"default_model"`
+	Models       []llmdomain.ModelInfo `json:"models"`
+	IsEnabled    bool                  `json:"is_enabled"`
+}
+
+type llmProviderCreateRequest struct {
+	ID           string                `json:"id"`
+	Name         string                `json:"name"`
+	BaseURL      string                `json:"base_url"`
+	APIKey       string                `json:"api_key"`
+	DefaultModel string                `json:"default_model"`
+	Models       []llmdomain.ModelInfo `json:"models"`
+	IsEnabled    bool                  `json:"is_enabled"`
+}
+
+type llmProviderActionRequest struct {
+	Action string `json:"action"` // set-default, enable, disable
+}
+
+func toLLMProviderResponse(p llmdomain.ModelProvider, maskKey bool) llmProviderResponse {
+	apiKey := p.APIKey
+	if maskKey && len(apiKey) > 8 {
+		apiKey = apiKey[:4] + "****" + apiKey[len(apiKey)-4:]
+	} else if maskKey {
+		apiKey = "****"
+	}
+	return llmProviderResponse{
+		ID:           p.ID,
+		Name:         p.Name,
+		BaseURL:      p.BaseURL,
+		APIKey:       apiKey,
+		DefaultModel: p.DefaultModel,
+		Models:       p.Models,
+		IsEnabled:    p.IsEnabled,
+		IsDefault:    p.IsDefault,
+	}
 }
 
 func sessionResourceID(path string) (string, string, bool) {

@@ -381,9 +381,11 @@ const I18N = {
     "route.envs.current_value": "Configured",
     "route.envs.default_value": "Default",
     "route.envs.effective_value": "Effective",
+    "route.envs.value_type": "Value Type",
     "route.envs.apply_mode": "Apply Mode",
     "route.envs.source": "Source",
     "route.envs.validation": "Validation",
+    "route.envs.details": "More Details",
     "route.envs.pending_restart": "Pending Restart",
     "route.envs.hot_reload": "Hot Reload",
     "route.envs.no_changes": "No configuration changes.",
@@ -402,6 +404,11 @@ const I18N = {
     "route.envs.source.default": "Default",
     "route.envs.source.runtime": "Runtime",
     "route.envs.source.persisted": "Persisted",
+    "route.envs.type.integer": "Integer",
+    "route.envs.type.duration": "Duration, e.g. 5s / 2m / 1h",
+    "route.envs.type.string": "Text",
+    "route.envs.type.enum": "Enumerated option",
+    "route.envs.type.unknown": "Unknown",
     "route.envs.validation.none": "No constraints",
     "route.envs.hidden": "Hidden value",
     "route.connected": "Page Connected",
@@ -731,9 +738,11 @@ const I18N = {
     "route.envs.current_value": "配置值",
     "route.envs.default_value": "默认值",
     "route.envs.effective_value": "生效值",
+    "route.envs.value_type": "值类型",
     "route.envs.apply_mode": "生效方式",
     "route.envs.source": "来源",
     "route.envs.validation": "校验规则",
+    "route.envs.details": "更多信息",
     "route.envs.pending_restart": "待重启生效",
     "route.envs.hot_reload": "热更新",
     "route.envs.no_changes": "没有配置变更。",
@@ -752,6 +761,11 @@ const I18N = {
     "route.envs.source.default": "默认值",
     "route.envs.source.runtime": "运行时",
     "route.envs.source.persisted": "持久化",
+    "route.envs.type.integer": "整数",
+    "route.envs.type.duration": "时长，例如 5s / 2m / 1h",
+    "route.envs.type.string": "文本",
+    "route.envs.type.enum": "枚举选项",
+    "route.envs.type.unknown": "未知",
     "route.envs.validation.none": "无约束",
     "route.envs.hidden": "隐藏值",
     "route.connected": "页面已连接",
@@ -809,7 +823,7 @@ const ROUTES = {
   models: {
     key: "models",
     mode: "page",
-    loader: loadPlaceholderView
+    loader: loadModelsView
   },
   environments: {
     key: "envs",
@@ -2659,6 +2673,7 @@ function routeCardTemplate(title, type, fields = [], enabled = false, body = "")
   const footerClassName = safeOptions.footerClassName
     ? ` route-card-footer ${safeOptions.footerClassName}`
     : " route-card-footer";
+  const fieldRows = Array.isArray(fields) ? fields.filter((item) => typeof item === "string" && item.trim()) : [];
   return `<article class="${classNames.join(" ")}">
     <div class="route-card-head">
       <div class="route-card-title-wrap">
@@ -2670,9 +2685,9 @@ function routeCardTemplate(title, type, fields = [], enabled = false, body = "")
       </div>
       ${badgeHTML}
     </div>
-    <div class="route-meta">
-      ${fields.join("")}
-    </div>
+    ${fieldRows.length ? `<div class="route-meta">
+      ${fieldRows.join("")}
+    </div>` : ""}
     ${body ? `<div class="${bodyClassName}">${body}</div>` : ""}
     ${safeOptions.footer ? `<footer class="${footerClassName.trim()}">${safeOptions.footer}</footer>` : ""}
   </article>`;
@@ -6790,6 +6805,23 @@ function formatEnvironmentSource(source) {
   return t("route.envs.source.default");
 }
 
+function formatEnvironmentValueType(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+  if (normalized === "integer") {
+    return t("route.envs.type.integer");
+  }
+  if (normalized === "duration") {
+    return t("route.envs.type.duration");
+  }
+  if (normalized === "string") {
+    return t("route.envs.type.string");
+  }
+  if (normalized === "enum") {
+    return t("route.envs.type.enum");
+  }
+  return t("route.envs.type.unknown");
+}
+
 function renderEnvironmentValidation(definition) {
   const validation = definition?.validation || {};
   const parts = [];
@@ -6852,11 +6884,13 @@ function renderEnvironmentItem(item) {
   const definition = item?.definition || {};
   const key = normalizeText(definition?.key || "-");
   const name = normalizeText(definition?.name || key);
+  const description = normalizeText(definition?.description || "-");
   const currentValue = normalizeText(item?.value || "");
   const effectiveValue = normalizeText(item?.effective_value || "");
   const defaultValue = normalizeText(definition?.default_value || "");
   const pendingRestart = Boolean(item?.pending_restart);
   const hotReload = Boolean(definition?.hot_reload);
+  const valueType = formatEnvironmentValueType(definition?.type);
   const applyMode = formatEnvironmentApplyMode(definition?.apply_mode);
   const source = formatEnvironmentSource(item?.value_source);
   const validation = renderEnvironmentValidation(definition);
@@ -6868,11 +6902,9 @@ function renderEnvironmentItem(item) {
     <code title="${escapeHTML(key)}">${escapeHTML(key)}</code>
     <button class="route-field-copy" type="button" data-copy-value="${escapeHTML(key)}" title="${escapeHTML(t("route.copy_value"))}" aria-label="${escapeHTML(t("route.copy_value"))}">${renderCopyIcon()}</button>
   </span>`;
-  const body = `<label class="environment-input-row">
-      <span>${t("route.envs.current_value")}</span>
-      ${inputControl}
-    </label>`;
-  const fields = [
+  const detailFields = [
+      routeFieldRow("field.description", description, { multiline: true, preview: true, clampLines: 8 }),
+      routeFieldRow("route.envs.value_type", valueType),
       routeFieldRow("route.envs.default_value", defaultValue || "-", { multiline: true, mono: true, copyable: defaultValue && defaultValue !== "-" }),
       routeFieldRow("route.envs.effective_value", effectiveValue || "-", { multiline: true, mono: true, copyable: effectiveValue && effectiveValue !== "-" }),
       routeFieldRow("route.envs.apply_mode", applyMode),
@@ -6880,11 +6912,27 @@ function renderEnvironmentItem(item) {
       routeFieldRow("route.envs.validation", validation, { multiline: true, mono: true }),
       routeFieldRow("route.envs.hot_reload", hotReload ? t("status.enabled") : t("status.disabled"))
     ];
+  const body = `<section class="environment-summary">
+      <div class="environment-description">
+        <span>${t("field.description")}</span>
+        <p class="environment-description-text" title="${escapeHTML(description)}">${escapeHTML(description)}</p>
+      </div>
+      <label class="environment-input-row">
+      <span>${t("route.envs.current_value")}</span>
+      ${inputControl}
+    </label>
+      <details class="environment-details">
+        <summary>${t("route.envs.details")}</summary>
+        <div class="environment-details-body">
+          ${detailFields.join("")}
+        </div>
+      </details>
+    </section>`;
   const footer = `${renderRouteTagSection("field.tags", [applyMode, source, hotReload ? t("status.enabled") : t("status.disabled")])}${pendingRestart ? `<p class="environment-item-notice">${escapeHTML(t("route.envs.restart_notice", { keys: key }))}</p>` : ""}`;
   return routeCardTemplate(
     name,
     "env",
-    fields,
+    [],
     true,
     body,
     {
@@ -6892,6 +6940,7 @@ function renderEnvironmentItem(item) {
       titleMetaHTML,
       badgeHTML: pendingBadge,
       footer,
+      bodyClassName: "environment-card-body",
       footerClassName: "route-card-footer-spread"
     }
   );
@@ -7069,6 +7118,661 @@ async function loadEnvironmentsView(container) {
   const initialPayload = await fetchEnvironments();
   paint(initialPayload.configItems, initialPayload.audits, "");
   bindView();
+}
+
+async function loadModelsView(container) {
+  let providers = [];
+  const localState = {
+    showModal: false,
+    editingProvider: null,
+    switchProviderID: "",
+    switchModelID: "",
+    statusMessage: ""
+  };
+  const OPENAI_PROVIDER_TEMPLATE = {
+    id: "openai",
+    name: "OpenAI",
+    base_url: "https://api.openai.com/v1",
+    models: [
+      { id: "gpt-4o", name: "GPT-4o", is_enabled: true, supports_tools: true, supports_vision: true, supports_streaming: true },
+      { id: "gpt-4o-mini", name: "GPT-4o Mini", is_enabled: true, supports_tools: true, supports_vision: true, supports_streaming: true }
+    ]
+  };
+
+  const requestJSON = async (url, options) => {
+    const response = await fetch(url, options);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+    return payload;
+  };
+
+  const sanitizeModel = (model) => {
+    const id = normalizeText(model?.id || "");
+    if (!id) {
+      return null;
+    }
+    return {
+      id,
+      name: normalizeText(model?.name || id) || id,
+      is_enabled: Boolean(model?.is_enabled),
+      supports_tools: Boolean(model?.supports_tools),
+      supports_vision: Boolean(model?.supports_vision),
+      supports_streaming: Boolean(model?.supports_streaming),
+      max_tokens: Number.isFinite(Number(model?.max_tokens)) ? Number(model.max_tokens) : 0
+    };
+  };
+
+  const sanitizeProvider = (provider) => {
+    const models = Array.isArray(provider?.models)
+      ? provider.models.map(sanitizeModel).filter(Boolean)
+      : [];
+    return {
+      id: normalizeText(provider?.id || ""),
+      name: normalizeText(provider?.name || ""),
+      base_url: normalizeText(provider?.base_url || ""),
+      api_key: normalizeText(provider?.api_key || ""),
+      default_model: normalizeText(provider?.default_model || ""),
+      models,
+      is_enabled: Boolean(provider?.is_enabled),
+      is_default: Boolean(provider?.is_default)
+    };
+  };
+
+  const cloneProvider = (provider) => sanitizeProvider(JSON.parse(JSON.stringify(provider || {})));
+
+  const createEmptyModel = (overrides = {}) => ({
+    id: "",
+    name: "",
+    is_enabled: true,
+    supports_tools: true,
+    supports_vision: false,
+    supports_streaming: true,
+    max_tokens: 0,
+    ...overrides
+  });
+
+  const createProviderDraft = () => ({
+    id: providers.some((provider) => provider.id === OPENAI_PROVIDER_TEMPLATE.id) ? "" : OPENAI_PROVIDER_TEMPLATE.id,
+    name: OPENAI_PROVIDER_TEMPLATE.name,
+    base_url: OPENAI_PROVIDER_TEMPLATE.base_url,
+    api_key: "",
+    default_model: OPENAI_PROVIDER_TEMPLATE.models[0].id,
+    models: OPENAI_PROVIDER_TEMPLATE.models.map((model) => createEmptyModel(model)),
+    is_enabled: true,
+    is_default: false
+  });
+
+  const getEnabledModels = (provider) => {
+    const models = Array.isArray(provider?.models) ? provider.models : [];
+    return models.filter((model) => model && model.is_enabled);
+  };
+
+  const renderModelsEmptyIcon = () => `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+    <rect x="10" y="12" width="44" height="30" rx="8" fill="#eaf2ff" stroke="#93c5fd" stroke-width="2"></rect>
+    <path d="M18 48h28" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round"></path>
+    <path d="M24 22h16M24 30h10" stroke="#2563eb" stroke-width="3" stroke-linecap="round"></path>
+    <circle cx="46" cy="46" r="10" fill="#2563eb"></circle>
+    <path d="M46 41v10M41 46h10" stroke="#fff" stroke-width="3" stroke-linecap="round"></path>
+  </svg>`;
+
+  const findProvider = (providerID) => providers.find((provider) => provider.id === providerID) || null;
+
+  const syncSwitcherSelection = () => {
+    const enabledProviders = providers.filter((provider) => provider.is_enabled);
+    let selectedProvider = enabledProviders.find((provider) => provider.id === localState.switchProviderID) || null;
+    if (!selectedProvider) {
+      selectedProvider = enabledProviders.find((provider) => provider.is_default) || enabledProviders[0] || null;
+    }
+    localState.switchProviderID = selectedProvider ? selectedProvider.id : "";
+
+    const enabledModels = getEnabledModels(selectedProvider);
+    const hasSelectedModel = enabledModels.some((model) => model.id === localState.switchModelID);
+    if (!hasSelectedModel) {
+      localState.switchModelID = selectedProvider
+        ? (normalizeText(selectedProvider.default_model || "") || (enabledModels[0] ? enabledModels[0].id : ""))
+        : "";
+    }
+    if (!enabledModels.some((model) => model.id === localState.switchModelID)) {
+      localState.switchModelID = enabledModels[0] ? enabledModels[0].id : "";
+    }
+  };
+
+  const fetchProviders = async () => {
+    const payload = await fetchJSON("/api/control/llm/providers");
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    return items.map(sanitizeProvider);
+  };
+
+  const showModal = (provider) => {
+    localState.showModal = true;
+    localState.editingProvider = provider ? cloneProvider(provider) : createProviderDraft();
+  };
+
+  const hideModal = () => {
+    localState.showModal = false;
+    localState.editingProvider = null;
+  };
+
+  const renderEditableModelRow = (model) => {
+    const safeModel = sanitizeModel(model) || createEmptyModel();
+    return `<div class="provider-model-row" data-model-row>
+      <label>
+        <span>Model ID</span>
+        <input type="text" name="model_id" value="${escapeHTML(safeModel.id)}" placeholder="gpt-4o" autocomplete="off">
+      </label>
+      <label>
+        <span>Model Name</span>
+        <input type="text" name="model_name" value="${escapeHTML(safeModel.name === safeModel.id ? "" : safeModel.name)}" placeholder="GPT-4o" autocomplete="off">
+      </label>
+      <label class="provider-model-checkbox">
+        <input type="checkbox" name="model_enabled" ${safeModel.is_enabled ? "checked" : ""}>
+        <span>启用</span>
+      </label>
+      <button type="button" class="provider-model-remove" data-remove-model>删除</button>
+    </div>`;
+  };
+
+  const renderProviderModels = (provider) => {
+    const models = Array.isArray(provider?.models) ? provider.models : [];
+    if (!models.length) {
+      return '<p class="provider-model-empty">暂无模型</p>';
+    }
+    return `<ul class="provider-model-list">
+      ${models.map((model) => {
+        const defaultClass = model.id === provider.default_model ? " provider-model-item-default" : "";
+        const disabledClass = model.is_enabled ? "" : " provider-model-item-disabled";
+        return `<li class="provider-model-item${defaultClass}${disabledClass}">
+          <span class="provider-model-name">${escapeHTML(model.name || model.id)}</span>
+          <span class="provider-model-id">${escapeHTML(model.id)}</span>
+          <span class="provider-model-badge">${model.id === provider.default_model ? "默认模型" : (model.is_enabled ? "可用" : "已禁用")}</span>
+        </li>`;
+      }).join("")}
+    </ul>`;
+  };
+
+  const renderSwitcher = () => {
+    const enabledProviders = providers.filter((provider) => provider.is_enabled);
+    const selectedProvider = findProvider(localState.switchProviderID);
+    const enabledModels = getEnabledModels(selectedProvider);
+    const canApplyDefault = Boolean(selectedProvider && enabledModels.length && localState.switchModelID);
+    const providerOptions = enabledProviders.length
+      ? enabledProviders.map((provider) => `<option value="${escapeHTML(provider.id)}" ${provider.id === localState.switchProviderID ? "selected" : ""}>${escapeHTML(provider.name || provider.id)}</option>`).join("")
+      : '<option value="">暂无可用 Provider</option>';
+    const modelOptions = enabledModels.length
+      ? enabledModels.map((model) => `<option value="${escapeHTML(model.id)}" ${model.id === localState.switchModelID ? "selected" : ""}>${escapeHTML(model.name || model.id)}</option>`).join("")
+      : '<option value="">请先配置可用模型</option>';
+    const description = selectedProvider
+      ? `${selectedProvider.name || selectedProvider.id} · ${selectedProvider.base_url || "-"}`
+      : "当前没有可切换的启用 Provider。";
+
+    if (!enabledProviders.length) {
+      return `<section class="route-card model-switcher-card model-switcher-card-empty">
+        <div class="model-switcher-empty">
+          <div class="models-empty-illustration">${renderModelsEmptyIcon()}</div>
+          <div class="model-switcher-empty-copy">
+            <h3>默认模型</h3>
+            <p>当前没有启用中的 Provider。先新增并启用一个 Provider，再设置默认模型。</p>
+          </div>
+        </div>
+        <div class="model-switcher-grid">
+          <label>
+            <span>Provider</span>
+            <select data-switch-provider disabled>
+              ${providerOptions}
+            </select>
+          </label>
+          <label>
+            <span>Model</span>
+            <select data-switch-model disabled>
+              <option value="">请先配置可用模型</option>
+            </select>
+          </label>
+        </div>
+        <div class="model-switcher-actions">
+          <button type="button" class="btn-primary" data-action="save-default" disabled>应用默认模型</button>
+        </div>
+      </section>`;
+    }
+
+    return `<section class="route-card model-switcher-card">
+      <div class="model-switcher-header">
+        <div>
+          <h3>默认模型</h3>
+          <p>${escapeHTML(description)}</p>
+        </div>
+        <p class="model-switcher-status">${escapeHTML(localState.statusMessage || "")}</p>
+      </div>
+      <div class="model-switcher-grid">
+        <label>
+          <span>Provider</span>
+          <select data-switch-provider ${enabledProviders.length ? "" : "disabled"}>
+            ${providerOptions}
+          </select>
+        </label>
+        <label>
+          <span>Model</span>
+          <select data-switch-model ${(selectedProvider && enabledModels.length) ? "" : "disabled"}>
+            ${modelOptions}
+          </select>
+        </label>
+      </div>
+      <div class="model-switcher-actions">
+        <button type="button" class="btn-primary" data-action="save-default" ${canApplyDefault ? "" : "disabled"}>应用默认模型</button>
+      </div>
+    </section>`;
+  };
+
+  const renderProviderCard = (provider) => {
+    const statusClass = provider.is_enabled ? "provider-enabled" : "provider-disabled";
+    const defaultBadge = provider.is_default ? '<span class="badge-default">默认 Provider</span>' : "";
+    const enabledModelCount = getEnabledModels(provider).length;
+    return `<article class="provider-card ${statusClass}">
+      <div class="provider-header">
+        <div>
+          <h3>${escapeHTML(provider.name || provider.id)} ${defaultBadge}</h3>
+          <p class="provider-subtitle">${escapeHTML(provider.id || "-")}</p>
+        </div>
+        <span class="provider-status">${provider.is_enabled ? "已启用" : "已禁用"}</span>
+      </div>
+      <div class="provider-info">
+        <p><strong>Base URL:</strong> ${escapeHTML(provider.base_url || "-")}</p>
+        <p><strong>API Key:</strong> ${escapeHTML(provider.api_key || "-")}</p>
+        <p><strong>默认模型:</strong> ${escapeHTML(provider.default_model || "-")}</p>
+        <p><strong>模型数量:</strong> ${escapeHTML(String(provider.models.length))} / 可用 ${escapeHTML(String(enabledModelCount))}</p>
+      </div>
+      <section class="provider-models">
+        <div class="provider-models-head">
+          <h4>Models</h4>
+        </div>
+        ${renderProviderModels(provider)}
+      </section>
+      <div class="provider-actions">
+        <button type="button" data-action="edit" data-id="${escapeHTML(provider.id)}">编辑</button>
+        ${provider.is_default ? "" : `<button type="button" data-action="default" data-id="${escapeHTML(provider.id)}" ${provider.is_enabled ? "" : "disabled"}>设为默认</button>`}
+        <button type="button" data-action="${provider.is_enabled ? "disable" : "enable"}" data-id="${escapeHTML(provider.id)}">${provider.is_enabled ? "禁用" : "启用"}</button>
+        <button type="button" data-action="delete" data-id="${escapeHTML(provider.id)}">删除</button>
+      </div>
+    </article>`;
+  };
+
+  const renderProviderModal = () => {
+    if (!localState.showModal) {
+      return "";
+    }
+    const form = localState.editingProvider || createProviderDraft();
+    const isEditing = Boolean(localState.editingProvider && localState.editingProvider.id);
+    const defaultModels = getEnabledModels(form);
+    const defaultModel = normalizeText(form.default_model || "") || (defaultModels[0] ? defaultModels[0].id : "");
+    const modelOptions = defaultModels.length
+      ? defaultModels.map((model) => `<option value="${escapeHTML(model.id)}" ${model.id === defaultModel ? "selected" : ""}>${escapeHTML(model.name || model.id)}</option>`).join("")
+      : '<option value="">请先添加启用的模型</option>';
+    return `<div class="modal-backdrop" data-modal>
+      <div class="modal-dialog modal-dialog-wide">
+        <div class="modal-header">
+          <h3>${isEditing ? "编辑 Provider" : "新增 Provider"}</h3>
+          <button type="button" data-close>&times;</button>
+        </div>
+        <form data-provider-form autocomplete="off">
+          <div class="modal-body">
+          <div class="provider-form-grid">
+            <label>
+              <span>Provider ID</span>
+              <input type="text" name="id" value="${escapeHTML(form.id)}" placeholder="openai" ${isEditing ? "disabled" : ""} required autocomplete="off">
+            </label>
+            <label>
+              <span>Provider 名称</span>
+              <input type="text" name="name" value="${escapeHTML(form.name || "")}" placeholder="OpenAI" required autocomplete="off">
+            </label>
+            <label class="provider-form-full">
+              <span>Base URL</span>
+              <input type="text" name="base_url" value="${escapeHTML(form.base_url || "")}" placeholder="${escapeHTML(OPENAI_PROVIDER_TEMPLATE.base_url)}" required autocomplete="off">
+            </label>
+            <label class="provider-form-full">
+              <span>API Key</span>
+              <input type="password" name="api_key" value="" placeholder="${escapeHTML(isEditing ? "留空则保持现有 API Key" : "sk-...")}" ${isEditing ? "" : "required"} autocomplete="new-password">
+            </label>
+          </div>
+          <section class="provider-model-editor">
+            <div class="provider-model-editor-head">
+              <div>
+                <h4>模型列表</h4>
+                <p>为当前 Provider 维护可选模型。新建 Provider 默认使用 OpenAI 兼容参数，你可以按需改成其他兼容服务。</p>
+              </div>
+              <button type="button" data-add-model>+ 添加模型</button>
+            </div>
+            <div class="provider-model-rows" data-model-rows>
+              ${form.models.map((model) => renderEditableModelRow(model)).join("")}
+            </div>
+          </section>
+          <div class="provider-form-grid">
+            <label>
+              <span>默认模型</span>
+              <select name="default_model" data-default-model ${defaultModels.length ? "" : "disabled"}>
+                ${modelOptions}
+              </select>
+            </label>
+            <label class="provider-checkbox">
+              <input type="checkbox" name="is_enabled" ${form.is_enabled ? "checked" : ""}>
+              <span>启用 Provider</span>
+            </label>
+          </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" data-close>取消</button>
+            <button type="submit">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+  };
+
+  const renderEmptyProvidersState = () => `<div class="providers-empty-state">
+    <div class="models-empty-illustration">${renderModelsEmptyIcon()}</div>
+    <div class="providers-empty-copy">
+      <h3>还没有可用 Provider</h3>
+      <p>模型配置已统一迁移到当前页面。新增第一个 Provider 后，就可以在这里切换默认 Provider 和默认模型。</p>
+    </div>
+    <button type="button" class="btn-primary" data-action="add">+ 新增 Provider</button>
+  </div>`;
+
+  const paint = () => {
+    const cards = providers.map(renderProviderCard).join("");
+    container.innerHTML = `<section class="route-view models-view">
+      <div class="route-card toolbar">
+        <div>
+          <h2>LLM Providers</h2>
+          <p>统一在这里维护 Provider、API Key 和模型列表，不再通过环境变量配置默认 Provider / Model。</p>
+        </div>
+        <button type="button" class="btn-primary" data-action="add">+ 新增 Provider</button>
+      </div>
+      <div class="models-layout">
+        <section class="route-card providers-panel">
+          <div class="providers-panel-header">
+            <div>
+              <h3>Provider 列表</h3>
+              <p>已配置 ${escapeHTML(String(providers.length))} 个 Provider</p>
+            </div>
+          </div>
+          ${cards ? `<div class="providers-list">${cards}</div>` : renderEmptyProvidersState()}
+        </section>
+        <div class="models-side">
+          ${renderSwitcher()}
+        </div>
+      </div>
+      ${renderProviderModal()}
+    </section>`;
+  };
+
+  const readModelsFromForm = (form) => {
+    const rows = Array.from(form.querySelectorAll("[data-model-row]"));
+    const models = [];
+    const seenIDs = new Set();
+    rows.forEach((row) => {
+      const idInput = row.querySelector('input[name="model_id"]');
+      const nameInput = row.querySelector('input[name="model_name"]');
+      const enabledInput = row.querySelector('input[name="model_enabled"]');
+      const id = normalizeText(idInput ? idInput.value : "");
+      const name = normalizeText(nameInput ? nameInput.value : "") || id;
+      const isEnabled = Boolean(enabledInput && enabledInput.checked);
+      if (!id) {
+        return;
+      }
+      if (seenIDs.has(id)) {
+        throw new Error(`模型 ID 重复: ${id}`);
+      }
+      seenIDs.add(id);
+      models.push({
+        id,
+        name,
+        is_enabled: isEnabled,
+        supports_tools: true,
+        supports_vision: false,
+        supports_streaming: true
+      });
+    });
+    if (!models.length) {
+      throw new Error("请至少配置一个模型");
+    }
+    if (!models.some((model) => model.is_enabled)) {
+      throw new Error("请至少启用一个模型");
+    }
+    return models;
+  };
+
+  const syncModalDefaultModelSelect = (form) => {
+    const select = form.querySelector("[data-default-model]");
+    if (!select) {
+      return;
+    }
+    const previousValue = normalizeText(select.value || "");
+    let models = [];
+    try {
+      models = readModelsFromForm(form).filter((model) => model.is_enabled);
+    } catch (_err) {
+      models = [];
+    }
+    if (!models.length) {
+      select.innerHTML = '<option value="">请先添加启用的模型</option>';
+      select.value = "";
+      select.disabled = true;
+      return;
+    }
+    select.disabled = false;
+    select.innerHTML = models.map((model) => `<option value="${escapeHTML(model.id)}">${escapeHTML(model.name || model.id)}</option>`).join("");
+    const nextValue = models.some((model) => model.id === previousValue) ? previousValue : models[0].id;
+    select.value = nextValue;
+  };
+
+  const refresh = async (statusMessage) => {
+    providers = await fetchProviders();
+    localState.statusMessage = normalizeText(statusMessage || "");
+    syncSwitcherSelection();
+    paint();
+    bindEvents();
+  };
+
+  const bindEvents = () => {
+    container.querySelectorAll('[data-action="add"]').forEach((addBtn) => {
+      addBtn.addEventListener("click", () => {
+        showModal(null);
+        paint();
+        bindEvents();
+      });
+    });
+
+    const providerSelect = container.querySelector("[data-switch-provider]");
+    const modelSelect = container.querySelector("[data-switch-model]");
+    const saveDefaultBtn = container.querySelector('[data-action="save-default"]');
+    if (providerSelect) {
+      providerSelect.addEventListener("change", () => {
+        localState.switchProviderID = normalizeText(providerSelect.value || "");
+        syncSwitcherSelection();
+        paint();
+        bindEvents();
+      });
+    }
+    if (modelSelect) {
+      modelSelect.addEventListener("change", () => {
+        localState.switchModelID = normalizeText(modelSelect.value || "");
+      });
+    }
+    if (saveDefaultBtn) {
+      saveDefaultBtn.addEventListener("click", async () => {
+        const provider = findProvider(localState.switchProviderID);
+        if (!provider) {
+          return;
+        }
+        const providerURL = "/api/control/llm/providers/" + encodeURIComponent(provider.id);
+        try {
+          await requestJSON(providerURL, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: provider.name,
+              base_url: provider.base_url,
+              api_key: "",
+              default_model: localState.switchModelID,
+              models: provider.models,
+              is_enabled: provider.is_enabled
+            })
+          });
+          if (!provider.is_default) {
+            await requestJSON(providerURL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "set-default" })
+            });
+          }
+          await refresh("默认模型已更新");
+        } catch (err) {
+          alert("应用默认模型失败: " + (err instanceof Error ? err.message : "unknown_error"));
+        }
+      });
+    }
+
+    container.querySelectorAll("[data-close]").forEach((element) => {
+      element.addEventListener("click", () => {
+        hideModal();
+        paint();
+        bindEvents();
+      });
+    });
+
+    const modalBackdrop = container.querySelector("[data-modal]");
+    if (modalBackdrop) {
+      modalBackdrop.addEventListener("click", (event) => {
+        if (event.target && event.target.hasAttribute("data-modal")) {
+          hideModal();
+          paint();
+          bindEvents();
+        }
+      });
+    }
+
+    container.querySelectorAll("[data-action]:not([data-action='add']):not([data-action='save-default'])").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const action = normalizeText(button.getAttribute("data-action") || "");
+        const id = normalizeText(button.getAttribute("data-id") || "");
+        const providerURL = "/api/control/llm/providers/" + encodeURIComponent(id);
+        try {
+          if (action === "edit") {
+            const provider = findProvider(id);
+            showModal(provider);
+            paint();
+            bindEvents();
+            return;
+          }
+          if (action === "delete") {
+            if (!confirm("确定删除该 Provider 吗？")) {
+              return;
+            }
+            await requestJSON(providerURL, { method: "DELETE" });
+            await refresh("Provider 已删除");
+            return;
+          }
+          if (action === "default") {
+            await requestJSON(providerURL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "set-default" })
+            });
+            await refresh("默认 Provider 已更新");
+            return;
+          }
+          if (action === "enable" || action === "disable") {
+            await requestJSON(providerURL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: action === "enable" ? "enable" : "disable" })
+            });
+            await refresh(action === "enable" ? "Provider 已启用" : "Provider 已禁用");
+          }
+        } catch (err) {
+          alert("操作失败: " + (err instanceof Error ? err.message : "unknown_error"));
+        }
+      });
+    });
+
+    const providerForm = container.querySelector("[data-provider-form]");
+    if (providerForm) {
+      syncModalDefaultModelSelect(providerForm);
+      providerForm.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        if (target.hasAttribute("data-add-model")) {
+          const rows = providerForm.querySelector("[data-model-rows]");
+          if (rows) {
+            rows.insertAdjacentHTML("beforeend", renderEditableModelRow(createEmptyModel({
+              id: "",
+              name: "",
+              supports_tools: true,
+              supports_vision: true,
+              supports_streaming: true
+            })));
+            syncModalDefaultModelSelect(providerForm);
+          }
+          return;
+        }
+        if (target.hasAttribute("data-remove-model")) {
+          const row = target.closest("[data-model-row]");
+          if (row) {
+            row.remove();
+            syncModalDefaultModelSelect(providerForm);
+          }
+        }
+      });
+      providerForm.addEventListener("input", () => {
+        syncModalDefaultModelSelect(providerForm);
+      });
+      providerForm.addEventListener("change", () => {
+        syncModalDefaultModelSelect(providerForm);
+      });
+      providerForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          const isEditing = Boolean(localState.editingProvider && localState.editingProvider.id);
+          const formData = new FormData(providerForm);
+          const models = readModelsFromForm(providerForm);
+          const enabledModels = models.filter((model) => model.is_enabled);
+          const rawDefaultModel = normalizeText(formData.get("default_model") || "");
+          const defaultModel = enabledModels.some((model) => model.id === rawDefaultModel)
+            ? rawDefaultModel
+            : enabledModels[0].id;
+          const providerID = isEditing
+            ? localState.editingProvider.id
+            : normalizeText(formData.get("id") || "");
+          const body = {
+            id: providerID,
+            name: normalizeText(formData.get("name") || ""),
+            base_url: normalizeText(formData.get("base_url") || ""),
+            api_key: normalizeText(formData.get("api_key") || ""),
+            default_model: defaultModel,
+            models,
+            is_enabled: formData.get("is_enabled") === "on"
+          };
+          const url = isEditing
+            ? "/api/control/llm/providers/" + encodeURIComponent(providerID)
+            : "/api/control/llm/providers";
+          await requestJSON(url, {
+            method: isEditing ? "PUT" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          });
+          hideModal();
+          await refresh(isEditing ? "Provider 已更新" : "Provider 已创建");
+        } catch (err) {
+          alert("保存失败: " + (err instanceof Error ? err.message : "unknown_error"));
+        }
+      });
+    }
+  };
+
+  await refresh("");
 }
 
 async function loadPlaceholderView(container) {

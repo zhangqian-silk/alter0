@@ -988,3 +988,7 @@ body {
 .chat-pane.empty-state .composer-note {
   display: none;
 }
+
+.chat-pane.empty-state .composer-shell {
+  margin-top: auto;
+}
