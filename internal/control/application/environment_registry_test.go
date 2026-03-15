@@ -14,4 +14,10 @@ func TestDefaultEnvironmentDefinitionsIncludeTerminalConfig(t *testing.T) {
 			t.Fatalf("expected environment definition %q", key)
 		}
 	}
+
+	for _, removedKey := range []string{"llm_default_provider", "llm_default_model"} {
+		if index[removedKey] {
+			t.Fatalf("did not expect environment definition %q", removedKey)
+		}
+	}
 }

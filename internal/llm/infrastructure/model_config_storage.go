@@ -24,7 +24,6 @@ func NewModelConfigStorage(filePath string) *ModelConfigStorage {
 	}
 	return &ModelConfigStorage{
 		filePath: filePath,
-		config:   &domain.ModelConfig{},
 	}
 }
 
@@ -38,7 +37,7 @@ func (s *ModelConfigStorage) Load() (*domain.ModelConfig, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			// Return empty config
 			s.config = &domain.ModelConfig{}
-			return s.config, nil
+			return cloneModelConfig(s.config), nil
 		}
 		return nil, err
 	}
@@ -52,8 +51,8 @@ func (s *ModelConfigStorage) Load() (*domain.ModelConfig, error) {
 		return nil, err
 	}
 
-	s.config = &config
-	return s.config, nil
+	s.config = cloneModelConfig(&config)
+	return cloneModelConfig(s.config), nil
 }
 
 // Save saves the configuration to disk.
@@ -80,22 +79,21 @@ func (s *ModelConfigStorage) Save(config *domain.ModelConfig) error {
 		return err
 	}
 
-	s.config = config
+	s.config = cloneModelConfig(config)
 	return nil
 }
 
 // Get returns the current configuration.
 func (s *ModelConfigStorage) Get() (*domain.ModelConfig, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.config == nil {
-		return s.Load()
+	if s.config != nil {
+		config := cloneModelConfig(s.config)
+		s.mu.RUnlock()
+		return config, nil
 	}
+	s.mu.RUnlock()
 
-	// Return a copy
-	config := *s.config
-	return &config, nil
+	return s.Load()
 }
 
 // GetProvider returns a provider by ID.
@@ -193,4 +191,32 @@ func (s *ModelConfigStorage) GetEnabledProviders() ([]domain.ModelProvider, erro
 		return nil, err
 	}
 	return config.GetEnabledProviders(), nil
+}
+
+func cloneModelConfig(config *domain.ModelConfig) *domain.ModelConfig {
+	if config == nil {
+		return &domain.ModelConfig{}
+	}
+
+	cloned := &domain.ModelConfig{
+		DefaultProviderID: config.DefaultProviderID,
+		UpdatedAt:         config.UpdatedAt,
+	}
+	if len(config.Providers) == 0 {
+		cloned.Providers = []domain.ModelProvider{}
+		return cloned
+	}
+
+	cloned.Providers = make([]domain.ModelProvider, 0, len(config.Providers))
+	for _, provider := range config.Providers {
+		providerCopy := provider
+		if len(provider.Models) > 0 {
+			providerCopy.Models = append([]domain.ModelInfo(nil), provider.Models...)
+		} else {
+			providerCopy.Models = []domain.ModelInfo{}
+		}
+		cloned.Providers = append(cloned.Providers, providerCopy)
+	}
+
+	return cloned
 }

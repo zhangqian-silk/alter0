@@ -2800,10 +2800,14 @@ func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) 
 
 	switch r.Method {
 	case http.MethodGet:
-		providers, err := s.llm.GetEnabledProviders(ctx)
+		config, err := s.llm.GetConfig(ctx)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
+		}
+		providers := []llmdomain.ModelProvider{}
+		if config != nil {
+			providers = config.Providers
 		}
 
 		// Mask API keys
@@ -2874,12 +2878,21 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
+		existing, err := s.llm.GetProvider(ctx, providerID)
+		if err != nil || existing == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "provider not found"})
+			return
+		}
+		apiKey := strings.TrimSpace(req.APIKey)
+		if apiKey == "" {
+			apiKey = existing.APIKey
+		}
 
 		provider := llmdomain.ModelProvider{
 			ID:           providerID,
 			Name:         req.Name,
 			BaseURL:      req.BaseURL,
-			APIKey:       req.APIKey,
+			APIKey:       apiKey,
 			DefaultModel: req.DefaultModel,
 			Models:       req.Models,
 			IsEnabled:    req.IsEnabled,
@@ -2938,14 +2951,14 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 type llmProviderResponse struct {
-	ID           string                  `json:"id"`
-	Name         string                  `json:"name"`
-	BaseURL      string                  `json:"base_url"`
-	APIKey       string                  `json:"api_key"` // Masked
-	DefaultModel string                  `json:"default_model"`
-	Models       []llmdomain.ModelInfo   `json:"models"`
-	IsEnabled    bool                    `json:"is_enabled"`
-	IsDefault    bool                    `json:"is_default"`
+	ID           string                `json:"id"`
+	Name         string                `json:"name"`
+	BaseURL      string                `json:"base_url"`
+	APIKey       string                `json:"api_key"` // Masked
+	DefaultModel string                `json:"default_model"`
+	Models       []llmdomain.ModelInfo `json:"models"`
+	IsEnabled    bool                  `json:"is_enabled"`
+	IsDefault    bool                  `json:"is_default"`
 }
 
 type llmProviderUpdateRequest struct {

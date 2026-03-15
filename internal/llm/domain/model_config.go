@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -59,19 +60,80 @@ type ModelConfig struct {
 
 // Validate validates the model provider configuration.
 func (p *ModelProvider) Validate() error {
-	if p.ID == "" {
-		return errors.New("provider id is required")
-	}
-	if p.Name == "" {
-		return errors.New("provider name is required")
-	}
-	if p.BaseURL == "" {
-		return errors.New("base_url is required")
-	}
-	if p.APIKey == "" {
-		return errors.New("api_key is required")
+	if _, err := normalizeProvider(*p); err != nil {
+		return err
 	}
 	return nil
+}
+
+func normalizeProvider(provider ModelProvider) (ModelProvider, error) {
+	provider.ID = strings.TrimSpace(provider.ID)
+	provider.Name = strings.TrimSpace(provider.Name)
+	provider.BaseURL = strings.TrimSpace(provider.BaseURL)
+	provider.APIKey = strings.TrimSpace(provider.APIKey)
+	provider.DefaultModel = strings.TrimSpace(provider.DefaultModel)
+
+	if provider.ID == "" {
+		return ModelProvider{}, errors.New("provider id is required")
+	}
+	if provider.Name == "" {
+		return ModelProvider{}, errors.New("provider name is required")
+	}
+	if provider.BaseURL == "" {
+		return ModelProvider{}, errors.New("base_url is required")
+	}
+	if provider.APIKey == "" {
+		return ModelProvider{}, errors.New("api_key is required")
+	}
+
+	if len(provider.Models) == 0 {
+		return ModelProvider{}, errors.New("at least one model is required")
+	}
+
+	seenModelIDs := make(map[string]struct{}, len(provider.Models))
+	hasEnabledModel := false
+	normalizedModels := make([]ModelInfo, 0, len(provider.Models))
+	for _, model := range provider.Models {
+		model.ID = strings.TrimSpace(model.ID)
+		model.Name = strings.TrimSpace(model.Name)
+		if model.ID == "" {
+			return ModelProvider{}, errors.New("model id is required")
+		}
+		if model.Name == "" {
+			model.Name = model.ID
+		}
+		if _, exists := seenModelIDs[model.ID]; exists {
+			return ModelProvider{}, errors.New("duplicate model id: " + model.ID)
+		}
+		seenModelIDs[model.ID] = struct{}{}
+		if model.IsEnabled {
+			hasEnabledModel = true
+		}
+		normalizedModels = append(normalizedModels, model)
+	}
+	if !hasEnabledModel {
+		return ModelProvider{}, errors.New("at least one enabled model is required")
+	}
+	provider.Models = normalizedModels
+
+	if provider.DefaultModel == "" {
+		for _, model := range provider.Models {
+			if model.IsEnabled {
+				provider.DefaultModel = model.ID
+				break
+			}
+		}
+	}
+
+	defaultModel := provider.GetModel(provider.DefaultModel)
+	if defaultModel == nil {
+		return ModelProvider{}, errors.New("default model not found: " + provider.DefaultModel)
+	}
+	if !defaultModel.IsEnabled {
+		return ModelProvider{}, errors.New("default model must be enabled: " + provider.DefaultModel)
+	}
+
+	return provider, nil
 }
 
 // GetModel returns the model info by ID.
@@ -168,27 +230,30 @@ func (c *ModelConfig) GetEnabledProviders() []ModelProvider {
 
 // AddProvider adds a new provider.
 func (c *ModelConfig) AddProvider(provider ModelProvider) error {
-	if err := provider.Validate(); err != nil {
+	normalizedProvider, err := normalizeProvider(provider)
+	if err != nil {
 		return err
 	}
 
 	// Check for duplicate ID
 	for _, p := range c.Providers {
-		if p.ID == provider.ID {
-			return errors.New("provider already exists: " + provider.ID)
+		if p.ID == normalizedProvider.ID {
+			return errors.New("provider already exists: " + normalizedProvider.ID)
 		}
 	}
 
-	provider.CreatedAt = time.Now()
-	provider.UpdatedAt = time.Now()
+	normalizedProvider.CreatedAt = time.Now()
+	normalizedProvider.UpdatedAt = time.Now()
 
 	// Set as default if first provider
 	if len(c.Providers) == 0 {
-		provider.IsDefault = true
-		c.DefaultProviderID = provider.ID
+		normalizedProvider.IsDefault = true
+		c.DefaultProviderID = normalizedProvider.ID
+	} else {
+		normalizedProvider.IsDefault = false
 	}
 
-	c.Providers = append(c.Providers, provider)
+	c.Providers = append(c.Providers, normalizedProvider)
 	c.UpdatedAt = time.Now()
 
 	return nil
@@ -196,16 +261,21 @@ func (c *ModelConfig) AddProvider(provider ModelProvider) error {
 
 // UpdateProvider updates an existing provider.
 func (c *ModelConfig) UpdateProvider(provider ModelProvider) error {
+	normalizedProvider, err := normalizeProvider(provider)
+	if err != nil {
+		return err
+	}
 	for i := range c.Providers {
-		if c.Providers[i].ID == provider.ID {
-			provider.UpdatedAt = time.Now()
-			provider.CreatedAt = c.Providers[i].CreatedAt
-			c.Providers[i] = provider
+		if c.Providers[i].ID == normalizedProvider.ID {
+			normalizedProvider.UpdatedAt = time.Now()
+			normalizedProvider.CreatedAt = c.Providers[i].CreatedAt
+			normalizedProvider.IsDefault = c.DefaultProviderID == normalizedProvider.ID
+			c.Providers[i] = normalizedProvider
 			c.UpdatedAt = time.Now()
 			return nil
 		}
 	}
-	return errors.New("provider not found: " + provider.ID)
+	return errors.New("provider not found: " + normalizedProvider.ID)
 }
 
 // RemoveProvider removes a provider by ID.
@@ -220,9 +290,10 @@ func (c *ModelConfig) RemoveProvider(providerID string) error {
 				c.DefaultProviderID = ""
 				if len(c.Providers) > 0 {
 					// Set first enabled provider as default
-					for _, p := range c.Providers {
-						if p.IsEnabled {
-							c.DefaultProviderID = p.ID
+					for j := range c.Providers {
+						if c.Providers[j].IsEnabled {
+							c.Providers[j].IsDefault = true
+							c.DefaultProviderID = c.Providers[j].ID
 							break
 						}
 					}
@@ -236,18 +307,22 @@ func (c *ModelConfig) RemoveProvider(providerID string) error {
 
 // SetDefaultProvider sets the default provider.
 func (c *ModelConfig) SetDefaultProvider(providerID string) error {
-	// Check provider exists
 	found := false
 	for i := range c.Providers {
 		if c.Providers[i].ID == providerID {
+			if !c.Providers[i].IsEnabled {
+				return errors.New("default provider must be enabled: " + providerID)
+			}
 			found = true
-			c.Providers[i].IsDefault = true
-		} else {
-			c.Providers[i].IsDefault = false
+			break
 		}
 	}
 	if !found {
 		return errors.New("provider not found: " + providerID)
+	}
+
+	for i := range c.Providers {
+		c.Providers[i].IsDefault = c.Providers[i].ID == providerID
 	}
 
 	c.DefaultProviderID = providerID
@@ -261,6 +336,17 @@ func (c *ModelConfig) EnableProvider(providerID string, enabled bool) error {
 		if c.Providers[i].ID == providerID {
 			c.Providers[i].IsEnabled = enabled
 			c.Providers[i].UpdatedAt = time.Now()
+			if !enabled && c.DefaultProviderID == providerID {
+				c.DefaultProviderID = ""
+				c.Providers[i].IsDefault = false
+				for j := range c.Providers {
+					if c.Providers[j].ID != providerID && c.Providers[j].IsEnabled {
+						c.Providers[j].IsDefault = true
+						c.DefaultProviderID = c.Providers[j].ID
+						break
+					}
+				}
+			}
 			c.UpdatedAt = time.Now()
 			return nil
 		}

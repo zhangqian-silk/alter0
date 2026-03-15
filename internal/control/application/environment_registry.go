@@ -329,30 +329,6 @@ func defaultEnvironmentDefinitions() []controldomain.EnvironmentDefinition {
 		},
 		// LLM Configuration
 		{
-			Key:          "llm_default_provider",
-			Name:         "Default LLM Provider",
-			Module:       "LLM",
-			Description:  "默认模型服务提供方 ID。未在会话、渠道或任务级别单独指定 provider 时，系统会回退使用这里配置的服务商。",
-			Type:         controldomain.EnvironmentValueTypeString,
-			DefaultValue: "",
-			ApplyMode:    controldomain.EnvironmentApplyModeImmediate,
-			Validation: controldomain.EnvironmentValidation{
-				Required: false,
-			},
-		},
-		{
-			Key:          "llm_default_model",
-			Name:         "Default Model",
-			Module:       "LLM",
-			Description:  "默认模型名称。留空时使用 provider 的默认模型；填写后会作为未显式指定模型时的统一回退选择。",
-			Type:         controldomain.EnvironmentValueTypeString,
-			DefaultValue: "",
-			ApplyMode:    controldomain.EnvironmentApplyModeImmediate,
-			Validation: controldomain.EnvironmentValidation{
-				Required: false,
-			},
-		},
-		{
 			Key:          "llm_temperature",
 			Name:         "Temperature",
 			Module:       "LLM",
