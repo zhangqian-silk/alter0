@@ -37,6 +37,111 @@ test.describe("Chat composer", () => {
     expect((emptyBox?.y ?? 0) - (panelBox?.y ?? 0)).toBeLessThan(120);
   });
 
+  test("keeps empty chat controls tidy and composer docked on narrow screens", async ({ page }) => {
+    await page.setViewportSize({ width: 760, height: 980 });
+    await openChatWorkspace(page);
+
+    const navToggle = page.locator("#navToggle");
+    const sessionToggle = page.locator("#sessionToggle");
+    const newChatButton = page.locator("#mobileNewChatButton");
+    const heading = page.locator("#sessionHeading");
+    const composerShell = page.locator(".composer-shell");
+
+    await expect(navToggle).toBeVisible();
+    await expect(sessionToggle).toBeVisible();
+    await expect(newChatButton).toBeVisible();
+
+    const navBox = await navToggle.boundingBox();
+    const sessionBox = await sessionToggle.boundingBox();
+    const newChatBox = await newChatButton.boundingBox();
+    const headingBox = await heading.boundingBox();
+    const composerBox = await composerShell.boundingBox();
+    const viewport = page.viewportSize();
+
+    expect(navBox).not.toBeNull();
+    expect(sessionBox).not.toBeNull();
+    expect(newChatBox).not.toBeNull();
+    expect(headingBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+
+    expect(Math.abs((navBox?.y ?? 0) - (sessionBox?.y ?? 0))).toBeLessThan(6);
+    expect(Math.abs((sessionBox?.y ?? 0) - (newChatBox?.y ?? 0))).toBeLessThan(6);
+    expect(headingBox?.y ?? 0).toBeGreaterThan((navBox?.y ?? 0) + (navBox?.height ?? 0) - 2);
+    expect((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0))).toBeLessThan(20);
+  });
+
+  test("keeps the mobile navigation fully reachable on short viewports", async ({ page }) => {
+    await page.setViewportSize({ width: 760, height: 680 });
+    await openChatWorkspace(page);
+
+    const navToggle = page.locator("#navToggle");
+    const primaryNav = page.locator(".primary-nav");
+    const localeButton = page.locator(".nav-locale-button");
+
+    await navToggle.click();
+    await expect(primaryNav).toBeVisible();
+
+    const before = await primaryNav.evaluate((node) => ({
+      scrollHeight: node.scrollHeight,
+      clientHeight: node.clientHeight,
+      scrollTop: node.scrollTop,
+    }));
+
+    expect(before.scrollHeight).toBeGreaterThan(before.clientHeight);
+
+    await primaryNav.evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
+
+    const after = await primaryNav.evaluate((node) => ({
+      scrollTop: node.scrollTop,
+      top: node.getBoundingClientRect().top,
+      bottom: node.getBoundingClientRect().bottom,
+    }));
+    const localeBox = await localeButton.boundingBox();
+
+    expect(after.scrollTop).toBeGreaterThan(0);
+    expect(localeBox).not.toBeNull();
+    expect(localeBox?.y ?? 0).toBeGreaterThanOrEqual((after.top ?? 0) - 1);
+    expect((localeBox?.y ?? 0) + (localeBox?.height ?? 0)).toBeLessThanOrEqual((after.bottom ?? 0) + 1);
+  });
+
+  test("shows detailed explanations for environment variables", async ({ page }) => {
+    const { appShellPage } = await openChatWorkspace(page);
+
+    await appShellPage.routeMenuItem("environments").click();
+
+    const webAddrCard = page.locator(".environment-item").filter({ hasText: "web_addr" }).first();
+    const llmTemperatureCard = page.locator(".environment-item").filter({ hasText: "llm_temperature" }).first();
+
+    await expect(webAddrCard).toContainText("控制 HTTP 服务监听的 host:port");
+    await expect(webAddrCard).toContainText("浏览器和反向代理都会连接到这里");
+    await expect(llmTemperatureCard).toContainText("控制模型采样温度");
+    await expect(llmTemperatureCard).toContainText("值越低，输出越稳定和保守");
+  });
+
+  test("keeps environment details collapsed until expanded", async ({ page }) => {
+    const { appShellPage } = await openChatWorkspace(page);
+
+    await appShellPage.routeMenuItem("environments").click();
+
+    const webAddrCard = page.locator(".environment-item").filter({ hasText: "web_addr" }).first();
+    const details = webAddrCard.locator("details.environment-details");
+    const summary = details.locator("summary");
+    const valueTypeRow = details.locator(".route-field-row").filter({ hasText: "Value Type" });
+    const effectiveRow = details.locator(".route-field-row").filter({ hasText: "Effective" });
+
+    await expect(details).not.toHaveAttribute("open", "");
+    await expect(valueTypeRow).toBeHidden();
+
+    await summary.click();
+
+    await expect(details).toHaveAttribute("open", "");
+    await expect(valueTypeRow).toBeVisible();
+    await expect(effectiveRow).toBeVisible();
+  });
+
   test("prompts before leaving with unsent content", async ({ page }) => {
     const { appShellPage, composer } = await openChatWorkspaceWithDraft(page, "unsent draft");
     await expectComposerState(composer, { draft: "dirty" });

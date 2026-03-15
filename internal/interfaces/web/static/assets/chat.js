@@ -381,9 +381,11 @@ const I18N = {
     "route.envs.current_value": "Configured",
     "route.envs.default_value": "Default",
     "route.envs.effective_value": "Effective",
+    "route.envs.value_type": "Value Type",
     "route.envs.apply_mode": "Apply Mode",
     "route.envs.source": "Source",
     "route.envs.validation": "Validation",
+    "route.envs.details": "More Details",
     "route.envs.pending_restart": "Pending Restart",
     "route.envs.hot_reload": "Hot Reload",
     "route.envs.no_changes": "No configuration changes.",
@@ -402,6 +404,11 @@ const I18N = {
     "route.envs.source.default": "Default",
     "route.envs.source.runtime": "Runtime",
     "route.envs.source.persisted": "Persisted",
+    "route.envs.type.integer": "Integer",
+    "route.envs.type.duration": "Duration, e.g. 5s / 2m / 1h",
+    "route.envs.type.string": "Text",
+    "route.envs.type.enum": "Enumerated option",
+    "route.envs.type.unknown": "Unknown",
     "route.envs.validation.none": "No constraints",
     "route.envs.hidden": "Hidden value",
     "route.connected": "Page Connected",
@@ -731,9 +738,11 @@ const I18N = {
     "route.envs.current_value": "配置值",
     "route.envs.default_value": "默认值",
     "route.envs.effective_value": "生效值",
+    "route.envs.value_type": "值类型",
     "route.envs.apply_mode": "生效方式",
     "route.envs.source": "来源",
     "route.envs.validation": "校验规则",
+    "route.envs.details": "更多信息",
     "route.envs.pending_restart": "待重启生效",
     "route.envs.hot_reload": "热更新",
     "route.envs.no_changes": "没有配置变更。",
@@ -752,6 +761,11 @@ const I18N = {
     "route.envs.source.default": "默认值",
     "route.envs.source.runtime": "运行时",
     "route.envs.source.persisted": "持久化",
+    "route.envs.type.integer": "整数",
+    "route.envs.type.duration": "时长，例如 5s / 2m / 1h",
+    "route.envs.type.string": "文本",
+    "route.envs.type.enum": "枚举选项",
+    "route.envs.type.unknown": "未知",
     "route.envs.validation.none": "无约束",
     "route.envs.hidden": "隐藏值",
     "route.connected": "页面已连接",
@@ -2659,6 +2673,7 @@ function routeCardTemplate(title, type, fields = [], enabled = false, body = "")
   const footerClassName = safeOptions.footerClassName
     ? ` route-card-footer ${safeOptions.footerClassName}`
     : " route-card-footer";
+  const fieldRows = Array.isArray(fields) ? fields.filter((item) => typeof item === "string" && item.trim()) : [];
   return `<article class="${classNames.join(" ")}">
     <div class="route-card-head">
       <div class="route-card-title-wrap">
@@ -2670,9 +2685,9 @@ function routeCardTemplate(title, type, fields = [], enabled = false, body = "")
       </div>
       ${badgeHTML}
     </div>
-    <div class="route-meta">
-      ${fields.join("")}
-    </div>
+    ${fieldRows.length ? `<div class="route-meta">
+      ${fieldRows.join("")}
+    </div>` : ""}
     ${body ? `<div class="${bodyClassName}">${body}</div>` : ""}
     ${safeOptions.footer ? `<footer class="${footerClassName.trim()}">${safeOptions.footer}</footer>` : ""}
   </article>`;
@@ -6790,6 +6805,23 @@ function formatEnvironmentSource(source) {
   return t("route.envs.source.default");
 }
 
+function formatEnvironmentValueType(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+  if (normalized === "integer") {
+    return t("route.envs.type.integer");
+  }
+  if (normalized === "duration") {
+    return t("route.envs.type.duration");
+  }
+  if (normalized === "string") {
+    return t("route.envs.type.string");
+  }
+  if (normalized === "enum") {
+    return t("route.envs.type.enum");
+  }
+  return t("route.envs.type.unknown");
+}
+
 function renderEnvironmentValidation(definition) {
   const validation = definition?.validation || {};
   const parts = [];
@@ -6852,11 +6884,13 @@ function renderEnvironmentItem(item) {
   const definition = item?.definition || {};
   const key = normalizeText(definition?.key || "-");
   const name = normalizeText(definition?.name || key);
+  const description = normalizeText(definition?.description || "-");
   const currentValue = normalizeText(item?.value || "");
   const effectiveValue = normalizeText(item?.effective_value || "");
   const defaultValue = normalizeText(definition?.default_value || "");
   const pendingRestart = Boolean(item?.pending_restart);
   const hotReload = Boolean(definition?.hot_reload);
+  const valueType = formatEnvironmentValueType(definition?.type);
   const applyMode = formatEnvironmentApplyMode(definition?.apply_mode);
   const source = formatEnvironmentSource(item?.value_source);
   const validation = renderEnvironmentValidation(definition);
@@ -6868,11 +6902,9 @@ function renderEnvironmentItem(item) {
     <code title="${escapeHTML(key)}">${escapeHTML(key)}</code>
     <button class="route-field-copy" type="button" data-copy-value="${escapeHTML(key)}" title="${escapeHTML(t("route.copy_value"))}" aria-label="${escapeHTML(t("route.copy_value"))}">${renderCopyIcon()}</button>
   </span>`;
-  const body = `<label class="environment-input-row">
-      <span>${t("route.envs.current_value")}</span>
-      ${inputControl}
-    </label>`;
-  const fields = [
+  const detailFields = [
+      routeFieldRow("field.description", description, { multiline: true, preview: true, clampLines: 8 }),
+      routeFieldRow("route.envs.value_type", valueType),
       routeFieldRow("route.envs.default_value", defaultValue || "-", { multiline: true, mono: true, copyable: defaultValue && defaultValue !== "-" }),
       routeFieldRow("route.envs.effective_value", effectiveValue || "-", { multiline: true, mono: true, copyable: effectiveValue && effectiveValue !== "-" }),
       routeFieldRow("route.envs.apply_mode", applyMode),
@@ -6880,11 +6912,27 @@ function renderEnvironmentItem(item) {
       routeFieldRow("route.envs.validation", validation, { multiline: true, mono: true }),
       routeFieldRow("route.envs.hot_reload", hotReload ? t("status.enabled") : t("status.disabled"))
     ];
+  const body = `<section class="environment-summary">
+      <div class="environment-description">
+        <span>${t("field.description")}</span>
+        <p class="environment-description-text" title="${escapeHTML(description)}">${escapeHTML(description)}</p>
+      </div>
+      <label class="environment-input-row">
+      <span>${t("route.envs.current_value")}</span>
+      ${inputControl}
+    </label>
+      <details class="environment-details">
+        <summary>${t("route.envs.details")}</summary>
+        <div class="environment-details-body">
+          ${detailFields.join("")}
+        </div>
+      </details>
+    </section>`;
   const footer = `${renderRouteTagSection("field.tags", [applyMode, source, hotReload ? t("status.enabled") : t("status.disabled")])}${pendingRestart ? `<p class="environment-item-notice">${escapeHTML(t("route.envs.restart_notice", { keys: key }))}</p>` : ""}`;
   return routeCardTemplate(
     name,
     "env",
-    fields,
+    [],
     true,
     body,
     {
@@ -6892,6 +6940,7 @@ function renderEnvironmentItem(item) {
       titleMetaHTML,
       badgeHTML: pendingBadge,
       footer,
+      bodyClassName: "environment-card-body",
       footerClassName: "route-card-footer-spread"
     }
   );

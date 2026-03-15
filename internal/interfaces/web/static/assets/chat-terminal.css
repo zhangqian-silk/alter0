@@ -1027,10 +1027,19 @@
     box-shadow: 0 14px 32px rgba(15, 24, 39, 0.18);
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
     touch-action: pan-y;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .app-shell.nav-open .primary-nav {
     transform: translateX(0);
+  }
+
+  .menu {
+    flex: 0 0 auto;
+    min-height: max-content;
+    overflow: visible;
   }
 
   .session-pane {
@@ -1068,6 +1077,21 @@
   .chat-header {
     min-height: 58px;
     padding: 10px 14px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+
+  .chat-header-copy {
+    order: 3;
+    flex: 1 1 100%;
+  }
+
+  .chat-header-actions {
+    margin-left: auto;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
   }
 
   .welcome-screen {
@@ -1188,8 +1212,7 @@
     min-height: 56px;
     height: auto;
     padding: 8px 10px;
-    align-items: flex-start;
-    flex-wrap: wrap;
+    row-gap: 8px;
   }
 
   .chat-pane.page-mode .chat-header {
@@ -1207,13 +1230,15 @@
   }
 
   .chat-header-actions {
-    width: 100%;
+    width: auto;
     gap: 6px;
-    justify-content: flex-start;
+    margin-left: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
   }
 
   .chat-header-actions > * {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
   }
 
   .chat-pane.page-mode .chat-header-actions {
@@ -1227,8 +1252,8 @@
   .panel-toggle,
   .mobile-new-chat {
     height: 36px;
-    flex: 0 1 auto;
-    max-width: calc(50vw - 18px);
+    flex: 0 0 auto;
+    max-width: none;
     padding: 0 12px;
     white-space: nowrap;
   }
