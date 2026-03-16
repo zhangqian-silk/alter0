@@ -122,11 +122,11 @@ func (s *Service) finalizeComplexityAssessment(
 		}
 	case "force", "async", "background":
 		assessment.ExecutionMode = ExecutionModeAsync
-		if assessment.EstimatedDurationSeconds <= triggerThresholdSeconds {
-			assessment.EstimatedDurationSeconds = triggerThresholdSeconds + 60
+		if assessment.EstimatedDurationSeconds < triggerThresholdSeconds {
+			assessment.EstimatedDurationSeconds = triggerThresholdSeconds
 		}
 	default:
-		if assessment.EstimatedDurationSeconds > triggerThresholdSeconds {
+		if assessment.EstimatedDurationSeconds >= triggerThresholdSeconds {
 			assessment.ExecutionMode = ExecutionModeAsync
 		} else {
 			assessment.ExecutionMode = ExecutionModeStreaming
@@ -161,7 +161,7 @@ func predictComplexityByRules(
 ) ComplexityAssessment {
 	estimated := estimateDurationSeconds(content, threshold, hasArtifactHint, asyncThresholdSeconds)
 	executionMode := ExecutionModeStreaming
-	if estimated > asyncThresholdSeconds {
+	if estimated >= asyncThresholdSeconds {
 		executionMode = ExecutionModeAsync
 	}
 	return ComplexityAssessment{

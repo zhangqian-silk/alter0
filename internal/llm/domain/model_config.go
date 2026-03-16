@@ -136,6 +136,10 @@ func normalizeProvider(provider ModelProvider) (ModelProvider, error) {
 	return provider, nil
 }
 
+func providerNameKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
 // GetModel returns the model info by ID.
 func (p *ModelProvider) GetModel(modelID string) *ModelInfo {
 	for i := range p.Models {
@@ -163,13 +167,19 @@ func (c *ModelConfig) Validate() error {
 		return nil // Empty config is valid
 	}
 
-	// Check for duplicate provider IDs
+	// Check for duplicate provider IDs and names.
 	ids := make(map[string]bool)
+	names := make(map[string]bool)
 	for _, p := range c.Providers {
 		if ids[p.ID] {
 			return errors.New("duplicate provider id: " + p.ID)
 		}
 		ids[p.ID] = true
+		nameKey := providerNameKey(p.Name)
+		if names[nameKey] {
+			return errors.New("duplicate provider name: " + p.Name)
+		}
+		names[nameKey] = true
 
 		if err := p.Validate(); err != nil {
 			return err
@@ -235,10 +245,13 @@ func (c *ModelConfig) AddProvider(provider ModelProvider) error {
 		return err
 	}
 
-	// Check for duplicate ID
+	// Check for duplicate ID and name.
 	for _, p := range c.Providers {
 		if p.ID == normalizedProvider.ID {
 			return errors.New("provider already exists: " + normalizedProvider.ID)
+		}
+		if providerNameKey(p.Name) == providerNameKey(normalizedProvider.Name) {
+			return errors.New("provider name already exists: " + normalizedProvider.Name)
 		}
 	}
 
@@ -259,23 +272,38 @@ func (c *ModelConfig) AddProvider(provider ModelProvider) error {
 	return nil
 }
 
-// UpdateProvider updates an existing provider.
-func (c *ModelConfig) UpdateProvider(provider ModelProvider) error {
+// UpdateProvider updates an existing provider and supports provider ID rename.
+func (c *ModelConfig) UpdateProvider(currentProviderID string, provider ModelProvider) error {
 	normalizedProvider, err := normalizeProvider(provider)
 	if err != nil {
 		return err
 	}
 	for i := range c.Providers {
-		if c.Providers[i].ID == normalizedProvider.ID {
+		if c.Providers[i].ID == currentProviderID {
+			if normalizedProvider.ID != currentProviderID {
+				for j := range c.Providers {
+					if i != j && c.Providers[j].ID == normalizedProvider.ID {
+						return errors.New("provider already exists: " + normalizedProvider.ID)
+					}
+				}
+			}
+			for j := range c.Providers {
+				if i != j && providerNameKey(c.Providers[j].Name) == providerNameKey(normalizedProvider.Name) {
+					return errors.New("provider name already exists: " + normalizedProvider.Name)
+				}
+			}
 			normalizedProvider.UpdatedAt = time.Now()
 			normalizedProvider.CreatedAt = c.Providers[i].CreatedAt
-			normalizedProvider.IsDefault = c.DefaultProviderID == normalizedProvider.ID
+			normalizedProvider.IsDefault = c.DefaultProviderID == currentProviderID
+			if normalizedProvider.IsDefault {
+				c.DefaultProviderID = normalizedProvider.ID
+			}
 			c.Providers[i] = normalizedProvider
 			c.UpdatedAt = time.Now()
 			return nil
 		}
 	}
-	return errors.New("provider not found: " + normalizedProvider.ID)
+	return errors.New("provider not found: " + currentProviderID)
 }
 
 // RemoveProvider removes a provider by ID.

@@ -62,13 +62,14 @@ func (s *ModelConfigService) AddProvider(ctx context.Context, provider domain.Mo
 }
 
 // UpdateProvider updates an existing provider.
-func (s *ModelConfigService) UpdateProvider(ctx context.Context, provider domain.ModelProvider) error {
-	if err := s.storage.UpdateProvider(provider); err != nil {
+func (s *ModelConfigService) UpdateProvider(ctx context.Context, currentProviderID string, provider domain.ModelProvider) error {
+	if err := s.storage.UpdateProvider(currentProviderID, provider); err != nil {
 		return err
 	}
 
 	// Invalidate cached client
 	s.mu.Lock()
+	delete(s.clients, currentProviderID)
 	delete(s.clients, provider.ID)
 	s.mu.Unlock()
 

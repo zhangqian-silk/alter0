@@ -14,7 +14,7 @@ type LLMService interface {
 	GetDefaultProvider(ctx context.Context) (*domain.ModelProvider, error)
 	GetEnabledProviders(ctx context.Context) ([]domain.ModelProvider, error)
 	AddProvider(ctx context.Context, provider domain.ModelProvider) error
-	UpdateProvider(ctx context.Context, provider domain.ModelProvider) error
+	UpdateProvider(ctx context.Context, currentProviderID string, provider domain.ModelProvider) error
 	RemoveProvider(ctx context.Context, providerID string) error
 	SetDefaultProvider(ctx context.Context, providerID string) error
 	EnableProvider(ctx context.Context, providerID string, enabled bool) error

@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +22,7 @@ import (
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 	llmdomain "alter0/internal/llm/domain"
+	orchdomain "alter0/internal/orchestration/domain"
 	schedulerapp "alter0/internal/scheduler/application"
 	schedulerdomain "alter0/internal/scheduler/domain"
 	sessionapp "alter0/internal/session/application"
@@ -66,6 +69,10 @@ type StreamOrchestrator interface {
 	) (shareddomain.OrchestrationResult, error)
 }
 
+type intentInspector interface {
+	Classify(content string) orchdomain.Intent
+}
+
 type Server struct {
 	addr             string
 	orchestrator     Orchestrator
@@ -91,7 +98,7 @@ type llmService interface {
 	GetDefaultProvider(ctx context.Context) (*llmdomain.ModelProvider, error)
 	GetEnabledProviders(ctx context.Context) ([]llmdomain.ModelProvider, error)
 	AddProvider(ctx context.Context, provider llmdomain.ModelProvider) error
-	UpdateProvider(ctx context.Context, provider llmdomain.ModelProvider) error
+	UpdateProvider(ctx context.Context, currentProviderID string, provider llmdomain.ModelProvider) error
 	RemoveProvider(ctx context.Context, providerID string) error
 	SetDefaultProvider(ctx context.Context, providerID string) error
 	EnableProvider(ctx context.Context, providerID string, enabled bool) error
@@ -809,35 +816,42 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.countGateway(string(msg.ChannelType))
-	assessment := s.assessComplexity(msg)
-	if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
-		taskCard := buildTaskCard(msg, assessment, task)
-		if submitErr != nil {
-			s.logWebMessageFailure(msg, submitErr)
-			writeJSON(w, http.StatusInternalServerError, messageResponse{
+	intent := s.classifyMessageIntent(msg.Content)
+	assessment := s.defaultComplexityAssessment()
+	if intent.Type == orchdomain.IntentTypeNL {
+		assessment = s.assessComplexity(msg)
+		msg = enrichMessageWithComplexityMetadata(msg, assessment)
+		if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
+			taskCard := buildTaskCard(msg, assessment, task)
+			if submitErr != nil {
+				s.logWebMessageFailure(msg, submitErr)
+				writeJSON(w, http.StatusInternalServerError, messageResponse{
+					Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+					ExecutionMode:            assessment.ExecutionMode,
+					EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+					ComplexityLevel:          assessment.ComplexityLevel,
+					TaskCard:                 taskCard,
+					Error:                    submitErr.Error(),
+				})
+				return
+			}
+			writeJSON(w, http.StatusAccepted, messageResponse{
 				Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+				TaskID:                   task.ID,
+				TaskStatus:               string(task.Status),
 				ExecutionMode:            assessment.ExecutionMode,
 				EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
 				ComplexityLevel:          assessment.ComplexityLevel,
 				TaskCard:                 taskCard,
-				Error:                    submitErr.Error(),
 			})
 			return
 		}
-		writeJSON(w, http.StatusAccepted, messageResponse{
-			Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
-			TaskID:                   task.ID,
-			TaskStatus:               string(task.Status),
-			ExecutionMode:            assessment.ExecutionMode,
-			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-			ComplexityLevel:          assessment.ComplexityLevel,
-			TaskCard:                 taskCard,
-		})
-		return
 	}
 
 	result, err := s.orchestrator.Handle(r.Context(), msg)
-	result = attachComplexityMetadata(result, assessment, nil)
+	if intent.Type == orchdomain.IntentTypeNL {
+		result = attachComplexityMetadata(result, assessment, nil)
+	}
 	if err != nil {
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
@@ -903,29 +917,34 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
-	assessment := s.assessComplexity(msg)
-	if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
-		taskCard := buildTaskCard(msg, assessment, task)
-		if submitErr != nil {
-			s.logWebMessageFailure(msg, submitErr)
-			_ = writeSSE(w, "error", streamErrorResponse{
-				Error:  submitErr.Error(),
-				Result: asyncAcceptedResult(msg, task, assessment, taskCard),
+	intent := s.classifyMessageIntent(msg.Content)
+	assessment := s.defaultComplexityAssessment()
+	if intent.Type == orchdomain.IntentTypeNL {
+		assessment = s.assessComplexity(msg)
+		msg = enrichMessageWithComplexityMetadata(msg, assessment)
+		if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
+			taskCard := buildTaskCard(msg, assessment, task)
+			if submitErr != nil {
+				s.logWebMessageFailure(msg, submitErr)
+				_ = writeSSE(w, "error", streamErrorResponse{
+					Error:  submitErr.Error(),
+					Result: asyncAcceptedResult(msg, task, assessment, taskCard),
+				})
+				flusher.Flush()
+				return
+			}
+			_ = writeSSE(w, "done", streamDoneResponse{
+				Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+				TaskID:                   task.ID,
+				TaskStatus:               string(task.Status),
+				ExecutionMode:            assessment.ExecutionMode,
+				EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+				ComplexityLevel:          assessment.ComplexityLevel,
+				TaskCard:                 taskCard,
 			})
 			flusher.Flush()
 			return
 		}
-		_ = writeSSE(w, "done", streamDoneResponse{
-			Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
-			TaskID:                   task.ID,
-			TaskStatus:               string(task.Status),
-			ExecutionMode:            assessment.ExecutionMode,
-			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-			ComplexityLevel:          assessment.ComplexityLevel,
-			TaskCard:                 taskCard,
-		})
-		flusher.Flush()
-		return
 	}
 
 	handleStream := func(
@@ -949,7 +968,9 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 		return nil
 	})
-	result = attachComplexityMetadata(result, assessment, nil)
+	if intent.Type == orchdomain.IntentTypeNL {
+		result = attachComplexityMetadata(result, assessment, nil)
+	}
 	if handleErr != nil {
 		s.logWebMessageFailure(msg, handleErr)
 		_ = writeSSE(w, "error", streamErrorResponse{
@@ -2827,7 +2848,7 @@ func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		provider := llmdomain.ModelProvider{
-			ID:           req.ID,
+			ID:           strings.TrimSpace(req.ID),
 			Name:         req.Name,
 			BaseURL:      req.BaseURL,
 			APIKey:       req.APIKey,
@@ -2835,13 +2856,16 @@ func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) 
 			Models:       req.Models,
 			IsEnabled:    req.IsEnabled,
 		}
+		if provider.ID == "" {
+			provider.ID = s.newLLMProviderID()
+		}
 
 		if err := s.llm.AddProvider(ctx, provider); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 
-		created, _ := s.llm.GetProvider(ctx, req.ID)
+		created, _ := s.llm.GetProvider(ctx, provider.ID)
 		writeJSON(w, http.StatusCreated, toLLMProviderResponse(*created, true))
 
 	default:
@@ -2889,7 +2913,7 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		provider := llmdomain.ModelProvider{
-			ID:           providerID,
+			ID:           strings.TrimSpace(req.ID),
 			Name:         req.Name,
 			BaseURL:      req.BaseURL,
 			APIKey:       apiKey,
@@ -2897,13 +2921,16 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 			Models:       req.Models,
 			IsEnabled:    req.IsEnabled,
 		}
+		if provider.ID == "" {
+			provider.ID = providerID
+		}
 
-		if err := s.llm.UpdateProvider(ctx, provider); err != nil {
+		if err := s.llm.UpdateProvider(ctx, providerID, provider); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 
-		updated, _ := s.llm.GetProvider(ctx, providerID)
+		updated, _ := s.llm.GetProvider(ctx, provider.ID)
 		writeJSON(w, http.StatusOK, toLLMProviderResponse(*updated, true))
 
 	case http.MethodDelete:
@@ -2962,6 +2989,7 @@ type llmProviderResponse struct {
 }
 
 type llmProviderUpdateRequest struct {
+	ID           string                `json:"id"`
 	Name         string                `json:"name"`
 	BaseURL      string                `json:"base_url"`
 	APIKey       string                `json:"api_key"`
@@ -2982,6 +3010,15 @@ type llmProviderCreateRequest struct {
 
 type llmProviderActionRequest struct {
 	Action string `json:"action"` // set-default, enable, disable
+}
+
+func (s *Server) newLLMProviderID() string {
+	seed := time.Now().UTC().Format(time.RFC3339Nano)
+	if s.idGenerator != nil {
+		seed = s.idGenerator.NewID()
+	}
+	sum := sha256.Sum256([]byte(seed))
+	return "prov_" + hex.EncodeToString(sum[:10])
 }
 
 func toLLMProviderResponse(p llmdomain.ModelProvider, maskKey bool) llmProviderResponse {
@@ -3516,13 +3553,28 @@ func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage, assessment tas
 	return item, true, nil
 }
 
+func (s *Server) classifyMessageIntent(content string) orchdomain.Intent {
+	if classifier, ok := s.orchestrator.(intentInspector); ok {
+		return classifier.Classify(content)
+	}
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "/") {
+		return orchdomain.Intent{Type: orchdomain.IntentTypeCommand}
+	}
+	return orchdomain.Intent{Type: orchdomain.IntentTypeNL}
+}
+
+func (s *Server) defaultComplexityAssessment() taskapp.ComplexityAssessment {
+	return taskapp.ComplexityAssessment{
+		EstimatedDurationSeconds: 10,
+		ComplexityLevel:          taskapp.ComplexityLevelLow,
+		ExecutionMode:            taskapp.ExecutionModeStreaming,
+	}
+}
+
 func (s *Server) assessComplexity(msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
 	if s.tasks == nil {
-		return taskapp.ComplexityAssessment{
-			EstimatedDurationSeconds: 10,
-			ComplexityLevel:          taskapp.ComplexityLevelLow,
-			ExecutionMode:            taskapp.ExecutionModeStreaming,
-		}
+		return s.defaultComplexityAssessment()
 	}
 	return s.tasks.AssessComplexity(msg)
 }

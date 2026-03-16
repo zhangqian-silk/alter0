@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	orchdomain "alter0/internal/orchestration/domain"
 	sessionapp "alter0/internal/session/application"
 	sessiondomain "alter0/internal/session/domain"
 	sharedapp "alter0/internal/shared/application"
@@ -58,6 +59,15 @@ func (s *SessionPersistenceService) Handle(ctx context.Context, msg shareddomain
 	result, err := s.downstream.Handle(ctx, msg)
 	s.persistResult(msg, result, err)
 	return result, err
+}
+
+func (s *SessionPersistenceService) Classify(content string) orchdomain.Intent {
+	if classifier, ok := s.downstream.(interface {
+		Classify(string) orchdomain.Intent
+	}); ok {
+		return classifier.Classify(content)
+	}
+	return orchdomain.Intent{Type: orchdomain.IntentTypeNL}
 }
 
 func (s *SessionPersistenceService) HandleStream(

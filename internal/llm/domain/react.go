@@ -179,6 +179,53 @@ func (a *ReActAgent) RunWithState(ctx context.Context, userMessage string, onEve
 
 // RunStream runs the ReAct loop with streaming.
 func (a *ReActAgent) RunStream(ctx context.Context, userMessage string, onEvent func(ReActEvent) error) (string, error) {
+	if a != nil && a.config.Client != nil && len(a.config.Tools) == 0 {
+		messages := []Message{
+			{
+				Role:    "system",
+				Content: a.buildSystemPrompt(),
+			},
+			{
+				Role:    "user",
+				Content: userMessage,
+			},
+		}
+		state := &ReActState{
+			Messages: messages,
+		}
+		resp, err := a.config.Client.ChatStream(ctx, ChatRequest{
+			Model:       a.config.Model,
+			Messages:    messages,
+			Temperature: a.config.Temperature,
+		}, func(event StreamEvent) error {
+			if onEvent == nil {
+				return nil
+			}
+			if event.Type != "delta" || event.Delta == "" {
+				return nil
+			}
+			state.Answer += event.Delta
+			state.IsComplete = false
+			return onEvent(ReActEvent{
+				Type:  "answer",
+				State: state,
+				Delta: event.Delta,
+			})
+		})
+		if err != nil {
+			state.Error = err
+			if onEvent != nil {
+				_ = onEvent(ReActEvent{Type: "error", State: state})
+			}
+			return "", err
+		}
+		state.Answer = resp.Message.Content
+		state.IsComplete = true
+		if onEvent != nil {
+			_ = onEvent(ReActEvent{Type: "answer", State: state})
+		}
+		return state.Answer, nil
+	}
 	state, err := a.RunWithState(ctx, userMessage, onEvent)
 	if err != nil {
 		return "", err

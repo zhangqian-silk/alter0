@@ -95,7 +95,7 @@ func TestLLMProviderUpdateKeepsAPIKeyWhenBlank(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPut,
 		"/api/control/llm/providers/qwen",
-		strings.NewReader(`{"name":"Qwen Updated","base_url":"https://example.com/v2","api_key":"","default_model":"qwen-plus","models":[{"id":"qwen-plus","name":"Qwen Plus","is_enabled":true}],"is_enabled":true}`),
+		strings.NewReader(`{"id":"qwen","name":"Qwen Updated","base_url":"https://example.com/v2","api_key":"","default_model":"qwen-plus","models":[{"id":"qwen-plus","name":"Qwen Plus","is_enabled":true}],"is_enabled":true}`),
 	)
 	rec := httptest.NewRecorder()
 	server.llmProviderItemHandler(rec, req)
@@ -113,6 +113,134 @@ func TestLLMProviderUpdateKeepsAPIKeyWhenBlank(t *testing.T) {
 	}
 	if provider.APIKey != "sk-original" {
 		t.Fatalf("expected api key to be preserved, got %s", provider.APIKey)
+	}
+}
+
+func TestLLMProviderUpdateSupportsRename(t *testing.T) {
+	service := newTestLLMService(t)
+	ctx := context.Background()
+	if err := service.AddProvider(ctx, llmdomain.ModelProvider{
+		ID:        "openai",
+		Name:      "OpenAI",
+		BaseURL:   "https://api.openai.com/v1",
+		APIKey:    "sk-original",
+		IsEnabled: true,
+		Models: []llmdomain.ModelInfo{
+			{ID: "gpt-4o", Name: "GPT-4o", IsEnabled: true},
+		},
+		DefaultModel: "gpt-4o",
+	}); err != nil {
+		t.Fatalf("add provider failed: %v", err)
+	}
+
+	server := &Server{
+		llm:    service,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/control/llm/providers/openai",
+		strings.NewReader(`{"id":"openai-cn","name":"OpenAI CN","base_url":"https://proxy.example/v1","api_key":"","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
+	)
+	rec := httptest.NewRecorder()
+	server.llmProviderItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected rename update 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	oldProvider, err := service.GetProvider(ctx, "openai")
+	if err != nil {
+		t.Fatalf("get old provider failed: %v", err)
+	}
+	if oldProvider != nil {
+		t.Fatalf("expected old provider id to be removed")
+	}
+
+	provider, err := service.GetProvider(ctx, "openai-cn")
+	if err != nil {
+		t.Fatalf("get renamed provider failed: %v", err)
+	}
+	if provider == nil {
+		t.Fatalf("expected renamed provider")
+	}
+	if provider.APIKey != "sk-original" {
+		t.Fatalf("expected api key to be preserved, got %s", provider.APIKey)
+	}
+	if !provider.IsDefault {
+		t.Fatalf("expected renamed provider to remain default")
+	}
+}
+
+func TestLLMProviderCreateGeneratesInternalIDWhenMissing(t *testing.T) {
+	service := newTestLLMService(t)
+	server := &Server{
+		llm:         service,
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		idGenerator: &sequenceIDGenerator{ids: []string{"provider-seed"}},
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/control/llm/providers",
+		strings.NewReader(`{"name":"OpenAI","base_url":"https://api.openai.com/v1","api_key":"sk-created","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
+	)
+	rec := httptest.NewRecorder()
+	server.llmProviderListHandler(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected create 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp llmProviderResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if !strings.HasPrefix(resp.ID, "prov_") {
+		t.Fatalf("expected generated provider id prefix, got %s", resp.ID)
+	}
+	if resp.Name != "OpenAI" {
+		t.Fatalf("expected provider name OpenAI, got %s", resp.Name)
+	}
+}
+
+func TestLLMProviderCreateRejectsDuplicateName(t *testing.T) {
+	service := newTestLLMService(t)
+	ctx := context.Background()
+	if err := service.AddProvider(ctx, llmdomain.ModelProvider{
+		ID:        "existing-provider",
+		Name:      "OpenAI",
+		BaseURL:   "https://api.openai.com/v1",
+		APIKey:    "sk-existing",
+		IsEnabled: true,
+		Models: []llmdomain.ModelInfo{
+			{ID: "gpt-4o", Name: "GPT-4o", IsEnabled: true},
+		},
+		DefaultModel: "gpt-4o",
+	}); err != nil {
+		t.Fatalf("add provider failed: %v", err)
+	}
+
+	server := &Server{
+		llm:         service,
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		idGenerator: &sequenceIDGenerator{ids: []string{"provider-seed"}},
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/control/llm/providers",
+		strings.NewReader(`{"name":" openai ","base_url":"https://proxy.example/v1","api_key":"sk-created","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
+	)
+	rec := httptest.NewRecorder()
+	server.llmProviderListHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected create 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "provider name already exists") {
+		t.Fatalf("expected duplicate provider name error, got %s", rec.Body.String())
 	}
 }
 

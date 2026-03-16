@@ -18,10 +18,10 @@ import (
 	controldomain "alter0/internal/control/domain"
 	execapp "alter0/internal/execution/application"
 	execinfra "alter0/internal/execution/infrastructure"
-	llmapp "alter0/internal/llm/application"
-	llminfra "alter0/internal/llm/infrastructure"
 	"alter0/internal/interfaces/cli"
 	"alter0/internal/interfaces/web"
+	llmapp "alter0/internal/llm/application"
+	llminfra "alter0/internal/llm/infrastructure"
 	orchapp "alter0/internal/orchestration/application"
 	orchdomain "alter0/internal/orchestration/domain"
 	orchinfra "alter0/internal/orchestration/infrastructure"
@@ -209,8 +209,11 @@ func main() {
 	mustRegister(registry, orchinfra.NewEchoCommandHandler())
 	mustRegister(registry, orchinfra.NewTimeCommandHandler())
 
+	llmStorage := llminfra.NewModelConfigStorage(".alter0/model_config.json")
+	llmService := llmapp.NewModelConfigService(llmStorage)
+
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
-	processor := execinfra.NewCodexCLIProcessor()
+	processor := execinfra.NewHybridNLProcessor(execinfra.NewCodexCLIProcessor(), llmService, logger)
 	executor := execapp.NewServiceWithSkills(processor, control, logger)
 	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
 	taskSummaryRuntime := tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
@@ -263,7 +266,11 @@ func main() {
 		AsyncTriggerThreshold: resolvedAsyncTaskTriggerThreshold,
 		LongContentThreshold:  resolvedAsyncLongContentThreshold,
 		SummaryMemory:         taskSummaryRecorder,
-		ComplexityPredictor:   taskapp.NewCodexQuickComplexityPredictor(),
+		ComplexityPredictor: taskapp.NewOpenAIComplexityPredictor(
+			llmService,
+			taskapp.NewCodexQuickComplexityPredictor(),
+			logger,
+		),
 	})
 	if err != nil {
 		logger.Error("failed to initialize task service", slog.String("error", err.Error()))
@@ -281,10 +288,6 @@ func main() {
 		os.Exit(2)
 	}
 	scheduler.Start(rootCtx)
-
-	// Initialize LLM service
-	llmStorage := llminfra.NewModelConfigStorage(".alter0/model_config.json")
-	llmService := llmapp.NewModelConfigService(llmStorage)
 
 	server := web.NewServer(
 		listenAddr,
