@@ -164,6 +164,13 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 	return s.handle(ctx, msg, nil)
 }
 
+func (s *Service) Classify(content string) orchdomain.Intent {
+	if s == nil || s.classifier == nil {
+		return orchdomain.Intent{Type: orchdomain.IntentTypeNL}
+	}
+	return s.classifier.Classify(content)
+}
+
 func (s *Service) HandleStream(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,

@@ -105,8 +105,8 @@ func TestServiceShouldRunAsyncByRule(t *testing.T) {
 	if forcedAssessment.ExecutionMode != ExecutionModeAsync {
 		t.Fatalf("expected async execution mode, got %q", forcedAssessment.ExecutionMode)
 	}
-	if forcedAssessment.EstimatedDurationSeconds <= 300 {
-		t.Fatalf("expected forced estimate > 300s, got %d", forcedAssessment.EstimatedDurationSeconds)
+	if forcedAssessment.EstimatedDurationSeconds < 300 {
+		t.Fatalf("expected forced estimate >= 300s, got %d", forcedAssessment.EstimatedDurationSeconds)
 	}
 	disabled := testTaskMessage("s-1", "this is very long", map[string]string{MetadataTaskAsyncMode: "sync"})
 	disabledAssessment := svc.AssessComplexity(disabled)

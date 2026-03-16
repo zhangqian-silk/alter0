@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	orchdomain "alter0/internal/orchestration/domain"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 )
@@ -155,6 +156,15 @@ func normalizeConcurrencyOptions(options ConcurrencyOptions) ConcurrencyOptions 
 
 func (s *ConcurrentService) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
 	return s.handleQueued(ctx, msg, nil)
+}
+
+func (s *ConcurrentService) Classify(content string) orchdomain.Intent {
+	if classifier, ok := s.downstream.(interface {
+		Classify(string) orchdomain.Intent
+	}); ok {
+		return classifier.Classify(content)
+	}
+	return orchdomain.Intent{Type: orchdomain.IntentTypeNL}
 }
 
 func (s *ConcurrentService) HandleStream(

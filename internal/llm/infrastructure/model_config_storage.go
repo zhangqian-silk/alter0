@@ -129,13 +129,13 @@ func (s *ModelConfigStorage) AddProvider(provider domain.ModelProvider) error {
 }
 
 // UpdateProvider updates an existing provider.
-func (s *ModelConfigStorage) UpdateProvider(provider domain.ModelProvider) error {
+func (s *ModelConfigStorage) UpdateProvider(currentProviderID string, provider domain.ModelProvider) error {
 	config, err := s.Get()
 	if err != nil {
 		return err
 	}
 
-	if err := config.UpdateProvider(provider); err != nil {
+	if err := config.UpdateProvider(currentProviderID, provider); err != nil {
 		return err
 	}
 

@@ -42,6 +42,7 @@ const TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD = 480;
 const NAV_TOOLTIP_SHOW_DELAY = 90;
 const NAV_TOOLTIP_HIDE_DELAY = 40;
 const NAV_TOOLTIP_OFFSET = 12;
+const CHAT_TASK_POLL_INTERVAL_MS = 4000;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
@@ -856,6 +857,8 @@ let navTooltipNode = null;
 let navTooltipTarget = null;
 let navTooltipShowTimer = 0;
 let navTooltipHideTimer = 0;
+let chatTaskPollTimer = 0;
+let chatTaskPollPending = false;
 
 function t(key, params = {}) {
   const dict = I18N[state.lang] || I18N.en;
@@ -1741,7 +1744,13 @@ function normalizeStoredMessage(item, fallbackAt) {
     route: typeof item.route === "string" ? item.route : "",
     error: Boolean(item.error),
     status,
-    retryable: Boolean(item.retryable)
+    retryable: Boolean(item.retryable),
+    task_id: typeof item.task_id === "string" ? item.task_id : "",
+    task_status: typeof item.task_status === "string" ? item.task_status : "",
+    task_pending: Boolean(item.task_pending),
+    task_result_delivered: Boolean(item.task_result_delivered),
+    task_result_for: typeof item.task_result_for === "string" ? item.task_result_for : "",
+    task_completed_at: Number.isFinite(item.task_completed_at) ? item.task_completed_at : 0
   };
 }
 
@@ -2000,15 +2009,9 @@ function updateSessionTitle(session, fallbackText) {
   persistSessions();
 }
 
-function appendMessage(role, text, options = {}) {
-  let session = getSession();
+function appendMessageToSession(session, role, text, options = {}) {
   if (!session) {
-    session = getLatestBlankSession();
-    if (session) {
-      state.activeSessionID = session.id;
-    } else {
-      session = createSession();
-    }
+    return null;
   }
   if (role === "user") {
     updateSessionTitle(session, text);
@@ -2021,7 +2024,13 @@ function appendMessage(role, text, options = {}) {
     route: options.route || "",
     error: Boolean(options.error),
     status: options.status || (options.error ? "error" : "done"),
-    retryable: Boolean(options.retryable)
+    retryable: Boolean(options.retryable),
+    task_id: typeof options.task_id === "string" ? options.task_id : "",
+    task_status: typeof options.task_status === "string" ? options.task_status : "",
+    task_pending: Boolean(options.task_pending),
+    task_result_delivered: Boolean(options.task_result_delivered),
+    task_result_for: typeof options.task_result_for === "string" ? options.task_result_for : "",
+    task_completed_at: Number.isFinite(options.task_completed_at) ? options.task_completed_at : 0
   };
   session.messages.push(message);
   enforceSingleBlankSession();
@@ -2030,6 +2039,19 @@ function appendMessage(role, text, options = {}) {
   syncHeader();
   persistSessions();
   return message;
+}
+
+function appendMessage(role, text, options = {}) {
+  let session = getSession();
+  if (!session) {
+    session = getLatestBlankSession();
+    if (session) {
+      state.activeSessionID = session.id;
+    } else {
+      session = createSession();
+    }
+  }
+  return appendMessageToSession(session, role, text, options);
 }
 
 function updateMessage(message, patch = {}) {
@@ -2046,10 +2068,187 @@ function assistantStatusLabel(status) {
   if (status === "streaming") {
     return t("status.in_progress");
   }
+  if (status === "queued") {
+    return t("status.queued");
+  }
+  if (status === "running") {
+    return t("status.running");
+  }
+  if (status === "canceled") {
+    return t("status.canceled");
+  }
+  if (status === "success") {
+    return t("status.success");
+  }
+  if (status === "failed") {
+    return t("status.failed");
+  }
   if (status === "error") {
     return t("status.failed");
   }
   return t("status.done");
+}
+
+function normalizeTaskStatus(status) {
+  return normalizeText(status).toLowerCase();
+}
+
+function isTerminalTaskStatus(status) {
+  const normalized = normalizeTaskStatus(status);
+  return normalized === "success" || normalized === "failed" || normalized === "canceled";
+}
+
+function applyAsyncTaskStateToMessage(message, payload = {}) {
+  if (!message) {
+    return;
+  }
+  const taskID = normalizeText(payload.task_id || payload.taskID || message.task_id);
+  if (!taskID) {
+    return;
+  }
+  const taskStatus = normalizeTaskStatus(payload.task_status || payload.status || message.task_status || "queued");
+  updateMessage(message, {
+    task_id: taskID,
+    task_status: taskStatus,
+    task_pending: !isTerminalTaskStatus(taskStatus),
+    status: taskStatus || message.status || "done",
+    error: taskStatus === "failed" || taskStatus === "canceled" ? Boolean(message.error) : false
+  });
+}
+
+function taskCompletionText(task) {
+  const status = normalizeTaskStatus(task?.status);
+  if (status === "success") {
+    return normalizeText(task?.result?.output) || normalizeText(task?.summary) || t("msg.received_empty");
+  }
+  if (status === "canceled") {
+    return normalizeText(task?.summary) || `Async task ${normalizeText(task?.id)} canceled`;
+  }
+  return normalizeText(task?.error_message) || normalizeText(task?.summary) || normalizeText(task?.result?.error_code) || `Async task ${normalizeText(task?.id)} failed`;
+}
+
+function notifyAsyncTaskCompletion(session, task, text) {
+  if (!session || !task || !document.hidden || typeof window.Notification === "undefined") {
+    return;
+  }
+  if (window.Notification.permission !== "granted") {
+    return;
+  }
+  const title = session.title || t("chat.title");
+  try {
+    new window.Notification(title, {
+      body: shorten(normalizeText(text), 120)
+    });
+  } catch {
+  }
+}
+
+function deliverAsyncTaskResult(session, message, task) {
+  if (!session || !message || !task) {
+    return;
+  }
+  const taskID = normalizeText(task.id || message.task_id);
+  if (!taskID || message.task_result_delivered) {
+    return;
+  }
+  const taskStatus = normalizeTaskStatus(task.status);
+  const text = taskCompletionText(task);
+  updateMessage(message, {
+    task_id: taskID,
+    task_status: taskStatus,
+    task_pending: false,
+    task_result_delivered: true,
+    task_completed_at: Date.now(),
+    status: taskStatus || "done"
+  });
+  const alreadyDelivered = session.messages.some((item) => item !== message && normalizeText(item.task_result_for) === taskID);
+  if (!alreadyDelivered) {
+    appendMessageToSession(session, "assistant", text, {
+      route: typeof task?.result?.route === "string" ? task.result.route : "",
+      error: taskStatus === "failed" || taskStatus === "canceled",
+      status: taskStatus === "failed" || taskStatus === "canceled" ? "error" : "done",
+      retryable: taskStatus === "failed",
+      task_result_for: taskID,
+      task_completed_at: Date.now()
+    });
+  }
+  notifyAsyncTaskCompletion(session, task, text);
+}
+
+function collectPendingTaskBindings() {
+  const bindings = [];
+  for (const session of state.sessions) {
+    const messages = Array.isArray(session?.messages) ? session.messages : [];
+    for (const message of messages) {
+      const taskID = normalizeText(message?.task_id);
+      if (!taskID || message?.task_result_delivered) {
+        continue;
+      }
+      bindings.push({ session, message, taskID });
+    }
+  }
+  return bindings;
+}
+
+async function pollChatTaskUpdates() {
+  if (chatTaskPollPending) {
+    return;
+  }
+  const bindings = collectPendingTaskBindings();
+  if (!bindings.length) {
+    return;
+  }
+  chatTaskPollPending = true;
+  try {
+    const taskMap = new Map();
+    for (const binding of bindings) {
+      if (taskMap.has(binding.taskID)) {
+        continue;
+      }
+      try {
+        const task = await fetchJSON(`/api/tasks/${encodeURIComponent(binding.taskID)}`);
+        taskMap.set(binding.taskID, task || null);
+      } catch {
+        taskMap.set(binding.taskID, null);
+      }
+    }
+    bindings.forEach(({ session, message, taskID }) => {
+      const task = taskMap.get(taskID);
+      if (!task) {
+        return;
+      }
+      applyAsyncTaskStateToMessage(message, {
+        task_id: taskID,
+        task_status: task.status
+      });
+      if (isTerminalTaskStatus(task.status)) {
+        deliverAsyncTaskResult(session, message, task);
+      }
+    });
+  } finally {
+    chatTaskPollPending = false;
+  }
+}
+
+function ensureChatTaskPolling() {
+  if (chatTaskPollTimer) {
+    return;
+  }
+  chatTaskPollTimer = window.setInterval(() => {
+    void pollChatTaskUpdates();
+  }, CHAT_TASK_POLL_INTERVAL_MS);
+  void pollChatTaskUpdates();
+}
+
+function extractAsyncTaskPayload(payload) {
+  const taskID = normalizeText(payload?.task_id);
+  if (!taskID) {
+    return null;
+  }
+  return {
+    task_id: taskID,
+    task_status: normalizeTaskStatus(payload?.task_status || "queued")
+  };
 }
 
 function renderMessages() {
@@ -2246,14 +2445,22 @@ async function sendMessageStream(payload, assistantMessage) {
             const result = parsed.data && typeof parsed.data === "object" ? parsed.data.result || {} : {};
             const route = typeof result.route === "string" && result.route ? result.route : routeHint;
             const finalOutput = typeof result.output === "string" ? result.output : output;
+            const asyncTask = extractAsyncTaskPayload(parsed.data);
             updateMessage(assistantMessage, {
               text: finalOutput.trim() || t("msg.received_empty"),
               route,
               error: false,
-              status: "done",
+              status: asyncTask ? asyncTask.task_status : "done",
               retryable: false,
-              at: Date.now()
+              at: Date.now(),
+              task_id: asyncTask ? asyncTask.task_id : assistantMessage.task_id,
+              task_status: asyncTask ? asyncTask.task_status : assistantMessage.task_status,
+              task_pending: Boolean(asyncTask),
+              task_result_delivered: false
             });
+            if (asyncTask) {
+              void pollChatTaskUpdates();
+            }
             sawDone = true;
           } else if (parsed.event === "error") {
             const result = parsed.data && typeof parsed.data === "object" ? parsed.data.result || {} : {};
@@ -2324,14 +2531,22 @@ async function sendMessageFallback(payload, assistantMessage) {
   }
 
   const output = (body?.result?.output || "").trim() || t("msg.received_empty");
+  const asyncTask = extractAsyncTaskPayload(body);
   updateMessage(assistantMessage, {
     text: output,
     route: body?.result?.route || "",
     error: false,
-    status: "done",
+    status: asyncTask ? asyncTask.task_status : "done",
     retryable: false,
-    at: Date.now()
+    at: Date.now(),
+    task_id: asyncTask ? asyncTask.task_id : assistantMessage.task_id,
+    task_status: asyncTask ? asyncTask.task_status : assistantMessage.task_status,
+    task_pending: Boolean(asyncTask),
+    task_result_delivered: false
   });
+  if (asyncTask) {
+    void pollChatTaskUpdates();
+  }
 }
 
 async function sendMessage(rawContent) {
@@ -7122,11 +7337,19 @@ async function loadEnvironmentsView(container) {
 
 async function loadModelsView(container) {
   let providers = [];
+  const modalHost = (() => {
+    const existing = document.querySelector("[data-route-modal-root='models']");
+    if (existing instanceof HTMLElement) {
+      existing.remove();
+    }
+    const node = document.createElement("div");
+    node.setAttribute("data-route-modal-root", "models");
+    document.body.appendChild(node);
+    return node;
+  })();
   const localState = {
     showModal: false,
     editingProvider: null,
-    switchProviderID: "",
-    switchModelID: "",
     statusMessage: ""
   };
   const OPENAI_PROVIDER_TEMPLATE = {
@@ -7195,7 +7418,7 @@ async function loadModelsView(container) {
   });
 
   const createProviderDraft = () => ({
-    id: providers.some((provider) => provider.id === OPENAI_PROVIDER_TEMPLATE.id) ? "" : OPENAI_PROVIDER_TEMPLATE.id,
+    id: "",
     name: OPENAI_PROVIDER_TEMPLATE.name,
     base_url: OPENAI_PROVIDER_TEMPLATE.base_url,
     api_key: "",
@@ -7219,25 +7442,13 @@ async function loadModelsView(container) {
   </svg>`;
 
   const findProvider = (providerID) => providers.find((provider) => provider.id === providerID) || null;
-
-  const syncSwitcherSelection = () => {
-    const enabledProviders = providers.filter((provider) => provider.is_enabled);
-    let selectedProvider = enabledProviders.find((provider) => provider.id === localState.switchProviderID) || null;
-    if (!selectedProvider) {
-      selectedProvider = enabledProviders.find((provider) => provider.is_default) || enabledProviders[0] || null;
+  const normalizeProviderNameKey = (value) => normalizeText(value || "").toLowerCase();
+  const hasDuplicateProviderName = (name, currentProviderID = "") => {
+    const normalizedName = normalizeProviderNameKey(name);
+    if (!normalizedName) {
+      return false;
     }
-    localState.switchProviderID = selectedProvider ? selectedProvider.id : "";
-
-    const enabledModels = getEnabledModels(selectedProvider);
-    const hasSelectedModel = enabledModels.some((model) => model.id === localState.switchModelID);
-    if (!hasSelectedModel) {
-      localState.switchModelID = selectedProvider
-        ? (normalizeText(selectedProvider.default_model || "") || (enabledModels[0] ? enabledModels[0].id : ""))
-        : "";
-    }
-    if (!enabledModels.some((model) => model.id === localState.switchModelID)) {
-      localState.switchModelID = enabledModels[0] ? enabledModels[0].id : "";
-    }
+    return providers.some((provider) => provider.id !== currentProviderID && normalizeProviderNameKey(provider.name) === normalizedName);
   };
 
   const fetchProviders = async () => {
@@ -7249,11 +7460,30 @@ async function loadModelsView(container) {
   const showModal = (provider) => {
     localState.showModal = true;
     localState.editingProvider = provider ? cloneProvider(provider) : createProviderDraft();
+    paintModal();
+    bindModalEvents();
   };
 
   const hideModal = () => {
     localState.showModal = false;
     localState.editingProvider = null;
+    paintModal();
+  };
+
+  const activateModal = () => {
+    const modalBackdrop = modalHost.querySelector("[data-modal]");
+    if (!(modalBackdrop instanceof HTMLElement) || modalBackdrop.dataset.modalReady === "true") {
+      return;
+    }
+    modalBackdrop.dataset.modalReady = "true";
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!modalBackdrop.isConnected) {
+          return;
+        }
+        modalBackdrop.setAttribute("data-modal-state", "open");
+      });
+    });
   };
 
   const renderEditableModelRow = (model) => {
@@ -7284,96 +7514,36 @@ async function loadModelsView(container) {
       ${models.map((model) => {
         const defaultClass = model.id === provider.default_model ? " provider-model-item-default" : "";
         const disabledClass = model.is_enabled ? "" : " provider-model-item-disabled";
-        return `<li class="provider-model-item${defaultClass}${disabledClass}">
-          <span class="provider-model-name">${escapeHTML(model.name || model.id)}</span>
+        const selectableClass = provider.is_enabled && model.is_enabled ? " provider-model-item-selectable" : "";
+        const content = `<span class="provider-model-name">${escapeHTML(model.name || model.id)}</span>
           <span class="provider-model-id">${escapeHTML(model.id)}</span>
-          <span class="provider-model-badge">${model.id === provider.default_model ? "默认模型" : (model.is_enabled ? "可用" : "已禁用")}</span>
+          <span class="provider-model-badge">${model.id === provider.default_model ? "默认模型" : (model.is_enabled ? "点击设为默认" : "已禁用")}</span>`;
+        if (provider.is_enabled && model.is_enabled) {
+          return `<li>
+            <button type="button" class="provider-model-trigger provider-model-item${defaultClass}${disabledClass}${selectableClass}" data-action="set-default-model" data-id="${escapeHTML(provider.id)}" data-model-id="${escapeHTML(model.id)}">
+              ${content}
+            </button>
+          </li>`;
+        }
+        return `<li class="provider-model-item${defaultClass}${disabledClass}">
+          ${content}
         </li>`;
       }).join("")}
     </ul>`;
-  };
-
-  const renderSwitcher = () => {
-    const enabledProviders = providers.filter((provider) => provider.is_enabled);
-    const selectedProvider = findProvider(localState.switchProviderID);
-    const enabledModels = getEnabledModels(selectedProvider);
-    const canApplyDefault = Boolean(selectedProvider && enabledModels.length && localState.switchModelID);
-    const providerOptions = enabledProviders.length
-      ? enabledProviders.map((provider) => `<option value="${escapeHTML(provider.id)}" ${provider.id === localState.switchProviderID ? "selected" : ""}>${escapeHTML(provider.name || provider.id)}</option>`).join("")
-      : '<option value="">暂无可用 Provider</option>';
-    const modelOptions = enabledModels.length
-      ? enabledModels.map((model) => `<option value="${escapeHTML(model.id)}" ${model.id === localState.switchModelID ? "selected" : ""}>${escapeHTML(model.name || model.id)}</option>`).join("")
-      : '<option value="">请先配置可用模型</option>';
-    const description = selectedProvider
-      ? `${selectedProvider.name || selectedProvider.id} · ${selectedProvider.base_url || "-"}`
-      : "当前没有可切换的启用 Provider。";
-
-    if (!enabledProviders.length) {
-      return `<section class="route-card model-switcher-card model-switcher-card-empty">
-        <div class="model-switcher-empty">
-          <div class="models-empty-illustration">${renderModelsEmptyIcon()}</div>
-          <div class="model-switcher-empty-copy">
-            <h3>默认模型</h3>
-            <p>当前没有启用中的 Provider。先新增并启用一个 Provider，再设置默认模型。</p>
-          </div>
-        </div>
-        <div class="model-switcher-grid">
-          <label>
-            <span>Provider</span>
-            <select data-switch-provider disabled>
-              ${providerOptions}
-            </select>
-          </label>
-          <label>
-            <span>Model</span>
-            <select data-switch-model disabled>
-              <option value="">请先配置可用模型</option>
-            </select>
-          </label>
-        </div>
-        <div class="model-switcher-actions">
-          <button type="button" class="btn-primary" data-action="save-default" disabled>应用默认模型</button>
-        </div>
-      </section>`;
-    }
-
-    return `<section class="route-card model-switcher-card">
-      <div class="model-switcher-header">
-        <div>
-          <h3>默认模型</h3>
-          <p>${escapeHTML(description)}</p>
-        </div>
-        <p class="model-switcher-status">${escapeHTML(localState.statusMessage || "")}</p>
-      </div>
-      <div class="model-switcher-grid">
-        <label>
-          <span>Provider</span>
-          <select data-switch-provider ${enabledProviders.length ? "" : "disabled"}>
-            ${providerOptions}
-          </select>
-        </label>
-        <label>
-          <span>Model</span>
-          <select data-switch-model ${(selectedProvider && enabledModels.length) ? "" : "disabled"}>
-            ${modelOptions}
-          </select>
-        </label>
-      </div>
-      <div class="model-switcher-actions">
-        <button type="button" class="btn-primary" data-action="save-default" ${canApplyDefault ? "" : "disabled"}>应用默认模型</button>
-      </div>
-    </section>`;
   };
 
   const renderProviderCard = (provider) => {
     const statusClass = provider.is_enabled ? "provider-enabled" : "provider-disabled";
     const defaultBadge = provider.is_default ? '<span class="badge-default">默认 Provider</span>' : "";
     const enabledModelCount = getEnabledModels(provider).length;
+    const note = provider.is_default
+      ? (localState.statusMessage || "当前 Provider 正在提供默认模型")
+      : (provider.is_enabled ? "直接点击模型项即可切换默认模型" : "启用后可设置为默认 Provider 和默认模型");
     return `<article class="provider-card ${statusClass}">
       <div class="provider-header">
         <div>
-          <h3>${escapeHTML(provider.name || provider.id)} ${defaultBadge}</h3>
-          <p class="provider-subtitle">${escapeHTML(provider.id || "-")}</p>
+          <h3>${escapeHTML(provider.name || "未命名 Provider")} ${defaultBadge}</h3>
+          <p class="provider-card-note">${escapeHTML(note)}</p>
         </div>
         <span class="provider-status">${provider.is_enabled ? "已启用" : "已禁用"}</span>
       </div>
@@ -7391,7 +7561,6 @@ async function loadModelsView(container) {
       </section>
       <div class="provider-actions">
         <button type="button" data-action="edit" data-id="${escapeHTML(provider.id)}">编辑</button>
-        ${provider.is_default ? "" : `<button type="button" data-action="default" data-id="${escapeHTML(provider.id)}" ${provider.is_enabled ? "" : "disabled"}>设为默认</button>`}
         <button type="button" data-action="${provider.is_enabled ? "disable" : "enable"}" data-id="${escapeHTML(provider.id)}">${provider.is_enabled ? "禁用" : "启用"}</button>
         <button type="button" data-action="delete" data-id="${escapeHTML(provider.id)}">删除</button>
       </div>
@@ -7409,7 +7578,7 @@ async function loadModelsView(container) {
     const modelOptions = defaultModels.length
       ? defaultModels.map((model) => `<option value="${escapeHTML(model.id)}" ${model.id === defaultModel ? "selected" : ""}>${escapeHTML(model.name || model.id)}</option>`).join("")
       : '<option value="">请先添加启用的模型</option>';
-    return `<div class="modal-backdrop" data-modal>
+    return `<div class="modal-backdrop" data-modal data-modal-state="enter">
       <div class="modal-dialog modal-dialog-wide">
         <div class="modal-header">
           <h3>${isEditing ? "编辑 Provider" : "新增 Provider"}</h3>
@@ -7418,10 +7587,6 @@ async function loadModelsView(container) {
         <form data-provider-form autocomplete="off">
           <div class="modal-body">
           <div class="provider-form-grid">
-            <label>
-              <span>Provider ID</span>
-              <input type="text" name="id" value="${escapeHTML(form.id)}" placeholder="openai" ${isEditing ? "disabled" : ""} required autocomplete="off">
-            </label>
             <label>
               <span>Provider 名称</span>
               <input type="text" name="name" value="${escapeHTML(form.name || "")}" placeholder="OpenAI" required autocomplete="off">
@@ -7472,38 +7637,39 @@ async function loadModelsView(container) {
   const renderEmptyProvidersState = () => `<div class="providers-empty-state">
     <div class="models-empty-illustration">${renderModelsEmptyIcon()}</div>
     <div class="providers-empty-copy">
-      <h3>还没有可用 Provider</h3>
-      <p>模型配置已统一迁移到当前页面。新增第一个 Provider 后，就可以在这里切换默认 Provider 和默认模型。</p>
+      <h3>还没有配置任何 Provider</h3>
+      <p>您还没有配置任何 LLM Provider。添加第一个 Provider 后，即可开启模型对话并设置默认模型。</p>
     </div>
     <button type="button" class="btn-primary" data-action="add">+ 新增 Provider</button>
   </div>`;
 
   const paint = () => {
     const cards = providers.map(renderProviderCard).join("");
+    const providerAction = providers.length
+      ? '<button type="button" class="btn-primary providers-panel-add" data-action="add">+ 新增 Provider</button>'
+      : "";
+    const providersNote = "统一在这里维护 Provider、API Key 与模型列表，不再通过环境变量配置默认 Provider 或默认模型。";
     container.innerHTML = `<section class="route-view models-view">
-      <div class="route-card toolbar">
-        <div>
-          <h2>LLM Providers</h2>
-          <p>统一在这里维护 Provider、API Key 和模型列表，不再通过环境变量配置默认 Provider / Model。</p>
-        </div>
-        <button type="button" class="btn-primary" data-action="add">+ 新增 Provider</button>
-      </div>
-      <div class="models-layout">
-        <section class="route-card providers-panel">
-          <div class="providers-panel-header">
-            <div>
+      <p class="models-view-intro">${escapeHTML(providersNote)}</p>
+      <section class="route-card providers-panel">
+        <div class="providers-panel-header">
+          <div class="providers-panel-heading">
+            <div class="providers-panel-title-row">
               <h3>Provider 列表</h3>
-              <p>已配置 ${escapeHTML(String(providers.length))} 个 Provider</p>
+              <button type="button" class="providers-panel-info" title="${escapeHTML(providersNote)}" aria-label="${escapeHTML(providersNote)}">i</button>
             </div>
+            <p>已配置 ${escapeHTML(String(providers.length))} 个 Provider</p>
           </div>
-          ${cards ? `<div class="providers-list">${cards}</div>` : renderEmptyProvidersState()}
-        </section>
-        <div class="models-side">
-          ${renderSwitcher()}
+          ${providerAction}
         </div>
-      </div>
-      ${renderProviderModal()}
+        ${cards ? `<div class="providers-list">${cards}</div>` : renderEmptyProvidersState()}
+      </section>
     </section>`;
+    paintModal();
+  };
+
+  const paintModal = () => {
+    modalHost.innerHTML = renderProviderModal();
   };
 
   const readModelsFromForm = (form) => {
@@ -7569,90 +7735,45 @@ async function loadModelsView(container) {
   const refresh = async (statusMessage) => {
     providers = await fetchProviders();
     localState.statusMessage = normalizeText(statusMessage || "");
-    syncSwitcherSelection();
     paint();
     bindEvents();
+  };
+
+  const applyProviderDefaultModel = async (providerID, modelID) => {
+    const provider = findProvider(providerID);
+    if (!provider || !normalizeText(modelID || "")) {
+      return;
+    }
+    const providerURL = "/api/control/llm/providers/" + encodeURIComponent(provider.id);
+    await requestJSON(providerURL, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: provider.name,
+        base_url: provider.base_url,
+        api_key: "",
+        default_model: modelID,
+        models: provider.models,
+        is_enabled: provider.is_enabled
+      })
+    });
+    if (!provider.is_default) {
+      await requestJSON(providerURL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set-default" })
+      });
+    }
   };
 
   const bindEvents = () => {
     container.querySelectorAll('[data-action="add"]').forEach((addBtn) => {
       addBtn.addEventListener("click", () => {
         showModal(null);
-        paint();
-        bindEvents();
       });
     });
 
-    const providerSelect = container.querySelector("[data-switch-provider]");
-    const modelSelect = container.querySelector("[data-switch-model]");
-    const saveDefaultBtn = container.querySelector('[data-action="save-default"]');
-    if (providerSelect) {
-      providerSelect.addEventListener("change", () => {
-        localState.switchProviderID = normalizeText(providerSelect.value || "");
-        syncSwitcherSelection();
-        paint();
-        bindEvents();
-      });
-    }
-    if (modelSelect) {
-      modelSelect.addEventListener("change", () => {
-        localState.switchModelID = normalizeText(modelSelect.value || "");
-      });
-    }
-    if (saveDefaultBtn) {
-      saveDefaultBtn.addEventListener("click", async () => {
-        const provider = findProvider(localState.switchProviderID);
-        if (!provider) {
-          return;
-        }
-        const providerURL = "/api/control/llm/providers/" + encodeURIComponent(provider.id);
-        try {
-          await requestJSON(providerURL, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: provider.name,
-              base_url: provider.base_url,
-              api_key: "",
-              default_model: localState.switchModelID,
-              models: provider.models,
-              is_enabled: provider.is_enabled
-            })
-          });
-          if (!provider.is_default) {
-            await requestJSON(providerURL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "set-default" })
-            });
-          }
-          await refresh("默认模型已更新");
-        } catch (err) {
-          alert("应用默认模型失败: " + (err instanceof Error ? err.message : "unknown_error"));
-        }
-      });
-    }
-
-    container.querySelectorAll("[data-close]").forEach((element) => {
-      element.addEventListener("click", () => {
-        hideModal();
-        paint();
-        bindEvents();
-      });
-    });
-
-    const modalBackdrop = container.querySelector("[data-modal]");
-    if (modalBackdrop) {
-      modalBackdrop.addEventListener("click", (event) => {
-        if (event.target && event.target.hasAttribute("data-modal")) {
-          hideModal();
-          paint();
-          bindEvents();
-        }
-      });
-    }
-
-    container.querySelectorAll("[data-action]:not([data-action='add']):not([data-action='save-default'])").forEach((button) => {
+    container.querySelectorAll("[data-action]:not([data-action='add'])").forEach((button) => {
       button.addEventListener("click", async () => {
         const action = normalizeText(button.getAttribute("data-action") || "");
         const id = normalizeText(button.getAttribute("data-id") || "");
@@ -7661,8 +7782,6 @@ async function loadModelsView(container) {
           if (action === "edit") {
             const provider = findProvider(id);
             showModal(provider);
-            paint();
-            bindEvents();
             return;
           }
           if (action === "delete") {
@@ -7673,13 +7792,10 @@ async function loadModelsView(container) {
             await refresh("Provider 已删除");
             return;
           }
-          if (action === "default") {
-            await requestJSON(providerURL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "set-default" })
-            });
-            await refresh("默认 Provider 已更新");
+          if (action === "set-default-model") {
+            const modelID = normalizeText(button.getAttribute("data-model-id") || "");
+            await applyProviderDefaultModel(id, modelID);
+            await refresh("默认模型已更新");
             return;
           }
           if (action === "enable" || action === "disable") {
@@ -7695,8 +7811,27 @@ async function loadModelsView(container) {
         }
       });
     });
+    bindModalEvents();
+  };
 
-    const providerForm = container.querySelector("[data-provider-form]");
+  const bindModalEvents = () => {
+    modalHost.querySelectorAll("[data-close]").forEach((element) => {
+      element.addEventListener("click", () => {
+        hideModal();
+      });
+    });
+
+    const modalBackdrop = modalHost.querySelector("[data-modal]");
+    if (modalBackdrop) {
+      modalBackdrop.addEventListener("click", (event) => {
+        if (event.target && event.target.hasAttribute("data-modal")) {
+          hideModal();
+        }
+      });
+    }
+    activateModal();
+
+    const providerForm = modalHost.querySelector("[data-provider-form]");
     if (providerForm) {
       syncModalDefaultModelSelect(providerForm);
       providerForm.addEventListener("click", (event) => {
@@ -7737,18 +7872,19 @@ async function loadModelsView(container) {
         try {
           const isEditing = Boolean(localState.editingProvider && localState.editingProvider.id);
           const formData = new FormData(providerForm);
+          const originalProviderID = isEditing ? localState.editingProvider.id : "";
+          const providerName = normalizeText(formData.get("name") || "");
+          if (hasDuplicateProviderName(providerName, originalProviderID)) {
+            throw new Error("Provider 名称已存在，请使用其他名称");
+          }
           const models = readModelsFromForm(providerForm);
           const enabledModels = models.filter((model) => model.is_enabled);
           const rawDefaultModel = normalizeText(formData.get("default_model") || "");
           const defaultModel = enabledModels.some((model) => model.id === rawDefaultModel)
             ? rawDefaultModel
             : enabledModels[0].id;
-          const providerID = isEditing
-            ? localState.editingProvider.id
-            : normalizeText(formData.get("id") || "");
           const body = {
-            id: providerID,
-            name: normalizeText(formData.get("name") || ""),
+            name: providerName,
             base_url: normalizeText(formData.get("base_url") || ""),
             api_key: normalizeText(formData.get("api_key") || ""),
             default_model: defaultModel,
@@ -7756,7 +7892,7 @@ async function loadModelsView(container) {
             is_enabled: formData.get("is_enabled") === "on"
           };
           const url = isEditing
-            ? "/api/control/llm/providers/" + encodeURIComponent(providerID)
+            ? "/api/control/llm/providers/" + encodeURIComponent(originalProviderID)
             : "/api/control/llm/providers";
           await requestJSON(url, {
             method: isEditing ? "PUT" : "POST",
@@ -7787,6 +7923,7 @@ async function loadPlaceholderView(container) {
 async function renderRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
   state.currentRoute = safe;
+  document.querySelectorAll("[data-route-modal-root]").forEach((node) => node.remove());
   activeMenuRoute(safe);
   collapseMobileSidebar();
   if (!isMobileViewport()) {
@@ -8051,6 +8188,7 @@ function init() {
   renderMessages();
   syncHeader();
   bindEvents();
+  ensureChatTaskPolling();
   updateCharCount();
   updateKeyboardInset();
   syncComposerGuardState();
