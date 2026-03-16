@@ -47,6 +47,7 @@ docs/research/
 | 日期 | 热点扫描 | alter0 研判 |
 |------|----------|-------------|
 | 2026-03-16 | [hotspots/2026-03-16.md](./hotspots/2026-03-16.md) | [alter0-analysis/2026-03-16.md](./alter0-analysis/2026-03-16.md) |
+| 2026-03-15 | [hotspots/2026-03-15.md](./hotspots/2026-03-15.md) | [alter0-analysis/2026-03-15.md](./alter0-analysis/2026-03-15.md) |
 | 2026-03-14 | [hotspots/2026-03-14.md](./hotspots/2026-03-14.md) | [alter0-analysis/2026-03-14.md](./alter0-analysis/2026-03-14.md) |
 | 2026-03-12 | [hotspots/2026-03-12.md](./hotspots/2026-03-12.md) | [alter0-analysis/2026-03-12.md](./alter0-analysis/2026-03-12.md) |
 | 2026-03-11 | [hotspots/2026-03-11.md](./hotspots/2026-03-11.md) | [alter0-analysis/2026-03-11.md](./alter0-analysis/2026-03-11.md) |
