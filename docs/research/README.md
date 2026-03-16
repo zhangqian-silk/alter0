@@ -2,9 +2,11 @@
 
 本目录存储 alter0 项目的研究文档，包括外部热点扫描和内部研判分析。
 
+---
+
 ## 目录结构
 
-```text
+```
 docs/research/
 ├── README.md                    # 本索引文件
 ├── hotspots/                    # 外部热点扫描日报
@@ -17,7 +19,7 @@ docs/research/
 
 ## 文档说明
 
-### hotspots/ - 外部热点扫描日报
+### 📰 hotspots/ - 外部热点扫描日报
 
 每日扫描 AI / Agent / 工具 / 模型 / 平台 / 开源 / 基础设施 / 监管 等前沿热点，来源覆盖论坛、博客、技术网站、GitHub 与社交平台。
 
@@ -27,7 +29,7 @@ docs/research/
 - 开源、论坛、社交平台与产品侧信号
 - 来源清单与样本统计
 
-### alter0-analysis/ - alter0 相关研判
+### 🔍 alter0-analysis/ - alter0 相关研判
 
 承接所有与 alter0 有关的内容，包括：
 - 哪些热点与 alter0 有关
@@ -44,8 +46,8 @@ docs/research/
 
 | 日期 | 热点扫描 | alter0 研判 |
 |------|----------|-------------|
+| 2026-03-16 | [hotspots/2026-03-16.md](./hotspots/2026-03-16.md) | [alter0-analysis/2026-03-16.md](./alter0-analysis/2026-03-16.md) |
 | 2026-03-14 | [hotspots/2026-03-14.md](./hotspots/2026-03-14.md) | [alter0-analysis/2026-03-14.md](./alter0-analysis/2026-03-14.md) |
-| 2026-03-13 | [hotspots/2026-03-13.md](./hotspots/2026-03-13.md) | [alter0-analysis/2026-03-13.md](./alter0-analysis/2026-03-13.md) |
 | 2026-03-12 | [hotspots/2026-03-12.md](./hotspots/2026-03-12.md) | [alter0-analysis/2026-03-12.md](./alter0-analysis/2026-03-12.md) |
 | 2026-03-11 | [hotspots/2026-03-11.md](./hotspots/2026-03-11.md) | [alter0-analysis/2026-03-11.md](./alter0-analysis/2026-03-11.md) |
 | 2026-03-10 | [hotspots/2026-03-10.md](./hotspots/2026-03-10.md) | [alter0-analysis/2026-03-10.md](./alter0-analysis/2026-03-10.md) |
