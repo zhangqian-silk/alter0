@@ -1,4 +1,8 @@
 
+## 2026-03-18
+- [外部热点扫描日报](./hotspots/2026-03-18.md)
+- [alter0 定向分析日报](./alter0-analysis/2026-03-18.md)
+
 ## 2026-03-17
 - [外部热点扫描日报](./hotspots/2026-03-17.md)
 - [alter0 定向分析日报](./alter0-analysis/2026-03-17.md)
@@ -51,6 +55,7 @@ docs/research/
 
 | 日期 | 热点扫描 | alter0 研判 |
 |------|----------|-------------|
+| 2026-03-18 | [hotspots/2026-03-18.md](./hotspots/2026-03-18.md) | [alter0-analysis/2026-03-18.md](./alter0-analysis/2026-03-18.md) |
 | 2026-03-16 | [hotspots/2026-03-16.md](./hotspots/2026-03-16.md) | [alter0-analysis/2026-03-16.md](./alter0-analysis/2026-03-16.md) |
 | 2026-03-15 | [hotspots/2026-03-15.md](./hotspots/2026-03-15.md) | [alter0-analysis/2026-03-15.md](./alter0-analysis/2026-03-15.md) |
 | 2026-03-14 | [hotspots/2026-03-14.md](./hotspots/2026-03-14.md) | [alter0-analysis/2026-03-14.md](./alter0-analysis/2026-03-14.md) |
