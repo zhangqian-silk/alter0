@@ -58,6 +58,11 @@ var defaultStorageProfile = storageProfile{
 const defaultWebAddr = "127.0.0.1:18088"
 
 func main() {
+	relaunchHelper := flag.Bool(relaunchHelperFlag, false, "internal relaunch helper")
+	relaunchParentPID := flag.Int(relaunchParentPIDFlag, 0, "internal relaunch parent pid")
+	relaunchExecPath := flag.String(relaunchExecPathFlag, "", "internal relaunch executable path")
+	relaunchArgs := flag.String(relaunchArgsFlag, "", "internal relaunch encoded args")
+	relaunchWorkingDir := flag.String(relaunchWorkingDirFlag, "", "internal relaunch working directory")
 	webAddr := flag.String("web-addr", defaultWebAddr, "web server listen address")
 	webBindLocalhostOnly := flag.Bool("web-bind-localhost-only", true, "force web server to bind loopback only")
 	webLoginPasswordDefault := strings.TrimSpace(os.Getenv("ALTER0_WEB_LOGIN_PASSWORD"))
@@ -85,6 +90,13 @@ func main() {
 	longTermMemoryTokenBudget := flag.Int("long-term-memory-token-budget", 220, "long-term memory injection token budget")
 	mandatoryContextFile := flag.String("mandatory-context-file", "SOUL.md", "mandatory context file path")
 	flag.Parse()
+	if *relaunchHelper {
+		if err := runRelaunchHelper(*relaunchParentPID, *relaunchExecPath, *relaunchWorkingDir, *relaunchArgs); err != nil {
+			fmt.Fprintf(os.Stderr, "alter0 relaunch helper failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	listenAddr := strings.TrimSpace(*webAddr)
 	if listenAddr == "" {
 		listenAddr = defaultWebAddr
@@ -312,6 +324,12 @@ func main() {
 		llmService,
 		logger,
 	)
+	restarter, err := newServiceRestarter(cancel, logger, os.Args[1:])
+	if err != nil {
+		logger.Error("failed to initialize service restarter", slog.String("error", err.Error()))
+		os.Exit(2)
+	}
+	server.SetRuntimeRestarter(restarter)
 	webErrCh := make(chan error, 1)
 	go func() {
 		logger.Info("starting web server", slog.String("addr", listenAddr))

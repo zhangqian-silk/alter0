@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	terminalapp "alter0/internal/terminal/application"
 )
@@ -19,6 +20,15 @@ type terminalSessionCreateRequest struct {
 
 type terminalSessionInputRequest struct {
 	Input string `json:"input"`
+}
+
+type terminalSessionRecoverRequest struct {
+	ID                string    `json:"id"`
+	TerminalSessionID string    `json:"terminal_session_id,omitempty"`
+	Title             string    `json:"title,omitempty"`
+	CreatedAt         time.Time `json:"created_at,omitempty"`
+	LastOutputAt      time.Time `json:"last_output_at,omitempty"`
+	UpdatedAt         time.Time `json:"updated_at,omitempty"`
 }
 
 type terminalSessionEnvelope struct {
@@ -69,6 +79,48 @@ func (s *Server) terminalSessionCollectionHandler(w http.ResponseWriter, r *http
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func (s *Server) terminalSessionRecoverHandler(w http.ResponseWriter, r *http.Request) {
+	if s.terminals == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "terminal service unavailable"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	ownerID := resolveTerminalClientID(r)
+	if ownerID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error":      "terminal client id is required",
+			"error_code": "terminal_client_required",
+		})
+		return
+	}
+
+	defer r.Body.Close()
+	var req terminalSessionRecoverRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+
+	session, err := s.terminals.Recover(terminalapp.RecoverRequest{
+		OwnerID:           ownerID,
+		SessionID:         strings.TrimSpace(req.ID),
+		TerminalSessionID: strings.TrimSpace(req.TerminalSessionID),
+		Title:             strings.TrimSpace(req.Title),
+		CreatedAt:         req.CreatedAt,
+		LastOutputAt:      req.LastOutputAt,
+		UpdatedAt:         req.UpdatedAt,
+	})
+	if err != nil {
+		s.writeTerminalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
 }
 
 func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Request) {
@@ -211,6 +263,11 @@ func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error":      err.Error(),
 			"error_code": "terminal_input_required",
+		})
+	case errors.Is(err, terminalapp.ErrSessionRecoverIDRequired):
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error":      err.Error(),
+			"error_code": "terminal_recover_session_required",
 		})
 	case errors.Is(err, terminalapp.ErrSessionLimitReached):
 		maxSessions := 5

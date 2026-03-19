@@ -88,7 +88,7 @@ export async function openInterruptedTerminalWorkspace(
   const session: TerminalSessionRecord = {
     id: "terminal-stale-session",
     title: "terminal-stale-session",
-    terminal_session_id: "mock-thread-terminal-stale-session",
+    terminal_session_id: "terminal-stale-session",
     status: "running",
     shell: "codex exec",
     working_dir: terminalRepoRoot,

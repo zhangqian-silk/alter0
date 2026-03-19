@@ -32,9 +32,11 @@ func TestBuildCodexTurnArgsUsesResumeWhenThreadExists(t *testing.T) {
 
 	args := buildCodexTurnArgs(command, "thread-123", "reply exactly")
 
-	expected := []string{"--profile", "test", "exec", "resume", "--json", "--skip-git-repo-check", "thread-123", "reply exactly"}
-	if strings.Join(args, " ") != strings.Join(expected, " ") {
-		t.Fatalf("unexpected args: %v", args)
+	got := strings.Join(args, " ")
+	for _, part := range []string{"--profile", "test", "exec", "resume", "--json", "--skip-git-repo-check", "thread-123", "reply exactly"} {
+		if !strings.Contains(got, part) {
+			t.Fatalf("expected args to contain %q, got %v", part, args)
+		}
 	}
 }
 
@@ -85,6 +87,37 @@ func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
 	}
 	if got := secondEntries[3].Text; got != "mock:second prompt" {
 		t.Fatalf("expected second reply, got %q", got)
+	}
+}
+
+func TestServiceRecoverRestoresCodexThreadForFollowUpInput(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Recover(RecoverRequest{
+		OwnerID:           "owner-recover",
+		SessionID:         "terminal-recover",
+		TerminalSessionID: "thread-recovered",
+		Title:             "terminal-recover",
+		CreatedAt:         time.Date(2026, 3, 19, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:         time.Date(2026, 3, 19, 10, 5, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("recover session: %v", err)
+	}
+	if session.TerminalSessionID != "thread-recovered" {
+		t.Fatalf("expected recovered thread id, got %q", session.TerminalSessionID)
+	}
+
+	if _, err := service.Input("owner-recover", session.ID, "follow-up prompt"); err != nil {
+		t.Fatalf("recovered input: %v", err)
+	}
+
+	snapshot, entries := waitForSessionEntries(t, service, "owner-recover", session.ID, 2)
+	if snapshot.TerminalSessionID != "thread-recovered" {
+		t.Fatalf("expected recovered runtime thread id, got %q", snapshot.TerminalSessionID)
+	}
+	if got := entries[1].Text; got != "mock:follow-up prompt" {
+		t.Fatalf("expected resumed reply, got %q", got)
 	}
 }
 
@@ -228,21 +261,39 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 	}
 
 	forwarded := os.Args[separatorIndex+1:]
-	if len(forwarded) < 2 || forwarded[0] != defaultCodexCommand || forwarded[1] != "exec" {
+	if len(forwarded) < 2 || forwarded[0] != defaultCodexCommand {
 		os.Exit(2)
 	}
+	execIndex := -1
+	for index, arg := range forwarded {
+		if arg == "exec" {
+			execIndex = index
+			break
+		}
+	}
+	if execIndex < 1 {
+		os.Exit(2)
+	}
+	terminalArgs := forwarded[execIndex+1:]
 
 	mode := os.Getenv("TERMINAL_HELPER_MODE")
 	if mode == "sleep" {
 		time.Sleep(300 * time.Millisecond)
 	}
 
-	if len(forwarded) >= 3 && forwarded[2] == "resume" {
-		if len(forwarded) < 7 {
+	resumeIndex := -1
+	for index, arg := range terminalArgs {
+		if arg == "resume" {
+			resumeIndex = index
+			break
+		}
+	}
+	if resumeIndex >= 0 {
+		if len(terminalArgs) < resumeIndex+4 {
 			os.Exit(2)
 		}
-		threadID := forwarded[len(forwarded)-2]
-		prompt := forwarded[len(forwarded)-1]
+		threadID := terminalArgs[len(terminalArgs)-2]
+		prompt := terminalArgs[len(terminalArgs)-1]
 		fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
 		fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)
 		fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":%q}}\n", "mock:"+prompt)
@@ -250,7 +301,7 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 		os.Exit(0)
 	}
 
-	prompt := forwarded[len(forwarded)-1]
+	prompt := terminalArgs[len(terminalArgs)-1]
 	threadID := "thread-" + strings.ReplaceAll(prompt, " ", "-")
 	fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
 	fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)

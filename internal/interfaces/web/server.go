@@ -83,6 +83,7 @@ type Server struct {
 	sessions         sessionHistoryService
 	tasks            taskService
 	terminals        terminalService
+	runtime          runtimeRestarter
 	memory           *agentMemoryService
 	llm              llmService
 	logger           *slog.Logger
@@ -125,6 +126,7 @@ type taskService interface {
 
 type terminalService interface {
 	Create(req terminalapp.CreateRequest) (terminaldomain.Session, error)
+	Recover(req terminalapp.RecoverRequest) (terminaldomain.Session, error)
 	List(ownerID string) []terminaldomain.Session
 	Get(ownerID string, sessionID string) (terminaldomain.Session, bool)
 	ListTurns(ownerID string, sessionID string) ([]terminalapp.TurnSummary, error)
@@ -133,6 +135,10 @@ type terminalService interface {
 	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
 	Close(ownerID string, sessionID string) (terminaldomain.Session, error)
 	MaxSessions() int
+}
+
+type runtimeRestarter interface {
+	RequestRestart() (bool, error)
 }
 
 type messageRequest struct {
@@ -494,6 +500,13 @@ func NewServer(
 	}
 }
 
+func (s *Server) SetRuntimeRestarter(restarter runtimeRestarter) {
+	if s == nil {
+		return
+	}
+	s.runtime = restarter
+}
+
 func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", s.telemetry.MetricsHandler())
@@ -516,6 +529,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/tasks/", s.controlTaskItemHandler)
 	mux.HandleFunc("/api/control/environments", s.environmentConfigHandler)
 	mux.HandleFunc("/api/control/environments/audits", s.environmentAuditListHandler)
+	mux.HandleFunc("/api/control/runtime/restart", s.runtimeRestartHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
 	mux.HandleFunc("/api/control/capabilities", s.capabilityListHandler)
@@ -530,6 +544,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
 	mux.HandleFunc("/api/control/llm/providers/", s.llmProviderItemHandler)
 	mux.HandleFunc("/api/terminal/sessions", s.terminalSessionCollectionHandler)
+	mux.HandleFunc("/api/terminal/sessions/recover", s.terminalSessionRecoverHandler)
 	mux.HandleFunc("/api/terminal/sessions/", s.terminalSessionItemHandler)
 
 	assetsFS, err := fs.Sub(webStaticFS, "static/assets")
@@ -2310,6 +2325,32 @@ func (s *Server) environmentAuditListHandler(w http.ResponseWriter, r *http.Requ
 	}
 	revealSensitive := parseBoolFlag(r.URL.Query().Get("reveal_sensitive"))
 	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListEnvironmentAudits(revealSensitive)})
+}
+
+func (s *Server) runtimeRestartHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if s.runtime == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "runtime restart unavailable"})
+		return
+	}
+
+	accepted, err := s.runtime.RequestRestart()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if !accepted {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "runtime restart already in progress"})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"accepted": true,
+		"status":   "restarting",
+	})
 }
 
 func (s *Server) channelListHandler(w http.ResponseWriter, r *http.Request) {

@@ -473,6 +473,23 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 	}
 }
 
+func TestEnvironmentRestartControlsPresent(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		`"route.envs.restart_service": "Restart Service"`,
+		`"route.envs.restart_service": "重启服务"`,
+		`data-environment-restart`,
+		"const requestRuntimeRestart = async () => {",
+		`fetch("/api/control/runtime/restart", {`,
+		"const waitForRuntimeReady = async () => {",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected environment restart marker %q", marker)
+		}
+	}
+}
+
 func TestControlTaskLogStreamMobileStickMarkersPresent(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{

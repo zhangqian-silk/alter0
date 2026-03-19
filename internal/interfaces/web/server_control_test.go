@@ -13,6 +13,17 @@ import (
 	controldomain "alter0/internal/control/domain"
 )
 
+type stubRuntimeRestarter struct {
+	accepted bool
+	err      error
+	called   int
+}
+
+func (s *stubRuntimeRestarter) RequestRestart() (bool, error) {
+	s.called++
+	return s.accepted, s.err
+}
+
 func TestSkillEndpointUsesUnifiedCapabilityFields(t *testing.T) {
 	server := &Server{
 		control: controlapp.NewService(),
@@ -203,5 +214,35 @@ func TestEnvironmentConfigEndpoints(t *testing.T) {
 	}
 	if auditResp.Items[0].Operator != "tester" {
 		t.Fatalf("expected operator tester, got %s", auditResp.Items[0].Operator)
+	}
+}
+
+func TestRuntimeRestartEndpointAcceptsRequest(t *testing.T) {
+	server := &Server{
+		runtime: &stubRuntimeRestarter{accepted: true},
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/runtime/restart", nil)
+	rec := httptest.NewRecorder()
+	server.runtimeRestartHandler(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected accepted status, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRuntimeRestartEndpointRejectsConcurrentRestart(t *testing.T) {
+	server := &Server{
+		runtime: &stubRuntimeRestarter{accepted: false},
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/runtime/restart", nil)
+	rec := httptest.NewRecorder()
+	server.runtimeRestartHandler(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected conflict status, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

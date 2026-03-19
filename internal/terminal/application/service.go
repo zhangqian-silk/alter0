@@ -20,21 +20,22 @@ import (
 )
 
 const (
-	defaultCodexCommand            = "codex"
-	defaultCodexSandbox            = "danger-full-access"
+	defaultCodexCommand             = "codex"
+	defaultCodexSandbox             = "danger-full-access"
 	defaultLinuxSandboxBwrapFeature = "use_linux_sandbox_bwrap"
-	maxEntryPageLimit              = 200
+	maxEntryPageLimit               = 200
 )
 
 var (
-	ErrSessionOwnerRequired = errors.New("terminal session owner is required")
-	ErrSessionNotFound      = errors.New("terminal session not found")
-	ErrSessionNotRunning    = errors.New("terminal session is not running")
-	ErrSessionLimitReached  = errors.New("terminal session limit reached")
-	ErrSessionBusy          = errors.New("terminal session is processing another turn")
-	ErrSessionInputRequired = errors.New("terminal input is required")
-	ErrTurnNotFound         = errors.New("terminal turn not found")
-	ErrStepNotFound         = errors.New("terminal step not found")
+	ErrSessionOwnerRequired     = errors.New("terminal session owner is required")
+	ErrSessionNotFound          = errors.New("terminal session not found")
+	ErrSessionNotRunning        = errors.New("terminal session is not running")
+	ErrSessionLimitReached      = errors.New("terminal session limit reached")
+	ErrSessionBusy              = errors.New("terminal session is processing another turn")
+	ErrSessionInputRequired     = errors.New("terminal input is required")
+	ErrSessionRecoverIDRequired = errors.New("terminal recovery session id is required")
+	ErrTurnNotFound             = errors.New("terminal turn not found")
+	ErrStepNotFound             = errors.New("terminal step not found")
 )
 
 type Options struct {
@@ -48,6 +49,16 @@ type Options struct {
 type CreateRequest struct {
 	OwnerID string
 	Title   string
+}
+
+type RecoverRequest struct {
+	OwnerID           string
+	SessionID         string
+	TerminalSessionID string
+	Title             string
+	CreatedAt         time.Time
+	LastOutputAt      time.Time
+	UpdatedAt         time.Time
 }
 
 type EntryPage struct {
@@ -191,6 +202,67 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 			UpdatedAt:         now,
 		},
 		entries: []terminaldomain.Entry{},
+	}
+	s.sessions[sessionID] = session
+	return session.snapshot(), nil
+}
+
+func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
+	ownerID := strings.TrimSpace(req.OwnerID)
+	if ownerID == "" {
+		return terminaldomain.Session{}, ErrSessionOwnerRequired
+	}
+
+	sessionID := strings.TrimSpace(req.SessionID)
+	if sessionID == "" {
+		return terminaldomain.Session{}, ErrSessionRecoverIDRequired
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if existing, ok := s.sessions[sessionID]; ok {
+		snapshot := existing.snapshot()
+		if snapshot.OwnerID != ownerID {
+			return terminaldomain.Session{}, ErrSessionNotFound
+		}
+		return snapshot, nil
+	}
+
+	if s.countActiveLocked() >= s.options.MaxSessions {
+		return terminaldomain.Session{}, ErrSessionLimitReached
+	}
+
+	command := resolveCodexCommand(s.options)
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = sessionID
+	}
+	createdAt := normalizeRecoveredSessionTime(req.CreatedAt, time.Now().UTC())
+	updatedAt := normalizeRecoveredSessionTime(req.UpdatedAt, createdAt)
+	lastOutputAt := normalizeRecoveredOptionalTime(req.LastOutputAt)
+	if !lastOutputAt.IsZero() && updatedAt.Before(lastOutputAt) {
+		updatedAt = lastOutputAt
+	}
+	terminalSessionID := strings.TrimSpace(req.TerminalSessionID)
+	if terminalSessionID == "" {
+		terminalSessionID = sessionID
+	}
+	session := &runtimeSession{
+		summary: terminaldomain.Session{
+			ID:                sessionID,
+			TerminalSessionID: terminalSessionID,
+			OwnerID:           ownerID,
+			Title:             title,
+			Shell:             command.label,
+			WorkingDir:        s.options.WorkingDir,
+			Status:            terminaldomain.SessionStatusRunning,
+			CreatedAt:         createdAt,
+			LastOutputAt:      lastOutputAt,
+			UpdatedAt:         updatedAt,
+		},
+		entries:  []terminaldomain.Entry{},
+		threadID: resolveRecoveredThreadID(sessionID, terminalSessionID),
 	}
 	s.sessions[sessionID] = session
 	return session.snapshot(), nil
@@ -1130,6 +1202,28 @@ func (s *Service) newID() string {
 		}
 	}
 	return fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+}
+
+func normalizeRecoveredSessionTime(value time.Time, fallback time.Time) time.Time {
+	if value.IsZero() {
+		return fallback
+	}
+	return value.UTC()
+}
+
+func normalizeRecoveredOptionalTime(value time.Time) time.Time {
+	if value.IsZero() {
+		return time.Time{}
+	}
+	return value.UTC()
+}
+
+func resolveRecoveredThreadID(sessionID string, terminalSessionID string) string {
+	threadID := strings.TrimSpace(terminalSessionID)
+	if threadID == "" || threadID == strings.TrimSpace(sessionID) {
+		return ""
+	}
+	return threadID
 }
 
 func (s *runtimeSession) thread() string {
