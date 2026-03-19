@@ -407,4 +407,47 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.composer().submitButton()).toBeDisabled();
     await expectComposerState(terminalPage.composer(), { disabled: true });
   });
+
+  test("recovers stored live sessions by terminal thread id", async ({ page }) => {
+    const clientID = createTerminalClientID("recover");
+    const now = Date.now();
+    const session = {
+      id: "terminal-recover-live",
+      title: "terminal-recover-live",
+      terminal_session_id: "mock-thread-terminal-recover-live",
+      status: "running",
+      shell: "codex exec",
+      working_dir: seededTerminalWorkingDir,
+      created_at: now - 2_000,
+      last_output_at: now - 1_000,
+      updated_at: now - 500,
+      entry_cursor: 1,
+      disconnected_notice: false,
+      entries: [
+        {
+          id: "terminal-recover-live-output",
+          role: "output",
+          text: "mock:before-reload",
+          at: now - 1_000,
+          kind: "stdout",
+          stream: "stdout",
+          cursor: 1,
+        },
+      ],
+    };
+
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [session]);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
+    await expectComposerReady(terminalPage.composer());
+    await expect(terminalPage.workspace()).toContainText("mock-thread-terminal-recover-live");
+
+    await terminalPage.composer().input().fill("Reply with exactly: recovered-after-reload");
+    await terminalPage.composer().submitButton().click();
+
+    await expect(terminalPage.finalOutputs().last()).toContainText("recovered-after-reload");
+  });
 });

@@ -376,6 +376,11 @@ const I18N = {
     "route.envs.title": "Environments",
     "route.envs.subtitle": "Environment and deployment settings",
     "route.envs.save": "Save Changes",
+    "route.envs.restart_service": "Restart Service",
+    "route.envs.restarting": "Restarting service...",
+    "route.envs.restart_failed": "Restart failed: {error}",
+    "route.envs.restart_confirm": "Restart the service now?",
+    "route.envs.restart_wait_timeout": "Restart is taking longer than expected. Refresh and retry in a moment.",
     "route.envs.refresh": "Reload",
     "route.envs.show_sensitive": "Reveal Sensitive",
     "route.envs.hide_sensitive": "Hide Sensitive",
@@ -733,6 +738,11 @@ const I18N = {
     "route.envs.title": "环境",
     "route.envs.subtitle": "环境与部署设置",
     "route.envs.save": "保存变更",
+    "route.envs.restart_service": "重启服务",
+    "route.envs.restarting": "服务正在重启...",
+    "route.envs.restart_failed": "重启失败：{error}",
+    "route.envs.restart_confirm": "现在重启服务吗？",
+    "route.envs.restart_wait_timeout": "服务重启时间超出预期，请稍后刷新后重试。",
     "route.envs.refresh": "重新加载",
     "route.envs.show_sensitive": "显示敏感项",
     "route.envs.hide_sensitive": "隐藏敏感项",
@@ -4974,6 +4984,20 @@ function isTerminalSessionLiveStatus(status) {
   return ["starting", "running"].includes(normalized);
 }
 
+function isTerminalTurnLiveStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return ["running", "starting"].includes(normalized);
+}
+
+function hasRecoverableTerminalThread(session) {
+  if (!session || !isTerminalSessionLiveStatus(session.status)) {
+    return false;
+  }
+  const sessionID = normalizeText(session.id);
+  const threadID = normalizeText(session.terminal_session_id);
+  return Boolean(threadID && sessionID && threadID !== sessionID);
+}
+
 function getTerminalSessionLastOutputAt(session) {
   const snapshotLastOutputAt = Number(session?.last_output_at || 0);
   let lastOutputAt = Number.isFinite(snapshotLastOutputAt) && snapshotLastOutputAt > 0 ? snapshotLastOutputAt : 0;
@@ -5607,6 +5631,68 @@ async function loadTerminalView(container) {
     sortTerminalSessions();
   };
 
+  const interruptRecoveringTurnState = (session) => {
+    if (!session || !Array.isArray(session.turns) || !session.turns.length) {
+      return;
+    }
+    const now = Date.now();
+    let changed = false;
+    session.turns.forEach((turn) => {
+      if (!turn) {
+        return;
+      }
+      if (isTerminalTurnLiveStatus(turn.status)) {
+        turn.status = "interrupted";
+        turn.finished_at = Number(turn.finished_at || 0) > 0 ? Number(turn.finished_at) : now;
+        changed = true;
+      }
+      const steps = Array.isArray(turn.steps) ? turn.steps : [];
+      steps.forEach((step) => {
+        if (!step || !isTerminalTurnLiveStatus(step.status)) {
+          return;
+        }
+        step.status = "interrupted";
+        step.finished_at = Number(step.finished_at || 0) > 0 ? Number(step.finished_at) : now;
+        changed = true;
+      });
+    });
+    if (changed) {
+      session.updated_at = Math.max(Number(session.updated_at || 0), now);
+    }
+  };
+
+  const serializeTerminalRecoverRequest = (session) => {
+    const createdAt = Number(session?.created_at || 0);
+    const lastOutputAt = Number(session?.last_output_at || 0);
+    const updatedAt = Number(session?.updated_at || 0);
+    return {
+      id: String(session?.id || "").trim(),
+      terminal_session_id: String(session?.terminal_session_id || "").trim(),
+      title: String(session?.title || "").trim(),
+      created_at: createdAt > 0 ? new Date(createdAt).toISOString() : "",
+      last_output_at: lastOutputAt > 0 ? new Date(lastOutputAt).toISOString() : "",
+      updated_at: updatedAt > 0 ? new Date(updatedAt).toISOString() : ""
+    };
+  };
+
+  const recoverStoredSessions = async () => {
+    const recoverable = localState.sessions.filter((session) => hasRecoverableTerminalThread(session));
+    if (!recoverable.length) {
+      return;
+    }
+    await Promise.allSettled(recoverable.map(async (session) => {
+      const payload = await requestTerminalJSON("/api/terminal/sessions/recover", {
+        method: "POST",
+        body: JSON.stringify(serializeTerminalRecoverRequest(session))
+      });
+      interruptRecoveringTurnState(session);
+      applyTerminalSessionSnapshot(session, payload?.session || {});
+      session.disconnected_notice = false;
+    }));
+    sortTerminalSessions();
+    persist();
+  };
+
   const createNewTerminalSession = async () => {
     const payload = await requestTerminalJSON("/api/terminal/sessions", {
       method: "POST",
@@ -6003,6 +6089,7 @@ async function loadTerminalView(container) {
 
   paint();
   try {
+    await recoverStoredSessions();
     await syncSessionList();
   } catch {
   }
@@ -7223,7 +7310,12 @@ function renderEnvironmentAudits(items) {
 }
 
 async function loadEnvironmentsView(container) {
-  const localState = { revealSensitive: false };
+  const localState = {
+    revealSensitive: false,
+    restarting: false,
+    configItems: [],
+    audits: []
+  };
 
   const fetchEnvironments = async () => {
     const query = localState.revealSensitive ? "?reveal_sensitive=true" : "";
@@ -7239,6 +7331,7 @@ async function loadEnvironmentsView(container) {
 
   const paint = (configItems, audits, statusMessage = "") => {
     const revealButtonLabel = localState.revealSensitive ? t("route.envs.hide_sensitive") : t("route.envs.show_sensitive");
+    const restartButtonLabel = localState.restarting ? t("route.envs.restarting") : t("route.envs.restart_service");
     container.innerHTML = `<section class="environment-view" data-environment-view>
       <form class="environment-form" data-environment-form>
         <div class="environment-toolbar route-card">
@@ -7246,6 +7339,7 @@ async function loadEnvironmentsView(container) {
           <div class="task-filter-actions">
             <button type="button" data-environment-reveal>${escapeHTML(revealButtonLabel)}</button>
             <button type="button" data-environment-refresh>${t("route.envs.refresh")}</button>
+            <button type="button" data-environment-restart ${localState.restarting ? "disabled" : ""}>${escapeHTML(restartButtonLabel)}</button>
             <button type="submit">${t("route.envs.save")}</button>
           </div>
         </div>
@@ -7260,8 +7354,59 @@ async function loadEnvironmentsView(container) {
 
   const reload = async (statusMessage = "") => {
     const payload = await fetchEnvironments();
+    localState.configItems = payload.configItems;
+    localState.audits = payload.audits;
     paint(payload.configItems, payload.audits, statusMessage);
     bindView();
+  };
+
+  const waitForRuntimeReady = async () => {
+    const deadline = Date.now() + 45000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      try {
+        const response = await fetch("/readyz", {
+          method: "GET",
+          cache: "no-store",
+          headers: { "Cache-Control": "no-store" }
+        });
+        if (response.ok) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+      }
+    }
+    localState.restarting = false;
+    paint(localState.configItems, localState.audits, t("route.envs.restart_wait_timeout"));
+    bindView();
+  };
+
+  const requestRuntimeRestart = async () => {
+    if (localState.restarting) {
+      return;
+    }
+    if (!window.confirm(t("route.envs.restart_confirm"))) {
+      return;
+    }
+    localState.restarting = true;
+    paint(localState.configItems, localState.audits, t("route.envs.restarting"));
+    bindView();
+    try {
+      const response = await fetch("/api/control/runtime/restart", {
+        method: "POST"
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
+        throw new Error(message);
+      }
+      void waitForRuntimeReady();
+    } catch (err) {
+      localState.restarting = false;
+      const message = err instanceof Error ? err.message : "unknown_error";
+      await reload(t("route.envs.restart_failed", { error: message }));
+    }
   };
 
   const submitChanges = async (form) => {
@@ -7314,7 +7459,8 @@ async function loadEnvironmentsView(container) {
     const form = container.querySelector("[data-environment-form]");
     const refreshButton = container.querySelector("[data-environment-refresh]");
     const revealButton = container.querySelector("[data-environment-reveal]");
-    if (!form || !refreshButton || !revealButton) {
+    const restartButton = container.querySelector("[data-environment-restart]");
+    if (!form || !refreshButton || !revealButton || !restartButton) {
       return;
     }
     refreshButton.addEventListener("click", async () => {
@@ -7324,6 +7470,9 @@ async function loadEnvironmentsView(container) {
       localState.revealSensitive = !localState.revealSensitive;
       await reload("");
     });
+    restartButton.addEventListener("click", async () => {
+      await requestRuntimeRestart();
+    });
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       await submitChanges(form);
@@ -7331,6 +7480,8 @@ async function loadEnvironmentsView(container) {
   };
 
   const initialPayload = await fetchEnvironments();
+  localState.configItems = initialPayload.configItems;
+  localState.audits = initialPayload.audits;
   paint(initialPayload.configItems, initialPayload.audits, "");
   bindView();
 }

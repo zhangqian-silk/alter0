@@ -17,6 +17,9 @@ type stubWebTerminalService struct {
 	createReq   terminalapp.CreateRequest
 	createResp  terminaldomain.Session
 	createErr   error
+	recoverReq  terminalapp.RecoverRequest
+	recoverResp terminaldomain.Session
+	recoverErr  error
 	listResp    []terminaldomain.Session
 	getResp     terminaldomain.Session
 	getOK       bool
@@ -38,6 +41,11 @@ type stubWebTerminalService struct {
 func (s *stubWebTerminalService) Create(req terminalapp.CreateRequest) (terminaldomain.Session, error) {
 	s.createReq = req
 	return s.createResp, s.createErr
+}
+
+func (s *stubWebTerminalService) Recover(req terminalapp.RecoverRequest) (terminaldomain.Session, error) {
+	s.recoverReq = req
+	return s.recoverResp, s.recoverErr
 }
 
 func (s *stubWebTerminalService) List(ownerID string) []terminaldomain.Session {
@@ -159,6 +167,40 @@ func TestTerminalSessionItemHandlerWritesInput(t *testing.T) {
 	}
 	if service.lastInput != "pwd" {
 		t.Fatalf("expected input pwd, got %q", service.lastInput)
+	}
+}
+
+func TestTerminalSessionRecoverHandlerRestoresStoredSession(t *testing.T) {
+	service := &stubWebTerminalService{
+		recoverResp: terminaldomain.Session{
+			ID:                "terminal-recover",
+			OwnerID:           "client-recover",
+			Title:             "Recovered",
+			TerminalSessionID: "thread-recover",
+			Status:            terminaldomain.SessionStatusRunning,
+			CreatedAt:         time.Date(2026, 3, 19, 10, 0, 0, 0, time.UTC),
+			UpdatedAt:         time.Date(2026, 3, 19, 10, 5, 0, 0, time.UTC),
+		},
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/recover", bytes.NewBufferString(`{"id":"terminal-recover","terminal_session_id":"thread-recover","title":"Recovered","created_at":"2026-03-19T10:00:00Z","updated_at":"2026-03-19T10:05:00Z"}`))
+	req.Header.Set(terminalClientIDHeader, "client-recover")
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionRecoverHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if service.recoverReq.OwnerID != "client-recover" {
+		t.Fatalf("expected owner client-recover, got %q", service.recoverReq.OwnerID)
+	}
+	if service.recoverReq.SessionID != "terminal-recover" {
+		t.Fatalf("expected recover session id, got %q", service.recoverReq.SessionID)
+	}
+	if service.recoverReq.TerminalSessionID != "thread-recover" {
+		t.Fatalf("expected recover thread id, got %q", service.recoverReq.TerminalSessionID)
 	}
 }
 
