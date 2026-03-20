@@ -1,87 +1,21 @@
-## 2026-03-19
-- [外部热点扫描日报](./hotspots/2026-03-19.md)
-- [alter0 定向分析日报](./alter0-analysis/2026-03-19.md)
+# alter0 研究文档
 
-## 2026-03-18
-- [外部热点扫描日报](./hotspots/2026-03-18.md)
-- [alter0 定向分析日报](./alter0-analysis/2026-03-18.md)
+本目录存储 alter0 项目的研究日报文档，按主题拆分为两类：
 
-## 2026-03-17
-- [外部热点扫描日报](./hotspots/2026-03-17.md)
-- [alter0 定向分析日报](./alter0-analysis/2026-03-17.md)
-
-# alter0 研究文档索引
-
-本目录存储 alter0 项目的研究文档，包括外部热点扫描和内部研判分析。
-
----
+- `hotspots/`：外部热点扫描日报
+- `alter0-analysis/`：alter0 相关研判日报
 
 ## 目录结构
 
-```
+```text
 docs/research/
-├── README.md                    # 本索引文件
-├── hotspots/                    # 外部热点扫描日报
-│   └── YYYY-MM-DD.md
-└── alter0-analysis/             # alter0 相关研判
-    └── YYYY-MM-DD.md
+├── README.md
+├── hotspots/
+└── alter0-analysis/
 ```
 
----
+## 说明
 
-## 文档说明
-
-### 📰 hotspots/ - 外部热点扫描日报
-
-每日扫描 AI / Agent / 工具 / 模型 / 平台 / 开源 / 基础设施 / 监管 等前沿热点，来源覆盖论坛、博客、技术网站、GitHub 与社交平台。
-
-**内容结构：**
-- 今日一句话结论
-- 5~8 条重点事件解读
-- 开源、论坛、社交平台与产品侧信号
-- 来源清单与样本统计
-
-### 🔍 alter0-analysis/ - alter0 相关研判
-
-承接所有与 alter0 有关的内容，包括：
-- 哪些热点与 alter0 有关
-- Agent 方向可学习点
-- alter0 可优化点
-- OpenClaw 与 alter0 的对比
-- 对 alter0 的可执行建议与优先级判断
-
----
-
-## 历史文档
-
-### 2026-03
-
-| 日期 | 热点扫描 | alter0 研判 |
-|------|----------|-------------|
-| 2026-03-19 | [hotspots/2026-03-19.md](./hotspots/2026-03-19.md) | [alter0-analysis/2026-03-19.md](./alter0-analysis/2026-03-19.md) |
-| 2026-03-18 | [hotspots/2026-03-18.md](./hotspots/2026-03-18.md) | [alter0-analysis/2026-03-18.md](./alter0-analysis/2026-03-18.md) |
-| 2026-03-16 | [hotspots/2026-03-16.md](./hotspots/2026-03-16.md) | [alter0-analysis/2026-03-16.md](./alter0-analysis/2026-03-16.md) |
-| 2026-03-15 | [hotspots/2026-03-15.md](./hotspots/2026-03-15.md) | [alter0-analysis/2026-03-15.md](./alter0-analysis/2026-03-15.md) |
-| 2026-03-14 | [hotspots/2026-03-14.md](./hotspots/2026-03-14.md) | [alter0-analysis/2026-03-14.md](./alter0-analysis/2026-03-14.md) |
-| 2026-03-12 | [hotspots/2026-03-12.md](./hotspots/2026-03-12.md) | [alter0-analysis/2026-03-12.md](./alter0-analysis/2026-03-12.md) |
-| 2026-03-11 | [hotspots/2026-03-11.md](./hotspots/2026-03-11.md) | [alter0-analysis/2026-03-11.md](./alter0-analysis/2026-03-11.md) |
-| 2026-03-10 | [hotspots/2026-03-10.md](./hotspots/2026-03-10.md) | [alter0-analysis/2026-03-10.md](./alter0-analysis/2026-03-10.md) |
-| 2026-03-09 | [hotspots/2026-03-09.md](./hotspots/2026-03-09.md) | [alter0-analysis/2026-03-09.md](./alter0-analysis/2026-03-09.md) |
-| 2026-03-08 | [hotspots/2026-03-08.md](./hotspots/2026-03-08.md) | [alter0-analysis/2026-03-08.md](./alter0-analysis/2026-03-08.md) |
-| 2026-03-07 | [hotspots/2026-03-07.md](./hotspots/2026-03-07.md) | [alter0-analysis/2026-03-07.md](./alter0-analysis/2026-03-07.md) |
-| 2026-03-06 | [hotspots/2026-03-06.md](./hotspots/2026-03-06.md) | [alter0-analysis/2026-03-06.md](./alter0-analysis/2026-03-06.md) |
-| 2026-03-05 | [hotspots/2026-03-05.md](./hotspots/2026-03-05.md) | [alter0-analysis/2026-03-05.md](./alter0-analysis/2026-03-05.md) |
-| 2026-03-04 | [hotspots/2026-03-04.md](./hotspots/2026-03-04.md) | [alter0-analysis/2026-03-04.md](./alter0-analysis/2026-03-04.md) |
-| 2026-03-03 | [hotspots/2026-03-03.md](./hotspots/2026-03-03.md) | [alter0-analysis/2026-03-03.md](./alter0-analysis/2026-03-03.md) |
-
----
-
-## 更新记录
-
-- **2026-03-19**: 合并补充 3.19 日报增量观点与索引说明
-- **2026-03-19**: 新增 2026-03-19 研究日报索引
-- **2026-03-14**: 初始化研究文档结构，发布首期日报
-
----
-
-*本索引由 alter0 研究助手维护*
+- 日报正文以日期文件形式保存在各自目录中。
+- README 不再维护每日索引、历史文档表、更新记录等信息。
+- 如需查看某天日报，请直接进入对应目录按日期查找。
