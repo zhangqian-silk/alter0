@@ -378,8 +378,10 @@ const I18N = {
     "route.envs.save": "Save Changes",
     "route.envs.restart_service": "Restart Service",
     "route.envs.restarting": "Restarting service...",
+    "route.envs.restarting_sync": "Syncing remote master and restarting service...",
     "route.envs.restart_failed": "Restart failed: {error}",
     "route.envs.restart_confirm": "Restart the service now?",
+    "route.envs.restart_sync_master": "Sync remote master before restart?",
     "route.envs.restart_wait_timeout": "Restart is taking longer than expected. Refresh and retry in a moment.",
     "route.envs.refresh": "Reload",
     "route.envs.show_sensitive": "Reveal Sensitive",
@@ -740,8 +742,10 @@ const I18N = {
     "route.envs.save": "保存变更",
     "route.envs.restart_service": "重启服务",
     "route.envs.restarting": "服务正在重启...",
+    "route.envs.restarting_sync": "正在同步远端 master 并重启服务...",
     "route.envs.restart_failed": "重启失败：{error}",
     "route.envs.restart_confirm": "现在重启服务吗？",
+    "route.envs.restart_sync_master": "重启前先同步远端 master 分支？",
     "route.envs.restart_wait_timeout": "服务重启时间超出预期，请稍后刷新后重试。",
     "route.envs.refresh": "重新加载",
     "route.envs.show_sensitive": "显示敏感项",
@@ -7389,12 +7393,19 @@ async function loadEnvironmentsView(container) {
     if (!window.confirm(t("route.envs.restart_confirm"))) {
       return;
     }
+    const shouldSyncRemoteMaster = window.confirm(t("route.envs.restart_sync_master"));
     localState.restarting = true;
-    paint(localState.configItems, localState.audits, t("route.envs.restarting"));
+    paint(localState.configItems, localState.audits, t(shouldSyncRemoteMaster ? "route.envs.restarting_sync" : "route.envs.restarting"));
     bindView();
     try {
       const response = await fetch("/api/control/runtime/restart", {
-        method: "POST"
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          "sync_remote_master": shouldSyncRemoteMaster
+        })
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {

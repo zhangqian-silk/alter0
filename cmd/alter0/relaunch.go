@@ -9,9 +9,13 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"alter0/internal/interfaces/web"
 )
 
 const (
@@ -56,7 +60,7 @@ func newServiceRestarter(cancel context.CancelFunc, logger *slog.Logger, args []
 	}, nil
 }
 
-func (r *serviceRestarter) RequestRestart() (bool, error) {
+func (r *serviceRestarter) RequestRestart(options web.RuntimeRestartOptions) (bool, error) {
 	r.mu.Lock()
 	if r.restarting {
 		r.mu.Unlock()
@@ -64,6 +68,12 @@ func (r *serviceRestarter) RequestRestart() (bool, error) {
 	}
 	r.restarting = true
 	r.mu.Unlock()
+
+	relaunchExecutable, err := r.resolveRelaunchExecutable(options)
+	if err != nil {
+		r.reset()
+		return false, err
+	}
 
 	encodedArgs, err := encodeRelaunchArgs(r.args)
 	if err != nil {
@@ -74,7 +84,7 @@ func (r *serviceRestarter) RequestRestart() (bool, error) {
 	helperArgs := []string{
 		"-" + relaunchHelperFlag,
 		fmt.Sprintf("-%s=%d", relaunchParentPIDFlag, os.Getpid()),
-		fmt.Sprintf("-%s=%s", relaunchExecPathFlag, r.executable),
+		fmt.Sprintf("-%s=%s", relaunchExecPathFlag, relaunchExecutable),
 		fmt.Sprintf("-%s=%s", relaunchWorkingDirFlag, r.workingDir),
 		fmt.Sprintf("-%s=%s", relaunchArgsFlag, encodedArgs),
 	}
@@ -86,7 +96,12 @@ func (r *serviceRestarter) RequestRestart() (bool, error) {
 	}
 
 	if r.logger != nil {
-		r.logger.Info("restart accepted", slog.Int("pid", os.Getpid()), slog.Int("helper_pid", helper.Process.Pid))
+		r.logger.Info(
+			"restart accepted",
+			slog.Int("pid", os.Getpid()),
+			slog.Int("helper_pid", helper.Process.Pid),
+			slog.Bool("sync_remote_master", options.SyncRemoteMaster),
+		)
 	}
 
 	go func() {
@@ -94,6 +109,15 @@ func (r *serviceRestarter) RequestRestart() (bool, error) {
 		r.cancel()
 	}()
 	return true, nil
+}
+
+func (r *serviceRestarter) resolveRelaunchExecutable(options web.RuntimeRestartOptions) (string, error) {
+	if options.SyncRemoteMaster {
+		if err := syncRemoteMasterBranch(r.workingDir); err != nil {
+			return "", err
+		}
+	}
+	return buildRelaunchBinary(r.workingDir)
 }
 
 func (r *serviceRestarter) reset() {
@@ -155,4 +179,79 @@ func decodeRelaunchArgs(encoded string) ([]string, error) {
 		return nil, fmt.Errorf("unmarshal relaunch args: %w", err)
 	}
 	return args, nil
+}
+
+func syncRemoteMasterBranch(workingDir string) error {
+	repoDir := strings.TrimSpace(workingDir)
+	if repoDir == "" {
+		return errors.New("sync remote master requires a working directory")
+	}
+
+	branch, err := readCommandOutput(repoDir, "git", "branch", "--show-current")
+	if err != nil {
+		return fmt.Errorf("resolve current git branch: %w", err)
+	}
+	if branch != "master" {
+		return fmt.Errorf("sync remote master requires the local branch to be master, current branch is %q", branch)
+	}
+
+	status, err := readCommandOutput(repoDir, "git", "status", "--porcelain", "--untracked-files=no")
+	if err != nil {
+		return fmt.Errorf("inspect git working tree: %w", err)
+	}
+	if status != "" {
+		return errors.New("sync remote master requires a clean tracked working tree")
+	}
+
+	if err := runCommand(repoDir, "git", "pull", "--ff-only", "origin", "master"); err != nil {
+		return fmt.Errorf("sync origin/master: %w", err)
+	}
+	return nil
+}
+
+func buildRelaunchBinary(workingDir string) (string, error) {
+	repoDir := strings.TrimSpace(workingDir)
+	if repoDir == "" {
+		return "", errors.New("build relaunch binary requires a working directory")
+	}
+
+	outputDir := filepath.Join(repoDir, "output", "runtime")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return "", fmt.Errorf("create runtime output directory: %w", err)
+	}
+
+	extension := ""
+	if runtime.GOOS == "windows" {
+		extension = ".exe"
+	}
+	targetPath := filepath.Join(outputDir, fmt.Sprintf("alter0-relaunch-%d%s", time.Now().UnixNano(), extension))
+	if err := runCommand(repoDir, "go", "build", "-o", targetPath, "./cmd/alter0"); err != nil {
+		return "", fmt.Errorf("build relaunch binary: %w", err)
+	}
+	return targetPath, nil
+}
+
+func readCommandOutput(dir string, name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			return "", err
+		}
+		return "", fmt.Errorf("%w: %s", err, message)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+func runCommand(dir string, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	return nil
 }

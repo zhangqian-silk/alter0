@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -138,7 +139,11 @@ type terminalService interface {
 }
 
 type runtimeRestarter interface {
-	RequestRestart() (bool, error)
+	RequestRestart(options RuntimeRestartOptions) (bool, error)
+}
+
+type RuntimeRestartOptions struct {
+	SyncRemoteMaster bool `json:"sync_remote_master"`
 }
 
 type messageRequest struct {
@@ -2337,7 +2342,16 @@ func (s *Server) runtimeRestartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accepted, err := s.runtime.RequestRestart()
+	var req RuntimeRestartOptions
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+	}
+
+	accepted, err := s.runtime.RequestRestart(req)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -2348,8 +2362,9 @@ func (s *Server) runtimeRestartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"accepted": true,
-		"status":   "restarting",
+		"accepted":           true,
+		"status":             "restarting",
+		"sync_remote_master": req.SyncRemoteMaster,
 	})
 }
 

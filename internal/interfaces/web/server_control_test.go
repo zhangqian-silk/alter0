@@ -17,10 +17,12 @@ type stubRuntimeRestarter struct {
 	accepted bool
 	err      error
 	called   int
+	options  RuntimeRestartOptions
 }
 
-func (s *stubRuntimeRestarter) RequestRestart() (bool, error) {
+func (s *stubRuntimeRestarter) RequestRestart(options RuntimeRestartOptions) (bool, error) {
 	s.called++
+	s.options = options
 	return s.accepted, s.err
 }
 
@@ -218,8 +220,9 @@ func TestEnvironmentConfigEndpoints(t *testing.T) {
 }
 
 func TestRuntimeRestartEndpointAcceptsRequest(t *testing.T) {
+	restarter := &stubRuntimeRestarter{accepted: true}
 	server := &Server{
-		runtime: &stubRuntimeRestarter{accepted: true},
+		runtime: restarter,
 		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
@@ -229,6 +232,45 @@ func TestRuntimeRestartEndpointAcceptsRequest(t *testing.T) {
 
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("expected accepted status, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if restarter.options.SyncRemoteMaster {
+		t.Fatalf("expected sync_remote_master false by default")
+	}
+}
+
+func TestRuntimeRestartEndpointAcceptsSyncRemoteMasterOption(t *testing.T) {
+	restarter := &stubRuntimeRestarter{accepted: true}
+	server := &Server{
+		runtime: restarter,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/runtime/restart", strings.NewReader(`{"sync_remote_master":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.runtimeRestartHandler(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected accepted status, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !restarter.options.SyncRemoteMaster {
+		t.Fatalf("expected sync_remote_master forwarded to runtime restarter")
+	}
+}
+
+func TestRuntimeRestartEndpointRejectsInvalidJSON(t *testing.T) {
+	server := &Server{
+		runtime: &stubRuntimeRestarter{accepted: true},
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/runtime/restart", strings.NewReader(`{"sync_remote_master":`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.runtimeRestartHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request status, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

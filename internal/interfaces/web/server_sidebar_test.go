@@ -478,9 +478,12 @@ func TestEnvironmentRestartControlsPresent(t *testing.T) {
 	markers := []string{
 		`"route.envs.restart_service": "Restart Service"`,
 		`"route.envs.restart_service": "重启服务"`,
+		`"route.envs.restart_sync_master": "Sync remote master before restart?"`,
+		`"route.envs.restart_sync_master": "重启前先同步远端 master 分支？"`,
 		`data-environment-restart`,
 		"const requestRuntimeRestart = async () => {",
 		`fetch("/api/control/runtime/restart", {`,
+		`"sync_remote_master": shouldSyncRemoteMaster`,
 		"const waitForRuntimeReady = async () => {",
 	}
 	for _, marker := range markers {
