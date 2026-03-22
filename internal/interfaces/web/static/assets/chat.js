@@ -46,7 +46,9 @@ const NAV_TOOLTIP_OFFSET = 12;
 const CHAT_TASK_POLL_INTERVAL_MS = 4000;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
-const SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
+const CHAT_SESSION_STORAGE_KEY = "alter0.web.sessions.chat.v2";
+const AGENT_SESSION_STORAGE_KEY = "alter0.web.sessions.agent.v2";
+const LEGACY_SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
 const SESSION_HISTORY_PANEL_STORAGE_KEY = "alter0.web.session-history-panel.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";
@@ -64,8 +66,9 @@ const I18N = {
     "nav.workspace": "Workspace",
     "nav.agent_studio": "Agent Studio",
     "nav.chat": "Chat",
+    "nav.agent_runtime": "Agent",
     "nav.control": "Control",
-    "nav.agent": "Agents",
+    "nav.agent": "Profiles",
     "nav.settings": "Settings",
     "nav.channels": "Channels",
     "nav.sessions": "Sessions",
@@ -85,6 +88,7 @@ const I18N = {
     "session.header": "Work with alter0",
     "session.close": "Close",
     "session.new": "New Chat",
+    "session.new_agent": "New Agent Run",
     "session.delete": "Delete",
     "session.recent": "Recent Sessions",
     "session.history.collapse": "Collapse",
@@ -103,9 +107,10 @@ const I18N = {
     "welcome.heading": "Hello, how can I help you today?",
     "welcome.desc": "I am a helpful assistant that can help you with your questions.",
     "welcome.target_title": "Choose who should handle this conversation",
-    "welcome.target_hint": "Start with the raw model or route the session to one of your configured Agents.",
+    "welcome.target_hint": "Choose the execution target for this conversation.",
+    "welcome.agent_hint": "Choose one of your configured Agent Profiles to start an execution session.",
     "welcome.model_title": "Choose the model for upcoming messages",
-    "welcome.model_hint": "Model selection now lives in Chat and can be updated per session at any time.",
+    "welcome.model_hint": "Chat stays focused on the raw model. Provider, model, tools, and skills apply to upcoming messages.",
     "prompt.journey": "Let's start a new journey!",
     "prompt.skills": "Can you tell me what skills you have?",
     
@@ -126,9 +131,13 @@ const I18N = {
     "msg.request_failed": "Request failed: {error}, please retry.",
     "msg.network_error": "Network error: {error}, please retry.",
     "session.new_title": "New Chat",
+    "session.new_agent_title": "New Agent Run",
     "session.empty_sub": "Empty session, waiting for your first message",
+    "session.empty_agent_sub": "Empty Agent session, choose an Agent and send the first goal",
     "session.no_active": "No active session. Click New Chat to start.",
+    "session.no_active_agent": "No active Agent session. Open Agent to start.",
     "session.empty_body": "This session is empty. Type a message to start.",
+    "session.empty_agent": "No Agent sessions yet. Open Agent to start.",
     "session.target.raw": "Raw Model",
     "session.target.agent": "Agent",
     "session.target.choose": "Choose a target",
@@ -196,10 +205,12 @@ const I18N = {
     
     // Routes
     "route.chat.title": "Chat",
-    "route.chat.subtitle": "Unified conversation entry for the raw model, your custom Agents, and session-level model switching",
-    "route.agent.title": "Agents",
-    "route.agent.subtitle": "Create and configure the Agents available in Chat. Service-managed ID and version are generated automatically.",
-    "route.agent.empty": "No Agents available.",
+    "route.chat.subtitle": "Raw model conversation workspace with session-level model switching",
+    "route.agent_runtime.title": "Agent",
+    "route.agent_runtime.subtitle": "Run conversations through a selected Agent with independent session history",
+    "route.agent.title": "Agent 配置",
+    "route.agent.subtitle": "Create and configure the Agent Profiles available to Agent conversations. Service-managed ID and version are generated automatically.",
+    "route.agent.empty": "No Agent Profiles available.",
     "route.agent.create": "Create New Agent",
     "route.agent.edit": "Edit Agent",
     "route.agent.form.title": "Agent Configuration",
@@ -217,7 +228,7 @@ const I18N = {
     "route.agent.form.pending": "Generated on first save",
     "route.agent.form.save": "Save Agent",
     "route.agent.form.delete": "Delete Agent",
-    "route.agent.form.test": "Chat Now",
+    "route.agent.form.test": "Open Agent",
     "route.agent.form.cancel": "Reset",
     "route.agent.form.new": "Unsaved Agent",
     "route.agent.form.empty": "Select an Agent card or create a new one to configure it.",
@@ -226,6 +237,8 @@ const I18N = {
     "route.agent.saved": "Agent saved.",
     "route.agent.deleted": "Agent deleted.",
     "chat.runtime.target": "Conversation Target",
+    "chat.runtime.agent": "Agent",
+    "chat.runtime.agent_pick": "Choose Agent",
     "chat.runtime.provider": "Provider",
     "chat.runtime.model": "Model",
     "chat.runtime.empty": "No enabled model provider is available yet. Configure one in Models to enable session-level model switching.",
@@ -233,6 +246,7 @@ const I18N = {
     "chat.runtime.tools_mcp": "Tools / MCP",
     "chat.runtime.skills": "Skills",
     "chat.runtime.target_hint": "Choose the execution target before the first message.",
+    "chat.runtime.agent_hint": "Choose the Agent for this session before the first message.",
     "chat.runtime.model_hint": "Switches apply to upcoming messages in this session.",
     "chat.runtime.tools_hint": "Select extra Tools and MCP integrations for upcoming messages.",
     "chat.runtime.skills_hint": "Select extra Skills for upcoming messages.",
@@ -242,9 +256,8 @@ const I18N = {
     "chat.runtime.category.mcps": "MCP",
     "chat.runtime.locked": "Conversation target is locked after the first message.",
     "chat.runtime.none": "No items in this section.",
-    "route.agent.target_raw": "Raw Model",
     "route.agent.target_agents": "My Agents",
-    "route.agent.pick": "Pick a target above to start a new conversation.",
+    "route.agent.pick": "Choose an Agent above to start a new execution session.",
     "route.agent.send_failed": "Agent request failed: {error}",
     "route.channels.title": "Channels",
     "route.channels.subtitle": "Manage connection channels",
@@ -498,8 +511,9 @@ const I18N = {
     "nav.workspace": "工作区",
     "nav.agent_studio": "Agent Studio",
     "nav.chat": "对话",
+    "nav.agent_runtime": "Agent",
     "nav.control": "控制台",
-    "nav.agent": "Agents",
+    "nav.agent": "配置",
     "nav.settings": "设置",
     "nav.channels": "通道",
     "nav.sessions": "会话列表",
@@ -519,6 +533,7 @@ const I18N = {
     "session.header": "与 alter0 协作",
     "session.close": "关闭",
     "session.new": "新对话",
+    "session.new_agent": "新 Agent 会话",
     "session.delete": "删除",
     "session.recent": "最近会话",
     "session.history.collapse": "折叠",
@@ -537,9 +552,10 @@ const I18N = {
     "welcome.heading": "你好，今天有什么可以帮你？",
     "welcome.desc": "我是你的全能助手，随时准备回答你的问题。",
     "welcome.target_title": "选择这段会话由谁来处理",
-    "welcome.target_hint": "可以直接与原始模型对话，也可以把会话路由给已配置好的 Agent。",
+    "welcome.target_hint": "为当前会话选择执行目标。",
+    "welcome.agent_hint": "选择一个已配置的 Agent Profile，开始独立的执行会话。",
     "welcome.model_title": "为后续消息选择模型",
-    "welcome.model_hint": "模型选择已经收敛到 Chat 页面，并且可按会话随时切换。",
+    "welcome.model_hint": "Chat 仅面向 Raw Model，对后续消息可继续调整 Provider、Model、Tools 与 Skills。",
     "prompt.journey": "让我们开启一段新的旅程吧！",
     "prompt.skills": "能告诉我你有哪些技能吗？",
     
@@ -560,9 +576,13 @@ const I18N = {
     "msg.request_failed": "请求失败：{error}，请重试。",
     "msg.network_error": "网络错误：{error}，请重试。",
     "session.new_title": "新对话",
+    "session.new_agent_title": "新 Agent 会话",
     "session.empty_sub": "空会话，等待你的第一条消息",
+    "session.empty_agent_sub": "空 Agent 会话，先选择 Agent，再发送第一条目标",
     "session.no_active": "没有活动会话。点击“新对话”开始。",
+    "session.no_active_agent": "当前没有活动 Agent 会话。请前往 Agent 页面开始。",
     "session.empty_body": "当前会话为空。输入消息开始对话。",
+    "session.empty_agent": "当前还没有 Agent 会话。请前往 Agent 页面开始。",
     "session.target.raw": "Raw Model",
     "session.target.agent": "Agent",
     "session.target.choose": "选择目标",
@@ -630,10 +650,12 @@ const I18N = {
     
     // Routes
     "route.chat.title": "对话",
-    "route.chat.subtitle": "统一的对话入口，可直接切换 Raw Model、自定义 Agent 与当前会话模型",
-    "route.agent.title": "Agents",
-    "route.agent.subtitle": "维护可在 Chat 中使用的 Agent，ID 与版本由服务自动生成和管理。",
-    "route.agent.empty": "暂无可用 Agent。",
+    "route.chat.subtitle": "面向 Raw Model 的会话工作区，支持按会话切换模型配置",
+    "route.agent_runtime.title": "Agent",
+    "route.agent_runtime.subtitle": "通过选定 Agent 执行会话，并维护独立的会话历史",
+    "route.agent.title": "Agent Profiles",
+    "route.agent.subtitle": "维护可在 Agent 会话中使用的 Agent Profile，ID 与版本由服务自动生成和管理。",
+    "route.agent.empty": "暂无可用 Agent Profile。",
     "route.agent.create": "创建 Agent",
     "route.agent.edit": "编辑 Agent",
     "route.agent.form.title": "Agent 配置",
@@ -651,7 +673,7 @@ const I18N = {
     "route.agent.form.pending": "首次保存后自动生成",
     "route.agent.form.save": "保存 Agent",
     "route.agent.form.delete": "删除 Agent",
-    "route.agent.form.test": "去聊天",
+    "route.agent.form.test": "打开 Agent",
     "route.agent.form.cancel": "重置",
     "route.agent.form.new": "未保存 Agent",
     "route.agent.form.empty": "选择一个 Agent 卡片，或创建一个新的 Agent 后再配置。",
@@ -660,6 +682,8 @@ const I18N = {
     "route.agent.saved": "Agent 已保存。",
     "route.agent.deleted": "Agent 已删除。",
     "chat.runtime.target": "会话目标",
+    "chat.runtime.agent": "Agent",
+    "chat.runtime.agent_pick": "选择 Agent",
     "chat.runtime.provider": "Provider",
     "chat.runtime.model": "模型",
     "chat.runtime.empty": "当前还没有可用的启用模型 Provider。请先在 Models 页面完成配置。",
@@ -667,6 +691,7 @@ const I18N = {
     "chat.runtime.tools_mcp": "Tools / MCP",
     "chat.runtime.skills": "Skills",
     "chat.runtime.target_hint": "请在发送第一条消息前确定当前会话目标。",
+    "chat.runtime.agent_hint": "请在发送第一条消息前为当前会话选择 Agent。",
     "chat.runtime.model_hint": "切换后会作用于当前会话后续发送的消息。",
     "chat.runtime.tools_hint": "为后续消息选择额外启用的 Tools 与 MCP。",
     "chat.runtime.skills_hint": "为后续消息选择额外启用的 Skills。",
@@ -676,9 +701,8 @@ const I18N = {
     "chat.runtime.category.mcps": "MCP",
     "chat.runtime.locked": "发送第一条消息后，会话目标不可切换。",
     "chat.runtime.none": "该分区暂无项目。",
-    "route.agent.target_raw": "Raw Model",
     "route.agent.target_agents": "我的 Agents",
-    "route.agent.pick": "先在上方选择目标，再开始新的对话。",
+    "route.agent.pick": "请先在上方选择 Agent，再开始新的执行会话。",
     "route.agent.send_failed": "Agent 请求失败：{error}",
     "route.channels.title": "通道",
     "route.channels.subtitle": "管理连接通道",
@@ -923,7 +947,13 @@ const I18N = {
 const ROUTES = {
   chat: {
     key: "chat",
-    mode: "chat"
+    mode: "chat",
+    conversation: "chat"
+  },
+  "agent-runtime": {
+    key: "agent_runtime",
+    mode: "chat",
+    conversation: "agent"
   },
   agent: {
     key: "agent",
@@ -983,9 +1013,13 @@ const ROUTES = {
 };
 
 const state = {
-  activeSessionID: "",
   currentRoute: DEFAULT_ROUTE,
-  sessions: [],
+  activeChatSessionID: "",
+  chatSessions: [],
+  chatSessionLoadError: "",
+  activeAgentSessionID: "",
+  agentSessions: [],
+  agentSessionLoadError: "",
   chatCatalog: {
     agents: [],
     providers: [],
@@ -1015,7 +1049,6 @@ const state = {
     messageID: "",
     jobID: ""
   },
-  sessionLoadError: "",
   sessionHistoryCollapsed: false,
   pending: false,
   pageRenderToken: 0,
@@ -1292,7 +1325,7 @@ function setLanguage(lang) {
   renderWelcomeTargetPicker();
   
   // Re-render current route if it's a page
-  if (state.currentRoute !== "chat") {
+  if ((ROUTES[state.currentRoute] || ROUTES.chat).mode !== "chat") {
     renderRoute(state.currentRoute);
   }
   
@@ -1319,6 +1352,55 @@ function makeID() {
   return `session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function routeConversationMode(route = state.currentRoute) {
+  const config = ROUTES[route] || ROUTES.chat;
+  return config.conversation === "agent" ? "agent" : "chat";
+}
+
+function isAgentConversationRoute(route = state.currentRoute) {
+  return routeConversationMode(route) === "agent";
+}
+
+function sessionStorageKey(mode = routeConversationMode()) {
+  return mode === "agent" ? AGENT_SESSION_STORAGE_KEY : CHAT_SESSION_STORAGE_KEY;
+}
+
+function conversationSessions(mode = routeConversationMode()) {
+  return mode === "agent" ? state.agentSessions : state.chatSessions;
+}
+
+function setConversationSessions(items, mode = routeConversationMode()) {
+  if (mode === "agent") {
+    state.agentSessions = items;
+    return;
+  }
+  state.chatSessions = items;
+}
+
+function activeConversationSessionID(mode = routeConversationMode()) {
+  return mode === "agent" ? state.activeAgentSessionID : state.activeChatSessionID;
+}
+
+function setActiveConversationSessionID(sessionID, mode = routeConversationMode()) {
+  if (mode === "agent") {
+    state.activeAgentSessionID = sessionID;
+    return;
+  }
+  state.activeChatSessionID = sessionID;
+}
+
+function conversationSessionLoadError(mode = routeConversationMode()) {
+  return mode === "agent" ? state.agentSessionLoadError : state.chatSessionLoadError;
+}
+
+function setConversationSessionLoadError(message, mode = routeConversationMode()) {
+  if (mode === "agent") {
+    state.agentSessionLoadError = message;
+    return;
+  }
+  state.chatSessionLoadError = message;
+}
+
 function timeLabel(epochMillis = Date.now()) {
   return new Date(epochMillis).toLocaleTimeString(state.lang === "zh" ? "zh-CN" : "en-US", {
     hour: "2-digit",
@@ -1333,8 +1415,8 @@ function shorten(text, maxLength) {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
-function getSession(id = state.activeSessionID) {
-  return state.sessions.find((item) => item.id === id);
+function getSession(id = activeConversationSessionID(), mode = routeConversationMode()) {
+  return conversationSessions(mode).find((item) => item.id === id);
 }
 
 function defaultChatTarget() {
@@ -1342,6 +1424,14 @@ function defaultChatTarget() {
     type: "model",
     id: "raw-model",
     name: t("session.target.raw")
+  };
+}
+
+function defaultAgentRuntimeTarget() {
+  return {
+    type: "agent",
+    id: "",
+    name: t("session.target.agent")
   };
 }
 
@@ -1452,16 +1542,24 @@ function syncSessionModelSelection(session) {
 }
 
 function reconcileChatModelSelections() {
-  let changed = false;
-  state.sessions.forEach((session) => {
-    if (syncSessionModelSelection(session)) {
-      changed = true;
+  let anyChanged = false;
+  ["chat", "agent"].forEach((mode) => {
+    let changed = false;
+    conversationSessions(mode).forEach((session) => {
+      if (syncSessionModelSelection(session)) {
+        changed = true;
+      }
+    });
+    if (changed) {
+      persistSessions(mode);
+      anyChanged = true;
     }
   });
-  if (changed) {
-    persistSessions();
+  if (anyChanged) {
+    renderSessions();
+    syncHeader();
   }
-  return changed;
+  return anyChanged;
 }
 
 function normalizeSelectionIDs(values) {
@@ -1541,7 +1639,7 @@ function normalizeChatTarget(target = {}) {
 
 function sessionTarget(session) {
   if (!session || typeof session !== "object") {
-    return defaultChatTarget();
+    return isAgentConversationRoute() ? defaultAgentRuntimeTarget() : defaultChatTarget();
   }
   return normalizeChatTarget({
     type: session.targetType,
@@ -1596,8 +1694,8 @@ function isBlankSession(item) {
   return Boolean(item) && Array.isArray(item.messages) && item.messages.length === 0;
 }
 
-function getLatestBlankSession() {
-  const blankSessions = state.sessions.filter((item) => isBlankSession(item));
+function getLatestBlankSession(mode = routeConversationMode()) {
+  const blankSessions = conversationSessions(mode).filter((item) => isBlankSession(item));
   if (!blankSessions.length) {
     return null;
   }
@@ -1605,30 +1703,32 @@ function getLatestBlankSession() {
   return blankSessions[0];
 }
 
-function enforceSingleBlankSession() {
-  const latestBlank = getLatestBlankSession();
+function enforceSingleBlankSession(mode = routeConversationMode()) {
+  const latestBlank = getLatestBlankSession(mode);
   if (!latestBlank) {
     return false;
   }
-  const originalCount = state.sessions.length;
-  state.sessions = state.sessions.filter((item) => !isBlankSession(item) || item.id === latestBlank.id);
-  if (state.activeSessionID && !getSession(state.activeSessionID)) {
-    state.activeSessionID = latestBlank.id;
+  const sessions = conversationSessions(mode);
+  const originalCount = sessions.length;
+  setConversationSessions(sessions.filter((item) => !isBlankSession(item) || item.id === latestBlank.id), mode);
+  const activeID = activeConversationSessionID(mode);
+  if (activeID && !getSession(activeID, mode)) {
+    setActiveConversationSessionID(latestBlank.id, mode);
   }
-  return state.sessions.length !== originalCount;
+  return conversationSessions(mode).length !== originalCount;
 }
 
 function focusSession(sessionID) {
   if (!getSession(sessionID)) {
     return;
   }
-  const switchingSession = Boolean(state.activeSessionID && state.activeSessionID !== sessionID);
+  const switchingSession = Boolean(activeConversationSessionID() && activeConversationSessionID() !== sessionID);
   if (switchingSession && !confirmComposerNavigation()) {
     return;
   }
-  state.activeSessionID = sessionID;
+  setActiveConversationSessionID(sessionID);
   syncMainChatComposerDraft(sessionID);
-  navigateToRoute("chat", { skipConfirm: switchingSession });
+  navigateToRoute(state.currentRoute, { skipConfirm: switchingSession });
   renderSessions();
   renderMessages();
   syncHeader();
@@ -1709,8 +1809,8 @@ function writeComposerDraftValue(storage, key, value) {
   }
 }
 
-function getMainChatDraftKey(sessionID = state.activeSessionID) {
-  return `chat.main:${normalizeText(sessionID || "default")}`;
+function getMainChatDraftKey(sessionID = activeConversationSessionID(), mode = routeConversationMode()) {
+  return `${mode}.main:${normalizeText(sessionID || "default")}`;
 }
 
 function clearMainChatDraft(sessionID) {
@@ -2113,7 +2213,7 @@ function createReusableComposer() {
 
 const mainChatComposer = createReusableComposer();
 
-function syncMainChatComposerDraft(sessionID = state.activeSessionID, options = {}) {
+function syncMainChatComposerDraft(sessionID = activeConversationSessionID(), options = {}) {
   mainChatComposer.switchDraftKey(getMainChatDraftKey(sessionID), options);
 }
 
@@ -2180,18 +2280,24 @@ function normalizeStoredMessage(item, fallbackAt) {
   };
 }
 
-function normalizeStoredSession(item) {
+function normalizeStoredSession(item, mode = routeConversationMode()) {
   if (!item || typeof item !== "object") {
     return null;
   }
   const id = typeof item.id === "string" && item.id ? item.id : makeID();
   const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "New Chat";
   const createdAt = Number.isFinite(item.createdAt) ? item.createdAt : Date.now();
-  const target = normalizeChatTarget({
-    type: item.targetType,
-    id: item.targetID,
-    name: item.targetName
-  });
+  const target = normalizeChatTarget(mode === "agent"
+    ? {
+        type: "agent",
+        id: item.targetID,
+        name: item.targetName
+      }
+    : {
+        type: "model",
+        id: "raw-model",
+        name: t("session.target.raw")
+      });
   const rawMessages = Array.isArray(item.messages) ? item.messages : [];
   const messages = [];
   for (const raw of rawMessages) {
@@ -2216,12 +2322,44 @@ function normalizeStoredSession(item) {
   };
 }
 
-function loadSessionsFromStorage() {
+function normalizeLegacyStoredSession(item, mode) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const legacyTarget = normalizeChatTarget({
+    type: item.targetType,
+    id: item.targetID,
+    name: item.targetName
+  });
+  if (mode === "agent" && legacyTarget.type !== "agent") {
+    return null;
+  }
+  if (mode === "chat" && legacyTarget.type === "agent") {
+    return null;
+  }
+  const normalized = normalizeStoredSession(item, mode);
+  if (!normalized) {
+    return null;
+  }
+  if (mode === "agent") {
+    normalized.targetType = legacyTarget.type;
+    normalized.targetID = legacyTarget.id;
+    normalized.targetName = legacyTarget.name;
+  }
+  return normalized;
+}
+
+function loadSessionsFromStorage(mode = routeConversationMode()) {
   const storage = getSessionStorage();
   if (!storage) {
     return [];
   }
-  const raw = storage.getItem(SESSION_STORAGE_KEY);
+  let raw = storage.getItem(sessionStorageKey(mode));
+  let legacy = false;
+  if (!raw) {
+    raw = storage.getItem(LEGACY_SESSION_STORAGE_KEY);
+    legacy = Boolean(raw);
+  }
   if (!raw) {
     return [];
   }
@@ -2239,7 +2377,9 @@ function loadSessionsFromStorage() {
 
   const sessions = [];
   for (const entry of parsed) {
-    const normalized = normalizeStoredSession(entry);
+    const normalized = legacy
+      ? normalizeLegacyStoredSession(entry, mode)
+      : normalizeStoredSession(entry, mode);
     if (normalized) {
       sessions.push(normalized);
     }
@@ -2248,37 +2388,37 @@ function loadSessionsFromStorage() {
   return sessions;
 }
 
-function persistSessions() {
+function persistSessions(mode = routeConversationMode()) {
   const storage = getSessionStorage();
   if (!storage) {
     return;
   }
   try {
-    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(state.sessions));
-    state.sessionLoadError = "";
+    storage.setItem(sessionStorageKey(mode), JSON.stringify(conversationSessions(mode)));
+    setConversationSessionLoadError("", mode);
   } catch {
-    state.sessionLoadError = "session_save_failed";
+    setConversationSessionLoadError("session_save_failed", mode);
   }
   syncSessionLoadHint();
 }
 
-function bootstrapSessions() {
-  state.sessionLoadError = "";
-  state.sessions = [];
-  state.activeSessionID = "";
+function bootstrapSessions(mode = routeConversationMode()) {
+  setConversationSessionLoadError("", mode);
+  setConversationSessions([], mode);
+  setActiveConversationSessionID("", mode);
 
   try {
-    const sessions = loadSessionsFromStorage();
-    state.sessions = sessions;
-    if (enforceSingleBlankSession()) {
-      persistSessions();
+    const sessions = loadSessionsFromStorage(mode);
+    setConversationSessions(sessions, mode);
+    if (enforceSingleBlankSession(mode)) {
+      persistSessions(mode);
     }
-    if (state.sessions.length) {
-      state.activeSessionID = state.sessions[0].id;
+    if (conversationSessions(mode).length) {
+      setActiveConversationSessionID(conversationSessions(mode)[0].id, mode);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
-    state.sessionLoadError = message;
+    setConversationSessionLoadError(message, mode);
   }
 }
 
@@ -2398,7 +2538,8 @@ function renderChatRuntimePanel() {
   if (!chatRuntimePanel) {
     return;
   }
-  const activeSession = getSession() || createSession(defaultChatTarget());
+  const mode = routeConversationMode();
+  const activeSession = getSession() || createSession(mode === "agent" ? defaultAgentRuntimeTarget() : defaultChatTarget(), mode);
   const target = sessionTarget(activeSession);
   const locked = targetLocked(activeSession);
   const modelSelection = resolveEffectiveChatModelSelection(activeSession);
@@ -2408,25 +2549,24 @@ function renderChatRuntimePanel() {
   const toolMCPCount = selections.toolIDs.length + selections.mcpIDs.length;
   const skillsCount = selections.skillIDs.length;
   const openPopover = state.chatRuntime.openPopover;
-  const targetLabel = target.type === "agent" ? `${t("session.target.agent")} · ${target.name}` : t("session.target.raw");
+  const agentRuntime = mode === "agent";
+  const targetLabel = agentRuntime
+    ? (target.id ? `${t("session.target.agent")} · ${target.name}` : t("chat.runtime.agent_pick"))
+    : t("session.target.raw");
   const modelLabel = provider && model ? `${provider.name || provider.id} / ${model.name || model.id}` : t("session.model.default");
   const toolLabel = toolMCPCount > 0 ? `${t("chat.runtime.tools_mcp")} (${toolMCPCount})` : t("chat.runtime.tools_mcp");
   const skillLabel = skillsCount > 0 ? `${t("chat.runtime.skills")} (${skillsCount})` : t("chat.runtime.skills");
   const note = [state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | ") || t("chat.runtime.hint");
-  const targetOptions = [
-    {
-      target: defaultChatTarget(),
-      subtitle: t("chat.runtime.target_hint")
-    },
-    ...(Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).map((agent) => ({
-      target: {
-        type: "agent",
-        id: normalizeText(agent?.id),
-        name: String(agent?.name || agent?.id || "").trim()
-      },
-      subtitle: String(agent?.system_prompt || agent?.id || "").trim() || t("session.target.agent")
-    })).filter((item) => item.target.id)
-  ];
+  const targetOptions = agentRuntime
+    ? (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).map((agent) => ({
+        target: {
+          type: "agent",
+          id: normalizeText(agent?.id),
+          name: String(agent?.name || agent?.id || "").trim()
+        },
+        subtitle: String(agent?.system_prompt || agent?.id || "").trim() || t("session.target.agent")
+      })).filter((item) => item.target.id)
+    : [];
   const modelGroups = enabledChatProviders();
   const capabilityItems = [
     ...AVAILABLE_CHAT_TOOLS.map((item) => ({ ...item, kind: "tool" })),
@@ -2450,29 +2590,29 @@ function renderChatRuntimePanel() {
   const availableSkills = skillItems.filter((item) => !skillSelected.has(item.id));
 
   chatRuntimePanel.innerHTML = `<div class="composer-runtime-group">
-    <div class="composer-runtime-control">
-      <button class="composer-runtime-trigger${openPopover === "target" ? " is-open" : ""}${locked ? " is-disabled" : ""}" type="button" data-runtime-toggle="target" aria-disabled="${locked ? "true" : "false"}" title="${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.target_hint"))}">
+    ${agentRuntime ? `<div class="composer-runtime-control">
+      <button class="composer-runtime-trigger${openPopover === "target" ? " is-open" : ""}${locked ? " is-disabled" : ""}" type="button" data-runtime-toggle="target" aria-disabled="${locked ? "true" : "false"}" title="${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.agent_hint"))}">
         <span class="composer-runtime-trigger-icon">🎯</span>
         <span class="composer-runtime-trigger-label">${escapeHTML(targetLabel)}</span>
         <span class="composer-runtime-trigger-caret">▾</span>
       </button>
       ${openPopover === "target" ? `<div class="composer-runtime-popover">
         <div class="composer-runtime-popover-head">
-          <strong>${escapeHTML(t("chat.runtime.target"))}</strong>
-          <p>${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.target_hint"))}</p>
+          <strong>${escapeHTML(t("chat.runtime.agent"))}</strong>
+          <p>${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.agent_hint"))}</p>
         </div>
         <div class="composer-runtime-option-list">
           ${targetOptions.map((item) => {
             const optionTarget = normalizeChatTarget(item.target);
-            const activeClass = optionTarget.type === target.type && optionTarget.id === target.id ? " is-active" : "";
+            const activeClass = optionTarget.id === target.id ? " is-active" : "";
             return `<button class="composer-runtime-option${activeClass}" type="button" data-runtime-target-type="${escapeHTML(optionTarget.type)}" data-runtime-target-id="${escapeHTML(optionTarget.id)}" data-runtime-target-name="${escapeHTML(optionTarget.name)}" ${locked ? "disabled" : ""}>
-              <strong>${escapeHTML(optionTarget.type === "agent" ? `${t("session.target.agent")} · ${optionTarget.name}` : optionTarget.name)}</strong>
+              <strong>${escapeHTML(`${t("session.target.agent")} · ${optionTarget.name}`)}</strong>
               <span>${escapeHTML(item.subtitle)}</span>
             </button>`;
           }).join("")}
         </div>
       </div>` : ""}
-    </div>
+    </div>` : `<div class="composer-runtime-chip">${escapeHTML(targetLabel)}</div>`}
     <div class="composer-runtime-control">
       <button class="composer-runtime-trigger${openPopover === "model" ? " is-open" : ""}" type="button" data-runtime-toggle="model" title="${escapeHTML(t("chat.runtime.model_hint"))}">
         <span class="composer-runtime-trigger-icon">✨</span>
@@ -2578,7 +2718,7 @@ function renderChatRuntimePanel() {
         id: node.getAttribute("data-runtime-target-id") || "",
         name: node.getAttribute("data-runtime-target-name") || ""
       };
-      const session = getSession() || createSession(nextTarget);
+      const session = getSession() || createSession(nextTarget, mode);
       updateSessionTarget(session, nextTarget);
       state.chatRuntime.openPopover = "";
       persistSessions();
@@ -2652,26 +2792,29 @@ function renderWelcomeTargetPicker() {
   }
   const active = getSession();
   const currentTarget = sessionTarget(active);
-  const agents = Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : [];
+  const agentRuntime = isAgentConversationRoute();
+  const agents = agentRuntime ? (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []) : [];
   const buttons = [];
-  const rawActive = currentTarget.type !== "agent";
-  buttons.push(`<button class="welcome-target-card${rawActive ? " active" : ""}" type="button" data-chat-target-type="model" data-chat-target-id="raw-model" data-chat-target-name="${escapeHTML(t("session.target.raw"))}">
-    <strong>${escapeHTML(t("session.target.raw"))}</strong>
-    <span>${escapeHTML(t("route.chat.subtitle"))}</span>
-  </button>`);
-  agents.forEach((agent) => {
-    const agentID = String(agent?.id || "").trim();
-    if (!agentID) {
-      return;
-    }
-    const agentName = String(agent?.name || agentID).trim() || agentID;
-    const activeClassName = currentTarget.type === "agent" && currentTarget.id === agentID ? " active" : "";
-    buttons.push(`<button class="welcome-target-card${activeClassName}" type="button" data-chat-target-type="agent" data-chat-target-id="${escapeHTML(agentID)}" data-chat-target-name="${escapeHTML(agentName)}">
-      <strong>${escapeHTML(agentName)}</strong>
-      <span>${escapeHTML(agentID)}</span>
-    </button>`);
-  });
-  if (state.chatCatalog.error) {
+  if (agentRuntime) {
+    agents.forEach((agent) => {
+      const agentID = String(agent?.id || "").trim();
+      if (!agentID) {
+        return;
+      }
+      const agentName = String(agent?.name || agentID).trim() || agentID;
+      const activeClassName = currentTarget.type === "agent" && currentTarget.id === agentID ? " active" : "";
+      buttons.push(`<button class="welcome-target-card${activeClassName}" type="button" data-chat-target-type="agent" data-chat-target-id="${escapeHTML(agentID)}" data-chat-target-name="${escapeHTML(agentName)}">
+        <strong>${escapeHTML(agentName)}</strong>
+        <span>${escapeHTML(agentID)}</span>
+      </button>`);
+    });
+  } else {
+    buttons.push(`<div class="welcome-target-card active is-static">
+      <strong>${escapeHTML(t("session.target.raw"))}</strong>
+      <span>${escapeHTML(t("route.chat.subtitle"))}</span>
+    </div>`);
+  }
+  if (agentRuntime && state.chatCatalog.error) {
     buttons.push(`<p class="welcome-target-error">${escapeHTML(state.chatCatalog.error)}</p>`);
   }
   targetList.innerHTML = buttons.join("");
@@ -2700,23 +2843,29 @@ function renderWelcomeTargetPicker() {
   });
 }
 
-function openChatWithTarget(target) {
-  const session = createSession(target);
-  focusSession(session.id);
-  renderChatRuntimePanel();
-  renderWelcomeTargetPicker();
+function openAgentRuntimeWithTarget(target) {
+  const normalizedTarget = normalizeChatTarget(target);
+  let session = getLatestBlankSession("agent");
+  if (session) {
+    updateSessionTarget(session, normalizedTarget);
+    setActiveConversationSessionID(session.id, "agent");
+    persistSessions("agent");
+  } else {
+    session = createSession(normalizedTarget, "agent");
+  }
+  navigateToRoute("agent-runtime", { skipConfirm: true });
   window.requestAnimationFrame(() => {
     input.focus();
   });
 }
 
-function createSession(target = null) {
+function createSession(target = null, mode = routeConversationMode()) {
   const latestBlank = getLatestBlankSession();
   if (latestBlank) {
     if (target) {
       updateSessionTarget(latestBlank, target);
     }
-    state.activeSessionID = latestBlank.id;
+    setActiveConversationSessionID(latestBlank.id, mode);
     syncMainChatComposerDraft(latestBlank.id);
     renderSessions();
     renderMessages();
@@ -2727,11 +2876,12 @@ function createSession(target = null) {
   }
 
   const createdAt = Date.now();
-  const normalizedTarget = normalizeChatTarget(target || defaultChatTarget());
+  const defaultTarget = mode === "agent" ? defaultAgentRuntimeTarget() : defaultChatTarget();
+  const normalizedTarget = normalizeChatTarget(target || defaultTarget);
   const runtimeDefaults = defaultRuntimeSelectionsForTarget(normalizedTarget);
   const item = {
     id: makeID(),
-    title: t("session.new_title"),
+    title: t(mode === "agent" ? "session.new_agent_title" : "session.new_title"),
     createdAt,
     messages: [],
     targetType: normalizedTarget.type,
@@ -2743,8 +2893,10 @@ function createSession(target = null) {
     skillIDs: runtimeDefaults.skillIDs,
     mcpIDs: runtimeDefaults.mcpIDs
   };
-  state.sessions.unshift(item);
-  state.activeSessionID = item.id;
+  const sessions = conversationSessions(mode).slice();
+  sessions.unshift(item);
+  setConversationSessions(sessions, mode);
+  setActiveConversationSessionID(item.id, mode);
   syncMainChatComposerDraft(item.id);
   renderSessions();
   renderMessages();
@@ -2757,32 +2909,35 @@ function createSession(target = null) {
 }
 
 function removeSession(sessionID) {
-  const removedActiveSession = state.activeSessionID === sessionID;
-  if (state.activeSessionID === sessionID && !confirmComposerNavigation()) {
+  const mode = routeConversationMode();
+  const activeSessionID = activeConversationSessionID(mode);
+  const removedActiveSession = activeSessionID === sessionID;
+  if (activeSessionID === sessionID && !confirmComposerNavigation()) {
     return;
   }
-  const nextSessions = state.sessions.filter((item) => item.id !== sessionID);
-  if (nextSessions.length === state.sessions.length) {
+  const currentSessions = conversationSessions(mode);
+  const nextSessions = currentSessions.filter((item) => item.id !== sessionID);
+  if (nextSessions.length === currentSessions.length) {
     return;
   }
 
-  state.sessions = nextSessions;
-  if (state.activeSessionID === sessionID || !getSession(state.activeSessionID)) {
-    const latestBlank = getLatestBlankSession();
+  setConversationSessions(nextSessions, mode);
+  if (activeSessionID === sessionID || !getSession(activeSessionID, mode)) {
+    const latestBlank = getLatestBlankSession(mode);
     if (latestBlank) {
-      state.activeSessionID = latestBlank.id;
-    } else if (state.sessions.length) {
-      state.activeSessionID = state.sessions[0].id;
+      setActiveConversationSessionID(latestBlank.id, mode);
+    } else if (conversationSessions(mode).length) {
+      setActiveConversationSessionID(conversationSessions(mode)[0].id, mode);
     } else {
-      state.activeSessionID = "";
+      setActiveConversationSessionID("", mode);
     }
   }
 
   clearMainChatDraft(sessionID);
   if (removedActiveSession) {
-    syncMainChatComposerDraft(state.activeSessionID, { preserveCurrent: false });
+    syncMainChatComposerDraft(activeConversationSessionID(mode), { preserveCurrent: false });
   }
-  enforceSingleBlankSession();
+  enforceSingleBlankSession(mode);
   renderSessions();
   renderMessages();
   syncHeader();
@@ -2793,6 +2948,12 @@ function removeSession(sessionID) {
 
 function syncHeader() {
   const route = ROUTES[state.currentRoute] || ROUTES.chat;
+  const newSessionLabel = isAgentConversationRoute() ? t("session.new_agent") : t("session.new");
+  newChatButton.textContent = newSessionLabel;
+  if (mobileNewChatButton) {
+    mobileNewChatButton.textContent = newSessionLabel;
+    mobileNewChatButton.setAttribute("aria-label", newSessionLabel);
+  }
 
   if (route.mode !== "chat") {
     sessionHeading.textContent = "alter0";
@@ -2813,7 +2974,9 @@ function syncHeader() {
   const targetLabel = sessionTargetLabel(active);
   const modelLabel = sessionModelLabel(active);
   if (active.messages.length === 0) {
-    sessionSubheading.textContent = `${targetLabel} · ${modelLabel} · ${t("session.empty_sub")}`;
+    sessionSubheading.textContent = isAgentConversationRoute()
+      ? `${targetLabel} · ${modelLabel} · ${t("session.empty_agent_sub")}`
+      : `${targetLabel} · ${modelLabel} · ${t("session.empty_sub")}`;
     return;
   }
   sessionSubheading.textContent = `${targetLabel} · ${modelLabel} · ${active.messages.length} messages`;
@@ -2823,29 +2986,34 @@ function syncWelcomeCopy() {
   const active = getSession();
   if (!active) {
     welcomeHeading.textContent = t("welcome.heading");
-    welcomeDescription.textContent = t("session.no_active");
+    welcomeDescription.textContent = isAgentConversationRoute() ? t("session.no_active_agent") : t("session.no_active");
     return;
   }
   welcomeHeading.textContent = t("welcome.heading");
-  welcomeDescription.textContent = `${t("welcome.desc")} ${t("welcome.target_hint")}`;
+  welcomeDescription.textContent = isAgentConversationRoute()
+    ? `${t("welcome.desc")} ${t("welcome.agent_hint")}`
+    : `${t("welcome.desc")} ${t("welcome.model_hint")}`;
 }
 
 function syncSessionLoadHint() {
-  sessionLoadError.textContent = state.sessionLoadError;
-  sessionLoadError.style.display = state.sessionLoadError ? "block" : "none";
+  const message = conversationSessionLoadError();
+  sessionLoadError.textContent = message;
+  sessionLoadError.style.display = message ? "block" : "none";
 }
 
 function renderSessions() {
   sessionList.innerHTML = "";
   syncSessionLoadHint();
-  if (!state.sessions.length) {
-    sessionEmpty.textContent = t("session.empty");
+  const sessions = conversationSessions();
+  const activeSessionID = activeConversationSessionID();
+  if (!sessions.length) {
+    sessionEmpty.textContent = isAgentConversationRoute() ? t("session.empty_agent") : t("session.empty");
     sessionEmpty.style.display = "block";
     return;
   }
   sessionEmpty.style.display = "none";
 
-  for (const item of state.sessions) {
+  for (const item of sessions) {
     const row = document.createElement("div");
     row.className = "session-card-row";
 
@@ -2854,8 +3022,8 @@ function renderSessions() {
     card.className = "session-card";
     card.dataset.sessionId = item.id;
     card.setAttribute("role", "option");
-    card.setAttribute("aria-selected", item.id === state.activeSessionID ? "true" : "false");
-    if (item.id === state.activeSessionID) {
+    card.setAttribute("aria-selected", item.id === activeSessionID ? "true" : "false");
+    if (item.id === activeSessionID) {
       card.classList.add("active");
     }
 
@@ -2890,7 +3058,8 @@ function renderSessions() {
 }
 
 function updateSessionTitle(session, fallbackText) {
-  if (session.title !== t("session.new_title") && session.title !== "New Chat" && session.title !== "新对话") {
+  const titleKey = isAgentConversationRoute() ? "session.new_agent_title" : "session.new_title";
+  if (session.title !== t(titleKey) && session.title !== "New Chat" && session.title !== "新对话" && session.title !== "New Agent Run" && session.title !== "新 Agent 会话") {
     return;
   }
   const text = fallbackText.trim();
@@ -2938,7 +3107,7 @@ function appendMessage(role, text, options = {}) {
   if (!session) {
     session = getLatestBlankSession();
     if (session) {
-      state.activeSessionID = session.id;
+      setActiveConversationSessionID(session.id);
     } else {
       session = createSession();
     }
@@ -3069,7 +3238,7 @@ function deliverAsyncTaskResult(session, message, task) {
 
 function collectPendingTaskBindings() {
   const bindings = [];
-  for (const session of state.sessions) {
+  for (const session of [...conversationSessions("chat"), ...conversationSessions("agent")]) {
     const messages = Array.isArray(session?.messages) ? session.messages : [];
     for (const message of messages) {
       const taskID = normalizeText(message?.task_id);
@@ -3445,11 +3614,24 @@ async function sendMessageFallback(payload, assistantMessage, endpoints = {}) {
 }
 
 async function sendMessage(rawContent) {
-  if (state.currentRoute !== "chat") {
-    navigateToRoute("chat");
+  const route = isAgentConversationRoute() ? "agent-runtime" : "chat";
+  if (state.currentRoute !== route) {
+    navigateToRoute(route);
   }
   const content = rawContent.trim();
   if (!content || state.pending) {
+    return;
+  }
+
+  const active = getSession();
+  const target = sessionTarget(active);
+  const isAgentSession = isAgentConversationRoute();
+  if (isAgentSession && !target.id) {
+    appendMessage("assistant", t("route.agent.pick"), {
+      error: true,
+      status: "error",
+      retryable: false
+    });
     return;
   }
 
@@ -3460,11 +3642,9 @@ async function sendMessage(rawContent) {
   closeChatRuntimePopover();
   setPending(true);
 
-  const active = getSession();
-  const target = sessionTarget(active);
-  const isAgentSession = target.type === "agent" && target.id;
-  const selection = resolveEffectiveChatModelSelection(active);
-  const runtimeSelections = sessionRuntimeSelections(active);
+  const activeSession = getSession();
+  const selection = resolveEffectiveChatModelSelection(activeSession);
+  const runtimeSelections = sessionRuntimeSelections(activeSession);
   const metadata = {};
   if (selection.providerID) {
     metadata["alter0.llm.provider_id"] = selection.providerID;
@@ -3478,13 +3658,13 @@ async function sendMessage(rawContent) {
   const payload = isAgentSession
     ? {
       agent_id: target.id,
-      session_id: active ? active.id : "",
+      session_id: activeSession ? activeSession.id : "",
       channel_id: "web-default",
       content,
       metadata
     }
     : {
-      session_id: active ? active.id : "",
+      session_id: activeSession ? activeSession.id : "",
       channel_id: "web-default",
       content,
       metadata
@@ -3656,16 +3836,36 @@ function navigateToRoute(route, options = {}) {
 }
 
 function startNewChatSession() {
-  const existingBlank = getLatestBlankSession();
+  const existingBlank = getLatestBlankSession("chat");
   if (existingBlank) {
+    setActiveConversationSessionID(existingBlank.id, "chat");
     focusSession(existingBlank.id);
   } else {
     if (!confirmComposerNavigation()) {
       return;
     }
-    createSession(defaultChatTarget());
+    createSession(defaultChatTarget(), "chat");
   }
   navigateToRoute("chat", { skipConfirm: true });
+  closeTransientPanels();
+  window.requestAnimationFrame(() => {
+    renderWelcomeTargetPicker();
+    input.focus();
+  });
+}
+
+function startNewAgentSession() {
+  const existingBlank = getLatestBlankSession("agent");
+  if (existingBlank) {
+    setActiveConversationSessionID(existingBlank.id, "agent");
+    navigateToRoute("agent-runtime", { skipConfirm: true });
+  } else {
+    if (!confirmComposerNavigation()) {
+      return;
+    }
+    createSession(defaultAgentRuntimeTarget(), "agent");
+    navigateToRoute("agent-runtime", { skipConfirm: true });
+  }
   closeTransientPanels();
   window.requestAnimationFrame(() => {
     renderWelcomeTargetPicker();
@@ -4259,12 +4459,11 @@ async function loadAgentView(container) {
         if (!localState.draft.id) {
           return;
         }
-        openChatWithTarget({
+        openAgentRuntimeWithTarget({
           type: "agent",
           id: localState.draft.id,
           name: localState.draft.name || localState.draft.id
         });
-        navigateToRoute("chat", { skipConfirm: true });
       });
     }
 
@@ -9360,8 +9559,15 @@ async function renderRoute(route) {
   if (config.mode === "chat") {
     setMainContentMode("chat");
     syncRouteAction("");
+    syncMainChatComposerDraft(activeConversationSessionID(), { preserveCurrent: false });
+    renderSessions();
+    renderMessages();
+    syncWelcomeCopy();
+    renderWelcomeTargetPicker();
     renderChatRuntimePanel();
-    void refreshChatAgentCatalog();
+    if (config.conversation === "agent") {
+      void refreshChatAgentCatalog();
+    }
     void refreshChatProviderCatalog();
     void refreshChatCapabilityCatalog();
     syncHeader();
@@ -9447,9 +9653,21 @@ function bindEvents() {
     }
   });
 
-  newChatButton.addEventListener("click", startNewChatSession);
+  newChatButton.addEventListener("click", () => {
+    if (isAgentConversationRoute()) {
+      startNewAgentSession();
+      return;
+    }
+    startNewChatSession();
+  });
   if (mobileNewChatButton) {
-    mobileNewChatButton.addEventListener("click", startNewChatSession);
+    mobileNewChatButton.addEventListener("click", () => {
+      if (isAgentConversationRoute()) {
+        startNewAgentSession();
+        return;
+      }
+      startNewChatSession();
+    });
   }
   if (sessionHistoryToggle) {
     sessionHistoryToggle.addEventListener("click", () => {
@@ -9488,7 +9706,7 @@ function bindEvents() {
 
   sessionToggle.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (state.currentRoute !== "chat") {
+    if ((ROUTES[state.currentRoute] || ROUTES.chat).mode !== "chat") {
       return;
     }
     const open = !appShell.classList.contains("panel-open");
@@ -9620,7 +9838,8 @@ function init() {
   setComposerConfirmState("idle");
   setSidebarCollapsed(false);
   setSessionHistoryCollapsed(loadSessionHistoryCollapsedState());
-  bootstrapSessions();
+  bootstrapSessions("chat");
+  bootstrapSessions("agent");
   renderSessions();
   renderMessages();
   syncHeader();
@@ -9629,8 +9848,8 @@ function init() {
   renderWelcomeTargetPicker();
   bindEvents();
   ensureChatTaskPolling();
-  void refreshChatAgentCatalog();
   void refreshChatProviderCatalog();
+  void refreshChatCapabilityCatalog();
   updateCharCount();
   updateKeyboardInset();
   syncComposerGuardState();
