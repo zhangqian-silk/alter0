@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	controlapp "alter0/internal/control/application"
+	controldomain "alter0/internal/control/domain"
+	execdomain "alter0/internal/execution/domain"
 	shareddomain "alter0/internal/shared/domain"
 	"alter0/internal/shared/infrastructure/observability"
 )
@@ -161,5 +164,128 @@ func TestMessageStreamHandlerEmitsError(t *testing.T) {
 	}
 	if !strings.Contains(body, `"error":"processor failed"`) {
 		t.Fatalf("expected error message in payload, got body: %s", body)
+	}
+}
+
+func TestAgentMessageHandlerInjectsAgentProfileMetadata(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "agent-ok",
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertChannel(controldomain.Channel{
+		ID:      "web-default",
+		Type:    shareddomain.ChannelTypeWeb,
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+	if err := control.UpsertAgent(controldomain.Agent{
+		ID:            "researcher",
+		Name:          "Researcher",
+		Type:          controldomain.CapabilityTypeAgent,
+		Enabled:       true,
+		Scope:         controldomain.CapabilityScopeGlobal,
+		Version:       "v1.0.0",
+		ProviderID:    "openai",
+		Model:         "gpt-4o",
+		SystemPrompt:  "Execute first.",
+		MaxIterations: 7,
+		Tools:         []string{"codex_exec"},
+		Skills:        []string{"summary"},
+		MCPs:          []string{"github"},
+	}); err != nil {
+		t.Fatalf("upsert agent failed: %v", err)
+	}
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages", strings.NewReader(`{"agent_id":"researcher","session_id":"session-fixed","content":"完成仓库整理"}`))
+	rec := httptest.NewRecorder()
+	server.agentMessageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if orchestrator.lastMessage.Metadata[execdomain.ExecutionEngineMetadataKey] != execdomain.ExecutionEngineAgent {
+		t.Fatalf("expected agent execution engine, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey] != "researcher" {
+		t.Fatalf("expected agent id researcher, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if orchestrator.lastMessage.Metadata[execdomain.AgentSystemPromptMetadataKey] != "Execute first." {
+		t.Fatalf("expected system prompt injected, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if !strings.Contains(orchestrator.lastMessage.Metadata["alter0.skills.include"], "summary") {
+		t.Fatalf("expected skill selection injected, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if !strings.Contains(orchestrator.lastMessage.Metadata["alter0.mcp.request.enable"], "github") {
+		t.Fatalf("expected mcp selection injected, got %+v", orchestrator.lastMessage.Metadata)
+	}
+}
+
+func TestAgentMessageHandlerKeepsExplicitRuntimeSelections(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "agent-ok",
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertChannel(controldomain.Channel{
+		ID:      "web-default",
+		Type:    shareddomain.ChannelTypeWeb,
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+	if err := control.UpsertAgent(controldomain.Agent{
+		ID:         "researcher",
+		Name:       "Researcher",
+		Type:       controldomain.CapabilityTypeAgent,
+		Enabled:    true,
+		Scope:      controldomain.CapabilityScopeGlobal,
+		Version:    "v1.0.0",
+		ProviderID: "openai",
+		Model:      "gpt-4o",
+		Tools:      []string{"codex_exec"},
+		Skills:     []string{"summary"},
+		MCPs:       []string{"github"},
+	}); err != nil {
+		t.Fatalf("upsert agent failed: %v", err)
+	}
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages", strings.NewReader(`{
+		"agent_id":"researcher",
+		"session_id":"session-fixed",
+		"content":"完成仓库整理",
+		"metadata":{
+			"alter0.agent.tools":"[]",
+			"alter0.skills.include":"[\"planner\"]",
+			"alter0.mcp.request.enable":"[]"
+		}
+	}`))
+	rec := httptest.NewRecorder()
+	server.agentMessageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentToolsMetadataKey]; got != "[]" {
+		t.Fatalf("expected explicit tool selection preserved, got %q", got)
+	}
+	if got := orchestrator.lastMessage.Metadata["alter0.skills.include"]; got != "[\"planner\"]" {
+		t.Fatalf("expected explicit skill selection preserved, got %q", got)
+	}
+	if got := orchestrator.lastMessage.Metadata["alter0.mcp.request.enable"]; got != "[]" {
+		t.Fatalf("expected explicit mcp selection preserved, got %q", got)
 	}
 }

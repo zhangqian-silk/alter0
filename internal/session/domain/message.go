@@ -26,6 +26,8 @@ type MessageSource struct {
 	ChannelType   shareddomain.ChannelType `json:"channel_type,omitempty"`
 	ChannelID     string                   `json:"channel_id,omitempty"`
 	CorrelationID string                   `json:"correlation_id,omitempty"`
+	AgentID       string                   `json:"agent_id,omitempty"`
+	AgentName     string                   `json:"agent_name,omitempty"`
 	JobID         string                   `json:"job_id,omitempty"`
 	JobName       string                   `json:"job_name,omitempty"`
 	FiredAt       time.Time                `json:"fired_at,omitempty"`
@@ -54,6 +56,8 @@ type SessionSummary struct {
 	ChannelType   shareddomain.ChannelType `json:"channel_type,omitempty"`
 	ChannelID     string                   `json:"channel_id,omitempty"`
 	CorrelationID string                   `json:"correlation_id,omitempty"`
+	AgentID       string                   `json:"agent_id,omitempty"`
+	AgentName     string                   `json:"agent_name,omitempty"`
 	JobID         string                   `json:"job_id,omitempty"`
 	JobName       string                   `json:"job_name,omitempty"`
 	FiredAt       time.Time                `json:"fired_at,omitempty"`

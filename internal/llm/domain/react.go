@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"strings"
 )
 
 // ReActAgentConfig represents the configuration for a ReAct agent.
@@ -146,6 +147,17 @@ func (a *ReActAgent) RunWithState(ctx context.Context, userMessage string, onEve
 				state.Observation = "Error: " + err.Error()
 			} else {
 				state.Observation = result.Result
+				if result.IsFinal {
+					state.Answer = strings.TrimSpace(result.FinalAnswer)
+					if state.Answer == "" {
+						state.Answer = strings.TrimSpace(result.Result)
+					}
+					state.IsComplete = true
+					if onEvent != nil {
+						_ = onEvent(ReActEvent{Type: "answer", State: state})
+					}
+					return state, nil
+				}
 			}
 
 			if onEvent != nil {

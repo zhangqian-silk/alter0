@@ -38,6 +38,7 @@ type SessionQuery struct {
 	ChannelType shareddomain.ChannelType
 	ChannelID   string
 	MessageID   string
+	AgentID     string
 	JobID       string
 	Page        int
 	PageSize    int
@@ -153,6 +154,7 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 	channelType := shareddomain.ChannelType(strings.ToLower(strings.TrimSpace(string(query.ChannelType))))
 	channelID := strings.TrimSpace(query.ChannelID)
 	messageID := strings.TrimSpace(query.MessageID)
+	agentID := strings.TrimSpace(query.AgentID)
 	jobID := strings.TrimSpace(query.JobID)
 
 	s.mu.RLock()
@@ -183,11 +185,13 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 			ChannelType:   source.ChannelType,
 			ChannelID:     source.ChannelID,
 			CorrelationID: source.CorrelationID,
+			AgentID:       source.AgentID,
+			AgentName:     source.AgentName,
 			JobID:         source.JobID,
 			JobName:       source.JobName,
 			FiredAt:       source.FiredAt,
 		}
-		if !matchSessionSourceFilters(summary, triggerType, channelType, channelID, jobID) {
+		if !matchSessionSourceFilters(summary, triggerType, channelType, channelID, agentID, jobID) {
 			continue
 		}
 		if messageID != "" && !matchSessionMessageIDFilter(s.records, indexes[start:end], messageID) {
@@ -324,6 +328,8 @@ func (s *Service) resolveSessionSourceLocked(indexes []int) sessiondomain.Messag
 			source.ChannelType != "" ||
 			source.ChannelID != "" ||
 			source.CorrelationID != "" ||
+			source.AgentID != "" ||
+			source.AgentName != "" ||
 			source.JobID != "" ||
 			source.JobName != "" ||
 			!source.FiredAt.IsZero() {
@@ -410,6 +416,8 @@ func cloneRecord(record sessiondomain.MessageRecord) sessiondomain.MessageRecord
 			ChannelType:   record.Source.ChannelType,
 			ChannelID:     record.Source.ChannelID,
 			CorrelationID: record.Source.CorrelationID,
+			AgentID:       record.Source.AgentID,
+			AgentName:     record.Source.AgentName,
 			JobID:         record.Source.JobID,
 			JobName:       record.Source.JobName,
 			FiredAt:       record.Source.FiredAt,
@@ -440,6 +448,8 @@ func normalizeMessageSource(source sessiondomain.MessageSource) sessiondomain.Me
 	source.ChannelType = shareddomain.ChannelType(strings.ToLower(strings.TrimSpace(string(source.ChannelType))))
 	source.ChannelID = strings.TrimSpace(source.ChannelID)
 	source.CorrelationID = strings.TrimSpace(source.CorrelationID)
+	source.AgentID = strings.TrimSpace(source.AgentID)
+	source.AgentName = strings.TrimSpace(source.AgentName)
 	source.JobID = strings.TrimSpace(source.JobID)
 	source.JobName = strings.TrimSpace(source.JobName)
 	source.FiredAt = normalizeTime(source.FiredAt)
@@ -451,6 +461,7 @@ func matchSessionSourceFilters(
 	triggerType shareddomain.TriggerType,
 	channelType shareddomain.ChannelType,
 	channelID string,
+	agentID string,
 	jobID string,
 ) bool {
 	if triggerType != "" && summary.TriggerType != triggerType {
@@ -460,6 +471,9 @@ func matchSessionSourceFilters(
 		return false
 	}
 	if channelID != "" && !strings.EqualFold(summary.ChannelID, channelID) {
+		return false
+	}
+	if agentID != "" && !strings.EqualFold(summary.AgentID, agentID) {
 		return false
 	}
 	if jobID != "" && !strings.EqualFold(summary.JobID, jobID) {

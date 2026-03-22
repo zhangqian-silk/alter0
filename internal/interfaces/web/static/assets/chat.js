@@ -30,6 +30,7 @@ const routeTitle = document.getElementById("routeTitle");
 const routeSubtitle = document.getElementById("routeSubtitle");
 const routeActionButton = document.getElementById("routeActionButton");
 const routeBody = document.getElementById("routeBody");
+const chatRuntimePanel = document.getElementById("chatRuntimePanel");
 const menuRouteItems = document.querySelectorAll(".menu-item[data-route]");
 const navTooltipTargets = [...menuRouteItems, navCollapseButton];
 const rootStyle = document.documentElement.style;
@@ -50,12 +51,21 @@ const SESSION_HISTORY_PANEL_STORAGE_KEY = "alter0.web.session-history-panel.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";
 const TERMINAL_CLIENT_STORAGE_KEY = "alter0.web.terminal.client.v1";
+const AVAILABLE_CHAT_TOOLS = [
+  {
+    id: "codex_exec",
+    name: "Codex Exec",
+    description: "Allow agent execution to call Codex CLI for concrete implementation steps."
+  }
+];
 const I18N = {
   en: {
     // Navigation
+    "nav.workspace": "Workspace",
+    "nav.agent_studio": "Agent Studio",
     "nav.chat": "Chat",
     "nav.control": "Control",
-    "nav.agent": "Agent",
+    "nav.agent": "Agents",
     "nav.settings": "Settings",
     "nav.channels": "Channels",
     "nav.sessions": "Sessions",
@@ -92,6 +102,10 @@ const I18N = {
     "welcome.tag": "alter0 assistant",
     "welcome.heading": "Hello, how can I help you today?",
     "welcome.desc": "I am a helpful assistant that can help you with your questions.",
+    "welcome.target_title": "Choose who should handle this conversation",
+    "welcome.target_hint": "Start with the raw model or route the session to one of your configured Agents.",
+    "welcome.model_title": "Choose the model for upcoming messages",
+    "welcome.model_hint": "Model selection now lives in Chat and can be updated per session at any time.",
     "prompt.journey": "Let's start a new journey!",
     "prompt.skills": "Can you tell me what skills you have?",
     
@@ -115,6 +129,10 @@ const I18N = {
     "session.empty_sub": "Empty session, waiting for your first message",
     "session.no_active": "No active session. Click New Chat to start.",
     "session.empty_body": "This session is empty. Type a message to start.",
+    "session.target.raw": "Raw Model",
+    "session.target.agent": "Agent",
+    "session.target.choose": "Choose a target",
+    "session.model.default": "Service Default",
     "status.in_progress": "In Progress",
     "status.failed": "Failed",
     "status.done": "Done",
@@ -153,6 +171,8 @@ const I18N = {
     "field.channel_type": "Channel Type",
     "field.channel_id": "Channel ID",
     "field.correlation_id": "Correlation ID",
+    "field.agent_id": "Agent ID",
+    "field.agent_name": "Agent",
     "field.message_id": "Message ID",
     "field.last_message_id": "Last Message ID",
     "field.request_message_id": "Request Message ID",
@@ -176,7 +196,56 @@ const I18N = {
     
     // Routes
     "route.chat.title": "Chat",
-    "route.chat.subtitle": "Ready to start a new conversation",
+    "route.chat.subtitle": "Unified conversation entry for the raw model, your custom Agents, and session-level model switching",
+    "route.agent.title": "Agents",
+    "route.agent.subtitle": "Create and configure the Agents available in Chat. Service-managed ID and version are generated automatically.",
+    "route.agent.empty": "No Agents available.",
+    "route.agent.create": "Create New Agent",
+    "route.agent.edit": "Edit Agent",
+    "route.agent.form.title": "Agent Configuration",
+    "route.agent.form.name": "Agent Name",
+    "route.agent.form.prompt": "System Prompt",
+    "route.agent.form.tools": "Tools",
+    "route.agent.form.skills": "Skills",
+    "route.agent.form.mcps": "MCP",
+    "route.agent.form.iterations": "Max Iterations",
+    "route.agent.form.enabled": "Enabled",
+    "route.agent.form.managed": "Service-managed Fields",
+    "route.agent.form.id": "Agent ID",
+    "route.agent.form.version": "Version",
+    "route.agent.form.scope": "Scope",
+    "route.agent.form.pending": "Generated on first save",
+    "route.agent.form.save": "Save Agent",
+    "route.agent.form.delete": "Delete Agent",
+    "route.agent.form.test": "Chat Now",
+    "route.agent.form.cancel": "Reset",
+    "route.agent.form.new": "Unsaved Agent",
+    "route.agent.form.empty": "Select an Agent card or create a new one to configure it.",
+    "route.agent.save_failed": "Save Agent failed: {error}",
+    "route.agent.delete_failed": "Delete Agent failed: {error}",
+    "route.agent.saved": "Agent saved.",
+    "route.agent.deleted": "Agent deleted.",
+    "chat.runtime.target": "Conversation Target",
+    "chat.runtime.provider": "Provider",
+    "chat.runtime.model": "Model",
+    "chat.runtime.empty": "No enabled model provider is available yet. Configure one in Models to enable session-level model switching.",
+    "chat.runtime.hint": "Applies to upcoming messages in the current chat session.",
+    "chat.runtime.tools_mcp": "Tools / MCP",
+    "chat.runtime.skills": "Skills",
+    "chat.runtime.target_hint": "Choose the execution target before the first message.",
+    "chat.runtime.model_hint": "Switches apply to upcoming messages in this session.",
+    "chat.runtime.tools_hint": "Select extra Tools and MCP integrations for upcoming messages.",
+    "chat.runtime.skills_hint": "Select extra Skills for upcoming messages.",
+    "chat.runtime.active": "Active",
+    "chat.runtime.available": "Available",
+    "chat.runtime.category.tools": "Tools",
+    "chat.runtime.category.mcps": "MCP",
+    "chat.runtime.locked": "Conversation target is locked after the first message.",
+    "chat.runtime.none": "No items in this section.",
+    "route.agent.target_raw": "Raw Model",
+    "route.agent.target_agents": "My Agents",
+    "route.agent.pick": "Pick a target above to start a new conversation.",
+    "route.agent.send_failed": "Agent request failed: {error}",
     "route.channels.title": "Channels",
     "route.channels.subtitle": "Manage connection channels",
     "route.channels.empty": "No Channels available.",
@@ -426,9 +495,11 @@ const I18N = {
   },
   zh: {
     // Navigation
+    "nav.workspace": "工作区",
+    "nav.agent_studio": "Agent Studio",
     "nav.chat": "对话",
     "nav.control": "控制台",
-    "nav.agent": "智能体",
+    "nav.agent": "Agents",
     "nav.settings": "设置",
     "nav.channels": "通道",
     "nav.sessions": "会话列表",
@@ -465,6 +536,10 @@ const I18N = {
     "welcome.tag": "alter0 助手",
     "welcome.heading": "你好，今天有什么可以帮你？",
     "welcome.desc": "我是你的全能助手，随时准备回答你的问题。",
+    "welcome.target_title": "选择这段会话由谁来处理",
+    "welcome.target_hint": "可以直接与原始模型对话，也可以把会话路由给已配置好的 Agent。",
+    "welcome.model_title": "为后续消息选择模型",
+    "welcome.model_hint": "模型选择已经收敛到 Chat 页面，并且可按会话随时切换。",
     "prompt.journey": "让我们开启一段新的旅程吧！",
     "prompt.skills": "能告诉我你有哪些技能吗？",
     
@@ -488,6 +563,10 @@ const I18N = {
     "session.empty_sub": "空会话，等待你的第一条消息",
     "session.no_active": "没有活动会话。点击“新对话”开始。",
     "session.empty_body": "当前会话为空。输入消息开始对话。",
+    "session.target.raw": "Raw Model",
+    "session.target.agent": "Agent",
+    "session.target.choose": "选择目标",
+    "session.model.default": "服务默认",
     "status.in_progress": "进行中",
     "status.failed": "失败",
     "status.done": "完成",
@@ -526,6 +605,8 @@ const I18N = {
     "field.channel_type": "通道类型",
     "field.channel_id": "通道 ID",
     "field.correlation_id": "关联 ID",
+    "field.agent_id": "Agent ID",
+    "field.agent_name": "Agent",
     "field.message_id": "消息 ID",
     "field.last_message_id": "最近消息 ID",
     "field.request_message_id": "请求消息 ID",
@@ -549,7 +630,56 @@ const I18N = {
     
     // Routes
     "route.chat.title": "对话",
-    "route.chat.subtitle": "准备好开始新的对话",
+    "route.chat.subtitle": "统一的对话入口，可直接切换 Raw Model、自定义 Agent 与当前会话模型",
+    "route.agent.title": "Agents",
+    "route.agent.subtitle": "维护可在 Chat 中使用的 Agent，ID 与版本由服务自动生成和管理。",
+    "route.agent.empty": "暂无可用 Agent。",
+    "route.agent.create": "创建 Agent",
+    "route.agent.edit": "编辑 Agent",
+    "route.agent.form.title": "Agent 配置",
+    "route.agent.form.name": "Agent 名称",
+    "route.agent.form.prompt": "System Prompt",
+    "route.agent.form.tools": "Tools",
+    "route.agent.form.skills": "Skills",
+    "route.agent.form.mcps": "MCP",
+    "route.agent.form.iterations": "最大迭代次数",
+    "route.agent.form.enabled": "启用",
+    "route.agent.form.managed": "服务托管字段",
+    "route.agent.form.id": "Agent ID",
+    "route.agent.form.version": "版本",
+    "route.agent.form.scope": "作用域",
+    "route.agent.form.pending": "首次保存后自动生成",
+    "route.agent.form.save": "保存 Agent",
+    "route.agent.form.delete": "删除 Agent",
+    "route.agent.form.test": "去聊天",
+    "route.agent.form.cancel": "重置",
+    "route.agent.form.new": "未保存 Agent",
+    "route.agent.form.empty": "选择一个 Agent 卡片，或创建一个新的 Agent 后再配置。",
+    "route.agent.save_failed": "保存 Agent 失败：{error}",
+    "route.agent.delete_failed": "删除 Agent 失败：{error}",
+    "route.agent.saved": "Agent 已保存。",
+    "route.agent.deleted": "Agent 已删除。",
+    "chat.runtime.target": "会话目标",
+    "chat.runtime.provider": "Provider",
+    "chat.runtime.model": "模型",
+    "chat.runtime.empty": "当前还没有可用的启用模型 Provider。请先在 Models 页面完成配置。",
+    "chat.runtime.hint": "会作用于当前会话后续发送的消息。",
+    "chat.runtime.tools_mcp": "Tools / MCP",
+    "chat.runtime.skills": "Skills",
+    "chat.runtime.target_hint": "请在发送第一条消息前确定当前会话目标。",
+    "chat.runtime.model_hint": "切换后会作用于当前会话后续发送的消息。",
+    "chat.runtime.tools_hint": "为后续消息选择额外启用的 Tools 与 MCP。",
+    "chat.runtime.skills_hint": "为后续消息选择额外启用的 Skills。",
+    "chat.runtime.active": "已启用",
+    "chat.runtime.available": "可启用",
+    "chat.runtime.category.tools": "Tools",
+    "chat.runtime.category.mcps": "MCP",
+    "chat.runtime.locked": "发送第一条消息后，会话目标不可切换。",
+    "chat.runtime.none": "该分区暂无项目。",
+    "route.agent.target_raw": "Raw Model",
+    "route.agent.target_agents": "我的 Agents",
+    "route.agent.pick": "先在上方选择目标，再开始新的对话。",
+    "route.agent.send_failed": "Agent 请求失败：{error}",
     "route.channels.title": "通道",
     "route.channels.subtitle": "管理连接通道",
     "route.channels.empty": "暂无可用通道。",
@@ -795,6 +925,11 @@ const ROUTES = {
     key: "chat",
     mode: "chat"
   },
+  agent: {
+    key: "agent",
+    mode: "page",
+    loader: loadAgentView
+  },
   channels: {
     key: "channels",
     mode: "page",
@@ -851,6 +986,28 @@ const state = {
   activeSessionID: "",
   currentRoute: DEFAULT_ROUTE,
   sessions: [],
+  chatCatalog: {
+    agents: [],
+    providers: [],
+    skills: [],
+    mcps: [],
+    loading: false,
+    loaded: false,
+    error: "",
+    providerLoading: false,
+    providerLoaded: false,
+    providerError: "",
+    capabilityLoading: false,
+    capabilityLoaded: false,
+    capabilityError: ""
+  },
+  chatRuntime: {
+    openPopover: ""
+  },
+  agentRouteState: {
+    selectedAgentID: "",
+    activeSessionByAgent: {}
+  },
   sessionRouteFilters: {
     triggerType: "",
     channelType: "",
@@ -1131,6 +1288,8 @@ function setLanguage(lang) {
   renderSessions();
   syncHeader();
   syncWelcomeCopy();
+  renderChatRuntimePanel();
+  renderWelcomeTargetPicker();
   
   // Re-render current route if it's a page
   if (state.currentRoute !== "chat") {
@@ -1178,6 +1337,257 @@ function getSession(id = state.activeSessionID) {
   return state.sessions.find((item) => item.id === id);
 }
 
+function defaultChatTarget() {
+  return {
+    type: "model",
+    id: "raw-model",
+    name: t("session.target.raw")
+  };
+}
+
+function enabledModelsForProvider(provider) {
+  const models = Array.isArray(provider?.models) ? provider.models : [];
+  return models.filter((item) => item && item.is_enabled !== false);
+}
+
+function enabledChatProviders() {
+  const providers = Array.isArray(state.chatCatalog.providers) ? state.chatCatalog.providers : [];
+  return providers.filter((provider) => Boolean(provider?.is_enabled) && enabledModelsForProvider(provider).length > 0);
+}
+
+function findChatProvider(providerID) {
+  const normalizedID = normalizeText(providerID);
+  if (!normalizedID) {
+    return null;
+  }
+  return enabledChatProviders().find((provider) => normalizeText(provider?.id) === normalizedID) || null;
+}
+
+function findChatModel(providerID, modelID) {
+  const provider = findChatProvider(providerID);
+  if (!provider) {
+    return null;
+  }
+  const normalizedModelID = normalizeText(modelID);
+  return enabledModelsForProvider(provider).find((item) => normalizeText(item?.id) === normalizedModelID) || null;
+}
+
+function defaultChatModelSelection() {
+  const providers = enabledChatProviders();
+  const provider = providers.find((item) => Boolean(item?.is_default)) || providers[0] || null;
+  if (!provider) {
+    return {
+      providerID: "",
+      modelID: ""
+    };
+  }
+  const models = enabledModelsForProvider(provider);
+  const providerDefaultModel = normalizeText(provider?.default_model);
+  return {
+    providerID: normalizeText(provider.id),
+    modelID: models.some((item) => normalizeText(item?.id) === providerDefaultModel)
+      ? providerDefaultModel
+      : normalizeText(models[0]?.id)
+  };
+}
+
+function normalizeChatModelSelection(selection = {}) {
+  return {
+    providerID: normalizeText(selection?.providerID || selection?.provider_id || ""),
+    modelID: normalizeText(selection?.modelID || selection?.model_id || "")
+  };
+}
+
+function sessionModelSelection(session) {
+  if (!session || typeof session !== "object") {
+    return defaultChatModelSelection();
+  }
+  return normalizeChatModelSelection({
+    providerID: session.modelProviderID,
+    modelID: session.modelID
+  });
+}
+
+function resolveEffectiveChatModelSelection(session) {
+  const current = sessionModelSelection(session);
+  const fallback = defaultChatModelSelection();
+  let providerID = current.providerID;
+  if (!findChatProvider(providerID)) {
+    providerID = fallback.providerID;
+  }
+  const provider = findChatProvider(providerID);
+  const models = enabledModelsForProvider(provider);
+  const providerDefaultModel = normalizeText(provider?.default_model);
+  let modelID = current.modelID;
+  if (!models.some((item) => normalizeText(item?.id) === modelID)) {
+    modelID = models.some((item) => normalizeText(item?.id) === providerDefaultModel)
+      ? providerDefaultModel
+      : normalizeText(models[0]?.id);
+  }
+  return {
+    providerID,
+    modelID
+  };
+}
+
+function updateSessionModelSelection(session, selection) {
+  if (!session) {
+    return;
+  }
+  const normalized = normalizeChatModelSelection(selection);
+  session.modelProviderID = normalized.providerID;
+  session.modelID = normalized.modelID;
+}
+
+function syncSessionModelSelection(session) {
+  if (!session) {
+    return false;
+  }
+  const resolved = resolveEffectiveChatModelSelection(session);
+  if (session.modelProviderID === resolved.providerID && session.modelID === resolved.modelID) {
+    return false;
+  }
+  updateSessionModelSelection(session, resolved);
+  return true;
+}
+
+function reconcileChatModelSelections() {
+  let changed = false;
+  state.sessions.forEach((session) => {
+    if (syncSessionModelSelection(session)) {
+      changed = true;
+    }
+  });
+  if (changed) {
+    persistSessions();
+  }
+  return changed;
+}
+
+function normalizeSelectionIDs(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : []).map((item) => normalizeText(item)).filter(Boolean)));
+}
+
+function findChatAgent(agentID) {
+  const normalizedID = normalizeText(agentID);
+  if (!normalizedID) {
+    return null;
+  }
+  return (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).find((item) => normalizeText(item?.id) === normalizedID) || null;
+}
+
+function defaultRuntimeSelectionsForTarget(target) {
+  const normalizedTarget = normalizeChatTarget(target);
+  if (normalizedTarget.type !== "agent") {
+    return {
+      toolIDs: [],
+      skillIDs: [],
+      mcpIDs: []
+    };
+  }
+  const agent = findChatAgent(normalizedTarget.id);
+  return {
+    toolIDs: normalizeSelectionIDs(agent?.tools),
+    skillIDs: normalizeSelectionIDs(agent?.skills),
+    mcpIDs: normalizeSelectionIDs(agent?.mcps)
+  };
+}
+
+function sessionRuntimeSelections(session) {
+  const defaults = defaultRuntimeSelectionsForTarget(sessionTarget(session));
+  if (!session || typeof session !== "object") {
+    return defaults;
+  }
+  return {
+    toolIDs: normalizeSelectionIDs("toolIDs" in session ? session.toolIDs : defaults.toolIDs),
+    skillIDs: normalizeSelectionIDs("skillIDs" in session ? session.skillIDs : defaults.skillIDs),
+    mcpIDs: normalizeSelectionIDs("mcpIDs" in session ? session.mcpIDs : defaults.mcpIDs)
+  };
+}
+
+function updateSessionRuntimeSelections(session, selection = {}) {
+  if (!session) {
+    return;
+  }
+  const current = sessionRuntimeSelections(session);
+  session.toolIDs = normalizeSelectionIDs("toolIDs" in selection ? selection.toolIDs : current.toolIDs);
+  session.skillIDs = normalizeSelectionIDs("skillIDs" in selection ? selection.skillIDs : current.skillIDs);
+  session.mcpIDs = normalizeSelectionIDs("mcpIDs" in selection ? selection.mcpIDs : current.mcpIDs);
+}
+
+function runtimeOptionCount(session, type) {
+  const selection = sessionRuntimeSelections(session);
+  if (type === "skills") {
+    return selection.skillIDs.length;
+  }
+  return selection.toolIDs.length + selection.mcpIDs.length;
+}
+
+function targetLocked(session) {
+  return Boolean(session && Array.isArray(session.messages) && session.messages.length > 0);
+}
+
+function normalizeChatTarget(target = {}) {
+  const normalizedType = String(target?.type || "").trim().toLowerCase() === "agent" ? "agent" : "model";
+  const normalizedID = String(target?.id || "").trim() || (normalizedType === "agent" ? "" : "raw-model");
+  const fallbackName = normalizedType === "agent" ? normalizedID : t("session.target.raw");
+  const normalizedName = String(target?.name || "").trim() || fallbackName;
+  return {
+    type: normalizedType,
+    id: normalizedID,
+    name: normalizedName
+  };
+}
+
+function sessionTarget(session) {
+  if (!session || typeof session !== "object") {
+    return defaultChatTarget();
+  }
+  return normalizeChatTarget({
+    type: session.targetType,
+    id: session.targetID,
+    name: session.targetName
+  });
+}
+
+function sessionTargetLabel(session) {
+  const target = sessionTarget(session);
+  if (target.type === "agent") {
+    return target.name || t("session.target.agent");
+  }
+  return t("session.target.raw");
+}
+
+function sessionTargetBadgeLabel(session) {
+  const target = sessionTarget(session);
+  if (target.type === "agent") {
+    return `${t("session.target.agent")} · ${target.name}`;
+  }
+  return t("session.target.raw");
+}
+
+function sessionModelLabel(session) {
+  const selection = resolveEffectiveChatModelSelection(session);
+  const provider = findChatProvider(selection.providerID);
+  const model = findChatModel(selection.providerID, selection.modelID);
+  if (!provider || !model) {
+    return t("session.model.default");
+  }
+  return `${provider.name || provider.id} / ${model.name || model.id}`;
+}
+
+function updateSessionTarget(session, target) {
+  if (!session) {
+    return;
+  }
+  const normalizedTarget = normalizeChatTarget(target);
+  session.targetType = normalizedTarget.type;
+  session.targetID = normalizedTarget.id;
+  session.targetName = normalizedTarget.name;
+  const defaults = defaultRuntimeSelectionsForTarget(normalizedTarget);
+  updateSessionRuntimeSelections(session, defaults);
+}
+
 function sortSessionsByCreatedAtDesc(items) {
   items.sort((left, right) => right.createdAt - left.createdAt);
 }
@@ -1222,6 +1632,8 @@ function focusSession(sessionID) {
   renderSessions();
   renderMessages();
   syncHeader();
+  renderChatRuntimePanel();
+  renderWelcomeTargetPicker();
   closeTransientPanels();
 }
 
@@ -1775,6 +2187,11 @@ function normalizeStoredSession(item) {
   const id = typeof item.id === "string" && item.id ? item.id : makeID();
   const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "New Chat";
   const createdAt = Number.isFinite(item.createdAt) ? item.createdAt : Date.now();
+  const target = normalizeChatTarget({
+    type: item.targetType,
+    id: item.targetID,
+    name: item.targetName
+  });
   const rawMessages = Array.isArray(item.messages) ? item.messages : [];
   const messages = [];
   for (const raw of rawMessages) {
@@ -1783,7 +2200,20 @@ function normalizeStoredSession(item) {
       messages.push(normalized);
     }
   }
-  return { id, title, createdAt, messages };
+  return {
+    id,
+    title,
+    createdAt,
+    messages,
+    targetType: target.type,
+    targetID: target.id,
+    targetName: target.name,
+    modelProviderID: normalizeText(item.modelProviderID),
+    modelID: normalizeText(item.modelID),
+    toolIDs: normalizeSelectionIDs(item.toolIDs),
+    skillIDs: normalizeSelectionIDs(item.skillIDs),
+    mcpIDs: normalizeSelectionIDs(item.mcpIDs)
+  };
 }
 
 function loadSessionsFromStorage() {
@@ -1852,24 +2282,466 @@ function bootstrapSessions() {
   }
 }
 
-function createSession() {
+async function refreshChatAgentCatalog() {
+  if (state.chatCatalog.loading) {
+    return;
+  }
+  state.chatCatalog.loading = true;
+  try {
+    const payload = await fetchJSON("/api/control/agents");
+    state.chatCatalog.agents = Array.isArray(payload?.items)
+      ? payload.items.filter((item) => Boolean(item?.enabled))
+      : [];
+    state.chatCatalog.error = "";
+    state.chatCatalog.loaded = true;
+  } catch (error) {
+    state.chatCatalog.error = error instanceof Error ? error.message : "unknown_error";
+    state.chatCatalog.loaded = true;
+  } finally {
+    state.chatCatalog.loading = false;
+    renderChatRuntimePanel();
+    renderWelcomeTargetPicker();
+  }
+}
+
+async function refreshChatProviderCatalog() {
+  if (state.chatCatalog.providerLoading) {
+    return;
+  }
+  state.chatCatalog.providerLoading = true;
+  try {
+    const payload = await fetchJSON("/api/control/llm/providers");
+    state.chatCatalog.providers = Array.isArray(payload?.items) ? payload.items : [];
+    state.chatCatalog.providerError = "";
+    state.chatCatalog.providerLoaded = true;
+    reconcileChatModelSelections();
+  } catch (error) {
+    state.chatCatalog.providerError = error instanceof Error ? error.message : "unknown_error";
+    state.chatCatalog.providerLoaded = true;
+  } finally {
+    state.chatCatalog.providerLoading = false;
+    renderChatRuntimePanel();
+    renderWelcomeTargetPicker();
+    renderSessions();
+    syncHeader();
+  }
+}
+
+async function refreshChatCapabilityCatalog() {
+  if (state.chatCatalog.capabilityLoading) {
+    return;
+  }
+  state.chatCatalog.capabilityLoading = true;
+  try {
+    const [skillPayload, mcpPayload] = await Promise.all([
+      fetchJSON("/api/control/skills"),
+      fetchJSON("/api/control/mcps")
+    ]);
+    state.chatCatalog.skills = Array.isArray(skillPayload?.items)
+      ? skillPayload.items.filter((item) => Boolean(item?.enabled))
+      : [];
+    state.chatCatalog.mcps = Array.isArray(mcpPayload?.items)
+      ? mcpPayload.items.filter((item) => Boolean(item?.enabled))
+      : [];
+    state.chatCatalog.capabilityError = "";
+    state.chatCatalog.capabilityLoaded = true;
+  } catch (error) {
+    state.chatCatalog.capabilityError = error instanceof Error ? error.message : "unknown_error";
+    state.chatCatalog.capabilityLoaded = true;
+  } finally {
+    state.chatCatalog.capabilityLoading = false;
+    renderChatRuntimePanel();
+  }
+}
+
+function renderRuntimeGroupSection(titleKey, items, renderItem) {
+  if (!items.length) {
+    return `<p class="composer-runtime-empty">${escapeHTML(t("chat.runtime.none"))}</p>`;
+  }
+  return `<section class="composer-runtime-section">
+    <div class="composer-runtime-section-title">
+      <strong>${escapeHTML(t(titleKey))}</strong>
+      <span>${escapeHTML(String(items.length))}</span>
+    </div>
+    ${items.map(renderItem).join("")}
+  </section>`;
+}
+
+function renderRuntimeCapabilityGroup(items, selectedSet, toggleKey) {
+  if (!items.length) {
+    return "";
+  }
+  const groupedTools = items.filter((item) => item.kind === "tool");
+  const groupedMcps = items.filter((item) => item.kind === "mcp");
+  const groups = [
+    { key: "chat.runtime.category.tools", items: groupedTools },
+    { key: "chat.runtime.category.mcps", items: groupedMcps }
+  ].filter((group) => group.items.length);
+  return groups.map((group) => `<section class="composer-runtime-section">
+    <div class="composer-runtime-group-title">
+      <strong>${escapeHTML(t(group.key))}</strong>
+      <span>${escapeHTML(String(group.items.length))}</span>
+    </div>
+    <div class="composer-runtime-checkbox-group">
+      ${group.items.map((item) => `<label class="composer-runtime-checkbox">
+        <input type="checkbox" data-runtime-toggle-item="${escapeHTML(toggleKey)}" data-runtime-item-kind="${escapeHTML(item.kind)}" value="${escapeHTML(item.id)}" ${selectedSet.has(item.id) ? "checked" : ""}>
+        <span class="composer-runtime-checkbox-copy">
+          <strong>${escapeHTML(item.name)}</strong>
+          <span>${escapeHTML(item.description)}</span>
+        </span>
+      </label>`).join("")}
+    </div>
+  </section>`).join("");
+}
+
+function renderChatRuntimePanel() {
+  if (!chatRuntimePanel) {
+    return;
+  }
+  const activeSession = getSession() || createSession(defaultChatTarget());
+  const target = sessionTarget(activeSession);
+  const locked = targetLocked(activeSession);
+  const modelSelection = resolveEffectiveChatModelSelection(activeSession);
+  const provider = findChatProvider(modelSelection.providerID);
+  const model = findChatModel(modelSelection.providerID, modelSelection.modelID);
+  const selections = sessionRuntimeSelections(activeSession);
+  const toolMCPCount = selections.toolIDs.length + selections.mcpIDs.length;
+  const skillsCount = selections.skillIDs.length;
+  const openPopover = state.chatRuntime.openPopover;
+  const targetLabel = target.type === "agent" ? `${t("session.target.agent")} · ${target.name}` : t("session.target.raw");
+  const modelLabel = provider && model ? `${provider.name || provider.id} / ${model.name || model.id}` : t("session.model.default");
+  const toolLabel = toolMCPCount > 0 ? `${t("chat.runtime.tools_mcp")} (${toolMCPCount})` : t("chat.runtime.tools_mcp");
+  const skillLabel = skillsCount > 0 ? `${t("chat.runtime.skills")} (${skillsCount})` : t("chat.runtime.skills");
+  const note = [state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | ") || t("chat.runtime.hint");
+  const targetOptions = [
+    {
+      target: defaultChatTarget(),
+      subtitle: t("chat.runtime.target_hint")
+    },
+    ...(Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).map((agent) => ({
+      target: {
+        type: "agent",
+        id: normalizeText(agent?.id),
+        name: String(agent?.name || agent?.id || "").trim()
+      },
+      subtitle: String(agent?.system_prompt || agent?.id || "").trim() || t("session.target.agent")
+    })).filter((item) => item.target.id)
+  ];
+  const modelGroups = enabledChatProviders();
+  const capabilityItems = [
+    ...AVAILABLE_CHAT_TOOLS.map((item) => ({ ...item, kind: "tool" })),
+    ...((Array.isArray(state.chatCatalog.mcps) ? state.chatCatalog.mcps : []).map((item) => ({
+      id: normalizeText(item?.id),
+      name: String(item?.name || item?.id || "").trim(),
+      description: String(item?.description || item?.scope || "MCP").trim(),
+      kind: "mcp"
+    })).filter((item) => item.id))
+  ];
+  const capabilitySelected = new Set([...selections.toolIDs, ...selections.mcpIDs]);
+  const capabilityActive = capabilityItems.filter((item) => capabilitySelected.has(item.id));
+  const capabilityAvailable = capabilityItems.filter((item) => !capabilitySelected.has(item.id));
+  const skillItems = (Array.isArray(state.chatCatalog.skills) ? state.chatCatalog.skills : []).map((item) => ({
+    id: normalizeText(item?.id),
+    name: String(item?.name || item?.id || "").trim(),
+    description: String(item?.description || item?.scope || "Skill").trim()
+  })).filter((item) => item.id);
+  const skillSelected = new Set(selections.skillIDs);
+  const activeSkills = skillItems.filter((item) => skillSelected.has(item.id));
+  const availableSkills = skillItems.filter((item) => !skillSelected.has(item.id));
+
+  chatRuntimePanel.innerHTML = `<div class="composer-runtime-group">
+    <div class="composer-runtime-control">
+      <button class="composer-runtime-trigger${openPopover === "target" ? " is-open" : ""}${locked ? " is-disabled" : ""}" type="button" data-runtime-toggle="target" aria-disabled="${locked ? "true" : "false"}" title="${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.target_hint"))}">
+        <span class="composer-runtime-trigger-icon">🎯</span>
+        <span class="composer-runtime-trigger-label">${escapeHTML(targetLabel)}</span>
+        <span class="composer-runtime-trigger-caret">▾</span>
+      </button>
+      ${openPopover === "target" ? `<div class="composer-runtime-popover">
+        <div class="composer-runtime-popover-head">
+          <strong>${escapeHTML(t("chat.runtime.target"))}</strong>
+          <p>${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.target_hint"))}</p>
+        </div>
+        <div class="composer-runtime-option-list">
+          ${targetOptions.map((item) => {
+            const optionTarget = normalizeChatTarget(item.target);
+            const activeClass = optionTarget.type === target.type && optionTarget.id === target.id ? " is-active" : "";
+            return `<button class="composer-runtime-option${activeClass}" type="button" data-runtime-target-type="${escapeHTML(optionTarget.type)}" data-runtime-target-id="${escapeHTML(optionTarget.id)}" data-runtime-target-name="${escapeHTML(optionTarget.name)}" ${locked ? "disabled" : ""}>
+              <strong>${escapeHTML(optionTarget.type === "agent" ? `${t("session.target.agent")} · ${optionTarget.name}` : optionTarget.name)}</strong>
+              <span>${escapeHTML(item.subtitle)}</span>
+            </button>`;
+          }).join("")}
+        </div>
+      </div>` : ""}
+    </div>
+    <div class="composer-runtime-control">
+      <button class="composer-runtime-trigger${openPopover === "model" ? " is-open" : ""}" type="button" data-runtime-toggle="model" title="${escapeHTML(t("chat.runtime.model_hint"))}">
+        <span class="composer-runtime-trigger-icon">✨</span>
+        <span class="composer-runtime-trigger-label">${escapeHTML(modelLabel)}</span>
+        <span class="composer-runtime-trigger-caret">▾</span>
+      </button>
+      ${openPopover === "model" ? `<div class="composer-runtime-popover is-wide">
+        <div class="composer-runtime-popover-head">
+          <strong>${escapeHTML(`${t("chat.runtime.provider")} / ${t("chat.runtime.model")}`)}</strong>
+          <p>${escapeHTML(state.chatCatalog.providerError || t("chat.runtime.model_hint"))}</p>
+        </div>
+        ${modelGroups.length ? modelGroups.map((providerItem) => {
+          const models = enabledModelsForProvider(providerItem);
+          return `<section class="composer-runtime-provider-group">
+            <div class="composer-runtime-group-title">
+              <strong>${escapeHTML(providerItem.name || providerItem.id)}</strong>
+              <span>${escapeHTML(String(models.length))}</span>
+            </div>
+            <div class="composer-runtime-option-list">
+              ${models.map((modelItem) => {
+                const activeClass = normalizeText(providerItem.id) === modelSelection.providerID && normalizeText(modelItem.id) === modelSelection.modelID ? " is-active" : "";
+                return `<button class="composer-runtime-model-option${activeClass}" type="button" data-runtime-provider-id="${escapeHTML(providerItem.id)}" data-runtime-model-id="${escapeHTML(modelItem.id)}">
+                  <strong>${escapeHTML(modelItem.name || modelItem.id)}</strong>
+                  <span>${escapeHTML(providerItem.name || providerItem.id)}</span>
+                </button>`;
+              }).join("")}
+            </div>
+          </section>`;
+        }).join("") : `<p class="composer-runtime-empty">${escapeHTML(t("chat.runtime.empty"))}</p>`}
+      </div>` : ""}
+    </div>
+    <div class="composer-runtime-divider" aria-hidden="true"></div>
+    <div class="composer-runtime-control">
+      <button class="composer-runtime-trigger${openPopover === "capabilities" ? " is-open" : ""}" type="button" data-runtime-toggle="capabilities" title="${escapeHTML(t("chat.runtime.tools_hint"))}">
+        <span class="composer-runtime-trigger-icon">🛠️</span>
+        <span class="composer-runtime-trigger-label">${escapeHTML(toolLabel)}</span>
+        <span class="composer-runtime-trigger-caret">▾</span>
+      </button>
+      ${openPopover === "capabilities" ? `<div class="composer-runtime-popover is-wide">
+        <div class="composer-runtime-popover-head">
+          <strong>${escapeHTML(t("chat.runtime.tools_mcp"))}</strong>
+          <p>${escapeHTML(state.chatCatalog.capabilityError || t("chat.runtime.tools_hint"))}</p>
+        </div>
+        ${renderRuntimeGroupSection("chat.runtime.active", capabilityActive, () => "")}
+        ${capabilityActive.length ? renderRuntimeCapabilityGroup(capabilityActive, capabilitySelected, "capabilities") : ""}
+        <div class="composer-runtime-separator"></div>
+        ${renderRuntimeGroupSection("chat.runtime.available", capabilityAvailable, () => "")}
+        ${capabilityAvailable.length ? renderRuntimeCapabilityGroup(capabilityAvailable, capabilitySelected, "capabilities") : ""}
+      </div>` : ""}
+    </div>
+    <div class="composer-runtime-control">
+      <button class="composer-runtime-trigger${openPopover === "skills" ? " is-open" : ""}" type="button" data-runtime-toggle="skills" title="${escapeHTML(t("chat.runtime.skills_hint"))}">
+        <span class="composer-runtime-trigger-icon">⚡</span>
+        <span class="composer-runtime-trigger-label">${escapeHTML(skillLabel)}</span>
+        <span class="composer-runtime-trigger-caret">▾</span>
+      </button>
+      ${openPopover === "skills" ? `<div class="composer-runtime-popover">
+        <div class="composer-runtime-popover-head">
+          <strong>${escapeHTML(t("chat.runtime.skills"))}</strong>
+          <p>${escapeHTML(state.chatCatalog.capabilityError || t("chat.runtime.skills_hint"))}</p>
+        </div>
+        ${renderRuntimeGroupSection("chat.runtime.active", activeSkills, (item) => `<label class="composer-runtime-checkbox">
+          <input type="checkbox" data-runtime-toggle-item="skills" value="${escapeHTML(item.id)}" checked>
+          <span class="composer-runtime-checkbox-copy">
+            <strong>${escapeHTML(item.name)}</strong>
+            <span>${escapeHTML(item.description)}</span>
+          </span>
+        </label>`)}
+        <div class="composer-runtime-separator"></div>
+        ${renderRuntimeGroupSection("chat.runtime.available", availableSkills, (item) => `<label class="composer-runtime-checkbox">
+          <input type="checkbox" data-runtime-toggle-item="skills" value="${escapeHTML(item.id)}">
+          <span class="composer-runtime-checkbox-copy">
+            <strong>${escapeHTML(item.name)}</strong>
+            <span>${escapeHTML(item.description)}</span>
+          </span>
+        </label>`)}
+      </div>` : ""}
+    </div>
+  </div>
+  <p class="chat-runtime-note${state.chatCatalog.providerError || state.chatCatalog.capabilityError ? " chat-runtime-error" : ""}">${escapeHTML(note)}</p>`;
+
+  chatRuntimePanel.querySelectorAll("[data-runtime-toggle]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const nextPopover = String(node.getAttribute("data-runtime-toggle") || "").trim();
+      if (!nextPopover) {
+        return;
+      }
+      if (nextPopover === "target" && locked) {
+        return;
+      }
+      state.chatRuntime.openPopover = state.chatRuntime.openPopover === nextPopover ? "" : nextPopover;
+      renderChatRuntimePanel();
+    });
+  });
+
+  chatRuntimePanel.querySelectorAll("[data-runtime-target-type]").forEach((node) => {
+    node.addEventListener("click", () => {
+      if (locked) {
+        return;
+      }
+      const nextTarget = {
+        type: node.getAttribute("data-runtime-target-type") || "model",
+        id: node.getAttribute("data-runtime-target-id") || "",
+        name: node.getAttribute("data-runtime-target-name") || ""
+      };
+      const session = getSession() || createSession(nextTarget);
+      updateSessionTarget(session, nextTarget);
+      state.chatRuntime.openPopover = "";
+      persistSessions();
+      renderSessions();
+      syncHeader();
+      syncWelcomeCopy();
+      renderChatRuntimePanel();
+    });
+  });
+
+  chatRuntimePanel.querySelectorAll("[data-runtime-provider-id]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const session = getSession() || createSession(defaultChatTarget());
+      updateSessionModelSelection(session, {
+        providerID: node.getAttribute("data-runtime-provider-id") || "",
+        modelID: node.getAttribute("data-runtime-model-id") || ""
+      });
+      state.chatRuntime.openPopover = "";
+      persistSessions();
+      renderSessions();
+      syncHeader();
+      renderChatRuntimePanel();
+    });
+  });
+
+  chatRuntimePanel.querySelectorAll("[data-runtime-toggle-item]").forEach((inputNode) => {
+    inputNode.addEventListener("change", () => {
+      const session = getSession() || createSession(defaultChatTarget());
+      const mode = String(inputNode.getAttribute("data-runtime-toggle-item") || "").trim();
+      const value = normalizeText(inputNode.value);
+      const current = sessionRuntimeSelections(session);
+      if (mode === "skills") {
+        const nextSkills = inputNode.checked
+          ? normalizeSelectionIDs([...current.skillIDs, value])
+          : current.skillIDs.filter((item) => item !== value);
+        updateSessionRuntimeSelections(session, { skillIDs: nextSkills });
+      } else {
+        const itemKind = String(inputNode.getAttribute("data-runtime-item-kind") || "").trim();
+        if (itemKind === "tool") {
+          const nextTools = inputNode.checked
+            ? normalizeSelectionIDs([...current.toolIDs, value])
+            : current.toolIDs.filter((item) => item !== value);
+          updateSessionRuntimeSelections(session, { toolIDs: nextTools });
+        } else {
+          const nextMcps = inputNode.checked
+            ? normalizeSelectionIDs([...current.mcpIDs, value])
+            : current.mcpIDs.filter((item) => item !== value);
+          updateSessionRuntimeSelections(session, { mcpIDs: nextMcps });
+        }
+      }
+      persistSessions();
+      renderSessions();
+      syncHeader();
+      renderChatRuntimePanel();
+    });
+  });
+}
+
+function closeChatRuntimePopover() {
+  if (!state.chatRuntime.openPopover) {
+    return;
+  }
+  state.chatRuntime.openPopover = "";
+  renderChatRuntimePanel();
+}
+
+function renderWelcomeTargetPicker() {
+  const targetList = document.getElementById("welcomeTargetList");
+  if (!targetList) {
+    return;
+  }
+  const active = getSession();
+  const currentTarget = sessionTarget(active);
+  const agents = Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : [];
+  const buttons = [];
+  const rawActive = currentTarget.type !== "agent";
+  buttons.push(`<button class="welcome-target-card${rawActive ? " active" : ""}" type="button" data-chat-target-type="model" data-chat-target-id="raw-model" data-chat-target-name="${escapeHTML(t("session.target.raw"))}">
+    <strong>${escapeHTML(t("session.target.raw"))}</strong>
+    <span>${escapeHTML(t("route.chat.subtitle"))}</span>
+  </button>`);
+  agents.forEach((agent) => {
+    const agentID = String(agent?.id || "").trim();
+    if (!agentID) {
+      return;
+    }
+    const agentName = String(agent?.name || agentID).trim() || agentID;
+    const activeClassName = currentTarget.type === "agent" && currentTarget.id === agentID ? " active" : "";
+    buttons.push(`<button class="welcome-target-card${activeClassName}" type="button" data-chat-target-type="agent" data-chat-target-id="${escapeHTML(agentID)}" data-chat-target-name="${escapeHTML(agentName)}">
+      <strong>${escapeHTML(agentName)}</strong>
+      <span>${escapeHTML(agentID)}</span>
+    </button>`);
+  });
+  if (state.chatCatalog.error) {
+    buttons.push(`<p class="welcome-target-error">${escapeHTML(state.chatCatalog.error)}</p>`);
+  }
+  targetList.innerHTML = buttons.join("");
+  targetList.querySelectorAll("[data-chat-target-type]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const target = {
+        type: node.getAttribute("data-chat-target-type") || "model",
+        id: node.getAttribute("data-chat-target-id") || "",
+        name: node.getAttribute("data-chat-target-name") || ""
+      };
+      const activeSession = getSession() || createSession(target);
+      if (activeSession.messages.length !== 0) {
+        const fresh = createSession(target);
+        updateSessionModelSelection(fresh, resolveEffectiveChatModelSelection(activeSession));
+        focusSession(fresh.id);
+        return;
+      }
+      updateSessionTarget(activeSession, target);
+      persistSessions();
+      syncHeader();
+      syncWelcomeCopy();
+      renderChatRuntimePanel();
+      renderSessions();
+      renderWelcomeTargetPicker();
+    });
+  });
+}
+
+function openChatWithTarget(target) {
+  const session = createSession(target);
+  focusSession(session.id);
+  renderChatRuntimePanel();
+  renderWelcomeTargetPicker();
+  window.requestAnimationFrame(() => {
+    input.focus();
+  });
+}
+
+function createSession(target = null) {
   const latestBlank = getLatestBlankSession();
   if (latestBlank) {
+    if (target) {
+      updateSessionTarget(latestBlank, target);
+    }
     state.activeSessionID = latestBlank.id;
     syncMainChatComposerDraft(latestBlank.id);
     renderSessions();
     renderMessages();
     syncHeader();
+    renderWelcomeTargetPicker();
     persistSessions();
     return latestBlank;
   }
 
   const createdAt = Date.now();
+  const normalizedTarget = normalizeChatTarget(target || defaultChatTarget());
+  const runtimeDefaults = defaultRuntimeSelectionsForTarget(normalizedTarget);
   const item = {
     id: makeID(),
     title: t("session.new_title"),
     createdAt,
-    messages: []
+    messages: [],
+    targetType: normalizedTarget.type,
+    targetID: normalizedTarget.id,
+    targetName: normalizedTarget.name,
+    modelProviderID: defaultChatModelSelection().providerID,
+    modelID: defaultChatModelSelection().modelID,
+    toolIDs: runtimeDefaults.toolIDs,
+    skillIDs: runtimeDefaults.skillIDs,
+    mcpIDs: runtimeDefaults.mcpIDs
   };
   state.sessions.unshift(item);
   state.activeSessionID = item.id;
@@ -1878,6 +2750,8 @@ function createSession() {
   renderMessages();
   syncHeader();
   syncWelcomeCopy();
+  renderChatRuntimePanel();
+  renderWelcomeTargetPicker();
   persistSessions();
   return item;
 }
@@ -1912,6 +2786,8 @@ function removeSession(sessionID) {
   renderSessions();
   renderMessages();
   syncHeader();
+  renderChatRuntimePanel();
+  renderWelcomeTargetPicker();
   persistSessions();
 }
 
@@ -1934,11 +2810,13 @@ function syncHeader() {
     return;
   }
   sessionHeading.textContent = active.title;
+  const targetLabel = sessionTargetLabel(active);
+  const modelLabel = sessionModelLabel(active);
   if (active.messages.length === 0) {
-    sessionSubheading.textContent = t("session.empty_sub");
+    sessionSubheading.textContent = `${targetLabel} · ${modelLabel} · ${t("session.empty_sub")}`;
     return;
   }
-  sessionSubheading.textContent = `${active.messages.length} messages`;
+  sessionSubheading.textContent = `${targetLabel} · ${modelLabel} · ${active.messages.length} messages`;
 }
 
 function syncWelcomeCopy() {
@@ -1949,7 +2827,7 @@ function syncWelcomeCopy() {
     return;
   }
   welcomeHeading.textContent = t("welcome.heading");
-  welcomeDescription.textContent = t("welcome.desc");
+  welcomeDescription.textContent = `${t("welcome.desc")} ${t("welcome.target_hint")}`;
 }
 
 function syncSessionLoadHint() {
@@ -1987,7 +2865,7 @@ function renderSessions() {
 
     const meta = document.createElement("p");
     meta.className = "session-card-meta";
-    meta.textContent = `${item.messages.length} messages · ${formatSince(item.createdAt)}`;
+    meta.textContent = `${sessionTargetBadgeLabel(item)} · ${sessionModelLabel(item)} · ${item.messages.length} messages · ${formatSince(item.createdAt)}`;
 
     card.appendChild(title);
     card.appendChild(meta);
@@ -2274,6 +3152,7 @@ function renderMessages() {
 
   if (!hasMessages) {
     syncWelcomeCopy();
+    renderWelcomeTargetPicker();
     messageArea.innerHTML = "";
     return;
   }
@@ -2385,14 +3264,15 @@ function parseSSEBlock(block) {
   }
 }
 
-async function sendMessageStream(payload, assistantMessage) {
+async function sendMessageStream(payload, assistantMessage, endpoints = {}) {
   let sawEvent = false;
   let sawDone = false;
   let routeHint = "";
   let output = "";
+  const streamEndpoint = String(endpoints.stream || STREAM_ENDPOINT);
 
   try {
-    const response = await fetch(STREAM_ENDPOINT, {
+    const response = await fetch(streamEndpoint, {
       method: "POST",
       headers: {
         Accept: "text/event-stream",
@@ -2521,8 +3401,9 @@ async function sendMessageStream(payload, assistantMessage) {
   }
 }
 
-async function sendMessageFallback(payload, assistantMessage) {
-  const response = await fetch(FALLBACK_ENDPOINT, {
+async function sendMessageFallback(payload, assistantMessage, endpoints = {}) {
+  const fallbackEndpoint = String(endpoints.fallback || FALLBACK_ENDPOINT);
+  const response = await fetch(fallbackEndpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -2576,24 +3457,57 @@ async function sendMessage(rawContent) {
   input.value = "";
   mainChatComposer.clearDraft();
   updateCharCount();
+  closeChatRuntimePopover();
   setPending(true);
 
   const active = getSession();
-  const payload = {
-    session_id: active ? active.id : "",
-    channel_id: "web-default",
-    content
-  };
+  const target = sessionTarget(active);
+  const isAgentSession = target.type === "agent" && target.id;
+  const selection = resolveEffectiveChatModelSelection(active);
+  const runtimeSelections = sessionRuntimeSelections(active);
+  const metadata = {};
+  if (selection.providerID) {
+    metadata["alter0.llm.provider_id"] = selection.providerID;
+  }
+  if (selection.modelID) {
+    metadata["alter0.llm.model"] = selection.modelID;
+  }
+  metadata["alter0.agent.tools"] = JSON.stringify(runtimeSelections.toolIDs);
+  metadata["alter0.skills.include"] = JSON.stringify(runtimeSelections.skillIDs);
+  metadata["alter0.mcp.request.enable"] = JSON.stringify(runtimeSelections.mcpIDs);
+  const payload = isAgentSession
+    ? {
+      agent_id: target.id,
+      session_id: active ? active.id : "",
+      channel_id: "web-default",
+      content,
+      metadata
+    }
+    : {
+      session_id: active ? active.id : "",
+      channel_id: "web-default",
+      content,
+      metadata
+    };
+  const endpoints = isAgentSession
+    ? {
+      stream: "/api/agent/messages/stream",
+      fallback: "/api/agent/messages"
+    }
+    : {
+      stream: STREAM_ENDPOINT,
+      fallback: FALLBACK_ENDPOINT
+    };
   const assistantMessage = appendMessage("assistant", t("msg.processing"), { status: "streaming" });
 
   try {
-    const streamResult = await sendMessageStream(payload, assistantMessage);
+    const streamResult = await sendMessageStream(payload, assistantMessage, endpoints);
     if (streamResult.ok) {
       return;
     }
 
     if (streamResult.canFallback) {
-      await sendMessageFallback(payload, assistantMessage);
+      await sendMessageFallback(payload, assistantMessage, endpoints);
       return;
     }
 
@@ -2663,6 +3577,12 @@ function closeTransientPanels() {
   hideNavTooltip(true);
   appShell.classList.remove("nav-open");
   appShell.classList.remove("panel-open");
+  if (state.chatRuntime.openPopover) {
+    state.chatRuntime.openPopover = "";
+    if (state.currentRoute === "chat") {
+      renderChatRuntimePanel();
+    }
+  }
   syncOverlayState();
 }
 
@@ -2743,11 +3663,12 @@ function startNewChatSession() {
     if (!confirmComposerNavigation()) {
       return;
     }
-    createSession();
+    createSession(defaultChatTarget());
   }
   navigateToRoute("chat", { skipConfirm: true });
   closeTransientPanels();
   window.requestAnimationFrame(() => {
+    renderWelcomeTargetPicker();
     input.focus();
   });
 }
@@ -3030,6 +3951,340 @@ async function loadMCPView(container) {
       item.enabled
     )
   );
+}
+
+function normalizeAgentRouteState(routeState = {}) {
+  return {
+    selectedAgentID: String(routeState?.selectedAgentID || "").trim(),
+    activeSessionByAgent: routeState?.activeSessionByAgent && typeof routeState.activeSessionByAgent === "object"
+      ? { ...routeState.activeSessionByAgent }
+      : {}
+  };
+}
+
+function normalizeAgentBuilderDraft(agent = {}) {
+  return {
+    id: String(agent?.id || "").trim(),
+    name: String(agent?.name || "").trim(),
+    enabled: agent?.enabled !== false,
+    scope: String(agent?.scope || "global").trim() || "global",
+    version: String(agent?.version || "").trim(),
+    system_prompt: String(agent?.system_prompt || "").trim(),
+    max_iterations: Number.isFinite(Number(agent?.max_iterations)) ? Math.max(0, Number(agent.max_iterations)) : 0,
+    tools: Array.isArray(agent?.tools) && agent.tools.length ? agent.tools.map((item) => String(item || "").trim()).filter(Boolean) : ["codex_exec"],
+    skills: Array.isArray(agent?.skills) ? agent.skills.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    mcps: Array.isArray(agent?.mcps) ? agent.mcps.map((item) => String(item || "").trim()).filter(Boolean) : []
+  };
+}
+
+function parseAgentListInput(value) {
+  return Array.from(new Set(String(value || "").split(",").map((item) => item.trim()).filter(Boolean)));
+}
+
+function renderAgentBuilderCards(items, selectedAgentID) {
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.agent.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const agentID = String(item?.id || "").trim();
+    const agentName = String(item?.name || agentID || "").trim() || agentID;
+    const enabled = Boolean(item?.enabled);
+    const activeClassName = agentID === selectedAgentID ? " is-active" : "";
+    const tags = [
+      normalizeText(item?.version),
+      `${Number(item?.skills?.length || 0)} skills`
+    ].filter((tag) => tag !== "-");
+    return `<button class="agent-route-card${activeClassName}" type="button" data-agent-select="${escapeHTML(agentID)}" aria-pressed="${agentID === selectedAgentID ? "true" : "false"}">
+      <div class="agent-route-card-head">
+        <div class="agent-route-card-copy">
+          <strong title="${escapeHTML(agentName)}">${escapeHTML(agentName)}</strong>
+          <span title="${escapeHTML(agentID)}">${escapeHTML(agentID)}</span>
+        </div>
+        <span class="agent-route-state ${enabled ? "is-enabled" : "is-disabled"}">${escapeHTML(enabled ? t("status.enabled") : t("status.disabled"))}</span>
+      </div>
+      <p class="agent-route-card-prompt">${escapeHTML(String(item?.system_prompt || "").trim() || t("route.agent.form.empty"))}</p>
+      <div class="agent-route-card-tags">${tags.length ? tags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
+    </button>`;
+  }).join("");
+}
+
+function renderAgentOptionList(items, selectedValues, fieldName) {
+  if (!items.length) {
+    return `<p class="route-empty">${escapeHTML(t("route.connected_desc"))}</p>`;
+  }
+  const selected = new Set((Array.isArray(selectedValues) ? selectedValues : []).map((item) => String(item || "").trim()));
+  return items.map((item) => {
+    const optionID = String(item?.id || "").trim();
+    if (!optionID) {
+      return "";
+    }
+    const optionName = String(item?.name || optionID).trim() || optionID;
+    return `<label class="agent-builder-option">
+      <input type="checkbox" name="${escapeHTML(fieldName)}" value="${escapeHTML(optionID)}" ${selected.has(optionID) ? "checked" : ""}>
+      <span>${escapeHTML(optionName)}</span>
+    </label>`;
+  }).join("");
+}
+
+async function loadAgentView(container) {
+  const localState = {
+    routeState: normalizeAgentRouteState(state.agentRouteState),
+    agents: [],
+    skills: [],
+    mcps: [],
+    draft: normalizeAgentBuilderDraft(),
+    statusMessage: "",
+    statusKind: "",
+    loading: true
+  };
+
+  const persistRouteState = () => {
+    state.agentRouteState = {
+      selectedAgentID: localState.routeState.selectedAgentID,
+      activeSessionByAgent: { ...localState.routeState.activeSessionByAgent }
+    };
+  };
+
+  const requestJSON = async (path, options = {}) => {
+    const headers = new Headers(options.headers || {});
+    if (options.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const response = await fetch(path, {
+      method: options.method || "GET",
+      headers,
+      body: options.body
+    });
+    const payload = await safeReadJSON(response);
+    if (!response.ok) {
+      throw new Error(typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`);
+    }
+    return payload;
+  };
+
+  const findSelectedAgent = () => {
+    return localState.agents.find((item) => String(item?.id || "").trim() === localState.routeState.selectedAgentID) || null;
+  };
+
+  const syncDraftFromSelection = () => {
+    localState.draft = normalizeAgentBuilderDraft(findSelectedAgent() || {});
+  };
+
+  const paint = () => {
+    if (localState.loading) {
+      container.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
+      return;
+    }
+    const selectedAgent = findSelectedAgent();
+    const canDelete = Boolean(selectedAgent && selectedAgent.id);
+    const canTest = Boolean(localState.draft.id);
+    const managedID = selectedAgent?.id || t("route.agent.form.pending");
+    const managedVersion = selectedAgent?.version || t("route.agent.form.pending");
+    const managedScope = selectedAgent?.scope || "global";
+    container.innerHTML = `<section class="agent-studio-view">
+      <aside class="route-surface agent-studio-list-pane">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(t("route.agent.title"))}</h4>
+            <p>${escapeHTML(t("route.agent.subtitle"))}</p>
+          </div>
+          <button class="route-primary-button" type="button" data-agent-create>${escapeHTML(t("route.agent.create"))}</button>
+        </div>
+        <div class="agent-route-list">${renderAgentBuilderCards(localState.agents, localState.routeState.selectedAgentID)}</div>
+      </aside>
+      <section class="route-surface agent-studio-form-pane">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(localState.draft.id ? t("route.agent.edit") : t("route.agent.form.new"))}</h4>
+            <p>${escapeHTML(t("route.agent.form.managed"))}</p>
+          </div>
+          <div class="agent-builder-actions">
+            <button type="button" data-agent-chat-now ${canTest ? "" : "disabled"}>${escapeHTML(t("route.agent.form.test"))}</button>
+            <button type="button" data-agent-reset>${escapeHTML(t("route.agent.form.cancel"))}</button>
+          </div>
+        </div>
+        ${localState.statusMessage ? `<p class="agent-builder-status ${localState.statusKind === "error" ? "is-error" : "is-success"}">${escapeHTML(localState.statusMessage)}</p>` : ""}
+        <div class="agent-builder-managed">
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.agent.form.id"))}</span>
+            <strong>${escapeHTML(managedID)}</strong>
+          </div>
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.agent.form.version"))}</span>
+            <strong>${escapeHTML(managedVersion)}</strong>
+          </div>
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.agent.form.scope"))}</span>
+            <strong>${escapeHTML(managedScope)}</strong>
+          </div>
+        </div>
+        <form class="agent-builder-form" data-agent-form>
+          <label><span>${t("route.agent.form.name")}</span><input type="text" name="name" value="${escapeHTML(localState.draft.name)}" placeholder="Researcher"></label>
+          <label><span>${t("route.agent.form.iterations")}</span><input type="number" min="0" name="max_iterations" value="${escapeHTML(localState.draft.max_iterations)}"></label>
+          <label class="agent-builder-toggle"><span>${t("route.agent.form.enabled")}</span><input type="checkbox" name="enabled" ${localState.draft.enabled ? "checked" : ""}></label>
+          <label class="agent-builder-wide"><span>${t("route.agent.form.prompt")}</span><textarea name="system_prompt" rows="6">${escapeHTML(localState.draft.system_prompt)}</textarea></label>
+          <label class="agent-builder-wide"><span>${t("route.agent.form.tools")}</span><input type="text" name="tools" value="${escapeHTML(localState.draft.tools.join(", "))}" placeholder="codex_exec"></label>
+          <div class="agent-builder-wide agent-builder-section">
+            <h5>${escapeHTML(t("route.agent.form.skills"))}</h5>
+            <div class="agent-builder-options">${renderAgentOptionList(localState.skills, localState.draft.skills, "skills")}</div>
+          </div>
+          <div class="agent-builder-wide agent-builder-section">
+            <h5>${escapeHTML(t("route.agent.form.mcps"))}</h5>
+            <div class="agent-builder-options">${renderAgentOptionList(localState.mcps, localState.draft.mcps, "mcps")}</div>
+          </div>
+          <div class="task-filter-actions">
+            <button class="task-filter-apply" type="submit">${escapeHTML(t("route.agent.form.save"))}</button>
+            <button class="task-filter-reset" type="button" data-agent-delete ${canDelete ? "" : "disabled"}>${escapeHTML(t("route.agent.form.delete"))}</button>
+          </div>
+        </form>
+      </section>
+    </section>`;
+  };
+
+  const reload = async (statusMessage = "", statusKind = "") => {
+    localState.loading = true;
+    localState.statusMessage = statusMessage;
+    localState.statusKind = statusKind;
+    paint();
+    const [agentPayload, skillPayload, mcpPayload] = await Promise.all([
+      fetchJSON("/api/control/agents"),
+      fetchJSON("/api/control/skills"),
+      fetchJSON("/api/control/mcps")
+    ]);
+    localState.agents = Array.isArray(agentPayload?.items) ? agentPayload.items : [];
+    localState.skills = Array.isArray(skillPayload?.items) ? skillPayload.items : [];
+    localState.mcps = Array.isArray(mcpPayload?.items) ? mcpPayload.items : [];
+    if (!findSelectedAgent()) {
+      localState.routeState.selectedAgentID = localState.agents[0]?.id || "";
+    }
+    syncDraftFromSelection();
+    localState.loading = false;
+    persistRouteState();
+    paint();
+    bind();
+  };
+
+  const saveAgent = async (form) => {
+    const formData = new FormData(form);
+    const selectedAgent = findSelectedAgent();
+    const payload = {
+      name: String(formData.get("name") || "").trim(),
+      enabled: formData.get("enabled") === "on",
+      system_prompt: String(formData.get("system_prompt") || "").trim(),
+      max_iterations: Number(formData.get("max_iterations") || 0),
+      tools: parseAgentListInput(formData.get("tools") || ""),
+      skills: formData.getAll("skills").map((item) => String(item || "").trim()).filter(Boolean),
+      mcps: formData.getAll("mcps").map((item) => String(item || "").trim()).filter(Boolean)
+    };
+    try {
+      const saved = await requestJSON(selectedAgent?.id ? `/api/control/agents/${encodeURIComponent(selectedAgent.id)}` : "/api/control/agents", {
+        method: selectedAgent?.id ? "PUT" : "POST",
+        body: JSON.stringify(payload)
+      });
+      localState.routeState.selectedAgentID = normalizeText(saved?.id);
+      await reload(t("route.agent.saved"), "success");
+      void refreshChatAgentCatalog();
+    } catch (error) {
+      localState.statusMessage = t("route.agent.save_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      localState.statusKind = "error";
+      paint();
+      bind();
+    }
+  };
+
+  const deleteAgent = async () => {
+    const selected = findSelectedAgent();
+    if (!selected || !selected.id) {
+      return;
+    }
+    try {
+      await requestJSON(`/api/control/agents/${encodeURIComponent(selected.id)}`, {
+        method: "DELETE"
+      });
+      localState.routeState.selectedAgentID = "";
+      await reload(t("route.agent.deleted"), "success");
+      void refreshChatAgentCatalog();
+    } catch (error) {
+      localState.statusMessage = t("route.agent.delete_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      localState.statusKind = "error";
+      paint();
+      bind();
+    }
+  };
+
+  const bind = () => {
+    container.querySelectorAll("[data-agent-select]").forEach((node) => {
+      node.addEventListener("click", () => {
+        const nextID = String(node.getAttribute("data-agent-select") || "").trim();
+        if (!nextID || nextID === localState.routeState.selectedAgentID) {
+          return;
+        }
+        localState.routeState.selectedAgentID = nextID;
+        syncDraftFromSelection();
+        persistRouteState();
+        paint();
+        bind();
+      });
+    });
+
+    const createButton = container.querySelector("[data-agent-create]");
+    if (createButton) {
+      createButton.addEventListener("click", () => {
+        localState.routeState.selectedAgentID = "";
+        localState.draft = normalizeAgentBuilderDraft();
+        persistRouteState();
+        paint();
+        bind();
+      });
+    }
+
+    const resetButton = container.querySelector("[data-agent-reset]");
+    if (resetButton) {
+      resetButton.addEventListener("click", () => {
+        syncDraftFromSelection();
+        localState.statusMessage = "";
+        localState.statusKind = "";
+        paint();
+        bind();
+      });
+    }
+
+    const chatNowButton = container.querySelector("[data-agent-chat-now]");
+    if (chatNowButton) {
+      chatNowButton.addEventListener("click", () => {
+        if (!localState.draft.id) {
+          return;
+        }
+        openChatWithTarget({
+          type: "agent",
+          id: localState.draft.id,
+          name: localState.draft.name || localState.draft.id
+        });
+        navigateToRoute("chat", { skipConfirm: true });
+      });
+    }
+
+    const deleteButton = container.querySelector("[data-agent-delete]");
+    if (deleteButton) {
+      deleteButton.addEventListener("click", async () => {
+        await deleteAgent();
+      });
+    }
+
+    const form = container.querySelector("[data-agent-form]");
+    if (form) {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveAgent(form);
+      });
+    }
+  };
+
+  await reload();
 }
 
 function normalizeSessionRouteFilters(filters = {}) {
@@ -8105,6 +9360,10 @@ async function renderRoute(route) {
   if (config.mode === "chat") {
     setMainContentMode("chat");
     syncRouteAction("");
+    renderChatRuntimePanel();
+    void refreshChatAgentCatalog();
+    void refreshChatProviderCatalog();
+    void refreshChatCapabilityCatalog();
     syncHeader();
     return;
   }
@@ -8262,6 +9521,22 @@ function bindEvents() {
     }
   });
 
+  if (chatRuntimePanel) {
+    chatRuntimePanel.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    if (!state.chatRuntime.openPopover || !chatRuntimePanel) {
+      return;
+    }
+    if (chatRuntimePanel.contains(event.target)) {
+      return;
+    }
+    closeChatRuntimePopover();
+  });
+
   chatPane.addEventListener("click", (event) => {
     const hasOverlay = appShell.classList.contains("panel-open") || appShell.classList.contains("nav-open");
     if (!hasOverlay) {
@@ -8349,8 +9624,13 @@ function init() {
   renderSessions();
   renderMessages();
   syncHeader();
+  syncWelcomeCopy();
+  renderChatRuntimePanel();
+  renderWelcomeTargetPicker();
   bindEvents();
   ensureChatTaskPolling();
+  void refreshChatAgentCatalog();
+  void refreshChatProviderCatalog();
   updateCharCount();
   updateKeyboardInset();
   syncComposerGuardState();

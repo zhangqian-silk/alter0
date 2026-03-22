@@ -130,6 +130,8 @@ func TestServiceListSessionsSupportsSourceFilters(t *testing.T) {
 				TriggerType: shareddomain.TriggerTypeUser,
 				ChannelType: shareddomain.ChannelTypeWeb,
 				ChannelID:   "web-default",
+				AgentID:     "researcher",
+				AgentName:   "Researcher",
 			},
 		),
 		newRecord(
@@ -144,6 +146,8 @@ func TestServiceListSessionsSupportsSourceFilters(t *testing.T) {
 				TriggerType: shareddomain.TriggerTypeUser,
 				ChannelType: shareddomain.ChannelTypeWeb,
 				ChannelID:   "web-default",
+				AgentID:     "researcher",
+				AgentName:   "Researcher",
 			},
 		),
 	); err != nil {
@@ -189,6 +193,18 @@ func TestServiceListSessionsSupportsSourceFilters(t *testing.T) {
 	})
 	if len(userByMessage.Items) != 1 || userByMessage.Items[0].SessionID != "s-user" {
 		t.Fatalf("expected message filtered session s-user, got %+v", userByMessage.Items)
+	}
+	if userByMessage.Items[0].AgentID != "researcher" || userByMessage.Items[0].AgentName != "Researcher" {
+		t.Fatalf("expected agent metadata on session summary, got %+v", userByMessage.Items[0])
+	}
+
+	agentOnly := service.ListSessions(SessionQuery{
+		AgentID:  "researcher",
+		Page:     1,
+		PageSize: 10,
+	})
+	if len(agentOnly.Items) != 1 || agentOnly.Items[0].SessionID != "s-user" {
+		t.Fatalf("expected agent filtered session s-user, got %+v", agentOnly.Items)
 	}
 
 	noMatch := service.ListSessions(SessionQuery{

@@ -232,3 +232,50 @@ func TestSessionPersistenceServicePersistsCronSourceMetadata(t *testing.T) {
 		t.Fatalf("expected fired_at to be set")
 	}
 }
+
+func TestSessionPersistenceServicePersistsAgentSourceMetadata(t *testing.T) {
+	downstream := &stubPersistenceDownstream{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-agent",
+			SessionID: "s-agent",
+			Route:     shareddomain.RouteNL,
+			Output:    "done",
+		},
+	}
+	recorder := &spySessionRecorder{}
+	service := &SessionPersistenceService{
+		downstream:  downstream,
+		recorder:    recorder,
+		idGenerator: &fixedIDGenerator{nextID: "assistant-agent"},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:   "msg-agent",
+		SessionID:   "s-agent",
+		Content:     "整理仓库",
+		ReceivedAt:  time.Date(2026, 3, 5, 11, 0, 0, 0, time.UTC),
+		TriggerType: shareddomain.TriggerTypeUser,
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TraceID:     "trace-agent",
+		Metadata: map[string]string{
+			"alter0.agent.id":   "researcher",
+			"alter0.agent.name": "Research Agent",
+		},
+	}
+
+	if _, err := service.Handle(context.Background(), msg); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+	if len(recorder.records) != 2 {
+		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
+	}
+	source := recorder.records[0].Source
+	if source.AgentID != "researcher" {
+		t.Fatalf("expected agent_id researcher, got %s", source.AgentID)
+	}
+	if source.AgentName != "Research Agent" {
+		t.Fatalf("expected agent_name Research Agent, got %s", source.AgentName)
+	}
+}
