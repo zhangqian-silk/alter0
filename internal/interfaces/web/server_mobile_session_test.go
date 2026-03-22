@@ -33,14 +33,14 @@ func TestNewChatReusesLatestBlankSessionAndSwitchesContext(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	markers := []string{
 		"function startNewChatSession()",
-		"function getLatestBlankSession()",
-		"function enforceSingleBlankSession()",
-		"const existingBlank = getLatestBlankSession();",
-		"focusSession(existingBlank.id);",
-		"createSession();",
-		`navigateToRoute("chat");`,
-		"newChatButton.addEventListener(\"click\", startNewChatSession);",
-		"mobileNewChatButton.addEventListener(\"click\", startNewChatSession);",
+		"function getLatestBlankSession(mode = routeConversationMode())",
+		"function enforceSingleBlankSession(mode = routeConversationMode())",
+		"const existingBlank = getLatestBlankSession(\"chat\");",
+		"setActiveConversationSessionID(existingBlank.id, \"chat\");",
+		"createSession(defaultChatTarget(), \"chat\");",
+		`navigateToRoute("chat", { skipConfirm: true });`,
+		"newChatButton.addEventListener(\"click\", () => {",
+		"mobileNewChatButton.addEventListener(\"click\", () => {",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -57,10 +57,10 @@ func TestSessionListShowsEmptyAndLoadFailureFeedback(t *testing.T) {
 
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
-		"function loadSessionsFromStorage()",
-		`state.sessionLoadError = "session_save_failed";`,
-		"state.sessionLoadError = message;",
-		`sessionEmpty.textContent = t("session.empty");`,
+		"function loadSessionsFromStorage(mode = routeConversationMode())",
+		`setConversationSessionLoadError("session_save_failed", mode);`,
+		"setConversationSessionLoadError(message, mode);",
+		`sessionEmpty.textContent = isAgentConversationRoute() ? t("session.empty_agent") : t("session.empty");`,
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {

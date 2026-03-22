@@ -828,6 +828,16 @@ body {
   background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
 }
 
+.welcome-target-card.is-static {
+  cursor: default;
+}
+
+.welcome-target-card.is-static:hover {
+  transform: none;
+  border-color: #2563eb;
+  box-shadow: none;
+}
+
 .welcome-target-error {
   margin: 0;
   color: var(--danger);
@@ -1095,6 +1105,19 @@ body {
 
 .composer-runtime-control {
   position: relative;
+}
+
+.composer-runtime-chip {
+  border: 1px solid rgba(59, 130, 246, 0.16);
+  border-radius: 999px;
+  min-height: 32px;
+  padding: 0 12px;
+  background: rgba(239, 246, 255, 0.88);
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
 }
 
 .composer-runtime-trigger {
