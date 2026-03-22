@@ -482,8 +482,8 @@ func TestTaskCollectionAppliesTerminalExecutionDefaults(t *testing.T) {
 	if got := taskSvc.lastSubmitMsg.Metadata[codexSandboxMetadataKey]; got != codexSandboxDangerFullAccess {
 		t.Fatalf("expected codex sandbox %q, got %q", codexSandboxDangerFullAccess, got)
 	}
-	if got := taskSvc.lastSubmitMsg.Metadata[codexWorkspaceModeMetadataKey]; got != codexWorkspaceModeRepoRoot {
-		t.Fatalf("expected codex workspace mode %q, got %q", codexWorkspaceModeRepoRoot, got)
+	if got := strings.TrimSpace(taskSvc.lastSubmitMsg.Metadata["codex_workspace_mode"]); got != "" {
+		t.Fatalf("expected codex workspace mode unset, got %q", got)
 	}
 }
 

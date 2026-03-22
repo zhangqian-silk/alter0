@@ -48,8 +48,6 @@ const (
 	controlTaskTerminalSessionIDKey   = "alter0.task.terminal_session_id"
 	controlTaskTerminalInteractiveKey = "alter0.task.terminal_interactive"
 	codexSandboxMetadataKey           = "codex_sandbox"
-	codexWorkspaceModeMetadataKey     = "codex_workspace_mode"
-	codexWorkspaceModeRepoRoot        = "repo-root"
 	codexSandboxDangerFullAccess      = "danger-full-access"
 	defaultControlTaskChannelID       = "web-default"
 	maxTaskArtifactCount              = 128
@@ -1335,9 +1333,6 @@ func (s *Server) applyTerminalExecutionDefaults(metadata map[string]string) {
 	}
 	if strings.TrimSpace(metadata[codexSandboxMetadataKey]) == "" {
 		metadata[codexSandboxMetadataKey] = codexSandboxDangerFullAccess
-	}
-	if strings.TrimSpace(metadata[codexWorkspaceModeMetadataKey]) == "" {
-		metadata[codexWorkspaceModeMetadataKey] = codexWorkspaceModeRepoRoot
 	}
 }
 

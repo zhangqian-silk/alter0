@@ -11,7 +11,7 @@ import {
 import { waitForTerminalPollAndRepaint } from "../flows/terminal-runtime";
 import { createTerminalPage } from "../pages/terminal";
 import { type APIRequestContext, type Page } from "@playwright/test";
-import { interruptedTerminalPrompt, terminalRepoRoot } from "../support/terminal-env";
+import { interruptedTerminalPrompt, terminalSessionWorkspace } from "../support/terminal-env";
 
 export async function openTerminalWorkspace(
   page: Page,
@@ -91,7 +91,7 @@ export async function openInterruptedTerminalWorkspace(
     terminal_session_id: "terminal-stale-session",
     status: "running",
     shell: "codex exec",
-    working_dir: terminalRepoRoot,
+    working_dir: terminalSessionWorkspace("terminal-stale-session"),
     created_at: now - 1000,
     updated_at: now,
     entry_cursor: 1,

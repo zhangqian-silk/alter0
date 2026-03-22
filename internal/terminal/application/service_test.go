@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,46 @@ func TestNormalizeOptionsParsesShellArgsLine(t *testing.T) {
 	expected := []string{"./fixtures/codex mock.sh", "--profile", "test"}
 	if strings.Join(options.ShellArgs, "|") != strings.Join(expected, "|") {
 		t.Fatalf("expected parsed shell args %v, got %v", expected, options.ShellArgs)
+	}
+}
+
+func TestCreateAssignsSessionWorkspaceDir(t *testing.T) {
+	baseDir := t.TempDir()
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
+
+	session, err := service.Create(CreateRequest{OwnerID: "owner-workspace"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "sessions", session.ID)
+	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
+		t.Fatalf("expected workspace %q, got %q", expected, session.WorkingDir)
+	}
+	info, statErr := os.Stat(session.WorkingDir)
+	if statErr != nil {
+		t.Fatalf("stat workspace dir: %v", statErr)
+	}
+	if !info.IsDir() {
+		t.Fatalf("expected workspace directory, got file")
+	}
+}
+
+func TestRecoverAssignsDeterministicWorkspaceDir(t *testing.T) {
+	baseDir := t.TempDir()
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
+
+	session, err := service.Recover(RecoverRequest{
+		OwnerID:   "owner-recover",
+		SessionID: "terminal-recover",
+	})
+	if err != nil {
+		t.Fatalf("recover session: %v", err)
+	}
+
+	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "sessions", "terminal-recover")
+	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
+		t.Fatalf("expected recovered workspace %q, got %q", expected, session.WorkingDir)
 	}
 }
 
@@ -205,9 +246,11 @@ func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *
 }
 
 func newTestService(mode string) *Service {
-	service := NewService(context.Background(), nil, nil, Options{
-		WorkingDir: "D:/GitHubRepositories/alter0",
-	})
+	baseDir, err := os.MkdirTemp("", "alter0-terminal-service-test-*")
+	if err != nil {
+		panic(err)
+	}
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
 	service.runner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		cmdArgs := append([]string{"-test.run=TestTerminalServiceHelperProcess", "--", name}, args...)
 		cmd := exec.CommandContext(ctx, os.Args[0], cmdArgs...)

@@ -17,9 +17,7 @@ import {
   openTerminalWorkspace,
   openTerminalWorkspaceWithSessions,
 } from "./helpers/scenarios/terminal";
-import { terminalCommandPreview, terminalRepoRoot } from "./helpers/support/terminal-env";
-
-const seededTerminalWorkingDir = terminalRepoRoot;
+import { terminalCommandPreview, terminalSessionWorkspace } from "./helpers/support/terminal-env";
 
 test.describe("Terminal route", () => {
   test.beforeEach(async ({ request }) => {
@@ -122,7 +120,7 @@ test.describe("Terminal route", () => {
   });
 
   test("renders process and final output with lazy-loaded step details", async ({ page, request }) => {
-    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "structure" });
+    const { session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "structure" });
     const composer = terminalPage.composer();
     let stepDetailRequests = 0;
     page.on("request", (requestEvent) => {
@@ -158,7 +156,7 @@ test.describe("Terminal route", () => {
 
     await expect.poll(() => stepDetailRequests).toBe(1);
     await expect(terminalPage.workspace()).toContainText("WorkingDirectory");
-    await expect(terminalPage.workspace()).toContainText(seededTerminalWorkingDir);
+    await expect(terminalPage.workspace()).toContainText(terminalSessionWorkspace(session.id));
   });
 
   test("keeps terminal scroll position when user leaves bottom", async ({ page, request }) => {
@@ -280,7 +278,7 @@ test.describe("Terminal route", () => {
       terminal_session_id: "terminal-ordering-older",
       status: "interrupted",
       shell: "codex exec",
-      working_dir: seededTerminalWorkingDir,
+      working_dir: terminalSessionWorkspace("terminal-ordering-older"),
       created_at: now - 5_000,
       last_output_at: now - 1_000,
       updated_at: now - 500,
@@ -304,7 +302,7 @@ test.describe("Terminal route", () => {
       terminal_session_id: "terminal-ordering-newer",
       status: "interrupted",
       shell: "codex exec",
-      working_dir: seededTerminalWorkingDir,
+      working_dir: terminalSessionWorkspace("terminal-ordering-newer"),
       created_at: now - 4_000,
       last_output_at: now - 2_000,
       updated_at: now - 4_000,
@@ -356,7 +354,7 @@ test.describe("Terminal route", () => {
       terminal_session_id: `terminal-scroll-${index}`,
       status: "interrupted",
       shell: "codex exec",
-      working_dir: seededTerminalWorkingDir,
+      working_dir: terminalSessionWorkspace(`terminal-scroll-${index}`),
       created_at: now - (index + 1) * 1_000,
       last_output_at: now - (index + 1) * 1_000,
       updated_at: now - index * 500,
@@ -417,7 +415,7 @@ test.describe("Terminal route", () => {
       terminal_session_id: "mock-thread-terminal-recover-live",
       status: "running",
       shell: "codex exec",
-      working_dir: seededTerminalWorkingDir,
+      working_dir: terminalSessionWorkspace("terminal-recover-live"),
       created_at: now - 2_000,
       last_output_at: now - 1_000,
       updated_at: now - 500,
