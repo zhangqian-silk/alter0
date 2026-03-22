@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -23,6 +24,10 @@ const (
 	defaultCodexCommand             = "codex"
 	defaultCodexSandbox             = "danger-full-access"
 	defaultLinuxSandboxBwrapFeature = "use_linux_sandbox_bwrap"
+	defaultWorkspaceRootDirName     = ".alter0"
+	workspaceDirectoryName          = "workspaces"
+	workspaceTerminalDirName        = "terminal"
+	workspaceSessionsDirName        = "sessions"
 	maxEntryPageLimit               = 200
 )
 
@@ -184,6 +189,10 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 
 	command := resolveCodexCommand(s.options)
 	sessionID := "terminal-" + s.newID()
+	workspaceDir, err := resolveSessionWorkspaceDir(s.options.WorkingDir, sessionID)
+	if err != nil {
+		return terminaldomain.Session{}, err
+	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = sessionID
@@ -196,7 +205,7 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 			OwnerID:           ownerID,
 			Title:             title,
 			Shell:             command.label,
-			WorkingDir:        s.options.WorkingDir,
+			WorkingDir:        workspaceDir,
 			Status:            terminaldomain.SessionStatusRunning,
 			CreatedAt:         now,
 			UpdatedAt:         now,
@@ -234,6 +243,10 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 	}
 
 	command := resolveCodexCommand(s.options)
+	workspaceDir, err := resolveSessionWorkspaceDir(s.options.WorkingDir, sessionID)
+	if err != nil {
+		return terminaldomain.Session{}, err
+	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = sessionID
@@ -255,7 +268,7 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 			OwnerID:           ownerID,
 			Title:             title,
 			Shell:             command.label,
-			WorkingDir:        s.options.WorkingDir,
+			WorkingDir:        workspaceDir,
 			Status:            terminaldomain.SessionStatusRunning,
 			CreatedAt:         createdAt,
 			LastOutputAt:      lastOutputAt,
@@ -502,8 +515,8 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 		runner = exec.CommandContext
 	}
 	cmd := runner(ctx, command.path, args...)
-	if s.options.WorkingDir != "" {
-		cmd.Dir = s.options.WorkingDir
+	if workspaceDir := item.workspaceDir(); workspaceDir != "" {
+		cmd.Dir = workspaceDir
 	}
 
 	stdout, err := cmd.StdoutPipe()
@@ -1226,10 +1239,76 @@ func resolveRecoveredThreadID(sessionID string, terminalSessionID string) string
 	return threadID
 }
 
+func resolveSessionWorkspaceDir(baseDir string, sessionID string) (string, error) {
+	root := strings.TrimSpace(baseDir)
+	if root == "" {
+		root = "."
+	}
+	sanitizedSessionID := sanitizeWorkspaceSegment(sessionID)
+	if sanitizedSessionID == "" {
+		return "", ErrSessionRecoverIDRequired
+	}
+	workspaceDir := filepath.Join(
+		root,
+		defaultWorkspaceRootDirName,
+		workspaceDirectoryName,
+		workspaceTerminalDirName,
+		workspaceSessionsDirName,
+		sanitizedSessionID,
+	)
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		return "", fmt.Errorf("prepare terminal workspace: %w", err)
+	}
+	absolute, err := filepath.Abs(workspaceDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve terminal workspace path: %w", err)
+	}
+	return absolute, nil
+}
+
+func sanitizeWorkspaceSegment(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	var builder strings.Builder
+	builder.Grow(len(trimmed))
+	hyphenPending := false
+	for _, ch := range trimmed {
+		if (ch >= 'a' && ch <= 'z') ||
+			(ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') ||
+			ch == '-' || ch == '_' || ch == '.' {
+			builder.WriteRune(ch)
+			hyphenPending = false
+			continue
+		}
+		if hyphenPending {
+			continue
+		}
+		builder.WriteByte('-')
+		hyphenPending = true
+	}
+	sanitized := strings.Trim(builder.String(), "-._")
+	if sanitized == "" {
+		return ""
+	}
+	if len(sanitized) > 96 {
+		sanitized = sanitized[:96]
+	}
+	return strings.ToLower(sanitized)
+}
+
 func (s *runtimeSession) thread() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.threadID
+}
+
+func (s *runtimeSession) workspaceDir() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return strings.TrimSpace(s.summary.WorkingDir)
 }
 
 func (s *runtimeSession) appendEntry(stream string, text string) {

@@ -103,6 +103,25 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 面向交互式终端会话。
 - 仍属于自然语言处理，但使用独立上下文边界。
 - 默认仅注入运行时必需上下文，不复用 Chat 会话记忆与长期记忆。
+- 每个 Terminal 会话使用独立工作区目录，不再默认落在仓库根目录。
+
+## Workspace Model
+
+默认运行策略保持 `danger-full-access`，但不同入口会落到各自独立的工作区目录作为默认执行目录：
+
+1. `Chat / Agent`
+- 会话级工作区：`.alter0/workspaces/sessions/<session_id>`
+
+2. `Async Task`
+- 任务级工作区：`.alter0/workspaces/sessions/<session_id>/tasks/<task_id>`
+
+3. `Terminal`
+- 终端会话级工作区：`.alter0/workspaces/terminal/sessions/<terminal_session_id>`
+
+说明：
+
+1. 独立工作区用于隔离默认执行目录与运行时产物，不等同于文件系统权限收缩。
+2. 当前默认仍为 `danger-full-access`，因此是否可访问其他绝对路径，仍取决于宿主机环境与运行账户权限。
 
 其中 `Chat` 再细分为两种执行方式：
 
