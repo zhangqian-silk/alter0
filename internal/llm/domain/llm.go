@@ -15,8 +15,8 @@ type Message struct {
 
 // ToolCall represents a tool call from the model.
 type ToolCall struct {
-	ID       string
-	Name     string
+	ID        string
+	Name      string
 	Arguments string // JSON string
 }
 
@@ -29,10 +29,12 @@ type Tool struct {
 
 // ToolResult represents the result of a tool execution.
 type ToolResult struct {
-	ToolCallID string
-	Name       string
-	Result     string
-	IsError    bool
+	ToolCallID  string
+	Name        string
+	Result      string
+	IsError     bool
+	IsFinal     bool
+	FinalAnswer string
 }
 
 // ChatRequest represents a chat completion request.

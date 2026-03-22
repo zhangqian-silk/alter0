@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/chat.css?v=1773322680">
+  <link rel="stylesheet" href="/assets/chat.css?v=1773595200">
 </head>
 <body>
   <div class="app-shell" id="appShell">
@@ -23,7 +23,7 @@
 
       <nav class="menu">
         <section class="menu-group">
-          <h2 data-i18n="nav.chat">Chat</h2>
+          <h2 data-i18n="nav.workspace">Workspace</h2>
           <button class="menu-item active" type="button" data-route="chat" data-abbr="C">
             <span class="menu-icon" aria-hidden="true">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
@@ -35,6 +35,33 @@
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
             </span>
             <span class="menu-label" data-i18n="nav.terminal">Terminal</span>
+          </button>
+        </section>
+        <section class="menu-group">
+          <h2 data-i18n="nav.agent_studio">Agent Studio</h2>
+          <button class="menu-item" type="button" data-route="agent" data-abbr="AG">
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3"></path><path d="M18.364 5.636 16.95 7.05"></path><path d="M21 12h-3"></path><path d="m18.364 18.364-1.414-1.414"></path><path d="M12 21v-3"></path><path d="m7.05 16.95-1.414 1.414"></path><path d="M6 12H3"></path><path d="M7.05 7.05 5.636 5.636"></path><circle cx="12" cy="12" r="4"></circle></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.agent">Agents</span>
+          </button>
+          <button class="menu-item" type="button" data-route="memory" data-abbr="ME">
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7H3"></path><path d="M21 12H3"></path><path d="M21 17H3"></path><path d="M8 7v10"></path></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.memory">Memory</span>
+          </button>
+          <button class="menu-item" type="button" data-route="skills" data-abbr="SK">
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.skills">Skills</span>
+          </button>
+          <button class="menu-item" type="button" data-route="mcp" data-abbr="MC">
+            <span class="menu-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            </span>
+            <span class="menu-label" data-i18n="nav.mcp">MCP</span>
           </button>
         </section>
         <section class="menu-group">
@@ -56,27 +83,6 @@
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             </span>
             <span class="menu-label" data-i18n="nav.cron-jobs">Cron Jobs</span>
-          </button>
-        </section>
-        <section class="menu-group">
-          <h2 data-i18n="nav.agent">Agent</h2>
-          <button class="menu-item" type="button" data-route="memory" data-abbr="ME">
-            <span class="menu-icon" aria-hidden="true">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7H3"></path><path d="M21 12H3"></path><path d="M21 17H3"></path><path d="M8 7v10"></path></svg>
-            </span>
-            <span class="menu-label" data-i18n="nav.memory">Memory</span>
-          </button>
-          <button class="menu-item" type="button" data-route="skills" data-abbr="SK">
-            <span class="menu-icon" aria-hidden="true">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-            </span>
-            <span class="menu-label" data-i18n="nav.skills">Skills</span>
-          </button>
-          <button class="menu-item" type="button" data-route="mcp" data-abbr="MC">
-            <span class="menu-icon" aria-hidden="true">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-            </span>
-            <span class="menu-label" data-i18n="nav.mcp">MCP</span>
           </button>
         </section>
         <section class="menu-group menu-group-bottom">
@@ -162,8 +168,11 @@
             <label class="sr-only" for="composerInput">Input your message</label>
             <textarea id="composerInput" maxlength="10000" placeholder="Input your message here..." rows="2" data-i18n="composer.placeholder" data-composer-input="chat-main"></textarea>
             <div class="composer-actions">
-              <span id="charCount" data-composer-counter="chat-main">0/10000</span>
-              <button id="sendButton" type="submit" aria-label="Send message" data-i18n="composer.send" data-composer-submit="chat-main">Send</button>
+              <div class="composer-runtime-bar" id="chatRuntimePanel"></div>
+              <div class="composer-submit-bar">
+                <span id="charCount" data-composer-counter="chat-main">0/10000</span>
+                <button id="sendButton" type="submit" aria-label="Send message" data-i18n="composer.send" data-composer-submit="chat-main">Send</button>
+              </div>
             </div>
           </form>
           <p class="composer-note" data-i18n="composer.note">Works for you, grows with you</p>
@@ -184,6 +193,6 @@
 
     <button class="mobile-backdrop" id="mobileBackdrop" type="button" aria-label="Close panels"></button>
   </div>
-  <script src="/assets/chat.js?v=1773322680" defer></script>
+  <script src="/assets/chat.js?v=1773502800" defer></script>
 </body>
 </html>

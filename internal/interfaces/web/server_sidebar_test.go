@@ -182,21 +182,19 @@ func TestSidebarCollapseEntryPresent(t *testing.T) {
 func TestSidebarChannelsRouteMovesToSettingsGroup(t *testing.T) {
 	html := readEmbeddedAsset(t, "static/chat.html")
 	controlMarker := `data-i18n="nav.control"`
-	agentMarker := `data-i18n="nav.agent"`
 	settingsMarker := `data-i18n="nav.settings"`
 	channelsMarker := `data-route="channels"`
 	modelsMarker := `data-route="models"`
 
 	controlIndex := strings.Index(html, controlMarker)
-	agentIndex := strings.Index(html, agentMarker)
 	settingsIndex := strings.Index(html, settingsMarker)
 	channelsIndex := strings.Index(html, channelsMarker)
 	modelsIndex := strings.Index(html, modelsMarker)
-	if controlIndex == -1 || agentIndex == -1 || settingsIndex == -1 || channelsIndex == -1 || modelsIndex == -1 {
-		t.Fatalf("expected menu markers for control/agent/settings/channels/models")
+	if controlIndex == -1 || settingsIndex == -1 || channelsIndex == -1 || modelsIndex == -1 {
+		t.Fatalf("expected menu markers for control/settings/channels/models")
 	}
-	if !(controlIndex < agentIndex && agentIndex < settingsIndex) {
-		t.Fatalf("expected menu groups order control -> agent -> settings")
+	if controlIndex >= settingsIndex {
+		t.Fatalf("expected control group before settings")
 	}
 	if channelsIndex < settingsIndex {
 		t.Fatalf("expected channels route under settings group")
@@ -205,7 +203,7 @@ func TestSidebarChannelsRouteMovesToSettingsGroup(t *testing.T) {
 		t.Fatalf("expected channels route before models in settings group")
 	}
 
-	controlSection := html[controlIndex:agentIndex]
+	controlSection := html[controlIndex:settingsIndex]
 	if strings.Contains(controlSection, channelsMarker) {
 		t.Fatalf("unexpected channels route in control group")
 	}
@@ -217,35 +215,35 @@ func TestSidebarChannelsRouteMovesToSettingsGroup(t *testing.T) {
 
 func TestSidebarTerminalRouteMovesToChatGroup(t *testing.T) {
 	html := readEmbeddedAsset(t, "static/chat.html")
-	chatMarker := `data-i18n="nav.chat"`
+	workspaceMarker := `data-i18n="nav.workspace"`
+	agentStudioMarker := `data-i18n="nav.agent_studio"`
 	controlMarker := `data-i18n="nav.control"`
-	agentMarker := `data-i18n="nav.agent"`
 	terminalMarker := `data-route="terminal"`
 	chatRouteMarker := `data-route="chat"`
 
-	chatIndex := strings.Index(html, chatMarker)
+	workspaceIndex := strings.Index(html, workspaceMarker)
+	agentStudioIndex := strings.Index(html, agentStudioMarker)
 	controlIndex := strings.Index(html, controlMarker)
-	agentIndex := strings.Index(html, agentMarker)
 	terminalIndex := strings.Index(html, terminalMarker)
 	chatRouteIndex := strings.Index(html, chatRouteMarker)
-	if chatIndex == -1 || controlIndex == -1 || agentIndex == -1 || terminalIndex == -1 || chatRouteIndex == -1 {
-		t.Fatalf("expected menu markers for chat/control/agent/terminal")
+	if workspaceIndex == -1 || agentStudioIndex == -1 || controlIndex == -1 || terminalIndex == -1 || chatRouteIndex == -1 {
+		t.Fatalf("expected menu markers for workspace/agent-studio/control/terminal")
 	}
-	if chatIndex >= controlIndex {
-		t.Fatalf("expected chat group before control group")
+	if !(workspaceIndex < agentStudioIndex && agentStudioIndex < controlIndex) {
+		t.Fatalf("expected menu groups order workspace -> agent-studio -> control")
 	}
-	if terminalIndex < chatIndex || terminalIndex > controlIndex {
-		t.Fatalf("expected terminal route under chat group")
+	if terminalIndex < workspaceIndex || terminalIndex > agentStudioIndex {
+		t.Fatalf("expected terminal route under workspace group")
 	}
 	if terminalIndex < chatRouteIndex {
-		t.Fatalf("expected terminal route after chat route in chat group")
+		t.Fatalf("expected terminal route after chat route in workspace group")
 	}
 
-	chatSection := html[chatIndex:controlIndex]
-	if !strings.Contains(chatSection, terminalMarker) {
-		t.Fatalf("expected terminal route in chat group")
+	workspaceSection := html[workspaceIndex:agentStudioIndex]
+	if !strings.Contains(workspaceSection, terminalMarker) {
+		t.Fatalf("expected terminal route in workspace group")
 	}
-	controlSection := html[controlIndex:agentIndex]
+	controlSection := html[controlIndex:]
 	if strings.Contains(controlSection, terminalMarker) {
 		t.Fatalf("unexpected terminal route in control group")
 	}
@@ -254,8 +252,9 @@ func TestSidebarTerminalRouteMovesToChatGroup(t *testing.T) {
 func TestSidebarGroupTitlesHaveDedicatedI18NKeys(t *testing.T) {
 	html := readEmbeddedAsset(t, "static/chat.html")
 	htmlMarkers := []string{
+		`data-i18n="nav.workspace"`,
+		`data-i18n="nav.agent_studio"`,
 		`data-i18n="nav.control"`,
-		`data-i18n="nav.agent"`,
 		`data-i18n="nav.settings"`,
 	}
 	for _, marker := range htmlMarkers {
@@ -266,11 +265,15 @@ func TestSidebarGroupTitlesHaveDedicatedI18NKeys(t *testing.T) {
 
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
+		`"nav.workspace": "Workspace"`,
+		`"nav.agent_studio": "Agent Studio"`,
 		`"nav.control": "Control"`,
-		`"nav.agent": "Agent"`,
+		`"nav.agent": "Agents"`,
 		`"nav.settings": "Settings"`,
+		`"nav.workspace": "工作区"`,
+		`"nav.agent_studio": "Agent Studio"`,
 		`"nav.control": "控制台"`,
-		`"nav.agent": "智能体"`,
+		`"nav.agent": "Agents"`,
 		`"nav.settings": "设置"`,
 	}
 	for _, marker := range scriptMarkers {
@@ -371,6 +374,7 @@ func TestSessionHistoryCollapseStatePersistsInBrowserSession(t *testing.T) {
 func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
 	html := readEmbeddedAsset(t, "static/chat.html")
 	expected := []string{
+		`data-route="agent"`,
 		`data-route="memory"`,
 		`data-i18n="nav.memory"`,
 	}
@@ -380,9 +384,7 @@ func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
 		}
 	}
 	forbidden := []string{
-		`data-route="workspace"`,
 		`data-route="configuration"`,
-		`data-i18n="nav.workspace"`,
 		`data-i18n="nav.configuration"`,
 	}
 	for _, marker := range forbidden {
@@ -393,6 +395,12 @@ func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
 
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
+		`agent: {`,
+		"loader: loadAgentView",
+		`"route.agent.title"`,
+		`"/api/control/agents"`,
+		`data-agent-chat-now`,
+		`openChatWithTarget({`,
 		`memory: {`,
 		"loader: loadMemoryView",
 		`"/api/agent/memory"`,
@@ -419,6 +427,10 @@ func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
 func TestSidebarAgentMemoryTabStylesPresent(t *testing.T) {
 	styles := readEmbeddedAsset(t, "static/assets/chat.css")
 	markers := []string{
+		".agent-studio-view {",
+		".agent-route-card {",
+		".agent-builder-form {",
+		".agent-builder-option {",
 		".memory-view {",
 		".memory-tabs {",
 		".memory-tab.active {",

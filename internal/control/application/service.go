@@ -340,6 +340,70 @@ func (s *Service) UpsertMCP(capability controldomain.Capability) error {
 	return s.UpsertCapability(capability)
 }
 
+func (s *Service) UpsertAgent(agent controldomain.Agent) error {
+	capability := agent.AsCapability()
+	capability.Type = controldomain.CapabilityTypeAgent
+	return s.UpsertCapability(capability)
+}
+
+func (s *Service) CreateAgent(agent controldomain.Agent) (controldomain.Agent, error) {
+	name := strings.TrimSpace(agent.Name)
+	if name == "" {
+		return controldomain.Agent{}, errors.New("capability name is required")
+	}
+	agent.ID = s.nextAgentID(name)
+	agent.Type = controldomain.CapabilityTypeAgent
+	agent.Scope = defaultAgentScope(agent.Scope)
+	agent.Version = controldomain.DefaultCapabilityVersion
+	if err := s.UpsertAgent(agent); err != nil {
+		return controldomain.Agent{}, err
+	}
+	created, _ := s.ResolveAgent(agent.ID)
+	return created, nil
+}
+
+func (s *Service) SaveAgent(id string, agent controldomain.Agent) (controldomain.Agent, error) {
+	resolvedID := normalize(id)
+	if resolvedID == "" {
+		return controldomain.Agent{}, errors.New("capability id is required")
+	}
+	previous, existed := s.ResolveAgent(resolvedID)
+	agent.ID = resolvedID
+	agent.Type = controldomain.CapabilityTypeAgent
+	agent.Scope = defaultAgentScope(agent.Scope)
+	if existed {
+		agent.Version = nextCapabilityVersion(previous.Version)
+	} else {
+		agent.Version = controldomain.DefaultCapabilityVersion
+	}
+	if err := s.UpsertAgent(agent); err != nil {
+		return controldomain.Agent{}, err
+	}
+	saved, _ := s.ResolveAgent(resolvedID)
+	return saved, nil
+}
+
+func (s *Service) ResolveAgent(id string) (controldomain.Agent, bool) {
+	capability, ok := s.ResolveCapability(controldomain.CapabilityTypeAgent, id)
+	if !ok {
+		return controldomain.Agent{}, false
+	}
+	return controldomain.AgentFromCapability(capability), true
+}
+
+func (s *Service) DeleteAgent(id string) bool {
+	return s.DeleteCapability(controldomain.CapabilityTypeAgent, id)
+}
+
+func (s *Service) ListAgents() []controldomain.Agent {
+	capabilities := s.ListCapabilitiesByType(controldomain.CapabilityTypeAgent)
+	items := make([]controldomain.Agent, 0, len(capabilities))
+	for _, capability := range capabilities {
+		items = append(items, controldomain.AgentFromCapability(capability))
+	}
+	return items
+}
+
 func (s *Service) ResolveMCP(id string) (controldomain.Capability, bool) {
 	return s.ResolveCapability(controldomain.CapabilityTypeMCP, id)
 }
@@ -578,6 +642,60 @@ func (s *Service) normalizeEnvironmentValue(key string, raw string) (string, boo
 
 func normalize(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func defaultAgentScope(scope controldomain.CapabilityScope) controldomain.CapabilityScope {
+	if strings.TrimSpace(string(scope)) == "" {
+		return controldomain.CapabilityScopeGlobal
+	}
+	return scope
+}
+
+func nextCapabilityVersion(raw string) string {
+	normalized := strings.TrimSpace(raw)
+	var major int
+	var minor int
+	var patch int
+	if _, err := fmt.Sscanf(normalized, "v%d.%d.%d", &major, &minor, &patch); err != nil {
+		return controldomain.DefaultCapabilityVersion
+	}
+	return fmt.Sprintf("v%d.%d.%d", major, minor, patch+1)
+}
+
+func agentIDBase(name string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(name))
+	if trimmed == "" {
+		return "agent"
+	}
+	var builder strings.Builder
+	lastHyphen := false
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+			lastHyphen = false
+			continue
+		}
+		if !lastHyphen {
+			builder.WriteByte('-')
+			lastHyphen = true
+		}
+	}
+	base := strings.Trim(builder.String(), "-")
+	if base == "" {
+		return "agent"
+	}
+	return base
+}
+
+func (s *Service) nextAgentID(name string) string {
+	base := agentIDBase(name)
+	candidate := base
+	for index := 2; ; index++ {
+		if _, exists := s.ResolveAgent(candidate); !exists {
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s-%d", base, index)
+	}
 }
 
 func capabilityKey(capabilityType controldomain.CapabilityType, id string) string {

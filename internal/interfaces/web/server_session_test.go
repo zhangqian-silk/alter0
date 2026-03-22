@@ -55,7 +55,7 @@ func TestSessionListHandlerReturnsPagedData(t *testing.T) {
 
 	req := httptest.NewRequest(
 		http.MethodGet,
-		"/api/sessions?page=2&page_size=10&trigger_type=cron&channel_type=scheduler&channel_id=scheduler-default&message_id=msg-1&job_id=job-daily",
+		"/api/sessions?page=2&page_size=10&trigger_type=cron&channel_type=scheduler&channel_id=scheduler-default&message_id=msg-1&agent_id=researcher&job_id=job-daily",
 		nil,
 	)
 	rec := httptest.NewRecorder()
@@ -78,6 +78,9 @@ func TestSessionListHandlerReturnsPagedData(t *testing.T) {
 	}
 	if history.lastSessionQuery.MessageID != "msg-1" {
 		t.Fatalf("expected message_id msg-1, got %s", history.lastSessionQuery.MessageID)
+	}
+	if history.lastSessionQuery.AgentID != "researcher" {
+		t.Fatalf("expected agent_id researcher, got %s", history.lastSessionQuery.AgentID)
 	}
 	if history.lastSessionQuery.JobID != "job-daily" {
 		t.Fatalf("expected job_id job-daily, got %s", history.lastSessionQuery.JobID)

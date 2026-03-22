@@ -20,3 +20,17 @@ Conventional Commits: `<type>(<scope>): <description>`
 
 类型: `feat` `fix` `docs` `refactor` `style` `test` `chore`
 
+## 文档同步约束
+
+- 涉及用户可见行为、交互方式、入口路由、执行模式、返回结构、默认策略等“对用户影响较大”的需求变更时，必须在同一轮修改中同步更新 `README.md`
+- `README.md` 作为用户与维护者的一级说明文档，应持续反映当前稳定行为，不能在代码已变更后继续保留过期描述
+- 若变更同时影响更细分设计或实现细节，可继续补充 `docs/`，但 `README.md` 的用户可见口径更新不能为空缺
+
+
+## 权限规范
+
+- 涉及提权执行时，应优先提交覆盖面适中、语义清晰、可复用的 `prefix_rule`
+- `prefix_rule` 应尽量保持“短而稳”，优先使用稳定命令前缀，而不是把整条命令原样提交为长期批准规则
+- 适合长期批准的前缀，应限定在低风险、常复用、边界清晰的命令范围内，例如 `git status`、`git diff`、`gh pr view`、`npm run build`
+- 不应为高风险或破坏性操作申请宽泛前缀，例如 `git push`、`git reset`、`npm publish`、删除类命令
+- 若某条命令包含临时参数、具体路径、一次性上下文或 heredoc，通常不应直接作为 `prefix_rule` 持久批准

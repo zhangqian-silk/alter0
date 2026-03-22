@@ -22,6 +22,7 @@ import (
 
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
+	execdomain "alter0/internal/execution/domain"
 	llmdomain "alter0/internal/llm/domain"
 	orchdomain "alter0/internal/orchestration/domain"
 	schedulerapp "alter0/internal/scheduler/application"
@@ -147,6 +148,16 @@ type RuntimeRestartOptions struct {
 }
 
 type messageRequest struct {
+	SessionID     string            `json:"session_id"`
+	UserID        string            `json:"user_id,omitempty"`
+	ChannelID     string            `json:"channel_id,omitempty"`
+	CorrelationID string            `json:"correlation_id,omitempty"`
+	Content       string            `json:"content"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+type agentMessageRequest struct {
+	AgentID       string            `json:"agent_id"`
 	SessionID     string            `json:"session_id"`
 	UserID        string            `json:"user_id,omitempty"`
 	ChannelID     string            `json:"channel_id,omitempty"`
@@ -285,6 +296,21 @@ type skillUpsertRequest struct {
 	Scope    string            `json:"scope,omitempty"`
 	Version  string            `json:"version,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+type agentUpsertRequest struct {
+	Name          string            `json:"name"`
+	Enabled       *bool             `json:"enabled,omitempty"`
+	Scope         string            `json:"scope,omitempty"`
+	Version       string            `json:"version,omitempty"`
+	ProviderID    string            `json:"provider_id,omitempty"`
+	Model         string            `json:"model,omitempty"`
+	SystemPrompt  string            `json:"system_prompt,omitempty"`
+	MaxIterations int               `json:"max_iterations,omitempty"`
+	Tools         []string          `json:"tools,omitempty"`
+	Skills        []string          `json:"skills,omitempty"`
+	MCPs          []string          `json:"mcps,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
 type capabilityLifecycleRequest struct {
@@ -523,6 +549,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/chat", s.chatPageHandler)
 	mux.HandleFunc("/api/messages", s.messageHandler)
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
+	mux.HandleFunc("/api/agent/messages", s.agentMessageHandler)
+	mux.HandleFunc("/api/agent/messages/stream", s.agentMessageStreamHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
 	mux.HandleFunc("/api/tasks", s.taskCollectionHandler)
@@ -544,6 +572,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/skills/", s.skillItemHandler)
 	mux.HandleFunc("/api/control/mcps", s.mcpListHandler)
 	mux.HandleFunc("/api/control/mcps/", s.mcpItemHandler)
+	mux.HandleFunc("/api/control/agents", s.agentListHandler)
+	mux.HandleFunc("/api/control/agents/", s.agentItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
 	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
@@ -1019,6 +1049,122 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
 		ComplexityLevel:          assessment.ComplexityLevel,
 	})
+	flusher.Flush()
+}
+
+func (s *Server) agentMessageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	msg, _, statusCode, err := s.prepareAgentMessage(r)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+
+	s.countGateway(string(msg.ChannelType))
+	result, err := s.orchestrator.Handle(r.Context(), msg)
+	if err != nil {
+		statusCode := http.StatusBadRequest
+		switch result.ErrorCode {
+		case "command_failed", "nl_execution_failed":
+			statusCode = http.StatusInternalServerError
+		case "queue_timeout":
+			statusCode = http.StatusGatewayTimeout
+		case "rate_limited":
+			statusCode = http.StatusTooManyRequests
+		case "queue_canceled":
+			statusCode = http.StatusRequestTimeout
+		}
+		s.logWebMessageFailure(msg, err)
+		writeJSON(w, statusCode, messageResponse{
+			Result: result,
+			Error:  err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, messageResponse{Result: result})
+}
+
+func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	msg, _, statusCode, err := s.prepareAgentMessage(r)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	s.countGateway(string(msg.ChannelType))
+	if err := writeSSE(w, "start", streamStartResponse{
+		MessageID: msg.MessageID,
+		SessionID: msg.SessionID,
+		ChannelID: msg.ChannelID,
+		TraceID:   msg.TraceID,
+	}); err != nil {
+		return
+	}
+	flusher.Flush()
+
+	handleStream := func(
+		callback func(delta string) error,
+	) (shareddomain.OrchestrationResult, error) {
+		if orchestrator, ok := s.orchestrator.(StreamOrchestrator); ok {
+			return orchestrator.HandleStream(r.Context(), msg, callback)
+		}
+		return s.orchestrator.Handle(r.Context(), msg)
+	}
+
+	result, handleErr := handleStream(func(delta string) error {
+		if strings.TrimSpace(delta) == "" {
+			return nil
+		}
+		if err := writeSSE(w, "delta", streamDeltaResponse{Delta: delta}); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	})
+	if handleErr != nil {
+		s.logWebMessageFailure(msg, handleErr)
+		_ = writeSSE(w, "error", streamErrorResponse{
+			Error:  handleErr.Error(),
+			Result: result,
+		})
+		flusher.Flush()
+		return
+	}
+
+	if _, ok := s.orchestrator.(StreamOrchestrator); !ok {
+		for _, chunk := range chunkText(result.Output, 24) {
+			if err := writeSSE(w, "delta", streamDeltaResponse{
+				Delta: chunk,
+				Route: result.Route,
+			}); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+
+	_ = writeSSE(w, "done", streamDoneResponse{Result: result})
 	flusher.Flush()
 }
 
@@ -2445,7 +2591,7 @@ func (s *Server) capabilityListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	capabilityType := controldomain.CapabilityType(filterType)
 	if !capabilityType.IsSupported() {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill or mcp"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill, mcp or agent"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListCapabilitiesByType(capabilityType)})
@@ -2466,7 +2612,7 @@ func (s *Server) capabilityAuditListHandler(w http.ResponseWriter, r *http.Reque
 	if filterType != "" {
 		capabilityType := controldomain.CapabilityType(filterType)
 		if !capabilityType.IsSupported() {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill or mcp"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill, mcp or agent"})
 			return
 		}
 		filtered := make([]controldomain.CapabilityAudit, 0, len(items))
@@ -2581,6 +2727,109 @@ func (s *Server) mcpItemHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		if !s.control.DeleteMCP(mcpID) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "mcp not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) agentListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.control == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListAgents()})
+	case http.MethodPost:
+		defer r.Body.Close()
+		var req agentUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		enabled := true
+		if req.Enabled != nil {
+			enabled = *req.Enabled
+		}
+		created, err := s.control.CreateAgent(controldomain.Agent{
+			Name:          strings.TrimSpace(req.Name),
+			Type:          controldomain.CapabilityTypeAgent,
+			Enabled:       enabled,
+			Scope:         controldomain.CapabilityScope(strings.ToLower(strings.TrimSpace(req.Scope))),
+			SystemPrompt:  strings.TrimSpace(req.SystemPrompt),
+			MaxIterations: req.MaxIterations,
+			Tools:         req.Tools,
+			Skills:        req.Skills,
+			MCPs:          req.MCPs,
+			Metadata:      req.Metadata,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusCreated, created)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func buildAgentFromRequest(id string, req agentUpsertRequest) controldomain.Agent {
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	return controldomain.Agent{
+		ID:            strings.TrimSpace(id),
+		Name:          strings.TrimSpace(req.Name),
+		Type:          controldomain.CapabilityTypeAgent,
+		Enabled:       enabled,
+		Scope:         controldomain.CapabilityScope(strings.ToLower(strings.TrimSpace(req.Scope))),
+		Version:       strings.TrimSpace(req.Version),
+		ProviderID:    strings.TrimSpace(req.ProviderID),
+		Model:         strings.TrimSpace(req.Model),
+		SystemPrompt:  strings.TrimSpace(req.SystemPrompt),
+		MaxIterations: req.MaxIterations,
+		Tools:         req.Tools,
+		Skills:        req.Skills,
+		MCPs:          req.MCPs,
+		Metadata:      req.Metadata,
+	}
+}
+
+func (s *Server) agentItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.control == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
+		return
+	}
+
+	agentID, ok := resourceID(r.URL.Path, "/api/control/agents/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent path"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		defer r.Body.Close()
+		var req agentUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		saved, err := s.control.SaveAgent(agentID, buildAgentFromRequest(agentID, req))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, saved)
+	case http.MethodPost:
+		s.applyCapabilityLifecycle(w, r, agentID, controldomain.CapabilityTypeAgent)
+	case http.MethodDelete:
+		if !s.control.DeleteAgent(agentID) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "agent not found"})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -3250,6 +3499,7 @@ func parseSessionQuery(r *http.Request) (sessionapp.SessionQuery, int, error) {
 		PageSize:  pageSize,
 		ChannelID: strings.TrimSpace(r.URL.Query().Get("channel_id")),
 		MessageID: strings.TrimSpace(r.URL.Query().Get("message_id")),
+		AgentID:   strings.TrimSpace(r.URL.Query().Get("agent_id")),
 		JobID:     strings.TrimSpace(r.URL.Query().Get("job_id")),
 	}
 	rawTriggerType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("trigger_type")))
@@ -3554,6 +3804,51 @@ func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, i
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("invalid json body")
 	}
+	return s.prepareMessageFromRequest(req)
+}
+
+func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessage, string, int, error) {
+	defer r.Body.Close()
+
+	var req agentMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("invalid json body")
+	}
+	if strings.TrimSpace(req.AgentID) == "" {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("agent_id is required")
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("content is required")
+	}
+	if s.control == nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusServiceUnavailable, errors.New("control service unavailable")
+	}
+
+	agent, ok := s.control.ResolveAgent(req.AgentID)
+	if !ok {
+		return shareddomain.UnifiedMessage{}, "", http.StatusNotFound, errors.New("agent not found")
+	}
+	if !agent.Enabled {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("agent is disabled")
+	}
+
+	msgReq := messageRequest{
+		SessionID:     req.SessionID,
+		UserID:        req.UserID,
+		ChannelID:     req.ChannelID,
+		CorrelationID: req.CorrelationID,
+		Content:       req.Content,
+		Metadata:      cloneStringMap(req.Metadata),
+	}
+	msg, statusCode, err := s.prepareMessageFromRequest(msgReq)
+	if err != nil {
+		return shareddomain.UnifiedMessage{}, "", statusCode, err
+	}
+	msg.Metadata = applyAgentProfileMetadata(msg.Metadata, agent)
+	return msg, agent.ID, http.StatusOK, nil
+}
+
+func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.UnifiedMessage, int, error) {
 	if strings.TrimSpace(req.Content) == "" {
 		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("content is required")
 	}
@@ -3593,6 +3888,58 @@ func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, i
 		CorrelationID: strings.TrimSpace(req.CorrelationID),
 		ReceivedAt:    time.Now().UTC(),
 	}, http.StatusOK, nil
+}
+
+func applyAgentProfileMetadata(metadata map[string]string, agent controldomain.Agent) map[string]string {
+	items := cloneStringMap(metadata)
+	items[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	items[execdomain.AgentIDMetadataKey] = strings.TrimSpace(agent.ID)
+	items[execdomain.AgentNameMetadataKey] = strings.TrimSpace(agent.Name)
+	providerID := strings.TrimSpace(items[execdomain.LLMProviderIDMetadataKey])
+	if providerID == "" {
+		providerID = strings.TrimSpace(agent.ProviderID)
+	}
+	if providerID != "" {
+		items[execdomain.AgentProviderIDMetadataKey] = providerID
+	}
+	modelID := strings.TrimSpace(items[execdomain.LLMModelMetadataKey])
+	if modelID == "" {
+		modelID = strings.TrimSpace(agent.Model)
+	}
+	if modelID != "" {
+		items[execdomain.AgentModelMetadataKey] = modelID
+	}
+	if strings.TrimSpace(agent.SystemPrompt) != "" {
+		items[execdomain.AgentSystemPromptMetadataKey] = strings.TrimSpace(agent.SystemPrompt)
+	}
+	if agent.MaxIterations > 0 {
+		items[execdomain.AgentMaxIterationsMetadataKey] = strconv.Itoa(agent.MaxIterations)
+	}
+	applyDefaultListMetadata(items, execdomain.AgentToolsMetadataKey, agent.Tools)
+	applyDefaultListMetadata(items, "alter0.skills.include", agent.Skills)
+	applyDefaultListMetadata(items, "alter0.mcp.request.enable", agent.MCPs)
+	for key, value := range agent.Metadata {
+		trimmedKey := strings.TrimSpace(key)
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedKey == "" || trimmedValue == "" {
+			continue
+		}
+		items[trimmedKey] = trimmedValue
+	}
+	return items
+}
+
+func applyDefaultListMetadata(items map[string]string, key string, values []string) {
+	trimmedKey := strings.TrimSpace(key)
+	if trimmedKey == "" || len(values) == 0 {
+		return
+	}
+	if _, exists := items[trimmedKey]; exists {
+		return
+	}
+	if raw, err := json.Marshal(values); err == nil {
+		items[trimmedKey] = string(raw)
+	}
 }
 
 func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage, assessment taskapp.ComplexityAssessment) (taskdomain.Task, bool, error) {

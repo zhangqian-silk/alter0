@@ -79,6 +79,50 @@ internal/shared/infrastructure     # ID、日志、metrics
 2. `/echo ...`：回显参数
 3. `/time`（别名 `/now`）：输出 UTC 时间（RFC3339）
 
+## Natural Language Handling
+
+自然语言请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
+
+1. `Chat`
+- 面向 Web 会话消息。
+- 作为统一的对话入口，既可以直接与基础模型对话，也可以在新建会话时选择某个已配置 Agent。
+- 运行时配置收敛在输入框底部操作栏：`Conversation Target`、`Provider / Model`、`Tools / MCP`、`Skills` 都在发送区附近完成。
+- 会话开始后会锁定 `Conversation Target`；如果当前目标是 Agent，不允许在同一会话中切换到其他 Agent 或 Raw Model。
+- `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
+- 默认走实时执行。
+- 当请求复杂度较高时，自动转为后台 `Task` 执行，并先返回任务卡片与 `task_id`。
+
+2. `Terminal`
+- 面向交互式终端会话。
+- 仍属于自然语言处理，但使用独立上下文边界。
+- 默认仅注入运行时必需上下文，不复用 Chat 会话记忆与长期记忆。
+
+3. `Agent`
+- 面向“先执行再汇报”的目标型任务。
+- 请求进入后会创建一个 ReAct 执行环，以当前任务为目标持续推进。
+- Agent 会调用 `codex_exec` 工具驱动 Codex CLI 落地执行，并依据执行结果决定继续推进还是完成收口。
+- 每个 Agent 可独立配置名称、system prompt、tool 白名单、Skill 选择与 MCP 选择。
+- Web 端将 Agent 的“配置/管理”放在 `Agents` 页面，将 Agent 的“交互/执行”统一收敛到 `Chat` 页面。
+- Agent 的 `id`、`version` 等系统字段由服务端统一生成和维护，管理页不要求用户手填。
+
+其中 `Chat` 再细分为两种执行方式：
+
+1. `Sync`
+- `POST /api/messages`：普通 JSON 一次性返回结果。
+- `POST /api/messages/stream`：通过 SSE 流式返回 `start / delta / done` 事件。
+
+2. `Async Task`
+- 适用于高复杂度、长耗时或产物型请求。
+- 请求被接受后先返回任务受理结果，后续可通过任务视图或任务 API 跟踪状态、日志与产物。
+
+`Agent` 模式使用独立入口：
+
+1. `POST /api/agent/messages`
+- 同步返回 Agent 最终执行结果。
+
+2. `POST /api/agent/messages/stream`
+- 通过 SSE 返回 Agent 执行过程中的动作、观察与最终结果。
+
 ## Observability
 
 1. 结构化日志（JSON）
@@ -187,6 +231,57 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
   -H "Content-Type: application/json" \
   -d '{"name":"summary","enabled":true}'
 ```
+
+### Agent
+
+```bash
+# 列表
+curl http://127.0.0.1:18088/api/control/agents
+
+# 创建
+curl -X POST http://127.0.0.1:18088/api/control/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name":"Researcher",
+    "enabled":true,
+    "system_prompt":"先执行，再汇报；不要只给建议。",
+    "max_iterations":6,
+    "tools":["codex_exec"],
+    "skills":["summary"],
+    "mcps":["github"]
+  }'
+
+# 更新
+curl -X PUT http://127.0.0.1:18088/api/control/agents/researcher \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name":"Researcher",
+    "enabled":true,
+    "system_prompt":"先执行，再汇报；不要只给建议。",
+    "max_iterations":8,
+    "tools":["codex_exec"],
+    "skills":["summary"],
+    "mcps":["github"]
+  }'
+
+# 使用指定 Agent 执行任务
+curl -X POST http://127.0.0.1:18088/api/agent/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id":"researcher",
+    "session_id":"agent-session-1",
+    "channel_id":"web-default",
+    "content":"检查当前仓库并直接完成需要的修改"
+  }'
+```
+
+说明：
+
+1. Agent Profile 由控制面统一管理，运行时通过 `agent_id` 选择。
+2. 创建 Agent 时不需要手填 `id` 或 `version`；服务端会自动生成 Agent ID，并在每次更新时维护版本。
+3. 当前内置 Agent 工具为 `codex_exec`，系统会自动补充收口工具 `complete`。
+4. Agent 的 Skill 与 MCP 选择会在执行前注入运行时上下文，执行过程仍复用统一编排链路。
+5. Web `Agents` 页面用于管理 Agent Profile；`Chat` 页面作为统一交互入口。新会话可选择 Raw Model 或 Agent，进入会话后仅允许继续调整 `Provider / Model` 与启用的 `Tools / MCP / Skills`。
 
 ### Cron Jobs
 
