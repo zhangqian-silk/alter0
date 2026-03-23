@@ -6,12 +6,20 @@ import (
 	"time"
 )
 
+const (
+	ProviderAPITypeOpenAIResponses   = "openai-responses"
+	ProviderAPITypeOpenAICompletions = "openai-completions"
+	DefaultProviderAPIType           = ProviderAPITypeOpenAIResponses
+)
+
 // ModelProvider represents a configured LLM provider.
 type ModelProvider struct {
 	// ID is the unique identifier for the provider.
 	ID string `json:"id"`
 	// Name is the human-readable name.
 	Name string `json:"name"`
+	// APIType selects which OpenAI-compatible API shape to use.
+	APIType string `json:"api_type"`
 	// BaseURL is the API base URL (e.g., "https://api.openai.com/v1").
 	BaseURL string `json:"base_url"`
 	// APIKey is the API key for authentication.
@@ -69,6 +77,7 @@ func (p *ModelProvider) Validate() error {
 func normalizeProvider(provider ModelProvider) (ModelProvider, error) {
 	provider.ID = strings.TrimSpace(provider.ID)
 	provider.Name = strings.TrimSpace(provider.Name)
+	provider.APIType = normalizeProviderAPIType(provider.APIType)
 	provider.BaseURL = strings.TrimSpace(provider.BaseURL)
 	provider.APIKey = strings.TrimSpace(provider.APIKey)
 	provider.DefaultModel = strings.TrimSpace(provider.DefaultModel)
@@ -79,11 +88,17 @@ func normalizeProvider(provider ModelProvider) (ModelProvider, error) {
 	if provider.Name == "" {
 		return ModelProvider{}, errors.New("provider name is required")
 	}
+	if provider.APIType == "" {
+		return ModelProvider{}, errors.New("api_type is required")
+	}
 	if provider.BaseURL == "" {
 		return ModelProvider{}, errors.New("base_url is required")
 	}
 	if provider.APIKey == "" {
 		return ModelProvider{}, errors.New("api_key is required")
+	}
+	if !isSupportedProviderAPIType(provider.APIType) {
+		return ModelProvider{}, errors.New("unsupported api_type: " + provider.APIType)
 	}
 
 	if len(provider.Models) == 0 {
@@ -140,6 +155,23 @@ func providerNameKey(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
+func normalizeProviderAPIType(apiType string) string {
+	normalized := strings.ToLower(strings.TrimSpace(apiType))
+	if normalized == "" {
+		return DefaultProviderAPIType
+	}
+	return normalized
+}
+
+func isSupportedProviderAPIType(apiType string) bool {
+	switch normalizeProviderAPIType(apiType) {
+	case ProviderAPITypeOpenAIResponses, ProviderAPITypeOpenAICompletions:
+		return true
+	default:
+		return false
+	}
+}
+
 // GetModel returns the model info by ID.
 func (p *ModelProvider) GetModel(modelID string) *ModelInfo {
 	for i := range p.Models {
@@ -170,7 +202,13 @@ func (c *ModelConfig) Validate() error {
 	// Check for duplicate provider IDs and names.
 	ids := make(map[string]bool)
 	names := make(map[string]bool)
-	for _, p := range c.Providers {
+	for i := range c.Providers {
+		normalizedProvider, err := normalizeProvider(c.Providers[i])
+		if err != nil {
+			return err
+		}
+		c.Providers[i] = normalizedProvider
+		p := c.Providers[i]
 		if ids[p.ID] {
 			return errors.New("duplicate provider id: " + p.ID)
 		}
@@ -180,10 +218,6 @@ func (c *ModelConfig) Validate() error {
 			return errors.New("duplicate provider name: " + p.Name)
 		}
 		names[nameKey] = true
-
-		if err := p.Validate(); err != nil {
-			return err
-		}
 	}
 
 	// Check default provider exists

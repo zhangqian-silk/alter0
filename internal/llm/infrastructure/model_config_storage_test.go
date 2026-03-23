@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"alter0/internal/llm/domain"
 )
 
 func TestModelConfigStorageGetLoadsExistingFileAndReturnsClone(t *testing.T) {
@@ -37,6 +39,9 @@ func TestModelConfigStorageGetLoadsExistingFileAndReturnsClone(t *testing.T) {
 	}
 	if len(config.Providers) != 1 {
 		t.Fatalf("expected 1 provider, got %d", len(config.Providers))
+	}
+	if config.Providers[0].APIType != domain.DefaultProviderAPIType {
+		t.Fatalf("expected default api_type %q, got %q", domain.DefaultProviderAPIType, config.Providers[0].APIType)
 	}
 
 	config.Providers[0].Name = "Changed"

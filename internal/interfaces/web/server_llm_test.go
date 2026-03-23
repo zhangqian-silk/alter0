@@ -22,6 +22,7 @@ func TestLLMProviderListReturnsDisabledProviders(t *testing.T) {
 	if err := service.AddProvider(ctx, llmdomain.ModelProvider{
 		ID:        "enabled-provider",
 		Name:      "Enabled Provider",
+		APIType:   llmdomain.ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://enabled.example/v1",
 		APIKey:    "sk-enabled",
 		IsEnabled: true,
@@ -35,6 +36,7 @@ func TestLLMProviderListReturnsDisabledProviders(t *testing.T) {
 	if err := service.AddProvider(ctx, llmdomain.ModelProvider{
 		ID:        "disabled-provider",
 		Name:      "Disabled Provider",
+		APIType:   llmdomain.ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://disabled.example/v1",
 		APIKey:    "sk-disabled",
 		IsEnabled: false,
@@ -76,6 +78,7 @@ func TestLLMProviderUpdateKeepsAPIKeyWhenBlank(t *testing.T) {
 	if err := service.AddProvider(ctx, llmdomain.ModelProvider{
 		ID:        "qwen",
 		Name:      "Qwen",
+		APIType:   llmdomain.ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://example.com/v1",
 		APIKey:    "sk-original",
 		IsEnabled: true,
@@ -95,7 +98,7 @@ func TestLLMProviderUpdateKeepsAPIKeyWhenBlank(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPut,
 		"/api/control/llm/providers/qwen",
-		strings.NewReader(`{"id":"qwen","name":"Qwen Updated","base_url":"https://example.com/v2","api_key":"","default_model":"qwen-plus","models":[{"id":"qwen-plus","name":"Qwen Plus","is_enabled":true}],"is_enabled":true}`),
+		strings.NewReader(`{"id":"qwen","name":"Qwen Updated","api_type":"openai-completions","base_url":"https://example.com/v2","api_key":"","default_model":"qwen-plus","models":[{"id":"qwen-plus","name":"Qwen Plus","is_enabled":true}],"is_enabled":true}`),
 	)
 	rec := httptest.NewRecorder()
 	server.llmProviderItemHandler(rec, req)
@@ -114,6 +117,9 @@ func TestLLMProviderUpdateKeepsAPIKeyWhenBlank(t *testing.T) {
 	if provider.APIKey != "sk-original" {
 		t.Fatalf("expected api key to be preserved, got %s", provider.APIKey)
 	}
+	if provider.APIType != llmdomain.ProviderAPITypeOpenAICompletions {
+		t.Fatalf("expected api type to update, got %s", provider.APIType)
+	}
 }
 
 func TestLLMProviderUpdateSupportsRename(t *testing.T) {
@@ -122,6 +128,7 @@ func TestLLMProviderUpdateSupportsRename(t *testing.T) {
 	if err := service.AddProvider(ctx, llmdomain.ModelProvider{
 		ID:        "openai",
 		Name:      "OpenAI",
+		APIType:   llmdomain.ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://api.openai.com/v1",
 		APIKey:    "sk-original",
 		IsEnabled: true,
@@ -141,7 +148,7 @@ func TestLLMProviderUpdateSupportsRename(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPut,
 		"/api/control/llm/providers/openai",
-		strings.NewReader(`{"id":"openai-cn","name":"OpenAI CN","base_url":"https://proxy.example/v1","api_key":"","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
+		strings.NewReader(`{"id":"openai-cn","name":"OpenAI CN","api_type":"openai-completions","base_url":"https://proxy.example/v1","api_key":"","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
 	)
 	rec := httptest.NewRecorder()
 	server.llmProviderItemHandler(rec, req)
@@ -168,6 +175,9 @@ func TestLLMProviderUpdateSupportsRename(t *testing.T) {
 	if provider.APIKey != "sk-original" {
 		t.Fatalf("expected api key to be preserved, got %s", provider.APIKey)
 	}
+	if provider.APIType != llmdomain.ProviderAPITypeOpenAICompletions {
+		t.Fatalf("expected api type to be preserved on rename, got %s", provider.APIType)
+	}
 	if !provider.IsDefault {
 		t.Fatalf("expected renamed provider to remain default")
 	}
@@ -184,7 +194,7 @@ func TestLLMProviderCreateGeneratesInternalIDWhenMissing(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/control/llm/providers",
-		strings.NewReader(`{"name":"OpenAI","base_url":"https://api.openai.com/v1","api_key":"sk-created","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
+		strings.NewReader(`{"name":"OpenAI","api_type":"openai-completions","base_url":"https://api.openai.com/v1","api_key":"sk-created","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
 	)
 	rec := httptest.NewRecorder()
 	server.llmProviderListHandler(rec, req)
@@ -203,6 +213,9 @@ func TestLLMProviderCreateGeneratesInternalIDWhenMissing(t *testing.T) {
 	if resp.Name != "OpenAI" {
 		t.Fatalf("expected provider name OpenAI, got %s", resp.Name)
 	}
+	if resp.APIType != llmdomain.ProviderAPITypeOpenAICompletions {
+		t.Fatalf("expected api type openai-completions, got %s", resp.APIType)
+	}
 }
 
 func TestLLMProviderCreateRejectsDuplicateName(t *testing.T) {
@@ -211,6 +224,7 @@ func TestLLMProviderCreateRejectsDuplicateName(t *testing.T) {
 	if err := service.AddProvider(ctx, llmdomain.ModelProvider{
 		ID:        "existing-provider",
 		Name:      "OpenAI",
+		APIType:   llmdomain.ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://api.openai.com/v1",
 		APIKey:    "sk-existing",
 		IsEnabled: true,
@@ -231,7 +245,7 @@ func TestLLMProviderCreateRejectsDuplicateName(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/control/llm/providers",
-		strings.NewReader(`{"name":" openai ","base_url":"https://proxy.example/v1","api_key":"sk-created","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
+		strings.NewReader(`{"name":" openai ","api_type":"openai-responses","base_url":"https://proxy.example/v1","api_key":"sk-created","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
 	)
 	rec := httptest.NewRecorder()
 	server.llmProviderListHandler(rec, req)
