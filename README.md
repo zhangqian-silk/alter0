@@ -179,8 +179,18 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 1. 同时启动 Web 与 CLI 两个输入通道。
 2. Web 地址默认 `127.0.0.1:18088`，可通过 `-web-addr` 参数覆盖。
 3. 如果使用自定义端口，后续示例中的 URL 也需同步替换端口。
-4. 存储后端默认本地文件（目录 `.alter0`）。
-5. 存储格式按业务场景选择：Control 配置使用 `json`，Scheduler 状态使用 `json`。
+4. 默认以 `supervisor -> child runtime` 两层进程启动：父进程负责托管运行中的子进程，处理 Web 控制台发起的重启、构建、探活与切换。
+5. 存储后端默认本地文件（目录 `.alter0`）。
+6. 存储格式按业务场景选择：Control 配置使用 `json`，Scheduler 状态使用 `json`。
+
+### Runtime Restart
+
+`Environments` 页面中的“重启服务”会走运行时托管链路，而不是由当前业务进程直接自拉起：
+
+1. `sync_remote_master=false`：基于当前仓库状态构建候选二进制，并由 `supervisor` 完成子进程切换。
+2. `sync_remote_master=true`：先校验当前分支为 `master`、已跟踪工作区干净，再执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后构建候选二进制并切换。
+3. 候选版本只有在 `/readyz` 探活通过后才会成为当前运行版本；若启动失败，会自动恢复上一运行版本。
+4. Git 或构建失败会直接返回到 Web 控制台，便于定位权限、凭据、快进合并失败等问题。
 
 ### Public Deployment Baseline
 
