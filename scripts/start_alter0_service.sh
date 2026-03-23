@@ -23,8 +23,9 @@ RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-/var/lib/alter0}"
 STORAGE_DIR="${ALTER0_STORAGE_DIR:-${RUNTIME_ROOT}/storage}"
 LOG_FILE="${ALTER0_LOG_FILE:-/var/log/alter0/alter0.log}"
 LOCK_FILE="${RUNTIME_ROOT}/run.lock"
+BIN_PATH="${ALTER0_BIN_PATH:-${REPO_DIR}/bin/alter0}"
 
-mkdir -p "${RUNTIME_ROOT}" "${STORAGE_DIR}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0"
+mkdir -p "${RUNTIME_ROOT}" "${STORAGE_DIR}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0" "$(dirname "${BIN_PATH}")"
 chmod 750 "${RUNTIME_ROOT}"
 chmod 700 "${STORAGE_DIR}" "${REPO_DIR}/.alter0"
 touch "${LOG_FILE}"
@@ -40,7 +41,7 @@ if [[ -z "${WEB_LOGIN_PASSWORD}" ]]; then
   echo "[WARN] ALTER0_WEB_LOGIN_PASSWORD is empty, login page is disabled."
 fi
 
-CMD="env GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go run ./cmd/alter0 \
+CMD="env GOSUMDB=sum.golang.org GOTOOLCHAIN=auto '${BIN_PATH}' \
   -web-addr '${WEB_ADDR}' \
   -web-bind-localhost-only='${WEB_BIND_LOCALHOST_ONLY}' \
   -web-login-password '${WEB_LOGIN_PASSWORD}' \
@@ -48,7 +49,7 @@ CMD="env GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go run ./cmd/alter0 \
   -long-term-memory-path '${STORAGE_DIR}/memory/long-term/MEMORY.md'"
 
 if [[ "$(id -u)" -eq 0 ]] && id -u "${RUN_AS}" >/dev/null 2>&1 && [[ "${RUN_AS}" != "root" ]]; then
-  chown -R "${RUN_AS}:${RUN_AS}" "${RUNTIME_ROOT}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0"
+  chown -R "${RUN_AS}:${RUN_AS}" "${RUNTIME_ROOT}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0" "${REPO_DIR}/bin"
   exec su -s /bin/bash -c "cd '${REPO_DIR}' && ${CMD} >>'${LOG_FILE}' 2>&1" "${RUN_AS}"
 fi
 

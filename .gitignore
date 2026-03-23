@@ -35,6 +35,10 @@ output/
 test-results/
 node_modules/
 
+# local deployment runtime artifacts
+bin/
+scripts/*.bak-*
+
 # Editor/IDE
 # .idea/
 # .vscode/
