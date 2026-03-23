@@ -203,7 +203,10 @@ func syncRemoteMasterBranch(workingDir string) error {
 		return errors.New("sync remote master requires a clean tracked working tree")
 	}
 
-	if err := runCommand(repoDir, "git", "pull", "--ff-only", "origin", "master"); err != nil {
+	if err := runCommand(repoDir, "git", "fetch", "--prune", "origin", "master"); err != nil {
+		return fmt.Errorf("fetch origin/master: %w", err)
+	}
+	if err := runCommand(repoDir, "git", "merge", "--ff-only", "FETCH_HEAD"); err != nil {
 		return fmt.Errorf("sync origin/master: %w", err)
 	}
 	return nil
@@ -232,8 +235,7 @@ func buildRelaunchBinary(workingDir string) (string, error) {
 }
 
 func readCommandOutput(dir string, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
+	cmd := prepareCommand(dir, name, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
@@ -246,12 +248,23 @@ func readCommandOutput(dir string, name string, args ...string) (string, error) 
 }
 
 func runCommand(dir string, name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return err
+	cmd := prepareCommand(dir, name, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			return err
+		}
+		return fmt.Errorf("%w: %s", err, message)
 	}
 	return nil
+}
+
+func prepareCommand(dir string, name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	if strings.EqualFold(strings.TrimSpace(name), "git") {
+		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	}
+	return cmd
 }

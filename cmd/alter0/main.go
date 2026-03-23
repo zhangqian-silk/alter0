@@ -63,6 +63,7 @@ func main() {
 	relaunchExecPath := flag.String(relaunchExecPathFlag, "", "internal relaunch executable path")
 	relaunchArgs := flag.String(relaunchArgsFlag, "", "internal relaunch encoded args")
 	relaunchWorkingDir := flag.String(relaunchWorkingDirFlag, "", "internal relaunch working directory")
+	runtimeChild := flag.Bool(runtimeChildFlag, false, "internal runtime child")
 	webAddr := flag.String("web-addr", defaultWebAddr, "web server listen address")
 	webBindLocalhostOnly := flag.Bool("web-bind-localhost-only", true, "force web server to bind loopback only")
 	webLoginPasswordDefault := strings.TrimSpace(os.Getenv("ALTER0_WEB_LOGIN_PASSWORD"))
@@ -97,6 +98,24 @@ func main() {
 		}
 		return
 	}
+
+	if !*runtimeChild {
+		logger := observability.NewLogger(slog.LevelInfo)
+		supervisor, err := newRuntimeSupervisor(logger, filterInternalRuntimeArgs(os.Args[1:]), strings.TrimSpace(*webAddr), *webBindLocalhostOnly)
+		if err != nil {
+			logger.Error("failed to initialize runtime supervisor", slog.String("error", err.Error()))
+			os.Exit(2)
+		}
+
+		rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		if err := supervisor.Run(rootCtx); err != nil {
+			logger.Error("runtime supervisor exited with error", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		return
+	}
+
 	listenAddr := strings.TrimSpace(*webAddr)
 	if listenAddr == "" {
 		listenAddr = defaultWebAddr
@@ -324,7 +343,7 @@ func main() {
 		llmService,
 		logger,
 	)
-	restarter, err := newServiceRestarter(cancel, logger, os.Args[1:])
+	restarter, err := newRuntimeRestarter(cancel, logger, filterInternalRuntimeArgs(os.Args[1:]))
 	if err != nil {
 		logger.Error("failed to initialize service restarter", slog.String("error", err.Error()))
 		os.Exit(2)
