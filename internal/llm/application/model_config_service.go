@@ -14,9 +14,9 @@ var _ LLMService = (*ModelConfigService)(nil)
 
 // ModelConfigService provides model configuration management.
 type ModelConfigService struct {
-	storage  *infrastructure.ModelConfigStorage
-	clients  map[string]domain.LLMClient
-	mu       sync.RWMutex
+	storage *infrastructure.ModelConfigStorage
+	clients map[string]domain.LLMClient
+	mu      sync.RWMutex
 }
 
 // NewModelConfigService creates a new model config service.
@@ -143,6 +143,7 @@ func (s *ModelConfigService) GetClient(ctx context.Context, providerID string) (
 
 	client = infrastructure.NewOpenAIClient(infrastructure.OpenAIClientConfig{
 		APIKey:  provider.APIKey,
+		APIType: provider.APIType,
 		BaseURL: provider.BaseURL,
 		Model:   provider.DefaultModel,
 	})
@@ -190,10 +191,11 @@ func CreateDefaultConfig() *domain.ModelConfig {
 	return &domain.ModelConfig{
 		Providers: []domain.ModelProvider{
 			{
-				ID:          "openai",
-				Name:        "OpenAI",
-				BaseURL:     "https://api.openai.com/v1",
-				APIKey:      "", // To be filled by user
+				ID:           "openai",
+				Name:         "OpenAI",
+				APIType:      domain.DefaultProviderAPIType,
+				BaseURL:      "https://api.openai.com/v1",
+				APIKey:       "", // To be filled by user
 				DefaultModel: "gpt-4o",
 				Models: []domain.ModelInfo{
 					{ID: "gpt-4o", Name: "GPT-4o", SupportsTools: true, SupportsVision: true, SupportsStreaming: true, IsEnabled: true},

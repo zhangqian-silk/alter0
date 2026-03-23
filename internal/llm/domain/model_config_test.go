@@ -6,6 +6,7 @@ func TestModelProviderValidateRequiresEnabledDefaultModel(t *testing.T) {
 	provider := ModelProvider{
 		ID:        "qwen",
 		Name:      "Qwen",
+		APIType:   ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://example.com/v1",
 		APIKey:    "sk-test",
 		IsEnabled: true,
@@ -26,6 +27,7 @@ func TestModelConfigUpdateProviderPreservesDefaultFlag(t *testing.T) {
 	if err := config.AddProvider(ModelProvider{
 		ID:        "qwen",
 		Name:      "Qwen",
+		APIType:   ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://example.com/v1",
 		APIKey:    "sk-test",
 		IsEnabled: true,
@@ -40,6 +42,7 @@ func TestModelConfigUpdateProviderPreservesDefaultFlag(t *testing.T) {
 	if err := config.UpdateProvider("qwen", ModelProvider{
 		ID:        "qwen",
 		Name:      "Qwen Updated",
+		APIType:   ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://example.com/v2",
 		APIKey:    "sk-updated",
 		IsEnabled: true,
@@ -71,6 +74,7 @@ func TestModelConfigUpdateProviderSupportsRenameForDefaultProvider(t *testing.T)
 	if err := config.AddProvider(ModelProvider{
 		ID:        "openai",
 		Name:      "OpenAI",
+		APIType:   ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://api.openai.com/v1",
 		APIKey:    "sk-test",
 		IsEnabled: true,
@@ -85,6 +89,7 @@ func TestModelConfigUpdateProviderSupportsRenameForDefaultProvider(t *testing.T)
 	if err := config.UpdateProvider("openai", ModelProvider{
 		ID:        "openai-cn",
 		Name:      "OpenAI CN",
+		APIType:   ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://example.com/v1",
 		APIKey:    "sk-updated",
 		IsEnabled: true,
@@ -116,6 +121,7 @@ func TestModelConfigAddProviderRejectsDuplicateName(t *testing.T) {
 	if err := config.AddProvider(ModelProvider{
 		ID:        "provider-a",
 		Name:      "OpenAI",
+		APIType:   ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://example.com/v1",
 		APIKey:    "sk-a",
 		IsEnabled: true,
@@ -130,6 +136,7 @@ func TestModelConfigAddProviderRejectsDuplicateName(t *testing.T) {
 	err := config.AddProvider(ModelProvider{
 		ID:        "provider-b",
 		Name:      " openai ",
+		APIType:   ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://example.com/v2",
 		APIKey:    "sk-b",
 		IsEnabled: true,
@@ -149,6 +156,7 @@ func TestModelConfigUpdateProviderRejectsDuplicateName(t *testing.T) {
 		{
 			ID:        "provider-a",
 			Name:      "OpenAI",
+			APIType:   ProviderAPITypeOpenAIResponses,
 			BaseURL:   "https://example.com/v1",
 			APIKey:    "sk-a",
 			IsEnabled: true,
@@ -160,6 +168,7 @@ func TestModelConfigUpdateProviderRejectsDuplicateName(t *testing.T) {
 		{
 			ID:        "provider-b",
 			Name:      "Anthropic",
+			APIType:   ProviderAPITypeOpenAIResponses,
 			BaseURL:   "https://example.com/v2",
 			APIKey:    "sk-b",
 			IsEnabled: true,
@@ -177,6 +186,7 @@ func TestModelConfigUpdateProviderRejectsDuplicateName(t *testing.T) {
 	err := config.UpdateProvider("provider-b", ModelProvider{
 		ID:        "provider-b",
 		Name:      " openai ",
+		APIType:   ProviderAPITypeOpenAIResponses,
 		BaseURL:   "https://example.com/v2",
 		APIKey:    "sk-b",
 		IsEnabled: true,
@@ -187,5 +197,49 @@ func TestModelConfigUpdateProviderRejectsDuplicateName(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected duplicate provider name error")
+	}
+}
+
+func TestModelProviderValidateDefaultsAPIType(t *testing.T) {
+	provider := ModelProvider{
+		ID:        "openai",
+		Name:      "OpenAI",
+		BaseURL:   "https://api.openai.com/v1",
+		APIKey:    "sk-test",
+		IsEnabled: true,
+		Models: []ModelInfo{
+			{ID: "gpt-4o", Name: "GPT-4o", IsEnabled: true},
+		},
+		DefaultModel: "gpt-4o",
+	}
+
+	if err := provider.Validate(); err != nil {
+		t.Fatalf("expected empty api_type to default, got %v", err)
+	}
+	normalized, err := normalizeProvider(provider)
+	if err != nil {
+		t.Fatalf("normalize provider failed: %v", err)
+	}
+	if normalized.APIType != DefaultProviderAPIType {
+		t.Fatalf("expected default api_type %q, got %q", DefaultProviderAPIType, normalized.APIType)
+	}
+}
+
+func TestModelProviderValidateRejectsUnsupportedAPIType(t *testing.T) {
+	provider := ModelProvider{
+		ID:        "openai",
+		Name:      "OpenAI",
+		APIType:   "custom",
+		BaseURL:   "https://api.openai.com/v1",
+		APIKey:    "sk-test",
+		IsEnabled: true,
+		Models: []ModelInfo{
+			{ID: "gpt-4o", Name: "GPT-4o", IsEnabled: true},
+		},
+		DefaultModel: "gpt-4o",
+	}
+
+	if err := provider.Validate(); err == nil {
+		t.Fatalf("expected unsupported api_type validation error")
 	}
 }

@@ -8971,6 +8971,7 @@ async function loadModelsView(container) {
   const OPENAI_PROVIDER_TEMPLATE = {
     id: "openai",
     name: "OpenAI",
+    api_type: "openai-responses",
     base_url: "https://api.openai.com/v1",
     models: [
       { id: "gpt-4o", name: "GPT-4o", is_enabled: true, supports_tools: true, supports_vision: true, supports_streaming: true },
@@ -9011,6 +9012,7 @@ async function loadModelsView(container) {
     return {
       id: normalizeText(provider?.id || ""),
       name: normalizeText(provider?.name || ""),
+      api_type: normalizeText(provider?.api_type || "") || "openai-responses",
       base_url: normalizeText(provider?.base_url || ""),
       api_key: normalizeText(provider?.api_key || ""),
       default_model: normalizeText(provider?.default_model || ""),
@@ -9036,6 +9038,7 @@ async function loadModelsView(container) {
   const createProviderDraft = () => ({
     id: "",
     name: OPENAI_PROVIDER_TEMPLATE.name,
+    api_type: OPENAI_PROVIDER_TEMPLATE.api_type,
     base_url: OPENAI_PROVIDER_TEMPLATE.base_url,
     api_key: "",
     default_model: OPENAI_PROVIDER_TEMPLATE.models[0].id,
@@ -9165,6 +9168,7 @@ async function loadModelsView(container) {
       </div>
       <div class="provider-info">
         <p><strong>Base URL:</strong> ${escapeHTML(provider.base_url || "-")}</p>
+        <p><strong>API Type:</strong> ${escapeHTML(provider.api_type || "-")}</p>
         <p><strong>API Key:</strong> ${escapeHTML(provider.api_key || "-")}</p>
         <p><strong>默认模型:</strong> ${escapeHTML(provider.default_model || "-")}</p>
         <p><strong>模型数量:</strong> ${escapeHTML(String(provider.models.length))} / 可用 ${escapeHTML(String(enabledModelCount))}</p>
@@ -9206,6 +9210,13 @@ async function loadModelsView(container) {
             <label>
               <span>Provider 名称</span>
               <input type="text" name="name" value="${escapeHTML(form.name || "")}" placeholder="OpenAI" required autocomplete="off">
+            </label>
+            <label class="provider-form-full">
+              <span>API Type</span>
+              <select name="api_type">
+                <option value="openai-responses" ${form.api_type === "openai-responses" ? "selected" : ""}>openai-responses</option>
+                <option value="openai-completions" ${form.api_type === "openai-completions" ? "selected" : ""}>openai-completions</option>
+              </select>
             </label>
             <label class="provider-form-full">
               <span>Base URL</span>
@@ -9367,6 +9378,7 @@ async function loadModelsView(container) {
       body: JSON.stringify({
         name: provider.name,
         base_url: provider.base_url,
+        api_type: provider.api_type,
         api_key: "",
         default_model: modelID,
         models: provider.models,
@@ -9501,6 +9513,7 @@ async function loadModelsView(container) {
             : enabledModels[0].id;
           const body = {
             name: providerName,
+            api_type: normalizeText(formData.get("api_type") || "") || "openai-responses",
             base_url: normalizeText(formData.get("base_url") || ""),
             api_key: normalizeText(formData.get("api_key") || ""),
             default_model: defaultModel,

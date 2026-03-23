@@ -88,6 +88,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 仅面向 `Raw Model` 对话。
 - 运行时配置收敛在输入框底部操作栏：`Provider / Model`、`Tools / MCP`、`Skills` 都在发送区附近完成。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
+- `OpenAI` Provider 支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。
 - 默认走实时执行。
 - 当请求复杂度较高时，自动转为后台 `Task` 执行，并先返回任务卡片与 `task_id`。
 

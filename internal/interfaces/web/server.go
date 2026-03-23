@@ -3150,6 +3150,7 @@ func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) 
 		provider := llmdomain.ModelProvider{
 			ID:           strings.TrimSpace(req.ID),
 			Name:         req.Name,
+			APIType:      req.APIType,
 			BaseURL:      req.BaseURL,
 			APIKey:       req.APIKey,
 			DefaultModel: req.DefaultModel,
@@ -3215,6 +3216,7 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 		provider := llmdomain.ModelProvider{
 			ID:           strings.TrimSpace(req.ID),
 			Name:         req.Name,
+			APIType:      req.APIType,
 			BaseURL:      req.BaseURL,
 			APIKey:       apiKey,
 			DefaultModel: req.DefaultModel,
@@ -3280,6 +3282,7 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 type llmProviderResponse struct {
 	ID           string                `json:"id"`
 	Name         string                `json:"name"`
+	APIType      string                `json:"api_type"`
 	BaseURL      string                `json:"base_url"`
 	APIKey       string                `json:"api_key"` // Masked
 	DefaultModel string                `json:"default_model"`
@@ -3291,6 +3294,7 @@ type llmProviderResponse struct {
 type llmProviderUpdateRequest struct {
 	ID           string                `json:"id"`
 	Name         string                `json:"name"`
+	APIType      string                `json:"api_type"`
 	BaseURL      string                `json:"base_url"`
 	APIKey       string                `json:"api_key"`
 	DefaultModel string                `json:"default_model"`
@@ -3301,6 +3305,7 @@ type llmProviderUpdateRequest struct {
 type llmProviderCreateRequest struct {
 	ID           string                `json:"id"`
 	Name         string                `json:"name"`
+	APIType      string                `json:"api_type"`
 	BaseURL      string                `json:"base_url"`
 	APIKey       string                `json:"api_key"`
 	DefaultModel string                `json:"default_model"`
@@ -3331,6 +3336,7 @@ func toLLMProviderResponse(p llmdomain.ModelProvider, maskKey bool) llmProviderR
 	return llmProviderResponse{
 		ID:           p.ID,
 		Name:         p.Name,
+		APIType:      p.APIType,
 		BaseURL:      p.BaseURL,
 		APIKey:       apiKey,
 		DefaultModel: p.DefaultModel,
