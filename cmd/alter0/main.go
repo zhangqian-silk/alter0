@@ -57,6 +57,8 @@ var defaultStorageProfile = storageProfile{
 
 const defaultWebAddr = "127.0.0.1:18088"
 
+const defaultPublicCodexCommand = "/usr/local/bin/codex"
+
 func main() {
 	relaunchHelper := flag.Bool(relaunchHelperFlag, false, "internal relaunch helper")
 	relaunchParentPID := flag.Int(relaunchParentPIDFlag, 0, "internal relaunch parent pid")
@@ -71,6 +73,7 @@ func main() {
 	workerPoolSize := flag.Int("worker-pool-size", 4, "global worker pool size")
 	maxQueueSize := flag.Int("max-queue-size", 128, "max waiting queue size")
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
+	codexCommand := flag.String("codex-command", strings.TrimSpace(os.Getenv("ALTER0_CODEX_COMMAND")), "Codex CLI executable path or command name")
 	asyncTaskWorkers := flag.Int("async-task-workers", 5, "background async task worker count (max 5)")
 	taskTerminalMaxSessions := flag.Int("task-terminal-max-sessions", 5, "max concurrent terminal task sessions (max 5)")
 	taskTerminalShell := flag.String("task-terminal-shell", "", "terminal Codex CLI executable path or command name")
@@ -153,9 +156,13 @@ func main() {
 	resolvedWorkerPoolSize := control.ResolveEnvironmentInt("worker_pool_size", *workerPoolSize)
 	resolvedMaxQueueSize := control.ResolveEnvironmentInt("max_queue_size", *maxQueueSize)
 	resolvedQueueTimeout := control.ResolveEnvironmentDuration("queue_timeout", *queueTimeout)
+	resolvedCodexCommand := resolveConfiguredCodexCommand(strings.TrimSpace(*codexCommand))
 	resolvedAsyncTaskWorkers := control.ResolveEnvironmentInt("async_task_workers", *asyncTaskWorkers)
 	resolvedTaskTerminalMaxSessions := control.ResolveEnvironmentInt("task_terminal_max_sessions", *taskTerminalMaxSessions)
 	resolvedTaskTerminalShell := strings.TrimSpace(control.ResolveEnvironmentString("task_terminal_shell", strings.TrimSpace(*taskTerminalShell)))
+	if resolvedTaskTerminalShell == "" {
+		resolvedTaskTerminalShell = resolvedCodexCommand
+	}
 	resolvedTaskTerminalShellArgs := strings.TrimSpace(control.ResolveEnvironmentString("task_terminal_shell_args", strings.TrimSpace(*taskTerminalShellArgs)))
 	resolvedAsyncTaskTimeout := control.ResolveEnvironmentDuration("async_task_timeout", *asyncTaskTimeout)
 	resolvedAsyncTaskMaxRetries := control.ResolveEnvironmentInt("async_task_max_retries", *asyncTaskMaxRetries)
@@ -244,7 +251,7 @@ func main() {
 	llmService := llmapp.NewModelConfigService(llmStorage)
 
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
-	processor := execinfra.NewHybridNLProcessor(execinfra.NewCodexCLIProcessor(), llmService, logger)
+	processor := execinfra.NewHybridNLProcessor(execinfra.NewCodexCLIProcessorWithCommand(resolvedCodexCommand), llmService, logger)
 	executor := execapp.NewServiceWithSkills(processor, control, logger)
 	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
 	taskSummaryRuntime := tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
@@ -299,7 +306,7 @@ func main() {
 		SummaryMemory:         taskSummaryRecorder,
 		ComplexityPredictor: taskapp.NewOpenAIComplexityPredictor(
 			llmService,
-			taskapp.NewCodexQuickComplexityPredictor(),
+			taskapp.NewCodexQuickComplexityPredictorWithCommand(resolvedCodexCommand),
 			logger,
 		),
 	})
@@ -424,6 +431,25 @@ func forceLoopbackListenAddr(raw string) string {
 		return net.JoinHostPort("127.0.0.1", port)
 	}
 	return addr
+}
+
+func resolveConfiguredCodexCommand(raw string) string {
+	command := strings.TrimSpace(raw)
+	if command != "" {
+		return command
+	}
+	if isExecutableFile(defaultPublicCodexCommand) {
+		return defaultPublicCodexCommand
+	}
+	return "codex"
+}
+
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(strings.TrimSpace(path))
+	if err != nil || info.IsDir() {
+		return false
+	}
+	return info.Mode()&0o111 != 0
 }
 
 func isLoopbackHost(rawHost string) bool {

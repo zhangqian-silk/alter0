@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	execdomain "alter0/internal/execution/domain"
 )
@@ -264,6 +265,25 @@ func TestCodexCLIProcessorProcessStreamCommandFailure(t *testing.T) {
 	}
 }
 
+func TestCodexCLIProcessorProcessStreamFailsFastOnAuthError(t *testing.T) {
+	processor := newTestProcessor("stream-auth-failure", "reply: hello")
+
+	startedAt := time.Now()
+	_, err := processor.ProcessStream(context.Background(), "reply: hello", testRuntimeMetadata(), nil)
+	if err == nil {
+		t.Fatal("ProcessStream() error = nil, want auth failure")
+	}
+	if !strings.Contains(err.Error(), "codex authentication failed") {
+		t.Fatalf("ProcessStream() error = %q, want auth failure marker", err.Error())
+	}
+	if !strings.Contains(err.Error(), "Missing bearer or basic authentication") {
+		t.Fatalf("ProcessStream() error = %q, want auth detail", err.Error())
+	}
+	if elapsed := time.Since(startedAt); elapsed > 2*time.Second {
+		t.Fatalf("ProcessStream() elapsed = %s, want fast auth failure", elapsed)
+	}
+}
+
 func TestCodexCLIProcessorProcessStreamUsesSessionWorkspace(t *testing.T) {
 	expectedWorkspace := filepath.Join(".alter0", "workspaces", "sessions", "stream-session")
 	processor := newTestProcessor("stream-success", "reply: hello", expectedWorkspace)
@@ -399,6 +419,11 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		os.Exit(0)
 	case "stream-failure":
 		_, _ = os.Stderr.WriteString("mock stream failure")
+		os.Exit(19)
+	case "stream-auth-failure":
+		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\"}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"error\",\"message\":\"Reconnecting... 1/5 (unexpected status 401 Unauthorized: Missing bearer or basic authentication in header)\"}\n")
+		time.Sleep(5 * time.Second)
 		os.Exit(19)
 	default:
 		os.Exit(2)

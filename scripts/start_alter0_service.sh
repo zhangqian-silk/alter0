@@ -26,6 +26,10 @@ LOCK_FILE="${RUNTIME_ROOT}/run.lock"
 ALTER0_RUNTIME_MANAGER="${ALTER0_RUNTIME_MANAGER:-systemd}"
 ALTER0_SYSTEMD_UNIT="${ALTER0_SYSTEMD_UNIT:-alter0.service}"
 BUILD_OUTPUT="${ALTER0_BUILD_OUTPUT:-${REPO_DIR}/bin/alter0}"
+CODEX_COMMAND="${ALTER0_CODEX_COMMAND:-}"
+if [[ -z "${CODEX_COMMAND}" && -x /usr/local/bin/codex ]]; then
+  CODEX_COMMAND="/usr/local/bin/codex"
+fi
 
 mkdir -p "${RUNTIME_ROOT}" "${STORAGE_DIR}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0" "$(dirname "${BUILD_OUTPUT}")"
 chmod 750 "${RUNTIME_ROOT}" || true
@@ -59,7 +63,9 @@ GOTOOLCHAIN='${GOTOOLCHAIN:-auto}' \
 ALTER0_RUNTIME_MANAGER='${ALTER0_RUNTIME_MANAGER}' \
 ALTER0_SYSTEMD_UNIT='${ALTER0_SYSTEMD_UNIT}' \
 ALTER0_BUILD_OUTPUT='${BUILD_OUTPUT}' \
+ALTER0_CODEX_COMMAND='${CODEX_COMMAND}' \
 '${BUILD_OUTPUT}' \
+-codex-command '${CODEX_COMMAND}' \
 -web-addr '${WEB_ADDR}' \
 -web-bind-localhost-only='${WEB_BIND_LOCALHOST_ONLY}' \
 -web-login-password '${WEB_LOGIN_PASSWORD}' \

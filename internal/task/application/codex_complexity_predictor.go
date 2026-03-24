@@ -49,8 +49,12 @@ type CodexQuickComplexityPredictor struct {
 }
 
 func NewCodexQuickComplexityPredictor() *CodexQuickComplexityPredictor {
+	return NewCodexQuickComplexityPredictorWithCommand(defaultCodexComplexityPredictorCommand)
+}
+
+func NewCodexQuickComplexityPredictorWithCommand(command string) *CodexQuickComplexityPredictor {
 	return &CodexQuickComplexityPredictor{
-		command:         defaultCodexComplexityPredictorCommand,
+		command:         strings.TrimSpace(command),
 		timeout:         defaultCodexComplexityPredictorTimeout,
 		runner:          exec.CommandContext,
 		ewmaAlpha:       defaultCodexComplexityEWMAAlpha,

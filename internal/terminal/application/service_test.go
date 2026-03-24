@@ -180,6 +180,40 @@ func TestServiceInputRejectsConcurrentTurns(t *testing.T) {
 	}
 }
 
+func TestServiceInputFailsFastOnCodexAuthError(t *testing.T) {
+	service := newTestService("auth-error")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-auth",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	startedAt := time.Now()
+	if _, err := service.Input("owner-auth", session.ID, "hello"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+
+	snapshot, entries := waitForSessionError(t, service, "owner-auth", session.ID)
+	if !strings.Contains(snapshot.ErrorMessage, "codex authentication failed") {
+		t.Fatalf("expected auth failure in session error, got %q", snapshot.ErrorMessage)
+	}
+	if elapsed := time.Since(startedAt); elapsed > 2*time.Second {
+		t.Fatalf("expected fast auth failure, got %s", elapsed)
+	}
+	found := false
+	for _, entry := range entries {
+		if strings.Contains(entry.Text, "codex request failed: codex authentication failed") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected auth failure entry, got %+v", entries)
+	}
+}
+
 func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	service := &Service{
@@ -287,6 +321,29 @@ func waitForSessionEntries(t *testing.T, service *Service, ownerID string, sessi
 	return terminaldomain.Session{}, nil
 }
 
+func waitForSessionError(t *testing.T, service *Service, ownerID string, sessionID string) (terminaldomain.Session, []terminaldomain.Entry) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, ok := service.Get(ownerID, sessionID)
+		if !ok {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		page, err := service.ListEntries(ownerID, sessionID, 0, 32)
+		if err != nil {
+			t.Fatalf("list entries: %v", err)
+		}
+		if strings.TrimSpace(snapshot.ErrorMessage) != "" && len(page.Items) >= 2 {
+			return snapshot, page.Items
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for terminal auth failure")
+	return terminaldomain.Session{}, nil
+}
+
 func TestTerminalServiceHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_TERMINAL_HELPER_PROCESS") != "1" {
 		return
@@ -348,6 +405,11 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 	threadID := "thread-" + strings.ReplaceAll(prompt, " ", "-")
 	fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
 	fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)
+	if mode == "auth-error" {
+		fmt.Fprintln(os.Stdout, `{"type":"error","message":"Reconnecting... 1/5 (unexpected status 401 Unauthorized: Missing bearer or basic authentication in header)"}`)
+		time.Sleep(5 * time.Second)
+		os.Exit(19)
+	}
 	fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":%q}}\n", "mock:"+prompt)
 	fmt.Fprintln(os.Stdout, `{"type":"turn.completed"}`)
 	os.Exit(0)
