@@ -214,6 +214,43 @@ func TestServiceInputFailsFastOnCodexAuthError(t *testing.T) {
 	}
 }
 
+func TestServiceInputFailsFastOnCodexStderrAuthError(t *testing.T) {
+	service := newTestService("stderr-auth-error")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-auth-stderr",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	startedAt := time.Now()
+	if _, err := service.Input("owner-auth-stderr", session.ID, "hello"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+
+	snapshot, entries := waitForSessionError(t, service, "owner-auth-stderr", session.ID)
+	if !strings.Contains(snapshot.ErrorMessage, "codex authentication failed") {
+		t.Fatalf("expected auth failure in session error, got %q", snapshot.ErrorMessage)
+	}
+	if !strings.Contains(snapshot.ErrorMessage, "refresh_token_reused") {
+		t.Fatalf("expected refresh token detail, got %q", snapshot.ErrorMessage)
+	}
+	if elapsed := time.Since(startedAt); elapsed > 2*time.Second {
+		t.Fatalf("expected fast stderr auth failure, got %s", elapsed)
+	}
+	found := false
+	for _, entry := range entries {
+		if strings.Contains(entry.Text, "codex request failed: codex authentication failed") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected auth failure entry, got %+v", entries)
+	}
+}
+
 func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	service := &Service{
@@ -407,6 +444,11 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 	fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)
 	if mode == "auth-error" {
 		fmt.Fprintln(os.Stdout, `{"type":"error","message":"Reconnecting... 1/5 (unexpected status 401 Unauthorized: Missing bearer or basic authentication in header)"}`)
+		time.Sleep(5 * time.Second)
+		os.Exit(19)
+	}
+	if mode == "stderr-auth-error" {
+		fmt.Fprintln(os.Stderr, `2026-03-24T13:13:02Z ERROR codex_core::auth: Failed to refresh token: 401 Unauthorized: {"error":{"code":"refresh_token_reused"}}`)
 		time.Sleep(5 * time.Second)
 		os.Exit(19)
 	}

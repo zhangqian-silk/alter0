@@ -110,7 +110,8 @@ internal/shared/infrastructure     # ID、日志、metrics
 补充说明：
 
 1. `Chat / Agent / Terminal` 只要落到 `Codex CLI` 执行链，都要求服务运行账户本身具备可用的 Codex / OpenAI 认证。
-2. 若服务账户缺少认证，Web 端会快速返回认证失败，而不会长时间保持等待态。
+2. 复杂度预测优先走默认 LLM；当默认 LLM 不可用时会回退到本地快速预测，若回退预测在 3 秒内未返回，则自动降级为规则评估，不阻塞消息主流程。
+3. 若服务账户缺少认证，Web 端会快速返回认证失败，而不会长时间保持等待态。
 
 ## Workspace Model
 

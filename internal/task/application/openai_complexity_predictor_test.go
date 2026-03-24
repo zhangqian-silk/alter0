@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	llmdomain "alter0/internal/llm/domain"
 	shareddomain "alter0/internal/shared/domain"
@@ -53,6 +54,17 @@ func (s *stubFallbackComplexityPredictor) Predict(_ context.Context, _ shareddom
 		return ComplexityAssessment{}, s.err
 	}
 	return s.assessment, nil
+}
+
+type blockingFallbackComplexityPredictor struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingFallbackComplexityPredictor) Predict(_ context.Context, _ shareddomain.UnifiedMessage) (ComplexityAssessment, error) {
+	close(s.started)
+	<-s.release
+	return ComplexityAssessment{}, nil
 }
 
 func TestOpenAIComplexityPredictorUsesModelResponse(t *testing.T) {
@@ -119,5 +131,39 @@ func TestOpenAIComplexityPredictorFallsBackWhenClientUnavailable(t *testing.T) {
 	}
 	if assessment.TaskSummary != "fallback" {
 		t.Fatalf("expected fallback assessment, got %+v", assessment)
+	}
+}
+
+func TestOpenAIComplexityPredictorFallbackTimesOut(t *testing.T) {
+	fallback := &blockingFallbackComplexityPredictor{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	predictor := NewOpenAIComplexityPredictor(&stubComplexityLLMClientSource{
+		err: errors.New("provider disabled"),
+	}, fallback, nil)
+	predictor.fallbackWait = 20 * time.Millisecond
+
+	startedAt := time.Now()
+	_, err := predictor.Predict(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "msg-3",
+		SessionID:   "session-3",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "阻塞 fallback",
+	})
+	if err == nil {
+		close(fallback.release)
+		t.Fatal("expected fallback timeout error")
+	}
+	<-fallback.started
+	close(fallback.release)
+
+	if elapsed := time.Since(startedAt); elapsed > 250*time.Millisecond {
+		t.Fatalf("expected fallback timeout quickly, got %s", elapsed)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline exceeded, got %v", err)
 	}
 }

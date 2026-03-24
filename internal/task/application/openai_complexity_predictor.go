@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	llmdomain "alter0/internal/llm/domain"
 	shareddomain "alter0/internal/shared/domain"
@@ -19,8 +20,11 @@ type defaultLLMClientSource interface {
 type OpenAIComplexityPredictor struct {
 	clientSource defaultLLMClientSource
 	fallback     ComplexityPredictor
+	fallbackWait time.Duration
 	logger       *slog.Logger
 }
+
+const defaultOpenAIComplexityFallbackTimeout = 3 * time.Second
 
 type openAIComplexityPayload struct {
 	TaskSummary              string `json:"task_summary"`
@@ -41,6 +45,7 @@ func NewOpenAIComplexityPredictor(
 	return &OpenAIComplexityPredictor{
 		clientSource: clientSource,
 		fallback:     fallback,
+		fallbackWait: defaultOpenAIComplexityFallbackTimeout,
 		logger:       logger,
 	}
 }
@@ -131,7 +136,36 @@ func (p *OpenAIComplexityPredictor) fallbackPredict(
 		}
 		return ComplexityAssessment{}, cause
 	}
-	return p.fallback.Predict(ctx, msg)
+	timeout := p.fallbackWait
+	if timeout <= 0 {
+		timeout = defaultOpenAIComplexityFallbackTimeout
+	}
+	fallbackCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	type fallbackResult struct {
+		assessment ComplexityAssessment
+		err        error
+	}
+	resultCh := make(chan fallbackResult, 1)
+	go func() {
+		assessment, err := p.fallback.Predict(fallbackCtx, msg)
+		resultCh <- fallbackResult{assessment: assessment, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		return result.assessment, result.err
+	case <-fallbackCtx.Done():
+		if p.logger != nil {
+			p.logger.Warn("complexity predictor fallback timed out",
+				slog.String("session_id", strings.TrimSpace(msg.SessionID)),
+				slog.String("message_id", strings.TrimSpace(msg.MessageID)),
+				slog.Duration("timeout", timeout),
+			)
+		}
+		return ComplexityAssessment{}, fmt.Errorf("complexity predictor fallback timed out: %w", fallbackCtx.Err())
+	}
 }
 
 func buildOpenAIComplexityPrompt(msg shareddomain.UnifiedMessage) string {

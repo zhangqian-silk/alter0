@@ -23,6 +23,7 @@ import (
 const (
 	defaultCodexCommand             = "codex"
 	defaultCodexSandbox             = "danger-full-access"
+	defaultCodexWaitDelay           = 1500 * time.Millisecond
 	defaultLinuxSandboxBwrapFeature = "use_linux_sandbox_bwrap"
 	defaultWorkspaceRootDirName     = ".alter0"
 	workspaceDirectoryName          = "workspaces"
@@ -108,6 +109,16 @@ type codexExecItem struct {
 	AggregatedOutput string `json:"aggregated_output,omitempty"`
 	Status           string `json:"status,omitempty"`
 	ExitCode         *int   `json:"exit_code,omitempty"`
+}
+
+type codexPipeResult struct {
+	output string
+	fatal  string
+	err    error
+}
+
+type codexTurnResult struct {
+	err error
 }
 
 type runtimeSession struct {
@@ -519,6 +530,8 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 	defer runCancel()
 
 	cmd := runner(runCtx, command.path, args...)
+	configureCodexCommand(cmd)
+	cmd.WaitDelay = defaultCodexWaitDelay
 	if workspaceDir := item.workspaceDir(); workspaceDir != "" {
 		cmd.Dir = workspaceDir
 	}
@@ -539,15 +552,49 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 		return
 	}
 
-	stderrCh := make(chan string, 1)
+	stdoutCh := make(chan codexTurnResult, 1)
 	go func() {
-		data, _ := io.ReadAll(stderr)
-		stderrCh <- strings.TrimSpace(string(data))
+		stdoutCh <- codexTurnResult{
+			err: s.consumeCodexOutput(item, turnID, stdout, runCancel),
+		}
 	}()
+	stderrFatalCh, stderrCh := watchCodexStderr(stderr)
 
-	parseErr := s.consumeCodexOutput(item, turnID, stdout, runCancel)
+	parseErr := error(nil)
+	stdoutDone := false
+	for !stdoutDone && parseErr == nil {
+		select {
+		case stdoutResult := <-stdoutCh:
+			stdoutDone = true
+			parseErr = stdoutResult.err
+			if parseErr != nil {
+				runCancel()
+				_ = stderr.Close()
+			}
+		case fatalMessage, ok := <-stderrFatalCh:
+			if !ok {
+				stderrFatalCh = nil
+				continue
+			}
+			if strings.TrimSpace(fatalMessage) == "" {
+				continue
+			}
+			parseErr = fmt.Errorf("codex authentication failed: %s", fatalMessage)
+			runCancel()
+			_ = stdout.Close()
+			_ = stderr.Close()
+			<-stdoutCh
+		}
+	}
 	waitErr := cmd.Wait()
-	stderrText := <-stderrCh
+	stderrResult := <-stderrCh
+	stderrText := stderrResult.output
+	if stderrResult.fatal != "" && parseErr == nil {
+		parseErr = fmt.Errorf("codex authentication failed: %s", stderrResult.fatal)
+	}
+	if stderrResult.err != nil && parseErr == nil {
+		parseErr = fmt.Errorf("read codex stderr: %w", stderrResult.err)
+	}
 
 	if parseErr != nil {
 		s.finishTurn(item, turnID, parseErr, stderrText)
@@ -573,7 +620,7 @@ func (s *Service) consumeCodexOutput(item *runtimeSession, turnID string, reader
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue
 		}
-		if fatalMessage := fatalCodexEventMessage(event.Message); fatalMessage != "" {
+		if fatalMessage := fatalCodexAuthMessage(event.Message); fatalMessage != "" {
 			if cancel != nil {
 				cancel()
 			}
@@ -587,7 +634,39 @@ func (s *Service) consumeCodexOutput(item *runtimeSession, turnID string, reader
 	return nil
 }
 
-func fatalCodexEventMessage(message string) string {
+func watchCodexStderr(reader io.Reader) (<-chan string, <-chan codexPipeResult) {
+	fatalCh := make(chan string, 1)
+	resultCh := make(chan codexPipeResult, 1)
+	go func() {
+		scanner := bufio.NewScanner(reader)
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+
+		lines := make([]string, 0, 8)
+		fatal := ""
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			lines = append(lines, line)
+			if fatal == "" {
+				if message := fatalCodexAuthMessage(line); message != "" {
+					fatal = message
+					fatalCh <- fatal
+				}
+			}
+		}
+		close(fatalCh)
+		resultCh <- codexPipeResult{
+			output: strings.TrimSpace(strings.Join(lines, "\n")),
+			fatal:  fatal,
+			err:    normalizePipeReadError(scanner.Err()),
+		}
+	}()
+	return fatalCh, resultCh
+}
+
+func fatalCodexAuthMessage(message string) string {
 	trimmed := strings.TrimSpace(message)
 	if trimmed == "" {
 		return ""
@@ -607,6 +686,16 @@ func fatalCodexEventMessage(message string) string {
 	case strings.Contains(normalized, "invalid api key"):
 		return trimmed
 	case strings.Contains(normalized, "incorrect api key"):
+		return trimmed
+	case strings.Contains(normalized, "failed to refresh token"):
+		return trimmed
+	case strings.Contains(normalized, "refresh_token_reused"):
+		return trimmed
+	case strings.Contains(normalized, "provided authentication token is expired"):
+		return trimmed
+	case strings.Contains(normalized, "please try signing in again"):
+		return trimmed
+	case strings.Contains(normalized, "please log out and sign in again"):
 		return trimmed
 	default:
 		return ""
@@ -1169,6 +1258,12 @@ func normalizeCodexItemType(value string) string {
 }
 
 func compactCodexError(stderrText string, turnErr error) string {
+	if turnErr != nil {
+		trimmed := strings.TrimSpace(turnErr.Error())
+		if strings.Contains(strings.ToLower(trimmed), "codex authentication failed") {
+			return trimmed
+		}
+	}
 	lines := make([]string, 0, 4)
 	for _, raw := range strings.Split(normalizeChunk(stderrText), "\n") {
 		line := strings.TrimSpace(raw)
@@ -1190,6 +1285,17 @@ func compactCodexError(stderrText string, turnErr error) string {
 		return strings.TrimSpace(turnErr.Error())
 	}
 	return "unknown error"
+}
+
+func normalizePipeReadError(err error) error {
+	if err == nil {
+		return nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.Contains(normalized, "file already closed") {
+		return nil
+	}
+	return err
 }
 
 func normalizeChunk(value string) string {
