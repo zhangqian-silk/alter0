@@ -115,12 +115,23 @@ func (p *HybridNLProcessor) processWithReact(
 	if p.react == nil {
 		return "", errors.New("react agent factory unavailable")
 	}
+	tools := buildNativeTools(metadata, nil)
+	var toolExecutor llmdomain.ToolExecutor
+	maxIterations := 1
+	if len(tools) > 0 {
+		toolExecutor = llmdomain.ToolExecutorFunc(func(runCtx context.Context, toolCall llmdomain.ToolCall) (*llmdomain.ToolResult, error) {
+			return p.executeModelTool(runCtx, metadata, toolCall)
+		})
+		maxIterations = 6
+	}
 	providerID := strings.TrimSpace(metadataValue(metadata, execdomain.LLMProviderIDMetadataKey))
 	modelID := strings.TrimSpace(metadataValue(metadata, execdomain.LLMModelMetadataKey))
 	agent, err := p.react.GetReActAgent(ctx, providerID, llmdomain.ReActAgentConfig{
 		Model:         modelID,
 		SystemPrompt:  buildHybridReActSystemPrompt(metadata),
-		MaxIterations: 1,
+		Tools:         tools,
+		ToolExecutor:  toolExecutor,
+		MaxIterations: maxIterations,
 	})
 	if err != nil {
 		return "", err
@@ -162,7 +173,7 @@ func (p *HybridNLProcessor) processWithAgent(
 		SystemPrompt: buildAgentSystemPrompt(metadata),
 		Tools:        tools,
 		ToolExecutor: llmdomain.ToolExecutorFunc(func(runCtx context.Context, toolCall llmdomain.ToolCall) (*llmdomain.ToolResult, error) {
-			return p.executeAgentTool(runCtx, metadata, toolCall)
+			return p.executeModelTool(runCtx, metadata, toolCall)
 		}),
 		MaxIterations: parseAgentMaxIterations(metadata),
 	})
@@ -188,13 +199,19 @@ func (p *HybridNLProcessor) processWithAgent(
 	return strings.TrimSpace(state.Answer), nil
 }
 
-func (p *HybridNLProcessor) executeAgentTool(
+func (p *HybridNLProcessor) executeModelTool(
 	ctx context.Context,
 	metadata map[string]string,
 	toolCall llmdomain.ToolCall,
 ) (*llmdomain.ToolResult, error) {
 	name := strings.ToLower(strings.TrimSpace(toolCall.Name))
 	switch name {
+	case toolListDir, toolRead, toolWrite, toolEdit, toolBash:
+		executor, err := newNativeToolExecutor(metadata)
+		if err != nil {
+			return nil, err
+		}
+		return executor.Execute(ctx, toolCall)
 	case "codex_exec":
 		payload := struct {
 			Instruction string `json:"instruction"`
@@ -260,6 +277,9 @@ func buildHybridReActSystemPrompt(metadata map[string]string) string {
 		"Follow the ReAct pattern internally, but do not expose Thought, Action, or Observation headings.",
 		"Return only the final user-facing answer.",
 	}
+	if len(buildNativeTools(metadata, nil)) > 0 {
+		parts = append(parts, "Native tools are enabled. Relative tool paths use the repo root by default; set base=workspace to operate on the session workspace.")
+	}
 	if rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey)); rawSkillContext != "" {
 		parts = append(parts, "Skill context (JSON): "+rawSkillContext)
 	}
@@ -273,9 +293,11 @@ func buildAgentSystemPrompt(metadata map[string]string) string {
 	parts := []string{
 		"You are alter0's agent execution mode.",
 		"Your job is to complete the user's goal by actually executing work, not by only offering suggestions.",
-		"Use codex_exec whenever concrete action is needed.",
+		"Prefer native tools for listing directories, reading files, writing files, editing files, and running shell commands.",
+		"Use codex_exec when the task needs a deeper autonomous implementation run than a single native tool step.",
 		"Only call complete after the goal has been completed or when execution is truly blocked and you can clearly explain why.",
 		"Do not expose hidden chain-of-thought. Keep outputs concise and execution-oriented.",
+		"Relative native-tool paths use the repo root by default; set base=workspace to operate on the session workspace.",
 	}
 	if custom := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey)); custom != "" {
 		parts = append(parts, "Agent profile system prompt:\n"+custom)
@@ -293,11 +315,12 @@ func buildAgentSystemPrompt(metadata map[string]string) string {
 }
 
 func buildAgentTools(metadata map[string]string) []llmdomain.Tool {
-	allowed := parseAgentToolIDs(metadata)
-	items := make([]llmdomain.Tool, 0, len(allowed)+1)
-	if _, ok := allowed["codex_exec"]; ok {
+	allowed := parseSelectedToolIDs(metadata, defaultAgentToolIDs)
+	items := make([]llmdomain.Tool, 0, len(allowed)+2)
+	items = append(items, buildNativeTools(metadata, defaultAgentToolIDs)...)
+	if _, ok := allowed[toolCodexExec]; ok {
 		items = append(items, llmdomain.Tool{
-			Name:        "codex_exec",
+			Name:        toolCodexExec,
 			Description: "Execute a concrete implementation step with Codex CLI and return the real execution result.",
 			Parameters: map[string]interface{}{
 				"type": "object",
@@ -326,33 +349,6 @@ func buildAgentTools(metadata map[string]string) []llmdomain.Tool {
 		},
 	})
 	return items
-}
-
-func parseAgentToolIDs(metadata map[string]string) map[string]struct{} {
-	raw := strings.TrimSpace(metadataValue(metadata, execdomain.AgentToolsMetadataKey))
-	items := []string{"codex_exec"}
-	if raw != "" {
-		if strings.HasPrefix(raw, "[") {
-			var parsed []string
-			if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
-				items = parsed
-			}
-		} else {
-			items = strings.Split(raw, ",")
-		}
-	}
-	allowed := map[string]struct{}{}
-	for _, item := range items {
-		normalized := strings.ToLower(strings.TrimSpace(item))
-		if normalized == "" {
-			continue
-		}
-		allowed[normalized] = struct{}{}
-	}
-	if len(allowed) == 0 {
-		allowed["codex_exec"] = struct{}{}
-	}
-	return allowed
 }
 
 func parseAgentMaxIterations(metadata map[string]string) int {

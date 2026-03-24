@@ -123,7 +123,10 @@ func TestHybridNLProcessorAgentModeExecutesCodexToolLoop(t *testing.T) {
 		t.Fatalf("expected custom system prompt in config, got %q", reactFactory.lastConfig.SystemPrompt)
 	}
 	if len(reactFactory.lastConfig.Tools) != 2 {
-		t.Fatalf("expected codex_exec and complete tools, got %+v", reactFactory.lastConfig.Tools)
+		t.Fatalf("expected explicit codex_exec selection plus complete, got %+v", reactFactory.lastConfig.Tools)
+	}
+	if reactFactory.lastConfig.Tools[0].Name != "codex_exec" || reactFactory.lastConfig.Tools[1].Name != "complete" {
+		t.Fatalf("unexpected tools: %+v", reactFactory.lastConfig.Tools)
 	}
 }
 
@@ -144,5 +147,53 @@ func TestHybridNLProcessorUsesChatLevelModelOverride(t *testing.T) {
 	}
 	if reactFactory.lastConfig.Model != "gpt-5.4" {
 		t.Fatalf("expected model override gpt-5.4, got %s", reactFactory.lastConfig.Model)
+	}
+}
+
+func TestHybridNLProcessorReactModeInjectsSelectedNativeTools(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentToolsMetadataKey] = `["read","bash"]`
+
+	_, err := processor.Process(context.Background(), "读取文件并总结", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if len(reactFactory.lastConfig.Tools) != 2 {
+		t.Fatalf("expected selected native tools only, got %+v", reactFactory.lastConfig.Tools)
+	}
+	if reactFactory.lastConfig.Tools[0].Name != "read" || reactFactory.lastConfig.Tools[1].Name != "bash" {
+		t.Fatalf("unexpected tool order: %+v", reactFactory.lastConfig.Tools)
+	}
+	if reactFactory.lastConfig.ToolExecutor == nil {
+		t.Fatalf("expected tool executor to be configured")
+	}
+	if reactFactory.lastConfig.MaxIterations != 6 {
+		t.Fatalf("expected max iterations 6 for tool-enabled chat, got %d", reactFactory.lastConfig.MaxIterations)
+	}
+}
+
+func TestHybridNLProcessorAgentModeDefaultsToCoreTools(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "researcher"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+
+	_, err := processor.Process(context.Background(), "完成仓库整理", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	toolNames := []string{}
+	for _, item := range reactFactory.lastConfig.Tools {
+		toolNames = append(toolNames, item.Name)
+	}
+	for _, expected := range []string{"list_dir", "read", "write", "edit", "bash", "codex_exec", "complete"} {
+		if !strings.Contains(strings.Join(toolNames, ","), expected) {
+			t.Fatalf("expected tool %s in %+v", expected, toolNames)
+		}
 	}
 }

@@ -88,6 +88,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 仅面向 `Raw Model` 对话。
 - 运行时配置收敛在输入框底部操作栏：`Provider / Model`、`Tools / MCP`、`Skills` 都在发送区附近完成。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
+- 选中的原生工具会在模型调用时作为 function tools 注入，当前内置工具包括 `list_dir`、`read`、`write`、`edit`、`bash`。
 - `OpenAI` Provider 支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。
 - 默认走实时执行。
 - 当请求复杂度较高时，自动转为后台 `Task` 执行，并先返回任务卡片与 `task_id`。
@@ -95,7 +96,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 2. `Agent`
 - 面向“先执行再汇报”的目标型任务。
 - 请求进入后会创建一个 ReAct 执行环，以当前任务为目标持续推进。
-- Agent 会调用 `codex_exec` 工具驱动 Codex CLI 落地执行，并依据执行结果决定继续推进还是完成收口。
+- Agent 默认可使用 `list_dir`、`read`、`write`、`edit`、`bash`、`codex_exec` 等工具，并依据执行结果决定继续推进还是完成收口。
 - 每个 Agent 可独立配置名称、system prompt、tool 白名单、Skill 选择与 MCP 选择。
 - Web 端将 Agent 的“配置/管理”放在 `Agent Profiles` 页面，将 Agent 的“交互/执行”统一收敛到 `Agent` 页面。
 - Agent 的 `id`、`version` 等系统字段由服务端统一生成和维护，管理页不要求用户手填。
@@ -123,6 +124,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 1. 独立工作区用于隔离默认执行目录与运行时产物，不等同于文件系统权限收缩。
 2. 当前默认仍为 `danger-full-access`，因此是否可访问其他绝对路径，仍取决于宿主机环境与运行账户权限。
+3. 原生工具的相对路径默认按仓库根目录解析；需要操作会话工作区时，可在工具参数中显式指定 `base=workspace`。
 
 其中 `Chat` 再细分为两种执行方式：
 
@@ -275,7 +277,7 @@ curl -X POST http://127.0.0.1:18088/api/control/agents \
     "enabled":true,
     "system_prompt":"先执行，再汇报；不要只给建议。",
     "max_iterations":6,
-    "tools":["codex_exec"],
+    "tools":["list_dir","read","write","edit","bash","codex_exec"],
     "skills":["summary"],
     "mcps":["github"]
   }'
@@ -288,7 +290,7 @@ curl -X PUT http://127.0.0.1:18088/api/control/agents/researcher \
     "enabled":true,
     "system_prompt":"先执行，再汇报；不要只给建议。",
     "max_iterations":8,
-    "tools":["codex_exec"],
+    "tools":["list_dir","read","write","edit","bash","codex_exec"],
     "skills":["summary"],
     "mcps":["github"]
   }'
@@ -308,9 +310,10 @@ curl -X POST http://127.0.0.1:18088/api/agent/messages \
 
 1. Agent Profile 由控制面统一管理，运行时通过 `agent_id` 选择。
 2. 创建 Agent 时不需要手填 `id` 或 `version`；服务端会自动生成 Agent ID，并在每次更新时维护版本。
-3. 当前内置 Agent 工具为 `codex_exec`，系统会自动补充收口工具 `complete`。
-4. Agent 的 Skill 与 MCP 选择会在执行前注入运行时上下文，执行过程仍复用统一编排链路。
-5. Web `Agent Profiles` 页面用于管理 Agent Profile；`Agent` 页面作为 Agent 交互入口；`Chat` 页面仅保留 Raw Model 对话。
+3. 当前内置原生工具为 `list_dir`、`read`、`write`、`edit`、`bash`；Agent 额外支持 `codex_exec`，系统会自动补充收口工具 `complete`。
+4. `Chat` 会按当前运行时勾选结果注入原生工具；`Agent` 在未显式限制工具集时默认注入核心工具。
+5. Agent 的 Skill 与 MCP 选择会在执行前注入运行时上下文，执行过程仍复用统一编排链路。
+6. Web `Agent Profiles` 页面用于管理 Agent Profile；`Agent` 页面作为 Agent 交互入口；`Chat` 页面仅保留 Raw Model 对话。
 
 ### Cron Jobs
 
