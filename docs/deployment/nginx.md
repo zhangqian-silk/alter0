@@ -68,5 +68,7 @@ EnvironmentFile=/etc/alter0/alter0.env
 1. 使用专用低权限用户运行（例如 `alter0`）。
 2. 运行目录建议权限：目录 `750`、日志 `640`、密码环境文件 `600`。
 3. 避免直接使用 root 长期运行服务。
+4. `systemd` 建议直接设置 `User=alter0` / `Group=alter0`，不要依赖启动脚本内部再 `su` 切换用户。
 
 项目内提供了最小化启动脚本：`scripts/start_alter0_service.sh`。
+该脚本按推荐方式应直接由 `alter0` 用户运行；如果以 root 启动，会直接报错退出，提醒把用户切换前移到 systemd unit。
