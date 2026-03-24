@@ -121,6 +121,7 @@ func (s *Service) executeNaturalLanguage(
 			if err != nil {
 				return "", nil, err
 			}
+			attachExecutionSourceMetadata(metadata, resultMetadata)
 			return output, resultMetadata, nil
 		}
 	}
@@ -129,6 +130,7 @@ func (s *Service) executeNaturalLanguage(
 	if err != nil {
 		return "", nil, err
 	}
+	attachExecutionSourceMetadata(metadata, resultMetadata)
 	if streamHandler != nil && strings.TrimSpace(output) != "" {
 		if err := streamHandler(execdomain.StreamEvent{
 			Type: execdomain.StreamEventTypeOutput,
@@ -138,6 +140,14 @@ func (s *Service) executeNaturalLanguage(
 		}
 	}
 	return output, resultMetadata, nil
+}
+
+func attachExecutionSourceMetadata(metadata map[string]string, resultMetadata map[string]string) {
+	source := strings.TrimSpace(metadata[execdomain.ExecutionSourceMetadataKey])
+	if source == "" {
+		return
+	}
+	resultMetadata[execdomain.ExecutionSourceMetadataKey] = source
 }
 
 func (s *Service) resolveSkillContext(

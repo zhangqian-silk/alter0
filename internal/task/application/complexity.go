@@ -49,7 +49,11 @@ type ComplexityPredictor interface {
 }
 
 func (s *Service) AssessComplexity(msg shareddomain.UnifiedMessage) ComplexityAssessment {
-	assessment, err := s.predictComplexity(msg)
+	return s.AssessComplexityWithContext(context.Background(), msg)
+}
+
+func (s *Service) AssessComplexityWithContext(ctx context.Context, msg shareddomain.UnifiedMessage) ComplexityAssessment {
+	assessment, err := s.predictComplexity(ctx, msg)
 	if err != nil {
 		assessment = fallbackComplexityAssessment(
 			msg,
@@ -62,9 +66,12 @@ func (s *Service) AssessComplexity(msg shareddomain.UnifiedMessage) ComplexityAs
 	return s.finalizeComplexityAssessment(msg, assessment)
 }
 
-func (s *Service) predictComplexity(msg shareddomain.UnifiedMessage) (ComplexityAssessment, error) {
+func (s *Service) predictComplexity(ctx context.Context, msg shareddomain.UnifiedMessage) (ComplexityAssessment, error) {
 	if isComplexityPredictorUnavailable(msg) {
 		return ComplexityAssessment{}, errComplexityPredictorUnavailable
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	trimmed := strings.TrimSpace(msg.Content)
@@ -74,7 +81,7 @@ func (s *Service) predictComplexity(msg shareddomain.UnifiedMessage) (Complexity
 	triggerThresholdSeconds := s.asyncTriggerThresholdSeconds()
 
 	if s.options.ComplexityPredictor != nil {
-		predicted, err := s.options.ComplexityPredictor.Predict(context.Background(), msg)
+		predicted, err := s.options.ComplexityPredictor.Predict(ctx, msg)
 		if err != nil {
 			return ComplexityAssessment{}, errComplexityPredictorUnavailable
 		}

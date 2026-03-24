@@ -197,3 +197,36 @@ func TestHybridNLProcessorAgentModeDefaultsToCoreTools(t *testing.T) {
 		}
 	}
 }
+
+func TestHybridNLProcessorMarksModelExecutionSource(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	output, err := processor.Process(context.Background(), "总结当前改动", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output == "" {
+		t.Fatal("expected non-empty output")
+	}
+	if got := metadata[execdomain.ExecutionSourceMetadataKey]; got != execdomain.ExecutionSourceModel {
+		t.Fatalf("expected execution source %q, got %q", execdomain.ExecutionSourceModel, got)
+	}
+}
+
+func TestHybridNLProcessorMarksCodexExecutionSource(t *testing.T) {
+	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), nil, nil)
+
+	metadata := testRuntimeMetadata()
+	output, err := processor.Process(context.Background(), "整理仓库", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output == "" {
+		t.Fatal("expected non-empty output")
+	}
+	if got := metadata[execdomain.ExecutionSourceMetadataKey]; got != execdomain.ExecutionSourceCodexCLI {
+		t.Fatalf("expected execution source %q, got %q", execdomain.ExecutionSourceCodexCLI, got)
+	}
+}

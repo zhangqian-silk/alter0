@@ -112,6 +112,7 @@ type sessionHistoryService interface {
 
 type taskService interface {
 	AssessComplexity(msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment
+	AssessComplexityWithContext(ctx context.Context, msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment
 	ShouldRunAsync(msg shareddomain.UnifiedMessage) bool
 	Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, error)
 	List(query taskapp.ListQuery) taskapp.TaskPage
@@ -967,87 +968,192 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	intent := s.classifyMessageIntent(msg.Content)
 	assessment := s.defaultComplexityAssessment()
-	if intent.Type == orchdomain.IntentTypeNL {
-		assessment = s.assessComplexity(msg)
-		msg = enrichMessageWithComplexityMetadata(msg, assessment)
-		if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
-			taskCard := buildTaskCard(msg, assessment, task)
-			if submitErr != nil {
-				s.logWebMessageFailure(msg, submitErr)
-				_ = writeSSE(w, "error", streamErrorResponse{
-					Error:  submitErr.Error(),
-					Result: asyncAcceptedResult(msg, task, assessment, taskCard),
-				})
-				flusher.Flush()
-				return
+	streamCtx, cancelStream := context.WithCancel(r.Context())
+	defer cancelStream()
+
+	streamResultCh := make(chan streamExecutionResult, 1)
+	streamDeltaCh := make(chan string, 16)
+	_, nativeStreaming := s.orchestrator.(StreamOrchestrator)
+	go func() {
+		result, handleErr := s.handleStreamMessage(streamCtx, msg, func(delta string) error {
+			if strings.TrimSpace(delta) == "" {
+				return nil
 			}
-			_ = writeSSE(w, "done", streamDoneResponse{
-				Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
-				TaskID:                   task.ID,
-				TaskStatus:               string(task.Status),
-				ExecutionMode:            assessment.ExecutionMode,
-				EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-				ComplexityLevel:          assessment.ComplexityLevel,
-				TaskCard:                 taskCard,
+			select {
+			case <-streamCtx.Done():
+				return streamCtx.Err()
+			case streamDeltaCh <- delta:
+				return nil
+			}
+		})
+		streamResultCh <- streamExecutionResult{result: result, err: handleErr}
+	}()
+
+	assessmentReady := false
+	assessmentCh := (<-chan taskapp.ComplexityAssessment)(nil)
+	cancelAssessment := func() {}
+	if intent.Type == orchdomain.IntentTypeNL && s.tasks != nil {
+		assessmentCtx, cancel := context.WithCancel(r.Context())
+		cancelAssessment = cancel
+		defer cancelAssessment()
+		localAssessmentCh := make(chan taskapp.ComplexityAssessment, 1)
+		assessmentCh = localAssessmentCh
+		go func() {
+			localAssessmentCh <- s.assessComplexityWithContext(assessmentCtx, msg)
+		}()
+	}
+
+	emittedDelta := false
+	writeDelta := func(delta string, route shareddomain.Route) error {
+		if strings.TrimSpace(delta) == "" {
+			return nil
+		}
+		payload := streamDeltaResponse{Delta: delta}
+		if strings.TrimSpace(string(route)) != "" {
+			payload.Route = route
+		}
+		if err := writeSSE(w, "delta", payload); err != nil {
+			return err
+		}
+		emittedDelta = true
+		flusher.Flush()
+		return nil
+	}
+	finalizeStreamResult := func(streamResult streamExecutionResult) {
+		cancelAssessment()
+		result := streamResult.result
+		handleErr := streamResult.err
+		_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+		if intent.Type == orchdomain.IntentTypeNL {
+			result = attachComplexityMetadata(result, assessment, nil)
+		}
+		if handleErr != nil {
+			s.logWebMessageFailure(msg, handleErr)
+			_ = writeSSE(w, "error", streamErrorResponse{
+				Error:  handleErr.Error(),
+				Result: result,
 			})
 			flusher.Flush()
 			return
 		}
-	}
 
-	handleStream := func(
-		callback func(delta string) error,
-	) (shareddomain.OrchestrationResult, error) {
-		if orchestrator, ok := s.orchestrator.(StreamOrchestrator); ok {
-			return orchestrator.HandleStream(r.Context(), msg, callback)
+		if !nativeStreaming {
+			for _, chunk := range chunkText(result.Output, 24) {
+				if err := writeDelta(chunk, result.Route); err != nil {
+					return
+				}
+			}
 		}
-		return s.orchestrator.Handle(r.Context(), msg)
-	}
 
-	result, handleErr := handleStream(func(delta string) error {
-		if strings.TrimSpace(delta) == "" {
-			return nil
-		}
-		if err := writeSSE(w, "delta", streamDeltaResponse{
-			Delta: delta,
-		}); err != nil {
-			return err
-		}
-		flusher.Flush()
-		return nil
-	})
-	if intent.Type == orchdomain.IntentTypeNL {
-		result = attachComplexityMetadata(result, assessment, nil)
-	}
-	if handleErr != nil {
-		s.logWebMessageFailure(msg, handleErr)
-		_ = writeSSE(w, "error", streamErrorResponse{
-			Error:  handleErr.Error(),
-			Result: result,
+		_ = writeSSE(w, "done", streamDoneResponse{
+			Result:                   result,
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
 		})
 		flusher.Flush()
-		return
 	}
 
-	if _, ok := s.orchestrator.(StreamOrchestrator); !ok {
-		for _, chunk := range chunkText(result.Output, 24) {
-			if err := writeSSE(w, "delta", streamDeltaResponse{
-				Delta: chunk,
-				Route: result.Route,
-			}); err != nil {
+	for {
+		select {
+		case delta := <-streamDeltaCh:
+			if err := writeDelta(delta, ""); err != nil {
 				return
 			}
-			flusher.Flush()
+		case assessment = <-assessmentCh:
+			assessmentReady = true
+			if strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) != taskapp.ExecutionModeAsync {
+				continue
+			}
+			_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+			select {
+			case streamResult := <-streamResultCh:
+				assessment = s.defaultComplexityAssessment()
+				assessmentReady = false
+				finalizeStreamResult(streamResult)
+				return
+			default:
+			}
+
+			cancelStream()
+			taskMsg := enrichMessageWithComplexityMetadata(msg, assessment)
+			task, accepted, submitErr := s.submitAsyncTask(taskMsg, assessment)
+			taskCard := buildTaskCard(taskMsg, assessment, task)
+			result := asyncAcceptedResult(taskMsg, task, assessment, taskCard)
+			if submitErr != nil {
+				s.logWebMessageFailure(taskMsg, submitErr)
+				_ = writeSSE(w, "error", streamErrorResponse{
+					Error:  submitErr.Error(),
+					Result: result,
+				})
+				flusher.Flush()
+				return
+			}
+			if accepted {
+				output := result.Output
+				if emittedDelta && strings.TrimSpace(output) != "" {
+					output = "\n\n" + output
+				}
+				for _, chunk := range chunkText(output, 24) {
+					if err := writeDelta(chunk, ""); err != nil {
+						return
+					}
+				}
+				_ = writeSSE(w, "done", streamDoneResponse{
+					Result:                   result,
+					TaskID:                   task.ID,
+					TaskStatus:               string(task.Status),
+					ExecutionMode:            assessment.ExecutionMode,
+					EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+					ComplexityLevel:          assessment.ComplexityLevel,
+					TaskCard:                 taskCard,
+				})
+				flusher.Flush()
+				return
+			}
+		case streamResult := <-streamResultCh:
+			if !assessmentReady {
+				cancelAssessment()
+			}
+			finalizeStreamResult(streamResult)
+			return
 		}
 	}
+}
 
-	_ = writeSSE(w, "done", streamDoneResponse{
-		Result:                   result,
-		ExecutionMode:            assessment.ExecutionMode,
-		EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-		ComplexityLevel:          assessment.ComplexityLevel,
-	})
-	flusher.Flush()
+type streamExecutionResult struct {
+	result shareddomain.OrchestrationResult
+	err    error
+}
+
+func (s *Server) handleStreamMessage(
+	ctx context.Context,
+	msg shareddomain.UnifiedMessage,
+	callback func(delta string) error,
+) (shareddomain.OrchestrationResult, error) {
+	if orchestrator, ok := s.orchestrator.(StreamOrchestrator); ok {
+		return orchestrator.HandleStream(ctx, msg, callback)
+	}
+	return s.orchestrator.Handle(ctx, msg)
+}
+
+func (s *Server) flushPendingStreamDelta(
+	writeDelta func(delta string, route shareddomain.Route) error,
+	streamDeltaCh <-chan string,
+	route shareddomain.Route,
+) bool {
+	drained := false
+	for {
+		select {
+		case delta := <-streamDeltaCh:
+			drained = true
+			if err := writeDelta(delta, route); err != nil {
+				return drained
+			}
+		default:
+			return drained
+		}
+	}
 }
 
 func (s *Server) agentMessageHandler(w http.ResponseWriter, r *http.Request) {
@@ -3983,6 +4089,13 @@ func (s *Server) assessComplexity(msg shareddomain.UnifiedMessage) taskapp.Compl
 	return s.tasks.AssessComplexity(msg)
 }
 
+func (s *Server) assessComplexityWithContext(ctx context.Context, msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
+	if s.tasks == nil {
+		return s.defaultComplexityAssessment()
+	}
+	return s.tasks.AssessComplexityWithContext(ctx, msg)
+}
+
 func buildTaskCard(msg shareddomain.UnifiedMessage, assessment taskapp.ComplexityAssessment, task taskdomain.Task) *taskCardResponse {
 	taskID := strings.TrimSpace(task.ID)
 	if taskID == "" {
@@ -4029,13 +4142,7 @@ func asyncAcceptedResult(
 	}
 	output := ""
 	if taskCard != nil {
-		output = taskCard.Notice + "\n"
-		output += "task_id: " + taskCard.TaskID + "\n"
-		output += "task_summary: " + taskCard.TaskSummary + "\n"
-		if strings.TrimSpace(assessment.TaskApproach) != "" {
-			output += "task_approach: " + strings.TrimSpace(assessment.TaskApproach) + "\n"
-		}
-		output += "task_detail_url: " + taskCard.TaskDetailURL
+		output = buildAsyncAcceptedOutput(msg, assessment, taskCard)
 		metadata["task_summary"] = taskCard.TaskSummary
 		if strings.TrimSpace(assessment.TaskApproach) != "" {
 			metadata["task_approach"] = strings.TrimSpace(assessment.TaskApproach)
@@ -4049,6 +4156,71 @@ func asyncAcceptedResult(
 		Output:    output,
 		Metadata:  metadata,
 	}
+}
+
+func buildAsyncAcceptedOutput(
+	msg shareddomain.UnifiedMessage,
+	assessment taskapp.ComplexityAssessment,
+	taskCard *taskCardResponse,
+) string {
+	if taskCard == nil {
+		return ""
+	}
+	taskSummary := strings.TrimSpace(taskCard.TaskSummary)
+	if taskSummary == "" {
+		taskSummary = strings.TrimSpace(assessment.TaskSummary)
+	}
+	if taskSummary == "" {
+		taskSummary = summaryText(strings.TrimSpace(msg.Content), 120)
+	}
+	approach := strings.TrimSpace(assessment.TaskApproach)
+	if approach == "" {
+		approach = "先确认目标与边界，再分步骤推进执行，完成后整理结果与产物。"
+	}
+	estimated := formatAsyncEstimatedDuration(assessment.EstimatedDurationSeconds)
+	lines := []string{
+		"这个请求预计耗时较长，我先说明执行安排，然后转入后台继续处理。",
+	}
+	if estimated != "" {
+		lines = append(lines, "预计耗时："+estimated)
+	}
+	lines = append(lines,
+		"",
+		"任务："+taskSummary,
+		"执行计划：",
+		"1. 先确认目标、范围和关键约束，明确本次任务的完成边界。",
+		"2. 按以下思路推进执行："+approach,
+		"3. 持续记录进度，完成后整理结果、产物和结论，并回写到任务详情。",
+		"",
+		"后台任务已创建："+taskCard.TaskID,
+		"查看进度："+taskCard.TaskDetailURL,
+	)
+	return strings.Join(lines, "\n")
+}
+
+func formatAsyncEstimatedDuration(seconds int) string {
+	if seconds <= 0 {
+		return ""
+	}
+	duration := time.Duration(seconds) * time.Second
+	if duration < time.Minute {
+		return fmt.Sprintf("%d 秒", seconds)
+	}
+	minutes := int(duration / time.Minute)
+	if duration%time.Minute == 0 {
+		if minutes < 60 {
+			return fmt.Sprintf("%d 分钟", minutes)
+		}
+	}
+	hours := minutes / 60
+	remainMinutes := minutes % 60
+	if hours <= 0 {
+		return fmt.Sprintf("%d 分钟", minutes)
+	}
+	if remainMinutes == 0 {
+		return fmt.Sprintf("%d 小时", hours)
+	}
+	return fmt.Sprintf("%d 小时 %d 分钟", hours, remainMinutes)
 }
 
 func attachComplexityMetadata(

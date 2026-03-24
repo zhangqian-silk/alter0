@@ -15,6 +15,7 @@ import (
 
 type stubProcessor struct {
 	output       string
+	source       string
 	lastContent  string
 	lastMetadata map[string]string
 }
@@ -24,6 +25,9 @@ func (s *stubProcessor) Process(_ context.Context, content string, metadata map[
 	s.lastMetadata = map[string]string{}
 	for key, value := range metadata {
 		s.lastMetadata[key] = value
+	}
+	if strings.TrimSpace(s.source) != "" {
+		metadata[execdomain.ExecutionSourceMetadataKey] = s.source
 	}
 	return s.output, nil
 }
@@ -58,6 +62,26 @@ func TestExecuteNaturalLanguageInjectsRuntimeMetadata(t *testing.T) {
 	}
 	if got := processor.lastMetadata["task_id"]; got != "task-runtime" {
 		t.Fatalf("task metadata = %q, want task-runtime", got)
+	}
+}
+
+func TestExecuteNaturalLanguageReturnsExecutionSourceMetadata(t *testing.T) {
+	processor := &stubProcessor{output: "ok", source: execdomain.ExecutionSourceModel}
+	service := NewService(processor)
+
+	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "msg-source",
+		SessionID:   "session-source",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "source metadata",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+	if got := result.Metadata[execdomain.ExecutionSourceMetadataKey]; got != execdomain.ExecutionSourceModel {
+		t.Fatalf("execution source metadata = %q, want %q", got, execdomain.ExecutionSourceModel)
 	}
 }
 
