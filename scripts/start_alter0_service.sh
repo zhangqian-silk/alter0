@@ -47,25 +47,23 @@ if [[ ! -x "${BUILD_OUTPUT}" ]]; then
   env GOSUMDB="${GOSUMDB:-sum.golang.org}" GOTOOLCHAIN="${GOTOOLCHAIN:-auto}" go build -o "${BUILD_OUTPUT}" ./cmd/alter0
 fi
 
-CMD=(
-  env
-  "GOSUMDB=${GOSUMDB:-sum.golang.org}"
-  "GOTOOLCHAIN=${GOTOOLCHAIN:-auto}"
-  "ALTER0_RUNTIME_MANAGER=${ALTER0_RUNTIME_MANAGER}"
-  "ALTER0_SYSTEMD_UNIT=${ALTER0_SYSTEMD_UNIT}"
-  "ALTER0_BUILD_OUTPUT=${BUILD_OUTPUT}"
-  "${BUILD_OUTPUT}"
-  -web-addr "${WEB_ADDR}"
-  -web-bind-localhost-only="${WEB_BIND_LOCALHOST_ONLY}"
-  -web-login-password "${WEB_LOGIN_PASSWORD}"
-  -daily-memory-dir "${STORAGE_DIR}/memory"
-  -long-term-memory-path "${STORAGE_DIR}/memory/long-term/MEMORY.md"
-)
+CMD="env \
+GOSUMDB='${GOSUMDB:-sum.golang.org}' \
+GOTOOLCHAIN='${GOTOOLCHAIN:-auto}' \
+ALTER0_RUNTIME_MANAGER='${ALTER0_RUNTIME_MANAGER}' \
+ALTER0_SYSTEMD_UNIT='${ALTER0_SYSTEMD_UNIT}' \
+ALTER0_BUILD_OUTPUT='${BUILD_OUTPUT}' \
+'${BUILD_OUTPUT}' \
+-web-addr '${WEB_ADDR}' \
+-web-bind-localhost-only='${WEB_BIND_LOCALHOST_ONLY}' \
+-web-login-password '${WEB_LOGIN_PASSWORD}' \
+-daily-memory-dir '${STORAGE_DIR}/memory' \
+-long-term-memory-path '${STORAGE_DIR}/memory/long-term/MEMORY.md'"
 
 if [[ "$(id -u)" -eq 0 ]] && id -u "${RUN_AS}" >/dev/null 2>&1 && [[ "${RUN_AS}" != "root" ]]; then
   chown -R "${RUN_AS}:${RUN_AS}" "${RUNTIME_ROOT}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0" "$(dirname "${BUILD_OUTPUT}")"
-  exec su -s /bin/bash -c "cd '${REPO_DIR}' && exec \"\$@\" >>'${LOG_FILE}' 2>&1" "${RUN_AS}" bash "${CMD[@]}"
+  exec su -s /bin/bash -c "cd '${REPO_DIR}' && ${CMD} >>'${LOG_FILE}' 2>&1" "${RUN_AS}"
 fi
 
 cd "${REPO_DIR}"
-exec "${CMD[@]}" >>"${LOG_FILE}" 2>&1
+exec bash -lc "${CMD} >>'${LOG_FILE}' 2>&1"
