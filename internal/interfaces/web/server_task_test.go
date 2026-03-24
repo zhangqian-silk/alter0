@@ -23,6 +23,7 @@ import (
 type stubWebTaskService struct {
 	shouldAsync     bool
 	assessment      taskapp.ComplexityAssessment
+	assessDelay     time.Duration
 	submitTask      taskdomain.Task
 	submitErr       error
 	lastSubmitMsg   shareddomain.UnifiedMessage
@@ -41,7 +42,40 @@ type stubWebTaskService struct {
 	listLogsFn      func(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
 }
 
+type blockingTaskStreamOrchestrator struct {
+	stubWebOrchestrator
+	firstDelta string
+	release    chan struct{}
+}
+
+func (s *blockingTaskStreamOrchestrator) HandleStream(
+	ctx context.Context,
+	msg shareddomain.UnifiedMessage,
+	onDelta func(string) error,
+) (shareddomain.OrchestrationResult, error) {
+	s.lastMessage = msg
+	if strings.TrimSpace(s.firstDelta) != "" && onDelta != nil {
+		if err := onDelta(s.firstDelta); err != nil {
+			return shareddomain.OrchestrationResult{}, err
+		}
+	}
+	select {
+	case <-s.release:
+		return s.result, s.err
+	case <-ctx.Done():
+		return shareddomain.OrchestrationResult{
+			MessageID: msg.MessageID,
+			SessionID: msg.SessionID,
+			Route:     shareddomain.RouteNL,
+		}, ctx.Err()
+	}
+}
+
 func (s *stubWebTaskService) AssessComplexity(_ shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
+	return s.assessmentForTest()
+}
+
+func (s *stubWebTaskService) assessmentForTest() taskapp.ComplexityAssessment {
 	if s.assessment.ExecutionMode != "" {
 		return s.assessment
 	}
@@ -59,6 +93,24 @@ func (s *stubWebTaskService) AssessComplexity(_ shareddomain.UnifiedMessage) tas
 		ComplexityLevel:          taskapp.ComplexityLevelLow,
 		ExecutionMode:            taskapp.ExecutionModeStreaming,
 	}
+}
+
+func (s *stubWebTaskService) AssessComplexityWithContext(ctx context.Context, _ shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
+	if s.assessDelay > 0 {
+		timer := time.NewTimer(s.assessDelay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return taskapp.ComplexityAssessment{
+				EstimatedDurationSeconds: 10,
+				ComplexityLevel:          taskapp.ComplexityLevelLow,
+				ExecutionMode:            taskapp.ExecutionModeStreaming,
+				Fallback:                 true,
+			}
+		case <-timer.C:
+		}
+	}
+	return s.assessmentForTest()
 }
 
 func (s *stubWebTaskService) ShouldRunAsync(_ shareddomain.UnifiedMessage) bool {
@@ -228,6 +280,12 @@ func TestMessageHandlerReturnsAcceptedForAsyncTask(t *testing.T) {
 	if body.TaskCard == nil {
 		t.Fatalf("expected task card in async response")
 	}
+	if !strings.Contains(body.Result.Output, "执行计划：") {
+		t.Fatalf("expected async response to include execution plan, got %q", body.Result.Output)
+	}
+	if !strings.Contains(body.Result.Output, "后台任务已创建：task-accepted") {
+		t.Fatalf("expected async response to include task id message, got %q", body.Result.Output)
+	}
 	if body.TaskCard.TaskSummary != "生成异步任务卡片" {
 		t.Fatalf("expected task summary from complexity assessment, got %q", body.TaskCard.TaskSummary)
 	}
@@ -248,17 +306,65 @@ func TestMessageHandlerReturnsAcceptedForAsyncTask(t *testing.T) {
 	}
 }
 
-func TestMessageStreamHandlerReturnsDoneForAsyncTask(t *testing.T) {
+func TestMessageStreamHandlerReturnsQuickStreamBeforeAssessmentCompletes(t *testing.T) {
+	taskSvc := &stubWebTaskService{
+		shouldAsync: true,
+		assessDelay: 200 * time.Millisecond,
+		submitTask: taskdomain.Task{
+			ID:        "task-stream",
+			SessionID: "session-fixed",
+			Status:    taskdomain.TaskStatusRunning,
+		},
+	}
 	server := &Server{
-		orchestrator: &stubWebOrchestrator{},
-		tasks: &stubWebTaskService{
-			shouldAsync: true,
-			submitTask: taskdomain.Task{
-				ID:        "task-stream",
-				SessionID: "session-fixed",
-				Status:    taskdomain.TaskStatusRunning,
+		orchestrator: &stubWebOrchestrator{
+			result: shareddomain.OrchestrationResult{
+				Route:  shareddomain.RouteNL,
+				Output: "hello back",
 			},
 		},
+		tasks:     taskSvc,
+		telemetry: observability.NewTelemetry(),
+		idGenerator: &sequenceIDGenerator{
+			ids: []string{"session-generated", "message-generated", "trace-generated"},
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/stream", strings.NewReader(`{"session_id":"session-fixed","content":"hello"}`))
+	rec := httptest.NewRecorder()
+	server.messageStreamHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"output":"hello back"`) {
+		t.Fatalf("expected quick response in done payload, got body %q", body)
+	}
+	if strings.Contains(body, `"task_id":"task-stream"`) {
+		t.Fatalf("did not expect async task handoff for hello, got body %q", body)
+	}
+	if taskSvc.submitCallCount != 0 {
+		t.Fatalf("expected no async task submission, got %d", taskSvc.submitCallCount)
+	}
+}
+
+func TestMessageStreamHandlerPromotesRunningStreamToAsyncTask(t *testing.T) {
+	taskSvc := &stubWebTaskService{
+		shouldAsync: true,
+		submitTask: taskdomain.Task{
+			ID:        "task-stream",
+			SessionID: "session-fixed",
+			Status:    taskdomain.TaskStatusRunning,
+		},
+	}
+	server := &Server{
+		orchestrator: &blockingTaskStreamOrchestrator{
+			firstDelta: "先开始处理",
+			release:    make(chan struct{}),
+		},
+		tasks:     taskSvc,
 		telemetry: observability.NewTelemetry(),
 		idGenerator: &sequenceIDGenerator{
 			ids: []string{"session-generated", "message-generated", "trace-generated"},
@@ -277,8 +383,8 @@ func TestMessageStreamHandlerReturnsDoneForAsyncTask(t *testing.T) {
 	if !strings.Contains(body, "event: start\n") {
 		t.Fatalf("expected start event, got body %q", body)
 	}
-	if strings.Contains(body, "event: delta\n") {
-		t.Fatalf("did not expect delta events for async accept path, got body %q", body)
+	if !strings.Contains(body, "event: delta\n") {
+		t.Fatalf("expected streamed plan delta before async accept, got body %q", body)
 	}
 	if !strings.Contains(body, "event: done\n") {
 		t.Fatalf("expected done event, got body %q", body)
@@ -287,10 +393,16 @@ func TestMessageStreamHandlerReturnsDoneForAsyncTask(t *testing.T) {
 		t.Fatalf("expected task id in done payload, got body %q", body)
 	}
 	if !strings.Contains(body, `"execution_mode":"async"`) {
-		t.Fatalf("expected execution_mode in done payload, got body %q", body)
+		t.Fatalf("expected execution_mode async in done payload, got body %q", body)
 	}
 	if !strings.Contains(body, `"task_card":{"notice":"`) {
 		t.Fatalf("expected task_card in done payload, got body %q", body)
+	}
+	if !strings.Contains(body, "执行计划") {
+		t.Fatalf("expected streamed execution plan in body, got body %q", body)
+	}
+	if taskSvc.submitCallCount != 1 {
+		t.Fatalf("expected one async task submission, got %d", taskSvc.submitCallCount)
 	}
 }
 

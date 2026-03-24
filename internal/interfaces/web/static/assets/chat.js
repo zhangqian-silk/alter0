@@ -2293,6 +2293,7 @@ function normalizeStoredMessage(item, fallbackAt) {
     text,
     at,
     route: typeof item.route === "string" ? item.route : "",
+    source: typeof item.source === "string" ? item.source : "",
     error: Boolean(item.error),
     status,
     retryable: Boolean(item.retryable),
@@ -3108,6 +3109,7 @@ function appendMessageToSession(session, role, text, options = {}) {
     text,
     at: Date.now(),
     route: options.route || "",
+    source: typeof options.source === "string" ? options.source : "",
     error: Boolean(options.error),
     status: options.status || (options.error ? "error" : "done"),
     retryable: Boolean(options.retryable),
@@ -3173,6 +3175,17 @@ function assistantStatusLabel(status) {
     return t("status.failed");
   }
   return t("status.done");
+}
+
+function messageSourceLabel(source) {
+  const normalized = normalizeText(source).toLowerCase();
+  if (normalized === "model") {
+    return "MODEL";
+  }
+  if (normalized === "codex_cli") {
+    return "CODEX CLI";
+  }
+  return "";
 }
 
 function normalizeTaskStatus(status) {
@@ -3251,6 +3264,7 @@ function deliverAsyncTaskResult(session, message, task) {
   if (!alreadyDelivered) {
     appendMessageToSession(session, "assistant", text, {
       route: typeof task?.result?.route === "string" ? task.result.route : "",
+      source: normalizeText(task?.result?.metadata?.["alter0.execution.source"]),
       error: taskStatus === "failed" || taskStatus === "canceled",
       status: taskStatus === "failed" || taskStatus === "canceled" ? "error" : "done",
       retryable: taskStatus === "failed",
@@ -3337,6 +3351,10 @@ function extractAsyncTaskPayload(payload) {
   };
 }
 
+function extractMessageSource(result) {
+  return normalizeText(result?.metadata?.["alter0.execution.source"]);
+}
+
 function renderMessages() {
   const active = getSession();
   const hasMessages = Boolean(active && active.messages.length);
@@ -3376,6 +3394,16 @@ function renderMessages() {
       pill.className = "route-pill";
       pill.textContent = msg.route.toUpperCase();
       meta.appendChild(pill);
+    }
+
+    if (msg.role === "assistant") {
+      const sourceLabel = messageSourceLabel(msg.source);
+      if (sourceLabel) {
+        const pill = document.createElement("span");
+        pill.className = "source-pill";
+        pill.textContent = sourceLabel;
+        meta.appendChild(pill);
+      }
     }
 
     if (msg.role === "assistant") {
@@ -3534,9 +3562,11 @@ async function sendMessageStream(payload, assistantMessage, endpoints = {}) {
             const route = typeof result.route === "string" && result.route ? result.route : routeHint;
             const finalOutput = typeof result.output === "string" ? result.output : output;
             const asyncTask = extractAsyncTaskPayload(parsed.data);
+            const source = extractMessageSource(result);
             updateMessage(assistantMessage, {
               text: finalOutput.trim() || t("msg.received_empty"),
               route,
+              source: source || assistantMessage.source,
               error: false,
               status: asyncTask ? asyncTask.task_status : "done",
               retryable: false,
@@ -3621,9 +3651,11 @@ async function sendMessageFallback(payload, assistantMessage, endpoints = {}) {
 
   const output = (body?.result?.output || "").trim() || t("msg.received_empty");
   const asyncTask = extractAsyncTaskPayload(body);
+  const source = extractMessageSource(body?.result || {});
   updateMessage(assistantMessage, {
     text: output,
     route: body?.result?.route || "",
+    source: source || assistantMessage.source,
     error: false,
     status: asyncTask ? asyncTask.task_status : "done",
     retryable: false,

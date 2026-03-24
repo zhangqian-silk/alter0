@@ -47,19 +47,29 @@ func (p *HybridNLProcessor) Process(ctx context.Context, content string, metadat
 	if engine == execdomain.ExecutionEngineAgent {
 		output, err := p.processWithAgent(ctx, content, metadata, nil)
 		if err == nil {
+			setExecutionSource(metadata, execdomain.ExecutionSourceModel)
 			return output, nil
 		}
 		p.logReactFallback(metadata, err)
-		return p.codex.Process(ctx, content, metadata)
+		output, codexErr := p.codex.Process(ctx, content, metadata)
+		if codexErr == nil {
+			setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
+		}
+		return output, codexErr
 	}
 	if engine == execdomain.ExecutionEngineReact {
 		output, err := p.processWithReact(ctx, content, metadata, nil)
 		if err == nil {
+			setExecutionSource(metadata, execdomain.ExecutionSourceModel)
 			return output, nil
 		}
 		p.logReactFallback(metadata, err)
 	}
-	return p.codex.Process(ctx, content, metadata)
+	output, err := p.codex.Process(ctx, content, metadata)
+	if err == nil {
+		setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
+	}
+	return output, err
 }
 
 func (p *HybridNLProcessor) ProcessStream(
@@ -72,19 +82,29 @@ func (p *HybridNLProcessor) ProcessStream(
 	if engine == execdomain.ExecutionEngineAgent {
 		output, err := p.processWithAgent(ctx, content, metadata, emit)
 		if err == nil {
+			setExecutionSource(metadata, execdomain.ExecutionSourceModel)
 			return output, nil
 		}
 		p.logReactFallback(metadata, err)
-		return p.codex.ProcessStream(ctx, content, metadata, emit)
+		output, codexErr := p.codex.ProcessStream(ctx, content, metadata, emit)
+		if codexErr == nil {
+			setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
+		}
+		return output, codexErr
 	}
 	if engine == execdomain.ExecutionEngineReact {
 		output, err := p.processWithReact(ctx, content, metadata, emit)
 		if err == nil {
+			setExecutionSource(metadata, execdomain.ExecutionSourceModel)
 			return output, nil
 		}
 		p.logReactFallback(metadata, err)
 	}
-	return p.codex.ProcessStream(ctx, content, metadata, emit)
+	output, err := p.codex.ProcessStream(ctx, content, metadata, emit)
+	if err == nil {
+		setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
+	}
+	return output, err
 }
 
 func (p *HybridNLProcessor) resolveEngine(metadata map[string]string) string {
@@ -364,6 +384,13 @@ func parseAgentMaxIterations(metadata map[string]string) int {
 		return 20
 	}
 	return value
+}
+
+func setExecutionSource(metadata map[string]string, source string) {
+	if len(metadata) == 0 {
+		return
+	}
+	metadata[execdomain.ExecutionSourceMetadataKey] = strings.TrimSpace(source)
 }
 
 func agentEventText(event llmdomain.ReActEvent) string {

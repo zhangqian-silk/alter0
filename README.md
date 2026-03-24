@@ -91,7 +91,9 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 选中的原生工具会在模型调用时作为 function tools 注入，当前内置工具包括 `list_dir`、`read`、`write`、`edit`、`bash`。
 - `OpenAI` Provider 支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。
 - 默认走实时执行。
-- 当请求复杂度较高时，自动转为后台 `Task` 执行，并先返回任务卡片与 `task_id`。
+- 流式对话会先直接启动回复；复杂度评估与回复并行进行。
+- 当请求复杂度较高且仍在执行中时，系统会中途转为后台 `Task` 执行，并先返回一条任务说明消息，包含任务目标、执行计划与任务入口。
+- Chat 消息会标注实际回复来源，用于区分当前内容来自模型执行链还是 `Codex CLI` 执行链。
 
 2. `Agent`
 - 面向“先执行再汇报”的目标型任务。
@@ -130,7 +132,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 1. `Sync`
 - `POST /api/messages`：普通 JSON 一次性返回结果。
-- `POST /api/messages/stream`：通过 SSE 流式返回 `start / delta / done` 事件。
+- `POST /api/messages/stream`：通过 SSE 流式返回 `start / delta / done` 事件；复杂度评估与回复并行进行，若请求在评估完成时仍需长耗时执行，会在同一条流中切换为异步任务并返回任务受理结果。
 
 2. `Async Task`
 - 适用于高复杂度、长耗时或产物型请求。
