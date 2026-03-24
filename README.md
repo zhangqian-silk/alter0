@@ -107,6 +107,11 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 默认仅注入运行时必需上下文，不复用 Chat 会话记忆与长期记忆。
 - 每个 Terminal 会话使用独立工作区目录，不再默认落在仓库根目录。
 
+补充说明：
+
+1. `Chat / Agent / Terminal` 只要落到 `Codex CLI` 执行链，都要求服务运行账户本身具备可用的 Codex / OpenAI 认证。
+2. 若服务账户缺少认证，Web 端会快速返回认证失败，而不会长时间保持等待态。
+
 ## Workspace Model
 
 默认运行策略保持 `danger-full-access`，但不同入口会落到各自独立的工作区目录作为默认执行目录：
@@ -234,6 +239,8 @@ go run ./cmd/alter0
 ### Terminal Shell
 
 - 默认终端会话在 Windows 下使用 `powershell.exe`，并在启动时自动切换到 UTF-8 输出
+- Linux / macOS 默认优先使用公共路径 `/usr/local/bin/codex`；若该路径不存在，则回退为 `codex`
+- 如需统一指定 Codex CLI 路径，可通过环境变量 `ALTER0_CODEX_COMMAND` 或启动参数 `-codex-command` 设置
 - 如需固定 shell，可通过启动参数 `-task-terminal-shell` 或运行时环境键 `task_terminal_shell` 指定
 - Windows 下显式指定 `cmd.exe` 时会补充 UTF-8 代码页初始化；如需稳定中文输出，优先使用 `powershell.exe`
 

@@ -33,10 +33,10 @@ const (
 	workspaceTasksDirName            = "tasks"
 	taskIDMetadataKey                = "task_id"
 	sessionIDMetadataFallback        = "session_id"
-	codexAddDirsMetadataKey               = "codex_add_dirs"
-	codexAddDirsEnvKey                    = "ALTER0_CODEX_ADD_DIRS"
-	codexAddDirRulesMetadataKey           = "codex_add_dir_rules"
-	codexAddDirRulesEnvKey                = "ALTER0_CODEX_ADD_DIR_RULES"
+	codexAddDirsMetadataKey          = "codex_add_dirs"
+	codexAddDirsEnvKey               = "ALTER0_CODEX_ADD_DIRS"
+	codexAddDirRulesMetadataKey      = "codex_add_dir_rules"
+	codexAddDirRulesEnvKey           = "ALTER0_CODEX_ADD_DIR_RULES"
 )
 
 type codexAddDirRule struct {
@@ -68,8 +68,9 @@ type codexExecutionPayload struct {
 }
 
 type codexJSONEvent struct {
-	Type string          `json:"type"`
-	Item *codexEventItem `json:"item,omitempty"`
+	Type    string          `json:"type"`
+	Message string          `json:"message,omitempty"`
+	Item    *codexEventItem `json:"item,omitempty"`
 }
 
 type codexEventItem struct {
@@ -79,8 +80,12 @@ type codexEventItem struct {
 }
 
 func NewCodexCLIProcessor() *CodexCLIProcessor {
+	return NewCodexCLIProcessorWithCommand(defaultCodexCommand)
+}
+
+func NewCodexCLIProcessorWithCommand(command string) *CodexCLIProcessor {
 	return &CodexCLIProcessor{
-		command: defaultCodexCommand,
+		command: strings.TrimSpace(command),
 		runner:  exec.CommandContext,
 	}
 }
@@ -131,7 +136,10 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		args = append(args, "--add-dir", dir)
 	}
 	args = append(args, "-o", outputPath, renderedPrompt)
-	cmd := runner(ctx, commandName, args...)
+	procCtx, procCancel := context.WithCancel(ctx)
+	defer procCancel()
+
+	cmd := runner(procCtx, commandName, args...)
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
 	}
@@ -200,7 +208,10 @@ func (p *CodexCLIProcessor) ProcessStream(
 		args = append(args, "--add-dir", dir)
 	}
 	args = append(args, "--json", "--progress-cursor", renderedPrompt)
-	cmd := runner(ctx, commandName, args...)
+	procCtx, procCancel := context.WithCancel(ctx)
+	defer procCancel()
+
+	cmd := runner(procCtx, commandName, args...)
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
 	}
@@ -221,10 +232,12 @@ func (p *CodexCLIProcessor) ProcessStream(
 	}
 
 	output, scanErr := collectStreamOutput(stdoutPipe, emit)
-	waitErr := cmd.Wait()
 	if scanErr != nil {
+		procCancel()
+		_ = cmd.Wait()
 		return "", scanErr
 	}
+	waitErr := cmd.Wait()
 	if waitErr != nil {
 		details := strings.TrimSpace(stderr.String())
 		if details == "" {
@@ -256,6 +269,9 @@ func collectStreamOutput(
 		event := codexJSONEvent{}
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue
+		}
+		if fatalMessage := fatalCodexEventMessage(event.Message); fatalMessage != "" {
+			return "", fmt.Errorf("codex authentication failed: %s", fatalMessage)
 		}
 		if event.Item == nil || event.Item.Type != "agent_message" {
 			continue
@@ -292,6 +308,32 @@ func collectStreamOutput(
 		return "", fmt.Errorf("read codex stream output: %w", err)
 	}
 	return emittedOutput, nil
+}
+
+func fatalCodexEventMessage(message string) string {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return ""
+	}
+	normalized := strings.ToLower(trimmed)
+	switch {
+	case strings.Contains(normalized, "401 unauthorized"):
+		return trimmed
+	case strings.Contains(normalized, "403 forbidden"):
+		return trimmed
+	case strings.Contains(normalized, "missing bearer"):
+		return trimmed
+	case strings.Contains(normalized, "missing basic authentication"):
+		return trimmed
+	case strings.Contains(normalized, "missing bearer or basic authentication"):
+		return trimmed
+	case strings.Contains(normalized, "invalid api key"):
+		return trimmed
+	case strings.Contains(normalized, "incorrect api key"):
+		return trimmed
+	default:
+		return ""
+	}
 }
 
 func emitStreamDelta(emit func(event execdomain.StreamEvent) error, delta string) error {

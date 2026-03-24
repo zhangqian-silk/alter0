@@ -95,6 +95,7 @@ type codexCommand struct {
 type codexExecEvent struct {
 	Type     string         `json:"type"`
 	ThreadID string         `json:"thread_id,omitempty"`
+	Message  string         `json:"message,omitempty"`
 	Item     *codexExecItem `json:"item,omitempty"`
 }
 
@@ -514,7 +515,10 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 	if runner == nil {
 		runner = exec.CommandContext
 	}
-	cmd := runner(ctx, command.path, args...)
+	runCtx, runCancel := context.WithCancel(ctx)
+	defer runCancel()
+
+	cmd := runner(runCtx, command.path, args...)
 	if workspaceDir := item.workspaceDir(); workspaceDir != "" {
 		cmd.Dir = workspaceDir
 	}
@@ -541,7 +545,7 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 		stderrCh <- strings.TrimSpace(string(data))
 	}()
 
-	parseErr := s.consumeCodexOutput(item, turnID, stdout)
+	parseErr := s.consumeCodexOutput(item, turnID, stdout, runCancel)
 	waitErr := cmd.Wait()
 	stderrText := <-stderrCh
 
@@ -556,7 +560,7 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 	s.finishTurn(item, turnID, nil, "")
 }
 
-func (s *Service) consumeCodexOutput(item *runtimeSession, turnID string, reader io.Reader) error {
+func (s *Service) consumeCodexOutput(item *runtimeSession, turnID string, reader io.Reader, cancel func()) error {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
@@ -569,12 +573,44 @@ func (s *Service) consumeCodexOutput(item *runtimeSession, turnID string, reader
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue
 		}
+		if fatalMessage := fatalCodexEventMessage(event.Message); fatalMessage != "" {
+			if cancel != nil {
+				cancel()
+			}
+			return fmt.Errorf("codex authentication failed: %s", fatalMessage)
+		}
 		s.applyCodexEvent(item, turnID, event)
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read codex output: %w", err)
 	}
 	return nil
+}
+
+func fatalCodexEventMessage(message string) string {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return ""
+	}
+	normalized := strings.ToLower(trimmed)
+	switch {
+	case strings.Contains(normalized, "401 unauthorized"):
+		return trimmed
+	case strings.Contains(normalized, "403 forbidden"):
+		return trimmed
+	case strings.Contains(normalized, "missing bearer"):
+		return trimmed
+	case strings.Contains(normalized, "missing basic authentication"):
+		return trimmed
+	case strings.Contains(normalized, "missing bearer or basic authentication"):
+		return trimmed
+	case strings.Contains(normalized, "invalid api key"):
+		return trimmed
+	case strings.Contains(normalized, "incorrect api key"):
+		return trimmed
+	default:
+		return ""
+	}
 }
 
 func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event codexExecEvent) {
