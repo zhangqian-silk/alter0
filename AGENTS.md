@@ -23,6 +23,9 @@ Conventional Commits: `<type>(<scope>): <description>`
 ## 文档同步约束
 
 - 涉及用户可见行为、交互方式、入口路由、执行模式、返回结构、默认策略等“对用户影响较大”的需求变更时，必须在同一轮修改中同步更新 `README.md`
+- 后续所有需求相关提交，必须在同一轮修改中同步完善 `docs/requirements.md` 与 `docs/requirements-details` 下对应文档
+- `docs/requirements.md` 用于维护稳定需求总览与范围定义，`docs/requirements-details` 用于维护对应需求的实现细节、交互规则、边界与约束
+- 若需求变更在 `docs/requirements-details` 中尚无对应文档，必须先补齐文档后再提交代码与说明变更
 - `README.md` 作为用户与维护者的一级说明文档，应持续反映当前稳定行为，不能在代码已变更后继续保留过期描述
 - 若变更同时影响更细分设计或实现细节，可继续补充 `docs/`，但 `README.md` 的用户可见口径更新不能为空缺
 

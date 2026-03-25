@@ -135,7 +135,6 @@ type terminalService interface {
 	ListEntries(ownerID string, sessionID string, cursor int, limit int) (terminalapp.EntryPage, error)
 	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
 	Close(ownerID string, sessionID string) (terminaldomain.Session, error)
-	MaxSessions() int
 }
 
 type runtimeRestarter interface {
@@ -208,8 +207,6 @@ type controlTaskTerminalInputResponse struct {
 	Status            string `json:"status"`
 	SessionID         string `json:"session_id"`
 	TerminalSessionID string `json:"terminal_session_id"`
-	MaxSessions       int    `json:"max_sessions"`
-	ActiveSessions    int    `json:"active_sessions"`
 	TaskDetailPath    string `json:"task_detail_path"`
 }
 
@@ -464,7 +461,6 @@ type taskSessionLink struct {
 	TaskID              string `json:"task_id"`
 	SessionID           string `json:"session_id"`
 	TerminalSessionID   string `json:"terminal_session_id,omitempty"`
-	TerminalMaxSessions int    `json:"terminal_max_sessions,omitempty"`
 	RequestMessageID    string `json:"request_message_id,omitempty"`
 	ResultMessageID     string `json:"result_message_id,omitempty"`
 	TaskDetailPath      string `json:"task_detail_path"`
@@ -1680,19 +1676,6 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 		terminalSessionID = strings.TrimSpace(baseTask.ID)
 	}
 
-	maxSessions := s.resolveTerminalSessionLimit()
-	activeSessions := s.collectActiveTerminalSessions()
-	if _, exists := activeSessions[terminalSessionID]; !exists && len(activeSessions) >= maxSessions {
-		writeJSON(w, http.StatusConflict, map[string]any{
-			"error":               fmt.Sprintf("terminal session limit reached (%d)", maxSessions),
-			"error_code":          "terminal_session_limit_reached",
-			"max_sessions":        maxSessions,
-			"active_sessions":     len(activeSessions),
-			"terminal_session_id": terminalSessionID,
-		})
-		return
-	}
-
 	source := resolveControlTaskSource(baseTask)
 	channelID := strings.TrimSpace(source.ChannelID)
 	if channelID == "" {
@@ -1752,53 +1735,8 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 		Status:            string(task.Status),
 		SessionID:         task.SessionID,
 		TerminalSessionID: terminalSessionID,
-		MaxSessions:       maxSessions,
-		ActiveSessions:    len(activeSessions),
 		TaskDetailPath:    "/api/control/tasks/" + strings.TrimSpace(task.ID),
 	})
-}
-
-func (s *Server) resolveTerminalSessionLimit() int {
-	limit := 5
-	if s.control != nil {
-		configured := s.control.ResolveEnvironmentInt("task_terminal_max_sessions", 0)
-		if configured > 0 {
-			limit = configured
-		} else {
-			limit = s.control.ResolveEnvironmentInt("async_task_workers", limit)
-		}
-	}
-	if limit <= 0 {
-		limit = 5
-	}
-	if limit > 5 {
-		limit = 5
-	}
-	return limit
-}
-
-func (s *Server) collectActiveTerminalSessions() map[string]struct{} {
-	sessions := map[string]struct{}{}
-	statuses := []taskdomain.TaskStatus{taskdomain.TaskStatusQueued, taskdomain.TaskStatusRunning}
-	for _, status := range statuses {
-		for page := 1; page <= 16; page++ {
-			result := s.tasks.List(taskapp.ListQuery{Status: status, Page: page, PageSize: 200})
-			for _, item := range result.Items {
-				sessionID := strings.TrimSpace(item.RequestMetadata[controlTaskTerminalSessionIDKey])
-				if sessionID == "" {
-					sessionID = strings.TrimSpace(item.SessionID)
-				}
-				if sessionID == "" {
-					continue
-				}
-				sessions[sessionID] = struct{}{}
-			}
-			if !result.Pagination.HasNext {
-				break
-			}
-		}
-	}
-	return sessions
 }
 
 func (s *Server) resolveTerminalAnchorTaskID(task taskdomain.Task) string {
@@ -1938,7 +1876,6 @@ func (s *Server) resolveTaskSessionLink(task taskdomain.Task) taskSessionLink {
 		TaskID:              taskID,
 		SessionID:           sessionID,
 		TerminalSessionID:   terminalSessionID,
-		TerminalMaxSessions: s.resolveTerminalSessionLimit(),
 		RequestMessageID:    strings.TrimSpace(task.MessageLink.RequestMessageID),
 		ResultMessageID:     strings.TrimSpace(task.MessageLink.ResultMessageID),
 		TaskDetailPath:      "/api/control/tasks/" + taskID,

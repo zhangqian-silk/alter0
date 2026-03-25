@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-03-06
+> Last update: 2026-03-25
 
 状态说明：
 
@@ -60,6 +60,8 @@
 | R-047 | OpenAI Go SDK 接入 | planned | 接入 `github.com/openai/openai-go` SDK，支持 OpenAI 兼容 API（含自定义 base_url），提供统一 LLM 调用层 |
 | R-048 | ReAct 模式 Agent 调用 | planned | 实现 Reasoning + Acting 循环：Thought → Action → Observation → Thought，支持工具调用与多轮推理 |
 | R-049 | 模型配置管理 | planned | 支持配置多个 LLM Provider（base_url、api_key、model_name），提供 Provider 级别的启用/禁用与默认切换 |
+| R-050 | Web 登录后统一 Session 视图 | supported | 密码验证通过后，Web 内 `Chat`、`Agent` 等页面继续保留各自定位与入口，但共享同一套 Session 历史；不再按页面来源拆分 Session，并移除相关冗余文案与状态内容 |
+| R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识；不再对 Terminal 设置产品级会话上限与超时淘汰；运行超时仅退出当前会话运行态，但保留历史与恢复能力 |
 
 ## 需求细化（分文件）
 
@@ -68,5 +70,6 @@
 3. `R-021` ~ `R-030`：[requirements-detail-r021-r030.md](requirements-details/requirements-detail-r021-r030.md)
 4. `R-031` ~ `R-040`：[requirements-detail-r031-r040.md](requirements-details/requirements-detail-r031-r040.md)
 5. `R-041` ~ `R-050`：[requirements-detail-r041-r050.md](requirements-details/requirements-detail-r041-r050.md)
+6. `R-051` ~ `R-060`：[requirements-detail-r051-r060.md](requirements-details/requirements-detail-r051-r060.md)
 
 说明：需求细化内容按每 10 个需求拆分维护。

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -944,9 +943,6 @@ func TestControlTaskViewAndActionConstraints(t *testing.T) {
 	if !strings.Contains(body, `"terminal_session_id":"session-a"`) {
 		t.Fatalf("expected terminal session id in detail view, got %s", body)
 	}
-	if !strings.Contains(body, `"terminal_max_sessions":5`) {
-		t.Fatalf("expected terminal max sessions in detail view, got %s", body)
-	}
 	if !strings.Contains(body, `"trigger_type":"cron"`) || !strings.Contains(body, `"channel_type":"scheduler"`) {
 		t.Fatalf("expected source payload in detail view, got %s", body)
 	}
@@ -1034,59 +1030,6 @@ func TestControlTaskTerminalInputCreatesFollowUpTask(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"anchor_task_id":"task-root"`) {
 		t.Fatalf("expected terminal anchor task id in response, got %s", rec.Body.String())
-	}
-}
-
-func TestControlTaskTerminalInputRejectsWhenLimitReached(t *testing.T) {
-	taskSvc := &stubWebTaskService{
-		items: map[string]taskdomain.Task{
-			"task-target": {
-				ID:        "task-target",
-				SessionID: "session-target",
-				Status:    taskdomain.TaskStatusRunning,
-				RequestMetadata: map[string]string{
-					controlTaskTerminalSessionIDKey: "session-target",
-				},
-			},
-		},
-		listFn: func(query taskapp.ListQuery) taskapp.TaskPage {
-			if query.Status != taskdomain.TaskStatusQueued {
-				return taskapp.TaskPage{Items: []taskdomain.Task{}, Pagination: taskapp.Pagination{Page: query.Page, PageSize: query.PageSize, Total: 0, HasNext: false}}
-			}
-			items := []taskdomain.Task{}
-			for i := 1; i <= 5; i++ {
-				suffix := strconv.Itoa(i)
-				items = append(items, taskdomain.Task{
-					ID:        "task-active-" + suffix,
-					SessionID: "session-active-" + suffix,
-					Status:    taskdomain.TaskStatusQueued,
-					RequestMetadata: map[string]string{
-						controlTaskTerminalSessionIDKey: "session-active-" + suffix,
-					},
-				})
-			}
-			return taskapp.TaskPage{Items: items, Pagination: taskapp.Pagination{Page: query.Page, PageSize: query.PageSize, Total: len(items), HasNext: false}}
-		},
-	}
-	server := &Server{
-		tasks:       taskSvc,
-		idGenerator: &sequenceIDGenerator{ids: []string{"msg-followup", "trace-followup"}},
-		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/api/control/tasks/task-target/terminal/input", strings.NewReader(`{"input":"run"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	server.controlTaskItemHandler(rec, req)
-
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("expected status %d, got %d", http.StatusConflict, rec.Code)
-	}
-	if taskSvc.submitCallCount != 0 {
-		t.Fatalf("expected submit not called when limit reached, got %d", taskSvc.submitCallCount)
-	}
-	if !strings.Contains(rec.Body.String(), `"error_code":"terminal_session_limit_reached"`) {
-		t.Fatalf("expected terminal limit error code, got %s", rec.Body.String())
 	}
 }
 

@@ -75,7 +75,6 @@ func main() {
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
 	codexCommand := flag.String("codex-command", strings.TrimSpace(os.Getenv("ALTER0_CODEX_COMMAND")), "Codex CLI executable path or command name")
 	asyncTaskWorkers := flag.Int("async-task-workers", 5, "background async task worker count (max 5)")
-	taskTerminalMaxSessions := flag.Int("task-terminal-max-sessions", 5, "max concurrent terminal task sessions (max 5)")
 	taskTerminalShell := flag.String("task-terminal-shell", "", "terminal Codex CLI executable path or command name")
 	taskTerminalShellArgs := flag.String("task-terminal-shell-args", "", "terminal Codex CLI extra arguments")
 	asyncTaskTimeout := flag.Duration("async-task-timeout", 90*time.Second, "background async task timeout")
@@ -158,7 +157,6 @@ func main() {
 	resolvedQueueTimeout := control.ResolveEnvironmentDuration("queue_timeout", *queueTimeout)
 	resolvedCodexCommand := resolveConfiguredCodexCommand(strings.TrimSpace(*codexCommand))
 	resolvedAsyncTaskWorkers := control.ResolveEnvironmentInt("async_task_workers", *asyncTaskWorkers)
-	resolvedTaskTerminalMaxSessions := control.ResolveEnvironmentInt("task_terminal_max_sessions", *taskTerminalMaxSessions)
 	resolvedTaskTerminalShell := strings.TrimSpace(control.ResolveEnvironmentString("task_terminal_shell", strings.TrimSpace(*taskTerminalShell)))
 	if resolvedTaskTerminalShell == "" {
 		resolvedTaskTerminalShell = resolvedCodexCommand
@@ -180,13 +178,6 @@ func main() {
 	resolvedLongTermMemoryTokenBudget := control.ResolveEnvironmentInt("long_term_memory_token_budget", *longTermMemoryTokenBudget)
 	resolvedMandatoryContextFile := control.ResolveEnvironmentString("mandatory_context_file", strings.TrimSpace(*mandatoryContextFile))
 
-	if resolvedTaskTerminalMaxSessions <= 0 {
-		resolvedTaskTerminalMaxSessions = 5
-	}
-	if resolvedTaskTerminalMaxSessions > 5 {
-		resolvedTaskTerminalMaxSessions = 5
-	}
-
 	control.SetEnvironmentRuntime(map[string]string{
 		"web_addr":                           listenAddr,
 		"web_bind_localhost_only":            strconv.FormatBool(resolvedWebBindLocalhostOnly),
@@ -195,7 +186,6 @@ func main() {
 		"max_queue_size":                     strconv.Itoa(resolvedMaxQueueSize),
 		"queue_timeout":                      resolvedQueueTimeout.String(),
 		"async_task_workers":                 strconv.Itoa(resolvedAsyncTaskWorkers),
-		"task_terminal_max_sessions":         strconv.Itoa(resolvedTaskTerminalMaxSessions),
 		"task_terminal_shell":                resolvedTaskTerminalShell,
 		"task_terminal_shell_args":           resolvedTaskTerminalShellArgs,
 		"async_task_timeout":                 resolvedAsyncTaskTimeout.String(),
@@ -315,7 +305,6 @@ func main() {
 		os.Exit(2)
 	}
 	terminalService := terminalapp.NewService(rootCtx, idGen, logger, terminalapp.Options{
-		MaxSessions:   resolvedTaskTerminalMaxSessions,
 		Shell:         resolvedTaskTerminalShell,
 		ShellArgsLine: resolvedTaskTerminalShellArgs,
 	})

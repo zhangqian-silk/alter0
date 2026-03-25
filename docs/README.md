@@ -13,9 +13,10 @@
 1. [架构设计](./architecture.md)
 2. [技术方案](./technical-solution.md)
 3. [需求清单](./requirements.md)
-4. [研究报告](./research/README.md)
-5. [Nginx 反向代理与登录保护](./deployment/nginx.md)
-6. [Playwright 浏览器自动化测试](./testing/playwright.md)
+4. [Memory 模块统一说明与需求文档](./memory/persistent-memory-module-spec.md)
+5. [研究报告](./research/README.md)
+6. [Nginx 反向代理与登录保护](./deployment/nginx.md)
+7. [Playwright 浏览器自动化测试](./testing/playwright.md)
 
 ## 维护约定
 
