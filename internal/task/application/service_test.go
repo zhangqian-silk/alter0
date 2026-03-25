@@ -366,6 +366,38 @@ func TestServiceSubmitAndCompleteSuccess(t *testing.T) {
 	}
 }
 
+func TestBuildTaskSummaryFailureSanitizesVerboseCodexError(t *testing.T) {
+	task := taskdomain.Task{
+		ID:           "task-failure",
+		Status:       taskdomain.TaskStatusFailed,
+		ErrorCode:    "task_failed",
+		ErrorMessage: "codex command failed: signal: killed: OpenAI Codex v0.114.0 (research preview)\n--------\nworkdir: /srv/alter0/app/.alter0/workspaces/sessions/xxx/tasks/yyy\nmodel: gpt-5.4\nuser\n{\"protocol\":\"alter0.codex-exec/v1\"}\nexec\n/usr/bin/bash -lc 'pwd'",
+	}
+
+	summary := buildTaskSummary(task, nil)
+	if !strings.Contains(summary, "codex command failed: signal: killed: OpenAI Codex v0.114.0 (research preview)") {
+		t.Fatalf("expected sanitized failure headline, got %q", summary)
+	}
+	if strings.Contains(summary, "workdir:") || strings.Contains(summary, "{\"protocol\"") || strings.Contains(summary, "/usr/bin/bash") {
+		t.Fatalf("expected verbose failure details to be stripped, got %q", summary)
+	}
+}
+
+func TestBuildTaskSummarySuccessCollapsesVerboseImplementationOutput(t *testing.T) {
+	task := taskdomain.Task{
+		ID:     "task-success",
+		Status: taskdomain.TaskStatusSuccess,
+		Result: taskdomain.TaskResult{
+			Output: "已完成修改。\n```go\npackage main\nfunc main() {}\n```\n```diff\ndiff --git a/a.go b/a.go\n@@\n```",
+		},
+	}
+
+	summary := buildTaskSummary(task, nil)
+	if !strings.Contains(summary, "implementation finished; detailed code, commands, and raw output are available in task detail") {
+		t.Fatalf("expected implementation output to be collapsed, got %q", summary)
+	}
+}
+
 func TestServiceQueuePositionAndQueueWait(t *testing.T) {
 	blockCh := make(chan struct{})
 	orch := &stubTaskOrchestrator{

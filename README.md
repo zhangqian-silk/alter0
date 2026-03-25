@@ -90,9 +90,11 @@ internal/shared/infrastructure     # ID、日志、metrics
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
 - 选中的原生工具会在模型调用时作为 function tools 注入，当前内置工具包括 `list_dir`、`read`、`write`、`edit`、`bash`。
 - `OpenAI` Provider 支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。
+- 复杂度评估阶段会优先复用当前消息选中的 `Provider / Model`；未显式选择时，回退到默认 Provider 与默认模型。
 - 默认走实时执行。
 - 流式对话会先直接启动回复；复杂度评估与回复并行进行。
 - 当请求复杂度较高且仍在执行中时，系统会中途转为后台 `Task` 执行，并先返回一条任务说明消息，包含任务目标、执行计划与任务入口。
+- 聊天气泡支持常用 Markdown 渲染，包括标题、列表、引用、链接、行内代码与代码块；原始 HTML 不直接透传。
 - Chat 消息会标注实际回复来源，用于区分当前内容来自模型执行链还是 `Codex CLI` 执行链。
 
 2. `Agent`
@@ -138,10 +140,14 @@ internal/shared/infrastructure     # ID、日志、metrics
 1. `Sync`
 - `POST /api/messages`：普通 JSON 一次性返回结果。
 - `POST /api/messages/stream`：通过 SSE 流式返回 `start / delta / done` 事件；复杂度评估与回复并行进行，若请求在评估完成时仍需长耗时执行，会在同一条流中切换为异步任务并返回任务受理结果。
+- 同一会话内的同步请求保持串行；当上一条同步执行尚未结束时，后续用户消息会继续等待并按序执行，不再因为默认队列等待时间直接返回 5 秒超时。
+- 对于启用 ReAct 多步执行的同步请求，执行中若同会话收到新的用户补充，后续迭代会自动吸收当前最新一条用户消息继续推进。
 
 2. `Async Task`
 - 适用于高复杂度、长耗时或产物型请求。
 - 请求被接受后先返回任务受理结果，后续可通过任务视图或任务 API 跟踪状态、日志与产物。
+- 异步任务使用独立后台执行池，不占用主会话同步交流的串行执行槽位。
+- 异步任务完成后，回写到聊天区的是一轮精简后的结果摘要；完整终端输出、原始报错、代码片段与文件内容仅保留在任务详情、日志与产物中。
 
 `Agent` 使用独立入口：
 

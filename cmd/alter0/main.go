@@ -297,7 +297,7 @@ func main() {
 			OverloadPolicy: orchapp.OverloadPolicyRejectNew,
 		},
 	)
-	taskService, err := newTaskService(rootCtx, orchestrator, sessionHistory, idGen, logger, taskStore, taskapp.Options{
+	taskService, err := newTaskService(rootCtx, persistentOrchestrator, sessionHistory, idGen, logger, taskStore, taskapp.Options{
 		WorkerCount:           resolvedAsyncTaskWorkers,
 		Timeout:               resolvedAsyncTaskTimeout,
 		MaxRetries:            resolvedAsyncTaskMaxRetries,

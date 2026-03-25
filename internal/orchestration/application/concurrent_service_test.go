@@ -267,6 +267,71 @@ func TestConcurrentServiceQueueTimeout(t *testing.T) {
 	close(release)
 }
 
+func TestConcurrentServiceSameSessionWaitDoesNotTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	release := make(chan struct{})
+	started := make(chan struct{}, 1)
+	downstream := &stubOrchestrator{handleFn: func(_ context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+		if msg.Content == "hold" {
+			started <- struct{}{}
+			<-release
+		}
+		return shareddomain.OrchestrationResult{Output: msg.Content}, nil
+	}}
+
+	svc := NewConcurrentService(
+		ctx,
+		downstream,
+		newQueueTelemetrySpy(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ConcurrencyOptions{WorkerCount: 1, MaxQueueSize: 8, QueueTimeout: 40 * time.Millisecond},
+	)
+
+	go func() {
+		_, _ = svc.Handle(context.Background(), testMessage("s1", "hold"))
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("hold request did not start")
+	}
+
+	resultCh := make(chan shareddomain.OrchestrationResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := svc.Handle(context.Background(), testMessage("s1", "follow-up"))
+		resultCh <- result
+		errCh <- err
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+
+	var result shareddomain.OrchestrationResult
+	select {
+	case result = <-resultCh:
+	case <-time.After(time.Second):
+		t.Fatal("follow-up request did not return")
+	}
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("follow-up error missing")
+	}
+	if result.ErrorCode != "" {
+		t.Fatalf("expected no error code, got %q", result.ErrorCode)
+	}
+	if mustMetadataInt(t, result.Metadata, "queue_wait_ms") < 100 {
+		t.Fatalf("expected same-session wait to be preserved")
+	}
+}
+
 func TestConcurrentServiceQueueCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

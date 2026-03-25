@@ -1382,46 +1382,28 @@ func buildTaskSummary(task taskdomain.Task, handleErr error) string {
 	switch task.Status {
 	case taskdomain.TaskStatusSuccess:
 		if len(task.Artifacts) > 0 {
-			refs := make([]string, 0, len(task.Artifacts))
-			for _, artifact := range task.Artifacts {
-				artifactID := strings.TrimSpace(artifact.ArtifactID)
-				if artifactID == "" {
-					continue
-				}
-				downloadURL := strings.TrimSpace(artifact.DownloadURL)
-				previewURL := strings.TrimSpace(artifact.PreviewURL)
-				if downloadURL == "" {
-					downloadURL, previewURL = buildArtifactURLs(task.ID, artifactID)
-				}
-				reference := fmt.Sprintf("task_id=%s artifact_id=%s download_url=%s", task.ID, artifactID, downloadURL)
-				if previewURL != "" {
-					reference += " preview_url=" + previewURL
-				}
-				refs = append(refs, reference)
-			}
-			if len(refs) > 0 {
-				return fmt.Sprintf("async task %s completed with artifacts: %s", task.ID, strings.Join(refs, "; "))
-			}
+			return fmt.Sprintf("async task %s completed and generated %d artifact(s); open task detail for files and downloads", task.ID, len(task.Artifacts))
 		}
-		snippet := summarySnippet(task.Result.Output, 160)
+		snippet := summarizeTaskResultOutput(task.Result.Output, 160)
 		if snippet == "" {
 			snippet = "completed without textual output"
 		}
 		return fmt.Sprintf("async task %s completed: %s", task.ID, snippet)
 	case taskdomain.TaskStatusCanceled:
-		return fmt.Sprintf("async task %s canceled", task.ID)
+		message := summarizeTaskErrorMessage(task, handleErr, 160)
+		if message == "" {
+			return fmt.Sprintf("async task %s canceled", task.ID)
+		}
+		return fmt.Sprintf("async task %s canceled: %s", task.ID, message)
 	case taskdomain.TaskStatusFailed:
 		if task.ErrorCode == "task_timeout" {
 			return fmt.Sprintf("async task %s timed out", task.ID)
 		}
-		message := strings.TrimSpace(task.ErrorMessage)
-		if message == "" && handleErr != nil {
-			message = strings.TrimSpace(handleErr.Error())
-		}
+		message := summarizeTaskErrorMessage(task, handleErr, 160)
 		if message == "" {
 			message = "execution failed"
 		}
-		return fmt.Sprintf("async task %s failed: %s", task.ID, summarySnippet(message, 160))
+		return fmt.Sprintf("async task %s failed: %s", task.ID, message)
 	default:
 		return fmt.Sprintf("async task %s status: %s", task.ID, task.Status)
 	}
@@ -1474,17 +1456,20 @@ func resolveTaskType(task taskdomain.Task) string {
 func resolveTaskSummaryResult(task taskdomain.Task) string {
 	switch task.Status {
 	case taskdomain.TaskStatusSuccess:
-		if snippet := summarySnippet(task.Result.Output, 220); snippet != "" {
+		if len(task.Artifacts) > 0 {
+			return fmt.Sprintf("generated %d artifact(s); see task detail for full outputs", len(task.Artifacts))
+		}
+		if snippet := summarizeTaskResultOutput(task.Result.Output, 220); snippet != "" {
 			return snippet
 		}
 		return "completed without textual output"
 	case taskdomain.TaskStatusCanceled:
-		if reason := summarySnippet(task.ErrorMessage, 220); reason != "" {
+		if reason := summarizeTaskErrorMessage(task, nil, 220); reason != "" {
 			return reason
 		}
 		return "task canceled"
 	case taskdomain.TaskStatusFailed:
-		if reason := summarySnippet(task.ErrorMessage, 220); reason != "" {
+		if reason := summarizeTaskErrorMessage(task, nil, 220); reason != "" {
 			return reason
 		}
 		if code := strings.TrimSpace(task.ErrorCode); code != "" {
@@ -1540,6 +1525,167 @@ func summarySnippet(content string, maxRunes int) string {
 		return trimmed
 	}
 	return string(runes[:maxRunes]) + "..."
+}
+
+func summarizeTaskResultOutput(content string, maxRunes int) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return ""
+	}
+	normalized := strings.ReplaceAll(trimmed, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	if looksLikeVerboseImplementationOutput(normalized) {
+		return "implementation finished; detailed code, commands, and raw output are available in task detail"
+	}
+	lines := strings.Split(normalized, "\n")
+	summaryLines := make([]string, 0, len(lines))
+	inCodeBlock := false
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "```") {
+			inCodeBlock = !inCodeBlock
+			continue
+		}
+		if inCodeBlock || looksLikeCodeLine(line) || looksLikeExecutionDetailLine(line) {
+			continue
+		}
+		summaryLines = append(summaryLines, line)
+		if len(summaryLines) >= 3 {
+			break
+		}
+	}
+	if len(summaryLines) == 0 {
+		return "completed; detailed output is available in task detail"
+	}
+	return summarySnippet(strings.Join(summaryLines, " "), maxRunes)
+}
+
+func summarizeTaskErrorMessage(task taskdomain.Task, handleErr error, maxRunes int) string {
+	raw := strings.TrimSpace(task.ErrorMessage)
+	if raw == "" && handleErr != nil {
+		raw = strings.TrimSpace(handleErr.Error())
+	}
+	if raw == "" {
+		raw = strings.TrimSpace(task.Result.ErrorCode)
+	}
+	if raw == "" {
+		return ""
+	}
+	normalized := strings.ReplaceAll(raw, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	for _, marker := range []string{"\n--------", "\nuser\n", "\ncodex\n", "\nexec\n", "\ntokens used"} {
+		if idx := strings.Index(normalized, marker); idx >= 0 {
+			normalized = normalized[:idx]
+		}
+	}
+	lines := strings.Split(normalized, "\n")
+	candidates := make([]string, 0, len(lines))
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || looksLikeExecutionDetailLine(line) {
+			continue
+		}
+		line = trimKnownErrorNoise(line)
+		if line == "" {
+			continue
+		}
+		candidates = append(candidates, line)
+		if looksLikeHeadlineError(line) {
+			break
+		}
+	}
+	if len(candidates) == 0 {
+		return summarySnippet(raw, maxRunes)
+	}
+	return summarySnippet(candidates[0], maxRunes)
+}
+
+func trimKnownErrorNoise(line string) string {
+	trimmed := strings.TrimSpace(line)
+	for _, marker := range []string{", url:", ", request id:", " request id:"} {
+		if idx := strings.Index(strings.ToLower(trimmed), marker); idx >= 0 {
+			trimmed = strings.TrimSpace(trimmed[:idx])
+		}
+	}
+	return trimmed
+}
+
+func looksLikeHeadlineError(line string) bool {
+	lower := strings.ToLower(strings.TrimSpace(line))
+	if lower == "" {
+		return false
+	}
+	for _, token := range []string{"failed", "error", "timed out", "timeout", "canceled", "cancelled", "killed", "unauthorized", "forbidden", "unavailable"} {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeExecutionDetailLine(line string) bool {
+	lower := strings.ToLower(strings.TrimSpace(line))
+	if lower == "" {
+		return false
+	}
+	for _, prefix := range []string{
+		"workdir:",
+		"model:",
+		"provider:",
+		"approval:",
+		"sandbox:",
+		"reasoning effort:",
+		"reasoning summaries:",
+		"session id:",
+		"mcp startup:",
+		"current user input:",
+		"tokens used",
+		"reconnecting...",
+	} {
+		if lower == prefix || strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	for _, exact := range []string{"user", "codex", "exec", "thinking"} {
+		if lower == exact {
+			return true
+		}
+	}
+	return strings.HasPrefix(lower, "{") || strings.HasPrefix(lower, "\"")
+}
+
+func looksLikeVerboseImplementationOutput(content string) bool {
+	if strings.Contains(content, "```") {
+		return true
+	}
+	codeMarkers := 0
+	for _, marker := range []string{"diff --git", "@@", "package ", "func ", "import (", "export ", "const ", "class ", "interface ", "return "} {
+		if strings.Contains(content, marker) {
+			codeMarkers++
+		}
+	}
+	return codeMarkers >= 2
+}
+
+func looksLikeCodeLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	for _, prefix := range []string{"package ", "func ", "import ", "const ", "var ", "type ", "class ", "interface ", "return ", "if ", "for ", "while ", "export ", "public ", "private "} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+	for _, marker := range []string{"{", "}", "=>", "::", ";", "diff --git", "@@"} {
+		if strings.Contains(trimmed, marker) && len(trimmed) > 24 {
+			return true
+		}
+	}
+	return false
 }
 
 func toTaskResult(result shareddomain.OrchestrationResult) taskdomain.TaskResult {

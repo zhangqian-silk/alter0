@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -53,6 +54,8 @@ type queuedRequest struct {
 	enqueuedAt time.Time
 	done       chan queuedResponse
 	stream     func(string) error
+	noTimeout  bool
+	updates    shareddomain.LiveUserMessageSource
 }
 
 type queuedResponse struct {
@@ -64,6 +67,45 @@ type sessionQueue struct {
 	pending      []*queuedRequest
 	running      bool
 	inReadyQueue bool
+	liveUpdates  *liveUserMessageBuffer
+}
+
+type liveUserMessageBuffer struct {
+	mu              sync.Mutex
+	version         int64
+	consumedVersion int64
+	latest          string
+}
+
+func newLiveUserMessageBuffer() *liveUserMessageBuffer {
+	return &liveUserMessageBuffer{}
+}
+
+func (b *liveUserMessageBuffer) publish(message string) {
+	if b == nil {
+		return
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.version++
+	b.latest = message
+}
+
+func (b *liveUserMessageBuffer) ConsumeLatest(_ context.Context) (string, bool) {
+	if b == nil {
+		return "", false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.version == 0 || b.version == b.consumedVersion {
+		return "", false
+	}
+	b.consumedVersion = b.version
+	return b.latest, true
 }
 
 type ConcurrentService struct {
@@ -208,7 +250,7 @@ func (s *ConcurrentService) handleQueued(
 	ctxDone := ctx.Done()
 	var timer *time.Timer
 	var timeoutC <-chan time.Time
-	if s.options.QueueTimeout > 0 {
+	if !req.noTimeout && s.options.QueueTimeout > 0 {
 		timer = time.NewTimer(s.options.QueueTimeout)
 		timeoutC = timer.C
 		defer timer.Stop()
@@ -259,13 +301,18 @@ func (s *ConcurrentService) runWorker(ctx context.Context) {
 		inFlight := int(atomic.AddInt64(&s.inFlight, 1))
 		s.setWorkerInFlight(inFlight)
 
+		runCtx := req.ctx
+		if req.updates != nil {
+			runCtx = shareddomain.WithLiveUserMessageSource(runCtx, req.updates)
+		}
+
 		var result shareddomain.OrchestrationResult
 		var err error
 		if req.stream != nil {
 			if downstream, ok := s.downstream.(streamOrchestrator); ok {
-				result, err = downstream.HandleStream(req.ctx, req.msg, req.stream)
+				result, err = downstream.HandleStream(runCtx, req.msg, req.stream)
 			} else {
-				result, err = s.downstream.Handle(req.ctx, req.msg)
+				result, err = s.downstream.Handle(runCtx, req.msg)
 				if err == nil && result.Output != "" {
 					if streamErr := req.stream(result.Output); streamErr != nil {
 						err = streamErr
@@ -273,7 +320,7 @@ func (s *ConcurrentService) runWorker(ctx context.Context) {
 				}
 			}
 		} else {
-			result, err = s.downstream.Handle(req.ctx, req.msg)
+			result, err = s.downstream.Handle(runCtx, req.msg)
 		}
 		if result.MessageID == "" {
 			result.MessageID = req.msg.MessageID
@@ -322,6 +369,8 @@ func (s *ConcurrentService) nextRequest(ctx context.Context) (*queuedRequest, st
 		req := state.pending[0]
 		state.pending = state.pending[1:]
 		state.running = true
+		state.liveUpdates = newLiveUserMessageBuffer()
+		req.updates = state.liveUpdates
 		s.waiting--
 		queueDepth := s.waiting
 		s.mu.Unlock()
@@ -348,6 +397,13 @@ func (s *ConcurrentService) enqueue(req *queuedRequest) (int, error) {
 	if !ok {
 		state = &sessionQueue{}
 		s.sessions[req.msg.SessionID] = state
+	}
+	req.noTimeout = state.running || len(state.pending) > 0
+	if state.running && shouldPublishLiveUserMessage(req.msg) {
+		if state.liveUpdates == nil {
+			state.liveUpdates = newLiveUserMessageBuffer()
+		}
+		state.liveUpdates.publish(req.msg.Content)
 	}
 
 	state.pending = append(state.pending, req)
@@ -421,6 +477,7 @@ func (s *ConcurrentService) finishSession(sessionID string) {
 	}
 
 	state.running = false
+	state.liveUpdates = nil
 	if len(state.pending) == 0 {
 		if !state.inReadyQueue {
 			delete(s.sessions, sessionID)
@@ -499,4 +556,11 @@ func (s *ConcurrentService) setWorkerInFlight(inFlight int) {
 	if s.queueStats != nil {
 		s.queueStats.SetWorkerInFlight(inFlight)
 	}
+}
+
+func shouldPublishLiveUserMessage(msg shareddomain.UnifiedMessage) bool {
+	if msg.TriggerType != shareddomain.TriggerTypeUser {
+		return false
+	}
+	return strings.TrimSpace(msg.Content) != ""
 }
