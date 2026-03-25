@@ -213,6 +213,9 @@ func TestHybridNLProcessorMarksModelExecutionSource(t *testing.T) {
 	if got := metadata[execdomain.ExecutionSourceMetadataKey]; got != execdomain.ExecutionSourceModel {
 		t.Fatalf("expected execution source %q, got %q", execdomain.ExecutionSourceModel, got)
 	}
+	if reactFactory.lastConfig.UserMessagePuller == nil {
+		t.Fatalf("expected react user message puller to be configured")
+	}
 }
 
 func TestHybridNLProcessorMarksCodexExecutionSource(t *testing.T) {

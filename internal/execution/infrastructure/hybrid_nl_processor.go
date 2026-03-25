@@ -11,6 +11,7 @@ import (
 
 	execdomain "alter0/internal/execution/domain"
 	llmdomain "alter0/internal/llm/domain"
+	shareddomain "alter0/internal/shared/domain"
 	taskapp "alter0/internal/task/application"
 )
 
@@ -147,11 +148,12 @@ func (p *HybridNLProcessor) processWithReact(
 	providerID := strings.TrimSpace(metadataValue(metadata, execdomain.LLMProviderIDMetadataKey))
 	modelID := strings.TrimSpace(metadataValue(metadata, execdomain.LLMModelMetadataKey))
 	agent, err := p.react.GetReActAgent(ctx, providerID, llmdomain.ReActAgentConfig{
-		Model:         modelID,
-		SystemPrompt:  buildHybridReActSystemPrompt(metadata),
-		Tools:         tools,
-		ToolExecutor:  toolExecutor,
-		MaxIterations: maxIterations,
+		Model:             modelID,
+		SystemPrompt:      buildHybridReActSystemPrompt(metadata),
+		Tools:             tools,
+		ToolExecutor:      toolExecutor,
+		MaxIterations:     maxIterations,
+		UserMessagePuller: shareddomain.ConsumeLiveUserMessage,
 	})
 	if err != nil {
 		return "", err
@@ -195,7 +197,8 @@ func (p *HybridNLProcessor) processWithAgent(
 		ToolExecutor: llmdomain.ToolExecutorFunc(func(runCtx context.Context, toolCall llmdomain.ToolCall) (*llmdomain.ToolResult, error) {
 			return p.executeModelTool(runCtx, metadata, toolCall)
 		}),
-		MaxIterations: parseAgentMaxIterations(metadata),
+		MaxIterations:     parseAgentMaxIterations(metadata),
+		UserMessagePuller: shareddomain.ConsumeLiveUserMessage,
 	})
 	if err != nil {
 		return "", err

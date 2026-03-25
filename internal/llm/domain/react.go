@@ -21,6 +21,8 @@ type ReActAgentConfig struct {
 	MaxIterations int
 	// Temperature is the temperature for the LLM.
 	Temperature *float64
+	// UserMessagePuller fetches the latest user message queued during a multi-step run.
+	UserMessagePuller func(ctx context.Context) (string, bool)
 }
 
 // ToolExecutor executes tool calls.
@@ -55,6 +57,8 @@ type ReActState struct {
 	Messages []Message
 	// Error is the error that occurred (if any).
 	Error error
+	// LatestUserMessage is the latest queued user message injected during execution.
+	LatestUserMessage string
 }
 
 // ReActEvent represents an event in the ReAct loop.
@@ -109,6 +113,15 @@ func (a *ReActAgent) RunWithState(ctx context.Context, userMessage string, onEve
 
 	for state.Iteration < a.config.MaxIterations {
 		state.Iteration++
+		if state.Iteration > 1 {
+			if latest, ok := a.consumeLatestUserMessage(ctx); ok {
+				state.LatestUserMessage = latest
+				state.Messages = append(state.Messages, Message{
+					Role:    "user",
+					Content: buildSupplementalUserMessage(latest),
+				})
+			}
+		}
 
 		// Call LLM
 		resp, err := a.config.Client.Chat(ctx, ChatRequest{
@@ -269,4 +282,23 @@ Use the ReAct (Reasoning + Acting) pattern:
 4. Repeat until you can provide a final answer.
 
 When you have a final answer, respond directly without using any tools.`
+}
+
+func (a *ReActAgent) consumeLatestUserMessage(ctx context.Context) (string, bool) {
+	if a == nil || a.config.UserMessagePuller == nil {
+		return "", false
+	}
+	latest, ok := a.config.UserMessagePuller(ctx)
+	if !ok {
+		return "", false
+	}
+	latest = strings.TrimSpace(latest)
+	if latest == "" {
+		return "", false
+	}
+	return latest, true
+}
+
+func buildSupplementalUserMessage(message string) string {
+	return "Latest user message received while the task was running. Treat it as the newest instruction and incorporate it into the next step.\n\n" + strings.TrimSpace(message)
 }

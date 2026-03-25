@@ -1076,6 +1076,7 @@ const state = {
   },
   sessionHistoryCollapsed: false,
   pending: false,
+  pendingCount: 0,
   pageRenderToken: 0,
   navCollapsed: false,
   suppressHashRouteConfirm: "",
@@ -3218,12 +3219,12 @@ function applyAsyncTaskStateToMessage(message, payload = {}) {
 function taskCompletionText(task) {
   const status = normalizeTaskStatus(task?.status);
   if (status === "success") {
-    return normalizeText(task?.result?.output) || normalizeText(task?.summary) || t("msg.received_empty");
+    return normalizeText(task?.summary) || normalizeText(task?.task_summary?.result) || t("msg.received_empty");
   }
   if (status === "canceled") {
     return normalizeText(task?.summary) || `Async task ${normalizeText(task?.id)} canceled`;
   }
-  return normalizeText(task?.error_message) || normalizeText(task?.summary) || normalizeText(task?.result?.error_code) || `Async task ${normalizeText(task?.id)} failed`;
+  return normalizeText(task?.summary) || normalizeText(task?.task_summary?.result) || normalizeText(task?.result?.error_code) || `Async task ${normalizeText(task?.id)} failed`;
 }
 
 function notifyAsyncTaskCompletion(session, task, text) {
@@ -3384,7 +3385,7 @@ function renderMessages() {
 
     const bubble = document.createElement("div");
     bubble.className = "msg-bubble";
-    bubble.textContent = msg.text;
+    bubble.innerHTML = renderMarkdownToHTML(msg.text);
 
     const meta = document.createElement("div");
     meta.className = "msg-meta";
@@ -3428,13 +3429,15 @@ function renderMessages() {
 }
 
 function setPending(flag) {
-  state.pending = flag;
+  state.pendingCount = Math.max(0, Number(state.pendingCount || 0) + (flag ? 1 : -1));
+  state.pending = state.pendingCount > 0;
   if (mainChatComposer) {
-    mainChatComposer.setDisabled(flag);
+    mainChatComposer.setDisabled(false);
+    mainChatComposer.syncCounter();
     return;
   }
-  sendButton.disabled = flag;
-  input.disabled = flag;
+  sendButton.disabled = false;
+  input.disabled = false;
 }
 
 function updateCharCount() {
@@ -3676,7 +3679,7 @@ async function sendMessage(rawContent) {
     navigateToRoute(route);
   }
   const content = rawContent.trim();
-  if (!content || state.pending) {
+  if (!content) {
     return;
   }
 
@@ -3945,6 +3948,177 @@ function escapeHTML(value) {
     if (char === '"') return "&quot;";
     return "&#39;";
   });
+}
+
+function renderMarkdownToHTML(value) {
+  const normalized = String(value ?? "").replace(/\r\n?/g, "\n");
+  if (!normalized.trim()) {
+    return "";
+  }
+  const tokens = [];
+  const fencePattern = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
+  let cursor = 0;
+  let match = fencePattern.exec(normalized);
+  while (match) {
+    if (match.index > cursor) {
+      tokens.push({ type: "markdown", content: normalized.slice(cursor, match.index) });
+    }
+    tokens.push({
+      type: "code",
+      language: String(match[1] || "").trim().toLowerCase(),
+      content: String(match[2] || "").replace(/\n$/, "")
+    });
+    cursor = match.index + match[0].length;
+    match = fencePattern.exec(normalized);
+  }
+  if (cursor < normalized.length) {
+    tokens.push({ type: "markdown", content: normalized.slice(cursor) });
+  }
+  return tokens.map((token) => {
+    if (token.type === "code") {
+      const languageClass = token.language ? ` class="language-${escapeHTML(token.language)}"` : "";
+      return `<pre class="chat-md-pre"><code${languageClass}>${escapeHTML(token.content)}</code></pre>`;
+    }
+    return renderMarkdownBlocks(token.content);
+  }).join("");
+}
+
+function renderMarkdownBlocks(content) {
+  const lines = String(content || "").split("\n");
+  const html = [];
+  let paragraphLines = [];
+  let quoteLines = [];
+  let listType = "";
+  let listItems = [];
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) {
+      return;
+    }
+    html.push(`<p>${paragraphLines.map((line) => renderMarkdownInline(line)).join("<br>")}</p>`);
+    paragraphLines = [];
+  };
+
+  const flushQuote = () => {
+    if (!quoteLines.length) {
+      return;
+    }
+    html.push(`<blockquote>${renderMarkdownBlocks(quoteLines.join("\n"))}</blockquote>`);
+    quoteLines = [];
+  };
+
+  const flushList = () => {
+    if (!listType || !listItems.length) {
+      listType = "";
+      listItems = [];
+      return;
+    }
+    html.push(`<${listType}>${listItems.map((item) => `<li>${renderMarkdownInline(item)}</li>`).join("")}</${listType}>`);
+    listType = "";
+    listItems = [];
+  };
+
+  const flushAll = () => {
+    flushParagraph();
+    flushQuote();
+    flushList();
+  };
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      flushAll();
+      continue;
+    }
+
+    if (/^>\s?/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      quoteLines.push(trimmed.replace(/^>\s?/, ""));
+      continue;
+    }
+    flushQuote();
+
+    const unorderedMatch = /^[-*+]\s+(.+)$/.exec(trimmed);
+    if (unorderedMatch) {
+      flushParagraph();
+      if (listType && listType !== "ul") {
+        flushList();
+      }
+      listType = "ul";
+      listItems.push(unorderedMatch[1]);
+      continue;
+    }
+
+    const orderedMatch = /^(\d+)\.\s+(.+)$/.exec(trimmed);
+    if (orderedMatch) {
+      flushParagraph();
+      if (listType && listType !== "ol") {
+        flushList();
+      }
+      listType = "ol";
+      listItems.push(orderedMatch[2]);
+      continue;
+    }
+
+    flushList();
+
+    const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
+    if (headingMatch) {
+      flushParagraph();
+      const level = headingMatch[1].length;
+      html.push(`<h${level}>${renderMarkdownInline(headingMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      flushParagraph();
+      html.push("<hr>");
+      continue;
+    }
+
+    paragraphLines.push(trimmed);
+  }
+
+  flushAll();
+  return html.join("");
+}
+
+function renderMarkdownInline(content) {
+  let rendered = escapeHTML(String(content ?? ""));
+  const placeholders = [];
+  const reserve = (html) => {
+    const token = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(html);
+    return token;
+  };
+
+  rendered = rendered.replace(/`([^`]+)`/g, (_, code) => reserve(`<code class="chat-md-inline-code">${escapeHTML(code)}</code>`));
+  rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+    const href = sanitizeMarkdownURL(url);
+    if (!href) {
+      return renderMarkdownInline(label);
+    }
+    return reserve(`<a href="${href}" target="_blank" rel="noreferrer noopener">${renderMarkdownInline(label)}</a>`);
+  });
+  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  rendered = rendered.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+  rendered = rendered.replace(/(^|[\s(>])\*([^*\n]+)\*(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
+  rendered = rendered.replace(/(^|[\s(>])_([^_\n]+)_(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
+
+  return rendered.replace(/\u0000(\d+)\u0000/g, (_, index) => placeholders[Number(index)] || "");
+}
+
+function sanitizeMarkdownURL(rawURL) {
+  const value = String(rawURL || "").trim();
+  if (!value) {
+    return "";
+  }
+  const normalized = value.replace(/^<|>$/g, "");
+  if (/^(https?:|mailto:)/i.test(normalized) || normalized.startsWith("/") || normalized.startsWith("#")) {
+    return escapeHTML(normalized);
+  }
+  return "";
 }
 
 function normalizeText(value) {

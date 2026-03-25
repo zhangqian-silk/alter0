@@ -12,12 +12,18 @@ import (
 	shareddomain "alter0/internal/shared/domain"
 )
 
-type defaultLLMClientSource interface {
+const (
+	complexityProviderIDMetadataKey = "alter0.llm.provider_id"
+	complexityModelMetadataKey      = "alter0.llm.model"
+)
+
+type llmClientSource interface {
+	GetClient(ctx context.Context, providerID string) (llmdomain.LLMClient, error)
 	GetDefaultClient(ctx context.Context) (llmdomain.LLMClient, error)
 }
 
 type OpenAIComplexityPredictor struct {
-	clientSource defaultLLMClientSource
+	clientSource llmClientSource
 	fallback     ComplexityPredictor
 	logger       *slog.Logger
 }
@@ -31,7 +37,7 @@ type openAIComplexityPayload struct {
 }
 
 func NewOpenAIComplexityPredictor(
-	clientSource defaultLLMClientSource,
+	clientSource llmClientSource,
 	fallback ComplexityPredictor,
 	logger *slog.Logger,
 ) *OpenAIComplexityPredictor {
@@ -52,11 +58,12 @@ func (p *OpenAIComplexityPredictor) Predict(ctx context.Context, msg shareddomai
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	client, err := p.resolveClient(ctx)
+	client, err := p.resolveClient(ctx, msg)
 	if err != nil {
 		return p.fallbackPredict(ctx, msg, err)
 	}
 	request := llmdomain.ChatRequest{
+		Model: strings.TrimSpace(msg.Metadata[complexityModelMetadataKey]),
 		Messages: []llmdomain.Message{
 			{
 				Role: "system",
@@ -99,9 +106,20 @@ Rules:
 	}, nil
 }
 
-func (p *OpenAIComplexityPredictor) resolveClient(ctx context.Context) (llmdomain.LLMClient, error) {
+func (p *OpenAIComplexityPredictor) resolveClient(ctx context.Context, msg shareddomain.UnifiedMessage) (llmdomain.LLMClient, error) {
 	if p.clientSource == nil {
 		return nil, errors.New("default llm client source is unavailable")
+	}
+	providerID := strings.TrimSpace(msg.Metadata[complexityProviderIDMetadataKey])
+	if providerID != "" {
+		client, err := p.clientSource.GetClient(ctx, providerID)
+		if err != nil {
+			return nil, err
+		}
+		if client == nil {
+			return nil, errors.New("selected llm client is unavailable")
+		}
+		return client, nil
 	}
 	client, err := p.clientSource.GetDefaultClient(ctx)
 	if err != nil {
