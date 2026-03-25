@@ -400,7 +400,7 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "interrupted");
     await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-live", "false");
     await expect(terminalPage.workspace()).toContainText("Interrupted");
-    await expect(terminalPage.workspace()).toContainText("Codex session interrupted and cannot be resumed here.");
+    await expect(terminalPage.workspace()).toContainText("Codex runtime exited. Send a new input to recover this session.");
     await expect(terminalPage.composer().input()).toBeDisabled();
     await expect(terminalPage.composer().submitButton()).toBeDisabled();
     await expectComposerState(terminalPage.composer(), { disabled: true });

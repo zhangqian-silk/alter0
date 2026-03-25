@@ -86,6 +86,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 1. `Chat`
 - 面向 Web 会话消息。
 - 仅面向 `Raw Model` 对话。
+- Web 登录后，`Chat` 与 `Agent` 页面共享同一套 Session 历史，不再按页面来源拆分会话列表与本地缓存。
 - 运行时配置收敛在输入框底部操作栏：`Provider / Model`、`Tools / MCP`、`Skills` 都在发送区附近完成。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
 - 选中的原生工具会在模型调用时作为 function tools 注入，当前内置工具包括 `list_dir`、`read`、`write`、`edit`、`bash`。
@@ -104,12 +105,15 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 每个 Agent 可独立配置名称、system prompt、tool 白名单、Skill 选择与 MCP 选择。
 - Web 端将 Agent 的“配置/管理”放在 `Agent Profiles` 页面，将 Agent 的“交互/执行”统一收敛到 `Agent` 页面。
 - Agent 的 `id`、`version` 等系统字段由服务端统一生成和维护，管理页不要求用户手填。
+- `Agent` 页面继续保留独立执行入口与配置，但其 Session 历史与 `Chat` 页面统一展示、统一恢复。
 
 3. `Terminal`
 - 面向交互式终端会话。
 - 仍属于自然语言处理，但使用独立上下文边界。
 - 默认仅注入运行时必需上下文，不复用 Chat 会话记忆与长期记忆。
 - 每个 Terminal 会话使用独立工作区目录，不再默认落在仓库根目录。
+- Terminal 会持久化 Codex CLI 线程标识与会话状态；运行态退出后保留原会话历史，继续发送即可在同一会话内恢复。
+- Terminal 不再设置产品级会话数量上限或固定超时淘汰策略。
 
 补充说明：
 
@@ -128,6 +132,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 3. `Terminal`
 - 终端会话级工作区：`.alter0/workspaces/terminal/sessions/<terminal_session_id>`
+- 终端会话状态：`.alter0/state/terminal/sessions/<terminal_session_id>.json`
 
 说明：
 
@@ -251,6 +256,7 @@ go run ./cmd/alter0
 - 如需统一指定 Codex CLI 路径，可通过环境变量 `ALTER0_CODEX_COMMAND` 或启动参数 `-codex-command` 设置
 - 如需固定 shell，可通过启动参数 `-task-terminal-shell` 或运行时环境键 `task_terminal_shell` 指定
 - Windows 下显式指定 `cmd.exe` 时会补充 UTF-8 代码页初始化；如需稳定中文输出，优先使用 `powershell.exe`
+- Terminal 会话退出后不会清空历史或线程标识；重新在原会话发送输入时，系统会优先复用已持久化的 Codex CLI 线程继续执行
 
 ## Control API
 

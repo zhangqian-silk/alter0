@@ -9,7 +9,7 @@ func TestDefaultEnvironmentDefinitionsIncludeTerminalConfig(t *testing.T) {
 		index[item.Key] = true
 	}
 
-	for _, key := range []string{"task_terminal_max_sessions", "task_terminal_shell", "async_task_trigger_threshold"} {
+	for _, key := range []string{"task_terminal_shell", "async_task_trigger_threshold"} {
 		if !index[key] {
 			t.Fatalf("expected environment definition %q", key)
 		}

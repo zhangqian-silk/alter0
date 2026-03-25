@@ -269,16 +269,6 @@ func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
 			"error":      err.Error(),
 			"error_code": "terminal_recover_session_required",
 		})
-	case errors.Is(err, terminalapp.ErrSessionLimitReached):
-		maxSessions := 5
-		if s.terminals != nil {
-			maxSessions = s.terminals.MaxSessions()
-		}
-		writeJSON(w, http.StatusConflict, map[string]any{
-			"error":        fmt.Sprintf("terminal session limit reached (%d)", maxSessions),
-			"error_code":   "terminal_session_limit_reached",
-			"max_sessions": maxSessions,
-		})
 	case errors.Is(err, terminalapp.ErrSessionNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error":      err.Error(),

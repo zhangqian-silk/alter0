@@ -35,7 +35,6 @@ var (
 	ErrSessionOwnerRequired     = errors.New("terminal session owner is required")
 	ErrSessionNotFound          = errors.New("terminal session not found")
 	ErrSessionNotRunning        = errors.New("terminal session is not running")
-	ErrSessionLimitReached      = errors.New("terminal session limit reached")
 	ErrSessionBusy              = errors.New("terminal session is processing another turn")
 	ErrSessionInputRequired     = errors.New("terminal input is required")
 	ErrSessionRecoverIDRequired = errors.New("terminal recovery session id is required")
@@ -44,7 +43,6 @@ var (
 )
 
 type Options struct {
-	MaxSessions   int
 	WorkingDir    string
 	Shell         string
 	ShellArgs     []string
@@ -168,11 +166,8 @@ func NewService(ctx context.Context, idGenerator sharedapp.IDGenerator, logger *
 		<-ctx.Done()
 		service.shutdown()
 	}()
+	service.loadPersistedSessions()
 	return service
-}
-
-func (s *Service) MaxSessions() int {
-	return s.options.MaxSessions
 }
 
 func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
@@ -183,10 +178,6 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if s.countActiveLocked() >= s.options.MaxSessions {
-		return terminaldomain.Session{}, ErrSessionLimitReached
-	}
 
 	command := resolveCodexCommand(s.options)
 	sessionID := "terminal-" + s.newID()
@@ -214,6 +205,7 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 		entries: []terminaldomain.Entry{},
 	}
 	s.sessions[sessionID] = session
+	s.persistSession(session)
 	return session.snapshot(), nil
 }
 
@@ -237,10 +229,6 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 			return terminaldomain.Session{}, ErrSessionNotFound
 		}
 		return snapshot, nil
-	}
-
-	if s.countActiveLocked() >= s.options.MaxSessions {
-		return terminaldomain.Session{}, ErrSessionLimitReached
 	}
 
 	command := resolveCodexCommand(s.options)
@@ -279,6 +267,7 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 		threadID: resolveRecoveredThreadID(sessionID, terminalSessionID),
 	}
 	s.sessions[sessionID] = session
+	s.persistSession(session)
 	return session.snapshot(), nil
 }
 
@@ -432,7 +421,7 @@ func (s *Service) Input(ownerID string, sessionID string, input string) (termina
 		turnCancel()
 		return terminaldomain.Session{}, ErrSessionBusy
 	}
-	if item.closedByUser || item.summary.Status != terminaldomain.SessionStatusRunning {
+	if item.summary.Status == terminaldomain.SessionStatusStarting {
 		item.mu.Unlock()
 		turnCancel()
 		return terminaldomain.Session{}, ErrSessionNotRunning
@@ -443,14 +432,17 @@ func (s *Service) Input(ownerID string, sessionID string, input string) (termina
 	}
 	item.summary.Status = terminaldomain.SessionStatusStarting
 	item.summary.UpdatedAt = now
+	item.summary.FinishedAt = time.Time{}
 	item.summary.ErrorMessage = ""
 	item.summary.ExitCode = nil
+	item.closedByUser = false
 	item.turnRunning = true
 	item.turnCancel = turnCancel
 	turn := item.beginTurnLocked(prompt, now)
 	item.appendEntryLocked("input", prompt)
 	snapshot := item.summary
 	item.mu.Unlock()
+	s.persistSession(item)
 
 	go s.runTurn(item, turnCtx, turn.ID, prompt)
 
@@ -464,7 +456,6 @@ func (s *Service) Close(ownerID string, sessionID string) (terminaldomain.Sessio
 	}
 
 	item.mu.Lock()
-	defer item.mu.Unlock()
 
 	now := time.Now().UTC()
 	item.closedByUser = true
@@ -479,7 +470,10 @@ func (s *Service) Close(ownerID string, sessionID string) (terminaldomain.Sessio
 	item.summary.UpdatedAt = now
 	item.summary.FinishedAt = now
 	item.appendEntryLocked("system", "codex session closed")
-	return item.summary, nil
+	snapshot := item.summary
+	item.mu.Unlock()
+	s.persistSession(item)
+	return snapshot, nil
 }
 
 func (s *Service) shutdown() {
@@ -504,6 +498,7 @@ func (s *Service) shutdown() {
 		}
 		item.turnRunning = false
 		item.mu.Unlock()
+		s.persistSession(item)
 	}
 }
 
@@ -622,6 +617,7 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 			item.summary.TerminalSessionID = threadID
 			item.summary.UpdatedAt = time.Now().UTC()
 			item.mu.Unlock()
+			s.persistSession(item)
 		}
 	case "item.delta":
 		return
@@ -630,38 +626,42 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 			return
 		}
 		item.mu.Lock()
-		defer item.mu.Unlock()
 
 		turn := item.turnByIDLocked(turnID)
 		if turn == nil {
+			item.mu.Unlock()
 			return
 		}
 		switch normalizeCodexItemType(event.Item.Type) {
 		case "command_execution":
 			command := strings.TrimSpace(event.Item.Command)
 			if command == "" {
+				item.mu.Unlock()
 				return
 			}
 			step := item.ensureCommandStepLocked(turn, event.Item.ID, command, time.Now().UTC())
 			step.Status = "running"
 			item.appendEntryLocked("system", "running command: "+command)
 		}
+		item.mu.Unlock()
+		s.persistSession(item)
 	case "item.completed":
 		if event.Item == nil {
 			return
 		}
 		now := time.Now().UTC()
 		item.mu.Lock()
-		defer item.mu.Unlock()
 
 		turn := item.turnByIDLocked(turnID)
 		if turn == nil {
+			item.mu.Unlock()
 			return
 		}
 		switch normalizeCodexItemType(event.Item.Type) {
 		case "agent_message":
 			text := normalizeChunk(event.Item.Text)
 			if strings.TrimSpace(text) == "" {
+				item.mu.Unlock()
 				return
 			}
 			step := item.newStepLocked(turn, "message", deriveStepTitle("message", text), now)
@@ -679,6 +679,7 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 		case "reasoning", "plan":
 			text := normalizeChunk(event.Item.Text)
 			if strings.TrimSpace(text) == "" {
+				item.mu.Unlock()
 				return
 			}
 			step := item.newStepLocked(turn, normalizeCodexItemType(event.Item.Type), deriveStepTitle(normalizeCodexItemType(event.Item.Type), text), now)
@@ -718,13 +719,14 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 				item.appendEntryLocked(stream, output)
 			}
 		}
+		item.mu.Unlock()
+		s.persistSession(item)
 	}
 }
 
 func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error, stderrText string) {
 	now := time.Now().UTC()
 	item.mu.Lock()
-	defer item.mu.Unlock()
 
 	turn := item.turnByIDLocked(turnID)
 
@@ -746,6 +748,8 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 			turn.FinishedAt = now
 			turn.promoteFinalOutput()
 		}
+		item.mu.Unlock()
+		s.persistSession(item)
 		return
 	}
 
@@ -761,6 +765,8 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 			turn.FinishedAt = now
 			turn.promoteFinalOutput()
 		}
+		item.mu.Unlock()
+		s.persistSession(item)
 		return
 	}
 
@@ -775,6 +781,8 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 			item.newSystemStepLocked(turn, "Interrupted", "terminal host unavailable", now, "failed")
 			turn.promoteFinalOutput()
 		}
+		item.mu.Unlock()
+		s.persistSession(item)
 		return
 	}
 
@@ -787,6 +795,8 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		item.newSystemStepLocked(turn, "Request failed", message, now, "failed")
 		turn.promoteFinalOutput()
 	}
+	item.mu.Unlock()
+	s.persistSession(item)
 }
 
 func (s *runtimeSession) beginTurnLocked(prompt string, now time.Time) *runtimeTurn {
@@ -1051,12 +1061,6 @@ func normalizeStepType(stepType string) string {
 }
 
 func normalizeOptions(options Options) Options {
-	if options.MaxSessions <= 0 {
-		options.MaxSessions = 5
-	}
-	if options.MaxSessions > 5 {
-		options.MaxSessions = 5
-	}
 	options.WorkingDir = strings.TrimSpace(options.WorkingDir)
 	if options.WorkingDir == "" {
 		if cwd, err := os.Getwd(); err == nil {

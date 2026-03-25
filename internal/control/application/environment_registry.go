@@ -155,20 +155,6 @@ func defaultEnvironmentDefinitions() []controldomain.EnvironmentDefinition {
 			},
 		},
 		{
-			Key:          "task_terminal_max_sessions",
-			Name:         "Terminal Max Sessions",
-			Module:       "Terminal",
-			Description:  "允许同时存在的终端会话数量上限。超过后新建终端会被拒绝，用于限制宿主机资源占用和潜在安全暴露面。",
-			Type:         controldomain.EnvironmentValueTypeInteger,
-			DefaultValue: "5",
-			ApplyMode:    controldomain.EnvironmentApplyModeRestart,
-			Validation: controldomain.EnvironmentValidation{
-				Required: true,
-				Min:      "1",
-				Max:      "5",
-			},
-		},
-		{
 			Key:          "task_terminal_shell",
 			Name:         "Terminal Shell",
 			Module:       "Terminal",

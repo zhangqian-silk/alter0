@@ -90,10 +90,6 @@ func (s *stubWebTerminalService) Close(ownerID string, sessionID string) (termin
 	return s.closeResp, s.closeErr
 }
 
-func (s *stubWebTerminalService) MaxSessions() int {
-	return 5
-}
-
 func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	service := &stubWebTerminalService{
 		createResp: terminaldomain.Session{

@@ -46,8 +46,9 @@ const NAV_TOOLTIP_OFFSET = 12;
 const CHAT_TASK_POLL_INTERVAL_MS = 4000;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
-const CHAT_SESSION_STORAGE_KEY = "alter0.web.sessions.chat.v2";
-const AGENT_SESSION_STORAGE_KEY = "alter0.web.sessions.agent.v2";
+const SESSION_STORAGE_KEY = "alter0.web.sessions.v3";
+const LEGACY_CHAT_SESSION_STORAGE_KEY = "alter0.web.sessions.chat.v2";
+const LEGACY_AGENT_SESSION_STORAGE_KEY = "alter0.web.sessions.agent.v2";
 const LEGACY_SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
 const SESSION_HISTORY_PANEL_STORAGE_KEY = "alter0.web.session-history-panel.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
@@ -344,9 +345,8 @@ const I18N = {
     "route.tasks.terminal.input_placeholder": "Type command or prompt...",
     "route.tasks.terminal.send": "Send",
     "route.tasks.terminal.sending": "Sending...",
-    "route.tasks.terminal.hint": "Supports follow-up interaction in current terminal session (max {max} concurrent sessions).",
+    "route.tasks.terminal.hint": "Supports follow-up interaction in the current terminal session.",
     "route.tasks.terminal.followup_note": "Each Send stays in the same Codex session thread.",
-    "route.tasks.terminal.limit_reached": "Terminal session limit reached ({max}). Please finish an active session first.",
     "route.tasks.actions.retry": "Retry",
     "route.tasks.actions.cancel": "Cancel",
     "route.tasks.result.title": "Result Output",
@@ -378,13 +378,12 @@ const I18N = {
     "route.terminal.step.loading": "Loading step details...",
     "route.terminal.step.error": "Load step failed: {error}",
     "route.terminal.step.search": "Search in output",
-    "route.terminal.limit_reached": "Terminal session limit reached ({max}). Please finish an active session first.",
     "route.terminal.send_failed": "Send failed: {error}",
     "route.terminal.logs_failed": "Load terminal output failed: {error}",
     "route.terminal.close_failed": "Close terminal failed: {error}",
     "route.terminal.loading": "Loading terminal session...",
-    "route.terminal.interrupted": "Codex session interrupted and cannot be resumed here.",
-    "route.terminal.closed": "Codex session closed. Create a new session to continue.",
+    "route.terminal.interrupted": "Codex runtime exited. Send a new input to recover this session.",
+    "route.terminal.closed": "Codex session exited. Send a new input to continue in this session.",
     "trigger.user": "User",
     "trigger.cron": "Cron",
     "trigger.system": "System",
@@ -789,9 +788,8 @@ const I18N = {
     "route.tasks.terminal.input_placeholder": "输入命令或追问继续交互...",
     "route.tasks.terminal.send": "发送",
     "route.tasks.terminal.sending": "发送中...",
-    "route.tasks.terminal.hint": "支持在当前终端会话中继续交互（最多并发 {max} 个终端会话）。",
-    "route.tasks.terminal.followup_note": "每次发送可能生成子任务，但仍在同一个 Shell 会话内连续处理。",
-    "route.tasks.terminal.limit_reached": "终端会话已达上限（{max}），请先结束一个活跃会话。",
+    "route.tasks.terminal.hint": "支持在当前终端会话中继续交互。",
+    "route.tasks.terminal.followup_note": "每次发送都会继续复用同一个 Codex 会话线程。",
     "route.tasks.actions.retry": "重试",
     "route.tasks.actions.cancel": "取消",
     "route.tasks.result.title": "终态输出",
@@ -814,13 +812,12 @@ const I18N = {
     "route.terminal.process.label": "过程",
     "route.terminal.process.steps": "{count} 步",
     "route.terminal.jump_bottom": "回到底部",
-    "route.terminal.limit_reached": "终端会话已达上限（{max}），请先结束一个活跃会话。",
     "route.terminal.send_failed": "发送失败：{error}",
     "route.terminal.logs_failed": "终端输出加载失败：{error}",
     "route.terminal.close_failed": "终端关闭失败：{error}",
     "route.terminal.loading": "正在加载终端会话...",
-    "route.terminal.interrupted": "终端会话已中断，且不能重新打开。",
-    "route.terminal.closed": "终端会话已结束，请新建会话继续。",
+    "route.terminal.interrupted": "Codex 运行态已退出，继续发送即可恢复当前会话。",
+    "route.terminal.closed": "Codex 会话已退出，继续发送即可在当前会话内恢复。",
     "trigger.user": "用户触发",
     "trigger.cron": "定时触发",
     "trigger.system": "系统触发",
@@ -1039,12 +1036,9 @@ const ROUTES = {
 
 const state = {
   currentRoute: DEFAULT_ROUTE,
-  activeChatSessionID: "",
-  chatSessions: [],
-  chatSessionLoadError: "",
-  activeAgentSessionID: "",
-  agentSessions: [],
-  agentSessionLoadError: "",
+  activeSessionID: "",
+  sessions: [],
+  sessionLoadError: "",
   chatCatalog: {
     agents: [],
     providers: [],
@@ -1387,44 +1381,28 @@ function isAgentConversationRoute(route = state.currentRoute) {
   return routeConversationMode(route) === "agent";
 }
 
-function sessionStorageKey(mode = routeConversationMode()) {
-  return mode === "agent" ? AGENT_SESSION_STORAGE_KEY : CHAT_SESSION_STORAGE_KEY;
+function conversationSessions() {
+  return state.sessions;
 }
 
-function conversationSessions(mode = routeConversationMode()) {
-  return mode === "agent" ? state.agentSessions : state.chatSessions;
+function setConversationSessions(items) {
+  state.sessions = Array.isArray(items) ? items : [];
 }
 
-function setConversationSessions(items, mode = routeConversationMode()) {
-  if (mode === "agent") {
-    state.agentSessions = items;
-    return;
-  }
-  state.chatSessions = items;
+function activeConversationSessionID() {
+  return state.activeSessionID;
 }
 
-function activeConversationSessionID(mode = routeConversationMode()) {
-  return mode === "agent" ? state.activeAgentSessionID : state.activeChatSessionID;
+function setActiveConversationSessionID(sessionID) {
+  state.activeSessionID = normalizeText(sessionID);
 }
 
-function setActiveConversationSessionID(sessionID, mode = routeConversationMode()) {
-  if (mode === "agent") {
-    state.activeAgentSessionID = sessionID;
-    return;
-  }
-  state.activeChatSessionID = sessionID;
+function conversationSessionLoadError() {
+  return state.sessionLoadError;
 }
 
-function conversationSessionLoadError(mode = routeConversationMode()) {
-  return mode === "agent" ? state.agentSessionLoadError : state.chatSessionLoadError;
-}
-
-function setConversationSessionLoadError(message, mode = routeConversationMode()) {
-  if (mode === "agent") {
-    state.agentSessionLoadError = message;
-    return;
-  }
-  state.chatSessionLoadError = message;
+function setConversationSessionLoadError(message) {
+  state.sessionLoadError = normalizeText(message);
 }
 
 function timeLabel(epochMillis = Date.now()) {
@@ -1568,24 +1546,18 @@ function syncSessionModelSelection(session) {
 }
 
 function reconcileChatModelSelections() {
-  let anyChanged = false;
-  ["chat", "agent"].forEach((mode) => {
-    let changed = false;
-    conversationSessions(mode).forEach((session) => {
-      if (syncSessionModelSelection(session)) {
-        changed = true;
-      }
-    });
-    if (changed) {
-      persistSessions(mode);
-      anyChanged = true;
+  let changed = false;
+  conversationSessions().forEach((session) => {
+    if (syncSessionModelSelection(session)) {
+      changed = true;
     }
   });
-  if (anyChanged) {
+  if (changed) {
+    persistSessions();
     renderSessions();
     syncHeader();
   }
-  return anyChanged;
+  return changed;
 }
 
 function normalizeSelectionIDs(values) {
@@ -1721,7 +1693,7 @@ function isBlankSession(item) {
 }
 
 function getLatestBlankSession(mode = routeConversationMode()) {
-  const blankSessions = conversationSessions(mode).filter((item) => isBlankSession(item));
+  const blankSessions = conversationSessions().filter((item) => isBlankSession(item));
   if (!blankSessions.length) {
     return null;
   }
@@ -1730,18 +1702,18 @@ function getLatestBlankSession(mode = routeConversationMode()) {
 }
 
 function enforceSingleBlankSession(mode = routeConversationMode()) {
-  const latestBlank = getLatestBlankSession(mode);
+  const latestBlank = getLatestBlankSession();
   if (!latestBlank) {
     return false;
   }
-  const sessions = conversationSessions(mode);
+  const sessions = conversationSessions();
   const originalCount = sessions.length;
-  setConversationSessions(sessions.filter((item) => !isBlankSession(item) || item.id === latestBlank.id), mode);
-  const activeID = activeConversationSessionID(mode);
-  if (activeID && !getSession(activeID, mode)) {
-    setActiveConversationSessionID(latestBlank.id, mode);
+  setConversationSessions(sessions.filter((item) => !isBlankSession(item) || item.id === latestBlank.id));
+  const activeID = activeConversationSessionID();
+  if (activeID && !getSession(activeID)) {
+    setActiveConversationSessionID(latestBlank.id);
   }
-  return conversationSessions(mode).length !== originalCount;
+  return conversationSessions().length !== originalCount;
 }
 
 function focusSession(sessionID) {
@@ -2314,17 +2286,11 @@ function normalizeStoredSession(item, mode = routeConversationMode()) {
   const id = typeof item.id === "string" && item.id ? item.id : makeID();
   const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "New Chat";
   const createdAt = Number.isFinite(item.createdAt) ? item.createdAt : Date.now();
-  const target = normalizeChatTarget(mode === "agent"
-    ? {
-        type: "agent",
-        id: item.targetID,
-        name: item.targetName
-      }
-    : {
-        type: "model",
-        id: "raw-model",
-        name: t("session.target.raw")
-      });
+  const target = normalizeChatTarget({
+    type: item.targetType || (mode === "agent" ? "agent" : "model"),
+    id: item.targetID || (mode === "agent" ? "" : "raw-model"),
+    name: item.targetName || (mode === "agent" ? t("session.target.agent") : t("session.target.raw"))
+  });
   const rawMessages = Array.isArray(item.messages) ? item.messages : [];
   const messages = [];
   for (const raw of rawMessages) {
@@ -2349,7 +2315,7 @@ function normalizeStoredSession(item, mode = routeConversationMode()) {
   };
 }
 
-function normalizeLegacyStoredSession(item, mode) {
+function normalizeLegacyStoredSession(item, mode = "") {
   if (!item || typeof item !== "object") {
     return null;
   }
@@ -2368,7 +2334,7 @@ function normalizeLegacyStoredSession(item, mode) {
   if (!normalized) {
     return null;
   }
-  if (mode === "agent") {
+  if (legacyTarget.type === "agent") {
     normalized.targetType = legacyTarget.type;
     normalized.targetID = legacyTarget.id;
     normalized.targetName = legacyTarget.name;
@@ -2376,41 +2342,83 @@ function normalizeLegacyStoredSession(item, mode) {
   return normalized;
 }
 
-function loadSessionsFromStorage(mode = routeConversationMode()) {
-  const storage = getSessionStorage();
-  if (!storage) {
-    return [];
-  }
-  let raw = storage.getItem(sessionStorageKey(mode));
-  let legacy = false;
-  if (!raw) {
-    raw = storage.getItem(LEGACY_SESSION_STORAGE_KEY);
-    legacy = Boolean(raw);
-  }
-  if (!raw) {
-    return [];
-  }
-
+function parseStoredSessionArray(raw) {
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
     throw new Error("local_storage_corrupted");
   }
-
   if (!Array.isArray(parsed)) {
     throw new Error("local_storage_invalid");
   }
+  return parsed;
+}
 
-  const sessions = [];
-  for (const entry of parsed) {
-    const normalized = legacy
-      ? normalizeLegacyStoredSession(entry, mode)
-      : normalizeStoredSession(entry, mode);
-    if (normalized) {
-      sessions.push(normalized);
+function mergeNormalizedSessions(target, items) {
+  const index = new Map(target.map((item) => [item.id, item]));
+  items.forEach((item) => {
+    if (!item || !item.id) {
+      return;
     }
+    const existing = index.get(item.id);
+    if (!existing || Number(item.createdAt || 0) >= Number(existing.createdAt || 0)) {
+      index.set(item.id, item);
+    }
+  });
+  return Array.from(index.values());
+}
+
+function loadSessionsFromStorage(mode = routeConversationMode()) {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return [];
   }
+
+  const sharedRaw = storage.getItem(SESSION_STORAGE_KEY);
+  const sessions = [];
+  if (sharedRaw) {
+    const parsed = parseStoredSessionArray(sharedRaw);
+    parsed.forEach((entry) => {
+      const normalized = normalizeStoredSession(entry);
+      if (normalized) {
+        sessions.push(normalized);
+      }
+    });
+    sortSessionsByCreatedAtDesc(sessions);
+    return sessions;
+  }
+
+  const legacyBuckets = [
+    {
+      raw: storage.getItem(LEGACY_CHAT_SESSION_STORAGE_KEY),
+      normalize: (entry) => normalizeStoredSession(entry, "chat")
+    },
+    {
+      raw: storage.getItem(LEGACY_AGENT_SESSION_STORAGE_KEY),
+      normalize: (entry) => normalizeStoredSession(entry, "agent")
+    },
+    {
+      raw: storage.getItem(LEGACY_SESSION_STORAGE_KEY),
+      normalize: (entry) => normalizeLegacyStoredSession(entry)
+    }
+  ];
+  legacyBuckets.forEach((bucket) => {
+    if (!bucket.raw) {
+      return;
+    }
+    const parsed = parseStoredSessionArray(bucket.raw);
+    const normalizedItems = [];
+    parsed.forEach((entry) => {
+      const normalized = bucket.normalize(entry);
+      if (normalized) {
+        normalizedItems.push(normalized);
+      }
+    });
+    const merged = mergeNormalizedSessions(sessions, normalizedItems);
+    sessions.length = 0;
+    sessions.push(...merged);
+  });
   sortSessionsByCreatedAtDesc(sessions);
   return sessions;
 }
@@ -2421,7 +2429,7 @@ function persistSessions(mode = routeConversationMode()) {
     return;
   }
   try {
-    storage.setItem(sessionStorageKey(mode), JSON.stringify(conversationSessions(mode)));
+    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(conversationSessions()));
     setConversationSessionLoadError("", mode);
   } catch {
     setConversationSessionLoadError("session_save_failed", mode);
@@ -2431,17 +2439,17 @@ function persistSessions(mode = routeConversationMode()) {
 
 function bootstrapSessions(mode = routeConversationMode()) {
   setConversationSessionLoadError("", mode);
-  setConversationSessions([], mode);
-  setActiveConversationSessionID("", mode);
+  setConversationSessions([]);
+  setActiveConversationSessionID("");
 
   try {
     const sessions = loadSessionsFromStorage(mode);
-    setConversationSessions(sessions, mode);
+    setConversationSessions(sessions);
     if (enforceSingleBlankSession(mode)) {
       persistSessions(mode);
     }
-    if (conversationSessions(mode).length) {
-      setActiveConversationSessionID(conversationSessions(mode)[0].id, mode);
+    if (conversationSessions().length) {
+      setActiveConversationSessionID(conversationSessions()[0].id);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
@@ -2872,11 +2880,11 @@ function renderWelcomeTargetPicker() {
 
 function openAgentRuntimeWithTarget(target) {
   const normalizedTarget = normalizeChatTarget(target);
-  let session = getLatestBlankSession("agent");
+  let session = getLatestBlankSession();
   if (session) {
     updateSessionTarget(session, normalizedTarget);
-    setActiveConversationSessionID(session.id, "agent");
-    persistSessions("agent");
+    setActiveConversationSessionID(session.id);
+    persistSessions();
   } else {
     session = createSession(normalizedTarget, "agent");
   }
@@ -2892,7 +2900,7 @@ function createSession(target = null, mode = routeConversationMode()) {
     if (target) {
       updateSessionTarget(latestBlank, target);
     }
-    setActiveConversationSessionID(latestBlank.id, mode);
+    setActiveConversationSessionID(latestBlank.id);
     syncMainChatComposerDraft(latestBlank.id);
     renderSessions();
     renderMessages();
@@ -2920,10 +2928,10 @@ function createSession(target = null, mode = routeConversationMode()) {
     skillIDs: runtimeDefaults.skillIDs,
     mcpIDs: runtimeDefaults.mcpIDs
   };
-  const sessions = conversationSessions(mode).slice();
+  const sessions = conversationSessions().slice();
   sessions.unshift(item);
-  setConversationSessions(sessions, mode);
-  setActiveConversationSessionID(item.id, mode);
+  setConversationSessions(sessions);
+  setActiveConversationSessionID(item.id);
   syncMainChatComposerDraft(item.id);
   renderSessions();
   renderMessages();
@@ -2936,35 +2944,34 @@ function createSession(target = null, mode = routeConversationMode()) {
 }
 
 function removeSession(sessionID) {
-  const mode = routeConversationMode();
-  const activeSessionID = activeConversationSessionID(mode);
+  const activeSessionID = activeConversationSessionID();
   const removedActiveSession = activeSessionID === sessionID;
   if (activeSessionID === sessionID && !confirmComposerNavigation()) {
     return;
   }
-  const currentSessions = conversationSessions(mode);
+  const currentSessions = conversationSessions();
   const nextSessions = currentSessions.filter((item) => item.id !== sessionID);
   if (nextSessions.length === currentSessions.length) {
     return;
   }
 
-  setConversationSessions(nextSessions, mode);
-  if (activeSessionID === sessionID || !getSession(activeSessionID, mode)) {
-    const latestBlank = getLatestBlankSession(mode);
+  setConversationSessions(nextSessions);
+  if (activeSessionID === sessionID || !getSession(activeSessionID)) {
+    const latestBlank = getLatestBlankSession();
     if (latestBlank) {
-      setActiveConversationSessionID(latestBlank.id, mode);
-    } else if (conversationSessions(mode).length) {
-      setActiveConversationSessionID(conversationSessions(mode)[0].id, mode);
+      setActiveConversationSessionID(latestBlank.id);
+    } else if (conversationSessions().length) {
+      setActiveConversationSessionID(conversationSessions()[0].id);
     } else {
-      setActiveConversationSessionID("", mode);
+      setActiveConversationSessionID("");
     }
   }
 
   clearMainChatDraft(sessionID);
   if (removedActiveSession) {
-    syncMainChatComposerDraft(activeConversationSessionID(mode), { preserveCurrent: false });
+    syncMainChatComposerDraft(activeConversationSessionID(), { preserveCurrent: false });
   }
-  enforceSingleBlankSession(mode);
+  enforceSingleBlankSession();
   renderSessions();
   renderMessages();
   syncHeader();
@@ -3278,7 +3285,7 @@ function deliverAsyncTaskResult(session, message, task) {
 
 function collectPendingTaskBindings() {
   const bindings = [];
-  for (const session of [...conversationSessions("chat"), ...conversationSessions("agent")]) {
+  for (const session of conversationSessions()) {
     const messages = Array.isArray(session?.messages) ? session.messages : [];
     for (const message of messages) {
       const taskID = normalizeText(message?.task_id);
@@ -3915,9 +3922,15 @@ function startNewChatSession() {
 }
 
 function startNewAgentSession() {
-  const existingBlank = getLatestBlankSession("agent");
+  const existingBlank = getLatestBlankSession();
   if (existingBlank) {
+    updateSessionTarget(existingBlank, defaultAgentRuntimeTarget());
     setActiveConversationSessionID(existingBlank.id, "agent");
+    persistSessions();
+    renderSessions();
+    renderMessages();
+    syncHeader();
+    renderWelcomeTargetPicker();
     navigateToRoute("agent-runtime", { skipConfirm: true });
   } else {
     if (!confirmComposerNavigation()) {
@@ -5530,8 +5543,6 @@ function renderControlTaskDetail(view, displayTaskID = "") {
   const requestMessageID = typeof link?.request_message_id === "string" ? link.request_message_id : "";
   const resultMessageID = typeof link?.result_message_id === "string" ? link.result_message_id : "";
   const terminalSessionID = typeof link?.terminal_session_id === "string" ? link.terminal_session_id : "";
-  const terminalMaxSessionsRaw = Number(link?.terminal_max_sessions || 5);
-  const terminalMaxSessions = Number.isFinite(terminalMaxSessionsRaw) && terminalMaxSessionsRaw > 0 ? terminalMaxSessionsRaw : 5;
   const queuePosition = Number(task?.queue_position || 0);
   const queueWaitMS = Number(task?.queue_wait_ms || 0);
   const resultOutput = typeof task?.result?.output === "string" ? task.result.output : "";
@@ -5571,7 +5582,7 @@ function renderControlTaskDetail(view, displayTaskID = "") {
       <p><span>${t("field.result_message_id")}</span><strong>${escapeHTML(normalizeText(resultMessageID))}</strong></p>
       <p><span>Error</span><strong>${escapeHTML(errorText)}</strong></p>
       <p><span>Detail API</span><strong>${escapeHTML(normalizeText(link?.task_detail_path))}</strong></p>`;
-  return `<section class="task-detail-card" data-control-task-detail-id="${escapeHTML(taskID)}" data-control-task-session-id="${escapeHTML(normalizeText(task?.session_id))}" data-control-task-terminal-session-id="${escapeHTML(normalizeText(terminalSessionID))}" data-control-task-terminal-max-sessions="${escapeHTML(terminalMaxSessions)}">
+  return `<section class="task-detail-card" data-control-task-detail-id="${escapeHTML(taskID)}" data-control-task-session-id="${escapeHTML(normalizeText(task?.session_id))}" data-control-task-terminal-session-id="${escapeHTML(normalizeText(terminalSessionID))}">
     <header class="task-detail-head">
       <div class="task-detail-id-wrap">
         <h5 title="${escapeHTML(shownTaskID)}">${escapeHTML(`${t("field.id")}: ${taskIDShort}`)}</h5>
@@ -5618,7 +5629,7 @@ function renderControlTaskDetail(view, displayTaskID = "") {
         <input type="text" data-control-task-terminal-input maxlength="6000" placeholder="${escapeHTML(t("route.tasks.terminal.input_placeholder"))}">
         <button type="submit" data-control-task-terminal-submit>${t("route.tasks.terminal.send")}</button>
       </form>
-      <p class="control-task-terminal-hint">${escapeHTML(t("route.tasks.terminal.hint", { max: String(terminalMaxSessions) }))}</p>
+      <p class="control-task-terminal-hint">${escapeHTML(t("route.tasks.terminal.hint"))}</p>
       <p class="control-task-terminal-note">${escapeHTML(t("route.tasks.terminal.followup_note"))}</p>
     `, { className: "task-detail-section" })}
     ${renderRouteSection(t("route.tasks.result.title"), `
@@ -5994,9 +6005,6 @@ function bindControlTaskView(container, initialPayload) {
     if (!taskID || taskID === "-") {
       return;
     }
-    const detailNode = drawerBody.querySelector("[data-control-task-detail-id]");
-    const terminalMaxSessionsRaw = Number(detailNode?.dataset?.controlTaskTerminalMaxSessions || 5);
-    const terminalMaxSessions = Number.isFinite(terminalMaxSessionsRaw) && terminalMaxSessionsRaw > 0 ? terminalMaxSessionsRaw : 5;
 
     const content = normalizeText(rawInput);
     if (!content || content === "-") {
@@ -6018,10 +6026,6 @@ function bindControlTaskView(container, initialPayload) {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        if ((payload?.error_code || "") === "terminal_session_limit_reached") {
-          window.alert(t("route.tasks.terminal.limit_reached", { max: String(terminalMaxSessions) }));
-          return;
-        }
         const message = typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`;
         window.alert(message);
         return;
@@ -6673,13 +6677,18 @@ function isTerminalSessionLiveStatus(status) {
   return ["starting", "running"].includes(normalized);
 }
 
+function canTerminalSessionAcceptInput(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return normalized !== "starting";
+}
+
 function isTerminalTurnLiveStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
   return ["running", "starting"].includes(normalized);
 }
 
 function hasRecoverableTerminalThread(session) {
-  if (!session || !isTerminalSessionLiveStatus(session.status)) {
+  if (!session) {
     return false;
   }
   const sessionID = normalizeText(session.id);
@@ -6999,11 +7008,14 @@ function renderTerminalWorkspace(session, sending, closing = false) {
   }
   const logRef = normalizeText(session.terminal_session_id);
   const logTitle = t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 32) });
-  const canInput = isTerminalSessionLiveStatus(session.status);
+  const canInput = canTerminalSessionAcceptInput(session.status);
+  const normalizedStatus = normalizeText(session.status || "").toLowerCase();
   const placeholder = canInput ? t("route.terminal.input") : t("route.terminal.closed");
-  const note = session.status === "interrupted" ? t("route.terminal.interrupted") : (!canInput ? t("route.terminal.closed") : "");
+  const note = normalizedStatus === "interrupted"
+    ? t("route.terminal.interrupted")
+    : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : "");
   const detail = session.error_message || (Number.isFinite(Number(session.exit_code)) ? `exit code ${String(session.exit_code)}` : "");
-  const closeDisabled = sending || closing || !canInput;
+  const closeDisabled = sending || closing || !isTerminalSessionLiveStatus(session.status);
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
   return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${canInput ? "true" : "false"}">
     <header class="terminal-workspace-head">
@@ -7560,7 +7572,7 @@ async function loadTerminalView(container) {
       draftKey: () => `terminal:${normalizeText(session?.id || "default")}`,
       clearDraftOnSubmit: true,
       submitNode: container.querySelector("[data-terminal-submit]"),
-      disabled: localState.sending || !session || !isTerminalSessionLiveStatus(session.status),
+      disabled: localState.sending || !session || !canTerminalSessionAcceptInput(session.status),
       onDraftRestore: (_inputNode, restoredDraft) => {
         if (!session) {
           return;
@@ -7730,10 +7742,6 @@ async function loadTerminalView(container) {
         return;
       }
     }
-    if (!isTerminalSessionLiveStatus(session.status)) {
-      return;
-    }
-
     localState.sending = true;
     requestTerminalPaint();
     try {
@@ -7749,11 +7757,6 @@ async function loadTerminalView(container) {
       requestTerminalPaint();
       await startPolling();
     } catch (error) {
-      if ((error?.code || "") === "terminal_session_limit_reached") {
-        const maxSessions = Number(error?.payload?.max_sessions || 5);
-        window.alert(t("route.terminal.limit_reached", { max: String(maxSessions) }));
-        return;
-      }
       if (Number(error?.status) === 404) {
         markSessionInterrupted(session, t("route.terminal.interrupted"));
       }
@@ -7800,11 +7803,6 @@ async function loadTerminalView(container) {
           paint();
           await startPolling();
         } catch (error) {
-          if ((error?.code || "") === "terminal_session_limit_reached") {
-            const maxSessions = Number(error?.payload?.max_sessions || 5);
-            window.alert(t("route.terminal.limit_reached", { max: String(maxSessions) }));
-            return;
-          }
           const message = error instanceof Error ? error.message : "unknown_error";
           window.alert(t("route.terminal.send_failed", { error: message }));
         }
@@ -10082,8 +10080,7 @@ function init() {
   setComposerConfirmState("idle");
   setSidebarCollapsed(false);
   setSessionHistoryCollapsed(loadSessionHistoryCollapsedState());
-  bootstrapSessions("chat");
-  bootstrapSessions("agent");
+  bootstrapSessions();
   renderSessions();
   renderMessages();
   syncHeader();
