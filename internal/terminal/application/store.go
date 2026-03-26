@@ -119,6 +119,67 @@ func (s *Service) persistSession(item *runtimeSession) {
 	}
 }
 
+func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string) (*runtimeSession, error) {
+	ownerID = strings.TrimSpace(ownerID)
+	if ownerID == "" {
+		return nil, ErrSessionOwnerRequired
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, ErrSessionNotFound
+	}
+
+	s.mu.RLock()
+	existing, ok := s.sessions[sessionID]
+	s.mu.RUnlock()
+	if ok {
+		existing.mu.RLock()
+		matched := existing.summary.OwnerID == ownerID
+		existing.mu.RUnlock()
+		if !matched {
+			return nil, ErrSessionNotFound
+		}
+		return existing, nil
+	}
+
+	dir, err := resolveTerminalSessionStateDir(s.options.WorkingDir)
+	if err != nil {
+		s.logger.Warn("resolve terminal session state dir failed", "session_id", sessionID, "error", err.Error())
+		return nil, ErrSessionNotFound
+	}
+	path := filepath.Join(dir, sanitizeWorkspaceSegment(sessionID)+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			s.logger.Warn("read terminal session record failed", "path", path, "error", err.Error())
+		}
+		return nil, ErrSessionNotFound
+	}
+	record := persistedSessionRecord{}
+	if err := json.Unmarshal(data, &record); err != nil {
+		s.logger.Warn("decode terminal session record failed", "path", path, "error", err.Error())
+		return nil, ErrSessionNotFound
+	}
+	session := restorePersistedSession(record, time.Now().UTC())
+	if session == nil || strings.TrimSpace(session.summary.OwnerID) != ownerID {
+		return nil, ErrSessionNotFound
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.sessions[sessionID]; ok {
+		existing.mu.RLock()
+		matched := existing.summary.OwnerID == ownerID
+		existing.mu.RUnlock()
+		if !matched {
+			return nil, ErrSessionNotFound
+		}
+		return existing, nil
+	}
+	s.sessions[sessionID] = session
+	return session, nil
+}
+
 func snapshotPersistedSession(item *runtimeSession) persistedSessionRecord {
 	item.mu.RLock()
 	defer item.mu.RUnlock()

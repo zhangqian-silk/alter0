@@ -405,7 +405,13 @@ func (s *Service) ListEntries(ownerID string, sessionID string, cursor int, limi
 func (s *Service) Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error) {
 	item, err := s.getOwnedSession(ownerID, sessionID)
 	if err != nil {
-		return terminaldomain.Session{}, err
+		if !errors.Is(err, ErrSessionNotFound) {
+			return terminaldomain.Session{}, err
+		}
+		item, err = s.restorePersistedOwnedSession(ownerID, sessionID)
+		if err != nil {
+			return terminaldomain.Session{}, err
+		}
 	}
 
 	prompt := strings.TrimSpace(input)
