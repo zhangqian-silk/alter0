@@ -489,6 +489,7 @@ const I18N = {
     "route.envs.restart_confirm": "Restart the service now?",
     "route.envs.restart_sync_master": "Sync remote master before restart?",
     "route.envs.restart_wait_timeout": "Restart is taking longer than expected. Refresh and retry in a moment.",
+    "route.envs.restart_success": "Service restart completed. Click OK to refresh the page.",
     "route.envs.refresh": "Reload",
     "route.envs.show_sensitive": "Reveal Sensitive",
     "route.envs.hide_sensitive": "Hide Sensitive",
@@ -923,6 +924,7 @@ const I18N = {
     "route.envs.restart_confirm": "现在重启服务吗？",
     "route.envs.restart_sync_master": "重启前先同步远端 master 分支？",
     "route.envs.restart_wait_timeout": "服务重启时间超出预期，请稍后刷新后重试。",
+    "route.envs.restart_success": "服务重启已完成。点击确定后将自动刷新页面。",
     "route.envs.refresh": "重新加载",
     "route.envs.show_sensitive": "显示敏感项",
     "route.envs.hide_sensitive": "隐藏敏感项",
@@ -9095,6 +9097,10 @@ async function loadEnvironmentsView(container) {
           headers: { "Cache-Control": "no-store" }
         });
         if (response.ok) {
+          localState.restarting = false;
+          paint(localState.configItems, localState.audits, "");
+          bindView();
+          window.alert(t("route.envs.restart_success"));
           window.location.reload();
           return;
         }

@@ -208,10 +208,10 @@ func syncRemoteMasterBranch(workingDir string) error {
 		return errors.New("sync remote master requires a clean tracked working tree")
 	}
 
-	if err := runCommandWithTimeout(gitFetchTimeout, repoDir, "git", "fetch", "--prune", "origin", "master"); err != nil {
+	if err := runGitNetworkCommandWithRetry(repoDir, gitFetchTimeout, 2, "fetch", "--prune", "origin", "master"); err != nil {
 		return fmt.Errorf("fetch origin/master: %w", err)
 	}
-	if err := runCommandWithTimeout(gitMergeTimeout, repoDir, "git", "merge", "--ff-only", "FETCH_HEAD"); err != nil {
+	if err := runGitNetworkCommandWithRetry(repoDir, gitMergeTimeout, 1, "merge", "--ff-only", "FETCH_HEAD"); err != nil {
 		return fmt.Errorf("sync origin/master: %w", err)
 	}
 	return nil
@@ -288,7 +288,29 @@ func prepareCommand(timeout time.Duration, dir string, name string, args ...stri
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	if strings.EqualFold(strings.TrimSpace(name), "git") {
-		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+		cmd.Env = append(os.Environ(),
+			"GIT_TERMINAL_PROMPT=0",
+			"GIT_HTTP_LOW_SPEED_LIMIT=1",
+			"GIT_HTTP_LOW_SPEED_TIME=30",
+		)
 	}
 	return cmd, cancel
+}
+
+func runGitNetworkCommandWithRetry(dir string, timeout time.Duration, attempts int, args ...string) error {
+	if attempts <= 0 {
+		attempts = 1
+	}
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		lastErr = runCommandWithTimeout(timeout, dir, "git", args...)
+		if lastErr == nil {
+			return nil
+		}
+		if i == attempts-1 {
+			break
+		}
+		time.Sleep(time.Duration(i+1) * 2 * time.Second)
+	}
+	return lastErr
 }
