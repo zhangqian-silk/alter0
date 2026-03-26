@@ -25,6 +25,11 @@ const (
 	relaunchArgsFlag       = "internal-relaunch-args"
 	relaunchWorkingDirFlag = "internal-relaunch-cwd"
 	relaunchWaitTimeout    = 20 * time.Second
+	gitFetchTimeout        = 45 * time.Second
+	gitMergeTimeout        = 15 * time.Second
+	gitStatusTimeout       = 10 * time.Second
+	gitBranchShowTimeout   = 10 * time.Second
+	goBuildRuntimeTimeout  = 2 * time.Minute
 )
 
 type serviceRestarter struct {
@@ -187,7 +192,7 @@ func syncRemoteMasterBranch(workingDir string) error {
 		return errors.New("sync remote master requires a working directory")
 	}
 
-	branch, err := readCommandOutput(repoDir, "git", "branch", "--show-current")
+	branch, err := readCommandOutputWithTimeout(gitBranchShowTimeout, repoDir, "git", "branch", "--show-current")
 	if err != nil {
 		return fmt.Errorf("resolve current git branch: %w", err)
 	}
@@ -195,7 +200,7 @@ func syncRemoteMasterBranch(workingDir string) error {
 		return fmt.Errorf("sync remote master requires the local branch to be master, current branch is %q", branch)
 	}
 
-	status, err := readCommandOutput(repoDir, "git", "status", "--porcelain", "--untracked-files=no")
+	status, err := readCommandOutputWithTimeout(gitStatusTimeout, repoDir, "git", "status", "--porcelain", "--untracked-files=no")
 	if err != nil {
 		return fmt.Errorf("inspect git working tree: %w", err)
 	}
@@ -203,10 +208,10 @@ func syncRemoteMasterBranch(workingDir string) error {
 		return errors.New("sync remote master requires a clean tracked working tree")
 	}
 
-	if err := runCommand(repoDir, "git", "fetch", "--prune", "origin", "master"); err != nil {
+	if err := runCommandWithTimeout(gitFetchTimeout, repoDir, "git", "fetch", "--prune", "origin", "master"); err != nil {
 		return fmt.Errorf("fetch origin/master: %w", err)
 	}
-	if err := runCommand(repoDir, "git", "merge", "--ff-only", "FETCH_HEAD"); err != nil {
+	if err := runCommandWithTimeout(gitMergeTimeout, repoDir, "git", "merge", "--ff-only", "FETCH_HEAD"); err != nil {
 		return fmt.Errorf("sync origin/master: %w", err)
 	}
 	return nil
@@ -228,14 +233,21 @@ func buildRelaunchBinary(workingDir string) (string, error) {
 		extension = ".exe"
 	}
 	targetPath := filepath.Join(outputDir, fmt.Sprintf("alter0-relaunch-%d%s", time.Now().UnixNano(), extension))
-	if err := runCommand(repoDir, "go", "build", "-o", targetPath, "./cmd/alter0"); err != nil {
+	if err := runCommandWithTimeout(goBuildRuntimeTimeout, repoDir, "go", "build", "-o", targetPath, "./cmd/alter0"); err != nil {
 		return "", fmt.Errorf("build relaunch binary: %w", err)
 	}
 	return targetPath, nil
 }
 
 func readCommandOutput(dir string, name string, args ...string) (string, error) {
-	cmd := prepareCommand(dir, name, args...)
+	return readCommandOutputWithTimeout(0, dir, name, args...)
+}
+
+func readCommandOutputWithTimeout(timeout time.Duration, dir string, name string, args ...string) (string, error) {
+	cmd, cancel := prepareCommand(timeout, dir, name, args...)
+	if cancel != nil {
+		defer cancel()
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
@@ -248,7 +260,14 @@ func readCommandOutput(dir string, name string, args ...string) (string, error) 
 }
 
 func runCommand(dir string, name string, args ...string) error {
-	cmd := prepareCommand(dir, name, args...)
+	return runCommandWithTimeout(0, dir, name, args...)
+}
+
+func runCommandWithTimeout(timeout time.Duration, dir string, name string, args ...string) error {
+	cmd, cancel := prepareCommand(timeout, dir, name, args...)
+	if cancel != nil {
+		defer cancel()
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
@@ -260,11 +279,16 @@ func runCommand(dir string, name string, args ...string) error {
 	return nil
 }
 
-func prepareCommand(dir string, name string, args ...string) *exec.Cmd {
-	cmd := exec.Command(name, args...)
+func prepareCommand(timeout time.Duration, dir string, name string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx := context.Background()
+	cancel := context.CancelFunc(nil)
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	if strings.EqualFold(strings.TrimSpace(name), "git") {
 		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	}
-	return cmd
+	return cmd, cancel
 }
