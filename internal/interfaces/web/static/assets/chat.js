@@ -7366,14 +7366,35 @@ async function loadTerminalView(container) {
     const createdAt = Number(session?.created_at || 0);
     const lastOutputAt = Number(session?.last_output_at || 0);
     const updatedAt = Number(session?.updated_at || 0);
-    return {
+    const payload = {
       id: String(session?.id || "").trim(),
       terminal_session_id: String(session?.terminal_session_id || "").trim(),
-      title: String(session?.title || "").trim(),
-      created_at: createdAt > 0 ? new Date(createdAt).toISOString() : "",
-      last_output_at: lastOutputAt > 0 ? new Date(lastOutputAt).toISOString() : "",
-      updated_at: updatedAt > 0 ? new Date(updatedAt).toISOString() : ""
+      title: String(session?.title || "").trim()
     };
+    if (createdAt > 0) {
+      payload.created_at = new Date(createdAt).toISOString();
+    }
+    if (lastOutputAt > 0) {
+      payload.last_output_at = new Date(lastOutputAt).toISOString();
+    }
+    if (updatedAt > 0) {
+      payload.updated_at = new Date(updatedAt).toISOString();
+    }
+    return payload;
+  };
+
+  const recoverTerminalSession = async (session) => {
+    if (!session) {
+      throw new Error("terminal session missing");
+    }
+    const payload = await requestTerminalJSON("/api/terminal/sessions/recover", {
+      method: "POST",
+      body: JSON.stringify(serializeTerminalRecoverRequest(session))
+    });
+    interruptRecoveringTurnState(session);
+    applyTerminalSessionSnapshot(session, payload?.session || {});
+    session.disconnected_notice = false;
+    return session;
   };
 
   const recoverStoredSessions = async () => {
@@ -7382,13 +7403,7 @@ async function loadTerminalView(container) {
       return;
     }
     await Promise.allSettled(recoverable.map(async (session) => {
-      const payload = await requestTerminalJSON("/api/terminal/sessions/recover", {
-        method: "POST",
-        body: JSON.stringify(serializeTerminalRecoverRequest(session))
-      });
-      interruptRecoveringTurnState(session);
-      applyTerminalSessionSnapshot(session, payload?.session || {});
-      session.disconnected_notice = false;
+      await recoverTerminalSession(session);
     }));
     sortTerminalSessions();
     persist();
@@ -7744,13 +7759,25 @@ async function loadTerminalView(container) {
     }
     localState.sending = true;
     requestTerminalPaint();
-    try {
-      const payload = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}/input`, {
+    const requestInput = async () => {
+      return requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}/input`, {
         method: "POST",
         body: JSON.stringify({
           input: normalizeTerminalLine(text, 6000)
         })
       });
+    };
+    try {
+      let payload;
+      try {
+        payload = await requestInput();
+      } catch (error) {
+        if (!session || Number(error?.status) !== 404) {
+          throw error;
+        }
+        await recoverTerminalSession(session);
+        payload = await requestInput();
+      }
       applyTerminalSessionSnapshot(session, payload?.session || {});
       sortTerminalSessions();
       persist();

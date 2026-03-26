@@ -244,6 +244,42 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 	}
 }
 
+func TestServiceInputRecoversPersistedSessionWhenRuntimeMissing(t *testing.T) {
+	baseDir := t.TempDir()
+	service := newTestServiceWithBaseDir("success", baseDir)
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-missing-runtime",
+		Title:   "empty-before-input",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	service.mu.Lock()
+	delete(service.sessions, session.ID)
+	service.mu.Unlock()
+
+	if _, ok := service.Get("owner-missing-runtime", session.ID); ok {
+		t.Fatalf("expected runtime session to be removed before recovery")
+	}
+
+	if _, err := service.Input("owner-missing-runtime", session.ID, "first prompt after restore"); err != nil {
+		t.Fatalf("input after runtime loss: %v", err)
+	}
+
+	snapshot, entries := waitForSessionEntries(t, service, "owner-missing-runtime", session.ID, 2)
+	if snapshot.Title != "empty-before-input" {
+		t.Fatalf("expected restored title, got %q", snapshot.Title)
+	}
+	if snapshot.TerminalSessionID != "thread-first-prompt-after-restore" {
+		t.Fatalf("expected restored thread id, got %q", snapshot.TerminalSessionID)
+	}
+	if got := entries[1].Text; got != "mock:first prompt after restore" {
+		t.Fatalf("expected recovered reply, got %q", got)
+	}
+}
+
 func TestServiceInputRejectsConcurrentTurns(t *testing.T) {
 	service := newTestService("sleep")
 
