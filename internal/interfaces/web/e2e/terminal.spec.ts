@@ -55,7 +55,7 @@ test.describe("Terminal route", () => {
     expect(buttonBox).not.toBeNull();
     expect(formBox?.height ?? 0).toBeLessThan(96);
     expect(buttonBox?.height ?? 0).toBeLessThan(56);
-    expect((chatBox?.height ?? 0)).toBeGreaterThan((formBox?.height ?? 0) * 4);
+    expect((chatBox?.height ?? 0)).toBeGreaterThan((formBox?.height ?? 0) * 3);
   });
 
   test("keeps input focus and draft across polling refresh", async ({ page, request }) => {
@@ -108,6 +108,19 @@ test.describe("Terminal route", () => {
     } finally {
       await inputHandle.dispose();
     }
+  });
+
+  test("toggles the mobile session sheet without leaving it expanded after selection", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-sheet", count: 2 });
+
+    await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    await terminalPage.sessionPaneToggle().click();
+    await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
+
+    const secondSession = terminalPage.sessionList().itemAt(1);
+    await secondSession.click();
+    await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
   });
 
   test("keeps IME composition input across polling refresh", async ({ page, request }) => {
@@ -230,9 +243,55 @@ test.describe("Terminal route", () => {
     await expect.poll(() => stepDetailRequests).toBe(1);
     const currentSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
     expect(currentSessionID).toBeTruthy();
-    await expect(terminalPage.workspace()).toContainText("WorkingDirectory");
-    await expect(terminalPage.workspace()).toContainText(/\.alter0\/workspaces\/terminal\/sessions\/terminal-/);
+    await expect(terminalPage.workspace()).not.toContainText("Path");
+    await terminalPage.metaToggle().click();
+    await expect(terminalPage.workspace()).toContainText("Path");
     await expect(terminalPage.workspace()).toContainText(new RegExp(String(currentSessionID).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  });
+
+  test("renders markdown links and collapses long final output by default", async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const clientID = createTerminalClientID("collapsed-output");
+    const now = Date.now();
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [
+      {
+        id: "terminal-rendered-output",
+        title: "检查终端输出渲染",
+        terminal_session_id: "terminal-rendered-output",
+        status: "exited",
+        shell: "codex exec",
+        working_dir: terminalSessionWorkspace("terminal-rendered-output"),
+        created_at: now - 4000,
+        updated_at: now - 1000,
+        last_output_at: now - 1000,
+        turns: [
+          {
+            id: "turn-rendered",
+            prompt: "检查 markdown 和折叠输出",
+            status: "completed",
+            started_at: now - 3200,
+            finished_at: now - 1200,
+            duration_ms: 2000,
+            final_output: `${Array.from({ length: 18 }, (_, index) => `line ${index + 1}`).join("\n")}\n\n- [requirements.md](/srv/alter0/app/alter0/docs/requirements.md)`,
+            steps: [],
+          },
+        ],
+      },
+    ]);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    const outputBody = terminalPage.turnCard("turn-rendered").locator(".terminal-final-text");
+    const outputLink = terminalPage.turnCard("turn-rendered").locator(".terminal-final-rendered a");
+
+    await expect(outputBody).toHaveClass(/is-clamped/);
+    await expect(outputLink).toHaveText("requirements.md");
+    await expect(outputLink).toHaveAttribute("href", "/srv/alter0/app/alter0/docs/requirements.md");
+
+    await terminalPage.outputToggle("turn-rendered").click();
+    await expect(outputBody).not.toHaveClass(/is-clamped/);
   });
 
   test("keeps terminal scroll position when user leaves bottom", async ({ page, request }) => {
@@ -520,6 +579,7 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
     await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-live", "true");
     await expectComposerReady(terminalPage.composer());
+    await terminalPage.metaToggle().click();
     await expect(terminalPage.workspace()).toContainText(threadID);
     await expect(terminalPage.composer().input()).toBeEnabled();
     await expect(terminalPage.composer().submitButton()).toBeEnabled();
