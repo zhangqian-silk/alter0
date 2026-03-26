@@ -353,8 +353,15 @@ const I18N = {
     "route.terminal.title": "Terminal",
     "route.terminal.subtitle": "Persistent Codex CLI sessions with runtime-aligned status",
     "route.terminal.new": "New Codex Session",
+    "route.terminal.new_short": "New",
     "route.terminal.empty": "No Codex sessions yet. Create a session to start a CLI thread.",
     "route.terminal.pick": "Select a Codex session to continue.",
+    "route.terminal.sessions": "Sessions",
+    "route.terminal.session_count": "{count} sessions",
+    "route.terminal.hide_sessions": "Hide sessions",
+    "route.terminal.details_show": "Details",
+    "route.terminal.details_hide": "Hide details",
+    "route.terminal.last_output_label": "Last output",
     "route.terminal.input": "Ask Codex...",
     "route.terminal.send": "Send",
     "route.terminal.sending": "Sending...",
@@ -374,6 +381,8 @@ const I18N = {
     "route.terminal.process.empty": "No process steps yet.",
     "route.terminal.process.loading": "Waiting for Codex...",
     "route.terminal.final.heading": "Final Output",
+    "route.terminal.output_expand": "Show more",
+    "route.terminal.output_collapse": "Show less",
     "route.terminal.jump_bottom": "Latest",
     "route.terminal.step.loading": "Loading step details...",
     "route.terminal.step.error": "Load step failed: {error}",
@@ -797,8 +806,15 @@ const I18N = {
     "route.terminal.title": "终端",
     "route.terminal.subtitle": "独立终端会话，状态与实际 shell 进程保持一致",
     "route.terminal.new": "新建终端会话",
+    "route.terminal.new_short": "新建",
     "route.terminal.empty": "暂无终端会话。创建后即可启动独立 shell。",
     "route.terminal.pick": "选择一个终端会话开始交互。",
+    "route.terminal.sessions": "会话列表",
+    "route.terminal.session_count": "{count} 个会话",
+    "route.terminal.hide_sessions": "收起会话",
+    "route.terminal.details_show": "查看详情",
+    "route.terminal.details_hide": "收起详情",
+    "route.terminal.last_output_label": "最近输出",
     "route.terminal.input": "输入命令...",
     "route.terminal.send": "发送",
     "route.terminal.sending": "发送中...",
@@ -812,6 +828,8 @@ const I18N = {
     "route.terminal.logs.empty": "暂无终端输出。",
     "route.terminal.process.label": "过程",
     "route.terminal.process.steps": "{count} 步",
+    "route.terminal.output_expand": "展开更多",
+    "route.terminal.output_collapse": "收起",
     "route.terminal.jump_bottom": "回到底部",
     "route.terminal.send_failed": "发送失败：{error}",
     "route.terminal.logs_failed": "终端输出加载失败：{error}",
@@ -6407,7 +6425,7 @@ function normalizeTerminalStoredStepDetail(item, fallbackAt) {
       file: String(block?.file || "").trim(),
       start_line: Number.isFinite(Number(block?.start_line)) ? Number(block.start_line) : 0,
       status: String(block?.status || "").trim().toLowerCase(),
-      exit_code: Number.isFinite(Number(block?.exit_code)) ? Number(block.exit_code) : null
+      exit_code: parseTerminalExitCode(block?.exit_code)
     }))
   };
 }
@@ -6432,11 +6450,13 @@ function createTerminalSessionSnapshot(id) {
     entries: [],
     turns: [],
     process_collapsed: {},
+    output_collapsed: {},
     expanded_steps: {},
     step_details: {},
     step_errors: {},
     step_loading: {},
     step_search: {},
+    meta_expanded: false,
     chat_scroll_top: 0,
     chat_bottom_offset: 0,
     chat_has_unread_output: false,
@@ -6456,6 +6476,14 @@ function parseTerminalTime(value, fallbackValue) {
     }
   }
   return fallbackValue;
+}
+
+function parseTerminalExitCode(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function applyTerminalSessionSnapshot(session, snapshot) {
@@ -6478,7 +6506,7 @@ function applyTerminalSessionSnapshot(session, snapshot) {
   session.shell = String(snapshot.shell || "").trim();
   session.working_dir = String(snapshot.working_dir || "").trim();
   session.error_message = String(snapshot.error_message || "").trim();
-  session.exit_code = Number.isFinite(Number(snapshot.exit_code)) ? Number(snapshot.exit_code) : null;
+  session.exit_code = parseTerminalExitCode(snapshot.exit_code);
   const nextLastOutputAt = Number(session.last_output_at || 0);
   if (session.chat_stick_to_bottom === false) {
     const knownLastSeenOutputAt = Number(session.chat_last_seen_output_at || 0);
@@ -6528,6 +6556,7 @@ function mergeTerminalTurnSummaries(session, turnsRaw) {
   }
   const items = Array.isArray(turnsRaw) ? turnsRaw : [];
   const previousProcess = session.process_collapsed && typeof session.process_collapsed === "object" ? session.process_collapsed : {};
+  const previousOutputCollapsed = session.output_collapsed && typeof session.output_collapsed === "object" ? session.output_collapsed : {};
   const previousExpanded = session.expanded_steps && typeof session.expanded_steps === "object" ? session.expanded_steps : {};
   const previousDetails = session.step_details && typeof session.step_details === "object" ? session.step_details : {};
   const previousErrors = session.step_errors && typeof session.step_errors === "object" ? session.step_errors : {};
@@ -6551,6 +6580,7 @@ function mergeTerminalTurnSummaries(session, turnsRaw) {
 
   session.turns = turns;
   session.process_collapsed = pruneTerminalStateMap(previousProcess, allowedTurnIDs);
+  session.output_collapsed = pruneTerminalStateMap(previousOutputCollapsed, allowedTurnIDs);
   turns.forEach((turn) => {
     if (!Object.prototype.hasOwnProperty.call(session.process_collapsed, turn.id)) {
       session.process_collapsed[turn.id] = ["completed", "failed", "interrupted"].includes(String(turn.status || "").trim().toLowerCase());
@@ -6576,10 +6606,12 @@ function normalizeTerminalStoredSession(item) {
   session.entry_cursor = Number.isFinite(Number(item.entry_cursor)) && Number(item.entry_cursor) >= 0 ? Number(item.entry_cursor) : 0;
   session.disconnected_notice = Boolean(item.disconnected_notice);
   session.process_collapsed = item.process_collapsed && typeof item.process_collapsed === "object" ? { ...item.process_collapsed } : {};
+  session.output_collapsed = item.output_collapsed && typeof item.output_collapsed === "object" ? { ...item.output_collapsed } : {};
   session.expanded_steps = item.expanded_steps && typeof item.expanded_steps === "object" ? { ...item.expanded_steps } : {};
   session.step_errors = item.step_errors && typeof item.step_errors === "object" ? { ...item.step_errors } : {};
   session.step_loading = item.step_loading && typeof item.step_loading === "object" ? { ...item.step_loading } : {};
   session.step_search = item.step_search && typeof item.step_search === "object" ? { ...item.step_search } : {};
+  session.meta_expanded = Boolean(item.meta_expanded);
   session.chat_scroll_top = Number.isFinite(Number(item.chat_scroll_top)) ? Math.max(Number(item.chat_scroll_top), 0) : 0;
   session.chat_bottom_offset = Number.isFinite(Number(item.chat_bottom_offset)) ? Math.max(Number(item.chat_bottom_offset), 0) : 0;
   session.chat_has_unread_output = Boolean(item.chat_has_unread_output);
@@ -6773,7 +6805,6 @@ function renderTerminalSessionCards(sessions, activeSessionID) {
   }
   return sessions.map((session) => {
     const title = normalizeText(session.title);
-    const sessionID = normalizeText(session.terminal_session_id);
     const active = session.id === activeSessionID;
     const statusClassName = taskStatusClassName(session.status);
     const listTimestamp = getTerminalSessionSortAt(session);
@@ -6785,13 +6816,44 @@ function renderTerminalSessionCards(sessions, activeSessionID) {
       <span class="terminal-session-head">
         <span class="route-card-title-copy">
           <span class="terminal-session-title">${escapeHTML(title)}</span>
-          <span class="terminal-session-meta">${escapeHTML(shorten(sessionID, 30))}</span>
+          <span class="terminal-session-meta">${escapeHTML(lastOutputMeta)}</span>
         </span>
         <span class="task-summary-status ${statusClassName}">${escapeHTML(renderTerminalStatus(session.status))}</span>
       </span>
-      <span class="terminal-session-meta">${escapeHTML(lastOutputMeta)}</span>
     </button>`;
   }).join("");
+}
+
+function shouldCollapseTerminalOutput(text) {
+  const content = String(text || "");
+  if (!content.trim()) {
+    return false;
+  }
+  const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  return content.length > 640 || lines.length > 12;
+}
+
+function resolveTerminalOutputCollapsed(session, turn) {
+  if (!session || !turn) {
+    return false;
+  }
+  const turnID = normalizeText(turn.id);
+  if (!turnID || turnID === "-") {
+    return false;
+  }
+  if (session.output_collapsed && Object.prototype.hasOwnProperty.call(session.output_collapsed, turnID)) {
+    return Boolean(session.output_collapsed[turnID]);
+  }
+  return isMobileViewport() && shouldCollapseTerminalOutput(turn.final_output);
+}
+
+function renderTerminalWorkspaceMetaPanel(session) {
+  return `<section class="terminal-meta-panel" data-terminal-meta-panel>
+    ${routeFieldRow("route.terminal.session", session?.terminal_session_id || "-", { copyable: true, mono: true, clampLines: 2 })}
+    ${routeFieldRow("route.terminal.shell", session?.shell || "-", { copyable: true, mono: true, clampLines: 2 })}
+    ${routeFieldRow("route.terminal.path", session?.working_dir || "-", { copyable: true, multiline: true, mono: true, clampLines: 3 })}
+    ${routeFieldRow("route.terminal.status", renderTerminalStatus(session?.status || "-"))}
+  </section>`;
 }
 
 function renderTerminalLogRows(entries) {
@@ -6885,7 +6947,7 @@ function renderTerminalRichBlock(stepID, block, searchQuery = "") {
   const type = String(block?.type || "text").trim().toLowerCase();
   const title = String(block?.title || "").trim();
   const status = String(block?.status || "").trim().toLowerCase();
-  const exitCode = Number.isFinite(Number(block?.exit_code)) ? Number(block.exit_code) : null;
+  const exitCode = parseTerminalExitCode(block?.exit_code);
   const fileLabel = String(block?.file || "").trim();
   const lineLabel = Number.isFinite(Number(block?.start_line)) && Number(block.start_line) > 0
     ? `:${String(Number(block.start_line))}`
@@ -6985,6 +7047,25 @@ function renderTerminalTurnProcess(session, turn) {
   </section>`;
 }
 
+function renderTerminalFinalOutput(session, turn) {
+  const content = typeof turn?.final_output === "string" ? turn.final_output : "";
+  if (!content.trim()) {
+    return "";
+  }
+  const turnID = normalizeText(turn?.id);
+  const collapsible = shouldCollapseTerminalOutput(content);
+  const collapsed = collapsible ? resolveTerminalOutputCollapsed(session, turn) : false;
+  return `<section class="terminal-final-output ${collapsed ? "is-collapsed" : ""}">
+    <div class="terminal-final-head">
+      <h6>${escapeHTML(t("route.terminal.final.heading"))}</h6>
+      ${collapsible ? `<button class="terminal-final-toggle" type="button" data-terminal-output-toggle="${escapeHTML(turnID)}" aria-expanded="${collapsed ? "false" : "true"}">${escapeHTML(collapsed ? t("route.terminal.output_expand") : t("route.terminal.output_collapse"))}</button>` : ""}
+    </div>
+    <div class="terminal-final-text ${collapsed ? "is-clamped" : ""}">
+      <div class="terminal-final-rendered">${renderMarkdownToHTML(content)}</div>
+    </div>
+  </section>`;
+}
+
 function renderTerminalTurns(session) {
   const turns = Array.isArray(session?.turns) ? session.turns : [];
   if (!turns.length) {
@@ -6992,24 +7073,22 @@ function renderTerminalTurns(session) {
   }
   return turns.map((turn) => {
     const promptText = String(turn?.prompt || "").trim();
-    const finalOutput = typeof turn?.final_output === "string" ? turn.final_output : "";
     const hasProcess = Array.isArray(turn?.steps) && turn.steps.length > 0;
     return `<article class="route-surface-dark terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
       ${promptText ? `<div class="terminal-log-row kind-command"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
       ${hasProcess || String(turn?.status || "").trim().toLowerCase() === "running" ? renderTerminalTurnProcess(session, turn) : ""}
-      ${finalOutput ? `<section class="terminal-final-output"><h6>${escapeHTML(t("route.terminal.final.heading"))}</h6><div class="terminal-final-text">${escapeHTML(finalOutput)}</div></section>` : ""}
+      ${renderTerminalFinalOutput(session, turn)}
     </article>`;
   }).join("");
 }
 
-function renderTerminalWorkspace(session, sending, closing = false) {
+function renderTerminalWorkspace(session, sending, closing = false, options = {}) {
   if (!session) {
     return `<section class="route-empty-panel terminal-workspace-empty">
       <p>${escapeHTML(t("route.terminal.pick"))}</p>
     </section>`;
   }
   const logRef = normalizeText(session.terminal_session_id);
-  const logTitle = t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 32) });
   const isLive = isTerminalSessionLiveStatus(session.status);
   const canInput = canTerminalSessionAcceptInput(session.status);
   const normalizedStatus = normalizeText(session.status || "").toLowerCase();
@@ -7017,22 +7096,34 @@ function renderTerminalWorkspace(session, sending, closing = false) {
   const note = normalizedStatus === "interrupted"
     ? t("route.terminal.interrupted")
     : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : "");
-  const detail = session.error_message || (Number.isFinite(Number(session.exit_code)) ? `exit code ${String(session.exit_code)}` : "");
+  const detail = session.error_message || (parseTerminalExitCode(session.exit_code) !== null ? `exit code ${String(parseTerminalExitCode(session.exit_code))}` : "");
   const closeDisabled = sending || closing || !isTerminalSessionLiveStatus(session.status);
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
+  const metaExpanded = Boolean(session?.meta_expanded);
+  const sessionCount = Number.isFinite(Number(options?.sessionCount)) ? Math.max(Number(options.sessionCount), 0) : 0;
+  const sessionToggleLabel = options?.mobileSessionListOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
+  const headerSubcopy = getTerminalSessionLastOutputAt(session) > 0
+    ? t("route.terminal.last_output", { time: formatDateTime(new Date(getTerminalSessionLastOutputAt(session)).toISOString()) })
+    : t("route.terminal.no_output");
   return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${isLive ? "true" : "false"}">
     <header class="terminal-workspace-head">
-      <div class="terminal-workspace-copy">
-        <h4>${escapeHTML(logTitle)}</h4>
-        <p>${escapeHTML(normalizeText(session.title))}</p>
+      <div class="terminal-workspace-bar">
+        <div class="terminal-workspace-copy">
+          <div class="terminal-mobile-actions">
+            <button class="terminal-inline-button" type="button" data-terminal-session-pane-toggle aria-expanded="${options?.mobileSessionListOpen ? "true" : "false"}">${escapeHTML(sessionToggleLabel)}</button>
+            <button class="terminal-inline-button is-primary" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new_short"))}</button>
+          </div>
+          <p class="terminal-workspace-eyebrow">${escapeHTML(t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 24) }))}</p>
+          <h4>${escapeHTML(normalizeText(session.title))}</h4>
+          <p>${escapeHTML(headerSubcopy)}</p>
+        </div>
+        <div class="terminal-workspace-actions">
+          <span class="terminal-status-pill">${escapeHTML(renderTerminalStatus(session.status))}</span>
+          <button class="terminal-inline-button" type="button" data-terminal-meta-toggle aria-expanded="${metaExpanded ? "true" : "false"}">${escapeHTML(metaExpanded ? t("route.terminal.details_hide") : t("route.terminal.details_show"))}</button>
+          <button class="terminal-session-close" type="button" data-terminal-close ${closeDisabled ? "disabled" : ""}>${escapeHTML(closing ? t("route.terminal.closing") : t("route.terminal.close"))}</button>
+        </div>
       </div>
-      <div class="terminal-workspace-badges">
-        <span class="terminal-context-badge"><em>${t("route.terminal.session")}</em><strong>${escapeHTML(normalizeText(session.terminal_session_id))}</strong></span>
-        <span class="terminal-context-badge"><em>${t("route.terminal.shell")}</em><strong>${escapeHTML(normalizeText(session.shell))}</strong></span>
-        <span class="terminal-context-badge"><em>${t("route.terminal.path")}</em><strong>${escapeHTML(normalizeText(session.working_dir))}</strong></span>
-        <span class="terminal-context-badge is-status"><em>${t("route.terminal.status")}</em><strong>${escapeHTML(renderTerminalStatus(session.status))}</strong></span>
-        <button class="terminal-session-close" type="button" data-terminal-close ${closeDisabled ? "disabled" : ""}>${escapeHTML(closing ? t("route.terminal.closing") : t("route.terminal.close"))}</button>
-      </div>
+      ${metaExpanded ? renderTerminalWorkspaceMetaPanel(session) : ""}
     </header>
     <section class="route-surface-dark terminal-console-panel" data-terminal-console-panel>
       <div class="terminal-chat-screen" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
@@ -7044,11 +7135,14 @@ function renderTerminalWorkspace(session, sending, closing = false) {
         <span class="terminal-jump-bottom-icon" aria-hidden="true">&darr;</span>
         <span class="terminal-jump-bottom-label">${escapeHTML(t("route.terminal.jump_bottom"))}</span>
       </button>
+    </section>
+    <section class="terminal-composer-shell">
+      ${note || detail ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
       <form class="terminal-chat-form" data-terminal-input-form data-composer-form="terminal-runtime">
         <input type="text" data-terminal-input data-composer-input="terminal-runtime" maxlength="6000" placeholder="${escapeHTML(placeholder)}" ${(sending || !canInput) ? "disabled" : ""}>
         <button type="submit" data-terminal-submit data-composer-submit="terminal-runtime" ${(sending || !canInput) ? "disabled" : ""}>${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}</button>
       </form>
-      ${note || detail ? `<div class="terminal-log-empty" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
+      ${sessionCount > 0 ? `<div class="terminal-composer-meta">${escapeHTML(t("route.terminal.session_count", { count: String(sessionCount) }))}</div>` : ""}
     </section>
   </section>`;
 }
@@ -7069,11 +7163,15 @@ async function loadTerminalView(container) {
     composingInputSessionID: "",
     sessionListScrollTop: 0,
     revealActiveSessionCard: false,
+    mobileSessionListOpen: false,
+    mobileSessionListAutoOpened: false,
     pendingPaint: false,
     pendingScrollToBottom: false
   };
   const terminalComposer = createReusableComposer();
   localState.activeSessionID = localState.sessions[0] ? localState.sessions[0].id : "";
+  localState.mobileSessionListOpen = localState.sessions.length === 0;
+  localState.mobileSessionListAutoOpened = localState.mobileSessionListOpen;
 
   const getActiveSession = () => {
     return localState.sessions.find((item) => item.id === localState.activeSessionID) || null;
@@ -7439,6 +7537,8 @@ async function loadTerminalView(container) {
       throw new Error("terminal session missing");
     }
     localState.activeSessionID = session.id;
+    localState.mobileSessionListOpen = false;
+    localState.mobileSessionListAutoOpened = false;
     requestRevealActiveSessionCard();
     persist();
     return session;
@@ -7459,6 +7559,10 @@ async function loadTerminalView(container) {
     });
     if (!localState.activeSessionID && localState.sessions[0]) {
       localState.activeSessionID = localState.sessions[0].id;
+    }
+    if (localState.mobileSessionListAutoOpened && localState.sessions.length > 0 && localState.activeSessionID) {
+      localState.mobileSessionListOpen = false;
+      localState.mobileSessionListAutoOpened = false;
     }
     persist();
   };
@@ -7497,12 +7601,27 @@ async function loadTerminalView(container) {
       writeTerminalDraft(previousSessionID, previousInput.value);
     }
     container.innerHTML = `<section class="terminal-view" data-terminal-view>
-      <aside class="route-surface terminal-session-pane">
-        <button class="route-primary-button terminal-session-create" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new"))}</button>
+      <aside class="terminal-session-pane ${localState.mobileSessionListOpen ? "is-open" : ""}" data-terminal-session-pane>
+        <button class="terminal-session-pane-backdrop" type="button" data-terminal-session-pane-close aria-label="${escapeHTML(t("route.terminal.hide_sessions"))}"></button>
+        <div class="route-surface terminal-session-pane-shell">
+          <div class="terminal-session-pane-head">
+            <div class="terminal-session-pane-copy">
+              <strong>${escapeHTML(t("route.terminal.sessions"))}</strong>
+              <span>${escapeHTML(t("route.terminal.session_count", { count: String(localState.sessions.length) }))}</span>
+            </div>
+            <div class="terminal-session-pane-actions">
+              <button class="terminal-session-pane-action is-primary" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new_short"))}</button>
+              <button class="terminal-session-pane-action terminal-session-pane-close" type="button" data-terminal-session-pane-close>${escapeHTML(t("route.terminal.hide_sessions"))}</button>
+            </div>
+          </div>
         <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
+        </div>
       </aside>
       <section class="terminal-workspace">
-        ${renderTerminalWorkspace(active, localState.sending, localState.closing)}
+        ${renderTerminalWorkspace(active, localState.sending, localState.closing, {
+          sessionCount: localState.sessions.length,
+          mobileSessionListOpen: localState.mobileSessionListOpen
+        })}
       </section>
     </section>`;
     const sessionListNode = container.querySelector("[data-terminal-session-list]");
@@ -7861,6 +7980,28 @@ async function loadTerminalView(container) {
       })();
       return;
     }
+    if (target.hasAttribute("data-terminal-session-pane-toggle")) {
+      localState.mobileSessionListOpen = !localState.mobileSessionListOpen;
+      localState.mobileSessionListAutoOpened = false;
+      requestTerminalPaint();
+      return;
+    }
+    if (target.hasAttribute("data-terminal-session-pane-close")) {
+      localState.mobileSessionListOpen = false;
+      localState.mobileSessionListAutoOpened = false;
+      requestTerminalPaint();
+      return;
+    }
+    if (target.hasAttribute("data-terminal-meta-toggle")) {
+      const active = getActiveSession();
+      if (!active) {
+        return;
+      }
+      active.meta_expanded = !Boolean(active.meta_expanded);
+      persist();
+      requestTerminalPaint();
+      return;
+    }
     if (target.hasAttribute("data-terminal-process-toggle")) {
       const active = getActiveSession();
       if (!active) {
@@ -7883,6 +8024,20 @@ async function loadTerminalView(container) {
       scrollTerminalChatToBottom();
       persist();
       requestTerminalPaint({ scrollToBottom: true });
+      return;
+    }
+    if (target.hasAttribute("data-terminal-output-toggle")) {
+      const active = getActiveSession();
+      if (!active) {
+        return;
+      }
+      const turnID = normalizeText(target.getAttribute("data-terminal-output-toggle"));
+      if (turnID === "-") {
+        return;
+      }
+      active.output_collapsed[turnID] = !resolveTerminalOutputCollapsed(active, active.turns.find((turn) => normalizeText(turn?.id) === turnID));
+      persist();
+      requestTerminalPaint();
       return;
     }
     if (target.hasAttribute("data-terminal-step-toggle")) {
@@ -7919,6 +8074,8 @@ async function loadTerminalView(container) {
       const sessionID = normalizeText(target.getAttribute("data-terminal-session-select"));
       if (sessionID !== "-") {
         localState.activeSessionID = sessionID;
+        localState.mobileSessionListOpen = false;
+        localState.mobileSessionListAutoOpened = false;
         paint();
         const active = getActiveSession();
         if (active) {

@@ -9,10 +9,15 @@ export function createTerminalPage(page: Page): {
   workspace(): Locator;
   chatScreen(): Locator;
   jumpBottomButton(): Locator;
+  sessionPaneToggle(): Locator;
+  sessionPane(): Locator;
+  sessionPaneClose(): Locator;
+  metaToggle(): Locator;
   turnCards(): Locator;
   turnCard(turnID: string): Locator;
   processToggles(): Locator;
   processToggle(turnID: string): Locator;
+  outputToggle(turnID: string): Locator;
   stepItems(): Locator;
   stepItem(stepID: string): Locator;
   stepToggles(): Locator;
@@ -27,16 +32,21 @@ export function createTerminalPage(page: Page): {
     itemByValue: (sessionID: string) => `[data-terminal-session-select="${sessionID}"]`,
   });
   return {
-    createButton: () => page.locator("[data-terminal-create]"),
+    createButton: () => page.locator("[data-terminal-create]").first(),
     composer: () => composer,
     closeButton: () => page.locator("[data-terminal-close]"),
     workspace: () => page.locator("[data-terminal-workspace]"),
     chatScreen: () => page.locator("[data-terminal-chat-screen]"),
     jumpBottomButton: () => page.locator("[data-terminal-jump-bottom]"),
+    sessionPaneToggle: () => page.locator("[data-terminal-session-pane-toggle]"),
+    sessionPane: () => page.locator("[data-terminal-session-pane]"),
+    sessionPaneClose: () => page.locator("[data-terminal-session-pane-close]").first(),
+    metaToggle: () => page.locator("[data-terminal-meta-toggle]"),
     turnCards: () => page.locator("[data-terminal-turn]"),
     turnCard: (turnID: string) => page.locator(`[data-terminal-turn="${turnID}"]`),
     processToggles: () => page.locator("[data-terminal-process-toggle]"),
     processToggle: (turnID: string) => page.locator(`[data-terminal-process-toggle="${turnID}"]`),
+    outputToggle: (turnID: string) => page.locator(`[data-terminal-output-toggle="${turnID}"]`),
     stepItems: () => page.locator("[data-terminal-step-item]"),
     stepItem: (stepID: string) => page.locator(`[data-terminal-step-item="${stepID}"]`),
     stepToggles: () => page.locator("[data-terminal-step-toggle]"),
