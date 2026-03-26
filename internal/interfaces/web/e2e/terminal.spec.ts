@@ -8,7 +8,7 @@ import {
 import { commitIMEInput, startIMEInput } from "./helpers/interactions/ime";
 import { openTerminalRoute } from "./helpers/flows/routes";
 import { selectTerminalSession } from "./helpers/flows/terminal-session";
-import { waitForTerminalPoll, waitForTerminalPollAndRepaint } from "./helpers/flows/terminal-runtime";
+import { waitForTerminalPoll, waitForTerminalPollAndRepaint, waitForTerminalRepaint } from "./helpers/flows/terminal-runtime";
 import { bindTerminalClient, closeTrackedTerminalSessions, createTerminalClientID, seedTerminalSessions } from "./helpers/flows/terminal-session";
 import { createTerminalPage } from "./helpers/pages/terminal";
 import {
@@ -128,7 +128,47 @@ test.describe("Terminal route", () => {
     await expectComposerState(composer, { composing: false, draft: "dirty" });
   });
 
-  test("sends a command and disables input after close", async ({ page, request }) => {
+  test("defers terminal repaint after mobile IME commit until blur", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-ime" });
+
+    const composer = terminalPage.composer();
+    const input = composer.input();
+    const inputHandle = await input.elementHandle();
+
+    if (!inputHandle) {
+      throw new Error("terminal input handle missing");
+    }
+
+    try {
+      await startIMEInput(input);
+      await expectComposerState(composer, { composing: true, draft: "dirty" });
+
+      await waitForTerminalPoll(page, session.id);
+      await commitIMEInput(input, "terminal-ime-mobile");
+
+      await expect.poll(async () => {
+        return await page.evaluate((node) => {
+          const current = document.querySelector('[data-composer-input="terminal-runtime"]');
+          return Boolean(
+            node &&
+            node.isConnected &&
+            current === node &&
+            document.activeElement === current &&
+            (current instanceof HTMLInputElement ? current.value : "") === "terminal-ime-mobile"
+          );
+        }, inputHandle);
+      }).toBe(true);
+
+      await input.blur();
+      await waitForTerminalRepaint(page, 5000);
+      await expectComposerValue(composer, "terminal-ime-mobile");
+    } finally {
+      await inputHandle.dispose();
+    }
+  });
+
+  test("keeps input available after close for same-session recovery", async ({ page, request }) => {
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "close" });
 
     const composer = terminalPage.composer();
@@ -145,13 +185,15 @@ test.describe("Terminal route", () => {
     await closeButton.click();
 
     await expect(terminalPage.workspace()).toContainText("Exited");
-    await expect(input).toBeDisabled();
-    await expect(submit).toBeDisabled();
-    await expectComposerState(composer, { disabled: true });
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-live", "false");
+    await expect(terminalPage.workspace()).toContainText("Codex session exited. Send a new input to continue in this session.");
+    await expect(input).toBeEnabled();
+    await expect(submit).toBeEnabled();
+    await expectComposerState(composer, { disabled: false });
   });
 
   test("renders process and final output with lazy-loaded step details", async ({ page, request }) => {
-    const { session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "structure" });
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "structure" });
     const composer = terminalPage.composer();
     let stepDetailRequests = 0;
     page.on("request", (requestEvent) => {
@@ -186,8 +228,11 @@ test.describe("Terminal route", () => {
     ]);
 
     await expect.poll(() => stepDetailRequests).toBe(1);
+    const currentSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    expect(currentSessionID).toBeTruthy();
     await expect(terminalPage.workspace()).toContainText("WorkingDirectory");
-    await expect(terminalPage.workspace()).toContainText(terminalSessionWorkspace(session.id));
+    await expect(terminalPage.workspace()).toContainText(/\.alter0\/workspaces\/terminal\/sessions\/terminal-/);
+    await expect(terminalPage.workspace()).toContainText(new RegExp(String(currentSessionID).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   });
 
   test("keeps terminal scroll position when user leaves bottom", async ({ page, request }) => {
@@ -425,28 +470,30 @@ test.describe("Terminal route", () => {
     expect(Math.abs(afterScrollTop - beforeScrollTop)).toBeLessThan(24);
   });
 
-  test("marks stored live sessions as interrupted when runtime is unavailable", async ({ page }) => {
+  test("keeps interrupted sessions recoverable when runtime is unavailable", async ({ page }) => {
     const { terminalPage } = await openInterruptedTerminalWorkspace(page, { scope: "interrupted" });
 
     await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "interrupted");
     await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-live", "false");
     await expect(terminalPage.workspace()).toContainText("Interrupted");
     await expect(terminalPage.workspace()).toContainText("Codex runtime exited. Send a new input to recover this session.");
-    await expect(terminalPage.composer().input()).toBeDisabled();
-    await expect(terminalPage.composer().submitButton()).toBeDisabled();
-    await expectComposerState(terminalPage.composer(), { disabled: true });
+    await expect(terminalPage.composer().input()).toBeEnabled();
+    await expect(terminalPage.composer().submitButton()).toBeEnabled();
+    await expectComposerState(terminalPage.composer(), { disabled: false });
   });
 
-  test("recovers stored live sessions by terminal thread id", async ({ page }) => {
+  test("recovers stored thread-backed sessions on load and first input", async ({ page }) => {
     const clientID = createTerminalClientID("recover");
     const now = Date.now();
+    const sessionID = `terminal-recover-live-${now}`;
+    const threadID = `mock-thread-${sessionID}`;
     const session = {
-      id: "terminal-recover-live",
-      title: "terminal-recover-live",
-      terminal_session_id: "mock-thread-terminal-recover-live",
+      id: sessionID,
+      title: sessionID,
+      terminal_session_id: threadID,
       status: "running",
       shell: "codex exec",
-      working_dir: terminalSessionWorkspace("terminal-recover-live"),
+      working_dir: terminalSessionWorkspace(sessionID),
       created_at: now - 2_000,
       last_output_at: now - 1_000,
       updated_at: now - 500,
@@ -454,7 +501,7 @@ test.describe("Terminal route", () => {
       disconnected_notice: false,
       entries: [
         {
-          id: "terminal-recover-live-output",
+          id: `${sessionID}-output`,
           role: "output",
           text: "mock:before-reload",
           at: now - 1_000,
@@ -471,12 +518,16 @@ test.describe("Terminal route", () => {
 
     const terminalPage = createTerminalPage(page);
     await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-live", "true");
     await expectComposerReady(terminalPage.composer());
-    await expect(terminalPage.workspace()).toContainText("mock-thread-terminal-recover-live");
+    await expect(terminalPage.workspace()).toContainText(threadID);
+    await expect(terminalPage.composer().input()).toBeEnabled();
+    await expect(terminalPage.composer().submitButton()).toBeEnabled();
 
     await terminalPage.composer().input().fill("Reply with exactly: recovered-after-reload");
     await terminalPage.composer().submitButton().click();
 
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
     await expect(terminalPage.finalOutputs().last()).toContainText("recovered-after-reload");
   });
 });

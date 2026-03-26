@@ -7010,6 +7010,7 @@ function renderTerminalWorkspace(session, sending, closing = false) {
   }
   const logRef = normalizeText(session.terminal_session_id);
   const logTitle = t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 32) });
+  const isLive = isTerminalSessionLiveStatus(session.status);
   const canInput = canTerminalSessionAcceptInput(session.status);
   const normalizedStatus = normalizeText(session.status || "").toLowerCase();
   const placeholder = canInput ? t("route.terminal.input") : t("route.terminal.closed");
@@ -7019,7 +7020,7 @@ function renderTerminalWorkspace(session, sending, closing = false) {
   const detail = session.error_message || (Number.isFinite(Number(session.exit_code)) ? `exit code ${String(session.exit_code)}` : "");
   const closeDisabled = sending || closing || !isTerminalSessionLiveStatus(session.status);
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
-  return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${canInput ? "true" : "false"}">
+  return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${isLive ? "true" : "false"}">
     <header class="terminal-workspace-head">
       <div class="terminal-workspace-copy">
         <h4>${escapeHTML(logTitle)}</h4>
@@ -7144,6 +7145,14 @@ async function loadTerminalView(container) {
   const isTerminalInputComposing = (sessionID) => {
     const key = normalizeText(sessionID);
     return key !== "" && key === normalizeText(localState.composingInputSessionID);
+  };
+
+  const shouldDeferTerminalPaint = (sessionID) => {
+    const key = normalizeText(sessionID);
+    if (!key) {
+      return false;
+    }
+    return isTerminalInputComposing(key) || (isMobileViewport() && isTerminalInputFocused(key));
   };
 
   const rememberTerminalInputComposition = (sessionID) => {
@@ -7561,7 +7570,7 @@ async function loadTerminalView(container) {
   const requestTerminalPaint = (options = {}) => {
     const active = getActiveSession();
     const scrollToBottom = Boolean(options.scrollToBottom);
-    if (active && (isTerminalInputComposing(active.id) || (isMobileViewport() && isTerminalInputFocused(active.id)))) {
+    if (active && shouldDeferTerminalPaint(active.id)) {
       localState.pendingPaint = true;
       localState.pendingScrollToBottom = localState.pendingScrollToBottom || scrollToBottom;
       return false;
@@ -7577,12 +7586,16 @@ async function loadTerminalView(container) {
     if (!localState.pendingPaint) {
       return;
     }
+    const active = getActiveSession();
+    if (active && shouldDeferTerminalPaint(active.id)) {
+      return;
+    }
     const scrollToBottom = localState.pendingScrollToBottom;
     localState.pendingPaint = false;
     localState.pendingScrollToBottom = false;
     paint();
-    const active = getActiveSession();
-    if (scrollToBottom && (!active || active.chat_stick_to_bottom !== false)) {
+    const nextActive = getActiveSession();
+    if (scrollToBottom && (!nextActive || nextActive.chat_stick_to_bottom !== false)) {
       scrollTerminalChatToBottom();
     }
   };
@@ -7812,7 +7825,7 @@ async function loadTerminalView(container) {
       requestTerminalPaint();
       const inputNode = container.querySelector("[data-terminal-input]");
       if (inputNode) {
-        inputNode.focus();
+        inputNode.focus({ preventScroll: true });
       }
       scrollTerminalChatToBottom();
     }
