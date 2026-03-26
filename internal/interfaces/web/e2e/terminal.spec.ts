@@ -79,6 +79,37 @@ test.describe("Terminal route", () => {
     await expectComposerValue(composer, "pwd -Path .");
   });
 
+  test("keeps the same terminal input node during mobile polling while focused", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-focus" });
+
+    const composer = terminalPage.composer();
+    const input = composer.input();
+    const inputHandle = await input.elementHandle();
+
+    if (!inputHandle) {
+      throw new Error("terminal input handle missing");
+    }
+    await input.click();
+    await expect(input).toBeFocused();
+    await input.fill("pwd");
+
+    try {
+      await waitForTerminalPoll(page, session.id);
+
+      await expect.poll(async () => {
+        return await page.evaluate((node) => {
+          const current = document.querySelector('[data-composer-input="terminal-runtime"]');
+          return Boolean(node && node.isConnected && current === node && document.activeElement === current);
+        }, inputHandle);
+      }).toBe(true);
+
+      await expectComposerFocusedValue(composer, "pwd");
+    } finally {
+      await inputHandle.dispose();
+    }
+  });
+
   test("keeps IME composition input across polling refresh", async ({ page, request }) => {
     const { session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "ime" });
 

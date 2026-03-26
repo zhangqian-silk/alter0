@@ -1480,7 +1480,7 @@
   }
 
   .terminal-jump-bottom {
-    bottom: 92px;
+    bottom: calc(92px + env(safe-area-inset-bottom) + var(--keyboard-offset));
     right: 12px;
   }
 
@@ -1520,6 +1520,7 @@
 
   .terminal-chat-form {
     flex-direction: column;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom) + var(--keyboard-offset));
   }
 
   .terminal-chat-form input,

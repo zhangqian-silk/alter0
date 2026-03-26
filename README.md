@@ -114,6 +114,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 每个 Terminal 会话使用独立工作区目录，不再默认落在仓库根目录。
 - Terminal 会持久化 Codex CLI 线程标识与会话状态；运行态退出后保留原会话历史，继续发送即可在同一会话内恢复。
 - Terminal 不再设置产品级会话数量上限或固定超时淘汰策略。
+- 移动端访问 Terminal 时，轮询刷新不会重建已聚焦输入框；键盘弹起后输入区继续贴底可输入，页面不会因刷新回到顶部。
 
 补充说明：
 
