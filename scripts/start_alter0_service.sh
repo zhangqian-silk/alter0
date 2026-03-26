@@ -53,9 +53,7 @@ if [[ -z "${WEB_LOGIN_PASSWORD}" ]]; then
   echo "[WARN] ALTER0_WEB_LOGIN_PASSWORD is empty, login page is disabled."
 fi
 
-if [[ ! -x "${BUILD_OUTPUT}" ]]; then
-  env GOSUMDB="${GOSUMDB:-sum.golang.org}" GOTOOLCHAIN="${GOTOOLCHAIN:-auto}" go build -o "${BUILD_OUTPUT}" ./cmd/alter0
-fi
+env GOSUMDB="${GOSUMDB:-sum.golang.org}" GOTOOLCHAIN="${GOTOOLCHAIN:-auto}" go build -o "${BUILD_OUTPUT}" ./cmd/alter0
 
 CMD="env \
 GOSUMDB='${GOSUMDB:-sum.golang.org}' \
