@@ -7130,6 +7130,15 @@ async function loadTerminalView(container) {
     localState.focusedInputSelectionEnd = -1;
   };
 
+  const isTerminalInputFocused = (sessionID) => {
+    const key = normalizeText(sessionID);
+    if (key === "" || key !== normalizeText(localState.focusedInputSessionID)) {
+      return false;
+    }
+    const inputNode = container.querySelector("[data-terminal-input]");
+    return Boolean(inputNode && document.activeElement === inputNode);
+  };
+
   const isTerminalInputComposing = (sessionID) => {
     const key = normalizeText(sessionID);
     return key !== "" && key === normalizeText(localState.composingInputSessionID);
@@ -7550,7 +7559,7 @@ async function loadTerminalView(container) {
   const requestTerminalPaint = (options = {}) => {
     const active = getActiveSession();
     const scrollToBottom = Boolean(options.scrollToBottom);
-    if (active && isTerminalInputComposing(active.id)) {
+    if (active && (isTerminalInputComposing(active.id) || (isMobileViewport() && isTerminalInputFocused(active.id)))) {
       localState.pendingPaint = true;
       localState.pendingScrollToBottom = localState.pendingScrollToBottom || scrollToBottom;
       return false;
@@ -7610,6 +7619,7 @@ async function loadTerminalView(container) {
       onBlur: () => {
         clearTerminalInputComposition();
         clearTerminalInputFocus();
+        flushDeferredTerminalPaint();
       },
       onCompositionStart: (currentInputNode) => {
         if (!session) {

@@ -1,6 +1,6 @@
 # Requirements Details (R-011 ~ R-020)
 
-> Last update: 2026-03-04
+> Last update: 2026-03-26
 
 ## 需求细化（草案）
 
@@ -66,11 +66,12 @@
 2. 键盘跟随：基于 `VisualViewport` 实时计算软键盘占位高度并写入 `--keyboard-offset`，输入区在 iOS/Android 键盘弹起时持续可见。
 3. 遮罩关闭与手势交互：支持点击遮罩、按下 `Escape`、以及在导航/会话抽屉内左滑手势关闭覆盖层。
 4. 路由切换一致性：移动端点击侧边栏菜单后立即收起抽屉并进入目标信息页，防止面板残留遮挡主内容。
-5. 验收：在移动端连续执行“打开抽屉 -> 切换页面 -> 输入框聚焦 -> 键盘收起”流程，页面无错位、无遮挡、可稳定关闭覆盖层。
+5. Terminal 输入稳定性：移动端 `Terminal` 路由在输入框聚焦且键盘弹起期间，后台轮询刷新不得重建输入节点、清空草稿或把页面滚动位置重置到顶部。
+6. 验收：在移动端连续执行“打开抽屉 -> 切换页面 -> 输入框聚焦 -> 键盘收起”流程，页面无错位、无遮挡、可稳定关闭覆盖层；在 `Terminal` 输入过程中轮询刷新不触发回顶或输入抖动。
 
 #### Traceability
 
-- 实现文件：`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
+- 实现文件：`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`、`internal/interfaces/web/static/assets/chat-terminal.css`
 - 验证：`go test ./...`
 
 ### R-015 移动端会话创建与信息完整性
