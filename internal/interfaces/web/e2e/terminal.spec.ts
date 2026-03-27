@@ -85,6 +85,46 @@ test.describe("Terminal route", () => {
     expect((chatBox?.height ?? 0)).toBeGreaterThan((formBox?.height ?? 0) * 3);
   });
 
+  test("keeps the mobile terminal workspace compact with an inline submit button", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-layout" });
+
+    const routeHead = page.locator(".route-view.terminal-route > .route-head");
+    const workspaceHead = page.locator(".terminal-workspace-head");
+    const workspaceSubcopy = page.locator(".terminal-workspace-subcopy");
+    const mobileNewChat = page.locator("#mobileNewChatButton");
+    const headerSessionToggle = page.locator("#sessionToggle");
+    const workspaceRow = page.locator(".terminal-workspace-row");
+    const composerForm = terminalPage.composer().form();
+    const composerInput = terminalPage.composer().input();
+    const submitButton = terminalPage.composer().submitButton();
+
+    await expect(routeHead).toBeHidden();
+    await expect(workspaceSubcopy).toBeHidden();
+    await expect(mobileNewChat).toBeVisible();
+    await expect(mobileNewChat).toHaveText("New");
+    await expect(headerSessionToggle).toBeVisible();
+    await expect(headerSessionToggle).toHaveText("Sessions");
+
+    const headBox = await workspaceHead.boundingBox();
+    const rowBox = await workspaceRow.boundingBox();
+    const formBox = await composerForm.boundingBox();
+    const inputBox = await composerInput.boundingBox();
+    const buttonBox = await submitButton.boundingBox();
+
+    expect(headBox).not.toBeNull();
+    expect(rowBox).not.toBeNull();
+    expect(formBox).not.toBeNull();
+    expect(inputBox).not.toBeNull();
+    expect(buttonBox).not.toBeNull();
+    expect(headBox?.height ?? 0).toBeLessThan(150);
+    expect(rowBox?.height ?? 0).toBeLessThan(56);
+    expect(formBox?.height ?? 0).toBeLessThan(92);
+    expect(buttonBox?.width ?? 0).toBeLessThan(56);
+    expect(buttonBox?.x ?? 0).toBeGreaterThan((inputBox?.x ?? 0) + ((inputBox?.width ?? 0) * 0.7));
+    expect(Math.abs((buttonBox?.y ?? 0) - (inputBox?.y ?? 0))).toBeLessThan(20);
+  });
+
   test("keeps input focus and draft across polling refresh", async ({ page, request }) => {
     const { session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "focus" });
 
@@ -363,6 +403,59 @@ test.describe("Terminal route", () => {
 
     await expect.poll(async () => chatScreen.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeLessThan(12);
     await expect(jumpBottomButton).not.toHaveClass(/is-visible/);
+  });
+
+  test("shows a sticky user prompt while reading long terminal output", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "sticky-prompt" });
+    const composer = terminalPage.composer();
+    const stickyPrompt = terminalPage.stickyPrompt();
+
+    await composer.input().fill("output 120 lines");
+    await composer.submitButton().click();
+    await expect(terminalPage.finalOutputs().last()).toContainText("line 120");
+    await expect(stickyPrompt).toBeHidden();
+
+    await terminalPage.chatScreen().evaluate((node) => {
+      node.scrollTop = Math.max((node.scrollHeight - node.clientHeight) / 2, 0);
+      node.dispatchEvent(new Event("scroll"));
+    });
+
+    await expect(stickyPrompt).toBeVisible();
+    await expect(stickyPrompt).toContainText("output 120 lines");
+  });
+
+  test("keeps output collapse toggle clickable while the sticky prompt is visible", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "sticky-prompt-toggle" });
+    const composer = terminalPage.composer();
+    const stickyPrompt = terminalPage.stickyPrompt();
+
+    await composer.input().fill("output 120 lines");
+    await composer.submitButton().click();
+    await expect(terminalPage.finalOutputs().last()).toContainText("line 120");
+
+    const outputToggle = terminalPage.outputToggle("turn-1");
+    const outputBody = terminalPage.turnCard("turn-1").locator(".terminal-final-text");
+    if ((await outputToggle.textContent())?.includes("Show more")) {
+      await outputToggle.click();
+      await expect(outputBody).not.toHaveClass(/is-clamped/);
+    }
+
+    await terminalPage.chatScreen().evaluate((node) => {
+      const toggle = node.querySelector('[data-terminal-output-toggle="turn-1"]');
+      if (!(toggle instanceof HTMLElement)) {
+        return;
+      }
+      const nodeRect = node.getBoundingClientRect();
+      const toggleRect = toggle.getBoundingClientRect();
+      node.scrollTop += Math.max(toggleRect.top - nodeRect.top - 18, 0);
+      node.dispatchEvent(new Event("scroll"));
+    });
+
+    await expect(stickyPrompt).toBeVisible();
+    await outputToggle.click();
+    await expect(outputBody).toHaveClass(/is-clamped/);
   });
 
   test("keeps jump-to-bottom button hidden for short offset until new output arrives", async ({ page, request }) => {
