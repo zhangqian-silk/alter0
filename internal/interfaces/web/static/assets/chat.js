@@ -401,6 +401,8 @@ const I18N = {
     "route.terminal.sending": "Sending...",
     "route.terminal.close": "Close",
     "route.terminal.closing": "Closing...",
+    "route.terminal.delete": "Delete",
+    "route.terminal.deleting": "Deleting...",
     "route.terminal.session": "Session",
     "route.terminal.shell": "CLI",
     "route.terminal.path": "Path",
@@ -424,6 +426,8 @@ const I18N = {
     "route.terminal.send_failed": "Send failed: {error}",
     "route.terminal.logs_failed": "Load terminal output failed: {error}",
     "route.terminal.close_failed": "Close terminal failed: {error}",
+    "route.terminal.delete_failed": "Delete terminal failed: {error}",
+    "route.terminal.delete_confirm": "Delete this Codex session and its workspace files?",
     "route.terminal.loading": "Loading terminal session...",
     "route.terminal.interrupted": "Codex runtime exited. Send a new input to recover this session.",
     "route.terminal.closed": "Codex session exited. Send a new input to continue in this session.",
@@ -855,6 +859,8 @@ const I18N = {
     "route.terminal.sending": "发送中...",
     "route.terminal.close": "关闭",
     "route.terminal.closing": "关闭中...",
+    "route.terminal.delete": "删除",
+    "route.terminal.deleting": "删除中...",
     "route.terminal.session": "会话",
     "route.terminal.shell": "Shell",
     "route.terminal.path": "路径",
@@ -869,6 +875,8 @@ const I18N = {
     "route.terminal.send_failed": "发送失败：{error}",
     "route.terminal.logs_failed": "终端输出加载失败：{error}",
     "route.terminal.close_failed": "终端关闭失败：{error}",
+    "route.terminal.delete_failed": "终端删除失败：{error}",
+    "route.terminal.delete_confirm": "删除当前终端会话及其工作区文件？",
     "route.terminal.loading": "正在加载终端会话...",
     "route.terminal.interrupted": "Codex 运行态已退出，继续发送即可恢复当前会话。",
     "route.terminal.closed": "Codex 会话已退出，继续发送即可在当前会话内恢复。",
@@ -7160,7 +7168,7 @@ function renderTerminalTurns(session) {
   }).join("");
 }
 
-function renderTerminalWorkspace(session, sending, closing = false, options = {}) {
+function renderTerminalWorkspace(session, sending, closing = false, deleting = false, options = {}) {
   if (!session) {
     return `<section class="route-empty-panel terminal-workspace-empty">
       <p>${escapeHTML(t("route.terminal.pick"))}</p>
@@ -7175,7 +7183,8 @@ function renderTerminalWorkspace(session, sending, closing = false, options = {}
     ? t("route.terminal.interrupted")
     : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : "");
   const detail = session.error_message || (parseTerminalExitCode(session.exit_code) !== null ? `exit code ${String(parseTerminalExitCode(session.exit_code))}` : "");
-  const closeDisabled = sending || closing || !isTerminalSessionLiveStatus(session.status);
+  const closeDisabled = sending || closing || deleting || !isTerminalSessionLiveStatus(session.status);
+  const deleteDisabled = sending || closing || deleting;
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
   const metaExpanded = Boolean(session?.meta_expanded);
   const sessionCount = Number.isFinite(Number(options?.sessionCount)) ? Math.max(Number(options.sessionCount), 0) : 0;
@@ -7199,6 +7208,7 @@ function renderTerminalWorkspace(session, sending, closing = false, options = {}
           <span class="terminal-status-pill">${escapeHTML(renderTerminalStatus(session.status))}</span>
           <button class="terminal-inline-button" type="button" data-terminal-meta-toggle aria-expanded="${metaExpanded ? "true" : "false"}">${escapeHTML(metaExpanded ? t("route.terminal.details_hide") : t("route.terminal.details_show"))}</button>
           <button class="terminal-session-close" type="button" data-terminal-close ${closeDisabled ? "disabled" : ""}>${escapeHTML(closing ? t("route.terminal.closing") : t("route.terminal.close"))}</button>
+          <button class="terminal-session-delete" type="button" data-terminal-delete ${deleteDisabled ? "disabled" : ""}>${escapeHTML(deleting ? t("route.terminal.deleting") : t("route.terminal.delete"))}</button>
         </div>
       </div>
       ${metaExpanded ? renderTerminalWorkspaceMetaPanel(session) : ""}
@@ -7314,7 +7324,7 @@ function patchTerminalSessionPane(container, sessions, activeSessionID, mobileSe
   return sessionListNode;
 }
 
-function patchTerminalWorkspaceNode(container, session, sending, closing = false, options = {}) {
+function patchTerminalWorkspaceNode(container, session, sending, closing = false, deleting = false, options = {}) {
   const workspaceNode = container.querySelector("[data-terminal-workspace]");
   if (!workspaceNode || !session) {
     return null;
@@ -7334,7 +7344,8 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
     ? t("route.terminal.interrupted")
     : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : "");
   const detail = session.error_message || (parseTerminalExitCode(session.exit_code) !== null ? `exit code ${String(parseTerminalExitCode(session.exit_code))}` : "");
-  const closeDisabled = sending || closing || !isTerminalSessionLiveStatus(session.status);
+  const closeDisabled = sending || closing || deleting || !isTerminalSessionLiveStatus(session.status);
+  const deleteDisabled = sending || closing || deleting;
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
   const metaExpanded = Boolean(session?.meta_expanded);
   const sessionCount = Number.isFinite(Number(options?.sessionCount)) ? Math.max(Number(options.sessionCount), 0) : 0;
@@ -7368,6 +7379,11 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
     closeButtonNode.disabled = closeDisabled;
   }
   syncNodeText(closeButtonNode, closing ? t("route.terminal.closing") : t("route.terminal.close"));
+  const deleteButtonNode = workspaceNode.querySelector("[data-terminal-delete]");
+  if (deleteButtonNode) {
+    deleteButtonNode.disabled = deleteDisabled;
+  }
+  syncNodeText(deleteButtonNode, deleting ? t("route.terminal.deleting") : t("route.terminal.delete"));
 
   const workspaceHead = workspaceNode.querySelector(".terminal-workspace-head");
   if (workspaceHead) {
@@ -7438,6 +7454,7 @@ async function loadTerminalView(container) {
     activeSessionID: "",
     sending: false,
     closing: false,
+    deleting: false,
     polling: false,
     timer: 0,
     drafts: {},
@@ -7822,6 +7839,38 @@ async function loadTerminalView(container) {
     return session;
   };
 
+  const removeTerminalSession = (sessionID) => {
+    const key = normalizeText(sessionID);
+    if (!key) {
+      return false;
+    }
+    const index = localState.sessions.findIndex((item) => normalizeText(item.id) === key);
+    if (index < 0) {
+      return false;
+    }
+    const removedActive = normalizeText(localState.activeSessionID) === key;
+    localState.sessions.splice(index, 1);
+    delete localState.drafts[key];
+    clearTerminalInputComposition(key);
+    if (normalizeText(localState.focusedInputSessionID) === key) {
+      clearTerminalInputFocus();
+    }
+    const activeStillExists = localState.sessions.some((item) => normalizeText(item.id) === normalizeText(localState.activeSessionID));
+    if (removedActive || !activeStillExists) {
+      const nextIndex = Math.min(index, Math.max(localState.sessions.length - 1, 0));
+      localState.activeSessionID = localState.sessions[nextIndex] ? localState.sessions[nextIndex].id : "";
+      if (localState.activeSessionID) {
+        requestRevealActiveSessionCard();
+      }
+    }
+    if (!localState.sessions.length) {
+      localState.activeSessionID = "";
+      localState.mobileSessionListOpen = true;
+      localState.mobileSessionListAutoOpened = true;
+    }
+    return true;
+  };
+
   const markSessionInterrupted = (session, message) => {
     if (!session) {
       return;
@@ -7996,7 +8045,7 @@ async function loadTerminalView(container) {
     );
     if (canPatchActiveWorkspace) {
       patchTerminalSessionPane(container, localState.sessions, localState.activeSessionID, localState.mobileSessionListOpen);
-      const patched = patchTerminalWorkspaceNode(container, active, localState.sending, localState.closing, {
+      const patched = patchTerminalWorkspaceNode(container, active, localState.sending, localState.closing, localState.deleting, {
         sessionCount: localState.sessions.length,
         mobileSessionListOpen: localState.mobileSessionListOpen
       });
@@ -8019,7 +8068,7 @@ async function loadTerminalView(container) {
             </div>
           </aside>
           <section class="terminal-workspace">
-            ${renderTerminalWorkspace(active, localState.sending, localState.closing, {
+            ${renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
               sessionCount: localState.sessions.length,
               mobileSessionListOpen: localState.mobileSessionListOpen
             })}
@@ -8045,7 +8094,7 @@ async function loadTerminalView(container) {
           </div>
         </aside>
         <section class="terminal-workspace">
-          ${renderTerminalWorkspace(active, localState.sending, localState.closing, {
+          ${renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
             sessionCount: localState.sessions.length,
             mobileSessionListOpen: localState.mobileSessionListOpen
           })}
@@ -8271,14 +8320,14 @@ async function loadTerminalView(container) {
   };
 
   const closeTerminalSession = async (session) => {
-    if (!session || localState.closing || !isTerminalSessionLiveStatus(session.status)) {
+    if (!session || localState.closing || localState.deleting || !isTerminalSessionLiveStatus(session.status)) {
       return;
     }
     localState.closing = true;
     paint();
     try {
-      const payload = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}`, {
-        method: "DELETE"
+      const payload = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}/close`, {
+        method: "POST"
       });
       applyTerminalSessionSnapshot(session, payload?.session || {});
       stopPolling();
@@ -8299,6 +8348,59 @@ async function loadTerminalView(container) {
       paint();
     } finally {
       localState.closing = false;
+      paint();
+    }
+  };
+
+  const deleteTerminalSession = async (session) => {
+    if (!session || localState.deleting || localState.closing || localState.sending) {
+      return;
+    }
+    if (!window.confirm(t("route.terminal.delete_confirm"))) {
+      return;
+    }
+    localState.deleting = true;
+    paint();
+    const sessionID = normalizeText(session.id);
+    const deletingActive = sessionID === normalizeText(localState.activeSessionID);
+    try {
+      await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(sessionID)}`, {
+        method: "DELETE"
+      });
+      stopPolling();
+      removeTerminalSession(sessionID);
+      persist();
+      paint();
+      if (deletingActive) {
+        const nextActive = getActiveSession();
+        if (nextActive) {
+          await startPolling();
+        }
+      }
+    } catch (error) {
+      if (Number(error?.status) === 404) {
+        stopPolling();
+        removeTerminalSession(sessionID);
+        persist();
+        paint();
+        if (deletingActive) {
+          const nextActive = getActiveSession();
+          if (nextActive) {
+            await startPolling();
+          }
+        }
+        return;
+      }
+      const message = error instanceof Error ? error.message : "unknown_error";
+      appendEntry(session, "system", t("route.terminal.delete_failed", { error: message }), {
+        kind: "tag",
+        stream: "system"
+      });
+      sortTerminalSessions();
+      persist();
+      paint();
+    } finally {
+      localState.deleting = false;
       paint();
     }
   };
@@ -8500,6 +8602,13 @@ async function loadTerminalView(container) {
       const active = getActiveSession();
       if (active) {
         void closeTerminalSession(active);
+      }
+      return;
+    }
+    if (target.hasAttribute("data-terminal-delete")) {
+      const active = getActiveSession();
+      if (active) {
+        void deleteTerminalSession(active);
       }
       return;
     }

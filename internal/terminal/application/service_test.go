@@ -351,6 +351,52 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 	}
 }
 
+func TestServiceDeleteRemovesPersistedStateAndWorkspace(t *testing.T) {
+	baseDir := t.TempDir()
+	service := newTestServiceWithBaseDir("success", baseDir)
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-delete",
+		Title:   "delete-me",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-delete", session.ID, "first prompt"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	snapshot, _ := waitForSessionEntries(t, service, "owner-delete", session.ID, 2)
+
+	statePath, err := resolveTerminalSessionStateFilePath(baseDir, session.ID)
+	if err != nil {
+		t.Fatalf("resolve state path: %v", err)
+	}
+	if _, err := os.Stat(statePath); err != nil {
+		t.Fatalf("expected persisted session state, got %v", err)
+	}
+	if _, err := os.Stat(snapshot.WorkingDir); err != nil {
+		t.Fatalf("expected workspace directory, got %v", err)
+	}
+
+	deleted, err := service.Delete("owner-delete", session.ID)
+	if err != nil {
+		t.Fatalf("delete session: %v", err)
+	}
+	if deleted.ID != session.ID {
+		t.Fatalf("expected deleted session id %q, got %q", session.ID, deleted.ID)
+	}
+	if _, ok := service.Get("owner-delete", session.ID); ok {
+		t.Fatalf("expected session to be removed from runtime store")
+	}
+	if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected state file removed, got %v", err)
+	}
+	if _, err := os.Stat(snapshot.WorkingDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected workspace removed, got %v", err)
+	}
+}
+
 func TestServiceInputRecoversPersistedSessionWhenRuntimeMissing(t *testing.T) {
 	baseDir := t.TempDir()
 	service := newTestServiceWithBaseDir("success", baseDir)

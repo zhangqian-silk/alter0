@@ -56,7 +56,7 @@
 | R-043 | Environments 关键配置统一管理 | supported | 完善 Environments 模块，支持对任务并发等关键运行参数进行可视化配置、校验与持久化，并将当前可配置项统一纳入同一管理入口 |
 | R-044 | Channels 迁移至 Settings 模块 | supported | 前端导航将 `Channels` 从 `Control` 分组迁移到 `Settings` 分组，保持页面能力与接口不变并兼容原有直达路由 |
 | R-045 | Session/Task 关键信息披露增强 | supported | 在 Session、Task 等页面补充展示必要上下文字段（如 `channel`、`message_id`、`channel_id`、`trigger_type`），提升问题定位与执行链路可追溯性 |
-| R-046 | Terminal 模块与会话式终端代理 | supported | 新增独立 `Terminal` 模块，支持在模块内以类 Chat 方式持续对话；同一终端会话内复用上下文并连续串联输入/输出，完整保留终端交互轨迹，并通过局部轮询刷新、滚动稳定性控制、溢出约束与延后持久化保证长输出场景下的连续交互体验 |
+| R-046 | Terminal 模块与会话式终端代理 | supported | 新增独立 `Terminal` 模块，支持在模块内以类 Chat 方式持续对话；同一终端会话内复用上下文并连续串联输入/输出，完整保留终端交互轨迹，并提供 `Close / Delete` 生命周期操作，其中删除会同步清理持久化状态与工作区文件 |
 | R-047 | OpenAI Go SDK 接入 | supported | 已接入 `github.com/openai/openai-go` SDK，统一支持 OpenAI 兼容 API、自定义 `base_url` 与 `/responses`、`/chat/completions` 双接口模式 |
 | R-048 | ReAct 模式 Agent 调用 | supported | Agent 执行链已提供 ReAct 循环、工具调用、多轮观察与 `codex_exec` 协同执行能力 |
 | R-049 | 模型配置管理 | supported | 支持多 Provider/多模型配置、启用禁用、默认 Provider 与默认模型切换，并对禁用默认项自动收敛到可用配置 |

@@ -141,7 +141,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 	ownerID := resolveTerminalClientID(r)
 	if len(parts) == 1 {
 		if r.Method == http.MethodDelete {
-			session, err := s.terminals.Close(ownerID, sessionID)
+			session, err := s.terminals.Delete(ownerID, sessionID)
 			if err != nil {
 				s.writeTerminalError(w, err)
 				return
@@ -166,6 +166,17 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	switch parts[1] {
+	case "close":
+		if len(parts) != 2 || r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		session, err := s.terminals.Close(ownerID, sessionID)
+		if err != nil {
+			s.writeTerminalError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
 	case "turns":
 		if len(parts) == 2 {
 			if r.Method != http.MethodGet {

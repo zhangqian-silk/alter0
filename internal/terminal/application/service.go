@@ -122,6 +122,7 @@ type runtimeSession struct {
 	turnRunning  bool
 	turnCancel   context.CancelFunc
 	closedByUser bool
+	deleted      bool
 }
 
 type runtimeTurn struct {
@@ -487,6 +488,74 @@ func (s *Service) Close(ownerID string, sessionID string) (terminaldomain.Sessio
 	snapshot := item.summary
 	item.mu.Unlock()
 	s.persistSession(item)
+	return snapshot, nil
+}
+
+func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Session, error) {
+	item, err := s.getOwnedSession(ownerID, sessionID)
+	if err != nil {
+		if !errors.Is(err, ErrSessionNotFound) {
+			return terminaldomain.Session{}, err
+		}
+		item, err = s.restorePersistedOwnedSession(ownerID, sessionID)
+		if err != nil {
+			return terminaldomain.Session{}, err
+		}
+	}
+
+	snapshot := item.snapshot()
+	statePath, err := resolveTerminalSessionStateFilePath(s.options.WorkingDir, snapshot.ID)
+	if err != nil {
+		return terminaldomain.Session{}, err
+	}
+	workspaceDir := strings.TrimSpace(snapshot.WorkingDir)
+	if workspaceDir == "" {
+		workspaceDir, err = resolveSessionWorkspacePath(s.options.WorkingDir, snapshot.ID)
+		if err != nil {
+			return terminaldomain.Session{}, err
+		}
+	}
+
+	s.mu.Lock()
+	current, ok := s.sessions[sessionID]
+	if !ok {
+		s.mu.Unlock()
+		return terminaldomain.Session{}, ErrSessionNotFound
+	}
+	item = current
+	item.mu.Lock()
+	now := time.Now().UTC()
+	item.deleted = true
+	item.closedByUser = true
+	if item.turnCancel != nil {
+		item.turnCancel()
+		item.turnCancel = nil
+	}
+	item.turnRunning = false
+	item.summary.UpdatedAt = now
+	if item.summary.FinishedAt.IsZero() {
+		item.summary.FinishedAt = now
+	}
+	if item.summary.Status == terminaldomain.SessionStatusStarting || item.summary.Status == terminaldomain.SessionStatusRunning {
+		item.summary.Status = terminaldomain.SessionStatusExited
+		item.summary.ErrorMessage = ""
+		item.summary.ExitCode = nil
+	}
+	snapshot = item.summary
+	item.mu.Unlock()
+	delete(s.sessions, sessionID)
+	s.mu.Unlock()
+
+	var cleanupErr error
+	if err := removeTerminalSessionStateFile(statePath); err != nil {
+		cleanupErr = errors.Join(cleanupErr, err)
+	}
+	if err := os.RemoveAll(workspaceDir); err != nil {
+		cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove terminal workspace: %w", err))
+	}
+	if cleanupErr != nil {
+		return snapshot, cleanupErr
+	}
 	return snapshot, nil
 }
 
@@ -1313,7 +1382,7 @@ func canTransferRecoveredSessionOwnership(snapshot terminaldomain.Session, req R
 	return requestTerminalSessionID == snapshotTerminalSessionID
 }
 
-func resolveSessionWorkspaceDir(baseDir string, sessionID string) (string, error) {
+func resolveSessionWorkspacePath(baseDir string, sessionID string) (string, error) {
 	root := strings.TrimSpace(baseDir)
 	if root == "" {
 		root = "."
@@ -1330,14 +1399,22 @@ func resolveSessionWorkspaceDir(baseDir string, sessionID string) (string, error
 		workspaceSessionsDirName,
 		sanitizedSessionID,
 	)
-	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
-		return "", fmt.Errorf("prepare terminal workspace: %w", err)
-	}
 	absolute, err := filepath.Abs(workspaceDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve terminal workspace path: %w", err)
 	}
 	return absolute, nil
+}
+
+func resolveSessionWorkspaceDir(baseDir string, sessionID string) (string, error) {
+	workspaceDir, err := resolveSessionWorkspacePath(baseDir, sessionID)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		return "", fmt.Errorf("prepare terminal workspace: %w", err)
+	}
+	return workspaceDir, nil
 }
 
 func sanitizeWorkspaceSegment(value string) string {

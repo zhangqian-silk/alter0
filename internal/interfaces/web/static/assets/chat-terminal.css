@@ -336,6 +336,24 @@
 }
 
 .terminal-session-close {
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.terminal-session-close:hover:not(:disabled) {
+  background: rgba(248, 250, 252, 1);
+  border-color: rgba(100, 116, 139, 0.3);
+}
+
+.terminal-session-delete {
   border: 1px solid rgba(239, 68, 68, 0.18);
   border-radius: 999px;
   background: rgba(239, 68, 68, 0.08);
@@ -348,12 +366,13 @@
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
-.terminal-session-close:hover:not(:disabled) {
+.terminal-session-delete:hover:not(:disabled) {
   background: rgba(239, 68, 68, 0.14);
   border-color: rgba(239, 68, 68, 0.26);
 }
 
-.terminal-session-close:disabled {
+.terminal-session-close:disabled,
+.terminal-session-delete:disabled {
   opacity: 0.56;
   cursor: not-allowed;
 }
@@ -362,17 +381,23 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   position: relative;
   background: #1e1e1e;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .terminal-sticky-prompt-shell {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 4;
   padding: 10px 14px 0;
   background: linear-gradient(180deg, rgba(30, 30, 30, 1) 0%, rgba(30, 30, 30, 0.94) 100%);
+  pointer-events: none;
 }
 
 .terminal-chat-screen {
@@ -389,6 +414,8 @@
   overflow-x: hidden;
   overscroll-behavior: contain;
   scroll-padding-top: 72px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .terminal-sticky-prompt {
@@ -406,6 +433,7 @@
   box-shadow: 0 12px 24px -18px rgba(15, 23, 42, 0.75);
   backdrop-filter: blur(12px);
   pointer-events: none;
+  max-width: 100%;
 }
 
 .terminal-sticky-prompt-prefix {
@@ -443,6 +471,8 @@
   min-width: 0;
   font-size: 12px;
   line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .terminal-log-main {
@@ -1176,6 +1206,8 @@
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .terminal-final-rendered > :first-child {
@@ -1965,13 +1997,15 @@
 
   .terminal-inline-button,
   .terminal-status-pill,
-  .terminal-session-close {
+  .terminal-session-close,
+  .terminal-session-delete {
     min-height: 32px;
     font-size: 11px;
     padding: 0 10px;
   }
 
   .terminal-session-close,
+  .terminal-session-delete,
   .terminal-inline-button,
   .terminal-status-pill {
     white-space: nowrap;
