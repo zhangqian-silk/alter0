@@ -61,10 +61,11 @@ type CodexCLIProcessor struct {
 }
 
 type codexExecutionPayload struct {
-	Protocol    string                   `json:"protocol"`
-	UserPrompt  string                   `json:"user_prompt"`
-	SkillPolicy *execdomain.SkillContext `json:"skill_context,omitempty"`
-	MCPPolicy   *execdomain.MCPContext   `json:"mcp_context,omitempty"`
+	Protocol     string                    `json:"protocol"`
+	UserPrompt   string                    `json:"user_prompt"`
+	SkillPolicy  *execdomain.SkillContext  `json:"skill_context,omitempty"`
+	MCPPolicy    *execdomain.MCPContext    `json:"mcp_context,omitempty"`
+	MemoryPolicy *execdomain.MemoryContext `json:"memory_context,omitempty"`
 }
 
 type codexJSONEvent struct {
@@ -362,6 +363,7 @@ func resolveStreamDelta(previous string, next string) string {
 func buildCodexPrompt(prompt string, metadata map[string]string) (string, error) {
 	rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey))
 	rawMCPContext := strings.TrimSpace(metadataValue(metadata, execdomain.MCPContextMetadataKey))
+	rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey))
 
 	var skillContext *execdomain.SkillContext
 	if rawSkillContext != "" {
@@ -384,15 +386,27 @@ func buildCodexPrompt(prompt string, metadata map[string]string) (string, error)
 			mcpContext = &parsedMCPContext
 		}
 	}
-	if skillContext == nil && mcpContext == nil {
+
+	var memoryContext *execdomain.MemoryContext
+	if rawMemoryContext != "" {
+		parsedMemoryContext := execdomain.MemoryContext{}
+		if err := json.Unmarshal([]byte(rawMemoryContext), &parsedMemoryContext); err != nil {
+			return "", fmt.Errorf("invalid memory context metadata: %w", err)
+		}
+		if len(parsedMemoryContext.Files) > 0 {
+			memoryContext = &parsedMemoryContext
+		}
+	}
+	if skillContext == nil && mcpContext == nil && memoryContext == nil {
 		return prompt, nil
 	}
 
 	payload := codexExecutionPayload{
-		Protocol:    "alter0.codex-exec/v1",
-		UserPrompt:  prompt,
-		SkillPolicy: skillContext,
-		MCPPolicy:   mcpContext,
+		Protocol:     "alter0.codex-exec/v1",
+		UserPrompt:   prompt,
+		SkillPolicy:  skillContext,
+		MCPPolicy:    mcpContext,
+		MemoryPolicy: memoryContext,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

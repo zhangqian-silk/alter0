@@ -20,6 +20,7 @@ type SkillSpec struct {
 	ID                string            `json:"id"`
 	Name              string            `json:"name"`
 	Description       string            `json:"description"`
+	Guide             string            `json:"guide,omitempty"`
 	Priority          int               `json:"priority"`
 	ParameterTemplate map[string]string `json:"parameter_template,omitempty"`
 	Constraints       []string          `json:"constraints,omitempty"`

@@ -14,6 +14,7 @@ const (
 	agentToolsMetadataKey         = "agent.tools"
 	agentSkillsMetadataKey        = "agent.skills"
 	agentMCPsMetadataKey          = "agent.mcps"
+	agentMemoryFilesMetadataKey   = "agent.memory_files"
 )
 
 type Agent struct {
@@ -30,6 +31,7 @@ type Agent struct {
 	Tools         []string          `json:"tools,omitempty"`
 	Skills        []string          `json:"skills,omitempty"`
 	MCPs          []string          `json:"mcps,omitempty"`
+	MemoryFiles   []string          `json:"memory_files,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
@@ -50,6 +52,7 @@ func (a Agent) AsCapability() Capability {
 	setAgentListMetadata(metadata, agentToolsMetadataKey, a.Tools)
 	setAgentListMetadata(metadata, agentSkillsMetadataKey, a.Skills)
 	setAgentListMetadata(metadata, agentMCPsMetadataKey, a.MCPs)
+	setAgentListMetadata(metadata, agentMemoryFilesMetadataKey, a.MemoryFiles)
 	return Capability{
 		ID:       a.ID,
 		Name:     a.Name,
@@ -88,6 +91,7 @@ func AgentFromCapability(capability Capability) Agent {
 		Tools:         parseAgentListMetadata(metadata[agentToolsMetadataKey]),
 		Skills:        parseAgentListMetadata(metadata[agentSkillsMetadataKey]),
 		MCPs:          parseAgentListMetadata(metadata[agentMCPsMetadataKey]),
+		MemoryFiles:   parseAgentListMetadata(metadata[agentMemoryFilesMetadataKey]),
 		Metadata:      metadata,
 	}
 	delete(agent.Metadata, agentProviderIDMetadataKey)
@@ -97,6 +101,7 @@ func AgentFromCapability(capability Capability) Agent {
 	delete(agent.Metadata, agentToolsMetadataKey)
 	delete(agent.Metadata, agentSkillsMetadataKey)
 	delete(agent.Metadata, agentMCPsMetadataKey)
+	delete(agent.Metadata, agentMemoryFilesMetadataKey)
 	if len(agent.Metadata) == 0 {
 		agent.Metadata = nil
 	}

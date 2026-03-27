@@ -86,6 +86,38 @@ const AVAILABLE_CHAT_TOOLS = [
     description: "Allow agent execution to call Codex CLI for concrete implementation steps."
   }
 ];
+const AGENT_MEMORY_FILE_OPTIONS = [
+  {
+    id: "user_md",
+    name: "USER.md",
+    description: "User profile, collaboration preferences, and stable output conventions."
+  },
+  {
+    id: "soul_md",
+    name: "SOUL.md",
+    description: "Mandatory long-term rules and hard constraints with highest priority."
+  },
+  {
+    id: "agents_md",
+    name: "AGENTS.md",
+    description: "Repository collaboration rules and agent operating instructions."
+  },
+  {
+    id: "memory_long_term",
+    name: "MEMORY.md / memory.md",
+    description: "Long-term durable memory, including alter0 long-term memory fallback."
+  },
+  {
+    id: "memory_daily_today",
+    name: "Daily Memory (Today)",
+    description: "Today's daily memory log, aligned with OpenClaw-style daily context."
+  },
+  {
+    id: "memory_daily_yesterday",
+    name: "Daily Memory (Yesterday)",
+    description: "Yesterday's daily memory log for short-horizon recall on session start."
+  }
+];
 const I18N = {
   en: {
     // Navigation
@@ -245,6 +277,7 @@ const I18N = {
     "route.agent.form.tools": "Tools",
     "route.agent.form.skills": "Skills",
     "route.agent.form.mcps": "MCP",
+    "route.agent.form.memory_files": "Memory Files",
     "route.agent.form.iterations": "Max Iterations",
     "route.agent.form.enabled": "Enabled",
     "route.agent.form.managed": "Service-managed Fields",
@@ -698,6 +731,7 @@ const I18N = {
     "route.agent.form.tools": "Tools",
     "route.agent.form.skills": "Skills",
     "route.agent.form.mcps": "MCP",
+    "route.agent.form.memory_files": "Memory Files",
     "route.agent.form.iterations": "最大迭代次数",
     "route.agent.form.enabled": "启用",
     "route.agent.form.managed": "服务托管字段",
@@ -4437,7 +4471,8 @@ function normalizeAgentBuilderDraft(agent = {}) {
     max_iterations: Number.isFinite(Number(agent?.max_iterations)) ? Math.max(0, Number(agent.max_iterations)) : 0,
     tools: Array.isArray(agent?.tools) && agent.tools.length ? agent.tools.map((item) => String(item || "").trim()).filter(Boolean) : ["list_dir", "read", "write", "edit", "bash", "codex_exec"],
     skills: Array.isArray(agent?.skills) ? agent.skills.map((item) => String(item || "").trim()).filter(Boolean) : [],
-    mcps: Array.isArray(agent?.mcps) ? agent.mcps.map((item) => String(item || "").trim()).filter(Boolean) : []
+    mcps: Array.isArray(agent?.mcps) ? agent.mcps.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    memory_files: Array.isArray(agent?.memory_files) ? agent.memory_files.map((item) => String(item || "").trim()).filter(Boolean) : []
   };
 }
 
@@ -4485,7 +4520,7 @@ function renderAgentOptionList(items, selectedValues, fieldName) {
     const optionName = String(item?.name || optionID).trim() || optionID;
     return `<label class="agent-builder-option">
       <input type="checkbox" name="${escapeHTML(fieldName)}" value="${escapeHTML(optionID)}" ${selected.has(optionID) ? "checked" : ""}>
-      <span>${escapeHTML(optionName)}</span>
+      <span title="${escapeHTML(String(item?.description || "").trim())}">${escapeHTML(optionName)}</span>
     </label>`;
   }).join("");
 }
@@ -4496,6 +4531,7 @@ async function loadAgentView(container) {
     agents: [],
     skills: [],
     mcps: [],
+    memoryFiles: AGENT_MEMORY_FILE_OPTIONS,
     draft: normalizeAgentBuilderDraft(),
     statusMessage: "",
     statusKind: "",
@@ -4596,6 +4632,10 @@ async function loadAgentView(container) {
             <h5>${escapeHTML(t("route.agent.form.mcps"))}</h5>
             <div class="agent-builder-options">${renderAgentOptionList(localState.mcps, localState.draft.mcps, "mcps")}</div>
           </div>
+          <div class="agent-builder-wide agent-builder-section">
+            <h5>${escapeHTML(t("route.agent.form.memory_files"))}</h5>
+            <div class="agent-builder-options">${renderAgentOptionList(localState.memoryFiles, localState.draft.memory_files, "memory_files")}</div>
+          </div>
           <div class="task-filter-actions">
             <button class="task-filter-apply" type="submit">${escapeHTML(t("route.agent.form.save"))}</button>
             <button class="task-filter-reset" type="button" data-agent-delete ${canDelete ? "" : "disabled"}>${escapeHTML(t("route.agent.form.delete"))}</button>
@@ -4638,7 +4678,8 @@ async function loadAgentView(container) {
       max_iterations: Number(formData.get("max_iterations") || 0),
       tools: parseAgentListInput(formData.get("tools") || ""),
       skills: formData.getAll("skills").map((item) => String(item || "").trim()).filter(Boolean),
-      mcps: formData.getAll("mcps").map((item) => String(item || "").trim()).filter(Boolean)
+      mcps: formData.getAll("mcps").map((item) => String(item || "").trim()).filter(Boolean),
+      memory_files: formData.getAll("memory_files").map((item) => String(item || "").trim()).filter(Boolean)
     };
     try {
       const saved = await requestJSON(selectedAgent?.id ? `/api/control/agents/${encodeURIComponent(selectedAgent.id)}` : "/api/control/agents", {

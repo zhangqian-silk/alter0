@@ -72,6 +72,7 @@ func TestCodexCLIProcessorProcessWithSkillContextPayload(t *testing.T) {
 				ID:          "summary",
 				Name:        "Summary",
 				Description: "summary docs",
+				Guide:       "review the memory files before editing",
 				Priority:    200,
 				ParameterTemplate: map[string]string{
 					"lang": "zh-CN",
@@ -85,7 +86,7 @@ func TestCodexCLIProcessorProcessWithSkillContextPayload(t *testing.T) {
 		t.Fatalf("marshal skill context: %v", err)
 	}
 
-	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","skill_context":{"protocol":"alter0.skill-context/v1","skills":[{"id":"summary","name":"Summary","description":"summary docs","priority":200,"parameter_template":{"lang":"zh-CN"},"constraints":["max:300"]}]}}`
+	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","skill_context":{"protocol":"alter0.skill-context/v1","skills":[{"id":"summary","name":"Summary","description":"summary docs","guide":"review the memory files before editing","priority":200,"parameter_template":{"lang":"zh-CN"},"constraints":["max:300"]}]}}`
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
@@ -179,6 +180,41 @@ func TestCodexCLIProcessorProcessWithSkillAndMCPContextPayload(t *testing.T) {
 		execdomain.RuntimeSessionIDMetadataKey: "session-default",
 		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
 		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
+	})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
+	}
+}
+
+func TestCodexCLIProcessorProcessWithMemoryContextPayload(t *testing.T) {
+	memoryContext := execdomain.MemoryContext{
+		Protocol: execdomain.MemoryContextProtocolVersion,
+		Files: []execdomain.MemoryFileSpec{
+			{
+				ID:        "user_md",
+				Selection: "user_md",
+				Title:     "USER.md",
+				Path:      "/repo/USER.md",
+				Exists:    true,
+				Writable:  true,
+				Content:   "name: alter0",
+			},
+		},
+	}
+	rawMemoryContext, err := json.Marshal(memoryContext)
+	if err != nil {
+		t.Fatalf("marshal memory context: %v", err)
+	}
+
+	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","memory_context":{"protocol":"alter0.memory-context/v1","files":[{"id":"user_md","selection":"user_md","title":"USER.md","path":"/repo/USER.md","exists":true,"writable":true,"content":"name: alter0"}]}}`
+	processor := newTestProcessor("success", expectedPrompt)
+
+	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		execdomain.MemoryContextMetadataKey:    string(rawMemoryContext),
 	})
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)

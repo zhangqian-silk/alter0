@@ -309,6 +309,9 @@ func buildHybridReActSystemPrompt(metadata map[string]string) string {
 	if rawMCPContext := strings.TrimSpace(metadataValue(metadata, execdomain.MCPContextMetadataKey)); rawMCPContext != "" {
 		parts = append(parts, "MCP context (JSON): "+rawMCPContext)
 	}
+	if rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey)); rawMemoryContext != "" {
+		parts = append(parts, renderMemoryContextInstruction(rawMemoryContext))
+	}
 	return strings.Join(parts, "\n\n")
 }
 
@@ -334,7 +337,43 @@ func buildAgentSystemPrompt(metadata map[string]string) string {
 	if rawMCPContext := strings.TrimSpace(metadataValue(metadata, execdomain.MCPContextMetadataKey)); rawMCPContext != "" {
 		parts = append(parts, "Resolved MCP context (JSON): "+rawMCPContext)
 	}
+	if rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey)); rawMemoryContext != "" {
+		parts = append(parts, renderMemoryContextInstruction(rawMemoryContext))
+		parts = append(parts, "When the user asks to remember, update, or persist durable guidance, use read/write/edit tools to modify the appropriate memory files directly.")
+	}
 	return strings.Join(parts, "\n\n")
+}
+
+func renderMemoryContextInstruction(raw string) string {
+	context := execdomain.MemoryContext{}
+	if err := json.Unmarshal([]byte(raw), &context); err != nil || len(context.Files) == 0 {
+		return "Resolved memory context (JSON): " + raw
+	}
+
+	var builder strings.Builder
+	builder.WriteString("Resolved memory files:\n")
+	for _, file := range context.Files {
+		builder.WriteString("- ")
+		builder.WriteString(strings.TrimSpace(file.Title))
+		builder.WriteString("\n  path: ")
+		builder.WriteString(strings.TrimSpace(file.Path))
+		builder.WriteString("\n  exists: ")
+		if file.Exists {
+			builder.WriteString("true")
+		} else {
+			builder.WriteString("false")
+		}
+		if updatedAt := strings.TrimSpace(file.UpdatedAt); updatedAt != "" {
+			builder.WriteString("\n  updated_at: ")
+			builder.WriteString(updatedAt)
+		}
+		if content := strings.TrimSpace(file.Content); content != "" {
+			builder.WriteString("\n  content:\n")
+			builder.WriteString(content)
+		}
+		builder.WriteString("\n")
+	}
+	return strings.TrimSpace(builder.String())
 }
 
 func buildAgentTools(metadata map[string]string) []llmdomain.Tool {

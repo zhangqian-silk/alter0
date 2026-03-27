@@ -1,6 +1,6 @@
 # Requirements Details (R-021 ~ R-030)
 
-> Last update: 2026-03-04
+> Last update: 2026-03-27
 
 ## 需求细化（草案）
 
@@ -19,21 +19,23 @@
 
 ### R-022 用户配置 Skills 接入 Codex
 
-1. 根据用户配置筛选启用的 Skills，并按优先级注入 Codex 执行上下文。
-2. 定义 Skills 注入协议（名称、描述、参数模板、约束）以避免自由文本拼接。
-3. 提供冲突处理策略（同名 skill、重复能力、参数冲突）并可观测。
-4. 验收：关闭某 Skill 后不再注入；开启后可在 Codex 执行结果中体现其能力影响。
+1. 根据用户配置筛选启用的 Skills，并按优先级注入 Codex 与 Agent 执行上下文。
+2. 定义 Skills 注入协议（名称、描述、guide、参数模板、约束）以避免自由文本拼接。
+3. 支持内置 Skill 作为稳定能力底座；当前默认提供 `default-nl` 与 `memory`，其中 `memory` 用于补充记忆模块说明、文件职责与读写时机。
+4. 提供冲突处理策略（同名 skill、重复能力、参数冲突）并可观测。
+5. 验收：关闭某 Skill 后不再注入；开启后可在 Codex / Agent 执行结果中体现其能力影响。
 
 #### Traceability
 
-- 实现文件：`internal/execution/domain/skill_context.go`、`internal/execution/application/skill_context_resolver.go`、`internal/execution/application/service.go`、`internal/execution/infrastructure/codex_cli_processor.go`、`internal/orchestration/application/service.go`、`cmd/alter0/main.go`
+- 实现文件：`internal/execution/domain/skill_context.go`、`internal/execution/application/skill_context_resolver.go`、`internal/execution/application/service.go`、`internal/execution/infrastructure/codex_cli_processor.go`、`internal/orchestration/application/service.go`、`cmd/alter0/builtin_skills.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/execution/application/service_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/orchestration/application/service_test.go`
-- 协议约束：`alter0.skill-context/v1`，注入结构固定为 `protocol`、`skills[].name/description/parameter_template/constraints`、`resolved_parameters`、`conflicts`；通过 `alter0.skill_context` 元数据注入，禁止自由文本拼接。
+- 协议约束：`alter0.skill-context/v1`，注入结构固定为 `protocol`、`skills[].name/description/guide/parameter_template/constraints`、`resolved_parameters`、`conflicts`；通过 `alter0.skill_context` 元数据注入，禁止自由文本拼接。
 - 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
 - 验证记录：
   - 2026-03-03：仅注入 `enabled=true` 的 Skills，按 `skill.priority` 降序注入；关闭 Skill 后 `skills.injected_count` 与注入上下文立即收敛。
   - 2026-03-03：同名 Skill、重复能力、参数值冲突按优先级保留高优先级项，冲突明细写入 `skills.conflicts` 与 `skills.conflict_types`。
   - 2026-03-03：Codex 执行参数切换为结构化 JSON 载荷（`alter0.codex-exec/v1`），执行结果元数据可观测 `skills.injected_ids`、`skills.injected_count`、`skills.conflict_count`。
+  - 2026-03-27：Skill 协议新增 `guide` 字段，可承载独立操作说明；默认内置 `memory` Skill，用于向 Agent / Codex 说明 alter0 记忆模块、文件职责与读写规则。
 
 ### R-023 用户配置 MCP 接入 Codex
 
