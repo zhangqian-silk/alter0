@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
@@ -20,10 +21,21 @@ type stubRuntimeRestarter struct {
 	options  RuntimeRestartOptions
 }
 
+type stubRuntimeInfoProvider struct {
+	info RuntimeInfo
+}
+
 func (s *stubRuntimeRestarter) RequestRestart(options RuntimeRestartOptions) (bool, error) {
 	s.called++
 	s.options = options
 	return s.accepted, s.err
+}
+
+func (s *stubRuntimeInfoProvider) GetRuntimeInfo() RuntimeInfo {
+	if s == nil {
+		return RuntimeInfo{}
+	}
+	return s.info
 }
 
 func TestSkillEndpointUsesUnifiedCapabilityFields(t *testing.T) {
@@ -337,6 +349,38 @@ func TestRuntimeRestartEndpointAcceptsSyncRemoteMasterOption(t *testing.T) {
 	}
 	if !restarter.options.SyncRemoteMaster {
 		t.Fatalf("expected sync_remote_master forwarded to runtime restarter")
+	}
+}
+
+func TestRuntimeInfoEndpointReturnsStartedAtAndCommitHash(t *testing.T) {
+	startedAt := time.Date(2026, time.March, 27, 14, 30, 0, 0, time.UTC)
+	server := &Server{
+		runtimeInfo: &stubRuntimeInfoProvider{
+			info: RuntimeInfo{
+				StartedAt:  startedAt,
+				CommitHash: "0123456789abcdef0123456789abcdef01234567",
+			},
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/control/runtime", nil)
+	rec := httptest.NewRecorder()
+	server.runtimeInfoHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok status, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var payload RuntimeInfo
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode runtime info failed: %v", err)
+	}
+	if !payload.StartedAt.Equal(startedAt) {
+		t.Fatalf("expected started_at %s, got %s", startedAt, payload.StartedAt)
+	}
+	if payload.CommitHash != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("unexpected commit hash %q", payload.CommitHash)
 	}
 }
 

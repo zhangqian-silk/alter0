@@ -127,6 +127,7 @@ func main() {
 	defer cancel()
 
 	logger := observability.NewLogger(slog.LevelInfo)
+	runtimeInfo := newRuntimeInfoProvider(time.Now().UTC(), mustGetwd())
 	telemetry := observability.NewTelemetry()
 	idGen := sharedinfra.NewRandomIDGenerator()
 
@@ -335,6 +336,7 @@ func main() {
 		llmService,
 		logger,
 	)
+	server.SetRuntimeInfoProvider(runtimeInfo)
 	restarter, err := newRuntimeRestarter(cancel, logger, filterInternalRuntimeArgs(os.Args[1:]))
 	if err != nil {
 		logger.Error("failed to initialize service restarter", slog.String("error", err.Error()))
@@ -368,6 +370,14 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func mustGetwd() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return dir
 }
 
 func mustRegister(registry *orchinfra.InMemoryCommandRegistry, handler orchdomain.CommandHandler) {

@@ -84,6 +84,7 @@ type Server struct {
 	tasks            taskService
 	terminals        terminalService
 	runtime          runtimeRestarter
+	runtimeInfo      runtimeInfoProvider
 	memory           *agentMemoryService
 	llm              llmService
 	logger           *slog.Logger
@@ -142,8 +143,17 @@ type runtimeRestarter interface {
 	RequestRestart(options RuntimeRestartOptions) (bool, error)
 }
 
+type runtimeInfoProvider interface {
+	GetRuntimeInfo() RuntimeInfo
+}
+
 type RuntimeRestartOptions struct {
 	SyncRemoteMaster bool `json:"sync_remote_master"`
+}
+
+type RuntimeInfo struct {
+	StartedAt  time.Time `json:"started_at,omitempty"`
+	CommitHash string    `json:"commit_hash,omitempty"`
 }
 
 type messageRequest struct {
@@ -535,6 +545,13 @@ func (s *Server) SetRuntimeRestarter(restarter runtimeRestarter) {
 	s.runtime = restarter
 }
 
+func (s *Server) SetRuntimeInfoProvider(provider runtimeInfoProvider) {
+	if s == nil {
+		return
+	}
+	s.runtimeInfo = provider
+}
+
 func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", s.telemetry.MetricsHandler())
@@ -559,6 +576,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/tasks/", s.controlTaskItemHandler)
 	mux.HandleFunc("/api/control/environments", s.environmentConfigHandler)
 	mux.HandleFunc("/api/control/environments/audits", s.environmentAuditListHandler)
+	mux.HandleFunc("/api/control/runtime", s.runtimeInfoHandler)
 	mux.HandleFunc("/api/control/runtime/restart", s.runtimeRestartHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
@@ -2516,6 +2534,18 @@ func (s *Server) environmentAuditListHandler(w http.ResponseWriter, r *http.Requ
 	}
 	revealSensitive := parseBoolFlag(r.URL.Query().Get("reveal_sensitive"))
 	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListEnvironmentAudits(revealSensitive)})
+}
+
+func (s *Server) runtimeInfoHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if s.runtimeInfo == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "runtime info unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.runtimeInfo.GetRuntimeInfo())
 }
 
 func (s *Server) runtimeRestartHandler(w http.ResponseWriter, r *http.Request) {
