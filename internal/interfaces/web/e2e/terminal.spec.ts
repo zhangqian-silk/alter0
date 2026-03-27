@@ -177,6 +177,141 @@ test.describe("Terminal route", () => {
     }
   });
 
+  test("keeps the terminal chat scroller node stable while polling during scroll", async ({ page, request }) => {
+    const clientID = createTerminalClientID("scroll-stability");
+    const session = await createTerminalSession(request, clientID);
+    const now = Date.now();
+    const entries = Array.from({ length: 80 }, (_, index) => ({
+      id: `entry-${index + 1}`,
+      role: "output",
+      text: `line ${index + 1} ${"terminal output ".repeat(4).trim()}`,
+      at: now - ((80 - index) * 1000),
+      kind: "stdout",
+      stream: "stdout",
+      cursor: index + 1,
+    }));
+
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [{
+      ...session,
+      title: session.id,
+      status: "running",
+      last_output_at: now,
+      updated_at: now,
+      entry_cursor: entries.length,
+      disconnected_notice: false,
+      entries,
+      chat_scroll_top: 0,
+      chat_bottom_offset: 0,
+      chat_has_unread_output: false,
+      chat_last_seen_output_at: now,
+      chat_stick_to_bottom: false,
+    }]);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    const chatScreen = terminalPage.chatScreen();
+    await expect(chatScreen).toBeVisible();
+    await expect.poll(async () => {
+      return await chatScreen.evaluate((node) => node.scrollHeight > node.clientHeight + 32);
+    }).toBe(true);
+    await waitForTerminalPoll(page, session.id);
+
+    await chatScreen.evaluate((node) => {
+      node.scrollTop = Math.max(0, (node.scrollHeight - node.clientHeight) * 0.45);
+    });
+    const beforeScrollTop = await chatScreen.evaluate((node) => Math.round(node.scrollTop));
+    const chatHandle = await chatScreen.elementHandle();
+
+    if (!chatHandle) {
+      throw new Error("terminal chat handle missing");
+    }
+
+    try {
+      await waitForTerminalPoll(page, session.id);
+      await expect.poll(async () => {
+        return await page.evaluate((node) => {
+          const current = document.querySelector("[data-terminal-chat-screen]");
+          return Boolean(node && node.isConnected && current === node);
+        }, chatHandle);
+      }).toBe(true);
+
+      const afterScrollTop = await chatScreen.evaluate((node) => Math.round(node.scrollTop));
+      expect(afterScrollTop).toBeGreaterThan(0);
+      expect(Math.abs(afterScrollTop - beforeScrollTop)).toBeLessThan(8);
+    } finally {
+      await chatHandle.dispose();
+    }
+  });
+
+  test("keeps long terminal output constrained within the chat frame", async ({ page }) => {
+    const clientID = createTerminalClientID("overflow-guard");
+    const now = Date.now();
+    const longToken = "terminal-output-overflow-check-".repeat(40);
+    const longCodeLine = `const payload = "${"x".repeat(720)}";`;
+
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [{
+      id: "terminal-overflow-check",
+      title: "terminal-overflow-check",
+      terminal_session_id: "thread-overflow-check",
+      status: "interrupted",
+      shell: "codex exec",
+      working_dir: terminalSessionWorkspace("terminal-overflow-check"),
+      created_at: now - 10_000,
+      updated_at: now,
+      last_output_at: now,
+      entry_cursor: 0,
+      disconnected_notice: false,
+      entries: [],
+      turns: [{
+        id: "turn-overflow-check",
+        prompt: "show overflow case",
+        status: "completed",
+        started_at: now - 3_000,
+        finished_at: now - 1_000,
+        duration_ms: 2_000,
+        final_output: [
+          longToken,
+          "",
+          "```ts",
+          longCodeLine,
+          "```",
+        ].join("\n"),
+        steps: [],
+      }],
+      process_collapsed: {},
+      output_collapsed: {},
+      expanded_steps: {},
+      step_details: {},
+      step_errors: {},
+      step_loading: {},
+      step_search: {},
+      meta_expanded: false,
+      chat_scroll_top: 0,
+      chat_bottom_offset: 0,
+      chat_has_unread_output: false,
+      chat_last_seen_output_at: now,
+      chat_stick_to_bottom: true,
+    }]);
+
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    await expect(terminalPage.workspace()).toBeVisible();
+    await expect(terminalPage.finalOutputs().first()).toBeVisible();
+
+    const widthWithinFrame = async (selector: string) => {
+      return await page.locator(selector).first().evaluate((node) => {
+        return node.scrollWidth <= node.clientWidth + 2;
+      });
+    };
+
+    await expect.poll(async () => await widthWithinFrame("[data-terminal-chat-screen]")).toBe(true);
+    await expect.poll(async () => await widthWithinFrame("[data-terminal-turn]")).toBe(true);
+    await expect.poll(async () => await widthWithinFrame(".terminal-final-output")).toBe(true);
+  });
+
   test("toggles the mobile session sheet without leaving it expanded after selection", async ({ page, request }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-sheet", count: 2 });
