@@ -93,7 +93,10 @@ func (s *Service) persistSession(item *runtimeSession) {
 	if item == nil {
 		return
 	}
-	record := snapshotPersistedSession(item)
+	record, deleted := snapshotPersistedSession(item)
+	if deleted {
+		return
+	}
 	if strings.TrimSpace(record.Summary.ID) == "" {
 		return
 	}
@@ -111,6 +114,10 @@ func (s *Service) persistSession(item *runtimeSession) {
 	tempPath := path + ".tmp"
 	if err := os.WriteFile(tempPath, data, 0o644); err != nil {
 		s.logger.Warn("write terminal session record failed", "path", tempPath, "error", err.Error())
+		return
+	}
+	if isRuntimeSessionDeleted(item) {
+		_ = os.Remove(tempPath)
 		return
 	}
 	if err := os.Rename(tempPath, path); err != nil {
@@ -180,9 +187,12 @@ func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string)
 	return session, nil
 }
 
-func snapshotPersistedSession(item *runtimeSession) persistedSessionRecord {
+func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, bool) {
 	item.mu.RLock()
 	defer item.mu.RUnlock()
+	if item.deleted {
+		return persistedSessionRecord{}, true
+	}
 
 	record := persistedSessionRecord{
 		Summary:      item.summary,
@@ -226,7 +236,16 @@ func snapshotPersistedSession(item *runtimeSession) persistedSessionRecord {
 		}
 		record.Turns = append(record.Turns, persistedTurn)
 	}
-	return record
+	return record, false
+}
+
+func isRuntimeSessionDeleted(item *runtimeSession) bool {
+	if item == nil {
+		return false
+	}
+	item.mu.RLock()
+	defer item.mu.RUnlock()
+	return item.deleted
 }
 
 func restorePersistedSession(record persistedSessionRecord, now time.Time) *runtimeSession {
@@ -360,6 +379,17 @@ func parseRuntimeOrdinal(value string, prefix string) int {
 }
 
 func resolveTerminalSessionStateDir(baseDir string) (string, error) {
+	dir, err := resolveTerminalSessionStatePath(baseDir)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("prepare terminal session store: %w", err)
+	}
+	return dir, nil
+}
+
+func resolveTerminalSessionStatePath(baseDir string) (string, error) {
 	root := strings.TrimSpace(baseDir)
 	if root == "" {
 		root = "."
@@ -371,8 +401,31 @@ func resolveTerminalSessionStateDir(baseDir string) (string, error) {
 		workspaceTerminalDirName,
 		workspaceSessionsDirName,
 	)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("prepare terminal session store: %w", err)
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve terminal session store path: %w", err)
 	}
-	return dir, nil
+	return absolute, nil
+}
+
+func resolveTerminalSessionStateFilePath(baseDir string, sessionID string) (string, error) {
+	dir, err := resolveTerminalSessionStatePath(baseDir)
+	if err != nil {
+		return "", err
+	}
+	sanitizedSessionID := sanitizeWorkspaceSegment(sessionID)
+	if sanitizedSessionID == "" {
+		return "", ErrSessionRecoverIDRequired
+	}
+	return filepath.Join(dir, sanitizedSessionID+".json"), nil
+}
+
+func removeTerminalSessionStateFile(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove terminal session record: %w", err)
+	}
+	return nil
 }

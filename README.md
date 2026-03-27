@@ -116,6 +116,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 默认仅注入运行时必需上下文，不复用 Chat 会话记忆与长期记忆。
 - 每个 Terminal 会话使用独立工作区目录，不再默认落在仓库根目录。
 - Terminal 会持久化 Codex CLI 线程标识与会话状态；运行态退出后保留原会话历史，继续发送即可在同一会话内恢复。
+- Terminal 工作区头部同时提供 `Close` 与 `Delete`：`Close` 仅退出当前运行态并保留会话历史与线程标识，`Delete` 会同时移除会话记录、持久化状态文件与对应工作区目录。
 - 浏览器端会持久化 Terminal client 标识；页面刷新、重新打开路由或临时 `sessionStorage` 丢失后，仍优先复用原 Terminal 会话归属，不把仍可恢复的会话误判为丢失。
 - Terminal 不再设置产品级会话数量上限或固定超时淘汰策略。
 - 移动端访问 Terminal 时，轮询刷新不会重建已聚焦输入框；输入法每次确认词句后，若输入框仍保持聚焦，页面继续延迟重绘并保持当前位置，直到失焦后再刷新视图。
@@ -268,6 +269,7 @@ go run ./cmd/alter0
 - 如需固定 shell，可通过启动参数 `-task-terminal-shell` 或运行时环境键 `task_terminal_shell` 指定
 - Windows 下显式指定 `cmd.exe` 时会补充 UTF-8 代码页初始化；如需稳定中文输出，优先使用 `powershell.exe`
 - Terminal 会话退出后不会清空历史或线程标识；重新在原会话发送输入时，系统会优先复用已持久化的 Codex CLI 线程继续执行
+- `POST /api/terminal/sessions/{id}/close` 用于退出当前 Terminal 运行态但保留原会话历史；`DELETE /api/terminal/sessions/{id}` 用于删除 Terminal 会话，并同步清理 `.alter0/state/terminal/sessions/{id}.json` 与 `.alter0/workspaces/terminal/sessions/{id}`
 - 若 Terminal 会话在首条输入前已失去底层运行态，首次发送会自动恢复同一会话并继续执行，不要求用户新建会话
 - 若浏览器端 Terminal client 标识发生漂移，但同一 Web 登录态下仍携带原 `terminal_session_id` 与 CLI 线程标识，恢复流程会自动重新绑定原会话，不要求用户手动迁移历史
 

@@ -27,6 +27,8 @@ type stubWebTerminalService struct {
 	inputErr    error
 	closeResp   terminaldomain.Session
 	closeErr    error
+	deleteResp  terminaldomain.Session
+	deleteErr   error
 	turnsResp   []terminalapp.TurnSummary
 	turnsErr    error
 	stepResp    terminalapp.StepDetail
@@ -88,6 +90,12 @@ func (s *stubWebTerminalService) Close(ownerID string, sessionID string) (termin
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
 	return s.closeResp, s.closeErr
+}
+
+func (s *stubWebTerminalService) Delete(ownerID string, sessionID string) (terminaldomain.Session, error) {
+	s.lastOwnerID = ownerID
+	s.lastID = sessionID
+	return s.deleteResp, s.deleteErr
 }
 
 func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
@@ -214,7 +222,7 @@ func TestTerminalSessionItemHandlerClosesSession(t *testing.T) {
 	}
 	server := &Server{terminals: service}
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/terminal/sessions/terminal-3", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-3/close", nil)
 	req.Header.Set(terminalClientIDHeader, "client-c")
 	rec := httptest.NewRecorder()
 
@@ -228,6 +236,37 @@ func TestTerminalSessionItemHandlerClosesSession(t *testing.T) {
 	}
 	if service.lastID != "terminal-3" {
 		t.Fatalf("expected session terminal-3, got %q", service.lastID)
+	}
+}
+
+func TestTerminalSessionItemHandlerDeletesSession(t *testing.T) {
+	service := &stubWebTerminalService{
+		deleteResp: terminaldomain.Session{
+			ID:         "terminal-4",
+			OwnerID:    "client-d",
+			Title:      "terminal-4",
+			Status:     terminaldomain.SessionStatusExited,
+			CreatedAt:  time.Now().UTC(),
+			UpdatedAt:  time.Now().UTC(),
+			FinishedAt: time.Now().UTC(),
+		},
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/terminal/sessions/terminal-4", nil)
+	req.Header.Set(terminalClientIDHeader, "client-d")
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if service.lastOwnerID != "client-d" {
+		t.Fatalf("expected owner client-d, got %q", service.lastOwnerID)
+	}
+	if service.lastID != "terminal-4" {
+		t.Fatalf("expected session terminal-4, got %q", service.lastID)
 	}
 }
 
