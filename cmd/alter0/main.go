@@ -225,11 +225,7 @@ func main() {
 		Type:    shareddomain.ChannelTypeScheduler,
 		Enabled: true,
 	})
-	mustUpsertSkill(control, controldomain.Skill{
-		ID:      "default-nl",
-		Name:    "default-nl",
-		Enabled: true,
-	})
+	registerBuiltinSkills(control)
 
 	registry := orchinfra.NewInMemoryCommandRegistry()
 	helpHandler := orchinfra.NewHelpCommandHandler(registry)

@@ -306,6 +306,7 @@ type agentUpsertRequest struct {
 	Tools         []string          `json:"tools,omitempty"`
 	Skills        []string          `json:"skills,omitempty"`
 	MCPs          []string          `json:"mcps,omitempty"`
+	MemoryFiles   []string          `json:"memory_files,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
@@ -2802,6 +2803,7 @@ func (s *Server) agentListHandler(w http.ResponseWriter, r *http.Request) {
 			Tools:         req.Tools,
 			Skills:        req.Skills,
 			MCPs:          req.MCPs,
+			MemoryFiles:   req.MemoryFiles,
 			Metadata:      req.Metadata,
 		})
 		if err != nil {
@@ -2833,6 +2835,7 @@ func buildAgentFromRequest(id string, req agentUpsertRequest) controldomain.Agen
 		Tools:         req.Tools,
 		Skills:        req.Skills,
 		MCPs:          req.MCPs,
+		MemoryFiles:   req.MemoryFiles,
 		Metadata:      req.Metadata,
 	}
 }
@@ -3962,6 +3965,7 @@ func applyAgentProfileMetadata(metadata map[string]string, agent controldomain.A
 	applyDefaultListMetadata(items, execdomain.AgentToolsMetadataKey, agent.Tools)
 	applyDefaultListMetadata(items, "alter0.skills.include", agent.Skills)
 	applyDefaultListMetadata(items, "alter0.mcp.request.enable", agent.MCPs)
+	applyDefaultListMetadata(items, "alter0.memory.include", agent.MemoryFiles)
 	for key, value := range agent.Metadata {
 		trimmedKey := strings.TrimSpace(key)
 		trimmedValue := strings.TrimSpace(value)

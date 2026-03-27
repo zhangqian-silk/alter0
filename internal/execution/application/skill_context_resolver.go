@@ -16,6 +16,7 @@ const (
 
 	skillPriorityKey          = "skill.priority"
 	skillDescriptionKey       = "skill.description"
+	skillGuideKey             = "skill.guide"
 	skillParameterTemplateKey = "skill.parameters"
 	skillConstraintsKey       = "skill.constraints"
 	skillAbilitiesKey         = "skill.abilities"
@@ -254,6 +255,7 @@ func buildSkillSpec(capability controldomain.Capability) execdomain.SkillSpec {
 		ID:                strings.TrimSpace(capability.ID),
 		Name:              strings.TrimSpace(capability.Name),
 		Description:       description,
+		Guide:             strings.TrimSpace(metadataValue(capability.Metadata, skillGuideKey)),
 		Priority:          parseSkillPriority(capability.Metadata),
 		ParameterTemplate: parseParameterTemplate(capability.Metadata),
 		Constraints:       parseList(metadataValue(capability.Metadata, skillConstraintsKey)),

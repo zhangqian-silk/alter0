@@ -1,6 +1,6 @@
 # Requirements Details (R-051 ~ R-060)
 
-> Last update: 2026-03-26
+> Last update: 2026-03-27
 
 ## 需求细化（草案）
 
@@ -52,7 +52,33 @@
 
 ### R-052
 
-暂无细化内容。
+1. `Agent Profile` 配置页必须新增 `Memory Files` 勾选区，与 `Skills`、`MCP` 采用同级勾选交互。
+2. 当前支持的选择项至少包括：`USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、`Daily Memory (Today)`、`Daily Memory (Yesterday)`。
+3. Agent 请求命中对应 Profile 后，服务端必须将勾选结果写入统一运行时元数据，并在执行前解析为结构化 `memory_context`。
+4. `memory_context` 最小字段包括：`protocol`、`files[].id`、`files[].selection`、`files[].title`、`files[].path`、`files[].exists`、`files[].writable`、`files[].updated_at`、`files[].content`。
+5. 文件内容注入需要保留可写文件路径；当目标文件不存在时，仍需返回预期路径与 `exists=false`，允许 Agent 后续直接创建并写入。
+6. Agent 执行链路必须同时支持两类消费方式：
+   - ReAct Agent：在 system prompt 中显式暴露已选记忆文件的路径、存在状态与内容。
+   - Codex 执行链：在 `alter0.codex-exec/v1` 载荷中新增 `memory_context` 字段，保证 fallback 与 `codex_exec` 一致可见。
+7. 所选记忆文件默认视为可维护对象，Agent 可继续通过 `read`、`write`、`edit` 工具直接更新这些文件，无需额外专用写入接口。
+8. 长期记忆与日记忆路径需兼容 `alter0` 当前目录约定，同时允许对齐 OpenClaw 常见文件名：
+   - 长期记忆优先识别 `MEMORY.md`、`memory.md`、`.alter0/memory/long-term/MEMORY.md`
+   - 日记忆优先识别 `memory/YYYY-MM-DD.md` 与 `.alter0/memory/YYYY-MM-DD.md`
+9. 为控制 prompt 体积，单文件与总注入体积必须设置截断上限；截断后保留显式标记，避免模型误以为内容完整。
+10. 验收：
+   - Web `Agent Profiles` 页面可稳定保存和回显 `memory_files`
+   - `POST /api/agent/messages` 会将勾选结果注入为 `alter0.memory.include`
+   - 执行器可生成 `alter0.memory-context/v1`
+   - ReAct 与 Codex 两条链路都能看到相同记忆文件集
+   - 文件不存在时 Agent 仍能拿到目标路径并通过原生工具创建
+11. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
+
+#### Traceability
+
+- 实现文件：`internal/control/domain/agent.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`
+- 执行注入：`internal/execution/domain/memory_context.go`、`internal/execution/application/memory_context_resolver.go`、`internal/execution/application/service.go`
+- 执行消费：`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/execution/infrastructure/codex_cli_processor.go`
+- 测试覆盖：`internal/control/domain/agent_test.go`、`internal/execution/application/service_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/interfaces/web/server_message_test.go`
 
 ### R-053
 

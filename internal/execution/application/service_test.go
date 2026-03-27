@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -120,6 +122,7 @@ func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
 			Metadata: map[string]string{
 				skillPriorityKey:          "200",
 				skillDescriptionKey:       "summary documents",
+				skillGuideKey:             "read the resolved context before writing",
 				skillParameterTemplateKey: `{"lang":"zh-CN"}`,
 				skillConstraintsKey:       "max:300, keep-tone",
 			},
@@ -190,6 +193,9 @@ func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
 	if skillContext.Skills[0].Description != "summary documents" {
 		t.Fatalf("skill description = %q, want summary documents", skillContext.Skills[0].Description)
 	}
+	if skillContext.Skills[0].Guide != "read the resolved context before writing" {
+		t.Fatalf("skill guide = %q, want guide preserved", skillContext.Skills[0].Guide)
+	}
 	if got := skillContext.Skills[0].ParameterTemplate["lang"]; got != "zh-CN" {
 		t.Fatalf("unexpected parameter template lang = %q", got)
 	}
@@ -231,6 +237,68 @@ func TestExecuteNaturalLanguageRespectsIncludeExcludeSelection(t *testing.T) {
 	}
 	if got := result.Metadata[resultSkillConflictKey]; got != "0" {
 		t.Fatalf("skills conflict count = %q, want 0", got)
+	}
+}
+
+func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "USER.md"), []byte("name: alter0"), 0o644); err != nil {
+		t.Fatalf("write USER.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "SOUL.md"), []byte("tone: concise"), 0o644); err != nil {
+		t.Fatalf("write SOUL.md: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-memory",
+		SessionID:   "s-memory",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "remember this",
+		TraceID:     "t-memory",
+		Metadata: map[string]string{
+			memoryIncludeFilterKey: `["user_md","soul_md"]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+	if got := result.Metadata[resultMemoryInjectedIDsKey]; got != "user_md,soul_md" {
+		t.Fatalf("memory injected ids = %q, want user_md,soul_md", got)
+	}
+	if got := result.Metadata[resultMemoryInjectedKey]; got != "2" {
+		t.Fatalf("memory injected count = %q, want 2", got)
+	}
+	rawMemoryContext := processor.lastMetadata[execdomain.MemoryContextMetadataKey]
+	if rawMemoryContext == "" {
+		t.Fatalf("missing %s metadata", execdomain.MemoryContextMetadataKey)
+	}
+	var memoryContext execdomain.MemoryContext
+	if err := json.Unmarshal([]byte(rawMemoryContext), &memoryContext); err != nil {
+		t.Fatalf("unmarshal memory context: %v", err)
+	}
+	if len(memoryContext.Files) != 2 {
+		t.Fatalf("memory context size = %d, want 2", len(memoryContext.Files))
+	}
+	if memoryContext.Files[0].Title != "USER.md" || memoryContext.Files[0].Content != "name: alter0" {
+		t.Fatalf("unexpected first memory file: %+v", memoryContext.Files[0])
+	}
+	if memoryContext.Files[1].Title != "SOUL.md" || memoryContext.Files[1].Content != "tone: concise" {
+		t.Fatalf("unexpected second memory file: %+v", memoryContext.Files[1])
 	}
 }
 

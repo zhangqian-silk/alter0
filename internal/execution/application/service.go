@@ -12,10 +12,11 @@ import (
 )
 
 type Service struct {
-	processor     execdomain.NLProcessor
-	skillResolver *skillContextResolver
-	mcpResolver   *mcpContextResolver
-	logger        *slog.Logger
+	processor      execdomain.NLProcessor
+	skillResolver  *skillContextResolver
+	mcpResolver    *mcpContextResolver
+	memoryResolver *memoryContextResolver
+	logger         *slog.Logger
 }
 
 type streamProcessor interface {
@@ -40,6 +41,10 @@ const (
 	resultMCPProtocolKey    = "mcp.protocol"
 	resultMCPAuditCountKey  = "mcp.audit_count"
 	resultMCPAuditDetailKey = "mcp.audit"
+
+	resultMemoryInjectedIDsKey = "memory.injected_ids"
+	resultMemoryInjectedKey    = "memory.injected_count"
+	resultMemoryProtocolKey    = "memory.protocol"
 )
 
 func NewService(processor execdomain.NLProcessor) *Service {
@@ -52,10 +57,11 @@ func NewServiceWithSkills(
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
-		processor:     processor,
-		skillResolver: newSkillContextResolver(skillSource),
-		mcpResolver:   newMCPContextResolver(skillSource),
-		logger:        logger,
+		processor:      processor,
+		skillResolver:  newSkillContextResolver(skillSource),
+		mcpResolver:    newMCPContextResolver(skillSource),
+		memoryResolver: newMemoryContextResolver(),
+		logger:         logger,
 	}
 }
 
@@ -112,6 +118,9 @@ func (s *Service) executeNaturalLanguage(
 		return "", nil, err
 	}
 	if err := s.resolveMCPContext(msg, metadata, resultMetadata); err != nil {
+		return "", nil, err
+	}
+	if err := s.resolveMemoryContext(msg, metadata, resultMetadata); err != nil {
 		return "", nil, err
 	}
 
@@ -243,6 +252,37 @@ func (s *Service) resolveMCPContext(
 			slog.Int("mcp_injected", len(mcpContext.Servers)),
 			slog.Int("mcp_blocked", blocked),
 			slog.String("mcp_injected_ids", strings.Join(resolution.InjectedIDs, ",")),
+		)
+	}
+	return nil
+}
+
+func (s *Service) resolveMemoryContext(
+	msg shareddomain.UnifiedMessage,
+	metadata map[string]string,
+	resultMetadata map[string]string,
+) error {
+	if s.memoryResolver == nil {
+		return nil
+	}
+	resolution := s.memoryResolver.Resolve(msg)
+	memoryContext := resolution.Context
+	if len(memoryContext.Files) > 0 {
+		rawMemoryContext, err := json.Marshal(memoryContext)
+		if err != nil {
+			return err
+		}
+		metadata[execdomain.MemoryContextMetadataKey] = string(rawMemoryContext)
+		resultMetadata[resultMemoryProtocolKey] = memoryContext.Protocol
+		resultMetadata[resultMemoryInjectedIDsKey] = strings.Join(resolution.InjectedIDs, ",")
+	}
+	resultMetadata[resultMemoryInjectedKey] = strconv.Itoa(len(memoryContext.Files))
+	if s.logger != nil {
+		s.logger.Info("memory context resolved",
+			slog.String("session_id", msg.SessionID),
+			slog.String("message_id", msg.MessageID),
+			slog.Int("memory_files_injected", len(memoryContext.Files)),
+			slog.String("memory_injected_ids", strings.Join(resolution.InjectedIDs, ",")),
 		)
 	}
 	return nil

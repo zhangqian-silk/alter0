@@ -198,6 +198,7 @@ func TestAgentMessageHandlerInjectsAgentProfileMetadata(t *testing.T) {
 		Tools:         []string{"codex_exec"},
 		Skills:        []string{"summary"},
 		MCPs:          []string{"github"},
+		MemoryFiles:   []string{"user_md", "soul_md"},
 	}); err != nil {
 		t.Fatalf("upsert agent failed: %v", err)
 	}
@@ -225,6 +226,9 @@ func TestAgentMessageHandlerInjectsAgentProfileMetadata(t *testing.T) {
 	}
 	if !strings.Contains(orchestrator.lastMessage.Metadata["alter0.mcp.request.enable"], "github") {
 		t.Fatalf("expected mcp selection injected, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if !strings.Contains(orchestrator.lastMessage.Metadata["alter0.memory.include"], "user_md") {
+		t.Fatalf("expected memory file selection injected, got %+v", orchestrator.lastMessage.Metadata)
 	}
 }
 

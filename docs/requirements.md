@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-03-26
+> Last update: 2026-03-27
 
 状态说明：
 
@@ -32,7 +32,7 @@
 | R-019 | 会话内容持久化 | supported | 持久化用户/助手消息主数据与路由结果，支持重启恢复、会话分页与按时间范围检索 |
 | R-020 | 上下文压缩 | supported | 超长上下文触发分层压缩，结构化回写摘要与关键事实并保留消息引用关系，降低长会话 token 成本 |
 | R-021 | Skills/MCP 标准化能力模型 | supported | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
-| R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex 执行上下文，支持选择、排序与冲突处理 |
+| R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex / Agent 执行上下文，支持 description、guide、排序与冲突处理 |
 | R-023 | 用户配置 MCP 接入 Codex | supported | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | supported | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | supported | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
@@ -62,6 +62,7 @@
 | R-049 | 模型配置管理 | planned | 支持配置多个 LLM Provider（base_url、api_key、model_name），提供 Provider 级别的启用/禁用与默认切换 |
 | R-050 | Web 登录后统一 Session 视图 | supported | 密码验证通过后，Web 内 `Chat`、`Agent` 等页面继续保留各自定位与入口，但共享同一套 Session 历史；不再按页面来源拆分 Session，并移除相关冗余文案与状态内容 |
 | R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识；不再对 Terminal 设置产品级会话上限与超时淘汰；运行态缺失后继续发送会自动恢复原会话并保留历史 |
+| R-052 | Agent Memory Files 勾选注入与文件可写记忆对齐 | supported | Agent Profile 支持勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md` 与 Daily Memory；执行前将所选文件内容与路径注入运行时上下文，并可搭配独立 `memory` Skill 统一记忆读写规范 |
 
 ## 需求细化（分文件）
 
