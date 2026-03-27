@@ -205,9 +205,9 @@ func CreateDefaultConfig() *domain.ModelConfig {
 					{ID: "o1-mini", Name: "o1 Mini", SupportsTools: false, SupportsVision: false, SupportsStreaming: false, IsEnabled: true},
 				},
 				IsEnabled: false,
-				IsDefault: true,
+				IsDefault: false,
 			},
 		},
-		DefaultProviderID: "openai",
+		DefaultProviderID: "",
 	}
 }

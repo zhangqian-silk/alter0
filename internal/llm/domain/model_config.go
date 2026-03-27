@@ -196,6 +196,7 @@ func (p *ModelProvider) GetEnabledModels() []ModelInfo {
 // Validate validates the model configuration.
 func (c *ModelConfig) Validate() error {
 	if len(c.Providers) == 0 {
+		c.DefaultProviderID = ""
 		return nil // Empty config is valid
 	}
 
@@ -220,19 +221,7 @@ func (c *ModelConfig) Validate() error {
 		names[nameKey] = true
 	}
 
-	// Check default provider exists
-	if c.DefaultProviderID != "" {
-		found := false
-		for _, p := range c.Providers {
-			if p.ID == c.DefaultProviderID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return errors.New("default provider not found: " + c.DefaultProviderID)
-		}
-	}
+	c.normalizeDefaultProviderState()
 
 	return nil
 }
@@ -249,16 +238,19 @@ func (c *ModelConfig) GetProvider(providerID string) *ModelProvider {
 
 // GetDefaultProvider returns the default provider.
 func (c *ModelConfig) GetDefaultProvider() *ModelProvider {
-	if c.DefaultProviderID == "" {
-		// Return first enabled provider
+	if c.DefaultProviderID != "" {
 		for i := range c.Providers {
-			if c.Providers[i].IsEnabled {
+			if c.Providers[i].ID == c.DefaultProviderID && c.Providers[i].IsEnabled {
 				return &c.Providers[i]
 			}
 		}
-		return nil
 	}
-	return c.GetProvider(c.DefaultProviderID)
+	for i := range c.Providers {
+		if c.Providers[i].IsEnabled {
+			return &c.Providers[i]
+		}
+	}
+	return nil
 }
 
 // GetEnabledProviders returns all enabled providers.
@@ -291,16 +283,10 @@ func (c *ModelConfig) AddProvider(provider ModelProvider) error {
 
 	normalizedProvider.CreatedAt = time.Now()
 	normalizedProvider.UpdatedAt = time.Now()
-
-	// Set as default if first provider
-	if len(c.Providers) == 0 {
-		normalizedProvider.IsDefault = true
-		c.DefaultProviderID = normalizedProvider.ID
-	} else {
-		normalizedProvider.IsDefault = false
-	}
+	normalizedProvider.IsDefault = false
 
 	c.Providers = append(c.Providers, normalizedProvider)
+	c.normalizeDefaultProviderState()
 	c.UpdatedAt = time.Now()
 
 	return nil
@@ -328,11 +314,11 @@ func (c *ModelConfig) UpdateProvider(currentProviderID string, provider ModelPro
 			}
 			normalizedProvider.UpdatedAt = time.Now()
 			normalizedProvider.CreatedAt = c.Providers[i].CreatedAt
-			normalizedProvider.IsDefault = c.DefaultProviderID == currentProviderID
-			if normalizedProvider.IsDefault {
+			if c.DefaultProviderID == currentProviderID {
 				c.DefaultProviderID = normalizedProvider.ID
 			}
 			c.Providers[i] = normalizedProvider
+			c.normalizeDefaultProviderState()
 			c.UpdatedAt = time.Now()
 			return nil
 		}
@@ -345,22 +331,11 @@ func (c *ModelConfig) RemoveProvider(providerID string) error {
 	for i := range c.Providers {
 		if c.Providers[i].ID == providerID {
 			c.Providers = append(c.Providers[:i], c.Providers[i+1:]...)
-			c.UpdatedAt = time.Now()
-
-			// Update default if removed
 			if c.DefaultProviderID == providerID {
 				c.DefaultProviderID = ""
-				if len(c.Providers) > 0 {
-					// Set first enabled provider as default
-					for j := range c.Providers {
-						if c.Providers[j].IsEnabled {
-							c.Providers[j].IsDefault = true
-							c.DefaultProviderID = c.Providers[j].ID
-							break
-						}
-					}
-				}
 			}
+			c.normalizeDefaultProviderState()
+			c.UpdatedAt = time.Now()
 			return nil
 		}
 	}
@@ -388,6 +363,7 @@ func (c *ModelConfig) SetDefaultProvider(providerID string) error {
 	}
 
 	c.DefaultProviderID = providerID
+	c.normalizeDefaultProviderState()
 	c.UpdatedAt = time.Now()
 	return nil
 }
@@ -398,20 +374,40 @@ func (c *ModelConfig) EnableProvider(providerID string, enabled bool) error {
 		if c.Providers[i].ID == providerID {
 			c.Providers[i].IsEnabled = enabled
 			c.Providers[i].UpdatedAt = time.Now()
-			if !enabled && c.DefaultProviderID == providerID {
-				c.DefaultProviderID = ""
-				c.Providers[i].IsDefault = false
-				for j := range c.Providers {
-					if c.Providers[j].ID != providerID && c.Providers[j].IsEnabled {
-						c.Providers[j].IsDefault = true
-						c.DefaultProviderID = c.Providers[j].ID
-						break
-					}
-				}
-			}
+			c.normalizeDefaultProviderState()
 			c.UpdatedAt = time.Now()
 			return nil
 		}
 	}
 	return errors.New("provider not found: " + providerID)
+}
+
+func (c *ModelConfig) normalizeDefaultProviderState() {
+	if len(c.Providers) == 0 {
+		c.DefaultProviderID = ""
+		return
+	}
+
+	selectedID := ""
+	if c.DefaultProviderID != "" {
+		for i := range c.Providers {
+			if c.Providers[i].ID == c.DefaultProviderID && c.Providers[i].IsEnabled {
+				selectedID = c.Providers[i].ID
+				break
+			}
+		}
+	}
+	if selectedID == "" {
+		for i := range c.Providers {
+			if c.Providers[i].IsEnabled {
+				selectedID = c.Providers[i].ID
+				break
+			}
+		}
+	}
+
+	c.DefaultProviderID = selectedID
+	for i := range c.Providers {
+		c.Providers[i].IsDefault = c.Providers[i].ID == selectedID && selectedID != ""
+	}
 }

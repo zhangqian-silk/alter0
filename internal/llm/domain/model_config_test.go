@@ -243,3 +243,122 @@ func TestModelProviderValidateRejectsUnsupportedAPIType(t *testing.T) {
 		t.Fatalf("expected unsupported api_type validation error")
 	}
 }
+
+func TestModelConfigAddProviderDoesNotAssignDisabledDefault(t *testing.T) {
+	config := &ModelConfig{}
+	if err := config.AddProvider(ModelProvider{
+		ID:        "provider-disabled",
+		Name:      "Disabled Provider",
+		APIType:   ProviderAPITypeOpenAIResponses,
+		BaseURL:   "https://example.com/v1",
+		APIKey:    "sk-disabled",
+		IsEnabled: false,
+		Models: []ModelInfo{
+			{ID: "gpt-4o", Name: "GPT-4o", IsEnabled: true},
+		},
+		DefaultModel: "gpt-4o",
+	}); err != nil {
+		t.Fatalf("add provider failed: %v", err)
+	}
+
+	if config.DefaultProviderID != "" {
+		t.Fatalf("expected no default provider, got %s", config.DefaultProviderID)
+	}
+	if provider := config.GetDefaultProvider(); provider != nil {
+		t.Fatalf("expected no default provider, got %+v", provider)
+	}
+	if config.Providers[0].IsDefault {
+		t.Fatalf("expected disabled provider to not be default")
+	}
+}
+
+func TestModelConfigEnableProviderPromotesFirstEnabledDefault(t *testing.T) {
+	config := &ModelConfig{}
+	if err := config.AddProvider(ModelProvider{
+		ID:        "provider-disabled",
+		Name:      "Disabled Provider",
+		APIType:   ProviderAPITypeOpenAIResponses,
+		BaseURL:   "https://example.com/v1",
+		APIKey:    "sk-disabled",
+		IsEnabled: false,
+		Models: []ModelInfo{
+			{ID: "gpt-4o", Name: "GPT-4o", IsEnabled: true},
+		},
+		DefaultModel: "gpt-4o",
+	}); err != nil {
+		t.Fatalf("add disabled provider failed: %v", err)
+	}
+	if err := config.AddProvider(ModelProvider{
+		ID:        "provider-enabled",
+		Name:      "Enabled Provider",
+		APIType:   ProviderAPITypeOpenAIResponses,
+		BaseURL:   "https://example.com/v2",
+		APIKey:    "sk-enabled",
+		IsEnabled: false,
+		Models: []ModelInfo{
+			{ID: "gpt-4.1", Name: "GPT-4.1", IsEnabled: true},
+		},
+		DefaultModel: "gpt-4.1",
+	}); err != nil {
+		t.Fatalf("add enabled candidate failed: %v", err)
+	}
+
+	if err := config.EnableProvider("provider-enabled", true); err != nil {
+		t.Fatalf("enable provider failed: %v", err)
+	}
+
+	if config.DefaultProviderID != "provider-enabled" {
+		t.Fatalf("expected provider-enabled as default, got %s", config.DefaultProviderID)
+	}
+	provider := config.GetDefaultProvider()
+	if provider == nil || provider.ID != "provider-enabled" {
+		t.Fatalf("expected provider-enabled default, got %+v", provider)
+	}
+}
+
+func TestModelConfigValidateReconcilesDisabledLegacyDefault(t *testing.T) {
+	config := &ModelConfig{
+		Providers: []ModelProvider{
+			{
+				ID:        "provider-disabled",
+				Name:      "Disabled Provider",
+				APIType:   ProviderAPITypeOpenAIResponses,
+				BaseURL:   "https://example.com/v1",
+				APIKey:    "sk-disabled",
+				IsEnabled: false,
+				IsDefault: true,
+				Models: []ModelInfo{
+					{ID: "gpt-4o", Name: "GPT-4o", IsEnabled: true},
+				},
+				DefaultModel: "gpt-4o",
+			},
+			{
+				ID:        "provider-enabled",
+				Name:      "Enabled Provider",
+				APIType:   ProviderAPITypeOpenAIResponses,
+				BaseURL:   "https://example.com/v2",
+				APIKey:    "sk-enabled",
+				IsEnabled: true,
+				IsDefault: false,
+				Models: []ModelInfo{
+					{ID: "gpt-4.1", Name: "GPT-4.1", IsEnabled: true},
+				},
+				DefaultModel: "gpt-4.1",
+			},
+		},
+		DefaultProviderID: "provider-disabled",
+	}
+
+	if err := config.Validate(); err != nil {
+		t.Fatalf("validate config failed: %v", err)
+	}
+	if config.DefaultProviderID != "provider-enabled" {
+		t.Fatalf("expected provider-enabled as reconciled default, got %s", config.DefaultProviderID)
+	}
+	if config.Providers[0].IsDefault {
+		t.Fatalf("expected disabled provider to lose default flag")
+	}
+	if !config.Providers[1].IsDefault {
+		t.Fatalf("expected enabled provider to become default")
+	}
+}

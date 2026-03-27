@@ -26,7 +26,10 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if !strings.Contains(guide, "USER.md") || !strings.Contains(guide, "SOUL.md") || !strings.Contains(guide, "AGENTS.md") {
 		t.Fatalf("expected memory skill guide covers system files, got %q", guide)
 	}
-	if !strings.Contains(guide, "Write policy") || !strings.Contains(guide, "Read policy") {
-		t.Fatalf("expected memory skill guide covers read/write policy, got %q", guide)
+	if !strings.Contains(guide, "Write routing") || !strings.Contains(guide, "Read logic") {
+		t.Fatalf("expected memory skill guide covers explicit read/write routing, got %q", guide)
+	}
+	if !strings.Contains(guide, "Conflict rules") || !strings.Contains(guide, "Write constraints") {
+		t.Fatalf("expected memory skill guide covers conflict and write constraints, got %q", guide)
 	}
 }
