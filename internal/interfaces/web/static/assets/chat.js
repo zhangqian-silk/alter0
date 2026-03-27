@@ -6723,19 +6723,43 @@ function persistTerminalSessionsToStorage(sessions) {
 }
 
 function getTerminalClientID() {
-  const storage = getBrowserSessionStorage();
   const fallback = `terminal-client-${makeID()}`;
-  if (!storage) {
-    return fallback;
+  const durableStorage = getSessionStorage();
+  const transientStorage = getBrowserSessionStorage();
+  const readStorageValue = (storage) => {
+    if (!storage) {
+      return "";
+    }
+    try {
+      return String(storage.getItem(TERMINAL_CLIENT_STORAGE_KEY) || "").trim();
+    } catch {
+      return "";
+    }
+  };
+  const writeStorageValue = (storage, value) => {
+    if (!storage || !value) {
+      return;
+    }
+    try {
+      storage.setItem(TERMINAL_CLIENT_STORAGE_KEY, value);
+    } catch {
+    }
+  };
+
+  const durableValue = readStorageValue(durableStorage);
+  if (durableValue) {
+    writeStorageValue(transientStorage, durableValue);
+    return durableValue;
   }
-  const existing = String(storage.getItem(TERMINAL_CLIENT_STORAGE_KEY) || "").trim();
-  if (existing) {
-    return existing;
+
+  const transientValue = readStorageValue(transientStorage);
+  if (transientValue) {
+    writeStorageValue(durableStorage, transientValue);
+    return transientValue;
   }
-  try {
-    storage.setItem(TERMINAL_CLIENT_STORAGE_KEY, fallback);
-  } catch {
-  }
+
+  writeStorageValue(durableStorage, fallback);
+  writeStorageValue(transientStorage, fallback);
   return fallback;
 }
 

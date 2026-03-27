@@ -162,6 +162,113 @@ func TestServiceRecoverRestoresCodexThreadForFollowUpInput(t *testing.T) {
 	}
 }
 
+func TestServiceRecoverTransfersSessionOwnershipWhenTerminalIdentityMatches(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-original",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-original", session.ID, "first prompt"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	snapshot, _ := waitForSessionEntries(t, service, "owner-original", session.ID, 2)
+
+	recovered, err := service.Recover(RecoverRequest{
+		OwnerID:           "owner-rebound",
+		SessionID:         session.ID,
+		TerminalSessionID: snapshot.TerminalSessionID,
+		Title:             snapshot.Title,
+		CreatedAt:         snapshot.CreatedAt,
+		LastOutputAt:      snapshot.LastOutputAt,
+		UpdatedAt:         snapshot.UpdatedAt,
+	})
+	if err != nil {
+		t.Fatalf("recover ownership transfer: %v", err)
+	}
+	if recovered.OwnerID != "owner-rebound" {
+		t.Fatalf("expected transferred owner, got %q", recovered.OwnerID)
+	}
+	if _, ok := service.Get("owner-original", session.ID); ok {
+		t.Fatalf("expected original owner to lose recovered session access")
+	}
+	if _, err := service.Input("owner-rebound", session.ID, "follow-up after transfer"); err != nil {
+		t.Fatalf("input after ownership transfer: %v", err)
+	}
+	resumedSnapshot, entries := waitForSessionEntries(t, service, "owner-rebound", session.ID, 4)
+	if resumedSnapshot.TerminalSessionID != snapshot.TerminalSessionID {
+		t.Fatalf("expected thread id to stay stable, got %q", resumedSnapshot.TerminalSessionID)
+	}
+	if got := entries[3].Text; got != "mock:follow-up after transfer" {
+		t.Fatalf("expected resumed reply after transfer, got %q", got)
+	}
+}
+
+func TestServiceRecoverTransfersOwnershipForSessionWithoutFirstInput(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-original",
+		Title:   "empty-session",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	recovered, err := service.Recover(RecoverRequest{
+		OwnerID:           "owner-rebound",
+		SessionID:         session.ID,
+		TerminalSessionID: session.TerminalSessionID,
+		Title:             session.Title,
+		CreatedAt:         session.CreatedAt,
+		UpdatedAt:         session.UpdatedAt,
+	})
+	if err != nil {
+		t.Fatalf("recover empty session ownership transfer: %v", err)
+	}
+	if recovered.OwnerID != "owner-rebound" {
+		t.Fatalf("expected transferred owner for empty session, got %q", recovered.OwnerID)
+	}
+	if _, err := service.Input("owner-rebound", session.ID, "first prompt after transfer"); err != nil {
+		t.Fatalf("first input after empty session transfer: %v", err)
+	}
+	snapshot, entries := waitForSessionEntries(t, service, "owner-rebound", session.ID, 2)
+	if snapshot.Title != "empty-session" {
+		t.Fatalf("expected transferred empty session title, got %q", snapshot.Title)
+	}
+	if got := entries[1].Text; got != "mock:first prompt after transfer" {
+		t.Fatalf("expected first reply after transfer, got %q", got)
+	}
+}
+
+func TestServiceRecoverRejectsOwnershipTransferWhenTerminalIdentityDiffers(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-original",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-original", session.ID, "first prompt"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	snapshot, _ := waitForSessionEntries(t, service, "owner-original", session.ID, 2)
+
+	_, err = service.Recover(RecoverRequest{
+		OwnerID:           "owner-wrong",
+		SessionID:         session.ID,
+		TerminalSessionID: snapshot.TerminalSessionID + "-other",
+	})
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("expected session not found on mismatched terminal identity, got %v", err)
+	}
+}
+
 func TestServiceInputResumesExitedSession(t *testing.T) {
 	service := newTestService("success")
 

@@ -9,7 +9,7 @@ import { commitIMEInput, startIMEInput } from "./helpers/interactions/ime";
 import { openTerminalRoute } from "./helpers/flows/routes";
 import { selectTerminalSession } from "./helpers/flows/terminal-session";
 import { waitForTerminalPoll, waitForTerminalPollAndRepaint, waitForTerminalRepaint } from "./helpers/flows/terminal-runtime";
-import { bindTerminalClient, closeTrackedTerminalSessions, createTerminalClientID, seedTerminalSessions } from "./helpers/flows/terminal-session";
+import { bindTerminalClient, closeTrackedTerminalSessions, createTerminalClientID, createTerminalSession, seedTerminalSessions } from "./helpers/flows/terminal-session";
 import { createTerminalPage } from "./helpers/pages/terminal";
 import {
   openInterruptedTerminalWorkspace,
@@ -37,6 +37,33 @@ test.describe("Terminal route", () => {
     await expect(sessionCard).toBeVisible();
     await expectComposerReady(terminalPage.composer());
     await expect(terminalPage.workspace()).toContainText("Running");
+  });
+
+  test("keeps terminal owner identity stable after sessionStorage is cleared and the page reloads", async ({ page, request }) => {
+    const clientID = createTerminalClientID("owner-persist");
+    const session = await createTerminalSession(request, clientID);
+
+    await bindTerminalClient(page, clientID);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
+    await expect(terminalPage.workspace()).toContainText(session.id);
+    await expect.poll(async () => {
+      return await page.evaluate(() => window.localStorage.getItem("alter0.web.terminal.client.v1"));
+    }).toBe(clientID);
+
+    await page.evaluate(() => {
+      window.sessionStorage.removeItem("alter0.web.terminal.client.v1");
+    });
+    await page.reload();
+
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
+    await expect(terminalPage.workspace()).toContainText(session.id);
+    await expect(terminalPage.workspace()).not.toContainText("Codex runtime exited. Send a new input to recover this session.");
+    await expect.poll(async () => {
+      return await page.evaluate(() => window.localStorage.getItem("alter0.web.terminal.client.v1"));
+    }).toBe(clientID);
   });
 
   test("keeps the terminal composer anchored to the bottom bar", async ({ page, request }) => {

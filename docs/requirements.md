@@ -61,7 +61,7 @@
 | R-048 | ReAct 模式 Agent 调用 | planned | 实现 Reasoning + Acting 循环：Thought → Action → Observation → Thought，支持工具调用与多轮推理 |
 | R-049 | 模型配置管理 | planned | 支持配置多个 LLM Provider（base_url、api_key、model_name），提供 Provider 级别的启用/禁用与默认切换 |
 | R-050 | Web 登录后统一 Session 视图 | supported | 密码验证通过后，Web 内 `Chat`、`Agent` 等页面继续保留各自定位与入口，但共享同一套 Session 历史；不再按页面来源拆分 Session，并移除相关冗余文案与状态内容 |
-| R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识；不再对 Terminal 设置产品级会话上限与超时淘汰；运行态缺失后继续发送会自动恢复原会话并保留历史 |
+| R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识与浏览器侧 Terminal client 标识；不再对 Terminal 设置产品级会话上限与超时淘汰；运行态缺失或前端临时标识漂移后继续发送会自动恢复原会话并保留历史 |
 | R-052 | Agent Memory Files 勾选注入与文件可写记忆对齐 | supported | Agent Profile 支持勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md` 与 Daily Memory；执行前将所选文件内容与路径注入运行时上下文，并可搭配独立 `memory` Skill 统一记忆读写规范 |
 
 ## 需求细化（分文件）
