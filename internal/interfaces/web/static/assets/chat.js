@@ -537,6 +537,8 @@ const I18N = {
     "route.envs.restart_sync_master": "Sync remote master before restart?",
     "route.envs.restart_wait_timeout": "Restart is taking longer than expected. Refresh and retry in a moment.",
     "route.envs.restart_success": "Service restart completed. Click OK to refresh the page.",
+    "route.envs.runtime.last_restart_at": "Last Restart",
+    "route.envs.runtime.commit_hash": "Commit Hash",
     "route.envs.refresh": "Reload",
     "route.envs.show_sensitive": "Reveal Sensitive",
     "route.envs.hide_sensitive": "Hide Sensitive",
@@ -986,6 +988,8 @@ const I18N = {
     "route.envs.restart_sync_master": "重启前先同步远端 master 分支？",
     "route.envs.restart_wait_timeout": "服务重启时间超出预期，请稍后刷新后重试。",
     "route.envs.restart_success": "服务重启已完成。点击确定后将自动刷新页面。",
+    "route.envs.runtime.last_restart_at": "最近重启时间",
+    "route.envs.runtime.commit_hash": "Commit Hash",
     "route.envs.refresh": "重新加载",
     "route.envs.show_sensitive": "显示敏感项",
     "route.envs.hide_sensitive": "隐藏敏感项",
@@ -9747,33 +9751,65 @@ function renderEnvironmentAudits(items) {
   </div>`;
 }
 
+function formatCommitHash(value) {
+  const text = normalizeText(value || "");
+  if (!text) {
+    return "-";
+  }
+  if (text.length <= 12) {
+    return text;
+  }
+  return `${text.slice(0, 12)}...`;
+}
+
+function renderEnvironmentRuntimeMeta(runtimeInfo) {
+  const commitHash = normalizeText(runtimeInfo?.commit_hash || "");
+  const commitDisplay = formatCommitHash(commitHash);
+  return `<div class="environment-runtime-meta" data-environment-runtime-meta>
+    <div class="environment-runtime-meta-item">
+      <span>${escapeHTML(t("route.envs.runtime.last_restart_at"))}</span>
+      <strong>${escapeHTML(formatDateTime(runtimeInfo?.started_at))}</strong>
+    </div>
+    <div class="environment-runtime-meta-item">
+      <span>${escapeHTML(t("route.envs.runtime.commit_hash"))}</span>
+      <strong><code title="${escapeHTML(commitHash || "-")}">${escapeHTML(commitDisplay)}</code></strong>
+    </div>
+  </div>`;
+}
+
 async function loadEnvironmentsView(container) {
   const localState = {
     revealSensitive: false,
     restarting: false,
     configItems: [],
-    audits: []
+    audits: [],
+    runtimeInfo: null
   };
 
   const fetchEnvironments = async () => {
     const query = localState.revealSensitive ? "?reveal_sensitive=true" : "";
-    const [configPayload, auditPayload] = await Promise.all([
+    const [configPayload, auditPayload, runtimePayload] = await Promise.all([
       fetchJSON(`/api/control/environments${query}`),
-      fetchJSON(`/api/control/environments/audits${query}`)
+      fetchJSON(`/api/control/environments/audits${query}`),
+      fetchJSON("/api/control/runtime").catch(() => null)
     ]);
     return {
       configItems: Array.isArray(configPayload?.items) ? configPayload.items : [],
-      audits: Array.isArray(auditPayload?.items) ? auditPayload.items : []
+      audits: Array.isArray(auditPayload?.items) ? auditPayload.items : [],
+      runtimeInfo: runtimePayload
     };
   };
 
-  const paint = (configItems, audits, statusMessage = "") => {
+  const paint = (configItems, audits, runtimeInfo, statusMessage = "") => {
     const revealButtonLabel = localState.revealSensitive ? t("route.envs.hide_sensitive") : t("route.envs.show_sensitive");
     const restartButtonLabel = localState.restarting ? t("route.envs.restarting") : t("route.envs.restart_service");
     container.innerHTML = `<section class="environment-view" data-environment-view>
       <form class="environment-form" data-environment-form>
         <div class="environment-toolbar route-card">
-          <p class="environment-status" data-environment-status>${escapeHTML(statusMessage)}</p>
+          <div class="environment-toolbar-main">
+            <p class="environment-status" data-environment-status>${escapeHTML(statusMessage)}</p>
+            ${renderEnvironmentRuntimeMeta(runtimeInfo)}
+          </div>
           <div class="task-filter-actions">
             <button type="button" data-environment-reveal>${escapeHTML(revealButtonLabel)}</button>
             <button type="button" data-environment-refresh>${t("route.envs.refresh")}</button>
@@ -9794,7 +9830,8 @@ async function loadEnvironmentsView(container) {
     const payload = await fetchEnvironments();
     localState.configItems = payload.configItems;
     localState.audits = payload.audits;
-    paint(payload.configItems, payload.audits, statusMessage);
+    localState.runtimeInfo = payload.runtimeInfo;
+    paint(payload.configItems, payload.audits, payload.runtimeInfo, statusMessage);
     bindView();
   };
 
@@ -9810,8 +9847,7 @@ async function loadEnvironmentsView(container) {
         });
         if (response.ok) {
           localState.restarting = false;
-          paint(localState.configItems, localState.audits, "");
-          bindView();
+          await reload("");
           window.alert(t("route.envs.restart_success"));
           window.location.reload();
           return;
@@ -9820,7 +9856,7 @@ async function loadEnvironmentsView(container) {
       }
     }
     localState.restarting = false;
-    paint(localState.configItems, localState.audits, t("route.envs.restart_wait_timeout"));
+    paint(localState.configItems, localState.audits, localState.runtimeInfo, t("route.envs.restart_wait_timeout"));
     bindView();
   };
 
@@ -9833,7 +9869,7 @@ async function loadEnvironmentsView(container) {
     }
     const shouldSyncRemoteMaster = window.confirm(t("route.envs.restart_sync_master"));
     localState.restarting = true;
-    paint(localState.configItems, localState.audits, t(shouldSyncRemoteMaster ? "route.envs.restarting_sync" : "route.envs.restarting"));
+    paint(localState.configItems, localState.audits, localState.runtimeInfo, t(shouldSyncRemoteMaster ? "route.envs.restarting_sync" : "route.envs.restarting"));
     bindView();
     try {
       const response = await fetch("/api/control/runtime/restart", {
@@ -9931,7 +9967,8 @@ async function loadEnvironmentsView(container) {
   const initialPayload = await fetchEnvironments();
   localState.configItems = initialPayload.configItems;
   localState.audits = initialPayload.audits;
-  paint(initialPayload.configItems, initialPayload.audits, "");
+  localState.runtimeInfo = initialPayload.runtimeInfo;
+  paint(initialPayload.configItems, initialPayload.audits, initialPayload.runtimeInfo, "");
   bindView();
 }
 

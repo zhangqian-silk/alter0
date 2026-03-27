@@ -74,7 +74,8 @@
 5. 配置持久化要求：用户保存后写入统一配置存储（环境配置文件或等价持久化介质），重启后必须保持；未配置项回退到系统默认值。
 6. 生效策略要求：明确标注“即时生效”与“重启生效”配置；对需重启项在保存后给出明确提示，避免配置生效预期不一致。
 7. 安全要求：敏感配置（密钥、令牌类）默认脱敏显示并支持受控查看；配置变更记录审计字段（操作者、时间、变更项）。
-8. 验收：用户可在 Environments 页面完成任务并发等关键配置修改并持久化；系统可正确读取并在运行链路中生效，页面可查看当前生效值与生效方式。
+8. 运行时披露要求：`Environments` 工具栏需展示当前在线实例最近启动时间与对应 `commit hash`，用于确认上次成功重启后实际运行的版本。
+9. 验收：用户可在 Environments 页面完成任务并发等关键配置修改并持久化；系统可正确读取并在运行链路中生效，页面可查看当前生效值、生效方式以及当前在线版本对应的最近启动时间与 `commit hash`。
 
 #### 当前配置盘点（可纳管候选）
 
@@ -113,10 +114,13 @@
 3. 环境配置审计（可选）
    - `GET /api/control/environments/audits`
    - 返回：变更时间、变更项、操作者、生效状态
+4. 运行时实例元信息
+   - `GET /api/control/runtime`
+   - 返回：`started_at`、`commit_hash`
 
 #### Traceability
 
-- 核心对象：`environments_module`、`config_registry`、`async_task_workers`、`worker_pool_size`、`queue_timeout`
+- 核心对象：`environments_module`、`config_registry`、`async_task_workers`、`worker_pool_size`、`queue_timeout`、`started_at`、`commit_hash`
 - 依赖需求：`R-042`
 - 验证口径：配置可编辑性、参数校验正确性、持久化一致性、运行时生效一致性
 
