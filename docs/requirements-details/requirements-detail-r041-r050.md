@@ -228,15 +228,86 @@
 
 ### R-047
 
-暂无细化内容。
+OpenAI Go SDK 接入
+
+1. 统一 LLM 调用层基于 `github.com/openai/openai-go` SDK 实现，屏蔽上游 `/responses` 与 `/chat/completions` 差异，对外暴露统一 `Chat` / `ChatStream` 接口。
+2. Provider 级配置必须支持自定义 `base_url` 与 `api_key`，以兼容 OpenAI 官方与 OpenAI 兼容服务。
+3. Provider 必须显式声明 `api_type`：
+   - `openai-responses`：使用 `/responses`
+   - `openai-completions`：使用 `/chat/completions`
+4. 统一调用层需支持：
+   - 普通文本问答
+   - 流式输出
+   - function tools / tool calls
+   - 上下游使用量字段回传
+5. 若模型调用失败，错误需保留上游错误语义，供复杂度评估、Agent 执行与 Web API 直接透传或降级处理。
+
+#### Traceability
+
+- 实现文件：`internal/llm/domain/llm.go`、`internal/llm/infrastructure/openai_client.go`、`internal/llm/application/model_config_service.go`
+- 测试覆盖：`internal/llm/infrastructure/openai_client_test.go`
+- 核心对象：`api_type`、`base_url`、`api_key`、`ChatRequest`、`ChatResponse`
 
 ### R-048
 
-暂无细化内容。
+ReAct 模式 Agent 调用
+
+1. `Agent` 请求进入执行链后，默认使用 ReAct 循环推进：模型在 `Thought / Action / Observation` 的迭代中持续决策，直到明确收口。
+2. ReAct Agent 必须支持原生工具调用；当前内置工具至少覆盖 `list_dir`、`read`、`write`、`edit`、`bash`，并支持 `codex_exec` 作为深度执行工具。
+3. Agent Profile 可独立配置：
+   - `provider_id`
+   - `model`
+   - `system_prompt`
+   - `max_iterations`
+   - `tools`
+   - `skills`
+   - `mcps`
+   - `memory_files`
+4. 当用户在会话级显式选择 `Provider / Model` 时，执行链优先使用当前会话选择；未显式指定时回退到 Agent Profile，再回退到系统默认 Provider。
+5. 执行中需保留观察日志与输出增量，支持同步响应、流式响应与异步任务场景复用。
+6. ReAct 工具收口必须支持显式 `complete`，避免模型在没有结束信号时无限循环。
+
+#### Traceability
+
+- 实现文件：`internal/llm/domain/react.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/control/domain/agent.go`
+- 测试覆盖：`internal/llm/domain/react_test.go`、`internal/execution/infrastructure/hybrid_nl_processor_test.go`
+- 核心对象：`ReActAgentConfig`、`ToolExecutor`、`max_iterations`、`codex_exec`
 
 ### R-049
 
-暂无细化内容。
+模型配置管理
+
+1. 控制面必须提供 LLM Provider 配置管理入口，支持新增、编辑、删除、启用、禁用与设置默认 Provider。
+2. 单个 Provider 至少包含：
+   - `id`
+   - `name`
+   - `api_type`
+   - `base_url`
+   - `api_key`
+   - `default_model`
+   - `models[]`
+   - `is_enabled`
+3. 单个模型项至少包含：
+   - `id`
+   - `name`
+   - `is_enabled`
+   - `supports_tools`
+   - `supports_vision`
+   - `supports_streaming`
+   - `max_tokens`
+4. 默认策略约束：
+   - 默认 Provider 只能指向已启用 Provider
+   - 默认模型只能指向当前 Provider 下已启用模型
+   - 若当前默认 Provider 被禁用、删除或历史配置已失效，系统自动切换到下一个可用 Provider；若无可用 Provider，则清空默认值
+5. Web `Chat` 发送区必须支持会话级 `Provider / Model` 选择；复杂度评估、同步执行与 Agent/ReAct 执行需复用该选择结果。
+6. Agent Profile 必须支持独立绑定 `provider_id` 与 `model`，用于为不同 Agent 预设执行模型。
+7. 历史配置兼容要求：旧配置中若默认 Provider 指向禁用项或缺失项，加载时需自动收敛到可用默认值，不得因脏数据阻断系统启动。
+
+#### Traceability
+
+- 实现文件：`internal/llm/domain/model_config.go`、`internal/llm/application/model_config_service.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`
+- 测试覆盖：`internal/llm/domain/model_config_test.go`、`internal/llm/infrastructure/model_config_storage_test.go`、`internal/interfaces/web/server_llm_test.go`
+- 核心对象：`providers`、`default_provider_id`、`default_model`、`alter0.llm.provider_id`、`alter0.llm.model`
 
 ### R-050
 Web 登录后统一 Session 视图

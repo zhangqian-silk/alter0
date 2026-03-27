@@ -91,6 +91,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
 - 选中的原生工具会在模型调用时作为 function tools 注入，当前内置工具包括 `list_dir`、`read`、`write`、`edit`、`bash`。
 - `OpenAI` Provider 支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。
+- 默认 Provider 只会落在已启用配置上；若默认 Provider 被禁用、删除或历史配置已失效，系统会自动切换到下一可用 Provider，无可用项时清空默认值。
 - 复杂度评估阶段会优先复用当前消息选中的 `Provider / Model`；未显式选择时，回退到默认 Provider 与默认模型。
 - 默认走实时执行。
 - 流式对话会先直接启动回复；复杂度评估与回复并行进行。
@@ -296,7 +297,7 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 说明：
 
 1. 服务启动后默认提供 `default-nl` 与 `memory` 两个内置 Skill。
-2. `memory` Skill 用于向 Agent / Codex 介绍 alter0 记忆模块、各记忆文件职责、读取时机与写入规范，建议与 `memory_files` 一起启用。
+2. `memory` Skill 用于向 Agent / Codex 明确记忆文件的读取决策、写入路由、冲突优先级与禁止写入项，建议与 `memory_files` 一起启用。
 
 ### Agent
 
@@ -350,7 +351,7 @@ curl -X POST http://127.0.0.1:18088/api/agent/messages \
 3. 当前内置原生工具为 `list_dir`、`read`、`write`、`edit`、`bash`；Agent 额外支持 `codex_exec`，系统会自动补充收口工具 `complete`。
 4. `Chat` 会按当前运行时勾选结果注入原生工具；`Agent` 在未显式限制工具集时默认注入核心工具。
 5. Agent 的 Skill、MCP 与 Memory Files 选择会在执行前注入运行时上下文，执行过程仍复用统一编排链路。
-6. 内置 `memory` Skill 会补充记忆模块说明、文件职责、读写边界与“什么时候该读 / 什么时候该写”的规则；实际文件快照仍由 `memory_files` 注入提供。
+6. 内置 `memory` Skill 会明确记忆文件的读写逻辑：按任务类型决定先读哪些文件、按信息类型决定写入哪个文件、遇到冲突时按 `SOUL.md > AGENTS.md > 长期记忆 > 日记忆` 收敛；实际文件快照仍由 `memory_files` 注入提供。
 7. `memory_files` 当前支持：`user_md`、`soul_md`、`agents_md`、`memory_long_term`、`memory_daily_today`、`memory_daily_yesterday`。
 8. Memory Files 注入会携带文件内容、绝对路径、是否存在、最近更新时间；文件不存在时仍会暴露预期路径，便于 Agent 直接创建并写入。
 9. Web `Agent Profiles` 页面用于管理 Agent Profile；`Agent` 页面作为 Agent 交互入口；`Chat` 页面仅保留 Raw Model 对话。

@@ -21,7 +21,7 @@
 
 1. 根据用户配置筛选启用的 Skills，并按优先级注入 Codex 与 Agent 执行上下文。
 2. 定义 Skills 注入协议（名称、描述、guide、参数模板、约束）以避免自由文本拼接。
-3. 支持内置 Skill 作为稳定能力底座；当前默认提供 `default-nl` 与 `memory`，其中 `memory` 用于补充记忆模块说明、文件职责与读写时机。
+3. 支持内置 Skill 作为稳定能力底座；当前默认提供 `default-nl` 与 `memory`，其中 `memory` 负责明确记忆文件的读取决策、写入路由、冲突优先级与写入禁止项。
 4. 提供冲突处理策略（同名 skill、重复能力、参数冲突）并可观测。
 5. 验收：关闭某 Skill 后不再注入；开启后可在 Codex / Agent 执行结果中体现其能力影响。
 
@@ -36,6 +36,7 @@
   - 2026-03-03：同名 Skill、重复能力、参数值冲突按优先级保留高优先级项，冲突明细写入 `skills.conflicts` 与 `skills.conflict_types`。
   - 2026-03-03：Codex 执行参数切换为结构化 JSON 载荷（`alter0.codex-exec/v1`），执行结果元数据可观测 `skills.injected_ids`、`skills.injected_count`、`skills.conflict_count`。
   - 2026-03-27：Skill 协议新增 `guide` 字段，可承载独立操作说明；默认内置 `memory` Skill，用于向 Agent / Codex 说明 alter0 记忆模块、文件职责与读写规则。
+  - 2026-03-27：`memory` Skill guide 收敛为显式操作规则，按“运行时契约 / 读取逻辑 / 写入路由 / 冲突规则 / 写入约束”组织，直接约束不同类型信息应落入哪个记忆文件。
 
 ### R-023 用户配置 MCP 接入 Codex
 
