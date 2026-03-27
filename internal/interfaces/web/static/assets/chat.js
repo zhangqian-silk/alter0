@@ -39,7 +39,8 @@ const MAX_CHARS = 10000;
 const DEFAULT_ROUTE = "chat";
 const SWIPE_CLOSE_THRESHOLD = 46;
 const TERMINAL_SCROLL_STICKY_THRESHOLD = 32;
-const TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD = 480;
+const TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD = 240;
+const TERMINAL_STICKY_PROMPT_SHOW_OFFSET = 10;
 const NAV_TOOLTIP_SHOW_DELAY = 90;
 const NAV_TOOLTIP_HIDE_DELAY = 40;
 const NAV_TOOLTIP_OFFSET = 12;
@@ -3004,9 +3005,21 @@ function syncHeader() {
   const route = ROUTES[state.currentRoute] || ROUTES.chat;
   const newSessionLabel = isAgentConversationRoute() ? t("session.new_agent") : t("session.new");
   newChatButton.textContent = newSessionLabel;
+  sessionToggle.hidden = false;
   if (mobileNewChatButton) {
-    mobileNewChatButton.textContent = newSessionLabel;
-    mobileNewChatButton.setAttribute("aria-label", newSessionLabel);
+    if (route.key === "terminal") {
+      mobileNewChatButton.textContent = t("route.terminal.new_short");
+      mobileNewChatButton.setAttribute("aria-label", t("route.terminal.new_short"));
+      mobileNewChatButton.hidden = false;
+      sessionToggle.textContent = t("route.terminal.sessions");
+      sessionToggle.setAttribute("aria-label", t("route.terminal.sessions"));
+    } else {
+      mobileNewChatButton.textContent = newSessionLabel;
+      mobileNewChatButton.setAttribute("aria-label", newSessionLabel);
+      mobileNewChatButton.hidden = false;
+      sessionToggle.textContent = t("chat.sessions");
+      sessionToggle.setAttribute("aria-label", t("chat.sessions"));
+    }
   }
 
   if (route.mode !== "chat") {
@@ -7075,7 +7088,7 @@ function renderTerminalTurns(session) {
     const promptText = String(turn?.prompt || "").trim();
     const hasProcess = Array.isArray(turn?.steps) && turn.steps.length > 0;
     return `<article class="route-surface-dark terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
-      ${promptText ? `<div class="terminal-log-row kind-command"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
+      ${promptText ? `<div class="terminal-log-row kind-command terminal-turn-prompt" data-terminal-turn-prompt="${escapeHTML(normalizeText(turn.id))}" data-terminal-turn-prompt-text="${escapeHTML(promptText)}"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
       ${hasProcess || String(turn?.status || "").trim().toLowerCase() === "running" ? renderTerminalTurnProcess(session, turn) : ""}
       ${renderTerminalFinalOutput(session, turn)}
     </article>`;
@@ -7107,15 +7120,15 @@ function renderTerminalWorkspace(session, sending, closing = false, options = {}
     : t("route.terminal.no_output");
   return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${isLive ? "true" : "false"}">
     <header class="terminal-workspace-head">
-      <div class="terminal-workspace-bar">
+      <div class="terminal-mobile-actions">
+        <button class="terminal-inline-button" type="button" data-terminal-session-pane-toggle aria-expanded="${options?.mobileSessionListOpen ? "true" : "false"}">${escapeHTML(sessionToggleLabel)}</button>
+        <button class="terminal-inline-button is-primary" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new_short"))}</button>
+      </div>
+      <div class="terminal-workspace-row">
         <div class="terminal-workspace-copy">
-          <div class="terminal-mobile-actions">
-            <button class="terminal-inline-button" type="button" data-terminal-session-pane-toggle aria-expanded="${options?.mobileSessionListOpen ? "true" : "false"}">${escapeHTML(sessionToggleLabel)}</button>
-            <button class="terminal-inline-button is-primary" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new_short"))}</button>
-          </div>
           <p class="terminal-workspace-eyebrow">${escapeHTML(t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 24) }))}</p>
           <h4>${escapeHTML(normalizeText(session.title))}</h4>
-          <p>${escapeHTML(headerSubcopy)}</p>
+          <p class="terminal-workspace-subcopy">${escapeHTML(headerSubcopy)}</p>
         </div>
         <div class="terminal-workspace-actions">
           <span class="terminal-status-pill">${escapeHTML(renderTerminalStatus(session.status))}</span>
@@ -7126,6 +7139,12 @@ function renderTerminalWorkspace(session, sending, closing = false, options = {}
       ${metaExpanded ? renderTerminalWorkspaceMetaPanel(session) : ""}
     </header>
     <section class="route-surface-dark terminal-console-panel" data-terminal-console-panel>
+      <div class="terminal-sticky-prompt-shell" data-terminal-sticky-prompt-shell hidden>
+        <div class="terminal-sticky-prompt" data-terminal-sticky-prompt>
+          <span class="terminal-sticky-prompt-prefix" aria-hidden="true">&gt;</span>
+          <span class="terminal-sticky-prompt-text" data-terminal-sticky-prompt-text></span>
+        </div>
+      </div>
       <div class="terminal-chat-screen" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
         <div class="terminal-log-tree">
           ${renderTerminalTurns(session)}
@@ -7139,8 +7158,11 @@ function renderTerminalWorkspace(session, sending, closing = false, options = {}
     <section class="terminal-composer-shell">
       ${note || detail ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
       <form class="terminal-chat-form" data-terminal-input-form data-composer-form="terminal-runtime">
-        <input type="text" data-terminal-input data-composer-input="terminal-runtime" maxlength="6000" placeholder="${escapeHTML(placeholder)}" ${(sending || !canInput) ? "disabled" : ""}>
-        <button type="submit" data-terminal-submit data-composer-submit="terminal-runtime" ${(sending || !canInput) ? "disabled" : ""}>${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}</button>
+        <textarea data-terminal-input data-composer-input="terminal-runtime" maxlength="6000" rows="1" placeholder="${escapeHTML(placeholder)}" ${(sending || !canInput) ? "disabled" : ""}></textarea>
+        <button type="submit" data-terminal-submit data-composer-submit="terminal-runtime" aria-label="${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}" ${(sending || !canInput) ? "disabled" : ""}>
+          <span class="terminal-chat-form-button-icon" aria-hidden="true">&uarr;</span>
+          <span class="sr-only">${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}</span>
+        </button>
       </form>
       ${sessionCount > 0 ? `<div class="terminal-composer-meta">${escapeHTML(t("route.terminal.session_count", { count: String(sessionCount) }))}</div>` : ""}
     </section>
@@ -7245,6 +7267,71 @@ async function loadTerminalView(container) {
     return key !== "" && key === normalizeText(localState.composingInputSessionID);
   };
 
+  const resizeTerminalComposerInput = (inputNode = null) => {
+    const node = inputNode || container.querySelector("[data-terminal-input]");
+    if (!(node instanceof HTMLTextAreaElement)) {
+      return;
+    }
+    const style = window.getComputedStyle(node);
+    const lineHeight = Math.max(parseFloat(style.lineHeight || "24"), 20);
+    const maxHeight = lineHeight * 5;
+    node.style.height = "auto";
+    const nextHeight = Math.min(Math.max(node.scrollHeight, lineHeight + 16), maxHeight);
+    node.style.height = `${Math.ceil(nextHeight)}px`;
+    node.style.overflowY = node.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
+  };
+
+  const syncTerminalStickyPrompt = (chatNode = null) => {
+    const node = chatNode || container.querySelector("[data-terminal-chat-screen]");
+    const stickyShellNode = container.querySelector("[data-terminal-sticky-prompt-shell]");
+    const stickyNode = container.querySelector("[data-terminal-sticky-prompt]");
+    const stickyTextNode = container.querySelector("[data-terminal-sticky-prompt-text]");
+    if (!node || !stickyShellNode || !stickyNode || !stickyTextNode) {
+      return;
+    }
+    const promptNodes = [...node.querySelectorAll("[data-terminal-turn-prompt]")];
+    if (!promptNodes.length) {
+      stickyShellNode.hidden = true;
+      stickyNode.removeAttribute("data-terminal-turn-id");
+      stickyTextNode.textContent = "";
+      return;
+    }
+    const chatTop = node.getBoundingClientRect().top;
+    let activePrompt = null;
+    promptNodes.forEach((promptNode) => {
+      if (!(promptNode instanceof HTMLElement)) {
+        return;
+      }
+      if (promptNode.getBoundingClientRect().top <= chatTop + TERMINAL_STICKY_PROMPT_SHOW_OFFSET) {
+        activePrompt = promptNode;
+      }
+    });
+    if (!(activePrompt instanceof HTMLElement)) {
+      stickyShellNode.hidden = true;
+      stickyNode.removeAttribute("data-terminal-turn-id");
+      stickyTextNode.textContent = "";
+      return;
+    }
+    const activeTurn = activePrompt.closest("[data-terminal-turn]");
+    const turnRect = activeTurn instanceof HTMLElement ? activeTurn.getBoundingClientRect() : null;
+    if (!turnRect || turnRect.bottom <= chatTop + 8 || activePrompt.getBoundingClientRect().top >= chatTop + 4) {
+      stickyShellNode.hidden = true;
+      stickyNode.removeAttribute("data-terminal-turn-id");
+      stickyTextNode.textContent = "";
+      return;
+    }
+    const promptText = String(activePrompt.getAttribute("data-terminal-turn-prompt-text") || activePrompt.querySelector(".terminal-log-text")?.textContent || "").trim();
+    if (!promptText) {
+      stickyShellNode.hidden = true;
+      stickyNode.removeAttribute("data-terminal-turn-id");
+      stickyTextNode.textContent = "";
+      return;
+    }
+    stickyShellNode.hidden = false;
+    stickyNode.setAttribute("data-terminal-turn-id", normalizeText(activeTurn ? activeTurn.getAttribute("data-terminal-turn") : ""));
+    stickyTextNode.textContent = promptText;
+  };
+
   const shouldDeferTerminalPaint = (sessionID) => {
     const key = normalizeText(sessionID);
     if (!key) {
@@ -7295,6 +7382,7 @@ async function loadTerminalView(container) {
         jumpButton.classList.toggle("has-unread", session.chat_has_unread_output);
       }
     }
+    syncTerminalStickyPrompt(node);
   };
 
   const scrollTerminalChatToBottom = () => {
@@ -7309,6 +7397,7 @@ async function loadTerminalView(container) {
         activeSession.chat_has_unread_output = false;
         activeSession.chat_stick_to_bottom = true;
       }
+      syncTerminalStickyPrompt(chatNode);
     }
   };
 
@@ -7342,6 +7431,29 @@ async function loadTerminalView(container) {
       current = current.parentElement;
     }
     return null;
+  };
+
+  const routeTerminalWheelToChat = (event, chatNode, boundary) => {
+    if (!chatNode || !(boundary instanceof Element)) {
+      return;
+    }
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const target = event.target;
+    if (target.closest("textarea, input, select, option")) {
+      return;
+    }
+    const nearestScrollable = findScrollableAncestorWithin(target, boundary);
+    if (nearestScrollable && nearestScrollable !== chatNode && canScrollNode(nearestScrollable, event.deltaY)) {
+      return;
+    }
+    if (!canScrollNode(chatNode, event.deltaY)) {
+      return;
+    }
+    chatNode.scrollTop += event.deltaY;
+    captureTerminalChatScroll(normalizeText(getActiveSession()?.id || ""), chatNode);
+    event.preventDefault();
   };
 
   const requestRevealActiveSessionCard = () => {
@@ -7637,6 +7749,7 @@ async function loadTerminalView(container) {
     }
     localState.revealActiveSessionCard = false;
     const chatNode = container.querySelector("[data-terminal-chat-screen]");
+    const workspaceNode = container.querySelector("[data-terminal-workspace]");
     if (active && chatNode) {
       if (active.chat_stick_to_bottom === false) {
         chatNode.scrollTop = Math.max(Number(active.chat_scroll_top || 0), 0);
@@ -7647,19 +7760,16 @@ async function loadTerminalView(container) {
         captureTerminalChatScroll(active.id, chatNode);
       };
       chatNode.onwheel = (event) => {
-        if (!(event.target instanceof Element)) {
+        routeTerminalWheelToChat(event, chatNode, chatNode);
+      };
+      captureTerminalChatScroll(active.id, chatNode);
+    }
+    if (active && chatNode && workspaceNode) {
+      workspaceNode.onwheel = (event) => {
+        if (event.target instanceof Element && event.target.closest("[data-terminal-chat-screen]")) {
           return;
         }
-        const nearestScrollable = findScrollableAncestorWithin(event.target, chatNode);
-        if (nearestScrollable && canScrollNode(nearestScrollable, event.deltaY)) {
-          return;
-        }
-        if (!canScrollNode(chatNode, event.deltaY)) {
-          return;
-        }
-        chatNode.scrollTop += event.deltaY;
-        captureTerminalChatScroll(active.id, chatNode);
-        event.preventDefault();
+        routeTerminalWheelToChat(event, chatNode, workspaceNode);
       };
     }
     const inputNode = container.querySelector("[data-terminal-input]");
@@ -7671,6 +7781,7 @@ async function loadTerminalView(container) {
       }
     }
     bindTerminalComposer(active);
+    resizeTerminalComposerInput(inputNode);
     if (shouldRestoreFocus && active && inputNode && !inputNode.disabled) {
       window.requestAnimationFrame(() => {
         const nextInput = container.querySelector("[data-terminal-input]");
@@ -7725,7 +7836,8 @@ async function loadTerminalView(container) {
     terminalComposer.bind(inputNode, formNode, {
       stableName: "terminal-runtime",
       submitOnEnter: true,
-      submitStrategy: "form",
+      allowShiftEnter: true,
+      submitStrategy: "keydown",
       draftStorage: "local",
       draftKey: () => `terminal:${normalizeText(session?.id || "default")}`,
       clearDraftOnSubmit: true,
@@ -7735,12 +7847,14 @@ async function loadTerminalView(container) {
         if (!session) {
           return;
         }
+        resizeTerminalComposerInput(_inputNode);
         writeTerminalDraft(session.id, restoredDraft);
       },
       onInput: (currentInputNode) => {
         if (!session) {
           return;
         }
+        resizeTerminalComposerInput(currentInputNode);
         rememberTerminalInputFocus(session.id, currentInputNode);
         writeTerminalDraft(session.id, currentInputNode.value);
       },
@@ -7777,6 +7891,7 @@ async function loadTerminalView(container) {
       onSubmit: async (currentInputNode) => {
         const value = String(currentInputNode.value || "");
         terminalComposer.clearDraft();
+        resizeTerminalComposerInput(currentInputNode);
         if (session) {
           writeTerminalDraft(session.id, "");
         }
@@ -7785,6 +7900,7 @@ async function loadTerminalView(container) {
         await sendTerminalInput(value);
       }
     });
+    resizeTerminalComposerInput(inputNode);
   };
 
   const refreshSessionState = async (session) => {
@@ -10117,6 +10233,13 @@ function bindEvents() {
   });
   if (mobileNewChatButton) {
     mobileNewChatButton.addEventListener("click", () => {
+      if ((ROUTES[state.currentRoute] || ROUTES.chat).key === "terminal") {
+        const terminalCreateButton = routeBody.querySelector("[data-terminal-create]");
+        if (terminalCreateButton instanceof HTMLElement) {
+          terminalCreateButton.click();
+        }
+        return;
+      }
       if (isAgentConversationRoute()) {
         startNewAgentSession();
         return;
@@ -10161,6 +10284,13 @@ function bindEvents() {
 
   sessionToggle.addEventListener("click", (event) => {
     event.stopPropagation();
+    if ((ROUTES[state.currentRoute] || ROUTES.chat).key === "terminal") {
+      const terminalToggleButton = routeBody.querySelector("[data-terminal-session-pane-toggle]");
+      if (terminalToggleButton instanceof HTMLElement) {
+        terminalToggleButton.click();
+      }
+      return;
+    }
     if ((ROUTES[state.currentRoute] || ROUTES.chat).mode !== "chat") {
       return;
     }

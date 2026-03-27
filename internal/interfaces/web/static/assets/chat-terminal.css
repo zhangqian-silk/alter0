@@ -181,7 +181,7 @@
   min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: 10px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 24px;
@@ -194,24 +194,25 @@
   z-index: 5;
   min-width: 0;
   display: grid;
-  gap: 12px;
-  padding: 18px 20px 0;
+  gap: 10px;
+  padding: 16px 18px 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%);
   backdrop-filter: blur(12px);
 }
 
-.terminal-workspace-bar {
+.terminal-workspace-row {
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  min-width: 0;
+  gap: 12px;
 }
 
 .terminal-workspace-copy {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 3px;
+  flex: 1 1 auto;
 }
 
 .terminal-workspace-eyebrow {
@@ -225,23 +226,30 @@
 .terminal-workspace-copy h4 {
   margin: 0;
   color: #0f172a;
-  font-size: 26px;
-  line-height: 1.1;
+  font-size: 22px;
+  line-height: 1.12;
   letter-spacing: -0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .terminal-workspace-copy p {
   margin: 0;
   color: #64748b;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.terminal-workspace-subcopy {
+  display: block;
 }
 
 .terminal-mobile-actions {
   display: none;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
+  flex-wrap: wrap;
 }
 
 .terminal-workspace-actions {
@@ -251,6 +259,7 @@
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
+  flex: 0 0 auto;
 }
 
 .terminal-inline-button,
@@ -353,10 +362,17 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   position: relative;
   background: #1e1e1e;
+}
+
+.terminal-sticky-prompt-shell {
+  position: relative;
+  z-index: 4;
+  padding: 10px 14px 0;
+  background: linear-gradient(180deg, rgba(30, 30, 30, 1) 0%, rgba(30, 30, 30, 0.94) 100%);
 }
 
 .terminal-chat-screen {
@@ -371,7 +387,40 @@
   padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) 20px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scroll-padding-top: 18px;
+  scroll-padding-top: 72px;
+}
+
+.terminal-sticky-prompt {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(15, 23, 42, 0.88) 100%);
+  box-shadow: 0 12px 24px -18px rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+
+.terminal-sticky-prompt-prefix {
+  color: #60a5fa;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.terminal-sticky-prompt-text {
+  min-width: 0;
+  color: #eff6ff;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .terminal-log-tree {
@@ -435,6 +484,14 @@
   color: #93c5fd;
 }
 
+.terminal-turn-prompt {
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.14);
+  background: rgba(15, 23, 42, 0.18);
+}
+
 .terminal-log-row.kind-output .terminal-log-text {
   color: #f3f4f6;
 }
@@ -477,8 +534,10 @@
 
 .terminal-composer-shell {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 0 14px 14px;
+  position: relative;
+  z-index: 3;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(248, 250, 252, 0.94) 28%, rgba(248, 250, 252, 0.98) 100%);
 }
 
@@ -499,32 +558,37 @@
 .terminal-chat-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  align-items: end;
+  gap: 8px;
   min-width: 0;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 20px;
+  border-radius: 18px;
   background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
   box-shadow: 0 18px 40px -28px rgba(15, 23, 42, 0.5);
 }
 
-.terminal-chat-form input {
-  flex: 1;
+.terminal-chat-form textarea {
+  display: block;
+  width: 100%;
   min-width: 0;
-  min-height: 46px;
+  min-height: 44px;
+  max-height: 132px;
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: rgba(15, 23, 42, 0.92);
   color: #f8fafc;
   font: inherit;
-  padding: 0 14px;
+  line-height: 1.5;
+  resize: none;
+  padding: 10px 14px;
 }
 
-.terminal-chat-form input::placeholder {
+.terminal-chat-form textarea::placeholder {
   color: #94a3b8;
 }
 
-.terminal-chat-form input:focus {
+.terminal-chat-form textarea:focus {
   outline: none;
   border-color: rgba(96, 165, 250, 0.5);
   background: rgba(15, 23, 42, 1);
@@ -532,7 +596,9 @@
 }
 
 .terminal-chat-form button {
-  min-height: 46px;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 14px;
   border: 1px solid #2563eb;
   background: #2563eb;
@@ -540,12 +606,20 @@
   font: inherit;
   font-size: 13px;
   font-weight: 700;
-  padding: 0 18px;
+  padding: 0;
   cursor: pointer;
 }
 
+.terminal-chat-form-button-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  line-height: 1;
+}
+
 .terminal-chat-form button:disabled,
-.terminal-chat-form input:disabled {
+.terminal-chat-form textarea:disabled {
   opacity: 0.65;
   cursor: not-allowed;
 }
@@ -1263,6 +1337,12 @@
 }
 
 @media (max-width: 1100px) {
+  html,
+  body {
+    overflow: hidden;
+    height: 100%;
+  }
+
   :root {
     --card-min-width: 320px;
     --card-max-width: 460px;
@@ -1278,7 +1358,30 @@
   .app-shell,
   .app-shell.info-mode {
     grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
     transition: none;
+  }
+
+  .chat-pane {
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .route-view {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .route-body.terminal-route-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .primary-nav {
@@ -1338,6 +1441,11 @@
 
   .app-shell.info-mode .panel-toggle {
     display: none;
+  }
+
+  .chat-pane[data-route="terminal"].page-mode .panel-toggle,
+  .chat-pane[data-route="terminal"].page-mode .mobile-new-chat {
+    display: inline-flex;
   }
 
   .chat-header {
@@ -1587,7 +1695,14 @@
   .route-view.terminal-route {
     width: 100%;
     margin-top: 0;
-    padding: var(--route-terminal-padding-top) var(--route-terminal-padding-x) var(--route-terminal-padding-bottom);
+    padding: 0;
+    gap: 0;
+    background: var(--bg-page);
+    overflow: hidden;
+  }
+
+  .route-view.terminal-route > .route-head {
+    display: none;
   }
 
   .route-head {
@@ -1784,26 +1899,50 @@
   }
 
   .terminal-workspace-head {
-    padding: 14px 14px 0;
+    gap: 8px;
+    padding: 12px 12px 0;
   }
 
-  .terminal-workspace-bar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
+  .terminal-workspace-row {
+    align-items: center;
+    gap: 10px;
   }
 
   .terminal-workspace-copy h4 {
-    font-size: 22px;
+    font-size: 16px;
+    line-height: 1.18;
+  }
+
+  .terminal-workspace-eyebrow {
+    display: none;
+  }
+
+  .terminal-workspace-subcopy {
+    display: none;
   }
 
   .terminal-mobile-actions {
-    display: inline-flex;
-    flex-wrap: wrap;
+    display: none;
   }
 
   .terminal-workspace-actions {
-    justify-content: flex-start;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .terminal-inline-button,
+  .terminal-status-pill,
+  .terminal-session-close {
+    min-height: 32px;
+    font-size: 11px;
+    padding: 0 10px;
+  }
+
+  .terminal-session-close,
+  .terminal-inline-button,
+  .terminal-status-pill {
+    white-space: nowrap;
   }
 
   .terminal-meta-panel {
@@ -1820,11 +1959,20 @@
     --terminal-chat-screen-padding-x: 12px;
     min-height: 0;
     padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) 18px;
+    scroll-padding-top: 20px;
+  }
+
+  .terminal-sticky-prompt-shell {
+    padding: 8px 10px 0;
   }
 
   .terminal-jump-bottom {
-    bottom: 14px;
+    bottom: 12px;
     right: 12px;
+  }
+
+  .terminal-jump-bottom-label {
+    display: none;
   }
 
   .terminal-log-row {
@@ -1862,15 +2010,28 @@
   }
 
   .terminal-composer-shell {
-    padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+    gap: 6px;
+    padding: 0 10px calc(10px + env(safe-area-inset-bottom) + var(--keyboard-offset));
   }
 
   .terminal-chat-form {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px;
   }
 
-  .terminal-chat-form input,
+  .terminal-chat-form textarea {
+    min-height: 42px;
+    font-size: 16px;
+  }
+
   .terminal-chat-form button {
-    width: 100%;
+    width: 42px;
+    min-width: 42px;
+    min-height: 42px;
+  }
+
+  .terminal-composer-meta {
+    display: none;
   }
 }
