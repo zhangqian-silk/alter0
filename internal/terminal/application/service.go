@@ -226,7 +226,15 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 	if existing, ok := s.sessions[sessionID]; ok {
 		snapshot := existing.snapshot()
 		if snapshot.OwnerID != ownerID {
-			return terminaldomain.Session{}, ErrSessionNotFound
+			if !canTransferRecoveredSessionOwnership(snapshot, req) {
+				return terminaldomain.Session{}, ErrSessionNotFound
+			}
+			existing.mu.Lock()
+			existing.summary.OwnerID = ownerID
+			existing.summary.UpdatedAt = time.Now().UTC()
+			snapshot = existing.summary
+			existing.mu.Unlock()
+			s.persistSession(existing)
 		}
 		return snapshot, nil
 	}
@@ -1283,6 +1291,26 @@ func resolveRecoveredThreadID(sessionID string, terminalSessionID string) string
 		return ""
 	}
 	return threadID
+}
+
+func canTransferRecoveredSessionOwnership(snapshot terminaldomain.Session, req RecoverRequest) bool {
+	sessionID := strings.TrimSpace(snapshot.ID)
+	if sessionID == "" {
+		return false
+	}
+	if sessionID != strings.TrimSpace(req.SessionID) {
+		return false
+	}
+
+	requestTerminalSessionID := strings.TrimSpace(req.TerminalSessionID)
+	snapshotTerminalSessionID := strings.TrimSpace(snapshot.TerminalSessionID)
+	if requestTerminalSessionID == "" {
+		return snapshotTerminalSessionID == "" || snapshotTerminalSessionID == sessionID
+	}
+	if snapshotTerminalSessionID == "" {
+		return requestTerminalSessionID == sessionID
+	}
+	return requestTerminalSessionID == snapshotTerminalSessionID
 }
 
 func resolveSessionWorkspaceDir(baseDir string, sessionID string) (string, error) {

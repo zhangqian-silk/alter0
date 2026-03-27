@@ -115,6 +115,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 默认仅注入运行时必需上下文，不复用 Chat 会话记忆与长期记忆。
 - 每个 Terminal 会话使用独立工作区目录，不再默认落在仓库根目录。
 - Terminal 会持久化 Codex CLI 线程标识与会话状态；运行态退出后保留原会话历史，继续发送即可在同一会话内恢复。
+- 浏览器端会持久化 Terminal client 标识；页面刷新、重新打开路由或临时 `sessionStorage` 丢失后，仍优先复用原 Terminal 会话归属，不把仍可恢复的会话误判为丢失。
 - Terminal 不再设置产品级会话数量上限或固定超时淘汰策略。
 - 移动端访问 Terminal 时，轮询刷新不会重建已聚焦输入框；输入法每次确认词句后，若输入框仍保持聚焦，页面继续延迟重绘并保持当前位置，直到失焦后再刷新视图。
 - Terminal 移动端采用 `Header + 独立滚动消息区 + 底部输入条` 结构；会话列表默认收纳为可展开面板，当前会话元信息默认折叠，长输出支持展开/收起与快速回到底部。
@@ -264,6 +265,7 @@ go run ./cmd/alter0
 - Windows 下显式指定 `cmd.exe` 时会补充 UTF-8 代码页初始化；如需稳定中文输出，优先使用 `powershell.exe`
 - Terminal 会话退出后不会清空历史或线程标识；重新在原会话发送输入时，系统会优先复用已持久化的 Codex CLI 线程继续执行
 - 若 Terminal 会话在首条输入前已失去底层运行态，首次发送会自动恢复同一会话并继续执行，不要求用户新建会话
+- 若浏览器端 Terminal client 标识发生漂移，但同一 Web 登录态下仍携带原 `terminal_session_id` 与 CLI 线程标识，恢复流程会自动重新绑定原会话，不要求用户手动迁移历史
 
 ## Control API
 
