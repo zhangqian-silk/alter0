@@ -8896,10 +8896,13 @@ function renderTerminalTurns(session) {
   return turns.map((turn) => {
     const promptText = String(turn?.prompt || "").trim();
     const hasProcess = Array.isArray(turn?.steps) && turn.steps.length > 0;
-    return `<article class="route-surface-dark terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
+    const bodyHTML = [
+      hasProcess || String(turn?.status || "").trim().toLowerCase() === "running" ? renderTerminalTurnProcess(session, turn) : "",
+      renderTerminalFinalOutput(session, turn)
+    ].filter(Boolean).join("");
+    return `<article class="terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
       ${promptText ? `<div class="terminal-log-row kind-command terminal-turn-prompt" data-terminal-turn-prompt="${escapeHTML(normalizeText(turn.id))}" data-terminal-turn-prompt-text="${escapeHTML(promptText)}"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
-      ${hasProcess || String(turn?.status || "").trim().toLowerCase() === "running" ? renderTerminalTurnProcess(session, turn) : ""}
-      ${renderTerminalFinalOutput(session, turn)}
+      ${bodyHTML ? `<div class="route-surface-dark terminal-turn-surface">${bodyHTML}</div>` : ""}
     </article>`;
   }).join("");
 }
@@ -8951,12 +8954,6 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
     </header>
     <section class="route-surface-dark terminal-console-panel" data-terminal-console-panel>
       <div class="terminal-chat-screen" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
-        <div class="terminal-sticky-prompt-shell" data-terminal-sticky-prompt-shell hidden>
-          <button class="terminal-sticky-prompt" type="button" data-terminal-sticky-prompt>
-            <span class="terminal-sticky-prompt-prefix" aria-hidden="true">&gt;</span>
-            <span class="terminal-sticky-prompt-text" data-terminal-sticky-prompt-text></span>
-          </button>
-        </div>
         <div class="terminal-log-tree">
           ${renderTerminalTurns(session)}
         </div>
@@ -9203,6 +9200,9 @@ async function loadTerminalView(container) {
     revealActiveSessionCard: false,
     mobileSessionListOpen: false,
     mobileSessionListAutoOpened: false,
+    stickyPromptNode: null,
+    stickySectionNode: null,
+    stickySyncFrame: 0,
     pendingPaint: false,
     pendingScrollToBottom: false,
     persistTimer: 0,
@@ -9312,111 +9312,132 @@ async function loadTerminalView(container) {
     node.style.overflowY = node.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
   };
 
-  const measureTerminalStickyPromptOffset = (stickyShellNode) => {
-    if (!(stickyShellNode instanceof HTMLElement) || stickyShellNode.hidden) {
+  const measureTerminalStickyPromptOffset = (promptNode) => {
+    if (!(promptNode instanceof HTMLElement)) {
       return 0;
     }
-    const style = window.getComputedStyle(stickyShellNode);
-    const marginBottom = Math.max(parseFloat(style.marginBottom || "0"), 0);
-    return Math.max(Math.ceil(stickyShellNode.getBoundingClientRect().height + marginBottom), 0);
+    const rect = promptNode.getBoundingClientRect();
+    if (rect.height <= 0) {
+      return 0;
+    }
+    const parent = promptNode.parentElement;
+    const parentStyle = parent ? window.getComputedStyle(parent) : null;
+    const gap = parentStyle ? Math.max(parseFloat(parentStyle.rowGap || parentStyle.gap || "0"), 0) : 0;
+    return Math.max(Math.ceil(rect.height + gap), 0);
+  };
+
+  const applyTerminalStickyState = (chatNode, promptNode = null, sectionNode = null) => {
+    if (!(chatNode instanceof HTMLElement)) {
+      return;
+    }
+    const previousPromptNode = localState.stickyPromptNode;
+    const previousSectionNode = localState.stickySectionNode;
+    if (previousPromptNode instanceof HTMLElement && previousPromptNode !== promptNode) {
+      previousPromptNode.classList.remove("is-terminal-sticky-active");
+      previousPromptNode.removeAttribute("title");
+    }
+    if (previousSectionNode instanceof HTMLElement && previousSectionNode !== sectionNode) {
+      previousSectionNode.classList.remove("is-terminal-sticky-active");
+    }
+    if (promptNode instanceof HTMLElement) {
+      promptNode.classList.add("is-terminal-sticky-active");
+      promptNode.setAttribute("title", String(promptNode.getAttribute("data-terminal-turn-prompt-text") || "").trim());
+    }
+    if (sectionNode instanceof HTMLElement) {
+      sectionNode.classList.add("is-terminal-sticky-active");
+    }
+    localState.stickyPromptNode = promptNode instanceof HTMLElement ? promptNode : null;
+    localState.stickySectionNode = sectionNode instanceof HTMLElement ? sectionNode : null;
+    const stickyOffset = promptNode instanceof HTMLElement ? measureTerminalStickyPromptOffset(promptNode) : 0;
+    const stickyOffsetValue = `${stickyOffset}px`;
+    if (chatNode.style.getPropertyValue("--terminal-sticky-overlay-offset") !== stickyOffsetValue) {
+      chatNode.style.setProperty("--terminal-sticky-overlay-offset", stickyOffsetValue);
+    }
   };
 
   const syncTerminalStickyPrompt = (chatNode = null) => {
     const node = chatNode || container.querySelector("[data-terminal-chat-screen]");
-    const stickyShellNode = node ? node.querySelector("[data-terminal-sticky-prompt-shell]") : null;
-    const stickyNode = stickyShellNode ? stickyShellNode.querySelector("[data-terminal-sticky-prompt]") : null;
-    const stickyTextNode = stickyShellNode ? stickyShellNode.querySelector("[data-terminal-sticky-prompt-text]") : null;
-    const resetStickyPrompt = () => {
-      if (!node) {
-        return;
-      }
-      stickyShellNode.hidden = true;
-      stickyNode.removeAttribute("data-terminal-turn-id");
-      stickyNode.removeAttribute("title");
-      stickyTextNode.textContent = "";
-      node.style.setProperty("--terminal-sticky-overlay-offset", "0px");
-    };
-    if (!node || !stickyShellNode || !stickyNode || !stickyTextNode) {
+    if (!node) {
       return;
     }
     const promptNodes = [...node.querySelectorAll("[data-terminal-turn-prompt]")];
     if (!promptNodes.length) {
-      resetStickyPrompt();
+      applyTerminalStickyState(node);
+      return;
+    }
+    if (Math.max(Number(node.scrollTop || 0), 0) <= 4) {
+      applyTerminalStickyState(node);
       return;
     }
     const chatTop = node.getBoundingClientRect().top;
-    const findActivePromptByScroll = () => {
-      let nextPrompt = null;
-      promptNodes.forEach((promptNode) => {
-        if (!(promptNode instanceof HTMLElement)) {
-          return;
-        }
-        if (promptNode.getBoundingClientRect().top <= chatTop + TERMINAL_STICKY_PROMPT_SHOW_OFFSET) {
-          nextPrompt = promptNode;
-        }
-      });
-      return nextPrompt;
-    };
-    const findActivePromptByStickySection = () => {
-      const stickyOffset = measureTerminalStickyPromptOffset(stickyShellNode);
-      const sectionStickyTop = chatTop + stickyOffset;
-      const sectionStickySlack = 6;
-      const sectionNodes = [...node.querySelectorAll("[data-terminal-process-toggle], [data-terminal-final-head]")];
-      let activeSection = null;
-      sectionNodes.forEach((sectionNode) => {
-        if (!(sectionNode instanceof HTMLElement)) {
-          return;
-        }
-        const turnNode = sectionNode.closest("[data-terminal-turn]");
-        const turnRect = turnNode instanceof HTMLElement ? turnNode.getBoundingClientRect() : null;
-        if (!turnRect || turnRect.bottom <= chatTop + 8) {
-          return;
-        }
-        const sectionRect = sectionNode.getBoundingClientRect();
-        if (sectionRect.bottom <= sectionStickyTop + 4) {
-          return;
-        }
-        if (sectionRect.top <= sectionStickyTop + sectionStickySlack) {
-          activeSection = sectionNode;
-        }
-      });
-      if (!(activeSection instanceof HTMLElement)) {
-        return null;
+    let activePrompt = null;
+    promptNodes.forEach((promptNode) => {
+      if (!(promptNode instanceof HTMLElement)) {
+        return;
       }
-      const sectionTurn = activeSection.closest("[data-terminal-turn]");
-      if (!(sectionTurn instanceof HTMLElement)) {
-        return null;
+      const turnNode = promptNode.closest("[data-terminal-turn]");
+      const turnRect = turnNode instanceof HTMLElement ? turnNode.getBoundingClientRect() : null;
+      if (!turnRect || turnRect.bottom <= chatTop + 8) {
+        return;
       }
-      const sectionPrompt = sectionTurn.querySelector("[data-terminal-turn-prompt]");
-      return sectionPrompt instanceof HTMLElement ? sectionPrompt : null;
-    };
-    const forcedPrompt = findActivePromptByStickySection();
-    const activePrompt = forcedPrompt || findActivePromptByScroll();
-    const promptForcedBySection = Boolean(forcedPrompt);
+      if (promptNode.getBoundingClientRect().top <= chatTop + 4) {
+        activePrompt = promptNode;
+      }
+    });
     if (!(activePrompt instanceof HTMLElement)) {
-      resetStickyPrompt();
+      applyTerminalStickyState(node);
       return;
     }
     const activeTurn = activePrompt.closest("[data-terminal-turn]");
     const turnRect = activeTurn instanceof HTMLElement ? activeTurn.getBoundingClientRect() : null;
     if (!turnRect || turnRect.bottom <= chatTop + 8) {
-      resetStickyPrompt();
+      applyTerminalStickyState(node);
       return;
     }
-    if (!promptForcedBySection && activePrompt.getBoundingClientRect().top >= chatTop + 4) {
-      resetStickyPrompt();
+    const stickyOffset = measureTerminalStickyPromptOffset(activePrompt);
+    const sectionStickyTop = chatTop + stickyOffset;
+    const sectionStickySlack = 6;
+    let activeSection = null;
+    node.querySelectorAll("[data-terminal-process-toggle], [data-terminal-final-head]").forEach((sectionNode) => {
+      if (!(sectionNode instanceof HTMLElement)) {
+        return;
+      }
+      const turnNode = sectionNode.closest("[data-terminal-turn]");
+      const currentTurnRect = turnNode instanceof HTMLElement ? turnNode.getBoundingClientRect() : null;
+      if (!currentTurnRect || currentTurnRect.bottom <= chatTop + 8) {
+        return;
+      }
+      const sectionRect = sectionNode.getBoundingClientRect();
+      if (sectionRect.bottom <= sectionStickyTop + 4) {
+        return;
+      }
+      if (sectionRect.top <= sectionStickyTop + sectionStickySlack) {
+        activeSection = sectionNode;
+      }
+    });
+    applyTerminalStickyState(node, activePrompt, activeSection instanceof HTMLElement ? activeSection : null);
+  };
+
+  const requestTerminalStickyPromptSync = (chatNode = null, options = {}) => {
+    const node = chatNode || container.querySelector("[data-terminal-chat-screen]");
+    if (!(node instanceof HTMLElement)) {
       return;
     }
-    const promptText = String(activePrompt.getAttribute("data-terminal-turn-prompt-text") || activePrompt.querySelector(".terminal-log-text")?.textContent || "").trim();
-    if (!promptText) {
-      resetStickyPrompt();
+    if (options.immediate) {
+      if (localState.stickySyncFrame) {
+        window.cancelAnimationFrame(localState.stickySyncFrame);
+        localState.stickySyncFrame = 0;
+      }
+      syncTerminalStickyPrompt(node);
       return;
     }
-    stickyShellNode.hidden = false;
-    stickyNode.setAttribute("data-terminal-turn-id", normalizeText(activeTurn ? activeTurn.getAttribute("data-terminal-turn") : ""));
-    stickyNode.title = promptText;
-    stickyTextNode.textContent = promptText;
-    node.style.setProperty("--terminal-sticky-overlay-offset", `${measureTerminalStickyPromptOffset(stickyShellNode)}px`);
+    if (localState.stickySyncFrame) {
+      return;
+    }
+    localState.stickySyncFrame = window.requestAnimationFrame(() => {
+      localState.stickySyncFrame = 0;
+      syncTerminalStickyPrompt(node);
+    });
   };
 
   const revealTerminalTurnPrompt = (turnID, options = {}) => {
@@ -9435,11 +9456,9 @@ async function loadTerminalView(container) {
     if (!(promptNode instanceof HTMLElement)) {
       return;
     }
-    const stickyShellNode = chatNode.querySelector("[data-terminal-sticky-prompt-shell]");
-    const stickyOffset = measureTerminalStickyPromptOffset(stickyShellNode);
     const chatRect = chatNode.getBoundingClientRect();
     const promptRect = promptNode.getBoundingClientRect();
-    const alignOffset = stickyOffset + 8;
+    const alignOffset = 14;
     const nextScrollTop = Math.max(chatNode.scrollTop + promptRect.top - chatRect.top - alignOffset, 0);
     const behavior = options.behavior === "auto" || window.matchMedia("(prefers-reduced-motion: reduce)").matches
       ? "auto"
@@ -9503,7 +9522,7 @@ async function loadTerminalView(container) {
         jumpButton.classList.toggle("has-unread", session.chat_has_unread_output);
       }
     }
-    syncTerminalStickyPrompt(node);
+    requestTerminalStickyPromptSync(node);
   };
 
   const scrollTerminalChatToBottom = () => {
@@ -9518,7 +9537,7 @@ async function loadTerminalView(container) {
         activeSession.chat_has_unread_output = false;
         activeSession.chat_stick_to_bottom = true;
       }
-      syncTerminalStickyPrompt(chatNode);
+      requestTerminalStickyPromptSync(chatNode, { immediate: true });
     }
   };
 
@@ -10352,7 +10371,15 @@ async function loadTerminalView(container) {
   }
 
   container.onclick = (event) => {
-    const target = event.target.closest("button");
+    const stickyPromptNode = event.target instanceof Element ? event.target.closest("[data-terminal-turn-prompt]") : null;
+    if (stickyPromptNode instanceof HTMLElement && stickyPromptNode.classList.contains("is-terminal-sticky-active")) {
+      const turnID = normalizeText(stickyPromptNode.getAttribute("data-terminal-turn-prompt"));
+      if (turnID !== "-") {
+        revealTerminalTurnPrompt(turnID);
+      }
+      return;
+    }
+    const target = event.target instanceof Element ? event.target.closest("button") : null;
     if (!target) {
       return;
     }
@@ -10419,13 +10446,6 @@ async function loadTerminalView(container) {
       scrollTerminalChatToBottom();
       persist();
       requestTerminalPaint({ scrollToBottom: true });
-      return;
-    }
-    if (target.hasAttribute("data-terminal-sticky-prompt")) {
-      const turnID = normalizeText(target.getAttribute("data-terminal-turn-id"));
-      if (turnID !== "-") {
-        revealTerminalTurnPrompt(turnID);
-      }
       return;
     }
     if (target.hasAttribute("data-terminal-output-toggle")) {

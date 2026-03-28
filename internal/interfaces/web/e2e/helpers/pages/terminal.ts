@@ -39,7 +39,7 @@ export function createTerminalPage(page: Page): {
     closeButton: () => page.locator("[data-terminal-close]"),
     workspace: () => page.locator("[data-terminal-workspace]"),
     chatScreen: () => page.locator("[data-terminal-chat-screen]"),
-    stickyPrompt: () => page.locator("[data-terminal-sticky-prompt]"),
+    stickyPrompt: () => page.locator("[data-terminal-turn-prompt].is-terminal-sticky-active").first(),
     jumpBottomButton: () => page.locator("[data-terminal-jump-bottom]"),
     sessionPaneToggle: () => page.locator("#sessionToggle, [data-terminal-session-pane-toggle]").first(),
     sessionPane: () => page.locator("[data-terminal-session-pane]"),
