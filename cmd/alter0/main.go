@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 	execapp "alter0/internal/execution/application"
@@ -227,6 +228,7 @@ func main() {
 		Enabled: true,
 	})
 	registerBuiltinSkills(control)
+	agentCatalog := agentapp.NewCatalog(control)
 
 	registry := orchinfra.NewInMemoryCommandRegistry()
 	helpHandler := orchinfra.NewHelpCommandHandler(registry)
@@ -238,7 +240,7 @@ func main() {
 	llmService := llmapp.NewModelConfigService(llmStorage)
 
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
-	processor := execinfra.NewHybridNLProcessor(execinfra.NewCodexCLIProcessorWithCommand(resolvedCodexCommand), llmService, logger)
+	processor := execinfra.NewHybridNLProcessorWithCatalog(execinfra.NewCodexCLIProcessorWithCommand(resolvedCodexCommand), llmService, agentCatalog, logger)
 	executor := execapp.NewServiceWithSkills(processor, control, logger)
 	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
 	taskSummaryRuntime := tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
@@ -334,6 +336,7 @@ func main() {
 			BindLocalhost: resolvedWebBindLocalhostOnly,
 		},
 		llmService,
+		agentCatalog,
 		logger,
 	)
 	server.SetRuntimeInfoProvider(runtimeInfo)

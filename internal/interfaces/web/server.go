@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
+	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
-	execdomain "alter0/internal/execution/domain"
 	llmdomain "alter0/internal/llm/domain"
 	orchdomain "alter0/internal/orchestration/domain"
 	schedulerapp "alter0/internal/scheduler/application"
@@ -92,6 +92,7 @@ type Server struct {
 	webSessionToken  string
 	webLoginEnabled  bool
 	webBindLocalhost bool
+	agents           agentCatalogService
 }
 
 type llmService interface {
@@ -104,6 +105,13 @@ type llmService interface {
 	RemoveProvider(ctx context.Context, providerID string) error
 	SetDefaultProvider(ctx context.Context, providerID string) error
 	EnableProvider(ctx context.Context, providerID string, enabled bool) error
+}
+
+type agentCatalogService interface {
+	ResolveAgent(id string) (controldomain.Agent, bool)
+	ListEntrypointAgents() []controldomain.Agent
+	ListDelegatableAgents(excludeID string) []controldomain.Agent
+	IsBuiltinID(id string) bool
 }
 
 type sessionHistoryService interface {
@@ -505,6 +513,7 @@ func NewServer(
 	memoryOptions AgentMemoryOptions,
 	securityOptions WebSecurityOptions,
 	llm llmService,
+	agents agentCatalogService,
 	logger *slog.Logger,
 ) *Server {
 	resolvedPassword := strings.TrimSpace(securityOptions.LoginPassword)
@@ -535,6 +544,7 @@ func NewServer(
 		webSessionToken:  webSessionToken,
 		webLoginEnabled:  resolvedPassword != "",
 		webBindLocalhost: resolvedBindLocalhost,
+		agents:           agents,
 	}
 }
 
@@ -563,6 +573,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/chat", s.chatPageHandler)
 	mux.HandleFunc("/api/messages", s.messageHandler)
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
+	mux.HandleFunc("/api/agents", s.runtimeAgentListHandler)
 	mux.HandleFunc("/api/agent/messages", s.agentMessageHandler)
 	mux.HandleFunc("/api/agent/messages/stream", s.agentMessageStreamHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
@@ -2805,6 +2816,18 @@ func (s *Server) mcpItemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) runtimeAgentListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.agents == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent catalog unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.agents.ListEntrypointAgents()})
+}
+
 func (s *Server) agentListHandler(w http.ResponseWriter, r *http.Request) {
 	if s.control == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
@@ -2824,7 +2847,12 @@ func (s *Server) agentListHandler(w http.ResponseWriter, r *http.Request) {
 		if req.Enabled != nil {
 			enabled = *req.Enabled
 		}
-		created, err := s.control.CreateAgent(controldomain.Agent{
+		agentID, err := s.nextManagedAgentID(strings.TrimSpace(req.Name))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		created, err := s.control.SaveAgent(agentID, controldomain.Agent{
 			Name:          strings.TrimSpace(req.Name),
 			Type:          controldomain.CapabilityTypeAgent,
 			Enabled:       enabled,
@@ -2885,6 +2913,10 @@ func (s *Server) agentItemHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
+		if s.agents != nil && s.agents.IsBuiltinID(agentID) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "builtin agents are managed by the service and cannot be overwritten"})
+			return
+		}
 		defer r.Body.Close()
 		var req agentUpsertRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -2900,6 +2932,10 @@ func (s *Server) agentItemHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		s.applyCapabilityLifecycle(w, r, agentID, controldomain.CapabilityTypeAgent)
 	case http.MethodDelete:
+		if s.agents != nil && s.agents.IsBuiltinID(agentID) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "builtin agents are managed by the service and cannot be deleted"})
+			return
+		}
 		if !s.control.DeleteAgent(agentID) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "agent not found"})
 			return
@@ -2908,6 +2944,55 @@ func (s *Server) agentItemHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func (s *Server) nextManagedAgentID(name string) (string, error) {
+	base := agentIDBase(name)
+	if base == "" {
+		return "", errors.New("capability name is required")
+	}
+	candidate := base
+	for index := 2; ; index++ {
+		if !s.agentIDExists(candidate) {
+			return candidate, nil
+		}
+		candidate = fmt.Sprintf("%s-%d", base, index)
+	}
+}
+
+func agentIDBase(name string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(name))
+	if trimmed == "" {
+		return ""
+	}
+	var builder strings.Builder
+	lastHyphen := false
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+			lastHyphen = false
+			continue
+		}
+		if !lastHyphen {
+			builder.WriteByte('-')
+			lastHyphen = true
+		}
+	}
+	return strings.Trim(builder.String(), "-")
+}
+
+func (s *Server) agentIDExists(id string) bool {
+	if s.agents != nil {
+		if _, ok := s.agents.ResolveAgent(id); ok {
+			return true
+		}
+	}
+	if s.control != nil {
+		if _, ok := s.control.ResolveAgent(id); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) upsertTypedCapability(w http.ResponseWriter, r *http.Request, capabilityID string, forcedType controldomain.CapabilityType) {
@@ -3898,11 +3983,11 @@ func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessa
 	if strings.TrimSpace(req.Content) == "" {
 		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("content is required")
 	}
-	if s.control == nil {
-		return shareddomain.UnifiedMessage{}, "", http.StatusServiceUnavailable, errors.New("control service unavailable")
+	if s.agents == nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusServiceUnavailable, errors.New("agent catalog unavailable")
 	}
 
-	agent, ok := s.control.ResolveAgent(req.AgentID)
+	agent, ok := s.agents.ResolveAgent(req.AgentID)
 	if !ok {
 		return shareddomain.UnifiedMessage{}, "", http.StatusNotFound, errors.New("agent not found")
 	}
@@ -3922,7 +4007,7 @@ func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessa
 	if err != nil {
 		return shareddomain.UnifiedMessage{}, "", statusCode, err
 	}
-	msg.Metadata = applyAgentProfileMetadata(msg.Metadata, agent)
+	msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
 	return msg, agent.ID, http.StatusOK, nil
 }
 
@@ -3966,59 +4051,6 @@ func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.Uni
 		CorrelationID: strings.TrimSpace(req.CorrelationID),
 		ReceivedAt:    time.Now().UTC(),
 	}, http.StatusOK, nil
-}
-
-func applyAgentProfileMetadata(metadata map[string]string, agent controldomain.Agent) map[string]string {
-	items := cloneStringMap(metadata)
-	items[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
-	items[execdomain.AgentIDMetadataKey] = strings.TrimSpace(agent.ID)
-	items[execdomain.AgentNameMetadataKey] = strings.TrimSpace(agent.Name)
-	providerID := strings.TrimSpace(items[execdomain.LLMProviderIDMetadataKey])
-	if providerID == "" {
-		providerID = strings.TrimSpace(agent.ProviderID)
-	}
-	if providerID != "" {
-		items[execdomain.AgentProviderIDMetadataKey] = providerID
-	}
-	modelID := strings.TrimSpace(items[execdomain.LLMModelMetadataKey])
-	if modelID == "" {
-		modelID = strings.TrimSpace(agent.Model)
-	}
-	if modelID != "" {
-		items[execdomain.AgentModelMetadataKey] = modelID
-	}
-	if strings.TrimSpace(agent.SystemPrompt) != "" {
-		items[execdomain.AgentSystemPromptMetadataKey] = strings.TrimSpace(agent.SystemPrompt)
-	}
-	if agent.MaxIterations > 0 {
-		items[execdomain.AgentMaxIterationsMetadataKey] = strconv.Itoa(agent.MaxIterations)
-	}
-	applyDefaultListMetadata(items, execdomain.AgentToolsMetadataKey, agent.Tools)
-	applyDefaultListMetadata(items, "alter0.skills.include", agent.Skills)
-	applyDefaultListMetadata(items, "alter0.mcp.request.enable", agent.MCPs)
-	applyDefaultListMetadata(items, "alter0.memory.include", agent.MemoryFiles)
-	for key, value := range agent.Metadata {
-		trimmedKey := strings.TrimSpace(key)
-		trimmedValue := strings.TrimSpace(value)
-		if trimmedKey == "" || trimmedValue == "" {
-			continue
-		}
-		items[trimmedKey] = trimmedValue
-	}
-	return items
-}
-
-func applyDefaultListMetadata(items map[string]string, key string, values []string) {
-	trimmedKey := strings.TrimSpace(key)
-	if trimmedKey == "" || len(values) == 0 {
-		return
-	}
-	if _, exists := items[trimmedKey]; exists {
-		return
-	}
-	if raw, err := json.Marshal(values); err == nil {
-		items[trimmedKey] = string(raw)
-	}
 }
 
 func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage, assessment taskapp.ComplexityAssessment) (taskdomain.Task, bool, error) {

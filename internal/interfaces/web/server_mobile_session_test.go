@@ -37,7 +37,7 @@ func TestNewChatReusesLatestBlankSessionAndSwitchesContext(t *testing.T) {
 		"function enforceSingleBlankSession(mode = routeConversationMode())",
 		"const existingBlank = getLatestBlankSession(\"chat\");",
 		"setActiveConversationSessionID(existingBlank.id, \"chat\");",
-		"createSession(defaultChatTarget(), \"chat\");",
+		"createSession(routeDefaultTarget(\"chat\"), routeConversationMode(\"chat\"), \"chat\");",
 		`navigateToRoute("chat", { skipConfirm: true });`,
 		"newChatButton.addEventListener(\"click\", () => {",
 		"mobileNewChatButton.addEventListener(\"click\", () => {",
@@ -60,7 +60,7 @@ func TestSessionListShowsEmptyAndLoadFailureFeedback(t *testing.T) {
 		"function loadSessionsFromStorage(mode = routeConversationMode())",
 		`setConversationSessionLoadError("session_save_failed", mode);`,
 		"setConversationSessionLoadError(message, mode);",
-		`sessionEmpty.textContent = isAgentConversationRoute() ? t("session.empty_agent") : t("session.empty");`,
+		`sessionEmpty.textContent = routeAllowsTargetPicker() ? t("session.empty_agent") : t("session.empty");`,
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {

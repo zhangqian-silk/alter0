@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
@@ -204,6 +205,7 @@ func TestAgentMessageHandlerInjectsAgentProfileMetadata(t *testing.T) {
 	}
 	server := newMessageTestServer(orchestrator)
 	server.control = control
+	server.agents = agentapp.NewCatalog(control)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages", strings.NewReader(`{"agent_id":"researcher","session_id":"session-fixed","content":"完成仓库整理"}`))
 	rec := httptest.NewRecorder()
@@ -266,6 +268,7 @@ func TestAgentMessageHandlerKeepsExplicitRuntimeSelections(t *testing.T) {
 	}
 	server := newMessageTestServer(orchestrator)
 	server.control = control
+	server.agents = agentapp.NewCatalog(control)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages", strings.NewReader(`{
 		"agent_id":"researcher",

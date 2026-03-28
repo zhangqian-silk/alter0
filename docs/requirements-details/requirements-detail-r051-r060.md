@@ -1,6 +1,6 @@
 # Requirements Details (R-051 ~ R-060)
 
-> Last update: 2026-03-27
+> Last update: 2026-03-28
 
 ## 需求细化（草案）
 
@@ -87,7 +87,35 @@
 
 ### R-053
 
-暂无细化内容。
+1. 运行时必须提供统一 `Agent Catalog`，同时聚合系统内置 Agent 与控制面管理的 Agent Profile。
+2. 内置 Agent 至少包括：
+   - `main`：默认主 Agent，负责通用对话入口与子 Agent 调度
+   - `coding`：专项编码 Agent
+   - `writing`：专项写作 Agent
+3. `Chat` 页面必须默认绑定内置 `main` Agent，不再以 Raw Model 作为默认执行目标。
+4. 前端必须提供专项 Agent 入口路由；当前至少包括 `Coding` 与 `Writing`，并默认分别绑定 `coding`、`writing` Agent。
+5. 控制面 `Agent Profiles` 页面仅管理用户自定义 Agent；系统内置 Agent 不允许通过控制面覆盖或删除。
+6. 运行时必须提供统一入口 Agent 列表接口，供前端选择 Agent 与展示内置 Agent。
+   - 当前接口：`GET /api/agents`
+7. 主 Agent 调度子 Agent 必须走统一运行时工具能力，不通过页面跳转或伪造用户请求实现。
+   - 当前内置委派工具：`delegate_agent`
+8. `delegate_agent` 至少支持：
+   - `agent_id`：目标 Agent 标识
+   - `task`：下发给子 Agent 的具体任务
+   - `context`：可选补充上下文
+9. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files。
+10. 需限制主从递归深度与自委派，避免无限递归。
+11. 验收：
+   - `GET /api/agents` 可返回内置入口 Agent
+   - `Chat` 默认走 `main` Agent
+   - `Coding`、`Writing` 路由可直接进入对应内置 Agent 会话
+   - 主 Agent 可通过 `delegate_agent` 调用 `coding`、`writing` 等专项 Agent 并回收结果
+   - 用户新建 Agent 时若名称与内置 Agent 保留 ID 冲突，服务端会自动生成下一个可用 ID
+
+#### Traceability
+
+- 实现文件：`internal/agent/application/catalog.go`、`internal/agent/application/builtin.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/chat.html`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/execution/infrastructure/hybrid_nl_processor_test.go`、`internal/interfaces/web/server_control_test.go`、`internal/interfaces/web/server_message_test.go`
 
 ### R-054
 

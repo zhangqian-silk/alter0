@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 )
@@ -168,8 +169,10 @@ func TestCapabilityUnifiedAPI(t *testing.T) {
 }
 
 func TestAgentEndpointCreatesManagedIdentityAndVersion(t *testing.T) {
+	control := controlapp.NewService()
 	server := &Server{
-		control: controlapp.NewService(),
+		control: control,
+		agents:  agentapp.NewCatalog(control),
 		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
@@ -246,6 +249,79 @@ func TestAgentEndpointCreatesManagedIdentityAndVersion(t *testing.T) {
 	}
 	if len(listResp.Items) != 1 || listResp.Items[0].ID != "researcher" {
 		t.Fatalf("unexpected list items: %+v", listResp.Items)
+	}
+}
+
+func TestRuntimeAgentCatalogListsBuiltinEntrypoints(t *testing.T) {
+	control := controlapp.NewService()
+	server := &Server{
+		control: control,
+		agents:  agentapp.NewCatalog(control),
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	rec := httptest.NewRecorder()
+	server.runtimeAgentListHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Items []controldomain.Agent `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode runtime agent list failed: %v", err)
+	}
+	if len(response.Items) < 3 {
+		t.Fatalf("expected builtin agent entries, got %+v", response.Items)
+	}
+	if response.Items[0].ID != "main" || response.Items[0].Source != controldomain.AgentSourceBuiltin {
+		t.Fatalf("expected main builtin first, got %+v", response.Items[0])
+	}
+}
+
+func TestManagedAgentCreateSkipsBuiltinReservedID(t *testing.T) {
+	control := controlapp.NewService()
+	server := &Server{
+		control: control,
+		agents:  agentapp.NewCatalog(control),
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/control/agents", strings.NewReader(`{
+		"name":"Coding",
+		"enabled":true
+	}`))
+	createRec := httptest.NewRecorder()
+	server.agentListHandler(createRec, createReq)
+
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create 201, got %d: %s", createRec.Code, createRec.Body.String())
+	}
+	var agent controldomain.Agent
+	if err := json.NewDecoder(createRec.Body).Decode(&agent); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+	if agent.ID != "coding-2" {
+		t.Fatalf("expected managed agent id coding-2 to avoid builtin collision, got %s", agent.ID)
+	}
+}
+
+func TestBuiltinAgentCannotBeOverwrittenFromControlEndpoint(t *testing.T) {
+	control := controlapp.NewService()
+	server := &Server{
+		control: control,
+		agents:  agentapp.NewCatalog(control),
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/control/agents/main", strings.NewReader(`{"name":"Main Override","enabled":true}`))
+	rec := httptest.NewRecorder()
+	server.agentItemHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected builtin overwrite rejection 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

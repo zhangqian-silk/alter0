@@ -5,6 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	agentapp "alter0/internal/agent/application"
+	controlapp "alter0/internal/control/application"
+	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
 	llmdomain "alter0/internal/llm/domain"
 )
@@ -89,6 +92,52 @@ func (c *answerOnlyLLMClient) ChatStream(_ context.Context, _ llmdomain.ChatRequ
 }
 
 func (c *answerOnlyLLMClient) Close() error {
+	return nil
+}
+
+type delegatingLLMClient struct {
+	call int
+}
+
+func (c *delegatingLLMClient) Chat(_ context.Context, req llmdomain.ChatRequest) (*llmdomain.ChatResponse, error) {
+	if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "engineering delivery") {
+		return &llmdomain.ChatResponse{
+			Message: llmdomain.Message{
+				Role:    "assistant",
+				Content: "coding agent completed",
+			},
+		}, nil
+	}
+	c.call++
+	if c.call == 1 {
+		return &llmdomain.ChatResponse{
+			Message: llmdomain.Message{
+				Role: "assistant",
+				ToolCalls: []llmdomain.ToolCall{
+					{ID: "delegate-1", Name: "delegate_agent", Arguments: `{"agent_id":"coding","task":"Implement the requested code change"}`},
+				},
+			},
+		}, nil
+	}
+	last := req.Messages[len(req.Messages)-1]
+	if last.Role != "tool" || !strings.Contains(last.Content, "coding agent completed") {
+		return nil, errUnexpectedToolObservation
+	}
+	return &llmdomain.ChatResponse{
+		Message: llmdomain.Message{
+			Role: "assistant",
+			ToolCalls: []llmdomain.ToolCall{
+				{ID: "complete-1", Name: "complete", Arguments: `{"result":"Delegation wrapped successfully"}`},
+			},
+		},
+	}, nil
+}
+
+func (c *delegatingLLMClient) ChatStream(_ context.Context, _ llmdomain.ChatRequest, _ func(llmdomain.StreamEvent) error) (*llmdomain.ChatResponse, error) {
+	return nil, nil
+}
+
+func (c *delegatingLLMClient) Close() error {
 	return nil
 }
 
@@ -231,5 +280,46 @@ func TestHybridNLProcessorMarksCodexExecutionSource(t *testing.T) {
 	}
 	if got := metadata[execdomain.ExecutionSourceMetadataKey]; got != execdomain.ExecutionSourceCodexCLI {
 		t.Fatalf("expected execution source %q, got %q", execdomain.ExecutionSourceCodexCLI, got)
+	}
+}
+
+func TestHybridNLProcessorAgentModeSupportsDelegation(t *testing.T) {
+	control := controlapp.NewService()
+	if err := control.UpsertAgent(controldomain.Agent{
+		ID:          "managed-reviewer",
+		Name:        "Managed Reviewer",
+		Enabled:     true,
+		Type:        controldomain.CapabilityTypeAgent,
+		Scope:       controldomain.CapabilityScopeGlobal,
+		Version:     controldomain.DefaultCapabilityVersion,
+		Delegatable: true,
+	}); err != nil {
+		t.Fatalf("upsert managed agent failed: %v", err)
+	}
+	catalog := agentapp.NewCatalog(control)
+	reactFactory := &stubReactFactory{client: &delegatingLLMClient{}}
+	processor := NewHybridNLProcessorWithCatalog(newTestProcessor("success", "整理仓库"), reactFactory, catalog, nil)
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "main"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentToolsMetadataKey] = `["delegate_agent"]`
+
+	output, err := processor.Process(context.Background(), "完成一个需要编码的任务", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "Delegation wrapped successfully" {
+		t.Fatalf("Process() output = %q", output)
+	}
+	toolNames := []string{}
+	for _, item := range reactFactory.lastConfig.Tools {
+		toolNames = append(toolNames, item.Name)
+	}
+	if !strings.Contains(strings.Join(toolNames, ","), "delegate_agent") {
+		t.Fatalf("expected delegate_agent in %+v", toolNames)
+	}
+	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "coding") {
+		t.Fatalf("expected delegation targets in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
 	}
 }

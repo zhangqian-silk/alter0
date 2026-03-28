@@ -19,13 +19,14 @@ import (
 )
 
 const (
-	toolListDir   = "list_dir"
-	toolRead      = "read"
-	toolWrite     = "write"
-	toolEdit      = "edit"
-	toolBash      = "bash"
-	toolCodexExec = "codex_exec"
-	toolComplete  = "complete"
+	toolListDir       = "list_dir"
+	toolRead          = "read"
+	toolWrite         = "write"
+	toolEdit          = "edit"
+	toolBash          = "bash"
+	toolCodexExec     = "codex_exec"
+	toolDelegateAgent = "delegate_agent"
+	toolComplete      = "complete"
 
 	toolBaseRepo      = "repo"
 	toolBaseWorkspace = "workspace"
@@ -263,7 +264,7 @@ func normalizeToolIDSet(values []string) map[string]struct{} {
 	allowed := map[string]struct{}{}
 	for _, value := range values {
 		switch strings.ToLower(strings.TrimSpace(value)) {
-		case toolListDir, toolRead, toolWrite, toolEdit, toolBash, toolCodexExec:
+		case toolListDir, toolRead, toolWrite, toolEdit, toolBash, toolCodexExec, toolDelegateAgent:
 			allowed[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
 		}
 	}

@@ -32,3 +32,36 @@ func TestAgentCapabilityRoundTripPreservesMemoryFiles(t *testing.T) {
 		t.Fatalf("expected custom metadata preserved, got %+v", decoded.Metadata)
 	}
 }
+
+func TestAgentCapabilityRoundTripPreservesRuntimeCatalogFields(t *testing.T) {
+	agent := Agent{
+		ID:           "main",
+		Name:         "Main Agent",
+		Type:         CapabilityTypeAgent,
+		Enabled:      true,
+		Scope:        CapabilityScopeGlobal,
+		Version:      DefaultCapabilityVersion,
+		Source:       AgentSourceBuiltin,
+		Kind:         AgentKindMain,
+		Description:  "Primary orchestrator",
+		EntryPoint:   true,
+		Delegatable:  true,
+		UIRoute:      "chat",
+		Capabilities: []string{"general", "orchestration"},
+	}
+
+	decoded := AgentFromCapability(agent.AsCapability())
+
+	if decoded.Source != AgentSourceBuiltin || decoded.Kind != AgentKindMain {
+		t.Fatalf("expected builtin/main runtime fields, got %+v", decoded)
+	}
+	if !decoded.EntryPoint || !decoded.Delegatable {
+		t.Fatalf("expected entrypoint and delegatable preserved, got %+v", decoded)
+	}
+	if decoded.UIRoute != "chat" {
+		t.Fatalf("expected ui route chat, got %q", decoded.UIRoute)
+	}
+	if len(decoded.Capabilities) != 2 || decoded.Capabilities[0] != "general" {
+		t.Fatalf("unexpected capabilities: %+v", decoded.Capabilities)
+	}
+}

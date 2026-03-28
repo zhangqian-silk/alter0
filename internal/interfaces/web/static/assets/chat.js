@@ -85,6 +85,11 @@ const AVAILABLE_CHAT_TOOLS = [
     id: "codex_exec",
     name: "Codex Exec",
     description: "Allow agent execution to call Codex CLI for concrete implementation steps."
+  },
+  {
+    id: "delegate_agent",
+    name: "Delegate Agent",
+    description: "Allow an agent to hand off a specialist subtask to another built-in or managed agent."
   }
 ];
 const AGENT_MEMORY_FILE_OPTIONS = [
@@ -125,6 +130,8 @@ const I18N = {
     "nav.workspace": "Workspace",
     "nav.agent_studio": "Agent Studio",
     "nav.chat": "Chat",
+    "nav.coding": "Coding",
+    "nav.writing": "Writing",
     "nav.agent_runtime": "Agent",
     "nav.control": "Control",
     "nav.agent": "Profiles",
@@ -167,9 +174,9 @@ const I18N = {
     "welcome.desc": "I am a helpful assistant that can help you with your questions.",
     "welcome.target_title": "Choose who should handle this conversation",
     "welcome.target_hint": "Choose the execution target for this conversation.",
-    "welcome.agent_hint": "Choose one of your configured Agent Profiles to start an execution session.",
+    "welcome.agent_hint": "Choose one of the available Agents to start an execution session.",
     "welcome.model_title": "Choose the model for upcoming messages",
-    "welcome.model_hint": "Chat stays focused on the raw model. Provider, model, tools, and skills apply to upcoming messages.",
+    "welcome.model_hint": "Chat now runs through the built-in Main Agent. Provider, model, tools, and skills apply to upcoming messages.",
     "prompt.journey": "Let's start a new journey!",
     "prompt.skills": "Can you tell me what skills you have?",
     
@@ -264,7 +271,11 @@ const I18N = {
     
     // Routes
     "route.chat.title": "Chat",
-    "route.chat.subtitle": "Raw model conversation workspace with session-level model switching",
+    "route.chat.subtitle": "Main Agent workspace for general-purpose conversations and orchestration",
+    "route.coding.title": "Coding",
+    "route.coding.subtitle": "Coding Agent workspace for repository analysis, implementation, and verification",
+    "route.writing.title": "Writing",
+    "route.writing.subtitle": "Writing Agent workspace for documentation, copy, and structured drafting",
     "route.agent_runtime.title": "Agent",
     "route.agent_runtime.subtitle": "Run conversations through a selected Agent with independent session history",
     "route.agent.title": "Agent 配置",
@@ -585,6 +596,8 @@ const I18N = {
     "nav.workspace": "工作区",
     "nav.agent_studio": "Agent Studio",
     "nav.chat": "对话",
+    "nav.coding": "Coding",
+    "nav.writing": "Writing",
     "nav.agent_runtime": "Agent",
     "nav.control": "控制台",
     "nav.agent": "配置",
@@ -627,9 +640,9 @@ const I18N = {
     "welcome.desc": "我是你的全能助手，随时准备回答你的问题。",
     "welcome.target_title": "选择这段会话由谁来处理",
     "welcome.target_hint": "为当前会话选择执行目标。",
-    "welcome.agent_hint": "选择一个已配置的 Agent Profile，开始独立的执行会话。",
+    "welcome.agent_hint": "选择一个可用 Agent，开始独立的执行会话。",
     "welcome.model_title": "为后续消息选择模型",
-    "welcome.model_hint": "Chat 仅面向 Raw Model，对后续消息可继续调整 Provider、Model、Tools 与 Skills。",
+    "welcome.model_hint": "Chat 现在默认通过内置 Main Agent 执行，对后续消息可继续调整 Provider、Model、Tools 与 Skills。",
     "prompt.journey": "让我们开启一段新的旅程吧！",
     "prompt.skills": "能告诉我你有哪些技能吗？",
     
@@ -724,7 +737,11 @@ const I18N = {
     
     // Routes
     "route.chat.title": "对话",
-    "route.chat.subtitle": "面向 Raw Model 的会话工作区，支持按会话切换模型配置",
+    "route.chat.subtitle": "默认 Main Agent 对话工作区，适合通用任务与子 Agent 编排",
+    "route.coding.title": "Coding",
+    "route.coding.subtitle": "Coding Agent 工作区，面向仓库分析、实现与验证",
+    "route.writing.title": "Writing",
+    "route.writing.subtitle": "Writing Agent 工作区，面向文档、文案与结构化写作",
     "route.agent_runtime.title": "Agent",
     "route.agent_runtime.subtitle": "通过选定 Agent 执行会话，并维护独立的会话历史",
     "route.agent.title": "Agent Profiles",
@@ -1037,12 +1054,38 @@ const ROUTES = {
   chat: {
     key: "chat",
     mode: "chat",
-    conversation: "chat"
+    conversation: "agent",
+    defaultTarget: {
+      type: "agent",
+      id: "main",
+      name: "Main Agent"
+    }
+  },
+  coding: {
+    key: "coding",
+    mode: "chat",
+    conversation: "agent",
+    defaultTarget: {
+      type: "agent",
+      id: "coding",
+      name: "Coding Agent"
+    }
+  },
+  writing: {
+    key: "writing",
+    mode: "chat",
+    conversation: "agent",
+    defaultTarget: {
+      type: "agent",
+      id: "writing",
+      name: "Writing Agent"
+    }
   },
   "agent-runtime": {
     key: "agent_runtime",
     mode: "chat",
-    conversation: "agent"
+    conversation: "agent",
+    targetPicker: true
   },
   agent: {
     key: "agent",
@@ -1448,6 +1491,19 @@ function isAgentConversationRoute(route = state.currentRoute) {
   return routeConversationMode(route) === "agent";
 }
 
+function routeDefaultTarget(route = state.currentRoute) {
+  const config = ROUTES[route] || ROUTES.chat;
+  if (config.defaultTarget) {
+    return normalizeChatTarget(config.defaultTarget);
+  }
+  return config.conversation === "agent" ? defaultAgentRuntimeTarget() : defaultChatTarget();
+}
+
+function routeAllowsTargetPicker(route = state.currentRoute) {
+  const config = ROUTES[route] || ROUTES.chat;
+  return Boolean(config.targetPicker);
+}
+
 function conversationSessions() {
   return state.sessions;
 }
@@ -1704,7 +1760,7 @@ function normalizeChatTarget(target = {}) {
 
 function sessionTarget(session) {
   if (!session || typeof session !== "object") {
-    return isAgentConversationRoute() ? defaultAgentRuntimeTarget() : defaultChatTarget();
+    return routeDefaultTarget();
   }
   return normalizeChatTarget({
     type: session.targetType,
@@ -2530,7 +2586,7 @@ async function refreshChatAgentCatalog() {
   }
   state.chatCatalog.loading = true;
   try {
-    const payload = await fetchJSON("/api/control/agents");
+    const payload = await fetchJSON("/api/agents");
     state.chatCatalog.agents = Array.isArray(payload?.items)
       ? payload.items.filter((item) => Boolean(item?.enabled))
       : [];
@@ -2641,7 +2697,7 @@ function renderChatRuntimePanel() {
     return;
   }
   const mode = routeConversationMode();
-  const activeSession = getSession() || createSession(mode === "agent" ? defaultAgentRuntimeTarget() : defaultChatTarget(), mode);
+  const activeSession = getSession() || createSession(routeDefaultTarget(), mode, state.currentRoute);
   const target = sessionTarget(activeSession);
   const locked = targetLocked(activeSession);
   const modelSelection = resolveEffectiveChatModelSelection(activeSession);
@@ -2895,9 +2951,10 @@ function renderWelcomeTargetPicker() {
   const active = getSession();
   const currentTarget = sessionTarget(active);
   const agentRuntime = isAgentConversationRoute();
+  const allowPicker = routeAllowsTargetPicker();
   const agents = agentRuntime ? (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []) : [];
   const buttons = [];
-  if (agentRuntime) {
+  if (agentRuntime && allowPicker) {
     agents.forEach((agent) => {
       const agentID = String(agent?.id || "").trim();
       if (!agentID) {
@@ -2910,13 +2967,21 @@ function renderWelcomeTargetPicker() {
         <span>${escapeHTML(agentID)}</span>
       </button>`);
     });
+  } else if (agentRuntime) {
+    const fallbackTarget = routeDefaultTarget();
+    const targetName = currentTarget.name || fallbackTarget.name || t("session.target.agent");
+    const targetID = currentTarget.id || fallbackTarget.id || "";
+    buttons.push(`<div class="welcome-target-card active is-static">
+      <strong>${escapeHTML(targetName)}</strong>
+      <span>${escapeHTML(targetID || t("session.target.agent"))}</span>
+    </div>`);
   } else {
     buttons.push(`<div class="welcome-target-card active is-static">
       <strong>${escapeHTML(t("session.target.raw"))}</strong>
       <span>${escapeHTML(t("route.chat.subtitle"))}</span>
     </div>`);
   }
-  if (agentRuntime && state.chatCatalog.error) {
+  if (agentRuntime && allowPicker && state.chatCatalog.error) {
     buttons.push(`<p class="welcome-target-error">${escapeHTML(state.chatCatalog.error)}</p>`);
   }
   targetList.innerHTML = buttons.join("");
@@ -2961,7 +3026,7 @@ function openAgentRuntimeWithTarget(target) {
   });
 }
 
-function createSession(target = null, mode = routeConversationMode()) {
+function createSession(target = null, mode = routeConversationMode(), route = state.currentRoute) {
   const latestBlank = getLatestBlankSession();
   if (latestBlank) {
     if (target) {
@@ -2978,12 +3043,12 @@ function createSession(target = null, mode = routeConversationMode()) {
   }
 
   const createdAt = Date.now();
-  const defaultTarget = mode === "agent" ? defaultAgentRuntimeTarget() : defaultChatTarget();
+  const defaultTarget = routeDefaultTarget(route);
   const normalizedTarget = normalizeChatTarget(target || defaultTarget);
   const runtimeDefaults = defaultRuntimeSelectionsForTarget(normalizedTarget);
   const item = {
     id: makeID(),
-    title: t(mode === "agent" ? "session.new_agent_title" : "session.new_title"),
+    title: t(routeAllowsTargetPicker(route) ? "session.new_agent_title" : "session.new_title"),
     createdAt,
     messages: [],
     targetType: normalizedTarget.type,
@@ -3049,7 +3114,7 @@ function removeSession(sessionID) {
 
 function syncHeader() {
   const route = ROUTES[state.currentRoute] || ROUTES.chat;
-  const newSessionLabel = isAgentConversationRoute() ? t("session.new_agent") : t("session.new");
+  const newSessionLabel = routeAllowsTargetPicker() ? t("session.new_agent") : t("session.new");
   newChatButton.textContent = newSessionLabel;
   sessionToggle.hidden = false;
   if (mobileNewChatButton) {
@@ -3087,7 +3152,7 @@ function syncHeader() {
   const targetLabel = sessionTargetLabel(active);
   const modelLabel = sessionModelLabel(active);
   if (active.messages.length === 0) {
-    sessionSubheading.textContent = isAgentConversationRoute()
+    sessionSubheading.textContent = routeAllowsTargetPicker()
       ? `${targetLabel} · ${modelLabel} · ${t("session.empty_agent_sub")}`
       : `${targetLabel} · ${modelLabel} · ${t("session.empty_sub")}`;
     return;
@@ -3099,11 +3164,11 @@ function syncWelcomeCopy() {
   const active = getSession();
   if (!active) {
     welcomeHeading.textContent = t("welcome.heading");
-    welcomeDescription.textContent = isAgentConversationRoute() ? t("session.no_active_agent") : t("session.no_active");
+    welcomeDescription.textContent = routeAllowsTargetPicker() ? t("session.no_active_agent") : t("session.no_active");
     return;
   }
   welcomeHeading.textContent = t("welcome.heading");
-  welcomeDescription.textContent = isAgentConversationRoute()
+  welcomeDescription.textContent = routeAllowsTargetPicker()
     ? `${t("welcome.desc")} ${t("welcome.agent_hint")}`
     : `${t("welcome.desc")} ${t("welcome.model_hint")}`;
 }
@@ -3120,7 +3185,7 @@ function renderSessions() {
   const sessions = conversationSessions();
   const activeSessionID = activeConversationSessionID();
   if (!sessions.length) {
-    sessionEmpty.textContent = isAgentConversationRoute() ? t("session.empty_agent") : t("session.empty");
+    sessionEmpty.textContent = routeAllowsTargetPicker() ? t("session.empty_agent") : t("session.empty");
     sessionEmpty.style.display = "block";
     return;
   }
@@ -3171,7 +3236,7 @@ function renderSessions() {
 }
 
 function updateSessionTitle(session, fallbackText) {
-  const titleKey = isAgentConversationRoute() ? "session.new_agent_title" : "session.new_title";
+  const titleKey = routeAllowsTargetPicker() ? "session.new_agent_title" : "session.new_title";
   if (session.title !== t(titleKey) && session.title !== "New Chat" && session.title !== "新对话" && session.title !== "New Agent Run" && session.title !== "新 Agent 会话") {
     return;
   }
@@ -3760,7 +3825,7 @@ async function sendMessageFallback(payload, assistantMessage, endpoints = {}) {
 }
 
 async function sendMessage(rawContent) {
-  const route = isAgentConversationRoute() ? "agent-runtime" : "chat";
+  const route = (ROUTES[state.currentRoute] || ROUTES.chat).mode === "chat" ? state.currentRoute : "chat";
   if (state.currentRoute !== route) {
     navigateToRoute(route);
   }
@@ -3990,7 +4055,7 @@ function startNewChatSession() {
     if (!confirmComposerNavigation()) {
       return;
     }
-    createSession(defaultChatTarget(), "chat");
+    createSession(routeDefaultTarget("chat"), routeConversationMode("chat"), "chat");
   }
   navigateToRoute("chat", { skipConfirm: true });
   closeTransientPanels();
@@ -4001,22 +4066,28 @@ function startNewChatSession() {
 }
 
 function startNewAgentSession() {
+  const currentRoute = state.currentRoute;
+  const target = routeAllowsTargetPicker(currentRoute) ? defaultAgentRuntimeTarget() : routeDefaultTarget(currentRoute);
   const existingBlank = getLatestBlankSession();
   if (existingBlank) {
-    updateSessionTarget(existingBlank, defaultAgentRuntimeTarget());
+    updateSessionTarget(existingBlank, target);
     setActiveConversationSessionID(existingBlank.id, "agent");
     persistSessions();
     renderSessions();
     renderMessages();
     syncHeader();
     renderWelcomeTargetPicker();
-    navigateToRoute("agent-runtime", { skipConfirm: true });
+    if (routeAllowsTargetPicker(currentRoute)) {
+      navigateToRoute("agent-runtime", { skipConfirm: true });
+    }
   } else {
     if (!confirmComposerNavigation()) {
       return;
     }
-    createSession(defaultAgentRuntimeTarget(), "agent");
-    navigateToRoute("agent-runtime", { skipConfirm: true });
+    createSession(target, "agent", currentRoute);
+    if (routeAllowsTargetPicker(currentRoute)) {
+      navigateToRoute("agent-runtime", { skipConfirm: true });
+    }
   }
   closeTransientPanels();
   window.requestAnimationFrame(() => {
@@ -4648,7 +4719,7 @@ async function loadAgentView(container) {
           <label><span>${t("route.agent.form.iterations")}</span><input type="number" min="0" name="max_iterations" value="${escapeHTML(localState.draft.max_iterations)}"></label>
           <label class="agent-builder-toggle"><span>${t("route.agent.form.enabled")}</span><input type="checkbox" name="enabled" ${localState.draft.enabled ? "checked" : ""}></label>
           <label class="agent-builder-wide"><span>${t("route.agent.form.prompt")}</span><textarea name="system_prompt" rows="6">${escapeHTML(localState.draft.system_prompt)}</textarea></label>
-          <label class="agent-builder-wide"><span>${t("route.agent.form.tools")}</span><input type="text" name="tools" value="${escapeHTML(localState.draft.tools.join(", "))}" placeholder="list_dir, read, write, edit, bash, codex_exec"></label>
+          <label class="agent-builder-wide"><span>${t("route.agent.form.tools")}</span><input type="text" name="tools" value="${escapeHTML(localState.draft.tools.join(", "))}" placeholder="list_dir, read, write, edit, bash, codex_exec, delegate_agent"></label>
           <div class="agent-builder-wide agent-builder-section">
             <h5>${escapeHTML(t("route.agent.form.skills"))}</h5>
             <div class="agent-builder-options">${renderAgentOptionList(localState.skills, localState.draft.skills, "skills")}</div>
