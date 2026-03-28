@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -321,5 +322,40 @@ func TestHybridNLProcessorAgentModeSupportsDelegation(t *testing.T) {
 	}
 	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "coding") {
 		t.Fatalf("expected delegation targets in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
+	}
+}
+
+func TestHybridNLProcessorAgentModeIncludesProductContext(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+
+	productContext := execdomain.ProductContext{
+		Protocol:      execdomain.ProductContextProtocolVersion,
+		ProductID:     "travel",
+		Name:          "Travel",
+		MasterAgentID: "travel-master",
+		ArtifactTypes: []string{"city_guide", "itinerary", "map_layers"},
+		WorkerAgents: []execdomain.ProductWorkerAgentSpec{
+			{AgentID: "travel-route-planner", Role: "route-planner", Responsibility: "Generate day-by-day routes", Enabled: true},
+		},
+	}
+	rawProductContext, err := json.Marshal(productContext)
+	if err != nil {
+		t.Fatalf("marshal product context failed: %v", err)
+	}
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel-master"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.ProductContextMetadataKey] = string(rawProductContext)
+
+	if _, err := processor.Process(context.Background(), "生成一个三日游攻略", metadata); err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Resolved product context") {
+		t.Fatalf("expected product context section in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
+	}
+	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "travel-route-planner") {
+		t.Fatalf("expected worker agent in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
 	}
 }

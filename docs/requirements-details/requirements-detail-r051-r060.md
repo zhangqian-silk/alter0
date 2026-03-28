@@ -311,6 +311,8 @@
 3. Product 执行入口
    - `POST /api/products/{product_id}/messages`
    - 由目标 Product 的 `master agent` 负责处理
+   - 当前实现补充：`POST /api/products/{product_id}/messages/stream`
+   - 当前实现补充：请求进入执行前会自动绑定 Product 的 `master_agent_id`，并注入 `alter0.product-context/v1`
 4. Alter0 内部调度
    - `Alter0 Agent` 通过统一委派能力调用目标 Product `master agent`
 
@@ -356,6 +358,7 @@
 
 1. `travel` Product 信息
    - `GET /api/products/travel`
+   - 当前实现补充：`POST /api/products/travel/messages`
 2. 城市攻略生成
    - `POST /api/products/travel/guides`
    - 入参：城市与用户约束

@@ -23,6 +23,7 @@ import (
 	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
+	execdomain "alter0/internal/execution/domain"
 	llmdomain "alter0/internal/llm/domain"
 	orchdomain "alter0/internal/orchestration/domain"
 	productdomain "alter0/internal/product/domain"
@@ -186,6 +187,15 @@ type messageRequest struct {
 
 type agentMessageRequest struct {
 	AgentID       string            `json:"agent_id"`
+	SessionID     string            `json:"session_id"`
+	UserID        string            `json:"user_id,omitempty"`
+	ChannelID     string            `json:"channel_id,omitempty"`
+	CorrelationID string            `json:"correlation_id,omitempty"`
+	Content       string            `json:"content"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+type productMessageRequest struct {
 	SessionID     string            `json:"session_id"`
 	UserID        string            `json:"user_id,omitempty"`
 	ChannelID     string            `json:"channel_id,omitempty"`
@@ -3016,6 +3026,35 @@ func buildProductFromRequest(id string, req productUpsertRequest) productdomain.
 	}
 }
 
+func buildProductExecutionContext(product productdomain.Product) execdomain.ProductContext {
+	workers := make([]execdomain.ProductWorkerAgentSpec, 0, len(product.WorkerAgents))
+	for _, worker := range product.WorkerAgents {
+		workers = append(workers, execdomain.ProductWorkerAgentSpec{
+			AgentID:        strings.TrimSpace(worker.AgentID),
+			Role:           strings.TrimSpace(worker.Role),
+			Responsibility: strings.TrimSpace(worker.Responsibility),
+			Capabilities:   append([]string(nil), worker.Capabilities...),
+			Enabled:        worker.Enabled,
+		})
+	}
+	return execdomain.ProductContext{
+		Protocol:         execdomain.ProductContextProtocolVersion,
+		ProductID:        strings.TrimSpace(product.ID),
+		Name:             strings.TrimSpace(product.Name),
+		Slug:             strings.TrimSpace(product.Slug),
+		Summary:          strings.TrimSpace(product.Summary),
+		Status:           strings.TrimSpace(string(product.Status)),
+		Visibility:       strings.TrimSpace(string(product.Visibility)),
+		OwnerType:        strings.TrimSpace(string(product.OwnerType)),
+		MasterAgentID:    strings.TrimSpace(product.MasterAgentID),
+		EntryRoute:       strings.TrimSpace(product.EntryRoute),
+		Tags:             append([]string(nil), product.Tags...),
+		ArtifactTypes:    append([]string(nil), product.ArtifactTypes...),
+		KnowledgeSources: append([]string(nil), product.KnowledgeSources...),
+		WorkerAgents:     workers,
+	}
+}
+
 func (s *Server) publicProductListHandler(w http.ResponseWriter, r *http.Request) {
 	if s.products == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
@@ -3033,13 +3072,24 @@ func (s *Server) publicProductItemHandler(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-	productID, ok := resourceID(r.URL.Path, "/api/products/")
+	productID, resource, action, ok := productPublicResourceID(r.URL.Path)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		return
+	}
+	if resource == "messages" {
+		switch action {
+		case "":
+			s.productMessageHandler(w, r, productID)
+		case "stream":
+			s.productMessageStreamHandler(w, r, productID)
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product action"})
+		}
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 	item, found := s.products.ResolveProduct(productID)
@@ -3048,6 +3098,265 @@ func (s *Server) publicProductItemHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) productMessageHandler(w http.ResponseWriter, r *http.Request, productID string) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	msg, _, statusCode, err := s.prepareProductMessage(r, productID)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+
+	s.countGateway(string(msg.ChannelType))
+	assessment := s.assessComplexity(msg)
+	msg = enrichMessageWithComplexityMetadata(msg, assessment)
+	if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
+		taskCard := buildTaskCard(msg, assessment, task)
+		if submitErr != nil {
+			s.logWebMessageFailure(msg, submitErr)
+			writeJSON(w, http.StatusInternalServerError, messageResponse{
+				Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+				ExecutionMode:            assessment.ExecutionMode,
+				EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+				ComplexityLevel:          assessment.ComplexityLevel,
+				TaskCard:                 taskCard,
+				Error:                    submitErr.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, messageResponse{
+			Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+			TaskID:                   task.ID,
+			TaskStatus:               string(task.Status),
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
+			TaskCard:                 taskCard,
+		})
+		return
+	}
+
+	result, err := s.orchestrator.Handle(r.Context(), msg)
+	result = attachComplexityMetadata(result, assessment, nil)
+	if err != nil {
+		statusCode := http.StatusBadRequest
+		switch result.ErrorCode {
+		case "command_failed", "nl_execution_failed":
+			statusCode = http.StatusInternalServerError
+		case "queue_timeout":
+			statusCode = http.StatusGatewayTimeout
+		case "rate_limited":
+			statusCode = http.StatusTooManyRequests
+		case "queue_canceled":
+			statusCode = http.StatusRequestTimeout
+		}
+		s.logWebMessageFailure(msg, err)
+		writeJSON(w, statusCode, messageResponse{
+			Result:                   result,
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
+			Error:                    err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, messageResponse{
+		Result:                   result,
+		ExecutionMode:            assessment.ExecutionMode,
+		EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+		ComplexityLevel:          assessment.ComplexityLevel,
+	})
+}
+
+func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Request, productID string) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	msg, _, statusCode, err := s.prepareProductMessage(r, productID)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	s.countGateway(string(msg.ChannelType))
+	if err := writeSSE(w, "start", streamStartResponse{
+		MessageID: msg.MessageID,
+		SessionID: msg.SessionID,
+		ChannelID: msg.ChannelID,
+		TraceID:   msg.TraceID,
+	}); err != nil {
+		return
+	}
+	flusher.Flush()
+
+	assessment := s.defaultComplexityAssessment()
+	streamCtx, cancelStream := context.WithCancel(r.Context())
+	defer cancelStream()
+
+	streamResultCh := make(chan streamExecutionResult, 1)
+	streamDeltaCh := make(chan string, 16)
+	_, nativeStreaming := s.orchestrator.(StreamOrchestrator)
+	go func() {
+		result, handleErr := s.handleStreamMessage(streamCtx, msg, func(delta string) error {
+			if strings.TrimSpace(delta) == "" {
+				return nil
+			}
+			select {
+			case <-streamCtx.Done():
+				return streamCtx.Err()
+			case streamDeltaCh <- delta:
+				return nil
+			}
+		})
+		streamResultCh <- streamExecutionResult{result: result, err: handleErr}
+	}()
+
+	assessmentReady := false
+	assessmentCh := (<-chan taskapp.ComplexityAssessment)(nil)
+	cancelAssessment := func() {}
+	if s.tasks != nil {
+		assessmentCtx, cancel := context.WithCancel(r.Context())
+		cancelAssessment = cancel
+		defer cancelAssessment()
+		localAssessmentCh := make(chan taskapp.ComplexityAssessment, 1)
+		assessmentCh = localAssessmentCh
+		go func() {
+			localAssessmentCh <- s.assessComplexityWithContext(assessmentCtx, msg)
+		}()
+	}
+
+	emittedDelta := false
+	writeDelta := func(delta string, route shareddomain.Route) error {
+		if strings.TrimSpace(delta) == "" {
+			return nil
+		}
+		payload := streamDeltaResponse{Delta: delta}
+		if strings.TrimSpace(string(route)) != "" {
+			payload.Route = route
+		}
+		if err := writeSSE(w, "delta", payload); err != nil {
+			return err
+		}
+		emittedDelta = true
+		flusher.Flush()
+		return nil
+	}
+	finalizeStreamResult := func(streamResult streamExecutionResult) {
+		cancelAssessment()
+		result := attachComplexityMetadata(streamResult.result, assessment, nil)
+		handleErr := streamResult.err
+		_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+		if handleErr != nil {
+			s.logWebMessageFailure(msg, handleErr)
+			_ = writeSSE(w, "error", streamErrorResponse{
+				Error:  handleErr.Error(),
+				Result: result,
+			})
+			flusher.Flush()
+			return
+		}
+
+		if !nativeStreaming {
+			for _, chunk := range chunkText(result.Output, 24) {
+				if err := writeDelta(chunk, result.Route); err != nil {
+					return
+				}
+			}
+		}
+
+		_ = writeSSE(w, "done", streamDoneResponse{
+			Result:                   result,
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
+		})
+		flusher.Flush()
+	}
+
+	for {
+		select {
+		case delta := <-streamDeltaCh:
+			if err := writeDelta(delta, ""); err != nil {
+				return
+			}
+		case assessment = <-assessmentCh:
+			assessmentReady = true
+			if strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) != taskapp.ExecutionModeAsync {
+				continue
+			}
+			_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+			select {
+			case streamResult := <-streamResultCh:
+				assessment = s.defaultComplexityAssessment()
+				assessmentReady = false
+				finalizeStreamResult(streamResult)
+				return
+			default:
+			}
+
+			cancelStream()
+			taskMsg := enrichMessageWithComplexityMetadata(msg, assessment)
+			task, accepted, submitErr := s.submitAsyncTask(taskMsg, assessment)
+			taskCard := buildTaskCard(taskMsg, assessment, task)
+			result := asyncAcceptedResult(taskMsg, task, assessment, taskCard)
+			if submitErr != nil {
+				s.logWebMessageFailure(taskMsg, submitErr)
+				_ = writeSSE(w, "error", streamErrorResponse{
+					Error:  submitErr.Error(),
+					Result: result,
+				})
+				flusher.Flush()
+				return
+			}
+			if accepted {
+				output := result.Output
+				if emittedDelta && strings.TrimSpace(output) != "" {
+					output = "\n\n" + output
+				}
+				for _, chunk := range chunkText(output, 24) {
+					if err := writeDelta(chunk, ""); err != nil {
+						return
+					}
+				}
+				_ = writeSSE(w, "done", streamDoneResponse{
+					Result:                   result,
+					TaskID:                   task.ID,
+					TaskStatus:               string(task.Status),
+					ExecutionMode:            assessment.ExecutionMode,
+					EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+					ComplexityLevel:          assessment.ComplexityLevel,
+					TaskCard:                 taskCard,
+				})
+				flusher.Flush()
+				return
+			}
+		case streamResult := <-streamResultCh:
+			if !assessmentReady {
+				cancelAssessment()
+			}
+			finalizeStreamResult(streamResult)
+			return
+		}
+	}
 }
 
 func (s *Server) productListHandler(w http.ResponseWriter, r *http.Request) {
@@ -3423,6 +3732,43 @@ func resourceID(path, prefix string) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+func productPublicResourceID(path string) (string, string, string, bool) {
+	const prefix = "/api/products/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", "", false
+	}
+	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if trimmed == "" {
+		return "", "", "", false
+	}
+	parts := strings.Split(trimmed, "/")
+	switch len(parts) {
+	case 1:
+		productID := strings.TrimSpace(parts[0])
+		if productID == "" {
+			return "", "", "", false
+		}
+		return productID, "", "", true
+	case 2:
+		productID := strings.TrimSpace(parts[0])
+		resource := strings.TrimSpace(parts[1])
+		if productID == "" || resource == "" {
+			return "", "", "", false
+		}
+		return productID, resource, "", true
+	case 3:
+		productID := strings.TrimSpace(parts[0])
+		resource := strings.TrimSpace(parts[1])
+		action := strings.TrimSpace(parts[2])
+		if productID == "" || resource == "" || action == "" {
+			return "", "", "", false
+		}
+		return productID, resource, action, true
+	default:
+		return "", "", "", false
+	}
 }
 
 func cronJobResourceID(path string) (string, string, bool) {
@@ -4188,6 +4534,60 @@ func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessa
 	}
 	msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
 	return msg, agent.ID, http.StatusOK, nil
+}
+
+func (s *Server) prepareProductMessage(r *http.Request, productID string) (shareddomain.UnifiedMessage, string, int, error) {
+	defer r.Body.Close()
+
+	var req productMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("invalid json body")
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("content is required")
+	}
+	if s.products == nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusServiceUnavailable, errors.New("product service unavailable")
+	}
+	if s.agents == nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusServiceUnavailable, errors.New("agent catalog unavailable")
+	}
+
+	product, ok := s.products.ResolveProduct(productID)
+	if !ok || product.Status != productdomain.StatusActive || product.Visibility != productdomain.VisibilityPublic {
+		return shareddomain.UnifiedMessage{}, "", http.StatusNotFound, errors.New("product not found")
+	}
+	masterAgentID := strings.TrimSpace(product.MasterAgentID)
+	if masterAgentID == "" {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("product master agent is not configured")
+	}
+	agent, ok := s.agents.ResolveAgent(masterAgentID)
+	if !ok {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("product master agent not found")
+	}
+	if !agent.Enabled {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("product master agent is disabled")
+	}
+
+	msgReq := messageRequest{
+		SessionID:     req.SessionID,
+		UserID:        req.UserID,
+		ChannelID:     req.ChannelID,
+		CorrelationID: req.CorrelationID,
+		Content:       req.Content,
+		Metadata:      cloneStringMap(req.Metadata),
+	}
+	msg, statusCode, err := s.prepareMessageFromRequest(msgReq)
+	if err != nil {
+		return shareddomain.UnifiedMessage{}, "", statusCode, err
+	}
+	msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
+	rawProductContext, err := json.Marshal(buildProductExecutionContext(product))
+	if err != nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusInternalServerError, fmt.Errorf("encode product context: %w", err)
+	}
+	msg.Metadata[execdomain.ProductContextMetadataKey] = string(rawProductContext)
+	return msg, product.ID, http.StatusOK, nil
 }
 
 func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.UnifiedMessage, int, error) {

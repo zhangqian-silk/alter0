@@ -16,6 +16,8 @@ import (
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
+	productapp "alter0/internal/product/application"
+	productdomain "alter0/internal/product/domain"
 	shareddomain "alter0/internal/shared/domain"
 	"alter0/internal/shared/infrastructure/observability"
 )
@@ -294,5 +296,94 @@ func TestAgentMessageHandlerKeepsExplicitRuntimeSelections(t *testing.T) {
 	}
 	if got := orchestrator.lastMessage.Metadata["alter0.mcp.request.enable"]; got != "[]" {
 		t.Fatalf("expected explicit mcp selection preserved, got %q", got)
+	}
+}
+
+func TestProductMessageHandlerRoutesToProductMasterAgent(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "travel-guide-ok",
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertChannel(controldomain.Channel{
+		ID:      "web-default",
+		Type:    shareddomain.ChannelTypeWeb,
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+	server.products = productapp.NewService()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/products/travel/messages", strings.NewReader(`{"session_id":"session-fixed","content":"生成一个上海三日游攻略"}`))
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if orchestrator.lastMessage.Metadata[execdomain.ExecutionEngineMetadataKey] != execdomain.ExecutionEngineAgent {
+		t.Fatalf("expected agent execution engine, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey] != "travel-master" {
+		t.Fatalf("expected master agent travel-master, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	rawProductContext := orchestrator.lastMessage.Metadata[execdomain.ProductContextMetadataKey]
+	if strings.TrimSpace(rawProductContext) == "" {
+		t.Fatalf("expected product context metadata, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if !strings.Contains(rawProductContext, `"product_id":"travel"`) {
+		t.Fatalf("expected travel product context, got %q", rawProductContext)
+	}
+	if !strings.Contains(rawProductContext, `"master_agent_id":"travel-master"`) {
+		t.Fatalf("expected travel master agent in product context, got %q", rawProductContext)
+	}
+}
+
+func TestProductMessageHandlerRejectsNonPublicProductExecution(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "hidden-product",
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertChannel(controldomain.Channel{
+		ID:      "web-default",
+		Type:    shareddomain.ChannelTypeWeb,
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+	products := productapp.NewService()
+	if _, err := products.CreateProduct(productdomain.Product{
+		Name:          "Internal Planner",
+		Slug:          "internal-planner",
+		Summary:       "Private product should not expose public execution endpoints.",
+		Status:        productdomain.StatusActive,
+		Visibility:    productdomain.VisibilityPrivate,
+		MasterAgentID: "travel-master",
+	}); err != nil {
+		t.Fatalf("create product failed: %v", err)
+	}
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+	server.products = products
+
+	req := httptest.NewRequest(http.MethodPost, "/api/products/internal-planner/messages", strings.NewReader(`{"session_id":"session-fixed","content":"执行内部产品任务"}`))
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusNotFound, rec.Code, rec.Body.String())
 	}
 }
