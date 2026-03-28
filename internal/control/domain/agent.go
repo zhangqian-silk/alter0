@@ -15,6 +15,22 @@ const (
 	agentSkillsMetadataKey        = "agent.skills"
 	agentMCPsMetadataKey          = "agent.mcps"
 	agentMemoryFilesMetadataKey   = "agent.memory_files"
+	agentSourceMetadataKey        = "agent.source"
+	agentKindMetadataKey          = "agent.kind"
+	agentDescriptionMetadataKey   = "agent.description"
+	agentEntryPointMetadataKey    = "agent.entrypoint"
+	agentDelegatableMetadataKey   = "agent.delegatable"
+	agentUIRouteMetadataKey       = "agent.ui_route"
+	agentCapabilitiesMetadataKey  = "agent.capabilities"
+)
+
+const (
+	AgentSourceBuiltin = "builtin"
+	AgentSourceManaged = "managed"
+
+	AgentKindMain       = "main"
+	AgentKindSpecialist = "specialist"
+	AgentKindCustom     = "custom"
 )
 
 type Agent struct {
@@ -32,6 +48,13 @@ type Agent struct {
 	Skills        []string          `json:"skills,omitempty"`
 	MCPs          []string          `json:"mcps,omitempty"`
 	MemoryFiles   []string          `json:"memory_files,omitempty"`
+	Source        string            `json:"source,omitempty"`
+	Kind          string            `json:"kind,omitempty"`
+	Description   string            `json:"description,omitempty"`
+	EntryPoint    bool              `json:"entrypoint,omitempty"`
+	Delegatable   bool              `json:"delegatable,omitempty"`
+	UIRoute       string            `json:"ui_route,omitempty"`
+	Capabilities  []string          `json:"capabilities,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
@@ -53,6 +76,13 @@ func (a Agent) AsCapability() Capability {
 	setAgentListMetadata(metadata, agentSkillsMetadataKey, a.Skills)
 	setAgentListMetadata(metadata, agentMCPsMetadataKey, a.MCPs)
 	setAgentListMetadata(metadata, agentMemoryFilesMetadataKey, a.MemoryFiles)
+	setAgentMetadata(metadata, agentSourceMetadataKey, a.Source)
+	setAgentMetadata(metadata, agentKindMetadataKey, a.Kind)
+	setAgentMetadata(metadata, agentDescriptionMetadataKey, a.Description)
+	setAgentBoolMetadata(metadata, agentEntryPointMetadataKey, a.EntryPoint)
+	setAgentBoolMetadata(metadata, agentDelegatableMetadataKey, a.Delegatable)
+	setAgentMetadata(metadata, agentUIRouteMetadataKey, a.UIRoute)
+	setAgentListMetadata(metadata, agentCapabilitiesMetadataKey, a.Capabilities)
 	return Capability{
 		ID:       a.ID,
 		Name:     a.Name,
@@ -92,6 +122,13 @@ func AgentFromCapability(capability Capability) Agent {
 		Skills:        parseAgentListMetadata(metadata[agentSkillsMetadataKey]),
 		MCPs:          parseAgentListMetadata(metadata[agentMCPsMetadataKey]),
 		MemoryFiles:   parseAgentListMetadata(metadata[agentMemoryFilesMetadataKey]),
+		Source:        normalizeAgentAttribute(metadata[agentSourceMetadataKey]),
+		Kind:          normalizeAgentAttribute(metadata[agentKindMetadataKey]),
+		Description:   strings.TrimSpace(metadata[agentDescriptionMetadataKey]),
+		EntryPoint:    parseAgentBoolMetadata(metadata[agentEntryPointMetadataKey]),
+		Delegatable:   parseAgentBoolMetadata(metadata[agentDelegatableMetadataKey]),
+		UIRoute:       strings.TrimSpace(metadata[agentUIRouteMetadataKey]),
+		Capabilities:  parseAgentListMetadata(metadata[agentCapabilitiesMetadataKey]),
 		Metadata:      metadata,
 	}
 	delete(agent.Metadata, agentProviderIDMetadataKey)
@@ -102,6 +139,13 @@ func AgentFromCapability(capability Capability) Agent {
 	delete(agent.Metadata, agentSkillsMetadataKey)
 	delete(agent.Metadata, agentMCPsMetadataKey)
 	delete(agent.Metadata, agentMemoryFilesMetadataKey)
+	delete(agent.Metadata, agentSourceMetadataKey)
+	delete(agent.Metadata, agentKindMetadataKey)
+	delete(agent.Metadata, agentDescriptionMetadataKey)
+	delete(agent.Metadata, agentEntryPointMetadataKey)
+	delete(agent.Metadata, agentDelegatableMetadataKey)
+	delete(agent.Metadata, agentUIRouteMetadataKey)
+	delete(agent.Metadata, agentCapabilitiesMetadataKey)
 	if len(agent.Metadata) == 0 {
 		agent.Metadata = nil
 	}
@@ -129,6 +173,17 @@ func setAgentMetadata(metadata map[string]string, key string, value string) {
 		return
 	}
 	metadata[key] = trimmed
+}
+
+func setAgentBoolMetadata(metadata map[string]string, key string, value bool) {
+	if metadata == nil {
+		return
+	}
+	if !value {
+		delete(metadata, key)
+		return
+	}
+	metadata[key] = "true"
 }
 
 func setAgentListMetadata(metadata map[string]string, key string, values []string) {
@@ -159,6 +214,19 @@ func parseAgentListMetadata(raw string) []string {
 		}
 	}
 	return normalizeAgentList(strings.Split(trimmed, ","))
+}
+
+func parseAgentBoolMetadata(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeAgentAttribute(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
 }
 
 func normalizeAgentList(values []string) []string {

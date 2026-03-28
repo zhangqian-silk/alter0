@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-03-27
+> Last update: 2026-03-28
 
 状态说明：
 
@@ -60,9 +60,10 @@
 | R-047 | OpenAI Go SDK 接入 | supported | 已接入 `github.com/openai/openai-go` SDK，统一支持 OpenAI 兼容 API、自定义 `base_url` 与 `/responses`、`/chat/completions` 双接口模式 |
 | R-048 | ReAct 模式 Agent 调用 | supported | Agent 执行链已提供 ReAct 循环、工具调用、多轮观察与 `codex_exec` 协同执行能力 |
 | R-049 | 模型配置管理 | supported | 支持多 Provider/多模型配置、启用禁用、默认 Provider 与默认模型切换，并对禁用默认项自动收敛到可用配置 |
-| R-050 | Web 登录后统一 Session 视图 | supported | 密码验证通过后，Web 内 `Chat`、`Agent` 等页面继续保留各自定位与入口，但共享同一套 Session 历史；不再按页面来源拆分 Session，并移除相关冗余文案与状态内容 |
+| R-050 | Web 登录后按 Agent 隔离 Session 视图 | supported | 密码验证通过后，Web 对话页按目标 Agent 维护独立 Session 历史；具备独立前端入口的 Agent 不进入通用 Agent 页面历史 |
 | R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识与浏览器侧 Terminal client 标识；不再对 Terminal 设置产品级会话上限与超时淘汰；运行态缺失或前端临时标识漂移后继续发送会自动恢复原会话并保留历史 |
 | R-052 | Agent Memory Files 勾选注入与文件可写记忆对齐 | supported | Agent Profile 支持勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md` 与 Daily Memory；执行前将所选文件内容与路径注入运行时上下文，并可搭配独立 `memory` Skill 统一记忆读写规范 |
+| R-053 | 内置 Agent Catalog 与主从委派 | supported | 运行时统一聚合内置 Agent 与用户管理 Agent；`Chat` 默认绑定 `main` Agent，通用 `Agent` 页面承载其余入口 Agent，并支持主 Agent 通过 `delegate_agent` 下发子任务 |
 
 ## 需求细化（分文件）
 

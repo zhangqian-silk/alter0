@@ -47,6 +47,8 @@ const NAV_TOOLTIP_OFFSET = 12;
 const CHAT_TASK_POLL_INTERVAL_MS = 4000;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
+const MAIN_AGENT_ID = "main";
+const MAIN_AGENT_NAME = "Alter0";
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v3";
 const LEGACY_CHAT_SESSION_STORAGE_KEY = "alter0.web.sessions.chat.v2";
 const LEGACY_AGENT_SESSION_STORAGE_KEY = "alter0.web.sessions.agent.v2";
@@ -85,6 +87,11 @@ const AVAILABLE_CHAT_TOOLS = [
     id: "codex_exec",
     name: "Codex Exec",
     description: "Allow agent execution to call Codex CLI for concrete implementation steps."
+  },
+  {
+    id: "delegate_agent",
+    name: "Delegate Agent",
+    description: "Allow an agent to hand off a specialist subtask to another built-in or managed agent."
   }
 ];
 const AGENT_MEMORY_FILE_OPTIONS = [
@@ -125,6 +132,8 @@ const I18N = {
     "nav.workspace": "Workspace",
     "nav.agent_studio": "Agent Studio",
     "nav.chat": "Chat",
+    "nav.coding": "Coding",
+    "nav.writing": "Writing",
     "nav.agent_runtime": "Agent",
     "nav.control": "Control",
     "nav.agent": "Profiles",
@@ -167,9 +176,9 @@ const I18N = {
     "welcome.desc": "I am a helpful assistant that can help you with your questions.",
     "welcome.target_title": "Choose who should handle this conversation",
     "welcome.target_hint": "Choose the execution target for this conversation.",
-    "welcome.agent_hint": "Choose one of your configured Agent Profiles to start an execution session.",
+    "welcome.agent_hint": "Choose one of the available Agents to start an execution session.",
     "welcome.model_title": "Choose the model for upcoming messages",
-    "welcome.model_hint": "Chat stays focused on the raw model. Provider, model, tools, and skills apply to upcoming messages.",
+    "welcome.model_hint": "{agent} now handles this workspace by default. Provider, model, tools, and skills apply to upcoming messages.",
     "prompt.journey": "Let's start a new journey!",
     "prompt.skills": "Can you tell me what skills you have?",
     
@@ -264,7 +273,11 @@ const I18N = {
     
     // Routes
     "route.chat.title": "Chat",
-    "route.chat.subtitle": "Raw model conversation workspace with session-level model switching",
+    "route.chat.subtitle": "Alter0 workspace for general-purpose conversations and orchestration",
+    "route.coding.title": "Coding",
+    "route.coding.subtitle": "Coding Agent workspace for repository analysis, implementation, and verification",
+    "route.writing.title": "Writing",
+    "route.writing.subtitle": "Writing Agent workspace for documentation, copy, and structured drafting",
     "route.agent_runtime.title": "Agent",
     "route.agent_runtime.subtitle": "Run conversations through a selected Agent with independent session history",
     "route.agent.title": "Agent 配置",
@@ -585,6 +598,8 @@ const I18N = {
     "nav.workspace": "工作区",
     "nav.agent_studio": "Agent Studio",
     "nav.chat": "对话",
+    "nav.coding": "Coding",
+    "nav.writing": "Writing",
     "nav.agent_runtime": "Agent",
     "nav.control": "控制台",
     "nav.agent": "配置",
@@ -627,9 +642,9 @@ const I18N = {
     "welcome.desc": "我是你的全能助手，随时准备回答你的问题。",
     "welcome.target_title": "选择这段会话由谁来处理",
     "welcome.target_hint": "为当前会话选择执行目标。",
-    "welcome.agent_hint": "选择一个已配置的 Agent Profile，开始独立的执行会话。",
+    "welcome.agent_hint": "选择一个可用 Agent，开始独立的执行会话。",
     "welcome.model_title": "为后续消息选择模型",
-    "welcome.model_hint": "Chat 仅面向 Raw Model，对后续消息可继续调整 Provider、Model、Tools 与 Skills。",
+    "welcome.model_hint": "当前工作区默认由 {agent} 处理，后续消息仍可继续调整 Provider、Model、Tools 与 Skills。",
     "prompt.journey": "让我们开启一段新的旅程吧！",
     "prompt.skills": "能告诉我你有哪些技能吗？",
     
@@ -724,7 +739,11 @@ const I18N = {
     
     // Routes
     "route.chat.title": "对话",
-    "route.chat.subtitle": "面向 Raw Model 的会话工作区，支持按会话切换模型配置",
+    "route.chat.subtitle": "默认 Alter0 对话工作区，适合通用任务与子 Agent 编排",
+    "route.coding.title": "Coding",
+    "route.coding.subtitle": "Coding Agent 工作区，面向仓库分析、实现与验证",
+    "route.writing.title": "Writing",
+    "route.writing.subtitle": "Writing Agent 工作区，面向文档、文案与结构化写作",
     "route.agent_runtime.title": "Agent",
     "route.agent_runtime.subtitle": "通过选定 Agent 执行会话，并维护独立的会话历史",
     "route.agent.title": "Agent Profiles",
@@ -1037,12 +1056,18 @@ const ROUTES = {
   chat: {
     key: "chat",
     mode: "chat",
-    conversation: "chat"
+    conversation: "agent",
+    defaultTarget: {
+      type: "agent",
+      id: MAIN_AGENT_ID,
+      name: MAIN_AGENT_NAME
+    }
   },
   "agent-runtime": {
     key: "agent_runtime",
     mode: "chat",
-    conversation: "agent"
+    conversation: "agent",
+    targetPicker: true
   },
   agent: {
     key: "agent",
@@ -1103,7 +1128,7 @@ const ROUTES = {
 
 const state = {
   currentRoute: DEFAULT_ROUTE,
-  activeSessionID: "",
+  activeSessionByBucket: {},
   sessions: [],
   sessionLoadError: "",
   chatCatalog: {
@@ -1123,6 +1148,9 @@ const state = {
   },
   chatRuntime: {
     openPopover: ""
+  },
+  agentRuntimeState: {
+    selectedAgentID: ""
   },
   agentRouteState: {
     selectedAgentID: "",
@@ -1448,20 +1476,59 @@ function isAgentConversationRoute(route = state.currentRoute) {
   return routeConversationMode(route) === "agent";
 }
 
-function conversationSessions() {
-  return state.sessions;
+function routeDefaultTarget(route = state.currentRoute) {
+  const config = ROUTES[route] || ROUTES.chat;
+  if (config.defaultTarget) {
+    return normalizeChatTarget(config.defaultTarget);
+  }
+  return config.conversation === "agent" ? defaultAgentRuntimeTarget() : defaultChatTarget();
 }
 
-function setConversationSessions(items) {
+function routeAllowsTargetPicker(route = state.currentRoute) {
+  const config = ROUTES[route] || ROUTES.chat;
+  return Boolean(config.targetPicker);
+}
+
+function storedConversationSessions() {
+  return Array.isArray(state.sessions) ? state.sessions : [];
+}
+
+function setStoredConversationSessions(items) {
   state.sessions = Array.isArray(items) ? items : [];
+  sortSessionsByCreatedAtDesc(state.sessions);
 }
 
-function activeConversationSessionID() {
-  return state.activeSessionID;
+function conversationSessions(route = state.currentRoute) {
+  const bucket = conversationHistoryBucket(route);
+  return storedConversationSessions().filter((item) => sessionHistoryBucket(item) === bucket);
 }
 
-function setActiveConversationSessionID(sessionID) {
-  state.activeSessionID = normalizeText(sessionID);
+function setConversationSessions(items, route = state.currentRoute) {
+  const bucket = conversationHistoryBucket(route);
+  const preserved = storedConversationSessions().filter((item) => sessionHistoryBucket(item) !== bucket);
+  const nextItems = (Array.isArray(items) ? items : []).map((item) => ({
+    ...item,
+    historyBucket: bucket
+  }));
+  setStoredConversationSessions([...preserved, ...nextItems]);
+}
+
+function activeConversationSessionID(route = state.currentRoute) {
+  const bucket = conversationHistoryBucket(route);
+  return normalizeText(state.activeSessionByBucket?.[bucket]);
+}
+
+function setActiveConversationSessionID(sessionID, route = state.currentRoute) {
+  const bucket = conversationHistoryBucket(route);
+  const normalized = normalizeText(sessionID);
+  if (!bucket) {
+    return;
+  }
+  if (!normalized) {
+    delete state.activeSessionByBucket[bucket];
+    return;
+  }
+  state.activeSessionByBucket[bucket] = normalized;
 }
 
 function conversationSessionLoadError() {
@@ -1486,8 +1553,9 @@ function shorten(text, maxLength) {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
-function getSession(id = activeConversationSessionID(), mode = routeConversationMode()) {
-  return conversationSessions(mode).find((item) => item.id === id);
+function getSession(id = activeConversationSessionID(), route = state.currentRoute) {
+  const normalizedID = normalizeText(id);
+  return conversationSessions(route).find((item) => item.id === normalizedID) || null;
 }
 
 function defaultChatTarget() {
@@ -1499,11 +1567,66 @@ function defaultChatTarget() {
 }
 
 function defaultAgentRuntimeTarget() {
-  return {
-    type: "agent",
-    id: "",
-    name: t("session.target.agent")
-  };
+  return resolveAgentRuntimeTarget();
+}
+
+function fixedAgentRouteTarget(route = state.currentRoute) {
+  const config = ROUTES[route] || ROUTES.chat;
+  if (config.conversation !== "agent" || config.targetPicker) {
+    return null;
+  }
+  return normalizeChatTarget(config.defaultTarget || routeDefaultTarget(route));
+}
+
+function currentConversationTarget(route = state.currentRoute) {
+  const fixedTarget = fixedAgentRouteTarget(route);
+  if (fixedTarget) {
+    return fixedTarget;
+  }
+  const config = ROUTES[route] || ROUTES.chat;
+  if (config.conversation === "agent" && config.targetPicker) {
+    return syncAgentRuntimeTarget();
+  }
+  return routeDefaultTarget(route);
+}
+
+function conversationHistoryBucketForTarget(target = {}) {
+  const normalizedTarget = normalizeChatTarget(target);
+  if (normalizedTarget.type === "agent") {
+    const agentID = normalizeText(normalizedTarget.id);
+    return agentID ? `agent:${agentID}` : "agent:unassigned";
+  }
+  if (normalizeText(normalizedTarget.id) === "raw-model") {
+    return `agent:${MAIN_AGENT_ID}`;
+  }
+  return `model:${normalizeText(normalizedTarget.id) || "default"}`;
+}
+
+function conversationHistoryBucket(route = state.currentRoute) {
+  return conversationHistoryBucketForTarget(currentConversationTarget(route));
+}
+
+function sessionHistoryBucket(session) {
+  return normalizeText(session?.historyBucket) || conversationHistoryBucketForTarget({
+    type: session?.targetType,
+    id: session?.targetID,
+    name: session?.targetName
+  });
+}
+
+function ensureActiveConversationSession(route = state.currentRoute) {
+  const sessions = conversationSessions(route);
+  const activeID = activeConversationSessionID(route);
+  const active = sessions.find((item) => item.id === activeID) || null;
+  if (active) {
+    return active;
+  }
+  if (!sessions.length) {
+    setActiveConversationSessionID("", route);
+    return null;
+  }
+  setActiveConversationSessionID(sessions[0].id, route);
+  return sessions[0];
 }
 
 function enabledModelsForProvider(provider) {
@@ -1639,6 +1762,55 @@ function findChatAgent(agentID) {
   return (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).find((item) => normalizeText(item?.id) === normalizedID) || null;
 }
 
+function agentConversationRoute(agent = {}) {
+  const route = normalizeText(agent?.ui_route || agent?.uiRoute);
+  if (!route || route === "agent-runtime") {
+    return "";
+  }
+  const config = ROUTES[route];
+  if (!config || config.mode !== "chat") {
+    return "";
+  }
+  return route;
+}
+
+function genericRuntimeConversationAgents() {
+  return (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).filter((item) => {
+    const agentID = normalizeText(item?.id);
+    return agentID && !agentConversationRoute(item);
+  });
+}
+
+function resolveAgentRuntimeTarget(target = {}) {
+  const requestedID = normalizeText(target?.id || state.agentRuntimeState.selectedAgentID);
+  const agents = genericRuntimeConversationAgents();
+  const selected = agents.find((item) => normalizeText(item?.id) === requestedID) || agents[0] || null;
+  if (!selected) {
+    return {
+      type: "agent",
+      id: "",
+      name: t("session.target.agent")
+    };
+  }
+  return normalizeChatTarget({
+    type: "agent",
+    id: selected.id,
+    name: selected.name || selected.id
+  });
+}
+
+function syncAgentRuntimeTarget(target = {}) {
+  const resolved = resolveAgentRuntimeTarget(target);
+  state.agentRuntimeState.selectedAgentID = resolved.id;
+  return resolved;
+}
+
+function reconcileAgentRuntimeTarget() {
+  const previousID = normalizeText(state.agentRuntimeState.selectedAgentID);
+  const resolved = syncAgentRuntimeTarget();
+  return previousID !== resolved.id;
+}
+
 function defaultRuntimeSelectionsForTarget(target) {
   const normalizedTarget = normalizeChatTarget(target);
   if (normalizedTarget.type !== "agent") {
@@ -1702,15 +1874,40 @@ function normalizeChatTarget(target = {}) {
   };
 }
 
-function sessionTarget(session) {
-  if (!session || typeof session !== "object") {
-    return isAgentConversationRoute() ? defaultAgentRuntimeTarget() : defaultChatTarget();
+function resolveSessionTargetForRoute(session, route = state.currentRoute) {
+  const fixedTarget = fixedAgentRouteTarget(route);
+  if (fixedTarget) {
+    return fixedTarget;
   }
-  return normalizeChatTarget({
-    type: session.targetType,
-    id: session.targetID,
-    name: session.targetName
+  if (!session || typeof session !== "object") {
+    return currentConversationTarget(route);
+  }
+  const target = normalizeChatTarget({
+    type: session?.targetType,
+    id: session?.targetID,
+    name: session?.targetName
   });
+  if (routeConversationMode(route) !== "agent") {
+    return target;
+  }
+  if (routeAllowsTargetPicker(route)) {
+    const agent = findChatAgent(target.id);
+    if (target.type === "agent" && target.id && agent && !agentConversationRoute(agent)) {
+      return target;
+    }
+    return currentConversationTarget(route);
+  }
+  if (target.type !== "agent" || !target.id) {
+    return currentConversationTarget(route);
+  }
+  return target;
+}
+
+function sessionTarget(session, route = state.currentRoute) {
+  if (!session || typeof session !== "object") {
+    return routeDefaultTarget(route);
+  }
+  return resolveSessionTargetForRoute(session, route);
 }
 
 function sessionTargetLabel(session) {
@@ -1727,6 +1924,18 @@ function sessionTargetBadgeLabel(session) {
     return `${t("session.target.agent")} · ${target.name}`;
   }
   return t("session.target.raw");
+}
+
+function syncSessionTargetForRoute(session, route = state.currentRoute) {
+  if (!session || typeof session !== "object") {
+    return false;
+  }
+  const resolved = resolveSessionTargetForRoute(session, route);
+  if (session.targetType === resolved.type && session.targetID === resolved.id && session.targetName === resolved.name) {
+    return false;
+  }
+  updateSessionTarget(session, resolved);
+  return true;
 }
 
 function sessionModelLabel(session) {
@@ -1759,8 +1968,8 @@ function isBlankSession(item) {
   return Boolean(item) && Array.isArray(item.messages) && item.messages.length === 0;
 }
 
-function getLatestBlankSession(mode = routeConversationMode()) {
-  const blankSessions = conversationSessions().filter((item) => isBlankSession(item));
+function getLatestBlankSession(route = state.currentRoute) {
+  const blankSessions = conversationSessions(route).filter((item) => isBlankSession(item));
   if (!blankSessions.length) {
     return null;
   }
@@ -1768,19 +1977,19 @@ function getLatestBlankSession(mode = routeConversationMode()) {
   return blankSessions[0];
 }
 
-function enforceSingleBlankSession(mode = routeConversationMode()) {
-  const latestBlank = getLatestBlankSession();
+function enforceSingleBlankSession(route = state.currentRoute) {
+  const latestBlank = getLatestBlankSession(route);
   if (!latestBlank) {
     return false;
   }
-  const sessions = conversationSessions();
+  const sessions = conversationSessions(route);
   const originalCount = sessions.length;
-  setConversationSessions(sessions.filter((item) => !isBlankSession(item) || item.id === latestBlank.id));
-  const activeID = activeConversationSessionID();
-  if (activeID && !getSession(activeID)) {
-    setActiveConversationSessionID(latestBlank.id);
+  setConversationSessions(sessions.filter((item) => !isBlankSession(item) || item.id === latestBlank.id), route);
+  const activeID = activeConversationSessionID(route);
+  if (activeID && !getSession(activeID, route)) {
+    setActiveConversationSessionID(latestBlank.id, route);
   }
-  return conversationSessions().length !== originalCount;
+  return conversationSessions(route).length !== originalCount;
 }
 
 function focusSession(sessionID) {
@@ -2371,6 +2580,7 @@ function normalizeStoredSession(item, mode = routeConversationMode()) {
     title,
     createdAt,
     messages,
+    historyBucket: normalizeText(item.historyBucket) || conversationHistoryBucketForTarget(target),
     targetType: target.type,
     targetID: target.id,
     targetName: target.name,
@@ -2496,7 +2706,7 @@ function persistSessions(mode = routeConversationMode()) {
     return;
   }
   try {
-    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(conversationSessions()));
+    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(storedConversationSessions()));
     setConversationSessionLoadError("", mode);
   } catch {
     setConversationSessionLoadError("session_save_failed", mode);
@@ -2506,18 +2716,15 @@ function persistSessions(mode = routeConversationMode()) {
 
 function bootstrapSessions(mode = routeConversationMode()) {
   setConversationSessionLoadError("", mode);
-  setConversationSessions([]);
-  setActiveConversationSessionID("");
+  setStoredConversationSessions([]);
+  state.activeSessionByBucket = {};
 
   try {
     const sessions = loadSessionsFromStorage(mode);
-    setConversationSessions(sessions);
-    if (enforceSingleBlankSession(mode)) {
-      persistSessions(mode);
-    }
-    if (conversationSessions().length) {
-      setActiveConversationSessionID(conversationSessions()[0].id);
-    }
+    setStoredConversationSessions(sessions);
+    reconcileAgentRuntimeTarget();
+    ensureActiveConversationSession("chat");
+    ensureActiveConversationSession("agent-runtime");
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
     setConversationSessionLoadError(message, mode);
@@ -2529,11 +2736,13 @@ async function refreshChatAgentCatalog() {
     return;
   }
   state.chatCatalog.loading = true;
+  let targetChanged = false;
   try {
-    const payload = await fetchJSON("/api/control/agents");
+    const payload = await fetchJSON("/api/agents");
     state.chatCatalog.agents = Array.isArray(payload?.items)
       ? payload.items.filter((item) => Boolean(item?.enabled))
       : [];
+    targetChanged = reconcileAgentRuntimeTarget();
     state.chatCatalog.error = "";
     state.chatCatalog.loaded = true;
   } catch (error) {
@@ -2541,6 +2750,13 @@ async function refreshChatAgentCatalog() {
     state.chatCatalog.loaded = true;
   } finally {
     state.chatCatalog.loading = false;
+    if (targetChanged || state.currentRoute === "agent-runtime") {
+      ensureActiveConversationSession("agent-runtime");
+      renderSessions();
+      renderMessages();
+      syncHeader();
+      syncWelcomeCopy();
+    }
     renderChatRuntimePanel();
     renderWelcomeTargetPicker();
   }
@@ -2641,7 +2857,8 @@ function renderChatRuntimePanel() {
     return;
   }
   const mode = routeConversationMode();
-  const activeSession = getSession() || createSession(mode === "agent" ? defaultAgentRuntimeTarget() : defaultChatTarget(), mode);
+  const initialTarget = currentConversationTarget();
+  const activeSession = getSession() || ((mode === "agent" && !initialTarget.id) ? null : createSession(initialTarget, mode, state.currentRoute));
   const target = sessionTarget(activeSession);
   const locked = targetLocked(activeSession);
   const modelSelection = resolveEffectiveChatModelSelection(activeSession);
@@ -2660,7 +2877,7 @@ function renderChatRuntimePanel() {
   const skillLabel = skillsCount > 0 ? `${t("chat.runtime.skills")} (${skillsCount})` : t("chat.runtime.skills");
   const note = [state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | ") || t("chat.runtime.hint");
   const targetOptions = agentRuntime
-    ? (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).map((agent) => ({
+    ? genericRuntimeConversationAgents().map((agent) => ({
         target: {
           type: "agent",
           id: normalizeText(agent?.id),
@@ -2820,14 +3037,19 @@ function renderChatRuntimePanel() {
         id: node.getAttribute("data-runtime-target-id") || "",
         name: node.getAttribute("data-runtime-target-name") || ""
       };
-      const session = getSession() || createSession(nextTarget, mode);
-      updateSessionTarget(session, nextTarget);
+      syncAgentRuntimeTarget(nextTarget);
+      let session = ensureActiveConversationSession(state.currentRoute);
+      if (!session) {
+        session = createSession(nextTarget, mode, state.currentRoute);
+      }
       state.chatRuntime.openPopover = "";
-      persistSessions();
+      syncMainChatComposerDraft(session.id, { preserveCurrent: false });
       renderSessions();
+      renderMessages();
       syncHeader();
       syncWelcomeCopy();
       renderChatRuntimePanel();
+      renderWelcomeTargetPicker();
     });
   });
 
@@ -2895,9 +3117,10 @@ function renderWelcomeTargetPicker() {
   const active = getSession();
   const currentTarget = sessionTarget(active);
   const agentRuntime = isAgentConversationRoute();
-  const agents = agentRuntime ? (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []) : [];
+  const allowPicker = routeAllowsTargetPicker();
+  const agents = agentRuntime ? genericRuntimeConversationAgents() : [];
   const buttons = [];
-  if (agentRuntime) {
+  if (agentRuntime && allowPicker) {
     agents.forEach((agent) => {
       const agentID = String(agent?.id || "").trim();
       if (!agentID) {
@@ -2910,13 +3133,21 @@ function renderWelcomeTargetPicker() {
         <span>${escapeHTML(agentID)}</span>
       </button>`);
     });
+  } else if (agentRuntime) {
+    const fallbackTarget = routeDefaultTarget();
+    const targetName = currentTarget.name || fallbackTarget.name || t("session.target.agent");
+    const targetID = currentTarget.id || fallbackTarget.id || "";
+    buttons.push(`<div class="welcome-target-card active is-static">
+      <strong>${escapeHTML(targetName)}</strong>
+      <span>${escapeHTML(targetID || t("session.target.agent"))}</span>
+    </div>`);
   } else {
     buttons.push(`<div class="welcome-target-card active is-static">
       <strong>${escapeHTML(t("session.target.raw"))}</strong>
       <span>${escapeHTML(t("route.chat.subtitle"))}</span>
     </div>`);
   }
-  if (agentRuntime && state.chatCatalog.error) {
+  if (agentRuntime && allowPicker && state.chatCatalog.error) {
     buttons.push(`<p class="welcome-target-error">${escapeHTML(state.chatCatalog.error)}</p>`);
   }
   targetList.innerHTML = buttons.join("");
@@ -2927,19 +3158,17 @@ function renderWelcomeTargetPicker() {
         id: node.getAttribute("data-chat-target-id") || "",
         name: node.getAttribute("data-chat-target-name") || ""
       };
-      const activeSession = getSession() || createSession(target);
-      if (activeSession.messages.length !== 0) {
-        const fresh = createSession(target);
-        updateSessionModelSelection(fresh, resolveEffectiveChatModelSelection(activeSession));
-        focusSession(fresh.id);
-        return;
+      syncAgentRuntimeTarget(target);
+      let session = ensureActiveConversationSession(state.currentRoute);
+      if (!session) {
+        session = createSession(target, routeConversationMode(state.currentRoute), state.currentRoute);
       }
-      updateSessionTarget(activeSession, target);
-      persistSessions();
+      syncMainChatComposerDraft(session.id, { preserveCurrent: false });
+      renderSessions();
+      renderMessages();
       syncHeader();
       syncWelcomeCopy();
       renderChatRuntimePanel();
-      renderSessions();
       renderWelcomeTargetPicker();
     });
   });
@@ -2947,43 +3176,51 @@ function renderWelcomeTargetPicker() {
 
 function openAgentRuntimeWithTarget(target) {
   const normalizedTarget = normalizeChatTarget(target);
-  let session = getLatestBlankSession();
-  if (session) {
-    updateSessionTarget(session, normalizedTarget);
-    setActiveConversationSessionID(session.id);
-    persistSessions();
-  } else {
-    session = createSession(normalizedTarget, "agent");
+  const agent = findChatAgent(normalizedTarget.id);
+  const dedicatedRoute = agentConversationRoute(agent);
+  if (dedicatedRoute) {
+    navigateToRoute(dedicatedRoute, { skipConfirm: true });
+    window.requestAnimationFrame(() => {
+      input.focus();
+    });
+    return;
   }
+  syncAgentRuntimeTarget(normalizedTarget);
+  let session = ensureActiveConversationSession("agent-runtime");
+  if (!session) {
+    session = createSession(normalizedTarget, "agent", "agent-runtime");
+  }
+  setActiveConversationSessionID(session.id, "agent-runtime");
   navigateToRoute("agent-runtime", { skipConfirm: true });
   window.requestAnimationFrame(() => {
+    syncMainChatComposerDraft(session.id, { preserveCurrent: false });
     input.focus();
   });
 }
 
-function createSession(target = null, mode = routeConversationMode()) {
-  const latestBlank = getLatestBlankSession();
+function createSession(target = null, mode = routeConversationMode(), route = state.currentRoute) {
+  const latestBlank = getLatestBlankSession(route);
   if (latestBlank) {
     if (target) {
       updateSessionTarget(latestBlank, target);
     }
-    setActiveConversationSessionID(latestBlank.id);
+    setActiveConversationSessionID(latestBlank.id, route);
     syncMainChatComposerDraft(latestBlank.id);
     renderSessions();
     renderMessages();
     syncHeader();
     renderWelcomeTargetPicker();
-    persistSessions();
+    persistSessions(routeConversationMode(route));
     return latestBlank;
   }
 
   const createdAt = Date.now();
-  const defaultTarget = mode === "agent" ? defaultAgentRuntimeTarget() : defaultChatTarget();
+  const defaultTarget = routeDefaultTarget(route);
   const normalizedTarget = normalizeChatTarget(target || defaultTarget);
   const runtimeDefaults = defaultRuntimeSelectionsForTarget(normalizedTarget);
   const item = {
     id: makeID(),
-    title: t(mode === "agent" ? "session.new_agent_title" : "session.new_title"),
+    title: t(routeAllowsTargetPicker(route) ? "session.new_agent_title" : "session.new_title"),
     createdAt,
     messages: [],
     targetType: normalizedTarget.type,
@@ -2993,12 +3230,13 @@ function createSession(target = null, mode = routeConversationMode()) {
     modelID: defaultChatModelSelection().modelID,
     toolIDs: runtimeDefaults.toolIDs,
     skillIDs: runtimeDefaults.skillIDs,
-    mcpIDs: runtimeDefaults.mcpIDs
+    mcpIDs: runtimeDefaults.mcpIDs,
+    historyBucket: conversationHistoryBucketForTarget(normalizedTarget)
   };
-  const sessions = conversationSessions().slice();
+  const sessions = conversationSessions(route).slice();
   sessions.unshift(item);
-  setConversationSessions(sessions);
-  setActiveConversationSessionID(item.id);
+  setConversationSessions(sessions, route);
+  setActiveConversationSessionID(item.id, route);
   syncMainChatComposerDraft(item.id);
   renderSessions();
   renderMessages();
@@ -3006,7 +3244,7 @@ function createSession(target = null, mode = routeConversationMode()) {
   syncWelcomeCopy();
   renderChatRuntimePanel();
   renderWelcomeTargetPicker();
-  persistSessions();
+  persistSessions(routeConversationMode(route));
   return item;
 }
 
@@ -3049,7 +3287,7 @@ function removeSession(sessionID) {
 
 function syncHeader() {
   const route = ROUTES[state.currentRoute] || ROUTES.chat;
-  const newSessionLabel = isAgentConversationRoute() ? t("session.new_agent") : t("session.new");
+  const newSessionLabel = routeAllowsTargetPicker() ? t("session.new_agent") : t("session.new");
   newChatButton.textContent = newSessionLabel;
   sessionToggle.hidden = false;
   if (mobileNewChatButton) {
@@ -3087,7 +3325,7 @@ function syncHeader() {
   const targetLabel = sessionTargetLabel(active);
   const modelLabel = sessionModelLabel(active);
   if (active.messages.length === 0) {
-    sessionSubheading.textContent = isAgentConversationRoute()
+    sessionSubheading.textContent = routeAllowsTargetPicker()
       ? `${targetLabel} · ${modelLabel} · ${t("session.empty_agent_sub")}`
       : `${targetLabel} · ${modelLabel} · ${t("session.empty_sub")}`;
     return;
@@ -3097,15 +3335,19 @@ function syncHeader() {
 
 function syncWelcomeCopy() {
   const active = getSession();
+  const workspaceTarget = sessionTarget(active || null);
+  const workspaceAgentName = workspaceTarget.type === "agent" && workspaceTarget.name
+    ? workspaceTarget.name
+    : MAIN_AGENT_NAME;
   if (!active) {
     welcomeHeading.textContent = t("welcome.heading");
-    welcomeDescription.textContent = isAgentConversationRoute() ? t("session.no_active_agent") : t("session.no_active");
+    welcomeDescription.textContent = routeAllowsTargetPicker() ? t("session.no_active_agent") : t("session.no_active");
     return;
   }
   welcomeHeading.textContent = t("welcome.heading");
-  welcomeDescription.textContent = isAgentConversationRoute()
+  welcomeDescription.textContent = routeAllowsTargetPicker()
     ? `${t("welcome.desc")} ${t("welcome.agent_hint")}`
-    : `${t("welcome.desc")} ${t("welcome.model_hint")}`;
+    : `${t("welcome.desc")} ${t("welcome.model_hint", { agent: workspaceAgentName })}`;
 }
 
 function syncSessionLoadHint() {
@@ -3120,7 +3362,7 @@ function renderSessions() {
   const sessions = conversationSessions();
   const activeSessionID = activeConversationSessionID();
   if (!sessions.length) {
-    sessionEmpty.textContent = isAgentConversationRoute() ? t("session.empty_agent") : t("session.empty");
+    sessionEmpty.textContent = routeAllowsTargetPicker() ? t("session.empty_agent") : t("session.empty");
     sessionEmpty.style.display = "block";
     return;
   }
@@ -3171,7 +3413,7 @@ function renderSessions() {
 }
 
 function updateSessionTitle(session, fallbackText) {
-  const titleKey = isAgentConversationRoute() ? "session.new_agent_title" : "session.new_title";
+  const titleKey = routeAllowsTargetPicker() ? "session.new_agent_title" : "session.new_title";
   if (session.title !== t(titleKey) && session.title !== "New Chat" && session.title !== "新对话" && session.title !== "New Agent Run" && session.title !== "新 Agent 会话") {
     return;
   }
@@ -3364,7 +3606,7 @@ function deliverAsyncTaskResult(session, message, task) {
 
 function collectPendingTaskBindings() {
   const bindings = [];
-  for (const session of conversationSessions()) {
+  for (const session of storedConversationSessions()) {
     const messages = Array.isArray(session?.messages) ? session.messages : [];
     for (const message of messages) {
       const taskID = normalizeText(message?.task_id);
@@ -3760,7 +4002,7 @@ async function sendMessageFallback(payload, assistantMessage, endpoints = {}) {
 }
 
 async function sendMessage(rawContent) {
-  const route = isAgentConversationRoute() ? "agent-runtime" : "chat";
+  const route = (ROUTES[state.currentRoute] || ROUTES.chat).mode === "chat" ? state.currentRoute : "chat";
   if (state.currentRoute !== route) {
     navigateToRoute(route);
   }
@@ -3770,7 +4012,13 @@ async function sendMessage(rawContent) {
   }
 
   const active = getSession();
-  const target = sessionTarget(active);
+  if (syncSessionTargetForRoute(active, route)) {
+    persistSessions();
+    renderSessions();
+    syncHeader();
+    renderWelcomeTargetPicker();
+  }
+  const target = sessionTarget(active, route);
   const isAgentSession = isAgentConversationRoute();
   if (isAgentSession && !target.id) {
     appendMessage("assistant", t("route.agent.pick"), {
@@ -3984,13 +4232,15 @@ function navigateToRoute(route, options = {}) {
 function startNewChatSession() {
   const existingBlank = getLatestBlankSession("chat");
   if (existingBlank) {
+    updateSessionTarget(existingBlank, routeDefaultTarget("chat"));
     setActiveConversationSessionID(existingBlank.id, "chat");
+    persistSessions();
     focusSession(existingBlank.id);
   } else {
     if (!confirmComposerNavigation()) {
       return;
     }
-    createSession(defaultChatTarget(), "chat");
+    createSession(routeDefaultTarget("chat"), routeConversationMode("chat"), "chat");
   }
   navigateToRoute("chat", { skipConfirm: true });
   closeTransientPanels();
@@ -4001,22 +4251,28 @@ function startNewChatSession() {
 }
 
 function startNewAgentSession() {
+  const currentRoute = state.currentRoute;
+  const target = routeAllowsTargetPicker(currentRoute) ? defaultAgentRuntimeTarget() : routeDefaultTarget(currentRoute);
   const existingBlank = getLatestBlankSession();
   if (existingBlank) {
-    updateSessionTarget(existingBlank, defaultAgentRuntimeTarget());
+    updateSessionTarget(existingBlank, target);
     setActiveConversationSessionID(existingBlank.id, "agent");
     persistSessions();
     renderSessions();
     renderMessages();
     syncHeader();
     renderWelcomeTargetPicker();
-    navigateToRoute("agent-runtime", { skipConfirm: true });
+    if (routeAllowsTargetPicker(currentRoute)) {
+      navigateToRoute("agent-runtime", { skipConfirm: true });
+    }
   } else {
     if (!confirmComposerNavigation()) {
       return;
     }
-    createSession(defaultAgentRuntimeTarget(), "agent");
-    navigateToRoute("agent-runtime", { skipConfirm: true });
+    createSession(target, "agent", currentRoute);
+    if (routeAllowsTargetPicker(currentRoute)) {
+      navigateToRoute("agent-runtime", { skipConfirm: true });
+    }
   }
   closeTransientPanels();
   window.requestAnimationFrame(() => {
@@ -4648,7 +4904,7 @@ async function loadAgentView(container) {
           <label><span>${t("route.agent.form.iterations")}</span><input type="number" min="0" name="max_iterations" value="${escapeHTML(localState.draft.max_iterations)}"></label>
           <label class="agent-builder-toggle"><span>${t("route.agent.form.enabled")}</span><input type="checkbox" name="enabled" ${localState.draft.enabled ? "checked" : ""}></label>
           <label class="agent-builder-wide"><span>${t("route.agent.form.prompt")}</span><textarea name="system_prompt" rows="6">${escapeHTML(localState.draft.system_prompt)}</textarea></label>
-          <label class="agent-builder-wide"><span>${t("route.agent.form.tools")}</span><input type="text" name="tools" value="${escapeHTML(localState.draft.tools.join(", "))}" placeholder="list_dir, read, write, edit, bash, codex_exec"></label>
+          <label class="agent-builder-wide"><span>${t("route.agent.form.tools")}</span><input type="text" name="tools" value="${escapeHTML(localState.draft.tools.join(", "))}" placeholder="list_dir, read, write, edit, bash, codex_exec, delegate_agent"></label>
           <div class="agent-builder-wide agent-builder-section">
             <h5>${escapeHTML(t("route.agent.form.skills"))}</h5>
             <div class="agent-builder-options">${renderAgentOptionList(localState.skills, localState.draft.skills, "skills")}</div>
@@ -10592,6 +10848,13 @@ async function renderRoute(route) {
   
   if (config.mode === "chat") {
     setMainContentMode("chat");
+    if (safe === "agent-runtime") {
+      reconcileAgentRuntimeTarget();
+    }
+    const activeSession = ensureActiveConversationSession(safe);
+    if (syncSessionTargetForRoute(activeSession, safe)) {
+      persistSessions();
+    }
     syncRouteAction("");
     syncMainChatComposerDraft(activeConversationSessionID(), { preserveCurrent: false });
     renderSessions();

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	agentapp "alter0/internal/agent/application"
+	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
 	llmdomain "alter0/internal/llm/domain"
 	shareddomain "alter0/internal/shared/domain"
@@ -19,15 +21,30 @@ type reactAgentFactory interface {
 	GetReActAgent(ctx context.Context, providerID string, config llmdomain.ReActAgentConfig) (*llmdomain.ReActAgent, error)
 }
 
+type runtimeAgentCatalog interface {
+	ResolveAgent(id string) (controldomain.Agent, bool)
+	ListDelegatableAgents(excludeID string) []controldomain.Agent
+}
+
 type HybridNLProcessor struct {
 	codex  *CodexCLIProcessor
 	react  reactAgentFactory
+	agents runtimeAgentCatalog
 	logger *slog.Logger
 }
 
 func NewHybridNLProcessor(
 	codex *CodexCLIProcessor,
 	react reactAgentFactory,
+	logger *slog.Logger,
+) *HybridNLProcessor {
+	return NewHybridNLProcessorWithCatalog(codex, react, nil, logger)
+}
+
+func NewHybridNLProcessorWithCatalog(
+	codex *CodexCLIProcessor,
+	react reactAgentFactory,
+	agents runtimeAgentCatalog,
 	logger *slog.Logger,
 ) *HybridNLProcessor {
 	if codex == nil {
@@ -39,6 +56,7 @@ func NewHybridNLProcessor(
 	return &HybridNLProcessor{
 		codex:  codex,
 		react:  react,
+		agents: agents,
 		logger: logger,
 	}
 }
@@ -181,7 +199,7 @@ func (p *HybridNLProcessor) processWithAgent(
 	if p.react == nil {
 		return "", errors.New("react agent factory unavailable")
 	}
-	tools := buildAgentTools(metadata)
+	tools := p.buildAgentTools(metadata)
 	providerID := strings.TrimSpace(metadataValue(metadata, execdomain.LLMProviderIDMetadataKey))
 	if providerID == "" {
 		providerID = strings.TrimSpace(metadataValue(metadata, execdomain.AgentProviderIDMetadataKey))
@@ -192,7 +210,7 @@ func (p *HybridNLProcessor) processWithAgent(
 	}
 	agent, err := p.react.GetReActAgent(ctx, providerID, llmdomain.ReActAgentConfig{
 		Model:        modelID,
-		SystemPrompt: buildAgentSystemPrompt(metadata),
+		SystemPrompt: p.buildAgentSystemPrompt(metadata),
 		Tools:        tools,
 		ToolExecutor: llmdomain.ToolExecutorFunc(func(runCtx context.Context, toolCall llmdomain.ToolCall) (*llmdomain.ToolResult, error) {
 			return p.executeModelTool(runCtx, metadata, toolCall)
@@ -278,6 +296,8 @@ func (p *HybridNLProcessor) executeModelTool(
 			IsFinal:     true,
 			FinalAnswer: result,
 		}, nil
+	case toolDelegateAgent:
+		return p.executeDelegatedAgent(ctx, metadata, toolCall)
 	default:
 		return nil, fmt.Errorf("unsupported agent tool: %s", toolCall.Name)
 	}
@@ -315,7 +335,8 @@ func buildHybridReActSystemPrompt(metadata map[string]string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func buildAgentSystemPrompt(metadata map[string]string) string {
+func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) string {
+	allowedTools := parseSelectedToolIDs(metadata, defaultAgentToolIDs)
 	parts := []string{
 		"You are alter0's agent execution mode.",
 		"Your job is to complete the user's goal by actually executing work, not by only offering suggestions.",
@@ -325,11 +346,19 @@ func buildAgentSystemPrompt(metadata map[string]string) string {
 		"Do not expose hidden chain-of-thought. Keep outputs concise and execution-oriented.",
 		"Relative native-tool paths use the repo root by default; set base=workspace to operate on the session workspace.",
 	}
+	if _, ok := allowedTools[toolDelegateAgent]; ok {
+		parts = append(parts, "Use delegate_agent when a specialist agent is better suited for a coding or writing subtask and you need that agent to return a concrete result.")
+	}
 	if custom := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey)); custom != "" {
 		parts = append(parts, "Agent profile system prompt:\n"+custom)
 	}
 	if agentName := strings.TrimSpace(metadataValue(metadata, execdomain.AgentNameMetadataKey)); agentName != "" {
 		parts = append(parts, "Current agent profile: "+agentName)
+	}
+	if _, ok := allowedTools[toolDelegateAgent]; ok {
+		if targets := p.renderDelegationTargets(metadata); targets != "" {
+			parts = append(parts, targets)
+		}
 	}
 	if rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey)); rawSkillContext != "" {
 		parts = append(parts, "Resolved skill context (JSON): "+rawSkillContext)
@@ -376,7 +405,7 @@ func renderMemoryContextInstruction(raw string) string {
 	return strings.TrimSpace(builder.String())
 }
 
-func buildAgentTools(metadata map[string]string) []llmdomain.Tool {
+func (p *HybridNLProcessor) buildAgentTools(metadata map[string]string) []llmdomain.Tool {
 	allowed := parseSelectedToolIDs(metadata, defaultAgentToolIDs)
 	items := make([]llmdomain.Tool, 0, len(allowed)+2)
 	items = append(items, buildNativeTools(metadata, defaultAgentToolIDs)...)
@@ -393,6 +422,30 @@ func buildAgentTools(metadata map[string]string) []llmdomain.Tool {
 					},
 				},
 				"required": []string{"instruction"},
+			},
+		})
+	}
+	if _, ok := allowed[toolDelegateAgent]; ok {
+		items = append(items, llmdomain.Tool{
+			Name:        toolDelegateAgent,
+			Description: p.delegateToolDescription(metadata),
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"agent_id": map[string]interface{}{
+						"type":        "string",
+						"description": "The specialist agent ID to delegate to.",
+					},
+					"task": map[string]interface{}{
+						"type":        "string",
+						"description": "The delegated subtask the specialist agent should complete.",
+					},
+					"context": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional extra context or constraints for the delegated subtask.",
+					},
+				},
+				"required": []string{"agent_id", "task"},
 			},
 		})
 	}
@@ -413,6 +466,42 @@ func buildAgentTools(metadata map[string]string) []llmdomain.Tool {
 	return items
 }
 
+func (p *HybridNLProcessor) delegateToolDescription(metadata map[string]string) string {
+	agents := p.delegationTargets(metadata)
+	if len(agents) == 0 {
+		return "Delegate a specialist subtask to another agent and receive its concrete result."
+	}
+	parts := make([]string, 0, len(agents))
+	for _, item := range agents {
+		parts = append(parts, item.ID)
+	}
+	return "Delegate a specialist subtask to another agent and receive its concrete result. Available agents: " + strings.Join(parts, ", ")
+}
+
+func (p *HybridNLProcessor) renderDelegationTargets(metadata map[string]string) string {
+	agents := p.delegationTargets(metadata)
+	if len(agents) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(agents))
+	for _, item := range agents {
+		label := item.ID
+		if strings.TrimSpace(item.Description) != "" {
+			label += ": " + strings.TrimSpace(item.Description)
+		}
+		parts = append(parts, "- "+label)
+	}
+	return "Available specialist agents:\n" + strings.Join(parts, "\n")
+}
+
+func (p *HybridNLProcessor) delegationTargets(metadata map[string]string) []controldomain.Agent {
+	if p == nil || p.agents == nil {
+		return nil
+	}
+	currentAgentID := strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey))
+	return p.agents.ListDelegatableAgents(currentAgentID)
+}
+
 func parseAgentMaxIterations(metadata map[string]string) int {
 	raw := strings.TrimSpace(metadataValue(metadata, execdomain.AgentMaxIterationsMetadataKey))
 	if raw == "" {
@@ -426,6 +515,108 @@ func parseAgentMaxIterations(metadata map[string]string) int {
 		return 20
 	}
 	return value
+}
+
+func parseDelegationDepth(metadata map[string]string) int {
+	raw := strings.TrimSpace(metadataValue(metadata, execdomain.AgentDelegationDepthMetadataKey))
+	if raw == "" {
+		return 0
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return 0
+	}
+	return value
+}
+
+func buildDelegatedTaskPrompt(task string, extraContext string) string {
+	parts := []string{strings.TrimSpace(task)}
+	if extra := strings.TrimSpace(extraContext); extra != "" {
+		parts = append(parts, "Delegation context:\n"+extra)
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func (p *HybridNLProcessor) executeDelegatedAgent(
+	ctx context.Context,
+	metadata map[string]string,
+	toolCall llmdomain.ToolCall,
+) (*llmdomain.ToolResult, error) {
+	if p == nil || p.agents == nil {
+		return nil, errors.New("delegate_agent unavailable")
+	}
+	payload := struct {
+		AgentID string `json:"agent_id"`
+		Task    string `json:"task"`
+		Context string `json:"context,omitempty"`
+	}{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(toolCall.Arguments)), &payload); err != nil {
+		return nil, fmt.Errorf("parse delegate_agent arguments: %w", err)
+	}
+	agentID := strings.TrimSpace(payload.AgentID)
+	if agentID == "" {
+		return nil, errors.New("delegate_agent agent_id is required")
+	}
+	task := strings.TrimSpace(payload.Task)
+	if task == "" {
+		return nil, errors.New("delegate_agent task is required")
+	}
+	depth := parseDelegationDepth(metadata)
+	if depth >= 2 {
+		return &llmdomain.ToolResult{
+			ToolCallID: toolCall.ID,
+			Name:       toolCall.Name,
+			Result:     "delegate_agent blocked: maximum delegation depth reached",
+			IsError:    true,
+		}, nil
+	}
+	currentAgentID := strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey))
+	if strings.EqualFold(currentAgentID, agentID) {
+		return &llmdomain.ToolResult{
+			ToolCallID: toolCall.ID,
+			Name:       toolCall.Name,
+			Result:     "delegate_agent blocked: cannot delegate to the current agent",
+			IsError:    true,
+		}, nil
+	}
+	target, ok := p.agents.ResolveAgent(agentID)
+	if !ok || !target.Enabled {
+		return &llmdomain.ToolResult{
+			ToolCallID: toolCall.ID,
+			Name:       toolCall.Name,
+			Result:     "delegate_agent failed: target agent not found or disabled",
+			IsError:    true,
+		}, nil
+	}
+	if !target.Delegatable {
+		return &llmdomain.ToolResult{
+			ToolCallID: toolCall.ID,
+			Name:       toolCall.Name,
+			Result:     "delegate_agent failed: target agent is not delegatable",
+			IsError:    true,
+		}, nil
+	}
+	childMetadata := agentapp.ApplyProfileMetadata(metadata, target)
+	childMetadata[execdomain.AgentDelegatedByMetadataKey] = currentAgentID
+	childMetadata[execdomain.AgentDelegationDepthMetadataKey] = strconv.Itoa(depth + 1)
+	output, err := p.processWithAgent(ctx, buildDelegatedTaskPrompt(task, payload.Context), childMetadata, nil)
+	if err != nil {
+		return &llmdomain.ToolResult{
+			ToolCallID: toolCall.ID,
+			Name:       toolCall.Name,
+			Result:     "delegate_agent failed: " + err.Error(),
+			IsError:    true,
+		}, nil
+	}
+	result := strings.TrimSpace(output)
+	if result == "" {
+		result = "delegated agent completed without a textual result"
+	}
+	return &llmdomain.ToolResult{
+		ToolCallID: toolCall.ID,
+		Name:       toolCall.Name,
+		Result:     result,
+	}, nil
 }
 
 func setExecutionSource(metadata map[string]string, source string) {
