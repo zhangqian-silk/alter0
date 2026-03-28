@@ -85,11 +85,11 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 1. `Chat`
 - 面向 Web 会话消息。
-- 默认绑定内置 `Main Agent`，作为通用对话入口。
+- 默认绑定内置 `Alter0`（`main`），作为通用对话入口。
 - Web 登录后，`Chat` 与 `Agent` 页面共享同一套 Session 历史，不再按页面来源拆分会话列表与本地缓存。
 - 运行时配置收敛在输入框底部操作栏：`Provider / Model`、`Tools / MCP`、`Skills` 都在发送区附近完成。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
-- `Main Agent` 默认使用 ReAct 执行链，可直接完成通用任务，并在需要时调度专项 Agent。
+- `Alter0` 默认使用 ReAct 执行链，可直接完成通用任务，并在需要时调度专项 Agent。
 - 选中的原生工具会在模型调用时作为 function tools 注入，当前内置工具包括 `list_dir`、`read`、`write`、`edit`、`bash`。
 - `OpenAI` Provider 支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。
 - 默认 Provider 只会落在已启用配置上；若默认 Provider 被禁用、删除或历史配置已失效，系统会自动切换到下一可用 Provider，无可用项时清空默认值。
@@ -105,7 +105,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 请求进入后会创建一个 ReAct 执行环，以当前任务为目标持续推进。
 - 运行时统一维护 `Agent Catalog`：同时聚合系统内置 Agent 与用户管理的 Agent Profile。
 - 当前内置 Agent 包括：
-  - `main`：默认对话主 Agent，可调度专项 Agent
+  - `main`：默认对话主 Agent `Alter0`，可调度专项 Agent
   - `coding`：面向仓库分析、代码修改与验证
   - `writing`：面向文档、文案与结构化写作
 - Web `Coding`、`Writing` 页面分别默认绑定对应内置 Agent；`Agent` 页面提供统一 Agent 运行入口，可选择任一内置或用户管理的入口 Agent。

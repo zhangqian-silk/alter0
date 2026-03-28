@@ -89,10 +89,10 @@
 
 1. 运行时必须提供统一 `Agent Catalog`，同时聚合系统内置 Agent 与控制面管理的 Agent Profile。
 2. 内置 Agent 至少包括：
-   - `main`：默认主 Agent，负责通用对话入口与子 Agent 调度
+   - `main`：默认主 Agent `Alter0`，负责通用对话入口与子 Agent 调度
    - `coding`：专项编码 Agent
    - `writing`：专项写作 Agent
-3. `Chat` 页面必须默认绑定内置 `main` Agent，不再以 Raw Model 作为默认执行目标。
+3. `Chat` 页面必须默认绑定内置 `main` Agent（展示名 `Alter0`），进入 `Chat` 路由或新建 `Chat` 会话时需自动纠偏到该 Agent，不再以 Raw Model 作为默认执行目标。
 4. 前端必须提供专项 Agent 入口路由；当前至少包括 `Coding` 与 `Writing`，并默认分别绑定 `coding`、`writing` Agent。
 5. 控制面 `Agent Profiles` 页面仅管理用户自定义 Agent；系统内置 Agent 不允许通过控制面覆盖或删除。
 6. 运行时必须提供统一入口 Agent 列表接口，供前端选择 Agent 与展示内置 Agent。

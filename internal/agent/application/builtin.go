@@ -6,7 +6,7 @@ func builtinAgents() []controldomain.Agent {
 	return []controldomain.Agent{
 		{
 			ID:            "main",
-			Name:          "Main Agent",
+			Name:          "Alter0",
 			Type:          controldomain.CapabilityTypeAgent,
 			Enabled:       true,
 			Scope:         controldomain.CapabilityScopeGlobal,

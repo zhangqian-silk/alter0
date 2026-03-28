@@ -36,7 +36,7 @@ func TestAgentCapabilityRoundTripPreservesMemoryFiles(t *testing.T) {
 func TestAgentCapabilityRoundTripPreservesRuntimeCatalogFields(t *testing.T) {
 	agent := Agent{
 		ID:           "main",
-		Name:         "Main Agent",
+		Name:         "Alter0",
 		Type:         CapabilityTypeAgent,
 		Enabled:      true,
 		Scope:        CapabilityScopeGlobal,

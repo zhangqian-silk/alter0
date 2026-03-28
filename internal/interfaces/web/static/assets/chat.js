@@ -47,6 +47,8 @@ const NAV_TOOLTIP_OFFSET = 12;
 const CHAT_TASK_POLL_INTERVAL_MS = 4000;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
+const MAIN_AGENT_ID = "main";
+const MAIN_AGENT_NAME = "Alter0";
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v3";
 const LEGACY_CHAT_SESSION_STORAGE_KEY = "alter0.web.sessions.chat.v2";
 const LEGACY_AGENT_SESSION_STORAGE_KEY = "alter0.web.sessions.agent.v2";
@@ -176,7 +178,7 @@ const I18N = {
     "welcome.target_hint": "Choose the execution target for this conversation.",
     "welcome.agent_hint": "Choose one of the available Agents to start an execution session.",
     "welcome.model_title": "Choose the model for upcoming messages",
-    "welcome.model_hint": "Chat now runs through the built-in Main Agent. Provider, model, tools, and skills apply to upcoming messages.",
+    "welcome.model_hint": "{agent} now handles this workspace by default. Provider, model, tools, and skills apply to upcoming messages.",
     "prompt.journey": "Let's start a new journey!",
     "prompt.skills": "Can you tell me what skills you have?",
     
@@ -271,7 +273,7 @@ const I18N = {
     
     // Routes
     "route.chat.title": "Chat",
-    "route.chat.subtitle": "Main Agent workspace for general-purpose conversations and orchestration",
+    "route.chat.subtitle": "Alter0 workspace for general-purpose conversations and orchestration",
     "route.coding.title": "Coding",
     "route.coding.subtitle": "Coding Agent workspace for repository analysis, implementation, and verification",
     "route.writing.title": "Writing",
@@ -642,7 +644,7 @@ const I18N = {
     "welcome.target_hint": "为当前会话选择执行目标。",
     "welcome.agent_hint": "选择一个可用 Agent，开始独立的执行会话。",
     "welcome.model_title": "为后续消息选择模型",
-    "welcome.model_hint": "Chat 现在默认通过内置 Main Agent 执行，对后续消息可继续调整 Provider、Model、Tools 与 Skills。",
+    "welcome.model_hint": "当前工作区默认由 {agent} 处理，后续消息仍可继续调整 Provider、Model、Tools 与 Skills。",
     "prompt.journey": "让我们开启一段新的旅程吧！",
     "prompt.skills": "能告诉我你有哪些技能吗？",
     
@@ -737,7 +739,7 @@ const I18N = {
     
     // Routes
     "route.chat.title": "对话",
-    "route.chat.subtitle": "默认 Main Agent 对话工作区，适合通用任务与子 Agent 编排",
+    "route.chat.subtitle": "默认 Alter0 对话工作区，适合通用任务与子 Agent 编排",
     "route.coding.title": "Coding",
     "route.coding.subtitle": "Coding Agent 工作区，面向仓库分析、实现与验证",
     "route.writing.title": "Writing",
@@ -1057,8 +1059,8 @@ const ROUTES = {
     conversation: "agent",
     defaultTarget: {
       type: "agent",
-      id: "main",
-      name: "Main Agent"
+      id: MAIN_AGENT_ID,
+      name: MAIN_AGENT_NAME
     }
   },
   coding: {
@@ -1562,6 +1564,14 @@ function defaultAgentRuntimeTarget() {
   };
 }
 
+function fixedAgentRouteTarget(route = state.currentRoute) {
+  const config = ROUTES[route] || ROUTES.chat;
+  if (config.conversation !== "agent" || config.targetPicker) {
+    return null;
+  }
+  return normalizeChatTarget(config.defaultTarget || routeDefaultTarget(route));
+}
+
 function enabledModelsForProvider(provider) {
   const models = Array.isArray(provider?.models) ? provider.models : [];
   return models.filter((item) => item && item.is_enabled !== false);
@@ -1758,15 +1768,27 @@ function normalizeChatTarget(target = {}) {
   };
 }
 
-function sessionTarget(session) {
-  if (!session || typeof session !== "object") {
-    return routeDefaultTarget();
+function resolveSessionTargetForRoute(session, route = state.currentRoute) {
+  const fixedTarget = fixedAgentRouteTarget(route);
+  if (fixedTarget) {
+    return fixedTarget;
   }
-  return normalizeChatTarget({
-    type: session.targetType,
-    id: session.targetID,
-    name: session.targetName
+  const target = normalizeChatTarget({
+    type: session?.targetType,
+    id: session?.targetID,
+    name: session?.targetName
   });
+  if (routeConversationMode(route) === "agent" && (target.type !== "agent" || !target.id)) {
+    return routeDefaultTarget(route);
+  }
+  return target;
+}
+
+function sessionTarget(session, route = state.currentRoute) {
+  if (!session || typeof session !== "object") {
+    return routeDefaultTarget(route);
+  }
+  return resolveSessionTargetForRoute(session, route);
 }
 
 function sessionTargetLabel(session) {
@@ -1783,6 +1805,18 @@ function sessionTargetBadgeLabel(session) {
     return `${t("session.target.agent")} · ${target.name}`;
   }
   return t("session.target.raw");
+}
+
+function syncSessionTargetForRoute(session, route = state.currentRoute) {
+  if (!session || typeof session !== "object") {
+    return false;
+  }
+  const resolved = resolveSessionTargetForRoute(session, route);
+  if (session.targetType === resolved.type && session.targetID === resolved.id && session.targetName === resolved.name) {
+    return false;
+  }
+  updateSessionTarget(session, resolved);
+  return true;
 }
 
 function sessionModelLabel(session) {
@@ -3162,6 +3196,10 @@ function syncHeader() {
 
 function syncWelcomeCopy() {
   const active = getSession();
+  const workspaceTarget = sessionTarget(active || null);
+  const workspaceAgentName = workspaceTarget.type === "agent" && workspaceTarget.name
+    ? workspaceTarget.name
+    : MAIN_AGENT_NAME;
   if (!active) {
     welcomeHeading.textContent = t("welcome.heading");
     welcomeDescription.textContent = routeAllowsTargetPicker() ? t("session.no_active_agent") : t("session.no_active");
@@ -3170,7 +3208,7 @@ function syncWelcomeCopy() {
   welcomeHeading.textContent = t("welcome.heading");
   welcomeDescription.textContent = routeAllowsTargetPicker()
     ? `${t("welcome.desc")} ${t("welcome.agent_hint")}`
-    : `${t("welcome.desc")} ${t("welcome.model_hint")}`;
+    : `${t("welcome.desc")} ${t("welcome.model_hint", { agent: workspaceAgentName })}`;
 }
 
 function syncSessionLoadHint() {
@@ -3835,7 +3873,13 @@ async function sendMessage(rawContent) {
   }
 
   const active = getSession();
-  const target = sessionTarget(active);
+  if (syncSessionTargetForRoute(active, route)) {
+    persistSessions();
+    renderSessions();
+    syncHeader();
+    renderWelcomeTargetPicker();
+  }
+  const target = sessionTarget(active, route);
   const isAgentSession = isAgentConversationRoute();
   if (isAgentSession && !target.id) {
     appendMessage("assistant", t("route.agent.pick"), {
@@ -4049,7 +4093,9 @@ function navigateToRoute(route, options = {}) {
 function startNewChatSession() {
   const existingBlank = getLatestBlankSession("chat");
   if (existingBlank) {
+    updateSessionTarget(existingBlank, routeDefaultTarget("chat"));
     setActiveConversationSessionID(existingBlank.id, "chat");
+    persistSessions();
     focusSession(existingBlank.id);
   } else {
     if (!confirmComposerNavigation()) {
@@ -10663,6 +10709,10 @@ async function renderRoute(route) {
   
   if (config.mode === "chat") {
     setMainContentMode("chat");
+    const activeSession = getSession();
+    if (syncSessionTargetForRoute(activeSession, safe)) {
+      persistSessions();
+    }
     syncRouteAction("");
     syncMainChatComposerDraft(activeConversationSessionID(), { preserveCurrent: false });
     renderSessions();
