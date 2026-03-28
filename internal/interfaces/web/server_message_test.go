@@ -387,3 +387,62 @@ func TestProductMessageHandlerRejectsNonPublicProductExecution(t *testing.T) {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusNotFound, rec.Code, rec.Body.String())
 	}
 }
+
+func TestTravelGuideEndpointsLifecycle(t *testing.T) {
+	server := newMessageTestServer(&stubWebOrchestrator{})
+	server.products = productapp.NewService()
+	server.travelGuides = productapp.NewTravelGuideService()
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/products/travel/guides", strings.NewReader(`{
+		"city":"Shanghai",
+		"days":3,
+		"travel_style":"metro-first",
+		"budget":"mid-range",
+		"must_visit":["The Bund","Yu Garden"],
+		"additional_requirements":["more local food"]
+	}`))
+	createRec := httptest.NewRecorder()
+	server.publicProductItemHandler(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create 201, got %d: %s", createRec.Code, createRec.Body.String())
+	}
+	var created productdomain.TravelGuide
+	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode created guide failed: %v", err)
+	}
+	if created.ID == "" || created.City != "Shanghai" {
+		t.Fatalf("unexpected created guide: %+v", created)
+	}
+	if len(created.MapLayers) == 0 {
+		t.Fatalf("expected map layers in guide: %+v", created)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/products/travel/guides/"+created.ID, nil)
+	getRec := httptest.NewRecorder()
+	server.publicProductItemHandler(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected get 200, got %d: %s", getRec.Code, getRec.Body.String())
+	}
+
+	reviseReq := httptest.NewRequest(http.MethodPost, "/api/products/travel/guides/"+created.ID+"/revise", strings.NewReader(`{
+		"days":4,
+		"keep_conditions":["keep The Bund"],
+		"replace_conditions":["less museum time"],
+		"additional_requirements":["slow mornings"]
+	}`))
+	reviseRec := httptest.NewRecorder()
+	server.publicProductItemHandler(reviseRec, reviseReq)
+	if reviseRec.Code != http.StatusOK {
+		t.Fatalf("expected revise 200, got %d: %s", reviseRec.Code, reviseRec.Body.String())
+	}
+	var revised productdomain.TravelGuide
+	if err := json.NewDecoder(reviseRec.Body).Decode(&revised); err != nil {
+		t.Fatalf("decode revised guide failed: %v", err)
+	}
+	if revised.Revision != 2 || revised.Days != 4 {
+		t.Fatalf("unexpected revised guide: %+v", revised)
+	}
+	if len(revised.KeepConditions) == 0 || len(revised.ReplaceConditions) == 0 {
+		t.Fatalf("expected revision conditions to persist: %+v", revised)
+	}
+}

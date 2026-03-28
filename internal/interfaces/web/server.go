@@ -96,6 +96,7 @@ type Server struct {
 	webBindLocalhost bool
 	agents           agentCatalogService
 	products         productService
+	travelGuides     travelGuideService
 }
 
 type llmService interface {
@@ -126,6 +127,13 @@ type productService interface {
 	DeleteProduct(id string) bool
 	IsBuiltinID(id string) bool
 }
+
+type travelGuideService interface {
+	CreateGuide(input productdomain.TravelGuideCreateInput) (productdomain.TravelGuide, error)
+	GetGuide(id string) (productdomain.TravelGuide, bool)
+	ReviseGuide(id string, input productdomain.TravelGuideReviseInput) (productdomain.TravelGuide, error)
+}
+
 type sessionHistoryService interface {
 	ListSessions(query sessionapp.SessionQuery) sessionapp.SessionPage
 	ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage
@@ -202,6 +210,29 @@ type productMessageRequest struct {
 	CorrelationID string            `json:"correlation_id,omitempty"`
 	Content       string            `json:"content"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+type travelGuideCreateRequest struct {
+	City                   string   `json:"city"`
+	Days                   int      `json:"days"`
+	TravelStyle            string   `json:"travel_style,omitempty"`
+	Budget                 string   `json:"budget,omitempty"`
+	Companions             []string `json:"companions,omitempty"`
+	MustVisit              []string `json:"must_visit,omitempty"`
+	Avoid                  []string `json:"avoid,omitempty"`
+	AdditionalRequirements []string `json:"additional_requirements,omitempty"`
+}
+
+type travelGuideReviseRequest struct {
+	Days                   *int     `json:"days,omitempty"`
+	TravelStyle            string   `json:"travel_style,omitempty"`
+	Budget                 string   `json:"budget,omitempty"`
+	Companions             []string `json:"companions,omitempty"`
+	MustVisit              []string `json:"must_visit,omitempty"`
+	Avoid                  []string `json:"avoid,omitempty"`
+	AdditionalRequirements []string `json:"additional_requirements,omitempty"`
+	KeepConditions         []string `json:"keep_conditions,omitempty"`
+	ReplaceConditions      []string `json:"replace_conditions,omitempty"`
 }
 
 type taskCreateRequest struct {
@@ -553,6 +584,7 @@ func NewServer(
 	sessions sessionHistoryService,
 	tasks taskService,
 	terminals terminalService,
+	travelGuides travelGuideService,
 	memoryOptions AgentMemoryOptions,
 	securityOptions WebSecurityOptions,
 	llm llmService,
@@ -590,6 +622,7 @@ func NewServer(
 		webBindLocalhost: resolvedBindLocalhost,
 		agents:           agents,
 		products:         products,
+		travelGuides:     travelGuides,
 	}
 }
 
@@ -3072,32 +3105,59 @@ func (s *Server) publicProductItemHandler(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
 		return
 	}
-	productID, resource, action, ok := productPublicResourceID(r.URL.Path)
-	if !ok {
+	parts, ok := productPublicResourceParts(r.URL.Path)
+	if !ok || len(parts) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
 		return
 	}
-	if resource == "messages" {
-		switch action {
-		case "":
+	productID := strings.TrimSpace(parts[0])
+	switch {
+	case len(parts) == 1:
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		item, found := s.products.ResolveProduct(productID)
+		if !found || item.Status != productdomain.StatusActive || item.Visibility != productdomain.VisibilityPublic {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+		return
+	case len(parts) >= 2 && parts[1] == "messages":
+		switch len(parts) {
+		case 2:
 			s.productMessageHandler(w, r, productID)
-		case "stream":
+		case 3:
+			if parts[2] != "stream" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product action"})
+				return
+			}
 			s.productMessageStreamHandler(w, r, productID)
 		default:
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product action"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
 		}
 		return
-	}
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	case strings.EqualFold(productID, productdomain.TravelProductID) && len(parts) >= 2 && parts[1] == "guides":
+		switch len(parts) {
+		case 2:
+			s.travelGuideCollectionHandler(w, r)
+		case 3:
+			s.travelGuideItemHandler(w, r, parts[2])
+		case 4:
+			if parts[3] != "revise" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid travel guide action"})
+				return
+			}
+			s.travelGuideReviseHandler(w, r, parts[2])
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		}
+		return
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
 		return
 	}
-	item, found := s.products.ResolveProduct(productID)
-	if !found || item.Status != productdomain.StatusActive || item.Visibility != productdomain.VisibilityPublic {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "product not found"})
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
 }
 
 func (s *Server) productMessageHandler(w http.ResponseWriter, r *http.Request, productID string) {
@@ -3359,6 +3419,99 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+func (s *Server) travelGuideCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.travelGuides == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "travel guide service unavailable"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	defer r.Body.Close()
+	var req travelGuideCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+	guide, err := s.travelGuides.CreateGuide(buildTravelGuideCreateInput(req))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, guide)
+}
+
+func (s *Server) travelGuideItemHandler(w http.ResponseWriter, r *http.Request, guideID string) {
+	if s.travelGuides == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "travel guide service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	guide, found := s.travelGuides.GetGuide(guideID)
+	if !found {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "travel guide not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, guide)
+}
+
+func (s *Server) travelGuideReviseHandler(w http.ResponseWriter, r *http.Request, guideID string) {
+	if s.travelGuides == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "travel guide service unavailable"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	defer r.Body.Close()
+	var req travelGuideReviseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+	guide, err := s.travelGuides.ReviseGuide(guideID, buildTravelGuideReviseInput(req))
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			status = http.StatusNotFound
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, guide)
+}
+
+func buildTravelGuideCreateInput(req travelGuideCreateRequest) productdomain.TravelGuideCreateInput {
+	return productdomain.TravelGuideCreateInput{
+		City:                   strings.TrimSpace(req.City),
+		Days:                   req.Days,
+		TravelStyle:            strings.TrimSpace(req.TravelStyle),
+		Budget:                 strings.TrimSpace(req.Budget),
+		Companions:             req.Companions,
+		MustVisit:              req.MustVisit,
+		Avoid:                  req.Avoid,
+		AdditionalRequirements: req.AdditionalRequirements,
+	}
+}
+
+func buildTravelGuideReviseInput(req travelGuideReviseRequest) productdomain.TravelGuideReviseInput {
+	return productdomain.TravelGuideReviseInput{
+		Days:                   req.Days,
+		TravelStyle:            strings.TrimSpace(req.TravelStyle),
+		Budget:                 strings.TrimSpace(req.Budget),
+		Companions:             req.Companions,
+		MustVisit:              req.MustVisit,
+		Avoid:                  req.Avoid,
+		AdditionalRequirements: req.AdditionalRequirements,
+		KeepConditions:         req.KeepConditions,
+		ReplaceConditions:      req.ReplaceConditions,
+	}
+}
 func (s *Server) productListHandler(w http.ResponseWriter, r *http.Request) {
 	if s.products == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
@@ -3734,41 +3887,25 @@ func resourceID(path, prefix string) (string, bool) {
 	return id, true
 }
 
-func productPublicResourceID(path string) (string, string, string, bool) {
+func productPublicResourceParts(path string) ([]string, bool) {
 	const prefix = "/api/products/"
 	if !strings.HasPrefix(path, prefix) {
-		return "", "", "", false
+		return nil, false
 	}
 	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
 	if trimmed == "" {
-		return "", "", "", false
+		return nil, false
 	}
 	parts := strings.Split(trimmed, "/")
-	switch len(parts) {
-	case 1:
-		productID := strings.TrimSpace(parts[0])
-		if productID == "" {
-			return "", "", "", false
+	cleaned := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmedPart := strings.TrimSpace(part)
+		if trimmedPart == "" {
+			return nil, false
 		}
-		return productID, "", "", true
-	case 2:
-		productID := strings.TrimSpace(parts[0])
-		resource := strings.TrimSpace(parts[1])
-		if productID == "" || resource == "" {
-			return "", "", "", false
-		}
-		return productID, resource, "", true
-	case 3:
-		productID := strings.TrimSpace(parts[0])
-		resource := strings.TrimSpace(parts[1])
-		action := strings.TrimSpace(parts[2])
-		if productID == "" || resource == "" || action == "" {
-			return "", "", "", false
-		}
-		return productID, resource, action, true
-	default:
-		return "", "", "", false
+		cleaned = append(cleaned, trimmedPart)
 	}
+	return cleaned, true
 }
 
 func cronJobResourceID(path string) (string, string, bool) {

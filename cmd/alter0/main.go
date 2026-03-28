@@ -234,6 +234,12 @@ func main() {
 		logger.Error("failed to initialize product service", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
+	travelGuideStore := localstorage.NewTravelGuideStore(defaultStorageProfile.Dir, defaultStorageProfile.ControlFormat)
+	travelGuides, err := newTravelGuideService(rootCtx, travelGuideStore)
+	if err != nil {
+		logger.Error("failed to initialize travel guide service", slog.String("error", err.Error()))
+		os.Exit(2)
+	}
 	agentCatalog := agentapp.NewCatalog(control)
 
 	registry := orchinfra.NewInMemoryCommandRegistry()
@@ -331,6 +337,7 @@ func main() {
 		sessionHistory,
 		taskService,
 		terminalService,
+		travelGuides,
 		web.AgentMemoryOptions{
 			LongTermPath:         resolvedLongTermMemoryPath,
 			DailyDir:             resolvedDailyMemoryDir,
@@ -499,6 +506,13 @@ func newProductService(ctx context.Context, store productapp.Store) (*productapp
 		return productapp.NewService(), nil
 	}
 	return productapp.NewServiceWithStore(ctx, store)
+}
+
+func newTravelGuideService(ctx context.Context, store productapp.TravelGuideStore) (*productapp.TravelGuideService, error) {
+	if store == nil {
+		return productapp.NewTravelGuideService(), nil
+	}
+	return productapp.NewTravelGuideServiceWithStore(ctx, store)
 }
 func newSchedulerManager(
 	ctx context.Context,

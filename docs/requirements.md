@@ -67,8 +67,8 @@
 | R-054 | Product 目录与管理页 | planned | 新增 `Products` 平台模块，集中管理多个产品定义、入口信息、总 Agent 绑定、子 Agent 矩阵摘要与启停状态 |
 | R-055 | Product Agent 与子产品矩阵生成 | planned | 提供平台级 `Product Agent`，根据产品目标生成新 Product 草案、总 Agent、子 Agent 矩阵、能力边界与默认资料结构，并支持审核后发布 |
 | R-056 | Product 总 Agent 与子 Agent 矩阵编排 | planned | 每个 Product 绑定一个总 Agent 负责理解该产品域需求，并按功能拆分为多个子 Agent 协同执行，统一汇总结果与产物 |
-| R-057 | Alter0 Agent 跨 Product 信息检索与任务调度 | planned | `Alter0 Agent` 作为统一入口，按用户意图检索 Product 目录与能力信息，并在需要执行时调用对应 Product 的总 Agent 完成任务 |
-| R-058 | Travel Product 首个产品域落地 | planned | 以 `travel` 作为首个内置 Product，提供城市旅游攻略生成与后续约束修改能力，并为路线、地铁、美食、地图等子 Agent 矩阵预留标准结构 |
+| R-057 | Alter0 Agent 跨 Product 信息检索与任务调度 | planned | `Alter0 Agent` 作为统一入口，按用户意图检索 Product 目录与能力信息，并在需要执行时调用对应 Product 的总 Agent 完成任务；当前已提供 Product 公开执行入口与 Product 上下文注入 |
+| R-058 | Travel Product 首个产品域落地 | planned | 以 `travel` 作为首个内置 Product，提供城市旅游攻略生成与后续约束修改能力，并为路线、地铁、美食、地图等子 Agent 矩阵预留标准结构；当前已提供攻略生成、详情与 revision API |
 
 ## 需求细化（分文件）
 
@@ -80,3 +80,4 @@
 6. `R-051` ~ `R-060`：[requirements-detail-r051-r060.md](requirements-details/requirements-detail-r051-r060.md)
 
 说明：需求细化内容按每 10 个需求拆分维护。
+
