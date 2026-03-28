@@ -40,7 +40,7 @@ func builtinAgents() []controldomain.Agent {
 			Description:   "Specialist agent for repository analysis, implementation, and verification.",
 			EntryPoint:    true,
 			Delegatable:   true,
-			UIRoute:       "coding",
+			UIRoute:       "",
 			Capabilities:  []string{"coding"},
 		},
 		{
@@ -60,7 +60,7 @@ func builtinAgents() []controldomain.Agent {
 			Description:   "Specialist agent for product copy, documentation, and structured writing tasks.",
 			EntryPoint:    true,
 			Delegatable:   true,
-			UIRoute:       "writing",
+			UIRoute:       "",
 			Capabilities:  []string{"writing"},
 		},
 	}

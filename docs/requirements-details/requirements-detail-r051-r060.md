@@ -93,7 +93,7 @@
    - `coding`：专项编码 Agent
    - `writing`：专项写作 Agent
 3. `Chat` 页面必须默认绑定内置 `main` Agent（展示名 `Alter0`），进入 `Chat` 路由或新建 `Chat` 会话时需自动纠偏到该 Agent，不再以 Raw Model 作为默认执行目标。
-4. 前端必须提供专项 Agent 入口路由；当前至少包括 `Coding` 与 `Writing`，并默认分别绑定 `coding`、`writing` Agent。
+4. 前端必须保留 `Chat` 作为内置 `main` Agent 的独立入口；其余入口 Agent 统一通过通用 `Agent` 运行页承载。具备独立前端入口的 Agent 不进入通用 `Agent` 页的候选列表与会话历史。
 5. 控制面 `Agent Profiles` 页面仅管理用户自定义 Agent；系统内置 Agent 不允许通过控制面覆盖或删除。
 6. 运行时必须提供统一入口 Agent 列表接口，供前端选择 Agent 与展示内置 Agent。
    - 当前接口：`GET /api/agents`
@@ -108,7 +108,7 @@
 11. 验收：
    - `GET /api/agents` 可返回内置入口 Agent
    - `Chat` 默认走 `main` Agent
-   - `Coding`、`Writing` 路由可直接进入对应内置 Agent 会话
+   - `Agent` 页可直接进入 `coding`、`writing` 等无独立前端入口的内置 Agent 会话
    - 主 Agent 可通过 `delegate_agent` 调用 `coding`、`writing` 等专项 Agent 并回收结果
    - 用户新建 Agent 时若名称与内置 Agent 保留 ID 冲突，服务端会自动生成下一个可用 ID
 

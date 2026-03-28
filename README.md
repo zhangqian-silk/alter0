@@ -86,7 +86,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 1. `Chat`
 - 面向 Web 会话消息。
 - 默认绑定内置 `Alter0`（`main`），作为通用对话入口。
-- Web 登录后，`Chat` 与 `Agent` 页面共享同一套 Session 历史，不再按页面来源拆分会话列表与本地缓存。
+- Web 登录后，Web 对话页按目标 Agent 维护独立 Session 历史；带独立前端入口的 Agent 不进入通用 `Agent` 页的会话历史。
 - 运行时配置收敛在输入框底部操作栏：`Provider / Model`、`Tools / MCP`、`Skills` 都在发送区附近完成。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
 - `Alter0` 默认使用 ReAct 执行链，可直接完成通用任务，并在需要时调度专项 Agent。
@@ -108,14 +108,14 @@ internal/shared/infrastructure     # ID、日志、metrics
   - `main`：默认对话主 Agent `Alter0`，可调度专项 Agent
   - `coding`：面向仓库分析、代码修改与验证
   - `writing`：面向文档、文案与结构化写作
-- Web `Coding`、`Writing` 页面分别默认绑定对应内置 Agent；`Agent` 页面提供统一 Agent 运行入口，可选择任一内置或用户管理的入口 Agent。
+- Web `Chat` 页面默认绑定 `Alter0`；`Agent` 页面提供统一 Agent 运行入口，用于承载未占用独立前端入口的内置 Agent 与用户管理 Agent。
 - Agent 默认可使用 `list_dir`、`read`、`write`、`edit`、`bash`、`codex_exec` 等工具，并依据执行结果决定继续推进还是完成收口；支持 `delegate_agent` 时可向其他可委派 Agent 下发子任务并回收结果。
 - 每个 Agent 可独立配置名称、system prompt、tool 白名单、Skill 选择、MCP 选择与 Memory Files 选择。
 - Agent 可按 Profile 勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory；所选文件会在执行前以结构化 `memory_context` 注入 Agent 与 Codex 执行链路。
 - 注入内容同时携带可写文件路径，Agent 可继续通过 `read`、`write`、`edit` 工具直接维护这些记忆文件，适配“先读规则、再执行、需要时落盘更新”的工作流。
 - Web 端将用户管理的 Agent Profile 放在 `Agent Profiles` 页面；系统内置 Agent 由服务注册，不能通过控制面覆盖或删除。
 - Agent 的 `id`、`version` 等系统字段由服务端统一生成和维护，管理页不要求用户手填。
-- `Agent` 页面继续保留独立执行入口与配置，但其 Session 历史与 `Chat`、`Coding`、`Writing` 页面统一展示、统一恢复。
+- `Agent` 页面继续保留独立执行入口与配置，并按当前选中 Agent 展示独立 Session 历史；带独立前端入口的 Agent 不进入该页历史。
 
 3. `Terminal`
 - 面向交互式终端会话。
@@ -366,12 +366,12 @@ curl -X POST http://127.0.0.1:18088/api/agent/messages \
 2. 系统默认注册内置 `main`、`coding`、`writing` 三个入口 Agent；它们通过统一 `Agent Catalog` 暴露给运行时与前端。
 3. 创建 Agent 时不需要手填 `id` 或 `version`；服务端会自动生成 Agent ID，并在每次更新时维护版本。若生成 ID 与内置 Agent 冲突，会自动跳过保留 ID。
 4. 当前内置原生工具为 `list_dir`、`read`、`write`、`edit`、`bash`；Agent 额外支持 `codex_exec`，系统会自动补充收口工具 `complete`。支持委派的 Agent 还可启用 `delegate_agent`。
-5. `Chat` 默认绑定 `main` Agent；`Coding`、`Writing` 页面分别默认绑定 `coding`、`writing` Agent；`Agent` 页面保留通用 Agent 选择入口。
+5. `Chat` 默认绑定 `main` Agent；`Agent` 页面作为其余入口 Agent 的统一运行页，并按目标 Agent 隔离维护独立会话历史；具备独立前端入口的 Agent 不进入该页历史。
 6. Agent 的 Skill、MCP 与 Memory Files 选择会在执行前注入运行时上下文，执行过程仍复用统一编排链路。
 7. 内置 `memory` Skill 会明确记忆文件的读写逻辑：按任务类型决定先读哪些文件、按信息类型决定写入哪个文件、遇到冲突时按 `SOUL.md > AGENTS.md > 长期记忆 > 日记忆` 收敛；实际文件快照仍由 `memory_files` 注入提供。
 8. `memory_files` 当前支持：`user_md`、`soul_md`、`agents_md`、`memory_long_term`、`memory_daily_today`、`memory_daily_yesterday`。
 9. Memory Files 注入会携带文件内容、绝对路径、是否存在、最近更新时间；文件不存在时仍会暴露预期路径，便于 Agent 直接创建并写入。
-10. Web `Agent Profiles` 页面用于管理用户自定义 Agent Profile；内置 Agent 由服务托管；`Agent` 页面作为通用交互入口；`Chat`/`Coding`/`Writing` 页面分别绑定对应内置 Agent。
+10. Web `Agent Profiles` 页面用于管理用户自定义 Agent Profile；内置 Agent 由服务托管；`Chat` 页面绑定 `Alter0`；`Agent` 页面作为其余入口 Agent 的通用交互入口。
 
 ### Cron Jobs
 

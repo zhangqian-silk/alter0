@@ -33,8 +33,8 @@ func TestNewChatReusesLatestBlankSessionAndSwitchesContext(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	markers := []string{
 		"function startNewChatSession()",
-		"function getLatestBlankSession(mode = routeConversationMode())",
-		"function enforceSingleBlankSession(mode = routeConversationMode())",
+		"function getLatestBlankSession(route = state.currentRoute)",
+		"function enforceSingleBlankSession(route = state.currentRoute)",
 		"const existingBlank = getLatestBlankSession(\"chat\");",
 		"setActiveConversationSessionID(existingBlank.id, \"chat\");",
 		"createSession(routeDefaultTarget(\"chat\"), routeConversationMode(\"chat\"), \"chat\");",

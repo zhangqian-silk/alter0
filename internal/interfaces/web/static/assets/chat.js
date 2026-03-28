@@ -1063,26 +1063,6 @@ const ROUTES = {
       name: MAIN_AGENT_NAME
     }
   },
-  coding: {
-    key: "coding",
-    mode: "chat",
-    conversation: "agent",
-    defaultTarget: {
-      type: "agent",
-      id: "coding",
-      name: "Coding Agent"
-    }
-  },
-  writing: {
-    key: "writing",
-    mode: "chat",
-    conversation: "agent",
-    defaultTarget: {
-      type: "agent",
-      id: "writing",
-      name: "Writing Agent"
-    }
-  },
   "agent-runtime": {
     key: "agent_runtime",
     mode: "chat",
@@ -1148,7 +1128,7 @@ const ROUTES = {
 
 const state = {
   currentRoute: DEFAULT_ROUTE,
-  activeSessionID: "",
+  activeSessionByBucket: {},
   sessions: [],
   sessionLoadError: "",
   chatCatalog: {
@@ -1168,6 +1148,9 @@ const state = {
   },
   chatRuntime: {
     openPopover: ""
+  },
+  agentRuntimeState: {
+    selectedAgentID: ""
   },
   agentRouteState: {
     selectedAgentID: "",
@@ -1506,20 +1489,46 @@ function routeAllowsTargetPicker(route = state.currentRoute) {
   return Boolean(config.targetPicker);
 }
 
-function conversationSessions() {
-  return state.sessions;
+function storedConversationSessions() {
+  return Array.isArray(state.sessions) ? state.sessions : [];
 }
 
-function setConversationSessions(items) {
+function setStoredConversationSessions(items) {
   state.sessions = Array.isArray(items) ? items : [];
+  sortSessionsByCreatedAtDesc(state.sessions);
 }
 
-function activeConversationSessionID() {
-  return state.activeSessionID;
+function conversationSessions(route = state.currentRoute) {
+  const bucket = conversationHistoryBucket(route);
+  return storedConversationSessions().filter((item) => sessionHistoryBucket(item) === bucket);
 }
 
-function setActiveConversationSessionID(sessionID) {
-  state.activeSessionID = normalizeText(sessionID);
+function setConversationSessions(items, route = state.currentRoute) {
+  const bucket = conversationHistoryBucket(route);
+  const preserved = storedConversationSessions().filter((item) => sessionHistoryBucket(item) !== bucket);
+  const nextItems = (Array.isArray(items) ? items : []).map((item) => ({
+    ...item,
+    historyBucket: bucket
+  }));
+  setStoredConversationSessions([...preserved, ...nextItems]);
+}
+
+function activeConversationSessionID(route = state.currentRoute) {
+  const bucket = conversationHistoryBucket(route);
+  return normalizeText(state.activeSessionByBucket?.[bucket]);
+}
+
+function setActiveConversationSessionID(sessionID, route = state.currentRoute) {
+  const bucket = conversationHistoryBucket(route);
+  const normalized = normalizeText(sessionID);
+  if (!bucket) {
+    return;
+  }
+  if (!normalized) {
+    delete state.activeSessionByBucket[bucket];
+    return;
+  }
+  state.activeSessionByBucket[bucket] = normalized;
 }
 
 function conversationSessionLoadError() {
@@ -1544,8 +1553,9 @@ function shorten(text, maxLength) {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
-function getSession(id = activeConversationSessionID(), mode = routeConversationMode()) {
-  return conversationSessions(mode).find((item) => item.id === id);
+function getSession(id = activeConversationSessionID(), route = state.currentRoute) {
+  const normalizedID = normalizeText(id);
+  return conversationSessions(route).find((item) => item.id === normalizedID) || null;
 }
 
 function defaultChatTarget() {
@@ -1557,11 +1567,7 @@ function defaultChatTarget() {
 }
 
 function defaultAgentRuntimeTarget() {
-  return {
-    type: "agent",
-    id: "",
-    name: t("session.target.agent")
-  };
+  return resolveAgentRuntimeTarget();
 }
 
 function fixedAgentRouteTarget(route = state.currentRoute) {
@@ -1570,6 +1576,57 @@ function fixedAgentRouteTarget(route = state.currentRoute) {
     return null;
   }
   return normalizeChatTarget(config.defaultTarget || routeDefaultTarget(route));
+}
+
+function currentConversationTarget(route = state.currentRoute) {
+  const fixedTarget = fixedAgentRouteTarget(route);
+  if (fixedTarget) {
+    return fixedTarget;
+  }
+  const config = ROUTES[route] || ROUTES.chat;
+  if (config.conversation === "agent" && config.targetPicker) {
+    return syncAgentRuntimeTarget();
+  }
+  return routeDefaultTarget(route);
+}
+
+function conversationHistoryBucketForTarget(target = {}) {
+  const normalizedTarget = normalizeChatTarget(target);
+  if (normalizedTarget.type === "agent") {
+    const agentID = normalizeText(normalizedTarget.id);
+    return agentID ? `agent:${agentID}` : "agent:unassigned";
+  }
+  if (normalizeText(normalizedTarget.id) === "raw-model") {
+    return `agent:${MAIN_AGENT_ID}`;
+  }
+  return `model:${normalizeText(normalizedTarget.id) || "default"}`;
+}
+
+function conversationHistoryBucket(route = state.currentRoute) {
+  return conversationHistoryBucketForTarget(currentConversationTarget(route));
+}
+
+function sessionHistoryBucket(session) {
+  return normalizeText(session?.historyBucket) || conversationHistoryBucketForTarget({
+    type: session?.targetType,
+    id: session?.targetID,
+    name: session?.targetName
+  });
+}
+
+function ensureActiveConversationSession(route = state.currentRoute) {
+  const sessions = conversationSessions(route);
+  const activeID = activeConversationSessionID(route);
+  const active = sessions.find((item) => item.id === activeID) || null;
+  if (active) {
+    return active;
+  }
+  if (!sessions.length) {
+    setActiveConversationSessionID("", route);
+    return null;
+  }
+  setActiveConversationSessionID(sessions[0].id, route);
+  return sessions[0];
 }
 
 function enabledModelsForProvider(provider) {
@@ -1705,6 +1762,55 @@ function findChatAgent(agentID) {
   return (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).find((item) => normalizeText(item?.id) === normalizedID) || null;
 }
 
+function agentConversationRoute(agent = {}) {
+  const route = normalizeText(agent?.ui_route || agent?.uiRoute);
+  if (!route || route === "agent-runtime") {
+    return "";
+  }
+  const config = ROUTES[route];
+  if (!config || config.mode !== "chat") {
+    return "";
+  }
+  return route;
+}
+
+function genericRuntimeConversationAgents() {
+  return (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).filter((item) => {
+    const agentID = normalizeText(item?.id);
+    return agentID && !agentConversationRoute(item);
+  });
+}
+
+function resolveAgentRuntimeTarget(target = {}) {
+  const requestedID = normalizeText(target?.id || state.agentRuntimeState.selectedAgentID);
+  const agents = genericRuntimeConversationAgents();
+  const selected = agents.find((item) => normalizeText(item?.id) === requestedID) || agents[0] || null;
+  if (!selected) {
+    return {
+      type: "agent",
+      id: "",
+      name: t("session.target.agent")
+    };
+  }
+  return normalizeChatTarget({
+    type: "agent",
+    id: selected.id,
+    name: selected.name || selected.id
+  });
+}
+
+function syncAgentRuntimeTarget(target = {}) {
+  const resolved = resolveAgentRuntimeTarget(target);
+  state.agentRuntimeState.selectedAgentID = resolved.id;
+  return resolved;
+}
+
+function reconcileAgentRuntimeTarget() {
+  const previousID = normalizeText(state.agentRuntimeState.selectedAgentID);
+  const resolved = syncAgentRuntimeTarget();
+  return previousID !== resolved.id;
+}
+
 function defaultRuntimeSelectionsForTarget(target) {
   const normalizedTarget = normalizeChatTarget(target);
   if (normalizedTarget.type !== "agent") {
@@ -1773,13 +1879,26 @@ function resolveSessionTargetForRoute(session, route = state.currentRoute) {
   if (fixedTarget) {
     return fixedTarget;
   }
+  if (!session || typeof session !== "object") {
+    return currentConversationTarget(route);
+  }
   const target = normalizeChatTarget({
     type: session?.targetType,
     id: session?.targetID,
     name: session?.targetName
   });
-  if (routeConversationMode(route) === "agent" && (target.type !== "agent" || !target.id)) {
-    return routeDefaultTarget(route);
+  if (routeConversationMode(route) !== "agent") {
+    return target;
+  }
+  if (routeAllowsTargetPicker(route)) {
+    const agent = findChatAgent(target.id);
+    if (target.type === "agent" && target.id && agent && !agentConversationRoute(agent)) {
+      return target;
+    }
+    return currentConversationTarget(route);
+  }
+  if (target.type !== "agent" || !target.id) {
+    return currentConversationTarget(route);
   }
   return target;
 }
@@ -1849,8 +1968,8 @@ function isBlankSession(item) {
   return Boolean(item) && Array.isArray(item.messages) && item.messages.length === 0;
 }
 
-function getLatestBlankSession(mode = routeConversationMode()) {
-  const blankSessions = conversationSessions().filter((item) => isBlankSession(item));
+function getLatestBlankSession(route = state.currentRoute) {
+  const blankSessions = conversationSessions(route).filter((item) => isBlankSession(item));
   if (!blankSessions.length) {
     return null;
   }
@@ -1858,19 +1977,19 @@ function getLatestBlankSession(mode = routeConversationMode()) {
   return blankSessions[0];
 }
 
-function enforceSingleBlankSession(mode = routeConversationMode()) {
-  const latestBlank = getLatestBlankSession();
+function enforceSingleBlankSession(route = state.currentRoute) {
+  const latestBlank = getLatestBlankSession(route);
   if (!latestBlank) {
     return false;
   }
-  const sessions = conversationSessions();
+  const sessions = conversationSessions(route);
   const originalCount = sessions.length;
-  setConversationSessions(sessions.filter((item) => !isBlankSession(item) || item.id === latestBlank.id));
-  const activeID = activeConversationSessionID();
-  if (activeID && !getSession(activeID)) {
-    setActiveConversationSessionID(latestBlank.id);
+  setConversationSessions(sessions.filter((item) => !isBlankSession(item) || item.id === latestBlank.id), route);
+  const activeID = activeConversationSessionID(route);
+  if (activeID && !getSession(activeID, route)) {
+    setActiveConversationSessionID(latestBlank.id, route);
   }
-  return conversationSessions().length !== originalCount;
+  return conversationSessions(route).length !== originalCount;
 }
 
 function focusSession(sessionID) {
@@ -2461,6 +2580,7 @@ function normalizeStoredSession(item, mode = routeConversationMode()) {
     title,
     createdAt,
     messages,
+    historyBucket: normalizeText(item.historyBucket) || conversationHistoryBucketForTarget(target),
     targetType: target.type,
     targetID: target.id,
     targetName: target.name,
@@ -2586,7 +2706,7 @@ function persistSessions(mode = routeConversationMode()) {
     return;
   }
   try {
-    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(conversationSessions()));
+    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(storedConversationSessions()));
     setConversationSessionLoadError("", mode);
   } catch {
     setConversationSessionLoadError("session_save_failed", mode);
@@ -2596,18 +2716,15 @@ function persistSessions(mode = routeConversationMode()) {
 
 function bootstrapSessions(mode = routeConversationMode()) {
   setConversationSessionLoadError("", mode);
-  setConversationSessions([]);
-  setActiveConversationSessionID("");
+  setStoredConversationSessions([]);
+  state.activeSessionByBucket = {};
 
   try {
     const sessions = loadSessionsFromStorage(mode);
-    setConversationSessions(sessions);
-    if (enforceSingleBlankSession(mode)) {
-      persistSessions(mode);
-    }
-    if (conversationSessions().length) {
-      setActiveConversationSessionID(conversationSessions()[0].id);
-    }
+    setStoredConversationSessions(sessions);
+    reconcileAgentRuntimeTarget();
+    ensureActiveConversationSession("chat");
+    ensureActiveConversationSession("agent-runtime");
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
     setConversationSessionLoadError(message, mode);
@@ -2619,11 +2736,13 @@ async function refreshChatAgentCatalog() {
     return;
   }
   state.chatCatalog.loading = true;
+  let targetChanged = false;
   try {
     const payload = await fetchJSON("/api/agents");
     state.chatCatalog.agents = Array.isArray(payload?.items)
       ? payload.items.filter((item) => Boolean(item?.enabled))
       : [];
+    targetChanged = reconcileAgentRuntimeTarget();
     state.chatCatalog.error = "";
     state.chatCatalog.loaded = true;
   } catch (error) {
@@ -2631,6 +2750,13 @@ async function refreshChatAgentCatalog() {
     state.chatCatalog.loaded = true;
   } finally {
     state.chatCatalog.loading = false;
+    if (targetChanged || state.currentRoute === "agent-runtime") {
+      ensureActiveConversationSession("agent-runtime");
+      renderSessions();
+      renderMessages();
+      syncHeader();
+      syncWelcomeCopy();
+    }
     renderChatRuntimePanel();
     renderWelcomeTargetPicker();
   }
@@ -2731,7 +2857,8 @@ function renderChatRuntimePanel() {
     return;
   }
   const mode = routeConversationMode();
-  const activeSession = getSession() || createSession(routeDefaultTarget(), mode, state.currentRoute);
+  const initialTarget = currentConversationTarget();
+  const activeSession = getSession() || ((mode === "agent" && !initialTarget.id) ? null : createSession(initialTarget, mode, state.currentRoute));
   const target = sessionTarget(activeSession);
   const locked = targetLocked(activeSession);
   const modelSelection = resolveEffectiveChatModelSelection(activeSession);
@@ -2750,7 +2877,7 @@ function renderChatRuntimePanel() {
   const skillLabel = skillsCount > 0 ? `${t("chat.runtime.skills")} (${skillsCount})` : t("chat.runtime.skills");
   const note = [state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | ") || t("chat.runtime.hint");
   const targetOptions = agentRuntime
-    ? (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []).map((agent) => ({
+    ? genericRuntimeConversationAgents().map((agent) => ({
         target: {
           type: "agent",
           id: normalizeText(agent?.id),
@@ -2910,14 +3037,19 @@ function renderChatRuntimePanel() {
         id: node.getAttribute("data-runtime-target-id") || "",
         name: node.getAttribute("data-runtime-target-name") || ""
       };
-      const session = getSession() || createSession(nextTarget, mode);
-      updateSessionTarget(session, nextTarget);
+      syncAgentRuntimeTarget(nextTarget);
+      let session = ensureActiveConversationSession(state.currentRoute);
+      if (!session) {
+        session = createSession(nextTarget, mode, state.currentRoute);
+      }
       state.chatRuntime.openPopover = "";
-      persistSessions();
+      syncMainChatComposerDraft(session.id, { preserveCurrent: false });
       renderSessions();
+      renderMessages();
       syncHeader();
       syncWelcomeCopy();
       renderChatRuntimePanel();
+      renderWelcomeTargetPicker();
     });
   });
 
@@ -2986,7 +3118,7 @@ function renderWelcomeTargetPicker() {
   const currentTarget = sessionTarget(active);
   const agentRuntime = isAgentConversationRoute();
   const allowPicker = routeAllowsTargetPicker();
-  const agents = agentRuntime ? (Array.isArray(state.chatCatalog.agents) ? state.chatCatalog.agents : []) : [];
+  const agents = agentRuntime ? genericRuntimeConversationAgents() : [];
   const buttons = [];
   if (agentRuntime && allowPicker) {
     agents.forEach((agent) => {
@@ -3026,19 +3158,17 @@ function renderWelcomeTargetPicker() {
         id: node.getAttribute("data-chat-target-id") || "",
         name: node.getAttribute("data-chat-target-name") || ""
       };
-      const activeSession = getSession() || createSession(target);
-      if (activeSession.messages.length !== 0) {
-        const fresh = createSession(target);
-        updateSessionModelSelection(fresh, resolveEffectiveChatModelSelection(activeSession));
-        focusSession(fresh.id);
-        return;
+      syncAgentRuntimeTarget(target);
+      let session = ensureActiveConversationSession(state.currentRoute);
+      if (!session) {
+        session = createSession(target, routeConversationMode(state.currentRoute), state.currentRoute);
       }
-      updateSessionTarget(activeSession, target);
-      persistSessions();
+      syncMainChatComposerDraft(session.id, { preserveCurrent: false });
+      renderSessions();
+      renderMessages();
       syncHeader();
       syncWelcomeCopy();
       renderChatRuntimePanel();
-      renderSessions();
       renderWelcomeTargetPicker();
     });
   });
@@ -3046,33 +3176,41 @@ function renderWelcomeTargetPicker() {
 
 function openAgentRuntimeWithTarget(target) {
   const normalizedTarget = normalizeChatTarget(target);
-  let session = getLatestBlankSession();
-  if (session) {
-    updateSessionTarget(session, normalizedTarget);
-    setActiveConversationSessionID(session.id);
-    persistSessions();
-  } else {
-    session = createSession(normalizedTarget, "agent");
+  const agent = findChatAgent(normalizedTarget.id);
+  const dedicatedRoute = agentConversationRoute(agent);
+  if (dedicatedRoute) {
+    navigateToRoute(dedicatedRoute, { skipConfirm: true });
+    window.requestAnimationFrame(() => {
+      input.focus();
+    });
+    return;
   }
+  syncAgentRuntimeTarget(normalizedTarget);
+  let session = ensureActiveConversationSession("agent-runtime");
+  if (!session) {
+    session = createSession(normalizedTarget, "agent", "agent-runtime");
+  }
+  setActiveConversationSessionID(session.id, "agent-runtime");
   navigateToRoute("agent-runtime", { skipConfirm: true });
   window.requestAnimationFrame(() => {
+    syncMainChatComposerDraft(session.id, { preserveCurrent: false });
     input.focus();
   });
 }
 
 function createSession(target = null, mode = routeConversationMode(), route = state.currentRoute) {
-  const latestBlank = getLatestBlankSession();
+  const latestBlank = getLatestBlankSession(route);
   if (latestBlank) {
     if (target) {
       updateSessionTarget(latestBlank, target);
     }
-    setActiveConversationSessionID(latestBlank.id);
+    setActiveConversationSessionID(latestBlank.id, route);
     syncMainChatComposerDraft(latestBlank.id);
     renderSessions();
     renderMessages();
     syncHeader();
     renderWelcomeTargetPicker();
-    persistSessions();
+    persistSessions(routeConversationMode(route));
     return latestBlank;
   }
 
@@ -3092,12 +3230,13 @@ function createSession(target = null, mode = routeConversationMode(), route = st
     modelID: defaultChatModelSelection().modelID,
     toolIDs: runtimeDefaults.toolIDs,
     skillIDs: runtimeDefaults.skillIDs,
-    mcpIDs: runtimeDefaults.mcpIDs
+    mcpIDs: runtimeDefaults.mcpIDs,
+    historyBucket: conversationHistoryBucketForTarget(normalizedTarget)
   };
-  const sessions = conversationSessions().slice();
+  const sessions = conversationSessions(route).slice();
   sessions.unshift(item);
-  setConversationSessions(sessions);
-  setActiveConversationSessionID(item.id);
+  setConversationSessions(sessions, route);
+  setActiveConversationSessionID(item.id, route);
   syncMainChatComposerDraft(item.id);
   renderSessions();
   renderMessages();
@@ -3105,7 +3244,7 @@ function createSession(target = null, mode = routeConversationMode(), route = st
   syncWelcomeCopy();
   renderChatRuntimePanel();
   renderWelcomeTargetPicker();
-  persistSessions();
+  persistSessions(routeConversationMode(route));
   return item;
 }
 
@@ -3467,7 +3606,7 @@ function deliverAsyncTaskResult(session, message, task) {
 
 function collectPendingTaskBindings() {
   const bindings = [];
-  for (const session of conversationSessions()) {
+  for (const session of storedConversationSessions()) {
     const messages = Array.isArray(session?.messages) ? session.messages : [];
     for (const message of messages) {
       const taskID = normalizeText(message?.task_id);
@@ -10709,7 +10848,10 @@ async function renderRoute(route) {
   
   if (config.mode === "chat") {
     setMainContentMode("chat");
-    const activeSession = getSession();
+    if (safe === "agent-runtime") {
+      reconcileAgentRuntimeTarget();
+    }
+    const activeSession = ensureActiveConversationSession(safe);
     if (syncSessionTargetForRoute(activeSession, safe)) {
       persistSessions();
     }
