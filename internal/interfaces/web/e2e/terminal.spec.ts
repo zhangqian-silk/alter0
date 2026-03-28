@@ -317,12 +317,119 @@ test.describe("Terminal route", () => {
     const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-sheet", count: 2 });
 
     await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeHidden();
     await terminalPage.sessionPaneToggle().click();
     await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeVisible();
 
     const secondSession = terminalPage.sessionList().itemAt(1);
     await secondSession.click();
     await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeHidden();
+  });
+
+  test("deletes a historical session directly from the session list", async ({ page, request }) => {
+    const { sessions, terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "list-delete-history", count: 2 });
+
+    const activeSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    expect(activeSessionID).toBeTruthy();
+    const historicalSession = sessions.find((session) => session.id !== activeSessionID);
+    expect(historicalSession).toBeTruthy();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await terminalPage.sessionDeleteButton(String(historicalSession?.id || "")).click();
+
+    await expect(terminalPage.sessionList().items()).toHaveCount(1);
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-session-id", String(activeSessionID));
+    await expect(terminalPage.sessionDeleteButton(String(historicalSession?.id || ""))).toHaveCount(0);
+  });
+
+  test("switches to the next session when deleting the active session from the session list", async ({ page, request }) => {
+    const { sessions, terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "list-delete-active", count: 2 });
+
+    const activeSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    expect(activeSessionID).toBeTruthy();
+    const nextSession = sessions.find((session) => session.id !== activeSessionID);
+    expect(nextSession).toBeTruthy();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await terminalPage.sessionDeleteButton(String(activeSessionID)).click();
+
+    await expect(terminalPage.sessionList().items()).toHaveCount(1);
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-session-id", String(nextSession?.id || ""));
+    await expect(terminalPage.sessionDeleteButton(String(activeSessionID))).toHaveCount(0);
+  });
+
+  test("keeps the mobile session sheet closed and interactive after deleting the active session", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-delete-sheet", count: 2 });
+
+    const previousSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    expect(previousSessionID).toBeTruthy();
+    await expect(terminalPage.sessionList().items()).toHaveCount(2);
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await terminalPage.workspace().locator("[data-terminal-delete]").click();
+
+    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-terminal-session-id")).not.toBe(previousSessionID);
+    await expect(terminalPage.sessionList().items()).toHaveCount(1);
+    await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeHidden();
+
+    await terminalPage.sessionPaneToggle().click();
+    await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeVisible();
+    await terminalPage.sessionPaneClose().click();
+    await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeHidden();
+  });
+
+  test("keeps the terminal workspace filled to the bottom after deleting the active session on mobile", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-delete-height", count: 2 });
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await terminalPage.workspace().locator("[data-terminal-delete]").click();
+
+    await expect.poll(async () => await terminalPage.sessionList().items().count()).toBe(1);
+    await expect(terminalPage.sessionPane()).toBeHidden();
+
+    const layoutMetrics = await page.evaluate(() => {
+      const route = document.querySelector(".route-view.terminal-route");
+      const routeBody = document.querySelector(".route-body.terminal-route-body");
+      const terminalView = document.querySelector("[data-terminal-view]");
+      const terminalWorkspaceShell = document.querySelector(".terminal-workspace");
+      const workspace = document.querySelector("[data-terminal-workspace]");
+      if (!(route instanceof HTMLElement) || !(workspace instanceof HTMLElement)) {
+        return null;
+      }
+      const rect = (node: Element | null) => {
+        if (!(node instanceof HTMLElement)) {
+          return null;
+        }
+        const box = node.getBoundingClientRect();
+        return {
+          top: Math.round(box.top),
+          bottom: Math.round(box.bottom),
+          height: Math.round(box.height),
+        };
+      };
+      return {
+        gap: Math.round(route.getBoundingClientRect().bottom - workspace.getBoundingClientRect().bottom),
+        windowScrollY: Math.round(window.scrollY || 0),
+        routeScrollTop: Math.round(route.scrollTop || 0),
+        routeBodyScrollTop: routeBody instanceof HTMLElement ? Math.round(routeBody.scrollTop || 0) : null,
+        terminalViewScrollTop: terminalView instanceof HTMLElement ? Math.round(terminalView.scrollTop || 0) : null,
+        route: rect(route),
+        routeBody: rect(routeBody),
+        terminalView: rect(terminalView),
+        terminalWorkspaceShell: rect(terminalWorkspaceShell),
+        workspace: rect(workspace),
+      };
+    });
+
+    expect(layoutMetrics).not.toBeNull();
+    expect(layoutMetrics?.gap ?? 0).toBeLessThanOrEqual(20);
   });
 
   test("keeps IME composition input across polling refresh", async ({ page, request }) => {
@@ -558,6 +665,122 @@ test.describe("Terminal route", () => {
 
     await expect(stickyPrompt).toBeVisible();
     await expect(stickyPrompt).toContainText("output 120 lines");
+  });
+
+  test("keeps the sticky prompt visible when process and final output headers enter sticky range on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 640 });
+    const clientID = createTerminalClientID("sticky-section-headers");
+    const now = Date.now();
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [
+      {
+        id: "terminal-sticky-sections",
+        title: "检查吸顶区块头部",
+        terminal_session_id: "terminal-sticky-sections",
+        status: "exited",
+        shell: "codex exec",
+        working_dir: terminalSessionWorkspace("terminal-sticky-sections"),
+        created_at: now - 4000,
+        updated_at: now - 1000,
+        last_output_at: now - 1000,
+        process_collapsed: {},
+        output_collapsed: {},
+        expanded_steps: {},
+        step_details: {},
+        step_loading: {},
+        step_errors: {},
+        step_search: {},
+        turns: [
+          {
+            id: "turn-sticky",
+            prompt: "输出一段很长的过程和最终结果，便于滚动验证吸顶头部",
+            status: "completed",
+            started_at: now - 3200,
+            finished_at: now - 1200,
+            duration_ms: 2000,
+            final_output: Array.from({ length: 120 }, (_, index) => `line ${index + 1}`).join("\n"),
+            steps: Array.from({ length: 12 }, (_, index) => ({
+              id: `step-${index + 1}`,
+              title: `Step ${index + 1}`,
+              preview: `preview ${index + 1}`,
+              status: "completed",
+              duration_ms: 1000 + index * 10,
+              started_at: now - 3000 + index * 20,
+              finished_at: now - 2000 + index * 20,
+            })),
+          },
+        ],
+      },
+    ]);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    const stickyPrompt = terminalPage.stickyPrompt();
+    const turnID = "turn-sticky";
+
+    const readStickyPosition = async (selector: string) => {
+      return page.evaluate((currentSelector) => {
+        const header = document.querySelector(currentSelector);
+        if (!(header instanceof HTMLElement)) {
+          return null;
+        }
+        return window.getComputedStyle(header).position;
+      }, selector);
+    };
+    const readVerticalGap = async (topSelector: string, bottomSelector: string) => {
+      return page.evaluate((payload) => {
+        const topNode = document.querySelector(payload?.topSelector || "");
+        const bottomNode = document.querySelector(payload?.bottomSelector || "");
+        if (!(topNode instanceof HTMLElement) || !(bottomNode instanceof HTMLElement)) {
+          return null;
+        }
+        return Math.round(bottomNode.getBoundingClientRect().top - topNode.getBoundingClientRect().bottom);
+      }, { topSelector, bottomSelector });
+    };
+    const scrollHeaderIntoStickyRange = async (selector: string, offset = 0) => {
+      await terminalPage.chatScreen().evaluate((node, payload) => {
+        const currentSelector = payload?.selector || "";
+        const header = node.querySelector(currentSelector);
+        if (!(header instanceof HTMLElement)) {
+          return;
+        }
+        const nodeRect = node.getBoundingClientRect();
+        const headerRect = header.getBoundingClientRect();
+        const stickyTop = parseFloat(window.getComputedStyle(header).top || "0");
+        const paddingTop = parseFloat(window.getComputedStyle(node).paddingTop || "0");
+        const stickyOffset = Math.max(paddingTop + stickyTop + Number(payload?.offset || 0), 0);
+        node.scrollTop += Math.max(headerRect.top - nodeRect.top - stickyOffset, 0);
+        node.dispatchEvent(new Event("scroll"));
+      }, { selector, offset });
+    };
+
+    await expect(terminalPage.turnCard(turnID)).toContainText("line 120");
+    await expect.poll(() => readStickyPosition(`[data-terminal-process-toggle="${turnID}"]`)).toBe("sticky");
+    await terminalPage.chatScreen().evaluate((node) => {
+      node.scrollTop = 0;
+      node.dispatchEvent(new Event("scroll"));
+    });
+    await expect(stickyPrompt).toBeHidden();
+    await scrollHeaderIntoStickyRange(`[data-terminal-process-toggle="${turnID}"]`);
+    await expect(stickyPrompt).toBeVisible();
+    await expect(stickyPrompt).toContainText("输出一段很长的过程和最终结果");
+    await expect.poll(() => readVerticalGap("[data-terminal-sticky-prompt]", `[data-terminal-process-toggle="${turnID}"]`)).toBeGreaterThanOrEqual(-6);
+
+    const outputToggle = terminalPage.outputToggle(turnID);
+    const outputBody = terminalPage.turnCard(turnID).locator(".terminal-final-text");
+    await expect.poll(() => readStickyPosition(`[data-terminal-final-head="${turnID}"]`)).toBe("sticky");
+    await scrollHeaderIntoStickyRange(`[data-terminal-final-head="${turnID}"]`);
+    await expect(stickyPrompt).toBeVisible();
+    await expect(stickyPrompt).toContainText("输出一段很长的过程和最终结果");
+    await expect.poll(() => readVerticalGap("[data-terminal-sticky-prompt]", `[data-terminal-final-head="${turnID}"]`)).toBeGreaterThanOrEqual(-6);
+
+    const wasCollapsed = await outputBody.evaluate((node) => node.classList.contains("is-clamped"));
+    await outputToggle.click();
+    if (wasCollapsed) {
+      await expect(outputBody).not.toHaveClass(/is-clamped/);
+      return;
+    }
+    await expect(outputBody).toHaveClass(/is-clamped/);
   });
 
   test("keeps output collapse toggle clickable while the sticky prompt is visible", async ({ page, request }) => {

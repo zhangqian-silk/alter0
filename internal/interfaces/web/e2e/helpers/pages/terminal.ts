@@ -26,6 +26,7 @@ export function createTerminalPage(page: Page): {
   finalOutputs(): Locator;
   sessionList(): SessionListComponent;
   sessionListContainer(): Locator;
+  sessionDeleteButton(sessionID: string): Locator;
 } {
   const composer = createComposerComponent(page, "terminal-runtime");
   const sessionList = createSessionListComponent(page, {
@@ -33,7 +34,7 @@ export function createTerminalPage(page: Page): {
     itemByValue: (sessionID: string) => `[data-terminal-session-select="${sessionID}"]`,
   });
   return {
-    createButton: () => page.locator("[data-terminal-create]").first(),
+    createButton: () => page.locator("#mobileNewChatButton:visible, [data-terminal-create]:visible").first(),
     composer: () => composer,
     closeButton: () => page.locator("[data-terminal-close]"),
     workspace: () => page.locator("[data-terminal-workspace]"),
@@ -56,5 +57,6 @@ export function createTerminalPage(page: Page): {
     finalOutputs: () => page.locator(".terminal-final-output"),
     sessionList: () => sessionList,
     sessionListContainer: () => page.locator("[data-terminal-session-list]"),
+    sessionDeleteButton: (sessionID: string) => page.locator(`[data-terminal-delete-session="${sessionID}"]`),
   };
 }

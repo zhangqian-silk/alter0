@@ -4329,6 +4329,10 @@ function isMobileViewport() {
   return window.matchMedia("(max-width: 1100px)").matches;
 }
 
+function isTerminalSessionSheetViewport() {
+  return window.matchMedia("(max-width: 760px)").matches;
+}
+
 function setSidebarCollapsed(collapsed) {
   state.navCollapsed = collapsed;
   appShell.classList.toggle("nav-collapsed", collapsed);
@@ -8611,12 +8615,13 @@ function classifyTerminalLogKind(entry) {
   return "output";
 }
 
-function renderTerminalSessionCards(sessions, activeSessionID) {
+function renderTerminalSessionCards(sessions, activeSessionID, options = {}) {
   if (!sessions.length) {
     return `<p class="route-empty-panel terminal-session-empty">${escapeHTML(t("route.terminal.empty"))}</p>`;
   }
   return sessions.map((session) => {
     const title = normalizeText(session.title);
+    const sessionID = normalizeText(session.id);
     const active = session.id === activeSessionID;
     const statusClassName = taskStatusClassName(session.status);
     const listTimestamp = getTerminalSessionSortAt(session);
@@ -8624,15 +8629,20 @@ function renderTerminalSessionCards(sessions, activeSessionID) {
     const lastOutputMeta = getTerminalSessionLastOutputAt(session) > 0
       ? t("route.terminal.last_output", { time: listTimeLabel })
       : t("route.terminal.no_output");
-    return `<button class="route-card route-card-button terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}" ${active ? 'aria-current="true"' : ""}>
-      <span class="terminal-session-head">
-        <span class="route-card-title-copy">
-          <span class="terminal-session-title">${escapeHTML(title)}</span>
-          <span class="terminal-session-meta">${escapeHTML(lastOutputMeta)}</span>
+    const deleting = Boolean(options?.deleting) && sessionID === normalizeText(options?.deletingSessionID);
+    const deleteLabel = deleting ? t("route.terminal.deleting") : t("route.terminal.delete");
+    return `<div class="route-card terminal-session-card ${active ? "active" : ""}" data-terminal-session-card="${escapeHTML(sessionID)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
+      <button class="route-card-button terminal-session-select" type="button" data-terminal-session-select="${escapeHTML(sessionID)}" ${active ? 'aria-current="true"' : ""}>
+        <span class="terminal-session-head">
+          <span class="route-card-title-copy">
+            <span class="terminal-session-title">${escapeHTML(title)}</span>
+            <span class="terminal-session-meta">${escapeHTML(lastOutputMeta)}</span>
+          </span>
+          <span class="task-summary-status ${statusClassName}">${escapeHTML(renderTerminalStatus(session.status))}</span>
         </span>
-        <span class="task-summary-status ${statusClassName}">${escapeHTML(renderTerminalStatus(session.status))}</span>
-      </span>
-    </button>`;
+      </button>
+      <button class="terminal-session-list-delete" type="button" data-terminal-delete-session="${escapeHTML(sessionID)}" aria-label="${escapeHTML(deleteLabel)}" ${Boolean(options?.deleting) ? "disabled" : ""}>${escapeHTML(deleteLabel)}</button>
+    </div>`;
   }).join("");
 }
 
@@ -8867,8 +8877,8 @@ function renderTerminalFinalOutput(session, turn) {
   const turnID = normalizeText(turn?.id);
   const collapsible = shouldCollapseTerminalOutput(content);
   const collapsed = collapsible ? resolveTerminalOutputCollapsed(session, turn) : false;
-  return `<section class="terminal-final-output ${collapsed ? "is-collapsed" : ""}">
-    <div class="terminal-final-head">
+  return `<section class="terminal-final-output ${collapsed ? "is-collapsed" : ""}" data-terminal-final-output="${escapeHTML(turnID)}">
+    <div class="terminal-final-head" data-terminal-final-head="${escapeHTML(turnID)}">
       <h6>${escapeHTML(t("route.terminal.final.heading"))}</h6>
       ${collapsible ? `<button class="terminal-final-toggle" type="button" data-terminal-output-toggle="${escapeHTML(turnID)}" aria-expanded="${collapsed ? "false" : "true"}">${escapeHTML(collapsed ? t("route.terminal.output_expand") : t("route.terminal.output_collapse"))}</button>` : ""}
     </div>
@@ -8914,14 +8924,14 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
   const metaExpanded = Boolean(session?.meta_expanded);
   const sessionCount = Number.isFinite(Number(options?.sessionCount)) ? Math.max(Number(options.sessionCount), 0) : 0;
-  const sessionToggleLabel = options?.mobileSessionListOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
+  const sessionToggleLabel = options?.sessionSheetOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
   const headerSubcopy = getTerminalSessionLastOutputAt(session) > 0
     ? t("route.terminal.last_output", { time: formatDateTime(new Date(getTerminalSessionLastOutputAt(session)).toISOString()) })
     : t("route.terminal.no_output");
   return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${isLive ? "true" : "false"}">
     <header class="terminal-workspace-head">
       <div class="terminal-mobile-actions">
-        <button class="terminal-inline-button" type="button" data-terminal-session-pane-toggle aria-expanded="${options?.mobileSessionListOpen ? "true" : "false"}">${escapeHTML(sessionToggleLabel)}</button>
+        <button class="terminal-inline-button" type="button" data-terminal-session-pane-toggle aria-expanded="${options?.sessionSheetOpen ? "true" : "false"}">${escapeHTML(sessionToggleLabel)}</button>
         <button class="terminal-inline-button is-primary" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new_short"))}</button>
       </div>
       <div class="terminal-workspace-row">
@@ -9030,7 +9040,7 @@ function syncRenderedBlock(parent, selector, html, anchorNode = null, position =
   return parent.querySelector(selector);
 }
 
-function patchTerminalSessionPane(container, sessions, activeSessionID, mobileSessionListOpen) {
+function patchTerminalSessionPane(container, sessions, activeSessionID, mobileSessionListOpen, options = {}) {
   const paneNode = container.querySelector("[data-terminal-session-pane]");
   if (!paneNode) {
     return null;
@@ -9046,7 +9056,7 @@ function patchTerminalSessionPane(container, sessions, activeSessionID, mobileSe
     syncNodeText(node, t("route.terminal.hide_sessions"));
   });
   const sessionListNode = paneNode.querySelector("[data-terminal-session-list]");
-  syncNodeHTML(sessionListNode, renderTerminalSessionCards(sessions, activeSessionID));
+  syncNodeHTML(sessionListNode, renderTerminalSessionCards(sessions, activeSessionID, options));
   return sessionListNode;
 }
 
@@ -9075,7 +9085,7 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
   const metaExpanded = Boolean(session?.meta_expanded);
   const sessionCount = Number.isFinite(Number(options?.sessionCount)) ? Math.max(Number(options.sessionCount), 0) : 0;
-  const sessionToggleLabel = options?.mobileSessionListOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
+  const sessionToggleLabel = options?.sessionSheetOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
   const headerSubcopy = getTerminalSessionLastOutputAt(session) > 0
     ? t("route.terminal.last_output", { time: formatDateTime(new Date(getTerminalSessionLastOutputAt(session)).toISOString()) })
     : t("route.terminal.no_output");
@@ -9086,7 +9096,7 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
 
   const sessionPaneToggle = workspaceNode.querySelector("[data-terminal-session-pane-toggle]");
   syncNodeText(sessionPaneToggle, sessionToggleLabel);
-  syncNodeAttribute(sessionPaneToggle, "aria-expanded", options?.mobileSessionListOpen ? "true" : "false");
+  syncNodeAttribute(sessionPaneToggle, "aria-expanded", options?.sessionSheetOpen ? "true" : "false");
   workspaceNode.querySelectorAll(".terminal-mobile-actions [data-terminal-create]").forEach((node) => {
     syncNodeText(node, t("route.terminal.new_short"));
   });
@@ -9181,6 +9191,7 @@ async function loadTerminalView(container) {
     sending: false,
     closing: false,
     deleting: false,
+    deletingSessionID: "",
     polling: false,
     timer: 0,
     drafts: {},
@@ -9201,6 +9212,10 @@ async function loadTerminalView(container) {
   localState.activeSessionID = localState.sessions[0] ? localState.sessions[0].id : "";
   localState.mobileSessionListOpen = localState.sessions.length === 0;
   localState.mobileSessionListAutoOpened = localState.mobileSessionListOpen;
+
+  const resolveTerminalSessionSheetOpen = () => {
+    return isTerminalSessionSheetViewport() && Boolean(localState.mobileSessionListOpen);
+  };
 
   const getActiveSession = () => {
     return localState.sessions.find((item) => item.id === localState.activeSessionID) || null;
@@ -9302,50 +9317,95 @@ async function loadTerminalView(container) {
     const stickyShellNode = container.querySelector("[data-terminal-sticky-prompt-shell]");
     const stickyNode = container.querySelector("[data-terminal-sticky-prompt]");
     const stickyTextNode = container.querySelector("[data-terminal-sticky-prompt-text]");
+    const resetStickyPrompt = () => {
+      if (!node) {
+        return;
+      }
+      stickyShellNode.hidden = true;
+      stickyNode.removeAttribute("data-terminal-turn-id");
+      stickyTextNode.textContent = "";
+      node.style.setProperty("--terminal-sticky-overlay-offset", "0px");
+    };
     if (!node || !stickyShellNode || !stickyNode || !stickyTextNode) {
       return;
     }
     const promptNodes = [...node.querySelectorAll("[data-terminal-turn-prompt]")];
     if (!promptNodes.length) {
-      stickyShellNode.hidden = true;
-      stickyNode.removeAttribute("data-terminal-turn-id");
-      stickyTextNode.textContent = "";
+      resetStickyPrompt();
       return;
     }
     const chatTop = node.getBoundingClientRect().top;
-    let activePrompt = null;
-    promptNodes.forEach((promptNode) => {
-      if (!(promptNode instanceof HTMLElement)) {
-        return;
+    const findActivePromptByScroll = () => {
+      let nextPrompt = null;
+      promptNodes.forEach((promptNode) => {
+        if (!(promptNode instanceof HTMLElement)) {
+          return;
+        }
+        if (promptNode.getBoundingClientRect().top <= chatTop + TERMINAL_STICKY_PROMPT_SHOW_OFFSET) {
+          nextPrompt = promptNode;
+        }
+      });
+      return nextPrompt;
+    };
+    const findActivePromptByStickySection = () => {
+      const stickyOffset = Math.max(Math.ceil(stickyShellNode.offsetHeight || 0), 0);
+      const sectionStickyTop = chatTop + stickyOffset;
+      const sectionStickySlack = 6;
+      const sectionNodes = [...node.querySelectorAll("[data-terminal-process-toggle], [data-terminal-final-head]")];
+      let activeSection = null;
+      sectionNodes.forEach((sectionNode) => {
+        if (!(sectionNode instanceof HTMLElement)) {
+          return;
+        }
+        const turnNode = sectionNode.closest("[data-terminal-turn]");
+        const turnRect = turnNode instanceof HTMLElement ? turnNode.getBoundingClientRect() : null;
+        if (!turnRect || turnRect.bottom <= chatTop + 8) {
+          return;
+        }
+        const sectionRect = sectionNode.getBoundingClientRect();
+        if (sectionRect.bottom <= sectionStickyTop + 4) {
+          return;
+        }
+        if (sectionRect.top <= sectionStickyTop + sectionStickySlack) {
+          activeSection = sectionNode;
+        }
+      });
+      if (!(activeSection instanceof HTMLElement)) {
+        return null;
       }
-      if (promptNode.getBoundingClientRect().top <= chatTop + TERMINAL_STICKY_PROMPT_SHOW_OFFSET) {
-        activePrompt = promptNode;
+      const sectionTurn = activeSection.closest("[data-terminal-turn]");
+      if (!(sectionTurn instanceof HTMLElement)) {
+        return null;
       }
-    });
+      const sectionPrompt = sectionTurn.querySelector("[data-terminal-turn-prompt]");
+      return sectionPrompt instanceof HTMLElement ? sectionPrompt : null;
+    };
+    const forcedPrompt = findActivePromptByStickySection();
+    const activePrompt = forcedPrompt || findActivePromptByScroll();
+    const promptForcedBySection = Boolean(forcedPrompt);
     if (!(activePrompt instanceof HTMLElement)) {
-      stickyShellNode.hidden = true;
-      stickyNode.removeAttribute("data-terminal-turn-id");
-      stickyTextNode.textContent = "";
+      resetStickyPrompt();
       return;
     }
     const activeTurn = activePrompt.closest("[data-terminal-turn]");
     const turnRect = activeTurn instanceof HTMLElement ? activeTurn.getBoundingClientRect() : null;
-    if (!turnRect || turnRect.bottom <= chatTop + 8 || activePrompt.getBoundingClientRect().top >= chatTop + 4) {
-      stickyShellNode.hidden = true;
-      stickyNode.removeAttribute("data-terminal-turn-id");
-      stickyTextNode.textContent = "";
+    if (!turnRect || turnRect.bottom <= chatTop + 8) {
+      resetStickyPrompt();
+      return;
+    }
+    if (!promptForcedBySection && activePrompt.getBoundingClientRect().top >= chatTop + 4) {
+      resetStickyPrompt();
       return;
     }
     const promptText = String(activePrompt.getAttribute("data-terminal-turn-prompt-text") || activePrompt.querySelector(".terminal-log-text")?.textContent || "").trim();
     if (!promptText) {
-      stickyShellNode.hidden = true;
-      stickyNode.removeAttribute("data-terminal-turn-id");
-      stickyTextNode.textContent = "";
+      resetStickyPrompt();
       return;
     }
     stickyShellNode.hidden = false;
     stickyNode.setAttribute("data-terminal-turn-id", normalizeText(activeTurn ? activeTurn.getAttribute("data-terminal-turn") : ""));
     stickyTextNode.textContent = promptText;
+    node.style.setProperty("--terminal-sticky-overlay-offset", `${Math.max(Math.ceil(stickyShellNode.offsetHeight || 0), 0)}px`);
   };
 
   const shouldDeferTerminalPaint = (sessionID) => {
@@ -9586,6 +9646,8 @@ async function loadTerminalView(container) {
       const nextIndex = Math.min(index, Math.max(localState.sessions.length - 1, 0));
       localState.activeSessionID = localState.sessions[nextIndex] ? localState.sessions[nextIndex].id : "";
       if (localState.activeSessionID) {
+        localState.mobileSessionListOpen = false;
+        localState.mobileSessionListAutoOpened = false;
         requestRevealActiveSessionCard();
       }
     }
@@ -9723,6 +9785,10 @@ async function loadTerminalView(container) {
     if (!localState.activeSessionID && localState.sessions[0]) {
       localState.activeSessionID = localState.sessions[0].id;
     }
+    if (!isTerminalSessionSheetViewport()) {
+      localState.mobileSessionListOpen = false;
+      localState.mobileSessionListAutoOpened = false;
+    }
     if (localState.mobileSessionListAutoOpened && localState.sessions.length > 0 && localState.activeSessionID) {
       localState.mobileSessionListOpen = false;
       localState.mobileSessionListAutoOpened = false;
@@ -9769,15 +9835,19 @@ async function loadTerminalView(container) {
       previousSessionID === normalizeText(active.id) &&
       container.querySelector("[data-terminal-view]")
     );
+    const sessionSheetOpen = resolveTerminalSessionSheetOpen();
     if (canPatchActiveWorkspace) {
-      patchTerminalSessionPane(container, localState.sessions, localState.activeSessionID, localState.mobileSessionListOpen);
+      patchTerminalSessionPane(container, localState.sessions, localState.activeSessionID, sessionSheetOpen, {
+        deleting: localState.deleting,
+        deletingSessionID: localState.deletingSessionID
+      });
       const patched = patchTerminalWorkspaceNode(container, active, localState.sending, localState.closing, localState.deleting, {
         sessionCount: localState.sessions.length,
-        mobileSessionListOpen: localState.mobileSessionListOpen
+        sessionSheetOpen
       });
       if (!patched) {
         container.innerHTML = `<section class="terminal-view" data-terminal-view>
-          <aside class="terminal-session-pane ${localState.mobileSessionListOpen ? "is-open" : ""}" data-terminal-session-pane>
+          <aside class="terminal-session-pane ${sessionSheetOpen ? "is-open" : ""}" data-terminal-session-pane>
             <button class="terminal-session-pane-backdrop" type="button" data-terminal-session-pane-close aria-label="${escapeHTML(t("route.terminal.hide_sessions"))}"></button>
             <div class="route-surface terminal-session-pane-shell">
               <div class="terminal-session-pane-head">
@@ -9790,20 +9860,23 @@ async function loadTerminalView(container) {
                   <button class="terminal-session-pane-action terminal-session-pane-close" type="button" data-terminal-session-pane-close>${escapeHTML(t("route.terminal.hide_sessions"))}</button>
                 </div>
               </div>
-            <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
+            <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID, {
+              deleting: localState.deleting,
+              deletingSessionID: localState.deletingSessionID
+            })}</div>
             </div>
           </aside>
           <section class="terminal-workspace">
             ${renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
               sessionCount: localState.sessions.length,
-              mobileSessionListOpen: localState.mobileSessionListOpen
+              sessionSheetOpen
             })}
           </section>
         </section>`;
       }
     } else {
       container.innerHTML = `<section class="terminal-view" data-terminal-view>
-        <aside class="terminal-session-pane ${localState.mobileSessionListOpen ? "is-open" : ""}" data-terminal-session-pane>
+        <aside class="terminal-session-pane ${sessionSheetOpen ? "is-open" : ""}" data-terminal-session-pane>
           <button class="terminal-session-pane-backdrop" type="button" data-terminal-session-pane-close aria-label="${escapeHTML(t("route.terminal.hide_sessions"))}"></button>
           <div class="route-surface terminal-session-pane-shell">
             <div class="terminal-session-pane-head">
@@ -9816,16 +9889,23 @@ async function loadTerminalView(container) {
                 <button class="terminal-session-pane-action terminal-session-pane-close" type="button" data-terminal-session-pane-close>${escapeHTML(t("route.terminal.hide_sessions"))}</button>
               </div>
             </div>
-          <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
+          <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID, {
+            deleting: localState.deleting,
+            deletingSessionID: localState.deletingSessionID
+          })}</div>
           </div>
         </aside>
         <section class="terminal-workspace">
           ${renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
             sessionCount: localState.sessions.length,
-            mobileSessionListOpen: localState.mobileSessionListOpen
+            sessionSheetOpen
           })}
         </section>
       </section>`;
+    }
+    const terminalViewNode = container.querySelector("[data-terminal-view]");
+    if (terminalViewNode instanceof HTMLElement && Number(terminalViewNode.scrollTop || 0) !== 0) {
+      terminalViewNode.scrollTop = 0;
     }
     const sessionListNode = container.querySelector("[data-terminal-session-list]");
     if (sessionListNode) {
@@ -10085,10 +10165,15 @@ async function loadTerminalView(container) {
     if (!window.confirm(t("route.terminal.delete_confirm"))) {
       return;
     }
-    localState.deleting = true;
-    paint();
     const sessionID = normalizeText(session.id);
     const deletingActive = sessionID === normalizeText(localState.activeSessionID);
+    localState.deleting = true;
+    localState.deletingSessionID = sessionID;
+    if (deletingActive) {
+      localState.mobileSessionListOpen = false;
+      localState.mobileSessionListAutoOpened = false;
+    }
+    paint();
     try {
       await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(sessionID)}`, {
         method: "DELETE"
@@ -10127,6 +10212,7 @@ async function loadTerminalView(container) {
       paint();
     } finally {
       localState.deleting = false;
+      localState.deletingSessionID = "";
       paint();
     }
   };
@@ -10242,6 +10328,12 @@ async function loadTerminalView(container) {
       return;
     }
     if (target.hasAttribute("data-terminal-session-pane-toggle")) {
+      if (!isTerminalSessionSheetViewport()) {
+        localState.mobileSessionListOpen = false;
+        localState.mobileSessionListAutoOpened = false;
+        requestTerminalPaint();
+        return;
+      }
       localState.mobileSessionListOpen = !localState.mobileSessionListOpen;
       localState.mobileSessionListAutoOpened = false;
       requestTerminalPaint();
@@ -10335,6 +10427,17 @@ async function loadTerminalView(container) {
       const active = getActiveSession();
       if (active) {
         void deleteTerminalSession(active);
+      }
+      return;
+    }
+    if (target.hasAttribute("data-terminal-delete-session")) {
+      const sessionID = normalizeText(target.getAttribute("data-terminal-delete-session"));
+      if (sessionID === "-") {
+        return;
+      }
+      const session = localState.sessions.find((item) => normalizeText(item.id) === sessionID) || null;
+      if (session) {
+        void deleteTerminalSession(session);
       }
       return;
     }
