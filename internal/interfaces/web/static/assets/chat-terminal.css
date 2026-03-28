@@ -436,14 +436,12 @@
 }
 
 .terminal-sticky-prompt-shell {
-  position: absolute;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   z-index: 4;
-  padding: 10px 14px 0;
+  margin: calc(var(--terminal-chat-screen-padding-top) * -1) calc(var(--terminal-chat-screen-padding-x) * -1) 10px;
+  padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) 0;
   background: linear-gradient(180deg, rgba(30, 30, 30, 1) 0%, rgba(30, 30, 30, 0.94) 100%);
-  pointer-events: none;
 }
 
 .terminal-chat-screen {
@@ -466,21 +464,33 @@
 }
 
 .terminal-sticky-prompt {
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  width: 100%;
+  border: none;
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin: 0 0 10px;
+  margin: 0;
   padding: 9px 12px;
   border: 1px solid rgba(96, 165, 250, 0.18);
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(15, 23, 42, 0.88) 100%);
   box-shadow: 0 12px 24px -18px rgba(15, 23, 42, 0.75);
   backdrop-filter: blur(12px);
-  pointer-events: none;
   max-width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.terminal-sticky-prompt:hover {
+  border-color: rgba(96, 165, 250, 0.3);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(15, 23, 42, 0.92) 100%);
+}
+
+.terminal-sticky-prompt:focus-visible {
+  outline: 2px solid rgba(147, 197, 253, 0.78);
+  outline-offset: 2px;
 }
 
 .terminal-sticky-prompt-prefix {
@@ -821,7 +831,7 @@
   font-weight: 600;
   transition: background-color 0.18s ease;
   position: sticky;
-  top: calc(var(--terminal-sticky-overlay-offset) - var(--terminal-chat-screen-padding-top));
+  top: var(--terminal-sticky-overlay-offset);
   z-index: 3;
   padding-block: 6px;
   margin-left: -14px;
@@ -1195,7 +1205,7 @@
   gap: 10px;
   min-width: 0;
   position: sticky;
-  top: calc(var(--terminal-sticky-overlay-offset) - var(--terminal-chat-screen-padding-top));
+  top: var(--terminal-sticky-overlay-offset);
   z-index: 3;
   margin: -12px -14px 0;
   padding: 12px 14px 10px;
@@ -2089,7 +2099,8 @@
   }
 
   .terminal-sticky-prompt-shell {
-    padding: 8px 10px 0;
+    margin: calc(var(--terminal-chat-screen-padding-top) * -1) calc(var(--terminal-chat-screen-padding-x) * -1) 8px;
+    padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) 0;
   }
 
   .terminal-jump-bottom {

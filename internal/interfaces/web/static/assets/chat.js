@@ -8950,13 +8950,13 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
       ${metaExpanded ? renderTerminalWorkspaceMetaPanel(session) : ""}
     </header>
     <section class="route-surface-dark terminal-console-panel" data-terminal-console-panel>
-      <div class="terminal-sticky-prompt-shell" data-terminal-sticky-prompt-shell hidden>
-        <div class="terminal-sticky-prompt" data-terminal-sticky-prompt>
-          <span class="terminal-sticky-prompt-prefix" aria-hidden="true">&gt;</span>
-          <span class="terminal-sticky-prompt-text" data-terminal-sticky-prompt-text></span>
-        </div>
-      </div>
       <div class="terminal-chat-screen" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
+        <div class="terminal-sticky-prompt-shell" data-terminal-sticky-prompt-shell hidden>
+          <button class="terminal-sticky-prompt" type="button" data-terminal-sticky-prompt>
+            <span class="terminal-sticky-prompt-prefix" aria-hidden="true">&gt;</span>
+            <span class="terminal-sticky-prompt-text" data-terminal-sticky-prompt-text></span>
+          </button>
+        </div>
         <div class="terminal-log-tree">
           ${renderTerminalTurns(session)}
         </div>
@@ -9312,17 +9312,27 @@ async function loadTerminalView(container) {
     node.style.overflowY = node.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
   };
 
+  const measureTerminalStickyPromptOffset = (stickyShellNode) => {
+    if (!(stickyShellNode instanceof HTMLElement) || stickyShellNode.hidden) {
+      return 0;
+    }
+    const style = window.getComputedStyle(stickyShellNode);
+    const marginBottom = Math.max(parseFloat(style.marginBottom || "0"), 0);
+    return Math.max(Math.ceil(stickyShellNode.getBoundingClientRect().height + marginBottom), 0);
+  };
+
   const syncTerminalStickyPrompt = (chatNode = null) => {
     const node = chatNode || container.querySelector("[data-terminal-chat-screen]");
-    const stickyShellNode = container.querySelector("[data-terminal-sticky-prompt-shell]");
-    const stickyNode = container.querySelector("[data-terminal-sticky-prompt]");
-    const stickyTextNode = container.querySelector("[data-terminal-sticky-prompt-text]");
+    const stickyShellNode = node ? node.querySelector("[data-terminal-sticky-prompt-shell]") : null;
+    const stickyNode = stickyShellNode ? stickyShellNode.querySelector("[data-terminal-sticky-prompt]") : null;
+    const stickyTextNode = stickyShellNode ? stickyShellNode.querySelector("[data-terminal-sticky-prompt-text]") : null;
     const resetStickyPrompt = () => {
       if (!node) {
         return;
       }
       stickyShellNode.hidden = true;
       stickyNode.removeAttribute("data-terminal-turn-id");
+      stickyNode.removeAttribute("title");
       stickyTextNode.textContent = "";
       node.style.setProperty("--terminal-sticky-overlay-offset", "0px");
     };
@@ -9348,7 +9358,7 @@ async function loadTerminalView(container) {
       return nextPrompt;
     };
     const findActivePromptByStickySection = () => {
-      const stickyOffset = Math.max(Math.ceil(stickyShellNode.offsetHeight || 0), 0);
+      const stickyOffset = measureTerminalStickyPromptOffset(stickyShellNode);
       const sectionStickyTop = chatTop + stickyOffset;
       const sectionStickySlack = 6;
       const sectionNodes = [...node.querySelectorAll("[data-terminal-process-toggle], [data-terminal-final-head]")];
@@ -9404,8 +9414,40 @@ async function loadTerminalView(container) {
     }
     stickyShellNode.hidden = false;
     stickyNode.setAttribute("data-terminal-turn-id", normalizeText(activeTurn ? activeTurn.getAttribute("data-terminal-turn") : ""));
+    stickyNode.title = promptText;
     stickyTextNode.textContent = promptText;
-    node.style.setProperty("--terminal-sticky-overlay-offset", `${Math.max(Math.ceil(stickyShellNode.offsetHeight || 0), 0)}px`);
+    node.style.setProperty("--terminal-sticky-overlay-offset", `${measureTerminalStickyPromptOffset(stickyShellNode)}px`);
+  };
+
+  const revealTerminalTurnPrompt = (turnID, options = {}) => {
+    const key = normalizeText(turnID);
+    if (!key) {
+      return;
+    }
+    const chatNode = container.querySelector("[data-terminal-chat-screen]");
+    if (!(chatNode instanceof HTMLElement)) {
+      return;
+    }
+    const escapedTurnID = window.CSS && typeof window.CSS.escape === "function"
+      ? window.CSS.escape(key)
+      : key.replace(/["\\]/g, "\\$&");
+    const promptNode = chatNode.querySelector(`[data-terminal-turn-prompt="${escapedTurnID}"]`);
+    if (!(promptNode instanceof HTMLElement)) {
+      return;
+    }
+    const stickyShellNode = chatNode.querySelector("[data-terminal-sticky-prompt-shell]");
+    const stickyOffset = measureTerminalStickyPromptOffset(stickyShellNode);
+    const chatRect = chatNode.getBoundingClientRect();
+    const promptRect = promptNode.getBoundingClientRect();
+    const alignOffset = stickyOffset + 8;
+    const nextScrollTop = Math.max(chatNode.scrollTop + promptRect.top - chatRect.top - alignOffset, 0);
+    const behavior = options.behavior === "auto" || window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth";
+    chatNode.scrollTo({
+      top: nextScrollTop,
+      behavior
+    });
   };
 
   const shouldDeferTerminalPaint = (sessionID) => {
@@ -10377,6 +10419,13 @@ async function loadTerminalView(container) {
       scrollTerminalChatToBottom();
       persist();
       requestTerminalPaint({ scrollToBottom: true });
+      return;
+    }
+    if (target.hasAttribute("data-terminal-sticky-prompt")) {
+      const turnID = normalizeText(target.getAttribute("data-terminal-turn-id"));
+      if (turnID !== "-") {
+        revealTerminalTurnPrompt(turnID);
+      }
       return;
     }
     if (target.hasAttribute("data-terminal-output-toggle")) {
