@@ -137,6 +137,7 @@ const I18N = {
     "nav.agent_runtime": "Agent",
     "nav.control": "Control",
     "nav.agent": "Profiles",
+    "nav.products": "Products",
     "nav.settings": "Settings",
     "nav.channels": "Channels",
     "nav.sessions": "Sessions",
@@ -309,6 +310,35 @@ const I18N = {
     "route.agent.delete_failed": "Delete Agent failed: {error}",
     "route.agent.saved": "Agent saved.",
     "route.agent.deleted": "Agent deleted.",
+    "route.products.title": "Products",
+    "route.products.subtitle": "Manage product definitions, master agents, and worker-agent matrices",
+    "route.products.empty": "No Products available.",
+    "route.products.create": "Create Product",
+    "route.products.edit": "Edit Product",
+    "route.products.form.new": "Unsaved Product",
+    "route.products.form.id": "Product ID",
+    "route.products.form.version": "Version",
+    "route.products.form.owner": "Owner Type",
+    "route.products.form.name": "Product Name",
+    "route.products.form.slug": "Slug",
+    "route.products.form.summary": "Summary",
+    "route.products.form.status": "Status",
+    "route.products.form.visibility": "Visibility",
+    "route.products.form.master": "Master Agent",
+    "route.products.form.entry_route": "Entry Route",
+    "route.products.form.tags": "Tags",
+    "route.products.form.artifacts": "Artifact Types",
+    "route.products.form.knowledge": "Knowledge Sources",
+    "route.products.form.worker_agents": "Worker Agents",
+    "route.products.form.managed": "Service-managed Fields",
+    "route.products.form.save": "Save Product",
+    "route.products.form.delete": "Delete Product",
+    "route.products.form.cancel": "Reset",
+    "route.products.form.builtin_notice": "Built-in Products are managed by the service and are read-only here.",
+    "route.products.saved": "Product saved.",
+    "route.products.deleted": "Product deleted.",
+    "route.products.save_failed": "Save Product failed: {error}",
+    "route.products.delete_failed": "Delete Product failed: {error}",
     "chat.runtime.target": "Conversation Target",
     "chat.runtime.agent": "Agent",
     "chat.runtime.agent_pick": "Choose Agent",
@@ -603,6 +633,7 @@ const I18N = {
     "nav.agent_runtime": "Agent",
     "nav.control": "控制台",
     "nav.agent": "配置",
+    "nav.products": "产品",
     "nav.settings": "设置",
     "nav.channels": "通道",
     "nav.sessions": "会话列表",
@@ -775,6 +806,35 @@ const I18N = {
     "route.agent.delete_failed": "删除 Agent 失败：{error}",
     "route.agent.saved": "Agent 已保存。",
     "route.agent.deleted": "Agent 已删除。",
+    "route.products.title": "Products",
+    "route.products.subtitle": "管理 Product 定义、总 Agent 与子 Agent 矩阵",
+    "route.products.empty": "暂无 Product。",
+    "route.products.create": "创建 Product",
+    "route.products.edit": "编辑 Product",
+    "route.products.form.new": "未保存 Product",
+    "route.products.form.id": "Product ID",
+    "route.products.form.version": "版本",
+    "route.products.form.owner": "归属类型",
+    "route.products.form.name": "Product 名称",
+    "route.products.form.slug": "Slug",
+    "route.products.form.summary": "摘要",
+    "route.products.form.status": "状态",
+    "route.products.form.visibility": "可见性",
+    "route.products.form.master": "总 Agent",
+    "route.products.form.entry_route": "入口路由",
+    "route.products.form.tags": "标签",
+    "route.products.form.artifacts": "产物类型",
+    "route.products.form.knowledge": "知识源",
+    "route.products.form.worker_agents": "子 Agent",
+    "route.products.form.managed": "服务端维护字段",
+    "route.products.form.save": "保存 Product",
+    "route.products.form.delete": "删除 Product",
+    "route.products.form.cancel": "重置",
+    "route.products.form.builtin_notice": "内置 Product 由服务维护，此处只读。",
+    "route.products.saved": "Product 已保存。",
+    "route.products.deleted": "Product 已删除。",
+    "route.products.save_failed": "保存 Product 失败：{error}",
+    "route.products.delete_failed": "删除 Product 失败：{error}",
     "chat.runtime.target": "会话目标",
     "chat.runtime.agent": "Agent",
     "chat.runtime.agent_pick": "选择 Agent",
@@ -1074,6 +1134,11 @@ const ROUTES = {
     mode: "page",
     loader: loadAgentView
   },
+  products: {
+    key: "products",
+    mode: "page",
+    loader: loadProductsView
+  },
   channels: {
     key: "channels",
     mode: "page",
@@ -1155,6 +1220,9 @@ const state = {
   agentRouteState: {
     selectedAgentID: "",
     activeSessionByAgent: {}
+  },
+  productRouteState: {
+    selectedProductID: ""
   },
   sessionRouteFilters: {
     triggerType: "",
@@ -4732,6 +4800,81 @@ async function loadMCPView(container) {
   );
 }
 
+function normalizeProductRouteState(routeState = {}) {
+  return {
+    selectedProductID: String(routeState?.selectedProductID || "").trim()
+  };
+}
+
+function normalizeProductBuilderDraft(product = {}) {
+  return {
+    id: String(product?.id || "").trim(),
+    name: String(product?.name || "").trim(),
+    slug: String(product?.slug || "").trim(),
+    summary: String(product?.summary || "").trim(),
+    status: String(product?.status || "draft").trim() || "draft",
+    visibility: String(product?.visibility || "private").trim() || "private",
+    owner_type: String(product?.owner_type || "managed").trim() || "managed",
+    version: String(product?.version || "").trim(),
+    master_agent_id: String(product?.master_agent_id || "").trim(),
+    entry_route: String(product?.entry_route || "products").trim() || "products",
+    tags: Array.isArray(product?.tags) ? product.tags.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    artifact_types: Array.isArray(product?.artifact_types) ? product.artifact_types.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    knowledge_sources: Array.isArray(product?.knowledge_sources) ? product.knowledge_sources.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    worker_agents: Array.isArray(product?.worker_agents) ? product.worker_agents.map((item) => ({
+      agent_id: String(item?.agent_id || "").trim(),
+      role: String(item?.role || "").trim(),
+      responsibility: String(item?.responsibility || "").trim(),
+      capabilities: Array.isArray(item?.capabilities) ? item.capabilities.map((cap) => String(cap || "").trim()).filter(Boolean) : [],
+      enabled: item?.enabled !== false
+    })).filter((item) => item.agent_id) : []
+  };
+}
+
+function serializeProductWorkerAgents(items) {
+  if (!Array.isArray(items) || !items.length) {
+    return "";
+  }
+  return items.map((item) => {
+    const segments = [String(item?.agent_id || "").trim(), String(item?.role || "").trim(), String(item?.responsibility || "").trim()].filter(Boolean);
+    return segments.join(" | ");
+  }).filter(Boolean).join("\n");
+}
+
+function parseProductWorkerAgentInput(value) {
+  return String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const parts = line.split("|").map((item) => item.trim()).filter(Boolean);
+    return {
+      agent_id: String(parts[0] || "").trim(),
+      role: String(parts[1] || "").trim(),
+      responsibility: String(parts.slice(2).join(" | ") || "").trim(),
+      enabled: true
+    };
+  }).filter((item) => item.agent_id);
+}
+
+function renderProductBuilderCards(items, selectedProductID) {
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.products.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const productID = String(item?.id || "").trim();
+    const productName = String(item?.name || productID || "").trim() || productID;
+    const activeClassName = productID === selectedProductID ? " is-active" : "";
+    const tags = [normalizeText(item?.owner_type), normalizeText(item?.status), `${Number(item?.worker_agents?.length || 0)} agents`].filter((tag) => tag !== "-");
+    return `<button class="agent-route-card${activeClassName}" type="button" data-product-select="${escapeHTML(productID)}">
+      <div class="agent-route-card-head">
+        <div class="agent-route-card-copy">
+          <h4>${escapeHTML(productName)}</h4>
+          <span title="${escapeHTML(productID)}">${escapeHTML(productID)}</span>
+        </div>
+        <span class="agent-route-state ${(String(item?.status || "").trim() === "active") ? "is-enabled" : "is-disabled"}">${escapeHTML(normalizeText(item?.status || "draft"))}</span>
+      </div>
+      <p class="agent-route-card-prompt">${escapeHTML(String(item?.summary || "").trim() || t("route.products.empty"))}</p>
+      <div class="agent-route-card-tags">${tags.length ? tags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
+    </button>`;
+  }).join("");
+}
 function normalizeAgentRouteState(routeState = {}) {
   return {
     selectedAgentID: String(routeState?.selectedAgentID || "").trim(),
@@ -4806,6 +4949,253 @@ function renderAgentOptionList(items, selectedValues, fieldName) {
   }).join("");
 }
 
+async function loadProductsView(container) {
+  const localState = {
+    routeState: normalizeProductRouteState(state.productRouteState),
+    products: [],
+    draft: normalizeProductBuilderDraft(),
+    statusMessage: "",
+    statusKind: "",
+    loading: true
+  };
+
+  const persistRouteState = () => {
+    state.productRouteState = {
+      selectedProductID: localState.routeState.selectedProductID
+    };
+  };
+
+  const requestJSON = async (path, options = {}) => {
+    const headers = new Headers(options.headers || {});
+    if (options.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const response = await fetch(path, {
+      method: options.method || "GET",
+      headers,
+      body: options.body
+    });
+    const payload = await safeReadJSON(response);
+    if (!response.ok) {
+      throw new Error(typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`);
+    }
+    return payload;
+  };
+
+  const findSelectedProduct = () => {
+    return localState.products.find((item) => String(item?.id || "").trim() === localState.routeState.selectedProductID) || null;
+  };
+
+  const syncDraftFromSelection = () => {
+    localState.draft = normalizeProductBuilderDraft(findSelectedProduct() || {});
+  };
+
+  const paint = () => {
+    if (localState.loading) {
+      container.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
+      return;
+    }
+    const selectedProduct = findSelectedProduct();
+    const isBuiltin = String(selectedProduct?.owner_type || "").trim() === "builtin";
+    const canDelete = Boolean(selectedProduct?.id) && !isBuiltin;
+    const canSave = !isBuiltin;
+    const managedID = selectedProduct?.id || "-";
+    const managedVersion = selectedProduct?.version || "-";
+    const managedOwner = selectedProduct?.owner_type || localState.draft.owner_type || "managed";
+    const workerAgentValue = serializeProductWorkerAgents(localState.draft.worker_agents);
+    container.innerHTML = `<section class="agent-studio-view">
+      <aside class="route-surface agent-studio-list-pane">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(t("route.products.title"))}</h4>
+            <p>${escapeHTML(t("route.products.subtitle"))}</p>
+          </div>
+          <button class="route-primary-button" type="button" data-product-create>${escapeHTML(t("route.products.create"))}</button>
+        </div>
+        <div class="agent-route-list">${renderProductBuilderCards(localState.products, localState.routeState.selectedProductID)}</div>
+      </aside>
+      <section class="route-surface agent-studio-form-pane">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(localState.draft.id ? t("route.products.edit") : t("route.products.form.new"))}</h4>
+            <p>${escapeHTML(t("route.products.form.managed"))}</p>
+          </div>
+          <div class="agent-builder-actions">
+            <button type="button" data-product-reset>${escapeHTML(t("route.products.form.cancel"))}</button>
+          </div>
+        </div>
+        ${localState.statusMessage ? `<p class="agent-builder-status ${localState.statusKind === "error" ? "is-error" : "is-success"}">${escapeHTML(localState.statusMessage)}</p>` : ""}
+        ${isBuiltin ? `<p class="agent-builder-status">${escapeHTML(t("route.products.form.builtin_notice"))}</p>` : ""}
+        <div class="agent-builder-managed">
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.id"))}</span>
+            <strong>${escapeHTML(managedID)}</strong>
+          </div>
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.version"))}</span>
+            <strong>${escapeHTML(managedVersion)}</strong>
+          </div>
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.owner"))}</span>
+            <strong>${escapeHTML(managedOwner)}</strong>
+          </div>
+        </div>
+        <form class="agent-builder-form" data-product-form>
+          <label><span>${t("route.products.form.name")}</span><input type="text" name="name" value="${escapeHTML(localState.draft.name)}" placeholder="Travel"></label>
+          <label><span>${t("route.products.form.slug")}</span><input type="text" name="slug" value="${escapeHTML(localState.draft.slug)}" placeholder="travel"></label>
+          <label><span>${t("route.products.form.master")}</span><input type="text" name="master_agent_id" value="${escapeHTML(localState.draft.master_agent_id)}" placeholder="travel-master"></label>
+          <label><span>${t("route.products.form.status")}</span><select name="status">
+            ${["draft", "active", "disabled", "archived"].map((option) => `<option value="${escapeHTML(option)}" ${option === localState.draft.status ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
+          </select></label>
+          <label><span>${t("route.products.form.visibility")}</span><select name="visibility">
+            ${["private", "public"].map((option) => `<option value="${escapeHTML(option)}" ${option === localState.draft.visibility ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
+          </select></label>
+          <label><span>${t("route.products.form.entry_route")}</span><input type="text" name="entry_route" value="${escapeHTML(localState.draft.entry_route)}" placeholder="products"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.summary")}</span><textarea name="summary" rows="4">${escapeHTML(localState.draft.summary)}</textarea></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.tags")}</span><input type="text" name="tags" value="${escapeHTML(localState.draft.tags.join(", "))}" placeholder="travel, itinerary"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.artifacts")}</span><input type="text" name="artifact_types" value="${escapeHTML(localState.draft.artifact_types.join(", "))}" placeholder="city_guide, itinerary, map_layers"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.knowledge")}</span><input type="text" name="knowledge_sources" value="${escapeHTML(localState.draft.knowledge_sources.join(", "))}" placeholder="poi_catalog, metro_network"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.worker_agents")}</span><textarea name="worker_agents" rows="6" placeholder="travel-route-planner | route-planner | Plan daily routes">${escapeHTML(workerAgentValue)}</textarea></label>
+          <div class="task-filter-actions">
+            <button class="task-filter-apply" type="submit" ${canSave ? "" : "disabled"}>${escapeHTML(t("route.products.form.save"))}</button>
+            <button class="task-filter-reset" type="button" data-product-delete ${canDelete ? "" : "disabled"}>${escapeHTML(t("route.products.form.delete"))}</button>
+          </div>
+        </form>
+      </section>
+    </section>`;
+  };
+
+  const reload = async (statusMessage = "", statusKind = "") => {
+    localState.loading = true;
+    localState.statusMessage = statusMessage;
+    localState.statusKind = statusKind;
+    paint();
+    const payload = await fetchJSON("/api/control/products");
+    localState.products = Array.isArray(payload?.items) ? payload.items : [];
+    if (!findSelectedProduct()) {
+      localState.routeState.selectedProductID = localState.products[0]?.id || "";
+    }
+    syncDraftFromSelection();
+    localState.loading = false;
+    persistRouteState();
+    paint();
+    bind();
+  };
+
+  const saveProduct = async (form) => {
+    const selectedProduct = findSelectedProduct();
+    if (String(selectedProduct?.owner_type || "").trim() === "builtin") {
+      return;
+    }
+    const formData = new FormData(form);
+    const payload = {
+      name: String(formData.get("name") || "").trim(),
+      slug: String(formData.get("slug") || "").trim(),
+      summary: String(formData.get("summary") || "").trim(),
+      status: String(formData.get("status") || "draft").trim(),
+      visibility: String(formData.get("visibility") || "private").trim(),
+      master_agent_id: String(formData.get("master_agent_id") || "").trim(),
+      entry_route: String(formData.get("entry_route") || "").trim(),
+      tags: parseAgentListInput(formData.get("tags") || ""),
+      artifact_types: parseAgentListInput(formData.get("artifact_types") || ""),
+      knowledge_sources: parseAgentListInput(formData.get("knowledge_sources") || ""),
+      worker_agents: parseProductWorkerAgentInput(formData.get("worker_agents") || "")
+    };
+    try {
+      const saved = await requestJSON(selectedProduct?.id ? `/api/control/products/${encodeURIComponent(selectedProduct.id)}` : "/api/control/products", {
+        method: selectedProduct?.id ? "PUT" : "POST",
+        body: JSON.stringify(payload)
+      });
+      localState.routeState.selectedProductID = String(saved?.id || "").trim();
+      await reload(t("route.products.saved"), "success");
+    } catch (error) {
+      localState.statusMessage = t("route.products.save_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      localState.statusKind = "error";
+      paint();
+      bind();
+    }
+  };
+
+  const deleteProduct = async () => {
+    const selected = findSelectedProduct();
+    if (!selected || !selected.id || String(selected?.owner_type || "").trim() === "builtin") {
+      return;
+    }
+    try {
+      await requestJSON(`/api/control/products/${encodeURIComponent(selected.id)}`, {
+        method: "DELETE"
+      });
+      localState.routeState.selectedProductID = "";
+      await reload(t("route.products.deleted"), "success");
+    } catch (error) {
+      localState.statusMessage = t("route.products.delete_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      localState.statusKind = "error";
+      paint();
+      bind();
+    }
+  };
+
+  const bind = () => {
+    container.querySelectorAll("[data-product-select]").forEach((node) => {
+      node.addEventListener("click", () => {
+        const nextID = String(node.getAttribute("data-product-select") || "").trim();
+        if (!nextID || nextID === localState.routeState.selectedProductID) {
+          return;
+        }
+        localState.routeState.selectedProductID = nextID;
+        syncDraftFromSelection();
+        persistRouteState();
+        paint();
+        bind();
+      });
+    });
+
+    const createButton = container.querySelector("[data-product-create]");
+    if (createButton) {
+      createButton.addEventListener("click", () => {
+        localState.routeState.selectedProductID = "";
+        localState.draft = normalizeProductBuilderDraft();
+        localState.statusMessage = "";
+        localState.statusKind = "";
+        persistRouteState();
+        paint();
+        bind();
+      });
+    }
+
+    const resetButton = container.querySelector("[data-product-reset]");
+    if (resetButton) {
+      resetButton.addEventListener("click", () => {
+        syncDraftFromSelection();
+        localState.statusMessage = "";
+        localState.statusKind = "";
+        paint();
+        bind();
+      });
+    }
+
+    const deleteButton = container.querySelector("[data-product-delete]");
+    if (deleteButton) {
+      deleteButton.addEventListener("click", async () => {
+        await deleteProduct();
+      });
+    }
+
+    const form = container.querySelector("[data-product-form]");
+    if (form) {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveProduct(form);
+      });
+    }
+  };
+
+  await reload("", "");
+}
 async function loadAgentView(container) {
   const localState = {
     routeState: normalizeAgentRouteState(state.agentRouteState),
@@ -11169,3 +11559,10 @@ function init() {
 }
 
 init();
+
+
+
+
+
+
+

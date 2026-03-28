@@ -25,6 +25,7 @@ import (
 	controldomain "alter0/internal/control/domain"
 	llmdomain "alter0/internal/llm/domain"
 	orchdomain "alter0/internal/orchestration/domain"
+	productdomain "alter0/internal/product/domain"
 	schedulerapp "alter0/internal/scheduler/application"
 	schedulerdomain "alter0/internal/scheduler/domain"
 	sessionapp "alter0/internal/session/application"
@@ -93,6 +94,7 @@ type Server struct {
 	webLoginEnabled  bool
 	webBindLocalhost bool
 	agents           agentCatalogService
+	products         productService
 }
 
 type llmService interface {
@@ -114,6 +116,15 @@ type agentCatalogService interface {
 	IsBuiltinID(id string) bool
 }
 
+type productService interface {
+	ResolveProduct(id string) (productdomain.Product, bool)
+	ListProducts() []productdomain.Product
+	ListPublicProducts() []productdomain.Product
+	CreateProduct(product productdomain.Product) (productdomain.Product, error)
+	SaveProduct(id string, product productdomain.Product) (productdomain.Product, error)
+	DeleteProduct(id string) bool
+	IsBuiltinID(id string) bool
+}
 type sessionHistoryService interface {
 	ListSessions(query sessionapp.SessionQuery) sessionapp.SessionPage
 	ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage
@@ -329,6 +340,28 @@ type agentUpsertRequest struct {
 	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
+type productWorkerAgentRequest struct {
+	AgentID        string   `json:"agent_id"`
+	Role           string   `json:"role,omitempty"`
+	Responsibility string   `json:"responsibility,omitempty"`
+	Capabilities   []string `json:"capabilities,omitempty"`
+	Enabled        *bool    `json:"enabled,omitempty"`
+}
+
+type productUpsertRequest struct {
+	Name             string                      `json:"name"`
+	Slug             string                      `json:"slug,omitempty"`
+	Summary          string                      `json:"summary,omitempty"`
+	Status           string                      `json:"status,omitempty"`
+	Visibility       string                      `json:"visibility,omitempty"`
+	MasterAgentID    string                      `json:"master_agent_id,omitempty"`
+	EntryRoute       string                      `json:"entry_route,omitempty"`
+	Tags             []string                    `json:"tags,omitempty"`
+	ArtifactTypes    []string                    `json:"artifact_types,omitempty"`
+	KnowledgeSources []string                    `json:"knowledge_sources,omitempty"`
+	WorkerAgents     []productWorkerAgentRequest `json:"worker_agents,omitempty"`
+}
+
 type capabilityLifecycleRequest struct {
 	Action string `json:"action"`
 }
@@ -514,6 +547,7 @@ func NewServer(
 	securityOptions WebSecurityOptions,
 	llm llmService,
 	agents agentCatalogService,
+	products productService,
 	logger *slog.Logger,
 ) *Server {
 	resolvedPassword := strings.TrimSpace(securityOptions.LoginPassword)
@@ -545,6 +579,7 @@ func NewServer(
 		webLoginEnabled:  resolvedPassword != "",
 		webBindLocalhost: resolvedBindLocalhost,
 		agents:           agents,
+		products:         products,
 	}
 }
 
@@ -576,6 +611,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/agents", s.runtimeAgentListHandler)
 	mux.HandleFunc("/api/agent/messages", s.agentMessageHandler)
 	mux.HandleFunc("/api/agent/messages/stream", s.agentMessageStreamHandler)
+	mux.HandleFunc("/api/products", s.publicProductListHandler)
+	mux.HandleFunc("/api/products/", s.publicProductItemHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
 	mux.HandleFunc("/api/tasks", s.taskCollectionHandler)
@@ -600,6 +637,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/mcps/", s.mcpItemHandler)
 	mux.HandleFunc("/api/control/agents", s.agentListHandler)
 	mux.HandleFunc("/api/control/agents/", s.agentItemHandler)
+	mux.HandleFunc("/api/control/products", s.productListHandler)
+	mux.HandleFunc("/api/control/products/", s.productItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
 	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
@@ -2946,6 +2985,146 @@ func (s *Server) agentItemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func buildProductFromRequest(id string, req productUpsertRequest) productdomain.Product {
+	workers := make([]productdomain.WorkerAgent, 0, len(req.WorkerAgents))
+	for _, item := range req.WorkerAgents {
+		enabled := true
+		if item.Enabled != nil {
+			enabled = *item.Enabled
+		}
+		workers = append(workers, productdomain.WorkerAgent{
+			AgentID:        strings.TrimSpace(item.AgentID),
+			Role:           strings.TrimSpace(item.Role),
+			Responsibility: strings.TrimSpace(item.Responsibility),
+			Capabilities:   item.Capabilities,
+			Enabled:        enabled,
+		})
+	}
+	return productdomain.Product{
+		ID:               strings.TrimSpace(id),
+		Name:             strings.TrimSpace(req.Name),
+		Slug:             strings.TrimSpace(req.Slug),
+		Summary:          strings.TrimSpace(req.Summary),
+		Status:           productdomain.Status(strings.ToLower(strings.TrimSpace(req.Status))),
+		Visibility:       productdomain.Visibility(strings.ToLower(strings.TrimSpace(req.Visibility))),
+		MasterAgentID:    strings.TrimSpace(req.MasterAgentID),
+		EntryRoute:       strings.TrimSpace(req.EntryRoute),
+		Tags:             req.Tags,
+		ArtifactTypes:    req.ArtifactTypes,
+		KnowledgeSources: req.KnowledgeSources,
+		WorkerAgents:     workers,
+	}
+}
+
+func (s *Server) publicProductListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.products == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.products.ListPublicProducts()})
+}
+
+func (s *Server) publicProductItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.products == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	productID, ok := resourceID(r.URL.Path, "/api/products/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		return
+	}
+	item, found := s.products.ResolveProduct(productID)
+	if !found || item.Status != productdomain.StatusActive || item.Visibility != productdomain.VisibilityPublic {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) productListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.products == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{"items": s.products.ListProducts()})
+	case http.MethodPost:
+		defer r.Body.Close()
+		var req productUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		created, err := s.products.CreateProduct(buildProductFromRequest("", req))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusCreated, created)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) productItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.products == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
+		return
+	}
+	productID, ok := resourceID(r.URL.Path, "/api/control/products/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		item, found := s.products.ResolveProduct(productID)
+		if !found {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+	case http.MethodPut:
+		if s.products.IsBuiltinID(productID) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "builtin products are managed by the service and cannot be overwritten"})
+			return
+		}
+		defer r.Body.Close()
+		var req productUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		saved, err := s.products.SaveProduct(productID, buildProductFromRequest(productID, req))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, saved)
+	case http.MethodDelete:
+		if s.products.IsBuiltinID(productID) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "builtin products are managed by the service and cannot be deleted"})
+			return
+		}
+		if !s.products.DeleteProduct(productID) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
 func (s *Server) nextManagedAgentID(name string) (string, error) {
 	base := agentIDBase(name)
 	if base == "" {

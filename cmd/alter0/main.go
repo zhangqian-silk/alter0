@@ -26,6 +26,7 @@ import (
 	orchapp "alter0/internal/orchestration/application"
 	orchdomain "alter0/internal/orchestration/domain"
 	orchinfra "alter0/internal/orchestration/infrastructure"
+	productapp "alter0/internal/product/application"
 	schedulerapp "alter0/internal/scheduler/application"
 	sessionapp "alter0/internal/session/application"
 	sharedapp "alter0/internal/shared/application"
@@ -132,7 +133,7 @@ func main() {
 	telemetry := observability.NewTelemetry()
 	idGen := sharedinfra.NewRandomIDGenerator()
 
-	controlStore, schedulerStore, sessionStore, taskStore, err := buildStorage(defaultStorageProfile)
+	controlStore, schedulerStore, sessionStore, taskStore, productStore, err := buildStorage(defaultStorageProfile)
 	if err != nil {
 		logger.Error("failed to initialize storage", slog.String("error", err.Error()))
 		os.Exit(2)
@@ -228,6 +229,11 @@ func main() {
 		Enabled: true,
 	})
 	registerBuiltinSkills(control)
+	products, err := newProductService(rootCtx, productStore)
+	if err != nil {
+		logger.Error("failed to initialize product service", slog.String("error", err.Error()))
+		os.Exit(2)
+	}
 	agentCatalog := agentapp.NewCatalog(control)
 
 	registry := orchinfra.NewInMemoryCommandRegistry()
@@ -337,6 +343,7 @@ func main() {
 		},
 		llmService,
 		agentCatalog,
+		products,
 		logger,
 	)
 	server.SetRuntimeInfoProvider(runtimeInfo)
@@ -465,18 +472,18 @@ func isLoopbackHost(rawHost string) bool {
 	return ip.IsLoopback()
 }
 
-func buildStorage(profile storageProfile) (controlapp.Store, schedulerapp.Store, sessionapp.Store, taskapp.Store, error) {
+func buildStorage(profile storageProfile) (controlapp.Store, schedulerapp.Store, sessionapp.Store, taskapp.Store, productapp.Store, error) {
 	switch strings.ToLower(strings.TrimSpace(profile.Backend)) {
 	case "none", "memory", "inmemory":
-		return nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	case "", "local":
 		dir := strings.TrimSpace(profile.Dir)
 		if dir == "" {
 			dir = ".alter0"
 		}
-		return localstorage.NewControlStore(dir, profile.ControlFormat), localstorage.NewSchedulerStore(dir, profile.SchedulerFormat), localstorage.NewSessionStore(dir, profile.SessionFormat), localstorage.NewTaskStore(dir, profile.TaskFormat), nil
+		return localstorage.NewControlStore(dir, profile.ControlFormat), localstorage.NewSchedulerStore(dir, profile.SchedulerFormat), localstorage.NewSessionStore(dir, profile.SessionFormat), localstorage.NewTaskStore(dir, profile.TaskFormat), localstorage.NewProductStore(dir, profile.ControlFormat), nil
 	default:
-		return nil, nil, nil, nil, fmt.Errorf("unsupported storage backend %q", profile.Backend)
+		return nil, nil, nil, nil, nil, fmt.Errorf("unsupported storage backend %q", profile.Backend)
 	}
 }
 
@@ -487,6 +494,12 @@ func newControlService(ctx context.Context, store controlapp.Store) (*controlapp
 	return controlapp.NewServiceWithStore(ctx, store)
 }
 
+func newProductService(ctx context.Context, store productapp.Store) (*productapp.Service, error) {
+	if store == nil {
+		return productapp.NewService(), nil
+	}
+	return productapp.NewServiceWithStore(ctx, store)
+}
 func newSchedulerManager(
 	ctx context.Context,
 	orchestrator schedulerapp.Orchestrator,
