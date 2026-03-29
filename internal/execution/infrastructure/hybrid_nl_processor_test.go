@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -357,5 +358,93 @@ func TestHybridNLProcessorAgentModeIncludesProductContext(t *testing.T) {
 	}
 	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "travel-route-planner") {
 		t.Fatalf("expected worker agent in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
+	}
+}
+
+func TestHybridNLProcessorAgentModeSupportsSkillTools(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+
+	rawSkillContext, err := json.Marshal(execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills: []execdomain.SkillSpec{
+			{ID: "travel-page", Name: "Travel Page", FilePath: ".alter0/skills/travel-page.md", Writable: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal skill context failed: %v", err)
+	}
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel-master"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentToolsMetadataKey] = `["read_skill","write_skill"]`
+	metadata[execdomain.SkillContextMetadataKey] = string(rawSkillContext)
+
+	if _, err := processor.Process(context.Background(), "同步 travel 页面规则", metadata); err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+
+	toolNames := []string{}
+	for _, item := range reactFactory.lastConfig.Tools {
+		toolNames = append(toolNames, item.Name)
+	}
+	if !strings.Contains(strings.Join(toolNames, ","), "read_skill") || !strings.Contains(strings.Join(toolNames, ","), "write_skill") {
+		t.Fatalf("expected skill tools in %+v", toolNames)
+	}
+	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use read_skill") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use write_skill") {
+		t.Fatalf("expected skill tool instructions in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
+	}
+}
+
+func TestHybridNLProcessorExecutesSkillReadWriteTools(t *testing.T) {
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	root := t.TempDir()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root failed: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), nil, nil)
+	rawSkillContext, err := json.Marshal(execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills: []execdomain.SkillSpec{
+			{ID: "travel-page", Name: "Travel Page", FilePath: ".alter0/skills/travel-page.md", Writable: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal skill context failed: %v", err)
+	}
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.SkillContextMetadataKey] = string(rawSkillContext)
+
+	writeResult, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
+		ID:        "write-skill-1",
+		Name:      "write_skill",
+		Arguments: `{"skill_id":"travel-page","content":"# Travel Page Rulebook\n\n更新后的规则","mode":"overwrite"}`,
+	})
+	if err != nil {
+		t.Fatalf("write_skill error = %v", err)
+	}
+	if writeResult.IsError {
+		t.Fatalf("expected write_skill success, got %+v", writeResult)
+	}
+
+	readResult, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
+		ID:        "read-skill-1",
+		Name:      "read_skill",
+		Arguments: `{"skill_id":"travel-page"}`,
+	})
+	if err != nil {
+		t.Fatalf("read_skill error = %v", err)
+	}
+	if readResult.IsError || !strings.Contains(readResult.Result, "更新后的规则") {
+		t.Fatalf("expected read_skill content, got %+v", readResult)
 	}
 }

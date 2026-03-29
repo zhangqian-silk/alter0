@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	productdomain "alter0/internal/product/domain"
 )
@@ -71,6 +72,25 @@ func (s *TravelGuideService) GetGuide(id string) (productdomain.TravelGuide, boo
 	return cloneTravelGuide(item), true
 }
 
+func (s *TravelGuideService) ListGuides() []productdomain.TravelGuide {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	items := make([]productdomain.TravelGuide, 0, len(s.guides))
+	for _, guide := range s.guides {
+		items = append(items, cloneTravelGuide(guide))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+			if items[i].City == items[j].City {
+				return items[i].ID < items[j].ID
+			}
+			return items[i].City < items[j].City
+		}
+		return items[i].UpdatedAt.After(items[j].UpdatedAt)
+	})
+	return items
+}
+
 func (s *TravelGuideService) CreateGuide(input productdomain.TravelGuideCreateInput) (productdomain.TravelGuide, error) {
 	normalized := input.Normalized()
 	if err := normalized.Validate(); err != nil {
@@ -80,6 +100,9 @@ func (s *TravelGuideService) CreateGuide(input productdomain.TravelGuideCreateIn
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if existingID, ok := s.guideIDByCityLocked(normalized.City); ok {
+		return productdomain.TravelGuide{}, fmt.Errorf("travel guide for city %s already exists as %s", normalized.City, existingID)
+	}
 	guide := s.buildGuideLocked("", productdomain.TravelGuide{}, normalized, productdomain.TravelGuideReviseInput{}, now)
 	s.guides[guide.ID] = cloneTravelGuide(guide)
 	if err := s.storeLocked(); err != nil {
@@ -298,16 +321,38 @@ func normalizeTravelGuideID(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
 }
 
+func (s *TravelGuideService) guideIDByCityLocked(city string) (string, bool) {
+	target := strings.TrimSpace(city)
+	if target == "" {
+		return "", false
+	}
+	for _, guide := range s.guides {
+		if strings.EqualFold(strings.TrimSpace(guide.City), target) {
+			return guide.ID, true
+		}
+	}
+	return "", false
+}
+
 func travelGuideIDBase(city string) string {
-	trimmed := strings.ToLower(strings.TrimSpace(city))
+	trimmed := strings.TrimSpace(city)
 	if trimmed == "" {
 		return ""
 	}
 	var builder strings.Builder
 	lastDash := false
 	for _, r := range trimmed {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			builder.WriteRune(r)
+		lower := unicode.ToLower(r)
+		if (lower >= 'a' && lower <= 'z') || (lower >= '0' && lower <= '9') {
+			builder.WriteRune(lower)
+			lastDash = false
+			continue
+		}
+		if unicode.IsLetter(lower) || unicode.IsDigit(lower) {
+			if builder.Len() > 0 && !lastDash {
+				builder.WriteByte('-')
+			}
+			builder.WriteString(fmt.Sprintf("u%x", lower))
 			lastDash = false
 			continue
 		}

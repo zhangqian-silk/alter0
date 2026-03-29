@@ -593,6 +593,7 @@
 .task-filter-form input,
 .task-filter-form select,
 .task-filter-actions button,
+.task-filter-actions a,
 .task-filter-advanced-toggle {
   min-height: 40px;
   border-radius: 10px;
@@ -696,17 +697,20 @@
 }
 
 .task-filter-actions button,
+.task-filter-actions a,
 .task-filter-advanced-toggle {
   display: inline-flex;
   align-items: center;
 }
 
-.task-filter-actions button {
+.task-filter-actions button,
+.task-filter-actions a {
   white-space: nowrap;
   min-width: 104px;
 }
 
-.task-filter-actions button {
+.task-filter-actions button,
+.task-filter-actions a {
   cursor: pointer;
 }
 
@@ -727,6 +731,11 @@
   border-color: #dbe3ee;
   background: #ffffff;
   color: #475569;
+}
+
+.task-filter-actions a {
+  justify-content: center;
+  text-decoration: none;
 }
 
 .task-filter-reset:hover {
@@ -1137,6 +1146,19 @@
   transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
+.agent-route-card-button {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  display: grid;
+  gap: 10px;
+  cursor: pointer;
+}
+
 .agent-session-card {
   width: 100%;
   border: 1px solid var(--line-soft);
@@ -1425,6 +1447,166 @@
 
 .agent-builder-status.is-error {
   color: #b91c1c;
+}
+
+.product-workspace-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.product-workspace-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.product-workspace-panel {
+  padding: 18px;
+}
+
+.product-workspace-panel-wide {
+  min-width: 0;
+}
+
+.product-workspace-overview-grid,
+.product-workspace-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.product-workspace-detail-section {
+  display: grid;
+  gap: 10px;
+}
+
+.product-workspace-detail-section h5 {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.product-workspace-summary,
+.product-workspace-master p,
+.product-workspace-detail-card p,
+.product-workspace-message p {
+  margin: 0;
+  color: var(--ink-body);
+  line-height: 1.6;
+}
+
+.product-workspace-master {
+  display: grid;
+  gap: 4px;
+}
+
+.product-workspace-master strong,
+.product-workspace-detail-card strong {
+  color: var(--ink-strong);
+}
+
+.product-workspace-master span,
+.product-workspace-detail-card span,
+.product-workspace-message-meta span {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.product-workspace-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.product-workspace-chip-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.product-workspace-chat-log {
+  display: grid;
+  gap: 12px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.product-workspace-message {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #f8fafc;
+}
+
+.product-workspace-message.is-user {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+.product-workspace-message.is-error {
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(254, 242, 242, 0.9);
+}
+
+.product-workspace-message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-workspace-chat-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.product-workspace-chat-form textarea,
+.product-workspace-detail-content pre {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #dbe3ef;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 14px;
+  font: inherit;
+  color: var(--ink-strong);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.product-workspace-detail-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.product-workspace-detail-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.product-workspace-detail-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(248, 250, 252, 0.9);
 }
 
 .agent-workspace {

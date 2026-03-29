@@ -229,6 +229,10 @@ func main() {
 		Enabled: true,
 	})
 	registerBuiltinSkills(control)
+	if err := ensureBuiltinSkillFiles(); err != nil {
+		logger.Error("failed to initialize builtin skill files", slog.String("error", err.Error()))
+		os.Exit(2)
+	}
 	products, err := newProductService(rootCtx, productStore)
 	if err != nil {
 		logger.Error("failed to initialize product service", slog.String("error", err.Error()))

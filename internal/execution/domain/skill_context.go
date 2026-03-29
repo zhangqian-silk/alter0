@@ -25,6 +25,8 @@ type SkillSpec struct {
 	ParameterTemplate map[string]string `json:"parameter_template,omitempty"`
 	Constraints       []string          `json:"constraints,omitempty"`
 	Abilities         []string          `json:"abilities,omitempty"`
+	FilePath          string            `json:"file_path,omitempty"`
+	Writable          bool              `json:"writable,omitempty"`
 }
 
 type SkillConflict struct {

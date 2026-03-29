@@ -125,6 +125,8 @@ func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
 				skillGuideKey:             "read the resolved context before writing",
 				skillParameterTemplateKey: `{"lang":"zh-CN"}`,
 				skillConstraintsKey:       "max:300, keep-tone",
+				skillFilePathKey:          ".alter0/skills/summary.md",
+				skillWritableKey:          "true",
 			},
 		},
 		{
@@ -201,6 +203,12 @@ func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
 	}
 	if len(skillContext.Skills[0].Constraints) != 2 {
 		t.Fatalf("constraints size = %d, want 2", len(skillContext.Skills[0].Constraints))
+	}
+	if got := skillContext.Skills[0].FilePath; got != ".alter0/skills/summary.md" {
+		t.Fatalf("skill file path = %q, want .alter0/skills/summary.md", got)
+	}
+	if !skillContext.Skills[0].Writable {
+		t.Fatalf("expected skill writable flag true")
 	}
 }
 

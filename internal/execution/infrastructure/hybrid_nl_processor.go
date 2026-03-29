@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -253,6 +255,10 @@ func (p *HybridNLProcessor) executeModelTool(
 			return nil, err
 		}
 		return executor.Execute(ctx, toolCall)
+	case toolReadSkill:
+		return p.executeReadSkillTool(metadata, toolCall)
+	case toolWriteSkill:
+		return p.executeWriteSkillTool(metadata, toolCall)
 	case "codex_exec":
 		payload := struct {
 			Instruction string `json:"instruction"`
@@ -354,6 +360,12 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 	}
 	if _, ok := allowedTools[toolDelegateAgent]; ok {
 		parts = append(parts, "Use delegate_agent when a specialist agent is better suited for a coding or writing subtask and you need that agent to return a concrete result.")
+	}
+	if _, ok := allowedTools[toolReadSkill]; ok {
+		parts = append(parts, "Use read_skill to inspect file-backed reusable skills before applying page, rule, or preference changes.")
+	}
+	if _, ok := allowedTools[toolWriteSkill]; ok {
+		parts = append(parts, "Use write_skill only when the user provides a durable, reusable preference that should update a file-backed skill instead of a one-off task artifact.")
 	}
 	if custom := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey)); custom != "" {
 		parts = append(parts, "Agent profile system prompt:\n"+custom)
@@ -515,6 +527,55 @@ func (p *HybridNLProcessor) buildAgentTools(metadata map[string]string) []llmdom
 	allowed := parseSelectedToolIDs(metadata, defaultAgentToolIDs)
 	items := make([]llmdomain.Tool, 0, len(allowed)+2)
 	items = append(items, buildNativeTools(metadata, defaultAgentToolIDs)...)
+	if _, ok := allowed[toolReadSkill]; ok {
+		items = append(items, llmdomain.Tool{
+			Name:        toolReadSkill,
+			Description: "Read the file content behind a resolved file-backed skill.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"skill_id": map[string]interface{}{
+						"type":        "string",
+						"description": "Resolved skill ID to read, for example `travel-page`.",
+					},
+					"offset": map[string]interface{}{
+						"type":        "integer",
+						"description": "Byte offset to start reading from. Defaults to 0.",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum bytes to return. Defaults to 32768.",
+					},
+				},
+				"required": []string{"skill_id"},
+			},
+		})
+	}
+	if _, ok := allowed[toolWriteSkill]; ok {
+		items = append(items, llmdomain.Tool{
+			Name:        toolWriteSkill,
+			Description: "Write or append content to the file behind a resolved writable skill.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"skill_id": map[string]interface{}{
+						"type":        "string",
+						"description": "Resolved writable skill ID to update, for example `travel-page`.",
+					},
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "Content to write into the skill file.",
+					},
+					"mode": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"overwrite", "append"},
+						"description": "Write mode. Defaults to overwrite.",
+					},
+				},
+				"required": []string{"skill_id", "content"},
+			},
+		})
+	}
 	if _, ok := allowed[toolCodexExec]; ok {
 		items = append(items, llmdomain.Tool{
 			Name:        toolCodexExec,
@@ -570,6 +631,161 @@ func (p *HybridNLProcessor) buildAgentTools(metadata map[string]string) []llmdom
 		},
 	})
 	return items
+}
+
+func (p *HybridNLProcessor) executeReadSkillTool(
+	metadata map[string]string,
+	toolCall llmdomain.ToolCall,
+) (*llmdomain.ToolResult, error) {
+	payload := struct {
+		SkillID string `json:"skill_id"`
+		Offset  int    `json:"offset"`
+		Limit   int    `json:"limit"`
+	}{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(toolCall.Arguments)), &payload); err != nil {
+		return nil, fmt.Errorf("parse %s arguments: %w", toolReadSkill, err)
+	}
+	skill, executor, resolvedPath, err := resolveSkillToolTarget(metadata, payload.SkillID)
+	if err != nil {
+		return toolErrorResult(toolCall, err), nil
+	}
+	data, err := os.ReadFile(resolvedPath)
+	if err != nil {
+		return toolErrorResult(toolCall, err), nil
+	}
+	if payload.Offset < 0 {
+		payload.Offset = 0
+	}
+	if payload.Offset > len(data) {
+		payload.Offset = len(data)
+	}
+	limit := payload.Limit
+	if limit <= 0 {
+		limit = defaultReadLimitBytes
+	}
+	if limit > maxReadLimitBytes {
+		limit = maxReadLimitBytes
+	}
+	end := payload.Offset + limit
+	if end > len(data) {
+		end = len(data)
+	}
+	content := string(data[payload.Offset:end])
+	return toolSuccessResult(toolCall, map[string]any{
+		"skill_id":        skill.ID,
+		"skill_name":      skill.Name,
+		"path":            executor.runtime.displayPath(resolvedPath),
+		"size_bytes":      len(data),
+		"offset":          payload.Offset,
+		"returned_bytes":  len(content),
+		"truncated":       end < len(data),
+		"content":         content,
+		"writable":        skill.Writable,
+		"file_backed":     true,
+		"resolved_skill":  true,
+		"resolved_prompt": "skill file content",
+	}), nil
+}
+
+func (p *HybridNLProcessor) executeWriteSkillTool(
+	metadata map[string]string,
+	toolCall llmdomain.ToolCall,
+) (*llmdomain.ToolResult, error) {
+	payload := struct {
+		SkillID string `json:"skill_id"`
+		Content string `json:"content"`
+		Mode    string `json:"mode"`
+	}{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(toolCall.Arguments)), &payload); err != nil {
+		return nil, fmt.Errorf("parse %s arguments: %w", toolWriteSkill, err)
+	}
+	skill, executor, resolvedPath, err := resolveSkillToolTarget(metadata, payload.SkillID)
+	if err != nil {
+		return toolErrorResult(toolCall, err), nil
+	}
+	if !skill.Writable {
+		return toolErrorResult(toolCall, errors.New("skill is read-only")), nil
+	}
+	if err := os.MkdirAll(filepath.Dir(resolvedPath), 0o755); err != nil {
+		return toolErrorResult(toolCall, err), nil
+	}
+	mode := strings.ToLower(strings.TrimSpace(payload.Mode))
+	if mode == "" {
+		mode = "overwrite"
+	}
+	switch mode {
+	case "overwrite":
+		if err := os.WriteFile(resolvedPath, []byte(payload.Content), 0o644); err != nil {
+			return toolErrorResult(toolCall, err), nil
+		}
+	case "append":
+		file, err := os.OpenFile(resolvedPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return toolErrorResult(toolCall, err), nil
+		}
+		defer file.Close()
+		if _, err := file.WriteString(payload.Content); err != nil {
+			return toolErrorResult(toolCall, err), nil
+		}
+	default:
+		return toolErrorResult(toolCall, fmt.Errorf("unsupported write mode: %s", payload.Mode)), nil
+	}
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		return toolErrorResult(toolCall, err), nil
+	}
+	return toolSuccessResult(toolCall, map[string]any{
+		"skill_id":    skill.ID,
+		"skill_name":  skill.Name,
+		"path":        executor.runtime.displayPath(resolvedPath),
+		"size_bytes":  info.Size(),
+		"mode":        mode,
+		"writable":    skill.Writable,
+		"file_backed": true,
+	}), nil
+}
+
+func resolveSkillToolTarget(
+	metadata map[string]string,
+	skillID string,
+) (execdomain.SkillSpec, *nativeToolExecutor, string, error) {
+	skill, err := findResolvedSkill(metadata, skillID)
+	if err != nil {
+		return execdomain.SkillSpec{}, nil, "", err
+	}
+	if strings.TrimSpace(skill.FilePath) == "" {
+		return execdomain.SkillSpec{}, nil, "", errors.New("skill does not expose a file path")
+	}
+	executor, err := newNativeToolExecutor(metadata)
+	if err != nil {
+		return execdomain.SkillSpec{}, nil, "", err
+	}
+	resolvedPath, err := executor.runtime.resolvePath(skill.FilePath, toolBaseRepo)
+	if err != nil {
+		return execdomain.SkillSpec{}, nil, "", err
+	}
+	return skill, executor, resolvedPath, nil
+}
+
+func findResolvedSkill(metadata map[string]string, skillID string) (execdomain.SkillSpec, error) {
+	targetID := strings.ToLower(strings.TrimSpace(skillID))
+	if targetID == "" {
+		return execdomain.SkillSpec{}, errors.New("skill_id is required")
+	}
+	rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey))
+	if rawSkillContext == "" {
+		return execdomain.SkillSpec{}, errors.New("skill context is unavailable")
+	}
+	var skillContext execdomain.SkillContext
+	if err := json.Unmarshal([]byte(rawSkillContext), &skillContext); err != nil {
+		return execdomain.SkillSpec{}, fmt.Errorf("invalid skill context metadata: %w", err)
+	}
+	for _, skill := range skillContext.Skills {
+		if strings.EqualFold(strings.TrimSpace(skill.ID), targetID) {
+			return skill, nil
+		}
+	}
+	return execdomain.SkillSpec{}, fmt.Errorf("skill %q is not available in the resolved skill context", skillID)
 }
 
 func (p *HybridNLProcessor) delegateToolDescription(metadata map[string]string) string {
