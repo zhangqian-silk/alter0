@@ -8,7 +8,9 @@ export function createTerminalPage(page: Page): {
   closeButton(): Locator;
   workspace(): Locator;
   chatScreen(): Locator;
-  stickyPrompt(): Locator;
+  jumpTopButton(): Locator;
+  jumpPrevButton(): Locator;
+  jumpNextButton(): Locator;
   jumpBottomButton(): Locator;
   sessionPaneToggle(): Locator;
   sessionPane(): Locator;
@@ -39,7 +41,9 @@ export function createTerminalPage(page: Page): {
     closeButton: () => page.locator("[data-terminal-close]"),
     workspace: () => page.locator("[data-terminal-workspace]"),
     chatScreen: () => page.locator("[data-terminal-chat-screen]"),
-    stickyPrompt: () => page.locator("[data-terminal-turn-prompt].is-terminal-sticky-active").first(),
+    jumpTopButton: () => page.locator("[data-terminal-jump-top]"),
+    jumpPrevButton: () => page.locator("[data-terminal-jump-prev]"),
+    jumpNextButton: () => page.locator("[data-terminal-jump-next]"),
     jumpBottomButton: () => page.locator("[data-terminal-jump-bottom]"),
     sessionPaneToggle: () => page.locator("#sessionToggle, [data-terminal-session-pane-toggle]").first(),
     sessionPane: () => page.locator("[data-terminal-session-pane]"),

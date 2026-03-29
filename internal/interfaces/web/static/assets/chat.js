@@ -40,7 +40,7 @@ const DEFAULT_ROUTE = "chat";
 const SWIPE_CLOSE_THRESHOLD = 46;
 const TERMINAL_SCROLL_STICKY_THRESHOLD = 32;
 const TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD = 240;
-const TERMINAL_STICKY_PROMPT_SHOW_OFFSET = 10;
+const TERMINAL_JUMP_TOP_SHOW_THRESHOLD = 180;
 const NAV_TOOLTIP_SHOW_DELAY = 90;
 const NAV_TOOLTIP_HIDE_DELAY = 40;
 const NAV_TOOLTIP_OFFSET = 12;
@@ -528,6 +528,10 @@ const I18N = {
     "route.terminal.output_expand": "Show more",
     "route.terminal.output_collapse": "Show less",
     "route.terminal.jump_bottom": "Latest",
+    "route.terminal.jump_top": "Top",
+    "route.terminal.jump_prev": "Previous",
+    "route.terminal.jump_next": "Next",
+    "route.terminal.navigation": "Turn navigation",
     "route.terminal.step.loading": "Loading step details...",
     "route.terminal.step.error": "Load step failed: {error}",
     "route.terminal.step.search": "Search in output",
@@ -1083,6 +1087,10 @@ const I18N = {
     "route.terminal.output_expand": "展开更多",
     "route.terminal.output_collapse": "收起",
     "route.terminal.jump_bottom": "回到底部",
+    "route.terminal.jump_top": "回到顶部",
+    "route.terminal.jump_prev": "上一条",
+    "route.terminal.jump_next": "下一条",
+    "route.terminal.navigation": "终端导航",
     "route.terminal.send_failed": "发送失败：{error}",
     "route.terminal.logs_failed": "终端输出加载失败：{error}",
     "route.terminal.close_failed": "终端关闭失败：{error}",
@@ -8901,7 +8909,7 @@ function renderTerminalTurns(session) {
       renderTerminalFinalOutput(session, turn)
     ].filter(Boolean).join("");
     return `<article class="terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
-      ${promptText ? `<div class="terminal-log-row kind-command terminal-turn-prompt" data-terminal-turn-prompt="${escapeHTML(normalizeText(turn.id))}" data-terminal-turn-prompt-text="${escapeHTML(promptText)}"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
+      ${promptText ? `<div class="terminal-log-row kind-command terminal-turn-prompt"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
       ${bodyHTML ? `<div class="route-surface-dark terminal-turn-surface">${bodyHTML}</div>` : ""}
     </article>`;
   }).join("");
@@ -8925,6 +8933,9 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
   const closeDisabled = sending || closing || deleting || !isTerminalSessionLiveStatus(session.status);
   const deleteDisabled = sending || closing || deleting;
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
+  const showJumpTop = Number(session?.chat_scroll_top || 0) > TERMINAL_JUMP_TOP_SHOW_THRESHOLD;
+  const previousTurnID = normalizeText(session?.chat_previous_turn_id);
+  const nextTurnID = normalizeText(session?.chat_next_turn_id);
   const metaExpanded = Boolean(session?.meta_expanded);
   const sessionCount = Number.isFinite(Number(options?.sessionCount)) ? Math.max(Number(options.sessionCount), 0) : 0;
   const sessionToggleLabel = options?.sessionSheetOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
@@ -8940,12 +8951,17 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
       <div class="terminal-workspace-row">
         <div class="terminal-workspace-copy">
           <p class="terminal-workspace-eyebrow">${escapeHTML(t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 24) }))}</p>
-          <h4>${escapeHTML(normalizeText(session.title))}</h4>
+          <div class="terminal-workspace-title-row">
+            <h4>${escapeHTML(normalizeText(session.title))}</h4>
+            <span class="terminal-runtime-state" data-terminal-runtime-state="${escapeHTML(normalizedStatus || "unknown")}">
+              <span class="terminal-runtime-state-dot" aria-hidden="true"></span>
+              <span class="terminal-runtime-state-text">${escapeHTML(renderTerminalStatus(session.status))}</span>
+            </span>
+          </div>
           <p class="terminal-workspace-subcopy">${escapeHTML(headerSubcopy)}</p>
         </div>
         <div class="terminal-workspace-actions">
-          <span class="terminal-status-pill">${escapeHTML(renderTerminalStatus(session.status))}</span>
-          <button class="terminal-inline-button" type="button" data-terminal-meta-toggle aria-expanded="${metaExpanded ? "true" : "false"}">${escapeHTML(metaExpanded ? t("route.terminal.details_hide") : t("route.terminal.details_show"))}</button>
+          <button class="terminal-inline-button is-quiet" type="button" data-terminal-meta-toggle aria-expanded="${metaExpanded ? "true" : "false"}">${escapeHTML(metaExpanded ? t("route.terminal.details_hide") : t("route.terminal.details_show"))}</button>
           <button class="terminal-session-close" type="button" data-terminal-close ${closeDisabled ? "disabled" : ""}>${escapeHTML(closing ? t("route.terminal.closing") : t("route.terminal.close"))}</button>
           <button class="terminal-session-delete" type="button" data-terminal-delete ${deleteDisabled ? "disabled" : ""}>${escapeHTML(deleting ? t("route.terminal.deleting") : t("route.terminal.delete"))}</button>
         </div>
@@ -8958,14 +8974,24 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
           ${renderTerminalTurns(session)}
         </div>
       </div>
-      <button class="terminal-jump-bottom ${showJumpBottom ? "is-visible" : ""} ${session?.chat_has_unread_output ? "has-unread" : ""}" type="button" data-terminal-jump-bottom aria-label="${escapeHTML(t("route.terminal.jump_bottom"))}">
-        <span class="terminal-jump-bottom-icon" aria-hidden="true">&darr;</span>
-        <span class="terminal-jump-bottom-label">${escapeHTML(t("route.terminal.jump_bottom"))}</span>
-      </button>
+      <div class="terminal-jump-cluster" aria-label="${escapeHTML(t("route.terminal.navigation"))}">
+        <button class="terminal-jump-control terminal-jump-top ${showJumpTop ? "is-visible" : ""}" type="button" data-terminal-jump-top aria-label="${escapeHTML(t("route.terminal.jump_top"))}" title="${escapeHTML(t("route.terminal.jump_top"))}">
+          <span class="terminal-jump-control-icon" aria-hidden="true">&uarr;&uarr;</span>
+        </button>
+        <button class="terminal-jump-control terminal-jump-prev ${previousTurnID ? "is-visible" : ""}" type="button" data-terminal-jump-prev data-terminal-jump-target="${escapeHTML(previousTurnID)}" aria-label="${escapeHTML(t("route.terminal.jump_prev"))}" title="${escapeHTML(t("route.terminal.jump_prev"))}">
+          <span class="terminal-jump-control-icon" aria-hidden="true">&uarr;</span>
+        </button>
+        <button class="terminal-jump-control terminal-jump-next ${nextTurnID ? "is-visible" : ""}" type="button" data-terminal-jump-next data-terminal-jump-target="${escapeHTML(nextTurnID)}" aria-label="${escapeHTML(t("route.terminal.jump_next"))}" title="${escapeHTML(t("route.terminal.jump_next"))}">
+          <span class="terminal-jump-control-icon" aria-hidden="true">&darr;</span>
+        </button>
+        <button class="terminal-jump-control terminal-jump-bottom ${showJumpBottom ? "is-visible" : ""} ${session?.chat_has_unread_output ? "has-unread" : ""}" type="button" data-terminal-jump-bottom aria-label="${escapeHTML(t("route.terminal.jump_bottom"))}" title="${escapeHTML(t("route.terminal.jump_bottom"))}">
+          <span class="terminal-jump-control-icon" aria-hidden="true">&darr;&darr;</span>
+        </button>
+      </div>
     </section>
     <section class="terminal-composer-shell">
-      ${note || detail ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
       <form class="terminal-chat-form" data-terminal-input-form data-composer-form="terminal-runtime">
+        ${note || detail ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
         <textarea data-terminal-input data-composer-input="terminal-runtime" maxlength="6000" rows="1" placeholder="${escapeHTML(placeholder)}" ${(sending || !canInput) ? "disabled" : ""}></textarea>
         <button type="submit" data-terminal-submit data-composer-submit="terminal-runtime" aria-label="${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}" ${(sending || !canInput) ? "disabled" : ""}>
           <span class="terminal-chat-form-button-icon" aria-hidden="true">&uarr;</span>
@@ -9101,7 +9127,9 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
   syncNodeText(workspaceNode.querySelector(".terminal-workspace-eyebrow"), t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 24) }));
   syncNodeText(workspaceNode.querySelector(".terminal-workspace-copy h4"), normalizeText(session.title));
   syncNodeText(workspaceNode.querySelector(".terminal-workspace-subcopy"), headerSubcopy);
-  syncNodeText(workspaceNode.querySelector(".terminal-status-pill"), renderTerminalStatus(session.status));
+  const runtimeStateNode = workspaceNode.querySelector("[data-terminal-runtime-state]");
+  syncNodeAttribute(runtimeStateNode, "data-terminal-runtime-state", normalizedStatus || "unknown");
+  syncNodeText(runtimeStateNode ? runtimeStateNode.querySelector(".terminal-runtime-state-text") : null, renderTerminalStatus(session.status));
 
   const metaToggleNode = workspaceNode.querySelector("[data-terminal-meta-toggle]");
   syncNodeText(metaToggleNode, metaExpanded ? t("route.terminal.details_hide") : t("route.terminal.details_show"));
@@ -9133,24 +9161,47 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
     syncNodeAttribute(chatNode, "data-terminal-chat-status", normalizeText(session.status || "unknown"));
     syncNodeHTML(chatNode.querySelector(".terminal-log-tree"), renderTerminalTurns(session));
   }
+  const jumpTopNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-jump-top]") : null;
+  if (jumpTopNode) {
+    jumpTopNode.classList.toggle("is-visible", Number(session?.chat_scroll_top || 0) > TERMINAL_JUMP_TOP_SHOW_THRESHOLD);
+    syncNodeAttribute(jumpTopNode, "aria-label", t("route.terminal.jump_top"));
+    syncNodeAttribute(jumpTopNode, "title", t("route.terminal.jump_top"));
+  }
+  const jumpPrevNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-jump-prev]") : null;
+  if (jumpPrevNode) {
+    const previousTurnID = normalizeText(session?.chat_previous_turn_id);
+    jumpPrevNode.classList.toggle("is-visible", Boolean(previousTurnID));
+    syncNodeAttribute(jumpPrevNode, "data-terminal-jump-target", previousTurnID);
+    syncNodeAttribute(jumpPrevNode, "aria-label", t("route.terminal.jump_prev"));
+    syncNodeAttribute(jumpPrevNode, "title", t("route.terminal.jump_prev"));
+  }
+  const jumpNextNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-jump-next]") : null;
+  if (jumpNextNode) {
+    const nextTurnID = normalizeText(session?.chat_next_turn_id);
+    jumpNextNode.classList.toggle("is-visible", Boolean(nextTurnID));
+    syncNodeAttribute(jumpNextNode, "data-terminal-jump-target", nextTurnID);
+    syncNodeAttribute(jumpNextNode, "aria-label", t("route.terminal.jump_next"));
+    syncNodeAttribute(jumpNextNode, "title", t("route.terminal.jump_next"));
+  }
   const jumpBottomNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-jump-bottom]") : null;
   if (jumpBottomNode) {
     jumpBottomNode.classList.toggle("is-visible", showJumpBottom);
     jumpBottomNode.classList.toggle("has-unread", Boolean(session?.chat_has_unread_output));
     syncNodeAttribute(jumpBottomNode, "aria-label", t("route.terminal.jump_bottom"));
-    syncNodeText(jumpBottomNode.querySelector(".terminal-jump-bottom-label"), t("route.terminal.jump_bottom"));
+    syncNodeAttribute(jumpBottomNode, "title", t("route.terminal.jump_bottom"));
   }
 
   const composerShellNode = workspaceNode.querySelector(".terminal-composer-shell");
   const formNode = composerShellNode ? composerShellNode.querySelector("[data-terminal-input-form]") : null;
+  const inputNode = formNode ? formNode.querySelector("[data-terminal-input]") : null;
   if (composerShellNode) {
     syncRenderedBlock(
-      composerShellNode,
+      formNode,
       "[data-terminal-runtime-note]",
       note || detail
         ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>`
         : "",
-      formNode,
+      inputNode,
       "beforebegin"
     );
     syncRenderedBlock(
@@ -9161,7 +9212,6 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
       "afterend"
     );
   }
-  const inputNode = formNode ? formNode.querySelector("[data-terminal-input]") : null;
   if (inputNode) {
     inputNode.placeholder = placeholder;
     inputNode.disabled = sending || !canInput;
@@ -9200,9 +9250,6 @@ async function loadTerminalView(container) {
     revealActiveSessionCard: false,
     mobileSessionListOpen: false,
     mobileSessionListAutoOpened: false,
-    stickyPromptNode: null,
-    stickySectionNode: null,
-    stickySyncFrame: 0,
     pendingPaint: false,
     pendingScrollToBottom: false,
     persistTimer: 0,
@@ -9312,161 +9359,57 @@ async function loadTerminalView(container) {
     node.style.overflowY = node.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
   };
 
-  const measureTerminalStickyPromptOffset = (promptNode) => {
-    if (!(promptNode instanceof HTMLElement)) {
+  const measureTerminalNodeScrollOffset = (node, scrollNode) => {
+    if (!(node instanceof HTMLElement) || !(scrollNode instanceof HTMLElement)) {
       return 0;
     }
-    const rect = promptNode.getBoundingClientRect();
-    if (rect.height <= 0) {
-      return 0;
-    }
-    const parent = promptNode.parentElement;
-    const parentStyle = parent ? window.getComputedStyle(parent) : null;
-    const gap = parentStyle ? Math.max(parseFloat(parentStyle.rowGap || parentStyle.gap || "0"), 0) : 0;
-    return Math.max(Math.ceil(rect.height + gap), 0);
+    const nodeRect = node.getBoundingClientRect();
+    const scrollRect = scrollNode.getBoundingClientRect();
+    return Math.max(scrollNode.scrollTop + nodeRect.top - scrollRect.top, 0);
   };
 
-  const applyTerminalStickyState = (chatNode, promptNode = null, sectionNode = null) => {
+  const resolveTerminalTurnNavigation = (chatNode) => {
     if (!(chatNode instanceof HTMLElement)) {
-      return;
+      return {
+        previousTurnID: "",
+        nextTurnID: ""
+      };
     }
-    const previousPromptNode = localState.stickyPromptNode;
-    const previousSectionNode = localState.stickySectionNode;
-    if (previousPromptNode instanceof HTMLElement && previousPromptNode !== promptNode) {
-      previousPromptNode.classList.remove("is-terminal-sticky-active");
-      previousPromptNode.removeAttribute("title");
-    }
-    if (previousSectionNode instanceof HTMLElement && previousSectionNode !== sectionNode) {
-      previousSectionNode.classList.remove("is-terminal-sticky-active");
-    }
-    if (promptNode instanceof HTMLElement) {
-      promptNode.classList.add("is-terminal-sticky-active");
-      promptNode.setAttribute("title", String(promptNode.getAttribute("data-terminal-turn-prompt-text") || "").trim());
-    }
-    if (sectionNode instanceof HTMLElement) {
-      sectionNode.classList.add("is-terminal-sticky-active");
-    }
-    localState.stickyPromptNode = promptNode instanceof HTMLElement ? promptNode : null;
-    localState.stickySectionNode = sectionNode instanceof HTMLElement ? sectionNode : null;
-    const stickyOffset = promptNode instanceof HTMLElement ? measureTerminalStickyPromptOffset(promptNode) : 0;
-    const stickyOffsetValue = `${stickyOffset}px`;
-    if (chatNode.style.getPropertyValue("--terminal-sticky-overlay-offset") !== stickyOffsetValue) {
-      chatNode.style.setProperty("--terminal-sticky-overlay-offset", stickyOffsetValue);
-    }
-  };
-
-  const syncTerminalStickyPrompt = (chatNode = null) => {
-    const node = chatNode || container.querySelector("[data-terminal-chat-screen]");
-    if (!node) {
-      return;
-    }
-    const promptNodes = [...node.querySelectorAll("[data-terminal-turn-prompt]")];
-    if (!promptNodes.length) {
-      applyTerminalStickyState(node);
-      return;
-    }
-    if (Math.max(Number(node.scrollTop || 0), 0) <= 4) {
-      applyTerminalStickyState(node);
-      return;
-    }
-    const chatTop = node.getBoundingClientRect().top;
-    let activePrompt = null;
-    promptNodes.forEach((promptNode) => {
-      if (!(promptNode instanceof HTMLElement)) {
-        return;
+    const turnEntries = [...chatNode.querySelectorAll("[data-terminal-turn]")].map((turnNode) => {
+      if (!(turnNode instanceof HTMLElement)) {
+        return null;
       }
-      const turnNode = promptNode.closest("[data-terminal-turn]");
-      const turnRect = turnNode instanceof HTMLElement ? turnNode.getBoundingClientRect() : null;
-      if (!turnRect || turnRect.bottom <= chatTop + 8) {
-        return;
+      const id = normalizeText(turnNode.getAttribute("data-terminal-turn"));
+      if (!id || id === "-") {
+        return null;
       }
-      if (promptNode.getBoundingClientRect().top <= chatTop + 4) {
-        activePrompt = promptNode;
+      const start = measureTerminalNodeScrollOffset(turnNode, chatNode);
+      return {
+        id,
+        start,
+        end: start + Math.max(Number(turnNode.offsetHeight || 0), 0)
+      };
+    }).filter(Boolean);
+    if (!turnEntries.length) {
+      return {
+        previousTurnID: "",
+        nextTurnID: ""
+      };
+    }
+    const anchor = Math.max(Number(chatNode.scrollTop || 0), 0) + 18;
+    let currentIndex = 0;
+    for (let index = 0; index < turnEntries.length; index += 1) {
+      const entry = turnEntries[index];
+      if (entry.start <= anchor) {
+        currentIndex = index;
+        continue;
       }
-    });
-    if (!(activePrompt instanceof HTMLElement)) {
-      applyTerminalStickyState(node);
-      return;
+      break;
     }
-    const activeTurn = activePrompt.closest("[data-terminal-turn]");
-    const turnRect = activeTurn instanceof HTMLElement ? activeTurn.getBoundingClientRect() : null;
-    if (!turnRect || turnRect.bottom <= chatTop + 8) {
-      applyTerminalStickyState(node);
-      return;
-    }
-    const stickyOffset = measureTerminalStickyPromptOffset(activePrompt);
-    const sectionStickyTop = chatTop + stickyOffset;
-    const sectionStickySlack = 6;
-    let activeSection = null;
-    node.querySelectorAll("[data-terminal-process-toggle], [data-terminal-final-head]").forEach((sectionNode) => {
-      if (!(sectionNode instanceof HTMLElement)) {
-        return;
-      }
-      const turnNode = sectionNode.closest("[data-terminal-turn]");
-      const currentTurnRect = turnNode instanceof HTMLElement ? turnNode.getBoundingClientRect() : null;
-      if (!currentTurnRect || currentTurnRect.bottom <= chatTop + 8) {
-        return;
-      }
-      const sectionRect = sectionNode.getBoundingClientRect();
-      if (sectionRect.bottom <= sectionStickyTop + 4) {
-        return;
-      }
-      if (sectionRect.top <= sectionStickyTop + sectionStickySlack) {
-        activeSection = sectionNode;
-      }
-    });
-    applyTerminalStickyState(node, activePrompt, activeSection instanceof HTMLElement ? activeSection : null);
-  };
-
-  const requestTerminalStickyPromptSync = (chatNode = null, options = {}) => {
-    const node = chatNode || container.querySelector("[data-terminal-chat-screen]");
-    if (!(node instanceof HTMLElement)) {
-      return;
-    }
-    if (options.immediate) {
-      if (localState.stickySyncFrame) {
-        window.cancelAnimationFrame(localState.stickySyncFrame);
-        localState.stickySyncFrame = 0;
-      }
-      syncTerminalStickyPrompt(node);
-      return;
-    }
-    if (localState.stickySyncFrame) {
-      return;
-    }
-    localState.stickySyncFrame = window.requestAnimationFrame(() => {
-      localState.stickySyncFrame = 0;
-      syncTerminalStickyPrompt(node);
-    });
-  };
-
-  const revealTerminalTurnPrompt = (turnID, options = {}) => {
-    const key = normalizeText(turnID);
-    if (!key) {
-      return;
-    }
-    const chatNode = container.querySelector("[data-terminal-chat-screen]");
-    if (!(chatNode instanceof HTMLElement)) {
-      return;
-    }
-    const escapedTurnID = window.CSS && typeof window.CSS.escape === "function"
-      ? window.CSS.escape(key)
-      : key.replace(/["\\]/g, "\\$&");
-    const promptNode = chatNode.querySelector(`[data-terminal-turn-prompt="${escapedTurnID}"]`);
-    if (!(promptNode instanceof HTMLElement)) {
-      return;
-    }
-    const chatRect = chatNode.getBoundingClientRect();
-    const promptRect = promptNode.getBoundingClientRect();
-    const alignOffset = 14;
-    const nextScrollTop = Math.max(chatNode.scrollTop + promptRect.top - chatRect.top - alignOffset, 0);
-    const behavior = options.behavior === "auto" || window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? "auto"
-      : "smooth";
-    chatNode.scrollTo({
-      top: nextScrollTop,
-      behavior
-    });
+    return {
+      previousTurnID: currentIndex > 0 ? turnEntries[currentIndex - 1].id : "",
+      nextTurnID: currentIndex < turnEntries.length - 1 ? turnEntries[currentIndex + 1].id : ""
+    };
   };
 
   const shouldDeferTerminalPaint = (sessionID) => {
@@ -9509,20 +9452,36 @@ async function loadTerminalView(container) {
     const remaining = Math.max(Number(node.scrollHeight || 0) - Number(node.scrollTop || 0) - Number(node.clientHeight || 0), 0);
     session.chat_bottom_offset = remaining;
     session.chat_stick_to_bottom = remaining <= TERMINAL_SCROLL_STICKY_THRESHOLD;
+    const turnNavigation = resolveTerminalTurnNavigation(node);
+    session.chat_previous_turn_id = turnNavigation.previousTurnID;
+    session.chat_next_turn_id = turnNavigation.nextTurnID;
     if (session.chat_stick_to_bottom) {
       session.chat_last_seen_output_at = Number(session.last_output_at || 0);
       session.chat_has_unread_output = false;
     }
     const activeSession = getActiveSession();
     if (activeSession && normalizeText(activeSession.id) === key) {
+      const jumpTopButton = container.querySelector("[data-terminal-jump-top]");
+      const jumpPrevButton = container.querySelector("[data-terminal-jump-prev]");
+      const jumpNextButton = container.querySelector("[data-terminal-jump-next]");
       const jumpButton = container.querySelector("[data-terminal-jump-bottom]");
+      if (jumpTopButton) {
+        jumpTopButton.classList.toggle("is-visible", Number(session.chat_scroll_top || 0) > TERMINAL_JUMP_TOP_SHOW_THRESHOLD);
+      }
+      if (jumpPrevButton) {
+        jumpPrevButton.classList.toggle("is-visible", Boolean(turnNavigation.previousTurnID));
+        syncNodeAttribute(jumpPrevButton, "data-terminal-jump-target", turnNavigation.previousTurnID);
+      }
+      if (jumpNextButton) {
+        jumpNextButton.classList.toggle("is-visible", Boolean(turnNavigation.nextTurnID));
+        syncNodeAttribute(jumpNextButton, "data-terminal-jump-target", turnNavigation.nextTurnID);
+      }
       if (jumpButton) {
         const shouldShow = session.chat_has_unread_output || remaining > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
         jumpButton.classList.toggle("is-visible", shouldShow);
         jumpButton.classList.toggle("has-unread", session.chat_has_unread_output);
       }
     }
-    requestTerminalStickyPromptSync(node);
   };
 
   const scrollTerminalChatToBottom = () => {
@@ -9537,7 +9496,42 @@ async function loadTerminalView(container) {
         activeSession.chat_has_unread_output = false;
         activeSession.chat_stick_to_bottom = true;
       }
-      requestTerminalStickyPromptSync(chatNode, { immediate: true });
+    }
+  };
+
+  const scrollTerminalChatToTop = () => {
+    const activeSession = getActiveSession();
+    const chatNode = container.querySelector("[data-terminal-chat-screen]");
+    if (!(chatNode instanceof HTMLElement) || chatNode.hidden) {
+      return;
+    }
+    chatNode.scrollTop = 0;
+    if (activeSession) {
+      activeSession.chat_has_unread_output = false;
+      captureTerminalChatScroll(activeSession.id, chatNode, { trackActivity: false });
+    }
+  };
+
+  const scrollTerminalChatToTurn = (turnID) => {
+    const key = normalizeText(turnID);
+    if (!key) {
+      return;
+    }
+    const activeSession = getActiveSession();
+    const chatNode = container.querySelector("[data-terminal-chat-screen]");
+    if (!(chatNode instanceof HTMLElement) || chatNode.hidden) {
+      return;
+    }
+    const escapedTurnID = window.CSS && typeof window.CSS.escape === "function"
+      ? window.CSS.escape(key)
+      : key.replace(/["\\]/g, "\\$&");
+    const turnNode = chatNode.querySelector(`[data-terminal-turn="${escapedTurnID}"]`);
+    if (!(turnNode instanceof HTMLElement)) {
+      return;
+    }
+    chatNode.scrollTop = Math.max(measureTerminalNodeScrollOffset(turnNode, chatNode) - 12, 0);
+    if (activeSession) {
+      captureTerminalChatScroll(activeSession.id, chatNode, { trackActivity: false });
     }
   };
 
@@ -10371,14 +10365,6 @@ async function loadTerminalView(container) {
   }
 
   container.onclick = (event) => {
-    const stickyPromptNode = event.target instanceof Element ? event.target.closest("[data-terminal-turn-prompt]") : null;
-    if (stickyPromptNode instanceof HTMLElement && stickyPromptNode.classList.contains("is-terminal-sticky-active")) {
-      const turnID = normalizeText(stickyPromptNode.getAttribute("data-terminal-turn-prompt"));
-      if (turnID !== "-") {
-        revealTerminalTurnPrompt(turnID);
-      }
-      return;
-    }
     const target = event.target instanceof Element ? event.target.closest("button") : null;
     if (!target) {
       return;
@@ -10446,6 +10432,27 @@ async function loadTerminalView(container) {
       scrollTerminalChatToBottom();
       persist();
       requestTerminalPaint({ scrollToBottom: true });
+      return;
+    }
+    if (target.hasAttribute("data-terminal-jump-top")) {
+      const active = getActiveSession();
+      if (!active) {
+        return;
+      }
+      active.chat_stick_to_bottom = false;
+      active.chat_has_unread_output = false;
+      scrollTerminalChatToTop();
+      persist();
+      return;
+    }
+    if (target.hasAttribute("data-terminal-jump-prev") || target.hasAttribute("data-terminal-jump-next")) {
+      const active = getActiveSession();
+      if (!active) {
+        return;
+      }
+      active.chat_stick_to_bottom = false;
+      scrollTerminalChatToTurn(target.getAttribute("data-terminal-jump-target"));
+      persist();
       return;
     }
     if (target.hasAttribute("data-terminal-output-toggle")) {
