@@ -332,6 +332,12 @@ func buildHybridReActSystemPrompt(metadata map[string]string) string {
 	if rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey)); rawMemoryContext != "" {
 		parts = append(parts, renderMemoryContextInstruction(rawMemoryContext))
 	}
+	if rawProductContext := strings.TrimSpace(metadataValue(metadata, execdomain.ProductContextMetadataKey)); rawProductContext != "" {
+		parts = append(parts, renderProductContextInstruction(rawProductContext))
+	}
+	if rawProductDiscovery := strings.TrimSpace(metadataValue(metadata, execdomain.ProductDiscoveryMetadataKey)); rawProductDiscovery != "" {
+		parts = append(parts, renderProductDiscoveryInstruction(rawProductDiscovery))
+	}
 	return strings.Join(parts, "\n\n")
 }
 
@@ -370,6 +376,13 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 		parts = append(parts, renderMemoryContextInstruction(rawMemoryContext))
 		parts = append(parts, "When the user asks to remember, update, or persist durable guidance, use read/write/edit tools to modify the appropriate memory files directly.")
 	}
+	if rawProductContext := strings.TrimSpace(metadataValue(metadata, execdomain.ProductContextMetadataKey)); rawProductContext != "" {
+		parts = append(parts, renderProductContextInstruction(rawProductContext))
+		parts = append(parts, "When operating as a product master or worker agent, stay within the current product boundary unless the user explicitly asks for a cross-product comparison or coordination.")
+	}
+	if rawProductDiscovery := strings.TrimSpace(metadataValue(metadata, execdomain.ProductDiscoveryMetadataKey)); rawProductDiscovery != "" {
+		parts = append(parts, renderProductDiscoveryInstruction(rawProductDiscovery))
+	}
 	return strings.Join(parts, "\n\n")
 }
 
@@ -401,6 +414,99 @@ func renderMemoryContextInstruction(raw string) string {
 			builder.WriteString(content)
 		}
 		builder.WriteString("\n")
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+func renderProductContextInstruction(raw string) string {
+	context := execdomain.ProductContext{}
+	if err := json.Unmarshal([]byte(raw), &context); err != nil || strings.TrimSpace(context.ProductID) == "" {
+		return "Resolved product context (JSON): " + raw
+	}
+
+	var builder strings.Builder
+	builder.WriteString("Resolved product context:\n")
+	builder.WriteString("- product_id: ")
+	builder.WriteString(strings.TrimSpace(context.ProductID))
+	if name := strings.TrimSpace(context.Name); name != "" {
+		builder.WriteString("\n- name: ")
+		builder.WriteString(name)
+	}
+	if summary := strings.TrimSpace(context.Summary); summary != "" {
+		builder.WriteString("\n- summary: ")
+		builder.WriteString(summary)
+	}
+	if master := strings.TrimSpace(context.MasterAgentID); master != "" {
+		builder.WriteString("\n- master_agent_id: ")
+		builder.WriteString(master)
+	}
+	if entryRoute := strings.TrimSpace(context.EntryRoute); entryRoute != "" {
+		builder.WriteString("\n- entry_route: ")
+		builder.WriteString(entryRoute)
+	}
+	if len(context.ArtifactTypes) > 0 {
+		builder.WriteString("\n- artifact_types: ")
+		builder.WriteString(strings.Join(context.ArtifactTypes, ", "))
+	}
+	if len(context.KnowledgeSources) > 0 {
+		builder.WriteString("\n- knowledge_sources: ")
+		builder.WriteString(strings.Join(context.KnowledgeSources, ", "))
+	}
+	if len(context.WorkerAgents) > 0 {
+		builder.WriteString("\n- worker_agents:")
+		for _, worker := range context.WorkerAgents {
+			builder.WriteString("\n  - ")
+			builder.WriteString(strings.TrimSpace(worker.AgentID))
+			if role := strings.TrimSpace(worker.Role); role != "" {
+				builder.WriteString(" (")
+				builder.WriteString(role)
+				builder.WriteString(")")
+			}
+			if responsibility := strings.TrimSpace(worker.Responsibility); responsibility != "" {
+				builder.WriteString(": ")
+				builder.WriteString(responsibility)
+			}
+		}
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+func renderProductDiscoveryInstruction(raw string) string {
+	context := execdomain.ProductDiscoveryContext{}
+	if err := json.Unmarshal([]byte(raw), &context); err != nil || len(context.MatchedProducts) == 0 {
+		return "Resolved product discovery (JSON): " + raw
+	}
+
+	var builder strings.Builder
+	builder.WriteString("Resolved product discovery:\n")
+	if selected := strings.TrimSpace(context.SelectedProduct); selected != "" {
+		builder.WriteString("- selected_product_id: ")
+		builder.WriteString(selected)
+		builder.WriteString("\n")
+	}
+	if reason := strings.TrimSpace(context.SelectionReason); reason != "" {
+		builder.WriteString("- selection_reason: ")
+		builder.WriteString(reason)
+		builder.WriteString("\n")
+	}
+	if mode := strings.TrimSpace(context.ExecutionMode); mode != "" {
+		builder.WriteString("- product_execution_mode: ")
+		builder.WriteString(mode)
+		builder.WriteString("\n")
+	}
+	builder.WriteString("- matched_products:")
+	for _, item := range context.MatchedProducts {
+		builder.WriteString("\n  - ")
+		builder.WriteString(strings.TrimSpace(item.ProductID))
+		if name := strings.TrimSpace(item.Name); name != "" {
+			builder.WriteString(" (")
+			builder.WriteString(name)
+			builder.WriteString(")")
+		}
+		if summary := strings.TrimSpace(item.Summary); summary != "" {
+			builder.WriteString(": ")
+			builder.WriteString(summary)
+		}
 	}
 	return strings.TrimSpace(builder.String())
 }

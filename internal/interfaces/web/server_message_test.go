@@ -16,6 +16,8 @@ import (
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
+	productapp "alter0/internal/product/application"
+	productdomain "alter0/internal/product/domain"
 	shareddomain "alter0/internal/shared/domain"
 	"alter0/internal/shared/infrastructure/observability"
 )
@@ -294,5 +296,196 @@ func TestAgentMessageHandlerKeepsExplicitRuntimeSelections(t *testing.T) {
 	}
 	if got := orchestrator.lastMessage.Metadata["alter0.mcp.request.enable"]; got != "[]" {
 		t.Fatalf("expected explicit mcp selection preserved, got %q", got)
+	}
+}
+
+func TestProductMessageHandlerRoutesToProductMasterAgent(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "travel-guide-ok",
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertChannel(controldomain.Channel{
+		ID:      "web-default",
+		Type:    shareddomain.ChannelTypeWeb,
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+	server.products = productapp.NewService()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/products/travel/messages", strings.NewReader(`{"session_id":"session-fixed","content":"生成一个上海三日游攻略"}`))
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if orchestrator.lastMessage.Metadata[execdomain.ExecutionEngineMetadataKey] != execdomain.ExecutionEngineAgent {
+		t.Fatalf("expected agent execution engine, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey] != "travel-master" {
+		t.Fatalf("expected master agent travel-master, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	rawProductContext := orchestrator.lastMessage.Metadata[execdomain.ProductContextMetadataKey]
+	if strings.TrimSpace(rawProductContext) == "" {
+		t.Fatalf("expected product context metadata, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if !strings.Contains(rawProductContext, `"product_id":"travel"`) {
+		t.Fatalf("expected travel product context, got %q", rawProductContext)
+	}
+	if !strings.Contains(rawProductContext, `"master_agent_id":"travel-master"`) {
+		t.Fatalf("expected travel master agent in product context, got %q", rawProductContext)
+	}
+}
+
+func TestProductMessageHandlerRejectsNonPublicProductExecution(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "hidden-product",
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertChannel(controldomain.Channel{
+		ID:      "web-default",
+		Type:    shareddomain.ChannelTypeWeb,
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+	products := productapp.NewService()
+	if _, err := products.CreateProduct(productdomain.Product{
+		Name:          "Internal Planner",
+		Slug:          "internal-planner",
+		Summary:       "Private product should not expose public execution endpoints.",
+		Status:        productdomain.StatusActive,
+		Visibility:    productdomain.VisibilityPrivate,
+		MasterAgentID: "travel-master",
+	}); err != nil {
+		t.Fatalf("create product failed: %v", err)
+	}
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+	server.products = products
+
+	req := httptest.NewRequest(http.MethodPost, "/api/products/internal-planner/messages", strings.NewReader(`{"session_id":"session-fixed","content":"执行内部产品任务"}`))
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusNotFound, rec.Code, rec.Body.String())
+	}
+}
+
+func TestTravelGuideEndpointsLifecycle(t *testing.T) {
+	server := newMessageTestServer(&stubWebOrchestrator{})
+	server.products = productapp.NewService()
+	server.travelGuides = productapp.NewTravelGuideService()
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/products/travel/guides", strings.NewReader(`{
+		"city":"Shanghai",
+		"days":3,
+		"travel_style":"metro-first",
+		"budget":"mid-range",
+		"must_visit":["The Bund","Yu Garden"],
+		"additional_requirements":["more local food"]
+	}`))
+	createRec := httptest.NewRecorder()
+	server.publicProductItemHandler(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create 201, got %d: %s", createRec.Code, createRec.Body.String())
+	}
+	var created productdomain.TravelGuide
+	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode created guide failed: %v", err)
+	}
+	if created.ID == "" || created.City != "Shanghai" {
+		t.Fatalf("unexpected created guide: %+v", created)
+	}
+	if len(created.MapLayers) == 0 {
+		t.Fatalf("expected map layers in guide: %+v", created)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/products/travel/guides/"+created.ID, nil)
+	getRec := httptest.NewRecorder()
+	server.publicProductItemHandler(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected get 200, got %d: %s", getRec.Code, getRec.Body.String())
+	}
+
+	reviseReq := httptest.NewRequest(http.MethodPost, "/api/products/travel/guides/"+created.ID+"/revise", strings.NewReader(`{
+		"days":4,
+		"keep_conditions":["keep The Bund"],
+		"replace_conditions":["less museum time"],
+		"additional_requirements":["slow mornings"]
+	}`))
+	reviseRec := httptest.NewRecorder()
+	server.publicProductItemHandler(reviseRec, reviseReq)
+	if reviseRec.Code != http.StatusOK {
+		t.Fatalf("expected revise 200, got %d: %s", reviseRec.Code, reviseRec.Body.String())
+	}
+	var revised productdomain.TravelGuide
+	if err := json.NewDecoder(reviseRec.Body).Decode(&revised); err != nil {
+		t.Fatalf("decode revised guide failed: %v", err)
+	}
+	if revised.Revision != 2 || revised.Days != 4 {
+		t.Fatalf("unexpected revised guide: %+v", revised)
+	}
+	if len(revised.KeepConditions) == 0 || len(revised.ReplaceConditions) == 0 {
+		t.Fatalf("expected revision conditions to persist: %+v", revised)
+	}
+}
+
+func TestMainAgentMessageRoutesMatchedProductTask(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "travel-guide-ok",
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertChannel(controldomain.Channel{
+		ID:      "web-default",
+		Type:    shareddomain.ChannelTypeWeb,
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+	server.products = productapp.NewService()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages", strings.NewReader(`{"agent_id":"main","session_id":"session-fixed","content":"生成一份上海三日游攻略，重点地铁和美食"}`))
+	rec := httptest.NewRecorder()
+	server.agentMessageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey]; got != "travel-master" {
+		t.Fatalf("expected travel-master routing, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentDelegatedByMetadataKey]; got != "main" {
+		t.Fatalf("expected delegated_by main, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.ProductSelectedIDMetadataKey]; got != "travel" {
+		t.Fatalf("expected selected product travel, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.ProductExecutionModeMetadataKey]; got != "product-master" {
+		t.Fatalf("expected product execution mode product-master, got %+v", orchestrator.lastMessage.Metadata)
 	}
 }

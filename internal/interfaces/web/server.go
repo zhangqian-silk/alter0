@@ -23,8 +23,10 @@ import (
 	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
+	execdomain "alter0/internal/execution/domain"
 	llmdomain "alter0/internal/llm/domain"
 	orchdomain "alter0/internal/orchestration/domain"
+	productdomain "alter0/internal/product/domain"
 	schedulerapp "alter0/internal/scheduler/application"
 	schedulerdomain "alter0/internal/scheduler/domain"
 	sessionapp "alter0/internal/session/application"
@@ -93,6 +95,9 @@ type Server struct {
 	webLoginEnabled  bool
 	webBindLocalhost bool
 	agents           agentCatalogService
+	products         productService
+	productDrafts    productDraftService
+	travelGuides     travelGuideService
 }
 
 type llmService interface {
@@ -112,6 +117,31 @@ type agentCatalogService interface {
 	ListEntrypointAgents() []controldomain.Agent
 	ListDelegatableAgents(excludeID string) []controldomain.Agent
 	IsBuiltinID(id string) bool
+}
+
+type productService interface {
+	ResolveProduct(id string) (productdomain.Product, bool)
+	ListProducts() []productdomain.Product
+	ListPublicProducts() []productdomain.Product
+	CreateProduct(product productdomain.Product) (productdomain.Product, error)
+	SaveProduct(id string, product productdomain.Product) (productdomain.Product, error)
+	DeleteProduct(id string) bool
+	IsBuiltinID(id string) bool
+}
+
+type travelGuideService interface {
+	CreateGuide(input productdomain.TravelGuideCreateInput) (productdomain.TravelGuide, error)
+	GetGuide(id string) (productdomain.TravelGuide, bool)
+	ReviseGuide(id string, input productdomain.TravelGuideReviseInput) (productdomain.TravelGuide, error)
+}
+
+type productDraftService interface {
+	ListDrafts() []productdomain.ProductDraft
+	GetDraft(id string) (productdomain.ProductDraft, bool)
+	GenerateDraft(input productdomain.ProductDraftGenerateInput) (productdomain.ProductDraft, error)
+	GenerateMatrixDraft(productID string, input productdomain.ProductDraftGenerateInput) (productdomain.ProductDraft, error)
+	SaveDraft(id string, draft productdomain.ProductDraft) (productdomain.ProductDraft, error)
+	MarkPublished(id string, productID string) (productdomain.ProductDraft, error)
 }
 
 type sessionHistoryService interface {
@@ -181,6 +211,49 @@ type agentMessageRequest struct {
 	CorrelationID string            `json:"correlation_id,omitempty"`
 	Content       string            `json:"content"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+type productMessageRequest struct {
+	SessionID     string            `json:"session_id"`
+	UserID        string            `json:"user_id,omitempty"`
+	ChannelID     string            `json:"channel_id,omitempty"`
+	CorrelationID string            `json:"correlation_id,omitempty"`
+	Content       string            `json:"content"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+type travelGuideCreateRequest struct {
+	City                   string   `json:"city"`
+	Days                   int      `json:"days"`
+	TravelStyle            string   `json:"travel_style,omitempty"`
+	Budget                 string   `json:"budget,omitempty"`
+	Companions             []string `json:"companions,omitempty"`
+	MustVisit              []string `json:"must_visit,omitempty"`
+	Avoid                  []string `json:"avoid,omitempty"`
+	AdditionalRequirements []string `json:"additional_requirements,omitempty"`
+}
+
+type travelGuideReviseRequest struct {
+	Days                   *int     `json:"days,omitempty"`
+	TravelStyle            string   `json:"travel_style,omitempty"`
+	Budget                 string   `json:"budget,omitempty"`
+	Companions             []string `json:"companions,omitempty"`
+	MustVisit              []string `json:"must_visit,omitempty"`
+	Avoid                  []string `json:"avoid,omitempty"`
+	AdditionalRequirements []string `json:"additional_requirements,omitempty"`
+	KeepConditions         []string `json:"keep_conditions,omitempty"`
+	ReplaceConditions      []string `json:"replace_conditions,omitempty"`
+}
+
+type productDraftGenerateRequest struct {
+	Name                    string   `json:"name"`
+	Goal                    string   `json:"goal"`
+	TargetUsers             []string `json:"target_users,omitempty"`
+	CoreCapabilities        []string `json:"core_capabilities,omitempty"`
+	Constraints             []string `json:"constraints,omitempty"`
+	ExpectedArtifacts       []string `json:"expected_artifacts,omitempty"`
+	IntegrationRequirements []string `json:"integration_requirements,omitempty"`
+	Mode                    string   `json:"mode,omitempty"`
 }
 
 type taskCreateRequest struct {
@@ -327,6 +400,28 @@ type agentUpsertRequest struct {
 	MCPs          []string          `json:"mcps,omitempty"`
 	MemoryFiles   []string          `json:"memory_files,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+type productWorkerAgentRequest struct {
+	AgentID        string   `json:"agent_id"`
+	Role           string   `json:"role,omitempty"`
+	Responsibility string   `json:"responsibility,omitempty"`
+	Capabilities   []string `json:"capabilities,omitempty"`
+	Enabled        *bool    `json:"enabled,omitempty"`
+}
+
+type productUpsertRequest struct {
+	Name             string                      `json:"name"`
+	Slug             string                      `json:"slug,omitempty"`
+	Summary          string                      `json:"summary,omitempty"`
+	Status           string                      `json:"status,omitempty"`
+	Visibility       string                      `json:"visibility,omitempty"`
+	MasterAgentID    string                      `json:"master_agent_id,omitempty"`
+	EntryRoute       string                      `json:"entry_route,omitempty"`
+	Tags             []string                    `json:"tags,omitempty"`
+	ArtifactTypes    []string                    `json:"artifact_types,omitempty"`
+	KnowledgeSources []string                    `json:"knowledge_sources,omitempty"`
+	WorkerAgents     []productWorkerAgentRequest `json:"worker_agents,omitempty"`
 }
 
 type capabilityLifecycleRequest struct {
@@ -510,10 +605,13 @@ func NewServer(
 	sessions sessionHistoryService,
 	tasks taskService,
 	terminals terminalService,
+	productDrafts productDraftService,
+	travelGuides travelGuideService,
 	memoryOptions AgentMemoryOptions,
 	securityOptions WebSecurityOptions,
 	llm llmService,
 	agents agentCatalogService,
+	products productService,
 	logger *slog.Logger,
 ) *Server {
 	resolvedPassword := strings.TrimSpace(securityOptions.LoginPassword)
@@ -545,6 +643,9 @@ func NewServer(
 		webLoginEnabled:  resolvedPassword != "",
 		webBindLocalhost: resolvedBindLocalhost,
 		agents:           agents,
+		products:         products,
+		productDrafts:    productDrafts,
+		travelGuides:     travelGuides,
 	}
 }
 
@@ -576,6 +677,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/agents", s.runtimeAgentListHandler)
 	mux.HandleFunc("/api/agent/messages", s.agentMessageHandler)
 	mux.HandleFunc("/api/agent/messages/stream", s.agentMessageStreamHandler)
+	mux.HandleFunc("/api/products", s.publicProductListHandler)
+	mux.HandleFunc("/api/products/", s.publicProductItemHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
 	mux.HandleFunc("/api/tasks", s.taskCollectionHandler)
@@ -600,6 +703,11 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/mcps/", s.mcpItemHandler)
 	mux.HandleFunc("/api/control/agents", s.agentListHandler)
 	mux.HandleFunc("/api/control/agents/", s.agentItemHandler)
+	mux.HandleFunc("/api/control/products", s.productListHandler)
+	mux.HandleFunc("/api/control/products/generate", s.productDraftGenerateHandler)
+	mux.HandleFunc("/api/control/products/drafts", s.productDraftListHandler)
+	mux.HandleFunc("/api/control/products/drafts/", s.productDraftItemHandler)
+	mux.HandleFunc("/api/control/products/", s.productItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
 	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
@@ -928,6 +1036,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	if intent.Type == orchdomain.IntentTypeNL {
 		result = attachComplexityMetadata(result, assessment, nil)
 	}
+	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if err != nil {
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
@@ -1054,6 +1163,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		if intent.Type == orchdomain.IntentTypeNL {
 			result = attachComplexityMetadata(result, assessment, nil)
 		}
+		result = attachProductRouteResultMetadata(result, msg.Metadata)
 		if handleErr != nil {
 			s.logWebMessageFailure(msg, handleErr)
 			_ = writeSSE(w, "error", streamErrorResponse{
@@ -1197,6 +1307,7 @@ func (s *Server) agentMessageHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.countGateway(string(msg.ChannelType))
 	result, err := s.orchestrator.Handle(r.Context(), msg)
+	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if err != nil {
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
@@ -1273,6 +1384,7 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 		flusher.Flush()
 		return nil
 	})
+	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if handleErr != nil {
 		s.logWebMessageFailure(msg, handleErr)
 		_ = writeSSE(w, "error", streamErrorResponse{
@@ -2946,6 +3058,586 @@ func (s *Server) agentItemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func buildProductFromRequest(id string, req productUpsertRequest) productdomain.Product {
+	workers := make([]productdomain.WorkerAgent, 0, len(req.WorkerAgents))
+	for _, item := range req.WorkerAgents {
+		enabled := true
+		if item.Enabled != nil {
+			enabled = *item.Enabled
+		}
+		workers = append(workers, productdomain.WorkerAgent{
+			AgentID:        strings.TrimSpace(item.AgentID),
+			Role:           strings.TrimSpace(item.Role),
+			Responsibility: strings.TrimSpace(item.Responsibility),
+			Capabilities:   item.Capabilities,
+			Enabled:        enabled,
+		})
+	}
+	return productdomain.Product{
+		ID:               strings.TrimSpace(id),
+		Name:             strings.TrimSpace(req.Name),
+		Slug:             strings.TrimSpace(req.Slug),
+		Summary:          strings.TrimSpace(req.Summary),
+		Status:           productdomain.Status(strings.ToLower(strings.TrimSpace(req.Status))),
+		Visibility:       productdomain.Visibility(strings.ToLower(strings.TrimSpace(req.Visibility))),
+		MasterAgentID:    strings.TrimSpace(req.MasterAgentID),
+		EntryRoute:       strings.TrimSpace(req.EntryRoute),
+		Tags:             req.Tags,
+		ArtifactTypes:    req.ArtifactTypes,
+		KnowledgeSources: req.KnowledgeSources,
+		WorkerAgents:     workers,
+	}
+}
+
+func buildProductExecutionContext(product productdomain.Product) execdomain.ProductContext {
+	workers := make([]execdomain.ProductWorkerAgentSpec, 0, len(product.WorkerAgents))
+	for _, worker := range product.WorkerAgents {
+		workers = append(workers, execdomain.ProductWorkerAgentSpec{
+			AgentID:        strings.TrimSpace(worker.AgentID),
+			Role:           strings.TrimSpace(worker.Role),
+			Responsibility: strings.TrimSpace(worker.Responsibility),
+			Capabilities:   append([]string(nil), worker.Capabilities...),
+			Enabled:        worker.Enabled,
+		})
+	}
+	return execdomain.ProductContext{
+		Protocol:         execdomain.ProductContextProtocolVersion,
+		ProductID:        strings.TrimSpace(product.ID),
+		Name:             strings.TrimSpace(product.Name),
+		Slug:             strings.TrimSpace(product.Slug),
+		Summary:          strings.TrimSpace(product.Summary),
+		Status:           strings.TrimSpace(string(product.Status)),
+		Visibility:       strings.TrimSpace(string(product.Visibility)),
+		OwnerType:        strings.TrimSpace(string(product.OwnerType)),
+		MasterAgentID:    strings.TrimSpace(product.MasterAgentID),
+		EntryRoute:       strings.TrimSpace(product.EntryRoute),
+		Tags:             append([]string(nil), product.Tags...),
+		ArtifactTypes:    append([]string(nil), product.ArtifactTypes...),
+		KnowledgeSources: append([]string(nil), product.KnowledgeSources...),
+		WorkerAgents:     workers,
+	}
+}
+
+func (s *Server) publicProductListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.products == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.products.ListPublicProducts()})
+}
+
+func (s *Server) publicProductItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.products == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
+		return
+	}
+	parts, ok := productPublicResourceParts(r.URL.Path)
+	if !ok || len(parts) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		return
+	}
+	productID := strings.TrimSpace(parts[0])
+	switch {
+	case len(parts) == 1:
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		item, found := s.products.ResolveProduct(productID)
+		if !found || item.Status != productdomain.StatusActive || item.Visibility != productdomain.VisibilityPublic {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+		return
+	case len(parts) >= 2 && parts[1] == "messages":
+		switch len(parts) {
+		case 2:
+			s.productMessageHandler(w, r, productID)
+		case 3:
+			if parts[2] != "stream" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product action"})
+				return
+			}
+			s.productMessageStreamHandler(w, r, productID)
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		}
+		return
+	case strings.EqualFold(productID, productdomain.TravelProductID) && len(parts) >= 2 && parts[1] == "guides":
+		switch len(parts) {
+		case 2:
+			s.travelGuideCollectionHandler(w, r)
+		case 3:
+			s.travelGuideItemHandler(w, r, parts[2])
+		case 4:
+			if parts[3] != "revise" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid travel guide action"})
+				return
+			}
+			s.travelGuideReviseHandler(w, r, parts[2])
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		}
+		return
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		return
+	}
+}
+
+func (s *Server) productMessageHandler(w http.ResponseWriter, r *http.Request, productID string) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	msg, _, statusCode, err := s.prepareProductMessage(r, productID)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+
+	s.countGateway(string(msg.ChannelType))
+	assessment := s.assessComplexity(msg)
+	msg = enrichMessageWithComplexityMetadata(msg, assessment)
+	if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
+		taskCard := buildTaskCard(msg, assessment, task)
+		if submitErr != nil {
+			s.logWebMessageFailure(msg, submitErr)
+			writeJSON(w, http.StatusInternalServerError, messageResponse{
+				Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+				ExecutionMode:            assessment.ExecutionMode,
+				EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+				ComplexityLevel:          assessment.ComplexityLevel,
+				TaskCard:                 taskCard,
+				Error:                    submitErr.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, messageResponse{
+			Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+			TaskID:                   task.ID,
+			TaskStatus:               string(task.Status),
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
+			TaskCard:                 taskCard,
+		})
+		return
+	}
+
+	result, err := s.orchestrator.Handle(r.Context(), msg)
+	result = attachComplexityMetadata(result, assessment, nil)
+	result = attachProductRouteResultMetadata(result, msg.Metadata)
+	if err != nil {
+		statusCode := http.StatusBadRequest
+		switch result.ErrorCode {
+		case "command_failed", "nl_execution_failed":
+			statusCode = http.StatusInternalServerError
+		case "queue_timeout":
+			statusCode = http.StatusGatewayTimeout
+		case "rate_limited":
+			statusCode = http.StatusTooManyRequests
+		case "queue_canceled":
+			statusCode = http.StatusRequestTimeout
+		}
+		s.logWebMessageFailure(msg, err)
+		writeJSON(w, statusCode, messageResponse{
+			Result:                   result,
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
+			Error:                    err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, messageResponse{
+		Result:                   result,
+		ExecutionMode:            assessment.ExecutionMode,
+		EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+		ComplexityLevel:          assessment.ComplexityLevel,
+	})
+}
+
+func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Request, productID string) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	msg, _, statusCode, err := s.prepareProductMessage(r, productID)
+	if err != nil {
+		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	s.countGateway(string(msg.ChannelType))
+	if err := writeSSE(w, "start", streamStartResponse{
+		MessageID: msg.MessageID,
+		SessionID: msg.SessionID,
+		ChannelID: msg.ChannelID,
+		TraceID:   msg.TraceID,
+	}); err != nil {
+		return
+	}
+	flusher.Flush()
+
+	assessment := s.defaultComplexityAssessment()
+	streamCtx, cancelStream := context.WithCancel(r.Context())
+	defer cancelStream()
+
+	streamResultCh := make(chan streamExecutionResult, 1)
+	streamDeltaCh := make(chan string, 16)
+	_, nativeStreaming := s.orchestrator.(StreamOrchestrator)
+	go func() {
+		result, handleErr := s.handleStreamMessage(streamCtx, msg, func(delta string) error {
+			if strings.TrimSpace(delta) == "" {
+				return nil
+			}
+			select {
+			case <-streamCtx.Done():
+				return streamCtx.Err()
+			case streamDeltaCh <- delta:
+				return nil
+			}
+		})
+		streamResultCh <- streamExecutionResult{result: result, err: handleErr}
+	}()
+
+	assessmentReady := false
+	assessmentCh := (<-chan taskapp.ComplexityAssessment)(nil)
+	cancelAssessment := func() {}
+	if s.tasks != nil {
+		assessmentCtx, cancel := context.WithCancel(r.Context())
+		cancelAssessment = cancel
+		defer cancelAssessment()
+		localAssessmentCh := make(chan taskapp.ComplexityAssessment, 1)
+		assessmentCh = localAssessmentCh
+		go func() {
+			localAssessmentCh <- s.assessComplexityWithContext(assessmentCtx, msg)
+		}()
+	}
+
+	emittedDelta := false
+	writeDelta := func(delta string, route shareddomain.Route) error {
+		if strings.TrimSpace(delta) == "" {
+			return nil
+		}
+		payload := streamDeltaResponse{Delta: delta}
+		if strings.TrimSpace(string(route)) != "" {
+			payload.Route = route
+		}
+		if err := writeSSE(w, "delta", payload); err != nil {
+			return err
+		}
+		emittedDelta = true
+		flusher.Flush()
+		return nil
+	}
+	finalizeStreamResult := func(streamResult streamExecutionResult) {
+		cancelAssessment()
+		result := attachComplexityMetadata(streamResult.result, assessment, nil)
+		result = attachProductRouteResultMetadata(result, msg.Metadata)
+		handleErr := streamResult.err
+		_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+		if handleErr != nil {
+			s.logWebMessageFailure(msg, handleErr)
+			_ = writeSSE(w, "error", streamErrorResponse{
+				Error:  handleErr.Error(),
+				Result: result,
+			})
+			flusher.Flush()
+			return
+		}
+
+		if !nativeStreaming {
+			for _, chunk := range chunkText(result.Output, 24) {
+				if err := writeDelta(chunk, result.Route); err != nil {
+					return
+				}
+			}
+		}
+
+		_ = writeSSE(w, "done", streamDoneResponse{
+			Result:                   result,
+			ExecutionMode:            assessment.ExecutionMode,
+			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+			ComplexityLevel:          assessment.ComplexityLevel,
+		})
+		flusher.Flush()
+	}
+
+	for {
+		select {
+		case delta := <-streamDeltaCh:
+			if err := writeDelta(delta, ""); err != nil {
+				return
+			}
+		case assessment = <-assessmentCh:
+			assessmentReady = true
+			if strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) != taskapp.ExecutionModeAsync {
+				continue
+			}
+			_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+			select {
+			case streamResult := <-streamResultCh:
+				assessment = s.defaultComplexityAssessment()
+				assessmentReady = false
+				finalizeStreamResult(streamResult)
+				return
+			default:
+			}
+
+			cancelStream()
+			taskMsg := enrichMessageWithComplexityMetadata(msg, assessment)
+			task, accepted, submitErr := s.submitAsyncTask(taskMsg, assessment)
+			taskCard := buildTaskCard(taskMsg, assessment, task)
+			result := asyncAcceptedResult(taskMsg, task, assessment, taskCard)
+			if submitErr != nil {
+				s.logWebMessageFailure(taskMsg, submitErr)
+				_ = writeSSE(w, "error", streamErrorResponse{
+					Error:  submitErr.Error(),
+					Result: result,
+				})
+				flusher.Flush()
+				return
+			}
+			if accepted {
+				output := result.Output
+				if emittedDelta && strings.TrimSpace(output) != "" {
+					output = "\n\n" + output
+				}
+				for _, chunk := range chunkText(output, 24) {
+					if err := writeDelta(chunk, ""); err != nil {
+						return
+					}
+				}
+				_ = writeSSE(w, "done", streamDoneResponse{
+					Result:                   result,
+					TaskID:                   task.ID,
+					TaskStatus:               string(task.Status),
+					ExecutionMode:            assessment.ExecutionMode,
+					EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+					ComplexityLevel:          assessment.ComplexityLevel,
+					TaskCard:                 taskCard,
+				})
+				flusher.Flush()
+				return
+			}
+		case streamResult := <-streamResultCh:
+			if !assessmentReady {
+				cancelAssessment()
+			}
+			finalizeStreamResult(streamResult)
+			return
+		}
+	}
+}
+
+func (s *Server) travelGuideCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.travelGuides == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "travel guide service unavailable"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	defer r.Body.Close()
+	var req travelGuideCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+	guide, err := s.travelGuides.CreateGuide(buildTravelGuideCreateInput(req))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, guide)
+}
+
+func (s *Server) travelGuideItemHandler(w http.ResponseWriter, r *http.Request, guideID string) {
+	if s.travelGuides == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "travel guide service unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	guide, found := s.travelGuides.GetGuide(guideID)
+	if !found {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "travel guide not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, guide)
+}
+
+func (s *Server) travelGuideReviseHandler(w http.ResponseWriter, r *http.Request, guideID string) {
+	if s.travelGuides == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "travel guide service unavailable"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	defer r.Body.Close()
+	var req travelGuideReviseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+	guide, err := s.travelGuides.ReviseGuide(guideID, buildTravelGuideReviseInput(req))
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			status = http.StatusNotFound
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, guide)
+}
+
+func buildTravelGuideCreateInput(req travelGuideCreateRequest) productdomain.TravelGuideCreateInput {
+	return productdomain.TravelGuideCreateInput{
+		City:                   strings.TrimSpace(req.City),
+		Days:                   req.Days,
+		TravelStyle:            strings.TrimSpace(req.TravelStyle),
+		Budget:                 strings.TrimSpace(req.Budget),
+		Companions:             req.Companions,
+		MustVisit:              req.MustVisit,
+		Avoid:                  req.Avoid,
+		AdditionalRequirements: req.AdditionalRequirements,
+	}
+}
+
+func buildTravelGuideReviseInput(req travelGuideReviseRequest) productdomain.TravelGuideReviseInput {
+	return productdomain.TravelGuideReviseInput{
+		Days:                   req.Days,
+		TravelStyle:            strings.TrimSpace(req.TravelStyle),
+		Budget:                 strings.TrimSpace(req.Budget),
+		Companions:             req.Companions,
+		MustVisit:              req.MustVisit,
+		Avoid:                  req.Avoid,
+		AdditionalRequirements: req.AdditionalRequirements,
+		KeepConditions:         req.KeepConditions,
+		ReplaceConditions:      req.ReplaceConditions,
+	}
+}
+func (s *Server) productListHandler(w http.ResponseWriter, r *http.Request) {
+	if s.products == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{"items": s.products.ListProducts()})
+	case http.MethodPost:
+		defer r.Body.Close()
+		var req productUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		created, err := s.products.CreateProduct(buildProductFromRequest("", req))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusCreated, created)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) productItemHandler(w http.ResponseWriter, r *http.Request) {
+	parts, ok := productControlResourceParts(r.URL.Path)
+	if !ok || len(parts) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		return
+	}
+	if len(parts) == 1 {
+		switch parts[0] {
+		case "generate":
+			s.productDraftGenerateHandler(w, r)
+			return
+		case "drafts":
+			s.productDraftListHandler(w, r)
+			return
+		}
+	}
+	if parts[0] == "drafts" {
+		s.productDraftItemHandler(w, r)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "matrix" && parts[2] == "generate" {
+		s.productMatrixGenerateHandler(w, r, parts[0])
+		return
+	}
+	if s.products == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
+		return
+	}
+	productID := parts[0]
+	switch r.Method {
+	case http.MethodGet:
+		item, found := s.products.ResolveProduct(productID)
+		if !found {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+	case http.MethodPut:
+		if s.products.IsBuiltinID(productID) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "builtin products are managed by the service and cannot be overwritten"})
+			return
+		}
+		defer r.Body.Close()
+		var req productUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		saved, err := s.products.SaveProduct(productID, buildProductFromRequest(productID, req))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, saved)
+	case http.MethodDelete:
+		if s.products.IsBuiltinID(productID) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "builtin products are managed by the service and cannot be deleted"})
+			return
+		}
+		if !s.products.DeleteProduct(productID) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
 func (s *Server) nextManagedAgentID(name string) (string, error) {
 	base := agentIDBase(name)
 	if base == "" {
@@ -3244,6 +3936,27 @@ func resourceID(path, prefix string) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+func productPublicResourceParts(path string) ([]string, bool) {
+	const prefix = "/api/products/"
+	if !strings.HasPrefix(path, prefix) {
+		return nil, false
+	}
+	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if trimmed == "" {
+		return nil, false
+	}
+	parts := strings.Split(trimmed, "/")
+	cleaned := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmedPart := strings.TrimSpace(part)
+		if trimmedPart == "" {
+			return nil, false
+		}
+		cleaned = append(cleaned, trimmedPart)
+	}
+	return cleaned, true
 }
 
 func cronJobResourceID(path string) (string, string, bool) {
@@ -4008,7 +4721,65 @@ func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessa
 		return shareddomain.UnifiedMessage{}, "", statusCode, err
 	}
 	msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
+	msg, err = s.applyMainAgentProductRouting(msg, agent.ID)
+	if err != nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusInternalServerError, err
+	}
 	return msg, agent.ID, http.StatusOK, nil
+}
+
+func (s *Server) prepareProductMessage(r *http.Request, productID string) (shareddomain.UnifiedMessage, string, int, error) {
+	defer r.Body.Close()
+
+	var req productMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("invalid json body")
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("content is required")
+	}
+	if s.products == nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusServiceUnavailable, errors.New("product service unavailable")
+	}
+	if s.agents == nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusServiceUnavailable, errors.New("agent catalog unavailable")
+	}
+
+	product, ok := s.products.ResolveProduct(productID)
+	if !ok || product.Status != productdomain.StatusActive || product.Visibility != productdomain.VisibilityPublic {
+		return shareddomain.UnifiedMessage{}, "", http.StatusNotFound, errors.New("product not found")
+	}
+	masterAgentID := strings.TrimSpace(product.MasterAgentID)
+	if masterAgentID == "" {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("product master agent is not configured")
+	}
+	agent, ok := s.agents.ResolveAgent(masterAgentID)
+	if !ok {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("product master agent not found")
+	}
+	if !agent.Enabled {
+		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("product master agent is disabled")
+	}
+
+	msgReq := messageRequest{
+		SessionID:     req.SessionID,
+		UserID:        req.UserID,
+		ChannelID:     req.ChannelID,
+		CorrelationID: req.CorrelationID,
+		Content:       req.Content,
+		Metadata:      cloneStringMap(req.Metadata),
+	}
+	msg, statusCode, err := s.prepareMessageFromRequest(msgReq)
+	if err != nil {
+		return shareddomain.UnifiedMessage{}, "", statusCode, err
+	}
+	msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
+	rawProductContext, err := json.Marshal(buildProductExecutionContext(product))
+	if err != nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusInternalServerError, fmt.Errorf("encode product context: %w", err)
+	}
+	msg.Metadata[execdomain.ProductContextMetadataKey] = string(rawProductContext)
+	return msg, product.ID, http.StatusOK, nil
 }
 
 func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.UnifiedMessage, int, error) {

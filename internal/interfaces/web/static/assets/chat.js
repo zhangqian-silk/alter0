@@ -137,6 +137,7 @@ const I18N = {
     "nav.agent_runtime": "Agent",
     "nav.control": "Control",
     "nav.agent": "Profiles",
+    "nav.products": "Products",
     "nav.settings": "Settings",
     "nav.channels": "Channels",
     "nav.sessions": "Sessions",
@@ -309,6 +310,70 @@ const I18N = {
     "route.agent.delete_failed": "Delete Agent failed: {error}",
     "route.agent.saved": "Agent saved.",
     "route.agent.deleted": "Agent deleted.",
+    "route.products.title": "Products",
+    "route.products.subtitle": "Manage product definitions, master agents, and worker-agent matrices",
+    "route.products.empty": "No Products available.",
+    "route.products.create": "Create Product",
+    "route.products.edit": "Edit Product",
+    "route.products.form.new": "Unsaved Product",
+    "route.products.form.id": "Product ID",
+    "route.products.form.version": "Version",
+    "route.products.form.owner": "Owner Type",
+    "route.products.form.name": "Product Name",
+    "route.products.form.slug": "Slug",
+    "route.products.form.summary": "Summary",
+    "route.products.form.status": "Status",
+    "route.products.form.visibility": "Visibility",
+    "route.products.form.master": "Master Agent",
+    "route.products.form.entry_route": "Entry Route",
+    "route.products.form.tags": "Tags",
+    "route.products.form.artifacts": "Artifact Types",
+    "route.products.form.knowledge": "Knowledge Sources",
+    "route.products.form.worker_agents": "Worker Agents",
+    "route.products.form.managed": "Service-managed Fields",
+    "route.products.form.save": "Save Product",
+    "route.products.form.delete": "Delete Product",
+    "route.products.form.cancel": "Reset",
+    "route.products.form.builtin_notice": "Built-in Products are managed by the service and are read-only here.",
+    "route.products.saved": "Product saved.",
+    "route.products.deleted": "Product deleted.",
+    "route.products.save_failed": "Save Product failed: {error}",
+    "route.products.delete_failed": "Delete Product failed: {error}",
+    "route.products.drafts.title": "Draft Studio",
+    "route.products.drafts.subtitle": "Generate product drafts and publish reviewed matrices",
+    "route.products.drafts.empty": "No product drafts yet.",
+    "route.products.drafts.generated": "Product draft generated.",
+    "route.products.drafts.published": "Product draft published.",
+    "route.products.drafts.review_saved": "Product draft saved.",
+    "route.products.drafts.generate_failed": "Generate draft failed: {error}",
+    "route.products.drafts.publish_failed": "Publish draft failed: {error}",
+    "route.products.drafts.review_failed": "Save draft failed: {error}",
+    "route.products.drafts.form.name": "Draft Name",
+    "route.products.drafts.form.goal": "Goal",
+    "route.products.drafts.form.target_users": "Target Users",
+    "route.products.drafts.form.core": "Core Capabilities",
+    "route.products.drafts.form.constraints": "Constraints",
+    "route.products.drafts.form.artifacts": "Expected Artifacts",
+    "route.products.drafts.form.integrations": "Integrations",
+    "route.products.drafts.form.mode": "Mode",
+    "route.products.drafts.form.generate": "Generate Draft",
+    "route.products.drafts.form.save": "Save Draft",
+    "route.products.drafts.form.publish": "Publish Draft",
+    "route.products.drafts.form.editor": "Draft JSON",
+    "route.products.drafts.form.editor_hint": "Review and adjust the draft JSON before publish.",
+    "route.products.drafts.form.expand_disabled": "Expand mode requires a selected managed Product.",
+    "route.products.drafts.form.mode.bootstrap": "Bootstrap",
+    "route.products.drafts.form.mode.expand": "Expand Selected Product",
+    "route.products.drafts.detail.master": "Master Agent",
+    "route.products.drafts.detail.workers": "Worker Matrix",
+    "route.products.drafts.detail.conflicts": "Conflict Suggestions",
+    "route.products.drafts.detail.review": "Review Status",
+    "route.products.drafts.detail.empty": "Select a draft to review, edit, and publish.",
+    "route.products.drafts.detail.generated": "Generated At",
+    "route.products.drafts.detail.updated": "Updated At",
+    "route.products.drafts.detail.mode": "Generation Mode",
+    "route.products.drafts.detail.product": "Product Draft",
+    "route.products.drafts.detail.published": "Published Product",
     "chat.runtime.target": "Conversation Target",
     "chat.runtime.agent": "Agent",
     "chat.runtime.agent_pick": "Choose Agent",
@@ -603,6 +668,7 @@ const I18N = {
     "nav.agent_runtime": "Agent",
     "nav.control": "控制台",
     "nav.agent": "配置",
+    "nav.products": "产品",
     "nav.settings": "设置",
     "nav.channels": "通道",
     "nav.sessions": "会话列表",
@@ -775,6 +841,70 @@ const I18N = {
     "route.agent.delete_failed": "删除 Agent 失败：{error}",
     "route.agent.saved": "Agent 已保存。",
     "route.agent.deleted": "Agent 已删除。",
+    "route.products.title": "Products",
+    "route.products.subtitle": "管理 Product 定义、总 Agent 与子 Agent 矩阵",
+    "route.products.empty": "暂无 Product。",
+    "route.products.create": "创建 Product",
+    "route.products.edit": "编辑 Product",
+    "route.products.form.new": "未保存 Product",
+    "route.products.form.id": "Product ID",
+    "route.products.form.version": "版本",
+    "route.products.form.owner": "归属类型",
+    "route.products.form.name": "Product 名称",
+    "route.products.form.slug": "Slug",
+    "route.products.form.summary": "摘要",
+    "route.products.form.status": "状态",
+    "route.products.form.visibility": "可见性",
+    "route.products.form.master": "总 Agent",
+    "route.products.form.entry_route": "入口路由",
+    "route.products.form.tags": "标签",
+    "route.products.form.artifacts": "产物类型",
+    "route.products.form.knowledge": "知识源",
+    "route.products.form.worker_agents": "子 Agent",
+    "route.products.form.managed": "服务端维护字段",
+    "route.products.form.save": "保存 Product",
+    "route.products.form.delete": "删除 Product",
+    "route.products.form.cancel": "重置",
+    "route.products.form.builtin_notice": "内置 Product 由服务维护，此处只读。",
+    "route.products.saved": "Product 已保存。",
+    "route.products.deleted": "Product 已删除。",
+    "route.products.save_failed": "保存 Product 失败：{error}",
+    "route.products.delete_failed": "删除 Product 失败：{error}",
+    "route.products.drafts.title": "Draft Studio",
+    "route.products.drafts.subtitle": "生成 Product 草稿并发布审核后的矩阵",
+    "route.products.drafts.empty": "暂无 Product 草稿。",
+    "route.products.drafts.generated": "Product 草稿已生成。",
+    "route.products.drafts.published": "Product 草稿已发布。",
+    "route.products.drafts.review_saved": "Product 草稿已保存。",
+    "route.products.drafts.generate_failed": "生成 Product 草稿失败：{error}",
+    "route.products.drafts.publish_failed": "发布 Product 草稿失败：{error}",
+    "route.products.drafts.review_failed": "保存 Product 草稿失败：{error}",
+    "route.products.drafts.form.name": "草稿名称",
+    "route.products.drafts.form.goal": "目标",
+    "route.products.drafts.form.target_users": "目标用户",
+    "route.products.drafts.form.core": "核心能力",
+    "route.products.drafts.form.constraints": "约束",
+    "route.products.drafts.form.artifacts": "预期产物",
+    "route.products.drafts.form.integrations": "集成要求",
+    "route.products.drafts.form.mode": "模式",
+    "route.products.drafts.form.generate": "生成草稿",
+    "route.products.drafts.form.save": "保存草稿",
+    "route.products.drafts.form.publish": "发布草稿",
+    "route.products.drafts.form.editor": "草稿 JSON",
+    "route.products.drafts.form.editor_hint": "发布前可直接审核并调整整份草稿 JSON。",
+    "route.products.drafts.form.expand_disabled": "扩展模式需要先选中一个可编辑的 Product。",
+    "route.products.drafts.form.mode.bootstrap": "新建矩阵",
+    "route.products.drafts.form.mode.expand": "扩展当前 Product",
+    "route.products.drafts.detail.master": "总 Agent",
+    "route.products.drafts.detail.workers": "子 Agent 矩阵",
+    "route.products.drafts.detail.conflicts": "冲突建议",
+    "route.products.drafts.detail.review": "审核状态",
+    "route.products.drafts.detail.empty": "选择一个草稿后，可在这里审核、编辑并发布。",
+    "route.products.drafts.detail.generated": "生成时间",
+    "route.products.drafts.detail.updated": "更新时间",
+    "route.products.drafts.detail.mode": "生成模式",
+    "route.products.drafts.detail.product": "Product 草稿",
+    "route.products.drafts.detail.published": "已发布 Product",
     "chat.runtime.target": "会话目标",
     "chat.runtime.agent": "Agent",
     "chat.runtime.agent_pick": "选择 Agent",
@@ -1074,6 +1204,11 @@ const ROUTES = {
     mode: "page",
     loader: loadAgentView
   },
+  products: {
+    key: "products",
+    mode: "page",
+    loader: loadProductsView
+  },
   channels: {
     key: "channels",
     mode: "page",
@@ -1155,6 +1290,10 @@ const state = {
   agentRouteState: {
     selectedAgentID: "",
     activeSessionByAgent: {}
+  },
+  productRouteState: {
+    selectedProductID: "",
+    selectedDraftID: ""
   },
   sessionRouteFilters: {
     triggerType: "",
@@ -4732,6 +4871,208 @@ async function loadMCPView(container) {
   );
 }
 
+function normalizeProductRouteState(routeState = {}) {
+  return {
+    selectedProductID: String(routeState?.selectedProductID || "").trim(),
+    selectedDraftID: String(routeState?.selectedDraftID || "").trim()
+  };
+}
+
+function normalizeProductBuilderDraft(product = {}) {
+  return {
+    id: String(product?.id || "").trim(),
+    name: String(product?.name || "").trim(),
+    slug: String(product?.slug || "").trim(),
+    summary: String(product?.summary || "").trim(),
+    status: String(product?.status || "draft").trim() || "draft",
+    visibility: String(product?.visibility || "private").trim() || "private",
+    owner_type: String(product?.owner_type || "managed").trim() || "managed",
+    version: String(product?.version || "").trim(),
+    master_agent_id: String(product?.master_agent_id || "").trim(),
+    entry_route: String(product?.entry_route || "products").trim() || "products",
+    tags: Array.isArray(product?.tags) ? product.tags.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    artifact_types: Array.isArray(product?.artifact_types) ? product.artifact_types.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    knowledge_sources: Array.isArray(product?.knowledge_sources) ? product.knowledge_sources.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    worker_agents: Array.isArray(product?.worker_agents) ? product.worker_agents.map((item) => ({
+      agent_id: String(item?.agent_id || "").trim(),
+      role: String(item?.role || "").trim(),
+      responsibility: String(item?.responsibility || "").trim(),
+      capabilities: Array.isArray(item?.capabilities) ? item.capabilities.map((cap) => String(cap || "").trim()).filter(Boolean) : [],
+      enabled: item?.enabled !== false
+    })).filter((item) => item.agent_id) : []
+  };
+}
+
+function normalizeProductDraftAgent(agent = {}) {
+  return {
+    agent_id: String(agent?.agent_id || "").trim(),
+    name: String(agent?.name || "").trim(),
+    description: String(agent?.description || "").trim(),
+    system_prompt: String(agent?.system_prompt || "").trim(),
+    max_iterations: Number.isFinite(Number(agent?.max_iterations)) ? Math.max(0, Number(agent.max_iterations)) : 0,
+    tools: Array.isArray(agent?.tools) ? agent.tools.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    skills: Array.isArray(agent?.skills) ? agent.skills.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    mcps: Array.isArray(agent?.mcps) ? agent.mcps.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    memory_files: Array.isArray(agent?.memory_files) ? agent.memory_files.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    allowed_delegate_targets: Array.isArray(agent?.allowed_delegate_targets) ? agent.allowed_delegate_targets.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    enabled: agent?.enabled !== false,
+    delegatable: agent?.delegatable !== false
+  };
+}
+
+function normalizeProductDraftWorker(worker = {}) {
+  return {
+    agent_id: String(worker?.agent_id || "").trim(),
+    name: String(worker?.name || "").trim(),
+    role: String(worker?.role || "").trim(),
+    responsibility: String(worker?.responsibility || "").trim(),
+    description: String(worker?.description || "").trim(),
+    system_prompt: String(worker?.system_prompt || "").trim(),
+    input_contract: String(worker?.input_contract || "").trim(),
+    output_contract: String(worker?.output_contract || "").trim(),
+    allowed_tools: Array.isArray(worker?.allowed_tools) ? worker.allowed_tools.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    allowed_delegate_targets: Array.isArray(worker?.allowed_delegate_targets) ? worker.allowed_delegate_targets.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    dependencies: Array.isArray(worker?.dependencies) ? worker.dependencies.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    skills: Array.isArray(worker?.skills) ? worker.skills.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    mcps: Array.isArray(worker?.mcps) ? worker.mcps.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    memory_files: Array.isArray(worker?.memory_files) ? worker.memory_files.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    capabilities: Array.isArray(worker?.capabilities) ? worker.capabilities.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    priority: Number.isFinite(Number(worker?.priority)) ? Math.max(0, Number(worker.priority)) : 0,
+    max_iterations: Number.isFinite(Number(worker?.max_iterations)) ? Math.max(0, Number(worker.max_iterations)) : 0,
+    enabled: worker?.enabled !== false
+  };
+}
+
+function normalizeProductStudioDraft(draft = {}) {
+  return {
+    draft_id: String(draft?.draft_id || "").trim(),
+    mode: String(draft?.mode || "bootstrap").trim() || "bootstrap",
+    review_status: String(draft?.review_status || "draft").trim() || "draft",
+    generated_by: String(draft?.generated_by || "").trim(),
+    generated_at: String(draft?.generated_at || "").trim(),
+    updated_at: String(draft?.updated_at || "").trim(),
+    goal: String(draft?.goal || "").trim(),
+    target_users: Array.isArray(draft?.target_users) ? draft.target_users.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    core_capabilities: Array.isArray(draft?.core_capabilities) ? draft.core_capabilities.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    constraints: Array.isArray(draft?.constraints) ? draft.constraints.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    expected_artifacts: Array.isArray(draft?.expected_artifacts) ? draft.expected_artifacts.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    integration_requirements: Array.isArray(draft?.integration_requirements) ? draft.integration_requirements.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    conflict_suggestions: Array.isArray(draft?.conflict_suggestions) ? draft.conflict_suggestions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    published_product_id: String(draft?.published_product_id || "").trim(),
+    product: normalizeProductBuilderDraft(draft?.product || {}),
+    master_agent: normalizeProductDraftAgent(draft?.master_agent || {}),
+    worker_matrix: Array.isArray(draft?.worker_matrix) ? draft.worker_matrix.map((item) => normalizeProductDraftWorker(item)).filter((item) => item.agent_id) : []
+  };
+}
+
+function createProductDraftRequest(mode = "bootstrap") {
+  return {
+    name: "",
+    goal: "",
+    target_users: "",
+    core_capabilities: "",
+    constraints: "",
+    expected_artifacts: "",
+    integration_requirements: "",
+    mode: String(mode || "bootstrap").trim() || "bootstrap"
+  };
+}
+
+function serializeProductWorkerAgents(items) {
+  if (!Array.isArray(items) || !items.length) {
+    return "";
+  }
+  return items.map((item) => {
+    const segments = [String(item?.agent_id || "").trim(), String(item?.role || "").trim(), String(item?.responsibility || "").trim()].filter(Boolean);
+    return segments.join(" | ");
+  }).filter(Boolean).join("\n");
+}
+
+function parseProductWorkerAgentInput(value) {
+  return String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const parts = line.split("|").map((item) => item.trim()).filter(Boolean);
+    return {
+      agent_id: String(parts[0] || "").trim(),
+      role: String(parts[1] || "").trim(),
+      responsibility: String(parts.slice(2).join(" | ") || "").trim(),
+      enabled: true
+    };
+  }).filter((item) => item.agent_id);
+}
+
+function renderProductBuilderCards(items, selectedProductID) {
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.products.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const productID = String(item?.id || "").trim();
+    const productName = String(item?.name || productID || "").trim() || productID;
+    const activeClassName = productID === selectedProductID ? " is-active" : "";
+    const tags = [normalizeText(item?.owner_type), normalizeText(item?.status), `${Number(item?.worker_agents?.length || 0)} agents`].filter((tag) => tag !== "-");
+    return `<button class="agent-route-card${activeClassName}" type="button" data-product-select="${escapeHTML(productID)}">
+      <div class="agent-route-card-head">
+        <div class="agent-route-card-copy">
+          <h4>${escapeHTML(productName)}</h4>
+          <span title="${escapeHTML(productID)}">${escapeHTML(productID)}</span>
+        </div>
+        <span class="agent-route-state ${(String(item?.status || "").trim() === "active") ? "is-enabled" : "is-disabled"}">${escapeHTML(normalizeText(item?.status || "draft"))}</span>
+      </div>
+      <p class="agent-route-card-prompt">${escapeHTML(String(item?.summary || "").trim() || t("route.products.empty"))}</p>
+      <div class="agent-route-card-tags">${tags.length ? tags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
+    </button>`;
+  }).join("");
+}
+
+function renderProductDraftCards(items, selectedDraftID) {
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.products.drafts.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const draftID = String(item?.draft_id || "").trim();
+    const productName = String(item?.product?.name || item?.product?.id || draftID || "").trim() || draftID;
+    const reviewStatus = String(item?.review_status || "draft").trim() || "draft";
+    const activeClassName = draftID === selectedDraftID ? " is-active" : "";
+    const tags = [normalizeText(item?.mode), normalizeText(reviewStatus), normalizeText(item?.product?.id), `${Number(item?.worker_matrix?.length || 0)} workers`].filter((tag) => tag !== "-");
+    return `<button class="agent-route-card${activeClassName}" type="button" data-product-draft-select="${escapeHTML(draftID)}">
+      <div class="agent-route-card-head">
+        <div class="agent-route-card-copy">
+          <strong title="${escapeHTML(productName)}">${escapeHTML(productName)}</strong>
+          <span title="${escapeHTML(draftID)}">${escapeHTML(draftID)}</span>
+        </div>
+        <span class="agent-route-state ${(reviewStatus === "published" || reviewStatus === "reviewed") ? "is-enabled" : "is-disabled"}">${escapeHTML(normalizeText(reviewStatus))}</span>
+      </div>
+      <p class="agent-route-card-prompt">${escapeHTML(String(item?.goal || item?.product?.summary || "").trim() || t("route.products.drafts.empty"))}</p>
+      <div class="agent-route-card-tags">${tags.length ? tags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
+    </button>`;
+  }).join("");
+}
+
+function renderProductDraftWorkerCards(items) {
+  if (!items.length) {
+    return `<p class="route-empty">${t("route.products.drafts.empty")}</p>`;
+  }
+  return items.map((item) => {
+    const workerName = String(item?.name || item?.agent_id || "").trim() || String(item?.agent_id || "").trim();
+    const tags = [normalizeText(item?.role), `${Number(item?.allowed_tools?.length || 0)} tools`, `${Number(item?.dependencies?.length || 0)} deps`].filter((tag) => tag !== "-");
+    const prompt = [
+      String(item?.responsibility || "").trim(),
+      String(item?.input_contract || "").trim(),
+      String(item?.output_contract || "").trim()
+    ].filter(Boolean).join(" | ");
+    return `<article class="agent-route-card">
+      <div class="agent-route-card-head">
+        <div class="agent-route-card-copy">
+          <strong title="${escapeHTML(workerName)}">${escapeHTML(workerName)}</strong>
+          <span title="${escapeHTML(String(item?.agent_id || "").trim())}">${escapeHTML(String(item?.agent_id || "").trim())}</span>
+        </div>
+        <span class="agent-route-state ${item?.enabled !== false ? "is-enabled" : "is-disabled"}">${escapeHTML(item?.enabled !== false ? t("status.enabled") : t("status.disabled"))}</span>
+      </div>
+      <p class="agent-route-card-prompt">${escapeHTML(prompt || String(item?.description || "").trim() || "-")}</p>
+      <div class="agent-route-card-tags">${tags.length ? tags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
+    </article>`;
+  }).join("");
+}
 function normalizeAgentRouteState(routeState = {}) {
   return {
     selectedAgentID: String(routeState?.selectedAgentID || "").trim(),
@@ -4806,6 +5147,539 @@ function renderAgentOptionList(items, selectedValues, fieldName) {
   }).join("");
 }
 
+async function loadProductsView(container) {
+  const localState = {
+    routeState: normalizeProductRouteState(state.productRouteState),
+    products: [],
+    drafts: [],
+    draft: normalizeProductBuilderDraft(),
+    draftRequest: createProductDraftRequest(),
+    selectedDraft: normalizeProductStudioDraft(),
+    draftEditorText: "",
+    statusMessage: "",
+    statusKind: "",
+    loading: true
+  };
+
+  const persistRouteState = () => {
+    state.productRouteState = {
+      selectedProductID: localState.routeState.selectedProductID,
+      selectedDraftID: localState.routeState.selectedDraftID
+    };
+  };
+
+  const requestJSON = async (path, options = {}) => {
+    const headers = new Headers(options.headers || {});
+    if (options.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const response = await fetch(path, {
+      method: options.method || "GET",
+      headers,
+      body: options.body
+    });
+    const payload = await safeReadJSON(response);
+    if (!response.ok) {
+      throw new Error(typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`);
+    }
+    return payload;
+  };
+
+  const findSelectedProduct = () => {
+    return localState.products.find((item) => String(item?.id || "").trim() === localState.routeState.selectedProductID) || null;
+  };
+
+  const findSelectedDraft = () => {
+    return localState.drafts.find((item) => String(item?.draft_id || "").trim() === localState.routeState.selectedDraftID) || null;
+  };
+
+  const syncDraftFromSelection = () => {
+    localState.draft = normalizeProductBuilderDraft(findSelectedProduct() || {});
+  };
+
+  const syncSelectedDraft = (draft = null) => {
+    const selected = normalizeProductStudioDraft(draft || findSelectedDraft() || {});
+    localState.selectedDraft = selected;
+    localState.routeState.selectedDraftID = selected.draft_id;
+    localState.draftEditorText = selected.draft_id ? JSON.stringify(selected, null, 2) : "";
+  };
+
+  const syncDraftRequest = (form) => {
+    if (!form) {
+      return;
+    }
+    const formData = new FormData(form);
+    localState.draftRequest = {
+      name: String(formData.get("name") || "").trim(),
+      goal: String(formData.get("goal") || "").trim(),
+      target_users: String(formData.get("target_users") || "").trim(),
+      core_capabilities: String(formData.get("core_capabilities") || "").trim(),
+      constraints: String(formData.get("constraints") || "").trim(),
+      expected_artifacts: String(formData.get("expected_artifacts") || "").trim(),
+      integration_requirements: String(formData.get("integration_requirements") || "").trim(),
+      mode: String(formData.get("mode") || "bootstrap").trim() || "bootstrap"
+    };
+  };
+
+  const paint = () => {
+    if (localState.loading) {
+      container.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
+      return;
+    }
+    const selectedProduct = findSelectedProduct();
+    const selectedDraft = localState.selectedDraft;
+    const isBuiltin = String(selectedProduct?.owner_type || "").trim() === "builtin";
+    const canDelete = Boolean(selectedProduct?.id) && !isBuiltin;
+    const canSave = !isBuiltin;
+    const managedID = selectedProduct?.id || "-";
+    const managedVersion = selectedProduct?.version || "-";
+    const managedOwner = selectedProduct?.owner_type || localState.draft.owner_type || "managed";
+    const workerAgentValue = serializeProductWorkerAgents(localState.draft.worker_agents);
+    const currentDraftMode = String(localState.draftRequest.mode || "bootstrap").trim() || "bootstrap";
+    const canExpandDraft = Boolean(selectedProduct?.id) && String(selectedProduct?.owner_type || "").trim() !== "builtin";
+    const canPublishDraft = Boolean(selectedDraft?.draft_id) && !selectedDraft?.published_product_id && String(selectedDraft?.product?.owner_type || "managed").trim() !== "builtin";
+    const masterTags = [
+      `${Number(selectedDraft?.master_agent?.tools?.length || 0)} tools`,
+      `${Number(selectedDraft?.master_agent?.skills?.length || 0)} skills`,
+      `${Number(selectedDraft?.master_agent?.allowed_delegate_targets?.length || 0)} delegates`
+    ].filter((tag) => !tag.startsWith("0 "));
+    container.innerHTML = `<section class="agent-studio-view">
+      <aside class="route-surface agent-studio-list-pane">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(t("route.products.title"))}</h4>
+            <p>${escapeHTML(t("route.products.subtitle"))}</p>
+          </div>
+          <button class="route-primary-button" type="button" data-product-create>${escapeHTML(t("route.products.create"))}</button>
+        </div>
+        <div class="agent-route-list">${renderProductBuilderCards(localState.products, localState.routeState.selectedProductID)}</div>
+      </aside>
+      <section class="route-surface agent-studio-form-pane">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(localState.draft.id ? t("route.products.edit") : t("route.products.form.new"))}</h4>
+            <p>${escapeHTML(t("route.products.form.managed"))}</p>
+          </div>
+          <div class="agent-builder-actions">
+            <button type="button" data-product-reset>${escapeHTML(t("route.products.form.cancel"))}</button>
+          </div>
+        </div>
+        ${localState.statusMessage ? `<p class="agent-builder-status ${localState.statusKind === "error" ? "is-error" : "is-success"}">${escapeHTML(localState.statusMessage)}</p>` : ""}
+        ${isBuiltin ? `<p class="agent-builder-status">${escapeHTML(t("route.products.form.builtin_notice"))}</p>` : ""}
+        <div class="agent-builder-managed">
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.id"))}</span>
+            <strong>${escapeHTML(managedID)}</strong>
+          </div>
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.version"))}</span>
+            <strong>${escapeHTML(managedVersion)}</strong>
+          </div>
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.owner"))}</span>
+            <strong>${escapeHTML(managedOwner)}</strong>
+          </div>
+        </div>
+        <form class="agent-builder-form" data-product-form>
+          <label><span>${t("route.products.form.name")}</span><input type="text" name="name" value="${escapeHTML(localState.draft.name)}" placeholder="Travel"></label>
+          <label><span>${t("route.products.form.slug")}</span><input type="text" name="slug" value="${escapeHTML(localState.draft.slug)}" placeholder="travel"></label>
+          <label><span>${t("route.products.form.master")}</span><input type="text" name="master_agent_id" value="${escapeHTML(localState.draft.master_agent_id)}" placeholder="travel-master"></label>
+          <label><span>${t("route.products.form.status")}</span><select name="status">
+            ${["draft", "active", "disabled", "archived"].map((option) => `<option value="${escapeHTML(option)}" ${option === localState.draft.status ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
+          </select></label>
+          <label><span>${t("route.products.form.visibility")}</span><select name="visibility">
+            ${["private", "public"].map((option) => `<option value="${escapeHTML(option)}" ${option === localState.draft.visibility ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
+          </select></label>
+          <label><span>${t("route.products.form.entry_route")}</span><input type="text" name="entry_route" value="${escapeHTML(localState.draft.entry_route)}" placeholder="products"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.summary")}</span><textarea name="summary" rows="4">${escapeHTML(localState.draft.summary)}</textarea></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.tags")}</span><input type="text" name="tags" value="${escapeHTML(localState.draft.tags.join(", "))}" placeholder="travel, itinerary"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.artifacts")}</span><input type="text" name="artifact_types" value="${escapeHTML(localState.draft.artifact_types.join(", "))}" placeholder="city_guide, itinerary, map_layers"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.knowledge")}</span><input type="text" name="knowledge_sources" value="${escapeHTML(localState.draft.knowledge_sources.join(", "))}" placeholder="poi_catalog, metro_network"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.form.worker_agents")}</span><textarea name="worker_agents" rows="6" placeholder="travel-route-planner | route-planner | Plan daily routes">${escapeHTML(workerAgentValue)}</textarea></label>
+          <div class="task-filter-actions">
+            <button class="task-filter-apply" type="submit" ${canSave ? "" : "disabled"}>${escapeHTML(t("route.products.form.save"))}</button>
+            <button class="task-filter-reset" type="button" data-product-delete ${canDelete ? "" : "disabled"}>${escapeHTML(t("route.products.form.delete"))}</button>
+          </div>
+        </form>
+        <div class="agent-builder-section">
+          <div class="agent-route-pane-head">
+            <div class="agent-route-pane-copy">
+              <h4>${escapeHTML(t("route.products.drafts.title"))}</h4>
+              <p>${escapeHTML(t("route.products.drafts.subtitle"))}</p>
+            </div>
+          </div>
+          ${currentDraftMode === "expand" && !canExpandDraft ? `<p class="agent-builder-status">${escapeHTML(t("route.products.drafts.form.expand_disabled"))}</p>` : ""}
+          ${currentDraftMode === "expand" && canExpandDraft ? `<p class="agent-builder-status">${escapeHTML(`${t("route.products.form.id")}: ${selectedProduct.id}`)}</p>` : ""}
+          <form class="agent-builder-form" data-product-draft-generate-form>
+            <label><span>${t("route.products.drafts.form.name")}</span><input type="text" name="name" value="${escapeHTML(localState.draftRequest.name)}" placeholder="Travel Premium"></label>
+            <label><span>${t("route.products.drafts.form.mode")}</span><select name="mode">
+              <option value="bootstrap" ${currentDraftMode === "bootstrap" ? "selected" : ""}>${escapeHTML(t("route.products.drafts.form.mode.bootstrap"))}</option>
+              <option value="expand" ${currentDraftMode === "expand" ? "selected" : ""}>${escapeHTML(t("route.products.drafts.form.mode.expand"))}</option>
+            </select></label>
+            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.goal")}</span><textarea name="goal" rows="3">${escapeHTML(localState.draftRequest.goal)}</textarea></label>
+            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.target_users")}</span><input type="text" name="target_users" value="${escapeHTML(localState.draftRequest.target_users)}" placeholder="travellers, families"></label>
+            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.core")}</span><input type="text" name="core_capabilities" value="${escapeHTML(localState.draftRequest.core_capabilities)}" placeholder="city guide, itinerary, metro, food, map"></label>
+            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.constraints")}</span><input type="text" name="constraints" value="${escapeHTML(localState.draftRequest.constraints)}" placeholder="budget-sensitive, kid-friendly"></label>
+            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.artifacts")}</span><input type="text" name="expected_artifacts" value="${escapeHTML(localState.draftRequest.expected_artifacts)}" placeholder="city_guide, itinerary, map_layers"></label>
+            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.integrations")}</span><input type="text" name="integration_requirements" value="${escapeHTML(localState.draftRequest.integration_requirements)}" placeholder="maps, metro, food catalog"></label>
+            <div class="task-filter-actions">
+              <button class="task-filter-apply" type="submit" ${(currentDraftMode === "expand" && !canExpandDraft) ? "disabled" : ""}>${escapeHTML(t("route.products.drafts.form.generate"))}</button>
+            </div>
+          </form>
+          <div class="agent-route-list">${renderProductDraftCards(localState.drafts, localState.routeState.selectedDraftID)}</div>
+          ${selectedDraft?.draft_id ? `
+            <div class="agent-builder-managed">
+              <div class="agent-builder-managed-item">
+                <span>${escapeHTML(t("route.products.form.id"))}</span>
+                <strong>${escapeHTML(selectedDraft.draft_id)}</strong>
+              </div>
+              <div class="agent-builder-managed-item">
+                <span>${escapeHTML(t("route.products.drafts.detail.review"))}</span>
+                <strong>${escapeHTML(normalizeText(selectedDraft.review_status || "draft"))}</strong>
+              </div>
+              <div class="agent-builder-managed-item">
+                <span>${escapeHTML(t("route.products.drafts.detail.mode"))}</span>
+                <strong>${escapeHTML(normalizeText(selectedDraft.mode || "bootstrap"))}</strong>
+              </div>
+              <div class="agent-builder-managed-item">
+                <span>${escapeHTML(t("route.products.drafts.detail.product"))}</span>
+                <strong>${escapeHTML(selectedDraft.product.id || "-")}</strong>
+              </div>
+              <div class="agent-builder-managed-item">
+                <span>${escapeHTML(t("route.products.drafts.detail.generated"))}</span>
+                <strong>${escapeHTML(formatDateTime(selectedDraft.generated_at) || "-")}</strong>
+              </div>
+              <div class="agent-builder-managed-item">
+                <span>${escapeHTML(t("route.products.drafts.detail.updated"))}</span>
+                <strong>${escapeHTML(formatDateTime(selectedDraft.updated_at) || "-")}</strong>
+              </div>
+              <div class="agent-builder-managed-item">
+                <span>${escapeHTML(t("route.products.drafts.detail.published"))}</span>
+                <strong>${escapeHTML(selectedDraft.published_product_id || "-")}</strong>
+              </div>
+            </div>
+            <div class="agent-builder-section">
+              <h5>${escapeHTML(t("route.products.drafts.detail.master"))}</h5>
+              <article class="agent-route-card">
+                <div class="agent-route-card-head">
+                  <div class="agent-route-card-copy">
+                    <strong title="${escapeHTML(selectedDraft.master_agent.name || selectedDraft.master_agent.agent_id)}">${escapeHTML(selectedDraft.master_agent.name || selectedDraft.master_agent.agent_id || "-")}</strong>
+                    <span title="${escapeHTML(selectedDraft.master_agent.agent_id)}">${escapeHTML(selectedDraft.master_agent.agent_id || "-")}</span>
+                  </div>
+                  <span class="agent-route-state ${selectedDraft.master_agent.enabled ? "is-enabled" : "is-disabled"}">${escapeHTML(selectedDraft.master_agent.enabled ? t("status.enabled") : t("status.disabled"))}</span>
+                </div>
+                <p class="agent-route-card-prompt">${escapeHTML(selectedDraft.master_agent.description || selectedDraft.master_agent.system_prompt || "-")}</p>
+                <div class="agent-route-card-tags">${masterTags.length ? masterTags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
+              </article>
+            </div>
+            <div class="agent-builder-section">
+              <h5>${escapeHTML(t("route.products.drafts.detail.workers"))}</h5>
+              <div class="agent-route-list">${renderProductDraftWorkerCards(selectedDraft.worker_matrix)}</div>
+            </div>
+            ${selectedDraft.conflict_suggestions.length ? `
+              <div class="agent-builder-section">
+                <h5>${escapeHTML(t("route.products.drafts.detail.conflicts"))}</h5>
+                <div class="agent-route-list">
+                  ${selectedDraft.conflict_suggestions.map((item) => `<article class="agent-route-card"><p class="agent-route-card-prompt">${escapeHTML(item)}</p></article>`).join("")}
+                </div>
+              </div>
+            ` : ""}
+            <form class="agent-builder-form" data-product-draft-editor-form>
+              <label class="agent-builder-wide"><span>${t("route.products.drafts.form.editor")}</span><textarea name="draft_json" rows="18">${escapeHTML(localState.draftEditorText)}</textarea></label>
+              <div class="agent-builder-wide">
+                <p class="agent-route-pane-copy"><span>${escapeHTML(t("route.products.drafts.form.editor_hint"))}</span></p>
+              </div>
+              <div class="task-filter-actions">
+                <button class="task-filter-apply" type="submit">${escapeHTML(t("route.products.drafts.form.save"))}</button>
+                <button class="task-filter-reset" type="button" data-product-draft-publish ${canPublishDraft ? "" : "disabled"}>${escapeHTML(t("route.products.drafts.form.publish"))}</button>
+              </div>
+            </form>
+          ` : `<p class="route-empty">${escapeHTML(t("route.products.drafts.detail.empty"))}</p>`}
+        </div>
+      </section>
+    </section>`;
+  };
+
+  const reload = async (statusMessage = "", statusKind = "") => {
+    localState.loading = true;
+    localState.statusMessage = statusMessage;
+    localState.statusKind = statusKind;
+    paint();
+    const [productsPayload, draftsPayload] = await Promise.all([
+      fetchJSON("/api/control/products"),
+      requestJSON("/api/control/products/drafts")
+    ]);
+    localState.products = Array.isArray(productsPayload?.items) ? productsPayload.items : [];
+    localState.drafts = Array.isArray(draftsPayload?.items) ? draftsPayload.items.map((item) => normalizeProductStudioDraft(item)) : [];
+    if (!findSelectedProduct()) {
+      localState.routeState.selectedProductID = localState.products[0]?.id || "";
+    }
+    syncDraftFromSelection();
+    if (!findSelectedDraft()) {
+      localState.routeState.selectedDraftID = localState.drafts[0]?.draft_id || "";
+    }
+    syncSelectedDraft();
+    localState.loading = false;
+    persistRouteState();
+    paint();
+    bind();
+  };
+
+  const saveProduct = async (form) => {
+    const selectedProduct = findSelectedProduct();
+    if (String(selectedProduct?.owner_type || "").trim() === "builtin") {
+      return;
+    }
+    const formData = new FormData(form);
+    const payload = {
+      name: String(formData.get("name") || "").trim(),
+      slug: String(formData.get("slug") || "").trim(),
+      summary: String(formData.get("summary") || "").trim(),
+      status: String(formData.get("status") || "draft").trim(),
+      visibility: String(formData.get("visibility") || "private").trim(),
+      master_agent_id: String(formData.get("master_agent_id") || "").trim(),
+      entry_route: String(formData.get("entry_route") || "").trim(),
+      tags: parseAgentListInput(formData.get("tags") || ""),
+      artifact_types: parseAgentListInput(formData.get("artifact_types") || ""),
+      knowledge_sources: parseAgentListInput(formData.get("knowledge_sources") || ""),
+      worker_agents: parseProductWorkerAgentInput(formData.get("worker_agents") || "")
+    };
+    try {
+      const saved = await requestJSON(selectedProduct?.id ? `/api/control/products/${encodeURIComponent(selectedProduct.id)}` : "/api/control/products", {
+        method: selectedProduct?.id ? "PUT" : "POST",
+        body: JSON.stringify(payload)
+      });
+      localState.routeState.selectedProductID = String(saved?.id || "").trim();
+      await reload(t("route.products.saved"), "success");
+    } catch (error) {
+      localState.statusMessage = t("route.products.save_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      localState.statusKind = "error";
+      paint();
+      bind();
+    }
+  };
+
+  const deleteProduct = async () => {
+    const selected = findSelectedProduct();
+    if (!selected || !selected.id || String(selected?.owner_type || "").trim() === "builtin") {
+      return;
+    }
+    try {
+      await requestJSON(`/api/control/products/${encodeURIComponent(selected.id)}`, {
+        method: "DELETE"
+      });
+      localState.routeState.selectedProductID = "";
+      await reload(t("route.products.deleted"), "success");
+    } catch (error) {
+      localState.statusMessage = t("route.products.delete_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      localState.statusKind = "error";
+      paint();
+      bind();
+    }
+  };
+
+  const generateDraft = async (form) => {
+    syncDraftRequest(form);
+    const mode = String(localState.draftRequest.mode || "bootstrap").trim() || "bootstrap";
+    const selectedProduct = findSelectedProduct();
+    if (mode === "expand" && (!selectedProduct?.id || String(selectedProduct?.owner_type || "").trim() === "builtin")) {
+      localState.statusMessage = t("route.products.drafts.form.expand_disabled");
+      localState.statusKind = "error";
+      paint();
+      bind();
+      return;
+    }
+    const payload = {
+      name: localState.draftRequest.name,
+      goal: localState.draftRequest.goal,
+      target_users: parseAgentListInput(localState.draftRequest.target_users),
+      core_capabilities: parseAgentListInput(localState.draftRequest.core_capabilities),
+      constraints: parseAgentListInput(localState.draftRequest.constraints),
+      expected_artifacts: parseAgentListInput(localState.draftRequest.expected_artifacts),
+      integration_requirements: parseAgentListInput(localState.draftRequest.integration_requirements),
+      mode
+    };
+    const path = mode === "expand"
+      ? `/api/control/products/${encodeURIComponent(selectedProduct.id)}/matrix/generate`
+      : "/api/control/products/generate";
+    try {
+      const created = await requestJSON(path, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      localState.routeState.selectedDraftID = String(created?.draft_id || "").trim();
+      localState.draftRequest = createProductDraftRequest(mode);
+      await reload(t("route.products.drafts.generated"), "success");
+    } catch (error) {
+      localState.statusMessage = t("route.products.drafts.generate_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      localState.statusKind = "error";
+      paint();
+      bind();
+    }
+  };
+
+  const saveDraftReview = async (form) => {
+    const selectedDraft = localState.selectedDraft;
+    if (!selectedDraft?.draft_id) {
+      return;
+    }
+    const formData = new FormData(form);
+    const rawJSON = String(formData.get("draft_json") || "").trim();
+    localState.draftEditorText = rawJSON;
+    try {
+      const payload = JSON.parse(rawJSON || "{}");
+      if (!payload || Array.isArray(payload) || typeof payload !== "object") {
+        throw new Error("draft json must be an object");
+      }
+      await requestJSON(`/api/control/products/drafts/${encodeURIComponent(selectedDraft.draft_id)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      await reload(t("route.products.drafts.review_saved"), "success");
+    } catch (error) {
+      localState.statusMessage = t("route.products.drafts.review_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      localState.statusKind = "error";
+      paint();
+      bind();
+    }
+  };
+
+  const publishDraft = async () => {
+    const selectedDraft = localState.selectedDraft;
+    if (!selectedDraft?.draft_id) {
+      return;
+    }
+    try {
+      const payload = await requestJSON(`/api/control/products/drafts/${encodeURIComponent(selectedDraft.draft_id)}/publish`, {
+        method: "POST"
+      });
+      localState.routeState.selectedDraftID = String(payload?.draft?.draft_id || selectedDraft.draft_id).trim();
+      localState.routeState.selectedProductID = String(payload?.product?.id || localState.routeState.selectedProductID).trim();
+      await reload(t("route.products.drafts.published"), "success");
+    } catch (error) {
+      localState.statusMessage = t("route.products.drafts.publish_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      localState.statusKind = "error";
+      paint();
+      bind();
+    }
+  };
+
+  const bind = () => {
+    container.querySelectorAll("[data-product-select]").forEach((node) => {
+      node.addEventListener("click", () => {
+        const nextID = String(node.getAttribute("data-product-select") || "").trim();
+        if (!nextID || nextID === localState.routeState.selectedProductID) {
+          return;
+        }
+        localState.routeState.selectedProductID = nextID;
+        syncDraftFromSelection();
+        persistRouteState();
+        paint();
+        bind();
+      });
+    });
+
+    container.querySelectorAll("[data-product-draft-select]").forEach((node) => {
+      node.addEventListener("click", () => {
+        const nextID = String(node.getAttribute("data-product-draft-select") || "").trim();
+        if (!nextID || nextID === localState.routeState.selectedDraftID) {
+          return;
+        }
+        localState.routeState.selectedDraftID = nextID;
+        syncSelectedDraft();
+        persistRouteState();
+        paint();
+        bind();
+      });
+    });
+
+    const createButton = container.querySelector("[data-product-create]");
+    if (createButton) {
+      createButton.addEventListener("click", () => {
+        localState.routeState.selectedProductID = "";
+        localState.draft = normalizeProductBuilderDraft();
+        localState.statusMessage = "";
+        localState.statusKind = "";
+        persistRouteState();
+        paint();
+        bind();
+      });
+    }
+
+    const resetButton = container.querySelector("[data-product-reset]");
+    if (resetButton) {
+      resetButton.addEventListener("click", () => {
+        syncDraftFromSelection();
+        localState.statusMessage = "";
+        localState.statusKind = "";
+        paint();
+        bind();
+      });
+    }
+
+    const deleteButton = container.querySelector("[data-product-delete]");
+    if (deleteButton) {
+      deleteButton.addEventListener("click", async () => {
+        await deleteProduct();
+      });
+    }
+
+    const form = container.querySelector("[data-product-form]");
+    if (form) {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveProduct(form);
+      });
+    }
+
+    const generateForm = container.querySelector("[data-product-draft-generate-form]");
+    if (generateForm) {
+      generateForm.addEventListener("input", () => {
+        syncDraftRequest(generateForm);
+      });
+      generateForm.addEventListener("change", () => {
+        syncDraftRequest(generateForm);
+      });
+      generateForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await generateDraft(generateForm);
+      });
+    }
+
+    const draftEditorForm = container.querySelector("[data-product-draft-editor-form]");
+    if (draftEditorForm) {
+      const editor = draftEditorForm.querySelector("textarea[name='draft_json']");
+      if (editor) {
+        editor.addEventListener("input", () => {
+          localState.draftEditorText = String(editor.value || "");
+        });
+      }
+      draftEditorForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveDraftReview(draftEditorForm);
+      });
+    }
+
+    const publishButton = container.querySelector("[data-product-draft-publish]");
+    if (publishButton) {
+      publishButton.addEventListener("click", async () => {
+        await publishDraft();
+      });
+    }
+  };
+
+  await reload("", "");
+}
 async function loadAgentView(container) {
   const localState = {
     routeState: normalizeAgentRouteState(state.agentRouteState),
@@ -11169,3 +12043,11 @@ function init() {
 }
 
 init();
+
+
+
+
+
+
+
+

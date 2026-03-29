@@ -117,25 +117,276 @@
 - 实现文件：`internal/agent/application/catalog.go`、`internal/agent/application/builtin.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/chat.html`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/execution/infrastructure/hybrid_nl_processor_test.go`、`internal/interfaces/web/server_control_test.go`、`internal/interfaces/web/server_message_test.go`
 
-### R-054
+### R-054 Product 目录与管理页
 
-暂无细化内容。
+1. 运行时必须新增一级 `Products` 模块，作为平台级 Product 管理入口；`Product` 是业务产品域的一等对象，不使用 `App` 作为同级领域模型命名。
+2. `Products` 页面需负责集中展示和管理多个 Product，至少覆盖：基础信息、启停状态、入口标识、总 Agent 绑定、子 Agent 矩阵摘要、产物类型摘要。
+3. Product 最小主数据结构至少包含：`product_id`、`name`、`slug`、`summary`、`status`、`visibility`、`owner_type`、`master_agent_id`、`entry_route`、`tags`、`version`、`created_at`、`updated_at`。
+4. Product 必须区分系统内置与用户创建两类来源：
+   - 系统内置 Product 由服务注册，不允许在控制面直接删除；
+   - 用户创建 Product 允许编辑、停用、归档，并保留历史引用关系。
+5. 页面交互至少包含：列表浏览、创建、编辑、启停、查看矩阵摘要、查看 Product 详情；不要求首版支持拖拽编排。
+6. Product 详情页至少展示：
+   - 基础信息：名称、描述、标签、状态、版本；
+   - Agent 结构：总 Agent、子 Agent 数量、矩阵角色摘要；
+   - 能力摘要：可调用工具、Skills、MCP、资料挂载；
+   - 产物摘要：该 Product 的主要输出物类型。
+7. `Products` 页面与 Product 详情页必须支持空态、禁用态和草稿态，避免在 Product 尚未发布时误进入生产执行入口。
+8. Product 必须保留稳定 `product_id`，供 `Alter0 Agent`、任务系统、产物系统和会话视图统一引用。
+9. 首版存储允许继续采用本地文件，但必须与既有 Control 数据解耦，避免 Product 目录、Agent Profile 与普通 Session 数据混存不可辨。
+10. 验收：
+   - Web 端可见独立 `Products` 模块；
+   - 用户可创建和维护 Product 基础信息；
+   - 每个 Product 可查看绑定总 Agent 与矩阵摘要；
+   - 系统内置 Product 与用户 Product 可被明确区分。
 
-### R-055
+#### 接口拆分（当前实现）
 
-暂无细化内容。
+1. Product 列表
+   - `GET /api/control/products`
+   - 返回：`items[]`，包含基础字段、状态、总 Agent 绑定与矩阵摘要
+2. Product 创建
+   - `POST /api/control/products`
+   - 入参：Product 基础信息与初始配置
+3. Product 更新
+   - `PUT /api/control/products/{product_id}`
+   - 入参：Product 基础信息、状态、入口信息、展示配置
+4. Product 删除
+   - `DELETE /api/control/products/{product_id}`
+   - 仅允许删除托管 Product；内置 Product 维持只读
+5. Product 详情
+   - `GET /api/control/products/{product_id}`
+   - 返回：基础信息 + Agent 矩阵摘要 + 能力摘要 + 产物摘要
 
-### R-056
+#### Traceability
 
-暂无细化内容。
+- 领域对象：`Product`、`ProductCatalog`、`product_id`、`master_agent_id`
+- 当前实现文件：`internal/product/domain/product.go`、`internal/product/application/service.go`、`internal/storage/infrastructure/localfile/product_store.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/product_features.go`、`internal/interfaces/web/static/assets/chat.js`
+- 依赖需求：`R-021`、`R-049`、`R-053`
+- 验证口径：Product 管理可用性、内置/用户 Product 区分、状态切换一致性、页面入口稳定性
 
-### R-057
+### R-055 Product Agent 与子产品矩阵生成
 
-暂无细化内容。
+1. 平台必须提供一个内置 `Product Agent`，用于根据产品目标和约束生成新 Product 草案，而不是要求用户手工逐项编排完整矩阵。
+2. `Product Agent` 的输入至少包括：`name`、`goal`、`target_users`、`core_capabilities`、`constraints`、`expected_artifacts`、`integration_requirements`。
+3. `Product Agent` 的输出至少包括：
+   - Product 基础定义草案；
+   - `master agent` 草案；
+   - 子 Agent 矩阵草案；
+   - 能力边界与职责拆分；
+   - 默认资料结构与产物类型定义。
+4. `Product Agent` 生成的矩阵草案必须显式列出每个子 Agent 的角色、输入输出边界、可用工具、依赖关系与可委派对象，避免“泛用大 Agent”吞并所有职责。
+5. `Product Agent` 生成结果默认进入草稿态，不得直接自动发布到用户可执行入口；发布前需允许人工审核、编辑和禁用部分子 Agent。
+6. 矩阵生成至少支持两种模式：
+   - `bootstrap`：从零创建新 Product 与完整矩阵；
+   - `expand`：在已有 Product 下新增子域或补充子 Agent。
+7. 若已有 Product 与新输入名称或职责高度冲突，系统需给出复用或合并建议，而不是无约束重复创建多个语义相同 Product。
+8. `Product Agent` 生成的 Agent 必须兼容现有 Agent Profile 基础能力，包括工具白名单、Skills、MCP、Memory Files 与模型配置引用。
+9. 生成过程需保留草案版本和审核记录，便于回滚、对比和多轮修订。
+10. 验收：
+   - 平台可通过 `Product Agent` 生成新 Product 草案；
+   - 草案中可查看总 Agent 与子 Agent 矩阵；
+   - 审核通过后可发布为正式 Product；
+   - 已有 Product 可按 `expand` 模式追加子矩阵。
 
-### R-058
+#### 矩阵定义（草案）
 
-暂无细化内容。
+1. 子 Agent 最小字段
+   - `agent_id`
+   - `role`
+   - `responsibility`
+   - `input_contract`
+   - `output_contract`
+   - `allowed_tools`
+   - `allowed_delegate_targets`
+   - `priority`
+   - `enabled`
+2. 矩阵级字段
+   - `product_id`
+   - `version`
+   - `master_agent_id`
+   - `worker_agents[]`
+   - `artifact_types[]`
+   - `knowledge_sources[]`
+3. 草稿级字段
+   - `draft_id`
+   - `mode`
+   - `review_status`
+   - `generated_by`
+   - `generated_at`
+
+#### 接口拆分（当前实现）
+
+1. Product Agent 草案生成
+   - `POST /api/control/products/generate`
+   - 入参：Product 目标、约束与模式
+   - 返回：Product 草案、总 Agent 草案、子 Agent 矩阵草案
+2. 已有 Product 扩展矩阵
+   - `POST /api/control/products/{product_id}/matrix/generate`
+   - 入参：新增能力目标与边界约束
+3. 草案查询
+   - `GET /api/control/products/drafts`
+   - `GET /api/control/products/drafts/{draft_id}`
+4. 草案审核与发布
+   - `POST /api/control/products/drafts/{draft_id}/publish`
+   - `PUT /api/control/products/drafts/{draft_id}`
+   - 前端 `Draft Studio` 当前以结构化摘要 + JSON review editor 的方式支持审核、编辑、禁用子 Agent 与发布
+
+#### Traceability
+
+- 领域对象：`ProductDraft`、`ProductMatrix`、`ProductAgent`、`draft_id`
+- 当前实现文件：`internal/product/domain/draft.go`、`internal/product/application/draft_service.go`、`internal/storage/infrastructure/localfile/product_draft_store.go`、`internal/interfaces/web/product_features.go`、`internal/interfaces/web/static/assets/chat.js`
+- 依赖需求：`R-052`、`R-053`、`R-054`
+- 验证口径：草案生成完整性、审核发布闭环、矩阵职责清晰度、重复 Product 冲突处理
+
+### R-056 Product 总 Agent 与子 Agent 矩阵编排
+
+1. 每个已发布 Product 必须绑定且仅绑定一个 `master agent`，作为该 Product 的统一需求入口与任务编排中心。
+2. `master agent` 负责：
+   - 识别当前请求是否属于本 Product；
+   - 解析用户目标、约束和上下文；
+   - 决定是否拆分子任务；
+   - 调度子 Agent；
+   - 汇总最终结果与产物。
+3. Product 下的子 Agent 以矩阵方式组织，每个子 Agent 必须具备明确职责边界，不允许多个 Agent 对同一职责做无约束重叠。
+4. 子 Agent 可按 Product 自身特性定义，但至少要支持：
+   - 查询型 Agent；
+   - 规划型 Agent；
+   - 生成型 Agent；
+   - 交付型 Agent。
+5. 矩阵编排必须支持顺序执行与并行执行两种模式；并行执行仅允许在输入输出边界明确、互不覆盖时启用。
+6. `master agent` 与子 Agent 间的委派必须保留可追踪结构，至少记录：`product_id`、`master_agent_id`、`worker_agent_id`、`task_id`、`delegation_reason`、`delegation_order`。
+7. 编排层必须限制递归深度、自委派和循环依赖，避免 `master agent -> worker -> master` 或子 Agent 互相回环导致无限递归。
+8. Product 执行结果必须同时支持：
+   - 用户可读结果；
+   - 结构化产物；
+   - 子任务链路摘要。
+9. 当某个子 Agent 不可用、被禁用或执行失败时，`master agent` 需提供降级策略：重试、改派、跳过或返回部分结果，并明确告知缺失能力范围。
+10. 验收：
+   - 每个 Product 仅有一个总 Agent 入口；
+   - 总 Agent 可按矩阵定义拆分并委派子任务；
+   - 最终结果可回溯到各子 Agent；
+   - 递归与循环委派被显式限制。
+
+#### 编排规则（当前实现）
+
+1. 路由优先级
+   - Product 命中后先进入 `master agent`
+   - 只有 `master agent` 可以决定是否调用子 Agent
+2. 委派边界
+   - 子 Agent 默认不允许直接越权调用其他 Product 的子 Agent
+   - 跨 Product 调用统一回到 `Alter0 Agent` 或上层协调器裁决
+3. 输出收口
+   - 所有子 Agent 输出先回到 `master agent`
+   - 用户侧只消费 `master agent` 汇总结果或结构化产物引用
+4. 发布行为
+   - 草稿发布时先将 `master agent` 与 `worker matrix` 物化为托管 Agent，再写入托管 Product 定义
+   - 已发布 Product 仅暴露唯一 `master_agent_id` 作为外部执行入口
+
+#### Traceability
+
+- 领域对象：`ProductMasterAgent`、`ProductWorkerAgent`、`delegation_graph`
+- 当前实现文件：`internal/interfaces/web/product_features.go`、`internal/interfaces/web/server.go`、`internal/agent/application/catalog.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`
+- 依赖需求：`R-048`、`R-053`、`R-054`、`R-055`
+- 验证口径：总 Agent 唯一性、矩阵拆分稳定性、委派链路可追踪性、降级策略有效性
+
+### R-057 Alter0 Agent 跨 Product 信息检索与任务调度
+
+1. `Alter0 Agent` 作为平台统一入口，必须具备跨 Product 的意图识别、信息检索、任务分发与结果收口能力。
+2. 当用户问题涉及 Product 信息查询时，`Alter0 Agent` 需先读取 Product 目录与该 Product 的公开信息，再决定是否进入执行态。
+3. 当用户问题涉及 Product 任务执行时，`Alter0 Agent` 必须调用目标 Product 的 `master agent`，而不是直接越过 Product 边界调用其子 Agent。
+4. `Alter0 Agent` 至少支持三类动作：
+   - `discover_product`：识别用户意图并匹配 Product；
+   - `read_product_context`：读取 Product 基础信息、矩阵摘要、能力边界；
+   - `run_product_master`：调用目标 Product 的总 Agent 执行任务。
+5. 当用户请求跨多个 Product 时，`Alter0 Agent` 可按顺序或并行调度多个 Product `master agent`，但必须在最终结果中明确区分各 Product 的输出来源。
+6. 若命中的 Product 被禁用、未发布或无可用总 Agent，`Alter0 Agent` 需返回明确原因，并建议可用 Product 或退回通用处理路径。
+7. `Alter0 Agent` 对 Product 的调度必须保留结构化元数据，至少包括：`matched_product_ids`、`selected_product_id`、`selection_reason`、`master_agent_id`、`product_execution_mode`。
+8. Product 相关信息查询结果需可在普通 Chat 会话内返回，不强制用户先切换到 Product 专属入口。
+9. 对于敏感或仅控制面可见的 Product 配置，`Alter0 Agent` 只能读取允许公开给运行态的摘要，不直接暴露内部草稿、凭据或审核记录。
+10. 验收：
+   - 用户可在默认 `Chat` 中询问某个 Product 的能力与入口；
+   - 用户可直接在 `Alter0 Agent` 下发 Product 任务；
+   - 系统可调用对应 Product 的总 Agent；
+   - 多 Product 结果可被统一收口并区分来源。
+
+#### 接口与运行时能力（当前实现）
+
+1. Product 公开目录
+   - `GET /api/products`
+   - 返回：已发布且允许公开的 Product 列表与摘要
+2. Product 公开详情
+   - `GET /api/products/{product_id}`
+   - 返回：基础信息、总 Agent 摘要、能力摘要、入口信息
+3. Product 执行入口
+   - `POST /api/products/{product_id}/messages`
+   - 由目标 Product 的 `master agent` 负责处理
+   - `POST /api/products/{product_id}/messages/stream`
+   - 请求进入执行前会自动绑定 Product 的 `master_agent_id`，并注入 `alter0.product-context/v1`
+4. Alter0 内部调度
+   - 默认 `main` Agent 会先做 Product 发现，并补充 `alter0.product.discovery`
+   - 对执行型请求自动切换到目标 Product `master agent`
+
+#### Traceability
+
+- 领域对象：`matched_product_ids`、`selected_product_id`、`run_product_master`
+- 当前实现文件：`internal/interfaces/web/product_features.go`、`internal/interfaces/web/server.go`、`internal/execution/domain/product_context.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`
+- 依赖需求：`R-053`、`R-054`、`R-056`
+- 验证口径：Product 命中准确性、公开信息读取边界、总 Agent 调度正确性、跨 Product 收口一致性
+
+### R-058 Travel Product 首个产品域落地
+
+1. 平台首个内置 Product 定义为 `travel`，作为 Product 平台与多 Agent 矩阵能力的首个验证场景。
+2. `travel` 必须绑定独立 `travel-master`，并预留以下子 Agent 角色：
+   - `travel-city-guide`
+   - `travel-route-planner`
+   - `travel-metro-guide`
+   - `travel-food-recommender`
+   - `travel-map-annotator`
+3. `travel-master` 负责理解旅游场景用户需求，至少支持：城市、天数、出行风格、预算、同行人群、必去点、规避条件。
+4. `travel` 的首批产物是城市旅游攻略；攻略结果必须同时支持：
+   - 用户可读文案；
+   - 结构化攻略数据；
+   - 后续迭代修改所需的稳定字段。
+5. 结构化攻略最小字段至少包含：`city`、`days`、`travel_style`、`must_visit`、`avoid`、`pois`、`metro_lines`、`daily_routes`、`foods`、`notes`、`map_layers`。
+6. 用户后续补充要求时，`travel-master` 需在已有攻略基础上做 revision，而不是每次丢弃上下文重建整份攻略。
+7. `travel` 首版允许先以结构化攻略和文本攻略为主；地图高亮、路线绘制和 POI 点位需在产物结构中预留标准字段，便于后续接地图能力。
+8. `travel` 的子 Agent 职责边界要求：
+   - `travel-city-guide`：聚合城市概览与景点分层；
+   - `travel-route-planner`：负责行程排序与每日路线；
+   - `travel-metro-guide`：负责地铁与公共交通建议；
+   - `travel-food-recommender`：负责餐饮与用餐分布；
+   - `travel-map-annotator`：负责地图图层和点线路径表达。
+9. `travel` 必须支持在 Product 详情和后续 Product Workspace 中查看其总 Agent、子 Agent 矩阵和主要产物类型。
+10. 验收：
+   - 平台内可见 `travel` Product；
+   - `Alter0 Agent` 可识别并路由到 `travel-master`；
+   - 用户可生成指定城市的旅游攻略；
+   - 用户可基于补充条件修改已有攻略；
+   - 结果中保留可供地图与路线后续增强的结构化字段。
+
+#### 接口拆分（当前实现）
+
+1. `travel` Product 信息
+   - `GET /api/products/travel`
+   - `POST /api/products/travel/messages`
+   - `POST /api/products/travel/messages/stream`
+2. 城市攻略生成
+   - `POST /api/products/travel/guides`
+   - 入参：城市与用户约束
+   - 返回：攻略文案 + 结构化攻略对象
+3. 攻略修订
+   - `POST /api/products/travel/guides/{guide_id}/revise`
+   - 入参：追加要求、保留条件、替换条件
+4. 攻略详情
+   - `GET /api/products/travel/guides/{guide_id}`
+
+#### Traceability
+
+- 领域对象：`travel-master`、`guide_id`、`daily_routes`、`map_layers`
+- 当前实现文件：`internal/product/domain/travel_guide.go`、`internal/product/application/travel_guide_service.go`、`internal/product/application/builtin.go`、`internal/interfaces/web/product_features.go`、`internal/interfaces/web/server_message_test.go`
+- 依赖需求：`R-054`、`R-055`、`R-056`、`R-057`
+- 验证口径：`travel` Product 可见性、攻略生成完整性、revision 连续性、结构化结果可扩展性
 
 ### R-059
 
@@ -144,3 +395,4 @@
 ### R-060
 
 暂无细化内容。
+

@@ -41,7 +41,7 @@
 - 路径：`Channel Adapter -> UnifiedMessage -> Orchestrator -> Executor`。
 
 2. Control Plane（控制面）
-- 负责配置 `Channel / Skill / CronJob`。
+- 负责配置 `Channel / Skill / Agent / Product / CronJob`。
 - 通过 API 管理运行时行为，不直接绕开编排层。
 
 核心链路：
@@ -60,6 +60,8 @@ internal/interfaces/cli            # CLI 适配器
 internal/interfaces/web            # Web 适配器 + Control API
 internal/control/domain            # Control 领域模型（Channel/Skill）
 internal/control/application       # Control 应用服务（配置增删改查）
+internal/product/domain            # Product 领域模型（产品定义与 Agent 矩阵）
+internal/product/application       # Product 应用服务（内置 Product + 托管 CRUD）
 internal/scheduler/domain          # 定时任务模型
 internal/scheduler/application     # 定时任务管理器（触发到编排层）
 internal/orchestration/domain      # 编排领域模型（Intent/Command）
@@ -108,6 +110,8 @@ internal/shared/infrastructure     # ID、日志、metrics
   - `main`：默认对话主 Agent `Alter0`，可调度专项 Agent
   - `coding`：面向仓库分析、代码修改与验证
   - `writing`：面向文档、文案与结构化写作
+  - `product-builder`：用于创建和扩展 Product 定义与子 Agent 矩阵
+  - `travel-master`：负责旅游 Product 的总控编排
 - Web `Chat` 页面默认绑定 `Alter0`；`Agent` 页面提供统一 Agent 运行入口，用于承载未占用独立前端入口的内置 Agent 与用户管理 Agent。
 - Agent 默认可使用 `list_dir`、`read`、`write`、`edit`、`bash`、`codex_exec` 等工具，并依据执行结果决定继续推进还是完成收口；支持 `delegate_agent` 时可向其他可委派 Agent 下发子任务并回收结果。
 - 每个 Agent 可独立配置名称、system prompt、tool 白名单、Skill 选择、MCP 选择与 Memory Files 选择。
@@ -138,6 +142,25 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 1. `Chat / Agent / Terminal` 只要落到 `Codex CLI` 执行链，都要求服务运行账户本身具备可用的 Codex / OpenAI 认证。
 2. 若服务账户缺少认证，Web 端会快速返回认证失败，而不会长时间保持等待态。
+
+## Product Model
+
+Product 用于承载“某个业务产品 / 应用的总 Agent 与子 Agent 矩阵”，当前稳定行为如下：
+
+1. Web 端新增 `Products` 页面，统一承载 Product 目录管理与 `Draft Studio`；同一入口内可维护 Product 定义、主 Agent、入口路由、知识源、产物类型与子 Agent 矩阵，并生成待审核草稿。
+2. Product 由服务端统一维护 `id`、`version` 与 `owner_type`；内置 Product 只读展示，用户管理 Product 支持新增、编辑、删除、生成草稿矩阵并在审核后发布。
+3. `Draft Studio` 当前提供 `POST /api/control/products/generate`、`GET /api/control/products/drafts`、`GET /api/control/products/drafts/{draft_id}`、`PUT /api/control/products/drafts/{draft_id}`、`POST /api/control/products/drafts/{draft_id}/publish`、`POST /api/control/products/{product_id}/matrix/generate`，发布时会同时落地 Product 与对应的托管 Agent 矩阵。
+4. `Alter0` 在默认 `main` Agent 下会先做 Product 发现；命中 Product 后会补充 `matched_product_ids`、`selected_product_id`、`selection_reason`、`master_agent_id`、`product_execution_mode` 等元数据，并在执行型请求中自动切换到目标 Product 的 `master_agent_id`。
+5. 当前内置 `travel` Product 默认公开可见，并绑定以下 Agent 角色：
+   - `travel-master`
+   - `travel-city-guide`
+   - `travel-route-planner`
+   - `travel-metro-guide`
+   - `travel-food-recommender`
+   - `travel-map-annotator`
+6. `travel` Product 面向按城市聚合的旅游攻略场景，预留 `city_guide`、`itinerary`、`map_layers` 等产物类型以及 `city_profile`、`poi_catalog`、`metro_network`、`food_catalog` 等知识源。
+7. 已发布且公开的 Product 提供独立执行入口：`POST /api/products/{product_id}/messages` 与 `POST /api/products/{product_id}/messages/stream`；请求会自动绑定到该 Product 的 `master_agent_id`，并注入 `alter0.product_context` 与 `alter0.product.discovery`。
+8. `travel` 额外提供结构化攻略接口：`POST /api/products/travel/guides`、`GET /api/products/travel/guides/{guide_id}`、`POST /api/products/travel/guides/{guide_id}/revise`；攻略输出稳定包含景点、地铁、路线、美食、说明与地图图层字段，便于后续接地图高亮和路线渲染。
 
 ## Workspace Model
 
@@ -373,6 +396,95 @@ curl -X POST http://127.0.0.1:18088/api/agent/messages \
 9. Memory Files 注入会携带文件内容、绝对路径、是否存在、最近更新时间；文件不存在时仍会暴露预期路径，便于 Agent 直接创建并写入。
 10. Web `Agent Profiles` 页面用于管理用户自定义 Agent Profile；内置 Agent 由服务托管；`Chat` 页面绑定 `Alter0`；`Agent` 页面作为其余入口 Agent 的通用交互入口。
 
+### Product
+
+```bash
+# 公共可见 Product 列表
+curl http://127.0.0.1:18088/api/products
+
+# 查看单个公共 Product
+curl http://127.0.0.1:18088/api/products/travel
+
+# 通过 Product 总 Agent 执行任务
+curl -X POST http://127.0.0.1:18088/api/products/travel/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id":"travel-session-1",
+    "channel_id":"web-default",
+    "content":"生成一份上海三日游攻略，侧重地铁通勤和本地美食"
+  }'
+
+# 直接生成 travel 攻略
+curl -X POST http://127.0.0.1:18088/api/products/travel/guides \
+  -H "Content-Type: application/json" \
+  -d '{
+    "city":"Shanghai",
+    "days":3,
+    "travel_style":"metro-first",
+    "budget":"mid-range",
+    "must_visit":["The Bund","Yu Garden"],
+    "additional_requirements":["more local food","slow mornings"]
+  }'
+
+# 修订已有攻略
+curl -X POST http://127.0.0.1:18088/api/products/travel/guides/shanghai-guide/revise \
+  -H "Content-Type: application/json" \
+  -d '{
+    "days":4,
+    "keep_conditions":["keep The Bund"],
+    "replace_conditions":["less museum time"],
+    "additional_requirements":["more neighborhood walks"]
+  }'
+
+# 控制面 Product 列表（内置 + 用户管理）
+curl http://127.0.0.1:18088/api/control/products
+
+# 创建 Product
+curl -X POST http://127.0.0.1:18088/api/control/products \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name":"Travel Premium",
+    "slug":"travel-premium",
+    "summary":"面向高密度城市旅游攻略与地图标注的产品。",
+    "status":"active",
+    "visibility":"public",
+    "master_agent_id":"travel-premium-master",
+    "entry_route":"products",
+    "tags":["travel","city-guide"],
+    "artifact_types":["city_guide","itinerary","map_layers"],
+    "knowledge_sources":["poi_catalog","metro_network","food_catalog"],
+    "worker_agents":[
+      {"agent_id":"travel-premium-city-guide","role":"city-guide","responsibility":"聚合城市景点与攻略骨架","enabled":true},
+      {"agent_id":"travel-premium-route-planner","role":"route-planner","responsibility":"生成按天路线与顺序","enabled":true}
+    ]
+  }'
+
+# 更新 Product
+curl -X PUT http://127.0.0.1:18088/api/control/products/travel-premium \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name":"Travel Premium",
+    "slug":"travel-premium",
+    "summary":"补充地铁、美食和地图图层输出。",
+    "status":"active",
+    "visibility":"public",
+    "master_agent_id":"travel-premium-master",
+    "entry_route":"products",
+    "worker_agents":[
+      {"agent_id":"travel-premium-city-guide","role":"city-guide","responsibility":"聚合城市景点与攻略骨架","enabled":true},
+      {"agent_id":"travel-premium-route-planner","role":"route-planner","responsibility":"生成按天路线与顺序","enabled":true},
+      {"agent_id":"travel-premium-map-annotator","role":"map-annotator","responsibility":"输出点位与路线高亮图层","enabled":true}
+    ]
+  }'
+```
+
+说明：
+
+1. `Products` 页面与 `/api/control/products` 返回内置 Product 与用户管理 Product 的统一视图。
+2. `GET /api/products` 与 `GET /api/products/{product_id}` 仅暴露 `active + public` 的 Product。
+3. 内置 Product 由服务注册，不能通过控制面覆盖或删除。
+4. Product 更新时由服务端自动递增 `version`；新建 Product 默认从 `v1.0.0` 开始。
+
 ### Cron Jobs
 
 ```bash
@@ -426,3 +538,4 @@ go test ./...
 ## License
 
 MIT, see [LICENSE](./LICENSE).
+

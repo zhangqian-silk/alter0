@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-03-28
+> Last update: 2026-03-29
 
 状态说明：
 
@@ -64,6 +64,11 @@
 | R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识与浏览器侧 Terminal client 标识；不再对 Terminal 设置产品级会话上限与超时淘汰；运行态缺失或前端临时标识漂移后继续发送会自动恢复原会话并保留历史 |
 | R-052 | Agent Memory Files 勾选注入与文件可写记忆对齐 | supported | Agent Profile 支持勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md` 与 Daily Memory；执行前将所选文件内容与路径注入运行时上下文，并可搭配独立 `memory` Skill 统一记忆读写规范 |
 | R-053 | 内置 Agent Catalog 与主从委派 | supported | 运行时统一聚合内置 Agent 与用户管理 Agent；`Chat` 默认绑定 `main` Agent，通用 `Agent` 页面承载其余入口 Agent，并支持主 Agent 通过 `delegate_agent` 下发子任务 |
+| R-054 | Product 目录与管理页 | supported | 新增 `Products` 平台模块，集中管理多个 Product 定义、入口信息、总 Agent 绑定、子 Agent 矩阵摘要、托管状态与内置/用户来源区分 |
+| R-055 | Product Agent 与子产品矩阵生成 | supported | 提供平台级 `product-builder` 与 Draft Studio，支持生成新 Product 草稿、扩展矩阵、审核编辑、冲突提示与发布落地 |
+| R-056 | Product 总 Agent 与子 Agent 矩阵编排 | supported | 每个已发布 Product 绑定唯一总 Agent，并将子 Agent 矩阵同步到托管 Agent Catalog，统一由总 Agent 收口执行 |
+| R-057 | Alter0 Agent 跨 Product 信息检索与任务调度 | supported | `Alter0 Agent` 作为统一入口，按用户意图检索 Product 目录与能力信息，并在执行型请求中自动切换到目标 Product 总 Agent；当前已提供 Product 公开执行入口、Product 上下文与路由元数据注入 |
+| R-058 | Travel Product 首个产品域落地 | supported | 以 `travel` 作为首个内置 Product，提供城市旅游攻略生成、详情与 revision 能力，并保留路线、地铁、美食、地图图层等结构化字段 |
 
 ## 需求细化（分文件）
 
@@ -75,3 +80,4 @@
 6. `R-051` ~ `R-060`：[requirements-detail-r051-r060.md](requirements-details/requirements-detail-r051-r060.md)
 
 说明：需求细化内容按每 10 个需求拆分维护。
+
