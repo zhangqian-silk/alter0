@@ -688,7 +688,7 @@ test.describe("Terminal route", () => {
         process_collapsed: {},
         output_collapsed: {
           "turn-1": false,
-          "turn-2": false,
+          "turn-2": true,
           "turn-3": false
         },
         expanded_steps: {},
@@ -722,31 +722,31 @@ test.describe("Terminal route", () => {
         }
         const nodeRect = node.getBoundingClientRect();
         const turnRect = turn.getBoundingClientRect();
-        node.scrollTop += Math.max(turnRect.top - nodeRect.top - Number(payload?.offset || 0), 0);
+        node.scrollTop = Math.max(node.scrollTop + turnRect.top - nodeRect.top - Number(payload?.offset || 0), 0);
         node.dispatchEvent(new Event("scroll"));
       }, { turnID, offset });
     };
 
     await expect(terminalPage.turnCard("turn-3")).toContainText("turn 3 line 48");
-    await chatScreen.evaluate((node) => {
-      node.scrollTop = 0;
-      node.dispatchEvent(new Event("scroll"));
-    });
+    await alignTurnToTop("turn-2");
+    await expect(jumpPrevButton).toHaveClass(/is-visible/);
+    await expect(jumpPrevButton).toHaveAttribute("data-terminal-jump-target", "turn-1");
     await expect(jumpNextButton).toHaveClass(/is-visible/);
-    await expect(jumpNextButton).toHaveAttribute("data-terminal-jump-target", "turn-2");
+    await expect(jumpNextButton).toHaveAttribute("data-terminal-jump-target", "turn-3");
+
+    await terminalPage.outputToggle("turn-2").click();
+    await expect(jumpPrevButton).toHaveAttribute("data-terminal-jump-target", "turn-1");
+    await expect(jumpNextButton).toHaveAttribute("data-terminal-jump-target", "turn-3");
 
     await jumpNextButton.click();
     await expect.poll(() => chatScreen.evaluate((node) => {
-      const turn = node.querySelector('[data-terminal-turn="turn-2"]');
+      const turn = node.querySelector('[data-terminal-turn="turn-3"]');
       if (!(turn instanceof HTMLElement)) {
         return null;
       }
       return Math.round(turn.getBoundingClientRect().top - node.getBoundingClientRect().top);
     })).toBeLessThanOrEqual(24);
-    await expect(jumpPrevButton).toHaveClass(/is-visible/);
-    await expect(jumpPrevButton).toHaveAttribute("data-terminal-jump-target", "turn-1");
 
-    await alignTurnToTop("turn-3");
     await expect(jumpPrevButton).toHaveClass(/is-visible/);
     await expect(jumpPrevButton).toHaveAttribute("data-terminal-jump-target", "turn-2");
     await jumpPrevButton.click();
@@ -802,6 +802,19 @@ test.describe("Terminal route", () => {
     const prompt = terminalPage.turnCard("turn-1").locator(".terminal-turn-prompt");
     await expect(terminalPage.turnCard("turn-1")).toContainText("line 120");
     await expect.poll(() => prompt.evaluate((node) => window.getComputedStyle(node).position)).toBe("static");
+    await expect.poll(() => terminalPage.chatScreen().evaluate((node) => {
+      const promptNode = node.querySelector(".terminal-turn-prompt .terminal-log-main");
+      if (!(promptNode instanceof HTMLElement)) {
+        return false;
+      }
+      const promptRect = promptNode.getBoundingClientRect();
+      const nodeRect = node.getBoundingClientRect();
+      const width = Math.round(promptRect.width);
+      const maxWidth = Math.round(nodeRect.width * 0.7);
+      const rightGap = Math.round(nodeRect.right - promptRect.right);
+      const leftGap = Math.round(promptRect.left - nodeRect.left);
+      return width <= maxWidth + 2 && rightGap <= leftGap;
+    })).toBe(true);
 
     await terminalPage.chatScreen().evaluate((node) => {
       node.scrollTop = Math.max((node.scrollHeight - node.clientHeight) / 2, 0);

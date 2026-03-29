@@ -887,7 +887,7 @@ body {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
   min-width: 0;
 }
 
@@ -898,7 +898,20 @@ body {
   min-width: 0;
 }
 
+.msg + .msg {
+  margin-top: 10px;
+}
+
+.msg.assistant + .msg.user {
+  margin-top: 18px;
+}
+
+.msg.user + .msg.assistant {
+  margin-top: 6px;
+}
+
 .msg.user {
+  max-width: min(70%, 720px);
   margin-left: auto;
   align-items: flex-end;
 }
@@ -1071,6 +1084,11 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.msg.user .msg-meta {
+  justify-content: flex-end;
+  text-align: right;
 }
 
 .route-pill {

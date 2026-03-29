@@ -544,7 +544,7 @@
 
 .terminal-log-tree {
   display: grid;
-  gap: 8px;
+  gap: 0;
   min-width: 0;
 }
 
@@ -607,20 +607,25 @@
 }
 
 .terminal-turn-prompt {
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 8px;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0 0 2px;
   padding: 0;
 }
 
 .terminal-turn-prompt .terminal-log-main {
   align-items: center;
   gap: 10px;
-  width: min(100%, 840px);
+  flex: 0 1 auto;
+  width: auto;
+  max-width: min(70%, 720px);
+  margin-left: auto;
   padding: 10px 14px;
-  border: 1px solid rgba(147, 197, 253, 0.42);
+  border: 1px solid rgba(96, 165, 250, 0.26);
   border-radius: 16px;
-  background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   box-shadow: var(--terminal-shadow-soft);
 }
 
@@ -631,22 +636,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(59, 130, 246, 0.16);
-  color: var(--terminal-accent-strong);
+  background: rgba(255, 255, 255, 0.18);
+  color: #eff6ff;
   font-weight: 800;
   line-height: 1;
   flex-shrink: 0;
 }
 
 .terminal-turn-prompt .terminal-log-text {
-  color: var(--terminal-text-primary);
+  color: #ffffff;
   font-size: 14px;
   font-weight: 700;
   line-height: 1.45;
 }
 
 .terminal-turn-prompt .terminal-log-time {
+  width: 100%;
+  margin-top: 0;
+  padding-right: 10px;
   color: var(--terminal-text-tertiary);
+  text-align: right;
 }
 
 .terminal-turn-surface {
@@ -883,11 +892,15 @@
 
 .terminal-turn-card {
   display: grid;
-  gap: 12px;
+  gap: 6px;
   padding: 0;
   min-width: 0;
   max-width: 100%;
   overflow: visible;
+}
+
+.terminal-turn-card + .terminal-turn-card {
+  margin-top: 18px;
 }
 
 .terminal-process-shell {
@@ -1971,6 +1984,10 @@
     max-width: 92%;
   }
 
+  .msg.user {
+    max-width: 70%;
+  }
+
   .composer-shell {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(248, 250, 252, 0.95) 45%);
     padding: 6px 8px calc(10px + env(safe-area-inset-bottom) + var(--keyboard-offset));
@@ -2297,14 +2314,16 @@
   }
 
   .terminal-turn-prompt {
-    align-items: flex-start;
-    margin-bottom: 6px;
+    gap: 4px 8px;
+    margin-bottom: 2px;
   }
 
   .terminal-log-time {
     width: 100%;
     margin-top: 0;
-    padding-left: 34px;
+    padding-left: 0;
+    padding-right: 8px;
+    text-align: right;
   }
 
   .terminal-step-toggle {

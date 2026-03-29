@@ -9375,6 +9375,7 @@ async function loadTerminalView(container) {
         nextTurnID: ""
       };
     }
+    const viewportAnchor = Math.max(Number(chatNode.scrollTop || 0) + 24, 0);
     const turnEntries = [...chatNode.querySelectorAll("[data-terminal-turn]")].map((turnNode) => {
       if (!(turnNode instanceof HTMLElement)) {
         return null;
@@ -9383,9 +9384,14 @@ async function loadTerminalView(container) {
       if (!id || id === "-") {
         return null;
       }
+      const promptNode = turnNode.querySelector(".terminal-turn-prompt");
+      const anchorNode = promptNode instanceof HTMLElement ? promptNode : turnNode;
       const start = measureTerminalNodeScrollOffset(turnNode, chatNode);
+      const anchor = measureTerminalNodeScrollOffset(anchorNode, chatNode);
       return {
         id,
+        node: turnNode,
+        anchor,
         start,
         end: start + Math.max(Number(turnNode.offsetHeight || 0), 0)
       };
@@ -9396,15 +9402,18 @@ async function loadTerminalView(container) {
         nextTurnID: ""
       };
     }
-    const anchor = Math.max(Number(chatNode.scrollTop || 0), 0) + 18;
     let currentIndex = 0;
     for (let index = 0; index < turnEntries.length; index += 1) {
       const entry = turnEntries[index];
-      if (entry.start <= anchor) {
-        currentIndex = index;
-        continue;
+      const nextEntry = turnEntries[index + 1] || null;
+      if (viewportAnchor < entry.anchor) {
+        currentIndex = Math.max(index - 1, 0);
+        break;
       }
-      break;
+      currentIndex = index;
+      if (!nextEntry || viewportAnchor < nextEntry.anchor) {
+        break;
+      }
     }
     return {
       previousTurnID: currentIndex > 0 ? turnEntries[currentIndex - 1].id : "",
