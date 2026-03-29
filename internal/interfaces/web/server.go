@@ -644,6 +644,7 @@ func NewServer(
 		webBindLocalhost: resolvedBindLocalhost,
 		agents:           agents,
 		products:         products,
+		productDrafts:    productDrafts,
 		travelGuides:     travelGuides,
 	}
 }
@@ -703,6 +704,9 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/agents", s.agentListHandler)
 	mux.HandleFunc("/api/control/agents/", s.agentItemHandler)
 	mux.HandleFunc("/api/control/products", s.productListHandler)
+	mux.HandleFunc("/api/control/products/generate", s.productDraftGenerateHandler)
+	mux.HandleFunc("/api/control/products/drafts", s.productDraftListHandler)
+	mux.HandleFunc("/api/control/products/drafts/", s.productDraftItemHandler)
 	mux.HandleFunc("/api/control/products/", s.productItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
@@ -3567,15 +3571,34 @@ func (s *Server) productListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) productItemHandler(w http.ResponseWriter, r *http.Request) {
+	parts, ok := productControlResourceParts(r.URL.Path)
+	if !ok || len(parts) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
+		return
+	}
+	if len(parts) == 1 {
+		switch parts[0] {
+		case "generate":
+			s.productDraftGenerateHandler(w, r)
+			return
+		case "drafts":
+			s.productDraftListHandler(w, r)
+			return
+		}
+	}
+	if parts[0] == "drafts" {
+		s.productDraftItemHandler(w, r)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "matrix" && parts[2] == "generate" {
+		s.productMatrixGenerateHandler(w, r, parts[0])
+		return
+	}
 	if s.products == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "product service unavailable"})
 		return
 	}
-	productID, ok := resourceID(r.URL.Path, "/api/control/products/")
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product path"})
-		return
-	}
+	productID := parts[0]
 	switch r.Method {
 	case http.MethodGet:
 		item, found := s.products.ResolveProduct(productID)

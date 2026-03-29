@@ -685,3 +685,98 @@ func TestProductDraftEndpointsGenerateAndPublish(t *testing.T) {
 		t.Fatalf("expected draft to be marked published, got %+v", storedDraft)
 	}
 }
+
+func TestProductItemHandlerRoutesDraftCollection(t *testing.T) {
+	products := productapp.NewService()
+	server := &Server{
+		products:      products,
+		productDrafts: productapp.NewDraftService(products),
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	_, err := server.productDrafts.GenerateDraft(productdomain.ProductDraftGenerateInput{
+		Name:             "Travel Premium",
+		Goal:             "生成城市旅游攻略并输出地图图层。",
+		CoreCapabilities: []string{"city guide", "map"},
+	})
+	if err != nil {
+		t.Fatalf("generate draft failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/control/products/drafts", nil)
+	rec := httptest.NewRecorder()
+	server.productItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		Items []productdomain.ProductDraft `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode drafts failed: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one draft, got %+v", payload.Items)
+	}
+}
+
+func TestProductItemHandlerRoutesMatrixGenerate(t *testing.T) {
+	products := productapp.NewService()
+	server := &Server{
+		products:      products,
+		productDrafts: productapp.NewDraftService(products),
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/products/travel/matrix/generate", strings.NewReader(`{
+		"name":"Travel Dining",
+		"goal":"补充城市美食和夜间路线能力。",
+		"core_capabilities":["food","night route"]
+	}`))
+	rec := httptest.NewRecorder()
+	server.productItemHandler(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+	var draft productdomain.ProductDraft
+	if err := json.NewDecoder(rec.Body).Decode(&draft); err != nil {
+		t.Fatalf("decode draft failed: %v", err)
+	}
+	if draft.Mode != productdomain.GenerationModeExpand {
+		t.Fatalf("expected expand draft, got %+v", draft)
+	}
+	if draft.Product.ID != "travel" {
+		t.Fatalf("expected draft for travel product, got %+v", draft.Product)
+	}
+}
+
+func TestNewServerAssignsProductDraftService(t *testing.T) {
+	products := productapp.NewService()
+	drafts := productapp.NewDraftService(products)
+
+	server := NewServer(
+		"127.0.0.1:0",
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		drafts,
+		nil,
+		AgentMemoryOptions{},
+		WebSecurityOptions{},
+		nil,
+		nil,
+		products,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+
+	if server.productDrafts == nil {
+		t.Fatalf("expected product draft service to be assigned")
+	}
+}
