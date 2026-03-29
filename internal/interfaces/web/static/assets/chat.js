@@ -40,7 +40,7 @@ const DEFAULT_ROUTE = "chat";
 const SWIPE_CLOSE_THRESHOLD = 46;
 const TERMINAL_SCROLL_STICKY_THRESHOLD = 32;
 const TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD = 240;
-const TERMINAL_STICKY_PROMPT_SHOW_OFFSET = 10;
+const TERMINAL_JUMP_TOP_SHOW_THRESHOLD = 180;
 const NAV_TOOLTIP_SHOW_DELAY = 90;
 const NAV_TOOLTIP_HIDE_DELAY = 40;
 const NAV_TOOLTIP_OFFSET = 12;
@@ -528,6 +528,10 @@ const I18N = {
     "route.terminal.output_expand": "Show more",
     "route.terminal.output_collapse": "Show less",
     "route.terminal.jump_bottom": "Latest",
+    "route.terminal.jump_top": "Top",
+    "route.terminal.jump_prev": "Previous",
+    "route.terminal.jump_next": "Next",
+    "route.terminal.navigation": "Turn navigation",
     "route.terminal.step.loading": "Loading step details...",
     "route.terminal.step.error": "Load step failed: {error}",
     "route.terminal.step.search": "Search in output",
@@ -1083,6 +1087,10 @@ const I18N = {
     "route.terminal.output_expand": "展开更多",
     "route.terminal.output_collapse": "收起",
     "route.terminal.jump_bottom": "回到底部",
+    "route.terminal.jump_top": "回到顶部",
+    "route.terminal.jump_prev": "上一条",
+    "route.terminal.jump_next": "下一条",
+    "route.terminal.navigation": "终端导航",
     "route.terminal.send_failed": "发送失败：{error}",
     "route.terminal.logs_failed": "终端输出加载失败：{error}",
     "route.terminal.close_failed": "终端关闭失败：{error}",
@@ -4327,6 +4335,10 @@ function parseHashRoute() {
 
 function isMobileViewport() {
   return window.matchMedia("(max-width: 1100px)").matches;
+}
+
+function isTerminalSessionSheetViewport() {
+  return window.matchMedia("(max-width: 760px)").matches;
 }
 
 function setSidebarCollapsed(collapsed) {
@@ -8611,12 +8623,13 @@ function classifyTerminalLogKind(entry) {
   return "output";
 }
 
-function renderTerminalSessionCards(sessions, activeSessionID) {
+function renderTerminalSessionCards(sessions, activeSessionID, options = {}) {
   if (!sessions.length) {
     return `<p class="route-empty-panel terminal-session-empty">${escapeHTML(t("route.terminal.empty"))}</p>`;
   }
   return sessions.map((session) => {
     const title = normalizeText(session.title);
+    const sessionID = normalizeText(session.id);
     const active = session.id === activeSessionID;
     const statusClassName = taskStatusClassName(session.status);
     const listTimestamp = getTerminalSessionSortAt(session);
@@ -8624,15 +8637,20 @@ function renderTerminalSessionCards(sessions, activeSessionID) {
     const lastOutputMeta = getTerminalSessionLastOutputAt(session) > 0
       ? t("route.terminal.last_output", { time: listTimeLabel })
       : t("route.terminal.no_output");
-    return `<button class="route-card route-card-button terminal-session-card ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(session.id)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}" ${active ? 'aria-current="true"' : ""}>
-      <span class="terminal-session-head">
-        <span class="route-card-title-copy">
-          <span class="terminal-session-title">${escapeHTML(title)}</span>
-          <span class="terminal-session-meta">${escapeHTML(lastOutputMeta)}</span>
+    const deleting = Boolean(options?.deleting) && sessionID === normalizeText(options?.deletingSessionID);
+    const deleteLabel = deleting ? t("route.terminal.deleting") : t("route.terminal.delete");
+    return `<div class="route-card terminal-session-card ${active ? "active" : ""}" data-terminal-session-card="${escapeHTML(sessionID)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
+      <button class="route-card-button terminal-session-select" type="button" data-terminal-session-select="${escapeHTML(sessionID)}" ${active ? 'aria-current="true"' : ""}>
+        <span class="terminal-session-head">
+          <span class="route-card-title-copy">
+            <span class="terminal-session-title">${escapeHTML(title)}</span>
+            <span class="terminal-session-meta">${escapeHTML(lastOutputMeta)}</span>
+          </span>
+          <span class="task-summary-status ${statusClassName}">${escapeHTML(renderTerminalStatus(session.status))}</span>
         </span>
-        <span class="task-summary-status ${statusClassName}">${escapeHTML(renderTerminalStatus(session.status))}</span>
-      </span>
-    </button>`;
+      </button>
+      <button class="terminal-session-list-delete" type="button" data-terminal-delete-session="${escapeHTML(sessionID)}" aria-label="${escapeHTML(deleteLabel)}" ${Boolean(options?.deleting) ? "disabled" : ""}>${escapeHTML(deleteLabel)}</button>
+    </div>`;
   }).join("");
 }
 
@@ -8820,12 +8838,12 @@ function renderTerminalStepItems(session, turn) {
     const expanded = Boolean(session?.expanded_steps?.[stepID]);
     const duration = formatTerminalDuration(step.duration_ms, step.started_at, step.finished_at);
     const preview = String(step.preview || "").trim();
+    const summary = preview || String(step.title || "-").trim() || "-";
     return `<article class="terminal-step-item" data-terminal-step-item="${escapeHTML(stepID)}">
       <button class="terminal-step-toggle" type="button" data-terminal-step-toggle="${escapeHTML(stepID)}" data-terminal-turn-id="${escapeHTML(normalizeText(turn.id))}" aria-expanded="${expanded ? "true" : "false"}">
         <span class="terminal-step-toggle-icon">${expanded ? "v" : ">"}</span>
         <span class="terminal-step-summary">
-          <span class="terminal-step-title">${escapeHTML(step.title || "-")}</span>
-          ${preview ? `<span class="terminal-step-preview">${escapeHTML(preview)}</span>` : ""}
+          <span class="terminal-step-title">${escapeHTML(summary)}</span>
         </span>
         <span class="terminal-step-meta">
           <span class="terminal-step-duration">${escapeHTML(duration)}</span>
@@ -8865,17 +8883,13 @@ function renderTerminalFinalOutput(session, turn) {
     return "";
   }
   const turnID = normalizeText(turn?.id);
-  const collapsible = shouldCollapseTerminalOutput(content);
-  const collapsed = collapsible ? resolveTerminalOutputCollapsed(session, turn) : false;
-  return `<section class="terminal-final-output ${collapsed ? "is-collapsed" : ""}">
-    <div class="terminal-final-head">
-      <h6>${escapeHTML(t("route.terminal.final.heading"))}</h6>
-      ${collapsible ? `<button class="terminal-final-toggle" type="button" data-terminal-output-toggle="${escapeHTML(turnID)}" aria-expanded="${collapsed ? "false" : "true"}">${escapeHTML(collapsed ? t("route.terminal.output_expand") : t("route.terminal.output_collapse"))}</button>` : ""}
+  return `<div class="msg assistant terminal-final-output terminal-turn-output" data-terminal-final-output="${escapeHTML(turnID)}">
+    <div class="msg-bubble">
+      <div class="terminal-final-text">
+        <div class="terminal-final-rendered">${renderMarkdownToHTML(content)}</div>
+      </div>
     </div>
-    <div class="terminal-final-text ${collapsed ? "is-clamped" : ""}">
-      <div class="terminal-final-rendered">${renderMarkdownToHTML(content)}</div>
-    </div>
-  </section>`;
+  </div>`;
 }
 
 function renderTerminalTurns(session) {
@@ -8886,10 +8900,13 @@ function renderTerminalTurns(session) {
   return turns.map((turn) => {
     const promptText = String(turn?.prompt || "").trim();
     const hasProcess = Array.isArray(turn?.steps) && turn.steps.length > 0;
-    return `<article class="route-surface-dark terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
-      ${promptText ? `<div class="terminal-log-row kind-command terminal-turn-prompt" data-terminal-turn-prompt="${escapeHTML(normalizeText(turn.id))}" data-terminal-turn-prompt-text="${escapeHTML(promptText)}"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
-      ${hasProcess || String(turn?.status || "").trim().toLowerCase() === "running" ? renderTerminalTurnProcess(session, turn) : ""}
-      ${renderTerminalFinalOutput(session, turn)}
+    const bodyHTML = [
+      hasProcess || String(turn?.status || "").trim().toLowerCase() === "running" ? renderTerminalTurnProcess(session, turn) : "",
+      renderTerminalFinalOutput(session, turn)
+    ].filter(Boolean).join("");
+    return `<article class="terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
+      ${promptText ? `<div class="terminal-log-row kind-command terminal-turn-prompt"><div class="terminal-log-main"><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
+      ${bodyHTML ? `<div class="terminal-turn-surface">${bodyHTML}</div>` : ""}
     </article>`;
   }).join("");
 }
@@ -8912,27 +8929,35 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
   const closeDisabled = sending || closing || deleting || !isTerminalSessionLiveStatus(session.status);
   const deleteDisabled = sending || closing || deleting;
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
+  const showJumpTop = Number(session?.chat_scroll_top || 0) > TERMINAL_JUMP_TOP_SHOW_THRESHOLD;
+  const previousTurnID = normalizeText(session?.chat_previous_turn_id);
+  const nextTurnID = normalizeText(session?.chat_next_turn_id);
   const metaExpanded = Boolean(session?.meta_expanded);
   const sessionCount = Number.isFinite(Number(options?.sessionCount)) ? Math.max(Number(options.sessionCount), 0) : 0;
-  const sessionToggleLabel = options?.mobileSessionListOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
+  const sessionToggleLabel = options?.sessionSheetOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
   const headerSubcopy = getTerminalSessionLastOutputAt(session) > 0
     ? t("route.terminal.last_output", { time: formatDateTime(new Date(getTerminalSessionLastOutputAt(session)).toISOString()) })
     : t("route.terminal.no_output");
   return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${isLive ? "true" : "false"}">
     <header class="terminal-workspace-head">
       <div class="terminal-mobile-actions">
-        <button class="terminal-inline-button" type="button" data-terminal-session-pane-toggle aria-expanded="${options?.mobileSessionListOpen ? "true" : "false"}">${escapeHTML(sessionToggleLabel)}</button>
+        <button class="terminal-inline-button" type="button" data-terminal-session-pane-toggle aria-expanded="${options?.sessionSheetOpen ? "true" : "false"}">${escapeHTML(sessionToggleLabel)}</button>
         <button class="terminal-inline-button is-primary" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new_short"))}</button>
       </div>
       <div class="terminal-workspace-row">
         <div class="terminal-workspace-copy">
           <p class="terminal-workspace-eyebrow">${escapeHTML(t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 24) }))}</p>
-          <h4>${escapeHTML(normalizeText(session.title))}</h4>
+          <div class="terminal-workspace-title-row">
+            <h4>${escapeHTML(normalizeText(session.title))}</h4>
+            <span class="terminal-runtime-state" data-terminal-runtime-state="${escapeHTML(normalizedStatus || "unknown")}">
+              <span class="terminal-runtime-state-dot" aria-hidden="true"></span>
+              <span class="terminal-runtime-state-text">${escapeHTML(renderTerminalStatus(session.status))}</span>
+            </span>
+          </div>
           <p class="terminal-workspace-subcopy">${escapeHTML(headerSubcopy)}</p>
         </div>
         <div class="terminal-workspace-actions">
-          <span class="terminal-status-pill">${escapeHTML(renderTerminalStatus(session.status))}</span>
-          <button class="terminal-inline-button" type="button" data-terminal-meta-toggle aria-expanded="${metaExpanded ? "true" : "false"}">${escapeHTML(metaExpanded ? t("route.terminal.details_hide") : t("route.terminal.details_show"))}</button>
+          <button class="terminal-inline-button is-quiet" type="button" data-terminal-meta-toggle aria-expanded="${metaExpanded ? "true" : "false"}">${escapeHTML(metaExpanded ? t("route.terminal.details_hide") : t("route.terminal.details_show"))}</button>
           <button class="terminal-session-close" type="button" data-terminal-close ${closeDisabled ? "disabled" : ""}>${escapeHTML(closing ? t("route.terminal.closing") : t("route.terminal.close"))}</button>
           <button class="terminal-session-delete" type="button" data-terminal-delete ${deleteDisabled ? "disabled" : ""}>${escapeHTML(deleting ? t("route.terminal.deleting") : t("route.terminal.delete"))}</button>
         </div>
@@ -8940,25 +8965,29 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
       ${metaExpanded ? renderTerminalWorkspaceMetaPanel(session) : ""}
     </header>
     <section class="route-surface-dark terminal-console-panel" data-terminal-console-panel>
-      <div class="terminal-sticky-prompt-shell" data-terminal-sticky-prompt-shell hidden>
-        <div class="terminal-sticky-prompt" data-terminal-sticky-prompt>
-          <span class="terminal-sticky-prompt-prefix" aria-hidden="true">&gt;</span>
-          <span class="terminal-sticky-prompt-text" data-terminal-sticky-prompt-text></span>
-        </div>
-      </div>
       <div class="terminal-chat-screen" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
         <div class="terminal-log-tree">
           ${renderTerminalTurns(session)}
         </div>
       </div>
-      <button class="terminal-jump-bottom ${showJumpBottom ? "is-visible" : ""} ${session?.chat_has_unread_output ? "has-unread" : ""}" type="button" data-terminal-jump-bottom aria-label="${escapeHTML(t("route.terminal.jump_bottom"))}">
-        <span class="terminal-jump-bottom-icon" aria-hidden="true">&darr;</span>
-        <span class="terminal-jump-bottom-label">${escapeHTML(t("route.terminal.jump_bottom"))}</span>
-      </button>
+      <div class="terminal-jump-cluster" aria-label="${escapeHTML(t("route.terminal.navigation"))}">
+        <button class="terminal-jump-control terminal-jump-top ${showJumpTop ? "is-visible" : ""}" type="button" data-terminal-jump-top aria-label="${escapeHTML(t("route.terminal.jump_top"))}" title="${escapeHTML(t("route.terminal.jump_top"))}">
+          <span class="terminal-jump-control-icon" aria-hidden="true">&uarr;&uarr;</span>
+        </button>
+        <button class="terminal-jump-control terminal-jump-prev ${previousTurnID ? "is-visible" : ""}" type="button" data-terminal-jump-prev data-terminal-jump-target="${escapeHTML(previousTurnID)}" aria-label="${escapeHTML(t("route.terminal.jump_prev"))}" title="${escapeHTML(t("route.terminal.jump_prev"))}">
+          <span class="terminal-jump-control-icon" aria-hidden="true">&uarr;</span>
+        </button>
+        <button class="terminal-jump-control terminal-jump-next ${nextTurnID ? "is-visible" : ""}" type="button" data-terminal-jump-next data-terminal-jump-target="${escapeHTML(nextTurnID)}" aria-label="${escapeHTML(t("route.terminal.jump_next"))}" title="${escapeHTML(t("route.terminal.jump_next"))}">
+          <span class="terminal-jump-control-icon" aria-hidden="true">&darr;</span>
+        </button>
+        <button class="terminal-jump-control terminal-jump-bottom ${showJumpBottom ? "is-visible" : ""} ${session?.chat_has_unread_output ? "has-unread" : ""}" type="button" data-terminal-jump-bottom aria-label="${escapeHTML(t("route.terminal.jump_bottom"))}" title="${escapeHTML(t("route.terminal.jump_bottom"))}">
+          <span class="terminal-jump-control-icon" aria-hidden="true">&darr;&darr;</span>
+        </button>
+      </div>
     </section>
     <section class="terminal-composer-shell">
-      ${note || detail ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
       <form class="terminal-chat-form" data-terminal-input-form data-composer-form="terminal-runtime">
+        ${note || detail ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
         <textarea data-terminal-input data-composer-input="terminal-runtime" maxlength="6000" rows="1" placeholder="${escapeHTML(placeholder)}" ${(sending || !canInput) ? "disabled" : ""}></textarea>
         <button type="submit" data-terminal-submit data-composer-submit="terminal-runtime" aria-label="${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}" ${(sending || !canInput) ? "disabled" : ""}>
           <span class="terminal-chat-form-button-icon" aria-hidden="true">&uarr;</span>
@@ -9030,7 +9059,7 @@ function syncRenderedBlock(parent, selector, html, anchorNode = null, position =
   return parent.querySelector(selector);
 }
 
-function patchTerminalSessionPane(container, sessions, activeSessionID, mobileSessionListOpen) {
+function patchTerminalSessionPane(container, sessions, activeSessionID, mobileSessionListOpen, options = {}) {
   const paneNode = container.querySelector("[data-terminal-session-pane]");
   if (!paneNode) {
     return null;
@@ -9046,7 +9075,7 @@ function patchTerminalSessionPane(container, sessions, activeSessionID, mobileSe
     syncNodeText(node, t("route.terminal.hide_sessions"));
   });
   const sessionListNode = paneNode.querySelector("[data-terminal-session-list]");
-  syncNodeHTML(sessionListNode, renderTerminalSessionCards(sessions, activeSessionID));
+  syncNodeHTML(sessionListNode, renderTerminalSessionCards(sessions, activeSessionID, options));
   return sessionListNode;
 }
 
@@ -9075,7 +9104,7 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
   const metaExpanded = Boolean(session?.meta_expanded);
   const sessionCount = Number.isFinite(Number(options?.sessionCount)) ? Math.max(Number(options.sessionCount), 0) : 0;
-  const sessionToggleLabel = options?.mobileSessionListOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
+  const sessionToggleLabel = options?.sessionSheetOpen ? t("route.terminal.hide_sessions") : t("route.terminal.sessions");
   const headerSubcopy = getTerminalSessionLastOutputAt(session) > 0
     ? t("route.terminal.last_output", { time: formatDateTime(new Date(getTerminalSessionLastOutputAt(session)).toISOString()) })
     : t("route.terminal.no_output");
@@ -9086,7 +9115,7 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
 
   const sessionPaneToggle = workspaceNode.querySelector("[data-terminal-session-pane-toggle]");
   syncNodeText(sessionPaneToggle, sessionToggleLabel);
-  syncNodeAttribute(sessionPaneToggle, "aria-expanded", options?.mobileSessionListOpen ? "true" : "false");
+  syncNodeAttribute(sessionPaneToggle, "aria-expanded", options?.sessionSheetOpen ? "true" : "false");
   workspaceNode.querySelectorAll(".terminal-mobile-actions [data-terminal-create]").forEach((node) => {
     syncNodeText(node, t("route.terminal.new_short"));
   });
@@ -9094,7 +9123,9 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
   syncNodeText(workspaceNode.querySelector(".terminal-workspace-eyebrow"), t("route.terminal.logs.heading", { session: shorten(logRef === "-" ? "n/a" : logRef, 24) }));
   syncNodeText(workspaceNode.querySelector(".terminal-workspace-copy h4"), normalizeText(session.title));
   syncNodeText(workspaceNode.querySelector(".terminal-workspace-subcopy"), headerSubcopy);
-  syncNodeText(workspaceNode.querySelector(".terminal-status-pill"), renderTerminalStatus(session.status));
+  const runtimeStateNode = workspaceNode.querySelector("[data-terminal-runtime-state]");
+  syncNodeAttribute(runtimeStateNode, "data-terminal-runtime-state", normalizedStatus || "unknown");
+  syncNodeText(runtimeStateNode ? runtimeStateNode.querySelector(".terminal-runtime-state-text") : null, renderTerminalStatus(session.status));
 
   const metaToggleNode = workspaceNode.querySelector("[data-terminal-meta-toggle]");
   syncNodeText(metaToggleNode, metaExpanded ? t("route.terminal.details_hide") : t("route.terminal.details_show"));
@@ -9126,24 +9157,47 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
     syncNodeAttribute(chatNode, "data-terminal-chat-status", normalizeText(session.status || "unknown"));
     syncNodeHTML(chatNode.querySelector(".terminal-log-tree"), renderTerminalTurns(session));
   }
+  const jumpTopNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-jump-top]") : null;
+  if (jumpTopNode) {
+    jumpTopNode.classList.toggle("is-visible", Number(session?.chat_scroll_top || 0) > TERMINAL_JUMP_TOP_SHOW_THRESHOLD);
+    syncNodeAttribute(jumpTopNode, "aria-label", t("route.terminal.jump_top"));
+    syncNodeAttribute(jumpTopNode, "title", t("route.terminal.jump_top"));
+  }
+  const jumpPrevNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-jump-prev]") : null;
+  if (jumpPrevNode) {
+    const previousTurnID = normalizeText(session?.chat_previous_turn_id);
+    jumpPrevNode.classList.toggle("is-visible", Boolean(previousTurnID));
+    syncNodeAttribute(jumpPrevNode, "data-terminal-jump-target", previousTurnID);
+    syncNodeAttribute(jumpPrevNode, "aria-label", t("route.terminal.jump_prev"));
+    syncNodeAttribute(jumpPrevNode, "title", t("route.terminal.jump_prev"));
+  }
+  const jumpNextNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-jump-next]") : null;
+  if (jumpNextNode) {
+    const nextTurnID = normalizeText(session?.chat_next_turn_id);
+    jumpNextNode.classList.toggle("is-visible", Boolean(nextTurnID));
+    syncNodeAttribute(jumpNextNode, "data-terminal-jump-target", nextTurnID);
+    syncNodeAttribute(jumpNextNode, "aria-label", t("route.terminal.jump_next"));
+    syncNodeAttribute(jumpNextNode, "title", t("route.terminal.jump_next"));
+  }
   const jumpBottomNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-jump-bottom]") : null;
   if (jumpBottomNode) {
     jumpBottomNode.classList.toggle("is-visible", showJumpBottom);
     jumpBottomNode.classList.toggle("has-unread", Boolean(session?.chat_has_unread_output));
     syncNodeAttribute(jumpBottomNode, "aria-label", t("route.terminal.jump_bottom"));
-    syncNodeText(jumpBottomNode.querySelector(".terminal-jump-bottom-label"), t("route.terminal.jump_bottom"));
+    syncNodeAttribute(jumpBottomNode, "title", t("route.terminal.jump_bottom"));
   }
 
   const composerShellNode = workspaceNode.querySelector(".terminal-composer-shell");
   const formNode = composerShellNode ? composerShellNode.querySelector("[data-terminal-input-form]") : null;
+  const inputNode = formNode ? formNode.querySelector("[data-terminal-input]") : null;
   if (composerShellNode) {
     syncRenderedBlock(
-      composerShellNode,
+      formNode,
       "[data-terminal-runtime-note]",
       note || detail
         ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>`
         : "",
-      formNode,
+      inputNode,
       "beforebegin"
     );
     syncRenderedBlock(
@@ -9154,7 +9208,6 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
       "afterend"
     );
   }
-  const inputNode = formNode ? formNode.querySelector("[data-terminal-input]") : null;
   if (inputNode) {
     inputNode.placeholder = placeholder;
     inputNode.disabled = sending || !canInput;
@@ -9181,6 +9234,7 @@ async function loadTerminalView(container) {
     sending: false,
     closing: false,
     deleting: false,
+    deletingSessionID: "",
     polling: false,
     timer: 0,
     drafts: {},
@@ -9201,6 +9255,10 @@ async function loadTerminalView(container) {
   localState.activeSessionID = localState.sessions[0] ? localState.sessions[0].id : "";
   localState.mobileSessionListOpen = localState.sessions.length === 0;
   localState.mobileSessionListAutoOpened = localState.mobileSessionListOpen;
+
+  const resolveTerminalSessionSheetOpen = () => {
+    return isTerminalSessionSheetViewport() && Boolean(localState.mobileSessionListOpen);
+  };
 
   const getActiveSession = () => {
     return localState.sessions.find((item) => item.id === localState.activeSessionID) || null;
@@ -9297,55 +9355,66 @@ async function loadTerminalView(container) {
     node.style.overflowY = node.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
   };
 
-  const syncTerminalStickyPrompt = (chatNode = null) => {
-    const node = chatNode || container.querySelector("[data-terminal-chat-screen]");
-    const stickyShellNode = container.querySelector("[data-terminal-sticky-prompt-shell]");
-    const stickyNode = container.querySelector("[data-terminal-sticky-prompt]");
-    const stickyTextNode = container.querySelector("[data-terminal-sticky-prompt-text]");
-    if (!node || !stickyShellNode || !stickyNode || !stickyTextNode) {
-      return;
+  const measureTerminalNodeScrollOffset = (node, scrollNode) => {
+    if (!(node instanceof HTMLElement) || !(scrollNode instanceof HTMLElement)) {
+      return 0;
     }
-    const promptNodes = [...node.querySelectorAll("[data-terminal-turn-prompt]")];
-    if (!promptNodes.length) {
-      stickyShellNode.hidden = true;
-      stickyNode.removeAttribute("data-terminal-turn-id");
-      stickyTextNode.textContent = "";
-      return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollRect = scrollNode.getBoundingClientRect();
+    return Math.max(scrollNode.scrollTop + nodeRect.top - scrollRect.top, 0);
+  };
+
+  const resolveTerminalTurnNavigation = (chatNode) => {
+    if (!(chatNode instanceof HTMLElement)) {
+      return {
+        previousTurnID: "",
+        nextTurnID: ""
+      };
     }
-    const chatTop = node.getBoundingClientRect().top;
-    let activePrompt = null;
-    promptNodes.forEach((promptNode) => {
-      if (!(promptNode instanceof HTMLElement)) {
-        return;
+    const viewportAnchor = Math.max(Number(chatNode.scrollTop || 0) + 24, 0);
+    const turnEntries = [...chatNode.querySelectorAll("[data-terminal-turn]")].map((turnNode) => {
+      if (!(turnNode instanceof HTMLElement)) {
+        return null;
       }
-      if (promptNode.getBoundingClientRect().top <= chatTop + TERMINAL_STICKY_PROMPT_SHOW_OFFSET) {
-        activePrompt = promptNode;
+      const id = normalizeText(turnNode.getAttribute("data-terminal-turn"));
+      if (!id || id === "-") {
+        return null;
       }
-    });
-    if (!(activePrompt instanceof HTMLElement)) {
-      stickyShellNode.hidden = true;
-      stickyNode.removeAttribute("data-terminal-turn-id");
-      stickyTextNode.textContent = "";
-      return;
+      const promptNode = turnNode.querySelector(".terminal-turn-prompt");
+      const anchorNode = promptNode instanceof HTMLElement ? promptNode : turnNode;
+      const start = measureTerminalNodeScrollOffset(turnNode, chatNode);
+      const anchor = measureTerminalNodeScrollOffset(anchorNode, chatNode);
+      return {
+        id,
+        node: turnNode,
+        anchor,
+        start,
+        end: start + Math.max(Number(turnNode.offsetHeight || 0), 0)
+      };
+    }).filter(Boolean);
+    if (!turnEntries.length) {
+      return {
+        previousTurnID: "",
+        nextTurnID: ""
+      };
     }
-    const activeTurn = activePrompt.closest("[data-terminal-turn]");
-    const turnRect = activeTurn instanceof HTMLElement ? activeTurn.getBoundingClientRect() : null;
-    if (!turnRect || turnRect.bottom <= chatTop + 8 || activePrompt.getBoundingClientRect().top >= chatTop + 4) {
-      stickyShellNode.hidden = true;
-      stickyNode.removeAttribute("data-terminal-turn-id");
-      stickyTextNode.textContent = "";
-      return;
+    let currentIndex = 0;
+    for (let index = 0; index < turnEntries.length; index += 1) {
+      const entry = turnEntries[index];
+      const nextEntry = turnEntries[index + 1] || null;
+      if (viewportAnchor < entry.anchor) {
+        currentIndex = Math.max(index - 1, 0);
+        break;
+      }
+      currentIndex = index;
+      if (!nextEntry || viewportAnchor < nextEntry.anchor) {
+        break;
+      }
     }
-    const promptText = String(activePrompt.getAttribute("data-terminal-turn-prompt-text") || activePrompt.querySelector(".terminal-log-text")?.textContent || "").trim();
-    if (!promptText) {
-      stickyShellNode.hidden = true;
-      stickyNode.removeAttribute("data-terminal-turn-id");
-      stickyTextNode.textContent = "";
-      return;
-    }
-    stickyShellNode.hidden = false;
-    stickyNode.setAttribute("data-terminal-turn-id", normalizeText(activeTurn ? activeTurn.getAttribute("data-terminal-turn") : ""));
-    stickyTextNode.textContent = promptText;
+    return {
+      previousTurnID: currentIndex > 0 ? turnEntries[currentIndex - 1].id : "",
+      nextTurnID: currentIndex < turnEntries.length - 1 ? turnEntries[currentIndex + 1].id : ""
+    };
   };
 
   const shouldDeferTerminalPaint = (sessionID) => {
@@ -9388,20 +9457,36 @@ async function loadTerminalView(container) {
     const remaining = Math.max(Number(node.scrollHeight || 0) - Number(node.scrollTop || 0) - Number(node.clientHeight || 0), 0);
     session.chat_bottom_offset = remaining;
     session.chat_stick_to_bottom = remaining <= TERMINAL_SCROLL_STICKY_THRESHOLD;
+    const turnNavigation = resolveTerminalTurnNavigation(node);
+    session.chat_previous_turn_id = turnNavigation.previousTurnID;
+    session.chat_next_turn_id = turnNavigation.nextTurnID;
     if (session.chat_stick_to_bottom) {
       session.chat_last_seen_output_at = Number(session.last_output_at || 0);
       session.chat_has_unread_output = false;
     }
     const activeSession = getActiveSession();
     if (activeSession && normalizeText(activeSession.id) === key) {
+      const jumpTopButton = container.querySelector("[data-terminal-jump-top]");
+      const jumpPrevButton = container.querySelector("[data-terminal-jump-prev]");
+      const jumpNextButton = container.querySelector("[data-terminal-jump-next]");
       const jumpButton = container.querySelector("[data-terminal-jump-bottom]");
+      if (jumpTopButton) {
+        jumpTopButton.classList.toggle("is-visible", Number(session.chat_scroll_top || 0) > TERMINAL_JUMP_TOP_SHOW_THRESHOLD);
+      }
+      if (jumpPrevButton) {
+        jumpPrevButton.classList.toggle("is-visible", Boolean(turnNavigation.previousTurnID));
+        syncNodeAttribute(jumpPrevButton, "data-terminal-jump-target", turnNavigation.previousTurnID);
+      }
+      if (jumpNextButton) {
+        jumpNextButton.classList.toggle("is-visible", Boolean(turnNavigation.nextTurnID));
+        syncNodeAttribute(jumpNextButton, "data-terminal-jump-target", turnNavigation.nextTurnID);
+      }
       if (jumpButton) {
         const shouldShow = session.chat_has_unread_output || remaining > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
         jumpButton.classList.toggle("is-visible", shouldShow);
         jumpButton.classList.toggle("has-unread", session.chat_has_unread_output);
       }
     }
-    syncTerminalStickyPrompt(node);
   };
 
   const scrollTerminalChatToBottom = () => {
@@ -9416,7 +9501,42 @@ async function loadTerminalView(container) {
         activeSession.chat_has_unread_output = false;
         activeSession.chat_stick_to_bottom = true;
       }
-      syncTerminalStickyPrompt(chatNode);
+    }
+  };
+
+  const scrollTerminalChatToTop = () => {
+    const activeSession = getActiveSession();
+    const chatNode = container.querySelector("[data-terminal-chat-screen]");
+    if (!(chatNode instanceof HTMLElement) || chatNode.hidden) {
+      return;
+    }
+    chatNode.scrollTop = 0;
+    if (activeSession) {
+      activeSession.chat_has_unread_output = false;
+      captureTerminalChatScroll(activeSession.id, chatNode, { trackActivity: false });
+    }
+  };
+
+  const scrollTerminalChatToTurn = (turnID) => {
+    const key = normalizeText(turnID);
+    if (!key) {
+      return;
+    }
+    const activeSession = getActiveSession();
+    const chatNode = container.querySelector("[data-terminal-chat-screen]");
+    if (!(chatNode instanceof HTMLElement) || chatNode.hidden) {
+      return;
+    }
+    const escapedTurnID = window.CSS && typeof window.CSS.escape === "function"
+      ? window.CSS.escape(key)
+      : key.replace(/["\\]/g, "\\$&");
+    const turnNode = chatNode.querySelector(`[data-terminal-turn="${escapedTurnID}"]`);
+    if (!(turnNode instanceof HTMLElement)) {
+      return;
+    }
+    chatNode.scrollTop = Math.max(measureTerminalNodeScrollOffset(turnNode, chatNode) - 12, 0);
+    if (activeSession) {
+      captureTerminalChatScroll(activeSession.id, chatNode, { trackActivity: false });
     }
   };
 
@@ -9586,6 +9706,8 @@ async function loadTerminalView(container) {
       const nextIndex = Math.min(index, Math.max(localState.sessions.length - 1, 0));
       localState.activeSessionID = localState.sessions[nextIndex] ? localState.sessions[nextIndex].id : "";
       if (localState.activeSessionID) {
+        localState.mobileSessionListOpen = false;
+        localState.mobileSessionListAutoOpened = false;
         requestRevealActiveSessionCard();
       }
     }
@@ -9723,6 +9845,10 @@ async function loadTerminalView(container) {
     if (!localState.activeSessionID && localState.sessions[0]) {
       localState.activeSessionID = localState.sessions[0].id;
     }
+    if (!isTerminalSessionSheetViewport()) {
+      localState.mobileSessionListOpen = false;
+      localState.mobileSessionListAutoOpened = false;
+    }
     if (localState.mobileSessionListAutoOpened && localState.sessions.length > 0 && localState.activeSessionID) {
       localState.mobileSessionListOpen = false;
       localState.mobileSessionListAutoOpened = false;
@@ -9769,15 +9895,19 @@ async function loadTerminalView(container) {
       previousSessionID === normalizeText(active.id) &&
       container.querySelector("[data-terminal-view]")
     );
+    const sessionSheetOpen = resolveTerminalSessionSheetOpen();
     if (canPatchActiveWorkspace) {
-      patchTerminalSessionPane(container, localState.sessions, localState.activeSessionID, localState.mobileSessionListOpen);
+      patchTerminalSessionPane(container, localState.sessions, localState.activeSessionID, sessionSheetOpen, {
+        deleting: localState.deleting,
+        deletingSessionID: localState.deletingSessionID
+      });
       const patched = patchTerminalWorkspaceNode(container, active, localState.sending, localState.closing, localState.deleting, {
         sessionCount: localState.sessions.length,
-        mobileSessionListOpen: localState.mobileSessionListOpen
+        sessionSheetOpen
       });
       if (!patched) {
         container.innerHTML = `<section class="terminal-view" data-terminal-view>
-          <aside class="terminal-session-pane ${localState.mobileSessionListOpen ? "is-open" : ""}" data-terminal-session-pane>
+          <aside class="terminal-session-pane ${sessionSheetOpen ? "is-open" : ""}" data-terminal-session-pane>
             <button class="terminal-session-pane-backdrop" type="button" data-terminal-session-pane-close aria-label="${escapeHTML(t("route.terminal.hide_sessions"))}"></button>
             <div class="route-surface terminal-session-pane-shell">
               <div class="terminal-session-pane-head">
@@ -9790,20 +9920,23 @@ async function loadTerminalView(container) {
                   <button class="terminal-session-pane-action terminal-session-pane-close" type="button" data-terminal-session-pane-close>${escapeHTML(t("route.terminal.hide_sessions"))}</button>
                 </div>
               </div>
-            <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
+            <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID, {
+              deleting: localState.deleting,
+              deletingSessionID: localState.deletingSessionID
+            })}</div>
             </div>
           </aside>
           <section class="terminal-workspace">
             ${renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
               sessionCount: localState.sessions.length,
-              mobileSessionListOpen: localState.mobileSessionListOpen
+              sessionSheetOpen
             })}
           </section>
         </section>`;
       }
     } else {
       container.innerHTML = `<section class="terminal-view" data-terminal-view>
-        <aside class="terminal-session-pane ${localState.mobileSessionListOpen ? "is-open" : ""}" data-terminal-session-pane>
+        <aside class="terminal-session-pane ${sessionSheetOpen ? "is-open" : ""}" data-terminal-session-pane>
           <button class="terminal-session-pane-backdrop" type="button" data-terminal-session-pane-close aria-label="${escapeHTML(t("route.terminal.hide_sessions"))}"></button>
           <div class="route-surface terminal-session-pane-shell">
             <div class="terminal-session-pane-head">
@@ -9816,16 +9949,23 @@ async function loadTerminalView(container) {
                 <button class="terminal-session-pane-action terminal-session-pane-close" type="button" data-terminal-session-pane-close>${escapeHTML(t("route.terminal.hide_sessions"))}</button>
               </div>
             </div>
-          <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID)}</div>
+          <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID, {
+            deleting: localState.deleting,
+            deletingSessionID: localState.deletingSessionID
+          })}</div>
           </div>
         </aside>
         <section class="terminal-workspace">
           ${renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
             sessionCount: localState.sessions.length,
-            mobileSessionListOpen: localState.mobileSessionListOpen
+            sessionSheetOpen
           })}
         </section>
       </section>`;
+    }
+    const terminalViewNode = container.querySelector("[data-terminal-view]");
+    if (terminalViewNode instanceof HTMLElement && Number(terminalViewNode.scrollTop || 0) !== 0) {
+      terminalViewNode.scrollTop = 0;
     }
     const sessionListNode = container.querySelector("[data-terminal-session-list]");
     if (sessionListNode) {
@@ -10085,10 +10225,15 @@ async function loadTerminalView(container) {
     if (!window.confirm(t("route.terminal.delete_confirm"))) {
       return;
     }
-    localState.deleting = true;
-    paint();
     const sessionID = normalizeText(session.id);
     const deletingActive = sessionID === normalizeText(localState.activeSessionID);
+    localState.deleting = true;
+    localState.deletingSessionID = sessionID;
+    if (deletingActive) {
+      localState.mobileSessionListOpen = false;
+      localState.mobileSessionListAutoOpened = false;
+    }
+    paint();
     try {
       await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(sessionID)}`, {
         method: "DELETE"
@@ -10127,6 +10272,7 @@ async function loadTerminalView(container) {
       paint();
     } finally {
       localState.deleting = false;
+      localState.deletingSessionID = "";
       paint();
     }
   };
@@ -10224,7 +10370,7 @@ async function loadTerminalView(container) {
   }
 
   container.onclick = (event) => {
-    const target = event.target.closest("button");
+    const target = event.target instanceof Element ? event.target.closest("button") : null;
     if (!target) {
       return;
     }
@@ -10242,6 +10388,12 @@ async function loadTerminalView(container) {
       return;
     }
     if (target.hasAttribute("data-terminal-session-pane-toggle")) {
+      if (!isTerminalSessionSheetViewport()) {
+        localState.mobileSessionListOpen = false;
+        localState.mobileSessionListAutoOpened = false;
+        requestTerminalPaint();
+        return;
+      }
       localState.mobileSessionListOpen = !localState.mobileSessionListOpen;
       localState.mobileSessionListAutoOpened = false;
       requestTerminalPaint();
@@ -10285,6 +10437,27 @@ async function loadTerminalView(container) {
       scrollTerminalChatToBottom();
       persist();
       requestTerminalPaint({ scrollToBottom: true });
+      return;
+    }
+    if (target.hasAttribute("data-terminal-jump-top")) {
+      const active = getActiveSession();
+      if (!active) {
+        return;
+      }
+      active.chat_stick_to_bottom = false;
+      active.chat_has_unread_output = false;
+      scrollTerminalChatToTop();
+      persist();
+      return;
+    }
+    if (target.hasAttribute("data-terminal-jump-prev") || target.hasAttribute("data-terminal-jump-next")) {
+      const active = getActiveSession();
+      if (!active) {
+        return;
+      }
+      active.chat_stick_to_bottom = false;
+      scrollTerminalChatToTurn(target.getAttribute("data-terminal-jump-target"));
+      persist();
       return;
     }
     if (target.hasAttribute("data-terminal-output-toggle")) {
@@ -10335,6 +10508,17 @@ async function loadTerminalView(container) {
       const active = getActiveSession();
       if (active) {
         void deleteTerminalSession(active);
+      }
+      return;
+    }
+    if (target.hasAttribute("data-terminal-delete-session")) {
+      const sessionID = normalizeText(target.getAttribute("data-terminal-delete-session"));
+      if (sessionID === "-") {
+        return;
+      }
+      const session = localState.sessions.find((item) => normalizeText(item.id) === sessionID) || null;
+      if (session) {
+        void deleteTerminalSession(session);
       }
       return;
     }

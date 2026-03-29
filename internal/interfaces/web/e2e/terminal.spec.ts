@@ -254,7 +254,7 @@ test.describe("Terminal route", () => {
     await seedTerminalSessions(page, [{
       id: "terminal-overflow-check",
       title: "terminal-overflow-check",
-      terminal_session_id: "thread-overflow-check",
+      terminal_session_id: "terminal-overflow-check",
       status: "interrupted",
       shell: "codex exec",
       working_dir: terminalSessionWorkspace("terminal-overflow-check"),
@@ -317,12 +317,119 @@ test.describe("Terminal route", () => {
     const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-sheet", count: 2 });
 
     await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeHidden();
     await terminalPage.sessionPaneToggle().click();
     await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeVisible();
 
     const secondSession = terminalPage.sessionList().itemAt(1);
     await secondSession.click();
     await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeHidden();
+  });
+
+  test("deletes a historical session directly from the session list", async ({ page, request }) => {
+    const { sessions, terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "list-delete-history", count: 2 });
+
+    const activeSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    expect(activeSessionID).toBeTruthy();
+    const historicalSession = sessions.find((session) => session.id !== activeSessionID);
+    expect(historicalSession).toBeTruthy();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await terminalPage.sessionDeleteButton(String(historicalSession?.id || "")).click();
+
+    await expect(terminalPage.sessionList().items()).toHaveCount(1);
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-session-id", String(activeSessionID));
+    await expect(terminalPage.sessionDeleteButton(String(historicalSession?.id || ""))).toHaveCount(0);
+  });
+
+  test("switches to the next session when deleting the active session from the session list", async ({ page, request }) => {
+    const { sessions, terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "list-delete-active", count: 2 });
+
+    const activeSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    expect(activeSessionID).toBeTruthy();
+    const nextSession = sessions.find((session) => session.id !== activeSessionID);
+    expect(nextSession).toBeTruthy();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await terminalPage.sessionDeleteButton(String(activeSessionID)).click();
+
+    await expect(terminalPage.sessionList().items()).toHaveCount(1);
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-session-id", String(nextSession?.id || ""));
+    await expect(terminalPage.sessionDeleteButton(String(activeSessionID))).toHaveCount(0);
+  });
+
+  test("keeps the mobile session sheet closed and interactive after deleting the active session", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-delete-sheet", count: 2 });
+
+    const previousSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    expect(previousSessionID).toBeTruthy();
+    await expect(terminalPage.sessionList().items()).toHaveCount(2);
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await terminalPage.workspace().locator("[data-terminal-delete]").click();
+
+    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-terminal-session-id")).not.toBe(previousSessionID);
+    await expect(terminalPage.sessionList().items()).toHaveCount(1);
+    await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeHidden();
+
+    await terminalPage.sessionPaneToggle().click();
+    await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeVisible();
+    await terminalPage.sessionPaneClose().click();
+    await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeHidden();
+  });
+
+  test("keeps the terminal workspace filled to the bottom after deleting the active session on mobile", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-delete-height", count: 2 });
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await terminalPage.workspace().locator("[data-terminal-delete]").click();
+
+    await expect.poll(async () => await terminalPage.sessionList().items().count()).toBe(1);
+    await expect(terminalPage.sessionPane()).toBeHidden();
+
+    const layoutMetrics = await page.evaluate(() => {
+      const route = document.querySelector(".route-view.terminal-route");
+      const routeBody = document.querySelector(".route-body.terminal-route-body");
+      const terminalView = document.querySelector("[data-terminal-view]");
+      const terminalWorkspaceShell = document.querySelector(".terminal-workspace");
+      const workspace = document.querySelector("[data-terminal-workspace]");
+      if (!(route instanceof HTMLElement) || !(workspace instanceof HTMLElement)) {
+        return null;
+      }
+      const rect = (node: Element | null) => {
+        if (!(node instanceof HTMLElement)) {
+          return null;
+        }
+        const box = node.getBoundingClientRect();
+        return {
+          top: Math.round(box.top),
+          bottom: Math.round(box.bottom),
+          height: Math.round(box.height),
+        };
+      };
+      return {
+        gap: Math.round(route.getBoundingClientRect().bottom - workspace.getBoundingClientRect().bottom),
+        windowScrollY: Math.round(window.scrollY || 0),
+        routeScrollTop: Math.round(route.scrollTop || 0),
+        routeBodyScrollTop: routeBody instanceof HTMLElement ? Math.round(routeBody.scrollTop || 0) : null,
+        terminalViewScrollTop: terminalView instanceof HTMLElement ? Math.round(terminalView.scrollTop || 0) : null,
+        route: rect(route),
+        routeBody: rect(routeBody),
+        terminalView: rect(terminalView),
+        terminalWorkspaceShell: rect(terminalWorkspaceShell),
+        workspace: rect(workspace),
+      };
+    });
+
+    expect(layoutMetrics).not.toBeNull();
+    expect(layoutMetrics?.gap ?? 0).toBeLessThanOrEqual(20);
   });
 
   test("keeps IME composition input across polling refresh", async ({ page, request }) => {
@@ -407,7 +514,7 @@ test.describe("Terminal route", () => {
     await expectComposerState(composer, { disabled: false });
   });
 
-  test("renders process and final output with lazy-loaded step details", async ({ page, request }) => {
+  test("renders process and plain output with lazy-loaded step details", async ({ page, request }) => {
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "structure" });
     const composer = terminalPage.composer();
     let stepDetailRequests = 0;
@@ -451,7 +558,7 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.workspace()).toContainText(new RegExp(String(currentSessionID).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   });
 
-  test("renders markdown links and collapses long final output by default", async ({ page }) => {
+  test("renders markdown links in plain terminal output without collapse chrome", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     const clientID = createTerminalClientID("collapsed-output");
     const now = Date.now();
@@ -485,15 +592,13 @@ test.describe("Terminal route", () => {
 
     const terminalPage = createTerminalPage(page);
     await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
-    const outputBody = terminalPage.turnCard("turn-rendered").locator(".terminal-final-text");
     const outputLink = terminalPage.turnCard("turn-rendered").locator(".terminal-final-rendered a");
 
-    await expect(outputBody).toHaveClass(/is-clamped/);
+    await expect(terminalPage.turnCard("turn-rendered").locator("[data-terminal-output-toggle]")).toHaveCount(0);
+    await expect(terminalPage.turnCard("turn-rendered").locator(".terminal-final-head")).toHaveCount(0);
+    await expect(terminalPage.finalOutputs().last()).toContainText("line 18");
     await expect(outputLink).toHaveText("requirements.md");
     await expect(outputLink).toHaveAttribute("href", "/srv/alter0/app/alter0/docs/requirements.md");
-
-    await terminalPage.outputToggle("turn-rendered").click();
-    await expect(outputBody).not.toHaveClass(/is-clamped/);
   });
 
   test("keeps terminal scroll position when user leaves bottom", async ({ page, request }) => {
@@ -540,57 +645,292 @@ test.describe("Terminal route", () => {
     await expect(jumpBottomButton).not.toHaveClass(/is-visible/);
   });
 
-  test("shows a sticky user prompt while reading long terminal output", async ({ page, request }) => {
-    await page.setViewportSize({ width: 430, height: 932 });
-    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "sticky-prompt" });
+  test("shows jump-to-top button after reading deep output and returns to the beginning", async ({ page, request }) => {
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "jump-top" });
     const composer = terminalPage.composer();
-    const stickyPrompt = terminalPage.stickyPrompt();
+    const chatScreen = terminalPage.chatScreen();
+    const jumpTopButton = terminalPage.jumpTopButton();
 
     await composer.input().fill("output 120 lines");
     await composer.submitButton().click();
     await expect(terminalPage.finalOutputs().last()).toContainText("line 120");
-    await expect(stickyPrompt).toBeHidden();
+
+    await chatScreen.evaluate((node) => {
+      node.scrollTop = Math.max(node.scrollHeight - node.clientHeight, 0);
+      node.dispatchEvent(new Event("scroll"));
+    });
+
+    await expect(jumpTopButton).toHaveClass(/is-visible/);
+    await jumpTopButton.click();
+
+    await expect.poll(() => chatScreen.evaluate((node) => Math.round(node.scrollTop))).toBeLessThanOrEqual(8);
+    await expect(jumpTopButton).not.toHaveClass(/is-visible/);
+  });
+
+  test("shows previous and next turn buttons and jumps between turn cards", async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const clientID = createTerminalClientID("turn-navigation");
+    const now = Date.now();
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [
+      {
+        id: "terminal-turn-navigation",
+        title: "验证上下条导航",
+        terminal_session_id: "terminal-turn-navigation",
+        status: "exited",
+        shell: "codex exec",
+        working_dir: terminalSessionWorkspace("terminal-turn-navigation"),
+        created_at: now - 5000,
+        updated_at: now - 1000,
+        last_output_at: now - 1000,
+        process_collapsed: {
+          "turn-2": true
+        },
+        output_collapsed: {},
+        expanded_steps: {},
+        step_details: {},
+        step_loading: {},
+        step_errors: {},
+        step_search: {},
+        turns: Array.from({ length: 3 }, (_, index) => ({
+          id: `turn-${index + 1}`,
+          prompt: `output block ${index + 1}`,
+          status: "completed",
+          started_at: now - 4200 + index * 200,
+          finished_at: now - 3200 + index * 200,
+          duration_ms: 1000,
+          final_output: Array.from({ length: 48 }, (_, lineIndex) => `turn ${index + 1} line ${lineIndex + 1}`).join("\n"),
+          steps: index === 1 ? Array.from({ length: 8 }, (_value, stepIndex) => ({
+            id: `turn-2-step-${stepIndex + 1}`,
+            title: `Shell step ${stepIndex + 1}`,
+            preview: `pwsh -NoProfile -Command "Get-ChildItem step-${stepIndex + 1}"`,
+            status: "completed",
+            duration_ms: 1000 + stepIndex * 10,
+            started_at: now - 3800 + stepIndex * 20,
+            finished_at: now - 3400 + stepIndex * 20,
+          })) : [],
+        })),
+      },
+    ]);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    const chatScreen = terminalPage.chatScreen();
+    const jumpPrevButton = terminalPage.jumpPrevButton();
+    const jumpNextButton = terminalPage.jumpNextButton();
+    const alignTurnToTop = async (turnID: string, offset = 18) => {
+      await chatScreen.evaluate((node, payload) => {
+        const turn = node.querySelector(`[data-terminal-turn="${payload?.turnID || ""}"]`);
+        if (!(turn instanceof HTMLElement)) {
+          return;
+        }
+        const nodeRect = node.getBoundingClientRect();
+        const turnRect = turn.getBoundingClientRect();
+        node.scrollTop = Math.max(node.scrollTop + turnRect.top - nodeRect.top - Number(payload?.offset || 0), 0);
+        node.dispatchEvent(new Event("scroll"));
+      }, { turnID, offset });
+    };
+
+    await expect(terminalPage.turnCard("turn-3")).toContainText("turn 3 line 48");
+    await alignTurnToTop("turn-2");
+    await expect(jumpPrevButton).toHaveClass(/is-visible/);
+    await expect(jumpPrevButton).toHaveAttribute("data-terminal-jump-target", "turn-1");
+    await expect(jumpNextButton).toHaveClass(/is-visible/);
+    await expect(jumpNextButton).toHaveAttribute("data-terminal-jump-target", "turn-3");
+
+    await terminalPage.processToggle("turn-2").click();
+    await expect(jumpPrevButton).toHaveAttribute("data-terminal-jump-target", "turn-1");
+    await expect(jumpNextButton).toHaveAttribute("data-terminal-jump-target", "turn-3");
+
+    await jumpNextButton.click();
+    await expect.poll(() => chatScreen.evaluate((node) => {
+      const turn = node.querySelector('[data-terminal-turn="turn-3"]');
+      if (!(turn instanceof HTMLElement)) {
+        return null;
+      }
+      return Math.round(turn.getBoundingClientRect().top - node.getBoundingClientRect().top);
+    })).toBeLessThanOrEqual(24);
+
+    await expect(jumpPrevButton).toHaveClass(/is-visible/);
+    await expect(jumpPrevButton).toHaveAttribute("data-terminal-jump-target", "turn-2");
+    await jumpPrevButton.click();
+    await expect.poll(() => chatScreen.evaluate((node) => {
+      const turn = node.querySelector('[data-terminal-turn="turn-2"]');
+      if (!(turn instanceof HTMLElement)) {
+        return null;
+      }
+      return Math.round(turn.getBoundingClientRect().top - node.getBoundingClientRect().top);
+    })).toBeLessThanOrEqual(24);
+  });
+
+  test("keeps prompt rows in normal document flow while reading long terminal output", async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    const clientID = createTerminalClientID("prompt-flow");
+    const now = Date.now();
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [
+      {
+        id: "terminal-prompt-flow",
+        title: "验证用户消息保持自然流",
+        terminal_session_id: "terminal-prompt-flow",
+        status: "exited",
+        shell: "codex exec",
+        working_dir: terminalSessionWorkspace("terminal-prompt-flow"),
+        created_at: now - 4000,
+        updated_at: now - 1000,
+        last_output_at: now - 1000,
+        process_collapsed: {},
+        output_collapsed: { "turn-1": false },
+        expanded_steps: {},
+        step_details: {},
+        step_loading: {},
+        step_errors: {},
+        step_search: {},
+        turns: [
+          {
+            id: "turn-1",
+            prompt: "output 120 lines",
+            status: "completed",
+            started_at: now - 3200,
+            finished_at: now - 1200,
+            duration_ms: 2000,
+            final_output: Array.from({ length: 120 }, (_, index) => `line ${index + 1}`).join("\n"),
+            steps: [],
+          },
+        ],
+      },
+    ]);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    const prompt = terminalPage.turnCard("turn-1").locator(".terminal-turn-prompt");
+    await expect(terminalPage.turnCard("turn-1")).toContainText("line 120");
+    await expect.poll(() => prompt.evaluate((node) => window.getComputedStyle(node).position)).toBe("static");
+    await expect.poll(() => terminalPage.chatScreen().evaluate((node) => {
+      const promptNode = node.querySelector(".terminal-turn-prompt .terminal-log-main");
+      if (!(promptNode instanceof HTMLElement)) {
+        return false;
+      }
+      const promptRect = promptNode.getBoundingClientRect();
+      const nodeRect = node.getBoundingClientRect();
+      const width = Math.round(promptRect.width);
+      const maxWidth = Math.round(nodeRect.width * 0.7);
+      const rightGap = Math.round(nodeRect.right - promptRect.right);
+      const leftGap = Math.round(promptRect.left - nodeRect.left);
+      return width <= maxWidth + 2 && rightGap <= leftGap;
+    })).toBe(true);
 
     await terminalPage.chatScreen().evaluate((node) => {
       node.scrollTop = Math.max((node.scrollHeight - node.clientHeight) / 2, 0);
       node.dispatchEvent(new Event("scroll"));
     });
 
-    await expect(stickyPrompt).toBeVisible();
-    await expect(stickyPrompt).toContainText("output 120 lines");
+    await expect(page.locator(".is-terminal-sticky-active")).toHaveCount(0);
+    await expect.poll(() => terminalPage.chatScreen().evaluate((node) => {
+      const promptNode = node.querySelector(".terminal-turn-prompt");
+      if (!(promptNode instanceof HTMLElement)) {
+        return null;
+      }
+      return Math.round(promptNode.getBoundingClientRect().bottom - node.getBoundingClientRect().top);
+    })).toBeLessThanOrEqual(0);
   });
 
-  test("keeps output collapse toggle clickable while the sticky prompt is visible", async ({ page, request }) => {
+  test("keeps process and output content in document flow on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 640 });
+    const clientID = createTerminalClientID("section-flow");
+    const now = Date.now();
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [
+      {
+        id: "terminal-section-flow",
+        title: "检查区块头部保持自然流",
+        terminal_session_id: "terminal-section-flow",
+        status: "exited",
+        shell: "codex exec",
+        working_dir: terminalSessionWorkspace("terminal-section-flow"),
+        created_at: now - 4000,
+        updated_at: now - 1000,
+        last_output_at: now - 1000,
+        process_collapsed: {},
+        output_collapsed: { "turn-sticky": false },
+        expanded_steps: {},
+        step_details: {},
+        step_loading: {},
+        step_errors: {},
+        step_search: {},
+        turns: [
+          {
+            id: "turn-sticky",
+            prompt: "输出一段很长的过程和最终结果，便于滚动验证吸顶头部",
+            status: "completed",
+            started_at: now - 3200,
+            finished_at: now - 1200,
+            duration_ms: 2000,
+            final_output: Array.from({ length: 120 }, (_, index) => `line ${index + 1}`).join("\n"),
+            steps: Array.from({ length: 12 }, (_, index) => ({
+              id: `step-${index + 1}`,
+              title: `Step ${index + 1}`,
+              preview: `preview ${index + 1}`,
+              status: "completed",
+              duration_ms: 1000 + index * 10,
+              started_at: now - 3000 + index * 20,
+              finished_at: now - 2000 + index * 20,
+            })),
+          },
+        ],
+      },
+    ]);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    const turnID = "turn-sticky";
+    const outputNode = page.locator(`[data-terminal-final-output="${turnID}"]`);
+    const scrollSelectorIntoView = async (selector: string, offset = 18) => {
+      await terminalPage.chatScreen().evaluate((node, payload) => {
+        const target = node.querySelector(payload?.selector || "");
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        const nodeRect = node.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        node.scrollTop += Math.max(targetRect.top - nodeRect.top - Number(payload?.offset || 0), 0);
+        node.dispatchEvent(new Event("scroll"));
+      }, { selector, offset });
+    };
+
+    await expect(terminalPage.turnCard(turnID)).toContainText("line 120");
+    await expect.poll(() => terminalPage.processToggle(turnID).evaluate((node) => window.getComputedStyle(node).position)).toBe("relative");
+    await expect.poll(() => outputNode.evaluate((node) => window.getComputedStyle(node).position)).toBe("static");
+    await scrollSelectorIntoView(`[data-terminal-process-toggle="${turnID}"]`);
+    await expect(page.locator(".is-terminal-sticky-active")).toHaveCount(0);
+    await scrollSelectorIntoView(`[data-terminal-final-output="${turnID}"]`);
+    await expect(page.locator(".is-terminal-sticky-active")).toHaveCount(0);
+    await expect(terminalPage.turnCard(turnID).locator("[data-terminal-output-toggle]")).toHaveCount(0);
+  });
+
+  test("keeps plain terminal output unobstructed while scrolled on mobile", async ({ page, request }) => {
     await page.setViewportSize({ width: 430, height: 932 });
-    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "sticky-prompt-toggle" });
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "scrolled-output-toggle" });
     const composer = terminalPage.composer();
-    const stickyPrompt = terminalPage.stickyPrompt();
 
     await composer.input().fill("output 120 lines");
     await composer.submitButton().click();
     await expect(terminalPage.finalOutputs().last()).toContainText("line 120");
 
-    const outputToggle = terminalPage.outputToggle("turn-1");
-    const outputBody = terminalPage.turnCard("turn-1").locator(".terminal-final-text");
-    if ((await outputToggle.textContent())?.includes("Show more")) {
-      await outputToggle.click();
-      await expect(outputBody).not.toHaveClass(/is-clamped/);
-    }
-
     await terminalPage.chatScreen().evaluate((node) => {
-      const toggle = node.querySelector('[data-terminal-output-toggle="turn-1"]');
-      if (!(toggle instanceof HTMLElement)) {
+      const output = node.querySelector('[data-terminal-final-output="turn-1"]');
+      if (!(output instanceof HTMLElement)) {
         return;
       }
       const nodeRect = node.getBoundingClientRect();
-      const toggleRect = toggle.getBoundingClientRect();
-      node.scrollTop += Math.max(toggleRect.top - nodeRect.top - 18, 0);
+      const outputRect = output.getBoundingClientRect();
+      node.scrollTop += Math.max(outputRect.top - nodeRect.top - 18, 0);
       node.dispatchEvent(new Event("scroll"));
     });
 
-    await expect(stickyPrompt).toBeVisible();
-    await outputToggle.click();
-    await expect(outputBody).toHaveClass(/is-clamped/);
+    await expect(page.locator(".is-terminal-sticky-active")).toHaveCount(0);
+    await expect(terminalPage.turnCard("turn-1").locator("[data-terminal-output-toggle]")).toHaveCount(0);
+    await expect(terminalPage.finalOutputs().last()).toContainText("line 120");
   });
 
   test("keeps jump-to-bottom button hidden for short offset until new output arrives", async ({ page, request }) => {

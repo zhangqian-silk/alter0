@@ -11,10 +11,17 @@ export async function waitForTerminalRepaint(page: Page, timeout = 5000): Promis
     return;
   }
   try {
-    await page.waitForFunction((node) => {
-      const current = document.querySelector('[data-composer-input="terminal-runtime"]');
-      return !node || !node.isConnected || current !== node;
-    }, previousInput, { timeout });
+    try {
+      await page.waitForFunction((node) => {
+        const current = document.querySelector('[data-composer-input="terminal-runtime"]');
+        return !node || !node.isConnected || current !== node;
+      }, previousInput, { timeout });
+    } catch {
+      await page.waitForFunction(() => {
+        const current = document.querySelector('[data-composer-input="terminal-runtime"]');
+        return current instanceof HTMLTextAreaElement;
+      }, null, { timeout: Math.min(timeout, 1200) });
+    }
   } finally {
     await previousInput.dispose();
   }

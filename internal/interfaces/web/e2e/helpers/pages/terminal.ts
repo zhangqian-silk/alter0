@@ -8,7 +8,9 @@ export function createTerminalPage(page: Page): {
   closeButton(): Locator;
   workspace(): Locator;
   chatScreen(): Locator;
-  stickyPrompt(): Locator;
+  jumpTopButton(): Locator;
+  jumpPrevButton(): Locator;
+  jumpNextButton(): Locator;
   jumpBottomButton(): Locator;
   sessionPaneToggle(): Locator;
   sessionPane(): Locator;
@@ -26,6 +28,7 @@ export function createTerminalPage(page: Page): {
   finalOutputs(): Locator;
   sessionList(): SessionListComponent;
   sessionListContainer(): Locator;
+  sessionDeleteButton(sessionID: string): Locator;
 } {
   const composer = createComposerComponent(page, "terminal-runtime");
   const sessionList = createSessionListComponent(page, {
@@ -33,12 +36,14 @@ export function createTerminalPage(page: Page): {
     itemByValue: (sessionID: string) => `[data-terminal-session-select="${sessionID}"]`,
   });
   return {
-    createButton: () => page.locator("[data-terminal-create]").first(),
+    createButton: () => page.locator("#mobileNewChatButton:visible, [data-terminal-create]:visible").first(),
     composer: () => composer,
     closeButton: () => page.locator("[data-terminal-close]"),
     workspace: () => page.locator("[data-terminal-workspace]"),
     chatScreen: () => page.locator("[data-terminal-chat-screen]"),
-    stickyPrompt: () => page.locator("[data-terminal-sticky-prompt]"),
+    jumpTopButton: () => page.locator("[data-terminal-jump-top]"),
+    jumpPrevButton: () => page.locator("[data-terminal-jump-prev]"),
+    jumpNextButton: () => page.locator("[data-terminal-jump-next]"),
     jumpBottomButton: () => page.locator("[data-terminal-jump-bottom]"),
     sessionPaneToggle: () => page.locator("#sessionToggle, [data-terminal-session-pane-toggle]").first(),
     sessionPane: () => page.locator("[data-terminal-session-pane]"),
@@ -56,5 +61,6 @@ export function createTerminalPage(page: Page): {
     finalOutputs: () => page.locator(".terminal-final-output"),
     sessionList: () => sessionList,
     sessionListContainer: () => page.locator("[data-terminal-session-list]"),
+    sessionDeleteButton: (sessionID: string) => page.locator(`[data-terminal-delete-session="${sessionID}"]`),
   };
 }

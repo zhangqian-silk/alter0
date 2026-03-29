@@ -20,6 +20,9 @@ Conventional Commits: `<type>(<scope>): <description>`
 
 类型: `feat` `fix` `docs` `refactor` `style` `test` `chore`
 
+- 执行 `git commit`、`git commit --amend` 等需要写入提交对象的操作时，应优先使用可访问本机签名凭据的提权方式执行，确保提交签名有效
+- 若沙箱环境无法访问签名密钥或签名代理，不得通过关闭签名绕过；应改为提权后完成签名提交
+
 ## 文档同步约束
 
 - 涉及用户可见行为、交互方式、入口路由、执行模式、返回结构、默认策略等“对用户影响较大”的需求变更时，必须在同一轮修改中同步更新 `README.md`

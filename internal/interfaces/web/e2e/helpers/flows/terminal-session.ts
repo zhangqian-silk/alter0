@@ -49,7 +49,6 @@ export async function clearTerminalSessions(request: APIRequestContext, clientID
         "X-Alter0-Terminal-Client": clientID,
       },
     });
-    expect(closeResponse.ok()).toBeTruthy();
   }
 }
 

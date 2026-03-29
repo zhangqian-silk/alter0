@@ -245,4 +245,34 @@ test.describe("Chat composer", () => {
     await expectComposerValue(composer, "");
     await expectComposerState(composer, { draft: "empty" });
   });
+
+  test("keeps user bubbles right-aligned and within seventy percent width", async ({ page }) => {
+    const { chatPage, composer } = await openChatWorkspace(page);
+    const input = composer.input();
+
+    await input.fill("请继续从产品视角介绍下，并说明 README 与 requirements 的关系");
+    await composer.submitButton().click();
+    await expect(chatPage.latestUserBubble()).toContainText("请继续从产品视角介绍下");
+
+    await expect.poll(() => page.evaluate(() => {
+      const bubbles = [...document.querySelectorAll(".msg.user .msg-bubble")];
+      const bubble = bubbles[bubbles.length - 1] || null;
+      const message = bubble ? bubble.closest(".msg.user") : null;
+      const list = document.querySelector(".message-list");
+      if (!(bubble instanceof HTMLElement) || !(message instanceof HTMLElement) || !(list instanceof HTMLElement)) {
+        return false;
+      }
+      const bubbleRect = bubble.getBoundingClientRect();
+      const messageRect = message.getBoundingClientRect();
+      const listRect = list.getBoundingClientRect();
+      const maxWidth = listRect.width * 0.7;
+      const rightGap = Math.round(listRect.right - bubbleRect.right);
+      const leftGap = Math.round(bubbleRect.left - listRect.left);
+      return (
+        bubbleRect.width <= maxWidth + 2 &&
+        rightGap <= leftGap &&
+        Math.round(listRect.right - messageRect.right) <= Math.round(messageRect.left - listRect.left)
+      );
+    })).toBe(true);
+  });
 });
