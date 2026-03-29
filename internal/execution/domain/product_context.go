@@ -1,8 +1,15 @@
 package domain
 
 const (
-	ProductContextMetadataKey     = "alter0.product_context"
-	ProductContextProtocolVersion = "alter0.product-context/v1"
+	ProductContextMetadataKey         = "alter0.product_context"
+	ProductContextProtocolVersion     = "alter0.product-context/v1"
+	ProductDiscoveryMetadataKey       = "alter0.product.discovery"
+	ProductDiscoveryProtocolVersion   = "alter0.product-discovery/v1"
+	ProductMatchedIDsMetadataKey      = "matched_product_ids"
+	ProductSelectedIDMetadataKey      = "selected_product_id"
+	ProductSelectionReasonMetadataKey = "selection_reason"
+	ProductMasterAgentMetadataKey     = "master_agent_id"
+	ProductExecutionModeMetadataKey   = "product_execution_mode"
 )
 
 type ProductContext struct {
@@ -20,6 +27,14 @@ type ProductContext struct {
 	ArtifactTypes    []string                 `json:"artifact_types,omitempty"`
 	KnowledgeSources []string                 `json:"knowledge_sources,omitempty"`
 	WorkerAgents     []ProductWorkerAgentSpec `json:"worker_agents,omitempty"`
+}
+
+type ProductDiscoveryContext struct {
+	Protocol        string           `json:"protocol"`
+	MatchedProducts []ProductContext `json:"matched_products,omitempty"`
+	SelectedProduct string           `json:"selected_product_id,omitempty"`
+	SelectionReason string           `json:"selection_reason,omitempty"`
+	ExecutionMode   string           `json:"product_execution_mode,omitempty"`
 }
 
 type ProductWorkerAgentSpec struct {

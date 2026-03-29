@@ -147,19 +147,20 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 Product 用于承载“某个业务产品 / 应用的总 Agent 与子 Agent 矩阵”，当前稳定行为如下：
 
-1. Web 端新增 `Products` 页面，用于统一管理 Product 定义、主 Agent、入口路由、知识源、产物类型与子 Agent 矩阵。
-2. Product 由服务端统一维护 `id`、`version` 与 `owner_type`；内置 Product 只读展示，用户管理 Product 支持新增、编辑与删除。
-3. `Alter0` 可根据用户意图路由到 Product 的 `master_agent_id`，再由总 Agent 继续拆分到该 Product 的子 Agent 矩阵执行。
-4. 当前内置 `travel` Product 默认公开可见，并绑定以下 Agent 角色：
+1. Web 端新增 `Products` 页面，统一承载 Product 目录管理与 `Draft Studio`；同一入口内可维护 Product 定义、主 Agent、入口路由、知识源、产物类型与子 Agent 矩阵，并生成待审核草稿。
+2. Product 由服务端统一维护 `id`、`version` 与 `owner_type`；内置 Product 只读展示，用户管理 Product 支持新增、编辑、删除、生成草稿矩阵并在审核后发布。
+3. `Draft Studio` 当前提供 `POST /api/control/products/generate`、`GET /api/control/products/drafts`、`GET /api/control/products/drafts/{draft_id}`、`PUT /api/control/products/drafts/{draft_id}`、`POST /api/control/products/drafts/{draft_id}/publish`、`POST /api/control/products/{product_id}/matrix/generate`，发布时会同时落地 Product 与对应的托管 Agent 矩阵。
+4. `Alter0` 在默认 `main` Agent 下会先做 Product 发现；命中 Product 后会补充 `matched_product_ids`、`selected_product_id`、`selection_reason`、`master_agent_id`、`product_execution_mode` 等元数据，并在执行型请求中自动切换到目标 Product 的 `master_agent_id`。
+5. 当前内置 `travel` Product 默认公开可见，并绑定以下 Agent 角色：
    - `travel-master`
    - `travel-city-guide`
    - `travel-route-planner`
    - `travel-metro-guide`
    - `travel-food-recommender`
    - `travel-map-annotator`
-5. `travel` Product 面向按城市聚合的旅游攻略场景，预留 `city_guide`、`itinerary`、`map_layers` 等产物类型以及 `city_profile`、`poi_catalog`、`metro_network`、`food_catalog` 等知识源。
-6. 已发布且公开的 Product 提供独立执行入口：`POST /api/products/{product_id}/messages` 与 `POST /api/products/{product_id}/messages/stream`；请求会自动绑定到该 Product 的 `master_agent_id`，并注入 Product 上下文。
-7. `travel` 额外提供结构化攻略接口：`POST /api/products/travel/guides`、`GET /api/products/travel/guides/{guide_id}`、`POST /api/products/travel/guides/{guide_id}/revise`。
+6. `travel` Product 面向按城市聚合的旅游攻略场景，预留 `city_guide`、`itinerary`、`map_layers` 等产物类型以及 `city_profile`、`poi_catalog`、`metro_network`、`food_catalog` 等知识源。
+7. 已发布且公开的 Product 提供独立执行入口：`POST /api/products/{product_id}/messages` 与 `POST /api/products/{product_id}/messages/stream`；请求会自动绑定到该 Product 的 `master_agent_id`，并注入 `alter0.product_context` 与 `alter0.product.discovery`。
+8. `travel` 额外提供结构化攻略接口：`POST /api/products/travel/guides`、`GET /api/products/travel/guides/{guide_id}`、`POST /api/products/travel/guides/{guide_id}/revise`；攻略输出稳定包含景点、地铁、路线、美食、说明与地图图层字段，便于后续接地图高亮和路线渲染。
 
 ## Workspace Model
 

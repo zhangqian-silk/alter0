@@ -634,3 +634,54 @@ func TestRuntimeRestartEndpointRejectsConcurrentRestart(t *testing.T) {
 		t.Fatalf("expected conflict status, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestProductDraftEndpointsGenerateAndPublish(t *testing.T) {
+	control := controlapp.NewService()
+	products := productapp.NewService()
+	server := &Server{
+		control:       control,
+		agents:        agentapp.NewCatalog(control),
+		products:      products,
+		productDrafts: productapp.NewDraftService(products),
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	generateReq := httptest.NewRequest(http.MethodPost, "/api/control/products/generate", strings.NewReader(`{
+		"name":"Travel Premium",
+		"goal":"生成城市旅游攻略并输出路线、地铁和地图图层。",
+		"core_capabilities":["city guide","itinerary","metro","food","map"],
+		"expected_artifacts":["city_guide","itinerary","map_layers"]
+	}`))
+	generateRec := httptest.NewRecorder()
+	server.productDraftGenerateHandler(generateRec, generateReq)
+	if generateRec.Code != http.StatusCreated {
+		t.Fatalf("expected generate 201, got %d: %s", generateRec.Code, generateRec.Body.String())
+	}
+	var draft productdomain.ProductDraft
+	if err := json.NewDecoder(generateRec.Body).Decode(&draft); err != nil {
+		t.Fatalf("decode draft failed: %v", err)
+	}
+	if draft.DraftID == "" || draft.Product.ID != "travel-premium" {
+		t.Fatalf("unexpected draft: %+v", draft)
+	}
+
+	publishReq := httptest.NewRequest(http.MethodPost, "/api/control/products/drafts/"+draft.DraftID+"/publish", nil)
+	publishRec := httptest.NewRecorder()
+	server.productDraftItemHandler(publishRec, publishReq)
+	if publishRec.Code != http.StatusOK {
+		t.Fatalf("expected publish 200, got %d: %s", publishRec.Code, publishRec.Body.String())
+	}
+	if _, ok := products.ResolveProduct("travel-premium"); !ok {
+		t.Fatalf("expected published product to be saved")
+	}
+	if agent, ok := control.ResolveAgent("travel-premium-master"); !ok || !agent.Enabled {
+		t.Fatalf("expected published master agent, got %+v, %v", agent, ok)
+	}
+	if agent, ok := control.ResolveAgent("travel-premium-city-guide"); !ok || !agent.Enabled {
+		t.Fatalf("expected published worker agent, got %+v, %v", agent, ok)
+	}
+	storedDraft, ok := server.productDrafts.GetDraft(draft.DraftID)
+	if !ok || storedDraft.ReviewStatus != productdomain.ReviewStatusPublished {
+		t.Fatalf("expected draft to be marked published, got %+v", storedDraft)
+	}
+}

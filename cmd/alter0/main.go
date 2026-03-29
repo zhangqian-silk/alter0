@@ -234,6 +234,12 @@ func main() {
 		logger.Error("failed to initialize product service", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
+	productDraftStore := localstorage.NewProductDraftStore(defaultStorageProfile.Dir, defaultStorageProfile.ControlFormat)
+	productDrafts, err := newProductDraftService(rootCtx, productDraftStore, products)
+	if err != nil {
+		logger.Error("failed to initialize product draft service", slog.String("error", err.Error()))
+		os.Exit(2)
+	}
 	travelGuideStore := localstorage.NewTravelGuideStore(defaultStorageProfile.Dir, defaultStorageProfile.ControlFormat)
 	travelGuides, err := newTravelGuideService(rootCtx, travelGuideStore)
 	if err != nil {
@@ -337,6 +343,7 @@ func main() {
 		sessionHistory,
 		taskService,
 		terminalService,
+		productDrafts,
 		travelGuides,
 		web.AgentMemoryOptions{
 			LongTermPath:         resolvedLongTermMemoryPath,
@@ -513,6 +520,13 @@ func newTravelGuideService(ctx context.Context, store productapp.TravelGuideStor
 		return productapp.NewTravelGuideService(), nil
 	}
 	return productapp.NewTravelGuideServiceWithStore(ctx, store)
+}
+
+func newProductDraftService(ctx context.Context, store productapp.DraftStore, products *productapp.Service) (*productapp.DraftService, error) {
+	if store == nil {
+		return productapp.NewDraftService(products), nil
+	}
+	return productapp.NewDraftServiceWithStore(ctx, store, products)
 }
 func newSchedulerManager(
 	ctx context.Context,

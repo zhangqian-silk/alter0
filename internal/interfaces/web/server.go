@@ -96,6 +96,7 @@ type Server struct {
 	webBindLocalhost bool
 	agents           agentCatalogService
 	products         productService
+	productDrafts    productDraftService
 	travelGuides     travelGuideService
 }
 
@@ -132,6 +133,15 @@ type travelGuideService interface {
 	CreateGuide(input productdomain.TravelGuideCreateInput) (productdomain.TravelGuide, error)
 	GetGuide(id string) (productdomain.TravelGuide, bool)
 	ReviseGuide(id string, input productdomain.TravelGuideReviseInput) (productdomain.TravelGuide, error)
+}
+
+type productDraftService interface {
+	ListDrafts() []productdomain.ProductDraft
+	GetDraft(id string) (productdomain.ProductDraft, bool)
+	GenerateDraft(input productdomain.ProductDraftGenerateInput) (productdomain.ProductDraft, error)
+	GenerateMatrixDraft(productID string, input productdomain.ProductDraftGenerateInput) (productdomain.ProductDraft, error)
+	SaveDraft(id string, draft productdomain.ProductDraft) (productdomain.ProductDraft, error)
+	MarkPublished(id string, productID string) (productdomain.ProductDraft, error)
 }
 
 type sessionHistoryService interface {
@@ -233,6 +243,17 @@ type travelGuideReviseRequest struct {
 	AdditionalRequirements []string `json:"additional_requirements,omitempty"`
 	KeepConditions         []string `json:"keep_conditions,omitempty"`
 	ReplaceConditions      []string `json:"replace_conditions,omitempty"`
+}
+
+type productDraftGenerateRequest struct {
+	Name                    string   `json:"name"`
+	Goal                    string   `json:"goal"`
+	TargetUsers             []string `json:"target_users,omitempty"`
+	CoreCapabilities        []string `json:"core_capabilities,omitempty"`
+	Constraints             []string `json:"constraints,omitempty"`
+	ExpectedArtifacts       []string `json:"expected_artifacts,omitempty"`
+	IntegrationRequirements []string `json:"integration_requirements,omitempty"`
+	Mode                    string   `json:"mode,omitempty"`
 }
 
 type taskCreateRequest struct {
@@ -584,6 +605,7 @@ func NewServer(
 	sessions sessionHistoryService,
 	tasks taskService,
 	terminals terminalService,
+	productDrafts productDraftService,
 	travelGuides travelGuideService,
 	memoryOptions AgentMemoryOptions,
 	securityOptions WebSecurityOptions,
@@ -1010,6 +1032,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	if intent.Type == orchdomain.IntentTypeNL {
 		result = attachComplexityMetadata(result, assessment, nil)
 	}
+	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if err != nil {
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
@@ -1136,6 +1159,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		if intent.Type == orchdomain.IntentTypeNL {
 			result = attachComplexityMetadata(result, assessment, nil)
 		}
+		result = attachProductRouteResultMetadata(result, msg.Metadata)
 		if handleErr != nil {
 			s.logWebMessageFailure(msg, handleErr)
 			_ = writeSSE(w, "error", streamErrorResponse{
@@ -1279,6 +1303,7 @@ func (s *Server) agentMessageHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.countGateway(string(msg.ChannelType))
 	result, err := s.orchestrator.Handle(r.Context(), msg)
+	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if err != nil {
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
@@ -1355,6 +1380,7 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 		flusher.Flush()
 		return nil
 	})
+	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if handleErr != nil {
 		s.logWebMessageFailure(msg, handleErr)
 		_ = writeSSE(w, "error", streamErrorResponse{
@@ -3203,6 +3229,7 @@ func (s *Server) productMessageHandler(w http.ResponseWriter, r *http.Request, p
 
 	result, err := s.orchestrator.Handle(r.Context(), msg)
 	result = attachComplexityMetadata(result, assessment, nil)
+	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if err != nil {
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
@@ -3323,6 +3350,7 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 	finalizeStreamResult := func(streamResult streamExecutionResult) {
 		cancelAssessment()
 		result := attachComplexityMetadata(streamResult.result, assessment, nil)
+		result = attachProductRouteResultMetadata(result, msg.Metadata)
 		handleErr := streamResult.err
 		_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
 		if handleErr != nil {
@@ -4670,6 +4698,10 @@ func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessa
 		return shareddomain.UnifiedMessage{}, "", statusCode, err
 	}
 	msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
+	msg, err = s.applyMainAgentProductRouting(msg, agent.ID)
+	if err != nil {
+		return shareddomain.UnifiedMessage{}, "", http.StatusInternalServerError, err
+	}
 	return msg, agent.ID, http.StatusOK, nil
 }
 

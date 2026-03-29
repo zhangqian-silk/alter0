@@ -446,3 +446,46 @@ func TestTravelGuideEndpointsLifecycle(t *testing.T) {
 		t.Fatalf("expected revision conditions to persist: %+v", revised)
 	}
 }
+
+func TestMainAgentMessageRoutesMatchedProductTask(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "travel-guide-ok",
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertChannel(controldomain.Channel{
+		ID:      "web-default",
+		Type:    shareddomain.ChannelTypeWeb,
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+	server.products = productapp.NewService()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages", strings.NewReader(`{"agent_id":"main","session_id":"session-fixed","content":"生成一份上海三日游攻略，重点地铁和美食"}`))
+	rec := httptest.NewRecorder()
+	server.agentMessageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey]; got != "travel-master" {
+		t.Fatalf("expected travel-master routing, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentDelegatedByMetadataKey]; got != "main" {
+		t.Fatalf("expected delegated_by main, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.ProductSelectedIDMetadataKey]; got != "travel" {
+		t.Fatalf("expected selected product travel, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.ProductExecutionModeMetadataKey]; got != "product-master" {
+		t.Fatalf("expected product execution mode product-master, got %+v", orchestrator.lastMessage.Metadata)
+	}
+}

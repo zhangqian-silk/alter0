@@ -140,7 +140,7 @@
    - 每个 Product 可查看绑定总 Agent 与矩阵摘要；
    - 系统内置 Product 与用户 Product 可被明确区分。
 
-#### 接口拆分（草案）
+#### 接口拆分（当前实现）
 
 1. Product 列表
    - `GET /api/control/products`
@@ -151,14 +151,17 @@
 3. Product 更新
    - `PUT /api/control/products/{product_id}`
    - 入参：Product 基础信息、状态、入口信息、展示配置
-4. Product 详情
+4. Product 删除
+   - `DELETE /api/control/products/{product_id}`
+   - 仅允许删除托管 Product；内置 Product 维持只读
+5. Product 详情
    - `GET /api/control/products/{product_id}`
    - 返回：基础信息 + Agent 矩阵摘要 + 能力摘要 + 产物摘要
 
 #### Traceability
 
 - 领域对象：`Product`、`ProductCatalog`、`product_id`、`master_agent_id`
-- 预期实现文件：`internal/product/domain/*`、`internal/product/application/*`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/chat.html`
+- 当前实现文件：`internal/product/domain/product.go`、`internal/product/application/service.go`、`internal/storage/infrastructure/localfile/product_store.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/product_features.go`、`internal/interfaces/web/static/assets/chat.js`
 - 依赖需求：`R-021`、`R-049`、`R-053`
 - 验证口径：Product 管理可用性、内置/用户 Product 区分、状态切换一致性、页面入口稳定性
 
@@ -212,7 +215,7 @@
    - `generated_by`
    - `generated_at`
 
-#### 接口拆分（草案）
+#### 接口拆分（当前实现）
 
 1. Product Agent 草案生成
    - `POST /api/control/products/generate`
@@ -221,14 +224,18 @@
 2. 已有 Product 扩展矩阵
    - `POST /api/control/products/{product_id}/matrix/generate`
    - 入参：新增能力目标与边界约束
-3. 草案审核与发布
+3. 草案查询
+   - `GET /api/control/products/drafts`
+   - `GET /api/control/products/drafts/{draft_id}`
+4. 草案审核与发布
    - `POST /api/control/products/drafts/{draft_id}/publish`
    - `PUT /api/control/products/drafts/{draft_id}`
+   - 前端 `Draft Studio` 当前以结构化摘要 + JSON review editor 的方式支持审核、编辑、禁用子 Agent 与发布
 
 #### Traceability
 
 - 领域对象：`ProductDraft`、`ProductMatrix`、`ProductAgent`、`draft_id`
-- 预期实现文件：`internal/product/domain/*`、`internal/product/application/*`、`internal/agent/application/catalog.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`
+- 当前实现文件：`internal/product/domain/draft.go`、`internal/product/application/draft_service.go`、`internal/storage/infrastructure/localfile/product_draft_store.go`、`internal/interfaces/web/product_features.go`、`internal/interfaces/web/static/assets/chat.js`
 - 依赖需求：`R-052`、`R-053`、`R-054`
 - 验证口径：草案生成完整性、审核发布闭环、矩阵职责清晰度、重复 Product 冲突处理
 
@@ -261,7 +268,7 @@
    - 最终结果可回溯到各子 Agent；
    - 递归与循环委派被显式限制。
 
-#### 编排规则（草案）
+#### 编排规则（当前实现）
 
 1. 路由优先级
    - Product 命中后先进入 `master agent`
@@ -272,11 +279,14 @@
 3. 输出收口
    - 所有子 Agent 输出先回到 `master agent`
    - 用户侧只消费 `master agent` 汇总结果或结构化产物引用
+4. 发布行为
+   - 草稿发布时先将 `master agent` 与 `worker matrix` 物化为托管 Agent，再写入托管 Product 定义
+   - 已发布 Product 仅暴露唯一 `master_agent_id` 作为外部执行入口
 
 #### Traceability
 
 - 领域对象：`ProductMasterAgent`、`ProductWorkerAgent`、`delegation_graph`
-- 预期实现文件：`internal/agent/application/catalog.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/task/application/service.go`
+- 当前实现文件：`internal/interfaces/web/product_features.go`、`internal/interfaces/web/server.go`、`internal/agent/application/catalog.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`
 - 依赖需求：`R-048`、`R-053`、`R-054`、`R-055`
 - 验证口径：总 Agent 唯一性、矩阵拆分稳定性、委派链路可追踪性、降级策略有效性
 
@@ -291,7 +301,7 @@
    - `run_product_master`：调用目标 Product 的总 Agent 执行任务。
 5. 当用户请求跨多个 Product 时，`Alter0 Agent` 可按顺序或并行调度多个 Product `master agent`，但必须在最终结果中明确区分各 Product 的输出来源。
 6. 若命中的 Product 被禁用、未发布或无可用总 Agent，`Alter0 Agent` 需返回明确原因，并建议可用 Product 或退回通用处理路径。
-7. `Alter0 Agent` 对 Product 的调度必须保留结构化元数据，至少包括：`matched_product_ids`、`selected_product_id`、`selection_reason`、`master_agent_id`、`execution_mode`。
+7. `Alter0 Agent` 对 Product 的调度必须保留结构化元数据，至少包括：`matched_product_ids`、`selected_product_id`、`selection_reason`、`master_agent_id`、`product_execution_mode`。
 8. Product 相关信息查询结果需可在普通 Chat 会话内返回，不强制用户先切换到 Product 专属入口。
 9. 对于敏感或仅控制面可见的 Product 配置，`Alter0 Agent` 只能读取允许公开给运行态的摘要，不直接暴露内部草稿、凭据或审核记录。
 10. 验收：
@@ -300,7 +310,7 @@
    - 系统可调用对应 Product 的总 Agent；
    - 多 Product 结果可被统一收口并区分来源。
 
-#### 接口与运行时能力（草案）
+#### 接口与运行时能力（当前实现）
 
 1. Product 公开目录
    - `GET /api/products`
@@ -311,15 +321,16 @@
 3. Product 执行入口
    - `POST /api/products/{product_id}/messages`
    - 由目标 Product 的 `master agent` 负责处理
-   - 当前实现补充：`POST /api/products/{product_id}/messages/stream`
-   - 当前实现补充：请求进入执行前会自动绑定 Product 的 `master_agent_id`，并注入 `alter0.product-context/v1`
+   - `POST /api/products/{product_id}/messages/stream`
+   - 请求进入执行前会自动绑定 Product 的 `master_agent_id`，并注入 `alter0.product-context/v1`
 4. Alter0 内部调度
-   - `Alter0 Agent` 通过统一委派能力调用目标 Product `master agent`
+   - 默认 `main` Agent 会先做 Product 发现，并补充 `alter0.product.discovery`
+   - 对执行型请求自动切换到目标 Product `master agent`
 
 #### Traceability
 
 - 领域对象：`matched_product_ids`、`selected_product_id`、`run_product_master`
-- 预期实现文件：`internal/agent/application/builtin.go`、`internal/agent/application/catalog.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/interfaces/web/server.go`
+- 当前实现文件：`internal/interfaces/web/product_features.go`、`internal/interfaces/web/server.go`、`internal/execution/domain/product_context.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`
 - 依赖需求：`R-053`、`R-054`、`R-056`
 - 验证口径：Product 命中准确性、公开信息读取边界、总 Agent 调度正确性、跨 Product 收口一致性
 
@@ -354,11 +365,12 @@
    - 用户可基于补充条件修改已有攻略；
    - 结果中保留可供地图与路线后续增强的结构化字段。
 
-#### 接口拆分（草案）
+#### 接口拆分（当前实现）
 
 1. `travel` Product 信息
    - `GET /api/products/travel`
-   - 当前实现补充：`POST /api/products/travel/messages`
+   - `POST /api/products/travel/messages`
+   - `POST /api/products/travel/messages/stream`
 2. 城市攻略生成
    - `POST /api/products/travel/guides`
    - 入参：城市与用户约束
@@ -372,7 +384,7 @@
 #### Traceability
 
 - 领域对象：`travel-master`、`guide_id`、`daily_routes`、`map_layers`
-- 预期实现文件：`internal/product/domain/*`、`internal/product/application/*`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`
+- 当前实现文件：`internal/product/domain/travel_guide.go`、`internal/product/application/travel_guide_service.go`、`internal/product/application/builtin.go`、`internal/interfaces/web/product_features.go`、`internal/interfaces/web/server_message_test.go`
 - 依赖需求：`R-054`、`R-055`、`R-056`、`R-057`
 - 验证口径：`travel` Product 可见性、攻略生成完整性、revision 连续性、结构化结果可扩展性
 

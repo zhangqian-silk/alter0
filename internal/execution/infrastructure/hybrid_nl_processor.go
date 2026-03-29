@@ -335,6 +335,9 @@ func buildHybridReActSystemPrompt(metadata map[string]string) string {
 	if rawProductContext := strings.TrimSpace(metadataValue(metadata, execdomain.ProductContextMetadataKey)); rawProductContext != "" {
 		parts = append(parts, renderProductContextInstruction(rawProductContext))
 	}
+	if rawProductDiscovery := strings.TrimSpace(metadataValue(metadata, execdomain.ProductDiscoveryMetadataKey)); rawProductDiscovery != "" {
+		parts = append(parts, renderProductDiscoveryInstruction(rawProductDiscovery))
+	}
 	return strings.Join(parts, "\n\n")
 }
 
@@ -376,6 +379,9 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 	if rawProductContext := strings.TrimSpace(metadataValue(metadata, execdomain.ProductContextMetadataKey)); rawProductContext != "" {
 		parts = append(parts, renderProductContextInstruction(rawProductContext))
 		parts = append(parts, "When operating as a product master or worker agent, stay within the current product boundary unless the user explicitly asks for a cross-product comparison or coordination.")
+	}
+	if rawProductDiscovery := strings.TrimSpace(metadataValue(metadata, execdomain.ProductDiscoveryMetadataKey)); rawProductDiscovery != "" {
+		parts = append(parts, renderProductDiscoveryInstruction(rawProductDiscovery))
 	}
 	return strings.Join(parts, "\n\n")
 }
@@ -460,6 +466,46 @@ func renderProductContextInstruction(raw string) string {
 				builder.WriteString(": ")
 				builder.WriteString(responsibility)
 			}
+		}
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+func renderProductDiscoveryInstruction(raw string) string {
+	context := execdomain.ProductDiscoveryContext{}
+	if err := json.Unmarshal([]byte(raw), &context); err != nil || len(context.MatchedProducts) == 0 {
+		return "Resolved product discovery (JSON): " + raw
+	}
+
+	var builder strings.Builder
+	builder.WriteString("Resolved product discovery:\n")
+	if selected := strings.TrimSpace(context.SelectedProduct); selected != "" {
+		builder.WriteString("- selected_product_id: ")
+		builder.WriteString(selected)
+		builder.WriteString("\n")
+	}
+	if reason := strings.TrimSpace(context.SelectionReason); reason != "" {
+		builder.WriteString("- selection_reason: ")
+		builder.WriteString(reason)
+		builder.WriteString("\n")
+	}
+	if mode := strings.TrimSpace(context.ExecutionMode); mode != "" {
+		builder.WriteString("- product_execution_mode: ")
+		builder.WriteString(mode)
+		builder.WriteString("\n")
+	}
+	builder.WriteString("- matched_products:")
+	for _, item := range context.MatchedProducts {
+		builder.WriteString("\n  - ")
+		builder.WriteString(strings.TrimSpace(item.ProductID))
+		if name := strings.TrimSpace(item.Name); name != "" {
+			builder.WriteString(" (")
+			builder.WriteString(name)
+			builder.WriteString(")")
+		}
+		if summary := strings.TrimSpace(item.Summary); summary != "" {
+			builder.WriteString(": ")
+			builder.WriteString(summary)
 		}
 	}
 	return strings.TrimSpace(builder.String())
