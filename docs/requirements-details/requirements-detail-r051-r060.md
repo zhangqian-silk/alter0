@@ -117,20 +117,21 @@
 - 实现文件：`internal/agent/application/catalog.go`、`internal/agent/application/builtin.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/chat.html`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/execution/infrastructure/hybrid_nl_processor_test.go`、`internal/interfaces/web/server_control_test.go`、`internal/interfaces/web/server_message_test.go`
 
-### R-054 Product 目录与管理页
+### R-054 Product 目录、Workspace 与管理页
 
 1. 运行时必须新增一级 `Products` 模块，作为平台级 Product 管理入口；`Product` 是业务产品域的一等对象，不使用 `App` 作为同级领域模型命名。
-2. `Products` 页面需负责集中展示和管理多个 Product，至少覆盖：基础信息、启停状态、入口标识、总 Agent 绑定、子 Agent 矩阵摘要、产物类型摘要。
+2. `Products` 页面需同时提供 `Workspace` 与 `Studio` 两类视图，至少覆盖：基础信息、启停状态、入口标识、总 Agent 绑定、详情页空间列表、子 Agent 矩阵摘要、产物类型摘要。
 3. Product 最小主数据结构至少包含：`product_id`、`name`、`slug`、`summary`、`status`、`visibility`、`owner_type`、`master_agent_id`、`entry_route`、`tags`、`version`、`created_at`、`updated_at`。
 4. Product 必须区分系统内置与用户创建两类来源：
    - 系统内置 Product 由服务注册，不允许在控制面直接删除；
    - 用户创建 Product 允许编辑、停用、归档，并保留历史引用关系。
-5. 页面交互至少包含：列表浏览、创建、编辑、启停、查看矩阵摘要、查看 Product 详情；不要求首版支持拖拽编排。
+5. 页面交互至少包含：列表浏览、创建、编辑、启停、查看矩阵摘要、查看 Product 详情、进入 Product Workspace、查看主 Agent 对话入口与详情页空间；不要求首版支持拖拽编排。
 6. Product 详情页至少展示：
    - 基础信息：名称、描述、标签、状态、版本；
    - Agent 结构：总 Agent、子 Agent 数量、矩阵角色摘要；
    - 能力摘要：可调用工具、Skills、MCP、资料挂载；
-   - 产物摘要：该 Product 的主要输出物类型。
+   - 产物摘要：该 Product 的主要输出物类型；
+   - Workspace 摘要：主 Agent 对话入口、详情页空间列表与当前空间详情。
 7. `Products` 页面与 Product 详情页必须支持空态、禁用态和草稿态，避免在 Product 尚未发布时误进入生产执行入口。
 8. Product 必须保留稳定 `product_id`，供 `Alter0 Agent`、任务系统、产物系统和会话视图统一引用。
 9. 首版存储允许继续采用本地文件，但必须与既有 Control 数据解耦，避免 Product 目录、Agent Profile 与普通 Session 数据混存不可辨。
@@ -157,11 +158,15 @@
 5. Product 详情
    - `GET /api/control/products/{product_id}`
    - 返回：基础信息 + Agent 矩阵摘要 + 能力摘要 + 产物摘要
+6. Product Workspace
+   - `GET /api/products/{product_id}/workspace`
+   - `GET /api/products/{product_id}/workspace/spaces/{space_id}`
+   - 返回：Product 概览、主 Agent 摘要、详情页空间列表与具体空间详情
 
 #### Traceability
 
 - 领域对象：`Product`、`ProductCatalog`、`product_id`、`master_agent_id`
-- 当前实现文件：`internal/product/domain/product.go`、`internal/product/application/service.go`、`internal/storage/infrastructure/localfile/product_store.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/product_features.go`、`internal/interfaces/web/static/assets/chat.js`
+- 当前实现文件：`internal/product/domain/product.go`、`internal/product/application/service.go`、`internal/storage/infrastructure/localfile/product_store.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/product_workspace.go`、`internal/interfaces/web/static/assets/chat.js`
 - 依赖需求：`R-021`、`R-049`、`R-053`
 - 验证口径：Product 管理可用性、内置/用户 Product 区分、状态切换一致性、页面入口稳定性
 
@@ -358,17 +363,22 @@
    - `travel-food-recommender`：负责餐饮与用餐分布；
    - `travel-map-annotator`：负责地图图层和点线路径表达。
 9. `travel` 必须支持在 Product 详情和后续 Product Workspace 中查看其总 Agent、子 Agent 矩阵和主要产物类型。
-10. 验收：
+10. `travel` Workspace 必须支持和 `travel-master` 对话，并将创建/修改请求同步到具体城市页空间；当用户选择武汉、成都、北京等城市页后，后续修改默认作用于当前城市页。
+11. 验收：
    - 平台内可见 `travel` Product；
    - `Alter0 Agent` 可识别并路由到 `travel-master`；
    - 用户可生成指定城市的旅游攻略；
    - 用户可基于补充条件修改已有攻略；
-   - 结果中保留可供地图与路线后续增强的结构化字段。
+   - 结果中保留可供地图与路线后续增强的结构化字段；
+   - `Products -> travel -> Workspace` 中可直接通过主 Agent 对话创建或修改城市页。
 
 #### 接口拆分（当前实现）
 
 1. `travel` Product 信息
    - `GET /api/products/travel`
+   - `GET /api/products/travel/workspace`
+   - `GET /api/products/travel/workspace/spaces/{space_id}`
+   - `POST /api/products/travel/workspace/chat`
    - `POST /api/products/travel/messages`
    - `POST /api/products/travel/messages/stream`
 2. 城市攻略生成
@@ -384,7 +394,7 @@
 #### Traceability
 
 - 领域对象：`travel-master`、`guide_id`、`daily_routes`、`map_layers`
-- 当前实现文件：`internal/product/domain/travel_guide.go`、`internal/product/application/travel_guide_service.go`、`internal/product/application/builtin.go`、`internal/interfaces/web/product_features.go`、`internal/interfaces/web/server_message_test.go`
+- 当前实现文件：`internal/product/domain/travel_guide.go`、`internal/product/application/travel_service.go`、`internal/product/application/builtin.go`、`internal/interfaces/web/product_workspace.go`、`internal/interfaces/web/server_message_test.go`
 - 依赖需求：`R-054`、`R-055`、`R-056`、`R-057`
 - 验证口径：`travel` Product 可见性、攻略生成完整性、revision 连续性、结构化结果可扩展性
 

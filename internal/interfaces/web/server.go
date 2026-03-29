@@ -132,6 +132,7 @@ type productService interface {
 type travelGuideService interface {
 	CreateGuide(input productdomain.TravelGuideCreateInput) (productdomain.TravelGuide, error)
 	GetGuide(id string) (productdomain.TravelGuide, bool)
+	ListGuides() []productdomain.TravelGuide
 	ReviseGuide(id string, input productdomain.TravelGuideReviseInput) (productdomain.TravelGuide, error)
 }
 
@@ -3153,6 +3154,26 @@ func (s *Server) publicProductItemHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 		writeJSON(w, http.StatusOK, item)
+		return
+	case len(parts) >= 2 && parts[1] == "workspace":
+		switch len(parts) {
+		case 2:
+			s.productWorkspaceSummaryHandler(w, r, productID)
+		case 3:
+			if parts[2] != "chat" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product workspace action"})
+				return
+			}
+			s.productWorkspaceChatHandler(w, r, productID)
+		case 4:
+			if parts[2] != "spaces" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product workspace path"})
+				return
+			}
+			s.productWorkspaceSpaceItemHandler(w, r, productID, parts[3])
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid product workspace path"})
+		}
 		return
 	case len(parts) >= 2 && parts[1] == "messages":
 		switch len(parts) {

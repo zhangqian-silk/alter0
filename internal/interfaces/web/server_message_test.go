@@ -447,6 +447,147 @@ func TestTravelGuideEndpointsLifecycle(t *testing.T) {
 	}
 }
 
+func TestProductWorkspaceSummaryExposesTravelSpaces(t *testing.T) {
+	server := newMessageTestServer(&stubWebOrchestrator{})
+	server.products = productapp.NewService()
+	server.agents = agentapp.NewCatalog(controlapp.NewService())
+	server.travelGuides = productapp.NewTravelGuideService()
+	if _, err := server.travelGuides.CreateGuide(productdomain.TravelGuideCreateInput{
+		City:      "武汉",
+		Days:      3,
+		MustVisit: []string{"黄鹤楼"},
+	}); err != nil {
+		t.Fatalf("seed guide failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/products/travel/workspace", nil)
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected workspace 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload productWorkspaceResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode workspace failed: %v", err)
+	}
+	if payload.Product.ID != "travel" {
+		t.Fatalf("expected travel product, got %+v", payload)
+	}
+	if payload.MasterAgent == nil || payload.MasterAgent.AgentID != "travel-master" {
+		t.Fatalf("expected travel master agent, got %+v", payload.MasterAgent)
+	}
+	if len(payload.Spaces) != 1 || payload.Spaces[0].Title != "武汉" {
+		t.Fatalf("expected wuhan space summary, got %+v", payload.Spaces)
+	}
+}
+
+func TestProductWorkspaceSpaceDetailReturnsGuide(t *testing.T) {
+	server := newMessageTestServer(&stubWebOrchestrator{})
+	server.products = productapp.NewService()
+	server.travelGuides = productapp.NewTravelGuideService()
+	guide, err := server.travelGuides.CreateGuide(productdomain.TravelGuideCreateInput{
+		City:      "北京",
+		Days:      4,
+		MustVisit: []string{"故宫"},
+	})
+	if err != nil {
+		t.Fatalf("seed guide failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/products/travel/workspace/spaces/"+guide.ID, nil)
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected workspace detail 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload productWorkspaceSpaceDetail
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode workspace detail failed: %v", err)
+	}
+	if payload.Space.SpaceID != guide.ID || payload.Guide.City != "北京" {
+		t.Fatalf("unexpected workspace detail: %+v", payload)
+	}
+}
+
+func TestTravelWorkspaceChatCreatesGuideFromMasterAgentReply(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    `{"action":"create","target_city":"武汉","assistant_reply":"已为武汉创建城市页。","create_input":{"city":"武汉","days":3,"travel_style":"citywalk","budget":"mid-range","must_visit":["黄鹤楼"],"additional_requirements":["地铁优先"]}}`,
+		},
+	}
+	server := newMessageTestServer(orchestrator)
+	server.products = productapp.NewService()
+	server.travelGuides = productapp.NewTravelGuideService()
+	server.agents = agentapp.NewCatalog(controlapp.NewService())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/products/travel/workspace/chat", strings.NewReader(`{"content":"给武汉创建一个地铁优先的三日游页面"}`))
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected workspace chat 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload productWorkspaceChatResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode workspace chat failed: %v", err)
+	}
+	if payload.Action != "create" || payload.Guide == nil || payload.Guide.City != "武汉" {
+		t.Fatalf("unexpected workspace chat payload: %+v", payload)
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey]; got != "travel-master" {
+		t.Fatalf("expected travel-master metadata, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentToolsMetadataKey]; got != `["complete"]` {
+		t.Fatalf("expected complete-only tools, got %+v", orchestrator.lastMessage.Metadata)
+	}
+}
+
+func TestTravelWorkspaceChatRevisesSelectedGuide(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    `{"action":"revise","assistant_reply":"已更新成都页面。","revise_input":{"days":4,"additional_requirements":["更多美食","慢节奏早晨"],"keep_conditions":["保留锦里"]}}`,
+		},
+	}
+	server := newMessageTestServer(orchestrator)
+	server.products = productapp.NewService()
+	server.travelGuides = productapp.NewTravelGuideService()
+	server.agents = agentapp.NewCatalog(controlapp.NewService())
+	guide, err := server.travelGuides.CreateGuide(productdomain.TravelGuideCreateInput{
+		City:      "成都",
+		Days:      2,
+		MustVisit: []string{"锦里"},
+	})
+	if err != nil {
+		t.Fatalf("seed guide failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/products/travel/workspace/chat", strings.NewReader(`{"space_id":"`+guide.ID+`","content":"把成都页面调整成四天，并保留锦里，增加更多美食"}`))
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected revise 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload productWorkspaceChatResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode revise response failed: %v", err)
+	}
+	if payload.Action != "revise" || payload.Guide == nil {
+		t.Fatalf("unexpected revise payload: %+v", payload)
+	}
+	if payload.Guide.Revision != 2 || payload.Guide.Days != 4 {
+		t.Fatalf("expected revised guide, got %+v", payload.Guide)
+	}
+}
+
 func TestMainAgentMessageRoutesMatchedProductTask(t *testing.T) {
 	orchestrator := &stubWebOrchestrator{
 		result: shareddomain.OrchestrationResult{

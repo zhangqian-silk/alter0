@@ -311,10 +311,39 @@ const I18N = {
     "route.agent.saved": "Agent saved.",
     "route.agent.deleted": "Agent deleted.",
     "route.products.title": "Products",
-    "route.products.subtitle": "Manage product definitions, master agents, and worker-agent matrices",
+    "route.products.subtitle": "Manage product workspaces, master agents, and worker-agent matrices",
     "route.products.empty": "No Products available.",
     "route.products.create": "Create Product",
     "route.products.edit": "Edit Product",
+    "route.products.panel.workspace": "Workspace",
+    "route.products.panel.studio": "Studio",
+    "route.products.workspace.title": "Product Workspace",
+    "route.products.workspace.subtitle": "Talk to the product master agent and maintain product detail pages.",
+    "route.products.workspace.empty": "Select a Product to open its workspace.",
+    "route.products.workspace.overview": "Overview",
+    "route.products.workspace.master": "Master Agent",
+    "route.products.workspace.output": "Artifacts",
+    "route.products.workspace.sources": "Knowledge Sources",
+    "route.products.workspace.tags": "Tags",
+    "route.products.workspace.workers": "Worker Matrix",
+    "route.products.workspace.chat_title": "Master Agent Conversation",
+    "route.products.workspace.chat_hint": "Use the product master agent to create or revise detail pages.",
+    "route.products.workspace.chat_placeholder": "Example: create a 3-day Wuhan page with metro-first travel and local food.",
+    "route.products.workspace.chat_send": "Send to Master",
+    "route.products.workspace.chat_failed": "Workspace request failed: {error}",
+    "route.products.workspace.synced": "Workspace synced.",
+    "route.products.workspace.spaces": "Detail Pages",
+    "route.products.workspace.space_empty": "No detail pages yet. Ask the master agent to create one.",
+    "route.products.workspace.open_new": "New Detail Page",
+    "route.products.workspace.detail": "Page Detail",
+    "route.products.workspace.detail_empty": "Select a detail page to view its content.",
+    "route.products.workspace.space_revision": "Revision",
+    "route.products.workspace.updated": "Updated",
+    "route.products.workspace.days": "Days",
+    "route.products.workspace.content": "Page Content",
+    "route.products.workspace.notes": "Notes",
+    "route.products.workspace.routes": "Daily Routes",
+    "route.products.workspace.layers": "Map Layers",
     "route.products.form.new": "Unsaved Product",
     "route.products.form.id": "Product ID",
     "route.products.form.version": "Version",
@@ -842,10 +871,39 @@ const I18N = {
     "route.agent.saved": "Agent 已保存。",
     "route.agent.deleted": "Agent 已删除。",
     "route.products.title": "Products",
-    "route.products.subtitle": "管理 Product 定义、总 Agent 与子 Agent 矩阵",
+    "route.products.subtitle": "管理 Product Workspace、主 Agent 与子 Agent 矩阵",
     "route.products.empty": "暂无 Product。",
     "route.products.create": "创建 Product",
     "route.products.edit": "编辑 Product",
+    "route.products.panel.workspace": "Workspace",
+    "route.products.panel.studio": "Studio",
+    "route.products.workspace.title": "Product Workspace",
+    "route.products.workspace.subtitle": "通过主 Agent 对话维护产品详情页与具体空间页面。",
+    "route.products.workspace.empty": "选择一个 Product 后进入对应 Workspace。",
+    "route.products.workspace.overview": "概览",
+    "route.products.workspace.master": "主 Agent",
+    "route.products.workspace.output": "产物",
+    "route.products.workspace.sources": "知识源",
+    "route.products.workspace.tags": "标签",
+    "route.products.workspace.workers": "子 Agent 矩阵",
+    "route.products.workspace.chat_title": "主 Agent 对话",
+    "route.products.workspace.chat_hint": "通过主 Agent 创建或修改具体详情页。",
+    "route.products.workspace.chat_placeholder": "例如：给武汉创建一个三天地铁优先、带夜宵推荐的城市页。",
+    "route.products.workspace.chat_send": "发送给主 Agent",
+    "route.products.workspace.chat_failed": "Workspace 请求失败：{error}",
+    "route.products.workspace.synced": "Workspace 已同步。",
+    "route.products.workspace.spaces": "详情页空间",
+    "route.products.workspace.space_empty": "还没有详情页，可直接让主 Agent 创建。",
+    "route.products.workspace.open_new": "新建详情页",
+    "route.products.workspace.detail": "页面详情",
+    "route.products.workspace.detail_empty": "选择一个详情页后查看页面内容。",
+    "route.products.workspace.space_revision": "版本修订",
+    "route.products.workspace.updated": "更新时间",
+    "route.products.workspace.days": "天数",
+    "route.products.workspace.content": "页面正文",
+    "route.products.workspace.notes": "补充说明",
+    "route.products.workspace.routes": "每日路线",
+    "route.products.workspace.layers": "地图图层",
     "route.products.form.new": "未保存 Product",
     "route.products.form.id": "Product ID",
     "route.products.form.version": "版本",
@@ -1293,7 +1351,10 @@ const state = {
   },
   productRouteState: {
     selectedProductID: "",
-    selectedDraftID: ""
+    selectedDraftID: "",
+    activePanel: "workspace",
+    selectedSpaceID: "",
+    workspaceSessionByProduct: {}
   },
   sessionRouteFilters: {
     triggerType: "",
@@ -4874,7 +4935,12 @@ async function loadMCPView(container) {
 function normalizeProductRouteState(routeState = {}) {
   return {
     selectedProductID: String(routeState?.selectedProductID || "").trim(),
-    selectedDraftID: String(routeState?.selectedDraftID || "").trim()
+    selectedDraftID: String(routeState?.selectedDraftID || "").trim(),
+    activePanel: String(routeState?.activePanel || "workspace").trim() || "workspace",
+    selectedSpaceID: String(routeState?.selectedSpaceID || "").trim(),
+    workspaceSessionByProduct: routeState?.workspaceSessionByProduct && typeof routeState.workspaceSessionByProduct === "object"
+      ? { ...routeState.workspaceSessionByProduct }
+      : {}
   };
 }
 
@@ -4964,6 +5030,123 @@ function normalizeProductStudioDraft(draft = {}) {
     master_agent: normalizeProductDraftAgent(draft?.master_agent || {}),
     worker_matrix: Array.isArray(draft?.worker_matrix) ? draft.worker_matrix.map((item) => normalizeProductDraftWorker(item)).filter((item) => item.agent_id) : []
   };
+}
+
+function normalizeProductWorkspaceMasterAgent(agent = {}) {
+  return {
+    agent_id: String(agent?.agent_id || "").trim(),
+    name: String(agent?.name || "").trim(),
+    description: String(agent?.description || "").trim(),
+    capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    tools: Array.isArray(agent?.tools) ? agent.tools.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    skills: Array.isArray(agent?.skills) ? agent.skills.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    mcps: Array.isArray(agent?.mcps) ? agent.mcps.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    memory_files: Array.isArray(agent?.memory_files) ? agent.memory_files.map((item) => String(item || "").trim()).filter(Boolean) : []
+  };
+}
+
+function normalizeProductWorkspaceSpaceSummary(space = {}) {
+  return {
+    space_id: String(space?.space_id || "").trim(),
+    title: String(space?.title || "").trim(),
+    slug: String(space?.slug || "").trim(),
+    summary: String(space?.summary || "").trim(),
+    type: String(space?.type || "").trim(),
+    status: String(space?.status || "").trim() || "active",
+    revision: Number.isFinite(Number(space?.revision)) ? Math.max(0, Number(space.revision)) : 0,
+    updated_at: String(space?.updated_at || "").trim(),
+    tags: Array.isArray(space?.tags) ? space.tags.map((item) => String(item || "").trim()).filter(Boolean) : []
+  };
+}
+
+function normalizeProductWorkspace(payload = {}) {
+  return {
+    product: normalizeProductBuilderDraft(payload?.product || {}),
+    master_agent: payload?.master_agent ? normalizeProductWorkspaceMasterAgent(payload.master_agent) : null,
+    space_type: String(payload?.space_type || "").trim(),
+    space_label: String(payload?.space_label || "").trim(),
+    workspace_hint: String(payload?.workspace_hint || "").trim(),
+    spaces: Array.isArray(payload?.spaces) ? payload.spaces.map((item) => normalizeProductWorkspaceSpaceSummary(item)).filter((item) => item.space_id) : []
+  };
+}
+
+function normalizeProductWorkspaceSpaceDetail(payload = {}) {
+  return {
+    space: normalizeProductWorkspaceSpaceSummary(payload?.space || {}),
+    guide: payload?.guide && typeof payload.guide === "object" ? {
+      id: String(payload.guide?.id || "").trim(),
+      city: String(payload.guide?.city || "").trim(),
+      days: Number.isFinite(Number(payload.guide?.days)) ? Math.max(0, Number(payload.guide.days)) : 0,
+      travel_style: String(payload.guide?.travel_style || "").trim(),
+      budget: String(payload.guide?.budget || "").trim(),
+      companions: Array.isArray(payload.guide?.companions) ? payload.guide.companions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      must_visit: Array.isArray(payload.guide?.must_visit) ? payload.guide.must_visit.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      avoid: Array.isArray(payload.guide?.avoid) ? payload.guide.avoid.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      additional_requirements: Array.isArray(payload.guide?.additional_requirements) ? payload.guide.additional_requirements.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      keep_conditions: Array.isArray(payload.guide?.keep_conditions) ? payload.guide.keep_conditions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      replace_conditions: Array.isArray(payload.guide?.replace_conditions) ? payload.guide.replace_conditions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      notes: Array.isArray(payload.guide?.notes) ? payload.guide.notes.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      daily_routes: Array.isArray(payload.guide?.daily_routes) ? payload.guide.daily_routes.map((item) => ({
+        day: Number.isFinite(Number(item?.day)) ? Math.max(0, Number(item.day)) : 0,
+        theme: String(item?.theme || "").trim(),
+        stops: Array.isArray(item?.stops) ? item.stops.map((value) => String(value || "").trim()).filter(Boolean) : [],
+        transit: Array.isArray(item?.transit) ? item.transit.map((value) => String(value || "").trim()).filter(Boolean) : [],
+        dining_plan: Array.isArray(item?.dining_plan) ? item.dining_plan.map((value) => String(value || "").trim()).filter(Boolean) : []
+      })) : [],
+      map_layers: Array.isArray(payload.guide?.map_layers) ? payload.guide.map_layers.map((item) => ({
+        id: String(item?.id || "").trim(),
+        label: String(item?.label || "").trim(),
+        description: String(item?.description || "").trim()
+      })) : [],
+      content: String(payload.guide?.content || "").trim(),
+      revision: Number.isFinite(Number(payload.guide?.revision)) ? Math.max(0, Number(payload.guide.revision)) : 0,
+      updated_at: String(payload.guide?.updated_at || "").trim()
+    } : null
+  };
+}
+
+function createProductWorkspaceMessage(role, text, options = {}) {
+  return {
+    id: "product-workspace-" + Math.random().toString(16).slice(2),
+    role: role === "assistant" ? "assistant" : "user",
+    text: String(text || "").trim(),
+    status: String(options.status || "done").trim() || "done",
+    error: Boolean(options.error),
+    at: options.at || Date.now()
+  };
+}
+
+function renderProductWorkspaceMessageList(items) {
+  if (!Array.isArray(items) || !items.length) {
+    return `<p class="route-empty">${escapeHTML(t("route.products.workspace.chat_hint"))}</p>`;
+  }
+  return items.map((item) => `<article class="product-workspace-message is-${escapeHTML(item.role || "assistant")} ${item.error ? "is-error" : ""}">
+    <div class="product-workspace-message-meta">
+      <strong>${escapeHTML(item.role === "user" ? "You" : "Agent")}</strong>
+      <span>${escapeHTML(item.status === "streaming" ? t("msg.processing") : formatDateTime(item.at) || "")}</span>
+    </div>
+    <p>${escapeHTML(String(item.text || "").trim() || "-")}</p>
+  </article>`).join("");
+}
+
+function renderProductWorkspaceSpaceCards(items, selectedSpaceID) {
+  if (!Array.isArray(items) || !items.length) {
+    return `<p class="route-empty">${escapeHTML(t("route.products.workspace.space_empty"))}</p>`;
+  }
+  return items.map((item) => {
+    const activeClassName = item.space_id === selectedSpaceID ? " is-active" : "";
+    return `<button class="agent-route-card${activeClassName}" type="button" data-product-space-select="${escapeHTML(item.space_id)}">
+      <div class="agent-route-card-head">
+        <div class="agent-route-card-copy">
+          <strong title="${escapeHTML(item.title || item.space_id)}">${escapeHTML(item.title || item.space_id)}</strong>
+          <span title="${escapeHTML(item.slug || item.space_id)}">${escapeHTML(item.slug || item.space_id)}</span>
+        </div>
+        <span class="agent-route-state ${String(item.status || "").trim() === "active" ? "is-enabled" : "is-disabled"}">${escapeHTML(normalizeText(item.status || "active"))}</span>
+      </div>
+      <p class="agent-route-card-prompt">${escapeHTML(item.summary || "-")}</p>
+      <div class="agent-route-card-tags">${item.tags.length ? item.tags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
+    </button>`;
+  }).join("");
 }
 
 function createProductDraftRequest(mode = "bootstrap") {
@@ -5155,6 +5338,12 @@ async function loadProductsView(container) {
     draft: normalizeProductBuilderDraft(),
     draftRequest: createProductDraftRequest(),
     selectedDraft: normalizeProductStudioDraft(),
+    workspace: normalizeProductWorkspace(),
+    workspaceDetail: normalizeProductWorkspaceSpaceDetail(),
+    workspaceMessagesByProduct: {},
+    workspaceLoading: false,
+    workspacePending: false,
+    workspaceError: "",
     draftEditorText: "",
     statusMessage: "",
     statusKind: "",
@@ -5164,7 +5353,10 @@ async function loadProductsView(container) {
   const persistRouteState = () => {
     state.productRouteState = {
       selectedProductID: localState.routeState.selectedProductID,
-      selectedDraftID: localState.routeState.selectedDraftID
+      selectedDraftID: localState.routeState.selectedDraftID,
+      activePanel: localState.routeState.activePanel,
+      selectedSpaceID: localState.routeState.selectedSpaceID,
+      workspaceSessionByProduct: { ...localState.routeState.workspaceSessionByProduct }
     };
   };
 
@@ -5191,6 +5383,23 @@ async function loadProductsView(container) {
 
   const findSelectedDraft = () => {
     return localState.drafts.find((item) => String(item?.draft_id || "").trim() === localState.routeState.selectedDraftID) || null;
+  };
+
+  const findSelectedSpaceSummary = () => {
+    return localState.workspace.spaces.find((item) => String(item?.space_id || "").trim() === localState.routeState.selectedSpaceID) || null;
+  };
+
+  const currentWorkspaceMessages = () => {
+    const productID = String(localState.routeState.selectedProductID || "").trim();
+    return productID ? (localState.workspaceMessagesByProduct[productID] || []) : [];
+  };
+
+  const setCurrentWorkspaceMessages = (items) => {
+    const productID = String(localState.routeState.selectedProductID || "").trim();
+    if (!productID) {
+      return;
+    }
+    localState.workspaceMessagesByProduct[productID] = Array.isArray(items) ? items : [];
   };
 
   const syncDraftFromSelection = () => {
@@ -5221,12 +5430,196 @@ async function loadProductsView(container) {
     };
   };
 
-  const paint = () => {
-    if (localState.loading) {
-      container.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
-      return;
+  const renderChipList = (items) => {
+    const values = Array.isArray(items) ? items.filter(Boolean) : [];
+    if (!values.length) {
+      return `<p class="route-empty">-</p>`;
     }
-    const selectedProduct = findSelectedProduct();
+    return `<div class="product-workspace-chip-list">${values.map((item) => `<span>${escapeHTML(String(item || "").trim())}</span>`).join("")}</div>`;
+  };
+
+  const renderWorkspaceDetail = () => {
+    const selectedSpace = findSelectedSpaceSummary();
+    const guide = localState.workspaceDetail?.guide;
+    if (!selectedSpace || !guide) {
+      return `<p class="route-empty">${escapeHTML(t("route.products.workspace.detail_empty"))}</p>`;
+    }
+    const routeRows = guide.daily_routes.length
+      ? guide.daily_routes.map((item) => `<article class="product-workspace-detail-card">
+        <strong>${escapeHTML(`Day ${item.day}`)}</strong>
+        <p>${escapeHTML(item.theme || item.stops.join(" -> ") || "-")}</p>
+        ${item.stops.length ? `<span>${escapeHTML(item.stops.join(" -> "))}</span>` : ""}
+        ${item.transit.length ? `<span>${escapeHTML(item.transit.join(" / "))}</span>` : ""}
+      </article>`).join("")
+      : `<p class="route-empty">-</p>`;
+    const layerRows = guide.map_layers.length
+      ? guide.map_layers.map((item) => `<article class="product-workspace-detail-card">
+        <strong>${escapeHTML(item.label || item.id || "-")}</strong>
+        <p>${escapeHTML(item.description || "-")}</p>
+      </article>`).join("")
+      : `<p class="route-empty">-</p>`;
+
+    return `
+      <div class="agent-builder-managed">
+        <div class="agent-builder-managed-item">
+          <span>${escapeHTML(t("route.products.workspace.days"))}</span>
+          <strong>${escapeHTML(String(guide.days || 0))}</strong>
+        </div>
+        <div class="agent-builder-managed-item">
+          <span>${escapeHTML(t("route.products.workspace.space_revision"))}</span>
+          <strong>${escapeHTML(String(guide.revision || 0))}</strong>
+        </div>
+        <div class="agent-builder-managed-item">
+          <span>${escapeHTML(t("route.products.workspace.updated"))}</span>
+          <strong>${escapeHTML(formatDateTime(guide.updated_at) || "-")}</strong>
+        </div>
+      </div>
+      <div class="product-workspace-detail-grid">
+        <section class="product-workspace-detail-section">
+          <h5>${escapeHTML(t("route.products.workspace.tags"))}</h5>
+          ${renderChipList([guide.city, guide.travel_style, guide.budget].filter(Boolean))}
+        </section>
+        <section class="product-workspace-detail-section">
+          <h5>${escapeHTML("Companions / Must Visit")}</h5>
+          ${renderChipList([...(guide.companions || []), ...(guide.must_visit || [])])}
+        </section>
+        <section class="product-workspace-detail-section">
+          <h5>${escapeHTML("Avoid / Additional")}</h5>
+          ${renderChipList([...(guide.avoid || []), ...(guide.additional_requirements || []), ...(guide.keep_conditions || []), ...(guide.replace_conditions || [])])}
+        </section>
+      </div>
+      <section class="product-workspace-detail-section product-workspace-detail-content">
+        <h5>${escapeHTML(t("route.products.workspace.content"))}</h5>
+        <pre>${escapeHTML(guide.content || "-")}</pre>
+      </section>
+      <section class="product-workspace-detail-section">
+        <h5>${escapeHTML(t("route.products.workspace.notes"))}</h5>
+        ${renderChipList(guide.notes)}
+      </section>
+      <section class="product-workspace-detail-section">
+        <h5>${escapeHTML(t("route.products.workspace.routes"))}</h5>
+        <div class="product-workspace-detail-stack">${routeRows}</div>
+      </section>
+      <section class="product-workspace-detail-section">
+        <h5>${escapeHTML(t("route.products.workspace.layers"))}</h5>
+        <div class="product-workspace-detail-stack">${layerRows}</div>
+      </section>`;
+  };
+
+  const renderWorkspacePanel = (selectedProduct) => {
+    if (!selectedProduct?.id) {
+      return `<p class="route-empty">${escapeHTML(t("route.products.workspace.empty"))}</p>`;
+    }
+    if (localState.workspaceLoading) {
+      return `<p class="route-loading">${escapeHTML(t("loading"))}</p>`;
+    }
+    if (localState.workspaceError) {
+      return `<p class="route-error">${escapeHTML(localState.workspaceError)}</p>`;
+    }
+    const workspace = localState.workspace;
+    const master = workspace.master_agent;
+    const selectedSpace = findSelectedSpaceSummary();
+    const chatPlaceholder = selectedSpace
+      ? `${t("route.products.workspace.chat_placeholder")} (${selectedSpace.title})`
+      : t("route.products.workspace.chat_placeholder");
+    return `<section class="product-workspace-grid">
+      <section class="route-surface product-workspace-panel">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(t("route.products.workspace.title"))}</h4>
+            <p>${escapeHTML(workspace.workspace_hint || t("route.products.workspace.subtitle"))}</p>
+          </div>
+        </div>
+        <div class="agent-builder-managed">
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.id"))}</span>
+            <strong>${escapeHTML(selectedProduct.id || "-")}</strong>
+          </div>
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.status"))}</span>
+            <strong>${escapeHTML(selectedProduct.status || "-")}</strong>
+          </div>
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.visibility"))}</span>
+            <strong>${escapeHTML(selectedProduct.visibility || "-")}</strong>
+          </div>
+          <div class="agent-builder-managed-item">
+            <span>${escapeHTML(t("route.products.form.version"))}</span>
+            <strong>${escapeHTML(selectedProduct.version || "-")}</strong>
+          </div>
+        </div>
+        <div class="product-workspace-overview-grid">
+          <section class="product-workspace-detail-section">
+            <h5>${escapeHTML(t("route.products.workspace.overview"))}</h5>
+            <p class="product-workspace-summary">${escapeHTML(selectedProduct.summary || "-")}</p>
+          </section>
+          <section class="product-workspace-detail-section">
+            <h5>${escapeHTML(t("route.products.workspace.master"))}</h5>
+            ${master ? `
+              <div class="product-workspace-master">
+                <strong>${escapeHTML(master.name || master.agent_id || "-")}</strong>
+                <span>${escapeHTML(master.agent_id || "-")}</span>
+                <p>${escapeHTML(master.description || "-")}</p>
+              </div>
+              ${renderChipList([...(master.capabilities || []), ...(master.tools || [])])}
+            ` : `<p class="route-empty">-</p>`}
+          </section>
+          <section class="product-workspace-detail-section">
+            <h5>${escapeHTML(t("route.products.workspace.output"))}</h5>
+            ${renderChipList(selectedProduct.artifact_types)}
+          </section>
+          <section class="product-workspace-detail-section">
+            <h5>${escapeHTML(t("route.products.workspace.sources"))}</h5>
+            ${renderChipList(selectedProduct.knowledge_sources)}
+          </section>
+          <section class="product-workspace-detail-section">
+            <h5>${escapeHTML(t("route.products.workspace.tags"))}</h5>
+            ${renderChipList(selectedProduct.tags)}
+          </section>
+          <section class="product-workspace-detail-section">
+            <h5>${escapeHTML(t("route.products.workspace.workers"))}</h5>
+            ${renderChipList((selectedProduct.worker_agents || []).map((item) => item.role || item.agent_id))}
+          </section>
+        </div>
+      </section>
+      <section class="route-surface product-workspace-panel">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(t("route.products.workspace.chat_title"))}</h4>
+            <p>${escapeHTML(t("route.products.workspace.chat_hint"))}</p>
+          </div>
+        </div>
+        <div class="product-workspace-chat-log">${renderProductWorkspaceMessageList(currentWorkspaceMessages())}</div>
+        <form class="product-workspace-chat-form" data-product-workspace-chat-form>
+          <textarea name="content" rows="4" placeholder="${escapeHTML(chatPlaceholder)}" ${localState.workspacePending ? "disabled" : ""}></textarea>
+          <div class="task-filter-actions">
+            <button class="task-filter-reset" type="button" data-product-space-clear ${selectedSpace ? "" : "disabled"}>${escapeHTML(t("route.products.workspace.open_new"))}</button>
+            <button class="task-filter-apply" type="submit" ${localState.workspacePending ? "disabled" : ""}>${escapeHTML(t("route.products.workspace.chat_send"))}</button>
+          </div>
+        </form>
+      </section>
+      <section class="route-surface product-workspace-panel">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(workspace.space_label || t("route.products.workspace.spaces"))}</h4>
+            <p>${escapeHTML(t("route.products.workspace.space_empty"))}</p>
+          </div>
+        </div>
+        <div class="agent-route-list">${renderProductWorkspaceSpaceCards(workspace.spaces, localState.routeState.selectedSpaceID)}</div>
+      </section>
+      <section class="route-surface product-workspace-panel product-workspace-panel-wide">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(selectedSpace?.title || t("route.products.workspace.detail"))}</h4>
+            <p>${escapeHTML(selectedSpace?.summary || t("route.products.workspace.detail_empty"))}</p>
+          </div>
+        </div>
+        ${renderWorkspaceDetail()}
+      </section>
+    </section>`;
+  };
+
+  const renderStudioPanel = (selectedProduct) => {
     const selectedDraft = localState.selectedDraft;
     const isBuiltin = String(selectedProduct?.owner_type || "").trim() === "builtin";
     const canDelete = Boolean(selectedProduct?.id) && !isBuiltin;
@@ -5243,6 +5636,155 @@ async function loadProductsView(container) {
       `${Number(selectedDraft?.master_agent?.skills?.length || 0)} skills`,
       `${Number(selectedDraft?.master_agent?.allowed_delegate_targets?.length || 0)} delegates`
     ].filter((tag) => !tag.startsWith("0 "));
+    return `
+      <div class="agent-route-pane-head">
+        <div class="agent-route-pane-copy">
+          <h4>${escapeHTML(localState.draft.id ? t("route.products.edit") : t("route.products.form.new"))}</h4>
+          <p>${escapeHTML(t("route.products.form.managed"))}</p>
+        </div>
+        <div class="agent-builder-actions">
+          <button type="button" data-product-reset>${escapeHTML(t("route.products.form.cancel"))}</button>
+        </div>
+      </div>
+      ${isBuiltin ? `<p class="agent-builder-status">${escapeHTML(t("route.products.form.builtin_notice"))}</p>` : ""}
+      <div class="agent-builder-managed">
+        <div class="agent-builder-managed-item">
+          <span>${escapeHTML(t("route.products.form.id"))}</span>
+          <strong>${escapeHTML(managedID)}</strong>
+        </div>
+        <div class="agent-builder-managed-item">
+          <span>${escapeHTML(t("route.products.form.version"))}</span>
+          <strong>${escapeHTML(managedVersion)}</strong>
+        </div>
+        <div class="agent-builder-managed-item">
+          <span>${escapeHTML(t("route.products.form.owner"))}</span>
+          <strong>${escapeHTML(managedOwner)}</strong>
+        </div>
+      </div>
+      <form class="agent-builder-form" data-product-form>
+        <label><span>${t("route.products.form.name")}</span><input type="text" name="name" value="${escapeHTML(localState.draft.name)}" placeholder="Travel"></label>
+        <label><span>${t("route.products.form.slug")}</span><input type="text" name="slug" value="${escapeHTML(localState.draft.slug)}" placeholder="travel"></label>
+        <label><span>${t("route.products.form.master")}</span><input type="text" name="master_agent_id" value="${escapeHTML(localState.draft.master_agent_id)}" placeholder="travel-master"></label>
+        <label><span>${t("route.products.form.status")}</span><select name="status">
+          ${["draft", "active", "disabled", "archived"].map((option) => `<option value="${escapeHTML(option)}" ${option === localState.draft.status ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
+        </select></label>
+        <label><span>${t("route.products.form.visibility")}</span><select name="visibility">
+          ${["private", "public"].map((option) => `<option value="${escapeHTML(option)}" ${option === localState.draft.visibility ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
+        </select></label>
+        <label><span>${t("route.products.form.entry_route")}</span><input type="text" name="entry_route" value="${escapeHTML(localState.draft.entry_route)}" placeholder="products"></label>
+        <label class="agent-builder-wide"><span>${t("route.products.form.summary")}</span><textarea name="summary" rows="4">${escapeHTML(localState.draft.summary)}</textarea></label>
+        <label class="agent-builder-wide"><span>${t("route.products.form.tags")}</span><input type="text" name="tags" value="${escapeHTML(localState.draft.tags.join(", "))}" placeholder="travel, itinerary"></label>
+        <label class="agent-builder-wide"><span>${t("route.products.form.artifacts")}</span><input type="text" name="artifact_types" value="${escapeHTML(localState.draft.artifact_types.join(", "))}" placeholder="city_guide, itinerary, map_layers"></label>
+        <label class="agent-builder-wide"><span>${t("route.products.form.knowledge")}</span><input type="text" name="knowledge_sources" value="${escapeHTML(localState.draft.knowledge_sources.join(", "))}" placeholder="poi_catalog, metro_network"></label>
+        <label class="agent-builder-wide"><span>${t("route.products.form.worker_agents")}</span><textarea name="worker_agents" rows="6" placeholder="travel-route-planner | route-planner | Plan daily routes">${escapeHTML(workerAgentValue)}</textarea></label>
+        <div class="task-filter-actions">
+          <button class="task-filter-apply" type="submit" ${canSave ? "" : "disabled"}>${escapeHTML(t("route.products.form.save"))}</button>
+          <button class="task-filter-reset" type="button" data-product-delete ${canDelete ? "" : "disabled"}>${escapeHTML(t("route.products.form.delete"))}</button>
+        </div>
+      </form>
+      <div class="agent-builder-section">
+        <div class="agent-route-pane-head">
+          <div class="agent-route-pane-copy">
+            <h4>${escapeHTML(t("route.products.drafts.title"))}</h4>
+            <p>${escapeHTML(t("route.products.drafts.subtitle"))}</p>
+          </div>
+        </div>
+        ${currentDraftMode === "expand" && !canExpandDraft ? `<p class="agent-builder-status">${escapeHTML(t("route.products.drafts.form.expand_disabled"))}</p>` : ""}
+        ${currentDraftMode === "expand" && canExpandDraft ? `<p class="agent-builder-status">${escapeHTML(`${t("route.products.form.id")}: ${selectedProduct.id}`)}</p>` : ""}
+        <form class="agent-builder-form" data-product-draft-generate-form>
+          <label><span>${t("route.products.drafts.form.name")}</span><input type="text" name="name" value="${escapeHTML(localState.draftRequest.name)}" placeholder="Travel Premium"></label>
+          <label><span>${t("route.products.drafts.form.mode")}</span><select name="mode">
+            <option value="bootstrap" ${currentDraftMode === "bootstrap" ? "selected" : ""}>${escapeHTML(t("route.products.drafts.form.mode.bootstrap"))}</option>
+            <option value="expand" ${currentDraftMode === "expand" ? "selected" : ""}>${escapeHTML(t("route.products.drafts.form.mode.expand"))}</option>
+          </select></label>
+          <label class="agent-builder-wide"><span>${t("route.products.drafts.form.goal")}</span><textarea name="goal" rows="3">${escapeHTML(localState.draftRequest.goal)}</textarea></label>
+          <label class="agent-builder-wide"><span>${t("route.products.drafts.form.target_users")}</span><input type="text" name="target_users" value="${escapeHTML(localState.draftRequest.target_users)}" placeholder="travellers, families"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.drafts.form.core")}</span><input type="text" name="core_capabilities" value="${escapeHTML(localState.draftRequest.core_capabilities)}" placeholder="city guide, itinerary, metro, food, map"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.drafts.form.constraints")}</span><input type="text" name="constraints" value="${escapeHTML(localState.draftRequest.constraints)}" placeholder="budget-sensitive, kid-friendly"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.drafts.form.artifacts")}</span><input type="text" name="expected_artifacts" value="${escapeHTML(localState.draftRequest.expected_artifacts)}" placeholder="city_guide, itinerary, map_layers"></label>
+          <label class="agent-builder-wide"><span>${t("route.products.drafts.form.integrations")}</span><input type="text" name="integration_requirements" value="${escapeHTML(localState.draftRequest.integration_requirements)}" placeholder="maps, metro, food catalog"></label>
+          <div class="task-filter-actions">
+            <button class="task-filter-apply" type="submit" ${(currentDraftMode === "expand" && !canExpandDraft) ? "disabled" : ""}>${escapeHTML(t("route.products.drafts.form.generate"))}</button>
+          </div>
+        </form>
+        <div class="agent-route-list">${renderProductDraftCards(localState.drafts, localState.routeState.selectedDraftID)}</div>
+        ${selectedDraft?.draft_id ? `
+          <div class="agent-builder-managed">
+            <div class="agent-builder-managed-item">
+              <span>${escapeHTML(t("route.products.form.id"))}</span>
+              <strong>${escapeHTML(selectedDraft.draft_id)}</strong>
+            </div>
+            <div class="agent-builder-managed-item">
+              <span>${escapeHTML(t("route.products.drafts.detail.review"))}</span>
+              <strong>${escapeHTML(normalizeText(selectedDraft.review_status || "draft"))}</strong>
+            </div>
+            <div class="agent-builder-managed-item">
+              <span>${escapeHTML(t("route.products.drafts.detail.mode"))}</span>
+              <strong>${escapeHTML(normalizeText(selectedDraft.mode || "bootstrap"))}</strong>
+            </div>
+            <div class="agent-builder-managed-item">
+              <span>${escapeHTML(t("route.products.drafts.detail.product"))}</span>
+              <strong>${escapeHTML(selectedDraft.product.id || "-")}</strong>
+            </div>
+            <div class="agent-builder-managed-item">
+              <span>${escapeHTML(t("route.products.drafts.detail.generated"))}</span>
+              <strong>${escapeHTML(formatDateTime(selectedDraft.generated_at) || "-")}</strong>
+            </div>
+            <div class="agent-builder-managed-item">
+              <span>${escapeHTML(t("route.products.drafts.detail.updated"))}</span>
+              <strong>${escapeHTML(formatDateTime(selectedDraft.updated_at) || "-")}</strong>
+            </div>
+            <div class="agent-builder-managed-item">
+              <span>${escapeHTML(t("route.products.drafts.detail.published"))}</span>
+              <strong>${escapeHTML(selectedDraft.published_product_id || "-")}</strong>
+            </div>
+          </div>
+          <div class="agent-builder-section">
+            <h5>${escapeHTML(t("route.products.drafts.detail.master"))}</h5>
+            <article class="agent-route-card">
+              <div class="agent-route-card-head">
+                <div class="agent-route-card-copy">
+                  <strong title="${escapeHTML(selectedDraft.master_agent.name || selectedDraft.master_agent.agent_id)}">${escapeHTML(selectedDraft.master_agent.name || selectedDraft.master_agent.agent_id || "-")}</strong>
+                  <span title="${escapeHTML(selectedDraft.master_agent.agent_id)}">${escapeHTML(selectedDraft.master_agent.agent_id || "-")}</span>
+                </div>
+                <span class="agent-route-state ${selectedDraft.master_agent.enabled ? "is-enabled" : "is-disabled"}">${escapeHTML(selectedDraft.master_agent.enabled ? t("status.enabled") : t("status.disabled"))}</span>
+              </div>
+              <p class="agent-route-card-prompt">${escapeHTML(selectedDraft.master_agent.description || selectedDraft.master_agent.system_prompt || "-")}</p>
+              <div class="agent-route-card-tags">${masterTags.length ? masterTags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
+            </article>
+          </div>
+          <div class="agent-builder-section">
+            <h5>${escapeHTML(t("route.products.drafts.detail.workers"))}</h5>
+            <div class="agent-route-list">${renderProductDraftWorkerCards(selectedDraft.worker_matrix)}</div>
+          </div>
+          ${selectedDraft.conflict_suggestions.length ? `
+            <div class="agent-builder-section">
+              <h5>${escapeHTML(t("route.products.drafts.detail.conflicts"))}</h5>
+              <div class="agent-route-list">
+                ${selectedDraft.conflict_suggestions.map((item) => `<article class="agent-route-card"><p class="agent-route-card-prompt">${escapeHTML(item)}</p></article>`).join("")}
+              </div>
+            </div>
+          ` : ""}
+          <form class="agent-builder-form" data-product-draft-editor-form>
+            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.editor")}</span><textarea name="draft_json" rows="18">${escapeHTML(localState.draftEditorText)}</textarea></label>
+            <div class="agent-builder-wide">
+              <p class="agent-route-pane-copy"><span>${escapeHTML(t("route.products.drafts.form.editor_hint"))}</span></p>
+            </div>
+            <div class="task-filter-actions">
+              <button class="task-filter-apply" type="submit">${escapeHTML(t("route.products.drafts.form.save"))}</button>
+              <button class="task-filter-reset" type="button" data-product-draft-publish ${canPublishDraft ? "" : "disabled"}>${escapeHTML(t("route.products.drafts.form.publish"))}</button>
+            </div>
+          </form>
+        ` : `<p class="route-empty">${escapeHTML(t("route.products.drafts.detail.empty"))}</p>`}
+      </div>`;
+  };
+
+  const paint = () => {
+    if (localState.loading) {
+      container.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
+      return;
+    }
+    const selectedProduct = findSelectedProduct();
     container.innerHTML = `<section class="agent-studio-view">
       <aside class="route-surface agent-studio-list-pane">
         <div class="agent-route-pane-head">
@@ -5255,149 +5797,68 @@ async function loadProductsView(container) {
         <div class="agent-route-list">${renderProductBuilderCards(localState.products, localState.routeState.selectedProductID)}</div>
       </aside>
       <section class="route-surface agent-studio-form-pane">
-        <div class="agent-route-pane-head">
-          <div class="agent-route-pane-copy">
-            <h4>${escapeHTML(localState.draft.id ? t("route.products.edit") : t("route.products.form.new"))}</h4>
-            <p>${escapeHTML(t("route.products.form.managed"))}</p>
-          </div>
-          <div class="agent-builder-actions">
-            <button type="button" data-product-reset>${escapeHTML(t("route.products.form.cancel"))}</button>
-          </div>
-        </div>
         ${localState.statusMessage ? `<p class="agent-builder-status ${localState.statusKind === "error" ? "is-error" : "is-success"}">${escapeHTML(localState.statusMessage)}</p>` : ""}
-        ${isBuiltin ? `<p class="agent-builder-status">${escapeHTML(t("route.products.form.builtin_notice"))}</p>` : ""}
-        <div class="agent-builder-managed">
-          <div class="agent-builder-managed-item">
-            <span>${escapeHTML(t("route.products.form.id"))}</span>
-            <strong>${escapeHTML(managedID)}</strong>
-          </div>
-          <div class="agent-builder-managed-item">
-            <span>${escapeHTML(t("route.products.form.version"))}</span>
-            <strong>${escapeHTML(managedVersion)}</strong>
-          </div>
-          <div class="agent-builder-managed-item">
-            <span>${escapeHTML(t("route.products.form.owner"))}</span>
-            <strong>${escapeHTML(managedOwner)}</strong>
-          </div>
+        <div class="product-workspace-tabs">
+          <button class="memory-tab ${localState.routeState.activePanel === "workspace" ? "active" : ""}" type="button" data-product-panel="workspace">${escapeHTML(t("route.products.panel.workspace"))}</button>
+          <button class="memory-tab ${localState.routeState.activePanel === "studio" ? "active" : ""}" type="button" data-product-panel="studio">${escapeHTML(t("route.products.panel.studio"))}</button>
         </div>
-        <form class="agent-builder-form" data-product-form>
-          <label><span>${t("route.products.form.name")}</span><input type="text" name="name" value="${escapeHTML(localState.draft.name)}" placeholder="Travel"></label>
-          <label><span>${t("route.products.form.slug")}</span><input type="text" name="slug" value="${escapeHTML(localState.draft.slug)}" placeholder="travel"></label>
-          <label><span>${t("route.products.form.master")}</span><input type="text" name="master_agent_id" value="${escapeHTML(localState.draft.master_agent_id)}" placeholder="travel-master"></label>
-          <label><span>${t("route.products.form.status")}</span><select name="status">
-            ${["draft", "active", "disabled", "archived"].map((option) => `<option value="${escapeHTML(option)}" ${option === localState.draft.status ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
-          </select></label>
-          <label><span>${t("route.products.form.visibility")}</span><select name="visibility">
-            ${["private", "public"].map((option) => `<option value="${escapeHTML(option)}" ${option === localState.draft.visibility ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
-          </select></label>
-          <label><span>${t("route.products.form.entry_route")}</span><input type="text" name="entry_route" value="${escapeHTML(localState.draft.entry_route)}" placeholder="products"></label>
-          <label class="agent-builder-wide"><span>${t("route.products.form.summary")}</span><textarea name="summary" rows="4">${escapeHTML(localState.draft.summary)}</textarea></label>
-          <label class="agent-builder-wide"><span>${t("route.products.form.tags")}</span><input type="text" name="tags" value="${escapeHTML(localState.draft.tags.join(", "))}" placeholder="travel, itinerary"></label>
-          <label class="agent-builder-wide"><span>${t("route.products.form.artifacts")}</span><input type="text" name="artifact_types" value="${escapeHTML(localState.draft.artifact_types.join(", "))}" placeholder="city_guide, itinerary, map_layers"></label>
-          <label class="agent-builder-wide"><span>${t("route.products.form.knowledge")}</span><input type="text" name="knowledge_sources" value="${escapeHTML(localState.draft.knowledge_sources.join(", "))}" placeholder="poi_catalog, metro_network"></label>
-          <label class="agent-builder-wide"><span>${t("route.products.form.worker_agents")}</span><textarea name="worker_agents" rows="6" placeholder="travel-route-planner | route-planner | Plan daily routes">${escapeHTML(workerAgentValue)}</textarea></label>
-          <div class="task-filter-actions">
-            <button class="task-filter-apply" type="submit" ${canSave ? "" : "disabled"}>${escapeHTML(t("route.products.form.save"))}</button>
-            <button class="task-filter-reset" type="button" data-product-delete ${canDelete ? "" : "disabled"}>${escapeHTML(t("route.products.form.delete"))}</button>
-          </div>
-        </form>
-        <div class="agent-builder-section">
-          <div class="agent-route-pane-head">
-            <div class="agent-route-pane-copy">
-              <h4>${escapeHTML(t("route.products.drafts.title"))}</h4>
-              <p>${escapeHTML(t("route.products.drafts.subtitle"))}</p>
-            </div>
-          </div>
-          ${currentDraftMode === "expand" && !canExpandDraft ? `<p class="agent-builder-status">${escapeHTML(t("route.products.drafts.form.expand_disabled"))}</p>` : ""}
-          ${currentDraftMode === "expand" && canExpandDraft ? `<p class="agent-builder-status">${escapeHTML(`${t("route.products.form.id")}: ${selectedProduct.id}`)}</p>` : ""}
-          <form class="agent-builder-form" data-product-draft-generate-form>
-            <label><span>${t("route.products.drafts.form.name")}</span><input type="text" name="name" value="${escapeHTML(localState.draftRequest.name)}" placeholder="Travel Premium"></label>
-            <label><span>${t("route.products.drafts.form.mode")}</span><select name="mode">
-              <option value="bootstrap" ${currentDraftMode === "bootstrap" ? "selected" : ""}>${escapeHTML(t("route.products.drafts.form.mode.bootstrap"))}</option>
-              <option value="expand" ${currentDraftMode === "expand" ? "selected" : ""}>${escapeHTML(t("route.products.drafts.form.mode.expand"))}</option>
-            </select></label>
-            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.goal")}</span><textarea name="goal" rows="3">${escapeHTML(localState.draftRequest.goal)}</textarea></label>
-            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.target_users")}</span><input type="text" name="target_users" value="${escapeHTML(localState.draftRequest.target_users)}" placeholder="travellers, families"></label>
-            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.core")}</span><input type="text" name="core_capabilities" value="${escapeHTML(localState.draftRequest.core_capabilities)}" placeholder="city guide, itinerary, metro, food, map"></label>
-            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.constraints")}</span><input type="text" name="constraints" value="${escapeHTML(localState.draftRequest.constraints)}" placeholder="budget-sensitive, kid-friendly"></label>
-            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.artifacts")}</span><input type="text" name="expected_artifacts" value="${escapeHTML(localState.draftRequest.expected_artifacts)}" placeholder="city_guide, itinerary, map_layers"></label>
-            <label class="agent-builder-wide"><span>${t("route.products.drafts.form.integrations")}</span><input type="text" name="integration_requirements" value="${escapeHTML(localState.draftRequest.integration_requirements)}" placeholder="maps, metro, food catalog"></label>
-            <div class="task-filter-actions">
-              <button class="task-filter-apply" type="submit" ${(currentDraftMode === "expand" && !canExpandDraft) ? "disabled" : ""}>${escapeHTML(t("route.products.drafts.form.generate"))}</button>
-            </div>
-          </form>
-          <div class="agent-route-list">${renderProductDraftCards(localState.drafts, localState.routeState.selectedDraftID)}</div>
-          ${selectedDraft?.draft_id ? `
-            <div class="agent-builder-managed">
-              <div class="agent-builder-managed-item">
-                <span>${escapeHTML(t("route.products.form.id"))}</span>
-                <strong>${escapeHTML(selectedDraft.draft_id)}</strong>
-              </div>
-              <div class="agent-builder-managed-item">
-                <span>${escapeHTML(t("route.products.drafts.detail.review"))}</span>
-                <strong>${escapeHTML(normalizeText(selectedDraft.review_status || "draft"))}</strong>
-              </div>
-              <div class="agent-builder-managed-item">
-                <span>${escapeHTML(t("route.products.drafts.detail.mode"))}</span>
-                <strong>${escapeHTML(normalizeText(selectedDraft.mode || "bootstrap"))}</strong>
-              </div>
-              <div class="agent-builder-managed-item">
-                <span>${escapeHTML(t("route.products.drafts.detail.product"))}</span>
-                <strong>${escapeHTML(selectedDraft.product.id || "-")}</strong>
-              </div>
-              <div class="agent-builder-managed-item">
-                <span>${escapeHTML(t("route.products.drafts.detail.generated"))}</span>
-                <strong>${escapeHTML(formatDateTime(selectedDraft.generated_at) || "-")}</strong>
-              </div>
-              <div class="agent-builder-managed-item">
-                <span>${escapeHTML(t("route.products.drafts.detail.updated"))}</span>
-                <strong>${escapeHTML(formatDateTime(selectedDraft.updated_at) || "-")}</strong>
-              </div>
-              <div class="agent-builder-managed-item">
-                <span>${escapeHTML(t("route.products.drafts.detail.published"))}</span>
-                <strong>${escapeHTML(selectedDraft.published_product_id || "-")}</strong>
-              </div>
-            </div>
-            <div class="agent-builder-section">
-              <h5>${escapeHTML(t("route.products.drafts.detail.master"))}</h5>
-              <article class="agent-route-card">
-                <div class="agent-route-card-head">
-                  <div class="agent-route-card-copy">
-                    <strong title="${escapeHTML(selectedDraft.master_agent.name || selectedDraft.master_agent.agent_id)}">${escapeHTML(selectedDraft.master_agent.name || selectedDraft.master_agent.agent_id || "-")}</strong>
-                    <span title="${escapeHTML(selectedDraft.master_agent.agent_id)}">${escapeHTML(selectedDraft.master_agent.agent_id || "-")}</span>
-                  </div>
-                  <span class="agent-route-state ${selectedDraft.master_agent.enabled ? "is-enabled" : "is-disabled"}">${escapeHTML(selectedDraft.master_agent.enabled ? t("status.enabled") : t("status.disabled"))}</span>
-                </div>
-                <p class="agent-route-card-prompt">${escapeHTML(selectedDraft.master_agent.description || selectedDraft.master_agent.system_prompt || "-")}</p>
-                <div class="agent-route-card-tags">${masterTags.length ? masterTags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
-              </article>
-            </div>
-            <div class="agent-builder-section">
-              <h5>${escapeHTML(t("route.products.drafts.detail.workers"))}</h5>
-              <div class="agent-route-list">${renderProductDraftWorkerCards(selectedDraft.worker_matrix)}</div>
-            </div>
-            ${selectedDraft.conflict_suggestions.length ? `
-              <div class="agent-builder-section">
-                <h5>${escapeHTML(t("route.products.drafts.detail.conflicts"))}</h5>
-                <div class="agent-route-list">
-                  ${selectedDraft.conflict_suggestions.map((item) => `<article class="agent-route-card"><p class="agent-route-card-prompt">${escapeHTML(item)}</p></article>`).join("")}
-                </div>
-              </div>
-            ` : ""}
-            <form class="agent-builder-form" data-product-draft-editor-form>
-              <label class="agent-builder-wide"><span>${t("route.products.drafts.form.editor")}</span><textarea name="draft_json" rows="18">${escapeHTML(localState.draftEditorText)}</textarea></label>
-              <div class="agent-builder-wide">
-                <p class="agent-route-pane-copy"><span>${escapeHTML(t("route.products.drafts.form.editor_hint"))}</span></p>
-              </div>
-              <div class="task-filter-actions">
-                <button class="task-filter-apply" type="submit">${escapeHTML(t("route.products.drafts.form.save"))}</button>
-                <button class="task-filter-reset" type="button" data-product-draft-publish ${canPublishDraft ? "" : "disabled"}>${escapeHTML(t("route.products.drafts.form.publish"))}</button>
-              </div>
-            </form>
-          ` : `<p class="route-empty">${escapeHTML(t("route.products.drafts.detail.empty"))}</p>`}
-        </div>
+        ${localState.routeState.activePanel === "workspace" ? renderWorkspacePanel(selectedProduct) : renderStudioPanel(selectedProduct)}
       </section>
     </section>`;
+  };
+
+  const loadWorkspace = async (productID, options = {}) => {
+    const selectedID = String(productID || "").trim();
+    if (!selectedID) {
+      localState.workspace = normalizeProductWorkspace();
+      localState.workspaceDetail = normalizeProductWorkspaceSpaceDetail();
+      localState.workspaceLoading = false;
+      localState.workspaceError = "";
+      if (!options.silent) {
+        persistRouteState();
+        paint();
+        bind();
+      }
+      return;
+    }
+    localState.workspaceLoading = true;
+    localState.workspaceError = "";
+    if (!options.silent) {
+      paint();
+    }
+    try {
+      const payload = await requestJSON(`/api/products/${encodeURIComponent(selectedID)}/workspace`);
+      if (selectedID !== String(localState.routeState.selectedProductID || "").trim()) {
+        return;
+      }
+      localState.workspace = normalizeProductWorkspace(payload);
+      const validSpaceIDs = new Set(localState.workspace.spaces.map((item) => item.space_id));
+      if (!validSpaceIDs.has(localState.routeState.selectedSpaceID)) {
+        localState.routeState.selectedSpaceID = localState.workspace.spaces[0]?.space_id || "";
+      }
+      if (localState.routeState.selectedSpaceID) {
+        const detailPayload = await requestJSON(`/api/products/${encodeURIComponent(selectedID)}/workspace/spaces/${encodeURIComponent(localState.routeState.selectedSpaceID)}`);
+        if (selectedID !== String(localState.routeState.selectedProductID || "").trim()) {
+          return;
+        }
+        localState.workspaceDetail = normalizeProductWorkspaceSpaceDetail(detailPayload);
+      } else {
+        localState.workspaceDetail = normalizeProductWorkspaceSpaceDetail();
+      }
+    } catch (error) {
+      localState.workspace = normalizeProductWorkspace();
+      localState.workspaceDetail = normalizeProductWorkspaceSpaceDetail();
+      localState.workspaceError = error instanceof Error ? error.message : "unknown_error";
+    } finally {
+      if (selectedID === String(localState.routeState.selectedProductID || "").trim()) {
+        localState.workspaceLoading = false;
+      }
+      if (!options.silent) {
+        persistRouteState();
+        paint();
+        bind();
+      }
+    }
   };
 
   const reload = async (statusMessage = "", statusKind = "") => {
@@ -5419,6 +5880,7 @@ async function loadProductsView(container) {
       localState.routeState.selectedDraftID = localState.drafts[0]?.draft_id || "";
     }
     syncSelectedDraft();
+    await loadWorkspace(localState.routeState.selectedProductID, { silent: true });
     localState.loading = false;
     persistRouteState();
     paint();
@@ -5574,15 +6036,98 @@ async function loadProductsView(container) {
     }
   };
 
+  const sendWorkspaceMessage = async (form) => {
+    const selectedProduct = findSelectedProduct();
+    if (!selectedProduct?.id || localState.workspacePending) {
+      return;
+    }
+    const formData = new FormData(form);
+    const content = String(formData.get("content") || "").trim();
+    if (!content) {
+      return;
+    }
+    const assistantMessage = createProductWorkspaceMessage("assistant", t("msg.processing"), { status: "streaming" });
+    setCurrentWorkspaceMessages([
+      ...currentWorkspaceMessages(),
+      createProductWorkspaceMessage("user", content),
+      assistantMessage
+    ]);
+    localState.workspacePending = true;
+    paint();
+    bind();
+    try {
+      if (selectedProduct.id === "travel") {
+        const payload = await requestJSON(`/api/products/${encodeURIComponent(selectedProduct.id)}/workspace/chat`, {
+          method: "POST",
+          body: JSON.stringify({
+            session_id: localState.routeState.workspaceSessionByProduct[selectedProduct.id] || "",
+            space_id: localState.routeState.selectedSpaceID,
+            content
+          })
+        });
+        assistantMessage.text = String(payload?.reply || "").trim() || t("msg.received_empty");
+        assistantMessage.status = "done";
+        if (payload?.guide?.id || payload?.space_id) {
+          localState.routeState.selectedSpaceID = String(payload?.guide?.id || payload?.space_id || "").trim();
+          await loadWorkspace(selectedProduct.id, { silent: true });
+        }
+      } else {
+        const payload = await requestJSON(`/api/products/${encodeURIComponent(selectedProduct.id)}/messages`, {
+          method: "POST",
+          body: JSON.stringify({
+            session_id: localState.routeState.workspaceSessionByProduct[selectedProduct.id] || "",
+            content
+          })
+        });
+        assistantMessage.text = String(payload?.result?.output || "").trim() || t("msg.received_empty");
+        assistantMessage.status = "done";
+        const nextSessionID = String(payload?.result?.session_id || "").trim();
+        if (nextSessionID) {
+          localState.routeState.workspaceSessionByProduct[selectedProduct.id] = nextSessionID;
+        }
+      }
+      localState.statusMessage = t("route.products.workspace.synced");
+      localState.statusKind = "success";
+    } catch (error) {
+      assistantMessage.text = t("route.products.workspace.chat_failed", {
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+      assistantMessage.status = "error";
+      assistantMessage.error = true;
+      localState.statusMessage = assistantMessage.text;
+      localState.statusKind = "error";
+    } finally {
+      localState.workspacePending = false;
+      persistRouteState();
+      paint();
+      bind();
+    }
+  };
+
   const bind = () => {
     container.querySelectorAll("[data-product-select]").forEach((node) => {
-      node.addEventListener("click", () => {
+      node.addEventListener("click", async () => {
         const nextID = String(node.getAttribute("data-product-select") || "").trim();
         if (!nextID || nextID === localState.routeState.selectedProductID) {
           return;
         }
         localState.routeState.selectedProductID = nextID;
+        localState.routeState.selectedSpaceID = "";
         syncDraftFromSelection();
+        persistRouteState();
+        paint();
+        bind();
+        await loadWorkspace(nextID);
+      });
+    });
+
+    container.querySelectorAll("[data-product-panel]").forEach((node) => {
+      node.addEventListener("click", () => {
+        const nextPanel = String(node.getAttribute("data-product-panel") || "workspace").trim() || "workspace";
+        if (nextPanel === localState.routeState.activePanel) {
+          return;
+        }
+        localState.routeState.activePanel = nextPanel;
         persistRouteState();
         paint();
         bind();
@@ -5607,7 +6152,11 @@ async function loadProductsView(container) {
     if (createButton) {
       createButton.addEventListener("click", () => {
         localState.routeState.selectedProductID = "";
+        localState.routeState.activePanel = "studio";
+        localState.routeState.selectedSpaceID = "";
         localState.draft = normalizeProductBuilderDraft();
+        localState.workspace = normalizeProductWorkspace();
+        localState.workspaceDetail = normalizeProductWorkspaceSpaceDetail();
         localState.statusMessage = "";
         localState.statusKind = "";
         persistRouteState();
@@ -5674,6 +6223,36 @@ async function loadProductsView(container) {
     if (publishButton) {
       publishButton.addEventListener("click", async () => {
         await publishDraft();
+      });
+    }
+
+    container.querySelectorAll("[data-product-space-select]").forEach((node) => {
+      node.addEventListener("click", async () => {
+        const nextID = String(node.getAttribute("data-product-space-select") || "").trim();
+        if (!nextID || nextID === localState.routeState.selectedSpaceID) {
+          return;
+        }
+        localState.routeState.selectedSpaceID = nextID;
+        await loadWorkspace(String(localState.routeState.selectedProductID || "").trim());
+      });
+    });
+
+    const clearSpaceButton = container.querySelector("[data-product-space-clear]");
+    if (clearSpaceButton) {
+      clearSpaceButton.addEventListener("click", () => {
+        localState.routeState.selectedSpaceID = "";
+        localState.workspaceDetail = normalizeProductWorkspaceSpaceDetail();
+        persistRouteState();
+        paint();
+        bind();
+      });
+    }
+
+    const workspaceChatForm = container.querySelector("[data-product-workspace-chat-form]");
+    if (workspaceChatForm) {
+      workspaceChatForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await sendWorkspaceMessage(workspaceChatForm);
       });
     }
   };

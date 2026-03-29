@@ -88,3 +88,44 @@ func TestTravelGuideServiceReviseGuide(t *testing.T) {
 		t.Fatalf("expected content to change after revise")
 	}
 }
+
+func TestTravelGuideServiceListGuidesSortsLatestFirst(t *testing.T) {
+	service := NewTravelGuideService()
+	_, err := service.CreateGuide(productdomain.TravelGuideCreateInput{City: "Wuhan", Days: 3})
+	if err != nil {
+		t.Fatalf("create wuhan guide failed: %v", err)
+	}
+	_, err = service.CreateGuide(productdomain.TravelGuideCreateInput{City: "Beijing", Days: 4})
+	if err != nil {
+		t.Fatalf("create beijing guide failed: %v", err)
+	}
+
+	items := service.ListGuides()
+	if len(items) != 2 {
+		t.Fatalf("expected 2 guides, got %+v", items)
+	}
+	if items[0].City != "Beijing" {
+		t.Fatalf("expected latest guide first, got %+v", items)
+	}
+}
+
+func TestTravelGuideServiceRejectsDuplicateCity(t *testing.T) {
+	service := NewTravelGuideService()
+	if _, err := service.CreateGuide(productdomain.TravelGuideCreateInput{City: "武汉", Days: 3}); err != nil {
+		t.Fatalf("create guide failed: %v", err)
+	}
+	if _, err := service.CreateGuide(productdomain.TravelGuideCreateInput{City: "武汉", Days: 2}); err == nil {
+		t.Fatal("expected duplicate city error")
+	}
+}
+
+func TestTravelGuideServiceUsesUnicodeAwareGuideIDs(t *testing.T) {
+	service := NewTravelGuideService()
+	guide, err := service.CreateGuide(productdomain.TravelGuideCreateInput{City: "武汉", Days: 3})
+	if err != nil {
+		t.Fatalf("create guide failed: %v", err)
+	}
+	if guide.ID != "u6b66-u6c49-guide" {
+		t.Fatalf("expected unicode-aware guide id, got %q", guide.ID)
+	}
+}
