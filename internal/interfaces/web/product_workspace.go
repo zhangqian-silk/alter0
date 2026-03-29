@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -139,16 +140,8 @@ func (s *Server) productWorkspaceChatHandler(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workspace chat sync is only supported for travel"})
 		return
 	}
-	if s.orchestrator == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "orchestrator unavailable"})
-		return
-	}
 	if s.travelGuides == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "travel guide service unavailable"})
-		return
-	}
-	if s.agents == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent catalog unavailable"})
 		return
 	}
 
@@ -173,11 +166,7 @@ func (s *Server) productWorkspaceChatHandler(w http.ResponseWriter, r *http.Requ
 		selectedGuide = item
 	}
 
-	envelope, err := s.executeTravelWorkspaceOperator(r, req, product, selectedGuide)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
+	envelope := s.resolveTravelWorkspaceEnvelope(r, req, product, selectedGuide)
 
 	action := normalizeTravelWorkspaceAction(envelope.Action)
 	reply := strings.TrimSpace(envelope.AssistantReply)
@@ -252,6 +241,28 @@ func (s *Server) productWorkspaceChatHandler(w http.ResponseWriter, r *http.Requ
 		}
 		writeJSON(w, http.StatusOK, response)
 	}
+}
+
+func (s *Server) resolveTravelWorkspaceEnvelope(
+	r *http.Request,
+	req productWorkspaceChatRequest,
+	product productdomain.Product,
+	selectedGuide productdomain.TravelGuide,
+) travelWorkspaceAgentEnvelope {
+	if s.orchestrator != nil && s.agents != nil {
+		envelope, err := s.executeTravelWorkspaceOperator(r, req, product, selectedGuide)
+		if err == nil {
+			return envelope
+		}
+		if s.logger != nil {
+			s.logger.Warn("travel workspace operator failed, using local fallback",
+				"product_id", product.ID,
+				"space_id", req.SpaceID,
+				"error", err.Error(),
+			)
+		}
+	}
+	return s.buildTravelWorkspaceFallbackEnvelope(req, selectedGuide)
 }
 
 func (s *Server) buildProductWorkspaceResponse(product productdomain.Product) (productWorkspaceResponse, error) {
@@ -362,6 +373,61 @@ func (s *Server) executeTravelWorkspaceOperator(
 	return parseTravelWorkspaceAgentEnvelope(result.Output)
 }
 
+func (s *Server) buildTravelWorkspaceFallbackEnvelope(
+	req productWorkspaceChatRequest,
+	selectedGuide productdomain.TravelGuide,
+) travelWorkspaceAgentEnvelope {
+	content := strings.TrimSpace(req.Content)
+	city := detectTravelWorkspaceTargetCity(content, selectedGuide, s.travelGuides.ListGuides())
+	days := detectTravelWorkspaceDays(content)
+	travelStyle := detectTravelWorkspaceTravelStyle(content)
+	budget := detectTravelWorkspaceBudget(content)
+	companions := detectTravelWorkspaceCompanions(content)
+	mustVisit := extractTravelWorkspaceMustVisit(content)
+	avoid := extractTravelWorkspaceAvoid(content)
+	keepConditions := extractTravelWorkspaceKeepConditions(content)
+	replaceConditions := extractTravelWorkspaceReplaceConditions(content)
+	additionalRequirements := extractTravelWorkspaceAdditionalRequirements(content)
+
+	action := s.inferTravelWorkspaceFallbackAction(content, selectedGuide, city)
+	envelope := travelWorkspaceAgentEnvelope{
+		Action:     action,
+		TargetCity: city,
+	}
+	switch action {
+	case "create":
+		envelope.CreateInput = productdomain.TravelGuideCreateInput{
+			City:                   city,
+			Days:                   days,
+			TravelStyle:            travelStyle,
+			Budget:                 budget,
+			Companions:             companions,
+			MustVisit:              mustVisit,
+			Avoid:                  avoid,
+			AdditionalRequirements: additionalRequirements,
+		}.Normalized()
+	case "revise":
+		revise := productdomain.TravelGuideReviseInput{
+			TravelStyle:            travelStyle,
+			Budget:                 budget,
+			Companions:             companions,
+			MustVisit:              mustVisit,
+			Avoid:                  avoid,
+			AdditionalRequirements: additionalRequirements,
+			KeepConditions:         keepConditions,
+			ReplaceConditions:      replaceConditions,
+		}
+		if days > 0 {
+			revisedDays := days
+			revise.Days = &revisedDays
+		}
+		envelope.ReviseInput = revise.Normalized()
+	default:
+		envelope.AssistantReply = "请补充城市、天数或要调整的页面信息。"
+	}
+	return envelope
+}
+
 func buildTravelWorkspaceOperatorPrompt(
 	product productdomain.Product,
 	selectedGuide productdomain.TravelGuide,
@@ -448,6 +514,29 @@ func normalizeTravelWorkspaceAction(raw string) string {
 	}
 }
 
+func (s *Server) inferTravelWorkspaceFallbackAction(content string, selectedGuide productdomain.TravelGuide, city string) string {
+	trimmedCity := strings.TrimSpace(city)
+	if strings.TrimSpace(selectedGuide.ID) != "" {
+		if trimmedCity == "" || strings.EqualFold(strings.TrimSpace(selectedGuide.City), trimmedCity) {
+			return "revise"
+		}
+		if _, found := s.findTravelGuideByCity(trimmedCity); found {
+			return "revise"
+		}
+		return "create"
+	}
+	if trimmedCity == "" {
+		return travelWorkspaceReplyOnlyAction
+	}
+	if _, found := s.findTravelGuideByCity(trimmedCity); found {
+		return "revise"
+	}
+	if containsAnyFold(content, "修改", "更新", "调整", "改成", "改为", "重写", "补充") {
+		return "create"
+	}
+	return "create"
+}
+
 func buildReviseInputFromCreateInput(input productdomain.TravelGuideCreateInput) productdomain.TravelGuideReviseInput {
 	revised := productdomain.TravelGuideReviseInput{
 		TravelStyle:            strings.TrimSpace(input.TravelStyle),
@@ -497,4 +586,321 @@ func chooseWorkspaceReply(preferred string, fallback string) string {
 		return strings.TrimSpace(preferred)
 	}
 	return strings.TrimSpace(fallback)
+}
+
+func detectTravelWorkspaceTargetCity(content string, selectedGuide productdomain.TravelGuide, guides []productdomain.TravelGuide) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		if strings.TrimSpace(selectedGuide.ID) != "" {
+			return strings.TrimSpace(selectedGuide.City)
+		}
+		return ""
+	}
+	for _, guide := range guides {
+		city := strings.TrimSpace(guide.City)
+		if city != "" && strings.Contains(trimmed, city) {
+			return city
+		}
+	}
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`给\s*([\p{Han}A-Za-z]{2,24})\s*(?:创建|生成|做|写)`),
+		regexp.MustCompile(`生成(?:一篇|一个|一份)?\s*([\p{Han}A-Za-z]{2,24})的`),
+		regexp.MustCompile(`把\s*([\p{Han}A-Za-z]{2,24})\s*(?:页面|攻略)`),
+		regexp.MustCompile(`([\p{Han}A-Za-z]{2,24})的(?:页面|攻略|[一二两三四五六七八九十两0-9]+(?:天|日游))`),
+		regexp.MustCompile(`去\s*([\p{Han}A-Za-z]{2,24})`),
+	}
+	for _, pattern := range patterns {
+		matches := pattern.FindStringSubmatch(trimmed)
+		if len(matches) < 2 {
+			continue
+		}
+		if city := sanitizeTravelWorkspaceCity(matches[1]); city != "" {
+			return city
+		}
+	}
+	if strings.TrimSpace(selectedGuide.ID) != "" {
+		return strings.TrimSpace(selectedGuide.City)
+	}
+	return ""
+}
+
+func sanitizeTravelWorkspaceCity(raw string) string {
+	city := strings.TrimSpace(raw)
+	replacer := strings.NewReplacer(
+		"页面", "",
+		"城市页", "",
+		"攻略", "",
+		"行程", "",
+		"计划", "",
+		"旅行", "",
+	)
+	city = strings.TrimSpace(replacer.Replace(city))
+	if city == "" {
+		return ""
+	}
+	switch city {
+	case "页面", "攻略", "城市", "旅行", "行程", "计划":
+		return ""
+	}
+	return city
+}
+
+func detectTravelWorkspaceDays(content string) int {
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`([0-9]{1,2})\s*(?:天|日游)`),
+		regexp.MustCompile(`([一二两三四五六七八九十]{1,3})\s*(?:天|日游)`),
+	}
+	for _, pattern := range patterns {
+		matches := pattern.FindStringSubmatch(content)
+		if len(matches) < 2 {
+			continue
+		}
+		if days := parseTravelWorkspaceNumber(matches[1]); days > 0 {
+			if days > 14 {
+				return 14
+			}
+			return days
+		}
+	}
+	if days := detectTravelWorkspaceDateRangeDays(content); days > 0 {
+		return days
+	}
+	return 3
+}
+
+func detectTravelWorkspaceDateRangeDays(content string) int {
+	pattern := regexp.MustCompile(`(\d{1,2})月(\d{1,2})[日号]?\s*(?:至|到|-|~|—|–)\s*(?:(\d{1,2})月)?(\d{1,2})[日号]?`)
+	matches := pattern.FindStringSubmatch(content)
+	if len(matches) < 5 {
+		return 0
+	}
+	startMonth := parseTravelWorkspaceNumber(matches[1])
+	startDay := parseTravelWorkspaceNumber(matches[2])
+	endMonth := startMonth
+	if strings.TrimSpace(matches[3]) != "" {
+		endMonth = parseTravelWorkspaceNumber(matches[3])
+	}
+	endDay := parseTravelWorkspaceNumber(matches[4])
+	if startMonth <= 0 || startDay <= 0 || endMonth <= 0 || endDay <= 0 {
+		return 0
+	}
+	if startMonth != endMonth || endDay < startDay {
+		return 0
+	}
+	return endDay - startDay + 1
+}
+
+func parseTravelWorkspaceNumber(raw string) int {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0
+	}
+	value := 0
+	for _, r := range trimmed {
+		if r >= '0' && r <= '9' {
+			value = value*10 + int(r-'0')
+			continue
+		}
+		value = 0
+		break
+	}
+	if value > 0 {
+		return value
+	}
+	switch trimmed {
+	case "一":
+		return 1
+	case "二", "两":
+		return 2
+	case "三":
+		return 3
+	case "四":
+		return 4
+	case "五":
+		return 5
+	case "六":
+		return 6
+	case "七":
+		return 7
+	case "八":
+		return 8
+	case "九":
+		return 9
+	case "十":
+		return 10
+	case "十一":
+		return 11
+	case "十二":
+		return 12
+	case "十三":
+		return 13
+	case "十四":
+		return 14
+	}
+	return 0
+}
+
+func detectTravelWorkspaceTravelStyle(content string) string {
+	switch {
+	case containsAnyFold(content, "地铁优先", "metro", "subway"):
+		return "metro-first"
+	case containsAnyFold(content, "citywalk", "步行优先", "暴走"):
+		return "citywalk"
+	case containsAnyFold(content, "慢节奏", "轻松", "休闲"):
+		return "relaxed"
+	case containsAnyFold(content, "特种兵", "高密度", "高强度"):
+		return "high-density"
+	case containsAnyFold(content, "亲子", "家庭"):
+		return "family"
+	case containsAnyFold(content, "美食优先", "吃饭为主"):
+		return "food-first"
+	default:
+		return ""
+	}
+}
+
+func detectTravelWorkspaceBudget(content string) string {
+	switch {
+	case containsAnyFold(content, "豪华", "高预算", "奢华", "premium"):
+		return "premium"
+	case containsAnyFold(content, "低预算", "穷游", "省钱", "budget"):
+		return "budget"
+	case containsAnyFold(content, "中预算", "中等预算", "适中"):
+		return "mid-range"
+	default:
+		return ""
+	}
+}
+
+func detectTravelWorkspaceCompanions(content string) []string {
+	items := []string{}
+	switch {
+	case containsAnyFold(content, "亲子", "带娃"):
+		items = append(items, "family")
+	case containsAnyFold(content, "情侣"):
+		items = append(items, "couple")
+	case containsAnyFold(content, "老人", "长辈"):
+		items = append(items, "seniors")
+	case containsAnyFold(content, "朋友", "闺蜜", "兄弟"):
+		items = append(items, "friends")
+	}
+	return normalizeTravelWorkspaceList(items)
+}
+
+func extractTravelWorkspaceMustVisit(content string) []string {
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?:必去|想去|想看)([^，。；,!?！？]+)`),
+		regexp.MustCompile(`(?:看|逛|去|打卡)([^，。；,!?！？]+?)(?:为主|优先|即可|就好|$)`),
+	}
+	items := []string{}
+	for _, pattern := range patterns {
+		matches := pattern.FindStringSubmatch(content)
+		if len(matches) < 2 {
+			continue
+		}
+		items = append(items, splitTravelWorkspaceNamedItems(matches[1])...)
+	}
+	return normalizeTravelWorkspaceList(items)
+}
+
+func extractTravelWorkspaceAvoid(content string) []string {
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?:避免|不要|避开)([^，。；,!?！？]+)`),
+	}
+	items := []string{}
+	for _, pattern := range patterns {
+		matches := pattern.FindStringSubmatch(content)
+		if len(matches) < 2 {
+			continue
+		}
+		items = append(items, splitTravelWorkspaceNamedItems(matches[1])...)
+	}
+	return normalizeTravelWorkspaceList(items)
+}
+
+func extractTravelWorkspaceKeepConditions(content string) []string {
+	pattern := regexp.MustCompile(`保留([^，。；,!?！？]+)`)
+	items := []string{}
+	for _, matches := range pattern.FindAllStringSubmatch(content, -1) {
+		if len(matches) < 2 {
+			continue
+		}
+		items = append(items, "保留"+strings.TrimSpace(matches[1]))
+	}
+	return normalizeTravelWorkspaceList(items)
+}
+
+func extractTravelWorkspaceReplaceConditions(content string) []string {
+	pattern := regexp.MustCompile(`(?:替换|改成|改为|减少|删掉)([^，。；,!?！？]+)`)
+	items := []string{}
+	for _, matches := range pattern.FindAllStringSubmatch(content, -1) {
+		if len(matches) == 0 {
+			continue
+		}
+		items = append(items, strings.TrimSpace(matches[0]))
+	}
+	return normalizeTravelWorkspaceList(items)
+}
+
+func extractTravelWorkspaceAdditionalRequirements(content string) []string {
+	clauses := splitTravelWorkspaceClauses(content)
+	items := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
+		switch {
+		case containsAnyFold(clause, "保留", "替换", "改成", "改为", "减少", "删掉"):
+			continue
+		default:
+			items = append(items, clause)
+		}
+	}
+	if len(items) == 0 && strings.TrimSpace(content) != "" {
+		items = append(items, strings.TrimSpace(content))
+	}
+	return normalizeTravelWorkspaceList(items)
+}
+
+func splitTravelWorkspaceClauses(content string) []string {
+	splitter := regexp.MustCompile(`[，,。；;！!？?\n]+`)
+	rawClauses := splitter.Split(content, -1)
+	clauses := make([]string, 0, len(rawClauses))
+	for _, clause := range rawClauses {
+		trimmed := strings.TrimSpace(clause)
+		if trimmed == "" {
+			continue
+		}
+		clauses = append(clauses, trimmed)
+	}
+	return normalizeTravelWorkspaceList(clauses)
+}
+
+func splitTravelWorkspaceNamedItems(raw string) []string {
+	replacer := strings.NewReplacer("其中", "", "为主", "", "为辅", "", "优先", "")
+	cleaned := strings.TrimSpace(replacer.Replace(raw))
+	if cleaned == "" {
+		return nil
+	}
+	parts := regexp.MustCompile(`[、/和及与]`).Split(cleaned, -1)
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		items = append(items, trimmed)
+	}
+	return items
+}
+
+func normalizeTravelWorkspaceList(items []string) []string {
+	return productdomain.TravelGuide{Notes: items}.Normalized().Notes
+}
+
+func containsAnyFold(content string, markers ...string) bool {
+	lower := strings.ToLower(content)
+	for _, marker := range markers {
+		if marker != "" && strings.Contains(lower, strings.ToLower(marker)) {
+			return true
+		}
+	}
+	return false
 }

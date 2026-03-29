@@ -68,7 +68,7 @@
 | R-055 | Product Agent 与子产品矩阵生成 | supported | 提供平台级 `product-builder` 与 Draft Studio，支持生成新 Product 草稿、扩展矩阵、审核编辑、冲突提示与发布落地 |
 | R-056 | Product 总 Agent 与子 Agent 矩阵编排 | supported | 每个已发布 Product 绑定唯一总 Agent，并将子 Agent 矩阵同步到托管 Agent Catalog，统一由总 Agent 收口执行 |
 | R-057 | Alter0 Agent 跨 Product 信息检索与任务调度 | supported | `Alter0 Agent` 作为统一入口，按用户意图检索 Product 目录与能力信息，并在执行型请求中自动切换到目标 Product 总 Agent；当前已提供 Product 公开执行入口、Product 上下文与路由元数据注入 |
-| R-058 | Travel Product 首个产品域落地 | supported | 以 `travel` 作为首个内置 Product，提供主 Agent 对话式城市页创建/修改、攻略详情与 revision 能力，并保留路线、地铁、美食、地图图层等结构化字段 |
+| R-058 | Travel Product 首个产品域落地 | supported | 以 `travel` 作为首个内置 Product，提供主 Agent 对话式城市页创建/修改、攻略详情与 revision 能力；Workspace Chat 在 Agent 执行链不可用时自动回退本地解析，并保留路线、地铁、美食、地图图层等结构化字段 |
 
 ## 需求细化（分文件）
 

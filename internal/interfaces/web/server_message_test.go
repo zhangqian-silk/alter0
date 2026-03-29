@@ -588,6 +588,79 @@ func TestTravelWorkspaceChatRevisesSelectedGuide(t *testing.T) {
 	}
 }
 
+func TestTravelWorkspaceChatFallsBackToCreateWhenOperatorFails(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		err: errors.New("codex command failed: exit status 1"),
+	}
+	server := newMessageTestServer(orchestrator)
+	server.products = productapp.NewService()
+	server.travelGuides = productapp.NewTravelGuideService()
+	server.agents = agentapp.NewCatalog(controlapp.NewService())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/products/travel/workspace/chat", strings.NewReader(`{"content":"生成一篇武汉的三日游攻略，时间为4月4至4月6，其中4月4日下午飞机到达，4月6晚上飞机离开，行程以看樱花、景点为主，吃饭为辅"}`))
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected fallback create 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload productWorkspaceChatResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode fallback create response failed: %v", err)
+	}
+	if payload.Action != "create" || payload.Guide == nil {
+		t.Fatalf("unexpected fallback create payload: %+v", payload)
+	}
+	if payload.Guide.City != "武汉" || payload.Guide.Days != 3 {
+		t.Fatalf("expected wuhan 3-day guide, got %+v", payload.Guide)
+	}
+	if len(payload.Guide.AdditionalRequirements) == 0 {
+		t.Fatalf("expected fallback requirements to be preserved: %+v", payload.Guide)
+	}
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey]; got != "travel-master" {
+		t.Fatalf("expected travel-master attempt before fallback, got %+v", orchestrator.lastMessage.Metadata)
+	}
+}
+
+func TestTravelWorkspaceChatFallsBackToReviseSelectedGuideWhenOperatorFails(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		err: errors.New("codex command failed: exit status 1"),
+	}
+	server := newMessageTestServer(orchestrator)
+	server.products = productapp.NewService()
+	server.travelGuides = productapp.NewTravelGuideService()
+	server.agents = agentapp.NewCatalog(controlapp.NewService())
+	guide, err := server.travelGuides.CreateGuide(productdomain.TravelGuideCreateInput{
+		City:      "成都",
+		Days:      2,
+		MustVisit: []string{"锦里"},
+	})
+	if err != nil {
+		t.Fatalf("seed guide failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/products/travel/workspace/chat", strings.NewReader(`{"space_id":"`+guide.ID+`","content":"把成都页面调整成四天，并保留锦里，增加更多美食"}`))
+	rec := httptest.NewRecorder()
+	server.publicProductItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected fallback revise 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload productWorkspaceChatResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode fallback revise response failed: %v", err)
+	}
+	if payload.Action != "revise" || payload.Guide == nil {
+		t.Fatalf("unexpected fallback revise payload: %+v", payload)
+	}
+	if payload.Guide.City != "成都" || payload.Guide.Revision != 2 || payload.Guide.Days != 4 {
+		t.Fatalf("expected revised chengdu guide, got %+v", payload.Guide)
+	}
+	if len(payload.Guide.KeepConditions) == 0 || !strings.Contains(strings.Join(payload.Guide.KeepConditions, ","), "保留锦里") {
+		t.Fatalf("expected keep conditions to include 锦里, got %+v", payload.Guide.KeepConditions)
+	}
+}
+
 func TestMainAgentMessageRoutesMatchedProductTask(t *testing.T) {
 	orchestrator := &stubWebOrchestrator{
 		result: shareddomain.OrchestrationResult{

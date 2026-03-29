@@ -1,6 +1,6 @@
 # Requirements Details (R-051 ~ R-060)
 
-> Last update: 2026-03-28
+> Last update: 2026-03-29
 
 ## 需求细化（草案）
 
@@ -364,11 +364,13 @@
    - `travel-map-annotator`：负责地图图层和点线路径表达。
 9. `travel` 必须支持在 Product 详情和后续 Product Workspace 中查看其总 Agent、子 Agent 矩阵和主要产物类型。
 10. `travel` Workspace 必须支持和 `travel-master` 对话，并将创建/修改请求同步到具体城市页空间；当用户选择武汉、成都、北京等城市页后，后续修改默认作用于当前城市页。
+11. `POST /api/products/travel/workspace/chat` 需优先走 `travel-master` 的结构化解析；若 Agent 执行链、模型响应或 CLI fallback 不可用，服务端需自动切换到本地规则解析，继续完成城市页创建或修订，不向用户直接暴露底层执行失败。
 11. 验收：
    - 平台内可见 `travel` Product；
    - `Alter0 Agent` 可识别并路由到 `travel-master`；
    - 用户可生成指定城市的旅游攻略；
    - 用户可基于补充条件修改已有攻略；
+   - 当 `travel-master` 执行失败时，Workspace Chat 仍可通过本地解析继续创建或修订城市页；
    - 结果中保留可供地图与路线后续增强的结构化字段；
    - `Products -> travel -> Workspace` 中可直接通过主 Agent 对话创建或修改城市页。
 
