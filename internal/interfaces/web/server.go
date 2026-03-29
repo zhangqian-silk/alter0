@@ -673,6 +673,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/logout", s.logoutHandler)
 	mux.HandleFunc("/", s.rootHandler)
 	mux.HandleFunc("/chat", s.chatPageHandler)
+	mux.HandleFunc("/products/", s.productPublicPageHandler)
 	mux.HandleFunc("/api/messages", s.messageHandler)
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
 	mux.HandleFunc("/api/agents", s.runtimeAgentListHandler)
@@ -920,7 +921,7 @@ func shouldRedirectToLogin(r *http.Request) bool {
 
 func isInteractivePagePath(path string) bool {
 	normalized := strings.TrimSpace(path)
-	return normalized == "/" || normalized == "/chat"
+	return normalized == "/" || normalized == "/chat" || strings.HasPrefix(normalized, "/products/")
 }
 
 func isAuthExemptPath(path string) bool {

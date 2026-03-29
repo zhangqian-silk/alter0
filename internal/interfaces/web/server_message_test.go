@@ -480,6 +480,9 @@ func TestProductWorkspaceSummaryExposesTravelSpaces(t *testing.T) {
 	if len(payload.Spaces) != 1 || payload.Spaces[0].Title != "武汉" {
 		t.Fatalf("expected wuhan space summary, got %+v", payload.Spaces)
 	}
+	if payload.Spaces[0].HTMLPath != "/products/travel/spaces/u6b66-u6c49-guide.html" {
+		t.Fatalf("expected html path for wuhan page, got %+v", payload.Spaces[0])
+	}
 }
 
 func TestProductWorkspaceSpaceDetailReturnsGuide(t *testing.T) {
@@ -508,6 +511,44 @@ func TestProductWorkspaceSpaceDetailReturnsGuide(t *testing.T) {
 	}
 	if payload.Space.SpaceID != guide.ID || payload.Guide.City != "北京" {
 		t.Fatalf("unexpected workspace detail: %+v", payload)
+	}
+	if payload.Space.HTMLPath != "/products/travel/spaces/"+guide.ID+".html" {
+		t.Fatalf("expected html path in workspace detail, got %+v", payload.Space)
+	}
+}
+
+func TestProductWorkspaceHTMLPageRendersGuide(t *testing.T) {
+	server := newMessageTestServer(&stubWebOrchestrator{})
+	server.products = productapp.NewService()
+	server.travelGuides = productapp.NewTravelGuideService()
+	guide, err := server.travelGuides.CreateGuide(productdomain.TravelGuideCreateInput{
+		City:                   "武汉",
+		Days:                   3,
+		TravelStyle:            "metro-first",
+		Budget:                 "mid-range",
+		MustVisit:              []string{"黄鹤楼"},
+		AdditionalRequirements: []string{"看樱花"},
+	})
+	if err != nil {
+		t.Fatalf("seed guide failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/products/travel/spaces/"+guide.ID+".html", nil)
+	rec := httptest.NewRecorder()
+	server.productPublicPageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected html page 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if contentType := rec.Header().Get("Content-Type"); !strings.Contains(contentType, "text/html") {
+		t.Fatalf("expected text/html content type, got %q", contentType)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "<!doctype html>") {
+		t.Fatalf("expected html doctype, got %s", body)
+	}
+	if !strings.Contains(body, "武汉") || !strings.Contains(body, "黄鹤楼") {
+		t.Fatalf("expected rendered guide content, got %s", body)
 	}
 }
 
@@ -542,8 +583,11 @@ func TestTravelWorkspaceChatCreatesGuideFromMasterAgentReply(t *testing.T) {
 	if got := orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey]; got != "travel-master" {
 		t.Fatalf("expected travel-master metadata, got %+v", orchestrator.lastMessage.Metadata)
 	}
-	if got := orchestrator.lastMessage.Metadata[execdomain.AgentToolsMetadataKey]; got != `["complete"]` {
-		t.Fatalf("expected complete-only tools, got %+v", orchestrator.lastMessage.Metadata)
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentToolsMetadataKey]; got != `["read_skill","write_skill","delegate_agent","complete"]` {
+		t.Fatalf("expected travel-master tool set, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if got := orchestrator.lastMessage.Metadata["alter0.skills.include"]; got != `["memory","travel-page"]` {
+		t.Fatalf("expected travel-master skill set, got %+v", orchestrator.lastMessage.Metadata)
 	}
 }
 

@@ -77,6 +77,7 @@
    - ReAct 与 Codex 两条链路都能看到相同记忆文件集
    - 文件不存在时 Agent 仍能拿到目标路径并通过原生工具创建
 11. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
+12. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Agent 可结合专用工具读取或更新该文件，而不必退回通用文件路径猜测。
 
 #### Traceability
 
@@ -131,7 +132,7 @@
    - Agent 结构：总 Agent、子 Agent 数量、矩阵角色摘要；
    - 能力摘要：可调用工具、Skills、MCP、资料挂载；
    - 产物摘要：该 Product 的主要输出物类型；
-   - Workspace 摘要：主 Agent 对话入口、详情页空间列表与当前空间详情。
+   - Workspace 摘要：主 Agent 对话入口、详情页空间列表、当前空间详情与独立 HTML 页面入口。
 7. `Products` 页面与 Product 详情页必须支持空态、禁用态和草稿态，避免在 Product 尚未发布时误进入生产执行入口。
 8. Product 必须保留稳定 `product_id`，供 `Alter0 Agent`、任务系统、产物系统和会话视图统一引用。
 9. 首版存储允许继续采用本地文件，但必须与既有 Control 数据解耦，避免 Product 目录、Agent Profile 与普通 Session 数据混存不可辨。
@@ -162,6 +163,9 @@
    - `GET /api/products/{product_id}/workspace`
    - `GET /api/products/{product_id}/workspace/spaces/{space_id}`
    - 返回：Product 概览、主 Agent 摘要、详情页空间列表与具体空间详情
+7. Product 公共详情页空间 HTML
+   - `GET /products/{product_id}/spaces/{space_id}.html`
+   - 返回：具体详情页空间的独立 HTML 页面
 
 #### Traceability
 
@@ -364,13 +368,19 @@
    - `travel-map-annotator`：负责地图图层和点线路径表达。
 9. `travel` 必须支持在 Product 详情和后续 Product Workspace 中查看其总 Agent、子 Agent 矩阵和主要产物类型。
 10. `travel` Workspace 必须支持和 `travel-master` 对话，并将创建/修改请求同步到具体城市页空间；当用户选择武汉、成都、北京等城市页后，后续修改默认作用于当前城市页。
-11. `POST /api/products/travel/workspace/chat` 需优先走 `travel-master` 的结构化解析；若 Agent 执行链、模型响应或 CLI fallback 不可用，服务端需自动切换到本地规则解析，继续完成城市页创建或修订，不向用户直接暴露底层执行失败。
-11. 验收：
+11. `travel` 必须内置独立 `travel-page` Skill，作为城市页生成规则、章节组织与 HTML 呈现约定的统一规则簿；默认文件路径为 `.alter0/skills/travel-page.md`。
+12. `travel-master` 必须默认挂载 `travel-page` Skill，并具备 `read_skill`、`write_skill` 工具，用于读取或维护该规则簿。
+13. 当用户提出稳定、可复用、应影响后续多个城市页的偏好时，`travel-master` 需按需更新 `travel-page` Skill；若只是某个城市或某次出行的一次性要求，则只更新目标城市页，不写入 Skill。
+14. `POST /api/products/travel/workspace/chat` 需优先走 `travel-master` 的结构化解析；若 Agent 执行链、模型响应或 CLI fallback 不可用，服务端需自动切换到本地规则解析，继续完成城市页创建或修订，不向用户直接暴露底层执行失败。
+15. `travel` 的每个城市页空间都必须提供独立 HTML 页面，默认使用 `/products/travel/spaces/{space_id}.html` 访问，页面内容与 Workspace 当前城市页详情保持同步。
+16. 验收：
    - 平台内可见 `travel` Product；
    - `Alter0 Agent` 可识别并路由到 `travel-master`；
    - 用户可生成指定城市的旅游攻略；
    - 用户可基于补充条件修改已有攻略；
+   - `travel-master` 可读取 `travel-page` Skill，并在稳定偏好变更时更新规则簿；
    - 当 `travel-master` 执行失败时，Workspace Chat 仍可通过本地解析继续创建或修订城市页；
+   - 每个城市页都可通过独立 HTML 路由直接访问；
    - 结果中保留可供地图与路线后续增强的结构化字段；
    - `Products -> travel -> Workspace` 中可直接通过主 Agent 对话创建或修改城市页。
 
@@ -396,7 +406,7 @@
 #### Traceability
 
 - 领域对象：`travel-master`、`guide_id`、`daily_routes`、`map_layers`
-- 当前实现文件：`internal/product/domain/travel_guide.go`、`internal/product/application/travel_service.go`、`internal/product/application/builtin.go`、`internal/interfaces/web/product_workspace.go`、`internal/interfaces/web/server_message_test.go`
+- 当前实现文件：`internal/product/domain/travel_guide.go`、`internal/product/application/travel_service.go`、`internal/product/application/builtin.go`、`internal/interfaces/web/product_workspace.go`、`internal/interfaces/web/product_workspace_page.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/server_message_test.go`、`cmd/alter0/builtin_skills.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`
 - 依赖需求：`R-054`、`R-055`、`R-056`、`R-057`
 - 验证口径：`travel` Product 可见性、攻略生成完整性、revision 连续性、结构化结果可扩展性
 

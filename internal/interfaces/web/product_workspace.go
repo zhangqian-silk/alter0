@@ -41,6 +41,7 @@ type productWorkspaceSpaceSummary struct {
 	SpaceID   string    `json:"space_id"`
 	Title     string    `json:"title"`
 	Slug      string    `json:"slug,omitempty"`
+	HTMLPath  string    `json:"html_path,omitempty"`
 	Summary   string    `json:"summary,omitempty"`
 	Type      string    `json:"type,omitempty"`
 	Status    string    `json:"status,omitempty"`
@@ -314,6 +315,7 @@ func buildTravelWorkspaceSpaceSummary(guide productdomain.TravelGuide) productWo
 		SpaceID:   strings.TrimSpace(guide.ID),
 		Title:     strings.TrimSpace(guide.City),
 		Slug:      strings.TrimSpace(guide.ID),
+		HTMLPath:  buildProductWorkspaceHTMLPath(productdomain.TravelProductID, guide.ID),
 		Summary:   summaryText(guide.Content, 140),
 		Type:      "travel-guide",
 		Status:    "active",
@@ -360,7 +362,6 @@ func (s *Server) executeTravelWorkspaceOperator(
 	}
 	msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
 	msg.Metadata[execdomain.AgentSystemPromptMetadataKey] = buildTravelWorkspaceOperatorPrompt(product, selectedGuide, s.travelGuides.ListGuides())
-	msg.Metadata[execdomain.AgentToolsMetadataKey] = `["complete"]`
 	rawProductContext, err := json.Marshal(buildProductExecutionContext(product))
 	if err != nil {
 		return travelWorkspaceAgentEnvelope{}, fmt.Errorf("encode product context: %w", err)
@@ -452,6 +453,8 @@ func buildTravelWorkspaceOperatorPrompt(
 	builder.WriteString("- If a current page is selected, revise that page unless the user clearly switches to another city.\n")
 	builder.WriteString("- Keep assistant_reply concise and product-facing.\n")
 	builder.WriteString("- Prefer days=3 when the user asks for a new page without a duration.\n")
+	builder.WriteString("- If the resolved skill context exposes a file-backed `travel-page` skill, read it before changing reusable page rules.\n")
+	builder.WriteString("- Update the `travel-page` skill only for durable reusable preferences that should affect future city pages. Do not store one-off itinerary details in the skill.\n")
 	builder.WriteString("- Never invent invalid JSON.\n")
 	builder.WriteString("\nProduct:\n")
 	builder.WriteString("- product_id: ")
@@ -586,6 +589,15 @@ func chooseWorkspaceReply(preferred string, fallback string) string {
 		return strings.TrimSpace(preferred)
 	}
 	return strings.TrimSpace(fallback)
+}
+
+func buildProductWorkspaceHTMLPath(productID string, spaceID string) string {
+	trimmedProductID := strings.TrimSpace(productID)
+	trimmedSpaceID := strings.TrimSpace(spaceID)
+	if trimmedProductID == "" || trimmedSpaceID == "" {
+		return ""
+	}
+	return "/products/" + trimmedProductID + "/spaces/" + trimmedSpaceID + ".html"
 }
 
 func detectTravelWorkspaceTargetCity(content string, selectedGuide productdomain.TravelGuide, guides []productdomain.TravelGuide) string {

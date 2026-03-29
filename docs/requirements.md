@@ -32,7 +32,7 @@
 | R-019 | 会话内容持久化 | supported | 持久化用户/助手消息主数据与路由结果，支持重启恢复、会话分页与按时间范围检索 |
 | R-020 | 上下文压缩 | supported | 超长上下文触发分层压缩，结构化回写摘要与关键事实并保留消息引用关系，降低长会话 token 成本 |
 | R-021 | Skills/MCP 标准化能力模型 | supported | 统一 Skills 与 MCP 的配置结构、启停状态、作用域与校验规则，形成可治理的标准化能力层 |
-| R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex / Agent 执行上下文，支持 description、guide、排序与冲突处理；内置 `memory` Skill 明确记忆文件读写路由与冲突优先级 |
+| R-022 | 用户配置 Skills 接入 Codex | supported | 将启用的用户 Skills 以标准协议注入 Codex / Agent 执行上下文，支持 description、guide、排序、文件路径、可写属性与冲突处理；内置 `memory` 与 `travel-page` Skill 分别覆盖记忆路由与 travel 页面规则 |
 | R-023 | 用户配置 MCP 接入 Codex | supported | 将用户配置的 MCP Server 安全映射到 Codex 运行配置，支持按会话/请求启用与审计追踪 |
 | R-024 | 跨会话持久化记忆分级管理（参考 L1/L2/L3 Cache） | supported | 参考计算机缓存分层实现记忆分级：L1 高优先/低容量，L2 平衡层，L3 大容量归档层；按命中率与重要性动态迁移并分级限额 |
 | R-025 | 天级记忆与长期记忆（Markdown 统一存储） | supported | 支持天级记忆落盘与长期记忆沉淀，并对每日记忆做压缩归档；R-017~R-024 的记忆数据统一以 Markdown 格式存储 |
@@ -64,11 +64,11 @@
 | R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识与浏览器侧 Terminal client 标识；不再对 Terminal 设置产品级会话上限与超时淘汰；运行态缺失或前端临时标识漂移后继续发送会自动恢复原会话并保留历史 |
 | R-052 | Agent Memory Files 勾选注入与文件可写记忆对齐 | supported | Agent Profile 支持勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md` 与 Daily Memory；执行前将所选文件内容与路径注入运行时上下文，并可搭配独立 `memory` Skill 统一记忆读写规范 |
 | R-053 | 内置 Agent Catalog 与主从委派 | supported | 运行时统一聚合内置 Agent 与用户管理 Agent；`Chat` 默认绑定 `main` Agent，通用 `Agent` 页面承载其余入口 Agent，并支持主 Agent 通过 `delegate_agent` 下发子任务 |
-| R-054 | Product 目录、Workspace 与管理页 | supported | 新增 `Products` 平台模块，集中管理多个 Product 定义、主 Agent、详情页空间与子 Agent 矩阵，并区分内置/用户来源 |
+| R-054 | Product 目录、Workspace 与管理页 | supported | 新增 `Products` 平台模块，集中管理多个 Product 定义、主 Agent、详情页空间与子 Agent 矩阵，并为每个详情页空间提供独立 HTML 页面入口 |
 | R-055 | Product Agent 与子产品矩阵生成 | supported | 提供平台级 `product-builder` 与 Draft Studio，支持生成新 Product 草稿、扩展矩阵、审核编辑、冲突提示与发布落地 |
 | R-056 | Product 总 Agent 与子 Agent 矩阵编排 | supported | 每个已发布 Product 绑定唯一总 Agent，并将子 Agent 矩阵同步到托管 Agent Catalog，统一由总 Agent 收口执行 |
 | R-057 | Alter0 Agent 跨 Product 信息检索与任务调度 | supported | `Alter0 Agent` 作为统一入口，按用户意图检索 Product 目录与能力信息，并在执行型请求中自动切换到目标 Product 总 Agent；当前已提供 Product 公开执行入口、Product 上下文与路由元数据注入 |
-| R-058 | Travel Product 首个产品域落地 | supported | 以 `travel` 作为首个内置 Product，提供主 Agent 对话式城市页创建/修改、攻略详情与 revision 能力；Workspace Chat 在 Agent 执行链不可用时自动回退本地解析，并保留路线、地铁、美食、地图图层等结构化字段 |
+| R-058 | Travel Product 首个产品域落地 | supported | 以 `travel` 作为首个内置 Product，提供主 Agent 对话式城市页创建/修改、独立 HTML 城市页、攻略详情与 revision 能力；内置 `travel-page` Skill 统一页面规则，`travel-master` 可按需读写该 Skill；Workspace Chat 在 Agent 执行链不可用时自动回退本地解析，并保留路线、地铁、美食、地图图层等结构化字段 |
 
 ## 需求细化（分文件）
 

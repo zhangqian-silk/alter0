@@ -593,6 +593,7 @@
 .task-filter-form input,
 .task-filter-form select,
 .task-filter-actions button,
+.task-filter-actions a,
 .task-filter-advanced-toggle {
   min-height: 40px;
   border-radius: 10px;
@@ -696,17 +697,20 @@
 }
 
 .task-filter-actions button,
+.task-filter-actions a,
 .task-filter-advanced-toggle {
   display: inline-flex;
   align-items: center;
 }
 
-.task-filter-actions button {
+.task-filter-actions button,
+.task-filter-actions a {
   white-space: nowrap;
   min-width: 104px;
 }
 
-.task-filter-actions button {
+.task-filter-actions button,
+.task-filter-actions a {
   cursor: pointer;
 }
 
@@ -727,6 +731,11 @@
   border-color: #dbe3ee;
   background: #ffffff;
   color: #475569;
+}
+
+.task-filter-actions a {
+  justify-content: center;
+  text-decoration: none;
 }
 
 .task-filter-reset:hover {
@@ -1135,6 +1144,19 @@
   display: grid;
   gap: 10px;
   transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.agent-route-card-button {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  display: grid;
+  gap: 10px;
+  cursor: pointer;
 }
 
 .agent-session-card {

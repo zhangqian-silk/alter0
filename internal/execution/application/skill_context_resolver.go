@@ -20,6 +20,8 @@ const (
 	skillParameterTemplateKey = "skill.parameters"
 	skillConstraintsKey       = "skill.constraints"
 	skillAbilitiesKey         = "skill.abilities"
+	skillFilePathKey          = "skill.file_path"
+	skillWritableKey          = "skill.writable"
 
 	skillIncludeFilterKey = "alter0.skills.include"
 	skillExcludeFilterKey = "alter0.skills.exclude"
@@ -260,6 +262,8 @@ func buildSkillSpec(capability controldomain.Capability) execdomain.SkillSpec {
 		ParameterTemplate: parseParameterTemplate(capability.Metadata),
 		Constraints:       parseList(metadataValue(capability.Metadata, skillConstraintsKey)),
 		Abilities:         parseList(metadataValue(capability.Metadata, skillAbilitiesKey)),
+		FilePath:          strings.TrimSpace(metadataValue(capability.Metadata, skillFilePathKey)),
+		Writable:          parseSkillWritable(capability.Metadata),
 	}
 }
 
@@ -288,6 +292,18 @@ func parseParameterTemplate(metadata map[string]string) map[string]string {
 		return nil
 	}
 	return parsed
+}
+
+func parseSkillWritable(metadata map[string]string) bool {
+	raw := strings.TrimSpace(metadataValue(metadata, skillWritableKey))
+	if raw == "" {
+		return false
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false
+	}
+	return value
 }
 
 func parseList(raw string) []string {

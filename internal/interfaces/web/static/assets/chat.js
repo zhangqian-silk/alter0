@@ -344,6 +344,7 @@ const I18N = {
     "route.products.workspace.notes": "Notes",
     "route.products.workspace.routes": "Daily Routes",
     "route.products.workspace.layers": "Map Layers",
+    "route.products.workspace.open_page": "Open HTML Page",
     "route.products.form.new": "Unsaved Product",
     "route.products.form.id": "Product ID",
     "route.products.form.version": "Version",
@@ -904,6 +905,7 @@ const I18N = {
     "route.products.workspace.notes": "补充说明",
     "route.products.workspace.routes": "每日路线",
     "route.products.workspace.layers": "地图图层",
+    "route.products.workspace.open_page": "打开 HTML 页面",
     "route.products.form.new": "未保存 Product",
     "route.products.form.id": "Product ID",
     "route.products.form.version": "版本",
@@ -5050,6 +5052,7 @@ function normalizeProductWorkspaceSpaceSummary(space = {}) {
     space_id: String(space?.space_id || "").trim(),
     title: String(space?.title || "").trim(),
     slug: String(space?.slug || "").trim(),
+    html_path: String(space?.html_path || "").trim(),
     summary: String(space?.summary || "").trim(),
     type: String(space?.type || "").trim(),
     status: String(space?.status || "").trim() || "active",
@@ -5135,7 +5138,11 @@ function renderProductWorkspaceSpaceCards(items, selectedSpaceID) {
   }
   return items.map((item) => {
     const activeClassName = item.space_id === selectedSpaceID ? " is-active" : "";
-    return `<button class="agent-route-card${activeClassName}" type="button" data-product-space-select="${escapeHTML(item.space_id)}">
+    const openPageLink = item.html_path
+      ? `<a class="task-filter-reset" href="${escapeHTML(item.html_path)}" target="_blank" rel="noreferrer">${escapeHTML(t("route.products.workspace.open_page"))}</a>`
+      : "";
+    return `<article class="agent-route-card${activeClassName}">
+      <button class="agent-route-card-button" type="button" data-product-space-select="${escapeHTML(item.space_id)}">
       <div class="agent-route-card-head">
         <div class="agent-route-card-copy">
           <strong title="${escapeHTML(item.title || item.space_id)}">${escapeHTML(item.title || item.space_id)}</strong>
@@ -5145,7 +5152,9 @@ function renderProductWorkspaceSpaceCards(items, selectedSpaceID) {
       </div>
       <p class="agent-route-card-prompt">${escapeHTML(item.summary || "-")}</p>
       <div class="agent-route-card-tags">${item.tags.length ? item.tags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
-    </button>`;
+      </button>
+      ${openPageLink ? `<div class="task-filter-actions">${openPageLink}</div>` : ""}
+    </article>`;
   }).join("");
 }
 
@@ -5458,8 +5467,12 @@ async function loadProductsView(container) {
         <p>${escapeHTML(item.description || "-")}</p>
       </article>`).join("")
       : `<p class="route-empty">-</p>`;
+    const openPageLink = selectedSpace?.html_path
+      ? `<a class="task-filter-apply" href="${escapeHTML(selectedSpace.html_path)}" target="_blank" rel="noreferrer">${escapeHTML(t("route.products.workspace.open_page"))}</a>`
+      : "";
 
     return `
+      ${openPageLink ? `<div class="task-filter-actions">${openPageLink}</div>` : ""}
       <div class="agent-builder-managed">
         <div class="agent-builder-managed-item">
           <span>${escapeHTML(t("route.products.workspace.days"))}</span>
