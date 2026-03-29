@@ -1,16 +1,16 @@
 :root {
-  --bg-page: #ffffff;
-  --bg-nav: #f8fafc;
-  --bg-session: #f8fafc;
+  --bg-page: #f7f9fd;
+  --bg-nav: #f4f7fb;
+  --bg-session: #f5f7fb;
   --bg-card: #ffffff;
-  --bg-soft: #f8fafc;
+  --bg-soft: #f6f8fc;
   --ink-strong: #0f172a;
   --ink-body: #334155;
-  --ink-muted: #64748b;
-  --line-soft: #e2e8f0;
-  --line-mid: #cbd5e1;
-  --accent: #3b82f6;
-  --accent-soft: rgba(59, 130, 246, 0.12);
+  --ink-muted: #6b7a90;
+  --line-soft: rgba(214, 222, 235, 0.78);
+  --line-mid: rgba(193, 205, 223, 0.92);
+  --accent: #4a8cff;
+  --accent-soft: rgba(74, 140, 255, 0.12);
   --danger: #ef4444;
   --danger-soft: rgba(239, 68, 68, 0.1);
   --card-min-width: 360px;
@@ -24,9 +24,9 @@
   --route-terminal-padding-x: 20px;
   --route-terminal-padding-top: 18px;
   --route-terminal-padding-bottom: 20px;
-  --shadow-soft: 0 4px 10px -5px rgba(15, 23, 42, 0.12);
-  --shadow-card: 0 16px 28px -14px rgba(15, 23, 42, 0.25);
-  --content-width: 800px;
+  --shadow-soft: 0 18px 40px -34px rgba(15, 23, 42, 0.22);
+  --shadow-card: 0 34px 70px -44px rgba(15, 23, 42, 0.28);
+  --content-width: 860px;
   --keyboard-offset: 0px;
   --nav-width: 244px;
   --nav-collapsed-width: 68px;
@@ -60,7 +60,9 @@ body {
 }
 
 body {
-  background: var(--bg-page);
+  background:
+    radial-gradient(circle at top, rgba(120, 164, 255, 0.12), transparent 34%),
+    linear-gradient(180deg, #fbfcff 0%, var(--bg-page) 40%, #f4f7fb 100%);
   color: var(--ink-strong);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   font-size: 15px;
@@ -879,7 +881,7 @@ body {
   overflow-x: hidden;
   display: none;
   min-height: 0;
-  padding: 12px 12px 18px;
+  padding: 28px 20px 32px;
 }
 
 .message-list {
@@ -892,22 +894,22 @@ body {
 }
 
 .msg {
-  max-width: 84%;
+  max-width: min(100%, 860px);
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
 .msg + .msg {
-  margin-top: 10px;
+  margin-top: 14px;
 }
 
 .msg.assistant + .msg.user {
-  margin-top: 18px;
+  margin-top: 28px;
 }
 
 .msg.user + .msg.assistant {
-  margin-top: 6px;
+  margin-top: 10px;
 }
 
 .msg.user {
@@ -917,14 +919,15 @@ body {
 }
 
 .msg.assistant {
+  max-width: min(100%, 860px);
   margin-right: auto;
 }
 
 .msg-bubble {
-  border-radius: 12px;
+  border-radius: 20px;
   padding: 12px 16px;
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: 16px;
+  line-height: 1.72;
   min-width: 0;
   max-width: 100%;
   white-space: normal;
@@ -1028,22 +1031,26 @@ body {
 }
 
 .msg.user .msg-bubble {
-  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
-  color: #fff;
+  border: 1px solid rgba(210, 219, 234, 0.92);
+  border-radius: 28px;
+  padding: 16px 22px;
+  background: linear-gradient(180deg, rgba(238, 243, 251, 0.98) 0%, rgba(232, 238, 248, 0.98) 100%);
+  color: #1f2937;
+  box-shadow: 0 14px 30px -30px rgba(15, 23, 42, 0.18);
 }
 
 .msg.user .msg-bubble a {
-  color: #eff6ff;
+  color: #315fe8;
 }
 
 .msg.user .msg-bubble blockquote {
-  border-left-color: rgba(255, 255, 255, 0.45);
-  color: rgba(239, 246, 255, 0.92);
+  border-left-color: rgba(74, 140, 255, 0.3);
+  color: #58677c;
 }
 
 .msg.user .msg-bubble .chat-md-inline-code {
-  background: rgba(255, 255, 255, 0.18);
-  color: #eff6ff;
+  background: rgba(15, 23, 42, 0.06);
+  color: #1f2937;
 }
 
 .msg.user .msg-bubble .chat-md-pre {
@@ -1052,17 +1059,24 @@ body {
 }
 
 .msg.assistant .msg-bubble {
-  border: 1px solid var(--line-soft);
-  background: #fff;
-  box-shadow: var(--shadow-soft);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .msg.assistant.streaming .msg-bubble {
-  border-color: rgba(59, 130, 246, 0.34);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, #ffffff 75%);
+  padding: 16px 18px;
+  border: 1px solid rgba(205, 216, 232, 0.86);
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 255, 0.98) 100%);
+  box-shadow: 0 18px 34px -32px rgba(74, 140, 255, 0.26);
 }
 
 .msg.assistant.error .msg-bubble {
+  padding: 14px 16px;
+  border-radius: 22px;
   border-color: rgba(178, 74, 74, 0.34);
   background: var(--danger-soft);
   color: var(--danger);
@@ -1078,7 +1092,7 @@ body {
 }
 
 .msg-meta {
-  margin-top: 4px;
+  margin-top: 8px;
   color: var(--ink-muted);
   font-size: 12px;
   display: flex;
@@ -1148,19 +1162,20 @@ body {
   position: sticky;
   bottom: 0;
   z-index: 9;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(248, 250, 252, 0.92) 45%);
-  padding: 8px 12px 18px;
+  background: linear-gradient(180deg, rgba(247, 249, 253, 0) 0%, rgba(247, 249, 253, 0.88) 36%, rgba(247, 249, 253, 0.98) 100%);
+  padding: 14px 18px 24px;
   transition: padding-bottom 120ms ease;
 }
 
 .composer {
   width: min(var(--content-width), 100%);
   margin: 0 auto;
-  border: 1px solid var(--line-mid);
-  border-radius: 14px;
-  background: #f9fafb;
-  box-shadow: var(--shadow-card);
-  padding: 14px 18px 10px;
+  border: 1px solid rgba(208, 218, 232, 0.92);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 28px 60px -42px rgba(15, 23, 42, 0.28);
+  padding: 16px 18px 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1168,8 +1183,8 @@ body {
 }
 
 .composer:focus-within {
-  box-shadow: 0 20px 40px -4px rgba(0, 0, 0, 0.08);
-  border-color: var(--accent);
+  box-shadow: 0 34px 70px -42px rgba(74, 140, 255, 0.3);
+  border-color: rgba(74, 140, 255, 0.42);
 }
 
 .composer textarea {
@@ -1179,9 +1194,9 @@ body {
   resize: none;
   color: var(--ink-strong);
   font: inherit;
-  font-size: 15px;
-  line-height: 1.6;
-  min-height: 46px;
+  font-size: 16px;
+  line-height: 1.7;
+  min-height: 52px;
 }
 
 .composer textarea:focus {
@@ -1207,16 +1222,17 @@ body {
 }
 
 .composer-submit-bar button {
-  border: none;
+  border: 1px solid rgba(74, 140, 255, 0.24);
   border-radius: 999px;
-  height: 32px;
-  padding: 0 14px;
-  background: var(--accent);
+  height: 38px;
+  padding: 0 16px;
+  background: linear-gradient(180deg, #5b97ff 0%, #4a8cff 100%);
   color: #fff;
   font: inherit;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 14px 28px -20px rgba(74, 140, 255, 0.5);
 }
 
 .composer-submit-bar button:disabled {
@@ -1265,12 +1281,12 @@ body {
 }
 
 .composer-runtime-chip {
-  border: 1px solid rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(74, 140, 255, 0.18);
   border-radius: 999px;
   min-height: 32px;
   padding: 0 12px;
-  background: rgba(239, 246, 255, 0.88);
-  color: #1d4ed8;
+  background: rgba(243, 247, 255, 0.95);
+  color: #315fe8;
   font-size: 13px;
   font-weight: 600;
   display: inline-flex;
@@ -1278,11 +1294,11 @@ body {
 }
 
 .composer-runtime-trigger {
-  border: 1px solid transparent;
+  border: 1px solid rgba(214, 222, 235, 0.86);
   border-radius: 999px;
   min-height: 32px;
   padding: 0 12px;
-  background: rgba(241, 245, 249, 0.94);
+  background: rgba(255, 255, 255, 0.72);
   color: var(--ink-body);
   font: inherit;
   font-size: 13px;
@@ -1295,16 +1311,16 @@ body {
 }
 
 .composer-runtime-trigger:hover {
-  border-color: rgba(59, 130, 246, 0.26);
-  background: rgba(239, 246, 255, 0.92);
-  color: #1d4ed8;
+  border-color: rgba(74, 140, 255, 0.26);
+  background: rgba(245, 248, 255, 0.96);
+  color: #315fe8;
   transform: translateY(-1px);
 }
 
 .composer-runtime-trigger.is-open {
-  border-color: rgba(59, 130, 246, 0.32);
-  background: rgba(219, 234, 254, 0.92);
-  color: #1d4ed8;
+  border-color: rgba(74, 140, 255, 0.3);
+  background: rgba(238, 244, 255, 0.98);
+  color: #315fe8;
 }
 
 .composer-runtime-trigger.is-disabled,
@@ -1338,10 +1354,11 @@ body {
   z-index: 30;
   width: min(420px, calc(100vw - 40px));
   padding: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 28px 48px -26px rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(208, 218, 232, 0.92);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 30px 60px -36px rgba(15, 23, 42, 0.28);
   display: grid;
   gap: 10px;
 }

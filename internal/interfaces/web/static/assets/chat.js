@@ -8838,12 +8838,12 @@ function renderTerminalStepItems(session, turn) {
     const expanded = Boolean(session?.expanded_steps?.[stepID]);
     const duration = formatTerminalDuration(step.duration_ms, step.started_at, step.finished_at);
     const preview = String(step.preview || "").trim();
+    const summary = preview || String(step.title || "-").trim() || "-";
     return `<article class="terminal-step-item" data-terminal-step-item="${escapeHTML(stepID)}">
       <button class="terminal-step-toggle" type="button" data-terminal-step-toggle="${escapeHTML(stepID)}" data-terminal-turn-id="${escapeHTML(normalizeText(turn.id))}" aria-expanded="${expanded ? "true" : "false"}">
         <span class="terminal-step-toggle-icon">${expanded ? "v" : ">"}</span>
         <span class="terminal-step-summary">
-          <span class="terminal-step-title">${escapeHTML(step.title || "-")}</span>
-          ${preview ? `<span class="terminal-step-preview">${escapeHTML(preview)}</span>` : ""}
+          <span class="terminal-step-title">${escapeHTML(summary)}</span>
         </span>
         <span class="terminal-step-meta">
           <span class="terminal-step-duration">${escapeHTML(duration)}</span>
@@ -8883,17 +8883,13 @@ function renderTerminalFinalOutput(session, turn) {
     return "";
   }
   const turnID = normalizeText(turn?.id);
-  const collapsible = shouldCollapseTerminalOutput(content);
-  const collapsed = collapsible ? resolveTerminalOutputCollapsed(session, turn) : false;
-  return `<section class="terminal-final-output ${collapsed ? "is-collapsed" : ""}" data-terminal-final-output="${escapeHTML(turnID)}">
-    <div class="terminal-final-head" data-terminal-final-head="${escapeHTML(turnID)}">
-      <h6>${escapeHTML(t("route.terminal.final.heading"))}</h6>
-      ${collapsible ? `<button class="terminal-final-toggle" type="button" data-terminal-output-toggle="${escapeHTML(turnID)}" aria-expanded="${collapsed ? "false" : "true"}">${escapeHTML(collapsed ? t("route.terminal.output_expand") : t("route.terminal.output_collapse"))}</button>` : ""}
+  return `<div class="msg assistant terminal-final-output terminal-turn-output" data-terminal-final-output="${escapeHTML(turnID)}">
+    <div class="msg-bubble">
+      <div class="terminal-final-text">
+        <div class="terminal-final-rendered">${renderMarkdownToHTML(content)}</div>
+      </div>
     </div>
-    <div class="terminal-final-text ${collapsed ? "is-clamped" : ""}">
-      <div class="terminal-final-rendered">${renderMarkdownToHTML(content)}</div>
-    </div>
-  </section>`;
+  </div>`;
 }
 
 function renderTerminalTurns(session) {
@@ -8909,8 +8905,8 @@ function renderTerminalTurns(session) {
       renderTerminalFinalOutput(session, turn)
     ].filter(Boolean).join("");
     return `<article class="terminal-turn-card" data-terminal-turn="${escapeHTML(normalizeText(turn.id))}">
-      ${promptText ? `<div class="terminal-log-row kind-command terminal-turn-prompt"><div class="terminal-log-main"><span class="terminal-log-prefix">></span><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
-      ${bodyHTML ? `<div class="route-surface-dark terminal-turn-surface">${bodyHTML}</div>` : ""}
+      ${promptText ? `<div class="terminal-log-row kind-command terminal-turn-prompt"><div class="terminal-log-main"><span class="terminal-log-text">${escapeHTML(promptText)}</span></div><span class="terminal-log-time">${escapeHTML(timeLabel(turn?.started_at))}</span></div>` : ""}
+      ${bodyHTML ? `<div class="terminal-turn-surface">${bodyHTML}</div>` : ""}
     </article>`;
   }).join("");
 }

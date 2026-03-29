@@ -514,7 +514,7 @@ test.describe("Terminal route", () => {
     await expectComposerState(composer, { disabled: false });
   });
 
-  test("renders process and final output with lazy-loaded step details", async ({ page, request }) => {
+  test("renders process and plain output with lazy-loaded step details", async ({ page, request }) => {
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "structure" });
     const composer = terminalPage.composer();
     let stepDetailRequests = 0;
@@ -558,7 +558,7 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.workspace()).toContainText(new RegExp(String(currentSessionID).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   });
 
-  test("renders markdown links and collapses long final output by default", async ({ page }) => {
+  test("renders markdown links in plain terminal output without collapse chrome", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     const clientID = createTerminalClientID("collapsed-output");
     const now = Date.now();
@@ -592,15 +592,13 @@ test.describe("Terminal route", () => {
 
     const terminalPage = createTerminalPage(page);
     await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
-    const outputBody = terminalPage.turnCard("turn-rendered").locator(".terminal-final-text");
     const outputLink = terminalPage.turnCard("turn-rendered").locator(".terminal-final-rendered a");
 
-    await expect(outputBody).toHaveClass(/is-clamped/);
+    await expect(terminalPage.turnCard("turn-rendered").locator("[data-terminal-output-toggle]")).toHaveCount(0);
+    await expect(terminalPage.turnCard("turn-rendered").locator(".terminal-final-head")).toHaveCount(0);
+    await expect(terminalPage.finalOutputs().last()).toContainText("line 18");
     await expect(outputLink).toHaveText("requirements.md");
     await expect(outputLink).toHaveAttribute("href", "/srv/alter0/app/alter0/docs/requirements.md");
-
-    await terminalPage.outputToggle("turn-rendered").click();
-    await expect(outputBody).not.toHaveClass(/is-clamped/);
   });
 
   test("keeps terminal scroll position when user leaves bottom", async ({ page, request }) => {
@@ -685,12 +683,10 @@ test.describe("Terminal route", () => {
         created_at: now - 5000,
         updated_at: now - 1000,
         last_output_at: now - 1000,
-        process_collapsed: {},
-        output_collapsed: {
-          "turn-1": false,
-          "turn-2": true,
-          "turn-3": false
+        process_collapsed: {
+          "turn-2": true
         },
+        output_collapsed: {},
         expanded_steps: {},
         step_details: {},
         step_loading: {},
@@ -704,7 +700,15 @@ test.describe("Terminal route", () => {
           finished_at: now - 3200 + index * 200,
           duration_ms: 1000,
           final_output: Array.from({ length: 48 }, (_, lineIndex) => `turn ${index + 1} line ${lineIndex + 1}`).join("\n"),
-          steps: [],
+          steps: index === 1 ? Array.from({ length: 8 }, (_value, stepIndex) => ({
+            id: `turn-2-step-${stepIndex + 1}`,
+            title: `Shell step ${stepIndex + 1}`,
+            preview: `pwsh -NoProfile -Command "Get-ChildItem step-${stepIndex + 1}"`,
+            status: "completed",
+            duration_ms: 1000 + stepIndex * 10,
+            started_at: now - 3800 + stepIndex * 20,
+            finished_at: now - 3400 + stepIndex * 20,
+          })) : [],
         })),
       },
     ]);
@@ -734,7 +738,7 @@ test.describe("Terminal route", () => {
     await expect(jumpNextButton).toHaveClass(/is-visible/);
     await expect(jumpNextButton).toHaveAttribute("data-terminal-jump-target", "turn-3");
 
-    await terminalPage.outputToggle("turn-2").click();
+    await terminalPage.processToggle("turn-2").click();
     await expect(jumpPrevButton).toHaveAttribute("data-terminal-jump-target", "turn-1");
     await expect(jumpNextButton).toHaveAttribute("data-terminal-jump-target", "turn-3");
 
@@ -831,7 +835,7 @@ test.describe("Terminal route", () => {
     })).toBeLessThanOrEqual(0);
   });
 
-  test("keeps process and final output headers in document flow on mobile", async ({ page }) => {
+  test("keeps process and output content in document flow on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 640 });
     const clientID = createTerminalClientID("section-flow");
     const now = Date.now();
@@ -880,7 +884,7 @@ test.describe("Terminal route", () => {
 
     const terminalPage = createTerminalPage(page);
     const turnID = "turn-sticky";
-    const finalHead = page.locator(`[data-terminal-final-head="${turnID}"]`);
+    const outputNode = page.locator(`[data-terminal-final-output="${turnID}"]`);
     const scrollSelectorIntoView = async (selector: string, offset = 18) => {
       await terminalPage.chatScreen().evaluate((node, payload) => {
         const target = node.querySelector(payload?.selector || "");
@@ -896,25 +900,15 @@ test.describe("Terminal route", () => {
 
     await expect(terminalPage.turnCard(turnID)).toContainText("line 120");
     await expect.poll(() => terminalPage.processToggle(turnID).evaluate((node) => window.getComputedStyle(node).position)).toBe("relative");
-    await expect.poll(() => finalHead.evaluate((node) => window.getComputedStyle(node).position)).toBe("relative");
+    await expect.poll(() => outputNode.evaluate((node) => window.getComputedStyle(node).position)).toBe("static");
     await scrollSelectorIntoView(`[data-terminal-process-toggle="${turnID}"]`);
     await expect(page.locator(".is-terminal-sticky-active")).toHaveCount(0);
-
-    const outputToggle = terminalPage.outputToggle(turnID);
-    const outputBody = terminalPage.turnCard(turnID).locator(".terminal-final-text");
-    await scrollSelectorIntoView(`[data-terminal-final-head="${turnID}"]`);
+    await scrollSelectorIntoView(`[data-terminal-final-output="${turnID}"]`);
     await expect(page.locator(".is-terminal-sticky-active")).toHaveCount(0);
-
-    const wasCollapsed = await outputBody.evaluate((node) => node.classList.contains("is-clamped"));
-    await outputToggle.click();
-    if (wasCollapsed) {
-      await expect(outputBody).not.toHaveClass(/is-clamped/);
-      return;
-    }
-    await expect(outputBody).toHaveClass(/is-clamped/);
+    await expect(terminalPage.turnCard(turnID).locator("[data-terminal-output-toggle]")).toHaveCount(0);
   });
 
-  test("keeps output collapse toggle clickable while scrolled on mobile", async ({ page, request }) => {
+  test("keeps plain terminal output unobstructed while scrolled on mobile", async ({ page, request }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "scrolled-output-toggle" });
     const composer = terminalPage.composer();
@@ -923,27 +917,20 @@ test.describe("Terminal route", () => {
     await composer.submitButton().click();
     await expect(terminalPage.finalOutputs().last()).toContainText("line 120");
 
-    const outputToggle = terminalPage.outputToggle("turn-1");
-    const outputBody = terminalPage.turnCard("turn-1").locator(".terminal-final-text");
-    if ((await outputToggle.textContent())?.includes("Show more")) {
-      await outputToggle.click();
-      await expect(outputBody).not.toHaveClass(/is-clamped/);
-    }
-
     await terminalPage.chatScreen().evaluate((node) => {
-      const toggle = node.querySelector('[data-terminal-output-toggle="turn-1"]');
-      if (!(toggle instanceof HTMLElement)) {
+      const output = node.querySelector('[data-terminal-final-output="turn-1"]');
+      if (!(output instanceof HTMLElement)) {
         return;
       }
       const nodeRect = node.getBoundingClientRect();
-      const toggleRect = toggle.getBoundingClientRect();
-      node.scrollTop += Math.max(toggleRect.top - nodeRect.top - 18, 0);
+      const outputRect = output.getBoundingClientRect();
+      node.scrollTop += Math.max(outputRect.top - nodeRect.top - 18, 0);
       node.dispatchEvent(new Event("scroll"));
     });
 
     await expect(page.locator(".is-terminal-sticky-active")).toHaveCount(0);
-    await outputToggle.click();
-    await expect(outputBody).toHaveClass(/is-clamped/);
+    await expect(terminalPage.turnCard("turn-1").locator("[data-terminal-output-toggle]")).toHaveCount(0);
+    await expect(terminalPage.finalOutputs().last()).toContainText("line 120");
   });
 
   test("keeps jump-to-bottom button hidden for short offset until new output arrives", async ({ page, request }) => {
