@@ -75,7 +75,7 @@
 6. Agent 执行链路必须同时支持两类消费方式：
    - ReAct Agent：在 system prompt 中显式暴露已选记忆文件的路径、存在状态与内容。
    - Codex 执行链：在 `alter0.codex-exec/v1` 载荷中新增 `memory_context` 字段，保证 fallback 与 `codex_exec` 一致可见。
-7. 所选记忆文件默认视为可维护对象，Agent 可继续通过 `read`、`write`、`edit` 工具直接更新这些文件，无需额外专用写入接口。
+7. 所选记忆文件默认视为可维护对象，Agent 通过专用 `read_memory`、`write_memory` 工具维护这些文件；具体实现、验证与其他文件系统操作仍统一走 `codex_exec`。
 8. 长期记忆与日记忆路径需兼容 `alter0` 当前目录约定，同时允许对齐 OpenClaw 常见文件名：
    - 长期记忆优先识别 `MEMORY.md`、`memory.md`、`.alter0/memory/long-term/MEMORY.md`
    - 日记忆优先识别 `memory/YYYY-MM-DD.md` 与 `.alter0/memory/YYYY-MM-DD.md`
@@ -85,9 +85,9 @@
    - `POST /api/agent/messages` 会将勾选结果注入为 `alter0.memory.include`
    - 执行器可生成 `alter0.memory-context/v1`
    - ReAct 与 Codex 两条链路都能看到相同记忆文件集
-   - 文件不存在时 Agent 仍能拿到目标路径并通过原生工具创建
+   - 文件不存在时 Agent 仍能拿到目标路径，并可通过 `write_memory` 或 `codex_exec` 创建目标文件
 11. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
-12. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Agent 可结合专用工具读取或更新该文件，而不必退回通用文件路径猜测。
+12. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Codex CLI 可结合该文件上下文执行读取或更新，Agent 侧不依赖通用原生工具做路径猜测。
 
 #### Traceability
 
@@ -100,9 +100,9 @@
 
 1. 运行时必须提供统一 `Agent Catalog`，同时聚合系统内置 Agent 与控制面管理的 Agent Profile。
 2. 内置 Agent 至少包括：
-   - `main`：默认主 Agent `Alter0`，负责通用对话入口与子 Agent 调度
+   - `main`：默认主 Agent `Alter0`，负责通用对话入口、用户意图理解、记忆利用与子 Agent 调度
    - `coding`：专项编码 Agent，负责理解用户开发目标、保持交互收口，并通过 `codex_exec` 多轮推进具体实现与验证
-   - `writing`：专项写作 Agent
+   - `writing`：专项写作 Agent，通过 `codex_exec` 推进写作相关落地任务
 3. `Chat` 页面必须默认绑定内置 `main` Agent（展示名 `Alter0`），进入 `Chat` 路由或新建 `Chat` 会话时需自动纠偏到该 Agent，不再以 Raw Model 作为默认执行目标。
 4. 前端必须保留 `Chat` 作为内置 `main` Agent 的独立入口；其余入口 Agent 统一通过通用 `Agent` 运行页承载。具备独立前端入口的 Agent 不进入通用 `Agent` 页的候选列表与会话历史。
 5. 控制面 `Agent Profiles` 页面仅管理用户自定义 Agent；系统内置 Agent 不允许通过控制面覆盖或删除。
@@ -118,7 +118,7 @@
    - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、本地仓库路径、当前分支、会话工作区、PR 基线分支与交付要求。
    - 涉及测试页面时，预览域名必须使用当前会话标识派生的 8 位短 hash，格式为 `https://<session_short_hash>.alter0.cn`。
    - `coding` Agent 在完成收口前，需明确交付代码变更、验证结果、文档同步状态、预览页地址（如适用）与 PR handoff 信息。
-10. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files。
+10. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files；其稳定工具面默认收敛为 `codex_exec`、`read_memory`、`write_memory`，以及在允许时暴露的 `delegate_agent`。
 11. 需限制主从递归深度与自委派，避免无限递归。
 12. 验收：
    - `GET /api/agents` 可返回内置入口 Agent
@@ -325,6 +325,7 @@
    - `discover_product`：识别用户意图并匹配 Product；
    - `read_product_context`：读取 Product 基础信息、矩阵摘要、能力边界；
    - `run_product_master`：调用目标 Product 的总 Agent 执行任务。
+   - 上述动作属于运行时编排语义；真正的具体实现与执行仍由 `codex_exec` 或被委派的目标 Agent 完成。
 5. 当用户请求跨多个 Product 时，`Alter0 Agent` 可按顺序或并行调度多个 Product `master agent`，但必须在最终结果中明确区分各 Product 的输出来源。
 6. 若命中的 Product 被禁用、未发布或无可用总 Agent，`Alter0 Agent` 需返回明确原因，并建议可用 Product 或退回通用处理路径。
 7. `Alter0 Agent` 对 Product 的调度必须保留结构化元数据，至少包括：`matched_product_ids`、`selected_product_id`、`selection_reason`、`master_agent_id`、`product_execution_mode`。
@@ -386,8 +387,8 @@
 9. `travel` 必须支持在 Product 详情和后续 Product Workspace 中查看其总 Agent、子 Agent 矩阵和主要产物类型。
 10. `travel` Workspace 必须支持和 `travel-master` 对话，并将创建/修改请求同步到具体城市页空间；当用户选择武汉、成都、北京等城市页后，后续修改默认作用于当前城市页。
 11. `travel` 必须内置独立 `travel-page` Skill，作为城市页生成规则、章节组织与 HTML 呈现约定的统一规则簿；默认文件路径为 `.alter0/skills/travel-page.md`。
-12. `travel-master` 必须默认挂载 `travel-page` Skill，并具备 `read_skill`、`write_skill` 工具，用于读取或维护该规则簿。
-13. 当用户提出稳定、可复用、应影响后续多个城市页的偏好时，`travel-master` 需按需更新 `travel-page` Skill；若只是某个城市或某次出行的一次性要求，则只更新目标城市页，不写入 Skill。
+12. `travel-master` 必须默认挂载 `travel-page` Skill；其具体城市页生成、规则读取与规则更新统一通过 `codex_exec` 结合 Skill 上下文完成，不再依赖独立 Skill 读写工具。
+13. 当用户提出稳定、可复用、应影响后续多个城市页的偏好时，`travel-master` 需按需通过 `codex_exec` 更新 `travel-page` 规则簿；若只是某个城市或某次出行的一次性要求，则只更新目标城市页，不写入 Skill。
 14. `POST /api/products/travel/workspace/chat` 需优先走 `travel-master` 的结构化解析；若 Agent 执行链、模型响应或 CLI fallback 不可用，服务端需自动切换到本地规则解析，继续完成城市页创建或修订，不向用户直接暴露底层执行失败。
 15. `travel` 的每个城市页空间都必须提供独立 HTML 页面，默认使用 `/products/travel/spaces/{space_id}.html` 访问，页面内容与 Workspace 当前城市页详情保持同步。
 16. 验收：
@@ -395,7 +396,7 @@
    - `Alter0 Agent` 可识别并路由到 `travel-master`；
    - 用户可生成指定城市的旅游攻略；
    - 用户可基于补充条件修改已有攻略；
-   - `travel-master` 可读取 `travel-page` Skill，并在稳定偏好变更时更新规则簿；
+   - `travel-master` 可结合 `travel-page` Skill 上下文，并在稳定偏好变更时通过 `codex_exec` 更新规则簿；
    - 当 `travel-master` 执行失败时，Workspace Chat 仍可通过本地解析继续创建或修订城市页；
    - 每个城市页都可通过独立 HTML 路由直接访问；
    - 结果中保留可供地图与路线后续增强的结构化字段；

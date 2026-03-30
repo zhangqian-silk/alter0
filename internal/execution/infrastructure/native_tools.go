@@ -25,6 +25,8 @@ const (
 	toolEdit          = "edit"
 	toolBash          = "bash"
 	toolCodexExec     = "codex_exec"
+	toolReadMemory    = "read_memory"
+	toolWriteMemory   = "write_memory"
 	toolReadSkill     = "read_skill"
 	toolWriteSkill    = "write_skill"
 	toolDelegateAgent = "delegate_agent"
@@ -51,12 +53,9 @@ var defaultNativeToolIDs = []string{
 }
 
 var defaultAgentToolIDs = []string{
-	toolListDir,
-	toolRead,
-	toolWrite,
-	toolEdit,
-	toolBash,
 	toolCodexExec,
+	toolReadMemory,
+	toolWriteMemory,
 }
 
 type nativeToolRuntime struct {
@@ -266,7 +265,7 @@ func normalizeToolIDSet(values []string) map[string]struct{} {
 	allowed := map[string]struct{}{}
 	for _, value := range values {
 		switch strings.ToLower(strings.TrimSpace(value)) {
-		case toolListDir, toolRead, toolWrite, toolEdit, toolBash, toolCodexExec, toolReadSkill, toolWriteSkill, toolDelegateAgent:
+		case toolListDir, toolRead, toolWrite, toolEdit, toolBash, toolCodexExec, toolReadMemory, toolWriteMemory, toolReadSkill, toolWriteSkill, toolDelegateAgent:
 			allowed[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
 		}
 	}

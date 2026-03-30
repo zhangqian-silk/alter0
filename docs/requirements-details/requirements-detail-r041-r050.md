@@ -1,6 +1,6 @@
 # Requirements Details (R-041 ~ R-050)
 
-> Last update: 2026-03-29
+> Last update: 2026-03-30
 
 ## 需求细化（草案）
 
@@ -279,7 +279,7 @@ OpenAI Go SDK 接入
 ReAct 模式 Agent 调用
 
 1. `Agent` 请求进入执行链后，默认使用 ReAct 循环推进：模型在 `Thought / Action / Observation` 的迭代中持续决策，直到明确收口。
-2. ReAct Agent 必须支持原生工具调用；当前内置工具至少覆盖 `list_dir`、`read`、`write`、`edit`、`bash`，并支持 `codex_exec` 作为深度执行工具。
+2. ReAct Agent 必须支持统一运行时工具调用；Agent 自身定位为“用户代理 + 执行驱动器”，所有具体仓库、文件、命令与实现动作默认通过 `codex_exec` 交给 Codex CLI 执行。
 3. Agent Profile 可独立配置：
    - `provider_id`
    - `model`
@@ -292,6 +292,8 @@ ReAct 模式 Agent 调用
 4. 当用户在会话级显式选择 `Provider / Model` 时，执行链优先使用当前会话选择；未显式指定时回退到 Agent Profile，再回退到系统默认 Provider。
 5. 执行中需保留观察日志与输出增量，支持同步响应、流式响应与异步任务场景复用。
 6. ReAct 工具收口必须支持显式 `complete`，避免模型在没有结束信号时无限循环。
+7. Agent 运行时的稳定工具面至少包括：`codex_exec`、`read_memory`、`write_memory`、`complete`；仅允许委派的 Agent 可额外挂载 `delegate_agent`。
+8. `read_memory` / `write_memory` 仅面向已解析进 `memory_context` 的记忆文件，供 Agent 读取历史偏好、缩写指代和长期约束，或在必要时维护这些记忆文件本身；除此之外不再向 Agent 暴露通用原生文件/命令工具。
 
 #### Traceability
 

@@ -60,39 +60,24 @@ const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";
 const TERMINAL_CLIENT_STORAGE_KEY = "alter0.web.terminal.client.v1";
 const AVAILABLE_CHAT_TOOLS = [
   {
-    id: "list_dir",
-    name: "List Dir",
-    description: "List files and directories from the repo root or the session workspace."
+    id: "read_memory",
+    name: "Read Memory",
+    description: "Read one of the resolved memory files injected into the current agent context."
   },
   {
-    id: "read",
-    name: "Read",
-    description: "Read text files from the repo root or the session workspace."
-  },
-  {
-    id: "write",
-    name: "Write",
-    description: "Write or append files in the repo root or the session workspace."
-  },
-  {
-    id: "edit",
-    name: "Edit",
-    description: "Replace exact text inside files in the repo root or the session workspace."
-  },
-  {
-    id: "bash",
-    name: "Bash",
-    description: "Run shell commands and capture stdout, stderr, and exit code."
+    id: "write_memory",
+    name: "Write Memory",
+    description: "Write durable preferences or shorthand mappings back to a resolved memory file."
   },
   {
     id: "codex_exec",
     name: "Codex Exec",
-    description: "Allow agent execution to call Codex CLI for concrete implementation steps."
+    description: "Allow the agent to hand every concrete execution step to Codex CLI."
   },
   {
     id: "delegate_agent",
     name: "Delegate Agent",
-    description: "Allow an agent to hand off a specialist subtask to another built-in or managed agent."
+    description: "Allow Alter0 or another delegatable agent to hand off a specialist subtask to a child agent."
   }
 ];
 const AGENT_MEMORY_FILE_OPTIONS = [
@@ -5560,7 +5545,7 @@ function normalizeAgentBuilderDraft(agent = {}) {
     version: String(agent?.version || "").trim(),
     system_prompt: String(agent?.system_prompt || "").trim(),
     max_iterations: Number.isFinite(Number(agent?.max_iterations)) ? Math.max(0, Number(agent.max_iterations)) : 0,
-    tools: Array.isArray(agent?.tools) && agent.tools.length ? agent.tools.map((item) => String(item || "").trim()).filter(Boolean) : ["list_dir", "read", "write", "edit", "bash", "codex_exec"],
+    tools: Array.isArray(agent?.tools) && agent.tools.length ? agent.tools.map((item) => String(item || "").trim()).filter(Boolean) : ["codex_exec", "read_memory", "write_memory"],
     skills: Array.isArray(agent?.skills) ? agent.skills.map((item) => String(item || "").trim()).filter(Boolean) : [],
     mcps: Array.isArray(agent?.mcps) ? agent.mcps.map((item) => String(item || "").trim()).filter(Boolean) : [],
     memory_files: Array.isArray(agent?.memory_files) ? agent.memory_files.map((item) => String(item || "").trim()).filter(Boolean) : []
@@ -6647,7 +6632,7 @@ async function loadAgentView(container) {
           <label><span>${t("route.agent.form.iterations")}</span><input type="number" min="0" name="max_iterations" value="${escapeHTML(localState.draft.max_iterations)}"></label>
           <label class="agent-builder-toggle"><span>${t("route.agent.form.enabled")}</span><input type="checkbox" name="enabled" ${localState.draft.enabled ? "checked" : ""}></label>
           <label class="agent-builder-wide"><span>${t("route.agent.form.prompt")}</span><textarea name="system_prompt" rows="6">${escapeHTML(localState.draft.system_prompt)}</textarea></label>
-          <label class="agent-builder-wide"><span>${t("route.agent.form.tools")}</span><input type="text" name="tools" value="${escapeHTML(localState.draft.tools.join(", "))}" placeholder="list_dir, read, write, edit, bash, codex_exec, delegate_agent"></label>
+          <label class="agent-builder-wide"><span>${t("route.agent.form.tools")}</span><input type="text" name="tools" value="${escapeHTML(localState.draft.tools.join(", "))}" placeholder="codex_exec, read_memory, write_memory, delegate_agent"></label>
           <div class="agent-builder-wide agent-builder-section">
             <h5>${escapeHTML(t("route.agent.form.skills"))}</h5>
             <div class="agent-builder-options">${renderAgentOptionList(localState.skills, localState.draft.skills, "skills")}</div>
