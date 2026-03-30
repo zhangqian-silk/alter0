@@ -583,7 +583,7 @@ func TestTravelWorkspaceChatCreatesGuideFromMasterAgentReply(t *testing.T) {
 	if got := orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey]; got != "travel-master" {
 		t.Fatalf("expected travel-master metadata, got %+v", orchestrator.lastMessage.Metadata)
 	}
-	if got := orchestrator.lastMessage.Metadata[execdomain.AgentToolsMetadataKey]; got != `["codex_exec","delegate_agent","read_memory","write_memory"]` {
+	if got := orchestrator.lastMessage.Metadata[execdomain.AgentToolsMetadataKey]; got != `["codex_exec","delegate_agent","search_memory","read_memory","write_memory"]` {
 		t.Fatalf("expected travel-master tool set, got %+v", orchestrator.lastMessage.Metadata)
 	}
 	if got := orchestrator.lastMessage.Metadata["alter0.skills.include"]; got != `["memory","travel-page"]` {

@@ -89,6 +89,7 @@ type Task struct {
 	MaxRetries      int               `json:"max_retries"`
 	TimeoutMS       int64             `json:"timeout_ms"`
 	TimeoutAt       time.Time         `json:"timeout_at,omitempty"`
+	LastHeartbeatAt time.Time         `json:"last_heartbeat_at,omitempty"`
 	AcceptedAt      time.Time         `json:"accepted_at,omitempty"`
 	PhaseUpdatedAt  time.Time         `json:"phase_updated_at,omitempty"`
 	CreatedAt       time.Time         `json:"created_at"`

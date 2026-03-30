@@ -75,7 +75,7 @@
 6. Agent 执行链路必须同时支持两类消费方式：
    - ReAct Agent：在 system prompt 中显式暴露已选记忆文件的路径、存在状态与内容。
    - Codex 执行链：在 `alter0.codex-exec/v1` 载荷中新增 `memory_context` 字段，保证 fallback 与 `codex_exec` 一致可见。
-7. 所选记忆文件默认视为可维护对象，Agent 通过专用 `read_memory`、`write_memory` 工具维护这些文件；具体实现、验证与其他文件系统操作仍统一走 `codex_exec`。
+7. 所选记忆文件默认视为可维护对象，Agent 通过专用 `search_memory`、`read_memory`、`write_memory` 工具维护这些文件；其中 `search_memory` 用于在已挂载的历史记忆文件中按关键字检索相关上下文，具体实现、验证与其他文件系统操作仍统一走 `codex_exec`。
 8. 长期记忆与日记忆路径需兼容 `alter0` 当前目录约定，同时允许对齐 OpenClaw 常见文件名：
    - 长期记忆优先识别 `MEMORY.md`、`memory.md`、`.alter0/memory/long-term/MEMORY.md`
    - 日记忆优先识别 `memory/YYYY-MM-DD.md` 与 `.alter0/memory/YYYY-MM-DD.md`
@@ -86,6 +86,7 @@
    - 执行器可生成 `alter0.memory-context/v1`
    - ReAct 与 Codex 两条链路都能看到相同记忆文件集
    - 文件不存在时 Agent 仍能拿到目标路径，并可通过 `write_memory` 或 `codex_exec` 创建目标文件
+   - Agent 可先通过 `search_memory` 在已注入的记忆文件中按关键字定位相关历史，再决定是否调用 `read_memory` / `write_memory`
 11. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
 12. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Codex CLI 可结合该文件上下文执行读取或更新，Agent 侧不依赖通用原生工具做路径猜测。
 
@@ -118,7 +119,7 @@
    - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、本地仓库路径、当前分支、会话工作区、PR 基线分支与交付要求。
    - 涉及测试页面时，预览域名必须使用当前会话标识派生的 8 位短 hash，格式为 `https://<session_short_hash>.alter0.cn`。
    - `coding` Agent 在完成收口前，需明确交付代码变更、验证结果、文档同步状态、预览页地址（如适用）与 PR handoff 信息。
-10. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files；其稳定工具面默认收敛为 `codex_exec`、`read_memory`、`write_memory`，以及在允许时暴露的 `delegate_agent`。
+10. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files；其稳定工具面默认收敛为 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，以及在允许时暴露的 `delegate_agent`。
 11. 需限制主从递归深度与自委派，避免无限递归。
 12. 验收：
    - `GET /api/agents` 可返回内置入口 Agent

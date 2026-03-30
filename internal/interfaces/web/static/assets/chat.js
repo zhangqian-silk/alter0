@@ -60,6 +60,11 @@ const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";
 const TERMINAL_CLIENT_STORAGE_KEY = "alter0.web.terminal.client.v1";
 const AVAILABLE_CHAT_TOOLS = [
   {
+    id: "search_memory",
+    name: "Search Memory",
+    description: "Search the resolved memory files by keyword and return matching snippets."
+  },
+  {
     id: "read_memory",
     name: "Read Memory",
     description: "Read one of the resolved memory files injected into the current agent context."
@@ -250,6 +255,8 @@ const I18N = {
     "field.finished": "Finished",
     "field.accepted_at": "Accepted At",
     "field.started_at": "Started At",
+    "field.last_heartbeat_at": "Last Heartbeat",
+    "field.timeout_at": "Timeout Window",
     "field.progress": "Progress",
     "field.queue_position": "Queue Position",
     "field.queue_wait_ms": "Queue Wait",
@@ -822,6 +829,8 @@ const I18N = {
     "field.finished": "完成时间",
     "field.accepted_at": "受理时间",
     "field.started_at": "开始时间",
+    "field.last_heartbeat_at": "最近心跳",
+    "field.timeout_at": "超时窗口",
     "field.progress": "进度",
     "field.queue_position": "排队位次",
     "field.queue_wait_ms": "排队耗时",
@@ -5545,7 +5554,7 @@ function normalizeAgentBuilderDraft(agent = {}) {
     version: String(agent?.version || "").trim(),
     system_prompt: String(agent?.system_prompt || "").trim(),
     max_iterations: Number.isFinite(Number(agent?.max_iterations)) ? Math.max(0, Number(agent.max_iterations)) : 0,
-    tools: Array.isArray(agent?.tools) && agent.tools.length ? agent.tools.map((item) => String(item || "").trim()).filter(Boolean) : ["codex_exec", "read_memory", "write_memory"],
+    tools: Array.isArray(agent?.tools) && agent.tools.length ? agent.tools.map((item) => String(item || "").trim()).filter(Boolean) : ["codex_exec", "search_memory", "read_memory", "write_memory"],
     skills: Array.isArray(agent?.skills) ? agent.skills.map((item) => String(item || "").trim()).filter(Boolean) : [],
     mcps: Array.isArray(agent?.mcps) ? agent.mcps.map((item) => String(item || "").trim()).filter(Boolean) : [],
     memory_files: Array.isArray(agent?.memory_files) ? agent.memory_files.map((item) => String(item || "").trim()).filter(Boolean) : []
@@ -6632,7 +6641,7 @@ async function loadAgentView(container) {
           <label><span>${t("route.agent.form.iterations")}</span><input type="number" min="0" name="max_iterations" value="${escapeHTML(localState.draft.max_iterations)}"></label>
           <label class="agent-builder-toggle"><span>${t("route.agent.form.enabled")}</span><input type="checkbox" name="enabled" ${localState.draft.enabled ? "checked" : ""}></label>
           <label class="agent-builder-wide"><span>${t("route.agent.form.prompt")}</span><textarea name="system_prompt" rows="6">${escapeHTML(localState.draft.system_prompt)}</textarea></label>
-          <label class="agent-builder-wide"><span>${t("route.agent.form.tools")}</span><input type="text" name="tools" value="${escapeHTML(localState.draft.tools.join(", "))}" placeholder="codex_exec, read_memory, write_memory, delegate_agent"></label>
+          <label class="agent-builder-wide"><span>${t("route.agent.form.tools")}</span><input type="text" name="tools" value="${escapeHTML(localState.draft.tools.join(", "))}" placeholder="codex_exec, search_memory, read_memory, write_memory, delegate_agent"></label>
           <div class="agent-builder-wide agent-builder-section">
             <h5>${escapeHTML(t("route.agent.form.skills"))}</h5>
             <div class="agent-builder-options">${renderAgentOptionList(localState.skills, localState.draft.skills, "skills")}</div>
@@ -7548,8 +7557,13 @@ function renderControlTaskList(payload, activeTaskID = "") {
     const channelType = typeof item?.channel_type === "string" ? item.channel_type : "";
     const sourceMessageID = typeof item?.source_message_id === "string" ? item.source_message_id : "";
     const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
+    const lastHeartbeatAt = typeof item?.last_heartbeat_at === "string" ? item.last_heartbeat_at : "";
+    const timeoutAt = typeof item?.timeout_at === "string" ? item.timeout_at : "";
     const jobID = typeof item?.job_id === "string" ? item.job_id : "";
     const statusClassName = taskStatusClassName(status);
+    const heartbeatRow = formatTaskHeartbeatSummary(lastHeartbeatAt, timeoutAt) !== "-"
+      ? renderTaskSummaryMetaRow("field.last_heartbeat_at", formatTaskHeartbeatSummary(lastHeartbeatAt, timeoutAt))
+      : "";
     const summaryTags = [
       formatTriggerType(triggerType),
       formatChannelType(channelType)
@@ -7569,6 +7583,7 @@ function renderControlTaskList(payload, activeTaskID = "") {
         ${renderTaskSummaryMetaRow("field.session", sessionID, { mono: true })}
         ${renderTaskSummaryMetaRow("field.source_message", sourceMessageID, { mono: true })}
         ${renderTaskSummaryMetaRow("field.updated", formatDateTime(updatedAt))}
+        ${heartbeatRow}
       </div>
       <footer class="route-card-footer control-task-summary-footer">
         ${renderRouteTagSection("field.tags", summaryTags, "control-task-summary-tags")}
@@ -7615,6 +7630,8 @@ function renderControlTaskDetail(view, displayTaskID = "") {
   const terminalSessionID = typeof link?.terminal_session_id === "string" ? link.terminal_session_id : "";
   const queuePosition = Number(task?.queue_position || 0);
   const queueWaitMS = Number(task?.queue_wait_ms || 0);
+  const lastHeartbeatAt = normalizeText(task?.last_heartbeat_at);
+  const timeoutAt = normalizeText(task?.timeout_at);
   const resultOutput = typeof task?.result?.output === "string" ? task.result.output : "";
   const retryEnabled = Boolean(actions?.retry?.enabled);
   const cancelEnabled = Boolean(actions?.cancel?.enabled);
@@ -7640,6 +7657,8 @@ function renderControlTaskDetail(view, displayTaskID = "") {
       <p><span>${t("field.started_at")}</span><strong>${escapeHTML(formatDateTime(task?.started_at))}</strong></p>
       <p><span>${t("field.created")}</span><strong>${escapeHTML(formatDateTime(task?.created_at))}</strong></p>
       <p><span>${t("field.updated")}</span><strong>${escapeHTML(formatDateTime(task?.updated_at))}</strong></p>
+      <p><span>${t("field.last_heartbeat_at")}</span><strong>${escapeHTML(formatDateTime(lastHeartbeatAt))}</strong></p>
+      <p><span>${t("field.timeout_at")}</span><strong>${escapeHTML(formatDateTime(timeoutAt))}</strong></p>
       <p><span>${t("field.finished")}</span><strong>${escapeHTML(formatDateTime(task?.finished_at))}</strong></p>
       <p><span>${t("field.trigger_type")}</span><strong>${escapeHTML(formatTriggerType(triggerType))}</strong></p>
       <p><span>${t("field.channel_type")}</span><strong>${escapeHTML(formatChannelType(channelType))}</strong></p>
@@ -10903,6 +10922,33 @@ function formatDateTime(value) {
   });
 }
 
+function formatRelativeDateTime(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) {
+    return "-";
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    return text;
+  }
+  return formatSince(parsed.getTime());
+}
+
+function formatTaskHeartbeatSummary(lastHeartbeatAt, timeoutAt) {
+  const heartbeatText = formatRelativeDateTime(lastHeartbeatAt);
+  const timeoutText = formatDateTime(timeoutAt);
+  if (heartbeatText !== "-" && timeoutText !== "-") {
+    return `${heartbeatText} / ${timeoutText}`;
+  }
+  if (heartbeatText !== "-") {
+    return heartbeatText;
+  }
+  if (timeoutText !== "-") {
+    return timeoutText;
+  }
+  return "-";
+}
+
 function formatTaskStatus(value) {
   const status = String(value || "").trim().toLowerCase();
   if (!status) {
@@ -11302,10 +11348,16 @@ function renderTaskSummaryCards(payload, activeTaskID = "") {
     const result = typeof item?.result === "string" ? item.result : "-";
     const status = typeof item?.status === "string" ? item.status : "";
     const finishedAt = typeof item?.finished_at === "string" ? item.finished_at : "";
+    const updatedAt = typeof item?.updated_at === "string" ? item.updated_at : "";
+    const lastHeartbeatAt = typeof item?.last_heartbeat_at === "string" ? item.last_heartbeat_at : "";
+    const timeoutAt = typeof item?.timeout_at === "string" ? item.timeout_at : "";
     const tags = Array.isArray(item?.tags) ? item.tags : [];
     const anchorID = taskSummaryAnchorID(taskID);
     const active = taskID && taskID === activeTaskID;
     const statusClassName = taskStatusClassName(status);
+    const heartbeatRow = formatTaskHeartbeatSummary(lastHeartbeatAt, timeoutAt) !== "-"
+      ? renderTaskSummaryMetaRow("field.last_heartbeat_at", formatTaskHeartbeatSummary(lastHeartbeatAt, timeoutAt))
+      : "";
     return `<article class="route-card task-summary-card ${active ? "active" : ""}" id="${escapeHTML(anchorID)}" data-task-summary-id="${escapeHTML(taskID)}" ${active ? 'aria-current="true"' : ""}>
       <header class="task-summary-head">
         <div class="task-summary-id-wrap">
@@ -11317,6 +11369,8 @@ function renderTaskSummaryCards(payload, activeTaskID = "") {
         ${renderTaskSummaryMetaRow("field.task_type", taskType)}
         ${renderTaskSummaryPreview("field.goal", goal, { lineClamp: 3 })}
         ${renderTaskSummaryPreview("field.result", result, { lineClamp: 4, log: true })}
+        ${renderTaskSummaryMetaRow("field.updated", formatDateTime(updatedAt))}
+        ${heartbeatRow}
         ${renderTaskSummaryMetaRow("field.finished", formatDateTime(finishedAt))}
       </div>
       <footer class="route-card-footer">
@@ -11364,6 +11418,9 @@ function renderTaskDetail(meta, refs) {
       ${routeFieldRow("field.progress", meta?.progress)}
       ${routeFieldRow("field.retry_count", meta?.retry_count)}
       ${routeFieldRow("field.created", formatDateTime(meta?.created_at))}
+      ${routeFieldRow("field.updated", formatDateTime(meta?.updated_at))}
+      ${routeFieldRow("field.last_heartbeat_at", formatDateTime(meta?.last_heartbeat_at))}
+      ${routeFieldRow("field.timeout_at", formatDateTime(meta?.timeout_at))}
       ${routeFieldRow("field.finished_at", formatDateTime(meta?.finished_at))}
     </div>
     ${renderRouteSection("Summary Refs", `

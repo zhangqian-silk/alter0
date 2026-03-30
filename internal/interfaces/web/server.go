@@ -489,13 +489,16 @@ type cronJobRunResponse struct {
 }
 
 type memoryTaskSummaryItem struct {
-	TaskID     string                `json:"task_id"`
-	TaskType   string                `json:"task_type"`
-	Goal       string                `json:"goal"`
-	Result     string                `json:"result"`
-	Status     taskdomain.TaskStatus `json:"status"`
-	FinishedAt time.Time             `json:"finished_at"`
-	Tags       []string              `json:"tags,omitempty"`
+	TaskID          string                `json:"task_id"`
+	TaskType        string                `json:"task_type"`
+	Goal            string                `json:"goal"`
+	Result          string                `json:"result"`
+	Status          taskdomain.TaskStatus `json:"status"`
+	FinishedAt      time.Time             `json:"finished_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
+	LastHeartbeatAt time.Time             `json:"last_heartbeat_at,omitempty"`
+	TimeoutAt       time.Time             `json:"timeout_at,omitempty"`
+	Tags            []string              `json:"tags,omitempty"`
 }
 
 type memoryTaskMeta struct {
@@ -505,7 +508,10 @@ type memoryTaskMeta struct {
 	Status          taskdomain.TaskStatus `json:"status"`
 	Progress        int                   `json:"progress"`
 	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
 	FinishedAt      time.Time             `json:"finished_at,omitempty"`
+	LastHeartbeatAt time.Time             `json:"last_heartbeat_at,omitempty"`
+	TimeoutAt       time.Time             `json:"timeout_at,omitempty"`
 	RetryCount      int                   `json:"retry_count"`
 	TaskType        string                `json:"task_type"`
 }
@@ -563,6 +569,8 @@ type controlTaskListItem struct {
 	CreatedAt       time.Time                `json:"created_at"`
 	StartedAt       time.Time                `json:"started_at,omitempty"`
 	UpdatedAt       time.Time                `json:"updated_at"`
+	LastHeartbeatAt time.Time                `json:"last_heartbeat_at,omitempty"`
+	TimeoutAt       time.Time                `json:"timeout_at,omitempty"`
 	FinishedAt      time.Time                `json:"finished_at,omitempty"`
 	Error           string                   `json:"error,omitempty"`
 }
@@ -2373,6 +2381,8 @@ func toControlTaskListItem(task taskdomain.Task) controlTaskListItem {
 		CreatedAt:       task.CreatedAt.UTC(),
 		StartedAt:       task.StartedAt.UTC(),
 		UpdatedAt:       resolveControlTaskUpdatedAt(task),
+		LastHeartbeatAt: task.LastHeartbeatAt.UTC(),
+		TimeoutAt:       task.TimeoutAt.UTC(),
 		FinishedAt:      task.FinishedAt.UTC(),
 		Error:           errorText,
 	}
@@ -2570,13 +2580,16 @@ func resolveMemoryTaskSummary(task taskdomain.Task) memoryTaskSummaryItem {
 		summary.Status = task.Status
 	}
 	return memoryTaskSummaryItem{
-		TaskID:     strings.TrimSpace(summary.TaskID),
-		TaskType:   strings.TrimSpace(summary.TaskType),
-		Goal:       strings.TrimSpace(summary.Goal),
-		Result:     strings.TrimSpace(summary.Result),
-		Status:     summary.Status,
-		FinishedAt: summary.FinishedAt.UTC(),
-		Tags:       append([]string(nil), summary.Tags...),
+		TaskID:          strings.TrimSpace(summary.TaskID),
+		TaskType:        strings.TrimSpace(summary.TaskType),
+		Goal:            strings.TrimSpace(summary.Goal),
+		Result:          strings.TrimSpace(summary.Result),
+		Status:          summary.Status,
+		FinishedAt:      summary.FinishedAt.UTC(),
+		UpdatedAt:       task.UpdatedAt.UTC(),
+		LastHeartbeatAt: task.LastHeartbeatAt.UTC(),
+		TimeoutAt:       task.TimeoutAt.UTC(),
+		Tags:            append([]string(nil), summary.Tags...),
 	}
 }
 
@@ -2588,7 +2601,10 @@ func resolveMemoryTaskMeta(task taskdomain.Task) memoryTaskMeta {
 		Status:          task.Status,
 		Progress:        task.Progress,
 		CreatedAt:       task.CreatedAt.UTC(),
+		UpdatedAt:       task.UpdatedAt.UTC(),
 		FinishedAt:      task.FinishedAt.UTC(),
+		LastHeartbeatAt: task.LastHeartbeatAt.UTC(),
+		TimeoutAt:       task.TimeoutAt.UTC(),
 		RetryCount:      task.RetryCount,
 		TaskType:        resolveMemoryTaskType(task),
 	}

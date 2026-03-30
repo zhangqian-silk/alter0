@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	execdomain "alter0/internal/execution/domain"
 )
@@ -37,6 +39,8 @@ const (
 	codexAddDirsEnvKey               = "ALTER0_CODEX_ADD_DIRS"
 	codexAddDirRulesMetadataKey      = "codex_add_dir_rules"
 	codexAddDirRulesEnvKey           = "ALTER0_CODEX_ADD_DIR_RULES"
+	defaultCodexHeartbeatInterval    = time.Minute
+	codexHeartbeatSource             = "codex_cli"
 )
 
 type codexAddDirRule struct {
@@ -56,8 +60,9 @@ var defaultAddDirRules = []codexAddDirRule{
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
 
 type CodexCLIProcessor struct {
-	command string
-	runner  commandRunner
+	command           string
+	runner            commandRunner
+	heartbeatInterval time.Duration
 }
 
 type codexExecutionPayload struct {
@@ -95,8 +100,9 @@ func NewCodexCLIProcessor() *CodexCLIProcessor {
 
 func NewCodexCLIProcessorWithCommand(command string) *CodexCLIProcessor {
 	return &CodexCLIProcessor{
-		command: strings.TrimSpace(command),
-		runner:  exec.CommandContext,
+		command:           strings.TrimSpace(command),
+		runner:            exec.CommandContext,
+		heartbeatInterval: defaultCodexHeartbeatInterval,
 	}
 }
 
@@ -158,7 +164,7 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
 		details := strings.TrimSpace(stderr.String())
 		if details == "" {
 			details = strings.TrimSpace(stdout.String())
@@ -167,6 +173,19 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 			return "", fmt.Errorf("codex command failed: %w", err)
 		}
 		return "", fmt.Errorf("codex command failed: %w: %s", err, details)
+	}
+	stopHeartbeat := p.startHeartbeatReporter(procCtx, cmd)
+	waitErr := cmd.Wait()
+	stopHeartbeat()
+	if waitErr != nil {
+		details := strings.TrimSpace(stderr.String())
+		if details == "" {
+			details = strings.TrimSpace(stdout.String())
+		}
+		if details == "" {
+			return "", fmt.Errorf("codex command failed: %w", waitErr)
+		}
+		return "", fmt.Errorf("codex command failed: %w: %s", waitErr, details)
 	}
 
 	rawOutput, err := os.ReadFile(outputPath)
@@ -240,14 +259,17 @@ func (p *CodexCLIProcessor) ProcessStream(
 		}
 		return "", fmt.Errorf("codex command failed: %w: %s", err, details)
 	}
+	stopHeartbeat := p.startHeartbeatReporter(procCtx, cmd)
 
 	output, scanErr := collectStreamOutput(stdoutPipe, emit)
 	if scanErr != nil {
 		procCancel()
 		_ = cmd.Wait()
+		stopHeartbeat()
 		return "", scanErr
 	}
 	waitErr := cmd.Wait()
+	stopHeartbeat()
 	if waitErr != nil {
 		details := strings.TrimSpace(stderr.String())
 		if details == "" {
@@ -260,6 +282,54 @@ func (p *CodexCLIProcessor) ProcessStream(
 		return "", errors.New("codex returned empty output")
 	}
 	return result, nil
+}
+
+func (p *CodexCLIProcessor) startHeartbeatReporter(ctx context.Context, cmd *exec.Cmd) func() {
+	if ctx == nil || cmd == nil || cmd.Process == nil {
+		return func() {}
+	}
+	interval := p.heartbeatInterval
+	if interval <= 0 {
+		interval = defaultCodexHeartbeatInterval
+	}
+
+	stopCh := make(chan struct{})
+	var once sync.Once
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				if !isCodexProcessRunning(cmd) {
+					return
+				}
+				execdomain.EmitRuntimeHeartbeat(ctx, execdomain.RuntimeHeartbeat{
+					Source:    codexHeartbeatSource,
+					Message:   fmt.Sprintf("codex cli session heartbeat ok (pid=%d)", cmd.Process.Pid),
+					Timestamp: time.Now().UTC(),
+				})
+			}
+		}
+	}()
+
+	return func() {
+		once.Do(func() {
+			close(stopCh)
+		})
+	}
+}
+
+func isCodexProcessRunning(cmd *exec.Cmd) bool {
+	if cmd == nil || cmd.Process == nil {
+		return false
+	}
+	return cmd.ProcessState == nil
 }
 
 func collectStreamOutput(

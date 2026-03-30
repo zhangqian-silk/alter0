@@ -43,8 +43,11 @@
 3. 异步任务状态至少包含：`queued`、`running`、`success`、`failed`、`canceled`，并提供状态变更时间与阶段信息。
 4. 前端 `Tasks` 模块需提供任务执行明细视图，交互风格与当前对话界面一致，支持实时查看任务阶段、日志流与终态结果。
 5. 异步任务日志必须完整回传执行终端输出细节，不做语义裁剪；包括步骤状态与运行事件（如“已运行 xxx”）。
-6. 日志展示要求：按时间顺序增量渲染，保留原始输出层级与时间戳，支持断线后续读与历史回放。
-7. 验收：并发提交超过 5 个异步任务时，系统稳定执行 `5` 个并将其余任务排队；前端任务明细可完整查看终端执行全量日志与最终结果。
+6. 对于落到 `Codex CLI` 的异步任务，执行器必须每 `1m` 产出一次运行心跳；任务模块收到心跳后更新 `last_heartbeat_at`、`updated_at`、`timeout_at`，并追加 `heartbeat` 日志，确保“仍在运行中的长任务”不会被固定墙钟超时直接终止。
+7. `async_task_timeout` 的执行语义保持为“当前运行窗口”；初始窗口从任务开始计时，后续由 `Codex CLI` 心跳续租。若到达窗口上限前既没有完成也没有收到新心跳，任务按 `task_timeout` 失败。
+8. 日志展示要求：按时间顺序增量渲染，保留原始输出层级与时间戳，支持断线后续读与历史回放。
+9. 前端展示要求：`Tasks` 列表卡片需先展示轻量心跳摘要；`Tasks` 详情抽屉与 `Memory -> Tasks` 详情页需明确展示 `last_heartbeat_at` 与 `timeout_at`，便于区分“持续续租中的运行态任务”和“长时间无心跳、接近超时的任务”。
+10. 验收：并发提交超过 5 个异步任务时，系统稳定执行 `5` 个并将其余任务排队；前端任务明细可完整查看终端执行全量日志、心跳日志、最近心跳时间与当前超时窗口；运行中 `Codex CLI` 会话即使超过默认 `90s`，只要仍持续上报心跳，就不会被误判超时。
 
 #### 接口拆分（草案）
 
@@ -53,7 +56,7 @@
    - 返回：`task_id`、`status`、`queue_position`、`accepted_at`
 2. 异步任务详情
    - `GET /api/tasks/{task_id}`
-   - 返回：`status`、`phase`、`started_at`、`finished_at`、`queue_wait_ms`、`error`
+   - 返回：`status`、`phase`、`started_at`、`finished_at`、`queue_wait_ms`、`last_heartbeat_at`、`timeout_at`、`error`
 3. 异步任务日志流与回放
    - `GET /api/tasks/{task_id}/logs/stream?cursor=`
    - `GET /api/tasks/{task_id}/logs?cursor=&limit=`
@@ -61,7 +64,7 @@
 
 #### Traceability
 
-- 核心对象：`async_executor`、`max_concurrency=5`、`task_queue`、`task_id`、`terminal_logs`
+- 核心对象：`async_executor`、`max_concurrency=5`、`task_queue`、`task_id`、`terminal_logs`、`last_heartbeat_at`、`timeout_at`
 - 依赖需求：`R-030`、`R-033`、`R-035`、`R-041`
 - 验证口径：并发上限生效、排队可见性、日志完整性、前端明细可读性
 
@@ -86,7 +89,7 @@
    - `queue_timeout`（`-queue-timeout`，默认 `5s`）
 2. 异步任务
    - `async_task_workers`（`-async-task-workers`，默认 `2`）
-   - `async_task_timeout`（`-async-task-timeout`，默认 `90s`）
+   - `async_task_timeout`（`-async-task-timeout`，默认 `90s`，作为单个运行窗口时长；`Codex CLI` 长任务收到心跳后按窗口续租）
    - `async_task_max_retries`（`-async-task-max-retries`，默认 `1`）
    - `async_long_content_threshold`（`-async-long-content-threshold`，默认 `240`）
 3. 会话记忆与上下文压缩
@@ -292,8 +295,8 @@ ReAct 模式 Agent 调用
 4. 当用户在会话级显式选择 `Provider / Model` 时，执行链优先使用当前会话选择；未显式指定时回退到 Agent Profile，再回退到系统默认 Provider。
 5. 执行中需保留观察日志与输出增量，支持同步响应、流式响应与异步任务场景复用。
 6. ReAct 工具收口必须支持显式 `complete`，避免模型在没有结束信号时无限循环。
-7. Agent 运行时的稳定工具面至少包括：`codex_exec`、`read_memory`、`write_memory`、`complete`；仅允许委派的 Agent 可额外挂载 `delegate_agent`。
-8. `read_memory` / `write_memory` 仅面向已解析进 `memory_context` 的记忆文件，供 Agent 读取历史偏好、缩写指代和长期约束，或在必要时维护这些记忆文件本身；除此之外不再向 Agent 暴露通用原生文件/命令工具。
+7. Agent 运行时的稳定工具面至少包括：`codex_exec`、`search_memory`、`read_memory`、`write_memory`、`complete`；仅允许委派的 Agent 可额外挂载 `delegate_agent`。
+8. `search_memory` / `read_memory` / `write_memory` 仅面向已解析进 `memory_context` 的记忆文件。`search_memory` 负责按关键字在多份记忆文件中定位历史偏好、缩写指代和长期约束，`read_memory` 用于精读单个目标文件，`write_memory` 用于在必要时维护这些记忆文件本身；除此之外不再向 Agent 暴露通用原生文件/命令工具。
 
 #### Traceability
 

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	execdomain "alter0/internal/execution/domain"
 	sessiondomain "alter0/internal/session/domain"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
@@ -1016,7 +1017,11 @@ func (s *Service) prepareQueuedTask(
 	task.TimeoutAt = now.Add(timeout)
 	s.tasks[taskID] = cloneTask(task)
 
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	runCtx, renewTimeout, cancel := newTaskRunContext(ctx, timeout)
+	runCtx = execdomain.WithRuntimeHeartbeatReporter(runCtx, func(heartbeat execdomain.RuntimeHeartbeat) {
+		renewTimeout()
+		s.recordTaskHeartbeat(taskID, timeout, heartbeat)
+	})
 	s.inflight[taskID] = cancel
 	if err := s.storeLocked(); err != nil && s.logger != nil {
 		s.logger.Warn("persist running task state failed",
@@ -1052,12 +1057,16 @@ func (s *Service) executeTask(taskID string, msg shareddomain.UnifiedMessage, ru
 		}
 
 		if runCtx.Err() != nil {
+			cause := context.Cause(runCtx)
+			if cause == nil {
+				cause = runCtx.Err()
+			}
 			errorCode := "task_canceled"
 			status := taskdomain.TaskStatusCanceled
 			level := taskdomain.TaskLogLevelWarn
 			progress := 100
 			logMessage := "task canceled"
-			if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+			if errors.Is(cause, context.DeadlineExceeded) {
 				errorCode = "task_timeout"
 				status = taskdomain.TaskStatusFailed
 				level = taskdomain.TaskLogLevelError
@@ -1315,6 +1324,100 @@ func (s *Service) markTaskPhase(taskID string, phase string) {
 			slog.String("error", err.Error()),
 		)
 	}
+}
+
+func (s *Service) recordTaskHeartbeat(taskID string, timeout time.Duration, heartbeat execdomain.RuntimeHeartbeat) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return
+	}
+	if timeout <= 0 {
+		timeout = defaultTimeout
+	}
+
+	now := heartbeat.Timestamp.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	message := strings.TrimSpace(heartbeat.Message)
+	if message == "" {
+		message = "codex cli session heartbeat ok"
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	task, ok := s.tasks[taskID]
+	if !ok || task.Status != taskdomain.TaskStatusRunning {
+		return
+	}
+	task.LastHeartbeatAt = now
+	task.UpdatedAt = now
+	task.TimeoutAt = now.Add(timeout)
+	task.Logs = appendTaskLog(task.Logs, "heartbeat", taskdomain.TaskLogLevelInfo, message, now)
+	s.tasks[taskID] = cloneTask(task)
+	if err := s.storeLocked(); err != nil && s.logger != nil {
+		s.logger.Warn("persist task heartbeat failed",
+			slog.String("task_id", taskID),
+			slog.String("error", err.Error()),
+		)
+	}
+}
+
+func newTaskRunContext(parent context.Context, timeout time.Duration) (context.Context, func(), context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	if timeout <= 0 {
+		timeout = defaultTimeout
+	}
+
+	runCtx, cancelCause := context.WithCancelCause(parent)
+	touchCh := make(chan struct{}, 1)
+	var cancelOnce sync.Once
+
+	go func() {
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+
+		for {
+			select {
+			case <-runCtx.Done():
+				return
+			case <-timer.C:
+				cancelCause(context.DeadlineExceeded)
+				return
+			case <-touchCh:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(timeout)
+			}
+		}
+	}()
+
+	renewTimeout := func() {
+		select {
+		case <-runCtx.Done():
+			return
+		default:
+		}
+		select {
+		case touchCh <- struct{}{}:
+		default:
+		}
+	}
+
+	cancel := func() {
+		cancelOnce.Do(func() {
+			cancelCause(context.Canceled)
+		})
+	}
+
+	return runCtx, renewTimeout, cancel
 }
 
 func (s *Service) resolveTaskTimeout(msg shareddomain.UnifiedMessage) time.Duration {

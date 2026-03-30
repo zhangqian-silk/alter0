@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	execdomain "alter0/internal/execution/domain"
 	sessiondomain "alter0/internal/session/domain"
 	shareddomain "alter0/internal/shared/domain"
 	taskdomain "alter0/internal/task/domain"
@@ -889,6 +890,72 @@ func TestServiceTimeoutTransitionsToFailed(t *testing.T) {
 	completed := waitTaskStatus(t, svc, task.ID, taskdomain.TaskStatusFailed, 2*time.Second)
 	if completed.ErrorCode != "task_timeout" {
 		t.Fatalf("expected task_timeout, got %q", completed.ErrorCode)
+	}
+}
+
+func TestServiceHeartbeatExtendsRunningTaskTimeout(t *testing.T) {
+	orch := &stubTaskOrchestrator{
+		handler: func(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+			ticker := time.NewTicker(20 * time.Millisecond)
+			defer ticker.Stop()
+			done := time.After(150 * time.Millisecond)
+
+			for {
+				select {
+				case <-ctx.Done():
+					return shareddomain.OrchestrationResult{
+						MessageID: msg.MessageID,
+						SessionID: msg.SessionID,
+						Route:     shareddomain.RouteNL,
+					}, ctx.Err()
+				case <-done:
+					return shareddomain.OrchestrationResult{
+						MessageID: msg.MessageID,
+						SessionID: msg.SessionID,
+						Route:     shareddomain.RouteNL,
+						Output:    "finished after heartbeat",
+					}, nil
+				case <-ticker.C:
+					execdomain.EmitRuntimeHeartbeat(ctx, execdomain.RuntimeHeartbeat{
+						Source:  "codex_cli",
+						Message: "codex cli session heartbeat ok",
+					})
+				}
+			}
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	svc, err := NewService(
+		ctx,
+		orch,
+		nil,
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{WorkerCount: 1, Timeout: 60 * time.Millisecond, MaxRetries: 0},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	task, err := svc.Submit(testTaskMessage("s-heartbeat", "long operation", nil))
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	completed := waitTaskStatus(t, svc, task.ID, taskdomain.TaskStatusSuccess, 2*time.Second)
+	if completed.LastHeartbeatAt.IsZero() {
+		t.Fatal("expected last heartbeat timestamp to be recorded")
+	}
+	foundHeartbeatLog := false
+	for _, item := range completed.Logs {
+		if item.Stage == "heartbeat" && strings.Contains(item.Message, "heartbeat ok") {
+			foundHeartbeatLog = true
+			break
+		}
+	}
+	if !foundHeartbeatLog {
+		t.Fatal("expected heartbeat log entry")
 	}
 }
 

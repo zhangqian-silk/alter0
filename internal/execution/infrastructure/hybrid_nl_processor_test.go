@@ -261,7 +261,7 @@ func TestHybridNLProcessorUsesChatLevelModelOverride(t *testing.T) {
 	}
 }
 
-func TestHybridNLProcessorReactModeInjectsSelectedNativeTools(t *testing.T) {
+func TestHybridNLProcessorReactModeIgnoresLegacyNativeTools(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
 	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
 
@@ -272,17 +272,14 @@ func TestHybridNLProcessorReactModeInjectsSelectedNativeTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	if len(reactFactory.lastConfig.Tools) != 2 {
-		t.Fatalf("expected selected native tools only, got %+v", reactFactory.lastConfig.Tools)
+	if len(reactFactory.lastConfig.Tools) != 0 {
+		t.Fatalf("expected no legacy native tools in react mode, got %+v", reactFactory.lastConfig.Tools)
 	}
-	if reactFactory.lastConfig.Tools[0].Name != "read" || reactFactory.lastConfig.Tools[1].Name != "bash" {
-		t.Fatalf("unexpected tool order: %+v", reactFactory.lastConfig.Tools)
+	if reactFactory.lastConfig.ToolExecutor != nil {
+		t.Fatalf("expected no tool executor for legacy native tools")
 	}
-	if reactFactory.lastConfig.ToolExecutor == nil {
-		t.Fatalf("expected tool executor to be configured")
-	}
-	if reactFactory.lastConfig.MaxIterations != 6 {
-		t.Fatalf("expected max iterations 6 for tool-enabled chat, got %d", reactFactory.lastConfig.MaxIterations)
+	if reactFactory.lastConfig.MaxIterations != 1 {
+		t.Fatalf("expected max iterations 1 without tool-enabled chat, got %d", reactFactory.lastConfig.MaxIterations)
 	}
 }
 
@@ -302,7 +299,7 @@ func TestHybridNLProcessorAgentModeDefaultsToCoreTools(t *testing.T) {
 	for _, item := range reactFactory.lastConfig.Tools {
 		toolNames = append(toolNames, item.Name)
 	}
-	for _, expected := range []string{"codex_exec", "read_memory", "write_memory", "complete"} {
+	for _, expected := range []string{"codex_exec", "search_memory", "read_memory", "write_memory", "complete"} {
 		if !strings.Contains(strings.Join(toolNames, ","), expected) {
 			t.Fatalf("expected tool %s in %+v", expected, toolNames)
 		}
@@ -455,7 +452,7 @@ func TestHybridNLProcessorAgentModeSupportsMemoryTools(t *testing.T) {
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "researcher"
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
-	metadata[execdomain.AgentToolsMetadataKey] = `["read_memory","write_memory"]`
+	metadata[execdomain.AgentToolsMetadataKey] = `["search_memory","read_memory","write_memory"]`
 	metadata[execdomain.MemoryContextMetadataKey] = string(rawMemoryContext)
 
 	if _, err := processor.Process(context.Background(), "更新用户缩写和偏好", metadata); err != nil {
@@ -466,15 +463,15 @@ func TestHybridNLProcessorAgentModeSupportsMemoryTools(t *testing.T) {
 	for _, item := range reactFactory.lastConfig.Tools {
 		toolNames = append(toolNames, item.Name)
 	}
-	if !strings.Contains(strings.Join(toolNames, ","), "read_memory") || !strings.Contains(strings.Join(toolNames, ","), "write_memory") {
+	if !strings.Contains(strings.Join(toolNames, ","), "search_memory") || !strings.Contains(strings.Join(toolNames, ","), "read_memory") || !strings.Contains(strings.Join(toolNames, ","), "write_memory") {
 		t.Fatalf("expected skill tools in %+v", toolNames)
 	}
-	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use read_memory") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use write_memory") {
+	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use search_memory") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use read_memory") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use write_memory") {
 		t.Fatalf("expected memory tool instructions in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
 	}
 }
 
-func TestHybridNLProcessorExecutesMemoryReadWriteTools(t *testing.T) {
+func TestHybridNLProcessorExecutesMemorySearchReadWriteTools(t *testing.T) {
 	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), nil, nil)
 	memoryPath := filepath.Join(t.TempDir(), "USER.md")
 	rawMemoryContext, err := json.Marshal(execdomain.MemoryContext{
@@ -500,6 +497,18 @@ func TestHybridNLProcessorExecutesMemoryReadWriteTools(t *testing.T) {
 	}
 	if writeResult.IsError {
 		t.Fatalf("expected write_memory success, got %+v", writeResult)
+	}
+
+	searchResult, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
+		ID:        "search-memory-1",
+		Name:      "search_memory",
+		Arguments: `{"query":"alias"}`,
+	})
+	if err != nil {
+		t.Fatalf("search_memory error = %v", err)
+	}
+	if searchResult.IsError || !strings.Contains(searchResult.Result, "alias") {
+		t.Fatalf("expected search_memory content, got %+v", searchResult)
 	}
 
 	readResult, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{

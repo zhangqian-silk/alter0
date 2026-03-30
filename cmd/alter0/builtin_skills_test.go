@@ -45,7 +45,7 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if travelPage.Metadata[builtinSkillWritableKey] != "true" {
 		t.Fatalf("expected travel-page skill writable metadata, got %+v", travelPage.Metadata)
 	}
-	if guide := travelPage.Metadata[builtinSkillGuideKey]; !strings.Contains(guide, "read_skill") || !strings.Contains(guide, "durable") {
+	if guide := travelPage.Metadata[builtinSkillGuideKey]; !strings.Contains(guide, "codex_exec") || !strings.Contains(guide, "durable") {
 		t.Fatalf("expected travel-page skill guide covers read/write policy, got %q", guide)
 	}
 }
