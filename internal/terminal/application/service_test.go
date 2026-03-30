@@ -472,6 +472,73 @@ func TestServiceInputRejectsConcurrentTurns(t *testing.T) {
 	}
 }
 
+func TestServiceShutdownAppendsInterruptedNoticeOnce(t *testing.T) {
+	service := newTestService("sleep")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-shutdown",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-shutdown", session.ID, "long prompt"); err != nil {
+		t.Fatalf("start input: %v", err)
+	}
+
+	service.shutdown()
+	time.Sleep(500 * time.Millisecond)
+
+	snapshot, entries := waitForSessionStatus(t, service, "owner-shutdown", session.ID, terminaldomain.SessionStatusInterrupted)
+	const interruptedMessage = "terminal interrupted: terminal host unavailable"
+	count := 0
+	for _, entry := range entries {
+		if entry.Text == interruptedMessage {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected interrupted message once, got %d entries: %+v", count, entries)
+	}
+	if snapshot.ErrorMessage != "terminal host unavailable" {
+		t.Fatalf("expected interrupted error message, got %q", snapshot.ErrorMessage)
+	}
+}
+
+func TestServiceInterruptedNoticeAppendsAgainAfterNextTurn(t *testing.T) {
+	service := newTestService("sleep")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-repeat-interrupt",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-repeat-interrupt", session.ID, "first long prompt"); err != nil {
+		t.Fatalf("start first input: %v", err)
+	}
+	service.shutdown()
+	waitForSessionStatus(t, service, "owner-repeat-interrupt", session.ID, terminaldomain.SessionStatusInterrupted)
+
+	if _, err := service.Input("owner-repeat-interrupt", session.ID, "second long prompt"); err != nil {
+		t.Fatalf("start second input: %v", err)
+	}
+	service.shutdown()
+	_, entries := waitForSessionStatus(t, service, "owner-repeat-interrupt", session.ID, terminaldomain.SessionStatusInterrupted)
+
+	const interruptedMessage = "terminal interrupted: terminal host unavailable"
+	count := 0
+	for _, entry := range entries {
+		if entry.Text == interruptedMessage {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected interrupted message twice across two turns, got %d entries: %+v", count, entries)
+	}
+}
+
 func TestServiceInputFailsFastOnCodexAuthError(t *testing.T) {
 	service := newTestService("auth-error")
 
@@ -637,6 +704,29 @@ func waitForSessionError(t *testing.T, service *Service, ownerID string, session
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for terminal auth failure")
+	return terminaldomain.Session{}, nil
+}
+
+func waitForSessionStatus(t *testing.T, service *Service, ownerID string, sessionID string, want terminaldomain.SessionStatus) (terminaldomain.Session, []terminaldomain.Entry) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, ok := service.Get(ownerID, sessionID)
+		if !ok {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		page, err := service.ListEntries(ownerID, sessionID, 0, 32)
+		if err != nil {
+			t.Fatalf("list entries: %v", err)
+		}
+		if snapshot.Status == want {
+			return snapshot, page.Items
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for terminal status %q", want)
 	return terminaldomain.Session{}, nil
 }
 

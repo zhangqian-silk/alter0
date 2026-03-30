@@ -8,6 +8,7 @@ const welcomeScreen = document.getElementById("welcomeScreen");
 const messageArea = document.getElementById("messageArea");
 const chatForm = document.getElementById("chatForm");
 const input = document.getElementById("composerInput");
+const composerShell = document.querySelector(".composer-shell");
 const sendButton = document.getElementById("sendButton");
 const charCount = document.getElementById("charCount");
 const newChatButton = document.getElementById("newChatButton");
@@ -1388,6 +1389,12 @@ const state = {
     jobID: ""
   },
   sessionHistoryCollapsed: false,
+  mobileViewport: {
+    baselineHeight: 0,
+    width: 0,
+    syncFrame: 0,
+    alignFocusedInput: false
+  },
   pending: false,
   pendingCount: 0,
   pageRenderToken: 0,
@@ -4562,15 +4569,83 @@ function collapseMobileSidebar() {
   closeTransientPanels();
 }
 
-function updateKeyboardInset() {
-  if (!isMobileViewport() || !window.visualViewport) {
+function isEditableViewportNode(node) {
+  if (!(node instanceof HTMLElement)) {
+    return false;
+  }
+  if (node instanceof HTMLTextAreaElement) {
+    return !node.disabled && !node.readOnly;
+  }
+  if (node instanceof HTMLInputElement) {
+    const type = String(node.type || "text").toLowerCase();
+    const blockedTypes = new Set(["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
+    return !node.disabled && !node.readOnly && !blockedTypes.has(type);
+  }
+  return node.isContentEditable;
+}
+
+function activeViewportInput() {
+  return isEditableViewportNode(document.activeElement) ? document.activeElement : null;
+}
+
+function updateKeyboardInset(options = {}) {
+  if (!isMobileViewport()) {
+    state.mobileViewport.baselineHeight = 0;
+    state.mobileViewport.width = 0;
+    rootStyle.setProperty("--mobile-viewport-height", "100dvh");
     rootStyle.setProperty("--keyboard-offset", "0px");
     return;
   }
 
   const viewport = window.visualViewport;
-  const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-  rootStyle.setProperty("--keyboard-offset", `${Math.round(inset)}px`);
+  const activeInput = activeViewportInput();
+  const effectiveHeight = Math.max(
+    0,
+    Math.round(viewport ? viewport.height + Math.max(viewport.offsetTop, 0) : window.innerHeight)
+  );
+  const viewportWidth = Math.max(
+    0,
+    Math.round(viewport ? viewport.width : window.innerWidth)
+  );
+  const widthChanged = Math.abs(viewportWidth - state.mobileViewport.width) > 48;
+
+  if (!state.mobileViewport.baselineHeight || widthChanged) {
+    state.mobileViewport.baselineHeight = effectiveHeight;
+  }
+  if (!activeInput || effectiveHeight >= state.mobileViewport.baselineHeight - 2) {
+    state.mobileViewport.baselineHeight = effectiveHeight;
+  } else {
+    state.mobileViewport.baselineHeight = Math.max(state.mobileViewport.baselineHeight, effectiveHeight);
+  }
+
+  state.mobileViewport.width = viewportWidth;
+  rootStyle.setProperty("--mobile-viewport-height", `${effectiveHeight}px`);
+  rootStyle.setProperty("--keyboard-offset", `${Math.max(0, state.mobileViewport.baselineHeight - effectiveHeight)}px`);
+
+  if (options.alignFocusedInput && activeInput instanceof HTMLElement) {
+    window.requestAnimationFrame(() => {
+      if (document.activeElement !== activeInput) {
+        return;
+      }
+      activeInput.scrollIntoView({ block: "nearest" });
+      if (composerShell instanceof HTMLElement) {
+        composerShell.scrollIntoView({ block: "end" });
+      }
+    });
+  }
+}
+
+function scheduleViewportInsetSync(options = {}) {
+  state.mobileViewport.alignFocusedInput = state.mobileViewport.alignFocusedInput || Boolean(options.alignFocusedInput);
+  if (state.mobileViewport.syncFrame) {
+    return;
+  }
+  state.mobileViewport.syncFrame = window.requestAnimationFrame(() => {
+    const alignFocusedInput = state.mobileViewport.alignFocusedInput;
+    state.mobileViewport.syncFrame = 0;
+    state.mobileViewport.alignFocusedInput = false;
+    updateKeyboardInset({ alignFocusedInput });
+  });
 }
 
 function bindSwipeClose(panel, panelClassName) {
@@ -12853,15 +12928,16 @@ function bindEvents() {
       await sendMessage(composerInput.value);
     },
     onFocus: () => {
-      updateKeyboardInset();
+      scheduleViewportInsetSync({ alignFocusedInput: true });
       if (isMobileViewport()) {
         requestAnimationFrame(() => {
           input.scrollIntoView({ block: "nearest", behavior: "smooth" });
         });
+        window.setTimeout(() => scheduleViewportInsetSync({ alignFocusedInput: true }), 120);
       }
     },
     onBlur: () => {
-      window.setTimeout(updateKeyboardInset, 80);
+      window.setTimeout(() => scheduleViewportInsetSync(), 120);
     }
   });
 
@@ -13048,15 +13124,25 @@ function bindEvents() {
         positionNavTooltip(navTooltipTarget);
       }
     }
-    updateKeyboardInset();
+    scheduleViewportInsetSync();
     if (chatRuntimePanel && (state.currentRoute === "chat" || state.currentRoute === "agent-runtime")) {
       renderChatRuntimePanel();
     }
   });
 
+  window.addEventListener("orientationchange", () => {
+    state.mobileViewport.baselineHeight = 0;
+    state.mobileViewport.width = 0;
+    scheduleViewportInsetSync();
+  });
+
   if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", updateKeyboardInset);
-    window.visualViewport.addEventListener("scroll", updateKeyboardInset);
+    window.visualViewport.addEventListener("resize", () => {
+      scheduleViewportInsetSync({ alignFocusedInput: Boolean(activeViewportInput()) });
+    });
+    window.visualViewport.addEventListener("scroll", () => {
+      scheduleViewportInsetSync({ alignFocusedInput: Boolean(activeViewportInput()) });
+    });
   }
 
   bindSwipeClose(primaryNav, "nav-open");
