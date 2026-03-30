@@ -255,7 +255,7 @@ test.describe("Chat composer", () => {
     await expectComposerState(composer, { draft: "empty" });
   });
 
-  test("keeps user bubbles right-aligned and within seventy percent width", async ({ page }) => {
+  test("keeps user bubbles right-aligned and within eighty percent width", async ({ page }) => {
     const { chatPage, composer } = await openChatWorkspace(page);
     const input = composer.input();
 
@@ -274,7 +274,7 @@ test.describe("Chat composer", () => {
       const bubbleRect = bubble.getBoundingClientRect();
       const messageRect = message.getBoundingClientRect();
       const listRect = list.getBoundingClientRect();
-      const maxWidth = listRect.width * 0.7;
+      const maxWidth = listRect.width * 0.8;
       const rightGap = Math.round(listRect.right - bubbleRect.right);
       const leftGap = Math.round(bubbleRect.left - listRect.left);
       return (

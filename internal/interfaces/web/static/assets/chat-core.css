@@ -27,6 +27,7 @@
   --shadow-soft: 0 18px 40px -34px rgba(15, 23, 42, 0.22);
   --shadow-card: 0 34px 70px -44px rgba(15, 23, 42, 0.28);
   --content-width: 860px;
+  --user-message-max-width: min(80%, 720px);
   --keyboard-offset: 0px;
   --nav-width: 244px;
   --nav-collapsed-width: 68px;
@@ -913,7 +914,7 @@ body {
 }
 
 .msg.user {
-  max-width: min(70%, 720px);
+  max-width: var(--user-message-max-width);
   margin-left: auto;
   align-items: flex-end;
 }

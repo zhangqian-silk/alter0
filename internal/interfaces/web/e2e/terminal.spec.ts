@@ -558,6 +558,86 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.workspace()).toContainText(new RegExp(String(currentSessionID).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   });
 
+  test("auto-collapses process after output arrives and preserves manual reopen state", async ({ page, request }) => {
+    const clientID = createTerminalClientID("process-auto-collapse");
+    const session = await createTerminalSession(request, clientID);
+    const prompt = "Reply with exactly: alter0-process-auto-collapse";
+    const now = Date.now();
+
+    const inputResponse = await request.post(`/api/terminal/sessions/${encodeURIComponent(session.id)}/input`, {
+      headers: {
+        "X-Alter0-Terminal-Client": clientID,
+      },
+      data: {
+        input: prompt,
+      },
+    });
+    expect(inputResponse.ok()).toBeTruthy();
+
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [
+      {
+        id: session.id,
+        title: session.id,
+        terminal_session_id: session.id,
+        status: "running",
+        shell: "codex exec",
+        working_dir: terminalSessionWorkspace(session.id),
+        created_at: now - 5000,
+        updated_at: now - 4000,
+        last_output_at: 0,
+        process_collapsed: {
+          "turn-1": false,
+        },
+        output_collapsed: {},
+        expanded_steps: {},
+        step_details: {},
+        step_loading: {},
+        step_errors: {},
+        step_search: {},
+        turns: [
+          {
+            id: "turn-1",
+            prompt,
+            status: "running",
+            started_at: now - 4500,
+            finished_at: 0,
+            duration_ms: 0,
+            final_output: "",
+            steps: [
+              {
+                id: "step-1",
+                title: "Waiting for Codex",
+                preview: "running",
+                status: "running",
+                started_at: now - 4500,
+                finished_at: 0,
+                duration_ms: 0,
+              },
+            ],
+          },
+        ],
+        entries: [],
+      },
+    ]);
+
+    await openTerminalRoute(page);
+    await waitForTerminalPollAndRepaint(page, session.id);
+
+    const terminalPage = createTerminalPage(page);
+    const processToggle = terminalPage.processToggle("turn-1");
+
+    await expect(terminalPage.finalOutputs().last()).toContainText("alter0-process-auto-collapse");
+    await expect(processToggle).toHaveAttribute("aria-expanded", "false");
+
+    await processToggle.click();
+    await expect(processToggle).toHaveAttribute("aria-expanded", "true");
+
+    await page.reload();
+    await waitForTerminalPollAndRepaint(page, session.id);
+    await expect(terminalPage.processToggle("turn-1")).toHaveAttribute("aria-expanded", "true");
+  });
+
   test("renders markdown links in plain terminal output without collapse chrome", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     const clientID = createTerminalClientID("collapsed-output");
@@ -814,7 +894,7 @@ test.describe("Terminal route", () => {
       const promptRect = promptNode.getBoundingClientRect();
       const nodeRect = node.getBoundingClientRect();
       const width = Math.round(promptRect.width);
-      const maxWidth = Math.round(nodeRect.width * 0.7);
+      const maxWidth = Math.round(nodeRect.width * 0.8);
       const rightGap = Math.round(nodeRect.right - promptRect.right);
       const leftGap = Math.round(promptRect.left - nodeRect.left);
       return width <= maxWidth + 2 && rightGap <= leftGap;
@@ -885,6 +965,7 @@ test.describe("Terminal route", () => {
     const terminalPage = createTerminalPage(page);
     const turnID = "turn-sticky";
     const outputNode = page.locator(`[data-terminal-final-output="${turnID}"]`);
+    const processToggle = terminalPage.processToggle(turnID);
     const scrollSelectorIntoView = async (selector: string, offset = 18) => {
       await terminalPage.chatScreen().evaluate((node, payload) => {
         const target = node.querySelector(payload?.selector || "");
@@ -899,7 +980,15 @@ test.describe("Terminal route", () => {
     };
 
     await expect(terminalPage.turnCard(turnID)).toContainText("line 120");
-    await expect.poll(() => terminalPage.processToggle(turnID).evaluate((node) => window.getComputedStyle(node).position)).toBe("relative");
+    await expect.poll(() => processToggle.evaluate((node) => {
+      const title = node.querySelector(".terminal-process-title");
+      const summary = node.querySelector(".terminal-process-summary");
+      if (!(title instanceof HTMLElement) || !(summary instanceof HTMLElement)) {
+        return null;
+      }
+      return Math.abs(title.getBoundingClientRect().top - summary.getBoundingClientRect().top);
+    })).toBeLessThanOrEqual(2);
+    await expect.poll(() => processToggle.evaluate((node) => window.getComputedStyle(node).position)).toBe("relative");
     await expect.poll(() => outputNode.evaluate((node) => window.getComputedStyle(node).position)).toBe("static");
     await scrollSelectorIntoView(`[data-terminal-process-toggle="${turnID}"]`);
     await expect(page.locator(".is-terminal-sticky-active")).toHaveCount(0);
