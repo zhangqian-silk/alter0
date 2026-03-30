@@ -1668,6 +1668,7 @@
 }
 
 .agent-thread-message.is-user .agent-thread-bubble {
+  max-width: var(--user-message-max-width);
   background: #2563eb;
   border-color: #2563eb;
   color: #ffffff;

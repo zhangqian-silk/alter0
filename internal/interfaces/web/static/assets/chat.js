@@ -8506,6 +8506,17 @@ function applyTerminalSessionSnapshot(session, snapshot) {
   return session;
 }
 
+function hasTerminalTurnFinalOutput(turn) {
+  return typeof turn?.final_output === "string" && turn.final_output.trim().length > 0;
+}
+
+function shouldCollapseTerminalProcess(turn) {
+  if (hasTerminalTurnFinalOutput(turn)) {
+    return true;
+  }
+  return ["completed", "failed", "interrupted"].includes(String(turn?.status || "").trim().toLowerCase());
+}
+
 function resolveTerminalProcessCollapsed(session, turn) {
   if (!session || !turn) {
     return false;
@@ -8517,7 +8528,7 @@ function resolveTerminalProcessCollapsed(session, turn) {
   if (session.process_collapsed && Object.prototype.hasOwnProperty.call(session.process_collapsed, turnID)) {
     return Boolean(session.process_collapsed[turnID]);
   }
-  return ["completed", "failed", "interrupted"].includes(String(turn.status || "").trim().toLowerCase());
+  return shouldCollapseTerminalProcess(turn);
 }
 
 function pruneTerminalStateMap(map, allowedKeys) {
@@ -8538,6 +8549,8 @@ function mergeTerminalTurnSummaries(session, turnsRaw) {
     return;
   }
   const items = Array.isArray(turnsRaw) ? turnsRaw : [];
+  const previousTurns = Array.isArray(session.turns) ? session.turns : [];
+  const previousTurnsByID = new Map(previousTurns.map((turn) => [String(turn?.id || "").trim(), turn]));
   const previousProcess = session.process_collapsed && typeof session.process_collapsed === "object" ? session.process_collapsed : {};
   const previousOutputCollapsed = session.output_collapsed && typeof session.output_collapsed === "object" ? session.output_collapsed : {};
   const previousExpanded = session.expanded_steps && typeof session.expanded_steps === "object" ? session.expanded_steps : {};
@@ -8565,8 +8578,14 @@ function mergeTerminalTurnSummaries(session, turnsRaw) {
   session.process_collapsed = pruneTerminalStateMap(previousProcess, allowedTurnIDs);
   session.output_collapsed = pruneTerminalStateMap(previousOutputCollapsed, allowedTurnIDs);
   turns.forEach((turn) => {
+    const previousTurn = previousTurnsByID.get(turn.id) || null;
+    const gainedFinalOutput = hasTerminalTurnFinalOutput(turn) && !hasTerminalTurnFinalOutput(previousTurn);
+    if (gainedFinalOutput) {
+      session.process_collapsed[turn.id] = true;
+      return;
+    }
     if (!Object.prototype.hasOwnProperty.call(session.process_collapsed, turn.id)) {
-      session.process_collapsed[turn.id] = ["completed", "failed", "interrupted"].includes(String(turn.status || "").trim().toLowerCase());
+      session.process_collapsed[turn.id] = shouldCollapseTerminalProcess(turn);
     }
   });
   session.expanded_steps = pruneTerminalStateMap(previousExpanded, allowedStepIDs);

@@ -639,7 +639,7 @@
   align-items: flex-start;
   flex: 0 1 auto;
   width: auto;
-  max-width: min(70%, 720px);
+  max-width: var(--user-message-max-width);
   margin-left: auto;
   padding: 16px 22px;
   border: 1px solid rgba(210, 219, 234, 0.92);
@@ -1921,7 +1921,7 @@
   }
 
   .msg.user {
-    max-width: 70%;
+    max-width: 80%;
   }
 
   .composer-shell {
@@ -2280,9 +2280,35 @@
     flex-direction: column;
   }
 
+  .terminal-process-toggle {
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-left: 14px;
+    font-size: 11px;
+  }
+
   .terminal-process-copy {
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .terminal-process-title {
+    flex: 0 0 auto;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+
+  .terminal-process-summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 11px;
+  }
+
+  .terminal-process-meta {
+    font-size: 10px;
   }
 
   .terminal-composer-shell {
