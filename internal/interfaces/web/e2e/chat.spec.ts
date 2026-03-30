@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   expectComposerCounter,
   expectComposerFocusedValue,
@@ -19,6 +19,80 @@ import {
   openChatWorkspaceWithTwoDraftSessions,
   reloadChatWorkspace,
 } from "./helpers/scenarios/chat";
+
+type VisualViewportShape = {
+  width?: number;
+  height?: number;
+  offsetTop?: number;
+  offsetLeft?: number;
+};
+
+async function installVisualViewportMock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    class MockVisualViewport extends EventTarget {
+      width: number;
+      height: number;
+      offsetTop: number;
+      offsetLeft: number;
+      pageTop: number;
+      pageLeft: number;
+      scale: number;
+
+      constructor() {
+        super();
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.offsetTop = 0;
+        this.offsetLeft = 0;
+        this.pageTop = 0;
+        this.pageLeft = 0;
+        this.scale = 1;
+      }
+    }
+
+    const mock = new MockVisualViewport();
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: mock,
+    });
+    Object.defineProperty(window, "__alter0SetVisualViewport", {
+      configurable: true,
+      value: (next: VisualViewportShape) => {
+        if (!next || typeof next !== "object") {
+          return;
+        }
+        if (typeof next.width === "number") {
+          mock.width = next.width;
+        }
+        if (typeof next.height === "number") {
+          mock.height = next.height;
+        }
+        if (typeof next.offsetTop === "number") {
+          mock.offsetTop = next.offsetTop;
+          mock.pageTop = next.offsetTop;
+        }
+        if (typeof next.offsetLeft === "number") {
+          mock.offsetLeft = next.offsetLeft;
+          mock.pageLeft = next.offsetLeft;
+        }
+        mock.dispatchEvent(new Event("resize"));
+        mock.dispatchEvent(new Event("scroll"));
+      },
+    });
+  });
+}
+
+async function setVisualViewport(
+  page: Page,
+  next: VisualViewportShape
+): Promise<void> {
+  await page.evaluate((value) => {
+    const setter = (window as typeof window & {
+      __alter0SetVisualViewport?: (payload: typeof value) => void;
+    }).__alter0SetVisualViewport;
+    setter?.(value);
+  }, next);
+}
 
 test.describe("Chat composer", () => {
   test("keeps empty session hint near the session list header", async ({ page }) => {
@@ -87,6 +161,62 @@ test.describe("Chat composer", () => {
 
     await runtimeToggles.first().click();
     await expect(page.locator(".composer-runtime-popover-mobile")).toBeVisible();
+  });
+
+  test("keeps the chat composer visible while the mobile keyboard changes the visual viewport", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 760, height: 980 });
+    const { composer } = await openChatWorkspace(page);
+    const input = composer.input();
+
+    await input.click();
+    await setVisualViewport(page, { width: 760, height: 620, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("360px");
+
+    const opened = await page.evaluate(() => {
+      const shell = document.querySelector(".composer-shell");
+      const inputNode = document.getElementById("composerInput");
+      const viewport = window.visualViewport;
+      if (!(shell instanceof HTMLElement) || !(inputNode instanceof HTMLElement) || !viewport) {
+        return null;
+      }
+      const shellRect = shell.getBoundingClientRect();
+      const inputRect = inputNode.getBoundingClientRect();
+      return {
+        viewportBottom: viewport.height + viewport.offsetTop,
+        shellBottom: shellRect.bottom,
+        inputBottom: inputRect.bottom,
+      };
+    });
+
+    expect(opened).not.toBeNull();
+    expect(opened?.shellBottom ?? 0).toBeLessThanOrEqual((opened?.viewportBottom ?? 0) + 2);
+    expect(opened?.inputBottom ?? 0).toBeLessThanOrEqual((opened?.viewportBottom ?? 0) - 8);
+
+    await setVisualViewport(page, { width: 760, height: 980, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("0px");
+
+    const closed = await page.evaluate(() => {
+      const shell = document.querySelector(".composer-shell");
+      const viewport = window.visualViewport;
+      if (!(shell instanceof HTMLElement) || !viewport) {
+        return null;
+      }
+      const shellRect = shell.getBoundingClientRect();
+      return {
+        viewportBottom: viewport.height + viewport.offsetTop,
+        shellBottom: shellRect.bottom,
+      };
+    });
+
+    expect(closed).not.toBeNull();
+    expect(Math.abs((closed?.viewportBottom ?? 0) - (closed?.shellBottom ?? 0))).toBeLessThan(20);
   });
 
   test("keeps the mobile navigation fully reachable on short viewports", async ({ page }) => {

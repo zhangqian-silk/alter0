@@ -29,6 +29,7 @@ const (
 	workspaceTerminalDirName        = "terminal"
 	workspaceSessionsDirName        = "sessions"
 	maxEntryPageLimit               = 200
+	terminalHostUnavailableMessage  = "terminal host unavailable"
 )
 
 var (
@@ -556,10 +557,7 @@ func (s *Service) shutdown() {
 			item.turnCancel = nil
 		}
 		if !item.closedByUser && item.summary.Status == terminaldomain.SessionStatusStarting {
-			item.summary.Status = terminaldomain.SessionStatusInterrupted
-			item.summary.ErrorMessage = "terminal host unavailable"
-			item.summary.UpdatedAt = time.Now().UTC()
-			item.appendEntryLocked("system", "terminal interrupted: terminal host unavailable")
+			item.markInterruptedLocked(item.turnByIDLocked(item.activeTurnID), time.Now().UTC(), terminalHostUnavailableMessage)
 		}
 		item.turnRunning = false
 		item.mu.Unlock()
@@ -794,14 +792,20 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	item.mu.Lock()
 
 	turn := item.turnByIDLocked(turnID)
+	activeTurn := item.activeTurnID == turnID
 
-	if item.turnCancel != nil {
-		item.turnCancel()
-		item.turnCancel = nil
-	}
-	item.turnRunning = false
-	if item.activeTurnID == turnID {
+	if activeTurn {
+		if item.turnCancel != nil {
+			item.turnCancel()
+			item.turnCancel = nil
+		}
+		item.turnRunning = false
 		item.activeTurnID = ""
+	} else if item.turnRunning && strings.TrimSpace(item.activeTurnID) != "" {
+		s.finishSupersededTurnLocked(item, turn, turnErr, stderrText, now)
+		item.mu.Unlock()
+		s.persistSession(item)
+		return
 	}
 
 	if item.closedByUser {
@@ -836,16 +840,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	}
 
 	if errors.Is(turnErr, context.Canceled) || errors.Is(s.rootCtx.Err(), context.Canceled) {
-		item.summary.Status = terminaldomain.SessionStatusInterrupted
-		item.summary.ErrorMessage = "terminal host unavailable"
-		item.summary.FinishedAt = now
-		item.appendEntryLocked("system", "terminal interrupted: terminal host unavailable")
-		if turn != nil {
-			turn.Status = "interrupted"
-			turn.FinishedAt = now
-			item.newSystemStepLocked(turn, "Interrupted", "terminal host unavailable", now, "failed")
-			turn.promoteFinalOutput()
-		}
+		item.markInterruptedLocked(turn, now, terminalHostUnavailableMessage)
 		item.mu.Unlock()
 		s.persistSession(item)
 		return
@@ -862,6 +857,55 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	}
 	item.mu.Unlock()
 	s.persistSession(item)
+}
+
+func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtimeTurn, turnErr error, stderrText string, now time.Time) {
+	if turn == nil {
+		return
+	}
+
+	if turnErr == nil {
+		turn.Status = "completed"
+		if turn.FinishedAt.IsZero() {
+			turn.FinishedAt = now
+		}
+		turn.promoteFinalOutput()
+		return
+	}
+
+	if errors.Is(turnErr, context.Canceled) || errors.Is(s.rootCtx.Err(), context.Canceled) {
+		reason := terminalHostUnavailableMessage
+		if turn.Status != "interrupted" {
+			turn.Status = "interrupted"
+		}
+		if turn.FinishedAt.IsZero() {
+			turn.FinishedAt = now
+		}
+		for _, step := range turn.steps {
+			if step == nil || !isRuntimeStepLive(step.Status) {
+				continue
+			}
+			step.Status = "interrupted"
+			if step.FinishedAt.IsZero() {
+				step.FinishedAt = now
+			}
+		}
+		if !hasRuntimeTurnSystemStep(turn, "Interrupted", reason) {
+			item.newSystemStepLocked(turn, "Interrupted", reason, now, "failed")
+		}
+		turn.promoteFinalOutput()
+		return
+	}
+
+	message := compactCodexError(stderrText, turnErr)
+	turn.Status = "failed"
+	if turn.FinishedAt.IsZero() {
+		turn.FinishedAt = now
+	}
+	if !hasRuntimeTurnSystemStep(turn, "Request failed", message) {
+		item.newSystemStepLocked(turn, "Request failed", message, now, "failed")
+	}
+	turn.promoteFinalOutput()
 }
 
 func (s *runtimeSession) beginTurnLocked(prompt string, now time.Time) *runtimeTurn {
@@ -1448,6 +1492,74 @@ func (s *runtimeSession) appendEntryLocked(stream string, text string) {
 		s.summary.LastOutputAt = now
 	}
 	s.summary.UpdatedAt = now
+}
+
+func (s *runtimeSession) markInterruptedLocked(turn *runtimeTurn, now time.Time, message string) {
+	reason := strings.TrimSpace(message)
+	if reason == "" {
+		reason = terminalHostUnavailableMessage
+	}
+	summaryText := "terminal interrupted: " + reason
+	alreadyRecorded := hasRuntimeTurnSystemStep(turn, "Interrupted", reason)
+
+	s.summary.Status = terminaldomain.SessionStatusInterrupted
+	s.summary.ErrorMessage = reason
+	s.summary.FinishedAt = now
+	if s.summary.UpdatedAt.Before(now) {
+		s.summary.UpdatedAt = now
+	}
+	if !alreadyRecorded {
+		s.appendEntryLocked("system", summaryText)
+	}
+	if turn == nil {
+		return
+	}
+	if turn.Status != "interrupted" {
+		turn.Status = "interrupted"
+	}
+	if turn.FinishedAt.IsZero() {
+		turn.FinishedAt = now
+	}
+	for _, step := range turn.steps {
+		if step == nil || !isRuntimeStepLive(step.Status) {
+			continue
+		}
+		step.Status = "interrupted"
+		if step.FinishedAt.IsZero() {
+			step.FinishedAt = now
+		}
+	}
+	if !alreadyRecorded {
+		s.newSystemStepLocked(turn, "Interrupted", reason, now, "failed")
+	}
+	turn.promoteFinalOutput()
+}
+
+func hasRuntimeTurnSystemStep(turn *runtimeTurn, title string, message string) bool {
+	if turn == nil {
+		return false
+	}
+	targetTitle := strings.TrimSpace(title)
+	targetMessage := strings.TrimSpace(message)
+	for _, step := range turn.steps {
+		if step == nil || step.Type != "log" {
+			continue
+		}
+		if strings.TrimSpace(step.Title) != targetTitle {
+			continue
+		}
+		for _, block := range step.Blocks {
+			if strings.TrimSpace(block.Content) == targetMessage {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isRuntimeStepLive(status string) bool {
+	normalized := strings.TrimSpace(strings.ToLower(status))
+	return normalized == "" || normalized == "running" || normalized == "starting"
 }
 
 func (s *runtimeSession) snapshot() terminaldomain.Session {

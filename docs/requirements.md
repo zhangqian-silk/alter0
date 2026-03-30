@@ -24,7 +24,7 @@
 | R-011 | 本地文件存储 | supported | Control/Scheduler 支持 `json`/`markdown` 本地存储 |
 | R-012 | Web 侧边栏交互优化 | supported | 点击侧边栏项后进入“信息展示模式”：主区域仅展示对应信息，不再弹出或保留对话框；侧边栏在展开态提供显式折叠按钮 |
 | R-013 | 流式传输能力 | supported | 提供端到端流式响应：后端增量推送生成内容，前端实时渲染并可感知进行中/完成/失败状态 |
-| R-014 | 移动端真机适配增强 | supported | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭、Chat 输入区信息收纳与手势交互），并确保 Chat/Terminal 在 iOS/Android 键盘输入与输入法候选确认时不回顶、不抖动；Chat 发送按钮需与会话设置入口同排，运行时文案保持单语言一致，配置弹窗文案在窄宽度下不重叠 |
+| R-014 | 移动端真机适配增强 | supported | 优化小屏与键盘场景（安全区、输入区跟随、遮罩关闭、Chat 输入区信息收纳与手势交互），并确保 Chat/Terminal 在 iOS/Android 键盘输入与输入法候选确认时不回顶、不抖动；Chat/Agent 输入区在 `VisualViewport` 高度变化时持续贴底可见；Chat 发送按钮需与会话设置入口同排，运行时文案保持单语言一致，配置弹窗文案在窄宽度下不重叠 |
 | R-015 | 移动端会话创建与信息完整性 | supported | 确保移动端可稳定新建会话，并完整展示会话必要信息（标题、入口状态、空态提示） |
 | R-016 | 会话级并发控制与全局限流 | supported | 支持多会话并发处理，同时保证同一会话顺序一致，并提供系统级并发上限、排队与超时降级能力 |
 | R-017 | 会话短期记忆 | supported | 在单会话内维护可控窗口的上下文记忆，提升多轮对话连续性与指代解析能力 |
@@ -61,7 +61,7 @@
 | R-048 | ReAct 模式 Agent 调用 | supported | Agent 执行链已提供 ReAct 循环、工具调用、多轮观察与 `codex_exec` 协同执行能力 |
 | R-049 | 模型配置管理 | supported | 支持多 Provider/多模型配置、启用禁用、默认 Provider 与默认模型切换，并对禁用默认项自动收敛到可用配置 |
 | R-050 | Web 登录后按 Agent 隔离 Session 视图 | supported | 密码验证通过后，Web 对话页按目标 Agent 维护独立 Session 历史；具备独立前端入口的 Agent 不进入通用 Agent 页面历史 |
-| R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识；Terminal 历史在同一 Web 登录态下跨设备共享，不再按浏览器 client 标识隔离；运行态缺失后继续发送会自动恢复原会话并保留历史，工作区仍按会话独立隔离 |
+| R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识；Terminal 历史在同一 Web 登录态下跨设备共享，不再按浏览器 client 标识隔离；运行态缺失后继续发送会自动恢复原会话并保留历史，工作区仍按会话独立隔离；同一状态周期内不重复追加相同的运行态中断提醒 |
 | R-052 | Agent Memory Files 勾选注入与文件可写记忆对齐 | supported | Agent Profile 支持勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md` 与 Daily Memory；执行前将所选文件内容与路径注入运行时上下文，并可搭配独立 `memory` Skill 统一记忆读写规范 |
 | R-053 | 内置 Agent Catalog 与主从委派 | supported | 运行时统一聚合内置 Agent 与用户管理 Agent；`Chat` 默认绑定 `main` Agent，通用 `Agent` 页面承载其余入口 Agent；其中 `coding` Agent 负责面向用户收口编码任务，并通过 `codex_exec` 多轮驱动具体开发执行，同时绑定当前仓库、分支、预览页与 PR 交付上下文 |
 | R-054 | Product 目录、Workspace 与管理页 | supported | 新增 `Products` 平台模块，集中管理多个 Product 定义、主 Agent、详情页空间与子 Agent 矩阵，并为每个详情页空间提供独立 HTML 页面入口 |
