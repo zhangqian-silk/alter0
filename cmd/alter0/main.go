@@ -61,7 +61,7 @@ const defaultWebAddr = "127.0.0.1:18088"
 
 const defaultPublicCodexCommand = "/usr/local/bin/codex"
 const defaultCodexWorkspaceModeEnvKey = "ALTER0_CODEX_WORKSPACE_MODE"
-const defaultCodexWorkspaceMode = "repo-root"
+const defaultCodexWorkspaceMode = "session"
 
 func main() {
 	relaunchHelper := flag.Bool(relaunchHelperFlag, false, "internal relaunch helper")

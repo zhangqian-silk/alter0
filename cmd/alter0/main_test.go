@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestEnsureDefaultCodexWorkspaceModeSetsRepoRootDefault(t *testing.T) {
+func TestEnsureDefaultCodexWorkspaceModeSetsSessionDefault(t *testing.T) {
 	t.Setenv(defaultCodexWorkspaceModeEnvKey, "")
 
 	ensureDefaultCodexWorkspaceMode()

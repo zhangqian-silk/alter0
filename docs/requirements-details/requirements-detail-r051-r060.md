@@ -9,11 +9,11 @@
 1. Terminal 模块必须持久化存储 Codex CLI 会话标识，并与平台内 `terminal_session_id` 建立稳定映射；页面刷新、服务重启或运行态退出后，该标识仍可用于恢复会话。
 2. 若当前实现中的 `terminal_session_id` 已实际承载 Codex CLI 会话标识，则需将其作为持久恢复主键稳定保存；若两者语义不同，则需新增独立字段保存 Codex CLI 标识，并保持映射关系可查询。
 3. Terminal 会话持久化内容至少包含：`terminal_session_id`、Codex CLI 会话标识、标题、工作目录、创建时间、最近活动时间、最近一次运行状态、关联日志或步骤索引。
-   - 当前实现将 Terminal 会话状态持久化到 `.alter0/state/terminal/sessions/<terminal_session_id>.json`，保留会话摘要、Codex CLI 线程标识、输出日志与步骤视图索引；终端默认工作目录统一收敛到 `.alter0/workspaces/terminal/shared`。
+   - 当前实现将 Terminal 会话状态持久化到 `.alter0/state/terminal/sessions/<terminal_session_id>.json`，保留会话摘要、Codex CLI 线程标识、输出日志与步骤视图索引；终端每个会话使用独立工作目录 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
 4. Terminal 模块不再设置产品级会话上限；前端、接口与配置项中不再以“最大会话数”为用户约束，不再因达到上限拒绝创建或恢复 Terminal 会话。
 5. Terminal 模块不再设置产品级会话超时淘汰规则；系统不因固定超时阈值自动销毁 Terminal 会话记录、历史消息、日志索引或 Codex CLI 标识映射。
 6. 若底层 Codex CLI 运行因空闲、网络、进程退出或外部超时而中断，系统仅将该 Terminal 会话标记为已退出、已中断或待恢复状态，不删除会话本身，不清空历史，不重置标识映射。
-   - 用户显式执行 `Delete` 时除外：系统需直接删除 Terminal 会话主记录与 `.alter0/state/terminal/sessions/<terminal_session_id>.json`，不再保留恢复入口，也不应先把会话改写成 `exited` 等过渡状态；共享工作区 `.alter0/workspaces/terminal/shared` 不随单个会话删除而清空。
+   - 用户显式执行 `Delete` 时除外：系统需直接删除 Terminal 会话主记录与 `.alter0/state/terminal/sessions/<terminal_session_id>.json`，不再保留恢复入口，也不应先把会话改写成 `exited` 等过渡状态；该 Terminal 会话对应的独立工作区需一并删除。
 7. 恢复要求：用户可对已退出或超时中断的 Terminal 会话执行恢复；恢复时系统优先复用已持久化的 Codex CLI 会话标识继续接续原会话，无法直接接续时需返回明确原因，并允许在保留同一 Terminal 会话历史的前提下重新建立运行态。
 8. 输入要求：当用户向已退出或超时中断的 Terminal 会话继续发送输入时，系统可自动触发恢复流程，或先给出明确恢复提示并由用户确认后恢复，但不得强制用户新建独立会话。
    - 当前实现采用“继续发送即恢复”的交互方式；前端保留原会话，直接对已退出或已中断会话重新提交输入。
@@ -25,7 +25,7 @@
 11. 验收：Terminal 页面创建多个会话后不再因会话数触发上限错误；某一会话运行超时或中断后，历史记录仍可见，用户可对原会话执行恢复并继续输入，且恢复后仍能回看原有日志与上下文链路。
    - 补充验收：新建后尚未发送首条输入的 Terminal 会话即使因空闲导致运行态缺失，用户首次发送仍在原会话内成功执行，不出现“terminal session not found”阻断。
    - 补充验收：同一 Web 登录态下，手机与 PC 进入 Terminal 页面时能看到同一批会话历史；任一端创建、恢复或删除会话后，另一端刷新即可看到一致结果。
-   - 补充验收：用户显式删除某个 Terminal 会话后，该会话不再可恢复，相关状态文件同步清理，但共享工作区不因单会话删除被清空。
+   - 补充验收：用户显式删除某个 Terminal 会话后，该会话不再可恢复，相关状态文件与对应独立工作区同步清理。
 
 #### 实施边界（草案）
 
@@ -59,7 +59,7 @@
 - 依赖需求：`R-019`、`R-035`、`R-046`
 - 验证口径：标识持久化完整性、超时后历史保留完整性、恢复成功率、恢复失败可解释性、无会话上限拦截
 - 验证记录：
-  - 2026-03-30：Terminal 默认工作目录调整为 `.alter0/workspaces/terminal/shared`，单会话删除不再清空共享工作区。
+- 2026-03-30：Terminal 会话历史在同一 Web 登录态下改为跨设备共享；工作区仍按 `terminal_session_id` 独立隔离到 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
   - 2026-03-30：Terminal 历史在同一 Web 登录态下改为跨设备共享，服务端不再按浏览器 client 标识隔离会话列表与详情访问。
 
 ### R-052
@@ -98,7 +98,7 @@
 1. 运行时必须提供统一 `Agent Catalog`，同时聚合系统内置 Agent 与控制面管理的 Agent Profile。
 2. 内置 Agent 至少包括：
    - `main`：默认主 Agent `Alter0`，负责通用对话入口与子 Agent 调度
-   - `coding`：专项编码 Agent
+   - `coding`：专项编码 Agent，负责理解用户开发目标、保持交互收口，并通过 `codex_exec` 多轮推进具体实现与验证
    - `writing`：专项写作 Agent
 3. `Chat` 页面必须默认绑定内置 `main` Agent（展示名 `Alter0`），进入 `Chat` 路由或新建 `Chat` 会话时需自动纠偏到该 Agent，不再以 Raw Model 作为默认执行目标。
 4. 前端必须保留 `Chat` 作为内置 `main` Agent 的独立入口；其余入口 Agent 统一通过通用 `Agent` 运行页承载。具备独立前端入口的 Agent 不进入通用 `Agent` 页的候选列表与会话历史。
@@ -111,19 +111,26 @@
    - `agent_id`：目标 Agent 标识
    - `task`：下发给子 Agent 的具体任务
    - `context`：可选补充上下文
-9. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files。
-10. 需限制主从递归深度与自委派，避免无限递归。
-11. 验收：
+9. `coding` Agent 必须作为用户可直接选择的入口 Agent，对编码类请求承担主交互职责；具体开发工作优先通过 `codex_exec` 执行，并根据每轮执行结果继续追加下一步实现或验证动作，直至完成或明确阻塞。
+   - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、本地仓库路径、当前分支、会话工作区、PR 基线分支与交付要求。
+   - 涉及测试页面时，预览域名必须使用当前会话标识派生的 8 位短 hash，格式为 `https://<session_short_hash>.alter0.cn`。
+   - `coding` Agent 在完成收口前，需明确交付代码变更、验证结果、文档同步状态、预览页地址（如适用）与 PR handoff 信息。
+10. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files。
+11. 需限制主从递归深度与自委派，避免无限递归。
+12. 验收：
    - `GET /api/agents` 可返回内置入口 Agent
    - `Chat` 默认走 `main` Agent
+   - `coding` Agent 在通用 `Agent` 入口中可直接选择，并以 Agent 主导、Codex 执行的方式推进编码任务
+   - `coding` Agent 的运行时提示包含当前仓库、分支、会话预览域名和 PR 交付规则
+   - 涉及测试页面时，预览地址遵循 `https://<session_short_hash>.alter0.cn`
    - `Agent` 页可直接进入 `coding`、`writing` 等无独立前端入口的内置 Agent 会话
    - 主 Agent 可通过 `delegate_agent` 调用 `coding`、`writing` 等专项 Agent 并回收结果
    - 用户新建 Agent 时若名称与内置 Agent 保留 ID 冲突，服务端会自动生成下一个可用 ID
 
 #### Traceability
 
-- 实现文件：`internal/agent/application/catalog.go`、`internal/agent/application/builtin.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/chat.html`、`cmd/alter0/main.go`
-- 测试覆盖：`internal/execution/infrastructure/hybrid_nl_processor_test.go`、`internal/interfaces/web/server_control_test.go`、`internal/interfaces/web/server_message_test.go`
+- 实现文件：`internal/agent/application/catalog.go`、`internal/agent/application/builtin.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/execution/infrastructure/codex_cli_processor.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/chat.html`、`cmd/alter0/main.go`
+- 测试覆盖：`internal/execution/infrastructure/hybrid_nl_processor_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/interfaces/web/server_control_test.go`、`internal/interfaces/web/server_message_test.go`
 
 ### R-054 Product 目录、Workspace 与管理页
 

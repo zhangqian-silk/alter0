@@ -281,6 +281,16 @@ func TestRuntimeAgentCatalogListsBuiltinEntrypoints(t *testing.T) {
 	if response.Items[0].ID != "main" || response.Items[0].Source != controldomain.AgentSourceBuiltin {
 		t.Fatalf("expected main builtin first, got %+v", response.Items[0])
 	}
+	foundCoding := false
+	for _, item := range response.Items {
+		if item.ID == "coding" && item.Source == controldomain.AgentSourceBuiltin && item.EntryPoint {
+			foundCoding = true
+			break
+		}
+	}
+	if !foundCoding {
+		t.Fatalf("expected builtin coding entrypoint in runtime list, got %+v", response.Items)
+	}
 }
 
 func TestManagedAgentCreateSkipsBuiltinReservedID(t *testing.T) {

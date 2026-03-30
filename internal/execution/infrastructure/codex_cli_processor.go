@@ -63,9 +63,18 @@ type CodexCLIProcessor struct {
 type codexExecutionPayload struct {
 	Protocol     string                    `json:"protocol"`
 	UserPrompt   string                    `json:"user_prompt"`
+	AgentContext *codexAgentContext        `json:"agent_context,omitempty"`
 	SkillPolicy  *execdomain.SkillContext  `json:"skill_context,omitempty"`
 	MCPPolicy    *execdomain.MCPContext    `json:"mcp_context,omitempty"`
 	MemoryPolicy *execdomain.MemoryContext `json:"memory_context,omitempty"`
+}
+
+type codexAgentContext struct {
+	Protocol     string `json:"protocol"`
+	AgentID      string `json:"agent_id,omitempty"`
+	AgentName    string `json:"agent_name,omitempty"`
+	SystemPrompt string `json:"system_prompt,omitempty"`
+	DelegatedBy  string `json:"delegated_by,omitempty"`
 }
 
 type codexJSONEvent struct {
@@ -364,6 +373,7 @@ func buildCodexPrompt(prompt string, metadata map[string]string) (string, error)
 	rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey))
 	rawMCPContext := strings.TrimSpace(metadataValue(metadata, execdomain.MCPContextMetadataKey))
 	rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey))
+	agentContext := buildCodexAgentContext(metadata)
 
 	var skillContext *execdomain.SkillContext
 	if rawSkillContext != "" {
@@ -397,13 +407,14 @@ func buildCodexPrompt(prompt string, metadata map[string]string) (string, error)
 			memoryContext = &parsedMemoryContext
 		}
 	}
-	if skillContext == nil && mcpContext == nil && memoryContext == nil {
+	if agentContext == nil && skillContext == nil && mcpContext == nil && memoryContext == nil {
 		return prompt, nil
 	}
 
 	payload := codexExecutionPayload{
 		Protocol:     "alter0.codex-exec/v1",
 		UserPrompt:   prompt,
+		AgentContext: agentContext,
 		SkillPolicy:  skillContext,
 		MCPPolicy:    mcpContext,
 		MemoryPolicy: memoryContext,
@@ -413,6 +424,23 @@ func buildCodexPrompt(prompt string, metadata map[string]string) (string, error)
 		return "", fmt.Errorf("marshal codex prompt payload: %w", err)
 	}
 	return string(encoded), nil
+}
+
+func buildCodexAgentContext(metadata map[string]string) *codexAgentContext {
+	agentID := strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey))
+	agentName := strings.TrimSpace(metadataValue(metadata, execdomain.AgentNameMetadataKey))
+	systemPrompt := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey))
+	delegatedBy := strings.TrimSpace(metadataValue(metadata, execdomain.AgentDelegatedByMetadataKey))
+	if agentID == "" && agentName == "" && systemPrompt == "" && delegatedBy == "" {
+		return nil
+	}
+	return &codexAgentContext{
+		Protocol:     "alter0.agent-context/v1",
+		AgentID:      agentID,
+		AgentName:    agentName,
+		SystemPrompt: systemPrompt,
+		DelegatedBy:  delegatedBy,
+	}
 }
 
 func metadataValue(metadata map[string]string, key string) string {

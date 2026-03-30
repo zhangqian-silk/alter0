@@ -224,6 +224,25 @@ func TestCodexCLIProcessorProcessWithMemoryContextPayload(t *testing.T) {
 	}
 }
 
+func TestCodexCLIProcessorProcessWithAgentContextPayload(t *testing.T) {
+	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","agent_context":{"protocol":"alter0.agent-context/v1","agent_id":"coding","agent_name":"Coding Agent","system_prompt":"Drive implementation through Codex.","delegated_by":"main"}}`
+	processor := newTestProcessor("success", expectedPrompt)
+
+	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey:  "session-default",
+		execdomain.AgentIDMetadataKey:           "coding",
+		execdomain.AgentNameMetadataKey:         "Coding Agent",
+		execdomain.AgentSystemPromptMetadataKey: "Drive implementation through Codex.",
+		execdomain.AgentDelegatedByMetadataKey:  "main",
+	})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
+	}
+}
+
 func TestCodexCLIProcessorProcessUsesSessionTaskWorkspace(t *testing.T) {
 	expectedWorkspace := filepath.Join(".alter0", "workspaces", "sessions", "session-a", "tasks", "task-a")
 	processor := newTestProcessor("success", "reply: hello", expectedWorkspace)

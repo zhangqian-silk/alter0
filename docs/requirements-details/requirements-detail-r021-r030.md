@@ -297,4 +297,4 @@
   - 2026-03-04：会话链路支持快速应答返回 `task_id/task_status`，任务完成后摘要回写原会话并保留 `task_id -> request_message_id/result_message_id` 回链。
   - 2026-03-04：任务回读接口支持按会话筛选、按 `task_id` 查询详情、游标日志读取、产物读取与失败任务重试。
   - 2026-03-30：新增会话级联删除，`DELETE /api/sessions/{session_id}` 会同步移除任务索引、任务目录与会话工作区。
-  - 2026-03-30：Async Task 默认执行目录收敛到仓库根目录；旧式任务工作区仅作为兼容清理对象保留。
+  - 2026-03-30：Async Task 默认执行目录恢复为 `.alter0/workspaces/sessions/<session_id>/tasks/<task_id>`，并继续随所属会话清理。
