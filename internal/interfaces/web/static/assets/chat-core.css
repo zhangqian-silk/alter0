@@ -1270,6 +1270,11 @@ body {
   min-width: 0;
 }
 
+.composer-runtime-group-compact,
+.composer-runtime-control-compact {
+  width: 100%;
+}
+
 .composer-runtime-divider {
   width: 1px;
   height: 16px;
@@ -1308,6 +1313,30 @@ body {
   gap: 6px;
   cursor: pointer;
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.composer-runtime-trigger-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  text-align: left;
+}
+
+.composer-runtime-trigger-copy strong {
+  color: var(--ink-strong);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.composer-runtime-trigger-copy span {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .composer-runtime-trigger:hover {
@@ -1365,6 +1394,17 @@ body {
 
 .composer-runtime-popover.is-wide {
   width: min(480px, calc(100vw - 40px));
+}
+
+.composer-runtime-popover-mobile {
+  display: grid;
+  gap: 12px;
+}
+
+.composer-runtime-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .composer-runtime-popover-head {
@@ -1554,5 +1594,60 @@ body {
 
   .composer-runtime-divider {
     display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .composer-shell {
+    padding: 10px 12px calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .composer {
+    border-radius: 22px;
+    padding: 12px 12px 10px;
+    gap: 8px;
+  }
+
+  .composer textarea {
+    min-height: 44px;
+    line-height: 1.6;
+  }
+
+  .composer-runtime-trigger-compact {
+    width: 100%;
+    min-height: 40px;
+    justify-content: flex-start;
+    padding: 0 12px;
+    gap: 10px;
+  }
+
+  .composer-runtime-trigger-compact .composer-runtime-trigger-caret {
+    margin-left: auto;
+  }
+
+  .composer-runtime-popover-mobile {
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: min(62vh, 520px);
+    overflow: auto;
+  }
+
+  .composer-submit-bar {
+    justify-content: flex-end;
+  }
+
+  .composer-submit-bar [data-composer-counter="chat-main"] {
+    display: none;
+  }
+
+  .chat-runtime-note,
+  .composer-note {
+    display: none;
+  }
+
+  .chat-runtime-error {
+    display: block;
+    margin-top: 2px;
   }
 }

@@ -419,6 +419,9 @@ const I18N = {
     "chat.runtime.model_hint": "Switches apply to upcoming messages in this session.",
     "chat.runtime.tools_hint": "Select extra Tools and MCP integrations for upcoming messages.",
     "chat.runtime.skills_hint": "Select extra Skills for upcoming messages.",
+    "chat.runtime.mobile": "Session",
+    "chat.runtime.mobile_hint": "Choose model, tools, and skills for upcoming messages.",
+    "chat.runtime.mobile_meta": "{model} · Tools {tools} · Skills {skills}",
     "chat.runtime.active": "Active",
     "chat.runtime.available": "Available",
     "chat.runtime.category.tools": "Tools",
@@ -985,6 +988,9 @@ const I18N = {
     "chat.runtime.model_hint": "切换后会作用于当前会话后续发送的消息。",
     "chat.runtime.tools_hint": "为后续消息选择额外启用的 Tools 与 MCP。",
     "chat.runtime.skills_hint": "为后续消息选择额外启用的 Skills。",
+    "chat.runtime.mobile": "会话设置",
+    "chat.runtime.mobile_hint": "为后续消息集中选择模型、Tools / MCP 与 Skills。",
+    "chat.runtime.mobile_meta": "{model} · Tools {tools} · Skills {skills}",
     "chat.runtime.active": "已启用",
     "chat.runtime.available": "可启用",
     "chat.runtime.category.tools": "Tools",
@@ -3064,6 +3070,122 @@ function renderRuntimeCapabilityGroup(items, selectedSet, toggleKey) {
   </section>`).join("");
 }
 
+function renderChatRuntimeCompactPopover({
+  agentRuntime,
+  target,
+  locked,
+  targetOptions,
+  provider,
+  model,
+  modelGroups,
+  modelSelection,
+  capabilityActive,
+  capabilityAvailable,
+  capabilitySelected,
+  activeSkills,
+  availableSkills,
+  skillSelected,
+  note
+}) {
+  const summaryChips = [];
+  if (agentRuntime && target?.id) {
+    summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(`${t("session.target.agent")} · ${target.name}`)}</span>`);
+  }
+  summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(provider && model ? `${provider.name || provider.id} / ${model.name || model.id}` : t("session.model.default"))}</span>`);
+  summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(`${t("chat.runtime.tools_mcp")} ${String(capabilitySelected.size)}`)}</span>`);
+  summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(`${t("chat.runtime.skills")} ${String(skillSelected.size)}`)}</span>`);
+
+  const targetSection = agentRuntime ? `<section class="composer-runtime-section">
+    <div class="composer-runtime-popover-head">
+      <strong>${escapeHTML(t("chat.runtime.agent"))}</strong>
+      <p>${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.agent_hint"))}</p>
+    </div>
+    <div class="composer-runtime-option-list">
+      ${targetOptions.length ? targetOptions.map((item) => {
+        const optionTarget = normalizeChatTarget(item.target);
+        const activeClass = optionTarget.id === target.id ? " is-active" : "";
+        return `<button class="composer-runtime-option${activeClass}" type="button" data-runtime-target-type="${escapeHTML(optionTarget.type)}" data-runtime-target-id="${escapeHTML(optionTarget.id)}" data-runtime-target-name="${escapeHTML(optionTarget.name)}" ${locked ? "disabled" : ""}>
+          <strong>${escapeHTML(`${t("session.target.agent")} · ${optionTarget.name}`)}</strong>
+          <span>${escapeHTML(item.subtitle)}</span>
+        </button>`;
+      }).join("") : `<p class="composer-runtime-empty">${escapeHTML(t("chat.runtime.none"))}</p>`}
+    </div>
+  </section>` : "";
+
+  const modelSection = `<section class="composer-runtime-section">
+    <div class="composer-runtime-popover-head">
+      <strong>${escapeHTML(`${t("chat.runtime.provider")} / ${t("chat.runtime.model")}`)}</strong>
+      <p>${escapeHTML(state.chatCatalog.providerError || t("chat.runtime.model_hint"))}</p>
+    </div>
+    ${modelGroups.length ? modelGroups.map((providerItem) => {
+      const models = enabledModelsForProvider(providerItem);
+      return `<section class="composer-runtime-provider-group">
+        <div class="composer-runtime-group-title">
+          <strong>${escapeHTML(providerItem.name || providerItem.id)}</strong>
+          <span>${escapeHTML(String(models.length))}</span>
+        </div>
+        <div class="composer-runtime-option-list">
+          ${models.map((modelItem) => {
+            const activeClass = normalizeText(providerItem.id) === modelSelection.providerID && normalizeText(modelItem.id) === modelSelection.modelID ? " is-active" : "";
+            return `<button class="composer-runtime-model-option${activeClass}" type="button" data-runtime-provider-id="${escapeHTML(providerItem.id)}" data-runtime-model-id="${escapeHTML(modelItem.id)}">
+              <strong>${escapeHTML(modelItem.name || modelItem.id)}</strong>
+              <span>${escapeHTML(providerItem.name || providerItem.id)}</span>
+            </button>`;
+          }).join("")}
+        </div>
+      </section>`;
+    }).join("") : `<p class="composer-runtime-empty">${escapeHTML(t("chat.runtime.empty"))}</p>`}
+  </section>`;
+
+  const capabilitySection = `<section class="composer-runtime-section">
+    <div class="composer-runtime-popover-head">
+      <strong>${escapeHTML(t("chat.runtime.tools_mcp"))}</strong>
+      <p>${escapeHTML(state.chatCatalog.capabilityError || t("chat.runtime.tools_hint"))}</p>
+    </div>
+    ${renderRuntimeGroupSection("chat.runtime.active", capabilityActive, () => "")}
+    ${capabilityActive.length ? renderRuntimeCapabilityGroup(capabilityActive, capabilitySelected, "capabilities") : ""}
+    <div class="composer-runtime-separator"></div>
+    ${renderRuntimeGroupSection("chat.runtime.available", capabilityAvailable, () => "")}
+    ${capabilityAvailable.length ? renderRuntimeCapabilityGroup(capabilityAvailable, capabilitySelected, "capabilities") : ""}
+  </section>`;
+
+  const skillsSection = `<section class="composer-runtime-section">
+    <div class="composer-runtime-popover-head">
+      <strong>${escapeHTML(t("chat.runtime.skills"))}</strong>
+      <p>${escapeHTML(state.chatCatalog.capabilityError || t("chat.runtime.skills_hint"))}</p>
+    </div>
+    ${renderRuntimeGroupSection("chat.runtime.active", activeSkills, (item) => `<label class="composer-runtime-checkbox">
+      <input type="checkbox" data-runtime-toggle-item="skills" value="${escapeHTML(item.id)}" checked>
+      <span class="composer-runtime-checkbox-copy">
+        <strong>${escapeHTML(item.name)}</strong>
+        <span>${escapeHTML(item.description)}</span>
+      </span>
+    </label>`)}
+    <div class="composer-runtime-separator"></div>
+    ${renderRuntimeGroupSection("chat.runtime.available", availableSkills, (item) => `<label class="composer-runtime-checkbox">
+      <input type="checkbox" data-runtime-toggle-item="skills" value="${escapeHTML(item.id)}">
+      <span class="composer-runtime-checkbox-copy">
+        <strong>${escapeHTML(item.name)}</strong>
+        <span>${escapeHTML(item.description)}</span>
+      </span>
+    </label>`)}
+  </section>`;
+
+  return `<div class="composer-runtime-popover composer-runtime-popover-mobile is-wide">
+    <div class="composer-runtime-popover-head">
+      <strong>${escapeHTML(t("chat.runtime.mobile"))}</strong>
+      <p>${escapeHTML(note || t("chat.runtime.mobile_hint"))}</p>
+    </div>
+    <div class="composer-runtime-summary">${summaryChips.join("")}</div>
+    ${targetSection ? `${targetSection}<div class="composer-runtime-separator"></div>` : ""}
+    ${modelSection}
+    <div class="composer-runtime-separator"></div>
+    ${capabilitySection}
+    <div class="composer-runtime-separator"></div>
+    ${skillsSection}
+  </div>`;
+}
+
 function renderChatRuntimePanel() {
   if (!chatRuntimePanel) {
     return;
@@ -3088,6 +3210,14 @@ function renderChatRuntimePanel() {
   const toolLabel = toolMCPCount > 0 ? `${t("chat.runtime.tools_mcp")} (${toolMCPCount})` : t("chat.runtime.tools_mcp");
   const skillLabel = skillsCount > 0 ? `${t("chat.runtime.skills")} (${skillsCount})` : t("chat.runtime.skills");
   const note = [state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | ") || t("chat.runtime.hint");
+  const compactRuntime = isTerminalSessionSheetViewport();
+  const compactMeta = agentRuntime && !target.id
+    ? t("chat.runtime.agent_pick")
+    : t("chat.runtime.mobile_meta", {
+        model: model ? (model.name || model.id) : t("session.model.default"),
+        tools: String(toolMCPCount),
+        skills: String(skillsCount)
+      });
   const targetOptions = agentRuntime
     ? genericRuntimeConversationAgents().map((agent) => ({
         target: {
@@ -3120,6 +3250,38 @@ function renderChatRuntimePanel() {
   const activeSkills = skillItems.filter((item) => skillSelected.has(item.id));
   const availableSkills = skillItems.filter((item) => !skillSelected.has(item.id));
 
+  if (compactRuntime) {
+    chatRuntimePanel.innerHTML = `<div class="composer-runtime-group composer-runtime-group-compact">
+      <div class="composer-runtime-control composer-runtime-control-compact">
+        <button class="composer-runtime-trigger composer-runtime-trigger-compact${openPopover === "mobile" ? " is-open" : ""}" type="button" data-runtime-toggle="mobile" title="${escapeHTML(t("chat.runtime.mobile_hint"))}">
+          <span class="composer-runtime-trigger-icon">⚙️</span>
+          <span class="composer-runtime-trigger-copy">
+            <strong>${escapeHTML(t("chat.runtime.mobile"))}</strong>
+            <span>${escapeHTML(compactMeta)}</span>
+          </span>
+          <span class="composer-runtime-trigger-caret">▾</span>
+        </button>
+        ${openPopover === "mobile" ? renderChatRuntimeCompactPopover({
+          agentRuntime,
+          target,
+          locked,
+          targetOptions,
+          provider,
+          model,
+          modelGroups,
+          modelSelection,
+          capabilityActive,
+          capabilityAvailable,
+          capabilitySelected,
+          activeSkills,
+          availableSkills,
+          skillSelected,
+          note: state.chatCatalog.providerError || state.chatCatalog.capabilityError || t("chat.runtime.mobile_hint")
+        }) : ""}
+      </div>
+    </div>
+    ${state.chatCatalog.providerError || state.chatCatalog.capabilityError ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML([state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | "))}</p>` : ""}`;
+  } else {
   chatRuntimePanel.innerHTML = `<div class="composer-runtime-group">
     ${agentRuntime ? `<div class="composer-runtime-control">
       <button class="composer-runtime-trigger${openPopover === "target" ? " is-open" : ""}${locked ? " is-disabled" : ""}" type="button" data-runtime-toggle="target" aria-disabled="${locked ? "true" : "false"}" title="${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.agent_hint"))}">
@@ -3224,6 +3386,7 @@ function renderChatRuntimePanel() {
     </div>
   </div>
   <p class="chat-runtime-note${state.chatCatalog.providerError || state.chatCatalog.capabilityError ? " chat-runtime-error" : ""}">${escapeHTML(note)}</p>`;
+  }
 
   chatRuntimePanel.querySelectorAll("[data-runtime-toggle]").forEach((node) => {
     node.addEventListener("click", () => {
@@ -12859,6 +13022,9 @@ function bindEvents() {
       }
     }
     updateKeyboardInset();
+    if (chatRuntimePanel && (state.currentRoute === "chat" || state.currentRoute === "agent-runtime")) {
+      renderChatRuntimePanel();
+    }
   });
 
   if (window.visualViewport) {
@@ -12894,6 +13060,3 @@ function init() {
 }
 
 init();
-
-
-

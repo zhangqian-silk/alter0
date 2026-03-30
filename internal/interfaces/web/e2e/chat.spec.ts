@@ -46,10 +46,16 @@ test.describe("Chat composer", () => {
     const newChatButton = page.locator("#mobileNewChatButton");
     const heading = page.locator("#sessionHeading");
     const composerShell = page.locator(".composer-shell");
+    const runtimeToggles = page.locator("#chatRuntimePanel [data-runtime-toggle]");
+    const composerNote = page.locator(".composer-note");
+    const composerCounter = page.locator("#charCount");
 
     await expect(navToggle).toBeVisible();
     await expect(sessionToggle).toBeVisible();
     await expect(newChatButton).toBeVisible();
+    await expect(runtimeToggles).toHaveCount(1);
+    await expect(composerNote).toBeHidden();
+    await expect(composerCounter).toBeHidden();
 
     const navBox = await navToggle.boundingBox();
     const sessionBox = await sessionToggle.boundingBox();
@@ -69,6 +75,9 @@ test.describe("Chat composer", () => {
     expect(Math.abs((sessionBox?.y ?? 0) - (newChatBox?.y ?? 0))).toBeLessThan(6);
     expect(headingBox?.y ?? 0).toBeGreaterThan((navBox?.y ?? 0) + (navBox?.height ?? 0) - 2);
     expect((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0))).toBeLessThan(20);
+
+    await runtimeToggles.first().click();
+    await expect(page.locator(".composer-runtime-popover-mobile")).toBeVisible();
   });
 
   test("keeps the mobile navigation fully reachable on short viewports", async ({ page }) => {
