@@ -233,6 +233,72 @@ func TestServiceAssessComplexityUsesPredictorResult(t *testing.T) {
 	}
 }
 
+func TestServiceDeleteBySessionRemovesQueuedAndInflightTasks(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	release := make(chan struct{})
+	orchestrator := &stubTaskOrchestrator{
+		handler: func(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+			select {
+			case <-release:
+				return shareddomain.OrchestrationResult{
+					MessageID: msg.MessageID,
+					SessionID: msg.SessionID,
+					Route:     shareddomain.RouteNL,
+					Output:    "ok",
+				}, nil
+			case <-ctx.Done():
+				return shareddomain.OrchestrationResult{}, ctx.Err()
+			}
+		},
+	}
+	svc, err := NewService(
+		ctx,
+		orchestrator,
+		&stubTaskRecorder{},
+		&taskTestIDGenerator{},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		Options{WorkerCount: 1},
+	)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	first, err := svc.Submit(testTaskMessage("session-a", "first", nil))
+	if err != nil {
+		t.Fatalf("submit first task: %v", err)
+	}
+	second, err := svc.Submit(testTaskMessage("session-a", "second", nil))
+	if err != nil {
+		t.Fatalf("submit second task: %v", err)
+	}
+	third, err := svc.Submit(testTaskMessage("session-b", "third", nil))
+	if err != nil {
+		t.Fatalf("submit third task: %v", err)
+	}
+
+	if err := svc.DeleteBySession("session-a"); err != nil {
+		t.Fatalf("delete by session failed: %v", err)
+	}
+
+	if _, ok := svc.Get(first.ID); ok {
+		t.Fatalf("expected first task removed")
+	}
+	if _, ok := svc.Get(second.ID); ok {
+		t.Fatalf("expected second task removed")
+	}
+	if _, ok := svc.Get(third.ID); !ok {
+		t.Fatalf("expected unrelated task to remain")
+	}
+	if items := svc.ListBySession("session-a"); len(items) != 0 {
+		t.Fatalf("expected no tasks for session-a, got %+v", items)
+	}
+
+	close(release)
+}
+
 func TestServiceAssessComplexityPredictorFailureFallsBackToAsyncForLargeTask(t *testing.T) {
 	svc, err := NewService(
 		context.Background(),

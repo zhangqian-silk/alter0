@@ -24,6 +24,8 @@ type Store interface {
 	Save(ctx context.Context, records []sessiondomain.MessageRecord) error
 }
 
+var ErrSessionNotFound = fmt.Errorf("session not found")
+
 type Pagination struct {
 	Page     int  `json:"page"`
 	PageSize int  `json:"page_size"`
@@ -269,6 +271,41 @@ func (s *Service) ListMessages(query MessageQuery) MessagePage {
 	}
 }
 
+func (s *Service) DeleteSession(sessionID string) error {
+	key := normalizeKey(sessionID)
+	if key == "" {
+		return ErrSessionNotFound
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	indexes, ok := s.bySession[key]
+	if !ok || len(indexes) == 0 {
+		return ErrSessionNotFound
+	}
+
+	previousRecords := cloneRecords(s.records)
+	previousIndexes := cloneSessionIndexes(s.bySession)
+
+	filtered := make([]sessiondomain.MessageRecord, 0, len(s.records)-len(indexes))
+	for _, record := range s.records {
+		if normalizeKey(record.SessionID) == key {
+			continue
+		}
+		filtered = append(filtered, cloneRecord(record))
+	}
+
+	s.records = filtered
+	s.bySession = buildSessionIndexes(filtered)
+	if err := s.storeLocked(); err != nil {
+		s.records = previousRecords
+		s.bySession = previousIndexes
+		return err
+	}
+	return nil
+}
+
 func sanitizeRecord(record sessiondomain.MessageRecord) (sessiondomain.MessageRecord, error) {
 	record.MessageID = strings.TrimSpace(record.MessageID)
 	record.SessionID = strings.TrimSpace(record.SessionID)
@@ -441,6 +478,15 @@ func cloneSessionIndexes(source map[string][]int) map[string][]int {
 		out[key] = copied
 	}
 	return out
+}
+
+func buildSessionIndexes(records []sessiondomain.MessageRecord) map[string][]int {
+	indexes := make(map[string][]int, len(records))
+	for idx, record := range records {
+		key := normalizeKey(record.SessionID)
+		indexes[key] = append(indexes[key], idx)
+	}
+	return indexes
 }
 
 func normalizeMessageSource(source sessiondomain.MessageSource) sessiondomain.MessageSource {

@@ -266,6 +266,53 @@ func TestTaskStoreLogRetention(t *testing.T) {
 	}
 }
 
+func TestTaskStoreSaveRemovesDeletedTaskDirectories(t *testing.T) {
+	dir := t.TempDir()
+	store := NewTaskStore(dir, FormatJSON)
+	now := time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
+
+	first := taskdomain.Task{
+		ID:              "task-keep",
+		SessionID:       "session-1",
+		SourceMessageID: "message-1",
+		MessageID:       "message-1",
+		Status:          taskdomain.TaskStatusSuccess,
+		Progress:        100,
+		MaxRetries:      1,
+		TimeoutMS:       60000,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		FinishedAt:      now,
+		RequestContent:  "keep",
+	}
+	second := taskdomain.Task{
+		ID:              "task-delete",
+		SessionID:       "session-1",
+		SourceMessageID: "message-2",
+		MessageID:       "message-2",
+		Status:          taskdomain.TaskStatusSuccess,
+		Progress:        100,
+		MaxRetries:      1,
+		TimeoutMS:       60000,
+		CreatedAt:       now.Add(time.Second),
+		UpdatedAt:       now.Add(time.Second),
+		FinishedAt:      now.Add(time.Second),
+		RequestContent:  "delete",
+	}
+
+	if err := store.Save(context.Background(), []taskdomain.Task{first, second}); err != nil {
+		t.Fatalf("initial save failed: %v", err)
+	}
+	if err := store.Save(context.Background(), []taskdomain.Task{first}); err != nil {
+		t.Fatalf("second save failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "tasks", "task-delete")); !os.IsNotExist(err) {
+		t.Fatalf("expected deleted task directory removed, got %v", err)
+	}
+	assertFileExists(t, filepath.Join(dir, "tasks", "task-keep", "meta.json"))
+}
+
 func assertFileExists(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Stat(path); err != nil {
