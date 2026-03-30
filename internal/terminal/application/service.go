@@ -28,6 +28,7 @@ const (
 	workspaceDirectoryName          = "workspaces"
 	workspaceTerminalDirName        = "terminal"
 	workspaceSessionsDirName        = "sessions"
+	workspaceSharedDirName          = "shared"
 	maxEntryPageLimit               = 200
 )
 
@@ -41,6 +42,8 @@ var (
 	ErrTurnNotFound             = errors.New("terminal turn not found")
 	ErrStepNotFound             = errors.New("terminal step not found")
 )
+
+const sharedTerminalOwnerID = "shared"
 
 type Options struct {
 	WorkingDir    string
@@ -172,10 +175,7 @@ func NewService(ctx context.Context, idGenerator sharedapp.IDGenerator, logger *
 }
 
 func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
-	ownerID := strings.TrimSpace(req.OwnerID)
-	if ownerID == "" {
-		return terminaldomain.Session{}, ErrSessionOwnerRequired
-	}
+	ownerID := normalizeTerminalOwnerID(req.OwnerID)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -211,10 +211,7 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 }
 
 func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
-	ownerID := strings.TrimSpace(req.OwnerID)
-	if ownerID == "" {
-		return terminaldomain.Session{}, ErrSessionOwnerRequired
-	}
+	ownerID := normalizeTerminalOwnerID(req.OwnerID)
 
 	sessionID := strings.TrimSpace(req.SessionID)
 	if sessionID == "" {
@@ -227,11 +224,11 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 	if existing, ok := s.sessions[sessionID]; ok {
 		snapshot := existing.snapshot()
 		if snapshot.OwnerID != ownerID {
-			if !canTransferRecoveredSessionOwnership(snapshot, req) {
-				return terminaldomain.Session{}, ErrSessionNotFound
-			}
 			existing.mu.Lock()
 			existing.summary.OwnerID = ownerID
+			if workspaceDir, workspaceErr := resolveSessionWorkspacePath(s.options.WorkingDir, sessionID); workspaceErr == nil {
+				existing.summary.WorkingDir = workspaceDir
+			}
 			existing.summary.UpdatedAt = time.Now().UTC()
 			snapshot = existing.summary
 			existing.mu.Unlock()
@@ -281,10 +278,7 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 }
 
 func (s *Service) List(ownerID string) []terminaldomain.Session {
-	ownerID = strings.TrimSpace(ownerID)
-	if ownerID == "" {
-		return []terminaldomain.Session{}
-	}
+	ownerID = normalizeTerminalOwnerID(ownerID)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -509,6 +503,7 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 		return terminaldomain.Session{}, err
 	}
 	workspaceDir := strings.TrimSpace(snapshot.WorkingDir)
+	sharedWorkspaceDir, sharedWorkspaceErr := resolveSessionWorkspacePath(s.options.WorkingDir, snapshot.ID)
 	if workspaceDir == "" {
 		workspaceDir, err = resolveSessionWorkspacePath(s.options.WorkingDir, snapshot.ID)
 		if err != nil {
@@ -524,7 +519,6 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 	}
 	item = current
 	item.mu.Lock()
-	now := time.Now().UTC()
 	item.deleted = true
 	item.closedByUser = true
 	if item.turnCancel != nil {
@@ -532,16 +526,6 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 		item.turnCancel = nil
 	}
 	item.turnRunning = false
-	item.summary.UpdatedAt = now
-	if item.summary.FinishedAt.IsZero() {
-		item.summary.FinishedAt = now
-	}
-	if item.summary.Status == terminaldomain.SessionStatusStarting || item.summary.Status == terminaldomain.SessionStatusRunning {
-		item.summary.Status = terminaldomain.SessionStatusExited
-		item.summary.ErrorMessage = ""
-		item.summary.ExitCode = nil
-	}
-	snapshot = item.summary
 	item.mu.Unlock()
 	delete(s.sessions, sessionID)
 	s.mu.Unlock()
@@ -550,8 +534,10 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 	if err := removeTerminalSessionStateFile(statePath); err != nil {
 		cleanupErr = errors.Join(cleanupErr, err)
 	}
-	if err := os.RemoveAll(workspaceDir); err != nil {
-		cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove terminal workspace: %w", err))
+	if filepath.Clean(workspaceDir) != filepath.Clean(sharedWorkspaceDir) || sharedWorkspaceErr != nil {
+		if err := os.RemoveAll(workspaceDir); err != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove terminal workspace: %w", err))
+		}
 	}
 	if cleanupErr != nil {
 		return snapshot, cleanupErr
@@ -1295,10 +1281,7 @@ func isTerminalOutputStream(stream string) bool {
 }
 
 func (s *Service) getOwnedSession(ownerID string, sessionID string) (*runtimeSession, error) {
-	ownerID = strings.TrimSpace(ownerID)
-	if ownerID == "" {
-		return nil, ErrSessionOwnerRequired
-	}
+	ownerID = normalizeTerminalOwnerID(ownerID)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil, ErrSessionNotFound
@@ -1318,6 +1301,10 @@ func (s *Service) getOwnedSession(ownerID string, sessionID string) (*runtimeSes
 		return nil, ErrSessionNotFound
 	}
 	return item, nil
+}
+
+func normalizeTerminalOwnerID(_ string) string {
+	return sharedTerminalOwnerID
 }
 
 func (s *Service) countActiveLocked() int {
@@ -1362,42 +1349,17 @@ func resolveRecoveredThreadID(sessionID string, terminalSessionID string) string
 	return threadID
 }
 
-func canTransferRecoveredSessionOwnership(snapshot terminaldomain.Session, req RecoverRequest) bool {
-	sessionID := strings.TrimSpace(snapshot.ID)
-	if sessionID == "" {
-		return false
-	}
-	if sessionID != strings.TrimSpace(req.SessionID) {
-		return false
-	}
-
-	requestTerminalSessionID := strings.TrimSpace(req.TerminalSessionID)
-	snapshotTerminalSessionID := strings.TrimSpace(snapshot.TerminalSessionID)
-	if requestTerminalSessionID == "" {
-		return snapshotTerminalSessionID == "" || snapshotTerminalSessionID == sessionID
-	}
-	if snapshotTerminalSessionID == "" {
-		return requestTerminalSessionID == sessionID
-	}
-	return requestTerminalSessionID == snapshotTerminalSessionID
-}
-
 func resolveSessionWorkspacePath(baseDir string, sessionID string) (string, error) {
 	root := strings.TrimSpace(baseDir)
 	if root == "" {
 		root = "."
-	}
-	sanitizedSessionID := sanitizeWorkspaceSegment(sessionID)
-	if sanitizedSessionID == "" {
-		return "", ErrSessionRecoverIDRequired
 	}
 	workspaceDir := filepath.Join(
 		root,
 		defaultWorkspaceRootDirName,
 		workspaceDirectoryName,
 		workspaceTerminalDirName,
-		workspaceSessionsDirName,
-		sanitizedSessionID,
+		workspaceSharedDirName,
 	)
 	absolute, err := filepath.Abs(workspaceDir)
 	if err != nil {

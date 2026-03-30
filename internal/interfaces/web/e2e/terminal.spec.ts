@@ -916,7 +916,7 @@ test.describe("Terminal route", () => {
   });
 
   test("keeps process and output content in document flow on mobile", async ({ page }) => {
-    await page.setViewportSize({ width: 430, height: 640 });
+    await page.setViewportSize({ width: 360, height: 640 });
     const clientID = createTerminalClientID("section-flow");
     const now = Date.now();
     await bindTerminalClient(page, clientID);
@@ -983,10 +983,30 @@ test.describe("Terminal route", () => {
     await expect.poll(() => processToggle.evaluate((node) => {
       const title = node.querySelector(".terminal-process-title");
       const summary = node.querySelector(".terminal-process-summary");
-      if (!(title instanceof HTMLElement) || !(summary instanceof HTMLElement)) {
+      const meta = node.querySelector(".terminal-process-meta");
+      if (!(title instanceof HTMLElement) || !(summary instanceof HTMLElement) || !(meta instanceof HTMLElement)) {
         return null;
       }
-      return Math.abs(title.getBoundingClientRect().top - summary.getBoundingClientRect().top);
+      return Math.max(
+        Math.abs(title.getBoundingClientRect().top - summary.getBoundingClientRect().top),
+        Math.abs(summary.getBoundingClientRect().top - meta.getBoundingClientRect().top),
+      );
+    })).toBeLessThanOrEqual(2);
+    if ((await processToggle.getAttribute("aria-expanded")) !== "true") {
+      await processToggle.click();
+    }
+    const firstStepToggle = terminalPage.turnCard(turnID).locator('[data-terminal-step-toggle="step-1"]');
+    await expect.poll(() => firstStepToggle.evaluate((node) => {
+      const title = node.querySelector(".terminal-step-title");
+      const duration = node.querySelector(".terminal-step-duration");
+      const status = node.querySelector(".terminal-step-status");
+      if (!(title instanceof HTMLElement) || !(duration instanceof HTMLElement) || !(status instanceof HTMLElement)) {
+        return null;
+      }
+      return Math.max(
+        Math.abs(title.getBoundingClientRect().top - duration.getBoundingClientRect().top),
+        Math.abs(duration.getBoundingClientRect().top - status.getBoundingClientRect().top),
+      );
     })).toBeLessThanOrEqual(2);
     await expect.poll(() => processToggle.evaluate((node) => window.getComputedStyle(node).position)).toBe("relative");
     await expect.poll(() => outputNode.evaluate((node) => window.getComputedStyle(node).position)).toBe("static");

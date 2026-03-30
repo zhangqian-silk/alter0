@@ -1,6 +1,6 @@
 # Requirements Details (R-051 ~ R-060)
 
-> Last update: 2026-03-29
+> Last update: 2026-03-30
 
 ## 需求细化（草案）
 
@@ -9,23 +9,23 @@
 1. Terminal 模块必须持久化存储 Codex CLI 会话标识，并与平台内 `terminal_session_id` 建立稳定映射；页面刷新、服务重启或运行态退出后，该标识仍可用于恢复会话。
 2. 若当前实现中的 `terminal_session_id` 已实际承载 Codex CLI 会话标识，则需将其作为持久恢复主键稳定保存；若两者语义不同，则需新增独立字段保存 Codex CLI 标识，并保持映射关系可查询。
 3. Terminal 会话持久化内容至少包含：`terminal_session_id`、Codex CLI 会话标识、标题、工作目录、创建时间、最近活动时间、最近一次运行状态、关联日志或步骤索引。
-   - 当前实现将 Terminal 会话状态持久化到 `.alter0/state/terminal/sessions/<terminal_session_id>.json`，保留会话摘要、Codex CLI 线程标识、输出日志与步骤视图索引。
+   - 当前实现将 Terminal 会话状态持久化到 `.alter0/state/terminal/sessions/<terminal_session_id>.json`，保留会话摘要、Codex CLI 线程标识、输出日志与步骤视图索引；终端默认工作目录统一收敛到 `.alter0/workspaces/terminal/shared`。
 4. Terminal 模块不再设置产品级会话上限；前端、接口与配置项中不再以“最大会话数”为用户约束，不再因达到上限拒绝创建或恢复 Terminal 会话。
 5. Terminal 模块不再设置产品级会话超时淘汰规则；系统不因固定超时阈值自动销毁 Terminal 会话记录、历史消息、日志索引或 Codex CLI 标识映射。
 6. 若底层 Codex CLI 运行因空闲、网络、进程退出或外部超时而中断，系统仅将该 Terminal 会话标记为已退出、已中断或待恢复状态，不删除会话本身，不清空历史，不重置标识映射。
-   - 用户显式执行 `Delete` 时除外：系统需删除 Terminal 会话主记录、`.alter0/state/terminal/sessions/<terminal_session_id>.json` 与 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`，不再保留恢复入口。
+   - 用户显式执行 `Delete` 时除外：系统需直接删除 Terminal 会话主记录与 `.alter0/state/terminal/sessions/<terminal_session_id>.json`，不再保留恢复入口，也不应先把会话改写成 `exited` 等过渡状态；共享工作区 `.alter0/workspaces/terminal/shared` 不随单个会话删除而清空。
 7. 恢复要求：用户可对已退出或超时中断的 Terminal 会话执行恢复；恢复时系统优先复用已持久化的 Codex CLI 会话标识继续接续原会话，无法直接接续时需返回明确原因，并允许在保留同一 Terminal 会话历史的前提下重新建立运行态。
 8. 输入要求：当用户向已退出或超时中断的 Terminal 会话继续发送输入时，系统可自动触发恢复流程，或先给出明确恢复提示并由用户确认后恢复，但不得强制用户新建独立会话。
    - 当前实现采用“继续发送即恢复”的交互方式；前端保留原会话，直接对已退出或已中断会话重新提交输入。
    - 当 Terminal 会话仅创建未发送首条输入、但底层运行态已不存在时，前端在首次发送时先调用恢复接口重建同一 `terminal_session_id`，随后自动重试当前输入。
-   - 浏览器端需将 Terminal client 标识持久化到本地可复用存储；若仅临时 `sessionStorage` 丢失但仍保留原会话记录，刷新后仍应优先沿用原 client 标识访问会话。
-   - 当服务端仍保留该 Terminal 会话且恢复请求携带同一 `terminal_session_id` 与既有 CLI 线程标识时，恢复接口需允许在同一 Web 登录态下重新绑定新的前端 client 标识，不返回误导性的“terminal session not found”。
+   - 同一 Web 登录态下，Terminal 会话列表与历史回放必须跨设备共享；手机与 PC 访问同一套会话记录，不再按浏览器 client 标识分桶。
+   - 恢复与继续发送仅以服务端持久化的 `terminal_session_id` 与 CLI 线程标识为准，不依赖设备侧 client 标识一致性。
 9. 展示要求：Terminal 页面需明确区分“会话历史仍在”与“当前运行态已退出”两种状态，避免把运行态超时误展示为会话丢失或不可恢复。
 10. 兼容性要求：已有 Terminal 会话数据在升级后需可继续读取；若历史数据缺少 Codex CLI 会话标识，系统需允许降级为不可直连恢复但可保留历史，并支持后续重新绑定新的运行态。
 11. 验收：Terminal 页面创建多个会话后不再因会话数触发上限错误；某一会话运行超时或中断后，历史记录仍可见，用户可对原会话执行恢复并继续输入，且恢复后仍能回看原有日志与上下文链路。
    - 补充验收：新建后尚未发送首条输入的 Terminal 会话即使因空闲导致运行态缺失，用户首次发送仍在原会话内成功执行，不出现“terminal session not found”阻断。
-   - 补充验收：页面已缓存 Terminal 会话历史时，即使浏览器临时 `sessionStorage` 被清空或前端 client 标识重新生成，刷新后也不会把原会话误标为中断；若服务端仍保留原会话，后续恢复或继续发送仍绑定到同一 Terminal 会话历史。
-   - 补充验收：用户显式删除某个 Terminal 会话后，该会话不再可恢复，相关状态文件与工作区目录同步清理。
+   - 补充验收：同一 Web 登录态下，手机与 PC 进入 Terminal 页面时能看到同一批会话历史；任一端创建、恢复或删除会话后，另一端刷新即可看到一致结果。
+   - 补充验收：用户显式删除某个 Terminal 会话后，该会话不再可恢复，相关状态文件同步清理，但共享工作区不因单会话删除被清空。
 
 #### 实施边界（草案）
 
@@ -33,6 +33,7 @@
 2. 本需求取消的是产品级 Terminal 会话上限与超时淘汰策略，不等同于取消底层网络超时、代理超时或外部 CLI 自身超时现象。
 3. 当底层 Codex CLI 已彻底失效且无法基于原标识恢复时，系统可重建运行态，但需保持 Terminal 会话主记录、历史输出与恢复失败原因可见。
 4. 本需求不要求无限保留底层进程常驻；允许运行态退出，但不允许因此丢失 Terminal 会话身份与恢复入口。
+5. 本需求取消的是 Terminal 历史与工作目录的设备级隔离；不涉及不同 Web 登录态之间的历史合并。
 
 #### 接口拆分（草案）
 
@@ -46,7 +47,10 @@
 3. Terminal 输入续写
    - `POST /api/terminal/sessions/{terminal_session_id}/input`
    - 当会话处于已退出或待恢复状态时，允许自动恢复或显式恢复后继续输入
-4. Terminal 配置与约束
+4. Terminal 会话删除
+   - `DELETE /api/terminal/sessions/{terminal_session_id}`
+   - 行为：直接删除成功时返回 `204 No Content`；前端据此立即移除会话，不依赖返回一个已改写状态的会话对象
+5. Terminal 配置与约束
    - 不再暴露 `task_terminal_max_sessions` 或等价 Terminal 会话上限配置为用户侧可调能力
 
 #### Traceability
@@ -54,6 +58,9 @@
 - 核心对象：`terminal_session_id`、`codex_cli_session_id`、`recoverable_state`、`runtime_status`、`terminal_logs`
 - 依赖需求：`R-019`、`R-035`、`R-046`
 - 验证口径：标识持久化完整性、超时后历史保留完整性、恢复成功率、恢复失败可解释性、无会话上限拦截
+- 验证记录：
+  - 2026-03-30：Terminal 默认工作目录调整为 `.alter0/workspaces/terminal/shared`，单会话删除不再清空共享工作区。
+  - 2026-03-30：Terminal 历史在同一 Web 登录态下改为跨设备共享，服务端不再按浏览器 client 标识隔离会话列表与详情访问。
 
 ### R-052
 
@@ -417,4 +424,3 @@
 ### R-060
 
 暂无细化内容。
-

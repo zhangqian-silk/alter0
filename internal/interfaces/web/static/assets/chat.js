@@ -410,10 +410,13 @@ const I18N = {
     "chat.runtime.agent_pick": "Choose Agent",
     "chat.runtime.provider": "Provider",
     "chat.runtime.model": "Model",
+    "chat.runtime.model_short": "Model",
     "chat.runtime.empty": "No enabled model provider is available yet. Configure one in Models to enable session-level model switching.",
     "chat.runtime.hint": "Applies to upcoming messages in the current chat session.",
     "chat.runtime.tools_mcp": "Tools / MCP",
+    "chat.runtime.tools_short": "Tools",
     "chat.runtime.skills": "Skills",
+    "chat.runtime.skills_short": "Skills",
     "chat.runtime.target_hint": "Choose the execution target before the first message.",
     "chat.runtime.agent_hint": "Choose the Agent for this session before the first message.",
     "chat.runtime.model_hint": "Switches apply to upcoming messages in this session.",
@@ -421,7 +424,7 @@ const I18N = {
     "chat.runtime.skills_hint": "Select extra Skills for upcoming messages.",
     "chat.runtime.mobile": "Session",
     "chat.runtime.mobile_hint": "Choose model, tools, and skills for upcoming messages.",
-    "chat.runtime.mobile_meta": "{model} · Tools {tools} · Skills {skills}",
+    "chat.runtime.mobile_meta": "Model {model} · Tools {tools} · Skills {skills}",
     "chat.runtime.active": "Active",
     "chat.runtime.available": "Available",
     "chat.runtime.category.tools": "Tools",
@@ -977,24 +980,27 @@ const I18N = {
     "chat.runtime.target": "会话目标",
     "chat.runtime.agent": "Agent",
     "chat.runtime.agent_pick": "选择 Agent",
-    "chat.runtime.provider": "Provider",
+    "chat.runtime.provider": "提供方",
     "chat.runtime.model": "模型",
+    "chat.runtime.model_short": "模型",
     "chat.runtime.empty": "当前还没有可用的启用模型 Provider。请先在 Models 页面完成配置。",
     "chat.runtime.hint": "会作用于当前会话后续发送的消息。",
-    "chat.runtime.tools_mcp": "Tools / MCP",
-    "chat.runtime.skills": "Skills",
+    "chat.runtime.tools_mcp": "工具 / MCP",
+    "chat.runtime.tools_short": "工具",
+    "chat.runtime.skills": "技能",
+    "chat.runtime.skills_short": "技能",
     "chat.runtime.target_hint": "请在发送第一条消息前确定当前会话目标。",
     "chat.runtime.agent_hint": "请在发送第一条消息前为当前会话选择 Agent。",
     "chat.runtime.model_hint": "切换后会作用于当前会话后续发送的消息。",
-    "chat.runtime.tools_hint": "为后续消息选择额外启用的 Tools 与 MCP。",
-    "chat.runtime.skills_hint": "为后续消息选择额外启用的 Skills。",
+    "chat.runtime.tools_hint": "为后续消息选择额外启用的工具与 MCP。",
+    "chat.runtime.skills_hint": "为后续消息选择额外启用的技能。",
     "chat.runtime.mobile": "会话设置",
-    "chat.runtime.mobile_hint": "为后续消息集中选择模型、Tools / MCP 与 Skills。",
-    "chat.runtime.mobile_meta": "{model} · Tools {tools} · Skills {skills}",
+    "chat.runtime.mobile_hint": "为后续消息集中选择模型、工具与技能。",
+    "chat.runtime.mobile_meta": "模型 {model} · 工具 {tools} · 技能 {skills}",
     "chat.runtime.active": "已启用",
     "chat.runtime.available": "可启用",
-    "chat.runtime.category.tools": "Tools",
-    "chat.runtime.category.mcps": "MCP",
+    "chat.runtime.category.tools": "工具",
+    "chat.runtime.category.mcps": "MCP 服务",
     "chat.runtime.locked": "发送第一条消息后，会话目标不可切换。",
     "chat.runtime.none": "该分区暂无项目。",
     "route.agent.target_agents": "我的 Agents",
@@ -3091,9 +3097,9 @@ function renderChatRuntimeCompactPopover({
   if (agentRuntime && target?.id) {
     summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(`${t("session.target.agent")} · ${target.name}`)}</span>`);
   }
-  summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(provider && model ? `${provider.name || provider.id} / ${model.name || model.id}` : t("session.model.default"))}</span>`);
-  summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(`${t("chat.runtime.tools_mcp")} ${String(capabilitySelected.size)}`)}</span>`);
-  summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(`${t("chat.runtime.skills")} ${String(skillSelected.size)}`)}</span>`);
+  summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(provider && model ? `${t("chat.runtime.model_short")} · ${model.name || model.id}` : `${t("chat.runtime.model_short")} · ${t("session.model.default")}`)}</span>`);
+  summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(`${t("chat.runtime.tools_short")} ${String(capabilitySelected.size)}`)}</span>`);
+  summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(`${t("chat.runtime.skills_short")} ${String(skillSelected.size)}`)}</span>`);
 
   const targetSection = agentRuntime ? `<section class="composer-runtime-section">
     <div class="composer-runtime-popover-head">
@@ -3204,12 +3210,14 @@ function renderChatRuntimePanel() {
   const openPopover = state.chatRuntime.openPopover;
   const agentRuntime = mode === "agent";
   const targetLabel = agentRuntime
-    ? (target.id ? `${t("session.target.agent")} · ${target.name}` : t("chat.runtime.agent_pick"))
+    ? (target.id ? `${t("chat.runtime.agent")} · ${target.name}` : t("chat.runtime.agent_pick"))
     : t("session.target.raw");
-  const modelLabel = provider && model ? `${provider.name || provider.id} / ${model.name || model.id}` : t("session.model.default");
-  const toolLabel = toolMCPCount > 0 ? `${t("chat.runtime.tools_mcp")} (${toolMCPCount})` : t("chat.runtime.tools_mcp");
-  const skillLabel = skillsCount > 0 ? `${t("chat.runtime.skills")} (${skillsCount})` : t("chat.runtime.skills");
-  const note = [state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | ") || t("chat.runtime.hint");
+  const modelLabel = provider && model
+    ? `${t("chat.runtime.model_short")} · ${model.name || model.id}`
+    : `${t("chat.runtime.model_short")} · ${t("session.model.default")}`;
+  const toolLabel = `${t("chat.runtime.tools_short")} · ${String(toolMCPCount)}`;
+  const skillLabel = `${t("chat.runtime.skills_short")} · ${String(skillsCount)}`;
+  const runtimeErrorNote = [state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | ");
   const compactRuntime = isTerminalSessionSheetViewport();
   const compactMeta = agentRuntime && !target.id
     ? t("chat.runtime.agent_pick")
@@ -3280,7 +3288,7 @@ function renderChatRuntimePanel() {
         }) : ""}
       </div>
     </div>
-    ${state.chatCatalog.providerError || state.chatCatalog.capabilityError ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML([state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | "))}</p>` : ""}`;
+    ${runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : ""}`;
   } else {
   chatRuntimePanel.innerHTML = `<div class="composer-runtime-group">
     ${agentRuntime ? `<div class="composer-runtime-control">
@@ -3385,7 +3393,7 @@ function renderChatRuntimePanel() {
       </div>` : ""}
     </div>
   </div>
-  <p class="chat-runtime-note${state.chatCatalog.providerError || state.chatCatalog.capabilityError ? " chat-runtime-error" : ""}">${escapeHTML(note)}</p>`;
+  ${runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : ""}`;
   }
 
   chatRuntimePanel.querySelectorAll("[data-runtime-toggle]").forEach((node) => {

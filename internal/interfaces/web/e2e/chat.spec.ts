@@ -49,6 +49,7 @@ test.describe("Chat composer", () => {
     const runtimeToggles = page.locator("#chatRuntimePanel [data-runtime-toggle]");
     const composerNote = page.locator(".composer-note");
     const composerCounter = page.locator("#charCount");
+    const sendButton = page.locator("#sendButton");
 
     await expect(navToggle).toBeVisible();
     await expect(sessionToggle).toBeVisible();
@@ -56,12 +57,16 @@ test.describe("Chat composer", () => {
     await expect(runtimeToggles).toHaveCount(1);
     await expect(composerNote).toBeHidden();
     await expect(composerCounter).toBeHidden();
+    await expect(runtimeToggles.first()).toContainText("工具 0");
+    await expect(runtimeToggles.first()).toContainText("技能 0");
 
     const navBox = await navToggle.boundingBox();
     const sessionBox = await sessionToggle.boundingBox();
     const newChatBox = await newChatButton.boundingBox();
     const headingBox = await heading.boundingBox();
     const composerBox = await composerShell.boundingBox();
+    const runtimeBox = await runtimeToggles.first().boundingBox();
+    const sendBox = await sendButton.boundingBox();
     const viewport = page.viewportSize();
 
     expect(navBox).not.toBeNull();
@@ -69,12 +74,16 @@ test.describe("Chat composer", () => {
     expect(newChatBox).not.toBeNull();
     expect(headingBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
+    expect(runtimeBox).not.toBeNull();
+    expect(sendBox).not.toBeNull();
     expect(viewport).not.toBeNull();
 
     expect(Math.abs((navBox?.y ?? 0) - (sessionBox?.y ?? 0))).toBeLessThan(6);
     expect(Math.abs((sessionBox?.y ?? 0) - (newChatBox?.y ?? 0))).toBeLessThan(6);
     expect(headingBox?.y ?? 0).toBeGreaterThan((navBox?.y ?? 0) + (navBox?.height ?? 0) - 2);
     expect((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0))).toBeLessThan(20);
+    expect(Math.abs((runtimeBox?.y ?? 0) - (sendBox?.y ?? 0))).toBeLessThan(6);
+    expect(sendBox?.x ?? 0).toBeGreaterThan((runtimeBox?.x ?? 0) + (runtimeBox?.width ?? 0) - 4);
 
     await runtimeToggles.first().click();
     await expect(page.locator(".composer-runtime-popover-mobile")).toBeVisible();
