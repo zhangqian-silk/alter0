@@ -102,7 +102,7 @@ type delegatingLLMClient struct {
 }
 
 func (c *delegatingLLMClient) Chat(_ context.Context, req llmdomain.ChatRequest) (*llmdomain.ChatResponse, error) {
-	if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "engineering delivery") {
+	if len(req.Messages) > 0 && (strings.Contains(req.Messages[0].Content, "engineering delivery") || strings.Contains(req.Messages[0].Content, "dedicated coding agent")) {
 		return &llmdomain.ChatResponse{
 			Message: llmdomain.Message{
 				Role:    "assistant",
@@ -155,7 +155,10 @@ func (e *testError) Error() string {
 
 func TestHybridNLProcessorAgentModeExecutesCodexToolLoop(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+	processor := NewHybridNLProcessor(newTestProcessor(
+		"success",
+		`{"protocol":"alter0.codex-exec/v1","user_prompt":"整理仓库","agent_context":{"protocol":"alter0.agent-context/v1","agent_id":"researcher","system_prompt":"先执行，再汇报。"}}`,
+	), reactFactory, nil)
 
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "researcher"
@@ -178,6 +181,63 @@ func TestHybridNLProcessorAgentModeExecutesCodexToolLoop(t *testing.T) {
 	}
 	if reactFactory.lastConfig.Tools[0].Name != "codex_exec" || reactFactory.lastConfig.Tools[1].Name != "complete" {
 		t.Fatalf("unexpected tools: %+v", reactFactory.lastConfig.Tools)
+	}
+}
+
+func TestHybridNLProcessorCodingAgentPromptEmphasizesCodexLoop(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "coding"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentSystemPromptMetadataKey] = "Own coding delivery."
+
+	if _, err := processor.Process(context.Background(), "完成仓库改造", metadata); err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	prompt := reactFactory.lastConfig.SystemPrompt
+	for _, expected := range []string{
+		"You are the dedicated coding agent.",
+		"route substantive implementation and verification work through codex_exec",
+		"After every codex_exec result, decide whether the requirement is satisfied.",
+		"Do not stop after the first Codex attempt",
+		"Current coding workspace context:",
+		"Preview URL:",
+		"PR handoff details",
+		"Own coding delivery.",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("expected coding prompt to contain %q, got %q", expected, prompt)
+		}
+	}
+	if !strings.Contains(prompt, ".alter0.cn") {
+		t.Fatalf("expected coding prompt to contain preview domain rule, got %q", prompt)
+	}
+}
+
+func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
+	processor := NewHybridNLProcessor(nil, reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "coding"
+	metadata[execdomain.AgentNameMetadataKey] = "Coding Agent"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentSystemPromptMetadataKey] = "Own coding delivery."
+
+	expectedPrompt, err := buildCodexPrompt("整理仓库", buildCodexExecMetadata(processor.buildAgentSystemPrompt(metadata), metadata))
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
+	processor.codex = newTestProcessor("success", expectedPrompt)
+
+	output, err := processor.Process(context.Background(), "完成仓库整理", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "任务已完成" {
+		t.Fatalf("Process() output = %q, want %q", output, "任务已完成")
 	}
 }
 
@@ -246,6 +306,23 @@ func TestHybridNLProcessorAgentModeDefaultsToCoreTools(t *testing.T) {
 		if !strings.Contains(strings.Join(toolNames, ","), expected) {
 			t.Fatalf("expected tool %s in %+v", expected, toolNames)
 		}
+	}
+}
+
+func TestHybridNLProcessorAgentModeAllowsHigherIterationLimit(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "coding"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentMaxIterationsMetadataKey] = "48"
+
+	if _, err := processor.Process(context.Background(), "持续推进仓库改造", metadata); err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if reactFactory.lastConfig.MaxIterations != 48 {
+		t.Fatalf("expected max iterations 48, got %d", reactFactory.lastConfig.MaxIterations)
 	}
 }
 

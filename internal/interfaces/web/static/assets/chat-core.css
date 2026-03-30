@@ -1397,6 +1397,8 @@ body {
   box-shadow: 0 30px 60px -36px rgba(15, 23, 42, 0.28);
   display: grid;
   gap: 10px;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .composer-runtime-popover.is-wide {
@@ -1406,6 +1408,7 @@ body {
 .composer-runtime-popover-mobile {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .composer-runtime-summary {
@@ -1436,6 +1439,7 @@ body {
 .composer-runtime-section {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .composer-runtime-option,
@@ -1451,11 +1455,12 @@ body {
   cursor: pointer;
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .composer-runtime-model-option {
-  grid-template-columns: 1fr auto;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, 132px);
+  align-items: start;
   gap: 10px;
 }
 
@@ -1473,8 +1478,15 @@ body {
 
 .composer-runtime-option strong,
 .composer-runtime-model-option strong {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   color: var(--ink-strong);
   font-size: 14px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .composer-runtime-option span,
@@ -1486,9 +1498,28 @@ body {
   line-height: 1.5;
 }
 
+.composer-runtime-option span,
+.composer-runtime-checkbox-copy span {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.composer-runtime-model-option span {
+  min-width: 0;
+  max-width: 132px;
+  justify-self: end;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .composer-runtime-provider-group {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .composer-runtime-provider-group + .composer-runtime-provider-group {
@@ -1527,6 +1558,7 @@ body {
 .composer-runtime-checkbox-group {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .composer-runtime-checkbox {
@@ -1538,6 +1570,7 @@ body {
   border: 1px solid rgba(226, 232, 240, 0.92);
   background: #fff;
   cursor: pointer;
+  min-width: 0;
 }
 
 .composer-runtime-checkbox:hover {
@@ -1552,11 +1585,19 @@ body {
 .composer-runtime-checkbox-copy {
   display: grid;
   gap: 3px;
+  min-width: 0;
 }
 
 .composer-runtime-checkbox-copy strong {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   color: var(--ink-strong);
   font-size: 14px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .composer-runtime-checkbox-copy span {

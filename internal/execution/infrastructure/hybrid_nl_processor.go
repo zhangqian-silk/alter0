@@ -270,7 +270,11 @@ func (p *HybridNLProcessor) executeModelTool(
 		if instruction == "" {
 			return nil, errors.New("codex_exec instruction is required")
 		}
-		output, err := p.codex.Process(ctx, instruction, metadata)
+		codexMetadata := metadata
+		if isCodingAgent(metadata) {
+			codexMetadata = buildCodexExecMetadata(p.buildAgentSystemPrompt(metadata), metadata)
+		}
+		output, err := p.codex.Process(ctx, instruction, codexMetadata)
 		if err != nil {
 			return &llmdomain.ToolResult{
 				ToolCallID: toolCall.ID,
@@ -358,6 +362,19 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 		"Do not expose hidden chain-of-thought. Keep outputs concise and execution-oriented.",
 		"Relative native-tool paths use the repo root by default; set base=workspace to operate on the session workspace.",
 	}
+	if isCodingAgent(metadata) {
+		parts = append(parts,
+			"You are the dedicated coding agent. You are responsible for understanding the user's engineering requirement, keeping the conversation coherent, and only ending after the requested development work is complete or a concrete blocker remains.",
+			"Use native tools to inspect repository context and handle small follow-up edits, but route substantive implementation and verification work through codex_exec so Codex performs the concrete development steps.",
+			"After every codex_exec result, decide whether the requirement is satisfied. If it is not, issue the next concrete codex_exec instruction based on the observed result and continue the loop until the change, validation, and required documentation updates are finished.",
+			"Do not stop after the first Codex attempt when the task is still fixable. Refine the next instruction from the latest Codex output and keep driving execution.",
+			"Treat repository context, branch readiness, test-page verification, and PR handoff quality as part of the coding task. Do not treat them as optional follow-up details.",
+			"Before completing, make sure the final result is explicit about code changes, validation status, documentation updates when user-visible behavior changed, preview deployment when needed, and PR handoff details.",
+		)
+		if codingContext := renderCodingAgentExecutionContext(metadata); codingContext != "" {
+			parts = append(parts, codingContext)
+		}
+	}
 	if _, ok := allowedTools[toolDelegateAgent]; ok {
 		parts = append(parts, "Use delegate_agent when a specialist agent is better suited for a coding or writing subtask and you need that agent to return a concrete result.")
 	}
@@ -396,6 +413,10 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 		parts = append(parts, renderProductDiscoveryInstruction(rawProductDiscovery))
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+func isCodingAgent(metadata map[string]string) bool {
+	return strings.EqualFold(strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey)), "coding")
 }
 
 func renderMemoryContextInstruction(raw string) string {
@@ -827,14 +848,14 @@ func (p *HybridNLProcessor) delegationTargets(metadata map[string]string) []cont
 func parseAgentMaxIterations(metadata map[string]string) int {
 	raw := strings.TrimSpace(metadataValue(metadata, execdomain.AgentMaxIterationsMetadataKey))
 	if raw == "" {
-		return 6
+		return 8
 	}
 	value, err := strconv.Atoi(raw)
 	if err != nil || value <= 0 {
-		return 6
+		return 8
 	}
-	if value > 20 {
-		return 20
+	if value > 64 {
+		return 64
 	}
 	return value
 }

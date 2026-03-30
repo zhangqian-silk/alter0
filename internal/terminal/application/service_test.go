@@ -62,7 +62,7 @@ func TestCreateAssignsSessionWorkspaceDir(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "shared")
+	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "sessions", session.ID)
 	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
 		t.Fatalf("expected workspace %q, got %q", expected, session.WorkingDir)
 	}
@@ -87,9 +87,27 @@ func TestRecoverAssignsDeterministicWorkspaceDir(t *testing.T) {
 		t.Fatalf("recover session: %v", err)
 	}
 
-	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "shared")
+	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "sessions", "terminal-recover")
 	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
 		t.Fatalf("expected recovered workspace %q, got %q", expected, session.WorkingDir)
+	}
+}
+
+func TestCreateAssignsDistinctWorkspacePerSession(t *testing.T) {
+	baseDir := t.TempDir()
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
+
+	first, err := service.Create(CreateRequest{OwnerID: "owner-a"})
+	if err != nil {
+		t.Fatalf("create first session: %v", err)
+	}
+	second, err := service.Create(CreateRequest{OwnerID: "owner-b"})
+	if err != nil {
+		t.Fatalf("create second session: %v", err)
+	}
+
+	if filepath.Clean(first.WorkingDir) == filepath.Clean(second.WorkingDir) {
+		t.Fatalf("expected distinct workspaces, got %q", first.WorkingDir)
 	}
 }
 
@@ -395,8 +413,8 @@ func TestServiceDeleteRemovesPersistedStateAndWorkspace(t *testing.T) {
 	if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected state file removed, got %v", err)
 	}
-	if _, err := os.Stat(snapshot.WorkingDir); err != nil {
-		t.Fatalf("expected shared workspace to persist, got %v", err)
+	if _, err := os.Stat(snapshot.WorkingDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected workspace removed with session delete, got %v", err)
 	}
 }
 

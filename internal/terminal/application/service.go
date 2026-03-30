@@ -28,7 +28,6 @@ const (
 	workspaceDirectoryName          = "workspaces"
 	workspaceTerminalDirName        = "terminal"
 	workspaceSessionsDirName        = "sessions"
-	workspaceSharedDirName          = "shared"
 	maxEntryPageLimit               = 200
 )
 
@@ -503,7 +502,6 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 		return terminaldomain.Session{}, err
 	}
 	workspaceDir := strings.TrimSpace(snapshot.WorkingDir)
-	sharedWorkspaceDir, sharedWorkspaceErr := resolveSessionWorkspacePath(s.options.WorkingDir, snapshot.ID)
 	if workspaceDir == "" {
 		workspaceDir, err = resolveSessionWorkspacePath(s.options.WorkingDir, snapshot.ID)
 		if err != nil {
@@ -534,10 +532,8 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 	if err := removeTerminalSessionStateFile(statePath); err != nil {
 		cleanupErr = errors.Join(cleanupErr, err)
 	}
-	if filepath.Clean(workspaceDir) != filepath.Clean(sharedWorkspaceDir) || sharedWorkspaceErr != nil {
-		if err := os.RemoveAll(workspaceDir); err != nil {
-			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove terminal workspace: %w", err))
-		}
+	if err := os.RemoveAll(workspaceDir); err != nil {
+		cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove terminal workspace: %w", err))
 	}
 	if cleanupErr != nil {
 		return snapshot, cleanupErr
@@ -1354,12 +1350,17 @@ func resolveSessionWorkspacePath(baseDir string, sessionID string) (string, erro
 	if root == "" {
 		root = "."
 	}
+	sanitizedSessionID := sanitizeWorkspaceSegment(sessionID)
+	if sanitizedSessionID == "" {
+		return "", ErrSessionRecoverIDRequired
+	}
 	workspaceDir := filepath.Join(
 		root,
 		defaultWorkspaceRootDirName,
 		workspaceDirectoryName,
 		workspaceTerminalDirName,
-		workspaceSharedDirName,
+		workspaceSessionsDirName,
+		sanitizedSessionID,
 	)
 	absolute, err := filepath.Abs(workspaceDir)
 	if err != nil {
