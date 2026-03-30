@@ -25,6 +25,33 @@ func TestCodexCLIProcessorProcessSuccess(t *testing.T) {
 	}
 }
 
+func TestCodexCLIProcessorProcessEmitsHeartbeat(t *testing.T) {
+	processor := newTestProcessor("slow-success", "reply: hello")
+	processor.heartbeatInterval = 20 * time.Millisecond
+	heartbeats := make(chan execdomain.RuntimeHeartbeat, 8)
+	ctx := execdomain.WithRuntimeHeartbeatReporter(context.Background(), func(heartbeat execdomain.RuntimeHeartbeat) {
+		heartbeats <- heartbeat
+	})
+
+	output, err := processor.Process(ctx, "reply: hello", testRuntimeMetadata())
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
+	}
+	if len(heartbeats) == 0 {
+		t.Fatal("expected heartbeat during process execution")
+	}
+	heartbeat := <-heartbeats
+	if heartbeat.Source != codexHeartbeatSource {
+		t.Fatalf("heartbeat source = %q, want %q", heartbeat.Source, codexHeartbeatSource)
+	}
+	if !strings.Contains(heartbeat.Message, "heartbeat ok") {
+		t.Fatalf("heartbeat message = %q, want heartbeat marker", heartbeat.Message)
+	}
+}
+
 func TestCodexCLIProcessorProcessCommandFailure(t *testing.T) {
 	processor := newTestProcessor("failure", "reply: hello")
 
@@ -308,6 +335,26 @@ func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
 	}
 }
 
+func TestCodexCLIProcessorProcessStreamEmitsHeartbeat(t *testing.T) {
+	processor := newTestProcessor("stream-slow-success", "reply: hello")
+	processor.heartbeatInterval = 20 * time.Millisecond
+	heartbeats := make(chan execdomain.RuntimeHeartbeat, 8)
+	ctx := execdomain.WithRuntimeHeartbeatReporter(context.Background(), func(heartbeat execdomain.RuntimeHeartbeat) {
+		heartbeats <- heartbeat
+	})
+
+	output, err := processor.ProcessStream(ctx, "reply: hello", testRuntimeMetadata(), nil)
+	if err != nil {
+		t.Fatalf("ProcessStream() error = %v", err)
+	}
+	if output != "mock streamed response" {
+		t.Fatalf("ProcessStream() output = %q, want %q", output, "mock streamed response")
+	}
+	if len(heartbeats) == 0 {
+		t.Fatal("expected heartbeat during stream execution")
+	}
+}
+
 func TestCodexCLIProcessorProcessStreamCommandFailure(t *testing.T) {
 	processor := newTestProcessor("stream-failure", "reply: hello")
 
@@ -461,6 +508,10 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 	case "success":
 		_ = os.WriteFile(outputPath, []byte("mock response\n"), 0o600)
 		os.Exit(0)
+	case "slow-success":
+		time.Sleep(80 * time.Millisecond)
+		_ = os.WriteFile(outputPath, []byte("mock response\n"), 0o600)
+		os.Exit(0)
 	case "empty":
 		_ = os.WriteFile(outputPath, []byte(" \n"), 0o600)
 		os.Exit(0)
@@ -470,6 +521,11 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 	case "stream-success":
 		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\"}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.delta\",\"item\":{\"type\":\"agent_message\",\"delta\":\"mock \"}}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock streamed response\"}}\n")
+		os.Exit(0)
+	case "stream-slow-success":
+		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\"}\n")
+		time.Sleep(80 * time.Millisecond)
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock streamed response\"}}\n")
 		os.Exit(0)
 	case "stream-failure":

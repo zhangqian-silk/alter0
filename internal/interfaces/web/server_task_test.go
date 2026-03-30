@@ -685,17 +685,19 @@ func TestTaskItemEndpointIncludesAsyncExecutionFields(t *testing.T) {
 	taskSvc := &stubWebTaskService{
 		items: map[string]taskdomain.Task{
 			"task-async-1": {
-				ID:             "task-async-1",
-				SessionID:      "session-a",
-				Status:         taskdomain.TaskStatusRunning,
-				Phase:          "running",
-				QueueWaitMS:    320,
-				QueuePosition:  0,
-				AcceptedAt:     now.Add(-time.Second),
-				StartedAt:      now,
-				CreatedAt:      now.Add(-2 * time.Second),
-				UpdatedAt:      now,
-				RequestContent: "run deploy",
+				ID:              "task-async-1",
+				SessionID:       "session-a",
+				Status:          taskdomain.TaskStatusRunning,
+				Phase:           "running",
+				QueueWaitMS:     320,
+				QueuePosition:   0,
+				AcceptedAt:      now.Add(-time.Second),
+				StartedAt:       now,
+				CreatedAt:       now.Add(-2 * time.Second),
+				UpdatedAt:       now,
+				LastHeartbeatAt: now.Add(30 * time.Second),
+				TimeoutAt:       now.Add(90 * time.Second),
+				RequestContent:  "run deploy",
 			},
 		},
 	}
@@ -720,6 +722,9 @@ func TestTaskItemEndpointIncludesAsyncExecutionFields(t *testing.T) {
 	}
 	if !strings.Contains(body, `"accepted_at":"`) || !strings.Contains(body, `"started_at":"`) {
 		t.Fatalf("expected accepted_at/started_at fields in payload, got %s", body)
+	}
+	if !strings.Contains(body, `"last_heartbeat_at":"`) || !strings.Contains(body, `"timeout_at":"`) {
+		t.Fatalf("expected heartbeat window fields in payload, got %s", body)
 	}
 }
 
@@ -907,6 +912,8 @@ func TestControlTaskViewAndActionConstraints(t *testing.T) {
 				Status:          taskdomain.TaskStatusFailed,
 				CreatedAt:       now,
 				UpdatedAt:       now,
+				LastHeartbeatAt: now.Add(-time.Minute),
+				TimeoutAt:       now.Add(5 * time.Minute),
 				RequestContent:  "generate report",
 				RequestMetadata: map[string]string{
 					taskapp.MetadataTaskTriggerTypeKey: "cron",
@@ -955,6 +962,9 @@ func TestControlTaskViewAndActionConstraints(t *testing.T) {
 	}
 	if !strings.Contains(body, `"job_id":"job-nightly"`) || !strings.Contains(body, `"fired_at":"2026-03-04T03:45:00Z"`) {
 		t.Fatalf("expected cron source fields in detail view, got %s", body)
+	}
+	if !strings.Contains(body, `"last_heartbeat_at":"`) || !strings.Contains(body, `"timeout_at":"`) {
+		t.Fatalf("expected heartbeat window fields in control detail view, got %s", body)
 	}
 
 	taskSvc.retryErr = taskapp.ErrTaskConflict
@@ -1071,6 +1081,8 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 			RetryCount:      0,
 			CreatedAt:       now.Add(-2 * time.Hour),
 			UpdatedAt:       now.Add(-90 * time.Minute),
+			LastHeartbeatAt: now.Add(-80 * time.Minute),
+			TimeoutAt:       now.Add(-70 * time.Minute),
 			FinishedAt:      now.Add(-90 * time.Minute),
 			RequestContent:  "build report",
 			ErrorMessage:    "network timeout",
@@ -1164,6 +1176,9 @@ func TestControlTaskCollectionEndpointFiltersAndPagination(t *testing.T) {
 	}
 	if payload.Items[0].Error != "network timeout" {
 		t.Fatalf("expected error_message in list item, got %+v", payload.Items[0])
+	}
+	if payload.Items[0].LastHeartbeatAt.IsZero() || payload.Items[0].TimeoutAt.IsZero() {
+		t.Fatalf("expected heartbeat window fields in list item, got %+v", payload.Items[0])
 	}
 	if payload.Items[0].TriggerType != shareddomain.TriggerTypeCron || payload.Items[0].ChannelType != shareddomain.ChannelTypeScheduler {
 		t.Fatalf("expected trigger/channel fields in list item, got %+v", payload.Items[0])

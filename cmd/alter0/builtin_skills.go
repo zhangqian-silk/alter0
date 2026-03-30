@@ -139,7 +139,7 @@ func travelPageSkillGuide() string {
 		"",
 		"- This skill is file-backed. Read `.alter0/skills/travel-page.md` before creating or revising reusable travel city page rules.",
 		"- Treat the file as the canonical rulebook for `travel` Workspace pages and standalone HTML city pages.",
-		"- Use `read_skill` to inspect the current rulebook and `write_skill` only when the user provides a durable, reusable page preference.",
+		"- Pass the current rulebook into `codex_exec` as reusable context, and only update the file when the user provides a durable, reusable page preference.",
 		"",
 		"## When to update",
 		"",

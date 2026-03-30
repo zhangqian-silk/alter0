@@ -57,6 +57,9 @@ func TestMemoryTaskCollectionHandlerFiltersByStatusTypeAndTime(t *testing.T) {
 	if body.Items[0].TaskID != "task-1" {
 		t.Fatalf("expected task-1, got %+v", body.Items[0])
 	}
+	if body.Items[0].LastHeartbeatAt.IsZero() || body.Items[0].TimeoutAt.IsZero() {
+		t.Fatalf("expected heartbeat fields in summary item, got %+v", body.Items[0])
+	}
 	if body.Pagination.Total != 1 || body.Pagination.HasNext {
 		t.Fatalf("unexpected pagination: %+v", body.Pagination)
 	}
@@ -107,6 +110,12 @@ func TestMemoryTaskDetailAndRebuildSummaryEndpoints(t *testing.T) {
 	}
 	if detailBody.Meta.TaskID != "task-detail" {
 		t.Fatalf("unexpected meta payload: %+v", detailBody.Meta)
+	}
+	if detailBody.Meta.LastHeartbeatAt.IsZero() {
+		t.Fatalf("expected heartbeat timestamp in meta payload: %+v", detailBody.Meta)
+	}
+	if detailBody.Meta.TimeoutAt.IsZero() {
+		t.Fatalf("expected timeout window in meta payload: %+v", detailBody.Meta)
 	}
 	if len(detailBody.SummaryRefs) == 0 {
 		t.Fatalf("expected summary refs in detail response")
@@ -180,6 +189,8 @@ func newMemoryTask(taskID string, taskType string, status taskdomain.TaskStatus,
 		TimeoutMS:       90000,
 		CreatedAt:       finishedAt.Add(-time.Minute),
 		UpdatedAt:       finishedAt,
+		LastHeartbeatAt: finishedAt.Add(-10 * time.Second),
+		TimeoutAt:       finishedAt.Add(2 * time.Minute),
 		FinishedAt:      finishedAt,
 		RequestContent:  "handle " + taskID,
 		Summary:         "summary " + taskID,

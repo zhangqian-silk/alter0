@@ -3,7 +3,7 @@ package infrastructure
 import (
 	"context"
 	"encoding/json"
-	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -199,7 +199,7 @@ func TestHybridNLProcessorCodingAgentPromptEmphasizesCodexLoop(t *testing.T) {
 	prompt := reactFactory.lastConfig.SystemPrompt
 	for _, expected := range []string{
 		"You are the dedicated coding agent.",
-		"route substantive implementation and verification work through codex_exec",
+		"Do not implement or verify changes yourself.",
 		"After every codex_exec result, decide whether the requirement is satisfied.",
 		"Do not stop after the first Codex attempt",
 		"Current coding workspace context:",
@@ -261,7 +261,7 @@ func TestHybridNLProcessorUsesChatLevelModelOverride(t *testing.T) {
 	}
 }
 
-func TestHybridNLProcessorReactModeInjectsSelectedNativeTools(t *testing.T) {
+func TestHybridNLProcessorReactModeIgnoresLegacyNativeTools(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
 	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
 
@@ -272,17 +272,14 @@ func TestHybridNLProcessorReactModeInjectsSelectedNativeTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	if len(reactFactory.lastConfig.Tools) != 2 {
-		t.Fatalf("expected selected native tools only, got %+v", reactFactory.lastConfig.Tools)
+	if len(reactFactory.lastConfig.Tools) != 0 {
+		t.Fatalf("expected no legacy native tools in react mode, got %+v", reactFactory.lastConfig.Tools)
 	}
-	if reactFactory.lastConfig.Tools[0].Name != "read" || reactFactory.lastConfig.Tools[1].Name != "bash" {
-		t.Fatalf("unexpected tool order: %+v", reactFactory.lastConfig.Tools)
+	if reactFactory.lastConfig.ToolExecutor != nil {
+		t.Fatalf("expected no tool executor for legacy native tools")
 	}
-	if reactFactory.lastConfig.ToolExecutor == nil {
-		t.Fatalf("expected tool executor to be configured")
-	}
-	if reactFactory.lastConfig.MaxIterations != 6 {
-		t.Fatalf("expected max iterations 6 for tool-enabled chat, got %d", reactFactory.lastConfig.MaxIterations)
+	if reactFactory.lastConfig.MaxIterations != 1 {
+		t.Fatalf("expected max iterations 1 without tool-enabled chat, got %d", reactFactory.lastConfig.MaxIterations)
 	}
 }
 
@@ -302,7 +299,7 @@ func TestHybridNLProcessorAgentModeDefaultsToCoreTools(t *testing.T) {
 	for _, item := range reactFactory.lastConfig.Tools {
 		toolNames = append(toolNames, item.Name)
 	}
-	for _, expected := range []string{"list_dir", "read", "write", "edit", "bash", "codex_exec", "complete"} {
+	for _, expected := range []string{"codex_exec", "search_memory", "read_memory", "write_memory", "complete"} {
 		if !strings.Contains(strings.Join(toolNames, ","), expected) {
 			t.Fatalf("expected tool %s in %+v", expected, toolNames)
 		}
@@ -438,27 +435,27 @@ func TestHybridNLProcessorAgentModeIncludesProductContext(t *testing.T) {
 	}
 }
 
-func TestHybridNLProcessorAgentModeSupportsSkillTools(t *testing.T) {
+func TestHybridNLProcessorAgentModeSupportsMemoryTools(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
 	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
 
-	rawSkillContext, err := json.Marshal(execdomain.SkillContext{
-		Protocol: execdomain.SkillContextProtocolVersion,
-		Skills: []execdomain.SkillSpec{
-			{ID: "travel-page", Name: "Travel Page", FilePath: ".alter0/skills/travel-page.md", Writable: true},
+	rawMemoryContext, err := json.Marshal(execdomain.MemoryContext{
+		Protocol: execdomain.MemoryContextProtocolVersion,
+		Files: []execdomain.MemoryFileSpec{
+			{ID: "user_md", Selection: "user_md", Title: "USER.md", Path: "/repo/USER.md", Exists: true, Writable: true},
 		},
 	})
 	if err != nil {
-		t.Fatalf("marshal skill context failed: %v", err)
+		t.Fatalf("marshal memory context failed: %v", err)
 	}
 
 	metadata := testRuntimeMetadata()
-	metadata[execdomain.AgentIDMetadataKey] = "travel-master"
+	metadata[execdomain.AgentIDMetadataKey] = "researcher"
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
-	metadata[execdomain.AgentToolsMetadataKey] = `["read_skill","write_skill"]`
-	metadata[execdomain.SkillContextMetadataKey] = string(rawSkillContext)
+	metadata[execdomain.AgentToolsMetadataKey] = `["search_memory","read_memory","write_memory"]`
+	metadata[execdomain.MemoryContextMetadataKey] = string(rawMemoryContext)
 
-	if _, err := processor.Process(context.Background(), "同步 travel 页面规则", metadata); err != nil {
+	if _, err := processor.Process(context.Background(), "更新用户缩写和偏好", metadata); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
 
@@ -466,62 +463,63 @@ func TestHybridNLProcessorAgentModeSupportsSkillTools(t *testing.T) {
 	for _, item := range reactFactory.lastConfig.Tools {
 		toolNames = append(toolNames, item.Name)
 	}
-	if !strings.Contains(strings.Join(toolNames, ","), "read_skill") || !strings.Contains(strings.Join(toolNames, ","), "write_skill") {
+	if !strings.Contains(strings.Join(toolNames, ","), "search_memory") || !strings.Contains(strings.Join(toolNames, ","), "read_memory") || !strings.Contains(strings.Join(toolNames, ","), "write_memory") {
 		t.Fatalf("expected skill tools in %+v", toolNames)
 	}
-	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use read_skill") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use write_skill") {
-		t.Fatalf("expected skill tool instructions in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
+	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use search_memory") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use read_memory") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use write_memory") {
+		t.Fatalf("expected memory tool instructions in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
 	}
 }
 
-func TestHybridNLProcessorExecutesSkillReadWriteTools(t *testing.T) {
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd failed: %v", err)
-	}
-	root := t.TempDir()
-	if err := os.Chdir(root); err != nil {
-		t.Fatalf("chdir temp root failed: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-
+func TestHybridNLProcessorExecutesMemorySearchReadWriteTools(t *testing.T) {
 	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), nil, nil)
-	rawSkillContext, err := json.Marshal(execdomain.SkillContext{
-		Protocol: execdomain.SkillContextProtocolVersion,
-		Skills: []execdomain.SkillSpec{
-			{ID: "travel-page", Name: "Travel Page", FilePath: ".alter0/skills/travel-page.md", Writable: true},
+	memoryPath := filepath.Join(t.TempDir(), "USER.md")
+	rawMemoryContext, err := json.Marshal(execdomain.MemoryContext{
+		Protocol: execdomain.MemoryContextProtocolVersion,
+		Files: []execdomain.MemoryFileSpec{
+			{ID: "user_md", Selection: "user_md", Title: "USER.md", Path: memoryPath, Exists: false, Writable: true},
 		},
 	})
 	if err != nil {
-		t.Fatalf("marshal skill context failed: %v", err)
+		t.Fatalf("marshal memory context failed: %v", err)
 	}
 
 	metadata := testRuntimeMetadata()
-	metadata[execdomain.SkillContextMetadataKey] = string(rawSkillContext)
+	metadata[execdomain.MemoryContextMetadataKey] = string(rawMemoryContext)
 
 	writeResult, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
-		ID:        "write-skill-1",
-		Name:      "write_skill",
-		Arguments: `{"skill_id":"travel-page","content":"# Travel Page Rulebook\n\n更新后的规则","mode":"overwrite"}`,
+		ID:        "write-memory-1",
+		Name:      "write_memory",
+		Arguments: `{"path":"` + filepath.ToSlash(memoryPath) + `","content":"name: alter0\nalias: a0\n","mode":"overwrite"}`,
 	})
 	if err != nil {
-		t.Fatalf("write_skill error = %v", err)
+		t.Fatalf("write_memory error = %v", err)
 	}
 	if writeResult.IsError {
-		t.Fatalf("expected write_skill success, got %+v", writeResult)
+		t.Fatalf("expected write_memory success, got %+v", writeResult)
+	}
+
+	searchResult, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
+		ID:        "search-memory-1",
+		Name:      "search_memory",
+		Arguments: `{"query":"alias"}`,
+	})
+	if err != nil {
+		t.Fatalf("search_memory error = %v", err)
+	}
+	if searchResult.IsError || !strings.Contains(searchResult.Result, "alias") {
+		t.Fatalf("expected search_memory content, got %+v", searchResult)
 	}
 
 	readResult, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
-		ID:        "read-skill-1",
-		Name:      "read_skill",
-		Arguments: `{"skill_id":"travel-page"}`,
+		ID:        "read-memory-1",
+		Name:      "read_memory",
+		Arguments: `{"path":"` + filepath.ToSlash(memoryPath) + `"}`,
 	})
 	if err != nil {
-		t.Fatalf("read_skill error = %v", err)
+		t.Fatalf("read_memory error = %v", err)
 	}
-	if readResult.IsError || !strings.Contains(readResult.Result, "更新后的规则") {
-		t.Fatalf("expected read_skill content, got %+v", readResult)
+	if readResult.IsError || !strings.Contains(readResult.Result, "alias") {
+		t.Fatalf("expected read_memory content, got %+v", readResult)
 	}
 }

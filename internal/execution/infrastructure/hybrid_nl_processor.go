@@ -156,23 +156,12 @@ func (p *HybridNLProcessor) processWithReact(
 	if p.react == nil {
 		return "", errors.New("react agent factory unavailable")
 	}
-	tools := buildNativeTools(metadata, nil)
-	var toolExecutor llmdomain.ToolExecutor
-	maxIterations := 1
-	if len(tools) > 0 {
-		toolExecutor = llmdomain.ToolExecutorFunc(func(runCtx context.Context, toolCall llmdomain.ToolCall) (*llmdomain.ToolResult, error) {
-			return p.executeModelTool(runCtx, metadata, toolCall)
-		})
-		maxIterations = 6
-	}
 	providerID := strings.TrimSpace(metadataValue(metadata, execdomain.LLMProviderIDMetadataKey))
 	modelID := strings.TrimSpace(metadataValue(metadata, execdomain.LLMModelMetadataKey))
 	agent, err := p.react.GetReActAgent(ctx, providerID, llmdomain.ReActAgentConfig{
 		Model:             modelID,
 		SystemPrompt:      buildHybridReActSystemPrompt(metadata),
-		Tools:             tools,
-		ToolExecutor:      toolExecutor,
-		MaxIterations:     maxIterations,
+		MaxIterations:     1,
 		UserMessagePuller: shareddomain.ConsumeLiveUserMessage,
 	})
 	if err != nil {
@@ -249,16 +238,12 @@ func (p *HybridNLProcessor) executeModelTool(
 ) (*llmdomain.ToolResult, error) {
 	name := strings.ToLower(strings.TrimSpace(toolCall.Name))
 	switch name {
-	case toolListDir, toolRead, toolWrite, toolEdit, toolBash:
-		executor, err := newNativeToolExecutor(metadata)
-		if err != nil {
-			return nil, err
-		}
-		return executor.Execute(ctx, toolCall)
-	case toolReadSkill:
-		return p.executeReadSkillTool(metadata, toolCall)
-	case toolWriteSkill:
-		return p.executeWriteSkillTool(metadata, toolCall)
+	case toolSearchMemory:
+		return p.executeSearchMemoryTool(metadata, toolCall)
+	case toolReadMemory:
+		return p.executeReadMemoryTool(metadata, toolCall)
+	case toolWriteMemory:
+		return p.executeWriteMemoryTool(metadata, toolCall)
 	case "codex_exec":
 		payload := struct {
 			Instruction string `json:"instruction"`
@@ -330,9 +315,6 @@ func buildHybridReActSystemPrompt(metadata map[string]string) string {
 		"Follow the ReAct pattern internally, but do not expose Thought, Action, or Observation headings.",
 		"Return only the final user-facing answer.",
 	}
-	if len(buildNativeTools(metadata, nil)) > 0 {
-		parts = append(parts, "Native tools are enabled. Relative tool paths use the repo root by default; set base=workspace to operate on the session workspace.")
-	}
 	if rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey)); rawSkillContext != "" {
 		parts = append(parts, "Skill context (JSON): "+rawSkillContext)
 	}
@@ -353,19 +335,19 @@ func buildHybridReActSystemPrompt(metadata map[string]string) string {
 
 func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) string {
 	allowedTools := parseSelectedToolIDs(metadata, defaultAgentToolIDs)
+	allowedTools[toolCodexExec] = struct{}{}
 	parts := []string{
 		"You are alter0's agent execution mode.",
-		"Your job is to complete the user's goal by actually executing work, not by only offering suggestions.",
-		"Prefer native tools for listing directories, reading files, writing files, editing files, and running shell commands.",
-		"Use codex_exec when the task needs a deeper autonomous implementation run than a single native tool step.",
+		"Your job is to act as the user's proxy: understand the real goal, resolve shorthand and durable preferences from memory, and convert that understanding into the next precise Codex CLI instruction.",
+		"Codex CLI is the concrete executor for repository, file, shell, and product work. Use codex_exec for every concrete action.",
+		"Use search_memory, read_memory, and write_memory only for the resolved memory files when you need to inspect or persist durable user guidance.",
 		"Only call complete after the goal has been completed or when execution is truly blocked and you can clearly explain why.",
 		"Do not expose hidden chain-of-thought. Keep outputs concise and execution-oriented.",
-		"Relative native-tool paths use the repo root by default; set base=workspace to operate on the session workspace.",
 	}
 	if isCodingAgent(metadata) {
 		parts = append(parts,
 			"You are the dedicated coding agent. You are responsible for understanding the user's engineering requirement, keeping the conversation coherent, and only ending after the requested development work is complete or a concrete blocker remains.",
-			"Use native tools to inspect repository context and handle small follow-up edits, but route substantive implementation and verification work through codex_exec so Codex performs the concrete development steps.",
+			"Do not implement or verify changes yourself. Translate the user's requirement, repository conventions, and memory into precise codex_exec instructions so Codex performs the concrete development steps.",
 			"After every codex_exec result, decide whether the requirement is satisfied. If it is not, issue the next concrete codex_exec instruction based on the observed result and continue the loop until the change, validation, and required documentation updates are finished.",
 			"Do not stop after the first Codex attempt when the task is still fixable. Refine the next instruction from the latest Codex output and keep driving execution.",
 			"Treat repository context, branch readiness, test-page verification, and PR handoff quality as part of the coding task. Do not treat them as optional follow-up details.",
@@ -378,11 +360,14 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 	if _, ok := allowedTools[toolDelegateAgent]; ok {
 		parts = append(parts, "Use delegate_agent when a specialist agent is better suited for a coding or writing subtask and you need that agent to return a concrete result.")
 	}
-	if _, ok := allowedTools[toolReadSkill]; ok {
-		parts = append(parts, "Use read_skill to inspect file-backed reusable skills before applying page, rule, or preference changes.")
+	if _, ok := allowedTools[toolSearchMemory]; ok {
+		parts = append(parts, "Use search_memory first when you need to locate a past preference, shorthand, or historical note across the resolved memory files before opening a specific file.")
 	}
-	if _, ok := allowedTools[toolWriteSkill]; ok {
-		parts = append(parts, "Use write_skill only when the user provides a durable, reusable preference that should update a file-backed skill instead of a one-off task artifact.")
+	if _, ok := allowedTools[toolReadMemory]; ok {
+		parts = append(parts, "Use read_memory to inspect the latest on-disk version of a resolved memory file when the injected snapshot is insufficient or may have changed.")
+	}
+	if _, ok := allowedTools[toolWriteMemory]; ok {
+		parts = append(parts, "Use write_memory only for durable user guidance, preference updates, naming conventions, or shorthand mappings that belong in the resolved memory files.")
 	}
 	if custom := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey)); custom != "" {
 		parts = append(parts, "Agent profile system prompt:\n"+custom)
@@ -403,7 +388,7 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 	}
 	if rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey)); rawMemoryContext != "" {
 		parts = append(parts, renderMemoryContextInstruction(rawMemoryContext))
-		parts = append(parts, "When the user asks to remember, update, or persist durable guidance, use read/write/edit tools to modify the appropriate memory files directly.")
+		parts = append(parts, "When the user asks to remember, update, or persist durable guidance, use search_memory to locate the right file when needed, then use read_memory and write_memory on the appropriate resolved memory files.")
 	}
 	if rawProductContext := strings.TrimSpace(metadataValue(metadata, execdomain.ProductContextMetadataKey)); rawProductContext != "" {
 		parts = append(parts, renderProductContextInstruction(rawProductContext))
@@ -546,18 +531,38 @@ func renderProductDiscoveryInstruction(raw string) string {
 
 func (p *HybridNLProcessor) buildAgentTools(metadata map[string]string) []llmdomain.Tool {
 	allowed := parseSelectedToolIDs(metadata, defaultAgentToolIDs)
-	items := make([]llmdomain.Tool, 0, len(allowed)+2)
-	items = append(items, buildNativeTools(metadata, defaultAgentToolIDs)...)
-	if _, ok := allowed[toolReadSkill]; ok {
+	allowed[toolCodexExec] = struct{}{}
+	items := make([]llmdomain.Tool, 0, len(allowed)+1)
+	if _, ok := allowed[toolSearchMemory]; ok {
 		items = append(items, llmdomain.Tool{
-			Name:        toolReadSkill,
-			Description: "Read the file content behind a resolved file-backed skill.",
+			Name:        toolSearchMemory,
+			Description: "Search the resolved memory files for a keyword or phrase and return matching files plus nearby context snippets.",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"skill_id": map[string]interface{}{
+					"query": map[string]interface{}{
 						"type":        "string",
-						"description": "Resolved skill ID to read, for example `travel-page`.",
+						"description": "Keyword or phrase to search for in the resolved memory files.",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum number of matches to return. Defaults to 20.",
+					},
+				},
+				"required": []string{"query"},
+			},
+		})
+	}
+	if _, ok := allowed[toolReadMemory]; ok {
+		items = append(items, llmdomain.Tool{
+			Name:        toolReadMemory,
+			Description: "Read one of the resolved memory files that was injected into the current agent context.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Absolute path of a resolved memory file from the current memory context.",
 					},
 					"offset": map[string]interface{}{
 						"type":        "integer",
@@ -568,20 +573,20 @@ func (p *HybridNLProcessor) buildAgentTools(metadata map[string]string) []llmdom
 						"description": "Maximum bytes to return. Defaults to 32768.",
 					},
 				},
-				"required": []string{"skill_id"},
+				"required": []string{"path"},
 			},
 		})
 	}
-	if _, ok := allowed[toolWriteSkill]; ok {
+	if _, ok := allowed[toolWriteMemory]; ok {
 		items = append(items, llmdomain.Tool{
-			Name:        toolWriteSkill,
-			Description: "Write or append content to the file behind a resolved writable skill.",
+			Name:        toolWriteMemory,
+			Description: "Write or append content to one of the resolved writable memory files from the current memory context.",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"skill_id": map[string]interface{}{
+					"path": map[string]interface{}{
 						"type":        "string",
-						"description": "Resolved writable skill ID to update, for example `travel-page`.",
+						"description": "Absolute path of a resolved writable memory file from the current memory context.",
 					},
 					"content": map[string]interface{}{
 						"type":        "string",
@@ -593,7 +598,7 @@ func (p *HybridNLProcessor) buildAgentTools(metadata map[string]string) []llmdom
 						"description": "Write mode. Defaults to overwrite.",
 					},
 				},
-				"required": []string{"skill_id", "content"},
+				"required": []string{"path", "content"},
 			},
 		})
 	}
@@ -654,21 +659,41 @@ func (p *HybridNLProcessor) buildAgentTools(metadata map[string]string) []llmdom
 	return items
 }
 
-func (p *HybridNLProcessor) executeReadSkillTool(
+func (p *HybridNLProcessor) executeReadMemoryTool(
 	metadata map[string]string,
 	toolCall llmdomain.ToolCall,
 ) (*llmdomain.ToolResult, error) {
 	payload := struct {
-		SkillID string `json:"skill_id"`
-		Offset  int    `json:"offset"`
-		Limit   int    `json:"limit"`
+		Path   string `json:"path"`
+		Offset int    `json:"offset"`
+		Limit  int    `json:"limit"`
 	}{}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(toolCall.Arguments)), &payload); err != nil {
-		return nil, fmt.Errorf("parse %s arguments: %w", toolReadSkill, err)
+		return nil, fmt.Errorf("parse %s arguments: %w", toolReadMemory, err)
 	}
-	skill, executor, resolvedPath, err := resolveSkillToolTarget(metadata, payload.SkillID)
+	file, err := findResolvedMemoryFile(metadata, payload.Path)
 	if err != nil {
 		return toolErrorResult(toolCall, err), nil
+	}
+	resolvedPath := strings.TrimSpace(file.Path)
+	info, statErr := os.Stat(resolvedPath)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return toolSuccessResult(toolCall, map[string]any{
+				"path":      strings.TrimSpace(file.Path),
+				"memory_id": strings.TrimSpace(file.ID),
+				"title":     strings.TrimSpace(file.Title),
+				"exists":    false,
+				"content":   "",
+			}), nil
+		}
+		return toolErrorResult(toolCall, statErr), nil
+	}
+	if info.IsDir() {
+		return toolErrorResult(toolCall, errors.New("memory path is a directory")), nil
+	}
+	if !file.Exists {
+		file.Exists = true
 	}
 	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
@@ -693,39 +718,118 @@ func (p *HybridNLProcessor) executeReadSkillTool(
 	}
 	content := string(data[payload.Offset:end])
 	return toolSuccessResult(toolCall, map[string]any{
-		"skill_id":        skill.ID,
-		"skill_name":      skill.Name,
-		"path":            executor.runtime.displayPath(resolvedPath),
-		"size_bytes":      len(data),
-		"offset":          payload.Offset,
-		"returned_bytes":  len(content),
-		"truncated":       end < len(data),
-		"content":         content,
-		"writable":        skill.Writable,
-		"file_backed":     true,
-		"resolved_skill":  true,
-		"resolved_prompt": "skill file content",
+		"path":           strings.TrimSpace(file.Path),
+		"memory_id":      strings.TrimSpace(file.ID),
+		"title":          strings.TrimSpace(file.Title),
+		"exists":         true,
+		"size_bytes":     len(data),
+		"offset":         payload.Offset,
+		"returned_bytes": len(content),
+		"truncated":      end < len(data),
+		"content":        content,
 	}), nil
 }
 
-func (p *HybridNLProcessor) executeWriteSkillTool(
+func (p *HybridNLProcessor) executeSearchMemoryTool(
 	metadata map[string]string,
 	toolCall llmdomain.ToolCall,
 ) (*llmdomain.ToolResult, error) {
 	payload := struct {
-		SkillID string `json:"skill_id"`
+		Query string `json:"query"`
+		Limit int    `json:"limit"`
+	}{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(toolCall.Arguments)), &payload); err != nil {
+		return nil, fmt.Errorf("parse %s arguments: %w", toolSearchMemory, err)
+	}
+	query := strings.TrimSpace(payload.Query)
+	if query == "" {
+		return toolErrorResult(toolCall, errors.New("query is required")), nil
+	}
+	rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey))
+	if rawMemoryContext == "" {
+		return toolErrorResult(toolCall, errors.New("memory context is unavailable")), nil
+	}
+	var memoryContext execdomain.MemoryContext
+	if err := json.Unmarshal([]byte(rawMemoryContext), &memoryContext); err != nil {
+		return toolErrorResult(toolCall, fmt.Errorf("invalid memory context metadata: %w", err)), nil
+	}
+
+	limit := payload.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	queryLower := strings.ToLower(query)
+	type memoryMatch struct {
+		Path     string `json:"path"`
+		MemoryID string `json:"memory_id"`
+		Title    string `json:"title"`
+		Line     int    `json:"line"`
+		Snippet  string `json:"snippet"`
+	}
+	matches := make([]memoryMatch, 0, limit)
+	filesScanned := 0
+	truncated := false
+	for _, file := range memoryContext.Files {
+		content, exists, err := loadResolvedMemoryContent(file)
+		if err != nil || !exists || strings.TrimSpace(content) == "" {
+			continue
+		}
+		filesScanned++
+		lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+		for idx, line := range lines {
+			if !strings.Contains(strings.ToLower(line), queryLower) {
+				continue
+			}
+			if len(matches) >= limit {
+				truncated = true
+				break
+			}
+			matches = append(matches, memoryMatch{
+				Path:     strings.TrimSpace(file.Path),
+				MemoryID: strings.TrimSpace(file.ID),
+				Title:    strings.TrimSpace(file.Title),
+				Line:     idx + 1,
+				Snippet:  buildMemorySearchSnippet(lines, idx),
+			})
+		}
+		if truncated {
+			break
+		}
+	}
+	return toolSuccessResult(toolCall, map[string]any{
+		"query":         query,
+		"files_scanned": filesScanned,
+		"match_count":   len(matches),
+		"truncated":     truncated,
+		"matches":       matches,
+	}), nil
+}
+
+func (p *HybridNLProcessor) executeWriteMemoryTool(
+	metadata map[string]string,
+	toolCall llmdomain.ToolCall,
+) (*llmdomain.ToolResult, error) {
+	payload := struct {
+		Path    string `json:"path"`
 		Content string `json:"content"`
 		Mode    string `json:"mode"`
 	}{}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(toolCall.Arguments)), &payload); err != nil {
-		return nil, fmt.Errorf("parse %s arguments: %w", toolWriteSkill, err)
+		return nil, fmt.Errorf("parse %s arguments: %w", toolWriteMemory, err)
 	}
-	skill, executor, resolvedPath, err := resolveSkillToolTarget(metadata, payload.SkillID)
+	file, err := findResolvedMemoryFile(metadata, payload.Path)
 	if err != nil {
 		return toolErrorResult(toolCall, err), nil
 	}
-	if !skill.Writable {
-		return toolErrorResult(toolCall, errors.New("skill is read-only")), nil
+	if !file.Writable {
+		return toolErrorResult(toolCall, errors.New("memory file is read-only")), nil
+	}
+	resolvedPath := strings.TrimSpace(file.Path)
+	if resolvedPath == "" {
+		return toolErrorResult(toolCall, errors.New("memory file path is required")), nil
 	}
 	if err := os.MkdirAll(filepath.Dir(resolvedPath), 0o755); err != nil {
 		return toolErrorResult(toolCall, err), nil
@@ -740,12 +844,12 @@ func (p *HybridNLProcessor) executeWriteSkillTool(
 			return toolErrorResult(toolCall, err), nil
 		}
 	case "append":
-		file, err := os.OpenFile(resolvedPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		handle, err := os.OpenFile(resolvedPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			return toolErrorResult(toolCall, err), nil
 		}
-		defer file.Close()
-		if _, err := file.WriteString(payload.Content); err != nil {
+		defer handle.Close()
+		if _, err := handle.WriteString(payload.Content); err != nil {
 			return toolErrorResult(toolCall, err), nil
 		}
 	default:
@@ -756,57 +860,72 @@ func (p *HybridNLProcessor) executeWriteSkillTool(
 		return toolErrorResult(toolCall, err), nil
 	}
 	return toolSuccessResult(toolCall, map[string]any{
-		"skill_id":    skill.ID,
-		"skill_name":  skill.Name,
-		"path":        executor.runtime.displayPath(resolvedPath),
-		"size_bytes":  info.Size(),
-		"mode":        mode,
-		"writable":    skill.Writable,
-		"file_backed": true,
+		"path":       resolvedPath,
+		"memory_id":  strings.TrimSpace(file.ID),
+		"title":      strings.TrimSpace(file.Title),
+		"mode":       mode,
+		"exists":     true,
+		"size_bytes": info.Size(),
 	}), nil
 }
 
-func resolveSkillToolTarget(
-	metadata map[string]string,
-	skillID string,
-) (execdomain.SkillSpec, *nativeToolExecutor, string, error) {
-	skill, err := findResolvedSkill(metadata, skillID)
-	if err != nil {
-		return execdomain.SkillSpec{}, nil, "", err
+func findResolvedMemoryFile(metadata map[string]string, path string) (execdomain.MemoryFileSpec, error) {
+	targetPath := normalizeResolvedFilePath(path)
+	if targetPath == "" {
+		return execdomain.MemoryFileSpec{}, errors.New("path is required")
 	}
-	if strings.TrimSpace(skill.FilePath) == "" {
-		return execdomain.SkillSpec{}, nil, "", errors.New("skill does not expose a file path")
+	rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey))
+	if rawMemoryContext == "" {
+		return execdomain.MemoryFileSpec{}, errors.New("memory context is unavailable")
 	}
-	executor, err := newNativeToolExecutor(metadata)
-	if err != nil {
-		return execdomain.SkillSpec{}, nil, "", err
+	var memoryContext execdomain.MemoryContext
+	if err := json.Unmarshal([]byte(rawMemoryContext), &memoryContext); err != nil {
+		return execdomain.MemoryFileSpec{}, fmt.Errorf("invalid memory context metadata: %w", err)
 	}
-	resolvedPath, err := executor.runtime.resolvePath(skill.FilePath, toolBaseRepo)
-	if err != nil {
-		return execdomain.SkillSpec{}, nil, "", err
-	}
-	return skill, executor, resolvedPath, nil
-}
-
-func findResolvedSkill(metadata map[string]string, skillID string) (execdomain.SkillSpec, error) {
-	targetID := strings.ToLower(strings.TrimSpace(skillID))
-	if targetID == "" {
-		return execdomain.SkillSpec{}, errors.New("skill_id is required")
-	}
-	rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey))
-	if rawSkillContext == "" {
-		return execdomain.SkillSpec{}, errors.New("skill context is unavailable")
-	}
-	var skillContext execdomain.SkillContext
-	if err := json.Unmarshal([]byte(rawSkillContext), &skillContext); err != nil {
-		return execdomain.SkillSpec{}, fmt.Errorf("invalid skill context metadata: %w", err)
-	}
-	for _, skill := range skillContext.Skills {
-		if strings.EqualFold(strings.TrimSpace(skill.ID), targetID) {
-			return skill, nil
+	for _, file := range memoryContext.Files {
+		if normalizeResolvedFilePath(file.Path) == targetPath {
+			return file, nil
 		}
 	}
-	return execdomain.SkillSpec{}, fmt.Errorf("skill %q is not available in the resolved skill context", skillID)
+	return execdomain.MemoryFileSpec{}, fmt.Errorf("memory file %q is not available in the resolved memory context", path)
+}
+
+func loadResolvedMemoryContent(file execdomain.MemoryFileSpec) (string, bool, error) {
+	resolvedPath := strings.TrimSpace(file.Path)
+	if resolvedPath == "" {
+		return "", false, errors.New("memory file path is required")
+	}
+	data, err := os.ReadFile(resolvedPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return string(data), true, nil
+}
+
+func buildMemorySearchSnippet(lines []string, index int) string {
+	if index < 0 || index >= len(lines) {
+		return ""
+	}
+	start := index - 1
+	if start < 0 {
+		start = 0
+	}
+	end := index + 2
+	if end > len(lines) {
+		end = len(lines)
+	}
+	return strings.TrimSpace(strings.Join(lines[start:end], "\n"))
+}
+
+func normalizeResolvedFilePath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return ""
+	}
+	return filepath.Clean(trimmed)
 }
 
 func (p *HybridNLProcessor) delegateToolDescription(metadata map[string]string) string {

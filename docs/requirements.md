@@ -52,23 +52,23 @@
 | R-039 | 页面滚动隔离（侧栏固定） | supported | 全站页面默认固定侧边栏并禁止其随主页面滚动；仅在侧栏内容受高度限制发生溢出时允许侧栏自身内部滚动 |
 | R-040 | Cron 可视化配置与触发会话归档 | supported | 支持以可视化方式配置 Cron 与任务（周期/固定时间点），实时展示 cron 表达式；Cron 触发后创建专属会话并可在会话历史中查看 |
 | R-041 | 任务执行前复杂度预判与同步/异步分流 | supported | 用户消息进入执行器前先做复杂度预估；若创建异步任务则先同步返回可跳转任务详情的任务卡片（含任务 ID 与简要描述），任务完成后向用户主动同步结果 |
-| R-042 | 异步任务执行模块与前端全量执行明细 | supported | 建立专门异步执行模块并限制最多 5 个任务并发执行；前端任务模块按当前界面风格展示任务执行明细，并完整回传终端运行细节（如“已运行 xxx”） |
+| R-042 | 异步任务执行模块与前端全量执行明细 | supported | 建立专门异步执行模块并限制最多 5 个任务并发执行；前端任务模块按当前界面风格展示任务执行明细，并完整回传终端运行细节（如“已运行 xxx”）；`Codex CLI` 长任务按 1 分钟心跳续租运行超时窗口，并在列表卡片与任务详情展示最近心跳和当前窗口截止时间 |
 | R-043 | Environments 关键配置统一管理 | supported | 完善 Environments 模块，支持对任务并发等关键运行参数进行可视化配置、校验与持久化，并展示当前在线实例最近启动时间与 commit hash |
 | R-044 | Channels 迁移至 Settings 模块 | supported | 前端导航将 `Channels` 从 `Control` 分组迁移到 `Settings` 分组，保持页面能力与接口不变并兼容原有直达路由 |
 | R-045 | Session/Task 关键信息披露增强 | supported | 在 Session、Task 等页面补充展示必要上下文字段（如 `channel`、`message_id`、`channel_id`、`trigger_type`），提升问题定位与执行链路可追溯性 |
 | R-046 | Terminal 模块与会话式终端代理 | supported | 新增独立 `Terminal` 模块，支持在模块内以类 Chat 方式持续对话；同一终端会话内复用上下文并连续串联输入/输出，完整保留终端交互轨迹，并提供工作区头部与会话列表两侧可达的 `Close / Delete` 生命周期操作，其中删除会同步清理持久化状态与工作区文件；工作区头部采用标题 + 状态点 + 紧凑工具栏，运行态退出/中断提示以内嵌状态条贴合输入区；新建会话时界面需立即切入干净待创建态，不得继续沿用上一会话的运行态提示；全站消息阅读体验统一收敛为浅色文档式主题，用户消息右对齐且宽度不超过消息区 80%，助手回复弱化厚重卡片层级，Terminal 中用户输入不再额外展示命令前缀符号或强调色，最终回复按 Chat 助手消息逻辑直接渲染，且同一轮最终输出出现后自动折叠对应 `Process`，移动端 `Process` 头部与步骤行保持单行摘要阅读，标题超长时自动截断，时间与状态固定在右侧独立区域；移动端长输出阅读取消消息与区块头部吸顶，统一保持自然文档流滚动，并提供右侧圆形四键组用于回到顶部、上一条、下一条与回到底部，以及浅色低对比阅读主题 |
 | R-047 | OpenAI Go SDK 接入 | supported | 已接入 `github.com/openai/openai-go` SDK，统一支持 OpenAI 兼容 API、自定义 `base_url` 与 `/responses`、`/chat/completions` 双接口模式 |
-| R-048 | ReAct 模式 Agent 调用 | supported | Agent 执行链已提供 ReAct 循环、工具调用、多轮观察与 `codex_exec` 协同执行能力 |
+| R-048 | ReAct 模式 Agent 调用 | supported | Agent 执行链已提供 ReAct 循环、多轮观察、记忆文件检索读写与 `codex_exec` 驱动的具体执行能力 |
 | R-049 | 模型配置管理 | supported | 支持多 Provider/多模型配置、启用禁用、默认 Provider 与默认模型切换，并对禁用默认项自动收敛到可用配置 |
 | R-050 | Web 登录后按 Agent 隔离 Session 视图 | supported | 密码验证通过后，Web 对话页按目标 Agent 维护独立 Session 历史；具备独立前端入口的 Agent 不进入通用 Agent 页面历史 |
 | R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识；Terminal 历史在同一 Web 登录态下跨设备共享，不再按浏览器 client 标识隔离；运行态缺失后继续发送会自动恢复原会话并保留历史，工作区仍按会话独立隔离；同一状态周期内不重复追加相同的运行态中断提醒 |
-| R-052 | Agent Memory Files 勾选注入与文件可写记忆对齐 | supported | Agent Profile 支持勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md` 与 Daily Memory；执行前将所选文件内容与路径注入运行时上下文，并可搭配独立 `memory` Skill 统一记忆读写规范 |
-| R-053 | 内置 Agent Catalog 与主从委派 | supported | 运行时统一聚合内置 Agent 与用户管理 Agent；`Chat` 默认绑定 `main` Agent，通用 `Agent` 页面承载其余入口 Agent；其中 `coding` Agent 负责面向用户收口编码任务，并通过 `codex_exec` 多轮驱动具体开发执行，同时绑定当前仓库、分支、预览页与 PR 交付上下文 |
+| R-052 | Agent Memory Files 勾选注入与文件可写记忆对齐 | supported | Agent Profile 支持勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md` 与 Daily Memory；执行前将所选文件内容与路径注入运行时上下文，Agent 可在这些记忆文件上执行关键字检索、定向读取与受控写入，并可搭配独立 `memory` Skill 统一记忆读写规范 |
+| R-053 | 内置 Agent Catalog 与主从委派 | supported | 运行时统一聚合内置 Agent 与用户管理 Agent；`Chat` 默认绑定 `main` Agent，通用 `Agent` 页面承载其余入口 Agent；所有具体执行统一通过 `codex_exec` 落到 Codex CLI，`Alter0/main` 负责跨 Agent 委派与结果收口，其中 `coding` Agent 负责面向用户收口编码任务，并通过 `codex_exec` 多轮驱动具体开发执行，同时绑定当前仓库、分支、预览页与 PR 交付上下文 |
 | R-054 | Product 目录、Workspace 与管理页 | supported | 新增 `Products` 平台模块，集中管理多个 Product 定义、主 Agent、详情页空间与子 Agent 矩阵，并为每个详情页空间提供独立 HTML 页面入口 |
 | R-055 | Product Agent 与子产品矩阵生成 | supported | 提供平台级 `product-builder` 与 Draft Studio，支持生成新 Product 草稿、扩展矩阵、审核编辑、冲突提示与发布落地 |
 | R-056 | Product 总 Agent 与子 Agent 矩阵编排 | supported | 每个已发布 Product 绑定唯一总 Agent，并将子 Agent 矩阵同步到托管 Agent Catalog，统一由总 Agent 收口执行 |
 | R-057 | Alter0 Agent 跨 Product 信息检索与任务调度 | supported | `Alter0 Agent` 作为统一入口，按用户意图检索 Product 目录与能力信息，并在执行型请求中自动切换到目标 Product 总 Agent；当前已提供 Product 公开执行入口、Product 上下文与路由元数据注入 |
-| R-058 | Travel Product 首个产品域落地 | supported | 以 `travel` 作为首个内置 Product，提供主 Agent 对话式城市页创建/修改、独立 HTML 城市页、攻略详情与 revision 能力；内置 `travel-page` Skill 统一页面规则，`travel-master` 可按需读写该 Skill；Workspace Chat 在 Agent 执行链不可用时自动回退本地解析，并保留路线、地铁、美食、地图图层等结构化字段 |
+| R-058 | Travel Product 首个产品域落地 | supported | 以 `travel` 作为首个内置 Product，提供主 Agent 对话式城市页创建/修改、独立 HTML 城市页、攻略详情与 revision 能力；内置 `travel-page` Skill 统一页面规则，`travel-master` 通过 `codex_exec` 按需更新该 Skill；Workspace Chat 在 Agent 执行链不可用时自动回退本地解析，并保留路线、地铁、美食、地图图层等结构化字段 |
 
 ## 需求细化（分文件）
 
