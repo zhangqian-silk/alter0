@@ -62,7 +62,7 @@ func TestCreateAssignsSessionWorkspaceDir(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "sessions", session.ID)
+	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "shared")
 	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
 		t.Fatalf("expected workspace %q, got %q", expected, session.WorkingDir)
 	}
@@ -87,7 +87,7 @@ func TestRecoverAssignsDeterministicWorkspaceDir(t *testing.T) {
 		t.Fatalf("recover session: %v", err)
 	}
 
-	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "sessions", "terminal-recover")
+	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "shared")
 	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
 		t.Fatalf("expected recovered workspace %q, got %q", expected, session.WorkingDir)
 	}
@@ -162,7 +162,7 @@ func TestServiceRecoverRestoresCodexThreadForFollowUpInput(t *testing.T) {
 	}
 }
 
-func TestServiceRecoverTransfersSessionOwnershipWhenTerminalIdentityMatches(t *testing.T) {
+func TestServiceRecoverSharesSessionAcrossOwnerInputs(t *testing.T) {
 	service := newTestService("success")
 
 	session, err := service.Create(CreateRequest{
@@ -189,11 +189,11 @@ func TestServiceRecoverTransfersSessionOwnershipWhenTerminalIdentityMatches(t *t
 	if err != nil {
 		t.Fatalf("recover ownership transfer: %v", err)
 	}
-	if recovered.OwnerID != "owner-rebound" {
-		t.Fatalf("expected transferred owner, got %q", recovered.OwnerID)
+	if recovered.OwnerID != sharedTerminalOwnerID {
+		t.Fatalf("expected shared owner, got %q", recovered.OwnerID)
 	}
-	if _, ok := service.Get("owner-original", session.ID); ok {
-		t.Fatalf("expected original owner to lose recovered session access")
+	if _, ok := service.Get("owner-original", session.ID); !ok {
+		t.Fatalf("expected original owner alias to keep access to shared session")
 	}
 	if _, err := service.Input("owner-rebound", session.ID, "follow-up after transfer"); err != nil {
 		t.Fatalf("input after ownership transfer: %v", err)
@@ -207,7 +207,7 @@ func TestServiceRecoverTransfersSessionOwnershipWhenTerminalIdentityMatches(t *t
 	}
 }
 
-func TestServiceRecoverTransfersOwnershipForSessionWithoutFirstInput(t *testing.T) {
+func TestServiceRecoverSharesEmptySessionAcrossOwnerInputs(t *testing.T) {
 	service := newTestService("success")
 
 	session, err := service.Create(CreateRequest{
@@ -229,8 +229,8 @@ func TestServiceRecoverTransfersOwnershipForSessionWithoutFirstInput(t *testing.
 	if err != nil {
 		t.Fatalf("recover empty session ownership transfer: %v", err)
 	}
-	if recovered.OwnerID != "owner-rebound" {
-		t.Fatalf("expected transferred owner for empty session, got %q", recovered.OwnerID)
+	if recovered.OwnerID != sharedTerminalOwnerID {
+		t.Fatalf("expected shared owner for empty session, got %q", recovered.OwnerID)
 	}
 	if _, err := service.Input("owner-rebound", session.ID, "first prompt after transfer"); err != nil {
 		t.Fatalf("first input after empty session transfer: %v", err)
@@ -244,7 +244,7 @@ func TestServiceRecoverTransfersOwnershipForSessionWithoutFirstInput(t *testing.
 	}
 }
 
-func TestServiceRecoverRejectsOwnershipTransferWhenTerminalIdentityDiffers(t *testing.T) {
+func TestServiceRecoverIgnoresTerminalIdentityMismatchInSharedMode(t *testing.T) {
 	service := newTestService("success")
 
 	session, err := service.Create(CreateRequest{
@@ -259,13 +259,16 @@ func TestServiceRecoverRejectsOwnershipTransferWhenTerminalIdentityDiffers(t *te
 	}
 	snapshot, _ := waitForSessionEntries(t, service, "owner-original", session.ID, 2)
 
-	_, err = service.Recover(RecoverRequest{
+	recovered, err := service.Recover(RecoverRequest{
 		OwnerID:           "owner-wrong",
 		SessionID:         session.ID,
 		TerminalSessionID: snapshot.TerminalSessionID + "-other",
 	})
-	if !errors.Is(err, ErrSessionNotFound) {
-		t.Fatalf("expected session not found on mismatched terminal identity, got %v", err)
+	if err != nil {
+		t.Fatalf("expected shared recover to succeed, got %v", err)
+	}
+	if recovered.OwnerID != sharedTerminalOwnerID {
+		t.Fatalf("expected shared owner after recover, got %q", recovered.OwnerID)
 	}
 }
 
@@ -392,8 +395,8 @@ func TestServiceDeleteRemovesPersistedStateAndWorkspace(t *testing.T) {
 	if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected state file removed, got %v", err)
 	}
-	if _, err := os.Stat(snapshot.WorkingDir); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("expected workspace removed, got %v", err)
+	if _, err := os.Stat(snapshot.WorkingDir); err != nil {
+		t.Fatalf("expected shared workspace to persist, got %v", err)
 	}
 }
 
@@ -492,7 +495,7 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 			"terminal-output-newer": {
 				summary: terminaldomain.Session{
 					ID:           "terminal-output-newer",
-					OwnerID:      "owner-a",
+					OwnerID:      sharedTerminalOwnerID,
 					CreatedAt:    now.Add(-10 * time.Minute),
 					LastOutputAt: now.Add(-2 * time.Minute),
 					UpdatedAt:    now.Add(-4 * time.Minute),
@@ -501,7 +504,7 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 			"terminal-updated-newer": {
 				summary: terminaldomain.Session{
 					ID:           "terminal-updated-newer",
-					OwnerID:      "owner-a",
+					OwnerID:      sharedTerminalOwnerID,
 					CreatedAt:    now.Add(-9 * time.Minute),
 					LastOutputAt: now.Add(-3 * time.Minute),
 					UpdatedAt:    now.Add(-1 * time.Minute),
@@ -523,7 +526,7 @@ func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *
 	session := &runtimeSession{
 		summary: terminaldomain.Session{
 			ID:        "terminal-output-flags",
-			OwnerID:   "owner-a",
+			OwnerID:   sharedTerminalOwnerID,
 			CreatedAt: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
 		},
 	}

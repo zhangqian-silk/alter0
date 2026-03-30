@@ -13,6 +13,7 @@ import (
 )
 
 const terminalClientIDHeader = "X-Alter0-Terminal-Client"
+const sharedTerminalClientID = "shared"
 
 type terminalSessionCreateRequest struct {
 	Title string `json:"title,omitempty"`
@@ -141,12 +142,12 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 	ownerID := resolveTerminalClientID(r)
 	if len(parts) == 1 {
 		if r.Method == http.MethodDelete {
-			session, err := s.terminals.Delete(ownerID, sessionID)
+			_, err := s.terminals.Delete(ownerID, sessionID)
 			if err != nil {
 				s.writeTerminalError(w, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		if r.Method != http.MethodGet {
@@ -314,8 +315,5 @@ func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
 }
 
 func resolveTerminalClientID(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
-	return strings.TrimSpace(r.Header.Get(terminalClientIDHeader))
+	return sharedTerminalClientID
 }

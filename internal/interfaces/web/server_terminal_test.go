@@ -102,7 +102,7 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	service := &stubWebTerminalService{
 		createResp: terminaldomain.Session{
 			ID:           "terminal-1",
-			OwnerID:      "client-a",
+			OwnerID:      sharedTerminalClientID,
 			Title:        "terminal-1",
 			Status:       terminaldomain.SessionStatusRunning,
 			CreatedAt:    time.Now().UTC(),
@@ -113,7 +113,6 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	server := &Server{terminals: service}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions", bytes.NewBufferString(`{}`))
-	req.Header.Set(terminalClientIDHeader, "client-a")
 	rec := httptest.NewRecorder()
 
 	server.terminalSessionCollectionHandler(rec, req)
@@ -121,8 +120,8 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected status 201, got %d", rec.Code)
 	}
-	if service.createReq.OwnerID != "client-a" {
-		t.Fatalf("expected owner client-a, got %q", service.createReq.OwnerID)
+	if service.createReq.OwnerID != sharedTerminalClientID {
+		t.Fatalf("expected shared owner, got %q", service.createReq.OwnerID)
 	}
 
 	var payload map[string]any
@@ -145,7 +144,7 @@ func TestTerminalSessionItemHandlerWritesInput(t *testing.T) {
 	service := &stubWebTerminalService{
 		inputResp: terminaldomain.Session{
 			ID:        "terminal-2",
-			OwnerID:   "client-b",
+			OwnerID:   sharedTerminalClientID,
 			Title:     "terminal-2",
 			Status:    terminaldomain.SessionStatusRunning,
 			CreatedAt: time.Now().UTC(),
@@ -155,7 +154,6 @@ func TestTerminalSessionItemHandlerWritesInput(t *testing.T) {
 	server := &Server{terminals: service}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"input":"pwd"}`))
-	req.Header.Set(terminalClientIDHeader, "client-b")
 	rec := httptest.NewRecorder()
 
 	server.terminalSessionItemHandler(rec, req)
@@ -163,8 +161,8 @@ func TestTerminalSessionItemHandlerWritesInput(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if service.lastOwnerID != "client-b" {
-		t.Fatalf("expected owner client-b, got %q", service.lastOwnerID)
+	if service.lastOwnerID != sharedTerminalClientID {
+		t.Fatalf("expected shared owner, got %q", service.lastOwnerID)
 	}
 	if service.lastID != "terminal-2" {
 		t.Fatalf("expected session terminal-2, got %q", service.lastID)
@@ -178,7 +176,7 @@ func TestTerminalSessionRecoverHandlerRestoresStoredSession(t *testing.T) {
 	service := &stubWebTerminalService{
 		recoverResp: terminaldomain.Session{
 			ID:                "terminal-recover",
-			OwnerID:           "client-recover",
+			OwnerID:           sharedTerminalClientID,
 			Title:             "Recovered",
 			TerminalSessionID: "thread-recover",
 			Status:            terminaldomain.SessionStatusRunning,
@@ -189,7 +187,6 @@ func TestTerminalSessionRecoverHandlerRestoresStoredSession(t *testing.T) {
 	server := &Server{terminals: service}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/recover", bytes.NewBufferString(`{"id":"terminal-recover","terminal_session_id":"thread-recover","title":"Recovered","created_at":"2026-03-19T10:00:00Z","updated_at":"2026-03-19T10:05:00Z"}`))
-	req.Header.Set(terminalClientIDHeader, "client-recover")
 	rec := httptest.NewRecorder()
 
 	server.terminalSessionRecoverHandler(rec, req)
@@ -197,8 +194,8 @@ func TestTerminalSessionRecoverHandlerRestoresStoredSession(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if service.recoverReq.OwnerID != "client-recover" {
-		t.Fatalf("expected owner client-recover, got %q", service.recoverReq.OwnerID)
+	if service.recoverReq.OwnerID != sharedTerminalClientID {
+		t.Fatalf("expected shared owner, got %q", service.recoverReq.OwnerID)
 	}
 	if service.recoverReq.SessionID != "terminal-recover" {
 		t.Fatalf("expected recover session id, got %q", service.recoverReq.SessionID)
@@ -212,7 +209,7 @@ func TestTerminalSessionItemHandlerClosesSession(t *testing.T) {
 	service := &stubWebTerminalService{
 		closeResp: terminaldomain.Session{
 			ID:         "terminal-3",
-			OwnerID:    "client-c",
+			OwnerID:    sharedTerminalClientID,
 			Title:      "terminal-3",
 			Status:     terminaldomain.SessionStatusExited,
 			CreatedAt:  time.Now().UTC(),
@@ -223,7 +220,6 @@ func TestTerminalSessionItemHandlerClosesSession(t *testing.T) {
 	server := &Server{terminals: service}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-3/close", nil)
-	req.Header.Set(terminalClientIDHeader, "client-c")
 	rec := httptest.NewRecorder()
 
 	server.terminalSessionItemHandler(rec, req)
@@ -231,8 +227,8 @@ func TestTerminalSessionItemHandlerClosesSession(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if service.lastOwnerID != "client-c" {
-		t.Fatalf("expected owner client-c, got %q", service.lastOwnerID)
+	if service.lastOwnerID != sharedTerminalClientID {
+		t.Fatalf("expected shared owner, got %q", service.lastOwnerID)
 	}
 	if service.lastID != "terminal-3" {
 		t.Fatalf("expected session terminal-3, got %q", service.lastID)
@@ -243,7 +239,7 @@ func TestTerminalSessionItemHandlerDeletesSession(t *testing.T) {
 	service := &stubWebTerminalService{
 		deleteResp: terminaldomain.Session{
 			ID:         "terminal-4",
-			OwnerID:    "client-d",
+			OwnerID:    sharedTerminalClientID,
 			Title:      "terminal-4",
 			Status:     terminaldomain.SessionStatusExited,
 			CreatedAt:  time.Now().UTC(),
@@ -254,19 +250,21 @@ func TestTerminalSessionItemHandlerDeletesSession(t *testing.T) {
 	server := &Server{terminals: service}
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/terminal/sessions/terminal-4", nil)
-	req.Header.Set(terminalClientIDHeader, "client-d")
 	rec := httptest.NewRecorder()
 
 	server.terminalSessionItemHandler(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d", rec.Code)
 	}
-	if service.lastOwnerID != "client-d" {
-		t.Fatalf("expected owner client-d, got %q", service.lastOwnerID)
+	if service.lastOwnerID != sharedTerminalClientID {
+		t.Fatalf("expected shared owner, got %q", service.lastOwnerID)
 	}
 	if service.lastID != "terminal-4" {
 		t.Fatalf("expected session terminal-4, got %q", service.lastID)
+	}
+	if body := strings.TrimSpace(rec.Body.String()); body != "" {
+		t.Fatalf("expected empty response body, got %q", body)
 	}
 }
 
@@ -274,7 +272,7 @@ func TestTerminalSessionItemHandlerReturnsTurnsInSessionDetail(t *testing.T) {
 	service := &stubWebTerminalService{
 		getResp: terminaldomain.Session{
 			ID:        "terminal-4",
-			OwnerID:   "client-d",
+			OwnerID:   sharedTerminalClientID,
 			Title:     "terminal-4",
 			Status:    terminaldomain.SessionStatusRunning,
 			CreatedAt: time.Now().UTC(),
@@ -291,7 +289,6 @@ func TestTerminalSessionItemHandlerReturnsTurnsInSessionDetail(t *testing.T) {
 	server := &Server{terminals: service}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4", nil)
-	req.Header.Set(terminalClientIDHeader, "client-d")
 	rec := httptest.NewRecorder()
 
 	server.terminalSessionItemHandler(rec, req)
@@ -336,7 +333,6 @@ func TestTerminalSessionItemHandlerReturnsStepDetail(t *testing.T) {
 	server := &Server{terminals: service}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4/turns/turn-1/steps/step-1", nil)
-	req.Header.Set(terminalClientIDHeader, "client-d")
 	rec := httptest.NewRecorder()
 
 	server.terminalSessionItemHandler(rec, req)

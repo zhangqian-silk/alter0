@@ -60,6 +60,8 @@ var defaultStorageProfile = storageProfile{
 const defaultWebAddr = "127.0.0.1:18088"
 
 const defaultPublicCodexCommand = "/usr/local/bin/codex"
+const defaultCodexWorkspaceModeEnvKey = "ALTER0_CODEX_WORKSPACE_MODE"
+const defaultCodexWorkspaceMode = "repo-root"
 
 func main() {
 	relaunchHelper := flag.Bool(relaunchHelperFlag, false, "internal relaunch helper")
@@ -159,6 +161,7 @@ func main() {
 	resolvedMaxQueueSize := control.ResolveEnvironmentInt("max_queue_size", *maxQueueSize)
 	resolvedQueueTimeout := control.ResolveEnvironmentDuration("queue_timeout", *queueTimeout)
 	resolvedCodexCommand := resolveConfiguredCodexCommand(strings.TrimSpace(*codexCommand))
+	ensureDefaultCodexWorkspaceMode()
 	resolvedAsyncTaskWorkers := control.ResolveEnvironmentInt("async_task_workers", *asyncTaskWorkers)
 	resolvedTaskTerminalShell := strings.TrimSpace(control.ResolveEnvironmentString("task_terminal_shell", strings.TrimSpace(*taskTerminalShell)))
 	if resolvedTaskTerminalShell == "" {
@@ -406,6 +409,13 @@ func mustGetwd() string {
 		return ""
 	}
 	return dir
+}
+
+func ensureDefaultCodexWorkspaceMode() {
+	if strings.TrimSpace(os.Getenv(defaultCodexWorkspaceModeEnvKey)) != "" {
+		return
+	}
+	_ = os.Setenv(defaultCodexWorkspaceModeEnvKey, defaultCodexWorkspaceMode)
 }
 
 func mustRegister(registry *orchinfra.InMemoryCommandRegistry, handler orchdomain.CommandHandler) {

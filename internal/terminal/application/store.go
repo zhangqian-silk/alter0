@@ -81,7 +81,7 @@ func (s *Service) loadPersistedSessions() {
 			s.logger.Warn("decode terminal session record failed", "path", recordPath, "error", err.Error())
 			continue
 		}
-		session := restorePersistedSession(record, now)
+		session := restorePersistedSession(record, now, s.options.WorkingDir)
 		if session == nil {
 			continue
 		}
@@ -127,10 +127,7 @@ func (s *Service) persistSession(item *runtimeSession) {
 }
 
 func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string) (*runtimeSession, error) {
-	ownerID = strings.TrimSpace(ownerID)
-	if ownerID == "" {
-		return nil, ErrSessionOwnerRequired
-	}
+	ownerID = normalizeTerminalOwnerID(ownerID)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil, ErrSessionNotFound
@@ -167,7 +164,7 @@ func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string)
 		s.logger.Warn("decode terminal session record failed", "path", path, "error", err.Error())
 		return nil, ErrSessionNotFound
 	}
-	session := restorePersistedSession(record, time.Now().UTC())
+	session := restorePersistedSession(record, time.Now().UTC(), s.options.WorkingDir)
 	if session == nil || strings.TrimSpace(session.summary.OwnerID) != ownerID {
 		return nil, ErrSessionNotFound
 	}
@@ -248,12 +245,16 @@ func isRuntimeSessionDeleted(item *runtimeSession) bool {
 	return item.deleted
 }
 
-func restorePersistedSession(record persistedSessionRecord, now time.Time) *runtimeSession {
+func restorePersistedSession(record persistedSessionRecord, now time.Time, baseDir string) *runtimeSession {
 	sessionID := strings.TrimSpace(record.Summary.ID)
 	if sessionID == "" {
 		return nil
 	}
 	summary := record.Summary
+	summary.OwnerID = normalizeTerminalOwnerID(summary.OwnerID)
+	if workspaceDir, err := resolveSessionWorkspacePath(baseDir, sessionID); err == nil {
+		summary.WorkingDir = workspaceDir
+	}
 	if strings.TrimSpace(summary.TerminalSessionID) == "" {
 		summary.TerminalSessionID = sessionID
 	}
