@@ -1,17 +1,23 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	sessionapp "alter0/internal/session/application"
 	sessiondomain "alter0/internal/session/domain"
 	shareddomain "alter0/internal/shared/domain"
+	taskapp "alter0/internal/task/application"
+	taskdomain "alter0/internal/task/domain"
 )
 
 type stubSessionHistory struct {
@@ -19,6 +25,8 @@ type stubSessionHistory struct {
 	messagePage      sessionapp.MessagePage
 	lastSessionQuery sessionapp.SessionQuery
 	lastMessageQuery sessionapp.MessageQuery
+	deleteErr        error
+	lastDeletedID    string
 }
 
 func (s *stubSessionHistory) ListSessions(query sessionapp.SessionQuery) sessionapp.SessionPage {
@@ -29,6 +37,69 @@ func (s *stubSessionHistory) ListSessions(query sessionapp.SessionQuery) session
 func (s *stubSessionHistory) ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage {
 	s.lastMessageQuery = query
 	return s.messagePage
+}
+
+func (s *stubSessionHistory) DeleteSession(sessionID string) error {
+	s.lastDeletedID = sessionID
+	return s.deleteErr
+}
+
+type stubSessionTaskService struct {
+	lastDeletedSessionID string
+	deleteErr            error
+}
+
+func (s *stubSessionTaskService) AssessComplexity(shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
+	return taskapp.ComplexityAssessment{}
+}
+
+func (s *stubSessionTaskService) AssessComplexityWithContext(context.Context, shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
+	return taskapp.ComplexityAssessment{}
+}
+
+func (s *stubSessionTaskService) ShouldRunAsync(shareddomain.UnifiedMessage) bool {
+	return false
+}
+
+func (s *stubSessionTaskService) Submit(shareddomain.UnifiedMessage) (taskdomain.Task, error) {
+	return taskdomain.Task{}, nil
+}
+
+func (s *stubSessionTaskService) List(taskapp.ListQuery) taskapp.TaskPage {
+	return taskapp.TaskPage{}
+}
+
+func (s *stubSessionTaskService) Get(string) (taskdomain.Task, bool) {
+	return taskdomain.Task{}, false
+}
+
+func (s *stubSessionTaskService) ListBySession(string) []taskdomain.Task {
+	return []taskdomain.Task{}
+}
+
+func (s *stubSessionTaskService) ListLogs(string, int, int) (taskapp.TaskLogPage, error) {
+	return taskapp.TaskLogPage{}, nil
+}
+
+func (s *stubSessionTaskService) ListArtifacts(string) ([]taskdomain.TaskArtifact, error) {
+	return []taskdomain.TaskArtifact{}, nil
+}
+
+func (s *stubSessionTaskService) ReadArtifact(context.Context, string, string) (taskdomain.TaskArtifact, []byte, error) {
+	return taskdomain.TaskArtifact{}, nil, nil
+}
+
+func (s *stubSessionTaskService) Cancel(string) (taskdomain.Task, error) {
+	return taskdomain.Task{}, nil
+}
+
+func (s *stubSessionTaskService) Retry(string) (taskdomain.Task, error) {
+	return taskdomain.Task{}, nil
+}
+
+func (s *stubSessionTaskService) DeleteBySession(sessionID string) error {
+	s.lastDeletedSessionID = sessionID
+	return s.deleteErr
 }
 
 func TestSessionListHandlerReturnsPagedData(t *testing.T) {
@@ -175,5 +246,80 @@ func TestSessionHandlersValidateInputs(t *testing.T) {
 	server.sessionListHandler(invalidChannelRec, invalidChannelReq)
 	if invalidChannelRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, invalidChannelRec.Code)
+	}
+}
+
+func TestSessionDeleteHandlerRemovesHistoryTasksAndWorkspace(t *testing.T) {
+	baseDir := t.TempDir()
+	workspaceDir := filepath.Join(baseDir, ".alter0", "workspaces", "sessions", "session-delete")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("prepare workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, "artifact.txt"), []byte("payload"), 0o644); err != nil {
+		t.Fatalf("write workspace file: %v", err)
+	}
+
+	history := &stubSessionHistory{}
+	tasks := &stubSessionTaskService{}
+	server := &Server{
+		sessions:      history,
+		tasks:         tasks,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceRoot: baseDir,
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/sessions/session-delete", nil)
+	rec := httptest.NewRecorder()
+	server.sessionMessageListHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if history.lastDeletedID != "session-delete" {
+		t.Fatalf("expected history delete for session-delete, got %q", history.lastDeletedID)
+	}
+	if tasks.lastDeletedSessionID != "session-delete" {
+		t.Fatalf("expected task delete for session-delete, got %q", tasks.lastDeletedSessionID)
+	}
+	if _, err := os.Stat(workspaceDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected workspace removed, got %v", err)
+	}
+}
+
+func TestSessionDeleteHandlerAllowsMissingHistory(t *testing.T) {
+	history := &stubSessionHistory{deleteErr: sessionapp.ErrSessionNotFound}
+	tasks := &stubSessionTaskService{}
+	server := &Server{
+		sessions:      history,
+		tasks:         tasks,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceRoot: t.TempDir(),
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/sessions/session-missing", nil)
+	rec := httptest.NewRecorder()
+	server.sessionMessageListHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestSessionDeleteHandlerReturnsTaskDeleteFailure(t *testing.T) {
+	history := &stubSessionHistory{}
+	tasks := &stubSessionTaskService{deleteErr: errors.New("task delete failed")}
+	server := &Server{
+		sessions:      history,
+		tasks:         tasks,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceRoot: t.TempDir(),
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/sessions/session-delete", nil)
+	rec := httptest.NewRecorder()
+	server.sessionMessageListHandler(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
 	}
 }

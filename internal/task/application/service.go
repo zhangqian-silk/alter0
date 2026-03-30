@@ -722,6 +722,66 @@ func (s *Service) ReadArtifact(ctx context.Context, taskID string, artifactID st
 	return artifact, raw, nil
 }
 
+func (s *Service) DeleteBySession(sessionID string) error {
+	key := normalizeKey(sessionID)
+	if key == "" {
+		return nil
+	}
+
+	var cancels []context.CancelFunc
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	taskIDs := append([]string(nil), s.sessionIndex[key]...)
+	if len(taskIDs) == 0 {
+		return nil
+	}
+
+	previousTasks := make(map[string]taskdomain.Task, len(s.tasks))
+	for id, task := range s.tasks {
+		previousTasks[id] = cloneTask(task)
+	}
+	previousSessionIndex := cloneSessionIndex(s.sessionIndex)
+	previousIdempotency := cloneStringMap(s.idempotency)
+	previousRequests := cloneUnifiedMessages(s.requests)
+	previousInflight := cloneCancelFuncs(s.inflight)
+
+	for _, taskID := range taskIDs {
+		task, ok := s.tasks[taskID]
+		if !ok {
+			continue
+		}
+		if s.executor != nil {
+			s.executor.remove(taskID)
+		}
+		if cancel, exists := s.inflight[taskID]; exists {
+			cancels = append(cancels, cancel)
+			delete(s.inflight, taskID)
+		}
+		delete(s.tasks, taskID)
+		delete(s.requests, taskID)
+		if idempotencyKey := normalizeIdempotencyKey(task.SessionID, task.RequestMetadata[MetadataTaskIdempotencyKey]); idempotencyKey != "" {
+			delete(s.idempotency, idempotencyKey)
+		}
+	}
+	delete(s.sessionIndex, key)
+
+	if err := s.storeLocked(); err != nil {
+		s.tasks = previousTasks
+		s.sessionIndex = previousSessionIndex
+		s.idempotency = previousIdempotency
+		s.requests = previousRequests
+		s.inflight = previousInflight
+		return err
+	}
+
+	for _, cancel := range cancels {
+		cancel()
+	}
+	return nil
+}
+
 func (s *Service) Retry(taskID string) (taskdomain.Task, error) {
 	key := strings.TrimSpace(taskID)
 	if key == "" {
@@ -1961,6 +2021,41 @@ func cloneStringMap(source map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	out := make(map[string]string, len(source))
+	for key, value := range source {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneSessionIndex(source map[string][]string) map[string][]string {
+	if len(source) == 0 {
+		return map[string][]string{}
+	}
+	out := make(map[string][]string, len(source))
+	for key, value := range source {
+		copied := make([]string, len(value))
+		copy(copied, value)
+		out[key] = copied
+	}
+	return out
+}
+
+func cloneUnifiedMessages(source map[string]shareddomain.UnifiedMessage) map[string]shareddomain.UnifiedMessage {
+	if len(source) == 0 {
+		return map[string]shareddomain.UnifiedMessage{}
+	}
+	out := make(map[string]shareddomain.UnifiedMessage, len(source))
+	for key, value := range source {
+		out[key] = cloneMessage(value)
+	}
+	return out
+}
+
+func cloneCancelFuncs(source map[string]context.CancelFunc) map[string]context.CancelFunc {
+	if len(source) == 0 {
+		return map[string]context.CancelFunc{}
+	}
+	out := make(map[string]context.CancelFunc, len(source))
 	for key, value := range source {
 		out[key] = value
 	}

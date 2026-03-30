@@ -15,6 +15,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -98,6 +100,7 @@ type Server struct {
 	products         productService
 	productDrafts    productDraftService
 	travelGuides     travelGuideService
+	workspaceRoot    string
 }
 
 type llmService interface {
@@ -148,6 +151,7 @@ type productDraftService interface {
 type sessionHistoryService interface {
 	ListSessions(query sessionapp.SessionQuery) sessionapp.SessionPage
 	ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage
+	DeleteSession(sessionID string) error
 }
 
 type taskService interface {
@@ -163,6 +167,7 @@ type taskService interface {
 	ReadArtifact(ctx context.Context, taskID string, artifactID string) (taskdomain.TaskArtifact, []byte, error)
 	Cancel(taskID string) (taskdomain.Task, error)
 	Retry(taskID string) (taskdomain.Task, error)
+	DeleteBySession(sessionID string) error
 }
 
 type terminalService interface {
@@ -647,6 +652,7 @@ func NewServer(
 		products:         products,
 		productDrafts:    productDrafts,
 		travelGuides:     travelGuides,
+		workspaceRoot:    resolveServerWorkspaceRoot(),
 	}
 }
 
@@ -1432,11 +1438,6 @@ func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-
 	sessionID, resource, ok := sessionResourceID(r.URL.Path)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
@@ -1444,7 +1445,35 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	switch resource {
+	case "":
+		if r.Method != http.MethodDelete {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if s.sessions == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
+			return
+		}
+		if s.tasks != nil {
+			if err := s.tasks.DeleteBySession(sessionID); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+		if err := s.sessions.DeleteSession(sessionID); err != nil && !errors.Is(err, sessionapp.ErrSessionNotFound) {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := removeConversationSessionWorkspace(s.workspaceRoot, sessionID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	case "messages":
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
 		if s.sessions == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
 			return
@@ -1456,6 +1485,10 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 		}
 		writeJSON(w, http.StatusOK, s.sessions.ListMessages(query))
 	case "tasks":
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
 		if s.tasks == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
 			return
@@ -4249,7 +4282,17 @@ func sessionResourceID(path string) (string, string, bool) {
 		return "", "", false
 	}
 	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if trimmed == "" {
+		return "", "", false
+	}
 	parts := strings.Split(trimmed, "/")
+	if len(parts) == 1 {
+		sessionID := strings.TrimSpace(parts[0])
+		if sessionID == "" {
+			return "", "", false
+		}
+		return sessionID, "", true
+	}
 	if len(parts) != 2 {
 		return "", "", false
 	}
@@ -4262,6 +4305,66 @@ func sessionResourceID(path string) (string, string, bool) {
 		return "", "", false
 	}
 	return sessionID, resource, true
+}
+
+func resolveServerWorkspaceRoot() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	absolute, err := filepath.Abs(wd)
+	if err != nil {
+		return wd
+	}
+	return absolute
+}
+
+func removeConversationSessionWorkspace(baseDir string, sessionID string) error {
+	root := strings.TrimSpace(baseDir)
+	if root == "" {
+		root = "."
+	}
+	segment := sanitizeWorkspaceSegment(sessionID)
+	if segment == "" {
+		return fmt.Errorf("invalid session id")
+	}
+	if err := os.RemoveAll(filepath.Join(root, ".alter0", "workspaces", "sessions", segment)); err != nil {
+		return fmt.Errorf("remove session workspace: %w", err)
+	}
+	return nil
+}
+
+func sanitizeWorkspaceSegment(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	var builder strings.Builder
+	builder.Grow(len(trimmed))
+	hyphenPending := false
+	for _, ch := range trimmed {
+		if (ch >= 'a' && ch <= 'z') ||
+			(ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') ||
+			ch == '-' || ch == '_' || ch == '.' {
+			builder.WriteRune(ch)
+			hyphenPending = false
+			continue
+		}
+		if hyphenPending {
+			continue
+		}
+		builder.WriteByte('-')
+		hyphenPending = true
+	}
+	sanitized := strings.Trim(builder.String(), "-._")
+	if sanitized == "" {
+		return ""
+	}
+	if len(sanitized) > 96 {
+		sanitized = sanitized[:96]
+	}
+	return strings.ToLower(sanitized)
 }
 
 func taskResourceID(path string) (string, string, string, string, bool) {

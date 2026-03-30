@@ -141,7 +141,8 @@
 1. 持久化消息主数据：`message_id`、`session_id`、角色、内容、时间戳、路由结果。
 2. 支持服务重启后恢复历史会话，并可按会话分页查询。
 3. 支持最小化索引能力（按 session_id、时间范围）以支撑检索与回放。
-4. 验收：重启后会话内容不丢失，可按会话完整回放最近消息。
+4. 支持按 `session_id` 删除会话持久化历史；删除时需同步清理 `.alter0/workspaces/sessions/<session_id>`，不残留已删除会话的服务端工作区。
+5. 验收：重启后会话内容不丢失，可按会话完整回放最近消息；显式删除后相关历史与工作区不再保留。
 
 #### Traceability
 
@@ -150,11 +151,13 @@
 - 新增接口：
   - `GET /api/sessions`：按会话维度分页查询，支持 `page`/`page_size`/`start_at`/`end_at`
   - `GET /api/sessions/{session_id}/messages`：按会话分页回放消息，支持时间范围过滤
+  - `DELETE /api/sessions/{session_id}`：删除会话历史，并触发关联工作区清理
 - 验证命令：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
 - 验证记录：
   - 2026-03-03：消息链路新增持久化装饰器，落盘字段覆盖 `message_id/session_id/role/content/timestamp/route_result`。
   - 2026-03-03：服务重启后通过本地文件恢复会话历史，并可按会话分页查询与回放。
   - 2026-03-03：会话查询支持 `session_id + 时间范围` 索引检索，用于检索与历史重放。
+  - 2026-03-30：新增 `DELETE /api/sessions/{session_id}`，删除 Chat / Agent 会话时同步清理会话历史与 `.alter0/workspaces/sessions/<session_id>`。
 
 ### R-020 上下文压缩
 

@@ -37,6 +37,8 @@ type stubWebTaskService struct {
 	listFn          func(query taskapp.ListQuery) taskapp.TaskPage
 	cancelErr       error
 	retryErr        error
+	deleteErr       error
+	lastDeletedID   string
 	getFn           func(taskID string) (taskdomain.Task, bool)
 	listLogsFn      func(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
 }
@@ -225,6 +227,11 @@ func (s *stubWebTaskService) Retry(taskID string) (taskdomain.Task, error) {
 	item.Progress = 0
 	s.items[taskID] = item
 	return item, nil
+}
+
+func (s *stubWebTaskService) DeleteBySession(sessionID string) error {
+	s.lastDeletedID = sessionID
+	return s.deleteErr
 }
 
 func TestMessageHandlerReturnsAcceptedForAsyncTask(t *testing.T) {
@@ -1320,4 +1327,8 @@ func (s *stubSessionHistoryForTaskTests) ListMessages(query sessionapp.MessageQu
 			HasNext:  false,
 		},
 	}
+}
+
+func (s *stubSessionHistoryForTaskTests) DeleteSession(string) error {
+	return nil
 }

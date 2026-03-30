@@ -221,6 +221,7 @@ func (s *TaskStore) saveTaskLayout(tasks []taskdomain.Task) error {
 	}
 
 	index := taskIndexState{Items: make([]taskIndexItem, 0, len(items))}
+	keptTaskDirs := make(map[string]struct{}, len(items))
 	for _, item := range items {
 		if strings.TrimSpace(item.ID) == "" {
 			continue
@@ -252,6 +253,7 @@ func (s *TaskStore) saveTaskLayout(tasks []taskdomain.Task) error {
 			CreatedAt:       item.CreatedAt,
 			FinishedAt:      item.FinishedAt,
 		})
+		keptTaskDirs[item.ID] = struct{}{}
 	}
 
 	raw, err := json.MarshalIndent(index, "", "  ")
@@ -259,6 +261,9 @@ func (s *TaskStore) saveTaskLayout(tasks []taskdomain.Task) error {
 		return err
 	}
 	if err := writeFile(s.indexPath, append(raw, '\n')); err != nil {
+		return err
+	}
+	if err := cleanupRemovedTaskDirs(s.tasksDir, keptTaskDirs); err != nil {
 		return err
 	}
 	_ = os.Remove(s.legacyPath)
@@ -431,6 +436,32 @@ func cleanupArtifactSnapshotDir(filesDir string, kept map[string]struct{}) error
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(filesDir, name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cleanupRemovedTaskDirs(tasksDir string, kept map[string]struct{}) error {
+	entries, err := os.ReadDir(tasksDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if name == "" {
+			continue
+		}
+		if _, exists := kept[name]; exists {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(tasksDir, name)); err != nil {
 			return err
 		}
 	}

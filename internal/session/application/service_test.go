@@ -263,6 +263,60 @@ func TestServiceAppendRollbackWhenStoreFails(t *testing.T) {
 	}
 }
 
+func TestServiceDeleteSessionRemovesRecordsAndIndex(t *testing.T) {
+	store := &stubStore{}
+	service, err := NewServiceWithStore(context.Background(), store)
+	if err != nil {
+		t.Fatalf("new service with store failed: %v", err)
+	}
+
+	base := time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC)
+	if err := service.Append(
+		newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteNL, ""),
+		newRecord("m-2", "s-1", sessiondomain.MessageRoleAssistant, "world", base.Add(time.Minute), shareddomain.RouteNL, ""),
+		newRecord("m-3", "s-2", sessiondomain.MessageRoleUser, "other", base.Add(2*time.Minute), shareddomain.RouteNL, ""),
+	); err != nil {
+		t.Fatalf("append failed: %v", err)
+	}
+
+	if err := service.DeleteSession("s-1"); err != nil {
+		t.Fatalf("delete session failed: %v", err)
+	}
+
+	page := service.ListMessages(MessageQuery{SessionID: "s-1", Page: 1, PageSize: 10})
+	if page.Pagination.Total != 0 {
+		t.Fatalf("expected deleted session to have no messages, got %d", page.Pagination.Total)
+	}
+
+	sessions := service.ListSessions(SessionQuery{Page: 1, PageSize: 10})
+	if len(sessions.Items) != 1 || sessions.Items[0].SessionID != "s-2" {
+		t.Fatalf("expected only s-2 to remain, got %+v", sessions.Items)
+	}
+}
+
+func TestServiceDeleteSessionRollsBackOnStoreFailure(t *testing.T) {
+	store := &stubStore{}
+	service, err := NewServiceWithStore(context.Background(), store)
+	if err != nil {
+		t.Fatalf("new service with store failed: %v", err)
+	}
+
+	base := time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC)
+	if err := service.Append(newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteNL, "")); err != nil {
+		t.Fatalf("append failed: %v", err)
+	}
+
+	store.saveErr = errors.New("disk full")
+	if err := service.DeleteSession("s-1"); err == nil {
+		t.Fatal("expected delete error")
+	}
+
+	page := service.ListMessages(MessageQuery{SessionID: "s-1", Page: 1, PageSize: 10})
+	if page.Pagination.Total != 1 {
+		t.Fatalf("expected records restored after rollback, got %d", page.Pagination.Total)
+	}
+}
+
 func newRecord(
 	messageID string,
 	sessionID string,

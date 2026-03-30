@@ -259,6 +259,9 @@
 5. 会话回读接口
    - `GET /api/sessions/{session_id}/tasks?latest=true`
    - 对话请求命中异步判定时，原会话响应必须附带 `task_id` 与 `task_status`，前端据此跳转任务详情或轮询。
+6. 会话删除联动
+   - `DELETE /api/sessions/{session_id}`
+   - 删除会话时必须同步清理该 `session_id` 下所有任务记录、任务产物快照与 `.alter0/workspaces/sessions/<session_id>` 下的任务工作区，不保留孤儿目录或孤儿索引。
 
 #### 数据模型拆分（草案）
 
@@ -281,6 +284,7 @@
 - 新增接口：
   - `POST /api/tasks`
   - `GET /api/tasks?session_id=&status=&page=&page_size=`
+  - `DELETE /api/sessions/{session_id}`
   - `GET /api/tasks/{task_id}/logs?cursor=&limit=`
   - `GET /api/tasks/{task_id}/artifacts`
   - `POST /api/tasks/{task_id}/retry`
@@ -292,3 +296,4 @@
   - 2026-03-04：异步任务状态机覆盖 `queued -> running -> success/failed/canceled`，补齐重试、超时、取消转移与阶段日志序号化持久化。
   - 2026-03-04：会话链路支持快速应答返回 `task_id/task_status`，任务完成后摘要回写原会话并保留 `task_id -> request_message_id/result_message_id` 回链。
   - 2026-03-04：任务回读接口支持按会话筛选、按 `task_id` 查询详情、游标日志读取、产物读取与失败任务重试。
+  - 2026-03-30：新增会话级联删除，`DELETE /api/sessions/{session_id}` 会同步移除任务索引、任务目录与会话工作区。

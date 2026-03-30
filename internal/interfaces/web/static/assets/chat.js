@@ -159,6 +159,7 @@ const I18N = {
     "session.new": "New Chat",
     "session.new_agent": "New Agent Run",
     "session.delete": "Delete",
+    "session.delete_failed": "Delete session failed: {error}",
     "session.recent": "Recent Sessions",
     "session.history.collapse": "Collapse",
     "session.history.expand": "Expand",
@@ -724,6 +725,7 @@ const I18N = {
     "session.new": "新对话",
     "session.new_agent": "新 Agent 会话",
     "session.delete": "删除",
+    "session.delete_failed": "删除会话失败：{error}",
     "session.recent": "最近会话",
     "session.history.collapse": "折叠",
     "session.history.expand": "展开",
@@ -3458,7 +3460,7 @@ function createSession(target = null, mode = routeConversationMode(), route = st
   return item;
 }
 
-function removeSession(sessionID) {
+async function removeSession(sessionID) {
   const activeSessionID = activeConversationSessionID();
   const removedActiveSession = activeSessionID === sessionID;
   if (activeSessionID === sessionID && !confirmComposerNavigation()) {
@@ -3467,6 +3469,14 @@ function removeSession(sessionID) {
   const currentSessions = conversationSessions();
   const nextSessions = currentSessions.filter((item) => item.id !== sessionID);
   if (nextSessions.length === currentSessions.length) {
+    return;
+  }
+
+  try {
+    await deleteServerSession(sessionID);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown_error";
+    window.alert(t("session.delete_failed", { error: message }));
     return;
   }
 
@@ -3611,9 +3621,9 @@ function renderSessions() {
     deleteButton.className = "session-card-delete";
     deleteButton.textContent = t("session.delete");
     deleteButton.setAttribute("aria-label", t("session.delete"));
-    deleteButton.addEventListener("click", (event) => {
+    deleteButton.addEventListener("click", async (event) => {
       event.stopPropagation();
-      removeSession(item.id);
+      await removeSession(item.id);
     });
 
     row.appendChild(card);
@@ -4850,6 +4860,15 @@ async function fetchJSON(path) {
     throw new Error(`HTTP ${response.status}`);
   }
   return response.json();
+}
+
+async function deleteServerSession(sessionID) {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionID)}`, { method: "DELETE" });
+  if (!response.ok) {
+    const body = await safeReadJSON(response);
+    throw new Error(body.error || body.error_code || `HTTP ${response.status}`);
+  }
+  return safeReadJSON(response);
 }
 
 function resolveDownloadFilename(headerValue, fallbackName) {
@@ -8256,6 +8275,7 @@ function createTerminalSessionSnapshot(id) {
     step_errors: {},
     step_loading: {},
     step_search: {},
+    pending_create: false,
     meta_expanded: false,
     chat_scroll_top: 0,
     chat_bottom_offset: 0,
@@ -8411,6 +8431,7 @@ function normalizeTerminalStoredSession(item) {
   session.step_errors = item.step_errors && typeof item.step_errors === "object" ? { ...item.step_errors } : {};
   session.step_loading = item.step_loading && typeof item.step_loading === "object" ? { ...item.step_loading } : {};
   session.step_search = item.step_search && typeof item.step_search === "object" ? { ...item.step_search } : {};
+  session.pending_create = false;
   session.meta_expanded = Boolean(item.meta_expanded);
   session.chat_scroll_top = Number.isFinite(Number(item.chat_scroll_top)) ? Math.max(Number(item.chat_scroll_top), 0) : 0;
   session.chat_bottom_offset = Number.isFinite(Number(item.chat_bottom_offset)) ? Math.max(Number(item.chat_bottom_offset), 0) : 0;
@@ -8476,7 +8497,7 @@ function persistTerminalSessionsToStorage(sessions) {
     return;
   }
   try {
-    storage.setItem(TERMINAL_STORAGE_KEY, JSON.stringify(sessions));
+    storage.setItem(TERMINAL_STORAGE_KEY, JSON.stringify((Array.isArray(sessions) ? sessions : []).filter((item) => !isPendingTerminalSession(item))));
   } catch {
   }
 }
@@ -8585,7 +8606,14 @@ function getTerminalSessionSortAt(session) {
   return Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : 0;
 }
 
+function isPendingTerminalSession(session) {
+  return Boolean(session?.pending_create);
+}
+
 function compareTerminalSessions(left, right) {
+  if (isPendingTerminalSession(left) !== isPendingTerminalSession(right)) {
+    return isPendingTerminalSession(left) ? -1 : 1;
+  }
   const sortDiff = getTerminalSessionSortAt(right) - getTerminalSessionSortAt(left);
   if (sortDiff !== 0) {
     return sortDiff;
@@ -9249,7 +9277,8 @@ async function loadTerminalView(container) {
     pendingPaint: false,
     pendingScrollToBottom: false,
     persistTimer: 0,
-    lastChatScrollAt: 0
+    lastChatScrollAt: 0,
+    creating: false
   };
   const terminalComposer = createReusableComposer();
   localState.activeSessionID = localState.sessions[0] ? localState.sessions[0].id : "";
@@ -9262,6 +9291,24 @@ async function loadTerminalView(container) {
 
   const getActiveSession = () => {
     return localState.sessions.find((item) => item.id === localState.activeSessionID) || null;
+  };
+
+  const discardTerminalSession = (sessionID) => {
+    const key = normalizeText(sessionID);
+    if (!key) {
+      return false;
+    }
+    const index = localState.sessions.findIndex((item) => normalizeText(item.id) === key);
+    if (index < 0) {
+      return false;
+    }
+    localState.sessions.splice(index, 1);
+    delete localState.drafts[key];
+    clearTerminalInputComposition(key);
+    if (normalizeText(localState.focusedInputSessionID) === key) {
+      clearTerminalInputFocus();
+    }
+    return true;
   };
 
   const sortTerminalSessions = () => {
@@ -9695,12 +9742,7 @@ async function loadTerminalView(container) {
       return false;
     }
     const removedActive = normalizeText(localState.activeSessionID) === key;
-    localState.sessions.splice(index, 1);
-    delete localState.drafts[key];
-    clearTerminalInputComposition(key);
-    if (normalizeText(localState.focusedInputSessionID) === key) {
-      clearTerminalInputFocus();
-    }
+    discardTerminalSession(key);
     const activeStillExists = localState.sessions.some((item) => normalizeText(item.id) === normalizeText(localState.activeSessionID));
     if (removedActive || !activeStillExists) {
       const nextIndex = Math.min(index, Math.max(localState.sessions.length - 1, 0));
@@ -9813,12 +9855,42 @@ async function loadTerminalView(container) {
   };
 
   const createNewTerminalSession = async () => {
+    if (localState.creating) {
+      return getActiveSession();
+    }
+    localState.creating = true;
+    const previousActiveSessionID = localState.activeSessionID;
+    const pendingSession = createTerminalSessionSnapshot(`terminal-pending-${makeID()}`);
+    pendingSession.pending_create = true;
+    pendingSession.status = "starting";
+    localState.sessions.unshift(pendingSession);
+    localState.activeSessionID = pendingSession.id;
+    localState.mobileSessionListOpen = false;
+    localState.mobileSessionListAutoOpened = false;
+    requestRevealActiveSessionCard();
+    requestTerminalPaint();
     const payload = await requestTerminalJSON("/api/terminal/sessions", {
       method: "POST",
       body: JSON.stringify({})
+    }).catch((error) => {
+      discardTerminalSession(pendingSession.id);
+      localState.activeSessionID = localState.sessions.some((item) => normalizeText(item.id) === normalizeText(previousActiveSessionID))
+        ? previousActiveSessionID
+        : (localState.sessions[0] ? localState.sessions[0].id : "");
+      if (!localState.activeSessionID) {
+        localState.mobileSessionListOpen = true;
+        localState.mobileSessionListAutoOpened = true;
+      }
+      localState.creating = false;
+      requestTerminalPaint();
+      throw error;
     });
+    discardTerminalSession(pendingSession.id);
     const session = upsertSession(payload?.session || {});
+    localState.creating = false;
     if (!session) {
+      localState.activeSessionID = localState.sessions[0] ? localState.sessions[0].id : "";
+      requestTerminalPaint();
       throw new Error("terminal session missing");
     }
     localState.activeSessionID = session.id;
@@ -9838,6 +9910,9 @@ async function loadTerminalView(container) {
       }
     });
     localState.sessions.forEach((session) => {
+      if (isPendingTerminalSession(session)) {
+        return;
+      }
       if (!activeRuntimeIDs.has(session.id) && isTerminalSessionLiveStatus(session.status)) {
         markSessionInterrupted(session, t("route.terminal.interrupted"));
       }
@@ -12819,11 +12894,6 @@ function init() {
 }
 
 init();
-
-
-
-
-
 
 
 

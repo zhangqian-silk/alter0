@@ -1136,6 +1136,31 @@ test.describe("Terminal route", () => {
     await expectComposerState(terminalPage.composer(), { disabled: false });
   });
 
+  test("clears the previous session hint immediately when creating a new session", async ({ page }) => {
+    const { terminalPage, session } = await openInterruptedTerminalWorkspace(page, { scope: "create-clears-hint" });
+
+    await page.route("**/api/terminal/sessions", async (route) => {
+      if (route.request().method() === "POST") {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      await route.continue();
+    });
+
+    await terminalPage.createButton().click();
+
+    let pendingSessionID = "";
+    await expect.poll(async () => {
+      pendingSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id") || "";
+      return pendingSessionID;
+    }).toMatch(/^terminal-pending-/);
+    await expect(page.locator("[data-terminal-runtime-note]")).toHaveCount(0);
+    await expect(terminalPage.workspace()).not.toContainText("Codex runtime exited. Send a new input to recover this session.");
+
+    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-terminal-session-id")).not.toBe(session.id);
+    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-terminal-session-id")).not.toBe(String(pendingSessionID));
+    await expect(page.locator("[data-terminal-runtime-note]")).toHaveCount(0);
+  });
+
   test("recovers stored thread-backed sessions on load and first input", async ({ page }) => {
     const clientID = createTerminalClientID("recover");
     const now = Date.now();
