@@ -46,6 +46,16 @@ const NAV_TOOLTIP_SHOW_DELAY = 90;
 const NAV_TOOLTIP_HIDE_DELAY = 40;
 const NAV_TOOLTIP_OFFSET = 12;
 const CHAT_TASK_POLL_INTERVAL_MS = 4000;
+const CHAT_TASK_POLL_HIDDEN_INTERVAL_MS = 15000;
+const MOBILE_VIEWPORT_SYNC_THRESHOLD_PX = 8;
+const MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS = 240;
+const TERMINAL_POLL_INTERVAL_ACTIVE_MS = 1600;
+const TERMINAL_POLL_INTERVAL_IDLE_MS = 4000;
+const TERMINAL_POLL_INTERVAL_HIDDEN_MS = 12000;
+const TERMINAL_SESSION_LIST_POLL_INTERVAL_MS = 15000;
+const TERMINAL_SESSION_LIST_POLL_HIDDEN_INTERVAL_MS = 60000;
+const TERMINAL_STORAGE_PERSIST_ACTIVE_DELAY_MS = 320;
+const TERMINAL_STORAGE_PERSIST_IDLE_DELAY_MS = 1200;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const MAIN_AGENT_ID = "main";
@@ -58,6 +68,7 @@ const SESSION_HISTORY_PANEL_STORAGE_KEY = "alter0.web.session-history-panel.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";
 const TERMINAL_CLIENT_STORAGE_KEY = "alter0.web.terminal.client.v1";
+const RUNTIME_RESTART_NOTICE_STORAGE_KEY = "alter0.web.runtime.restart-notice.v1";
 const AVAILABLE_CHAT_TOOLS = [
   {
     id: "search_memory",
@@ -212,6 +223,7 @@ const I18N = {
     "status.running": "Running",
     "status.starting": "Starting",
     "status.success": "Success",
+    "action.ok": "OK",
     "status.canceled": "Canceled",
     "status.exited": "Exited",
     "status.interrupted": "Interrupted",
@@ -652,7 +664,7 @@ const I18N = {
     "route.envs.restart_confirm": "Restart the service now?",
     "route.envs.restart_sync_master": "Sync remote master before restart?",
     "route.envs.restart_wait_timeout": "Restart is taking longer than expected. Refresh and retry in a moment.",
-    "route.envs.restart_success": "Service restart completed. Click OK to refresh the page.",
+    "route.envs.restart_success": "Service restart completed. The page is now connected to the latest runtime.",
     "route.envs.runtime.last_restart_at": "Last Restart",
     "route.envs.runtime.commit_hash": "Commit Hash",
     "route.envs.refresh": "Reload",
@@ -790,6 +802,7 @@ const I18N = {
     "status.running": "运行中",
     "status.starting": "启动中",
     "status.success": "成功",
+    "action.ok": "确定",
     "status.canceled": "已取消",
     "status.exited": "已退出",
     "status.interrupted": "已中断",
@@ -1221,7 +1234,7 @@ const I18N = {
     "route.envs.restart_confirm": "现在重启服务吗？",
     "route.envs.restart_sync_master": "重启前先同步远端 master 分支？",
     "route.envs.restart_wait_timeout": "服务重启时间超出预期，请稍后刷新后重试。",
-    "route.envs.restart_success": "服务重启已完成。点击确定后将自动刷新页面。",
+    "route.envs.restart_success": "服务重启已完成，当前页面已连接到最新运行实例。",
     "route.envs.runtime.last_restart_at": "最近重启时间",
     "route.envs.runtime.commit_hash": "Commit Hash",
     "route.envs.refresh": "重新加载",
@@ -1395,7 +1408,10 @@ const state = {
     baselineHeight: 0,
     width: 0,
     syncFrame: 0,
-    alignFocusedInput: false
+    alignFocusedInput: false,
+    height: 0,
+    keyboardOffset: 0,
+    lastAlignedAt: 0
   },
   pending: false,
   pendingCount: 0,
@@ -1411,6 +1427,10 @@ let navTooltipShowTimer = 0;
 let navTooltipHideTimer = 0;
 let chatTaskPollTimer = 0;
 let chatTaskPollPending = false;
+
+function isDocumentVisible() {
+  return typeof document === "undefined" || document.visibilityState !== "hidden";
+}
 
 function t(key, params = {}) {
   const dict = I18N[state.lang] || I18N.en;
@@ -2314,6 +2334,125 @@ function writeComposerDraftValue(storage, key, value) {
     storage.setItem(COMPOSER_DRAFT_STORAGE_KEY, JSON.stringify(next));
   } catch {
   }
+}
+
+function persistRuntimeRestartNotice() {
+  const storage = getBrowserSessionStorage();
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(RUNTIME_RESTART_NOTICE_STORAGE_KEY, JSON.stringify({
+      status: "success",
+      created_at: Date.now()
+    }));
+  } catch {
+  }
+}
+
+function consumeRuntimeRestartNotice() {
+  const storage = getBrowserSessionStorage();
+  if (!storage) {
+    return null;
+  }
+  try {
+    const raw = storage.getItem(RUNTIME_RESTART_NOTICE_STORAGE_KEY);
+    storage.removeItem(RUNTIME_RESTART_NOTICE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    return parsed.status === "success" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+let globalModalHost = null;
+
+function ensureGlobalModalHost() {
+  if (globalModalHost instanceof HTMLElement && globalModalHost.isConnected) {
+    return globalModalHost;
+  }
+  const existing = document.querySelector("[data-global-modal-root]");
+  if (existing instanceof HTMLElement) {
+    globalModalHost = existing;
+    return globalModalHost;
+  }
+  const node = document.createElement("div");
+  node.setAttribute("data-global-modal-root", "system");
+  document.body.appendChild(node);
+  globalModalHost = node;
+  return node;
+}
+
+function activateModalBackdrop(modalBackdrop) {
+  if (!(modalBackdrop instanceof HTMLElement) || modalBackdrop.dataset.modalReady === "true") {
+    return;
+  }
+  modalBackdrop.dataset.modalReady = "true";
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!modalBackdrop.isConnected) {
+        return;
+      }
+      modalBackdrop.setAttribute("data-modal-state", "open");
+    });
+  });
+}
+
+function hideGlobalModal() {
+  const host = ensureGlobalModalHost();
+  host.innerHTML = "";
+}
+
+function showGlobalModal(options = {}) {
+  const host = ensureGlobalModalHost();
+  const title = normalizeText(options.title || "");
+  const message = normalizeText(options.message || "");
+  const confirmLabel = normalizeText(options.confirmLabel || "") || t("action.ok");
+  host.innerHTML = `<div class="modal-backdrop" data-modal data-modal-state="enter">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>${escapeHTML(title)}</h3>
+        <button type="button" data-global-modal-close aria-label="${escapeHTML(confirmLabel)}">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>${escapeHTML(message)}</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" data-global-modal-close>${escapeHTML(confirmLabel)}</button>
+      </div>
+    </div>
+  </div>`;
+  host.querySelectorAll("[data-global-modal-close]").forEach((element) => {
+    element.addEventListener("click", () => {
+      hideGlobalModal();
+    });
+  });
+  const modalBackdrop = host.querySelector("[data-modal]");
+  if (modalBackdrop instanceof HTMLElement) {
+    modalBackdrop.addEventListener("click", (event) => {
+      if (event.target && event.target.hasAttribute("data-modal")) {
+        hideGlobalModal();
+      }
+    });
+    activateModalBackdrop(modalBackdrop);
+  }
+}
+
+function showPendingRuntimeRestartNotice() {
+  const notice = consumeRuntimeRestartNotice();
+  if (!notice) {
+    return;
+  }
+  showGlobalModal({
+    title: t("route.envs.restart_service"),
+    message: t("route.envs.restart_success")
+  });
 }
 
 function getMainChatDraftKey(sessionID = activeConversationSessionID(), mode = routeConversationMode()) {
@@ -4021,6 +4160,29 @@ function collectPendingTaskBindings() {
   return bindings;
 }
 
+function stopChatTaskPolling() {
+  if (!chatTaskPollTimer) {
+    return;
+  }
+  window.clearTimeout(chatTaskPollTimer);
+  chatTaskPollTimer = 0;
+}
+
+function scheduleChatTaskPolling(options = {}) {
+  stopChatTaskPolling();
+  if (!collectPendingTaskBindings().length) {
+    return;
+  }
+  const delay = options.immediate
+    ? 0
+    : (isDocumentVisible() ? CHAT_TASK_POLL_INTERVAL_MS : CHAT_TASK_POLL_HIDDEN_INTERVAL_MS);
+  chatTaskPollTimer = window.setTimeout(async () => {
+    chatTaskPollTimer = 0;
+    await pollChatTaskUpdates();
+    scheduleChatTaskPolling();
+  }, delay);
+}
+
 async function pollChatTaskUpdates() {
   if (chatTaskPollPending) {
     return;
@@ -4062,13 +4224,7 @@ async function pollChatTaskUpdates() {
 }
 
 function ensureChatTaskPolling() {
-  if (chatTaskPollTimer) {
-    return;
-  }
-  chatTaskPollTimer = window.setInterval(() => {
-    void pollChatTaskUpdates();
-  }, CHAT_TASK_POLL_INTERVAL_MS);
-  void pollChatTaskUpdates();
+  scheduleChatTaskPolling({ immediate: true });
 }
 
 function extractAsyncTaskPayload(payload) {
@@ -4338,7 +4494,7 @@ async function sendMessageStream(payload, assistantMessage, endpoints = {}) {
               task_result_delivered: false
             });
             if (asyncTask) {
-              void pollChatTaskUpdates();
+              ensureChatTaskPolling();
             }
             sawDone = true;
           } else if (parsed.event === "error") {
@@ -4427,7 +4583,7 @@ async function sendMessageFallback(payload, assistantMessage, endpoints = {}) {
     task_result_delivered: false
   });
   if (asyncTask) {
-    void pollChatTaskUpdates();
+    ensureChatTaskPolling();
   }
 }
 
@@ -4624,6 +4780,8 @@ function updateKeyboardInset(options = {}) {
   if (!isMobileViewport()) {
     state.mobileViewport.baselineHeight = 0;
     state.mobileViewport.width = 0;
+    state.mobileViewport.height = 0;
+    state.mobileViewport.keyboardOffset = 0;
     rootStyle.setProperty("--mobile-viewport-height", "100dvh");
     rootStyle.setProperty("--keyboard-offset", "0px");
     return;
@@ -4650,11 +4808,26 @@ function updateKeyboardInset(options = {}) {
     state.mobileViewport.baselineHeight = Math.max(state.mobileViewport.baselineHeight, effectiveHeight);
   }
 
+  const keyboardOffset = Math.max(0, state.mobileViewport.baselineHeight - effectiveHeight);
+  const heightChanged = Math.abs(effectiveHeight - state.mobileViewport.height) >= MOBILE_VIEWPORT_SYNC_THRESHOLD_PX;
+  const offsetChanged = Math.abs(keyboardOffset - state.mobileViewport.keyboardOffset) >= MOBILE_VIEWPORT_SYNC_THRESHOLD_PX;
+
   state.mobileViewport.width = viewportWidth;
-  rootStyle.setProperty("--mobile-viewport-height", `${effectiveHeight}px`);
-  rootStyle.setProperty("--keyboard-offset", `${Math.max(0, state.mobileViewport.baselineHeight - effectiveHeight)}px`);
+  if (heightChanged || state.mobileViewport.height === 0) {
+    rootStyle.setProperty("--mobile-viewport-height", `${effectiveHeight}px`);
+  }
+  if (offsetChanged || state.mobileViewport.height === 0) {
+    rootStyle.setProperty("--keyboard-offset", `${keyboardOffset}px`);
+  }
+  state.mobileViewport.height = effectiveHeight;
+  state.mobileViewport.keyboardOffset = keyboardOffset;
 
   if (options.alignFocusedInput && activeInput instanceof HTMLElement) {
+    const now = Date.now();
+    if (now - Number(state.mobileViewport.lastAlignedAt || 0) < MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS) {
+      return;
+    }
+    state.mobileViewport.lastAlignedAt = now;
     window.requestAnimationFrame(() => {
       if (document.activeElement !== activeInput) {
         return;
@@ -8747,6 +8920,34 @@ function parseTerminalExitCode(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function captureTerminalSessionRuntimeSignature(session) {
+  if (!session) {
+    return "";
+  }
+  return [
+    normalizeText(session.id),
+    normalizeText(session.terminal_session_id),
+    normalizeText(session.title),
+    normalizeText(session.status),
+    String(Number(session.created_at || 0)),
+    String(Number(session.updated_at || 0)),
+    String(Number(session.last_output_at || 0)),
+    String(Number(session.entry_cursor || 0)),
+    normalizeText(session.shell),
+    normalizeText(session.working_dir),
+    normalizeText(session.error_message),
+    String(parseTerminalExitCode(session.exit_code)),
+    String(Boolean(session.disconnected_notice))
+  ].join("|");
+}
+
+function captureTerminalSessionListSignature(sessions) {
+  if (!Array.isArray(sessions) || !sessions.length) {
+    return "";
+  }
+  return sessions.map((session) => captureTerminalSessionRuntimeSignature(session)).join("||");
+}
+
 function applyTerminalSessionSnapshot(session, snapshot) {
   if (!session || !snapshot || typeof snapshot !== "object") {
     return session;
@@ -9741,9 +9942,14 @@ async function loadTerminalView(container) {
     pendingScrollToBottom: false,
     persistTimer: 0,
     lastChatScrollAt: 0,
+    nextListSyncAt: 0,
     creating: false
   };
   const terminalComposer = createReusableComposer();
+  container.__alter0TerminalVisible = () => {
+    localState.nextListSyncAt = 0;
+    void startPolling();
+  };
   localState.activeSessionID = localState.sessions[0] ? localState.sessions[0].id : "";
   localState.mobileSessionListOpen = localState.sessions.length === 0;
   localState.mobileSessionListAutoOpened = localState.mobileSessionListOpen;
@@ -9754,6 +9960,32 @@ async function loadTerminalView(container) {
 
   const getActiveSession = () => {
     return localState.sessions.find((item) => item.id === localState.activeSessionID) || null;
+  };
+
+  const computeTerminalListPollInterval = () => {
+    if (!isDocumentVisible()) {
+      return TERMINAL_SESSION_LIST_POLL_HIDDEN_INTERVAL_MS;
+    }
+    return isMobileViewport() ? Math.max(TERMINAL_SESSION_LIST_POLL_INTERVAL_MS * 2, TERMINAL_SESSION_LIST_POLL_INTERVAL_MS) : TERMINAL_SESSION_LIST_POLL_INTERVAL_MS;
+  };
+
+  const computeTerminalPollDelay = (session) => {
+    if (!session) {
+      return TERMINAL_POLL_INTERVAL_IDLE_MS;
+    }
+    if (!isDocumentVisible()) {
+      return TERMINAL_POLL_INTERVAL_HIDDEN_MS;
+    }
+    if (isMobileViewport()) {
+      if (isTerminalInputFocused(session.id) || isTerminalInputComposing(session.id)) {
+        return TERMINAL_POLL_INTERVAL_IDLE_MS;
+      }
+      const recentlyScrolled = Date.now() - Number(localState.lastChatScrollAt || 0) < 1500;
+      if (recentlyScrolled) {
+        return TERMINAL_POLL_INTERVAL_IDLE_MS;
+      }
+    }
+    return TERMINAL_POLL_INTERVAL_ACTIVE_MS;
   };
 
   const discardTerminalSession = (sessionID) => {
@@ -9792,7 +10024,11 @@ async function loadTerminalView(container) {
       localState.persistTimer = 0;
     }
     const elapsed = Date.now() - Number(localState.lastChatScrollAt || 0);
-    const delay = elapsed >= 240 ? 80 : Math.max(80, 240 - elapsed);
+    const delay = isMobileViewport()
+      ? (elapsed >= TERMINAL_STORAGE_PERSIST_IDLE_DELAY_MS
+        ? TERMINAL_STORAGE_PERSIST_ACTIVE_DELAY_MS
+        : Math.max(TERMINAL_STORAGE_PERSIST_ACTIVE_DELAY_MS, TERMINAL_STORAGE_PERSIST_IDLE_DELAY_MS - elapsed))
+      : (elapsed >= 240 ? 80 : Math.max(80, 240 - elapsed));
     localState.persistTimer = window.setTimeout(() => {
       localState.persistTimer = 0;
       persistTerminalSessionsToStorage(localState.sessions);
@@ -10195,6 +10431,26 @@ async function loadTerminalView(container) {
     return session;
   };
 
+  const upsertSessionWithChange = (snapshot) => {
+    const sessionID = String(snapshot?.id || snapshot?.terminal_session_id || "").trim();
+    if (!sessionID) {
+      return { session: null, changed: false };
+    }
+    let session = localState.sessions.find((item) => item.id === sessionID) || null;
+    const isNew = !session;
+    if (!session) {
+      session = createTerminalSessionSnapshot(sessionID);
+      localState.sessions.unshift(session);
+    }
+    const before = captureTerminalSessionRuntimeSignature(session);
+    applyTerminalSessionSnapshot(session, snapshot);
+    sortTerminalSessions();
+    return {
+      session,
+      changed: isNew || before !== captureTerminalSessionRuntimeSignature(session)
+    };
+  };
+
   const removeTerminalSession = (sessionID) => {
     const key = normalizeText(sessionID);
     if (!key) {
@@ -10365,9 +10621,10 @@ async function loadTerminalView(container) {
   };
 
   const mergeRuntimeSessions = (items) => {
+    const before = captureTerminalSessionListSignature(localState.sessions);
     const activeRuntimeIDs = new Set();
     (Array.isArray(items) ? items : []).forEach((item) => {
-      const session = upsertSession(item);
+      const { session } = upsertSessionWithChange(item);
       if (session) {
         activeRuntimeIDs.add(session.id);
       }
@@ -10391,17 +10648,26 @@ async function loadTerminalView(container) {
       localState.mobileSessionListOpen = false;
       localState.mobileSessionListAutoOpened = false;
     }
-    persist();
+    const changed = before !== captureTerminalSessionListSignature(localState.sessions);
+    if (changed) {
+      persist();
+    }
+    return changed;
   };
 
-  const syncSessionList = async () => {
+  const syncSessionList = async (options = {}) => {
+    const force = Boolean(options.force);
+    if (!force && Date.now() < Number(localState.nextListSyncAt || 0)) {
+      return false;
+    }
     const payload = await requestTerminalJSON("/api/terminal/sessions");
-    mergeRuntimeSessions(Array.isArray(payload?.items) ? payload.items : []);
+    localState.nextListSyncAt = Date.now() + computeTerminalListPollInterval();
+    return mergeRuntimeSessions(Array.isArray(payload?.items) ? payload.items : []);
   };
 
   const stopPolling = () => {
     if (localState.timer) {
-      window.clearInterval(localState.timer);
+      window.clearTimeout(localState.timer);
       localState.timer = 0;
     }
   };
@@ -10675,10 +10941,24 @@ async function loadTerminalView(container) {
 
   const refreshSessionState = async (session) => {
     if (!session) {
-      return;
+      return false;
     }
+    const before = captureTerminalSessionRuntimeSignature(session);
     const payload = await requestTerminalJSON(`/api/terminal/sessions/${encodeURIComponent(session.id)}`);
     applyTerminalSessionSnapshot(session, payload?.session || {});
+    return before !== captureTerminalSessionRuntimeSignature(session);
+  };
+
+  const scheduleNextPoll = () => {
+    stopPolling();
+    const session = getActiveSession();
+    if (!session || !isTerminalSessionLiveStatus(session.status)) {
+      return;
+    }
+    localState.timer = window.setTimeout(() => {
+      localState.timer = 0;
+      void pollActiveSession();
+    }, computeTerminalPollDelay(session));
   };
 
   const pollActiveSession = async () => {
@@ -10695,16 +10975,22 @@ async function loadTerminalView(container) {
       return;
     }
     localState.polling = true;
+    let shouldScheduleNextPoll = true;
     try {
-      await syncSessionList();
-      await refreshSessionState(session);
-      sortTerminalSessions();
-      persist();
-      requestTerminalPaint({ scrollToBottom: true });
+      const listChanged = await syncSessionList();
+      const detailChanged = await refreshSessionState(session);
+      const changed = listChanged || detailChanged;
+      if (detailChanged) {
+        persist();
+      }
+      if (changed) {
+        requestTerminalPaint({ scrollToBottom: true });
+      }
       if (!isTerminalSessionLiveStatus(session.status)) {
         stopPolling();
       }
     } catch (error) {
+      shouldScheduleNextPoll = false;
       if (Number(error?.status) === 404) {
         markSessionInterrupted(session, t("route.terminal.interrupted"));
       } else {
@@ -10720,6 +11006,9 @@ async function loadTerminalView(container) {
       stopPolling();
     } finally {
       localState.polling = false;
+      if (shouldScheduleNextPoll && !localState.timer) {
+        scheduleNextPoll();
+      }
     }
   };
 
@@ -10821,14 +11110,8 @@ async function loadTerminalView(container) {
     if (!session || !isTerminalSessionLiveStatus(session.status)) {
       return;
     }
+    localState.nextListSyncAt = 0;
     await pollActiveSession();
-    const activeSession = getActiveSession();
-    if (!activeSession || !isTerminalSessionLiveStatus(activeSession.status)) {
-      return;
-    }
-    localState.timer = window.setInterval(() => {
-      void pollActiveSession();
-    }, 1200);
   };
 
   const sendTerminalInput = async (content) => {
@@ -12329,8 +12612,7 @@ async function loadEnvironmentsView(container) {
         });
         if (response.ok) {
           localState.restarting = false;
-          await reload("");
-          window.alert(t("route.envs.restart_success"));
+          persistRuntimeRestartNotice();
           window.location.reload();
           return;
         }
@@ -12594,18 +12876,10 @@ async function loadModelsView(container) {
 
   const activateModal = () => {
     const modalBackdrop = modalHost.querySelector("[data-modal]");
-    if (!(modalBackdrop instanceof HTMLElement) || modalBackdrop.dataset.modalReady === "true") {
+    if (!(modalBackdrop instanceof HTMLElement)) {
       return;
     }
-    modalBackdrop.dataset.modalReady = "true";
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (!modalBackdrop.isConnected) {
-          return;
-        }
-        modalBackdrop.setAttribute("data-modal-state", "open");
-      });
-    });
+    activateModalBackdrop(modalBackdrop);
   };
 
   const renderEditableModelRow = (model) => {
@@ -13307,6 +13581,19 @@ function bindEvents() {
     }
   });
 
+  document.addEventListener("visibilitychange", () => {
+    ensureChatTaskPolling();
+    if (isDocumentVisible()) {
+      scheduleViewportInsetSync({ alignFocusedInput: Boolean(activeViewportInput()) });
+      const terminalVisibleHandler = routeBody && typeof routeBody.__alter0TerminalVisible === "function"
+        ? routeBody.__alter0TerminalVisible
+        : null;
+      if (state.currentRoute === "terminal" && terminalVisibleHandler) {
+        terminalVisibleHandler();
+      }
+    }
+  });
+
   if (chatRuntimePanel) {
     chatRuntimePanel.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -13399,6 +13686,8 @@ function bindEvents() {
   window.addEventListener("orientationchange", () => {
     state.mobileViewport.baselineHeight = 0;
     state.mobileViewport.width = 0;
+    state.mobileViewport.height = 0;
+    state.mobileViewport.keyboardOffset = 0;
     scheduleViewportInsetSync();
   });
 
@@ -13407,7 +13696,10 @@ function bindEvents() {
       scheduleViewportInsetSync({ alignFocusedInput: Boolean(activeViewportInput()) });
     });
     window.visualViewport.addEventListener("scroll", () => {
-      scheduleViewportInsetSync({ alignFocusedInput: Boolean(activeViewportInput()) });
+      if (!isMobileViewport() || !activeViewportInput()) {
+        return;
+      }
+      scheduleViewportInsetSync();
     });
   }
 
@@ -13435,6 +13727,7 @@ function init() {
   syncComposerGuardState();
   void renderRoute(parseHashRoute());
   document.body.setAttribute("data-app-ready", "true");
+  showPendingRuntimeRestartNotice();
   input.focus();
 }
 

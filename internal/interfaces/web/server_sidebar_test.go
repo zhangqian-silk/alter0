@@ -494,11 +494,15 @@ func TestEnvironmentRestartControlsPresent(t *testing.T) {
 		`"route.envs.restart_service": "重启服务"`,
 		`"route.envs.restart_sync_master": "Sync remote master before restart?"`,
 		`"route.envs.restart_sync_master": "重启前先同步远端 master 分支？"`,
+		`const RUNTIME_RESTART_NOTICE_STORAGE_KEY = "alter0.web.runtime.restart-notice.v1";`,
 		`data-environment-restart`,
 		"const requestRuntimeRestart = async () => {",
 		`fetch("/api/control/runtime/restart", {`,
 		`"sync_remote_master": shouldSyncRemoteMaster`,
 		"const waitForRuntimeReady = async () => {",
+		"persistRuntimeRestartNotice();",
+		"showPendingRuntimeRestartNotice();",
+		`data-global-modal-root`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -531,6 +535,25 @@ func TestControlTaskLogStreamMobileStickMarkersPresent(t *testing.T) {
 	for _, marker := range styleMarkers {
 		if !strings.Contains(styles, marker) {
 			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}
+
+func TestMobilePollingPerformanceGuardsPresent(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"const CHAT_TASK_POLL_HIDDEN_INTERVAL_MS = 15000;",
+		"function scheduleChatTaskPolling(options = {}) {",
+		"document.addEventListener(\"visibilitychange\", () => {",
+		"const TERMINAL_POLL_INTERVAL_HIDDEN_MS = 12000;",
+		"const computeTerminalPollDelay = (session) => {",
+		"localState.nextListSyncAt = Date.now() + computeTerminalListPollInterval();",
+		"window.visualViewport.addEventListener(\"scroll\", () => {",
+		"if (!isMobileViewport() || !activeViewportInput()) {",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected mobile polling marker %q", marker)
 		}
 	}
 }
