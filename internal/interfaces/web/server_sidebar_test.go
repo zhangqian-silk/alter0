@@ -492,11 +492,15 @@ func TestEnvironmentRestartControlsPresent(t *testing.T) {
 	markers := []string{
 		`"route.envs.restart_service": "Restart Service"`,
 		`"route.envs.restart_service": "重启服务"`,
-		`"route.envs.restart_sync_master": "Sync remote master before restart?"`,
-		`"route.envs.restart_sync_master": "重启前先同步远端 master 分支？"`,
+		`"route.envs.restart_sync_master": "Sync remote master changes before restart"`,
+		`"route.envs.restart_sync_master": "重启前同步远端 master 最新改动"`,
+		`"route.envs.restart_confirm_desc": "The page will reload automatically after the new runtime passes health checks."`,
+		`"route.envs.restart_confirm_desc": "新实例探活通过后，当前页面会自动刷新并重新连接。"`,
 		`const RUNTIME_RESTART_NOTICE_STORAGE_KEY = "alter0.web.runtime.restart-notice.v1";`,
 		`data-environment-restart`,
 		"const requestRuntimeRestart = async () => {",
+		"showGlobalConfirmModal({",
+		`data-global-modal-checkbox`,
 		`fetch("/api/control/runtime/restart", {`,
 		`"sync_remote_master": shouldSyncRemoteMaster`,
 		"const waitForRuntimeReady = async () => {",
@@ -508,6 +512,12 @@ func TestEnvironmentRestartControlsPresent(t *testing.T) {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected environment restart marker %q", marker)
 		}
+	}
+	if strings.Contains(script, `window.confirm(t("route.envs.restart_confirm"))`) {
+		t.Fatalf("expected restart confirmation to avoid window.confirm")
+	}
+	if strings.Contains(script, `window.confirm(t("route.envs.restart_sync_master"))`) {
+		t.Fatalf("expected restart sync option to avoid window.confirm")
 	}
 }
 

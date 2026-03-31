@@ -118,6 +118,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - `travel-master`：负责旅游 Product 的总控编排
 - Web `Chat` 页面默认绑定 `Alter0`；`Agent` 页面提供统一 Agent 运行入口，用于承载未占用独立前端入口的内置 Agent 与用户管理 Agent。
 - Agent 的职责收敛为“代理用户意图并驱动执行”，而不是直接自己操作仓库或 Shell。稳定工具面只保留 `codex_exec` 作为具体执行入口，`Alter0/main` 与其他允许委派的 Agent 可额外使用 `delegate_agent`，所有 Agent 可在已注入的记忆文件范围内使用 `search_memory`、`read_memory`、`write_memory` 维护长期偏好、缩写映射与稳定协作约束。`search_memory` 用于按关键字跨记忆文件定位历史信息，再决定是否精读或更新具体文件。`coding` Agent 负责理解用户开发目标，并根据每次 `codex_exec` 的实际返回结果持续下发下一步实现或验证动作，直到任务完成或确认阻塞。`coding` Agent 会把当前仓库远端地址、本地仓库路径、当前分支、会话工作区、测试页预览域名与 PR 交付要求一并纳入运行时上下文；当需要测试页面时，预览地址统一采用 `https://<session_short_hash>.alter0.cn`。
+- 若 Agent 在 `max_iterations` 耗尽前仍未显式 `complete`，运行时会返回带有“达到迭代上限”说明和最后一次工具观察的最终答复，避免 Web 流式消息在 `codex_exec` 观察后空收口。
 - Agent 流式回复中的 `action / observation` 执行细节会在助手消息内收敛为可折叠 `Process` 区块；最终答复继续作为正文展示，默认在收口后优先突出最终结果，用户可随时展开回看过程。
 - 每个 Agent 可独立配置名称、system prompt、tool 白名单、Skill 选择、MCP 选择与 Memory Files 选择。
 - Agent 可按 Profile 勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory；所选文件会在执行前以结构化 `memory_context` 注入 Agent 与 Codex 执行链路。
@@ -277,12 +278,13 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 
 `Environments` 页面中的“重启服务”会走运行时托管链路，而不是由当前业务进程直接自拉起：
 
-1. `sync_remote_master=false`：基于当前仓库状态构建候选二进制，并由 `supervisor` 完成子进程切换。
-2. `sync_remote_master=true`：先校验当前分支为 `master`、已跟踪工作区干净，再执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后构建候选二进制并切换。
-3. 候选版本只有在 `/readyz` 探活通过后才会成为当前运行版本；若启动失败，会自动恢复上一运行版本。
-4. Git 或构建失败会直接返回到 Web 控制台，便于定位权限、凭据、快进合并失败等问题。
-5. `Environments` 工具栏会展示当前在线实例的最近启动时间与对应 `commit hash`，用于确认上次成功重启切换到的运行版本。
-6. 重启完成后页面会自动刷新到新实例，并以站内成功弹窗提示用户当前页面已连接到最新运行实例。
+1. 点击“重启服务”后会打开单一站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项展示，默认勾选。
+2. `sync_remote_master=false`：基于当前仓库状态构建候选二进制，并由 `supervisor` 完成子进程切换。
+3. `sync_remote_master=true`：先校验当前分支为 `master`、已跟踪工作区干净，再执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后构建候选二进制并切换。
+4. 候选版本只有在 `/readyz` 探活通过后才会成为当前运行版本；若启动失败，会自动恢复上一运行版本。
+5. Git 或构建失败会直接返回到 Web 控制台，便于定位权限、凭据、快进合并失败等问题。
+6. `Environments` 工具栏会展示当前在线实例的最近启动时间与对应 `commit hash`，用于确认上次成功重启切换到的运行版本。
+7. 重启完成后页面会自动刷新到新实例，并以站内成功弹窗提示用户当前页面已连接到最新运行实例。
 
 ### Public Deployment Baseline
 
