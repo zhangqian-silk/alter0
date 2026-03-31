@@ -197,8 +197,11 @@ func (a *ReActAgent) RunWithState(ctx context.Context, userMessage string, onEve
 	}
 
 	// Max iterations reached
-	state.Answer = state.Thought
+	state.Answer = buildIterationLimitAnswer(state)
 	state.IsComplete = true
+	if onEvent != nil {
+		_ = onEvent(ReActEvent{Type: "answer", State: state})
+	}
 	return state, nil
 }
 
@@ -301,4 +304,24 @@ func (a *ReActAgent) consumeLatestUserMessage(ctx context.Context) (string, bool
 
 func buildSupplementalUserMessage(message string) string {
 	return "Latest user message received while the task was running. Treat it as the newest instruction and incorporate it into the next step.\n\n" + strings.TrimSpace(message)
+}
+
+func buildIterationLimitAnswer(state *ReActState) string {
+	if state == nil {
+		return "Agent reached the maximum iteration limit before producing a final answer."
+	}
+	if answer := strings.TrimSpace(state.Thought); answer != "" {
+		return answer
+	}
+
+	parts := []string{"Agent reached the maximum iteration limit before producing a final answer."}
+	if state.Action != nil {
+		if name := strings.TrimSpace(state.Action.Name); name != "" {
+			parts = append(parts, "Last tool: "+name)
+		}
+	}
+	if observation := strings.TrimSpace(state.Observation); observation != "" {
+		parts = append(parts, "Last observation:\n"+observation)
+	}
+	return strings.Join(parts, "\n\n")
 }

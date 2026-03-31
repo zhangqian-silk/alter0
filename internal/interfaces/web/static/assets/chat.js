@@ -224,6 +224,7 @@ const I18N = {
     "status.starting": "Starting",
     "status.success": "Success",
     "action.ok": "OK",
+    "action.cancel": "Cancel",
     "status.canceled": "Canceled",
     "status.exited": "Exited",
     "status.interrupted": "Interrupted",
@@ -662,7 +663,9 @@ const I18N = {
     "route.envs.restarting_sync": "Syncing remote master and restarting service...",
     "route.envs.restart_failed": "Restart failed: {error}",
     "route.envs.restart_confirm": "Restart the service now?",
-    "route.envs.restart_sync_master": "Sync remote master before restart?",
+    "route.envs.restart_confirm_desc": "The page will reload automatically after the new runtime passes health checks.",
+    "route.envs.restart_sync_master": "Sync remote master changes before restart",
+    "route.envs.restart_sync_master_hint": "Recommended. Requires local branch master and a clean tracked working tree.",
     "route.envs.restart_wait_timeout": "Restart is taking longer than expected. Refresh and retry in a moment.",
     "route.envs.restart_success": "Service restart completed. The page is now connected to the latest runtime.",
     "route.envs.runtime.last_restart_at": "Last Restart",
@@ -803,6 +806,7 @@ const I18N = {
     "status.starting": "启动中",
     "status.success": "成功",
     "action.ok": "确定",
+    "action.cancel": "取消",
     "status.canceled": "已取消",
     "status.exited": "已退出",
     "status.interrupted": "已中断",
@@ -1232,7 +1236,9 @@ const I18N = {
     "route.envs.restarting_sync": "正在同步远端 master 并重启服务...",
     "route.envs.restart_failed": "重启失败：{error}",
     "route.envs.restart_confirm": "现在重启服务吗？",
-    "route.envs.restart_sync_master": "重启前先同步远端 master 分支？",
+    "route.envs.restart_confirm_desc": "新实例探活通过后，当前页面会自动刷新并重新连接。",
+    "route.envs.restart_sync_master": "重启前同步远端 master 最新改动",
+    "route.envs.restart_sync_master_hint": "默认开启。要求当前本地分支为 master，且已跟踪工作区保持干净。",
     "route.envs.restart_wait_timeout": "服务重启时间超出预期，请稍后刷新后重试。",
     "route.envs.restart_success": "服务重启已完成，当前页面已连接到最新运行实例。",
     "route.envs.runtime.last_restart_at": "最近重启时间",
@@ -2442,6 +2448,78 @@ function showGlobalModal(options = {}) {
     });
     activateModalBackdrop(modalBackdrop);
   }
+}
+
+function showGlobalConfirmModal(options = {}) {
+  const host = ensureGlobalModalHost();
+  const title = normalizeText(options.title || "");
+  const message = normalizeText(options.message || "");
+  const description = normalizeText(options.description || "");
+  const confirmLabel = normalizeText(options.confirmLabel || "") || t("action.ok");
+  const cancelLabel = normalizeText(options.cancelLabel || "") || t("action.cancel");
+  const checkboxLabel = normalizeText(options.checkboxLabel || "");
+  const checkboxHint = normalizeText(options.checkboxHint || "");
+  const checkboxChecked = options.checkboxChecked !== false;
+  const hasCheckbox = Boolean(checkboxLabel);
+  host.innerHTML = `<div class="modal-backdrop" data-modal data-modal-state="enter">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>${escapeHTML(title)}</h3>
+        <button type="button" data-global-modal-cancel aria-label="${escapeHTML(cancelLabel)}">&times;</button>
+      </div>
+      <div class="modal-body">
+        ${message ? `<p class="environment-restart-confirm-copy">${escapeHTML(message)}</p>` : ""}
+        ${description ? `<p class="environment-restart-confirm-hint">${escapeHTML(description)}</p>` : ""}
+        ${hasCheckbox ? `<label class="environment-restart-confirm-option">
+          <input type="checkbox" data-global-modal-checkbox ${checkboxChecked ? "checked" : ""}>
+          <span>
+            ${escapeHTML(checkboxLabel)}
+            ${checkboxHint ? `<small>${escapeHTML(checkboxHint)}</small>` : ""}
+          </span>
+        </label>` : ""}
+      </div>
+      <div class="modal-footer">
+        <button type="button" data-global-modal-cancel data-variant="secondary">${escapeHTML(cancelLabel)}</button>
+        <button type="button" data-global-modal-confirm>${escapeHTML(confirmLabel)}</button>
+      </div>
+    </div>
+  </div>`;
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (confirmed) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const checkbox = host.querySelector("[data-global-modal-checkbox]");
+      hideGlobalModal();
+      resolve({
+        confirmed,
+        checked: checkbox instanceof HTMLInputElement ? checkbox.checked : false
+      });
+    };
+    host.querySelectorAll("[data-global-modal-cancel]").forEach((element) => {
+      element.addEventListener("click", () => settle(false));
+    });
+    const confirmButton = host.querySelector("[data-global-modal-confirm]");
+    if (confirmButton instanceof HTMLElement) {
+      confirmButton.addEventListener("click", () => settle(true));
+    }
+    const modalBackdrop = host.querySelector("[data-modal]");
+    if (modalBackdrop instanceof HTMLElement) {
+      modalBackdrop.addEventListener("click", (event) => {
+        if (event.target && event.target.hasAttribute("data-modal")) {
+          settle(false);
+        }
+      });
+      activateModalBackdrop(modalBackdrop);
+    }
+    requestAnimationFrame(() => {
+      if (confirmButton instanceof HTMLElement && confirmButton.isConnected) {
+        confirmButton.focus();
+      }
+    });
+  });
 }
 
 function showPendingRuntimeRestartNotice() {
@@ -4477,7 +4555,8 @@ async function sendMessageStream(payload, assistantMessage, endpoints = {}) {
           } else if (parsed.event === "done") {
             const result = parsed.data && typeof parsed.data === "object" ? parsed.data.result || {} : {};
             const route = typeof result.route === "string" && result.route ? result.route : routeHint;
-            const finalOutput = typeof result.output === "string" ? result.output : output;
+            const resultOutput = typeof result.output === "string" ? result.output : "";
+            const finalOutput = resultOutput.trim() ? resultOutput : output;
             const asyncTask = extractAsyncTaskPayload(parsed.data);
             const source = extractMessageSource(result);
             updateMessage(assistantMessage, {
@@ -12628,10 +12707,19 @@ async function loadEnvironmentsView(container) {
     if (localState.restarting) {
       return;
     }
-    if (!window.confirm(t("route.envs.restart_confirm"))) {
+    const decision = await showGlobalConfirmModal({
+      title: t("route.envs.restart_service"),
+      message: t("route.envs.restart_confirm"),
+      description: t("route.envs.restart_confirm_desc"),
+      confirmLabel: t("route.envs.restart_service"),
+      checkboxLabel: t("route.envs.restart_sync_master"),
+      checkboxHint: t("route.envs.restart_sync_master_hint"),
+      checkboxChecked: true
+    });
+    if (!decision.confirmed) {
       return;
     }
-    const shouldSyncRemoteMaster = window.confirm(t("route.envs.restart_sync_master"));
+    const shouldSyncRemoteMaster = Boolean(decision.checked);
     localState.restarting = true;
     paint(localState.configItems, localState.audits, localState.runtimeInfo, t(shouldSyncRemoteMaster ? "route.envs.restarting_sync" : "route.envs.restarting"));
     bindView();

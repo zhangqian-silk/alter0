@@ -110,3 +110,51 @@ func TestReActAgentInjectsLatestUserMessageBetweenIterations(t *testing.T) {
 		t.Fatalf("unexpected answer %q", state.Answer)
 	}
 }
+
+type reactIterationLimitClient struct{}
+
+func (c *reactIterationLimitClient) Chat(_ context.Context, _ ChatRequest) (*ChatResponse, error) {
+	return &ChatResponse{
+		Message: Message{
+			Role: "assistant",
+			ToolCalls: []ToolCall{
+				{ID: "call-1", Name: "codex_exec", Arguments: `{"instruction":"继续执行"}`},
+			},
+		},
+	}, nil
+}
+
+func (c *reactIterationLimitClient) ChatStream(_ context.Context, _ ChatRequest, _ func(StreamEvent) error) (*ChatResponse, error) {
+	return nil, nil
+}
+
+func (c *reactIterationLimitClient) Close() error {
+	return nil
+}
+
+func TestReActAgentReturnsIterationLimitFallbackAfterToolObservation(t *testing.T) {
+	agent := NewReActAgent(ReActAgentConfig{
+		Client:        &reactIterationLimitClient{},
+		Model:         "test-model",
+		Tools:         []Tool{{Name: "codex_exec", Description: "run codex"}},
+		ToolExecutor:  &reactToolExecutor{},
+		MaxIterations: 1,
+	})
+
+	state, err := agent.RunWithState(context.Background(), "初始请求", nil)
+	if err != nil {
+		t.Fatalf("RunWithState() error = %v", err)
+	}
+	if !state.IsComplete {
+		t.Fatalf("expected state complete")
+	}
+	if !strings.Contains(state.Answer, "maximum iteration limit") {
+		t.Fatalf("expected iteration limit hint, got %q", state.Answer)
+	}
+	if !strings.Contains(state.Answer, "codex_exec") {
+		t.Fatalf("expected last tool in answer, got %q", state.Answer)
+	}
+	if !strings.Contains(state.Answer, "工具观察") {
+		t.Fatalf("expected last observation in answer, got %q", state.Answer)
+	}
+}
