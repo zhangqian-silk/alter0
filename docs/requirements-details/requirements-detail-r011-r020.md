@@ -40,9 +40,10 @@
 
 1. 增加流式接口（建议 SSE），响应头为 `text/event-stream`，按片段持续推送。
 2. 事件至少包含：`start`（开始）、`delta`（增量内容）、`done`（完成）、`error`（失败）。
-3. 前端在流式过程中实时追加渲染，`done` 后收敛为完整消息；`error` 时展示可重试提示。
-4. 保留非流式回退路径（旧接口或开关控制），确保兼容现有调用方。
-5. 验收：一次正常流式响应可看到逐步输出；断流或异常时前端有明确失败状态。
+3. 当前端流式会话在较长时间内没有新增 `delta` 时，服务端仍需持续发送 SSE 保活帧，避免浏览器、网关或代理因空闲超时提前断开连接。
+4. 前端在流式过程中实时追加渲染，`done` 后收敛为完整消息；`error` 时展示可重试提示。
+5. 保留非流式回退路径（旧接口或开关控制），确保兼容现有调用方。
+6. 验收：一次正常流式响应可看到逐步输出；长时间无增量时连接仍保持存活；断流或异常时前端有明确失败状态。
 
 #### Task Breakdown (auto-managed)
 
@@ -59,6 +60,8 @@
 
 - 实现文件：`internal/interfaces/web/server.go`、`internal/interfaces/web/server_message_test.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat.css`
 - 验证：`go test ./...`
+- 验证记录：
+  - 2026-03-31：`Chat / Agent / Product` 的 SSE 响应链路新增保活注释帧；Codex CLI 长时间静默执行阶段不会仅因消息流空闲而提前断开。
 
 ### R-014 移动端真机适配增强
 

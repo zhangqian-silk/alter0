@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	agentapp "alter0/internal/agent/application"
@@ -60,6 +61,8 @@ const (
 	webLoginCookieName                = "alter0_web_session"
 	webLoginCookieTTL                 = 24 * time.Hour
 )
+
+var sseHeartbeatInterval = 15 * time.Second
 
 type Orchestrator interface {
 	Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error)
@@ -1101,6 +1104,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 		return
 	}
+	stream := newSSEStream(w, flusher)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -1108,7 +1112,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	s.countGateway(string(msg.ChannelType))
-	if err := writeSSE(w, "start", streamStartResponse{
+	if err := stream.Event("start", streamStartResponse{
 		MessageID: msg.MessageID,
 		SessionID: msg.SessionID,
 		ChannelID: msg.ChannelID,
@@ -1116,7 +1120,8 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		return
 	}
-	flusher.Flush()
+	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
+	defer stopKeepAlive()
 
 	intent := s.classifyMessageIntent(msg.Content)
 	assessment := s.defaultComplexityAssessment()
@@ -1164,11 +1169,10 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(string(route)) != "" {
 			payload.Route = route
 		}
-		if err := writeSSE(w, "delta", payload); err != nil {
+		if err := stream.Event("delta", payload); err != nil {
 			return err
 		}
 		emittedDelta = true
-		flusher.Flush()
 		return nil
 	}
 	finalizeStreamResult := func(streamResult streamExecutionResult) {
@@ -1182,11 +1186,10 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		result = attachProductRouteResultMetadata(result, msg.Metadata)
 		if handleErr != nil {
 			s.logWebMessageFailure(msg, handleErr)
-			_ = writeSSE(w, "error", streamErrorResponse{
+			_ = stream.Event("error", streamErrorResponse{
 				Error:  handleErr.Error(),
 				Result: result,
 			})
-			flusher.Flush()
 			return
 		}
 
@@ -1198,13 +1201,12 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		_ = writeSSE(w, "done", streamDoneResponse{
+		_ = stream.Event("done", streamDoneResponse{
 			Result:                   result,
 			ExecutionMode:            assessment.ExecutionMode,
 			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
 			ComplexityLevel:          assessment.ComplexityLevel,
 		})
-		flusher.Flush()
 	}
 
 	for {
@@ -1235,11 +1237,10 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 			result := asyncAcceptedResult(taskMsg, task, assessment, taskCard)
 			if submitErr != nil {
 				s.logWebMessageFailure(taskMsg, submitErr)
-				_ = writeSSE(w, "error", streamErrorResponse{
+				_ = stream.Event("error", streamErrorResponse{
 					Error:  submitErr.Error(),
 					Result: result,
 				})
-				flusher.Flush()
 				return
 			}
 			if accepted {
@@ -1252,7 +1253,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 				}
-				_ = writeSSE(w, "done", streamDoneResponse{
+				_ = stream.Event("done", streamDoneResponse{
 					Result:                   result,
 					TaskID:                   task.ID,
 					TaskStatus:               string(task.Status),
@@ -1261,7 +1262,6 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 					ComplexityLevel:          assessment.ComplexityLevel,
 					TaskCard:                 taskCard,
 				})
-				flusher.Flush()
 				return
 			}
 		case streamResult := <-streamResultCh:
@@ -1364,6 +1364,7 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 		return
 	}
+	stream := newSSEStream(w, flusher)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -1371,7 +1372,7 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	s.countGateway(string(msg.ChannelType))
-	if err := writeSSE(w, "start", streamStartResponse{
+	if err := stream.Event("start", streamStartResponse{
 		MessageID: msg.MessageID,
 		SessionID: msg.SessionID,
 		ChannelID: msg.ChannelID,
@@ -1379,7 +1380,8 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 	}); err != nil {
 		return
 	}
-	flusher.Flush()
+	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
+	defer stopKeepAlive()
 
 	handleStream := func(
 		callback func(delta string) error,
@@ -1394,37 +1396,33 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 		if strings.TrimSpace(delta) == "" {
 			return nil
 		}
-		if err := writeSSE(w, "delta", streamDeltaResponse{Delta: delta}); err != nil {
+		if err := stream.Event("delta", streamDeltaResponse{Delta: delta}); err != nil {
 			return err
 		}
-		flusher.Flush()
 		return nil
 	})
 	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if handleErr != nil {
 		s.logWebMessageFailure(msg, handleErr)
-		_ = writeSSE(w, "error", streamErrorResponse{
+		_ = stream.Event("error", streamErrorResponse{
 			Error:  handleErr.Error(),
 			Result: result,
 		})
-		flusher.Flush()
 		return
 	}
 
 	if _, ok := s.orchestrator.(StreamOrchestrator); !ok {
 		for _, chunk := range chunkText(result.Output, 24) {
-			if err := writeSSE(w, "delta", streamDeltaResponse{
+			if err := stream.Event("delta", streamDeltaResponse{
 				Delta: chunk,
 				Route: result.Route,
 			}); err != nil {
 				return
 			}
-			flusher.Flush()
 		}
 	}
 
-	_ = writeSSE(w, "done", streamDoneResponse{Result: result})
-	flusher.Flush()
+	_ = stream.Event("done", streamDoneResponse{Result: result})
 }
 
 func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
@@ -3353,6 +3351,7 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 		return
 	}
+	stream := newSSEStream(w, flusher)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -3360,7 +3359,7 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	s.countGateway(string(msg.ChannelType))
-	if err := writeSSE(w, "start", streamStartResponse{
+	if err := stream.Event("start", streamStartResponse{
 		MessageID: msg.MessageID,
 		SessionID: msg.SessionID,
 		ChannelID: msg.ChannelID,
@@ -3368,7 +3367,8 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 	}); err != nil {
 		return
 	}
-	flusher.Flush()
+	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
+	defer stopKeepAlive()
 
 	assessment := s.defaultComplexityAssessment()
 	streamCtx, cancelStream := context.WithCancel(r.Context())
@@ -3415,11 +3415,10 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 		if strings.TrimSpace(string(route)) != "" {
 			payload.Route = route
 		}
-		if err := writeSSE(w, "delta", payload); err != nil {
+		if err := stream.Event("delta", payload); err != nil {
 			return err
 		}
 		emittedDelta = true
-		flusher.Flush()
 		return nil
 	}
 	finalizeStreamResult := func(streamResult streamExecutionResult) {
@@ -3430,11 +3429,10 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 		_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
 		if handleErr != nil {
 			s.logWebMessageFailure(msg, handleErr)
-			_ = writeSSE(w, "error", streamErrorResponse{
+			_ = stream.Event("error", streamErrorResponse{
 				Error:  handleErr.Error(),
 				Result: result,
 			})
-			flusher.Flush()
 			return
 		}
 
@@ -3446,13 +3444,12 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 			}
 		}
 
-		_ = writeSSE(w, "done", streamDoneResponse{
+		_ = stream.Event("done", streamDoneResponse{
 			Result:                   result,
 			ExecutionMode:            assessment.ExecutionMode,
 			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
 			ComplexityLevel:          assessment.ComplexityLevel,
 		})
-		flusher.Flush()
 	}
 
 	for {
@@ -3483,11 +3480,10 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 			result := asyncAcceptedResult(taskMsg, task, assessment, taskCard)
 			if submitErr != nil {
 				s.logWebMessageFailure(taskMsg, submitErr)
-				_ = writeSSE(w, "error", streamErrorResponse{
+				_ = stream.Event("error", streamErrorResponse{
 					Error:  submitErr.Error(),
 					Result: result,
 				})
-				flusher.Flush()
 				return
 			}
 			if accepted {
@@ -3500,7 +3496,7 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 						return
 					}
 				}
-				_ = writeSSE(w, "done", streamDoneResponse{
+				_ = stream.Event("done", streamDoneResponse{
 					Result:                   result,
 					TaskID:                   task.ID,
 					TaskStatus:               string(task.Status),
@@ -3509,7 +3505,6 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 					ComplexityLevel:          assessment.ComplexityLevel,
 					TaskCard:                 taskCard,
 				})
-				flusher.Flush()
 				return
 			}
 		case streamResult := <-streamResultCh:
@@ -5234,6 +5229,84 @@ func writeSSE(w http.ResponseWriter, event string, payload any) error {
 		return err
 	}
 	return nil
+}
+
+type sseStream struct {
+	w       http.ResponseWriter
+	flusher http.Flusher
+	mu      sync.Mutex
+}
+
+func newSSEStream(w http.ResponseWriter, flusher http.Flusher) *sseStream {
+	return &sseStream{w: w, flusher: flusher}
+}
+
+func (s *sseStream) Event(event string, payload any) error {
+	if s == nil {
+		return errors.New("sse stream is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := writeSSE(s.w, event, payload); err != nil {
+		return err
+	}
+	s.flusher.Flush()
+	return nil
+}
+
+func (s *sseStream) Comment(text string) error {
+	if s == nil {
+		return errors.New("sse stream is required")
+	}
+	comment := strings.TrimSpace(text)
+	if comment == "" {
+		comment = "keep-alive"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.w.Write([]byte(": " + comment + "\n\n")); err != nil {
+		return err
+	}
+	s.flusher.Flush()
+	return nil
+}
+
+func startSSEKeepAlive(ctx context.Context, stream *sseStream, interval time.Duration) func() {
+	if ctx == nil || stream == nil {
+		return func() {}
+	}
+	if interval <= 0 {
+		interval = sseHeartbeatInterval
+	}
+	if interval <= 0 {
+		return func() {}
+	}
+
+	stopCh := make(chan struct{})
+	var once sync.Once
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				if err := stream.Comment("keep-alive"); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	return func() {
+		once.Do(func() {
+			close(stopCh)
+		})
+	}
 }
 
 func chunkText(content string, maxRunes int) []string {

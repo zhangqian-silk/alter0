@@ -284,6 +284,10 @@ const I18N = {
     "route.agent.form.name": "Agent Name",
     "route.agent.form.prompt": "System Prompt",
     "route.agent.form.tools": "Tools",
+    "route.agent.process.label": "Process",
+    "route.agent.process.steps": "{count} steps",
+    "route.agent.process.empty": "No execution details yet.",
+    "route.agent.step.observation": "Observation",
     "route.agent.form.skills": "Skills",
     "route.agent.form.mcps": "MCP",
     "route.agent.form.memory_files": "Memory Files",
@@ -858,6 +862,10 @@ const I18N = {
     "route.agent.form.name": "Agent 名称",
     "route.agent.form.prompt": "System Prompt",
     "route.agent.form.tools": "Tools",
+    "route.agent.process.label": "过程",
+    "route.agent.process.steps": "{count} 步",
+    "route.agent.process.empty": "暂无执行细节。",
+    "route.agent.step.observation": "观察",
     "route.agent.form.skills": "Skills",
     "route.agent.form.mcps": "MCP",
     "route.agent.form.memory_files": "Memory Files",
@@ -2776,7 +2784,8 @@ function normalizeStoredMessage(item, fallbackAt) {
     task_pending: Boolean(item.task_pending),
     task_result_delivered: Boolean(item.task_result_delivered),
     task_result_for: typeof item.task_result_for === "string" ? item.task_result_for : "",
-    task_completed_at: Number.isFinite(item.task_completed_at) ? item.task_completed_at : 0
+    task_completed_at: Number.isFinite(item.task_completed_at) ? item.task_completed_at : 0,
+    agent_process_collapsed: typeof item.agent_process_collapsed === "boolean" ? item.agent_process_collapsed : undefined
   };
 }
 
@@ -3839,7 +3848,8 @@ function appendMessageToSession(session, role, text, options = {}) {
     task_pending: Boolean(options.task_pending),
     task_result_delivered: Boolean(options.task_result_delivered),
     task_result_for: typeof options.task_result_for === "string" ? options.task_result_for : "",
-    task_completed_at: Number.isFinite(options.task_completed_at) ? options.task_completed_at : 0
+    task_completed_at: Number.isFinite(options.task_completed_at) ? options.task_completed_at : 0,
+    agent_process_collapsed: typeof options.agent_process_collapsed === "boolean" ? options.agent_process_collapsed : undefined
   };
   session.messages.push(message);
   enforceSingleBlankSession();
@@ -4076,12 +4086,15 @@ function extractMessageSource(result) {
   return normalizeText(result?.metadata?.["alter0.execution.source"]);
 }
 
-function renderMessages() {
+function renderMessages(options = {}) {
   const active = getSession();
   const hasMessages = Boolean(active && active.messages.length);
   welcomeScreen.style.display = hasMessages ? "none" : "block";
   messageArea.style.display = hasMessages ? "block" : "none";
   chatPane.classList.toggle("empty-state", !hasMessages);
+  const preserveScrollPosition = Boolean(options.preserveScrollPosition);
+  const previousScrollTop = messageArea.scrollTop;
+  const previousScrollHeight = messageArea.scrollHeight;
 
   if (!hasMessages) {
     syncWelcomeCopy();
@@ -4105,7 +4118,9 @@ function renderMessages() {
 
     const bubble = document.createElement("div");
     bubble.className = "msg-bubble";
-    bubble.innerHTML = renderMarkdownToHTML(msg.text);
+    bubble.innerHTML = msg.role === "assistant"
+      ? renderAgentExecutionMessage(msg)
+      : renderMarkdownToHTML(msg.text);
 
     const meta = document.createElement("div");
     meta.className = "msg-meta";
@@ -4145,7 +4160,30 @@ function renderMessages() {
 
   messageArea.innerHTML = "";
   messageArea.appendChild(list);
-  messageArea.scrollTop = messageArea.scrollHeight;
+  if (preserveScrollPosition) {
+    messageArea.scrollTop = Math.max(0, previousScrollTop + (messageArea.scrollHeight - previousScrollHeight));
+  } else {
+    messageArea.scrollTop = messageArea.scrollHeight;
+  }
+}
+
+function toggleAgentProcessMessage(messageID) {
+  const active = getSession();
+  const normalizedMessageID = normalizeText(messageID);
+  if (!active || !normalizedMessageID) {
+    return;
+  }
+  const message = active.messages.find((item) => normalizeText(item?.id) === normalizedMessageID);
+  if (!message) {
+    return;
+  }
+  const parsed = parseAgentExecutionText(message.text || "");
+  if (!parsed.steps.length) {
+    return;
+  }
+  message.agent_process_collapsed = !resolveAgentProcessCollapsed(message, parsed);
+  renderMessages({ preserveScrollPosition: true });
+  persistSessions();
 }
 
 function setPending(flag) {
@@ -4931,6 +4969,159 @@ function sanitizeMarkdownURL(rawURL) {
     return escapeHTML(normalized);
   }
   return "";
+}
+
+function parseAgentExecutionText(value) {
+  const normalized = String(value ?? "").replace(/\r\n?/g, "\n");
+  if (!normalized.trim()) {
+    return { steps: [], answer: "" };
+  }
+
+  const lines = normalized.split("\n");
+  const steps = [];
+  const answerLines = [];
+  let currentStep = null;
+  let index = 0;
+
+  const pushCurrentStep = () => {
+    if (!currentStep) {
+      return;
+    }
+    const title = String(currentStep.title || "").trim();
+    const detail = String(currentStep.detail || "").trim();
+    if (!title && !detail) {
+      currentStep = null;
+      return;
+    }
+    steps.push({
+      kind: String(currentStep.kind || "action").trim() || "action",
+      title,
+      detail
+    });
+    currentStep = null;
+  };
+
+  while (index < lines.length) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (trimmed.startsWith("[agent] action:")) {
+      pushCurrentStep();
+      currentStep = {
+        kind: "action",
+        title: trimmed.slice("[agent] action:".length).trim(),
+        detail: ""
+      };
+      index += 1;
+      continue;
+    }
+    if (trimmed === "[agent] observation:") {
+      const detailLines = [];
+      index += 1;
+      while (index < lines.length) {
+        const nextLine = lines[index];
+        const nextTrimmed = nextLine.trim();
+        if (nextTrimmed.startsWith("[agent] action:") || nextTrimmed === "[agent] observation:") {
+          break;
+        }
+        detailLines.push(nextLine);
+        index += 1;
+      }
+      const detail = detailLines.join("\n").trim();
+      if (currentStep) {
+        currentStep.detail = detail;
+      } else {
+        currentStep = {
+          kind: "observation",
+          title: t("route.agent.step.observation"),
+          detail
+        };
+        pushCurrentStep();
+      }
+      continue;
+    }
+    answerLines.push(line);
+    index += 1;
+  }
+
+  pushCurrentStep();
+  return {
+    steps,
+    answer: answerLines.join("\n").trim()
+  };
+}
+
+function resolveAgentProcessCollapsed(message, parsed) {
+  if (message && typeof message.agent_process_collapsed === "boolean") {
+    return message.agent_process_collapsed;
+  }
+  return Boolean(String(parsed?.answer || "").trim()) && String(message?.status || "").trim() !== "streaming";
+}
+
+function renderAgentProcessStep(step, index) {
+  const title = String(step?.title || "").trim() || `${t("route.agent.process.label")} ${String(index + 1)}`;
+  const detail = String(step?.detail || "").trim();
+  return `<article class="agent-process-step">
+    <div class="agent-process-step-head">
+      <span class="agent-process-step-index">${escapeHTML(String(index + 1))}</span>
+      <span class="agent-process-step-title">${escapeHTML(title)}</span>
+    </div>
+    ${detail ? `<div class="agent-process-step-body">${renderMarkdownToHTML(detail)}</div>` : ""}
+  </article>`;
+}
+
+function renderAssistantCopyButton(copyValue, className = "") {
+  const content = String(copyValue || "");
+  if (!content.trim()) {
+    return "";
+  }
+  const classes = ["route-field-copy", "assistant-message-copy"];
+  if (className) {
+    classes.push(className);
+  }
+  return `<button class="${classes.join(" ")}" type="button" data-copy-value="${escapeHTML(content)}" title="${escapeHTML(t("route.copy_value"))}" aria-label="${escapeHTML(t("route.copy_value"))}">${renderCopyIcon()}</button>`;
+}
+
+function renderAssistantFinalBody(contentHTML, copyValue, className = "") {
+  if (!String(contentHTML || "").trim()) {
+    return "";
+  }
+  return `<div class="assistant-message-shell${className ? ` ${className}` : ""}">
+    <div class="assistant-message-toolbar">
+      ${renderAssistantCopyButton(copyValue)}
+    </div>
+    <div class="assistant-message-body">${contentHTML}</div>
+  </div>`;
+}
+
+function renderAgentExecutionMessage(message) {
+  const parsed = parseAgentExecutionText(message?.text || "");
+  const status = String(message?.status || "").trim();
+  if (!parsed.steps.length) {
+    if (status === "streaming") {
+      return renderMarkdownToHTML(message?.text || "");
+    }
+    return renderAssistantFinalBody(renderMarkdownToHTML(message?.text || ""), String(message?.text || "").trim());
+  }
+
+  const messageID = normalizeText(message?.id);
+  const collapsed = resolveAgentProcessCollapsed(message, parsed);
+  const answerHTML = String(parsed.answer || "").trim()
+    ? renderAssistantFinalBody(`<div class="agent-process-answer">${renderMarkdownToHTML(parsed.answer)}</div>`, parsed.answer, "agent-process-answer-shell")
+    : "";
+
+  return `${parsed.steps.length ? `<section class="agent-process-shell ${collapsed ? "is-collapsed" : ""}" data-agent-process-shell="${escapeHTML(messageID)}">
+    <button class="agent-process-toggle" type="button" data-agent-process-toggle="${escapeHTML(messageID)}" aria-expanded="${collapsed ? "false" : "true"}">
+      <span class="agent-process-toggle-icon">${collapsed ? ">" : "v"}</span>
+      <span class="agent-process-copy">
+        <span class="agent-process-title">${escapeHTML(t("route.agent.process.label"))}</span>
+        <span class="agent-process-summary">${escapeHTML(t("route.agent.process.steps", { count: String(parsed.steps.length) }))}</span>
+      </span>
+    </button>
+    <div class="agent-process-body" ${collapsed ? "hidden" : ""}>
+      ${parsed.steps.map((step, index) => renderAgentProcessStep(step, index)).join("") || `<div class="agent-process-empty">${escapeHTML(t("route.agent.process.empty"))}</div>`}
+    </div>
+  </section>` : ""}
+  ${answerHTML}`.trim();
 }
 
 function normalizeText(value) {
@@ -9183,6 +9374,9 @@ function renderTerminalFinalOutput(session, turn) {
   return `<div class="msg assistant terminal-final-output terminal-turn-output" data-terminal-final-output="${escapeHTML(turnID)}">
     <div class="msg-bubble">
       <div class="terminal-final-text">
+        <div class="assistant-message-toolbar terminal-final-toolbar">
+          ${renderAssistantCopyButton(content, "terminal-final-copy")}
+        </div>
         <div class="terminal-final-rendered">${renderMarkdownToHTML(content)}</div>
       </div>
     </div>
@@ -12930,6 +13124,36 @@ async function renderRoute(route) {
 
 function bindEvents() {
   bindNavTooltipEvents();
+
+  messageArea.addEventListener("click", (event) => {
+    const copyTarget = event.target.closest("[data-copy-value]");
+    if (copyTarget) {
+      const value = copyTarget.getAttribute("data-copy-value") || "";
+      if (!value) {
+        return;
+      }
+      event.preventDefault();
+      void (async () => {
+        try {
+          const copied = await copyTextValue(value);
+          if (!copied) {
+            return;
+          }
+          copyTarget.classList.add("copied");
+          window.setTimeout(() => copyTarget.classList.remove("copied"), 900);
+        } catch (error) {
+          console.warn("copy value failed", error);
+        }
+      })();
+      return;
+    }
+    const target = event.target.closest("[data-agent-process-toggle]");
+    if (!target) {
+      return;
+    }
+    event.preventDefault();
+    toggleAgentProcessMessage(target.getAttribute("data-agent-process-toggle"));
+  });
 
   routeBody.addEventListener("click", async (event) => {
     const target = event.target.closest("[data-copy-value]");
