@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
@@ -26,10 +27,14 @@ type stubWebOrchestrator struct {
 	result      shareddomain.OrchestrationResult
 	err         error
 	lastMessage shareddomain.UnifiedMessage
+	delay       time.Duration
 }
 
 func (s *stubWebOrchestrator) Handle(_ context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
 	s.lastMessage = msg
+	if s.delay > 0 {
+		time.Sleep(s.delay)
+	}
 	return s.result, s.err
 }
 
@@ -167,6 +172,37 @@ func TestMessageStreamHandlerEmitsError(t *testing.T) {
 	}
 	if !strings.Contains(body, `"error":"processor failed"`) {
 		t.Fatalf("expected error message in payload, got body: %s", body)
+	}
+}
+
+func TestMessageStreamHandlerEmitsKeepAliveWhileWaiting(t *testing.T) {
+	previousInterval := sseHeartbeatInterval
+	sseHeartbeatInterval = 10 * time.Millisecond
+	defer func() {
+		sseHeartbeatInterval = previousInterval
+	}()
+
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "slow-response",
+		},
+		delay: 35 * time.Millisecond,
+	}
+	server := newMessageTestServer(orchestrator)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/stream", strings.NewReader(`{"session_id":"session-fixed","content":"hello"}`))
+	rec := httptest.NewRecorder()
+	server.messageStreamHandler(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, ": keep-alive\n\n") {
+		t.Fatalf("expected keep-alive comment in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, "event: done\n") {
+		t.Fatalf("expected done event after keep-alive, got body: %s", body)
 	}
 }
 

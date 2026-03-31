@@ -224,6 +224,7 @@
    - 轮询刷新不得在输出持续增长时整块替换当前终端工作区；至少要保留消息滚动容器节点与当前位置，避免用户滚动阅读过程中出现周期性卡顿。
    - 浏览器侧 Terminal 会话缓存写入需避开活跃滚动窗口；当用户持续滚动消息区时，允许延后本地持久化，待滚动停顿后再写入。
 13. 输出渲染要求：Terminal 最终回复需直接按 Chat 助手消息逻辑渲染，不再额外包裹 `Final Output` 标题条、强调边框或 `Show more / Show less` 折叠按钮；Markdown 链接需按链接文本渲染为可点击链接，不直接向用户展示整段 Markdown 源码或冗长路径。
+   - Terminal 最终回复正文需提供一键复制入口；复制内容仅包含最终回复，不包含 `Process` 步骤细节或中间日志。
    - `Process` 需继续采用浅色平铺阅读面板与统一阅读节奏，不再通过“盒子套盒子”的高饱和大块背景制造额外视觉层级；头部需以低对比虚线提示区承载过程信息，左侧纵向引导线从 `Process` 头部中点向下延伸。
    - `Process` 中的步骤摘要需压缩为单行结构，仅展示“截断后的命令 / 时间 / 状态”三部分；移动端也不得把时间或状态下沉到第二行。展开后正文只展示细节内容，不再重复状态标签。
    - 同一 turn 出现最终输出后，前端需自动折叠对应 `Process` 面板，把阅读焦点收敛到最终回复；用户手动再次展开后保留该折叠状态选择。
@@ -297,12 +298,18 @@ ReAct 模式 Agent 调用
 6. ReAct 工具收口必须支持显式 `complete`，避免模型在没有结束信号时无限循环。
 7. Agent 运行时的稳定工具面至少包括：`codex_exec`、`search_memory`、`read_memory`、`write_memory`、`complete`；仅允许委派的 Agent 可额外挂载 `delegate_agent`。
 8. `search_memory` / `read_memory` / `write_memory` 仅面向已解析进 `memory_context` 的记忆文件。`search_memory` 负责按关键字在多份记忆文件中定位历史偏好、缩写指代和长期约束，`read_memory` 用于精读单个目标文件，`write_memory` 用于在必要时维护这些记忆文件本身；除此之外不再向 Agent 暴露通用原生文件/命令工具。
+9. Web 端对 Agent 流式返回的 `action / observation` 细节必须收敛为可折叠 `Process` 区块，避免多轮执行日志直接淹没最终答复；最终答复继续按普通助手正文渲染。
+10. 当同一条 Agent 回复已出现最终答复时，`Process` 默认折叠；用户手动展开后需在当前浏览器会话内保留该折叠状态。
+11. Agent 最终答复正文需提供一键复制入口；若同条消息同时包含 `Process`，复制内容仅包含最终答复，不包含折叠的 `action / observation` 细节。
 
 #### Traceability
 
-- 实现文件：`internal/llm/domain/react.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/control/domain/agent.go`
+- 实现文件：`internal/llm/domain/react.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/control/domain/agent.go`、`internal/interfaces/web/static/assets/chat.js`、`internal/interfaces/web/static/assets/chat-core.css`、`internal/interfaces/web/static/assets/chat-terminal.css`
 - 测试覆盖：`internal/llm/domain/react_test.go`、`internal/execution/infrastructure/hybrid_nl_processor_test.go`
 - 核心对象：`ReActAgentConfig`、`ToolExecutor`、`max_iterations`、`codex_exec`
+- 验证记录：
+  - 2026-03-31：Web `Chat / Agent` 已将 Agent 流式 `action / observation` 解析为消息内可折叠 `Process`，最终答复与执行细节分区展示。
+  - 2026-03-31：Agent 最终答复与 Terminal 最终输出均新增一键复制入口；复制内容仅包含最终正文，不包含 `Process` 细节。
 
 ### R-049
 

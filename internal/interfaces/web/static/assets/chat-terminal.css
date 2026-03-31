@@ -1335,6 +1335,14 @@
   padding: 0;
 }
 
+.terminal-final-toolbar {
+  margin-bottom: 8px;
+}
+
+.terminal-final-copy {
+  background: rgba(255, 255, 255, 0.96);
+}
+
 .terminal-final-rendered {
   color: var(--terminal-text-primary);
   font-size: 16px;
