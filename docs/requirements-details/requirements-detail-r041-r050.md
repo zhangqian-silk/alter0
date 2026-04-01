@@ -79,7 +79,8 @@
 7. 安全要求：敏感配置（密钥、令牌类）默认脱敏显示并支持受控查看；配置变更记录审计字段（操作者、时间、变更项）。
 8. 运行时披露要求：`Environments` 工具栏需展示当前在线实例最近启动时间与对应 `commit hash`，用于确认上次成功重启后实际运行的版本。
 9. 重启反馈要求：Web 控制台触发运行时重启时，必须先展示单一站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项提供，默认勾选，不得再通过连续浏览器确认框重复询问。提交后页面需在新实例探活通过后自动刷新，并以站内弹窗明确提示当前页面已连接到最新运行实例；提示不可依赖可能被浏览器压制的异步系统弹窗。
-10. 验收：用户可在 Environments 页面完成任务并发等关键配置修改并持久化；系统可正确读取并在运行链路中生效，页面可查看当前生效值、生效方式以及当前在线版本对应的最近启动时间与 `commit hash`；运行时重启成功后用户可收到稳定的页面内成功提示。
+10. systemd 部署基线要求：服务启动脚本需将运行进程 `HOME` 收敛到 `ALTER0_RUNTIME_ROOT` 对应根目录，默认值为 `/var/lib/alter0`；若历史环境文件仍配置为 `/var/lib/alter0/codex-home`，启动阶段需自动归一为 `/var/lib/alter0`，确保 Codex 认证与运行态缓存落在统一根目录。
+11. 验收：用户可在 Environments 页面完成任务并发等关键配置修改并持久化；系统可正确读取并在运行链路中生效，页面可查看当前生效值、生效方式以及当前在线版本对应的最近启动时间与 `commit hash`；运行时重启成功后用户可收到稳定的页面内成功提示；systemd 场景下服务进程 `HOME` 默认落在 `/var/lib/alter0`，历史 `codex-home` 子目录配置不会继续生效为独立根目录。
 
 #### 当前配置盘点（可纳管候选）
 
@@ -106,6 +107,9 @@
    - `long_term_memory_writeback_flush`（`-long-term-memory-writeback-flush`，默认 `2s`）
    - `long_term_memory_token_budget`（`-long-term-memory-token-budget`，默认 `220`）
    - `mandatory_context_file`（`-mandatory-context-file`，默认 `SOUL.md`）
+5. 部署运行根目录
+   - `ALTER0_RUNTIME_ROOT`（启动脚本默认 `/var/lib/alter0`）
+   - `HOME`（systemd 部署建议固定为 `/var/lib/alter0`；历史 `/var/lib/alter0/codex-home` 会在启动阶段归一到运行根目录）
 
 #### 接口拆分（草案）
 

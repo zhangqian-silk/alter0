@@ -6,6 +6,7 @@
 
 ```bash
 export ALTER0_WEB_LOGIN_PASSWORD='请替换为强密码'
+export HOME=/var/lib/alter0
 
 go run ./cmd/alter0 \
   -web-addr 127.0.0.1:18088 \
@@ -51,7 +52,7 @@ server {
 
 ```bash
 sudo install -d -m 750 /etc/alter0
-sudo sh -c "printf 'ALTER0_WEB_LOGIN_PASSWORD=请替换为强密码\n' > /etc/alter0/alter0.env"
+sudo sh -c "printf 'ALTER0_WEB_LOGIN_PASSWORD=请替换为强密码\nHOME=/var/lib/alter0\n' > /etc/alter0/alter0.env"
 sudo chmod 600 /etc/alter0/alter0.env
 ```
 
@@ -69,6 +70,7 @@ EnvironmentFile=/etc/alter0/alter0.env
 2. 运行目录建议权限：目录 `750`、日志 `640`、密码环境文件 `600`。
 3. 避免直接使用 root 长期运行服务。
 4. `systemd` 建议直接设置 `User=alter0` / `Group=alter0`，不要依赖启动脚本内部再 `su` 切换用户。
+5. 运行 `Codex CLI` 的服务进程 `HOME` 建议固定为 `/var/lib/alter0`；若历史环境仍写成 `/var/lib/alter0/codex-home`，项目启动脚本会自动归一到 `/var/lib/alter0`。
 
 项目内提供了最小化启动脚本：`scripts/start_alter0_service.sh`。
 该脚本按推荐方式应直接由 `alter0` 用户运行；如果以 root 启动，会直接报错退出，提醒把用户切换前移到 systemd unit。

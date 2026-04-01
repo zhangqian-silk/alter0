@@ -292,12 +292,15 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 
 ```bash
 export ALTER0_WEB_LOGIN_PASSWORD='请替换为强密码'
+export HOME=/var/lib/alter0
 
 go run ./cmd/alter0 \
   -web-addr 127.0.0.1:18088 \
   -web-bind-localhost-only=true \
   -web-login-password "$ALTER0_WEB_LOGIN_PASSWORD"
 ```
+
+若通过 `systemd` 运行，建议在服务环境中显式设置 `HOME=/var/lib/alter0`；启动脚本也会把历史 `HOME=/var/lib/alter0/codex-home` 归一到 `/var/lib/alter0`，确保 Codex 认证与运行态数据落在统一运行根目录。
 
 对应 Nginx 配置与运行权限方案见：`docs/deployment/nginx.md`。
 
