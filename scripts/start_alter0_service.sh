@@ -21,6 +21,20 @@ RUN_AS="${ALTER0_RUN_AS:-alter0}"
 
 RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-/var/lib/alter0}"
 STORAGE_DIR="${ALTER0_STORAGE_DIR:-${RUNTIME_ROOT}/storage}"
+HOME_DIR="${ALTER0_HOME:-}"
+if [[ -z "${HOME_DIR}" ]]; then
+  case "${HOME:-}" in
+    "${RUNTIME_ROOT}"|"${RUNTIME_ROOT}/"*)
+      HOME_DIR="${HOME}"
+      ;;
+  esac
+fi
+if [[ "${HOME_DIR}" == "${RUNTIME_ROOT}/codex-home" ]]; then
+  HOME_DIR="${RUNTIME_ROOT}"
+fi
+if [[ -z "${HOME_DIR}" ]]; then
+  HOME_DIR="${RUNTIME_ROOT}"
+fi
 LOG_FILE="${ALTER0_LOG_FILE:-/var/log/alter0/alter0.log}"
 LOCK_FILE="${RUNTIME_ROOT}/run.lock"
 ALTER0_RUNTIME_MANAGER="${ALTER0_RUNTIME_MANAGER:-systemd}"
@@ -31,11 +45,12 @@ if [[ -z "${CODEX_COMMAND}" && -x /usr/local/bin/codex ]]; then
   CODEX_COMMAND="/usr/local/bin/codex"
 fi
 
-mkdir -p "${RUNTIME_ROOT}" "${STORAGE_DIR}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0" "$(dirname "${BUILD_OUTPUT}")"
-chmod 750 "${RUNTIME_ROOT}" || true
+mkdir -p "${RUNTIME_ROOT}" "${STORAGE_DIR}" "${HOME_DIR}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0" "$(dirname "${BUILD_OUTPUT}")"
+chmod 750 "${RUNTIME_ROOT}" "${HOME_DIR}" || true
 chmod 700 "${STORAGE_DIR}" "${REPO_DIR}/.alter0" || true
 touch "${LOG_FILE}"
 chmod 640 "${LOG_FILE}" || true
+export HOME="${HOME_DIR}"
 
 if [[ "$(id -un)" == "root" ]]; then
   echo "start_alter0_service.sh should run as ${RUN_AS}, not root" >&2
@@ -58,6 +73,7 @@ env GOSUMDB="${GOSUMDB:-sum.golang.org}" GOTOOLCHAIN="${GOTOOLCHAIN:-auto}" go b
 CMD="env \
 GOSUMDB='${GOSUMDB:-sum.golang.org}' \
 GOTOOLCHAIN='${GOTOOLCHAIN:-auto}' \
+HOME='${HOME_DIR}' \
 ALTER0_RUNTIME_MANAGER='${ALTER0_RUNTIME_MANAGER}' \
 ALTER0_SYSTEMD_UNIT='${ALTER0_SYSTEMD_UNIT}' \
 ALTER0_BUILD_OUTPUT='${BUILD_OUTPUT}' \
