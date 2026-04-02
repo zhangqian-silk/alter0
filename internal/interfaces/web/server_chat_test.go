@@ -93,7 +93,7 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 		`stableName: "chat-main",`,
 		`stableName: "cron-prompt",`,
 		`stableName: "terminal-runtime",`,
-		`data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}"`,
+		`data-terminal-workspace-status="${escapeHTML(normalizeTerminalSessionStatus(session.status) || "unknown")}"`,
 		"document.body.setAttribute(\"data-app-ready\", \"true\");",
 		"const cronComposer = createReusableComposer();",
 		"cronComposer.bind(promptInput, form, {",

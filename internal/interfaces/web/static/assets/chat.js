@@ -222,6 +222,8 @@ const I18N = {
     "status.queued": "Queued",
     "status.running": "Running",
     "status.starting": "Starting",
+    "status.ready": "Ready",
+    "status.busy": "Busy",
     "status.success": "Success",
     "action.ok": "OK",
     "action.cancel": "Cancel",
@@ -536,6 +538,7 @@ const I18N = {
     "route.terminal.no_output": "No output yet",
     "route.terminal.logs.heading": "Codex Activity ({session})",
     "route.terminal.logs.empty": "Codex session ready. Send a prompt to start.",
+    "route.terminal.busy": "Codex is working on the current turn...",
     "route.terminal.process.label": "Process",
     "route.terminal.process.header": "Processed {duration}",
     "route.terminal.process.steps": "{count} steps",
@@ -804,6 +807,8 @@ const I18N = {
     "status.queued": "排队中",
     "status.running": "运行中",
     "status.starting": "启动中",
+    "status.ready": "就绪",
+    "status.busy": "忙碌中",
     "status.success": "成功",
     "action.ok": "确定",
     "action.cancel": "取消",
@@ -1116,6 +1121,7 @@ const I18N = {
     "route.terminal.status": "状态",
     "route.terminal.logs.heading": "终端输出（{session}）",
     "route.terminal.logs.empty": "暂无终端输出。",
+    "route.terminal.busy": "Codex 正在处理当前这一轮...",
     "route.terminal.process.label": "过程",
     "route.terminal.process.steps": "{count} 步",
     "route.terminal.output_expand": "展开更多",
@@ -8952,7 +8958,7 @@ function createTerminalSessionSnapshot(id) {
     last_output_at: 0,
     updated_at: now,
     terminal_session_id: safeID,
-    status: "starting",
+    status: "ready",
     shell: "",
     working_dir: "",
     exit_code: null,
@@ -9043,7 +9049,7 @@ function applyTerminalSessionSnapshot(session, snapshot) {
   session.created_at = parseTerminalTime(snapshot.created_at, session.created_at || now);
   session.last_output_at = parseTerminalTime(snapshot.last_output_at, session.last_output_at || 0);
   session.updated_at = parseTerminalTime(snapshot.updated_at, session.updated_at || session.created_at || now);
-  session.status = String(snapshot.status || session.status || "interrupted").trim().toLowerCase();
+  session.status = normalizeTerminalSessionStatus(snapshot.status || session.status || "interrupted");
   session.shell = String(snapshot.shell || "").trim();
   session.working_dir = String(snapshot.working_dir || "").trim();
   session.error_message = String(snapshot.error_message || "").trim();
@@ -9284,21 +9290,38 @@ function getTerminalClientID() {
 }
 
 function renderTerminalStatus(status) {
-  const normalized = String(status || "").trim().toLowerCase();
+  const normalized = normalizeTerminalSessionStatus(status);
   if (!normalized) {
     return "-";
   }
   return formatTaskStatus(normalized);
 }
 
-function isTerminalSessionLiveStatus(status) {
+function normalizeTerminalSessionStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
-  return ["starting", "running"].includes(normalized);
+  if (!normalized || normalized === "running") {
+    return "ready";
+  }
+  if (normalized === "starting") {
+    return "busy";
+  }
+  if (["ready", "busy", "exited", "failed", "interrupted"].includes(normalized)) {
+    return normalized;
+  }
+  return normalized;
+}
+
+function isTerminalSessionLiveStatus(status) {
+  const normalized = normalizeTerminalSessionStatus(status);
+  return ["ready", "busy"].includes(normalized);
 }
 
 function canTerminalSessionAcceptInput(status) {
-  const normalized = String(status || "").trim().toLowerCase();
-  return normalized !== "starting";
+  return normalizeTerminalSessionStatus(status) !== "busy";
+}
+
+function isTerminalSessionBusyStatus(status) {
+  return normalizeTerminalSessionStatus(status) === "busy";
 }
 
 function isTerminalTurnLiveStatus(status) {
@@ -9407,7 +9430,7 @@ function renderTerminalSessionCards(sessions, activeSessionID, options = {}) {
       : t("route.terminal.no_output");
     const deleting = Boolean(options?.deleting) && sessionID === normalizeText(options?.deletingSessionID);
     const deleteLabel = deleting ? t("route.terminal.deleting") : t("route.terminal.delete");
-    return `<div class="route-card terminal-session-card ${active ? "active" : ""}" data-terminal-session-card="${escapeHTML(sessionID)}" data-terminal-session-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
+    return `<div class="route-card terminal-session-card ${active ? "active" : ""}" data-terminal-session-card="${escapeHTML(sessionID)}" data-terminal-session-status="${escapeHTML(normalizeTerminalSessionStatus(session.status) || "unknown")}">
       <button class="route-card-button terminal-session-select" type="button" data-terminal-session-select="${escapeHTML(sessionID)}" ${active ? 'aria-current="true"' : ""}>
         <span class="terminal-session-head">
           <span class="route-card-title-copy">
@@ -9691,8 +9714,10 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
   const logRef = normalizeText(session.terminal_session_id);
   const isLive = isTerminalSessionLiveStatus(session.status);
   const canInput = canTerminalSessionAcceptInput(session.status);
-  const normalizedStatus = normalizeText(session.status || "").toLowerCase();
-  const placeholder = canInput ? t("route.terminal.input") : t("route.terminal.closed");
+  const normalizedStatus = normalizeTerminalSessionStatus(session.status);
+  const placeholder = canInput
+    ? t("route.terminal.input")
+    : (isTerminalSessionBusyStatus(session.status) ? t("route.terminal.busy") : t("route.terminal.closed"));
   const note = normalizedStatus === "interrupted"
     ? t("route.terminal.interrupted")
     : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : "");
@@ -9709,7 +9734,7 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
   const headerSubcopy = getTerminalSessionLastOutputAt(session) > 0
     ? t("route.terminal.last_output", { time: formatDateTime(new Date(getTerminalSessionLastOutputAt(session)).toISOString()) })
     : t("route.terminal.no_output");
-  return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeText(session.status || "unknown"))}" data-terminal-workspace-live="${isLive ? "true" : "false"}">
+  return `<section class="terminal-workspace-body" data-terminal-workspace data-terminal-session-id="${escapeHTML(session.id)}" data-terminal-workspace-status="${escapeHTML(normalizeTerminalSessionStatus(session.status) || "unknown")}" data-terminal-workspace-live="${isLive ? "true" : "false"}">
     <header class="terminal-workspace-head">
       <div class="terminal-mobile-actions">
         <button class="terminal-inline-button" type="button" data-terminal-session-pane-toggle aria-expanded="${options?.sessionSheetOpen ? "true" : "false"}">${escapeHTML(sessionToggleLabel)}</button>
@@ -9736,7 +9761,7 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
       ${metaExpanded ? renderTerminalWorkspaceMetaPanel(session) : ""}
     </header>
     <section class="route-surface-dark terminal-console-panel" data-terminal-console-panel>
-      <div class="terminal-chat-screen" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeText(session.status || "unknown"))}">
+      <div class="terminal-chat-screen" data-terminal-chat-screen data-terminal-chat-status="${escapeHTML(normalizeTerminalSessionStatus(session.status) || "unknown")}">
         <div class="terminal-log-tree">
           ${renderTerminalTurns(session)}
         </div>
@@ -9758,7 +9783,7 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
     </section>
     <section class="terminal-composer-shell">
       <form class="terminal-chat-form" data-terminal-input-form data-composer-form="terminal-runtime">
-        ${note || detail ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
+        ${note || detail ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeTerminalSessionStatus(session.status) || "unknown")}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>` : ""}
         <textarea data-terminal-input data-composer-input="terminal-runtime" maxlength="6000" rows="1" placeholder="${escapeHTML(placeholder)}" ${(sending || !canInput) ? "disabled" : ""}></textarea>
         <button type="submit" data-terminal-submit data-composer-submit="terminal-runtime" aria-label="${escapeHTML(sending ? t("route.terminal.sending") : t("route.terminal.send"))}" ${(sending || !canInput) ? "disabled" : ""}>
           <span class="terminal-chat-form-button-icon" aria-hidden="true">&uarr;</span>
@@ -9864,8 +9889,10 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
   const logRef = normalizeText(session.terminal_session_id);
   const isLive = isTerminalSessionLiveStatus(session.status);
   const canInput = canTerminalSessionAcceptInput(session.status);
-  const normalizedStatus = normalizeText(session.status || "").toLowerCase();
-  const placeholder = canInput ? t("route.terminal.input") : t("route.terminal.closed");
+  const normalizedStatus = normalizeTerminalSessionStatus(session.status);
+  const placeholder = canInput
+    ? t("route.terminal.input")
+    : (isTerminalSessionBusyStatus(session.status) ? t("route.terminal.busy") : t("route.terminal.closed"));
   const note = normalizedStatus === "interrupted"
     ? t("route.terminal.interrupted")
     : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : "");
@@ -9881,7 +9908,7 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
     : t("route.terminal.no_output");
 
   syncNodeAttribute(workspaceNode, "data-terminal-session-id", session.id);
-  syncNodeAttribute(workspaceNode, "data-terminal-workspace-status", normalizeText(session.status || "unknown"));
+  syncNodeAttribute(workspaceNode, "data-terminal-workspace-status", normalizeTerminalSessionStatus(session.status) || "unknown");
   syncNodeAttribute(workspaceNode, "data-terminal-workspace-live", isLive ? "true" : "false");
 
   const sessionPaneToggle = workspaceNode.querySelector("[data-terminal-session-pane-toggle]");
@@ -9925,7 +9952,7 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
   const consolePanelNode = workspaceNode.querySelector("[data-terminal-console-panel]");
   const chatNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-chat-screen]") : null;
   if (chatNode) {
-    syncNodeAttribute(chatNode, "data-terminal-chat-status", normalizeText(session.status || "unknown"));
+    syncNodeAttribute(chatNode, "data-terminal-chat-status", normalizeTerminalSessionStatus(session.status) || "unknown");
     syncNodeHTML(chatNode.querySelector(".terminal-log-tree"), renderTerminalTurns(session));
   }
   const jumpTopNode = consolePanelNode ? consolePanelNode.querySelector("[data-terminal-jump-top]") : null;
@@ -9966,7 +9993,7 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
       formNode,
       "[data-terminal-runtime-note]",
       note || detail
-        ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeText(session.status || "unknown"))}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>`
+        ? `<div class="terminal-composer-note" data-terminal-runtime-note data-terminal-runtime-status="${escapeHTML(normalizeTerminalSessionStatus(session.status) || "unknown")}">${escapeHTML([note, detail].filter(Boolean).join(" | "))}</div>`
         : "",
       inputNode,
       "beforebegin"
@@ -10660,7 +10687,7 @@ async function loadTerminalView(container) {
     const previousActiveSessionID = localState.activeSessionID;
     const pendingSession = createTerminalSessionSnapshot(`terminal-pending-${makeID()}`);
     pendingSession.pending_create = true;
-    pendingSession.status = "starting";
+    pendingSession.status = "busy";
     localState.sessions.unshift(pendingSession);
     localState.activeSessionID = pendingSession.id;
     localState.mobileSessionListOpen = false;
@@ -11517,10 +11544,10 @@ function formatTaskStatus(value) {
 
 function taskStatusClassName(value) {
   const status = String(value || "").trim().toLowerCase();
-  if (["success", "done"].includes(status)) {
+  if (["success", "done", "ready"].includes(status)) {
     return "status-success";
   }
-  if (["queued", "running", "pending", "in_progress"].includes(status)) {
+  if (["queued", "running", "pending", "in_progress", "busy"].includes(status)) {
     return "status-pending";
   }
   if (["failed", "error", "canceled"].includes(status)) {

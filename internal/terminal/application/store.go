@@ -252,6 +252,7 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	}
 	summary := record.Summary
 	summary.OwnerID = normalizeTerminalOwnerID(summary.OwnerID)
+	summary.Status = terminaldomain.NormalizeSessionStatus(summary.Status)
 	if workspaceDir, err := resolveSessionWorkspacePath(baseDir, sessionID); err == nil {
 		summary.WorkingDir = workspaceDir
 	}
@@ -315,7 +316,7 @@ func normalizeRestoredSessionState(session *runtimeSession, now time.Time) {
 		}
 		session.nextID = nextID
 	}
-	liveStatus := session.summary.Status == terminaldomain.SessionStatusStarting || session.summary.Status == terminaldomain.SessionStatusRunning
+	liveStatus := terminaldomain.NormalizeSessionStatus(session.summary.Status) == terminaldomain.SessionStatusBusy
 	for _, turn := range session.turns {
 		if turn == nil {
 			continue
@@ -361,6 +362,7 @@ func normalizeRestoredSessionState(session *runtimeSession, now time.Time) {
 			session.summary.UpdatedAt = now
 		}
 	}
+	session.summary.Status = terminaldomain.NormalizeSessionStatus(session.summary.Status)
 	session.turnRunning = false
 	session.turnCancel = nil
 	session.activeTurnID = ""

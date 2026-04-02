@@ -132,7 +132,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 仍属于自然语言处理，但使用独立上下文边界。
 - 默认仅注入运行时必需上下文，不复用 Chat 会话记忆与长期记忆。
 - Terminal 会话历史在同一 Web 登录态下对手机与 PC 共享，但每个 Terminal 会话仍使用独立工作区 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
-- Terminal 会持久化 Codex CLI 线程标识与会话状态；运行态退出后保留原会话历史，继续发送即可在同一会话内恢复。
+- Terminal 会持久化 Codex CLI 线程标识与会话状态；会话态固定为 `ready / busy / exited / interrupted`，其中 `ready` 表示当前会话可继续交互、`busy` 表示当前轮正在执行；执行细节继续由 turn/step 维度的 `running / completed / failed / interrupted` 表示。运行态退出后保留原会话历史，继续发送即可在同一会话内恢复。
 - 同一 Terminal 会话在单次运行态中断或退出后，只记录一条对应状态提醒；恢复后若再次发生新的中断或退出，再按新的状态周期补充提醒。
 - Terminal 工作区头部同时提供 `Close` 与 `Delete`；会话列表中的历史会话也支持直接删除：`Close` 仅退出当前运行态并保留会话历史与线程标识，`Delete` 会移除会话记录、持久化状态文件与该会话对应的独立工作区。
 - 当前正在查看旧会话时点击 `New`，前端会先切入一个干净的待创建会话态；创建请求完成前不再沿用旧会话的 `Interrupted / Exited / Failed` 提示文案。

@@ -89,7 +89,7 @@ export async function openInterruptedTerminalWorkspace(
     id: "terminal-stale-session",
     title: "terminal-stale-session",
     terminal_session_id: "terminal-stale-session",
-    status: "running",
+    status: "ready",
     shell: "codex exec",
     working_dir: terminalSessionWorkspace("terminal-stale-session"),
     created_at: now - 1000,

@@ -199,7 +199,7 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 			Title:             title,
 			Shell:             command.label,
 			WorkingDir:        workspaceDir,
-			Status:            terminaldomain.SessionStatusRunning,
+			Status:            terminaldomain.SessionStatusReady,
 			CreatedAt:         now,
 			UpdatedAt:         now,
 		},
@@ -264,7 +264,7 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 			Title:             title,
 			Shell:             command.label,
 			WorkingDir:        workspaceDir,
-			Status:            terminaldomain.SessionStatusRunning,
+			Status:            terminaldomain.SessionStatusReady,
 			CreatedAt:         createdAt,
 			LastOutputAt:      lastOutputAt,
 			UpdatedAt:         updatedAt,
@@ -430,7 +430,7 @@ func (s *Service) Input(ownerID string, sessionID string, input string) (termina
 		turnCancel()
 		return terminaldomain.Session{}, ErrSessionBusy
 	}
-	if item.summary.Status == terminaldomain.SessionStatusStarting {
+	if terminaldomain.NormalizeSessionStatus(item.summary.Status) == terminaldomain.SessionStatusBusy {
 		item.mu.Unlock()
 		turnCancel()
 		return terminaldomain.Session{}, ErrSessionNotRunning
@@ -439,7 +439,7 @@ func (s *Service) Input(ownerID string, sessionID string, input string) (termina
 	if item.summary.Title == "" || item.summary.Title == item.summary.ID {
 		item.summary.Title = deriveSessionTitle(prompt, item.summary.ID)
 	}
-	item.summary.Status = terminaldomain.SessionStatusStarting
+	item.summary.Status = terminaldomain.SessionStatusBusy
 	item.summary.UpdatedAt = now
 	item.summary.FinishedAt = time.Time{}
 	item.summary.ErrorMessage = ""
@@ -556,7 +556,7 @@ func (s *Service) shutdown() {
 			item.turnCancel()
 			item.turnCancel = nil
 		}
-		if !item.closedByUser && item.summary.Status == terminaldomain.SessionStatusStarting {
+		if !item.closedByUser && terminaldomain.NormalizeSessionStatus(item.summary.Status) == terminaldomain.SessionStatusBusy {
 			item.markInterruptedLocked(item.turnByIDLocked(item.activeTurnID), time.Now().UTC(), terminalHostUnavailableMessage)
 		}
 		item.turnRunning = false
@@ -822,7 +822,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		return
 	}
 
-	item.summary.Status = terminaldomain.SessionStatusRunning
+	item.summary.Status = terminaldomain.SessionStatusReady
 	item.summary.UpdatedAt = now
 	item.summary.FinishedAt = time.Time{}
 	item.summary.ExitCode = nil
@@ -1351,7 +1351,7 @@ func (s *Service) countActiveLocked() int {
 	total := 0
 	for _, item := range s.sessions {
 		snapshot := item.snapshot()
-		if snapshot.Status == terminaldomain.SessionStatusStarting || snapshot.Status == terminaldomain.SessionStatusRunning {
+		if terminaldomain.IsSessionOpenStatus(snapshot.Status) {
 			total++
 		}
 	}
@@ -1565,5 +1565,7 @@ func isRuntimeStepLive(status string) bool {
 func (s *runtimeSession) snapshot() terminaldomain.Session {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.summary
+	snapshot := s.summary
+	snapshot.Status = terminaldomain.NormalizeSessionStatus(snapshot.Status)
+	return snapshot
 }
