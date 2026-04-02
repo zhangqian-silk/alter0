@@ -65,6 +65,7 @@ const defaultCodexWorkspaceMode = "session"
 
 func main() {
 	ensureDefaultRuntimePath()
+	ensureLocalhostNoProxy()
 
 	relaunchHelper := flag.Bool(relaunchHelperFlag, false, "internal relaunch helper")
 	relaunchParentPID := flag.Int(relaunchParentPIDFlag, 0, "internal relaunch parent pid")
@@ -158,6 +159,7 @@ func main() {
 		listenAddr = forceLoopbackListenAddr(listenAddr)
 	}
 	resolvedWebLoginPassword := strings.TrimSpace(control.ResolveEnvironmentString("web_login_password", strings.TrimSpace(*webLoginPassword)))
+	ensureChildProcessWebLoginPassword(resolvedWebLoginPassword)
 
 	resolvedWorkerPoolSize := control.ResolveEnvironmentInt("worker_pool_size", *workerPoolSize)
 	resolvedMaxQueueSize := control.ResolveEnvironmentInt("max_queue_size", *maxQueueSize)
@@ -426,6 +428,53 @@ func ensureDefaultRuntimePath() {
 		return
 	}
 	_ = os.Setenv("PATH", desiredPath)
+}
+
+func ensureLocalhostNoProxy() {
+	existing := strings.TrimSpace(os.Getenv("NO_PROXY"))
+	if existing == "" {
+		existing = strings.TrimSpace(os.Getenv("no_proxy"))
+	}
+	merged := mergeNoProxyEntries(existing, "127.0.0.1", "localhost")
+	if strings.TrimSpace(merged) == "" {
+		return
+	}
+	_ = os.Setenv("NO_PROXY", merged)
+	_ = os.Setenv("no_proxy", merged)
+}
+
+func ensureChildProcessWebLoginPassword(password string) {
+	trimmed := strings.TrimSpace(password)
+	if trimmed == "" {
+		_ = os.Unsetenv("ALTER0_WEB_LOGIN_PASSWORD")
+		return
+	}
+	_ = os.Setenv("ALTER0_WEB_LOGIN_PASSWORD", trimmed)
+}
+
+func mergeNoProxyEntries(existing string, required ...string) string {
+	seen := make(map[string]struct{})
+	merged := make([]string, 0, len(required)+4)
+	appendEntry := func(value string) {
+		entry := strings.TrimSpace(value)
+		if entry == "" {
+			return
+		}
+		lower := strings.ToLower(entry)
+		if _, ok := seen[lower]; ok {
+			return
+		}
+		seen[lower] = struct{}{}
+		merged = append(merged, entry)
+	}
+
+	for _, value := range strings.Split(existing, ",") {
+		appendEntry(value)
+	}
+	for _, value := range required {
+		appendEntry(value)
+	}
+	return strings.Join(merged, ",")
 }
 
 func buildDefaultRuntimePath(home string, existing string) string {

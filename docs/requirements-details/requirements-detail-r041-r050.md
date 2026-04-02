@@ -80,9 +80,10 @@
 8. 运行时披露要求：`Environments` 工具栏需展示当前在线实例最近启动时间与对应 `commit hash`，用于确认上次成功重启后实际运行的版本。
 9. 重启反馈要求：Web 控制台触发运行时重启时，必须先展示单一站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项提供，默认勾选，不得再通过连续浏览器确认框重复询问。提交后页面需在新实例探活通过后自动刷新，并以站内弹窗明确提示当前页面已连接到最新运行实例；提示不可依赖可能被浏览器压制的异步系统弹窗。
 10. systemd 部署基线要求：服务启动脚本需将运行进程 `HOME` 收敛到 `ALTER0_RUNTIME_ROOT` 对应根目录，默认值为 `/var/lib/alter0`；若历史环境文件仍配置为 `/var/lib/alter0/codex-home`，启动阶段需自动归一为 `/var/lib/alter0`，确保 Codex 认证与运行态缓存落在统一运行根目录。
-11. 运行账户能力基线要求：服务运行账户的默认 `PATH` 必须稳定包含 `$HOME/.local/bin`、`/usr/local/bin`、`/usr/bin` 等标准目录，确保 `Codex CLI` 子进程可见 `codex`、`node`、运行账户级 `gh` 包装器与其他必要工具，而不依赖交互式 shell 配置。
-12. Git 交付链路基线要求：若服务内允许 `Codex CLI` 执行 `git commit`、`git push`、`gh pr create`、`gh pr merge` 等仓库交付动作，部署阶段必须为运行账户补齐 GitHub App token helper、`gh` 包装器、SSH signing key 与对应全局 Git 配置；初始化过程需由 root 一次性完成，后续运行态不再依赖 root 的交互环境。
-13. 验收：用户可在 Environments 页面完成任务并发等关键配置修改并持久化；系统可正确读取并在运行链路中生效，页面可查看当前生效值、生效方式以及当前在线版本对应的最近启动时间与 `commit hash`；运行时重启成功后用户可收到稳定的页面内成功提示；systemd 场景下服务进程 `HOME` 默认落在 `/var/lib/alter0`，历史 `codex-home` 子目录配置不会继续生效为独立根目录，且服务内 `Codex CLI` 可直接完成带签名的 commit / PR / merge 链路。
+11. 运行账户能力基线要求：服务运行账户的默认 `PATH` 必须稳定包含 `$HOME/.local/bin`、`/usr/local/bin`、`/usr/bin` 等标准目录，确保 `Codex CLI` 子进程可见 `codex`、`node`、`npm`、`npx`、运行账户级 `gh` 包装器与其他必要工具，而不依赖交互式 shell 配置。
+12. 前端自动化基线要求：若仓库包含 Playwright/E2E 测试，部署阶段必须为运行账户补齐可执行的 Node/npm 工具链与浏览器安装能力；初始化应允许一次性预装 Web E2E 依赖与 Chromium，使服务内 `Codex CLI` 可直接执行 `npm ci`、`npm run test:e2e`、`npx playwright install chromium`。
+13. Git 交付链路基线要求：若服务内允许 `Codex CLI` 执行 `git commit`、`git push`、`gh pr create`、`gh pr merge` 等仓库交付动作，部署阶段必须为运行账户补齐 GitHub App token helper、`gh` 包装器、SSH signing key 与对应全局 Git 配置；初始化过程需由 root 一次性完成，后续运行态不再依赖 root 的交互环境。
+14. 验收：用户可在 Environments 页面完成任务并发等关键配置修改并持久化；系统可正确读取并在运行链路中生效，页面可查看当前生效值、生效方式以及当前在线版本对应的最近启动时间与 `commit hash`；运行时重启成功后用户可收到稳定的页面内成功提示；systemd 场景下服务进程 `HOME` 默认落在 `/var/lib/alter0`，历史 `codex-home` 子目录配置不会继续生效为独立根目录，且服务内 `Codex CLI` 可直接完成带签名的 commit / PR / merge 链路，并具备执行 Playwright/E2E 所需的 `node`/`npm`/`npx` 能力。
 
 #### 当前配置盘点（可纳管候选）
 
@@ -112,7 +113,7 @@
 5. 部署运行根目录
    - `ALTER0_RUNTIME_ROOT`（启动脚本默认 `/var/lib/alter0`）
    - `HOME`（systemd 部署建议固定为 `/var/lib/alter0`；历史 `/var/lib/alter0/codex-home` 会在启动阶段归一到运行根目录）
-   - `PATH`（运行时需稳定包含 `$HOME/.local/bin`、`$HOME/.local/share/pnpm`、`/usr/local/bin`、`/usr/bin`、`/bin`）
+   - `PATH`（运行时需稳定包含 `$HOME/.local/bin`、`$HOME/.local/share/pnpm`、`/usr/local/bin`、`/usr/bin`、`/bin`，保证 `node`/`npm`/`npx` 可见）
    - `scripts/setup_alter0_runtime_auth.sh`（root 一次性初始化运行账户的 GitHub App token helper、`gh` 包装器、SSH signing key 与 Git 全局配置）
 
 #### 接口拆分（草案）
