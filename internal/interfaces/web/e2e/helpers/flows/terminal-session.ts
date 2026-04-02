@@ -25,7 +25,9 @@ export async function bindTerminalClient(page: Page, clientID: string): Promise<
 
 export async function seedTerminalSessions(page: Page, sessions: unknown[]): Promise<void> {
   await page.addInitScript(([storageKey, value]) => {
-    window.localStorage.setItem(storageKey, value);
+    if (window.localStorage.getItem(storageKey) === null) {
+      window.localStorage.setItem(storageKey, value);
+    }
   }, [TERMINAL_SESSIONS_STORAGE_KEY, JSON.stringify(sessions)]);
 }
 

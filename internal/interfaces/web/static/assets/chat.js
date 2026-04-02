@@ -66,6 +66,7 @@ const LEGACY_AGENT_SESSION_STORAGE_KEY = "alter0.web.sessions.agent.v2";
 const LEGACY_SESSION_STORAGE_KEY = "alter0.web.sessions.v1";
 const SESSION_HISTORY_PANEL_STORAGE_KEY = "alter0.web.session-history-panel.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
+const SESSION_ACTIVE_STORAGE_KEY = "alter0.web.session.active.v1";
 const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";
 const TERMINAL_CLIENT_STORAGE_KEY = "alter0.web.terminal.client.v1";
 const RUNTIME_RESTART_NOTICE_STORAGE_KEY = "alter0.web.runtime.restart-notice.v1";
@@ -2666,6 +2667,14 @@ function createReusableComposer() {
     if (state.submitting || state.composing || typeof hooks?.onSubmit !== "function" || !state.inputNode) {
       return;
     }
+    const submittedValue = String(state.inputNode.value || "");
+    const submittedInputNode = state.inputNode;
+    const submittedDraftStorage = state.draftStorage;
+    const submittedDraftKey = state.draftKey;
+    if (submittedValue.trim() === "") {
+      return;
+    }
+    const shouldClearDraft = hooks.clearDraftOnSubmit && submittedValue.trim() !== "";
     state.submitting = true;
     if (typeof hooks.onPendingChange === "function") {
       hooks.onPendingChange(true, state.inputNode);
@@ -2676,11 +2685,18 @@ function createReusableComposer() {
       await hooks.onSubmit(state.inputNode, event, {
         isComposing: () => state.composing
       });
-      if (hooks.clearDraftOnSubmit) {
-        state.inputNode.value = String(state.inputNode.value || "");
-        persistDraft("");
-      } else {
-        persistDraft(state.inputNode.value);
+      const sameDraftTarget = state.inputNode === submittedInputNode && state.draftKey === submittedDraftKey;
+      if (shouldClearDraft) {
+        const currentSubmittedDraftValue = readComposerDraftValue(submittedDraftStorage, submittedDraftKey);
+        const hasNewDraftValue = currentSubmittedDraftValue !== "" && currentSubmittedDraftValue !== submittedValue;
+        if (!hasNewDraftValue) {
+          writeComposerDraftValue(submittedDraftStorage, submittedDraftKey, "");
+          if (sameDraftTarget) {
+            state.inputNode.value = String(state.inputNode.value || "");
+          }
+        }
+      } else if (sameDraftTarget && (submittedValue.trim() !== "" || String(state.inputNode.value || "").trim() !== "")) {
+        writeComposerDraftValue(submittedDraftStorage, submittedDraftKey, state.inputNode.value);
       }
       syncCounter();
     } finally {
@@ -2868,6 +2884,20 @@ function createReusableComposer() {
         if (state.composing) {
           return;
         }
+        if (submitStrategy !== "form") {
+          return;
+        }
+        void invokeSubmit(hooks, event);
+      };
+
+      const handleSubmitClick = (event) => {
+        if (submitStrategy !== "keydown") {
+          return;
+        }
+        event.preventDefault();
+        if (state.composing) {
+          return;
+        }
         void invokeSubmit(hooks, event);
       };
 
@@ -2880,6 +2910,9 @@ function createReusableComposer() {
       if (formNode) {
         formNode.addEventListener("submit", handleSubmit);
       }
+      state.submitNodes.forEach((node) => {
+        node.addEventListener("click", handleSubmitClick);
+      });
 
       state.cleanup = () => {
         inputNode.removeEventListener("input", handleInput);
@@ -2891,6 +2924,9 @@ function createReusableComposer() {
         if (formNode) {
           formNode.removeEventListener("submit", handleSubmit);
         }
+        state.submitNodes.forEach((node) => {
+          node.removeEventListener("click", handleSubmitClick);
+        });
       };
     },
     isComposing() {
@@ -2977,6 +3013,44 @@ function persistSessionHistoryCollapsedState() {
     storage.setItem(SESSION_HISTORY_PANEL_STORAGE_KEY, JSON.stringify({
       collapsed_state: state.sessionHistoryCollapsed
     }));
+  } catch {
+  }
+}
+
+function loadActiveConversationState() {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return {};
+  }
+  const raw = storage.getItem(SESSION_ACTIVE_STORAGE_KEY);
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.entries(parsed).reduce((acc, [key, value]) => {
+      const bucket = normalizeText(key);
+      const sessionID = normalizeText(value);
+      if (bucket && sessionID) {
+        acc[bucket] = sessionID;
+      }
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+function persistActiveConversationState() {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(SESSION_ACTIVE_STORAGE_KEY, JSON.stringify(state.activeSessionByBucket || {}));
   } catch {
   }
 }
@@ -3164,6 +3238,7 @@ function persistSessions(mode = routeConversationMode()) {
   }
   try {
     storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(storedConversationSessions()));
+    persistActiveConversationState();
     setConversationSessionLoadError("", mode);
   } catch {
     setConversationSessionLoadError("session_save_failed", mode);
@@ -3174,7 +3249,7 @@ function persistSessions(mode = routeConversationMode()) {
 function bootstrapSessions(mode = routeConversationMode()) {
   setConversationSessionLoadError("", mode);
   setStoredConversationSessions([]);
-  state.activeSessionByBucket = {};
+  state.activeSessionByBucket = loadActiveConversationState();
 
   try {
     const sessions = loadSessionsFromStorage(mode);
@@ -9009,6 +9084,7 @@ function captureTerminalSessionRuntimeSignature(session) {
   if (!session) {
     return "";
   }
+  const turns = Array.isArray(session.turns) ? session.turns : [];
   return [
     normalizeText(session.id),
     normalizeText(session.terminal_session_id),
@@ -9022,7 +9098,26 @@ function captureTerminalSessionRuntimeSignature(session) {
     normalizeText(session.working_dir),
     normalizeText(session.error_message),
     String(parseTerminalExitCode(session.exit_code)),
-    String(Boolean(session.disconnected_notice))
+    String(Boolean(session.disconnected_notice)),
+    turns.map((turn) => {
+      const steps = Array.isArray(turn?.steps) ? turn.steps : [];
+      return [
+        normalizeText(turn?.id),
+        normalizeText(turn?.status),
+        String(Number(turn?.started_at || 0)),
+        String(Number(turn?.finished_at || 0)),
+        String(Number(turn?.duration_ms || 0)),
+        String(turn?.final_output || ""),
+        steps.map((step) => [
+          normalizeText(step?.id),
+          normalizeText(step?.status),
+          String(Number(step?.started_at || 0)),
+          String(Number(step?.finished_at || 0)),
+          String(Number(step?.duration_ms || 0)),
+          String(step?.preview || "")
+        ].join("~")).join("^")
+      ].join("::");
+    }).join("||")
   ].join("|");
 }
 
@@ -9431,7 +9526,7 @@ function renderTerminalSessionCards(sessions, activeSessionID, options = {}) {
     const deleting = Boolean(options?.deleting) && sessionID === normalizeText(options?.deletingSessionID);
     const deleteLabel = deleting ? t("route.terminal.deleting") : t("route.terminal.delete");
     return `<div class="route-card terminal-session-card ${active ? "active" : ""}" data-terminal-session-card="${escapeHTML(sessionID)}" data-terminal-session-status="${escapeHTML(normalizeTerminalSessionStatus(session.status) || "unknown")}">
-      <button class="route-card-button terminal-session-select" type="button" data-terminal-session-select="${escapeHTML(sessionID)}" ${active ? 'aria-current="true"' : ""}>
+      <button class="route-card-button terminal-session-select ${active ? "active" : ""}" type="button" data-terminal-session-select="${escapeHTML(sessionID)}" ${active ? 'aria-current="true"' : ""}>
         <span class="terminal-session-head">
           <span class="route-card-title-copy">
             <span class="terminal-session-title">${escapeHTML(title)}</span>
@@ -10124,10 +10219,14 @@ async function loadTerminalView(container) {
     sortTerminalSessions();
   };
 
-  const persist = () => {
+  const persist = (options = {}) => {
     if (localState.persistTimer) {
       window.clearTimeout(localState.persistTimer);
       localState.persistTimer = 0;
+    }
+    if (options && options.immediate) {
+      persistTerminalSessionsToStorage(localState.sessions);
+      return;
     }
     const elapsed = Date.now() - Number(localState.lastChatScrollAt || 0);
     const delay = isMobileViewport()
@@ -11338,7 +11437,7 @@ async function loadTerminalView(container) {
         return;
       }
       active.meta_expanded = !Boolean(active.meta_expanded);
-      persist();
+      persist({ immediate: true });
       requestTerminalPaint();
       return;
     }
@@ -11350,7 +11449,7 @@ async function loadTerminalView(container) {
       const turnID = normalizeText(target.getAttribute("data-terminal-process-toggle"));
       if (turnID !== "-") {
         active.process_collapsed[turnID] = !resolveTerminalProcessCollapsed(active, active.turns.find((turn) => normalizeText(turn?.id) === turnID));
-        persist();
+        persist({ immediate: true });
         requestTerminalPaint();
       }
       return;
@@ -11397,7 +11496,7 @@ async function loadTerminalView(container) {
         return;
       }
       active.output_collapsed[turnID] = !resolveTerminalOutputCollapsed(active, active.turns.find((turn) => normalizeText(turn?.id) === turnID));
-      persist();
+      persist({ immediate: true });
       requestTerminalPaint();
       return;
     }
@@ -11413,7 +11512,7 @@ async function loadTerminalView(container) {
       }
       const currentlyExpanded = Boolean(active.expanded_steps[stepID]);
       active.expanded_steps[stepID] = !currentlyExpanded;
-      persist();
+      persist({ immediate: true });
       requestTerminalPaint();
       if (!currentlyExpanded && !active.step_details[stepID] && !active.step_loading[stepID]) {
         void fetchTerminalStepDetail(active, turnID, stepID).then(() => {

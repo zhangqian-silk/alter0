@@ -40,3 +40,24 @@ func TestBuildDefaultRuntimePathDeduplicatesEntries(t *testing.T) {
 		t.Fatalf("path should only contain /usr/bin once: %q", got)
 	}
 }
+
+func TestMergeNoProxyEntriesAppendsLocalhostWithoutDuplicates(t *testing.T) {
+	got := mergeNoProxyEntries("example.com, localhost", "127.0.0.1", "localhost")
+	if got != "example.com,localhost,127.0.0.1" {
+		t.Fatalf("merged no_proxy = %q", got)
+	}
+}
+
+func TestEnsureChildProcessWebLoginPasswordSetsAndClearsEnv(t *testing.T) {
+	t.Setenv("ALTER0_WEB_LOGIN_PASSWORD", "")
+
+	ensureChildProcessWebLoginPassword(" secret ")
+	if got := os.Getenv("ALTER0_WEB_LOGIN_PASSWORD"); got != "secret" {
+		t.Fatalf("ALTER0_WEB_LOGIN_PASSWORD = %q, want secret", got)
+	}
+
+	ensureChildProcessWebLoginPassword("")
+	if got := os.Getenv("ALTER0_WEB_LOGIN_PASSWORD"); got != "" {
+		t.Fatalf("ALTER0_WEB_LOGIN_PASSWORD should be cleared, got %q", got)
+	}
+}

@@ -477,7 +477,7 @@ test.describe("Terminal route", () => {
             node.isConnected &&
             current === node &&
             document.activeElement === current &&
-            (current instanceof HTMLInputElement ? current.value : "") === "terminal-ime-mobile"
+            ((current instanceof HTMLInputElement || current instanceof HTMLTextAreaElement) ? current.value : "") === "terminal-ime-mobile"
           );
         }, inputHandle);
       }).toBe(true);

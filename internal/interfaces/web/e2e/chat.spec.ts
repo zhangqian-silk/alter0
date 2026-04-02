@@ -95,20 +95,22 @@ async function setVisualViewport(
 }
 
 test.describe("Chat composer", () => {
-  test("keeps empty session hint near the session list header", async ({ page }) => {
+  test("keeps empty session hint near the session header", async ({ page }) => {
     await openChatWorkspace(page);
 
-    const historyPanel = page.locator("#sessionHistoryPanel");
-    const emptyHint = page.locator("#sessionEmpty");
+    const heading = page.locator("#sessionHeading");
+    const subheading = page.locator("#sessionSubheading");
+    const sessionCards = page.locator("#sessionList .session-card");
 
-    await expect(emptyHint).toBeVisible();
+    await expect(sessionCards).toHaveCount(1);
+    await expect(subheading).toContainText("Empty session");
 
-    const panelBox = await historyPanel.boundingBox();
-    const emptyBox = await emptyHint.boundingBox();
+    const headingBox = await heading.boundingBox();
+    const subheadingBox = await subheading.boundingBox();
 
-    expect(panelBox).not.toBeNull();
-    expect(emptyBox).not.toBeNull();
-    expect((emptyBox?.y ?? 0) - (panelBox?.y ?? 0)).toBeLessThan(120);
+    expect(headingBox).not.toBeNull();
+    expect(subheadingBox).not.toBeNull();
+    expect((subheadingBox?.y ?? 0) - (headingBox?.y ?? 0)).toBeLessThan(80);
   });
 
   test("keeps empty chat controls tidy and composer docked on narrow screens", async ({ page }) => {
@@ -131,8 +133,9 @@ test.describe("Chat composer", () => {
     await expect(runtimeToggles).toHaveCount(1);
     await expect(composerNote).toBeHidden();
     await expect(composerCounter).toBeHidden();
-    await expect(runtimeToggles.first()).toContainText("工具 0");
-    await expect(runtimeToggles.first()).toContainText("技能 0");
+    await expect(runtimeToggles.first()).toContainText("Session");
+    await expect(runtimeToggles.first()).toContainText("Tools 0");
+    await expect(runtimeToggles.first()).toContainText("Skills 0");
 
     const navBox = await navToggle.boundingBox();
     const sessionBox = await sessionToggle.boundingBox();
