@@ -36,7 +36,7 @@ test.describe("Terminal route", () => {
     const sessionCard = terminalPage.sessionList().itemAt(0);
     await expect(sessionCard).toBeVisible();
     await expectComposerReady(terminalPage.composer());
-    await expect(terminalPage.workspace()).toContainText("Running");
+    await expect(terminalPage.workspace()).toContainText("Ready");
   });
 
   test("keeps terminal owner identity stable after sessionStorage is cleared and the page reloads", async ({ page, request }) => {
@@ -47,7 +47,7 @@ test.describe("Terminal route", () => {
     await openTerminalRoute(page);
 
     const terminalPage = createTerminalPage(page);
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
     await expect(terminalPage.workspace()).toContainText(session.id);
     await expect.poll(async () => {
       return await page.evaluate(() => window.localStorage.getItem("alter0.web.terminal.client.v1"));
@@ -58,7 +58,7 @@ test.describe("Terminal route", () => {
     });
     await page.reload();
 
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
     await expect(terminalPage.workspace()).toContainText(session.id);
     await expect(terminalPage.workspace()).not.toContainText("Codex runtime exited. Send a new input to recover this session.");
     await expect.poll(async () => {
@@ -195,7 +195,7 @@ test.describe("Terminal route", () => {
     await seedTerminalSessions(page, [{
       ...session,
       title: session.id,
-      status: "running",
+      status: "ready",
       last_output_at: now,
       updated_at: now,
       entry_cursor: entries.length,
@@ -580,7 +580,7 @@ test.describe("Terminal route", () => {
         id: session.id,
         title: session.id,
         terminal_session_id: session.id,
-        status: "running",
+        status: "ready",
         shell: "codex exec",
         working_dir: terminalSessionWorkspace(session.id),
         created_at: now - 5000,
@@ -1279,7 +1279,7 @@ test.describe("Terminal route", () => {
       id: sessionID,
       title: sessionID,
       terminal_session_id: threadID,
-      status: "running",
+      status: "ready",
       shell: "codex exec",
       working_dir: terminalSessionWorkspace(sessionID),
       created_at: now - 2_000,
@@ -1305,7 +1305,7 @@ test.describe("Terminal route", () => {
     await openTerminalRoute(page);
 
     const terminalPage = createTerminalPage(page);
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
     await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-live", "true");
     await expectComposerReady(terminalPage.composer());
     await terminalPage.metaToggle().click();
@@ -1316,7 +1316,7 @@ test.describe("Terminal route", () => {
     await terminalPage.composer().input().fill("Reply with exactly: recovered-after-reload");
     await terminalPage.composer().submitButton().click();
 
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "running");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
     await expect(terminalPage.finalOutputs().last()).toContainText("recovered-after-reload");
   });
 });

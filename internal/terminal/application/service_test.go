@@ -111,6 +111,20 @@ func TestCreateAssignsDistinctWorkspacePerSession(t *testing.T) {
 	}
 }
 
+func TestCreateStartsSessionReady(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-ready",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if session.Status != terminaldomain.SessionStatusReady {
+		t.Fatalf("expected ready status after create, got %q", session.Status)
+	}
+}
+
 func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
 	service := newTestService("success")
 
@@ -129,8 +143,8 @@ func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
 	if firstSnapshot.TerminalSessionID != "thread-first-prompt" {
 		t.Fatalf("expected runtime thread id, got %q", firstSnapshot.TerminalSessionID)
 	}
-	if firstSnapshot.Status != terminaldomain.SessionStatusRunning {
-		t.Fatalf("expected running after first turn, got %q", firstSnapshot.Status)
+	if firstSnapshot.Status != terminaldomain.SessionStatusReady {
+		t.Fatalf("expected ready after first turn, got %q", firstSnapshot.Status)
 	}
 	if got := firstEntries[1].Text; got != "mock:first prompt" {
 		t.Fatalf("expected first reply, got %q", got)
@@ -372,6 +386,28 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 	}
 }
 
+func TestServiceKeepsIdleReadySessionReadyAfterRestart(t *testing.T) {
+	baseDir := t.TempDir()
+	service := newTestServiceWithBaseDir("success", baseDir)
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-idle-restart",
+		Title:   "idle-ready",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	restarted := newTestServiceWithBaseDir("success", baseDir)
+	restored, ok := restarted.Get("owner-idle-restart", session.ID)
+	if !ok {
+		t.Fatalf("expected restored idle session after restart")
+	}
+	if restored.Status != terminaldomain.SessionStatusReady {
+		t.Fatalf("expected idle session to stay ready after restart, got %q", restored.Status)
+	}
+}
+
 func TestServiceDeleteRemovesPersistedStateAndWorkspace(t *testing.T) {
 	baseDir := t.TempDir()
 	service := newTestServiceWithBaseDir("success", baseDir)
@@ -469,6 +505,25 @@ func TestServiceInputRejectsConcurrentTurns(t *testing.T) {
 	}
 	if _, err := service.Input("owner-b", session.ID, "second prompt"); !errors.Is(err, ErrSessionBusy) {
 		t.Fatalf("expected busy error, got %v", err)
+	}
+}
+
+func TestServiceInputReturnsBusySnapshotWhileTurnRuns(t *testing.T) {
+	service := newTestService("sleep")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-busy",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	snapshot, err := service.Input("owner-busy", session.ID, "long prompt")
+	if err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	if snapshot.Status != terminaldomain.SessionStatusBusy {
+		t.Fatalf("expected busy snapshot while turn runs, got %q", snapshot.Status)
 	}
 }
 
@@ -675,7 +730,7 @@ func waitForSessionEntries(t *testing.T, service *Service, ownerID string, sessi
 		if err != nil {
 			t.Fatalf("list entries: %v", err)
 		}
-		if len(page.Items) >= want && snapshot.Status == terminaldomain.SessionStatusRunning {
+		if len(page.Items) >= want && snapshot.Status == terminaldomain.SessionStatusReady {
 			return snapshot, page.Items
 		}
 		time.Sleep(20 * time.Millisecond)

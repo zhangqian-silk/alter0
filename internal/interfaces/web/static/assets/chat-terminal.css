@@ -343,7 +343,7 @@
   box-shadow: 0 0 0 0 currentColor;
 }
 
-.terminal-runtime-state[data-terminal-runtime-state="running"],
+.terminal-runtime-state[data-terminal-runtime-state="busy"],
 .terminal-runtime-state[data-terminal-runtime-state="starting"],
 .terminal-runtime-state[data-terminal-runtime-state="queued"] {
   color: #2563eb;
@@ -351,12 +351,14 @@
   background: rgba(239, 246, 255, 0.92);
 }
 
-.terminal-runtime-state[data-terminal-runtime-state="running"] .terminal-runtime-state-dot,
+.terminal-runtime-state[data-terminal-runtime-state="busy"] .terminal-runtime-state-dot,
 .terminal-runtime-state[data-terminal-runtime-state="starting"] .terminal-runtime-state-dot,
 .terminal-runtime-state[data-terminal-runtime-state="queued"] .terminal-runtime-state-dot {
   animation: terminal-status-pulse 1.8s ease-in-out infinite;
 }
 
+.terminal-runtime-state[data-terminal-runtime-state="ready"],
+.terminal-runtime-state[data-terminal-runtime-state="running"],
 .terminal-runtime-state[data-terminal-runtime-state="done"],
 .terminal-runtime-state[data-terminal-runtime-state="success"] {
   color: #15803d;

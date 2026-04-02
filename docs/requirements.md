@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-04-01
+> Last update: 2026-04-02
 
 状态说明：
 
@@ -56,12 +56,12 @@
 | R-043 | Environments 关键配置统一管理 | supported | 完善 Environments 模块，支持对任务并发等关键运行参数进行可视化配置、校验与持久化；展示当前在线实例最近启动时间与 commit hash；重启操作通过单一站内确认弹窗提供默认勾选的远端同步项，并在完成后自动刷新提示当前页面已连接最新实例；systemd 部署基线将服务 `HOME` 收敛到运行根目录 `/var/lib/alter0`，并要求运行账户具备稳定的 PATH、GitHub App 凭证与提交签名初始化能力 |
 | R-044 | Channels 迁移至 Settings 模块 | supported | 前端导航将 `Channels` 从 `Control` 分组迁移到 `Settings` 分组，保持页面能力与接口不变并兼容原有直达路由 |
 | R-045 | Session/Task 关键信息披露增强 | supported | 在 Session、Task 等页面补充展示必要上下文字段（如 `channel`、`message_id`、`channel_id`、`trigger_type`），提升问题定位与执行链路可追溯性 |
-| R-046 | Terminal 模块与会话式终端代理 | supported | 新增独立 `Terminal` 模块，支持在模块内以类 Chat 方式持续对话；同一终端会话内复用上下文并连续串联输入/输出，完整保留终端交互轨迹，并提供工作区头部与会话列表两侧可达的 `Close / Delete` 生命周期操作，其中删除会同步清理持久化状态与工作区文件；工作区头部采用标题 + 状态点 + 紧凑工具栏，运行态退出/中断提示以内嵌状态条贴合输入区；新建会话时界面需立即切入干净待创建态，不得继续沿用上一会话的运行态提示；全站消息阅读体验统一收敛为浅色文档式主题，用户消息右对齐且宽度不超过消息区 80%，助手回复弱化厚重卡片层级，Terminal 中用户输入不再额外展示命令前缀符号或强调色，最终回复按 Chat 助手消息逻辑直接渲染并提供一键复制，且同一轮最终输出出现后自动折叠对应 `Process`，移动端 `Process` 头部与步骤行保持单行摘要阅读，标题超长时自动截断，时间与状态固定在右侧独立区域；移动端长输出阅读取消消息与区块头部吸顶，统一保持自然文档流滚动，并提供右侧圆形四键组用于回到顶部、上一条、下一条与回到底部，以及浅色低对比阅读主题；移动端轮询与本地持久化需按页面可见性、输入与滚动活跃度自动降频 |
+| R-046 | Terminal 模块与会话式终端代理 | supported | 新增独立 `Terminal` 模块，支持在模块内以类 Chat 方式持续对话；同一终端会话内复用上下文并连续串联输入/输出，完整保留终端交互轨迹，并提供工作区头部与会话列表两侧可达的 `Close / Delete` 生命周期操作，其中删除会同步清理持久化状态与工作区文件；工作区头部采用标题 + 状态点 + 紧凑工具栏，Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态继续在 turn/step 维度展示 `running / completed / failed / interrupted`，运行态退出/中断提示以内嵌状态条贴合输入区；新建会话时界面需立即切入干净待创建态，不得继续沿用上一会话的运行态提示；全站消息阅读体验统一收敛为浅色文档式主题，用户消息右对齐且宽度不超过消息区 80%，助手回复弱化厚重卡片层级，Terminal 中用户输入不再额外展示命令前缀符号或强调色，最终回复按 Chat 助手消息逻辑直接渲染并提供一键复制，且同一轮最终输出出现后自动折叠对应 `Process`，移动端 `Process` 头部与步骤行保持单行摘要阅读，标题超长时自动截断，时间与状态固定在右侧独立区域；移动端长输出阅读取消消息与区块头部吸顶，统一保持自然文档流滚动，并提供右侧圆形四键组用于回到顶部、上一条、下一条与回到底部，以及浅色低对比阅读主题；移动端轮询与本地持久化需按页面可见性、输入与滚动活跃度自动降频 |
 | R-047 | OpenAI Go SDK 接入 | supported | 已接入 `github.com/openai/openai-go` SDK，统一支持 OpenAI 兼容 API、自定义 `base_url` 与 `/responses`、`/chat/completions` 双接口模式 |
 | R-048 | ReAct 模式 Agent 调用 | supported | Agent 执行链已提供 ReAct 循环、多轮观察、记忆文件检索读写与 `codex_exec` 驱动的具体执行能力；Web 会将 `action / observation` 执行细节收敛为可折叠 `Process`，最终答复保持正文阅读并提供一键复制；当迭代耗尽未显式 `complete` 时，系统需显式返回上限提示与最后一次工具观察，避免空收口 |
 | R-049 | 模型配置管理 | supported | 支持多 Provider/多模型配置、启用禁用、默认 Provider 与默认模型切换，并对禁用默认项自动收敛到可用配置 |
 | R-050 | Web 登录后按 Agent 隔离 Session 视图 | supported | 密码验证通过后，Web 对话页按目标 Agent 维护独立 Session 历史；具备独立前端入口的 Agent 不进入通用 Agent 页面历史 |
-| R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识；Terminal 历史在同一 Web 登录态下跨设备共享，不再按浏览器 client 标识隔离；运行态缺失后继续发送会自动恢复原会话并保留历史，工作区仍按会话独立隔离；同一状态周期内不重复追加相同的运行态中断提醒 |
+| R-051 | Terminal 会话持久标识与超时恢复 | supported | 持久化存储 Codex CLI 会话标识；Terminal 历史在同一 Web 登录态下跨设备共享，不再按浏览器 client 标识隔离；会话态升级后继续兼容历史 `running / starting` 持久化值并自动归一到 `ready / busy`；运行态缺失后继续发送会自动恢复原会话并保留历史，工作区仍按会话独立隔离；同一状态周期内不重复追加相同的运行态中断提醒 |
 | R-052 | Agent Memory Files 勾选注入与文件可写记忆对齐 | supported | Agent Profile 支持勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md` 与 Daily Memory；执行前将所选文件内容与路径注入运行时上下文，Agent 可在这些记忆文件上执行关键字检索、定向读取与受控写入，并可搭配独立 `memory` Skill 统一记忆读写规范 |
 | R-053 | 内置 Agent Catalog 与主从委派 | supported | 运行时统一聚合内置 Agent 与用户管理 Agent；`Chat` 默认绑定 `main` Agent，通用 `Agent` 页面承载其余入口 Agent；所有具体执行统一通过 `codex_exec` 落到 Codex CLI，`Alter0/main` 负责跨 Agent 委派与结果收口，其中 `coding` Agent 负责面向用户收口编码任务，并通过 `codex_exec` 多轮驱动具体开发执行，同时绑定当前仓库、分支、预览页与 PR 交付上下文 |
 | R-054 | Product 目录、Workspace 与管理页 | supported | 新增 `Products` 平台模块，集中管理多个 Product 定义、主 Agent、详情页空间与子 Agent 矩阵，并为每个详情页空间提供独立 HTML 页面入口 |
