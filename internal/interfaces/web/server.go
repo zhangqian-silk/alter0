@@ -1051,7 +1051,8 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := s.orchestrator.Handle(r.Context(), msg)
+	execCtx, _ := executionContextForMessage(r.Context(), msg)
+	result, err := s.orchestrator.Handle(execCtx, msg)
 	if intent.Type == orchdomain.IntentTypeNL {
 		result = attachComplexityMetadata(result, assessment, nil)
 	}
@@ -1104,7 +1105,8 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 		return
 	}
-	stream := newSSEStream(w, flusher)
+	execCtx, detachExecution := executionContextForMessage(r.Context(), msg)
+	stream := newExecutionSSEStream(newSSEStream(w, flusher), detachExecution)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -1121,11 +1123,12 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
+	stream.SetKeepAliveStop(stopKeepAlive)
 	defer stopKeepAlive()
 
 	intent := s.classifyMessageIntent(msg.Content)
 	assessment := s.defaultComplexityAssessment()
-	streamCtx, cancelStream := context.WithCancel(r.Context())
+	streamCtx, cancelStream := context.WithCancel(execCtx)
 	defer cancelStream()
 
 	streamResultCh := make(chan streamExecutionResult, 1)
@@ -1150,7 +1153,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	assessmentCh := (<-chan taskapp.ComplexityAssessment)(nil)
 	cancelAssessment := func() {}
 	if intent.Type == orchdomain.IntentTypeNL && s.tasks != nil {
-		assessmentCtx, cancel := context.WithCancel(r.Context())
+		assessmentCtx, cancel := context.WithCancel(execCtx)
 		cancelAssessment = cancel
 		defer cancelAssessment()
 		localAssessmentCh := make(chan taskapp.ComplexityAssessment, 1)
@@ -1279,6 +1282,26 @@ type streamExecutionResult struct {
 	err    error
 }
 
+func executionContextForMessage(ctx context.Context, msg shareddomain.UnifiedMessage) (context.Context, bool) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !shouldDetachAgentExecution(msg.Metadata) {
+		return ctx, false
+	}
+	return context.WithoutCancel(ctx), true
+}
+
+func shouldDetachAgentExecution(metadata map[string]string) bool {
+	if strings.TrimSpace(metadata[execdomain.AgentIDMetadataKey]) != "" {
+		return true
+	}
+	return strings.EqualFold(
+		strings.TrimSpace(metadata[execdomain.ExecutionEngineMetadataKey]),
+		execdomain.ExecutionEngineAgent,
+	)
+}
+
 func (s *Server) handleStreamMessage(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
@@ -1288,6 +1311,107 @@ func (s *Server) handleStreamMessage(
 		return orchestrator.HandleStream(ctx, msg, callback)
 	}
 	return s.orchestrator.Handle(ctx, msg)
+}
+
+type sseCommentWriter interface {
+	Comment(text string) error
+}
+
+type executionSSEStream struct {
+	stream              *sseStream
+	ignoreWriteFailures bool
+	stopKeepAlive       func()
+	mu                  sync.Mutex
+	closed              bool
+}
+
+func newExecutionSSEStream(stream *sseStream, ignoreWriteFailures bool) *executionSSEStream {
+	return &executionSSEStream{
+		stream:              stream,
+		ignoreWriteFailures: ignoreWriteFailures,
+		stopKeepAlive:       func() {},
+	}
+}
+
+func (s *executionSSEStream) SetKeepAliveStop(stop func()) {
+	if s == nil {
+		if stop != nil {
+			stop()
+		}
+		return
+	}
+	if stop == nil {
+		stop = func() {}
+	}
+	shouldStop := false
+	s.mu.Lock()
+	s.stopKeepAlive = stop
+	shouldStop = s.closed
+	s.mu.Unlock()
+	if shouldStop {
+		stop()
+	}
+}
+
+func (s *executionSSEStream) Event(event string, payload any) error {
+	if s == nil || s.stream == nil {
+		return errors.New("sse stream is required")
+	}
+	if s.isClosed() {
+		return nil
+	}
+	if err := s.stream.Event(event, payload); err != nil {
+		return s.handleWriteError(err)
+	}
+	return nil
+}
+
+func (s *executionSSEStream) Comment(text string) error {
+	if s == nil || s.stream == nil {
+		return errors.New("sse stream is required")
+	}
+	if s.isClosed() {
+		return nil
+	}
+	if err := s.stream.Comment(text); err != nil {
+		return s.handleWriteError(err)
+	}
+	return nil
+}
+
+func (s *executionSSEStream) isClosed() bool {
+	if s == nil {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.closed
+}
+
+func (s *executionSSEStream) handleWriteError(err error) error {
+	if s == nil || !s.ignoreWriteFailures {
+		return err
+	}
+	s.close()
+	return nil
+}
+
+func (s *executionSSEStream) close() {
+	if s == nil {
+		return
+	}
+	stop := func() {}
+	s.mu.Lock()
+	if s.closed {
+		stop = nil
+	} else {
+		s.closed = true
+		stop = s.stopKeepAlive
+	}
+	s.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
 }
 
 func (s *Server) flushPendingStreamDelta(
@@ -1322,7 +1446,8 @@ func (s *Server) agentMessageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.countGateway(string(msg.ChannelType))
-	result, err := s.orchestrator.Handle(r.Context(), msg)
+	execCtx, _ := executionContextForMessage(r.Context(), msg)
+	result, err := s.orchestrator.Handle(execCtx, msg)
 	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if err != nil {
 		statusCode := http.StatusBadRequest
@@ -1364,7 +1489,8 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 		return
 	}
-	stream := newSSEStream(w, flusher)
+	execCtx, detachExecution := executionContextForMessage(r.Context(), msg)
+	stream := newExecutionSSEStream(newSSEStream(w, flusher), detachExecution)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -1381,15 +1507,16 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
+	stream.SetKeepAliveStop(stopKeepAlive)
 	defer stopKeepAlive()
 
 	handleStream := func(
 		callback func(delta string) error,
 	) (shareddomain.OrchestrationResult, error) {
 		if orchestrator, ok := s.orchestrator.(StreamOrchestrator); ok {
-			return orchestrator.HandleStream(r.Context(), msg, callback)
+			return orchestrator.HandleStream(execCtx, msg, callback)
 		}
-		return s.orchestrator.Handle(r.Context(), msg)
+		return s.orchestrator.Handle(execCtx, msg)
 	}
 
 	result, handleErr := handleStream(func(delta string) error {
@@ -3300,7 +3427,8 @@ func (s *Server) productMessageHandler(w http.ResponseWriter, r *http.Request, p
 		return
 	}
 
-	result, err := s.orchestrator.Handle(r.Context(), msg)
+	execCtx, _ := executionContextForMessage(r.Context(), msg)
+	result, err := s.orchestrator.Handle(execCtx, msg)
 	result = attachComplexityMetadata(result, assessment, nil)
 	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if err != nil {
@@ -3351,7 +3479,8 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 		return
 	}
-	stream := newSSEStream(w, flusher)
+	execCtx, detachExecution := executionContextForMessage(r.Context(), msg)
+	stream := newExecutionSSEStream(newSSEStream(w, flusher), detachExecution)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -3368,10 +3497,11 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
+	stream.SetKeepAliveStop(stopKeepAlive)
 	defer stopKeepAlive()
 
 	assessment := s.defaultComplexityAssessment()
-	streamCtx, cancelStream := context.WithCancel(r.Context())
+	streamCtx, cancelStream := context.WithCancel(execCtx)
 	defer cancelStream()
 
 	streamResultCh := make(chan streamExecutionResult, 1)
@@ -3396,7 +3526,7 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 	assessmentCh := (<-chan taskapp.ComplexityAssessment)(nil)
 	cancelAssessment := func() {}
 	if s.tasks != nil {
-		assessmentCtx, cancel := context.WithCancel(r.Context())
+		assessmentCtx, cancel := context.WithCancel(execCtx)
 		cancelAssessment = cancel
 		defer cancelAssessment()
 		localAssessmentCh := make(chan taskapp.ComplexityAssessment, 1)
@@ -5271,7 +5401,7 @@ func (s *sseStream) Comment(text string) error {
 	return nil
 }
 
-func startSSEKeepAlive(ctx context.Context, stream *sseStream, interval time.Duration) func() {
+func startSSEKeepAlive(ctx context.Context, stream sseCommentWriter, interval time.Duration) func() {
 	if ctx == nil || stream == nil {
 		return func() {}
 	}

@@ -28,12 +28,41 @@ type stubWebOrchestrator struct {
 	err         error
 	lastMessage shareddomain.UnifiedMessage
 	delay       time.Duration
+	lastCtxErr  error
+	handleCount int
 }
 
-func (s *stubWebOrchestrator) Handle(_ context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+func (s *stubWebOrchestrator) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
 	s.lastMessage = msg
+	s.lastCtxErr = ctx.Err()
+	s.handleCount++
 	if s.delay > 0 {
 		time.Sleep(s.delay)
+	}
+	return s.result, s.err
+}
+
+type stubWebStreamOrchestrator struct {
+	stubWebOrchestrator
+	events      []string
+	deltaCalls  int
+	callbackErr error
+}
+
+func (s *stubWebStreamOrchestrator) HandleStream(
+	ctx context.Context,
+	msg shareddomain.UnifiedMessage,
+	onDelta func(string) error,
+) (shareddomain.OrchestrationResult, error) {
+	s.lastMessage = msg
+	s.lastCtxErr = ctx.Err()
+	s.handleCount++
+	for _, item := range s.events {
+		s.deltaCalls++
+		if err := onDelta(item); err != nil {
+			s.callbackErr = err
+			return shareddomain.OrchestrationResult{}, err
+		}
 	}
 	return s.result, s.err
 }
@@ -64,6 +93,48 @@ func newMessageTestServer(orchestrator Orchestrator) *Server {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
+
+func newAgentControlForTests(t *testing.T, agent controldomain.Agent) *controlapp.Service {
+	t.Helper()
+
+	control := controlapp.NewService()
+	if err := control.UpsertChannel(controldomain.Channel{
+		ID:      "web-default",
+		Type:    shareddomain.ChannelTypeWeb,
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+	if err := control.UpsertAgent(agent); err != nil {
+		t.Fatalf("upsert agent failed: %v", err)
+	}
+	return control
+}
+
+type failingSSEWriter struct {
+	header     http.Header
+	writeCount int
+	failAfter  int
+}
+
+func (w *failingSSEWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *failingSSEWriter) Write(p []byte) (int, error) {
+	w.writeCount++
+	if w.failAfter > 0 && w.writeCount > w.failAfter {
+		return 0, errors.New("client disconnected")
+	}
+	return len(p), nil
+}
+
+func (w *failingSSEWriter) WriteHeader(_ int) {}
+
+func (w *failingSSEWriter) Flush() {}
 
 func TestMessageHandlerJSONFallbackPath(t *testing.T) {
 	orchestrator := &stubWebOrchestrator{
@@ -269,6 +340,95 @@ func TestAgentMessageHandlerInjectsAgentProfileMetadata(t *testing.T) {
 	}
 	if !strings.Contains(orchestrator.lastMessage.Metadata["alter0.memory.include"], "user_md") {
 		t.Fatalf("expected memory file selection injected, got %+v", orchestrator.lastMessage.Metadata)
+	}
+}
+
+func TestAgentMessageHandlerIgnoresCanceledRequestContext(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "agent-ok",
+		},
+	}
+	control := newAgentControlForTests(t, controldomain.Agent{
+		ID:         "researcher",
+		Name:       "Researcher",
+		Type:       controldomain.CapabilityTypeAgent,
+		Enabled:    true,
+		Scope:      controldomain.CapabilityScopeGlobal,
+		Version:    "v1.0.0",
+		ProviderID: "openai",
+		Model:      "gpt-4o",
+		Tools:      []string{"codex_exec"},
+	})
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages", strings.NewReader(`{"agent_id":"researcher","session_id":"session-fixed","content":"完成仓库整理"}`))
+	canceledCtx, cancel := context.WithCancel(req.Context())
+	cancel()
+	req = req.WithContext(canceledCtx)
+	rec := httptest.NewRecorder()
+
+	server.agentMessageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if orchestrator.handleCount != 1 {
+		t.Fatalf("expected orchestrator handle count 1, got %d", orchestrator.handleCount)
+	}
+	if orchestrator.lastCtxErr != nil {
+		t.Fatalf("expected detached execution context, got %v", orchestrator.lastCtxErr)
+	}
+}
+
+func TestAgentMessageStreamHandlerContinuesWhenStreamWriteFails(t *testing.T) {
+	orchestrator := &stubWebStreamOrchestrator{
+		stubWebOrchestrator: stubWebOrchestrator{
+			result: shareddomain.OrchestrationResult{
+				MessageID: "message-generated",
+				SessionID: "session-fixed",
+				Route:     shareddomain.RouteNL,
+				Output:    "agent-ok",
+			},
+		},
+		events: []string{"part-1", "part-2"},
+	}
+	control := newAgentControlForTests(t, controldomain.Agent{
+		ID:         "researcher",
+		Name:       "Researcher",
+		Type:       controldomain.CapabilityTypeAgent,
+		Enabled:    true,
+		Scope:      controldomain.CapabilityScopeGlobal,
+		Version:    "v1.0.0",
+		ProviderID: "openai",
+		Model:      "gpt-4o",
+		Tools:      []string{"codex_exec"},
+	})
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages/stream", strings.NewReader(`{"agent_id":"researcher","session_id":"session-fixed","content":"完成仓库整理"}`))
+	rec := &failingSSEWriter{failAfter: 2}
+
+	server.agentMessageStreamHandler(rec, req)
+
+	if orchestrator.handleCount != 1 {
+		t.Fatalf("expected orchestrator handle count 1, got %d", orchestrator.handleCount)
+	}
+	if orchestrator.deltaCalls != 2 {
+		t.Fatalf("expected all deltas to be processed, got %d", orchestrator.deltaCalls)
+	}
+	if orchestrator.callbackErr != nil {
+		t.Fatalf("expected stream write errors to be swallowed, got %v", orchestrator.callbackErr)
+	}
+	if orchestrator.lastCtxErr != nil {
+		t.Fatalf("expected detached execution context, got %v", orchestrator.lastCtxErr)
 	}
 }
 
