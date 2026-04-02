@@ -276,18 +276,23 @@ OpenAI Go SDK 接入
 3. Provider 必须显式声明 `api_type`：
    - `openai-responses`：使用 `/responses`
    - `openai-completions`：使用 `/chat/completions`
-4. 统一调用层需支持：
+4. 统一调用层需兼容 `OpenRouter`：
+   - `provider_type = openrouter` 时，默认 `base_url` 为 `https://openrouter.ai/api/v1`
+   - 未显式指定 `api_type` 时，默认走 `openai-completions`
+   - 支持配置并注入 `HTTP-Referer`、`X-OpenRouter-Title`
+   - 支持附加回退模型列表与 Provider 路由偏好
+5. 统一调用层需支持：
    - 普通文本问答
    - 流式输出
    - function tools / tool calls
    - 上下游使用量字段回传
-5. 若模型调用失败，错误需保留上游错误语义，供复杂度评估、Agent 执行与 Web API 直接透传或降级处理。
+6. 若模型调用失败，错误需保留上游错误语义，供复杂度评估、Agent 执行与 Web API 直接透传或降级处理。
 
 #### Traceability
 
 - 实现文件：`internal/llm/domain/llm.go`、`internal/llm/infrastructure/openai_client.go`、`internal/llm/application/model_config_service.go`
 - 测试覆盖：`internal/llm/infrastructure/openai_client_test.go`
-- 核心对象：`api_type`、`base_url`、`api_key`、`ChatRequest`、`ChatResponse`
+- 核心对象：`provider_type`、`api_type`、`base_url`、`api_key`、`openrouter`、`ChatRequest`、`ChatResponse`
 
 ### R-048
 
@@ -334,9 +339,11 @@ ReAct 模式 Agent 调用
 2. 单个 Provider 至少包含：
    - `id`
    - `name`
+   - `provider_type`
    - `api_type`
    - `base_url`
    - `api_key`
+   - `openrouter`（当 `provider_type = openrouter` 时）
    - `default_model`
    - `models[]`
    - `is_enabled`
@@ -355,6 +362,11 @@ ReAct 模式 Agent 调用
 5. Web `Chat` 发送区必须支持会话级 `Provider / Model` 选择；复杂度评估、同步执行与 Agent/ReAct 执行需复用该选择结果。
 6. Agent Profile 必须支持独立绑定 `provider_id` 与 `model`，用于为不同 Agent 预设执行模型。
 7. 历史配置兼容要求：旧配置中若默认 Provider 指向禁用项或缺失项，加载时需自动收敛到可用默认值，不得因脏数据阻断系统启动。
+8. `OpenRouter` 配置要求：
+   - 控制面需允许直接维护 `Site URL`、`App Name`、回退模型列表与 Provider 路由偏好
+   - `provider_type = openrouter` 且 `base_url` 为空时，保存阶段自动回填官方默认地址
+   - `provider_type = openrouter` 且 `api_type` 为空时，保存阶段自动回填 `openai-completions`
+   - `provider_type` 缺失但 `base_url` 指向 `openrouter.ai` 时，加载阶段自动识别为 `openrouter`
 
 #### Traceability
 

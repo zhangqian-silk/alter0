@@ -59,6 +59,63 @@ func TestModelConfigStorageGetLoadsExistingFileAndReturnsClone(t *testing.T) {
 	}
 }
 
+func TestModelConfigStorageGetReturnsClonedOpenRouterConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "model_config.json")
+	data := `{
+  "providers": [
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "provider_type": "openrouter",
+      "api_type": "openai-completions",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key": "sk-or-test",
+      "openrouter": {
+        "site_url": "https://alter0.example",
+        "app_name": "Alter0",
+        "fallback_models": ["anthropic/claude-3.7-sonnet"],
+        "provider_order": ["openai", "anthropic"],
+        "allow_fallbacks": true,
+        "require_parameters": true
+      },
+      "default_model": "openai/gpt-5.4",
+      "models": [
+        { "id": "openai/gpt-5.4", "name": "GPT-5.4", "is_enabled": true }
+      ],
+      "is_enabled": true,
+      "is_default": true
+    }
+  ],
+  "default_provider_id": "openrouter"
+}`
+	if err := os.WriteFile(filePath, []byte(data), 0644); err != nil {
+		t.Fatalf("write config file failed: %v", err)
+	}
+
+	storage := NewModelConfigStorage(filePath)
+	config, err := storage.Get()
+	if err != nil {
+		t.Fatalf("get config failed: %v", err)
+	}
+	config.Providers[0].OpenRouter.SiteURL = "https://mutated.example"
+	config.Providers[0].OpenRouter.FallbackModels[0] = "google/gemini-2.5-pro"
+
+	reloaded, err := storage.Get()
+	if err != nil {
+		t.Fatalf("reload config failed: %v", err)
+	}
+	if reloaded.Providers[0].OpenRouter == nil {
+		t.Fatalf("expected openrouter config")
+	}
+	if reloaded.Providers[0].OpenRouter.SiteURL != "https://alter0.example" {
+		t.Fatalf("expected original site url, got %q", reloaded.Providers[0].OpenRouter.SiteURL)
+	}
+	if reloaded.Providers[0].OpenRouter.FallbackModels[0] != "anthropic/claude-3.7-sonnet" {
+		t.Fatalf("expected original fallback model, got %q", reloaded.Providers[0].OpenRouter.FallbackModels[0])
+	}
+}
+
 func TestModelConfigStorageGetReconcilesDisabledLegacyDefaultProvider(t *testing.T) {
 	tempDir := t.TempDir()
 	filePath := filepath.Join(tempDir, "model_config.json")

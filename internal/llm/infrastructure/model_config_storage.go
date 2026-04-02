@@ -210,6 +210,24 @@ func cloneModelConfig(config *domain.ModelConfig) *domain.ModelConfig {
 	cloned.Providers = make([]domain.ModelProvider, 0, len(config.Providers))
 	for _, provider := range config.Providers {
 		providerCopy := provider
+		if provider.OpenRouter != nil {
+			openRouterCopy := *provider.OpenRouter
+			if len(provider.OpenRouter.FallbackModels) > 0 {
+				openRouterCopy.FallbackModels = append([]string(nil), provider.OpenRouter.FallbackModels...)
+			}
+			if len(provider.OpenRouter.ProviderOrder) > 0 {
+				openRouterCopy.ProviderOrder = append([]string(nil), provider.OpenRouter.ProviderOrder...)
+			}
+			if provider.OpenRouter.AllowFallbacks != nil {
+				value := *provider.OpenRouter.AllowFallbacks
+				openRouterCopy.AllowFallbacks = &value
+			}
+			if provider.OpenRouter.RequireParameters != nil {
+				value := *provider.OpenRouter.RequireParameters
+				openRouterCopy.RequireParameters = &value
+			}
+			providerCopy.OpenRouter = &openRouterCopy
+		}
 		if len(provider.Models) > 0 {
 			providerCopy.Models = append([]domain.ModelInfo(nil), provider.Models...)
 		} else {

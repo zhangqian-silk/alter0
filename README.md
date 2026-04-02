@@ -96,7 +96,8 @@ internal/shared/infrastructure     # ID、日志、metrics
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
 - `Alter0` 默认使用 ReAct 执行链，可直接完成通用任务，并在需要时调度专项 Agent。
 - 选中的 Agent 工具会在模型调用时作为 function tools 注入；当前稳定工具集收敛为 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，以及仅对可委派 Agent 暴露的 `delegate_agent`。
-- `OpenAI` Provider 支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。
+- `Models` 控制面支持同时维护 `OpenAI Compatible` 与 `OpenRouter` Provider；`OpenRouter` 可直接配置 `Site URL`、`App Name`、回退模型和 Provider 路由偏好，系统会分别注入官方请求头与请求体扩展字段。
+- `OpenAI Compatible` / `OpenRouter` Provider 均支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。`OpenRouter` 默认使用 `https://openrouter.ai/api/v1` 与 `openai-completions`。
 - 默认 Provider 只会落在已启用配置上；若默认 Provider 被禁用、删除或历史配置已失效，系统会自动切换到下一可用 Provider，无可用项时清空默认值。
 - 复杂度评估阶段会优先复用当前消息选中的 `Provider / Model`；未显式选择时，回退到默认 Provider 与默认模型。
 - 默认走实时执行。

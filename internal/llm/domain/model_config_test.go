@@ -362,3 +362,101 @@ func TestModelConfigValidateReconcilesDisabledLegacyDefault(t *testing.T) {
 		t.Fatalf("expected enabled provider to become default")
 	}
 }
+
+func TestModelProviderValidateDefaultsOpenRouterFields(t *testing.T) {
+	provider := ModelProvider{
+		ID:           "openrouter",
+		Name:         "OpenRouter",
+		ProviderType: ProviderTypeOpenRouter,
+		APIKey:       "sk-or-test",
+		IsEnabled:    true,
+		Models: []ModelInfo{
+			{ID: "openai/gpt-5.4", Name: "GPT-5.4", IsEnabled: true},
+		},
+		DefaultModel: "openai/gpt-5.4",
+	}
+
+	normalized, err := normalizeProvider(provider)
+	if err != nil {
+		t.Fatalf("normalize provider failed: %v", err)
+	}
+	if normalized.APIType != ProviderAPITypeOpenAICompletions {
+		t.Fatalf("expected openrouter api type %q, got %q", ProviderAPITypeOpenAICompletions, normalized.APIType)
+	}
+	if normalized.BaseURL != DefaultOpenRouterBaseURL {
+		t.Fatalf("expected openrouter base url %q, got %q", DefaultOpenRouterBaseURL, normalized.BaseURL)
+	}
+}
+
+func TestModelProviderValidateInfersOpenRouterFromBaseURL(t *testing.T) {
+	provider := ModelProvider{
+		ID:        "router",
+		Name:      "Router",
+		BaseURL:   " https://openrouter.ai/api/v1 ",
+		APIKey:    "sk-or-test",
+		IsEnabled: true,
+		Models: []ModelInfo{
+			{ID: "openai/gpt-5.4", Name: "GPT-5.4", IsEnabled: true},
+		},
+		DefaultModel: "openai/gpt-5.4",
+	}
+
+	normalized, err := normalizeProvider(provider)
+	if err != nil {
+		t.Fatalf("normalize provider failed: %v", err)
+	}
+	if normalized.ProviderType != ProviderTypeOpenRouter {
+		t.Fatalf("expected provider type %q, got %q", ProviderTypeOpenRouter, normalized.ProviderType)
+	}
+	if normalized.APIType != ProviderAPITypeOpenAICompletions {
+		t.Fatalf("expected openrouter api type %q, got %q", ProviderAPITypeOpenAICompletions, normalized.APIType)
+	}
+}
+
+func TestModelProviderValidateNormalizesOpenRouterConfig(t *testing.T) {
+	allowFallbacks := true
+	requireParameters := true
+	provider := ModelProvider{
+		ID:           "openrouter",
+		Name:         "OpenRouter",
+		ProviderType: ProviderTypeOpenRouter,
+		BaseURL:      DefaultOpenRouterBaseURL,
+		APIKey:       "sk-or-test",
+		IsEnabled:    true,
+		OpenRouter: &OpenRouterConfig{
+			SiteURL:           " https://alter0.example ",
+			AppName:           " Alter0 ",
+			FallbackModels:    []string{" openai/gpt-5.4 ", "", "openai/gpt-5.4", "anthropic/claude-3.7-sonnet"},
+			ProviderOrder:     []string{" openai ", "openai", "anthropic"},
+			AllowFallbacks:    &allowFallbacks,
+			RequireParameters: &requireParameters,
+		},
+		Models: []ModelInfo{
+			{ID: "openai/gpt-5.4", Name: "GPT-5.4", IsEnabled: true},
+		},
+		DefaultModel: "openai/gpt-5.4",
+	}
+
+	normalized, err := normalizeProvider(provider)
+	if err != nil {
+		t.Fatalf("normalize provider failed: %v", err)
+	}
+	if normalized.OpenRouter == nil {
+		t.Fatalf("expected normalized openrouter config")
+	}
+	if normalized.OpenRouter.SiteURL != "https://alter0.example" {
+		t.Fatalf("expected trimmed site url, got %q", normalized.OpenRouter.SiteURL)
+	}
+	if len(normalized.OpenRouter.FallbackModels) != 2 {
+		t.Fatalf("expected 2 fallback models, got %d", len(normalized.OpenRouter.FallbackModels))
+	}
+	if len(normalized.OpenRouter.ProviderOrder) != 2 {
+		t.Fatalf("expected 2 provider order entries, got %d", len(normalized.OpenRouter.ProviderOrder))
+	}
+	if normalized.OpenRouter.AllowFallbacks == nil || !*normalized.OpenRouter.AllowFallbacks {
+		t.Fatalf("expected allow_fallbacks to remain true")
+	}
+	if normalized.OpenRouter.RequireParameters == nil || !*normalized.OpenRouter.RequireParameters {
+		t.Fatalf("expected require_parameters to remain true")
+	}
+}

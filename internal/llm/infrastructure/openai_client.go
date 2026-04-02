@@ -14,21 +14,25 @@ import (
 
 // OpenAIClient implements domain.LLMClient using the OpenAI Go SDK.
 type OpenAIClient struct {
-	client      openai.Client
-	apiType     string
-	model       string
-	temperature *float64
-	maxTokens   *int
+	client       openai.Client
+	providerType string
+	openRouter   *domain.OpenRouterConfig
+	apiType      string
+	model        string
+	temperature  *float64
+	maxTokens    *int
 }
 
 // OpenAIClientConfig is the configuration for OpenAIClient.
 type OpenAIClientConfig struct {
-	APIKey      string
-	APIType     string
-	BaseURL     string // For OpenAI-compatible APIs
-	Model       string
-	Temperature *float64
-	MaxTokens   *int
+	APIKey       string
+	ProviderType string
+	OpenRouter   *domain.OpenRouterConfig
+	APIType      string
+	BaseURL      string // For OpenAI-compatible APIs
+	Model        string
+	Temperature  *float64
+	MaxTokens    *int
 }
 
 // NewOpenAIClient creates a new OpenAI client.
@@ -39,17 +43,31 @@ func NewOpenAIClient(config OpenAIClientConfig) *OpenAIClient {
 	if config.BaseURL != "" {
 		opts = append(opts, option.WithBaseURL(config.BaseURL))
 	}
+	if config.OpenRouter != nil {
+		if siteURL := config.OpenRouter.SiteURL; siteURL != "" {
+			opts = append(opts, option.WithHeader("HTTP-Referer", siteURL))
+		}
+		if appName := config.OpenRouter.AppName; appName != "" {
+			opts = append(opts, option.WithHeader("X-OpenRouter-Title", appName))
+		}
+	}
 	apiType := domain.DefaultProviderAPIType
 	if config.APIType != "" {
 		apiType = config.APIType
 	}
+	providerType := domain.DefaultProviderType
+	if config.ProviderType != "" {
+		providerType = config.ProviderType
+	}
 
 	return &OpenAIClient{
-		client:      openai.NewClient(opts...),
-		apiType:     apiType,
-		model:       config.Model,
-		temperature: config.Temperature,
-		maxTokens:   config.MaxTokens,
+		client:       openai.NewClient(opts...),
+		providerType: providerType,
+		openRouter:   config.OpenRouter,
+		apiType:      apiType,
+		model:        config.Model,
+		temperature:  config.Temperature,
+		maxTokens:    config.MaxTokens,
 	}
 }
 
@@ -91,7 +109,7 @@ func (c *OpenAIClient) responsesChat(ctx context.Context, req domain.ChatRequest
 		return nil, err
 	}
 
-	resp, err := c.client.Responses.New(ctx, params)
+	resp, err := c.client.Responses.New(ctx, params, c.requestOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("openai responses: %w", err)
 	}
@@ -105,7 +123,7 @@ func (c *OpenAIClient) responsesChatStream(ctx context.Context, req domain.ChatR
 		return nil, err
 	}
 
-	stream := c.client.Responses.NewStreaming(ctx, params)
+	stream := c.client.Responses.NewStreaming(ctx, params, c.requestOptions()...)
 
 	var finalResponse *responses.Response
 	for stream.Next() {
@@ -155,7 +173,7 @@ func (c *OpenAIClient) chatCompletions(ctx context.Context, req domain.ChatReque
 		return nil, err
 	}
 
-	completion, err := c.client.Chat.Completions.New(ctx, params)
+	completion, err := c.client.Chat.Completions.New(ctx, params, c.requestOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("openai chat completion: %w", err)
 	}
@@ -198,7 +216,7 @@ func (c *OpenAIClient) chatCompletionsStream(ctx context.Context, req domain.Cha
 		return nil, err
 	}
 
-	stream := c.client.Chat.Completions.NewStreaming(ctx, params)
+	stream := c.client.Chat.Completions.NewStreaming(ctx, params, c.requestOptions()...)
 
 	var fullContent string
 	var toolCalls []domain.ToolCall
@@ -452,6 +470,37 @@ func (c *OpenAIClient) convertCompletionTools(tools []domain.Tool) []openai.Chat
 		})
 	}
 	return result
+}
+
+func (c *OpenAIClient) requestOptions() []option.RequestOption {
+	if c == nil || c.providerType != domain.ProviderTypeOpenRouter || c.openRouter == nil {
+		return nil
+	}
+
+	if c.apiType != domain.ProviderAPITypeOpenAICompletions {
+		return nil
+	}
+
+	options := make([]option.RequestOption, 0, 2)
+	if len(c.openRouter.FallbackModels) > 0 {
+		options = append(options, option.WithJSONSet("models", c.openRouter.FallbackModels))
+	}
+
+	provider := map[string]any{}
+	if len(c.openRouter.ProviderOrder) > 0 {
+		provider["order"] = c.openRouter.ProviderOrder
+	}
+	if c.openRouter.AllowFallbacks != nil {
+		provider["allow_fallbacks"] = *c.openRouter.AllowFallbacks
+	}
+	if c.openRouter.RequireParameters != nil {
+		provider["require_parameters"] = *c.openRouter.RequireParameters
+	}
+	if len(provider) > 0 {
+		options = append(options, option.WithJSONSet("provider", provider))
+	}
+
+	return options
 }
 
 // Close closes the client (no-op for this implementation).

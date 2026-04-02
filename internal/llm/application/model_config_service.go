@@ -142,10 +142,12 @@ func (s *ModelConfigService) GetClient(ctx context.Context, providerID string) (
 	}
 
 	client = infrastructure.NewOpenAIClient(infrastructure.OpenAIClientConfig{
-		APIKey:  provider.APIKey,
-		APIType: provider.APIType,
-		BaseURL: provider.BaseURL,
-		Model:   provider.DefaultModel,
+		APIKey:       provider.APIKey,
+		APIType:      provider.APIType,
+		BaseURL:      provider.BaseURL,
+		Model:        provider.DefaultModel,
+		ProviderType: provider.ProviderType,
+		OpenRouter:   provider.OpenRouter,
 	})
 
 	s.clients[provider.ID] = client
@@ -193,6 +195,7 @@ func CreateDefaultConfig() *domain.ModelConfig {
 			{
 				ID:           "openai",
 				Name:         "OpenAI",
+				ProviderType: domain.ProviderTypeOpenAICompatible,
 				APIType:      domain.DefaultProviderAPIType,
 				BaseURL:      "https://api.openai.com/v1",
 				APIKey:       "", // To be filled by user
@@ -203,6 +206,22 @@ func CreateDefaultConfig() *domain.ModelConfig {
 					{ID: "gpt-4-turbo", Name: "GPT-4 Turbo", SupportsTools: true, SupportsVision: true, SupportsStreaming: true, IsEnabled: true},
 					{ID: "o1", Name: "o1", SupportsTools: false, SupportsVision: false, SupportsStreaming: false, IsEnabled: true},
 					{ID: "o1-mini", Name: "o1 Mini", SupportsTools: false, SupportsVision: false, SupportsStreaming: false, IsEnabled: true},
+				},
+				IsEnabled: false,
+				IsDefault: false,
+			},
+			{
+				ID:           "openrouter",
+				Name:         "OpenRouter",
+				ProviderType: domain.ProviderTypeOpenRouter,
+				APIType:      domain.ProviderAPITypeOpenAICompletions,
+				BaseURL:      domain.DefaultOpenRouterBaseURL,
+				APIKey:       "", // To be filled by user
+				DefaultModel: "openai/gpt-4o-mini",
+				Models: []domain.ModelInfo{
+					{ID: "openai/gpt-4o-mini", Name: "OpenAI / GPT-4o Mini", SupportsTools: true, SupportsVision: true, SupportsStreaming: true, IsEnabled: true},
+					{ID: "openai/gpt-5.4", Name: "OpenAI / GPT-5.4", SupportsTools: true, SupportsVision: false, SupportsStreaming: true, IsEnabled: true},
+					{ID: "anthropic/claude-3.7-sonnet", Name: "Anthropic / Claude 3.7 Sonnet", SupportsTools: true, SupportsVision: true, SupportsStreaming: true, IsEnabled: true},
 				},
 				IsEnabled: false,
 				IsDefault: false,

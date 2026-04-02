@@ -269,6 +269,89 @@ func TestOpenAIClientChatUsesChatCompletionsAPI(t *testing.T) {
 	}
 }
 
+func TestOpenAIClientChatUsesOpenRouterHeadersAndRoutingOptions(t *testing.T) {
+	t.Parallel()
+
+	var requestBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/chat/completions" {
+			t.Fatalf("expected /api/v1/chat/completions path, got %s", r.URL.Path)
+		}
+		if got := r.Header.Get("HTTP-Referer"); got != "https://alter0.example" {
+			t.Fatalf("expected HTTP-Referer header, got %q", got)
+		}
+		if got := r.Header.Get("X-OpenRouter-Title"); got != "Alter0" {
+			t.Fatalf("expected X-OpenRouter-Title header, got %q", got)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if err := json.Unmarshal(body, &requestBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl_router",
+			"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],
+			"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}
+		}`))
+	}))
+	defer server.Close()
+
+	allowFallbacks := true
+	requireParameters := true
+	client := NewOpenAIClient(OpenAIClientConfig{
+		APIKey:       "sk-or-test",
+		ProviderType: domain.ProviderTypeOpenRouter,
+		APIType:      domain.ProviderAPITypeOpenAICompletions,
+		BaseURL:      server.URL + "/api/v1",
+		Model:        "openai/gpt-5.4",
+		OpenRouter: &domain.OpenRouterConfig{
+			SiteURL:           "https://alter0.example",
+			AppName:           "Alter0",
+			FallbackModels:    []string{"anthropic/claude-3.7-sonnet", "google/gemini-2.5-pro"},
+			ProviderOrder:     []string{"openai", "anthropic"},
+			AllowFallbacks:    &allowFallbacks,
+			RequireParameters: &requireParameters,
+		},
+	})
+
+	resp, err := client.Chat(context.Background(), domain.ChatRequest{
+		Messages: []domain.Message{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("chat request failed: %v", err)
+	}
+
+	models, ok := requestBody["models"].([]any)
+	if !ok || len(models) != 2 {
+		t.Fatalf("expected fallback models in request body, got %#v", requestBody["models"])
+	}
+	provider, ok := requestBody["provider"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected provider routing object, got %#v", requestBody["provider"])
+	}
+	order, ok := provider["order"].([]any)
+	if !ok || len(order) != 2 {
+		t.Fatalf("expected provider order, got %#v", provider["order"])
+	}
+	if provider["allow_fallbacks"] != true {
+		t.Fatalf("expected allow_fallbacks true, got %#v", provider["allow_fallbacks"])
+	}
+	if provider["require_parameters"] != true {
+		t.Fatalf("expected require_parameters true, got %#v", provider["require_parameters"])
+	}
+	if resp.Message.Content != "ok" {
+		t.Fatalf("expected response content ok, got %q", resp.Message.Content)
+	}
+}
+
 func assertInputType(t *testing.T, item any, expected string) {
 	t.Helper()
 
