@@ -159,6 +159,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 1. `Chat / Agent / Terminal` 只要落到 `Codex CLI` 执行链，都要求服务运行账户本身具备可用的 Codex / OpenAI 认证。
 2. 若服务账户缺少认证，Web 端会快速返回认证失败，而不会长时间保持等待态。
+3. 若服务需要在仓库内执行 `git commit`、`git push`、`gh pr create`、`gh pr merge` 等交付动作，部署时还需为运行账户补齐 GitHub App 凭证、`gh` 包装器与 SSH 提交签名配置；仓库内提供 `scripts/setup_alter0_runtime_auth.sh` 作为一次性初始化脚本。
 
 ## Product Model
 
@@ -292,12 +293,69 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 
 ```bash
 export ALTER0_WEB_LOGIN_PASSWORD='请替换为强密码'
+export HOME=/var/lib/alter0
 
 go run ./cmd/alter0 \
   -web-addr 127.0.0.1:18088 \
   -web-bind-localhost-only=true \
   -web-login-password "$ALTER0_WEB_LOGIN_PASSWORD"
 ```
+
+若通过 `systemd` 运行，建议在服务环境中显式设置 `HOME=/var/lib/alter0`；启动脚本也会把历史 `HOME=/var/lib/alter0/codex-home` 归一到 `/var/lib/alter0`，确保 Codex 认证与运行态数据落在统一运行根目录。
+
+若服务需要自行提交签名 commit、创建 PR 或执行合并，还需在 root 下额外执行一次：
+
+```bash
+sudo ./scripts/setup_alter0_runtime_auth.sh
+```
+
+该脚本会把 `alter0` 运行账户的 GitHub App token helper、`gh` 命令包装器、SSH signing key 与全局 Git 配置初始化到 `/var/lib/alter0`，用于服务内 `Codex CLI` 的提交 / PR / merge 链路。
+
+新服务启用时，建议直接按下面顺序执行：
+
+```bash
+# 1. 准备运行环境
+sudo install -d -m 750 /etc/alter0
+sudo sh -c "printf 'ALTER0_WEB_LOGIN_PASSWORD=请替换为强密码\nALTER0_RUN_AS=alter0\nALTER0_RUNTIME_ROOT=/var/lib/alter0\nHOME=/var/lib/alter0\n' > /etc/alter0/alter0.env"
+sudo chmod 600 /etc/alter0/alter0.env
+
+# 2. 确保公共路径可见 codex / node / gh
+which /usr/local/bin/codex
+which /usr/local/bin/node || which node
+which /usr/bin/gh
+
+# 3. 准备 GitHub App token 生成器
+sudo test -x /usr/local/bin/github-app-token
+sudo test -f /etc/github-app/config.json
+
+# 4. 初始化 alter0 运行账户的 git / gh / ssh signing
+sudo ./scripts/setup_alter0_runtime_auth.sh
+
+# 5. 重启服务
+sudo systemctl restart alter0.service
+```
+
+若不是默认部署路径，可在执行初始化脚本前覆写这些变量：
+
+```bash
+sudo ALTER0_RUN_AS=myservice \
+  ALTER0_RUNTIME_ROOT=/data/myservice \
+  ALTER0_HOME=/data/myservice \
+  ALTER0_REPO_DIR=/srv/myservice/app \
+  ALTER0_GIT_USER_NAME='my-bot[bot]' \
+  ALTER0_GIT_USER_EMAIL='123456+my-bot[bot]@users.noreply.github.com' \
+  ./scripts/setup_alter0_runtime_auth.sh
+```
+
+初始化完成后，建议至少做一次快速验证：
+
+```bash
+sudo -u alter0 env HOME=/var/lib/alter0 PATH=/var/lib/alter0/.local/bin:/usr/local/bin:/usr/bin:/bin gh auth status
+sudo -u alter0 env HOME=/var/lib/alter0 PATH=/var/lib/alter0/.local/bin:/usr/local/bin:/usr/bin:/bin bash -lc 'printf "protocol=https\nhost=github.com\n\n" | git credential fill'
+curl --noproxy '*' http://127.0.0.1:18088/readyz
+```
+
+验证通过后，服务内由 `Codex CLI` 发起的 `git commit`、`git push`、`gh pr create`、`gh pr merge` 会复用这套运行账户级凭证与签名配置。
 
 对应 Nginx 配置与运行权限方案见：`docs/deployment/nginx.md`。
 
@@ -328,6 +386,7 @@ go run ./cmd/alter0
 - 默认终端会话在 Windows 下使用 `powershell.exe`，并在启动时自动切换到 UTF-8 输出
 - Linux / macOS 默认优先使用公共路径 `/usr/local/bin/codex`；若该路径不存在，则回退为 `codex`
 - 如需统一指定 Codex CLI 路径，可通过环境变量 `ALTER0_CODEX_COMMAND` 或启动参数 `-codex-command` 设置
+- 运行时会自动补齐 `$HOME/.local/bin`、`$HOME/.local/share/pnpm`、`/usr/local/bin`、`/usr/bin` 等标准 PATH，确保服务内 `Codex CLI` 可见 `codex`、`node` 与运行账户自带的 `gh` 包装器
 - 如需固定 shell，可通过启动参数 `-task-terminal-shell` 或运行时环境键 `task_terminal_shell` 指定
 - Windows 下显式指定 `cmd.exe` 时会补充 UTF-8 代码页初始化；如需稳定中文输出，优先使用 `powershell.exe`
 - Terminal 会话退出后不会清空历史或线程标识；重新在原会话发送输入时，系统会优先复用已持久化的 Codex CLI 线程继续执行
