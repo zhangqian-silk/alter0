@@ -64,6 +64,8 @@ const defaultCodexWorkspaceModeEnvKey = "ALTER0_CODEX_WORKSPACE_MODE"
 const defaultCodexWorkspaceMode = "session"
 
 func main() {
+	ensureDefaultRuntimePath()
+
 	relaunchHelper := flag.Bool(relaunchHelperFlag, false, "internal relaunch helper")
 	relaunchParentPID := flag.Int(relaunchParentPIDFlag, 0, "internal relaunch parent pid")
 	relaunchExecPath := flag.String(relaunchExecPathFlag, "", "internal relaunch executable path")
@@ -416,6 +418,56 @@ func ensureDefaultCodexWorkspaceMode() {
 		return
 	}
 	_ = os.Setenv(defaultCodexWorkspaceModeEnvKey, defaultCodexWorkspaceMode)
+}
+
+func ensureDefaultRuntimePath() {
+	desiredPath := buildDefaultRuntimePath(strings.TrimSpace(os.Getenv("HOME")), os.Getenv("PATH"))
+	if strings.TrimSpace(desiredPath) == "" {
+		return
+	}
+	_ = os.Setenv("PATH", desiredPath)
+}
+
+func buildDefaultRuntimePath(home string, existing string) string {
+	candidates := make([]string, 0, 8)
+	if strings.TrimSpace(home) != "" {
+		candidates = append(candidates,
+			filepath.Join(home, ".local", "bin"),
+			filepath.Join(home, ".local", "share", "pnpm"),
+		)
+	}
+	candidates = append(candidates,
+		"/usr/local/bin",
+		"/usr/bin",
+		"/bin",
+		"/usr/local/sbin",
+		"/usr/sbin",
+		"/sbin",
+	)
+
+	seen := make(map[string]struct{})
+	merged := make([]string, 0, len(candidates)+8)
+	appendDir := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if _, ok := seen[path]; ok {
+			return
+		}
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			merged = append(merged, path)
+			seen[path] = struct{}{}
+		}
+	}
+
+	for _, path := range candidates {
+		appendDir(path)
+	}
+	for _, path := range filepath.SplitList(existing) {
+		appendDir(path)
+	}
+	return strings.Join(merged, string(os.PathListSeparator))
 }
 
 func mustRegister(registry *orchinfra.InMemoryCommandRegistry, handler orchdomain.CommandHandler) {
