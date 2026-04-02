@@ -4221,9 +4221,11 @@ func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) 
 		provider := llmdomain.ModelProvider{
 			ID:           strings.TrimSpace(req.ID),
 			Name:         req.Name,
+			ProviderType: req.ProviderType,
 			APIType:      req.APIType,
 			BaseURL:      req.BaseURL,
 			APIKey:       req.APIKey,
+			OpenRouter:   req.OpenRouter,
 			DefaultModel: req.DefaultModel,
 			Models:       req.Models,
 			IsEnabled:    req.IsEnabled,
@@ -4287,9 +4289,11 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 		provider := llmdomain.ModelProvider{
 			ID:           strings.TrimSpace(req.ID),
 			Name:         req.Name,
+			ProviderType: req.ProviderType,
 			APIType:      req.APIType,
 			BaseURL:      req.BaseURL,
 			APIKey:       apiKey,
+			OpenRouter:   req.OpenRouter,
 			DefaultModel: req.DefaultModel,
 			Models:       req.Models,
 			IsEnabled:    req.IsEnabled,
@@ -4351,37 +4355,43 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 type llmProviderResponse struct {
-	ID           string                `json:"id"`
-	Name         string                `json:"name"`
-	APIType      string                `json:"api_type"`
-	BaseURL      string                `json:"base_url"`
-	APIKey       string                `json:"api_key"` // Masked
-	DefaultModel string                `json:"default_model"`
-	Models       []llmdomain.ModelInfo `json:"models"`
-	IsEnabled    bool                  `json:"is_enabled"`
-	IsDefault    bool                  `json:"is_default"`
+	ID           string                      `json:"id"`
+	Name         string                      `json:"name"`
+	ProviderType string                      `json:"provider_type,omitempty"`
+	APIType      string                      `json:"api_type"`
+	BaseURL      string                      `json:"base_url"`
+	APIKey       string                      `json:"api_key"` // Masked
+	OpenRouter   *llmdomain.OpenRouterConfig `json:"openrouter,omitempty"`
+	DefaultModel string                      `json:"default_model"`
+	Models       []llmdomain.ModelInfo       `json:"models"`
+	IsEnabled    bool                        `json:"is_enabled"`
+	IsDefault    bool                        `json:"is_default"`
 }
 
 type llmProviderUpdateRequest struct {
-	ID           string                `json:"id"`
-	Name         string                `json:"name"`
-	APIType      string                `json:"api_type"`
-	BaseURL      string                `json:"base_url"`
-	APIKey       string                `json:"api_key"`
-	DefaultModel string                `json:"default_model"`
-	Models       []llmdomain.ModelInfo `json:"models"`
-	IsEnabled    bool                  `json:"is_enabled"`
+	ID           string                      `json:"id"`
+	Name         string                      `json:"name"`
+	ProviderType string                      `json:"provider_type,omitempty"`
+	APIType      string                      `json:"api_type"`
+	BaseURL      string                      `json:"base_url"`
+	APIKey       string                      `json:"api_key"`
+	OpenRouter   *llmdomain.OpenRouterConfig `json:"openrouter,omitempty"`
+	DefaultModel string                      `json:"default_model"`
+	Models       []llmdomain.ModelInfo       `json:"models"`
+	IsEnabled    bool                        `json:"is_enabled"`
 }
 
 type llmProviderCreateRequest struct {
-	ID           string                `json:"id"`
-	Name         string                `json:"name"`
-	APIType      string                `json:"api_type"`
-	BaseURL      string                `json:"base_url"`
-	APIKey       string                `json:"api_key"`
-	DefaultModel string                `json:"default_model"`
-	Models       []llmdomain.ModelInfo `json:"models"`
-	IsEnabled    bool                  `json:"is_enabled"`
+	ID           string                      `json:"id"`
+	Name         string                      `json:"name"`
+	ProviderType string                      `json:"provider_type,omitempty"`
+	APIType      string                      `json:"api_type"`
+	BaseURL      string                      `json:"base_url"`
+	APIKey       string                      `json:"api_key"`
+	OpenRouter   *llmdomain.OpenRouterConfig `json:"openrouter,omitempty"`
+	DefaultModel string                      `json:"default_model"`
+	Models       []llmdomain.ModelInfo       `json:"models"`
+	IsEnabled    bool                        `json:"is_enabled"`
 }
 
 type llmProviderActionRequest struct {
@@ -4407,9 +4417,11 @@ func toLLMProviderResponse(p llmdomain.ModelProvider, maskKey bool) llmProviderR
 	return llmProviderResponse{
 		ID:           p.ID,
 		Name:         p.Name,
+		ProviderType: p.ProviderType,
 		APIType:      p.APIType,
 		BaseURL:      p.BaseURL,
 		APIKey:       apiKey,
+		OpenRouter:   p.OpenRouter,
 		DefaultModel: p.DefaultModel,
 		Models:       p.Models,
 		IsEnabled:    p.IsEnabled,

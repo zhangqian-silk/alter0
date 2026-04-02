@@ -258,6 +258,55 @@ func TestLLMProviderCreateRejectsDuplicateName(t *testing.T) {
 	}
 }
 
+func TestLLMProviderCreateSupportsOpenRouterFields(t *testing.T) {
+	service := newTestLLMService(t)
+	server := &Server{
+		llm:         service,
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		idGenerator: &sequenceIDGenerator{ids: []string{"provider-openrouter"}},
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/control/llm/providers",
+		strings.NewReader(`{
+			"name":"OpenRouter",
+			"provider_type":"openrouter",
+			"api_type":"openai-completions",
+			"base_url":"https://openrouter.ai/api/v1",
+			"api_key":"sk-or-created",
+			"openrouter":{
+				"site_url":"https://alter0.example",
+				"app_name":"Alter0",
+				"fallback_models":["anthropic/claude-3.7-sonnet"],
+				"provider_order":["openai","anthropic"],
+				"allow_fallbacks":true,
+				"require_parameters":true
+			},
+			"default_model":"openai/gpt-5.4",
+			"models":[{"id":"openai/gpt-5.4","name":"GPT-5.4","is_enabled":true}],
+			"is_enabled":true
+		}`),
+	)
+	rec := httptest.NewRecorder()
+	server.llmProviderListHandler(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected create 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp llmProviderResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if resp.ProviderType != llmdomain.ProviderTypeOpenRouter {
+		t.Fatalf("expected openrouter provider type, got %q", resp.ProviderType)
+	}
+	if resp.OpenRouter == nil || resp.OpenRouter.SiteURL != "https://alter0.example" {
+		t.Fatalf("expected openrouter site url in response, got %+v", resp.OpenRouter)
+	}
+}
+
 func newTestLLMService(t *testing.T) *llmapp.ModelConfigService {
 	t.Helper()
 	storage := llminfra.NewModelConfigStorage(filepath.Join(t.TempDir(), "model_config.json"))

@@ -12868,15 +12868,41 @@ async function loadModelsView(container) {
     editingProvider: null,
     statusMessage: ""
   };
+  const DEFAULT_PROVIDER_TYPE = "openai-compatible";
   const OPENAI_PROVIDER_TEMPLATE = {
     id: "openai",
     name: "OpenAI",
+    provider_type: "openai-compatible",
     api_type: "openai-responses",
     base_url: "https://api.openai.com/v1",
     models: [
       { id: "gpt-4o", name: "GPT-4o", is_enabled: true, supports_tools: true, supports_vision: true, supports_streaming: true },
       { id: "gpt-4o-mini", name: "GPT-4o Mini", is_enabled: true, supports_tools: true, supports_vision: true, supports_streaming: true }
     ]
+  };
+  const OPENROUTER_PROVIDER_TEMPLATE = {
+    id: "openrouter",
+    name: "OpenRouter",
+    provider_type: "openrouter",
+    api_type: "openai-completions",
+    base_url: "https://openrouter.ai/api/v1",
+    openrouter: {
+      site_url: "",
+      app_name: "",
+      fallback_models: [],
+      provider_order: [],
+      allow_fallbacks: true,
+      require_parameters: false
+    },
+    models: [
+      { id: "openai/gpt-5.4", name: "OpenAI / GPT-5.4", is_enabled: true, supports_tools: true, supports_vision: false, supports_streaming: true },
+      { id: "openai/gpt-5.3-codex", name: "OpenAI / GPT-5.3 Codex", is_enabled: true, supports_tools: true, supports_vision: false, supports_streaming: true },
+      { id: "anthropic/claude-3.7-sonnet", name: "Anthropic / Claude 3.7 Sonnet", is_enabled: true, supports_tools: true, supports_vision: true, supports_streaming: true }
+    ]
+  };
+  const PROVIDER_TEMPLATES = {
+    "openai-compatible": OPENAI_PROVIDER_TEMPLATE,
+    openrouter: OPENROUTER_PROVIDER_TEMPLATE
   };
 
   const requestJSON = async (url, options) => {
@@ -12905,16 +12931,48 @@ async function loadModelsView(container) {
     };
   };
 
+  const normalizeListField = (value) => {
+    const raw = Array.isArray(value) ? value.join("\n") : String(value || "");
+    const items = raw
+      .split(/[\n,]/)
+      .map((item) => normalizeText(item || ""))
+      .filter((item) => item !== "-")
+      .filter(Boolean);
+    return Array.from(new Set(items));
+  };
+
+  const normalizeOptionalProviderField = (value) => {
+    const normalized = normalizeText(value || "");
+    return normalized === "-" ? "" : normalized;
+  };
+
+  const sanitizeOpenRouterConfig = (config, providerType) => {
+    if (providerType !== "openrouter" && !config) {
+      return null;
+    }
+    return {
+      site_url: normalizeOptionalProviderField(config?.site_url || ""),
+      app_name: normalizeOptionalProviderField(config?.app_name || ""),
+      fallback_models: normalizeListField(config?.fallback_models || []),
+      provider_order: normalizeListField(config?.provider_order || []),
+      allow_fallbacks: config?.allow_fallbacks === undefined ? true : Boolean(config?.allow_fallbacks),
+      require_parameters: Boolean(config?.require_parameters)
+    };
+  };
+
   const sanitizeProvider = (provider) => {
     const models = Array.isArray(provider?.models)
       ? provider.models.map(sanitizeModel).filter(Boolean)
       : [];
+    const providerType = normalizeText(provider?.provider_type || "") || DEFAULT_PROVIDER_TYPE;
     return {
       id: normalizeText(provider?.id || ""),
       name: normalizeText(provider?.name || ""),
+      provider_type: providerType,
       api_type: normalizeText(provider?.api_type || "") || "openai-responses",
       base_url: normalizeText(provider?.base_url || ""),
       api_key: normalizeText(provider?.api_key || ""),
+      openrouter: sanitizeOpenRouterConfig(provider?.openrouter, providerType),
       default_model: normalizeText(provider?.default_model || ""),
       models,
       is_enabled: Boolean(provider?.is_enabled),
@@ -12935,17 +12993,26 @@ async function loadModelsView(container) {
     ...overrides
   });
 
-  const createProviderDraft = () => ({
-    id: "",
-    name: OPENAI_PROVIDER_TEMPLATE.name,
-    api_type: OPENAI_PROVIDER_TEMPLATE.api_type,
-    base_url: OPENAI_PROVIDER_TEMPLATE.base_url,
-    api_key: "",
-    default_model: OPENAI_PROVIDER_TEMPLATE.models[0].id,
-    models: OPENAI_PROVIDER_TEMPLATE.models.map((model) => createEmptyModel(model)),
-    is_enabled: true,
-    is_default: false
-  });
+  const createProviderDraft = () => createProviderDraftFromType(DEFAULT_PROVIDER_TYPE);
+
+  const createProviderDraftFromType = (providerType) => {
+    const template = PROVIDER_TEMPLATES[providerType] || PROVIDER_TEMPLATES[DEFAULT_PROVIDER_TYPE];
+    return {
+      id: "",
+      name: template.name,
+      provider_type: template.provider_type,
+      api_type: template.api_type,
+      base_url: template.base_url,
+      api_key: "",
+      openrouter: sanitizeOpenRouterConfig(template.openrouter, template.provider_type),
+      default_model: template.models[0]?.id || "",
+      models: template.models.map((model) => createEmptyModel(model)),
+      is_enabled: true,
+      is_default: false
+    };
+  };
+
+  const providerTypeLabel = (providerType) => providerType === "openrouter" ? "OpenRouter" : "OpenAI Compatible";
 
   const getEnabledModels = (provider) => {
     const models = Array.isArray(provider?.models) ? provider.models : [];
@@ -13047,6 +13114,7 @@ async function loadModelsView(container) {
     const statusClass = provider.is_enabled ? "provider-enabled" : "provider-disabled";
     const defaultBadge = provider.is_default ? '<span class="badge-default">默认 Provider</span>' : "";
     const enabledModelCount = getEnabledModels(provider).length;
+    const openrouter = provider.provider_type === "openrouter" ? sanitizeOpenRouterConfig(provider.openrouter, provider.provider_type) : null;
     const note = provider.is_default
       ? (localState.statusMessage || "当前 Provider 正在提供默认模型")
       : (provider.is_enabled ? "直接点击模型项即可切换默认模型" : "启用后可设置为默认 Provider 和默认模型");
@@ -13059,11 +13127,15 @@ async function loadModelsView(container) {
         <span class="provider-status">${provider.is_enabled ? "已启用" : "已禁用"}</span>
       </div>
       <div class="provider-info">
+        <p><strong>Provider Type:</strong> ${escapeHTML(providerTypeLabel(provider.provider_type))}</p>
         <p><strong>Base URL:</strong> ${escapeHTML(provider.base_url || "-")}</p>
         <p><strong>API Type:</strong> ${escapeHTML(provider.api_type || "-")}</p>
         <p><strong>API Key:</strong> ${escapeHTML(provider.api_key || "-")}</p>
         <p><strong>默认模型:</strong> ${escapeHTML(provider.default_model || "-")}</p>
         <p><strong>模型数量:</strong> ${escapeHTML(String(provider.models.length))} / 可用 ${escapeHTML(String(enabledModelCount))}</p>
+        ${openrouter ? `<p><strong>App 标识:</strong> ${escapeHTML(openrouter.app_name || "-")} / ${escapeHTML(openrouter.site_url || "-")}</p>` : ""}
+        ${openrouter ? `<p><strong>回退模型:</strong> ${escapeHTML(openrouter.fallback_models.join(", ") || "-")}</p>` : ""}
+        ${openrouter ? `<p><strong>Provider 路由:</strong> ${escapeHTML(openrouter.provider_order.join(", ") || "-")}</p>` : ""}
       </div>
       <section class="provider-models">
         <div class="provider-models-head">
@@ -13087,6 +13159,8 @@ async function loadModelsView(container) {
     const isEditing = Boolean(localState.editingProvider && localState.editingProvider.id);
     const defaultModels = getEnabledModels(form);
     const defaultModel = normalizeText(form.default_model || "") || (defaultModels[0] ? defaultModels[0].id : "");
+    const isOpenRouter = form.provider_type === "openrouter";
+    const openrouter = sanitizeOpenRouterConfig(form.openrouter, form.provider_type) || sanitizeOpenRouterConfig(null, "openrouter");
     const modelOptions = defaultModels.length
       ? defaultModels.map((model) => `<option value="${escapeHTML(model.id)}" ${model.id === defaultModel ? "selected" : ""}>${escapeHTML(model.name || model.id)}</option>`).join("")
       : '<option value="">请先添加启用的模型</option>';
@@ -13103,6 +13177,13 @@ async function loadModelsView(container) {
               <span>Provider 名称</span>
               <input type="text" name="name" value="${escapeHTML(form.name || "")}" placeholder="OpenAI" required autocomplete="off">
             </label>
+            <label>
+              <span>Provider Type</span>
+              <select name="provider_type" data-provider-type>
+                <option value="openai-compatible" ${form.provider_type === "openai-compatible" ? "selected" : ""}>OpenAI Compatible</option>
+                <option value="openrouter" ${form.provider_type === "openrouter" ? "selected" : ""}>OpenRouter</option>
+              </select>
+            </label>
             <label class="provider-form-full">
               <span>API Type</span>
               <select name="api_type">
@@ -13116,14 +13197,49 @@ async function loadModelsView(container) {
             </label>
             <label class="provider-form-full">
               <span>API Key</span>
-              <input type="password" name="api_key" value="" placeholder="${escapeHTML(isEditing ? "留空则保持现有 API Key" : "sk-...")}" ${isEditing ? "" : "required"} autocomplete="new-password">
+              <input type="password" name="api_key" value="" placeholder="${escapeHTML(isEditing ? "留空则保持现有 API Key" : (isOpenRouter ? "sk-or-v1-..." : "sk-..."))}" ${isEditing ? "" : "required"} autocomplete="new-password">
             </label>
           </div>
+          <section class="provider-model-editor" data-openrouter-fields ${isOpenRouter ? "" : "hidden"}>
+            <div class="provider-model-editor-head">
+              <div>
+                <h4>OpenRouter 配置</h4>
+                <p>站点标识会通过官方头部写入请求；回退模型与 Provider 路由会附加到请求体，便于统一走 OpenRouter 调度。</p>
+              </div>
+            </div>
+            <div class="provider-form-grid">
+              <label class="provider-form-full">
+                <span>Site URL</span>
+                <input type="text" name="openrouter_site_url" value="${escapeHTML(openrouter.site_url || "")}" placeholder="https://your-app.example" autocomplete="off">
+              </label>
+              <label class="provider-form-full">
+                <span>App Name</span>
+                <input type="text" name="openrouter_app_name" value="${escapeHTML(openrouter.app_name || "")}" placeholder="Alter0" autocomplete="off">
+              </label>
+              <label class="provider-form-full">
+                <span>Fallback Models</span>
+                <textarea name="openrouter_fallback_models" rows="3" placeholder="openai/gpt-5.4&#10;anthropic/claude-3.7-sonnet">${escapeHTML(openrouter.fallback_models.join("\n"))}</textarea>
+              </label>
+              <label class="provider-form-full">
+                <span>Provider Order</span>
+                <input type="text" name="openrouter_provider_order" value="${escapeHTML(openrouter.provider_order.join(", "))}" placeholder="openai, anthropic" autocomplete="off">
+              </label>
+              <label class="provider-checkbox">
+                <input type="checkbox" name="openrouter_allow_fallbacks" ${openrouter.allow_fallbacks ? "checked" : ""}>
+                <span>允许 Provider Fallback</span>
+              </label>
+              <label class="provider-checkbox">
+                <input type="checkbox" name="openrouter_require_parameters" ${openrouter.require_parameters ? "checked" : ""}>
+                <span>仅选择支持全部参数的 Provider</span>
+              </label>
+            </div>
+          </section>
           <section class="provider-model-editor">
             <div class="provider-model-editor-head">
               <div>
                 <h4>模型列表</h4>
-                <p>为当前 Provider 维护可选模型。新建 Provider 默认使用 OpenAI 兼容参数，你可以按需改成其他兼容服务。</p>
+                <p>${isOpenRouter ? "维护 OpenRouter 可选模型列表；默认模型会作为主模型发送，回退模型可在上方单独配置。" : "为当前 Provider 维护可选模型。默认提供 OpenAI 兼容参数，也可改成其他兼容服务。"}
+                </p>
               </div>
               <button type="button" data-add-model>+ 添加模型</button>
             </div>
@@ -13157,7 +13273,7 @@ async function loadModelsView(container) {
     <div class="models-empty-illustration">${renderModelsEmptyIcon()}</div>
     <div class="providers-empty-copy">
       <h3>还没有配置任何 Provider</h3>
-      <p>您还没有配置任何 LLM Provider。添加第一个 Provider 后，即可开启模型对话并设置默认模型。</p>
+      <p>您还没有配置任何 LLM Provider。添加第一个 OpenAI Compatible 或 OpenRouter Provider 后，即可开启模型对话并设置默认模型。</p>
     </div>
     <button type="button" class="btn-primary" data-action="add">+ 新增 Provider</button>
   </div>`;
@@ -13167,7 +13283,7 @@ async function loadModelsView(container) {
     const providerAction = providers.length
       ? '<button type="button" class="btn-primary providers-panel-add" data-action="add">+ 新增 Provider</button>'
       : "";
-    const providersNote = "统一在这里维护 Provider、API Key 与模型列表，不再通过环境变量配置默认 Provider 或默认模型。";
+    const providersNote = "统一在这里维护 OpenAI Compatible / OpenRouter Provider、API Key 与模型列表，不再通过环境变量配置默认 Provider 或默认模型。";
     container.innerHTML = `<section class="route-view models-view">
       <p class="models-view-intro">${escapeHTML(providersNote)}</p>
       <section class="route-card providers-panel">
@@ -13227,6 +13343,80 @@ async function loadModelsView(container) {
     return models;
   };
 
+  const readOpenRouterConfigFromForm = (form, providerType) => {
+    if (providerType !== "openrouter") {
+      return null;
+    }
+    return {
+      site_url: normalizeText(form.querySelector('[name="openrouter_site_url"]')?.value || ""),
+      app_name: normalizeText(form.querySelector('[name="openrouter_app_name"]')?.value || ""),
+      fallback_models: normalizeListField(form.querySelector('[name="openrouter_fallback_models"]')?.value || ""),
+      provider_order: normalizeListField(form.querySelector('[name="openrouter_provider_order"]')?.value || ""),
+      allow_fallbacks: Boolean(form.querySelector('[name="openrouter_allow_fallbacks"]')?.checked),
+      require_parameters: Boolean(form.querySelector('[name="openrouter_require_parameters"]')?.checked)
+    };
+  };
+
+  const syncProviderTypeFields = (form) => {
+    const providerType = normalizeText(form.querySelector('[name="provider_type"]')?.value || "") || DEFAULT_PROVIDER_TYPE;
+    const openrouterFields = form.querySelector("[data-openrouter-fields]");
+    if (openrouterFields instanceof HTMLElement) {
+      openrouterFields.hidden = providerType !== "openrouter";
+    }
+  };
+
+  const applyProviderTemplateToForm = (form, providerType) => {
+    const template = createProviderDraftFromType(providerType);
+    const nameInput = form.querySelector('[name="name"]');
+    const apiTypeSelect = form.querySelector('[name="api_type"]');
+    const baseURLInput = form.querySelector('[name="base_url"]');
+    const defaultModelSelect = form.querySelector('[name="default_model"]');
+    const siteURLInput = form.querySelector('[name="openrouter_site_url"]');
+    const appNameInput = form.querySelector('[name="openrouter_app_name"]');
+    const fallbackModelsInput = form.querySelector('[name="openrouter_fallback_models"]');
+    const providerOrderInput = form.querySelector('[name="openrouter_provider_order"]');
+    const allowFallbacksInput = form.querySelector('[name="openrouter_allow_fallbacks"]');
+    const requireParametersInput = form.querySelector('[name="openrouter_require_parameters"]');
+    const rows = form.querySelector("[data-model-rows]");
+
+    if (nameInput instanceof HTMLInputElement) {
+      nameInput.value = template.name;
+    }
+    if (apiTypeSelect instanceof HTMLSelectElement) {
+      apiTypeSelect.value = template.api_type;
+    }
+    if (baseURLInput instanceof HTMLInputElement) {
+      baseURLInput.value = template.base_url;
+    }
+    if (rows instanceof HTMLElement) {
+      rows.innerHTML = template.models.map((model) => renderEditableModelRow(model)).join("");
+    }
+    if (defaultModelSelect instanceof HTMLSelectElement) {
+      defaultModelSelect.value = template.default_model;
+    }
+    if (siteURLInput instanceof HTMLInputElement) {
+      siteURLInput.value = template.openrouter?.site_url || "";
+    }
+    if (appNameInput instanceof HTMLInputElement) {
+      appNameInput.value = template.openrouter?.app_name || "";
+    }
+    if (fallbackModelsInput instanceof HTMLTextAreaElement) {
+      fallbackModelsInput.value = (template.openrouter?.fallback_models || []).join("\n");
+    }
+    if (providerOrderInput instanceof HTMLInputElement) {
+      providerOrderInput.value = (template.openrouter?.provider_order || []).join(", ");
+    }
+    if (allowFallbacksInput instanceof HTMLInputElement) {
+      allowFallbacksInput.checked = Boolean(template.openrouter?.allow_fallbacks);
+    }
+    if (requireParametersInput instanceof HTMLInputElement) {
+      requireParametersInput.checked = Boolean(template.openrouter?.require_parameters);
+    }
+
+    syncProviderTypeFields(form);
+    syncModalDefaultModelSelect(form);
+  };
+
   const syncModalDefaultModelSelect = (form) => {
     const select = form.querySelector("[data-default-model]");
     if (!select) {
@@ -13269,9 +13459,11 @@ async function loadModelsView(container) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: provider.name,
+        provider_type: provider.provider_type,
         base_url: provider.base_url,
         api_type: provider.api_type,
         api_key: "",
+        openrouter: provider.openrouter,
         default_model: modelID,
         models: provider.models,
         is_enabled: provider.is_enabled
@@ -13353,7 +13545,9 @@ async function loadModelsView(container) {
 
     const providerForm = modalHost.querySelector("[data-provider-form]");
     if (providerForm) {
+      const isEditing = Boolean(localState.editingProvider && localState.editingProvider.id);
       syncModalDefaultModelSelect(providerForm);
+      syncProviderTypeFields(providerForm);
       providerForm.addEventListener("click", (event) => {
         const target = event.target;
         if (!(target instanceof HTMLElement)) {
@@ -13382,18 +13576,25 @@ async function loadModelsView(container) {
         }
       });
       providerForm.addEventListener("input", () => {
+        syncProviderTypeFields(providerForm);
         syncModalDefaultModelSelect(providerForm);
       });
-      providerForm.addEventListener("change", () => {
+      providerForm.addEventListener("change", (event) => {
+        const target = event.target;
+        if (!isEditing && target instanceof HTMLSelectElement && target.name === "provider_type") {
+          applyProviderTemplateToForm(providerForm, normalizeText(target.value || "") || DEFAULT_PROVIDER_TYPE);
+          return;
+        }
+        syncProviderTypeFields(providerForm);
         syncModalDefaultModelSelect(providerForm);
       });
       providerForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         try {
-          const isEditing = Boolean(localState.editingProvider && localState.editingProvider.id);
           const formData = new FormData(providerForm);
           const originalProviderID = isEditing ? localState.editingProvider.id : "";
           const providerName = normalizeText(formData.get("name") || "");
+          const providerType = normalizeText(formData.get("provider_type") || "") || DEFAULT_PROVIDER_TYPE;
           if (hasDuplicateProviderName(providerName, originalProviderID)) {
             throw new Error("Provider 名称已存在，请使用其他名称");
           }
@@ -13405,9 +13606,11 @@ async function loadModelsView(container) {
             : enabledModels[0].id;
           const body = {
             name: providerName,
+            provider_type: providerType,
             api_type: normalizeText(formData.get("api_type") || "") || "openai-responses",
             base_url: normalizeText(formData.get("base_url") || ""),
             api_key: normalizeText(formData.get("api_key") || ""),
+            openrouter: readOpenRouterConfigFromForm(providerForm, providerType),
             default_model: defaultModel,
             models,
             is_enabled: formData.get("is_enabled") === "on"

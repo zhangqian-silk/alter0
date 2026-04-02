@@ -10,6 +10,10 @@ const (
 	ProviderAPITypeOpenAIResponses   = "openai-responses"
 	ProviderAPITypeOpenAICompletions = "openai-completions"
 	DefaultProviderAPIType           = ProviderAPITypeOpenAIResponses
+	ProviderTypeOpenAICompatible     = "openai-compatible"
+	ProviderTypeOpenRouter           = "openrouter"
+	DefaultProviderType              = ProviderTypeOpenAICompatible
+	DefaultOpenRouterBaseURL         = "https://openrouter.ai/api/v1"
 )
 
 // ModelProvider represents a configured LLM provider.
@@ -18,12 +22,16 @@ type ModelProvider struct {
 	ID string `json:"id"`
 	// Name is the human-readable name.
 	Name string `json:"name"`
+	// ProviderType identifies the upstream provider family.
+	ProviderType string `json:"provider_type,omitempty"`
 	// APIType selects which OpenAI-compatible API shape to use.
 	APIType string `json:"api_type"`
 	// BaseURL is the API base URL (e.g., "https://api.openai.com/v1").
 	BaseURL string `json:"base_url"`
 	// APIKey is the API key for authentication.
 	APIKey string `json:"api_key"`
+	// OpenRouter contains OpenRouter-specific request settings.
+	OpenRouter *OpenRouterConfig `json:"openrouter,omitempty"`
 	// Models is the list of available models for this provider.
 	Models []ModelInfo `json:"models"`
 	// DefaultModel is the default model to use.
@@ -36,6 +44,22 @@ type ModelProvider struct {
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt is the last update timestamp.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OpenRouterConfig contains OpenRouter-specific request settings.
+type OpenRouterConfig struct {
+	// SiteURL is sent via HTTP-Referer for app attribution.
+	SiteURL string `json:"site_url,omitempty"`
+	// AppName is sent via X-OpenRouter-Title for app attribution.
+	AppName string `json:"app_name,omitempty"`
+	// FallbackModels configures request-level model fallbacks.
+	FallbackModels []string `json:"fallback_models,omitempty"`
+	// ProviderOrder configures preferred upstream providers.
+	ProviderOrder []string `json:"provider_order,omitempty"`
+	// AllowFallbacks controls whether non-listed providers may be used as fallbacks.
+	AllowFallbacks *bool `json:"allow_fallbacks,omitempty"`
+	// RequireParameters restricts routing to providers that support all request parameters.
+	RequireParameters *bool `json:"require_parameters,omitempty"`
 }
 
 // ModelInfo represents a model available from a provider.
@@ -77,9 +101,14 @@ func (p *ModelProvider) Validate() error {
 func normalizeProvider(provider ModelProvider) (ModelProvider, error) {
 	provider.ID = strings.TrimSpace(provider.ID)
 	provider.Name = strings.TrimSpace(provider.Name)
-	provider.APIType = normalizeProviderAPIType(provider.APIType)
+	provider.ProviderType = normalizeProviderType(provider.ProviderType, provider.BaseURL, provider.OpenRouter)
+	provider.APIType = normalizeProviderAPIType(provider.APIType, provider.ProviderType)
 	provider.BaseURL = strings.TrimSpace(provider.BaseURL)
+	if provider.ProviderType == ProviderTypeOpenRouter && provider.BaseURL == "" {
+		provider.BaseURL = DefaultOpenRouterBaseURL
+	}
 	provider.APIKey = strings.TrimSpace(provider.APIKey)
+	provider.OpenRouter = normalizeOpenRouterConfig(provider.OpenRouter)
 	provider.DefaultModel = strings.TrimSpace(provider.DefaultModel)
 
 	if provider.ID == "" {
@@ -99,6 +128,9 @@ func normalizeProvider(provider ModelProvider) (ModelProvider, error) {
 	}
 	if !isSupportedProviderAPIType(provider.APIType) {
 		return ModelProvider{}, errors.New("unsupported api_type: " + provider.APIType)
+	}
+	if !isSupportedProviderType(provider.ProviderType) {
+		return ModelProvider{}, errors.New("unsupported provider_type: " + provider.ProviderType)
 	}
 
 	if len(provider.Models) == 0 {
@@ -155,21 +187,100 @@ func providerNameKey(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
-func normalizeProviderAPIType(apiType string) string {
+func normalizeProviderAPIType(apiType string, providerType string) string {
 	normalized := strings.ToLower(strings.TrimSpace(apiType))
 	if normalized == "" {
+		if providerType == ProviderTypeOpenRouter {
+			return ProviderAPITypeOpenAICompletions
+		}
 		return DefaultProviderAPIType
 	}
 	return normalized
 }
 
+func normalizeProviderType(providerType string, baseURL string, config *OpenRouterConfig) string {
+	normalized := strings.ToLower(strings.TrimSpace(providerType))
+	if normalized != "" {
+		return normalized
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(baseURL)), "openrouter.ai") || config != nil {
+		return ProviderTypeOpenRouter
+	}
+	return DefaultProviderType
+}
+
 func isSupportedProviderAPIType(apiType string) bool {
-	switch normalizeProviderAPIType(apiType) {
+	switch normalizeProviderAPIType(apiType, "") {
 	case ProviderAPITypeOpenAIResponses, ProviderAPITypeOpenAICompletions:
 		return true
 	default:
 		return false
 	}
+}
+
+func isSupportedProviderType(providerType string) bool {
+	switch normalizeProviderType(providerType, "", nil) {
+	case ProviderTypeOpenAICompatible, ProviderTypeOpenRouter:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeOpenRouterConfig(config *OpenRouterConfig) *OpenRouterConfig {
+	if config == nil {
+		return nil
+	}
+
+	normalized := &OpenRouterConfig{
+		SiteURL:           normalizeOptionalPlaceholder(config.SiteURL),
+		AppName:           normalizeOptionalPlaceholder(config.AppName),
+		AllowFallbacks:    config.AllowFallbacks,
+		RequireParameters: config.RequireParameters,
+	}
+	normalized.FallbackModels = normalizeStringList(config.FallbackModels)
+	normalized.ProviderOrder = normalizeStringList(config.ProviderOrder)
+	if normalized.SiteURL == "" &&
+		normalized.AppName == "" &&
+		len(normalized.FallbackModels) == 0 &&
+		len(normalized.ProviderOrder) == 0 &&
+		normalized.AllowFallbacks == nil &&
+		normalized.RequireParameters == nil {
+		return nil
+	}
+	return normalized
+}
+
+func normalizeStringList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := normalizeOptionalPlaceholder(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func normalizeOptionalPlaceholder(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "-" {
+		return ""
+	}
+	return trimmed
 }
 
 // GetModel returns the model info by ID.
