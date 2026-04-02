@@ -2,25 +2,41 @@ package main
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestEnsureDefaultCodexWorkspaceModeSetsSessionDefault(t *testing.T) {
-	t.Setenv(defaultCodexWorkspaceModeEnvKey, "")
+func TestBuildDefaultRuntimePathPrependsRuntimeDirs(t *testing.T) {
+	home := t.TempDir()
+	localBin := filepath.Join(home, ".local", "bin")
+	pnpmBin := filepath.Join(home, ".local", "share", "pnpm")
+	if err := os.MkdirAll(localBin, 0o755); err != nil {
+		t.Fatalf("mkdir local bin: %v", err)
+	}
+	if err := os.MkdirAll(pnpmBin, 0o755); err != nil {
+		t.Fatalf("mkdir pnpm bin: %v", err)
+	}
 
-	ensureDefaultCodexWorkspaceMode()
-
-	if got := os.Getenv(defaultCodexWorkspaceModeEnvKey); got != defaultCodexWorkspaceMode {
-		t.Fatalf("expected %s=%q, got %q", defaultCodexWorkspaceModeEnvKey, defaultCodexWorkspaceMode, got)
+	got := buildDefaultRuntimePath(home, "/usr/bin:/bin")
+	parts := strings.Split(got, string(filepath.ListSeparator))
+	if len(parts) < 4 {
+		t.Fatalf("unexpected path parts: %v", parts)
+	}
+	if parts[0] != localBin {
+		t.Fatalf("first path = %q, want %q", parts[0], localBin)
+	}
+	if parts[1] != pnpmBin {
+		t.Fatalf("second path = %q, want %q", parts[1], pnpmBin)
+	}
+	if parts[2] != "/usr/local/bin" {
+		t.Fatalf("third path = %q, want /usr/local/bin", parts[2])
 	}
 }
 
-func TestEnsureDefaultCodexWorkspaceModePreservesExistingValue(t *testing.T) {
-	t.Setenv(defaultCodexWorkspaceModeEnvKey, "session")
-
-	ensureDefaultCodexWorkspaceMode()
-
-	if got := os.Getenv(defaultCodexWorkspaceModeEnvKey); got != "session" {
-		t.Fatalf("expected existing workspace mode preserved, got %q", got)
+func TestBuildDefaultRuntimePathDeduplicatesEntries(t *testing.T) {
+	got := buildDefaultRuntimePath("", "/usr/bin:/bin:/usr/bin")
+	if strings.Count(got, "/usr/bin") != 1 {
+		t.Fatalf("path should only contain /usr/bin once: %q", got)
 	}
 }
