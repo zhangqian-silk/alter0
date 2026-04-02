@@ -146,6 +146,43 @@ test.describe("Terminal route", () => {
     await expectComposerValue(composer, "pwd -Path .");
   });
 
+  test("defers terminal repaint while desktop input is still active and flushes after idle", async ({ page, request }) => {
+    const { clientID, session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "desktop-idle-flush" });
+
+    const composer = terminalPage.composer();
+    const input = composer.input();
+    const outputText = "desktop-idle-flush";
+
+    await input.click();
+    await expect(input).toBeFocused();
+    await input.fill("draft input");
+    await expectComposerFocusedValue(composer, "draft input");
+
+    const inputResponse = await request.post(`/api/terminal/sessions/${encodeURIComponent(session.id)}/input`, {
+      headers: {
+        "X-Alter0-Terminal-Client": clientID,
+      },
+      data: {
+        input: `Reply with exactly: ${outputText}`,
+      },
+    });
+    expect(inputResponse.ok()).toBeTruthy();
+
+    await page.evaluate(() => {
+      const routeBody = document.getElementById("routeBody");
+      if (routeBody && typeof routeBody.__alter0TerminalVisible === "function") {
+        routeBody.__alter0TerminalVisible();
+      }
+    });
+    await waitForTerminalPoll(page, session.id);
+
+    await expect(terminalPage.finalOutputs()).toHaveCount(0);
+    await expectComposerFocusedValue(composer, "draft input");
+
+    await expect(terminalPage.finalOutputs().last()).toContainText(outputText);
+    await expectComposerValue(composer, "draft input");
+  });
+
   test("keeps the same terminal input node during mobile polling while focused", async ({ page, request }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     const { session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-focus" });
@@ -512,6 +549,36 @@ test.describe("Terminal route", () => {
     await expect(input).toBeEnabled();
     await expect(submit).toBeEnabled();
     await expectComposerState(composer, { disabled: false });
+  });
+
+  test("clears exited hint immediately after resending in the same session", async ({ page, request }) => {
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "close-hint-on-resend" });
+
+    const composer = terminalPage.composer();
+    const input = composer.input();
+    const submit = composer.submitButton();
+    await input.fill("Reply with exactly: close-hint-ready");
+    await submit.click();
+    await expect(terminalPage.chatScreen()).toContainText("close-hint-ready");
+
+    const closeButton = terminalPage.closeButton();
+    await closeButton.click();
+
+    await expect(page.locator("[data-terminal-runtime-note]")).toContainText("Codex session exited. Send a new input to continue in this session.");
+
+    await page.route("**/api/terminal/sessions/*/input", async (route) => {
+      if (route.request().method() === "POST") {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      await route.continue();
+    });
+
+    await input.fill("Reply with exactly: close-hint-recovered");
+    await submit.click();
+
+    await expect(page.locator("[data-terminal-runtime-note]")).toHaveCount(0);
+    await expect(terminalPage.workspace()).not.toContainText("Codex session exited. Send a new input to continue in this session.");
+    await expect(terminalPage.chatScreen()).toContainText("close-hint-recovered");
   });
 
   test("renders process and plain output with lazy-loaded step details", async ({ page, request }) => {

@@ -56,6 +56,7 @@ const TERMINAL_SESSION_LIST_POLL_INTERVAL_MS = 15000;
 const TERMINAL_SESSION_LIST_POLL_HIDDEN_INTERVAL_MS = 60000;
 const TERMINAL_STORAGE_PERSIST_ACTIVE_DELAY_MS = 320;
 const TERMINAL_STORAGE_PERSIST_IDLE_DELAY_MS = 1200;
+const TERMINAL_INPUT_PAINT_IDLE_MS = 480;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const MAIN_AGENT_ID = "main";
@@ -1429,6 +1430,9 @@ const state = {
   pending: false,
   pendingCount: 0,
   pageRenderToken: 0,
+  messageRenderFrame: 0,
+  pendingMessageRenderPreserveScroll: false,
+  messageRenderSignatures: new Map(),
   navCollapsed: false,
   suppressHashRouteConfirm: "",
   lang: "en" // default
@@ -4152,7 +4156,7 @@ function appendMessageToSession(session, role, text, options = {}) {
   session.messages.push(message);
   enforceSingleBlankSession();
   renderSessions();
-  renderMessages();
+  scheduleMessagesRender();
   syncHeader();
   persistSessions();
   return message;
@@ -4176,7 +4180,7 @@ function updateMessage(message, patch = {}) {
     return;
   }
   Object.assign(message, patch);
-  renderMessages();
+  scheduleMessagesRender();
   syncHeader();
   persistSessions();
 }
@@ -4402,6 +4406,11 @@ function extractMessageSource(result) {
 }
 
 function renderMessages(options = {}) {
+  if (state.messageRenderFrame) {
+    window.cancelAnimationFrame(state.messageRenderFrame);
+    state.messageRenderFrame = 0;
+    state.pendingMessageRenderPreserveScroll = false;
+  }
   const active = getSession();
   const hasMessages = Boolean(active && active.messages.length);
   welcomeScreen.style.display = hasMessages ? "none" : "block";
@@ -4415,66 +4424,10 @@ function renderMessages(options = {}) {
     syncWelcomeCopy();
     renderWelcomeTargetPicker();
     messageArea.innerHTML = "";
+    state.messageRenderSignatures.clear();
     return;
   }
-
-  const list = document.createElement("div");
-  list.className = "message-list";
-
-  for (const msg of active.messages) {
-    const container = document.createElement("article");
-    container.className = `msg ${msg.role}`;
-    if (msg.error) {
-      container.classList.add("error");
-    }
-    if (msg.status === "streaming") {
-      container.classList.add("streaming");
-    }
-
-    const bubble = document.createElement("div");
-    bubble.className = "msg-bubble";
-    bubble.innerHTML = msg.role === "assistant"
-      ? renderAgentExecutionMessage(msg)
-      : renderMarkdownToHTML(msg.text);
-
-    const meta = document.createElement("div");
-    meta.className = "msg-meta";
-
-    if (msg.route && msg.role === "assistant") {
-      const pill = document.createElement("span");
-      pill.className = "route-pill";
-      pill.textContent = msg.route.toUpperCase();
-      meta.appendChild(pill);
-    }
-
-    if (msg.role === "assistant") {
-      const sourceLabel = messageSourceLabel(msg.source);
-      if (sourceLabel) {
-        const pill = document.createElement("span");
-        pill.className = "source-pill";
-        pill.textContent = sourceLabel;
-        meta.appendChild(pill);
-      }
-    }
-
-    if (msg.role === "assistant") {
-      const status = document.createElement("span");
-      status.className = `status-pill ${msg.status || "done"}`;
-      status.textContent = assistantStatusLabel(msg.status);
-      meta.appendChild(status);
-    }
-
-    const time = document.createElement("span");
-    time.textContent = timeLabel(msg.at);
-    meta.appendChild(time);
-
-    container.appendChild(bubble);
-    container.appendChild(meta);
-    list.appendChild(container);
-  }
-
-  messageArea.innerHTML = "";
-  messageArea.appendChild(list);
+  syncMessageList(active);
   if (preserveScrollPosition) {
     messageArea.scrollTop = Math.max(0, previousScrollTop + (messageArea.scrollHeight - previousScrollHeight));
   } else {
@@ -4497,8 +4450,162 @@ function toggleAgentProcessMessage(messageID) {
     return;
   }
   message.agent_process_collapsed = !resolveAgentProcessCollapsed(message, parsed);
-  renderMessages({ preserveScrollPosition: true });
+  scheduleMessagesRender({ preserveScrollPosition: true });
   persistSessions();
+}
+
+function scheduleMessagesRender(options = {}) {
+  state.pendingMessageRenderPreserveScroll = state.pendingMessageRenderPreserveScroll || Boolean(options.preserveScrollPosition);
+  if (state.messageRenderFrame) {
+    return;
+  }
+  state.messageRenderFrame = window.requestAnimationFrame(() => {
+    const preserveScrollPosition = Boolean(state.pendingMessageRenderPreserveScroll);
+    state.messageRenderFrame = 0;
+    state.pendingMessageRenderPreserveScroll = false;
+    renderMessages({ preserveScrollPosition });
+  });
+}
+
+function captureMessageRenderSignature(message) {
+  if (!message) {
+    return "";
+  }
+  return [
+    normalizeText(message.id),
+    normalizeText(message.role),
+    String(message.text || ""),
+    normalizeText(message.route),
+    normalizeText(message.source),
+    String(Boolean(message.error)),
+    normalizeText(message.status),
+    String(Number(message.at || 0)),
+    String(Boolean(message.retryable)),
+    String(Boolean(message.task_pending)),
+    normalizeText(message.task_id),
+    normalizeText(message.task_status),
+    String(Boolean(message.task_result_delivered)),
+    normalizeText(message.task_result_for),
+    String(Number(message.task_completed_at || 0)),
+    String(message.agent_process_collapsed)
+  ].join("|");
+}
+
+function renderMessageMetaHTML(message) {
+  const segments = [];
+  if (message.route && message.role === "assistant") {
+    segments.push(`<span class="route-pill">${escapeHTML(String(message.route || "").toUpperCase())}</span>`);
+  }
+  if (message.role === "assistant") {
+    const sourceLabel = messageSourceLabel(message.source);
+    if (sourceLabel) {
+      segments.push(`<span class="source-pill">${escapeHTML(sourceLabel)}</span>`);
+    }
+    segments.push(`<span class="status-pill ${escapeHTML(message.status || "done")}">${escapeHTML(assistantStatusLabel(message.status))}</span>`);
+  }
+  segments.push(`<span>${escapeHTML(timeLabel(message.at))}</span>`);
+  return segments.join("");
+}
+
+function renderMessageArticleHTML(message) {
+  const classes = ["msg", escapeHTML(message.role)];
+  if (message.error) {
+    classes.push("error");
+  }
+  if (message.status === "streaming") {
+    classes.push("streaming");
+  }
+  const bubbleHTML = message.role === "assistant"
+    ? renderAgentExecutionMessage(message)
+    : renderMarkdownToHTML(message.text);
+  return `<article class="${classes.join(" ")}" data-message-id="${escapeHTML(message.id)}">
+    <div class="msg-bubble">${bubbleHTML}</div>
+    <div class="msg-meta">${renderMessageMetaHTML(message)}</div>
+  </article>`;
+}
+
+function findMessageArticleNode(listNode, messageID) {
+  if (!(listNode instanceof HTMLElement) || !messageID) {
+    return null;
+  }
+  const escapedMessageID = window.CSS && typeof window.CSS.escape === "function"
+    ? window.CSS.escape(messageID)
+    : messageID.replace(/["\\]/g, "\\$&");
+  return listNode.querySelector(`[data-message-id="${escapedMessageID}"]`);
+}
+
+function ensureMessageListNode(sessionID) {
+  let listNode = messageArea.querySelector(".message-list");
+  const normalizedSessionID = normalizeText(sessionID);
+  if (!(listNode instanceof HTMLElement)) {
+    messageArea.innerHTML = `<div class="message-list" data-message-session-id="${escapeHTML(normalizedSessionID)}"></div>`;
+    listNode = messageArea.querySelector(".message-list");
+  }
+  if (!(listNode instanceof HTMLElement)) {
+    return null;
+  }
+  if (normalizeText(listNode.getAttribute("data-message-session-id")) !== normalizedSessionID) {
+    listNode.innerHTML = "";
+    listNode.setAttribute("data-message-session-id", normalizedSessionID);
+    state.messageRenderSignatures.clear();
+  }
+  return listNode;
+}
+
+function syncMessageList(session) {
+  const messages = Array.isArray(session?.messages) ? session.messages : [];
+  const listNode = ensureMessageListNode(session?.id || "");
+  if (!(listNode instanceof HTMLElement)) {
+    return;
+  }
+  const existingByID = new Map(
+    [...listNode.querySelectorAll("[data-message-id]")].map((node) => [normalizeText(node.getAttribute("data-message-id")), node])
+  );
+  const nextIDs = new Set();
+  let previousNode = null;
+
+  messages.forEach((message) => {
+    const messageID = normalizeText(message?.id);
+    if (!messageID || messageID === "-") {
+      return;
+    }
+    nextIDs.add(messageID);
+    const signature = captureMessageRenderSignature(message);
+    let node = existingByID.get(messageID) || null;
+    if (!node) {
+      const html = renderMessageArticleHTML(message);
+      if (previousNode instanceof HTMLElement) {
+        previousNode.insertAdjacentHTML("afterend", html);
+        node = previousNode.nextElementSibling;
+      } else {
+        listNode.insertAdjacentHTML("afterbegin", html);
+        node = listNode.firstElementChild;
+      }
+      state.messageRenderSignatures.set(messageID, signature);
+    } else if (state.messageRenderSignatures.get(messageID) !== signature) {
+      node.outerHTML = renderMessageArticleHTML(message);
+      node = findMessageArticleNode(listNode, messageID);
+      state.messageRenderSignatures.set(messageID, signature);
+    }
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    const expectedNode = previousNode instanceof HTMLElement ? previousNode.nextElementSibling : listNode.firstElementChild;
+    if (node !== expectedNode) {
+      listNode.insertBefore(node, expectedNode || null);
+    }
+    previousNode = node;
+  });
+
+  existingByID.forEach((node, messageID) => {
+    if (nextIDs.has(messageID)) {
+      return;
+    }
+    state.messageRenderSignatures.delete(messageID);
+    if (node instanceof HTMLElement) {
+      node.remove();
+    }
+  });
 }
 
 function setPending(flag) {
@@ -8288,6 +8395,7 @@ function bindControlTaskView(container, initialPayload) {
     logStickToBottom: true,
     logStreamNode: null,
     logTouchStartY: null,
+    logPaintFrame: 0,
     terminalSubmitting: false,
     advancedOpen: false
   };
@@ -8341,6 +8449,10 @@ function bindControlTaskView(container, initialPayload) {
 
   const closeDrawer = () => {
     stopLogStream();
+    if (localState.logPaintFrame) {
+      window.cancelAnimationFrame(localState.logPaintFrame);
+      localState.logPaintFrame = 0;
+    }
     controlTaskTerminalComposer.unbind();
     localState.activeTaskID = "";
     localState.terminalAnchorTaskID = "";
@@ -8438,6 +8550,10 @@ function bindControlTaskView(container, initialPayload) {
   };
 
   const paintLogs = () => {
+    if (localState.logPaintFrame) {
+      window.cancelAnimationFrame(localState.logPaintFrame);
+      localState.logPaintFrame = 0;
+    }
     const streamNode = drawerBody.querySelector("[data-control-task-log-stream]");
     if (!streamNode) {
       return;
@@ -8460,6 +8576,16 @@ function bindControlTaskView(container, initialPayload) {
     localState.logStickToBottom = isNearLogBottom(streamNode);
   };
 
+  const schedulePaintLogs = () => {
+    if (localState.logPaintFrame) {
+      return;
+    }
+    localState.logPaintFrame = window.requestAnimationFrame(() => {
+      localState.logPaintFrame = 0;
+      paintLogs();
+    });
+  };
+
   const resetLogs = () => {
     localState.logCursor = 0;
     localState.logDone = false;
@@ -8468,7 +8594,7 @@ function bindControlTaskView(container, initialPayload) {
     localState.logStickToBottom = true;
     localState.logTouchStartY = null;
     setLogStatus(t("route.tasks.logs.empty"));
-    paintLogs();
+    schedulePaintLogs();
   };
 
   const appendLogs = (items) => {
@@ -8506,7 +8632,7 @@ function bindControlTaskView(container, initialPayload) {
       }
     }
     localState.logCursor = nextCursor;
-    paintLogs();
+    schedulePaintLogs();
   };
 
   const startLogStream = (taskID, cursor = 0) => {
@@ -8543,7 +8669,7 @@ function bindControlTaskView(container, initialPayload) {
       if (Number.isFinite(nextCursor) && nextCursor >= 0) {
         localState.logCursor = nextCursor;
       }
-      paintLogs();
+      schedulePaintLogs();
     });
 
     stream.addEventListener("done", (event) => {
@@ -8681,7 +8807,7 @@ function bindControlTaskView(container, initialPayload) {
       resetLogs();
       await loadLogBackfill(taskID, 0);
     } else {
-      paintLogs();
+      schedulePaintLogs();
     }
     startLogStream(taskID, localState.logCursor);
     openDrawer();
@@ -9813,10 +9939,15 @@ function renderTerminalWorkspace(session, sending, closing = false, deleting = f
   const placeholder = canInput
     ? t("route.terminal.input")
     : (isTerminalSessionBusyStatus(session.status) ? t("route.terminal.busy") : t("route.terminal.closed"));
-  const note = normalizedStatus === "interrupted"
-    ? t("route.terminal.interrupted")
-    : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : "");
-  const detail = session.error_message || (parseTerminalExitCode(session.exit_code) !== null ? `exit code ${String(parseTerminalExitCode(session.exit_code))}` : "");
+  const showRuntimeNote = !sending && !Boolean(session?.pending_create);
+  const note = showRuntimeNote
+    ? (normalizedStatus === "interrupted"
+      ? t("route.terminal.interrupted")
+      : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : ""))
+    : "";
+  const detail = showRuntimeNote
+    ? (session.error_message || (parseTerminalExitCode(session.exit_code) !== null ? `exit code ${String(parseTerminalExitCode(session.exit_code))}` : ""))
+    : "";
   const closeDisabled = sending || closing || deleting || !isTerminalSessionLiveStatus(session.status);
   const deleteDisabled = sending || closing || deleting;
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
@@ -9988,10 +10119,15 @@ function patchTerminalWorkspaceNode(container, session, sending, closing = false
   const placeholder = canInput
     ? t("route.terminal.input")
     : (isTerminalSessionBusyStatus(session.status) ? t("route.terminal.busy") : t("route.terminal.closed"));
-  const note = normalizedStatus === "interrupted"
-    ? t("route.terminal.interrupted")
-    : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : "");
-  const detail = session.error_message || (parseTerminalExitCode(session.exit_code) !== null ? `exit code ${String(parseTerminalExitCode(session.exit_code))}` : "");
+  const showRuntimeNote = !sending && !Boolean(session?.pending_create);
+  const note = showRuntimeNote
+    ? (normalizedStatus === "interrupted"
+      ? t("route.terminal.interrupted")
+      : ((normalizedStatus === "exited" || normalizedStatus === "failed") ? t("route.terminal.closed") : ""))
+    : "";
+  const detail = showRuntimeNote
+    ? (session.error_message || (parseTerminalExitCode(session.exit_code) !== null ? `exit code ${String(parseTerminalExitCode(session.exit_code))}` : ""))
+    : "";
   const closeDisabled = sending || closing || deleting || !isTerminalSessionLiveStatus(session.status);
   const deleteDisabled = sending || closing || deleting;
   const showJumpBottom = Boolean(session?.chat_has_unread_output) || Number(session?.chat_bottom_offset || 0) > TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD;
@@ -10141,10 +10277,16 @@ async function loadTerminalView(container) {
     mobileSessionListAutoOpened: false,
     pendingPaint: false,
     pendingScrollToBottom: false,
+    deferredPaintTimer: 0,
+    scrollCaptureFrame: 0,
+    pendingScrollCapture: null,
     persistTimer: 0,
     lastChatScrollAt: 0,
+    lastComposerInputAt: 0,
     nextListSyncAt: 0,
-    creating: false
+    creating: false,
+    composerBinding: null,
+    turnNavigationCache: null
   };
   const terminalComposer = createReusableComposer();
   container.__alter0TerminalVisible = () => {
@@ -10278,6 +10420,17 @@ async function loadTerminalView(container) {
     localState.focusedInputSelectionEnd = -1;
   };
 
+  const stopDeferredTerminalPaintFlush = () => {
+    if (localState.deferredPaintTimer) {
+      window.clearTimeout(localState.deferredPaintTimer);
+      localState.deferredPaintTimer = 0;
+    }
+  };
+
+  const markTerminalComposerActivity = () => {
+    localState.lastComposerInputAt = Date.now();
+  };
+
   const isTerminalInputFocused = (sessionID) => {
     const key = normalizeText(sessionID);
     if (key === "" || key !== normalizeText(localState.focusedInputSessionID)) {
@@ -10306,24 +10459,48 @@ async function loadTerminalView(container) {
     node.style.overflowY = node.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
   };
 
-  const measureTerminalNodeScrollOffset = (node, scrollNode) => {
-    if (!(node instanceof HTMLElement) || !(scrollNode instanceof HTMLElement)) {
-      return 0;
-    }
-    const nodeRect = node.getBoundingClientRect();
-    const scrollRect = scrollNode.getBoundingClientRect();
-    return Math.max(scrollNode.scrollTop + nodeRect.top - scrollRect.top, 0);
+  const invalidateTerminalTurnNavigationCache = () => {
+    localState.turnNavigationCache = null;
   };
 
-  const resolveTerminalTurnNavigation = (chatNode) => {
-    if (!(chatNode instanceof HTMLElement)) {
-      return {
-        previousTurnID: "",
-        nextTurnID: ""
-      };
+  const resolveTerminalNodeOffsetWithin = (node, boundary) => {
+    if (!(node instanceof HTMLElement) || !(boundary instanceof HTMLElement)) {
+      return 0;
     }
-    const viewportAnchor = Math.max(Number(chatNode.scrollTop || 0) + 24, 0);
-    const turnEntries = [...chatNode.querySelectorAll("[data-terminal-turn]")].map((turnNode) => {
+    let total = 0;
+    let current = node;
+    while (current && current !== boundary) {
+      total += Math.max(Number(current.offsetTop || 0), 0);
+      const next = current.offsetParent instanceof HTMLElement ? current.offsetParent : current.parentElement;
+      if (!(next instanceof HTMLElement)) {
+        break;
+      }
+      current = next;
+    }
+    if (current === boundary) {
+      return Math.max(total, 0);
+    }
+    return measureTerminalNodeScrollOffset(node, boundary);
+  };
+
+  const resolveTerminalTurnNavigationEntries = (sessionID, chatNode) => {
+    const key = normalizeText(sessionID);
+    if (!key || !(chatNode instanceof HTMLElement)) {
+      return [];
+    }
+    const cache = localState.turnNavigationCache;
+    const scrollHeight = Math.max(Number(chatNode.scrollHeight || 0), 0);
+    const clientWidth = Math.max(Number(chatNode.clientWidth || 0), 0);
+    if (
+      cache &&
+      cache.sessionID === key &&
+      cache.chatNode === chatNode &&
+      cache.scrollHeight === scrollHeight &&
+      cache.clientWidth === clientWidth
+    ) {
+      return Array.isArray(cache.entries) ? cache.entries : [];
+    }
+    const entries = [...chatNode.querySelectorAll("[data-terminal-turn]")].map((turnNode) => {
       if (!(turnNode instanceof HTMLElement)) {
         return null;
       }
@@ -10333,16 +10510,40 @@ async function loadTerminalView(container) {
       }
       const promptNode = turnNode.querySelector(".terminal-turn-prompt");
       const anchorNode = promptNode instanceof HTMLElement ? promptNode : turnNode;
-      const start = measureTerminalNodeScrollOffset(turnNode, chatNode);
-      const anchor = measureTerminalNodeScrollOffset(anchorNode, chatNode);
       return {
         id,
-        node: turnNode,
-        anchor,
-        start,
-        end: start + Math.max(Number(turnNode.offsetHeight || 0), 0)
+        anchor: resolveTerminalNodeOffsetWithin(anchorNode, chatNode),
+        start: resolveTerminalNodeOffsetWithin(turnNode, chatNode)
       };
     }).filter(Boolean);
+    localState.turnNavigationCache = {
+      sessionID: key,
+      chatNode,
+      scrollHeight,
+      clientWidth,
+      entries
+    };
+    return entries;
+  };
+
+  const measureTerminalNodeScrollOffset = (node, scrollNode) => {
+    if (!(node instanceof HTMLElement) || !(scrollNode instanceof HTMLElement)) {
+      return 0;
+    }
+    const nodeRect = node.getBoundingClientRect();
+    const scrollRect = scrollNode.getBoundingClientRect();
+    return Math.max(scrollNode.scrollTop + nodeRect.top - scrollRect.top, 0);
+  };
+
+  const resolveTerminalTurnNavigation = (sessionID, chatNode) => {
+    if (!(chatNode instanceof HTMLElement)) {
+      return {
+        previousTurnID: "",
+        nextTurnID: ""
+      };
+    }
+    const viewportAnchor = Math.max(Number(chatNode.scrollTop || 0) + 24, 0);
+    const turnEntries = resolveTerminalTurnNavigationEntries(sessionID, chatNode);
     if (!turnEntries.length) {
       return {
         previousTurnID: "",
@@ -10373,7 +10574,39 @@ async function loadTerminalView(container) {
     if (!key) {
       return false;
     }
-    return isTerminalInputComposing(key) || (isMobileViewport() && isTerminalInputFocused(key));
+    if (isTerminalInputComposing(key)) {
+      return true;
+    }
+    if (!isTerminalInputFocused(key)) {
+      return false;
+    }
+    if (isMobileViewport()) {
+      return true;
+    }
+    return Date.now() - Number(localState.lastComposerInputAt || 0) < TERMINAL_INPUT_PAINT_IDLE_MS;
+  };
+
+  const scheduleDeferredTerminalPaintFlush = (sessionID = "") => {
+    stopDeferredTerminalPaintFlush();
+    if (!localState.pendingPaint) {
+      return;
+    }
+    const key = normalizeText(sessionID);
+    if (!key) {
+      return;
+    }
+    if (isTerminalInputComposing(key)) {
+      return;
+    }
+    if (isMobileViewport() && isTerminalInputFocused(key)) {
+      return;
+    }
+    const elapsed = Date.now() - Number(localState.lastComposerInputAt || 0);
+    const delay = Math.max(TERMINAL_INPUT_PAINT_IDLE_MS - elapsed, 16);
+    localState.deferredPaintTimer = window.setTimeout(() => {
+      localState.deferredPaintTimer = 0;
+      flushDeferredTerminalPaint();
+    }, delay);
   };
 
   const rememberTerminalInputComposition = (sessionID) => {
@@ -10408,7 +10641,7 @@ async function loadTerminalView(container) {
     const remaining = Math.max(Number(node.scrollHeight || 0) - Number(node.scrollTop || 0) - Number(node.clientHeight || 0), 0);
     session.chat_bottom_offset = remaining;
     session.chat_stick_to_bottom = remaining <= TERMINAL_SCROLL_STICKY_THRESHOLD;
-    const turnNavigation = resolveTerminalTurnNavigation(node);
+    const turnNavigation = resolveTerminalTurnNavigation(key, node);
     session.chat_previous_turn_id = turnNavigation.previousTurnID;
     session.chat_next_turn_id = turnNavigation.nextTurnID;
     if (session.chat_stick_to_bottom) {
@@ -10542,7 +10775,6 @@ async function loadTerminalView(container) {
       return;
     }
     chatNode.scrollTop += event.deltaY;
-    captureTerminalChatScroll(normalizeText(getActiveSession()?.id || ""), chatNode);
     event.preventDefault();
   };
 
@@ -10878,6 +11110,8 @@ async function loadTerminalView(container) {
   };
 
   const paint = () => {
+    flushScheduledTerminalChatScrollCapture();
+    invalidateTerminalTurnNavigationCache();
     const active = getActiveSession();
     const previousWorkspace = container.querySelector("[data-terminal-workspace]");
     const previousSessionList = container.querySelector("[data-terminal-session-list]");
@@ -10997,7 +11231,7 @@ async function loadTerminalView(container) {
         chatNode.scrollTop = chatNode.scrollHeight;
       }
       chatNode.onscroll = () => {
-        captureTerminalChatScroll(active.id, chatNode);
+        scheduleTerminalChatScrollCapture(active.id, chatNode);
       };
       chatNode.onwheel = (event) => {
         routeTerminalWheelToChat(event, chatNode, chatNode);
@@ -11044,8 +11278,10 @@ async function loadTerminalView(container) {
     if (active && shouldDeferTerminalPaint(active.id)) {
       localState.pendingPaint = true;
       localState.pendingScrollToBottom = localState.pendingScrollToBottom || scrollToBottom;
+      scheduleDeferredTerminalPaintFlush(active.id);
       return false;
     }
+    stopDeferredTerminalPaintFlush();
     paint();
     if (scrollToBottom && (!active || active.chat_stick_to_bottom !== false)) {
       scrollTerminalChatToBottom();
@@ -11059,11 +11295,13 @@ async function loadTerminalView(container) {
     }
     const active = getActiveSession();
     if (active && shouldDeferTerminalPaint(active.id)) {
+      scheduleDeferredTerminalPaintFlush(active.id);
       return;
     }
     const scrollToBottom = localState.pendingScrollToBottom;
     localState.pendingPaint = false;
     localState.pendingScrollToBottom = false;
+    stopDeferredTerminalPaintFlush();
     paint();
     const nextActive = getActiveSession();
     if (scrollToBottom && (!nextActive || nextActive.chat_stick_to_bottom !== false)) {
@@ -11071,9 +11309,80 @@ async function loadTerminalView(container) {
     }
   };
 
+  const flushScheduledTerminalChatScrollCapture = () => {
+    if (localState.scrollCaptureFrame) {
+      window.cancelAnimationFrame(localState.scrollCaptureFrame);
+      localState.scrollCaptureFrame = 0;
+    }
+    const payload = localState.pendingScrollCapture;
+    localState.pendingScrollCapture = null;
+    if (!payload) {
+      return;
+    }
+    captureTerminalChatScroll(payload.sessionID, payload.chatNode, {
+      trackActivity: payload.trackActivity
+    });
+  };
+
+  const scheduleTerminalChatScrollCapture = (sessionID, chatNode = null, options = {}) => {
+    const key = normalizeText(sessionID);
+    if (!key) {
+      return;
+    }
+    const node = chatNode || container.querySelector("[data-terminal-chat-screen]");
+    if (!(node instanceof HTMLElement) || node.hidden) {
+      return;
+    }
+    const trackActivity = options.trackActivity !== false;
+    if (!localState.pendingScrollCapture || normalizeText(localState.pendingScrollCapture.sessionID) !== key) {
+      localState.pendingScrollCapture = {
+        sessionID: key,
+        chatNode: node,
+        trackActivity
+      };
+    } else {
+      localState.pendingScrollCapture.chatNode = node;
+      localState.pendingScrollCapture.trackActivity = localState.pendingScrollCapture.trackActivity || trackActivity;
+    }
+    if (localState.scrollCaptureFrame) {
+      return;
+    }
+    localState.scrollCaptureFrame = window.requestAnimationFrame(() => {
+      localState.scrollCaptureFrame = 0;
+      const payload = localState.pendingScrollCapture;
+      localState.pendingScrollCapture = null;
+      if (!payload) {
+        return;
+      }
+      captureTerminalChatScroll(payload.sessionID, payload.chatNode, {
+        trackActivity: payload.trackActivity
+      });
+    });
+  };
+
   const bindTerminalComposer = (session) => {
     const formNode = container.querySelector("[data-terminal-input-form]");
     const inputNode = container.querySelector("[data-terminal-input]");
+    const submitNode = container.querySelector("[data-terminal-submit]");
+    const sessionID = normalizeText(session?.id || "");
+    const disabled = localState.sending || !session || !canTerminalSessionAcceptInput(session.status);
+    const currentBinding = localState.composerBinding;
+    if (!inputNode || !formNode) {
+      terminalComposer.unbind();
+      localState.composerBinding = null;
+      return;
+    }
+    if (
+      currentBinding &&
+      currentBinding.inputNode === inputNode &&
+      currentBinding.formNode === formNode &&
+      currentBinding.submitNode === submitNode &&
+      currentBinding.sessionID === sessionID &&
+      currentBinding.disabled === disabled
+    ) {
+      resizeTerminalComposerInput(inputNode);
+      return;
+    }
     terminalComposer.bind(inputNode, formNode, {
       stableName: "terminal-runtime",
       submitOnEnter: true,
@@ -11082,8 +11391,8 @@ async function loadTerminalView(container) {
       draftStorage: "local",
       draftKey: () => `terminal:${normalizeText(session?.id || "default")}`,
       clearDraftOnSubmit: true,
-      submitNode: container.querySelector("[data-terminal-submit]"),
-      disabled: localState.sending || !session || !canTerminalSessionAcceptInput(session.status),
+      submitNode,
+      disabled,
       onDraftRestore: (_inputNode, restoredDraft) => {
         if (!session) {
           return;
@@ -11095,30 +11404,36 @@ async function loadTerminalView(container) {
         if (!session) {
           return;
         }
+        markTerminalComposerActivity();
         resizeTerminalComposerInput(currentInputNode);
         rememberTerminalInputFocus(session.id, currentInputNode);
         writeTerminalDraft(session.id, currentInputNode.value);
+        scheduleDeferredTerminalPaintFlush(session.id);
       },
       onFocus: (currentInputNode) => {
         if (!session) {
           return;
         }
+        markTerminalComposerActivity();
         rememberTerminalInputFocus(session.id, currentInputNode);
       },
       onBlur: () => {
         clearTerminalInputComposition();
         clearTerminalInputFocus();
+        stopDeferredTerminalPaintFlush();
         flushDeferredTerminalPaint();
       },
       onCompositionStart: (currentInputNode) => {
         if (!session) {
           return;
         }
+        markTerminalComposerActivity();
         rememberTerminalInputFocus(session.id, currentInputNode);
         rememberTerminalInputComposition(session.id);
         writeTerminalDraft(session.id, currentInputNode.value);
       },
       onCompositionEnd: (currentInputNode) => {
+        markTerminalComposerActivity();
         if (!session) {
           clearTerminalInputComposition();
           flushDeferredTerminalPaint();
@@ -11141,6 +11456,13 @@ async function loadTerminalView(container) {
         await sendTerminalInput(value);
       }
     });
+    localState.composerBinding = {
+      inputNode,
+      formNode,
+      submitNode,
+      sessionID,
+      disabled
+    };
     resizeTerminalComposerInput(inputNode);
   };
 

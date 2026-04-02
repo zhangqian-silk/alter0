@@ -1,6 +1,6 @@
 # Requirements Details (R-051 ~ R-060)
 
-> Last update: 2026-04-01
+> Last update: 2026-04-02
 
 ## 需求细化（草案）
 
@@ -24,6 +24,7 @@
    - 会话态统一使用 `ready / busy / exited / interrupted`：`ready` 表示当前会话可继续输入，`busy` 表示当前轮正在执行，`exited / interrupted` 表示当前运行态结束但原会话仍可恢复。
    - turn / step 维度继续使用 `running / completed / failed / interrupted` 表示执行过程，不再让 session.status 兼任“是否正在执行当前轮”的含义。
    - 同一 Terminal 会话在同一次运行态中断、退出或宿主侧取消期间，只允许写入一条对应状态提醒；恢复后若再次进入新的中断周期，才补充新的提醒记录。
+   - 对已退出或已中断会话发起恢复发送时，输入区上的旧运行态提示需立即清空；恢复请求飞行期间不得继续展示上一状态周期的 `Exited / Interrupted / Failed` 文案。
 10. 兼容性要求：已有 Terminal 会话数据在升级后需可继续读取；若历史数据缺少 Codex CLI 会话标识，系统需允许降级为不可直连恢复但可保留历史，并支持后续重新绑定新的运行态。
    - 历史持久化中的 `running / starting` 会话值需分别兼容归一到 `ready / busy`，不要求用户手工迁移状态文件。
 11. 验收：Terminal 页面创建多个会话后不再因会话数触发上限错误；某一会话运行超时或中断后，历史记录仍可见，用户可对原会话执行恢复并继续输入，且恢复后仍能回看原有日志与上下文链路。
@@ -68,6 +69,7 @@
   - 2026-03-30：Terminal 历史在同一 Web 登录态下改为跨设备共享，服务端不再按浏览器 client 标识隔离会话列表与详情访问。
   - 2026-03-30：Terminal 会话在单次运行态中断周期内收敛为单条中断提醒；服务关闭与执行协程收尾同时触发时不再重复写入相同状态记录。
   - 2026-04-01：Terminal session.status 重构为 `ready / busy / exited / interrupted`；历史 `running / starting` 持久化值在加载时自动归一，空闲会话跨重启不再被误标为 `interrupted`。
+  - 2026-04-02：Terminal 对已退出或已中断会话重新发送时，输入区上的旧运行态提示会在请求开始后立即清空，不再与当前恢复发送态并存。
 
 ### R-052
 
