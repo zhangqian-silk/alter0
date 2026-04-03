@@ -11426,6 +11426,7 @@ async function loadTerminalView(container) {
     localState.mobileSessionListAutoOpened = false;
     requestRevealActiveSessionCard();
     requestTerminalPaint();
+    requestTerminalViewportInsetSync();
     const payload = await requestTerminalJSON("/api/terminal/sessions", {
       method: "POST",
       body: JSON.stringify({})
@@ -11440,6 +11441,7 @@ async function loadTerminalView(container) {
       }
       localState.creating = false;
       requestTerminalPaint();
+      requestTerminalViewportInsetSync();
       throw error;
     });
     discardTerminalSession(pendingSession.id);
@@ -11448,6 +11450,7 @@ async function loadTerminalView(container) {
     if (!session) {
       localState.activeSessionID = localState.sessions[0] ? localState.sessions[0].id : "";
       requestTerminalPaint();
+      requestTerminalViewportInsetSync();
       throw new Error("terminal session missing");
     }
     localState.activeSessionID = session.id;
@@ -11455,6 +11458,8 @@ async function loadTerminalView(container) {
     localState.mobileSessionListAutoOpened = false;
     requestRevealActiveSessionCard();
     persist();
+    requestTerminalPaint();
+    requestTerminalViewportInsetSync();
     return session;
   };
 
@@ -11688,6 +11693,15 @@ async function loadTerminalView(container) {
       scrollTerminalChatToBottom();
     }
     return true;
+  };
+
+  const requestTerminalViewportInsetSync = (options = {}) => {
+    window.requestAnimationFrame(() => {
+      if (state.currentRoute !== "terminal" || !document.body.contains(container)) {
+        return;
+      }
+      scheduleViewportInsetSync(options);
+    });
   };
 
   const flushDeferredTerminalPaint = () => {

@@ -18,6 +18,7 @@ import {
   openTerminalWorkspaceWithSessions,
 } from "./helpers/scenarios/terminal";
 import { terminalCommandPreview, terminalSessionWorkspace } from "./helpers/support/terminal-env";
+import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
 test.describe("Terminal route", () => {
   test.beforeEach(async ({ request }) => {
@@ -137,6 +138,61 @@ test.describe("Terminal route", () => {
     expect(buttonBox?.width ?? 0).toBeLessThan(56);
     expect(buttonBox?.x ?? 0).toBeGreaterThan((inputBox?.x ?? 0) + ((inputBox?.width ?? 0) * 0.7));
     expect(Math.abs((buttonBox?.y ?? 0) - (inputBox?.y ?? 0))).toBeLessThan(20);
+  });
+
+  test("keeps the mobile terminal route aligned when the visual viewport shrinks and after creating a new session", async ({ page, request }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 760, height: 980 });
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-viewport-bottom" });
+
+    await setVisualViewport(page, { width: 760, height: 760, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim()
+    )).toBe("760px");
+
+    const readMetrics = async () => page.evaluate(() => {
+      const pane = document.querySelector(".chat-pane");
+      const workspace = document.querySelector("[data-terminal-workspace]");
+      const composer = document.querySelector(".terminal-composer-shell");
+      const viewport = window.visualViewport;
+      if (
+        !(pane instanceof HTMLElement) ||
+        !(workspace instanceof HTMLElement) ||
+        !(composer instanceof HTMLElement) ||
+        !viewport
+      ) {
+        return null;
+      }
+      return {
+        viewportBottom: viewport.height + viewport.offsetTop,
+        paneBottom: pane.getBoundingClientRect().bottom,
+        workspaceBottom: workspace.getBoundingClientRect().bottom,
+        composerBottom: composer.getBoundingClientRect().bottom,
+      };
+    });
+
+    const metrics = await readMetrics();
+    expect(metrics).not.toBeNull();
+    expect(metrics?.paneBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
+    expect(metrics?.workspaceBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
+    expect(metrics?.composerBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
+
+    const previousSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    await terminalPage.createButton().click();
+
+    await expect.poll(async () => {
+      const currentSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+      return Boolean(currentSessionID && currentSessionID !== previousSessionID);
+    }).toBe(true);
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
+
+    const nextMetrics = await readMetrics();
+    expect(nextMetrics).not.toBeNull();
+    expect(nextMetrics?.paneBottom ?? 0).toBeLessThanOrEqual((nextMetrics?.viewportBottom ?? 0) + 2);
+    expect(nextMetrics?.workspaceBottom ?? 0).toBeLessThanOrEqual((nextMetrics?.viewportBottom ?? 0) + 2);
+    expect(nextMetrics?.composerBottom ?? 0).toBeLessThanOrEqual((nextMetrics?.viewportBottom ?? 0) + 2);
   });
 
   test("keeps input focus and draft across polling refresh", async ({ page, request }) => {

@@ -183,3 +183,16 @@ func TestMobileTerminalComposerConsumesViewportInsetVariables(t *testing.T) {
 		}
 	}
 }
+
+func TestMobileRoutePagesConsumeViewportMetrics(t *testing.T) {
+	styles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
+	markers := []string{
+		".chat-pane.page-mode {",
+		"height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset)));",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}
