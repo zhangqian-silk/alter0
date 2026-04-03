@@ -122,6 +122,53 @@ func TestLLMProviderUpdateKeepsAPIKeyWhenBlank(t *testing.T) {
 	}
 }
 
+func TestLLMProviderUpdateKeepsAPIKeyWhenPlaceholderDash(t *testing.T) {
+	service := newTestLLMService(t)
+	ctx := context.Background()
+	if err := service.AddProvider(ctx, llmdomain.ModelProvider{
+		ID:        "openrouter",
+		Name:      "OpenRouter",
+		APIType:   llmdomain.ProviderAPITypeOpenAICompletions,
+		BaseURL:   "https://openrouter.ai/api/v1",
+		APIKey:    "sk-or-original",
+		IsEnabled: true,
+		Models: []llmdomain.ModelInfo{
+			{ID: "openai/gpt-5.4", Name: "GPT-5.4", IsEnabled: true},
+		},
+		DefaultModel: "openai/gpt-5.4",
+	}); err != nil {
+		t.Fatalf("add provider failed: %v", err)
+	}
+
+	server := &Server{
+		llm:    service,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/control/llm/providers/openrouter",
+		strings.NewReader(`{"id":"openrouter","name":"OpenRouter Updated","provider_type":"openrouter","api_type":"openai-completions","base_url":"https://openrouter.ai/api/v1","api_key":"-","default_model":"openai/gpt-5.4","models":[{"id":"openai/gpt-5.4","name":"GPT-5.4","is_enabled":true}],"is_enabled":true}`),
+	)
+	rec := httptest.NewRecorder()
+	server.llmProviderItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected update 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	provider, err := service.GetProvider(ctx, "openrouter")
+	if err != nil {
+		t.Fatalf("get provider failed: %v", err)
+	}
+	if provider == nil {
+		t.Fatalf("expected provider")
+	}
+	if provider.APIKey != "sk-or-original" {
+		t.Fatalf("expected api key to be preserved, got %s", provider.APIKey)
+	}
+}
+
 func TestLLMProviderUpdateSupportsRename(t *testing.T) {
 	service := newTestLLMService(t)
 	ctx := context.Background()
@@ -304,6 +351,30 @@ func TestLLMProviderCreateSupportsOpenRouterFields(t *testing.T) {
 	}
 	if resp.OpenRouter == nil || resp.OpenRouter.SiteURL != "https://alter0.example" {
 		t.Fatalf("expected openrouter site url in response, got %+v", resp.OpenRouter)
+	}
+}
+
+func TestLLMProviderCreateRejectsPlaceholderDashAPIKey(t *testing.T) {
+	service := newTestLLMService(t)
+	server := &Server{
+		llm:         service,
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		idGenerator: &sequenceIDGenerator{ids: []string{"provider-placeholder-dash"}},
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/control/llm/providers",
+		strings.NewReader(`{"name":"OpenAI","api_type":"openai-completions","base_url":"https://api.openai.com/v1","api_key":"-","default_model":"gpt-4o","models":[{"id":"gpt-4o","name":"GPT-4o","is_enabled":true}],"is_enabled":true}`),
+	)
+	rec := httptest.NewRecorder()
+	server.llmProviderListHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected create 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "api_key is required") {
+		t.Fatalf("expected api_key required error, got %s", rec.Body.String())
 	}
 }
 

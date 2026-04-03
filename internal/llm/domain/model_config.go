@@ -107,7 +107,7 @@ func normalizeProvider(provider ModelProvider) (ModelProvider, error) {
 	if provider.ProviderType == ProviderTypeOpenRouter && provider.BaseURL == "" {
 		provider.BaseURL = DefaultOpenRouterBaseURL
 	}
-	provider.APIKey = strings.TrimSpace(provider.APIKey)
+	provider.APIKey = normalizeOptionalPlaceholder(provider.APIKey)
 	provider.OpenRouter = normalizeOpenRouterConfig(provider.OpenRouter)
 	provider.DefaultModel = strings.TrimSpace(provider.DefaultModel)
 
