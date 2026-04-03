@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   expectComposerCounter,
   expectComposerFocusedValue,
@@ -12,6 +12,7 @@ import {
   removeChatSession,
   switchChatSession
 } from "./helpers/flows/chat-session";
+import { openCronRoute } from "./helpers/flows/routes";
 import { commitIMEInput, startIMEInput } from "./helpers/interactions/ime";
 import { clickWithUnsavedDialog } from "./helpers/guards/unsaved";
 import {
@@ -20,80 +21,7 @@ import {
   openChatWorkspaceWithTwoDraftSessions,
   reloadChatWorkspace,
 } from "./helpers/scenarios/chat";
-
-type VisualViewportShape = {
-  width?: number;
-  height?: number;
-  offsetTop?: number;
-  offsetLeft?: number;
-};
-
-async function installVisualViewportMock(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    class MockVisualViewport extends EventTarget {
-      width: number;
-      height: number;
-      offsetTop: number;
-      offsetLeft: number;
-      pageTop: number;
-      pageLeft: number;
-      scale: number;
-
-      constructor() {
-        super();
-        this.width = window.innerWidth;
-        this.height = window.innerHeight;
-        this.offsetTop = 0;
-        this.offsetLeft = 0;
-        this.pageTop = 0;
-        this.pageLeft = 0;
-        this.scale = 1;
-      }
-    }
-
-    const mock = new MockVisualViewport();
-    Object.defineProperty(window, "visualViewport", {
-      configurable: true,
-      value: mock,
-    });
-    Object.defineProperty(window, "__alter0SetVisualViewport", {
-      configurable: true,
-      value: (next: VisualViewportShape) => {
-        if (!next || typeof next !== "object") {
-          return;
-        }
-        if (typeof next.width === "number") {
-          mock.width = next.width;
-        }
-        if (typeof next.height === "number") {
-          mock.height = next.height;
-        }
-        if (typeof next.offsetTop === "number") {
-          mock.offsetTop = next.offsetTop;
-          mock.pageTop = next.offsetTop;
-        }
-        if (typeof next.offsetLeft === "number") {
-          mock.offsetLeft = next.offsetLeft;
-          mock.pageLeft = next.offsetLeft;
-        }
-        mock.dispatchEvent(new Event("resize"));
-        mock.dispatchEvent(new Event("scroll"));
-      },
-    });
-  });
-}
-
-async function setVisualViewport(
-  page: Page,
-  next: VisualViewportShape
-): Promise<void> {
-  await page.evaluate((value) => {
-    const setter = (window as typeof window & {
-      __alter0SetVisualViewport?: (payload: typeof value) => void;
-    }).__alter0SetVisualViewport;
-    setter?.(value);
-  }, next);
-}
+import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
 test.describe("Chat composer", () => {
   test("keeps empty session hint near the session header", async ({ page }) => {
@@ -323,6 +251,36 @@ test.describe("Chat composer", () => {
 
     expect(closed).not.toBeNull();
     expect(Math.abs((closed?.viewportBottom ?? 0) - (closed?.shellBottom ?? 0))).toBeLessThan(20);
+  });
+
+  test("keeps mobile route pages aligned to the visual viewport bottom", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 760, height: 980 });
+    await openCronRoute(page);
+
+    await setVisualViewport(page, { width: 760, height: 760, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim()
+    )).toBe("760px");
+
+    const metrics = await page.evaluate(() => {
+      const pane = document.querySelector(".chat-pane");
+      const route = document.getElementById("routeView");
+      const viewport = window.visualViewport;
+      if (!(pane instanceof HTMLElement) || !(route instanceof HTMLElement) || !viewport) {
+        return null;
+      }
+      return {
+        viewportBottom: viewport.height + viewport.offsetTop,
+        paneBottom: pane.getBoundingClientRect().bottom,
+        routeBottom: route.getBoundingClientRect().bottom,
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics?.paneBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
+    expect(metrics?.routeBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
   });
 
   test("keeps the mobile navigation fully reachable on short viewports", async ({ page }) => {

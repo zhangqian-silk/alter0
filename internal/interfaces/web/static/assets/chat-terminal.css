@@ -1664,6 +1664,10 @@
     height: min(100%, var(--mobile-viewport-height, 100dvh));
   }
 
+  .chat-pane.page-mode {
+    height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset)));
+  }
+
   .route-view {
     flex: 1;
     min-height: 0;
