@@ -163,6 +163,57 @@ func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
 	}
 }
 
+func TestServiceInputUpgradesAutoTitleWhenLaterPromptIsMoreSpecific(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-title-upgrade",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-title-upgrade", session.ID, "先拉取仓库"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	firstSnapshot, _ := waitForSessionEntries(t, service, "owner-title-upgrade", session.ID, 2)
+	if firstSnapshot.Title != "先拉取仓库" {
+		t.Fatalf("expected bootstrap title after first input, got %q", firstSnapshot.Title)
+	}
+
+	if _, err := service.Input("owner-title-upgrade", session.ID, "修改 terminal 和 agent 的会话标题"); err != nil {
+		t.Fatalf("second input: %v", err)
+	}
+	secondSnapshot, _ := waitForSessionEntries(t, service, "owner-title-upgrade", session.ID, 4)
+	if secondSnapshot.Title != "修改 terminal 和 agent 的会话标题" {
+		t.Fatalf("expected upgraded title, got %q", secondSnapshot.Title)
+	}
+}
+
+func TestServiceInputKeepsManualTitleWhenLaterPromptChanges(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-manual-title",
+		Title:   "manual-title",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-manual-title", session.ID, "先拉取仓库"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	_, _ = waitForSessionEntries(t, service, "owner-manual-title", session.ID, 2)
+	if _, err := service.Input("owner-manual-title", session.ID, "修改 terminal 和 agent 的会话标题"); err != nil {
+		t.Fatalf("second input: %v", err)
+	}
+	snapshot, _ := waitForSessionEntries(t, service, "owner-manual-title", session.ID, 4)
+	if snapshot.Title != "manual-title" {
+		t.Fatalf("expected manual title to stay unchanged, got %q", snapshot.Title)
+	}
+}
+
 func TestServiceRecoverRestoresCodexThreadForFollowUpInput(t *testing.T) {
 	service := newTestService("success")
 

@@ -112,7 +112,7 @@ const AGENT_MEMORY_FILE_OPTIONS = [
   {
     id: "agents_md",
     name: "AGENTS.md",
-    description: "Repository collaboration rules and agent operating instructions."
+    description: "Private operating rules for the current agent, resolved to .alter0/agents/<agent_id>/AGENTS.md and not shared across agents."
   },
   {
     id: "memory_long_term",
@@ -1823,6 +1823,274 @@ function shorten(text, maxLength) {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
+const AUTO_SESSION_TITLE_STABLE_SCORE = 5;
+const SESSION_TITLE_PLACEHOLDERS = new Set(["New Chat", "新对话", "New Agent Run", "新 Agent 会话"]);
+const AUTO_SESSION_TITLE_POLITE_PREFIXES = [
+  "请帮我",
+  "麻烦帮我",
+  "麻烦先帮我",
+  "先帮我",
+  "帮我先",
+  "帮我",
+  "麻烦先",
+  "麻烦",
+  "请先",
+  "请",
+  "please",
+  "can you",
+  "could you",
+  "help me"
+];
+const AUTO_SESSION_TITLE_BOOTSTRAP_VERBS = [
+  "拉取",
+  "同步",
+  "clone",
+  "pull",
+  "checkout",
+  "fetch",
+  "查看",
+  "看下",
+  "看看",
+  "分析",
+  "熟悉",
+  "inspect",
+  "analyze",
+  "analyse",
+  "read",
+  "open",
+  "explore"
+];
+const AUTO_SESSION_TITLE_REPO_WORDS = [
+  "仓库",
+  "代码库",
+  "repo",
+  "repository",
+  "codebase",
+  "branch"
+];
+const AUTO_SESSION_TITLE_CONNECTORS = [
+  "然后",
+  "之后",
+  "后再",
+  "再",
+  "then",
+  "and then",
+  "after that"
+];
+const AUTO_SESSION_TITLE_ACTION_WORDS = [
+  "修复",
+  "修改",
+  "实现",
+  "新增",
+  "添加",
+  "删除",
+  "优化",
+  "重构",
+  "调整",
+  "排查",
+  "补齐",
+  "支持",
+  "更新",
+  "rename",
+  "fix",
+  "change",
+  "update",
+  "implement",
+  "add",
+  "remove",
+  "optimize",
+  "optimise",
+  "refactor",
+  "debug",
+  "support"
+];
+const AUTO_SESSION_TITLE_TECHNICAL_WORDS = [
+  "terminal",
+  "agent",
+  "chat",
+  "session",
+  "title",
+  "name",
+  "logic",
+  "api",
+  "route",
+  "ui",
+  "ux",
+  "test",
+  "readme",
+  "docs",
+  "会话",
+  "标题",
+  "命名",
+  "逻辑",
+  "接口",
+  "路由",
+  "页面",
+  "前端",
+  "后端",
+  "文档",
+  "测试",
+  "工作区"
+];
+const AUTO_SESSION_TITLE_FOLLOW_UPS = ["继续", "继续处理", "接着", "然后呢", "next", "continue"];
+
+function normalizeSessionTitleValue(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().split(/\s+/u).filter(Boolean).join(" ");
+}
+
+function containsAutoSessionTitleWord(value, words) {
+  return words.some((item) => value.includes(item));
+}
+
+function stripAutoSessionTitlePrefix(value) {
+  let trimmed = normalizeSessionTitleValue(value);
+  let lower = trimmed.toLowerCase();
+  let updated = true;
+  while (updated) {
+    updated = false;
+    AUTO_SESSION_TITLE_POLITE_PREFIXES.forEach((prefix) => {
+      if (!lower.startsWith(prefix)) {
+        return;
+      }
+      trimmed = normalizeSessionTitleValue(trimmed.slice(prefix.length));
+      lower = trimmed.toLowerCase();
+      updated = true;
+    });
+  }
+  return trimmed.replace(/^[- ]+/u, "");
+}
+
+function isBootstrapSessionTitle(value) {
+  const lower = stripAutoSessionTitlePrefix(value).toLowerCase();
+  if (!lower) {
+    return false;
+  }
+  return containsAutoSessionTitleWord(lower, AUTO_SESSION_TITLE_BOOTSTRAP_VERBS)
+    && containsAutoSessionTitleWord(lower, AUTO_SESSION_TITLE_REPO_WORDS);
+}
+
+function isFollowUpSessionTitle(value) {
+  return AUTO_SESSION_TITLE_FOLLOW_UPS.includes(normalizeSessionTitleValue(value).toLowerCase());
+}
+
+function splitAutoSessionTitleSegments(value) {
+  return normalizeSessionTitleValue(value)
+    .replace(/[，,。.;；:\r]+/gu, "\n")
+    .split("\n")
+    .map((item) => normalizeSessionTitleValue(item))
+    .filter(Boolean);
+}
+
+function extractBootstrapSessionTitleRemainder(value) {
+  const trimmed = stripAutoSessionTitlePrefix(value);
+  if (!isBootstrapSessionTitle(trimmed)) {
+    return "";
+  }
+  const lower = trimmed.toLowerCase();
+  for (const connector of AUTO_SESSION_TITLE_CONNECTORS) {
+    const index = lower.indexOf(connector);
+    if (index < 0) {
+      continue;
+    }
+    const remainder = stripAutoSessionTitlePrefix(trimmed.slice(index + connector.length));
+    if (remainder) {
+      return remainder;
+    }
+  }
+  return "";
+}
+
+function trimBootstrapSessionTitlePrefix(value) {
+  const normalized = normalizeSessionTitleValue(value);
+  if (!normalized) {
+    return "";
+  }
+  const segments = splitAutoSessionTitleSegments(normalized);
+  if (!segments.length) {
+    return normalized;
+  }
+  const first = stripAutoSessionTitlePrefix(segments[0]);
+  const remainder = extractBootstrapSessionTitleRemainder(first);
+  if (remainder) {
+    return normalizeSessionTitleValue([remainder, ...segments.slice(1)].join(" "));
+  }
+  if (isBootstrapSessionTitle(first) && segments.length > 1) {
+    return normalizeSessionTitleValue(segments.slice(1).join(" "));
+  }
+  return normalized;
+}
+
+function scoreAutoSessionTitle(value) {
+  const normalized = normalizeSessionTitleValue(value);
+  if (!normalized) {
+    return 0;
+  }
+  let score = 1;
+  const length = [...normalized].length;
+  if (length >= 10) {
+    score += 2;
+  } else if (length >= 6) {
+    score += 1;
+  }
+  const lower = normalized.toLowerCase();
+  if (containsAutoSessionTitleWord(lower, AUTO_SESSION_TITLE_ACTION_WORDS)) {
+    score += 2;
+  }
+  if (containsAutoSessionTitleWord(lower, AUTO_SESSION_TITLE_TECHNICAL_WORDS)) {
+    score += 2;
+  }
+  if (/[\/_.#]/u.test(normalized)) {
+    score += 1;
+  }
+  if (isBootstrapSessionTitle(normalized)) {
+    score -= 4;
+  }
+  if (isFollowUpSessionTitle(normalized)) {
+    score -= 3;
+  }
+  if (length <= 4) {
+    score -= 2;
+  }
+  return Math.max(score, 0);
+}
+
+function isDefaultSessionTitle(value) {
+  return SESSION_TITLE_PLACEHOLDERS.has(normalizeSessionTitleValue(value));
+}
+
+function inferStoredSessionTitleState(title, fallbackTitle = "") {
+  const normalizedTitle = normalizeSessionTitleValue(title);
+  const normalizedFallback = normalizeSessionTitleValue(fallbackTitle);
+  if (!normalizedTitle || isDefaultSessionTitle(normalizedTitle) || (normalizedFallback && normalizedTitle.toLowerCase() === normalizedFallback.toLowerCase())) {
+    return { titleAuto: true, titleScore: 0 };
+  }
+  const trimmed = trimBootstrapSessionTitlePrefix(normalizedTitle);
+  const titleScore = scoreAutoSessionTitle(trimmed);
+  if (titleScore < AUTO_SESSION_TITLE_STABLE_SCORE
+    && (trimmed !== normalizedTitle || isBootstrapSessionTitle(normalizedTitle) || isFollowUpSessionTitle(normalizedTitle))) {
+    return { titleAuto: true, titleScore };
+  }
+  return { titleAuto: false, titleScore };
+}
+
+function buildAutoSessionTitle(value, maxLength) {
+  const normalized = normalizeSessionTitleValue(value);
+  if (!normalized) {
+    return { title: "", titleAuto: true, titleScore: 0 };
+  }
+  const trimmed = trimBootstrapSessionTitlePrefix(normalized);
+  const titleScore = scoreAutoSessionTitle(trimmed);
+  const candidate = titleScore > 0 ? trimmed : normalized;
+  return {
+    title: shorten(candidate, maxLength),
+    titleAuto: titleScore < AUTO_SESSION_TITLE_STABLE_SCORE,
+    titleScore,
+  };
+}
+
 function getSession(id = activeConversationSessionID(), route = state.currentRoute) {
   const normalizedID = normalizeText(id);
   return conversationSessions(route).find((item) => item.id === normalizedID) || null;
@@ -3095,7 +3363,8 @@ function normalizeStoredSession(item, mode = routeConversationMode()) {
     return null;
   }
   const id = typeof item.id === "string" && item.id ? item.id : makeID();
-  const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "New Chat";
+  const defaultTitle = mode === "agent" ? "New Agent Run" : "New Chat";
+  const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : defaultTitle;
   const createdAt = Number.isFinite(item.createdAt) ? item.createdAt : Date.now();
   const target = normalizeChatTarget({
     type: item.targetType || (mode === "agent" ? "agent" : "model"),
@@ -3110,9 +3379,12 @@ function normalizeStoredSession(item, mode = routeConversationMode()) {
       messages.push(normalized);
     }
   }
+  const inferredTitleState = inferStoredSessionTitleState(title, defaultTitle);
   return {
     id,
     title,
+    titleAuto: typeof item.titleAuto === "boolean" ? item.titleAuto : inferredTitleState.titleAuto,
+    titleScore: Number.isFinite(item.titleScore) ? Math.max(Number(item.titleScore), 0) : inferredTitleState.titleScore,
     createdAt,
     messages,
     historyBucket: normalizeText(item.historyBucket) || conversationHistoryBucketForTarget(target),
@@ -3916,6 +4188,8 @@ function createSession(target = null, mode = routeConversationMode(), route = st
   const item = {
     id: makeID(),
     title: t(routeAllowsTargetPicker(route) ? "session.new_agent_title" : "session.new_title"),
+    titleAuto: true,
+    titleScore: 0,
     createdAt,
     messages: [],
     targetType: normalizedTarget.type,
@@ -4116,15 +4390,26 @@ function renderSessions() {
 }
 
 function updateSessionTitle(session, fallbackText) {
-  const titleKey = routeAllowsTargetPicker() ? "session.new_agent_title" : "session.new_title";
-  if (session.title !== t(titleKey) && session.title !== "New Chat" && session.title !== "新对话" && session.title !== "New Agent Run" && session.title !== "新 Agent 会话") {
+  const currentState = inferStoredSessionTitleState(session.title, "");
+  const currentAuto = typeof session.titleAuto === "boolean" ? session.titleAuto : currentState.titleAuto;
+  const currentScore = Number.isFinite(session.titleScore) ? Math.max(Number(session.titleScore), 0) : currentState.titleScore;
+  if (!currentAuto && !isDefaultSessionTitle(session.title)) {
     return;
   }
-  const text = fallbackText.trim();
-  if (!text) {
+  const nextTitle = buildAutoSessionTitle(fallbackText, 18);
+  if (!nextTitle.title) {
     return;
   }
-  session.title = shorten(text, 18);
+  const currentTitle = normalizeSessionTitleValue(session.title);
+  const canReplacePlaceholder = (isDefaultSessionTitle(currentTitle) || !currentTitle) && nextTitle.title !== session.title;
+  if (!canReplacePlaceholder && nextTitle.titleScore <= currentScore) {
+    session.titleAuto = currentAuto;
+    session.titleScore = currentScore;
+    return;
+  }
+  session.title = nextTitle.title;
+  session.titleAuto = nextTitle.titleAuto;
+  session.titleScore = nextTitle.titleScore;
   persistSessions();
 }
 

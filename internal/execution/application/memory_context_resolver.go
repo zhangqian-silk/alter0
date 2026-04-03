@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,7 +35,7 @@ type memoryContextResolver struct{}
 type memorySelectionSpec struct {
 	ID    string
 	Title string
-	Paths func(now time.Time) []string
+	Paths func(msg shareddomain.UnifiedMessage, now time.Time) []string
 }
 
 type memoryFileRecord struct {
@@ -80,7 +81,7 @@ func (r *memoryContextResolver) Resolve(msg shareddomain.UnifiedMessage) memoryC
 		if !ok {
 			continue
 		}
-		files := loadSelectionMemoryFiles(spec, repoRoot, now, &remainingChars)
+		files := loadSelectionMemoryFiles(spec, repoRoot, msg, now, &remainingChars)
 		if len(files) == 0 {
 			continue
 		}
@@ -117,22 +118,26 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 		memorySelectionUserMD: {
 			ID:    memorySelectionUserMD,
 			Title: "USER.md",
-			Paths: func(time.Time) []string { return []string{"USER.md"} },
+			Paths: func(_ shareddomain.UnifiedMessage, _ time.Time) []string { return []string{"USER.md"} },
 		},
 		memorySelectionSoulMD: {
 			ID:    memorySelectionSoulMD,
 			Title: "SOUL.md",
-			Paths: func(time.Time) []string { return []string{"SOUL.md"} },
+			Paths: func(_ shareddomain.UnifiedMessage, _ time.Time) []string { return []string{"SOUL.md"} },
 		},
 		memorySelectionAgentsMD: {
 			ID:    memorySelectionAgentsMD,
 			Title: "AGENTS.md",
-			Paths: func(time.Time) []string { return []string{"AGENTS.md"} },
+			Paths: func(msg shareddomain.UnifiedMessage, _ time.Time) []string {
+				return []string{
+					filepath.ToSlash(filepath.Join(".alter0", "agents", normalizeMemoryAgentID(metadataValue(msg.Metadata, execdomain.AgentIDMetadataKey)), "AGENTS.md")),
+				}
+			},
 		},
 		memorySelectionLongTerm: {
 			ID:    memorySelectionLongTerm,
 			Title: "MEMORY.md",
-			Paths: func(time.Time) []string {
+			Paths: func(_ shareddomain.UnifiedMessage, _ time.Time) []string {
 				return []string{
 					filepath.ToSlash(filepath.Join(".alter0", "memory", "long-term", "MEMORY.md")),
 					"MEMORY.md",
@@ -143,7 +148,7 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 		memorySelectionDailyToday: {
 			ID:    memorySelectionDailyToday,
 			Title: "daily memory (today)",
-			Paths: func(time.Time) []string {
+			Paths: func(_ shareddomain.UnifiedMessage, _ time.Time) []string {
 				return []string{
 					filepath.ToSlash(filepath.Join(".alter0", "memory", day+".md")),
 					filepath.ToSlash(filepath.Join("memory", day+".md")),
@@ -153,7 +158,7 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 		memorySelectionDailyPrevious: {
 			ID:    memorySelectionDailyPrevious,
 			Title: "daily memory (yesterday)",
-			Paths: func(time.Time) []string {
+			Paths: func(_ shareddomain.UnifiedMessage, _ time.Time) []string {
 				return []string{
 					filepath.ToSlash(filepath.Join(".alter0", "memory", yesterday+".md")),
 					filepath.ToSlash(filepath.Join("memory", yesterday+".md")),
@@ -161,6 +166,18 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 			},
 		},
 	}
+}
+
+var memoryAgentIDSanitizer = regexp.MustCompile(`[^a-z0-9._-]+`)
+
+func normalizeMemoryAgentID(raw string) string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	normalized = memoryAgentIDSanitizer.ReplaceAllString(normalized, "-")
+	normalized = strings.Trim(normalized, "-.")
+	if normalized == "" {
+		return "unknown"
+	}
+	return normalized
 }
 
 func resolveMemoryRepoRoot() (string, error) {
@@ -175,8 +192,8 @@ func resolveMemoryRepoRoot() (string, error) {
 	return absolute, nil
 }
 
-func loadSelectionMemoryFiles(spec memorySelectionSpec, repoRoot string, now time.Time, remainingChars *int) []memoryFileRecord {
-	paths := spec.Paths(now)
+func loadSelectionMemoryFiles(spec memorySelectionSpec, repoRoot string, msg shareddomain.UnifiedMessage, now time.Time, remainingChars *int) []memoryFileRecord {
+	paths := spec.Paths(msg, now)
 	if len(paths) == 0 {
 		return nil
 	}

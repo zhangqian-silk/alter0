@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   expectComposerCounter,
   expectComposerFocusedValue,
+  expectComposerReady,
   expectComposerState,
   expectComposerValue,
 } from "./helpers/asserts/composer";
@@ -395,6 +396,49 @@ test.describe("Chat composer", () => {
     await expect(chatPage.latestUserBubble()).toContainText("clear-after-send");
     await expectComposerValue(composer, "");
     await expectComposerState(composer, { draft: "empty" });
+  });
+
+  test("upgrades the session title after a later user message becomes specific", async ({ page }) => {
+    const seededAt = Date.now();
+    await page.addInitScript(({ createdAt }) => {
+      const sessionID = "session-seeded-title";
+      window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
+        id: sessionID,
+        title: "先拉取仓库",
+        titleAuto: true,
+        titleScore: 0,
+        createdAt,
+        messages: [{
+          id: "message-seeded-title",
+          role: "user",
+          text: "先拉取仓库",
+          at: createdAt,
+          status: "done"
+        }],
+        historyBucket: "agent:main",
+        targetType: "model",
+        targetID: "raw-model",
+        targetName: "Raw Model",
+        modelProviderID: "",
+        modelID: "",
+        toolIDs: [],
+        skillIDs: [],
+        mcpIDs: []
+      }]));
+      window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
+        "agent:main": sessionID
+      }));
+    }, { createdAt: seededAt });
+
+    const { chatPage, composer } = await openChatWorkspace(page);
+    const input = composer.input();
+    await expect(page.locator(".session-card-title").first()).toContainText("先拉取仓库");
+
+    await input.fill("修改 terminal 和 agent 的会话标题");
+    await composer.submitButton().click();
+    await expect(chatPage.latestUserBubble()).toContainText("修改 terminal 和 agent 的会话标题");
+    await expectComposerReady(composer);
+    await expect(page.locator(".session-card-title").first()).toContainText("修改 terminal");
   });
 
   test("keeps user bubbles right-aligned and within eighty percent width", async ({ page }) => {
