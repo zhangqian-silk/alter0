@@ -4281,7 +4281,7 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "provider not found"})
 			return
 		}
-		apiKey := strings.TrimSpace(req.APIKey)
+		apiKey := normalizeLLMProviderAPIKey(req.APIKey)
 		if apiKey == "" {
 			apiKey = existing.APIKey
 		}
@@ -4427,6 +4427,14 @@ func toLLMProviderResponse(p llmdomain.ModelProvider, maskKey bool) llmProviderR
 		IsEnabled:    p.IsEnabled,
 		IsDefault:    p.IsDefault,
 	}
+}
+
+func normalizeLLMProviderAPIKey(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "-" {
+		return ""
+	}
+	return trimmed
 }
 
 func sessionResourceID(path string) (string, string, bool) {

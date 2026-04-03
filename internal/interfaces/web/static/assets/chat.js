@@ -13367,6 +13367,8 @@ async function loadModelsView(container) {
     return normalized === "-" ? "" : normalized;
   };
 
+  const normalizeProviderAPIKeyField = (value) => normalizeOptionalProviderField(value);
+
   const sanitizeOpenRouterConfig = (config, providerType) => {
     if (providerType !== "openrouter" && !config) {
       return null;
@@ -13392,7 +13394,7 @@ async function loadModelsView(container) {
       provider_type: providerType,
       api_type: normalizeText(provider?.api_type || "") || "openai-responses",
       base_url: normalizeText(provider?.base_url || ""),
-      api_key: normalizeText(provider?.api_key || ""),
+      api_key: normalizeProviderAPIKeyField(provider?.api_key || ""),
       openrouter: sanitizeOpenRouterConfig(provider?.openrouter, providerType),
       default_model: normalizeText(provider?.default_model || ""),
       models,
@@ -14030,7 +14032,7 @@ async function loadModelsView(container) {
             provider_type: providerType,
             api_type: normalizeText(formData.get("api_type") || "") || "openai-responses",
             base_url: normalizeText(formData.get("base_url") || ""),
-            api_key: normalizeText(formData.get("api_key") || ""),
+            api_key: normalizeProviderAPIKeyField(formData.get("api_key") || ""),
             openrouter: readOpenRouterConfigFromForm(providerForm, providerType),
             default_model: defaultModel,
             models,
