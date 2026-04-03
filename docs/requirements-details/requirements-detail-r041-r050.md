@@ -367,6 +367,7 @@ ReAct 模式 Agent 调用
 5. Web `Chat` 发送区必须支持会话级 `Provider / Model` 选择；复杂度评估、同步执行与 Agent/ReAct 执行需复用该选择结果。
 6. Agent Profile 必须支持独立绑定 `provider_id` 与 `model`，用于为不同 Agent 预设执行模型。
 7. 历史配置兼容要求：旧配置中若默认 Provider 指向禁用项或缺失项，加载时需自动收敛到可用默认值，不得因脏数据阻断系统启动。
+   - 若历史 Provider 缺失 `api_key`，加载阶段需将该 Provider 自动收敛为禁用态并清除默认标记，保留其余配置供 `Models` 控制面补录凭据。
 8. `OpenRouter` 配置要求：
    - 控制面需允许直接维护 `Site URL`、`App Name`、回退模型列表与 Provider 路由偏好
    - `provider_type = openrouter` 且 `base_url` 为空时，保存阶段自动回填官方默认地址

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -375,6 +376,60 @@ func TestLLMProviderCreateRejectsPlaceholderDashAPIKey(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "api_key is required") {
 		t.Fatalf("expected api_key required error, got %s", rec.Body.String())
+	}
+}
+
+func TestLLMProviderListRecoversLegacyProviderWithoutAPIKey(t *testing.T) {
+	tempDir := t.TempDir()
+	storage := llminfra.NewModelConfigStorage(filepath.Join(tempDir, "model_config.json"))
+	data := `{
+  "providers": [
+    {
+      "id": "legacy-openai",
+      "name": "Legacy OpenAI",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "",
+      "default_model": "gpt-4o",
+      "models": [
+        { "id": "gpt-4o", "name": "GPT-4o", "is_enabled": true }
+      ],
+      "is_enabled": true,
+      "is_default": true
+    }
+  ],
+  "default_provider_id": "legacy-openai"
+}`
+	if err := os.WriteFile(filepath.Join(tempDir, "model_config.json"), []byte(data), 0644); err != nil {
+		t.Fatalf("write config file failed: %v", err)
+	}
+
+	server := &Server{
+		llm:    llmapp.NewModelConfigService(storage),
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/control/llm/providers", nil)
+	rec := httptest.NewRecorder()
+	server.llmProviderListHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Items []llmProviderResponse `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 provider, got %d", len(resp.Items))
+	}
+	if resp.Items[0].IsEnabled {
+		t.Fatalf("expected legacy provider to be disabled in response")
+	}
+	if resp.Items[0].APIKey != "" {
+		t.Fatalf("expected empty api key in response, got %q", resp.Items[0].APIKey)
 	}
 }
 

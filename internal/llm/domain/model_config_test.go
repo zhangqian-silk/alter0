@@ -363,6 +363,32 @@ func TestModelConfigValidateReconcilesDisabledLegacyDefault(t *testing.T) {
 	}
 }
 
+func TestModelConfigEnableProviderRejectsMissingAPIKey(t *testing.T) {
+	config := &ModelConfig{}
+	if err := config.AddProvider(ModelProvider{
+		ID:        "legacy-provider",
+		Name:      "Legacy Provider",
+		APIType:   ProviderAPITypeOpenAIResponses,
+		BaseURL:   "https://example.com/v1",
+		APIKey:    "",
+		IsEnabled: false,
+		Models: []ModelInfo{
+			{ID: "gpt-4o", Name: "GPT-4o", IsEnabled: true},
+		},
+		DefaultModel: "gpt-4o",
+	}); err != nil {
+		t.Fatalf("add legacy provider failed: %v", err)
+	}
+
+	err := config.EnableProvider("legacy-provider", true)
+	if err == nil {
+		t.Fatalf("expected enable provider to require api key")
+	}
+	if err.Error() != "api_key is required" {
+		t.Fatalf("expected api_key is required, got %v", err)
+	}
+}
+
 func TestModelProviderValidateDefaultsOpenRouterFields(t *testing.T) {
 	provider := ModelProvider{
 		ID:           "openrouter",

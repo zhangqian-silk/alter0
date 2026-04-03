@@ -123,7 +123,7 @@ func normalizeProvider(provider ModelProvider) (ModelProvider, error) {
 	if provider.BaseURL == "" {
 		return ModelProvider{}, errors.New("base_url is required")
 	}
-	if provider.APIKey == "" {
+	if provider.APIKey == "" && provider.IsEnabled {
 		return ModelProvider{}, errors.New("api_key is required")
 	}
 	if !isSupportedProviderAPIType(provider.APIType) {
@@ -483,6 +483,9 @@ func (c *ModelConfig) SetDefaultProvider(providerID string) error {
 func (c *ModelConfig) EnableProvider(providerID string, enabled bool) error {
 	for i := range c.Providers {
 		if c.Providers[i].ID == providerID {
+			if enabled && normalizeOptionalPlaceholder(c.Providers[i].APIKey) == "" {
+				return errors.New("api_key is required")
+			}
 			c.Providers[i].IsEnabled = enabled
 			c.Providers[i].UpdatedAt = time.Now()
 			c.normalizeDefaultProviderState()
