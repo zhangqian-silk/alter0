@@ -310,6 +310,121 @@ func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
 	}
 }
 
+func TestExecuteNaturalLanguageInjectsAgentSpecificAgentsMD(t *testing.T) {
+	root := t.TempDir()
+	agentPath := filepath.Join(root, ".alter0", "agents", "researcher", "AGENTS.md")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
+		t.Fatalf("create agent memory dir: %v", err)
+	}
+	if err := os.WriteFile(agentPath, []byte("scope: researcher only"), 0o644); err != nil {
+		t.Fatalf("write AGENTS.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("shared root should not be injected"), 0o644); err != nil {
+		t.Fatalf("write root AGENTS.md: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-agent-memory",
+		SessionID:   "s-agent-memory",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "use agent memory",
+		TraceID:     "t-agent-memory",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey: "researcher",
+			memoryIncludeFilterKey:        `["agents_md"]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+
+	rawMemoryContext := processor.lastMetadata[execdomain.MemoryContextMetadataKey]
+	if rawMemoryContext == "" {
+		t.Fatalf("missing %s metadata", execdomain.MemoryContextMetadataKey)
+	}
+	var memoryContext execdomain.MemoryContext
+	if err := json.Unmarshal([]byte(rawMemoryContext), &memoryContext); err != nil {
+		t.Fatalf("unmarshal memory context: %v", err)
+	}
+	if len(memoryContext.Files) != 1 {
+		t.Fatalf("memory context size = %d, want 1", len(memoryContext.Files))
+	}
+	if got := memoryContext.Files[0].Path; !strings.HasSuffix(got, "/.alter0/agents/researcher/AGENTS.md") {
+		t.Fatalf("unexpected agent AGENTS path: %q", got)
+	}
+	if got := memoryContext.Files[0].Content; got != "scope: researcher only" {
+		t.Fatalf("unexpected agent AGENTS content: %q", got)
+	}
+}
+
+func TestExecuteNaturalLanguageReturnsMissingAgentSpecificAgentsMDPath(t *testing.T) {
+	root := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-agent-missing",
+		SessionID:   "s-agent-missing",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "create agent memory",
+		TraceID:     "t-agent-missing",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey: "Writing Agent",
+			memoryIncludeFilterKey:        `["agents_md"]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+
+	rawMemoryContext := processor.lastMetadata[execdomain.MemoryContextMetadataKey]
+	if rawMemoryContext == "" {
+		t.Fatalf("missing %s metadata", execdomain.MemoryContextMetadataKey)
+	}
+	var memoryContext execdomain.MemoryContext
+	if err := json.Unmarshal([]byte(rawMemoryContext), &memoryContext); err != nil {
+		t.Fatalf("unmarshal memory context: %v", err)
+	}
+	if len(memoryContext.Files) != 1 {
+		t.Fatalf("memory context size = %d, want 1", len(memoryContext.Files))
+	}
+	file := memoryContext.Files[0]
+	if file.Exists {
+		t.Fatalf("expected missing agent AGENTS.md path, got %+v", file)
+	}
+	if got := file.Path; !strings.HasSuffix(got, "/.alter0/agents/writing-agent/AGENTS.md") {
+		t.Fatalf("unexpected missing agent AGENTS path: %q", got)
+	}
+}
+
 func TestExecuteNaturalLanguageResolvesSkillConflicts(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	source := &stubSkillSource{items: []controldomain.Capability{

@@ -89,6 +89,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 面向 Web 会话消息。
 - 默认绑定内置 `Alter0`（`main`），作为通用对话入口。
 - Web 登录后，Web 对话页按目标 Agent 维护独立 Session 历史；带独立前端入口的 Agent 不进入通用 `Agent` 页的会话历史。
+- `Chat / Agent` 新建会话先使用默认占位标题；若前几条用户消息仍是“拉取仓库 / 看仓库 / 分析仓库”一类通用开场，后续更具体的用户消息会自动升级会话标题，直到主题稳定。
 - 运行时配置收敛在输入框底部单行操作栏：`Model`、`Tools / MCP`、`Skills` 与发送按钮同排；移动端默认折叠为单一“会话设置”入口，并与发送按钮共用同一行，优先保留输入与发送主动作。
 - `Chat` 会话设置弹窗中的标题、说明与右侧标签在窄宽度下需保持可读：主标题按可用宽度截断，说明文案允许换行，避免发生重叠或互相覆盖。
 - 移动端 `Chat / Agent` 输入区在软键盘弹起、收起与可视视口高度变化期间，会基于 `VisualViewport` 同步有效视口高度；输入区持续贴住可见底部，聚焦输入框不会被键盘遮挡。
@@ -127,7 +128,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - Agent 流式回复中的 `action / observation` 执行细节会在助手消息内收敛为可折叠 `Process` 区块；最终答复继续作为正文展示，默认在收口后优先突出最终结果，用户可随时展开回看过程。
 - Agent 请求一旦进入后端执行链，浏览器侧任何交互事件都只影响当前连接状态，不影响 Agent 本身的执行与会话持久化；断开后重新进入历史即可查看最终结果。
 - 每个 Agent 可独立配置名称、system prompt、tool 白名单、Skill 选择、MCP 选择与 Memory Files 选择。
-- Agent 可按 Profile 勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory；所选文件会在执行前以结构化 `memory_context` 注入 Agent 与 Codex 执行链路。
+- Agent 可按 Profile 勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory；其中 `AGENTS.md` 固定解析为当前 `agent_id` 的私有文件 `.alter0/agents/<agent_id>/AGENTS.md`，不与其他 Agent 共享；`USER.md`、`SOUL.md`、长期/日记忆继续作为共享记忆注入执行链路。
 - 注入内容同时携带可写文件路径；Agent 只能在这些已解析出的记忆文件上使用 `search_memory`、`read_memory`、`write_memory` 做检索与持久化维护，其余具体文件与命令操作统一交给 `codex_exec`。
 - Web 端将用户管理的 Agent Profile 放在 `Agent Profiles` 页面；系统内置 Agent 由服务注册，不能通过控制面覆盖或删除。
 - Agent 的 `id`、`version` 等系统字段由服务端统一生成和维护，管理页不要求用户手填。
@@ -139,6 +140,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 默认仅注入运行时必需上下文，不复用 Chat 会话记忆与长期记忆。
 - Terminal 会话历史在同一 Web 登录态下对手机与 PC 共享，但每个 Terminal 会话仍使用独立工作区 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
 - Terminal 会持久化 Codex CLI 线程标识与会话状态；会话态固定为 `ready / busy / exited / interrupted`，其中 `ready` 表示当前会话可继续交互、`busy` 表示当前轮正在执行；执行细节继续由 turn/step 维度的 `running / completed / failed / interrupted` 表示。运行态退出后保留原会话历史，继续发送即可在同一会话内恢复。
+- Terminal 新会话先使用占位标题；首条输入后会按输入内容自动命名。若首轮仍是“拉取仓库 / 分析仓库”等通用开场，后续更具体的输入会继续升级当前会话标题，避免列表里长期堆积同名会话。
 - 同一 Terminal 会话在单次运行态中断或退出后，只记录一条对应状态提醒；恢复后若再次发生新的中断或退出，再按新的状态周期补充提醒。
 - Terminal 输入区上缘的运行态 hint 只服务于当前空闲会话；一旦用户重新发送恢复当前会话，或从旧会话切到 `New` 待创建态，旧的 `Exited / Interrupted / Failed` 提示会立即清空，不再在发送中残留。
 - Terminal 工作区头部同时提供 `Close` 与 `Delete`；会话列表中的历史会话也支持直接删除：`Close` 仅退出当前运行态并保留会话历史与线程标识，`Delete` 会移除会话记录、持久化状态文件与该会话对应的独立工作区。
@@ -508,7 +510,7 @@ curl -X POST http://127.0.0.1:18088/api/agent/messages \
 4. Agent 运行时固定采用“Codex CLI 负责具体执行、Agent 负责理解和驱动”的模式：稳定工具面包括 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，系统会自动补充收口工具 `complete`；允许委派的 Agent 可额外启用 `delegate_agent`。`search_memory` 负责在已解析的记忆文件内按关键字检索历史偏好、缩写和上下文，再配合 `read_memory` / `write_memory` 做精读和更新。`coding` Agent 会优先把实质性开发与验证步骤交给 `codex_exec`，并按每轮执行结果继续推进后续步骤；运行时还会向其注入当前仓库远端、本地仓库路径、活动分支、会话工作区、预览域名与 PR 交付规则，要求在需要测试页面时使用 `https://<session_short_hash>.alter0.cn`。
 5. `Chat` 默认绑定 `main` Agent；`Agent` 页面作为其余入口 Agent 的统一运行页，并按目标 Agent 隔离维护独立会话历史；具备独立前端入口的 Agent 不进入该页历史。
 6. Agent 的 Skill、MCP 与 Memory Files 选择会在执行前注入运行时上下文，执行过程仍复用统一编排链路。
-7. 内置 `memory` Skill 会明确记忆文件的读写逻辑：按任务类型决定先读哪些文件、按信息类型决定写入哪个文件、遇到冲突时按 `SOUL.md > AGENTS.md > 长期记忆 > 日记忆` 收敛；实际文件快照仍由 `memory_files` 注入提供。
+7. 内置 `memory` Skill 会明确记忆文件的读写逻辑：按任务类型决定先读哪些文件、按信息类型决定写入哪个文件、遇到冲突时按 `SOUL.md > AGENTS.md > 长期记忆 > 日记忆` 收敛；其中 `AGENTS.md` 固定为当前 Agent 的非共享规则文件 `.alter0/agents/<agent_id>/AGENTS.md`，`USER.md`、`SOUL.md` 与长期/日记忆继续共享；实际文件快照仍由 `memory_files` 注入提供。
 8. `memory_files` 当前支持：`user_md`、`soul_md`、`agents_md`、`memory_long_term`、`memory_daily_today`、`memory_daily_yesterday`。
 9. Memory Files 注入会携带文件内容、绝对路径、是否存在、最近更新时间；文件不存在时仍会暴露预期路径，便于 Agent 直接创建并写入。
 10. Web `Agent Profiles` 页面用于管理用户自定义 Agent Profile；内置 Agent 由服务托管；`Chat` 页面绑定 `Alter0`；`Agent` 页面作为其余入口 Agent 的通用交互入口。

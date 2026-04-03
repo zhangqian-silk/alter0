@@ -16,6 +16,8 @@ const terminalStateDirectoryName = "state"
 
 type persistedSessionRecord struct {
 	Summary      terminaldomain.Session `json:"summary"`
+	TitleAuto    *bool                  `json:"title_auto,omitempty"`
+	TitleScore   int                    `json:"title_score,omitempty"`
 	Entries      []terminaldomain.Entry `json:"entries,omitempty"`
 	Turns        []persistedTurnRecord  `json:"turns,omitempty"`
 	NextID       int                    `json:"next_id,omitempty"`
@@ -193,6 +195,8 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 
 	record := persistedSessionRecord{
 		Summary:      item.summary,
+		TitleAuto:    boolPointer(item.titleAuto),
+		TitleScore:   item.titleScore,
 		Entries:      append([]terminaldomain.Entry{}, item.entries...),
 		NextID:       item.nextID,
 		NextTurnID:   item.nextTurnID,
@@ -265,6 +269,7 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	}
 	session := &runtimeSession{
 		summary:      summary,
+		titleScore:   record.TitleScore,
 		entries:      append([]terminaldomain.Entry{}, record.Entries...),
 		nextID:       record.NextID,
 		nextTurnID:   record.NextTurnID,
@@ -272,6 +277,11 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 		threadID:     threadID,
 		closedByUser: record.ClosedByUser,
 		turns:        make([]*runtimeTurn, 0, len(record.Turns)),
+	}
+	if record.TitleAuto != nil {
+		session.titleAuto = *record.TitleAuto
+	} else {
+		session.titleAuto, session.titleScore = inferAutoSessionTitleState(summary.Title, sessionID)
 	}
 	for _, turnRecord := range record.Turns {
 		turn := &runtimeTurn{
@@ -301,6 +311,10 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	}
 	normalizeRestoredSessionState(session, now)
 	return session
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }
 
 func normalizeRestoredSessionState(session *runtimeSession, now time.Time) {

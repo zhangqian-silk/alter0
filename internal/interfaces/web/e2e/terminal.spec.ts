@@ -39,6 +39,20 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.workspace()).toContainText("Ready");
   });
 
+  test("upgrades the terminal session title after a later prompt becomes specific", async ({ page }) => {
+    const { terminalPage } = await openTerminalWorkspace(page, { scope: "title-upgrade" });
+
+    await terminalPage.createButton().click();
+    await terminalPage.composer().input().fill("先拉取仓库");
+    await terminalPage.composer().submitButton().click();
+    await expect(page.locator(".terminal-session-title").first()).toContainText("先拉取仓库");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
+
+    await terminalPage.composer().input().fill("修改 terminal 和 agent 的会话标题");
+    await terminalPage.composer().submitButton().click();
+    await expect(page.locator(".terminal-session-title").first()).toContainText("修改 terminal");
+  });
+
   test("keeps terminal owner identity stable after sessionStorage is cleared and the page reloads", async ({ page, request }) => {
     const clientID = createTerminalClientID("owner-persist");
     const session = await createTerminalSession(request, clientID);

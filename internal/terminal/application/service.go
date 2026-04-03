@@ -115,6 +115,8 @@ type runtimeSession struct {
 	mu sync.RWMutex
 
 	summary      terminaldomain.Session
+	titleAuto    bool
+	titleScore   int
 	entries      []terminaldomain.Entry
 	nextID       int
 	turns        []*runtimeTurn
@@ -187,8 +189,10 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 		return terminaldomain.Session{}, err
 	}
 	title := strings.TrimSpace(req.Title)
+	titleAuto := false
 	if title == "" {
 		title = sessionID
+		titleAuto = true
 	}
 	now := time.Now().UTC()
 	session := &runtimeSession{
@@ -203,7 +207,8 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 			CreatedAt:         now,
 			UpdatedAt:         now,
 		},
-		entries: []terminaldomain.Entry{},
+		titleAuto: titleAuto,
+		entries:   []terminaldomain.Entry{},
 	}
 	s.sessions[sessionID] = session
 	s.persistSession(session)
@@ -243,8 +248,13 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 		return terminaldomain.Session{}, err
 	}
 	title := strings.TrimSpace(req.Title)
+	titleAuto := false
+	titleScore := 0
 	if title == "" {
 		title = sessionID
+		titleAuto = true
+	} else {
+		titleAuto, titleScore = inferAutoSessionTitleState(title, sessionID)
 	}
 	createdAt := normalizeRecoveredSessionTime(req.CreatedAt, time.Now().UTC())
 	updatedAt := normalizeRecoveredSessionTime(req.UpdatedAt, createdAt)
@@ -269,8 +279,10 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 			LastOutputAt:      lastOutputAt,
 			UpdatedAt:         updatedAt,
 		},
-		entries:  []terminaldomain.Entry{},
-		threadID: resolveRecoveredThreadID(sessionID, terminalSessionID),
+		titleAuto:  titleAuto,
+		titleScore: titleScore,
+		entries:    []terminaldomain.Entry{},
+		threadID:   resolveRecoveredThreadID(sessionID, terminalSessionID),
 	}
 	s.sessions[sessionID] = session
 	s.persistSession(session)
@@ -436,8 +448,17 @@ func (s *Service) Input(ownerID string, sessionID string, input string) (termina
 		return terminaldomain.Session{}, ErrSessionNotRunning
 	}
 	now := time.Now().UTC()
-	if item.summary.Title == "" || item.summary.Title == item.summary.ID {
-		item.summary.Title = deriveSessionTitle(prompt, item.summary.ID)
+	if nextTitle, nextAuto, nextScore, changed := nextAutoSessionTitle(
+		item.summary.Title,
+		item.titleAuto,
+		item.titleScore,
+		prompt,
+		item.summary.ID,
+		64,
+	); changed {
+		item.summary.Title = nextTitle
+		item.titleAuto = nextAuto
+		item.titleScore = nextScore
 	}
 	item.summary.Status = terminaldomain.SessionStatusBusy
 	item.summary.UpdatedAt = now
@@ -1256,17 +1277,6 @@ func buildCodexLabel(commandPath string, args []string) string {
 	parts = append(parts, args...)
 	parts = append(parts, "exec")
 	return strings.Join(parts, " ")
-}
-
-func deriveSessionTitle(prompt string, fallback string) string {
-	normalized := strings.Join(strings.Fields(strings.TrimSpace(prompt)), " ")
-	if normalized == "" {
-		return fallback
-	}
-	if len(normalized) > 64 {
-		return normalized[:61] + "..."
-	}
-	return normalized
 }
 
 func normalizeCodexItemType(value string) string {
