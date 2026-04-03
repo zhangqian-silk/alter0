@@ -16,6 +16,7 @@ const terminalStateDirectoryName = "state"
 
 type persistedSessionRecord struct {
 	Summary      terminaldomain.Session `json:"summary"`
+	TitleManual  *bool                  `json:"title_manual,omitempty"`
 	TitleAuto    *bool                  `json:"title_auto,omitempty"`
 	TitleScore   int                    `json:"title_score,omitempty"`
 	Entries      []terminaldomain.Entry `json:"entries,omitempty"`
@@ -195,6 +196,7 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 
 	record := persistedSessionRecord{
 		Summary:      item.summary,
+		TitleManual:  boolPointer(item.titleManual),
 		TitleAuto:    boolPointer(item.titleAuto),
 		TitleScore:   item.titleScore,
 		Entries:      append([]terminaldomain.Entry{}, item.entries...),
@@ -278,8 +280,14 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 		closedByUser: record.ClosedByUser,
 		turns:        make([]*runtimeTurn, 0, len(record.Turns)),
 	}
+	if record.TitleManual != nil {
+		session.titleManual = *record.TitleManual
+	}
 	if record.TitleAuto != nil {
 		session.titleAuto = *record.TitleAuto
+		if record.TitleManual == nil {
+			session.titleManual = inferManualSessionTitleState(summary.Title, sessionID, session.titleAuto, session.titleScore)
+		}
 	} else {
 		session.titleAuto, session.titleScore = inferAutoSessionTitleState(summary.Title, sessionID)
 	}

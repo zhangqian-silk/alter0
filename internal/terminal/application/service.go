@@ -115,6 +115,7 @@ type runtimeSession struct {
 	mu sync.RWMutex
 
 	summary      terminaldomain.Session
+	titleManual  bool
 	titleAuto    bool
 	titleScore   int
 	entries      []terminaldomain.Entry
@@ -189,10 +190,13 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 		return terminaldomain.Session{}, err
 	}
 	title := strings.TrimSpace(req.Title)
+	titleManual := false
 	titleAuto := false
 	if title == "" {
 		title = sessionID
 		titleAuto = true
+	} else {
+		titleManual = true
 	}
 	now := time.Now().UTC()
 	session := &runtimeSession{
@@ -207,8 +211,9 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 			CreatedAt:         now,
 			UpdatedAt:         now,
 		},
-		titleAuto: titleAuto,
-		entries:   []terminaldomain.Entry{},
+		titleManual: titleManual,
+		titleAuto:   titleAuto,
+		entries:     []terminaldomain.Entry{},
 	}
 	s.sessions[sessionID] = session
 	s.persistSession(session)
@@ -248,6 +253,7 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 		return terminaldomain.Session{}, err
 	}
 	title := strings.TrimSpace(req.Title)
+	titleManual := false
 	titleAuto := false
 	titleScore := 0
 	if title == "" {
@@ -255,6 +261,7 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 		titleAuto = true
 	} else {
 		titleAuto, titleScore = inferAutoSessionTitleState(title, sessionID)
+		titleManual = inferManualSessionTitleState(title, sessionID, titleAuto, titleScore)
 	}
 	createdAt := normalizeRecoveredSessionTime(req.CreatedAt, time.Now().UTC())
 	updatedAt := normalizeRecoveredSessionTime(req.UpdatedAt, createdAt)
@@ -279,10 +286,11 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 			LastOutputAt:      lastOutputAt,
 			UpdatedAt:         updatedAt,
 		},
-		titleAuto:  titleAuto,
-		titleScore: titleScore,
-		entries:    []terminaldomain.Entry{},
-		threadID:   resolveRecoveredThreadID(sessionID, terminalSessionID),
+		titleManual: titleManual,
+		titleAuto:   titleAuto,
+		titleScore:  titleScore,
+		entries:     []terminaldomain.Entry{},
+		threadID:    resolveRecoveredThreadID(sessionID, terminalSessionID),
 	}
 	s.sessions[sessionID] = session
 	s.persistSession(session)
@@ -450,7 +458,7 @@ func (s *Service) Input(ownerID string, sessionID string, input string) (termina
 	now := time.Now().UTC()
 	if nextTitle, nextAuto, nextScore, changed := nextAutoSessionTitle(
 		item.summary.Title,
-		item.titleAuto,
+		item.titleManual,
 		item.titleScore,
 		prompt,
 		item.summary.ID,

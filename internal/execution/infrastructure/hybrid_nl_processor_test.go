@@ -157,7 +157,7 @@ func TestHybridNLProcessorAgentModeExecutesCodexToolLoop(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
 	processor := NewHybridNLProcessor(newTestProcessor(
 		"success",
-		`{"protocol":"alter0.codex-exec/v1","user_prompt":"整理仓库","agent_context":{"protocol":"alter0.agent-context/v1","agent_id":"researcher","system_prompt":"先执行，再汇报。"}}`,
+		`{"protocol":"alter0.codex-exec/v1","user_prompt":"整理仓库","agent_context":{"protocol":"alter0.agent-context/v1","agent_id":"researcher"}}`,
 	), reactFactory, nil)
 
 	metadata := testRuntimeMetadata()
@@ -230,7 +230,7 @@ func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) 
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
 	metadata[execdomain.AgentSystemPromptMetadataKey] = "Own coding delivery."
 
-	expectedPrompt, err := buildCodexPrompt("整理仓库", buildCodexExecMetadata(processor.buildAgentSystemPrompt(metadata), metadata))
+	expectedPrompt, err := buildCodexPrompt("整理仓库", buildCodexExecMetadata(metadata))
 	if err != nil {
 		t.Fatalf("buildCodexPrompt() error = %v", err)
 	}

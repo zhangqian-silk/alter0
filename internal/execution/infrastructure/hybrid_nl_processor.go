@@ -257,7 +257,7 @@ func (p *HybridNLProcessor) executeModelTool(
 		}
 		codexMetadata := metadata
 		if isCodingAgent(metadata) {
-			codexMetadata = buildCodexExecMetadata(p.buildAgentSystemPrompt(metadata), metadata)
+			codexMetadata = buildCodexExecMetadata(metadata)
 		}
 		output, err := p.codex.Process(ctx, instruction, codexMetadata)
 		if err != nil {

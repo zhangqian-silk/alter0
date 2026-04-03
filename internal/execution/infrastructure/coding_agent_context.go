@@ -127,13 +127,8 @@ func cloneExecutionMetadata(metadata map[string]string) map[string]string {
 	return out
 }
 
-func buildCodexExecMetadata(systemPrompt string, metadata map[string]string) map[string]string {
-	cloned := cloneExecutionMetadata(metadata)
-	systemPrompt = strings.TrimSpace(systemPrompt)
-	if systemPrompt != "" {
-		cloned[execdomain.AgentSystemPromptMetadataKey] = systemPrompt
-	}
-	return cloned
+func buildCodexExecMetadata(metadata map[string]string) map[string]string {
+	return cloneExecutionMetadata(metadata)
 }
 
 func buildPreviewURLForSession(sessionID string) string {
