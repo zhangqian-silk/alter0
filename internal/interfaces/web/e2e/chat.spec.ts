@@ -167,6 +167,108 @@ test.describe("Chat composer", () => {
     await expect(page.locator(".composer-runtime-popover-mobile")).toBeVisible();
   });
 
+  test("renders mobile session settings as an independent bottom sheet", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await openChatWorkspace(page);
+
+    const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
+    const composerShell = page.locator(".composer-shell");
+    const popover = page.locator(".composer-runtime-popover-mobile");
+    const backdrop = page.locator(".composer-runtime-sheet-backdrop");
+    const closeButton = page.locator(".composer-runtime-popover-mobile-close");
+
+    await runtimeToggle.click();
+
+    await expect(backdrop).toBeVisible();
+    await expect(popover).toBeVisible();
+    await expect(closeButton).toBeVisible();
+
+    const composerBox = await composerShell.boundingBox();
+    const popoverBox = await popover.boundingBox();
+    const popoverPosition = await popover.evaluate((node) => getComputedStyle(node).position);
+    const sheetDetachedFromComposer = await page.evaluate(() => {
+      const popoverNode = document.querySelector(".composer-runtime-popover-mobile");
+      const panelNode = document.getElementById("chatRuntimePanel");
+      if (!(popoverNode instanceof HTMLElement) || !(panelNode instanceof HTMLElement)) {
+        return false;
+      }
+      return !panelNode.contains(popoverNode);
+    });
+    const bottomLayerHit = await page.evaluate(() => {
+      const popoverNode = document.querySelector(".composer-runtime-popover-mobile");
+      if (!(popoverNode instanceof HTMLElement)) {
+        return false;
+      }
+      const rect = popoverNode.getBoundingClientRect();
+      const sampleX = Math.min(rect.right - 18, Math.max(rect.left + 18, rect.left + rect.width / 2));
+      const sampleY = Math.max(rect.top + 18, rect.bottom - 18);
+      const hit = document.elementFromPoint(sampleX, sampleY);
+      return popoverNode.contains(hit);
+    });
+
+    expect(composerBox).not.toBeNull();
+    expect(popoverBox).not.toBeNull();
+    expect((popoverBox?.y ?? 0) + (popoverBox?.height ?? 0)).toBeGreaterThan((composerBox?.y ?? 0) - 2);
+    expect(popoverPosition).toBe("fixed");
+    expect(sheetDetachedFromComposer).toBe(true);
+    expect(bottomLayerHit).toBe(true);
+
+    await closeButton.click();
+    await expect(popover).toBeHidden();
+    await expect(backdrop).toBeHidden();
+  });
+
+  test("keeps agent option copy concise inside session settings", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await openChatWorkspace(page);
+    await page.goto("/chat#agent-runtime");
+
+    const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
+    await expect(runtimeToggle).toBeVisible();
+    await runtimeToggle.click();
+
+    const codingOption = page.locator("[data-runtime-target-id='coding']").first();
+    await expect(codingOption).toBeVisible();
+    await expect(codingOption).toContainText("Coding Agent");
+    await expect(codingOption).toContainText("Dedicated coding agent");
+    await expect(codingOption).not.toContainText("Act as alter0's dedicated coding user proxy");
+  });
+
+  test("keeps session settings scroll position while toggling skills", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await openChatWorkspace(page);
+    await page.goto("/chat#agent-runtime");
+
+    const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
+    await expect(runtimeToggle).toBeVisible();
+    await runtimeToggle.click();
+
+    const body = page.locator(".composer-runtime-popover-mobile-body");
+    await expect(body).toBeVisible();
+
+    const before = await body.evaluate((node) => {
+      node.scrollTop = Math.max(node.scrollHeight - node.clientHeight - 48, 0);
+      return node.scrollTop;
+    });
+
+    expect(before).toBeGreaterThan(120);
+
+    const toggled = await page.evaluate(() => {
+      const input = document.querySelector(".composer-runtime-popover-mobile-body input[data-runtime-toggle-item='skills'][value='memory']");
+      if (!(input instanceof HTMLInputElement)) {
+        return false;
+      }
+      input.click();
+      return true;
+    });
+
+    expect(toggled).toBe(true);
+
+    await expect.poll(async () => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(120);
+    const after = await body.evaluate((node) => node.scrollTop);
+    expect(Math.abs(after - before)).toBeLessThan(80);
+  });
+
   test("keeps the chat composer visible while the mobile keyboard changes the visual viewport", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 760, height: 980 });

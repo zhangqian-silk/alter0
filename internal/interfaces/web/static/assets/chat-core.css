@@ -1558,6 +1558,42 @@ body {
   min-width: 0;
 }
 
+.composer-runtime-sheet-backdrop {
+  display: none;
+}
+
+.runtime-sheet-host {
+  position: static;
+}
+
+.composer-runtime-popover-mobile-topbar {
+  display: grid;
+  gap: 8px;
+}
+
+.composer-runtime-popover-mobile-body {
+  display: grid;
+  gap: 12px;
+}
+
+.composer-runtime-popover-mobile-close {
+  display: none;
+  border: 1px solid rgba(214, 222, 235, 0.92);
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink-body);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 24px -22px rgba(15, 23, 42, 0.4);
+}
+
 .composer-runtime-summary {
   display: flex;
   flex-wrap: wrap;
@@ -1651,6 +1687,14 @@ body {
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.composer-runtime-option-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .composer-runtime-model-option span {
@@ -1791,6 +1835,10 @@ body {
 }
 
 @media (max-width: 760px) {
+  .app-shell.runtime-sheet-open {
+    overscroll-behavior: none;
+  }
+
   .assistant-message-copy {
     width: 26px;
     height: 26px;
@@ -1836,12 +1884,64 @@ body {
     margin-left: auto;
   }
 
+  .composer-runtime-control-compact {
+    position: static;
+  }
+
+  .composer-runtime-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    display: block;
+    border: none;
+    margin: 0;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.26);
+    backdrop-filter: blur(6px);
+    z-index: 58;
+  }
+
   .composer-runtime-popover-mobile {
-    left: 0;
-    right: 0;
-    width: 100%;
-    max-height: min(62vh, 520px);
-    overflow: auto;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom) + var(--keyboard-offset));
+    width: auto;
+    max-height: min(72vh, calc(var(--mobile-viewport-height, 100dvh) - 24px - env(safe-area-inset-bottom)));
+    padding: 0;
+    gap: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    z-index: 59;
+    box-shadow: 0 36px 72px -34px rgba(15, 23, 42, 0.38);
+  }
+
+  .composer-runtime-popover-mobile-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px 14px 0;
+  }
+
+  .composer-runtime-popover-mobile .composer-runtime-popover-head {
+    min-width: 0;
+  }
+
+  .composer-runtime-popover-mobile-close {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+
+  .composer-runtime-popover-mobile-body {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+    padding: 12px 14px 14px;
+    display: grid;
+    gap: 12px;
   }
 
   .composer-submit-bar [data-composer-counter="chat-main"] {

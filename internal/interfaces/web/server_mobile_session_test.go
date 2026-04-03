@@ -99,3 +99,48 @@ func TestSessionDeleteHooksAndStylesPresent(t *testing.T) {
 		}
 	}
 }
+
+func TestMobileRuntimeSheetUsesDedicatedStackingLayer(t *testing.T) {
+	html := readEmbeddedAsset(t, "static/chat.html")
+	if !strings.Contains(html, `id="chatRuntimeSheetHost"`) {
+		t.Fatalf("expected html marker %q", `id="chatRuntimeSheetHost"`)
+	}
+
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	scriptMarkers := []string{
+		`class="composer-runtime-sheet-backdrop"`,
+		`class="composer-runtime-popover-mobile-close"`,
+		`data-runtime-close`,
+		`data-runtime-scroll-container="mobile"`,
+		`role="dialog" aria-modal="true"`,
+		`const chatRuntimeSheetHost = document.getElementById("chatRuntimeSheetHost");`,
+		`function chatAgentOptionSummary(agent = {}) {`,
+		`function captureChatRuntimeScrollState(popover = state.chatRuntime.openPopover) {`,
+		`function restoreChatRuntimeScrollState(snapshot) {`,
+		`restoreChatRuntimeScrollState(scrollSnapshot);`,
+		`subtitle: chatAgentOptionSummary(agent)`,
+		`chatRuntimeSheetHost.innerHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({`,
+		`appShell.classList.toggle("runtime-sheet-open", compactRuntime && openPopover === "mobile");`,
+		`if (state.currentRoute === "chat" || state.currentRoute === "agent-runtime") {`,
+	}
+	for _, marker := range scriptMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	styleMarkers := []string{
+		".app-shell.runtime-sheet-open {",
+		".composer-runtime-sheet-backdrop {",
+		".composer-runtime-popover-mobile-topbar {",
+		".composer-runtime-popover-mobile-close {",
+		".composer-runtime-popover-mobile-body {",
+		".composer-runtime-option-summary {",
+	}
+	for _, marker := range styleMarkers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}
