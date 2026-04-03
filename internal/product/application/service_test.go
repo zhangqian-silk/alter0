@@ -31,6 +31,9 @@ func TestServiceIncludesBuiltinTravel(t *testing.T) {
 	if product.MasterAgentID != "travel-master" {
 		t.Fatalf("unexpected product: %+v", product)
 	}
+	if len(product.WorkerAgents) != 0 {
+		t.Fatalf("expected builtin travel to run without worker agents, got %+v", product.WorkerAgents)
+	}
 }
 
 func TestServiceCreateManagedProduct(t *testing.T) {

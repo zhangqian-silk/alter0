@@ -139,6 +139,7 @@ func ApplyProfileMetadata(metadata map[string]string, agent controldomain.Agent)
 		items[execdomain.AgentMaxIterationsMetadataKey] = strconv.Itoa(agent.MaxIterations)
 	}
 	applyDefaultListMetadata(items, execdomain.AgentToolsMetadataKey, agent.Tools)
+	applyDefaultListMetadata(items, execdomain.AgentCapabilitiesMetadataKey, agent.Capabilities)
 	applyDefaultListMetadata(items, "alter0.skills.include", agent.Skills)
 	applyDefaultListMetadata(items, "alter0.mcp.request.enable", agent.MCPs)
 	applyDefaultListMetadata(items, "alter0.memory.include", agent.MemoryFiles)

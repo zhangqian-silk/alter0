@@ -102,7 +102,7 @@ type delegatingLLMClient struct {
 }
 
 func (c *delegatingLLMClient) Chat(_ context.Context, req llmdomain.ChatRequest) (*llmdomain.ChatResponse, error) {
-	if len(req.Messages) > 0 && (strings.Contains(req.Messages[0].Content, "engineering delivery") || strings.Contains(req.Messages[0].Content, "dedicated coding agent")) {
+	if len(req.Messages) > 0 && (strings.Contains(req.Messages[0].Content, "engineering delivery") || strings.Contains(req.Messages[0].Content, "dedicated coding assistant")) {
 		return &llmdomain.ChatResponse{
 			Message: llmdomain.Message{
 				Role:    "assistant",
@@ -198,10 +198,14 @@ func TestHybridNLProcessorCodingAgentPromptEmphasizesCodexLoop(t *testing.T) {
 	}
 	prompt := reactFactory.lastConfig.SystemPrompt
 	for _, expected := range []string{
-		"You are the dedicated coding agent.",
+		"You are alter0's session-aware execution assistant.",
+		"Act like the user's ongoing assistant for this session",
+		"agent session profile",
+		"You are the dedicated coding assistant.",
 		"Do not implement or verify changes yourself.",
 		"After every codex_exec result, decide whether the requirement is satisfied.",
 		"Do not stop after the first Codex attempt",
+		"Keep the coding session profile current in your reasoning",
 		"Current coding workspace context:",
 		"Preview URL:",
 		"PR handoff details",
@@ -405,14 +409,12 @@ func TestHybridNLProcessorAgentModeIncludesProductContext(t *testing.T) {
 	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
 
 	productContext := execdomain.ProductContext{
-		Protocol:      execdomain.ProductContextProtocolVersion,
-		ProductID:     "travel",
-		Name:          "Travel",
-		MasterAgentID: "travel-master",
-		ArtifactTypes: []string{"city_guide", "itinerary", "map_layers"},
-		WorkerAgents: []execdomain.ProductWorkerAgentSpec{
-			{AgentID: "travel-route-planner", Role: "route-planner", Responsibility: "Generate day-by-day routes", Enabled: true},
-		},
+		Protocol:         execdomain.ProductContextProtocolVersion,
+		ProductID:        "travel",
+		Name:             "Travel",
+		MasterAgentID:    "travel-master",
+		ArtifactTypes:    []string{"city_guide", "itinerary", "map_layers"},
+		KnowledgeSources: []string{"city_profile", "poi_catalog", "metro_network", "food_catalog"},
 	}
 	rawProductContext, err := json.Marshal(productContext)
 	if err != nil {
@@ -430,8 +432,8 @@ func TestHybridNLProcessorAgentModeIncludesProductContext(t *testing.T) {
 	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Resolved product context") {
 		t.Fatalf("expected product context section in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
 	}
-	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "travel-route-planner") {
-		t.Fatalf("expected worker agent in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
+	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "city_profile") {
+		t.Fatalf("expected knowledge source in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
 	}
 }
 

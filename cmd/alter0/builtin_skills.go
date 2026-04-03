@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 
 	controlapp "alter0/internal/control/application"
@@ -24,19 +22,6 @@ func registerBuiltinSkills(control *controlapp.Service) {
 }
 
 func ensureBuiltinSkillFiles() error {
-	for _, skill := range builtinSkills() {
-		path := strings.TrimSpace(skill.Metadata[builtinSkillFilePathKey])
-		if path == "" {
-			continue
-		}
-		content := builtinSkillFileContent(skill.ID)
-		if strings.TrimSpace(content) == "" {
-			continue
-		}
-		if err := ensureBuiltinSkillFile(path, content); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -56,19 +41,6 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillPriorityKey:    "800",
 				builtinSkillDescriptionKey: "Introduce alter0 memory modules, file roles, and durable read/write policy for selected memory files.",
 				builtinSkillGuideKey:       memorySkillGuide(),
-			},
-		},
-		{
-			ID:      "travel-page",
-			Name:    "Travel Page",
-			Enabled: true,
-			Scope:   controldomain.CapabilityScopeGlobal,
-			Metadata: map[string]string{
-				builtinSkillPriorityKey:    "760",
-				builtinSkillDescriptionKey: "Canonical reusable rulebook for travel city page generation, layout consistency, and stable page preferences.",
-				builtinSkillGuideKey:       travelPageSkillGuide(),
-				builtinSkillFilePathKey:    ".alter0/skills/travel-page.md",
-				builtinSkillWritableKey:    "true",
 			},
 		},
 	}
@@ -129,91 +101,4 @@ func memorySkillGuide() string {
 		"- Preserve existing structure when possible. Prefer surgical edits over full rewrites.",
 		"- If the request is just to answer a question and there is no explicit or implicit need to persist memory, do not write memory files.",
 	}, "\n")
-}
-
-func travelPageSkillGuide() string {
-	return strings.Join([]string{
-		"# travel page skill",
-		"",
-		"## Runtime contract",
-		"",
-		"- This skill is file-backed. Read `.alter0/skills/travel-page.md` before creating or revising reusable travel city page rules.",
-		"- Treat the file as the canonical rulebook for `travel` Workspace pages and standalone HTML city pages.",
-		"- Pass the current rulebook into `codex_exec` as reusable context, and only update the file when the user provides a durable, reusable page preference.",
-		"",
-		"## When to update",
-		"",
-		"- Update the skill when the user expresses a stable preference that should affect future travel city pages, such as page structure, tone, section ordering, field naming, or reusable rendering conventions.",
-		"- Keep updates reusable across cities like Wuhan, Chengdu, and Beijing instead of encoding one specific itinerary.",
-		"",
-		"## When not to update",
-		"",
-		"- Do not write one-off trip constraints into the skill, such as a specific travel date, budget for a single trip, temporary companions, or one city's temporary event.",
-		"- Do not rewrite the entire skill for a normal city-page revision. Keep edits focused and preserve existing stable rules.",
-		"",
-		"## Ownership",
-		"",
-		"- `travel-master` owns when to consult and maintain this skill during Workspace chat.",
-		"- Concrete city content still belongs to each city page and guide record, not to the reusable skill file.",
-	}, "\n")
-}
-
-func travelPageSkillDocument() string {
-	return strings.Join([]string{
-		"# Travel Page Rulebook",
-		"",
-		"## Purpose",
-		"",
-		"This file is the canonical reusable rulebook for generating `travel` city pages in Workspace and the corresponding standalone HTML pages.",
-		"",
-		"## Stable page contract",
-		"",
-		"- One page represents one city-focused travel space.",
-		"- The Workspace detail view and `/products/travel/spaces/{space_id}.html` page must stay aligned to the same guide content.",
-		"- Page content should remain city-specific and must not mix multiple target cities into one page.",
-		"- Preserve structured guide fields so later revisions can update city pages without rebuilding from scratch.",
-		"",
-		"## Default content expectations",
-		"",
-		"- Provide a clear city title and short summary.",
-		"- Keep visible sections for highlights, day-by-day route planning, metro or transit guidance, food recommendations, practical notes, and map-oriented hints when available.",
-		"- Prefer concise, scan-friendly sections that can be extended without breaking the page layout.",
-		"",
-		"## Update policy",
-		"",
-		"- Write only durable, reusable preferences here.",
-		"- Good examples: preferred section order, tone, page density, naming conventions, stable HTML presentation rules, and reusable city-page composition guidance.",
-		"- Do not store one-off traveler constraints here. Put trip-specific requests into the target city page data instead.",
-		"",
-		"## Editing constraints",
-		"",
-		"- Preserve existing rules unless the user clearly changes a stable preference.",
-		"- Apply focused updates instead of replacing the whole document.",
-		"- If a preference only affects one current city request, keep it in that city page and do not promote it into this rulebook.",
-	}, "\n")
-}
-
-func builtinSkillFileContent(skillID string) string {
-	switch strings.TrimSpace(skillID) {
-	case "travel-page":
-		return travelPageSkillDocument()
-	default:
-		return ""
-	}
-}
-
-func ensureBuiltinSkillFile(path string, content string) error {
-	absolute, err := filepath.Abs(strings.TrimSpace(path))
-	if err != nil {
-		return err
-	}
-	if _, err := os.Stat(absolute); err == nil {
-		return nil
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(absolute, []byte(content), 0o644)
 }

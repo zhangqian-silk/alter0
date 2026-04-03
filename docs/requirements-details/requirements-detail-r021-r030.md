@@ -1,6 +1,6 @@
 # Requirements Details (R-021 ~ R-030)
 
-> Last update: 2026-03-27
+> Last update: 2026-04-03
 
 ## 需求细化（草案）
 
@@ -20,10 +20,13 @@
 ### R-022 用户配置 Skills 接入 Codex
 
 1. 根据用户配置筛选启用的 Skills，并按优先级注入 Codex 与 Agent 执行上下文。
+   - 若当前请求已命中某个 `agent_id`，运行时还必须额外自动注入该 Agent 的私有 file-backed Skill，默认路径固定为 `.alter0/agents/<agent_id>/SKILL.md`，不要求用户在 Agent Profile 里显式勾选。
 2. 定义 Skills 注入协议（名称、描述、guide、参数模板、约束）以避免自由文本拼接。
-3. 支持内置 Skill 作为稳定能力底座；当前默认提供 `default-nl` 与 `memory`，其中 `memory` 负责明确记忆文件的读取决策、写入路由、冲突优先级与写入禁止项。
-4. 提供冲突处理策略（同名 skill、重复能力、参数冲突）并可观测。
-5. 验收：关闭某 Skill 后不再注入；开启后可在 Codex / Agent 执行结果中体现其能力影响。
+   - Agent 私有 Skill 必须继续复用统一 `alter0.skill-context/v1` 协议，至少提供 `id`、`name`、`description`、`guide`、`priority`、`file_path`、`writable`。
+3. 支持内置 Skill 作为稳定能力底座；当前默认提供 `default-nl` 与 `memory`，其中 `memory` 负责明确记忆文件的读取决策、写入路由、冲突优先级与写入禁止项；travel 页面规则改由 `travel-master` 私有 Skill 承载。
+4. Agent 私有 Skill 用于沉淀该 Agent 的可复用工作模式、输出结构、检查清单与稳定偏好；`AGENTS.md` 继续用于该 Agent 的仓库/工作区操作规则与交付约束，两者不得混用。
+5. 提供冲突处理策略（同名 skill、重复能力、参数冲突）并可观测。
+6. 验收：关闭某 Skill 后不再注入；开启后可在 Codex / Agent 执行结果中体现其能力影响；当前 Agent 的私有 Skill 在命中 Agent 执行时始终可见，并在文件不存在时自动提供默认规则文件。
 
 #### Traceability
 
@@ -37,6 +40,7 @@
   - 2026-03-03：Codex 执行参数切换为结构化 JSON 载荷（`alter0.codex-exec/v1`），执行结果元数据可观测 `skills.injected_ids`、`skills.injected_count`、`skills.conflict_count`。
   - 2026-03-27：Skill 协议新增 `guide` 字段，可承载独立操作说明；默认内置 `memory` Skill，用于向 Agent / Codex 说明 alter0 记忆模块、文件职责与读写规则。
   - 2026-03-27：`memory` Skill guide 收敛为显式操作规则，按“运行时契约 / 读取逻辑 / 写入路由 / 冲突规则 / 写入约束”组织，直接约束不同类型信息应落入哪个记忆文件。
+  - 2026-04-03：所有 Agent 在命中执行时都会额外自动注入私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`；该文件不存在时运行时自动创建默认规则簿，用于承载该 Agent 的长期可复用工作规则。
 
 ### R-023 用户配置 MCP 接入 Codex
 

@@ -1,12 +1,13 @@
 package application
 
 import (
+	"strings"
 	"testing"
 
 	productdomain "alter0/internal/product/domain"
 )
 
-func TestDraftServiceGenerateDraftBuildsTravelMatrix(t *testing.T) {
+func TestDraftServiceGenerateDraftBuildsSingleTravelMaster(t *testing.T) {
 	products := NewService()
 	drafts := NewDraftService(products)
 
@@ -28,15 +29,30 @@ func TestDraftServiceGenerateDraftBuildsTravelMatrix(t *testing.T) {
 	if draft.MasterAgent.AgentID != "travel-premium-master" {
 		t.Fatalf("expected master agent id, got %+v", draft.MasterAgent)
 	}
-	if len(draft.WorkerMatrix) != 5 {
-		t.Fatalf("expected travel matrix of 5 workers, got %+v", draft.WorkerMatrix)
+	if got := draft.MasterAgent.Tools; len(got) != 4 || got[0] != "codex_exec" {
+		t.Fatalf("expected codex-driven master tools, got %+v", got)
+	}
+	if !strings.Contains(draft.MasterAgent.SystemPrompt, "codex_exec") || !strings.Contains(strings.ToLower(draft.MasterAgent.SystemPrompt), "assistant") {
+		t.Fatalf("expected codex assistant master prompt, got %q", draft.MasterAgent.SystemPrompt)
+	}
+	if !strings.Contains(draft.MasterAgent.SystemPrompt, "SKILL.md") {
+		t.Fatalf("expected travel master prompt to mention private skill, got %q", draft.MasterAgent.SystemPrompt)
+	}
+	if got := draft.MasterAgent.Skills; len(got) != 1 || got[0] != "memory" {
+		t.Fatalf("expected memory skill only, got %+v", got)
+	}
+	if len(draft.WorkerMatrix) != 0 {
+		t.Fatalf("expected single-agent travel draft, got %+v", draft.WorkerMatrix)
+	}
+	if len(draft.Product.WorkerAgents) != 0 {
+		t.Fatalf("expected single-agent travel product, got %+v", draft.Product.WorkerAgents)
 	}
 	if len(draft.Product.ArtifactTypes) == 0 || len(draft.Product.KnowledgeSources) == 0 {
 		t.Fatalf("expected artifact types and knowledge sources, got %+v", draft.Product)
 	}
 }
 
-func TestDraftServiceGenerateMatrixDraftMergesIntoExistingProduct(t *testing.T) {
+func TestDraftServiceGenerateMatrixDraftKeepsExistingWorkersWithoutAddingNewOnes(t *testing.T) {
 	products := NewService()
 	if _, err := products.CreateProduct(productdomain.Product{
 		Name:          "Research Hub",
@@ -64,10 +80,13 @@ func TestDraftServiceGenerateMatrixDraftMergesIntoExistingProduct(t *testing.T) 
 	if draft.Mode != productdomain.GenerationModeExpand {
 		t.Fatalf("expected expand mode, got %s", draft.Mode)
 	}
-	if len(draft.WorkerMatrix) != 2 {
-		t.Fatalf("expected 2 generated worker drafts, got %+v", draft.WorkerMatrix)
+	if len(draft.WorkerMatrix) != 0 {
+		t.Fatalf("expected no generated worker drafts, got %+v", draft.WorkerMatrix)
 	}
-	if len(draft.Product.WorkerAgents) != 3 {
-		t.Fatalf("expected merged worker agents, got %+v", draft.Product.WorkerAgents)
+	if len(draft.Product.WorkerAgents) != 1 {
+		t.Fatalf("expected existing worker agents to remain unchanged, got %+v", draft.Product.WorkerAgents)
+	}
+	if got := draft.MasterAgent.Tools; len(got) != 4 || got[0] != "codex_exec" {
+		t.Fatalf("expected single-agent master tools, got %+v", got)
 	}
 }

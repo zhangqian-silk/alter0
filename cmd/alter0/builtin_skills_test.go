@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -35,45 +33,13 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 		t.Fatalf("expected memory skill guide covers conflict and write constraints, got %q", guide)
 	}
 
-	travelPage, ok := service.ResolveSkill("travel-page")
-	if !ok {
-		t.Fatalf("expected travel-page skill exists")
-	}
-	if travelPage.Metadata[builtinSkillFilePathKey] != ".alter0/skills/travel-page.md" {
-		t.Fatalf("unexpected travel-page skill file path: %+v", travelPage.Metadata)
-	}
-	if travelPage.Metadata[builtinSkillWritableKey] != "true" {
-		t.Fatalf("expected travel-page skill writable metadata, got %+v", travelPage.Metadata)
-	}
-	if guide := travelPage.Metadata[builtinSkillGuideKey]; !strings.Contains(guide, "codex_exec") || !strings.Contains(guide, "durable") {
-		t.Fatalf("expected travel-page skill guide covers read/write policy, got %q", guide)
+	if _, ok := service.ResolveSkill("travel-page"); ok {
+		t.Fatalf("did not expect legacy travel-page skill to remain registered")
 	}
 }
 
-func TestEnsureBuiltinSkillFilesCreatesTravelPageRulebook(t *testing.T) {
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd failed: %v", err)
-	}
-	root := t.TempDir()
-	if err := os.Chdir(root); err != nil {
-		t.Fatalf("chdir temp root failed: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-
+func TestEnsureBuiltinSkillFilesSkipsWhenNoBuiltinFileBackedSkillExists(t *testing.T) {
 	if err := ensureBuiltinSkillFiles(); err != nil {
 		t.Fatalf("ensureBuiltinSkillFiles() error = %v", err)
-	}
-
-	path := filepath.Join(root, ".alter0", "skills", "travel-page.md")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read travel-page.md failed: %v", err)
-	}
-	content := string(data)
-	if !strings.Contains(content, "# Travel Page Rulebook") || !strings.Contains(content, "durable, reusable preferences") {
-		t.Fatalf("unexpected travel-page skill file content: %q", content)
 	}
 }
