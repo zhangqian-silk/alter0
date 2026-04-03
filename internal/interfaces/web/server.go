@@ -42,7 +42,8 @@ import (
 	terminaldomain "alter0/internal/terminal/domain"
 )
 
-//go:embed static/*
+//go:embed static/chat.html
+//go:embed static/assets
 var webStaticFS embed.FS
 
 const (
