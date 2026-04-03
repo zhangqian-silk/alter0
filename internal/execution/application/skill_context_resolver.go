@@ -2,6 +2,8 @@ package application
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,7 +14,8 @@ import (
 )
 
 const (
-	defaultSkillPriority = 100
+	defaultSkillPriority    = 100
+	agentOwnedSkillPriority = 780
 
 	skillPriorityKey          = "skill.priority"
 	skillDescriptionKey       = "skill.description"
@@ -47,9 +50,6 @@ type skillContextResolver struct {
 }
 
 func newSkillContextResolver(source SkillCapabilitySource) *skillContextResolver {
-	if source == nil {
-		return nil
-	}
 	return &skillContextResolver{source: source}
 }
 
@@ -57,27 +57,34 @@ func (r *skillContextResolver) Resolve(msg shareddomain.UnifiedMessage) skillRes
 	resolution := skillResolution{
 		Context: execdomain.SkillContext{Protocol: execdomain.SkillContextProtocolVersion},
 	}
-	if r == nil || r.source == nil {
+	if r == nil {
 		return resolution
 	}
 
 	includeFilter := parseLookupSet(metadataValue(msg.Metadata, skillIncludeFilterKey))
 	excludeFilter := parseLookupSet(metadataValue(msg.Metadata, skillExcludeFilterKey))
+	agentOwnedSkill, hasAgentOwnedSkill := resolveAgentOwnedSkill(msg)
 
-	items := r.source.ListCapabilitiesByType(controldomain.CapabilityTypeSkill)
-	candidates := make([]execdomain.SkillSpec, 0, len(items))
+	var items []controldomain.Capability
+	if r.source != nil {
+		items = r.source.ListCapabilitiesByType(controldomain.CapabilityTypeSkill)
+	}
+	candidates := make([]execdomain.SkillSpec, 0, len(items)+1)
 	for _, item := range items {
 		if !item.Enabled {
 			continue
 		}
 		skill := buildSkillSpec(item)
-		if len(includeFilter) > 0 && !matchesSkillFilter(skill, includeFilter) {
+		if len(includeFilter) > 0 && !matchesSkillFilter(skill, includeFilter) && !isAgentOwnedSkill(skill, agentOwnedSkill) {
 			continue
 		}
 		if matchesSkillFilter(skill, excludeFilter) {
 			continue
 		}
 		candidates = append(candidates, skill)
+	}
+	if hasAgentOwnedSkill && !matchesSkillFilter(agentOwnedSkill, excludeFilter) {
+		candidates = append(candidates, agentOwnedSkill)
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -108,6 +115,203 @@ func (r *skillContextResolver) Resolve(msg shareddomain.UnifiedMessage) skillRes
 	}
 	resolution.ConflictTypes = uniqueConflictTypes(conflicts)
 	return resolution
+}
+
+func resolveAgentOwnedSkill(msg shareddomain.UnifiedMessage) (execdomain.SkillSpec, bool) {
+	agentID := strings.TrimSpace(metadataValue(msg.Metadata, execdomain.AgentIDMetadataKey))
+	if agentID == "" {
+		return execdomain.SkillSpec{}, false
+	}
+	normalizedAgentID := normalizeMemoryAgentID(agentID)
+	if normalizedAgentID == "" {
+		return execdomain.SkillSpec{}, false
+	}
+	agentName := strings.TrimSpace(metadataValue(msg.Metadata, execdomain.AgentNameMetadataKey))
+	if agentName == "" {
+		agentName = agentID
+	}
+	agentCapabilities := parseList(metadataValue(msg.Metadata, execdomain.AgentCapabilitiesMetadataKey))
+	filePath := filepath.ToSlash(filepath.Join(".alter0", "agents", normalizedAgentID, "SKILL.md"))
+	_ = ensureAgentOwnedSkillFile(filePath, agentOwnedSkillDocument(agentID, agentName, agentCapabilities))
+	return execdomain.SkillSpec{
+		ID:          agentOwnedSkillID(normalizedAgentID),
+		Name:        agentName + " Skill",
+		Description: agentOwnedSkillDescription(agentID, agentName, agentCapabilities),
+		Guide:       agentOwnedSkillGuide(filePath, agentID, agentName, agentCapabilities),
+		Priority:    agentOwnedSkillPriority,
+		FilePath:    filePath,
+		Writable:    true,
+	}, true
+}
+
+func isAgentOwnedSkill(skill execdomain.SkillSpec, current execdomain.SkillSpec) bool {
+	if strings.TrimSpace(current.ID) == "" {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(skill.ID), strings.TrimSpace(current.ID))
+}
+
+func agentOwnedSkillID(agentID string) string {
+	trimmed := normalizeMemoryAgentID(agentID)
+	if trimmed == "" {
+		trimmed = "unknown"
+	}
+	return "agent-skill-" + trimmed
+}
+
+func agentOwnedSkillGuide(filePath string, agentID string, agentName string, capabilities []string) string {
+	if isTravelAgent(agentID, agentName, capabilities) {
+		return strings.Join([]string{
+			"# travel agent-owned skill",
+			"",
+			"## Runtime contract",
+			"",
+			"- This skill is private to the current travel agent and is file-backed. Read `" + strings.TrimSpace(filePath) + "` before applying durable city-page, itinerary, transit, food, and map-output rules.",
+			"- Treat the file as the canonical reusable rulebook for this travel agent's page structure, output sections, rendering conventions, and long-lived travel preferences requested by the user.",
+			"- `AGENTS.md` remains the source of repository or workspace operating rules. Keep travel-domain rules and page conventions in this skill instead of repository policy files.",
+			"",
+			"## When to update",
+			"",
+			"- Update the skill when the user states a durable preference that should affect future travel pages or itineraries handled by this agent, such as section ordering, city-page density, transit-first defaults, food recommendation framing, or map-oriented output conventions.",
+			"- Keep updates reusable across future cities and trips handled by the same travel agent instead of encoding one itinerary verbatim.",
+			"",
+			"## When not to update",
+			"",
+			"- Do not write one-off trip constraints, temporary dates, current companions, single-city event schedules, or session-only itinerary details into the skill.",
+			"- Do not duplicate repository-wide operating rules that belong in `AGENTS.md`.",
+			"- Do not rewrite the whole file for a small preference change. Preserve existing rules and apply focused edits.",
+		}, "\n")
+	}
+	return strings.Join([]string{
+		"# agent-owned skill",
+		"",
+		"## Runtime contract",
+		"",
+		"- This skill is private to the current agent and is file-backed. Read `" + strings.TrimSpace(filePath) + "` before applying durable agent-specific working rules.",
+		"- Treat the file as the canonical rulebook for this agent's reusable execution patterns, output structure, domain heuristics, and long-lived user-requested preferences.",
+		"- `AGENTS.md` remains the source of repository or workspace operating rules. Use this skill for agent-specific reusable behavior instead of repository policy.",
+		"",
+		"## When to update",
+		"",
+		"- Update the skill when the user states a durable preference that should affect future tasks handled by this agent, such as output shape, preferred workflow, naming style, review checklist, or reusable domain heuristics.",
+		"- Keep updates reusable across future tasks for the same agent instead of encoding one current request verbatim.",
+		"",
+		"## When not to update",
+		"",
+		"- Do not write one-off task constraints, temporary deadlines, current ticket details, or session-specific facts into the skill.",
+		"- Do not duplicate repository-wide operating rules that belong in `AGENTS.md`.",
+		"- Do not rewrite the whole file for a small preference change. Preserve existing rules and apply focused edits.",
+	}, "\n")
+}
+
+func agentOwnedSkillDescription(agentID string, agentName string, capabilities []string) string {
+	if isTravelAgent(agentID, agentName, capabilities) {
+		return "Private reusable rulebook for the current travel agent's city-page structure, itinerary composition, rendering conventions, and stable travel preferences."
+	}
+	return "Private reusable rulebook for the current agent's durable working patterns, output structure, and stable user-requested preferences."
+}
+
+func agentOwnedSkillDocument(agentID string, agentName string, capabilities []string) string {
+	trimmedAgentID := strings.TrimSpace(agentID)
+	if trimmedAgentID == "" {
+		trimmedAgentID = "unknown"
+	}
+	trimmedAgentName := strings.TrimSpace(agentName)
+	if trimmedAgentName == "" {
+		trimmedAgentName = trimmedAgentID
+	}
+	if isTravelAgent(agentID, agentName, capabilities) {
+		return strings.Join([]string{
+			"# " + trimmedAgentName + " Skill",
+			"",
+			"## Purpose",
+			"",
+			"This file is the private reusable rulebook for the `" + trimmedAgentID + "` travel agent.",
+			"",
+			"## Stable travel contract",
+			"",
+			"- One city page represents one city-focused travel space.",
+			"- The Workspace detail view and standalone HTML city page must stay aligned to the same guide content.",
+			"- Page content should remain city-specific and must not mix multiple target cities into one page.",
+			"- Preserve structured guide fields so later revisions can update city pages without rebuilding from scratch.",
+			"",
+			"## Default content expectations",
+			"",
+			"- Provide a clear city title and short summary.",
+			"- Keep visible sections for highlights, day-by-day route planning, metro or transit guidance, food recommendations, practical notes, and map-oriented hints when available.",
+			"- Prefer concise, scan-friendly sections that can be extended without breaking the page layout.",
+			"",
+			"## Store Here",
+			"",
+			"- Durable travel-page structure, section ordering, tone, naming conventions, and stable rendering preferences.",
+			"- Reusable itinerary composition heuristics, transit defaults, food recommendation framing, and map-output conventions requested by the user.",
+			"- Stable travel-agent defaults that should apply across future city pages handled by this agent.",
+			"",
+			"## Keep Out",
+			"",
+			"- Repository or workspace operating rules that belong in `.alter0/agents/" + normalizeMemoryAgentID(trimmedAgentID) + "/AGENTS.md`.",
+			"- One-off trip constraints, temporary dates, current-session notes, or single-city exceptions that should stay in the target guide data.",
+			"- Shared repository policy or non-travel reusable behavior that should live outside this travel-agent skill.",
+			"",
+			"## Editing Rules",
+			"",
+			"- Apply focused updates instead of replacing the whole file.",
+			"- Preserve stable rules unless the user clearly changes a durable preference.",
+			"- Promote only reusable travel guidance into this file.",
+		}, "\n")
+	}
+	return strings.Join([]string{
+		"# " + trimmedAgentName + " Skill",
+		"",
+		"## Purpose",
+		"",
+		"This file is the private reusable rulebook for the `" + trimmedAgentID + "` agent.",
+		"",
+		"## Store Here",
+		"",
+		"- Durable execution patterns that should persist across future tasks handled by this agent.",
+		"- Stable output structures, review checklists, naming habits, or domain heuristics requested by the user.",
+		"- Reusable agent-specific defaults that do not belong in repository-wide policy files.",
+		"",
+		"## Keep Out",
+		"",
+		"- Repository or workspace operating rules that belong in `.alter0/agents/" + normalizeMemoryAgentID(trimmedAgentID) + "/AGENTS.md`.",
+		"- One-off task constraints, temporary facts, or current-session notes.",
+		"- Cross-agent shared domain rules that should live in a global or product-level skill instead.",
+		"",
+		"## Editing Rules",
+		"",
+		"- Apply focused updates instead of replacing the whole file.",
+		"- Preserve stable rules unless the user clearly changes a durable preference.",
+		"- Promote only reusable guidance into this file.",
+	}, "\n")
+}
+
+func isTravelAgent(agentID string, agentName string, capabilities []string) bool {
+	for _, capability := range capabilities {
+		if strings.EqualFold(strings.TrimSpace(capability), "travel") {
+			return true
+		}
+	}
+	lookup := strings.ToLower(strings.TrimSpace(agentID) + " " + strings.TrimSpace(agentName))
+	return strings.Contains(lookup, "travel")
+}
+
+func ensureAgentOwnedSkillFile(relativePath string, content string) error {
+	repoRoot, err := resolveMemoryRepoRoot()
+	if err != nil {
+		return err
+	}
+	absolutePath := filepath.Join(repoRoot, filepath.FromSlash(strings.TrimSpace(relativePath)))
+	if _, err := os.Stat(absolutePath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(absolutePath, []byte(content), 0o644)
 }
 
 func resolveNameConflicts(skills []execdomain.SkillSpec) ([]execdomain.SkillSpec, []execdomain.SkillConflict) {

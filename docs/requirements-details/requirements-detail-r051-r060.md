@@ -76,20 +76,24 @@
 1. `Agent Profile` 配置页必须新增 `Memory Files` 勾选区，与 `Skills`、`MCP` 采用同级勾选交互。
 2. 当前支持的选择项至少包括：`USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、`Daily Memory (Today)`、`Daily Memory (Yesterday)`；其中 `AGENTS.md` 固定表示当前 `agent_id` 的私有规则文件，不是共享文件。
 3. Agent 请求命中对应 Profile 后，服务端必须将勾选结果写入统一运行时元数据，并在执行前解析为结构化 `memory_context`。
-4. `memory_context` 最小字段包括：`protocol`、`files[].id`、`files[].selection`、`files[].title`、`files[].path`、`files[].exists`、`files[].writable`、`files[].updated_at`、`files[].content`。
-5. 文件内容注入需要保留可写文件路径；当目标文件不存在时，仍需返回预期路径与 `exists=false`，允许 Agent 后续直接创建并写入。
+4. 所有 Agent Session 还必须自动维护一个只读 `Agent Session Profile` 文件，路径固定为 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，用于沉淀该 Agent 在当前 Session 内的稳定上下文；该文件不需要在 Profile 页面额外勾选，但必须默认注入 `memory_context`。
+5. `memory_context` 最小字段包括：`protocol`、`files[].id`、`files[].selection`、`files[].title`、`files[].path`、`files[].exists`、`files[].writable`、`files[].updated_at`、`files[].content`。
+6. 文件内容注入需要保留可写文件路径；当目标文件不存在时，仍需返回预期路径与 `exists=false`，允许 Agent 后续直接创建并写入。
    - `agents_md` 的目标路径固定为 `.alter0/agents/<agent_id>/AGENTS.md`，不再回退到仓库根目录共享 `AGENTS.md`。
    - `USER.md`、`SOUL.md`、长期记忆与日记忆继续作为共享文件解析。
-6. Agent 执行链路必须同时支持两类消费方式：
+   - `agent_session_profile` 的目标路径固定为 `.alter0/agents/<agent_id>/sessions/<session_id>.md`；运行时需在注入前自动刷新该文件内容，并标记为 `writable=false`。
+7. Agent 执行链路必须同时支持两类消费方式：
    - ReAct Agent：在 system prompt 中显式暴露已选记忆文件的路径、存在状态与内容。
    - Codex 执行链：在 `alter0.codex-exec/v1` 载荷中新增 `memory_context` 字段，保证 fallback 与 `codex_exec` 一致可见。
-7. 所选记忆文件默认视为可维护对象，Agent 通过专用 `search_memory`、`read_memory`、`write_memory` 工具维护这些文件；其中 `search_memory` 用于在已挂载的历史记忆文件中按关键字检索相关上下文，具体实现、验证与其他文件系统操作仍统一走 `codex_exec`。
+8. 所选记忆文件默认视为可维护对象，Agent 通过专用 `search_memory`、`read_memory`、`write_memory` 工具维护这些文件；其中 `search_memory` 用于在已挂载的历史记忆文件中按关键字检索相关上下文，具体实现、验证与其他文件系统操作仍统一走 `codex_exec`。
    - `AGENTS.md` 的读写范围仅限当前 Agent 对应的 `.alter0/agents/<agent_id>/AGENTS.md`，不得跨 Agent 读写其他 Agent 的 `AGENTS.md`。
-8. 长期记忆与日记忆路径需兼容 `alter0` 当前目录约定，同时允许对齐 OpenClaw 常见文件名：
+   - `Agent Session Profile` 属于运行时自动维护的只读上下文，Agent 可检索与读取，但不能通过 `write_memory` 直接覆盖。
+9. 长期记忆与日记忆路径需兼容 `alter0` 当前目录约定，同时允许对齐 OpenClaw 常见文件名：
    - 长期记忆优先识别 `MEMORY.md`、`memory.md`、`.alter0/memory/long-term/MEMORY.md`
    - 日记忆优先识别 `memory/YYYY-MM-DD.md` 与 `.alter0/memory/YYYY-MM-DD.md`
-9. 为控制 prompt 体积，单文件与总注入体积必须设置截断上限；截断后保留显式标记，避免模型误以为内容完整。
-10. 验收：
+10. 为控制 prompt 体积，单文件与总注入体积必须设置截断上限；截断后保留显式标记，避免模型误以为内容完整。
+11. `Agent Session Profile` 至少需要记录 `agent_id`、`agent_name`、`session_id`、更新时间、通道信息与 Session 工作区；`coding` Agent 还需补充当前仓库路径、远端仓库地址、当前分支、PR 基线分支（可探测时）、Session 工作区与预览地址。
+12. 验收：
    - Web `Agent Profiles` 页面可稳定保存和回显 `memory_files`
    - `POST /api/agent/messages` 会将勾选结果注入为 `alter0.memory.include`
    - 执行器可生成 `alter0.memory-context/v1`
@@ -98,14 +102,16 @@
    - Agent 可先通过 `search_memory` 在已注入的记忆文件中按关键字定位相关历史，再决定是否调用 `read_memory` / `write_memory`
    - 选择 `agents_md` 时，注入路径固定为 `.alter0/agents/<agent_id>/AGENTS.md`，且不会读取其他 Agent 的 `AGENTS.md`
    - `USER.md`、`SOUL.md`、长期记忆与日记忆在不同 Agent 间保持共享可见
-11. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
-12. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Codex CLI 可结合该文件上下文执行读取或更新，Agent 侧不依赖通用原生工具做路径猜测。
-13. 当前实现中，`AGENTS.md` 的共享仓库根文件不再作为 `agents_md` 注入源；仓库根 `AGENTS.md` 仅保留仓库维护用途，不参与跨 Agent 共享记忆。
+   - 所有 Agent Session 都会自动拿到 `.alter0/agents/<agent_id>/sessions/<session_id>.md`
+   - `coding` Agent 的会话画像会自动沉淀仓库、分支、工作区与预览地址等上下文
+13. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
+14. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Codex CLI 可结合该文件上下文执行读取或更新，Agent 侧不依赖通用原生工具做路径猜测。
+15. 当前实现中，`AGENTS.md` 的共享仓库根文件不再作为 `agents_md` 注入源；仓库根 `AGENTS.md` 仅保留仓库维护用途，不参与跨 Agent 共享记忆。
 
 #### Traceability
 
 - 实现文件：`internal/control/domain/agent.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`
-- 执行注入：`internal/execution/domain/memory_context.go`、`internal/execution/application/memory_context_resolver.go`、`internal/execution/application/service.go`
+- 执行注入：`internal/execution/domain/memory_context.go`、`internal/execution/application/memory_context_resolver.go`、`internal/execution/application/agent_session_profile.go`、`internal/execution/application/service.go`
 - 执行消费：`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/execution/infrastructure/codex_cli_processor.go`
 - 测试覆盖：`internal/control/domain/agent_test.go`、`internal/execution/application/service_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/interfaces/web/server_message_test.go`
 
@@ -128,16 +134,24 @@
    - `task`：下发给子 Agent 的具体任务
    - `context`：可选补充上下文
 9. `coding` Agent 必须作为用户可直接选择的入口 Agent，对编码类请求承担主交互职责；具体开发工作优先通过 `codex_exec` 执行，并根据每轮执行结果继续追加下一步实现或验证动作，直至完成或明确阻塞。
+   - Agent system prompt 需采用持续助手口径，要求优先复用当前 Session 已确认的稳定上下文，而不是在多轮编码过程中重复索取相同信息。
    - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、本地仓库路径、当前分支、会话工作区、PR 基线分支与交付要求。
+   - 运行时需同步维护 `coding` Agent 在当前 Session 下的私有画像文件 `.alter0/agents/coding/sessions/<session_id>.md`，用于沉淀仓库与交付上下文，供后续轮次直接复用。
    - 涉及测试页面时，预览域名必须使用当前会话标识派生的 8 位短 hash，格式为 `https://<session_short_hash>.alter0.cn`。
    - `coding` Agent 在完成收口前，需明确交付代码变更、验证结果、文档同步状态、预览页地址（如适用）与 PR handoff 信息。
-10. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files；其稳定工具面默认收敛为 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，以及在允许时暴露的 `delegate_agent`。
-11. 需限制主从递归深度与自委派，避免无限递归。
-12. 验收：
+10. 每个 Agent 还必须自动维护自己的私有 file-backed Skill，路径固定为 `.alter0/agents/<agent_id>/SKILL.md`；该 Skill 不要求出现在 Agent Profile 的 `skills` 勾选结果中，但在命中该 Agent 执行时必须随运行时 Skill 上下文一起注入。
+   - 私有 Skill 用于沉淀该 Agent 的可复用工作模式、输出结构、检查清单、偏好和长期用户约束。
+   - `AGENTS.md` 继续只负责该 Agent 的协作边界、仓库/工作区操作规则和交付要求；不得把一次性任务细节或 Agent 可复用打法混写进 `AGENTS.md`。
+   - 若私有 Skill 文件不存在，运行时需自动创建默认规则簿，保证 Agent 首次执行时即可按用户诉求更新自己的 Skill。
+11. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files；其稳定工具面默认收敛为 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，以及在允许时暴露的 `delegate_agent`。
+12. 需限制主从递归深度与自委派，避免无限递归。
+13. 验收：
    - `GET /api/agents` 可返回内置入口 Agent
    - `Chat` 默认走 `main` Agent
    - `coding` Agent 在通用 `Agent` 入口中可直接选择，并以 Agent 主导、Codex 执行的方式推进编码任务
-   - `coding` Agent 的运行时提示包含当前仓库、分支、会话预览域名和 PR 交付规则
+   - `coding` Agent 的运行时提示包含当前仓库、分支、会话预览域名、Session 画像上下文和 PR 交付规则
+   - 任一 Agent 命中执行时，都能在 Skill 上下文里看到自己的私有 Skill `.alter0/agents/<agent_id>/SKILL.md`
+   - 当前 Agent 的私有 Skill 文件不存在时，首次执行后会自动生成默认规则簿，并允许后续按用户提出的稳定偏好更新
    - 涉及测试页面时，预览地址遵循 `https://<session_short_hash>.alter0.cn`
    - `Agent` 页可直接进入 `coding`、`writing` 等无独立前端入口的内置 Agent 会话
    - 主 Agent 可通过 `delegate_agent` 调用 `coding`、`writing` 等专项 Agent 并回收结果
@@ -151,15 +165,15 @@
 ### R-054 Product 目录、Workspace 与管理页
 
 1. 运行时必须新增一级 `Products` 模块，作为平台级 Product 管理入口；`Product` 是业务产品域的一等对象，不使用 `App` 作为同级领域模型命名。
-2. `Products` 页面需同时提供 `Workspace` 与 `Studio` 两类视图，至少覆盖：基础信息、启停状态、入口标识、总 Agent 绑定、详情页空间列表、子 Agent 矩阵摘要、产物类型摘要。
+2. `Products` 页面需同时提供 `Workspace` 与 `Studio` 两类视图，至少覆盖：基础信息、启停状态、入口标识、总 Agent 绑定、详情页空间列表、supporting agents 摘要、产物类型摘要。
 3. Product 最小主数据结构至少包含：`product_id`、`name`、`slug`、`summary`、`status`、`visibility`、`owner_type`、`master_agent_id`、`entry_route`、`tags`、`version`、`created_at`、`updated_at`。
 4. Product 必须区分系统内置与用户创建两类来源：
    - 系统内置 Product 由服务注册，不允许在控制面直接删除；
    - 用户创建 Product 允许编辑、停用、归档，并保留历史引用关系。
-5. 页面交互至少包含：列表浏览、创建、编辑、启停、查看矩阵摘要、查看 Product 详情、进入 Product Workspace、查看主 Agent 对话入口与详情页空间；不要求首版支持拖拽编排。
+5. 页面交互至少包含：列表浏览、创建、编辑、启停、查看 Agent 摘要、查看 Product 详情、进入 Product Workspace、查看主 Agent 对话入口与详情页空间；不要求首版支持拖拽编排。
 6. Product 详情页至少展示：
    - 基础信息：名称、描述、标签、状态、版本；
-   - Agent 结构：总 Agent、子 Agent 数量、矩阵角色摘要；
+   - Agent 结构：总 Agent、supporting agents 数量、角色摘要；
    - 能力摘要：可调用工具、Skills、MCP、资料挂载；
    - 产物摘要：该 Product 的主要输出物类型；
    - Workspace 摘要：主 Agent 对话入口、详情页空间列表、当前空间详情与独立 HTML 页面入口。
@@ -169,14 +183,14 @@
 10. 验收：
    - Web 端可见独立 `Products` 模块；
    - 用户可创建和维护 Product 基础信息；
-   - 每个 Product 可查看绑定总 Agent 与矩阵摘要；
+   - 每个 Product 可查看绑定总 Agent 与 Agent 摘要；
    - 系统内置 Product 与用户 Product 可被明确区分。
 
 #### 接口拆分（当前实现）
 
 1. Product 列表
    - `GET /api/control/products`
-   - 返回：`items[]`，包含基础字段、状态、总 Agent 绑定与矩阵摘要
+   - 返回：`items[]`，包含基础字段、状态、总 Agent 绑定与 Agent 摘要
 2. Product 创建
    - `POST /api/control/products`
    - 入参：Product 基础信息与初始配置
@@ -188,7 +202,7 @@
    - 仅允许删除托管 Product；内置 Product 维持只读
 5. Product 详情
    - `GET /api/control/products/{product_id}`
-   - 返回：基础信息 + Agent 矩阵摘要 + 能力摘要 + 产物摘要
+   - 返回：基础信息 + Agent 摘要 + 能力摘要 + 产物摘要
 6. Product Workspace
    - `GET /api/products/{product_id}/workspace`
    - `GET /api/products/{product_id}/workspace/spaces/{space_id}`
@@ -204,49 +218,55 @@
 - 依赖需求：`R-021`、`R-049`、`R-053`
 - 验证口径：Product 管理可用性、内置/用户 Product 区分、状态切换一致性、页面入口稳定性
 
-### R-055 Product Agent 与子产品矩阵生成
+### R-055 Product Agent 单主 Agent 草稿生成
 
-1. 平台必须提供一个内置 `Product Agent`，用于根据产品目标和约束生成新 Product 草案，而不是要求用户手工逐项编排完整矩阵。
+1. 平台必须提供一个内置 `Product Agent`，用于根据产品目标和约束生成新 Product 草案，而不是要求用户手工逐项编排完整 Agent 拓扑。
 2. `Product Agent` 的输入至少包括：`name`、`goal`、`target_users`、`core_capabilities`、`constraints`、`expected_artifacts`、`integration_requirements`。
 3. `Product Agent` 的输出至少包括：
    - Product 基础定义草案；
    - `master agent` 草案；
-   - 子 Agent 矩阵草案；
+   - 可复用 Prompt/Skill 沉淀建议；
    - 能力边界与职责拆分；
    - 默认资料结构与产物类型定义。
-4. `Product Agent` 生成的矩阵草案必须显式列出每个子 Agent 的角色、输入输出边界、可用工具、依赖关系与可委派对象，避免“泛用大 Agent”吞并所有职责。
-5. `Product Agent` 生成结果默认进入草稿态，不得直接自动发布到用户可执行入口；发布前需允许人工审核、编辑和禁用部分子 Agent。
-6. 矩阵生成至少支持两种模式：
-   - `bootstrap`：从零创建新 Product 与完整矩阵；
-   - `expand`：在已有 Product 下新增子域或补充子 Agent。
+4. 新生成草案默认采用单主 Agent；领域规则、章节顺序、稳定命名与呈现约束优先沉淀到 `master agent.system_prompt` 或可复用 Skill，而不是默认拆成多 Agent。
+5. `Product Agent` 生成结果默认进入草稿态，不得直接自动发布到用户可执行入口；发布前需允许人工审核、编辑主 Agent 配置并保留兼容字段。
+6. 草案生成至少支持两种模式：
+   - `bootstrap`：从零创建新 Product 与主 Agent 草案；
+   - `expand`：在已有 Product 下补充能力边界、Prompt 或 Skill 上下文。
 7. 若已有 Product 与新输入名称或职责高度冲突，系统需给出复用或合并建议，而不是无约束重复创建多个语义相同 Product。
 8. `Product Agent` 生成的 Agent 必须兼容现有 Agent Profile 基础能力，包括工具白名单、Skills、MCP、Memory Files 与模型配置引用。
-9. 生成过程需保留草案版本和审核记录，便于回滚、对比和多轮修订。
-10. 验收：
+9. `Product Agent` 生成的 `master agent` 必须遵循统一执行职责模型：Agent 负责持续协助、吸收上下文与结果收口，具体文件、仓库、Shell 或页面产出统一交给 `codex_exec` 执行。
+10. 生成默认值要求：
+   - `master agent` 默认工具集包含 `codex_exec`、`search_memory`、`read_memory`、`write_memory`
+   - 运行时自动补充 `complete`
+   - 默认挂载 `memory` Skill 与标准 Agent Memory Files
+   - 领域型 Product 可通过主 Agent 私有 Skill 预置领域规则，例如 `travel-master` 的私有 `SKILL.md`
+11. 生成过程需保留草案版本和审核记录，便于回滚、对比和多轮修订。
+12. 验收：
    - 平台可通过 `Product Agent` 生成新 Product 草案；
-   - 草案中可查看总 Agent 与子 Agent 矩阵；
+   - 草案中可查看总 Agent 与其 Prompt/Skill 沉淀；
+   - 草案中的总 Agent 默认体现 Agent 协助 / Codex 执行模型；
    - 审核通过后可发布为正式 Product；
-   - 已有 Product 可按 `expand` 模式追加子矩阵。
+   - 已有 Product 可按 `expand` 模式补充主 Agent 上下文。
 
-#### 矩阵定义（草案）
+#### 草案定义（当前实现）
 
-1. 子 Agent 最小字段
+1. `master agent` 最小字段
    - `agent_id`
-   - `role`
-   - `responsibility`
-   - `input_contract`
-   - `output_contract`
-   - `allowed_tools`
-   - `allowed_delegate_targets`
-   - `priority`
+   - `name`
+   - `description`
+   - `system_prompt`
+   - `tools`
+   - `skills`
+   - `memory_files`
    - `enabled`
-2. 矩阵级字段
+2. Product 级字段
    - `product_id`
    - `version`
    - `master_agent_id`
-   - `worker_agents[]`
    - `artifact_types[]`
    - `knowledge_sources[]`
+   - `worker_agents[]`：兼容保留字段，新草稿默认留空
 3. 草稿级字段
    - `draft_id`
    - `mode`
@@ -259,84 +279,84 @@
 1. Product Agent 草案生成
    - `POST /api/control/products/generate`
    - 入参：Product 目标、约束与模式
-   - 返回：Product 草案、总 Agent 草案、子 Agent 矩阵草案
-2. 已有 Product 扩展矩阵
+   - 返回：Product 草案、总 Agent 草案与可选 supporting agents 字段
+2. 已有 Product 增量扩展
    - `POST /api/control/products/{product_id}/matrix/generate`
    - 入参：新增能力目标与边界约束
+   - 说明：当前作为兼容保留入口，默认只扩展主 Agent 上下文，不自动新增 worker matrix
 3. 草案查询
    - `GET /api/control/products/drafts`
    - `GET /api/control/products/drafts/{draft_id}`
 4. 草案审核与发布
    - `POST /api/control/products/drafts/{draft_id}/publish`
    - `PUT /api/control/products/drafts/{draft_id}`
-   - 前端 `Draft Studio` 当前以结构化摘要 + JSON review editor 的方式支持审核、编辑、禁用子 Agent 与发布
+   - 前端 `Draft Studio` 当前以结构化摘要 + JSON review editor 的方式支持审核、编辑主 Agent、兼容查看 supporting agents 与发布
 
 #### Traceability
 
-- 领域对象：`ProductDraft`、`ProductMatrix`、`ProductAgent`、`draft_id`
+- 领域对象：`ProductDraft`、`ProductAgentDraft`、`draft_id`
 - 当前实现文件：`internal/product/domain/draft.go`、`internal/product/application/draft_service.go`、`internal/storage/infrastructure/localfile/product_draft_store.go`、`internal/interfaces/web/product_features.go`、`internal/interfaces/web/static/assets/chat.js`
 - 依赖需求：`R-052`、`R-053`、`R-054`
-- 验证口径：草案生成完整性、审核发布闭环、矩阵职责清晰度、重复 Product 冲突处理
+- 验证口径：草案生成完整性、审核发布闭环、单主 Agent 规则沉淀完整性、重复 Product 冲突处理
 
-### R-056 Product 总 Agent 与子 Agent 矩阵编排
+### R-056 Product 总 Agent 执行编排
 
 1. 每个已发布 Product 必须绑定且仅绑定一个 `master agent`，作为该 Product 的统一需求入口与任务编排中心。
 2. `master agent` 负责：
    - 识别当前请求是否属于本 Product；
    - 解析用户目标、约束和上下文；
-   - 决定是否拆分子任务；
-   - 调度子 Agent；
+   - 直接收口领域结果与结构化产物；
+   - 决定是否复用兼容保留的 supporting agents；
    - 汇总最终结果与产物。
-3. Product 下的子 Agent 以矩阵方式组织，每个子 Agent 必须具备明确职责边界，不允许多个 Agent 对同一职责做无约束重叠。
-4. 子 Agent 可按 Product 自身特性定义，但至少要支持：
-   - 查询型 Agent；
-   - 规划型 Agent；
-   - 生成型 Agent；
-   - 交付型 Agent。
-5. 矩阵编排必须支持顺序执行与并行执行两种模式；并行执行仅允许在输入输出边界明确、互不覆盖时启用。
-6. `master agent` 与子 Agent 间的委派必须保留可追踪结构，至少记录：`product_id`、`master_agent_id`、`worker_agent_id`、`task_id`、`delegation_reason`、`delegation_order`。
-7. 编排层必须限制递归深度、自委派和循环依赖，避免 `master agent -> worker -> master` 或子 Agent 互相回环导致无限递归。
+3. 新发布 Product 默认不依赖多 Agent 编排；领域规则、结构化字段与可复用约束优先沉淀到 `master agent` 的 system prompt 与 Skill。
+4. Product 仍可兼容保留 supporting agents，但必须具备明确职责边界，不允许多个 Agent 对同一职责做无约束重叠。
+5. 若存在 supporting agents，`master agent` 与其委派必须保留可追踪结构，至少记录：`product_id`、`master_agent_id`、`worker_agent_id`、`task_id`、`delegation_reason`、`delegation_order`。
+6. 编排层必须限制递归深度、自委派和循环依赖，避免 `master agent -> worker -> master` 或 supporting agents 互相回环导致无限递归。
 8. Product 执行结果必须同时支持：
    - 用户可读结果；
    - 结构化产物；
-   - 子任务链路摘要。
-9. 当某个子 Agent 不可用、被禁用或执行失败时，`master agent` 需提供降级策略：重试、改派、跳过或返回部分结果，并明确告知缺失能力范围。
-10. 验收：
+   - 必要时的子任务链路摘要。
+9. 当某个 supporting agent 不可用、被禁用或执行失败时，`master agent` 需优先回退为单 Agent 直接执行，并明确告知缺失能力范围。
+10. Product 总 Agent 与兼容 supporting agents 必须沿用统一职责模型：保持助手角色，负责理解用户目标、利用记忆与上下文推进执行，具体执行统一通过 `codex_exec` 完成；仅在允许且确有必要时通过 `delegate_agent` 调度其他 Agent。
+11. 对通过 Draft Studio 发布的 Product，发布链路必须对 `master agent` 的工具、Skill 与 Memory Files 做归一化补齐，确保旧草稿或手工编辑后的草稿仍能回到当前稳定执行模型；兼容存在的 supporting agents 继续做同样归一化。
+12. 验收：
    - 每个 Product 仅有一个总 Agent 入口；
-   - 总 Agent 可按矩阵定义拆分并委派子任务；
-   - 最终结果可回溯到各子 Agent；
+   - 总 Agent 默认可直接完成领域执行；
+   - 总 Agent 与兼容 supporting agents 具备 `codex_exec` 驱动的统一执行职责；
+   - 最终结果可回溯到总 Agent，必要时可追溯到 supporting agents；
    - 递归与循环委派被显式限制。
 
 #### 编排规则（当前实现）
 
 1. 路由优先级
    - Product 命中后先进入 `master agent`
-   - 只有 `master agent` 可以决定是否调用子 Agent
+   - 只有 `master agent` 可以决定是否调用 supporting agents
 2. 委派边界
-   - 子 Agent 默认不允许直接越权调用其他 Product 的子 Agent
+   - supporting agents 默认不允许直接越权调用其他 Product 的 supporting agents
    - 跨 Product 调用统一回到 `Alter0 Agent` 或上层协调器裁决
 3. 输出收口
-   - 所有子 Agent 输出先回到 `master agent`
+   - 所有 supporting agents 输出先回到 `master agent`
    - 用户侧只消费 `master agent` 汇总结果或结构化产物引用
 4. 发布行为
-   - 草稿发布时先将 `master agent` 与 `worker matrix` 物化为托管 Agent，再写入托管 Product 定义
+   - 草稿发布时至少将 `master agent` 物化为托管 Agent，再写入托管 Product 定义
+   - 发布时自动补齐稳定工具面、领域 Skill、`memory` Skill 与标准 Memory Files，避免旧草稿继续保留过时执行模型
    - 已发布 Product 仅暴露唯一 `master_agent_id` 作为外部执行入口
 
 #### Traceability
 
-- 领域对象：`ProductMasterAgent`、`ProductWorkerAgent`、`delegation_graph`
+- 领域对象：`ProductMasterAgent`、`delegation_graph`
 - 当前实现文件：`internal/interfaces/web/product_features.go`、`internal/interfaces/web/server.go`、`internal/agent/application/catalog.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`
 - 依赖需求：`R-048`、`R-053`、`R-054`、`R-055`
-- 验证口径：总 Agent 唯一性、矩阵拆分稳定性、委派链路可追踪性、降级策略有效性
+- 验证口径：总 Agent 唯一性、单 Agent 执行稳定性、委派链路可追踪性、降级策略有效性
 
 ### R-057 Alter0 Agent 跨 Product 信息检索与任务调度
 
 1. `Alter0 Agent` 作为平台统一入口，必须具备跨 Product 的意图识别、信息检索、任务分发与结果收口能力。
 2. 当用户问题涉及 Product 信息查询时，`Alter0 Agent` 需先读取 Product 目录与该 Product 的公开信息，再决定是否进入执行态。
-3. 当用户问题涉及 Product 任务执行时，`Alter0 Agent` 必须调用目标 Product 的 `master agent`，而不是直接越过 Product 边界调用其子 Agent。
+3. 当用户问题涉及 Product 任务执行时，`Alter0 Agent` 必须调用目标 Product 的 `master agent`，而不是直接越过 Product 边界调用其 supporting agents。
 4. `Alter0 Agent` 至少支持三类动作：
    - `discover_product`：识别用户意图并匹配 Product；
-   - `read_product_context`：读取 Product 基础信息、矩阵摘要、能力边界；
+   - `read_product_context`：读取 Product 基础信息、Agent 摘要、能力边界；
    - `run_product_master`：调用目标 Product 的总 Agent 执行任务。
    - 上述动作属于运行时编排语义；真正的具体实现与执行仍由 `codex_exec` 或被委派的目标 Agent 完成。
 5. 当用户请求跨多个 Product 时，`Alter0 Agent` 可按顺序或并行调度多个 Product `master agent`，但必须在最终结果中明确区分各 Product 的输出来源。
@@ -376,13 +396,8 @@
 
 ### R-058 Travel Product 首个产品域落地
 
-1. 平台首个内置 Product 定义为 `travel`，作为 Product 平台与多 Agent 矩阵能力的首个验证场景。
-2. `travel` 必须绑定独立 `travel-master`，并预留以下子 Agent 角色：
-   - `travel-city-guide`
-   - `travel-route-planner`
-   - `travel-metro-guide`
-   - `travel-food-recommender`
-   - `travel-map-annotator`
+1. 平台首个内置 Product 定义为 `travel`，作为 Product 平台单主 Agent + Skill 沉淀模式的首个验证场景。
+2. `travel` 必须绑定独立 `travel-master`，并作为唯一默认执行入口承接旅游领域需求。
 3. `travel-master` 负责理解旅游场景用户需求，至少支持：城市、天数、出行风格、预算、同行人群、必去点、规避条件。
 4. `travel` 的首批产物是城市旅游攻略；攻略结果必须同时支持：
    - 用户可读文案；
@@ -391,17 +406,12 @@
 5. 结构化攻略最小字段至少包含：`city`、`days`、`travel_style`、`must_visit`、`avoid`、`pois`、`metro_lines`、`daily_routes`、`foods`、`notes`、`map_layers`。
 6. 用户后续补充要求时，`travel-master` 需在已有攻略基础上做 revision，而不是每次丢弃上下文重建整份攻略。
 7. `travel` 首版允许先以结构化攻略和文本攻略为主；地图高亮、路线绘制和 POI 点位需在产物结构中预留标准字段，便于后续接地图能力。
-8. `travel` 的子 Agent 职责边界要求：
-   - `travel-city-guide`：聚合城市概览与景点分层；
-   - `travel-route-planner`：负责行程排序与每日路线；
-   - `travel-metro-guide`：负责地铁与公共交通建议；
-   - `travel-food-recommender`：负责餐饮与用餐分布；
-   - `travel-map-annotator`：负责地图图层和点线路径表达。
-9. `travel` 必须支持在 Product 详情和后续 Product Workspace 中查看其总 Agent、子 Agent 矩阵和主要产物类型。
+8. `travel-master` 的主职责必须覆盖城市概览、景点组织、行程排序、地铁与公共交通建议、餐饮推荐、地图图层表达与结果收口，不依赖默认拆分出的子 Agent。
+9. `travel` 必须支持在 Product 详情和后续 Product Workspace 中查看其总 Agent、主要产物类型以及相关规则沉淀。
 10. `travel` Workspace 必须支持和 `travel-master` 对话，并将创建/修改请求同步到具体城市页空间；当用户选择武汉、成都、北京等城市页后，后续修改默认作用于当前城市页。
-11. `travel` 必须内置独立 `travel-page` Skill，作为城市页生成规则、章节组织与 HTML 呈现约定的统一规则簿；默认文件路径为 `.alter0/skills/travel-page.md`。
-12. `travel-master` 必须默认挂载 `travel-page` Skill；其具体城市页生成、规则读取与规则更新统一通过 `codex_exec` 结合 Skill 上下文完成，不再依赖独立 Skill 读写工具。
-13. 当用户提出稳定、可复用、应影响后续多个城市页的偏好时，`travel-master` 需按需通过 `codex_exec` 更新 `travel-page` 规则簿；若只是某个城市或某次出行的一次性要求，则只更新目标城市页，不写入 Skill。
+11. `travel-master` 必须使用专属私有 file-backed Skill，默认文件路径为 `.alter0/agents/travel-master/SKILL.md`，作为城市页生成规则、章节组织与 HTML 呈现约定的统一规则簿。
+12. `travel-master` 在命中执行时必须自动注入该私有 Skill；其具体城市页生成、规则读取与规则更新统一通过 `codex_exec` 结合 Skill 上下文完成，不再依赖独立 Skill 读写工具。
+13. 当用户提出稳定、可复用、应影响后续多个城市页的偏好时，`travel-master` 需按需通过 `codex_exec` 更新自己的私有 Skill 规则簿；若只是某个城市或某次出行的一次性要求，则只更新目标城市页，不写入 Skill。
 14. `POST /api/products/travel/workspace/chat` 需优先走 `travel-master` 的结构化解析；若 Agent 执行链、模型响应或 CLI fallback 不可用，服务端需自动切换到本地规则解析，继续完成城市页创建或修订，不向用户直接暴露底层执行失败。
 15. `travel` 的每个城市页空间都必须提供独立 HTML 页面，默认使用 `/products/travel/spaces/{space_id}.html` 访问，页面内容与 Workspace 当前城市页详情保持同步。
 16. 验收：
@@ -409,7 +419,7 @@
    - `Alter0 Agent` 可识别并路由到 `travel-master`；
    - 用户可生成指定城市的旅游攻略；
    - 用户可基于补充条件修改已有攻略；
-   - `travel-master` 可结合 `travel-page` Skill 上下文，并在稳定偏好变更时通过 `codex_exec` 更新规则簿；
+   - `travel-master` 可结合自己的私有 Skill 上下文，并在稳定偏好变更时通过 `codex_exec` 更新规则簿；
    - 当 `travel-master` 执行失败时，Workspace Chat 仍可通过本地解析继续创建或修订城市页；
    - 每个城市页都可通过独立 HTML 路由直接访问；
    - 结果中保留可供地图与路线后续增强的结构化字段；

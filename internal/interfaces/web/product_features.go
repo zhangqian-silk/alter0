@@ -214,10 +214,10 @@ func buildControlAgentFromMasterDraft(draft productdomain.ProductAgentDraft) con
 		Scope:         controldomain.CapabilityScopeGlobal,
 		SystemPrompt:  strings.TrimSpace(draft.SystemPrompt),
 		MaxIterations: draft.MaxIterations,
-		Tools:         append([]string(nil), draft.Tools...),
-		Skills:        append([]string(nil), draft.Skills...),
+		Tools:         normalizeProductMasterDraftTools(draft.Tools),
+		Skills:        normalizeProductMasterDraftSkills(draft),
 		MCPs:          append([]string(nil), draft.MCPs...),
-		MemoryFiles:   append([]string(nil), draft.MemoryFiles...),
+		MemoryFiles:   normalizeProductDraftMemoryFiles(draft.MemoryFiles),
 		Source:        controldomain.AgentSourceManaged,
 		Kind:          controldomain.AgentKindSpecialist,
 		Description:   strings.TrimSpace(draft.Description),
@@ -235,16 +235,80 @@ func buildControlAgentFromWorkerDraft(draft productdomain.ProductWorkerDraft) co
 		Scope:         controldomain.CapabilityScopeGlobal,
 		SystemPrompt:  strings.TrimSpace(draft.SystemPrompt),
 		MaxIterations: draft.MaxIterations,
-		Tools:         append([]string(nil), draft.AllowedTools...),
-		Skills:        append([]string(nil), draft.Skills...),
+		Tools:         normalizeProductWorkerDraftTools(draft.AllowedTools),
+		Skills:        normalizeProductDraftSkills(draft.Skills),
 		MCPs:          append([]string(nil), draft.MCPs...),
-		MemoryFiles:   append([]string(nil), draft.MemoryFiles...),
+		MemoryFiles:   normalizeProductDraftMemoryFiles(draft.MemoryFiles),
 		Source:        controldomain.AgentSourceManaged,
 		Kind:          controldomain.AgentKindSpecialist,
 		Description:   strings.TrimSpace(draft.Description),
 		Delegatable:   false,
 		Capabilities:  append([]string(nil), draft.Capabilities...),
 	}
+}
+
+func normalizeProductMasterDraftTools(values []string) []string {
+	return mergeStableProductDraftList(
+		[]string{"codex_exec", "search_memory", "read_memory", "write_memory"},
+		filterProductDraftTools(values),
+	)
+}
+
+func normalizeProductMasterDraftSkills(draft productdomain.ProductAgentDraft) []string {
+	return mergeStableProductDraftList([]string{"memory"}, draft.Skills)
+}
+
+func normalizeProductWorkerDraftTools(values []string) []string {
+	return mergeStableProductDraftList(
+		[]string{"codex_exec", "search_memory", "read_memory", "write_memory"},
+		filterProductDraftTools(values),
+	)
+}
+
+func normalizeProductDraftSkills(values []string) []string {
+	return mergeStableProductDraftList([]string{"memory"}, values)
+}
+
+func normalizeProductDraftMemoryFiles(values []string) []string {
+	return mergeStableProductDraftList(
+		[]string{"user_md", "soul_md", "agents_md", "memory_long_term", "memory_daily_today"},
+		values,
+	)
+}
+
+func mergeStableProductDraftList(required []string, values []string) []string {
+	merged := make([]string, 0, len(required)+len(values))
+	seen := map[string]struct{}{}
+	appendValue := func(raw string) {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, trimmed)
+	}
+	for _, value := range required {
+		appendValue(value)
+	}
+	for _, value := range values {
+		appendValue(value)
+	}
+	return merged
+}
+
+func filterProductDraftTools(values []string) []string {
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), "complete") {
+			continue
+		}
+		filtered = append(filtered, value)
+	}
+	return filtered
 }
 
 func buildProductDraftGenerateInput(req productDraftGenerateRequest) productdomain.ProductDraftGenerateInput {

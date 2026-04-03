@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +33,51 @@ func (s *stubProcessor) Process(_ context.Context, content string, metadata map[
 		metadata[execdomain.ExecutionSourceMetadataKey] = s.source
 	}
 	return s.output, nil
+}
+
+func decodeMemoryContextFromMetadata(t *testing.T, metadata map[string]string) execdomain.MemoryContext {
+	t.Helper()
+	rawMemoryContext := metadata[execdomain.MemoryContextMetadataKey]
+	if rawMemoryContext == "" {
+		t.Fatalf("missing %s metadata", execdomain.MemoryContextMetadataKey)
+	}
+	var memoryContext execdomain.MemoryContext
+	if err := json.Unmarshal([]byte(rawMemoryContext), &memoryContext); err != nil {
+		t.Fatalf("unmarshal memory context: %v", err)
+	}
+	return memoryContext
+}
+
+func decodeSkillContextFromMetadata(t *testing.T, metadata map[string]string) execdomain.SkillContext {
+	t.Helper()
+	rawSkillContext := metadata[execdomain.SkillContextMetadataKey]
+	if rawSkillContext == "" {
+		t.Fatalf("missing %s metadata", execdomain.SkillContextMetadataKey)
+	}
+	var skillContext execdomain.SkillContext
+	if err := json.Unmarshal([]byte(rawSkillContext), &skillContext); err != nil {
+		t.Fatalf("unmarshal skill context: %v", err)
+	}
+	return skillContext
+}
+
+func findMemoryFileBySelection(memoryContext execdomain.MemoryContext, selection string) (execdomain.MemoryFileSpec, bool) {
+	for _, file := range memoryContext.Files {
+		if file.Selection == selection {
+			return file, true
+		}
+	}
+	return execdomain.MemoryFileSpec{}, false
+}
+
+func runGitCommand(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v: %s", args, err, strings.TrimSpace(string(output)))
+	}
 }
 
 func TestExecuteNaturalLanguageInjectsRuntimeMetadata(t *testing.T) {
@@ -248,6 +294,144 @@ func TestExecuteNaturalLanguageRespectsIncludeExcludeSelection(t *testing.T) {
 	}
 }
 
+func TestExecuteNaturalLanguageInjectsAgentOwnedSkillAndCreatesRulebook(t *testing.T) {
+	root := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	source := &stubSkillSource{items: []controldomain.Capability{
+		{ID: "summary", Name: "Summary", Type: controldomain.CapabilityTypeSkill, Enabled: true},
+	}}
+	service := NewServiceWithSkills(processor, source, nil)
+
+	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-agent-skill",
+		SessionID:   "s-agent-skill",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "keep this agent's format stable",
+		TraceID:     "t-agent-skill",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:   "coding",
+			execdomain.AgentNameMetadataKey: "Coding Agent",
+			skillIncludeFilterKey:           `["summary"]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+	if got := result.Metadata[resultSkillInjectedIDsKey]; got != "agent-skill-coding,summary" {
+		t.Fatalf("skills injected ids = %q, want agent-skill-coding,summary", got)
+	}
+	if got := result.Metadata[resultSkillInjectedKey]; got != "2" {
+		t.Fatalf("skills injected count = %q, want 2", got)
+	}
+
+	skillContext := decodeSkillContextFromMetadata(t, processor.lastMetadata)
+	if len(skillContext.Skills) != 2 {
+		t.Fatalf("skill context size = %d, want 2", len(skillContext.Skills))
+	}
+	agentSkill := skillContext.Skills[0]
+	if agentSkill.ID != "agent-skill-coding" {
+		t.Fatalf("agent skill id = %q, want agent-skill-coding", agentSkill.ID)
+	}
+	if agentSkill.FilePath != ".alter0/agents/coding/SKILL.md" {
+		t.Fatalf("agent skill file path = %q, want .alter0/agents/coding/SKILL.md", agentSkill.FilePath)
+	}
+	if !agentSkill.Writable {
+		t.Fatal("expected agent skill writable")
+	}
+	if !strings.Contains(agentSkill.Guide, "AGENTS.md") {
+		t.Fatalf("agent skill guide = %q, want AGENTS.md boundary", agentSkill.Guide)
+	}
+
+	skillPath := filepath.Join(root, ".alter0", "agents", "coding", "SKILL.md")
+	data, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("read agent skill file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "# Coding Agent Skill") {
+		t.Fatalf("unexpected agent skill content: %q", content)
+	}
+	if !strings.Contains(content, ".alter0/agents/coding/AGENTS.md") {
+		t.Fatalf("expected agent skill content to distinguish AGENTS.md, got %q", content)
+	}
+}
+
+func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
+	root := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-travel-agent-skill",
+		SessionID:   "s-travel-agent-skill",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "create a travel guide",
+		TraceID:     "t-travel-agent-skill",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:           "travel-master",
+			execdomain.AgentNameMetadataKey:         "Travel Master Agent",
+			execdomain.AgentCapabilitiesMetadataKey: `["travel","product-master"]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+
+	skillContext := decodeSkillContextFromMetadata(t, processor.lastMetadata)
+	if len(skillContext.Skills) != 1 {
+		t.Fatalf("skill context size = %d, want 1", len(skillContext.Skills))
+	}
+	agentSkill := skillContext.Skills[0]
+	if agentSkill.FilePath != ".alter0/agents/travel-master/SKILL.md" {
+		t.Fatalf("travel agent skill file path = %q, want .alter0/agents/travel-master/SKILL.md", agentSkill.FilePath)
+	}
+	if !strings.Contains(agentSkill.Description, "travel agent") {
+		t.Fatalf("travel agent skill description = %q, want travel-specific description", agentSkill.Description)
+	}
+	if !strings.Contains(agentSkill.Guide, "city-page") {
+		t.Fatalf("travel agent skill guide = %q, want travel-specific guidance", agentSkill.Guide)
+	}
+
+	skillPath := filepath.Join(root, ".alter0", "agents", "travel-master", "SKILL.md")
+	data, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("read travel agent skill file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "## Stable travel contract") {
+		t.Fatalf("unexpected travel agent skill content: %q", content)
+	}
+	if !strings.Contains(content, "day-by-day route planning") {
+		t.Fatalf("expected travel agent skill content to include travel page defaults, got %q", content)
+	}
+}
+
 func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "USER.md"), []byte("name: alter0"), 0o644); err != nil {
@@ -291,14 +475,7 @@ func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
 	if got := result.Metadata[resultMemoryInjectedKey]; got != "2" {
 		t.Fatalf("memory injected count = %q, want 2", got)
 	}
-	rawMemoryContext := processor.lastMetadata[execdomain.MemoryContextMetadataKey]
-	if rawMemoryContext == "" {
-		t.Fatalf("missing %s metadata", execdomain.MemoryContextMetadataKey)
-	}
-	var memoryContext execdomain.MemoryContext
-	if err := json.Unmarshal([]byte(rawMemoryContext), &memoryContext); err != nil {
-		t.Fatalf("unmarshal memory context: %v", err)
-	}
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
 	if len(memoryContext.Files) != 2 {
 		t.Fatalf("memory context size = %d, want 2", len(memoryContext.Files))
 	}
@@ -353,22 +530,23 @@ func TestExecuteNaturalLanguageInjectsAgentSpecificAgentsMD(t *testing.T) {
 		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
 	}
 
-	rawMemoryContext := processor.lastMetadata[execdomain.MemoryContextMetadataKey]
-	if rawMemoryContext == "" {
-		t.Fatalf("missing %s metadata", execdomain.MemoryContextMetadataKey)
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
+	agentFile, ok := findMemoryFileBySelection(memoryContext, memorySelectionAgentsMD)
+	if !ok {
+		t.Fatalf("expected %s in memory context: %+v", memorySelectionAgentsMD, memoryContext.Files)
 	}
-	var memoryContext execdomain.MemoryContext
-	if err := json.Unmarshal([]byte(rawMemoryContext), &memoryContext); err != nil {
-		t.Fatalf("unmarshal memory context: %v", err)
-	}
-	if len(memoryContext.Files) != 1 {
-		t.Fatalf("memory context size = %d, want 1", len(memoryContext.Files))
-	}
-	if got := memoryContext.Files[0].Path; !strings.HasSuffix(got, "/.alter0/agents/researcher/AGENTS.md") {
+	if got := agentFile.Path; !strings.HasSuffix(got, "/.alter0/agents/researcher/AGENTS.md") {
 		t.Fatalf("unexpected agent AGENTS path: %q", got)
 	}
-	if got := memoryContext.Files[0].Content; got != "scope: researcher only" {
+	if got := agentFile.Content; got != "scope: researcher only" {
 		t.Fatalf("unexpected agent AGENTS content: %q", got)
+	}
+	sessionProfile, ok := findMemoryFileBySelection(memoryContext, memorySelectionAgentSession)
+	if !ok {
+		t.Fatalf("expected %s in memory context: %+v", memorySelectionAgentSession, memoryContext.Files)
+	}
+	if !sessionProfile.Exists || sessionProfile.Writable {
+		t.Fatalf("unexpected session profile flags: %+v", sessionProfile)
 	}
 }
 
@@ -405,23 +583,134 @@ func TestExecuteNaturalLanguageReturnsMissingAgentSpecificAgentsMDPath(t *testin
 		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
 	}
 
-	rawMemoryContext := processor.lastMetadata[execdomain.MemoryContextMetadataKey]
-	if rawMemoryContext == "" {
-		t.Fatalf("missing %s metadata", execdomain.MemoryContextMetadataKey)
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
+	file, ok := findMemoryFileBySelection(memoryContext, memorySelectionAgentsMD)
+	if !ok {
+		t.Fatalf("expected %s in memory context: %+v", memorySelectionAgentsMD, memoryContext.Files)
 	}
-	var memoryContext execdomain.MemoryContext
-	if err := json.Unmarshal([]byte(rawMemoryContext), &memoryContext); err != nil {
-		t.Fatalf("unmarshal memory context: %v", err)
-	}
-	if len(memoryContext.Files) != 1 {
-		t.Fatalf("memory context size = %d, want 1", len(memoryContext.Files))
-	}
-	file := memoryContext.Files[0]
 	if file.Exists {
 		t.Fatalf("expected missing agent AGENTS.md path, got %+v", file)
 	}
 	if got := file.Path; !strings.HasSuffix(got, "/.alter0/agents/writing-agent/AGENTS.md") {
 		t.Fatalf("unexpected missing agent AGENTS path: %q", got)
+	}
+}
+
+func TestExecuteNaturalLanguageAutoInjectsAgentSessionProfile(t *testing.T) {
+	root := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-session-profile",
+		SessionID:   "session-profile",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "continue helping me",
+		TraceID:     "t-session-profile",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:   "researcher",
+			execdomain.AgentNameMetadataKey: "Research Agent",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
+	sessionProfile, ok := findMemoryFileBySelection(memoryContext, memorySelectionAgentSession)
+	if !ok {
+		t.Fatalf("expected %s in memory context: %+v", memorySelectionAgentSession, memoryContext.Files)
+	}
+	if !sessionProfile.Exists || sessionProfile.Writable {
+		t.Fatalf("unexpected session profile flags: %+v", sessionProfile)
+	}
+	if got := sessionProfile.Path; !strings.HasSuffix(got, "/.alter0/agents/researcher/sessions/session-profile.md") {
+		t.Fatalf("unexpected session profile path: %q", got)
+	}
+	for _, expected := range []string{
+		"# Agent Session Profile",
+		"- agent_id: researcher",
+		"- agent_name: Research Agent",
+		"- session_id: session-profile",
+		"- channel_type: web",
+		"## Notes",
+	} {
+		if !strings.Contains(sessionProfile.Content, expected) {
+			t.Fatalf("expected session profile to contain %q, got %q", expected, sessionProfile.Content)
+		}
+	}
+}
+
+func TestExecuteNaturalLanguageAgentSessionProfileCapturesCodingRepositoryContext(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, ".alter0", "workspaces", "sessions", "coding-session")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	runGitCommand(t, workspaceDir, "init")
+	runGitCommand(t, workspaceDir, "checkout", "-b", "feat/session-memory")
+	runGitCommand(t, workspaceDir, "remote", "add", "origin", "https://example.com/demo/repo.git")
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-coding-session",
+		SessionID:   "coding-session",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "continue the repository work",
+		TraceID:     "t-coding-session",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:   "coding",
+			execdomain.AgentNameMetadataKey: "Coding Agent",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
+	sessionProfile, ok := findMemoryFileBySelection(memoryContext, memorySelectionAgentSession)
+	if !ok {
+		t.Fatalf("expected %s in memory context: %+v", memorySelectionAgentSession, memoryContext.Files)
+	}
+	for _, expected := range []string{
+		"## Coding Context",
+		"- local_repository_path: " + filepath.ToSlash(workspaceDir),
+		"- remote_repository: https://example.com/demo/repo.git",
+		"- active_branch: feat/session-memory",
+		"- session_workspace_path: " + filepath.ToSlash(workspaceDir),
+		"- preview_url: https://",
+	} {
+		if !strings.Contains(sessionProfile.Content, expected) {
+			t.Fatalf("expected coding session profile to contain %q, got %q", expected, sessionProfile.Content)
+		}
 	}
 }
 

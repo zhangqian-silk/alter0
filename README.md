@@ -60,7 +60,7 @@ internal/interfaces/cli            # CLI 适配器
 internal/interfaces/web            # Web 适配器 + Control API
 internal/control/domain            # Control 领域模型（Channel/Skill）
 internal/control/application       # Control 应用服务（配置增删改查）
-internal/product/domain            # Product 领域模型（产品定义与 Agent 矩阵）
+internal/product/domain            # Product 领域模型（产品定义与主 Agent 上下文）
 internal/product/application       # Product 应用服务（内置 Product + 托管 CRUD）
 internal/scheduler/domain          # 定时任务模型
 internal/scheduler/application     # 定时任务管理器（触发到编排层）
@@ -116,22 +116,26 @@ internal/shared/infrastructure     # ID、日志、metrics
 - Chat / Agent 助手最终回复提供一键复制入口；若同条消息包含 `Process`，复制内容仅包含最终正文，不包含折叠的执行细节。
 
 2. `Agent`
-- 面向“先执行再汇报”的目标型任务。
-- 请求进入后会创建一个 ReAct 执行环，以当前任务为目标持续推进。
+- 面向“持续协助并推进执行”的目标型任务。
+- 请求进入后会创建一个具备会话连续性的 ReAct 执行环，以当前任务为目标持续推进，并复用该 Agent 在当前 Session 内已经确认的稳定上下文。
 - 运行时统一维护 `Agent Catalog`：同时聚合系统内置 Agent 与用户管理的 Agent Profile。
 - 当前内置 Agent 包括：
   - `main`：默认对话主 Agent `Alter0`，可调度专项 Agent
   - `coding`：专项编码 Agent，负责理解开发需求、与用户保持交互，并通过 `codex_exec` 多轮推进代码修改、验证、预览页检查与结果收口
   - `writing`：面向文档、文案与结构化写作
-  - `product-builder`：用于创建和扩展 Product 定义与子 Agent 矩阵
-- `travel-master`：负责旅游 Product 的总控编排
+  - `product-builder`：用于创建和扩展 Product 定义、主 Agent 方案与可复用 Prompt/Skill 沉淀
+- `travel-master`：负责旅游 Product 的单主 Agent 执行与结果收口
 - Web `Chat` 页面默认绑定 `Alter0`；`Agent` 页面提供统一 Agent 运行入口，用于承载未占用独立前端入口的内置 Agent 与用户管理 Agent。
-- Agent 的职责收敛为“代理用户意图并驱动执行”，而不是直接自己操作仓库或 Shell。稳定工具面只保留 `codex_exec` 作为具体执行入口，`Alter0/main` 与其他允许委派的 Agent 可额外使用 `delegate_agent`，所有 Agent 可在已注入的记忆文件范围内使用 `search_memory`、`read_memory`、`write_memory` 维护长期偏好、缩写映射与稳定协作约束。`search_memory` 用于按关键字跨记忆文件定位历史信息，再决定是否精读或更新具体文件。`coding` Agent 负责理解用户开发目标，并根据每次 `codex_exec` 的实际返回结果持续下发下一步实现或验证动作，直到任务完成或确认阻塞。`coding` Agent 会把当前仓库远端地址、本地仓库路径、当前分支、会话工作区、测试页预览域名与 PR 交付要求一并纳入运行时上下文；当需要测试页面时，预览地址统一采用 `https://<session_short_hash>.alter0.cn`。
+- Product `master agent` 与兼容保留的 supporting agents 同样遵循统一的“Agent 负责持续协助与编排，Codex CLI 负责具体执行”模型。新生成的 Product 默认采用单主 Agent，主 Agent 默认使用 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，并通过 system prompt 与 Skill 沉淀可复用规则；运行时自动补充 `complete` 收口。
+- Agent 的职责收敛为“作为用户的持续助手并驱动执行”，而不是直接自己操作仓库或 Shell。稳定工具面只保留 `codex_exec` 作为具体执行入口，`Alter0/main` 与其他允许委派的 Agent 可额外使用 `delegate_agent`，所有 Agent 可在已注入的记忆文件范围内使用 `search_memory`、`read_memory`、`write_memory` 维护长期偏好、缩写映射与稳定协作约束。`search_memory` 用于按关键字跨记忆文件定位历史信息，再决定是否精读或更新具体文件。`coding` Agent 负责理解用户开发目标，并根据每次 `codex_exec` 的实际返回结果持续下发下一步实现或验证动作，直到任务完成或确认阻塞。`coding` Agent 会把当前仓库远端地址、本地仓库路径、当前分支、会话工作区、测试页预览域名与 PR 交付要求一并纳入运行时上下文；当需要测试页面时，预览地址统一采用 `https://<session_short_hash>.alter0.cn`。
 - 若 Agent 在 `max_iterations` 耗尽前仍未显式 `complete`，运行时会返回带有“达到迭代上限”说明和最后一次工具观察的最终答复，避免 Web 流式消息在 `codex_exec` 观察后空收口。
 - Agent 流式回复中的 `action / observation` 执行细节会在助手消息内收敛为可折叠 `Process` 区块；最终答复继续作为正文展示，默认在收口后优先突出最终结果，用户可随时展开回看过程。
 - Agent 请求一旦进入后端执行链，浏览器侧任何交互事件都只影响当前连接状态，不影响 Agent 本身的执行与会话持久化；断开后重新进入历史即可查看最终结果。
 - 每个 Agent 可独立配置名称、system prompt、tool 白名单、Skill 选择、MCP 选择与 Memory Files 选择。
 - Agent 可按 Profile 勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory；其中 `AGENTS.md` 固定解析为当前 `agent_id` 的私有文件 `.alter0/agents/<agent_id>/AGENTS.md`，不与其他 Agent 共享；`USER.md`、`SOUL.md`、长期/日记忆继续作为共享记忆注入执行链路。
+- 所有 Agent 还会自动携带一个私有、可维护的 file-backed Skill，默认文件为 `.alter0/agents/<agent_id>/SKILL.md`；它用于沉淀该 Agent 的可复用工作模式、输出结构、检查清单与稳定偏好，不需要在 Agent Profile 里手工勾选。
+- `AGENTS.md` 与私有 `SKILL.md` 职责分离：`AGENTS.md` 负责当前 Agent 的协作边界、仓库/工作区操作规则与交付约束；`SKILL.md` 负责该 Agent 自身的可复用打法、模板和长期偏好。一次性任务细节仍应留在当前任务或记忆文件，不写入 Skill。
+- 所有 Agent 会额外自动维护当前 Session 的私有画像文件 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，并以只读 `Agent Session Profile` 注入执行链路；该文件用于沉淀当前 Agent 在该 Session 内的稳定工作上下文。`coding` 场景会自动写入仓库路径、远端地址、当前分支、Session 工作区与预览地址等关键属性。
 - 注入内容同时携带可写文件路径；Agent 只能在这些已解析出的记忆文件上使用 `search_memory`、`read_memory`、`write_memory` 做检索与持久化维护，其余具体文件与命令操作统一交给 `codex_exec`。
 - Web 端将用户管理的 Agent Profile 放在 `Agent Profiles` 页面；系统内置 Agent 由服务注册，不能通过控制面覆盖或删除。
 - Agent 的 `id`、`version` 等系统字段由服务端统一生成和维护，管理页不要求用户手填。
@@ -177,25 +181,19 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 ## Product Model
 
-Product 用于承载“某个业务产品 / 应用的总 Agent 与子 Agent 矩阵”，当前稳定行为如下：
+Product 用于承载“某个业务产品 / 应用的主 Agent 与可复用领域上下文”，当前稳定行为如下：
 
-1. Web 端新增 `Products` 页面，统一承载 `Workspace` 与 `Studio` 双视图；同一入口内既可维护 Product 定义、主 Agent、入口路由、知识源、产物类型与子 Agent 矩阵，也可查看 Product 概览、主 Agent 对话面板与具体详情页空间。
-2. Product 由服务端统一维护 `id`、`version` 与 `owner_type`；内置 Product 只读展示，用户管理 Product 支持新增、编辑、删除、生成草稿矩阵并在审核后发布。
-3. `Draft Studio` 当前提供 `POST /api/control/products/generate`、`GET /api/control/products/drafts`、`GET /api/control/products/drafts/{draft_id}`、`PUT /api/control/products/drafts/{draft_id}`、`POST /api/control/products/drafts/{draft_id}/publish`、`POST /api/control/products/{product_id}/matrix/generate`，发布时会同时落地 Product 与对应的托管 Agent 矩阵。
+1. Web 端新增 `Products` 页面，统一承载 `Workspace` 与 `Studio` 双视图；同一入口内既可维护 Product 定义、主 Agent、入口路由、知识源、产物类型与可选 supporting agents，也可查看 Product 概览、主 Agent 对话面板与具体详情页空间。
+2. Product 由服务端统一维护 `id`、`version` 与 `owner_type`；内置 Product 只读展示，用户管理 Product 支持新增、编辑、删除、生成草稿并在审核后发布。
+3. `Draft Studio` 当前提供 `POST /api/control/products/generate`、`GET /api/control/products/drafts`、`GET /api/control/products/drafts/{draft_id}`、`PUT /api/control/products/drafts/{draft_id}`、`POST /api/control/products/drafts/{draft_id}/publish`、`POST /api/control/products/{product_id}/matrix/generate`。新草稿默认只生成单主 Agent，并把领域规则沉淀到主 Agent 的 system prompt 与 Skill；`matrix/generate` 当前作为兼容保留的增量扩展入口，不再默认补出新的 worker matrix。
 4. `Alter0` 在默认 `main` Agent 下会先做 Product 发现；命中 Product 后会补充 `matched_product_ids`、`selected_product_id`、`selection_reason`、`master_agent_id`、`product_execution_mode` 等元数据，并在执行型请求中自动切换到目标 Product 的 `master_agent_id`。
-5. 当前内置 `travel` Product 默认公开可见，并绑定以下 Agent 角色：
-   - `travel-master`
-   - `travel-city-guide`
-   - `travel-route-planner`
-   - `travel-metro-guide`
-   - `travel-food-recommender`
-   - `travel-map-annotator`
-6. `travel` Product 面向按城市聚合的旅游攻略场景，预留 `city_guide`、`itinerary`、`map_layers` 等产物类型以及 `city_profile`、`poi_catalog`、`metro_network`、`food_catalog` 等知识源。
+5. 当前内置 `travel` Product 默认公开可见，并绑定单一 `travel-master` 作为唯一执行入口。
+6. `travel` Product 面向按城市聚合的旅游攻略场景，预留 `city_guide`、`itinerary`、`map_layers` 等产物类型以及 `city_profile`、`poi_catalog`、`metro_network`、`food_catalog` 等知识源；城市页规则、章节顺序与稳定呈现约定统一沉淀在主 Agent prompt 与 `travel-master` 私有 `SKILL.md` 中。
 7. 已发布且公开的 Product 提供独立执行入口：`POST /api/products/{product_id}/messages` 与 `POST /api/products/{product_id}/messages/stream`；请求会自动绑定到该 Product 的 `master_agent_id`，并注入 `alter0.product_context` 与 `alter0.product.discovery`。
 8. 已发布且公开的 Product 同时提供 Workspace 详情入口：`GET /api/products/{product_id}/workspace`，用于返回 Product 基础信息、主 Agent 摘要与详情页空间列表；支持通过 `GET /api/products/{product_id}/workspace/spaces/{space_id}` 查看具体页面内容，并为每个空间返回独立 HTML 页面地址。
 9. 每个 Product 详情页空间都可映射为独立 HTML 页面；当前 `travel` 城市页默认使用 `/products/travel/spaces/{space_id}.html` 访问，例如武汉、成都、北京等城市页都可单独打开。
 10. `travel` Product 在 Workspace 中提供“主 Agent 对话 -> 城市页同步”链路：`POST /api/products/travel/workspace/chat` 会优先由 `travel-master` 解析用户意图，并将结果落到具体城市页空间；当 Agent 执行链暂不可用时，服务端会自动回退到本地规则解析，继续创建或修改如武汉、成都、北京等页面。
-11. `travel` 额外内置文件型 `travel-page` Skill，默认落在 `.alter0/skills/travel-page.md`，作为城市页生成规则与 HTML 页面呈现约定的可复用规则簿；`travel-master` 会把该 Skill 作为规则上下文交给 `codex_exec`，并仅在用户提出稳定可复用偏好时更新该规则簿，而不会把一次性行程约束写入 Skill。
+11. `travel-master` 使用专属私有 file-backed Skill，默认路径为 `.alter0/agents/travel-master/SKILL.md`；该文件预置城市页生成规则与 HTML 页面呈现约定，运行时会作为规则上下文交给 `codex_exec`，并仅在用户提出稳定可复用偏好时更新，不会把一次性行程约束写入 Skill。
 12. `travel` 额外保留结构化攻略接口：`POST /api/products/travel/guides`、`GET /api/products/travel/guides/{guide_id}`、`POST /api/products/travel/guides/{guide_id}/revise`；攻略输出稳定包含景点、地铁、路线、美食、说明与地图图层字段，便于后续接地图高亮和路线渲染。
 
 ## Workspace Model
@@ -453,9 +451,10 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 
 说明：
 
-1. 服务启动后默认提供 `default-nl`、`memory` 与 `travel-page` 三个内置 Skill。
+1. 服务启动后默认提供 `default-nl` 与 `memory` 两个内置 Skill。
 2. `memory` Skill 用于向 Agent / Codex 明确记忆文件的读取决策、写入路由、冲突优先级与禁止写入项，建议与 `memory_files` 一起启用。
-3. `travel-page` Skill 用于维护 `travel` 城市页与独立 HTML 页的可复用规则，默认文件为 `.alter0/skills/travel-page.md`；适合沉淀长期页面偏好、章节顺序、稳定呈现规则，不用于保存某次旅行的一次性限制。
+3. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `.alter0/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。
+4. `travel-master` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食与地图输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
 
 ### Agent
 
@@ -514,9 +513,10 @@ curl -X POST http://127.0.0.1:18088/api/agent/messages \
 5. `Chat` 默认绑定 `main` Agent；`Agent` 页面作为其余入口 Agent 的统一运行页，并按目标 Agent 隔离维护独立会话历史；具备独立前端入口的 Agent 不进入该页历史。
 6. Agent 的 Skill、MCP 与 Memory Files 选择会在执行前注入运行时上下文，执行过程仍复用统一编排链路。
 7. 内置 `memory` Skill 会明确记忆文件的读写逻辑：按任务类型决定先读哪些文件、按信息类型决定写入哪个文件、遇到冲突时按 `SOUL.md > AGENTS.md > 长期记忆 > 日记忆` 收敛；其中 `AGENTS.md` 固定为当前 Agent 的非共享规则文件 `.alter0/agents/<agent_id>/AGENTS.md`，`USER.md`、`SOUL.md` 与长期/日记忆继续共享；实际文件快照仍由 `memory_files` 注入提供。
-8. `memory_files` 当前支持：`user_md`、`soul_md`、`agents_md`、`memory_long_term`、`memory_daily_today`、`memory_daily_yesterday`。
-9. Memory Files 注入会携带文件内容、绝对路径、是否存在、最近更新时间；文件不存在时仍会暴露预期路径，便于 Agent 直接创建并写入。
-10. Web `Agent Profiles` 页面用于管理用户自定义 Agent Profile；内置 Agent 由服务托管；`Chat` 页面绑定 `Alter0`；`Agent` 页面作为其余入口 Agent 的通用交互入口。
+8. 每个 Agent 还会自动拿到自己的私有 Skill 文件 `.alter0/agents/<agent_id>/SKILL.md`；运行时会把它作为可写 Skill 上下文注入，Agent 需要在用户提出稳定、可复用、会影响后续该 Agent 行为的偏好时按需更新它，而不是把一次性任务细节写进去。
+9. `memory_files` 当前支持：`user_md`、`soul_md`、`agents_md`、`memory_long_term`、`memory_daily_today`、`memory_daily_yesterday`。
+10. Memory Files 注入会携带文件内容、绝对路径、是否存在、最近更新时间；文件不存在时仍会暴露预期路径，便于 Agent 直接创建并写入。
+11. Web `Agent Profiles` 页面用于管理用户自定义 Agent Profile；内置 Agent 由服务托管；`Chat` 页面绑定 `Alter0`；`Agent` 页面作为其余入口 Agent 的通用交互入口。
 
 ### Product
 
@@ -606,6 +606,7 @@ curl -X PUT http://127.0.0.1:18088/api/control/products/travel-premium \
 2. `GET /api/products` 与 `GET /api/products/{product_id}` 仅暴露 `active + public` 的 Product。
 3. 内置 Product 由服务注册，不能通过控制面覆盖或删除。
 4. Product 更新时由服务端自动递增 `version`；新建 Product 默认从 `v1.0.0` 开始。
+5. Draft Studio 生成或发布 Product 时，会自动把 `master agent` 归一到当前稳定执行模型；即使草稿中残留旧版工具配置，发布后也会补齐 `codex_exec`、记忆工具、默认记忆文件与领域 Skill。历史 `worker agent` 配置仍可兼容读取，但新生成草稿默认不会再新增多 Agent 矩阵。
 
 ### Cron Jobs
 

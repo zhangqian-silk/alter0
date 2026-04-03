@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -674,6 +675,15 @@ func TestProductDraftEndpointsGenerateAndPublish(t *testing.T) {
 	if draft.DraftID == "" || draft.Product.ID != "travel-premium" {
 		t.Fatalf("unexpected draft: %+v", draft)
 	}
+	draft.MasterAgent.Tools = []string{"search_memory"}
+	draft.MasterAgent.Skills = nil
+	draft.MasterAgent.MemoryFiles = nil
+	if len(draft.WorkerMatrix) != 0 {
+		t.Fatalf("expected single-agent draft, got %+v", draft.WorkerMatrix)
+	}
+	if _, err := server.productDrafts.SaveDraft(draft.DraftID, draft); err != nil {
+		t.Fatalf("save draft failed: %v", err)
+	}
 
 	publishReq := httptest.NewRequest(http.MethodPost, "/api/control/products/drafts/"+draft.DraftID+"/publish", nil)
 	publishRec := httptest.NewRecorder()
@@ -686,9 +696,17 @@ func TestProductDraftEndpointsGenerateAndPublish(t *testing.T) {
 	}
 	if agent, ok := control.ResolveAgent("travel-premium-master"); !ok || !agent.Enabled {
 		t.Fatalf("expected published master agent, got %+v, %v", agent, ok)
+	} else {
+		expected := []string{"codex_exec", "search_memory", "read_memory", "write_memory"}
+		if !reflect.DeepEqual(agent.Tools, expected) {
+			t.Fatalf("expected normalized master tools %+v, got %+v", expected, agent.Tools)
+		}
+		if !reflect.DeepEqual(agent.Skills, []string{"memory"}) {
+			t.Fatalf("expected normalized master skills, got %+v", agent.Skills)
+		}
 	}
-	if agent, ok := control.ResolveAgent("travel-premium-city-guide"); !ok || !agent.Enabled {
-		t.Fatalf("expected published worker agent, got %+v, %v", agent, ok)
+	if agent, ok := control.ResolveAgent("travel-premium-city-guide"); ok || agent.ID != "" {
+		t.Fatalf("expected no published travel worker agent, got %+v, %v", agent, ok)
 	}
 	storedDraft, ok := server.productDrafts.GetDraft(draft.DraftID)
 	if !ok || storedDraft.ReviewStatus != productdomain.ReviewStatusPublished {

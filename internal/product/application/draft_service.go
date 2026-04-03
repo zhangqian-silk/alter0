@@ -191,8 +191,6 @@ func (s *DraftService) MarkPublished(id string, productID string) (productdomain
 func (s *DraftService) buildBootstrapDraft(input productdomain.ProductDraftGenerateInput, now time.Time) productdomain.ProductDraft {
 	productID := s.nextProductID(productIDBase(input.Name))
 	domain := inferProductDomain(input)
-	workers := buildWorkerDrafts(productID, domain, input)
-	productWorkers := buildPublishedWorkers(workers)
 	artifacts := resolveArtifactTypes(input, domain)
 	knowledgeSources := resolveKnowledgeSources(input, domain)
 	product := productdomain.Product{
@@ -207,7 +205,6 @@ func (s *DraftService) buildBootstrapDraft(input productdomain.ProductDraftGener
 		EntryRoute:       "products",
 		Tags:             resolveProductTags(input, domain),
 		Version:          productdomain.DefaultVersion,
-		WorkerAgents:     productWorkers,
 		ArtifactTypes:    artifacts,
 		KnowledgeSources: knowledgeSources,
 	}.Normalized()
@@ -226,15 +223,12 @@ func (s *DraftService) buildBootstrapDraft(input productdomain.ProductDraftGener
 		ExpectedArtifacts:       input.ExpectedArtifacts,
 		IntegrationRequirements: input.IntegrationRequirements,
 		ConflictSuggestions:     s.buildConflictSuggestions(input.Name, productID),
-		MasterAgent:             buildMasterDraft(productID, domain, input, workers),
-		WorkerMatrix:            workers,
+		MasterAgent:             buildMasterDraft(productID, domain, artifacts, knowledgeSources, input),
 	}.Normalized()
 }
 
 func (s *DraftService) buildExpandDraft(base productdomain.Product, input productdomain.ProductDraftGenerateInput, now time.Time) productdomain.ProductDraft {
 	domain := inferProductDomain(input)
-	workers := buildWorkerDrafts(base.ID, domain, input)
-	mergedWorkers := mergePublishedWorkers(base.WorkerAgents, buildPublishedWorkers(workers))
 	artifacts := mergeStringLists(base.ArtifactTypes, resolveArtifactTypes(input, domain))
 	knowledgeSources := mergeStringLists(base.KnowledgeSources, resolveKnowledgeSources(input, domain))
 	tags := mergeStringLists(base.Tags, resolveProductTags(input, domain))
@@ -243,7 +237,6 @@ func (s *DraftService) buildExpandDraft(base productdomain.Product, input produc
 		strings.TrimSpace(base.Summary),
 		buildExpansionSummary(input),
 	}, " "))
-	product.WorkerAgents = mergedWorkers
 	product.ArtifactTypes = artifacts
 	product.KnowledgeSources = knowledgeSources
 	product.Tags = tags
@@ -263,8 +256,7 @@ func (s *DraftService) buildExpandDraft(base productdomain.Product, input produc
 		ExpectedArtifacts:       input.ExpectedArtifacts,
 		IntegrationRequirements: input.IntegrationRequirements,
 		ConflictSuggestions:     nil,
-		MasterAgent:             buildMasterDraft(base.ID, domain, input, workers),
-		WorkerMatrix:            workers,
+		MasterAgent:             buildMasterDraft(base.ID, domain, artifacts, knowledgeSources, input),
 	}.Normalized()
 }
 
@@ -356,39 +348,58 @@ func inferProductDomain(input productdomain.ProductDraftGenerateInput) string {
 	}
 }
 
-func buildMasterDraft(productID string, domain string, input productdomain.ProductDraftGenerateInput, workers []productdomain.ProductWorkerDraft) productdomain.ProductAgentDraft {
-	targets := make([]string, 0, len(workers))
-	for _, worker := range workers {
-		targets = append(targets, worker.AgentID)
-	}
-	systemPrompt := "Act as the master agent for the " + productID + " product. Understand the user's goal, decompose work into the defined worker matrix, keep outputs coherent, and return both user-facing results and structured artifacts."
-	if domain == "travel" {
-		systemPrompt = "Act as the master agent for the travel product. Understand city-trip requirements, preserve structured travel fields for revision, orchestrate city guide, route, metro, food, and map subtasks, and return one coherent guide."
-	}
+func buildMasterDraft(productID string, domain string, artifacts []string, knowledgeSources []string, input productdomain.ProductDraftGenerateInput) productdomain.ProductAgentDraft {
+	systemPrompt := buildMasterSystemPrompt(productID, domain, artifacts, knowledgeSources, input)
+	skills := []string{"memory"}
 	return productdomain.ProductAgentDraft{
-		AgentID:                productID + "-master",
-		Name:                   input.Name + " Master Agent",
-		Description:            "Master agent draft generated for product orchestration.",
-		SystemPrompt:           systemPrompt,
-		MaxIterations:          8,
-		Tools:                  []string{"delegate_agent", "complete"},
-		Skills:                 []string{"memory"},
-		MemoryFiles:            []string{"user_md", "soul_md", "agents_md", "memory_long_term", "memory_daily_today"},
-		Capabilities:           []string{domain, "product-master"},
-		AllowedDelegateTargets: targets,
-		Enabled:                true,
-		Delegatable:            true,
+		AgentID:       productID + "-master",
+		Name:          input.Name + " Master Agent",
+		Description:   "Master agent draft generated for direct product execution.",
+		SystemPrompt:  systemPrompt,
+		MaxIterations: 8,
+		Tools:         []string{"codex_exec", "search_memory", "read_memory", "write_memory"},
+		Skills:        skills,
+		MemoryFiles:   []string{"user_md", "soul_md", "agents_md", "memory_long_term", "memory_daily_today"},
+		Capabilities:  []string{domain, "product-master"},
+		Enabled:       true,
+		Delegatable:   true,
 	}.Normalized()
+}
+
+func buildMasterSystemPrompt(productID string, domain string, artifacts []string, knowledgeSources []string, input productdomain.ProductDraftGenerateInput) string {
+	parts := []string{
+		"Act as the single execution assistant for the " + productID + " product.",
+		"Own the end-to-end product interaction inside the current product boundary instead of relying on a default worker-agent hierarchy.",
+		"Understand the user's goal, keep outputs coherent, preserve stable structured fields for later revisions, and drive every concrete action through codex_exec.",
+		"Use reusable system-prompt guidance and skills to carry durable domain rules; do not invent extra delegated sub-agents unless the product is explicitly redesigned for that purpose.",
+		"Keep the master agent in the assistant role instead of doing direct file, shell, or repository work itself.",
+	}
+	if len(input.CoreCapabilities) > 0 {
+		parts = append(parts, "Core capabilities to cover directly: "+strings.Join(input.CoreCapabilities, ", ")+".")
+	}
+	if len(artifacts) > 0 {
+		parts = append(parts, "Expected artifact types: "+strings.Join(artifacts, ", ")+".")
+	}
+	if len(knowledgeSources) > 0 {
+		parts = append(parts, "Relevant knowledge sources or integration requirements: "+strings.Join(knowledgeSources, ", ")+".")
+	}
+	if domain == "travel" {
+		parts = append(parts,
+			"Travel scope includes city guides, itinerary ordering, transit or metro guidance, food recommendations, practical notes, and map-oriented output fields within one coherent assistant profile.",
+			"Treat the agent-private file-backed `SKILL.md` as the canonical reusable rulebook for stable travel page structure and durable rendering preferences. Update it only for reusable preferences, not one-off trip constraints.",
+		)
+	}
+	return strings.Join(parts, " ")
 }
 
 func buildWorkerDrafts(productID string, domain string, input productdomain.ProductDraftGenerateInput) []productdomain.ProductWorkerDraft {
 	if domain == "travel" {
 		return []productdomain.ProductWorkerDraft{
-			newWorkerDraft(productID+"-city-guide", "City Guide", "city-guide", "Aggregate scenic spots, neighborhoods, and city overview.", "User trip brief and city constraints.", "POI set and city overview notes.", []string{"travel", "city-guide"}, []string{"complete"}, 10),
-			newWorkerDraft(productID+"-route-planner", "Route Planner", "route-planner", "Produce daily route order and pacing.", "POIs and user rhythm constraints.", "Day-by-day routes with stop order.", []string{"travel", "route-planning"}, []string{"complete"}, 20),
-			newWorkerDraft(productID+"-metro-guide", "Metro Guide", "metro-guide", "Recommend metro and transit segments between stops.", "Daily routes and transport constraints.", "Metro lines and transfer guidance.", []string{"travel", "metro"}, []string{"complete"}, 30),
-			newWorkerDraft(productID+"-food-recommender", "Food Recommender", "food-recommender", "Recommend meals by area and time slot.", "Route plan and food preferences.", "Food stops and dining windows.", []string{"travel", "food"}, []string{"complete"}, 40),
-			newWorkerDraft(productID+"-map-annotator", "Map Annotator", "map-annotator", "Prepare map layers, points, and route lines.", "POIs, routes, and transit outputs.", "Map layer descriptors and highlight references.", []string{"travel", "map"}, []string{"complete"}, 50),
+			newWorkerDraft(productID+"-city-guide", "City Guide", "city-guide", "Aggregate scenic spots, neighborhoods, and city overview.", "User trip brief and city constraints.", "POI set and city overview notes.", []string{"travel", "city-guide"}, 10),
+			newWorkerDraft(productID+"-route-planner", "Route Planner", "route-planner", "Produce daily route order and pacing.", "POIs and user rhythm constraints.", "Day-by-day routes with stop order.", []string{"travel", "route-planning"}, 20),
+			newWorkerDraft(productID+"-metro-guide", "Metro Guide", "metro-guide", "Recommend metro and transit segments between stops.", "Daily routes and transport constraints.", "Metro lines and transfer guidance.", []string{"travel", "metro"}, 30),
+			newWorkerDraft(productID+"-food-recommender", "Food Recommender", "food-recommender", "Recommend meals by area and time slot.", "Route plan and food preferences.", "Food stops and dining windows.", []string{"travel", "food"}, 40),
+			newWorkerDraft(productID+"-map-annotator", "Map Annotator", "map-annotator", "Prepare map layers, points, and route lines.", "POIs, routes, and transit outputs.", "Map layer descriptors and highlight references.", []string{"travel", "map"}, 50),
 		}
 	}
 
@@ -411,24 +422,23 @@ func buildWorkerDrafts(productID string, domain string, input productdomain.Prod
 			"Master-agent task packet and product constraints.",
 			"Structured output for "+capability+" with explicit boundaries.",
 			[]string{roleID},
-			[]string{"complete"},
 			(index+1)*10,
 		))
 	}
 	return items
 }
 
-func newWorkerDraft(agentID, name, role, responsibility, inputContract, outputContract string, capabilities, tools []string, priority int) productdomain.ProductWorkerDraft {
+func newWorkerDraft(agentID, name, role, responsibility, inputContract, outputContract string, capabilities []string, priority int) productdomain.ProductWorkerDraft {
 	return productdomain.ProductWorkerDraft{
 		AgentID:                agentID,
 		Name:                   name,
 		Role:                   role,
 		Responsibility:         responsibility,
 		Description:            responsibility,
-		SystemPrompt:           "Focus on the " + role + " responsibility within the current product boundary. Return concrete, structured output that the master agent can merge.",
+		SystemPrompt:           "Act as the " + role + " assistant within the current product boundary. Understand the assigned subtask, keep the interaction scoped to this responsibility, drive every concrete action through codex_exec, and return structured output that the master agent can merge. Do not perform file, shell, or repository work yourself.",
 		InputContract:          inputContract,
 		OutputContract:         outputContract,
-		AllowedTools:           tools,
+		AllowedTools:           []string{"codex_exec", "search_memory", "read_memory", "write_memory"},
 		AllowedDelegateTargets: nil,
 		Dependencies:           nil,
 		Skills:                 []string{"memory"},
@@ -503,10 +513,10 @@ func resolveProductTags(input productdomain.ProductDraftGenerateInput, domain st
 func buildProductSummary(input productdomain.ProductDraftGenerateInput, domain string) string {
 	goal := strings.TrimSpace(input.Goal)
 	if goal == "" {
-		goal = "Execution-ready product generated from the product matrix workflow."
+		goal = "Execution-ready product generated from the product draft workflow."
 	}
 	if domain == "travel" {
-		return "Travel-focused product for city guides, route planning, metro guidance, food recommendations, and map-oriented delivery. Goal: " + goal
+		return "Travel-focused product with a single master agent for city guides, route planning, metro guidance, food recommendations, and map-oriented delivery. Goal: " + goal
 	}
 	return goal
 }

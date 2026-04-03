@@ -328,7 +328,7 @@ const I18N = {
     "route.agent.saved": "Agent saved.",
     "route.agent.deleted": "Agent deleted.",
     "route.products.title": "Products",
-    "route.products.subtitle": "Manage product workspaces, master agents, and worker-agent matrices",
+    "route.products.subtitle": "Manage product workspaces, master agents, and reusable product context",
     "route.products.empty": "No Products available.",
     "route.products.create": "Create Product",
     "route.products.edit": "Edit Product",
@@ -342,7 +342,7 @@ const I18N = {
     "route.products.workspace.output": "Artifacts",
     "route.products.workspace.sources": "Knowledge Sources",
     "route.products.workspace.tags": "Tags",
-    "route.products.workspace.workers": "Worker Matrix",
+    "route.products.workspace.workers": "Supporting Agents",
     "route.products.workspace.chat_title": "Master Agent Conversation",
     "route.products.workspace.chat_hint": "Use the product master agent to create or revise detail pages.",
     "route.products.workspace.chat_placeholder": "Example: create a 3-day Wuhan page with metro-first travel and local food.",
@@ -412,7 +412,7 @@ const I18N = {
     "route.products.drafts.form.mode.bootstrap": "Bootstrap",
     "route.products.drafts.form.mode.expand": "Expand Selected Product",
     "route.products.drafts.detail.master": "Master Agent",
-    "route.products.drafts.detail.workers": "Worker Matrix",
+    "route.products.drafts.detail.workers": "Supporting Agents",
     "route.products.drafts.detail.conflicts": "Conflict Suggestions",
     "route.products.drafts.detail.review": "Review Status",
     "route.products.drafts.detail.empty": "Select a draft to review, edit, and publish.",
@@ -913,7 +913,7 @@ const I18N = {
     "route.agent.saved": "Agent 已保存。",
     "route.agent.deleted": "Agent 已删除。",
     "route.products.title": "Products",
-    "route.products.subtitle": "管理 Product Workspace、主 Agent 与子 Agent 矩阵",
+    "route.products.subtitle": "管理 Product Workspace、主 Agent 与可复用产品上下文",
     "route.products.empty": "暂无 Product。",
     "route.products.create": "创建 Product",
     "route.products.edit": "编辑 Product",
@@ -927,7 +927,7 @@ const I18N = {
     "route.products.workspace.output": "产物",
     "route.products.workspace.sources": "知识源",
     "route.products.workspace.tags": "标签",
-    "route.products.workspace.workers": "子 Agent 矩阵",
+    "route.products.workspace.workers": "辅助 Agent",
     "route.products.workspace.chat_title": "主 Agent 对话",
     "route.products.workspace.chat_hint": "通过主 Agent 创建或修改具体详情页。",
     "route.products.workspace.chat_placeholder": "例如：给武汉创建一个三天地铁优先、带夜宵推荐的城市页。",
@@ -997,7 +997,7 @@ const I18N = {
     "route.products.drafts.form.mode.bootstrap": "新建矩阵",
     "route.products.drafts.form.mode.expand": "扩展当前 Product",
     "route.products.drafts.detail.master": "总 Agent",
-    "route.products.drafts.detail.workers": "子 Agent 矩阵",
+    "route.products.drafts.detail.workers": "辅助 Agent",
     "route.products.drafts.detail.conflicts": "冲突建议",
     "route.products.drafts.detail.review": "审核状态",
     "route.products.drafts.detail.empty": "选择一个草稿后，可在这里审核、编辑并发布。",
@@ -6522,7 +6522,9 @@ function renderProductDraftCards(items, selectedDraftID) {
     const productName = String(item?.product?.name || item?.product?.id || draftID || "").trim() || draftID;
     const reviewStatus = String(item?.review_status || "draft").trim() || "draft";
     const activeClassName = draftID === selectedDraftID ? " is-active" : "";
-    const tags = [normalizeText(item?.mode), normalizeText(reviewStatus), normalizeText(item?.product?.id), `${Number(item?.worker_matrix?.length || 0)} workers`].filter((tag) => tag !== "-");
+    const workerCount = Number(item?.worker_matrix?.length || 0);
+    const topologyTag = workerCount > 0 ? `${workerCount} workers` : "single agent";
+    const tags = [normalizeText(item?.mode), normalizeText(reviewStatus), normalizeText(item?.product?.id), topologyTag].filter((tag) => tag !== "-");
     return `<button class="agent-route-card${activeClassName}" type="button" data-product-draft-select="${escapeHTML(draftID)}">
       <div class="agent-route-card-head">
         <div class="agent-route-card-copy">
@@ -6886,10 +6888,12 @@ async function loadProductsView(container) {
             <h5>${escapeHTML(t("route.products.workspace.tags"))}</h5>
             ${renderChipList(selectedProduct.tags)}
           </section>
-          <section class="product-workspace-detail-section">
-            <h5>${escapeHTML(t("route.products.workspace.workers"))}</h5>
-            ${renderChipList((selectedProduct.worker_agents || []).map((item) => item.role || item.agent_id))}
-          </section>
+          ${(selectedProduct.worker_agents || []).length ? `
+            <section class="product-workspace-detail-section">
+              <h5>${escapeHTML(t("route.products.workspace.workers"))}</h5>
+              ${renderChipList((selectedProduct.worker_agents || []).map((item) => item.role || item.agent_id))}
+            </section>
+          ` : ""}
         </div>
       </section>
       <section class="route-surface product-workspace-panel">
@@ -7063,10 +7067,12 @@ async function loadProductsView(container) {
               <div class="agent-route-card-tags">${masterTags.length ? masterTags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("") : ""}</div>
             </article>
           </div>
-          <div class="agent-builder-section">
-            <h5>${escapeHTML(t("route.products.drafts.detail.workers"))}</h5>
-            <div class="agent-route-list">${renderProductDraftWorkerCards(selectedDraft.worker_matrix)}</div>
-          </div>
+          ${selectedDraft.worker_matrix.length ? `
+            <div class="agent-builder-section">
+              <h5>${escapeHTML(t("route.products.drafts.detail.workers"))}</h5>
+              <div class="agent-route-list">${renderProductDraftWorkerCards(selectedDraft.worker_matrix)}</div>
+            </div>
+          ` : ""}
           ${selectedDraft.conflict_suggestions.length ? `
             <div class="agent-builder-section">
               <h5>${escapeHTML(t("route.products.drafts.detail.conflicts"))}</h5>
