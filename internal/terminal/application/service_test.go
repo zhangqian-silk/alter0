@@ -190,6 +190,33 @@ func TestServiceInputUpgradesAutoTitleWhenLaterPromptIsMoreSpecific(t *testing.T
 	}
 }
 
+func TestServiceInputUpgradesStableAutoTitleWhenLaterPromptIsMoreSpecific(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-stable-title-upgrade",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-stable-title-upgrade", session.ID, "排查会话标题逻辑"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	firstSnapshot, _ := waitForSessionEntries(t, service, "owner-stable-title-upgrade", session.ID, 2)
+	if firstSnapshot.Title != "排查会话标题逻辑" {
+		t.Fatalf("expected stable auto title after first input, got %q", firstSnapshot.Title)
+	}
+
+	if _, err := service.Input("owner-stable-title-upgrade", session.ID, "修复多轮沟通后会话标题不刷新"); err != nil {
+		t.Fatalf("second input: %v", err)
+	}
+	secondSnapshot, _ := waitForSessionEntries(t, service, "owner-stable-title-upgrade", session.ID, 4)
+	if secondSnapshot.Title != "修复多轮沟通后会话标题不刷新" {
+		t.Fatalf("expected later prompt to upgrade stable auto title, got %q", secondSnapshot.Title)
+	}
+}
+
 func TestServiceInputKeepsManualTitleWhenLaterPromptChanges(t *testing.T) {
 	service := newTestService("success")
 
@@ -429,6 +456,9 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 		t.Fatalf("restart input: %v", err)
 	}
 	snapshot, entries := waitForSessionEntries(t, restarted, "owner-restart", session.ID, 4)
+	if snapshot.Title != "persisted-session" {
+		t.Fatalf("expected manual title to stay unchanged after restart, got %q", snapshot.Title)
+	}
 	if snapshot.TerminalSessionID != "thread-first-prompt" {
 		t.Fatalf("expected resumed thread id after restart, got %q", snapshot.TerminalSessionID)
 	}

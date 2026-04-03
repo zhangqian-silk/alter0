@@ -252,7 +252,7 @@ func TestCodexCLIProcessorProcessWithMemoryContextPayload(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessWithAgentContextPayload(t *testing.T) {
-	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","agent_context":{"protocol":"alter0.agent-context/v1","agent_id":"coding","agent_name":"Coding Agent","system_prompt":"Drive implementation through Codex.","delegated_by":"main"}}`
+	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","agent_context":{"protocol":"alter0.agent-context/v1","agent_id":"coding","agent_name":"Coding Agent","delegated_by":"main"}}`
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{

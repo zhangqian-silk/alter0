@@ -162,21 +162,40 @@ func inferAutoSessionTitleState(title string, fallback string) (bool, int) {
 	return false, score
 }
 
-func nextAutoSessionTitle(currentTitle string, currentAuto bool, currentScore int, input string, fallback string, maxLen int) (string, bool, int, bool) {
-	if !currentAuto {
-		return currentTitle, currentAuto, currentScore, false
+func nextAutoSessionTitle(currentTitle string, currentManual bool, currentScore int, input string, fallback string, maxLen int) (string, bool, int, bool) {
+	if currentManual {
+		return currentTitle, false, currentScore, false
 	}
 	title, score, nextAuto := buildAutoSessionTitle(input, fallback, maxLen)
 	if strings.TrimSpace(title) == "" {
-		return currentTitle, currentAuto, currentScore, false
+		return currentTitle, false, currentScore, false
 	}
 	if strings.EqualFold(normalizeSessionTitleText(currentTitle), normalizeSessionTitleText(fallback)) && title != currentTitle {
 		return title, nextAuto, score, true
 	}
-	if score <= currentScore {
-		return currentTitle, currentAuto, currentScore, false
+	if score < currentScore {
+		return currentTitle, false, currentScore, false
+	}
+	if score == currentScore && !preferLongerSessionTitle(title, currentTitle) {
+		return currentTitle, false, currentScore, false
 	}
 	return title, nextAuto, score, true
+}
+
+func inferManualSessionTitleState(title string, fallback string, titleAuto bool, titleScore int) bool {
+	if titleAuto {
+		return false
+	}
+	normalizedTitle := normalizeSessionTitleText(title)
+	normalizedFallback := normalizeSessionTitleText(fallback)
+	if normalizedTitle == "" || strings.EqualFold(normalizedTitle, normalizedFallback) {
+		return false
+	}
+	if titleScore > 0 {
+		return false
+	}
+	inferredAuto, inferredScore := inferAutoSessionTitleState(title, fallback)
+	return !inferredAuto && inferredScore == 0
 }
 
 func normalizeSessionTitleText(value string) string {
@@ -336,4 +355,10 @@ func truncateSessionTitle(value string, maxLen int) string {
 	}
 	runes := []rune(value)
 	return string(runes[:maxLen-3]) + "..."
+}
+
+func preferLongerSessionTitle(nextTitle string, currentTitle string) bool {
+	nextLen := utf8.RuneCountInString(normalizeSessionTitleText(nextTitle))
+	currentLen := utf8.RuneCountInString(normalizeSessionTitleText(currentTitle))
+	return nextLen > currentLen+4
 }

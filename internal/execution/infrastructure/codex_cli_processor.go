@@ -75,11 +75,10 @@ type codexExecutionPayload struct {
 }
 
 type codexAgentContext struct {
-	Protocol     string `json:"protocol"`
-	AgentID      string `json:"agent_id,omitempty"`
-	AgentName    string `json:"agent_name,omitempty"`
-	SystemPrompt string `json:"system_prompt,omitempty"`
-	DelegatedBy  string `json:"delegated_by,omitempty"`
+	Protocol    string `json:"protocol"`
+	AgentID     string `json:"agent_id,omitempty"`
+	AgentName   string `json:"agent_name,omitempty"`
+	DelegatedBy string `json:"delegated_by,omitempty"`
 }
 
 type codexJSONEvent struct {
@@ -499,17 +498,15 @@ func buildCodexPrompt(prompt string, metadata map[string]string) (string, error)
 func buildCodexAgentContext(metadata map[string]string) *codexAgentContext {
 	agentID := strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey))
 	agentName := strings.TrimSpace(metadataValue(metadata, execdomain.AgentNameMetadataKey))
-	systemPrompt := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey))
 	delegatedBy := strings.TrimSpace(metadataValue(metadata, execdomain.AgentDelegatedByMetadataKey))
-	if agentID == "" && agentName == "" && systemPrompt == "" && delegatedBy == "" {
+	if agentID == "" && agentName == "" && delegatedBy == "" {
 		return nil
 	}
 	return &codexAgentContext{
-		Protocol:     "alter0.agent-context/v1",
-		AgentID:      agentID,
-		AgentName:    agentName,
-		SystemPrompt: systemPrompt,
-		DelegatedBy:  delegatedBy,
+		Protocol:    "alter0.agent-context/v1",
+		AgentID:     agentID,
+		AgentName:   agentName,
+		DelegatedBy: delegatedBy,
 	}
 }
 

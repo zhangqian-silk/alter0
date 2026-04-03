@@ -501,6 +501,49 @@ test.describe("Chat composer", () => {
     await expect(page.locator(".session-card-title").first()).toContainText("修改 terminal");
   });
 
+  test("upgrades a stable auto title when a later user message becomes more specific", async ({ page }) => {
+    const seededAt = Date.now();
+    await page.addInitScript(({ createdAt }) => {
+      const sessionID = "session-seeded-stable-title";
+      window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
+        id: sessionID,
+        title: "排查会话标题逻辑",
+        titleAuto: false,
+        titleScore: 6,
+        createdAt,
+        messages: [{
+          id: "message-seeded-stable-title",
+          role: "user",
+          text: "排查会话标题逻辑",
+          at: createdAt,
+          status: "done"
+        }],
+        historyBucket: "agent:main",
+        targetType: "model",
+        targetID: "raw-model",
+        targetName: "Raw Model",
+        modelProviderID: "",
+        modelID: "",
+        toolIDs: [],
+        skillIDs: [],
+        mcpIDs: []
+      }]));
+      window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
+        "agent:main": sessionID
+      }));
+    }, { createdAt: seededAt });
+
+    const { chatPage, composer } = await openChatWorkspace(page);
+    const input = composer.input();
+    await expect(page.locator(".session-card-title").first()).toContainText("排查会话标题逻辑");
+
+    await input.fill("修复多轮沟通后会话标题不刷新");
+    await composer.submitButton().click();
+    await expect(chatPage.latestUserBubble()).toContainText("修复多轮沟通后会话标题不刷新");
+    await expectComposerReady(composer);
+    await expect(page.locator(".session-card-title").first()).toContainText("修复多轮沟通后");
+  });
+
   test("keeps user bubbles right-aligned and within eighty percent width", async ({ page }) => {
     const { chatPage, composer } = await openChatWorkspace(page);
     const input = composer.input();

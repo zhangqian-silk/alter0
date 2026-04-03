@@ -2095,6 +2095,12 @@ function buildAutoSessionTitle(value, maxLength) {
   };
 }
 
+function preferLongerAutoSessionTitle(nextTitle, currentTitle) {
+  const nextLength = [...normalizeSessionTitleValue(nextTitle)].length;
+  const currentLength = [...normalizeSessionTitleValue(currentTitle)].length;
+  return nextLength > currentLength + 4;
+}
+
 function getSession(id = activeConversationSessionID(), route = state.currentRoute) {
   const normalizedID = normalizeText(id);
   return conversationSessions(route).find((item) => item.id === normalizedID) || null;
@@ -4494,19 +4500,17 @@ function renderSessions() {
 
 function updateSessionTitle(session, fallbackText) {
   const currentState = inferStoredSessionTitleState(session.title, "");
-  const currentAuto = typeof session.titleAuto === "boolean" ? session.titleAuto : currentState.titleAuto;
   const currentScore = Number.isFinite(session.titleScore) ? Math.max(Number(session.titleScore), 0) : currentState.titleScore;
-  if (!currentAuto && !isDefaultSessionTitle(session.title)) {
-    return;
-  }
   const nextTitle = buildAutoSessionTitle(fallbackText, 18);
   if (!nextTitle.title) {
     return;
   }
   const currentTitle = normalizeSessionTitleValue(session.title);
   const canReplacePlaceholder = (isDefaultSessionTitle(currentTitle) || !currentTitle) && nextTitle.title !== session.title;
-  if (!canReplacePlaceholder && nextTitle.titleScore <= currentScore) {
-    session.titleAuto = currentAuto;
+  const betterSpecificity = nextTitle.titleScore > currentScore
+    || (nextTitle.titleScore === currentScore && preferLongerAutoSessionTitle(nextTitle.title, currentTitle));
+  if (!canReplacePlaceholder && !betterSpecificity) {
+    session.titleAuto = currentState.titleAuto;
     session.titleScore = currentScore;
     return;
   }

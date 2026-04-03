@@ -135,6 +135,7 @@
    - `context`：可选补充上下文
 9. `coding` Agent 必须作为用户可直接选择的入口 Agent，对编码类请求承担主交互职责；具体开发工作优先通过 `codex_exec` 执行，并根据每轮执行结果继续追加下一步实现或验证动作，直至完成或明确阻塞。
    - Agent system prompt 需采用持续助手口径，要求优先复用当前 Session 已确认的稳定上下文，而不是在多轮编码过程中重复索取相同信息。
+   - Agent 作为用户与 Codex 之间的代理层，负责在 Agent 侧消化 system prompt、Skill、记忆和会话画像；这些 Agent 编排信息不直接透传给 Codex，Codex 只接收当前执行所需的最小上下文与具体指令。
    - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、本地仓库路径、当前分支、会话工作区、PR 基线分支与交付要求。
    - 运行时需同步维护 `coding` Agent 在当前 Session 下的私有画像文件 `.alter0/agents/coding/sessions/<session_id>.md`，用于沉淀仓库与交付上下文，供后续轮次直接复用。
    - 涉及测试页面时，预览域名必须使用当前会话标识派生的 8 位短 hash，格式为 `https://<session_short_hash>.alter0.cn`。

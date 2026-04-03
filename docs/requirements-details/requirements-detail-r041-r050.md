@@ -209,7 +209,7 @@
    - 新输入默认复用当前会话上下文，保持同一 Shell 连续执行语义。
 3. 交互要求：模块内提供类 Chat 的输入输出区域，用户输入、任务受理结果、终端日志输出按时间顺序连续展示。
 4. 串联要求：同一终端会话中的多次输入必须串联到同一会话轨迹，避免每次输入被视为独立无关联任务。
-5. 会话命名要求：新建 Terminal 会话先使用占位标题；发送首条输入后按输入内容自动命名。若前几轮输入仍是“拉取仓库 / 看仓库 / 分析仓库”等通用开场，系统需在后续更具体输入出现时自动升级当前会话标题，避免列表中长期保留低辨识度同名会话。
+5. 会话命名要求：新建 Terminal 会话先使用占位标题；发送首条输入后按输入内容自动命名。自动标题在早期多轮内需按更具体的后续输入继续升级，尤其覆盖“拉取仓库 / 看仓库 / 分析仓库”等通用开场，避免列表中长期保留低辨识度同名会话。
 6. 状态要求：模块需可见当前会话关键字段（`terminal_session_id`、`anchor_task_id`、`active_task_id`、`status`），并实时刷新执行状态。
    - 会话态使用 `ready / busy / exited / interrupted` 表示当前会话是否可继续交互；turn / step 维度继续使用 `running / completed / failed / interrupted` 表示执行进展。
 7. 可恢复性要求：页面刷新后可恢复终端会话列表和最近上下文，保证继续交互时链路不丢失；同一 Web 登录态下，手机与 PC 进入 Terminal 时需看到一致的服务端会话集合，不因浏览器设备标识不同而分叉。
@@ -256,7 +256,7 @@
    - 补充验收：移动端浏览 Terminal 时，`Process` 头部与步骤行默认保持单行阅读，步骤摘要过长时单行截断，不出现标题、耗时或状态被拆成两行的默认排版。
    - 补充验收：用户执行 `Delete` 后，该 Terminal 会话立即从列表移除，`.alter0/state/terminal/sessions/<terminal_session_id>.json` 与 `.alter0/workspaces/terminal/sessions/<terminal_session_id>` 同步清理。
    - 补充验收：用户在查看 `Interrupted / Exited / Failed` 的旧会话时点击 `New`，输入区 hint 会立即清空；待新会话创建完成后，仅展示新会话自身状态，工作区底边与输入条继续贴住当前可视视口底边。
-   - 补充验收：若 Terminal 首轮输入只是“拉取仓库 / 分析仓库”等通用开场，后续更具体输入出现后，当前会话标题需自动升级为更高辨识度的新标题。
+   - 补充验收：若 Terminal 早期几轮输入仍偏通用，后续更具体输入出现后，当前会话标题需自动升级为更高辨识度的新标题。
 
 #### 接口拆分（草案）
 
@@ -310,7 +310,8 @@ ReAct 模式 Agent 调用
 
 1. `Agent` 请求进入执行链后，默认使用 ReAct 循环推进：模型在 `Thought / Action / Observation` 的迭代中持续决策，直到明确收口。
 2. ReAct Agent 必须支持统一运行时工具调用；Agent 自身定位为“用户代理 + 执行驱动器”，所有具体仓库、文件、命令与实现动作默认通过 `codex_exec` 交给 Codex CLI 执行。
-3. Agent Profile 可独立配置：
+3. Agent 负责在自身侧吸收 `system_prompt`、Skill、Memory Files、产品上下文与会话画像，并把这些规则转译为当前步骤的执行决策；除当前执行所需的最小上下文外，不向 Codex 透传 Agent 侧编排 prompt。
+4. Agent Profile 可独立配置：
    - `provider_id`
    - `model`
    - `system_prompt`
@@ -319,16 +320,16 @@ ReAct 模式 Agent 调用
    - `skills`
    - `mcps`
    - `memory_files`
-4. 当用户在会话级显式选择 `Provider / Model` 时，执行链优先使用当前会话选择；未显式指定时回退到 Agent Profile，再回退到系统默认 Provider。
-5. 执行中需保留观察日志与输出增量，支持同步响应、流式响应与异步任务场景复用。
-6. ReAct 工具收口必须支持显式 `complete`，避免模型在没有结束信号时无限循环。
-7. Agent 运行时的稳定工具面至少包括：`codex_exec`、`search_memory`、`read_memory`、`write_memory`、`complete`；仅允许委派的 Agent 可额外挂载 `delegate_agent`。
-8. `search_memory` / `read_memory` / `write_memory` 仅面向已解析进 `memory_context` 的记忆文件。`search_memory` 负责按关键字在多份记忆文件中定位历史偏好、缩写指代和长期约束，`read_memory` 用于精读单个目标文件，`write_memory` 用于在必要时维护这些记忆文件本身；除此之外不再向 Agent 暴露通用原生文件/命令工具。
-9. Web 端对 Agent 流式返回的 `action / observation` 细节必须收敛为可折叠 `Process` 区块，避免多轮执行日志直接淹没最终答复；最终答复继续按普通助手正文渲染。
-10. 当同一条 Agent 回复已出现最终答复时，`Process` 默认折叠；用户手动展开后需在当前浏览器会话内保留该折叠状态。
-11. Agent 最终答复正文需提供一键复制入口；若同条消息同时包含 `Process`，复制内容仅包含最终答复，不包含折叠的 `action / observation` 细节。
-12. 若 Agent 在 `max_iterations` 耗尽前仍未调用 `complete`，运行时不得返回空最终正文；系统必须显式返回“达到迭代上限”的说明，并附带最后一次工具观察结果，保证 Web 流式消息与最终 `done` 收口一致可见。
-13. Agent 一旦进入后端执行链，浏览器侧页面事件、连接取消、SSE 写失败或前端主动中断都不得直接取消该次 Agent 执行；这些事件只影响当前回传通道，不改变后端执行、会话持久化与最终结果收口。
+5. 当用户在会话级显式选择 `Provider / Model` 时，执行链优先使用当前会话选择；未显式指定时回退到 Agent Profile，再回退到系统默认 Provider。
+6. 执行中需保留观察日志与输出增量，支持同步响应、流式响应与异步任务场景复用。
+7. ReAct 工具收口必须支持显式 `complete`，避免模型在没有结束信号时无限循环。
+8. Agent 运行时的稳定工具面至少包括：`codex_exec`、`search_memory`、`read_memory`、`write_memory`、`complete`；仅允许委派的 Agent 可额外挂载 `delegate_agent`。
+9. `search_memory` / `read_memory` / `write_memory` 仅面向已解析进 `memory_context` 的记忆文件。`search_memory` 负责按关键字在多份记忆文件中定位历史偏好、缩写指代和长期约束，`read_memory` 用于精读单个目标文件，`write_memory` 用于在必要时维护这些记忆文件本身；除此之外不再向 Agent 暴露通用原生文件/命令工具。
+10. Web 端对 Agent 流式返回的 `action / observation` 细节必须收敛为可折叠 `Process` 区块，避免多轮执行日志直接淹没最终答复；最终答复继续按普通助手正文渲染。
+11. 当同一条 Agent 回复已出现最终答复时，`Process` 默认折叠；用户手动展开后需在当前浏览器会话内保留该折叠状态。
+12. Agent 最终答复正文需提供一键复制入口；若同条消息同时包含 `Process`，复制内容仅包含最终答复，不包含折叠的 `action / observation` 细节。
+13. 若 Agent 在 `max_iterations` 耗尽前仍未调用 `complete`，运行时不得返回空最终正文；系统必须显式返回“达到迭代上限”的说明，并附带最后一次工具观察结果，保证 Web 流式消息与最终 `done` 收口一致可见。
+14. Agent 一旦进入后端执行链，浏览器侧页面事件、连接取消、SSE 写失败或前端主动中断都不得直接取消该次 Agent 执行；这些事件只影响当前回传通道，不改变后端执行、会话持久化与最终结果收口。
 
 #### Traceability
 
@@ -394,7 +395,7 @@ Web 登录后按 Agent 隔离 Session 视图
 1. 当 `web-login-password` 生效且用户已完成密码验证后，当前 Web 登录态下的 Web 对话页面必须按目标 Agent 维护独立 Session 历史，不再将不同 Agent 的会话混放在同一历史列表中。
 2. `Chat` 页面绑定具备独立前端入口的 Agent；`Agent` 页面承载未占用独立前端入口的内置 Agent 与用户管理 Agent。两类入口都需保持各自独立的欢迎态、运行模式与会话列表。
 3. 隔离范围至少覆盖：左侧最近 Session 列表、Session 详情回放、页面刷新后的 Session 恢复，以及同一 Agent 下的续聊恢复。
-4. 会话命名要求：`Chat / Agent` 新会话先使用默认占位标题；若前几条用户消息仍是“拉取仓库 / 看仓库 / 分析仓库”等通用开场，后续更具体的用户消息出现后，当前会话标题需自动升级，避免同一 Agent 历史列表中长期堆积低辨识度同名会话。
+4. 会话命名要求：`Chat / Agent` 新会话先使用默认占位标题；自动标题在早期多轮内需按更具体的后续用户消息继续升级，尤其覆盖“拉取仓库 / 看仓库 / 分析仓库”等通用开场，避免同一 Agent 历史列表中长期堆积低辨识度同名会话。
 5. 同一 Agent 的历史可在其对应入口内继续进入与续聊；不同 Agent 之间的历史默认隔离，不在其他 Agent 的会话列表中展示。
 6. 前端需移除错误的统一会话口径与冗余状态，包括但不限于：
    - 将不同 Agent 会话混放到同一列表的本地缓存结构；
@@ -404,7 +405,7 @@ Web 登录后按 Agent 隔离 Session 视图
 8. 登录边界要求：该隔离规则在密码验证通过后的 Web 登录态内生效；未登录用户不可访问会话历史，登出或登录态失效后仍需重新验证。
 9. 兼容性要求：历史已存在的 Web Session 在升级后需按其目标 Agent 自动归入对应历史桶；旧缓存缺少 Agent 历史分桶信息时，前端需在读取时自动补齐，不得造成历史丢失或重复展示。
 10. 验收：`Chat` 页面仅展示 `Alter0` 会话历史；`Agent` 页面仅展示当前选中 Agent 的会话历史，且不会出现 `Alter0` 这类具备独立前端入口的 Agent 历史；页面刷新后仍能回到对应 Agent 的独立历史。
-   - 补充验收：若 `Chat / Agent` 首轮输入只是“拉取仓库 / 分析仓库”等通用开场，后续更具体用户消息出现后，会话列表中的当前标题会自动升级，不再长期停留在占位标题或低辨识度通用标题。
+   - 补充验收：若 `Chat / Agent` 早期几轮输入仍偏通用，后续更具体用户消息出现后，会话列表中的当前标题会自动升级，不再长期停留在占位标题或低辨识度通用标题。
 
 #### 实施边界（草案）
 
