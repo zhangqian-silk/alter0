@@ -144,3 +144,42 @@ func TestMobileRuntimeSheetUsesDedicatedStackingLayer(t *testing.T) {
 		}
 	}
 }
+
+func TestMobileViewportKeyboardOffsetOnlyAppliesForFocusedInput(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"const MOBILE_KEYBOARD_MIN_OFFSET_PX = 120;",
+		"const rawKeyboardOffset = activeInput",
+		"? Math.max(0, state.mobileViewport.baselineHeight - effectiveHeight)",
+		"const keyboardOffset = rawKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+}
+
+func TestMobileTerminalComposerConsumesViewportInsetVariables(t *testing.T) {
+	coreStyles := readEmbeddedAsset(t, "static/assets/chat-core.css")
+	coreMarkers := []string{
+		"--mobile-viewport-height: 100dvh;",
+		"--keyboard-offset: 0px;",
+	}
+	for _, marker := range coreMarkers {
+		if !strings.Contains(coreStyles, marker) {
+			t.Fatalf("expected core style marker %q", marker)
+		}
+	}
+
+	terminalStyles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
+	terminalMarkers := []string{
+		"height: min(100%, var(--mobile-viewport-height, 100dvh));",
+		"padding: 0 10px calc(10px + env(safe-area-inset-bottom) + var(--keyboard-offset));",
+	}
+	for _, marker := range terminalMarkers {
+		if !strings.Contains(terminalStyles, marker) {
+			t.Fatalf("expected terminal style marker %q", marker)
+		}
+	}
+}

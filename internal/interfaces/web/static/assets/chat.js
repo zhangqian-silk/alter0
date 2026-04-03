@@ -49,6 +49,7 @@ const NAV_TOOLTIP_OFFSET = 12;
 const CHAT_TASK_POLL_INTERVAL_MS = 4000;
 const CHAT_TASK_POLL_HIDDEN_INTERVAL_MS = 15000;
 const MOBILE_VIEWPORT_SYNC_THRESHOLD_PX = 8;
+const MOBILE_KEYBOARD_MIN_OFFSET_PX = 120;
 const MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS = 240;
 const TERMINAL_POLL_INTERVAL_ACTIVE_MS = 1600;
 const TERMINAL_POLL_INTERVAL_IDLE_MS = 4000;
@@ -5464,7 +5465,12 @@ function updateKeyboardInset(options = {}) {
     state.mobileViewport.baselineHeight = Math.max(state.mobileViewport.baselineHeight, effectiveHeight);
   }
 
-  const keyboardOffset = Math.max(0, state.mobileViewport.baselineHeight - effectiveHeight);
+  const rawKeyboardOffset = activeInput
+    ? Math.max(0, state.mobileViewport.baselineHeight - effectiveHeight)
+    : 0;
+  const keyboardOffset = rawKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+    ? rawKeyboardOffset
+    : 0;
   const heightChanged = Math.abs(effectiveHeight - state.mobileViewport.height) >= MOBILE_VIEWPORT_SYNC_THRESHOLD_PX;
   const offsetChanged = Math.abs(keyboardOffset - state.mobileViewport.keyboardOffset) >= MOBILE_VIEWPORT_SYNC_THRESHOLD_PX;
 
