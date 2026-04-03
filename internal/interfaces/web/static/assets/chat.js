@@ -32,6 +32,7 @@ const routeSubtitle = document.getElementById("routeSubtitle");
 const routeActionButton = document.getElementById("routeActionButton");
 const routeBody = document.getElementById("routeBody");
 const chatRuntimePanel = document.getElementById("chatRuntimePanel");
+const chatRuntimeSheetHost = document.getElementById("chatRuntimeSheetHost");
 const menuRouteItems = document.querySelectorAll(".menu-item[data-route]");
 const navTooltipTargets = [...menuRouteItems, navCollapseButton];
 const rootStyle = document.documentElement.style;
@@ -1394,7 +1395,9 @@ const state = {
     capabilityError: ""
   },
   chatRuntime: {
-    openPopover: ""
+    openPopover: "",
+    scrollPopover: "",
+    scrollTop: 0
   },
   agentRuntimeState: {
     selectedAgentID: ""
@@ -2049,6 +2052,30 @@ function genericRuntimeConversationAgents() {
     const agentID = normalizeText(item?.id);
     return agentID && !agentConversationRoute(item);
   });
+}
+
+function summarizeAgentOptionText(text, maxLength = 96) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function chatAgentOptionSummary(agent = {}) {
+  const description = summarizeAgentOptionText(agent?.description || "", 88);
+  if (description) {
+    return description;
+  }
+  const prompt = String(agent?.system_prompt || "").trim();
+  if (!prompt) {
+    return t("session.target.agent");
+  }
+  const firstSentence = prompt.split(/(?<=[.!?。！？])\s+/u)[0] || prompt;
+  return summarizeAgentOptionText(firstSentence, 88) || t("session.target.agent");
 }
 
 function resolveAgentRuntimeTarget(target = {}) {
@@ -3405,6 +3432,7 @@ function renderChatRuntimeCompactPopover({
   skillSelected,
   note
 }) {
+  const closeLabel = escapeHTML(t("session.close"));
   const summaryChips = [];
   if (agentRuntime && target?.id) {
     summaryChips.push(`<span class="composer-runtime-chip">${escapeHTML(`${t("session.target.agent")} · ${target.name}`)}</span>`);
@@ -3423,8 +3451,8 @@ function renderChatRuntimeCompactPopover({
         const optionTarget = normalizeChatTarget(item.target);
         const activeClass = optionTarget.id === target.id ? " is-active" : "";
         return `<button class="composer-runtime-option${activeClass}" type="button" data-runtime-target-type="${escapeHTML(optionTarget.type)}" data-runtime-target-id="${escapeHTML(optionTarget.id)}" data-runtime-target-name="${escapeHTML(optionTarget.name)}" ${locked ? "disabled" : ""}>
-          <strong>${escapeHTML(`${t("session.target.agent")} · ${optionTarget.name}`)}</strong>
-          <span>${escapeHTML(item.subtitle)}</span>
+          <strong>${escapeHTML(optionTarget.name)}</strong>
+          <span class="composer-runtime-option-summary">${escapeHTML(item.subtitle)}</span>
         </button>`;
       }).join("") : `<p class="composer-runtime-empty">${escapeHTML(t("chat.runtime.none"))}</p>`}
     </div>
@@ -3489,23 +3517,78 @@ function renderChatRuntimeCompactPopover({
     </label>`)}
   </section>`;
 
-  return `<div class="composer-runtime-popover composer-runtime-popover-mobile is-wide">
-    <div class="composer-runtime-popover-head">
-      <strong>${escapeHTML(t("chat.runtime.mobile"))}</strong>
-      <p>${escapeHTML(note || t("chat.runtime.mobile_hint"))}</p>
+  return `<button class="composer-runtime-sheet-backdrop" type="button" data-runtime-close aria-label="${closeLabel}"></button>
+  <div class="composer-runtime-popover composer-runtime-popover-mobile is-wide" role="dialog" aria-modal="true" aria-label="${escapeHTML(t("chat.runtime.mobile"))}">
+    <div class="composer-runtime-popover-mobile-topbar">
+      <div class="composer-runtime-popover-head">
+        <strong>${escapeHTML(t("chat.runtime.mobile"))}</strong>
+        <p>${escapeHTML(note || t("chat.runtime.mobile_hint"))}</p>
+      </div>
+      <button class="composer-runtime-popover-mobile-close" type="button" data-runtime-close aria-label="${closeLabel}">&times;</button>
     </div>
-    <div class="composer-runtime-summary">${summaryChips.join("")}</div>
-    ${targetSection ? `${targetSection}<div class="composer-runtime-separator"></div>` : ""}
-    ${modelSection}
-    <div class="composer-runtime-separator"></div>
-    ${capabilitySection}
-    <div class="composer-runtime-separator"></div>
-    ${skillsSection}
+    <div class="composer-runtime-popover-mobile-body" data-runtime-scroll-container="mobile">
+      <div class="composer-runtime-summary">${summaryChips.join("")}</div>
+      ${targetSection ? `${targetSection}<div class="composer-runtime-separator"></div>` : ""}
+      ${modelSection}
+      <div class="composer-runtime-separator"></div>
+      ${capabilitySection}
+      <div class="composer-runtime-separator"></div>
+      ${skillsSection}
+    </div>
   </div>`;
+}
+
+function findChatRuntimeScrollContainer(popover = state.chatRuntime.openPopover) {
+  const normalizedPopover = normalizeText(popover);
+  if (!normalizedPopover) {
+    return null;
+  }
+  const selector = `[data-runtime-scroll-container="${normalizedPopover}"]`;
+  return (chatRuntimeSheetHost && chatRuntimeSheetHost.querySelector(selector))
+    || (chatRuntimePanel && chatRuntimePanel.querySelector(selector))
+    || null;
+}
+
+function captureChatRuntimeScrollState(popover = state.chatRuntime.openPopover) {
+  const normalizedPopover = normalizeText(popover);
+  const container = findChatRuntimeScrollContainer(normalizedPopover);
+  if (!(container instanceof HTMLElement)) {
+    return {
+      popover: normalizedPopover,
+      scrollTop: 0
+    };
+  }
+  return {
+    popover: normalizedPopover,
+    scrollTop: Math.max(Number(container.scrollTop || 0), 0)
+  };
+}
+
+function restoreChatRuntimeScrollState(snapshot) {
+  const popover = normalizeText(snapshot?.popover || "");
+  if (!popover || popover !== normalizeText(state.chatRuntime.openPopover)) {
+    state.chatRuntime.scrollPopover = popover;
+    state.chatRuntime.scrollTop = 0;
+    return;
+  }
+  const container = findChatRuntimeScrollContainer(popover);
+  if (!(container instanceof HTMLElement)) {
+    state.chatRuntime.scrollPopover = popover;
+    state.chatRuntime.scrollTop = Math.max(Number(snapshot?.scrollTop || 0), 0);
+    return;
+  }
+  const nextTop = Math.max(Number(snapshot?.scrollTop || 0), 0);
+  container.scrollTop = nextTop;
+  state.chatRuntime.scrollPopover = popover;
+  state.chatRuntime.scrollTop = nextTop;
 }
 
 function renderChatRuntimePanel() {
   if (!chatRuntimePanel) {
+    appShell.classList.remove("runtime-sheet-open");
+    if (chatRuntimeSheetHost) {
+      chatRuntimeSheetHost.innerHTML = "";
+    }
     return;
   }
   const mode = routeConversationMode();
@@ -3520,6 +3603,7 @@ function renderChatRuntimePanel() {
   const toolMCPCount = selections.toolIDs.length + selections.mcpIDs.length;
   const skillsCount = selections.skillIDs.length;
   const openPopover = state.chatRuntime.openPopover;
+  const scrollSnapshot = captureChatRuntimeScrollState(openPopover);
   const agentRuntime = mode === "agent";
   const targetLabel = agentRuntime
     ? (target.id ? `${t("chat.runtime.agent")} · ${target.name}` : t("chat.runtime.agent_pick"))
@@ -3531,6 +3615,7 @@ function renderChatRuntimePanel() {
   const skillLabel = `${t("chat.runtime.skills_short")} · ${String(skillsCount)}`;
   const runtimeErrorNote = [state.chatCatalog.providerError, state.chatCatalog.capabilityError].filter(Boolean).join(" | ");
   const compactRuntime = isTerminalSessionSheetViewport();
+  appShell.classList.toggle("runtime-sheet-open", compactRuntime && openPopover === "mobile");
   const compactMeta = agentRuntime && !target.id
     ? t("chat.runtime.agent_pick")
     : t("chat.runtime.mobile_meta", {
@@ -3545,7 +3630,7 @@ function renderChatRuntimePanel() {
           id: normalizeText(agent?.id),
           name: String(agent?.name || agent?.id || "").trim()
         },
-        subtitle: String(agent?.system_prompt || agent?.id || "").trim() || t("session.target.agent")
+        subtitle: chatAgentOptionSummary(agent)
       })).filter((item) => item.target.id)
     : [];
   const modelGroups = enabledChatProviders();
@@ -3581,27 +3666,32 @@ function renderChatRuntimePanel() {
           </span>
           <span class="composer-runtime-trigger-caret">▾</span>
         </button>
-        ${openPopover === "mobile" ? renderChatRuntimeCompactPopover({
-          agentRuntime,
-          target,
-          locked,
-          targetOptions,
-          provider,
-          model,
-          modelGroups,
-          modelSelection,
-          capabilityActive,
-          capabilityAvailable,
-          capabilitySelected,
-          activeSkills,
-          availableSkills,
-          skillSelected,
-          note: state.chatCatalog.providerError || state.chatCatalog.capabilityError || t("chat.runtime.mobile_hint")
-        }) : ""}
       </div>
     </div>
     ${runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : ""}`;
+    if (chatRuntimeSheetHost) {
+      chatRuntimeSheetHost.innerHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({
+        agentRuntime,
+        target,
+        locked,
+        targetOptions,
+        provider,
+        model,
+        modelGroups,
+        modelSelection,
+        capabilityActive,
+        capabilityAvailable,
+        capabilitySelected,
+        activeSkills,
+        availableSkills,
+        skillSelected,
+        note: state.chatCatalog.providerError || state.chatCatalog.capabilityError || t("chat.runtime.mobile_hint")
+      }) : "";
+    }
   } else {
+  if (chatRuntimeSheetHost) {
+    chatRuntimeSheetHost.innerHTML = "";
+  }
   chatRuntimePanel.innerHTML = `<div class="composer-runtime-group">
     ${agentRuntime ? `<div class="composer-runtime-control">
       <button class="composer-runtime-trigger${openPopover === "target" ? " is-open" : ""}${locked ? " is-disabled" : ""}" type="button" data-runtime-toggle="target" aria-disabled="${locked ? "true" : "false"}" title="${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.agent_hint"))}">
@@ -3609,7 +3699,7 @@ function renderChatRuntimePanel() {
         <span class="composer-runtime-trigger-label">${escapeHTML(targetLabel)}</span>
         <span class="composer-runtime-trigger-caret">▾</span>
       </button>
-      ${openPopover === "target" ? `<div class="composer-runtime-popover">
+      ${openPopover === "target" ? `<div class="composer-runtime-popover" data-runtime-scroll-container="target">
         <div class="composer-runtime-popover-head">
           <strong>${escapeHTML(t("chat.runtime.agent"))}</strong>
           <p>${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.agent_hint"))}</p>
@@ -3619,8 +3709,8 @@ function renderChatRuntimePanel() {
             const optionTarget = normalizeChatTarget(item.target);
             const activeClass = optionTarget.id === target.id ? " is-active" : "";
             return `<button class="composer-runtime-option${activeClass}" type="button" data-runtime-target-type="${escapeHTML(optionTarget.type)}" data-runtime-target-id="${escapeHTML(optionTarget.id)}" data-runtime-target-name="${escapeHTML(optionTarget.name)}" ${locked ? "disabled" : ""}>
-              <strong>${escapeHTML(`${t("session.target.agent")} · ${optionTarget.name}`)}</strong>
-              <span>${escapeHTML(item.subtitle)}</span>
+              <strong>${escapeHTML(optionTarget.name)}</strong>
+              <span class="composer-runtime-option-summary">${escapeHTML(item.subtitle)}</span>
             </button>`;
           }).join("")}
         </div>
@@ -3632,7 +3722,7 @@ function renderChatRuntimePanel() {
         <span class="composer-runtime-trigger-label">${escapeHTML(modelLabel)}</span>
         <span class="composer-runtime-trigger-caret">▾</span>
       </button>
-      ${openPopover === "model" ? `<div class="composer-runtime-popover is-wide">
+      ${openPopover === "model" ? `<div class="composer-runtime-popover is-wide" data-runtime-scroll-container="model">
         <div class="composer-runtime-popover-head">
           <strong>${escapeHTML(`${t("chat.runtime.provider")} / ${t("chat.runtime.model")}`)}</strong>
           <p>${escapeHTML(state.chatCatalog.providerError || t("chat.runtime.model_hint"))}</p>
@@ -3664,7 +3754,7 @@ function renderChatRuntimePanel() {
         <span class="composer-runtime-trigger-label">${escapeHTML(toolLabel)}</span>
         <span class="composer-runtime-trigger-caret">▾</span>
       </button>
-      ${openPopover === "capabilities" ? `<div class="composer-runtime-popover is-wide">
+      ${openPopover === "capabilities" ? `<div class="composer-runtime-popover is-wide" data-runtime-scroll-container="capabilities">
         <div class="composer-runtime-popover-head">
           <strong>${escapeHTML(t("chat.runtime.tools_mcp"))}</strong>
           <p>${escapeHTML(state.chatCatalog.capabilityError || t("chat.runtime.tools_hint"))}</p>
@@ -3682,7 +3772,7 @@ function renderChatRuntimePanel() {
         <span class="composer-runtime-trigger-label">${escapeHTML(skillLabel)}</span>
         <span class="composer-runtime-trigger-caret">▾</span>
       </button>
-      ${openPopover === "skills" ? `<div class="composer-runtime-popover">
+      ${openPopover === "skills" ? `<div class="composer-runtime-popover" data-runtime-scroll-container="skills">
         <div class="composer-runtime-popover-head">
           <strong>${escapeHTML(t("chat.runtime.skills"))}</strong>
           <p>${escapeHTML(state.chatCatalog.capabilityError || t("chat.runtime.skills_hint"))}</p>
@@ -3708,7 +3798,12 @@ function renderChatRuntimePanel() {
   ${runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : ""}`;
   }
 
-  chatRuntimePanel.querySelectorAll("[data-runtime-toggle]").forEach((node) => {
+  restoreChatRuntimeScrollState(scrollSnapshot);
+
+  const runtimeRoots = [chatRuntimePanel, chatRuntimeSheetHost].filter(Boolean);
+  const queryRuntimeNodes = (selector) => runtimeRoots.flatMap((root) => Array.from(root.querySelectorAll(selector)));
+
+  queryRuntimeNodes("[data-runtime-toggle]").forEach((node) => {
     node.addEventListener("click", () => {
       const nextPopover = String(node.getAttribute("data-runtime-toggle") || "").trim();
       if (!nextPopover) {
@@ -3722,7 +3817,14 @@ function renderChatRuntimePanel() {
     });
   });
 
-  chatRuntimePanel.querySelectorAll("[data-runtime-target-type]").forEach((node) => {
+  queryRuntimeNodes("[data-runtime-close]").forEach((node) => {
+    node.addEventListener("click", (event) => {
+      event.preventDefault();
+      closeChatRuntimePopover();
+    });
+  });
+
+  queryRuntimeNodes("[data-runtime-target-type]").forEach((node) => {
     node.addEventListener("click", () => {
       if (locked) {
         return;
@@ -3748,7 +3850,7 @@ function renderChatRuntimePanel() {
     });
   });
 
-  chatRuntimePanel.querySelectorAll("[data-runtime-provider-id]").forEach((node) => {
+  queryRuntimeNodes("[data-runtime-provider-id]").forEach((node) => {
     node.addEventListener("click", () => {
       const session = getSession() || createSession(defaultChatTarget());
       updateSessionModelSelection(session, {
@@ -3763,7 +3865,7 @@ function renderChatRuntimePanel() {
     });
   });
 
-  chatRuntimePanel.querySelectorAll("[data-runtime-toggle-item]").forEach((inputNode) => {
+  queryRuntimeNodes("[data-runtime-toggle-item]").forEach((inputNode) => {
     inputNode.addEventListener("change", () => {
       const session = getSession() || createSession(defaultChatTarget());
       const mode = String(inputNode.getAttribute("data-runtime-toggle-item") || "").trim();
@@ -5010,8 +5112,10 @@ function closeTransientPanels() {
   appShell.classList.remove("panel-open");
   if (state.chatRuntime.openPopover) {
     state.chatRuntime.openPopover = "";
-    if (state.currentRoute === "chat") {
+    if (state.currentRoute === "chat" || state.currentRoute === "agent-runtime") {
       renderChatRuntimePanel();
+    } else {
+      appShell.classList.remove("runtime-sheet-open");
     }
   }
   syncOverlayState();
@@ -14340,12 +14444,20 @@ function bindEvents() {
       event.stopPropagation();
     });
   }
+  if (chatRuntimeSheetHost) {
+    chatRuntimeSheetHost.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+  }
 
   document.addEventListener("click", (event) => {
-    if (!state.chatRuntime.openPopover || !chatRuntimePanel) {
+    if (!state.chatRuntime.openPopover || (!chatRuntimePanel && !chatRuntimeSheetHost)) {
       return;
     }
-    if (chatRuntimePanel.contains(event.target)) {
+    if (chatRuntimePanel && chatRuntimePanel.contains(event.target)) {
+      return;
+    }
+    if (chatRuntimeSheetHost && chatRuntimeSheetHost.contains(event.target)) {
       return;
     }
     closeChatRuntimePopover();
