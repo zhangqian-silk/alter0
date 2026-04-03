@@ -4218,6 +4218,11 @@ func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
+		apiKey := normalizeLLMProviderAPIKey(req.APIKey)
+		if apiKey == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "api_key is required"})
+			return
+		}
 
 		provider := llmdomain.ModelProvider{
 			ID:           strings.TrimSpace(req.ID),
@@ -4225,7 +4230,7 @@ func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) 
 			ProviderType: req.ProviderType,
 			APIType:      req.APIType,
 			BaseURL:      req.BaseURL,
-			APIKey:       req.APIKey,
+			APIKey:       apiKey,
 			OpenRouter:   req.OpenRouter,
 			DefaultModel: req.DefaultModel,
 			Models:       req.Models,
@@ -4285,6 +4290,10 @@ func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) 
 		apiKey := normalizeLLMProviderAPIKey(req.APIKey)
 		if apiKey == "" {
 			apiKey = existing.APIKey
+		}
+		if req.IsEnabled && strings.TrimSpace(apiKey) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "api_key is required"})
+			return
 		}
 
 		provider := llmdomain.ModelProvider{
@@ -4410,7 +4419,9 @@ func (s *Server) newLLMProviderID() string {
 
 func toLLMProviderResponse(p llmdomain.ModelProvider, maskKey bool) llmProviderResponse {
 	apiKey := p.APIKey
-	if maskKey && len(apiKey) > 8 {
+	if maskKey && strings.TrimSpace(apiKey) == "" {
+		apiKey = ""
+	} else if maskKey && len(apiKey) > 8 {
 		apiKey = apiKey[:4] + "****" + apiKey[len(apiKey)-4:]
 	} else if maskKey {
 		apiKey = "****"

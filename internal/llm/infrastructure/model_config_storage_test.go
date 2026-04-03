@@ -167,3 +167,59 @@ func TestModelConfigStorageGetReconcilesDisabledLegacyDefaultProvider(t *testing
 		t.Fatalf("expected disabled provider default flag to be cleared")
 	}
 }
+
+func TestModelConfigStorageGetRecoversLegacyProviderWithoutAPIKey(t *testing.T) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "model_config.json")
+	data := `{
+  "providers": [
+    {
+      "id": "legacy-openai",
+      "name": "Legacy OpenAI",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "",
+      "default_model": "gpt-4o",
+      "models": [
+        { "id": "gpt-4o", "name": "GPT-4o", "is_enabled": true }
+      ],
+      "is_enabled": true,
+      "is_default": true
+    },
+    {
+      "id": "enabled",
+      "name": "Enabled",
+      "base_url": "https://enabled.example/v1",
+      "api_key": "sk-enabled",
+      "default_model": "gpt-4.1",
+      "models": [
+        { "id": "gpt-4.1", "name": "GPT-4.1", "is_enabled": true }
+      ],
+      "is_enabled": true,
+      "is_default": false
+    }
+  ],
+  "default_provider_id": "legacy-openai"
+}`
+	if err := os.WriteFile(filePath, []byte(data), 0644); err != nil {
+		t.Fatalf("write config file failed: %v", err)
+	}
+
+	storage := NewModelConfigStorage(filePath)
+	config, err := storage.Get()
+	if err != nil {
+		t.Fatalf("get config failed: %v", err)
+	}
+	legacy := config.GetProvider("legacy-openai")
+	if legacy == nil {
+		t.Fatalf("expected legacy provider")
+	}
+	if legacy.IsEnabled {
+		t.Fatalf("expected legacy provider without api key to be disabled")
+	}
+	if legacy.IsDefault {
+		t.Fatalf("expected legacy provider without api key to lose default flag")
+	}
+	if config.DefaultProviderID != "enabled" {
+		t.Fatalf("expected enabled provider to become default, got %s", config.DefaultProviderID)
+	}
+}

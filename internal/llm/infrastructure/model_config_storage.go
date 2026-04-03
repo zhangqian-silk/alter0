@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"alter0/internal/llm/domain"
@@ -46,6 +47,7 @@ func (s *ModelConfigStorage) Load() (*domain.ModelConfig, error) {
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
+	reconcileLegacyProviderCredentials(&config)
 
 	if err := config.Validate(); err != nil {
 		return nil, err
@@ -191,6 +193,20 @@ func (s *ModelConfigStorage) GetEnabledProviders() ([]domain.ModelProvider, erro
 		return nil, err
 	}
 	return config.GetEnabledProviders(), nil
+}
+
+func reconcileLegacyProviderCredentials(config *domain.ModelConfig) {
+	if config == nil {
+		return
+	}
+	for i := range config.Providers {
+		if strings.TrimSpace(config.Providers[i].APIKey) != "" && strings.TrimSpace(config.Providers[i].APIKey) != "-" {
+			continue
+		}
+		config.Providers[i].APIKey = ""
+		config.Providers[i].IsEnabled = false
+		config.Providers[i].IsDefault = false
+	}
 }
 
 func cloneModelConfig(config *domain.ModelConfig) *domain.ModelConfig {
