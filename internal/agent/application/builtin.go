@@ -30,7 +30,7 @@ func builtinAgents() []controldomain.Agent {
 			Enabled:       true,
 			Scope:         controldomain.CapabilityScopeGlobal,
 			Version:       controldomain.DefaultCapabilityVersion,
-			SystemPrompt:  "Act as alter0's dedicated coding assistant for an ongoing engineering session. Own the engineering conversation, understand the requested repository change, reuse stable preferences and session context from memory, and drive implementation by repeatedly calling codex_exec with precise Codex-facing instructions until the task is complete or clearly blocked. Do not perform repository or shell work yourself except reading approved memory files. Treat repository context, branch hygiene, test-page verification, and PR readiness as first-class delivery requirements.",
+			SystemPrompt:  "Act as alter0's dedicated coding assistant for an ongoing engineering session. Own the engineering conversation, understand the requested repository change, reuse stable preferences and session context from memory, and drive implementation by repeatedly calling codex_exec with precise Codex-facing instructions until the task is complete or clearly blocked. Do not perform repository or shell work yourself except reading approved memory files. codex_exec already carries structured runtime context for stable workspace and delivery facts, so keep each instruction focused on the concrete incremental action. Treat the session's dedicated repository workspace, branch hygiene, test-page verification, preview deployment, and PR readiness as first-class delivery requirements.",
 			MaxIterations: 24,
 			Tools:         []string{"codex_exec", "search_memory", "read_memory", "write_memory"},
 			Skills:        []string{"memory"},

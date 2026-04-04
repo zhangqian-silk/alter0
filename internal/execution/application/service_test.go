@@ -660,9 +660,13 @@ func TestExecuteNaturalLanguageAgentSessionProfileCapturesCodingRepositoryContex
 	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
 		t.Fatalf("mkdir workspace: %v", err)
 	}
-	runGitCommand(t, workspaceDir, "init")
-	runGitCommand(t, workspaceDir, "checkout", "-b", "feat/session-memory")
-	runGitCommand(t, workspaceDir, "remote", "add", "origin", "https://example.com/demo/repo.git")
+	repoDir := filepath.Join(workspaceDir, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir repo workspace: %v", err)
+	}
+	runGitCommand(t, repoDir, "init")
+	runGitCommand(t, repoDir, "checkout", "-b", "feat/session-memory")
+	runGitCommand(t, repoDir, "remote", "add", "origin", "https://example.com/demo/repo.git")
 
 	previousWD, err := os.Getwd()
 	if err != nil {
@@ -702,7 +706,8 @@ func TestExecuteNaturalLanguageAgentSessionProfileCapturesCodingRepositoryContex
 	}
 	for _, expected := range []string{
 		"## Coding Context",
-		"- local_repository_path: " + filepath.ToSlash(workspaceDir),
+		"- local_repository_path: " + filepath.ToSlash(repoDir),
+		"- source_repository_path: " + filepath.ToSlash(root),
 		"- remote_repository: https://example.com/demo/repo.git",
 		"- active_branch: feat/session-memory",
 		"- session_workspace_path: " + filepath.ToSlash(workspaceDir),

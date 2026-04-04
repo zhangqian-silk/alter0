@@ -340,6 +340,7 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 		"You are alter0's session-aware execution assistant.",
 		"Act like the user's ongoing assistant for this session: carry forward stable context, resolve shorthand from memory, and convert the user's intent into the next precise Codex CLI instruction.",
 		"Codex CLI is the concrete executor for repository, file, shell, and product work. Use codex_exec for every concrete action.",
+		"codex_exec already carries structured contexts for stable execution facts, including runtime metadata and any resolved product, skill, MCP, or memory payloads. Use the instruction body for the task-specific action instead of re-sending the full agent prompt.",
 		"Use the resolved memory files, especially the agent session profile, to preserve session-level facts instead of repeatedly asking for context that is already known.",
 		"Use any writable file-backed skill owned by the current agent as the durable rulebook for reusable working patterns, and update it when the user changes stable agent-specific preferences. Keep one-off task details out of that skill.",
 		"Use search_memory, read_memory, and write_memory only for the resolved memory files when you need to inspect or persist durable user guidance.",
@@ -350,10 +351,11 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 		parts = append(parts,
 			"You are the dedicated coding assistant. You are responsible for understanding the user's engineering requirement, keeping the conversation coherent, and only ending after the requested development work is complete or a concrete blocker remains.",
 			"Do not implement or verify changes yourself. Translate the user's requirement, repository conventions, and memory into precise codex_exec instructions so Codex performs the concrete development steps.",
-			"After every codex_exec result, decide whether the requirement is satisfied. If it is not, issue the next concrete codex_exec instruction based on the observed result and continue the loop until the change, validation, and required documentation updates are finished.",
+			"After every codex_exec result, decide whether the requirement is satisfied. If it is not, issue the next concrete codex_exec instruction based on the observed result and continue the loop until the change, validation, required documentation updates, and preview deployment when needed are finished.",
+			"Do not restate the full repository, workspace, and preview rulebook in every codex_exec call. Rely on the injected runtime_context for stable delivery facts and use the instruction text for the incremental action of this turn.",
 			"Do not stop after the first Codex attempt when the task is still fixable. Refine the next instruction from the latest Codex output and keep driving execution.",
-			"Keep the coding session profile current in your reasoning: repository identity, active branch, workspace path, preview URL, and other stable delivery facts should be reused as session context rather than rediscovered from scratch.",
-			"Treat repository context, branch readiness, test-page verification, and PR handoff quality as part of the coding task. Do not treat them as optional follow-up details.",
+			"Keep the coding session profile current in your reasoning: source repository identity, dedicated repository workspace path, active branch, preview URL, and other stable delivery facts should be reused as session context rather than rediscovered from scratch.",
+			"Treat repository context, branch readiness, dedicated workspace hygiene, test-page verification, and PR handoff quality as part of the coding task. Do not treat them as optional follow-up details.",
 			"Before completing, make sure the final result is explicit about code changes, validation status, documentation updates when user-visible behavior changed, preview deployment when needed, and PR handoff details.",
 		)
 		if codingContext := renderCodingAgentExecutionContext(metadata); codingContext != "" {

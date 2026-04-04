@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -29,11 +30,12 @@ func renderCodingAgentExecutionContext(metadata map[string]string) string {
 	}
 	remoteRepo := resolveGitCommandOutput(repoRoot, "remote", "get-url", "origin")
 	defaultBranch := resolveGitDefaultBranch(repoRoot)
-	workspaceDir, _ := resolveCodexWorkspace(metadata)
 	sessionID := strings.TrimSpace(firstNonEmpty(
 		metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey),
 		metadataValue(metadata, sessionIDMetadataFallback),
 	))
+	sessionWorkspaceDir := buildCodingSessionWorkspacePath(repoRoot, sessionID)
+	repoWorkspaceDir := buildCodingSessionRepoWorkspacePath(repoRoot, sessionID)
 	sessionShortHash := shortSessionHash(sessionID)
 	previewHost := ""
 	previewURL := ""
@@ -45,9 +47,10 @@ func renderCodingAgentExecutionContext(metadata map[string]string) string {
 	lines := []string{
 		"Current coding workspace context:",
 		"- Remote repository: " + fallbackCodingContextValue(remoteRepo),
-		"- Local repository path: " + fallbackCodingContextValue(repoRoot),
+		"- Source repository path: " + fallbackCodingContextValue(repoRoot),
 		"- Active local branch: " + fallbackCodingContextValue(currentBranch),
-		"- Session workspace path: " + fallbackCodingContextValue(workspaceDir),
+		"- Dedicated repository workspace path: " + fallbackCodingContextValue(repoWorkspaceDir),
+		"- Session workspace path: " + fallbackCodingContextValue(sessionWorkspaceDir),
 	}
 	if defaultBranch != "" {
 		lines = append(lines, "- PR base branch: "+defaultBranch)
@@ -66,8 +69,9 @@ func renderCodingAgentExecutionContext(metadata map[string]string) string {
 	}
 	lines = append(lines,
 		"Delivery requirements:",
+		"- When repository code needs to be pulled, inspected, edited, built, or tested, do it in the dedicated repository workspace above rather than directly in the source repository path.",
 		"- Treat repository state, branch hygiene, verification evidence, preview deployment, and PR readiness as part of the coding task rather than optional follow-up work.",
-		"- For user-visible web changes, do not claim success without validating the changed page and, when a preview page is expected, reporting the preview URL based on the current session short hash.",
+		"- For user-visible web changes, do not claim success without validating the changed page and, when a preview page is expected, deploying or updating it at the preview URL based on the current session short hash before reporting completion.",
 		"- Keep the branch and PR handoff explicit: report the working branch, the intended PR base branch, test results, preview URL when applicable, and any remaining blockers.",
 	)
 	return strings.Join(lines, "\n")
@@ -128,7 +132,20 @@ func cloneExecutionMetadata(metadata map[string]string) map[string]string {
 }
 
 func buildCodexExecMetadata(metadata map[string]string) map[string]string {
-	return cloneExecutionMetadata(metadata)
+	out := cloneExecutionMetadata(metadata)
+	if !isCodingAgent(metadata) {
+		return out
+	}
+	out[codexWorkspaceModeMetadataKey] = codexWorkspaceModeSessionRepo
+	if _, exists := out[codexWorktreeSourceRootKey]; exists {
+		return out
+	}
+	repoRoot, err := resolveToolRepoRoot()
+	if err != nil {
+		return out
+	}
+	out[codexWorktreeSourceRootKey] = repoRoot
+	return out
 }
 
 func buildPreviewURLForSession(sessionID string) string {
@@ -137,4 +154,21 @@ func buildPreviewURLForSession(sessionID string) string {
 		return ""
 	}
 	return fmt.Sprintf("https://%s.%s", short, codingAgentPreviewBaseDomain)
+}
+
+func buildCodingSessionWorkspacePath(repoRoot string, sessionID string) string {
+	repoRoot = strings.TrimSpace(repoRoot)
+	sessionID = sanitizeWorkspaceSegment(sessionID)
+	if repoRoot == "" || sessionID == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Join(repoRoot, defaultWorkspaceRootDir, workspaceDirectoryName, workspaceSessionsDirName, sessionID))
+}
+
+func buildCodingSessionRepoWorkspacePath(repoRoot string, sessionID string) string {
+	sessionWorkspace := buildCodingSessionWorkspacePath(repoRoot, sessionID)
+	if sessionWorkspace == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Join(sessionWorkspace, workspaceRepoDirName))
 }

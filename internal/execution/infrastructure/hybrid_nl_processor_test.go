@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -157,7 +158,10 @@ func TestHybridNLProcessorAgentModeExecutesCodexToolLoop(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
 	processor := NewHybridNLProcessor(newTestProcessor(
 		"success",
-		`{"protocol":"alter0.codex-exec/v1","user_prompt":"整理仓库","agent_context":{"protocol":"alter0.agent-context/v1","agent_id":"researcher"}}`,
+		mustBuildTestPrompt(t, "整理仓库", map[string]string{
+			execdomain.RuntimeSessionIDMetadataKey: "session-default",
+			execdomain.AgentIDMetadataKey:          "researcher",
+		}),
 	), reactFactory, nil)
 
 	metadata := testRuntimeMetadata()
@@ -186,7 +190,7 @@ func TestHybridNLProcessorAgentModeExecutesCodexToolLoop(t *testing.T) {
 
 func TestHybridNLProcessorCodingAgentPromptEmphasizesCodexLoop(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)
 
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "coding"
@@ -200,13 +204,17 @@ func TestHybridNLProcessorCodingAgentPromptEmphasizesCodexLoop(t *testing.T) {
 	for _, expected := range []string{
 		"You are alter0's session-aware execution assistant.",
 		"Act like the user's ongoing assistant for this session",
+		"codex_exec already carries structured contexts for stable execution facts",
 		"agent session profile",
 		"You are the dedicated coding assistant.",
 		"Do not implement or verify changes yourself.",
 		"After every codex_exec result, decide whether the requirement is satisfied.",
+		"Do not restate the full repository, workspace, and preview rulebook",
 		"Do not stop after the first Codex attempt",
 		"Keep the coding session profile current in your reasoning",
 		"Current coding workspace context:",
+		"Dedicated repository workspace path:",
+		"When repository code needs to be pulled, inspected, edited, built, or tested",
 		"Preview URL:",
 		"PR handoff details",
 		"Own coding delivery.",
@@ -223,6 +231,19 @@ func TestHybridNLProcessorCodingAgentPromptEmphasizesCodexLoop(t *testing.T) {
 func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
 	processor := NewHybridNLProcessor(nil, reactFactory, nil)
+	sourceRepoRoot := t.TempDir()
+	initGitRepoWithCommit(t, sourceRepoRoot)
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(sourceRepoRoot); err != nil {
+		t.Fatalf("chdir source repo root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
 
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "coding"
@@ -234,7 +255,7 @@ func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) 
 	if err != nil {
 		t.Fatalf("buildCodexPrompt() error = %v", err)
 	}
-	processor.codex = newTestProcessor("success", expectedPrompt)
+	processor.codex = newTestProcessor("success", expectedPrompt, filepath.Join(".alter0", "workspaces", "sessions", "session-default", "repo"))
 
 	output, err := processor.Process(context.Background(), "完成仓库整理", metadata)
 	if err != nil {
@@ -247,7 +268,7 @@ func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) 
 
 func TestHybridNLProcessorUsesChatLevelModelOverride(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)
 
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.LLMProviderIDMetadataKey] = "openai"
@@ -267,7 +288,7 @@ func TestHybridNLProcessorUsesChatLevelModelOverride(t *testing.T) {
 
 func TestHybridNLProcessorReactModeIgnoresLegacyNativeTools(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)
 
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentToolsMetadataKey] = `["read","bash"]`
@@ -289,7 +310,7 @@ func TestHybridNLProcessorReactModeIgnoresLegacyNativeTools(t *testing.T) {
 
 func TestHybridNLProcessorAgentModeDefaultsToCoreTools(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)
 
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "researcher"
@@ -312,7 +333,7 @@ func TestHybridNLProcessorAgentModeDefaultsToCoreTools(t *testing.T) {
 
 func TestHybridNLProcessorAgentModeAllowsHigherIterationLimit(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)
 
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "coding"
@@ -329,7 +350,7 @@ func TestHybridNLProcessorAgentModeAllowsHigherIterationLimit(t *testing.T) {
 
 func TestHybridNLProcessorMarksModelExecutionSource(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)
 
 	metadata := testRuntimeMetadata()
 	output, err := processor.Process(context.Background(), "总结当前改动", metadata)
@@ -348,7 +369,7 @@ func TestHybridNLProcessorMarksModelExecutionSource(t *testing.T) {
 }
 
 func TestHybridNLProcessorMarksCodexExecutionSource(t *testing.T) {
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), nil, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), nil, nil)
 
 	metadata := testRuntimeMetadata()
 	output, err := processor.Process(context.Background(), "整理仓库", metadata)
@@ -378,7 +399,7 @@ func TestHybridNLProcessorAgentModeSupportsDelegation(t *testing.T) {
 	}
 	catalog := agentapp.NewCatalog(control)
 	reactFactory := &stubReactFactory{client: &delegatingLLMClient{}}
-	processor := NewHybridNLProcessorWithCatalog(newTestProcessor("success", "整理仓库"), reactFactory, catalog, nil)
+	processor := NewHybridNLProcessorWithCatalog(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, catalog, nil)
 
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "main"
@@ -406,7 +427,7 @@ func TestHybridNLProcessorAgentModeSupportsDelegation(t *testing.T) {
 
 func TestHybridNLProcessorAgentModeIncludesProductContext(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)
 
 	productContext := execdomain.ProductContext{
 		Protocol:         execdomain.ProductContextProtocolVersion,
@@ -439,7 +460,7 @@ func TestHybridNLProcessorAgentModeIncludesProductContext(t *testing.T) {
 
 func TestHybridNLProcessorAgentModeSupportsMemoryTools(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), reactFactory, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)
 
 	rawMemoryContext, err := json.Marshal(execdomain.MemoryContext{
 		Protocol: execdomain.MemoryContextProtocolVersion,
@@ -474,7 +495,7 @@ func TestHybridNLProcessorAgentModeSupportsMemoryTools(t *testing.T) {
 }
 
 func TestHybridNLProcessorExecutesMemorySearchReadWriteTools(t *testing.T) {
-	processor := NewHybridNLProcessor(newTestProcessor("success", "整理仓库"), nil, nil)
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), nil, nil)
 	memoryPath := filepath.Join(t.TempDir(), "USER.md")
 	rawMemoryContext, err := json.Marshal(execdomain.MemoryContext{
 		Protocol: execdomain.MemoryContextProtocolVersion,

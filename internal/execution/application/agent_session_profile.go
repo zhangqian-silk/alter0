@@ -144,18 +144,25 @@ func renderAgentSessionProductContext(metadata map[string]string) []string {
 }
 
 func renderAgentSessionCodingContext(repoRoot string, workspacePath string, sessionID string) []string {
-	repositoryPath := resolvePreferredSessionRepoPath(repoRoot, workspacePath)
+	repositoryPath := resolveAgentSessionRepoWorkspacePath(workspacePath)
+	gitInspectionPath := repositoryPath
+	if topLevel := resolveGitRepoRoot(gitInspectionPath); topLevel == "" {
+		gitInspectionPath = resolvePreferredSessionRepoPath(repoRoot, repositoryPath)
+	}
 	lines := []string{"## Coding Context"}
 	if repositoryPath != "" {
 		lines = append(lines, "- local_repository_path: "+repositoryPath)
 	}
-	if remote := resolveGitCommandOutput(repositoryPath, "remote", "get-url", "origin"); remote != "" {
+	if repoRoot != "" {
+		lines = append(lines, "- source_repository_path: "+filepath.ToSlash(repoRoot))
+	}
+	if remote := resolveGitCommandOutput(gitInspectionPath, "remote", "get-url", "origin"); remote != "" {
 		lines = append(lines, "- remote_repository: "+remote)
 	}
-	if branch := resolveGitCurrentBranch(repositoryPath); branch != "" {
+	if branch := resolveGitCurrentBranch(gitInspectionPath); branch != "" {
 		lines = append(lines, "- active_branch: "+branch)
 	}
-	if base := resolveGitDefaultBranch(repositoryPath); base != "" {
+	if base := resolveGitDefaultBranch(gitInspectionPath); base != "" {
 		lines = append(lines, "- pr_base_branch: "+base)
 	}
 	if workspacePath != "" {
@@ -190,6 +197,14 @@ func resolvePreferredSessionRepoPath(repoRoot string, workspacePath string) stri
 		return topLevel
 	}
 	return ""
+}
+
+func resolveAgentSessionRepoWorkspacePath(workspacePath string) string {
+	workspacePath = strings.TrimSpace(workspacePath)
+	if workspacePath == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Join(workspacePath, "repo"))
 }
 
 func resolveGitRepoRoot(path string) string {

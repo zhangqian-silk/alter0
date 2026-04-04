@@ -14,7 +14,7 @@ import (
 )
 
 func TestCodexCLIProcessorProcessSuccess(t *testing.T) {
-	processor := newTestProcessor("success", "reply: hello")
+	processor := newTestProcessor("success", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 
 	output, err := processor.Process(context.Background(), "reply: hello", testRuntimeMetadata())
 	if err != nil {
@@ -26,7 +26,7 @@ func TestCodexCLIProcessorProcessSuccess(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessEmitsHeartbeat(t *testing.T) {
-	processor := newTestProcessor("slow-success", "reply: hello")
+	processor := newTestProcessor("slow-success", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 	processor.heartbeatInterval = 20 * time.Millisecond
 	heartbeats := make(chan execdomain.RuntimeHeartbeat, 8)
 	ctx := execdomain.WithRuntimeHeartbeatReporter(context.Background(), func(heartbeat execdomain.RuntimeHeartbeat) {
@@ -53,7 +53,7 @@ func TestCodexCLIProcessorProcessEmitsHeartbeat(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessCommandFailure(t *testing.T) {
-	processor := newTestProcessor("failure", "reply: hello")
+	processor := newTestProcessor("failure", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 
 	_, err := processor.Process(context.Background(), "reply: hello", testRuntimeMetadata())
 	if err == nil {
@@ -68,7 +68,7 @@ func TestCodexCLIProcessorProcessCommandFailure(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessEmptyOutput(t *testing.T) {
-	processor := newTestProcessor("empty", "reply: hello")
+	processor := newTestProcessor("empty", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 
 	_, err := processor.Process(context.Background(), "reply: hello", testRuntimeMetadata())
 	if err == nil {
@@ -113,7 +113,13 @@ func TestCodexCLIProcessorProcessWithSkillContextPayload(t *testing.T) {
 		t.Fatalf("marshal skill context: %v", err)
 	}
 
-	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","skill_context":{"protocol":"alter0.skill-context/v1","skills":[{"id":"summary","name":"Summary","description":"summary docs","guide":"review the memory files before editing","priority":200,"parameter_template":{"lang":"zh-CN"},"constraints":["max:300"]}]}}`
+	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
+	})
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
@@ -148,7 +154,13 @@ func TestCodexCLIProcessorProcessWithMCPContextPayload(t *testing.T) {
 		t.Fatalf("marshal mcp context: %v", err)
 	}
 
-	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","mcp_context":{"protocol":"alter0.mcp-context/v1","servers":[{"id":"github-mcp","name":"GitHub MCP","scope":"request","transport":"http","url":"https://mcp.example.com","timeout_ms":9000,"failure_isolation":true}]}}`
+	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
+	})
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
@@ -200,7 +212,14 @@ func TestCodexCLIProcessorProcessWithSkillAndMCPContextPayload(t *testing.T) {
 		t.Fatalf("marshal mcp context: %v", err)
 	}
 
-	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","skill_context":{"protocol":"alter0.skill-context/v1","skills":[{"id":"summary","name":"Summary","description":"summary docs","priority":200}]},"mcp_context":{"protocol":"alter0.mcp-context/v1","servers":[{"id":"filesystem","name":"Filesystem","scope":"session","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem"],"timeout_ms":10000,"failure_isolation":true}]}}`
+	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
+		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
+	})
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
@@ -236,7 +255,13 @@ func TestCodexCLIProcessorProcessWithMemoryContextPayload(t *testing.T) {
 		t.Fatalf("marshal memory context: %v", err)
 	}
 
-	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","memory_context":{"protocol":"alter0.memory-context/v1","files":[{"id":"user_md","selection":"user_md","title":"USER.md","path":"/repo/USER.md","exists":true,"writable":true,"content":"name: alter0"}]}}`
+	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		execdomain.MemoryContextMetadataKey:    string(rawMemoryContext),
+	})
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
@@ -252,7 +277,16 @@ func TestCodexCLIProcessorProcessWithMemoryContextPayload(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessWithAgentContextPayload(t *testing.T) {
-	expectedPrompt := `{"protocol":"alter0.codex-exec/v1","user_prompt":"reply: hello","agent_context":{"protocol":"alter0.agent-context/v1","agent_id":"coding","agent_name":"Coding Agent","delegated_by":"main"}}`
+	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey:  "session-default",
+		execdomain.AgentIDMetadataKey:           "coding",
+		execdomain.AgentNameMetadataKey:         "Coding Agent",
+		execdomain.AgentSystemPromptMetadataKey: "Drive implementation through Codex.",
+		execdomain.AgentDelegatedByMetadataKey:  "main",
+	})
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
 	processor := newTestProcessor("success", expectedPrompt)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
@@ -270,9 +304,118 @@ func TestCodexCLIProcessorProcessWithAgentContextPayload(t *testing.T) {
 	}
 }
 
+func TestBuildCodexPromptIncludesRuntimeContextForCodingAgent(t *testing.T) {
+	sourceRepoRoot := t.TempDir()
+	initGitRepoWithCommit(t, sourceRepoRoot)
+	runGitCommand(t, sourceRepoRoot, "checkout", "-b", "feat/runtime-context")
+	runGitCommand(t, sourceRepoRoot, "remote", "add", "origin", "https://example.com/demo/repo.git")
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(sourceRepoRoot); err != nil {
+		t.Fatalf("chdir source repo root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	rawPrompt, err := buildCodexPrompt("reply: hello", buildCodexExecMetadata(map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "coding-session",
+		execdomain.RuntimeMessageIDMetadataKey: "message-1",
+		execdomain.RuntimeTraceIDMetadataKey:   "trace-1",
+		execdomain.AgentIDMetadataKey:          "coding",
+	}))
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
+
+	payload := codexExecutionPayload{}
+	if err := json.Unmarshal([]byte(rawPrompt), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload.Runtime == nil {
+		t.Fatal("expected runtime context in codex payload")
+	}
+	if payload.Runtime.Protocol != execdomain.RuntimeContextProtocolVersion {
+		t.Fatalf("runtime protocol = %q, want %q", payload.Runtime.Protocol, execdomain.RuntimeContextProtocolVersion)
+	}
+	if payload.Runtime.SessionID != "coding-session" || payload.Runtime.MessageID != "message-1" || payload.Runtime.TraceID != "trace-1" {
+		t.Fatalf("unexpected runtime ids: %+v", payload.Runtime)
+	}
+	if payload.Runtime.Workspace == nil || payload.Runtime.Workspace.RepositoryPath == "" {
+		t.Fatalf("expected runtime workspace repository path, got %+v", payload.Runtime.Workspace)
+	}
+	if !strings.HasSuffix(payload.Runtime.Workspace.RepositoryPath, "/.alter0/workspaces/sessions/coding-session/repo") {
+		t.Fatalf("unexpected repository workspace path: %q", payload.Runtime.Workspace.RepositoryPath)
+	}
+	if payload.Runtime.Repository == nil || payload.Runtime.Repository.SourcePath != filepath.ToSlash(sourceRepoRoot) {
+		t.Fatalf("unexpected runtime repository context: %+v", payload.Runtime.Repository)
+	}
+	if payload.Runtime.Repository.RemoteURL != "https://example.com/demo/repo.git" {
+		t.Fatalf("runtime repository remote = %q", payload.Runtime.Repository.RemoteURL)
+	}
+	if payload.Runtime.Repository.ActiveBranch != "feat/runtime-context" {
+		t.Fatalf("runtime repository branch = %q", payload.Runtime.Repository.ActiveBranch)
+	}
+	if payload.Runtime.Preview == nil || !payload.Runtime.Preview.RequiredOnCompletion {
+		t.Fatalf("unexpected runtime preview rule: %+v", payload.Runtime.Preview)
+	}
+	if !strings.HasPrefix(payload.Runtime.Preview.URL, "https://") || !strings.HasSuffix(payload.Runtime.Preview.URL, ".alter0.cn") {
+		t.Fatalf("unexpected runtime preview url: %q", payload.Runtime.Preview.URL)
+	}
+}
+
+func TestBuildCodexPromptIncludesProductContexts(t *testing.T) {
+	productContext := execdomain.ProductContext{
+		Protocol:      execdomain.ProductContextProtocolVersion,
+		ProductID:     "travel",
+		Name:          "Travel",
+		MasterAgentID: "travel-master",
+	}
+	rawProductContext, err := json.Marshal(productContext)
+	if err != nil {
+		t.Fatalf("marshal product context: %v", err)
+	}
+	productDiscovery := execdomain.ProductDiscoveryContext{
+		Protocol:        execdomain.ProductDiscoveryProtocolVersion,
+		SelectedProduct: "travel",
+		SelectionReason: "matched by route",
+		MatchedProducts: []execdomain.ProductContext{productContext},
+	}
+	rawProductDiscovery, err := json.Marshal(productDiscovery)
+	if err != nil {
+		t.Fatalf("marshal product discovery: %v", err)
+	}
+
+	rawPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "product-session",
+		execdomain.ProductContextMetadataKey:   string(rawProductContext),
+		execdomain.ProductDiscoveryMetadataKey: string(rawProductDiscovery),
+	})
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
+
+	payload := codexExecutionPayload{}
+	if err := json.Unmarshal([]byte(rawPrompt), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload.Product == nil || payload.Product.ProductID != "travel" {
+		t.Fatalf("unexpected product context: %+v", payload.Product)
+	}
+	if payload.Discovery == nil || payload.Discovery.SelectedProduct != "travel" {
+		t.Fatalf("unexpected product discovery context: %+v", payload.Discovery)
+	}
+}
+
 func TestCodexCLIProcessorProcessUsesSessionTaskWorkspace(t *testing.T) {
 	expectedWorkspace := filepath.Join(".alter0", "workspaces", "sessions", "session-a", "tasks", "task-a")
-	processor := newTestProcessor("success", "reply: hello", expectedWorkspace)
+	processor := newTestProcessor("success", mustBuildTestPrompt(t, "reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "session-a",
+		"task_id":                              "task-a",
+	}), expectedWorkspace)
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey: "session-a",
@@ -302,6 +445,45 @@ func TestResolveCodexWorkspaceSupportsRepoRootMode(t *testing.T) {
 	}
 }
 
+func TestResolveCodexWorkspaceSupportsSessionRepoWorktreeMode(t *testing.T) {
+	sourceRepoRoot := t.TempDir()
+	initGitRepoWithCommit(t, sourceRepoRoot)
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(sourceRepoRoot); err != nil {
+		t.Fatalf("chdir source repo root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	workspace, err := resolveCodexWorkspace(map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "coding-session",
+		codexWorkspaceModeMetadataKey:          codexWorkspaceModeSessionRepo,
+		codexWorktreeSourceRootKey:             sourceRepoRoot,
+	})
+	if err != nil {
+		t.Fatalf("resolveCodexWorkspace() error = %v", err)
+	}
+	expected, absErr := filepath.Abs(filepath.Join(".alter0", "workspaces", "sessions", "coding-session", "repo"))
+	if absErr != nil {
+		t.Fatalf("resolve expected workspace: %v", absErr)
+	}
+	if workspace != expected {
+		t.Fatalf("resolveCodexWorkspace() = %q, want %q", workspace, expected)
+	}
+	topLevel, err := resolveGitTopLevel(workspace)
+	if err != nil {
+		t.Fatalf("resolveGitTopLevel() error = %v", err)
+	}
+	if topLevel != expected {
+		t.Fatalf("resolveGitTopLevel() = %q, want %q", topLevel, expected)
+	}
+}
+
 func TestCodexCLIProcessorProcessAllowsRepoRootModeWithoutSessionContext(t *testing.T) {
 	processor := newTestProcessor("success", "reply: hello")
 
@@ -316,8 +498,37 @@ func TestCodexCLIProcessorProcessAllowsRepoRootModeWithoutSessionContext(t *test
 	}
 }
 
+func TestBuildCodexExecMetadataUsesSessionRepoWorktreeForCodingAgent(t *testing.T) {
+	sourceRepoRoot := t.TempDir()
+	initGitRepoWithCommit(t, sourceRepoRoot)
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(sourceRepoRoot); err != nil {
+		t.Fatalf("chdir source repo root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	metadata := buildCodexExecMetadata(map[string]string{
+		execdomain.AgentIDMetadataKey:           "coding",
+		execdomain.RuntimeSessionIDMetadataKey:  "coding-session",
+		execdomain.AgentNameMetadataKey:         "Coding Agent",
+		execdomain.AgentSystemPromptMetadataKey: "Own coding delivery.",
+	})
+	if got := metadata[codexWorkspaceModeMetadataKey]; got != codexWorkspaceModeSessionRepo {
+		t.Fatalf("codex workspace mode = %q, want %q", got, codexWorkspaceModeSessionRepo)
+	}
+	if got := metadata[codexWorktreeSourceRootKey]; got != sourceRepoRoot {
+		t.Fatalf("codex worktree source root = %q, want %q", got, sourceRepoRoot)
+	}
+}
+
 func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
-	processor := newTestProcessor("stream-success", "reply: hello")
+	processor := newTestProcessor("stream-success", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 	deltas := make([]string, 0, 2)
 
 	output, err := processor.ProcessStream(context.Background(), "reply: hello", testRuntimeMetadata(), func(event execdomain.StreamEvent) error {
@@ -336,7 +547,7 @@ func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessStreamEmitsHeartbeat(t *testing.T) {
-	processor := newTestProcessor("stream-slow-success", "reply: hello")
+	processor := newTestProcessor("stream-slow-success", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 	processor.heartbeatInterval = 20 * time.Millisecond
 	heartbeats := make(chan execdomain.RuntimeHeartbeat, 8)
 	ctx := execdomain.WithRuntimeHeartbeatReporter(context.Background(), func(heartbeat execdomain.RuntimeHeartbeat) {
@@ -356,7 +567,7 @@ func TestCodexCLIProcessorProcessStreamEmitsHeartbeat(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessStreamCommandFailure(t *testing.T) {
-	processor := newTestProcessor("stream-failure", "reply: hello")
+	processor := newTestProcessor("stream-failure", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 
 	_, err := processor.ProcessStream(context.Background(), "reply: hello", testRuntimeMetadata(), nil)
 	if err == nil {
@@ -368,7 +579,7 @@ func TestCodexCLIProcessorProcessStreamCommandFailure(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessStreamFailsFastOnAuthError(t *testing.T) {
-	processor := newTestProcessor("stream-auth-failure", "reply: hello")
+	processor := newTestProcessor("stream-auth-failure", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 
 	startedAt := time.Now()
 	_, err := processor.ProcessStream(context.Background(), "reply: hello", testRuntimeMetadata(), nil)
@@ -388,7 +599,9 @@ func TestCodexCLIProcessorProcessStreamFailsFastOnAuthError(t *testing.T) {
 
 func TestCodexCLIProcessorProcessStreamUsesSessionWorkspace(t *testing.T) {
 	expectedWorkspace := filepath.Join(".alter0", "workspaces", "sessions", "stream-session")
-	processor := newTestProcessor("stream-success", "reply: hello", expectedWorkspace)
+	processor := newTestProcessor("stream-success", mustBuildTestPrompt(t, "reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "stream-session",
+	}), expectedWorkspace)
 
 	output, err := processor.ProcessStream(context.Background(), "reply: hello", map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey: "stream-session",
@@ -416,6 +629,43 @@ func TestCodexCLIProcessorProcessRequiresWorkspaceContext(t *testing.T) {
 func testRuntimeMetadata() map[string]string {
 	return map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+	}
+}
+
+func mustBuildTestPrompt(t *testing.T, prompt string, metadata map[string]string) string {
+	t.Helper()
+	rendered, err := buildCodexPrompt(prompt, metadata)
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
+	return rendered
+}
+
+func initGitRepoWithCommit(t *testing.T, dir string) {
+	t.Helper()
+	runGitCommand(t, dir, "init")
+	runGitCommand(t, dir, "config", "user.name", "Alter0 Test")
+	runGitCommand(t, dir, "config", "user.email", "alter0@example.com")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("test repo\n"), 0o644); err != nil {
+		t.Fatalf("write repo seed: %v", err)
+	}
+	runGitCommand(t, dir, "add", "README.md")
+	runGitCommand(t, dir, "commit", "-m", "init repo")
+}
+
+func runGitCommand(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=Alter0 Test",
+		"GIT_AUTHOR_EMAIL=alter0@example.com",
+		"GIT_COMMITTER_NAME=Alter0 Test",
+		"GIT_COMMITTER_EMAIL=alter0@example.com",
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
 }
 
