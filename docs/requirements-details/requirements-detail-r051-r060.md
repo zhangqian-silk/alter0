@@ -136,9 +136,11 @@
 9. `coding` Agent 必须作为用户可直接选择的入口 Agent，对编码类请求承担主交互职责；具体开发工作优先通过 `codex_exec` 执行，并根据每轮执行结果继续追加下一步实现或验证动作，直至完成或明确阻塞。
    - Agent system prompt 需采用持续助手口径，要求优先复用当前 Session 已确认的稳定上下文，而不是在多轮编码过程中重复索取相同信息。
    - Agent 作为用户与 Codex 之间的代理层，负责在 Agent 侧消化 system prompt、Skill、记忆和会话画像；这些 Agent 编排信息不直接透传给 Codex，Codex 只接收当前执行所需的最小上下文与具体指令。
-   - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、本地仓库路径、当前分支、会话工作区、PR 基线分支与交付要求。
-   - 运行时需同步维护 `coding` Agent 在当前 Session 下的私有画像文件 `.alter0/agents/coding/sessions/<session_id>.md`，用于沉淀仓库与交付上下文，供后续轮次直接复用。
-   - 涉及测试页面时，预览域名必须使用当前会话标识派生的 8 位短 hash，格式为 `https://<session_short_hash>.alter0.cn`。
+   - `alter0.codex-exec/v1` 需统一支持结构化上下文字段，至少包括按需注入的 `runtime_context`、`product_context`、`product_discovery`、`skill_context`、`mcp_context`、`memory_context`；Codex 仅接收当前执行所需的最小必要信息，不要求 Agent 在每轮 `codex_exec` 指令里重复转述完整规则簿，也不得把与当前执行无关的上下文冗余透传。
+   - 仓库类 `codex_exec` 需默认切到当前 Session 独立 repo worktree `.alter0/workspaces/sessions/<session_id>/repo`，先在该工作区拉取/检查代码，再进行实现、构建、测试与部署，不直接在主仓库工作目录开发。
+   - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、源仓库路径、独立 repo worktree 路径、当前分支、会话工作区、PR 基线分支与交付要求。
+   - 运行时需同步维护 `coding` Agent 在当前 Session 下的私有画像文件 `.alter0/agents/coding/sessions/<session_id>.md`，用于沉淀源仓库路径、独立 repo worktree 路径、仓库状态与交付上下文，供后续轮次直接复用。
+   - 涉及测试页面时，预览域名必须使用当前会话标识派生的 8 位短 hash，格式为 `https://<session_short_hash>.alter0.cn`；需求完成前需先把页面部署或更新到该地址。
    - `coding` Agent 在完成收口前，需明确交付代码变更、验证结果、文档同步状态、预览页地址（如适用）与 PR handoff 信息。
 10. 每个 Agent 还必须自动维护自己的私有 file-backed Skill，路径固定为 `.alter0/agents/<agent_id>/SKILL.md`；该 Skill 不要求出现在 Agent Profile 的 `skills` 勾选结果中，但在命中该 Agent 执行时必须随运行时 Skill 上下文一起注入。
    - 私有 Skill 用于沉淀该 Agent 的可复用工作模式、输出结构、检查清单、偏好和长期用户约束。
@@ -150,10 +152,10 @@
    - `GET /api/agents` 可返回内置入口 Agent
    - `Chat` 默认走 `main` Agent
    - `coding` Agent 在通用 `Agent` 入口中可直接选择，并以 Agent 主导、Codex 执行的方式推进编码任务
-   - `coding` Agent 的运行时提示包含当前仓库、分支、会话预览域名、Session 画像上下文和 PR 交付规则
+   - `coding` Agent 的运行时提示包含源仓库、独立 repo worktree、分支、会话预览域名、Session 画像上下文和 PR 交付规则；对应 `codex_exec` 载荷同步携带结构化 `runtime_context`
    - 任一 Agent 命中执行时，都能在 Skill 上下文里看到自己的私有 Skill `.alter0/agents/<agent_id>/SKILL.md`
    - 当前 Agent 的私有 Skill 文件不存在时，首次执行后会自动生成默认规则簿，并允许后续按用户提出的稳定偏好更新
-   - 涉及测试页面时，预览地址遵循 `https://<session_short_hash>.alter0.cn`
+   - 涉及测试页面时，预览地址遵循 `https://<session_short_hash>.alter0.cn`，且 `coding` Agent 收口前已完成对应页面部署或更新
    - `Agent` 页可直接进入 `coding`、`writing` 等无独立前端入口的内置 Agent 会话
    - 主 Agent 可通过 `delegate_agent` 调用 `coding`、`writing` 等专项 Agent 并回收结果
    - 用户新建 Agent 时若名称与内置 Agent 保留 ID 冲突，服务端会自动生成下一个可用 ID

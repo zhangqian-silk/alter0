@@ -27,12 +27,15 @@ const (
 	codexWorkspaceModeMetadataKey    = "codex_workspace_mode"
 	codexWorkspaceRootDirEnvKey      = "ALTER0_CODEX_WORKSPACE_ROOT"
 	codexWorkspaceRootDirMetadataKey = "codex_workspace_root"
+	codexWorktreeSourceRootKey       = "codex_worktree_source_root"
 	codexWorkspaceModeSession        = "session"
 	codexWorkspaceModeRepoRoot       = "repo-root"
+	codexWorkspaceModeSessionRepo    = "session-repo-worktree"
 	defaultWorkspaceRootDir          = ".alter0"
 	workspaceDirectoryName           = "workspaces"
 	workspaceSessionsDirName         = "sessions"
 	workspaceTasksDirName            = "tasks"
+	workspaceRepoDirName             = "repo"
 	taskIDMetadataKey                = "task_id"
 	sessionIDMetadataFallback        = "session_id"
 	codexAddDirsMetadataKey          = "codex_add_dirs"
@@ -41,6 +44,7 @@ const (
 	codexAddDirRulesEnvKey           = "ALTER0_CODEX_ADD_DIR_RULES"
 	defaultCodexHeartbeatInterval    = time.Minute
 	codexHeartbeatSource             = "codex_cli"
+	codexGitPrepareTimeout           = 5 * time.Second
 )
 
 type codexAddDirRule struct {
@@ -66,12 +70,15 @@ type CodexCLIProcessor struct {
 }
 
 type codexExecutionPayload struct {
-	Protocol     string                    `json:"protocol"`
-	UserPrompt   string                    `json:"user_prompt"`
-	AgentContext *codexAgentContext        `json:"agent_context,omitempty"`
-	SkillPolicy  *execdomain.SkillContext  `json:"skill_context,omitempty"`
-	MCPPolicy    *execdomain.MCPContext    `json:"mcp_context,omitempty"`
-	MemoryPolicy *execdomain.MemoryContext `json:"memory_context,omitempty"`
+	Protocol     string                              `json:"protocol"`
+	UserPrompt   string                              `json:"user_prompt"`
+	AgentContext *codexAgentContext                  `json:"agent_context,omitempty"`
+	Runtime      *execdomain.RuntimeContext          `json:"runtime_context,omitempty"`
+	Product      *execdomain.ProductContext          `json:"product_context,omitempty"`
+	Discovery    *execdomain.ProductDiscoveryContext `json:"product_discovery,omitempty"`
+	SkillPolicy  *execdomain.SkillContext            `json:"skill_context,omitempty"`
+	MCPPolicy    *execdomain.MCPContext              `json:"mcp_context,omitempty"`
+	MemoryPolicy *execdomain.MemoryContext           `json:"memory_context,omitempty"`
 }
 
 type codexAgentContext struct {
@@ -442,7 +449,10 @@ func buildCodexPrompt(prompt string, metadata map[string]string) (string, error)
 	rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey))
 	rawMCPContext := strings.TrimSpace(metadataValue(metadata, execdomain.MCPContextMetadataKey))
 	rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey))
+	rawProductContext := strings.TrimSpace(metadataValue(metadata, execdomain.ProductContextMetadataKey))
+	rawProductDiscovery := strings.TrimSpace(metadataValue(metadata, execdomain.ProductDiscoveryMetadataKey))
 	agentContext := buildCodexAgentContext(metadata)
+	runtimeContext := buildCodexRuntimeContext(metadata)
 
 	var skillContext *execdomain.SkillContext
 	if rawSkillContext != "" {
@@ -476,7 +486,30 @@ func buildCodexPrompt(prompt string, metadata map[string]string) (string, error)
 			memoryContext = &parsedMemoryContext
 		}
 	}
-	if agentContext == nil && skillContext == nil && mcpContext == nil && memoryContext == nil {
+
+	var productContext *execdomain.ProductContext
+	if rawProductContext != "" {
+		parsedProductContext := execdomain.ProductContext{}
+		if err := json.Unmarshal([]byte(rawProductContext), &parsedProductContext); err != nil {
+			return "", fmt.Errorf("invalid product context metadata: %w", err)
+		}
+		if strings.TrimSpace(parsedProductContext.ProductID) != "" {
+			productContext = &parsedProductContext
+		}
+	}
+
+	var productDiscovery *execdomain.ProductDiscoveryContext
+	if rawProductDiscovery != "" {
+		parsedProductDiscovery := execdomain.ProductDiscoveryContext{}
+		if err := json.Unmarshal([]byte(rawProductDiscovery), &parsedProductDiscovery); err != nil {
+			return "", fmt.Errorf("invalid product discovery metadata: %w", err)
+		}
+		if len(parsedProductDiscovery.MatchedProducts) > 0 || strings.TrimSpace(parsedProductDiscovery.SelectedProduct) != "" {
+			productDiscovery = &parsedProductDiscovery
+		}
+	}
+
+	if agentContext == nil && runtimeContext == nil && productContext == nil && productDiscovery == nil && skillContext == nil && mcpContext == nil && memoryContext == nil {
 		return prompt, nil
 	}
 
@@ -484,6 +517,9 @@ func buildCodexPrompt(prompt string, metadata map[string]string) (string, error)
 		Protocol:     "alter0.codex-exec/v1",
 		UserPrompt:   prompt,
 		AgentContext: agentContext,
+		Runtime:      runtimeContext,
+		Product:      productContext,
+		Discovery:    productDiscovery,
 		SkillPolicy:  skillContext,
 		MCPPolicy:    mcpContext,
 		MemoryPolicy: memoryContext,
@@ -507,6 +543,109 @@ func buildCodexAgentContext(metadata map[string]string) *codexAgentContext {
 		AgentID:     agentID,
 		AgentName:   agentName,
 		DelegatedBy: delegatedBy,
+	}
+}
+
+func buildCodexRuntimeContext(metadata map[string]string) *execdomain.RuntimeContext {
+	sessionID := strings.TrimSpace(metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey))
+	messageID := strings.TrimSpace(metadataValue(metadata, execdomain.RuntimeMessageIDMetadataKey))
+	traceID := strings.TrimSpace(metadataValue(metadata, execdomain.RuntimeTraceIDMetadataKey))
+
+	context := execdomain.RuntimeContext{
+		Protocol:  execdomain.RuntimeContextProtocolVersion,
+		SessionID: sessionID,
+		MessageID: messageID,
+		TraceID:   traceID,
+	}
+	hasContent := sessionID != "" || messageID != "" || traceID != ""
+
+	if workspace := buildCodexRuntimeWorkspace(metadata, sessionID); workspace != nil {
+		context.Workspace = workspace
+		hasContent = true
+	}
+	if repository := buildCodexRuntimeRepository(metadata); repository != nil {
+		context.Repository = repository
+		hasContent = true
+	}
+	if preview := buildCodexRuntimePreview(metadata, sessionID); preview != nil {
+		context.Preview = preview
+		hasContent = true
+	}
+	if !hasContent {
+		return nil
+	}
+	return &context
+}
+
+func buildCodexRuntimeWorkspace(metadata map[string]string, sessionID string) *execdomain.RuntimeWorkspace {
+	sessionID = sanitizeWorkspaceSegment(sessionID)
+	taskID := sanitizeWorkspaceSegment(metadataValue(metadata, taskIDMetadataKey))
+	mode := resolveCodexWorkspaceMode(metadata)
+	if sessionID == "" && taskID == "" {
+		return nil
+	}
+
+	workspace := &execdomain.RuntimeWorkspace{Mode: mode}
+	sourceRepoRoot := strings.TrimSpace(metadataValue(metadata, codexWorktreeSourceRootKey))
+	if sourceRepoRoot == "" {
+		if repoRoot, err := resolveToolRepoRoot(); err == nil {
+			sourceRepoRoot = repoRoot
+		}
+	}
+	if sourceRepoRoot != "" && sessionID != "" {
+		workspace.SessionPath = buildCodingSessionWorkspacePath(sourceRepoRoot, sessionID)
+		if mode == codexWorkspaceModeSessionRepo {
+			workspace.RepositoryPath = buildCodingSessionRepoWorkspacePath(sourceRepoRoot, sessionID)
+		}
+	}
+	if workspace.SessionPath != "" && taskID != "" {
+		workspace.TaskPath = filepath.ToSlash(filepath.Join(workspace.SessionPath, workspaceTasksDirName, taskID))
+	}
+	if workspace.Mode == "" && workspace.SessionPath == "" && workspace.TaskPath == "" && workspace.RepositoryPath == "" {
+		return nil
+	}
+	return workspace
+}
+
+func buildCodexRuntimeRepository(metadata map[string]string) *execdomain.RuntimeRepository {
+	sourceRepoRoot := strings.TrimSpace(metadataValue(metadata, codexWorktreeSourceRootKey))
+	if sourceRepoRoot == "" && !isCodingAgent(metadata) {
+		return nil
+	}
+	if sourceRepoRoot == "" {
+		repoRoot, err := resolveToolRepoRoot()
+		if err != nil {
+			return nil
+		}
+		sourceRepoRoot = repoRoot
+	}
+
+	repository := &execdomain.RuntimeRepository{
+		SourcePath: filepath.ToSlash(sourceRepoRoot),
+	}
+	repository.RemoteURL = resolveGitCommandOutput(sourceRepoRoot, "remote", "get-url", "origin")
+	repository.ActiveBranch = resolveGitCommandOutput(sourceRepoRoot, "branch", "--show-current")
+	if repository.ActiveBranch == "" {
+		repository.ActiveBranch = resolveGitCommandOutput(sourceRepoRoot, "symbolic-ref", "--short", "HEAD")
+	}
+	repository.DefaultBranch = resolveGitDefaultBranch(sourceRepoRoot)
+	if repository.SourcePath == "" && repository.RemoteURL == "" && repository.ActiveBranch == "" && repository.DefaultBranch == "" {
+		return nil
+	}
+	return repository
+}
+
+func buildCodexRuntimePreview(metadata map[string]string, sessionID string) *execdomain.RuntimePreviewRule {
+	if !isCodingAgent(metadata) {
+		return nil
+	}
+	previewURL := buildPreviewURLForSession(sessionID)
+	if previewURL == "" {
+		return nil
+	}
+	return &execdomain.RuntimePreviewRule{
+		URL:                  previewURL,
+		RequiredOnCompletion: true,
 	}
 }
 
@@ -611,7 +750,7 @@ func resolveCodexWorkspaceMode(metadata map[string]string) string {
 		codexWorkspaceModeSession,
 	)))
 	switch candidate {
-	case codexWorkspaceModeSession, codexWorkspaceModeRepoRoot:
+	case codexWorkspaceModeSession, codexWorkspaceModeRepoRoot, codexWorkspaceModeSessionRepo:
 		return candidate
 	default:
 		return codexWorkspaceModeSession
@@ -639,7 +778,25 @@ func resolveCodexWorkspace(metadata map[string]string) (string, error) {
 		}
 		return absolute, nil
 	}
+	if workspaceMode == codexWorkspaceModeSessionRepo {
+		return resolveCodexSessionRepoWorkspace(metadata)
+	}
 
+	sessionWorkspace, err := resolveCodexSessionWorkspaceBase(metadata)
+	if err != nil {
+		return "", err
+	}
+	taskID := sanitizeWorkspaceSegment(metadataValue(metadata, taskIDMetadataKey))
+	if taskID != "" {
+		sessionWorkspace = filepath.Join(sessionWorkspace, workspaceTasksDirName, taskID)
+	}
+	if err := os.MkdirAll(sessionWorkspace, 0o755); err != nil {
+		return "", fmt.Errorf("prepare codex workspace: %w", err)
+	}
+	return sessionWorkspace, nil
+}
+
+func resolveCodexSessionWorkspaceBase(metadata map[string]string) (string, error) {
 	sessionID := sanitizeWorkspaceSegment(firstNonEmpty(
 		metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey),
 		metadataValue(metadata, sessionIDMetadataFallback),
@@ -654,19 +811,116 @@ func resolveCodexWorkspace(metadata map[string]string) (string, error) {
 		workspaceSessionsDirName,
 		sessionID,
 	}
-	taskID := sanitizeWorkspaceSegment(metadataValue(metadata, taskIDMetadataKey))
-	if taskID != "" {
-		parts = append(parts, workspaceTasksDirName, taskID)
-	}
 	workspaceDir := filepath.Join(parts...)
-	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
-		return "", fmt.Errorf("prepare codex workspace: %w", err)
-	}
 	absolute, err := filepath.Abs(workspaceDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve codex workspace path: %w", err)
 	}
 	return absolute, nil
+}
+
+func resolveCodexSessionRepoWorkspace(metadata map[string]string) (string, error) {
+	sessionWorkspace, err := resolveCodexSessionWorkspaceBase(metadata)
+	if err != nil {
+		return "", err
+	}
+	sourceRepoRoot, err := resolveCodexWorktreeSourceRoot(metadata)
+	if err != nil {
+		return "", err
+	}
+	worktreeDir := filepath.Join(sessionWorkspace, workspaceRepoDirName)
+	if err := ensureSessionRepoWorktree(sourceRepoRoot, worktreeDir); err != nil {
+		return "", err
+	}
+	return worktreeDir, nil
+}
+
+func resolveCodexWorktreeSourceRoot(metadata map[string]string) (string, error) {
+	repoRoot := strings.TrimSpace(metadataValue(metadata, codexWorktreeSourceRootKey))
+	if repoRoot == "" {
+		var err error
+		repoRoot, err = resolveToolRepoRoot()
+		if err != nil {
+			return "", fmt.Errorf("resolve worktree source repo: %w", err)
+		}
+	}
+	absolute, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve worktree source repo: %w", err)
+	}
+	info, err := os.Stat(absolute)
+	if err != nil {
+		return "", fmt.Errorf("resolve worktree source repo: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("resolve worktree source repo: %s is not a directory", absolute)
+	}
+	topLevel, err := resolveGitTopLevel(absolute)
+	if err != nil {
+		return "", err
+	}
+	return topLevel, nil
+}
+
+func ensureSessionRepoWorktree(sourceRepoRoot string, worktreeDir string) error {
+	if topLevel, err := resolveGitTopLevel(worktreeDir); err == nil && sameCleanPath(topLevel, worktreeDir) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(worktreeDir), 0o755); err != nil {
+		return fmt.Errorf("prepare session repo workspace: %w", err)
+	}
+	if entries, err := os.ReadDir(worktreeDir); err == nil && len(entries) > 0 {
+		return fmt.Errorf("prepare session repo workspace: %s already exists and is not a git worktree", worktreeDir)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("prepare session repo workspace: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), codexGitPrepareTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", sourceRepoRoot, "worktree", "add", "--detach", "--force", worktreeDir, "HEAD")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		details := strings.TrimSpace(string(output))
+		if details == "" {
+			return fmt.Errorf("prepare session repo workspace: %w", err)
+		}
+		return fmt.Errorf("prepare session repo workspace: %w: %s", err, details)
+	}
+	return nil
+}
+
+func resolveGitTopLevel(path string) (string, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", errors.New("git path is required")
+	}
+	info, err := os.Stat(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("resolve git top-level: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("resolve git top-level: %s is not a directory", trimmed)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), codexGitPrepareTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
+	cmd.Dir = trimmed
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		details := strings.TrimSpace(string(output))
+		if details == "" {
+			return "", fmt.Errorf("resolve git top-level: %w", err)
+		}
+		return "", fmt.Errorf("resolve git top-level: %w: %s", err, details)
+	}
+	topLevel := strings.TrimSpace(string(output))
+	if topLevel == "" {
+		return "", errors.New("resolve git top-level: empty output")
+	}
+	return filepath.Clean(topLevel), nil
+}
+
+func sameCleanPath(left string, right string) bool {
+	return filepath.Clean(strings.TrimSpace(left)) == filepath.Clean(strings.TrimSpace(right))
 }
 
 func firstNonEmpty(values ...string) string {
