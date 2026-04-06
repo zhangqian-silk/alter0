@@ -30,7 +30,7 @@ const (
 	codexWorktreeSourceRootKey       = "codex_worktree_source_root"
 	codexWorkspaceModeSession        = "session"
 	codexWorkspaceModeRepoRoot       = "repo-root"
-	codexWorkspaceModeSessionRepo    = "session-repo-worktree"
+	codexWorkspaceModeSessionRepo    = "session-repo-clone"
 	defaultWorkspaceRootDir          = ".alter0"
 	workspaceDirectoryName           = "workspaces"
 	workspaceSessionsDirName         = "sessions"
@@ -829,7 +829,7 @@ func resolveCodexSessionRepoWorkspace(metadata map[string]string) (string, error
 		return "", err
 	}
 	worktreeDir := filepath.Join(sessionWorkspace, workspaceRepoDirName)
-	if err := ensureSessionRepoWorktree(sourceRepoRoot, worktreeDir); err != nil {
+	if err := ensureSessionRepoClone(sourceRepoRoot, worktreeDir); err != nil {
 		return "", err
 	}
 	return worktreeDir, nil
@@ -862,7 +862,7 @@ func resolveCodexWorktreeSourceRoot(metadata map[string]string) (string, error) 
 	return topLevel, nil
 }
 
-func ensureSessionRepoWorktree(sourceRepoRoot string, worktreeDir string) error {
+func ensureSessionRepoClone(sourceRepoRoot string, worktreeDir string) error {
 	if topLevel, err := resolveGitTopLevel(worktreeDir); err == nil && sameCleanPath(topLevel, worktreeDir) {
 		return nil
 	}
@@ -870,13 +870,13 @@ func ensureSessionRepoWorktree(sourceRepoRoot string, worktreeDir string) error 
 		return fmt.Errorf("prepare session repo workspace: %w", err)
 	}
 	if entries, err := os.ReadDir(worktreeDir); err == nil && len(entries) > 0 {
-		return fmt.Errorf("prepare session repo workspace: %s already exists and is not a git worktree", worktreeDir)
+		return fmt.Errorf("prepare session repo workspace: %s already exists and is not a git repository", worktreeDir)
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("prepare session repo workspace: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), codexGitPrepareTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", sourceRepoRoot, "worktree", "add", "--detach", "--force", worktreeDir, "HEAD")
+	cmd := exec.CommandContext(ctx, "git", "clone", "--no-hardlinks", sourceRepoRoot, worktreeDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		details := strings.TrimSpace(string(output))
@@ -884,6 +884,17 @@ func ensureSessionRepoWorktree(sourceRepoRoot string, worktreeDir string) error 
 			return fmt.Errorf("prepare session repo workspace: %w", err)
 		}
 		return fmt.Errorf("prepare session repo workspace: %w: %s", err, details)
+	}
+	if remoteURL := resolveGitCommandOutput(sourceRepoRoot, "remote", "get-url", "origin"); remoteURL != "" {
+		cmd = exec.CommandContext(ctx, "git", "-C", worktreeDir, "remote", "set-url", "origin", remoteURL)
+		output, err = cmd.CombinedOutput()
+		if err != nil {
+			details := strings.TrimSpace(string(output))
+			if details == "" {
+				return fmt.Errorf("prepare session repo workspace remote: %w", err)
+			}
+			return fmt.Errorf("prepare session repo workspace remote: %w: %s", err, details)
+		}
 	}
 	return nil
 }

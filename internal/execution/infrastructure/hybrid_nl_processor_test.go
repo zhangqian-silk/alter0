@@ -210,13 +210,14 @@ func TestHybridNLProcessorCodingAgentPromptEmphasizesCodexLoop(t *testing.T) {
 		"Do not implement or verify changes yourself.",
 		"After every codex_exec result, decide whether the requirement is satisfied.",
 		"Do not restate the full repository, workspace, and preview rulebook",
+		"full clone with its own .git metadata",
 		"Do not stop after the first Codex attempt",
 		"Keep the coding session profile current in your reasoning",
 		"Current coding workspace context:",
 		"Dedicated repository workspace path:",
 		"When repository code needs to be pulled, inspected, edited, built, or tested",
 		"Preview URL:",
-		"PR handoff details",
+		"PR or merge handoff details",
 		"Own coding delivery.",
 	} {
 		if !strings.Contains(prompt, expected) {
