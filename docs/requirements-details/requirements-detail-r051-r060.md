@@ -137,13 +137,17 @@
    - Agent system prompt 需采用持续助手口径，要求优先复用当前 Session 已确认的稳定上下文，而不是在多轮编码过程中重复索取相同信息。
    - Agent 作为用户与 Codex 之间的代理层，负责在 Agent 侧消化 system prompt、Skill、记忆和会话画像；这些 Agent 编排信息不直接透传给 Codex，Codex 只接收当前执行所需的最小上下文与具体指令。
    - `alter0.codex-exec/v1` 需统一支持结构化上下文字段，至少包括按需注入的 `runtime_context`、`product_context`、`product_discovery`、`skill_context`、`mcp_context`、`memory_context`；Codex 仅接收当前执行所需的最小必要信息，不要求 Agent 在每轮 `codex_exec` 指令里重复转述完整规则簿，也不得把与当前执行无关的上下文冗余透传。
-   - 仓库类 `codex_exec` 需默认切到当前 Session 独立 repo worktree `.alter0/workspaces/sessions/<session_id>/repo`，先在该工作区拉取/检查代码，再进行实现、构建、测试与部署，不直接在主仓库工作目录开发。
-   - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、源仓库路径、独立 repo worktree 路径、当前分支、会话工作区、PR 基线分支与交付要求。
-   - 运行时需同步维护 `coding` Agent 在当前 Session 下的私有画像文件 `.alter0/agents/coding/sessions/<session_id>.md`，用于沉淀源仓库路径、独立 repo worktree 路径、仓库状态与交付上下文，供后续轮次直接复用。
+   - 仓库类 `codex_exec` 需默认切到当前 Session 独立 repo 完整 clone `.alter0/workspaces/sessions/<session_id>/repo`，先在该工作区拉取/检查代码，再进行实现、构建、测试与部署，不直接在主仓库工作目录开发，也不再依赖 `git worktree`。
+   - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、源仓库路径、独立 repo clone 路径、当前分支、会话工作区、PR 基线分支与交付要求。
+   - 运行时需同步维护 `coding` Agent 在当前 Session 下的私有画像文件 `.alter0/agents/coding/sessions/<session_id>.md`，用于沉淀源仓库路径、独立 repo clone 路径、仓库状态与交付上下文，供后续轮次直接复用。
    - 涉及测试页面时，预览域名必须使用当前会话标识派生的 8 位短 hash，格式为 `https://<session_short_hash>.alter0.cn`；需求完成前需先把页面部署或更新到该地址。
+   - 测试仓库需与正式服务保持执行关键配置一致，包括 `model provider`、`Codex` 可执行路径、Agent 路径与其他运行时接线；仅允许会话缓存、会话历史等 session 级状态存在差异。
+   - 预览部署成功后，需先询问用户是否由其手动测试，再决定是否继续进入后续 GitHub 交付闭环。
    - `coding` Agent 在完成收口前，需明确交付代码变更、验证结果、文档同步状态、预览页地址（如适用）与 PR handoff 信息。
+   - 若任务要求 GitHub 交付，则在预览页成功部署后继续完成认证签名提交、推送、PR 创建与合并，不在预览成功后中断执行链。
 10. 每个 Agent 还必须自动维护自己的私有 file-backed Skill，路径固定为 `.alter0/agents/<agent_id>/SKILL.md`；该 Skill 不要求出现在 Agent Profile 的 `skills` 勾选结果中，但在命中该 Agent 执行时必须随运行时 Skill 上下文一起注入。
    - 私有 Skill 用于沉淀该 Agent 的可复用工作模式、输出结构、检查清单、偏好和长期用户约束。
+   - `coding` Agent 的私有 Skill 需沉淀稳定 Git 交付规则，包括 Session repo 完整 clone、认证签名提交、预览成功后的快速 `gh` PR/merge 流程与交付结果汇报要求。
    - `AGENTS.md` 继续只负责该 Agent 的协作边界、仓库/工作区操作规则和交付要求；不得把一次性任务细节或 Agent 可复用打法混写进 `AGENTS.md`。
    - 若私有 Skill 文件不存在，运行时需自动创建默认规则簿，保证 Agent 首次执行时即可按用户诉求更新自己的 Skill。
 11. 被调度 Agent 需复用统一 Agent Profile 注入链路，包括 `provider/model`、工具白名单、Skills、MCP 与 Memory Files；其稳定工具面默认收敛为 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，以及在允许时暴露的 `delegate_agent`。
@@ -152,7 +156,7 @@
    - `GET /api/agents` 可返回内置入口 Agent
    - `Chat` 默认走 `main` Agent
    - `coding` Agent 在通用 `Agent` 入口中可直接选择，并以 Agent 主导、Codex 执行的方式推进编码任务
-   - `coding` Agent 的运行时提示包含源仓库、独立 repo worktree、分支、会话预览域名、Session 画像上下文和 PR 交付规则；对应 `codex_exec` 载荷同步携带结构化 `runtime_context`
+   - `coding` Agent 的运行时提示包含源仓库、独立 repo clone、分支、会话预览域名、Session 画像上下文和 PR 交付规则；对应 `codex_exec` 载荷同步携带结构化 `runtime_context`
    - 任一 Agent 命中执行时，都能在 Skill 上下文里看到自己的私有 Skill `.alter0/agents/<agent_id>/SKILL.md`
    - 当前 Agent 的私有 Skill 文件不存在时，首次执行后会自动生成默认规则簿，并允许后续按用户提出的稳定偏好更新
    - 涉及测试页面时，预览地址遵循 `https://<session_short_hash>.alter0.cn`，且 `coding` Agent 收口前已完成对应页面部署或更新

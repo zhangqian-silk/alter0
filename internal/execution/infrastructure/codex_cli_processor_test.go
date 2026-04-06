@@ -445,7 +445,7 @@ func TestResolveCodexWorkspaceSupportsRepoRootMode(t *testing.T) {
 	}
 }
 
-func TestResolveCodexWorkspaceSupportsSessionRepoWorktreeMode(t *testing.T) {
+func TestResolveCodexWorkspaceSupportsSessionRepoCloneMode(t *testing.T) {
 	sourceRepoRoot := t.TempDir()
 	initGitRepoWithCommit(t, sourceRepoRoot)
 
@@ -482,6 +482,13 @@ func TestResolveCodexWorkspaceSupportsSessionRepoWorktreeMode(t *testing.T) {
 	if topLevel != expected {
 		t.Fatalf("resolveGitTopLevel() = %q, want %q", topLevel, expected)
 	}
+	gitDir, statErr := os.Stat(filepath.Join(workspace, ".git"))
+	if statErr != nil {
+		t.Fatalf("stat clone git dir: %v", statErr)
+	}
+	if !gitDir.IsDir() {
+		t.Fatalf("expected full clone .git directory, got file at %q", filepath.Join(workspace, ".git"))
+	}
 }
 
 func TestCodexCLIProcessorProcessAllowsRepoRootModeWithoutSessionContext(t *testing.T) {
@@ -498,7 +505,7 @@ func TestCodexCLIProcessorProcessAllowsRepoRootModeWithoutSessionContext(t *test
 	}
 }
 
-func TestBuildCodexExecMetadataUsesSessionRepoWorktreeForCodingAgent(t *testing.T) {
+func TestBuildCodexExecMetadataUsesSessionRepoCloneForCodingAgent(t *testing.T) {
 	sourceRepoRoot := t.TempDir()
 	initGitRepoWithCommit(t, sourceRepoRoot)
 
@@ -523,7 +530,7 @@ func TestBuildCodexExecMetadataUsesSessionRepoWorktreeForCodingAgent(t *testing.
 		t.Fatalf("codex workspace mode = %q, want %q", got, codexWorkspaceModeSessionRepo)
 	}
 	if got := metadata[codexWorktreeSourceRootKey]; got != sourceRepoRoot {
-		t.Fatalf("codex worktree source root = %q, want %q", got, sourceRepoRoot)
+		t.Fatalf("codex repo source root = %q, want %q", got, sourceRepoRoot)
 	}
 }
 

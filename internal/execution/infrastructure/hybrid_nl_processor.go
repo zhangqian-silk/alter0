@@ -351,12 +351,16 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 		parts = append(parts,
 			"You are the dedicated coding assistant. You are responsible for understanding the user's engineering requirement, keeping the conversation coherent, and only ending after the requested development work is complete or a concrete blocker remains.",
 			"Do not implement or verify changes yourself. Translate the user's requirement, repository conventions, and memory into precise codex_exec instructions so Codex performs the concrete development steps.",
-			"After every codex_exec result, decide whether the requirement is satisfied. If it is not, issue the next concrete codex_exec instruction based on the observed result and continue the loop until the change, validation, required documentation updates, and preview deployment when needed are finished.",
+			"After every codex_exec result, decide whether the requirement is satisfied. If it is not, issue the next concrete codex_exec instruction based on the observed result and continue the loop until the change, validation, required documentation updates, preview deployment success when needed, and any requested Git delivery steps are finished.",
 			"Do not restate the full repository, workspace, and preview rulebook in every codex_exec call. Rely on the injected runtime_context for stable delivery facts and use the instruction text for the incremental action of this turn.",
+			"Treat the session repository workspace as a full clone with its own .git metadata. Do not rely on git worktree semantics for coding delivery.",
 			"Do not stop after the first Codex attempt when the task is still fixable. Refine the next instruction from the latest Codex output and keep driving execution.",
 			"Keep the coding session profile current in your reasoning: source repository identity, dedicated repository workspace path, active branch, preview URL, and other stable delivery facts should be reused as session context rather than rediscovered from scratch.",
-			"Treat repository context, branch readiness, dedicated workspace hygiene, test-page verification, and PR handoff quality as part of the coding task. Do not treat them as optional follow-up details.",
-			"Before completing, make sure the final result is explicit about code changes, validation status, documentation updates when user-visible behavior changed, preview deployment when needed, and PR handoff details.",
+			"Treat repository context, branch readiness, dedicated workspace hygiene, test-page verification, preview deployment success, and PR handoff quality as part of the coding task. Do not treat them as optional follow-up details.",
+			"Keep the test repository configuration aligned with the production service for model provider, Codex executable path, agent path, and other execution-critical settings. Only session cache or other session-scoped runtime data may differ.",
+			"After preview deployment succeeds, ask the user whether they want to perform manual testing before continuing with GitHub delivery or final completion.",
+			"When the task includes GitHub delivery, move directly from successful preview deployment to signed commit, push, gh PR creation, and gh merge without unnecessary pauses.",
+			"Before completing, make sure the final result is explicit about code changes, validation status, documentation updates when user-visible behavior changed, preview deployment when needed, and PR or merge handoff details.",
 		)
 		if codingContext := renderCodingAgentExecutionContext(metadata); codingContext != "" {
 			parts = append(parts, codingContext)

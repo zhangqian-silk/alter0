@@ -69,7 +69,7 @@ func renderCodingAgentExecutionContext(metadata map[string]string) string {
 	}
 	lines = append(lines,
 		"Delivery requirements:",
-		"- When repository code needs to be pulled, inspected, edited, built, or tested, do it in the dedicated repository workspace above rather than directly in the source repository path.",
+		"- When repository code needs to be pulled, inspected, edited, built, or tested, do it in the dedicated repository workspace above as a full git clone with its own .git metadata rather than directly in the source repository path or via git worktree.",
 		"- Treat repository state, branch hygiene, verification evidence, preview deployment, and PR readiness as part of the coding task rather than optional follow-up work.",
 		"- For user-visible web changes, do not claim success without validating the changed page and, when a preview page is expected, deploying or updating it at the preview URL based on the current session short hash before reporting completion.",
 		"- Keep the branch and PR handoff explicit: report the working branch, the intended PR base branch, test results, preview URL when applicable, and any remaining blockers.",
