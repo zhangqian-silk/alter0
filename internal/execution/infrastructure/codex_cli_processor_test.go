@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -653,6 +654,7 @@ func initGitRepoWithCommit(t *testing.T, dir string) {
 	runGitCommand(t, dir, "init")
 	runGitCommand(t, dir, "config", "user.name", "Alter0 Test")
 	runGitCommand(t, dir, "config", "user.email", "alter0@example.com")
+	runGitCommand(t, dir, "config", "commit.gpgsign", "false")
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("test repo\n"), 0o644); err != nil {
 		t.Fatalf("write repo seed: %v", err)
 	}
@@ -730,8 +732,19 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		os.Exit(2)
 	}
 
-	prompt := forwarded[len(forwarded)-1]
+	promptArg := forwarded[len(forwarded)-1]
+	prompt := promptArg
+	if promptArg == "-" {
+		rawPrompt, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			os.Exit(2)
+		}
+		prompt = string(rawPrompt)
+	}
 	expectedPrompt := os.Getenv("CODEX_HELPER_EXPECT_PROMPT")
+	if expectedPrompt != "" && promptArg != "-" {
+		os.Exit(2)
+	}
 	if expectedPrompt != "" && prompt != expectedPrompt {
 		os.Exit(2)
 	}

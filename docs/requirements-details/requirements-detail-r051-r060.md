@@ -1,6 +1,6 @@
 # Requirements Details (R-051 ~ R-060)
 
-> Last update: 2026-04-03
+> Last update: 2026-04-07
 
 ## 需求细化（草案）
 
@@ -77,7 +77,7 @@
 2. 当前支持的选择项至少包括：`USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、`Daily Memory (Today)`、`Daily Memory (Yesterday)`；其中 `AGENTS.md` 固定表示当前 `agent_id` 的私有规则文件，不是共享文件。
 3. Agent 请求命中对应 Profile 后，服务端必须将勾选结果写入统一运行时元数据，并在执行前解析为结构化 `memory_context`。
 4. 所有 Agent Session 还必须自动维护一个只读 `Agent Session Profile` 文件，路径固定为 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，用于沉淀该 Agent 在当前 Session 内的稳定上下文；该文件不需要在 Profile 页面额外勾选，但必须默认注入 `memory_context`。
-5. `memory_context` 最小字段包括：`protocol`、`files[].id`、`files[].selection`、`files[].title`、`files[].path`、`files[].exists`、`files[].writable`、`files[].updated_at`、`files[].content`。
+5. `memory_context` 最小字段包括：`protocol`、`files[].id`、`files[].selection`、`files[].title`、`files[].path`、`files[].exists`、`files[].writable`、`files[].updated_at`、`files[].content`；当本轮输入命中已注入文件内容时，还需提供 `recall[].memory_id`、`recall[].title`、`recall[].path`、`recall[].line`、`recall[].snippet`。
 6. 文件内容注入需要保留可写文件路径；当目标文件不存在时，仍需返回预期路径与 `exists=false`，允许 Agent 后续直接创建并写入。
    - `agents_md` 的目标路径固定为 `.alter0/agents/<agent_id>/AGENTS.md`，不再回退到仓库根目录共享 `AGENTS.md`。
    - `USER.md`、`SOUL.md`、长期记忆与日记忆继续作为共享文件解析。
@@ -93,27 +93,29 @@
    - 日记忆优先识别 `memory/YYYY-MM-DD.md` 与 `.alter0/memory/YYYY-MM-DD.md`
 10. 为控制 prompt 体积，单文件与总注入体积必须设置截断上限；截断后保留显式标记，避免模型误以为内容完整。
 11. `Agent Session Profile` 至少需要记录 `agent_id`、`agent_name`、`session_id`、更新时间、通道信息与 Session 工作区；`coding` Agent 还需补充当前仓库路径、远端仓库地址、当前分支、PR 基线分支（可探测时）、Session 工作区与预览地址。
-12. 验收：
+12. 执行前需基于本轮用户输入对已注入 Memory Files 执行轻量自动召回，命中的少量片段写入 `memory_context.recall[]`，并在 ReAct prompt 与 `codex_exec` 载荷中可见；该自动召回用于减少对模型主动调用 `search_memory` 的依赖，`search_memory` 仍负责二次检索、扩大搜索范围和确认最新文件内容。
+13. 验收：
    - Web `Agent Profiles` 页面可稳定保存和回显 `memory_files`
    - `POST /api/agent/messages` 会将勾选结果注入为 `alter0.memory.include`
    - 执行器可生成 `alter0.memory-context/v1`
    - ReAct 与 Codex 两条链路都能看到相同记忆文件集
    - 文件不存在时 Agent 仍能拿到目标路径，并可通过 `write_memory` 或 `codex_exec` 创建目标文件
    - Agent 可先通过 `search_memory` 在已注入的记忆文件中按关键字定位相关历史，再决定是否调用 `read_memory` / `write_memory`
+   - Agent 在未主动调用 `search_memory` 前，也能从 `memory_context.recall[]` 看到本轮输入命中的记忆片段
    - 选择 `agents_md` 时，注入路径固定为 `.alter0/agents/<agent_id>/AGENTS.md`，且不会读取其他 Agent 的 `AGENTS.md`
    - `USER.md`、`SOUL.md`、长期记忆与日记忆在不同 Agent 间保持共享可见
    - 所有 Agent Session 都会自动拿到 `.alter0/agents/<agent_id>/sessions/<session_id>.md`
    - `coding` Agent 的会话画像会自动沉淀仓库、分支、工作区与预览地址等上下文
-13. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
-14. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Codex CLI 可结合该文件上下文执行读取或更新，Agent 侧不依赖通用原生工具做路径猜测。
-15. 当前实现中，`AGENTS.md` 的共享仓库根文件不再作为 `agents_md` 注入源；仓库根 `AGENTS.md` 仅保留仓库维护用途，不参与跨 Agent 共享记忆。
+14. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
+15. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Codex CLI 可结合该文件上下文执行读取或更新，Agent 侧不依赖通用原生工具做路径猜测。
+16. 当前实现中，`AGENTS.md` 的共享仓库根文件不再作为 `agents_md` 注入源；仓库根 `AGENTS.md` 仅保留仓库维护用途，不参与跨 Agent 共享记忆。
 
 #### Traceability
 
 - 实现文件：`internal/control/domain/agent.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`
 - 执行注入：`internal/execution/domain/memory_context.go`、`internal/execution/application/memory_context_resolver.go`、`internal/execution/application/agent_session_profile.go`、`internal/execution/application/service.go`
 - 执行消费：`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/execution/infrastructure/codex_cli_processor.go`
-- 测试覆盖：`internal/control/domain/agent_test.go`、`internal/execution/application/service_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/interfaces/web/server_message_test.go`
+- 测试覆盖：`internal/control/domain/agent_test.go`、`internal/execution/application/service_test.go`、`internal/execution/infrastructure/hybrid_nl_processor_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/interfaces/web/server_message_test.go`
 
 ### R-053
 
@@ -137,6 +139,7 @@
    - Agent system prompt 需采用持续助手口径，要求优先复用当前 Session 已确认的稳定上下文，而不是在多轮编码过程中重复索取相同信息。
    - Agent 作为用户与 Codex 之间的代理层，负责在 Agent 侧消化 system prompt、Skill、记忆和会话画像；这些 Agent 编排信息不直接透传给 Codex，Codex 只接收当前执行所需的最小上下文与具体指令。
    - `alter0.codex-exec/v1` 需统一支持结构化上下文字段，至少包括按需注入的 `runtime_context`、`product_context`、`product_discovery`、`skill_context`、`mcp_context`、`memory_context`；Codex 仅接收当前执行所需的最小必要信息，不要求 Agent 在每轮 `codex_exec` 指令里重复转述完整规则簿，也不得把与当前执行无关的上下文冗余透传。
+   - `codex_exec` 调用 Codex CLI 时需通过 stdin 传递渲染后的执行指令载荷，命令行参数仅使用 `-` 作为 prompt 占位；长上下文、Memory、Skill 与运行时结构化载荷不得直接作为命令行参数传入。
    - 仓库类 `codex_exec` 需默认切到当前 Session 独立 repo 完整 clone `.alter0/workspaces/sessions/<session_id>/repo`，先在该工作区拉取/检查代码，再进行实现、构建、测试与部署，不直接在主仓库工作目录开发，也不再依赖 `git worktree`。
    - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、源仓库路径、独立 repo clone 路径、当前分支、会话工作区、PR 基线分支与交付要求。
    - 运行时需同步维护 `coding` Agent 在当前 Session 下的私有画像文件 `.alter0/agents/coding/sessions/<session_id>.md`，用于沉淀源仓库路径、独立 repo clone 路径、仓库状态与交付上下文，供后续轮次直接复用。
@@ -157,6 +160,7 @@
    - `Chat` 默认走 `main` Agent
    - `coding` Agent 在通用 `Agent` 入口中可直接选择，并以 Agent 主导、Codex 执行的方式推进编码任务
    - `coding` Agent 的运行时提示包含源仓库、独立 repo clone、分支、会话预览域名、Session 画像上下文和 PR 交付规则；对应 `codex_exec` 载荷同步携带结构化 `runtime_context`
+   - `codex_exec` 通过 stdin 向 Codex CLI 传递最终指令；长上下文请求不因运行系统的命令行长度限制直接失败
    - 任一 Agent 命中执行时，都能在 Skill 上下文里看到自己的私有 Skill `.alter0/agents/<agent_id>/SKILL.md`
    - 当前 Agent 的私有 Skill 文件不存在时，首次执行后会自动生成默认规则簿，并允许后续按用户提出的稳定偏好更新
    - 涉及测试页面时，预览地址遵循 `https://<session_short_hash>.alter0.cn`，且 `coding` Agent 收口前已完成对应页面部署或更新

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	orchdomain "alter0/internal/orchestration/domain"
+	sessionapp "alter0/internal/session/application"
+	sessiondomain "alter0/internal/session/domain"
 	shareddomain "alter0/internal/shared/domain"
 	taskdomain "alter0/internal/task/domain"
 	tasksummaryapp "alter0/internal/tasksummary/application"
@@ -121,6 +123,28 @@ func (s *stubSessionMemoryStore) Snapshot(_ string, _ string, _ time.Time) sessi
 
 func (s *stubSessionMemoryStore) Record(_ shareddomain.UnifiedMessage, _ shareddomain.Route, _ string) {
 	s.recordCalls++
+}
+
+type stubSessionHistoryMemory struct {
+	page sessionapp.MessagePage
+}
+
+func (s *stubSessionHistoryMemory) ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage {
+	items := make([]sessiondomain.MessageRecord, 0, len(s.page.Items))
+	for _, item := range s.page.Items {
+		if strings.TrimSpace(query.SessionID) != "" && strings.TrimSpace(item.SessionID) != strings.TrimSpace(query.SessionID) {
+			continue
+		}
+		items = append(items, item)
+	}
+	return sessionapp.MessagePage{
+		Items: items,
+		Pagination: sessionapp.Pagination{
+			Page:     1,
+			PageSize: len(items),
+			Total:    len(items),
+		},
+	}
 }
 
 type stubLongTermMemoryStore struct {
@@ -493,6 +517,80 @@ func TestHandleNLInjectsSessionMemory(t *testing.T) {
 	}
 	if result.Metadata["memory_reference_resolved"] != "true" {
 		t.Fatalf("expected memory_reference_resolved=true, got %q", result.Metadata["memory_reference_resolved"])
+	}
+}
+
+func TestHandleNLRehydratesSessionMemoryFromPersistedHistory(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{
+		output: "current answer",
+	}
+	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
+	history := &stubSessionHistoryMemory{
+		page: sessionapp.MessagePage{
+			Items: []sessiondomain.MessageRecord{
+				{
+					MessageID: "user-old",
+					SessionID: "session-rehydrate",
+					Role:      sessiondomain.MessageRoleUser,
+					Content:   "拉取下 alter0 仓库",
+					Timestamp: now.Add(-4 * 24 * time.Hour),
+					RouteResult: sessiondomain.RouteResult{
+						Route: shareddomain.RouteNL,
+					},
+				},
+				{
+					MessageID: "assistant-old",
+					SessionID: "session-rehydrate",
+					Role:      sessiondomain.MessageRoleAssistant,
+					Content:   "已执行 fetch --all --prune，并执行 git pull --ff-only，结果 Already up to date.",
+					Timestamp: now.Add(-4*24*time.Hour + time.Minute),
+					RouteResult: sessiondomain.RouteResult{
+						Route: shareddomain.RouteNL,
+					},
+				},
+			},
+		},
+	}
+
+	service := NewServiceWithOptions(
+		&stubClassifier{
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithSessionMemoryOptions(SessionMemoryOptions{
+			MaxTurns:    4,
+			TTL:         20 * time.Minute,
+			MaxSnippets: 180,
+		}),
+		WithSessionHistoryMemory(history),
+	)
+
+	msg := validMessage("当前逻辑执行了哪些内容，感觉耗时有些久")
+	msg.MessageID = "user-current"
+	msg.SessionID = "session-rehydrate"
+	msg.ReceivedAt = now
+	result, err := service.Handle(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("handle message failed: %v", err)
+	}
+
+	prompt := executor.lastMessage.Content
+	if !strings.Contains(prompt, "Recent turns:") {
+		t.Fatalf("expected rehydrated recent turns in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "拉取下 alter0 仓库") {
+		t.Fatalf("expected persisted user message in prompt, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "git pull --ff-only") {
+		t.Fatalf("expected persisted assistant output in prompt, got %q", prompt)
+	}
+	if result.Metadata["memory_history_rehydrated"] != "true" {
+		t.Fatalf("expected memory_history_rehydrated=true, got %+v", result.Metadata)
 	}
 }
 

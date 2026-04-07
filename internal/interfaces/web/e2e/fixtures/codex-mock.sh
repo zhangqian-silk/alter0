@@ -94,6 +94,12 @@ else
   prompt="${1-}"
   thread_id="$(resolve_mock_thread_id "$prompt")"
 fi
+if [ "$prompt" = "-" ]; then
+  prompt="$(cat)"
+  if [ "$is_resume" != "true" ]; then
+    thread_id="$(resolve_mock_thread_id "$prompt")"
+  fi
+fi
 
 reply="$(resolve_mock_reply "$prompt")"
 working_dir="$(pwd)"

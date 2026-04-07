@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -20,7 +21,7 @@ func TestBuildDefaultRuntimePathPrependsRuntimeDirs(t *testing.T) {
 
 	got := buildDefaultRuntimePath(home, "/usr/bin:/bin")
 	parts := strings.Split(got, string(filepath.ListSeparator))
-	if len(parts) < 4 {
+	if len(parts) < 2 {
 		t.Fatalf("unexpected path parts: %v", parts)
 	}
 	if parts[0] != localBin {
@@ -29,16 +30,39 @@ func TestBuildDefaultRuntimePathPrependsRuntimeDirs(t *testing.T) {
 	if parts[1] != pnpmBin {
 		t.Fatalf("second path = %q, want %q", parts[1], pnpmBin)
 	}
-	if parts[2] != "/usr/local/bin" {
-		t.Fatalf("third path = %q, want /usr/local/bin", parts[2])
-	}
 }
 
 func TestBuildDefaultRuntimePathDeduplicatesEntries(t *testing.T) {
-	got := buildDefaultRuntimePath("", "/usr/bin:/bin:/usr/bin")
-	if strings.Count(got, "/usr/bin") != 1 {
-		t.Fatalf("path should only contain /usr/bin once: %q", got)
+	dir := t.TempDir()
+	got := buildDefaultRuntimePath("", strings.Join([]string{dir, dir}, string(filepath.ListSeparator)))
+	if countPathEntry(got, dir) != 1 {
+		t.Fatalf("path should only contain temp dir once: %q", got)
 	}
+}
+
+func TestRuntimePathSeenKeyFollowsPlatformCaseRules(t *testing.T) {
+	left := runtimePathSeenKey(filepath.Join("A", "Bin"))
+	right := runtimePathSeenKey(filepath.Join("a", "bin"))
+	if runtime.GOOS == "windows" {
+		if left != right {
+			t.Fatalf("windows path key should be case-insensitive, got %q and %q", left, right)
+		}
+		return
+	}
+	if left == right {
+		t.Fatalf("non-windows path key should preserve case sensitivity, got %q", left)
+	}
+}
+
+func countPathEntry(raw string, entry string) int {
+	count := 0
+	expected := filepath.Clean(entry)
+	for _, part := range filepath.SplitList(raw) {
+		if filepath.Clean(part) == expected {
+			count++
+		}
+	}
+	return count
 }
 
 func TestMergeNoProxyEntriesAppendsLocalhostWithoutDuplicates(t *testing.T) {

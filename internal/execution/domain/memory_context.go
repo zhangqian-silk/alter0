@@ -6,8 +6,9 @@ const (
 )
 
 type MemoryContext struct {
-	Protocol string           `json:"protocol"`
-	Files    []MemoryFileSpec `json:"files"`
+	Protocol string            `json:"protocol"`
+	Files    []MemoryFileSpec  `json:"files"`
+	Recall   []MemoryRecallHit `json:"recall,omitempty"`
 }
 
 type MemoryFileSpec struct {
@@ -19,4 +20,12 @@ type MemoryFileSpec struct {
 	Writable  bool   `json:"writable"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 	Content   string `json:"content,omitempty"`
+}
+
+type MemoryRecallHit struct {
+	MemoryID string `json:"memory_id"`
+	Title    string `json:"title"`
+	Path     string `json:"path"`
+	Line     int    `json:"line"`
+	Snippet  string `json:"snippet"`
 }

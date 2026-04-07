@@ -442,6 +442,29 @@ func renderMemoryContextInstruction(raw string) string {
 		}
 		builder.WriteString("\n")
 	}
+	if len(context.Recall) > 0 {
+		builder.WriteString("\nAuto-recalled memory snippets:\n")
+		for _, hit := range context.Recall {
+			builder.WriteString("- ")
+			if title := strings.TrimSpace(hit.Title); title != "" {
+				builder.WriteString(title)
+			} else {
+				builder.WriteString(strings.TrimSpace(hit.MemoryID))
+			}
+			if hit.Line > 0 {
+				builder.WriteString(fmt.Sprintf(":%d", hit.Line))
+			}
+			if path := strings.TrimSpace(hit.Path); path != "" {
+				builder.WriteString("\n  path: ")
+				builder.WriteString(path)
+			}
+			if snippet := strings.TrimSpace(hit.Snippet); snippet != "" {
+				builder.WriteString("\n  snippet:\n")
+				builder.WriteString(snippet)
+			}
+			builder.WriteString("\n")
+		}
+	}
 	return strings.TrimSpace(builder.String())
 }
 

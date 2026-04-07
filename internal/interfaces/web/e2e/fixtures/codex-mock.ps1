@@ -79,6 +79,12 @@ if ($forwarded.Length -ge 3 -and $forwarded[1] -eq "resume") {
   $prompt = $forwarded[$forwarded.Length - 1]
   $threadID = Resolve-MockThreadId -Prompt $prompt
 }
+if ($prompt -eq "-") {
+  $prompt = [Console]::In.ReadToEnd()
+  if (-not $isResume) {
+    $threadID = Resolve-MockThreadId -Prompt $prompt
+  }
+}
 
 $reply = Resolve-MockReply -Prompt $prompt
 $workingDir = (Get-Location).Path

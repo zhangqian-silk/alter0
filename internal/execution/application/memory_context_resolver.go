@@ -17,6 +17,8 @@ const (
 	memoryFileMaxChars           = 12000
 	memoryFileTotalMaxChars      = 36000
 	memoryFileTruncatedSuffix    = "\n...[truncated]"
+	memoryAutoRecallMaxHits      = 6
+	memoryAutoRecallSnippetLines = 3
 	memorySelectionUserMD        = "user_md"
 	memorySelectionSoulMD        = "soul_md"
 	memorySelectionAgentsMD      = "agents_md"
@@ -119,6 +121,7 @@ func (r *memoryContextResolver) Resolve(msg shareddomain.UnifiedMessage) memoryC
 		})
 	}
 	resolution.Context.Files = files
+	resolution.Context.Recall = buildMemoryAutoRecall(msg.Content, files, memoryAutoRecallMaxHits)
 	return resolution
 }
 
@@ -198,6 +201,148 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 }
 
 var memoryAgentIDSanitizer = regexp.MustCompile(`[^a-z0-9._-]+`)
+var memoryRecallTokenPattern = regexp.MustCompile(`[\p{Han}]+|[A-Za-z0-9_./-]+`)
+
+var memoryRecallStopWords = map[string]struct{}{
+	"a": {}, "an": {}, "and": {}, "are": {}, "as": {}, "for": {}, "from": {}, "how": {}, "in": {}, "is": {}, "it": {}, "me": {}, "my": {}, "of": {}, "on": {}, "or": {}, "please": {}, "that": {}, "the": {}, "this": {}, "to": {}, "use": {}, "using": {}, "what": {}, "when": {}, "where": {}, "why": {}, "with": {},
+	"什么": {}, "一下": {}, "一个": {}, "这个": {}, "那个": {}, "当前": {}, "现在": {}, "哪些": {}, "使用": {}, "帮忙": {}, "帮我": {}, "怎么": {}, "如何": {}, "为什么": {}, "感觉": {},
+}
+
+func buildMemoryAutoRecall(input string, files []execdomain.MemoryFileSpec, limit int) []execdomain.MemoryRecallHit {
+	terms := memoryRecallTerms(input)
+	if len(terms) == 0 || len(files) == 0 {
+		return nil
+	}
+	if limit <= 0 {
+		limit = memoryAutoRecallMaxHits
+	}
+	hits := make([]execdomain.MemoryRecallHit, 0, limit)
+	seen := map[string]struct{}{}
+	for _, file := range files {
+		content := strings.TrimSpace(file.Content)
+		if content == "" {
+			continue
+		}
+		lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+		for idx, line := range lines {
+			if !memoryLineMatchesRecallTerms(line, terms) {
+				continue
+			}
+			key := strings.TrimSpace(file.Path) + ":" + fmt.Sprint(idx+1)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			hits = append(hits, execdomain.MemoryRecallHit{
+				MemoryID: strings.TrimSpace(file.ID),
+				Title:    strings.TrimSpace(file.Title),
+				Path:     strings.TrimSpace(file.Path),
+				Line:     idx + 1,
+				Snippet:  buildMemoryRecallSnippet(lines, idx),
+			})
+			if len(hits) >= limit {
+				return hits
+			}
+		}
+	}
+	return hits
+}
+
+func memoryRecallTerms(input string) []string {
+	rawTerms := memoryRecallTokenPattern.FindAllString(strings.ToLower(strings.TrimSpace(input)), -1)
+	terms := make([]string, 0, len(rawTerms))
+	seen := map[string]struct{}{}
+	appendTerm := func(term string) {
+		term = strings.TrimSpace(strings.ToLower(term))
+		if term == "" {
+			return
+		}
+		if _, stop := memoryRecallStopWords[term]; stop {
+			return
+		}
+		runes := []rune(term)
+		if len(runes) < 2 {
+			return
+		}
+		if isASCIIRecallTerm(term) && len(term) < 3 {
+			return
+		}
+		if _, ok := seen[term]; ok {
+			return
+		}
+		seen[term] = struct{}{}
+		terms = append(terms, term)
+	}
+	for _, raw := range rawTerms {
+		term := strings.TrimSpace(raw)
+		if term == "" {
+			continue
+		}
+		runes := []rune(term)
+		if containsHan(term) && len(runes) > 8 {
+			for idx := 0; idx+4 <= len(runes); idx += 2 {
+				appendTerm(string(runes[idx : idx+4]))
+			}
+			continue
+		}
+		appendTerm(term)
+	}
+	return terms
+}
+
+func memoryLineMatchesRecallTerms(line string, terms []string) bool {
+	if strings.TrimSpace(line) == "" || len(terms) == 0 {
+		return false
+	}
+	lower := strings.ToLower(line)
+	for _, term := range terms {
+		if strings.Contains(lower, term) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildMemoryRecallSnippet(lines []string, index int) string {
+	if index < 0 || index >= len(lines) {
+		return ""
+	}
+	start := index - 1
+	if start < 0 {
+		start = 0
+	}
+	end := start + memoryAutoRecallSnippetLines
+	if end > len(lines) {
+		end = len(lines)
+	}
+	parts := make([]string, 0, end-start)
+	for idx := start; idx < end; idx++ {
+		line := strings.TrimSpace(lines[idx])
+		if line == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("L%d: %s", idx+1, line))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func containsHan(value string) bool {
+	for _, r := range value {
+		if r >= '\u4e00' && r <= '\u9fff' {
+			return true
+		}
+	}
+	return false
+}
+
+func isASCIIRecallTerm(value string) bool {
+	for _, r := range value {
+		if r > 127 {
+			return false
+		}
+	}
+	return true
+}
 
 func appendImplicitMemorySelections(selected []string, msg shareddomain.UnifiedMessage) []string {
 	items := make([]string, 0, len(selected)+1)
