@@ -292,6 +292,7 @@ func main() {
 			CompressionRetainTurns:   resolvedContextCompressionRetainTurns,
 			DailyMemoryDir:           resolvedDailyMemoryDir,
 		}),
+		orchapp.WithSessionHistoryMemory(sessionHistory),
 		orchapp.WithLongTermMemoryOptions(orchapp.LongTermMemoryOptions{
 			InjectionTokenBudget: resolvedLongTermMemoryTokenBudget,
 			PersistencePath:      resolvedLongTermMemoryPath,

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	sessionapp "alter0/internal/session/application"
+	sessiondomain "alter0/internal/session/domain"
 	shareddomain "alter0/internal/shared/domain"
 )
 
@@ -98,10 +100,11 @@ type sessionMemorySession struct {
 }
 
 type sessionMemorySnapshot struct {
-	Fragments   []sessionMemoryFragment
-	RecentTurns []sessionMemoryTurn
-	KeyState    map[string]string
-	Reference   string
+	Fragments         []sessionMemoryFragment
+	RecentTurns       []sessionMemoryTurn
+	KeyState          map[string]string
+	Reference         string
+	HistoryRehydrated bool
 }
 
 func (s sessionMemorySnapshot) Metadata() map[string]string {
@@ -119,6 +122,9 @@ func (s sessionMemorySnapshot) Metadata() map[string]string {
 	if len(s.Reference) > 0 {
 		metadata["memory_reference_resolved"] = "true"
 	}
+	if s.HistoryRehydrated {
+		metadata["memory_history_rehydrated"] = "true"
+	}
 	return metadata
 }
 
@@ -133,6 +139,9 @@ func (s sessionMemorySnapshot) ResultMetadata() map[string]string {
 	if len(s.Fragments) > 0 {
 		metadata["memory_context_compressed"] = "true"
 		metadata["memory_fragment_count"] = strconv.Itoa(len(s.Fragments))
+	}
+	if s.HistoryRehydrated {
+		metadata["memory_history_rehydrated"] = "true"
 	}
 	if len(metadata) == 0 {
 		return nil
@@ -264,6 +273,161 @@ func (s *sessionMemoryStore) Snapshot(sessionID string, input string, now time.T
 	}
 	snapshot.Reference = resolveReferenceHint(strings.TrimSpace(input), snapshot)
 	return snapshot
+}
+
+func resolvedSessionMemoryMaxTurns(memory sessionMemory) int {
+	if store, ok := memory.(*sessionMemoryStore); ok && store != nil && store.options.MaxTurns > 0 {
+		return store.options.MaxTurns
+	}
+	return defaultSessionMemoryMaxTurns
+}
+
+func hydrateSessionMemoryFromHistory(
+	snapshot sessionMemorySnapshot,
+	history sessionHistoryMemory,
+	msg shareddomain.UnifiedMessage,
+	maxTurns int,
+) sessionMemorySnapshot {
+	if history == nil || strings.TrimSpace(msg.SessionID) == "" {
+		return snapshot
+	}
+	if maxTurns <= 0 {
+		maxTurns = defaultSessionMemoryMaxTurns
+	}
+	if len(snapshot.RecentTurns) >= maxTurns {
+		return snapshot
+	}
+
+	records := latestSessionHistoryMessages(history, strings.TrimSpace(msg.SessionID), maxTurns)
+	if len(records) == 0 {
+		return snapshot
+	}
+	historyTurns := sessionHistoryRecordsToTurns(records, strings.TrimSpace(msg.MessageID), maxTurns)
+	if len(historyTurns) == 0 {
+		return snapshot
+	}
+
+	existing := map[string]struct{}{}
+	for _, turn := range snapshot.RecentTurns {
+		if id := strings.TrimSpace(turn.UserMessageID); id != "" {
+			existing[id] = struct{}{}
+		}
+	}
+	missing := make([]sessionMemoryTurn, 0, len(historyTurns))
+	for _, turn := range historyTurns {
+		if id := strings.TrimSpace(turn.UserMessageID); id != "" {
+			if _, ok := existing[id]; ok {
+				continue
+			}
+		}
+		missing = append(missing, turn)
+	}
+	if len(missing) == 0 {
+		return snapshot
+	}
+
+	needed := maxTurns - len(snapshot.RecentTurns)
+	if len(missing) > needed {
+		missing = missing[len(missing)-needed:]
+	}
+	merged := make([]sessionMemoryTurn, 0, len(missing)+len(snapshot.RecentTurns))
+	merged = append(merged, missing...)
+	merged = append(merged, snapshot.RecentTurns...)
+	if len(merged) > maxTurns {
+		merged = merged[len(merged)-maxTurns:]
+	}
+	snapshot.RecentTurns = merged
+	snapshot.KeyState = buildKeyState(snapshot.RecentTurns, snapshot.Fragments)
+	snapshot.Reference = resolveReferenceHint(strings.TrimSpace(msg.Content), snapshot)
+	snapshot.HistoryRehydrated = true
+	return snapshot
+}
+
+func latestSessionHistoryMessages(history sessionHistoryMemory, sessionID string, maxTurns int) []sessiondomain.MessageRecord {
+	if history == nil || strings.TrimSpace(sessionID) == "" {
+		return nil
+	}
+	pageSize := maxTurns * 6
+	if pageSize < 24 {
+		pageSize = 24
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	page := history.ListMessages(sessionapp.MessageQuery{
+		SessionID: sessionID,
+		Page:      1,
+		PageSize:  pageSize,
+	})
+	if page.Pagination.Total > pageSize && page.Pagination.PageSize > 0 {
+		lastPage := (page.Pagination.Total + page.Pagination.PageSize - 1) / page.Pagination.PageSize
+		if lastPage > 1 {
+			page = history.ListMessages(sessionapp.MessageQuery{
+				SessionID: sessionID,
+				Page:      lastPage,
+				PageSize:  pageSize,
+			})
+		}
+	}
+	return page.Items
+}
+
+func sessionHistoryRecordsToTurns(records []sessiondomain.MessageRecord, currentMessageID string, maxTurns int) []sessionMemoryTurn {
+	if len(records) == 0 {
+		return nil
+	}
+	if maxTurns <= 0 {
+		maxTurns = defaultSessionMemoryMaxTurns
+	}
+	currentMessageID = strings.TrimSpace(currentMessageID)
+	turns := make([]sessionMemoryTurn, 0, maxTurns)
+	var pending *sessiondomain.MessageRecord
+	sequence := int64(0)
+	for _, record := range records {
+		switch record.Role {
+		case sessiondomain.MessageRoleUser:
+			if currentMessageID != "" && strings.TrimSpace(record.MessageID) == currentMessageID {
+				pending = nil
+				continue
+			}
+			item := record
+			pending = &item
+		case sessiondomain.MessageRoleAssistant:
+			if pending == nil {
+				continue
+			}
+			if strings.TrimSpace(record.Content) == "" {
+				pending = nil
+				continue
+			}
+			sequence++
+			route := record.RouteResult.Route
+			if route == "" {
+				route = pending.RouteResult.Route
+			}
+			turn := sessionMemoryTurn{
+				Sequence:          sequence,
+				UserMessageID:     strings.TrimSpace(pending.MessageID),
+				AssistantReplyRef: strings.TrimSpace(record.MessageID),
+				UserInput:         normalizeSnippet(pending.Content, defaultSessionMemorySnippetSize),
+				AssistantOutput:   normalizeSnippet(record.Content, defaultSessionMemorySnippetSize),
+				Route:             route,
+				RecordedAt:        pending.Timestamp,
+			}
+			if turn.AssistantReplyRef == "" {
+				turn.AssistantReplyRef = buildAssistantReplyReference(turn.UserMessageID, sequence)
+			}
+			turn.PlanHint = extractPlanHint(turn.AssistantOutput, turn.UserInput, defaultSessionMemorySnippetSize)
+			turns = append(turns, turn)
+			pending = nil
+		default:
+			continue
+		}
+	}
+	if len(turns) > maxTurns {
+		turns = turns[len(turns)-maxTurns:]
+	}
+	return turns
 }
 
 func (s *sessionMemoryStore) Record(msg shareddomain.UnifiedMessage, route shareddomain.Route, output string) {

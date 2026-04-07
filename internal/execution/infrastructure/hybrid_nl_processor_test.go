@@ -468,6 +468,9 @@ func TestHybridNLProcessorAgentModeSupportsMemoryTools(t *testing.T) {
 		Files: []execdomain.MemoryFileSpec{
 			{ID: "user_md", Selection: "user_md", Title: "USER.md", Path: "/repo/USER.md", Exists: true, Writable: true},
 		},
+		Recall: []execdomain.MemoryRecallHit{
+			{MemoryID: "user_md", Title: "USER.md", Path: "/repo/USER.md", Line: 2, Snippet: "L2: response_style: concise"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("marshal memory context failed: %v", err)
@@ -492,6 +495,9 @@ func TestHybridNLProcessorAgentModeSupportsMemoryTools(t *testing.T) {
 	}
 	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use search_memory") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use read_memory") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Use write_memory") {
 		t.Fatalf("expected memory tool instructions in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
+	}
+	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Auto-recalled memory snippets") || !strings.Contains(reactFactory.lastConfig.SystemPrompt, "response_style: concise") {
+		t.Fatalf("expected auto-recalled memory snippets in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
 	}
 }
 

@@ -134,11 +134,12 @@
 1. 在单个 `session_id` 维度维护短期记忆窗口（最近 N 轮消息 + 关键状态）。
 2. 对引用关系（如“这个”“刚才那个方案”）提供会话内指代解析能力。
 3. 支持短期记忆的 TTL 或轮次上限，避免上下文无限增长。
-4. 验收：同一会话连续多轮追问时，模型能稳定引用前文关键内容。
+4. 执行前优先使用进程内短期记忆；当服务重启、跨天续聊或 TTL 淘汰导致内存窗口不足时，从持久化 session history 回填最近完成轮次，并与当前内存窗口去重合并后注入 prompt。
+5. 验收：同一会话连续多轮追问时，模型能稳定引用前文关键内容；从历史会话列表恢复旧 Session 后，模型仍可回顾 UI 中已持久化的最近用户输入与助手执行结果。
 
 #### Traceability
 
-- 实现文件：`internal/orchestration/application/session_memory.go`、`cmd/alter0/main.go`
+- 实现文件：`internal/orchestration/application/session_memory.go`、`internal/orchestration/application/service.go`、`internal/session/application/service.go`、`cmd/alter0/main.go`
 - 测试覆盖：`internal/orchestration/application/session_memory_test.go`、`internal/orchestration/application/service_test.go`
 - 验证记录：`GOSUMDB=sum.golang.org GOTOOLCHAIN=auto go test ./...`
 

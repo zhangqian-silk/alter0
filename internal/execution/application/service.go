@@ -45,6 +45,7 @@ const (
 	resultMemoryInjectedIDsKey = "memory.injected_ids"
 	resultMemoryInjectedKey    = "memory.injected_count"
 	resultMemoryProtocolKey    = "memory.protocol"
+	resultMemoryRecallKey      = "memory.recall_count"
 )
 
 func NewService(processor execdomain.NLProcessor) *Service {
@@ -277,11 +278,13 @@ func (s *Service) resolveMemoryContext(
 		resultMetadata[resultMemoryInjectedIDsKey] = strings.Join(resolution.InjectedIDs, ",")
 	}
 	resultMetadata[resultMemoryInjectedKey] = strconv.Itoa(len(memoryContext.Files))
+	resultMetadata[resultMemoryRecallKey] = strconv.Itoa(len(memoryContext.Recall))
 	if s.logger != nil {
 		s.logger.Info("memory context resolved",
 			slog.String("session_id", msg.SessionID),
 			slog.String("message_id", msg.MessageID),
 			slog.Int("memory_files_injected", len(memoryContext.Files)),
+			slog.Int("memory_recall_count", len(memoryContext.Recall)),
 			slog.String("memory_injected_ids", strings.Join(resolution.InjectedIDs, ",")),
 		)
 	}

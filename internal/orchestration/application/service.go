@@ -9,6 +9,7 @@ import (
 	"time"
 
 	orchdomain "alter0/internal/orchestration/domain"
+	sessionapp "alter0/internal/session/application"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 	tasksummaryapp "alter0/internal/tasksummary/application"
@@ -44,6 +45,7 @@ type Service struct {
 	registry   orchdomain.CommandRegistry
 	executor   ExecutionPort
 	memory     sessionMemory
+	history    sessionHistoryMemory
 	longTerm   longTermMemory
 	taskMemory taskSummaryMemory
 	mandatory  mandatoryContext
@@ -56,6 +58,10 @@ type ServiceOption func(*Service)
 type sessionMemory interface {
 	Snapshot(sessionID string, input string, now time.Time) sessionMemorySnapshot
 	Record(msg shareddomain.UnifiedMessage, route shareddomain.Route, output string)
+}
+
+type sessionHistoryMemory interface {
+	ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage
 }
 
 type longTermMemory interface {
@@ -127,6 +133,12 @@ func WithSessionMemoryOptions(options SessionMemoryOptions) ServiceOption {
 func WithSessionMemory(memory sessionMemory) ServiceOption {
 	return func(service *Service) {
 		service.memory = memory
+	}
+}
+
+func WithSessionHistoryMemory(history sessionHistoryMemory) ServiceOption {
+	return func(service *Service) {
+		service.history = history
 	}
 }
 
@@ -251,6 +263,7 @@ func (s *Service) handle(
 			)
 		} else {
 			snapshot := s.memory.Snapshot(msg.SessionID, msg.Content, msg.ReceivedAt)
+			snapshot = hydrateSessionMemoryFromHistory(snapshot, s.history, msg, resolvedSessionMemoryMaxTurns(s.memory))
 			longTermSnapshot := s.longTerm.Snapshot(msg, msg.Content, msg.ReceivedAt)
 			taskSnapshot := s.taskMemory.Snapshot(msg.Content, msg.ReceivedAt)
 			s.observeTaskSummarySnapshot(taskSnapshot)

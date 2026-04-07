@@ -77,7 +77,7 @@
 2. 当前支持的选择项至少包括：`USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、`Daily Memory (Today)`、`Daily Memory (Yesterday)`；其中 `AGENTS.md` 固定表示当前 `agent_id` 的私有规则文件，不是共享文件。
 3. Agent 请求命中对应 Profile 后，服务端必须将勾选结果写入统一运行时元数据，并在执行前解析为结构化 `memory_context`。
 4. 所有 Agent Session 还必须自动维护一个只读 `Agent Session Profile` 文件，路径固定为 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，用于沉淀该 Agent 在当前 Session 内的稳定上下文；该文件不需要在 Profile 页面额外勾选，但必须默认注入 `memory_context`。
-5. `memory_context` 最小字段包括：`protocol`、`files[].id`、`files[].selection`、`files[].title`、`files[].path`、`files[].exists`、`files[].writable`、`files[].updated_at`、`files[].content`。
+5. `memory_context` 最小字段包括：`protocol`、`files[].id`、`files[].selection`、`files[].title`、`files[].path`、`files[].exists`、`files[].writable`、`files[].updated_at`、`files[].content`；当本轮输入命中已注入文件内容时，还需提供 `recall[].memory_id`、`recall[].title`、`recall[].path`、`recall[].line`、`recall[].snippet`。
 6. 文件内容注入需要保留可写文件路径；当目标文件不存在时，仍需返回预期路径与 `exists=false`，允许 Agent 后续直接创建并写入。
    - `agents_md` 的目标路径固定为 `.alter0/agents/<agent_id>/AGENTS.md`，不再回退到仓库根目录共享 `AGENTS.md`。
    - `USER.md`、`SOUL.md`、长期记忆与日记忆继续作为共享文件解析。
@@ -93,27 +93,29 @@
    - 日记忆优先识别 `memory/YYYY-MM-DD.md` 与 `.alter0/memory/YYYY-MM-DD.md`
 10. 为控制 prompt 体积，单文件与总注入体积必须设置截断上限；截断后保留显式标记，避免模型误以为内容完整。
 11. `Agent Session Profile` 至少需要记录 `agent_id`、`agent_name`、`session_id`、更新时间、通道信息与 Session 工作区；`coding` Agent 还需补充当前仓库路径、远端仓库地址、当前分支、PR 基线分支（可探测时）、Session 工作区与预览地址。
-12. 验收：
+12. 执行前需基于本轮用户输入对已注入 Memory Files 执行轻量自动召回，命中的少量片段写入 `memory_context.recall[]`，并在 ReAct prompt 与 `codex_exec` 载荷中可见；该自动召回用于减少对模型主动调用 `search_memory` 的依赖，`search_memory` 仍负责二次检索、扩大搜索范围和确认最新文件内容。
+13. 验收：
    - Web `Agent Profiles` 页面可稳定保存和回显 `memory_files`
    - `POST /api/agent/messages` 会将勾选结果注入为 `alter0.memory.include`
    - 执行器可生成 `alter0.memory-context/v1`
    - ReAct 与 Codex 两条链路都能看到相同记忆文件集
    - 文件不存在时 Agent 仍能拿到目标路径，并可通过 `write_memory` 或 `codex_exec` 创建目标文件
    - Agent 可先通过 `search_memory` 在已注入的记忆文件中按关键字定位相关历史，再决定是否调用 `read_memory` / `write_memory`
+   - Agent 在未主动调用 `search_memory` 前，也能从 `memory_context.recall[]` 看到本轮输入命中的记忆片段
    - 选择 `agents_md` 时，注入路径固定为 `.alter0/agents/<agent_id>/AGENTS.md`，且不会读取其他 Agent 的 `AGENTS.md`
    - `USER.md`、`SOUL.md`、长期记忆与日记忆在不同 Agent 间保持共享可见
    - 所有 Agent Session 都会自动拿到 `.alter0/agents/<agent_id>/sessions/<session_id>.md`
    - `coding` Agent 的会话画像会自动沉淀仓库、分支、工作区与预览地址等上下文
-13. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
-14. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Codex CLI 可结合该文件上下文执行读取或更新，Agent 侧不依赖通用原生工具做路径猜测。
-15. 当前实现中，`AGENTS.md` 的共享仓库根文件不再作为 `agents_md` 注入源；仓库根 `AGENTS.md` 仅保留仓库维护用途，不参与跨 Agent 共享记忆。
+14. 默认提供独立 `memory` Skill，可与 `memory_files` 同时启用；该 Skill 负责向 Agent / Codex 说明记忆模块、文件职责、读写边界与读写时机，具体文件内容仍以 `memory_context` 为准。
+15. Skill 协议需支持可选文件型属性，至少包括：`skills[].file_path`、`skills[].writable`；当 Skill 绑定可维护规则文件时，Codex CLI 可结合该文件上下文执行读取或更新，Agent 侧不依赖通用原生工具做路径猜测。
+16. 当前实现中，`AGENTS.md` 的共享仓库根文件不再作为 `agents_md` 注入源；仓库根 `AGENTS.md` 仅保留仓库维护用途，不参与跨 Agent 共享记忆。
 
 #### Traceability
 
 - 实现文件：`internal/control/domain/agent.go`、`internal/interfaces/web/server.go`、`internal/interfaces/web/static/assets/chat.js`
 - 执行注入：`internal/execution/domain/memory_context.go`、`internal/execution/application/memory_context_resolver.go`、`internal/execution/application/agent_session_profile.go`、`internal/execution/application/service.go`
 - 执行消费：`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/execution/infrastructure/codex_cli_processor.go`
-- 测试覆盖：`internal/control/domain/agent_test.go`、`internal/execution/application/service_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/interfaces/web/server_message_test.go`
+- 测试覆盖：`internal/control/domain/agent_test.go`、`internal/execution/application/service_test.go`、`internal/execution/infrastructure/hybrid_nl_processor_test.go`、`internal/execution/infrastructure/codex_cli_processor_test.go`、`internal/interfaces/web/server_message_test.go`
 
 ### R-053
 

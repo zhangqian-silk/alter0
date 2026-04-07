@@ -138,6 +138,8 @@ internal/shared/infrastructure     # ID、日志、metrics
 - `coding` Agent 的私有 `SKILL.md` 会进一步沉淀 Git 交付规则，例如 Session repo 完整 clone、认证签名提交、测试页部署成功后的快速 `gh` PR/merge 流程与交付汇报口径。
 - `AGENTS.md` 与私有 `SKILL.md` 职责分离：`AGENTS.md` 负责当前 Agent 的协作边界、仓库/工作区操作规则与交付约束；`SKILL.md` 负责该 Agent 自身的可复用打法、模板和长期偏好。一次性任务细节仍应留在当前任务或记忆文件，不写入 Skill。
 - 所有 Agent 会额外自动维护当前 Session 的私有画像文件 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，并以只读 `Agent Session Profile` 注入执行链路；该文件用于沉淀当前 Agent 在该 Session 内的稳定工作上下文。`coding` 场景会自动写入源仓库路径、独立 repo clone 路径、远端地址、当前分支、Session 工作区与预览地址等关键属性。
+- Agent 与 Chat 共用会话短期记忆链路：执行前优先使用进程内最近轮次；当会话因重启、跨天续聊或 TTL 淘汰导致内存窗口为空时，会从持久化 session history 回填最近完成轮次，再注入当前 prompt，保证 UI 可见的同一 Session 历史也能被模型用于指代解析和执行结果回顾。
+- Memory Files 解析后会基于本轮用户输入执行轻量自动召回，命中的片段以 `memory_context.recall[]` 注入 Agent prompt 与 `codex_exec` 结构化载荷；`search_memory`、`read_memory`、`write_memory` 继续用于二次检索、精读和受控写入。
 - 注入内容同时携带可写文件路径；Agent 只能在这些已解析出的记忆文件上使用 `search_memory`、`read_memory`、`write_memory` 做检索与持久化维护，其余具体文件与命令操作统一交给 `codex_exec`。
 - `codex_exec` 调用 `Codex CLI` 时通过 stdin 传递渲染后的执行指令，命令行参数仅保留 `-` 作为 prompt 占位；长上下文、Memory、Skill 与运行时结构化载荷不会直接拼入系统命令行参数。
 - Web 端将用户管理的 Agent Profile 放在 `Agent Profiles` 页面；系统内置 Agent 由服务注册，不能通过控制面覆盖或删除。
@@ -515,7 +517,7 @@ curl -X POST http://127.0.0.1:18088/api/agent/messages \
 3. 创建 Agent 时不需要手填 `id` 或 `version`；服务端会自动生成 Agent ID，并在每次更新时维护版本。若生成 ID 与内置 Agent 冲突，会自动跳过保留 ID。
 4. Agent 运行时固定采用“Codex CLI 负责具体执行、Agent 负责理解和驱动”的模式：稳定工具面包括 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，系统会自动补充收口工具 `complete`；允许委派的 Agent 可额外启用 `delegate_agent`。`search_memory` 负责在已解析的记忆文件内按关键字检索历史偏好、缩写和上下文，再配合 `read_memory` / `write_memory` 做精读和更新。Agent 作为用户与 Codex 之间的代理层，负责在自身侧消化 system prompt、Skill、记忆与会话上下文，并只把当前执行所需的最小上下文和具体指令交给 `codex_exec`；稳定执行事实统一通过 `alter0.codex-exec/v1` 的结构化上下文字段按需传给 Codex，不要求 Agent 在每轮指令中重复搬运全部规则，也不允许把与当前执行无关的上下文一并透传。`coding` Agent 会优先把实质性开发与验证步骤交给 `codex_exec`，并按每轮执行结果继续推进后续步骤；仓库类执行默认切到当前 Session 独立的 repo 完整 clone `.alter0/workspaces/sessions/<session_id>/repo`，该 clone 自带自己的 `.git` 元数据并允许直接分支与提交，运行时同步注入源仓库路径、独立 repo clone 路径、活动分支、会话工作区、预览域名与 PR 交付规则。需要测试页面时，完成实现后必须先部署或更新 `https://<session_short_hash>.alter0.cn` 再结束本轮交付。
 5. `Chat` 默认绑定 `main` Agent；`Agent` 页面作为其余入口 Agent 的统一运行页，并按目标 Agent 隔离维护独立会话历史；具备独立前端入口的 Agent 不进入该页历史。
-6. Agent 的 Skill、MCP 与 Memory Files 选择会在执行前注入运行时上下文，执行过程仍复用统一编排链路。
+6. Agent 的 Skill、MCP 与 Memory Files 选择会在执行前注入运行时上下文，Memory Files 会基于本轮输入自动召回少量相关片段并写入 `memory_context.recall[]`，执行过程仍复用统一编排链路；同一 Session 的短期记忆会在内存窗口不足时从持久化 session history 回填最近完成轮次。
 7. 内置 `memory` Skill 会明确记忆文件的读写逻辑：按任务类型决定先读哪些文件、按信息类型决定写入哪个文件、遇到冲突时按 `SOUL.md > AGENTS.md > 长期记忆 > 日记忆` 收敛；其中 `AGENTS.md` 固定为当前 Agent 的非共享规则文件 `.alter0/agents/<agent_id>/AGENTS.md`，`USER.md`、`SOUL.md` 与长期/日记忆继续共享；实际文件快照仍由 `memory_files` 注入提供。
 8. 每个 Agent 还会自动拿到自己的私有 Skill 文件 `.alter0/agents/<agent_id>/SKILL.md`；运行时会把它作为可写 Skill 上下文注入，Agent 需要在用户提出稳定、可复用、会影响后续该 Agent 行为的偏好时按需更新它，而不是把一次性任务细节写进去。
 9. `memory_files` 当前支持：`user_md`、`soul_md`、`agents_md`、`memory_long_term`、`memory_daily_today`、`memory_daily_yesterday`。

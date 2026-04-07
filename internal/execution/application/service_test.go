@@ -487,6 +487,62 @@ func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
 	}
 }
 
+func TestExecuteNaturalLanguageAutoRecallsSelectedMemorySnippets(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".alter0", "memory", "long-term"), 0o755); err != nil {
+		t.Fatalf("mkdir memory dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".alter0", "memory", "long-term", "MEMORY.md"), []byte(strings.Join([]string{
+		"# Memory",
+		"- response_style: concise Chinese replies",
+		"- deployment_target: linux cloud server",
+	}, "\n")), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-memory-recall",
+		SessionID:   "s-memory-recall",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "use my response style",
+		TraceID:     "t-memory-recall",
+		Metadata: map[string]string{
+			memoryIncludeFilterKey: `["memory_long_term"]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+	if got := result.Metadata[resultMemoryRecallKey]; got != "1" {
+		t.Fatalf("memory recall count = %q, want 1", got)
+	}
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
+	if len(memoryContext.Recall) != 1 {
+		t.Fatalf("memory recall size = %d, want 1: %+v", len(memoryContext.Recall), memoryContext.Recall)
+	}
+	if !strings.Contains(memoryContext.Recall[0].Snippet, "response_style") {
+		t.Fatalf("expected recalled snippet to contain response_style, got %+v", memoryContext.Recall[0])
+	}
+	if memoryContext.Recall[0].Line != 2 {
+		t.Fatalf("expected recalled line 2, got %+v", memoryContext.Recall[0])
+	}
+}
+
 func TestExecuteNaturalLanguageInjectsAgentSpecificAgentsMD(t *testing.T) {
 	root := t.TempDir()
 	agentPath := filepath.Join(root, ".alter0", "agents", "researcher", "AGENTS.md")
