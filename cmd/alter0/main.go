@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -501,12 +502,13 @@ func buildDefaultRuntimePath(home string, existing string) string {
 		if path == "" {
 			return
 		}
-		if _, ok := seen[path]; ok {
+		seenKey := runtimePathSeenKey(path)
+		if _, ok := seen[seenKey]; ok {
 			return
 		}
 		if info, err := os.Stat(path); err == nil && info.IsDir() {
 			merged = append(merged, path)
-			seen[path] = struct{}{}
+			seen[seenKey] = struct{}{}
 		}
 	}
 
@@ -517,6 +519,14 @@ func buildDefaultRuntimePath(home string, existing string) string {
 		appendDir(path)
 	}
 	return strings.Join(merged, string(os.PathListSeparator))
+}
+
+func runtimePathSeenKey(path string) string {
+	key := filepath.Clean(strings.TrimSpace(path))
+	if runtime.GOOS == "windows" {
+		key = strings.ToLower(key)
+	}
+	return key
 }
 
 func mustRegister(registry *orchinfra.InMemoryCommandRegistry, handler orchdomain.CommandHandler) {

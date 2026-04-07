@@ -157,7 +157,7 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 	for _, dir := range resolveCodexAddDirs(metadata) {
 		args = append(args, "--add-dir", dir)
 	}
-	args = append(args, "-o", outputPath, renderedPrompt)
+	args = append(args, "-o", outputPath, "-")
 	procCtx, procCancel := context.WithCancel(ctx)
 	defer procCancel()
 
@@ -165,6 +165,7 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
 	}
+	cmd.Stdin = strings.NewReader(renderedPrompt)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -242,7 +243,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 	for _, dir := range resolveCodexAddDirs(metadata) {
 		args = append(args, "--add-dir", dir)
 	}
-	args = append(args, "--json", "--progress-cursor", renderedPrompt)
+	args = append(args, "--json", "--progress-cursor", "-")
 	procCtx, procCancel := context.WithCancel(ctx)
 	defer procCancel()
 
@@ -250,6 +251,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
 	}
+	cmd.Stdin = strings.NewReader(renderedPrompt)
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {

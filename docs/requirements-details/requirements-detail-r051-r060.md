@@ -1,6 +1,6 @@
 # Requirements Details (R-051 ~ R-060)
 
-> Last update: 2026-04-03
+> Last update: 2026-04-07
 
 ## 需求细化（草案）
 
@@ -137,6 +137,7 @@
    - Agent system prompt 需采用持续助手口径，要求优先复用当前 Session 已确认的稳定上下文，而不是在多轮编码过程中重复索取相同信息。
    - Agent 作为用户与 Codex 之间的代理层，负责在 Agent 侧消化 system prompt、Skill、记忆和会话画像；这些 Agent 编排信息不直接透传给 Codex，Codex 只接收当前执行所需的最小上下文与具体指令。
    - `alter0.codex-exec/v1` 需统一支持结构化上下文字段，至少包括按需注入的 `runtime_context`、`product_context`、`product_discovery`、`skill_context`、`mcp_context`、`memory_context`；Codex 仅接收当前执行所需的最小必要信息，不要求 Agent 在每轮 `codex_exec` 指令里重复转述完整规则簿，也不得把与当前执行无关的上下文冗余透传。
+   - `codex_exec` 调用 Codex CLI 时需通过 stdin 传递渲染后的执行指令载荷，命令行参数仅使用 `-` 作为 prompt 占位；长上下文、Memory、Skill 与运行时结构化载荷不得直接作为命令行参数传入。
    - 仓库类 `codex_exec` 需默认切到当前 Session 独立 repo 完整 clone `.alter0/workspaces/sessions/<session_id>/repo`，先在该工作区拉取/检查代码，再进行实现、构建、测试与部署，不直接在主仓库工作目录开发，也不再依赖 `git worktree`。
    - 运行时需向 `coding` Agent 注入当前项目的远端仓库地址、源仓库路径、独立 repo clone 路径、当前分支、会话工作区、PR 基线分支与交付要求。
    - 运行时需同步维护 `coding` Agent 在当前 Session 下的私有画像文件 `.alter0/agents/coding/sessions/<session_id>.md`，用于沉淀源仓库路径、独立 repo clone 路径、仓库状态与交付上下文，供后续轮次直接复用。
@@ -157,6 +158,7 @@
    - `Chat` 默认走 `main` Agent
    - `coding` Agent 在通用 `Agent` 入口中可直接选择，并以 Agent 主导、Codex 执行的方式推进编码任务
    - `coding` Agent 的运行时提示包含源仓库、独立 repo clone、分支、会话预览域名、Session 画像上下文和 PR 交付规则；对应 `codex_exec` 载荷同步携带结构化 `runtime_context`
+   - `codex_exec` 通过 stdin 向 Codex CLI 传递最终指令；长上下文请求不因运行系统的命令行长度限制直接失败
    - 任一 Agent 命中执行时，都能在 Skill 上下文里看到自己的私有 Skill `.alter0/agents/<agent_id>/SKILL.md`
    - 当前 Agent 的私有 Skill 文件不存在时，首次执行后会自动生成默认规则簿，并允许后续按用户提出的稳定偏好更新
    - 涉及测试页面时，预览地址遵循 `https://<session_short_hash>.alter0.cn`，且 `coding` Agent 收口前已完成对应页面部署或更新
