@@ -19,6 +19,13 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 ## 会话入口
 
+### Web Shell
+
+- 根路径 `/` 默认进入 Chat 工作台。
+- `/chat` 提供 Chat、Agent、Terminal、Product、Control 与 Memory 的统一 Web Shell。
+- `/login` 在登录密码启用时提供登录入口；`/logout` 清理当前登录态并回到登录流程。
+- 登录密码未启用时，Web Shell 直接进入受保护页面；登录密码启用后，受保护页面和 API 使用同一登录态校验。
+
 ### Chat
 
 - `Chat` 默认绑定内置 `main` Agent `Alter0`。
@@ -36,6 +43,21 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Web 登录后，Chat/Agent 按目标 Agent 维护独立 Session 历史。
 - 具备独立前端入口的 Agent 不进入通用 Agent 页面历史。
 - `Sessions` 系统页面可展示跨来源会话数据，但不作为 Chat/Agent 分栏依据。
+
+## 接口边界
+
+- `GET /` 进入默认 Chat 工作台。
+- `GET /chat` 返回 Web Shell。
+- `GET /login` 与 `POST /login` 处理登录页和登录提交。
+- `GET /logout` 清理当前登录态。
+- `POST /api/messages` 处理 Chat 普通消息。
+- `POST /api/messages/stream` 处理 Chat 流式消息。
+- `POST /api/agent/messages` 处理指定 Agent 普通消息。
+- `POST /api/agent/messages/stream` 处理指定 Agent 流式消息。
+- `GET /api/agents` 返回可进入的运行时 Agent。
+- `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
+- `GET /api/sessions/{session_id}/messages` 查询会话消息。
+- `DELETE /api/sessions/{session_id}` 删除会话，并触发关联工作区和任务清理。
 
 ## 会话生命周期
 
