@@ -3,7 +3,7 @@
 > 版本：v2.0
 > 状态：Draft / Requirement Baseline
 > 适用范围：Chat、Agent、共享 Memory 内核、Memory 页面说明文档视图
-> 关联需求：R-017、R-018、R-020、R-024、R-025、R-026、R-027、R-028、R-031、R-032
+> 关联需求域：Agent Capability & Memory、Task, Terminal & Workspace、Conversation & Session Experience
 
 ## 1. 目标
 
@@ -402,16 +402,9 @@
 
 ## 18. 与需求关系
 
-1. `R-017`：会话短期记忆。
-2. `R-018`：跨会话长期记忆。
-3. `R-020`：上下文压缩。
-4. `R-024`：持久化记忆分级管理。
-5. `R-025`：天级记忆与长期记忆 Markdown 存储。
-6. `R-026`：强制上下文文件。
-7. `R-027`：Agent Memory 模块入口与页面收敛。
-8. `R-028`：Memory 模块说明文档持久化与可视化。
-9. `R-031`：任务摘要跨会话记忆与按需深检索。
-10. `R-032`：`.alter0` 任务历史存储规范与 Memory 查阅。
+- `Agent Capability & Memory`：会话短期记忆、跨会话长期记忆、上下文压缩、持久化记忆分级、天级记忆、强制上下文文件、Memory Files 注入与 Memory 页面。
+- `Task, Terminal & Workspace`：任务摘要记忆、任务历史存储、任务详情下钻、任务日志与产物回链。
+- `Conversation & Session Experience`：Chat / Agent 会话历史、消息持久化、会话恢复和上下文回填体验。
 
 ## 19. 验收口径
 

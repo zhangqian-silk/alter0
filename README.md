@@ -21,9 +21,8 @@
 
 详细技术文档见 [docs](./docs/README.md)：
 
-1. [Architecture Design](./docs/architecture.md)
-2. [Technical Solution](./docs/technical-solution.md)
-3. [Requirements](./docs/requirements.md)
+- [Architecture Design](./docs/architecture.md)
+- [Domain Requirements](./docs/requirements.md)
 
 ## Output Convention
 
@@ -644,6 +643,8 @@ curl "http://127.0.0.1:18088/api/sessions?trigger_type=cron&job_id=job1"
 
 ## Testing
 
+后续开发默认遵循 TDD：功能新增、缺陷修复、行为调整或重构需先新增或更新表达目标行为的测试，再完成实现与重构。纯文档、注释、格式化、依赖元数据或无法自动化验证的变更可免新增测试，但交付说明需明确免测原因与替代验证方式。
+
 ```bash
 go test ./...
 ```
@@ -658,7 +659,7 @@ go test ./...
 
 ## Contributing
 
-欢迎提 Issue / PR。建议在提交前执行：
+欢迎提 Issue / PR。代码类变更需遵循 TDD，并在提交前执行与改动范围匹配的测试；涉及共享链路、跨模块契约或用户可见行为时，建议执行：
 
 ```bash
 go test ./...
