@@ -31,7 +31,7 @@
 - 编排层负责意图识别与路由：命令进入 `CommandRegistry` / `CommandHandler`，自然语言进入 `ExecutionPort`，Cron 触发复用同一编排链路。
 - 命令能力稳定提供 `/help`、`/echo`、`/time` 与 `/now`。
 - 自然语言执行通过可替换执行端口对接 LLM、Agent、Codex CLI 或后续 Workflow 执行器。
-- 调度领域支持 Cron Job 配置、可视化周期字段、触发记录、触发会话归档与来源回链。
+- 调度领域支持 Cron Job 配置、可视化周期字段、触发记录、触发会话归档、runs 查询与来源回链。
 - 存储默认采用 `.alter0` 本地文件，Control 配置与 Scheduler 状态以 JSON 为主，Memory 主存以 Markdown 为主。
 - 观测能力覆盖结构化日志、Prometheus metrics、`/healthz`、`/readyz` 与 trace/session/message 维度。
 
@@ -43,6 +43,7 @@
 
 - `Chat` 默认绑定内置 `main` Agent `Alter0`，作为通用对话入口；`Agent` 页面承载无独立入口的内置 Agent 与用户管理 Agent。
 - Web 登录态下，Chat/Agent 按目标 Agent 隔离会话历史，具备独立前端入口的 Agent 不进入通用 Agent 页面历史。
+- Web 入口稳定提供根路径到 Chat 的默认进入、`/chat`、`/login` 与 `/logout`，登录密码启用后受保护页面和 API 统一走同一登录态校验。
 - 新会话先使用占位标题，早期多轮内可根据更具体输入自动升级标题，避免长期保留“拉取仓库”“分析仓库”等低辨识度名称。
 - 新对话空白会话保持唯一；已有空白会话时，`New Chat` 复用并聚焦该会话。
 - 同一会话内同步请求保持顺序一致，系统提供全局并发上限、排队与超时降级。
@@ -64,7 +65,7 @@
 - 每个 Agent 自动拥有私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`，用于沉淀可复用工作模式、输出结构、检查清单与稳定偏好。
 - Memory Files 支持 `USER.md`、`SOUL.md`、当前 Agent 私有 `AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory，并在注入时携带路径、存在状态、可写性、内容与自动召回片段。
 - 会话短期记忆、跨会话长期记忆、上下文压缩、天级记忆、强制上下文文件与任务摘要记忆统一构成 Memory 领域能力。
-- `Agent -> Memory` 页面提供长期记忆、天级记忆、强制要求、任务历史与说明文档的只读可视化入口。
+- `Agent -> Memory` 页面提供长期记忆、天级记忆、强制要求、任务历史与说明文档的只读可视化入口，并支持任务摘要重建。
 
 ## Task, Terminal & Workspace
 
@@ -74,11 +75,13 @@
 
 - 高复杂度、长耗时或产物型请求可切换为异步 Task，先返回任务卡片，再通过任务视图、日志流与会话回写完成闭环。
 - Task 需建立 `session_id`、`source_message_id`、`channel_type`、`trigger_type`、`correlation_id`、Cron 触发信息与产物引用的标准映射。
-- Task 观测台支持列表、详情抽屉、筛选、日志 SSE、游标续读、日志回补、retry/cancel、任务-会话双向跳转与完成结果回写。
+- Task 观测台支持列表、详情抽屉、来源筛选、日志 SSE、游标续读、日志回补、retry/cancel、交互式续写、任务-会话双向跳转与完成结果回写。
+- Task 记忆视图支持任务摘要、任务详情、日志下钻、产物引用与摘要重建，用于把历史任务纳入长期上下文召回。
 - Codex CLI 长任务按心跳续租运行窗口；列表与详情展示 `Last Heartbeat` 和 `Timeout Window`。
 - Web 会话不直接暴露本地文件路径，产物通过引用、下载或预览接口交付。
 - 默认工作区按执行上下文隔离：Chat/Agent 使用 `.alter0/workspaces/sessions/<session_id>`，Task 使用其会话下的 `tasks/<task_id>`，Terminal 使用 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
 - Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与步骤视图索引。
+- Terminal API 支持会话创建、列表、恢复、输入、关闭、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
 - Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/step 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
 - Terminal 支持 `Close` 与 `Delete`：关闭仅退出运行态，删除同步清理状态文件和独立工作区。
 - Terminal 历史在同一 Web 登录态下跨设备共享，不按浏览器 client 标识隔离；不设置产品级会话数量上限或固定超时淘汰。
@@ -105,10 +108,10 @@
 
 稳定需求：
 
-- Control API 管理 Channel、Skill、Agent Profile、Product、Cron Job、Model Provider 与 Environment 配置。
+- Control API 管理 Channel、Capability、Skill、MCP、Agent Profile、Product、Cron Job、Model Provider 与 Environment 配置，并保留 Capability 生命周期审计。
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 OpenAI Compatible 与 OpenRouter Provider，支持 `/responses` 与 `/chat/completions`，支持 base URL、API Key 保留语义、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复。
-- Environments 页面支持任务并发等关键运行参数可视化配置、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、候选二进制构建、readyz 探活与失败回滚。
+- Environments 页面支持 Web/Queue、Async Tasks、Terminal、Session Memory、Persistent Memory 与 LLM 运行参数可视化配置、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、候选二进制构建、readyz 探活与失败回滚。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、统一 `HOME=/var/lib/alter0`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。
 - Node/Playwright 测试链路通过运行账户级工具链初始化，保证 Codex CLI 可执行 `npm`、`npx` 与 Playwright Chromium。

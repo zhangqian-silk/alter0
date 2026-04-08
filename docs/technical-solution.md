@@ -50,6 +50,7 @@ CLI / Web / Cron
 - 外部输入必须先归一为 `UnifiedMessage`，再进入编排层。
 - 命令路由优先于复杂度评估和模型执行。
 - Cron 触发不直接调用执行器，必须复用编排链路。
+- Cron runs 接口通过 Session history 按 `trigger_type=cron` 与 `job_id` 查询触发会话，不另建独立运行记录存储。
 - `ExecutionPort` 是自然语言执行能力的稳定边界，具体实现可替换。
 - trace、session、message、correlation 字段贯穿日志、指标、会话与任务。
 
@@ -83,6 +84,7 @@ Web input
 ### 技术约束
 
 - Chat 默认绑定 `main` Agent，Agent 页面按目标 Agent 隔离会话历史。
+- 根路径 `/`、`/chat`、`/login`、`/logout` 是稳定 Web Shell 入口；登录密码启用后页面和 API 共享同一登录态校验。
 - SSE 连接只负责回传，前端断连不得取消已进入 Agent 执行链的后端任务。
 - 会话标题升级、空白会话唯一性、历史折叠和页面滚动状态属于 Conversation 子域。
 - 移动端输入区以 `VisualViewport` 为有效视口来源，并按聚焦、键盘和页面可见性降频刷新。
@@ -123,6 +125,7 @@ Agent message
 - Memory Files 注入需要携带路径、存在状态、可写性、内容快照和自动召回片段。
 - 私有 `AGENTS.md`、私有 Skill、Agent Session Profile 分别承担协作边界、可复用打法、会话画像职责，不混写一次性任务细节。
 - `search_memory`、`read_memory`、`write_memory` 只操作已解析进 `memory_context` 的记忆文件。
+- Agent Memory Web 聚合接口只读返回长期记忆、天级记忆、强制上下文与说明文档；任务摘要刷新走 Task summary 子域接口。
 
 ### 验证策略
 
@@ -164,18 +167,22 @@ Terminal input
 
 ### 技术约束
 
-- Task 需要保存来源字段，支持从任务回会话、从会话查任务。
+- Task 需要保存来源字段，支持从任务回会话、从会话查任务，并支持按触发类型、通道、来源消息与结果消息过滤。
 - 长任务通过心跳续租运行窗口，浏览器 SSE 保活与后台心跳分离。
+- Control 任务交互式续写通过追加输入创建 follow-up Task，不直接改写原任务执行记录。
 - Web 不直接暴露本地文件路径，产物通过引用、下载或预览接口交付。
+- Task 产物列表响应需要过滤本地 URI；下载和预览由任务接口按 artifact id 读取并输出安全响应头。
+- Memory 任务视图读取 Task 与 task summary 数据，支持任务摘要重建，但不直接执行 retry/cancel。
 - 工作区按 Chat/Agent、Task、Terminal 分层隔离，删除会话或 Terminal 时同步清理对应目录。
 - Terminal 会话态与 turn/step 执行态分离，历史 `running / starting` 需要兼容归一。
+- Terminal 会话详情聚合 turn 摘要；step 明细按 `session_id / turn_id / step_id` 单独读取，避免会话列表一次性加载大块执行日志。
 - Terminal 跨设备共享同一 Web 登录态下的服务端会话历史，不再按 browser client 分桶。
 
 ### 验证策略
 
 - Task 应用测试覆盖复杂度分流、并发上限、心跳续租、来源字段和删除清理。
-- Web 测试覆盖任务列表、详情、日志流、retry/cancel 和会话回链。
-- Terminal 应用测试覆盖创建、恢复、续写、删除、状态归一和工作区分配。
+- Web 测试覆盖任务列表、详情、日志流、retry/cancel、产物下载/预览、Memory 任务摘要重建和会话回链。
+- Terminal 应用测试覆盖创建、恢复、续写、关闭、删除、详情读取、step 明细、状态归一和工作区分配。
 - E2E 测试覆盖 Terminal 移动端输入、滚动、Process 折叠和跨设备历史口径。
 
 ## Product Domain
@@ -218,7 +225,7 @@ Product request
 
 ### 包边界
 
-- `internal/control` 管理 Channel、Skill、Agent Profile 和 Environment 配置。
+- `internal/control` 管理 Channel、Capability、Skill、MCP、Agent Profile 和 Environment 配置。
 - `internal/llm` 管理 Model Provider、上游 API type、OpenRouter 扩展与密钥状态。
 - `cmd/alter0` 管理启动、supervisor、重启、内置配置和运行时 metadata。
 - `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本。
@@ -228,7 +235,7 @@ Product request
 
 ```text
 Control UI / API
-  -> Config service
+  -> Config / Capability service
   -> Local storage
   -> Runtime resolver
   -> Execution / Agent / Scheduler
@@ -247,7 +254,11 @@ Environment restart
 ### 技术约束
 
 - Control 面只能管理运行时配置，不绕过编排层直接执行业务请求。
+- Skill 与 MCP 专用接口需要复用统一 Capability 数据结构；Capability 审计记录生命周期动作，供控制面按类型查询。
 - Models 控制面需要保持空 API Key 语义、占位值过滤、禁用态恢复和默认 Provider 收敛。
+- Environment registry 按 Web & Queue、Async Tasks、Terminal、Session Memory、Persistent Memory、LLM 模块声明 key、类型、默认值、校验规则、敏感性与生效方式。
+- Environment 配置更新写入 audit store，控制面按时间倒序读取变更记录。
+- LLM 运行参数 `llm_temperature`、`llm_max_tokens`、`llm_react_max_iterations` 通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider 与模型能力约束。
 - Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换。
 - systemd 基线统一 `HOME=/var/lib/alter0`，确保 Codex、gh、git signing、Node/Playwright 工具链使用同一运行账户上下文。
 - 提交签名问题不得通过关闭签名绕过。
@@ -255,7 +266,7 @@ Environment restart
 
 ### 验证策略
 
-- Control 测试覆盖 Channel、Skill、Agent、Environment 配置持久化。
+- Control 测试覆盖 Channel、Capability、Skill、MCP、Agent、Environment 配置持久化、Capability 审计和 Environment audit。
 - LLM 测试覆盖 Provider 创建、更新、缺失密钥恢复、默认项收敛和 OpenRouter 字段。
 - Runtime supervisor 测试覆盖候选版本构建、readyz 切换、失败回滚和 metadata 展示。
 - 文档治理变更至少运行 Markdown 引用与空白检查；代码变更按 TDD 运行对应包或全量测试。
