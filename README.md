@@ -22,6 +22,7 @@
 详细技术文档见 [docs](./docs/README.md)：
 
 - [Architecture Design](./docs/architecture.md)
+- [Technical Solution](./docs/technical-solution.md)
 - [Domain Requirements](./docs/requirements.md)
 
 ## Output Convention
