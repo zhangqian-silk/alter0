@@ -59,6 +59,7 @@ CLI / Web / Cron
 - 领域对象测试覆盖消息字段归一、路由结果和错误编码。
 - 编排应用测试覆盖命令优先、自然语言分发、Cron 回注。
 - 接口测试覆盖 CLI/Web 输入到 `UnifiedMessage` 的转换。
+- Go 单测用例说明按 `docs/testing/unit-test-cases.md` 与各 Go 包路径下的 `TEST_CASES.md` 维护，并按 Runtime、Conversation、Agent、Task、Product、Control 领域路径归档。
 
 ## Conversation & Session Experience
 
@@ -270,6 +271,7 @@ Environment restart
 - LLM 测试覆盖 Provider 创建、更新、缺失密钥恢复、默认项收敛和 OpenRouter 字段。
 - Runtime supervisor 测试覆盖候选版本构建、readyz 切换、失败回滚和 metadata 展示。
 - 文档治理变更至少运行 Markdown 引用与空白检查；代码变更按 TDD 运行对应包或全量测试。
+- Go 单测新增或调整时，同步维护 `docs/testing/unit-test-cases.md` 与对应 Go 包路径下 `TEST_CASES.md` 的覆盖范围和边界说明。
 
 ## 变更模板
 

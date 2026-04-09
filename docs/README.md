@@ -17,6 +17,7 @@
 - [Memory 模块统一说明与需求文档](./memory/persistent-memory-module-spec.md)
 - [研究报告](./research/README.md)
 - [Nginx 反向代理与登录保护](./deployment/nginx.md)
+- [Go 单元测试用例说明](./testing/unit-test-cases.md)
 - [Playwright 浏览器自动化测试](./testing/playwright.md)
 
 ## 维护约定
