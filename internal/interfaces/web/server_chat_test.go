@@ -107,3 +107,20 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 		}
 	}
 }
+
+func TestChatScriptRecoversInterruptedStreams(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		`"msg.stream_interrupted": "stream interrupted"`,
+		`function recoverInterruptedStreamingMessage(message) {`,
+		`function finalizeInterruptedStreamMessage(message, errorText) {`,
+		`return recoverInterruptedStreamingMessage({`,
+		`finalizeInterruptedStreamMessage(assistantMessage, streamResult.error || "unknown");`,
+		`const taskID = String(payload?.task_id || "").trim();`,
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected interrupted stream recovery marker %q", marker)
+		}
+	}
+}

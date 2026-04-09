@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-04-08
+> Last update: 2026-04-09
 
 ## 领域边界
 
@@ -92,6 +92,12 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 已进入 Agent 执行链的请求不因浏览器断连、页面切换、标签页隐藏、SSE 写失败或前端取消而中断后端执行。
 - 当前连接只负责回传；最终结果仍需落到会话历史。
 
+### 断流恢复
+
+- 已收到部分正文后若连接中断，前端保留已到达正文，并把该条消息收敛为失败态与可重试态。
+- 浏览器本地缓存中残留的 `streaming` 消息在页面恢复时必须立即归一：无任务标识的消息转为失败态，带任务标识的消息转为对应任务态并继续轮询。
+- 任务轮询与任务回填仅以真实存在的 `task_id` 为准，不得把空值或占位值误判为后台任务。
+
 ### 渲染策略
 
 - Chat/Agent 消息区使用逐条 patch 与浏览器逐帧合并刷新。
@@ -164,5 +170,6 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Chat 默认进入 `main` Agent，Agent 页面不混入独立入口 Agent 历史。
 - 新建空白会话不重复。
 - SSE 断连后后端 Agent 执行仍完成并写入历史。
+- 页面恢复后，本地缓存中的旧消息不得长期显示 `In Progress`。
 - 移动端软键盘弹起与收起后输入区贴底，无回顶和残留空白。
 - 长会话流式增量不触发整段消息列表重建。

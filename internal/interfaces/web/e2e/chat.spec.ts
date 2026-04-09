@@ -573,4 +573,98 @@ test.describe("Chat composer", () => {
       );
     })).toBe(true);
   });
+
+  test("recovers persisted streaming assistant messages instead of leaving them in progress", async ({ page }) => {
+    const seededAt = Date.now();
+    await page.addInitScript(({ createdAt }) => {
+      const sessionID = "session-stale-stream";
+      window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
+        id: sessionID,
+        title: "排查 Agent 断流",
+        titleAuto: false,
+        titleScore: 8,
+        createdAt,
+        messages: [
+          {
+            id: "message-user-stale-stream",
+            role: "user",
+            text: "继续执行",
+            at: createdAt - 500,
+            status: "done"
+          },
+          {
+            id: "message-assistant-stale-stream",
+            role: "assistant",
+            text: "Partial answer from agent",
+            at: createdAt,
+            status: "streaming"
+          }
+        ],
+        historyBucket: "agent:main",
+        targetType: "model",
+        targetID: "raw-model",
+        targetName: "Raw Model",
+        modelProviderID: "",
+        modelID: "",
+        toolIDs: [],
+        skillIDs: [],
+        mcpIDs: []
+      }]));
+      window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
+        "agent:main": sessionID
+      }));
+    }, { createdAt: seededAt });
+
+    await openChatWorkspace(page);
+
+    const assistantMessage = page.locator(".msg.assistant").last();
+    await expect(assistantMessage.locator(".msg-bubble")).toContainText("Partial answer from agent");
+    await expect(assistantMessage.locator(".status-pill")).toContainText("Failed");
+    await expect(assistantMessage.locator(".status-pill")).not.toContainText("In Progress");
+  });
+
+  test("keeps streamed partial output visible when the stream is interrupted", async ({ page }) => {
+    await page.addInitScript(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input || "");
+        if (!url.includes("/api/agent/messages/stream")) {
+          return originalFetch(input, init);
+        }
+        const encoder = new TextEncoder();
+        const body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`event: start
+data: {"message_id":"message-stream","session_id":"session-stream","channel_id":"web-default","trace_id":"trace-stream"}
+
+`));
+            controller.enqueue(encoder.encode(`event: delta
+data: {"delta":"Partial answer from stream"}
+
+`));
+            controller.close();
+          }
+        });
+        return new Response(body, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream"
+          }
+        });
+      };
+    });
+
+    const { composer } = await openChatWorkspace(page);
+    await composer.input().fill("继续输出");
+    await composer.submitButton().click();
+
+    const assistantMessage = page.locator(".msg.assistant").last();
+    await expect(assistantMessage.locator(".msg-bubble")).toContainText("Partial answer from stream");
+    await expect(assistantMessage.locator(".msg-bubble")).not.toContainText("Stream failed");
+    await expect(assistantMessage.locator(".status-pill")).toContainText("Failed");
+  });
 });

@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-04-08
+> Last update: 2026-04-09
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `agent.execution.react`、`memory.files.injection`、`product.travel.workspace`。
 
@@ -48,6 +48,7 @@
 - 新对话空白会话保持唯一；已有空白会话时，`New Chat` 复用并聚焦该会话。
 - 同一会话内同步请求保持顺序一致，系统提供全局并发上限、排队与超时降级。
 - SSE 流式响应提供 `start / delta / done` 与保活帧；已进入 Agent 执行链的请求不因浏览器断连、页面切换或前端取消而中断后端执行。
+- 流式连接中断时，前端保留已收到的正文并把消息收敛为失败态；本地缓存中残留的 `streaming` 消息在页面恢复后不得长期停留在 `In Progress`。
 - 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新。
 - Web 侧边栏、历史折叠、页面滚动隔离、浅色文档式阅读主题、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
 
@@ -61,6 +62,7 @@
 - Agent 采用 ReAct 执行链，负责理解用户目标、吸收 system prompt / Skill / Memory / Product Context，并把具体执行交给 `codex_exec`。
 - 稳定工具面包含 `codex_exec`、`search_memory`、`read_memory`、`write_memory` 与运行时收口工具 `complete`；允许委派的 Agent 可额外使用 `delegate_agent`。
 - `codex_exec` 通过 stdin 传递最终指令，并携带 `runtime_context`、`product_context`、`product_discovery`、`skill_context`、`mcp_context`、`memory_context` 等结构化上下文字段。
+- Agent / ReAct 走 `openai-completions` 多轮工具调用时，assistant `tool_calls` 与后续 `tool` 结果的 `tool_call_id` 必须保持同轮关联，不能在 Provider 适配层丢失。
 - Agent Profile 支持名称、system prompt、max iterations、Provider/Model、工具白名单、Skills、MCP 与 Memory Files。
 - 每个 Agent 自动拥有私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`，用于沉淀可复用工作模式、输出结构、检查清单与稳定偏好。
 - Memory Files 支持 `USER.md`、`SOUL.md`、当前 Agent 私有 `AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory，并在注入时携带路径、存在状态、可写性、内容与自动召回片段。
@@ -111,6 +113,7 @@
 - Control API 管理 Channel、Capability、Skill、MCP、Agent Profile、Product、Cron Job、Model Provider 与 Environment 配置，并保留 Capability 生命周期审计。
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 OpenAI Compatible 与 OpenRouter Provider，支持 `/responses` 与 `/chat/completions`，支持 base URL、API Key 保留语义、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复。
+- `openai-completions` 适配层必须正确序列化 assistant `tool_calls` 与 tool output，兼容严格校验工具消息配对关系的上游 Provider。
 - Environments 页面支持 Web/Queue、Async Tasks、Terminal、Session Memory、Persistent Memory 与 LLM 运行参数可视化配置、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、候选二进制构建、readyz 探活与失败回滚。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、统一 `HOME=/var/lib/alter0`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。

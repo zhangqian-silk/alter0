@@ -269,6 +269,119 @@ func TestOpenAIClientChatUsesChatCompletionsAPI(t *testing.T) {
 	}
 }
 
+func TestOpenAIClientChatCompletionsPreservesAssistantToolCallsInRequest(t *testing.T) {
+	t.Parallel()
+
+	var requestBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("expected /v1/chat/completions path, got %s", r.URL.Path)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if err := json.Unmarshal(body, &requestBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl_followup",
+			"choices":[
+				{
+					"index":0,
+					"finish_reason":"stop",
+					"message":{"role":"assistant","content":"done"}
+				}
+			],
+			"usage":{"prompt_tokens":8,"completion_tokens":3,"total_tokens":11}
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient(OpenAIClientConfig{
+		APIKey:  "sk-test",
+		APIType: domain.ProviderAPITypeOpenAICompletions,
+		BaseURL: server.URL + "/v1",
+		Model:   "gpt-4o",
+	})
+
+	_, err := client.Chat(context.Background(), domain.ChatRequest{
+		Messages: []domain.Message{
+			{Role: "system", Content: "system prompt"},
+			{Role: "user", Content: "hello"},
+			{
+				Role:    "assistant",
+				Content: "calling tool",
+				ToolCalls: []domain.ToolCall{
+					{ID: "call_1", Name: "lookup", Arguments: `{"q":"hello"}`},
+				},
+			},
+			{Role: "tool", ToolCallID: "call_1", Content: `{"result":"ok"}`},
+		},
+		Tools: []domain.Tool{{
+			Name:        "lookup",
+			Description: "Lookup data",
+			Parameters: map[string]interface{}{
+				"type": "object",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("chat completions request failed: %v", err)
+	}
+
+	messages, ok := requestBody["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %#v", requestBody["messages"])
+	}
+	if len(messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(messages))
+	}
+
+	assistant, ok := messages[2].(map[string]any)
+	if !ok {
+		t.Fatalf("expected assistant message map, got %#v", messages[2])
+	}
+	toolCalls, ok := assistant["tool_calls"].([]any)
+	if !ok || len(toolCalls) != 1 {
+		t.Fatalf("expected one assistant tool call, got %#v", assistant["tool_calls"])
+	}
+	call, ok := toolCalls[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected tool call map, got %#v", toolCalls[0])
+	}
+	if call["id"] != "call_1" {
+		t.Fatalf("expected tool call id call_1, got %#v", call["id"])
+	}
+	if call["type"] != "function" {
+		t.Fatalf("expected tool call type function, got %#v", call["type"])
+	}
+	function, ok := call["function"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected function payload, got %#v", call["function"])
+	}
+	if function["name"] != "lookup" {
+		t.Fatalf("expected function name lookup, got %#v", function["name"])
+	}
+	if function["arguments"] != `{"q":"hello"}` {
+		t.Fatalf("expected function arguments to be preserved, got %#v", function["arguments"])
+	}
+
+	toolMessage, ok := messages[3].(map[string]any)
+	if !ok {
+		t.Fatalf("expected tool message map, got %#v", messages[3])
+	}
+	if toolMessage["tool_call_id"] != "call_1" {
+		t.Fatalf("expected tool_call_id call_1, got %#v", toolMessage["tool_call_id"])
+	}
+}
+
 func TestOpenAIClientChatUsesOpenRouterHeadersAndRoutingOptions(t *testing.T) {
 	t.Parallel()
 
