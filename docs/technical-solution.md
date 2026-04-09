@@ -1,6 +1,6 @@
 # Technical Solution
 
-> Last update: 2026-04-08
+> Last update: 2026-04-09
 
 `alter0` 的技术方案按与需求清单一致的领域模型维护。后续新增或调整需求时，技术方案必须落到对应领域与子域，不再按时间顺序、任务编号或零散专题堆叠。
 
@@ -68,7 +68,7 @@ CLI / Web / Cron
 - `internal/session/domain` 定义会话与消息数据结构。
 - `internal/session/application` 负责会话持久化、历史查询和删除清理。
 - `internal/interfaces/web` 负责 HTTP、SSE、Web 登录、页面路由和前端静态资源。
-- 前端静态资源只处理展示、输入、缓存、轮询和视口状态，不改写后端领域事实。
+- 前端静态资源处理展示、输入、缓存、轮询和视口状态；会话恢复阶段允许把残留 `streaming` 消息归一为失败态或任务态，但不改写后端领域事实。
 
 ### 调用链路
 
@@ -88,6 +88,8 @@ Web input
 - 根路径 `/`、`/chat`、`/login`、`/logout` 是稳定 Web Shell 入口；登录密码启用后页面和 API 共享同一登录态校验。
 - SSE 连接只负责回传，前端断连不得取消已进入 Agent 执行链的后端任务。
 - 会话标题升级、空白会话唯一性、历史折叠和页面滚动状态属于 Conversation 子域。
+- `chat.js` 读取本地缓存时先归一残留 `streaming` 消息；无 `task_id` 的消息转失败态，带真实 `task_id` 的消息恢复到任务轮询链路。
+- 流式连接异常收尾时优先保留已收到正文；只有在没有可用正文时才渲染通用 `stream failed` 文案。
 - 移动端输入区以 `VisualViewport` 为有效视口来源，并按聚焦、键盘和页面可见性降频刷新。
 - Markdown 渲染必须避免原始 HTML 透传；长路径、代码块和 diff 只在内容块内部滚动。
 
@@ -95,7 +97,7 @@ Web input
 
 - Web handler 测试覆盖会话创建、历史隔离、流式事件和取消语义。
 - 前端 E2E 覆盖 Chat、Agent、移动端输入、设置面板和长会话渲染。
-- 回归测试优先覆盖空白会话重复、软键盘残留空白、整段列表重建等高频问题。
+- 回归测试优先覆盖空白会话重复、软键盘残留空白、整段列表重建、断流恢复与残留 `In Progress` 等高频问题。
 
 ## Agent Capability & Memory
 
@@ -124,6 +126,7 @@ Agent message
 - Agent 负责理解与驱动，具体文件、仓库、Shell、页面产出统一通过 `codex_exec`。
 - `codex_exec` 使用 stdin 传递执行指令，结构化上下文按需注入，不通过命令行拼接长上下文。
 - Memory Files 注入需要携带路径、存在状态、可写性、内容快照和自动召回片段。
+- `internal/llm/infrastructure` 的 `openai-completions` 适配层需要把 assistant 历史消息中的 `tool_calls` 一并序列化，并与后续 `tool` 消息的 `tool_call_id` 保持稳定配对；否则 Provider 会把该轮请求判定为非法工具消息序列。
 - 私有 `AGENTS.md`、私有 Skill、Agent Session Profile 分别承担协作边界、可复用打法、会话画像职责，不混写一次性任务细节。
 - `search_memory`、`read_memory`、`write_memory` 只操作已解析进 `memory_context` 的记忆文件。
 - Agent Memory Web 聚合接口只读返回长期记忆、天级记忆、强制上下文与说明文档；任务摘要刷新走 Task summary 子域接口。

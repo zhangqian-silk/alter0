@@ -204,6 +204,7 @@ const I18N = {
     "msg.received_empty": "Received request, but no output content.",
     "msg.stream_error": "Stream connection error",
     "msg.stream_failed": "Stream failed: {error}, please retry.",
+    "msg.stream_interrupted": "stream interrupted",
     "msg.request_failed": "Request failed: {error}, please retry.",
     "msg.network_error": "Network error: {error}, please retry.",
     "session.new_title": "New Chat",
@@ -789,6 +790,7 @@ const I18N = {
     "msg.received_empty": "已收到请求，但没有输出内容。",
     "msg.stream_error": "流式连接错误",
     "msg.stream_failed": "流式请求失败：{error}，请重试。",
+    "msg.stream_interrupted": "连接中断",
     "msg.request_failed": "请求失败：{error}，请重试。",
     "msg.network_error": "网络错误：{error}，请重试。",
     "session.new_title": "新对话",
@@ -3372,7 +3374,7 @@ function normalizeStoredMessage(item, fallbackAt) {
   const role = item.role === "assistant" ? "assistant" : "user";
   const at = Number.isFinite(item.at) ? item.at : fallbackAt;
   const status = typeof item.status === "string" && item.status ? item.status : "done";
-  return {
+  return recoverInterruptedStreamingMessage({
     id: typeof item.id === "string" && item.id ? item.id : makeID(),
     role,
     text,
@@ -3389,7 +3391,7 @@ function normalizeStoredMessage(item, fallbackAt) {
     task_result_for: typeof item.task_result_for === "string" ? item.task_result_for : "",
     task_completed_at: Number.isFinite(item.task_completed_at) ? item.task_completed_at : 0,
     agent_process_collapsed: typeof item.agent_process_collapsed === "boolean" ? item.agent_process_collapsed : undefined
-  };
+  });
 }
 
 function normalizeStoredSession(item, mode = routeConversationMode()) {
@@ -4614,7 +4616,7 @@ function messageSourceLabel(source) {
 }
 
 function normalizeTaskStatus(status) {
-  return normalizeText(status).toLowerCase();
+  return String(status || "").trim().toLowerCase();
 }
 
 function isTerminalTaskStatus(status) {
@@ -4622,11 +4624,42 @@ function isTerminalTaskStatus(status) {
   return normalized === "success" || normalized === "failed" || normalized === "canceled";
 }
 
+function hasMeaningfulAssistantMessageText(text) {
+  const normalized = String(text || "").trim();
+  return normalized !== "" && normalized !== String(t("msg.processing") || "").trim();
+}
+
+function recoverInterruptedStreamingMessage(message) {
+  if (!message || normalizeText(message.status) !== "streaming") {
+    return message;
+  }
+
+  const taskID = String(message.task_id || "").trim();
+  const taskStatus = normalizeTaskStatus(message.task_status || "queued");
+  if (taskID) {
+    message.task_id = taskID;
+    message.task_status = taskStatus;
+    message.task_pending = !isTerminalTaskStatus(taskStatus);
+    message.status = taskStatus || "queued";
+    message.error = taskStatus === "failed" || taskStatus === "canceled";
+    message.retryable = taskStatus === "failed";
+    return message;
+  }
+
+  message.status = "error";
+  message.error = true;
+  message.retryable = true;
+  if (!hasMeaningfulAssistantMessageText(message.text)) {
+    message.text = t("msg.stream_failed", { error: t("msg.stream_interrupted") });
+  }
+  return message;
+}
+
 function applyAsyncTaskStateToMessage(message, payload = {}) {
   if (!message) {
     return;
   }
-  const taskID = normalizeText(payload.task_id || payload.taskID || message.task_id);
+  const taskID = String(payload.task_id || payload.taskID || message.task_id || "").trim();
   if (!taskID) {
     return;
   }
@@ -4637,6 +4670,39 @@ function applyAsyncTaskStateToMessage(message, payload = {}) {
     task_pending: !isTerminalTaskStatus(taskStatus),
     status: taskStatus || message.status || "done",
     error: taskStatus === "failed" || taskStatus === "canceled" ? Boolean(message.error) : false
+  });
+}
+
+function finalizeInterruptedStreamMessage(message, errorText) {
+  if (!message) {
+    return;
+  }
+
+  const taskID = String(message.task_id || "").trim();
+  const taskStatus = normalizeTaskStatus(message.task_status);
+  if (taskID && taskStatus && !isTerminalTaskStatus(taskStatus)) {
+    updateMessage(message, {
+      task_id: taskID,
+      task_status: taskStatus,
+      task_pending: true,
+      status: taskStatus,
+      error: false,
+      retryable: false,
+      at: Date.now()
+    });
+    ensureChatTaskPolling();
+    return;
+  }
+
+  const failure = normalizeText(errorText) || t("msg.stream_interrupted");
+  updateMessage(message, {
+    text: hasMeaningfulAssistantMessageText(message.text)
+      ? message.text
+      : t("msg.stream_failed", { error: failure }),
+    error: true,
+    status: "error",
+    retryable: true,
+    at: Date.now()
   });
 }
 
@@ -4671,7 +4737,7 @@ function deliverAsyncTaskResult(session, message, task) {
   if (!session || !message || !task) {
     return;
   }
-  const taskID = normalizeText(task.id || message.task_id);
+  const taskID = String(task.id || message.task_id || "").trim();
   if (!taskID || message.task_result_delivered) {
     return;
   }
@@ -4705,7 +4771,7 @@ function collectPendingTaskBindings() {
   for (const session of storedConversationSessions()) {
     const messages = Array.isArray(session?.messages) ? session.messages : [];
     for (const message of messages) {
-      const taskID = normalizeText(message?.task_id);
+      const taskID = String(message?.task_id || "").trim();
       if (!taskID || message?.task_result_delivered) {
         continue;
       }
@@ -4783,7 +4849,7 @@ function ensureChatTaskPolling() {
 }
 
 function extractAsyncTaskPayload(payload) {
-  const taskID = normalizeText(payload?.task_id);
+  const taskID = String(payload?.task_id || "").trim();
   if (!taskID) {
     return null;
   }
@@ -5331,13 +5397,7 @@ async function sendMessage(rawContent) {
     }
 
     if (assistantMessage.status !== "error") {
-      updateMessage(assistantMessage, {
-        text: t("msg.stream_failed", { error: streamResult.error || "unknown" }),
-        error: true,
-        status: "error",
-        retryable: true,
-        at: Date.now()
-      });
+      finalizeInterruptedStreamMessage(assistantMessage, streamResult.error || "unknown");
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_network_error";

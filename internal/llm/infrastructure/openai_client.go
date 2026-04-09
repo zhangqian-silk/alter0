@@ -354,7 +354,28 @@ func (c *OpenAIClient) buildChatCompletionParams(req domain.ChatRequest) (openai
 		case "user":
 			messages = append(messages, openai.UserMessage(msg.Content))
 		case "assistant":
-			messages = append(messages, openai.AssistantMessage(msg.Content))
+			assistant := openai.ChatCompletionAssistantMessageParam{}
+			if msg.Content != "" {
+				assistant.Content.OfString = openai.String(msg.Content)
+			}
+			if len(msg.ToolCalls) > 0 {
+				assistant.ToolCalls = make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(msg.ToolCalls))
+				for _, toolCall := range msg.ToolCalls {
+					if toolCall.ID == "" || toolCall.Name == "" {
+						continue
+					}
+					assistant.ToolCalls = append(assistant.ToolCalls, openai.ChatCompletionMessageToolCallUnionParam{
+						OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+							ID: toolCall.ID,
+							Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+								Name:      toolCall.Name,
+								Arguments: toolCall.Arguments,
+							},
+						},
+					})
+				}
+			}
+			messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistant})
 		case "tool":
 			messages = append(messages, openai.ToolMessage(msg.Content, msg.ToolCallID))
 		}
