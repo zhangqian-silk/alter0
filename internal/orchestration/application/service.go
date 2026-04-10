@@ -32,7 +32,7 @@ type streamExecutionPort interface {
 	ExecuteNaturalLanguageStream(
 		ctx context.Context,
 		msg shareddomain.UnifiedMessage,
-		onDelta func(string) error,
+		onEvent func(shareddomain.StreamEvent) error,
 	) (shareddomain.ExecutionResult, error)
 }
 
@@ -186,15 +186,15 @@ func (s *Service) Classify(content string) orchdomain.Intent {
 func (s *Service) HandleStream(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
-	onDelta func(string) error,
+	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
-	return s.handle(ctx, msg, onDelta)
+	return s.handle(ctx, msg, onEvent)
 }
 
 func (s *Service) handle(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
-	onDelta func(string) error,
+	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
 	startedAt := time.Now()
 	terminalSessionOnly := isTerminalSessionContextOnly(msg.Metadata)
@@ -236,8 +236,12 @@ func (s *Service) handle(
 
 		result.Output = cmdResult.Output
 		result.Metadata = cmdResult.Metadata
-		if onDelta != nil && strings.TrimSpace(result.Output) != "" {
-			if err := onDelta(result.Output); err != nil {
+		result.ProcessSteps = append([]shareddomain.ProcessStep(nil), cmdResult.ProcessSteps...)
+		if onEvent != nil && strings.TrimSpace(result.Output) != "" {
+			if err := onEvent(shareddomain.StreamEvent{
+				Type: shareddomain.StreamEventTypeOutput,
+				Text: result.Output,
+			}); err != nil {
 				s.onError(msg, result.Route, startedAt, err)
 				result.ErrorCode = "stream_write_failed"
 				return result, err
@@ -304,13 +308,16 @@ func (s *Service) handle(
 		}
 		var nlResult shareddomain.ExecutionResult
 		var err error
-		if onDelta != nil {
+		if onEvent != nil {
 			if streamExecutor, ok := s.executor.(streamExecutionPort); ok {
-				nlResult, err = streamExecutor.ExecuteNaturalLanguageStream(ctx, execMessage, onDelta)
+				nlResult, err = streamExecutor.ExecuteNaturalLanguageStream(ctx, execMessage, onEvent)
 			} else {
 				nlResult, err = s.executor.ExecuteNaturalLanguage(ctx, execMessage)
 				if err == nil && strings.TrimSpace(nlResult.Output) != "" {
-					if streamErr := onDelta(nlResult.Output); streamErr != nil {
+					if streamErr := onEvent(shareddomain.StreamEvent{
+						Type: shareddomain.StreamEventTypeOutput,
+						Text: nlResult.Output,
+					}); streamErr != nil {
 						s.onError(msg, result.Route, startedAt, streamErr)
 						result.ErrorCode = "stream_write_failed"
 						return result, streamErr
@@ -327,6 +334,7 @@ func (s *Service) handle(
 		}
 
 		result.Output = nlResult.Output
+		result.ProcessSteps = append([]shareddomain.ProcessStep(nil), nlResult.ProcessSteps...)
 		if terminalSessionOnly {
 			result.Metadata = mergeStringMap(result.Metadata, terminalSessionOnlyMetadata())
 		}

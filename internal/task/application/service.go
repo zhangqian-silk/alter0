@@ -1235,9 +1235,10 @@ func (s *Service) appendSummaryToSession(task taskdomain.Task) {
 		Content:   task.Summary,
 		Timestamp: time.Now().UTC(),
 		RouteResult: sessiondomain.RouteResult{
-			Route:     task.Result.Route,
-			ErrorCode: task.ErrorCode,
-			TaskID:    task.ID,
+			Route:        task.Result.Route,
+			ErrorCode:    task.ErrorCode,
+			TaskID:       task.ID,
+			ProcessSteps: append([]shareddomain.ProcessStep(nil), task.Result.ProcessSteps...),
 		},
 	}
 	if err := s.recorder.Append(record); err != nil && s.logger != nil {
@@ -1853,10 +1854,11 @@ func looksLikeCodeLine(line string) bool {
 
 func toTaskResult(result shareddomain.OrchestrationResult) taskdomain.TaskResult {
 	return taskdomain.TaskResult{
-		Route:     result.Route,
-		Output:    result.Output,
-		ErrorCode: result.ErrorCode,
-		Metadata:  cloneStringMap(result.Metadata),
+		Route:        result.Route,
+		Output:       result.Output,
+		ErrorCode:    result.ErrorCode,
+		Metadata:     cloneStringMap(result.Metadata),
+		ProcessSteps: append([]shareddomain.ProcessStep(nil), result.ProcessSteps...),
 	}
 }
 
@@ -2083,10 +2085,11 @@ func cloneTask(task taskdomain.Task) taskdomain.Task {
 		Tags:       append([]string(nil), task.TaskSummary.Tags...),
 	}
 	out.Result = taskdomain.TaskResult{
-		Route:     task.Result.Route,
-		Output:    task.Result.Output,
-		ErrorCode: task.Result.ErrorCode,
-		Metadata:  cloneStringMap(task.Result.Metadata),
+		Route:        task.Result.Route,
+		Output:       task.Result.Output,
+		ErrorCode:    task.Result.ErrorCode,
+		Metadata:     cloneStringMap(task.Result.Metadata),
+		ProcessSteps: append([]shareddomain.ProcessStep(nil), task.Result.ProcessSteps...),
 	}
 	if len(task.Logs) == 0 {
 		out.Logs = []taskdomain.TaskLog{}

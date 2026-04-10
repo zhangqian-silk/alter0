@@ -51,10 +51,11 @@ type TaskArtifact struct {
 }
 
 type TaskResult struct {
-	Route     shareddomain.Route `json:"route,omitempty"`
-	Output    string             `json:"output,omitempty"`
-	ErrorCode string             `json:"error_code,omitempty"`
-	Metadata  map[string]string  `json:"metadata,omitempty"`
+	Route        shareddomain.Route         `json:"route,omitempty"`
+	Output       string                     `json:"output,omitempty"`
+	ErrorCode    string                     `json:"error_code,omitempty"`
+	Metadata     map[string]string          `json:"metadata,omitempty"`
+	ProcessSteps []shareddomain.ProcessStep `json:"process_steps,omitempty"`
 }
 
 type TaskSummary struct {

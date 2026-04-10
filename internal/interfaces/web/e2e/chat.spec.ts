@@ -748,4 +748,314 @@ data: {"delta":"Partial answer from stream"}
     await expect(assistantMessage.locator(".msg-bubble")).not.toContainText("Stream failed");
     await expect(assistantMessage.locator(".status-pill")).toContainText("Failed");
   });
+
+  test("shows structured process steps before the agent stream is done", async ({ page }) => {
+    await page.addInitScript(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input || "");
+        if (!url.includes("/api/agent/messages/stream")) {
+          return originalFetch(input, init);
+        }
+        const encoder = new TextEncoder();
+        const body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`event: start
+data: {"message_id":"message-process-live","session_id":"session-process-live","channel_id":"web-default","trace_id":"trace-process-live"}
+
+`));
+            controller.enqueue(encoder.encode(`event: process
+data: {"process_step":{"id":"step-1","kind":"action","title":"codex_exec","status":"running"}}
+
+`));
+            window.setTimeout(() => {
+              controller.enqueue(encoder.encode(`event: done
+data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"codex_exec","detail":"检查仓库状态","status":"completed"}]}}
+
+`));
+              controller.close();
+            }, 300);
+          }
+        });
+        return new Response(body, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream"
+          }
+        });
+      };
+    });
+
+    const { composer } = await openChatWorkspace(page);
+    await composer.input().fill("帮我检查仓库状态");
+    await composer.submitButton().click();
+
+    const assistantMessage = page.locator(".msg.assistant").last();
+    await expect(assistantMessage.locator(".agent-process-shell")).toBeVisible();
+    await expect(assistantMessage.locator(".agent-process-step-title")).toContainText("codex_exec");
+    await expect(assistantMessage.locator(".assistant-message-body")).toHaveCount(0);
+
+    await expect(assistantMessage.locator(".assistant-message-body")).toContainText("任务已完成");
+  });
+
+  test("suggests refresh after agent stream load failure and restores the saved reply after reload", async ({ page }) => {
+    const seededAt = Date.now();
+    await page.addInitScript(({ createdAt }) => {
+      const sessionID = "session-refresh-recover";
+      const originalFetch = window.fetch.bind(window);
+      if (!window.localStorage.getItem("alter0.web.sessions.v3")) {
+        window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
+          id: sessionID,
+          title: "断流后刷新恢复",
+          titleAuto: false,
+          titleScore: 8,
+          createdAt,
+          messages: [],
+          historyBucket: "agent:main",
+          targetType: "agent",
+          targetID: "main",
+          targetName: "Alter0",
+          modelProviderID: "",
+          modelID: "",
+          toolIDs: [],
+          skillIDs: [],
+          mcpIDs: []
+        }]));
+      }
+      if (!window.localStorage.getItem("alter0.web.session.active.v1")) {
+        window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
+          "agent:main": sessionID
+        }));
+      }
+      window.fetch = async (input, init) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input || "");
+        if (url.includes("/api/agent/messages/stream")) {
+          const encoder = new TextEncoder();
+          let sentStart = false;
+          const body = new ReadableStream({
+            pull(controller) {
+              if (!sentStart) {
+                sentStart = true;
+                controller.enqueue(encoder.encode(`event: start
+data: {"message_id":"message-stream-refresh","session_id":"session-refresh-recover","channel_id":"web-default","trace_id":"trace-refresh"}
+
+`));
+                return;
+              }
+              controller.error(new TypeError("Load failed"));
+            }
+          });
+          return new Response(body, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream"
+            }
+          });
+        }
+        if (url.includes("/api/sessions/session-refresh-recover/messages")) {
+          return new Response(JSON.stringify({
+            items: [
+              {
+                message_id: "message-user-refresh",
+                session_id: sessionID,
+                role: "user",
+                content: "帮我确认仓库状态",
+                timestamp: new Date(createdAt + 1000).toISOString(),
+                route_result: {
+                  route: "nl"
+                },
+                source: {
+                  trigger_type: "user",
+                  channel_type: "web",
+                  channel_id: "web-default",
+                  agent_id: "main",
+                  agent_name: "Alter0"
+                }
+              },
+              {
+                message_id: "message-assistant-refresh",
+                session_id: sessionID,
+                role: "assistant",
+                content: "仓库已经同步到最新提交。",
+                timestamp: new Date(createdAt + 2000).toISOString(),
+                route_result: {
+                  route: "nl"
+                },
+                source: {
+                  trigger_type: "user",
+                  channel_type: "web",
+                  channel_id: "web-default",
+                  agent_id: "main",
+                  agent_name: "Alter0"
+                }
+              }
+            ],
+            pagination: {
+              page: 1,
+              page_size: 200,
+              total: 2,
+              has_next: false
+            }
+          }), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          });
+        }
+        return originalFetch(input, init);
+      };
+    }, { createdAt: seededAt });
+
+    const { composer } = await openChatWorkspace(page);
+    await composer.input().fill("帮我确认仓库状态");
+    await composer.submitButton().click();
+
+    const failedMessage = page.locator(".msg.assistant").last();
+    await expect(failedMessage.locator(".msg-bubble")).toContainText("Load failed");
+    await expect(failedMessage.locator(".msg-bubble")).toContainText("Refresh");
+
+    await reloadChatWorkspace(page);
+    const recoveredMessage = page.locator(".msg.assistant").last();
+    await expect(recoveredMessage.locator(".msg-bubble")).toContainText("仓库已经同步到最新提交。");
+    await expect(recoveredMessage.locator(".msg-bubble")).not.toContainText("Load failed");
+    await expect(recoveredMessage.locator(".status-pill")).toContainText("Done");
+  });
+
+  test("renders structured agent process steps from stream results and persisted session history", async ({ page }) => {
+    const seededAt = Date.now();
+    await page.addInitScript(({ createdAt }) => {
+      const sessionID = "session-agent-steps";
+      const originalFetch = window.fetch.bind(window);
+      if (!window.localStorage.getItem("alter0.web.sessions.v3")) {
+        window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
+          id: sessionID,
+          title: "结构化步骤",
+          titleAuto: false,
+          titleScore: 8,
+          createdAt,
+          messages: [],
+          historyBucket: "agent:main",
+          targetType: "agent",
+          targetID: "main",
+          targetName: "Alter0",
+          modelProviderID: "",
+          modelID: "",
+          toolIDs: [],
+          skillIDs: [],
+          mcpIDs: []
+        }]));
+      }
+      if (!window.localStorage.getItem("alter0.web.session.active.v1")) {
+        window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
+          "agent:main": sessionID
+        }));
+      }
+      window.fetch = async (input, init) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input || "");
+        if (url.includes("/api/agent/messages/stream")) {
+          const encoder = new TextEncoder();
+          const body = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(`event: start
+data: {"message_id":"message-stream-steps","session_id":"session-agent-steps","channel_id":"web-default","trace_id":"trace-steps"}
+
+`));
+              controller.enqueue(encoder.encode(`event: delta
+data: {"delta":"[agent] action: codex_exec\\n"}
+
+`));
+              controller.enqueue(encoder.encode(`event: done
+data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind":"action","title":"codex_exec","detail":"检查仓库状态","status":"completed"}]}}
+
+`));
+              controller.close();
+            }
+          });
+          return new Response(body, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream"
+            }
+          });
+        }
+        if (url.includes("/api/sessions/session-agent-steps/messages")) {
+          return new Response(JSON.stringify({
+            items: [
+              {
+                message_id: "message-user-steps",
+                session_id: sessionID,
+                role: "user",
+                content: "帮我检查仓库状态",
+                timestamp: new Date(createdAt + 1000).toISOString(),
+                route_result: {
+                  route: "nl"
+                }
+              },
+              {
+                message_id: "message-assistant-steps",
+                session_id: sessionID,
+                role: "assistant",
+                content: "任务已完成",
+                timestamp: new Date(createdAt + 2000).toISOString(),
+                route_result: {
+                  route: "nl",
+                  process_steps: [
+                    {
+                      kind: "action",
+                      title: "codex_exec",
+                      detail: "检查仓库状态",
+                      status: "completed"
+                    }
+                  ]
+                }
+              }
+            ],
+            pagination: {
+              page: 1,
+              page_size: 200,
+              total: 2,
+              has_next: false
+            }
+          }), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          });
+        }
+        return originalFetch(input, init);
+      };
+    }, { createdAt: seededAt });
+
+    const { composer } = await openChatWorkspace(page);
+    await composer.input().fill("帮我检查仓库状态");
+    await composer.submitButton().click();
+
+    const streamedMessage = page.locator(".msg.assistant").last();
+    await expect(streamedMessage.locator(".agent-process-shell")).toBeVisible();
+    await expect(streamedMessage.locator(".agent-process-step-title")).toContainText("codex_exec");
+    await expect(streamedMessage.locator(".agent-process-step-body")).toContainText("检查仓库状态");
+    await expect(streamedMessage.locator(".assistant-message-body")).toContainText("任务已完成");
+    await expect(streamedMessage.locator(".assistant-message-body")).not.toContainText("[agent] action:");
+
+    await reloadChatWorkspace(page);
+
+    const restoredMessage = page.locator(".msg.assistant").last();
+    await expect(restoredMessage.locator(".agent-process-shell")).toBeVisible();
+    await expect(restoredMessage.locator(".agent-process-step-title")).toContainText("codex_exec");
+    await expect(restoredMessage.locator(".assistant-message-body")).toContainText("任务已完成");
+  });
 });

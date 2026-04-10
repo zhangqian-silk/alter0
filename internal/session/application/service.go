@@ -444,9 +444,10 @@ func cloneRecord(record sessiondomain.MessageRecord) sessiondomain.MessageRecord
 		Content:   record.Content,
 		Timestamp: record.Timestamp,
 		RouteResult: sessiondomain.RouteResult{
-			Route:     record.RouteResult.Route,
-			ErrorCode: record.RouteResult.ErrorCode,
-			TaskID:    record.RouteResult.TaskID,
+			Route:        record.RouteResult.Route,
+			ErrorCode:    record.RouteResult.ErrorCode,
+			TaskID:       record.RouteResult.TaskID,
+			ProcessSteps: append([]shareddomain.ProcessStep(nil), record.RouteResult.ProcessSteps...),
 		},
 		Source: sessiondomain.MessageSource{
 			TriggerType:   record.Source.TriggerType,

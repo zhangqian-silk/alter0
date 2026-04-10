@@ -72,27 +72,42 @@ func (s *Service) ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.U
 		return shareddomain.ExecutionResult{}, err
 	}
 	return shareddomain.ExecutionResult{
-		Output:   output,
-		Metadata: normalizeResultMetadata(resultMetadata),
+		Output:       output,
+		Metadata:     normalizeResultMetadata(resultMetadata),
+		ProcessSteps: parseProcessStepsMetadata(resultMetadata),
 	}, nil
 }
 
 func (s *Service) ExecuteNaturalLanguageStream(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
-	onDelta func(string) error,
+	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.ExecutionResult, error) {
 	streamHandler := func(event execdomain.StreamEvent) error {
-		if onDelta == nil {
+		if onEvent == nil {
 			return nil
 		}
-		if event.Type != execdomain.StreamEventTypeOutput {
+		switch event.Type {
+		case execdomain.StreamEventTypeOutput:
+			if strings.TrimSpace(event.Text) == "" {
+				return nil
+			}
+			return onEvent(shareddomain.StreamEvent{
+				Type: shareddomain.StreamEventTypeOutput,
+				Text: event.Text,
+			})
+		case execdomain.StreamEventTypeProcess:
+			if event.ProcessStep == nil {
+				return nil
+			}
+			step := *event.ProcessStep
+			return onEvent(shareddomain.StreamEvent{
+				Type:        shareddomain.StreamEventTypeProcess,
+				ProcessStep: &step,
+			})
+		default:
 			return nil
 		}
-		if strings.TrimSpace(event.Text) == "" {
-			return nil
-		}
-		return onDelta(event.Text)
 	}
 
 	output, resultMetadata, err := s.executeNaturalLanguage(ctx, msg, streamHandler)
@@ -100,8 +115,9 @@ func (s *Service) ExecuteNaturalLanguageStream(
 		return shareddomain.ExecutionResult{}, err
 	}
 	return shareddomain.ExecutionResult{
-		Output:   output,
-		Metadata: normalizeResultMetadata(resultMetadata),
+		Output:       output,
+		Metadata:     normalizeResultMetadata(resultMetadata),
+		ProcessSteps: parseProcessStepsMetadata(resultMetadata),
 	}, nil
 }
 
@@ -131,6 +147,7 @@ func (s *Service) executeNaturalLanguage(
 			if err != nil {
 				return "", nil, err
 			}
+			attachAgentProcessMetadata(metadata, resultMetadata)
 			attachExecutionSourceMetadata(metadata, resultMetadata)
 			return output, resultMetadata, nil
 		}
@@ -140,6 +157,7 @@ func (s *Service) executeNaturalLanguage(
 	if err != nil {
 		return "", nil, err
 	}
+	attachAgentProcessMetadata(metadata, resultMetadata)
 	attachExecutionSourceMetadata(metadata, resultMetadata)
 	if streamHandler != nil && strings.TrimSpace(output) != "" {
 		if err := streamHandler(execdomain.StreamEvent{
@@ -152,12 +170,35 @@ func (s *Service) executeNaturalLanguage(
 	return output, resultMetadata, nil
 }
 
+func attachAgentProcessMetadata(metadata map[string]string, resultMetadata map[string]string) {
+	raw := strings.TrimSpace(metadata[execdomain.AgentProcessStepsMetadataKey])
+	if raw == "" {
+		return
+	}
+	resultMetadata[execdomain.AgentProcessStepsMetadataKey] = raw
+}
+
 func attachExecutionSourceMetadata(metadata map[string]string, resultMetadata map[string]string) {
 	source := strings.TrimSpace(metadata[execdomain.ExecutionSourceMetadataKey])
 	if source == "" {
 		return
 	}
 	resultMetadata[execdomain.ExecutionSourceMetadataKey] = source
+}
+
+func parseProcessStepsMetadata(metadata map[string]string) []shareddomain.ProcessStep {
+	raw := strings.TrimSpace(metadata[execdomain.AgentProcessStepsMetadataKey])
+	if raw == "" {
+		return nil
+	}
+	var steps []shareddomain.ProcessStep
+	if err := json.Unmarshal([]byte(raw), &steps); err != nil {
+		return nil
+	}
+	if len(steps) == 0 {
+		return nil
+	}
+	return steps
 }
 
 func (s *Service) resolveSkillContext(

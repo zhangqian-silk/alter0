@@ -52,11 +52,14 @@ type blockingTaskStreamOrchestrator struct {
 func (s *blockingTaskStreamOrchestrator) HandleStream(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
-	onDelta func(string) error,
+	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
 	s.lastMessage = msg
-	if strings.TrimSpace(s.firstDelta) != "" && onDelta != nil {
-		if err := onDelta(s.firstDelta); err != nil {
+	if strings.TrimSpace(s.firstDelta) != "" && onEvent != nil {
+		if err := onEvent(shareddomain.StreamEvent{
+			Type: shareddomain.StreamEventTypeOutput,
+			Text: s.firstDelta,
+		}); err != nil {
 			return shareddomain.OrchestrationResult{}, err
 		}
 	}

@@ -178,6 +178,56 @@ func TestSessionPersistenceServicePersistsTaskIDFromMetadata(t *testing.T) {
 	}
 }
 
+func TestSessionPersistenceServicePersistsStructuredProcessSteps(t *testing.T) {
+	downstream := &stubPersistenceDownstream{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-steps",
+			SessionID: "s-steps",
+			Route:     shareddomain.RouteNL,
+			Output:    "任务已完成",
+			ProcessSteps: []shareddomain.ProcessStep{
+				{
+					Kind:   "action",
+					Title:  "codex_exec",
+					Detail: "检查仓库状态",
+					Status: "completed",
+				},
+			},
+		},
+	}
+	recorder := &spySessionRecorder{}
+	service := &SessionPersistenceService{
+		downstream:  downstream,
+		recorder:    recorder,
+		idGenerator: &fixedIDGenerator{nextID: "assistant-steps"},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:   "msg-steps",
+		SessionID:   "s-steps",
+		Content:     "执行一次结构化任务",
+		ReceivedAt:  time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC),
+		TriggerType: shareddomain.TriggerTypeUser,
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TraceID:     "trace-steps",
+	}
+
+	if _, err := service.Handle(context.Background(), msg); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+	if len(recorder.records) != 2 {
+		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
+	}
+	if len(recorder.records[1].RouteResult.ProcessSteps) != 1 {
+		t.Fatalf("expected assistant process steps persisted, got %+v", recorder.records[1].RouteResult.ProcessSteps)
+	}
+	if recorder.records[1].RouteResult.ProcessSteps[0].Title != "codex_exec" {
+		t.Fatalf("expected persisted step title codex_exec, got %+v", recorder.records[1].RouteResult.ProcessSteps[0])
+	}
+}
+
 func TestSessionPersistenceServicePersistsCronSourceMetadata(t *testing.T) {
 	downstream := &stubPersistenceDownstream{
 		result: shareddomain.OrchestrationResult{

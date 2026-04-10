@@ -205,6 +205,7 @@ const I18N = {
     "msg.received_empty": "Received request, but no output content.",
     "msg.stream_error": "Stream connection error",
     "msg.stream_failed": "Stream failed: {error}, please retry.",
+    "msg.stream_failed_refresh": "Stream failed: {error}. Refresh to load the latest saved reply, or retry.",
     "msg.stream_interrupted": "stream interrupted",
     "msg.request_failed": "Request failed: {error}, please retry.",
     "msg.network_error": "Network error: {error}, please retry.",
@@ -791,6 +792,7 @@ const I18N = {
     "msg.received_empty": "已收到请求，但没有输出内容。",
     "msg.stream_error": "流式连接错误",
     "msg.stream_failed": "流式请求失败：{error}，请重试。",
+    "msg.stream_failed_refresh": "流式请求失败：{error}。请刷新页面以加载最新已保存回复，或直接重试。",
     "msg.stream_interrupted": "连接中断",
     "msg.request_failed": "请求失败：{error}，请重试。",
     "msg.network_error": "网络错误：{error}，请重试。",
@@ -3467,7 +3469,8 @@ function normalizeStoredMessage(item, fallbackAt) {
     return null;
   }
   const text = typeof item.text === "string" ? item.text : "";
-  if (!text) {
+  const processSteps = normalizeMessageProcessSteps(item.process_steps);
+  if (!text && !processSteps.length) {
     return null;
   }
   const role = item.role === "assistant" ? "assistant" : "user";
@@ -3489,6 +3492,7 @@ function normalizeStoredMessage(item, fallbackAt) {
     task_result_delivered: Boolean(item.task_result_delivered),
     task_result_for: typeof item.task_result_for === "string" ? item.task_result_for : "",
     task_completed_at: Number.isFinite(item.task_completed_at) ? item.task_completed_at : 0,
+    process_steps: processSteps,
     agent_process_collapsed: typeof item.agent_process_collapsed === "boolean" ? item.agent_process_collapsed : undefined
   });
 }
@@ -4680,6 +4684,7 @@ function appendMessageToSession(session, role, text, options = {}) {
     task_result_delivered: Boolean(options.task_result_delivered),
     task_result_for: typeof options.task_result_for === "string" ? options.task_result_for : "",
     task_completed_at: Number.isFinite(options.task_completed_at) ? options.task_completed_at : 0,
+    process_steps: normalizeMessageProcessSteps(options.process_steps),
     agent_process_collapsed: typeof options.agent_process_collapsed === "boolean" ? options.agent_process_collapsed : undefined
   };
   session.messages.push(message);
@@ -4764,6 +4769,11 @@ function hasMeaningfulAssistantMessageText(text) {
   return normalized !== "" && normalized !== String(t("msg.processing") || "").trim();
 }
 
+function streamFailureText(errorText) {
+  const failure = normalizeText(errorText) || t("msg.stream_interrupted");
+  return t("msg.stream_failed_refresh", { error: failure });
+}
+
 function recoverInterruptedStreamingMessage(message) {
   if (!message || normalizeText(message.status) !== "streaming") {
     return message;
@@ -4785,7 +4795,7 @@ function recoverInterruptedStreamingMessage(message) {
   message.error = true;
   message.retryable = true;
   if (!hasMeaningfulAssistantMessageText(message.text)) {
-    message.text = t("msg.stream_failed", { error: t("msg.stream_interrupted") });
+    message.text = streamFailureText(t("msg.stream_interrupted"));
   }
   return message;
 }
@@ -4833,7 +4843,7 @@ function finalizeInterruptedStreamMessage(message, errorText) {
   updateMessage(message, {
     text: hasMeaningfulAssistantMessageText(message.text)
       ? message.text
-      : t("msg.stream_failed", { error: failure }),
+      : streamFailureText(failure),
     error: true,
     status: "error",
     retryable: true,
@@ -4894,6 +4904,7 @@ function deliverAsyncTaskResult(session, message, task) {
       error: taskStatus === "failed" || taskStatus === "canceled",
       status: taskStatus === "failed" || taskStatus === "canceled" ? "error" : "done",
       retryable: taskStatus === "failed",
+      process_steps: Array.isArray(task?.result?.process_steps) ? task.result.process_steps : [],
       task_result_for: taskID,
       task_completed_at: Date.now()
     });
@@ -5028,6 +5039,96 @@ function renderMessages(options = {}) {
   }
 }
 
+function sessionNeedsServerRecovery(session) {
+  if (!session || !Array.isArray(session.messages)) {
+    return false;
+  }
+  return session.messages.some((message) => {
+    if (!message || message.role !== "assistant") {
+      return false;
+    }
+    const status = normalizeText(message.status).toLowerCase();
+    return Boolean(message.error) || Boolean(message.retryable) || status === "streaming";
+  });
+}
+
+function normalizeServerMessageRecord(item, fallbackAt) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const text = typeof item.content === "string" ? item.content : "";
+  const routeResult = item.route_result && typeof item.route_result === "object" ? item.route_result : {};
+  const processSteps = normalizeMessageProcessSteps(routeResult.process_steps);
+  if (!text && !processSteps.length) {
+    return null;
+  }
+  const timestamp = Date.parse(String(item.timestamp || ""));
+  const role = item.role === "assistant" ? "assistant" : "user";
+  const taskID = typeof routeResult.task_id === "string" ? routeResult.task_id : "";
+  const errorCode = typeof routeResult.error_code === "string" ? routeResult.error_code : "";
+  const taskStatus = taskID && !errorCode ? "queued" : "";
+  return {
+    id: typeof item.message_id === "string" && item.message_id ? item.message_id : makeID(),
+    role,
+    text,
+    at: Number.isFinite(timestamp) ? timestamp : fallbackAt,
+    route: typeof routeResult.route === "string" ? routeResult.route : "",
+    source: "",
+    error: role === "assistant" && Boolean(errorCode),
+    status: role === "assistant" ? (errorCode ? "error" : (taskStatus || "done")) : "done",
+    retryable: role === "assistant" && Boolean(errorCode),
+    task_id: taskID,
+    task_status: taskStatus,
+    task_pending: Boolean(taskID && taskStatus && !isTerminalTaskStatus(taskStatus)),
+    task_result_delivered: false,
+    task_result_for: "",
+    task_completed_at: 0,
+    process_steps: processSteps
+  };
+}
+
+async function syncConversationSessionFromServer(route = state.currentRoute) {
+  const session = getSession(activeConversationSessionID(route), route);
+  if (!session || !session.id || !sessionNeedsServerRecovery(session)) {
+    return false;
+  }
+  const payload = await fetchJSON(`/api/sessions/${encodeURIComponent(session.id)}/messages?page=1&page_size=200`);
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (!items.length) {
+    return false;
+  }
+  const messages = [];
+  items.forEach((item) => {
+    const normalized = normalizeServerMessageRecord(item, Number(session.createdAt || Date.now()));
+    if (normalized) {
+      messages.push(normalized);
+    }
+  });
+  if (!messages.length) {
+    return false;
+  }
+  session.messages = messages;
+  touchSession(session);
+  persistSessions(routeConversationMode(route));
+  if (route === state.currentRoute) {
+    renderSessions();
+    renderMessages();
+    syncHeader();
+    renderChatRuntimePanel();
+  }
+  return true;
+}
+
+async function syncRecoverableConversationSessions() {
+  const routes = ["chat", "agent-runtime"];
+  for (const route of routes) {
+    try {
+      await syncConversationSessionFromServer(route);
+    } catch {
+    }
+  }
+}
+
 function toggleAgentProcessMessage(messageID) {
   const active = getSession();
   const normalizedMessageID = normalizeText(messageID);
@@ -5038,7 +5139,7 @@ function toggleAgentProcessMessage(messageID) {
   if (!message) {
     return;
   }
-  const parsed = parseAgentExecutionText(message.text || "");
+  const parsed = resolveAgentExecutionContent(message);
   if (!parsed.steps.length) {
     return;
   }
@@ -5058,6 +5159,53 @@ function scheduleMessagesRender(options = {}) {
     state.pendingMessageRenderPreserveScroll = false;
     renderMessages({ preserveScrollPosition });
   });
+}
+
+function normalizeMessageProcessSteps(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const steps = [];
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const detail = typeof item.detail === "string" ? item.detail.trim() : "";
+    const kind = typeof item.kind === "string" ? item.kind.trim() : "";
+    const status = typeof item.status === "string" ? item.status.trim() : "";
+    if (!title && !detail) {
+      return;
+    }
+    steps.push({ id, kind, title, detail, status });
+  });
+  return steps;
+}
+
+function upsertMessageProcessStep(message, rawStep) {
+  if (!message || !rawStep || typeof rawStep !== "object") {
+    return normalizeMessageProcessSteps(message?.process_steps);
+  }
+  const nextStep = normalizeMessageProcessSteps([rawStep])[0] || null;
+  if (!nextStep) {
+    return normalizeMessageProcessSteps(message?.process_steps);
+  }
+  const existing = normalizeMessageProcessSteps(message.process_steps);
+  const next = existing.slice();
+  const stepID = String(nextStep.id || "").trim();
+  const matchIndex = stepID
+    ? next.findIndex((item) => String(item?.id || "").trim() === stepID)
+    : -1;
+  if (matchIndex >= 0) {
+    next[matchIndex] = {
+      ...next[matchIndex],
+      ...nextStep
+    };
+    return next;
+  }
+  next.push(nextStep);
+  return next;
 }
 
 function captureMessageRenderSignature(message) {
@@ -5080,6 +5228,7 @@ function captureMessageRenderSignature(message) {
     String(Boolean(message.task_result_delivered)),
     normalizeText(message.task_result_for),
     String(Number(message.task_completed_at || 0)),
+    JSON.stringify(normalizeMessageProcessSteps(message.process_steps)),
     String(message.agent_process_collapsed)
   ].join("|");
 }
@@ -5319,6 +5468,17 @@ async function sendMessageStream(payload, assistantMessage, endpoints = {}) {
               retryable: false,
               text: output || t("msg.processing")
             });
+          } else if (parsed.event === "process") {
+            const processStep = parsed.data && typeof parsed.data === "object" ? parsed.data.process_step || null : null;
+            const nextSteps = upsertMessageProcessStep(assistantMessage, processStep);
+            updateMessage(assistantMessage, {
+              text: hasMeaningfulAssistantMessageText(assistantMessage.text) ? assistantMessage.text : "",
+              process_steps: nextSteps,
+              status: "streaming",
+              error: false,
+              retryable: false,
+              at: Date.now()
+            });
           } else if (parsed.event === "delta") {
             const delta = typeof parsed.data.delta === "string" ? parsed.data.delta : "";
             if (typeof parsed.data.route === "string" && parsed.data.route) {
@@ -5351,7 +5511,8 @@ async function sendMessageStream(payload, assistantMessage, endpoints = {}) {
               task_id: asyncTask ? asyncTask.task_id : assistantMessage.task_id,
               task_status: asyncTask ? asyncTask.task_status : assistantMessage.task_status,
               task_pending: Boolean(asyncTask),
-              task_result_delivered: false
+              task_result_delivered: false,
+              process_steps: normalizeMessageProcessSteps(result.process_steps)
             });
             if (asyncTask) {
               ensureChatTaskPolling();
@@ -5364,7 +5525,7 @@ async function sendMessageStream(payload, assistantMessage, endpoints = {}) {
             }
             const message = typeof parsed.data.error === "string" && parsed.data.error ? parsed.data.error : t("msg.stream_error");
             updateMessage(assistantMessage, {
-              text: t("msg.stream_failed", { error: message }),
+              text: streamFailureText(message),
               route: routeHint,
               error: true,
               status: "error",
@@ -5440,7 +5601,8 @@ async function sendMessageFallback(payload, assistantMessage, endpoints = {}) {
     task_id: asyncTask ? asyncTask.task_id : assistantMessage.task_id,
     task_status: asyncTask ? asyncTask.task_status : assistantMessage.task_status,
     task_pending: Boolean(asyncTask),
-    task_result_delivered: false
+    task_result_delivered: false,
+    process_steps: normalizeMessageProcessSteps(body?.result?.process_steps)
   });
   if (asyncTask) {
     ensureChatTaskPolling();
@@ -6084,6 +6246,17 @@ function parseAgentExecutionText(value) {
   };
 }
 
+function resolveAgentExecutionContent(message) {
+  const structuredSteps = normalizeMessageProcessSteps(message?.process_steps);
+  if (structuredSteps.length) {
+    return {
+      steps: structuredSteps,
+      answer: String(message?.text || "").trim()
+    };
+  }
+  return parseAgentExecutionText(message?.text || "");
+}
+
 function resolveAgentProcessCollapsed(message, parsed) {
   if (message && typeof message.agent_process_collapsed === "boolean") {
     return message.agent_process_collapsed;
@@ -6128,7 +6301,7 @@ function renderAssistantFinalBody(contentHTML, copyValue, className = "") {
 }
 
 function renderAgentExecutionMessage(message) {
-  const parsed = parseAgentExecutionText(message?.text || "");
+  const parsed = resolveAgentExecutionContent(message);
   const status = String(message?.status || "").trim();
   if (!parsed.steps.length) {
     if (status === "streaming") {
@@ -15119,6 +15292,7 @@ function init() {
   updateKeyboardInset();
   syncComposerGuardState();
   void renderRoute(parseHashRoute());
+  void syncRecoverableConversationSessions();
   document.body.setAttribute("data-app-ready", "true");
   showPendingRuntimeRestartNotice();
   input.focus();
