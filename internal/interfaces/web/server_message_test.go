@@ -44,22 +44,38 @@ func (s *stubWebOrchestrator) Handle(ctx context.Context, msg shareddomain.Unifi
 
 type stubWebStreamOrchestrator struct {
 	stubWebOrchestrator
-	events      []string
-	deltaCalls  int
-	callbackErr error
+	events       []string
+	streamEvents []shareddomain.StreamEvent
+	deltaCalls   int
+	callbackErr  error
 }
 
 func (s *stubWebStreamOrchestrator) HandleStream(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
-	onDelta func(string) error,
+	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
 	s.lastMessage = msg
 	s.lastCtxErr = ctx.Err()
 	s.handleCount++
+	if len(s.streamEvents) > 0 {
+		for _, item := range s.streamEvents {
+			if item.Type == shareddomain.StreamEventTypeOutput {
+				s.deltaCalls++
+			}
+			if err := onEvent(item); err != nil {
+				s.callbackErr = err
+				return shareddomain.OrchestrationResult{}, err
+			}
+		}
+		return s.result, s.err
+	}
 	for _, item := range s.events {
 		s.deltaCalls++
-		if err := onDelta(item); err != nil {
+		if err := onEvent(shareddomain.StreamEvent{
+			Type: shareddomain.StreamEventTypeOutput,
+			Text: item,
+		}); err != nil {
 			s.callbackErr = err
 			return shareddomain.OrchestrationResult{}, err
 		}
@@ -429,6 +445,61 @@ func TestAgentMessageStreamHandlerContinuesWhenStreamWriteFails(t *testing.T) {
 	}
 	if orchestrator.lastCtxErr != nil {
 		t.Fatalf("expected detached execution context, got %v", orchestrator.lastCtxErr)
+	}
+}
+
+func TestAgentMessageStreamHandlerEmitsStructuredProcessEvents(t *testing.T) {
+	orchestrator := &stubWebStreamOrchestrator{
+		stubWebOrchestrator: stubWebOrchestrator{
+			result: shareddomain.OrchestrationResult{
+				MessageID: "message-generated",
+				SessionID: "session-fixed",
+				Route:     shareddomain.RouteNL,
+				Output:    "agent-ok",
+			},
+		},
+		streamEvents: []shareddomain.StreamEvent{
+			{
+				Type: shareddomain.StreamEventTypeProcess,
+				ProcessStep: &shareddomain.ProcessStep{
+					ID:     "step-1",
+					Kind:   "action",
+					Title:  "codex_exec",
+					Status: "running",
+				},
+			},
+			{
+				Type: shareddomain.StreamEventTypeOutput,
+				Text: "agent-ok",
+			},
+		},
+	}
+	control := newAgentControlForTests(t, controldomain.Agent{
+		ID:         "researcher",
+		Name:       "Researcher",
+		Type:       controldomain.CapabilityTypeAgent,
+		Enabled:    true,
+		Scope:      controldomain.CapabilityScopeGlobal,
+		Version:    "v1.0.0",
+		ProviderID: "openai",
+		Model:      "gpt-4o",
+		Tools:      []string{"codex_exec"},
+	})
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages/stream", strings.NewReader(`{"agent_id":"researcher","session_id":"session-fixed","content":"完成仓库整理"}`))
+	rec := httptest.NewRecorder()
+
+	server.agentMessageStreamHandler(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: process\n") {
+		t.Fatalf("expected process event, got body %q", body)
+	}
+	if !strings.Contains(body, `"title":"codex_exec"`) {
+		t.Fatalf("expected process step title in body, got %q", body)
 	}
 }
 

@@ -212,8 +212,21 @@ func (p *HybridNLProcessor) processWithAgent(
 	if err != nil {
 		return "", err
 	}
+	collector := newAgentProcessCollector()
 	state, err := agent.RunWithState(ctx, content, func(event llmdomain.ReActEvent) error {
+		processStep := collector.Consume(event)
+		if emit != nil && processStep != nil {
+			if err := emit(execdomain.StreamEvent{
+				Type:        execdomain.StreamEventTypeProcess,
+				ProcessStep: processStep,
+			}); err != nil {
+				return err
+			}
+		}
 		if emit == nil {
+			return nil
+		}
+		if event.Type != "answer" {
 			return nil
 		}
 		text := agentEventText(event)
@@ -228,6 +241,7 @@ func (p *HybridNLProcessor) processWithAgent(
 	if err != nil {
 		return "", err
 	}
+	collector.Store(metadata)
 	return strings.TrimSpace(state.Answer), nil
 }
 
@@ -1145,6 +1159,120 @@ func agentEventText(event llmdomain.ReActEvent) string {
 	default:
 		return ""
 	}
+}
+
+type agentProcessCollector struct {
+	pending *shareddomain.ProcessStep
+	steps   []shareddomain.ProcessStep
+	nextID  int
+}
+
+func newAgentProcessCollector() *agentProcessCollector {
+	return &agentProcessCollector{
+		steps: []shareddomain.ProcessStep{},
+	}
+}
+
+func (c *agentProcessCollector) Consume(event llmdomain.ReActEvent) *shareddomain.ProcessStep {
+	if c == nil || event.State == nil {
+		return nil
+	}
+	switch event.Type {
+	case "action":
+		c.flush()
+		if event.State.Action == nil {
+			return nil
+		}
+		title := strings.TrimSpace(event.State.Action.Name)
+		if strings.EqualFold(title, "complete") {
+			return nil
+		}
+		c.pending = &shareddomain.ProcessStep{
+			ID:     c.newID(),
+			Kind:   "action",
+			Title:  title,
+			Status: "running",
+		}
+		step := *c.pending
+		return &step
+	case "observation":
+		observation := strings.TrimSpace(event.State.Observation)
+		if observation == "" {
+			return nil
+		}
+		if c.pending == nil {
+			c.pending = &shareddomain.ProcessStep{
+				ID:     c.newID(),
+				Kind:   "observation",
+				Title:  "Observation",
+				Status: "running",
+			}
+		}
+		c.pending.Detail = observation
+		if strings.HasPrefix(strings.ToLower(observation), "error:") {
+			c.pending.Status = "failed"
+		} else {
+			c.pending.Status = "completed"
+		}
+		step := *c.pending
+		c.flush()
+		return &step
+	case "answer":
+		c.flush()
+		return nil
+	case "error":
+		if c.pending != nil {
+			c.pending.Status = "failed"
+			step := *c.pending
+			c.flush()
+			return &step
+		}
+		return nil
+	}
+	return nil
+}
+
+func (c *agentProcessCollector) Store(metadata map[string]string) {
+	if c == nil || metadata == nil {
+		return
+	}
+	c.flush()
+	if len(c.steps) == 0 {
+		return
+	}
+	raw, err := json.Marshal(c.steps)
+	if err != nil {
+		return
+	}
+	metadata[execdomain.AgentProcessStepsMetadataKey] = string(raw)
+}
+
+func (c *agentProcessCollector) flush() {
+	if c == nil || c.pending == nil {
+		return
+	}
+	step := shareddomain.ProcessStep{
+		ID:     strings.TrimSpace(c.pending.ID),
+		Kind:   strings.TrimSpace(c.pending.Kind),
+		Title:  strings.TrimSpace(c.pending.Title),
+		Detail: strings.TrimSpace(c.pending.Detail),
+		Status: strings.TrimSpace(c.pending.Status),
+	}
+	if step.Title != "" || step.Detail != "" {
+		if step.Status == "" || step.Status == "running" {
+			step.Status = "completed"
+		}
+		c.steps = append(c.steps, step)
+	}
+	c.pending = nil
+}
+
+func (c *agentProcessCollector) newID() string {
+	if c == nil {
+		return ""
+	}
+	c.nextID++
+	return fmt.Sprintf("agent-step-%d", c.nextID)
 }
 
 var _ interface {

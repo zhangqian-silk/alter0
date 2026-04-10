@@ -13,6 +13,7 @@ import (
 	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
 	llmdomain "alter0/internal/llm/domain"
+	shareddomain "alter0/internal/shared/domain"
 )
 
 type stubReactFactory struct {
@@ -185,6 +186,23 @@ func TestHybridNLProcessorAgentModeExecutesCodexToolLoop(t *testing.T) {
 	}
 	if reactFactory.lastConfig.Tools[0].Name != "codex_exec" || reactFactory.lastConfig.Tools[1].Name != "complete" {
 		t.Fatalf("unexpected tools: %+v", reactFactory.lastConfig.Tools)
+	}
+	rawSteps := strings.TrimSpace(metadata[execdomain.AgentProcessStepsMetadataKey])
+	if rawSteps == "" {
+		t.Fatalf("expected process steps metadata to be recorded")
+	}
+	var steps []shareddomain.ProcessStep
+	if err := json.Unmarshal([]byte(rawSteps), &steps); err != nil {
+		t.Fatalf("unmarshal process steps: %v", err)
+	}
+	if len(steps) != 1 {
+		t.Fatalf("expected 1 process step, got %+v", steps)
+	}
+	if steps[0].Title != "codex_exec" {
+		t.Fatalf("expected process step title codex_exec, got %+v", steps[0])
+	}
+	if !strings.Contains(steps[0].Detail, "mock response") {
+		t.Fatalf("expected process step detail to contain tool observation, got %+v", steps[0])
 	}
 }
 

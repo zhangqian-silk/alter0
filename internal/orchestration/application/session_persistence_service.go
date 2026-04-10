@@ -36,7 +36,7 @@ type streamPersistenceOrchestrator interface {
 	HandleStream(
 		ctx context.Context,
 		msg shareddomain.UnifiedMessage,
-		onDelta func(string) error,
+		onEvent func(shareddomain.StreamEvent) error,
 	) (shareddomain.OrchestrationResult, error)
 }
 
@@ -75,18 +75,21 @@ func (s *SessionPersistenceService) Classify(content string) orchdomain.Intent {
 func (s *SessionPersistenceService) HandleStream(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
-	onDelta func(string) error,
+	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
 	var (
 		result shareddomain.OrchestrationResult
 		err    error
 	)
 	if downstream, ok := s.downstream.(streamPersistenceOrchestrator); ok {
-		result, err = downstream.HandleStream(ctx, msg, onDelta)
+		result, err = downstream.HandleStream(ctx, msg, onEvent)
 	} else {
 		result, err = s.downstream.Handle(ctx, msg)
-		if err == nil && onDelta != nil && strings.TrimSpace(result.Output) != "" {
-			if streamErr := onDelta(result.Output); streamErr != nil {
+		if err == nil && onEvent != nil && strings.TrimSpace(result.Output) != "" {
+			if streamErr := onEvent(shareddomain.StreamEvent{
+				Type: shareddomain.StreamEventTypeOutput,
+				Text: result.Output,
+			}); streamErr != nil {
 				err = streamErr
 			}
 		}
@@ -147,9 +150,10 @@ func (s *SessionPersistenceService) persistResult(
 			Timestamp: assistantTimestamp,
 			Source:    source,
 			RouteResult: sessiondomain.RouteResult{
-				Route:     result.Route,
-				ErrorCode: result.ErrorCode,
-				TaskID:    taskID,
+				Route:        result.Route,
+				ErrorCode:    result.ErrorCode,
+				TaskID:       taskID,
+				ProcessSteps: append([]shareddomain.ProcessStep(nil), result.ProcessSteps...),
 			},
 		},
 	)

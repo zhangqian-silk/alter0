@@ -13,8 +13,9 @@ type CommandRequest struct {
 }
 
 type CommandResult struct {
-	Output   string
-	Metadata map[string]string
+	Output       string
+	Metadata     map[string]string
+	ProcessSteps []shareddomain.ProcessStep
 }
 
 type CommandHandler interface {

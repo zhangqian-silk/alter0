@@ -16,9 +16,10 @@ const (
 )
 
 type RouteResult struct {
-	Route     shareddomain.Route `json:"route,omitempty"`
-	ErrorCode string             `json:"error_code,omitempty"`
-	TaskID    string             `json:"task_id,omitempty"`
+	Route        shareddomain.Route         `json:"route,omitempty"`
+	ErrorCode    string                     `json:"error_code,omitempty"`
+	TaskID       string                     `json:"task_id,omitempty"`
+	ProcessSteps []shareddomain.ProcessStep `json:"process_steps,omitempty"`
 }
 
 type MessageSource struct {

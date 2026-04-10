@@ -53,7 +53,7 @@ type queuedRequest struct {
 	msg        shareddomain.UnifiedMessage
 	enqueuedAt time.Time
 	done       chan queuedResponse
-	stream     func(string) error
+	stream     func(shareddomain.StreamEvent) error
 	noTimeout  bool
 	updates    shareddomain.LiveUserMessageSource
 }
@@ -131,7 +131,7 @@ type streamOrchestrator interface {
 	HandleStream(
 		ctx context.Context,
 		msg shareddomain.UnifiedMessage,
-		onDelta func(string) error,
+		onEvent func(shareddomain.StreamEvent) error,
 	) (shareddomain.OrchestrationResult, error)
 }
 
@@ -212,15 +212,15 @@ func (s *ConcurrentService) Classify(content string) orchdomain.Intent {
 func (s *ConcurrentService) HandleStream(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
-	onDelta func(string) error,
+	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
-	return s.handleQueued(ctx, msg, onDelta)
+	return s.handleQueued(ctx, msg, onEvent)
 }
 
 func (s *ConcurrentService) handleQueued(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
-	onDelta func(string) error,
+	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -235,7 +235,7 @@ func (s *ConcurrentService) handleQueued(
 		msg:        msg,
 		enqueuedAt: time.Now(),
 		done:       make(chan queuedResponse, 1),
-		stream:     onDelta,
+		stream:     onEvent,
 	}
 
 	depth, err := s.enqueue(req)
@@ -314,7 +314,10 @@ func (s *ConcurrentService) runWorker(ctx context.Context) {
 			} else {
 				result, err = s.downstream.Handle(runCtx, req.msg)
 				if err == nil && result.Output != "" {
-					if streamErr := req.stream(result.Output); streamErr != nil {
+					if streamErr := req.stream(shareddomain.StreamEvent{
+						Type: shareddomain.StreamEventTypeOutput,
+						Text: result.Output,
+					}); streamErr != nil {
 						err = streamErr
 					}
 				}

@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-04-09
+> Last update: 2026-04-10
 
 ## 领域边界
 
@@ -84,7 +84,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 ### SSE 语义
 
-- 流式接口返回 `start / delta / done` 等事件。
+- 流式接口返回 `start / delta / done` 等事件；Agent 工具循环期间还需返回结构化 `process` 事件。
 - 长时间无模型增量时，SSE 通道持续发送保活帧。
 - 复杂度评估可与首段回复并行进行。
 
@@ -97,12 +97,17 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 - 已收到部分正文后若连接中断，前端保留已到达正文，并把该条消息收敛为失败态与可重试态。
 - 浏览器本地缓存中残留的 `streaming` 消息在页面恢复时必须立即归一：无任务标识的消息转为失败态，带任务标识的消息转为对应任务态并继续轮询。
+- 若流式连接在没有可用正文时失败，前端失败文案需明确提示刷新页面以恢复最新已保存回复。
+- 页面刷新后，若当前活动会话存在本地失败态流式消息，前端需优先拉取服务端会话消息，并用已持久化结果覆盖本地失败态。
 - 任务轮询与任务回填仅以真实存在的 `task_id` 为准，不得把空值或占位值误判为后台任务。
 
 ### 渲染策略
 
 - Chat/Agent 消息区使用逐条 patch 与浏览器逐帧合并刷新。
 - 高频流式增量、Process 展开收起与任务状态回填不得导致整段消息列表重建。
+- Agent `process` 事件到达后，前端需在 `done` 前实时更新当前助手消息的步骤面板，而不是等待最终正文收口后一次性生成过程展示。
+- Agent 消息中的 `Process` 优先使用服务端返回的结构化 `process_steps` 渲染；仅对缺失结构化步骤的历史消息保留文本解析兼容。
+- 结构化 `process_steps` 需要在 SSE `done`、Task 结果回填与会话历史恢复后保持一致，刷新页面不得把已完成消息重新退化为仅正文展示。
 - 助手最终回复提供一键复制；若消息含 Process，复制内容只包含最终正文。
 - 前端所有绝对时间与时分标签统一按北京时间（`Asia/Shanghai`）渲染，并固定采用 24 小时制；浏览器本地时区不参与显示格式决策。
 - Cron 表单中的默认时区固定为 `Asia/Shanghai`，不再读取浏览器 `resolvedOptions().timeZone` 作为初始值。

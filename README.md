@@ -113,10 +113,12 @@ internal/shared/infrastructure     # ID、日志、metrics
 - 默认走实时执行。
 - 流式对话会先直接启动回复；复杂度评估与回复并行进行。
 - `Chat / Agent` 消息区在流式增量、Agent `Process` 展开收起与任务状态回填期间采用逐条 patch，并把高频刷新合并到浏览器逐帧节奏，避免长会话中反复整段重建消息列表。
+- Agent SSE 在工具循环期间会优先推送结构化 `process` 事件，按步骤实时更新 `Process` 面板；最终正文继续通过输出事件与 `done` 结果收口。
 - 流式连接在已收到正文后若中途断开，前端保留已到达的正文并把该条消息收敛为失败态，避免整条消息被统一覆盖成空白错误文案。
 - 当请求复杂度较高且仍在执行中时，系统会中途转为后台 `Task` 执行，并先返回一条任务说明消息，包含任务目标、执行计划与任务入口。
 - 若当前消息已进入 Agent 执行链，前端页面切换、标签页隐藏、SSE 断开或浏览器主动取消请求都不会中断后端执行；连接只负责回传，最终结果仍会落到会话历史。
 - 浏览器本地缓存里的历史消息若残留 `streaming` 状态，页面恢复时会自动收敛为失败态或任务态，不再把旧消息长期停留在 `In Progress`。
+- 若 Agent 流式连接在没有可用正文时中断，前端失败文案会明确提示刷新；刷新页面后，当前活动会话会优先从服务端会话历史恢复已成功写入的最终回复，而不是继续停留在本地失败态。
 - 聊天气泡支持常用 Markdown 渲染，包括标题、列表、引用、链接、行内代码与代码块；原始 HTML 不直接透传。
 - Chat 消息会标注实际回复来源，用于区分当前内容来自模型执行链还是 `Codex CLI` 执行链。
 - Chat / Agent 助手最终回复提供一键复制入口；若同条消息包含 `Process`，复制内容仅包含最终正文，不包含折叠的执行细节。
@@ -135,7 +137,8 @@ internal/shared/infrastructure     # ID、日志、metrics
 - Product `master agent` 与兼容保留的 supporting agents 同样遵循统一的“Agent 负责持续协助与编排，Codex CLI 负责具体执行”模型。新生成的 Product 默认采用单主 Agent，主 Agent 默认使用 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，并通过 system prompt 与 Skill 沉淀可复用规则；运行时自动补充 `complete` 收口。
 - Agent 的职责收敛为“作为用户的持续助手并驱动执行”，而不是直接自己操作仓库或 Shell。稳定工具面只保留 `codex_exec` 作为具体执行入口，`Alter0/main` 与其他允许委派的 Agent 可额外使用 `delegate_agent`，所有 Agent 可在已注入的记忆文件范围内使用 `search_memory`、`read_memory`、`write_memory` 维护长期偏好、缩写映射与稳定协作约束。`search_memory` 用于按关键字跨记忆文件定位历史信息，再决定是否精读或更新具体文件。Agent 负责吸收用户意图、会话上下文、Agent 规则与记忆，并把它们转译成当前这一步的精确执行指令；这些 Agent 侧 prompt 与编排规则默认留在 Agent 自身，不直接透传给 Codex。所有 Agent 的 `codex_exec` 都统一携带结构化上下文，按需注入 `runtime_context`、`product_context`、`product_discovery`、`skill_context`、`mcp_context`、`memory_context` 等最小必要信息，让 Codex 拿到完整执行事实，同时避免 Agent 在每次调用里重复转述整段规则或传递无关信息。`coding` Agent 负责理解用户开发目标，并根据每次 `codex_exec` 的实际返回结果持续下发下一步实现或验证动作，直到任务完成或确认阻塞。`coding` Agent 的 `codex_exec` 在仓库类任务中会优先落到当前 Session 独立的 repo 完整 clone：`.alter0/workspaces/sessions/<session_id>/repo`，该目录自带自己的 `.git` 元数据，不依赖 `git worktree`；运行时会把当前仓库远端地址、源仓库路径、独立 repo clone 路径、当前分支、会话工作区、测试页预览域名与 PR 交付要求一并纳入结构化上下文。测试仓库的关键配置需要与正式服务保持一致，包括 model provider、Codex 执行路径、agent 路径等，只有会话缓存、会话历史等 session 级数据允许不同。涉及测试页面时，`coding` Agent 需要持续驱动 `codex_exec`，直到页面成功部署或更新到 `https://<session_short_hash>.alter0.cn`；预览成功后先由用户决定是否进行手动测试，再继续后续 GitHub 交付闭环。
 - 若 Agent 在 `max_iterations` 耗尽前仍未显式 `complete`，运行时会返回带有“达到迭代上限”说明和最后一次工具观察的最终答复，避免 Web 流式消息在 `codex_exec` 观察后空收口。
-- Agent 流式回复中的 `action / observation` 执行细节会在助手消息内收敛为可折叠 `Process` 区块；最终答复继续作为正文展示，默认在收口后优先突出最终结果，用户可随时展开回看过程。
+- Agent 执行过程会在运行时产出结构化 `process_steps`，并通过实时 `process` SSE 事件、`done` 结果、Task 结果与会话历史一并返回；前端优先按结构化步骤渲染可折叠 `Process` 区块，仅对历史旧消息保留基于文本标记的兼容解析。
+- Agent 流式回复中的 `Process` 与最终正文在收口后继续同时保留；刷新页面或从服务端会话历史恢复时，结构化步骤不会因最终正文已落库而丢失。
 - Agent 请求一旦进入后端执行链，浏览器侧任何交互事件都只影响当前连接状态，不影响 Agent 本身的执行与会话持久化；断开后重新进入历史即可查看最终结果。
 - 每个 Agent 可独立配置名称、system prompt、tool 白名单、Skill 选择、MCP 选择与 Memory Files 选择。
 - Agent 可按 Profile 勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory；其中 `AGENTS.md` 固定解析为当前 `agent_id` 的私有文件 `.alter0/agents/<agent_id>/AGENTS.md`，不与其他 Agent 共享；`USER.md`、`SOUL.md`、长期/日记忆继续作为共享记忆注入执行链路。

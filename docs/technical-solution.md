@@ -89,7 +89,12 @@ Web input
 - SSE 连接只负责回传，前端断连不得取消已进入 Agent 执行链的后端任务。
 - 会话标题升级、空白会话唯一性、历史折叠和页面滚动状态属于 Conversation 子域。
 - `chat.js` 读取本地缓存时先归一残留 `streaming` 消息；无 `task_id` 的消息转失败态，带真实 `task_id` 的消息恢复到任务轮询链路。
-- 流式连接异常收尾时优先保留已收到正文；只有在没有可用正文时才渲染通用 `stream failed` 文案。
+- Web 流式网关把 `shareddomain.StreamEvent` 映射为 SSE：输出事件写成 `delta`，结构化步骤事件写成 `process`，最终 `done` 继续携带完整 `process_steps` 用于收口与持久化恢复。
+- 流式连接异常收尾时优先保留已收到正文；只有在没有可用正文时才渲染带刷新提示的失败文案。
+- 页面初始化会对当前活动会话执行一次轻量恢复：仅当本地存在流式失败态助手消息时，前端调用 `/api/sessions/{session_id}/messages`，以服务端已持久化消息覆盖本地失败态。
+- Agent 执行器在运行期把工具动作与观察收敛为结构化 `process_steps`，经 `ExecutionResult -> OrchestrationResult -> session.RouteResult` 透传到 SSE `done`、Task 结果和 `/api/sessions/{session_id}/messages`。
+- Agent 执行器在工具循环期间直接发出 `process` 事件，前端按 `process_step.id` 原地更新步骤状态；历史旧消息仍保留基于文本标记的回退解析。
+- `chat.js` 渲染 Agent 消息时优先读取 `process_steps`；仅在缺失结构化步骤时才回退到历史 `[agent] action / observation` 文本解析，以兼容旧会话。
 - 移动端输入区以 `VisualViewport` 为有效视口来源，并按聚焦、键盘和页面可见性降频刷新。
 - `chat.js` 内所有前端时间展示统一走同一北京时间格式化器，固定 `timeZone=Asia/Shanghai`、`hourCycle=h23`；时间标签输出 `HH:mm`，绝对时间输出 `YYYY-MM-DD HH:mm:ss`。
 - Cron 创建表单默认时区直接复用同一前端常量 `Asia/Shanghai`，不再依赖浏览器本地时区探测。

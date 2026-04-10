@@ -42,11 +42,14 @@ type stubStreamOrchestrator struct {
 func (s *stubStreamOrchestrator) HandleStream(
 	_ context.Context,
 	msg shareddomain.UnifiedMessage,
-	onDelta func(string) error,
+	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
 	s.last = msg
 	for _, item := range s.events {
-		if err := onDelta(item); err != nil {
+		if err := onEvent(shareddomain.StreamEvent{
+			Type: shareddomain.StreamEventTypeOutput,
+			Text: item,
+		}); err != nil {
 			return shareddomain.OrchestrationResult{}, err
 		}
 	}

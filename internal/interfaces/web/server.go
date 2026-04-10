@@ -73,7 +73,7 @@ type StreamOrchestrator interface {
 	HandleStream(
 		ctx context.Context,
 		msg shareddomain.UnifiedMessage,
-		onDelta func(string) error,
+		onEvent func(shareddomain.StreamEvent) error,
 	) (shareddomain.OrchestrationResult, error)
 }
 
@@ -322,6 +322,10 @@ type streamStartResponse struct {
 type streamDeltaResponse struct {
 	Delta string             `json:"delta"`
 	Route shareddomain.Route `json:"route,omitempty"`
+}
+
+type streamProcessResponse struct {
+	ProcessStep shareddomain.ProcessStep `json:"process_step"`
 }
 
 type streamDoneResponse struct {
@@ -1133,17 +1137,20 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancelStream()
 
 	streamResultCh := make(chan streamExecutionResult, 1)
-	streamDeltaCh := make(chan string, 16)
+	streamEventCh := make(chan shareddomain.StreamEvent, 16)
 	_, nativeStreaming := s.orchestrator.(StreamOrchestrator)
 	go func() {
-		result, handleErr := s.handleStreamMessage(streamCtx, msg, func(delta string) error {
-			if strings.TrimSpace(delta) == "" {
+		result, handleErr := s.handleStreamMessage(streamCtx, msg, func(event shareddomain.StreamEvent) error {
+			if event.Type == shareddomain.StreamEventTypeOutput && strings.TrimSpace(event.Text) == "" {
+				return nil
+			}
+			if event.Type == shareddomain.StreamEventTypeProcess && event.ProcessStep == nil {
 				return nil
 			}
 			select {
 			case <-streamCtx.Done():
 				return streamCtx.Err()
-			case streamDeltaCh <- delta:
+			case streamEventCh <- event:
 				return nil
 			}
 		})
@@ -1165,25 +1172,35 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	emittedDelta := false
-	writeDelta := func(delta string, route shareddomain.Route) error {
-		if strings.TrimSpace(delta) == "" {
+	writeEvent := func(event shareddomain.StreamEvent, route shareddomain.Route) error {
+		switch event.Type {
+		case shareddomain.StreamEventTypeOutput:
+			if strings.TrimSpace(event.Text) == "" {
+				return nil
+			}
+			payload := streamDeltaResponse{Delta: event.Text}
+			if strings.TrimSpace(string(route)) != "" {
+				payload.Route = route
+			}
+			if err := stream.Event("delta", payload); err != nil {
+				return err
+			}
+			emittedDelta = true
+			return nil
+		case shareddomain.StreamEventTypeProcess:
+			if event.ProcessStep == nil {
+				return nil
+			}
+			return stream.Event("process", streamProcessResponse{ProcessStep: *event.ProcessStep})
+		default:
 			return nil
 		}
-		payload := streamDeltaResponse{Delta: delta}
-		if strings.TrimSpace(string(route)) != "" {
-			payload.Route = route
-		}
-		if err := stream.Event("delta", payload); err != nil {
-			return err
-		}
-		emittedDelta = true
-		return nil
 	}
 	finalizeStreamResult := func(streamResult streamExecutionResult) {
 		cancelAssessment()
 		result := streamResult.result
 		handleErr := streamResult.err
-		_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+		_ = s.flushPendingStreamEvents(writeEvent, streamEventCh, "")
 		if intent.Type == orchdomain.IntentTypeNL {
 			result = attachComplexityMetadata(result, assessment, nil)
 		}
@@ -1199,7 +1216,10 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 		if !nativeStreaming {
 			for _, chunk := range chunkText(result.Output, 24) {
-				if err := writeDelta(chunk, result.Route); err != nil {
+				if err := writeEvent(shareddomain.StreamEvent{
+					Type: shareddomain.StreamEventTypeOutput,
+					Text: chunk,
+				}, result.Route); err != nil {
 					return
 				}
 			}
@@ -1215,8 +1235,8 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		select {
-		case delta := <-streamDeltaCh:
-			if err := writeDelta(delta, ""); err != nil {
+		case event := <-streamEventCh:
+			if err := writeEvent(event, ""); err != nil {
 				return
 			}
 		case assessment = <-assessmentCh:
@@ -1224,7 +1244,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 			if strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) != taskapp.ExecutionModeAsync {
 				continue
 			}
-			_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+			_ = s.flushPendingStreamEvents(writeEvent, streamEventCh, "")
 			select {
 			case streamResult := <-streamResultCh:
 				assessment = s.defaultComplexityAssessment()
@@ -1253,7 +1273,10 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 					output = "\n\n" + output
 				}
 				for _, chunk := range chunkText(output, 24) {
-					if err := writeDelta(chunk, ""); err != nil {
+					if err := writeEvent(shareddomain.StreamEvent{
+						Type: shareddomain.StreamEventTypeOutput,
+						Text: chunk,
+					}, ""); err != nil {
 						return
 					}
 				}
@@ -1306,7 +1329,7 @@ func shouldDetachAgentExecution(metadata map[string]string) bool {
 func (s *Server) handleStreamMessage(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
-	callback func(delta string) error,
+	callback func(event shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
 	if orchestrator, ok := s.orchestrator.(StreamOrchestrator); ok {
 		return orchestrator.HandleStream(ctx, msg, callback)
@@ -1415,17 +1438,17 @@ func (s *executionSSEStream) close() {
 	}
 }
 
-func (s *Server) flushPendingStreamDelta(
-	writeDelta func(delta string, route shareddomain.Route) error,
-	streamDeltaCh <-chan string,
+func (s *Server) flushPendingStreamEvents(
+	writeEvent func(event shareddomain.StreamEvent, route shareddomain.Route) error,
+	streamEventCh <-chan shareddomain.StreamEvent,
 	route shareddomain.Route,
 ) bool {
 	drained := false
 	for {
 		select {
-		case delta := <-streamDeltaCh:
+		case event := <-streamEventCh:
 			drained = true
-			if err := writeDelta(delta, route); err != nil {
+			if err := writeEvent(event, route); err != nil {
 				return drained
 			}
 		default:
@@ -1512,7 +1535,7 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 	defer stopKeepAlive()
 
 	handleStream := func(
-		callback func(delta string) error,
+		callback func(event shareddomain.StreamEvent) error,
 	) (shareddomain.OrchestrationResult, error) {
 		if orchestrator, ok := s.orchestrator.(StreamOrchestrator); ok {
 			return orchestrator.HandleStream(execCtx, msg, callback)
@@ -1520,14 +1543,21 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 		return s.orchestrator.Handle(execCtx, msg)
 	}
 
-	result, handleErr := handleStream(func(delta string) error {
-		if strings.TrimSpace(delta) == "" {
+	result, handleErr := handleStream(func(event shareddomain.StreamEvent) error {
+		switch event.Type {
+		case shareddomain.StreamEventTypeOutput:
+			if strings.TrimSpace(event.Text) == "" {
+				return nil
+			}
+			return stream.Event("delta", streamDeltaResponse{Delta: event.Text})
+		case shareddomain.StreamEventTypeProcess:
+			if event.ProcessStep == nil {
+				return nil
+			}
+			return stream.Event("process", streamProcessResponse{ProcessStep: *event.ProcessStep})
+		default:
 			return nil
 		}
-		if err := stream.Event("delta", streamDeltaResponse{Delta: delta}); err != nil {
-			return err
-		}
-		return nil
 	})
 	result = attachProductRouteResultMetadata(result, msg.Metadata)
 	if handleErr != nil {
@@ -3506,17 +3536,20 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 	defer cancelStream()
 
 	streamResultCh := make(chan streamExecutionResult, 1)
-	streamDeltaCh := make(chan string, 16)
+	streamEventCh := make(chan shareddomain.StreamEvent, 16)
 	_, nativeStreaming := s.orchestrator.(StreamOrchestrator)
 	go func() {
-		result, handleErr := s.handleStreamMessage(streamCtx, msg, func(delta string) error {
-			if strings.TrimSpace(delta) == "" {
+		result, handleErr := s.handleStreamMessage(streamCtx, msg, func(event shareddomain.StreamEvent) error {
+			if event.Type == shareddomain.StreamEventTypeOutput && strings.TrimSpace(event.Text) == "" {
+				return nil
+			}
+			if event.Type == shareddomain.StreamEventTypeProcess && event.ProcessStep == nil {
 				return nil
 			}
 			select {
 			case <-streamCtx.Done():
 				return streamCtx.Err()
-			case streamDeltaCh <- delta:
+			case streamEventCh <- event:
 				return nil
 			}
 		})
@@ -3538,26 +3571,36 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	emittedDelta := false
-	writeDelta := func(delta string, route shareddomain.Route) error {
-		if strings.TrimSpace(delta) == "" {
+	writeEvent := func(event shareddomain.StreamEvent, route shareddomain.Route) error {
+		switch event.Type {
+		case shareddomain.StreamEventTypeOutput:
+			if strings.TrimSpace(event.Text) == "" {
+				return nil
+			}
+			payload := streamDeltaResponse{Delta: event.Text}
+			if strings.TrimSpace(string(route)) != "" {
+				payload.Route = route
+			}
+			if err := stream.Event("delta", payload); err != nil {
+				return err
+			}
+			emittedDelta = true
+			return nil
+		case shareddomain.StreamEventTypeProcess:
+			if event.ProcessStep == nil {
+				return nil
+			}
+			return stream.Event("process", streamProcessResponse{ProcessStep: *event.ProcessStep})
+		default:
 			return nil
 		}
-		payload := streamDeltaResponse{Delta: delta}
-		if strings.TrimSpace(string(route)) != "" {
-			payload.Route = route
-		}
-		if err := stream.Event("delta", payload); err != nil {
-			return err
-		}
-		emittedDelta = true
-		return nil
 	}
 	finalizeStreamResult := func(streamResult streamExecutionResult) {
 		cancelAssessment()
 		result := attachComplexityMetadata(streamResult.result, assessment, nil)
 		result = attachProductRouteResultMetadata(result, msg.Metadata)
 		handleErr := streamResult.err
-		_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+		_ = s.flushPendingStreamEvents(writeEvent, streamEventCh, "")
 		if handleErr != nil {
 			s.logWebMessageFailure(msg, handleErr)
 			_ = stream.Event("error", streamErrorResponse{
@@ -3569,7 +3612,10 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 
 		if !nativeStreaming {
 			for _, chunk := range chunkText(result.Output, 24) {
-				if err := writeDelta(chunk, result.Route); err != nil {
+				if err := writeEvent(shareddomain.StreamEvent{
+					Type: shareddomain.StreamEventTypeOutput,
+					Text: chunk,
+				}, result.Route); err != nil {
 					return
 				}
 			}
@@ -3585,8 +3631,8 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 
 	for {
 		select {
-		case delta := <-streamDeltaCh:
-			if err := writeDelta(delta, ""); err != nil {
+		case event := <-streamEventCh:
+			if err := writeEvent(event, ""); err != nil {
 				return
 			}
 		case assessment = <-assessmentCh:
@@ -3594,7 +3640,7 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 			if strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) != taskapp.ExecutionModeAsync {
 				continue
 			}
-			_ = s.flushPendingStreamDelta(writeDelta, streamDeltaCh, "")
+			_ = s.flushPendingStreamEvents(writeEvent, streamEventCh, "")
 			select {
 			case streamResult := <-streamResultCh:
 				assessment = s.defaultComplexityAssessment()
@@ -3623,7 +3669,10 @@ func (s *Server) productMessageStreamHandler(w http.ResponseWriter, r *http.Requ
 					output = "\n\n" + output
 				}
 				for _, chunk := range chunkText(output, 24) {
-					if err := writeDelta(chunk, ""); err != nil {
+					if err := writeEvent(shareddomain.StreamEvent{
+						Type: shareddomain.StreamEventTypeOutput,
+						Text: chunk,
+					}, ""); err != nil {
 						return
 					}
 				}
