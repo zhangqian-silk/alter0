@@ -195,6 +195,43 @@ test.describe("Terminal route", () => {
     expect(nextMetrics?.composerBottom ?? 0).toBeLessThanOrEqual((nextMetrics?.viewportBottom ?? 0) + 2);
   });
 
+  test("keeps the mobile app shell height synced to the visual viewport", async ({ page, request }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+    await openReadyTerminalWorkspace(page, request, { scope: "mobile-shell-height" });
+
+    await setVisualViewport(page, { width: 430, height: 700, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim()
+    )).toBe("700px");
+
+    const readShellMetrics = async () => page.evaluate(() => {
+      const appShell = document.querySelector(".app-shell");
+      const viewport = window.visualViewport;
+      if (!(appShell instanceof HTMLElement) || !viewport) {
+        return null;
+      }
+      return {
+        viewportHeight: viewport.height + viewport.offsetTop,
+        shellHeight: appShell.getBoundingClientRect().height,
+      };
+    });
+
+    const metrics = await readShellMetrics();
+    expect(metrics).not.toBeNull();
+    expect(Math.abs((metrics?.shellHeight ?? 0) - (metrics?.viewportHeight ?? 0))).toBeLessThanOrEqual(2);
+
+    await setVisualViewport(page, { width: 430, height: 780, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim()
+    )).toBe("780px");
+
+    const nextMetrics = await readShellMetrics();
+    expect(nextMetrics).not.toBeNull();
+    expect(Math.abs((nextMetrics?.shellHeight ?? 0) - (nextMetrics?.viewportHeight ?? 0))).toBeLessThanOrEqual(2);
+  });
+
   test("keeps input focus and draft across polling refresh", async ({ page, request }) => {
     const { session, terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "focus" });
 
