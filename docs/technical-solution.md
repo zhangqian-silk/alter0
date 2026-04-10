@@ -91,6 +91,9 @@ Web input
 - `chat.js` 读取本地缓存时先归一残留 `streaming` 消息；无 `task_id` 的消息转失败态，带真实 `task_id` 的消息恢复到任务轮询链路。
 - 流式连接异常收尾时优先保留已收到正文；只有在没有可用正文时才渲染通用 `stream failed` 文案。
 - 移动端输入区以 `VisualViewport` 为有效视口来源，并按聚焦、键盘和页面可见性降频刷新。
+- `chat.js` 内所有前端时间展示统一走同一北京时间格式化器，固定 `timeZone=Asia/Shanghai`、`hourCycle=h23`；时间标签输出 `HH:mm`，绝对时间输出 `YYYY-MM-DD HH:mm:ss`。
+- Cron 创建表单默认时区直接复用同一前端常量 `Asia/Shanghai`，不再依赖浏览器本地时区探测。
+- `agent-runtime` 会话列表前端按 `sha1(session_id)[:8]` 生成短 hash，展示在会话卡片内并通过统一 `data-copy-value` 复制链路写入剪贴板，保持与 Agent Session Profile / 预览域名使用的短标识一致。
 - Markdown 渲染必须避免原始 HTML 透传；长路径、代码块和 diff 只在内容块内部滚动。
 
 ### 验证策略

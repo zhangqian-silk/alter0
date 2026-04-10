@@ -73,6 +73,7 @@ const SESSION_ACTIVE_STORAGE_KEY = "alter0.web.session.active.v1";
 const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";
 const TERMINAL_CLIENT_STORAGE_KEY = "alter0.web.terminal.client.v1";
 const RUNTIME_RESTART_NOTICE_STORAGE_KEY = "alter0.web.runtime.restart-notice.v1";
+const FRONTEND_DISPLAY_TIME_ZONE = "Asia/Shanghai";
 const AVAILABLE_CHAT_TOOLS = [
   {
     id: "search_memory",
@@ -1815,11 +1816,109 @@ function setConversationSessionLoadError(message) {
   state.sessionLoadError = normalizeText(message);
 }
 
+function resolveBeijingTimeParts(value, fields = {}) {
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: FRONTEND_DISPLAY_TIME_ZONE,
+    hour12: false,
+    hourCycle: "h23",
+    ...fields
+  });
+  const parts = {};
+  for (const part of formatter.formatToParts(parsed)) {
+    if (part.type !== "literal") {
+      parts[part.type] = part.value;
+    }
+  }
+  return parts;
+}
+
 function timeLabel(epochMillis = Date.now()) {
-  return new Date(epochMillis).toLocaleTimeString(state.lang === "zh" ? "zh-CN" : "en-US", {
+  const parts = resolveBeijingTimeParts(epochMillis, {
     hour: "2-digit",
     minute: "2-digit"
   });
+  if (!parts) {
+    return "-";
+  }
+  return `${parts.hour}:${parts.minute}`;
+}
+
+function sha1Hex(value) {
+  const input = new TextEncoder().encode(String(value || ""));
+  const words = [];
+  for (let index = 0; index < input.length; index += 1) {
+    words[index >> 2] = (words[index >> 2] || 0) | (input[index] << (24 - (index % 4) * 8));
+  }
+  words[input.length >> 2] = (words[input.length >> 2] || 0) | (0x80 << (24 - (input.length % 4) * 8));
+  words[(((input.length + 8) >> 6) + 1) * 16 - 1] = input.length * 8;
+
+  let h0 = 0x67452301;
+  let h1 = 0xefcdab89;
+  let h2 = 0x98badcfe;
+  let h3 = 0x10325476;
+  let h4 = 0xc3d2e1f0;
+
+  const rotateLeft = (word, count) => ((word << count) | (word >>> (32 - count))) >>> 0;
+
+  for (let offset = 0; offset < words.length; offset += 16) {
+    const schedule = new Array(80);
+    for (let index = 0; index < 16; index += 1) {
+      schedule[index] = words[offset + index] || 0;
+    }
+    for (let index = 16; index < 80; index += 1) {
+      schedule[index] = rotateLeft(schedule[index - 3] ^ schedule[index - 8] ^ schedule[index - 14] ^ schedule[index - 16], 1);
+    }
+
+    let a = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+
+    for (let index = 0; index < 80; index += 1) {
+      let f = 0;
+      let k = 0;
+      if (index < 20) {
+        f = (b & c) | ((~b) & d);
+        k = 0x5a827999;
+      } else if (index < 40) {
+        f = b ^ c ^ d;
+        k = 0x6ed9eba1;
+      } else if (index < 60) {
+        f = (b & c) | (b & d) | (c & d);
+        k = 0x8f1bbcdc;
+      } else {
+        f = b ^ c ^ d;
+        k = 0xca62c1d6;
+      }
+      const next = (rotateLeft(a, 5) + f + e + k + schedule[index]) >>> 0;
+      e = d;
+      d = c;
+      c = rotateLeft(b, 30);
+      b = a;
+      a = next;
+    }
+
+    h0 = (h0 + a) >>> 0;
+    h1 = (h1 + b) >>> 0;
+    h2 = (h2 + c) >>> 0;
+    h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0;
+  }
+
+  return [h0, h1, h2, h3, h4].map((part) => part.toString(16).padStart(8, "0")).join("");
+}
+
+function agentSessionShortHash(sessionID) {
+  const trimmed = normalizeText(sessionID);
+  if (!trimmed) {
+    return "";
+  }
+  return sha1Hex(trimmed).slice(0, 8);
 }
 
 function shorten(text, maxLength) {
@@ -4449,6 +4548,7 @@ function renderSessions() {
   syncSessionLoadHint();
   const sessions = conversationSessions();
   const activeSessionID = activeConversationSessionID();
+  const showShortHash = routeAllowsTargetPicker();
   if (!sessions.length) {
     sessionEmpty.textContent = routeAllowsTargetPicker() ? t("session.empty_agent") : t("session.empty");
     sessionEmpty.style.display = "block";
@@ -4478,11 +4578,45 @@ function renderSessions() {
     meta.className = "session-card-meta";
     meta.textContent = `${sessionTargetBadgeLabel(item)} · ${sessionModelLabel(item)} · ${item.messages.length} messages · ${formatSince(item.createdAt)}`;
 
+    const footer = document.createElement("div");
+    footer.className = "session-card-footer";
+
+    if (showShortHash) {
+      const shortHash = agentSessionShortHash(item.id);
+      if (shortHash) {
+        const hashLabel = document.createElement("span");
+        hashLabel.className = "session-card-id";
+        hashLabel.textContent = `#${shortHash}`;
+        hashLabel.title = item.id;
+        footer.appendChild(hashLabel);
+      }
+    }
+
     card.appendChild(title);
     card.appendChild(meta);
+    if (footer.childElementCount > 0) {
+      card.appendChild(footer);
+    }
     card.addEventListener("click", () => {
       focusSession(item.id);
     });
+
+    const actions = document.createElement("div");
+    actions.className = "session-card-actions";
+
+    if (showShortHash) {
+      const shortHash = agentSessionShortHash(item.id);
+      if (shortHash) {
+        const copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.className = "session-card-copy";
+        copyButton.dataset.copyValue = shortHash;
+        copyButton.title = t("route.copy_value");
+        copyButton.setAttribute("aria-label", t("route.copy_value"));
+        copyButton.innerHTML = renderCopyIcon();
+        actions.appendChild(copyButton);
+      }
+    }
 
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
@@ -4494,8 +4628,9 @@ function renderSessions() {
       await removeSession(item.id);
     });
 
+    actions.appendChild(deleteButton);
     row.appendChild(card);
-    row.appendChild(deleteButton);
+    row.appendChild(actions);
     sessionList.appendChild(row);
   }
 }
@@ -8272,7 +8407,7 @@ function renderCronRunsList(items, jobID) {
 async function loadCronJobsView(container) {
   const data = await fetchJSON("/api/control/cron/jobs");
   const items = Array.isArray(data.items) ? data.items : [];
-  const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const defaultTimezone = FRONTEND_DISPLAY_TIME_ZONE;
   container.innerHTML = `<section class="cron-view">
     <form class="task-filter-form page-filter-form page-filter-grid-4 cron-form" data-cron-form>
       <h4 class="cron-form-title">${t("route.cron.form.title")}</h4>
@@ -12400,9 +12535,18 @@ function formatDateTime(value) {
   if (Number.isNaN(parsed.getTime())) {
     return text;
   }
-  return parsed.toLocaleString(state.lang === "zh" ? "zh-CN" : "en-US", {
-    hour12: false
+  const parts = resolveBeijingTimeParts(parsed, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
   });
+  if (!parts) {
+    return text;
+  }
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 function formatRelativeDateTime(value) {
@@ -14650,6 +14794,27 @@ function bindEvents() {
   });
 
   routeBody.addEventListener("click", async (event) => {
+    const target = event.target.closest("[data-copy-value]");
+    if (!target) {
+      return;
+    }
+    const value = target.getAttribute("data-copy-value") || "";
+    if (!value) {
+      return;
+    }
+    try {
+      const copied = await copyTextValue(value);
+      if (!copied) {
+        return;
+      }
+      target.classList.add("copied");
+      window.setTimeout(() => target.classList.remove("copied"), 900);
+    } catch (error) {
+      console.warn("copy value failed", error);
+    }
+  });
+
+  sessionList.addEventListener("click", async (event) => {
     const target = event.target.closest("[data-copy-value]");
     if (!target) {
       return;

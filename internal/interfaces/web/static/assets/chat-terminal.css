@@ -1772,6 +1772,8 @@
   .mobile-backdrop {
     position: fixed;
     inset: 0;
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
     border: none;
     margin: 0;
     padding: 0;
