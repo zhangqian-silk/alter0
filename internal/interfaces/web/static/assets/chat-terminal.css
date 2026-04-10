@@ -1648,8 +1648,8 @@
   .app-shell.info-mode {
     grid-template-columns: minmax(0, 1fr);
     min-height: 0;
-    height: 100vh;
-    height: 100dvh;
+    height: var(--mobile-viewport-height, 100dvh);
+    max-height: var(--mobile-viewport-height, 100dvh);
     overflow: hidden;
     transition: none;
   }

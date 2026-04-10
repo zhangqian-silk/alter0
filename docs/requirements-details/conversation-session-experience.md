@@ -150,6 +150,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 ### 输入与键盘
 
 - Chat/Agent 输入区基于 `VisualViewport` 同步有效视口高度。
+- 移动端 App Shell 高度同步 `VisualViewport` 驱动的 `--mobile-viewport-height`，避免浏览器工具栏状态切换造成底部留白或内容裁切。
 - 输入区在软键盘弹起、收起、浏览器工具栏伸缩时持续贴住可见底部。
 - 仅在输入框实际聚焦且软键盘占位达到阈值时追加键盘底部偏移。
 - 键盘收起或视口回弹后不保留额外底部空白。
