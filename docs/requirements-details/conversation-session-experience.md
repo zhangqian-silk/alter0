@@ -78,6 +78,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 用户与助手消息主数据、路由结果、时间戳和来源字段必须持久化。
 - 页面刷新或服务重启后，用户可恢复最近会话与历史消息。
 - 删除会话时同步清理关联任务记录与会话工作区。
+- `Agent` 运行页会话列表为每个会话展示 8 位短 hash 标识，并支持一键复制；短 hash 用于前端列表辨识、预览域名映射与人工排障引用。
 
 ## 流式响应
 
@@ -103,6 +104,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Chat/Agent 消息区使用逐条 patch 与浏览器逐帧合并刷新。
 - 高频流式增量、Process 展开收起与任务状态回填不得导致整段消息列表重建。
 - 助手最终回复提供一键复制；若消息含 Process，复制内容只包含最终正文。
+- 前端所有绝对时间与时分标签统一按北京时间（`Asia/Shanghai`）渲染，并固定采用 24 小时制；浏览器本地时区不参与显示格式决策。
+- Cron 表单中的默认时区固定为 `Asia/Shanghai`，不再读取浏览器 `resolvedOptions().timeZone` 作为初始值。
 
 ## 并发与分流
 

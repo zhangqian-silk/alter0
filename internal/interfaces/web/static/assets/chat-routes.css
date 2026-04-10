@@ -5,9 +5,13 @@
   animation: fadeIn 0.3s ease-out;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   gap: 18px;
   background: var(--bg-soft);
   border-radius: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: var(--route-padding-top) var(--route-padding-x) var(--route-padding-bottom);
 }
 

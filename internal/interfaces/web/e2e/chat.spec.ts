@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import {
   expectComposerCounter,
@@ -12,7 +13,7 @@ import {
   removeChatSession,
   switchChatSession
 } from "./helpers/flows/chat-session";
-import { openCronRoute } from "./helpers/flows/routes";
+import { ensureChatRouteReady, openChatRoute, openCronRoute } from "./helpers/flows/routes";
 import { commitIMEInput, startIMEInput } from "./helpers/interactions/ime";
 import { clickWithUnsavedDialog } from "./helpers/guards/unsaved";
 import {
@@ -24,6 +25,86 @@ import {
 import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
 test.describe("Chat composer", () => {
+  test("formats frontend timestamps in Beijing time with a 24-hour clock", async ({ page }) => {
+    await openChatRoute(page);
+
+    const formatted = await page.evaluate(() => ({
+      dateTime: formatDateTime("2026-04-10T00:05:06Z"),
+      timeOnly: timeLabel(Date.parse("2026-04-10T00:05:00Z"))
+    }));
+
+    expect(formatted).toEqual({
+      dateTime: "2026-04-10 08:05:06",
+      timeOnly: "08:05"
+    });
+
+    await openCronRoute(page);
+    await expect(page.locator('input[name="timezone"]')).toHaveValue("Asia/Shanghai");
+  });
+
+  test("shows a copyable short hash for agent sessions", async ({ page }) => {
+    const sessionID = "db4416b7-452d-44a6-83ca-999e77f47791";
+    const shortHash = createHash("sha1").update(sessionID).digest("hex").slice(0, 8);
+    const createdAt = Date.now();
+
+    await page.addInitScript(({ seededAt, seededSessionID }) => {
+      window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
+        id: seededSessionID,
+        title: "修复 Agent 会话标识",
+        titleAuto: false,
+        titleScore: 8,
+        createdAt: seededAt,
+        messages: [{
+          id: "message-agent-session-hash",
+          role: "user",
+          text: "给 Agent 会话加标识",
+          at: seededAt,
+          status: "done"
+        }],
+        historyBucket: "agent:coding",
+        targetType: "agent",
+        targetID: "coding",
+        targetName: "Coding Agent",
+        modelProviderID: "",
+        modelID: "",
+        toolIDs: [],
+        skillIDs: [],
+        mcpIDs: []
+      }]));
+      window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
+        "agent:coding": seededSessionID
+      }));
+      Object.defineProperty(window.navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText(text: string) {
+            window.__copiedSessionHash = text;
+            return Promise.resolve();
+          }
+        }
+      });
+    }, {
+      seededAt: createdAt,
+      seededSessionID: sessionID
+    });
+
+    await page.goto("/chat#agent-runtime");
+    await ensureChatRouteReady(page);
+    if (!page.url().includes("#agent-runtime")) {
+      await page.goto("/chat#agent-runtime");
+      await ensureChatRouteReady(page);
+    }
+
+    const hashLabel = page.locator(".session-card-id").first();
+    const copyButton = page.locator(`.session-card-copy[data-copy-value="${shortHash}"]`).first();
+
+    await expect(hashLabel).toHaveText(`#${shortHash}`);
+    await expect(copyButton).toBeVisible();
+    await copyButton.click();
+
+    await expect.poll(() => page.evaluate(() => window.__copiedSessionHash || "")).toBe(shortHash);
+  });
+
   test("keeps empty session hint near the session header", async ({ page }) => {
     await openChatWorkspace(page);
 
