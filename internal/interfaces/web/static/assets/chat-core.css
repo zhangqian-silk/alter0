@@ -26,8 +26,8 @@
   --route-terminal-padding-bottom: 20px;
   --shadow-soft: 0 18px 40px -34px rgba(15, 23, 42, 0.22);
   --shadow-card: 0 34px 70px -44px rgba(15, 23, 42, 0.28);
-  --content-width: 860px;
-  --user-message-max-width: min(80%, 720px);
+  --content-width: clamp(860px, calc(100vw - var(--nav-width) - var(--session-width) - 160px), 1240px);
+  --user-message-max-width: min(80%, 880px);
   --mobile-viewport-height: 100dvh;
   --keyboard-offset: 0px;
   --nav-width: 244px;
@@ -960,7 +960,7 @@ body {
 }
 
 .msg {
-  max-width: min(100%, 860px);
+  max-width: min(100%, var(--content-width));
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -985,7 +985,7 @@ body {
 }
 
 .msg.assistant {
-  max-width: min(100%, 860px);
+  max-width: min(100%, var(--content-width));
   margin-right: auto;
 }
 

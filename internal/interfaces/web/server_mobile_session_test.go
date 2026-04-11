@@ -242,3 +242,20 @@ func TestNarrowPhoneTerminalWorkspaceAllowsActionWrap(t *testing.T) {
 		}
 	}
 }
+
+func TestDesktopChatColumnExpandsOnWideViewports(t *testing.T) {
+	styles := readEmbeddedAsset(t, "static/assets/chat-core.css")
+	markers := []string{
+		"--content-width: clamp(",
+		"calc(100vw - var(--nav-width) - var(--session-width) - 160px)",
+		"--user-message-max-width: min(80%, 880px);",
+		"max-width: min(100%, var(--content-width));",
+		"width: min(var(--content-width), calc(100% - 28px));",
+		"width: min(var(--content-width), 100%);",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}

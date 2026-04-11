@@ -176,6 +176,67 @@ test.describe("Chat composer", () => {
     await expect(page.locator(".composer-runtime-popover-mobile")).toBeVisible();
   });
 
+  test("expands the desktop chat reading column on wide screens", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    const { chatPage, composer } = await openChatWorkspace(page);
+
+    await composer.input().fill("请输出一段稍长的说明，用于验证桌面宽屏聊天布局。");
+    await composer.submitButton().click();
+    await expect(chatPage.latestUserBubble()).toContainText("请输出一段稍长的说明");
+
+    const metrics = await page.evaluate(() => {
+      const list = document.querySelector(".message-list");
+      const composerNode = document.querySelector(".composer");
+      if (!(list instanceof HTMLElement) || !(composerNode instanceof HTMLElement)) {
+        return null;
+      }
+      const listRect = list.getBoundingClientRect();
+      const composerRect = composerNode.getBoundingClientRect();
+      return {
+        listWidth: listRect.width,
+        composerWidth: composerRect.width,
+        listCenter: listRect.left + listRect.width / 2,
+        composerCenter: composerRect.left + composerRect.width / 2,
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics?.listWidth ?? 0).toBeGreaterThan(1000);
+    expect(metrics?.composerWidth ?? 0).toBeGreaterThan(1000);
+    expect(metrics?.listWidth ?? 0).toBeLessThanOrEqual(1242);
+    expect(metrics?.composerWidth ?? 0).toBeLessThanOrEqual(1242);
+    expect(Math.abs((metrics?.listCenter ?? 0) - (metrics?.composerCenter ?? 0))).toBeLessThan(4);
+  });
+
+  test("keeps the empty-state welcome copy and composer aligned on wide screens", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await openChatWorkspace(page);
+
+    const metrics = await page.evaluate(() => {
+      const welcome = document.querySelector(".welcome-screen");
+      const composerNode = document.querySelector(".composer");
+      if (!(welcome instanceof HTMLElement) || !(composerNode instanceof HTMLElement)) {
+        return null;
+      }
+      const welcomeRect = welcome.getBoundingClientRect();
+      const composerRect = composerNode.getBoundingClientRect();
+      return {
+        welcomeWidth: welcomeRect.width,
+        composerWidth: composerRect.width,
+        welcomeCenter: welcomeRect.left + welcomeRect.width / 2,
+        composerCenter: composerRect.left + composerRect.width / 2,
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics?.welcomeWidth ?? 0).toBeGreaterThan(1000);
+    expect(metrics?.composerWidth ?? 0).toBeGreaterThan(1000);
+    expect(metrics?.welcomeWidth ?? 0).toBeLessThanOrEqual(1242);
+    expect(metrics?.composerWidth ?? 0).toBeLessThanOrEqual(1242);
+    expect(Math.abs((metrics?.welcomeWidth ?? 0) - (metrics?.composerWidth ?? 0))).toBeLessThanOrEqual(4);
+    expect(Math.abs((metrics?.welcomeCenter ?? 0) - (metrics?.composerCenter ?? 0))).toBeLessThan(4);
+  });
+
   test("renders mobile session settings as an independent bottom sheet", async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
     await openChatWorkspace(page);
