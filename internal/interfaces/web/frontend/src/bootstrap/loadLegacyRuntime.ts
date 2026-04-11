@@ -1,3 +1,5 @@
+import { getMissingLegacyShellIds } from "../features/shell/legacyDomContract";
+
 const LEGACY_RUNTIME_SCRIPT_ID = "alter0-legacy-runtime";
 const LEGACY_RUNTIME_SCRIPT_SRC = "/legacy/chat.js";
 
@@ -5,6 +7,11 @@ export function ensureLegacyRuntimeScript(src: string = LEGACY_RUNTIME_SCRIPT_SR
   const existing = document.getElementById(LEGACY_RUNTIME_SCRIPT_ID);
   if (existing instanceof HTMLScriptElement) {
     return existing;
+  }
+
+  const missingIds = getMissingLegacyShellIds();
+  if (missingIds.length > 0) {
+    throw new Error(`legacy shell contract is incomplete: ${missingIds.join(", ")}`);
   }
 
   const script = document.createElement("script");

@@ -4,8 +4,8 @@
 
 当前阶段采用兼容桥切换：
 
-- `index.html` 继续承载现有 Web Shell DOM 结构
-- React 负责启动前端桥接层并接管后续迁移入口
+- `index.html` 仅保留前端启动容器、字体与 legacy 样式入口
+- React 负责渲染当前 Web Shell 的 legacy DOM 契约，并启动兼容桥接层
 - 旧版运行时脚本与样式通过 `public/legacy` 纳入 Vite 构建产物
 - `npm run build` 输出到 `internal/interfaces/web/static/dist`
 

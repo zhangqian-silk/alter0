@@ -68,7 +68,7 @@ CLI / Web / Cron
 - `internal/session/domain` 定义会话与消息数据结构。
 - `internal/session/application` 负责会话持久化、历史查询和删除清理。
 - `internal/interfaces/web` 负责 HTTP、SSE、Web 登录、页面路由和前端静态资源分发。
-- `internal/interfaces/web/frontend` 负责 Web Shell 的 Vite + React 构建、兼容桥启动和 `static/dist` 产物输出。
+- `internal/interfaces/web/frontend` 负责 Web Shell 的 Vite + React 构建、legacy DOM shell 渲染、兼容桥启动和 `static/dist` 产物输出。
 - 前端静态资源处理展示、输入、缓存、轮询和视口状态；会话恢复阶段允许把残留 `streaming` 消息归一为失败态或任务态，但不改写后端领域事实。
 
 ### 调用链路
@@ -88,6 +88,7 @@ Web input
 - Chat 默认绑定 `main` Agent，Agent 页面按目标 Agent 隔离会话历史。
 - 根路径 `/`、`/chat`、`/login`、`/logout` 是稳定 Web Shell 入口；登录密码启用后页面和 API 共享同一登录态校验。
 - `/chat` 优先分发 `static/dist/index.html`，静态资源优先使用 `static/dist/assets` 与 `static/dist/legacy`；仅在前端产物缺失时才回退到仓库内 legacy 静态页与 `static/assets`。
+- `static/dist/index.html` 仅保留前端挂载容器、字体与 legacy 样式入口；React 在 `frontend-root` 内渲染当前 Web Shell 所需的 legacy DOM 节点，确保 `chat.js` 迁移期间仍可按原有 `id`、`data-*` 与布局结构接管页面。
 - SSE 连接只负责回传，前端断连不得取消已进入 Agent 执行链的后端任务。
 - 会话标题升级、空白会话唯一性、历史折叠和页面滚动状态属于 Conversation 子域。
 - `chat.js` 读取本地缓存时先归一残留 `streaming` 消息；无 `task_id` 的消息转失败态，带真实 `task_id` 的消息恢复到任务轮询链路。
@@ -110,6 +111,7 @@ Web input
 
 - Web handler 测试覆盖会话创建、历史隔离、流式事件和取消语义。
 - 前端 E2E 覆盖 Chat、Agent、移动端输入、设置面板和长会话渲染。
+- 前端组件测试需覆盖 React 渲染出的 legacy shell 契约，至少校验导航、会话列表、消息区、Composer 和 runtime sheet host 等关键节点未破坏 `chat.js` 的接管前提。
 - 回归测试优先覆盖空白会话重复、软键盘残留空白、整段列表重建、断流恢复与残留 `In Progress` 等高频问题。
 
 ## Agent Capability & Memory
