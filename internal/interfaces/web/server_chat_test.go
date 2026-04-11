@@ -25,7 +25,7 @@ func TestRootHandlerRedirectsToChat(t *testing.T) {
 	}
 }
 
-func TestChatPageHandlerServesEmbeddedHTML(t *testing.T) {
+func TestChatPageHandlerServesEmbeddedFrontendDist(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	req := httptest.NewRequest(http.MethodGet, "/chat", nil)
 	rec := httptest.NewRecorder()
@@ -39,8 +39,17 @@ func TestChatPageHandlerServesEmbeddedHTML(t *testing.T) {
 	if !strings.Contains(contentType, "text/html") {
 		t.Fatalf("expected text/html response, got %q", contentType)
 	}
-	if !strings.Contains(rec.Body.String(), "alter0 Chat") {
-		t.Fatalf("expected chat page content")
+	body := rec.Body.String()
+	markers := []string{
+		"<title>alter0 Chat</title>",
+		`id="frontend-root"`,
+		`<script type="module" crossorigin src="/assets/`,
+		`data-frontend-shell="legacy-bridge"`,
+	}
+	for _, marker := range markers {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("expected frontend dist marker %q", marker)
+		}
 	}
 }
 
@@ -56,13 +65,21 @@ func TestChatPageHandlerMethodNotAllowed(t *testing.T) {
 	}
 }
 
-func TestEmbeddedAssetsAvailable(t *testing.T) {
-	content, err := webStaticFS.ReadFile("static/assets/chat.js")
+func TestEmbeddedFrontendDistAssetsAvailable(t *testing.T) {
+	content, err := webStaticFS.ReadFile("static/dist/index.html")
 	if err != nil {
-		t.Fatalf("expected embedded chat.js, got error: %v", err)
+		t.Fatalf("expected embedded frontend dist index, got error: %v", err)
 	}
 	if len(content) == 0 {
-		t.Fatal("expected embedded chat.js content")
+		t.Fatal("expected embedded frontend dist index content")
+	}
+
+	legacyBridge, err := webStaticFS.ReadFile("static/dist/legacy/chat.js")
+	if err != nil {
+		t.Fatalf("expected embedded legacy bridge runtime, got error: %v", err)
+	}
+	if len(legacyBridge) == 0 {
+		t.Fatal("expected embedded legacy bridge runtime content")
 	}
 }
 

@@ -44,6 +44,7 @@ import (
 
 //go:embed static/chat.html
 //go:embed static/assets
+//go:embed static/dist
 var webStaticFS embed.FS
 
 const (
@@ -740,11 +741,14 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/terminal/sessions/recover", s.terminalSessionRecoverHandler)
 	mux.HandleFunc("/api/terminal/sessions/", s.terminalSessionItemHandler)
 
-	assetsFS, err := fs.Sub(webStaticFS, "static/assets")
+	assetsFS, err := webAssetFS("assets")
 	if err != nil {
 		return err
 	}
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS))))
+	if legacyFS, legacyErr := webAssetFS("legacy"); legacyErr == nil {
+		mux.Handle("/legacy/", http.StripPrefix("/legacy/", http.FileServer(http.FS(legacyFS))))
+	}
 
 	handler := http.Handler(mux)
 	if s.webLoginEnabled {
@@ -990,7 +994,7 @@ func (s *Server) chatPageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	content, err := webStaticFS.ReadFile("static/chat.html")
+	content, err := readWebShellPage()
 	if err != nil {
 		s.logger.Error("chat page unavailable", slog.String("error", err.Error()))
 		http.Error(w, "chat page unavailable", http.StatusInternalServerError)
@@ -999,6 +1003,23 @@ func (s *Server) chatPageHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(content)
+}
+
+func readWebShellPage() ([]byte, error) {
+	content, err := webStaticFS.ReadFile("static/dist/index.html")
+	if err == nil {
+		return content, nil
+	}
+	return webStaticFS.ReadFile("static/chat.html")
+}
+
+func webAssetFS(name string) (fs.FS, error) {
+	distPath := filepath.ToSlash(filepath.Join("static", "dist", name))
+	if assetsFS, err := fs.Sub(webStaticFS, distPath); err == nil {
+		return assetsFS, nil
+	}
+	legacyPath := filepath.ToSlash(filepath.Join("static", name))
+	return fs.Sub(webStaticFS, legacyPath)
 }
 
 func (s *Server) healthHandler(w http.ResponseWriter, _ *http.Request) {

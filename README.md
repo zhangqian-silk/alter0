@@ -57,7 +57,8 @@
 ```text
 cmd/alter0                         # 程序入口（web/cli）
 internal/interfaces/cli            # CLI 适配器
-internal/interfaces/web            # Web 适配器 + Control API
+internal/interfaces/web            # Web 适配器 + Control API + 前端产物分发
+internal/interfaces/web/frontend   # Vite + React 前端工程（构建输出到 static/dist）
 internal/control/domain            # Control 领域模型（Channel/Skill）
 internal/control/application       # Control 应用服务（配置增删改查）
 internal/product/domain            # Product 领域模型（产品定义与主 Agent 上下文）
@@ -343,13 +344,13 @@ sudo ./scripts/setup_alter0_runtime_auth.sh
 
 该脚本会把 `alter0` 运行账户的 GitHub App token helper、`gh` 命令包装器、SSH signing key 与全局 Git 配置初始化到 `/var/lib/alter0`，用于服务内 `Codex CLI` 的提交 / PR / merge 链路。
 
-若希望服务内 `Codex CLI` 可直接执行 `npm install`、`npm run test:e2e`、`npx playwright install chromium` 等 Node/Playwright 测试链路，还需在 root 下额外执行一次：
+若希望服务内 `Codex CLI` 可直接执行 `internal/interfaces/web/frontend` 下的 `npm run build` / `npm run test`，以及 `internal/interfaces/web` 下的 `npm run test:e2e`、`npx playwright install chromium` 等 Node/Playwright 测试链路，还需在 root 下额外执行一次：
 
 ```bash
 sudo ./scripts/setup_alter0_runtime_node.sh
 ```
 
-该脚本会把带 `npm`/`npx`/`corepack` 的 Node 运行时安装到 `/var/lib/alter0/.local`，并默认在 `internal/interfaces/web` 目录预装 `npm ci` 与 Playwright Chromium 浏览器，使服务运行账户在非交互式环境中也能完整执行前端 E2E 测试。
+该脚本会把带 `npm`/`npx`/`corepack` 的 Node 运行时安装到 `/var/lib/alter0/.local`，并默认在 `internal/interfaces/web` 与 `internal/interfaces/web/frontend` 目录预装 `npm ci`，随后安装 Playwright Chromium 浏览器，使服务运行账户在非交互式环境中也能同时执行前端构建、单测与 E2E 测试。
 
 之所以默认落在 `/var/lib/alter0/.local`，是因为这里属于 `alter0` 服务运行账户自己的运行时目录：既不会污染系统全局 `/usr/local/bin`，也不依赖宿主机预装 `npm`。脚本会把实际安装目录中的 `node`、`npm`、`npx`、`corepack` 软链接到 `/var/lib/alter0/.local/bin`，再由服务启动时补齐该目录到 `PATH`，这样 `Codex CLI`、Web 子进程和手工切到 `alter0` 账户执行时看到的都是同一套稳定工具链。
 

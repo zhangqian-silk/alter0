@@ -35,6 +35,7 @@ LOCAL_DIR="${HOME_DIR}/.local"
 LOCAL_BIN_DIR="${LOCAL_DIR}/bin"
 NODE_INSTALL_ROOT="${ALTER0_NODE_INSTALL_ROOT:-${LOCAL_DIR}/nodejs}"
 PLAYWRIGHT_PROJECT_DIR="${ALTER0_PLAYWRIGHT_PROJECT_DIR:-/srv/alter0/app/internal/interfaces/web}"
+FRONTEND_PROJECT_DIR="${ALTER0_FRONTEND_PROJECT_DIR:-${PLAYWRIGHT_PROJECT_DIR}/frontend}"
 INSTALL_E2E_DEPS="${ALTER0_INSTALL_E2E_DEPS:-true}"
 PREPARE_PNPM="${ALTER0_PREPARE_PNPM:-true}"
 
@@ -118,7 +119,10 @@ if [[ "${INSTALL_E2E_DEPS}" == "true" && -d "${PLAYWRIGHT_PROJECT_DIR}" ]]; then
   if [[ -d "${PLAYWRIGHT_PROJECT_DIR}/node_modules" ]]; then
     chown -R "${RUN_AS}:${RUN_GROUP}" "${PLAYWRIGHT_PROJECT_DIR}/node_modules"
   fi
-  su -s /bin/bash "${RUN_AS}" -c "export HOME='${HOME_DIR}' PATH='${LOCAL_BIN_DIR}:/usr/local/bin:/usr/bin:/bin'; cd '${PLAYWRIGHT_PROJECT_DIR}' && npm ci && npx playwright install chromium"
+  if [[ -d "${FRONTEND_PROJECT_DIR}/node_modules" ]]; then
+    chown -R "${RUN_AS}:${RUN_GROUP}" "${FRONTEND_PROJECT_DIR}/node_modules"
+  fi
+  su -s /bin/bash "${RUN_AS}" -c "export HOME='${HOME_DIR}' PATH='${LOCAL_BIN_DIR}:/usr/local/bin:/usr/bin:/bin'; cd '${PLAYWRIGHT_PROJECT_DIR}' && npm ci && if [[ -d '${FRONTEND_PROJECT_DIR}' && -f '${FRONTEND_PROJECT_DIR}/package-lock.json' ]]; then cd '${FRONTEND_PROJECT_DIR}' && npm ci; fi && cd '${PLAYWRIGHT_PROJECT_DIR}' && npx playwright install chromium"
 fi
 
 echo "runtime node prepared for ${RUN_AS} at ${HOME_DIR}"

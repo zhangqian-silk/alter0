@@ -1,6 +1,6 @@
 # Technical Solution
 
-> Last update: 2026-04-10
+> Last update: 2026-04-11
 
 `alter0` 的技术方案按与需求清单一致的领域模型维护。后续新增或调整需求时，技术方案必须落到对应领域与子域，不再按时间顺序、任务编号或零散专题堆叠。
 
@@ -67,7 +67,8 @@ CLI / Web / Cron
 
 - `internal/session/domain` 定义会话与消息数据结构。
 - `internal/session/application` 负责会话持久化、历史查询和删除清理。
-- `internal/interfaces/web` 负责 HTTP、SSE、Web 登录、页面路由和前端静态资源。
+- `internal/interfaces/web` 负责 HTTP、SSE、Web 登录、页面路由和前端静态资源分发。
+- `internal/interfaces/web/frontend` 负责 Web Shell 的 Vite + React 构建、兼容桥启动和 `static/dist` 产物输出。
 - 前端静态资源处理展示、输入、缓存、轮询和视口状态；会话恢复阶段允许把残留 `streaming` 消息归一为失败态或任务态，但不改写后端领域事实。
 
 ### 调用链路
@@ -86,6 +87,7 @@ Web input
 
 - Chat 默认绑定 `main` Agent，Agent 页面按目标 Agent 隔离会话历史。
 - 根路径 `/`、`/chat`、`/login`、`/logout` 是稳定 Web Shell 入口；登录密码启用后页面和 API 共享同一登录态校验。
+- `/chat` 优先分发 `static/dist/index.html`，静态资源优先使用 `static/dist/assets` 与 `static/dist/legacy`；仅在前端产物缺失时才回退到仓库内 legacy 静态页与 `static/assets`。
 - SSE 连接只负责回传，前端断连不得取消已进入 Agent 执行链的后端任务。
 - 会话标题升级、空白会话唯一性、历史折叠和页面滚动状态属于 Conversation 子域。
 - `chat.js` 读取本地缓存时先归一残留 `streaming` 消息；无 `task_id` 的消息转失败态，带真实 `task_id` 的消息恢复到任务轮询链路。
@@ -244,7 +246,7 @@ Product request
 - `internal/control` 管理 Channel、Capability、Skill、MCP、Agent Profile 和 Environment 配置。
 - `internal/llm` 管理 Model Provider、上游 API type、OpenRouter 扩展与密钥状态。
 - `cmd/alter0` 管理启动、supervisor、重启、内置配置和运行时 metadata。
-- `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本。
+- `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本；Node 初始化同时覆盖 `internal/interfaces/web` 与 `internal/interfaces/web/frontend`。
 - `docs/deployment` 承载 Nginx 与部署权限说明。
 
 ### 调用链路
