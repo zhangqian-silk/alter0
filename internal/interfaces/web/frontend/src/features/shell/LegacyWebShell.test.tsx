@@ -27,4 +27,43 @@ describe("LegacyWebShell", () => {
     expect(screen.getByRole("button", { name: "Send message" })).toHaveAttribute("data-composer-submit", "chat-main");
     expect(screen.getByLabelText("Input your message")).toHaveAttribute("data-composer-input", "chat-main");
   });
+
+  it("renders the shell navigation groups and route placement", () => {
+    const { container } = render(<LegacyWebShell />);
+
+    expect(screen.getByText("Workspace")).toBeInTheDocument();
+    expect(screen.getByText("Agent Studio")).toBeInTheDocument();
+    expect(screen.getByText("Control")).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+
+    const routeButtons = [...container.querySelectorAll<HTMLButtonElement>(".menu-item")];
+    const routes = routeButtons.map((button) => button.dataset.route);
+
+    expect(routes).toEqual([
+      "chat",
+      "agent-runtime",
+      "terminal",
+      "agent",
+      "products",
+      "memory",
+      "skills",
+      "mcp",
+      "sessions",
+      "tasks",
+      "cron-jobs",
+      "channels",
+      "models",
+      "environments"
+    ]);
+  });
+
+  it("renders the session pane and mobile shell entrypoints", () => {
+    render(<LegacyWebShell />);
+
+    expect(document.getElementById("mobileNewChatButton")).toBeInTheDocument();
+    expect(document.getElementById("sessionHistoryToggle")).toBeInTheDocument();
+    expect(document.getElementById("sessionHistoryPanel")).toBeInTheDocument();
+    expect(document.getElementById("sessionLoadError")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New Chat" })).toHaveAttribute("id", LEGACY_SHELL_IDS.newChatButton);
+  });
 });

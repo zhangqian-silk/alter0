@@ -6,17 +6,6 @@ import (
 )
 
 func TestMobileNewChatEntryReachable(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	htmlMarkers := []string{
-		`id="mobileNewChatButton"`,
-		`id="newChatButton"`,
-	}
-	for _, marker := range htmlMarkers {
-		if !strings.Contains(html, marker) {
-			t.Fatalf("expected html marker %q", marker)
-		}
-	}
-
 	styles := readEmbeddedAsset(t, "static/assets/chat.css")
 	styleMarkers := []string{
 		".mobile-new-chat {",
@@ -50,11 +39,6 @@ func TestNewChatReusesLatestBlankSessionAndSwitchesContext(t *testing.T) {
 }
 
 func TestSessionListShowsEmptyAndLoadFailureFeedback(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	if !strings.Contains(html, `id="sessionLoadError"`) {
-		t.Fatalf("expected html marker %q", `id="sessionLoadError"`)
-	}
-
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
 		"function loadSessionsFromStorage(mode = routeConversationMode())",
@@ -101,11 +85,6 @@ func TestSessionDeleteHooksAndStylesPresent(t *testing.T) {
 }
 
 func TestMobileRuntimeSheetUsesDedicatedStackingLayer(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	if !strings.Contains(html, `id="chatRuntimeSheetHost"`) {
-		t.Fatalf("expected html marker %q", `id="chatRuntimeSheetHost"`)
-	}
-
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
 		`class="composer-runtime-sheet-backdrop"`,
@@ -119,7 +98,7 @@ func TestMobileRuntimeSheetUsesDedicatedStackingLayer(t *testing.T) {
 		`function restoreChatRuntimeScrollState(snapshot) {`,
 		`restoreChatRuntimeScrollState(scrollSnapshot);`,
 		`subtitle: chatAgentOptionSummary(agent)`,
-		`chatRuntimeSheetHost.innerHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({`,
+		`sheetContentRoot.innerHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({`,
 		`appShell.classList.toggle("runtime-sheet-open", compactRuntime && openPopover === "mobile");`,
 		`if (state.currentRoute === "chat" || state.currentRoute === "agent-runtime") {`,
 	}

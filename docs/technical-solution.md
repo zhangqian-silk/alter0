@@ -69,6 +69,9 @@ CLI / Web / Cron
 - `internal/session/application` 负责会话持久化、历史查询和删除清理。
 - `internal/interfaces/web` 负责 HTTP、SSE、Web 登录、页面路由和前端静态资源分发。
 - `internal/interfaces/web/frontend` 负责 Web Shell 的 Vite + React 构建、legacy DOM shell 渲染、兼容桥启动和 `static/dist` 产物输出。
+- `internal/interfaces/web/frontend/src/shared/api/client.ts` 负责统一 JSON 请求封装、错误收敛与登录失效回调，避免新前端页面继续散落原生 `fetch`。
+- `internal/interfaces/web/frontend/src/shared/time/format.ts` 负责固定 `Asia/Shanghai` 的前端显示时区与标准时间格式，避免新旧页面时间口径漂移。
+- `internal/interfaces/web/frontend/src/shared/viewport/mobileViewport.ts` 负责移动端断点、键盘偏移阈值与 viewport baseline 计算，避免 Chat、Terminal 与 route 页重复维护软键盘占位逻辑。
 - 前端静态资源处理展示、输入、缓存、轮询和视口状态；会话恢复阶段允许把残留 `streaming` 消息归一为失败态或任务态，但不改写后端领域事实。
 
 ### 调用链路
@@ -87,8 +90,10 @@ Web input
 
 - Chat 默认绑定 `main` Agent，Agent 页面按目标 Agent 隔离会话历史。
 - 根路径 `/`、`/chat`、`/login`、`/logout` 是稳定 Web Shell 入口；登录密码启用后页面和 API 共享同一登录态校验。
-- `/chat` 优先分发 `static/dist/index.html`，静态资源优先使用 `static/dist/assets` 与 `static/dist/legacy`；仅在前端产物缺失时才回退到仓库内 legacy 静态页与 `static/assets`。
+- `/chat` 固定分发 `static/dist/index.html`，静态资源统一从 `static/dist/assets` 与 `static/dist/legacy` 提供；仓库内不再保留额外的 legacy HTML/CSS/JS 嵌入源文件。
 - `static/dist/index.html` 仅保留前端挂载容器、字体与 legacy 样式入口；React 在 `frontend-root` 内渲染当前 Web Shell 所需的 legacy DOM 节点，确保 `chat.js` 迁移期间仍可按原有 `id`、`data-*` 与布局结构接管页面。
+- `/chat` 与 `static/dist/legacy/*` 统一返回 `Cache-Control: no-cache`，保证桥接期 HTML 与固定文件名 runtime 资源总能拿到最新版本；`static/dist/assets/*` 基于 Vite 哈希文件名返回 `Cache-Control: public, max-age=31536000, immutable`。
+- 开发态可通过 `ALTER0_WEB_FRONTEND_DEV_ORIGIN` 启用 Go -> Vite dev server 反向代理：`/chat` 直接转发到前端开发服务器，`/@vite/*`、`/@react-refresh`、`/src/*`、`/node_modules/*` 等运行时资源也由同一代理提供；Vite 侧再通过 `ALTER0_WEB_BACKEND_ORIGIN` 把 `/api`、登录和健康检查路径代理回 Go。
 - SSE 连接只负责回传，前端断连不得取消已进入 Agent 执行链的后端任务。
 - 会话标题升级、空白会话唯一性、历史折叠和页面滚动状态属于 Conversation 子域。
 - `chat.js` 读取本地缓存时先归一残留 `streaming` 消息；无 `task_id` 的消息转失败态，带真实 `task_id` 的消息恢复到任务轮询链路。
