@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { LegacyRuntimeBridge } from "./bootstrap/LegacyRuntimeBridge";
+import { App } from "./app/App";
 import "./styles/bridge.css";
 
 const container = document.getElementById("frontend-root");
@@ -11,6 +11,6 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <LegacyRuntimeBridge />
+    <App />
   </StrictMode>,
 );

@@ -23,7 +23,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 - 根路径 `/` 默认进入 Chat 工作台。
 - `/chat` 提供 Chat、Agent、Terminal、Product、Control 与 Memory 的统一 Web Shell。
-- Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`，兼容桥在同一入口内承接旧版运行时脚本与样式。
+- Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`；该入口仅保留前端挂载容器与静态资源引用，当前由 React 渲染 legacy shell DOM，再由兼容桥承接旧版运行时脚本与样式。
 - `/login` 在登录密码启用时提供登录入口；`/logout` 清理当前登录态并回到登录流程。
 - 登录密码未启用时，Web Shell 直接进入受保护页面；登录密码启用后，受保护页面和 API 使用同一登录态校验。
 

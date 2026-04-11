@@ -3933,6 +3933,18 @@ function findChatRuntimeScrollContainer(popover = state.chatRuntime.openPopover)
     || null;
 }
 
+function runtimePanelControlsRoot() {
+  return (chatRuntimePanel && chatRuntimePanel.querySelector("[data-runtime-controls-root]")) || chatRuntimePanel || null;
+}
+
+function runtimePanelNoteRoot() {
+  return (chatRuntimePanel && chatRuntimePanel.querySelector("[data-runtime-note-root]")) || chatRuntimePanel || null;
+}
+
+function runtimeSheetContentRoot() {
+  return (chatRuntimeSheetHost && chatRuntimeSheetHost.querySelector("[data-runtime-sheet-root]")) || chatRuntimeSheetHost || null;
+}
+
 function captureChatRuntimeScrollState(popover = state.chatRuntime.openPopover) {
   const normalizedPopover = normalizeText(popover);
   const container = findChatRuntimeScrollContainer(normalizedPopover);
@@ -3970,11 +3982,15 @@ function restoreChatRuntimeScrollState(snapshot) {
 function renderChatRuntimePanel() {
   if (!chatRuntimePanel) {
     appShell.classList.remove("runtime-sheet-open");
-    if (chatRuntimeSheetHost) {
-      chatRuntimeSheetHost.innerHTML = "";
+    const sheetRoot = runtimeSheetContentRoot();
+    if (sheetRoot) {
+      sheetRoot.innerHTML = "";
     }
     return;
   }
+  const panelControlsRoot = runtimePanelControlsRoot();
+  const panelNoteRoot = runtimePanelNoteRoot();
+  const sheetContentRoot = runtimeSheetContentRoot();
   const mode = routeConversationMode();
   const initialTarget = currentConversationTarget();
   const activeSession = getSession() || ((mode === "agent" && !initialTarget.id) ? null : createSession(initialTarget, mode, state.currentRoute));
@@ -4040,7 +4056,8 @@ function renderChatRuntimePanel() {
   const availableSkills = skillItems.filter((item) => !skillSelected.has(item.id));
 
   if (compactRuntime) {
-    chatRuntimePanel.innerHTML = `<div class="composer-runtime-group composer-runtime-group-compact">
+    if (panelControlsRoot) {
+      panelControlsRoot.innerHTML = `<div class="composer-runtime-group composer-runtime-group-compact">
       <div class="composer-runtime-control composer-runtime-control-compact">
         <button class="composer-runtime-trigger composer-runtime-trigger-compact${openPopover === "mobile" ? " is-open" : ""}" type="button" data-runtime-toggle="mobile" title="${escapeHTML(t("chat.runtime.mobile_hint"))}">
           <span class="composer-runtime-trigger-icon">⚙️</span>
@@ -4051,10 +4068,13 @@ function renderChatRuntimePanel() {
           <span class="composer-runtime-trigger-caret">▾</span>
         </button>
       </div>
-    </div>
-    ${runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : ""}`;
-    if (chatRuntimeSheetHost) {
-      chatRuntimeSheetHost.innerHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({
+    </div>`;
+    }
+    if (panelNoteRoot) {
+      panelNoteRoot.innerHTML = runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : "";
+    }
+    if (sheetContentRoot) {
+      sheetContentRoot.innerHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({
         agentRuntime,
         target,
         locked,
@@ -4073,10 +4093,11 @@ function renderChatRuntimePanel() {
       }) : "";
     }
   } else {
-  if (chatRuntimeSheetHost) {
-    chatRuntimeSheetHost.innerHTML = "";
+  if (sheetContentRoot) {
+    sheetContentRoot.innerHTML = "";
   }
-  chatRuntimePanel.innerHTML = `<div class="composer-runtime-group">
+  if (panelControlsRoot) {
+    panelControlsRoot.innerHTML = `<div class="composer-runtime-group">
     ${agentRuntime ? `<div class="composer-runtime-control">
       <button class="composer-runtime-trigger${openPopover === "target" ? " is-open" : ""}${locked ? " is-disabled" : ""}" type="button" data-runtime-toggle="target" aria-disabled="${locked ? "true" : "false"}" title="${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.agent_hint"))}">
         <span class="composer-runtime-trigger-icon">🎯</span>
@@ -4177,9 +4198,11 @@ function renderChatRuntimePanel() {
           </span>
         </label>`)}
       </div>` : ""}
-    </div>
-  </div>
-  ${runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : ""}`;
+    </div>`;
+  }
+  if (panelNoteRoot) {
+    panelNoteRoot.innerHTML = runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : "";
+  }
   }
 
   restoreChatRuntimeScrollState(scrollSnapshot);
