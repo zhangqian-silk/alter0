@@ -160,6 +160,35 @@ func TestMobileViewportKeyboardOffsetOnlyAppliesForFocusedInput(t *testing.T) {
 	}
 }
 
+func TestMobileRuntimeSheetClosesWhenComposerTakesFocus(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"onFocus: () => {",
+		"if (isMobileViewport() && state.chatRuntime.openPopover) {",
+		"closeChatRuntimePopover();",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+}
+
+func TestMobileRuntimeSheetBlursFocusedComposerBeforeOpen(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"if (isTerminalSessionSheetViewport() && nextPopover === \"mobile\" && state.chatRuntime.openPopover !== nextPopover) {",
+		"const activeInput = activeViewportInput();",
+		"activeInput.blur();",
+		"scheduleViewportInsetSync();",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+}
+
 func TestMobileTerminalComposerConsumesViewportInsetVariables(t *testing.T) {
 	coreStyles := readEmbeddedAsset(t, "static/assets/chat-core.css")
 	coreMarkers := []string{
@@ -189,6 +218,23 @@ func TestMobileRoutePagesConsumeViewportMetrics(t *testing.T) {
 	markers := []string{
 		".chat-pane.page-mode {",
 		"height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset)));",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}
+
+func TestNarrowPhoneTerminalWorkspaceAllowsActionWrap(t *testing.T) {
+	styles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
+	markers := []string{
+		"@media (max-width: 420px) {",
+		".terminal-workspace-row {",
+		"flex-wrap: wrap;",
+		".terminal-workspace-actions {",
+		"justify-content: flex-start;",
+		"-webkit-line-clamp: 2;",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(styles, marker) {

@@ -4196,6 +4196,13 @@ function renderChatRuntimePanel() {
       if (nextPopover === "target" && locked) {
         return;
       }
+      if (isTerminalSessionSheetViewport() && nextPopover === "mobile" && state.chatRuntime.openPopover !== nextPopover) {
+        const activeInput = activeViewportInput();
+        if (activeInput instanceof HTMLElement) {
+          activeInput.blur();
+        }
+        scheduleViewportInsetSync();
+      }
       state.chatRuntime.openPopover = state.chatRuntime.openPopover === nextPopover ? "" : nextPopover;
       renderChatRuntimePanel();
     });
@@ -15026,6 +15033,9 @@ function bindEvents() {
       await sendMessage(composerInput.value);
     },
     onFocus: () => {
+      if (isMobileViewport() && state.chatRuntime.openPopover) {
+        closeChatRuntimePopover();
+      }
       scheduleViewportInsetSync({ alignFocusedInput: true });
       if (isMobileViewport()) {
         requestAnimationFrame(() => {

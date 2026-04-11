@@ -278,6 +278,50 @@ test.describe("Chat composer", () => {
     expect(Math.abs(after - before)).toBeLessThan(80);
   });
 
+  test("dismisses the mobile keyboard before opening the session settings sheet", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 393, height: 852 });
+    const { composer } = await openChatWorkspace(page);
+
+    const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
+    const popover = page.locator(".composer-runtime-popover-mobile");
+    const backdrop = page.locator(".composer-runtime-sheet-backdrop");
+    const input = composer.input();
+
+    await input.click();
+    await setVisualViewport(page, { width: 393, height: 520, offsetTop: 0 });
+
+    await expect(input).toBeFocused();
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("332px");
+
+    await runtimeToggle.click();
+    await setVisualViewport(page, { width: 393, height: 852, offsetTop: 0 });
+
+    await expect(input).not.toBeFocused();
+    await expect(popover).toBeVisible();
+    await expect(backdrop).toBeVisible();
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("0px");
+
+    const metrics = await page.evaluate(() => {
+      const sheet = document.querySelector(".composer-runtime-popover-mobile");
+      const viewport = window.visualViewport;
+      if (!(sheet instanceof HTMLElement) || !viewport) {
+        return null;
+      }
+      return {
+        viewportBottom: viewport.height + viewport.offsetTop,
+        sheetBottom: sheet.getBoundingClientRect().bottom,
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics?.sheetBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
+  });
+
   test("keeps the chat composer visible while the mobile keyboard changes the visual viewport", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 760, height: 980 });

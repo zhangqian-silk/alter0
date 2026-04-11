@@ -97,6 +97,7 @@ Web input
 - `chat.js` 渲染 Agent 消息时优先读取 `process_steps`；仅在缺失结构化步骤时才回退到历史 `[agent] action / observation` 文本解析，以兼容旧会话。
 - 移动端输入区以 `VisualViewport` 为有效视口来源，并按聚焦、键盘和页面可见性降频刷新。
 - 移动端 App Shell 高度使用 `--mobile-viewport-height`，由 `chat.js` 同步 `VisualViewport` 计算值，避免浏览器工具栏变化导致底部留白或内容裁切。
+- 移动端 Chat/Agent 在输入框与会话设置底部面板之间切换时，`chat.js` 需先归一底部交互层：打开移动端设置面板前先 blur 当前输入并重新同步 `--keyboard-offset`，主输入框重新聚焦时则先关闭设置面板，再执行键盘贴底和输入框对齐逻辑。
 - `chat.js` 内所有前端时间展示统一走同一北京时间格式化器，固定 `timeZone=Asia/Shanghai`、`hourCycle=h23`；时间标签输出 `HH:mm`，绝对时间输出 `YYYY-MM-DD HH:mm:ss`。
 - Cron 创建表单默认时区直接复用同一前端常量 `Asia/Shanghai`，不再依赖浏览器本地时区探测。
 - `agent-runtime` 会话列表前端按 `sha1(session_id)[:8]` 生成短 hash，展示在会话卡片内并通过统一 `data-copy-value` 复制链路写入剪贴板，保持与 Agent Session Profile / 预览域名使用的短标识一致。
@@ -190,6 +191,7 @@ Terminal input
 - Terminal 会话态与 turn/step 执行态分离，历史 `running / starting` 需要兼容归一。
 - Terminal 会话详情聚合 turn 摘要；step 明细按 `session_id / turn_id / step_id` 单独读取，避免会话列表一次性加载大块执行日志。
 - Terminal 跨设备共享同一 Web 登录态下的服务端会话历史，不再按 browser client 分桶。
+- `chat-terminal.css` 在真手机宽度下允许 Terminal 工作区头部切换为多行排布：标题最多两行，状态与操作工具栏按可用宽度换行，避免横向溢出。
 
 ### 验证策略
 
