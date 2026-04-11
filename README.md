@@ -76,6 +76,10 @@ internal/shared/domain             # UnifiedMessage / OrchestrationResult
 internal/shared/infrastructure     # ID、日志、metrics
 ```
 
+Web 前端分发采用双层缓存策略：`/chat` 与桥接期 `legacy` 运行时资源保持 `no-cache`，确保页面与兼容脚本始终刷新到最新版本；`static/dist/assets` 下带哈希的构建产物使用长期 immutable 缓存，减少重复下载。
+
+前端开发态支持双向代理联调：为 Go 服务设置 `ALTER0_WEB_FRONTEND_DEV_ORIGIN=http://127.0.0.1:5173` 后，访问 `http://127.0.0.1:18088/chat` 会转到 Vite dev server；为 Vite 设置 `ALTER0_WEB_BACKEND_ORIGIN=http://127.0.0.1:18088` 后，`npm run dev` 会把 `/api`、登录与健康检查请求代理回 Go 服务。
+
 ## Built-in Commands
 
 1. `/help`：查看命令列表

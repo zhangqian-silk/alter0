@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -42,8 +43,6 @@ import (
 	terminaldomain "alter0/internal/terminal/domain"
 )
 
-//go:embed static/chat.html
-//go:embed static/assets
 //go:embed static/dist
 var webStaticFS embed.FS
 
@@ -62,6 +61,10 @@ const (
 	taskArtifactReadTimeout           = 3 * time.Second
 	webLoginCookieName                = "alter0_web_session"
 	webLoginCookieTTL                 = 24 * time.Hour
+	webPageCacheControl               = "no-cache"
+	bridgeStaticAssetCacheControl     = "no-cache"
+	immutableStaticAssetCacheControl  = "public, max-age=31536000, immutable"
+	frontendDevOriginEnvKey           = "ALTER0_WEB_FRONTEND_DEV_ORIGIN"
 )
 
 var sseHeartbeatInterval = 15 * time.Second
@@ -83,29 +86,31 @@ type intentInspector interface {
 }
 
 type Server struct {
-	addr             string
-	orchestrator     Orchestrator
-	telemetry        *observability.Telemetry
-	idGenerator      sharedapp.IDGenerator
-	control          *controlapp.Service
-	scheduler        *schedulerapp.Manager
-	sessions         sessionHistoryService
-	tasks            taskService
-	terminals        terminalService
-	runtime          runtimeRestarter
-	runtimeInfo      runtimeInfoProvider
-	memory           *agentMemoryService
-	llm              llmService
-	logger           *slog.Logger
-	webLoginPassword string
-	webSessionToken  string
-	webLoginEnabled  bool
-	webBindLocalhost bool
-	agents           agentCatalogService
-	products         productService
-	productDrafts    productDraftService
-	travelGuides     travelGuideService
-	workspaceRoot    string
+	addr              string
+	orchestrator      Orchestrator
+	telemetry         *observability.Telemetry
+	idGenerator       sharedapp.IDGenerator
+	control           *controlapp.Service
+	scheduler         *schedulerapp.Manager
+	sessions          sessionHistoryService
+	tasks             taskService
+	terminals         terminalService
+	runtime           runtimeRestarter
+	runtimeInfo       runtimeInfoProvider
+	memory            *agentMemoryService
+	llm               llmService
+	logger            *slog.Logger
+	webLoginPassword  string
+	webSessionToken   string
+	webLoginEnabled   bool
+	webBindLocalhost  bool
+	agents            agentCatalogService
+	products          productService
+	productDrafts     productDraftService
+	travelGuides      travelGuideService
+	workspaceRoot     string
+	frontendDevOrigin string
+	frontendDevProxy  http.Handler
 }
 
 type llmService interface {
@@ -648,28 +653,31 @@ func NewServer(
 			webSessionToken = strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 		}
 	}
+	frontendDevOrigin := resolveFrontendDevOrigin()
 	return &Server{
-		addr:             addr,
-		orchestrator:     orchestrator,
-		telemetry:        telemetry,
-		idGenerator:      idGenerator,
-		control:          control,
-		scheduler:        scheduler,
-		sessions:         sessions,
-		tasks:            tasks,
-		terminals:        terminals,
-		memory:           newAgentMemoryService(memoryOptions),
-		llm:              llm,
-		logger:           logger,
-		webLoginPassword: resolvedPassword,
-		webSessionToken:  webSessionToken,
-		webLoginEnabled:  resolvedPassword != "",
-		webBindLocalhost: resolvedBindLocalhost,
-		agents:           agents,
-		products:         products,
-		productDrafts:    productDrafts,
-		travelGuides:     travelGuides,
-		workspaceRoot:    resolveServerWorkspaceRoot(),
+		addr:              addr,
+		orchestrator:      orchestrator,
+		telemetry:         telemetry,
+		idGenerator:       idGenerator,
+		control:           control,
+		scheduler:         scheduler,
+		sessions:          sessions,
+		tasks:             tasks,
+		terminals:         terminals,
+		memory:            newAgentMemoryService(memoryOptions),
+		llm:               llm,
+		logger:            logger,
+		webLoginPassword:  resolvedPassword,
+		webSessionToken:   webSessionToken,
+		webLoginEnabled:   resolvedPassword != "",
+		webBindLocalhost:  resolvedBindLocalhost,
+		agents:            agents,
+		products:          products,
+		productDrafts:     productDrafts,
+		travelGuides:      travelGuides,
+		workspaceRoot:     resolveServerWorkspaceRoot(),
+		frontendDevOrigin: frontendDevOrigin,
+		frontendDevProxy:  newFrontendDevProxy(frontendDevOrigin, logger),
 	}
 }
 
@@ -745,9 +753,9 @@ func (s *Server) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS))))
+	mux.Handle("/assets/", cacheControlledFileServer("/assets/", assetsFS, immutableStaticAssetCacheControl))
 	if legacyFS, legacyErr := webAssetFS("legacy"); legacyErr == nil {
-		mux.Handle("/legacy/", http.StripPrefix("/legacy/", http.FileServer(http.FS(legacyFS))))
+		mux.Handle("/legacy/", cacheControlledFileServer("/legacy/", legacyFS, bridgeStaticAssetCacheControl))
 	}
 
 	handler := http.Handler(mux)
@@ -775,6 +783,10 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {
+	if s.shouldProxyFrontendDevRequest(r.URL.Path) {
+		s.serveFrontendDevProxy(w, r)
+		return
+	}
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
@@ -993,6 +1005,10 @@ func (s *Server) chatPageHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
+	if s.frontendDevProxy != nil {
+		s.serveFrontendDevProxy(w, r)
+		return
+	}
 
 	content, err := readWebShellPage()
 	if err != nil {
@@ -1002,24 +1018,111 @@ func (s *Server) chatPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", webPageCacheControl)
 	_, _ = w.Write(content)
 }
 
 func readWebShellPage() ([]byte, error) {
-	content, err := webStaticFS.ReadFile("static/dist/index.html")
-	if err == nil {
-		return content, nil
-	}
-	return webStaticFS.ReadFile("static/chat.html")
+	return webStaticFS.ReadFile("static/dist/index.html")
 }
 
 func webAssetFS(name string) (fs.FS, error) {
 	distPath := filepath.ToSlash(filepath.Join("static", "dist", name))
-	if assetsFS, err := fs.Sub(webStaticFS, distPath); err == nil {
-		return assetsFS, nil
+	return fs.Sub(webStaticFS, distPath)
+}
+
+func cacheControlledFileServer(prefix string, assets fs.FS, cacheControl string) http.Handler {
+	fileServer := http.StripPrefix(prefix, http.FileServer(http.FS(assets)))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if cacheControl != "" {
+			w.Header().Set("Cache-Control", cacheControl)
+		}
+		fileServer.ServeHTTP(w, r)
+	})
+}
+
+func resolveFrontendDevOrigin() string {
+	raw := strings.TrimSpace(os.Getenv(frontendDevOriginEnvKey))
+	if raw == "" {
+		return ""
 	}
-	legacyPath := filepath.ToSlash(filepath.Join("static", name))
-	return fs.Sub(webStaticFS, legacyPath)
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return ""
+	}
+	if strings.TrimSpace(parsed.Host) == "" {
+		return ""
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimRight(parsed.String(), "/")
+}
+
+func newFrontendDevProxy(origin string, logger *slog.Logger) http.Handler {
+	trimmedOrigin := strings.TrimSpace(origin)
+	if trimmedOrigin == "" {
+		return nil
+	}
+	target, err := url.Parse(trimmedOrigin)
+	if err != nil {
+		return nil
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, proxyErr error) {
+		if logger != nil {
+			logger.Error("frontend dev proxy failed",
+				slog.String("origin", trimmedOrigin),
+				slog.String("path", r.URL.Path),
+				slog.String("error", proxyErr.Error()),
+			)
+		}
+		http.Error(w, "frontend dev server unavailable", http.StatusBadGateway)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", webPageCacheControl)
+		proxy.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) shouldProxyFrontendDevRequest(requestPath string) bool {
+	if s == nil || s.frontendDevProxy == nil {
+		return false
+	}
+	return isFrontendDevAssetPath(requestPath)
+}
+
+func (s *Server) serveFrontendDevProxy(w http.ResponseWriter, r *http.Request) {
+	if s == nil || s.frontendDevProxy == nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.frontendDevProxy.ServeHTTP(w, r)
+}
+
+func isFrontendDevAssetPath(requestPath string) bool {
+	switch {
+	case requestPath == "/@react-refresh":
+		return true
+	case requestPath == "/index.html":
+		return true
+	case requestPath == "/vite.svg":
+		return true
+	case strings.HasPrefix(requestPath, "/@vite/"):
+		return true
+	case strings.HasPrefix(requestPath, "/@fs/"):
+		return true
+	case strings.HasPrefix(requestPath, "/@id/"):
+		return true
+	case strings.HasPrefix(requestPath, "/src/"):
+		return true
+	case strings.HasPrefix(requestPath, "/node_modules/"):
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) healthHandler(w http.ResponseWriter, _ *http.Request) {

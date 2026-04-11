@@ -9,11 +9,20 @@ import (
 func readEmbeddedAssetRaw(t *testing.T, path string) string {
 	t.Helper()
 
-	content, err := webStaticFS.ReadFile(path)
+	resolvedPath := resolveEmbeddedAssetPath(path)
+	content, err := webStaticFS.ReadFile(resolvedPath)
 	if err != nil {
-		t.Fatalf("read asset %s: %v", path, err)
+		t.Fatalf("read asset %s: %v", resolvedPath, err)
 	}
 	return string(content)
+}
+
+func resolveEmbeddedAssetPath(assetPath string) string {
+	if strings.HasPrefix(assetPath, "static/assets/") {
+		relativePath := strings.TrimPrefix(assetPath, "static/assets/")
+		return path.Join("static", "dist", "legacy", relativePath)
+	}
+	return assetPath
 }
 
 func readEmbeddedAsset(t *testing.T, assetPath string) string {
@@ -166,103 +175,20 @@ func TestSidebarScrollIsolationStylesPresent(t *testing.T) {
 }
 
 func TestSidebarCollapseEntryPresent(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	markers := []string{
-		`id="navCollapseButton"`,
-		`class="menu-icon"`,
-		`class="menu-label"`,
+		`const navCollapseButton = document.getElementById("navCollapseButton");`,
+		`appShell.classList.toggle("nav-collapsed", collapsed)`,
+		`navCollapseButton.addEventListener("click", () => {`,
 	}
 	for _, marker := range markers {
-		if !strings.Contains(html, marker) {
-			t.Fatalf("expected html marker %q", marker)
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
 		}
-	}
-}
-
-func TestSidebarChannelsRouteMovesToSettingsGroup(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	controlMarker := `data-i18n="nav.control"`
-	settingsMarker := `data-i18n="nav.settings"`
-	channelsMarker := `data-route="channels"`
-	modelsMarker := `data-route="models"`
-
-	controlIndex := strings.Index(html, controlMarker)
-	settingsIndex := strings.Index(html, settingsMarker)
-	channelsIndex := strings.Index(html, channelsMarker)
-	modelsIndex := strings.Index(html, modelsMarker)
-	if controlIndex == -1 || settingsIndex == -1 || channelsIndex == -1 || modelsIndex == -1 {
-		t.Fatalf("expected menu markers for control/settings/channels/models")
-	}
-	if controlIndex >= settingsIndex {
-		t.Fatalf("expected control group before settings")
-	}
-	if channelsIndex < settingsIndex {
-		t.Fatalf("expected channels route under settings group")
-	}
-	if channelsIndex > modelsIndex {
-		t.Fatalf("expected channels route before models in settings group")
-	}
-
-	controlSection := html[controlIndex:settingsIndex]
-	if strings.Contains(controlSection, channelsMarker) {
-		t.Fatalf("unexpected channels route in control group")
-	}
-	settingsSection := html[settingsIndex:]
-	if !strings.Contains(settingsSection, channelsMarker) {
-		t.Fatalf("expected channels route in settings group")
-	}
-}
-
-func TestSidebarTerminalRouteMovesToChatGroup(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	workspaceMarker := `data-i18n="nav.workspace"`
-	agentStudioMarker := `data-i18n="nav.agent_studio"`
-	controlMarker := `data-i18n="nav.control"`
-	terminalMarker := `data-route="terminal"`
-	chatRouteMarker := `data-route="chat"`
-
-	workspaceIndex := strings.Index(html, workspaceMarker)
-	agentStudioIndex := strings.Index(html, agentStudioMarker)
-	controlIndex := strings.Index(html, controlMarker)
-	terminalIndex := strings.Index(html, terminalMarker)
-	chatRouteIndex := strings.Index(html, chatRouteMarker)
-	if workspaceIndex == -1 || agentStudioIndex == -1 || controlIndex == -1 || terminalIndex == -1 || chatRouteIndex == -1 {
-		t.Fatalf("expected menu markers for workspace/agent-studio/control/terminal")
-	}
-	if !(workspaceIndex < agentStudioIndex && agentStudioIndex < controlIndex) {
-		t.Fatalf("expected menu groups order workspace -> agent-studio -> control")
-	}
-	if terminalIndex < workspaceIndex || terminalIndex > agentStudioIndex {
-		t.Fatalf("expected terminal route under workspace group")
-	}
-	if terminalIndex < chatRouteIndex {
-		t.Fatalf("expected terminal route after chat route in workspace group")
-	}
-
-	workspaceSection := html[workspaceIndex:agentStudioIndex]
-	if !strings.Contains(workspaceSection, terminalMarker) {
-		t.Fatalf("expected terminal route in workspace group")
-	}
-	controlSection := html[controlIndex:]
-	if strings.Contains(controlSection, terminalMarker) {
-		t.Fatalf("unexpected terminal route in control group")
 	}
 }
 
 func TestSidebarGroupTitlesHaveDedicatedI18NKeys(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	htmlMarkers := []string{
-		`data-i18n="nav.workspace"`,
-		`data-i18n="nav.agent_studio"`,
-		`data-i18n="nav.control"`,
-		`data-i18n="nav.settings"`,
-	}
-	for _, marker := range htmlMarkers {
-		if !strings.Contains(html, marker) {
-			t.Fatalf("expected html marker %q", marker)
-		}
-	}
-
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
 		`"nav.workspace": "Workspace"`,
@@ -314,19 +240,6 @@ func TestSidebarCollapseStateHooksPresent(t *testing.T) {
 }
 
 func TestSessionHistoryCollapseControlsPresent(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	htmlMarkers := []string{
-		`id="sessionHistoryToggle"`,
-		`id="sessionHistoryPanel"`,
-		`class="session-history-toggle"`,
-		`class="session-history-panel"`,
-	}
-	for _, marker := range htmlMarkers {
-		if !strings.Contains(html, marker) {
-			t.Fatalf("expected html marker %q", marker)
-		}
-	}
-
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
 		"function setSessionHistoryCollapsed(collapsed)",
@@ -374,27 +287,6 @@ func TestSessionHistoryCollapseStatePersistsInBrowserSession(t *testing.T) {
 }
 
 func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	expected := []string{
-		`data-route="agent"`,
-		`data-route="memory"`,
-		`data-i18n="nav.memory"`,
-	}
-	for _, marker := range expected {
-		if !strings.Contains(html, marker) {
-			t.Fatalf("expected html marker %q", marker)
-		}
-	}
-	forbidden := []string{
-		`data-route="configuration"`,
-		`data-i18n="nav.configuration"`,
-	}
-	for _, marker := range forbidden {
-		if strings.Contains(html, marker) {
-			t.Fatalf("unexpected html marker %q", marker)
-		}
-	}
-
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
 		`agent: {`,
@@ -447,17 +339,6 @@ func TestSidebarAgentMemoryTabStylesPresent(t *testing.T) {
 }
 
 func TestSidebarTerminalModulePresent(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	htmlMarkers := []string{
-		`data-route="terminal"`,
-		`data-i18n="nav.terminal"`,
-	}
-	for _, marker := range htmlMarkers {
-		if !strings.Contains(html, marker) {
-			t.Fatalf("expected html marker %q", marker)
-		}
-	}
-
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
 		`const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";`,
