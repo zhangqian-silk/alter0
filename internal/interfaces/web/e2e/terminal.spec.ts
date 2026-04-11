@@ -140,6 +140,72 @@ test.describe("Terminal route", () => {
     expect(Math.abs((buttonBox?.y ?? 0) - (inputBox?.y ?? 0))).toBeLessThan(20);
   });
 
+  test("keeps narrow-phone terminal actions readable without horizontal overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+
+    const clientID = createTerminalClientID("narrow-phone-actions");
+    const now = Date.now();
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [{
+      id: "terminal-narrow-phone",
+      title: "2760e082 分析下这个会话的异常",
+      terminal_session_id: "terminal-narrow-phone",
+      status: "busy",
+      shell: "codex exec",
+      working_dir: terminalSessionWorkspace("terminal-narrow-phone"),
+      created_at: now - 3_000,
+      updated_at: now,
+      last_output_at: now - 1_000,
+      disconnected_notice: false,
+      entries: [],
+    }]);
+    await openTerminalRoute(page);
+
+    const workspaceRow = page.locator(".terminal-workspace-row");
+    const titleRow = page.locator(".terminal-workspace-title-row");
+    const actions = page.locator(".terminal-workspace-actions");
+    const status = page.locator(".terminal-runtime-state");
+    const detailsButton = page.locator("[data-terminal-meta-toggle]");
+    const closeButton = page.locator("[data-terminal-close]");
+    const deleteButton = page.locator("[data-terminal-delete]");
+
+    await expect(status).toBeVisible();
+    await expect(detailsButton).toBeVisible();
+    await expect(closeButton).toBeVisible();
+    await expect(deleteButton).toBeVisible();
+
+    const rowBox = await workspaceRow.boundingBox();
+    const titleBox = await titleRow.boundingBox();
+    const actionsBox = await actions.boundingBox();
+    const viewport = page.viewportSize();
+    const noHorizontalOverflow = await page.evaluate(() => {
+      const row = document.querySelector(".terminal-workspace-row");
+      const title = document.querySelector(".terminal-workspace-title-row");
+      const actionBar = document.querySelector(".terminal-workspace-actions");
+      if (!(row instanceof HTMLElement) || !(title instanceof HTMLElement) || !(actionBar instanceof HTMLElement)) {
+        return false;
+      }
+      const rowRect = row.getBoundingClientRect();
+      const titleRect = title.getBoundingClientRect();
+      const actionRect = actionBar.getBoundingClientRect();
+      return (
+        titleRect.left >= rowRect.left - 1 &&
+        actionRect.left >= rowRect.left - 1 &&
+        titleRect.right <= rowRect.right + 1 &&
+        actionRect.right <= rowRect.right + 1
+      );
+    });
+
+    expect(rowBox).not.toBeNull();
+    expect(titleBox).not.toBeNull();
+    expect(actionsBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(noHorizontalOverflow).toBe(true);
+    expect(actionsBox?.right ?? 0).toBeLessThanOrEqual((viewport?.width ?? 0) - 6);
+    expect((actionsBox?.y ?? 0) + (actionsBox?.height ?? 0)).toBeLessThanOrEqual((rowBox?.y ?? 0) + (rowBox?.height ?? 0) + 2);
+    expect((actionsBox?.y ?? 0)).toBeGreaterThanOrEqual((titleBox?.y ?? 0) - 2);
+  });
+
   test("keeps the mobile terminal route aligned when the visual viewport shrinks and after creating a new session", async ({ page, request }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 760, height: 980 });

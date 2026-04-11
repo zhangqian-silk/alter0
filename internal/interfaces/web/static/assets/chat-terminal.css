@@ -2411,3 +2411,39 @@
     display: none;
   }
 }
+
+@media (max-width: 420px) {
+  .terminal-workspace-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .terminal-workspace-copy {
+    flex-basis: 100%;
+  }
+
+  .terminal-workspace-title-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .terminal-workspace-copy h4 {
+    flex-basis: 100%;
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: clip;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .terminal-runtime-state {
+    align-self: flex-start;
+  }
+
+  .terminal-workspace-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
