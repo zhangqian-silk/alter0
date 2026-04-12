@@ -1,7 +1,5 @@
 const appShell = document.getElementById("appShell");
 const sessionList = document.getElementById("sessionList");
-const sessionEmpty = document.getElementById("sessionEmpty");
-const sessionLoadError = document.getElementById("sessionLoadError");
 const sessionHistoryPanel = document.getElementById("sessionHistoryPanel");
 const sessionHistoryToggle = document.getElementById("sessionHistoryToggle");
 const welcomeScreen = document.getElementById("welcomeScreen");
@@ -18,10 +16,6 @@ const sessionToggle = document.getElementById("sessionToggle");
 const togglePaneButton = document.getElementById("togglePaneButton");
 const navCollapseButton = document.getElementById("navCollapseButton");
 const mobileBackdrop = document.getElementById("mobileBackdrop");
-const sessionHeading = document.getElementById("sessionHeading");
-const sessionSubheading = document.getElementById("sessionSubheading");
-const welcomeHeading = document.getElementById("welcomeHeading");
-const welcomeDescription = document.getElementById("welcomeDescription");
 const sessionPane = document.querySelector(".session-pane");
 const primaryNav = document.querySelector(".primary-nav");
 const chatPane = document.querySelector(".chat-pane");
@@ -34,7 +28,6 @@ const routeBody = document.getElementById("routeBody");
 const chatRuntimePanel = document.getElementById("chatRuntimePanel");
 const chatRuntimeSheetHost = document.getElementById("chatRuntimeSheetHost");
 const menuRouteItems = document.querySelectorAll(".menu-item[data-route]");
-const navTooltipTargets = [...menuRouteItems, navCollapseButton];
 const rootStyle = document.documentElement.style;
 
 const MAX_CHARS = 10000;
@@ -43,9 +36,6 @@ const SWIPE_CLOSE_THRESHOLD = 46;
 const TERMINAL_SCROLL_STICKY_THRESHOLD = 32;
 const TERMINAL_JUMP_BOTTOM_SHOW_THRESHOLD = 240;
 const TERMINAL_JUMP_TOP_SHOW_THRESHOLD = 180;
-const NAV_TOOLTIP_SHOW_DELAY = 90;
-const NAV_TOOLTIP_HIDE_DELAY = 40;
-const NAV_TOOLTIP_OFFSET = 12;
 const CHAT_TASK_POLL_INTERVAL_MS = 4000;
 const CHAT_TASK_POLL_HIDDEN_INTERVAL_MS = 15000;
 const MOBILE_VIEWPORT_SYNC_THRESHOLD_PX = 8;
@@ -59,6 +49,19 @@ const TERMINAL_SESSION_LIST_POLL_HIDDEN_INTERVAL_MS = 60000;
 const TERMINAL_STORAGE_PERSIST_ACTIVE_DELAY_MS = 320;
 const TERMINAL_STORAGE_PERSIST_IDLE_DELAY_MS = 1200;
 const TERMINAL_INPUT_PAINT_IDLE_MS = 480;
+const LEGACY_SHELL_NAVIGATE_EVENT = "alter0:legacy-shell:navigate";
+const LEGACY_SHELL_CREATE_SESSION_EVENT = "alter0:legacy-shell:create-session";
+const LEGACY_SHELL_FOCUS_SESSION_EVENT = "alter0:legacy-shell:focus-session";
+const LEGACY_SHELL_REMOVE_SESSION_EVENT = "alter0:legacy-shell:remove-session";
+const LEGACY_SHELL_TOGGLE_LANGUAGE_EVENT = "alter0:legacy-shell:toggle-language";
+const LEGACY_SHELL_SYNC_NAV_COLLAPSED_EVENT = "alter0:legacy-shell:sync-nav-collapsed";
+const LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT = "alter0:legacy-shell:sync-session-history-collapsed";
+const LEGACY_SHELL_QUICK_PROMPT_EVENT = "alter0:legacy-shell:quick-prompt";
+const LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT = "alter0:legacy-shell:sync-chat-workspace";
+const LEGACY_SHELL_SYNC_SESSION_PANE_EVENT = "alter0:legacy-shell:sync-session-pane";
+const LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT = "alter0:legacy-shell:sync-message-region";
+const LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT = "alter0:legacy-shell:sync-chat-runtime";
+const LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT = "alter0:legacy-shell:sync-route-body";
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const MAIN_AGENT_ID = "main";
@@ -1441,16 +1444,11 @@ const state = {
   pageRenderToken: 0,
   messageRenderFrame: 0,
   pendingMessageRenderPreserveScroll: false,
-  messageRenderSignatures: new Map(),
   navCollapsed: false,
   suppressHashRouteConfirm: "",
   lang: "en" // default
 };
 
-let navTooltipNode = null;
-let navTooltipTarget = null;
-let navTooltipShowTimer = 0;
-let navTooltipHideTimer = 0;
 let chatTaskPollTimer = 0;
 let chatTaskPollPending = false;
 
@@ -1496,200 +1494,6 @@ function setSessionHistoryCollapsed(collapsed) {
   syncSessionHistoryPanel();
 }
 
-function syncMenuItemTooltips() {
-  for (const node of menuRouteItems) {
-    const label = node.querySelector(".menu-label");
-    const text = label && label.textContent ? label.textContent.trim() : "";
-    if (!text) {
-      node.removeAttribute("data-tooltip");
-      node.removeAttribute("title");
-      node.removeAttribute("aria-label");
-      continue;
-    }
-    node.setAttribute("data-tooltip", text);
-    node.removeAttribute("title");
-    node.setAttribute("aria-label", text);
-  }
-
-  navCollapseButton.setAttribute("data-tooltip", navCollapseLabel());
-  navCollapseButton.removeAttribute("title");
-
-  if (!navTooltipTarget) {
-    return;
-  }
-  if (!shouldShowNavTooltipFor(navTooltipTarget)) {
-    hideNavTooltip(true);
-    return;
-  }
-  const text = tooltipTextForNode(navTooltipTarget);
-  if (!text) {
-    hideNavTooltip(true);
-    return;
-  }
-  const tooltip = ensureNavTooltipNode();
-  tooltip.textContent = text;
-  positionNavTooltip(navTooltipTarget);
-}
-
-function ensureNavTooltipNode() {
-  if (navTooltipNode) {
-    return navTooltipNode;
-  }
-  const node = document.createElement("div");
-  node.className = "nav-tooltip";
-  node.setAttribute("role", "tooltip");
-  node.setAttribute("aria-hidden", "true");
-  document.body.appendChild(node);
-  navTooltipNode = node;
-  return node;
-}
-
-function tooltipTextForNode(node) {
-  if (!node) {
-    return "";
-  }
-  if (node === navCollapseButton) {
-    return navCollapseLabel();
-  }
-  const label = node.querySelector(".menu-label");
-  return label && label.textContent ? label.textContent.trim() : "";
-}
-
-function shouldShowNavTooltipFor(node) {
-  if (!node || isMobileViewport()) {
-    return false;
-  }
-  if (node === navCollapseButton) {
-    return true;
-  }
-  return state.navCollapsed;
-}
-
-function positionNavTooltip(target) {
-  if (!navTooltipNode || !target) {
-    return;
-  }
-  const rect = target.getBoundingClientRect();
-  const viewportMargin = 8;
-  const top = Math.min(
-    Math.max(rect.top + (rect.height / 2), viewportMargin),
-    window.innerHeight - viewportMargin
-  );
-  const maxLeft = Math.max(viewportMargin, window.innerWidth - navTooltipNode.offsetWidth - viewportMargin);
-  const left = Math.min(Math.max(rect.right + NAV_TOOLTIP_OFFSET, viewportMargin), maxLeft);
-  navTooltipNode.style.top = `${top}px`;
-  navTooltipNode.style.left = `${left}px`;
-}
-
-function showNavTooltip(target) {
-  if (!shouldShowNavTooltipFor(target)) {
-    hideNavTooltip(true);
-    return;
-  }
-  const text = tooltipTextForNode(target);
-  if (!text) {
-    hideNavTooltip(true);
-    return;
-  }
-  const tooltip = ensureNavTooltipNode();
-  tooltip.textContent = text;
-  tooltip.classList.add("visible");
-  tooltip.setAttribute("aria-hidden", "false");
-  navTooltipTarget = target;
-  positionNavTooltip(target);
-}
-
-function queueNavTooltip(target, immediate = false) {
-  if (!target || !shouldShowNavTooltipFor(target)) {
-    hideNavTooltip(true);
-    return;
-  }
-  if (navTooltipHideTimer) {
-    window.clearTimeout(navTooltipHideTimer);
-    navTooltipHideTimer = 0;
-  }
-  if (immediate) {
-    if (navTooltipShowTimer) {
-      window.clearTimeout(navTooltipShowTimer);
-      navTooltipShowTimer = 0;
-    }
-    showNavTooltip(target);
-    return;
-  }
-  if (navTooltipShowTimer) {
-    window.clearTimeout(navTooltipShowTimer);
-  }
-  navTooltipShowTimer = window.setTimeout(() => {
-    navTooltipShowTimer = 0;
-    showNavTooltip(target);
-  }, NAV_TOOLTIP_SHOW_DELAY);
-}
-
-function hideNavTooltip(immediate = false) {
-  if (navTooltipShowTimer) {
-    window.clearTimeout(navTooltipShowTimer);
-    navTooltipShowTimer = 0;
-  }
-  if (!navTooltipNode) {
-    navTooltipTarget = null;
-    return;
-  }
-  const close = () => {
-    if (!navTooltipNode) {
-      return;
-    }
-    navTooltipNode.classList.remove("visible");
-    navTooltipNode.setAttribute("aria-hidden", "true");
-    navTooltipTarget = null;
-    navTooltipHideTimer = 0;
-  };
-  if (immediate) {
-    if (navTooltipHideTimer) {
-      window.clearTimeout(navTooltipHideTimer);
-      navTooltipHideTimer = 0;
-    }
-    close();
-    return;
-  }
-  if (navTooltipHideTimer) {
-    window.clearTimeout(navTooltipHideTimer);
-  }
-  navTooltipHideTimer = window.setTimeout(close, NAV_TOOLTIP_HIDE_DELAY);
-}
-
-function bindNavTooltipEvents() {
-  for (const node of navTooltipTargets) {
-    if (!node) {
-      continue;
-    }
-    node.addEventListener("mouseenter", () => {
-      queueNavTooltip(node);
-    });
-    node.addEventListener("mouseleave", () => {
-      hideNavTooltip();
-    });
-    node.addEventListener("focus", () => {
-      queueNavTooltip(node, true);
-    });
-    node.addEventListener("blur", () => {
-      hideNavTooltip(true);
-    });
-    node.addEventListener("pointerdown", () => {
-      hideNavTooltip(true);
-    });
-  }
-  window.addEventListener("scroll", () => {
-    if (!navTooltipTarget) {
-      return;
-    }
-    if (!shouldShowNavTooltipFor(navTooltipTarget)) {
-      hideNavTooltip(true);
-      return;
-    }
-    positionNavTooltip(navTooltipTarget);
-  }, true);
-}
-
 function setLanguage(lang) {
   if (!I18N[lang]) return;
   state.lang = lang;
@@ -1730,7 +1534,6 @@ function setLanguage(lang) {
     localeBtn.setAttribute("data-short-lang", state.lang === "en" ? "EN" : "中");
   }
   navCollapseButton.setAttribute("aria-label", navCollapseLabel());
-  syncMenuItemTooltips();
   syncSessionHistoryPanel();
 }
 
@@ -3933,18 +3736,6 @@ function findChatRuntimeScrollContainer(popover = state.chatRuntime.openPopover)
     || null;
 }
 
-function runtimePanelControlsRoot() {
-  return (chatRuntimePanel && chatRuntimePanel.querySelector("[data-runtime-controls-root]")) || chatRuntimePanel || null;
-}
-
-function runtimePanelNoteRoot() {
-  return (chatRuntimePanel && chatRuntimePanel.querySelector("[data-runtime-note-root]")) || chatRuntimePanel || null;
-}
-
-function runtimeSheetContentRoot() {
-  return (chatRuntimeSheetHost && chatRuntimeSheetHost.querySelector("[data-runtime-sheet-root]")) || chatRuntimeSheetHost || null;
-}
-
 function captureChatRuntimeScrollState(popover = state.chatRuntime.openPopover) {
   const normalizedPopover = normalizeText(popover);
   const container = findChatRuntimeScrollContainer(normalizedPopover);
@@ -3982,15 +3773,9 @@ function restoreChatRuntimeScrollState(snapshot) {
 function renderChatRuntimePanel() {
   if (!chatRuntimePanel) {
     appShell.classList.remove("runtime-sheet-open");
-    const sheetRoot = runtimeSheetContentRoot();
-    if (sheetRoot) {
-      sheetRoot.innerHTML = "";
-    }
+    publishChatRuntimeSnapshot();
     return;
   }
-  const panelControlsRoot = runtimePanelControlsRoot();
-  const panelNoteRoot = runtimePanelNoteRoot();
-  const sheetContentRoot = runtimeSheetContentRoot();
   const mode = routeConversationMode();
   const initialTarget = currentConversationTarget();
   const activeSession = getSession() || ((mode === "agent" && !initialTarget.id) ? null : createSession(initialTarget, mode, state.currentRoute));
@@ -4054,10 +3839,12 @@ function renderChatRuntimePanel() {
   const skillSelected = new Set(selections.skillIDs);
   const activeSkills = skillItems.filter((item) => skillSelected.has(item.id));
   const availableSkills = skillItems.filter((item) => !skillSelected.has(item.id));
+  let controlsHTML = "";
+  let noteHTML = runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : "";
+  let sheetHTML = "";
 
   if (compactRuntime) {
-    if (panelControlsRoot) {
-      panelControlsRoot.innerHTML = `<div class="composer-runtime-group composer-runtime-group-compact">
+    controlsHTML = `<div class="composer-runtime-group composer-runtime-group-compact">
       <div class="composer-runtime-control composer-runtime-control-compact">
         <button class="composer-runtime-trigger composer-runtime-trigger-compact${openPopover === "mobile" ? " is-open" : ""}" type="button" data-runtime-toggle="mobile" title="${escapeHTML(t("chat.runtime.mobile_hint"))}">
           <span class="composer-runtime-trigger-icon">⚙️</span>
@@ -4069,12 +3856,7 @@ function renderChatRuntimePanel() {
         </button>
       </div>
     </div>`;
-    }
-    if (panelNoteRoot) {
-      panelNoteRoot.innerHTML = runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : "";
-    }
-    if (sheetContentRoot) {
-      sheetContentRoot.innerHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({
+    sheetHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({
         agentRuntime,
         target,
         locked,
@@ -4091,13 +3873,8 @@ function renderChatRuntimePanel() {
         skillSelected,
         note: state.chatCatalog.providerError || state.chatCatalog.capabilityError || t("chat.runtime.mobile_hint")
       }) : "";
-    }
   } else {
-  if (sheetContentRoot) {
-    sheetContentRoot.innerHTML = "";
-  }
-  if (panelControlsRoot) {
-    panelControlsRoot.innerHTML = `<div class="composer-runtime-group">
+    controlsHTML = `<div class="composer-runtime-group">
     ${agentRuntime ? `<div class="composer-runtime-control">
       <button class="composer-runtime-trigger${openPopover === "target" ? " is-open" : ""}${locked ? " is-disabled" : ""}" type="button" data-runtime-toggle="target" aria-disabled="${locked ? "true" : "false"}" title="${escapeHTML(locked ? t("chat.runtime.locked") : t("chat.runtime.agent_hint"))}">
         <span class="composer-runtime-trigger-icon">🎯</span>
@@ -4200,115 +3977,17 @@ function renderChatRuntimePanel() {
       </div>` : ""}
     </div>`;
   }
-  if (panelNoteRoot) {
-    panelNoteRoot.innerHTML = runtimeErrorNote ? `<p class="chat-runtime-note chat-runtime-error">${escapeHTML(runtimeErrorNote)}</p>` : "";
-  }
-  }
 
-  restoreChatRuntimeScrollState(scrollSnapshot);
-
-  const runtimeRoots = [chatRuntimePanel, chatRuntimeSheetHost].filter(Boolean);
-  const queryRuntimeNodes = (selector) => runtimeRoots.flatMap((root) => Array.from(root.querySelectorAll(selector)));
-
-  queryRuntimeNodes("[data-runtime-toggle]").forEach((node) => {
-    node.addEventListener("click", () => {
-      const nextPopover = String(node.getAttribute("data-runtime-toggle") || "").trim();
-      if (!nextPopover) {
-        return;
-      }
-      if (nextPopover === "target" && locked) {
-        return;
-      }
-      if (isTerminalSessionSheetViewport() && nextPopover === "mobile" && state.chatRuntime.openPopover !== nextPopover) {
-        const activeInput = activeViewportInput();
-        if (activeInput instanceof HTMLElement) {
-          activeInput.blur();
-        }
-        scheduleViewportInsetSync();
-      }
-      state.chatRuntime.openPopover = state.chatRuntime.openPopover === nextPopover ? "" : nextPopover;
-      renderChatRuntimePanel();
-    });
+  publishChatRuntimeSnapshot({
+    controlsHTML,
+    noteHTML,
+    sheetHTML,
+    scrollPopover: scrollSnapshot.popover,
+    scrollTop: scrollSnapshot.scrollTop
   });
 
-  queryRuntimeNodes("[data-runtime-close]").forEach((node) => {
-    node.addEventListener("click", (event) => {
-      event.preventDefault();
-      closeChatRuntimePopover();
-    });
-  });
-
-  queryRuntimeNodes("[data-runtime-target-type]").forEach((node) => {
-    node.addEventListener("click", () => {
-      if (locked) {
-        return;
-      }
-      const nextTarget = {
-        type: node.getAttribute("data-runtime-target-type") || "model",
-        id: node.getAttribute("data-runtime-target-id") || "",
-        name: node.getAttribute("data-runtime-target-name") || ""
-      };
-      syncAgentRuntimeTarget(nextTarget);
-      let session = ensureActiveConversationSession(state.currentRoute);
-      if (!session) {
-        session = createSession(nextTarget, mode, state.currentRoute);
-      }
-      state.chatRuntime.openPopover = "";
-      syncMainChatComposerDraft(session.id, { preserveCurrent: false });
-      renderSessions();
-      renderMessages();
-      syncHeader();
-      syncWelcomeCopy();
-      renderChatRuntimePanel();
-      renderWelcomeTargetPicker();
-    });
-  });
-
-  queryRuntimeNodes("[data-runtime-provider-id]").forEach((node) => {
-    node.addEventListener("click", () => {
-      const session = getSession() || createSession(defaultChatTarget());
-      updateSessionModelSelection(session, {
-        providerID: node.getAttribute("data-runtime-provider-id") || "",
-        modelID: node.getAttribute("data-runtime-model-id") || ""
-      });
-      state.chatRuntime.openPopover = "";
-      persistSessions();
-      renderSessions();
-      syncHeader();
-      renderChatRuntimePanel();
-    });
-  });
-
-  queryRuntimeNodes("[data-runtime-toggle-item]").forEach((inputNode) => {
-    inputNode.addEventListener("change", () => {
-      const session = getSession() || createSession(defaultChatTarget());
-      const mode = String(inputNode.getAttribute("data-runtime-toggle-item") || "").trim();
-      const value = normalizeText(inputNode.value);
-      const current = sessionRuntimeSelections(session);
-      if (mode === "skills") {
-        const nextSkills = inputNode.checked
-          ? normalizeSelectionIDs([...current.skillIDs, value])
-          : current.skillIDs.filter((item) => item !== value);
-        updateSessionRuntimeSelections(session, { skillIDs: nextSkills });
-      } else {
-        const itemKind = String(inputNode.getAttribute("data-runtime-item-kind") || "").trim();
-        if (itemKind === "tool") {
-          const nextTools = inputNode.checked
-            ? normalizeSelectionIDs([...current.toolIDs, value])
-            : current.toolIDs.filter((item) => item !== value);
-          updateSessionRuntimeSelections(session, { toolIDs: nextTools });
-        } else {
-          const nextMcps = inputNode.checked
-            ? normalizeSelectionIDs([...current.mcpIDs, value])
-            : current.mcpIDs.filter((item) => item !== value);
-          updateSessionRuntimeSelections(session, { mcpIDs: nextMcps });
-        }
-      }
-      persistSessions();
-      renderSessions();
-      syncHeader();
-      renderChatRuntimePanel();
-    });
+  requestAnimationFrame(() => {
+    restoreChatRuntimeScrollState(scrollSnapshot);
   });
 }
 
@@ -4320,69 +3999,149 @@ function closeChatRuntimePopover() {
   renderChatRuntimePanel();
 }
 
-function renderWelcomeTargetPicker() {
-  const targetList = document.getElementById("welcomeTargetList");
-  if (!targetList) {
+function handleChatRuntimeClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) {
     return;
   }
-  const active = getSession();
-  const currentTarget = sessionTarget(active);
-  const agentRuntime = isAgentConversationRoute();
-  const allowPicker = routeAllowsTargetPicker();
-  const agents = agentRuntime ? genericRuntimeConversationAgents() : [];
-  const buttons = [];
-  if (agentRuntime && allowPicker) {
-    agents.forEach((agent) => {
-      const agentID = String(agent?.id || "").trim();
-      if (!agentID) {
-        return;
+
+  const closeTrigger = target.closest("[data-runtime-close]");
+  if (closeTrigger) {
+    event.preventDefault();
+    closeChatRuntimePopover();
+    return;
+  }
+
+  const toggleTrigger = target.closest("[data-runtime-toggle]");
+  if (toggleTrigger) {
+    const nextPopover = String(toggleTrigger.getAttribute("data-runtime-toggle") || "").trim();
+    if (!nextPopover) {
+      return;
+    }
+    if (nextPopover === "target" && targetLocked(getSession())) {
+      return;
+    }
+    if (isTerminalSessionSheetViewport() && nextPopover === "mobile" && state.chatRuntime.openPopover !== nextPopover) {
+      const activeInput = activeViewportInput();
+      if (activeInput instanceof HTMLElement) {
+        activeInput.blur();
       }
-      const agentName = String(agent?.name || agentID).trim() || agentID;
-      const activeClassName = currentTarget.type === "agent" && currentTarget.id === agentID ? " active" : "";
-      buttons.push(`<button class="welcome-target-card${activeClassName}" type="button" data-chat-target-type="agent" data-chat-target-id="${escapeHTML(agentID)}" data-chat-target-name="${escapeHTML(agentName)}">
-        <strong>${escapeHTML(agentName)}</strong>
-        <span>${escapeHTML(agentID)}</span>
-      </button>`);
+      scheduleViewportInsetSync();
+    }
+    state.chatRuntime.openPopover = state.chatRuntime.openPopover === nextPopover ? "" : nextPopover;
+    renderChatRuntimePanel();
+    return;
+  }
+
+  const targetOption = target.closest("[data-runtime-target-type]");
+  if (targetOption) {
+    if (targetLocked(getSession())) {
+      return;
+    }
+    const mode = routeConversationMode();
+    const nextTarget = {
+      type: targetOption.getAttribute("data-runtime-target-type") || "model",
+      id: targetOption.getAttribute("data-runtime-target-id") || "",
+      name: targetOption.getAttribute("data-runtime-target-name") || ""
+    };
+    syncAgentRuntimeTarget(nextTarget);
+    let session = ensureActiveConversationSession(state.currentRoute);
+    if (!session) {
+      session = createSession(nextTarget, mode, state.currentRoute);
+    }
+    state.chatRuntime.openPopover = "";
+    syncMainChatComposerDraft(session.id, { preserveCurrent: false });
+    renderSessions();
+    renderMessages();
+    syncHeader();
+    syncWelcomeCopy();
+    renderChatRuntimePanel();
+    renderWelcomeTargetPicker();
+    return;
+  }
+
+  const modelOption = target.closest("[data-runtime-provider-id]");
+  if (modelOption) {
+    const session = getSession() || createSession(defaultChatTarget());
+    updateSessionModelSelection(session, {
+      providerID: modelOption.getAttribute("data-runtime-provider-id") || "",
+      modelID: modelOption.getAttribute("data-runtime-model-id") || ""
     });
-  } else if (agentRuntime) {
-    const fallbackTarget = routeDefaultTarget();
-    const targetName = currentTarget.name || fallbackTarget.name || t("session.target.agent");
-    const targetID = currentTarget.id || fallbackTarget.id || "";
-    buttons.push(`<div class="welcome-target-card active is-static">
-      <strong>${escapeHTML(targetName)}</strong>
-      <span>${escapeHTML(targetID || t("session.target.agent"))}</span>
-    </div>`);
+    state.chatRuntime.openPopover = "";
+    persistSessions();
+    renderSessions();
+    syncHeader();
+    renderChatRuntimePanel();
+  }
+}
+
+function handleChatRuntimeChange(event) {
+  const target = event.target instanceof HTMLInputElement ? event.target : null;
+  if (!target) {
+    return;
+  }
+  if (!target.matches("[data-runtime-toggle-item]")) {
+    return;
+  }
+
+  const session = getSession() || createSession(defaultChatTarget());
+  const mode = String(target.getAttribute("data-runtime-toggle-item") || "").trim();
+  const value = normalizeText(target.value);
+  const current = sessionRuntimeSelections(session);
+  if (mode === "skills") {
+    const nextSkills = target.checked
+      ? normalizeSelectionIDs([...current.skillIDs, value])
+      : current.skillIDs.filter((item) => item !== value);
+    updateSessionRuntimeSelections(session, { skillIDs: nextSkills });
   } else {
-    buttons.push(`<div class="welcome-target-card active is-static">
-      <strong>${escapeHTML(t("session.target.raw"))}</strong>
-      <span>${escapeHTML(t("route.chat.subtitle"))}</span>
-    </div>`);
+    const itemKind = String(target.getAttribute("data-runtime-item-kind") || "").trim();
+    if (itemKind === "tool") {
+      const nextTools = target.checked
+        ? normalizeSelectionIDs([...current.toolIDs, value])
+        : current.toolIDs.filter((item) => item !== value);
+      updateSessionRuntimeSelections(session, { toolIDs: nextTools });
+    } else {
+      const nextMcps = target.checked
+        ? normalizeSelectionIDs([...current.mcpIDs, value])
+        : current.mcpIDs.filter((item) => item !== value);
+      updateSessionRuntimeSelections(session, { mcpIDs: nextMcps });
+    }
   }
-  if (agentRuntime && allowPicker && state.chatCatalog.error) {
-    buttons.push(`<p class="welcome-target-error">${escapeHTML(state.chatCatalog.error)}</p>`);
+  persistSessions();
+  renderSessions();
+  syncHeader();
+  renderChatRuntimePanel();
+}
+
+function handleWelcomeTargetPickerClick(event) {
+  const targetNode = event.target instanceof Element
+    ? event.target.closest("[data-chat-target-type]")
+    : null;
+  if (!targetNode) {
+    return;
   }
-  targetList.innerHTML = buttons.join("");
-  targetList.querySelectorAll("[data-chat-target-type]").forEach((node) => {
-    node.addEventListener("click", () => {
-      const target = {
-        type: node.getAttribute("data-chat-target-type") || "model",
-        id: node.getAttribute("data-chat-target-id") || "",
-        name: node.getAttribute("data-chat-target-name") || ""
-      };
-      syncAgentRuntimeTarget(target);
-      let session = ensureActiveConversationSession(state.currentRoute);
-      if (!session) {
-        session = createSession(target, routeConversationMode(state.currentRoute), state.currentRoute);
-      }
-      syncMainChatComposerDraft(session.id, { preserveCurrent: false });
-      renderSessions();
-      renderMessages();
-      syncHeader();
-      syncWelcomeCopy();
-      renderChatRuntimePanel();
-      renderWelcomeTargetPicker();
-    });
-  });
+
+  const target = {
+    type: targetNode.getAttribute("data-chat-target-type") || "model",
+    id: targetNode.getAttribute("data-chat-target-id") || "",
+    name: targetNode.getAttribute("data-chat-target-name") || ""
+  };
+  syncAgentRuntimeTarget(target);
+  let session = ensureActiveConversationSession(state.currentRoute);
+  if (!session) {
+    session = createSession(target, routeConversationMode(state.currentRoute), state.currentRoute);
+  }
+  syncMainChatComposerDraft(session.id, { preserveCurrent: false });
+  renderSessions();
+  renderMessages();
+  syncHeader();
+  syncWelcomeCopy();
+  renderChatRuntimePanel();
+  renderWelcomeTargetPicker();
+}
+
+function renderWelcomeTargetPicker() {
+  publishChatWorkspaceSnapshot();
 }
 
 function openAgentRuntimeWithTarget(target) {
@@ -4506,148 +4265,207 @@ async function removeSession(sessionID) {
   persistSessions();
 }
 
-function syncHeader() {
+function buildWelcomeTargetHTML() {
+  const active = getSession();
+  const currentTarget = sessionTarget(active);
+  const agentRuntime = isAgentConversationRoute();
+  const allowPicker = routeAllowsTargetPicker();
+  const agents = agentRuntime ? genericRuntimeConversationAgents() : [];
+  const buttons = [];
+
+  if (agentRuntime && allowPicker) {
+    agents.forEach((agent) => {
+      const agentID = String(agent?.id || "").trim();
+      if (!agentID) {
+        return;
+      }
+      const agentName = String(agent?.name || agentID).trim() || agentID;
+      const activeClassName = currentTarget.type === "agent" && currentTarget.id === agentID ? " active" : "";
+      buttons.push(`<button class="welcome-target-card${activeClassName}" type="button" data-chat-target-type="agent" data-chat-target-id="${escapeHTML(agentID)}" data-chat-target-name="${escapeHTML(agentName)}">
+        <strong>${escapeHTML(agentName)}</strong>
+        <span>${escapeHTML(agentID)}</span>
+      </button>`);
+    });
+  } else if (agentRuntime) {
+    const fallbackTarget = routeDefaultTarget();
+    const targetName = currentTarget.name || fallbackTarget.name || t("session.target.agent");
+    const targetID = currentTarget.id || fallbackTarget.id || "";
+    buttons.push(`<div class="welcome-target-card active is-static">
+      <strong>${escapeHTML(targetName)}</strong>
+      <span>${escapeHTML(targetID || t("session.target.agent"))}</span>
+    </div>`);
+  } else {
+    buttons.push(`<div class="welcome-target-card active is-static">
+      <strong>${escapeHTML(t("session.target.raw"))}</strong>
+      <span>${escapeHTML(t("route.chat.subtitle"))}</span>
+    </div>`);
+  }
+
+  if (agentRuntime && allowPicker && state.chatCatalog.error) {
+    buttons.push(`<p class="welcome-target-error">${escapeHTML(state.chatCatalog.error)}</p>`);
+  }
+
+  return buttons.join("");
+}
+
+function buildChatWorkspaceSnapshot() {
   const route = ROUTES[state.currentRoute] || ROUTES.chat;
+  const welcomeTargetHTML = buildWelcomeTargetHTML();
 
   if (route.mode !== "chat") {
-    sessionHeading.textContent = "alter0";
-    sessionSubheading.textContent = t("chat.menu");
-    return;
+    return {
+      route: state.currentRoute,
+      heading: "alter0",
+      subheading: t("chat.menu"),
+      welcomeHeading: t("welcome.heading"),
+      welcomeDescription: t("welcome.desc"),
+      welcomeTargetHTML
+    };
   }
 
   const routeKey = route.key || "chat";
   const titleKey = `route.${routeKey}.title`;
   const subtitleKey = `route.${routeKey}.subtitle`;
   const active = getSession();
-  if (!active) {
-    sessionHeading.textContent = t(titleKey);
-    sessionSubheading.textContent = t(subtitleKey);
-    return;
-  }
-  sessionHeading.textContent = active.title;
-  const targetLabel = sessionTargetLabel(active);
-  const modelLabel = sessionModelLabel(active);
-  if (active.messages.length === 0) {
-    sessionSubheading.textContent = routeAllowsTargetPicker()
-      ? `${targetLabel} · ${modelLabel} · ${t("session.empty_agent_sub")}`
-      : `${targetLabel} · ${modelLabel} · ${t("session.empty_sub")}`;
-    return;
-  }
-  sessionSubheading.textContent = `${targetLabel} · ${modelLabel} · ${active.messages.length} messages`;
-}
-
-function syncWelcomeCopy() {
-  const active = getSession();
   const workspaceTarget = sessionTarget(active || null);
   const workspaceAgentName = workspaceTarget.type === "agent" && workspaceTarget.name
     ? workspaceTarget.name
     : MAIN_AGENT_NAME;
+  const welcomeDescription = !active
+    ? (routeAllowsTargetPicker() ? t("session.no_active_agent") : t("session.no_active"))
+    : (routeAllowsTargetPicker()
+      ? `${t("welcome.desc")} ${t("welcome.agent_hint")}`
+      : `${t("welcome.desc")} ${t("welcome.model_hint", { agent: workspaceAgentName })}`);
+
   if (!active) {
-    welcomeHeading.textContent = t("welcome.heading");
-    welcomeDescription.textContent = routeAllowsTargetPicker() ? t("session.no_active_agent") : t("session.no_active");
-    return;
+    return {
+      route: state.currentRoute,
+      heading: t(titleKey),
+      subheading: t(subtitleKey),
+      welcomeHeading: t("welcome.heading"),
+      welcomeDescription,
+      welcomeTargetHTML
+    };
   }
-  welcomeHeading.textContent = t("welcome.heading");
-  welcomeDescription.textContent = routeAllowsTargetPicker()
-    ? `${t("welcome.desc")} ${t("welcome.agent_hint")}`
-    : `${t("welcome.desc")} ${t("welcome.model_hint", { agent: workspaceAgentName })}`;
+
+  const targetLabel = sessionTargetLabel(active);
+  const modelLabel = sessionModelLabel(active);
+  if (active.messages.length === 0) {
+    return {
+      route: state.currentRoute,
+      heading: active.title,
+      subheading: routeAllowsTargetPicker()
+        ? `${targetLabel} · ${modelLabel} · ${t("session.empty_agent_sub")}`
+        : `${targetLabel} · ${modelLabel} · ${t("session.empty_sub")}`,
+      welcomeHeading: t("welcome.heading"),
+      welcomeDescription,
+      welcomeTargetHTML
+    };
+  }
+
+  return {
+    route: state.currentRoute,
+    heading: active.title,
+    subheading: `${targetLabel} · ${modelLabel} · ${active.messages.length} messages`,
+    welcomeHeading: t("welcome.heading"),
+    welcomeDescription,
+    welcomeTargetHTML
+  };
+}
+
+function publishChatWorkspaceSnapshot() {
+  const snapshot = buildChatWorkspaceSnapshot();
+  document.dispatchEvent(new CustomEvent(LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT, {
+    bubbles: true,
+    detail: snapshot
+  }));
+}
+
+function syncHeader() {
+  publishChatWorkspaceSnapshot();
+}
+
+function syncWelcomeCopy() {
+  publishChatWorkspaceSnapshot();
 }
 
 function syncSessionLoadHint() {
-  const message = conversationSessionLoadError();
-  sessionLoadError.textContent = message;
-  sessionLoadError.style.display = message ? "block" : "none";
+  publishSessionPaneSnapshot();
 }
 
-function renderSessions() {
-  sessionList.innerHTML = "";
-  syncSessionLoadHint();
+function publishSessionPaneSnapshot() {
   const sessions = conversationSessions();
   const activeSessionID = activeConversationSessionID();
   const showShortHash = routeAllowsTargetPicker();
-  if (!sessions.length) {
-    sessionEmpty.style.display = "block";
-    return;
-  }
-  sessionEmpty.style.display = "none";
-
-  for (const item of sessions) {
-    const row = document.createElement("div");
-    row.className = "session-card-row";
-
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "session-card";
-    card.dataset.sessionId = item.id;
-    card.setAttribute("role", "option");
-    card.setAttribute("aria-selected", item.id === activeSessionID ? "true" : "false");
-    if (item.id === activeSessionID) {
-      card.classList.add("active");
+  document.dispatchEvent(new CustomEvent(LEGACY_SHELL_SYNC_SESSION_PANE_EVENT, {
+    bubbles: true,
+    detail: {
+      route: state.currentRoute,
+      hasSessions: sessions.length > 0,
+      loadError: conversationSessionLoadError(),
+      items: sessions.map((item) => {
+        const shortHash = showShortHash ? agentSessionShortHash(item.id) : "";
+        return {
+          id: item.id,
+          title: item.title,
+          meta: `${sessionTargetBadgeLabel(item)} · ${sessionModelLabel(item)} · ${item.messages.length} messages · ${formatSince(item.createdAt)}`,
+          active: item.id === activeSessionID,
+          shortHash,
+          copyValue: shortHash,
+          copyLabel: t("route.copy_value"),
+          deleteLabel: t("session.delete")
+        };
+      })
     }
+  }));
+}
 
-    const title = document.createElement("p");
-    title.className = "session-card-title";
-    title.textContent = item.title;
+function renderMessageListHTML(session) {
+  const sessionID = normalizeText(session?.id || "");
+  const messages = Array.isArray(session?.messages) ? session.messages : [];
+  return `<div class="message-list" data-message-session-id="${escapeHTML(sessionID)}">${messages.map((message) => renderMessageArticleHTML(message)).join("")}</div>`;
+}
 
-    const meta = document.createElement("p");
-    meta.className = "session-card-meta";
-    meta.textContent = `${sessionTargetBadgeLabel(item)} · ${sessionModelLabel(item)} · ${item.messages.length} messages · ${formatSince(item.createdAt)}`;
-
-    const footer = document.createElement("div");
-    footer.className = "session-card-footer";
-
-    if (showShortHash) {
-      const shortHash = agentSessionShortHash(item.id);
-      if (shortHash) {
-        const hashLabel = document.createElement("span");
-        hashLabel.className = "session-card-id";
-        hashLabel.textContent = `#${shortHash}`;
-        hashLabel.title = item.id;
-        footer.appendChild(hashLabel);
-      }
+function publishMessageRegionSnapshot(hasMessages, session = null) {
+  document.dispatchEvent(new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
+    bubbles: true,
+    detail: {
+      route: state.currentRoute,
+      hasMessages: Boolean(hasMessages),
+      sessionId: normalizeText(session?.id || ""),
+      html: hasMessages ? renderMessageListHTML(session) : ""
     }
+  }));
+}
 
-    card.appendChild(title);
-    card.appendChild(meta);
-    if (footer.childElementCount > 0) {
-      card.appendChild(footer);
+function publishChatRuntimeSnapshot(snapshot = {}) {
+  document.dispatchEvent(new CustomEvent(LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT, {
+    bubbles: true,
+    detail: {
+      route: state.currentRoute,
+      controlsHTML: typeof snapshot.controlsHTML === "string" ? snapshot.controlsHTML : "",
+      noteHTML: typeof snapshot.noteHTML === "string" ? snapshot.noteHTML : "",
+      sheetHTML: typeof snapshot.sheetHTML === "string" ? snapshot.sheetHTML : "",
+      scrollPopover: normalizeText(snapshot.scrollPopover || ""),
+      scrollTop: Math.max(Number(snapshot.scrollTop || 0), 0)
     }
-    card.addEventListener("click", () => {
-      focusSession(item.id);
-    });
+  }));
+}
 
-    const actions = document.createElement("div");
-    actions.className = "session-card-actions";
-
-    if (showShortHash) {
-      const shortHash = agentSessionShortHash(item.id);
-      if (shortHash) {
-        const copyButton = document.createElement("button");
-        copyButton.type = "button";
-        copyButton.className = "session-card-copy";
-        copyButton.dataset.copyValue = shortHash;
-        copyButton.title = t("route.copy_value");
-        copyButton.setAttribute("aria-label", t("route.copy_value"));
-        copyButton.innerHTML = renderCopyIcon();
-        actions.appendChild(copyButton);
-      }
+function publishRouteBodySnapshot(snapshot = {}) {
+  document.dispatchEvent(new CustomEvent(LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT, {
+    bubbles: true,
+    detail: {
+      route: state.currentRoute,
+      managed: Boolean(snapshot.managed),
+      html: typeof snapshot.html === "string" ? snapshot.html : ""
     }
+  }));
+}
 
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "session-card-delete";
-    deleteButton.textContent = t("session.delete");
-    deleteButton.setAttribute("aria-label", t("session.delete"));
-    deleteButton.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      await removeSession(item.id);
-    });
-
-    actions.appendChild(deleteButton);
-    row.appendChild(card);
-    row.appendChild(actions);
-    sessionList.appendChild(row);
-  }
+function renderSessions() {
+  syncSessionLoadHint();
+  publishSessionPaneSnapshot();
 }
 
 function updateSessionTitle(session, fallbackText) {
@@ -5028,9 +4846,7 @@ function renderMessages(options = {}) {
   }
   const active = getSession();
   const hasMessages = Boolean(active && active.messages.length);
-  welcomeScreen.style.display = hasMessages ? "none" : "block";
-  messageArea.style.display = hasMessages ? "block" : "none";
-  chatPane.classList.toggle("empty-state", !hasMessages);
+  publishMessageRegionSnapshot(hasMessages, active);
   const preserveScrollPosition = Boolean(options.preserveScrollPosition);
   const previousScrollTop = messageArea.scrollTop;
   const previousScrollHeight = messageArea.scrollHeight;
@@ -5038,16 +4854,15 @@ function renderMessages(options = {}) {
   if (!hasMessages) {
     syncWelcomeCopy();
     renderWelcomeTargetPicker();
-    messageArea.innerHTML = "";
-    state.messageRenderSignatures.clear();
     return;
   }
-  syncMessageList(active);
-  if (preserveScrollPosition) {
-    messageArea.scrollTop = Math.max(0, previousScrollTop + (messageArea.scrollHeight - previousScrollHeight));
-  } else {
+  window.requestAnimationFrame(() => {
+    if (preserveScrollPosition) {
+      messageArea.scrollTop = Math.max(0, previousScrollTop + (messageArea.scrollHeight - previousScrollHeight));
+      return;
+    }
     messageArea.scrollTop = messageArea.scrollHeight;
-  }
+  });
 }
 
 function sessionNeedsServerRecovery(session) {
@@ -5219,31 +5034,6 @@ function upsertMessageProcessStep(message, rawStep) {
   return next;
 }
 
-function captureMessageRenderSignature(message) {
-  if (!message) {
-    return "";
-  }
-  return [
-    normalizeText(message.id),
-    normalizeText(message.role),
-    String(message.text || ""),
-    normalizeText(message.route),
-    normalizeText(message.source),
-    String(Boolean(message.error)),
-    normalizeText(message.status),
-    String(Number(message.at || 0)),
-    String(Boolean(message.retryable)),
-    String(Boolean(message.task_pending)),
-    normalizeText(message.task_id),
-    normalizeText(message.task_status),
-    String(Boolean(message.task_result_delivered)),
-    normalizeText(message.task_result_for),
-    String(Number(message.task_completed_at || 0)),
-    JSON.stringify(normalizeMessageProcessSteps(message.process_steps)),
-    String(message.agent_process_collapsed)
-  ].join("|");
-}
-
 function renderMessageMetaHTML(message) {
   const segments = [];
   if (message.route && message.role === "assistant") {
@@ -5275,90 +5065,6 @@ function renderMessageArticleHTML(message) {
     <div class="msg-bubble">${bubbleHTML}</div>
     <div class="msg-meta">${renderMessageMetaHTML(message)}</div>
   </article>`;
-}
-
-function findMessageArticleNode(listNode, messageID) {
-  if (!(listNode instanceof HTMLElement) || !messageID) {
-    return null;
-  }
-  const escapedMessageID = window.CSS && typeof window.CSS.escape === "function"
-    ? window.CSS.escape(messageID)
-    : messageID.replace(/["\\]/g, "\\$&");
-  return listNode.querySelector(`[data-message-id="${escapedMessageID}"]`);
-}
-
-function ensureMessageListNode(sessionID) {
-  let listNode = messageArea.querySelector(".message-list");
-  const normalizedSessionID = normalizeText(sessionID);
-  if (!(listNode instanceof HTMLElement)) {
-    messageArea.innerHTML = `<div class="message-list" data-message-session-id="${escapeHTML(normalizedSessionID)}"></div>`;
-    listNode = messageArea.querySelector(".message-list");
-  }
-  if (!(listNode instanceof HTMLElement)) {
-    return null;
-  }
-  if (normalizeText(listNode.getAttribute("data-message-session-id")) !== normalizedSessionID) {
-    listNode.innerHTML = "";
-    listNode.setAttribute("data-message-session-id", normalizedSessionID);
-    state.messageRenderSignatures.clear();
-  }
-  return listNode;
-}
-
-function syncMessageList(session) {
-  const messages = Array.isArray(session?.messages) ? session.messages : [];
-  const listNode = ensureMessageListNode(session?.id || "");
-  if (!(listNode instanceof HTMLElement)) {
-    return;
-  }
-  const existingByID = new Map(
-    [...listNode.querySelectorAll("[data-message-id]")].map((node) => [normalizeText(node.getAttribute("data-message-id")), node])
-  );
-  const nextIDs = new Set();
-  let previousNode = null;
-
-  messages.forEach((message) => {
-    const messageID = normalizeText(message?.id);
-    if (!messageID || messageID === "-") {
-      return;
-    }
-    nextIDs.add(messageID);
-    const signature = captureMessageRenderSignature(message);
-    let node = existingByID.get(messageID) || null;
-    if (!node) {
-      const html = renderMessageArticleHTML(message);
-      if (previousNode instanceof HTMLElement) {
-        previousNode.insertAdjacentHTML("afterend", html);
-        node = previousNode.nextElementSibling;
-      } else {
-        listNode.insertAdjacentHTML("afterbegin", html);
-        node = listNode.firstElementChild;
-      }
-      state.messageRenderSignatures.set(messageID, signature);
-    } else if (state.messageRenderSignatures.get(messageID) !== signature) {
-      node.outerHTML = renderMessageArticleHTML(message);
-      node = findMessageArticleNode(listNode, messageID);
-      state.messageRenderSignatures.set(messageID, signature);
-    }
-    if (!(node instanceof HTMLElement)) {
-      return;
-    }
-    const expectedNode = previousNode instanceof HTMLElement ? previousNode.nextElementSibling : listNode.firstElementChild;
-    if (node !== expectedNode) {
-      listNode.insertBefore(node, expectedNode || null);
-    }
-    previousNode = node;
-  });
-
-  existingByID.forEach((node, messageID) => {
-    if (nextIDs.has(messageID)) {
-      return;
-    }
-    state.messageRenderSignatures.delete(messageID);
-    if (node instanceof HTMLElement) {
-      node.remove();
-    }
-  });
 }
 
 function setPending(flag) {
@@ -5749,14 +5455,6 @@ function setSidebarCollapsed(collapsed) {
   appShell.classList.toggle("nav-collapsed", collapsed);
   navCollapseButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
   navCollapseButton.setAttribute("aria-label", navCollapseLabel());
-  syncMenuItemTooltips();
-  if (navTooltipTarget) {
-    if (!shouldShowNavTooltipFor(navTooltipTarget)) {
-      hideNavTooltip(true);
-      return;
-    }
-    showNavTooltip(navTooltipTarget);
-  }
 }
 
 function syncOverlayState() {
@@ -5765,7 +5463,6 @@ function syncOverlayState() {
 }
 
 function closeTransientPanels() {
-  hideNavTooltip(true);
   appShell.classList.remove("nav-open");
   appShell.classList.remove("panel-open");
   if (state.chatRuntime.openPopover) {
@@ -5932,6 +5629,73 @@ function navigateToRoute(route, options = {}) {
     return;
   }
   void renderRoute(safe);
+}
+
+function handleLegacyShellRouteNavigation(event) {
+  const route = event instanceof CustomEvent ? event.detail?.route : "";
+  if (!route) {
+    return;
+  }
+  navigateToRoute(route);
+}
+
+function handleLegacyShellSessionCreation() {
+  if ((ROUTES[state.currentRoute] || ROUTES.chat).key === "terminal") {
+    const terminalCreateButton = routeBody.querySelector("[data-terminal-create]");
+    if (terminalCreateButton instanceof HTMLElement) {
+      terminalCreateButton.click();
+    }
+    return;
+  }
+  if (isAgentConversationRoute()) {
+    startNewAgentSession();
+    return;
+  }
+  startNewChatSession();
+}
+
+function handleLegacyShellSessionFocus(event) {
+  const sessionID = event instanceof CustomEvent ? normalizeText(event.detail?.sessionId) : "";
+  if (!sessionID) {
+    return;
+  }
+  focusSession(sessionID);
+}
+
+function handleLegacyShellSessionRemoval(event) {
+  const sessionID = event instanceof CustomEvent ? normalizeText(event.detail?.sessionId) : "";
+  if (!sessionID) {
+    return;
+  }
+  void removeSession(sessionID);
+}
+
+function handleLegacyShellLanguageToggle() {
+  toggleLanguage();
+}
+
+function handleLegacyShellNavCollapsedSync(event) {
+  if (!(event instanceof CustomEvent)) {
+    return;
+  }
+  setSidebarCollapsed(Boolean(event.detail?.collapsed));
+}
+
+function handleLegacyShellSessionHistorySync(event) {
+  if (!(event instanceof CustomEvent)) {
+    return;
+  }
+  setSessionHistoryCollapsed(Boolean(event.detail?.collapsed));
+}
+
+async function handleLegacyShellQuickPrompt(event) {
+  const prompt = event instanceof CustomEvent ? normalizeText(event.detail?.prompt) : "";
+  if (!prompt) {
+    return;
+  }
+  input.value = prompt;
+  updateCharCount();
+  await sendMessage(prompt);
 }
 
 function startNewChatSession() {
@@ -6499,6 +6263,10 @@ function syncRouteAction(route) {
   routeActionButton.dataset.route = "";
 }
 
+function routeUsesManagedSnapshot(route) {
+  return route === "channels" || route === "skills" || route === "mcp";
+}
+
 async function fetchJSON(path) {
   const response = await fetch(path, { method: "GET" });
   if (!response.ok) {
@@ -6552,7 +6320,7 @@ async function downloadTaskArtifact(downloadURL, fallbackName) {
 async function loadChannelsView(container) {
   const data = await fetchJSON("/api/control/channels");
   const items = Array.isArray(data.items) ? data.items : [];
-  container.innerHTML = renderRouteCards(
+  const html = renderRouteCards(
     items,
     t("route.channels.empty"),
     (item) => routeCardTemplate(
@@ -6566,12 +6334,13 @@ async function loadChannelsView(container) {
       item.enabled
     )
   );
+  publishRouteBodySnapshot({ managed: true, html });
 }
 
 async function loadSkillsView(container) {
   const data = await fetchJSON("/api/control/skills");
   const items = Array.isArray(data.items) ? data.items : [];
-  container.innerHTML = renderRouteCards(
+  const html = renderRouteCards(
     items,
     t("route.skills.empty"),
     (item) => routeCardTemplate(
@@ -6587,12 +6356,13 @@ async function loadSkillsView(container) {
       item.enabled
     )
   );
+  publishRouteBodySnapshot({ managed: true, html });
 }
 
 async function loadMCPView(container) {
   const data = await fetchJSON("/api/control/mcps");
   const items = Array.isArray(data.items) ? data.items : [];
-  container.innerHTML = renderRouteCards(
+  const html = renderRouteCards(
     items,
     t("route.mcp.empty"),
     (item) => routeCardTemplate(
@@ -6608,6 +6378,7 @@ async function loadMCPView(container) {
       item.enabled
     )
   );
+  publishRouteBodySnapshot({ managed: true, html });
 }
 
 function normalizeProductRouteState(routeState = {}) {
@@ -14891,6 +14662,7 @@ async function renderRoute(route) {
   const subtitleKey = `route.${routeKey}.subtitle`;
   
   if (config.mode === "chat") {
+    publishRouteBodySnapshot({ managed: false, html: "" });
     setMainContentMode("chat");
     if (safe === "agent-runtime") {
       reconcileAgentRuntimeTarget();
@@ -14918,7 +14690,15 @@ async function renderRoute(route) {
   setMainContentMode("page");
   closeTransientPanels();
   syncRouteAction(safe);
-  routeBody.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
+  if (routeUsesManagedSnapshot(safe)) {
+    publishRouteBodySnapshot({
+      managed: true,
+      html: `<p class="route-loading">${t("loading")}</p>`
+    });
+  } else {
+    publishRouteBodySnapshot({ managed: false, html: "" });
+    routeBody.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
+  }
   syncHeader();
 
   const token = ++state.pageRenderToken;
@@ -14929,13 +14709,18 @@ async function renderRoute(route) {
       return;
     }
     const message = err instanceof Error ? err.message : "unknown_error";
-    routeBody.innerHTML = `<p class="route-error">${t("load_failed", { error: message })}</p>`;
+    if (routeUsesManagedSnapshot(safe)) {
+      publishRouteBodySnapshot({
+        managed: true,
+        html: `<p class="route-error">${t("load_failed", { error: message })}</p>`
+      });
+    } else {
+      routeBody.innerHTML = `<p class="route-error">${t("load_failed", { error: message })}</p>`;
+    }
   }
 }
 
 function bindEvents() {
-  bindNavTooltipEvents();
-
   messageArea.addEventListener("click", (event) => {
     const copyTarget = event.target.closest("[data-copy-value]");
     if (copyTarget) {
@@ -14964,6 +14749,10 @@ function bindEvents() {
     }
     event.preventDefault();
     toggleAgentProcessMessage(target.getAttribute("data-agent-process-toggle"));
+  });
+
+  welcomeScreen.addEventListener("click", (event) => {
+    handleWelcomeTargetPickerClick(event);
   });
 
   routeBody.addEventListener("click", async (event) => {
@@ -15042,98 +14831,15 @@ function bindEvents() {
     }
   });
 
-  newChatButton.addEventListener("click", () => {
-    if (isAgentConversationRoute()) {
-      startNewAgentSession();
-      return;
-    }
-    startNewChatSession();
-  });
-  if (mobileNewChatButton) {
-    mobileNewChatButton.addEventListener("click", () => {
-      if ((ROUTES[state.currentRoute] || ROUTES.chat).key === "terminal") {
-        const terminalCreateButton = routeBody.querySelector("[data-terminal-create]");
-        if (terminalCreateButton instanceof HTMLElement) {
-          terminalCreateButton.click();
-        }
-        return;
-      }
-      if (isAgentConversationRoute()) {
-        startNewAgentSession();
-        return;
-      }
-      startNewChatSession();
-    });
-  }
-  if (sessionHistoryToggle) {
-    sessionHistoryToggle.addEventListener("click", () => {
-      setSessionHistoryCollapsed(!state.sessionHistoryCollapsed);
-      persistSessionHistoryCollapsedState();
-    });
-  }
-
-  for (const node of menuRouteItems) {
-    node.addEventListener("click", () => {
-      const route = node.dataset.route || DEFAULT_ROUTE;
-      collapseMobileSidebar();
-      navigateToRoute(route);
-    });
-  }
-
-  if (routeActionButton) {
-    routeActionButton.addEventListener("click", () => {
-      const targetRoute = routeActionButton.dataset.route;
-      if (!targetRoute) {
-        return;
-      }
-      navigateToRoute(targetRoute);
-    });
-  }
-
-  navToggle.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const open = !appShell.classList.contains("nav-open");
-    closeTransientPanels();
-    if (open) {
-      appShell.classList.add("nav-open");
-      syncOverlayState();
-    }
-  });
-
-  sessionToggle.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if ((ROUTES[state.currentRoute] || ROUTES.chat).key === "terminal") {
-      const terminalToggleButton = routeBody.querySelector("[data-terminal-session-pane-toggle]");
-      if (terminalToggleButton instanceof HTMLElement) {
-        terminalToggleButton.click();
-      }
-      return;
-    }
-    if ((ROUTES[state.currentRoute] || ROUTES.chat).mode !== "chat") {
-      return;
-    }
-    const open = !appShell.classList.contains("panel-open");
-    closeTransientPanels();
-    if (open) {
-      appShell.classList.add("panel-open");
-      syncOverlayState();
-    }
-  });
-
-  togglePaneButton.addEventListener("click", () => {
-    closeTransientPanels();
-  });
-
-  navCollapseButton.addEventListener("click", () => {
-    if (isMobileViewport()) {
-      closeTransientPanels();
-      return;
-    }
-    setSidebarCollapsed(!state.navCollapsed);
-  });
-
-  mobileBackdrop.addEventListener("click", () => {
-    closeTransientPanels();
+  document.addEventListener(LEGACY_SHELL_NAVIGATE_EVENT, handleLegacyShellRouteNavigation);
+  document.addEventListener(LEGACY_SHELL_CREATE_SESSION_EVENT, handleLegacyShellSessionCreation);
+  document.addEventListener(LEGACY_SHELL_FOCUS_SESSION_EVENT, handleLegacyShellSessionFocus);
+  document.addEventListener(LEGACY_SHELL_REMOVE_SESSION_EVENT, handleLegacyShellSessionRemoval);
+  document.addEventListener(LEGACY_SHELL_TOGGLE_LANGUAGE_EVENT, handleLegacyShellLanguageToggle);
+  document.addEventListener(LEGACY_SHELL_SYNC_NAV_COLLAPSED_EVENT, handleLegacyShellNavCollapsedSync);
+  document.addEventListener(LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT, handleLegacyShellSessionHistorySync);
+  document.addEventListener(LEGACY_SHELL_QUICK_PROMPT_EVENT, (event) => {
+    void handleLegacyShellQuickPrompt(event);
   });
 
   document.addEventListener("keydown", (event) => {
@@ -15159,11 +14865,15 @@ function bindEvents() {
     chatRuntimePanel.addEventListener("click", (event) => {
       event.stopPropagation();
     });
+    chatRuntimePanel.addEventListener("click", handleChatRuntimeClick);
+    chatRuntimePanel.addEventListener("change", handleChatRuntimeChange);
   }
   if (chatRuntimeSheetHost) {
     chatRuntimeSheetHost.addEventListener("click", (event) => {
       event.stopPropagation();
     });
+    chatRuntimeSheetHost.addEventListener("click", handleChatRuntimeClick);
+    chatRuntimeSheetHost.addEventListener("change", handleChatRuntimeChange);
   }
 
   document.addEventListener("click", (event) => {
@@ -15192,19 +14902,6 @@ function bindEvents() {
     }
     closeTransientPanels();
   });
-
-  const quickPrompts = document.querySelectorAll(".prompt[data-prompt]");
-  for (const node of quickPrompts) {
-    node.addEventListener("click", async () => {
-      const prompt = node.getAttribute("data-prompt");
-      if (!prompt) {
-        return;
-      }
-      input.value = prompt;
-      updateCharCount();
-      await sendMessage(prompt);
-    });
-  }
 
   window.addEventListener("hashchange", () => {
     const nextRoute = parseHashRoute();
@@ -15238,13 +14935,6 @@ function bindEvents() {
     }
     if (!isMobileViewport()) {
       closeTransientPanels();
-    }
-    if (navTooltipTarget) {
-      if (!shouldShowNavTooltipFor(navTooltipTarget)) {
-        hideNavTooltip(true);
-      } else {
-        positionNavTooltip(navTooltipTarget);
-      }
     }
     scheduleViewportInsetSync();
     if (chatRuntimePanel && (state.currentRoute === "chat" || state.currentRoute === "agent-runtime")) {

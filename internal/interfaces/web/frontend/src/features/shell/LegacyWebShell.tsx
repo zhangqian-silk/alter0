@@ -8,27 +8,25 @@ import {
   persistLegacySessionHistoryCollapsed,
   useLegacyShellRoute,
 } from "./legacyShellState";
+import {
+  requestLegacyShellLanguageToggle,
+  requestLegacyShellQuickPrompt,
+  requestLegacyShellRouteNavigation,
+  requestLegacyShellSessionCreation,
+  syncLegacyShellNavCollapsed,
+  syncLegacyShellSessionHistoryCollapsed,
+} from "./legacyShellBridge";
+import {
+  dismissLegacyTransientPanels,
+  readLegacyTransientShellClasses,
+  toggleLegacyNavDrawer,
+  toggleLegacySessionPane,
+  type LegacyTransientShellClass,
+} from "./legacyTransientShell";
 import { ChatRuntimeSheetHost } from "./components/ChatRuntimeHost";
 import { ChatWorkspace } from "./components/ChatWorkspace";
 import { PrimaryNav } from "./components/PrimaryNav";
 import { SessionPane } from "./components/SessionPane";
-
-const LEGACY_TRANSIENT_SHELL_CLASSES = [
-  "nav-open",
-  "panel-open",
-  "overlay-open",
-  "runtime-sheet-open",
-] as const;
-
-type LegacyTransientShellClass = (typeof LEGACY_TRANSIENT_SHELL_CLASSES)[number];
-
-function readLegacyTransientShellClasses(root: HTMLElement | null): LegacyTransientShellClass[] {
-  if (!root) {
-    return [];
-  }
-
-  return LEGACY_TRANSIENT_SHELL_CLASSES.filter((className) => root.classList.contains(className));
-}
 
 export function LegacyWebShell() {
   const currentRoute = useLegacyShellRoute();
@@ -42,7 +40,13 @@ export function LegacyWebShell() {
   useEffect(() => {
     const syncViewport = () => {
       if (isLegacyShellMobileViewport()) {
-        setNavCollapsed(false);
+        setNavCollapsed((collapsed) => {
+          if (!collapsed) {
+            return collapsed;
+          }
+          syncLegacyShellNavCollapsed(false);
+          return false;
+        });
       }
     };
 
@@ -88,35 +92,84 @@ export function LegacyWebShell() {
     return nextClassNames.join(" ");
   }, [currentRoute, legacyTransientClasses, navCollapsed]);
 
+  const getShellRoot = () => document.getElementById(LEGACY_SHELL_IDS.appShell);
+
   return (
     <div className={shellClassName} id={LEGACY_SHELL_IDS.appShell}>
       <PrimaryNav
         currentRoute={currentRoute}
         language={language}
         navCollapsed={navCollapsed}
+        onNavigate={requestLegacyShellRouteNavigation}
+        onToggleLanguage={requestLegacyShellLanguageToggle}
         onToggleNavCollapsed={() => {
           if (isLegacyShellMobileViewport()) {
             return;
           }
-          setNavCollapsed((collapsed) => !collapsed);
+          setNavCollapsed((collapsed) => {
+            const next = !collapsed;
+            syncLegacyShellNavCollapsed(next);
+            return next;
+          });
         }}
       />
       <SessionPane
         currentRoute={currentRoute}
         language={language}
         sessionHistoryCollapsed={sessionHistoryCollapsed}
+        onCreateSession={requestLegacyShellSessionCreation}
+        onClosePane={() => {
+          const root = getShellRoot();
+          if (!root) {
+            return;
+          }
+          dismissLegacyTransientPanels(root);
+        }}
         onToggleSessionHistoryCollapsed={() => {
           setSessionHistoryCollapsed((collapsed) => {
             const next = !collapsed;
             persistLegacySessionHistoryCollapsed(next);
+            syncLegacyShellSessionHistoryCollapsed(next);
             return next;
           });
         }}
       />
-      <ChatWorkspace currentRoute={currentRoute} language={language} />
+      <ChatWorkspace
+        currentRoute={currentRoute}
+        language={language}
+        onCreateSession={requestLegacyShellSessionCreation}
+        onNavigate={requestLegacyShellRouteNavigation}
+        onQuickPrompt={requestLegacyShellQuickPrompt}
+        onToggleNavDrawer={() => {
+          const root = getShellRoot();
+          if (!root) {
+            return;
+          }
+          toggleLegacyNavDrawer(root);
+        }}
+        onToggleSessionPane={() => {
+          const root = getShellRoot();
+          if (!root) {
+            return;
+          }
+          toggleLegacySessionPane(root, currentRoute);
+        }}
+      />
 
-      <ChatRuntimeSheetHost />
-      <button className="mobile-backdrop" id={LEGACY_SHELL_IDS.mobileBackdrop} type="button" aria-label="Close panels"></button>
+      <ChatRuntimeSheetHost currentRoute={currentRoute} />
+      <button
+        className="mobile-backdrop"
+        id={LEGACY_SHELL_IDS.mobileBackdrop}
+        type="button"
+        aria-label="Close panels"
+        onClick={() => {
+          const root = getShellRoot();
+          if (!root) {
+            return;
+          }
+          dismissLegacyTransientPanels(root);
+        }}
+      ></button>
     </div>
   );
 }
