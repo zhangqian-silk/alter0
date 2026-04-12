@@ -43,6 +43,7 @@ describe("LegacyWebShell", () => {
   it("renders the workspace navigation and composer entrypoints", () => {
     render(<LegacyWebShell />);
 
+    expect(screen.getByRole("navigation", { name: "Primary workspace navigation" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Chat" })).toHaveAttribute("data-route", "chat");
     expect(screen.getByRole("button", { name: "Agent" })).toHaveAttribute("data-route", "agent-runtime");
     expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("data-route", "terminal");
@@ -50,13 +51,33 @@ describe("LegacyWebShell", () => {
     expect(screen.getByLabelText("Input your message")).toHaveAttribute("data-composer-input", "chat-main");
   });
 
+  it("renders the new shell information architecture for chat mode", () => {
+    render(<LegacyWebShell />);
+
+    expect(document.querySelector('[data-shell-section="brand-panel"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="session-context"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="chat-hero"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="prompt-deck"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="composer-panel"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="route-hero"]')).not.toBeInTheDocument();
+  });
+
+  it("renders a dedicated route hero for page-mode routes", () => {
+    window.location.hash = "#channels";
+
+    render(<LegacyWebShell />);
+
+    expect(document.querySelector('[data-shell-section="route-hero"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="chat-hero"]')).not.toBeInTheDocument();
+  });
+
   it("renders the shell navigation groups and route placement", () => {
     const { container } = render(<LegacyWebShell />);
 
-    expect(screen.getByText("Workspace")).toBeInTheDocument();
-    expect(screen.getByText("Agent Studio")).toBeInTheDocument();
-    expect(screen.getByText("Control")).toBeInTheDocument();
-    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Agent Studio" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Control" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
 
     const routeButtons = [...container.querySelectorAll<HTMLButtonElement>(".menu-item")];
     const routes = routeButtons.map((button) => button.dataset.route);
@@ -484,7 +505,7 @@ describe("LegacyWebShell", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("工作区")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "工作区" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "终端代理" })).toHaveAttribute("data-route", "terminal");
       expect(screen.getByRole("button", { name: "语言" })).toHaveTextContent("中文");
     });

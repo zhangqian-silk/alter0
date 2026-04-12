@@ -7,11 +7,28 @@ type LegacyShellCopy = {
   routes: Record<string, string>;
   routeTitles: Record<string, string>;
   routeSubtitles: Record<string, string>;
+  primaryNavLabel: string;
+  brandKicker: string;
+  brandDescription: string;
+  brandStatus: string;
+  brandSurface: string;
   chatMenu: string;
   chatSessions: string;
   terminalSessions: string;
   terminalNewShort: string;
+  workspaceEyebrow: string;
+  routeEyebrow: string;
+  workspaceModeLabel: string;
+  workspaceModeConversation: string;
+  workspaceModePage: string;
+  workspaceModeTerminal: string;
+  workspaceFocusLabel: string;
+  workspaceBridgeLabel: string;
+  workspaceBridgeValue: string;
   sessionHeader: string;
+  sessionPaneLabel: string;
+  sessionPanelEyebrow: string;
+  sessionPanelBridgeValue: string;
   sessionClose: string;
   sessionNewChat: string;
   sessionNewAgent: string;
@@ -22,6 +39,13 @@ type LegacyShellCopy = {
   sessionAgentListAriaLabel: string;
   sessionEmpty: string;
   sessionEmptyAgent: string;
+  promptDeckEyebrow: string;
+  promptDeckTitle: string;
+  promptDeckDescription: string;
+  composerEyebrow: string;
+  composerTitle: string;
+  composerDescription: string;
+  composerNote: string;
   localeButton: string;
   localeShort: string;
   localeAriaLabel: string;
@@ -89,11 +113,28 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       models: "Model capabilities",
       environments: "Environment and deployment settings",
     },
+    primaryNavLabel: "Primary workspace navigation",
+    brandKicker: "AI operating system",
+    brandDescription: "A focused shell for chat, agents, runtime controls, and delivery surfaces.",
+    brandStatus: "Bridge ready",
+    brandSurface: "React shell",
     chatMenu: "Menu",
     chatSessions: "Sessions",
     terminalSessions: "Sessions",
     terminalNewShort: "New",
+    workspaceEyebrow: "Workspace cockpit",
+    routeEyebrow: "Control surface",
+    workspaceModeLabel: "Mode",
+    workspaceModeConversation: "Conversation stream",
+    workspaceModePage: "Operational page",
+    workspaceModeTerminal: "Terminal runtime",
+    workspaceFocusLabel: "Focus",
+    workspaceBridgeLabel: "Runtime",
+    workspaceBridgeValue: "Legacy bridge active",
     sessionHeader: "Work with alter0",
+    sessionPaneLabel: "Session control center",
+    sessionPanelEyebrow: "Session control",
+    sessionPanelBridgeValue: "Live history",
     sessionClose: "Close",
     sessionNewChat: "New Chat",
     sessionNewAgent: "New Agent Run",
@@ -104,6 +145,13 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     sessionAgentListAriaLabel: "Agent conversation sessions",
     sessionEmpty: "No sessions yet. Click New Chat to start.",
     sessionEmptyAgent: "No Agent sessions yet. Open Agent to start.",
+    promptDeckEyebrow: "Quick starts",
+    promptDeckTitle: "Launch a strong first turn",
+    promptDeckDescription: "Pick a prompt, refine the goal, or hand the runtime a clear operating angle.",
+    composerEyebrow: "Compose",
+    composerTitle: "Drive the next move",
+    composerDescription: "Use the main composer for decisive instructions, follow-up context, or runtime tuning.",
+    composerNote: "Bridge-powered input, source-owned shell.",
     localeButton: "English",
     localeShort: "EN",
     localeAriaLabel: "Language",
@@ -169,11 +217,28 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       models: "模型能力",
       environments: "环境与部署设置",
     },
+    primaryNavLabel: "主工作区导航",
+    brandKicker: "AI 操作中枢",
+    brandDescription: "统一承载对话、Agent、运行时控制与交付页面的前端工作台。",
+    brandStatus: "桥接已就绪",
+    brandSurface: "React 壳层",
     chatMenu: "菜单",
     chatSessions: "会话",
     terminalSessions: "会话列表",
     terminalNewShort: "新建",
+    workspaceEyebrow: "工作区驾驶舱",
+    routeEyebrow: "控制台界面",
+    workspaceModeLabel: "模式",
+    workspaceModeConversation: "会话流",
+    workspaceModePage: "运营页面",
+    workspaceModeTerminal: "终端运行态",
+    workspaceFocusLabel: "焦点",
+    workspaceBridgeLabel: "运行时",
+    workspaceBridgeValue: "Legacy 桥接激活",
     sessionHeader: "与 alter0 协作",
+    sessionPaneLabel: "会话控制中心",
+    sessionPanelEyebrow: "会话控制",
+    sessionPanelBridgeValue: "实时历史",
     sessionClose: "关闭",
     sessionNewChat: "新对话",
     sessionNewAgent: "新 Agent 会话",
@@ -184,6 +249,13 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     sessionAgentListAriaLabel: "Agent 会话列表",
     sessionEmpty: "暂无会话，点击“新对话”开始。",
     sessionEmptyAgent: "当前还没有 Agent 会话。请前往 Agent 页面开始。",
+    promptDeckEyebrow: "快速起手",
+    promptDeckTitle: "直接发起一轮高质量对话",
+    promptDeckDescription: "可以选择快捷提示、补充目标，也可以先调整运行时再发送。",
+    composerEyebrow: "输入区",
+    composerTitle: "推动下一步执行",
+    composerDescription: "主输入框用于发送明确指令、补充上下文，或结合运行时参数继续推进。",
+    composerNote: "桥接负责执行，壳层负责表达。",
     localeButton: "中文",
     localeShort: "中",
     localeAriaLabel: "语言",
@@ -236,4 +308,11 @@ export function getLegacyRouteHeadingCopy(language: LegacyShellLanguage, route: 
 export function getLegacySessionHistoryToggleLabel(language: LegacyShellLanguage, collapsed: boolean): string {
   const copy = getLegacyShellCopy(language);
   return collapsed ? copy.sessionHistoryExpand : copy.sessionHistoryCollapse;
+}
+
+export function getLegacySessionTrackedCountLabel(language: LegacyShellLanguage, count: number): string {
+  if (language === "zh") {
+    return `已跟踪 ${count} 条`;
+  }
+  return `${count} tracked`;
 }
