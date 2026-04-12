@@ -1,4 +1,19 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  LEGACY_SHELL_CREATE_SESSION_EVENT,
+  LEGACY_SHELL_FOCUS_SESSION_EVENT,
+  LEGACY_SHELL_NAVIGATE_EVENT,
+  LEGACY_SHELL_QUICK_PROMPT_EVENT,
+  LEGACY_SHELL_REMOVE_SESSION_EVENT,
+  LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT,
+  LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT,
+  LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT,
+  LEGACY_SHELL_SYNC_NAV_COLLAPSED_EVENT,
+  LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT,
+  LEGACY_SHELL_SYNC_SESSION_PANE_EVENT,
+  LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT,
+  LEGACY_SHELL_TOGGLE_LANGUAGE_EVENT,
+} from "./legacyShellBridge";
 import { LegacyWebShell } from "./LegacyWebShell";
 import { LEGACY_SHELL_IDS } from "./legacyDomContract";
 
@@ -19,6 +34,7 @@ describe("LegacyWebShell", () => {
     expect(document.getElementById(LEGACY_SHELL_IDS.chatRuntimePanel)).toBeInTheDocument();
     expect(document.getElementById(LEGACY_SHELL_IDS.chatRuntimeSheetHost)).toBeInTheDocument();
     expect(document.getElementById(LEGACY_SHELL_IDS.mobileBackdrop)).toBeInTheDocument();
+    expect(document.getElementById("welcomeTargetList")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-controls-root]")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-note-root]")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-sheet-root]")).toBeInTheDocument();
@@ -197,6 +213,14 @@ describe("LegacyWebShell", () => {
   });
 
   it("toggles navigation collapse without clearing legacy runtime mounts", () => {
+    const navCollapsedEvents: boolean[] = [];
+    document.addEventListener(
+      LEGACY_SHELL_SYNC_NAV_COLLAPSED_EVENT,
+      ((event: Event) => {
+        navCollapsedEvents.push(Boolean((event as CustomEvent<{ collapsed: boolean }>).detail?.collapsed));
+      }) as EventListener,
+    );
+
     render(<LegacyWebShell />);
 
     const runtimeMount = document.getElementById(LEGACY_SHELL_IDS.sessionList);
@@ -206,6 +230,249 @@ describe("LegacyWebShell", () => {
 
     expect(document.getElementById(LEGACY_SHELL_IDS.appShell)).toHaveClass("nav-collapsed");
     expect(screen.getByRole("button", { name: "Expand navigation" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("runtime session")).toBeInTheDocument();
+    expect(navCollapsedEvents).toEqual([true]);
+  });
+
+  it("dispatches route navigation bridge events from the primary navigation", () => {
+    const routes: string[] = [];
+    document.addEventListener(
+      LEGACY_SHELL_NAVIGATE_EVENT,
+      ((event: Event) => {
+        routes.push(String((event as CustomEvent<{ route: string }>).detail?.route || ""));
+      }) as EventListener,
+    );
+
+    render(<LegacyWebShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+
+    expect(routes).toEqual(["tasks"]);
+  });
+
+  it("shows a delayed tooltip for collapsed navigation route items", async () => {
+    vi.useFakeTimers();
+
+    render(<LegacyWebShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse navigation" }));
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Tasks" }));
+
+    expect(document.querySelector(".nav-tooltip")).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(90);
+    });
+
+    const tooltip = document.querySelector(".nav-tooltip");
+    expect(tooltip).toHaveClass("visible");
+    expect(tooltip).toHaveAttribute("aria-hidden", "false");
+    expect(tooltip).toHaveTextContent("Tasks");
+
+    fireEvent.mouseLeave(screen.getByRole("button", { name: "Tasks" }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(40);
+    });
+
+    expect(tooltip).not.toHaveClass("visible");
+    expect(tooltip).toHaveAttribute("aria-hidden", "true");
+
+    vi.useRealTimers();
+  });
+
+  it("does not show route tooltips while the navigation is expanded", async () => {
+    vi.useFakeTimers();
+
+    render(<LegacyWebShell />);
+
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Tasks" }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(90);
+    });
+
+    expect(document.querySelector(".nav-tooltip")).toBeNull();
+
+    vi.useRealTimers();
+  });
+
+  it("shows an immediate tooltip for the navigation collapse button on focus", () => {
+    render(<LegacyWebShell />);
+
+    const collapseButton = screen.getByRole("button", { name: "Collapse navigation" });
+    fireEvent.focus(collapseButton);
+
+    const tooltip = document.querySelector(".nav-tooltip");
+    expect(tooltip).toHaveClass("visible");
+    expect(tooltip).toHaveAttribute("aria-hidden", "false");
+    expect(tooltip).toHaveTextContent("Collapse navigation");
+
+    fireEvent.blur(collapseButton);
+
+    expect(tooltip).not.toHaveClass("visible");
+    expect(tooltip).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("dispatches route navigation bridge events from the route action button", async () => {
+    const routes: string[] = [];
+    document.addEventListener(
+      LEGACY_SHELL_NAVIGATE_EVENT,
+      ((event: Event) => {
+        routes.push(String((event as CustomEvent<{ route: string }>).detail?.route || ""));
+      }) as EventListener,
+    );
+
+    window.location.hash = "#channels";
+    render(<LegacyWebShell />);
+
+    const routeActionButton = document.getElementById("routeActionButton") as HTMLButtonElement;
+    await act(async () => {
+      routeActionButton.hidden = false;
+      routeActionButton.dataset.route = "channels";
+      fireEvent.click(routeActionButton);
+    });
+
+    expect(routes).toEqual(["channels"]);
+  });
+
+  it("dispatches a session creation bridge event from both session entrypoints", () => {
+    let creationCount = 0;
+    document.addEventListener(
+      LEGACY_SHELL_CREATE_SESSION_EVENT,
+      (() => {
+        creationCount += 1;
+      }) as EventListener,
+    );
+
+    render(<LegacyWebShell />);
+
+    fireEvent.click(document.getElementById(LEGACY_SHELL_IDS.newChatButton)!);
+    fireEvent.click(document.getElementById("mobileNewChatButton")!);
+
+    expect(creationCount).toBe(2);
+  });
+
+  it("dispatches the language toggle bridge event from the locale button", () => {
+    let toggleCount = 0;
+    document.addEventListener(
+      LEGACY_SHELL_TOGGLE_LANGUAGE_EVENT,
+      (() => {
+        toggleCount += 1;
+      }) as EventListener,
+    );
+
+    render(<LegacyWebShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Language" }));
+
+    expect(toggleCount).toBe(1);
+  });
+
+  it("dispatches quick prompt bridge events from the welcome prompt grid", () => {
+    const prompts: string[] = [];
+    document.addEventListener(
+      LEGACY_SHELL_QUICK_PROMPT_EVENT,
+      ((event: Event) => {
+        prompts.push(String((event as CustomEvent<{ prompt: string }>).detail?.prompt || ""));
+      }) as EventListener,
+    );
+
+    render(<LegacyWebShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Let's start a new journey!" }));
+
+    expect(prompts).toEqual(["Let's start a new journey!"]);
+  });
+
+  it("toggles the mobile navigation drawer through the React shell controls", async () => {
+    render(<LegacyWebShell />);
+
+    const appShell = document.getElementById(LEGACY_SHELL_IDS.appShell);
+    const navToggle = document.getElementById(LEGACY_SHELL_IDS.navToggle);
+
+    await act(async () => {
+      fireEvent.click(navToggle!);
+    });
+    await waitFor(() => {
+      expect(appShell).toHaveClass("nav-open");
+      expect(appShell).toHaveClass("overlay-open");
+    });
+
+    await act(async () => {
+      fireEvent.click(navToggle!);
+    });
+    await waitFor(() => {
+      expect(appShell).not.toHaveClass("nav-open");
+      expect(appShell).not.toHaveClass("overlay-open");
+    });
+  });
+
+  it("toggles the chat session drawer through the React shell controls", async () => {
+    render(<LegacyWebShell />);
+
+    const appShell = document.getElementById(LEGACY_SHELL_IDS.appShell);
+    const sessionToggle = document.getElementById(LEGACY_SHELL_IDS.sessionToggle);
+
+    await act(async () => {
+      fireEvent.click(sessionToggle!);
+    });
+    await waitFor(() => {
+      expect(appShell).toHaveClass("panel-open");
+      expect(appShell).toHaveClass("overlay-open");
+    });
+
+    await act(async () => {
+      fireEvent.click(document.getElementById("togglePaneButton")!);
+    });
+    await waitFor(() => {
+      expect(appShell).not.toHaveClass("panel-open");
+      expect(appShell).not.toHaveClass("overlay-open");
+    });
+  });
+
+  it("delegates terminal session drawer toggles to the terminal route mount", async () => {
+    window.location.hash = "#terminal";
+
+    render(<LegacyWebShell />);
+
+    const routeBody = document.getElementById(LEGACY_SHELL_IDS.routeBody);
+    const appShell = document.getElementById(LEGACY_SHELL_IDS.appShell);
+    const terminalToggle = document.createElement("button");
+    terminalToggle.type = "button";
+    terminalToggle.setAttribute("data-terminal-session-pane-toggle", "");
+    routeBody?.appendChild(terminalToggle);
+
+    const terminalToggleSpy = vi.fn();
+    terminalToggle.addEventListener("click", terminalToggleSpy);
+
+    fireEvent.click(document.getElementById(LEGACY_SHELL_IDS.sessionToggle)!);
+
+    expect(terminalToggleSpy).toHaveBeenCalledTimes(1);
+    expect(appShell).not.toHaveClass("panel-open");
+    expect(appShell).not.toHaveClass("overlay-open");
+  });
+
+  it("closes transient drawers from the mobile backdrop without clearing runtime mounts", async () => {
+    render(<LegacyWebShell />);
+
+    const appShell = document.getElementById(LEGACY_SHELL_IDS.appShell);
+    const runtimeMount = document.getElementById(LEGACY_SHELL_IDS.sessionList);
+    runtimeMount?.insertAdjacentHTML("beforeend", '<button type="button" data-runtime-node="session">runtime session</button>');
+
+    await act(async () => {
+      appShell?.classList.add("nav-open", "panel-open", "overlay-open");
+    });
+
+    await act(async () => {
+      fireEvent.click(document.getElementById(LEGACY_SHELL_IDS.mobileBackdrop)!);
+    });
+
+    await waitFor(() => {
+      expect(appShell).not.toHaveClass("nav-open");
+      expect(appShell).not.toHaveClass("panel-open");
+      expect(appShell).not.toHaveClass("overlay-open");
+    });
     expect(screen.getByText("runtime session")).toBeInTheDocument();
   });
 
@@ -224,6 +491,14 @@ describe("LegacyWebShell", () => {
   });
 
   it("toggles the session history collapse state without clearing runtime session mounts", () => {
+    const collapsedEvents: boolean[] = [];
+    document.addEventListener(
+      LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT,
+      ((event: Event) => {
+        collapsedEvents.push(Boolean((event as CustomEvent<{ collapsed: boolean }>).detail?.collapsed));
+      }) as EventListener,
+    );
+
     render(<LegacyWebShell />);
 
     const runtimeMount = document.getElementById(LEGACY_SHELL_IDS.sessionList);
@@ -237,6 +512,7 @@ describe("LegacyWebShell", () => {
       JSON.stringify({ collapsed_state: true }),
     );
     expect(screen.getByText("runtime session")).toBeInTheDocument();
+    expect(collapsedEvents).toEqual([true]);
   });
 
   it("keeps the session pane copy aligned with the route and language", async () => {
@@ -341,23 +617,282 @@ describe("LegacyWebShell", () => {
     });
   });
 
-  it("does not overwrite legacy-managed chat headings during shell rerenders", async () => {
+  it("keeps runtime session pane snapshot state across shell rerenders", async () => {
     render(<LegacyWebShell />);
 
-    const heading = document.getElementById("sessionHeading");
-    const subheading = document.getElementById("sessionSubheading");
-    heading!.textContent = "Runtime heading";
-    subheading!.textContent = "Runtime subheading";
+    const sessionList = document.getElementById(LEGACY_SHELL_IDS.sessionList);
+    sessionList?.insertAdjacentHTML("beforeend", '<button type="button" data-runtime-node="session">runtime session</button>');
 
     await act(async () => {
-      window.location.hash = "#terminal";
-      window.dispatchEvent(new HashChangeEvent("hashchange"));
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_SESSION_PANE_EVENT, {
+          detail: {
+            route: "chat",
+            hasSessions: true,
+            loadError: "Runtime load error",
+          },
+        }),
+      );
+    });
+
+    expect(document.getElementById("sessionEmpty")).toHaveAttribute("hidden");
+    expect(document.getElementById("sessionLoadError")).not.toHaveAttribute("hidden");
+    expect(document.getElementById("sessionLoadError")).toHaveTextContent("Runtime load error");
+    expect(screen.getByText("runtime session")).toBeInTheDocument();
+
+    await act(async () => {
       document.documentElement.lang = "zh-CN";
     });
 
     await waitFor(() => {
-      expect(heading).toHaveTextContent("Runtime heading");
-      expect(subheading).toHaveTextContent("Runtime subheading");
+      expect(document.getElementById("sessionEmpty")).toHaveAttribute("hidden");
+      expect(document.getElementById("sessionLoadError")).not.toHaveAttribute("hidden");
+      expect(document.getElementById("sessionLoadError")).toHaveTextContent("Runtime load error");
+      expect(screen.getByText("runtime session")).toBeInTheDocument();
+    });
+  });
+
+  it("renders session snapshot cards and dispatches session item bridge events", async () => {
+    const focusedSessions: string[] = [];
+    const removedSessions: string[] = [];
+    document.addEventListener(
+      LEGACY_SHELL_FOCUS_SESSION_EVENT,
+      ((event: Event) => {
+        focusedSessions.push(String((event as CustomEvent<{ sessionId: string }>).detail?.sessionId || ""));
+      }) as EventListener,
+    );
+    document.addEventListener(
+      LEGACY_SHELL_REMOVE_SESSION_EVENT,
+      ((event: Event) => {
+        removedSessions.push(String((event as CustomEvent<{ sessionId: string }>).detail?.sessionId || ""));
+      }) as EventListener,
+    );
+
+    window.location.hash = "#agent-runtime";
+    render(<LegacyWebShell />);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_SESSION_PANE_EVENT, {
+          detail: {
+            route: "agent-runtime",
+            hasSessions: true,
+            loadError: "",
+            items: [
+              {
+                id: "session-runtime-1",
+                title: "Runtime session",
+                meta: "Agent · provider / model · 3 messages · just now",
+                active: true,
+                shortHash: "1a2b3c4d",
+                copyValue: "1a2b3c4d",
+                copyLabel: "Copy session id",
+                deleteLabel: "Delete session",
+              },
+            ],
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByText("Runtime session")).toBeInTheDocument();
+    expect(screen.getByText("Agent · provider / model · 3 messages · just now")).toBeInTheDocument();
+    expect(screen.getByText("#1a2b3c4d")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Runtime session").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: "Delete session" }));
+
+    expect(focusedSessions).toEqual(["session-runtime-1"]);
+    expect(removedSessions).toEqual(["session-runtime-1"]);
+  });
+
+  it("keeps runtime message region snapshot state across shell rerenders", async () => {
+    render(<LegacyWebShell />);
+
+    const messageArea = document.getElementById(LEGACY_SHELL_IDS.messageArea);
+    messageArea?.insertAdjacentHTML("beforeend", '<div data-runtime-node="message">runtime message</div>');
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
+          detail: {
+            route: "chat",
+            hasMessages: true,
+          },
+        }),
+      );
+    });
+
+    expect(document.querySelector(".chat-pane")).not.toHaveClass("empty-state");
+    expect(document.getElementById(LEGACY_SHELL_IDS.welcomeScreen)).toHaveAttribute("hidden");
+    expect(document.getElementById(LEGACY_SHELL_IDS.messageArea)).not.toHaveAttribute("hidden");
+    expect(screen.getByText("runtime message")).toBeInTheDocument();
+
+    await act(async () => {
+      document.documentElement.lang = "zh-CN";
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector(".chat-pane")).not.toHaveClass("empty-state");
+      expect(document.getElementById(LEGACY_SHELL_IDS.welcomeScreen)).toHaveAttribute("hidden");
+      expect(document.getElementById(LEGACY_SHELL_IDS.messageArea)).not.toHaveAttribute("hidden");
+      expect(screen.getByText("runtime message")).toBeInTheDocument();
+    });
+  });
+
+  it("renders runtime message region snapshot content across shell rerenders", async () => {
+    render(<LegacyWebShell />);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
+          detail: {
+            route: "chat",
+            hasMessages: true,
+            sessionId: "session-runtime-1",
+            html: '<div class="message-list" data-message-session-id="session-runtime-1"><article class="msg user" data-message-id="msg-runtime-1"><div class="msg-bubble"><p>Runtime user message</p></div><div class="msg-meta"><span>just now</span></div></article></div>',
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByText("Runtime user message")).toBeInTheDocument();
+    expect(document.querySelector('[data-message-session-id="session-runtime-1"]')).toBeInTheDocument();
+
+    await act(async () => {
+      document.documentElement.lang = "zh-CN";
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Runtime user message")).toBeInTheDocument();
+      expect(document.querySelector('[data-message-session-id="session-runtime-1"]')).toBeInTheDocument();
+    });
+  });
+
+  it("keeps runtime chat workspace snapshot copy across shell rerenders", async () => {
+    render(<LegacyWebShell />);
+
+    const messageArea = document.getElementById(LEGACY_SHELL_IDS.messageArea);
+    messageArea?.insertAdjacentHTML("beforeend", '<div data-runtime-node="message">runtime message</div>');
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT, {
+          detail: {
+            route: "chat",
+            heading: "Runtime heading",
+            subheading: "Runtime subheading",
+            welcomeHeading: "Runtime welcome heading",
+            welcomeDescription: "Runtime welcome description",
+            welcomeTargetHTML: '<button class="welcome-target-card active" type="button" data-chat-target-type="agent" data-chat-target-id="agent-runtime" data-chat-target-name="Runtime Agent"><strong>Runtime Agent</strong><span>agent-runtime</span></button>',
+          },
+        }),
+      );
+    });
+
+    expect(document.getElementById("sessionHeading")).toHaveTextContent("Runtime heading");
+    expect(document.getElementById("sessionSubheading")).toHaveTextContent("Runtime subheading");
+    expect(document.getElementById("welcomeHeading")).toHaveTextContent("Runtime welcome heading");
+    expect(document.getElementById("welcomeDescription")).toHaveTextContent("Runtime welcome description");
+    expect(screen.getByText("Runtime Agent")).toBeInTheDocument();
+    expect(screen.getByText("runtime message")).toBeInTheDocument();
+
+    await act(async () => {
+      document.documentElement.lang = "zh-CN";
+    });
+
+    await waitFor(() => {
+      expect(document.getElementById("sessionHeading")).toHaveTextContent("Runtime heading");
+      expect(document.getElementById("sessionSubheading")).toHaveTextContent("Runtime subheading");
+      expect(document.getElementById("welcomeHeading")).toHaveTextContent("Runtime welcome heading");
+      expect(document.getElementById("welcomeDescription")).toHaveTextContent("Runtime welcome description");
+      expect(screen.getByText("Runtime Agent")).toBeInTheDocument();
+      expect(screen.getByText("runtime message")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps runtime panel snapshot content across shell rerenders", async () => {
+    render(<LegacyWebShell />);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT, {
+          detail: {
+            route: "chat",
+            controlsHTML: '<div class="composer-runtime-group"><button class="composer-runtime-trigger is-open" type="button" data-runtime-toggle="model"><span class="composer-runtime-trigger-label">Runtime model</span></button></div>',
+            noteHTML: '<p class="chat-runtime-note chat-runtime-error">Runtime provider warning</p>',
+            sheetHTML: '<div class="composer-runtime-popover-mobile-body" data-runtime-scroll-container="mobile"><label class="composer-runtime-checkbox"><input type="checkbox" data-runtime-toggle-item="skills" value="runtime-skill" checked><span class="composer-runtime-checkbox-copy"><strong>Runtime skill</strong><span>Enabled in runtime</span></span></label></div>',
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByText("Runtime model")).toBeInTheDocument();
+    expect(screen.getByText("Runtime provider warning")).toBeInTheDocument();
+    expect(screen.getByText("Runtime skill")).toBeInTheDocument();
+
+    await act(async () => {
+      document.documentElement.lang = "zh-CN";
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Runtime model")).toBeInTheDocument();
+      expect(screen.getByText("Runtime provider warning")).toBeInTheDocument();
+      expect(screen.getByText("Runtime skill")).toBeInTheDocument();
+    });
+  });
+
+  it("restores runtime panel scroll snapshots after React rerenders", async () => {
+    render(<LegacyWebShell />);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT, {
+          detail: {
+            route: "chat",
+            controlsHTML: "",
+            noteHTML: "",
+            sheetHTML: '<div class="composer-runtime-popover-mobile-body" data-runtime-scroll-container="mobile"><div style="height: 400px;">Runtime sheet body</div></div>',
+            scrollPopover: "mobile",
+            scrollTop: 96,
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      const scrollContainer = document.querySelector<HTMLElement>('[data-runtime-scroll-container="mobile"]');
+      expect(scrollContainer).not.toBeNull();
+      expect(scrollContainer?.scrollTop).toBe(96);
+    });
+  });
+
+  it("keeps managed route body snapshot content across shell rerenders", async () => {
+    window.location.hash = "#channels";
+    render(<LegacyWebShell />);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT, {
+          detail: {
+            route: "channels",
+            managed: true,
+            html: '<article class="route-card"><div class="route-card-head"><div class="route-card-title-wrap"><div class="route-card-title-copy"><h4>Runtime channel</h4></div></div></div><div class="route-meta"><p class="route-field-row"><span>ID</span><span class="route-field-value-wrap"><strong class="route-field-value is-mono">channel-runtime-1</strong></span></p></div></article>',
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByText("Runtime channel")).toBeInTheDocument();
+    expect(screen.getByText("channel-runtime-1")).toBeInTheDocument();
+
+    await act(async () => {
+      document.documentElement.lang = "zh-CN";
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Runtime channel")).toBeInTheDocument();
+      expect(screen.getByText("channel-runtime-1")).toBeInTheDocument();
     });
   });
 });
