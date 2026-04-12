@@ -77,17 +77,34 @@ func normalizeEmbeddedAsset(content string) string {
 	return strings.ReplaceAll(content, "\r\n", "\n")
 }
 
-func TestSidebarRoutesSwitchToInfoMode(t *testing.T) {
+func TestLegacyRuntimeDoesNotToggleReactOwnedRouteShellState(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
-	markers := []string{
-		"function setMainContentMode(mode)",
-		`appShell.classList.toggle("info-mode", infoMode)`,
-		"chatView.hidden = infoMode;",
-		"routeView.hidden = !infoMode;",
+	requiredMarkers := []string{
+		"function navigateToRoute(route, options = {})",
+		"setMainContentMode(\"chat\")",
+		"setMainContentMode(\"page\")",
+		`window.location.hash = targetHash;`,
 	}
-	for _, marker := range markers {
+	for _, marker := range requiredMarkers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	forbiddenMarkers := []string{
+		`appShell.classList.toggle("info-mode", infoMode)`,
+		`chatPane.classList.toggle("page-mode", infoMode)`,
+		"chatView.hidden = infoMode;",
+		"routeView.hidden = !infoMode;",
+		"chatPane.dataset.route = safe;",
+		"routeView.dataset.route = safe;",
+		"routeBody.dataset.route = safe;",
+		`routeView.classList.toggle("terminal-route", safe === "terminal");`,
+		`routeBody.classList.toggle("terminal-route-body", safe === "terminal");`,
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected script marker %q", marker)
 		}
 	}
 }
@@ -282,6 +299,61 @@ func TestSessionHistoryCollapseStatePersistsInBrowserSession(t *testing.T) {
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+}
+
+func TestLegacyRuntimeDoesNotRewriteReactOwnedShellActionLabels(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	requiredMarkers := []string{
+		"newChatButton.addEventListener(\"click\", () => {",
+		"mobileNewChatButton.addEventListener(\"click\", () => {",
+		"sessionToggle.addEventListener(\"click\", (event) => {",
+	}
+	for _, marker := range requiredMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	forbiddenMarkers := []string{
+		"newChatButton.textContent = newSessionLabel;",
+		"mobileNewChatButton.textContent = t(\"route.terminal.new_short\");",
+		"mobileNewChatButton.setAttribute(\"aria-label\", t(\"route.terminal.new_short\"));",
+		"mobileNewChatButton.textContent = newSessionLabel;",
+		"mobileNewChatButton.setAttribute(\"aria-label\", newSessionLabel);",
+		"sessionToggle.textContent = t(\"route.terminal.sessions\");",
+		"sessionToggle.setAttribute(\"aria-label\", t(\"route.terminal.sessions\"));",
+		"sessionToggle.textContent = t(\"chat.sessions\");",
+		"sessionToggle.setAttribute(\"aria-label\", t(\"chat.sessions\"));",
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected script marker %q", marker)
+		}
+	}
+}
+
+func TestLegacyRuntimeDoesNotRewriteReactOwnedRouteHeadingCopy(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	requiredMarkers := []string{
+		"const titleKey = `route.${routeKey}.title`;",
+		"const subtitleKey = `route.${routeKey}.subtitle`;",
+		"syncRouteAction(safe);",
+	}
+	for _, marker := range requiredMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	forbiddenMarkers := []string{
+		"routeTitle.textContent = t(titleKey);",
+		"routeSubtitle.textContent = t(subtitleKey);",
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected script marker %q", marker)
 		}
 	}
 }

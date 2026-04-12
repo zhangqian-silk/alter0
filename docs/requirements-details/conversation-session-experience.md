@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-04-11
+> Last update: 2026-04-12
 
 ## 领域边界
 
@@ -24,6 +24,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 根路径 `/` 默认进入 Chat 工作台。
 - `/chat` 提供 Chat、Agent、Terminal、Product、Control 与 Memory 的统一 Web Shell。
 - Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`；该入口仅保留前端挂载容器与静态资源引用，当前由 React 渲染 legacy shell DOM，再由兼容桥承接旧版运行时脚本与样式。
+- React 壳层当前直接维护主导航当前路由高亮、导航折叠态与语言感知文案，以及 Session Pane、ChatWorkspace 头部动作区、Session 历史空态提示/可访问标签、路由页头部标题/副标题的历史折叠、菜单、会话入口与路由感知文案；会话列表、消息区、route body、runtime settings host，以及 `sessionHeading / sessionSubheading` 等 legacy runtime 直接写入的标题挂载区保持静态 DOM 契约，不在桥接阶段随 React 状态重复渲染。
 - `static/dist/assets/*` 使用构建产物哈希文件名并返回长期 immutable 缓存；`/chat` 与 `static/dist/legacy/*` 保持 `no-cache`，确保桥接阶段页面与兼容 runtime 能及时刷新到最新版本。
 - `/login` 在登录密码启用时提供登录入口；`/logout` 清理当前登录态并回到登录流程。
 - 登录密码未启用时，Web Shell 直接进入受保护页面；登录密码启用后，受保护页面和 API 使用同一登录态校验。
@@ -145,8 +146,13 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 - 全站默认固定侧边栏；仅侧栏自身内容溢出时允许侧栏内部滚动。
 - Chat 历史区支持折叠与展开，减少长对话阅读空间占用。
+- Session Pane 的历史折叠状态在同一浏览器会话内持久化恢复；在 `agent-runtime` 路由下，新会话入口文案切换为 Agent 会话语义，并随语言切换同步更新。
+- Session 历史区的空态提示与列表可访问标签需按当前路由与语言即时切换文案；这些文案更新不得清空或重建 runtime 已注入的会话卡片节点。
+- ChatWorkspace 头部的菜单按钮、会话抽屉按钮和移动端新会话入口需按当前路由与语言即时切换文案；这些壳层文案更新不得覆盖 legacy runtime 已写入的会话标题、副标题或消息内容。
+- 路由页头部的标题与副标题需按当前路由与语言即时切换文案；这些页头更新不得覆盖 route body 内已由 legacy runtime 注入的页面主体内容。
 - 用户消息右对齐，宽度不超过消息区 80%，助手回复弱化厚重卡片层级。
 - 桌面宽屏下 Chat 消息列与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区保留最大阅读宽度，避免大屏下仍锁死为窄列。
+- Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致 legacy runtime 已注入的会话卡片、消息节点或 route 内容被清空重建。
 
 ## 移动端体验
 

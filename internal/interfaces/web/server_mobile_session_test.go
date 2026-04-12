@@ -44,11 +44,19 @@ func TestSessionListShowsEmptyAndLoadFailureFeedback(t *testing.T) {
 		"function loadSessionsFromStorage(mode = routeConversationMode())",
 		`setConversationSessionLoadError("session_save_failed", mode);`,
 		"setConversationSessionLoadError(message, mode);",
-		`sessionEmpty.textContent = routeAllowsTargetPicker() ? t("session.empty_agent") : t("session.empty");`,
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	forbiddenMarkers := []string{
+		`sessionEmpty.textContent = routeAllowsTargetPicker() ? t("session.empty_agent") : t("session.empty");`,
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected script marker %q", marker)
 		}
 	}
 

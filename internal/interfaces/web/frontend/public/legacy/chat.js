@@ -4508,24 +4508,6 @@ async function removeSession(sessionID) {
 
 function syncHeader() {
   const route = ROUTES[state.currentRoute] || ROUTES.chat;
-  const newSessionLabel = routeAllowsTargetPicker() ? t("session.new_agent") : t("session.new");
-  newChatButton.textContent = newSessionLabel;
-  sessionToggle.hidden = false;
-  if (mobileNewChatButton) {
-    if (route.key === "terminal") {
-      mobileNewChatButton.textContent = t("route.terminal.new_short");
-      mobileNewChatButton.setAttribute("aria-label", t("route.terminal.new_short"));
-      mobileNewChatButton.hidden = false;
-      sessionToggle.textContent = t("route.terminal.sessions");
-      sessionToggle.setAttribute("aria-label", t("route.terminal.sessions"));
-    } else {
-      mobileNewChatButton.textContent = newSessionLabel;
-      mobileNewChatButton.setAttribute("aria-label", newSessionLabel);
-      mobileNewChatButton.hidden = false;
-      sessionToggle.textContent = t("chat.sessions");
-      sessionToggle.setAttribute("aria-label", t("chat.sessions"));
-    }
-  }
 
   if (route.mode !== "chat") {
     sessionHeading.textContent = "alter0";
@@ -4584,7 +4566,6 @@ function renderSessions() {
   const activeSessionID = activeConversationSessionID();
   const showShortHash = routeAllowsTargetPicker();
   if (!sessions.length) {
-    sessionEmpty.textContent = routeAllowsTargetPicker() ? t("session.empty_agent") : t("session.empty");
     sessionEmpty.style.display = "block";
     return;
   }
@@ -5935,11 +5916,7 @@ function bindSwipeClose(panel, panelClassName) {
 }
 
 function setMainContentMode(mode) {
-  const infoMode = mode === "page";
-  appShell.classList.toggle("info-mode", infoMode);
-  chatPane.classList.toggle("page-mode", infoMode);
-  chatView.hidden = infoMode;
-  routeView.hidden = !infoMode;
+  return mode;
 }
 
 function navigateToRoute(route, options = {}) {
@@ -14940,13 +14917,6 @@ async function renderRoute(route) {
 
   setMainContentMode("page");
   closeTransientPanels();
-  chatPane.dataset.route = safe;
-  routeView.dataset.route = safe;
-  routeBody.dataset.route = safe;
-  routeView.classList.toggle("terminal-route", safe === "terminal");
-  routeBody.classList.toggle("terminal-route-body", safe === "terminal");
-  routeTitle.textContent = t(titleKey);
-  routeSubtitle.textContent = t(subtitleKey);
   syncRouteAction(safe);
   routeBody.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
   syncHeader();

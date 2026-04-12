@@ -10,11 +10,8 @@ describe("legacyShellConfig", () => {
     ]);
   });
 
-  it("keeps chat as the only active workspace entry", () => {
-    const activeItems = NAV_GROUPS.flatMap((group) => group.items).filter((item) => item.active);
-
-    expect(activeItems).toHaveLength(1);
-    expect(activeItems[0]).toMatchObject({
+  it("keeps chat as the default workspace route", () => {
+    expect(NAV_GROUPS[0].items[0]).toMatchObject({
       route: "chat",
       label: "Chat"
     });
