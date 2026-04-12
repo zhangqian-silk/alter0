@@ -87,3 +87,7 @@ export const PROMPTS: PromptItem[] = [
 export function toI18nKey(value: string) {
   return value.toLowerCase().replace(/[\s-]+/g, "_");
 }
+
+export function getNavGroupForRoute(route: string): NavGroup | undefined {
+  return NAV_GROUPS.find((group) => group.items.some((item) => item.route === route));
+}

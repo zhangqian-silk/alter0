@@ -231,32 +231,40 @@ export function PrimaryNav({
 
   return (
     <aside className="primary-nav">
-      <div className="brand">
-        <div className="brand-copy">
-          <strong>alter0</strong>
+      <div className="nav-brand-panel" data-shell-section="brand-panel">
+        <div className="brand">
+          <div className="brand-copy">
+            <p className="brand-kicker">{copy.brandKicker}</p>
+            <strong>alter0</strong>
+            <p className="brand-description">{copy.brandDescription}</p>
+          </div>
+          <button
+            className="nav-collapse"
+            id={LEGACY_SHELL_IDS.navCollapseButton}
+            type="button"
+            aria-label={navToggleLabel}
+            aria-expanded={navCollapsed ? "false" : "true"}
+            aria-describedby={tooltip?.visible && tooltip.target.kind === "collapse" ? tooltipId : undefined}
+            ref={collapseButtonRef}
+            onMouseEnter={() => queueTooltip({ kind: "collapse" })}
+            onMouseLeave={() => hideTooltip()}
+            onFocus={() => queueTooltip({ kind: "collapse" }, true)}
+            onBlur={() => hideTooltip(true)}
+            onPointerDown={() => hideTooltip(true)}
+            onClick={onToggleNavCollapsed}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
         </div>
-        <button
-          className="nav-collapse"
-          id={LEGACY_SHELL_IDS.navCollapseButton}
-          type="button"
-          aria-label={navToggleLabel}
-          aria-expanded={navCollapsed ? "false" : "true"}
-          aria-describedby={tooltip?.visible && tooltip.target.kind === "collapse" ? tooltipId : undefined}
-          ref={collapseButtonRef}
-          onMouseEnter={() => queueTooltip({ kind: "collapse" })}
-          onMouseLeave={() => hideTooltip()}
-          onFocus={() => queueTooltip({ kind: "collapse" }, true)}
-          onBlur={() => hideTooltip(true)}
-          onPointerDown={() => hideTooltip(true)}
-          onClick={onToggleNavCollapsed}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
-        </button>
+        <div className="brand-status-strip" aria-hidden="true">
+          <span className="shell-badge">{copy.brandStatus}</span>
+          <span className="shell-badge is-muted">{copy.brandSurface}</span>
+        </div>
       </div>
 
-      <nav className="menu">
+      <nav className="menu" aria-label={copy.primaryNavLabel}>
         {NAV_GROUPS.map((group) => (
           <section
             key={group.heading}

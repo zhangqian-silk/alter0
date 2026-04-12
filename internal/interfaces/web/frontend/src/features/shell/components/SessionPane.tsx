@@ -1,10 +1,13 @@
 import { memo, useEffect, useState } from "react";
 import { LEGACY_SHELL_IDS } from "../legacyDomContract";
 import {
+  getLegacyRouteHeadingCopy,
+  getLegacySessionTrackedCountLabel,
   getLegacySessionHistoryToggleLabel,
   getLegacyShellCopy,
   type LegacyShellLanguage,
 } from "../legacyShellCopy";
+import { getNavGroupForRoute } from "../legacyShellConfig";
 import {
   requestLegacyShellSessionFocus,
   requestLegacyShellSessionRemoval,
@@ -175,6 +178,9 @@ export const SessionPane = memo(function SessionPane({
 }: SessionPaneProps) {
   const copy = getLegacyShellCopy(language);
   const sessionPaneSnapshot = useLegacySessionPaneSnapshot(currentRoute);
+  const routeHeadingCopy = getLegacyRouteHeadingCopy(language, currentRoute);
+  const routeGroup = getNavGroupForRoute(currentRoute);
+  const routeGroupLabel = routeGroup ? copy.headings[routeGroup.heading] ?? routeGroup.heading : copy.workspaceModePage;
   const newChatLabel = currentRoute === "agent-runtime" ? copy.sessionNewAgent : copy.sessionNewChat;
   const sessionEmptyLabel = currentRoute === "agent-runtime" ? copy.sessionEmptyAgent : copy.sessionEmpty;
   const sessionListAriaLabel = currentRoute === "agent-runtime"
@@ -184,7 +190,22 @@ export const SessionPane = memo(function SessionPane({
   const sessionPaneClassName = sessionHistoryCollapsed ? "session-pane history-collapsed" : "session-pane";
 
   return (
-    <aside className={sessionPaneClassName}>
+    <aside className={sessionPaneClassName} aria-label={copy.sessionPaneLabel}>
+      <section className="session-context-card" data-shell-section="session-context">
+        <p className="session-context-eyebrow">{copy.sessionPanelEyebrow}</p>
+        <div className="session-context-copy">
+          <strong>{routeHeadingCopy.title}</strong>
+          <p>{routeHeadingCopy.subtitle}</p>
+        </div>
+        <div className="session-context-metrics">
+          <span className="context-pill">{routeGroupLabel}</span>
+          <span className="context-pill">{copy.sessionPanelBridgeValue}</span>
+          <span className="context-pill is-strong">
+            {getLegacySessionTrackedCountLabel(language, sessionPaneSnapshot.items.length)}
+          </span>
+        </div>
+      </section>
+
       <header className="session-header">
         <h1 data-i18n="session.header">{copy.sessionHeader}</h1>
         <button
