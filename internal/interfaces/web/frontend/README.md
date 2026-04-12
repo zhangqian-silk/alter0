@@ -6,6 +6,9 @@
 
 - `index.html` 仅保留前端启动容器、字体与 legacy 样式入口
 - React 负责渲染当前 Web Shell 的 legacy DOM 契约，并启动兼容桥接层
+- `features/shell` 当前已把主导航当前路由高亮、导航折叠态与语言感知文案，以及 Session Pane、ChatWorkspace 头部动作区、Session 历史空态提示/可访问标签、路由页头部标题/副标题和主工作区的历史折叠、菜单、会话抽屉、`page-mode / data-route / chatView / routeView` 路由壳层状态前移到 React；会话列表、消息区、route body、runtime host 与 `sessionHeading / sessionSubheading` 标题挂载点继续保持静态 DOM 契约，避免桥接期 rerender 清空 legacy runtime 注入内容
+- `LegacyWebShell` 会同步保留 `appShell` 上由 legacy runtime 直接切换的 transient classes，如 `nav-open`、`panel-open`、`overlay-open` 与 `runtime-sheet-open`，避免 React 因 hash 路由或语言变化重渲染时覆盖移动端当前打开的壳层状态
+- `public/legacy/chat.js` 当前不再负责回写 `newChatButton`、`sessionToggle`、`mobileNewChatButton`、`routeTitle`、`routeSubtitle`、`sessionEmpty` 和 `sessionList` 可访问标签的显示文案，也不再切换 `info-mode`、`page-mode`、`data-route` 和 `chatView / routeView` 显隐；legacy runtime 仅保留这些节点的事件绑定、路由加载与业务流转，避免与 React 壳层发生状态竞争
 - 旧版运行时脚本与样式通过 `public/legacy` 纳入 Vite 构建产物，并作为唯一 legacy 资源来源输出到 `static/dist/legacy`
 - `npm run build` 输出到 `internal/interfaces/web/static/dist`
 - `npm run dev` 默认把 `/api`、`/login`、`/logout`、`/healthz`、`/readyz`、`/metrics` 与 `/products` 代理到 `http://127.0.0.1:18088`；可通过 `ALTER0_WEB_BACKEND_ORIGIN` 覆盖后端地址

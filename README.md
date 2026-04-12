@@ -78,6 +78,8 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 Web 前端分发采用双层缓存策略：`/chat` 与桥接期 `legacy` 运行时资源保持 `no-cache`，确保页面与兼容脚本始终刷新到最新版本；`static/dist/assets` 下带哈希的构建产物使用长期 immutable 缓存，减少重复下载。
 
+当前桥接阶段由 React 先渲染稳定 Web Shell：主导航的当前路由高亮、导航折叠态与语言感知文案，以及 Session Pane、ChatWorkspace 头部动作区、Session 历史空态提示/可访问标签和路由页头部标题/副标题的路由感知与语言感知文案，已前移到 React；会话列表、消息区、路由页主体、运行时设置挂载点，以及 `sessionHeading / sessionSubheading` 这类仍由兼容 runtime 直接写入的标题节点继续保持静态 DOM 契约，避免桥接期重渲染冲掉 legacy 注入内容。
+
 前端开发态支持双向代理联调：为 Go 服务设置 `ALTER0_WEB_FRONTEND_DEV_ORIGIN=http://127.0.0.1:5173` 后，访问 `http://127.0.0.1:18088/chat` 会转到 Vite dev server；为 Vite 设置 `ALTER0_WEB_BACKEND_ORIGIN=http://127.0.0.1:18088` 后，`npm run dev` 会把 `/api`、登录与健康检查请求代理回 Go 服务。
 
 ## Built-in Commands

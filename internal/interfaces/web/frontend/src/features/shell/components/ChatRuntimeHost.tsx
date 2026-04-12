@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { LEGACY_SHELL_IDS } from "../legacyDomContract";
 
 export function ChatRuntimeHost() {
@@ -9,10 +10,10 @@ export function ChatRuntimeHost() {
   );
 }
 
-export function ChatRuntimeSheetHost() {
+export const ChatRuntimeSheetHost = memo(function ChatRuntimeSheetHost() {
   return (
     <div className="runtime-sheet-host" id={LEGACY_SHELL_IDS.chatRuntimeSheetHost}>
       <div data-runtime-sheet-root></div>
     </div>
   );
-}
+});

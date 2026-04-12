@@ -1,6 +1,6 @@
 # Technical Solution
 
-> Last update: 2026-04-11
+> Last update: 2026-04-12
 
 `alter0` 的技术方案按与需求清单一致的领域模型维护。后续新增或调整需求时，技术方案必须落到对应领域与子域，不再按时间顺序、任务编号或零散专题堆叠。
 
@@ -72,6 +72,9 @@ CLI / Web / Cron
 - `internal/interfaces/web/frontend/src/shared/api/client.ts` 负责统一 JSON 请求封装、错误收敛与登录失效回调，避免新前端页面继续散落原生 `fetch`。
 - `internal/interfaces/web/frontend/src/shared/time/format.ts` 负责固定 `Asia/Shanghai` 的前端显示时区与标准时间格式，避免新旧页面时间口径漂移。
 - `internal/interfaces/web/frontend/src/shared/viewport/mobileViewport.ts` 负责移动端断点、键盘偏移阈值与 viewport baseline 计算，避免 Chat、Terminal 与 route 页重复维护软键盘占位逻辑。
+- `internal/interfaces/web/frontend/src/features/shell` 在桥接阶段只把安全壳层状态前移到 React：当前路由高亮、导航折叠态、语言感知文案，以及 Session Pane、ChatWorkspace 头部动作区、Session 历史空态提示/可访问标签、路由页头部标题/副标题和主工作区的 `page-mode / data-route / chatView / routeView` 显隐状态由 React 维护；legacy runtime 仍直接接管会话列表、消息区、route body、runtime host，以及 `sessionHeading / sessionSubheading` 等标题挂载点。
+- `LegacyWebShell` 需要镜像 `appShell` 上由 legacy runtime 直接维护的 transient classes，例如 `nav-open`、`panel-open`、`overlay-open` 与 `runtime-sheet-open`，确保 hash 切路由、语言切换等 React rerender 不会擦掉运行时已经打开的移动端壳层状态。
+- `static/dist/legacy/chat.js` 在桥接阶段不再回写 React 已接管的 `newChatButton`、`sessionToggle`、`mobileNewChatButton`、`routeTitle`、`routeSubtitle`、`sessionEmpty` 与 `sessionList[aria-label]` 文案/属性，也不再切换 `info-mode`、`page-mode`、`data-route` 或 `chatView / routeView` 的显隐；这些节点继续由 legacy runtime 绑定点击行为、路由加载和业务流转，但壳层展示状态以 React 为唯一来源。
 - 前端静态资源处理展示、输入、缓存、轮询和视口状态；会话恢复阶段允许把残留 `streaming` 消息归一为失败态或任务态，但不改写后端领域事实。
 
 ### 调用链路
@@ -92,6 +95,7 @@ Web input
 - 根路径 `/`、`/chat`、`/login`、`/logout` 是稳定 Web Shell 入口；登录密码启用后页面和 API 共享同一登录态校验。
 - `/chat` 固定分发 `static/dist/index.html`，静态资源统一从 `static/dist/assets` 与 `static/dist/legacy` 提供；仓库内不再保留额外的 legacy HTML/CSS/JS 嵌入源文件。
 - `static/dist/index.html` 仅保留前端挂载容器、字体与 legacy 样式入口；React 在 `frontend-root` 内渲染当前 Web Shell 所需的 legacy DOM 节点，确保 `chat.js` 迁移期间仍可按原有 `id`、`data-*` 与布局结构接管页面。
+- React 壳层中的可变状态不得直接驱动 legacy 挂载区重渲染；涉及会话列表、消息区、route body、runtime panel/sheet host，以及 legacy runtime 会直接写入内容的标题挂载节点，需保持稳定实例，通过 `memo` 和状态边界把 React rerender 限定在安全壳层。
 - `/chat` 与 `static/dist/legacy/*` 统一返回 `Cache-Control: no-cache`，保证桥接期 HTML 与固定文件名 runtime 资源总能拿到最新版本；`static/dist/assets/*` 基于 Vite 哈希文件名返回 `Cache-Control: public, max-age=31536000, immutable`。
 - 开发态可通过 `ALTER0_WEB_FRONTEND_DEV_ORIGIN` 启用 Go -> Vite dev server 反向代理：`/chat` 直接转发到前端开发服务器，`/@vite/*`、`/@react-refresh`、`/src/*`、`/node_modules/*` 等运行时资源也由同一代理提供；Vite 侧再通过 `ALTER0_WEB_BACKEND_ORIGIN` 把 `/api`、登录和健康检查路径代理回 Go。
 - SSE 连接只负责回传，前端断连不得取消已进入 Agent 执行链的后端任务。
@@ -117,6 +121,7 @@ Web input
 - Web handler 测试覆盖会话创建、历史隔离、流式事件和取消语义。
 - 前端 E2E 覆盖 Chat、Agent、移动端输入、设置面板和长会话渲染。
 - 前端组件测试需覆盖 React 渲染出的 legacy shell 契约，至少校验导航、会话列表、消息区、Composer 和 runtime sheet host 等关键节点未破坏 `chat.js` 的接管前提。
+- 壳层组件测试继续覆盖 hash 路由高亮、导航折叠、Session Pane 与 ChatWorkspace 头部动作区的语言/路由文案切换，同时验证这些 React 状态更新不会清空 legacy runtime 已挂载的 DOM 内容或覆盖运行时已写入的标题节点。
 - 回归测试优先覆盖空白会话重复、软键盘残留空白、整段列表重建、断流恢复与残留 `In Progress` 等高频问题。
 
 ## Agent Capability & Memory
