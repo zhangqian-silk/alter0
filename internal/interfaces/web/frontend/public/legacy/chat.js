@@ -61,7 +61,6 @@ const LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT = "alter0:legacy-shell:sync-chat-wo
 const LEGACY_SHELL_SYNC_SESSION_PANE_EVENT = "alter0:legacy-shell:sync-session-pane";
 const LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT = "alter0:legacy-shell:sync-message-region";
 const LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT = "alter0:legacy-shell:sync-chat-runtime";
-const LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT = "alter0:legacy-shell:sync-route-body";
 const STREAM_ENDPOINT = "/api/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const MAIN_AGENT_ID = "main";
@@ -4452,17 +4451,6 @@ function publishChatRuntimeSnapshot(snapshot = {}) {
   }));
 }
 
-function publishRouteBodySnapshot(snapshot = {}) {
-  document.dispatchEvent(new CustomEvent(LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT, {
-    bubbles: true,
-    detail: {
-      route: state.currentRoute,
-      managed: Boolean(snapshot.managed),
-      html: typeof snapshot.html === "string" ? snapshot.html : ""
-    }
-  }));
-}
-
 function renderSessions() {
   syncSessionLoadHint();
   publishSessionPaneSnapshot();
@@ -6263,8 +6251,8 @@ function syncRouteAction(route) {
   routeActionButton.dataset.route = "";
 }
 
-function routeUsesManagedSnapshot(route) {
-  return route === "channels" || route === "skills" || route === "mcp";
+function routeUsesReactManagedPage(route) {
+  return route === "channels" || route === "skills" || route === "mcp" || route === "sessions";
 }
 
 async function fetchJSON(path) {
@@ -6334,7 +6322,7 @@ async function loadChannelsView(container) {
       item.enabled
     )
   );
-  publishRouteBodySnapshot({ managed: true, html });
+  container.innerHTML = html;
 }
 
 async function loadSkillsView(container) {
@@ -6356,7 +6344,7 @@ async function loadSkillsView(container) {
       item.enabled
     )
   );
-  publishRouteBodySnapshot({ managed: true, html });
+  container.innerHTML = html;
 }
 
 async function loadMCPView(container) {
@@ -6378,7 +6366,7 @@ async function loadMCPView(container) {
       item.enabled
     )
   );
-  publishRouteBodySnapshot({ managed: true, html });
+  container.innerHTML = html;
 }
 
 function normalizeProductRouteState(routeState = {}) {
@@ -14662,7 +14650,6 @@ async function renderRoute(route) {
   const subtitleKey = `route.${routeKey}.subtitle`;
   
   if (config.mode === "chat") {
-    publishRouteBodySnapshot({ managed: false, html: "" });
     setMainContentMode("chat");
     if (safe === "agent-runtime") {
       reconcileAgentRuntimeTarget();
@@ -14690,16 +14677,11 @@ async function renderRoute(route) {
   setMainContentMode("page");
   closeTransientPanels();
   syncRouteAction(safe);
-  if (routeUsesManagedSnapshot(safe)) {
-    publishRouteBodySnapshot({
-      managed: true,
-      html: `<p class="route-loading">${t("loading")}</p>`
-    });
-  } else {
-    publishRouteBodySnapshot({ managed: false, html: "" });
-    routeBody.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
-  }
   syncHeader();
+  if (routeUsesReactManagedPage(safe)) {
+    return;
+  }
+  routeBody.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
 
   const token = ++state.pageRenderToken;
   try {
@@ -14709,14 +14691,7 @@ async function renderRoute(route) {
       return;
     }
     const message = err instanceof Error ? err.message : "unknown_error";
-    if (routeUsesManagedSnapshot(safe)) {
-      publishRouteBodySnapshot({
-        managed: true,
-        html: `<p class="route-error">${t("load_failed", { error: message })}</p>`
-      });
-    } else {
-      routeBody.innerHTML = `<p class="route-error">${t("load_failed", { error: message })}</p>`;
-    }
+    routeBody.innerHTML = `<p class="route-error">${t("load_failed", { error: message })}</p>`;
   }
 }
 

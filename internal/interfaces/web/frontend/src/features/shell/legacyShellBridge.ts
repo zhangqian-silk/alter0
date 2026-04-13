@@ -10,7 +10,6 @@ export const LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT = "alter0:legacy-shell:sync-
 export const LEGACY_SHELL_SYNC_SESSION_PANE_EVENT = "alter0:legacy-shell:sync-session-pane";
 export const LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT = "alter0:legacy-shell:sync-message-region";
 export const LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT = "alter0:legacy-shell:sync-chat-runtime";
-export const LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT = "alter0:legacy-shell:sync-route-body";
 
 type LegacyShellNavigateDetail = {
   route: string;
@@ -71,12 +70,6 @@ export type LegacyShellChatRuntimeDetail = {
   sheetHTML?: string;
   scrollPopover?: string;
   scrollTop?: number;
-};
-
-export type LegacyShellRouteBodyDetail = {
-  route: string;
-  html?: string;
-  managed?: boolean;
 };
 
 export function requestLegacyShellRouteNavigation(route: string): boolean {
