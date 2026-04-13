@@ -10,13 +10,15 @@ import { isLegacyShellChatRoute } from "../legacyShellState";
 import {
   LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT,
   LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT,
-  LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT,
   type LegacyShellChatWorkspaceDetail,
   type LegacyShellMessageRegionDetail,
-  type LegacyShellRouteBodyDetail,
 } from "../legacyShellBridge";
 import { ChatRuntimeHost } from "./ChatRuntimeHost";
 import { PROMPTS } from "../legacyShellConfig";
+import {
+  isReactManagedRouteBody,
+  ReactManagedRouteBody,
+} from "./ReactManagedRouteBody";
 
 type ChatWorkspaceProps = {
   currentRoute: string;
@@ -41,12 +43,6 @@ type MessageRegionSnapshot = {
   route: string;
   hasMessages: boolean;
   sessionId: string;
-  html: string;
-};
-
-type RouteBodySnapshot = {
-  route: string;
-  managed: boolean;
   html: string;
 };
 
@@ -144,39 +140,6 @@ function useLegacyMessageRegionSnapshot(currentRoute: string): MessageRegionSnap
     route: currentRoute,
     hasMessages: false,
     sessionId: "",
-    html: "",
-  };
-}
-
-function useLegacyRouteBodySnapshot(currentRoute: string): RouteBodySnapshot {
-  const [snapshot, setSnapshot] = useState<RouteBodySnapshot | null>(null);
-
-  useEffect(() => {
-    const handleSnapshot = (event: Event) => {
-      const detail = (event as CustomEvent<LegacyShellRouteBodyDetail>).detail;
-      if (!detail || typeof detail.route !== "string") {
-        return;
-      }
-      setSnapshot({
-        route: detail.route,
-        managed: Boolean(detail.managed),
-        html: typeof detail.html === "string" ? detail.html : "",
-      });
-    };
-
-    document.addEventListener(LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT, handleSnapshot as EventListener);
-    return () => {
-      document.removeEventListener(LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT, handleSnapshot as EventListener);
-    };
-  }, []);
-
-  if (snapshot?.route === currentRoute) {
-    return snapshot;
-  }
-
-  return {
-    route: currentRoute,
-    managed: false,
     html: "",
   };
 }
@@ -307,7 +270,6 @@ type RouteViewMountProps = {
   language: LegacyShellLanguage;
   hidden: boolean;
   onRouteAction: (route: string) => void;
-  routeBodySnapshot: RouteBodySnapshot;
 };
 
 const RouteViewMount = memo(function RouteViewMount({
@@ -315,7 +277,6 @@ const RouteViewMount = memo(function RouteViewMount({
   language,
   hidden,
   onRouteAction,
-  routeBodySnapshot,
 }: RouteViewMountProps) {
   const routeViewClassName = currentRoute === "terminal" ? "route-view terminal-route" : "route-view";
   const routeBodyClassName = currentRoute === "terminal" ? "route-body terminal-route-body" : "route-body";
@@ -323,6 +284,7 @@ const RouteViewMount = memo(function RouteViewMount({
   const copy = getLegacyShellCopy(language);
   const routeGroup = getNavGroupForRoute(currentRoute);
   const routeGroupLabel = routeGroup ? copy.headings[routeGroup.heading] ?? routeGroup.heading : copy.workspaceModePage;
+  const reactManagedRoute = isReactManagedRouteBody(currentRoute) ? currentRoute : null;
 
   return (
     <section className={routeViewClassName} id={LEGACY_SHELL_IDS.routeView} data-route={currentRoute} hidden={hidden}>
@@ -364,8 +326,11 @@ const RouteViewMount = memo(function RouteViewMount({
         id={LEGACY_SHELL_IDS.routeBody}
         className={routeBodyClassName}
         data-route={currentRoute}
-        dangerouslySetInnerHTML={routeBodySnapshot.managed ? { __html: routeBodySnapshot.html } : undefined}
-      ></div>
+      >
+        {reactManagedRoute ? (
+          <ReactManagedRouteBody route={reactManagedRoute} language={language} />
+        ) : null}
+      </div>
     </section>
   );
 });
@@ -382,7 +347,6 @@ export const ChatWorkspace = memo(function ChatWorkspace({
   const copy = getLegacyShellCopy(language);
   const workspaceSnapshot = useLegacyChatWorkspaceSnapshot(currentRoute, language);
   const messageRegionSnapshot = useLegacyMessageRegionSnapshot(currentRoute);
-  const routeBodySnapshot = useLegacyRouteBodySnapshot(currentRoute);
   const routeGroup = getNavGroupForRoute(currentRoute);
   const routeGroupLabel = routeGroup ? copy.headings[routeGroup.heading] ?? routeGroup.heading : copy.workspaceModePage;
   const isChatRoute = isLegacyShellChatRoute(currentRoute);
@@ -496,7 +460,6 @@ export const ChatWorkspace = memo(function ChatWorkspace({
         language={language}
         hidden={!isPageMode}
         onRouteAction={onNavigate}
-        routeBodySnapshot={routeBodySnapshot}
       />
     </main>
   );

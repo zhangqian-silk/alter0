@@ -9,7 +9,6 @@ import {
   LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT,
   LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT,
   LEGACY_SHELL_SYNC_NAV_COLLAPSED_EVENT,
-  LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT,
   LEGACY_SHELL_SYNC_SESSION_PANE_EVENT,
   LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT,
   LEGACY_SHELL_TOGGLE_LANGUAGE_EVENT,
@@ -17,11 +16,38 @@ import {
 import { LegacyWebShell } from "./LegacyWebShell";
 import { LEGACY_SHELL_IDS } from "./legacyDomContract";
 
+function jsonResponse(body: unknown, init: ResponseInit = {}) {
+  return new Response(JSON.stringify(body), {
+    status: init.status ?? 200,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+}
+
 describe("LegacyWebShell", () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/control/channels" || url === "/api/control/skills" || url === "/api/control/mcps") {
+          return Promise.resolve(jsonResponse({ items: [] }));
+        }
+        if (url.startsWith("/api/sessions?")) {
+          return Promise.resolve(jsonResponse({ items: [] }));
+        }
+        return Promise.reject(new Error(`Unhandled fetch: ${url}`));
+      }),
+    );
     window.location.hash = "";
     document.documentElement.lang = "en";
     window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("renders the legacy shell contract for the runtime bridge", () => {
@@ -63,7 +89,7 @@ describe("LegacyWebShell", () => {
   });
 
   it("renders a dedicated route hero for page-mode routes", () => {
-    window.location.hash = "#channels";
+    window.location.hash = "#tasks";
 
     render(<LegacyWebShell />);
 
@@ -888,32 +914,70 @@ describe("LegacyWebShell", () => {
     });
   });
 
-  it("keeps managed route body snapshot content across shell rerenders", async () => {
+  it("renders React-managed control route cards inside the route body", async () => {
     window.location.hash = "#channels";
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          {
+            id: "channel-runtime-1",
+            type: "web",
+            description: "Primary web entry for the cockpit shell.",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+
     render(<LegacyWebShell />);
 
-    await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_ROUTE_BODY_EVENT, {
-          detail: {
-            route: "channels",
-            managed: true,
-            html: '<article class="route-card"><div class="route-card-head"><div class="route-card-title-wrap"><div class="route-card-title-copy"><h4>Runtime channel</h4></div></div></div><div class="route-meta"><p class="route-field-row"><span>ID</span><span class="route-field-value-wrap"><strong class="route-field-value is-mono">channel-runtime-1</strong></span></p></div></article>',
-          },
-        }),
-      );
+    await waitFor(() => {
+      expect(screen.getAllByText("channel-runtime-1")).toHaveLength(2);
     });
 
-    expect(screen.getByText("Runtime channel")).toBeInTheDocument();
-    expect(screen.getByText("channel-runtime-1")).toBeInTheDocument();
+    expect(screen.getByText("Primary web entry for the cockpit shell.")).toBeInTheDocument();
+    expect(document.getElementById(LEGACY_SHELL_IDS.routeBody)?.querySelector(".route-card")).toBeInTheDocument();
 
     await act(async () => {
       document.documentElement.lang = "zh-CN";
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Runtime channel")).toBeInTheDocument();
-      expect(screen.getByText("channel-runtime-1")).toBeInTheDocument();
+      expect(screen.getAllByText("channel-runtime-1")).toHaveLength(2);
+      expect(screen.getByText("启用")).toBeInTheDocument();
     });
+  });
+
+  it("renders the React-managed sessions route body inside the route view", async () => {
+    window.location.hash = "#sessions";
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          {
+            session_id: "session-runtime-1",
+            channel_type: "web",
+            channel_id: "web-default",
+            last_message_id: "msg-runtime-1",
+            updated_at: "2026-04-13T01:02:03Z",
+            created_at: "2026-04-13T00:00:00Z",
+            message_count: 3,
+            trigger_type: "user",
+            job_id: "",
+            job_name: "",
+            fired_at: "",
+          },
+        ],
+      }),
+    );
+
+    render(<LegacyWebShell />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("session-runtime-1")).toHaveLength(2);
+    });
+
+    expect(screen.getByText("View Detail")).toBeInTheDocument();
+    expect(screen.getAllByText("Web").length).toBeGreaterThan(0);
+    expect(document.getElementById(LEGACY_SHELL_IDS.routeBody)?.querySelector(".session-route-card")).toBeInTheDocument();
   });
 });
