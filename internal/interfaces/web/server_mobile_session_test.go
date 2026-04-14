@@ -28,8 +28,8 @@ func TestNewChatReusesLatestBlankSessionAndSwitchesContext(t *testing.T) {
 		"setActiveConversationSessionID(existingBlank.id, \"chat\");",
 		"createSession(routeDefaultTarget(\"chat\"), routeConversationMode(\"chat\"), \"chat\");",
 		`navigateToRoute("chat", { skipConfirm: true });`,
-		"newChatButton.addEventListener(\"click\", () => {",
-		"mobileNewChatButton.addEventListener(\"click\", () => {",
+		"function handleLegacyShellSessionCreation() {",
+		"document.addEventListener(LEGACY_SHELL_CREATE_SESSION_EVENT, handleLegacyShellSessionCreation);",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -70,9 +70,9 @@ func TestSessionDeleteHooksAndStylesPresent(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
 		"function removeSession(sessionID)",
-		`row.className = "session-card-row"`,
-		`deleteButton.className = "session-card-delete"`,
-		"removeSession(item.id);",
+		"function handleLegacyShellSessionRemoval(event) {",
+		"void removeSession(sessionID);",
+		"document.addEventListener(LEGACY_SHELL_REMOVE_SESSION_EVENT, handleLegacyShellSessionRemoval);",
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -106,7 +106,7 @@ func TestMobileRuntimeSheetUsesDedicatedStackingLayer(t *testing.T) {
 		`function restoreChatRuntimeScrollState(snapshot) {`,
 		`restoreChatRuntimeScrollState(scrollSnapshot);`,
 		`subtitle: chatAgentOptionSummary(agent)`,
-		`sheetContentRoot.innerHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({`,
+		`sheetHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({`,
 		`appShell.classList.toggle("runtime-sheet-open", compactRuntime && openPopover === "mobile");`,
 		`if (state.currentRoute === "chat" || state.currentRoute === "agent-runtime") {`,
 	}

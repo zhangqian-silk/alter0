@@ -1,12 +1,14 @@
 import type { LegacyShellLanguage } from "../legacyShellCopy";
+import { ReactManagedAgentRouteBody } from "./ReactManagedAgentRouteBody";
 import {
   isReactManagedControlRoute,
   ReactManagedControlRouteBody,
 } from "./ReactManagedControlRouteBody";
+import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
 import { ReactManagedSessionsRouteBody } from "./ReactManagedSessionsRouteBody";
 
 export function isReactManagedRouteBody(route: string) {
-  return route === "sessions" || isReactManagedControlRoute(route);
+  return route === "agent" || route === "memory" || route === "sessions" || isReactManagedControlRoute(route);
 }
 
 export function ReactManagedRouteBody({
@@ -18,6 +20,12 @@ export function ReactManagedRouteBody({
 }) {
   if (isReactManagedControlRoute(route)) {
     return <ReactManagedControlRouteBody route={route} language={language} />;
+  }
+  if (route === "agent") {
+    return <ReactManagedAgentRouteBody language={language} />;
+  }
+  if (route === "memory") {
+    return <ReactManagedMemoryRouteBody language={language} />;
   }
   if (route === "sessions") {
     return <ReactManagedSessionsRouteBody language={language} />;
