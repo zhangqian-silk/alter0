@@ -30,6 +30,7 @@ const (
 	workspaceSessionsDirName        = "sessions"
 	maxEntryPageLimit               = 200
 	terminalHostUnavailableMessage  = "terminal host unavailable"
+	terminalCompactionResetMessage  = "codex context compaction failed; next input will start a fresh runtime thread in the same workspace"
 )
 
 var (
@@ -875,6 +876,22 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		return
 	}
 
+	if isCodexCompactionFailure(stderrText, turnErr) {
+		item.threadID = ""
+		item.summary.TerminalSessionID = item.summary.ID
+		item.summary.ErrorMessage = terminalCompactionResetMessage
+		item.appendEntryLocked("system", "codex runtime thread reset after context compaction failure")
+		if turn != nil {
+			turn.Status = "failed"
+			turn.FinishedAt = now
+			item.newSystemStepLocked(turn, "Thread reset", terminalCompactionResetMessage, now, "failed")
+			turn.promoteFinalOutput()
+		}
+		item.mu.Unlock()
+		s.persistSession(item)
+		return
+	}
+
 	message := compactCodexError(stderrText, turnErr)
 	item.summary.ErrorMessage = message
 	item.appendEntryLocked("system", "codex request failed: "+message)
@@ -1321,6 +1338,24 @@ func compactCodexError(stderrText string, turnErr error) string {
 		return strings.TrimSpace(turnErr.Error())
 	}
 	return "unknown error"
+}
+
+func isCodexCompactionFailure(stderrText string, turnErr error) bool {
+	parts := []string{normalizeChunk(stderrText)}
+	if turnErr != nil {
+		parts = append(parts, turnErr.Error())
+	}
+	normalized := strings.ToLower(strings.Join(parts, "\n"))
+	switch {
+	case strings.Contains(normalized, "remote compaction failed"):
+		return true
+	case strings.Contains(normalized, "failed to run pre-sampling compact"):
+		return true
+	case strings.Contains(normalized, "responses/compact"):
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeChunk(value string) string {

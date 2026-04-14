@@ -444,6 +444,7 @@ go run ./cmd/alter0
 - 如需固定 shell，可通过启动参数 `-task-terminal-shell` 或运行时环境键 `task_terminal_shell` 指定
 - Windows 下显式指定 `cmd.exe` 时会补充 UTF-8 代码页初始化；如需稳定中文输出，优先使用 `powershell.exe`
 - Terminal 会话退出后不会清空历史或线程标识；重新在原会话发送输入时，系统会优先复用已持久化的 Codex CLI 线程继续执行
+- 若 Codex CLI 在线程续写阶段返回远端 compact 失败，Terminal 会保留原会话历史与工作区，但清空失效线程标识；下一次输入会在同一 Terminal 会话下自动启动新的 Codex 线程继续执行
 - 对已退出或已中断的 Terminal 会话重新发送输入后，输入区上的旧运行态提示会立即让位给当前发送态，不继续显示“会话已退出”之类的过期提示
 - `POST /api/terminal/sessions/{id}/close` 用于退出当前 Terminal 运行态但保留原会话历史；`DELETE /api/terminal/sessions/{id}` 用于直接删除 Terminal 会话，并同步清理 `.alter0/state/terminal/sessions/{id}.json`，接口返回 `204 No Content`
 - 若 Terminal 会话在首条输入前已失去底层运行态，首次发送会自动恢复同一会话并继续执行，不要求用户新建会话

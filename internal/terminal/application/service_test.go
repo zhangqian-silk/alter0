@@ -709,6 +709,52 @@ func TestServiceInputFailsFastOnCodexAuthError(t *testing.T) {
 	}
 }
 
+func TestServiceResetsThreadAfterCodexCompactionFailure(t *testing.T) {
+	service := newTestService("compact-error")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-compact",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-compact", session.ID, "first prompt"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+
+	failedSnapshot, failedEntries := waitForSessionError(t, service, "owner-compact", session.ID)
+	if failedSnapshot.TerminalSessionID != session.ID {
+		t.Fatalf("expected failed compaction to reset terminal session id to %q, got %q", session.ID, failedSnapshot.TerminalSessionID)
+	}
+	if !strings.Contains(failedSnapshot.ErrorMessage, "fresh runtime thread") {
+		t.Fatalf("expected compaction recovery message, got %q", failedSnapshot.ErrorMessage)
+	}
+
+	foundResetEntry := false
+	for _, entry := range failedEntries {
+		if strings.Contains(entry.Text, "thread reset after context compaction failure") {
+			foundResetEntry = true
+			break
+		}
+	}
+	if !foundResetEntry {
+		t.Fatalf("expected thread reset entry, got %+v", failedEntries)
+	}
+
+	if _, err := service.Input("owner-compact", session.ID, "second prompt"); err != nil {
+		t.Fatalf("second input: %v", err)
+	}
+
+	recoveredSnapshot, entries := waitForSessionEntries(t, service, "owner-compact", session.ID, 4)
+	if recoveredSnapshot.TerminalSessionID != "thread-second-prompt" {
+		t.Fatalf("expected fresh thread after compaction reset, got %q", recoveredSnapshot.TerminalSessionID)
+	}
+	if got := entries[len(entries)-1].Text; got != "mock:second prompt" {
+		t.Fatalf("expected second prompt to run on fresh thread, got %q", got)
+	}
+}
+
 func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	service := &Service{
@@ -931,6 +977,11 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 		fmt.Fprintln(os.Stdout, `{"type":"error","message":"Reconnecting... 1/5 (unexpected status 401 Unauthorized: Missing bearer or basic authentication in header)"}`)
 		time.Sleep(5 * time.Second)
 		os.Exit(19)
+	}
+	if mode == "compact-error" && prompt == "first prompt" {
+		fmt.Fprintln(os.Stderr, "2026-04-14T05:19:09.785763Z ERROR codex_core::compact_remote: remote compaction failed turn_id=turn-compact compact_error=stream disconnected before completion")
+		fmt.Fprintln(os.Stderr, "2026-04-14T05:19:09.786118Z ERROR codex_core::codex: Failed to run pre-sampling compact")
+		os.Exit(23)
 	}
 	fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":%q}}\n", "mock:"+prompt)
 	fmt.Fprintln(os.Stdout, `{"type":"turn.completed"}`)
