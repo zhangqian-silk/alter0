@@ -60,4 +60,8 @@ describe("ReactManagedRouteBody", () => {
       expect.objectContaining({ method: "GET" }),
     );
   });
+
+  it("treats tasks as a react-managed route body", () => {
+    expect(isReactManagedRouteBody("tasks")).toBe(true);
+  });
 });
