@@ -6,9 +6,16 @@ import {
 } from "./ReactManagedControlRouteBody";
 import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
 import { ReactManagedSessionsRouteBody } from "./ReactManagedSessionsRouteBody";
+import { ReactManagedTasksRouteBody } from "./ReactManagedTasksRouteBody";
 
 export function isReactManagedRouteBody(route: string) {
-  return route === "agent" || route === "memory" || route === "sessions" || isReactManagedControlRoute(route);
+  return (
+    route === "agent" ||
+    route === "memory" ||
+    route === "sessions" ||
+    route === "tasks" ||
+    isReactManagedControlRoute(route)
+  );
 }
 
 export function ReactManagedRouteBody({
@@ -29,6 +36,9 @@ export function ReactManagedRouteBody({
   }
   if (route === "sessions") {
     return <ReactManagedSessionsRouteBody language={language} />;
+  }
+  if (route === "tasks") {
+    return <ReactManagedTasksRouteBody language={language} />;
   }
   return null;
 }
