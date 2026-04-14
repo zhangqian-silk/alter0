@@ -6252,7 +6252,10 @@ function syncRouteAction(route) {
 }
 
 function routeUsesReactManagedPage(route) {
-  return route === "channels" || route === "skills" || route === "mcp" || route === "sessions";
+  if (!routeBody) {
+    return false;
+  }
+  return routeBody.dataset.route === route && routeBody.dataset.reactManagedRoute === "true";
 }
 
 async function fetchJSON(path) {

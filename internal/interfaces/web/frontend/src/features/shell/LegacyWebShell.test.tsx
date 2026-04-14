@@ -89,12 +89,34 @@ describe("LegacyWebShell", () => {
   });
 
   it("renders a dedicated route hero for page-mode routes", () => {
-    window.location.hash = "#tasks";
+    window.location.hash = "#channels";
 
     render(<LegacyWebShell />);
 
     expect(document.querySelector('[data-shell-section="route-hero"]')).toBeInTheDocument();
     expect(document.querySelector('[data-shell-section="chat-hero"]')).not.toBeInTheDocument();
+  });
+
+  it("marks React-managed route bodies so the legacy runtime can skip DOM ownership", () => {
+    window.location.hash = "#channels";
+
+    render(<LegacyWebShell />);
+
+    expect(document.getElementById(LEGACY_SHELL_IDS.routeBody)).toHaveAttribute(
+      "data-react-managed-route",
+      "true",
+    );
+  });
+
+  it("keeps legacy-managed route bodies unmarked", () => {
+    window.location.hash = "#terminal";
+
+    render(<LegacyWebShell />);
+
+    expect(document.getElementById(LEGACY_SHELL_IDS.routeBody)).toHaveAttribute(
+      "data-react-managed-route",
+      "false",
+    );
   });
 
   it("renders the shell navigation groups and route placement", () => {

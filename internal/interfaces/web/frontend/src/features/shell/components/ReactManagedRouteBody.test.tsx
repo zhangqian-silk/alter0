@@ -64,4 +64,19 @@ describe("ReactManagedRouteBody", () => {
   it("treats tasks as a react-managed route body", () => {
     expect(isReactManagedRouteBody("tasks")).toBe(true);
   });
+
+  it("tracks the full set of routes now owned by React", () => {
+    expect(isReactManagedRouteBody("agent")).toBe(true);
+    expect(isReactManagedRouteBody("memory")).toBe(true);
+    expect(isReactManagedRouteBody("channels")).toBe(true);
+    expect(isReactManagedRouteBody("skills")).toBe(true);
+    expect(isReactManagedRouteBody("mcp")).toBe(true);
+    expect(isReactManagedRouteBody("models")).toBe(true);
+    expect(isReactManagedRouteBody("environments")).toBe(true);
+    expect(isReactManagedRouteBody("cron-jobs")).toBe(true);
+    expect(isReactManagedRouteBody("sessions")).toBe(true);
+    expect(isReactManagedRouteBody("tasks")).toBe(true);
+    expect(isReactManagedRouteBody("terminal")).toBe(false);
+    expect(isReactManagedRouteBody("products")).toBe(false);
+  });
 });

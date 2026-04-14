@@ -1,22 +1,15 @@
 import type { LegacyShellLanguage } from "../legacyShellCopy";
-import { ReactManagedAgentRouteBody } from "./ReactManagedAgentRouteBody";
 import {
   isReactManagedControlRoute,
-  ReactManagedControlRouteBody,
-} from "./ReactManagedControlRouteBody";
+  isReactManagedRouteBody,
+} from "../reactManagedRouteContract";
+import { ReactManagedAgentRouteBody } from "./ReactManagedAgentRouteBody";
+import { ReactManagedControlRouteBody } from "./ReactManagedControlRouteBody";
 import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
 import { ReactManagedSessionsRouteBody } from "./ReactManagedSessionsRouteBody";
 import { ReactManagedTasksRouteBody } from "./ReactManagedTasksRouteBody";
 
-export function isReactManagedRouteBody(route: string) {
-  return (
-    route === "agent" ||
-    route === "memory" ||
-    route === "sessions" ||
-    route === "tasks" ||
-    isReactManagedControlRoute(route)
-  );
-}
+export { isReactManagedRouteBody } from "../reactManagedRouteContract";
 
 export function ReactManagedRouteBody({
   route,

@@ -2,21 +2,14 @@ import { useEffect, useState } from "react";
 import { createAPIClient } from "../../../shared/api/client";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 import {
+  isReactManagedControlRoute,
+  type ReactManagedControlRoute,
+} from "../reactManagedRouteContract";
+import {
   normalizeText,
   RouteCard,
   RouteFieldRow,
 } from "./RouteBodyPrimitives";
-
-const REACT_MANAGED_CONTROL_ROUTES = [
-  "channels",
-  "skills",
-  "mcp",
-  "models",
-  "environments",
-  "cron-jobs",
-] as const;
-
-type ReactManagedControlRoute = (typeof REACT_MANAGED_CONTROL_ROUTES)[number];
 
 type ControlRouteRecord = {
   id?: string;
@@ -217,6 +210,8 @@ type ReactManagedControlRouteBodyProps = {
   language: LegacyShellLanguage;
 };
 
+export { isReactManagedControlRoute } from "../reactManagedRouteContract";
+
 type RouteConfig = {
   path: string;
   empty: (copy: ControlRouteCopy) => string;
@@ -355,10 +350,6 @@ const ROUTE_CONFIG: Record<ReactManagedControlRoute, RouteConfig> = {
     ],
   },
 };
-
-export function isReactManagedControlRoute(route: string): route is ReactManagedControlRoute {
-  return REACT_MANAGED_CONTROL_ROUTES.includes(route as ReactManagedControlRoute);
-}
 
 export function ReactManagedControlRouteBody({
   route,
