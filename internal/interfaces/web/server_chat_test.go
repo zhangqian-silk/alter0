@@ -57,12 +57,36 @@ func TestChatPageHandlerMethodNotAllowed(t *testing.T) {
 }
 
 func TestEmbeddedAssetsAvailable(t *testing.T) {
-	content, err := webStaticFS.ReadFile("static/assets/chat.js")
-	if err != nil {
-		t.Fatalf("expected embedded chat.js, got error: %v", err)
+	paths := []string{
+		"static/assets/chat-terminal.js",
+		"static/assets/chat.js",
 	}
-	if len(content) == 0 {
-		t.Fatal("expected embedded chat.js content")
+	for _, path := range paths {
+		content, err := webStaticFS.ReadFile(path)
+		if err != nil {
+			t.Fatalf("expected embedded %s, got error: %v", path, err)
+		}
+		if len(content) == 0 {
+			t.Fatalf("expected embedded %s content", path)
+		}
+	}
+}
+
+func TestChatPageLoadsTerminalHelpersBeforeMainScript(t *testing.T) {
+	html := readEmbeddedAsset(t, "static/chat.html")
+	terminalScript := `/assets/chat-terminal.js?v=1775523000`
+	mainScript := `/assets/chat.js?v=1775523000`
+
+	terminalIndex := strings.Index(html, terminalScript)
+	if terminalIndex == -1 {
+		t.Fatalf("expected chat page to load %q", terminalScript)
+	}
+	mainIndex := strings.Index(html, mainScript)
+	if mainIndex == -1 {
+		t.Fatalf("expected chat page to load %q", mainScript)
+	}
+	if terminalIndex > mainIndex {
+		t.Fatalf("expected terminal helpers to load before main script")
 	}
 }
 

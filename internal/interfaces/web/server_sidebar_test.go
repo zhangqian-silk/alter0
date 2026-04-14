@@ -485,6 +485,25 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 			t.Fatalf("expected style marker %q", marker)
 		}
 	}
+
+	terminalScript := readEmbeddedAsset(t, "static/assets/chat-terminal.js")
+	terminalMarkers := []string{
+		"function syncNodeText(node, value) {",
+		"function syncRenderedBlock(parent, selector, html, anchorNode = null, position = \"beforeend\") {",
+		"function patchTerminalSessionPane(container, sessions, activeSessionID, mobileSessionListOpen, options = {}) {",
+		"function patchTerminalWorkspaceNode(container, session, sending, closing = false, deleting = false, options = {}) {",
+		"function renderTerminalViewShell(sessions, activeSessionID, session, sending, closing = false, deleting = false, options = {}) {",
+		"function renderTerminalSessionCards(sessions, activeSessionID, options = {}) {",
+		"function renderTerminalWorkspaceMetaPanel(session) {",
+		"function renderTerminalTurns(session) {",
+		"function renderTerminalTurnProcess(session, turn) {",
+		"function renderTerminalFinalOutput(session, turn) {",
+	}
+	for _, marker := range terminalMarkers {
+		if !strings.Contains(terminalScript, marker) {
+			t.Fatalf("expected terminal helper marker %q", marker)
+		}
+	}
 }
 
 func TestEnvironmentRestartControlsPresent(t *testing.T) {

@@ -69,6 +69,7 @@ CLI / Web / Cron
 - `internal/session/application` 负责会话持久化、历史查询和删除清理。
 - `internal/interfaces/web` 负责 HTTP、SSE、Web 登录、页面路由和前端静态资源。
 - 前端静态资源处理展示、输入、缓存、轮询和视口状态；会话恢复阶段允许把残留 `streaming` 消息归一为失败态或任务态，但不改写后端领域事实。
+- `static/chat.html` 先加载 `chat-terminal.js`，再加载 `chat.js`；Terminal 渲染辅助函数与主 Shell 状态编排分离维护，但仍共享同一全局运行时与嵌入发布链路。
 
 ### 调用链路
 
