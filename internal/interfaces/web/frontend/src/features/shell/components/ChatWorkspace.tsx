@@ -326,6 +326,7 @@ const RouteViewMount = memo(function RouteViewMount({
         id={LEGACY_SHELL_IDS.routeBody}
         className={routeBodyClassName}
         data-route={currentRoute}
+        data-react-managed-route={reactManagedRoute ? "true" : "false"}
       >
         {reactManagedRoute ? (
           <ReactManagedRouteBody route={reactManagedRoute} language={language} />
