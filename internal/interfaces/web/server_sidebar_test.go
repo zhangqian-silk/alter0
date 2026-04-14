@@ -196,7 +196,8 @@ func TestSidebarCollapseEntryPresent(t *testing.T) {
 	markers := []string{
 		`const navCollapseButton = document.getElementById("navCollapseButton");`,
 		`appShell.classList.toggle("nav-collapsed", collapsed)`,
-		`navCollapseButton.addEventListener("click", () => {`,
+		"function handleLegacyShellNavCollapsedSync(event) {",
+		"document.addEventListener(LEGACY_SHELL_SYNC_NAV_COLLAPSED_EVENT, handleLegacyShellNavCollapsedSync);",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -234,7 +235,7 @@ func TestSidebarCollapseStateHooksPresent(t *testing.T) {
 		"function setSidebarCollapsed(collapsed)",
 		"function collapseMobileSidebar()",
 		`appShell.classList.toggle("nav-collapsed", collapsed)`,
-		`navCollapseButton.addEventListener("click", () => {`,
+		"function handleLegacyShellNavCollapsedSync(event) {",
 		"collapseMobileSidebar();",
 	}
 	for _, marker := range markers {
@@ -263,7 +264,8 @@ func TestSessionHistoryCollapseControlsPresent(t *testing.T) {
 		"function syncSessionHistoryPanel()",
 		`sessionHistoryPanel.hidden = collapsed;`,
 		`sessionHistoryToggle.dataset.collapsedState = collapsed ? "collapsed" : "expanded";`,
-		`sessionHistoryToggle.addEventListener("click", () => {`,
+		"function handleLegacyShellSessionHistorySync(event) {",
+		"document.addEventListener(LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT, handleLegacyShellSessionHistorySync);",
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -294,7 +296,7 @@ func TestSessionHistoryCollapseStatePersistsInBrowserSession(t *testing.T) {
 		"function persistSessionHistoryCollapsedState()",
 		`collapsed_state: state.sessionHistoryCollapsed`,
 		"setSessionHistoryCollapsed(loadSessionHistoryCollapsedState());",
-		"persistSessionHistoryCollapsedState();",
+		"document.addEventListener(LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT, handleLegacyShellSessionHistorySync);",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -306,9 +308,10 @@ func TestSessionHistoryCollapseStatePersistsInBrowserSession(t *testing.T) {
 func TestLegacyRuntimeDoesNotRewriteReactOwnedShellActionLabels(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	requiredMarkers := []string{
-		"newChatButton.addEventListener(\"click\", () => {",
-		"mobileNewChatButton.addEventListener(\"click\", () => {",
-		"sessionToggle.addEventListener(\"click\", (event) => {",
+		`const newChatButton = document.getElementById("newChatButton");`,
+		`const mobileNewChatButton = document.getElementById("mobileNewChatButton");`,
+		`const sessionToggle = document.getElementById("sessionToggle");`,
+		"document.addEventListener(LEGACY_SHELL_CREATE_SESSION_EVENT, handleLegacyShellSessionCreation);",
 	}
 	for _, marker := range requiredMarkers {
 		if !strings.Contains(script, marker) {
