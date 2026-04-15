@@ -775,11 +775,8 @@ describe("LegacyWebShell", () => {
     expect(removedSessions).toEqual(["session-runtime-1"]);
   });
 
-  it("keeps runtime message region snapshot state across shell rerenders", async () => {
+  it("keeps structured runtime message region state across shell rerenders", async () => {
     render(<LegacyWebShell />);
-
-    const messageArea = document.getElementById(LEGACY_SHELL_IDS.messageArea);
-    messageArea?.insertAdjacentHTML("beforeend", '<div data-runtime-node="message">runtime message</div>');
 
     await act(async () => {
       document.dispatchEvent(
@@ -787,6 +784,18 @@ describe("LegacyWebShell", () => {
           detail: {
             route: "chat",
             hasMessages: true,
+            sessionId: "session-runtime-keep",
+            messages: [
+              {
+                id: "msg-runtime-keep",
+                role: "assistant",
+                text: "Runtime message",
+                status: "done",
+                error: false,
+                at: Date.UTC(2026, 3, 15, 11, 0, 0),
+                source: "model",
+              },
+            ],
           },
         }),
       );
@@ -795,7 +804,8 @@ describe("LegacyWebShell", () => {
     expect(document.querySelector(".chat-pane")).not.toHaveClass("empty-state");
     expect(document.getElementById(LEGACY_SHELL_IDS.welcomeScreen)).toHaveAttribute("hidden");
     expect(document.getElementById(LEGACY_SHELL_IDS.messageArea)).not.toHaveAttribute("hidden");
-    expect(screen.getByText("runtime message")).toBeInTheDocument();
+    expect(screen.getByText("Runtime message")).toBeInTheDocument();
+    expect(document.querySelector('[data-message-session-id="session-runtime-keep"]')).toBeInTheDocument();
 
     await act(async () => {
       document.documentElement.lang = "zh-CN";
@@ -805,7 +815,8 @@ describe("LegacyWebShell", () => {
       expect(document.querySelector(".chat-pane")).not.toHaveClass("empty-state");
       expect(document.getElementById(LEGACY_SHELL_IDS.welcomeScreen)).toHaveAttribute("hidden");
       expect(document.getElementById(LEGACY_SHELL_IDS.messageArea)).not.toHaveAttribute("hidden");
-      expect(screen.getByText("runtime message")).toBeInTheDocument();
+      expect(screen.getByText("Runtime message")).toBeInTheDocument();
+      expect(document.querySelector('[data-message-session-id="session-runtime-keep"]')).toBeInTheDocument();
     });
   });
 
@@ -818,7 +829,16 @@ describe("LegacyWebShell", () => {
           detail: {
             route: "terminal",
             hasMessages: true,
-            html: '<div data-runtime-node="message">terminal message should stay scoped</div>',
+            messages: [
+              {
+                id: "msg-terminal-scope",
+                role: "assistant",
+                text: "terminal message should stay scoped",
+                status: "done",
+                error: false,
+                at: Date.UTC(2026, 3, 15, 12, 0, 0),
+              },
+            ],
           },
         }),
       );
@@ -839,7 +859,14 @@ describe("LegacyWebShell", () => {
             route: "chat",
             hasMessages: true,
             sessionId: "session-runtime-1",
-            html: '<div class="message-list" data-message-session-id="session-runtime-1"><article class="msg user" data-message-id="msg-runtime-1"><div class="msg-bubble"><p>Runtime user message</p></div><div class="msg-meta"><span>just now</span></div></article></div>',
+            messages: [
+              {
+                id: "msg-runtime-1",
+                role: "user",
+                text: "Runtime user message",
+                at: Date.UTC(2026, 3, 15, 12, 30, 0),
+              },
+            ],
           },
         }),
       );
@@ -858,6 +885,53 @@ describe("LegacyWebShell", () => {
     });
   });
 
+  it("renders structured assistant process snapshots with final answer", async () => {
+    render(<LegacyWebShell />);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
+          detail: {
+            route: "chat",
+            hasMessages: true,
+            sessionId: "session-runtime-process",
+            messages: [
+              {
+                id: "msg-runtime-process",
+                role: "assistant",
+                text: "Runtime final answer",
+                source: "codex_cli",
+                status: "done",
+                error: false,
+                at: Date.UTC(2026, 3, 15, 13, 0, 0),
+                process_steps: [
+                  {
+                    id: "step-1",
+                    title: "Inspect repository",
+                    detail: "Checked the current shell layout.",
+                    status: "success",
+                  },
+                  {
+                    id: "step-2",
+                    title: "Apply patch",
+                    detail: "Moved message rendering into React.",
+                    status: "success",
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByRole("button", { name: /Process/i })).toBeInTheDocument();
+    expect(screen.getByText("Inspect repository")).toBeInTheDocument();
+    expect(screen.getByText("Moved message rendering into React.")).toBeInTheDocument();
+    expect(screen.getByText("Runtime final answer")).toBeInTheDocument();
+    expect(screen.getByText("CODEX CLI")).toBeInTheDocument();
+  });
+
   it("keeps runtime chat workspace snapshot copy across shell rerenders", async () => {
     render(<LegacyWebShell />);
 
@@ -873,7 +947,15 @@ describe("LegacyWebShell", () => {
             subheading: "Runtime subheading",
             welcomeHeading: "Runtime welcome heading",
             welcomeDescription: "Runtime welcome description",
-            welcomeTargetHTML: '<button class="welcome-target-card active" type="button" data-chat-target-type="agent" data-chat-target-id="agent-runtime" data-chat-target-name="Runtime Agent"><strong>Runtime Agent</strong><span>agent-runtime</span></button>',
+            welcomeTargets: [
+              {
+                type: "agent",
+                id: "agent-runtime",
+                name: "Runtime Agent",
+                active: true,
+                interactive: true,
+              },
+            ],
           },
         }),
       );
@@ -896,8 +978,65 @@ describe("LegacyWebShell", () => {
       expect(document.getElementById("welcomeHeading")).toHaveTextContent("Runtime welcome heading");
       expect(document.getElementById("welcomeDescription")).toHaveTextContent("Runtime welcome description");
       expect(screen.getByText("Runtime Agent")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Runtime Agent agent-runtime" })).toHaveAttribute(
+        "data-chat-target-id",
+        "agent-runtime",
+      );
       expect(screen.getByText("runtime message")).toBeInTheDocument();
     });
+  });
+
+  it("renders structured welcome target picker cards and errors from runtime snapshots", async () => {
+    window.location.hash = "#agent-runtime";
+
+    render(<LegacyWebShell />);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT, {
+          detail: {
+            route: "agent-runtime",
+            heading: "Agent runtime",
+            subheading: "Runtime subheading",
+            welcomeHeading: "Choose target",
+            welcomeDescription: "Pick an agent to continue.",
+            welcomeTargets: [
+              {
+                type: "agent",
+                id: "planner",
+                name: "Planner",
+                active: true,
+                interactive: true,
+              },
+              {
+                type: "agent",
+                id: "reviewer",
+                name: "Reviewer",
+                active: false,
+                interactive: true,
+              },
+              {
+                type: "agent",
+                id: "pinned-agent",
+                name: "Pinned Agent",
+                active: false,
+                interactive: false,
+              },
+            ],
+            welcomeTargetError: "Catalog unavailable",
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByRole("button", { name: "Planner planner" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "Reviewer reviewer" })).toHaveAttribute(
+      "data-chat-target-name",
+      "Reviewer",
+    );
+    expect(screen.getByText("Pinned Agent")).toBeInTheDocument();
+    expect(document.querySelector(".welcome-target-card.is-static")).toHaveTextContent("Pinned Agent");
+    expect(screen.getByText("Catalog unavailable")).toBeInTheDocument();
   });
 
   it("keeps runtime panel snapshot content across shell rerenders", async () => {
