@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo } from "react";
 import { LEGACY_SHELL_IDS } from "../legacyDomContract";
 import {
   getLegacyRouteHeadingCopy,
@@ -13,6 +13,7 @@ import {
   type LegacyShellChatWorkspaceDetail,
   type LegacyShellMessageRegionDetail,
 } from "../legacyShellBridge";
+import { useLegacyShellSnapshot } from "../legacyShellSnapshot";
 import { ChatRuntimeHost } from "./ChatRuntimeHost";
 import { PROMPTS } from "../legacyShellConfig";
 import {
@@ -24,7 +25,6 @@ type ChatWorkspaceProps = {
   currentRoute: string;
   language: LegacyShellLanguage;
   onCreateSession: () => void;
-  onNavigate: (route: string) => void;
   onQuickPrompt: (prompt: string) => void;
   onToggleNavDrawer: () => void;
   onToggleSessionPane: () => void;
@@ -78,69 +78,57 @@ function useLegacyChatWorkspaceSnapshot(
   currentRoute: string,
   language: LegacyShellLanguage,
 ): ChatWorkspaceSnapshot {
-  const [snapshot, setSnapshot] = useState<ChatWorkspaceSnapshot | null>(null);
-
-  useEffect(() => {
-    const handleSnapshot = (event: Event) => {
-      const detail = (event as CustomEvent<LegacyShellChatWorkspaceDetail>).detail;
-      if (!detail || typeof detail.route !== "string") {
-        return;
-      }
-      setSnapshot({
-        route: detail.route,
-        heading: detail.heading,
-        subheading: detail.subheading,
-        welcomeHeading: detail.welcomeHeading,
-        welcomeDescription: detail.welcomeDescription,
-        welcomeTargetHTML: typeof detail.welcomeTargetHTML === "string" ? detail.welcomeTargetHTML : "",
-      });
-    };
-
-    document.addEventListener(LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT, handleSnapshot as EventListener);
-    return () => {
-      document.removeEventListener(LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT, handleSnapshot as EventListener);
-    };
-  }, []);
-
-  if (snapshot?.route === currentRoute) {
-    return snapshot;
-  }
-
-  return getDefaultChatWorkspaceSnapshot(currentRoute, language);
+  return useLegacyShellSnapshot<LegacyShellChatWorkspaceDetail, ChatWorkspaceSnapshot>({
+    currentRoute,
+    eventName: LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT,
+    fallback: () => getDefaultChatWorkspaceSnapshot(currentRoute, language),
+    normalizeDetail: normalizeChatWorkspaceSnapshot,
+  });
 }
 
 function useLegacyMessageRegionSnapshot(currentRoute: string): MessageRegionSnapshot {
-  const [snapshot, setSnapshot] = useState<MessageRegionSnapshot | null>(null);
+  return useLegacyShellSnapshot<LegacyShellMessageRegionDetail, MessageRegionSnapshot>({
+    currentRoute,
+    eventName: LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT,
+    fallback: () => ({
+      route: currentRoute,
+      hasMessages: false,
+      sessionId: "",
+      html: "",
+    }),
+    normalizeDetail: normalizeMessageRegionSnapshot,
+  });
+}
 
-  useEffect(() => {
-    const handleSnapshot = (event: Event) => {
-      const detail = (event as CustomEvent<LegacyShellMessageRegionDetail>).detail;
-      if (!detail || typeof detail.route !== "string") {
-        return;
-      }
-      setSnapshot({
-        route: detail.route,
-        hasMessages: Boolean(detail.hasMessages),
-        sessionId: typeof detail.sessionId === "string" ? detail.sessionId : "",
-        html: typeof detail.html === "string" ? detail.html : "",
-      });
-    };
-
-    document.addEventListener(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, handleSnapshot as EventListener);
-    return () => {
-      document.removeEventListener(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, handleSnapshot as EventListener);
-    };
-  }, []);
-
-  if (snapshot?.route === currentRoute) {
-    return snapshot;
+function normalizeChatWorkspaceSnapshot(
+  detail: LegacyShellChatWorkspaceDetail,
+): ChatWorkspaceSnapshot | null {
+  if (!detail || typeof detail.route !== "string") {
+    return null;
   }
 
   return {
-    route: currentRoute,
-    hasMessages: false,
-    sessionId: "",
-    html: "",
+    route: detail.route,
+    heading: detail.heading,
+    subheading: detail.subheading,
+    welcomeHeading: detail.welcomeHeading,
+    welcomeDescription: detail.welcomeDescription,
+    welcomeTargetHTML: typeof detail.welcomeTargetHTML === "string" ? detail.welcomeTargetHTML : "",
+  };
+}
+
+function normalizeMessageRegionSnapshot(
+  detail: LegacyShellMessageRegionDetail,
+): MessageRegionSnapshot | null {
+  if (!detail || typeof detail.route !== "string") {
+    return null;
+  }
+
+  return {
+    route: detail.route,
+    hasMessages: Boolean(detail.hasMessages),
+    sessionId: typeof detail.sessionId === "string" ? detail.sessionId : "",
+    html: typeof detail.html === "string" ? detail.html : "",
   };
 }
 
@@ -269,7 +257,6 @@ type RouteViewMountProps = {
   currentRoute: string;
   language: LegacyShellLanguage;
   hidden: boolean;
-  onRouteAction: (route: string) => void;
 };
 
 function LegacyManagedRouteHost({ route }: { route: string }) {
@@ -280,7 +267,6 @@ const RouteViewMount = memo(function RouteViewMount({
   currentRoute,
   language,
   hidden,
-  onRouteAction,
 }: RouteViewMountProps) {
   const routeViewClassName = currentRoute === "terminal" ? "route-view terminal-route" : "route-view";
   const routeBodyClassName = currentRoute === "terminal" ? "route-body terminal-route-body" : "route-body";
@@ -311,20 +297,6 @@ const RouteViewMount = memo(function RouteViewMount({
           <h3 id="routeTitle">{routeHeadingCopy.title}</h3>
           <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
         </div>
-        <button
-          className="route-action"
-          id="routeActionButton"
-          type="button"
-          hidden
-          onClick={(event) => {
-            const route = event.currentTarget.dataset.route;
-            if (route) {
-              onRouteAction(route);
-            }
-          }}
-        >
-          + Add Channel
-        </button>
       </header>
       <div
         id={LEGACY_SHELL_IDS.routeBody}
@@ -346,7 +318,6 @@ export const ChatWorkspace = memo(function ChatWorkspace({
   currentRoute,
   language,
   onCreateSession,
-  onNavigate,
   onQuickPrompt,
   onToggleNavDrawer,
   onToggleSessionPane,
@@ -466,7 +437,6 @@ export const ChatWorkspace = memo(function ChatWorkspace({
         currentRoute={currentRoute}
         language={language}
         hidden={!isPageMode}
-        onRouteAction={onNavigate}
       />
     </main>
   );

@@ -11,6 +11,16 @@ export const LEGACY_SHELL_SYNC_SESSION_PANE_EVENT = "alter0:legacy-shell:sync-se
 export const LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT = "alter0:legacy-shell:sync-message-region";
 export const LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT = "alter0:legacy-shell:sync-chat-runtime";
 
+declare global {
+  interface Window {
+    __alter0LegacyRuntime?: {
+      createSession?: () => boolean | void;
+      focusSession?: (sessionId: string) => boolean | void;
+      removeSession?: (sessionId: string) => boolean | void;
+    };
+  }
+}
+
 type LegacyShellNavigateDetail = {
   route: string;
 };
@@ -72,6 +82,16 @@ export type LegacyShellChatRuntimeDetail = {
   scrollTop?: number;
 };
 
+function callLegacyRuntimeAction<TArgs extends unknown[]>(
+  action: ((...args: TArgs) => boolean | void) | undefined,
+  args: TArgs,
+): boolean | null {
+  if (typeof action !== "function") {
+    return null;
+  }
+  return action(...args) !== false;
+}
+
 export function requestLegacyShellRouteNavigation(route: string): boolean {
   return document.dispatchEvent(
     new CustomEvent<LegacyShellNavigateDetail>(LEGACY_SHELL_NAVIGATE_EVENT, {
@@ -82,6 +102,10 @@ export function requestLegacyShellRouteNavigation(route: string): boolean {
 }
 
 export function requestLegacyShellSessionCreation(): boolean {
+  const handled = callLegacyRuntimeAction(window.__alter0LegacyRuntime?.createSession, []);
+  if (handled !== null) {
+    return handled;
+  }
   return document.dispatchEvent(
     new CustomEvent(LEGACY_SHELL_CREATE_SESSION_EVENT, {
       bubbles: true,
@@ -90,6 +114,10 @@ export function requestLegacyShellSessionCreation(): boolean {
 }
 
 export function requestLegacyShellSessionFocus(sessionId: string): boolean {
+  const handled = callLegacyRuntimeAction(window.__alter0LegacyRuntime?.focusSession, [sessionId]);
+  if (handled !== null) {
+    return handled;
+  }
   return document.dispatchEvent(
     new CustomEvent<LegacyShellSessionActionDetail>(LEGACY_SHELL_FOCUS_SESSION_EVENT, {
       bubbles: true,
@@ -99,6 +127,10 @@ export function requestLegacyShellSessionFocus(sessionId: string): boolean {
 }
 
 export function requestLegacyShellSessionRemoval(sessionId: string): boolean {
+  const handled = callLegacyRuntimeAction(window.__alter0LegacyRuntime?.removeSession, [sessionId]);
+  if (handled !== null) {
+    return handled;
+  }
   return document.dispatchEvent(
     new CustomEvent<LegacyShellSessionActionDetail>(LEGACY_SHELL_REMOVE_SESSION_EVENT, {
       bubbles: true,

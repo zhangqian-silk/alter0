@@ -112,9 +112,10 @@ func TestLegacyRuntimeDoesNotToggleReactOwnedRouteShellState(t *testing.T) {
 func TestSidebarPageRouteRuntimeDependenciesPresent(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	markers := []string{
-		"function syncRouteAction(route)",
 		"async function fetchJSON(path)",
 		"function resolveLegacyRouteContainer(route)",
+		`const routes = appShell.dataset.reactManagedRoutes.split(",")`,
+		"return routes.includes(route);",
 		"async function renderRoute(route)",
 		"await config.loader(legacyRouteContainer);",
 		"legacyRouteContainer.innerHTML = `<p class=\"route-loading\">${t(\"loading\")}</p>`;",
@@ -122,6 +123,16 @@ func TestSidebarPageRouteRuntimeDependenciesPresent(t *testing.T) {
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected route runtime marker %q", marker)
+		}
+	}
+	forbiddenMarkers := []string{
+		"const REACT_MANAGED_PAGE_ROUTES = new Set([",
+		"function syncRouteAction(route)",
+		`return routeBody.dataset.route === route && routeBody.dataset.reactManagedRoute === "true";`,
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected route runtime marker %q", marker)
 		}
 	}
 }
@@ -343,7 +354,6 @@ func TestLegacyRuntimeDoesNotRewriteReactOwnedRouteHeadingCopy(t *testing.T) {
 	requiredMarkers := []string{
 		"const titleKey = `route.${routeKey}.title`;",
 		"const subtitleKey = `route.${routeKey}.subtitle`;",
-		"syncRouteAction(safe);",
 	}
 	for _, marker := range requiredMarkers {
 		if !strings.Contains(script, marker) {
@@ -352,6 +362,7 @@ func TestLegacyRuntimeDoesNotRewriteReactOwnedRouteHeadingCopy(t *testing.T) {
 	}
 
 	forbiddenMarkers := []string{
+		"syncRouteAction(safe);",
 		"routeTitle.textContent = t(titleKey);",
 		"routeSubtitle.textContent = t(subtitleKey);",
 	}
@@ -512,6 +523,23 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 	for _, marker := range styleMarkers {
 		if !strings.Contains(styles, marker) {
 			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}
+
+func TestLegacyRuntimeExposesSessionBridgeAPI(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	markers := []string{
+		"function createSessionFromReactShell() {",
+		"function focusSessionFromReactShell(sessionID) {",
+		"function removeSessionFromReactShell(sessionID) {",
+		"createSession: createSessionFromReactShell",
+		"focusSession: focusSessionFromReactShell",
+		"removeSession: removeSessionFromReactShell",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected runtime bridge marker %q", marker)
 		}
 	}
 }

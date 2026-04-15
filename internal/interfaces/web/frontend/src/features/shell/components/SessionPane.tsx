@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo } from "react";
 import { LEGACY_SHELL_IDS } from "../legacyDomContract";
 import {
   getLegacyRouteHeadingCopy,
@@ -14,6 +14,7 @@ import {
   LEGACY_SHELL_SYNC_SESSION_PANE_EVENT,
   type LegacyShellSessionPaneDetail,
 } from "../legacyShellBridge";
+import { useLegacyShellSnapshot } from "../legacyShellSnapshot";
 
 type SessionPaneProps = {
   currentRoute: string;
@@ -133,38 +134,31 @@ type SessionPaneSnapshot = {
 };
 
 function useLegacySessionPaneSnapshot(currentRoute: string): SessionPaneSnapshot {
-  const [snapshot, setSnapshot] = useState<SessionPaneSnapshot | null>(null);
+  return useLegacyShellSnapshot<LegacyShellSessionPaneDetail, SessionPaneSnapshot>({
+    currentRoute,
+    eventName: LEGACY_SHELL_SYNC_SESSION_PANE_EVENT,
+    fallback: () => ({
+      route: currentRoute,
+      hasSessions: false,
+      loadError: "",
+      items: [],
+    }),
+    normalizeDetail: normalizeSessionPaneSnapshot,
+  });
+}
 
-  useEffect(() => {
-    const handleSnapshot = (event: Event) => {
-      const detail = (event as CustomEvent<LegacyShellSessionPaneDetail>).detail;
-      if (!detail || typeof detail.route !== "string") {
-        return;
-      }
-
-      setSnapshot({
-        route: detail.route,
-        hasSessions: Boolean(detail.hasSessions),
-        loadError: detail.loadError,
-        items: Array.isArray(detail.items) ? detail.items : [],
-      });
-    };
-
-    document.addEventListener(LEGACY_SHELL_SYNC_SESSION_PANE_EVENT, handleSnapshot as EventListener);
-    return () => {
-      document.removeEventListener(LEGACY_SHELL_SYNC_SESSION_PANE_EVENT, handleSnapshot as EventListener);
-    };
-  }, []);
-
-  if (snapshot?.route === currentRoute) {
-    return snapshot;
+function normalizeSessionPaneSnapshot(
+  detail: LegacyShellSessionPaneDetail,
+): SessionPaneSnapshot | null {
+  if (!detail || typeof detail.route !== "string") {
+    return null;
   }
 
   return {
-    route: currentRoute,
-    hasSessions: false,
-    loadError: "",
-    items: [],
+    route: detail.route,
+    hasSessions: Boolean(detail.hasSessions),
+    loadError: detail.loadError,
+    items: Array.isArray(detail.items) ? detail.items : [],
   };
 }
 
