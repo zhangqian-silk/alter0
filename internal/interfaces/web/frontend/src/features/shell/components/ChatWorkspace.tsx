@@ -272,6 +272,10 @@ type RouteViewMountProps = {
   onRouteAction: (route: string) => void;
 };
 
+function LegacyManagedRouteHost({ route }: { route: string }) {
+  return null;
+}
+
 const RouteViewMount = memo(function RouteViewMount({
   currentRoute,
   language,
@@ -330,7 +334,9 @@ const RouteViewMount = memo(function RouteViewMount({
       >
         {reactManagedRoute ? (
           <ReactManagedRouteBody route={reactManagedRoute} language={language} />
-        ) : null}
+        ) : (
+          <LegacyManagedRouteHost route={currentRoute} />
+        )}
       </div>
     </section>
   );

@@ -114,9 +114,10 @@ func TestSidebarPageRouteRuntimeDependenciesPresent(t *testing.T) {
 	markers := []string{
 		"function syncRouteAction(route)",
 		"async function fetchJSON(path)",
+		"function resolveLegacyRouteContainer(route)",
 		"async function renderRoute(route)",
-		"await config.loader(routeBody);",
-		"routeBody.innerHTML = `<p class=\"route-loading\">${t(\"loading\")}</p>`;",
+		"await config.loader(legacyRouteContainer);",
+		"legacyRouteContainer.innerHTML = `<p class=\"route-loading\">${t(\"loading\")}</p>`;",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {

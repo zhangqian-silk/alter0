@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import {
+  getReactManagedRouteBodyRoutes,
   isReactManagedRouteBody,
   ReactManagedRouteBody,
 } from "./ReactManagedRouteBody";
@@ -66,6 +67,20 @@ describe("ReactManagedRouteBody", () => {
   });
 
   it("tracks the full set of routes now owned by React", () => {
+    expect(getReactManagedRouteBodyRoutes()).toEqual([
+      "agent",
+      "terminal",
+      "products",
+      "memory",
+      "sessions",
+      "tasks",
+      "channels",
+      "skills",
+      "mcp",
+      "models",
+      "environments",
+      "cron-jobs",
+    ]);
     expect(isReactManagedRouteBody("agent")).toBe(true);
     expect(isReactManagedRouteBody("memory")).toBe(true);
     expect(isReactManagedRouteBody("products")).toBe(true);
@@ -77,6 +92,6 @@ describe("ReactManagedRouteBody", () => {
     expect(isReactManagedRouteBody("cron-jobs")).toBe(true);
     expect(isReactManagedRouteBody("sessions")).toBe(true);
     expect(isReactManagedRouteBody("tasks")).toBe(true);
-    expect(isReactManagedRouteBody("terminal")).toBe(false);
+    expect(isReactManagedRouteBody("terminal")).toBe(true);
   });
 });

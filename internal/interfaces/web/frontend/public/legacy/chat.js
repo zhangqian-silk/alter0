@@ -8503,6 +8503,52 @@ async function loadTerminalView(container) {
     }
   };
 
+  const renderTerminalSessionPaneShell = (sessionSheetOpen) => `<button class="terminal-session-pane-backdrop" type="button" data-terminal-session-pane-close aria-label="${escapeHTML(t("route.terminal.hide_sessions"))}"></button>
+    <div class="route-surface terminal-session-pane-shell">
+      <div class="terminal-session-pane-head">
+        <div class="terminal-session-pane-copy">
+          <strong>${escapeHTML(t("route.terminal.sessions"))}</strong>
+          <span>${escapeHTML(t("route.terminal.session_count", { count: String(localState.sessions.length) }))}</span>
+        </div>
+        <div class="terminal-session-pane-actions">
+          <button class="terminal-session-pane-action is-primary" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new_short"))}</button>
+          <button class="terminal-session-pane-action terminal-session-pane-close" type="button" data-terminal-session-pane-close>${escapeHTML(t("route.terminal.hide_sessions"))}</button>
+        </div>
+      </div>
+      <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID, {
+        deleting: localState.deleting,
+        deletingSessionID: localState.deletingSessionID
+      })}</div>
+    </div>`;
+
+  const renderTerminalViewShell = (active, sessionSheetOpen) => `<section class="terminal-view" data-terminal-view>
+    <aside class="terminal-session-pane ${sessionSheetOpen ? "is-open" : ""}" data-terminal-session-pane>
+      ${renderTerminalSessionPaneShell(sessionSheetOpen)}
+    </aside>
+    <section class="terminal-workspace">
+      ${renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
+        sessionCount: localState.sessions.length,
+        sessionSheetOpen
+      })}
+    </section>
+  </section>`;
+
+  const renderTerminalViewIntoBridge = (active, sessionSheetOpen) => {
+    const terminalViewNode = container.querySelector("[data-terminal-view]");
+    const sessionPaneNode = terminalViewNode ? terminalViewNode.querySelector("[data-terminal-session-pane]") : null;
+    const workspaceHostNode = terminalViewNode ? terminalViewNode.querySelector(".terminal-workspace") : null;
+    if (!(sessionPaneNode instanceof HTMLElement) || !(workspaceHostNode instanceof HTMLElement)) {
+      return false;
+    }
+    sessionPaneNode.classList.toggle("is-open", Boolean(sessionSheetOpen));
+    sessionPaneNode.innerHTML = renderTerminalSessionPaneShell(sessionSheetOpen);
+    workspaceHostNode.innerHTML = renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
+      sessionCount: localState.sessions.length,
+      sessionSheetOpen
+    });
+    return true;
+  };
+
   const paint = () => {
     flushScheduledTerminalChatScrollCapture();
     invalidateTerminalTurnNavigationCache();
@@ -8543,62 +8589,14 @@ async function loadTerminalView(container) {
         sessionSheetOpen
       });
       if (!patched) {
-        container.innerHTML = `<section class="terminal-view" data-terminal-view>
-          <aside class="terminal-session-pane ${sessionSheetOpen ? "is-open" : ""}" data-terminal-session-pane>
-            <button class="terminal-session-pane-backdrop" type="button" data-terminal-session-pane-close aria-label="${escapeHTML(t("route.terminal.hide_sessions"))}"></button>
-            <div class="route-surface terminal-session-pane-shell">
-              <div class="terminal-session-pane-head">
-                <div class="terminal-session-pane-copy">
-                  <strong>${escapeHTML(t("route.terminal.sessions"))}</strong>
-                  <span>${escapeHTML(t("route.terminal.session_count", { count: String(localState.sessions.length) }))}</span>
-                </div>
-                <div class="terminal-session-pane-actions">
-                  <button class="terminal-session-pane-action is-primary" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new_short"))}</button>
-                  <button class="terminal-session-pane-action terminal-session-pane-close" type="button" data-terminal-session-pane-close>${escapeHTML(t("route.terminal.hide_sessions"))}</button>
-                </div>
-              </div>
-            <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID, {
-              deleting: localState.deleting,
-              deletingSessionID: localState.deletingSessionID
-            })}</div>
-            </div>
-          </aside>
-          <section class="terminal-workspace">
-            ${renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
-              sessionCount: localState.sessions.length,
-              sessionSheetOpen
-            })}
-          </section>
-        </section>`;
+        if (!renderTerminalViewIntoBridge(active, sessionSheetOpen)) {
+          container.innerHTML = renderTerminalViewShell(active, sessionSheetOpen);
+        }
       }
     } else {
-      container.innerHTML = `<section class="terminal-view" data-terminal-view>
-        <aside class="terminal-session-pane ${sessionSheetOpen ? "is-open" : ""}" data-terminal-session-pane>
-          <button class="terminal-session-pane-backdrop" type="button" data-terminal-session-pane-close aria-label="${escapeHTML(t("route.terminal.hide_sessions"))}"></button>
-          <div class="route-surface terminal-session-pane-shell">
-            <div class="terminal-session-pane-head">
-              <div class="terminal-session-pane-copy">
-                <strong>${escapeHTML(t("route.terminal.sessions"))}</strong>
-                <span>${escapeHTML(t("route.terminal.session_count", { count: String(localState.sessions.length) }))}</span>
-              </div>
-              <div class="terminal-session-pane-actions">
-                <button class="terminal-session-pane-action is-primary" type="button" data-terminal-create>${escapeHTML(t("route.terminal.new_short"))}</button>
-                <button class="terminal-session-pane-action terminal-session-pane-close" type="button" data-terminal-session-pane-close>${escapeHTML(t("route.terminal.hide_sessions"))}</button>
-              </div>
-            </div>
-          <div class="terminal-session-list" data-terminal-session-list>${renderTerminalSessionCards(localState.sessions, localState.activeSessionID, {
-            deleting: localState.deleting,
-            deletingSessionID: localState.deletingSessionID
-          })}</div>
-          </div>
-        </aside>
-        <section class="terminal-workspace">
-          ${renderTerminalWorkspace(active, localState.sending, localState.closing, localState.deleting, {
-            sessionCount: localState.sessions.length,
-            sessionSheetOpen
-          })}
-        </section>
-      </section>`;
+      if (!renderTerminalViewIntoBridge(active, sessionSheetOpen)) {
+        container.innerHTML = renderTerminalViewShell(active, sessionSheetOpen);
+      }
     }
     const terminalViewNode = container.querySelector("[data-terminal-view]");
     if (terminalViewNode instanceof HTMLElement && Number(terminalViewNode.scrollTop || 0) !== 0) {
@@ -9314,6 +9312,21 @@ async function loadTerminalView(container) {
   container.onchange = handleTerminalStepSearch;
 
 }
+
+function mountTerminalRouteRuntime(container) {
+  if (!(container instanceof HTMLElement) || container.__alter0TerminalMounted) {
+    return;
+  }
+  container.__alter0TerminalMounted = true;
+  void loadTerminalView(container).catch((error) => {
+    const message = error instanceof Error ? error.message : "unknown_error";
+    container.innerHTML = `<p class="route-error">${t("load_failed", { error: message })}</p>`;
+  });
+}
+
+window.__alter0LegacyRuntime = Object.assign(window.__alter0LegacyRuntime || {}, {
+  mountTerminalRoute: mountTerminalRouteRuntime
+});
 
 function formatDateTime(value) {
   const text = typeof value === "string" ? value.trim() : "";
@@ -10161,6 +10174,14 @@ async function loadPlaceholderView(container) {
   );
 }
 
+function resolveLegacyRouteContainer(route) {
+  if (!routeBody) {
+    return null;
+  }
+  const host = routeBody.querySelector(`[data-legacy-route-host="${route}"]`);
+  return host || routeBody;
+}
+
 async function renderRoute(route) {
   const safe = ROUTES[route] ? route : DEFAULT_ROUTE;
   state.currentRoute = safe;
@@ -10213,17 +10234,21 @@ async function renderRoute(route) {
   if (routeUsesReactManagedPage(safe)) {
     return;
   }
-  routeBody.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
+  const legacyRouteContainer = resolveLegacyRouteContainer(safe);
+  if (!legacyRouteContainer) {
+    return;
+  }
+  legacyRouteContainer.innerHTML = `<p class="route-loading">${t("loading")}</p>`;
 
   const token = ++state.pageRenderToken;
   try {
-    await config.loader(routeBody);
+    await config.loader(legacyRouteContainer);
   } catch (err) {
     if (token !== state.pageRenderToken) {
       return;
     }
     const message = err instanceof Error ? err.message : "unknown_error";
-    routeBody.innerHTML = `<p class="route-error">${t("load_failed", { error: message })}</p>`;
+    legacyRouteContainer.innerHTML = `<p class="route-error">${t("load_failed", { error: message })}</p>`;
   }
 }
 
@@ -10359,8 +10384,11 @@ function bindEvents() {
     ensureChatTaskPolling();
     if (isDocumentVisible()) {
       scheduleViewportInsetSync({ alignFocusedInput: Boolean(activeViewportInput()) });
+      const terminalVisibleHost = routeBody ? routeBody.querySelector("[data-legacy-terminal-host='true']") : null;
       const terminalVisibleHandler = routeBody && typeof routeBody.__alter0TerminalVisible === "function"
         ? routeBody.__alter0TerminalVisible
+        : terminalVisibleHost && typeof terminalVisibleHost.__alter0TerminalVisible === "function"
+          ? terminalVisibleHost.__alter0TerminalVisible
         : null;
       if (state.currentRoute === "terminal" && terminalVisibleHandler) {
         terminalVisibleHandler();
