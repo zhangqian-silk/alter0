@@ -47,7 +47,16 @@ export type LegacyShellChatWorkspaceDetail = {
   subheading: string;
   welcomeHeading: string;
   welcomeDescription: string;
-  welcomeTargetHTML?: string;
+  welcomeTargets?: LegacyShellChatWorkspaceTargetDetail[];
+  welcomeTargetError?: string;
+};
+
+export type LegacyShellChatWorkspaceTargetDetail = {
+  type?: string;
+  id?: string;
+  name?: string;
+  active?: boolean;
+  interactive?: boolean;
 };
 
 export type LegacyShellSessionPaneDetail = {
@@ -70,7 +79,28 @@ export type LegacyShellMessageRegionDetail = {
   route: string;
   hasMessages: boolean;
   sessionId?: string;
-  html?: string;
+  messages?: LegacyShellMessageSnapshotDetail[];
+};
+
+export type LegacyShellMessageSnapshotDetail = {
+  id?: string;
+  role?: string;
+  text?: string;
+  route?: string;
+  source?: string;
+  error?: boolean;
+  status?: string;
+  at?: number;
+  process_steps?: LegacyShellMessageProcessStepDetail[];
+  agent_process_collapsed?: boolean;
+};
+
+export type LegacyShellMessageProcessStepDetail = {
+  id?: string;
+  kind?: string;
+  title?: string;
+  detail?: string;
+  status?: string;
 };
 
 export type LegacyShellChatRuntimeDetail = {

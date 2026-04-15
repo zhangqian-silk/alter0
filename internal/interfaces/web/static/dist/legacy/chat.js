@@ -4263,13 +4263,13 @@ async function removeSession(sessionID) {
   persistSessions();
 }
 
-function buildWelcomeTargetHTML() {
+function buildWelcomeTargetSnapshot() {
   const active = getSession();
   const currentTarget = sessionTarget(active);
   const agentRuntime = isAgentConversationRoute();
   const allowPicker = routeAllowsTargetPicker();
   const agents = agentRuntime ? genericRuntimeConversationAgents() : [];
-  const buttons = [];
+  const targets = [];
 
   if (agentRuntime && allowPicker) {
     agents.forEach((agent) => {
@@ -4278,37 +4278,44 @@ function buildWelcomeTargetHTML() {
         return;
       }
       const agentName = String(agent?.name || agentID).trim() || agentID;
-      const activeClassName = currentTarget.type === "agent" && currentTarget.id === agentID ? " active" : "";
-      buttons.push(`<button class="welcome-target-card${activeClassName}" type="button" data-chat-target-type="agent" data-chat-target-id="${escapeHTML(agentID)}" data-chat-target-name="${escapeHTML(agentName)}">
-        <strong>${escapeHTML(agentName)}</strong>
-        <span>${escapeHTML(agentID)}</span>
-      </button>`);
+      targets.push({
+        type: "agent",
+        id: agentID,
+        name: agentName,
+        active: currentTarget.type === "agent" && currentTarget.id === agentID,
+        interactive: true
+      });
     });
   } else if (agentRuntime) {
     const fallbackTarget = routeDefaultTarget();
     const targetName = currentTarget.name || fallbackTarget.name || t("session.target.agent");
     const targetID = currentTarget.id || fallbackTarget.id || "";
-    buttons.push(`<div class="welcome-target-card active is-static">
-      <strong>${escapeHTML(targetName)}</strong>
-      <span>${escapeHTML(targetID || t("session.target.agent"))}</span>
-    </div>`);
+    targets.push({
+      type: "agent",
+      id: targetID || t("session.target.agent"),
+      name: targetName,
+      active: true,
+      interactive: false
+    });
   } else {
-    buttons.push(`<div class="welcome-target-card active is-static">
-      <strong>${escapeHTML(t("session.target.raw"))}</strong>
-      <span>${escapeHTML(t("route.chat.subtitle"))}</span>
-    </div>`);
+    targets.push({
+      type: "model",
+      id: t("route.chat.subtitle"),
+      name: t("session.target.raw"),
+      active: true,
+      interactive: false
+    });
   }
 
-  if (agentRuntime && allowPicker && state.chatCatalog.error) {
-    buttons.push(`<p class="welcome-target-error">${escapeHTML(state.chatCatalog.error)}</p>`);
-  }
-
-  return buttons.join("");
+  return {
+    targets,
+    error: agentRuntime && allowPicker ? String(state.chatCatalog.error || "").trim() : ""
+  };
 }
 
 function buildChatWorkspaceSnapshot() {
   const route = ROUTES[state.currentRoute] || ROUTES.chat;
-  const welcomeTargetHTML = buildWelcomeTargetHTML();
+  const welcomeTargetSnapshot = buildWelcomeTargetSnapshot();
 
   if (route.mode !== "chat") {
     return {
@@ -4317,7 +4324,8 @@ function buildChatWorkspaceSnapshot() {
       subheading: t("chat.menu"),
       welcomeHeading: t("welcome.heading"),
       welcomeDescription: t("welcome.desc"),
-      welcomeTargetHTML
+      welcomeTargets: welcomeTargetSnapshot.targets,
+      welcomeTargetError: welcomeTargetSnapshot.error
     };
   }
 
@@ -4342,7 +4350,8 @@ function buildChatWorkspaceSnapshot() {
       subheading: t(subtitleKey),
       welcomeHeading: t("welcome.heading"),
       welcomeDescription,
-      welcomeTargetHTML
+      welcomeTargets: welcomeTargetSnapshot.targets,
+      welcomeTargetError: welcomeTargetSnapshot.error
     };
   }
 
@@ -4357,7 +4366,8 @@ function buildChatWorkspaceSnapshot() {
         : `${targetLabel} · ${modelLabel} · ${t("session.empty_sub")}`,
       welcomeHeading: t("welcome.heading"),
       welcomeDescription,
-      welcomeTargetHTML
+      welcomeTargets: welcomeTargetSnapshot.targets,
+      welcomeTargetError: welcomeTargetSnapshot.error
     };
   }
 
@@ -4367,7 +4377,8 @@ function buildChatWorkspaceSnapshot() {
     subheading: `${targetLabel} · ${modelLabel} · ${active.messages.length} messages`,
     welcomeHeading: t("welcome.heading"),
     welcomeDescription,
-    welcomeTargetHTML
+    welcomeTargets: welcomeTargetSnapshot.targets,
+    welcomeTargetError: welcomeTargetSnapshot.error
   };
 }
 
@@ -4418,20 +4429,30 @@ function publishSessionPaneSnapshot() {
   }));
 }
 
-function renderMessageListHTML(session) {
-  const sessionID = normalizeText(session?.id || "");
-  const messages = Array.isArray(session?.messages) ? session.messages : [];
-  return `<div class="message-list" data-message-session-id="${escapeHTML(sessionID)}">${messages.map((message) => renderMessageArticleHTML(message)).join("")}</div>`;
-}
-
 function publishMessageRegionSnapshot(hasMessages, session = null) {
+  const messages = Array.isArray(session?.messages)
+    ? session.messages.map((message) => ({
+      id: String(message?.id || "").trim(),
+      role: message?.role === "assistant" ? "assistant" : "user",
+      text: typeof message?.text === "string" ? message.text : "",
+      route: typeof message?.route === "string" ? message.route : "",
+      source: typeof message?.source === "string" ? message.source : "",
+      error: Boolean(message?.error),
+      status: typeof message?.status === "string" ? message.status : "done",
+      at: Number.isFinite(message?.at) ? Number(message.at) : Date.now(),
+      process_steps: normalizeMessageProcessSteps(message?.process_steps),
+      agent_process_collapsed: typeof message?.agent_process_collapsed === "boolean"
+        ? message.agent_process_collapsed
+        : undefined
+    })).filter((message) => message.id && (String(message.text || "").trim() || message.process_steps.length))
+    : [];
   document.dispatchEvent(new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
     bubbles: true,
     detail: {
       route: state.currentRoute,
       hasMessages: Boolean(hasMessages),
       sessionId: normalizeText(session?.id || ""),
-      html: hasMessages ? renderMessageListHTML(session) : ""
+      messages: hasMessages ? messages : []
     }
   }));
 }

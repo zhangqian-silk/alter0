@@ -11,6 +11,9 @@ import {
   LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT,
   LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT,
   type LegacyShellChatWorkspaceDetail,
+  type LegacyShellMessageProcessStepDetail,
+  type LegacyShellMessageSnapshotDetail,
+  type LegacyShellChatWorkspaceTargetDetail,
   type LegacyShellMessageRegionDetail,
 } from "../legacyShellBridge";
 import { useLegacyShellSnapshot } from "../legacyShellSnapshot";
@@ -20,6 +23,11 @@ import {
   isReactManagedRouteBody,
   ReactManagedRouteBody,
 } from "./ReactManagedRouteBody";
+import {
+  ChatMessageRegion,
+  type ChatMessageProcessStepSnapshot,
+  type ChatMessageSnapshot,
+} from "./ChatMessageRegion";
 
 type ChatWorkspaceProps = {
   currentRoute: string;
@@ -36,14 +44,23 @@ type ChatWorkspaceSnapshot = {
   subheading: string;
   welcomeHeading: string;
   welcomeDescription: string;
-  welcomeTargetHTML: string;
+  welcomeTargets: WelcomeTargetSnapshot[];
+  welcomeTargetError: string;
 };
 
 type MessageRegionSnapshot = {
   route: string;
   hasMessages: boolean;
   sessionId: string;
-  html: string;
+  messages: ChatMessageSnapshot[];
+};
+
+type WelcomeTargetSnapshot = {
+  type: string;
+  id: string;
+  name: string;
+  active: boolean;
+  interactive: boolean;
 };
 
 function getDefaultChatWorkspaceSnapshot(
@@ -60,7 +77,8 @@ function getDefaultChatWorkspaceSnapshot(
       subheading: copy.chatMenu,
       welcomeHeading: "Hello, how can I help you today?",
       welcomeDescription: "I am a helpful assistant that can help you with your questions.",
-      welcomeTargetHTML: "",
+      welcomeTargets: [],
+      welcomeTargetError: "",
     };
   }
 
@@ -70,7 +88,8 @@ function getDefaultChatWorkspaceSnapshot(
     subheading: routeCopy.subtitle,
     welcomeHeading: "Hello, how can I help you today?",
     welcomeDescription: "I am a helpful assistant that can help you with your questions.",
-    welcomeTargetHTML: "",
+    welcomeTargets: [],
+    welcomeTargetError: "",
   };
 }
 
@@ -94,7 +113,7 @@ function useLegacyMessageRegionSnapshot(currentRoute: string): MessageRegionSnap
       route: currentRoute,
       hasMessages: false,
       sessionId: "",
-      html: "",
+      messages: [],
     }),
     normalizeDetail: normalizeMessageRegionSnapshot,
   });
@@ -113,7 +132,34 @@ function normalizeChatWorkspaceSnapshot(
     subheading: detail.subheading,
     welcomeHeading: detail.welcomeHeading,
     welcomeDescription: detail.welcomeDescription,
-    welcomeTargetHTML: typeof detail.welcomeTargetHTML === "string" ? detail.welcomeTargetHTML : "",
+    welcomeTargets: Array.isArray(detail.welcomeTargets)
+      ? detail.welcomeTargets.map(normalizeChatWorkspaceTarget).filter((item) => item !== null)
+      : [],
+    welcomeTargetError:
+      typeof detail.welcomeTargetError === "string" ? detail.welcomeTargetError : "",
+  };
+}
+
+function normalizeChatWorkspaceTarget(
+  detail: LegacyShellChatWorkspaceTargetDetail,
+): WelcomeTargetSnapshot | null {
+  if (!detail) {
+    return null;
+  }
+
+  const type = typeof detail.type === "string" ? detail.type : "model";
+  const id = typeof detail.id === "string" ? detail.id : "";
+  const name = typeof detail.name === "string" ? detail.name : "";
+  if (!id && !name) {
+    return null;
+  }
+
+  return {
+    type,
+    id,
+    name,
+    active: Boolean(detail.active),
+    interactive: detail.interactive !== false,
   };
 }
 
@@ -128,7 +174,62 @@ function normalizeMessageRegionSnapshot(
     route: detail.route,
     hasMessages: Boolean(detail.hasMessages),
     sessionId: typeof detail.sessionId === "string" ? detail.sessionId : "",
-    html: typeof detail.html === "string" ? detail.html : "",
+    messages: Array.isArray(detail.messages)
+      ? detail.messages.map(normalizeMessageSnapshot).filter((item) => item !== null)
+      : [],
+  };
+}
+
+function normalizeMessageSnapshot(
+  detail: LegacyShellMessageSnapshotDetail,
+): ChatMessageSnapshot | null {
+  if (!detail || typeof detail.id !== "string" || !detail.id.trim()) {
+    return null;
+  }
+
+  const role = detail.role === "assistant" ? "assistant" : "user";
+  const text = typeof detail.text === "string" ? detail.text : "";
+  const processSteps = Array.isArray(detail.process_steps)
+    ? detail.process_steps.map(normalizeProcessStepSnapshot).filter((item) => item !== null)
+    : [];
+  if (!text.trim() && !processSteps.length) {
+    return null;
+  }
+
+  return {
+    id: detail.id,
+    role,
+    text,
+    route: typeof detail.route === "string" ? detail.route : "",
+    source: typeof detail.source === "string" ? detail.source : "",
+    error: Boolean(detail.error),
+    status: typeof detail.status === "string" && detail.status ? detail.status : "done",
+    at: Number.isFinite(detail.at) ? Number(detail.at) : Date.now(),
+    processSteps,
+    agentProcessCollapsed:
+      typeof detail.agent_process_collapsed === "boolean"
+        ? detail.agent_process_collapsed
+        : undefined,
+  };
+}
+
+function normalizeProcessStepSnapshot(
+  detail: LegacyShellMessageProcessStepDetail,
+): ChatMessageProcessStepSnapshot | null {
+  if (!detail) {
+    return null;
+  }
+  const title = typeof detail.title === "string" ? detail.title.trim() : "";
+  const detailText = typeof detail.detail === "string" ? detail.detail.trim() : "";
+  if (!title && !detailText) {
+    return null;
+  }
+  return {
+    id: typeof detail.id === "string" ? detail.id : "",
+    kind: typeof detail.kind === "string" ? detail.kind : "",
+    title,
+    detail: detailText,
+    status: typeof detail.status === "string" ? detail.status : "",
   };
 }
 
@@ -151,21 +252,23 @@ const ChatView = memo(function ChatView({
   currentRoute,
   hidden,
   hasMessages,
-  messageRegionHTML,
+  messageRegion,
   language,
   welcomeHeading,
   welcomeDescription,
-  welcomeTargetHTML,
+  welcomeTargets,
+  welcomeTargetError,
   onQuickPrompt,
 }: {
   currentRoute: string;
   hidden: boolean;
   hasMessages: boolean;
-  messageRegionHTML: string;
+  messageRegion: MessageRegionSnapshot;
   language: LegacyShellLanguage;
   welcomeHeading: string;
   welcomeDescription: string;
-  welcomeTargetHTML: string;
+  welcomeTargets: WelcomeTargetSnapshot[];
+  welcomeTargetError: string;
   onQuickPrompt: (prompt: string) => void;
 }) {
   const copy = getLegacyShellCopy(language);
@@ -178,7 +281,32 @@ const ChatView = memo(function ChatView({
           <h3 id="welcomeHeading">{welcomeHeading}</h3>
           <p id="welcomeDescription">{welcomeDescription}</p>
         </div>
-        <div className="welcome-target-wrap" id="welcomeTargetList" dangerouslySetInnerHTML={{ __html: welcomeTargetHTML }}></div>
+        <div className="welcome-target-wrap" id="welcomeTargetList">
+          {welcomeTargets.map((item) =>
+            item.interactive ? (
+              <button
+                key={`${item.type}:${item.id}:${item.name}`}
+                className={item.active ? "welcome-target-card active" : "welcome-target-card"}
+                type="button"
+                data-chat-target-type={item.type}
+                data-chat-target-id={item.id}
+                data-chat-target-name={item.name}
+              >
+                <strong>{item.name}</strong>
+                <span>{item.id}</span>
+              </button>
+            ) : (
+              <div
+                key={`${item.type}:${item.id}:${item.name}`}
+                className={item.active ? "welcome-target-card active is-static" : "welcome-target-card is-static"}
+              >
+                <strong>{item.name}</strong>
+                <span>{item.id}</span>
+              </div>
+            ),
+          )}
+          {welcomeTargetError ? <p className="welcome-target-error">{welcomeTargetError}</p> : null}
+        </div>
         <section className="prompt-deck" data-shell-section="prompt-deck">
           <div className="prompt-deck-head">
             <p className="prompt-deck-eyebrow">{copy.promptDeckEyebrow}</p>
@@ -210,8 +338,12 @@ const ChatView = memo(function ChatView({
         aria-live="polite"
         hidden={!hasMessages}
       >
-        {messageRegionHTML ? (
-          <div dangerouslySetInnerHTML={{ __html: messageRegionHTML }}></div>
+        {messageRegion.messages.length ? (
+          <ChatMessageRegion
+            sessionId={messageRegion.sessionId}
+            messages={messageRegion.messages}
+            language={language}
+          />
         ) : null}
       </section>
 
@@ -426,11 +558,12 @@ export const ChatWorkspace = memo(function ChatWorkspace({
         currentRoute={currentRoute}
         hidden={isPageMode}
         hasMessages={messageRegionSnapshot.hasMessages}
-        messageRegionHTML={messageRegionSnapshot.html}
+        messageRegion={messageRegionSnapshot}
         language={language}
         welcomeHeading={workspaceSnapshot.welcomeHeading}
         welcomeDescription={workspaceSnapshot.welcomeDescription}
-        welcomeTargetHTML={workspaceSnapshot.welcomeTargetHTML}
+        welcomeTargets={workspaceSnapshot.welcomeTargets}
+        welcomeTargetError={workspaceSnapshot.welcomeTargetError}
         onQuickPrompt={onQuickPrompt}
       />
       <RouteViewMount
