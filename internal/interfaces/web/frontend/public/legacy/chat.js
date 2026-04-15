@@ -23,7 +23,6 @@ const chatView = document.getElementById("chatView");
 const routeView = document.getElementById("routeView");
 const routeTitle = document.getElementById("routeTitle");
 const routeSubtitle = document.getElementById("routeSubtitle");
-const routeActionButton = document.getElementById("routeActionButton");
 const routeBody = document.getElementById("routeBody");
 const chatRuntimePanel = document.getElementById("chatRuntimePanel");
 const chatRuntimeSheetHost = document.getElementById("chatRuntimeSheetHost");
@@ -6243,19 +6242,14 @@ function routeCardTemplate(title, type, fields = [], enabled = false, body = "")
   </article>`;
 }
 
-function syncRouteAction(route) {
-  if (!routeActionButton) {
-    return;
-  }
-  routeActionButton.hidden = true;
-  routeActionButton.dataset.route = "";
-}
-
 function routeUsesReactManagedPage(route) {
-  if (!routeBody) {
+  if (!(appShell instanceof HTMLElement)) {
     return false;
   }
-  return routeBody.dataset.route === route && routeBody.dataset.reactManagedRoute === "true";
+  const routes = appShell.dataset.reactManagedRoutes.split(",")
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  return routes.includes(route);
 }
 
 async function fetchJSON(path) {
@@ -9324,8 +9318,34 @@ function mountTerminalRouteRuntime(container) {
   });
 }
 
+function createSessionFromReactShell() {
+  handleLegacyShellSessionCreation();
+  return true;
+}
+
+function focusSessionFromReactShell(sessionID) {
+  const normalized = normalizeText(sessionID);
+  if (!normalized) {
+    return false;
+  }
+  focusSession(normalized);
+  return true;
+}
+
+function removeSessionFromReactShell(sessionID) {
+  const normalized = normalizeText(sessionID);
+  if (!normalized) {
+    return false;
+  }
+  void removeSession(normalized);
+  return true;
+}
+
 window.__alter0LegacyRuntime = Object.assign(window.__alter0LegacyRuntime || {}, {
-  mountTerminalRoute: mountTerminalRouteRuntime
+  mountTerminalRoute: mountTerminalRouteRuntime,
+  createSession: createSessionFromReactShell,
+  focusSession: focusSessionFromReactShell,
+  removeSession: removeSessionFromReactShell
 });
 
 function formatDateTime(value) {
@@ -10211,7 +10231,6 @@ async function renderRoute(route) {
     if (syncSessionTargetForRoute(activeSession, safe)) {
       persistSessions();
     }
-    syncRouteAction("");
     syncMainChatComposerDraft(activeConversationSessionID(), { preserveCurrent: false });
     renderSessions();
     renderMessages();
@@ -10229,7 +10248,6 @@ async function renderRoute(route) {
 
   setMainContentMode("page");
   closeTransientPanels();
-  syncRouteAction(safe);
   syncHeader();
   if (routeUsesReactManagedPage(safe)) {
     return;

@@ -108,6 +108,15 @@ describe("LegacyWebShell", () => {
     );
   });
 
+  it("publishes the stable set of React-managed routes on the shell root", () => {
+    render(<LegacyWebShell />);
+
+    expect(document.getElementById(LEGACY_SHELL_IDS.appShell)).toHaveAttribute(
+      "data-react-managed-routes",
+      "agent,terminal,products,memory,sessions,tasks,channels,skills,mcp,models,environments,cron-jobs",
+    );
+  });
+
   it("marks the terminal route body as React-managed and renders the bridge shell", () => {
     window.location.hash = "#terminal";
 
@@ -389,26 +398,11 @@ describe("LegacyWebShell", () => {
     expect(tooltip).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("dispatches route navigation bridge events from the route action button", async () => {
-    const routes: string[] = [];
-    document.addEventListener(
-      LEGACY_SHELL_NAVIGATE_EVENT,
-      ((event: Event) => {
-        routes.push(String((event as CustomEvent<{ route: string }>).detail?.route || ""));
-      }) as EventListener,
-    );
-
+  it("does not render the retired route action button shell mount", () => {
     window.location.hash = "#channels";
     render(<LegacyWebShell />);
 
-    const routeActionButton = document.getElementById("routeActionButton") as HTMLButtonElement;
-    await act(async () => {
-      routeActionButton.hidden = false;
-      routeActionButton.dataset.route = "channels";
-      fireEvent.click(routeActionButton);
-    });
-
-    expect(routes).toEqual(["channels"]);
+    expect(document.getElementById("routeActionButton")).toBeNull();
   });
 
   it("dispatches a session creation bridge event from both session entrypoints", () => {
@@ -813,6 +807,26 @@ describe("LegacyWebShell", () => {
       expect(document.getElementById(LEGACY_SHELL_IDS.messageArea)).not.toHaveAttribute("hidden");
       expect(screen.getByText("runtime message")).toBeInTheDocument();
     });
+  });
+
+  it("ignores runtime message region snapshots for other routes", async () => {
+    render(<LegacyWebShell />);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
+          detail: {
+            route: "terminal",
+            hasMessages: true,
+            html: '<div data-runtime-node="message">terminal message should stay scoped</div>',
+          },
+        }),
+      );
+    });
+
+    expect(document.getElementById(LEGACY_SHELL_IDS.welcomeScreen)).not.toHaveAttribute("hidden");
+    expect(document.getElementById(LEGACY_SHELL_IDS.messageArea)).toHaveAttribute("hidden");
+    expect(screen.queryByText("terminal message should stay scoped")).toBeNull();
   });
 
   it("renders runtime message region snapshot content across shell rerenders", async () => {

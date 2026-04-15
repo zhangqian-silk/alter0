@@ -1,9 +1,10 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 import { LEGACY_SHELL_IDS } from "../legacyDomContract";
 import {
   LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT,
   type LegacyShellChatRuntimeDetail,
 } from "../legacyShellBridge";
+import { useLegacyShellSnapshot } from "../legacyShellSnapshot";
 
 type ChatRuntimeSnapshot = {
   route: string;
@@ -15,42 +16,35 @@ type ChatRuntimeSnapshot = {
 };
 
 function useLegacyChatRuntimeSnapshot(currentRoute: string): ChatRuntimeSnapshot {
-  const [snapshot, setSnapshot] = useState<ChatRuntimeSnapshot | null>(null);
+  return useLegacyShellSnapshot<LegacyShellChatRuntimeDetail, ChatRuntimeSnapshot>({
+    currentRoute,
+    eventName: LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT,
+    fallback: () => ({
+      route: currentRoute,
+      controlsHTML: "",
+      noteHTML: "",
+      sheetHTML: "",
+      scrollPopover: "",
+      scrollTop: 0,
+    }),
+    normalizeDetail: normalizeChatRuntimeSnapshot,
+  });
+}
 
-  useEffect(() => {
-    const handleSnapshot = (event: Event) => {
-      const detail = (event as CustomEvent<LegacyShellChatRuntimeDetail>).detail;
-      if (!detail || typeof detail.route !== "string") {
-        return;
-      }
-
-      setSnapshot({
-        route: detail.route,
-        controlsHTML: typeof detail.controlsHTML === "string" ? detail.controlsHTML : "",
-        noteHTML: typeof detail.noteHTML === "string" ? detail.noteHTML : "",
-        sheetHTML: typeof detail.sheetHTML === "string" ? detail.sheetHTML : "",
-        scrollPopover: typeof detail.scrollPopover === "string" ? detail.scrollPopover : "",
-        scrollTop: Number.isFinite(detail.scrollTop) ? Math.max(Number(detail.scrollTop), 0) : 0,
-      });
-    };
-
-    document.addEventListener(LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT, handleSnapshot as EventListener);
-    return () => {
-      document.removeEventListener(LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT, handleSnapshot as EventListener);
-    };
-  }, []);
-
-  if (snapshot?.route === currentRoute) {
-    return snapshot;
+function normalizeChatRuntimeSnapshot(
+  detail: LegacyShellChatRuntimeDetail,
+): ChatRuntimeSnapshot | null {
+  if (!detail || typeof detail.route !== "string") {
+    return null;
   }
 
   return {
-    route: currentRoute,
-    controlsHTML: "",
-    noteHTML: "",
-    sheetHTML: "",
-    scrollPopover: "",
-    scrollTop: 0,
+    route: detail.route,
+    controlsHTML: typeof detail.controlsHTML === "string" ? detail.controlsHTML : "",
+    noteHTML: typeof detail.noteHTML === "string" ? detail.noteHTML : "",
+    sheetHTML: typeof detail.sheetHTML === "string" ? detail.sheetHTML : "",
+    scrollPopover: typeof detail.scrollPopover === "string" ? detail.scrollPopover : "",
+    scrollTop: Number.isFinite(detail.scrollTop) ? Math.max(Number(detail.scrollTop), 0) : 0,
   };
 }
 

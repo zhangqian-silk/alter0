@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { LEGACY_SHELL_IDS } from "./legacyDomContract";
 import { useLegacyShellLanguage } from "./legacyShellCopy";
+import { getReactManagedRouteBodyRoutes } from "./components/ReactManagedRouteBody";
 import {
   isLegacyShellChatRoute,
   isLegacyShellMobileViewport,
@@ -31,6 +32,7 @@ import { SessionPane } from "./components/SessionPane";
 export function LegacyWebShell() {
   const currentRoute = useLegacyShellRoute();
   const language = useLegacyShellLanguage();
+  const reactManagedRoutes = useMemo(() => getReactManagedRouteBodyRoutes().join(","), []);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [sessionHistoryCollapsed, setSessionHistoryCollapsed] = useState(() =>
     loadLegacySessionHistoryCollapsed(),
@@ -95,7 +97,11 @@ export function LegacyWebShell() {
   const getShellRoot = () => document.getElementById(LEGACY_SHELL_IDS.appShell);
 
   return (
-    <div className={shellClassName} id={LEGACY_SHELL_IDS.appShell}>
+    <div
+      className={shellClassName}
+      id={LEGACY_SHELL_IDS.appShell}
+      data-react-managed-routes={reactManagedRoutes}
+    >
       <PrimaryNav
         currentRoute={currentRoute}
         language={language}
@@ -138,7 +144,6 @@ export function LegacyWebShell() {
         currentRoute={currentRoute}
         language={language}
         onCreateSession={requestLegacyShellSessionCreation}
-        onNavigate={requestLegacyShellRouteNavigation}
         onQuickPrompt={requestLegacyShellQuickPrompt}
         onToggleNavDrawer={() => {
           const root = getShellRoot();
