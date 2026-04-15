@@ -6,6 +6,7 @@ import {
 import { ReactManagedAgentRouteBody } from "./ReactManagedAgentRouteBody";
 import { ReactManagedControlRouteBody } from "./ReactManagedControlRouteBody";
 import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
+import { ReactManagedProductsRouteBody } from "./ReactManagedProductsRouteBody";
 import { ReactManagedSessionsRouteBody } from "./ReactManagedSessionsRouteBody";
 import { ReactManagedTasksRouteBody } from "./ReactManagedTasksRouteBody";
 
@@ -23,6 +24,9 @@ export function ReactManagedRouteBody({
   }
   if (route === "agent") {
     return <ReactManagedAgentRouteBody language={language} />;
+  }
+  if (route === "products") {
+    return <ReactManagedProductsRouteBody language={language} />;
   }
   if (route === "memory") {
     return <ReactManagedMemoryRouteBody language={language} />;
