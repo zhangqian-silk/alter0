@@ -125,17 +125,17 @@ func TestSidebarPageRouteRuntimeDependenciesPresent(t *testing.T) {
 	}
 }
 
-func TestCronVisualHelpersPresent(t *testing.T) {
+func TestLegacyRuntimeDropsCronVisualHelpers(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
-	markers := []string{
+	forbiddenMarkers := []string{
 		"function parseCronExpressionVisual(expression)",
 		"function buildCronExpressionVisual(options = {})",
 		"expressionInput.value = buildCronExpressionVisual({",
 		"const parsed = parseCronExpressionVisual(expressionInput.value);",
 	}
-	for _, marker := range markers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected cron helper marker %q", marker)
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected managed legacy marker %q", marker)
 		}
 	}
 }
@@ -365,17 +365,10 @@ func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	scriptMarkers := []string{
 		`agent: {`,
-		"loader: loadAgentView",
+		"loader: loadPlaceholderView",
 		`"route.agent.title"`,
-		`"/api/control/agents"`,
-		`data-agent-chat-now`,
-		`openAgentRuntimeWithTarget({`,
 		`memory: {`,
-		"loader: loadMemoryView",
-		`"/api/agent/memory"`,
-		`data-memory-tab`,
-		`route.memory.tab.specification`,
-		`data-memory-panel="specification"`,
+		"function loadPlaceholderView(container)",
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -389,6 +382,85 @@ func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
 	for _, marker := range scriptForbidden {
 		if strings.Contains(script, marker) {
 			t.Fatalf("unexpected script marker %q", marker)
+		}
+	}
+
+	forbiddenMarkers := []string{
+		"loader: loadAgentView",
+		"loader: loadMemoryView",
+		"async function loadAgentView(container)",
+		"async function loadMemoryView(container)",
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected managed legacy marker %q", marker)
+		}
+	}
+}
+
+func TestLegacyRuntimeRetiresManagedWorkflowLoaders(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	requiredMarkers := []string{
+		`products: {`,
+		`sessions: {`,
+		`tasks: {`,
+		"loader: loadPlaceholderView",
+	}
+	for _, marker := range requiredMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	forbiddenMarkers := []string{
+		"loader: loadProductsView",
+		"loader: loadSessionsView",
+		"loader: loadControlTasksView",
+		"async function loadProductsView(container)",
+		"async function loadSessionsView(container)",
+		"async function loadControlTasksView(container)",
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected managed legacy marker %q", marker)
+		}
+	}
+}
+
+func TestLegacyRuntimeRetiresManagedControlLoaders(t *testing.T) {
+	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	requiredMarkers := []string{
+		`channels: {`,
+		`skills: {`,
+		`mcp: {`,
+		`models: {`,
+		`environments: {`,
+		`"cron-jobs": {`,
+		"loader: loadPlaceholderView",
+	}
+	for _, marker := range requiredMarkers {
+		if !strings.Contains(script, marker) {
+			t.Fatalf("expected script marker %q", marker)
+		}
+	}
+
+	forbiddenMarkers := []string{
+		"loader: loadChannelsView",
+		"loader: loadSkillsView",
+		"loader: loadMCPView",
+		"loader: loadModelsView",
+		"loader: loadEnvironmentsView",
+		"loader: loadCronJobsView",
+		"async function loadChannelsView(container)",
+		"async function loadSkillsView(container)",
+		"async function loadMCPView(container)",
+		"async function loadModelsView(container)",
+		"async function loadEnvironmentsView(container)",
+		"async function loadCronJobsView(container)",
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected managed legacy marker %q", marker)
 		}
 	}
 }
@@ -443,37 +515,38 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 	}
 }
 
-func TestEnvironmentRestartControlsPresent(t *testing.T) {
+func TestRuntimeRestartNoticeBridgeRemainsInShell(t *testing.T) {
 	script := readEmbeddedAsset(t, "static/assets/chat.js")
 	markers := []string{
 		`"route.envs.restart_service": "Restart Service"`,
 		`"route.envs.restart_service": "重启服务"`,
-		`"route.envs.restart_sync_master": "Sync remote master changes before restart"`,
-		`"route.envs.restart_sync_master": "重启前同步远端 master 最新改动"`,
-		`"route.envs.restart_confirm_desc": "The page will reload automatically after the new runtime passes health checks."`,
-		`"route.envs.restart_confirm_desc": "新实例探活通过后，当前页面会自动刷新并重新连接。"`,
+		`"route.envs.restart_success": "Service restart completed. The page is now connected to the latest runtime."`,
+		`"route.envs.restart_success": "服务重启已完成，当前页面已连接到最新运行实例。"`,
 		`const RUNTIME_RESTART_NOTICE_STORAGE_KEY = "alter0.web.runtime.restart-notice.v1";`,
-		`data-environment-restart`,
-		"const requestRuntimeRestart = async () => {",
-		"showGlobalConfirmModal({",
-		`data-global-modal-checkbox`,
-		`fetch("/api/control/runtime/restart", {`,
-		`"sync_remote_master": shouldSyncRemoteMaster`,
-		"const waitForRuntimeReady = async () => {",
-		"persistRuntimeRestartNotice();",
-		"showPendingRuntimeRestartNotice();",
 		`data-global-modal-root`,
+		"function showPendingRuntimeRestartNotice() {",
+		"showGlobalModal({",
+		`title: t("route.envs.restart_service"),`,
+		`message: t("route.envs.restart_success")`,
+		"showPendingRuntimeRestartNotice();",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected environment restart marker %q", marker)
 		}
 	}
-	if strings.Contains(script, `window.confirm(t("route.envs.restart_confirm"))`) {
-		t.Fatalf("expected restart confirmation to avoid window.confirm")
+
+	forbiddenMarkers := []string{
+		`data-environment-restart`,
+		"const requestRuntimeRestart = async () => {",
+		`fetch("/api/control/runtime/restart", {`,
+		`"sync_remote_master": shouldSyncRemoteMaster`,
+		"const waitForRuntimeReady = async () => {",
 	}
-	if strings.Contains(script, `window.confirm(t("route.envs.restart_sync_master"))`) {
-		t.Fatalf("expected restart sync option to avoid window.confirm")
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("unexpected managed legacy marker %q", marker)
+		}
 	}
 }
 

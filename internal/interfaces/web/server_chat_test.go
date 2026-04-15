@@ -58,11 +58,9 @@ func TestChatPageHandlerMethodNotAllowed(t *testing.T) {
 
 func TestEmbeddedAssetsAvailable(t *testing.T) {
 	paths := []string{
-		"static/assets/chat-terminal-session.js",
-		"static/assets/chat-terminal-process.js",
-		"static/assets/chat-terminal-patch.js",
-		"static/assets/chat-terminal-shell.js",
-		"static/assets/chat.js",
+		"static/dist/index.html",
+		"static/dist/legacy/chat.js",
+		"static/dist/legacy/chat.css",
 	}
 	for _, path := range paths {
 		content, err := webStaticFS.ReadFile(path)
@@ -75,26 +73,18 @@ func TestEmbeddedAssetsAvailable(t *testing.T) {
 	}
 }
 
-func TestChatPageLoadsTerminalHelpersBeforeMainScript(t *testing.T) {
-	html := readEmbeddedAsset(t, "static/chat.html")
-	scripts := []string{
-		`/assets/chat-terminal-session.js?v=1775523000`,
-		`/assets/chat-terminal-process.js?v=1775523000`,
-		`/assets/chat-terminal-patch.js?v=1775523000`,
-		`/assets/chat-terminal-shell.js?v=1775523000`,
-		`/assets/chat.js?v=1775523000`,
-	}
+func TestChatPageLoadsBridgeBundleAfterLegacyStyles(t *testing.T) {
+	html := readEmbeddedAssetRaw(t, "static/dist/index.html")
+	styleMarker := `/legacy/chat.css`
+	scriptMarker := `/assets/index-`
 
-	lastIndex := -1
-	for _, script := range scripts {
-		index := strings.Index(html, script)
-		if index == -1 {
-			t.Fatalf("expected chat page to load %q", script)
-		}
-		if index < lastIndex {
-			t.Fatalf("expected helper scripts to load before later assets")
-		}
-		lastIndex = index
+	styleIndex := strings.Index(html, styleMarker)
+	scriptIndex := strings.Index(html, scriptMarker)
+	if styleIndex == -1 || scriptIndex == -1 {
+		t.Fatalf("expected chat page to load legacy styles and frontend bundle")
+	}
+	if styleIndex >= scriptIndex {
+		t.Fatalf("expected legacy styles before frontend bundle")
 	}
 }
 
@@ -116,19 +106,14 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 		"draftStorage: \"session\",",
 		"draftKey: () => getMainChatDraftKey(),",
 		"switchDraftKey(nextKey, options = {}) {",
-		"card.dataset.sessionId = item.id;",
 		"counterNode: charCount,",
 		"submitNode: sendButton,",
 		`document.body.setAttribute("data-composer-unsaved-state", hasDraft ? "dirty" : "clean");`,
 		`document.body.setAttribute("data-composer-unsaved-confirm", String(state || "idle"));`,
 		`inputNode.setAttribute("data-composer-ready", "true");`,
 		`stableName: "chat-main",`,
-		`stableName: "cron-prompt",`,
 		`stableName: "terminal-runtime",`,
-		`data-terminal-workspace-status="${escapeHTML(normalizeTerminalSessionStatus(session.status) || "unknown")}"`,
 		"document.body.setAttribute(\"data-app-ready\", \"true\");",
-		"const cronComposer = createReusableComposer();",
-		"cronComposer.bind(promptInput, form, {",
 		"const controlTaskTerminalComposer = createReusableComposer();",
 		"controlTaskTerminalComposer.bind(inputNode, formNode, {",
 		"window.addEventListener(\"beforeunload\", (event) => {",
