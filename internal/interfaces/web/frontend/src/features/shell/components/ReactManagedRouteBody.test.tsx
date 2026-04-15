@@ -68,6 +68,7 @@ describe("ReactManagedRouteBody", () => {
   it("tracks the full set of routes now owned by React", () => {
     expect(isReactManagedRouteBody("agent")).toBe(true);
     expect(isReactManagedRouteBody("memory")).toBe(true);
+    expect(isReactManagedRouteBody("products")).toBe(true);
     expect(isReactManagedRouteBody("channels")).toBe(true);
     expect(isReactManagedRouteBody("skills")).toBe(true);
     expect(isReactManagedRouteBody("mcp")).toBe(true);
@@ -77,6 +78,5 @@ describe("ReactManagedRouteBody", () => {
     expect(isReactManagedRouteBody("sessions")).toBe(true);
     expect(isReactManagedRouteBody("tasks")).toBe(true);
     expect(isReactManagedRouteBody("terminal")).toBe(false);
-    expect(isReactManagedRouteBody("products")).toBe(false);
   });
 });

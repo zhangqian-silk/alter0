@@ -1002,4 +1002,90 @@ describe("LegacyWebShell", () => {
     expect(screen.getAllByText("Web").length).toBeGreaterThan(0);
     expect(document.getElementById(LEGACY_SHELL_IDS.routeBody)?.querySelector(".session-route-card")).toBeInTheDocument();
   });
+
+  it("renders the React-managed products route body inside the route view", async () => {
+    window.location.hash = "#products";
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "travel",
+              name: "Travel",
+              summary: "City guides with workspace-backed detail pages.",
+              status: "active",
+              visibility: "public",
+              owner_type: "builtin",
+              version: "v1.2.0",
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          product: {
+            id: "travel",
+            name: "Travel",
+            summary: "City guides with workspace-backed detail pages.",
+            status: "active",
+            visibility: "public",
+            version: "v1.2.0",
+          },
+          master_agent: {
+            agent_id: "travel-master",
+            name: "Travel Master",
+            description: "Maintains city guide spaces.",
+            tools: ["codex_exec"],
+          },
+          spaces: [
+            {
+              space_id: "wuhan",
+              title: "Wuhan",
+              summary: "Metro-first night food city guide.",
+              html_path: "/products/travel/spaces/wuhan.html",
+              status: "active",
+              tags: ["metro"],
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          space: {
+            space_id: "wuhan",
+            title: "Wuhan",
+            summary: "Metro-first night food city guide.",
+          },
+          guide: {
+            id: "wuhan",
+            city: "Wuhan",
+            days: 3,
+            travel_style: "metro-first",
+            budget: "mid-range",
+            companions: [],
+            must_visit: [],
+            avoid: [],
+            additional_requirements: [],
+            keep_conditions: [],
+            replace_conditions: [],
+            notes: [],
+            daily_routes: [],
+            map_layers: [],
+            content: "Initial content",
+            revision: 1,
+            updated_at: "2026-04-15T01:02:03Z",
+          },
+        }),
+      );
+
+    render(<LegacyWebShell />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Travel").length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByText("Product Workspace")).toBeInTheDocument();
+    expect(document.getElementById(LEGACY_SHELL_IDS.routeBody)?.querySelector(".product-workspace-grid")).toBeInTheDocument();
+  });
 });
