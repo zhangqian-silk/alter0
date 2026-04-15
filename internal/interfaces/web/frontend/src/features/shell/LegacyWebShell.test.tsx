@@ -108,15 +108,21 @@ describe("LegacyWebShell", () => {
     );
   });
 
-  it("keeps legacy-managed route bodies unmarked", () => {
+  it("marks the terminal route body as React-managed and renders the bridge shell", () => {
     window.location.hash = "#terminal";
 
     render(<LegacyWebShell />);
 
-    expect(document.getElementById(LEGACY_SHELL_IDS.routeBody)).toHaveAttribute(
+    const routeBody = document.getElementById(LEGACY_SHELL_IDS.routeBody);
+
+    expect(routeBody).toHaveAttribute(
       "data-react-managed-route",
-      "false",
+      "true",
     );
+    expect(routeBody?.querySelector('[data-legacy-terminal-host="true"]')).toBeInTheDocument();
+    expect(routeBody?.querySelector('[data-legacy-terminal-host="true"] [data-terminal-view]')).toBeInTheDocument();
+    expect(routeBody?.querySelector('[data-legacy-terminal-host="true"] [data-terminal-session-pane]')).toBeInTheDocument();
+    expect(routeBody?.querySelector('[data-legacy-terminal-host="true"] .terminal-workspace')).toBeInTheDocument();
   });
 
   it("renders the shell navigation groups and route placement", () => {

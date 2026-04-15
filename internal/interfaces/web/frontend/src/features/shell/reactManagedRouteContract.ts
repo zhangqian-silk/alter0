@@ -11,19 +11,23 @@ export type ReactManagedControlRoute = (typeof REACT_MANAGED_CONTROL_ROUTES)[num
 
 export const REACT_MANAGED_ROUTE_BODIES = [
   "agent",
+  "terminal",
   "products",
   "memory",
   "sessions",
   "tasks",
-  "channels",
-  "skills",
-  "mcp",
-  "models",
-  "environments",
-  "cron-jobs",
+  ...REACT_MANAGED_CONTROL_ROUTES,
 ] as const;
 
 export type ReactManagedRouteBodyRoute = (typeof REACT_MANAGED_ROUTE_BODIES)[number];
+
+export function getReactManagedControlRoutes(): ReactManagedControlRoute[] {
+  return [...REACT_MANAGED_CONTROL_ROUTES];
+}
+
+export function getReactManagedRouteBodyRoutes(): ReactManagedRouteBodyRoute[] {
+  return [...REACT_MANAGED_ROUTE_BODIES];
+}
 
 export function isReactManagedControlRoute(route: string): route is ReactManagedControlRoute {
   return REACT_MANAGED_CONTROL_ROUTES.includes(route as ReactManagedControlRoute);
