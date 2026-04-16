@@ -3,6 +3,7 @@ import { NAV_GROUPS } from "./legacyShellConfig";
 
 export const LEGACY_SHELL_DEFAULT_ROUTE = "chat";
 export const LEGACY_SESSION_HISTORY_STORAGE_KEY = "alter0.web.session-history-panel.v1";
+export const LEGACY_SHELL_MOBILE_BREAKPOINT_PX = 960;
 
 const LEGACY_CHAT_ROUTES = new Set(["chat", "agent-runtime"]);
 const LEGACY_SHELL_ROUTES = new Set(
@@ -25,7 +26,7 @@ export function isLegacyShellMobileViewport(): boolean {
   if (typeof window.matchMedia !== "function") {
     return false;
   }
-  return window.matchMedia("(max-width: 1100px)").matches;
+  return window.matchMedia(`(max-width: ${LEGACY_SHELL_MOBILE_BREAKPOINT_PX}px)`).matches;
 }
 
 export function useLegacyShellRoute(): string {

@@ -68,6 +68,18 @@ function runtimeSnapshot(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function renderChannelsRouteShell() {
+  window.location.hash = "#channels";
+  render(<LegacyWebShell />);
+  await screen.findByText("No Channels available.");
+}
+
+async function renderTerminalRouteShell() {
+  window.location.hash = "#terminal";
+  render(<LegacyWebShell />);
+  await screen.findByText("No terminal sessions yet.");
+}
+
 describe("LegacyWebShell", () => {
   beforeEach(() => {
     resetLegacyRuntimeSnapshotStore();
@@ -128,6 +140,12 @@ describe("LegacyWebShell", () => {
     render(<LegacyWebShell />);
 
     expect(document.querySelector('[data-shell-section="brand-panel"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="brand-panel"] .brand-mark')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="brand-panel"] .nav-collapse')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="brand-panel"] .brand strong')).toHaveTextContent("Alter0");
+    expect(document.querySelector('[data-shell-section="brand-panel"] .brand-kicker')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="brand-panel"] .brand-description')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="brand-panel"] .brand-status-strip')).not.toBeInTheDocument();
     expect(document.querySelector('[data-shell-section="session-context"]')).not.toBeInTheDocument();
     expect(document.querySelector('[data-shell-section="chat-hero"]')).not.toBeInTheDocument();
     expect(document.querySelector('[data-shell-section="prompt-deck"]')).toBeInTheDocument();
@@ -135,20 +153,23 @@ describe("LegacyWebShell", () => {
     expect(document.querySelector('[data-shell-section="route-hero"]')).not.toBeInTheDocument();
   });
 
-  it("renders a single route heading surface for page-mode routes", () => {
-    window.location.hash = "#channels";
-
+  it("centers chat reading surfaces inside a shared content frame", () => {
     render(<LegacyWebShell />);
+
+    expect(document.querySelector(".welcome-screen .chat-content-frame")).toBeInTheDocument();
+    expect(document.querySelector(".composer-shell .chat-content-frame")).toBeInTheDocument();
+  });
+
+  it("renders a single route heading surface for page-mode routes", async () => {
+    await renderChannelsRouteShell();
 
     expect(document.querySelector('[data-shell-section="route-hero"]')).toBeInTheDocument();
     expect(document.querySelector('[data-shell-section="chat-hero"]')).not.toBeInTheDocument();
     expect(document.querySelector(".route-head")).not.toBeInTheDocument();
   });
 
-  it("marks React-managed route bodies so the legacy runtime can skip DOM ownership", () => {
-    window.location.hash = "#channels";
-
-    render(<LegacyWebShell />);
+  it("marks React-managed route bodies so the legacy runtime can skip DOM ownership", async () => {
+    await renderChannelsRouteShell();
 
     expect(document.getElementById(LEGACY_SHELL_IDS.routeBody)).toHaveAttribute(
       "data-react-managed-route",
@@ -165,10 +186,8 @@ describe("LegacyWebShell", () => {
     );
   });
 
-  it("marks the terminal route body as React-managed and renders the React terminal shell", () => {
-    window.location.hash = "#terminal";
-
-    render(<LegacyWebShell />);
+  it("marks the terminal route body as React-managed and renders the React terminal shell", async () => {
+    await renderTerminalRouteShell();
 
     const routeBody = document.getElementById(LEGACY_SHELL_IDS.routeBody);
 
@@ -445,9 +464,8 @@ describe("LegacyWebShell", () => {
     expect(tooltip).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("does not render the retired route action button shell mount", () => {
-    window.location.hash = "#channels";
-    render(<LegacyWebShell />);
+  it("does not render the retired route action button shell mount", async () => {
+    await renderChannelsRouteShell();
 
     expect(document.getElementById("routeActionButton")).toBeNull();
   });
@@ -548,9 +566,7 @@ describe("LegacyWebShell", () => {
   });
 
   it("delegates terminal session drawer toggles to the terminal route mount", async () => {
-    window.location.hash = "#terminal";
-
-    render(<LegacyWebShell />);
+    await renderTerminalRouteShell();
 
     const appShell = document.getElementById(LEGACY_SHELL_IDS.appShell);
     const terminalToggle = document.querySelector("[data-terminal-session-pane-toggle]") as HTMLButtonElement | null;

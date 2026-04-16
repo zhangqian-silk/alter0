@@ -54,11 +54,14 @@
 - 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新。
 - Web 前端所有时间显示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Cron 创建表单默认时区固定为 `Asia/Shanghai`。
 - Web 侧边栏、历史折叠、页面滚动隔离、浅蓝轻科幻阅读主题、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
+- 会话侧栏中的 Session 卡片需支持长标题场景：标题允许两行截断，摘要和短 hash 收敛在同一卡片内，复制与删除操作使用不破坏列表主阅读节奏的轻量按钮布局。
 - Web Shell 需保持稳定 legacy DOM 契约，但运行链路已切到 React：`LegacyWebShell` 负责主导航、会话栏、工作区壳层与语言/路由文案，`ReactRuntimeFacade` 负责 Chat / Agent 的会话状态、消息流、结构化 runtime、移动端 runtime sheet、草稿恢复与 bridge 事件处理；`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类路由页由 React 直接请求控制台或会话 API 并渲染，其中 terminal 也已改为 React 原生页面实现。`routeBody` 必须暴露当前页稳定的 `data-react-managed-route` 标记，`appShell` 必须暴露稳定的 `data-react-managed-routes` 路由清单；兼容层仅保留样式与 DOM 契约，不再通过 legacy 脚本接管 `/chat` 运行时。
-- Web Shell 的稳定视觉基线为浅蓝轻科幻风格的桌面三栏 cockpit 布局和移动端双抽屉工作台：React 自有样式系统负责品牌区、会话控制区、欢迎区、页面 hero、提示卡组与输入面板的设计语言，并统一采用浅蓝渐变背景、冷色高亮、低对比玻璃感面板和未来感品牌区；同时保持单层信息架构，不允许在会话栏、主工作区 hero、顶部标题和页面 hero 之间重复堆叠同一组路由说明；legacy 样式仅继续承载运行时内容、Terminal 细节和 route body 内容皮肤。
+- Web Shell 的稳定视觉基线为浅蓝轻科幻风格的桌面三栏 cockpit 布局和移动端双抽屉工作台：React 自有样式系统负责仅展示 `Alter0` 服务名的品牌头部、会话控制区、欢迎区、页面 hero、提示卡组与输入面板的设计语言，并统一采用浅蓝渐变背景、冷色高亮与低对比玻璃感面板；主导航顶部不展示图形标识、品牌口号或实现状态；同时保持单层信息架构，不允许在会话栏、主工作区 hero、顶部标题和页面 hero 之间重复堆叠同一组路由说明；legacy 样式仅继续承载运行时内容、Terminal 细节和 route body 内容皮肤。
+- 主导航、控制台与资产页默认以高密度信息架构呈现：导航组与条目间距压缩，控制面长列表优先使用表格或主从视图，不再把大量配置和任务详情平铺为低密度卡片矩阵。
 - 移动端 Web Shell 使用 `VisualViewport` 驱动的 `--mobile-viewport-height` 作为壳体高度来源，浏览器工具栏与键盘状态切换时不出现底部空白或内容裁切。
+- Web Shell 的抽屉式单列布局仅在主视口宽度 `960px` 及以下触发；高于该阈值时必须继续保留桌面三栏信息架构，避免中等桌面分辨率过早进入移动端壳层。
 - 移动端 Chat/Agent 在主输入框与会话设置底部面板之间切换时，不允许保留“键盘 + 设置面板”双重底部占位：打开设置前先释放输入焦点并清理键盘偏移，回到主输入框时先自动收起设置面板；Terminal 在真手机宽度下允许工作区头部工具栏换行，操作按钮不得被长标题挤出可见区域。
-- 桌面宽屏下 Chat 消息列与底部输入区需按主工作区宽度自适应扩展，不再长期锁定为 860px 窄列，同时保留可读性上限。
+- 桌面宽屏下 Chat 消息列与底部输入区需按主工作区宽度自适应扩展，并统一收敛到居中的 `960px` 最大阅读宽度，避免正文与输入区无限拉长。
 
 ## Agent Capability & Memory
 
@@ -86,7 +89,8 @@
 - 高复杂度、长耗时或产物型请求可切换为异步 Task，先返回任务卡片，再通过任务视图、日志流与会话回写完成闭环。
 - Task 需建立 `session_id`、`source_message_id`、`channel_type`、`trigger_type`、`correlation_id`、Cron 触发信息与产物引用的标准映射。
 - Task 观测台支持列表、详情抽屉、来源筛选、日志 SSE、游标续读、日志回补、retry/cancel、交互式续写、任务-会话双向跳转与完成结果回写。
-- Task 记忆视图支持任务摘要、任务详情、日志下钻、产物引用与摘要重建，用于把历史任务纳入长期上下文召回。
+- Task 观测台桌面端优先采用左侧任务列表 + 右侧详情面板的主从布局，详情区承载元数据、日志、产物、控制动作与 follow-up terminal 输入。
+- Task 记忆视图支持任务摘要、任务详情、日志下钻、产物引用与摘要重建，用于把历史任务纳入长期上下文召回；任务历史默认以表格承载摘要元数据，再通过详情侧栏查看长文本与日志/产物入口。
 - Codex CLI 长任务按心跳续租运行窗口；列表与详情展示 `Last Heartbeat` 和 `Timeout Window`。
 - Web 会话不直接暴露本地文件路径，产物通过引用、下载或预览接口交付。
 - 默认工作区按执行上下文隔离：Chat/Agent 使用 `.alter0/workspaces/sessions/<session_id>`，Task 使用其会话下的 `tasks/<task_id>`，Terminal 使用 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。

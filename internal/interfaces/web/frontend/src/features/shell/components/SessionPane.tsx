@@ -33,6 +33,18 @@ function CopyIcon() {
   );
 }
 
+function DeleteIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18"></path>
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+      <path d="M10 11v6"></path>
+      <path d="M14 11v6"></path>
+    </svg>
+  );
+}
+
 const SessionListMount = memo(function SessionListMount({
   ariaLabel,
   items,
@@ -49,45 +61,50 @@ const SessionListMount = memo(function SessionListMount({
     >
       {items.map((item) => (
         <div key={item.id} className="session-card-row">
-          <button
-            type="button"
-            className={item.active ? "session-card active" : "session-card"}
-            data-session-id={item.id}
-            role="option"
-            aria-selected={item.active ? "true" : "false"}
-            onClick={() => requestLegacyShellSessionFocus(item.id)}
-          >
-            <p className="session-card-title">{item.title}</p>
-            <p className="session-card-meta">{item.meta}</p>
-            {item.shortHash ? (
-              <div className="session-card-footer">
-                <span className="session-card-id" title={item.id}>#{item.shortHash}</span>
-              </div>
-            ) : null}
-          </button>
-          <div className="session-card-actions">
-            {item.copyValue ? (
-              <button
-                type="button"
-                className="session-card-copy"
-                data-copy-value={item.copyValue}
-                title={item.copyLabel}
-                aria-label={item.copyLabel}
-              >
-                <CopyIcon />
-              </button>
-            ) : null}
+          <div className={item.active ? "session-card active" : "session-card"}>
             <button
               type="button"
-              className="session-card-delete"
-              aria-label={item.deleteLabel}
-              onClick={(event) => {
-                event.stopPropagation();
-                requestLegacyShellSessionRemoval(item.id);
-              }}
+              className="session-card-main"
+              data-session-id={item.id}
+              role="option"
+              aria-selected={item.active ? "true" : "false"}
+              onClick={() => requestLegacyShellSessionFocus(item.id)}
             >
-              {item.deleteLabel}
+              <p className="session-card-title" title={item.title}>{item.title}</p>
+              <p className="session-card-meta">{item.meta}</p>
             </button>
+            <div className="session-card-footer">
+              {item.shortHash ? (
+                <span className="session-card-id" title={item.id}>#{item.shortHash}</span>
+              ) : (
+                <span className="session-card-id is-empty" aria-hidden="true"></span>
+              )}
+              <div className="session-card-actions">
+                {item.copyValue ? (
+                  <button
+                    type="button"
+                    className="session-card-copy"
+                    data-copy-value={item.copyValue}
+                    title={item.copyLabel}
+                    aria-label={item.copyLabel}
+                  >
+                    <CopyIcon />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="session-card-delete"
+                  title={item.deleteLabel}
+                  aria-label={item.deleteLabel}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    requestLegacyShellSessionRemoval(item.id);
+                  }}
+                >
+                  <DeleteIcon />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ))}
