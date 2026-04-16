@@ -447,40 +447,47 @@ export function ReactManagedAgentRouteBody({
             void handleSave();
           }}
         >
-          <label>
-            <span>{copy.name}</span>
-            <input
-              aria-label={copy.name}
-              type="text"
-              value={draft.name}
-              onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Researcher"
-            />
-          </label>
-          <label>
-            <span>{copy.maxIterations}</span>
-            <input
-              aria-label={copy.maxIterations}
-              type="number"
-              min="0"
-              value={draft.maxIterations}
-              onChange={(event) => setDraft((current) => ({ ...current, maxIterations: event.target.value }))}
-            />
-          </label>
-          <label className="agent-builder-toggle">
-            <span>{copy.enabled}</span>
-            <input
-              aria-label={copy.enabled}
-              type="checkbox"
-              checked={draft.enabled}
-              onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
-            />
-          </label>
+          <div className="agent-builder-top-grid">
+            <label className="agent-builder-field agent-builder-field-name">
+              <span>{copy.name}</span>
+              <input
+                aria-label={copy.name}
+                type="text"
+                value={draft.name}
+                onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Researcher"
+              />
+            </label>
+            <label className="agent-builder-field agent-builder-field-iterations">
+              <span>{copy.maxIterations}</span>
+              <input
+                aria-label={copy.maxIterations}
+                type="number"
+                min="0"
+                value={draft.maxIterations}
+                onChange={(event) => setDraft((current) => ({ ...current, maxIterations: event.target.value }))}
+              />
+            </label>
+            <label className="agent-builder-toggle">
+              <span>{copy.enabled}</span>
+              <span className="agent-builder-switch">
+                <input
+                  aria-label={copy.enabled}
+                  type="checkbox"
+                  checked={draft.enabled}
+                  onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
+                />
+                <span className="agent-builder-switch-track" aria-hidden="true">
+                  <span className="agent-builder-switch-thumb"></span>
+                </span>
+              </span>
+            </label>
+          </div>
           <label className="agent-builder-wide">
             <span>{copy.systemPrompt}</span>
             <textarea
               aria-label={copy.systemPrompt}
-              rows={6}
+              rows={10}
               value={draft.systemPrompt}
               onChange={(event) => setDraft((current) => ({ ...current, systemPrompt: event.target.value }))}
             />

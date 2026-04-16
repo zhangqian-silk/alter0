@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTime } from "../../../shared/time/format";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
-import { RouteCard, RouteFieldRow, RouteTagSection } from "./RouteBodyPrimitives";
+import { RouteCard, RouteFieldRow } from "./RouteBodyPrimitives";
 
 type MemoryDocument = {
   exists?: boolean;
@@ -399,96 +399,109 @@ export function ReactManagedMemoryRouteBody({
               </div>
             </form>
 
-            <div className="task-summary-list">
-              {taskItems.length ? (
-                taskItems.map((item) => (
-                  <article
-                    key={normalizeText(item.task_id)}
-                    className={`route-card task-summary-card${normalizeText(taskDetail?.meta?.task_id) === normalizeText(item.task_id) ? " active" : ""}`}
-                  >
-                    <header className="task-summary-head">
-                      <div className="task-summary-id-wrap">
-                        <h5 className="task-summary-id" title={normalizeText(item.task_id)}>
-                          {normalizeText(item.task_id)}
-                        </h5>
+            <section className="route-master-detail route-master-detail-memory">
+              <div className="route-data-table-wrap">
+                {taskItems.length ? (
+                  <table className="route-data-table" aria-label="Task History">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>{copy.taskType}</th>
+                        <th>{copy.status}</th>
+                        <th>{copy.start}</th>
+                        <th>{copy.end}</th>
+                        <th>Tags</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {taskItems.map((item) => {
+                        const taskID = normalizeText(item.task_id);
+                        const active = normalizeText(taskDetail?.meta?.task_id) === taskID;
+                        return (
+                          <tr key={taskID} className={active ? "is-active" : undefined}>
+                            <td>
+                              <button
+                                className="route-table-select"
+                                type="button"
+                                onClick={() => {
+                                  void loadTaskDetail(taskID);
+                                }}
+                              >
+                                {taskID}
+                              </button>
+                            </td>
+                            <td>{normalizeText(item.task_type)}</td>
+                            <td>
+                              <span className={`task-summary-status ${taskStatusClassName(item.status)}`}>
+                                {normalizeText(item.status)}
+                              </span>
+                            </td>
+                            <td>{formatDateTime(item.updated_at)}</td>
+                            <td>{formatDateTime(item.finished_at)}</td>
+                            <td>{Array.isArray(item.tags) && item.tags.length ? item.tags.join(", ") : "-"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="route-empty">{copy.noTaskHistory}</p>
+                )}
+
+                <div className="task-summary-pagination-wrap">
+                  <div className="task-summary-pagination">
+                    <p><span>{copy.page}</span><strong>{String(pagination.page || 1)}</strong></p>
+                    <p><span>Total</span><strong>{String(pagination.total || 0)}</strong></p>
+                    <button
+                      className="task-summary-next"
+                      type="button"
+                      disabled={!pagination.has_next}
+                      onClick={() => {
+                        void applyTaskFilters(taskFilters, Number(pagination.page || 1) + 1);
+                      }}
+                    >
+                      {copy.nextPage}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <aside className="route-detail-panel memory-detail-panel">
+                <div className="task-detail-body">
+                  {taskDetail ? (
+                    <>
+                      <div className="route-detail-panel-head">
+                        <div>
+                          <h4>{copy.taskDetail}</h4>
+                          <p>{normalizeText(taskDetail.meta?.task_id)}</p>
+                        </div>
                       </div>
-                      <span className={`task-summary-status ${taskStatusClassName(item.status)}`}>{normalizeText(item.status)}</span>
-                    </header>
-                    <div className="task-summary-meta">
-                      <p><span>{copy.taskType}</span><strong>{normalizeText(item.task_type)}</strong></p>
-                      <div className="task-summary-meta-block">
-                        <span>Goal</span>
-                        <div className="task-summary-preview" title={normalizeText(item.goal)}>{normalizeText(item.goal)}</div>
-                      </div>
-                      <div className="task-summary-meta-block">
-                        <span>Result</span>
-                        <div className="task-summary-preview is-log" title={normalizeText(item.result)}>{normalizeText(item.result)}</div>
-                      </div>
-                      <p><span>{copy.updated}</span><strong>{formatDateTime(item.updated_at)}</strong></p>
-                      <p><span>{copy.finished}</span><strong>{formatDateTime(item.finished_at)}</strong></p>
-                    </div>
-                    <footer className="route-card-footer">
-                      <RouteTagSection label="Tags" tags={Array.isArray(item.tags) ? item.tags : []} />
-                      <button
-                        className="task-summary-open"
-                        type="button"
-                        onClick={() => {
-                          void loadTaskDetail(normalizeText(item.task_id));
+                      <TaskDetailView
+                        copy={copy}
+                        detail={taskDetail}
+                        logs={taskLogs}
+                        artifacts={taskArtifacts}
+                        onLoadLogs={() => {
+                          void loadTaskLogs();
                         }}
-                      >
-                        <span>{copy.viewDetail}</span>
-                      </button>
-                    </footer>
-                  </article>
-                ))
-              ) : (
-                <p className="route-empty">{copy.noTaskHistory}</p>
-              )}
-            </div>
-
-            <div className="task-summary-pagination-wrap">
-              <div className="task-summary-pagination">
-                <p><span>{copy.page}</span><strong>{String(pagination.page || 1)}</strong></p>
-                <p><span>Total</span><strong>{String(pagination.total || 0)}</strong></p>
-                <button
-                  className="task-summary-next"
-                  type="button"
-                  disabled={!pagination.has_next}
-                  onClick={() => {
-                    void applyTaskFilters(taskFilters, Number(pagination.page || 1) + 1);
-                  }}
-                >
-                  {copy.nextPage}
-                </button>
-              </div>
-            </div>
-
-            <section className="task-detail-wrap" hidden={!taskDetail}>
-              <h4>{copy.taskDetail}</h4>
-              <div className="task-detail-body">
-                {taskDetail ? (
-                  <TaskDetailView
-                    copy={copy}
-                    detail={taskDetail}
-                    logs={taskLogs}
-                    artifacts={taskArtifacts}
-                    onLoadLogs={() => {
-                      void loadTaskLogs();
-                    }}
-                    onLoadArtifacts={() => {
-                      void loadTaskArtifacts();
-                    }}
-                    onRebuild={() => {
-                      void rebuildTaskSummary();
-                    }}
-                    onBack={() => {
-                      setTaskDetail(null);
-                      setTaskLogs(null);
-                      setTaskArtifacts(null);
-                    }}
-                  />
-                ) : copy.selectTask}
-              </div>
+                        onLoadArtifacts={() => {
+                          void loadTaskArtifacts();
+                        }}
+                        onRebuild={() => {
+                          void rebuildTaskSummary();
+                        }}
+                        onBack={() => {
+                          setTaskDetail(null);
+                          setTaskLogs(null);
+                          setTaskArtifacts(null);
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <div className="task-detail-placeholder">{copy.selectTask}</div>
+                  )}
+                </div>
+              </aside>
             </section>
           </section>
         </section>
