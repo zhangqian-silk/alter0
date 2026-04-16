@@ -114,7 +114,7 @@ test.describe("Terminal route", () => {
     const composerInput = terminalPage.composer().input();
     const submitButton = terminalPage.composer().submitButton();
 
-    await expect(routeHead).toBeHidden();
+    await expect(routeHead).toHaveCount(0);
     await expect(workspaceSubcopy).toBeHidden();
     await expect(mobileNewChat).toBeVisible();
     await expect(mobileNewChat).toHaveText("New");

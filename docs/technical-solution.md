@@ -293,6 +293,7 @@ Environment restart
 - Environment 配置更新写入 audit store，控制面按时间倒序读取变更记录。
 - LLM 运行参数 `llm_temperature`、`llm_max_tokens`、`llm_react_max_iterations` 通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider 与模型能力约束。
 - Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换。
+- 共享 Web 运行时内置会话前端预览注册表 `.alter0/session-previews.json`：控制面 `PUT /api/control/previews/{session_id}` 校验会话 git 工作区和 `internal/interfaces/web/static/dist` 构建产物后写入注册表；当请求 Host 命中 `<session_short_hash>.alter0.cn` 时，Web 层优先从已注册工作区分发 `/chat`、`/assets/*` 与 `/legacy/*`，其余 API、登录态和健康检查继续走共享运行时。
 - systemd 基线统一 `HOME=/var/lib/alter0`，确保 Codex、gh、git signing、Node/Playwright 工具链使用同一运行账户上下文。
 - 提交签名问题不得通过关闭签名绕过。
 - 技术文档、需求文档和 README 更新按领域同步，避免需求与方案分离。

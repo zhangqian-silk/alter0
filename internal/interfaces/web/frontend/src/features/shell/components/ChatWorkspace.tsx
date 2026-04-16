@@ -5,7 +5,6 @@ import {
   getLegacyShellCopy,
   type LegacyShellLanguage,
 } from "../legacyShellCopy";
-import { getNavGroupForRoute } from "../legacyShellConfig";
 import { isLegacyShellChatRoute } from "../legacyShellState";
 import {
   LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT,
@@ -308,13 +307,7 @@ const ChatView = memo(function ChatView({
           {welcomeTargetError ? <p className="welcome-target-error">{welcomeTargetError}</p> : null}
         </div>
         <section className="prompt-deck" data-shell-section="prompt-deck">
-          <div className="prompt-deck-head">
-            <p className="prompt-deck-eyebrow">{copy.promptDeckEyebrow}</p>
-            <div className="prompt-deck-copy">
-              <strong>{copy.promptDeckTitle}</strong>
-              <p>{copy.promptDeckDescription}</p>
-            </div>
-          </div>
+          <p className="prompt-deck-title" data-i18n="prompt.title">{copy.promptDeckTitle}</p>
           <div className="prompt-grid">
             {PROMPTS.map((item, index) => (
               <button
@@ -348,17 +341,6 @@ const ChatView = memo(function ChatView({
       </section>
 
       <footer className="composer-shell" data-shell-section="composer-panel">
-        <div className="composer-panel-head">
-          <div className="composer-panel-copy">
-            <p className="composer-panel-eyebrow">{copy.composerEyebrow}</p>
-            <strong>{copy.composerTitle}</strong>
-            <p>{copy.composerDescription}</p>
-          </div>
-          <div className="composer-panel-metrics" aria-hidden="true">
-            <span className="context-pill">{copy.workspaceBridgeValue}</span>
-            <span className="context-pill">{copy.workspaceModeConversation}</span>
-          </div>
-        </div>
         <form className="composer" id="chatForm" data-composer-form="chat-main">
           <label className="sr-only" htmlFor="composerInput">Input your message</label>
           <textarea
@@ -404,8 +386,6 @@ const RouteViewMount = memo(function RouteViewMount({
   const routeBodyClassName = currentRoute === "terminal" ? "route-body terminal-route-body" : "route-body";
   const routeHeadingCopy = getLegacyRouteHeadingCopy(language, currentRoute);
   const copy = getLegacyShellCopy(language);
-  const routeGroup = getNavGroupForRoute(currentRoute);
-  const routeGroupLabel = routeGroup ? copy.headings[routeGroup.heading] ?? routeGroup.heading : copy.workspaceModePage;
   const reactManagedRoute = isReactManagedRouteBody(currentRoute) ? currentRoute : null;
 
   return (
@@ -413,23 +393,10 @@ const RouteViewMount = memo(function RouteViewMount({
       <div className="route-hero" data-shell-section={hidden ? undefined : "route-hero"}>
         <div className="route-hero-copy">
           <p className="route-hero-eyebrow">{copy.routeEyebrow}</p>
-          <strong>{routeHeadingCopy.title}</strong>
-          <p>{routeHeadingCopy.subtitle}</p>
-        </div>
-        <div className="route-hero-metrics" aria-hidden="true">
-          <span className="context-pill">{routeGroupLabel}</span>
-          <span className="context-pill">{copy.workspaceBridgeValue}</span>
-          <span className="context-pill is-strong">
-            {currentRoute === "terminal" ? copy.workspaceModeTerminal : copy.workspaceModePage}
-          </span>
-        </div>
-      </div>
-      <header className="route-head">
-        <div className="route-copy">
-          <h3 id="routeTitle">{routeHeadingCopy.title}</h3>
+          <strong id="routeTitle">{routeHeadingCopy.title}</strong>
           <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
         </div>
-      </header>
+      </div>
       <div
         id={LEGACY_SHELL_IDS.routeBody}
         className={routeBodyClassName}
@@ -457,8 +424,6 @@ export const ChatWorkspace = memo(function ChatWorkspace({
   const copy = getLegacyShellCopy(language);
   const workspaceSnapshot = useLegacyChatWorkspaceSnapshot(currentRoute, language);
   const messageRegionSnapshot = useLegacyMessageRegionSnapshot(currentRoute);
-  const routeGroup = getNavGroupForRoute(currentRoute);
-  const routeGroupLabel = routeGroup ? copy.headings[routeGroup.heading] ?? routeGroup.heading : copy.workspaceModePage;
   const isChatRoute = isLegacyShellChatRoute(currentRoute);
   const isPageMode = !isChatRoute;
   const isEmptyState = isChatRoute && !messageRegionSnapshot.hasMessages;
@@ -474,14 +439,6 @@ export const ChatWorkspace = memo(function ChatWorkspace({
     isPageMode ? "page-mode" : "",
     isEmptyState ? "empty-state" : "",
   ].filter(Boolean).join(" ");
-  const heroEyebrow = copy.workspaceEyebrow;
-  const heroDescription = workspaceSnapshot.subheading;
-  const heroTitle = workspaceSnapshot.heading;
-  const workspaceModeValue = isTerminalRoute
-    ? copy.workspaceModeTerminal
-    : isPageMode
-      ? copy.workspaceModePage
-      : copy.workspaceModeConversation;
 
   return (
     <main className={chatPaneClassName} data-route={currentRoute}>
@@ -499,10 +456,12 @@ export const ChatWorkspace = memo(function ChatWorkspace({
         >
           {copy.chatMenu}
         </button>
-        <ChatHeaderTitleMount
-          heading={workspaceSnapshot.heading}
-          subheading={workspaceSnapshot.subheading}
-        />
+        {!isPageMode ? (
+          <ChatHeaderTitleMount
+            heading={workspaceSnapshot.heading}
+            subheading={workspaceSnapshot.subheading}
+          />
+        ) : null}
         <div className="chat-header-actions">
           <button
             className="panel-toggle"
@@ -529,30 +488,6 @@ export const ChatWorkspace = memo(function ChatWorkspace({
           </button>
         </div>
       </header>
-
-      {!isPageMode ? (
-        <section className="workspace-hero" data-shell-section="chat-hero">
-          <div className="workspace-hero-copy">
-            <p className="workspace-hero-eyebrow">{heroEyebrow}</p>
-            <p className="workspace-hero-title">{heroTitle}</p>
-            <p className="workspace-hero-description">{heroDescription}</p>
-          </div>
-          <div className="workspace-hero-metrics" aria-hidden="true">
-            <div className="workspace-metric">
-              <span>{copy.workspaceModeLabel}</span>
-              <strong>{workspaceModeValue}</strong>
-            </div>
-            <div className="workspace-metric">
-              <span>{copy.workspaceFocusLabel}</span>
-              <strong>{routeGroupLabel}</strong>
-            </div>
-            <div className="workspace-metric">
-              <span>{copy.workspaceBridgeLabel}</span>
-              <strong>{copy.workspaceBridgeValue}</strong>
-            </div>
-          </div>
-        </section>
-      ) : null}
 
       <ChatView
         currentRoute={currentRoute}

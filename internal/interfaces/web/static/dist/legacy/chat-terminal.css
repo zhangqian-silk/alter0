@@ -30,11 +30,11 @@
   gap: 12px;
   min-height: 0;
   padding: 18px 0 12px;
-  border: 1px solid rgba(211, 220, 233, 0.92);
+  border: 1px solid rgba(158, 198, 233, 0.82);
   border-radius: 30px;
-  background: rgba(255, 255, 255, 0.74);
+  background: linear-gradient(180deg, rgba(248, 252, 255, 0.8) 0%, rgba(234, 245, 255, 0.72) 100%);
   backdrop-filter: blur(18px);
-  box-shadow: 0 28px 60px -46px rgba(15, 23, 42, 0.24);
+  box-shadow: 0 28px 60px -46px rgba(8, 37, 69, 0.22);
 }
 
 .terminal-session-pane-head {
@@ -52,14 +52,14 @@
 }
 
 .terminal-session-pane-copy strong {
-  color: #0f172a;
+  color: #072843;
   font-size: 15px;
   font-weight: 800;
   line-height: 1.2;
 }
 
 .terminal-session-pane-copy span {
-  color: #64748b;
+  color: #6a86a3;
   font-size: 12px;
   line-height: 1.4;
 }
@@ -71,10 +71,10 @@
 }
 
 .terminal-session-pane-action {
-  border: 1px solid rgba(211, 220, 233, 0.92);
+  border: 1px solid rgba(158, 198, 233, 0.82);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  color: #1e293b;
+  background: rgba(248, 252, 255, 0.82);
+  color: #1c4768;
   font: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -84,20 +84,20 @@
 }
 
 .terminal-session-pane-action:hover {
-  border-color: rgba(74, 140, 255, 0.26);
-  background: rgba(245, 248, 255, 0.98);
+  border-color: rgba(60, 183, 255, 0.28);
+  background: rgba(240, 249, 255, 0.98);
 }
 
 .terminal-session-pane-action.is-primary {
-  border-color: rgba(74, 140, 255, 0.26);
-  background: linear-gradient(180deg, #5b97ff 0%, #4a8cff 100%);
+  border-color: rgba(60, 183, 255, 0.3);
+  background: linear-gradient(180deg, #4ed4ff 0%, #0b78d6 100%);
   color: #ffffff;
-  box-shadow: 0 16px 30px -22px rgba(74, 140, 255, 0.48);
+  box-shadow: 0 18px 32px -22px rgba(11, 120, 214, 0.38);
 }
 
 .terminal-session-pane-action.is-primary:hover {
-  border-color: rgba(74, 140, 255, 0.34);
-  background: linear-gradient(180deg, #6aa1ff 0%, #4a8cff 100%);
+  border-color: rgba(60, 183, 255, 0.38);
+  background: linear-gradient(180deg, #66ddff 0%, #0b78d6 100%);
 }
 
 .terminal-session-pane-close {
@@ -117,7 +117,7 @@
 
 .terminal-session-empty {
   margin: 8px 6px 0;
-  color: #64748b;
+  color: #6a86a3;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -130,17 +130,17 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  border: 1px solid rgba(218, 225, 237, 0.82);
+  border: 1px solid rgba(168, 204, 235, 0.76);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.68);
+  background: rgba(247, 252, 255, 0.72);
   backdrop-filter: blur(12px);
-  box-shadow: 0 14px 30px -34px rgba(15, 23, 42, 0.2);
+  box-shadow: 0 14px 30px -34px rgba(8, 37, 69, 0.18);
 }
 
 .terminal-session-card.active {
-  border-color: rgba(74, 140, 255, 0.28);
-  box-shadow: 0 22px 38px -34px rgba(74, 140, 255, 0.36);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(244, 247, 255, 0.96) 100%);
+  border-color: rgba(60, 183, 255, 0.3);
+  box-shadow: 0 22px 38px -34px rgba(11, 120, 214, 0.28);
+  background: linear-gradient(180deg, rgba(250, 253, 255, 0.92) 0%, rgba(235, 246, 255, 0.96) 100%);
 }
 
 .terminal-session-select {
@@ -167,7 +167,7 @@
 }
 
 .terminal-session-title {
-  color: #0f172a;
+  color: #072843;
   font-size: 14px;
   font-weight: 700;
   line-height: 1.35;
@@ -177,7 +177,7 @@
 }
 
 .terminal-session-meta {
-  color: #64748b;
+  color: #6a86a3;
   font-size: 11px;
   line-height: 1.4;
   white-space: nowrap;
@@ -236,7 +236,7 @@
 }
 
 .terminal-workspace-empty {
-  color: #94a3b8;
+  color: #87a1bc;
   font-size: 13px;
   min-height: 100%;
 }
@@ -253,13 +253,14 @@
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
   background:
-    radial-gradient(circle at top, rgba(120, 164, 255, 0.1), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.8) 0%, rgba(247, 249, 253, 0.96) 100%);
-  border: 1px solid rgba(211, 220, 233, 0.92);
+    radial-gradient(circle at top, rgba(60, 183, 255, 0.16), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(89, 235, 255, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(249, 253, 255, 0.84) 0%, rgba(235, 246, 255, 0.96) 100%);
+  border: 1px solid rgba(158, 198, 233, 0.82);
   border-radius: 32px;
   overflow: hidden;
   backdrop-filter: blur(18px);
-  box-shadow: 0 34px 70px -50px rgba(15, 23, 42, 0.3);
+  box-shadow: 0 34px 70px -50px rgba(8, 37, 69, 0.24);
 }
 
 .terminal-workspace-head {
@@ -267,9 +268,9 @@
   display: grid;
   gap: 10px;
   padding: 18px 20px 14px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(247, 249, 253, 0.76) 100%);
+  background: linear-gradient(180deg, rgba(250, 253, 255, 0.84) 0%, rgba(238, 247, 255, 0.8) 100%);
   backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(218, 226, 238, 0.84);
+  border-bottom: 1px solid rgba(168, 204, 235, 0.78);
 }
 
 .terminal-workspace-row {
@@ -288,7 +289,7 @@
 }
 
 .terminal-workspace-eyebrow {
-  color: #94a3b8;
+  color: #7f9dbb;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -304,7 +305,7 @@
 
 .terminal-workspace-copy h4 {
   margin: 0;
-  color: #0f172a;
+  color: #072843;
   font-size: 21px;
   line-height: 1.12;
   letter-spacing: -0.03em;
@@ -317,7 +318,7 @@
 
 .terminal-workspace-copy p {
   margin: 0;
-  color: #64748b;
+  color: #6a86a3;
   font-size: 12px;
   line-height: 1.45;
 }
@@ -340,9 +341,9 @@
   min-height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid rgba(211, 220, 233, 0.92);
-  background: rgba(255, 255, 255, 0.72);
-  color: #475569;
+  border: 1px solid rgba(168, 204, 235, 0.82);
+  background: rgba(248, 252, 255, 0.78);
+  color: #41617f;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -421,39 +422,39 @@
 }
 
 .terminal-inline-button {
-  border: 1px solid rgba(211, 220, 233, 0.92);
-  background: rgba(255, 255, 255, 0.72);
-  color: #1e293b;
+  border: 1px solid rgba(168, 204, 235, 0.82);
+  background: rgba(248, 252, 255, 0.76);
+  color: #1c4768;
   cursor: pointer;
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
 .terminal-inline-button:hover {
-  border-color: rgba(74, 140, 255, 0.26);
-  background: rgba(245, 248, 255, 0.98);
+  border-color: rgba(60, 183, 255, 0.28);
+  background: rgba(240, 249, 255, 0.98);
 }
 
 .terminal-inline-button.is-quiet {
-  border-color: rgba(203, 213, 225, 0.7);
-  background: rgba(248, 250, 252, 0.9);
-  color: #334155;
+  border-color: rgba(168, 204, 235, 0.7);
+  background: rgba(242, 249, 255, 0.92);
+  color: #355776;
 }
 
 .terminal-inline-button.is-quiet:hover {
-  border-color: rgba(148, 163, 184, 0.72);
-  background: rgba(241, 245, 249, 0.96);
+  border-color: rgba(122, 173, 222, 0.72);
+  background: rgba(236, 245, 255, 0.98);
 }
 
 .terminal-inline-button.is-primary {
-  border-color: rgba(74, 140, 255, 0.24);
-  background: linear-gradient(180deg, #5b97ff 0%, #4a8cff 100%);
+  border-color: rgba(60, 183, 255, 0.24);
+  background: linear-gradient(180deg, #4ed4ff 0%, #0b78d6 100%);
   color: #ffffff;
-  box-shadow: 0 16px 30px -22px rgba(74, 140, 255, 0.48);
+  box-shadow: 0 16px 30px -22px rgba(11, 120, 214, 0.38);
 }
 
 .terminal-inline-button.is-primary:hover {
-  border-color: #1d4ed8;
-  background: #1d4ed8;
+  border-color: #0b78d6;
+  background: #0b78d6;
 }
 
 .terminal-meta-panel {
@@ -461,8 +462,8 @@
   gap: 8px;
   padding: 14px;
   border-radius: 18px;
-  border: 1px solid #e2e8f0;
-  background: linear-gradient(180deg, #f8fbff 0%, #f8fafc 100%);
+  border: 1px solid rgba(168, 204, 235, 0.76);
+  background: linear-gradient(180deg, #f7fbff 0%, #edf6ff 100%);
 }
 
 .terminal-meta-panel .route-field-row {
@@ -471,24 +472,24 @@
 }
 
 .terminal-meta-panel .route-field-row > span:first-child {
-  color: #64748b;
+  color: #6a86a3;
   font-size: 12px;
   font-weight: 700;
 }
 
 .terminal-meta-panel .route-field-value {
-  color: #0f172a;
+  color: #072843;
 }
 
 .terminal-meta-panel .route-field-copy {
-  border-color: rgba(148, 163, 184, 0.22);
-  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(168, 204, 235, 0.34);
+  background: rgba(248, 252, 255, 0.92);
 }
 
 .terminal-session-close {
-  border: 1px solid rgba(203, 213, 225, 0.82);
-  background: rgba(255, 255, 255, 0.94);
-  color: #475569;
+  border: 1px solid rgba(168, 204, 235, 0.78);
+  background: rgba(248, 252, 255, 0.94);
+  color: #41617f;
   font: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -498,9 +499,9 @@
 }
 
 .terminal-session-close:hover:not(:disabled) {
-  background: rgba(248, 250, 252, 1);
-  border-color: rgba(148, 163, 184, 0.66);
-  color: #1e293b;
+  background: rgba(242, 249, 255, 1);
+  border-color: rgba(122, 173, 222, 0.66);
+  color: #1c4768;
 }
 
 .terminal-session-delete {
@@ -527,22 +528,22 @@
 }
 
 .terminal-console-panel {
-  --terminal-surface: rgba(255, 255, 255, 0.72);
-  --terminal-surface-elevated: rgba(255, 255, 255, 0.9);
-  --terminal-surface-muted: rgba(247, 249, 253, 0.92);
-  --terminal-surface-soft: rgba(242, 246, 252, 0.96);
-  --terminal-surface-blue: rgba(242, 246, 255, 0.96);
-  --terminal-border: rgba(202, 213, 229, 0.72);
-  --terminal-border-strong: rgba(187, 201, 222, 0.9);
-  --terminal-text-primary: #0f172a;
-  --terminal-text-secondary: #334155;
-  --terminal-text-tertiary: #6b7a90;
-  --terminal-text-muted: #93a1b5;
-  --terminal-accent: #4a8cff;
-  --terminal-accent-strong: #315fe8;
-  --terminal-accent-soft: rgba(74, 140, 255, 0.12);
-  --terminal-shadow-soft: 0 18px 34px -30px rgba(15, 23, 42, 0.16);
-  --terminal-shadow-raised: 0 24px 48px -36px rgba(15, 23, 42, 0.2);
+  --terminal-surface: rgba(248, 252, 255, 0.74);
+  --terminal-surface-elevated: rgba(250, 253, 255, 0.92);
+  --terminal-surface-muted: rgba(239, 247, 255, 0.92);
+  --terminal-surface-soft: rgba(233, 244, 255, 0.96);
+  --terminal-surface-blue: rgba(236, 248, 255, 0.96);
+  --terminal-border: rgba(168, 204, 235, 0.72);
+  --terminal-border-strong: rgba(145, 190, 228, 0.88);
+  --terminal-text-primary: #072843;
+  --terminal-text-secondary: #2d4c69;
+  --terminal-text-tertiary: #6a86a3;
+  --terminal-text-muted: #87a1bc;
+  --terminal-accent: #3cb7ff;
+  --terminal-accent-strong: #0b78d6;
+  --terminal-accent-soft: rgba(60, 183, 255, 0.14);
+  --terminal-shadow-soft: 0 18px 34px -30px rgba(8, 37, 69, 0.14);
+  --terminal-shadow-raised: 0 24px 48px -36px rgba(8, 37, 69, 0.18);
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -566,8 +567,9 @@
   border: none;
   border-radius: 0;
   background:
-    radial-gradient(circle at top, rgba(120, 164, 255, 0.14), transparent 30%),
-    linear-gradient(180deg, rgba(251, 252, 255, 0.72) 0%, rgba(244, 247, 252, 0.94) 100%);
+    radial-gradient(circle at top, rgba(60, 183, 255, 0.16), transparent 30%),
+    radial-gradient(circle at 100% 0, rgba(89, 235, 255, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(250, 253, 255, 0.74) 0%, rgba(239, 247, 255, 0.94) 100%);
   padding: var(--terminal-chat-screen-padding-top) calc(var(--terminal-chat-screen-padding-x) + 4px) 26px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -584,7 +586,7 @@
 }
 
 .terminal-log-empty {
-  color: #94a3b8;
+  color: #87a1bc;
   font-size: 12px;
 }
 
@@ -737,7 +739,7 @@
   padding: 0 18px 18px;
   position: relative;
   z-index: 3;
-  background: linear-gradient(180deg, rgba(247, 249, 253, 0) 0%, rgba(247, 249, 253, 0.9) 18%, rgba(247, 249, 253, 0.98) 100%);
+  background: linear-gradient(180deg, rgba(239, 247, 255, 0) 0%, rgba(239, 247, 255, 0.9) 18%, rgba(239, 247, 255, 0.98) 100%);
 }
 
 .terminal-composer-note {
@@ -747,8 +749,8 @@
   align-items: center;
   padding: 0 12px;
   border-radius: 16px 16px 12px 12px;
-  border: 1px solid rgba(211, 220, 233, 0.92);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(168, 204, 235, 0.82);
+  background: rgba(248, 252, 255, 0.76);
   backdrop-filter: blur(14px);
   color: var(--terminal-text-secondary);
   font-size: 12px;
@@ -770,11 +772,11 @@
   gap: 8px;
   min-width: 0;
   padding: 12px;
-  border: 1px solid rgba(211, 220, 233, 0.92);
+  border: 1px solid rgba(158, 198, 233, 0.84);
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.76);
+  background: rgba(248, 252, 255, 0.8);
   backdrop-filter: blur(18px);
-  box-shadow: 0 26px 54px -40px rgba(15, 23, 42, 0.26);
+  box-shadow: 0 26px 54px -40px rgba(8, 37, 69, 0.2);
 }
 
 .terminal-composer-note[data-terminal-runtime-status="interrupted"],
@@ -800,8 +802,8 @@
   min-height: 48px;
   max-height: 132px;
   border-radius: 20px;
-  border: 1px solid rgba(214, 222, 235, 0.92);
-  background: rgba(248, 250, 255, 0.96);
+  border: 1px solid rgba(174, 204, 233, 0.86);
+  background: rgba(242, 249, 255, 0.98);
   color: var(--terminal-text-primary);
   font: inherit;
   line-height: 1.6;
@@ -815,9 +817,9 @@
 
 .terminal-chat-form textarea:focus {
   outline: none;
-  border-color: rgba(74, 140, 255, 0.34);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 0 0 4px rgba(74, 140, 255, 0.12);
+  border-color: rgba(60, 183, 255, 0.34);
+  background: rgba(252, 254, 255, 0.98);
+  box-shadow: 0 0 0 4px rgba(60, 183, 255, 0.12);
 }
 
 .terminal-chat-form button {
@@ -825,15 +827,15 @@
   min-width: 44px;
   min-height: 44px;
   border-radius: 999px;
-  border: 1px solid rgba(74, 140, 255, 0.22);
-  background: linear-gradient(180deg, #5b97ff 0%, #4a8cff 100%);
+  border: 1px solid rgba(60, 183, 255, 0.22);
+  background: linear-gradient(180deg, #4ed4ff 0%, #0b78d6 100%);
   color: #ffffff;
   font: inherit;
   font-size: 13px;
   font-weight: 700;
   padding: 0;
   cursor: pointer;
-  box-shadow: 0 16px 30px -22px rgba(74, 140, 255, 0.48);
+  box-shadow: 0 16px 30px -22px rgba(11, 120, 214, 0.36);
 }
 
 .terminal-chat-form-button-icon {
@@ -863,9 +865,9 @@
   width: 46px;
   height: 46px;
   padding: 0;
-  border: 1px solid rgba(211, 220, 233, 0.92);
+  border: 1px solid rgba(168, 204, 235, 0.84);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(248, 252, 255, 0.82);
   backdrop-filter: blur(16px);
   color: var(--terminal-text-secondary);
   display: inline-flex;
@@ -873,7 +875,7 @@
   justify-content: center;
   font: inherit;
   font-weight: 700;
-  box-shadow: 0 18px 36px -26px rgba(15, 23, 42, 0.22);
+  box-shadow: 0 18px 36px -26px rgba(8, 37, 69, 0.18);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -888,14 +890,14 @@
 }
 
 .terminal-jump-control:hover {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(74, 140, 255, 0.24);
+  background: rgba(250, 253, 255, 0.94);
+  border-color: rgba(60, 183, 255, 0.24);
 }
 
 .terminal-jump-control:focus-visible,
 .terminal-jump-bottom.has-unread {
-  background: rgba(243, 247, 255, 0.98);
-  border-color: rgba(74, 140, 255, 0.32);
+  background: rgba(236, 247, 255, 0.98);
+  border-color: rgba(60, 183, 255, 0.32);
   color: var(--terminal-accent-strong);
 }
 
@@ -905,7 +907,7 @@
 }
 
 .terminal-jump-bottom.has-unread:hover {
-  background: rgba(219, 234, 254, 0.98);
+  background: rgba(223, 244, 255, 0.98);
 }
 
 .terminal-jump-control-icon {
@@ -945,7 +947,7 @@
   top: 22px;
   bottom: 0;
   width: 1px;
-  background: linear-gradient(180deg, rgba(148, 163, 184, 0.34) 0%, rgba(148, 163, 184, 0.08) 100%);
+  background: linear-gradient(180deg, rgba(112, 171, 221, 0.44) 0%, rgba(112, 171, 221, 0.08) 100%);
   pointer-events: none;
 }
 
@@ -977,9 +979,9 @@
   padding: 8px 0 8px 16px;
   margin-left: -18px;
   width: calc(100% + 18px);
-  border: 1px dashed rgba(188, 200, 220, 0.92);
+  border: 1px dashed rgba(161, 199, 234, 0.92);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.52);
+  background: rgba(247, 252, 255, 0.58);
   backdrop-filter: blur(10px);
   box-shadow: none;
   transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
@@ -987,8 +989,8 @@
 
 .terminal-process-shell.is-collapsed .terminal-process-toggle,
 .terminal-process-toggle:hover {
-  background: rgba(252, 253, 255, 0.94);
-  border-color: rgba(74, 140, 255, 0.28);
+  background: rgba(250, 253, 255, 0.96);
+  border-color: rgba(60, 183, 255, 0.28);
 }
 
 .terminal-process-copy {
@@ -1032,7 +1034,7 @@
 .terminal-process-empty {
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(248, 250, 252, 0.94);
+  background: rgba(244, 250, 255, 0.94);
   color: var(--terminal-text-tertiary);
   font-size: 12px;
   line-height: 1.5;

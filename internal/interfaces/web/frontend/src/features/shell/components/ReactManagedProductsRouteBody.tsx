@@ -936,7 +936,6 @@ export function ReactManagedProductsRouteBody({
         <div className="agent-route-pane-head">
           <div className="agent-route-pane-copy">
             <h4>{copy.title}</h4>
-            <p>{copy.subtitle}</p>
           </div>
           <button className="route-primary-button" type="button" onClick={startCreateProduct}>
             {copy.create}
@@ -1103,7 +1102,6 @@ function renderWorkspacePanel({
         <div className="agent-route-pane-head">
           <div className="agent-route-pane-copy">
             <h4>{copy.workspaceTitle}</h4>
-            <p>{workspace.workspace_hint || copy.workspaceSubtitle}</p>
           </div>
         </div>
         <div className="agent-builder-managed">
@@ -1151,7 +1149,6 @@ function renderWorkspacePanel({
         <div className="agent-route-pane-head">
           <div className="agent-route-pane-copy">
             <h4>{copy.workspaceChatTitle}</h4>
-            <p>{copy.workspaceChatHint}</p>
           </div>
         </div>
         <div className="product-workspace-chat-log">
@@ -1203,7 +1200,6 @@ function renderWorkspacePanel({
         <div className="agent-route-pane-head">
           <div className="agent-route-pane-copy">
             <h4>{workspace.space_label || copy.workspaceSpaces}</h4>
-            <p>{copy.workspaceSpaceEmpty}</p>
           </div>
         </div>
         <div className="agent-route-list">
@@ -1383,7 +1379,6 @@ function renderStudioPanel({
       <div className="agent-route-pane-head">
         <div className="agent-route-pane-copy">
           <h4>{draft.id ? copy.edit : copy.formNew}</h4>
-          <p>{copy.formManaged}</p>
         </div>
         <div className="agent-builder-actions">
           <button type="button" onClick={onReset}>
@@ -1472,7 +1467,6 @@ function renderStudioPanel({
         <div className="agent-route-pane-head">
           <div className="agent-route-pane-copy">
             <h4>{copy.draftsTitle}</h4>
-            <p>{copy.draftsSubtitle}</p>
           </div>
         </div>
         {currentDraftMode === "expand" && !canExpandDraft ? (

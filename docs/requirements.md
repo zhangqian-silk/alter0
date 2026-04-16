@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-04-13
+> Last update: 2026-04-16
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `agent.execution.react`、`memory.files.injection`、`product.travel.workspace`。
 
@@ -53,9 +53,9 @@
 - Agent 执行过程需以结构化 `process_steps` 贯穿 SSE `done`、Task 结果与会话历史持久化，前端优先消费结构化步骤而不是依赖解析 `[agent] action / observation` 文本。
 - 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新。
 - Web 前端所有时间显示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Cron 创建表单默认时区固定为 `Asia/Shanghai`。
-- Web 侧边栏、历史折叠、页面滚动隔离、浅色文档式阅读主题、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
+- Web 侧边栏、历史折叠、页面滚动隔离、浅蓝轻科幻阅读主题、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
 - Web Shell 需保持稳定 legacy DOM 契约，但运行链路已切到 React：`LegacyWebShell` 负责主导航、会话栏、工作区壳层与语言/路由文案，`ReactRuntimeFacade` 负责 Chat / Agent 的会话状态、消息流、结构化 runtime、移动端 runtime sheet、草稿恢复与 bridge 事件处理；`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类路由页由 React 直接请求控制台或会话 API 并渲染，其中 terminal 也已改为 React 原生页面实现。`routeBody` 必须暴露当前页稳定的 `data-react-managed-route` 标记，`appShell` 必须暴露稳定的 `data-react-managed-routes` 路由清单；兼容层仅保留样式与 DOM 契约，不再通过 legacy 脚本接管 `/chat` 运行时。
-- Web Shell 的稳定视觉基线为桌面三栏 cockpit 布局和移动端双抽屉工作台：React 自有样式系统负责品牌区、会话控制区、工作区 hero、提示卡组与输入面板的设计语言，legacy 样式仅继续承载运行时内容、Terminal 细节和 route body 内容皮肤。
+- Web Shell 的稳定视觉基线为浅蓝轻科幻风格的桌面三栏 cockpit 布局和移动端双抽屉工作台：React 自有样式系统负责品牌区、会话控制区、欢迎区、页面 hero、提示卡组与输入面板的设计语言，并统一采用浅蓝渐变背景、冷色高亮、低对比玻璃感面板和未来感品牌区；同时保持单层信息架构，不允许在会话栏、主工作区 hero、顶部标题和页面 hero 之间重复堆叠同一组路由说明；legacy 样式仅继续承载运行时内容、Terminal 细节和 route body 内容皮肤。
 - 移动端 Web Shell 使用 `VisualViewport` 驱动的 `--mobile-viewport-height` 作为壳体高度来源，浏览器工具栏与键盘状态切换时不出现底部空白或内容裁切。
 - 移动端 Chat/Agent 在主输入框与会话设置底部面板之间切换时，不允许保留“键盘 + 设置面板”双重底部占位：打开设置前先释放输入焦点并清理键盘偏移，回到主输入框时先自动收起设置面板；Terminal 在真手机宽度下允许工作区头部工具栏换行，操作按钮不得被长标题挤出可见区域。
 - 桌面宽屏下 Chat 消息列与底部输入区需按主工作区宽度自适应扩展，不再长期锁定为 860px 窄列，同时保留可读性上限。
@@ -120,6 +120,7 @@
 稳定需求：
 
 - Control API 管理 Channel、Capability、Skill、MCP、Agent Profile、Product、Cron Job、Model Provider 与 Environment 配置，并保留 Capability 生命周期审计。
+- 共享 Web 运行时需要支持会话前端预览注册：`GET /api/control/previews` 查询注册表，`PUT /api/control/previews/{session_id}` 绑定会话工作区构建，`DELETE /api/control/previews/{session_id}` 清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 时，`/chat`、`/assets/*` 与 `/legacy/*` 需分发该会话工作区的前端构建产物。
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 OpenAI Compatible 与 OpenRouter Provider，支持 `/responses` 与 `/chat/completions`，支持 base URL、API Key 保留语义、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复。
 - `openai-completions` 适配层必须正确序列化 assistant `tool_calls` 与 tool output，兼容严格校验工具消息配对关系的上游 Provider。
