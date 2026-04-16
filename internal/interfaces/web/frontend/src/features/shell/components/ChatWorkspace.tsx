@@ -275,54 +275,56 @@ const ChatView = memo(function ChatView({
   return (
     <div className="chat-view" id="chatView" hidden={hidden}>
       <section className="welcome-screen" id={LEGACY_SHELL_IDS.welcomeScreen} hidden={hasMessages}>
-        <div className="welcome-hero">
-          <p className="welcome-tag" data-i18n="welcome.tag">alter0 assistant</p>
-          <h3 id="welcomeHeading">{welcomeHeading}</h3>
-          <p id="welcomeDescription">{welcomeDescription}</p>
-        </div>
-        <div className="welcome-target-wrap" id="welcomeTargetList">
-          {welcomeTargets.map((item) =>
-            item.interactive ? (
-              <button
-                key={`${item.type}:${item.id}:${item.name}`}
-                className={item.active ? "welcome-target-card active" : "welcome-target-card"}
-                type="button"
-                data-chat-target-type={item.type}
-                data-chat-target-id={item.id}
-                data-chat-target-name={item.name}
-              >
-                <strong>{item.name}</strong>
-                <span>{item.id}</span>
-              </button>
-            ) : (
-              <div
-                key={`${item.type}:${item.id}:${item.name}`}
-                className={item.active ? "welcome-target-card active is-static" : "welcome-target-card is-static"}
-              >
-                <strong>{item.name}</strong>
-                <span>{item.id}</span>
-              </div>
-            ),
-          )}
-          {welcomeTargetError ? <p className="welcome-target-error">{welcomeTargetError}</p> : null}
-        </div>
-        <section className="prompt-deck" data-shell-section="prompt-deck">
-          <p className="prompt-deck-title" data-i18n="prompt.title">{copy.promptDeckTitle}</p>
-          <div className="prompt-grid">
-            {PROMPTS.map((item, index) => (
-              <button
-                key={item.i18n}
-                className="prompt"
-                type="button"
-                data-prompt={item.prompt}
-                onClick={() => onQuickPrompt(item.prompt)}
-              >
-                <span className="prompt-index" aria-hidden="true">{`0${index + 1}`}</span>
-                <span className="prompt-copy" data-i18n={item.i18n}>{item.label}</span>
-              </button>
-            ))}
+        <div className="chat-content-frame">
+          <div className="welcome-hero">
+            <p className="welcome-tag" data-i18n="welcome.tag">alter0 assistant</p>
+            <h3 id="welcomeHeading">{welcomeHeading}</h3>
+            <p id="welcomeDescription">{welcomeDescription}</p>
           </div>
-        </section>
+          <div className="welcome-target-wrap" id="welcomeTargetList">
+            {welcomeTargets.map((item) =>
+              item.interactive ? (
+                <button
+                  key={`${item.type}:${item.id}:${item.name}`}
+                  className={item.active ? "welcome-target-card active" : "welcome-target-card"}
+                  type="button"
+                  data-chat-target-type={item.type}
+                  data-chat-target-id={item.id}
+                  data-chat-target-name={item.name}
+                >
+                  <strong>{item.name}</strong>
+                  <span>{item.id}</span>
+                </button>
+              ) : (
+                <div
+                  key={`${item.type}:${item.id}:${item.name}`}
+                  className={item.active ? "welcome-target-card active is-static" : "welcome-target-card is-static"}
+                >
+                  <strong>{item.name}</strong>
+                  <span>{item.id}</span>
+                </div>
+              ),
+            )}
+            {welcomeTargetError ? <p className="welcome-target-error">{welcomeTargetError}</p> : null}
+          </div>
+          <section className="prompt-deck" data-shell-section="prompt-deck">
+            <p className="prompt-deck-title" data-i18n="prompt.title">{copy.promptDeckTitle}</p>
+            <div className="prompt-grid">
+              {PROMPTS.map((item, index) => (
+                <button
+                  key={item.i18n}
+                  className="prompt"
+                  type="button"
+                  data-prompt={item.prompt}
+                  onClick={() => onQuickPrompt(item.prompt)}
+                >
+                  <span className="prompt-index" aria-hidden="true">{`0${index + 1}`}</span>
+                  <span className="prompt-copy" data-i18n={item.i18n}>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
       </section>
 
       <section
@@ -341,27 +343,29 @@ const ChatView = memo(function ChatView({
       </section>
 
       <footer className="composer-shell" data-shell-section="composer-panel">
-        <form className="composer" id="chatForm" data-composer-form="chat-main">
-          <label className="sr-only" htmlFor="composerInput">Input your message</label>
-          <textarea
-            id={LEGACY_SHELL_IDS.composerInput}
-            maxLength={10000}
-            placeholder="Input your message here..."
-            rows={2}
-            data-i18n="composer.placeholder"
-            data-composer-input="chat-main"
-          ></textarea>
-          <div className="composer-actions">
-            <ChatRuntimeHost currentRoute={currentRoute} language={language} />
-            <div className="composer-submit-bar">
-              <span id={LEGACY_SHELL_IDS.charCount} data-composer-counter="chat-main">0/10000</span>
-              <button id="sendButton" type="submit" aria-label="Send message" data-i18n="composer.send" data-composer-submit="chat-main">
-                Send
-              </button>
+        <div className="chat-content-frame">
+          <form className="composer" id="chatForm" data-composer-form="chat-main">
+            <label className="sr-only" htmlFor="composerInput">Input your message</label>
+            <textarea
+              id={LEGACY_SHELL_IDS.composerInput}
+              maxLength={10000}
+              placeholder="Input your message here..."
+              rows={2}
+              data-i18n="composer.placeholder"
+              data-composer-input="chat-main"
+            ></textarea>
+            <div className="composer-actions">
+              <ChatRuntimeHost currentRoute={currentRoute} language={language} />
+              <div className="composer-submit-bar">
+                <span id={LEGACY_SHELL_IDS.charCount} data-composer-counter="chat-main">0/10000</span>
+                <button id="sendButton" type="submit" aria-label="Send message" data-i18n="composer.send" data-composer-submit="chat-main">
+                  Send
+                </button>
+              </div>
             </div>
-          </div>
-        </form>
-        <p className="composer-note" data-i18n="composer.note">{copy.composerNote}</p>
+          </form>
+          <p className="composer-note" data-i18n="composer.note">{copy.composerNote}</p>
+        </div>
       </footer>
     </div>
   );
