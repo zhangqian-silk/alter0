@@ -358,26 +358,19 @@ func TestTerminalSessionItemHandlerReturnsStepDetail(t *testing.T) {
 }
 
 func TestTerminalViewPreservesInputDraftAcrossPaint(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
 	markers := []string{
-		"drafts: {}",
-		"focusedInputSessionID: \"\"",
-		"composingInputSessionID: \"\"",
-		"const terminalComposer = createReusableComposer();",
-		"const bindTerminalComposer = (session) => {",
-		"terminalComposer.bind(inputNode, formNode, {",
-		"draftStorage: \"local\",",
-		"draftKey: () => `terminal:${normalizeText(session?.id || \"default\")}`,",
-		"const isTerminalInputComposing = (sessionID) => {",
-		"const requestTerminalPaint = (options = {}) => {",
-		"const rememberTerminalInputFocus = (sessionID, inputNode = null) => {",
-		"const previousWorkspace = container.querySelector(\"[data-terminal-workspace]\");",
-		"writeTerminalDraft(previousSessionID, previousInput.value);",
-		"const previousInput = container.querySelector(\"[data-terminal-input]\");",
-		"bindTerminalComposer(active);",
-		"rememberTerminalInputComposition(session.id);",
-		"flushDeferredTerminalPaint();",
-		"nextInput.focus({ preventScroll: true });",
+		"window.localStorage.getItem(`terminal:${activeSessionID}`) || \"\"",
+		"window.localStorage.setItem(`terminal:${activeSessionID}`, inputValue);",
+		"window.localStorage.removeItem(`terminal:${sessionID}`);",
+		"window.localStorage.removeItem(`terminal:${session.id}`);",
+		"const timer = window.setTimeout(() => {",
+		"data-terminal-input-form",
+		"data-terminal-input",
+		"data-terminal-submit",
+		"data-composer-form=\"terminal-runtime\"",
+		"data-composer-input=\"terminal-runtime\"",
+		"data-composer-submit=\"terminal-runtime\"",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {

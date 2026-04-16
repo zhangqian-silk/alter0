@@ -23,10 +23,10 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 - 根路径 `/` 默认进入 Chat 工作台。
 - `/chat` 提供 Chat、Agent、Terminal、Product、Control 与 Memory 的统一 Web Shell。
-- Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`；该入口仅保留前端挂载容器与静态资源引用，当前由 React 渲染 legacy shell DOM，再由兼容桥承接旧版运行时脚本与样式。
-- React 壳层当前直接维护主导航当前路由高亮、导航折叠态、导航 tooltip、品牌状态卡、Session Pane 上下文卡、会话卡片列表、ChatWorkspace 头部动作区、工作区 hero、欢迎区文案、欢迎区 target picker、prompt deck、欢迎区/消息区显隐、消息列表 DOM、运行时 controls/note/sheet DOM、Session 历史空态提示/可访问标签、Composer 面板、路由页 hero、路由页头部标题/副标题、菜单、会话入口与路由感知文案；导航抽屉、会话抽屉、导航折叠同步、会话历史折叠同步、主导航跳转、新建会话入口、欢迎区快捷提示、会话聚焦、会话删除与语言切换统一由 React 发出结构化 bridge 事件，再由 legacy runtime 执行确认、路由、快捷发送和会话业务；legacy runtime 通过 chat workspace snapshot bridge 回写当前会话标题、副标题、欢迎区描述与结构化 target picker 数据，通过 session pane snapshot bridge 回写会话卡片列表、空态与加载错误，通过 message region snapshot bridge 回写欢迎区/消息区显隐与结构化消息快照，通过 chat runtime snapshot bridge 回写运行时 controls、错误提示、移动端 runtime sheet 与滚动位置；`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类路由页由 React 接管，其中 terminal 通过 React-managed host 挂载 legacy terminal controller，其余页面直接请求控制台或会话 API 并渲染，且 React 必须在 `routeBody` 上同步当前页 `data-react-managed-route` 标记、在 `appShell` 上同步稳定的 `data-react-managed-routes` 路由清单，供 legacy runtime 精确跳过这些页面主体 DOM 的接管；其余 route body 保持静态 DOM 契约，不在桥接阶段随 React 状态重复渲染。
+- Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`；该入口仅保留前端挂载容器与静态资源引用，由 React 渲染稳定的 shell DOM，并通过兼容样式层保持旧 DOM 契约。
+- `LegacyWebShell` 直接维护主导航当前路由高亮、导航折叠态、导航 tooltip、品牌状态卡、Session Pane 上下文卡、会话卡片列表、ChatWorkspace 头部动作区、工作区 hero、欢迎区文案、欢迎区 target picker、prompt deck、欢迎区/消息区显隐、消息列表 DOM、运行时 controls/note/sheet DOM、Session 历史空态提示/可访问标签、Composer 面板、路由页 hero、路由页头部标题/副标题、菜单、会话入口与路由感知文案；`ReactRuntimeFacade` 负责 Chat / Agent 的会话创建、切换、删除、草稿恢复、消息流、结构化 runtime、移动端 runtime sheet、结构化快照发布与 bridge 事件处理。`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类路由页由 React 接管，其中 terminal 已改为 React 原生页面实现。React 必须在 `routeBody` 上同步当前页 `data-react-managed-route` 标记、在 `appShell` 上同步稳定的 `data-react-managed-routes` 路由清单，避免壳层状态更新时清空页面主体 DOM；兼容层仅保留样式和 DOM 契约，不再通过 legacy 脚本接管 `/chat` 业务运行时。
 - Web Shell 的稳定界面基线为桌面三栏 cockpit 与移动端双抽屉工作台：主导航展示品牌状态卡与模块组，会话栏承载当前路由上下文、新建入口与历史列表，主工作区承载工作区 hero、欢迎区/消息区和独立输入面板；页面类路由使用独立 route hero 承接说明，不再沿用旧版平铺式工具页头。
-- `static/dist/assets/*` 使用构建产物哈希文件名并返回长期 immutable 缓存；`/chat` 与 `static/dist/legacy/*` 保持 `no-cache`，确保桥接阶段页面与兼容 runtime 能及时刷新到最新版本。
+- `static/dist/assets/*` 使用构建产物哈希文件名并返回长期 immutable 缓存；`/chat` 与 `static/dist/legacy/*` 下的兼容样式资源保持 `no-cache`，确保页面与样式能及时刷新到最新版本。
 - `/login` 在登录密码启用时提供登录入口；`/logout` 清理当前登录态并回到登录流程。
 - 登录密码未启用时，Web Shell 直接进入受保护页面；登录密码启用后，受保护页面和 API 使用同一登录态校验。
 
@@ -149,14 +149,14 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Chat 历史区支持折叠与展开，减少长对话阅读空间占用。
 - Session Pane 的历史折叠状态在同一浏览器会话内持久化恢复；在 `agent-runtime` 路由下，新会话入口文案切换为 Agent 会话语义，并随语言切换同步更新。
 - Session 历史区的空态提示与列表可访问标签需按当前路由与语言即时切换文案；这些文案更新不得清空或重建 runtime 已注入的会话卡片节点。
-- ChatWorkspace 头部的菜单按钮、会话抽屉按钮和移动端新会话入口需按当前路由与语言即时切换文案；这些壳层文案更新不得覆盖 legacy runtime 已写入的会话标题、副标题或消息内容。
-- 路由页头部的标题与副标题需按当前路由与语言即时切换文案；这些页头更新不得覆盖 route body 内已由 legacy runtime 注入的页面主体内容。
-- 已由 React 接管的 route body 需在 DOM 上暴露稳定 ownership 契约：`routeBody[data-react-managed-route]` 表达当前页 ownership，`appShell[data-react-managed-routes]` 表达稳定的受管路由集合；legacy runtime 只能依据这份由 React 输出的契约跳过页面主体挂载，不得继续维护额外的独立路由白名单。
+- ChatWorkspace 头部的菜单按钮、会话抽屉按钮和移动端新会话入口需按当前路由与语言即时切换文案；这些壳层文案更新不得覆盖当前会话标题、副标题或消息内容。
+- 路由页头部的标题与副标题需按当前路由与语言即时切换文案；这些页头更新不得覆盖 route body 内已渲染的页面主体内容。
+- 已由 React 接管的 route body 需在 DOM 上暴露稳定 ownership 契约：`routeBody[data-react-managed-route]` 表达当前页 ownership，`appShell[data-react-managed-routes]` 表达稳定的受管路由集合；兼容层只能依据这份由 React 输出的契约退让，不得继续维护额外的独立路由白名单。
 - 欢迎区、prompt deck 与 Composer 面板在同一主工作区内采用独立滚动与固定底部输入区；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
 - 用户消息右对齐，宽度不超过消息区 80%，助手回复弱化厚重卡片层级。
 - 桌面宽屏下 Chat 消息列与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区保留最大阅读宽度，避免大屏下仍锁死为窄列。
-- Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致 legacy runtime 已注入的会话卡片、消息节点或 route 内容被清空重建。
-- React 壳层发出的主导航跳转、新建会话、欢迎区快捷提示、语言切换、导航折叠同步与会话历史折叠同步事件，必须由 legacy runtime 在同一页面内完成确认、路由更新、快捷发送或会话创建，且不能要求用户重复点击或依赖不存在的全局函数。
+- Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致会话卡片、消息节点或 route 内容被清空重建。
+- React 壳层发出的主导航跳转、新建会话、欢迎区快捷提示、语言切换、导航折叠同步与会话历史折叠同步事件，必须由当前前端运行时在同一页面内完成确认、路由更新、快捷发送或会话创建，且不能要求用户重复点击或依赖额外脚本注入的全局函数。
 
 ## 移动端体验
 

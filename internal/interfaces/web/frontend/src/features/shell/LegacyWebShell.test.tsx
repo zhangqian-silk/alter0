@@ -1,20 +1,17 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
   LEGACY_SHELL_CREATE_SESSION_EVENT,
   LEGACY_SHELL_FOCUS_SESSION_EVENT,
   LEGACY_SHELL_NAVIGATE_EVENT,
   LEGACY_SHELL_QUICK_PROMPT_EVENT,
   LEGACY_SHELL_REMOVE_SESSION_EVENT,
-  LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT,
-  LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT,
-  LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT,
   LEGACY_SHELL_SYNC_NAV_COLLAPSED_EVENT,
-  LEGACY_SHELL_SYNC_SESSION_PANE_EVENT,
   LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT,
   LEGACY_SHELL_TOGGLE_LANGUAGE_EVENT,
 } from "./legacyShellBridge";
 import { LegacyWebShell } from "./LegacyWebShell";
 import { LEGACY_SHELL_IDS } from "./legacyDomContract";
+import { resetLegacyRuntimeSnapshotStore } from "./legacyRuntimeSnapshotStore";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -26,13 +23,63 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
   });
 }
 
+function runtime() {
+  if (!window.__alter0LegacyRuntime) {
+    throw new Error("legacy runtime bridge unavailable");
+  }
+  return window.__alter0LegacyRuntime;
+}
+
+function runtimeSnapshot(overrides: Record<string, unknown> = {}) {
+  return {
+    route: "chat",
+    compact: false,
+    openPopover: "",
+    note: "",
+    agentRuntime: false,
+    locked: false,
+    target: {
+      type: "model",
+      id: "raw-model",
+      name: "Raw Model",
+    },
+    targetOptions: [],
+    selectedProviderId: "openai",
+    selectedModelId: "gpt-5.4",
+    selectedModelLabel: "GPT-5.4",
+    toolCount: 0,
+    skillCount: 0,
+    providers: [
+      {
+        id: "openai",
+        name: "OpenAI",
+        models: [
+          {
+            id: "gpt-5.4",
+            name: "GPT-5.4",
+            active: true,
+          },
+        ],
+      },
+    ],
+    capabilities: [],
+    skills: [],
+    ...overrides,
+  };
+}
+
 describe("LegacyWebShell", () => {
   beforeEach(() => {
+    resetLegacyRuntimeSnapshotStore();
+    delete window.__alter0LegacyRuntime;
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL) => {
         const url = String(input);
         if (url === "/api/control/channels" || url === "/api/control/skills" || url === "/api/control/mcps") {
+          return Promise.resolve(jsonResponse({ items: [] }));
+        }
+        if (url === "/api/terminal/sessions") {
           return Promise.resolve(jsonResponse({ items: [] }));
         }
         if (url.startsWith("/api/sessions?")) {
@@ -117,7 +164,7 @@ describe("LegacyWebShell", () => {
     );
   });
 
-  it("marks the terminal route body as React-managed and renders the bridge shell", () => {
+  it("marks the terminal route body as React-managed and renders the React terminal shell", () => {
     window.location.hash = "#terminal";
 
     render(<LegacyWebShell />);
@@ -128,10 +175,9 @@ describe("LegacyWebShell", () => {
       "data-react-managed-route",
       "true",
     );
-    expect(routeBody?.querySelector('[data-legacy-terminal-host="true"]')).toBeInTheDocument();
-    expect(routeBody?.querySelector('[data-legacy-terminal-host="true"] [data-terminal-view]')).toBeInTheDocument();
-    expect(routeBody?.querySelector('[data-legacy-terminal-host="true"] [data-terminal-session-pane]')).toBeInTheDocument();
-    expect(routeBody?.querySelector('[data-legacy-terminal-host="true"] .terminal-workspace')).toBeInTheDocument();
+    expect(routeBody?.querySelector("[data-terminal-view]")).toBeInTheDocument();
+    expect(routeBody?.querySelector("[data-terminal-session-pane]")).toBeInTheDocument();
+    expect(routeBody?.querySelector(".terminal-workspace")).toBeInTheDocument();
   });
 
   it("renders the shell navigation groups and route placement", () => {
@@ -505,15 +551,12 @@ describe("LegacyWebShell", () => {
 
     render(<LegacyWebShell />);
 
-    const routeBody = document.getElementById(LEGACY_SHELL_IDS.routeBody);
     const appShell = document.getElementById(LEGACY_SHELL_IDS.appShell);
-    const terminalToggle = document.createElement("button");
-    terminalToggle.type = "button";
-    terminalToggle.setAttribute("data-terminal-session-pane-toggle", "");
-    routeBody?.appendChild(terminalToggle);
+    const terminalToggle = document.querySelector("[data-terminal-session-pane-toggle]") as HTMLButtonElement | null;
+    expect(terminalToggle).toBeInTheDocument();
 
     const terminalToggleSpy = vi.fn();
-    terminalToggle.addEventListener("click", terminalToggleSpy);
+    terminalToggle?.addEventListener("click", terminalToggleSpy);
 
     fireEvent.click(document.getElementById(LEGACY_SHELL_IDS.sessionToggle)!);
 
@@ -693,15 +736,11 @@ describe("LegacyWebShell", () => {
     sessionList?.insertAdjacentHTML("beforeend", '<button type="button" data-runtime-node="session">runtime session</button>');
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_SESSION_PANE_EVENT, {
-          detail: {
-            route: "chat",
-            hasSessions: true,
-            loadError: "Runtime load error",
-          },
-        }),
-      );
+      runtime().publishSessionPaneSnapshot?.({
+        route: "chat",
+        hasSessions: true,
+        loadError: "Runtime load error",
+      });
     });
 
     expect(document.getElementById("sessionEmpty")).toHaveAttribute("hidden");
@@ -741,27 +780,23 @@ describe("LegacyWebShell", () => {
     render(<LegacyWebShell />);
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_SESSION_PANE_EVENT, {
-          detail: {
-            route: "agent-runtime",
-            hasSessions: true,
-            loadError: "",
-            items: [
-              {
-                id: "session-runtime-1",
-                title: "Runtime session",
-                meta: "Agent · provider / model · 3 messages · just now",
-                active: true,
-                shortHash: "1a2b3c4d",
-                copyValue: "1a2b3c4d",
-                copyLabel: "Copy session id",
-                deleteLabel: "Delete session",
-              },
-            ],
+      runtime().publishSessionPaneSnapshot?.({
+        route: "agent-runtime",
+        hasSessions: true,
+        loadError: "",
+        items: [
+          {
+            id: "session-runtime-1",
+            title: "Runtime session",
+            meta: "Agent · provider / model · 3 messages · just now",
+            active: true,
+            shortHash: "1a2b3c4d",
+            copyValue: "1a2b3c4d",
+            copyLabel: "Copy session id",
+            deleteLabel: "Delete session",
           },
-        }),
-      );
+        ],
+      });
     });
 
     expect(screen.getByText("Runtime session")).toBeInTheDocument();
@@ -779,26 +814,22 @@ describe("LegacyWebShell", () => {
     render(<LegacyWebShell />);
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
-          detail: {
-            route: "chat",
-            hasMessages: true,
-            sessionId: "session-runtime-keep",
-            messages: [
-              {
-                id: "msg-runtime-keep",
-                role: "assistant",
-                text: "Runtime message",
-                status: "done",
-                error: false,
-                at: Date.UTC(2026, 3, 15, 11, 0, 0),
-                source: "model",
-              },
-            ],
+      runtime().publishMessageRegionSnapshot?.({
+        route: "chat",
+        hasMessages: true,
+        sessionId: "session-runtime-keep",
+        messages: [
+          {
+            id: "msg-runtime-keep",
+            role: "assistant",
+            text: "Runtime message",
+            status: "done",
+            error: false,
+            at: Date.UTC(2026, 3, 15, 11, 0, 0),
+            source: "model",
           },
-        }),
-      );
+        ],
+      });
     });
 
     expect(document.querySelector(".chat-pane")).not.toHaveClass("empty-state");
@@ -824,24 +855,20 @@ describe("LegacyWebShell", () => {
     render(<LegacyWebShell />);
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
-          detail: {
-            route: "terminal",
-            hasMessages: true,
-            messages: [
-              {
-                id: "msg-terminal-scope",
-                role: "assistant",
-                text: "terminal message should stay scoped",
-                status: "done",
-                error: false,
-                at: Date.UTC(2026, 3, 15, 12, 0, 0),
-              },
-            ],
+      runtime().publishMessageRegionSnapshot?.({
+        route: "terminal",
+        hasMessages: true,
+        messages: [
+          {
+            id: "msg-terminal-scope",
+            role: "assistant",
+            text: "terminal message should stay scoped",
+            status: "done",
+            error: false,
+            at: Date.UTC(2026, 3, 15, 12, 0, 0),
           },
-        }),
-      );
+        ],
+      });
     });
 
     expect(document.getElementById(LEGACY_SHELL_IDS.welcomeScreen)).not.toHaveAttribute("hidden");
@@ -853,23 +880,19 @@ describe("LegacyWebShell", () => {
     render(<LegacyWebShell />);
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
-          detail: {
-            route: "chat",
-            hasMessages: true,
-            sessionId: "session-runtime-1",
-            messages: [
-              {
-                id: "msg-runtime-1",
-                role: "user",
-                text: "Runtime user message",
-                at: Date.UTC(2026, 3, 15, 12, 30, 0),
-              },
-            ],
+      runtime().publishMessageRegionSnapshot?.({
+        route: "chat",
+        hasMessages: true,
+        sessionId: "session-runtime-1",
+        messages: [
+          {
+            id: "msg-runtime-1",
+            role: "user",
+            text: "Runtime user message",
+            at: Date.UTC(2026, 3, 15, 12, 30, 0),
           },
-        }),
-      );
+        ],
+      });
     });
 
     expect(screen.getByText("Runtime user message")).toBeInTheDocument();
@@ -889,40 +912,36 @@ describe("LegacyWebShell", () => {
     render(<LegacyWebShell />);
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT, {
-          detail: {
-            route: "chat",
-            hasMessages: true,
-            sessionId: "session-runtime-process",
-            messages: [
+      runtime().publishMessageRegionSnapshot?.({
+        route: "chat",
+        hasMessages: true,
+        sessionId: "session-runtime-process",
+        messages: [
+          {
+            id: "msg-runtime-process",
+            role: "assistant",
+            text: "Runtime final answer",
+            source: "codex_cli",
+            status: "done",
+            error: false,
+            at: Date.UTC(2026, 3, 15, 13, 0, 0),
+            process_steps: [
               {
-                id: "msg-runtime-process",
-                role: "assistant",
-                text: "Runtime final answer",
-                source: "codex_cli",
-                status: "done",
-                error: false,
-                at: Date.UTC(2026, 3, 15, 13, 0, 0),
-                process_steps: [
-                  {
-                    id: "step-1",
-                    title: "Inspect repository",
-                    detail: "Checked the current shell layout.",
-                    status: "success",
-                  },
-                  {
-                    id: "step-2",
-                    title: "Apply patch",
-                    detail: "Moved message rendering into React.",
-                    status: "success",
-                  },
-                ],
+                id: "step-1",
+                title: "Inspect repository",
+                detail: "Checked the current shell layout.",
+                status: "success",
+              },
+              {
+                id: "step-2",
+                title: "Apply patch",
+                detail: "Moved message rendering into React.",
+                status: "success",
               },
             ],
           },
-        }),
-      );
+        ],
+      });
     });
 
     expect(screen.getByRole("button", { name: /Process/i })).toBeInTheDocument();
@@ -939,26 +958,22 @@ describe("LegacyWebShell", () => {
     messageArea?.insertAdjacentHTML("beforeend", '<div data-runtime-node="message">runtime message</div>');
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT, {
-          detail: {
-            route: "chat",
-            heading: "Runtime heading",
-            subheading: "Runtime subheading",
-            welcomeHeading: "Runtime welcome heading",
-            welcomeDescription: "Runtime welcome description",
-            welcomeTargets: [
-              {
-                type: "agent",
-                id: "agent-runtime",
-                name: "Runtime Agent",
-                active: true,
-                interactive: true,
-              },
-            ],
+      runtime().publishChatWorkspaceSnapshot?.({
+        route: "chat",
+        heading: "Runtime heading",
+        subheading: "Runtime subheading",
+        welcomeHeading: "Runtime welcome heading",
+        welcomeDescription: "Runtime welcome description",
+        welcomeTargets: [
+          {
+            type: "agent",
+            id: "agent-runtime",
+            name: "Runtime Agent",
+            active: true,
+            interactive: true,
           },
-        }),
-      );
+        ],
+      });
     });
 
     expect(document.getElementById("sessionHeading")).toHaveTextContent("Runtime heading");
@@ -992,41 +1007,37 @@ describe("LegacyWebShell", () => {
     render(<LegacyWebShell />);
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT, {
-          detail: {
-            route: "agent-runtime",
-            heading: "Agent runtime",
-            subheading: "Runtime subheading",
-            welcomeHeading: "Choose target",
-            welcomeDescription: "Pick an agent to continue.",
-            welcomeTargets: [
-              {
-                type: "agent",
-                id: "planner",
-                name: "Planner",
-                active: true,
-                interactive: true,
-              },
-              {
-                type: "agent",
-                id: "reviewer",
-                name: "Reviewer",
-                active: false,
-                interactive: true,
-              },
-              {
-                type: "agent",
-                id: "pinned-agent",
-                name: "Pinned Agent",
-                active: false,
-                interactive: false,
-              },
-            ],
-            welcomeTargetError: "Catalog unavailable",
+      runtime().publishChatWorkspaceSnapshot?.({
+        route: "agent-runtime",
+        heading: "Agent runtime",
+        subheading: "Runtime subheading",
+        welcomeHeading: "Choose target",
+        welcomeDescription: "Pick an agent to continue.",
+        welcomeTargets: [
+          {
+            type: "agent",
+            id: "planner",
+            name: "Planner",
+            active: true,
+            interactive: true,
           },
-        }),
-      );
+          {
+            type: "agent",
+            id: "reviewer",
+            name: "Reviewer",
+            active: false,
+            interactive: true,
+          },
+          {
+            type: "agent",
+            id: "pinned-agent",
+            name: "Pinned Agent",
+            active: false,
+            interactive: false,
+          },
+        ],
+        welcomeTargetError: "Catalog unavailable",
+      });
     });
 
     expect(screen.getByRole("button", { name: "Planner planner" })).toHaveClass("active");
@@ -1043,56 +1054,184 @@ describe("LegacyWebShell", () => {
     render(<LegacyWebShell />);
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT, {
-          detail: {
-            route: "chat",
-            controlsHTML: '<div class="composer-runtime-group"><button class="composer-runtime-trigger is-open" type="button" data-runtime-toggle="model"><span class="composer-runtime-trigger-label">Runtime model</span></button></div>',
-            noteHTML: '<p class="chat-runtime-note chat-runtime-error">Runtime provider warning</p>',
-            sheetHTML: '<div class="composer-runtime-popover-mobile-body" data-runtime-scroll-container="mobile"><label class="composer-runtime-checkbox"><input type="checkbox" data-runtime-toggle-item="skills" value="runtime-skill" checked><span class="composer-runtime-checkbox-copy"><strong>Runtime skill</strong><span>Enabled in runtime</span></span></label></div>',
-          },
+      runtime().publishChatRuntimeSnapshot?.(
+        runtimeSnapshot({
+          openPopover: "model",
+          note: "Runtime provider warning",
+          providers: [
+            {
+              id: "openai",
+              name: "OpenAI",
+              models: [
+                {
+                  id: "gpt-5.4",
+                  name: "GPT-5.4",
+                  active: true,
+                },
+                {
+                  id: "gpt-5.4-mini",
+                  name: "GPT-5.4 Mini",
+                  active: false,
+                },
+              ],
+            },
+          ],
         }),
       );
     });
 
-    expect(screen.getByText("Runtime model")).toBeInTheDocument();
-    expect(screen.getByText("Runtime provider warning")).toBeInTheDocument();
-    expect(screen.getByText("Runtime skill")).toBeInTheDocument();
+    const runtimePanel = document.getElementById(LEGACY_SHELL_IDS.chatRuntimePanel);
+    const runtimeControls = document.querySelector('[data-runtime-controls-root=""]');
+    const runtimeNote = document.querySelector('[data-runtime-note-root=""]');
+
+    expect(runtimePanel).toBeInTheDocument();
+    expect(runtimeControls).toBeInTheDocument();
+    expect(runtimeNote).toBeInTheDocument();
+    expect(within(runtimeControls as HTMLElement).getByText("Model · GPT-5.4")).toBeInTheDocument();
+    expect(runtimeNote).toHaveTextContent("Runtime provider warning");
+    expect(within(runtimeControls as HTMLElement).getByText("GPT-5.4 Mini")).toBeInTheDocument();
 
     await act(async () => {
       document.documentElement.lang = "zh-CN";
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Runtime model")).toBeInTheDocument();
-      expect(screen.getByText("Runtime provider warning")).toBeInTheDocument();
-      expect(screen.getByText("Runtime skill")).toBeInTheDocument();
+      expect(within(runtimeControls as HTMLElement).getByText("模型 · GPT-5.4")).toBeInTheDocument();
+      expect(runtimeNote).toHaveTextContent("Runtime provider warning");
+      expect(within(runtimeControls as HTMLElement).getByText("GPT-5.4 Mini")).toBeInTheDocument();
     });
   });
 
-  it("restores runtime panel scroll snapshots after React rerenders", async () => {
+  it("renders structured runtime sheet content in the detached sheet host", async () => {
     render(<LegacyWebShell />);
 
     await act(async () => {
-      document.dispatchEvent(
-        new CustomEvent(LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT, {
-          detail: {
-            route: "chat",
-            controlsHTML: "",
-            noteHTML: "",
-            sheetHTML: '<div class="composer-runtime-popover-mobile-body" data-runtime-scroll-container="mobile"><div style="height: 400px;">Runtime sheet body</div></div>',
-            scrollPopover: "mobile",
-            scrollTop: 96,
-          },
+      runtime().publishChatRuntimeSnapshot?.(
+        runtimeSnapshot({
+          compact: true,
+          openPopover: "mobile",
+          note: "Runtime mobile hint",
+          capabilities: [
+            {
+              id: "memory",
+              name: "Memory",
+              description: "Search memory files",
+              kind: "tool",
+              active: true,
+            },
+          ],
+          skills: [
+            {
+              id: "runtime-skill",
+              name: "Runtime skill",
+              description: "Enabled in runtime",
+              kind: "skill",
+              active: true,
+            },
+          ],
         }),
       );
     });
 
+    const sheetHost = document.getElementById(LEGACY_SHELL_IDS.chatRuntimeSheetHost);
+
     await waitFor(() => {
-      const scrollContainer = document.querySelector<HTMLElement>('[data-runtime-scroll-container="mobile"]');
-      expect(scrollContainer).not.toBeNull();
-      expect(scrollContainer?.scrollTop).toBe(96);
+      expect(sheetHost?.querySelector(".composer-runtime-sheet-backdrop")).toBeInTheDocument();
+      expect(sheetHost?.querySelector(".composer-runtime-popover-mobile")).toBeInTheDocument();
+      expect(sheetHost?.querySelector('[data-runtime-scroll-container="mobile"]')).toBeInTheDocument();
+      expect(within(sheetHost as HTMLElement).getByText("Runtime skill")).toBeInTheDocument();
+      expect(within(sheetHost as HTMLElement).getByText("Memory")).toBeInTheDocument();
     });
+  });
+
+  it("dispatches runtime control actions through the shared runtime bridge", async () => {
+    render(<LegacyWebShell />);
+
+    const toggleChatRuntimePopover = vi.fn(() => true);
+    const selectChatRuntimeModel = vi.fn(() => true);
+    const toggleChatRuntimeItem = vi.fn(() => true);
+    const closeChatRuntimePopover = vi.fn(() => true);
+
+    Object.assign(runtime(), {
+      toggleChatRuntimePopover,
+      selectChatRuntimeModel,
+      toggleChatRuntimeItem,
+      closeChatRuntimePopover,
+    });
+
+    await act(async () => {
+      runtime().publishChatRuntimeSnapshot?.(
+        runtimeSnapshot({
+          openPopover: "model",
+          compact: false,
+          providers: [
+            {
+              id: "openai",
+              name: "OpenAI",
+              models: [
+                { id: "gpt-5.4", name: "GPT-5.4", active: true },
+                { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", active: false },
+              ],
+            },
+          ],
+          capabilities: [
+            {
+              id: "memory",
+              name: "Memory",
+              description: "Search memory files",
+              kind: "tool",
+              active: true,
+            },
+          ],
+        }),
+      );
+    });
+
+    fireEvent.click(document.querySelector('[data-runtime-toggle="model"]') as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "GPT-5.4 Mini OpenAI" }));
+
+    await act(async () => {
+      runtime().publishChatRuntimeSnapshot?.(
+        runtimeSnapshot({
+          openPopover: "capabilities",
+          capabilities: [
+            {
+              id: "memory",
+              name: "Memory",
+              description: "Search memory files",
+              kind: "tool",
+              active: true,
+            },
+          ],
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Memory Search memory files" }));
+
+    await act(async () => {
+      runtime().publishChatRuntimeSnapshot?.(
+        runtimeSnapshot({
+          compact: true,
+          openPopover: "mobile",
+        }),
+      );
+    });
+
+    fireEvent.click(document.querySelector(".composer-runtime-sheet-backdrop") as HTMLElement);
+
+    expect(toggleChatRuntimePopover).toHaveBeenCalledWith("model");
+    expect(selectChatRuntimeModel).toHaveBeenCalledWith({
+      providerId: "openai",
+      modelId: "gpt-5.4-mini",
+    });
+    expect(toggleChatRuntimeItem).toHaveBeenCalledWith({
+      group: "capabilities",
+      id: "memory",
+      checked: false,
+      kind: "tool",
+    });
+    expect(closeChatRuntimePopover).toHaveBeenCalledTimes(1);
   });
 
   it("renders React-managed control route cards inside the route body", async () => {

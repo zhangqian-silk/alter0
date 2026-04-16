@@ -17,6 +17,11 @@ declare global {
       createSession?: () => boolean | void;
       focusSession?: (sessionId: string) => boolean | void;
       removeSession?: (sessionId: string) => boolean | void;
+      toggleChatRuntimePopover?: (popover: string) => boolean | void;
+      closeChatRuntimePopover?: () => boolean | void;
+      selectChatRuntimeTarget?: (target: LegacyShellChatRuntimeTargetActionDetail) => boolean | void;
+      selectChatRuntimeModel?: (selection: LegacyShellChatRuntimeModelActionDetail) => boolean | void;
+      toggleChatRuntimeItem?: (selection: LegacyShellChatRuntimeItemActionDetail) => boolean | void;
     };
   }
 }
@@ -39,6 +44,24 @@ type LegacyShellQuickPromptDetail = {
 
 type LegacyShellSessionActionDetail = {
   sessionId: string;
+};
+
+export type LegacyShellChatRuntimeTargetActionDetail = {
+  type: string;
+  id: string;
+  name: string;
+};
+
+export type LegacyShellChatRuntimeModelActionDetail = {
+  providerId: string;
+  modelId: string;
+};
+
+export type LegacyShellChatRuntimeItemActionDetail = {
+  group: "capabilities" | "skills";
+  id: string;
+  checked: boolean;
+  kind?: "tool" | "mcp";
 };
 
 export type LegacyShellChatWorkspaceDetail = {
@@ -103,13 +126,57 @@ export type LegacyShellMessageProcessStepDetail = {
   status?: string;
 };
 
+export type LegacyShellChatRuntimeTargetDetail = {
+  type?: string;
+  id?: string;
+  name?: string;
+};
+
+export type LegacyShellChatRuntimeTargetOptionDetail = {
+  type?: string;
+  id?: string;
+  name?: string;
+  subtitle?: string;
+  active?: boolean;
+};
+
+export type LegacyShellChatRuntimeModelDetail = {
+  id?: string;
+  name?: string;
+  active?: boolean;
+};
+
+export type LegacyShellChatRuntimeProviderDetail = {
+  id?: string;
+  name?: string;
+  models?: LegacyShellChatRuntimeModelDetail[];
+};
+
+export type LegacyShellChatRuntimeSelectionDetail = {
+  id?: string;
+  name?: string;
+  description?: string;
+  kind?: "tool" | "mcp" | "skill";
+  active?: boolean;
+};
+
 export type LegacyShellChatRuntimeDetail = {
   route: string;
-  controlsHTML?: string;
-  noteHTML?: string;
-  sheetHTML?: string;
-  scrollPopover?: string;
-  scrollTop?: number;
+  compact?: boolean;
+  openPopover?: string;
+  note?: string;
+  agentRuntime?: boolean;
+  locked?: boolean;
+  target?: LegacyShellChatRuntimeTargetDetail;
+  targetOptions?: LegacyShellChatRuntimeTargetOptionDetail[];
+  selectedProviderId?: string;
+  selectedModelId?: string;
+  selectedModelLabel?: string;
+  toolCount?: number;
+  skillCount?: number;
+  providers?: LegacyShellChatRuntimeProviderDetail[];
+  capabilities?: LegacyShellChatRuntimeSelectionDetail[];
+  skills?: LegacyShellChatRuntimeSelectionDetail[];
 };
 
 function callLegacyRuntimeAction<TArgs extends unknown[]>(
@@ -202,4 +269,30 @@ export function syncLegacyShellSessionHistoryCollapsed(collapsed: boolean): bool
       detail: { collapsed },
     }),
   );
+}
+
+export function requestLegacyChatRuntimePopover(popover: string): boolean {
+  return callLegacyRuntimeAction(window.__alter0LegacyRuntime?.toggleChatRuntimePopover, [popover]) ?? false;
+}
+
+export function requestLegacyChatRuntimeClose(): boolean {
+  return callLegacyRuntimeAction(window.__alter0LegacyRuntime?.closeChatRuntimePopover, []) ?? false;
+}
+
+export function requestLegacyChatRuntimeTarget(
+  target: LegacyShellChatRuntimeTargetActionDetail,
+): boolean {
+  return callLegacyRuntimeAction(window.__alter0LegacyRuntime?.selectChatRuntimeTarget, [target]) ?? false;
+}
+
+export function requestLegacyChatRuntimeModel(
+  selection: LegacyShellChatRuntimeModelActionDetail,
+): boolean {
+  return callLegacyRuntimeAction(window.__alter0LegacyRuntime?.selectChatRuntimeModel, [selection]) ?? false;
+}
+
+export function requestLegacyChatRuntimeItem(
+  selection: LegacyShellChatRuntimeItemActionDetail,
+): boolean {
+  return callLegacyRuntimeAction(window.__alter0LegacyRuntime?.toggleChatRuntimeItem, [selection]) ?? false;
 }

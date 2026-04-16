@@ -370,7 +370,7 @@ const ChatView = memo(function ChatView({
             data-composer-input="chat-main"
           ></textarea>
           <div className="composer-actions">
-            <ChatRuntimeHost currentRoute={currentRoute} />
+            <ChatRuntimeHost currentRoute={currentRoute} language={language} />
             <div className="composer-submit-bar">
               <span id={LEGACY_SHELL_IDS.charCount} data-composer-counter="chat-main">0/10000</span>
               <button id="sendButton" type="submit" aria-label="Send message" data-i18n="composer.send" data-composer-submit="chat-main">
