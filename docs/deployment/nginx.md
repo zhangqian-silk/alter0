@@ -1,6 +1,6 @@
 # Nginx 反向代理与登录保护
 
-本方案用于公网部署场景：`alter0` 仅监听本机回环地址，由 Nginx 对外暴露，并通过应用内登录页进行访问控制。
+本方案用于公网部署场景：`alter0` 仅监听本机回环地址，由 Nginx 对外暴露，并通过应用内登录页进行访问控制。若启用会话短哈希前端预览，主域和通配子域都应转发到同一个共享运行时实例，由应用层按 Host 分发对应会话构建。
 
 ## 1. 运行参数（最小安全基线）
 
@@ -28,7 +28,7 @@ go run ./cmd/alter0 \
 ```nginx
 server {
     listen 80;
-    server_name your.domain.com;
+    server_name alter0.cn *.alter0.cn;
 
     client_max_body_size 20m;
 
@@ -46,6 +46,12 @@ server {
 ```
 
 如果已启用 HTTPS，请保留 `X-Forwarded-Proto`，用于安全 Cookie 判定。
+
+### 会话前端预览
+
+- 共享运行时支持把 `https://<session_short_hash>.alter0.cn` 直接映射到某个会话工作区构建出来的 `internal/interfaces/web/static/dist`。
+- 预览注册通过 `PUT /api/control/previews/{session_id}` 完成，仓库内提供 `scripts/deploy_session_preview.sh` 作为标准入口。
+- Nginx 不需要为每个会话动态改配置，只需保证 `*.alter0.cn` 与主域一起回源到同一 `alter0` 进程。
 
 ## 3. 最简单密码配置方案
 

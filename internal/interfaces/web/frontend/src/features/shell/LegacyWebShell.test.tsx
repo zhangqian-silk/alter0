@@ -124,24 +124,25 @@ describe("LegacyWebShell", () => {
     expect(screen.getByLabelText("Input your message")).toHaveAttribute("data-composer-input", "chat-main");
   });
 
-  it("renders the new shell information architecture for chat mode", () => {
+  it("renders a simplified chat shell without duplicated context surfaces", () => {
     render(<LegacyWebShell />);
 
     expect(document.querySelector('[data-shell-section="brand-panel"]')).toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="session-context"]')).toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="chat-hero"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="session-context"]')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="chat-hero"]')).not.toBeInTheDocument();
     expect(document.querySelector('[data-shell-section="prompt-deck"]')).toBeInTheDocument();
     expect(document.querySelector('[data-shell-section="composer-panel"]')).toBeInTheDocument();
     expect(document.querySelector('[data-shell-section="route-hero"]')).not.toBeInTheDocument();
   });
 
-  it("renders a dedicated route hero for page-mode routes", () => {
+  it("renders a single route heading surface for page-mode routes", () => {
     window.location.hash = "#channels";
 
     render(<LegacyWebShell />);
 
     expect(document.querySelector('[data-shell-section="route-hero"]')).toBeInTheDocument();
     expect(document.querySelector('[data-shell-section="chat-hero"]')).not.toBeInTheDocument();
+    expect(document.querySelector(".route-head")).not.toBeInTheDocument();
   });
 
   it("marks React-managed route bodies so the legacy runtime can skip DOM ownership", () => {

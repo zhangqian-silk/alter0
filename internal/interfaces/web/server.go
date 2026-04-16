@@ -111,6 +111,7 @@ type Server struct {
 	workspaceRoot     string
 	frontendDevOrigin string
 	frontendDevProxy  http.Handler
+	previewRegistry   *sessionPreviewRegistry
 }
 
 type llmService interface {
@@ -654,6 +655,12 @@ func NewServer(
 		}
 	}
 	frontendDevOrigin := resolveFrontendDevOrigin()
+	workspaceRoot := resolveServerWorkspaceRoot()
+	previewRegistryPath := filepath.Join(workspaceRoot, ".alter0", sessionPreviewRegistryFilename)
+	previewRegistry, err := newFileSessionPreviewRegistry(previewRegistryPath, "alter0.cn")
+	if err != nil && logger != nil {
+		logger.Error("failed to initialize session preview registry", slog.String("error", err.Error()))
+	}
 	return &Server{
 		addr:              addr,
 		orchestrator:      orchestrator,
@@ -675,9 +682,10 @@ func NewServer(
 		products:          products,
 		productDrafts:     productDrafts,
 		travelGuides:      travelGuides,
-		workspaceRoot:     resolveServerWorkspaceRoot(),
+		workspaceRoot:     workspaceRoot,
 		frontendDevOrigin: frontendDevOrigin,
 		frontendDevProxy:  newFrontendDevProxy(frontendDevOrigin, logger),
+		previewRegistry:   previewRegistry,
 	}
 }
 
@@ -723,6 +731,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/tasks/", s.controlTaskItemHandler)
 	mux.HandleFunc("/api/control/environments", s.environmentConfigHandler)
 	mux.HandleFunc("/api/control/environments/audits", s.environmentAuditListHandler)
+	mux.HandleFunc("/api/control/previews", s.previewCollectionHandler)
+	mux.HandleFunc("/api/control/previews/", s.previewItemHandler)
 	mux.HandleFunc("/api/control/runtime", s.runtimeInfoHandler)
 	mux.HandleFunc("/api/control/runtime/restart", s.runtimeRestartHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
@@ -758,7 +768,7 @@ func (s *Server) Run(ctx context.Context) error {
 		mux.Handle("/legacy/", cacheControlledFileServer("/legacy/", legacyFS, bridgeStaticAssetCacheControl))
 	}
 
-	handler := http.Handler(mux)
+	handler := s.withSessionPreview(http.Handler(mux))
 	if s.webLoginEnabled {
 		handler = s.authMiddleware(handler)
 	}

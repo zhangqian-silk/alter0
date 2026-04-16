@@ -335,7 +335,6 @@ export function ReactManagedAgentRouteBody({
         <div className="agent-route-pane-head">
           <div className="agent-route-pane-copy">
             <h4>{copy.title}</h4>
-            <p>{copy.subtitle}</p>
           </div>
           <button
             className="route-primary-button"
@@ -396,7 +395,6 @@ export function ReactManagedAgentRouteBody({
         <div className="agent-route-pane-head">
           <div className="agent-route-pane-copy">
             <h4>{selectedAgentID ? copy.edit : copy.newAgent}</h4>
-            <p>{copy.managed}</p>
           </div>
           <div className="agent-builder-actions">
             <button
