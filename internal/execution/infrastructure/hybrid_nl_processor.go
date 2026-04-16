@@ -29,10 +29,11 @@ type runtimeAgentCatalog interface {
 }
 
 type HybridNLProcessor struct {
-	codex  *CodexCLIProcessor
-	react  reactAgentFactory
-	agents runtimeAgentCatalog
-	logger *slog.Logger
+	codex           *CodexCLIProcessor
+	react           reactAgentFactory
+	agents          runtimeAgentCatalog
+	serviceDeployer workspaceServiceDeployer
+	logger          *slog.Logger
 }
 
 func NewHybridNLProcessor(
@@ -56,10 +57,11 @@ func NewHybridNLProcessorWithCatalog(
 		logger = slog.Default()
 	}
 	return &HybridNLProcessor{
-		codex:  codex,
-		react:  react,
-		agents: agents,
-		logger: logger,
+		codex:           codex,
+		react:           react,
+		agents:          agents,
+		serviceDeployer: newWorkspaceServiceDeployer(),
+		logger:          logger,
 	}
 }
 
@@ -258,6 +260,8 @@ func (p *HybridNLProcessor) executeModelTool(
 		return p.executeReadMemoryTool(metadata, toolCall)
 	case toolWriteMemory:
 		return p.executeWriteMemoryTool(metadata, toolCall)
+	case toolDeployTestService:
+		return p.executeDeployTestServiceTool(ctx, metadata, toolCall)
 	case "codex_exec":
 		payload := struct {
 			Instruction string `json:"instruction"`
@@ -391,6 +395,9 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 	}
 	if _, ok := allowedTools[toolWriteMemory]; ok {
 		parts = append(parts, "Use write_memory only for durable user guidance, preference updates, naming conventions, or shorthand mappings that belong in the resolved memory files.")
+	}
+	if _, ok := allowedTools[toolDeployTestService]; ok {
+		parts = append(parts, "Use deploy_test_service when the user needs a session-scoped preview host or a separately routed test service on the shared gateway. Use web for the main short-hash host and a short service label such as api or docs for additional subdomains.")
 	}
 	if custom := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey)); custom != "" {
 		parts = append(parts, "Agent profile system prompt:\n"+custom)
@@ -648,6 +655,54 @@ func (p *HybridNLProcessor) buildAgentTools(metadata map[string]string) []llmdom
 			},
 		})
 	}
+	if _, ok := allowed[toolDeployTestService]; ok {
+		items = append(items, llmdomain.Tool{
+			Name:        toolDeployTestService,
+			Description: "Deploy or update a workspace test service on the shared alter0 gateway and return the preview host.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"service_name": map[string]interface{}{
+						"type":        "string",
+						"description": "Service subdomain label. Use web for the main short-hash host or a short label such as api or docs for additional subdomains.",
+					},
+					"service_type": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{workspaceServiceTypeFrontendDist, workspaceServiceTypeHTTP},
+						"description": "Deployment type. frontend_dist serves a built web dist, http proxies a local or remote upstream.",
+					},
+					"repository_path": map[string]interface{}{
+						"type":        "string",
+						"description": "Git workspace path that contains internal/interfaces/web/static/dist for frontend_dist deployments.",
+					},
+					"upstream_url": map[string]interface{}{
+						"type":        "string",
+						"description": "Existing http(s) upstream to register for http deployments.",
+					},
+					"start_command": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional command to start an HTTP service before registration. The deployer injects PORT.",
+					},
+					"workdir": map[string]interface{}{
+						"type":        "string",
+						"description": "Working directory for start_command. Defaults to the session repository workspace.",
+					},
+					"port": map[string]interface{}{
+						"type":        "integer",
+						"description": "Optional fixed local port for start_command.",
+					},
+					"health_path": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional health probe path such as /healthz.",
+					},
+					"skip_build": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Skip npm run build for frontend_dist when the dist is already current.",
+					},
+				},
+			},
+		})
+	}
 	if _, ok := allowed[toolCodexExec]; ok {
 		items = append(items, llmdomain.Tool{
 			Name:        toolCodexExec,
@@ -703,6 +758,69 @@ func (p *HybridNLProcessor) buildAgentTools(metadata map[string]string) []llmdom
 		},
 	})
 	return items
+}
+
+func (p *HybridNLProcessor) executeDeployTestServiceTool(
+	ctx context.Context,
+	metadata map[string]string,
+	toolCall llmdomain.ToolCall,
+) (*llmdomain.ToolResult, error) {
+	if p == nil || p.serviceDeployer == nil {
+		return toolErrorResult(toolCall, errors.New("workspace service deployer unavailable")), nil
+	}
+
+	payload := struct {
+		ServiceName    string `json:"service_name"`
+		ServiceType    string `json:"service_type"`
+		RepositoryPath string `json:"repository_path"`
+		UpstreamURL    string `json:"upstream_url"`
+		StartCommand   string `json:"start_command"`
+		Workdir        string `json:"workdir"`
+		Port           int    `json:"port"`
+		HealthPath     string `json:"health_path"`
+		SkipBuild      bool   `json:"skip_build"`
+	}{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(toolCall.Arguments)), &payload); err != nil {
+		return nil, fmt.Errorf("parse %s arguments: %w", toolDeployTestService, err)
+	}
+
+	sessionID := strings.TrimSpace(metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey))
+	if sessionID == "" {
+		return toolErrorResult(toolCall, errors.New("runtime session id is required for deploy_test_service")), nil
+	}
+
+	result, err := p.serviceDeployer.Deploy(ctx, WorkspaceServiceDeployRequest{
+		SessionID:      sessionID,
+		ServiceID:      payload.ServiceName,
+		ServiceType:    payload.ServiceType,
+		RepositoryPath: payload.RepositoryPath,
+		UpstreamURL:    payload.UpstreamURL,
+		StartCommand:   payload.StartCommand,
+		Workdir:        payload.Workdir,
+		Port:           payload.Port,
+		HealthPath:     payload.HealthPath,
+		SkipBuild:      payload.SkipBuild,
+	})
+	if err != nil {
+		return toolErrorResult(toolCall, err), nil
+	}
+
+	return toolSuccessResult(toolCall, map[string]any{
+		"success":         true,
+		"session_id":      result.SessionID,
+		"service_id":      result.ServiceID,
+		"service_type":    result.ServiceType,
+		"host":            result.Host,
+		"url":             result.URL,
+		"short_hash":      result.ShortHash,
+		"repository_path": result.RepositoryPath,
+		"dist_path":       result.DistPath,
+		"upstream_url":    result.UpstreamURL,
+		"runtime_dir":     result.RuntimeDir,
+		"log_path":        result.LogPath,
+		"pid":             result.PID,
+		"status":          result.Status,
+	}), nil
 }
 
 func (p *HybridNLProcessor) executeReadMemoryTool(

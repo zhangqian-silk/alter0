@@ -11,12 +11,13 @@ import (
 )
 
 const (
-	toolCodexExec     = "codex_exec"
-	toolSearchMemory  = "search_memory"
-	toolReadMemory    = "read_memory"
-	toolWriteMemory   = "write_memory"
-	toolDelegateAgent = "delegate_agent"
-	toolComplete      = "complete"
+	toolCodexExec         = "codex_exec"
+	toolSearchMemory      = "search_memory"
+	toolReadMemory        = "read_memory"
+	toolWriteMemory       = "write_memory"
+	toolDelegateAgent     = "delegate_agent"
+	toolDeployTestService = "deploy_test_service"
+	toolComplete          = "complete"
 
 	defaultReadLimitBytes = 32 * 1024
 	maxReadLimitBytes     = 128 * 1024
@@ -54,7 +55,7 @@ func normalizeToolIDSet(values []string) map[string]struct{} {
 	allowed := map[string]struct{}{}
 	for _, value := range values {
 		switch strings.ToLower(strings.TrimSpace(value)) {
-		case toolCodexExec, toolSearchMemory, toolReadMemory, toolWriteMemory, toolDelegateAgent:
+		case toolCodexExec, toolSearchMemory, toolReadMemory, toolWriteMemory, toolDelegateAgent, toolDeployTestService:
 			allowed[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
 		}
 	}

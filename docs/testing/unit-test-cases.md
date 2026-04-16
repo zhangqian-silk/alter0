@@ -84,18 +84,17 @@
 
 - `server_chat_test.go`
 - `server_control_test.go`
-- `server_preview_test.go`
-- `server_preview_control_test.go`
+- `server_workspace_service_test.go`
 
 用例范围：
 
 - 登录保护、Chat 页面、静态资源、消息 JSON/SSE、Agent/Product 消息入口。
 - Control API：Channel、Capability、Skill、MCP、Agent、Product、Draft、Cron、Environment、Runtime、LLM Provider。
-- 会话前端预览注册表：`/api/control/previews` 的注册、查询、删除，以及 `<session_short_hash>.alter0.cn` 命中后对 `/chat`、`/assets/*` 的工作区构建分发。
+- Workspace service 注册表：`/api/control/workspace-services` 的注册、查询、删除，以及 `<session_short_hash>.alter0.cn` / `<service>.<session_short_hash>.alter0.cn` 命中后的前端构建分发和 HTTP 反向代理。
 
 边界：
 
-- 会话前端预览只覆盖共享运行时内的路由与静态分发契约，不验证真实 Nginx/DNS 或浏览器跨域链路。
+- Workspace service 网关只覆盖共享运行时内的 Host 路由、静态分发与 HTTP 代理契约，不验证真实 Nginx/DNS 或浏览器跨域链路。
 - 浏览器真实交互与完整页面联调仍由 `internal/interfaces/web/e2e` Playwright 套件覆盖。
 
 ## Agent Capability & Memory
