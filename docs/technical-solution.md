@@ -1,6 +1,6 @@
 # Technical Solution
 
-> Last update: 2026-04-15
+> Last update: 2026-04-16
 
 `alter0` 的技术方案按与需求清单一致的领域模型维护。后续新增或调整需求时，技术方案必须落到对应领域与子域，不再按时间顺序、任务编号或零散专题堆叠。
 
@@ -293,7 +293,7 @@ Environment restart
 - Environment 配置更新写入 audit store，控制面按时间倒序读取变更记录。
 - LLM 运行参数 `llm_temperature`、`llm_max_tokens`、`llm_react_max_iterations` 通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider 与模型能力约束。
 - Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换。
-- 共享 Web 运行时内置会话前端预览注册表 `.alter0/session-previews.json`：控制面 `PUT /api/control/previews/{session_id}` 校验会话 git 工作区和 `internal/interfaces/web/static/dist` 构建产物后写入注册表；当请求 Host 命中 `<session_short_hash>.alter0.cn` 时，Web 层优先从已注册工作区分发 `/chat`、`/assets/*` 与 `/legacy/*`，其余 API、登录态和健康检查继续走共享运行时。
+- 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 会校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/assets/*` 与 `/legacy/*`；`http` 服务则把请求反向代理到注册的 upstream。
 - systemd 基线统一 `HOME=/var/lib/alter0`，确保 Codex、gh、git signing、Node/Playwright 工具链使用同一运行账户上下文。
 - 提交签名问题不得通过关闭签名绕过。
 - 技术文档、需求文档和 README 更新按领域同步，避免需求与方案分离。

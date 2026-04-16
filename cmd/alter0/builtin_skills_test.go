@@ -36,6 +36,15 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if _, ok := service.ResolveSkill("travel-page"); ok {
 		t.Fatalf("did not expect legacy travel-page skill to remain registered")
 	}
+
+	deploySkill, ok := service.ResolveSkill("deploy-test-service")
+	if !ok {
+		t.Fatalf("expected deploy-test-service skill exists")
+	}
+	deployGuide := deploySkill.Metadata[builtinSkillGuideKey]
+	if !strings.Contains(deployGuide, "deploy_test_service") || !strings.Contains(deployGuide, "workspace-services") {
+		t.Fatalf("expected deploy-test-service guide covers tool and gateway route, got %q", deployGuide)
+	}
 }
 
 func TestEnsureBuiltinSkillFilesSkipsWhenNoBuiltinFileBackedSkillExists(t *testing.T) {

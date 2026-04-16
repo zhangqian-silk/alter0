@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	controlapp "alter0/internal/control/application"
@@ -22,6 +25,20 @@ func registerBuiltinSkills(control *controlapp.Service) {
 }
 
 func ensureBuiltinSkillFiles() error {
+	repoRoot := resolveBuiltinSkillRepoRoot()
+	for _, skill := range builtinSkills() {
+		path := strings.TrimSpace(skill.Metadata[builtinSkillFilePathKey])
+		if path == "" {
+			continue
+		}
+		resolvedPath := path
+		if !filepath.IsAbs(resolvedPath) {
+			resolvedPath = filepath.Join(repoRoot, resolvedPath)
+		}
+		if _, err := os.Stat(resolvedPath); err != nil {
+			return fmt.Errorf("builtin skill file %s: %w", path, err)
+		}
+	}
 	return nil
 }
 
@@ -41,6 +58,18 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillPriorityKey:    "800",
 				builtinSkillDescriptionKey: "Introduce alter0 memory modules, file roles, and durable read/write policy for selected memory files.",
 				builtinSkillGuideKey:       memorySkillGuide(),
+			},
+		},
+		{
+			ID:      "deploy-test-service",
+			Name:    "Deploy Test Service",
+			Enabled: true,
+			Scope:   controldomain.CapabilityScopeGlobal,
+			Metadata: map[string]string{
+				builtinSkillPriorityKey:    "760",
+				builtinSkillDescriptionKey: "Session-scoped preview and test-service deployment playbook for the shared alter0 gateway.",
+				builtinSkillGuideKey:       deployTestServiceSkillGuide(),
+				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join(".alter0", "skills", "deploy-test-service", "SKILL.md")),
 			},
 		},
 	}
@@ -101,4 +130,36 @@ func memorySkillGuide() string {
 		"- Preserve existing structure when possible. Prefer surgical edits over full rewrites.",
 		"- If the request is just to answer a question and there is no explicit or implicit need to persist memory, do not write memory files.",
 	}, "\n")
+}
+
+func deployTestServiceSkillGuide() string {
+	return strings.Join([]string{
+		"# deploy test service",
+		"",
+		"- Use `deploy_test_service` when the user needs a session-scoped preview host or an additional routed test service without changing Nginx.",
+		"- Registrations land on `/api/control/workspace-services` and are routed by the shared gateway rather than per-service Nginx edits.",
+		"- Host routing is fixed at the gateway: `https://<short_hash>.alter0.cn` for the default `web` service, and `https://<service>.<short_hash>.alter0.cn` for additional services such as `api` or `docs`.",
+		"- For frontend previews, deploy `service_type=frontend_dist` from a git workspace that already contains `internal/interfaces/web/static/dist` or let the deployer build it first.",
+		"- For custom services, deploy `service_type=http` with either an existing `upstream_url` or a `start_command` that boots the service inside the session workspace.",
+		"- Keep test-service deployment session-scoped. Reuse the current session's short-hash namespace instead of inventing ad-hoc domains.",
+		"- Prefer concise service labels and stable health paths so repeated redeploys land on the same routed host.",
+	}, "\n")
+}
+
+func resolveBuiltinSkillRepoRoot() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	current := wd
+	for {
+		if _, err := os.Stat(filepath.Join(current, ".git")); err == nil {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return wd
+		}
+		current = parent
+	}
 }

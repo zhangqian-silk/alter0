@@ -9,9 +9,11 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	agents := builtinAgents()
 	index := map[string]string{}
 	tools := map[string][]string{}
+	skills := map[string][]string{}
 	for _, agent := range agents {
 		index[agent.ID] = agent.SystemPrompt
 		tools[agent.ID] = agent.Tools
+		skills[agent.ID] = agent.Skills
 	}
 
 	if prompt := index["travel-master"]; !strings.Contains(prompt, "codex_exec") || !strings.Contains(strings.ToLower(prompt), "assistant") {
@@ -30,5 +32,11 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 		if _, ok := index[agentID]; ok {
 			t.Fatalf("expected builtin travel worker agent %s to be removed", agentID)
 		}
+	}
+	if got := strings.Join(tools["coding"], ","); !strings.Contains(got, "deploy_test_service") {
+		t.Fatalf("expected coding agent tools to include deploy_test_service, got %+v", tools["coding"])
+	}
+	if got := strings.Join(skills["coding"], ","); !strings.Contains(got, "deploy-test-service") {
+		t.Fatalf("expected coding agent skills to include deploy-test-service, got %+v", skills["coding"])
 	}
 }
