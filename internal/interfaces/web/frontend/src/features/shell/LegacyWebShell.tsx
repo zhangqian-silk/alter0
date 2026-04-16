@@ -161,7 +161,7 @@ export function LegacyWebShell() {
         }}
       />
 
-      <ChatRuntimeSheetHost currentRoute={currentRoute} />
+      <ChatRuntimeSheetHost currentRoute={currentRoute} language={language} />
       <button
         className="mobile-backdrop"
         id={LEGACY_SHELL_IDS.mobileBackdrop}

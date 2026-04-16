@@ -1,7 +1,9 @@
 package web
 
 import (
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -33,6 +35,16 @@ func readEmbeddedAsset(t *testing.T, assetPath string) string {
 		return content
 	}
 	return expandEmbeddedCSSImports(t, assetPath, content, map[string]bool{assetPath: true})
+}
+
+func readWorkspaceFile(t *testing.T, relativePath string) string {
+	t.Helper()
+
+	content, err := os.ReadFile(filepath.Clean(relativePath))
+	if err != nil {
+		t.Fatalf("read workspace file %s: %v", relativePath, err)
+	}
+	return string(content)
 }
 
 func expandEmbeddedCSSImports(t *testing.T, assetPath, content string, seen map[string]bool) string {
@@ -78,67 +90,51 @@ func normalizeEmbeddedAsset(content string) string {
 }
 
 func TestLegacyRuntimeDoesNotToggleReactOwnedRouteShellState(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	shellSource := readWorkspaceFile(t, "frontend/src/features/shell/LegacyWebShell.tsx")
+	workspaceSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ChatWorkspace.tsx")
+	runtimeSource := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
+
 	requiredMarkers := []string{
-		"function navigateToRoute(route, options = {})",
-		"setMainContentMode(\"chat\")",
-		"setMainContentMode(\"page\")",
-		`window.location.hash = targetHash;`,
+		`nextClassNames.push("info-mode")`,
+		`window.location.hash = ` + "`#${route}`" + `;`,
 	}
 	for _, marker := range requiredMarkers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected script marker %q", marker)
+		if !strings.Contains(shellSource+runtimeSource, marker) {
+			t.Fatalf("expected source marker %q", marker)
 		}
 	}
 
-	forbiddenMarkers := []string{
-		`appShell.classList.toggle("info-mode", infoMode)`,
-		`chatPane.classList.toggle("page-mode", infoMode)`,
-		"chatView.hidden = infoMode;",
-		"routeView.hidden = !infoMode;",
-		"chatPane.dataset.route = safe;",
-		"routeView.dataset.route = safe;",
-		"routeBody.dataset.route = safe;",
-		`routeView.classList.toggle("terminal-route", safe === "terminal");`,
-		`routeBody.classList.toggle("terminal-route-body", safe === "terminal");`,
+	workspaceMarkers := []string{
+		`data-route={currentRoute}`,
+		`currentRoute === "terminal" ? "route-body terminal-route-body" : "route-body"`,
+		`data-react-managed-route={reactManagedRoute ? "true" : "false"}`,
 	}
-	for _, marker := range forbiddenMarkers {
-		if strings.Contains(script, marker) {
-			t.Fatalf("unexpected script marker %q", marker)
+	for _, marker := range workspaceMarkers {
+		if !strings.Contains(workspaceSource, marker) {
+			t.Fatalf("expected workspace marker %q", marker)
 		}
 	}
 }
 
 func TestSidebarPageRouteRuntimeDependenciesPresent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedRouteBody.tsx")
 	markers := []string{
-		"async function fetchJSON(path)",
-		"function resolveLegacyRouteContainer(route)",
-		`const routes = appShell.dataset.reactManagedRoutes.split(",")`,
-		"return routes.includes(route);",
-		"async function renderRoute(route)",
-		"await config.loader(legacyRouteContainer);",
-		"legacyRouteContainer.innerHTML = `<p class=\"route-loading\">${t(\"loading\")}</p>`;",
+		"const REACT_MANAGED_ROUTE_BODY_RENDERERS",
+		`terminal: () => <ReactManagedTerminalRouteBody />`,
+		`products: ({ language }) => <ReactManagedProductsRouteBody language={language} />`,
+		`tasks: ({ language }) => <ReactManagedTasksRouteBody language={language} />`,
+		`channels: ({ language }) => <ReactManagedControlRouteBody route="channels" language={language} />`,
+		"if (!isReactManagedRouteBody(route)) {",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
-			t.Fatalf("expected route runtime marker %q", marker)
-		}
-	}
-	forbiddenMarkers := []string{
-		"const REACT_MANAGED_PAGE_ROUTES = new Set([",
-		"function syncRouteAction(route)",
-		`return routeBody.dataset.route === route && routeBody.dataset.reactManagedRoute === "true";`,
-	}
-	for _, marker := range forbiddenMarkers {
-		if strings.Contains(script, marker) {
-			t.Fatalf("unexpected route runtime marker %q", marker)
+			t.Fatalf("expected route source marker %q", marker)
 		}
 	}
 }
 
 func TestLegacyRuntimeDropsCronVisualHelpers(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedControlRouteBody.tsx")
 	forbiddenMarkers := []string{
 		"function parseCronExpressionVisual(expression)",
 		"function buildCronExpressionVisual(options = {})",
@@ -153,20 +149,18 @@ func TestLegacyRuntimeDropsCronVisualHelpers(t *testing.T) {
 }
 
 func TestPageSharedHelpersPresent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	clientSource := readWorkspaceFile(t, "frontend/src/shared/api/client.ts")
+	tasksSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTasksRouteBody.tsx")
 	markers := []string{
-		"function routeFieldRow(labelKey, value, options = {})",
-		"async function copyTextValue(value)",
-		"function routeCardTemplate(title, type, fields = [], enabled = false, body = \"\")",
-		"function escapeQueryValue(value)",
-		"async function safeReadJSON(response)",
-		"function renderAdvancedToggleLabel(expanded)",
-		"async function downloadTaskArtifact(downloadURL, fallbackName)",
-		"routeBody.addEventListener(\"click\", async (event) => {",
-		"const target = event.target.closest(\"[data-copy-value]\");",
+		"export class APIClientError extends Error {",
+		"function readResponsePayload(response: Response): Promise<unknown>",
+		"createAPIClient(options: APIClientOptions = {})",
+		"const TASK_ROUTE_FILTERS_STORAGE_KEY = \"alter0.web.tasks.route-filters.v1\";",
+		"handleTerminalSubmit(terminalInput);",
+		"control-task-log-stream",
 	}
 	for _, marker := range markers {
-		if !strings.Contains(script, marker) {
+		if !strings.Contains(clientSource+tasksSource, marker) {
 			t.Fatalf("expected shared helper marker %q", marker)
 		}
 	}
@@ -204,12 +198,12 @@ func TestSidebarScrollIsolationStylesPresent(t *testing.T) {
 }
 
 func TestSidebarCollapseEntryPresent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/LegacyWebShell.tsx")
 	markers := []string{
-		`const navCollapseButton = document.getElementById("navCollapseButton");`,
-		`appShell.classList.toggle("nav-collapsed", collapsed)`,
-		"function handleLegacyShellNavCollapsedSync(event) {",
-		"document.addEventListener(LEGACY_SHELL_SYNC_NAV_COLLAPSED_EVENT, handleLegacyShellNavCollapsedSync);",
+		"onToggleNavCollapsed={() => {",
+		"syncLegacyShellNavCollapsed(next);",
+		`nextClassNames.push("nav-collapsed")`,
+		"data-react-managed-routes={reactManagedRoutes}",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -219,20 +213,17 @@ func TestSidebarCollapseEntryPresent(t *testing.T) {
 }
 
 func TestSidebarGroupTitlesHaveDedicatedI18NKeys(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/legacyShellCopy.ts")
 	scriptMarkers := []string{
-		`"nav.workspace": "Workspace"`,
-		`"nav.agent_studio": "Agent Studio"`,
-		`"nav.control": "Control"`,
-		`"nav.agent": "Profiles"`,
-		`"nav.agent_runtime": "Agent"`,
-		`"nav.settings": "Settings"`,
-		`"nav.workspace": "工作区"`,
-		`"nav.agent_studio": "Agent Studio"`,
-		`"nav.control": "控制台"`,
-		`"nav.agent": "配置"`,
-		`"nav.agent_runtime": "Agent"`,
-		`"nav.settings": "设置"`,
+		`Workspace: "Workspace"`,
+		`Control: "Control"`,
+		`agent: "Profiles"`,
+		`"agent-runtime": "Agent"`,
+		`Settings: "Settings"`,
+		`Workspace: "工作区"`,
+		`Control: "控制台"`,
+		`agent: "配置"`,
+		`Settings: "设置"`,
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -242,13 +233,12 @@ func TestSidebarGroupTitlesHaveDedicatedI18NKeys(t *testing.T) {
 }
 
 func TestSidebarCollapseStateHooksPresent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/LegacyWebShell.tsx")
 	markers := []string{
-		"function setSidebarCollapsed(collapsed)",
-		"function collapseMobileSidebar()",
-		`appShell.classList.toggle("nav-collapsed", collapsed)`,
-		"function handleLegacyShellNavCollapsedSync(event) {",
-		"collapseMobileSidebar();",
+		"const [navCollapsed, setNavCollapsed] = useState(false);",
+		"setNavCollapsed((collapsed) => {",
+		"syncLegacyShellNavCollapsed(next);",
+		"syncLegacyShellNavCollapsed(false);",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -270,14 +260,15 @@ func TestSidebarCollapseStateHooksPresent(t *testing.T) {
 }
 
 func TestSessionHistoryCollapseControlsPresent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/LegacyWebShell.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/SessionPane.tsx")
 	scriptMarkers := []string{
-		"function setSessionHistoryCollapsed(collapsed)",
-		"function syncSessionHistoryPanel()",
-		`sessionHistoryPanel.hidden = collapsed;`,
-		`sessionHistoryToggle.dataset.collapsedState = collapsed ? "collapsed" : "expanded";`,
-		"function handleLegacyShellSessionHistorySync(event) {",
-		"document.addEventListener(LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT, handleLegacyShellSessionHistorySync);",
+		"const [sessionHistoryCollapsed, setSessionHistoryCollapsed] = useState(() =>",
+		"persistLegacySessionHistoryCollapsed(next);",
+		"syncLegacyShellSessionHistoryCollapsed(next);",
+		`id="sessionHistoryPanel"`,
+		`aria-expanded={sessionHistoryCollapsed ? "false" : "true"}`,
+		`data-collapsed-state={sessionHistoryCollapsed ? "collapsed" : "expanded"}`,
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -299,16 +290,14 @@ func TestSessionHistoryCollapseControlsPresent(t *testing.T) {
 }
 
 func TestSessionHistoryCollapseStatePersistsInBrowserSession(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/legacyShellState.ts")
 	markers := []string{
-		`const SESSION_HISTORY_PANEL_STORAGE_KEY = "alter0.web.session-history-panel.v1";`,
-		"function getBrowserSessionStorage()",
+		`export const LEGACY_SESSION_HISTORY_STORAGE_KEY = "alter0.web.session-history-panel.v1";`,
+		"function getLegacyShellSessionStorage()",
 		"window.sessionStorage",
-		"function loadSessionHistoryCollapsedState()",
-		"function persistSessionHistoryCollapsedState()",
-		`collapsed_state: state.sessionHistoryCollapsed`,
-		"setSessionHistoryCollapsed(loadSessionHistoryCollapsedState());",
-		"document.addEventListener(LEGACY_SHELL_SYNC_SESSION_HISTORY_EVENT, handleLegacyShellSessionHistorySync);",
+		"export function loadLegacySessionHistoryCollapsed(): boolean {",
+		"export function persistLegacySessionHistoryCollapsed(collapsed: boolean): void {",
+		"JSON.stringify({ collapsed_state: collapsed })",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -318,69 +307,43 @@ func TestSessionHistoryCollapseStatePersistsInBrowserSession(t *testing.T) {
 }
 
 func TestLegacyRuntimeDoesNotRewriteReactOwnedShellActionLabels(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/SessionPane.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/ChatWorkspace.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/LegacyWebShell.tsx")
 	requiredMarkers := []string{
-		`const newChatButton = document.getElementById("newChatButton");`,
-		`const mobileNewChatButton = document.getElementById("mobileNewChatButton");`,
-		`const sessionToggle = document.getElementById("sessionToggle");`,
-		"document.addEventListener(LEGACY_SHELL_CREATE_SESSION_EVENT, handleLegacyShellSessionCreation);",
+		`id={LEGACY_SHELL_IDS.newChatButton}`,
+		`id="mobileNewChatButton"`,
+		`id={LEGACY_SHELL_IDS.sessionToggle}`,
+		"onCreateSession={requestLegacyShellSessionCreation}",
 	}
 	for _, marker := range requiredMarkers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected script marker %q", marker)
-		}
-	}
-
-	forbiddenMarkers := []string{
-		"newChatButton.textContent = newSessionLabel;",
-		"mobileNewChatButton.textContent = t(\"route.terminal.new_short\");",
-		"mobileNewChatButton.setAttribute(\"aria-label\", t(\"route.terminal.new_short\"));",
-		"mobileNewChatButton.textContent = newSessionLabel;",
-		"mobileNewChatButton.setAttribute(\"aria-label\", newSessionLabel);",
-		"sessionToggle.textContent = t(\"route.terminal.sessions\");",
-		"sessionToggle.setAttribute(\"aria-label\", t(\"route.terminal.sessions\"));",
-		"sessionToggle.textContent = t(\"chat.sessions\");",
-		"sessionToggle.setAttribute(\"aria-label\", t(\"chat.sessions\"));",
-	}
-	for _, marker := range forbiddenMarkers {
-		if strings.Contains(script, marker) {
-			t.Fatalf("unexpected script marker %q", marker)
 		}
 	}
 }
 
 func TestLegacyRuntimeDoesNotRewriteReactOwnedRouteHeadingCopy(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedProductsRouteBody.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/legacyShellCopy.ts")
 	requiredMarkers := []string{
-		"const titleKey = `route.${routeKey}.title`;",
-		"const subtitleKey = `route.${routeKey}.subtitle`;",
+		`title: "Products"`,
+		`subtitle: "Manage product workspaces, master agents, and reusable product context"`,
+		`tasks: "Tasks"`,
+		`Observe runtime tasks with source, status, and timeline filters`,
 	}
 	for _, marker := range requiredMarkers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected script marker %q", marker)
 		}
 	}
-
-	forbiddenMarkers := []string{
-		"syncRouteAction(safe);",
-		"routeTitle.textContent = t(titleKey);",
-		"routeSubtitle.textContent = t(subtitleKey);",
-	}
-	for _, marker := range forbiddenMarkers {
-		if strings.Contains(script, marker) {
-			t.Fatalf("unexpected script marker %q", marker)
-		}
-	}
 }
 
 func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedRouteBody.tsx")
 	scriptMarkers := []string{
-		`agent: {`,
-		"loader: loadPlaceholderView",
-		`"route.agent.title"`,
-		`memory: {`,
-		"function loadPlaceholderView(container)",
+		`agent: ({ language }) => <ReactManagedAgentRouteBody language={language} />`,
+		`memory: ({ language }) => <ReactManagedMemoryRouteBody language={language} />`,
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -398,10 +361,8 @@ func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
 	}
 
 	forbiddenMarkers := []string{
-		"loader: loadAgentView",
-		"loader: loadMemoryView",
-		"async function loadAgentView(container)",
-		"async function loadMemoryView(container)",
+		"workspace: {",
+		"configuration: {",
 	}
 	for _, marker := range forbiddenMarkers {
 		if strings.Contains(script, marker) {
@@ -411,68 +372,32 @@ func TestSidebarAgentMemoryConvergesRoutes(t *testing.T) {
 }
 
 func TestLegacyRuntimeRetiresManagedWorkflowLoaders(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedRouteBody.tsx")
 	requiredMarkers := []string{
-		`products: {`,
-		`sessions: {`,
-		`tasks: {`,
-		"loader: loadPlaceholderView",
+		`products: ({ language }) => <ReactManagedProductsRouteBody language={language} />`,
+		`sessions: ({ language }) => <ReactManagedSessionsRouteBody language={language} />`,
+		`tasks: ({ language }) => <ReactManagedTasksRouteBody language={language} />`,
 	}
 	for _, marker := range requiredMarkers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected script marker %q", marker)
-		}
-	}
-
-	forbiddenMarkers := []string{
-		"loader: loadProductsView",
-		"loader: loadSessionsView",
-		"loader: loadControlTasksView",
-		"async function loadProductsView(container)",
-		"async function loadSessionsView(container)",
-		"async function loadControlTasksView(container)",
-	}
-	for _, marker := range forbiddenMarkers {
-		if strings.Contains(script, marker) {
-			t.Fatalf("unexpected managed legacy marker %q", marker)
 		}
 	}
 }
 
 func TestLegacyRuntimeRetiresManagedControlLoaders(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedRouteBody.tsx")
 	requiredMarkers := []string{
-		`channels: {`,
-		`skills: {`,
-		`mcp: {`,
-		`models: {`,
-		`environments: {`,
-		`"cron-jobs": {`,
-		"loader: loadPlaceholderView",
+		`channels: ({ language }) => <ReactManagedControlRouteBody route="channels" language={language} />`,
+		`skills: ({ language }) => <ReactManagedControlRouteBody route="skills" language={language} />`,
+		`mcp: ({ language }) => <ReactManagedControlRouteBody route="mcp" language={language} />`,
+		`models: ({ language }) => <ReactManagedControlRouteBody route="models" language={language} />`,
+		`environments: ({ language }) => <ReactManagedControlRouteBody route="environments" language={language} />`,
+		`"cron-jobs": ({ language }) => <ReactManagedControlRouteBody route="cron-jobs" language={language} />`,
 	}
 	for _, marker := range requiredMarkers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected script marker %q", marker)
-		}
-	}
-
-	forbiddenMarkers := []string{
-		"loader: loadChannelsView",
-		"loader: loadSkillsView",
-		"loader: loadMCPView",
-		"loader: loadModelsView",
-		"loader: loadEnvironmentsView",
-		"loader: loadCronJobsView",
-		"async function loadChannelsView(container)",
-		"async function loadSkillsView(container)",
-		"async function loadMCPView(container)",
-		"async function loadModelsView(container)",
-		"async function loadEnvironmentsView(container)",
-		"async function loadCronJobsView(container)",
-	}
-	for _, marker := range forbiddenMarkers {
-		if strings.Contains(script, marker) {
-			t.Fatalf("unexpected managed legacy marker %q", marker)
 		}
 	}
 }
@@ -498,14 +423,14 @@ func TestSidebarAgentMemoryTabStylesPresent(t *testing.T) {
 }
 
 func TestSidebarTerminalModulePresent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
 	scriptMarkers := []string{
-		`const TERMINAL_STORAGE_KEY = "alter0.web.terminal.sessions.v2";`,
-		`terminal: {`,
-		`loader: loadTerminalView`,
-		`"route.terminal.title"`,
-		`"route.terminal.send"`,
-		`"route.terminal.close"`,
+		"data-terminal-view",
+		"data-terminal-session-pane",
+		"data-terminal-create",
+		"data-terminal-close",
+		"data-terminal-delete",
+		"data-terminal-step-toggle",
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -528,14 +453,15 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 }
 
 func TestLegacyRuntimeExposesSessionBridgeAPI(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/legacyShellBridge.ts") +
+		readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
 	markers := []string{
-		"function createSessionFromReactShell() {",
-		"function focusSessionFromReactShell(sessionID) {",
-		"function removeSessionFromReactShell(sessionID) {",
-		"createSession: createSessionFromReactShell",
-		"focusSession: focusSessionFromReactShell",
-		"removeSession: removeSessionFromReactShell",
+		"window.__alter0LegacyRuntime = Object.assign(runtime, {",
+		"createSession: () => {",
+		"focusSession: (sessionID: string) => focusSession(sessionID),",
+		"void removeSession(sessionID);",
+		"export function requestLegacyShellSessionCreation(): boolean {",
+		"export function requestLegacyShellSessionRemoval(sessionId: string): boolean {",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -545,47 +471,28 @@ func TestLegacyRuntimeExposesSessionBridgeAPI(t *testing.T) {
 }
 
 func TestRuntimeRestartNoticeBridgeRemainsInShell(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedControlRouteBody.tsx")
 	markers := []string{
-		`"route.envs.restart_service": "Restart Service"`,
-		`"route.envs.restart_service": "重启服务"`,
-		`"route.envs.restart_success": "Service restart completed. The page is now connected to the latest runtime."`,
-		`"route.envs.restart_success": "服务重启已完成，当前页面已连接到最新运行实例。"`,
-		`const RUNTIME_RESTART_NOTICE_STORAGE_KEY = "alter0.web.runtime.restart-notice.v1";`,
-		`data-global-modal-root`,
-		"function showPendingRuntimeRestartNotice() {",
-		"showGlobalModal({",
-		`title: t("route.envs.restart_service"),`,
-		`message: t("route.envs.restart_success")`,
-		"showPendingRuntimeRestartNotice();",
+		`statusPendingRestart: "Pending restart"`,
+		`statusPendingRestart: "待重启"`,
+		`path: "/api/control/environments"`,
+		"pending_restart?: boolean;",
+		"enabled: (item) => !Boolean((item as EnvironmentRouteRecord).pending_restart),",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected environment restart marker %q", marker)
 		}
 	}
-
-	forbiddenMarkers := []string{
-		`data-environment-restart`,
-		"const requestRuntimeRestart = async () => {",
-		`fetch("/api/control/runtime/restart", {`,
-		`"sync_remote_master": shouldSyncRemoteMaster`,
-		"const waitForRuntimeReady = async () => {",
-	}
-	for _, marker := range forbiddenMarkers {
-		if strings.Contains(script, marker) {
-			t.Fatalf("unexpected managed legacy marker %q", marker)
-		}
-	}
 }
 
 func TestControlTaskLogStreamMobileStickMarkersPresent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTasksRouteBody.tsx")
 	scriptMarkers := []string{
-		"logStickToBottom: true",
-		"const isNearLogBottom = (node, threshold = 24) => {",
-		"const scrollLogToBottom = (node) => {",
-		"const bindLogStreamNode = (streamNode) => {",
+		"className=\"control-task-log-stream\"",
+		"className=\"control-task-terminal-screen\"",
+		"className=\"control-task-terminal-input\"",
+		"void reconnectLogs()",
 		"event.preventDefault();",
 	}
 	for _, marker := range scriptMarkers {
@@ -608,16 +515,15 @@ func TestControlTaskLogStreamMobileStickMarkersPresent(t *testing.T) {
 }
 
 func TestMobilePollingPerformanceGuardsPresent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx") +
+		readWorkspaceFile(t, "frontend/src/shared/viewport/mobileViewport.ts") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
 	markers := []string{
-		"const CHAT_TASK_POLL_HIDDEN_INTERVAL_MS = 15000;",
-		"function scheduleChatTaskPolling(options = {}) {",
-		"document.addEventListener(\"visibilitychange\", () => {",
-		"const TERMINAL_POLL_INTERVAL_HIDDEN_MS = 12000;",
-		"const computeTerminalPollDelay = (session) => {",
-		"localState.nextListSyncAt = Date.now() + computeTerminalListPollInterval();",
-		"window.visualViewport.addEventListener(\"scroll\", () => {",
-		"if (!isMobileViewport() || !activeViewportInput()) {",
+		"const CHAT_TASK_POLL_INTERVAL_MS = 3000;",
+		"pollTimerRef.current = window.setTimeout(async () => {",
+		"export const MOBILE_KEYBOARD_MIN_OFFSET_PX = 120;",
+		"const keyboardOffset = rawKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX",
+		"const timer = window.setTimeout(() => {",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {

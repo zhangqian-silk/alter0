@@ -1,11 +1,11 @@
-import { LegacyRuntimeBridge } from "../bootstrap/LegacyRuntimeBridge";
+import { ReactRuntimeFacade } from "../bootstrap/ReactRuntimeFacade";
 import { LegacyWebShell } from "../features/shell/LegacyWebShell";
 
 export function App() {
   return (
     <>
       <LegacyWebShell />
-      <LegacyRuntimeBridge />
+      <ReactRuntimeFacade />
     </>
   );
 }

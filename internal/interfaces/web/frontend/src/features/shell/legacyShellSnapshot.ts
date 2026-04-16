@@ -1,4 +1,10 @@
-import { useEffect, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
+import {
+  ensureLegacyRuntimeSnapshotBridge,
+  readLegacyRuntimeSnapshot,
+  subscribeLegacyRuntimeSnapshot,
+  type SnapshotChannel,
+} from "./legacyRuntimeSnapshotStore";
 
 type RoutedSnapshot = {
   route: string;
@@ -10,7 +16,7 @@ type RoutedDetail = {
 
 type LegacyShellSnapshotOptions<TDetail extends RoutedDetail, TSnapshot extends RoutedSnapshot> = {
   currentRoute: string;
-  eventName: string;
+  eventName: SnapshotChannel;
   fallback: () => TSnapshot;
   normalizeDetail: (detail: TDetail) => TSnapshot | null;
 };
@@ -21,22 +27,19 @@ export function useLegacyShellSnapshot<TDetail extends RoutedDetail, TSnapshot e
   fallback,
   normalizeDetail,
 }: LegacyShellSnapshotOptions<TDetail, TSnapshot>): TSnapshot {
-  const [snapshot, setSnapshot] = useState<TSnapshot | null>(null);
+  ensureLegacyRuntimeSnapshotBridge();
 
-  useEffect(() => {
-    const handleSnapshot = (event: Event) => {
-      const detail = (event as CustomEvent<TDetail>).detail;
-      const nextSnapshot = normalizeDetail(detail);
-      if (nextSnapshot) {
-        setSnapshot(nextSnapshot);
-      }
-    };
-
-    document.addEventListener(eventName, handleSnapshot as EventListener);
-    return () => {
-      document.removeEventListener(eventName, handleSnapshot as EventListener);
-    };
-  }, [eventName, normalizeDetail]);
+  const detail = useSyncExternalStore(
+    (listener) => subscribeLegacyRuntimeSnapshot(eventName, listener),
+    () => readLegacyRuntimeSnapshot(eventName) as TDetail | null,
+    () => null,
+  );
+  const snapshot = useMemo(() => {
+    if (!detail) {
+      return null;
+    }
+    return normalizeDetail(detail);
+  }, [detail, normalizeDetail]);
 
   if (snapshot?.route === currentRoute) {
     return snapshot;

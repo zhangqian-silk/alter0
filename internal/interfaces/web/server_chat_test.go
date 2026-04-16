@@ -59,7 +59,6 @@ func TestChatPageHandlerMethodNotAllowed(t *testing.T) {
 func TestEmbeddedAssetsAvailable(t *testing.T) {
 	paths := []string{
 		"static/dist/index.html",
-		"static/dist/legacy/chat.js",
 		"static/dist/legacy/chat.css",
 	}
 	for _, path := range paths {
@@ -86,54 +85,66 @@ func TestChatPageLoadsBridgeBundleAfterLegacyStyles(t *testing.T) {
 	if styleIndex >= scriptIndex {
 		t.Fatalf("expected legacy styles before frontend bundle")
 	}
+	if strings.Contains(html, `/legacy/chat.js`) {
+		t.Fatalf("expected chat page to stop loading legacy runtime script")
+	}
 }
 
 func TestChatComposerUsesReusableComponent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
-	markers := []string{
-		"function createReusableComposer() {",
-		"const COMPOSER_DRAFT_STORAGE_KEY = \"alter0.web.composer.drafts.v1\";",
-		"const composerNavigationRegistry = new Map();",
-		"function confirmComposerNavigation() {",
-		"suppressHashRouteConfirm: \"\",",
-		"function readComposerDraftValue(storage, key) {",
-		"function writeComposerDraftValue(storage, key, value) {",
-		"function getMainChatDraftKey(sessionID = activeConversationSessionID(), mode = routeConversationMode()) {",
-		"function clearMainChatDraft(sessionID) {",
-		"const mainChatComposer = createReusableComposer();",
-		"function syncMainChatComposerDraft(sessionID = activeConversationSessionID(), options = {}) {",
-		"mainChatComposer.bind(input, chatForm, {",
-		"draftStorage: \"session\",",
-		"draftKey: () => getMainChatDraftKey(),",
-		"switchDraftKey(nextKey, options = {}) {",
-		"counterNode: charCount,",
-		"submitNode: sendButton,",
-		`document.body.setAttribute("data-composer-unsaved-state", hasDraft ? "dirty" : "clean");`,
-		`document.body.setAttribute("data-composer-unsaved-confirm", String(state || "idle"));`,
-		`inputNode.setAttribute("data-composer-ready", "true");`,
-		`stableName: "chat-main",`,
-		`stableName: "terminal-runtime",`,
-		"document.body.setAttribute(\"data-app-ready\", \"true\");",
-		"const controlTaskTerminalComposer = createReusableComposer();",
-		"controlTaskTerminalComposer.bind(inputNode, formNode, {",
-		"window.addEventListener(\"beforeunload\", (event) => {",
+	runtimeSource := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
+	runtimeMarkers := []string{
+		`const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";`,
+		`const MAX_COMPOSER_CHARS = 10000;`,
+		"function loadComposerDrafts()",
+		"function persistComposerDrafts(drafts: ComposerDraftMap)",
+		"const updateComposerDOM = (drafts: ComposerDraftMap, route: ChatRoute, activeState: ActiveSessionState) => {",
+		`const inputNode = document.getElementById("composerInput");`,
+		`const formNode = document.getElementById("chatForm");`,
+		`inputNode.addEventListener("input", handleInput);`,
+		`formNode.addEventListener("submit", handleSubmit);`,
 	}
-	for _, marker := range markers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected reusable composer marker %q", marker)
+	for _, marker := range runtimeMarkers {
+		if !strings.Contains(runtimeSource, marker) {
+			t.Fatalf("expected runtime composer marker %q", marker)
+		}
+	}
+
+	workspaceSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ChatWorkspace.tsx")
+	workspaceMarkers := []string{
+		`data-composer-form="chat-main"`,
+		`data-composer-input="chat-main"`,
+		`data-composer-submit="chat-main"`,
+		`data-composer-counter="chat-main"`,
+	}
+	for _, marker := range workspaceMarkers {
+		if !strings.Contains(workspaceSource, marker) {
+			t.Fatalf("expected chat workspace composer marker %q", marker)
+		}
+	}
+
+	terminalSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
+	terminalMarkers := []string{
+		`data-composer-form="terminal-runtime"`,
+		`data-composer-input="terminal-runtime"`,
+		`data-composer-submit="terminal-runtime"`,
+	}
+	for _, marker := range terminalMarkers {
+		if !strings.Contains(terminalSource, marker) {
+			t.Fatalf("expected terminal composer marker %q", marker)
 		}
 	}
 }
 
 func TestChatScriptRecoversInterruptedStreams(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
 	markers := []string{
-		`"msg.stream_interrupted": "stream interrupted"`,
-		`function recoverInterruptedStreamingMessage(message) {`,
-		`function finalizeInterruptedStreamMessage(message, errorText) {`,
-		`return recoverInterruptedStreamingMessage({`,
-		`finalizeInterruptedStreamMessage(assistantMessage, streamResult.error || "unknown");`,
-		`const taskID = String(payload?.task_id || "").trim();`,
+		`status: "streaming",`,
+		`error: sawDone ? "" : "stream interrupted",`,
+		`taskPending: Boolean(taskID),`,
+		`taskResultDelivered: Boolean(record.task_result_delivered),`,
+		`message.taskID && message.taskPending && !message.taskResultDelivered`,
+		`taskPending: !isTerminalTaskStatus(status),`,
+		`taskResultDelivered: isTerminalTaskStatus(status),`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {

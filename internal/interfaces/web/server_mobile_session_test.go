@@ -19,17 +19,15 @@ func TestMobileNewChatEntryReachable(t *testing.T) {
 }
 
 func TestNewChatReusesLatestBlankSessionAndSwitchesContext(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
 	markers := []string{
-		"function startNewChatSession()",
-		"function getLatestBlankSession(route = state.currentRoute)",
-		"function enforceSingleBlankSession(route = state.currentRoute)",
-		"const existingBlank = getLatestBlankSession(\"chat\");",
-		"setActiveConversationSessionID(existingBlank.id, \"chat\");",
-		"createSession(routeDefaultTarget(\"chat\"), routeConversationMode(\"chat\"), \"chat\");",
-		`navigateToRoute("chat", { skipConfirm: true });`,
-		"function handleLegacyShellSessionCreation() {",
-		"document.addEventListener(LEGACY_SHELL_CREATE_SESSION_EVENT, handleLegacyShellSessionCreation);",
+		"const created: ChatSession = {",
+		"const nextSessionsByRoute: SessionsState = {",
+		"const nextActiveState = { ...activeSessionByRoute, [route]: created.id };",
+		"window.location.hash = `#${route}`;",
+		`createSession: () => {`,
+		`window.__alter0LegacyRuntime?.createSession?.();`,
+		`document.addEventListener(LEGACY_SHELL_CREATE_SESSION_EVENT, handleCreateSession);`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -39,24 +37,17 @@ func TestNewChatReusesLatestBlankSessionAndSwitchesContext(t *testing.T) {
 }
 
 func TestSessionListShowsEmptyAndLoadFailureFeedback(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	source := readWorkspaceFile(t, "frontend/src/features/shell/components/SessionPane.tsx")
 	scriptMarkers := []string{
-		"function loadSessionsFromStorage(mode = routeConversationMode())",
-		`setConversationSessionLoadError("session_save_failed", mode);`,
-		"setConversationSessionLoadError(message, mode);",
+		"loadError: string;",
+		`id="sessionLoadError"`,
+		`role="status"`,
+		`aria-live="polite"`,
+		"loadError={sessionPaneSnapshot.loadError}",
 	}
 	for _, marker := range scriptMarkers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected script marker %q", marker)
-		}
-	}
-
-	forbiddenMarkers := []string{
-		`sessionEmpty.textContent = routeAllowsTargetPicker() ? t("session.empty_agent") : t("session.empty");`,
-	}
-	for _, marker := range forbiddenMarkers {
-		if strings.Contains(script, marker) {
-			t.Fatalf("unexpected script marker %q", marker)
+		if !strings.Contains(source, marker) {
+			t.Fatalf("expected source marker %q", marker)
 		}
 	}
 
@@ -67,12 +58,12 @@ func TestSessionListShowsEmptyAndLoadFailureFeedback(t *testing.T) {
 }
 
 func TestSessionDeleteHooksAndStylesPresent(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
 	scriptMarkers := []string{
-		"function removeSession(sessionID)",
-		"function handleLegacyShellSessionRemoval(event) {",
+		"const removeSession = async (sessionID: string) => {",
+		"window.__alter0LegacyRuntime?.removeSession?.(sessionID);",
 		"void removeSession(sessionID);",
-		"document.addEventListener(LEGACY_SHELL_REMOVE_SESSION_EVENT, handleLegacyShellSessionRemoval);",
+		"document.addEventListener(LEGACY_SHELL_REMOVE_SESSION_EVENT, handleRemoveSession);",
 	}
 	for _, marker := range scriptMarkers {
 		if !strings.Contains(script, marker) {
@@ -93,26 +84,31 @@ func TestSessionDeleteHooksAndStylesPresent(t *testing.T) {
 }
 
 func TestMobileRuntimeSheetUsesDedicatedStackingLayer(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
-	scriptMarkers := []string{
-		`class="composer-runtime-sheet-backdrop"`,
-		`class="composer-runtime-popover-mobile-close"`,
+	hostSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ChatRuntimeHost.tsx")
+	hostMarkers := []string{
+		`className="composer-runtime-sheet-backdrop"`,
+		`className="composer-runtime-popover-mobile-close"`,
 		`data-runtime-close`,
 		`data-runtime-scroll-container="mobile"`,
-		`role="dialog" aria-modal="true"`,
-		`const chatRuntimeSheetHost = document.getElementById("chatRuntimeSheetHost");`,
-		`function chatAgentOptionSummary(agent = {}) {`,
-		`function captureChatRuntimeScrollState(popover = state.chatRuntime.openPopover) {`,
-		`function restoreChatRuntimeScrollState(snapshot) {`,
-		`restoreChatRuntimeScrollState(scrollSnapshot);`,
-		`subtitle: chatAgentOptionSummary(agent)`,
-		`sheetHTML = openPopover === "mobile" ? renderChatRuntimeCompactPopover({`,
-		`appShell.classList.toggle("runtime-sheet-open", compactRuntime && openPopover === "mobile");`,
-		`if (state.currentRoute === "chat" || state.currentRoute === "agent-runtime") {`,
+		`role="dialog"`,
+		`if (!snapshot.compact || snapshot.openPopover !== "mobile") {`,
+		`requestLegacyChatRuntimePopover("mobile")`,
 	}
-	for _, marker := range scriptMarkers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected script marker %q", marker)
+	for _, marker := range hostMarkers {
+		if !strings.Contains(hostSource, marker) {
+			t.Fatalf("expected runtime host marker %q", marker)
+		}
+	}
+
+	facadeSource := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
+	facadeMarkers := []string{
+		`compact: compactRuntime,`,
+		`appShell.classList.toggle(`,
+		`"runtime-sheet-open"`,
+	}
+	for _, marker := range facadeMarkers {
+		if !strings.Contains(facadeSource, marker) {
+			t.Fatalf("expected runtime facade marker %q", marker)
 		}
 	}
 
@@ -133,11 +129,11 @@ func TestMobileRuntimeSheetUsesDedicatedStackingLayer(t *testing.T) {
 }
 
 func TestMobileViewportKeyboardOffsetOnlyAppliesForFocusedInput(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/shared/viewport/mobileViewport.ts")
 	markers := []string{
-		"const MOBILE_KEYBOARD_MIN_OFFSET_PX = 120;",
-		"const rawKeyboardOffset = activeInput",
-		"? Math.max(0, state.mobileViewport.baselineHeight - effectiveHeight)",
+		"export const MOBILE_KEYBOARD_MIN_OFFSET_PX = 120;",
+		"const rawKeyboardOffset = input.hasActiveInput",
+		"? Math.max(0, baselineHeight - effectiveHeight)",
 		"const keyboardOffset = rawKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX",
 	}
 	for _, marker := range markers {
@@ -148,11 +144,11 @@ func TestMobileViewportKeyboardOffsetOnlyAppliesForFocusedInput(t *testing.T) {
 }
 
 func TestMobileRuntimeSheetClosesWhenComposerTakesFocus(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
 	markers := []string{
-		"onFocus: () => {",
-		"if (isMobileViewport() && state.chatRuntime.openPopover) {",
-		"closeChatRuntimePopover();",
+		"const handleFocus = () => {",
+		"if (compactRuntime && runtimeOpenPopover) {",
+		`setRuntimeOpenPopover("");`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
@@ -162,12 +158,13 @@ func TestMobileRuntimeSheetClosesWhenComposerTakesFocus(t *testing.T) {
 }
 
 func TestMobileRuntimeSheetBlursFocusedComposerBeforeOpen(t *testing.T) {
-	script := readEmbeddedAsset(t, "static/assets/chat.js")
+	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
 	markers := []string{
-		"if (isTerminalSessionSheetViewport() && nextPopover === \"mobile\" && state.chatRuntime.openPopover !== nextPopover) {",
 		"const activeInput = activeViewportInput();",
-		"activeInput.blur();",
-		"scheduleViewportInsetSync();",
+		"activeInput?.blur();",
+		`nextPopover === "mobile"`,
+		"if (compactRuntime && runtimeOpenPopover) {",
+		`inputNode.addEventListener("focus", handleFocus);`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
