@@ -357,6 +357,7 @@ export function ReactManagedControlRouteBody({
 }: ReactManagedControlRouteBodyProps) {
   const copy = CONTROL_ROUTE_COPY[language];
   const routeConfig = ROUTE_CONFIG[route];
+  const [selectedRowKey, setSelectedRowKey] = useState("");
   const [state, setState] = useState<RequestState>({
     status: "loading",
     items: [],
@@ -400,6 +401,23 @@ export function ReactManagedControlRouteBody({
     };
   }, [routeConfig]);
 
+  useEffect(() => {
+    if (route !== "environments") {
+      return;
+    }
+    const items = state.items;
+    if (!items.length) {
+      if (selectedRowKey) {
+        setSelectedRowKey("");
+      }
+      return;
+    }
+    const hasSelected = items.some((item) => routeConfig.key(item) === selectedRowKey);
+    if (!hasSelected) {
+      setSelectedRowKey(routeConfig.key(items[0]));
+    }
+  }, [route, routeConfig, selectedRowKey, state.items]);
+
   if (state.status === "loading") {
     return <p className="route-loading">{copy.loading}</p>;
   }
@@ -410,6 +428,22 @@ export function ReactManagedControlRouteBody({
 
   if (!state.items.length) {
     return <p className="route-empty">{routeConfig.empty(copy)}</p>;
+  }
+
+  if (route === "environments") {
+    const selectedItem =
+      state.items.find((item) => routeConfig.key(item) === selectedRowKey) ??
+      state.items[0] ??
+      null;
+    return (
+      <EnvironmentTableView
+        copy={copy}
+        items={state.items as EnvironmentRouteRecord[]}
+        selectedItem={selectedItem as EnvironmentRouteRecord | null}
+        selectedRowKey={selectedRowKey}
+        onSelect={setSelectedRowKey}
+      />
+    );
   }
 
   const statusLabels = routeConfig.statusLabels?.(copy) ?? {
@@ -453,4 +487,98 @@ function summarizeProviderModels(item: LLMProviderRecord) {
     .filter(Boolean);
 
   return fallbackModels.join(", ");
+}
+
+function EnvironmentTableView({
+  copy,
+  items,
+  selectedItem,
+  selectedRowKey,
+  onSelect,
+}: {
+  copy: ControlRouteCopy;
+  items: EnvironmentRouteRecord[];
+  selectedItem: EnvironmentRouteRecord | null;
+  selectedRowKey: string;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <section className="route-master-detail route-master-detail-environments">
+      <div className="route-data-table-wrap">
+        <table className="route-data-table" aria-label="Environment Config">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Key</th>
+              <th>Value</th>
+              <th>Type</th>
+              <th>Module</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => {
+              const key = normalizeText(item.definition?.key);
+              const selected = key === selectedRowKey;
+              const pendingRestart = Boolean(item.pending_restart);
+              return (
+                <tr
+                  key={key}
+                  className={selected ? "is-active" : undefined}
+                  aria-selected={selected ? "true" : "false"}
+                >
+                  <td>
+                    <span className={pendingRestart ? "status-badge disabled" : "status-badge"}>
+                      <span className="status-dot"></span>
+                      <span>{pendingRestart ? copy.statusPendingRestart : copy.statusApplied}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      className="route-table-select"
+                      type="button"
+                      onClick={() => onSelect(key)}
+                    >
+                      {normalizeText(item.definition?.name || item.definition?.key)}
+                    </button>
+                    <span className="route-table-subtext">{key}</span>
+                  </td>
+                  <td>
+                    <code>{normalizeText(item.effective_value || item.value)}</code>
+                  </td>
+                  <td>{normalizeText(item.definition?.type)}</td>
+                  <td>{normalizeText(item.definition?.module)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <aside className="route-detail-panel environment-detail-panel">
+        {selectedItem ? (
+          <>
+            <div className="route-detail-panel-head">
+              <h4>{normalizeText(selectedItem.definition?.name || selectedItem.definition?.key)}</h4>
+              <span className={selectedItem.pending_restart ? "status-badge disabled" : "status-badge"}>
+                <span className="status-dot"></span>
+                <span>{selectedItem.pending_restart ? copy.statusPendingRestart : copy.statusApplied}</span>
+              </span>
+            </div>
+            <div className="route-detail-panel-grid">
+              <RouteFieldRow label={copy.fieldKey} value={selectedItem.definition?.key} copyLabel={copy.copyValue} copyable mono />
+              <RouteFieldRow label={copy.fieldModule} value={selectedItem.definition?.module} copyLabel={copy.copyValue} />
+              <RouteFieldRow label={copy.fieldType} value={selectedItem.definition?.type} copyLabel={copy.copyValue} />
+              <RouteFieldRow label={copy.fieldApplyMode} value={selectedItem.definition?.apply_mode} copyLabel={copy.copyValue} />
+              <RouteFieldRow label={copy.fieldValue} value={selectedItem.value} copyLabel={copy.copyValue} mono multiline />
+              <RouteFieldRow label={copy.fieldEffectiveValue} value={selectedItem.effective_value} copyLabel={copy.copyValue} mono multiline />
+              <RouteFieldRow label={copy.fieldValueSource} value={selectedItem.value_source} copyLabel={copy.copyValue} />
+            </div>
+            <section className="route-detail-note">
+              <h5>{copy.fieldDescription}</h5>
+              <p>{normalizeText(selectedItem.definition?.description)}</p>
+            </section>
+          </>
+        ) : null}
+      </aside>
+    </section>
+  );
 }

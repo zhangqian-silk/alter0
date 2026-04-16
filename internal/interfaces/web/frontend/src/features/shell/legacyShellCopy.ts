@@ -8,10 +8,6 @@ type LegacyShellCopy = {
   routeTitles: Record<string, string>;
   routeSubtitles: Record<string, string>;
   primaryNavLabel: string;
-  brandKicker: string;
-  brandDescription: string;
-  brandStatus: string;
-  brandSurface: string;
   chatMenu: string;
   chatSessions: string;
   terminalSessions: string;
@@ -141,10 +137,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       environments: "Environment and deployment settings",
     },
     primaryNavLabel: "Primary workspace navigation",
-    brandKicker: "AI operating system",
-    brandDescription: "A focused shell for chat, agents, runtime controls, and delivery surfaces.",
-    brandStatus: "Bridge ready",
-    brandSurface: "React shell",
     chatMenu: "Menu",
     chatSessions: "Sessions",
     terminalSessions: "Sessions",
@@ -272,10 +264,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       environments: "环境与部署设置",
     },
     primaryNavLabel: "主工作区导航",
-    brandKicker: "AI 操作中枢",
-    brandDescription: "统一承载对话、Agent、运行时控制与交付页面的前端工作台。",
-    brandStatus: "桥接已就绪",
-    brandSurface: "React 壳层",
     chatMenu: "菜单",
     chatSessions: "会话",
     terminalSessions: "会话列表",

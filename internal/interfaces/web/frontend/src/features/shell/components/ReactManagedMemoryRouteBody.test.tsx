@@ -90,7 +90,7 @@ describe("ReactManagedMemoryRouteBody", () => {
     expect(screen.getByText("/memory/MEMORY.md")).toBeInTheDocument();
   });
 
-  it("opens task detail and loads logs and artifacts on demand", async () => {
+  it("opens task detail from the table and loads logs and artifacts on demand", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(
@@ -178,7 +178,7 @@ describe("ReactManagedMemoryRouteBody", () => {
       expect(screen.getByText("task-1")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /View Detail/i }));
+    fireEvent.click(screen.getByRole("button", { name: "task-1" }));
 
     await waitFor(() => {
       expect(screen.getByText("Task Detail")).toBeInTheDocument();

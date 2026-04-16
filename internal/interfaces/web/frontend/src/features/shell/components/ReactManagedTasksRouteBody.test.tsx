@@ -34,7 +34,7 @@ describe("ReactManagedTasksRouteBody", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads tasks, reapplies submitted filters, and renders detail with logs", async () => {
+  it("loads tasks, reapplies submitted filters, and renders master-detail with logs", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(
@@ -145,8 +145,8 @@ describe("ReactManagedTasksRouteBody", () => {
       );
     });
 
-    expect(screen.getAllByText("task-runtime-1")).toHaveLength(2);
-    expect(screen.getByText("Open Drawer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "task-runtime-1" })).toBeInTheDocument();
+    expect(screen.getByText("Select a task from the list to inspect runtime detail.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Status"), {
       target: { value: "running" },
@@ -164,7 +164,7 @@ describe("ReactManagedTasksRouteBody", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Drawer" }));
+    fireEvent.click(screen.getByRole("button", { name: "task-runtime-1" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
@@ -315,8 +315,8 @@ describe("ReactManagedTasksRouteBody", () => {
 
     render(<ReactManagedTasksRouteBody language="en" />);
 
-    await screen.findByRole("button", { name: "Open Drawer" });
-    fireEvent.click(screen.getByRole("button", { name: "Open Drawer" }));
+    await screen.findByRole("button", { name: "task-root-1" });
+    fireEvent.click(screen.getByRole("button", { name: "task-root-1" }));
 
     await screen.findByRole("button", { name: "Send" });
     fireEvent.change(screen.getByPlaceholderText("Type command or prompt..."), {

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   ReactManagedControlRouteBody,
   isReactManagedControlRoute,
@@ -169,7 +169,7 @@ describe("ReactManagedControlRouteBody", () => {
     expect(screen.getByText("https://openrouter.ai/api/v1")).toBeInTheDocument();
   });
 
-  it("renders environment config items with pending restart status", async () => {
+  it("renders environment config items in a dense table with detail panel", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValue(
       jsonResponse({
@@ -196,15 +196,19 @@ describe("ReactManagedControlRouteBody", () => {
     render(<ReactManagedControlRouteBody route="environments" language="en" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Worker Pool Size")).toBeInTheDocument();
+      expect(screen.getByRole("table", { name: "Environment Config" })).toBeInTheDocument();
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/control/environments",
       expect.objectContaining({ method: "GET" }),
     );
-    expect(screen.getByText("Pending restart")).toBeInTheDocument();
-    expect(screen.getByText("worker_pool_size")).toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "Worker Pool Size" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Worker Pool Size" }));
+
+    expect(screen.getAllByText("Pending restart").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("worker_pool_size").length).toBeGreaterThan(0);
     expect(screen.getByText("Controls concurrent task workers.")).toBeInTheDocument();
   });
 

@@ -126,6 +126,7 @@ type TaskRouteCopy = {
   loadFailed: (message: string) => string;
   empty: string;
   emptyHint: string;
+  selectTaskHint: string;
   applying: string;
   copyTaskID: string;
   openDetail: string;
@@ -248,6 +249,7 @@ const TASK_ROUTE_COPY: Record<LegacyShellLanguage, TaskRouteCopy> = {
     loadFailed: (message) => `Load failed: ${message}`,
     empty: "No tasks found.",
     emptyHint: "Try adjusting filters or check back in a moment.",
+    selectTaskHint: "Select a task from the list to inspect runtime detail.",
     applying: "Applying filters...",
     copyTaskID: "Copy Task ID",
     openDetail: "Open Drawer",
@@ -339,6 +341,7 @@ const TASK_ROUTE_COPY: Record<LegacyShellLanguage, TaskRouteCopy> = {
     loadFailed: (message) => `加载失败：${message}`,
     empty: "暂无任务记录。",
     emptyHint: "试试调整筛选条件，或稍后再试。",
+    selectTaskHint: "从左侧列表选择任务后查看运行详情。",
     applying: "筛选中...",
     copyTaskID: "复制任务 ID",
     openDetail: "查看详情",
@@ -922,7 +925,7 @@ export function ReactManagedTasksRouteBody({
             </div>
           ) : null}
 
-          <div className="task-summary-list" data-control-task-list>
+          <div className="task-summary-list task-summary-list-compact" data-control-task-list>
             {listState.status === "error" ? (
               <p className="route-empty">{copy.loadFailed(listState.error)}</p>
             ) : listState.items.length === 0 ? (
@@ -934,73 +937,37 @@ export function ReactManagedTasksRouteBody({
               listState.items.map((item) => {
                 const taskID = normalizeText(item.task_id);
                 const isActive = activeTaskID === item.task_id;
-                const summaryTags = [
-                  formatTriggerType(item.trigger_type, copy),
-                  formatChannelType(item.channel_type, copy),
-                ];
-                if (normalizeFilterValue(item.job_id)) {
-                  summaryTags.push(`${copy.fieldJobID}: ${normalizeText(item.job_id)}`);
-                }
                 return (
-                  <article
+                  <button
                     key={taskID}
-                    className={`route-card task-summary-card${isActive ? " active" : ""}`}
+                    className={`task-summary-row${isActive ? " active" : ""}`}
+                    aria-label={taskID}
                     aria-current={isActive ? "true" : undefined}
+                    type="button"
+                    onClick={() => {
+                      setActiveTaskID(normalizeFilterValue(item.task_id));
+                      setDisplayTaskID(normalizeFilterValue(item.task_id));
+                      setTerminalAnchorTaskID(normalizeFilterValue(item.task_id));
+                    }}
                   >
-                    <header className="task-summary-head">
-                      <div className="task-summary-id-wrap">
-                        <h5 className="task-summary-id" title={taskID}>
-                          {taskID}
-                        </h5>
-                        <button
-                          className="task-summary-copy"
-                          type="button"
-                          aria-label={copy.copyTaskID}
-                          title={copy.copyTaskID}
-                          onClick={() => {
-                            void handleCopyTaskID(taskID);
-                          }}
-                        >
-                          {copy.copyTaskID}
-                        </button>
-                      </div>
+                    <div className="task-summary-row-main">
+                      <strong className="task-summary-row-id" title={taskID}>
+                        {taskID}
+                      </strong>
+                      <span className="task-summary-row-subline">
+                        {formatTriggerType(item.trigger_type, copy)} · {formatChannelType(item.channel_type, copy)}
+                      </span>
+                    </div>
+                    <div className="task-summary-row-side">
                       <span className={`task-summary-status ${taskStatusClassName(item.status)}`}>
                         {formatTaskStatus(item.status, copy)}
                       </span>
-                    </header>
-                    <div className="task-summary-meta">
-                      <p>
-                        <span>{copy.fieldID}</span>
-                        <strong>{taskID}</strong>
-                      </p>
-                      <p>
-                        <span>{copy.fieldSession}</span>
-                        <strong>{normalizeText(item.session_id)}</strong>
-                      </p>
-                      <p>
-                        <span>{copy.fieldSourceMessage}</span>
-                        <strong>{normalizeText(item.source_message_id)}</strong>
-                      </p>
-                      <p>
-                        <span>{copy.fieldUpdated}</span>
-                        <strong>{formatDateTime(item.updated_at)}</strong>
-                      </p>
                     </div>
-                    <footer className="route-card-footer control-task-summary-footer">
-                      <RouteTagSection label={copy.fieldTags} tags={summaryTags} />
-                      <button
-                        className="task-summary-open"
-                        type="button"
-                        onClick={() => {
-                          setActiveTaskID(normalizeFilterValue(item.task_id));
-                          setDisplayTaskID(normalizeFilterValue(item.task_id));
-                          setTerminalAnchorTaskID(normalizeFilterValue(item.task_id));
-                        }}
-                      >
-                        {copy.openDetail}
-                      </button>
-                    </footer>
-                  </article>
+                    <div className="task-summary-row-meta">
+                      <span>{normalizeText(item.session_id)}</span>
+                      <span>{formatDateTime(item.updated_at)}</span>
+                    </div>
+                  </button>
                 );
               })
             )}
@@ -1031,25 +998,31 @@ export function ReactManagedTasksRouteBody({
           </div>
         </div>
 
-        <section className="control-task-drawer" hidden={!hasDrawer}>
+        <section className="control-task-drawer">
           <aside className="control-task-drawer-panel">
             <header className="control-task-drawer-head">
-              <h4>{copy.taskDetail}</h4>
-              <button
-                className="task-summary-next"
-                type="button"
-                onClick={() => {
-                  setActiveTaskID("");
-                  setDisplayTaskID("");
-                  setTerminalAnchorTaskID("");
-                }}
-              >
-                {copy.close}
-              </button>
+              <div>
+                <h4>{copy.taskDetail}</h4>
+                {hasDrawer ? <p>{selectedDisplayTaskID}</p> : null}
+              </div>
+              {hasDrawer ? (
+                <button
+                  className="task-summary-next"
+                  type="button"
+                  onClick={() => {
+                    setActiveTaskID("");
+                    setDisplayTaskID("");
+                    setTerminalAnchorTaskID("");
+                  }}
+                >
+                  {copy.close}
+                </button>
+              ) : null}
             </header>
             <div className="control-task-drawer-body" data-control-task-drawer-body>
-              {detailState.status === "loading" ? <p>{copy.loading}</p> : null}
-              {detailState.status === "error" ? <p>{copy.loadFailed(detailState.error)}</p> : null}
+              {!hasDrawer ? <div className="task-detail-placeholder">{copy.selectTaskHint}</div> : null}
+              {hasDrawer && detailState.status === "loading" ? <p>{copy.loading}</p> : null}
+              {hasDrawer && detailState.status === "error" ? <p>{copy.loadFailed(detailState.error)}</p> : null}
               {detailView ? (
                 <section className="task-detail-card">
                   <header className="task-detail-head">
