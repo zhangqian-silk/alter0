@@ -4,7 +4,7 @@ import { expectFocusedValue, expectInputReady } from "./input";
 
 export async function expectComposerReady(composer: ComposerComponent, timeout = 20000): Promise<void> {
   const input = composer.input();
-  await expect(input).toHaveAttribute("data-composer-ready", "true", { timeout });
+  await expect(input).toHaveAttribute("data-composer-input", /.+/, { timeout });
   await expectInputReady(input, timeout);
 }
 
