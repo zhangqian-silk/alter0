@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"alter0/internal/codex/infrastructure/runtimeconfig"
 	sharedapp "alter0/internal/shared/application"
 	terminaldomain "alter0/internal/terminal/domain"
 )
@@ -28,6 +29,7 @@ const (
 	workspaceDirectoryName          = "workspaces"
 	workspaceTerminalDirName        = "terminal"
 	workspaceSessionsDirName        = "sessions"
+	terminalCodexHomeDirName        = "codex-home"
 	maxEntryPageLimit               = 200
 	terminalHostUnavailableMessage  = "terminal host unavailable"
 	terminalCompactionResetMessage  = "codex context compaction failed; next input will start a fresh runtime thread in the same workspace"
@@ -609,6 +611,18 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 	cmd := runner(runCtx, command.path, args...)
 	if workspaceDir := item.workspaceDir(); workspaceDir != "" {
 		cmd.Dir = workspaceDir
+		env, runtimeErr := prepareTerminalCodexRuntime(workspaceDir)
+		if runtimeErr != nil {
+			s.finishTurn(item, turnID, runtimeErr, "")
+			return
+		}
+		if len(env) > 0 {
+			baseEnv := cmd.Env
+			if len(baseEnv) == 0 {
+				baseEnv = os.Environ()
+			}
+			cmd.Env = append(baseEnv, env...)
+		}
 	}
 
 	stdout, err := cmd.StdoutPipe()
@@ -1440,6 +1454,17 @@ func resolveRecoveredThreadID(sessionID string, terminalSessionID string) string
 		return ""
 	}
 	return threadID
+}
+
+func prepareTerminalCodexRuntime(workspaceDir string) ([]string, error) {
+	prepared, err := runtimeconfig.Prepare(runtimeconfig.Spec{
+		RuntimeHome:  filepath.Join(workspaceDir, terminalCodexHomeDirName),
+		WorkspaceDir: workspaceDir,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("prepare terminal codex runtime: %w", err)
+	}
+	return prepared.Env, nil
 }
 
 func resolveSessionWorkspacePath(baseDir string, sessionID string) (string, error) {

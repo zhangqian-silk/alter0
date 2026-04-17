@@ -273,10 +273,8 @@ func (p *HybridNLProcessor) executeModelTool(
 		if instruction == "" {
 			return nil, errors.New("codex_exec instruction is required")
 		}
-		codexMetadata := metadata
-		if isCodingAgent(metadata) {
-			codexMetadata = buildCodexExecMetadata(metadata)
-		}
+		codexMetadata := buildCodexExecMetadata(metadata)
+		codexMetadata[execdomain.CodexRuntimeStrategyMetadataKey] = execdomain.CodexRuntimeStrategyPlain
 		output, err := p.codex.Process(ctx, instruction, codexMetadata)
 		if err != nil {
 			return &llmdomain.ToolResult{

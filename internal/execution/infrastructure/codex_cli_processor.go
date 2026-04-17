@@ -117,11 +117,11 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 	if prompt == "" {
 		return "", errors.New("content is required")
 	}
-	renderedPrompt, err := buildCodexPrompt(prompt, metadata)
+	workspaceDir, err := resolveCodexWorkspace(metadata)
 	if err != nil {
 		return "", err
 	}
-	workspaceDir, err := resolveCodexWorkspace(metadata)
+	prepared, err := prepareCodexInvocation(prompt, metadata, workspaceDir)
 	if err != nil {
 		return "", err
 	}
@@ -165,7 +165,14 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
 	}
-	cmd.Stdin = strings.NewReader(renderedPrompt)
+	cmd.Stdin = strings.NewReader(prepared.Prompt)
+	if len(prepared.Env) > 0 {
+		baseEnv := cmd.Env
+		if len(baseEnv) == 0 {
+			baseEnv = os.Environ()
+		}
+		cmd.Env = append(baseEnv, prepared.Env...)
+	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -216,11 +223,11 @@ func (p *CodexCLIProcessor) ProcessStream(
 	if prompt == "" {
 		return "", errors.New("content is required")
 	}
-	renderedPrompt, err := buildCodexPrompt(prompt, metadata)
+	workspaceDir, err := resolveCodexWorkspace(metadata)
 	if err != nil {
 		return "", err
 	}
-	workspaceDir, err := resolveCodexWorkspace(metadata)
+	prepared, err := prepareCodexInvocation(prompt, metadata, workspaceDir)
 	if err != nil {
 		return "", err
 	}
@@ -251,7 +258,14 @@ func (p *CodexCLIProcessor) ProcessStream(
 	if workspaceDir != "" {
 		cmd.Dir = workspaceDir
 	}
-	cmd.Stdin = strings.NewReader(renderedPrompt)
+	cmd.Stdin = strings.NewReader(prepared.Prompt)
+	if len(prepared.Env) > 0 {
+		baseEnv := cmd.Env
+		if len(baseEnv) == 0 {
+			baseEnv = os.Environ()
+		}
+		cmd.Env = append(baseEnv, prepared.Env...)
+	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -448,89 +462,7 @@ func resolveStreamDelta(previous string, next string) string {
 }
 
 func buildCodexPrompt(prompt string, metadata map[string]string) (string, error) {
-	rawSkillContext := strings.TrimSpace(metadataValue(metadata, execdomain.SkillContextMetadataKey))
-	rawMCPContext := strings.TrimSpace(metadataValue(metadata, execdomain.MCPContextMetadataKey))
-	rawMemoryContext := strings.TrimSpace(metadataValue(metadata, execdomain.MemoryContextMetadataKey))
-	rawProductContext := strings.TrimSpace(metadataValue(metadata, execdomain.ProductContextMetadataKey))
-	rawProductDiscovery := strings.TrimSpace(metadataValue(metadata, execdomain.ProductDiscoveryMetadataKey))
-	agentContext := buildCodexAgentContext(metadata)
-	runtimeContext := buildCodexRuntimeContext(metadata)
-
-	var skillContext *execdomain.SkillContext
-	if rawSkillContext != "" {
-		parsedSkillContext := execdomain.SkillContext{}
-		if err := json.Unmarshal([]byte(rawSkillContext), &parsedSkillContext); err != nil {
-			return "", fmt.Errorf("invalid skill context metadata: %w", err)
-		}
-		if len(parsedSkillContext.Skills) > 0 {
-			skillContext = &parsedSkillContext
-		}
-	}
-
-	var mcpContext *execdomain.MCPContext
-	if rawMCPContext != "" {
-		parsedMCPContext := execdomain.MCPContext{}
-		if err := json.Unmarshal([]byte(rawMCPContext), &parsedMCPContext); err != nil {
-			return "", fmt.Errorf("invalid mcp context metadata: %w", err)
-		}
-		if len(parsedMCPContext.Servers) > 0 {
-			mcpContext = &parsedMCPContext
-		}
-	}
-
-	var memoryContext *execdomain.MemoryContext
-	if rawMemoryContext != "" {
-		parsedMemoryContext := execdomain.MemoryContext{}
-		if err := json.Unmarshal([]byte(rawMemoryContext), &parsedMemoryContext); err != nil {
-			return "", fmt.Errorf("invalid memory context metadata: %w", err)
-		}
-		if len(parsedMemoryContext.Files) > 0 {
-			memoryContext = &parsedMemoryContext
-		}
-	}
-
-	var productContext *execdomain.ProductContext
-	if rawProductContext != "" {
-		parsedProductContext := execdomain.ProductContext{}
-		if err := json.Unmarshal([]byte(rawProductContext), &parsedProductContext); err != nil {
-			return "", fmt.Errorf("invalid product context metadata: %w", err)
-		}
-		if strings.TrimSpace(parsedProductContext.ProductID) != "" {
-			productContext = &parsedProductContext
-		}
-	}
-
-	var productDiscovery *execdomain.ProductDiscoveryContext
-	if rawProductDiscovery != "" {
-		parsedProductDiscovery := execdomain.ProductDiscoveryContext{}
-		if err := json.Unmarshal([]byte(rawProductDiscovery), &parsedProductDiscovery); err != nil {
-			return "", fmt.Errorf("invalid product discovery metadata: %w", err)
-		}
-		if len(parsedProductDiscovery.MatchedProducts) > 0 || strings.TrimSpace(parsedProductDiscovery.SelectedProduct) != "" {
-			productDiscovery = &parsedProductDiscovery
-		}
-	}
-
-	if agentContext == nil && runtimeContext == nil && productContext == nil && productDiscovery == nil && skillContext == nil && mcpContext == nil && memoryContext == nil {
-		return prompt, nil
-	}
-
-	payload := codexExecutionPayload{
-		Protocol:     "alter0.codex-exec/v1",
-		UserPrompt:   prompt,
-		AgentContext: agentContext,
-		Runtime:      runtimeContext,
-		Product:      productContext,
-		Discovery:    productDiscovery,
-		SkillPolicy:  skillContext,
-		MCPPolicy:    mcpContext,
-		MemoryPolicy: memoryContext,
-	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal codex prompt payload: %w", err)
-	}
-	return string(encoded), nil
+	return strings.TrimSpace(prompt), nil
 }
 
 func buildCodexAgentContext(metadata map[string]string) *codexAgentContext {

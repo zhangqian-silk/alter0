@@ -16,6 +16,7 @@ const (
 	AgentCapabilitiesMetadataKey    = "alter0.agent.capabilities"
 	AgentDelegatedByMetadataKey     = "alter0.agent.delegated_by"
 	AgentDelegationDepthMetadataKey = "alter0.agent.delegation_depth"
+	CodexRuntimeStrategyMetadataKey = "alter0.codex.runtime_strategy"
 
 	ExecutionEngineAuto  = "auto"
 	ExecutionEngineCodex = "codex"
@@ -24,4 +25,7 @@ const (
 
 	ExecutionSourceModel    = "model"
 	ExecutionSourceCodexCLI = "codex_cli"
+
+	CodexRuntimeStrategyNative = "native"
+	CodexRuntimeStrategyPlain  = "plain"
 )
