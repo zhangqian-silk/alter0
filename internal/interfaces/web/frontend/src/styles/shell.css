@@ -17,8 +17,12 @@
   --shell-radius-xl: 32px;
   --shell-radius-lg: 26px;
   --shell-radius-md: 20px;
-  --shell-nav-width: 252px;
-  --shell-session-width: 320px;
+  --shell-nav-width: clamp(216px, 17vw, 252px);
+  --shell-nav-collapsed-width: clamp(88px, 7vw, 104px);
+  --shell-session-width: clamp(276px, 23vw, 320px);
+  --shell-layout-gap: clamp(12px, 1.2vw, 16px);
+  --shell-layout-padding: clamp(12px, 1.2vw, 16px);
+  --shell-layout-max-width: 1880px;
   --shell-reading-width: 960px;
   --shell-panel-min-height: calc(100dvh - 48px);
 }
@@ -32,6 +36,7 @@ body {
     radial-gradient(circle at 50% 120%, rgba(16, 91, 180, 0.12), transparent 32%),
     linear-gradient(180deg, #f7fbff 0%, var(--shell-bg) 44%, var(--shell-bg-deep) 100%);
   position: relative;
+  overflow-x: clip;
 }
 
 body::before,
@@ -72,6 +77,7 @@ body::after {
   position: relative;
   isolation: isolate;
   z-index: 1;
+  overflow-x: clip;
 }
 
 @keyframes shell-aurora-float {
@@ -88,28 +94,38 @@ body::after {
 .app-shell {
   min-height: 100vh;
   min-height: 100dvh;
+  width: min(100%, var(--shell-layout-max-width));
+  margin-inline: auto;
   display: grid;
-  grid-template-columns: var(--shell-nav-width) var(--shell-session-width) minmax(0, 1fr);
-  gap: 16px;
-  padding: 16px;
+  grid-template-columns:
+    minmax(0, var(--shell-nav-width))
+    minmax(0, var(--shell-session-width))
+    minmax(0, 1fr);
+  gap: var(--shell-layout-gap);
+  padding: var(--shell-layout-padding);
   background: transparent;
+  box-sizing: border-box;
 }
 
 .app-shell.info-mode {
-  grid-template-columns: var(--shell-nav-width) minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--shell-nav-width)) minmax(0, 1fr);
 }
 
 .app-shell.nav-collapsed {
-  grid-template-columns: 104px var(--shell-session-width) minmax(0, 1fr);
+  grid-template-columns:
+    minmax(0, var(--shell-nav-collapsed-width))
+    minmax(0, var(--shell-session-width))
+    minmax(0, 1fr);
 }
 
 .app-shell.nav-collapsed.info-mode {
-  grid-template-columns: 104px minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--shell-nav-collapsed-width)) minmax(0, 1fr);
 }
 
 .primary-nav,
 .session-pane,
 .chat-pane {
+  min-width: 0;
   min-height: var(--shell-panel-min-height);
   border: 1px solid var(--shell-line);
   border-radius: var(--shell-radius-xl);
@@ -1099,6 +1115,270 @@ body::after {
   line-height: 1.7;
 }
 
+.environment-view {
+  display: grid;
+  gap: 18px;
+}
+
+.environment-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+.environment-toolbar-main {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.environment-runtime-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.environment-runtime-meta-item {
+  min-width: 132px;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(109, 160, 205, 0.12);
+  background: rgba(241, 247, 255, 0.88);
+}
+
+.environment-runtime-meta-item span {
+  color: var(--shell-muted);
+  font-size: 12px;
+}
+
+.environment-runtime-meta-item strong,
+.environment-runtime-meta-item code {
+  color: var(--shell-ink);
+  font-size: 14px;
+  font-family: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", monospace;
+}
+
+.environment-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--shell-muted-strong);
+}
+
+.environment-status.is-success {
+  color: #166534;
+}
+
+.environment-status.is-error {
+  color: #b91c1c;
+}
+
+.environment-toolbar-actions {
+  justify-content: flex-end;
+}
+
+.environment-restart-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(241, 247, 255, 0.9);
+  border: 1px solid rgba(109, 160, 205, 0.12);
+}
+
+.environment-restart-confirm-copy,
+.environment-restart-confirm-hint {
+  margin: 0;
+}
+
+.environment-restart-confirm-copy {
+  color: var(--shell-ink);
+  font-weight: 700;
+}
+
+.environment-restart-confirm-hint {
+  color: var(--shell-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.environment-restart-confirm-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.environment-restart-confirm-option input {
+  margin-top: 2px;
+}
+
+.environment-restart-confirm-option span {
+  display: grid;
+  gap: 4px;
+  color: var(--shell-ink);
+  font-size: 13px;
+}
+
+.environment-restart-confirm-option small {
+  color: var(--shell-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.environment-modules,
+.environment-module,
+.environment-card-body,
+.environment-summary,
+.environment-audits {
+  display: grid;
+  gap: 14px;
+}
+
+.environment-module h4,
+.environment-audits h4 {
+  margin: 0;
+  color: var(--shell-ink);
+  font-size: 15px;
+}
+
+.environment-module-grid,
+.environment-audit-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.environment-item {
+  padding: 18px;
+}
+
+.environment-item-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.environment-item-key code {
+  color: var(--shell-muted);
+  font-size: 12px;
+  font-family: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", monospace;
+}
+
+.environment-pending {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.environment-description {
+  display: grid;
+  gap: 6px;
+}
+
+.environment-description span,
+.environment-input-row span,
+.environment-audit-changes > span {
+  color: var(--shell-muted);
+  font-size: 12px;
+}
+
+.environment-description-text {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(241, 247, 255, 0.9);
+  color: var(--shell-muted-strong);
+  line-height: 1.6;
+}
+
+.environment-input-row {
+  display: grid;
+  gap: 8px;
+}
+
+.environment-input-row input,
+.environment-input-row select {
+  min-height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(109, 160, 205, 0.16);
+  background: #ffffff;
+  color: var(--shell-ink);
+  padding: 0 12px;
+  font: inherit;
+}
+
+.environment-details {
+  border: 1px solid rgba(109, 160, 205, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  overflow: hidden;
+}
+
+.environment-details summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 13px 14px;
+  color: var(--shell-ink);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.environment-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.environment-details summary::after {
+  content: "+";
+  color: var(--shell-muted);
+}
+
+.environment-details[open] summary::after {
+  content: "-";
+}
+
+.environment-details[open] summary {
+  border-bottom: 1px solid rgba(109, 160, 205, 0.12);
+}
+
+.environment-details-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.environment-audit-item {
+  padding: 18px;
+}
+
+.environment-audit-changes {
+  display: grid;
+  gap: 8px;
+}
+
+.environment-audit-changes ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--shell-muted-strong);
+  line-height: 1.6;
+}
+
 .control-task-layout,
 .task-history-view {
   display: grid;
@@ -1116,8 +1396,9 @@ body::after {
   gap: 14px;
 }
 
-.task-summary-list-compact {
+.task-summary-list {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 10px;
 }
 
@@ -1273,12 +1554,13 @@ body::after {
 }
 
 @media (max-width: 1360px) {
-  .app-shell {
-    grid-template-columns: 228px 300px minmax(0, 1fr);
+  :root {
+    --shell-nav-width: clamp(196px, 19vw, 228px);
+    --shell-session-width: clamp(264px, 26vw, 300px);
   }
 
-  .app-shell.nav-collapsed {
-    grid-template-columns: 96px 300px minmax(0, 1fr);
+  .app-shell {
+    --shell-layout-gap: 14px;
   }
 
   .workspace-hero,
@@ -1302,7 +1584,7 @@ body::after {
   }
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1100px) {
   .app-shell,
   .app-shell.info-mode,
   .app-shell.nav-collapsed,
@@ -1310,6 +1592,7 @@ body::after {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
     padding: 14px;
+    width: 100%;
   }
 
   .primary-nav,
@@ -1317,7 +1600,8 @@ body::after {
     position: fixed;
     top: 14px;
     bottom: 14px;
-    width: min(86vw, 360px);
+    width: min(calc(100vw - 28px), 360px);
+    max-width: calc(100vw - 28px);
     min-height: auto;
     z-index: 30;
     transition: transform 240ms ease;
@@ -1331,7 +1615,7 @@ body::after {
   .session-pane {
     right: 14px;
     transform: translateX(calc(100% + 24px));
-    width: min(88vw, 388px);
+    width: min(calc(100vw - 28px), 388px);
     z-index: 35;
   }
 

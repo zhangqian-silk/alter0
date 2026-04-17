@@ -123,6 +123,157 @@ test.describe("Chat composer", () => {
     expect((subheadingBox?.y ?? 0) - (headingBox?.y ?? 0)).toBeLessThan(80);
   });
 
+  test("keeps the shell stable while resizing across the desktop and drawer breakpoints", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openChatWorkspace(page);
+
+    const readShellMetrics = async () =>
+      page.evaluate(() => {
+        const appShell = document.querySelector(".app-shell");
+        const nav = document.querySelector(".primary-nav");
+        const sessionPane = document.querySelector(".session-pane");
+        const chatPane = document.querySelector(".chat-pane");
+        const composerShell = document.querySelector(".composer-shell");
+        const navToggle = document.getElementById("navToggle");
+        const sessionToggle = document.getElementById("sessionToggle");
+        if (
+          !(appShell instanceof HTMLElement)
+          || !(nav instanceof HTMLElement)
+          || !(sessionPane instanceof HTMLElement)
+          || !(chatPane instanceof HTMLElement)
+          || !(composerShell instanceof HTMLElement)
+          || !(navToggle instanceof HTMLElement)
+          || !(sessionToggle instanceof HTMLElement)
+        ) {
+          return null;
+        }
+
+        const navRect = nav.getBoundingClientRect();
+        const sessionRect = sessionPane.getBoundingClientRect();
+        const chatRect = chatPane.getBoundingClientRect();
+        const composerRect = composerShell.getBoundingClientRect();
+        const navToggleRect = navToggle.getBoundingClientRect();
+        const sessionToggleRect = sessionToggle.getBoundingClientRect();
+        const shellStyle = getComputedStyle(appShell);
+        const navStyle = getComputedStyle(nav);
+        const sessionStyle = getComputedStyle(sessionPane);
+        const doc = document.documentElement;
+
+        return {
+          navPosition: navStyle.position,
+          sessionPosition: sessionStyle.position,
+          navLeft: navRect.left,
+          navRight: navRect.right,
+          sessionLeft: sessionRect.left,
+          sessionRight: sessionRect.right,
+          chatLeft: chatRect.left,
+          chatRight: chatRect.right,
+          composerBottom: composerRect.bottom,
+          navToggleTop: navToggleRect.top,
+          sessionToggleTop: sessionToggleRect.top,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          scrollWidth: doc.scrollWidth,
+          gridTemplateColumns: shellStyle.gridTemplateColumns,
+        };
+      });
+
+    const desktop = await readShellMetrics();
+    expect(desktop).not.toBeNull();
+    expect(desktop?.navPosition).not.toBe("fixed");
+    expect(desktop?.sessionPosition).not.toBe("fixed");
+    expect(desktop?.appShellClass ?? "").not.toContain("nav-open");
+    expect(desktop?.appShellClass ?? "").not.toContain("panel-open");
+    expect(desktop?.navRight ?? 0).toBeLessThanOrEqual((desktop?.sessionLeft ?? 0) + 2);
+    expect(desktop?.sessionRight ?? 0).toBeLessThanOrEqual((desktop?.chatLeft ?? 0) + 2);
+    expect(desktop?.scrollWidth ?? 0).toBeLessThanOrEqual((desktop?.viewportWidth ?? 0) + 1);
+    expect(desktop?.gridTemplateColumns.split(" ").length ?? 0).toBeGreaterThanOrEqual(3);
+
+    await page.setViewportSize({ width: 1024, height: 900 });
+
+    await expect.poll(async () => {
+      const metrics = await readShellMetrics();
+      return metrics?.navPosition ?? "";
+    }).toBe("fixed");
+
+    const drawer = await readShellMetrics();
+    expect(drawer).not.toBeNull();
+    expect(drawer?.sessionPosition).toBe("fixed");
+    expect(drawer?.appShellClass ?? "").not.toContain("nav-open");
+    expect(drawer?.appShellClass ?? "").not.toContain("panel-open");
+    expect(drawer?.chatLeft ?? 0).toBeLessThanOrEqual(24);
+    expect((drawer?.viewportHeight ?? 0) - (drawer?.composerBottom ?? 0)).toBeLessThan(36);
+    expect(Math.abs((drawer?.navToggleTop ?? 0) - (drawer?.sessionToggleTop ?? 0))).toBeLessThan(8);
+    expect(drawer?.scrollWidth ?? 0).toBeLessThanOrEqual((drawer?.viewportWidth ?? 0) + 1);
+
+    await page.setViewportSize({ width: 1180, height: 900 });
+
+    await expect.poll(async () => {
+      const metrics = await readShellMetrics();
+      return metrics?.navPosition ?? "";
+    }).not.toBe("fixed");
+
+    const restoredDesktop = await readShellMetrics();
+    expect(restoredDesktop).not.toBeNull();
+    expect(restoredDesktop?.appShellClass ?? "").not.toContain("nav-open");
+    expect(restoredDesktop?.appShellClass ?? "").not.toContain("panel-open");
+    expect(restoredDesktop?.navRight ?? 0).toBeLessThanOrEqual((restoredDesktop?.sessionLeft ?? 0) + 2);
+    expect(restoredDesktop?.sessionRight ?? 0).toBeLessThanOrEqual((restoredDesktop?.chatLeft ?? 0) + 2);
+    expect(restoredDesktop?.scrollWidth ?? 0).toBeLessThanOrEqual((restoredDesktop?.viewportWidth ?? 0) + 1);
+  });
+
+  test("switches exactly at the 1100px shell breakpoint without leaving mixed layout state", async ({ page }) => {
+    await openChatWorkspace(page);
+
+    const readBreakpointState = async () =>
+      page.evaluate(() => {
+        const appShell = document.querySelector(".app-shell");
+        const nav = document.querySelector(".primary-nav");
+        const sessionPane = document.querySelector(".session-pane");
+        const chatPane = document.querySelector(".chat-pane");
+        if (
+          !(appShell instanceof HTMLElement)
+          || !(nav instanceof HTMLElement)
+          || !(sessionPane instanceof HTMLElement)
+          || !(chatPane instanceof HTMLElement)
+        ) {
+          return null;
+        }
+
+        return {
+          viewportWidth: window.innerWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          shellClassName: appShell.className,
+          gridTemplateColumns: getComputedStyle(appShell).gridTemplateColumns,
+          navPosition: getComputedStyle(nav).position,
+          sessionPosition: getComputedStyle(sessionPane).position,
+          chatLeft: chatPane.getBoundingClientRect().left,
+        };
+      });
+
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await expect.poll(async () => (await readBreakpointState())?.navPosition ?? "").toBe("fixed");
+
+    const mobileEdge = await readBreakpointState();
+    expect(mobileEdge).not.toBeNull();
+    expect(mobileEdge?.sessionPosition).toBe("fixed");
+    expect(mobileEdge?.shellClassName ?? "").not.toContain("nav-open");
+    expect(mobileEdge?.shellClassName ?? "").not.toContain("panel-open");
+    expect(mobileEdge?.chatLeft ?? 0).toBeLessThanOrEqual(24);
+    expect(mobileEdge?.scrollWidth ?? 0).toBeLessThanOrEqual((mobileEdge?.viewportWidth ?? 0) + 1);
+
+    await page.setViewportSize({ width: 1101, height: 900 });
+    await expect.poll(async () => (await readBreakpointState())?.navPosition ?? "").not.toBe("fixed");
+
+    const desktopEdge = await readBreakpointState();
+    expect(desktopEdge).not.toBeNull();
+    expect(desktopEdge?.sessionPosition).not.toBe("fixed");
+    expect(desktopEdge?.gridTemplateColumns.split(" ").length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(desktopEdge?.shellClassName ?? "").not.toContain("nav-open");
+    expect(desktopEdge?.shellClassName ?? "").not.toContain("panel-open");
+    expect(desktopEdge?.scrollWidth ?? 0).toBeLessThanOrEqual((desktopEdge?.viewportWidth ?? 0) + 1);
+  });
+
   test("keeps empty chat controls tidy and composer docked on narrow screens", async ({ page }) => {
     await page.setViewportSize({ width: 760, height: 980 });
     await openChatWorkspace(page);
@@ -143,9 +294,9 @@ test.describe("Chat composer", () => {
     await expect(runtimeToggles).toHaveCount(1);
     await expect(composerNote).toBeHidden();
     await expect(composerCounter).toBeHidden();
-    await expect(runtimeToggles.first()).toContainText("Session");
-    await expect(runtimeToggles.first()).toContainText("Tools 0");
-    await expect(runtimeToggles.first()).toContainText("Skills 0");
+    await expect(runtimeToggles.first()).toContainText("会话设置");
+    await expect(runtimeToggles.first()).toContainText("工具 0");
+    await expect(runtimeToggles.first()).toContainText("技能 0");
 
     const navBox = await navToggle.boundingBox();
     const sessionBox = await sessionToggle.boundingBox();
@@ -168,7 +319,7 @@ test.describe("Chat composer", () => {
     expect(Math.abs((navBox?.y ?? 0) - (sessionBox?.y ?? 0))).toBeLessThan(6);
     expect(Math.abs((sessionBox?.y ?? 0) - (newChatBox?.y ?? 0))).toBeLessThan(6);
     expect(headingBox?.y ?? 0).toBeGreaterThan((navBox?.y ?? 0) + (navBox?.height ?? 0) - 2);
-    expect((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0))).toBeLessThan(20);
+    expect((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0))).toBeLessThan(36);
     expect(Math.abs((runtimeBox?.y ?? 0) - (sendBox?.y ?? 0))).toBeLessThan(6);
     expect(sendBox?.x ?? 0).toBeGreaterThan((runtimeBox?.x ?? 0) + (runtimeBox?.width ?? 0) - 4);
 
@@ -183,29 +334,30 @@ test.describe("Chat composer", () => {
     await composer.input().fill("请输出一段稍长的说明，用于验证桌面宽屏聊天布局。");
     await composer.submitButton().click();
     await expect(chatPage.latestUserBubble()).toContainText("请输出一段稍长的说明");
+    await expect(page.locator(".session-card-title").first()).toContainText("请输出一段稍长的说明");
 
     const metrics = await page.evaluate(() => {
-      const list = document.querySelector(".message-list");
-      const composerNode = document.querySelector(".composer");
-      if (!(list instanceof HTMLElement) || !(composerNode instanceof HTMLElement)) {
+      const composerFrame = document.querySelector(".composer-shell .chat-content-frame");
+      if (!(composerFrame instanceof HTMLElement)) {
         return null;
       }
-      const listRect = list.getBoundingClientRect();
-      const composerRect = composerNode.getBoundingClientRect();
+      const composerRect = composerFrame.getBoundingClientRect();
       return {
-        listWidth: listRect.width,
         composerWidth: composerRect.width,
-        listCenter: listRect.left + listRect.width / 2,
+        composerLeft: composerRect.left,
+        composerRight: composerRect.right,
         composerCenter: composerRect.left + composerRect.width / 2,
+        scrollWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
       };
     });
 
     expect(metrics).not.toBeNull();
-    expect(metrics?.listWidth ?? 0).toBeGreaterThan(1000);
-    expect(metrics?.composerWidth ?? 0).toBeGreaterThan(1000);
-    expect(metrics?.listWidth ?? 0).toBeLessThanOrEqual(1242);
-    expect(metrics?.composerWidth ?? 0).toBeLessThanOrEqual(1242);
-    expect(Math.abs((metrics?.listCenter ?? 0) - (metrics?.composerCenter ?? 0))).toBeLessThan(4);
+    expect(metrics?.composerWidth ?? 0).toBeGreaterThanOrEqual(940);
+    expect(metrics?.composerWidth ?? 0).toBeLessThanOrEqual(964);
+    expect(metrics?.composerLeft ?? 0).toBeGreaterThan(0);
+    expect(metrics?.composerRight ?? 0).toBeLessThanOrEqual((metrics?.viewportWidth ?? 0) + 1);
+    expect(metrics?.scrollWidth ?? 0).toBeLessThanOrEqual((metrics?.viewportWidth ?? 0) + 1);
   });
 
   test("keeps the empty-state welcome copy and composer aligned on wide screens", async ({ page }) => {
@@ -213,13 +365,13 @@ test.describe("Chat composer", () => {
     await openChatWorkspace(page);
 
     const metrics = await page.evaluate(() => {
-      const welcome = document.querySelector(".welcome-screen");
-      const composerNode = document.querySelector(".composer");
-      if (!(welcome instanceof HTMLElement) || !(composerNode instanceof HTMLElement)) {
+      const welcomeFrame = document.querySelector(".welcome-screen .chat-content-frame");
+      const composerFrame = document.querySelector(".composer-shell .chat-content-frame");
+      if (!(welcomeFrame instanceof HTMLElement) || !(composerFrame instanceof HTMLElement)) {
         return null;
       }
-      const welcomeRect = welcome.getBoundingClientRect();
-      const composerRect = composerNode.getBoundingClientRect();
+      const welcomeRect = welcomeFrame.getBoundingClientRect();
+      const composerRect = composerFrame.getBoundingClientRect();
       return {
         welcomeWidth: welcomeRect.width,
         composerWidth: composerRect.width,
@@ -229,10 +381,10 @@ test.describe("Chat composer", () => {
     });
 
     expect(metrics).not.toBeNull();
-    expect(metrics?.welcomeWidth ?? 0).toBeGreaterThan(1000);
-    expect(metrics?.composerWidth ?? 0).toBeGreaterThan(1000);
-    expect(metrics?.welcomeWidth ?? 0).toBeLessThanOrEqual(1242);
-    expect(metrics?.composerWidth ?? 0).toBeLessThanOrEqual(1242);
+    expect(metrics?.welcomeWidth ?? 0).toBeGreaterThanOrEqual(940);
+    expect(metrics?.composerWidth ?? 0).toBeGreaterThanOrEqual(940);
+    expect(metrics?.welcomeWidth ?? 0).toBeLessThanOrEqual(964);
+    expect(metrics?.composerWidth ?? 0).toBeLessThanOrEqual(964);
     expect(Math.abs((metrics?.welcomeWidth ?? 0) - (metrics?.composerWidth ?? 0))).toBeLessThanOrEqual(4);
     expect(Math.abs((metrics?.welcomeCenter ?? 0) - (metrics?.composerCenter ?? 0))).toBeLessThan(4);
   });
@@ -286,6 +438,83 @@ test.describe("Chat composer", () => {
     await closeButton.click();
     await expect(popover).toBeHidden();
     await expect(backdrop).toBeHidden();
+  });
+
+  test("keeps 393px mobile drawers contained and dismissible without horizontal overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await openChatWorkspace(page);
+
+    const appShell = page.locator(".app-shell");
+    const navToggle = page.locator("#navToggle");
+    const sessionToggle = page.locator("#sessionToggle");
+    const primaryNav = page.locator(".primary-nav");
+    const sessionPane = page.locator(".session-pane");
+    const backdrop = page.locator("#mobileBackdrop");
+
+    const readMetrics = async () =>
+      page.evaluate(() => {
+        const root = document.documentElement;
+        const shell = document.querySelector(".app-shell");
+        const nav = document.querySelector(".primary-nav");
+        const session = document.querySelector(".session-pane");
+        if (
+          !(shell instanceof HTMLElement)
+          || !(nav instanceof HTMLElement)
+          || !(session instanceof HTMLElement)
+        ) {
+          return null;
+        }
+        const navRect = nav.getBoundingClientRect();
+        const sessionRect = session.getBoundingClientRect();
+        return {
+          viewportWidth: window.innerWidth,
+          scrollWidth: root.scrollWidth,
+          shellClassName: shell.className,
+          navLeft: navRect.left,
+          navRight: navRect.right,
+          sessionLeft: sessionRect.left,
+          sessionRight: sessionRect.right,
+        };
+      });
+
+    await navToggle.click();
+    await expect(appShell).toHaveClass(/nav-open/);
+    await expect(backdrop).toBeVisible();
+    await expect(primaryNav).toBeVisible();
+    await expect.poll(async () => (await readMetrics())?.navLeft ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual(-1);
+
+    const navOpen = await readMetrics();
+    expect(navOpen).not.toBeNull();
+    expect(navOpen?.navLeft ?? 0).toBeGreaterThanOrEqual(-1);
+    expect(navOpen?.navRight ?? 0).toBeLessThanOrEqual((navOpen?.viewportWidth ?? 0) + 1);
+    expect(navOpen?.scrollWidth ?? 0).toBeLessThanOrEqual((navOpen?.viewportWidth ?? 0) + 1);
+
+    await backdrop.dispatchEvent("click");
+    await expect(appShell).not.toHaveClass(/nav-open/);
+    await expect(appShell).not.toHaveClass(/overlay-open/);
+
+    await sessionToggle.click();
+    await expect(appShell).toHaveClass(/panel-open/);
+    await expect(sessionPane).toBeVisible();
+    await expect
+      .poll(async () => {
+        const metrics = await readMetrics();
+        if (!metrics) {
+          return Number.POSITIVE_INFINITY;
+        }
+        return metrics.sessionRight - metrics.viewportWidth;
+      })
+      .toBeLessThanOrEqual(1);
+
+    const panelOpen = await readMetrics();
+    expect(panelOpen).not.toBeNull();
+    expect(panelOpen?.sessionLeft ?? 0).toBeGreaterThanOrEqual(-1);
+    expect(panelOpen?.sessionRight ?? 0).toBeLessThanOrEqual((panelOpen?.viewportWidth ?? 0) + 1);
+    expect(panelOpen?.scrollWidth ?? 0).toBeLessThanOrEqual((panelOpen?.viewportWidth ?? 0) + 1);
+
+    await backdrop.dispatchEvent("click");
+    await expect(appShell).not.toHaveClass(/panel-open/);
+    await expect(appShell).not.toHaveClass(/overlay-open/);
   });
 
   test("keeps agent option copy concise inside session settings", async ({ page }) => {

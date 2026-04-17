@@ -1,4 +1,5 @@
 import {
+  LEGACY_SHELL_MOBILE_BREAKPOINT_PX,
   isLegacyShellMobileViewport,
   parseLegacyShellHashRoute,
 } from "./legacyShellState";
@@ -13,9 +14,9 @@ describe("legacyShellState", () => {
     expect(parseLegacyShellHashRoute("")).toBe("chat");
   });
 
-  it("treats only 960px-and-below viewports as mobile shell mode", () => {
+  it("keeps the mobile shell breakpoint aligned with the shared viewport threshold", () => {
     const matchMedia = vi.fn((query: string) => ({
-      matches: query === "(max-width: 960px)",
+      matches: query === `(max-width: ${LEGACY_SHELL_MOBILE_BREAKPOINT_PX}px)`,
       media: query,
       onchange: null,
       addListener: vi.fn(),
@@ -31,6 +32,7 @@ describe("legacyShellState", () => {
     });
 
     expect(isLegacyShellMobileViewport()).toBe(true);
-    expect(matchMedia).toHaveBeenCalledWith("(max-width: 960px)");
+    expect(LEGACY_SHELL_MOBILE_BREAKPOINT_PX).toBe(1100);
+    expect(matchMedia).toHaveBeenCalledWith("(max-width: 1100px)");
   });
 });
