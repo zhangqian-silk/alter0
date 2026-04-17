@@ -74,6 +74,7 @@ describe("ReactManagedRouteBody", () => {
       "memory",
       "sessions",
       "tasks",
+      "codex-accounts",
       "channels",
       "skills",
       "mcp",
@@ -84,6 +85,7 @@ describe("ReactManagedRouteBody", () => {
     expect(isReactManagedRouteBody("agent")).toBe(true);
     expect(isReactManagedRouteBody("memory")).toBe(true);
     expect(isReactManagedRouteBody("products")).toBe(true);
+    expect(isReactManagedRouteBody("codex-accounts")).toBe(true);
     expect(isReactManagedRouteBody("channels")).toBe(true);
     expect(isReactManagedRouteBody("skills")).toBe(true);
     expect(isReactManagedRouteBody("mcp")).toBe(true);

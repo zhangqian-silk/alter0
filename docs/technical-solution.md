@@ -21,7 +21,7 @@
 | Agent Capability & Memory | `internal/agent`、`internal/execution`、`internal/llm`、`internal/orchestration` | Agent Catalog、ReAct、工具执行、Skills/MCP、Memory Context、上下文压缩 |
 | Task, Terminal & Workspace | `internal/task`、`internal/tasksummary`、`internal/terminal`、`.alter0/workspaces` | 异步任务、日志流、心跳、产物交付、Terminal 会话、工作区隔离 |
 | Product Domain | `internal/product`、`internal/interfaces/web/product_*`、`cmd/alter0/builtin_skills.go` | Product 目录、Draft Studio、Product 总 Agent、Workspace、Travel 产品域 |
-| Control, Operations & Governance | `internal/control`、`internal/llm`、`cmd/alter0`、`scripts`、`docs/deployment` | 控制面配置、模型 Provider、运行时重启、部署凭据、测试与 TDD 约束 |
+| Control, Operations & Governance | `internal/control`、`internal/llm`、`internal/codex`、`cmd/alter0`、`scripts`、`docs/deployment` | 控制面配置、模型 Provider、Codex 多账号、运行时重启、部署凭据、测试与 TDD 约束 |
 
 ## Runtime & Orchestration
 
@@ -72,7 +72,7 @@ CLI / Web / Cron
 - `internal/interfaces/web/frontend/src/shared/api/client.ts` 负责统一 JSON 请求封装、错误收敛与登录失效回调，避免新前端页面继续散落原生 `fetch`。
 - `internal/interfaces/web/frontend/src/shared/time/format.ts` 负责固定 `Asia/Shanghai` 的前端显示时区与标准时间格式，避免新旧页面时间口径漂移。
 - `internal/interfaces/web/frontend/src/shared/viewport/mobileViewport.ts` 负责移动端断点、键盘偏移阈值与 viewport baseline 计算，避免 Chat、Terminal 与 route 页重复维护软键盘占位逻辑。
-- `internal/interfaces/web/frontend/src/features/shell` 维护稳定 Web Shell 的前端信息架构：当前路由高亮、导航折叠态、导航 tooltip、语言感知文案，以及仅展示 `Alter0` 服务名的品牌头部、Session Pane 上下文卡、会话卡片列表、ChatWorkspace 头部动作区、工作区 hero、欢迎区文案、欢迎区 target picker、prompt deck、欢迎区/消息区显隐、消息列表 DOM、运行时 controls/note/sheet 原生 DOM、Session 历史空态提示/可访问标签、Composer 面板、路由页 hero、路由页头部标题/副标题和主工作区的 `page-mode / data-route / chatView / routeView` 显隐状态。`bootstrap/ReactRuntimeFacade.tsx` 负责 Chat / Agent 的会话创建、切换、删除、消息流、结构化 runtime、移动端 runtime sheet、草稿恢复与 `alter0:legacy-shell:*` bridge 事件处理，并通过 `legacyRuntimeSnapshotStore` 直接发布 chat workspace、session pane、message region 与 chat runtime 四类结构化快照；React 再从共享 store 订阅当前会话标题、副标题、欢迎区描述、结构化 target picker、欢迎区/消息区显隐、结构化消息快照，以及运行时 target/provider/model/capabilities/skills 状态、错误提示与移动端 runtime sheet。chat runtime 的 target/model/tool/skill 交互通过共享 runtime API 直接回写 React runtime 状态。`components/ReactManagedAgentRouteBody.tsx`、`components/ReactManagedTerminalRouteBody.tsx`、`components/ReactManagedMemoryRouteBody.tsx`、`components/ReactManagedControlRouteBody.tsx`、`components/ReactManagedSessionsRouteBody.tsx`、`components/ReactManagedTasksRouteBody.tsx` 与 `components/ReactManagedProductsRouteBody.tsx` 统一通过 `components/ReactManagedRouteBody.tsx` 接管 route body，其中 Agent 配置页复用 `shared/api/client.ts` 请求 `/api/control/agents`、`/api/control/skills` 与 `/api/control/mcps`，在 React 内维护选中 Agent、表单草稿、紧凑表单栅格、保存/删除与运行页跳转入口；Terminal 页直接请求 `/api/terminal/sessions*` 与 step 明细接口，在 React 内维护会话列表、详情轮询、step 展开、滚动定位、关闭/删除与本地草稿恢复；Memory 页复用同一客户端请求 `/api/agent/memory` 与 `/api/memory/tasks*`，在 React 内维护任务筛选、任务表格、详情侧栏、日志、产物与只读记忆文档卡片；控制台卡片页复用同一客户端请求 `/api/control/channels`、`/api/control/skills`、`/api/control/mcps`、`/api/control/llm/providers`、`/api/control/environments` 与 `/api/control/cron/jobs`，其中 environments route 在 React 内切换为配置表 + 详情面板；Sessions 页复用同一客户端请求 `/api/sessions` 并在 React 内维护筛选表单、查询参数与会话详情卡片，Tasks 页复用同一客户端请求 `/api/control/tasks*` 并在 React 内维护筛选表单、分页、紧凑任务列表、详情面板、日志回放与 follow-up terminal 输入；`components/SessionPane.tsx` 把单条会话渲染为“主内容按钮 + 底部辅助操作区”的单卡结构，标题支持双行截断，短 hash 与复制/删除动作收纳在同一卡片底部，避免长标题把会话列切成失衡的双列布局；React 会在 `routeBody` 上输出当前页 `data-react-managed-route` ownership 标记，并在 `appShell` 上输出稳定的 `data-react-managed-routes` 路由清单，保证壳层状态更新不会清空页面主体。
+- `internal/interfaces/web/frontend/src/features/shell` 维护稳定 Web Shell 的前端信息架构：当前路由高亮、导航折叠态、导航 tooltip、语言感知文案，以及仅展示 `Alter0` 服务名的品牌头部、Session Pane 上下文卡、会话卡片列表、ChatWorkspace 头部动作区、工作区 hero、欢迎区文案、欢迎区 target picker、prompt deck、欢迎区/消息区显隐、消息列表 DOM、运行时 controls/note/sheet 原生 DOM、Session 历史空态提示/可访问标签、Composer 面板、路由页 hero、路由页头部标题/副标题和主工作区的 `page-mode / data-route / chatView / routeView` 显隐状态。`bootstrap/ReactRuntimeFacade.tsx` 负责 Chat / Agent 的会话创建、切换、删除、消息流、结构化 runtime、移动端 runtime sheet、草稿恢复与 `alter0:legacy-shell:*` bridge 事件处理，并通过 `legacyRuntimeSnapshotStore` 直接发布 chat workspace、session pane、message region 与 chat runtime 四类结构化快照；React 再从共享 store 订阅当前会话标题、副标题、欢迎区描述、结构化 target picker、欢迎区/消息区显隐、结构化消息快照，以及运行时 target/provider/model/capabilities/skills 状态、错误提示与移动端 runtime sheet。chat runtime 的 target/model/tool/skill 交互通过共享 runtime API 直接回写 React runtime 状态。`components/ReactManagedAgentRouteBody.tsx`、`components/ReactManagedTerminalRouteBody.tsx`、`components/ReactManagedMemoryRouteBody.tsx`、`components/ReactManagedControlRouteBody.tsx`、`components/ReactManagedSessionsRouteBody.tsx`、`components/ReactManagedTasksRouteBody.tsx`、`components/ReactManagedProductsRouteBody.tsx` 与 `components/ReactManagedCodexAccountsRouteBody.tsx` 统一通过 `components/ReactManagedRouteBody.tsx` 接管 route body，其中 Agent 配置页复用 `shared/api/client.ts` 请求 `/api/control/agents`、`/api/control/skills` 与 `/api/control/mcps`，在 React 内维护选中 Agent、表单草稿、紧凑表单栅格、保存/删除与运行页跳转入口；Terminal 页直接请求 `/api/terminal/sessions*` 与 step 明细接口，在 React 内维护会话列表、详情轮询、step 展开、滚动定位、关闭/删除与本地草稿恢复；Memory 页复用同一客户端请求 `/api/agent/memory` 与 `/api/memory/tasks*`，在 React 内维护任务筛选、任务表格、详情侧栏、日志、产物与只读记忆文档卡片；控制台卡片页复用同一客户端请求 `/api/control/channels`、`/api/control/skills`、`/api/control/mcps`、`/api/control/llm/providers`、`/api/control/environments` 与 `/api/control/cron/jobs`，其中 environments route 在 React 内切换为配置表 + 详情面板；Codex Accounts 页复用同一客户端请求 `/api/control/codex/accounts*`，在 React 内维护账号列表、当前活动账号、`auth.json` 导入表单、登录会话轮询与切换动作；Sessions 页复用同一客户端请求 `/api/sessions` 并在 React 内维护筛选表单、查询参数与会话详情卡片，Tasks 页复用同一客户端请求 `/api/control/tasks*` 并在 React 内维护筛选表单、分页、紧凑任务列表、详情面板、日志回放与 follow-up terminal 输入；`components/SessionPane.tsx` 把单条会话渲染为“主内容按钮 + 底部辅助操作区”的单卡结构，标题支持双行截断，短 hash 与复制/删除动作收纳在同一卡片底部，避免长标题把会话列切成失衡的双列布局；React 会在 `routeBody` 上输出当前页 `data-react-managed-route` ownership 标记，并在 `appShell` 上输出稳定的 `data-react-managed-routes` 路由清单，保证壳层状态更新不会清空页面主体。
 - `internal/interfaces/web/frontend/src/styles/shell.css` 维护 React 壳层的 source-owned 设计 token 与布局基线，覆盖桌面三栏 cockpit、移动端双抽屉、仅展示 `Alter0` 服务名的品牌头部、工作区 hero、prompt deck 与 Composer 面板等视觉层；桌面端通过 `--shell-reading-width` 把欢迎区、消息列与 Composer 统一约束到 `960px` 的居中阅读宽度，并为会话列显式关闭 grid 行拉伸，避免单个 session 卡片占满整列高度；抽屉式单列壳层的 CSS 断点统一收敛到 `max-width: 960px`，与 `legacyShellState.ts` 中的 `matchMedia` 阈值保持一致；`public/legacy/*.css` 继续承载兼容内容区样式、Terminal 细节和 route body 内容皮肤。
 - `LegacyWebShell` 需要镜像 `appShell` 上的 transient classes，例如 `nav-open`、`panel-open`、`overlay-open` 与 `runtime-sheet-open`，确保 hash 切路由、语言切换等 React rerender 不会擦掉运行时已经打开的移动端壳层状态。
 - `static/dist/legacy/*` 当前仅承载兼容样式资源，不再包含 `/chat` 启动所需脚本。`/chat` 页面只加载 `static/dist/index.html` 中的 React bundle；兼容层通过稳定的 DOM 契约、`appShell[data-react-managed-routes]` 路由清单与 `routeBody[data-react-managed-route]` ownership 标记让样式与页面结构继续协同工作，而不再让 legacy 脚本回写业务状态。
@@ -260,6 +260,7 @@ Product request
 
 - `internal/control` 管理 Channel、Capability、Skill、MCP、Agent Profile 和 Environment 配置。
 - `internal/llm` 管理 Model Provider、上游 API type、OpenRouter 扩展与密钥状态。
+- `internal/codex/domain` 负责 `auth.json` 快照、身份识别与额度状态模型；`internal/codex/application` 负责账号导入、状态刷新、独立登录会话与活动账号切换；`internal/codex/infrastructure/localfile` 负责 `<active_codex_home>/alter0-accounts` 下的账号快照、备份与登录工作目录。
 - `cmd/alter0` 管理启动、supervisor、重启、内置配置和运行时 metadata。
 - `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本；Node 初始化同时覆盖 `internal/interfaces/web` 与 `internal/interfaces/web/frontend`。
 - `docs/deployment` 承载 Nginx 与部署权限说明。
@@ -269,6 +270,7 @@ Product request
 ```text
 Control UI / API
   -> Config / Capability service
+  -> Codex account service
   -> Local storage
   -> Runtime resolver
   -> Execution / Agent / Scheduler
@@ -291,6 +293,8 @@ Environment restart
 - Models 控制面需要保持空 API Key 语义、占位值过滤、禁用态恢复和默认 Provider 收敛。
 - Environment registry 按 Web & Queue、Async Tasks、Terminal、Session Memory、Persistent Memory、LLM 模块声明 key、类型、默认值、校验规则、敏感性与生效方式。
 - Environment 配置更新写入 audit store，控制面按时间倒序读取变更记录。
+- Codex Accounts 服务固定解析当前活动 `CODEX_HOME`，未显式设置时回退到 `$HOME/.codex`；托管账号写入 `<active_codex_home>/alter0-accounts`，活动账号切换只替换 `<active_codex_home>/auth.json`。
+- 独立登录会话通过临时 `CODEX_HOME` 执行 `codex login`，完成后再把新 `auth.json` 保存为托管账号，避免直接污染当前正在服务的运行时认证。
 - LLM 运行参数 `llm_temperature`、`llm_max_tokens`、`llm_react_max_iterations` 通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider 与模型能力约束。
 - Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换。
 - 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 会校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/assets/*` 与 `/legacy/*`；`http` 服务则把请求反向代理到注册的 upstream。
@@ -300,7 +304,7 @@ Environment restart
 
 ### 验证策略
 
-- Control 测试覆盖 Channel、Capability、Skill、MCP、Agent、Environment 配置持久化、Capability 审计和 Environment audit。
+- Control 测试覆盖 Channel、Capability、Skill、MCP、Agent、Environment、Codex Accounts 配置持久化、Capability 审计和 Environment audit。
 - LLM 测试覆盖 Provider 创建、更新、缺失密钥恢复、默认项收敛和 OpenRouter 字段。
 - Runtime supervisor 测试覆盖候选版本构建、readyz 切换、失败回滚和 metadata 展示。
 - 文档治理变更至少运行 Markdown 引用与空白检查；代码变更按 TDD 运行对应包或全量测试。

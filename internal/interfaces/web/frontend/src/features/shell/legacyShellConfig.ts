@@ -31,7 +31,8 @@ export type IconName =
   | "cron"
   | "channels"
   | "models"
-  | "environments";
+  | "environments"
+  | "codex";
 
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -66,7 +67,8 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Channels", route: "channels", abbr: "CH", icon: "channels" },
       { label: "Models", route: "models", abbr: "MO", icon: "models" },
-      { label: "Environments", route: "environments", abbr: "EN", icon: "environments" }
+      { label: "Environments", route: "environments", abbr: "EN", icon: "environments" },
+      { label: "Codex Accounts", route: "codex-accounts", abbr: "CA", icon: "codex" }
     ]
   }
 ];

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	agentapp "alter0/internal/agent/application"
+	codexapp "alter0/internal/codex/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
@@ -112,6 +113,7 @@ type Server struct {
 	frontendDevOrigin string
 	frontendDevProxy  http.Handler
 	workspaceService  *workspaceServiceRegistry
+	codexAccounts     codexAccountService
 }
 
 type llmService interface {
@@ -202,6 +204,14 @@ type runtimeInfoProvider interface {
 	GetRuntimeInfo() RuntimeInfo
 }
 
+type codexAccountService interface {
+	ListStatuses(ctx context.Context) ([]codexapp.AccountStatus, *codexapp.CurrentStatus, error)
+	AddFromRaw(name string, raw []byte, overwrite bool) (*codexapp.Record, error)
+	Switch(name string) (*codexapp.Record, string, error)
+	StartLoginSession(ctx context.Context, name string, overwrite bool) (codexapp.LoginSession, error)
+	GetLoginSession(id string) (codexapp.LoginSession, bool)
+}
+
 type RuntimeRestartOptions struct {
 	SyncRemoteMaster bool `json:"sync_remote_master"`
 }
@@ -209,6 +219,17 @@ type RuntimeRestartOptions struct {
 type RuntimeInfo struct {
 	StartedAt  time.Time `json:"started_at,omitempty"`
 	CommitHash string    `json:"commit_hash,omitempty"`
+}
+
+type codexAccountCreateRequest struct {
+	Name            string `json:"name"`
+	Overwrite       bool   `json:"overwrite"`
+	AuthFileContent string `json:"auth_file_content"`
+}
+
+type codexAccountLoginSessionCreateRequest struct {
+	Name      string `json:"name"`
+	Overwrite bool   `json:"overwrite"`
 }
 
 type messageRequest struct {
@@ -703,6 +724,13 @@ func (s *Server) SetRuntimeInfoProvider(provider runtimeInfoProvider) {
 	s.runtimeInfo = provider
 }
 
+func (s *Server) SetCodexAccountService(service codexAccountService) {
+	if s == nil {
+		return
+	}
+	s.codexAccounts = service
+}
+
 func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", s.telemetry.MetricsHandler())
@@ -753,6 +781,9 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/products/", s.productItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
+	mux.HandleFunc("/api/control/codex/accounts", s.codexAccountCollectionHandler)
+	mux.HandleFunc("/api/control/codex/accounts/login-sessions", s.codexAccountLoginSessionCollectionHandler)
+	mux.HandleFunc("/api/control/codex/accounts/", s.codexAccountItemHandler)
 	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
 	mux.HandleFunc("/api/control/llm/providers/", s.llmProviderItemHandler)
 	mux.HandleFunc("/api/terminal/sessions", s.terminalSessionCollectionHandler)
@@ -4434,6 +4465,134 @@ func (s *Server) llmProviderListHandler(w http.ResponseWriter, r *http.Request) 
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func (s *Server) codexAccountCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.codexAccounts == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "codex account service unavailable"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		items, active, err := s.codexAccounts.ListStatuses(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":  items,
+			"active": active,
+		})
+	case http.MethodPost:
+		var req codexAccountCreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		if strings.TrimSpace(req.AuthFileContent) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "auth_file_content is required"})
+			return
+		}
+		record, err := s.codexAccounts.AddFromRaw(strings.TrimSpace(req.Name), []byte(req.AuthFileContent), req.Overwrite)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusCreated, record)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) codexAccountLoginSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.codexAccounts == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "codex account service unavailable"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var req codexAccountLoginSessionCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+	session, err := s.codexAccounts.StartLoginSession(r.Context(), strings.TrimSpace(req.Name), req.Overwrite)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, session)
+}
+
+func (s *Server) codexAccountItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.codexAccounts == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "codex account service unavailable"})
+		return
+	}
+
+	resourceType, resourceID, action, ok := codexAccountResourcePath(r.URL.Path)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid codex account path"})
+		return
+	}
+
+	switch {
+	case resourceType == "login-session":
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		session, found := s.codexAccounts.GetLoginSession(resourceID)
+		if !found {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "login session not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, session)
+	case resourceType == "account" && action == "switch":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		record, backupPath, err := s.codexAccounts.Switch(resourceID)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		_, active, activeErr := s.codexAccounts.ListStatuses(r.Context())
+		if activeErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": activeErr.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"account":     record,
+			"backup_path": backupPath,
+			"active":      active,
+		})
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid codex account path"})
+	}
+}
+
+func codexAccountResourcePath(path string) (resourceType string, resourceID string, action string, ok bool) {
+	const prefix = "/api/control/codex/accounts/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", "", false
+	}
+	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if trimmed == "" {
+		return "", "", "", false
+	}
+	parts := strings.Split(trimmed, "/")
+	if len(parts) == 2 && parts[0] == "login-sessions" && strings.TrimSpace(parts[1]) != "" {
+		return "login-session", parts[1], "", true
+	}
+	if len(parts) == 2 && strings.TrimSpace(parts[0]) != "" && parts[1] == "switch" {
+		return "account", parts[0], "switch", true
+	}
+	return "", "", "", false
 }
 
 func (s *Server) llmProviderItemHandler(w http.ResponseWriter, r *http.Request) {
