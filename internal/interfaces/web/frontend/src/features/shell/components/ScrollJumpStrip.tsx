@@ -2,7 +2,7 @@ import { memo, useEffect, useId, useState, type RefObject } from "react";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 
 type ScrollJumpStripProps = {
-  scope: "chat" | "route";
+  scope: "agent";
   language: LegacyShellLanguage;
   containerRef: RefObject<HTMLElement | null>;
   itemSelector: string;
@@ -35,15 +35,15 @@ const SCROLL_JUMP_BOTTOM_THRESHOLD = 220;
 const SCROLL_JUMP_COPY: Record<LegacyShellLanguage, ScrollJumpCopy> = {
   en: {
     top: "Top",
-    prev: "Prev",
+    prev: "Previous",
     next: "Next",
-    bottom: "Bottom",
+    bottom: "Latest",
   },
   zh: {
-    top: "顶部",
-    prev: "上一个",
-    next: "下一个",
-    bottom: "底部",
+    top: "回到顶部",
+    prev: "上一条",
+    next: "下一条",
+    bottom: "回到底部",
   },
 };
 
@@ -213,11 +213,13 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
   }, [containerRef, idPrefix, itemAttribute, itemSelector, scope]);
 
   return (
-    <div className="scroll-jump-strip" data-scroll-jump-scope={scope}>
+    <div className="scroll-jump-strip" data-scroll-jump-scope={scope} aria-label="Turn navigation">
       <button
-        className={state.showTop ? "pane-action is-visible" : "pane-action"}
+        className={state.showTop ? "scroll-jump-control scroll-jump-top is-visible" : "scroll-jump-control scroll-jump-top"}
         type="button"
         data-scroll-jump-top={scope}
+        aria-label={copy.top}
+        title={copy.top}
         onClick={() => {
           const container = containerRef.current;
           if (!container) {
@@ -226,34 +228,40 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
           container.scrollTo({ top: 0, behavior: "smooth" });
         }}
       >
-        {copy.top}
+        <span className="scroll-jump-control-icon" aria-hidden="true">↑↑</span>
       </button>
       <button
-        className={state.previousID ? "pane-action is-visible" : "pane-action"}
+        className={state.previousID ? "scroll-jump-control scroll-jump-prev is-visible" : "scroll-jump-control scroll-jump-prev"}
         type="button"
         data-scroll-jump-prev={scope}
         data-scroll-jump-target={state.previousID}
+        aria-label={copy.prev}
+        title={copy.prev}
         onClick={() => {
           scrollContainerToTarget(containerRef.current, itemAttribute, state.previousID, targetOffset);
         }}
       >
-        {copy.prev}
+        <span className="scroll-jump-control-icon" aria-hidden="true">↑</span>
       </button>
       <button
-        className={state.nextID ? "pane-action is-visible" : "pane-action"}
+        className={state.nextID ? "scroll-jump-control scroll-jump-next is-visible" : "scroll-jump-control scroll-jump-next"}
         type="button"
         data-scroll-jump-next={scope}
         data-scroll-jump-target={state.nextID}
+        aria-label={copy.next}
+        title={copy.next}
         onClick={() => {
           scrollContainerToTarget(containerRef.current, itemAttribute, state.nextID, targetOffset);
         }}
       >
-        {copy.next}
+        <span className="scroll-jump-control-icon" aria-hidden="true">↓</span>
       </button>
       <button
-        className={state.showBottom ? "pane-action is-visible" : "pane-action"}
+        className={state.showBottom ? "scroll-jump-control scroll-jump-bottom is-visible" : "scroll-jump-control scroll-jump-bottom"}
         type="button"
         data-scroll-jump-bottom={scope}
+        aria-label={copy.bottom}
+        title={copy.bottom}
         onClick={() => {
           const container = containerRef.current;
           if (!container) {
@@ -262,7 +270,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
           container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
         }}
       >
-        {copy.bottom}
+        <span className="scroll-jump-control-icon" aria-hidden="true">↓↓</span>
       </button>
     </div>
   );

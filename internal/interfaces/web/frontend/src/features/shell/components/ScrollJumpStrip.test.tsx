@@ -71,7 +71,7 @@ describe("ScrollJumpStrip", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows chat jump controls and scrolls to the next message block", async () => {
+  it("shows agent jump controls as arrow buttons and scrolls to the next message block", async () => {
     const containerRef = createRef<HTMLElement>();
     const { container } = render(
       <section ref={containerRef}>
@@ -79,7 +79,7 @@ describe("ScrollJumpStrip", () => {
         <article data-message-id="message-2">message-2</article>
         <article data-message-id="message-3">message-3</article>
         <ScrollJumpStrip
-          scope="chat"
+          scope="agent"
           language="zh"
           containerRef={containerRef}
           itemSelector="[data-message-id]"
@@ -99,13 +99,18 @@ describe("ScrollJumpStrip", () => {
     fireEvent.scroll(scrollContainer);
 
     await waitFor(() => {
-      expect(container.querySelector("[data-scroll-jump-top='chat']")).toHaveClass("is-visible");
-      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveClass("is-visible");
-      expect(container.querySelector("[data-scroll-jump-next='chat']")).toHaveClass("is-visible");
-      expect(container.querySelector("[data-scroll-jump-bottom='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-top='agent']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-prev='agent']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-next='agent']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-bottom='agent']")).toHaveClass("is-visible");
     });
 
-    fireEvent.click(container.querySelector("[data-scroll-jump-next='chat']") as HTMLElement);
+    expect(container.querySelector("[data-scroll-jump-top='agent']")).toHaveAttribute("aria-label", "回到顶部");
+    expect(container.querySelector("[data-scroll-jump-prev='agent']")).toHaveTextContent("↑");
+    expect(container.querySelector("[data-scroll-jump-next='agent']")).toHaveTextContent("↓");
+    expect(container.querySelector("[data-scroll-jump-bottom='agent']")).toHaveAttribute("aria-label", "回到底部");
+
+    fireEvent.click(container.querySelector("[data-scroll-jump-next='agent']") as HTMLElement);
 
     expect(scrollContainer.scrollTo).toHaveBeenCalledWith({
       top: 628,
@@ -124,7 +129,7 @@ describe("ScrollJumpStrip", () => {
           <section>details</section>
         </div>
         <ScrollJumpStrip
-          scope="route"
+          scope="agent"
           language="en"
           containerRef={containerRef}
           itemSelector=".route-hero, #routeBody > section"
@@ -146,7 +151,7 @@ describe("ScrollJumpStrip", () => {
     fireEvent.scroll(scrollContainer);
 
     await waitFor(() => {
-      expect(container.querySelector("[data-scroll-jump-next='route']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-next='agent']")).toHaveClass("is-visible");
     });
 
     const assignedTargets = targets.map((node) => node.getAttribute("data-scroll-jump-anchor"));

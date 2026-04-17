@@ -941,11 +941,13 @@ export function ReactManagedTerminalRouteBody() {
                 )}
               </div>
 
-              <div className="terminal-jump-strip">
+              <div className="terminal-jump-cluster" aria-label="Turn navigation">
                 <button
-                  className={jumpState.showTop ? "pane-action is-visible" : "pane-action"}
+                  className={jumpState.showTop ? "terminal-jump-control terminal-jump-top is-visible" : "terminal-jump-control terminal-jump-top"}
                   type="button"
                   data-terminal-jump-top
+                  aria-label={copy.top}
+                  title={copy.top}
                   onClick={() => {
                     const node = chatScreenRef.current;
                     if (node) {
@@ -953,30 +955,36 @@ export function ReactManagedTerminalRouteBody() {
                     }
                   }}
                 >
-                  {copy.top}
+                  <span className="terminal-jump-control-icon" aria-hidden="true">↑↑</span>
                 </button>
                 <button
-                  className={jumpState.previousTurnID ? "pane-action is-visible" : "pane-action"}
+                  className={jumpState.previousTurnID ? "terminal-jump-control terminal-jump-prev is-visible" : "terminal-jump-control terminal-jump-prev"}
                   type="button"
                   data-terminal-jump-prev
                   data-terminal-jump-target={jumpState.previousTurnID}
+                  aria-label={copy.prev}
+                  title={copy.prev}
                   onClick={() => scrollToTurn(jumpState.previousTurnID)}
                 >
-                  {copy.prev}
+                  <span className="terminal-jump-control-icon" aria-hidden="true">↑</span>
                 </button>
                 <button
-                  className={jumpState.nextTurnID ? "pane-action is-visible" : "pane-action"}
+                  className={jumpState.nextTurnID ? "terminal-jump-control terminal-jump-next is-visible" : "terminal-jump-control terminal-jump-next"}
                   type="button"
                   data-terminal-jump-next
                   data-terminal-jump-target={jumpState.nextTurnID}
+                  aria-label={copy.next}
+                  title={copy.next}
                   onClick={() => scrollToTurn(jumpState.nextTurnID)}
                 >
-                  {copy.next}
+                  <span className="terminal-jump-control-icon" aria-hidden="true">↓</span>
                 </button>
                 <button
-                  className={jumpState.showBottom ? "pane-action is-visible" : "pane-action"}
+                  className={jumpState.showBottom ? "terminal-jump-control terminal-jump-bottom is-visible" : "terminal-jump-control terminal-jump-bottom"}
                   type="button"
                   data-terminal-jump-bottom
+                  aria-label={copy.bottom}
+                  title={copy.bottom}
                   onClick={() => {
                     const node = chatScreenRef.current;
                     if (node) {
@@ -984,7 +992,7 @@ export function ReactManagedTerminalRouteBody() {
                     }
                   }}
                 >
-                  {copy.bottom}
+                  <span className="terminal-jump-control-icon" aria-hidden="true">↓↓</span>
                 </button>
               </div>
             </div>

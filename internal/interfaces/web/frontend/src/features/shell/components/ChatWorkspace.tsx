@@ -344,13 +344,15 @@ const ChatView = memo(function ChatView({
             language={language}
           />
         ) : null}
-        <ScrollJumpStrip
-          scope="chat"
-          language={language}
-          containerRef={messageAreaRef}
-          itemSelector="[data-message-id]"
-          itemAttribute="data-message-id"
-        />
+        {currentRoute === "agent-runtime" ? (
+          <ScrollJumpStrip
+            scope="agent"
+            language={language}
+            containerRef={messageAreaRef}
+            itemSelector="[data-message-id]"
+            itemAttribute="data-message-id"
+          />
+        ) : null}
       </section>
 
       <footer className="composer-shell" data-shell-section="composer-panel">
@@ -431,32 +433,6 @@ const RouteViewMount = memo(function RouteViewMount({
           <LegacyManagedRouteHost route={currentRoute} />
         )}
       </div>
-      {currentRoute !== "terminal" ? (
-        <ScrollJumpStrip
-          scope="route"
-          language={language}
-          containerRef={routeViewRef}
-          itemSelector={[
-            ".route-hero",
-            "#routeBody > *",
-            "#routeBody section",
-            "#routeBody aside",
-            "#routeBody article",
-            "#routeBody form",
-            "#routeBody .route-card",
-            "#routeBody .route-surface",
-            "#routeBody .session-route-card",
-            "#routeBody .agent-route-card",
-            "#routeBody .task-summary-row",
-            "#routeBody .task-detail-card",
-            "#routeBody .task-detail-section",
-            "#routeBody .memory-panel",
-            "#routeBody .product-workspace-panel",
-            "#routeBody .product-workspace-detail-section",
-          ].join(", ")}
-          itemAttribute="data-scroll-jump-anchor"
-        />
-      ) : null}
     </section>
   );
 });

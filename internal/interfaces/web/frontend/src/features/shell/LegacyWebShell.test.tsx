@@ -130,6 +130,12 @@ async function renderChannelsRouteShell() {
   await screen.findByText("No Channels available.");
 }
 
+async function renderAgentRuntimeShell() {
+  window.location.hash = "#agent-runtime";
+  render(<LegacyWebShell />);
+  await screen.findByRole("button", { name: "Send message" });
+}
+
 async function renderTerminalRouteShell() {
   window.location.hash = "#terminal";
   render(<LegacyWebShell />);
@@ -982,7 +988,7 @@ describe("LegacyWebShell", () => {
     });
   });
 
-  it("shows chat jump controls when the runtime message area overflows", async () => {
+  it("shows arrow jump controls only in the agent runtime message area", async () => {
     const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
       window.setTimeout(() => callback(16), 0);
       return 1;
@@ -990,11 +996,11 @@ describe("LegacyWebShell", () => {
     const cancelSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
 
     try {
-      render(<LegacyWebShell />);
+      await renderAgentRuntimeShell();
 
       await act(async () => {
         runtime().publishMessageRegionSnapshot?.({
-          route: "chat",
+          route: "agent-runtime",
           hasMessages: true,
           sessionId: "session-runtime-jump",
           messages: Array.from({ length: 6 }, (_value, index) => ({
@@ -1020,15 +1026,76 @@ describe("LegacyWebShell", () => {
       fireEvent.scroll(messageArea);
 
       await waitFor(() => {
-        expect(document.querySelector("[data-scroll-jump-top='chat']")).toHaveClass("is-visible");
-        expect(document.querySelector("[data-scroll-jump-prev='chat']")).toHaveClass("is-visible");
-        expect(document.querySelector("[data-scroll-jump-next='chat']")).toHaveClass("is-visible");
-        expect(document.querySelector("[data-scroll-jump-bottom='chat']")).toHaveClass("is-visible");
+        expect(document.querySelector("[data-scroll-jump-top='agent']")).toHaveClass("is-visible");
+        expect(document.querySelector("[data-scroll-jump-prev='agent']")).toHaveClass("is-visible");
+        expect(document.querySelector("[data-scroll-jump-next='agent']")).toHaveClass("is-visible");
+        expect(document.querySelector("[data-scroll-jump-bottom='agent']")).toHaveClass("is-visible");
       });
+
+      expect(document.querySelector("[data-scroll-jump-top='agent']")).toHaveAttribute("aria-label", "Top");
+      expect(document.querySelector("[data-scroll-jump-prev='agent']")).toHaveTextContent("↑");
+      expect(document.querySelector("[data-scroll-jump-next='agent']")).toHaveTextContent("↓");
+      expect(document.querySelector("[data-scroll-jump-bottom='agent']")).toHaveAttribute("aria-label", "Latest");
     } finally {
       rafSpy.mockRestore();
       cancelSpy.mockRestore();
     }
+  });
+
+  it("does not render jump controls for the regular chat message area", async () => {
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      window.setTimeout(() => callback(16), 0);
+      return 1;
+    });
+    const cancelSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+
+    try {
+      render(<LegacyWebShell />);
+
+      await act(async () => {
+        runtime().publishMessageRegionSnapshot?.({
+          route: "chat",
+          hasMessages: true,
+          sessionId: "session-runtime-chat",
+          messages: Array.from({ length: 5 }, (_value, index) => ({
+            id: `msg-runtime-chat-${index + 1}`,
+            role: index % 2 === 0 ? "user" : "assistant",
+            text: `Runtime chat message ${index + 1}`,
+            status: "done",
+            error: false,
+            at: Date.UTC(2026, 3, 15, 14, index, 0),
+            source: "model",
+          })),
+        });
+      });
+
+      const messageArea = document.getElementById(LEGACY_SHELL_IDS.messageArea) as HTMLElement;
+      const messages = [...messageArea.querySelectorAll<HTMLElement>("[data-message-id]")];
+      applyScrollableMetrics(messageArea, messages, [0, 120, 280, 440, 600], {
+        clientHeight: 260,
+        scrollHeight: 820,
+      });
+
+      messageArea.scrollTop = 280;
+      fireEvent.scroll(messageArea);
+
+      await waitFor(() => {
+        expect(messages).toHaveLength(5);
+      });
+
+      expect(document.querySelector("[data-scroll-jump-scope='agent']")).toBeNull();
+      expect(document.querySelector("[data-scroll-jump-top='chat']")).toBeNull();
+    } finally {
+      rafSpy.mockRestore();
+      cancelSpy.mockRestore();
+    }
+  });
+
+  it("does not render route-level jump controls on page-mode routes", async () => {
+    await renderChannelsRouteShell();
+
+    expect(document.querySelector("[data-scroll-jump-scope='route']")).toBeNull();
+    expect(document.querySelector("[data-scroll-jump-top='route']")).toBeNull();
   });
 
   it("renders structured assistant process snapshots with final answer", async () => {
