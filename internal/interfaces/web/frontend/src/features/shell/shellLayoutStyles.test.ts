@@ -61,13 +61,13 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("padding: 10px 12px calc(14px + env(safe-area-inset-bottom));");
   });
 
-  it("keeps shared scroll jump controls available outside the terminal shell", () => {
+  it("styles shared jump controls as arrow clusters for dialog surfaces", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain(".scroll-jump-strip {");
-    expect(stylesheet).toContain(".scroll-jump-strip .pane-action {");
-    expect(stylesheet).toContain("display: inline-flex;");
-    expect(stylesheet).toContain(".scroll-jump-strip .pane-action.is-visible {");
+    expect(stylesheet).toContain(".scroll-jump-control {");
+    expect(stylesheet).toContain(".scroll-jump-control.is-visible {");
+    expect(stylesheet).toContain(".scroll-jump-control-icon {");
   });
 });
