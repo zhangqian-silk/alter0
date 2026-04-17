@@ -20,6 +20,19 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     vi.unstubAllGlobals();
   });
 
+  it("keeps the dashboard shell visible while loading", () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    expect(screen.getByText("Runtime Overview")).toBeInTheDocument();
+    expect(screen.getByText("Managed Accounts")).toBeInTheDocument();
+    expect(screen.getByText("Import or Add Account")).toBeInTheDocument();
+    expect(screen.getByText("Login Session")).toBeInTheDocument();
+    expect(screen.getAllByText("Loading...").length).toBeGreaterThan(0);
+  });
+
   it("loads codex account statuses and switches the active account", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
@@ -101,8 +114,14 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
     await waitFor(() => {
+      expect(screen.getByText("Managed Accounts")).toBeInTheDocument();
+      expect(screen.getByText("Runtime Overview")).toBeInTheDocument();
       expect(screen.getByText("Work Account")).toBeInTheDocument();
     });
+
+    expect(screen.getAllByTestId("codex-account-card")).toHaveLength(2);
+    expect(screen.getByText("80%")).toBeInTheDocument();
+    expect(screen.getByText("92%")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Switch to Personal Account" }));
 
@@ -121,7 +140,18 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
   it("imports an auth file and creates the managed account", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ items: [], active: null }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [],
+          active: {
+            live: {
+              account_name: "CLI Account",
+              email: "cli@example.com",
+            },
+            auth_path: "/var/lib/alter0/.codex/auth.json",
+          },
+        }),
+      )
       .mockResolvedValueOnce(jsonResponse({ name: "work", snapshot: { account_name: "Work Account" } }, { status: 201 }))
       .mockResolvedValueOnce(
         jsonResponse({
@@ -141,7 +171,13 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
     await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Choose auth.json" })).toBeInTheDocument();
       expect(screen.getByText("No managed Codex accounts yet.")).toBeInTheDocument();
+      expect(screen.getByText("CLI Account")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Current auth.json is active but not managed yet. Import it to create the first managed snapshot.")
+          .length,
+      ).toBeGreaterThan(0);
     });
 
     const authFile = new File([`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`], "auth.json", { type: "application/json" });
@@ -157,6 +193,8 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
         files: [authFile],
       },
     });
+
+    expect(screen.getByText("auth.json")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Import auth.json" }));
 
@@ -202,7 +240,9 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
     await waitFor(() => {
-      expect(screen.getByText("No managed Codex accounts yet.")).toBeInTheDocument();
+      expect(screen.getByText("Login Session")).toBeInTheDocument();
+      expect(screen.getByText("No login session started.")).toBeInTheDocument();
+      expect(screen.getByText("Runtime Overview")).toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByLabelText("Account Name"), {

@@ -265,6 +265,7 @@ Product request
 - `internal/control` 管理 Channel、Capability、Skill、MCP、Agent Profile 和 Environment 配置。
 - `internal/llm` 管理 Model Provider、上游 API type、OpenRouter 扩展与密钥状态。
 - `internal/codex/domain` 负责 `auth.json` 快照、身份识别与额度状态模型；`internal/codex/application` 负责账号导入、状态刷新、独立登录会话与活动账号切换；`internal/codex/infrastructure/localfile` 负责 `<active_codex_home>/alter0-accounts` 下的账号快照、备份与登录工作目录。
+- `internal/interfaces/web/frontend` 中的 `ReactManagedCodexAccountsRouteBody` 负责 Codex Accounts 控制面的运行时概览、账号卡片列表、导入/登录操作侧栏与登录会话展示，并复用 `/api/control/codex/accounts*` 控制接口完成刷新与切换；当前 live `auth.json` 未匹配托管快照时，前端需回退展示 `active.live` 快照并输出未托管提示，首次加载阶段则输出同构 skeleton 保持页面结构稳定；账号区按断点切换为多列卡片、全宽卡片区 + 双侧栏和单列卡片，避免额度与切换入口被横向滚动隐藏。
 - `cmd/alter0` 管理启动、supervisor、重启、内置配置和运行时 metadata。
 - `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本；Node 初始化同时覆盖 `internal/interfaces/web` 与 `internal/interfaces/web/frontend`。
 - `docs/deployment` 承载 Nginx 与部署权限说明。
