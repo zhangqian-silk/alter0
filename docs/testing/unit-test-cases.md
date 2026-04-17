@@ -1,6 +1,6 @@
 # Unit Test Cases
 
-> Last update: 2026-04-16
+> Last update: 2026-04-17
 
 本文件维护 Go 单元测试的领域覆盖口径。测试文件按 DDD 边界放置在对应包路径下：领域规则放在 `domain`，用例编排放在 `application`，CLI/Web 入口契约放在 `interfaces`，外部适配和基础设施契约放在 `infrastructure`。
 
@@ -12,6 +12,9 @@
 
 - `cmd/alter0/TEST_CASES.md`
 - `internal/agent/application/TEST_CASES.md`
+- `internal/codex/application/TEST_CASES.md`
+- `internal/codex/domain/TEST_CASES.md`
+- `internal/codex/infrastructure/localfile/TEST_CASES.md`
 - `internal/control/application/TEST_CASES.md`
 - `internal/control/domain/TEST_CASES.md`
 - `internal/execution/application/TEST_CASES.md`
@@ -96,6 +99,54 @@
 
 - Workspace service 网关只覆盖共享运行时内的 Host 路由、静态分发与 HTTP 代理契约，不验证真实 Nginx/DNS 或浏览器跨域链路。
 - 浏览器真实交互与完整页面联调仍由 `internal/interfaces/web/e2e` Playwright 套件覆盖。
+
+### `internal/codex/domain`
+
+覆盖文件：
+
+- `auth_test.go`
+
+用例范围：
+
+- `auth.json` 的 OAuth / API Key 两类快照解析。
+- 账号名、邮箱、用户 ID、账号 ID、套餐、身份键与推荐名称推导。
+
+边界：
+
+- 额度查询、token 刷新、切换策略与登录会话编排由 `internal/codex/application` 覆盖。
+- 文件持久化与登录工作目录由 `internal/codex/infrastructure/localfile` 覆盖。
+
+### `internal/codex/application`
+
+覆盖文件：
+
+- `service_test.go`
+
+用例范围：
+
+- 托管账号导入、当前活动账号识别、账号切换与备份生成。
+- OAuth 账号状态刷新、额度回写与当前账号标记。
+- 独立 `codex login` 会话启动、日志收集、成功保存与失败收口。
+
+边界：
+
+- `auth.json` 结构解析由 `internal/codex/domain` 覆盖。
+- 本地文件持久化契约由 `internal/codex/infrastructure/localfile` 覆盖。
+
+### `internal/codex/infrastructure/localfile`
+
+覆盖文件：
+
+- `store_test.go`
+
+用例范围：
+
+- 托管账号记录的保存、读取与列表加载。
+- 账号根目录、备份目录与登录会话目录初始化。
+
+边界：
+
+- 账号业务规则、切换策略与登录会话状态由 `internal/codex/application` 覆盖。
 
 ## Agent Capability & Memory
 

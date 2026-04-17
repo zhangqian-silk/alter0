@@ -99,6 +99,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       channels: "Channels",
       models: "Models",
       environments: "Environments",
+      "codex-accounts": "Codex Accounts",
     },
     routeTitles: {
       chat: "Chat",
@@ -117,6 +118,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       mcp: "MCP",
       models: "Models",
       environments: "Environments",
+      "codex-accounts": "Codex Accounts",
     },
     routeSubtitles: {
       chat: "Alter0 workspace for general-purpose conversations and orchestration",
@@ -135,6 +137,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       mcp: "Model Context Protocol configuration",
       models: "Model capabilities",
       environments: "Environment and deployment settings",
+      "codex-accounts": "Manage saved Codex auth snapshots, inspect quota status, and switch the active runtime account",
     },
     primaryNavLabel: "Primary workspace navigation",
     chatMenu: "Menu",
@@ -226,6 +229,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       channels: "通道",
       models: "模型",
       environments: "环境",
+      "codex-accounts": "Codex 账号",
     },
     routeTitles: {
       chat: "对话",
@@ -244,6 +248,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       mcp: "MCP 协议",
       models: "模型",
       environments: "环境",
+      "codex-accounts": "Codex 账号",
     },
     routeSubtitles: {
       chat: "默认 Alter0 对话工作区，适合通用任务与子 Agent 编排",
@@ -262,6 +267,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       mcp: "Model Context Protocol 配置",
       models: "模型能力",
       environments: "环境与部署设置",
+      "codex-accounts": "维护已保存的 Codex 认证快照，查看额度状态，并切换当前运行时账号",
     },
     primaryNavLabel: "主工作区导航",
     chatMenu: "菜单",

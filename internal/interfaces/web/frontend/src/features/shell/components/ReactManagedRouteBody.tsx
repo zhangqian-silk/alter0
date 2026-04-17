@@ -4,6 +4,7 @@ import {
   type ReactManagedRouteBodyRoute,
 } from "../reactManagedRouteContract";
 import { ReactManagedAgentRouteBody } from "./ReactManagedAgentRouteBody";
+import { ReactManagedCodexAccountsRouteBody } from "./ReactManagedCodexAccountsRouteBody";
 import { ReactManagedControlRouteBody } from "./ReactManagedControlRouteBody";
 import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
 import { ReactManagedProductsRouteBody } from "./ReactManagedProductsRouteBody";
@@ -26,6 +27,7 @@ const REACT_MANAGED_ROUTE_BODY_RENDERERS: Record<ReactManagedRouteBodyRoute, Rou
   models: ({ language }) => <ReactManagedControlRouteBody route="models" language={language} />,
   environments: ({ language }) => <ReactManagedControlRouteBody route="environments" language={language} />,
   "cron-jobs": ({ language }) => <ReactManagedControlRouteBody route="cron-jobs" language={language} />,
+  "codex-accounts": ({ language }) => <ReactManagedCodexAccountsRouteBody language={language} />,
 };
 
 export {

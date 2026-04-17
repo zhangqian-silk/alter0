@@ -29,7 +29,7 @@ describe("legacyShellConfig", () => {
     const settingsRoutes = NAV_GROUPS[3].items.map((item) => item.route);
 
     expect(workspaceRoutes).toEqual(["chat", "agent-runtime", "terminal"]);
-    expect(settingsRoutes).toEqual(["channels", "models", "environments"]);
+    expect(settingsRoutes).toEqual(["channels", "models", "environments", "codex-accounts"]);
   });
 
   it("keeps agent and memory routes under agent studio only", () => {

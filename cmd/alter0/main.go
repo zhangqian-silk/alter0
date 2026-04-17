@@ -16,6 +16,8 @@ import (
 	"time"
 
 	agentapp "alter0/internal/agent/application"
+	codexapp "alter0/internal/codex/application"
+	codexlocal "alter0/internal/codex/infrastructure/localfile"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 	execapp "alter0/internal/execution/application"
@@ -346,6 +348,8 @@ func main() {
 	}
 	scheduler.Start(rootCtx)
 
+	codexAccounts := newCodexAccountService(logger, resolvedCodexCommand)
+
 	server := web.NewServer(
 		listenAddr,
 		orchestrator,
@@ -373,6 +377,7 @@ func main() {
 		products,
 		logger,
 	)
+	server.SetCodexAccountService(codexAccounts)
 	server.SetRuntimeInfoProvider(runtimeInfo)
 	restarter, err := newRuntimeRestarter(cancel, logger, filterInternalRuntimeArgs(os.Args[1:]))
 	if err != nil {
@@ -685,4 +690,25 @@ func newTaskService(
 	options taskapp.Options,
 ) (*taskapp.Service, error) {
 	return taskapp.NewService(ctx, orchestrator, recorder, idGen, logger, store, options)
+}
+
+func newCodexAccountService(logger *slog.Logger, command string) *codexapp.Service {
+	activeHome, err := codexapp.ResolveActiveHome()
+	if err != nil {
+		if logger != nil {
+			logger.Warn("failed to resolve active codex home for account manager", slog.String("error", err.Error()))
+		}
+		return nil
+	}
+	store, err := codexlocal.NewStore(filepath.Join(activeHome, "alter0-accounts"))
+	if err != nil {
+		if logger != nil {
+			logger.Warn("failed to initialize codex account store", slog.String("error", err.Error()))
+		}
+		return nil
+	}
+	return codexapp.NewService(codexapp.ServiceOptions{
+		Store:   store,
+		Command: command,
+	})
 }
