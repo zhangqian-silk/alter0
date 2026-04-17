@@ -270,11 +270,7 @@ func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) 
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
 	metadata[execdomain.AgentSystemPromptMetadataKey] = "Own coding delivery."
 
-	expectedPrompt, err := buildCodexPrompt("整理仓库", buildCodexExecMetadata(metadata))
-	if err != nil {
-		t.Fatalf("buildCodexPrompt() error = %v", err)
-	}
-	processor.codex = newTestProcessor("success", expectedPrompt, filepath.Join(".alter0", "workspaces", "sessions", "session-default", "repo"))
+	processor.codex = newTestProcessor("success", "整理仓库", filepath.Join(".alter0", "workspaces", "sessions", "session-default", "repo"))
 
 	output, err := processor.Process(context.Background(), "完成仓库整理", metadata)
 	if err != nil {

@@ -72,7 +72,7 @@
 - 运行时统一聚合内置 Agent 与用户管理 Agent；内置 Agent 包括 `main`、`coding`、`writing`、`product-builder` 与 Product 专属总 Agent。
 - Agent 采用 ReAct 执行链，负责理解用户目标、吸收 system prompt / Skill / Memory / Product Context，并把具体执行交给 `codex_exec`。
 - 稳定工具面包含 `codex_exec`、`search_memory`、`read_memory`、`write_memory` 与运行时收口工具 `complete`；允许委派的 Agent 可额外使用 `delegate_agent`。
-- `codex_exec` 通过 stdin 传递最终指令，并携带 `runtime_context`、`product_context`、`product_discovery`、`skill_context`、`mcp_context`、`memory_context` 等结构化上下文字段。
+- `codex_exec` 通过 stdin 传递最终指令；存在可用 Provider 且进入 Agent / ReAct 链路时，仅向 Codex 下发当前步骤指令；不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时会为当前会话生成原生 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 `runtime_context`、`product_context`、`product_discovery`、`skill_context`、`mcp_context`、`memory_context` 编译成 Codex 原生运行配置与工作区事实。
 - Agent / ReAct 走 `openai-completions` 多轮工具调用时，assistant `tool_calls` 与后续 `tool` 结果的 `tool_call_id` 必须保持同轮关联，不能在 Provider 适配层丢失。
 - Agent Profile 支持名称、system prompt、max iterations、Provider/Model、工具白名单、Skills、MCP 与 Memory Files。
 - 每个 Agent 自动拥有私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`，用于沉淀可复用工作模式、输出结构、检查清单与稳定偏好。
@@ -94,6 +94,7 @@
 - Codex CLI 长任务按心跳续租运行窗口；列表与详情展示 `Last Heartbeat` 和 `Timeout Window`。
 - Web 会话不直接暴露本地文件路径，产物通过引用、下载或预览接口交付。
 - 默认工作区按执行上下文隔离：Chat/Agent 使用 `.alter0/workspaces/sessions/<session_id>`，Task 使用其会话下的 `tasks/<task_id>`，Terminal 使用 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
+- 直连 Codex 的 Chat / Agent / Product 会话会在各自工作区下额外维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Terminal 会话会在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与步骤视图索引。
 - Terminal API 支持会话创建、列表、恢复、输入、关闭、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
 - Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/step 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
@@ -115,7 +116,7 @@
 - 默认 `main` Agent 可做 Product 发现，并在执行型请求中自动切换到目标 Product 总 Agent，同时注入 Product Context 与路由元数据。
 - 已发布且公开的 Product 提供公共目录、详情、Workspace、Space 详情、独立 HTML 页面与 Product 消息执行入口。
 - `travel` 是首个内置 Product，绑定唯一 `travel-master`，支持城市页创建/修改、结构化攻略、独立 HTML 城市页、Workspace Chat 与 Agent 执行失败时的本地解析回退。
-- `travel-master` 使用私有 Skill `.alter0/agents/travel-master/SKILL.md` 沉淀城市页、行程、地铁、美食与地图输出规则；稳定偏好写入 Skill，一次性行程约束写入目标城市页数据。
+- `travel-master` 使用私有 Skill `.alter0/agents/travel-master/SKILL.md` 沉淀城市页、行程、地铁、美食与地图输出规则；Agent / ReAct 路径由 `travel-master` 自身吸收这些规则，直连 Codex 路径则把它们编译到当前会话的 Native Runtime 资产；稳定偏好写入 Skill，一次性行程约束写入目标城市页数据。
 
 ## Control, Operations & Governance
 

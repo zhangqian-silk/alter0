@@ -111,6 +111,34 @@ func TestCreateAssignsDistinctWorkspacePerSession(t *testing.T) {
 	}
 }
 
+func TestTerminalInputUsesSessionScopedCodexHome(t *testing.T) {
+	baseDir := t.TempDir()
+	activeHome := filepath.Join(t.TempDir(), "active-codex-home")
+	if err := os.MkdirAll(activeHome, 0o755); err != nil {
+		t.Fatalf("mkdir active home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(activeHome, "auth.json"), []byte(`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`), 0o600); err != nil {
+		t.Fatalf("write auth: %v", err)
+	}
+	t.Setenv("CODEX_HOME", activeHome)
+
+	service := newTestServiceWithBaseDir("success", baseDir)
+	session, err := service.Create(CreateRequest{OwnerID: "owner-runtime-home"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	t.Setenv("TERMINAL_HELPER_EXPECT_CODEX_HOME_SUFFIX", filepath.Join(session.WorkingDir, terminalCodexHomeDirName))
+
+	if _, err := service.Input("owner-runtime-home", session.ID, "first prompt"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	waitForSessionEntries(t, service, "owner-runtime-home", session.ID, 2)
+
+	if _, err := os.Stat(filepath.Join(session.WorkingDir, terminalCodexHomeDirName, "auth.json")); err != nil {
+		t.Fatalf("expected session codex auth copy: %v", err)
+	}
+}
+
 func TestCreateStartsSessionReady(t *testing.T) {
 	service := newTestService("success")
 
@@ -725,7 +753,7 @@ func TestServiceResetsThreadAfterCodexCompactionFailure(t *testing.T) {
 
 	failedSnapshot, failedEntries := waitForSessionError(t, service, "owner-compact", session.ID)
 	if failedSnapshot.TerminalSessionID != session.ID {
-		t.Fatalf("expected failed compaction to reset terminal session id to %q, got %q", session.ID, failedSnapshot.TerminalSessionID)
+		t.Fatalf("expected failed compaction to reset terminal session id to %q, got %q (error=%q, entries=%+v)", session.ID, failedSnapshot.TerminalSessionID, failedSnapshot.ErrorMessage, failedEntries)
 	}
 	if !strings.Contains(failedSnapshot.ErrorMessage, "fresh runtime thread") {
 		t.Fatalf("expected compaction recovery message, got %q", failedSnapshot.ErrorMessage)
@@ -943,6 +971,13 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 		os.Exit(2)
 	}
 	terminalArgs := forwarded[execIndex+1:]
+	if expectedHome := strings.TrimSpace(os.Getenv("TERMINAL_HELPER_EXPECT_CODEX_HOME_SUFFIX")); expectedHome != "" {
+		actualHome := filepath.Clean(strings.TrimSpace(os.Getenv("CODEX_HOME")))
+		expectedHome = filepath.Clean(expectedHome)
+		if actualHome != expectedHome {
+			os.Exit(2)
+		}
+	}
 
 	mode := os.Getenv("TERMINAL_HELPER_MODE")
 	if mode == "sleep" {

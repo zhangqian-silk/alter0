@@ -92,7 +92,28 @@ func TestCodexCLIProcessorProcessEmptyContent(t *testing.T) {
 	}
 }
 
-func TestCodexCLIProcessorProcessWithSkillContextPayload(t *testing.T) {
+func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
+	rootDir := t.TempDir()
+	activeHome := filepath.Join(t.TempDir(), "active-codex-home")
+	if err := os.MkdirAll(activeHome, 0o755); err != nil {
+		t.Fatalf("mkdir active home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(activeHome, "auth.json"), []byte(`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`), 0o600); err != nil {
+		t.Fatalf("write auth: %v", err)
+	}
+	t.Setenv("CODEX_HOME", activeHome)
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
 	skillContext := execdomain.SkillContext{
 		Protocol: execdomain.SkillContextProtocolVersion,
 		Skills: []execdomain.SkillSpec{
@@ -114,86 +135,27 @@ func TestCodexCLIProcessorProcessWithSkillContextPayload(t *testing.T) {
 		t.Fatalf("marshal skill context: %v", err)
 	}
 
-	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "session-default",
-		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
-	})
-	if err != nil {
-		t.Fatalf("buildCodexPrompt() error = %v", err)
-	}
-	processor := newTestProcessor("success", expectedPrompt)
-
-	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "session-default",
-		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
-	})
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-	if output != "mock response" {
-		t.Fatalf("Process() output = %q, want %q", output, "mock response")
-	}
-}
-
-func TestCodexCLIProcessorProcessWithMCPContextPayload(t *testing.T) {
-	mcpContext := execdomain.MCPContext{
-		Protocol: execdomain.MCPContextProtocolVersion,
-		Servers: []execdomain.MCPServer{
+	rawMemoryContext, err := json.Marshal(execdomain.MemoryContext{
+		Protocol: execdomain.MemoryContextProtocolVersion,
+		Files: []execdomain.MemoryFileSpec{
 			{
-				ID:               "github-mcp",
-				Name:             "GitHub MCP",
-				Scope:            "request",
-				Transport:        "http",
-				URL:              "https://mcp.example.com",
-				TimeoutMS:        9000,
-				FailureIsolation: true,
+				ID:        "user_md",
+				Selection: "user_md",
+				Title:     "USER.md",
+				Path:      "/repo/USER.md",
+				Exists:    true,
+				Writable:  true,
+				Content:   "name: alter0\nresponse_style: concise\n",
 			},
 		},
-	}
-	rawMCPContext, err := json.Marshal(mcpContext)
-	if err != nil {
-		t.Fatalf("marshal mcp context: %v", err)
-	}
-
-	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "session-default",
-		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
-	})
-	if err != nil {
-		t.Fatalf("buildCodexPrompt() error = %v", err)
-	}
-	processor := newTestProcessor("success", expectedPrompt)
-
-	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "session-default",
-		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
-	})
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-	if output != "mock response" {
-		t.Fatalf("Process() output = %q, want %q", output, "mock response")
-	}
-}
-
-func TestCodexCLIProcessorProcessWithSkillAndMCPContextPayload(t *testing.T) {
-	skillContext := execdomain.SkillContext{
-		Protocol: execdomain.SkillContextProtocolVersion,
-		Skills: []execdomain.SkillSpec{
-			{
-				ID:          "summary",
-				Name:        "Summary",
-				Description: "summary docs",
-				Priority:    200,
-			},
+		Recall: []execdomain.MemoryRecallHit{
+			{MemoryID: "user_md", Title: "USER.md", Snippet: "response_style: concise"},
 		},
-	}
-	rawSkillContext, err := json.Marshal(skillContext)
+	})
 	if err != nil {
-		t.Fatalf("marshal skill context: %v", err)
+		t.Fatalf("marshal memory context: %v", err)
 	}
-
-	mcpContext := execdomain.MCPContext{
+	rawMCPContext, err := json.Marshal(execdomain.MCPContext{
 		Protocol: execdomain.MCPContextProtocolVersion,
 		Servers: []execdomain.MCPServer{
 			{
@@ -205,209 +167,129 @@ func TestCodexCLIProcessorProcessWithSkillAndMCPContextPayload(t *testing.T) {
 				Args:             []string{"-y", "@modelcontextprotocol/server-filesystem"},
 				TimeoutMS:        10000,
 				FailureIsolation: true,
+				ToolWhitelist:    []string{"read_file", "list_dir"},
 			},
 		},
-	}
-	rawMCPContext, err := json.Marshal(mcpContext)
+	})
 	if err != nil {
 		t.Fatalf("marshal mcp context: %v", err)
 	}
-
-	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "session-default",
-		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
-		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
-	})
-	if err != nil {
-		t.Fatalf("buildCodexPrompt() error = %v", err)
-	}
-	processor := newTestProcessor("success", expectedPrompt)
-
-	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "session-default",
-		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
-		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
-	})
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-	if output != "mock response" {
-		t.Fatalf("Process() output = %q, want %q", output, "mock response")
-	}
-}
-
-func TestCodexCLIProcessorProcessWithMemoryContextPayload(t *testing.T) {
-	memoryContext := execdomain.MemoryContext{
-		Protocol: execdomain.MemoryContextProtocolVersion,
-		Files: []execdomain.MemoryFileSpec{
-			{
-				ID:        "user_md",
-				Selection: "user_md",
-				Title:     "USER.md",
-				Path:      "/repo/USER.md",
-				Exists:    true,
-				Writable:  true,
-				Content:   "name: alter0",
-			},
-		},
-	}
-	rawMemoryContext, err := json.Marshal(memoryContext)
-	if err != nil {
-		t.Fatalf("marshal memory context: %v", err)
-	}
-
-	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "session-default",
-		execdomain.MemoryContextMetadataKey:    string(rawMemoryContext),
-	})
-	if err != nil {
-		t.Fatalf("buildCodexPrompt() error = %v", err)
-	}
-	processor := newTestProcessor("success", expectedPrompt)
-
-	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "session-default",
-		execdomain.MemoryContextMetadataKey:    string(rawMemoryContext),
-	})
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-	if output != "mock response" {
-		t.Fatalf("Process() output = %q, want %q", output, "mock response")
-	}
-}
-
-func TestCodexCLIProcessorProcessWithAgentContextPayload(t *testing.T) {
-	expectedPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey:  "session-default",
-		execdomain.AgentIDMetadataKey:           "coding",
-		execdomain.AgentNameMetadataKey:         "Coding Agent",
-		execdomain.AgentSystemPromptMetadataKey: "Drive implementation through Codex.",
-		execdomain.AgentDelegatedByMetadataKey:  "main",
-	})
-	if err != nil {
-		t.Fatalf("buildCodexPrompt() error = %v", err)
-	}
-	processor := newTestProcessor("success", expectedPrompt)
-
-	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey:  "session-default",
-		execdomain.AgentIDMetadataKey:           "coding",
-		execdomain.AgentNameMetadataKey:         "Coding Agent",
-		execdomain.AgentSystemPromptMetadataKey: "Drive implementation through Codex.",
-		execdomain.AgentDelegatedByMetadataKey:  "main",
-	})
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-	if output != "mock response" {
-		t.Fatalf("Process() output = %q, want %q", output, "mock response")
-	}
-}
-
-func TestBuildCodexPromptIncludesRuntimeContextForCodingAgent(t *testing.T) {
-	sourceRepoRoot := t.TempDir()
-	initGitRepoWithCommit(t, sourceRepoRoot)
-	runGitCommand(t, sourceRepoRoot, "checkout", "-b", "feat/runtime-context")
-	runGitCommand(t, sourceRepoRoot, "remote", "add", "origin", "https://example.com/demo/repo.git")
-
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(sourceRepoRoot); err != nil {
-		t.Fatalf("chdir source repo root: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-
-	rawPrompt, err := buildCodexPrompt("reply: hello", buildCodexExecMetadata(map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "coding-session",
-		execdomain.RuntimeMessageIDMetadataKey: "message-1",
-		execdomain.RuntimeTraceIDMetadataKey:   "trace-1",
-		execdomain.AgentIDMetadataKey:          "coding",
-	}))
-	if err != nil {
-		t.Fatalf("buildCodexPrompt() error = %v", err)
-	}
-
-	payload := codexExecutionPayload{}
-	if err := json.Unmarshal([]byte(rawPrompt), &payload); err != nil {
-		t.Fatalf("unmarshal payload: %v", err)
-	}
-	if payload.Runtime == nil {
-		t.Fatal("expected runtime context in codex payload")
-	}
-	if payload.Runtime.Protocol != execdomain.RuntimeContextProtocolVersion {
-		t.Fatalf("runtime protocol = %q, want %q", payload.Runtime.Protocol, execdomain.RuntimeContextProtocolVersion)
-	}
-	if payload.Runtime.SessionID != "coding-session" || payload.Runtime.MessageID != "message-1" || payload.Runtime.TraceID != "trace-1" {
-		t.Fatalf("unexpected runtime ids: %+v", payload.Runtime)
-	}
-	if payload.Runtime.Workspace == nil || payload.Runtime.Workspace.RepositoryPath == "" {
-		t.Fatalf("expected runtime workspace repository path, got %+v", payload.Runtime.Workspace)
-	}
-	if !strings.HasSuffix(payload.Runtime.Workspace.RepositoryPath, "/.alter0/workspaces/sessions/coding-session/repo") {
-		t.Fatalf("unexpected repository workspace path: %q", payload.Runtime.Workspace.RepositoryPath)
-	}
-	if payload.Runtime.Repository == nil || payload.Runtime.Repository.SourcePath != filepath.ToSlash(sourceRepoRoot) {
-		t.Fatalf("unexpected runtime repository context: %+v", payload.Runtime.Repository)
-	}
-	if payload.Runtime.Repository.RemoteURL != "https://example.com/demo/repo.git" {
-		t.Fatalf("runtime repository remote = %q", payload.Runtime.Repository.RemoteURL)
-	}
-	if payload.Runtime.Repository.ActiveBranch != "feat/runtime-context" {
-		t.Fatalf("runtime repository branch = %q", payload.Runtime.Repository.ActiveBranch)
-	}
-	if payload.Runtime.Preview == nil || !payload.Runtime.Preview.RequiredOnCompletion {
-		t.Fatalf("unexpected runtime preview rule: %+v", payload.Runtime.Preview)
-	}
-	if !strings.HasPrefix(payload.Runtime.Preview.URL, "https://") || !strings.HasSuffix(payload.Runtime.Preview.URL, ".alter0.cn") {
-		t.Fatalf("unexpected runtime preview url: %q", payload.Runtime.Preview.URL)
-	}
-}
-
-func TestBuildCodexPromptIncludesProductContexts(t *testing.T) {
-	productContext := execdomain.ProductContext{
+	rawProductContext, err := json.Marshal(execdomain.ProductContext{
 		Protocol:      execdomain.ProductContextProtocolVersion,
 		ProductID:     "travel",
 		Name:          "Travel",
 		MasterAgentID: "travel-master",
-	}
-	rawProductContext, err := json.Marshal(productContext)
+	})
 	if err != nil {
 		t.Fatalf("marshal product context: %v", err)
 	}
-	productDiscovery := execdomain.ProductDiscoveryContext{
-		Protocol:        execdomain.ProductDiscoveryProtocolVersion,
-		SelectedProduct: "travel",
-		SelectionReason: "matched by route",
-		MatchedProducts: []execdomain.ProductContext{productContext},
-	}
-	rawProductDiscovery, err := json.Marshal(productDiscovery)
-	if err != nil {
-		t.Fatalf("marshal product discovery: %v", err)
-	}
+	processor := newTestProcessor("success", "reply: hello")
 
-	rawPrompt, err := buildCodexPrompt("reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "product-session",
+	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
+		execdomain.MemoryContextMetadataKey:    string(rawMemoryContext),
+		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
 		execdomain.ProductContextMetadataKey:   string(rawProductContext),
-		execdomain.ProductDiscoveryMetadataKey: string(rawProductDiscovery),
 	})
 	if err != nil {
-		t.Fatalf("buildCodexPrompt() error = %v", err)
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
 	}
 
-	payload := codexExecutionPayload{}
-	if err := json.Unmarshal([]byte(rawPrompt), &payload); err != nil {
-		t.Fatalf("unmarshal payload: %v", err)
+	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default")
+	configText, err := os.ReadFile(filepath.Join(sessionWorkspace, "codex-home", "config.toml"))
+	if err != nil {
+		t.Fatalf("read codex runtime config: %v", err)
 	}
-	if payload.Product == nil || payload.Product.ProductID != "travel" {
-		t.Fatalf("unexpected product context: %+v", payload.Product)
+	for _, expected := range []string{
+		`[mcp_servers.filesystem]`,
+		`command = "npx"`,
+		`enabled_tools = ["read_file", "list_dir"]`,
+	} {
+		if !strings.Contains(string(configText), expected) {
+			t.Fatalf("expected config to contain %q, got:\n%s", expected, string(configText))
+		}
 	}
-	if payload.Discovery == nil || payload.Discovery.SelectedProduct != "travel" {
-		t.Fatalf("unexpected product discovery context: %+v", payload.Discovery)
+	agentsText, err := os.ReadFile(filepath.Join(sessionWorkspace, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read runtime AGENTS: %v", err)
+	}
+	for _, expected := range []string{
+		".alter0/codex-runtime/runtime.md",
+		".alter0/codex-runtime/skills.md",
+		".alter0/codex-runtime/product.md",
+		".alter0/codex-runtime/memory/",
+	} {
+		if !strings.Contains(string(agentsText), expected) {
+			t.Fatalf("expected AGENTS to contain %q, got:\n%s", expected, string(agentsText))
+		}
+	}
+	skillText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "skills.md"))
+	if err != nil {
+		t.Fatalf("read runtime skills: %v", err)
+	}
+	if !strings.Contains(string(skillText), "Summary") || !strings.Contains(string(skillText), "review the memory files before editing") {
+		t.Fatalf("unexpected runtime skills:\n%s", string(skillText))
+	}
+	productText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "product.md"))
+	if err != nil {
+		t.Fatalf("read runtime product: %v", err)
+	}
+	if !strings.Contains(string(productText), "travel") || !strings.Contains(string(productText), "travel-master") {
+		t.Fatalf("unexpected runtime product:\n%s", string(productText))
+	}
+	memoryText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "memory", "user_md.md"))
+	if err != nil {
+		t.Fatalf("read runtime memory: %v", err)
+	}
+	if !strings.Contains(string(memoryText), "response_style: concise") {
+		t.Fatalf("unexpected runtime memory:\n%s", string(memoryText))
+	}
+}
+
+func TestCodexCLIProcessorPlainStrategySkipsNativeRuntimeAssets(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	rawSkillContext, err := json.Marshal(execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills: []execdomain.SkillSpec{
+			{ID: "summary", Name: "Summary", Description: "summary docs"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal skill context: %v", err)
+	}
+	processor := newTestProcessor("success", "reply: hello")
+
+	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey:   "session-default",
+		execdomain.SkillContextMetadataKey:      string(rawSkillContext),
+		execdomain.CodexRuntimeStrategyMetadataKey: execdomain.CodexRuntimeStrategyPlain,
+	})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock response" {
+		t.Fatalf("Process() output = %q, want %q", output, "mock response")
+	}
+	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default")
+	if _, err := os.Stat(filepath.Join(sessionWorkspace, "codex-home", "config.toml")); !os.IsNotExist(err) {
+		t.Fatalf("expected plain strategy to skip codex runtime config, got err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sessionWorkspace, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected plain strategy to skip runtime AGENTS, got err=%v", err)
 	}
 }
 

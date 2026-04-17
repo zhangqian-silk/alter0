@@ -151,7 +151,9 @@ Agent message
 ### 技术约束
 
 - Agent 负责理解与驱动，具体文件、仓库、Shell、页面产出统一通过 `codex_exec`。
-- `codex_exec` 使用 stdin 传递执行指令，结构化上下文按需注入，不通过命令行拼接长上下文。
+- `codex_exec` 使用 stdin 传递执行指令，不通过命令行拼接长上下文。
+- 存在可用 Provider 且进入 Agent / ReAct 链路时，Agent 自身吸收 Skill、MCP、Memory、Product 与运行时上下文，只向 Codex 下发当前步骤的纯执行指令。
+- 不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，`internal/execution/infrastructure` 需要为当前会话编译原生 Codex Runtime：独立 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，并把启用的 MCP Server 渲染为原生 `mcp_servers.*` 配置。
 - Memory Files 注入需要携带路径、存在状态、可写性、内容快照和自动召回片段。
 - `internal/llm/infrastructure` 的 `openai-completions` 适配层需要把 assistant 历史消息中的 `tool_calls` 一并序列化，并与后续 `tool` 消息的 `tool_call_id` 保持稳定配对；否则 Provider 会把该轮请求判定为非法工具消息序列。
 - 私有 `AGENTS.md`、私有 Skill、Agent Session Profile 分别承担协作边界、可复用打法、会话画像职责，不混写一次性任务细节。
@@ -205,6 +207,7 @@ Terminal input
 - Task 产物列表响应需要过滤本地 URI；下载和预览由任务接口按 artifact id 读取并输出安全响应头。
 - Memory 任务视图读取 Task 与 task summary 数据，支持任务摘要重建，但不直接执行 retry/cancel。
 - 工作区按 Chat/Agent、Task、Terminal 分层隔离，删除会话或 Terminal 时同步清理对应目录。
+- 直连 Codex 的 Chat / Agent / Product 会话在自身工作区下维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Terminal 会话在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Terminal 会话态与 turn/step 执行态分离，历史 `running / starting` 需要兼容归一。
 - Terminal 会话详情聚合 turn 摘要；step 明细按 `session_id / turn_id / step_id` 单独读取，避免会话列表一次性加载大块执行日志。
 - Terminal 应用层在 Codex CLI 返回远端 compact 失败时，会把当前会话的运行线程指针复位为初始 `terminal_session_id`，保留原工作区与日志，并让后续输入自动走新线程而不是继续 resume 已失效 thread。
