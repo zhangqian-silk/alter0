@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-04-16
+> Last update: 2026-04-17
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `agent.execution.react`、`memory.files.injection`、`product.travel.workspace`。
 
@@ -59,7 +59,7 @@
 - Web Shell 的稳定视觉基线为浅蓝轻科幻风格的桌面三栏 cockpit 布局和移动端双抽屉工作台：React 自有样式系统负责仅展示 `Alter0` 服务名的品牌头部、会话控制区、欢迎区、页面 hero、提示卡组与输入面板的设计语言，并统一采用浅蓝渐变背景、冷色高亮与低对比玻璃感面板；主导航顶部不展示图形标识、品牌口号或实现状态；同时保持单层信息架构，不允许在会话栏、主工作区 hero、顶部标题和页面 hero 之间重复堆叠同一组路由说明；legacy 样式仅继续承载运行时内容、Terminal 细节和 route body 内容皮肤。
 - 主导航、控制台与资产页默认以高密度信息架构呈现：导航组与条目间距压缩，控制面长列表优先使用表格或主从视图，不再把大量配置和任务详情平铺为低密度卡片矩阵。
 - 移动端 Web Shell 使用 `VisualViewport` 驱动的 `--mobile-viewport-height` 作为壳体高度来源，浏览器工具栏与键盘状态切换时不出现底部空白或内容裁切。
-- Web Shell 的抽屉式单列布局仅在主视口宽度 `960px` 及以下触发；高于该阈值时必须继续保留桌面三栏信息架构，避免中等桌面分辨率过早进入移动端壳层。
+- Web Shell 的抽屉式单列布局仅在主视口宽度 `1100px` 及以下触发；高于该阈值时继续保留桌面三栏信息架构，但主导航、会话栏、间距与主工作区需随可用宽度自适应收缩，避免只对聊天内容列做最大阅读宽度限制而让整体壳层失衡。
 - 移动端 Chat/Agent 在主输入框与会话设置底部面板之间切换时，不允许保留“键盘 + 设置面板”双重底部占位：打开设置前先释放输入焦点并清理键盘偏移，回到主输入框时先自动收起设置面板；Terminal 在真手机宽度下允许工作区头部工具栏换行，操作按钮不得被长标题挤出可见区域。
 - 桌面宽屏下 Chat 消息列与底部输入区需按主工作区宽度自适应扩展，并统一收敛到居中的 `960px` 最大阅读宽度，避免正文与输入区无限拉长。
 
@@ -129,7 +129,7 @@
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 OpenAI Compatible 与 OpenRouter Provider，支持 `/responses` 与 `/chat/completions`，支持 base URL、API Key 保留语义、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复。
 - `openai-completions` 适配层必须正确序列化 assistant `tool_calls` 与 tool output，兼容严格校验工具消息配对关系的上游 Provider。
-- Environments 页面支持 Web/Queue、Async Tasks、Terminal、Session Memory、Persistent Memory 与 LLM 运行参数可视化配置、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、候选二进制构建、readyz 探活与失败回滚。
+- Environments 页面支持 Web/Queue、Async Tasks、Terminal、Session Memory、Persistent Memory 与 LLM 运行参数可视化配置、敏感值显隐、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、候选二进制构建、readyz 探活与失败回滚。
 - Settings 页面提供 Codex Accounts 面板，用于导入 `auth.json`、发起独立登录会话、查看托管账号状态并切换当前运行时账号。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、统一 `HOME=/var/lib/alter0`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。
