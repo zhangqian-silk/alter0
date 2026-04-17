@@ -23,6 +23,62 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
   });
 }
 
+function applyScrollableMetrics(
+  container: HTMLElement,
+  targets: HTMLElement[],
+  targetTops: number[],
+  options: {
+    clientHeight: number;
+    scrollHeight: number;
+  },
+) {
+  Object.defineProperty(container, "clientHeight", {
+    configurable: true,
+    value: options.clientHeight,
+  });
+  Object.defineProperty(container, "scrollHeight", {
+    configurable: true,
+    value: options.scrollHeight,
+  });
+  Object.defineProperty(container, "scrollTop", {
+    configurable: true,
+    writable: true,
+    value: 0,
+  });
+  container.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    width: 640,
+    height: options.clientHeight,
+    top: 0,
+    right: 640,
+    bottom: options.clientHeight,
+    left: 0,
+    toJSON: () => ({}),
+  });
+  container.scrollTo = vi.fn(({ top }: ScrollToOptions) => {
+    container.scrollTop = Math.max(Number(top || 0), 0);
+    fireEvent.scroll(container);
+  });
+
+  targets.forEach((target, index) => {
+    target.getBoundingClientRect = () => {
+      const top = targetTops[index] - container.scrollTop;
+      return {
+        x: 0,
+        y: top,
+        width: 520,
+        height: 96,
+        top,
+        right: 520,
+        bottom: top + 96,
+        left: 0,
+        toJSON: () => ({}),
+      };
+    };
+  });
+}
+
 function runtime() {
   if (!window.__alter0LegacyRuntime) {
     throw new Error("legacy runtime bridge unavailable");
@@ -924,6 +980,55 @@ describe("LegacyWebShell", () => {
       expect(screen.getByText("Runtime user message")).toBeInTheDocument();
       expect(document.querySelector('[data-message-session-id="session-runtime-1"]')).toBeInTheDocument();
     });
+  });
+
+  it("shows chat jump controls when the runtime message area overflows", async () => {
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      window.setTimeout(() => callback(16), 0);
+      return 1;
+    });
+    const cancelSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+
+    try {
+      render(<LegacyWebShell />);
+
+      await act(async () => {
+        runtime().publishMessageRegionSnapshot?.({
+          route: "chat",
+          hasMessages: true,
+          sessionId: "session-runtime-jump",
+          messages: Array.from({ length: 6 }, (_value, index) => ({
+            id: `msg-runtime-jump-${index + 1}`,
+            role: index % 2 === 0 ? "user" : "assistant",
+            text: `Runtime jump message ${index + 1}`,
+            status: "done",
+            error: false,
+            at: Date.UTC(2026, 3, 15, 13, index, 0),
+            source: "model",
+          })),
+        });
+      });
+
+      const messageArea = document.getElementById(LEGACY_SHELL_IDS.messageArea) as HTMLElement;
+      const messages = [...messageArea.querySelectorAll<HTMLElement>("[data-message-id]")];
+      applyScrollableMetrics(messageArea, messages, [0, 120, 280, 440, 600, 760], {
+        clientHeight: 260,
+        scrollHeight: 980,
+      });
+
+      messageArea.scrollTop = 340;
+      fireEvent.scroll(messageArea);
+
+      await waitFor(() => {
+        expect(document.querySelector("[data-scroll-jump-top='chat']")).toHaveClass("is-visible");
+        expect(document.querySelector("[data-scroll-jump-prev='chat']")).toHaveClass("is-visible");
+        expect(document.querySelector("[data-scroll-jump-next='chat']")).toHaveClass("is-visible");
+        expect(document.querySelector("[data-scroll-jump-bottom='chat']")).toHaveClass("is-visible");
+      });
+    } finally {
+      rafSpy.mockRestore();
+      cancelSpy.mockRestore();
+    }
   });
 
   it("renders structured assistant process snapshots with final answer", async () => {

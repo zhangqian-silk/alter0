@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { LEGACY_SHELL_IDS } from "../legacyDomContract";
 import {
   getLegacyRouteHeadingCopy,
@@ -17,6 +17,7 @@ import {
 } from "../legacyShellBridge";
 import { useLegacyShellSnapshot } from "../legacyShellSnapshot";
 import { ChatRuntimeHost } from "./ChatRuntimeHost";
+import { ScrollJumpStrip } from "./ScrollJumpStrip";
 import { PROMPTS } from "../legacyShellConfig";
 import {
   isReactManagedRouteBody,
@@ -271,10 +272,12 @@ const ChatView = memo(function ChatView({
   onQuickPrompt: (prompt: string) => void;
 }) {
   const copy = getLegacyShellCopy(language);
+  const messageAreaRef = useRef<HTMLElement | null>(null);
+  const showMessages = hasMessages || messageRegion.messages.length > 0;
 
   return (
     <div className="chat-view" id="chatView" hidden={hidden}>
-      <section className="welcome-screen" id={LEGACY_SHELL_IDS.welcomeScreen} hidden={hasMessages}>
+      <section className="welcome-screen" id={LEGACY_SHELL_IDS.welcomeScreen} hidden={showMessages}>
         <div className="chat-content-frame">
           <div className="welcome-hero">
             <p className="welcome-tag" data-i18n="welcome.tag">alter0 assistant</p>
@@ -331,7 +334,8 @@ const ChatView = memo(function ChatView({
         className="message-area"
         id={LEGACY_SHELL_IDS.messageArea}
         aria-live="polite"
-        hidden={!hasMessages}
+        hidden={!showMessages}
+        ref={messageAreaRef}
       >
         {messageRegion.messages.length ? (
           <ChatMessageRegion
@@ -340,6 +344,13 @@ const ChatView = memo(function ChatView({
             language={language}
           />
         ) : null}
+        <ScrollJumpStrip
+          scope="chat"
+          language={language}
+          containerRef={messageAreaRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+        />
       </section>
 
       <footer className="composer-shell" data-shell-section="composer-panel">
@@ -386,6 +397,7 @@ const RouteViewMount = memo(function RouteViewMount({
   language,
   hidden,
 }: RouteViewMountProps) {
+  const routeViewRef = useRef<HTMLElement | null>(null);
   const routeViewClassName = currentRoute === "terminal" ? "route-view terminal-route" : "route-view";
   const routeBodyClassName = currentRoute === "terminal" ? "route-body terminal-route-body" : "route-body";
   const routeHeadingCopy = getLegacyRouteHeadingCopy(language, currentRoute);
@@ -393,7 +405,13 @@ const RouteViewMount = memo(function RouteViewMount({
   const reactManagedRoute = isReactManagedRouteBody(currentRoute) ? currentRoute : null;
 
   return (
-    <section className={routeViewClassName} id={LEGACY_SHELL_IDS.routeView} data-route={currentRoute} hidden={hidden}>
+    <section
+      className={routeViewClassName}
+      id={LEGACY_SHELL_IDS.routeView}
+      data-route={currentRoute}
+      hidden={hidden}
+      ref={routeViewRef}
+    >
       <div className="route-hero" data-shell-section={hidden ? undefined : "route-hero"}>
         <div className="route-hero-copy">
           <p className="route-hero-eyebrow">{copy.routeEyebrow}</p>
@@ -413,6 +431,32 @@ const RouteViewMount = memo(function RouteViewMount({
           <LegacyManagedRouteHost route={currentRoute} />
         )}
       </div>
+      {currentRoute !== "terminal" ? (
+        <ScrollJumpStrip
+          scope="route"
+          language={language}
+          containerRef={routeViewRef}
+          itemSelector={[
+            ".route-hero",
+            "#routeBody > *",
+            "#routeBody section",
+            "#routeBody aside",
+            "#routeBody article",
+            "#routeBody form",
+            "#routeBody .route-card",
+            "#routeBody .route-surface",
+            "#routeBody .session-route-card",
+            "#routeBody .agent-route-card",
+            "#routeBody .task-summary-row",
+            "#routeBody .task-detail-card",
+            "#routeBody .task-detail-section",
+            "#routeBody .memory-panel",
+            "#routeBody .product-workspace-panel",
+            "#routeBody .product-workspace-detail-section",
+          ].join(", ")}
+          itemAttribute="data-scroll-jump-anchor"
+        />
+      ) : null}
     </section>
   );
 });

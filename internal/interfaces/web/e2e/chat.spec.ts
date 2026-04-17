@@ -175,6 +175,8 @@ test.describe("Chat composer", () => {
           viewportHeight: window.innerHeight,
           scrollWidth: doc.scrollWidth,
           gridTemplateColumns: shellStyle.gridTemplateColumns,
+          navToggleDisplay: getComputedStyle(navToggle).display,
+          sessionToggleDisplay: getComputedStyle(sessionToggle).display,
         };
       });
 
@@ -188,6 +190,8 @@ test.describe("Chat composer", () => {
     expect(desktop?.sessionRight ?? 0).toBeLessThanOrEqual((desktop?.chatLeft ?? 0) + 2);
     expect(desktop?.scrollWidth ?? 0).toBeLessThanOrEqual((desktop?.viewportWidth ?? 0) + 1);
     expect(desktop?.gridTemplateColumns.split(" ").length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(desktop?.navToggleDisplay).toBe("none");
+    expect(desktop?.sessionToggleDisplay).toBe("none");
 
     await page.setViewportSize({ width: 1024, height: 900 });
 
@@ -205,6 +209,8 @@ test.describe("Chat composer", () => {
     expect((drawer?.viewportHeight ?? 0) - (drawer?.composerBottom ?? 0)).toBeLessThan(36);
     expect(Math.abs((drawer?.navToggleTop ?? 0) - (drawer?.sessionToggleTop ?? 0))).toBeLessThan(8);
     expect(drawer?.scrollWidth ?? 0).toBeLessThanOrEqual((drawer?.viewportWidth ?? 0) + 1);
+    expect(drawer?.navToggleDisplay).not.toBe("none");
+    expect(drawer?.sessionToggleDisplay).not.toBe("none");
 
     await page.setViewportSize({ width: 1180, height: 900 });
 
@@ -220,6 +226,8 @@ test.describe("Chat composer", () => {
     expect(restoredDesktop?.navRight ?? 0).toBeLessThanOrEqual((restoredDesktop?.sessionLeft ?? 0) + 2);
     expect(restoredDesktop?.sessionRight ?? 0).toBeLessThanOrEqual((restoredDesktop?.chatLeft ?? 0) + 2);
     expect(restoredDesktop?.scrollWidth ?? 0).toBeLessThanOrEqual((restoredDesktop?.viewportWidth ?? 0) + 1);
+    expect(restoredDesktop?.navToggleDisplay).toBe("none");
+    expect(restoredDesktop?.sessionToggleDisplay).toBe("none");
   });
 
   test("switches exactly at the 1100px shell breakpoint without leaving mixed layout state", async ({ page }) => {
@@ -387,6 +395,51 @@ test.describe("Chat composer", () => {
     expect(metrics?.composerWidth ?? 0).toBeLessThanOrEqual(964);
     expect(Math.abs((metrics?.welcomeWidth ?? 0) - (metrics?.composerWidth ?? 0))).toBeLessThanOrEqual(4);
     expect(Math.abs((metrics?.welcomeCenter ?? 0) - (metrics?.composerCenter ?? 0))).toBeLessThan(4);
+  });
+
+  test("shows route jump controls on managed pages and jumps between sections", async ({ page }) => {
+    await page.setViewportSize({ width: 760, height: 720 });
+    await openChatWorkspace(page);
+    await page.goto("/chat#agent");
+    await expect(page.locator("#routeView[data-route='agent']")).toBeVisible();
+
+    const routeView = page.locator("#routeView");
+    const jumpTopButton = page.locator("[data-scroll-jump-top='route']");
+    const jumpPrevButton = page.locator("[data-scroll-jump-prev='route']");
+    const jumpNextButton = page.locator("[data-scroll-jump-next='route']");
+    const jumpBottomButton = page.locator("[data-scroll-jump-bottom='route']");
+
+    await expect.poll(async () => routeView.evaluate((node) => node.scrollHeight > node.clientHeight + 180)).toBe(true);
+
+    await routeView.evaluate((node) => {
+      node.scrollTop = Math.max((node.scrollHeight - node.clientHeight) * 0.35, 0);
+      node.dispatchEvent(new Event("scroll"));
+    });
+
+    await expect(jumpTopButton).toHaveClass(/is-visible/);
+    await expect(jumpBottomButton).toHaveClass(/is-visible/);
+    const prevTarget = await jumpPrevButton.getAttribute("data-scroll-jump-target");
+    const nextTarget = await jumpNextButton.getAttribute("data-scroll-jump-target");
+    const jumpNavigationButton = prevTarget ? jumpPrevButton : jumpNextButton;
+    const jumpNavigationTarget = prevTarget || nextTarget;
+
+    expect(jumpNavigationTarget).toBeTruthy();
+    await expect(jumpNavigationButton).toHaveClass(/is-visible/);
+
+    await jumpNavigationButton.click();
+    await expect.poll(async () => routeView.evaluate((node, targetID) => {
+      const target = node.querySelector(`[data-scroll-jump-anchor="${String(targetID || "")}"]`);
+      if (!(target instanceof HTMLElement)) {
+        return null;
+      }
+      return Math.round(target.getBoundingClientRect().top - node.getBoundingClientRect().top);
+    }, jumpNavigationTarget)).toBeLessThanOrEqual(24);
+
+    await jumpBottomButton.click();
+    await expect.poll(async () => routeView.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeLessThan(12);
+
+    await jumpTopButton.click();
+    await expect.poll(async () => routeView.evaluate((node) => Math.round(node.scrollTop))).toBeLessThanOrEqual(8);
   });
 
   test("renders mobile session settings as an independent bottom sheet", async ({ page }) => {
@@ -650,6 +703,10 @@ test.describe("Chat composer", () => {
     await expect.poll(async () => page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
     )).toBe("0px");
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim()
+    )).toBe("980px");
 
     const closed = await page.evaluate(() => {
       const shell = document.querySelector(".composer-shell");
