@@ -925,7 +925,7 @@ export function ReactManagedTasksRouteBody({
             </div>
           ) : null}
 
-          <div className="task-summary-list task-summary-list-compact" data-control-task-list>
+          <div className="task-summary-list" data-control-task-list>
             {listState.status === "error" ? (
               <p className="route-empty">{copy.loadFailed(listState.error)}</p>
             ) : listState.items.length === 0 ? (

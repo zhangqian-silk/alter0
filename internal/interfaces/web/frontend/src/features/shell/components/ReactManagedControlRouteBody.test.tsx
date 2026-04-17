@@ -169,47 +169,281 @@ describe("ReactManagedControlRouteBody", () => {
     expect(screen.getByText("https://openrouter.ai/api/v1")).toBeInTheDocument();
   });
 
-  it("renders environment config items in a dense table with detail panel", async () => {
+  it("renders environments with runtime toolbar, grouped cards, and audits", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValue(
-      jsonResponse({
-        items: [
-          {
-            definition: {
-              key: "worker_pool_size",
-              name: "Worker Pool Size",
-              module: "runtime",
-              description: "Controls concurrent task workers.",
-              type: "integer",
-              apply_mode: "restart",
-            },
-            value: "8",
-            effective_value: "4",
-            value_source: "control",
-            pending_restart: true,
-            masked: false,
-          },
-        ],
-      }),
+      jsonResponse({ items: [] }),
     );
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              definition: {
+                key: "web_addr",
+                name: "Web Listen Address",
+                module: "Web & Queue",
+                description: "Controls the HTTP listen address.",
+                type: "string",
+                apply_mode: "restart",
+                default_value: "127.0.0.1:18088",
+                hot_reload: false,
+                sensitive: false,
+                validation: { required: true },
+              },
+              value: "127.0.0.1:18088",
+              effective_value: "127.0.0.1:18088",
+              value_source: "runtime",
+              pending_restart: false,
+              masked: false,
+            },
+            {
+              definition: {
+                key: "web_login_password",
+                name: "Web Login Password",
+                module: "Web & Queue",
+                description: "Controls the console password.",
+                type: "string",
+                apply_mode: "restart",
+                default_value: "",
+                hot_reload: false,
+                sensitive: true,
+                validation: { required: false },
+              },
+              value: "68****7f",
+              effective_value: "68****7f",
+              value_source: "persisted",
+              pending_restart: false,
+              masked: true,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              operator: "tester",
+              occurred_at: "2026-04-11T05:13:37Z",
+              requires_restart: true,
+              changes: [
+                {
+                  key: "web_addr",
+                  old_value: "127.0.0.1:18088",
+                  new_value: "0.0.0.0:18088",
+                  apply_mode: "restart",
+                },
+              ],
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          started_at: "2026-04-11T05:13:37Z",
+          commit_hash: "14f7f84b602f0000000000000000000000000000",
+        }),
+      );
 
     render(<ReactManagedControlRouteBody route="environments" language="en" />);
 
     await waitFor(() => {
-      expect(screen.getByRole("table", { name: "Environment Config" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Reveal Sensitive" })).toBeInTheDocument();
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       "/api/control/environments",
       expect.objectContaining({ method: "GET" }),
     );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/control/environments/audits",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/control/runtime",
+      expect.objectContaining({ method: "GET" }),
+    );
 
-    expect(screen.getByRole("button", { name: "Worker Pool Size" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Worker Pool Size" }));
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restart Service" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
+    expect(screen.getByText("Last Restart")).toBeInTheDocument();
+    expect(screen.getByText("Commit Hash")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Web & Queue" })).toBeInTheDocument();
+    expect(screen.getByText("Web Listen Address")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("127.0.0.1:18088")).toBeInTheDocument();
+    expect(screen.getByText("Change Audits")).toBeInTheDocument();
+    expect(screen.getAllByText("tester").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("table", { name: "Environment Config" })).not.toBeInTheDocument();
+  });
 
-    expect(screen.getAllByText("Pending restart").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("worker_pool_size").length).toBeGreaterThan(0);
-    expect(screen.getByText("Controls concurrent task workers.")).toBeInTheDocument();
+  it("reloads environments with revealed sensitive values", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              definition: {
+                key: "web_login_password",
+                name: "Web Login Password",
+                module: "Web & Queue",
+                description: "Controls the console password.",
+                type: "string",
+                apply_mode: "restart",
+                default_value: "",
+                hot_reload: false,
+                sensitive: true,
+                validation: { required: false },
+              },
+              value: "68****7f",
+              effective_value: "68****7f",
+              value_source: "persisted",
+              pending_restart: false,
+              masked: true,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          started_at: "2026-04-11T05:13:37Z",
+          commit_hash: "14f7f84b602f0000000000000000000000000000",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              definition: {
+                key: "web_login_password",
+                name: "Web Login Password",
+                module: "Web & Queue",
+                description: "Controls the console password.",
+                type: "string",
+                apply_mode: "restart",
+                default_value: "",
+                hot_reload: false,
+                sensitive: true,
+                validation: { required: false },
+              },
+              value: "super-secret",
+              effective_value: "super-secret",
+              value_source: "persisted",
+              pending_restart: false,
+              masked: false,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          started_at: "2026-04-11T05:13:37Z",
+          commit_hash: "14f7f84b602f0000000000000000000000000000",
+        }),
+      );
+
+    render(<ReactManagedControlRouteBody route="environments" language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reveal Sensitive" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reveal Sensitive" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Hide Sensitive" })).toBeInTheDocument();
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/control/environments?reveal_sensitive=true",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "/api/control/environments/audits?reveal_sensitive=true",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(screen.getByDisplayValue("super-secret")).toBeInTheDocument();
+  });
+
+  it("submits the runtime restart request from the environments toolbar", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              definition: {
+                key: "web_addr",
+                name: "Web Listen Address",
+                module: "Web & Queue",
+                description: "Controls the HTTP listen address.",
+                type: "string",
+                apply_mode: "restart",
+                default_value: "127.0.0.1:18088",
+                hot_reload: false,
+                sensitive: false,
+                validation: { required: true },
+              },
+              value: "127.0.0.1:18088",
+              effective_value: "127.0.0.1:18088",
+              value_source: "runtime",
+              pending_restart: false,
+              masked: false,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          started_at: "2026-04-11T05:13:37Z",
+          commit_hash: "14f7f84b602f0000000000000000000000000000",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          accepted: true,
+          status: "restarting",
+          sync_remote_master: true,
+        }),
+      );
+
+    render(<ReactManagedControlRouteBody route="environments" language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Restart Service" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart Service" }));
+
+    expect(
+      screen.getByLabelText("Sync remote master changes before restart"),
+    ).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Restart" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        4,
+        "/api/control/runtime/restart",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ sync_remote_master: true }),
+        }),
+      );
+    });
+
+    expect(
+      screen.getByText("Syncing remote master and restarting service..."),
+    ).toBeInTheDocument();
   });
 
   it("renders cron jobs from the scheduler control API", async () => {

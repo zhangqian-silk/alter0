@@ -135,7 +135,7 @@ describe("ReactManagedTasksRouteBody", () => {
         }),
       );
 
-    render(<ReactManagedTasksRouteBody language="en" />);
+    const { container } = render(<ReactManagedTasksRouteBody language="en" />);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
@@ -146,6 +146,8 @@ describe("ReactManagedTasksRouteBody", () => {
     });
 
     expect(screen.getByRole("button", { name: "task-runtime-1" })).toBeInTheDocument();
+    expect(container.querySelector(".task-summary-list-compact")).not.toBeInTheDocument();
+    expect(container.querySelector(".task-summary-list")).toBeInTheDocument();
     expect(screen.getByText("Select a task from the list to inspect runtime detail.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Status"), {
