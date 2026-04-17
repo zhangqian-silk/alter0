@@ -16,6 +16,7 @@ export const REACT_MANAGED_ROUTE_BODIES = [
   "memory",
   "sessions",
   "tasks",
+  "codex-accounts",
   ...REACT_MANAGED_CONTROL_ROUTES,
 ] as const;
 

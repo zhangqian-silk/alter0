@@ -182,7 +182,7 @@ describe("LegacyWebShell", () => {
 
     expect(document.getElementById(LEGACY_SHELL_IDS.appShell)).toHaveAttribute(
       "data-react-managed-routes",
-      "agent,terminal,products,memory,sessions,tasks,channels,skills,mcp,models,environments,cron-jobs",
+      "agent,terminal,products,memory,sessions,tasks,codex-accounts,channels,skills,mcp,models,environments,cron-jobs",
     );
   });
 
@@ -225,7 +225,8 @@ describe("LegacyWebShell", () => {
       "cron-jobs",
       "channels",
       "models",
-      "environments"
+      "environments",
+      "codex-accounts"
     ]);
   });
 
