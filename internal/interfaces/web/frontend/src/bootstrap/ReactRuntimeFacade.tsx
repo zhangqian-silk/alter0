@@ -31,6 +31,7 @@ import {
   type LegacyShellLanguage,
 } from "../features/shell/legacyShellCopy";
 import { LEGACY_SHELL_IDS } from "../features/shell/legacyDomContract";
+import { createMobileViewportSyncController } from "../shared/viewport/mobileViewportSync";
 
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v3";
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
@@ -1229,7 +1230,9 @@ export function ReactRuntimeFacade() {
             && current !== nextPopover
           ) {
             const activeInput = activeViewportInput();
-            activeInput?.blur();
+            window.requestAnimationFrame(() => {
+              activeInput?.blur();
+            });
           }
           return nextPopover;
         });
@@ -1296,6 +1299,13 @@ export function ReactRuntimeFacade() {
       },
     });
   }, [activeChatRoute, activeSession, activeSessionByRoute, agents, compactRuntime, currentRoute, selectedAgentID]);
+
+  useEffect(() => {
+    const controller = createMobileViewportSyncController({
+      hasActiveInput: () => Boolean(activeViewportInput()),
+    });
+    return () => controller.destroy();
+  }, []);
 
   useEffect(() => {
     const handleNavigate = (event: Event) => {

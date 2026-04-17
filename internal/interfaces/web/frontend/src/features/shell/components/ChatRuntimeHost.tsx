@@ -807,6 +807,11 @@ export function ChatRuntimeHost({
                 type="button"
                 data-runtime-toggle="mobile"
                 title={copy.runtimeMobileHint}
+                onPointerDown={(event) => {
+                  if (document.activeElement instanceof HTMLTextAreaElement) {
+                    event.preventDefault();
+                  }
+                }}
                 onClick={() => requestLegacyChatRuntimePopover("mobile")}
               >
                 <span className="composer-runtime-trigger-icon">{"\u2699\uFE0F"}</span>
