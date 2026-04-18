@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-04-17
+> Last update: 2026-04-18
 
 ## 领域边界
 
@@ -27,6 +27,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `LegacyWebShell` 直接维护主导航当前路由高亮、导航折叠态、导航 tooltip、简化品牌头部、Session Pane 上下文卡、会话卡片列表、ChatWorkspace 头部动作区、工作区 hero、欢迎区文案、欢迎区 target picker、prompt deck、欢迎区/消息区显隐、消息列表 DOM、运行时 controls/note/sheet DOM、Session 历史空态提示/可访问标签、Composer 面板、路由页 hero、路由页头部标题/副标题、菜单、会话入口与路由感知文案；`ReactRuntimeFacade` 负责 Chat / Agent 的会话创建、切换、删除、草稿恢复、消息流、结构化 runtime、移动端 runtime sheet、结构化快照发布与 bridge 事件处理。`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类路由页由 React 接管，其中 terminal 已改为 React 原生页面实现。React 必须在 `routeBody` 上同步当前页 `data-react-managed-route` 标记、在 `appShell` 上同步稳定的 `data-react-managed-routes` 路由清单，避免壳层状态更新时清空页面主体 DOM；兼容层仅保留样式和 DOM 契约，不再通过 legacy 脚本接管 `/chat` 业务运行时。
 - Web Shell 的稳定界面基线为浅蓝轻科幻风格的桌面三栏 cockpit 与移动端双抽屉工作台：主导航顶部仅保留 `Alter0` 服务名称与折叠入口，下方展示模块组；会话栏承载新建入口与历史列表，主工作区承载欢迎区/消息区、页面 hero 和独立输入面板；整体采用浅蓝渐变背景、冷色高亮、低对比玻璃感面板与克制阴影。为避免信息重复，当前壳层遵循单层信息架构：主导航不再展示图形标识、额外品牌口号或实现状态，会话栏不再额外重复路由概览，Chat 主区不再叠加独立 workspace hero，页面类路由只保留一层主标题说明，不再同时渲染 route hero 与二次页头。
 - Web Shell 的抽屉式单列工作台仅在主视口宽度 `1100px` 及以下触发；高于该阈值时继续保留桌面三栏布局，并隐藏主工作区头部 `Menu / Sessions / New` 抽屉入口，同时主导航、会话栏、间距与主工作区需按可用视口自适应收缩，避免只对聊天内容列做最大阅读宽度限制而让整体壳层失衡。
+- 进入窄屏工作台后，主导航与 Session Pane 必须切换为贴左侧视口边缘的全高抽屉，不允许保留桌面悬浮卡片式边距；`info-mode` 页面不打开 Session Pane，`Agent` 运行页的三栏主体也需在同一 `1100px` 阈值同步收敛为单列，避免壳层断点先切换而页面主体仍保留桌面列布局。
 - 桌面端主导航采用紧凑间距节奏，优先保证在常见笔记本高度下完整展示主要模块组；控制类与资产类路由优先使用高密度主从或表格视图，避免在宽屏上保留大块无效留白。
 - `static/dist/assets/*` 使用构建产物哈希文件名并返回长期 immutable 缓存；`/chat` 与 `static/dist/legacy/*` 下的兼容样式资源保持 `no-cache`，确保页面与样式能及时刷新到最新版本。
 - `/login` 在登录密码启用时提供登录入口；`/logout` 清理当前登录态并回到登录流程。
