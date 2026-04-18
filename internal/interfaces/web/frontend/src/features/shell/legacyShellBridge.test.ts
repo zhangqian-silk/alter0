@@ -17,26 +17,6 @@ import {
   resetLegacyRuntimeSnapshotStore,
 } from "./legacyRuntimeSnapshotStore";
 
-declare global {
-  interface Window {
-    __alter0LegacyRuntime?: {
-      createSession?: () => boolean | void;
-      focusSession?: (sessionId: string) => boolean | void;
-      removeSession?: (sessionId: string) => boolean | void;
-      toggleChatRuntimePopover?: (popover: string) => boolean | void;
-      closeChatRuntimePopover?: () => boolean | void;
-      selectChatRuntimeTarget?: (target: { type: string; id: string; name: string }) => boolean | void;
-      selectChatRuntimeModel?: (selection: { providerId: string; modelId: string }) => boolean | void;
-      toggleChatRuntimeItem?: (selection: {
-        group: "capabilities" | "skills";
-        id: string;
-        checked: boolean;
-        kind?: "tool" | "mcp";
-      }) => boolean | void;
-    };
-  }
-}
-
 describe("legacyShellBridge", () => {
   beforeEach(() => {
     delete window.__alter0LegacyRuntime;

@@ -12,14 +12,14 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("keeps the shell columns adaptive while chat content stays on a shared reading width", () => {
+  it("keeps the shell aligned to the legacy full-width workbench instead of a centered capsule canvas", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain("--shell-nav-width: clamp(");
-    expect(stylesheet).toContain("--shell-session-width: clamp(");
-    expect(stylesheet).toContain("--shell-layout-max-width:");
-    expect(stylesheet).toContain("width: min(100%, var(--shell-layout-max-width));");
+    expect(stylesheet).toContain("width: 100%;");
+    expect(stylesheet).toContain("max-width: 100%;");
+    expect(stylesheet).toContain("border-radius: 0;");
+    expect(stylesheet).toContain("box-shadow: none;");
     expect(stylesheet).toContain("@media (max-width: 1100px)");
   });
 

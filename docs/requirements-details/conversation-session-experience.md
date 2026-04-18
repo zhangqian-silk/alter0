@@ -24,8 +24,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 根路径 `/` 默认进入 Chat 工作台。
 - `/chat` 提供 Chat、Agent、Terminal、Product、Control 与 Memory 的统一 Web Shell。
 - Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`；该入口仅保留前端挂载容器与静态资源引用，由 React 渲染稳定的 shell DOM，并通过兼容样式层保持旧 DOM 契约。
-- `LegacyWebShell` 直接维护主导航当前路由高亮、导航折叠态、导航 tooltip、简化品牌头部、Session Pane 上下文卡、会话卡片列表、ChatWorkspace 头部动作区、工作区 hero、欢迎区文案、欢迎区 target picker、prompt deck、欢迎区/消息区显隐、消息列表 DOM、运行时 controls/note/sheet DOM、Session 历史空态提示/可访问标签、Composer 面板、路由页 hero、路由页头部标题/副标题、菜单、会话入口与路由感知文案；`ReactRuntimeFacade` 负责 Chat / Agent 的会话创建、切换、删除、草稿恢复、消息流、结构化 runtime、移动端 runtime sheet、结构化快照发布与 bridge 事件处理。`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类路由页由 React 接管，其中 terminal 已改为 React 原生页面实现。React 必须在 `routeBody` 上同步当前页 `data-react-managed-route` 标记、在 `appShell` 上同步稳定的 `data-react-managed-routes` 路由清单，避免壳层状态更新时清空页面主体 DOM；兼容层仅保留样式和 DOM 契约，不再通过 legacy 脚本接管 `/chat` 业务运行时。
-- Web Shell 的稳定界面基线为浅蓝轻科幻风格的桌面三栏 cockpit 与移动端双抽屉工作台：主导航顶部仅保留 `Alter0` 服务名称与折叠入口，下方展示模块组；会话栏承载新建入口与历史列表，主工作区承载欢迎区/消息区、页面 hero 和独立输入面板；整体采用浅蓝渐变背景、冷色高亮、低对比玻璃感面板与克制阴影。为避免信息重复，当前壳层遵循单层信息架构：主导航不再展示图形标识、额外品牌口号或实现状态，会话栏不再额外重复路由概览，Chat 主区不再叠加独立 workspace hero，页面类路由只保留一层主标题说明，不再同时渲染 route hero 与二次页头。
+- `LegacyWebShell` 直接维护主导航当前路由高亮、导航折叠态、导航 tooltip、简化品牌头部、Session Pane 头部与会话卡片列表、ChatWorkspace 头部动作区、欢迎区文案、欢迎区 target picker、prompt pills、欢迎区/消息区显隐、消息列表 DOM、运行时 controls/note/sheet DOM、Session 历史空态提示/可访问标签、Composer 面板、路由页 `route-head` 标题/副标题、菜单、会话入口与路由感知文案；`ReactRuntimeFacade` 负责 Chat / Agent 的会话创建、切换、删除、草稿恢复、消息流、结构化 runtime、移动端 runtime sheet、结构化快照发布与 bridge 事件处理。`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类路由页由 React 接管，其中 terminal 已改为 React 原生页面实现。React 必须在 `routeBody` 上同步当前页 `data-react-managed-route` 标记、在 `appShell` 上同步稳定的 `data-react-managed-routes` 路由清单，避免壳层状态更新时清空页面主体 DOM；兼容层仅保留样式和 DOM 契约，不再通过 legacy 脚本接管 `/chat` 业务运行时。
+- Web Shell 的稳定界面基线需与主仓库当前壳层一致：桌面端使用全宽三栏工作台与移动端双抽屉工作台；主导航顶部仅保留 `Alter0` 服务名称与折叠入口，下方展示模块组；会话栏承载新建入口与历史列表；主工作区直接输出旧版 header、欢迎区/消息区、路由页 `route-head` 与独立输入面板。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示图形标识、额外品牌口号或实现状态；会话栏不重复路由概览；Chat 主区不再叠加独立 workspace hero，页面类路由不再渲染 route hero。
 - Web Shell 的抽屉式单列工作台仅在主视口宽度 `1100px` 及以下触发；高于该阈值时继续保留桌面三栏布局，并隐藏主工作区头部 `Menu / Sessions / New` 抽屉入口，同时主导航、会话栏、间距与主工作区需按可用视口自适应收缩，避免只对聊天内容列做最大阅读宽度限制而让整体壳层失衡。
 - 进入窄屏工作台后，主导航与 Session Pane 必须切换为贴左侧视口边缘的全高抽屉，不允许保留桌面悬浮卡片式边距；`info-mode` 页面不打开 Session Pane，`Agent` 运行页的三栏主体也需在同一 `1100px` 阈值同步收敛为单列，避免壳层断点先切换而页面主体仍保留桌面列布局。
 - 桌面端主导航采用紧凑间距节奏，优先保证在常见笔记本高度下完整展示主要模块组；控制类与资产类路由优先使用高密度主从或表格视图，避免在宽屏上保留大块无效留白。
@@ -152,12 +152,12 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Chat 历史区支持折叠与展开，减少长对话阅读空间占用。
 - Session Pane 的历史折叠状态在同一浏览器会话内持久化恢复；在 `agent-runtime` 路由下，新会话入口文案切换为 Agent 会话语义，并随语言切换同步更新。
 - Session 历史区的空态提示与列表可访问标签需按当前路由与语言即时切换文案；这些文案更新不得清空或重建 runtime 已注入的会话卡片节点。
-- Session 历史区的会话卡片需适配长标题：标题允许两行截断，摘要信息允许单独换行，短 hash 与复制/删除操作需收纳在卡片底部的辅助操作区，不能再把列表切成生硬的内容列与操作列。
+- Session 历史区的会话卡片需保持主仓库式紧凑信息结构：标题单行省略，摘要信息允许单独换行，短 hash 与复制/删除操作需收纳在卡片下缘，不再额外挂出独立胶囊操作面。
 - ChatWorkspace 头部的菜单按钮、会话抽屉按钮和移动端新会话入口需按当前路由与语言即时切换文案；这些壳层文案更新不得覆盖当前会话标题、副标题或消息内容。
 - 主工作区头部的 `Menu / Sessions / New` 入口在桌面三栏模式下默认隐藏，只在抽屉式窄屏工作台中作为收敛后的主入口显示；`info-mode` 页面默认隐藏 `Sessions` 按钮，Terminal 路由在 `page-mode` 下继续保留 `Sessions / New`。
 - 路由页头部的标题与副标题需按当前路由与语言即时切换文案；这些页头更新不得覆盖 route body 内已渲染的页面主体内容。
 - 已由 React 接管的 route body 需在 DOM 上暴露稳定 ownership 契约：`routeBody[data-react-managed-route]` 表达当前页 ownership，`appShell[data-react-managed-routes]` 表达稳定的受管路由集合；兼容层只能依据这份由 React 输出的契约退让，不得继续维护额外的独立路由白名单。
-- 欢迎区、prompt deck 与 Composer 面板在同一主工作区内采用独立滚动与固定底部输入区；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
+- 欢迎区与 Composer 面板在同一主工作区内采用主仓库式上下结构：欢迎区直接输出 welcome tag、标题、副标题、target picker 与 prompt pills，Composer 独立贴底；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
 - 用户消息右对齐，宽度不超过消息区 80%，Chat / Agent / 路由消息区统一采用浅蓝轻科幻阅读主题；助手回复弱化厚重卡片层级，消息气泡、Process 区和阅读容器统一使用冷色低对比边框与玻璃感底色。
 - 桌面宽屏下 Chat 消息列、欢迎区与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区统一保留 `960px` 最大阅读宽度，但外层三栏壳层也必须同步收缩侧栏与间距，避免在中等桌面宽度下出现阅读区限宽而整体布局仍然拥挤、遮挡或越界。
 - Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致会话卡片、消息节点或 route 内容被清空重建。

@@ -25,10 +25,10 @@ function isSameNavTooltipTarget(left: NavTooltipTarget, right: NavTooltipTarget)
   if (left.kind !== right.kind) {
     return false;
   }
-  if (left.kind === "collapse") {
+  if (left.kind === "collapse" && right.kind === "collapse") {
     return true;
   }
-  return left.route === right.route;
+  return left.kind === "route" && right.kind === "route" && left.route === right.route;
 }
 
 type PrimaryNavProps = {
@@ -231,13 +231,9 @@ export function PrimaryNav({
 
   return (
     <aside className="primary-nav">
-      <div className="nav-header">
-        <div className="nav-brand-panel" data-shell-section="brand-panel">
-          <div className="brand">
-            <div className="brand-copy">
-              <strong>Alter0</strong>
-            </div>
-          </div>
+      <div className="brand">
+        <div className="brand-copy">
+          <strong>Alter0</strong>
         </div>
         <button
           className="nav-collapse"

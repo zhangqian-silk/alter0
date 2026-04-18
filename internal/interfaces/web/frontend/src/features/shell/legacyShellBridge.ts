@@ -11,41 +11,6 @@ export const LEGACY_SHELL_SYNC_SESSION_PANE_EVENT = "alter0:legacy-shell:sync-se
 export const LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT = "alter0:legacy-shell:sync-message-region";
 export const LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT = "alter0:legacy-shell:sync-chat-runtime";
 
-declare global {
-  interface Window {
-    __alter0LegacyRuntime?: {
-      createSession?: () => boolean | void;
-      focusSession?: (sessionId: string) => boolean | void;
-      removeSession?: (sessionId: string) => boolean | void;
-      toggleChatRuntimePopover?: (popover: string) => boolean | void;
-      closeChatRuntimePopover?: () => boolean | void;
-      selectChatRuntimeTarget?: (target: LegacyShellChatRuntimeTargetActionDetail) => boolean | void;
-      selectChatRuntimeModel?: (selection: LegacyShellChatRuntimeModelActionDetail) => boolean | void;
-      toggleChatRuntimeItem?: (selection: LegacyShellChatRuntimeItemActionDetail) => boolean | void;
-    };
-  }
-}
-
-type LegacyShellNavigateDetail = {
-  route: string;
-};
-
-type LegacyShellNavCollapsedDetail = {
-  collapsed: boolean;
-};
-
-type LegacyShellSessionHistoryDetail = {
-  collapsed: boolean;
-};
-
-type LegacyShellQuickPromptDetail = {
-  prompt: string;
-};
-
-type LegacyShellSessionActionDetail = {
-  sessionId: string;
-};
-
 export type LegacyShellChatRuntimeTargetActionDetail = {
   type: string;
   id: string;
@@ -177,6 +142,47 @@ export type LegacyShellChatRuntimeDetail = {
   providers?: LegacyShellChatRuntimeProviderDetail[];
   capabilities?: LegacyShellChatRuntimeSelectionDetail[];
   skills?: LegacyShellChatRuntimeSelectionDetail[];
+};
+
+export type LegacyRuntimeBridge = {
+  createSession?: () => boolean | void;
+  focusSession?: (sessionId: string) => boolean | void;
+  removeSession?: (sessionId: string) => boolean | void;
+  toggleChatRuntimePopover?: (popover: string) => boolean | void;
+  closeChatRuntimePopover?: () => boolean | void;
+  selectChatRuntimeTarget?: (target: LegacyShellChatRuntimeTargetActionDetail) => boolean | void;
+  selectChatRuntimeModel?: (selection: LegacyShellChatRuntimeModelActionDetail) => boolean | void;
+  toggleChatRuntimeItem?: (selection: LegacyShellChatRuntimeItemActionDetail) => boolean | void;
+  publishChatWorkspaceSnapshot?: (detail: LegacyShellChatWorkspaceDetail) => boolean | void;
+  publishSessionPaneSnapshot?: (detail: LegacyShellSessionPaneDetail) => boolean | void;
+  publishMessageRegionSnapshot?: (detail: LegacyShellMessageRegionDetail) => boolean | void;
+  publishChatRuntimeSnapshot?: (detail: LegacyShellChatRuntimeDetail) => boolean | void;
+};
+
+declare global {
+  interface Window {
+    __alter0LegacyRuntime?: LegacyRuntimeBridge;
+  }
+}
+
+type LegacyShellNavigateDetail = {
+  route: string;
+};
+
+type LegacyShellNavCollapsedDetail = {
+  collapsed: boolean;
+};
+
+type LegacyShellSessionHistoryDetail = {
+  collapsed: boolean;
+};
+
+type LegacyShellQuickPromptDetail = {
+  prompt: string;
+};
+
+type LegacyShellSessionActionDetail = {
+  sessionId: string;
 };
 
 function callLegacyRuntimeAction<TArgs extends unknown[]>(

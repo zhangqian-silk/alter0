@@ -435,7 +435,7 @@ const ENVIRONMENT_ROUTE_COPY: Record<LegacyShellLanguage, EnvironmentRouteCopy> 
 
 type FieldSpec = {
   label: string;
-  value: string | null | undefined;
+  value: unknown;
   copyable?: boolean;
   mono?: boolean;
   multiline?: boolean;
@@ -444,9 +444,9 @@ type FieldSpec = {
 };
 
 type RequestState =
-  | { status: "loading"; items: ControlRouteRecord[]; error: string }
-  | { status: "ready"; items: ControlRouteRecord[]; error: string }
-  | { status: "error"; items: ControlRouteRecord[]; error: string };
+  | { status: "loading"; items: RouteRecord[]; error: string }
+  | { status: "ready"; items: RouteRecord[]; error: string }
+  | { status: "error"; items: RouteRecord[]; error: string };
 
 type ReactManagedControlRouteBodyProps = {
   route: ReactManagedControlRoute;

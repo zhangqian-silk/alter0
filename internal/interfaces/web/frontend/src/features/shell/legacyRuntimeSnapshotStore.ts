@@ -3,6 +3,7 @@ import {
   LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT,
   LEGACY_SHELL_SYNC_MESSAGE_REGION_EVENT,
   LEGACY_SHELL_SYNC_SESSION_PANE_EVENT,
+  type LegacyRuntimeBridge,
   type LegacyShellChatRuntimeDetail,
   type LegacyShellChatWorkspaceDetail,
   type LegacyShellMessageRegionDetail,
@@ -23,17 +24,6 @@ type SnapshotDetailMap = {
 };
 
 type SnapshotListener = () => void;
-
-declare global {
-  interface Window {
-    __alter0LegacyRuntime?: {
-      publishChatWorkspaceSnapshot?: (detail: LegacyShellChatWorkspaceDetail) => boolean | void;
-      publishSessionPaneSnapshot?: (detail: LegacyShellSessionPaneDetail) => boolean | void;
-      publishMessageRegionSnapshot?: (detail: LegacyShellMessageRegionDetail) => boolean | void;
-      publishChatRuntimeSnapshot?: (detail: LegacyShellChatRuntimeDetail) => boolean | void;
-    };
-  }
-}
 
 const snapshotStore = new Map<SnapshotChannel, SnapshotDetailMap[SnapshotChannel]>();
 const snapshotListeners = new Map<SnapshotChannel, Set<SnapshotListener>>();
@@ -85,7 +75,9 @@ export function ensureLegacyRuntimeSnapshotBridge() {
     return;
   }
 
-  window.__alter0LegacyRuntime = Object.assign(window.__alter0LegacyRuntime || {}, {
+  window.__alter0LegacyRuntime = Object.assign<LegacyRuntimeBridge, LegacyRuntimeBridge>(
+    window.__alter0LegacyRuntime || {},
+    {
     publishChatWorkspaceSnapshot(detail: LegacyShellChatWorkspaceDetail) {
       publishLegacyRuntimeSnapshot(LEGACY_SHELL_SYNC_CHAT_WORKSPACE_EVENT, detail);
       return true;
@@ -102,7 +94,8 @@ export function ensureLegacyRuntimeSnapshotBridge() {
       publishLegacyRuntimeSnapshot(LEGACY_SHELL_SYNC_CHAT_RUNTIME_EVENT, detail);
       return true;
     },
-  });
+    },
+  );
 }
 
 export function resetLegacyRuntimeSnapshotStore() {

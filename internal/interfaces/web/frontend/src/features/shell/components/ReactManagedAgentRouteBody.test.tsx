@@ -101,8 +101,7 @@ describe("ReactManagedAgentRouteBody", () => {
           skills: [],
           mcps: [],
           memory_files: [],
-        }),
-        { status: 201 },
+        }, { status: 201 }),
       )
       .mockResolvedValueOnce(
         jsonResponse({

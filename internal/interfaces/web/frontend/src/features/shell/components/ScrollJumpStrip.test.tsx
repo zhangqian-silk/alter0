@@ -35,10 +35,12 @@ function applyScrollableMetrics(
     left: 0,
     toJSON: () => ({}),
   });
-  container.scrollTo = vi.fn(({ top }: ScrollToOptions) => {
+  const scrollToMock = vi.fn((options?: ScrollToOptions | number, y?: number) => {
+    const top = typeof options === "number" ? y : options?.top;
     container.scrollTop = Math.max(Number(top || 0), 0);
     fireEvent.scroll(container);
-  });
+  }) as HTMLElement["scrollTo"];
+  container.scrollTo = scrollToMock;
 
   targets.forEach((target, index) => {
     target.getBoundingClientRect = () => {

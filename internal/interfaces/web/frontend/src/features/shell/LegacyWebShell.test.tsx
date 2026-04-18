@@ -56,10 +56,12 @@ function applyScrollableMetrics(
     left: 0,
     toJSON: () => ({}),
   });
-  container.scrollTo = vi.fn(({ top }: ScrollToOptions) => {
+  const scrollToMock = vi.fn((options?: ScrollToOptions | number, y?: number) => {
+    const top = typeof options === "number" ? y : options?.top;
     container.scrollTop = Math.max(Number(top || 0), 0);
     fireEvent.scroll(container);
-  });
+  }) as HTMLElement["scrollTo"];
+  container.scrollTo = scrollToMock;
 
   targets.forEach((target, index) => {
     target.getBoundingClientRect = () => {
@@ -198,36 +200,41 @@ describe("LegacyWebShell", () => {
     expect(screen.getByLabelText("Input your message")).toHaveAttribute("data-composer-input", "chat-main");
   });
 
-  it("renders a simplified chat shell without duplicated context surfaces", () => {
+  it("renders the legacy main-shell structure without extra capsule wrappers", () => {
     render(<LegacyWebShell />);
 
-    expect(document.querySelector('[data-shell-section="brand-panel"]')).toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="brand-panel"] .brand-mark')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="brand-panel"] .nav-collapse')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="brand-panel"] .brand strong')).toHaveTextContent("Alter0");
-    expect(document.querySelector('[data-shell-section="brand-panel"] .brand-kicker')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="brand-panel"] .brand-description')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="brand-panel"] .brand-status-strip')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="session-context"]')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="chat-hero"]')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="prompt-deck"]')).toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="composer-panel"]')).toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="route-hero"]')).not.toBeInTheDocument();
+    const brand = document.querySelector(".primary-nav > .brand");
+
+    expect(brand).toBeInTheDocument();
+    expect(brand?.querySelector(".brand strong")).toHaveTextContent("Alter0");
+    expect(brand?.querySelector(".nav-collapse")).toBeInTheDocument();
+    expect(document.querySelector(".primary-nav > .nav-header")).not.toBeInTheDocument();
+    expect(document.querySelector(".welcome-screen > .chat-content-frame")).not.toBeInTheDocument();
+    expect(document.querySelector(".welcome-screen > .welcome-hero")).not.toBeInTheDocument();
+    expect(document.querySelector(".welcome-screen > .prompt-deck")).not.toBeInTheDocument();
+    expect(document.querySelector(".composer-shell > .chat-content-frame")).not.toBeInTheDocument();
+    expect(document.querySelector(".route-hero")).not.toBeInTheDocument();
+    expect(document.querySelector(".route-view > .route-head")).toBeInTheDocument();
+    expect(document.getElementById(LEGACY_SHELL_IDS.routeView)).toHaveAttribute("hidden");
   });
 
-  it("centers chat reading surfaces inside a shared content frame", () => {
+  it("renders the welcome and composer sections as direct legacy shell surfaces", () => {
     render(<LegacyWebShell />);
 
-    expect(document.querySelector(".welcome-screen .chat-content-frame")).toBeInTheDocument();
-    expect(document.querySelector(".composer-shell .chat-content-frame")).toBeInTheDocument();
+    expect(document.querySelector(".welcome-screen > .welcome-tag")).toBeInTheDocument();
+    expect(document.querySelector(".welcome-screen > #welcomeHeading")).toBeInTheDocument();
+    expect(document.querySelector(".welcome-screen > #welcomeDescription")).toBeInTheDocument();
+    expect(document.querySelector(".welcome-screen > #welcomeTargetList")).toBeInTheDocument();
+    expect(document.querySelector(".welcome-screen > .prompt-grid")).toBeInTheDocument();
+    expect(document.querySelector(".composer-shell > #chatForm")).toBeInTheDocument();
+    expect(document.querySelector(".composer-shell > .composer-note")).toBeInTheDocument();
   });
 
-  it("renders a single route heading surface for page-mode routes", async () => {
+  it("renders the legacy route header for page-mode routes", async () => {
     await renderChannelsRouteShell();
 
-    expect(document.querySelector('[data-shell-section="route-hero"]')).toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="chat-hero"]')).not.toBeInTheDocument();
-    expect(document.querySelector(".route-head")).not.toBeInTheDocument();
+    expect(document.querySelector(".route-view > .route-head")).toBeInTheDocument();
+    expect(document.querySelector(".route-hero")).not.toBeInTheDocument();
   });
 
   it("marks React-managed route bodies so the legacy runtime can skip DOM ownership", async () => {
@@ -260,7 +267,8 @@ describe("LegacyWebShell", () => {
     expect(routeBody?.querySelector("[data-terminal-view]")).toBeInTheDocument();
     expect(routeBody?.querySelector("[data-terminal-session-pane]")).toBeInTheDocument();
     expect(routeBody?.querySelector(".terminal-workspace")).toBeInTheDocument();
-    expect(document.querySelector('[data-shell-section="route-hero"]')).not.toBeInTheDocument();
+    expect(document.querySelector(".route-view > .route-head")).toBeInTheDocument();
+    expect(document.querySelector(".route-hero")).not.toBeInTheDocument();
   });
 
   it("renders the shell navigation groups and route placement", () => {
@@ -395,16 +403,20 @@ describe("LegacyWebShell", () => {
     const routeBody = document.getElementById(LEGACY_SHELL_IDS.routeBody);
     routeBody?.insertAdjacentHTML("beforeend", '<div data-runtime-node="route">runtime route</div>');
 
-    expect(document.getElementById("routeTitle")).toBeNull();
-    expect(document.getElementById("routeSubtitle")).toBeNull();
+    expect(document.getElementById("routeTitle")).toHaveTextContent("Terminal");
+    expect(document.getElementById("routeSubtitle")).toHaveTextContent(
+      "Persistent Codex CLI sessions with runtime-aligned status",
+    );
 
     await act(async () => {
       document.documentElement.lang = "zh-CN";
     });
 
     await waitFor(() => {
-      expect(document.getElementById("routeTitle")).toBeNull();
-      expect(document.getElementById("routeSubtitle")).toBeNull();
+      expect(document.getElementById("routeTitle")).toHaveTextContent("终端");
+      expect(document.getElementById("routeSubtitle")).toHaveTextContent(
+        "独立终端会话，状态与实际 shell 进程保持一致",
+      );
       expect(screen.getByText("runtime route")).toBeInTheDocument();
     });
 
