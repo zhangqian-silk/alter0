@@ -168,7 +168,7 @@ function routeConversationMode(route: string): ChatRoute {
   return route === "agent-runtime" ? "agent-runtime" : "chat";
 }
 
-function normalizeChatTarget(target?: Partial<ChatTarget> | null): ChatTarget {
+function normalizeChatTarget(target?: { type?: string; id?: string; name?: string } | null): ChatTarget {
   const type = target?.type === "agent" ? "agent" : "model";
   const id = normalizeText(target?.id) || (type === "agent" ? "" : "raw-model");
   const name = normalizeText(target?.name) || (type === "agent" ? id : "Raw Model");

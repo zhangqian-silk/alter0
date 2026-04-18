@@ -293,14 +293,14 @@ function mergeSessionSnapshot(
   if (!current) {
     return incoming;
   }
-  const merged: TerminalSession = { ...current };
+  const merged = { ...current } as Record<string, unknown>;
   (Object.keys(incoming) as Array<keyof TerminalSession>).forEach((key) => {
     const value = incoming[key];
     if (typeof value !== "undefined") {
-      merged[key] = value;
+      merged[key as string] = value;
     }
   });
-  return merged;
+  return merged as TerminalSession;
 }
 
 function durationLabel(durationMS: number | undefined) {
