@@ -30,9 +30,9 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("--mobile-viewport-height: 100dvh;");
     expect(stylesheet).toContain("--keyboard-offset: 0px;");
     expect(stylesheet).toContain(".chat-pane:not(.page-mode) {");
-    expect(stylesheet).toContain("height: min(100%, calc(var(--mobile-viewport-height, 100dvh) - 14px));");
+    expect(stylesheet).toContain("height: min(100%, var(--mobile-viewport-height, 100dvh));");
     expect(stylesheet).toContain(".chat-pane.page-mode {");
-    expect(stylesheet).toContain("height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px) - 28px));");
+    expect(stylesheet).toContain("height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px)));");
   });
 
   it("keeps desktop chrome panels visible and only exposes header drawer buttons at narrow breakpoints", () => {
@@ -50,6 +50,19 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("@media (max-width: 760px)");
     expect(stylesheet).toContain("width: min(calc(100vw - 24px), 280px);");
     expect(stylesheet).toContain("width: min(calc(100vw - 16px), 360px);");
+  });
+
+  it("anchors narrow shell drawers to the viewport edges instead of floating them inside the desktop canvas", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?\.primary-nav,\s*\.session-pane\s*\{[\s\S]*?top:\s*0;[\s\S]*?bottom:\s*0;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?\.session-pane\s*\{[\s\S]*?left:\s*0;[\s\S]*?transform:\s*translateX\(-102%\);/,
+    );
+    expect(stylesheet).toContain(".app-shell.panel-open:not(.info-mode) .session-pane {");
   });
 
   it("anchors the narrow-screen composer to the keyboard offset instead of a fixed viewport bottom", () => {

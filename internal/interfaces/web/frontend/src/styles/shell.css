@@ -1729,55 +1729,65 @@ body::after {
     padding: 0;
     min-height: var(--mobile-viewport-height, 100dvh);
     height: var(--mobile-viewport-height, 100dvh);
+    max-height: var(--mobile-viewport-height, 100dvh);
     width: 100%;
+    overflow: hidden;
   }
 
   .primary-nav,
   .session-pane {
     position: fixed;
-    top: 14px;
-    bottom: 14px;
-    width: min(calc(100vw - 28px), 360px);
-    max-width: calc(100vw - 28px);
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(88vw, 340px);
+    max-width: 100vw;
     min-height: auto;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
     z-index: 30;
-    transition: transform 240ms ease;
+    transition: transform 180ms ease;
+    touch-action: pan-y;
   }
 
   .primary-nav {
-    left: 14px;
-    transform: translateX(calc(-100% - 24px));
+    width: min(76vw, 252px);
+    z-index: 42;
+    transform: translateX(-102%);
+    box-shadow: 0 14px 32px rgba(15, 24, 39, 0.18);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .session-pane {
-    right: 14px;
-    transform: translateX(calc(100% + 24px));
-    width: min(calc(100vw - 28px), 388px);
-    z-index: 35;
+    transform: translateX(-102%);
+    z-index: 43;
+    box-shadow: 0 14px 32px rgba(15, 24, 39, 0.2);
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   .app-shell.nav-open .primary-nav {
     transform: translateX(0);
   }
 
-  .app-shell.panel-open .session-pane {
+  .app-shell.panel-open:not(.info-mode) .session-pane {
     transform: translateX(0);
   }
 
   .chat-pane {
-    margin: 14px;
     min-height: 0;
     height: 100%;
     overflow: hidden;
   }
 
   .chat-pane:not(.page-mode) {
-    height: min(100%, calc(var(--mobile-viewport-height, 100dvh) - 14px));
+    height: min(100%, var(--mobile-viewport-height, 100dvh));
   }
 
   .chat-pane.page-mode {
-    height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px) - 28px));
-    padding: 14px;
+    height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px)));
   }
 
   .composer-shell .chat-content-frame {
@@ -1907,12 +1917,10 @@ body::after {
 @media (max-width: 760px) {
   .primary-nav {
     width: min(calc(100vw - 24px), 280px);
-    max-width: calc(100vw - 24px);
   }
 
   .session-pane {
     width: min(calc(100vw - 16px), 360px);
-    max-width: calc(100vw - 16px);
   }
 
   .chat-header {

@@ -1,6 +1,6 @@
 # Technical Solution
 
-> Last update: 2026-04-17
+> Last update: 2026-04-18
 
 `alter0` 的技术方案按与需求清单一致的领域模型维护。后续新增或调整需求时，技术方案必须落到对应领域与子域，不再按时间顺序、任务编号或零散专题堆叠。
 
@@ -113,6 +113,7 @@ Web input
 - 移动端 App Shell 高度使用 `--mobile-viewport-height`，由 `chat.js` 同步 `VisualViewport` 计算值，避免浏览器工具栏变化导致底部留白或内容裁切。
 - 移动端 Chat/Agent 在输入框与会话设置底部面板之间切换时，`chat.js` 需先归一底部交互层：打开移动端设置面板前先 blur 当前输入并重新同步 `--keyboard-offset`，主输入框重新聚焦时则先关闭设置面板，再执行键盘贴底和输入框对齐逻辑。
 - 桌面宽屏下 React 壳层使用 `shell.css` 中的 `--shell-reading-width=960px` 统一约束欢迎区、消息列与 Composer；legacy `chat-core.css` 继续基于主工作区可用宽度推导 `--content-width`，并让 `.message-list`、`.msg`、`.composer` 消费该宽度变量，避免消息列与输入区在不同渲染路径上出现双重宽度口径。
+- React 壳层在 `shell.css` 中把 `1100px` 及以下统一视为抽屉式单列工作台：`primary-nav` 与 `session-pane` 改为贴左侧视口边缘的全高抽屉，`chat-pane` 在该断点取消桌面浮层边距；兼容样式 `public/legacy/chat-routes.css` 需让 `agent-route-layout` 在同一 `1100px` 阈值收敛为单列，避免 Session Pane 已切换抽屉而 `Agent` 主体仍保留桌面三列。
 - `chat.js` 内所有前端时间展示统一走同一北京时间格式化器，固定 `timeZone=Asia/Shanghai`、`hourCycle=h23`；时间标签输出 `HH:mm`，绝对时间输出 `YYYY-MM-DD HH:mm:ss`。
 - Cron 创建表单默认时区直接复用同一前端常量 `Asia/Shanghai`，不再依赖浏览器本地时区探测。
 - `agent-runtime` 会话列表前端按 `sha1(session_id)[:8]` 生成短 hash，展示在会话卡片内并通过统一 `data-copy-value` 复制链路写入剪贴板，保持与 Agent Session Profile / 预览域名使用的短标识一致。
@@ -124,7 +125,7 @@ Web input
 - 前端 E2E 覆盖 Chat、Agent、移动端输入、设置面板和长会话渲染。
 - 前端组件测试需覆盖 React 渲染出的 legacy shell 契约，至少校验导航、会话列表、消息区、Composer 和 runtime sheet host 等关键节点未破坏 `chat.js` 的接管前提。
 - 壳层组件测试继续覆盖 hash 路由高亮、导航折叠、导航 tooltip、简化品牌头部、Session Pane 与 ChatWorkspace 头部动作区的语言/路由文案切换，并校验 Session 上下文卡、Chat hero、prompt deck、Composer 面板与 route hero 等信息架构锚点，同时验证路由跳转、新建会话、欢迎区快捷提示、会话聚焦、会话删除、语言切换、导航折叠同步、会话历史折叠同步，以及 runtime snapshot store 对 chat workspace/session pane/message region/chat runtime 四类结构化快照的稳定推送与消费；chat runtime 还需验证 React 原生 controls/sheet 对共享 runtime api 的动作桥接；React 直接承接 `agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类页面的取数、加载、空态、错误态、筛选状态与双语卡片渲染，其中 terminal 额外验证 React 原生页面对会话列表、详情轮询、step 展开与输入草稿的稳定性，其余未托管 route body / runtime host 不因 React 状态更新被清空。
-- `ScrollJumpStrip.test.tsx`、`LegacyWebShell.test.tsx` 与 `shellLayoutStyles.test.ts` 共同覆盖 Agent 运行态消息区箭头四键的目标计算、样式可见性、普通 Chat/route 页移除边界，以及 Terminal/Agent 对话区的集成契约。
+- `ScrollJumpStrip.test.tsx`、`LegacyWebShell.test.tsx`、`shellLayoutStyles.test.ts` 与 `legacyRouteLayoutStyles.test.ts` 共同覆盖 Agent 运行态消息区箭头四键、窄屏贴边抽屉、Session Pane 非悬浮化，以及 `Agent` 主体与壳层共享 `1100px` 单列断点的契约。
 - 回归测试优先覆盖空白会话重复、软键盘残留空白、整段列表重建、断流恢复与残留 `In Progress` 等高频问题。
 
 ## Agent Capability & Memory
