@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { ReactManagedTerminalRouteBody } from "./ReactManagedTerminalRouteBody";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
@@ -51,7 +51,14 @@ describe("ReactManagedTerminalRouteBody", () => {
                 started_at: "2026-04-15T10:05:00Z",
                 finished_at: "2026-04-15T10:05:02Z",
                 duration_ms: 2000,
-                final_output: "/workspace/alter0",
+                final_output: [
+                  "# Workspace",
+                  "",
+                  "- /workspace/alter0",
+                  "- ready",
+                  "",
+                  "Use `pwd` to inspect the repo.",
+                ].join("\n"),
                 steps: [
                   {
                     id: "step-1",
@@ -117,6 +124,7 @@ describe("ReactManagedTerminalRouteBody", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
     window.localStorage.clear();
   });
 
@@ -137,7 +145,18 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
     });
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-final-output='turn-1']")).toHaveTextContent("/workspace/alter0");
+    expect(document.querySelector(".terminal-session-select")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-session-list-delete")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-workspace-body")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-workspace-head")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-console-panel]")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-chat-form")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
+      "<h1>Workspace</h1>",
+    );
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
+      "<li>/workspace/alter0</li>",
+    );
   });
 
   it("loads step detail when expanding a process step", async () => {
@@ -171,5 +190,53 @@ describe("ReactManagedTerminalRouteBody", () => {
         "terminal-2",
       );
     });
+  });
+
+  it("slows polling and preserves scroll position while the terminal output is being scrolled", async () => {
+    render(<ReactManagedTerminalRouteBody />);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
+    });
+
+    vi.useFakeTimers();
+
+    const fetchMock = vi.mocked(fetch);
+    const initialCallCount = fetchMock.mock.calls.length;
+    const chatScreen = document.querySelector("[data-terminal-chat-screen]") as HTMLDivElement;
+
+    Object.defineProperty(chatScreen, "scrollHeight", {
+      configurable: true,
+      value: 1200,
+    });
+    Object.defineProperty(chatScreen, "clientHeight", {
+      configurable: true,
+      value: 360,
+    });
+    Object.defineProperty(chatScreen, "scrollTop", {
+      configurable: true,
+      value: 240,
+      writable: true,
+    });
+
+    await act(async () => {
+      fireEvent.scroll(chatScreen);
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+    });
+    expect(fetchMock.mock.calls).toHaveLength(initialCallCount);
+    expect(chatScreen.scrollTop).toBe(240);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(initialCallCount);
+    expect(chatScreen.scrollTop).toBe(240);
+    expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
   });
 });

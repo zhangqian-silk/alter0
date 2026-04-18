@@ -260,6 +260,7 @@ describe("LegacyWebShell", () => {
     expect(routeBody?.querySelector("[data-terminal-view]")).toBeInTheDocument();
     expect(routeBody?.querySelector("[data-terminal-session-pane]")).toBeInTheDocument();
     expect(routeBody?.querySelector(".terminal-workspace")).toBeInTheDocument();
+    expect(document.querySelector('[data-shell-section="route-hero"]')).not.toBeInTheDocument();
   });
 
   it("renders the shell navigation groups and route placement", () => {
@@ -394,20 +395,16 @@ describe("LegacyWebShell", () => {
     const routeBody = document.getElementById(LEGACY_SHELL_IDS.routeBody);
     routeBody?.insertAdjacentHTML("beforeend", '<div data-runtime-node="route">runtime route</div>');
 
-    expect(document.getElementById("routeTitle")).toHaveTextContent("Terminal");
-    expect(document.getElementById("routeSubtitle")).toHaveTextContent(
-      "Persistent Codex CLI sessions with runtime-aligned status",
-    );
+    expect(document.getElementById("routeTitle")).toBeNull();
+    expect(document.getElementById("routeSubtitle")).toBeNull();
 
     await act(async () => {
       document.documentElement.lang = "zh-CN";
     });
 
     await waitFor(() => {
-      expect(document.getElementById("routeTitle")).toHaveTextContent("终端");
-      expect(document.getElementById("routeSubtitle")).toHaveTextContent(
-        "独立终端会话，状态与实际 shell 进程保持一致",
-      );
+      expect(document.getElementById("routeTitle")).toBeNull();
+      expect(document.getElementById("routeSubtitle")).toBeNull();
       expect(screen.getByText("runtime route")).toBeInTheDocument();
     });
 

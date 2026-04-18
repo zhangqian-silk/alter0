@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
 import { normalizeText, RouteFieldRow } from "./RouteBodyPrimitives";
@@ -96,6 +96,8 @@ type TerminalCopy = {
   processSteps: (count: number) => string;
   noProcess: string;
   noOutput: string;
+  noOutputMeta: string;
+  lastOutput: (label: string) => string;
   top: string;
   prev: string;
   next: string;
@@ -109,6 +111,7 @@ type TerminalCopy = {
   loading: string;
   noSession: string;
   metadata: string;
+  copy: string;
 };
 
 const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
@@ -138,6 +141,8 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     processSteps: (count) => `${count} steps`,
     noProcess: "No execution details.",
     noOutput: "No output yet.",
+    noOutputMeta: "No output yet.",
+    lastOutput: (label) => `Last output ${label}`,
     top: "Top",
     prev: "Prev",
     next: "Next",
@@ -151,6 +156,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     loading: "Loading...",
     noSession: "Create a terminal session to begin.",
     metadata: "Metadata",
+    copy: "Copy output",
   },
   zh: {
     sessions: "会话列表",
@@ -178,6 +184,8 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     processSteps: (count) => `${count} 步`,
     noProcess: "暂无执行细节。",
     noOutput: "暂时还没有输出。",
+    noOutputMeta: "暂无输出。",
+    lastOutput: (label) => `最近输出 ${label}`,
     top: "顶部",
     prev: "上一个",
     next: "下一个",
@@ -191,6 +199,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     loading: "加载中...",
     noSession: "先创建一个终端会话再开始。",
     metadata: "元数据",
+    copy: "复制输出",
   },
 };
 
@@ -202,6 +211,10 @@ type JumpState = {
 };
 
 const POLL_INTERVAL_MS = 2000;
+const INTERACTION_POLL_INTERVAL_MS = 6000;
+const HIDDEN_POLL_INTERVAL_MS = 12000;
+const SCROLL_IDLE_MS = 1200;
+const SCROLL_BOTTOM_ANCHOR_THRESHOLD = 24;
 const JUMP_TOP_THRESHOLD = 180;
 const JUMP_BOTTOM_THRESHOLD = 220;
 
@@ -273,6 +286,23 @@ function sortSessions(items: TerminalSession[]): TerminalSession[] {
   });
 }
 
+function mergeSessionSnapshot(
+  current: TerminalSession | undefined,
+  incoming: TerminalSession,
+): TerminalSession {
+  if (!current) {
+    return incoming;
+  }
+  const merged: TerminalSession = { ...current };
+  (Object.keys(incoming) as Array<keyof TerminalSession>).forEach((key) => {
+    const value = incoming[key];
+    if (typeof value !== "undefined") {
+      merged[key] = value;
+    }
+  });
+  return merged;
+}
+
 function durationLabel(durationMS: number | undefined) {
   const value = Number(durationMS || 0);
   if (!Number.isFinite(value) || value <= 0) {
@@ -302,6 +332,53 @@ function runtimeNote(status: string, copy: TerminalCopy): string {
     default:
       return "";
   }
+}
+
+function sessionStatusClassName(status: string) {
+  switch (normalizeStatus(status)) {
+    case "busy":
+      return "status-pending";
+    case "failed":
+      return "status-failed";
+    case "exited":
+    case "interrupted":
+      return "status-neutral";
+    default:
+      return "status-success";
+  }
+}
+
+function stepStatusClassName(status: string) {
+  const normalized = normalizeText(status).toLowerCase();
+  if (["busy", "running", "starting"].includes(normalized)) {
+    return "status-running";
+  }
+  if (["failed", "error"].includes(normalized)) {
+    return "status-failed";
+  }
+  if (["interrupted", "cancelled", "canceled", "exited"].includes(normalized)) {
+    return "status-interrupted";
+  }
+  if (["completed", "success", "ready", "done"].includes(normalized) || !normalized || normalized === "-") {
+    return "status-success";
+  }
+  return "status-neutral";
+}
+
+function sessionLastOutputLabel(
+  session: TerminalSession | null,
+  copy: TerminalCopy,
+): string {
+  const outputAt = parseTimestamp(session?.last_output_at);
+  const fallbackAt = Math.max(
+    parseTimestamp(session?.updated_at),
+    parseTimestamp(session?.created_at),
+  );
+  const labelAt = outputAt > 0 ? outputAt : fallbackAt;
+  if (labelAt <= 0) {
+    return copy.noOutputMeta;
+  }
+  return copy.lastOutput(formatDateTime(labelAt));
 }
 
 function syncJumpState(
@@ -357,6 +434,210 @@ function syncJumpState(
   });
 }
 
+function MarkdownHTML({ html }: { html: string }) {
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+function renderMarkdownToHTML(value: string) {
+  const normalized = String(value ?? "").replace(/\r\n?/g, "\n");
+  if (!normalized.trim()) {
+    return "";
+  }
+  const tokens: Array<{ type: "markdown" | "code"; content: string; language?: string }> = [];
+  const fencePattern = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
+  let cursor = 0;
+  let match = fencePattern.exec(normalized);
+  while (match) {
+    if (match.index > cursor) {
+      tokens.push({ type: "markdown", content: normalized.slice(cursor, match.index) });
+    }
+    tokens.push({
+      type: "code",
+      language: String(match[1] || "").trim().toLowerCase(),
+      content: String(match[2] || "").replace(/\n$/, ""),
+    });
+    cursor = match.index + match[0].length;
+    match = fencePattern.exec(normalized);
+  }
+  if (cursor < normalized.length) {
+    tokens.push({ type: "markdown", content: normalized.slice(cursor) });
+  }
+  return tokens
+    .map((token) => {
+      if (token.type === "code") {
+        const languageClass = token.language ? ` class="language-${escapeHTML(token.language)}"` : "";
+        return `<pre class="chat-md-pre"><code${languageClass}>${escapeHTML(token.content)}</code></pre>`;
+      }
+      return renderMarkdownBlocks(token.content);
+    })
+    .join("");
+}
+
+function renderMarkdownBlocks(content: string) {
+  const lines = String(content || "").split("\n");
+  const html: string[] = [];
+  let paragraphLines: string[] = [];
+  let quoteLines: string[] = [];
+  let listType = "";
+  let listItems: string[] = [];
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) {
+      return;
+    }
+    html.push(`<p>${paragraphLines.map((line) => renderMarkdownInline(line)).join("<br>")}</p>`);
+    paragraphLines = [];
+  };
+
+  const flushQuote = () => {
+    if (!quoteLines.length) {
+      return;
+    }
+    html.push(`<blockquote>${renderMarkdownBlocks(quoteLines.join("\n"))}</blockquote>`);
+    quoteLines = [];
+  };
+
+  const flushList = () => {
+    if (!listType || !listItems.length) {
+      listType = "";
+      listItems = [];
+      return;
+    }
+    html.push(
+      `<${listType}>${listItems
+        .map((item) => `<li>${renderMarkdownInline(item)}</li>`)
+        .join("")}</${listType}>`,
+    );
+    listType = "";
+    listItems = [];
+  };
+
+  const flushAll = () => {
+    flushParagraph();
+    flushQuote();
+    flushList();
+  };
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      flushAll();
+      continue;
+    }
+
+    if (/^>\s?/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      quoteLines.push(trimmed.replace(/^>\s?/, ""));
+      continue;
+    }
+    flushQuote();
+
+    const unorderedMatch = /^[-*+]\s+(.+)$/.exec(trimmed);
+    if (unorderedMatch) {
+      flushParagraph();
+      if (listType && listType !== "ul") {
+        flushList();
+      }
+      listType = "ul";
+      listItems.push(unorderedMatch[1]);
+      continue;
+    }
+
+    const orderedMatch = /^(\d+)\.\s+(.+)$/.exec(trimmed);
+    if (orderedMatch) {
+      flushParagraph();
+      if (listType && listType !== "ol") {
+        flushList();
+      }
+      listType = "ol";
+      listItems.push(orderedMatch[2]);
+      continue;
+    }
+
+    flushList();
+
+    const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
+    if (headingMatch) {
+      flushParagraph();
+      const level = headingMatch[1].length;
+      html.push(`<h${level}>${renderMarkdownInline(headingMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      flushParagraph();
+      html.push("<hr>");
+      continue;
+    }
+
+    paragraphLines.push(trimmed);
+  }
+
+  flushAll();
+  return html.join("");
+}
+
+function renderMarkdownInline(content: string) {
+  let rendered = escapeHTML(String(content ?? ""));
+  const placeholders: string[] = [];
+  const reserve = (html: string) => {
+    const token = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(html);
+    return token;
+  };
+
+  rendered = rendered.replace(/`([^`]+)`/g, (_, code: string) =>
+    reserve(`<code class="chat-md-inline-code">${escapeHTML(code)}</code>`),
+  );
+  rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, url: string) => {
+    const href = sanitizeMarkdownURL(url);
+    if (!href) {
+      return renderMarkdownInline(label);
+    }
+    return reserve(
+      `<a href="${href}" target="_blank" rel="noreferrer noopener">${renderMarkdownInline(label)}</a>`,
+    );
+  });
+  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  rendered = rendered.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+  rendered = rendered.replace(/(^|[\s(>])\*([^*\n]+)\*(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
+  rendered = rendered.replace(/(^|[\s(>])_([^_\n]+)_(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
+
+  return rendered.replace(/\u0000(\d+)\u0000/g, (_, index: string) => placeholders[Number(index)] || "");
+}
+
+function sanitizeMarkdownURL(rawURL: string) {
+  const value = String(rawURL || "").trim();
+  if (!value) {
+    return "";
+  }
+  const normalized = value.replace(/^<|>$/g, "");
+  if (/^(https?:|mailto:)/i.test(normalized) || normalized.startsWith("/") || normalized.startsWith("#")) {
+    return escapeHTML(normalized);
+  }
+  return "";
+}
+
+function escapeHTML(value: string) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => {
+    if (char === "&") return "&amp;";
+    if (char === "<") return "&lt;";
+    if (char === ">") return "&gt;";
+    if (char === '"') return "&quot;";
+    return "&#39;";
+  });
+}
+
+function CopyIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+  );
+}
+
 export function ReactManagedTerminalRouteBody() {
   const apiClient = useMemo(() => createAPIClient(), []);
   const [language, setLanguage] = useState<"en" | "zh">(() => resolveLanguage());
@@ -371,6 +652,9 @@ export function ReactManagedTerminalRouteBody() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [inputValue, setInputValue] = useState("");
+  const [scrollingActive, setScrollingActive] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [pageHidden, setPageHidden] = useState(() => document.hidden);
   const [expandedTurns, setExpandedTurns] = useState<Record<string, boolean>>({});
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
   const [stepDetails, setStepDetails] = useState<Record<string, TerminalStepDetail>>({});
@@ -382,14 +666,64 @@ export function ReactManagedTerminalRouteBody() {
     showBottom: false,
   });
   const chatScreenRef = useRef<HTMLDivElement | null>(null);
+  const scrollIdleTimerRef = useRef<number | null>(null);
+  const jumpSyncFrameRef = useRef<number | null>(null);
+  const scrollRestoreSnapshotRef = useRef<{
+    top: number;
+    anchoredToBottom: boolean;
+  } | null>(null);
+  const draftPersistTimerRef = useRef<number | null>(null);
 
   const activeSession = sessions.find((session) => session.id === activeSessionID) || null;
   const turns = Array.isArray(activeSession?.turns) ? activeSession.turns : [];
+  const pollInterval = pageHidden
+    ? HIDDEN_POLL_INTERVAL_MS
+    : scrollingActive || inputFocused
+      ? INTERACTION_POLL_INTERVAL_MS
+      : POLL_INTERVAL_MS;
+
+  const captureScrollSnapshot = () => {
+    const node = chatScreenRef.current;
+    if (!node) {
+      scrollRestoreSnapshotRef.current = null;
+      return;
+    }
+    const remaining = Math.max(node.scrollHeight - node.clientHeight - node.scrollTop, 0);
+    scrollRestoreSnapshotRef.current = {
+      top: node.scrollTop,
+      anchoredToBottom: remaining <= SCROLL_BOTTOM_ANCHOR_THRESHOLD,
+    };
+  };
+
+  const restoreScrollSnapshot = () => {
+    const snapshot = scrollRestoreSnapshotRef.current;
+    const node = chatScreenRef.current;
+    if (!snapshot || !node) {
+      return;
+    }
+    node.scrollTop = snapshot.anchoredToBottom ? node.scrollHeight : snapshot.top;
+    scrollRestoreSnapshotRef.current = null;
+  };
+
+  const scheduleJumpStateSync = () => {
+    if (jumpSyncFrameRef.current !== null) {
+      return;
+    }
+    jumpSyncFrameRef.current = window.requestAnimationFrame(() => {
+      jumpSyncFrameRef.current = null;
+      syncJumpState(chatScreenRef.current, setJumpState);
+    });
+  };
 
   const refreshList = async () => {
     const payload = await apiClient.get<TerminalSessionsResponse>("/api/terminal/sessions");
-    const nextSessions = sortSessions(Array.isArray(payload.items) ? payload.items : []);
-    setSessions(nextSessions);
+    const nextSessions = Array.isArray(payload.items) ? payload.items : [];
+    setSessions((current) => {
+      const currentMap = new Map(current.map((session) => [session.id, session]));
+      return sortSessions(
+        nextSessions.map((session) => mergeSessionSnapshot(currentMap.get(session.id), session)),
+      );
+    });
     setActiveSessionID((current) => {
       if (nextSessions.some((session) => session.id === current)) {
         return current;
@@ -413,7 +747,11 @@ export function ReactManagedTerminalRouteBody() {
     setSessions((current) => {
       const existing = current.some((session) => session.id === sessionID);
       const merged = existing
-        ? current.map((session) => (session.id === sessionID ? nextSession : session))
+        ? current.map((session) =>
+            session.id === sessionID
+              ? mergeSessionSnapshot(session, nextSession)
+              : session,
+          )
         : [nextSession, ...current];
       return sortSessions(merged);
     });
@@ -446,6 +784,12 @@ export function ReactManagedTerminalRouteBody() {
       attributeFilter: ["lang"],
     });
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => setPageHidden(document.hidden);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   useEffect(() => {
@@ -486,8 +830,21 @@ export function ReactManagedTerminalRouteBody() {
     if (!activeSessionID) {
       return;
     }
-    window.localStorage.setItem(`terminal:${activeSessionID}`, inputValue);
-  }, [activeSessionID, inputValue]);
+    if (draftPersistTimerRef.current !== null) {
+      window.clearTimeout(draftPersistTimerRef.current);
+    }
+    const persistDelay = scrollingActive ? SCROLL_IDLE_MS : 0;
+    draftPersistTimerRef.current = window.setTimeout(() => {
+      window.localStorage.setItem(`terminal:${activeSessionID}`, inputValue);
+      draftPersistTimerRef.current = null;
+    }, persistDelay);
+    return () => {
+      if (draftPersistTimerRef.current !== null) {
+        window.clearTimeout(draftPersistTimerRef.current);
+        draftPersistTimerRef.current = null;
+      }
+    };
+  }, [activeSessionID, inputValue, scrollingActive]);
 
   useEffect(() => {
     if (!activeSessionID) {
@@ -501,11 +858,12 @@ export function ReactManagedTerminalRouteBody() {
       return;
     }
     const timer = window.setTimeout(() => {
+      captureScrollSnapshot();
       void refreshList();
       void refreshActiveSession(activeSessionID);
-    }, POLL_INTERVAL_MS);
+    }, pollInterval);
     return () => window.clearTimeout(timer);
-  }, [activeSession, activeSessionID, sessions]);
+  }, [activeSession, activeSessionID, pollInterval, sessions]);
 
   useEffect(() => {
     setExpandedTurns((current) => {
@@ -528,12 +886,24 @@ export function ReactManagedTerminalRouteBody() {
     });
   }, [turns]);
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      syncJumpState(chatScreenRef.current, setJumpState);
-    });
-    return () => window.cancelAnimationFrame(frame);
+  useLayoutEffect(() => {
+    restoreScrollSnapshot();
+    scheduleJumpStateSync();
   }, [activeSessionID, turns, expandedTurns, expandedSteps, stepDetails, metaOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollIdleTimerRef.current !== null) {
+        window.clearTimeout(scrollIdleTimerRef.current);
+      }
+      if (jumpSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(jumpSyncFrameRef.current);
+      }
+      if (draftPersistTimerRef.current !== null) {
+        window.clearTimeout(draftPersistTimerRef.current);
+      }
+    };
+  }, []);
 
   const selectSession = async (sessionID: string) => {
     setActiveSessionID(sessionID);
@@ -659,7 +1029,15 @@ export function ReactManagedTerminalRouteBody() {
   };
 
   const handleScroll = () => {
-    syncJumpState(chatScreenRef.current, setJumpState);
+    setScrollingActive(true);
+    if (scrollIdleTimerRef.current !== null) {
+      window.clearTimeout(scrollIdleTimerRef.current);
+    }
+    scrollIdleTimerRef.current = window.setTimeout(() => {
+      setScrollingActive(false);
+      scrollIdleTimerRef.current = null;
+    }, SCROLL_IDLE_MS);
+    scheduleJumpStateSync();
   };
 
   const scrollToTurn = (turnID: string) => {
@@ -669,13 +1047,17 @@ export function ReactManagedTerminalRouteBody() {
       return;
     }
     chatNode.scrollTo({ top: Math.max(turnNode.offsetTop - 12, 0), behavior: "smooth" });
-    window.requestAnimationFrame(() => syncJumpState(chatNode, setJumpState));
+    scheduleJumpStateSync();
   };
 
   const activeStatus = normalizeStatus(activeSession?.status || "");
   const activeNote = runtimeNote(activeSession?.status || "", copy);
+  const runtimeDetail = String(activeSession?.error_message || "").trim();
+  const composerNote = [activeNote, runtimeDetail].filter(Boolean).join(" | ");
   const canClose = Boolean(activeSession && isLiveStatus(activeSession.status || ""));
+  const canInput = !activeSession || activeStatus !== "busy";
   const isWorkspaceLive = canClose ? "true" : "false";
+  const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
 
   return (
     <section className="terminal-view" data-terminal-view>
@@ -718,34 +1100,43 @@ export function ReactManagedTerminalRouteBody() {
           <div className="terminal-session-list" data-terminal-session-list>
             {loadError ? <p className="route-empty-panel">{loadError}</p> : null}
             {!loadError && !loading && sessions.length === 0 ? (
-              <p className="route-empty-panel">{copy.empty}</p>
+              <p className="route-empty-panel terminal-session-empty">{copy.empty}</p>
             ) : null}
             {sessions.map((session) => {
               const active = session.id === activeSessionID;
-              const statusLabel = renderStatus(session.status || "", copy);
               return (
                 <div
                   key={session.id}
-                  className={active ? "terminal-session-card active" : "terminal-session-card"}
+                  className={`route-card terminal-session-card${active ? " active" : ""}`}
+                  data-terminal-session-card={session.id}
+                  data-terminal-session-status={normalizeStatus(session.status || "")}
                 >
                   <button
-                    className="terminal-session-card-main"
+                    className={`route-card-button terminal-session-select${active ? " active" : ""}`}
                     type="button"
                     data-terminal-session-select={session.id}
+                    aria-current={active ? "true" : undefined}
                     onClick={() => void selectSession(session.id)}
                   >
-                    <span className="terminal-session-card-title">
-                      {normalizeText(session.title || session.id)}
-                    </span>
-                    <span className="terminal-session-card-meta">{statusLabel}</span>
-                    <span className="terminal-session-card-meta">
-                      {formatTimeLabel(session.updated_at || session.created_at || Date.now())}
+                    <span className="terminal-session-head">
+                      <span className="route-card-title-copy">
+                        <span className="terminal-session-title">
+                          {normalizeText(session.title || session.id)}
+                        </span>
+                        <span className="terminal-session-meta">
+                          {sessionLastOutputLabel(session, copy)}
+                        </span>
+                      </span>
+                      <span className={`task-summary-status ${sessionStatusClassName(session.status || "")}`}>
+                        {renderStatus(session.status || "", copy)}
+                      </span>
                     </span>
                   </button>
                   <button
-                    className="terminal-session-card-delete"
+                    className="terminal-session-list-delete"
                     type="button"
                     data-terminal-delete-session={session.id}
+                    aria-label={copy.delete}
                     disabled={deletingSessionID === session.id}
                     onClick={() => void deleteSession(session.id)}
                   >
@@ -765,279 +1156,398 @@ export function ReactManagedTerminalRouteBody() {
         data-terminal-workspace-status={activeStatus}
         data-terminal-workspace-live={isWorkspaceLive}
       >
-        <div className="terminal-workspace-row terminal-workspace-title-row">
-          <div className="terminal-workspace-copy">
-            <p className="route-hero-eyebrow">{copy.sessionRuntime}</p>
-            <h3>{activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}</h3>
-            <p>{activeSession ? normalizeText(activeSession.id) : copy.empty}</p>
-          </div>
-          <div className="terminal-workspace-actions">
-            <button
-              className="pane-action"
-              type="button"
-              data-terminal-session-pane-toggle
-              onClick={() => setSessionSheetOpen((current) => !current)}
-            >
-              {copy.sessions}
-            </button>
-            <button
-              className="pane-action"
-              type="button"
-              data-terminal-meta-toggle
-              aria-expanded={metaOpen}
-              onClick={() => setMetaOpen((current) => !current)}
-            >
-              {copy.details}
-            </button>
-            <button
-              className="pane-action"
-              type="button"
-              data-terminal-close
-              disabled={!canClose || closing}
-              onClick={() => void closeSession()}
-            >
-              {copy.close}
-            </button>
-            <button
-              className="pane-action"
-              type="button"
-              data-terminal-delete
-              disabled={!activeSession || deletingSessionID === activeSession.id}
-              onClick={() => activeSession && void deleteSession(activeSession.id)}
-            >
-              {copy.delete}
-            </button>
-          </div>
-        </div>
-
-        {activeSession ? (
-          <>
-            <div className="terminal-workspace-row">
-              <div className="terminal-runtime-state" data-terminal-runtime-state={activeStatus}>
-                <span className="terminal-runtime-state-dot"></span>
-                <span>{renderStatus(activeSession.status || "", copy)}</span>
+        <div className="terminal-workspace-body">
+          <header className="terminal-workspace-head">
+            <div className="terminal-workspace-row terminal-workspace-title-row">
+              <div className="terminal-workspace-copy">
+                <span className="terminal-workspace-eyebrow">{copy.sessionRuntime}</span>
+                <h4>{activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}</h4>
+                <span className="terminal-workspace-subcopy">
+                  {activeSession ? sessionLastOutputLabel(activeSession, copy) : copy.empty}
+                </span>
               </div>
-              <span className="context-pill">
-                {copy.updatedAt}: {formatTimeLabel(activeSession.updated_at || activeSession.created_at || Date.now())}
-              </span>
+              {activeSession ? (
+                <div className="terminal-runtime-state" data-terminal-runtime-state={activeStatus}>
+                  <span className="terminal-runtime-state-dot"></span>
+                  <span className="terminal-runtime-state-text">
+                    {renderStatus(activeSession.status || "", copy)}
+                  </span>
+                </div>
+              ) : null}
+              <div className="terminal-workspace-actions">
+                <button
+                  className="terminal-inline-button is-quiet"
+                  type="button"
+                  data-terminal-session-pane-toggle
+                  aria-expanded={sessionSheetOpen}
+                  onClick={() => setSessionSheetOpen((current) => !current)}
+                >
+                  {copy.sessions}
+                </button>
+                <button
+                  className="terminal-inline-button"
+                  type="button"
+                  data-terminal-meta-toggle
+                  aria-expanded={metaOpen}
+                  disabled={!activeSession}
+                  onClick={() => setMetaOpen((current) => !current)}
+                >
+                  {copy.details}
+                </button>
+                <button
+                  className="terminal-session-close"
+                  type="button"
+                  data-terminal-close
+                  disabled={!canClose || closing}
+                  onClick={() => void closeSession()}
+                >
+                  {copy.close}
+                </button>
+                <button
+                  className="terminal-session-delete"
+                  type="button"
+                  data-terminal-delete
+                  disabled={!activeSession || deletingSessionID === activeSession.id}
+                  onClick={() => activeSession && void deleteSession(activeSession.id)}
+                >
+                  {copy.delete}
+                </button>
+              </div>
             </div>
 
-            {activeNote ? (
-              <div className="terminal-runtime-note" data-terminal-runtime-note>
-                {activeNote}
-              </div>
-            ) : null}
-
-            {metaOpen ? (
-              <div className="route-surface">
-                <div className="terminal-workspace-row">
-                  <strong>{copy.metadata}</strong>
-                </div>
+            {activeSession && metaOpen ? (
+              <section className="terminal-meta-panel" data-terminal-meta-panel>
                 <RouteFieldRow label={copy.session} value={activeSession.id} copyLabel={copy.session} mono />
                 <RouteFieldRow label={copy.shell} value={activeSession.shell} copyLabel={copy.shell} mono />
-                <RouteFieldRow label={copy.path} value={activeSession.working_dir} copyLabel={copy.path} mono />
+                <RouteFieldRow label={copy.path} value={activeSession.working_dir} copyLabel={copy.path} mono multiline />
                 <RouteFieldRow label={copy.status} value={renderStatus(activeSession.status || "", copy)} copyLabel={copy.status} />
                 <RouteFieldRow label={copy.updatedAt} value={formatDateTime(activeSession.updated_at || activeSession.created_at)} copyLabel={copy.updatedAt} />
-              </div>
+              </section>
             ) : null}
+          </header>
 
-            <div className="terminal-chat-shell">
-              <div
-                className="terminal-chat-screen"
-                data-terminal-chat-screen
-                ref={chatScreenRef}
-                onScroll={handleScroll}
-              >
-                {turns.length === 0 ? (
-                  <div className="route-empty-panel">{loading ? copy.loading : copy.noOutput}</div>
+          <section className="terminal-console-panel" data-terminal-console-panel>
+            <div
+              className="terminal-chat-screen"
+              data-terminal-chat-screen
+              data-terminal-chat-status={activeStatus}
+              ref={chatScreenRef}
+              onScroll={handleScroll}
+            >
+              <div className="terminal-log-tree">
+                {!activeSession ? (
+                  <div className="terminal-log-empty">{loading ? copy.loading : copy.noSession}</div>
+                ) : turns.length === 0 ? (
+                  <div className="terminal-log-empty">{loading ? copy.loading : copy.noOutput}</div>
                 ) : (
                   turns.map((turn) => {
-                    const steps = Array.isArray(turn.steps) ? turn.steps : [];
-                    const processOpen = expandedTurns[turn.id] ?? false;
-                    return (
-                      <article key={turn.id} className="terminal-turn-card" data-terminal-turn={turn.id}>
-                        <div className="terminal-turn-head">
-                          <div className="terminal-turn-prompt-wrap">
-                            <strong className="terminal-turn-prompt">{turn.prompt}</strong>
-                            <span className="terminal-turn-meta">
-                              {renderStatus(turn.status, copy)} · {formatTimeLabel(turn.started_at || turn.finished_at || Date.now())}
-                            </span>
-                          </div>
-                          <span className="context-pill">{durationLabel(turn.duration_ms)}</span>
-                        </div>
+                      const steps = Array.isArray(turn.steps) ? turn.steps : [];
+                      const processOpen = expandedTurns[turn.id] ?? false;
+                      const hasProcess = steps.length > 0 || normalizeStatus(turn.status || "") === "busy";
+                      return (
+                        <article key={turn.id} className="terminal-turn-card" data-terminal-turn={turn.id}>
+                          {normalizeText(turn.prompt) !== "-" ? (
+                            <div className="terminal-log-row kind-command terminal-turn-prompt">
+                              <div className="terminal-log-main">
+                                <span className="terminal-log-text">{turn.prompt}</span>
+                              </div>
+                              <span className="terminal-log-time">
+                                {formatTimeLabel(turn.started_at || turn.finished_at || Date.now())}
+                              </span>
+                            </div>
+                          ) : null}
 
-                        {steps.length ? (
-                          <>
-                            <button
-                              className="terminal-process-toggle"
-                              type="button"
-                              data-terminal-process-toggle={turn.id}
-                              aria-expanded={processOpen}
-                              onClick={() => toggleTurn(turn.id)}
-                            >
-                              <span>{copy.process}</span>
-                              <span>{copy.processSteps(steps.length)}</span>
-                            </button>
-                            <div className="terminal-process-body" hidden={!processOpen}>
-                              {steps.map((step) => {
-                                const key = stepKey(turn.id, step.id);
-                                const detail = stepDetails[key];
-                                const error = stepErrors[key];
-                                const expanded = Boolean(expandedSteps[key]);
-                                return (
-                                  <div key={step.id} className="terminal-step-card" data-terminal-step-item={step.id}>
-                                    <button
-                                      className="terminal-step-toggle"
-                                      type="button"
-                                      data-terminal-step-toggle={step.id}
-                                      aria-expanded={expanded}
-                                      onClick={() => void toggleStep(turn.id, step.id, Boolean(step.has_detail))}
-                                    >
-                                      <span>{step.title || step.type}</span>
-                                      <span>{durationLabel(step.duration_ms)}</span>
-                                    </button>
-                                    <div className="terminal-step-body" hidden={!expanded}>
-                                      {step.preview ? (
-                                        <p className="terminal-step-preview">
-                                          <strong>{copy.preview}</strong>
-                                          <span>{step.preview}</span>
-                                        </p>
-                                      ) : null}
-                                      {error ? <p className="session-error">{error}</p> : null}
-                                      {detail?.blocks?.map((block, index) => (
-                                        <div key={`${step.id}-${index}`} className="terminal-step-block">
-                                          {block.title ? <strong>{block.title}</strong> : null}
-                                          {block.file ? (
-                                            <p className="terminal-step-file">
-                                              {block.file}
-                                              {block.start_line ? `:${block.start_line}` : ""}
-                                            </p>
-                                          ) : null}
-                                          {block.content ? (
-                                            <pre className="terminal-step-content">
-                                              <code>{block.content}</code>
-                                            </pre>
-                                          ) : null}
-                                        </div>
-                                      ))}
+                          {hasProcess || normalizeText(turn.final_output) !== "-" ? (
+                            <div className="terminal-turn-surface">
+                              {hasProcess ? (
+                                <section
+                                  className={`terminal-process-shell${processOpen ? "" : " is-collapsed"}`}
+                                  data-terminal-process-shell={turn.id}
+                                >
+                                  <button
+                                    className="terminal-process-toggle"
+                                    type="button"
+                                    data-terminal-process-toggle={turn.id}
+                                    aria-expanded={processOpen}
+                                    onClick={() => toggleTurn(turn.id)}
+                                  >
+                                    <span className="terminal-step-toggle-icon" aria-hidden="true">
+                                      {processOpen ? "v" : ">"}
+                                    </span>
+                                    <span className="terminal-process-copy">
+                                      <span className="terminal-process-title">{copy.process}</span>
+                                      <span className="terminal-process-summary">
+                                        {copy.processSteps(steps.length)}
+                                      </span>
+                                    </span>
+                                    <span className="terminal-process-meta">
+                                      {durationLabel(turn.duration_ms)}
+                                    </span>
+                                  </button>
+                                  <div className="terminal-process-body" hidden={!processOpen}>
+                                    {steps.length ? (
+                                      steps.map((step) => {
+                                        const key = stepKey(turn.id, step.id);
+                                        const detail = stepDetails[key];
+                                        const error = stepErrors[key];
+                                        const expanded = Boolean(expandedSteps[key]);
+                                        const fallbackContent = String(step.preview || "").trim();
+                                        return (
+                                          <article
+                                            key={step.id}
+                                            className="terminal-step-item"
+                                            data-terminal-step-item={step.id}
+                                          >
+                                            <button
+                                              className="terminal-step-toggle"
+                                              type="button"
+                                              data-terminal-step-toggle={step.id}
+                                              aria-expanded={expanded}
+                                              onClick={() =>
+                                                void toggleStep(turn.id, step.id, Boolean(step.has_detail))
+                                              }
+                                            >
+                                              <span className="terminal-step-toggle-icon" aria-hidden="true">
+                                                {expanded ? "v" : ">"}
+                                              </span>
+                                              <span className="terminal-step-summary">
+                                                <span className="terminal-step-title">
+                                                  {normalizeText(step.preview || step.title || step.type)}
+                                                </span>
+                                              </span>
+                                              <span className="terminal-step-meta">
+                                                <span className="terminal-step-duration">
+                                                  {durationLabel(step.duration_ms)}
+                                                </span>
+                                                <span
+                                                  className={`terminal-step-status ${stepStatusClassName(step.status || "")}`}
+                                                >
+                                                  {renderStatus(step.status || "", copy)}
+                                                </span>
+                                              </span>
+                                            </button>
+                                            <div className="terminal-step-body" hidden={!expanded}>
+                                              <div className="terminal-step-detail">
+                                                {error ? (
+                                                  <div className="terminal-step-detail-state is-error">{error}</div>
+                                                ) : null}
+                                                {!error && detail?.blocks?.map((block, index) => {
+                                                  const blockType = String(block.type || "text")
+                                                    .trim()
+                                                    .toLowerCase();
+                                                  const blockTitle = String(block.title || "").trim();
+                                                  const blockFile = String(block.file || "").trim();
+                                                  const blockStatus = String(block.status || "").trim();
+                                                  const content = String(block.content || "");
+                                                  return (
+                                                    <section
+                                                      key={`${step.id}-${index}`}
+                                                      className={`route-surface-dark terminal-rich-block type-${blockType || "text"}`}
+                                                    >
+                                                      {blockTitle || blockFile || blockStatus ? (
+                                                        <div className="terminal-rich-head">
+                                                          <div className="terminal-rich-copy">
+                                                            {blockTitle ? <strong>{blockTitle}</strong> : null}
+                                                            {blockFile ? (
+                                                              <span>
+                                                                {blockFile}
+                                                                {block.start_line ? `:${block.start_line}` : ""}
+                                                              </span>
+                                                            ) : null}
+                                                          </div>
+                                                          {blockStatus ? (
+                                                            <div className="terminal-rich-meta">
+                                                              <span
+                                                                className={`terminal-step-status ${stepStatusClassName(blockStatus)}`}
+                                                              >
+                                                                {renderStatus(blockStatus, copy)}
+                                                              </span>
+                                                            </div>
+                                                          ) : null}
+                                                        </div>
+                                                      ) : null}
+                                                      <pre
+                                                        className={`terminal-rich-pre terminal-step-content${blockType === "diff" ? " terminal-diff-block" : ""}`}
+                                                      >
+                                                        <code>{content}</code>
+                                                      </pre>
+                                                    </section>
+                                                  );
+                                                })}
+                                                {!error && !detail?.blocks?.length && fallbackContent ? (
+                                                  <section className="route-surface-dark terminal-rich-block type-terminal">
+                                                    <pre className="terminal-rich-pre terminal-step-content">
+                                                      <code>{fallbackContent}</code>
+                                                    </pre>
+                                                  </section>
+                                                ) : null}
+                                                {!error &&
+                                                !detail?.blocks?.length &&
+                                                !fallbackContent &&
+                                                !step.has_detail ? (
+                                                  <div className="terminal-step-detail-state">
+                                                    {copy.noProcess}
+                                                  </div>
+                                                ) : null}
+                                              </div>
+                                            </div>
+                                          </article>
+                                        );
+                                      })
+                                    ) : (
+                                      <div className="terminal-process-empty">
+                                        {normalizeStatus(turn.status || "") === "busy"
+                                          ? copy.loading
+                                          : copy.noProcess}
+                                      </div>
+                                    )}
+                                  </div>
+                                </section>
+                              ) : null}
+
+                              {normalizeText(turn.final_output) !== "-" ? (
+                                <div
+                                  className="msg assistant terminal-final-output terminal-turn-output"
+                                  data-terminal-final-output={turn.id}
+                                >
+                                  <div className="msg-bubble">
+                                    <div className="terminal-final-text">
+                                      <div className="assistant-message-toolbar terminal-final-toolbar">
+                                        <button
+                                          className="route-field-copy assistant-message-copy terminal-final-copy"
+                                          type="button"
+                                          data-copy-value={turn.final_output}
+                                          title={copy.copy}
+                                          aria-label={copy.copy}
+                                        >
+                                          <CopyIcon />
+                                        </button>
+                                      </div>
+                                      <div className="terminal-final-rendered">
+                                        <MarkdownHTML html={renderMarkdownToHTML(turn.final_output || "")} />
+                                      </div>
                                     </div>
                                   </div>
-                                );
-                              })}
+                                </div>
+                              ) : null}
                             </div>
-                          </>
-                        ) : (
-                          <p className="terminal-process-empty">{copy.noProcess}</p>
-                        )}
-
-                        {turn.final_output ? (
-                          <div className="terminal-final-output" data-terminal-final-output={turn.id}>
-                            <pre>{turn.final_output}</pre>
-                          </div>
-                        ) : null}
-                      </article>
-                    );
+                          ) : null}
+                        </article>
+                      );
                   })
                 )}
               </div>
-
-              <div className="terminal-jump-cluster" aria-label="Turn navigation">
-                <button
-                  className={jumpState.showTop ? "terminal-jump-control terminal-jump-top is-visible" : "terminal-jump-control terminal-jump-top"}
-                  type="button"
-                  data-terminal-jump-top
-                  aria-label={copy.top}
-                  title={copy.top}
-                  onClick={() => {
-                    const node = chatScreenRef.current;
-                    if (node) {
-                      node.scrollTo({ top: 0, behavior: "smooth" });
-                    }
-                  }}
-                >
-                  <span className="terminal-jump-control-icon" aria-hidden="true">↑↑</span>
-                </button>
-                <button
-                  className={jumpState.previousTurnID ? "terminal-jump-control terminal-jump-prev is-visible" : "terminal-jump-control terminal-jump-prev"}
-                  type="button"
-                  data-terminal-jump-prev
-                  data-terminal-jump-target={jumpState.previousTurnID}
-                  aria-label={copy.prev}
-                  title={copy.prev}
-                  onClick={() => scrollToTurn(jumpState.previousTurnID)}
-                >
-                  <span className="terminal-jump-control-icon" aria-hidden="true">↑</span>
-                </button>
-                <button
-                  className={jumpState.nextTurnID ? "terminal-jump-control terminal-jump-next is-visible" : "terminal-jump-control terminal-jump-next"}
-                  type="button"
-                  data-terminal-jump-next
-                  data-terminal-jump-target={jumpState.nextTurnID}
-                  aria-label={copy.next}
-                  title={copy.next}
-                  onClick={() => scrollToTurn(jumpState.nextTurnID)}
-                >
-                  <span className="terminal-jump-control-icon" aria-hidden="true">↓</span>
-                </button>
-                <button
-                  className={jumpState.showBottom ? "terminal-jump-control terminal-jump-bottom is-visible" : "terminal-jump-control terminal-jump-bottom"}
-                  type="button"
-                  data-terminal-jump-bottom
-                  aria-label={copy.bottom}
-                  title={copy.bottom}
-                  onClick={() => {
-                    const node = chatScreenRef.current;
-                    if (node) {
-                      node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-                    }
-                  }}
-                >
-                  <span className="terminal-jump-control-icon" aria-hidden="true">↓↓</span>
-                </button>
-              </div>
             </div>
-          </>
-        ) : (
-          <div className="route-empty-panel">{loading ? copy.loading : copy.noSession}</div>
-        )}
 
-        <footer className="terminal-composer-shell">
-          <form
-            className="composer"
-            data-terminal-input-form
-            data-composer-form="terminal-runtime"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitInput();
-            }}
-          >
-            <label className="sr-only" htmlFor="terminalRuntimeInput">
-              {copy.inputPlaceholder}
-            </label>
-            <textarea
-              id="terminalRuntimeInput"
-              value={inputValue}
-              className="terminal-composer-input"
-              placeholder={copy.inputPlaceholder}
-              data-terminal-input
-              data-composer-input="terminal-runtime"
-              onChange={(event) => setInputValue(event.target.value)}
-            ></textarea>
-            <div className="composer-actions">
-              <div className="composer-submit-bar">
-                <button
-                  type="submit"
-                  id="terminalSendButton"
-                  data-terminal-submit
-                  data-composer-submit="terminal-runtime"
-                  disabled={submitting}
-                >
-                  {submitting ? copy.sending : copy.send}
-                </button>
-              </div>
+            <div className="terminal-jump-cluster" aria-label="Turn navigation">
+              <button
+                className={jumpState.showTop ? "terminal-jump-control terminal-jump-top is-visible" : "terminal-jump-control terminal-jump-top"}
+                type="button"
+                data-terminal-jump-top
+                aria-label={copy.top}
+                title={copy.top}
+                onClick={() => {
+                  const node = chatScreenRef.current;
+                  if (node) {
+                    node.scrollTo({ top: 0, behavior: "smooth" });
+                  }
+                }}
+              >
+                <span className="terminal-jump-control-icon" aria-hidden="true">↑↑</span>
+              </button>
+              <button
+                className={jumpState.previousTurnID ? "terminal-jump-control terminal-jump-prev is-visible" : "terminal-jump-control terminal-jump-prev"}
+                type="button"
+                data-terminal-jump-prev
+                data-terminal-jump-target={jumpState.previousTurnID}
+                aria-label={copy.prev}
+                title={copy.prev}
+                onClick={() => scrollToTurn(jumpState.previousTurnID)}
+              >
+                <span className="terminal-jump-control-icon" aria-hidden="true">↑</span>
+              </button>
+              <button
+                className={jumpState.nextTurnID ? "terminal-jump-control terminal-jump-next is-visible" : "terminal-jump-control terminal-jump-next"}
+                type="button"
+                data-terminal-jump-next
+                data-terminal-jump-target={jumpState.nextTurnID}
+                aria-label={copy.next}
+                title={copy.next}
+                onClick={() => scrollToTurn(jumpState.nextTurnID)}
+              >
+                <span className="terminal-jump-control-icon" aria-hidden="true">↓</span>
+              </button>
+              <button
+                className={jumpState.showBottom ? "terminal-jump-control terminal-jump-bottom is-visible" : "terminal-jump-control terminal-jump-bottom"}
+                type="button"
+                data-terminal-jump-bottom
+                aria-label={copy.bottom}
+                title={copy.bottom}
+                onClick={() => {
+                  const node = chatScreenRef.current;
+                  if (node) {
+                    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+                  }
+                }}
+              >
+                <span className="terminal-jump-control-icon" aria-hidden="true">↓↓</span>
+              </button>
             </div>
-          </form>
-        </footer>
+          </section>
+
+          <footer className="terminal-composer-shell">
+            {composerNote ? (
+              <div
+                className="terminal-composer-note"
+                data-terminal-runtime-note
+                data-terminal-runtime-status={activeStatus}
+              >
+                {composerNote}
+              </div>
+            ) : null}
+
+            <form
+              className="terminal-chat-form"
+              data-terminal-input-form
+              data-composer-form="terminal-runtime"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitInput();
+              }}
+            >
+              <label className="sr-only" htmlFor="terminalRuntimeInput">
+                {inputPlaceholder}
+              </label>
+              <textarea
+                id="terminalRuntimeInput"
+                value={inputValue}
+                className="terminal-composer-input"
+                placeholder={inputPlaceholder}
+                data-terminal-input
+                data-composer-input="terminal-runtime"
+                disabled={!canInput || submitting}
+                onChange={(event) => setInputValue(event.target.value)}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+              ></textarea>
+              <button
+                type="submit"
+                id="terminalSendButton"
+                data-terminal-submit
+                data-composer-submit="terminal-runtime"
+                aria-label={submitting ? copy.sending : copy.send}
+                disabled={submitting || !canInput}
+              >
+                <span className="terminal-chat-form-button-icon" aria-hidden="true">↑</span>
+                <span className="sr-only">{submitting ? copy.sending : copy.send}</span>
+              </button>
+            </form>
+
+            {sessions.length > 0 ? (
+              <div className="terminal-composer-meta">{copy.sessionCount(sessions.length)}</div>
+            ) : null}
+          </footer>
+        </div>
       </section>
     </section>
   );

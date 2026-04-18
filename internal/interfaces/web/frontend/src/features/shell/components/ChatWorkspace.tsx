@@ -405,6 +405,7 @@ const RouteViewMount = memo(function RouteViewMount({
   const routeHeadingCopy = getLegacyRouteHeadingCopy(language, currentRoute);
   const copy = getLegacyShellCopy(language);
   const reactManagedRoute = isReactManagedRouteBody(currentRoute) ? currentRoute : null;
+  const showRouteHero = currentRoute !== "terminal";
 
   return (
     <section
@@ -414,13 +415,15 @@ const RouteViewMount = memo(function RouteViewMount({
       hidden={hidden}
       ref={routeViewRef}
     >
-      <div className="route-hero" data-shell-section={hidden ? undefined : "route-hero"}>
-        <div className="route-hero-copy">
-          <p className="route-hero-eyebrow">{copy.routeEyebrow}</p>
-          <strong id="routeTitle">{routeHeadingCopy.title}</strong>
-          <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
+      {showRouteHero ? (
+        <div className="route-hero" data-shell-section={hidden ? undefined : "route-hero"}>
+          <div className="route-hero-copy">
+            <p className="route-hero-eyebrow">{copy.routeEyebrow}</p>
+            <strong id="routeTitle">{routeHeadingCopy.title}</strong>
+            <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
+          </div>
         </div>
-      </div>
+      ) : null}
       <div
         id={LEGACY_SHELL_IDS.routeBody}
         className={routeBodyClassName}
