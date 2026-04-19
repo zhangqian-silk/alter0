@@ -39,7 +39,7 @@ func TestChatPageHandlerServesEmbeddedHTML(t *testing.T) {
 	if !strings.Contains(contentType, "text/html") {
 		t.Fatalf("expected text/html response, got %q", contentType)
 	}
-	if !strings.Contains(rec.Body.String(), "alter0 Chat") {
+	if !strings.Contains(rec.Body.String(), "Alter0 Chat") {
 		t.Fatalf("expected chat page content")
 	}
 }
@@ -87,6 +87,43 @@ func TestChatPageLoadsBridgeBundleAfterLegacyStyles(t *testing.T) {
 	}
 	if strings.Contains(html, `/legacy/chat.js`) {
 		t.Fatalf("expected chat page to stop loading legacy runtime script")
+	}
+}
+
+func TestChatPagesDefaultToEnglishDocumentLanguage(t *testing.T) {
+	sourceHTML := readWorkspaceFile(t, "frontend/index.html")
+	if !strings.Contains(sourceHTML, `<html lang="en">`) {
+		t.Fatalf("expected frontend source entry to default document language to English")
+	}
+
+	embeddedHTML := readEmbeddedAssetRaw(t, "static/dist/index.html")
+	if !strings.Contains(embeddedHTML, `<html lang="en">`) {
+		t.Fatalf("expected embedded chat page to default document language to English")
+	}
+
+	legacyHTML := readWorkspaceFile(t, "static/chat.html")
+	if !strings.Contains(legacyHTML, `<html lang="en">`) {
+		t.Fatalf("expected legacy chat page to default document language to English")
+	}
+}
+
+func TestLoginPageDefaultsToEnglishDocumentLanguage(t *testing.T) {
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	rec := httptest.NewRecorder()
+
+	server.renderLoginPage(rec, "", "/chat")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `<html lang="en">`) {
+		t.Fatalf("expected login page to default document language to English")
+	}
+	if !strings.Contains(rec.Body.String(), "Alter0 Login") {
+		t.Fatalf("expected login page title to expose Alter0 branding")
+	}
+	if !strings.Contains(rec.Body.String(), "Alter0 Console Login") {
+		t.Fatalf("expected login page heading to expose Alter0 branding")
 	}
 }
 
