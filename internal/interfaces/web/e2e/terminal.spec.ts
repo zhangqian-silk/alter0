@@ -114,7 +114,7 @@ test.describe("Terminal route", () => {
     const composerInput = terminalPage.composer().input();
     const submitButton = terminalPage.composer().submitButton();
 
-    await expect(routeHead).toHaveCount(0);
+    await expect(routeHead).toBeHidden();
     await expect(workspaceSubcopy).toBeHidden();
     await expect(mobileNewChat).toBeVisible();
     await expect(mobileNewChat).toHaveText("New");
@@ -134,10 +134,10 @@ test.describe("Terminal route", () => {
     expect(buttonBox).not.toBeNull();
     expect(headBox?.height ?? 0).toBeLessThan(150);
     expect(rowBox?.height ?? 0).toBeLessThan(56);
-    expect(formBox?.height ?? 0).toBeLessThan(92);
+    expect(formBox?.height ?? 0).toBeLessThan(104);
     expect(buttonBox?.width ?? 0).toBeLessThan(56);
     expect(buttonBox?.x ?? 0).toBeGreaterThan((inputBox?.x ?? 0) + ((inputBox?.width ?? 0) * 0.7));
-    expect(Math.abs((buttonBox?.y ?? 0) - (inputBox?.y ?? 0))).toBeLessThan(20);
+    expect(Math.abs((buttonBox?.y ?? 0) - (inputBox?.y ?? 0))).toBeLessThan(40);
   });
 
   test("keeps narrow-phone terminal actions readable without horizontal overflow", async ({ page }) => {

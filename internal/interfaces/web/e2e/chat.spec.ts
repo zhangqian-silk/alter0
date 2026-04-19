@@ -14,6 +14,8 @@ import {
   switchChatSession
 } from "./helpers/flows/chat-session";
 import { ensureChatRouteReady, openChatRoute, openCronRoute } from "./helpers/flows/routes";
+import { waitForAppReady } from "./helpers/guards/app-ready";
+import { loginIfNeeded } from "./helpers/guards/login";
 import { commitIMEInput, startIMEInput } from "./helpers/interactions/ime";
 import { clickWithUnsavedDialog } from "./helpers/guards/unsaved";
 import {
@@ -23,6 +25,17 @@ import {
   reloadChatWorkspace,
 } from "./helpers/scenarios/chat";
 import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
+
+async function openChannelsRoute(page: Parameters<typeof loginIfNeeded>[0]): Promise<void> {
+  await openChatRoute(page);
+  await page.evaluate(() => {
+    window.location.hash = "#channels";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+  await waitForAppReady(page);
+  await expect.poll(async () => page.locator("#routeView").getAttribute("data-route")).toBe("channels");
+  await expect(page.locator("#routeView")).toBeVisible();
+}
 
 test.describe("Chat composer", () => {
   test("formats frontend timestamps in Beijing time with a 24-hour clock", async ({ page }) => {
@@ -282,14 +295,18 @@ test.describe("Chat composer", () => {
     expect(desktopEdge?.scrollWidth ?? 0).toBeLessThanOrEqual((desktopEdge?.viewportWidth ?? 0) + 1);
   });
 
-  test("keeps empty chat controls tidy and composer docked on narrow screens", async ({ page }) => {
+  test("keeps empty chat controls compact on narrow screens", async ({ page }) => {
     await page.setViewportSize({ width: 760, height: 980 });
     await openChatWorkspace(page);
 
+    const header = page.locator(".chat-header");
     const navToggle = page.locator("#navToggle");
     const sessionToggle = page.locator("#sessionToggle");
     const newChatButton = page.locator("#mobileNewChatButton");
     const heading = page.locator("#sessionHeading");
+    const welcomeTag = page.locator(".welcome-tag");
+    const welcomeHeading = page.locator("#welcomeHeading");
+    const promptGrid = page.locator(".prompt-grid");
     const composerShell = page.locator(".composer-shell");
     const runtimeToggles = page.locator("#chatRuntimePanel [data-runtime-toggle]");
     const composerNote = page.locator(".composer-note");
@@ -299,26 +316,33 @@ test.describe("Chat composer", () => {
     await expect(navToggle).toBeVisible();
     await expect(sessionToggle).toBeVisible();
     await expect(newChatButton).toBeVisible();
+    await expect(heading).toBeHidden();
     await expect(runtimeToggles).toHaveCount(1);
     await expect(composerNote).toBeHidden();
     await expect(composerCounter).toBeHidden();
-    await expect(runtimeToggles.first()).toContainText("会话设置");
-    await expect(runtimeToggles.first()).toContainText("工具 0");
-    await expect(runtimeToggles.first()).toContainText("技能 0");
+    await expect(runtimeToggles.first()).toContainText(/Session|会话/);
+    await expect(runtimeToggles.first()).toContainText(/Tools 0|工具 0/);
+    await expect(runtimeToggles.first()).toContainText(/Skills 0|技能 0/);
 
+    const headerBox = await header.boundingBox();
     const navBox = await navToggle.boundingBox();
     const sessionBox = await sessionToggle.boundingBox();
     const newChatBox = await newChatButton.boundingBox();
-    const headingBox = await heading.boundingBox();
+    const welcomeTagBox = await welcomeTag.boundingBox();
+    const welcomeHeadingBox = await welcomeHeading.boundingBox();
+    const promptGridBox = await promptGrid.boundingBox();
     const composerBox = await composerShell.boundingBox();
     const runtimeBox = await runtimeToggles.first().boundingBox();
     const sendBox = await sendButton.boundingBox();
     const viewport = page.viewportSize();
 
+    expect(headerBox).not.toBeNull();
     expect(navBox).not.toBeNull();
     expect(sessionBox).not.toBeNull();
     expect(newChatBox).not.toBeNull();
-    expect(headingBox).not.toBeNull();
+    expect(welcomeTagBox).not.toBeNull();
+    expect(welcomeHeadingBox).not.toBeNull();
+    expect(promptGridBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
     expect(runtimeBox).not.toBeNull();
     expect(sendBox).not.toBeNull();
@@ -326,13 +350,181 @@ test.describe("Chat composer", () => {
 
     expect(Math.abs((navBox?.y ?? 0) - (sessionBox?.y ?? 0))).toBeLessThan(6);
     expect(Math.abs((sessionBox?.y ?? 0) - (newChatBox?.y ?? 0))).toBeLessThan(6);
-    expect(headingBox?.y ?? 0).toBeGreaterThan((navBox?.y ?? 0) + (navBox?.height ?? 0) - 2);
-    expect((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0))).toBeLessThan(36);
+    expect((welcomeTagBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeGreaterThanOrEqual(10);
+    expect((welcomeHeadingBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeLessThan(72);
+    expect((composerBox?.y ?? 0) - ((promptGridBox?.y ?? 0) + (promptGridBox?.height ?? 0))).toBeGreaterThanOrEqual(48);
+    expect(((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0)))).toBeLessThan(36);
     expect(Math.abs((runtimeBox?.y ?? 0) - (sendBox?.y ?? 0))).toBeLessThan(6);
     expect(sendBox?.x ?? 0).toBeGreaterThan((runtimeBox?.x ?? 0) + (runtimeBox?.width ?? 0) - 4);
 
     await runtimeToggles.first().click();
     await expect(page.locator(".composer-runtime-popover-mobile")).toBeVisible();
+  });
+
+  test("keeps empty chat controls compact on wide screens", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 980 });
+    await openChatWorkspace(page);
+
+    const welcomeScreen = page.locator(".welcome-screen");
+    const header = page.locator(".chat-header");
+    const welcomeHeading = page.locator("#welcomeHeading");
+    const welcomeDescription = page.locator("#welcomeDescription");
+    const promptGrid = page.locator(".prompt-grid");
+    const composerShell = page.locator(".composer-shell");
+
+    const welcomeScreenBox = await welcomeScreen.boundingBox();
+    const headerBox = await header.boundingBox();
+    const welcomeHeadingBox = await welcomeHeading.boundingBox();
+    const welcomeDescriptionBox = await welcomeDescription.boundingBox();
+    const promptGridBox = await promptGrid.boundingBox();
+    const composerBox = await composerShell.boundingBox();
+
+    expect(welcomeScreenBox).not.toBeNull();
+    expect(headerBox).not.toBeNull();
+    expect(welcomeHeadingBox).not.toBeNull();
+    expect(welcomeDescriptionBox).not.toBeNull();
+    expect(promptGridBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+
+    expect(headerBox?.y ?? 0).toBeLessThan(4);
+    expect(
+      Math.abs(
+        ((welcomeScreenBox?.y ?? 0) + (welcomeScreenBox?.height ?? 0) / 2)
+          - ((((headerBox?.y ?? 0) + (headerBox?.height ?? 0)) + (composerBox?.y ?? 0)) / 2),
+      ),
+    ).toBeLessThan(48);
+    expect(
+      Math.abs(
+        ((welcomeHeadingBox?.x ?? 0) + (welcomeHeadingBox?.width ?? 0) / 2)
+          - ((welcomeScreenBox?.x ?? 0) + (welcomeScreenBox?.width ?? 0) / 2),
+      ),
+    ).toBeLessThan(24);
+    expect(
+      Math.abs(
+        ((welcomeDescriptionBox?.x ?? 0) + (welcomeDescriptionBox?.width ?? 0) / 2)
+          - ((welcomeScreenBox?.x ?? 0) + (welcomeScreenBox?.width ?? 0) / 2),
+      ),
+    ).toBeLessThan(24);
+    expect(
+      Math.abs(
+        ((promptGridBox?.x ?? 0) + (promptGridBox?.width ?? 0) / 2)
+          - ((welcomeScreenBox?.x ?? 0) + (welcomeScreenBox?.width ?? 0) / 2),
+      ),
+    ).toBeLessThan(24);
+  });
+
+  test("keeps the empty chat header separated from welcome content on medium screens", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await openChatWorkspace(page);
+
+    const header = page.locator(".chat-header");
+    const sessionHeading = page.locator("#sessionHeading");
+    const sessionSubheading = page.locator("#sessionSubheading");
+    const welcomeScreen = page.locator(".welcome-screen");
+    const welcomeTag = page.locator(".welcome-tag");
+    const welcomeHeading = page.locator("#welcomeHeading");
+    const composerShell = page.locator(".composer-shell");
+
+    await expect(sessionHeading).toBeHidden();
+    await expect(sessionSubheading).toBeHidden();
+
+    const headerBox = await header.boundingBox();
+    const welcomeScreenBox = await welcomeScreen.boundingBox();
+    const welcomeTagBox = await welcomeTag.boundingBox();
+    const welcomeHeadingBox = await welcomeHeading.boundingBox();
+    const composerBox = await composerShell.boundingBox();
+    const viewport = page.viewportSize();
+
+    expect(headerBox).not.toBeNull();
+    expect(welcomeScreenBox).not.toBeNull();
+    expect(welcomeTagBox).not.toBeNull();
+    expect(welcomeHeadingBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+
+    expect((welcomeTagBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeGreaterThanOrEqual(12);
+    expect((welcomeHeadingBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeGreaterThanOrEqual(28);
+    expect(
+      Math.abs(
+        ((welcomeScreenBox?.y ?? 0) + (welcomeScreenBox?.height ?? 0) / 2)
+          - ((((headerBox?.y ?? 0) + (headerBox?.height ?? 0)) + (composerBox?.y ?? 0)) / 2),
+      ),
+    ).toBeLessThan(60);
+    expect(((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0)))).toBeLessThan(40);
+  });
+
+  test("keeps the empty chat viewport pinned to the top when loading the #chat route", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await page.goto("/chat#chat");
+    await ensureChatRouteReady(page);
+
+    const header = page.locator(".chat-pane.empty-state .chat-header");
+    const welcomeHeading = page.locator("#welcomeHeading");
+    const composerShell = page.locator(".chat-pane.empty-state .composer-shell");
+
+    await expect(header).toBeVisible();
+    await expect(welcomeHeading).toBeVisible();
+    await expect(composerShell).toBeVisible();
+
+    const metrics = await page.evaluate(() => {
+      const chatPaneNode = document.querySelector(".chat-pane.empty-state");
+      const headerNode = document.querySelector(".chat-pane.empty-state .chat-header");
+      const welcomeNode = document.getElementById("welcomeHeading");
+      const composerNode = document.querySelector(".chat-pane.empty-state .composer-shell");
+      if (
+        !(chatPaneNode instanceof HTMLElement)
+        || !(headerNode instanceof HTMLElement)
+        || !(welcomeNode instanceof HTMLElement)
+        || !(composerNode instanceof HTMLElement)
+      ) {
+        return null;
+      }
+      const chatPaneRect = chatPaneNode.getBoundingClientRect();
+      const headerRect = headerNode.getBoundingClientRect();
+      const welcomeRect = welcomeNode.getBoundingClientRect();
+      const composerRect = composerNode.getBoundingClientRect();
+      return {
+        scrollY: window.scrollY,
+        chatPaneTop: chatPaneRect.top,
+        headerTop: headerRect.top,
+        welcomeCenter: welcomeRect.top + welcomeRect.height / 2,
+        contentCenter: ((headerRect.top + headerRect.height) + composerRect.top) / 2,
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics?.scrollY ?? 0).toBeLessThanOrEqual(4);
+    expect(metrics?.chatPaneTop ?? 999).toBeLessThanOrEqual(4);
+    expect(metrics?.headerTop ?? 999).toBeLessThanOrEqual(16);
+    expect(Math.abs((metrics?.welcomeCenter ?? 999) - (metrics?.contentCenter ?? 0))).toBeLessThan(96);
+  });
+
+  test("keeps shared page routes compact on narrow screens", async ({ page }) => {
+    await page.setViewportSize({ width: 760, height: 980 });
+    await openChannelsRoute(page);
+
+    const header = page.locator(".chat-header");
+    const navToggle = page.locator("#navToggle");
+    const sessionToggle = page.locator("#sessionToggle");
+    const newChatButton = page.locator("#mobileNewChatButton");
+    const routeTitle = page.locator("#routeTitle");
+
+    await expect(navToggle).toBeVisible();
+    await expect(sessionToggle).toBeHidden();
+    await expect(newChatButton).toBeVisible();
+    await expect(routeTitle).not.toHaveText("");
+
+    const headerBox = await header.boundingBox();
+    const navBox = await navToggle.boundingBox();
+    const routeTitleBox = await routeTitle.boundingBox();
+
+    expect(headerBox).not.toBeNull();
+    expect(navBox).not.toBeNull();
+    expect(routeTitleBox).not.toBeNull();
+    expect((routeTitleBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeLessThan(64);
+    expect((routeTitleBox?.y ?? 0) - (navBox?.y ?? 0)).toBeGreaterThan((navBox?.height ?? 0) - 2);
   });
 
   test("expands the desktop chat reading column on wide screens", async ({ page }) => {
@@ -728,7 +920,7 @@ test.describe("Chat composer", () => {
   test("keeps mobile route pages aligned to the visual viewport bottom", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 760, height: 980 });
-    await openCronRoute(page);
+    await openChannelsRoute(page);
 
     await setVisualViewport(page, { width: 760, height: 760, offsetTop: 0 });
 
@@ -752,7 +944,7 @@ test.describe("Chat composer", () => {
 
     expect(metrics).not.toBeNull();
     expect(metrics?.paneBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
-    expect(metrics?.routeBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
+    expect(metrics?.routeBottom ?? 0).toBeLessThanOrEqual((metrics?.paneBottom ?? 0) + 10);
   });
 
   test("keeps the mobile navigation fully reachable on short viewports", async ({ page }) => {

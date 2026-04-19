@@ -852,7 +852,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
-			s.renderLoginPage(w, "请求格式错误", nextPath)
+			s.renderLoginPage(w, "Invalid request payload.", nextPath)
 			return
 		}
 		password := r.FormValue("password")
@@ -862,7 +862,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if !secureStringEqual(strings.TrimSpace(password), strings.TrimSpace(s.webLoginPassword)) {
 			w.WriteHeader(http.StatusUnauthorized)
-			s.renderLoginPage(w, "密码错误，请重试。", nextPath)
+			s.renderLoginPage(w, "Incorrect password. Please try again.", nextPath)
 			return
 		}
 		http.SetCookie(w, &http.Cookie{
@@ -912,11 +912,11 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
 		alert = `<p style="margin:0;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;">` + html.EscapeString(strings.TrimSpace(errorMessage)) + `</p>`
 	}
 	page := `<!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>alter0 登录</title>
+  <title>Alter0 Login</title>
   <style>
     body{margin:0;background:#f8fafc;color:#0f172a;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
     .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -931,13 +931,13 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
 <body>
   <main class="wrap">
     <form class="card" method="post" action="/login">
-      <h1>alter0 控制台登录</h1>
-      <p>请输入访问密码后继续。</p>
+      <h1>Alter0 Console Login</h1>
+      <p>Enter the access password to continue.</p>
       ` + alert + `
       <input type="hidden" name="next" value="` + html.EscapeString(nextPath) + `">
-      <label for="password">密码</label>
+      <label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required>
-      <button type="submit">登录</button>
+      <button type="submit">Sign in</button>
     </form>
   </main>
 </body>

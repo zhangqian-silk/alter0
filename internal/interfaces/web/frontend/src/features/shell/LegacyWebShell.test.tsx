@@ -221,7 +221,7 @@ describe("LegacyWebShell", () => {
   it("renders the welcome and composer sections as direct legacy shell surfaces", () => {
     render(<LegacyWebShell />);
 
-    expect(document.querySelector(".welcome-screen > .welcome-tag")).toBeInTheDocument();
+    expect(document.querySelector(".welcome-screen > .welcome-tag")).toHaveTextContent("Alter0 assistant");
     expect(document.querySelector(".welcome-screen > #welcomeHeading")).toBeInTheDocument();
     expect(document.querySelector(".welcome-screen > #welcomeDescription")).toBeInTheDocument();
     expect(document.querySelector(".welcome-screen > #welcomeTargetList")).toBeInTheDocument();
@@ -730,7 +730,7 @@ describe("LegacyWebShell", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("与 alter0 协作")).toBeInTheDocument();
+      expect(screen.getByText("与 Alter0 协作")).toBeInTheDocument();
       expect(document.getElementById(LEGACY_SHELL_IDS.newChatButton)).toHaveTextContent("新 Agent 会话");
       expect(document.getElementById("sessionEmpty")).toHaveTextContent("当前还没有 Agent 会话。请前往 Agent 页面开始。");
       expect(document.getElementById(LEGACY_SHELL_IDS.sessionList)).toHaveAttribute("aria-label", "Agent 会话列表");

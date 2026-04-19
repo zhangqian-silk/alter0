@@ -73,7 +73,7 @@ function getDefaultChatWorkspaceSnapshot(
   if (!isLegacyShellChatRoute(currentRoute)) {
     return {
       route: currentRoute,
-      heading: "alter0",
+      heading: "Alter0",
       subheading: copy.chatMenu,
       welcomeHeading: "Hello, how can I help you today?",
       welcomeDescription: "I am a helpful assistant that can help you with your questions.",
@@ -278,7 +278,7 @@ const ChatView = memo(function ChatView({
   return (
     <div className="chat-view" id="chatView" hidden={hidden}>
       <section className="welcome-screen" id={LEGACY_SHELL_IDS.welcomeScreen} hidden={showMessages}>
-        <p className="welcome-tag" data-i18n="welcome.tag">alter0 assistant</p>
+        <p className="welcome-tag" data-i18n="welcome.tag">Alter0 assistant</p>
         <h3 id="welcomeHeading">{welcomeHeading}</h3>
         <p id="welcomeDescription">{welcomeDescription}</p>
         <div className="welcome-target-list" id="welcomeTargetList">
