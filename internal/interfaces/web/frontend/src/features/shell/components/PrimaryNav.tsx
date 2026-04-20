@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { LEGACY_SHELL_IDS } from "../legacyDomContract";
 import { NAV_GROUPS, toI18nKey } from "../legacyShellConfig";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../legacyShellCopy";
 import { isLegacyShellMobileViewport } from "../legacyShellState";
@@ -237,7 +236,6 @@ export function PrimaryNav({
         </div>
         <button
           className="nav-collapse"
-          id={LEGACY_SHELL_IDS.navCollapseButton}
           type="button"
           aria-label={navToggleLabel}
           aria-expanded={navCollapsed ? "false" : "true"}

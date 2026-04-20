@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { WorkbenchContext } from "../../../app/WorkbenchContext";
 import { createAPIClient } from "../../../shared/api/client";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
-import { requestLegacyShellRouteNavigation } from "../legacyShellBridge";
 
 const AGENT_ROUTE_STORAGE_KEY = "alter0.web.agent-route.v1";
 
@@ -229,6 +229,7 @@ export function ReactManagedAgentRouteBody({
 }: {
   language: LegacyShellLanguage;
 }) {
+  const workbench = useContext(WorkbenchContext);
   const copy = AGENT_ROUTE_COPY[language];
   const apiClient = createAPIClient();
   const memoryFileOptions = AGENT_MEMORY_FILE_OPTIONS[language];
@@ -401,7 +402,11 @@ export function ReactManagedAgentRouteBody({
               type="button"
               disabled={!selectedAgentID}
               onClick={() => {
-                requestLegacyShellRouteNavigation("agent-runtime");
+                if (workbench) {
+                  workbench.navigate("agent-runtime");
+                  return;
+                }
+                window.location.hash = "#agent-runtime";
               }}
             >
               {copy.openAgent}

@@ -7,11 +7,10 @@
 当前稳定结构如下：
 
 - `index.html` 仅保留前端启动容器、字体与 legacy 样式入口
-- React 负责渲染当前 Web Shell 的 legacy DOM 契约与完整运行时，不再通过 `/legacy/chat.js` 启动旧脚本
-- `features/shell` 当前已把主导航当前路由高亮、导航折叠态、导航 tooltip 与语言感知文案，以及 Session Pane、会话卡片列表、ChatWorkspace 头部动作区、欢迎区文案、欢迎区 target picker、欢迎区/消息区显隐、消息列表 DOM、运行时 controls/note/sheet 原生渲染、Session 历史空态提示/可访问标签、路由页头部标题/副标题和主工作区的历史折叠、菜单、会话抽屉、`page-mode / data-route / chatView / routeView` 路由壳层状态前移到 React；`agent / terminal / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks / products` 十二类路由页已由 `ReactManagedRouteBody` 接管，terminal 也已改为 React 原生实现；`routeBody` 会继续暴露当前页的 `data-react-managed-route` ownership 标记，同时 `appShell` 会输出稳定的 `data-react-managed-routes` 路由清单，避免壳层 rerender 清空页面主体
-- `ReactRuntimeFacade` 负责 Chat / Agent 的会话创建、切换、删除、消息流、草稿恢复、runtime panel/sheet 状态、移动端 runtime sheet 叠层、共享 runtime API 与 `alter0:legacy-shell:*` bridge 事件处理
-- `legacyRuntimeSnapshotStore` 继续作为共享结构化状态通道，供壳层读取 chat workspace、session pane、message region 与 chat runtime 四类快照；这些快照由 React runtime 直接发布，不再依赖 document 级 CustomEvent 广播
-- `LegacyWebShell` 会同步保留 `appShell` 上的 transient classes，如 `nav-open`、`panel-open`、`overlay-open` 与 `runtime-sheet-open`，避免 React 因 hash 路由或语言变化重渲染时覆盖移动端当前打开的壳层状态
+- `src/app` 承载单一 React 工作台壳层：`WorkbenchApp` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派，`routeState.ts` 负责路由解析与派发，`WorkbenchContext.tsx` 暴露当前 route/language/navigate 以及移动端主导航状态
+- `features/conversation-runtime` 承载 `chat / agent-runtime` 的运行态：`ConversationRuntimeProvider` 负责会话、消息流、SSE 收口、任务轮询、草稿恢复和模型/能力项选择，`ConversationWorkspace` 负责「会话列 + 主时间线工作区 + Composer + Inspector」视图，并在窄屏下提供 `Menu / Sessions / New` 操作行与会话抽屉
+- `features/shell` 负责主导航、共享 copy、React 管理页与 route surface；`ReactManagedRouteBody` 统一分派 `agent / terminal / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks / products / codex-accounts`，其中 `ReactManagedTerminalRouteBody` 在窄屏下也会直接输出 `Menu / Sessions / New` 顶部操作行并接入 workbench 导航状态
+- 根壳层通过 `app-shell[data-workbench-route]` 暴露当前路由，运行页继续通过 `data-route / data-conversation-*` 暴露稳定锚点；`legacy` 资源仅保留兼容样式，不再通过 `/legacy/chat.js`、bridge 或 snapshot store 驱动业务运行时
 - `public/legacy` 当前仅保留兼容样式资源，并作为 legacy 样式来源输出到 `static/dist/legacy`
 - `npm run build` 输出到 `internal/interfaces/web/static/dist`
 - `npm run dev` 默认把 `/api`、`/login`、`/logout`、`/healthz`、`/readyz`、`/metrics` 与 `/products` 代理到 `http://127.0.0.1:18088`；可通过 `ALTER0_WEB_BACKEND_ORIGIN` 覆盖后端地址

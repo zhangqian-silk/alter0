@@ -134,17 +134,15 @@ func TestLoginPageDefaultsToEnglishDocumentLanguage(t *testing.T) {
 }
 
 func TestChatComposerUsesReusableComponent(t *testing.T) {
-	runtimeSource := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
+	runtimeSource := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx")
 	runtimeMarkers := []string{
 		`const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";`,
 		`const MAX_COMPOSER_CHARS = 10000;`,
 		"function loadComposerDrafts()",
 		"function persistComposerDrafts(drafts: ComposerDraftMap)",
-		"const updateComposerDOM = (drafts: ComposerDraftMap, route: ChatRoute, activeState: ActiveSessionState) => {",
-		`const inputNode = document.getElementById("composerInput");`,
-		`const formNode = document.getElementById("chatForm");`,
-		`inputNode.addEventListener("input", handleInput);`,
-		`formNode.addEventListener("submit", handleSubmit);`,
+		"const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());",
+		"const nextDrafts = { ...composerDrafts, [session.id]: value.slice(0, MAX_COMPOSER_CHARS) };",
+		"persistComposerDrafts(nextDrafts);",
 	}
 	for _, marker := range runtimeMarkers {
 		if !strings.Contains(runtimeSource, marker) {
@@ -152,12 +150,12 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 		}
 	}
 
-	workspaceSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ChatWorkspace.tsx")
+	workspaceSource := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
 	workspaceMarkers := []string{
-		`data-composer-form="chat-main"`,
-		`data-composer-input="chat-main"`,
-		`data-composer-submit="chat-main"`,
-		`data-composer-counter="chat-main"`,
+		`className="conversation-chat-form"`,
+		`className="conversation-composer-input"`,
+		`className="conversation-chat-submit"`,
+		`maxLength={10000}`,
 	}
 	for _, marker := range workspaceMarkers {
 		if !strings.Contains(workspaceSource, marker) {
@@ -179,11 +177,11 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 }
 
 func TestChatScriptRecoversInterruptedStreams(t *testing.T) {
-	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
+	script := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx")
 	markers := []string{
 		`status: "streaming",`,
 		`error: sawDone ? "" : "stream interrupted",`,
-		`taskPending: Boolean(taskID),`,
+		`taskPending: Boolean(body?.task_id && !isTerminalTaskStatus(normalizeText(body?.task_status))),`,
 		`taskResultDelivered: Boolean(record.task_result_delivered),`,
 		`message.taskID && message.taskPending && !message.taskResultDelivered`,
 		`taskPending: !isTerminalTaskStatus(status),`,

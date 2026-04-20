@@ -1,37 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createAPIClient } from "../shared/api/client";
 import {
-  LEGACY_SHELL_CREATE_SESSION_EVENT,
-  LEGACY_SHELL_FOCUS_SESSION_EVENT,
-  LEGACY_SHELL_NAVIGATE_EVENT,
-  LEGACY_SHELL_QUICK_PROMPT_EVENT,
-  LEGACY_SHELL_REMOVE_SESSION_EVENT,
-  LEGACY_SHELL_TOGGLE_LANGUAGE_EVENT,
-  type LegacyShellChatRuntimeDetail,
-  type LegacyShellChatRuntimeItemActionDetail,
-  type LegacyShellChatRuntimeModelActionDetail,
-  type LegacyShellChatRuntimeTargetActionDetail,
-  type LegacyShellMessageProcessStepDetail,
-  type LegacyShellMessageRegionDetail,
-  type LegacyShellSessionPaneDetail,
-} from "../features/shell/legacyShellBridge";
-import {
-  ensureLegacyRuntimeSnapshotBridge,
-  publishLegacyRuntimeSnapshot,
-} from "../features/shell/legacyRuntimeSnapshotStore";
-import {
-  LEGACY_SHELL_DEFAULT_ROUTE,
-  isLegacyShellChatRoute,
-  isLegacyShellMobileViewport,
-  parseLegacyShellHashRoute,
-} from "../features/shell/legacyShellState";
-import {
-  getLegacyRouteHeadingCopy,
-  normalizeLegacyShellLanguage,
-  type LegacyShellLanguage,
-} from "../features/shell/legacyShellCopy";
-import { LEGACY_SHELL_IDS } from "../features/shell/legacyDomContract";
-import { createMobileViewportSyncController } from "../shared/viewport/mobileViewportSync";
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createAPIClient } from "../../shared/api/client";
+import type { LegacyShellLanguage } from "../shell/legacyShellCopy";
+import { MOBILE_VIEWPORT_BREAKPOINT_PX } from "../../shared/viewport/mobileViewport";
 
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v3";
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
@@ -43,7 +21,7 @@ const AGENT_FALLBACK_ENDPOINT = "/api/agent/messages";
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_TASK_POLL_INTERVAL_MS = 3000;
 
-type ChatRoute = "chat" | "agent-runtime";
+export type ConversationRoute = "chat" | "agent-runtime";
 
 type ChatTarget = {
   type: "model" | "agent";
@@ -59,7 +37,7 @@ type ChatProcessStep = {
   status: string;
 };
 
-type ChatMessage = {
+export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
@@ -120,7 +98,6 @@ type ChatAgent = {
   name: string;
   description?: string;
   enabled?: boolean;
-  ui_route?: string;
   tools?: string[];
   skills?: string[];
   mcps?: string[];
@@ -132,9 +109,94 @@ type ChatTaskResponse = {
   summary?: string;
   result?: {
     route?: string;
-    process_steps?: LegacyShellMessageProcessStepDetail[];
-    metadata?: Record<string, string>;
+    process_steps?: Array<{
+      id?: string;
+      kind?: string;
+      title?: string;
+      detail?: string;
+      status?: string;
+    }>;
   };
+};
+
+type ActiveSessionState = Record<ConversationRoute, string>;
+type SessionsState = Record<ConversationRoute, ChatSession[]>;
+type ComposerDraftMap = Record<string, string>;
+
+type RuntimeSelection = {
+  id: string;
+  name: string;
+  description: string;
+  kind: "tool" | "mcp" | "skill";
+  active: boolean;
+};
+
+type RuntimeTargetOption = {
+  type: "agent";
+  id: string;
+  name: string;
+  subtitle: string;
+  active: boolean;
+};
+
+type RuntimeModel = {
+  id: string;
+  name: string;
+  active: boolean;
+};
+
+type RuntimeProvider = {
+  id: string;
+  name: string;
+  models: RuntimeModel[];
+};
+
+type ConversationRuntimeContextValue = {
+  route: ConversationRoute;
+  compact: boolean;
+  inspectorOpen: boolean;
+  inspectorTab: "target" | "model" | "capabilities" | "skills";
+  sessions: ChatSession[];
+  activeSession: ChatSession | null;
+  sessionItems: Array<{
+    id: string;
+    title: string;
+    meta: string;
+    shortHash: string;
+    active: boolean;
+  }>;
+  draft: string;
+  target: ChatTarget;
+  lockedTarget: boolean;
+  targetOptions: RuntimeTargetOption[];
+  selectedProviderId: string;
+  selectedModelId: string;
+  selectedModelLabel: string;
+  providers: RuntimeProvider[];
+  capabilities: RuntimeSelection[];
+  skills: RuntimeSelection[];
+  toolCount: number;
+  skillCount: number;
+  createSession: () => void;
+  focusSession: (sessionID: string) => void;
+  removeSession: (sessionID: string) => Promise<void>;
+  setDraft: (value: string) => void;
+  sendPrompt: (prompt?: string) => Promise<void>;
+  toggleInspector: (tab?: "target" | "model" | "capabilities" | "skills") => void;
+  closeInspector: () => void;
+  selectTarget: (targetID: string) => void;
+  selectModel: (providerID: string, modelID: string) => void;
+  toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => void;
+  toggleSkill: (id: string, checked: boolean) => void;
+  toggleAgentProcess: (messageID: string) => void;
+};
+
+const ConversationRuntimeContext = createContext<ConversationRuntimeContextValue | null>(null);
+
+type ProviderProps = {
+  route: ConversationRoute;
+  language: LegacyShellLanguage;
+  children: ReactNode;
 };
 
 type StreamResult = {
@@ -142,10 +204,6 @@ type StreamResult = {
   canFallback: boolean;
   error: string;
 };
-
-type ActiveSessionState = Record<ChatRoute, string>;
-type SessionsState = Record<ChatRoute, ChatSession[]>;
-type ComposerDraftMap = Record<string, string>;
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -162,10 +220,6 @@ function hashShort(value: string): string {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
-}
-
-function routeConversationMode(route: string): ChatRoute {
-  return route === "agent-runtime" ? "agent-runtime" : "chat";
 }
 
 function normalizeChatTarget(target?: { type?: string; id?: string; name?: string } | null): ChatTarget {
@@ -192,18 +246,21 @@ function normalizeProcessSteps(values: unknown): ChatProcessStep[] {
   }
   return values
     .map((item) => {
-      const detail = item as LegacyShellMessageProcessStepDetail | undefined;
-      const title = normalizeText(detail?.title);
-      const body = normalizeText(detail?.detail);
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const detail = item as Record<string, unknown>;
+      const title = normalizeText(detail.title);
+      const body = normalizeText(detail.detail);
       if (!title && !body) {
         return null;
       }
       return {
-        id: normalizeText(detail?.id),
-        kind: normalizeText(detail?.kind),
+        id: normalizeText(detail.id),
+        kind: normalizeText(detail.kind),
         title,
         detail: body,
-        status: normalizeText(detail?.status),
+        status: normalizeText(detail.status),
       };
     })
     .filter((item): item is ChatProcessStep => item !== null);
@@ -396,49 +453,6 @@ function buildSessionMeta(session: ChatSession, language: LegacyShellLanguage): 
   return `${targetLabel} · ${countLabel} · ${formatRelativeTime(session.createdAt, language)}`;
 }
 
-function buildSessionPaneSnapshot(
-  route: string,
-  language: LegacyShellLanguage,
-  sessions: ChatSession[],
-  activeSessionID: string,
-): LegacyShellSessionPaneDetail {
-  return {
-    route,
-    hasSessions: sessions.length > 0,
-    loadError: "",
-    items: sessions.map((session) => ({
-      id: session.id,
-      title: session.title,
-      meta: buildSessionMeta(session, language),
-      active: session.id === activeSessionID,
-      shortHash: hashShort(session.id),
-      copyValue: session.id,
-      copyLabel: language === "zh" ? "复制会话 ID" : "Copy session id",
-      deleteLabel: language === "zh" ? "删除会话" : "Delete session",
-    })),
-  };
-}
-
-function toMessageRegionSnapshot(route: string, session: ChatSession | null): LegacyShellMessageRegionDetail {
-  return {
-    route,
-    hasMessages: Boolean(session?.messages.length),
-    sessionId: session?.id || "",
-    messages: (session?.messages || []).map((message) => ({
-      id: message.id,
-      role: message.role,
-      text: message.text,
-      route: message.route,
-      source: message.source,
-      error: message.error,
-      status: message.status,
-      at: message.at,
-      process_steps: message.processSteps,
-      agent_process_collapsed: message.agentProcessCollapsed,
-    })),
-  };
-}
-
 function enabledModels(provider: ChatProvider | null | undefined): ChatProviderModel[] {
   return Array.isArray(provider?.models)
     ? provider.models.filter((model) => model && model.is_enabled !== false)
@@ -491,112 +505,17 @@ function isTerminalTaskStatus(status: string): boolean {
   return ["success", "failed", "canceled"].includes(normalizeTaskStatus(status));
 }
 
-function activeViewportInput(): HTMLInputElement | HTMLTextAreaElement | null {
-  const active = document.activeElement;
-  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
-    return active;
-  }
-  return null;
-}
-
-function createRuntimeSnapshot(params: {
-  route: string;
-  session: ChatSession | null;
-  selectedAgentID: string;
-  openPopover: string;
-  compact: boolean;
-  providers: ChatProvider[];
-  agents: ChatAgent[];
-  skills: ChatCapability[];
-  mcps: ChatCapability[];
-}): LegacyShellChatRuntimeDetail {
-  const { route, session, selectedAgentID, openPopover, compact, providers, agents, skills, mcps } = params;
-  const selection = resolveModelSelection(session, providers);
-  const selectedProvider = enabledProviders(providers).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
-  const selectedModel = enabledModels(selectedProvider).find((model) => normalizeText(model.id) === selection.modelID) || null;
-  const agentTarget = normalizeChatTarget({
-    type: "agent",
-    id: selectedAgentID,
-    name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
+function readResponsePayload(response: Response): Promise<unknown> {
+  return response.text().then((text) => {
+    if (!text) {
+      return {};
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
   });
-  const currentTarget = session?.target || (route === "agent-runtime" ? agentTarget : defaultChatTarget());
-  return {
-    route,
-    compact,
-    openPopover,
-    note: "",
-    agentRuntime: route === "agent-runtime",
-    locked: Boolean(session?.messages.length),
-    target: currentTarget,
-    targetOptions: route === "agent-runtime"
-      ? agents
-          .filter((agent) => normalizeText(agent.id))
-          .map((agent) => ({
-            type: "agent",
-            id: normalizeText(agent.id),
-            name: normalizeText(agent.name) || normalizeText(agent.id),
-            subtitle: normalizeText(agent.description) || "Agent",
-            active: normalizeText(agent.id) === currentTarget.id,
-          }))
-      : [],
-    selectedProviderId: selection.providerID,
-    selectedModelId: selection.modelID,
-    selectedModelLabel: selectedModel?.name || selectedModel?.id || "Default",
-    toolCount: (session?.toolIDs.length || 0) + (session?.mcpIDs.length || 0),
-    skillCount: session?.skillIDs.length || 0,
-    providers: enabledProviders(providers).map((provider) => ({
-      id: normalizeText(provider.id),
-      name: normalizeText(provider.name) || normalizeText(provider.id),
-      models: enabledModels(provider).map((model) => ({
-        id: normalizeText(model.id),
-        name: normalizeText(model.name) || normalizeText(model.id),
-        active:
-          normalizeText(provider.id) === selection.providerID
-          && normalizeText(model.id) === selection.modelID,
-      })),
-    })),
-    capabilities: [
-      {
-        id: "memory",
-        name: "Memory",
-        description: "Search memory files",
-        kind: "tool",
-        active: Boolean(session?.toolIDs.includes("memory")),
-      },
-      ...mcps
-        .filter((item) => item.enabled !== false)
-        .map((item) => ({
-          id: normalizeText(item.id),
-          name: normalizeText(item.name) || normalizeText(item.id),
-          description: normalizeText(item.description) || normalizeText(item.scope) || "MCP",
-          kind: "mcp" as const,
-          active: Boolean(session?.mcpIDs.includes(normalizeText(item.id))),
-        }))
-        .filter((item) => item.id),
-    ],
-    skills: skills
-      .filter((item) => item.enabled !== false)
-      .map((item) => ({
-        id: normalizeText(item.id),
-        name: normalizeText(item.name) || normalizeText(item.id),
-        description: normalizeText(item.description) || normalizeText(item.scope) || "Skill",
-        kind: "skill" as const,
-        active: Boolean(session?.skillIDs.includes(normalizeText(item.id))),
-      }))
-      .filter((item) => item.id),
-  };
-}
-
-async function readResponsePayload(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) {
-    return {};
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {};
-  }
 }
 
 function parseSSEBlock(block: string) {
@@ -625,16 +544,19 @@ function parseSSEBlock(block: string) {
   }
 }
 
-function updateDocumentLanguage(language: LegacyShellLanguage) {
-  document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+function isCompactViewport(): boolean {
+  if (typeof window.matchMedia !== "function") {
+    return false;
+  }
+  return window.matchMedia(`(max-width: ${MOBILE_VIEWPORT_BREAKPOINT_PX}px)`).matches;
 }
 
-export function ReactRuntimeFacade() {
+export function ConversationRuntimeProvider({
+  route,
+  language,
+  children,
+}: ProviderProps) {
   const apiClient = useMemo(() => createAPIClient(), []);
-  const [currentRoute, setCurrentRoute] = useState(() => parseLegacyShellHashRoute());
-  const [language, setLanguage] = useState<LegacyShellLanguage>(() =>
-    normalizeLegacyShellLanguage(document.documentElement.lang),
-  );
   const [sessionsByRoute, setSessionsByRoute] = useState<SessionsState>(() =>
     splitSessionsByRoute(loadStoredSessions()),
   );
@@ -642,39 +564,31 @@ export function ReactRuntimeFacade() {
     loadActiveSessionState(),
   );
   const [selectedAgentID, setSelectedAgentID] = useState("");
-  const [compactRuntime, setCompactRuntime] = useState(() => isLegacyShellMobileViewport());
-  const [runtimeOpenPopover, setRuntimeOpenPopover] = useState("");
   const [providers, setProviders] = useState<ChatProvider[]>([]);
   const [skills, setSkills] = useState<ChatCapability[]>([]);
   const [mcps, setMcps] = useState<ChatCapability[]>([]);
   const [agents, setAgents] = useState<ChatAgent[]>([]);
   const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());
+  const [compact, setCompact] = useState(() => isCompactViewport());
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<"target" | "model" | "capabilities" | "skills">("model");
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
 
-  const activeChatRoute = routeConversationMode(currentRoute);
-  const activeSessions = sessionsByRoute[activeChatRoute];
-  const activeSession = activeSessions.find((session) => session.id === activeSessionByRoute[activeChatRoute]) || null;
+  const activeSessions = sessionsByRoute[route];
+  const activeSessionID = activeSessionByRoute[route];
+  const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
 
   const persistSessionsState = (nextSessionsByRoute: SessionsState, nextActiveState: ActiveSessionState) => {
     writeJSONStorage(SESSION_STORAGE_KEY, toPersistedSessions(nextSessionsByRoute));
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
   };
 
-  const updateComposerDOM = (drafts: ComposerDraftMap, route: ChatRoute, activeState: ActiveSessionState) => {
-    const inputNode = document.getElementById("composerInput");
-    const counterNode = document.getElementById("charCount");
-    const sessionID = activeState[route];
-    const value = sessionID ? drafts[sessionID] || "" : "";
-    if (inputNode instanceof HTMLTextAreaElement && inputNode.value !== value) {
-      inputNode.value = value;
-    }
-    if (counterNode) {
-      counterNode.textContent = `${value.length}/${MAX_COMPOSER_CHARS}`;
-    }
-  };
-
-  const ensureSession = (route: ChatRoute, target?: Partial<ChatTarget> | null) => {
+  const ensureSession = (
+    target?: Partial<ChatTarget> | null,
+    preferredActiveState: ActiveSessionState = activeSessionByRoute,
+    currentSessions: SessionsState = sessionsByRoute,
+  ) => {
     const targetValue = normalizeChatTarget(
       target || (route === "agent-runtime"
         ? {
@@ -684,7 +598,7 @@ export function ReactRuntimeFacade() {
           }
         : defaultChatTarget()),
     );
-    const existing = sessionsByRoute[route].find((session) => session.id === activeSessionByRoute[route]) || null;
+    const existing = currentSessions[route].find((session) => session.id === preferredActiveState[route]) || null;
     if (existing) {
       return existing;
     }
@@ -709,27 +623,26 @@ export function ReactRuntimeFacade() {
       messages: [],
     };
     const nextSessionsByRoute: SessionsState = {
-      ...sessionsByRoute,
-      [route]: [created, ...sessionsByRoute[route]],
+      ...currentSessions,
+      [route]: [created, ...currentSessions[route]],
     };
-    const nextActiveState = { ...activeSessionByRoute, [route]: created.id };
+    const nextActiveState = { ...preferredActiveState, [route]: created.id };
     setSessionsByRoute(nextSessionsByRoute);
     setActiveSessionByRoute(nextActiveState);
     persistSessionsState(nextSessionsByRoute, nextActiveState);
-    updateComposerDOM(composerDrafts, route, nextActiveState);
     return created;
   };
 
   const patchSession = (
-    route: ChatRoute,
+    routeKey: ConversationRoute,
     sessionID: string,
     updater: (session: ChatSession) => ChatSession,
   ) => {
     setSessionsByRoute((current) => {
-      const nextSessions = current[route].map((session) =>
+      const nextSessions = current[routeKey].map((session) =>
         session.id === sessionID ? updater(session) : session,
       );
-      const nextState = { ...current, [route]: nextSessions };
+      const nextState = { ...current, [routeKey]: nextSessions };
       persistSessionsState(nextState, activeSessionByRoute);
       return nextState;
     });
@@ -757,8 +670,8 @@ export function ReactRuntimeFacade() {
     taskResultFor: patch.taskResultFor || "",
   });
 
-  const appendMessage = (route: ChatRoute, sessionID: string, message: ChatMessage) => {
-    patchSession(route, sessionID, (session) => ({
+  const appendMessage = (routeKey: ConversationRoute, sessionID: string, message: ChatMessage) => {
+    patchSession(routeKey, sessionID, (session) => ({
       ...session,
       title: session.titleAuto && message.role === "user"
         ? (message.text.slice(0, 32) || session.title)
@@ -769,12 +682,12 @@ export function ReactRuntimeFacade() {
   };
 
   const setAssistantMessage = (
-    route: ChatRoute,
+    routeKey: ConversationRoute,
     sessionID: string,
     messageID: string,
     patch: Partial<ChatMessage>,
   ) => {
-    patchSession(route, sessionID, (session) => ({
+    patchSession(routeKey, sessionID, (session) => ({
       ...session,
       messages: session.messages.map((message) =>
         message.id === messageID ? { ...message, ...patch } : message,
@@ -783,20 +696,12 @@ export function ReactRuntimeFacade() {
   };
 
   const focusSession = (sessionID: string) => {
-    const route = sessionsByRoute["agent-runtime"].some((session) => session.id === sessionID)
-      ? "agent-runtime"
-      : "chat";
     const nextActiveState = { ...activeSessionByRoute, [route]: sessionID };
     setActiveSessionByRoute(nextActiveState);
     persistSessionsState(sessionsByRoute, nextActiveState);
-    updateComposerDOM(composerDrafts, route, nextActiveState);
-    return true;
   };
 
   const removeSession = async (sessionID: string) => {
-    const route = sessionsByRoute["agent-runtime"].some((session) => session.id === sessionID)
-      ? "agent-runtime"
-      : "chat";
     try {
       await apiClient.delete(`/api/sessions/${encodeURIComponent(sessionID)}`);
     } catch {
@@ -819,30 +724,28 @@ export function ReactRuntimeFacade() {
     setComposerDrafts(nextDrafts);
     persistComposerDrafts(nextDrafts);
     persistSessionsState(nextSessionsByRoute, nextActiveState);
-    updateComposerDOM(nextDrafts, route, nextActiveState);
-    return true;
   };
 
   const sendMessageFallback = async (
-    route: ChatRoute,
+    routeKey: ConversationRoute,
     sessionID: string,
     target: ChatTarget,
     assistantMessageID: string,
     content: string,
   ) => {
-    const session = sessionsByRoute[route].find((item) => item.id === sessionID) || null;
+    const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
     const selection = resolveModelSelection(session, providers);
     const body = await apiClient.post<{
       result?: {
         output?: string;
         route?: string;
         metadata?: Record<string, string>;
-        process_steps?: LegacyShellMessageProcessStepDetail[];
+        process_steps?: Array<Record<string, unknown>>;
       };
       task_id?: string;
       task_status?: string;
     }>(
-      route === "agent-runtime" ? AGENT_FALLBACK_ENDPOINT : FALLBACK_ENDPOINT,
+      routeKey === "agent-runtime" ? AGENT_FALLBACK_ENDPOINT : FALLBACK_ENDPOINT,
       {
         session_id: sessionID,
         channel_id: "web-default",
@@ -854,10 +757,10 @@ export function ReactRuntimeFacade() {
           "alter0.skills.include": JSON.stringify(session?.skillIDs || []),
           "alter0.mcp.request.enable": JSON.stringify(session?.mcpIDs || []),
         },
-        ...(route === "agent-runtime" ? { agent_id: target.id } : {}),
+        ...(routeKey === "agent-runtime" ? { agent_id: target.id } : {}),
       },
     );
-    setAssistantMessage(route, sessionID, assistantMessageID, {
+    setAssistantMessage(routeKey, sessionID, assistantMessageID, {
       text: normalizeText(body?.result?.output) || "No response",
       route: normalizeText(body?.result?.route),
       source: normalizeText(body?.result?.metadata?.["alter0.execution.source"]),
@@ -874,19 +777,19 @@ export function ReactRuntimeFacade() {
   };
 
   const sendMessageStream = async (
-    route: ChatRoute,
+    routeKey: ConversationRoute,
     sessionID: string,
     target: ChatTarget,
     assistantMessageID: string,
     content: string,
   ): Promise<StreamResult> => {
-    const session = sessionsByRoute[route].find((item) => item.id === sessionID) || null;
+    const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
     const selection = resolveModelSelection(session, providers);
     let sawEvent = false;
     let sawDone = false;
     let output = "";
     let routeHint = "";
-    const response = await fetch(route === "agent-runtime" ? AGENT_STREAM_ENDPOINT : STREAM_ENDPOINT, {
+    const response = await fetch(routeKey === "agent-runtime" ? AGENT_STREAM_ENDPOINT : STREAM_ENDPOINT, {
       method: "POST",
       headers: {
         Accept: "text/event-stream",
@@ -903,7 +806,7 @@ export function ReactRuntimeFacade() {
           "alter0.skills.include": JSON.stringify(session?.skillIDs || []),
           "alter0.mcp.request.enable": JSON.stringify(session?.mcpIDs || []),
         },
-        ...(route === "agent-runtime" ? { agent_id: target.id } : {}),
+        ...(routeKey === "agent-runtime" ? { agent_id: target.id } : {}),
       }),
     });
     if (!response.ok || !response.body) {
@@ -931,14 +834,14 @@ export function ReactRuntimeFacade() {
         if (parsed) {
           sawEvent = true;
           if (parsed.event === "process") {
-            patchSession(route, sessionID, (currentSession) => {
+            patchSession(routeKey, sessionID, (currentSession) => {
               const nextMessages = currentSession.messages.map((message) =>
                 message.id === assistantMessageID
                   ? {
                       ...message,
                       processSteps: normalizeProcessSteps([
                         ...message.processSteps,
-                        parsed.data.process_step as LegacyShellMessageProcessStepDetail,
+                        parsed.data.process_step as Record<string, unknown>,
                       ]),
                       status: "streaming",
                     }
@@ -955,7 +858,7 @@ export function ReactRuntimeFacade() {
             }
             if (delta) {
               output += delta;
-              setAssistantMessage(route, sessionID, assistantMessageID, {
+              setAssistantMessage(routeKey, sessionID, assistantMessageID, {
                 text: output,
                 route: routeHint,
                 status: "streaming",
@@ -966,7 +869,7 @@ export function ReactRuntimeFacade() {
             const result = (parsed.data.result as Record<string, unknown>) || {};
             const taskID = normalizeText(parsed.data.task_id);
             const taskStatus = normalizeText(parsed.data.task_status) || "done";
-            setAssistantMessage(route, sessionID, assistantMessageID, {
+            setAssistantMessage(routeKey, sessionID, assistantMessageID, {
               text: normalizeText(result.output) || output || "No response",
               route: normalizeText(result.route) || routeHint,
               source: normalizeText((result.metadata as Record<string, string> | undefined)?.["alter0.execution.source"]),
@@ -983,7 +886,7 @@ export function ReactRuntimeFacade() {
             sawDone = true;
           }
           if (parsed.event === "error") {
-            setAssistantMessage(route, sessionID, assistantMessageID, {
+            setAssistantMessage(routeKey, sessionID, assistantMessageID, {
               text: normalizeText(parsed.data.error) || "Request failed",
               status: "error",
               error: true,
@@ -1004,13 +907,12 @@ export function ReactRuntimeFacade() {
     };
   };
 
-  const sendPrompt = async (prompt: string) => {
-    const route = activeChatRoute;
-    const content = prompt.trim();
+  const sendPrompt = async (prompt: string = activeSessionID ? composerDrafts[activeSessionID] || "" : "") => {
+    const content = prompt.trim().slice(0, MAX_COMPOSER_CHARS);
     if (!content || (route === "agent-runtime" && !selectedAgentID)) {
       return;
     }
-    const session = ensureSession(route, route === "agent-runtime"
+    const session = ensureSession(route === "agent-runtime"
       ? {
           type: "agent",
           id: selectedAgentID,
@@ -1027,7 +929,6 @@ export function ReactRuntimeFacade() {
     const nextDrafts = { ...composerDrafts, [session.id]: "" };
     setComposerDrafts(nextDrafts);
     persistComposerDrafts(nextDrafts);
-    updateComposerDOM(nextDrafts, route, { ...activeSessionByRoute, [route]: session.id });
     try {
       const streamResult = await sendMessageStream(route, session.id, session.target, assistantMessage.id, content);
       if (!streamResult.ok && streamResult.canFallback) {
@@ -1050,26 +951,9 @@ export function ReactRuntimeFacade() {
   };
 
   useEffect(() => {
-    ensureLegacyRuntimeSnapshotBridge();
-  }, []);
-
-  useEffect(() => {
-    const syncViewport = () => setCompactRuntime(isLegacyShellMobileViewport());
+    const syncViewport = () => setCompact(isCompactViewport());
     window.addEventListener("resize", syncViewport);
     return () => window.removeEventListener("resize", syncViewport);
-  }, []);
-
-  useEffect(() => {
-    const syncRoute = () => setCurrentRoute(parseLegacyShellHashRoute());
-    const observer = new MutationObserver(() => {
-      setLanguage(normalizeLegacyShellLanguage(document.documentElement.lang));
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
-    window.addEventListener("hashchange", syncRoute);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("hashchange", syncRoute);
-    };
   }, []);
 
   useEffect(() => {
@@ -1094,315 +978,33 @@ export function ReactRuntimeFacade() {
           ? agentPayload.items.filter((agent) => agent.enabled !== false)
           : [];
         setAgents(nextAgents);
-        if (!selectedAgentID) {
-          setSelectedAgentID(normalizeText(nextAgents[0]?.id));
-        }
+        setSelectedAgentID((current) => current || normalizeText(nextAgents[0]?.id));
       } catch {
       }
     };
     void loadCatalogs();
-  }, [apiClient, selectedAgentID]);
+  }, [apiClient]);
 
   useEffect(() => {
-    if (!isLegacyShellChatRoute(currentRoute)) {
-      return;
-    }
-    ensureSession(activeChatRoute, activeChatRoute === "agent-runtime"
+    ensureSession(route === "agent-runtime"
       ? {
           type: "agent",
           id: selectedAgentID,
           name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
         }
       : defaultChatTarget());
-  }, [activeChatRoute, agents, currentRoute, selectedAgentID]);
-
-  useEffect(() => {
-    if (!isLegacyShellChatRoute(currentRoute)) {
-      return;
-    }
-    const routeCopy = getLegacyRouteHeadingCopy(language, currentRoute);
-    publishLegacyRuntimeSnapshot(
-      "alter0:legacy-shell:sync-session-pane",
-      buildSessionPaneSnapshot(currentRoute, language, activeSessions, activeSession?.id || ""),
-    );
-    publishLegacyRuntimeSnapshot(
-      "alter0:legacy-shell:sync-message-region",
-      toMessageRegionSnapshot(currentRoute, activeSession),
-    );
-    publishLegacyRuntimeSnapshot("alter0:legacy-shell:sync-chat-workspace", {
-      route: currentRoute,
-      heading: routeCopy.title,
-      subheading: routeCopy.subtitle,
-      welcomeHeading: language === "zh" ? "你好，今天想一起完成什么？" : "Hello, what should we build today?",
-      welcomeDescription:
-        language === "zh"
-          ? "我会结合当前会话、目标和运行时配置继续推进。"
-          : "I will keep moving with the current session, target, and runtime configuration.",
-      welcomeTargets: currentRoute === "agent-runtime"
-        ? agents.map((agent) => ({
-            type: "agent",
-            id: normalizeText(agent.id),
-            name: normalizeText(agent.name) || normalizeText(agent.id),
-            active: normalizeText(agent.id) === normalizeText(activeSession?.target.id || selectedAgentID),
-            interactive: true,
-          }))
-        : [],
-      welcomeTargetError: "",
-    });
-    publishLegacyRuntimeSnapshot(
-      "alter0:legacy-shell:sync-chat-runtime",
-      createRuntimeSnapshot({
-        route: currentRoute,
-        session: activeSession,
-        selectedAgentID,
-        openPopover: runtimeOpenPopover,
-        compact: compactRuntime,
-        providers,
-        agents,
-        skills,
-        mcps,
-      }),
-    );
-    updateComposerDOM(composerDrafts, activeChatRoute, activeSessionByRoute);
-  }, [
-    activeChatRoute,
-    activeSession,
-    activeSessionByRoute,
-    activeSessions,
-    agents,
-    composerDrafts,
-    currentRoute,
-    language,
-    mcps,
-    providers,
-    runtimeOpenPopover,
-    selectedAgentID,
-    skills,
-    compactRuntime,
-  ]);
-
-  useEffect(() => {
-    const appShell = document.getElementById(LEGACY_SHELL_IDS.appShell);
-    if (!appShell) {
-      return;
-    }
-    appShell.classList.toggle(
-      "runtime-sheet-open",
-      compactRuntime && runtimeOpenPopover === "mobile",
-    );
-    return () => {
-      appShell.classList.remove("runtime-sheet-open");
-    };
-  }, [compactRuntime, runtimeOpenPopover]);
-
-  useEffect(() => {
-    const runtime = window.__alter0LegacyRuntime || {};
-    window.__alter0LegacyRuntime = Object.assign(runtime, {
-      createSession: () => {
-        if (currentRoute === "terminal") {
-          const button = document.querySelector("[data-terminal-create]");
-          if (button instanceof HTMLElement) {
-            button.click();
-            return true;
-          }
-          return false;
-        }
-        ensureSession(activeChatRoute, activeChatRoute === "agent-runtime"
-          ? {
-              type: "agent",
-              id: selectedAgentID,
-              name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
-            }
-          : defaultChatTarget());
-        return true;
-      },
-      focusSession: (sessionID: string) => focusSession(sessionID),
-      removeSession: (sessionID: string) => {
-        void removeSession(sessionID);
-        return true;
-      },
-      toggleChatRuntimePopover: (popover: string) => {
-        setRuntimeOpenPopover((current) => {
-          const nextPopover = current === popover ? "" : popover;
-          if (
-            compactRuntime
-            && nextPopover === "mobile"
-            && current !== nextPopover
-          ) {
-            const activeInput = activeViewportInput();
-            window.requestAnimationFrame(() => {
-              activeInput?.blur();
-            });
-          }
-          return nextPopover;
-        });
-        return true;
-      },
-      closeChatRuntimePopover: () => {
-        setRuntimeOpenPopover("");
-        return true;
-      },
-      selectChatRuntimeTarget: (target: LegacyShellChatRuntimeTargetActionDetail) => {
-        if (activeChatRoute !== "agent-runtime") {
-          return false;
-        }
-        const normalizedTarget = normalizeChatTarget(target);
-        setSelectedAgentID(normalizedTarget.id);
-        patchSession(activeChatRoute, activeSessionByRoute[activeChatRoute], (session) =>
-          session.messages.length > 0
-            ? session
-            : {
-                ...session,
-                target: normalizedTarget,
-                toolIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === normalizedTarget.id)?.tools),
-                skillIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === normalizedTarget.id)?.skills),
-                mcpIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === normalizedTarget.id)?.mcps),
-              },
-        );
-        setRuntimeOpenPopover("");
-        return true;
-      },
-      selectChatRuntimeModel: (selection: LegacyShellChatRuntimeModelActionDetail) => {
-        if (!activeSession) {
-          return false;
-        }
-        patchSession(activeChatRoute, activeSession.id, (session) => ({
-          ...session,
-          modelProviderID: normalizeText(selection.providerId),
-          modelID: normalizeText(selection.modelId),
-        }));
-        setRuntimeOpenPopover("");
-        return true;
-      },
-      toggleChatRuntimeItem: (selection: LegacyShellChatRuntimeItemActionDetail) => {
-        if (!activeSession) {
-          return false;
-        }
-        const value = normalizeText(selection.id);
-        if (!value) {
-          return false;
-        }
-        const mutate = (items: string[]) =>
-          selection.checked
-            ? normalizeSelectionIDs([...items, value])
-            : items.filter((item) => item !== value);
-        patchSession(activeChatRoute, activeSession.id, (session) => {
-          if (selection.group === "skills") {
-            return { ...session, skillIDs: mutate(session.skillIDs) };
-          }
-          if (selection.kind === "tool") {
-            return { ...session, toolIDs: mutate(session.toolIDs) };
-          }
-          return { ...session, mcpIDs: mutate(session.mcpIDs) };
-        });
-        return true;
-      },
-    });
-  }, [activeChatRoute, activeSession, activeSessionByRoute, agents, compactRuntime, currentRoute, selectedAgentID]);
-
-  useEffect(() => {
-    const controller = createMobileViewportSyncController({
-      hasActiveInput: () => Boolean(activeViewportInput()),
-    });
-    return () => controller.destroy();
-  }, []);
-
-  useEffect(() => {
-    const handleNavigate = (event: Event) => {
-      const route = normalizeText((event as CustomEvent<{ route?: string }>).detail?.route) || LEGACY_SHELL_DEFAULT_ROUTE;
-      window.location.hash = `#${route}`;
-    };
-    const handleLanguageToggle = () => {
-      updateDocumentLanguage(language === "zh" ? "en" : "zh");
-    };
-    const handleQuickPrompt = (event: Event) => {
-      const prompt = normalizeText((event as CustomEvent<{ prompt?: string }>).detail?.prompt);
-      if (prompt) {
-        void sendPrompt(prompt);
-      }
-    };
-    const handleCreateSession = () => {
-      window.__alter0LegacyRuntime?.createSession?.();
-    };
-    const handleFocusSession = (event: Event) => {
-      const sessionID = normalizeText((event as CustomEvent<{ sessionId?: string }>).detail?.sessionId);
-      if (sessionID) {
-        window.__alter0LegacyRuntime?.focusSession?.(sessionID);
-      }
-    };
-    const handleRemoveSession = (event: Event) => {
-      const sessionID = normalizeText((event as CustomEvent<{ sessionId?: string }>).detail?.sessionId);
-      if (sessionID) {
-        window.__alter0LegacyRuntime?.removeSession?.(sessionID);
-      }
-    };
-    document.addEventListener(LEGACY_SHELL_NAVIGATE_EVENT, handleNavigate);
-    document.addEventListener(LEGACY_SHELL_TOGGLE_LANGUAGE_EVENT, handleLanguageToggle);
-    document.addEventListener(LEGACY_SHELL_QUICK_PROMPT_EVENT, handleQuickPrompt);
-    document.addEventListener(LEGACY_SHELL_CREATE_SESSION_EVENT, handleCreateSession);
-    document.addEventListener(LEGACY_SHELL_FOCUS_SESSION_EVENT, handleFocusSession);
-    document.addEventListener(LEGACY_SHELL_REMOVE_SESSION_EVENT, handleRemoveSession);
-    return () => {
-      document.removeEventListener(LEGACY_SHELL_NAVIGATE_EVENT, handleNavigate);
-      document.removeEventListener(LEGACY_SHELL_TOGGLE_LANGUAGE_EVENT, handleLanguageToggle);
-      document.removeEventListener(LEGACY_SHELL_QUICK_PROMPT_EVENT, handleQuickPrompt);
-      document.removeEventListener(LEGACY_SHELL_CREATE_SESSION_EVENT, handleCreateSession);
-      document.removeEventListener(LEGACY_SHELL_FOCUS_SESSION_EVENT, handleFocusSession);
-      document.removeEventListener(LEGACY_SHELL_REMOVE_SESSION_EVENT, handleRemoveSession);
-    };
-  }, [language]);
-
-  useEffect(() => {
-    const inputNode = document.getElementById("composerInput");
-    const formNode = document.getElementById("chatForm");
-    const counterNode = document.getElementById("charCount");
-    if (!(inputNode instanceof HTMLTextAreaElement) || !(formNode instanceof HTMLFormElement)) {
-      return;
-    }
-    const handleInput = () => {
-      const value = inputNode.value.slice(0, MAX_COMPOSER_CHARS);
-      if (value !== inputNode.value) {
-        inputNode.value = value;
-      }
-      if (counterNode) {
-        counterNode.textContent = `${value.length}/${MAX_COMPOSER_CHARS}`;
-      }
-      const sessionID = activeSessionByRoute[activeChatRoute];
-      if (!sessionID) {
-        return;
-      }
-      const nextDrafts = { ...composerDrafts, [sessionID]: value };
-      setComposerDrafts(nextDrafts);
-      persistComposerDrafts(nextDrafts);
-    };
-    const handleFocus = () => {
-      if (compactRuntime && runtimeOpenPopover) {
-        setRuntimeOpenPopover("");
-      }
-    };
-    const handleSubmit = (event: Event) => {
-      event.preventDefault();
-      void sendPrompt(inputNode.value);
-    };
-    inputNode.addEventListener("input", handleInput);
-    inputNode.addEventListener("focus", handleFocus);
-    formNode.addEventListener("submit", handleSubmit);
-    updateComposerDOM(composerDrafts, activeChatRoute, activeSessionByRoute);
-    return () => {
-      inputNode.removeEventListener("input", handleInput);
-      inputNode.removeEventListener("focus", handleFocus);
-      formNode.removeEventListener("submit", handleSubmit);
-    };
-  }, [activeChatRoute, activeSessionByRoute, composerDrafts, compactRuntime, runtimeOpenPopover]);
+    // Keep an active session available for the current runtime route.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route, selectedAgentID, agents]);
 
   useEffect(() => {
     window.clearTimeout(pollTimerRef.current);
-    const pending = Object.entries(sessionsByRoute).flatMap(([route, sessions]) =>
+    const pending = Object.entries(sessionsByRoute).flatMap(([routeKey, sessions]) =>
       sessions.flatMap((session) =>
         session.messages
           .filter((message) => message.taskID && message.taskPending && !message.taskResultDelivered)
           .map((message) => ({
-            route: route as ChatRoute,
+            route: routeKey as ConversationRoute,
             sessionID: session.id,
             messageID: message.id,
             taskID: message.taskID,
@@ -1440,5 +1042,226 @@ export function ReactRuntimeFacade() {
     return () => window.clearTimeout(pollTimerRef.current);
   }, [apiClient, pendingTasksVersion, sessionsByRoute]);
 
-  return null;
+  const selection = resolveModelSelection(activeSession, providers);
+  const selectedProvider = enabledProviders(providers).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
+  const selectedModel = enabledModels(selectedProvider).find((model) => normalizeText(model.id) === selection.modelID) || null;
+  const currentTarget = activeSession?.target || (route === "agent-runtime"
+    ? normalizeChatTarget({
+        type: "agent",
+        id: selectedAgentID,
+        name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
+      })
+    : defaultChatTarget());
+
+  const contextValue = useMemo<ConversationRuntimeContextValue>(() => ({
+    route,
+    compact,
+    inspectorOpen,
+    inspectorTab,
+    sessions: activeSessions,
+    activeSession,
+    sessionItems: activeSessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      meta: buildSessionMeta(session, language),
+      shortHash: hashShort(session.id),
+      active: session.id === activeSessionID,
+    })),
+    draft: activeSessionID ? composerDrafts[activeSessionID] || "" : "",
+    target: currentTarget,
+    lockedTarget: Boolean(activeSession?.messages.length),
+    targetOptions: route === "agent-runtime"
+      ? agents
+          .filter((agent) => normalizeText(agent.id))
+          .map((agent) => ({
+            type: "agent" as const,
+            id: normalizeText(agent.id),
+            name: normalizeText(agent.name) || normalizeText(agent.id),
+            subtitle: normalizeText(agent.description) || "Agent",
+            active: normalizeText(agent.id) === currentTarget.id,
+          }))
+      : [],
+    selectedProviderId: selection.providerID,
+    selectedModelId: selection.modelID,
+    selectedModelLabel: selectedModel?.name || selectedModel?.id || "Default",
+    providers: enabledProviders(providers).map((provider) => ({
+      id: normalizeText(provider.id),
+      name: normalizeText(provider.name) || normalizeText(provider.id),
+      models: enabledModels(provider).map((model) => ({
+        id: normalizeText(model.id),
+        name: normalizeText(model.name) || normalizeText(model.id),
+        active:
+          normalizeText(provider.id) === selection.providerID
+          && normalizeText(model.id) === selection.modelID,
+      })),
+    })),
+    capabilities: [
+      {
+        id: "memory",
+        name: "Memory",
+        description: "Search memory files",
+        kind: "tool" as const,
+        active: Boolean(activeSession?.toolIDs.includes("memory")),
+      },
+      ...mcps
+        .filter((item) => item.enabled !== false)
+        .map((item) => ({
+          id: normalizeText(item.id),
+          name: normalizeText(item.name) || normalizeText(item.id),
+          description: normalizeText(item.description) || normalizeText(item.scope) || "MCP",
+          kind: "mcp" as const,
+          active: Boolean(activeSession?.mcpIDs.includes(normalizeText(item.id))),
+        }))
+        .filter((item) => item.id),
+    ],
+    skills: skills
+      .filter((item) => item.enabled !== false)
+      .map((item) => ({
+        id: normalizeText(item.id),
+        name: normalizeText(item.name) || normalizeText(item.id),
+        description: normalizeText(item.description) || normalizeText(item.scope) || "Skill",
+        kind: "skill" as const,
+        active: Boolean(activeSession?.skillIDs.includes(normalizeText(item.id))),
+      }))
+      .filter((item) => item.id),
+    toolCount: (activeSession?.toolIDs.length || 0) + (activeSession?.mcpIDs.length || 0),
+    skillCount: activeSession?.skillIDs.length || 0,
+    createSession: () => {
+      ensureSession(null, { ...activeSessionByRoute, [route]: "" });
+    },
+    focusSession,
+    removeSession,
+    setDraft: (value: string) => {
+      const session = ensureSession();
+      const nextDrafts = { ...composerDrafts, [session.id]: value.slice(0, MAX_COMPOSER_CHARS) };
+      setComposerDrafts(nextDrafts);
+      persistComposerDrafts(nextDrafts);
+    },
+    sendPrompt,
+    toggleInspector: (tab) => {
+      if (tab) {
+        setInspectorTab(tab);
+      }
+      setInspectorOpen((current) => (tab ? true : !current));
+    },
+    closeInspector: () => setInspectorOpen(false),
+    selectTarget: (targetID: string) => {
+      if (route !== "agent-runtime") {
+        return;
+      }
+      const normalizedTarget = normalizeChatTarget({
+        type: "agent",
+        id: targetID,
+        name: agents.find((agent) => normalizeText(agent.id) === targetID)?.name || targetID,
+      });
+      setSelectedAgentID(normalizedTarget.id);
+      if (activeSessionID) {
+        patchSession(route, activeSessionID, (session) =>
+          session.messages.length > 0
+            ? session
+            : {
+                ...session,
+                target: normalizedTarget,
+                toolIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === normalizedTarget.id)?.tools),
+                skillIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === normalizedTarget.id)?.skills),
+                mcpIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === normalizedTarget.id)?.mcps),
+              },
+        );
+      }
+    },
+    selectModel: (providerID: string, modelID: string) => {
+      if (!activeSession) {
+        return;
+      }
+      patchSession(route, activeSession.id, (session) => ({
+        ...session,
+        modelProviderID: normalizeText(providerID),
+        modelID: normalizeText(modelID),
+      }));
+    },
+    toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => {
+      if (!activeSession) {
+        return;
+      }
+      const value = normalizeText(id);
+      if (!value) {
+        return;
+      }
+      const mutate = (items: string[]) =>
+        checked
+          ? normalizeSelectionIDs([...items, value])
+          : items.filter((item) => item !== value);
+      patchSession(route, activeSession.id, (session) =>
+        kind === "tool"
+          ? { ...session, toolIDs: mutate(session.toolIDs) }
+          : { ...session, mcpIDs: mutate(session.mcpIDs) },
+      );
+    },
+    toggleSkill: (id: string, checked: boolean) => {
+      if (!activeSession) {
+        return;
+      }
+      const value = normalizeText(id);
+      if (!value) {
+        return;
+      }
+      const mutate = (items: string[]) =>
+        checked
+          ? normalizeSelectionIDs([...items, value])
+          : items.filter((item) => item !== value);
+      patchSession(route, activeSession.id, (session) => ({
+        ...session,
+        skillIDs: mutate(session.skillIDs),
+      }));
+    },
+    toggleAgentProcess: (messageID: string) => {
+      if (!activeSession) {
+        return;
+      }
+      patchSession(route, activeSession.id, (session) => ({
+        ...session,
+        messages: session.messages.map((message) =>
+          message.id === messageID
+            ? { ...message, agentProcessCollapsed: !message.agentProcessCollapsed }
+            : message,
+        ),
+      }));
+    },
+  }), [
+    route,
+    compact,
+    inspectorOpen,
+    inspectorTab,
+    activeSessions,
+    activeSession,
+    language,
+    activeSessionID,
+    composerDrafts,
+    currentTarget,
+    agents,
+    selection.providerID,
+    selection.modelID,
+    selectedModel?.name,
+    selectedModel?.id,
+    providers,
+    mcps,
+    skills,
+    activeSessionByRoute,
+    removeSession,
+    sendPrompt,
+  ]);
+
+  return (
+    <ConversationRuntimeContext.Provider value={contextValue}>
+      {children}
+    </ConversationRuntimeContext.Provider>
+  );
+}
+
+export function useConversationRuntime() {
+  const value = useContext(ConversationRuntimeContext);
+  if (!value) {
+    throw new Error("ConversationRuntimeContext is not available");
+  }
+  return value;
 }

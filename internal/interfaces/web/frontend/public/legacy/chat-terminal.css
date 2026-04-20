@@ -546,6 +546,7 @@
   --terminal-shadow-raised: 0 24px 48px -36px rgba(8, 37, 69, 0.18);
   min-width: 0;
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
@@ -561,6 +562,7 @@
 .terminal-chat-screen {
   --terminal-chat-screen-padding-top: 18px;
   --terminal-chat-screen-padding-x: 16px;
+  height: 100%;
   min-height: 0;
   max-height: none;
   min-width: 0;
@@ -574,6 +576,8 @@
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   scroll-padding-top: 72px;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -1599,8 +1603,18 @@
   }
 
   .route-view.terminal-route {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     overflow: hidden;
     padding: var(--route-padding-top) var(--route-padding-x) var(--route-padding-top);
+  }
+
+  .route-body.terminal-route-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
   }
 }
 
@@ -1678,6 +1692,7 @@
   }
 
   .route-body.terminal-route-body {
+    display: flex;
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -2003,6 +2018,9 @@
     padding: 0;
     gap: 0;
     background: var(--bg-page);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     overflow: hidden;
   }
 
@@ -2130,9 +2148,25 @@
 
   .terminal-view {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     min-height: 0;
     height: 100%;
+  }
+
+  .terminal-mobile-header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px 8px;
+  }
+
+  .terminal-mobile-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
   }
 
   .terminal-session-pane {
@@ -2232,10 +2266,6 @@
   }
 
   .terminal-workspace-subcopy {
-    display: none;
-  }
-
-  .terminal-mobile-actions {
     display: none;
   }
 

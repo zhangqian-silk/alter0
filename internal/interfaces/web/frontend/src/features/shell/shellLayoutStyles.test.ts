@@ -104,6 +104,15 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("padding: 10px 12px calc(14px + env(safe-area-inset-bottom));");
   });
 
+  it("keeps page-mode workbench shells stretched to the mobile viewport so terminal messages can scroll", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?\.workbench-main,\s*\.workbench-pane-shell\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?height:\s*100%;/,
+    );
+  });
+
   it("restores legacy narrow-screen header controls and trims welcome spacing in the final mobile overrides", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
