@@ -2,6 +2,8 @@
 
 `internal/interfaces/web/frontend` 是新的 Web 前端工程入口，负责把浏览器端构建、测试与静态产物发布收敛到统一工程目录。
 
+前端页面的视觉与实现约束统一维护在 [docs/frontend-design-guidelines.md](../../../../docs/frontend-design-guidelines.md)，涉及页面、组件、布局或交互调整时需一并遵守。
+
 当前稳定结构如下：
 
 - `index.html` 仅保留前端启动容器、字体与 legacy 样式入口

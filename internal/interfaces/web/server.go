@@ -909,7 +909,7 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
 	}
 	alert := ""
 	if strings.TrimSpace(errorMessage) != "" {
-		alert = `<p style="margin:0;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;">` + html.EscapeString(strings.TrimSpace(errorMessage)) + `</p>`
+		alert = `<p class="alert">` + html.EscapeString(strings.TrimSpace(errorMessage)) + `</p>`
 	}
 	page := `<!doctype html>
 <html lang="en">
@@ -917,27 +917,47 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Alter0 Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
   <style>
-    body{margin:0;background:#f8fafc;color:#0f172a;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-    .card{width:100%;max-width:360px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;display:grid;gap:12px;box-shadow:0 10px 24px -20px rgba(15,23,42,.55)}
-    h1{margin:0;font-size:18px}
+    :root{color-scheme:light}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:#f4f7fb;background-image:linear-gradient(180deg,rgba(255,255,255,.84) 0%,rgba(244,247,251,.94) 52%,rgba(232,238,245,1) 100%),linear-gradient(rgba(148,163,184,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.05) 1px,transparent 1px);background-size:auto,32px 32px,32px 32px;color:#0f172a;font:15px/1.6 "IBM Plex Sans","Segoe UI",sans-serif}
+    .wrap{min-height:100vh;display:grid;place-items:center;padding:24px}
+    .card{width:min(100%,420px);display:grid;gap:18px;padding:24px;border:1px solid rgba(15,23,42,.08);border-radius:24px;background:rgba(255,255,255,.96);box-shadow:0 18px 42px -34px rgba(15,23,42,.18)}
+    .eyebrow{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;border:1px solid rgba(37,99,235,.12);background:rgba(239,246,255,.92);color:#1d4ed8;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+    .copy{display:grid;gap:8px}
+    h1{margin:0;font:700 28px/1.15 "Sora","IBM Plex Sans","Segoe UI",sans-serif;letter-spacing:-.03em}
     p{margin:0;color:#475569}
-    label{font-weight:600;color:#334155}
-    input{height:40px;border:1px solid #cbd5e1;border-radius:10px;padding:0 12px;font:inherit}
-    button{height:40px;border:1px solid #1d4ed8;background:#1d4ed8;color:#fff;border-radius:10px;font:inherit;font-weight:700;cursor:pointer}
+    .lede{color:#334155}
+    .field{display:grid;gap:8px}
+    label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
+    input{height:44px;border:1px solid rgba(15,23,42,.1);border-radius:14px;padding:0 14px;background:rgba(255,255,255,.98);color:#0f172a;font:inherit}
+    input:focus{outline:2px solid rgba(96,165,250,.42);outline-offset:2px;border-color:rgba(37,99,235,.2)}
+    button{height:44px;border:1px solid #1d4ed8;background:#1d4ed8;color:#fff;border-radius:14px;font:inherit;font-weight:700;cursor:pointer}
+    button:hover{background:#1e40af;border-color:#1e40af}
+    .alert{margin:0;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:14px;padding:12px 14px}
+    .meta{font-size:13px;color:#64748b}
   </style>
 </head>
 <body>
   <main class="wrap">
     <form class="card" method="post" action="/login">
-      <h1>Alter0 Console Login</h1>
-      <p>Enter the access password to continue.</p>
+      <span class="eyebrow">Alter0 workspace</span>
+      <div class="copy">
+        <h1>Alter0 Console Login</h1>
+        <p class="lede">Start in a secure Alter0 workspace.</p>
+        <p>Enter the access password to continue into chat, terminal, products, and control routes from one workbench.</p>
+      </div>
       ` + alert + `
       <input type="hidden" name="next" value="` + html.EscapeString(nextPath) + `">
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
       <button type="submit">Sign in</button>
+      <p class="meta">After sign-in, Alter0 returns to ` + html.EscapeString(nextPath) + `.</p>
     </form>
   </main>
 </body>

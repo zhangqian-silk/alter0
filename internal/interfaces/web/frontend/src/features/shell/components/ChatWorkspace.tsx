@@ -75,8 +75,8 @@ function getDefaultChatWorkspaceSnapshot(
       route: currentRoute,
       heading: "Alter0",
       subheading: copy.chatMenu,
-      welcomeHeading: "Hello, how can I help you today?",
-      welcomeDescription: "I am a helpful assistant that can help you with your questions.",
+      welcomeHeading: "Start with a repo, task, or runtime question.",
+      welcomeDescription: "Inspect code, drive terminal work, and move product changes forward from one workspace.",
       welcomeTargets: [],
       welcomeTargetError: "",
     };
@@ -86,8 +86,8 @@ function getDefaultChatWorkspaceSnapshot(
     route: currentRoute,
     heading: routeCopy.title,
     subheading: routeCopy.subtitle,
-    welcomeHeading: "Hello, how can I help you today?",
-    welcomeDescription: "I am a helpful assistant that can help you with your questions.",
+    welcomeHeading: "Start with a repo, task, or runtime question.",
+    welcomeDescription: "Inspect code, drive terminal work, and move product changes forward from one workspace.",
     welcomeTargets: [],
     welcomeTargetError: "",
   };
@@ -278,7 +278,7 @@ const ChatView = memo(function ChatView({
   return (
     <div className="chat-view" id="chatView" hidden={hidden}>
       <section className="welcome-screen" id={LEGACY_SHELL_IDS.welcomeScreen} hidden={showMessages}>
-        <p className="welcome-tag" data-i18n="welcome.tag">Alter0 assistant</p>
+        <p className="welcome-tag" data-i18n="welcome.tag">Alter0 workspace</p>
         <h3 id="welcomeHeading">{welcomeHeading}</h3>
         <p id="welcomeDescription">{welcomeDescription}</p>
         <div className="welcome-target-list" id="welcomeTargetList">

@@ -23,6 +23,27 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("@media (max-width: 1100px)");
   });
 
+  it("keeps desktop shell surfaces calm and avoids glass-heavy workbench chrome", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain("background: #f4f7fb;");
+    expect(stylesheet).toContain("backdrop-filter: none;");
+    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.96);");
+    expect(stylesheet).toContain("box-shadow: 0 10px 30px -26px rgba(15, 23, 42, 0.16);");
+  });
+
+  it("keeps shared route pages on the same restrained workbench surface system", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".route-card,");
+    expect(stylesheet).toContain("border-color: rgba(15, 23, 42, 0.08);");
+    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.94);");
+    expect(stylesheet).toContain("background: rgba(248, 250, 252, 0.92);");
+    expect(stylesheet).toContain("background: rgba(239, 246, 255, 0.92);");
+  });
+
   it("binds mobile viewport css vars into chat and page-mode layouts", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
