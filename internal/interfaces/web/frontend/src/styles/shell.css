@@ -3177,6 +3177,10 @@ body::after {
   justify-content: center;
 }
 
+.terminal-mobile-header .conversation-mobile-action {
+  white-space: nowrap;
+}
+
 .conversation-mobile-action.is-primary {
   background: linear-gradient(180deg, #4ed4ff 0%, #0b78d6 100%);
   border-color: rgba(60, 183, 255, 0.3);
@@ -3481,7 +3485,7 @@ body::after {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .conversation-mobile-action {
+  .conversation-mobile-actions .conversation-mobile-action {
     width: 100%;
   }
 

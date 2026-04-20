@@ -73,6 +73,15 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("width: min(calc(100vw - 16px), 360px);");
   });
 
+  it("styles conversation mobile header actions independently from legacy terminal toggles", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".conversation-mobile-action {");
+    expect(stylesheet).toContain(".terminal-mobile-header .conversation-mobile-action {");
+    expect(stylesheet).toContain(".conversation-mobile-action.is-primary {");
+  });
+
   it("anchors narrow shell drawers to the viewport edges instead of floating them inside the desktop canvas", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
@@ -153,6 +162,15 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /\/\* Legacy main-repo layout baseline \*\/[\s\S]*?@media \(max-width: 760px\) \{[\s\S]*?\.chat-pane\.empty-state \.welcome-screen\s*\{[\s\S]*?margin:\s*14px auto 0;[\s\S]*?align-self:\s*start;/,
     );
+  });
+
+  it("keeps legacy terminal skin scoped to terminal toggles instead of conversation runtime actions", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+
+    expect(stylesheet).toContain(".app-shell.info-mode .panel-toggle {");
+    expect(stylesheet).toContain(".chat-pane[data-route=\"terminal\"].page-mode .panel-toggle,");
+    expect(stylesheet).not.toContain(".app-shell[data-workbench-route=\"chat\"] .conversation-workspace .panel-toggle,");
   });
 
   it("styles shared jump controls as arrow clusters for dialog surfaces", () => {
