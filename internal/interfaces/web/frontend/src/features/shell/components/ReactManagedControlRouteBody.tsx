@@ -665,7 +665,7 @@ export function ReactManagedControlRouteBody({
   };
 
   return (
-    <>
+    <section className="control-route-grid" data-control-route-grid={route}>
       {state.items.map((item) => (
         <RouteCard
           key={`${route}-${routeConfig.key(item)}`}
@@ -680,7 +680,7 @@ export function ReactManagedControlRouteBody({
           ))}
         </RouteCard>
       ))}
-    </>
+    </section>
   );
 }
 

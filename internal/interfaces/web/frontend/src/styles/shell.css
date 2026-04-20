@@ -1139,6 +1139,19 @@ body::after {
   box-shadow: 0 14px 28px -24px rgba(15, 23, 42, 0.18);
 }
 
+.control-route-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min-width)), 1fr));
+  gap: var(--card-grid-gap);
+  align-content: start;
+  align-items: start;
+}
+
+.control-route-grid .route-card {
+  min-height: auto;
+}
+
 .route-master-detail {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
@@ -2880,5 +2893,35 @@ body::after {
     min-height: 36px;
     padding: 0 12px;
     white-space: nowrap;
+  }
+
+  .control-route-grid {
+    gap: 12px;
+  }
+
+  .control-route-grid .route-card {
+    padding: 18px;
+  }
+
+  .control-route-grid .route-card-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .control-route-grid .status-badge {
+    align-self: flex-start;
+  }
+
+  .control-route-grid .route-field-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .control-route-grid .route-field-value-wrap {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .control-route-grid .route-card-footer {
+    align-items: stretch;
   }
 }
