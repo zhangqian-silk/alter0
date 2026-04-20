@@ -486,6 +486,49 @@ describe("LegacyWebShell", () => {
     expect(routes).toEqual(["tasks"]);
   });
 
+  it("dismisses the mobile navigation drawer after route selection", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: true,
+        media: "(max-width: 1100px)",
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+
+    const routes: string[] = [];
+    document.addEventListener(
+      LEGACY_SHELL_NAVIGATE_EVENT,
+      ((event: Event) => {
+        routes.push(String((event as CustomEvent<{ route: string }>).detail?.route || ""));
+      }) as EventListener,
+    );
+
+    render(<LegacyWebShell />);
+
+    const appShell = document.getElementById(LEGACY_SHELL_IDS.appShell);
+
+    fireEvent.click(document.getElementById(LEGACY_SHELL_IDS.navToggle)!);
+
+    await waitFor(() => {
+      expect(appShell).toHaveClass("nav-open");
+      expect(appShell).toHaveClass("overlay-open");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+
+    await waitFor(() => {
+      expect(routes).toEqual(["tasks"]);
+      expect(appShell).not.toHaveClass("nav-open");
+      expect(appShell).not.toHaveClass("overlay-open");
+    });
+  });
+
   it("shows a delayed tooltip for collapsed navigation route items", async () => {
     vi.useFakeTimers();
 

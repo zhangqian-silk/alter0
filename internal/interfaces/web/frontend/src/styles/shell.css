@@ -2063,7 +2063,11 @@ body::after {
 
 .menu {
   flex: 1;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   margin: 0;
   padding: 0 2px;
   display: flex;

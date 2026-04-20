@@ -2245,6 +2245,10 @@
     gap: 6px;
   }
 
+  .terminal-workspace-actions [data-terminal-session-pane-toggle] {
+    display: none;
+  }
+
   .terminal-inline-button,
   .terminal-runtime-state,
   .terminal-session-close,

@@ -213,10 +213,18 @@ type JumpState = {
 const POLL_INTERVAL_MS = 2000;
 const INTERACTION_POLL_INTERVAL_MS = 6000;
 const HIDDEN_POLL_INTERVAL_MS = 12000;
+const IDLE_LIST_POLL_INTERVAL_MS = 12000;
+const HIDDEN_IDLE_LIST_POLL_INTERVAL_MS = 30000;
 const SCROLL_IDLE_MS = 1200;
 const SCROLL_BOTTOM_ANCHOR_THRESHOLD = 24;
 const JUMP_TOP_THRESHOLD = 180;
 const JUMP_BOTTOM_THRESHOLD = 220;
+
+type TerminalPollPlan = {
+  enabled: boolean;
+  interval: number;
+  refreshActiveSession: boolean;
+};
 
 function resolveLanguage(): "en" | "zh" {
   return document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en";
@@ -268,6 +276,55 @@ function renderStatus(status: string, copy: TerminalCopy): string {
 function isLiveStatus(status: string): boolean {
   const normalized = normalizeStatus(status);
   return normalized === "ready" || normalized === "busy";
+}
+
+export function resolveTerminalPollPlan(options: {
+  status: string;
+  pageHidden: boolean;
+  scrollingActive: boolean;
+  inputFocused: boolean;
+}): TerminalPollPlan {
+  const normalized = normalizeStatus(options.status);
+
+  if (normalized === "busy") {
+    if (options.scrollingActive) {
+      return {
+        enabled: false,
+        interval: 0,
+        refreshActiveSession: true,
+      };
+    }
+    return {
+      enabled: true,
+      interval: options.pageHidden
+        ? HIDDEN_POLL_INTERVAL_MS
+        : options.inputFocused
+          ? INTERACTION_POLL_INTERVAL_MS
+          : POLL_INTERVAL_MS,
+      refreshActiveSession: true,
+    };
+  }
+
+  if (normalized === "ready") {
+    if (options.scrollingActive || options.inputFocused) {
+      return {
+        enabled: false,
+        interval: 0,
+        refreshActiveSession: false,
+      };
+    }
+    return {
+      enabled: true,
+      interval: options.pageHidden ? HIDDEN_IDLE_LIST_POLL_INTERVAL_MS : IDLE_LIST_POLL_INTERVAL_MS,
+      refreshActiveSession: false,
+    };
+  }
+
+  return {
+    enabled: false,
+    interval: 0,
+    refreshActiveSession: false,
+  };
 }
 
 function sortSessions(items: TerminalSession[]): TerminalSession[] {
@@ -676,11 +733,13 @@ export function ReactManagedTerminalRouteBody() {
 
   const activeSession = sessions.find((session) => session.id === activeSessionID) || null;
   const turns = Array.isArray(activeSession?.turns) ? activeSession.turns : [];
-  const pollInterval = pageHidden
-    ? HIDDEN_POLL_INTERVAL_MS
-    : scrollingActive || inputFocused
-      ? INTERACTION_POLL_INTERVAL_MS
-      : POLL_INTERVAL_MS;
+  const activeStatus = normalizeStatus(activeSession?.status || "");
+  const pollPlan = resolveTerminalPollPlan({
+    status: activeSession?.status || "",
+    pageHidden,
+    scrollingActive,
+    inputFocused,
+  });
 
   const captureScrollSnapshot = () => {
     const node = chatScreenRef.current;
@@ -854,16 +913,20 @@ export function ReactManagedTerminalRouteBody() {
   }, [activeSessionID]);
 
   useEffect(() => {
-    if (!activeSessionID || !activeSession || !isLiveStatus(activeSession.status || "")) {
+    if (!activeSessionID || !activeSession || !pollPlan.enabled) {
       return;
     }
     const timer = window.setTimeout(() => {
-      captureScrollSnapshot();
+      if (pollPlan.refreshActiveSession) {
+        captureScrollSnapshot();
+      }
       void refreshList();
-      void refreshActiveSession(activeSessionID);
-    }, pollInterval);
+      if (pollPlan.refreshActiveSession) {
+        void refreshActiveSession(activeSessionID);
+      }
+    }, pollPlan.interval);
     return () => window.clearTimeout(timer);
-  }, [activeSession, activeSessionID, pollInterval, sessions]);
+  }, [activeSession, activeSessionID, pollPlan.enabled, pollPlan.interval, pollPlan.refreshActiveSession, sessions]);
 
   useEffect(() => {
     setExpandedTurns((current) => {
@@ -1050,7 +1113,6 @@ export function ReactManagedTerminalRouteBody() {
     scheduleJumpStateSync();
   };
 
-  const activeStatus = normalizeStatus(activeSession?.status || "");
   const activeNote = runtimeNote(activeSession?.status || "", copy);
   const runtimeDetail = String(activeSession?.error_message || "").trim();
   const composerNote = [activeNote, runtimeDetail].filter(Boolean).join(" | ");

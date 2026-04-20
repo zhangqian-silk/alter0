@@ -1,5 +1,5 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { ReactManagedTerminalRouteBody } from "./ReactManagedTerminalRouteBody";
+import { ReactManagedTerminalRouteBody, resolveTerminalPollPlan } from "./ReactManagedTerminalRouteBody";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -128,6 +128,60 @@ describe("ReactManagedTerminalRouteBody", () => {
     window.localStorage.clear();
   });
 
+  it("adapts terminal polling cadence to runtime status and interaction state", () => {
+    expect(
+      resolveTerminalPollPlan({
+        status: "ready",
+        pageHidden: false,
+        scrollingActive: false,
+        inputFocused: false,
+      }),
+    ).toEqual({
+      enabled: true,
+      interval: 12000,
+      refreshActiveSession: false,
+    });
+
+    expect(
+      resolveTerminalPollPlan({
+        status: "ready",
+        pageHidden: false,
+        scrollingActive: true,
+        inputFocused: false,
+      }),
+    ).toEqual({
+      enabled: false,
+      interval: 0,
+      refreshActiveSession: false,
+    });
+
+    expect(
+      resolveTerminalPollPlan({
+        status: "busy",
+        pageHidden: false,
+        scrollingActive: false,
+        inputFocused: false,
+      }),
+    ).toEqual({
+      enabled: true,
+      interval: 2000,
+      refreshActiveSession: true,
+    });
+
+    expect(
+      resolveTerminalPollPlan({
+        status: "busy",
+        pageHidden: false,
+        scrollingActive: true,
+        inputFocused: false,
+      }),
+    ).toEqual({
+      enabled: false,
+      interval: 0,
+      refreshActiveSession: true,
+    });
+  });
+
   it("renders the terminal session list and active workspace in React", async () => {
     render(<ReactManagedTerminalRouteBody />);
 
@@ -192,7 +246,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
   });
 
-  it("slows polling and preserves scroll position while the terminal output is being scrolled", async () => {
+  it("does not refresh a ready session while the terminal output is being scrolled", async () => {
     render(<ReactManagedTerminalRouteBody />);
 
     await waitFor(() => {
@@ -224,18 +278,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2100);
+      await vi.advanceTimersByTimeAsync(6100);
     });
     expect(fetchMock.mock.calls).toHaveLength(initialCallCount);
     expect(chatScreen.scrollTop).toBe(240);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(4000);
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(fetchMock.mock.calls.length).toBeGreaterThan(initialCallCount);
     expect(chatScreen.scrollTop).toBe(240);
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
   });

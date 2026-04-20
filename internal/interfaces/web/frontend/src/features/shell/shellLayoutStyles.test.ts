@@ -86,6 +86,15 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".app-shell.panel-open:not(.info-mode) .session-pane {");
   });
 
+  it("keeps narrow navigation drawers vertically scrollable so small viewports can reach every menu item", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\/\* Legacy main-repo layout baseline \*\/[\s\S]*?\.menu\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*auto;[\s\S]*?-webkit-overflow-scrolling:\s*touch;[\s\S]*?overscroll-behavior-y:\s*contain;/,
+    );
+  });
+
   it("anchors the narrow-screen composer to the keyboard offset instead of a fixed viewport bottom", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
