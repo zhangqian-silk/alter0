@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
+import { getLegacyShellCopy } from "../legacyShellCopy";
 import { normalizeText, RouteFieldRow } from "./RouteBodyPrimitives";
 
 type TerminalStatus = "ready" | "busy" | "exited" | "failed" | "interrupted";
@@ -696,9 +698,11 @@ function CopyIcon() {
 }
 
 export function ReactManagedTerminalRouteBody() {
+  const workbench = useWorkbenchContext();
   const apiClient = useMemo(() => createAPIClient(), []);
   const [language, setLanguage] = useState<"en" | "zh">(() => resolveLanguage());
   const copy = TERMINAL_COPY[language];
+  const shellCopy = getLegacyShellCopy(workbench.language);
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionID, setActiveSessionID] = useState("");
   const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
@@ -740,6 +744,12 @@ export function ReactManagedTerminalRouteBody() {
     scrollingActive,
     inputFocused,
   });
+
+  useEffect(() => {
+    if (!workbench.isMobileViewport || workbench.mobileNavOpen) {
+      setSessionSheetOpen(false);
+    }
+  }, [workbench.isMobileViewport, workbench.mobileNavOpen]);
 
   const captureScrollSnapshot = () => {
     const node = chatScreenRef.current;
@@ -1123,6 +1133,43 @@ export function ReactManagedTerminalRouteBody() {
 
   return (
     <section className="terminal-view" data-terminal-view>
+      {workbench.isMobileViewport ? (
+        <header className="terminal-mobile-header" data-terminal-mobile-header>
+          <button
+            className="nav-toggle"
+            type="button"
+            aria-expanded={workbench.mobileNavOpen}
+            onClick={() => {
+              setSessionSheetOpen(false);
+              workbench.toggleMobileNav();
+            }}
+          >
+            {shellCopy.chatMenu}
+          </button>
+          <div className="terminal-mobile-header-actions">
+            <button
+              className="panel-toggle"
+              type="button"
+              aria-expanded={sessionSheetOpen}
+              onClick={() => {
+                if (!sessionSheetOpen) {
+                  workbench.closeMobileNav();
+                }
+                setSessionSheetOpen((current) => !current);
+              }}
+            >
+              {copy.sessions}
+            </button>
+            <button
+              className="mobile-new-chat"
+              type="button"
+              onClick={() => void createSession()}
+            >
+              {copy.newShort}
+            </button>
+          </div>
+        </header>
+      ) : null}
       <aside
         className={`terminal-session-pane${sessionSheetOpen ? " is-open" : ""}`}
         data-terminal-session-pane

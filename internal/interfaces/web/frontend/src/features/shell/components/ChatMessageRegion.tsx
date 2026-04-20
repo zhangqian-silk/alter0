@@ -73,15 +73,22 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
   sessionId,
   messages,
   language,
+  onToggleProcess,
 }: {
   sessionId: string;
   messages: ChatMessageSnapshot[];
   language: LegacyShellLanguage;
+  onToggleProcess?: (messageID: string) => void;
 }) {
   return (
     <div className="message-list" data-message-session-id={sessionId}>
       {messages.map((message) => (
-        <ChatMessageArticle key={message.id} message={message} language={language} />
+        <ChatMessageArticle
+          key={message.id}
+          message={message}
+          language={language}
+          onToggleProcess={onToggleProcess}
+        />
       ))}
     </div>
   );
@@ -90,9 +97,11 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
 const ChatMessageArticle = memo(function ChatMessageArticle({
   message,
   language,
+  onToggleProcess,
 }: {
   message: ChatMessageSnapshot;
   language: LegacyShellLanguage;
+  onToggleProcess?: (messageID: string) => void;
 }) {
   const classNames = ["msg", message.role];
   if (message.error) {
@@ -106,7 +115,7 @@ const ChatMessageArticle = memo(function ChatMessageArticle({
     <article className={classNames.join(" ")} data-message-id={message.id}>
       <div className="msg-bubble">
         {message.role === "assistant" ? (
-          <AssistantMessageBody message={message} language={language} />
+          <AssistantMessageBody message={message} language={language} onToggleProcess={onToggleProcess} />
         ) : (
           <MarkdownHTML html={renderMarkdownToHTML(message.text)} />
         )}
@@ -134,9 +143,11 @@ const ChatMessageArticle = memo(function ChatMessageArticle({
 function AssistantMessageBody({
   message,
   language,
+  onToggleProcess,
 }: {
   message: ChatMessageSnapshot;
   language: LegacyShellLanguage;
+  onToggleProcess?: (messageID: string) => void;
 }) {
   const copy = MESSAGE_COPY[language];
   const parsed = resolveAgentExecutionContent(message, language);
@@ -169,6 +180,7 @@ function AssistantMessageBody({
           type="button"
           data-agent-process-toggle={message.id}
           aria-expanded={collapsed ? "false" : "true"}
+          onClick={() => onToggleProcess?.(message.id)}
         >
           <span className="agent-process-toggle-icon">{collapsed ? ">" : "v"}</span>
           <span className="agent-process-copy">

@@ -1,5 +1,6 @@
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ReactManagedTerminalRouteBody, resolveTerminalPollPlan } from "./ReactManagedTerminalRouteBody";
+import { WorkbenchContext, type WorkbenchContextValue } from "../../../app/WorkbenchContext";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -128,6 +129,25 @@ describe("ReactManagedTerminalRouteBody", () => {
     window.localStorage.clear();
   });
 
+  function renderTerminalRouteBody(overrides: Partial<WorkbenchContextValue> = {}) {
+    const contextValue: WorkbenchContextValue = {
+      route: "terminal",
+      language: "en",
+      navigate: vi.fn(),
+      isMobileViewport: false,
+      mobileNavOpen: false,
+      toggleMobileNav: vi.fn(),
+      closeMobileNav: vi.fn(),
+      ...overrides,
+    };
+
+    return render(
+      <WorkbenchContext.Provider value={contextValue}>
+        <ReactManagedTerminalRouteBody />
+      </WorkbenchContext.Provider>,
+    );
+  }
+
   it("adapts terminal polling cadence to runtime status and interaction state", () => {
     expect(
       resolveTerminalPollPlan({
@@ -183,7 +203,7 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   it("renders the terminal session list and active workspace in React", async () => {
-    render(<ReactManagedTerminalRouteBody />);
+    renderTerminalRouteBody();
 
     await waitFor(() => {
       expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
@@ -214,7 +234,7 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   it("loads step detail when expanding a process step", async () => {
-    render(<ReactManagedTerminalRouteBody />);
+    renderTerminalRouteBody();
 
     await waitFor(() => {
       expect(document.querySelector("[data-terminal-step-toggle='step-1']")).toBeInTheDocument();
@@ -230,7 +250,7 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   it("creates a new terminal session through the React action bar", async () => {
-    render(<ReactManagedTerminalRouteBody />);
+    renderTerminalRouteBody();
 
     await waitFor(() => {
       expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
@@ -247,7 +267,7 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   it("does not refresh a ready session while the terminal output is being scrolled", async () => {
-    render(<ReactManagedTerminalRouteBody />);
+    renderTerminalRouteBody();
 
     await waitFor(() => {
       expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
@@ -284,5 +304,31 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(chatScreen.scrollTop).toBe(240);
     expect(chatScreen.scrollTop).toBe(240);
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
+  });
+
+  it("renders mobile menu actions and links them to workbench navigation", async () => {
+    const toggleMobileNav = vi.fn();
+    const closeMobileNav = vi.fn();
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+      toggleMobileNav,
+      closeMobileNav,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
+    });
+
+    const mobileHeader = document.querySelector("[data-terminal-mobile-header]") as HTMLElement;
+    expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();
+
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
+    expect(toggleMobileNav).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
+    expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("is-open");
+    expect(closeMobileNav).toHaveBeenCalledTimes(1);
   });
 });

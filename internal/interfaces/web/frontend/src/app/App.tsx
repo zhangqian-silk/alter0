@@ -1,11 +1,5 @@
-import { ReactRuntimeFacade } from "../bootstrap/ReactRuntimeFacade";
-import { LegacyWebShell } from "../features/shell/LegacyWebShell";
+import { WorkbenchApp } from "./WorkbenchApp";
 
 export function App() {
-  return (
-    <>
-      <LegacyWebShell />
-      <ReactRuntimeFacade />
-    </>
-  );
+  return <WorkbenchApp />;
 }

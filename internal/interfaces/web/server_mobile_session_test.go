@@ -18,63 +18,53 @@ func TestMobileNewChatEntryReachable(t *testing.T) {
 	}
 }
 
-func TestNewChatReusesLatestBlankSessionAndSwitchesContext(t *testing.T) {
-	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
+func TestConversationRuntimeCreatesAndDeletesSessionsInReactState(t *testing.T) {
+	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
 	markers := []string{
 		"const created: ChatSession = {",
 		"const nextSessionsByRoute: SessionsState = {",
-		"const nextActiveState = { ...activeSessionByRoute, [route]: created.id };",
-		"window.location.hash = `#${route}`;",
-		`createSession: () => {`,
-		`window.__alter0LegacyRuntime?.createSession?.();`,
-		`document.addEventListener(LEGACY_SHELL_CREATE_SESSION_EVENT, handleCreateSession);`,
+		"const nextActiveState = { ...preferredActiveState, [route]: created.id };",
+		"createSession: () => {",
+		"ensureSession(null, { ...activeSessionByRoute, [route]: \"\" });",
+		"const removeSession = async (sessionID: string) => {",
+		"const handleCreateSession = () => {",
+		"runtime.createSession();",
+		"const handleRemoveSession = (sessionID: string) => {",
+		"return runtime.removeSession(sessionID);",
+		"onClick={handleCreateSession}",
+		"onClick={() => void handleRemoveSession(item.id)}",
 	}
 	for _, marker := range markers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected script marker %q", marker)
+		if !strings.Contains(source, marker) {
+			t.Fatalf("expected source marker %q", marker)
 		}
 	}
 }
 
-func TestSessionListShowsEmptyAndLoadFailureFeedback(t *testing.T) {
-	source := readWorkspaceFile(t, "frontend/src/features/shell/components/SessionPane.tsx")
-	scriptMarkers := []string{
-		"loadError: string;",
-		`id="sessionLoadError"`,
-		`role="status"`,
-		`aria-live="polite"`,
-		"loadError={sessionPaneSnapshot.loadError}",
+func TestConversationSessionListShowsCompactMetadata(t *testing.T) {
+	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
+	markers := []string{
+		`data-conversation-session-pane`,
+		`data-testid="conversation-session-pane"`,
+		`className="conversation-session-list"`,
+		`className="conversation-session-title"`,
+		`className="conversation-session-meta"`,
+		`className="conversation-session-hash"`,
+		"#{item.shortHash}",
+		"runtime.sessionItems.length",
 	}
-	for _, marker := range scriptMarkers {
+	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
 			t.Fatalf("expected source marker %q", marker)
 		}
 	}
 
-	styles := readEmbeddedAsset(t, "static/assets/chat.css")
-	if !strings.Contains(styles, ".session-error {") {
-		t.Fatalf("expected style marker %q", ".session-error {")
-	}
-}
-
-func TestSessionDeleteHooksAndStylesPresent(t *testing.T) {
-	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
-	scriptMarkers := []string{
-		"const removeSession = async (sessionID: string) => {",
-		"window.__alter0LegacyRuntime?.removeSession?.(sessionID);",
-		"void removeSession(sessionID);",
-		"document.addEventListener(LEGACY_SHELL_REMOVE_SESSION_EVENT, handleRemoveSession);",
-	}
-	for _, marker := range scriptMarkers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected script marker %q", marker)
-		}
-	}
-
-	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	styleMarkers := []string{
-		".session-card-row {",
-		".session-card-delete {",
+		".conversation-session-card {",
+		".conversation-session-card.is-active {",
+		".conversation-session-delete {",
 	}
 	for _, marker := range styleMarkers {
 		if !strings.Contains(styles, marker) {
@@ -83,47 +73,20 @@ func TestSessionDeleteHooksAndStylesPresent(t *testing.T) {
 	}
 }
 
-func TestMobileRuntimeSheetUsesDedicatedStackingLayer(t *testing.T) {
-	hostSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ChatRuntimeHost.tsx")
-	hostMarkers := []string{
-		`className="composer-runtime-sheet-backdrop"`,
-		`className="composer-runtime-popover-mobile-close"`,
-		`data-runtime-close`,
-		`data-runtime-scroll-container="mobile"`,
-		`role="dialog"`,
-		`if (!snapshot.compact || snapshot.openPopover !== "mobile") {`,
-		`requestLegacyChatRuntimePopover("mobile")`,
+func TestConversationInspectorUsesInlinePanel(t *testing.T) {
+	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
+	markers := []string{
+		"const [inspectorOpen, setInspectorOpen] = useState(false);",
+		"toggleInspector: (tab) => {",
+		"setInspectorOpen((current) => (tab ? true : !current));",
+		`className="conversation-inspector"`,
+		`data-conversation-inspector`,
+		"onClick={() => runtime.closeInspector()}",
 	}
-	for _, marker := range hostMarkers {
-		if !strings.Contains(hostSource, marker) {
-			t.Fatalf("expected runtime host marker %q", marker)
-		}
-	}
-
-	facadeSource := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
-	facadeMarkers := []string{
-		`compact: compactRuntime,`,
-		`appShell.classList.toggle(`,
-		`"runtime-sheet-open"`,
-	}
-	for _, marker := range facadeMarkers {
-		if !strings.Contains(facadeSource, marker) {
-			t.Fatalf("expected runtime facade marker %q", marker)
-		}
-	}
-
-	styles := readEmbeddedAsset(t, "static/assets/chat.css")
-	styleMarkers := []string{
-		".app-shell.runtime-sheet-open {",
-		".composer-runtime-sheet-backdrop {",
-		".composer-runtime-popover-mobile-topbar {",
-		".composer-runtime-popover-mobile-close {",
-		".composer-runtime-popover-mobile-body {",
-		".composer-runtime-option-summary {",
-	}
-	for _, marker := range styleMarkers {
-		if !strings.Contains(styles, marker) {
-			t.Fatalf("expected style marker %q", marker)
+	for _, marker := range markers {
+		if !strings.Contains(source, marker) {
+			t.Fatalf("expected source marker %q", marker)
 		}
 	}
 }
@@ -143,32 +106,50 @@ func TestMobileViewportKeyboardOffsetOnlyAppliesForFocusedInput(t *testing.T) {
 	}
 }
 
-func TestMobileRuntimeSheetClosesWhenComposerTakesFocus(t *testing.T) {
-	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
-	markers := []string{
-		"const handleFocus = () => {",
-		"if (compactRuntime && runtimeOpenPopover) {",
-		`setRuntimeOpenPopover("");`,
+func TestWorkbenchMobileNavOverlayStylesPresent(t *testing.T) {
+	source := readWorkspaceFile(t, "frontend/src/app/WorkbenchApp.tsx")
+	sourceMarkers := []string{
+		"const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());",
+		"const mobile = isLegacyShellMobileViewport();",
+		`classNames.push("nav-open", "overlay-open")`,
+		"if (!mobile) {",
+		"setNavOpen(false);",
+		"if (isMobileViewport) {",
 	}
-	for _, marker := range markers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected script marker %q", marker)
+	for _, marker := range sourceMarkers {
+		if !strings.Contains(source, marker) {
+			t.Fatalf("expected source marker %q", marker)
+		}
+	}
+
+	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
+	styleMarkers := []string{
+		".app-shell.nav-open .primary-nav {",
+		".app-shell.overlay-open .mobile-backdrop {",
+		".mobile-backdrop {",
+	}
+	for _, marker := range styleMarkers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
 		}
 	}
 }
 
-func TestMobileRuntimeSheetBlursFocusedComposerBeforeOpen(t *testing.T) {
-	script := readWorkspaceFile(t, "frontend/src/bootstrap/ReactRuntimeFacade.tsx")
+func TestWorkbenchMobileLayoutUsesConversationDrawer(t *testing.T) {
+	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	markers := []string{
-		"const activeInput = activeViewportInput();",
-		"activeInput?.blur();",
-		`nextPopover === "mobile"`,
-		"if (compactRuntime && runtimeOpenPopover) {",
-		`inputNode.addEventListener("focus", handleFocus);`,
+		"@media (max-width: 1100px) {",
+		".conversation-runtime-view {",
+		"grid-template-columns: 1fr;",
+		".conversation-session-pane {",
+		"position: fixed;",
+		"width: min(88vw, 340px);",
+		".conversation-session-pane.is-open {",
+		"transform: translateX(0);",
 	}
 	for _, marker := range markers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected script marker %q", marker)
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
 		}
 	}
 }
@@ -231,8 +212,51 @@ func TestNarrowTerminalWorkspaceHidesDuplicateSessionToggle(t *testing.T) {
 	styles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
 	markers := []string{
 		"@media (max-width: 1100px) {",
+		".terminal-mobile-header {",
+		".terminal-mobile-header-actions {",
 		".terminal-workspace-actions [data-terminal-session-pane-toggle] {",
 		"display: none;",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}
+
+func TestTerminalMobileActionsLinkWorkbenchNavAndSessionDrawer(t *testing.T) {
+	source := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
+	markers := []string{
+		`const workbench = useWorkbenchContext();`,
+		`const shellCopy = getLegacyShellCopy(workbench.language);`,
+		`className="terminal-mobile-header" data-terminal-mobile-header`,
+		`className="terminal-mobile-header-actions"`,
+		`workbench.toggleMobileNav();`,
+		`workbench.closeMobileNav();`,
+		`{shellCopy.chatMenu}`,
+		`{copy.sessions}`,
+		`{copy.newShort}`,
+	}
+	for _, marker := range markers {
+		if !strings.Contains(source, marker) {
+			t.Fatalf("expected source marker %q", marker)
+		}
+	}
+}
+
+func TestTerminalRouteKeepsDedicatedScrollShell(t *testing.T) {
+	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css") +
+		readWorkspaceFile(t, "frontend/public/legacy/chat-terminal.css")
+	markers := []string{
+		".route-view.terminal-route {",
+		"flex-direction: column;",
+		".route-body.terminal-route-body {",
+		"display: flex;",
+		"overflow: hidden;",
+		".terminal-chat-screen {",
+		"overflow-y: auto;",
+		"-webkit-overflow-scrolling: touch;",
+		"touch-action: pan-y;",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(styles, marker) {
