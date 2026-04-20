@@ -125,6 +125,12 @@ func TestLoginPageDefaultsToEnglishDocumentLanguage(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "Alter0 Console Login") {
 		t.Fatalf("expected login page heading to expose Alter0 branding")
 	}
+	if !strings.Contains(rec.Body.String(), "IBM Plex Sans") {
+		t.Fatalf("expected login page to use the shared workbench typography baseline")
+	}
+	if !strings.Contains(rec.Body.String(), "Start in a secure Alter0 workspace.") {
+		t.Fatalf("expected login page to describe the workbench entry point")
+	}
 }
 
 func TestChatComposerUsesReusableComponent(t *testing.T) {

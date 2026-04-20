@@ -25,8 +25,10 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `/chat` 提供 Chat、Agent、Terminal、Product、Control 与 Memory 的统一 Web Shell。
 - Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`；该入口仅保留前端挂载容器与静态资源引用，由 React 渲染稳定的 shell DOM，并通过兼容样式层保持旧 DOM 契约。
 - `/chat` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 导航中的语言切换入口负责在英文与中文之间切换，并同步更新根节点语言标记。
+- 登录页在启用密码保护时继续作为统一入口，但视觉需与 Web Shell 保持一致：使用 `IBM Plex Sans + Sora` 字体、近白工作台卡片和安全入口说明文案，不保留独立的默认系统表单风格。
 - `LegacyWebShell` 直接维护主导航当前路由高亮、导航折叠态、导航 tooltip、简化品牌头部、Session Pane 头部与会话卡片列表、ChatWorkspace 头部动作区、欢迎区文案、欢迎区 target picker、prompt pills、欢迎区/消息区显隐、消息列表 DOM、运行时 controls/note/sheet DOM、Session 历史空态提示/可访问标签、Composer 面板、路由页 `route-head` 标题/副标题、菜单、会话入口与路由感知文案；`ReactRuntimeFacade` 负责 Chat / Agent 的会话创建、切换、删除、草稿恢复、消息流、结构化 runtime、移动端 runtime sheet、结构化快照发布与 bridge 事件处理。`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类路由页由 React 接管，其中 terminal 已改为 React 原生页面实现。React 必须在 `routeBody` 上同步当前页 `data-react-managed-route` 标记、在 `appShell` 上同步稳定的 `data-react-managed-routes` 路由清单，避免壳层状态更新时清空页面主体 DOM；兼容层仅保留样式和 DOM 契约，不再通过 legacy 脚本接管 `/chat` 业务运行时。
-- Web Shell 的稳定界面基线需与主仓库当前壳层一致：桌面端使用全宽三栏工作台与移动端双抽屉工作台；主导航顶部仅保留 `Alter0` 服务名称与折叠入口，下方展示模块组；会话栏承载新建入口与历史列表；主工作区直接输出旧版 header、欢迎区/消息区、路由页 `route-head` 与独立输入面板。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示图形标识、额外品牌口号或实现状态；会话栏不重复路由概览；Chat 主区不再叠加独立 workspace hero，页面类路由不再渲染 route hero。
+- Web Shell 的稳定界面基线需与主仓库当前壳层一致：桌面端使用全宽三栏工作台与移动端双抽屉工作台；主导航顶部仅保留 `Alter0` 服务名称与折叠入口，下方展示模块组；会话栏承载新建入口与历史列表；主工作区直接输出旧版 header、欢迎区/消息区、路由页 `route-head` 与独立输入面板。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示图形标识、额外品牌口号或实现状态；会话栏不重复路由概览；Chat 主区不再叠加独立 workspace hero，页面类路由不再渲染 route hero；常规工作台界面默认保持中性冷灰表面、低对比边框与有限强调色，不再依赖大面积玻璃感、强渐变或营销式视觉锚点。`Control / Sessions / Tasks / Memory / Terminal / Codex Accounts` 等 React 托管 route 页继续共享同一表面体系：主卡片、表格容器、详情侧栏、环境信息块与任务列表使用近白表面、浅灰辅助层与浅蓝选中态，保证跨页切换时信息层级连续。
+- `Agent / Products` 复用的 legacy route primitives 也纳入同一表面体系：agent/product 列表卡片、管理表单、托管字段块、workspace detail 卡与工作区消息块使用近白主表面、浅灰辅助层与浅蓝选中态，保证旧类名组件与 React 托管 route 页在跨页切换时维持同一视觉等级。
 - `/chat` 页面标题、登录页标题、导航品牌位、会话栏标题与欢迎区 tag 统一展示 `Alter0`，不再混用 `alter0` 小写品牌词。
 - Web Shell 的抽屉式单列工作台仅在主视口宽度 `1100px` 及以下触发；高于该阈值时继续保留桌面三栏布局，并隐藏主工作区头部 `Menu / Sessions / New` 抽屉入口，同时主导航、会话栏、间距与主工作区需按可用视口自适应收缩，避免只对聊天内容列做最大阅读宽度限制而让整体壳层失衡。
 - 进入窄屏工作台后，主导航与 Session Pane 必须切换为贴左侧视口边缘的全高抽屉，不允许保留桌面悬浮卡片式边距；`info-mode` 页面不打开 Session Pane，`Agent` 运行页的三栏主体也需在同一 `1100px` 阈值同步收敛为单列，避免壳层断点先切换而页面主体仍保留桌面列布局。
@@ -161,8 +163,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 主工作区头部的 `Menu / Sessions / New` 入口在桌面三栏模式下默认隐藏，只在抽屉式窄屏工作台中作为收敛后的主入口显示；`info-mode` 页面默认隐藏 `Sessions` 按钮，Terminal 路由在 `page-mode` 下继续保留 `Sessions / New`。
 - 路由页头部的标题与副标题需按当前路由与语言即时切换文案；这些页头更新不得覆盖 route body 内已渲染的页面主体内容。
 - 已由 React 接管的 route body 需在 DOM 上暴露稳定 ownership 契约：`routeBody[data-react-managed-route]` 表达当前页 ownership，`appShell[data-react-managed-routes]` 表达稳定的受管路由集合；兼容层只能依据这份由 React 输出的契约退让，不得继续维护额外的独立路由白名单。
-- 欢迎区与 Composer 面板在同一主工作区内采用主仓库式上下结构：欢迎区直接输出 welcome tag、标题、副标题、target picker 与 prompt pills，Composer 独立贴底；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
-- 用户消息右对齐，宽度不超过消息区 80%，Chat / Agent / 路由消息区统一采用浅蓝轻科幻阅读主题；助手回复弱化厚重卡片层级，消息气泡、Process 区和阅读容器统一使用冷色低对比边框与玻璃感底色。
+- 欢迎区与 Composer 面板在同一主工作区内采用主仓库式上下结构：欢迎区直接输出 `Alter0 workspace` tag、面向 repo / task / runtime 的默认标题与说明、target picker 与 prompt pills，Composer 独立贴底；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
+- 用户消息右对齐，宽度不超过消息区 80%，Chat / Agent / 路由消息区统一采用克制的冷灰工作台阅读主题；助手回复弱化厚重卡片层级，消息气泡、Process 区和阅读容器统一使用低对比边框、近白表面与有限强调色。
 - 桌面宽屏下 Chat 消息列、欢迎区与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区统一保留 `960px` 最大阅读宽度，但外层三栏壳层也必须同步收缩侧栏与间距，避免在中等桌面宽度下出现阅读区限宽而整体布局仍然拥挤、遮挡或越界。
 - Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致会话卡片、消息节点或 route 内容被清空重建。
 - React 壳层发出的主导航跳转、新建会话、欢迎区快捷提示、语言切换、导航折叠同步与会话历史折叠同步事件，必须由当前前端运行时在同一页面内完成确认、路由更新、快捷发送或会话创建，且不能要求用户重复点击或依赖额外脚本注入的全局函数。

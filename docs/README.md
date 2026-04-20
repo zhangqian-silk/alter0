@@ -14,6 +14,7 @@
 - [架构设计](./architecture.md)
 - [领域化技术方案](./technical-solution.md)
 - [领域化需求清单](./requirements.md)
+- [前端设计与实现规范](./frontend-design-guidelines.md)
 - [前端彻底重构方案](./frontend-rebuild-plan.md)
 - [Memory 模块统一说明与需求文档](./memory/persistent-memory-module-spec.md)
 - [研究报告](./research/README.md)

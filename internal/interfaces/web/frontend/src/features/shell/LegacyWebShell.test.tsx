@@ -221,13 +221,27 @@ describe("LegacyWebShell", () => {
   it("renders the welcome and composer sections as direct legacy shell surfaces", () => {
     render(<LegacyWebShell />);
 
-    expect(document.querySelector(".welcome-screen > .welcome-tag")).toHaveTextContent("Alter0 assistant");
+    expect(document.querySelector(".welcome-screen > .welcome-tag")).toHaveTextContent("Alter0 workspace");
     expect(document.querySelector(".welcome-screen > #welcomeHeading")).toBeInTheDocument();
     expect(document.querySelector(".welcome-screen > #welcomeDescription")).toBeInTheDocument();
     expect(document.querySelector(".welcome-screen > #welcomeTargetList")).toBeInTheDocument();
     expect(document.querySelector(".welcome-screen > .prompt-grid")).toBeInTheDocument();
     expect(document.querySelector(".composer-shell > #chatForm")).toBeInTheDocument();
     expect(document.querySelector(".composer-shell > .composer-note")).toBeInTheDocument();
+  });
+
+  it("uses task-oriented default welcome copy instead of generic assistant phrasing", () => {
+    render(<LegacyWebShell />);
+
+    expect(document.getElementById("welcomeHeading")).toHaveTextContent(
+      "Start with a repo, task, or runtime question.",
+    );
+    expect(document.getElementById("welcomeDescription")).toHaveTextContent(
+      "Inspect code, drive terminal work, and move product changes forward from one workspace.",
+    );
+    expect(document.getElementById("welcomeDescription")).not.toHaveTextContent(
+      "I am a helpful assistant that can help you with your questions.",
+    );
   });
 
   it("renders the legacy route header for page-mode routes", async () => {

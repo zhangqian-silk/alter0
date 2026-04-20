@@ -53,11 +53,13 @@
 - Agent 执行过程需以结构化 `process_steps` 贯穿 SSE `done`、Task 结果与会话历史持久化，前端优先消费结构化步骤而不是依赖解析 `[agent] action / observation` 文本。
 - 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新。
 - Web 前端所有时间显示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Cron 创建表单默认时区固定为 `Asia/Shanghai`。
-- Web 侧边栏、历史折叠、页面滚动隔离、浅蓝轻科幻阅读主题、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
+- Web 侧边栏、历史折叠、页面滚动隔离、克制冷灰工作台阅读主题、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
 - 会话侧栏中的 Session 卡片需保持主仓库式紧凑结构：标题单行省略，摘要信息独立换行，短 hash 与复制/删除入口收纳在卡片下缘，不再拆出额外胶囊操作区。
 - Web Shell 需保持稳定 legacy DOM 契约，但运行链路已切到 React：`LegacyWebShell` 负责主导航、会话栏、工作区壳层与语言/路由文案，`ReactRuntimeFacade` 负责 Chat / Agent 的会话状态、消息流、结构化 runtime、移动端 runtime sheet、草稿恢复与 bridge 事件处理；`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 十二类路由页由 React 直接请求控制台或会话 API 并渲染，其中 terminal 也已改为 React 原生页面实现。`routeBody` 必须暴露当前页稳定的 `data-react-managed-route` 标记，`appShell` 必须暴露稳定的 `data-react-managed-routes` 路由清单；兼容层仅保留样式与 DOM 契约，不再通过 legacy 脚本接管 `/chat` 运行时。
 - `/chat` 与 `/login` 默认以英文启动，HTML 根节点语言标记为 `en`；Web Shell 保留显式语言切换入口，切到中文后需同步更新壳层文案与 `document.documentElement.lang`。
-- Web Shell 的稳定视觉基线需与主仓库当前壳层一致：桌面端使用全宽三栏工作台，左侧品牌导航只保留 `Alter0` 服务名与折叠入口，中栏承载新建入口与历史会话，右侧工作区直接输出旧版 header、欢迎区/消息区、路由页 `route-head` 与独立 Composer。React 不再把主导航、会话栏和工作区渲染为三块独立胶囊，也不再额外挂载 workspace hero、route hero 或 prompt deck 包裹层；legacy 样式继续承载运行时内容、Terminal 细节和 route body 内容皮肤。
+- 登录页需与工作台共享同一视觉基线：使用 `IBM Plex Sans + Sora` 字体组合、近白卡片表面与安全入口语气，避免退回默认系统登录页样式。
+- Web Shell 的稳定视觉基线需与主仓库当前壳层一致：桌面端使用全宽三栏工作台，左侧品牌导航只保留 `Alter0` 服务名与折叠入口，中栏承载新建入口与历史会话，右侧工作区直接输出旧版 header、欢迎区/消息区、路由页 `route-head` 与独立 Composer。React 不再把主导航、会话栏和工作区渲染为三块独立胶囊，也不再额外挂载 workspace hero、route hero 或 prompt deck 包裹层；默认 welcome tag 为 `Alter0 workspace`，空态文案必须直指 repo、task、runtime 等真实任务入口；legacy 样式继续承载运行时内容、Terminal 细节和 route body 内容皮肤，并将常规工作台页面保持在低装饰、低玻璃感、少颜色的克制表面层级。所有 React 托管 route 页的卡片、表格、详情面板、环境模块与任务列表必须共享统一的近白表面、低对比边框、浅灰信息层和浅蓝选中态，不再为不同页面维持分散的高装饰视觉语言。
+- `Agent` 与 `Products` 继续复用 legacy route primitives 时，其列表卡片、管理表单、托管字段块、workspace detail 卡与聊天消息块也必须落在同一 restrained workbench surface system，上述组件不得保留独立的高装饰卡片语言。
 - `/chat` 与登录页的对外品牌文案统一使用 `Alter0`：浏览器标题、登录标题、导航品牌位、会话栏标题与欢迎区 tag 不再暴露小写服务名。
 - Terminal 路由页继续由 React 原生实现，会话栏、工作区头部、Process、输出区和 Composer 的状态与交互全部由 React 维护；旧版 Terminal 仅作为布局关系与 `terminal-*` DOM 契约参照，不恢复 legacy runtime 控制器或脚本接管。
 - 主导航、控制台与资产页默认以高密度信息架构呈现：导航组与条目间距压缩，控制面长列表优先使用表格或主从视图，不再把大量配置和任务详情平铺为低密度卡片矩阵。
