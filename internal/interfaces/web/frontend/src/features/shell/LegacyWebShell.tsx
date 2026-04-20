@@ -96,6 +96,20 @@ export function LegacyWebShell() {
 
   const getShellRoot = () => document.getElementById(LEGACY_SHELL_IDS.appShell);
 
+  const handlePrimaryNavRouteNavigation = (route: string) => {
+    requestLegacyShellRouteNavigation(route);
+
+    const root = getShellRoot();
+    if (!root) {
+      return;
+    }
+    if (!isLegacyShellMobileViewport()) {
+      return;
+    }
+
+    dismissLegacyTransientPanels(root);
+  };
+
   return (
     <div
       className={shellClassName}
@@ -106,7 +120,7 @@ export function LegacyWebShell() {
         currentRoute={currentRoute}
         language={language}
         navCollapsed={navCollapsed}
-        onNavigate={requestLegacyShellRouteNavigation}
+        onNavigate={handlePrimaryNavRouteNavigation}
         onToggleLanguage={requestLegacyShellLanguageToggle}
         onToggleNavCollapsed={() => {
           if (isLegacyShellMobileViewport()) {

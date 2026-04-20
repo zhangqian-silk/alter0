@@ -227,6 +227,20 @@ func TestNarrowPhoneTerminalWorkspaceAllowsActionWrap(t *testing.T) {
 	}
 }
 
+func TestNarrowTerminalWorkspaceHidesDuplicateSessionToggle(t *testing.T) {
+	styles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
+	markers := []string{
+		"@media (max-width: 1100px) {",
+		".terminal-workspace-actions [data-terminal-session-pane-toggle] {",
+		"display: none;",
+	}
+	for _, marker := range markers {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("expected style marker %q", marker)
+		}
+	}
+}
+
 func TestDesktopChatColumnExpandsOnWideViewports(t *testing.T) {
 	styles := readEmbeddedAsset(t, "static/assets/chat-core.css")
 	markers := []string{
