@@ -68,6 +68,7 @@ describe("ReactManagedControlRouteBody", () => {
       "data-copy-value",
       "channel-runtime-1",
     );
+    expect(container.querySelector('[data-control-route-grid="channels"]')).toBeInTheDocument();
     expect(container.querySelector(".route-card")).toBeInTheDocument();
     expect(container.querySelector(".route-field-value.is-mono")).toHaveTextContent(
       "channel-runtime-1",
