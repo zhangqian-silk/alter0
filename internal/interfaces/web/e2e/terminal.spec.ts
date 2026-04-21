@@ -192,7 +192,7 @@ test.describe("Terminal route", () => {
     expect((actionsBox?.y ?? 0)).toBeGreaterThanOrEqual((titleBox?.y ?? 0) - 2);
   });
 
-  test("keeps the mobile terminal route aligned when the visual viewport shrinks and after creating a new session", async ({ page, request }) => {
+  test("keeps the mobile terminal shell synced to the visual viewport after creating a new session", async ({ page, request }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 760, height: 980 });
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-viewport-bottom" });
@@ -204,31 +204,26 @@ test.describe("Terminal route", () => {
     )).toBe("760px");
 
     const readMetrics = async () => page.evaluate(() => {
-      const pane = document.querySelector(".chat-pane");
-      const workspace = document.querySelector("[data-terminal-workspace]");
-      const composer = document.querySelector(".terminal-composer-shell");
+      const shell = document.querySelector(".app-shell");
       const viewport = window.visualViewport;
-      if (
-        !(pane instanceof HTMLElement) ||
-        !(workspace instanceof HTMLElement) ||
-        !(composer instanceof HTMLElement) ||
-        !viewport
-      ) {
+      if (!(shell instanceof HTMLElement) || !viewport) {
         return null;
       }
       return {
-        viewportBottom: viewport.height + viewport.offsetTop,
-        paneBottom: pane.getBoundingClientRect().bottom,
-        workspaceBottom: workspace.getBoundingClientRect().bottom,
-        composerBottom: composer.getBoundingClientRect().bottom,
+        viewportHeight: viewport.height + viewport.offsetTop,
+        shellHeight: shell.getBoundingClientRect().height,
       };
     });
 
     const metrics = await readMetrics();
     expect(metrics).not.toBeNull();
-    expect(metrics?.paneBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
-    expect(metrics?.workspaceBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
-    expect(metrics?.composerBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
+    await expect.poll(async () => {
+      const current = await readMetrics();
+      if (!current) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs((current.shellHeight ?? 0) - (current.viewportHeight ?? 0));
+    }).toBeLessThanOrEqual(2);
     await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
 
     const previousSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
@@ -242,9 +237,135 @@ test.describe("Terminal route", () => {
 
     const nextMetrics = await readMetrics();
     expect(nextMetrics).not.toBeNull();
-    expect(nextMetrics?.paneBottom ?? 0).toBeLessThanOrEqual((nextMetrics?.viewportBottom ?? 0) + 2);
-    expect(nextMetrics?.workspaceBottom ?? 0).toBeLessThanOrEqual((nextMetrics?.viewportBottom ?? 0) + 2);
-    expect(nextMetrics?.composerBottom ?? 0).toBeLessThanOrEqual((nextMetrics?.viewportBottom ?? 0) + 2);
+    await expect.poll(async () => {
+      const current = await readMetrics();
+      if (!current) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs((current.shellHeight ?? 0) - (current.viewportHeight ?? 0));
+    }).toBeLessThanOrEqual(2);
+  });
+
+  test("keeps the mobile terminal composer visible with long history after the keyboard shrinks the viewport", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+
+    const clientID = createTerminalClientID("mobile-long-history");
+    const now = Date.now();
+    const sessionID = "terminal-mobile-long-history";
+    const sessionSummary = {
+      id: sessionID,
+      title: "terminal-mobile-long-history",
+      terminal_session_id: sessionID,
+      status: "ready",
+      shell: "codex exec",
+      working_dir: terminalSessionWorkspace(sessionID),
+      created_at: now - 90_000,
+      updated_at: now,
+      last_output_at: now,
+    };
+    const turns = Array.from({ length: 18 }, (_, index) => ({
+      id: `turn-${index + 1}`,
+      prompt: `Run step ${index + 1}`,
+      status: "completed",
+      started_at: now - ((18 - index) * 4_000),
+      finished_at: now - ((18 - index) * 4_000) + 2_400,
+      duration_ms: 2_400,
+      final_output: [
+        `Output block ${index + 1}`,
+        "",
+        `- ${"mobile history line ".repeat(12).trim()}`,
+        `- ${"viewport anchor check ".repeat(10).trim()}`,
+        "",
+        "Use the bottom composer to continue.",
+      ].join("\n"),
+      steps: [],
+    }));
+
+    await bindTerminalClient(page, clientID);
+    await page.route("**/api/terminal/sessions", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [sessionSummary] }),
+      });
+    });
+    await page.route(`**/api/terminal/sessions/${sessionID}`, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          session: {
+            ...sessionSummary,
+            turns,
+          },
+        }),
+      });
+    });
+
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    await expect(terminalPage.turnCards()).toHaveCount(turns.length);
+    await expect.poll(async () => {
+      return await terminalPage.chatScreen().evaluate((node) => node.scrollHeight > node.clientHeight + 48);
+    }).toBe(true);
+
+    await terminalPage.composer().input().click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+
+    const readMetrics = async () => page.evaluate(() => {
+      const viewport = window.visualViewport;
+      const composer = document.querySelector(".terminal-composer-shell");
+      const workspace = document.querySelector("[data-terminal-workspace]");
+      const chatScreen = document.querySelector("[data-terminal-chat-screen]");
+      if (
+        !(composer instanceof HTMLElement) ||
+        !(workspace instanceof HTMLElement) ||
+        !(chatScreen instanceof HTMLElement) ||
+        !viewport
+      ) {
+        return null;
+      }
+      const composerRect = composer.getBoundingClientRect();
+      const composerStyles = window.getComputedStyle(composer);
+      return {
+        mobileViewportHeight: getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim(),
+        keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
+        viewportBottom: viewport.height + viewport.offsetTop,
+        composerTop: composerRect.top,
+        composerBottom: composerRect.bottom,
+        composerPosition: composerStyles.position,
+        composerBottomStyle: composerStyles.bottom,
+        chatScrollable: chatScreen.scrollHeight > chatScreen.clientHeight + 48,
+      };
+    });
+
+    const metrics = await readMetrics();
+    expect(metrics).not.toBeNull();
+    expect(metrics?.mobileViewportHeight).toBe("620px");
+    expect(metrics?.keyboardOffset).toBe("312px");
+    expect(metrics?.chatScrollable).toBe(true);
+    expect(metrics?.composerPosition).toBe("sticky");
+    expect(metrics?.composerBottomStyle).toBe("312px");
+    expect(metrics?.composerBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
+    expect(metrics?.composerTop ?? 0).toBeGreaterThanOrEqual((metrics?.viewportBottom ?? 0) - 220);
+
+    await terminalPage.chatScreen().evaluate((node) => {
+      node.scrollTop = Math.max(0, node.scrollHeight - node.clientHeight - 180);
+    });
+
+    const scrolledMetrics = await readMetrics();
+    expect(scrolledMetrics).not.toBeNull();
+    expect(scrolledMetrics?.composerBottom ?? 0).toBeLessThanOrEqual((scrolledMetrics?.viewportBottom ?? 0) + 2);
   });
 
   test("keeps the mobile app shell height synced to the visual viewport", async ({ page, request }) => {

@@ -222,6 +222,8 @@ Terminal input
 - Terminal 应用层在 Codex CLI 返回远端 compact 失败时，会把当前会话的运行线程指针复位为初始 `terminal_session_id`，保留原工作区与日志，并让后续输入自动走新线程而不是继续 resume 已失效 thread。
 - Terminal 跨设备共享同一 Web 登录态下的服务端会话历史，不再按 browser client 分桶。
 - `chat-terminal.css` 在真手机宽度下允许 Terminal 工作区头部切换为多行排布：标题最多两行，状态与操作工具栏按可用宽度换行，避免横向溢出。
+- `WorkbenchApp` 在根壳层安装共享 `mobileViewportSync` controller，把 `VisualViewport` 变化稳定写入 `--mobile-viewport-height / --keyboard-offset`；Terminal 移动端 Composer 通过 `bottom: var(--keyboard-offset)` 贴住可见底边，而不是通过增大 footer padding 把输入区继续留在文档流里。
+- Conversation runtime 的窄屏四行工作区网格仅作用于带 `data-conversation-view` 的运行页，避免 Terminal 复用共享 surface class 时被错误套用 `auto auto minmax(0, 1fr) auto` 布局，导致长历史输出把 Composer 挤出屏幕。
 
 ### 验证策略
 

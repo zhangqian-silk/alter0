@@ -11,6 +11,7 @@ import {
 import { isLegacyShellMobileViewport } from "../features/shell/legacyShellState";
 import { PrimaryNav } from "../features/shell/components/PrimaryNav";
 import { ReactManagedRouteBody } from "../features/shell/components/ReactManagedRouteBody";
+import { createMobileViewportSyncController } from "../shared/viewport/mobileViewportSync";
 
 export function WorkbenchApp() {
   const [route, navigate] = useWorkbenchRoute();
@@ -36,6 +37,11 @@ export function WorkbenchApp() {
     syncViewport();
     window.addEventListener("resize", syncViewport);
     return () => window.removeEventListener("resize", syncViewport);
+  }, []);
+
+  useEffect(() => {
+    const controller = createMobileViewportSyncController();
+    return () => controller.destroy();
   }, []);
 
   const shellClassName = useMemo(() => {

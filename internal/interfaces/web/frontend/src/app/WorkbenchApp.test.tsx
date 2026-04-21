@@ -1,9 +1,18 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const mockIsLegacyShellMobileViewport = vi.fn(() => false);
+const mockViewportSyncDestroy = vi.fn();
+const mockCreateMobileViewportSyncController = vi.fn(() => ({
+  sync: vi.fn(),
+  destroy: mockViewportSyncDestroy,
+}));
 
 vi.mock("../features/shell/legacyShellState", () => ({
   isLegacyShellMobileViewport: () => mockIsLegacyShellMobileViewport(),
+}));
+
+vi.mock("../shared/viewport/mobileViewportSync", () => ({
+  createMobileViewportSyncController: () => mockCreateMobileViewportSyncController(),
 }));
 
 vi.mock("../features/conversation-runtime/ConversationRuntimeProvider", () => ({
@@ -76,6 +85,8 @@ describe("WorkbenchApp", () => {
     window.location.hash = "#chat";
     document.documentElement.lang = "en";
     mockIsLegacyShellMobileViewport.mockReturnValue(false);
+    mockCreateMobileViewportSyncController.mockClear();
+    mockViewportSyncDestroy.mockClear();
   });
 
   afterEach(() => {
@@ -142,5 +153,15 @@ describe("WorkbenchApp", () => {
     expect(container.querySelector(".route-view.terminal-route")).toBeInTheDocument();
     expect(container.querySelector(".route-view.terminal-route > .route-head")).not.toBeInTheDocument();
     expect(container.querySelector(".route-body.terminal-route-body")).toBeInTheDocument();
+  });
+
+  it("installs and cleans up the mobile viewport sync controller at the app root", () => {
+    const { unmount } = render(<WorkbenchApp />);
+
+    expect(mockCreateMobileViewportSyncController).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    expect(mockViewportSyncDestroy).toHaveBeenCalledTimes(1);
   });
 });

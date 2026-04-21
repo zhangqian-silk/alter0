@@ -117,6 +117,7 @@
 - Terminal 移动端、输入稳定性、滚动导航、Process 折叠、一键复制、长输出阅读、轮询降频与缓存写入节奏作为 Terminal 子域体验要求维护。
 - Terminal 刷新节奏需按会话状态自适配：执行中的会话保留实时刷新，空闲会话收敛为低频轻量刷新；用户正在滚动阅读输出时，不得因明细轮询而打断当前滚动。
 - Terminal 窄屏消息页必须保持 `workbench-main -> chat-pane -> route-body -> terminal-view -> terminal-chat-screen` 的闭合高度链，由 `terminal-chat-screen` 独立承担纵向滚动；外层容器不得因 `overflow: hidden` 或高度塌陷吃掉滚动。
+- Terminal 移动端在输入框聚焦且软键盘抬起后，Composer 必须按 `VisualViewport` 同步的键盘偏移直接贴住可见底边；长对话或长输出期间不得通过拉高 footer padding、改变滚动容器或破坏高度闭合链把输入区挤出屏幕。
 
 ## Product Domain
 

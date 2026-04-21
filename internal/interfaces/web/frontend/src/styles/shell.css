@@ -3476,7 +3476,7 @@ body::after {
     padding: 0;
   }
 
-  .conversation-workspace-body {
+  [data-conversation-view] .conversation-workspace-body {
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     border-radius: 0;
     border-left: 0;
