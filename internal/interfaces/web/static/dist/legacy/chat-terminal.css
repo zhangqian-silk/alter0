@@ -2416,8 +2416,10 @@
   }
 
   .terminal-composer-shell {
+    position: sticky;
+    bottom: var(--keyboard-offset);
     gap: 6px;
-    padding: 0 10px calc(10px + env(safe-area-inset-bottom) + var(--keyboard-offset));
+    padding: 0 10px calc(10px + env(safe-area-inset-bottom));
   }
 
   .terminal-chat-form {

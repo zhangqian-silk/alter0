@@ -81,6 +81,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".terminal-mobile-header .conversation-mobile-action {");
     expect(stylesheet).toContain(".conversation-mobile-action.is-primary {");
     expect(stylesheet).toContain(".conversation-workspace-body {");
+    expect(stylesheet).toContain("[data-conversation-view] .conversation-workspace-body {");
     expect(stylesheet).toContain("grid-template-rows: auto auto minmax(0, 1fr) auto;");
   });
 
@@ -221,6 +222,15 @@ describe("shell layout stylesheet", () => {
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-meta\s*\{[\s\S]*?display:\s*block;/,
+    );
+  });
+
+  it("anchors the mobile terminal composer above the keyboard offset instead of stretching its footer padding", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-shell\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?bottom:\s*var\(--keyboard-offset\);[\s\S]*?padding:\s*0 10px calc\(10px \+ env\(safe-area-inset-bottom\)\);/,
     );
   });
 });

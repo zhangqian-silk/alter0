@@ -36,7 +36,7 @@ export function createTerminalPage(page: Page): {
     itemByValue: (sessionID: string) => `[data-terminal-session-select="${sessionID}"]`,
   });
   return {
-    createButton: () => page.locator("#mobileNewChatButton:visible, [data-terminal-create]:visible").first(),
+    createButton: () => page.locator(".terminal-mobile-header .mobile-new-chat:visible, #mobileNewChatButton:visible, [data-terminal-create]:visible").first(),
     composer: () => composer,
     closeButton: () => page.locator("[data-terminal-close]"),
     workspace: () => page.locator("[data-terminal-workspace]"),
