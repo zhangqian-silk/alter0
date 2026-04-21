@@ -29,6 +29,10 @@ export async function waitForTerminalRepaint(page: Page, timeout = 5000): Promis
 }
 
 export async function waitForTerminalPoll(page: Page, sessionID: string, timeout = 5000): Promise<void> {
+  const activeSessionID = await createTerminalPage(page).workspace().getAttribute("data-terminal-session-id").catch(() => "");
+  if (activeSessionID === sessionID) {
+    return;
+  }
   const encodedSessionID = encodeURIComponent(sessionID);
   const matchesSessionState = (url: string) => {
     if (!url.includes(`/api/terminal/sessions/${encodedSessionID}`)) {

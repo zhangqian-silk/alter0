@@ -33,11 +33,19 @@ export async function openCronRoute(page: Page): Promise<void> {
 }
 
 export async function openTerminalRoute(page: Page): Promise<void> {
-  await page.goto("/chat#terminal");
+  await page.goto("/chat");
   await ensureAppReady(page);
   if (!page.url().includes("#terminal")) {
-    await page.goto("/chat#terminal");
-    await ensureAppReady(page);
+    await page.evaluate(() => {
+      if (window.location.hash !== "#terminal") {
+        window.location.hash = "#terminal";
+        return;
+      }
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
   }
-  await expect(createTerminalPage(page).createButton()).toBeVisible();
+  await expect(page).toHaveURL(/#terminal$/);
+  await expect(page.locator("[data-terminal-view]")).toBeVisible();
+  await expect(page.locator("[data-terminal-workspace]")).toBeVisible();
+  await expectComposerReady(createTerminalPage(page).composer());
 }

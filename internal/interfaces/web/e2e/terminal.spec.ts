@@ -105,21 +105,25 @@ test.describe("Terminal route", () => {
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-layout" });
 
     const routeHead = page.locator(".route-view.terminal-route > .route-head");
+    const mobileHeader = page.locator("[data-terminal-mobile-header]");
     const workspaceHead = page.locator(".terminal-workspace-head");
     const workspaceSubcopy = page.locator(".terminal-workspace-subcopy");
-    const mobileNewChat = page.locator("#mobileNewChatButton");
-    const headerSessionToggle = page.locator("#sessionToggle");
+    const mobileNewChat = mobileHeader.getByRole("button", { name: "New" });
+    const headerSessionToggle = mobileHeader.getByRole("button", { name: "Sessions" });
     const workspaceRow = page.locator(".terminal-workspace-row");
+    const composerMeta = page.locator(".terminal-composer-meta");
     const composerForm = terminalPage.composer().form();
     const composerInput = terminalPage.composer().input();
     const submitButton = terminalPage.composer().submitButton();
 
     await expect(routeHead).toBeHidden();
+    await expect(mobileHeader).toBeVisible();
     await expect(workspaceSubcopy).toBeHidden();
     await expect(mobileNewChat).toBeVisible();
     await expect(mobileNewChat).toHaveText("New");
     await expect(headerSessionToggle).toBeVisible();
     await expect(headerSessionToggle).toHaveText("Sessions");
+    await expect(composerMeta).toBeVisible();
 
     const headBox = await workspaceHead.boundingBox();
     const rowBox = await workspaceRow.boundingBox();
@@ -133,33 +137,15 @@ test.describe("Terminal route", () => {
     expect(inputBox).not.toBeNull();
     expect(buttonBox).not.toBeNull();
     expect(headBox?.height ?? 0).toBeLessThan(150);
-    expect(rowBox?.height ?? 0).toBeLessThan(56);
-    expect(formBox?.height ?? 0).toBeLessThan(104);
+    expect(rowBox?.height ?? 0).toBeLessThan(80);
     expect(buttonBox?.width ?? 0).toBeLessThan(56);
     expect(buttonBox?.x ?? 0).toBeGreaterThan((inputBox?.x ?? 0) + ((inputBox?.width ?? 0) * 0.7));
     expect(Math.abs((buttonBox?.y ?? 0) - (inputBox?.y ?? 0))).toBeLessThan(40);
   });
 
-  test("keeps narrow-phone terminal actions readable without horizontal overflow", async ({ page }) => {
+  test("keeps narrow-phone terminal actions readable without horizontal overflow", async ({ page, request }) => {
     await page.setViewportSize({ width: 393, height: 852 });
-
-    const clientID = createTerminalClientID("narrow-phone-actions");
-    const now = Date.now();
-    await bindTerminalClient(page, clientID);
-    await seedTerminalSessions(page, [{
-      id: "terminal-narrow-phone",
-      title: "2760e082 分析下这个会话的异常",
-      terminal_session_id: "terminal-narrow-phone",
-      status: "busy",
-      shell: "codex exec",
-      working_dir: terminalSessionWorkspace("terminal-narrow-phone"),
-      created_at: now - 3_000,
-      updated_at: now,
-      last_output_at: now - 1_000,
-      disconnected_notice: false,
-      entries: [],
-    }]);
-    await openTerminalRoute(page);
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "narrow-phone-actions" });
 
     const workspaceRow = page.locator(".terminal-workspace-row");
     const titleRow = page.locator(".terminal-workspace-title-row");

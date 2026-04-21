@@ -208,4 +208,19 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".scroll-jump-control.is-visible {");
     expect(stylesheet).toContain(".scroll-jump-control-icon {");
   });
+
+  it("keeps narrow terminal headers on one line and preserves composer meta visibility", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 420px\) \{[\s\S]*?\.terminal-workspace-row\s*\{[\s\S]*?flex-wrap:\s*nowrap;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 420px\) \{[\s\S]*?\.terminal-workspace-actions\s*\{[\s\S]*?flex-wrap:\s*nowrap;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-meta\s*\{[\s\S]*?display:\s*block;/,
+    );
+  });
 });
