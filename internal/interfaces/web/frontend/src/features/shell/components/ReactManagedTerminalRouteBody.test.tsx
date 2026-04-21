@@ -228,6 +228,9 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".terminal-workspace-body")).toHaveClass("conversation-workspace-body");
     expect(document.querySelector(".terminal-workspace-head")).toBeInTheDocument();
     expect(document.querySelector(".terminal-workspace-head")).toHaveClass("conversation-workspace-head");
+    expect(document.querySelector(".terminal-workspace-head")).toHaveClass("is-compact");
+    expect(document.querySelector(".terminal-workspace-row")).toHaveClass("conversation-workspace-row", "is-compact");
+    expect(document.querySelector(".terminal-workspace-copy")).toHaveClass("conversation-workspace-copy", "is-compact");
     expect(document.querySelector("[data-terminal-console-panel]")).toBeInTheDocument();
     expect(document.querySelector(".terminal-chat-form")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
