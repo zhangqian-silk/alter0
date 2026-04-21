@@ -1132,11 +1132,11 @@ export function ReactManagedTerminalRouteBody() {
   const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
 
   return (
-    <section className="terminal-view" data-terminal-view>
+    <section className="terminal-view conversation-runtime-view" data-terminal-view>
       {workbench.isMobileViewport ? (
         <header className="terminal-mobile-header" data-terminal-mobile-header>
           <button
-            className="nav-toggle"
+            className="nav-toggle conversation-mobile-action"
             type="button"
             aria-expanded={workbench.mobileNavOpen}
             onClick={() => {
@@ -1148,7 +1148,7 @@ export function ReactManagedTerminalRouteBody() {
           </button>
           <div className="terminal-mobile-header-actions">
             <button
-              className="panel-toggle"
+              className="panel-toggle conversation-mobile-action"
               type="button"
               aria-expanded={sessionSheetOpen}
               onClick={() => {
@@ -1161,7 +1161,7 @@ export function ReactManagedTerminalRouteBody() {
               {copy.sessions}
             </button>
             <button
-              className="mobile-new-chat"
+              className="mobile-new-chat conversation-mobile-action is-primary"
               type="button"
               onClick={() => void createSession()}
             >
@@ -1171,25 +1171,25 @@ export function ReactManagedTerminalRouteBody() {
         </header>
       ) : null}
       <aside
-        className={`terminal-session-pane${sessionSheetOpen ? " is-open" : ""}`}
+        className={`terminal-session-pane conversation-session-pane${sessionSheetOpen ? " is-open" : ""}`}
         data-terminal-session-pane
       >
         <button
-          className="terminal-session-pane-backdrop"
+          className="terminal-session-pane-backdrop conversation-session-pane-backdrop"
           type="button"
           data-terminal-session-pane-close
           aria-label={copy.hideSessions}
           onClick={() => setSessionSheetOpen(false)}
         ></button>
-        <div className="route-surface terminal-session-pane-shell">
-          <div className="terminal-session-pane-head">
-            <div className="terminal-session-pane-copy">
+        <div className="route-surface terminal-session-pane-shell conversation-session-pane-shell">
+          <div className="terminal-session-pane-head conversation-session-pane-head">
+            <div className="terminal-session-pane-copy conversation-session-pane-copy">
               <strong>{copy.sessions}</strong>
               <span>{copy.sessionCount(sessions.length)}</span>
             </div>
-            <div className="terminal-session-pane-actions">
+            <div className="terminal-session-pane-actions conversation-session-pane-actions">
               <button
-                className="terminal-session-pane-action is-primary"
+                className="terminal-session-pane-action conversation-session-pane-action is-primary"
                 type="button"
                 data-terminal-create
                 onClick={() => void createSession()}
@@ -1197,7 +1197,7 @@ export function ReactManagedTerminalRouteBody() {
                 {copy.newShort}
               </button>
               <button
-                className="terminal-session-pane-action terminal-session-pane-close"
+                className="terminal-session-pane-action conversation-session-pane-action terminal-session-pane-close"
                 type="button"
                 data-terminal-session-pane-close
                 onClick={() => setSessionSheetOpen(false)}
@@ -1259,19 +1259,19 @@ export function ReactManagedTerminalRouteBody() {
       </aside>
 
       <section
-        className="terminal-workspace"
+        className="terminal-workspace conversation-workspace"
         data-terminal-workspace
         data-terminal-session-id={activeSession?.id || ""}
         data-terminal-workspace-status={activeStatus}
         data-terminal-workspace-live={isWorkspaceLive}
       >
-        <div className="terminal-workspace-body">
-          <header className="terminal-workspace-head">
-            <div className="terminal-workspace-row terminal-workspace-title-row">
-              <div className="terminal-workspace-copy">
-                <span className="terminal-workspace-eyebrow">{copy.sessionRuntime}</span>
+        <div className="terminal-workspace-body conversation-workspace-body">
+          <header className="terminal-workspace-head conversation-workspace-head">
+            <div className="terminal-workspace-row terminal-workspace-title-row conversation-workspace-row">
+              <div className="terminal-workspace-copy conversation-workspace-copy">
+                <span className="terminal-workspace-eyebrow conversation-workspace-eyebrow">{copy.sessionRuntime}</span>
                 <h4>{activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}</h4>
-                <span className="terminal-workspace-subcopy">
+                <span className="terminal-workspace-subcopy conversation-workspace-subcopy">
                   {activeSession ? sessionLastOutputLabel(activeSession, copy) : copy.empty}
                 </span>
               </div>
@@ -1283,7 +1283,7 @@ export function ReactManagedTerminalRouteBody() {
                   </span>
                 </div>
               ) : null}
-              <div className="terminal-workspace-actions">
+              <div className="terminal-workspace-actions conversation-workspace-actions">
                 <button
                   className="terminal-inline-button is-quiet"
                   type="button"

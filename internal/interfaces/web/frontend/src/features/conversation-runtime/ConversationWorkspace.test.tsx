@@ -162,7 +162,10 @@ describe("ConversationWorkspace", () => {
 
     expect(screen.getByRole("heading", { name: "Fix runtime shell" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Tools / MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tools" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tools / MCP" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Chat")).not.toBeInTheDocument();
+    expect(screen.queryByText("DeepSeek V3.2 · 0 / 0")).not.toBeInTheDocument();
   });
 
   it("hides the agent-runtime workspace summary row on mobile empty state", () => {
@@ -195,11 +198,74 @@ describe("ConversationWorkspace", () => {
     expect(screen.queryByText("Agent: Alter0")).not.toBeInTheDocument();
   });
 
+  it("keeps the agent-runtime workspace row compact when messages already exist on mobile", () => {
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "Investigate release drift",
+      messages: [
+        {
+          id: "message-1",
+          role: "assistant",
+          content: "done",
+          html: "<p>done</p>",
+        },
+      ],
+    };
+    runtimeMock.sessionItems = [
+      {
+        id: "session-1",
+        title: "Investigate release drift",
+        meta: "now",
+        shortHash: "abcd1234",
+        active: true,
+      },
+    ];
+    runtimeMock.target = { type: "agent", id: "alter0", name: "Alter0" };
+
+    renderWorkspace({ route: "agent-runtime" });
+
+    expect(screen.getByRole("heading", { name: "Investigate release drift" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Choose Agent" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Agent: Alter0")).not.toBeInTheDocument();
+  });
+
   it("keeps the desktop empty-state workspace summary visible", () => {
     renderWorkspace({ isMobileViewport: false });
 
     expect(document.querySelector("[data-conversation-mobile-header]")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "New Chat" })).toBeInTheDocument();
-    expect(screen.getByText("DeepSeek V3.2 · 0 / 0")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tools / MCP" })).toBeInTheDocument();
+    expect(screen.queryByText("Chat")).not.toBeInTheDocument();
+    expect(screen.queryByText("DeepSeek V3.2 · 0 / 0")).not.toBeInTheDocument();
+  });
+
+  it("keeps the agent-runtime header summary visible outside the mobile empty state", () => {
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "Investigate release drift",
+      messages: [],
+    };
+    runtimeMock.sessionItems = [
+      {
+        id: "session-1",
+        title: "Investigate release drift",
+        meta: "now",
+        shortHash: "abcd1234",
+        active: true,
+      },
+    ];
+    runtimeMock.target = { type: "agent", id: "alter0", name: "Alter0" };
+
+    renderWorkspace({ route: "agent-runtime", isMobileViewport: false });
+
+    expect(screen.getByRole("heading", { name: "Investigate release drift" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose Agent" })).toBeInTheDocument();
+    expect(screen.queryByText("Agent: Alter0")).not.toBeInTheDocument();
   });
 });

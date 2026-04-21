@@ -58,7 +58,7 @@
 - Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace，`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 React 直接请求控制台或会话 API 渲染。壳层稳定暴露 `app-shell[data-workbench-route]` 与各视图自己的 `data-route / data-conversation-*` 作为样式钩子；`legacy` 资源仅保留兼容样式，不再保留 `LegacyWebShell / ReactRuntimeFacade / bridge / snapshot store`。
 - `/chat` 与 `/login` 默认以英文启动，HTML 根节点语言标记为 `en`；Web Shell 保留显式语言切换入口，切到中文后需同步更新壳层文案与 `document.documentElement.lang`。
 - 登录页需与工作台共享同一视觉基线：使用 `IBM Plex Sans + Sora` 字体组合、近白卡片表面与安全入口语气，避免退回默认系统登录页样式。
-- Web Shell 的稳定视觉基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime` 在主面板内部采用「会话列 + 主时间线工作区 + 底部 Composer + 可切换 Inspector」结构，`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，但状态与交互全部由 React 直接维护。常规工作台页面保持近白表面、低对比边框、浅灰说明层和浅蓝选中态，不再为不同页面维持分散的高装饰视觉语言。
+- Web Shell 的稳定视觉基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime` 在主面板内部采用「会话列 + 主时间线工作区 + 底部 Composer + 可切换 Inspector」结构，`Terminal` 与其共用同一套工作台表面、工作区头部和窄屏 `Menu / Sessions / New` 操作语义，同时继续保持原有 `terminal-*` DOM class 契约与布局关系，状态与交互全部由 React 直接维护。常规工作台页面保持近白表面、低对比边框、浅灰说明层和浅蓝选中态，不再为不同页面维持分散的高装饰视觉语言。
 - `Agent`、`Products` 与其他 React 托管页面共享同一 restrained workbench surface system：列表卡片、管理表单、托管字段块、workspace detail 卡与消息块使用一致的近白主表面、浅灰辅助层和浅蓝选中态。
 - `/chat` 与登录页的对外品牌文案统一使用 `Alter0`：浏览器标题、登录标题、导航品牌位、会话栏标题与欢迎区 tag 不再暴露小写服务名。
 - Terminal 路由页继续由 React 原生实现，会话栏、工作区头部、Process、输出区和 Composer 的状态与交互全部由 React 维护；旧版 Terminal 仅作为布局关系与 `terminal-*` DOM 契约参照，不恢复 legacy runtime 控制器或脚本接管。
@@ -68,6 +68,8 @@
 - 窄屏主导航抽屉点击任一路由项后需立即关闭；页面切换完成后不得继续保留旧菜单层覆盖在目标页之上。
 - 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页与 `Terminal` 继续采用“两行头部 + 贴顶正文起始区”节奏，第一行承载抽屉入口与主操作，第二行承载当前标题；`Chat` 与 `Agent Runtime` 空态复用 terminal-style 顶部操作行并仅保留 `Menu / Sessions / New`，不再额外输出 `Chat / New Chat / Model 摘要` 或 `Agent / New Agent Session / Target 摘要` 头部文案，由欢迎区承接标题与说明，同时所有页面都不得在顶部遗留额外大块留白。
 - 窄屏 `Chat / Agent Runtime` 工作区头部固定保留 `Menu / Sessions / New` 三个入口；`Menu` 与壳层主导航抽屉共用同一开关状态，`Sessions` 单独控制 Conversation 会话抽屉，`New` 直接创建当前路由对应的新会话，不再出现移动端无导航入口或只能依赖正文内按钮切换会话的状态。
+- `Chat / Agent Runtime` 工作区头部中的 `Model / Tools / MCP` 选择控件需维持紧凑按钮密度，按钮高度与内边距应低于 Terminal 工作区工具栏，避免头部操作条挤占消息阅读与输入空间。
+- `Chat / Agent Runtime` 工作区头部在非移动空态下只保留会话标题与配置按钮，不再重复展示 `Chat / Agent` 标签和模型、工具或目标摘要；移动端紧凑头部应使用更短的按钮文案维持单行节奏。
 - `Terminal` 窄屏工作区头部不得重复输出会话抽屉入口；`Sessions` 入口统一由壳层头部提供，工作区头部仅保留与当前会话直接相关的操作。
 - `Chat` 空态首屏在桌面与中宽度下必须保持居中首屏节奏：欢迎区标题、描述、target/prompt 需在 header 与 Composer 之间沿欢迎区中轴竖向居中展示；真窄屏继续贴近头部下沿起排。Composer 继续沿主工作区自然贴底排布；不允许通过 `margin-top: auto`、过大的欢迎区上边距或类似弹性占位把输入区推到底部，造成首屏中上部出现大块无效空白。
 - 移动端 Chat/Agent 在主输入框与会话设置底部面板之间切换时，不允许保留“键盘 + 设置面板”双重底部占位：打开设置前先释放输入焦点并清理键盘偏移，回到主输入框时先自动收起设置面板；Terminal 在真手机宽度下允许工作区头部工具栏换行，操作按钮不得被长标题挤出可见区域。

@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-04-20
+> Last update: 2026-04-21
 
 ## 领域边界
 
@@ -28,7 +28,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 登录页在启用密码保护时继续作为统一入口，但视觉需与 Web Shell 保持一致：使用 `IBM Plex Sans + Sora` 字体、近白工作台卡片和安全入口说明文案，不保留独立的默认系统表单风格。
 - Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace；`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 `ReactManagedRouteBody` 接管。根壳层稳定暴露 `app-shell[data-workbench-route]`，各运行页与 route body 继续输出 `data-route / data-conversation-*` 作为样式与测试锚点；兼容层仅保留样式，不再通过 legacy 脚本接管 `/chat` 业务运行时。
 - `channels / skills / mcp / models / cron-jobs` 共享控制台卡片页统一复用同一组响应式卡片网格；窄屏下标题区允许徽标下沉、字段行改为单列堆叠、底部标签区保持纵向拉伸，避免复制按钮、状态徽标与多行字段发生重叠或横向溢出。
-- Web Shell 的稳定界面基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime` 在主面板内部采用「会话列 + 时间线工作区 + 底部 Composer + 可切换 Inspector」结构，`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，但状态与交互全部由 React 直接维护。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示额外品牌口号或实现状态；Conversation workspace 自身承担会话和运行态配置，不再叠加 bridge 期的 welcome/runtime sheet 双轨壳层；`Control / Sessions / Tasks / Memory / Terminal / Codex Accounts` 等 React 托管 route 页继续共享近白表面、浅灰辅助层与浅蓝选中态。
+- Web Shell 的稳定界面基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime` 在主面板内部采用「会话列 + 时间线工作区 + 底部 Composer + 可切换 Inspector」结构，`Terminal` 与其共用同一套会话栏、工作区容器、工作区头部与窄屏 `Menu / Sessions / New` 工作台语义，同时继续保持原有 `terminal-*` DOM class 契约与布局关系，状态与交互全部由 React 直接维护。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示额外品牌口号或实现状态；Conversation workspace 自身承担会话和运行态配置，不再叠加 bridge 期的 welcome/runtime sheet 双轨壳层；`Control / Sessions / Tasks / Memory / Terminal / Codex Accounts` 等 React 托管 route 页继续共享近白表面、浅灰辅助层与浅蓝选中态。
 - `Agent / Products` 与其他 React 托管页面共享同一表面体系：列表卡片、管理表单、托管字段块、workspace detail 卡与消息块使用一致的近白主表面、浅灰辅助层与浅蓝选中态。
 - `/chat` 页面标题、登录页标题、导航品牌位、会话栏标题与欢迎区 tag 统一展示 `Alter0`，不再混用 `alter0` 小写品牌词。
 - Web Shell 的抽屉式单列工作台仅在主视口宽度 `1100px` 及以下触发；高于该阈值时保留左侧固定主导航与右侧主面板，避免只对聊天内容列做最大阅读宽度限制而让整体壳层失衡。
@@ -168,6 +168,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 已由 React 接管的工作台需在 DOM 上暴露稳定路由钩子：根壳层输出 `app-shell[data-workbench-route]`，运行页和控制页继续输出 `data-route / data-conversation-*` 标记；兼容层只能依据这些由 React 输出的钩子退让，不得继续维护独立白名单。
 - 欢迎区与 Composer 面板在同一主工作区内采用主仓库式上下结构：欢迎区直接输出 `Alter0 workspace` tag、面向 repo / task / runtime 的默认标题与说明、target picker 与 prompt pills，Composer 独立贴底；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
 - 用户消息右对齐，宽度不超过消息区 80%，Chat / Agent / 路由消息区统一采用克制的冷灰工作台阅读主题；助手回复弱化厚重卡片层级，消息气泡、Process 区和阅读容器统一使用低对比边框、近白表面与有限强调色。
+- Chat 助手消息尾部默认只显示时间；仅当回复仍在生成、排队或失败时展示状态胶囊，不再为已完成消息重复展示 route/source/status 元信息。
+- Chat 与 Agent Runtime 工作区头部的 `Model / Tools / MCP` 控件采用比 Terminal 工具栏更紧凑的按钮高度、字号与水平内边距；这组控件服务于会话配置切换，不得做成高厚度的独立工具条。
+- Chat 与 Agent Runtime 工作区头部在进入会话态或桌面空态时收敛为单行标题区：只显示当前会话标题与配置按钮，不再额外叠加 `Chat / Agent` 标签以及模型、工具或目标摘要；桌面保持完整按钮文案，真手机宽度改用更短的 `Model / Tools` 与 `Model / Agent` 标签以维持单行节奏。
 - 桌面宽屏下 Chat 消息列与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区统一保留 `960px` 最大阅读宽度，但外层工作台也必须同步收缩导航与间距，避免在中等桌面宽度下出现阅读区限宽而整体布局仍然拥挤、遮挡或越界。
 - Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致会话卡片、消息节点或 route 内容被清空重建。
 - React 壳层发出的主导航跳转、新建会话、欢迎区快捷提示、语言切换、导航折叠同步与会话历史折叠同步事件，必须由当前前端运行时在同一页面内完成确认、路由更新、快捷发送或会话创建，且不能要求用户重复点击或依赖额外脚本注入的全局函数。

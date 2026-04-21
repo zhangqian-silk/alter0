@@ -111,17 +111,20 @@ function RoutePageFrame({
   language: LegacyShellLanguage;
 }) {
   const routeHeadingCopy = getLegacyRouteHeadingCopy(language, route);
+  const showRouteHeading = route !== "terminal";
   const routeViewClassName = route === "terminal" ? "route-view terminal-route" : "route-view";
   const routeBodyClassName = route === "terminal" ? "route-body terminal-route-body" : "route-body";
 
   return (
     <section className={routeViewClassName} data-route={route}>
-      <header className="route-head">
-        <div className="route-copy">
-          <h3>{routeHeadingCopy.title}</h3>
-          <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
-        </div>
-      </header>
+      {showRouteHeading ? (
+        <header className="route-head">
+          <div className="route-copy">
+            <h3>{routeHeadingCopy.title}</h3>
+            <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
+          </div>
+        </header>
+      ) : null}
       <div className={routeBodyClassName} data-route={route}>
         <ReactManagedRouteBody route={route} language={language} />
       </div>

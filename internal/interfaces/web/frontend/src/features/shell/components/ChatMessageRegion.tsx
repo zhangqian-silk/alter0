@@ -121,17 +121,13 @@ const ChatMessageArticle = memo(function ChatMessageArticle({
         )}
       </div>
       <div className="msg-meta">
-        {message.route && message.role === "assistant" ? (
-          <span className="route-pill">{message.route.toUpperCase()}</span>
-        ) : null}
         {message.role === "assistant" ? (
           <>
-            {messageSourceLabel(message.source) ? (
-              <span className="source-pill">{messageSourceLabel(message.source)}</span>
+            {shouldShowAssistantStatus(message) ? (
+              <span className={`status-pill ${message.status || "done"}`}>
+                {assistantStatusLabel(message.status, language)}
+              </span>
             ) : null}
-            <span className={`status-pill ${message.status || "done"}`}>
-              {assistantStatusLabel(message.status, language)}
-            </span>
           </>
         ) : null}
         <span>{formatTimeLabel(message.at)}</span>
@@ -284,15 +280,12 @@ function assistantStatusLabel(status: string, language: LegacyShellLanguage) {
   }
 }
 
-function messageSourceLabel(source: string) {
-  const normalized = source.trim().toLowerCase();
-  if (normalized === "model") {
-    return "MODEL";
+function shouldShowAssistantStatus(message: ChatMessageSnapshot) {
+  if (message.error) {
+    return true;
   }
-  if (normalized === "codex_cli") {
-    return "CODEX CLI";
-  }
-  return "";
+  const normalized = message.status.trim().toLowerCase();
+  return normalized !== "" && normalized !== "done" && normalized !== "success";
 }
 
 function resolveAgentExecutionContent(

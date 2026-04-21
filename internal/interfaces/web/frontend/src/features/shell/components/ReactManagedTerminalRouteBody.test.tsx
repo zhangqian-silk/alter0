@@ -221,8 +221,13 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
     expect(document.querySelector(".terminal-session-select")).toBeInTheDocument();
     expect(document.querySelector(".terminal-session-list-delete")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("conversation-session-pane");
+    expect(document.querySelector(".terminal-session-pane-shell")).toHaveClass("conversation-session-pane-shell");
+    expect(document.querySelector("[data-terminal-workspace]")).toHaveClass("conversation-workspace");
     expect(document.querySelector(".terminal-workspace-body")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-workspace-body")).toHaveClass("conversation-workspace-body");
     expect(document.querySelector(".terminal-workspace-head")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-workspace-head")).toHaveClass("conversation-workspace-head");
     expect(document.querySelector("[data-terminal-console-panel]")).toBeInTheDocument();
     expect(document.querySelector(".terminal-chat-form")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
@@ -320,6 +325,9 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     const mobileHeader = document.querySelector("[data-terminal-mobile-header]") as HTMLElement;
+    expect(mobileHeader.querySelector(".nav-toggle")).toHaveClass("conversation-mobile-action");
+    expect(mobileHeader.querySelector(".panel-toggle")).toHaveClass("conversation-mobile-action");
+    expect(mobileHeader.querySelector(".mobile-new-chat")).toHaveClass("conversation-mobile-action", "is-primary");
     expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();

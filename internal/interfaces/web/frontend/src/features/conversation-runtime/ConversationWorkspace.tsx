@@ -14,7 +14,12 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   const copy = getLegacyShellCopy(language);
   const [sessionPaneOpen, setSessionPaneOpen] = useState(false);
   const activeMessages = runtime.activeSession?.messages || [];
+  const isCompactRuntimeHeader = runtime.route === "chat" || runtime.route === "agent-runtime";
   const isMobileEmptyState = workbench.isMobileViewport && activeMessages.length === 0;
+  const compactModelButtonLabel = isCompactRuntimeHeader && workbench.isMobileViewport ? copy.runtimeModelShort : copy.runtimeModel;
+  const compactSecondaryButtonLabel = runtime.route === "agent-runtime"
+    ? (isCompactRuntimeHeader && workbench.isMobileViewport ? copy.runtimeAgent : copy.runtimeAgentPick)
+    : (isCompactRuntimeHeader && workbench.isMobileViewport ? copy.runtimeToolsShort : copy.runtimeToolsMcp);
   const emptyStateTitle = runtime.route === "agent-runtime"
     ? (language === "zh" ? "选择 Agent 并开始执行" : "Pick an agent and start a run")
     : (language === "zh" ? "开始新的工作流" : "Start a new workspace flow");
@@ -180,19 +185,23 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
           ) : null}
 
           {!isMobileEmptyState || runtime.inspectorOpen ? (
-            <header className="conversation-workspace-head">
+            <header className={`conversation-workspace-head${isCompactRuntimeHeader ? " is-compact" : ""}`}>
               {!isMobileEmptyState ? (
-                <div className="conversation-workspace-row">
-                  <div className="conversation-workspace-copy">
-                    <span className="conversation-workspace-eyebrow">
-                      {runtime.route === "agent-runtime" ? copy.runtimeAgent : "Chat"}
-                    </span>
+                <div className={`conversation-workspace-row${isCompactRuntimeHeader ? " is-compact" : ""}`}>
+                  <div className={`conversation-workspace-copy${isCompactRuntimeHeader ? " is-compact" : ""}`}>
+                    {!isCompactRuntimeHeader ? (
+                      <span className="conversation-workspace-eyebrow">
+                        {runtime.route === "agent-runtime" ? copy.runtimeAgent : "Chat"}
+                      </span>
+                    ) : null}
                     <h4>{runtime.activeSession?.title || emptyStateTitle}</h4>
-                    <span className="conversation-workspace-subcopy">
-                      {runtime.route === "agent-runtime"
-                        ? `${copy.runtimeAgent}: ${runtime.target.name || "-"}`
-                        : `${runtime.selectedModelLabel || "Default"} · ${runtime.toolCount} / ${runtime.skillCount}`}
-                    </span>
+                    {!isCompactRuntimeHeader ? (
+                      <span className="conversation-workspace-subcopy">
+                        {runtime.route === "agent-runtime"
+                          ? `${copy.runtimeAgent}: ${runtime.target.name || "-"}`
+                          : `${runtime.selectedModelLabel || "Default"} · ${runtime.toolCount} / ${runtime.skillCount}`}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="conversation-workspace-actions">
                     <button
@@ -200,14 +209,14 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
                       type="button"
                       onClick={() => runtime.toggleInspector("model")}
                     >
-                      {copy.runtimeModel}
+                      {compactModelButtonLabel}
                     </button>
                     <button
                       className="terminal-inline-button"
                       type="button"
                       onClick={() => runtime.toggleInspector(runtime.route === "agent-runtime" ? "target" : "capabilities")}
                     >
-                      {runtime.route === "agent-runtime" ? copy.runtimeAgentPick : copy.runtimeToolsMcp}
+                      {compactSecondaryButtonLabel}
                     </button>
                   </div>
                 </div>
