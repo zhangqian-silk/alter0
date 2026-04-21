@@ -130,4 +130,17 @@ describe("WorkbenchApp", () => {
     expect(shell).not.toHaveClass("nav-open");
     expect(shell).not.toHaveClass("overlay-open");
   });
+
+  it("renders the terminal route without a duplicate page hero", async () => {
+    window.location.hash = "#terminal";
+    const { container } = render(<WorkbenchApp />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "terminal");
+    });
+
+    expect(container.querySelector(".route-view.terminal-route")).toBeInTheDocument();
+    expect(container.querySelector(".route-view.terminal-route > .route-head")).not.toBeInTheDocument();
+    expect(container.querySelector(".route-body.terminal-route-body")).toBeInTheDocument();
+  });
 });

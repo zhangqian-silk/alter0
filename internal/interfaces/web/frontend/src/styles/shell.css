@@ -3120,6 +3120,12 @@ body::after {
   background: linear-gradient(180deg, rgba(250, 253, 255, 0.84) 0%, rgba(238, 247, 255, 0.8) 100%);
 }
 
+.conversation-workspace-head.is-compact {
+  display: block;
+  padding: 12px 12px 10px;
+  gap: 8px;
+}
+
 .conversation-mobile-actions {
   display: none;
 }
@@ -3131,10 +3137,23 @@ body::after {
   gap: 16px;
 }
 
+.conversation-workspace-row.is-compact {
+  align-items: center;
+  gap: 12px;
+  flex-wrap: nowrap;
+}
+
 .conversation-workspace-copy {
   display: grid;
   gap: 6px;
   min-width: 0;
+}
+
+.conversation-workspace-copy.is-compact {
+  gap: 0;
+  align-content: center;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .conversation-workspace-eyebrow {
@@ -3153,6 +3172,15 @@ body::after {
   color: #072843;
 }
 
+.conversation-workspace-copy.is-compact h4 {
+  font-size: 18px;
+  line-height: 1.18;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .conversation-workspace-subcopy {
   font-size: 13px;
   color: #6a86a3;
@@ -3162,6 +3190,20 @@ body::after {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.conversation-workspace-row.is-compact .conversation-workspace-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+[data-conversation-view] .conversation-workspace-actions .terminal-inline-button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 11px;
 }
 
 .conversation-mobile-action {
@@ -3435,6 +3477,7 @@ body::after {
   }
 
   .conversation-workspace-body {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     border-radius: 0;
     border-left: 0;
     border-right: 0;
@@ -3474,6 +3517,11 @@ body::after {
     align-items: stretch;
   }
 
+  .conversation-workspace-row.is-compact {
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+
   .conversation-session-pane-head,
   .conversation-workspace-row,
   .conversation-workspace-actions {
@@ -3493,6 +3541,10 @@ body::after {
   .conversation-chat-screen {
     padding-left: 14px;
     padding-right: 14px;
+  }
+
+  .conversation-workspace-head.is-compact {
+    padding: 12px 12px 10px;
   }
 
   .conversation-composer-shell {

@@ -80,6 +80,32 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".conversation-mobile-action {");
     expect(stylesheet).toContain(".terminal-mobile-header .conversation-mobile-action {");
     expect(stylesheet).toContain(".conversation-mobile-action.is-primary {");
+    expect(stylesheet).toContain(".conversation-workspace-body {");
+    expect(stylesheet).toContain("grid-template-rows: auto auto minmax(0, 1fr) auto;");
+  });
+
+  it("keeps conversation runtime header controls denser than terminal workspace tools", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain("[data-conversation-view] .conversation-workspace-actions .terminal-inline-button {");
+    expect(stylesheet).toContain("min-height: 32px;");
+    expect(stylesheet).toContain("padding: 0 10px;");
+    expect(stylesheet).toContain("font-size: 11px;");
+  });
+
+  it("uses a compact single-line chat workspace header instead of the old stacked copy block", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(/\.conversation-workspace-row\.is-compact\s*\{[\s\S]*?flex-wrap:\s*nowrap;/);
+    expect(stylesheet).toMatch(/\.conversation-workspace-head\.is-compact\s*\{[\s\S]*?display:\s*block;/);
+    expect(stylesheet).toContain(".conversation-workspace-copy.is-compact {");
+    expect(stylesheet).toContain(".conversation-workspace-copy.is-compact h4 {");
+    expect(stylesheet).toContain(".conversation-workspace-row.is-compact .conversation-workspace-actions {");
+    expect(stylesheet).toContain("align-items: center;");
+    expect(stylesheet).toContain("font-size: 18px;");
+    expect(stylesheet).toContain("text-overflow: ellipsis;");
   });
 
   it("anchors narrow shell drawers to the viewport edges instead of floating them inside the desktop canvas", () => {
