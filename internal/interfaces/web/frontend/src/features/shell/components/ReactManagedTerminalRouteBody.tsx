@@ -1266,9 +1266,9 @@ export function ReactManagedTerminalRouteBody() {
         data-terminal-workspace-live={isWorkspaceLive}
       >
         <div className="terminal-workspace-body conversation-workspace-body">
-          <header className="terminal-workspace-head conversation-workspace-head">
-            <div className="terminal-workspace-row terminal-workspace-title-row conversation-workspace-row">
-              <div className="terminal-workspace-copy conversation-workspace-copy">
+          <header className="terminal-workspace-head conversation-workspace-head is-compact">
+            <div className="terminal-workspace-row terminal-workspace-title-row conversation-workspace-row is-compact">
+              <div className="terminal-workspace-copy conversation-workspace-copy is-compact">
                 <span className="terminal-workspace-eyebrow conversation-workspace-eyebrow">{copy.sessionRuntime}</span>
                 <h4>{activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}</h4>
                 <span className="terminal-workspace-subcopy conversation-workspace-subcopy">
