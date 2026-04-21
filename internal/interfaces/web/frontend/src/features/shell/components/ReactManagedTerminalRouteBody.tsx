@@ -1136,7 +1136,7 @@ export function ReactManagedTerminalRouteBody() {
       {workbench.isMobileViewport ? (
         <header className="terminal-mobile-header" data-terminal-mobile-header>
           <button
-            className="nav-toggle conversation-mobile-action"
+            className="nav-toggle conversation-mobile-action terminal-inline-button is-quiet"
             type="button"
             aria-expanded={workbench.mobileNavOpen}
             onClick={() => {
@@ -1148,7 +1148,7 @@ export function ReactManagedTerminalRouteBody() {
           </button>
           <div className="terminal-mobile-header-actions">
             <button
-              className="panel-toggle conversation-mobile-action"
+              className="panel-toggle conversation-mobile-action terminal-inline-button is-quiet"
               type="button"
               aria-expanded={sessionSheetOpen}
               onClick={() => {
@@ -1161,7 +1161,7 @@ export function ReactManagedTerminalRouteBody() {
               {copy.sessions}
             </button>
             <button
-              className="mobile-new-chat conversation-mobile-action is-primary"
+              className="mobile-new-chat conversation-mobile-action terminal-inline-button is-primary"
               type="button"
               onClick={() => void createSession()}
             >
@@ -1311,15 +1311,6 @@ export function ReactManagedTerminalRouteBody() {
                   onClick={() => void closeSession()}
                 >
                   {copy.close}
-                </button>
-                <button
-                  className="terminal-session-delete"
-                  type="button"
-                  data-terminal-delete
-                  disabled={!activeSession || deletingSessionID === activeSession.id}
-                  onClick={() => activeSession && void deleteSession(activeSession.id)}
-                >
-                  {copy.delete}
                 </button>
               </div>
             </div>
@@ -1639,22 +1630,31 @@ export function ReactManagedTerminalRouteBody() {
                 onFocus={() => setInputFocused(true)}
                 onBlur={() => setInputFocused(false)}
               ></textarea>
-              <button
-                type="submit"
-                id="terminalSendButton"
-                data-terminal-submit
-                data-composer-submit="terminal-runtime"
-                aria-label={submitting ? copy.sending : copy.send}
-                disabled={submitting || !canInput}
-              >
-                <span className="terminal-chat-form-button-icon" aria-hidden="true">↑</span>
-                <span className="sr-only">{submitting ? copy.sending : copy.send}</span>
-              </button>
+              <div className="terminal-composer-tools">
+                <div
+                  className={sessions.length > 0 ? "terminal-composer-meta" : "terminal-composer-meta is-empty"}
+                  aria-hidden={sessions.length > 0 ? undefined : "true"}
+                >
+                  {sessions.length > 0 ? copy.sessionCount(sessions.length) : ""}
+                </div>
+                <button
+                  type="submit"
+                  id="terminalSendButton"
+                  data-terminal-submit
+                  data-composer-submit="terminal-runtime"
+                  aria-label={submitting ? copy.sending : copy.send}
+                  disabled={submitting || !canInput}
+                >
+                  <span className="terminal-chat-form-button-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20" fill="none" focusable="false">
+                      <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
+                      <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                  <span className="sr-only">{submitting ? copy.sending : copy.send}</span>
+                </button>
+              </div>
             </form>
-
-            {sessions.length > 0 ? (
-              <div className="terminal-composer-meta">{copy.sessionCount(sessions.length)}</div>
-            ) : null}
           </footer>
         </div>
       </section>

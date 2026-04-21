@@ -153,12 +153,11 @@ test.describe("Terminal route", () => {
     const status = page.locator(".terminal-runtime-state");
     const detailsButton = page.locator("[data-terminal-meta-toggle]");
     const closeButton = page.locator("[data-terminal-close]");
-    const deleteButton = page.locator("[data-terminal-delete]");
 
     await expect(status).toBeVisible();
     await expect(detailsButton).toBeVisible();
     await expect(closeButton).toBeVisible();
-    await expect(deleteButton).toBeVisible();
+    await expect(page.locator("[data-terminal-delete]")).toHaveCount(0);
 
     const rowBox = await workspaceRow.boundingBox();
     const titleBox = await titleRow.boundingBox();
@@ -685,8 +684,10 @@ test.describe("Terminal route", () => {
     expect(previousSessionID).toBeTruthy();
     await expect(terminalPage.sessionList().items()).toHaveCount(2);
 
+    await terminalPage.sessionPaneToggle().click();
+    await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
     page.once("dialog", (dialog) => dialog.accept());
-    await terminalPage.workspace().locator("[data-terminal-delete]").click();
+    await terminalPage.sessionDeleteButton(String(previousSessionID)).click();
 
     await expect.poll(async () => await terminalPage.workspace().getAttribute("data-terminal-session-id")).not.toBe(previousSessionID);
     await expect(terminalPage.sessionList().items()).toHaveCount(1);
@@ -705,8 +706,12 @@ test.describe("Terminal route", () => {
     await page.setViewportSize({ width: 430, height: 932 });
     const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-delete-height", count: 2 });
 
+    const activeSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    expect(activeSessionID).toBeTruthy();
+    await terminalPage.sessionPaneToggle().click();
+    await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
     page.once("dialog", (dialog) => dialog.accept());
-    await terminalPage.workspace().locator("[data-terminal-delete]").click();
+    await terminalPage.sessionDeleteButton(String(activeSessionID)).click();
 
     await expect.poll(async () => await terminalPage.sessionList().items().count()).toBe(1);
     await expect(terminalPage.sessionPane()).toBeHidden();

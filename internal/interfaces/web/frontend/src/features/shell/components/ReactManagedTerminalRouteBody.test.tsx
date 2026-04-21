@@ -221,6 +221,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
     expect(document.querySelector(".terminal-session-select")).toBeInTheDocument();
     expect(document.querySelector(".terminal-session-list-delete")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-delete]")).not.toBeInTheDocument();
     expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("conversation-session-pane");
     expect(document.querySelector(".terminal-session-pane-shell")).toHaveClass("conversation-session-pane-shell");
     expect(document.querySelector("[data-terminal-workspace]")).toHaveClass("conversation-workspace");
@@ -233,6 +234,9 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".terminal-workspace-copy")).toHaveClass("conversation-workspace-copy", "is-compact");
     expect(document.querySelector("[data-terminal-console-panel]")).toBeInTheDocument();
     expect(document.querySelector(".terminal-chat-form")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-chat-form .terminal-composer-tools")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-chat-form .terminal-composer-meta")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-submit] svg")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
       "<h1>Workspace</h1>",
     );
@@ -328,9 +332,21 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     const mobileHeader = document.querySelector("[data-terminal-mobile-header]") as HTMLElement;
-    expect(mobileHeader.querySelector(".nav-toggle")).toHaveClass("conversation-mobile-action");
-    expect(mobileHeader.querySelector(".panel-toggle")).toHaveClass("conversation-mobile-action");
-    expect(mobileHeader.querySelector(".mobile-new-chat")).toHaveClass("conversation-mobile-action", "is-primary");
+    expect(mobileHeader.querySelector(".nav-toggle")).toHaveClass(
+      "conversation-mobile-action",
+      "terminal-inline-button",
+      "is-quiet",
+    );
+    expect(mobileHeader.querySelector(".panel-toggle")).toHaveClass(
+      "conversation-mobile-action",
+      "terminal-inline-button",
+      "is-quiet",
+    );
+    expect(mobileHeader.querySelector(".mobile-new-chat")).toHaveClass(
+      "conversation-mobile-action",
+      "terminal-inline-button",
+      "is-primary",
+    );
     expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();

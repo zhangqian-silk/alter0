@@ -73,13 +73,19 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("width: min(calc(100vw - 16px), 360px);");
   });
 
-  it("styles conversation mobile header actions independently from legacy terminal toggles", () => {
+  it("aligns terminal mobile header actions with the shared terminal workspace control chrome", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain(".conversation-mobile-action {");
     expect(stylesheet).toContain(".terminal-mobile-header .conversation-mobile-action {");
-    expect(stylesheet).toContain(".conversation-mobile-action.is-primary {");
+    expect(stylesheet).toContain("border-radius: 999px;");
+    expect(stylesheet).toContain("font-size: 12px;");
+    expect(stylesheet).toContain("font-weight: 700;");
+    expect(stylesheet).toContain("background: rgba(248, 252, 255, 0.76);");
+    expect(stylesheet).toContain(".terminal-mobile-header .conversation-mobile-action.is-primary {");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(239, 246, 255, 0.98) 0%, rgba(219, 234, 254, 0.92) 100%);");
+    expect(stylesheet).toContain("box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 10px 20px -18px rgba(37, 99, 235, 0.32);");
     expect(stylesheet).toContain(".conversation-workspace-body {");
     expect(stylesheet).toContain("[data-conversation-view] .conversation-workspace-body {");
     expect(stylesheet).toContain("grid-template-rows: auto auto minmax(0, 1fr) auto;");
@@ -200,6 +206,37 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toContain(".app-shell[data-workbench-route=\"chat\"] .conversation-workspace .panel-toggle,");
   });
 
+  it("styles the terminal workspace like a restrained command center with layered session and composer surfaces", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+
+    expect(stylesheet).toContain(".terminal-session-card.active::before {");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, #38bdf8 0%, #2563eb 100%);");
+    expect(stylesheet).toContain("linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(243, 247, 251, 0.98) 100%)");
+    expect(stylesheet).toContain("box-shadow: 0 30px 70px -54px rgba(15, 23, 42, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.82);");
+    expect(stylesheet).toContain(".terminal-chat-form {");
+    expect(stylesheet).toContain("border-radius: 26px;");
+    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.9);");
+  });
+
+  it("lays out the terminal composer as a single input surface with a footer tool row", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\.terminal-chat-form\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/,
+    );
+    expect(stylesheet).toContain(".terminal-composer-tools {");
+    expect(stylesheet).toContain("justify-content: space-between;");
+    expect(stylesheet).toContain(".terminal-chat-form .terminal-composer-meta {");
+    expect(stylesheet).toContain("border: 1px solid rgba(148, 163, 184, 0.28);");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(239, 246, 255, 0.98) 0%, rgba(219, 234, 254, 0.98) 100%);");
+    expect(stylesheet).toContain("box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), 0 8px 16px -16px rgba(37, 99, 235, 0.36);");
+    expect(stylesheet).toContain(".terminal-chat-form-button-icon svg {");
+    expect(stylesheet).toContain("width: 20px;");
+    expect(stylesheet).toContain("transform: translateY(0.75px);");
+  });
+
   it("styles shared jump controls as arrow clusters for dialog surfaces", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
@@ -215,10 +252,10 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 420px\) \{[\s\S]*?\.terminal-workspace-row\s*\{[\s\S]*?flex-wrap:\s*nowrap;/,
+      /@media \(max-width: 420px\) \{[\s\S]*?\.terminal-workspace-row\s*\{[\s\S]*?flex-wrap:\s*wrap;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 420px\) \{[\s\S]*?\.terminal-workspace-actions\s*\{[\s\S]*?flex-wrap:\s*nowrap;/,
+      /@media \(max-width: 420px\) \{[\s\S]*?\.terminal-workspace-actions\s*\{[\s\S]*?flex-wrap:\s*wrap;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-meta\s*\{[\s\S]*?display:\s*block;/,
@@ -230,7 +267,28 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-shell\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?bottom:\s*var\(--keyboard-offset\);[\s\S]*?padding:\s*0 10px calc\(10px \+ env\(safe-area-inset-bottom\)\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-shell\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?bottom:\s*var\(--keyboard-offset\);[\s\S]*?padding:\s*0 10px calc\(10px \+ env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset\)\);/,
+    );
+  });
+
+  it("keeps mobile terminal layouts on a single main surface instead of stacking nested rounded capsules", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-workspace-body(?:\.conversation-workspace-body)?\s*\{[\s\S]*?border-radius:\s*0;[\s\S]*?border-left:\s*0;[\s\S]*?border-right:\s*0;[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-chat-screen\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?background:\s*transparent;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-chat-form\s*\{[\s\S]*?border-radius:\s*22px;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-chat-form\s*\{[\s\S]*?backdrop-filter:\s*none;[\s\S]*?box-shadow:\s*0 12px 24px -20px rgba\(15, 23, 42, 0.12\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-chat-form button\s*\{[\s\S]*?box-shadow:\s*none;/,
     );
   });
 });

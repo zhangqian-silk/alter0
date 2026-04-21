@@ -154,7 +154,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
           {workbench.isMobileViewport ? (
             <header className="terminal-mobile-header" data-conversation-mobile-header>
               <button
-                className="conversation-mobile-action conversation-mobile-nav-toggle"
+                className="conversation-mobile-action terminal-inline-button is-quiet conversation-mobile-nav-toggle"
                 type="button"
                 aria-expanded={workbench.mobileNavOpen}
                 onClick={() => {
@@ -166,7 +166,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
               </button>
               <div className="terminal-mobile-header-actions">
                 <button
-                  className="conversation-mobile-action conversation-mobile-session-toggle"
+                  className="conversation-mobile-action terminal-inline-button is-quiet conversation-mobile-session-toggle"
                   type="button"
                   aria-expanded={sessionPaneOpen}
                   onClick={toggleSessionPane}
@@ -174,7 +174,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
                   {copy.chatSessions}
                 </button>
                 <button
-                  className="conversation-mobile-action is-primary conversation-mobile-new-session"
+                  className="conversation-mobile-action terminal-inline-button is-primary conversation-mobile-new-session"
                   type="button"
                   onClick={handleCreateSession}
                 >

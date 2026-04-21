@@ -107,6 +107,21 @@ describe("ConversationWorkspace", () => {
 
     const mobileHeader = document.querySelector(".conversation-workspace-body > [data-conversation-mobile-header]") as HTMLElement;
     expect(mobileHeader).toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toHaveClass(
+      "conversation-mobile-action",
+      "terminal-inline-button",
+      "is-quiet",
+    );
+    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toHaveClass(
+      "conversation-mobile-action",
+      "terminal-inline-button",
+      "is-quiet",
+    );
+    expect(within(mobileHeader).getByRole("button", { name: "New" })).toHaveClass(
+      "conversation-mobile-action",
+      "terminal-inline-button",
+      "is-primary",
+    );
     expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();
