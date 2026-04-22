@@ -93,6 +93,8 @@ export function WorkbenchApp() {
               <ConversationRuntimeProvider route={route} language={language}>
                 <ConversationWorkspace language={language} />
               </ConversationRuntimeProvider>
+            ) : route === "terminal" ? (
+              <ReactManagedRouteBody route={route} language={language} />
             ) : (
               <RoutePageFrame route={route} language={language} />
             )}
@@ -117,21 +119,16 @@ function RoutePageFrame({
   language: LegacyShellLanguage;
 }) {
   const routeHeadingCopy = getLegacyRouteHeadingCopy(language, route);
-  const showRouteHeading = route !== "terminal";
-  const routeViewClassName = route === "terminal" ? "route-view terminal-route" : "route-view";
-  const routeBodyClassName = route === "terminal" ? "route-body terminal-route-body" : "route-body";
 
   return (
-    <section className={routeViewClassName} data-route={route}>
-      {showRouteHeading ? (
-        <header className="route-head">
-          <div className="route-copy">
-            <h3>{routeHeadingCopy.title}</h3>
-            <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
-          </div>
-        </header>
-      ) : null}
-      <div className={routeBodyClassName} data-route={route}>
+    <section className="route-view" data-route={route}>
+      <header className="route-head">
+        <div className="route-copy">
+          <h3>{routeHeadingCopy.title}</h3>
+          <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
+        </div>
+      </header>
+      <div className="route-body" data-route={route}>
         <ReactManagedRouteBody route={route} language={language} />
       </div>
     </section>

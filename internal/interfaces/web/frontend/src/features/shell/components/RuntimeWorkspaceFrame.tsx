@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
 
 type RuntimeWorkspaceFrameProps = {
   rootClassName: string;
@@ -18,6 +18,7 @@ type RuntimeWorkspaceFrameProps = {
   workspaceClassName: string;
   workspaceProps?: ComponentPropsWithoutRef<"section">;
   workspaceBodyClassName: string;
+  workspaceBodyRef?: Ref<HTMLDivElement>;
   workspaceBodyProps?: ComponentPropsWithoutRef<"div">;
   mobileHeader?: ReactNode;
   workspaceHeader?: ReactNode;
@@ -42,6 +43,7 @@ export function RuntimeWorkspaceFrame({
   workspaceClassName,
   workspaceProps,
   workspaceBodyClassName,
+  workspaceBodyRef,
   workspaceBodyProps,
   mobileHeader,
   workspaceHeader,
@@ -91,6 +93,7 @@ export function RuntimeWorkspaceFrame({
       </aside>
       <section className={joinClassNames(workspaceClassName, workspacePropsClassName)} {...workspaceRestProps}>
         <div
+          ref={workspaceBodyRef}
           className={joinClassNames(workspaceBodyClassName, workspaceBodyPropsClassName)}
           {...workspaceBodyRestProps}
         >

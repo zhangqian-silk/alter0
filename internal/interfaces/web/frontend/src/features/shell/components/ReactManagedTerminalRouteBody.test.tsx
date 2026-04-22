@@ -119,6 +119,20 @@ describe("ReactManagedTerminalRouteBody", () => {
           },
         }));
       }
+      if (url === "/api/terminal/sessions/terminal-1/input" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "busy",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:30Z",
+          },
+        }));
+      }
       return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
     }));
   });
@@ -276,6 +290,207 @@ describe("ReactManagedTerminalRouteBody", () => {
         "terminal-2",
       );
     });
+  });
+
+  it("submits the first terminal input on the first click even when no session exists yet", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "terminal-2",
+            terminal_session_id: "terminal-2",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:00Z",
+          },
+        }, { status: 201 }));
+      }
+      if (url === "/api/terminal/sessions/terminal-2" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "terminal-2",
+            terminal_session_id: "terminal-2",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:00Z",
+            turns: [
+              {
+                id: "turn-2",
+                prompt: "pwd",
+                status: "completed",
+                started_at: "2026-04-15T10:20:01Z",
+                finished_at: "2026-04-15T10:20:03Z",
+                duration_ms: 2000,
+                final_output: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+                steps: [],
+              },
+            ],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-2/input" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "terminal-2",
+            terminal_session_id: "terminal-2",
+            status: "busy",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:01Z",
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+    });
+
+    fireEvent.change(document.querySelector("[data-terminal-input]") as HTMLTextAreaElement, {
+      target: { value: "pwd" },
+    });
+    fireEvent.click(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-workspace]")).toHaveAttribute(
+        "data-terminal-session-id",
+        "terminal-2",
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-2']")).toBeInTheDocument();
+    });
+    expect(document.querySelector("[data-terminal-input]")).toHaveValue("");
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls.some(([request, init]) =>
+      String(request) === "/api/terminal/sessions/terminal-2/input"
+      && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+  });
+
+  it("marks the first send as pending immediately while the terminal session is still being created", async () => {
+    let resolveCreateSession: ((value: Response) => void) | null = null;
+
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions" && method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveCreateSession = resolve;
+        });
+      }
+      if (url === "/api/terminal/sessions/terminal-2/input" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "terminal-2",
+            terminal_session_id: "terminal-2",
+            status: "busy",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:01Z",
+            turns: [],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-2" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "terminal-2",
+            terminal_session_id: "terminal-2",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:01Z",
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+    });
+
+    fireEvent.change(document.querySelector("[data-terminal-input]") as HTMLTextAreaElement, {
+      target: { value: "pwd" },
+    });
+    fireEvent.click(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+
+    expect(document.querySelector("[data-terminal-submit]")).toBeDisabled();
+    expect(document.querySelector("[data-terminal-submit]")).toHaveAttribute("aria-label", "Sending...");
+
+    resolveCreateSession?.(jsonResponse({
+      session: {
+        id: "terminal-2",
+        title: "terminal-2",
+        terminal_session_id: "terminal-2",
+        status: "ready",
+        shell: "codex exec",
+        working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+        created_at: "2026-04-15T10:20:00Z",
+        updated_at: "2026-04-15T10:20:00Z",
+      },
+    }, { status: 201 }));
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-workspace]")).toHaveAttribute(
+        "data-terminal-session-id",
+        "terminal-2",
+      );
+    });
+  });
+
+  it("submits immediately when the mobile send button is tapped", async () => {
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+    });
+
+    const input = document.querySelector("[data-terminal-input]") as HTMLTextAreaElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, {
+      target: { value: "pwd" },
+    });
+    fireEvent.touchStart(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-input]")).toHaveValue("");
+    });
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls.some(([request, init]) =>
+      String(request) === "/api/terminal/sessions/terminal-1/input"
+      && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
   });
 
   it("does not refresh a ready session while the terminal output is being scrolled", async () => {

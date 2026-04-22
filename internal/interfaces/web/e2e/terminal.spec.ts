@@ -367,6 +367,125 @@ test.describe("Terminal route", () => {
     expect(scrolledMetrics?.composerBottom ?? 0).toBeLessThanOrEqual((scrolledMetrics?.viewportBottom ?? 0) + 2);
   });
 
+  test("keeps mobile terminal jump controls anchored in place while the keyboard opens and closes", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+
+    const clientID = createTerminalClientID("mobile-jump-cluster");
+    const now = Date.now();
+    const sessionID = "terminal-mobile-jump-cluster";
+    const sessionSummary = {
+      id: sessionID,
+      title: "terminal-mobile-jump-cluster",
+      terminal_session_id: sessionID,
+      status: "ready",
+      shell: "codex exec",
+      working_dir: terminalSessionWorkspace(sessionID),
+      created_at: now - 90_000,
+      updated_at: now,
+      last_output_at: now,
+    };
+    const turns = Array.from({ length: 18 }, (_, index) => ({
+      id: `turn-${index + 1}`,
+      prompt: `Run step ${index + 1}`,
+      status: "completed",
+      started_at: now - ((18 - index) * 4_000),
+      finished_at: now - ((18 - index) * 4_000) + 2_400,
+      duration_ms: 2_400,
+      final_output: [
+        `Output block ${index + 1}`,
+        "",
+        `- ${"mobile jump cluster line ".repeat(12).trim()}`,
+        `- ${"composer overlap check ".repeat(10).trim()}`,
+        "",
+        "Keep the jump controls above the composer.",
+      ].join("\n"),
+      steps: [],
+    }));
+
+    await bindTerminalClient(page, clientID);
+    await page.route("**/api/terminal/sessions", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [sessionSummary] }),
+      });
+    });
+    await page.route(`**/api/terminal/sessions/${sessionID}`, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          session: {
+            ...sessionSummary,
+            turns,
+          },
+        }),
+      });
+    });
+
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    await expect(terminalPage.turnCards()).toHaveCount(turns.length);
+    await terminalPage.chatScreen().evaluate((node) => {
+      node.scrollTop = Math.max(0, node.scrollHeight - node.clientHeight - 220);
+      node.dispatchEvent(new Event("scroll"));
+    });
+
+    const readJumpMetrics = async () => page.evaluate(() => {
+      const composer = document.querySelector(".terminal-composer-shell");
+      const cluster = document.querySelector(".terminal-jump-cluster");
+      if (!(composer instanceof HTMLElement) || !(cluster instanceof HTMLElement)) {
+        return null;
+      }
+      const composerRect = composer.getBoundingClientRect();
+      const clusterRect = cluster.getBoundingClientRect();
+      return {
+        keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
+        composerTop: composerRect.top,
+        clusterBottom: clusterRect.bottom,
+        clusterBottomStyle: getComputedStyle(cluster).bottom,
+      };
+    });
+
+    const baseline = await readJumpMetrics();
+    expect(baseline).not.toBeNull();
+    expect(baseline?.keyboardOffset).toBe("0px");
+    expect(baseline?.clusterBottom ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual((baseline?.composerTop ?? 0) - 12);
+
+    await terminalPage.composer().input().click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+
+    const raised = await readJumpMetrics();
+    expect(raised).not.toBeNull();
+    expect(raised?.keyboardOffset).toBe("312px");
+    expect(raised?.clusterBottomStyle).toBe(baseline?.clusterBottomStyle);
+
+    await terminalPage.chatScreen().click({ position: { x: 40, y: 40 } });
+    await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
+
+    const restored = await readJumpMetrics();
+    expect(restored).not.toBeNull();
+    expect(restored?.keyboardOffset).toBe("0px");
+    expect(restored?.clusterBottomStyle).toBe(baseline?.clusterBottomStyle);
+    await expect.poll(async () => {
+      const current = await readJumpMetrics();
+      if (!current) {
+        return Number.NEGATIVE_INFINITY;
+      }
+      return (current.composerTop ?? 0) - (current.clusterBottom ?? Number.POSITIVE_INFINITY);
+    }).toBeGreaterThanOrEqual(12);
+  });
+
   test("keeps the mobile terminal workspace fixed while only the composer follows the keyboard", async ({ page, request }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });

@@ -73,11 +73,48 @@ describe("shared viewport mobileViewportSync", () => {
     expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("360px");
 
     input.blur();
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("360px");
+
+    visualViewport.height = 980;
+    visualViewport.dispatchEvent(new Event("resize"));
     expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("0px");
 
     setWindowSize(1280, 900);
     window.dispatchEvent(new Event("resize"));
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("100dvh");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("0px");
+
+    controller.destroy();
+    input.remove();
+  });
+
+  it("keeps the keyboard offset until the mobile viewport actually recovers after blur", () => {
+    const visualViewport = new MockVisualViewport(760, 980);
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    setWindowSize(760, 980);
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    });
+
+    const controller = createMobileViewportSyncController();
+
+    input.focus();
+    visualViewport.height = 620;
+    visualViewport.dispatchEvent(new Event("resize"));
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("360px");
+
+    input.blur();
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("620px");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("360px");
+
+    visualViewport.height = 760;
+    visualViewport.dispatchEvent(new Event("resize"));
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("220px");
+
+    visualViewport.height = 980;
+    visualViewport.dispatchEvent(new Event("resize"));
     expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("0px");
 
     controller.destroy();

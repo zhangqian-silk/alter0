@@ -83,18 +83,25 @@ export function deriveMobileViewportState(
     Math.round(input.viewportWidth ?? input.windowWidth),
   );
   const widthChanged = Math.abs(viewportWidth - previousState.width) > MOBILE_VIEWPORT_WIDTH_RESET_DELTA_PX;
+  const keyboardClosing =
+    !input.hasActiveInput
+    && previousState.keyboardOffset >= MOBILE_VIEWPORT_SYNC_THRESHOLD_PX
+    && previousState.baselineHeight > 0
+    && effectiveHeight < previousState.baselineHeight - 2;
 
   let baselineHeight = previousState.baselineHeight;
   if (!baselineHeight || widthChanged) {
     baselineHeight = effectiveHeight;
   }
-  if (!input.hasActiveInput || effectiveHeight >= baselineHeight - 2) {
+  if (keyboardClosing) {
+    baselineHeight = Math.max(previousState.baselineHeight, effectiveHeight);
+  } else if (!input.hasActiveInput || effectiveHeight >= baselineHeight - 2) {
     baselineHeight = effectiveHeight;
   } else {
     baselineHeight = Math.max(baselineHeight, effectiveHeight);
   }
 
-  const rawKeyboardOffset = input.hasActiveInput
+  const rawKeyboardOffset = input.hasActiveInput || keyboardClosing
     ? Math.max(0, baselineHeight - effectiveHeight)
     : 0;
   const keyboardOffset = rawKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX

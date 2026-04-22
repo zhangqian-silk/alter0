@@ -729,6 +729,8 @@ export function ReactManagedTerminalRouteBody() {
   });
   const chatScreenRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerShellRef = useRef<HTMLElement | null>(null);
+  const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
   const jumpSyncFrameRef = useRef<number | null>(null);
   const scrollRestoreSnapshotRef = useRef<{
@@ -781,6 +783,14 @@ export function ReactManagedTerminalRouteBody() {
     focusComposerInputWithoutScroll();
   };
 
+  const handleSubmitTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
+    if (!workbench.isMobileViewport || submitting || !canInput) {
+      return;
+    }
+    event.preventDefault();
+    void submitInput();
+  };
+
   useLayoutEffect(() => {
     if (!workbench.isMobileViewport || !inputFocused) {
       return;
@@ -802,6 +812,87 @@ export function ReactManagedTerminalRouteBody() {
       visualViewport?.removeEventListener("scroll", keepViewportAnchored);
     };
   }, [inputFocused, workbench.isMobileViewport]);
+
+  useLayoutEffect(() => {
+    const workspaceBodyNode = workspaceBodyRef.current;
+    const composerShellNode = composerShellRef.current;
+    if (!workspaceBodyNode) {
+      return;
+    }
+    if (!workbench.isMobileViewport || !composerShellNode) {
+      workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
+      workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
+      return;
+    }
+
+    const syncComposerInset = () => {
+      const workspaceRect = workspaceBodyNode.getBoundingClientRect();
+      const composerRect = composerShellNode.getBoundingClientRect();
+      workspaceBodyNode.style.setProperty(
+        "--runtime-composer-rest-inset",
+        `${Math.max(0, Math.ceil(composerRect.height))}px`,
+      );
+      workspaceBodyNode.style.setProperty(
+        "--runtime-composer-inset",
+        `${Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top))}px`,
+      );
+    };
+
+    let settleFrameID = 0;
+    let settleLateFrameID = 0;
+    let settleTimeoutID = 0;
+    const clearScheduledSync = () => {
+      if (settleFrameID) {
+        window.cancelAnimationFrame(settleFrameID);
+        settleFrameID = 0;
+      }
+      if (settleLateFrameID) {
+        window.cancelAnimationFrame(settleLateFrameID);
+        settleLateFrameID = 0;
+      }
+      if (settleTimeoutID) {
+        window.clearTimeout(settleTimeoutID);
+        settleTimeoutID = 0;
+      }
+    };
+    const scheduleComposerInsetSync = () => {
+      syncComposerInset();
+      clearScheduledSync();
+      settleFrameID = window.requestAnimationFrame(() => {
+        settleFrameID = 0;
+        syncComposerInset();
+        settleLateFrameID = window.requestAnimationFrame(() => {
+          settleLateFrameID = 0;
+          syncComposerInset();
+        });
+      });
+      settleTimeoutID = window.setTimeout(() => {
+        settleTimeoutID = 0;
+        syncComposerInset();
+      }, 260);
+    };
+
+    scheduleComposerInsetSync();
+
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => scheduleComposerInsetSync());
+    resizeObserver?.observe(composerShellNode);
+    window.addEventListener("resize", scheduleComposerInsetSync);
+    window.visualViewport?.addEventListener("resize", scheduleComposerInsetSync);
+    window.visualViewport?.addEventListener("scroll", scheduleComposerInsetSync);
+    composerShellNode.addEventListener("transitionend", scheduleComposerInsetSync);
+    return () => {
+      clearScheduledSync();
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleComposerInsetSync);
+      window.visualViewport?.removeEventListener("resize", scheduleComposerInsetSync);
+      window.visualViewport?.removeEventListener("scroll", scheduleComposerInsetSync);
+      composerShellNode.removeEventListener("transitionend", scheduleComposerInsetSync);
+      workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
+      workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
+    };
+  }, [workbench.isMobileViewport]);
 
   const captureScrollSnapshot = () => {
     const node = chatScreenRef.current;
@@ -1087,18 +1178,18 @@ export function ReactManagedTerminalRouteBody() {
 
   const submitInput = async () => {
     const content = inputValue.trim();
-    if (!content) {
-      return;
-    }
-    let session = activeSession;
-    if (!session) {
-      session = await createSession();
-    }
-    if (!session) {
+    if (!content || submitting) {
       return;
     }
     setSubmitting(true);
+    let session = activeSession;
     try {
+      if (!session) {
+        session = await createSession();
+      }
+      if (!session) {
+        return;
+      }
       const payload = await apiClient.post<TerminalSessionResponse>(
         `/api/terminal/sessions/${encodeURIComponent(session.id)}/input`,
         { input: content },
@@ -1318,6 +1409,7 @@ export function ReactManagedTerminalRouteBody() {
         "data-terminal-workspace-live": isWorkspaceLive,
       }}
       workspaceBodyClassName="terminal-workspace-body conversation-workspace-body"
+      workspaceBodyRef={workspaceBodyRef}
       workspaceHeader={
         <header className="terminal-workspace-head conversation-workspace-head is-compact">
           <div className="terminal-workspace-row terminal-workspace-title-row conversation-workspace-row is-compact">
@@ -1650,7 +1742,7 @@ export function ReactManagedTerminalRouteBody() {
         </section>
       }
       workspaceFooter={
-        <footer className="terminal-composer-shell">
+        <footer ref={composerShellRef} className="terminal-composer-shell">
           {composerNote ? (
             <div
               className="terminal-composer-note"
@@ -1702,6 +1794,7 @@ export function ReactManagedTerminalRouteBody() {
                 data-composer-submit="terminal-runtime"
                 aria-label={submitting ? copy.sending : copy.send}
                 disabled={submitting || !canInput}
+                onTouchStartCapture={handleSubmitTouchStartCapture}
               >
                 <span className="terminal-chat-form-button-icon" aria-hidden="true">
                   <svg viewBox="0 0 20 20" fill="none" focusable="false">

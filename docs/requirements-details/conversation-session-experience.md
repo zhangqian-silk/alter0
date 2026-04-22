@@ -189,6 +189,12 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 仅在输入框实际聚焦且软键盘占位达到阈值时追加键盘底部偏移。
 - 键盘收起或视口回弹后不保留额外底部空白。
 - `Chat / Agent Runtime` 首次触摸输入框时需采用与 `Terminal` 相同的 `preventScroll` 聚焦策略，并在聚焦期间监听 `window.scroll + VisualViewport resize/scroll` 把页面锚定在 `scrollY = 0`；首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
+- `Chat / Agent Runtime` 的 fixed composer 在移动端必须把实际遮挡高度同步回工作区滚动面；`.conversation-chat-screen` 与空态欢迎区都需停在 composer 上沿，不能依赖静态底部 padding 估算占位，也不能出现底部输入框覆盖最后一段消息或说明文案。
+- `Chat / Agent Runtime` 在键盘收起和 composer 回弹到底边时，工作区滚动面也必须同步清理旧的遮挡高度；最后一屏消息、空态说明和阅读定位控件都不能在底边留下额外空白或残留占位。
+- `Chat / Agent Runtime` 在移动端键盘弹起和收回期间，仅允许 fixed composer 自身跟随 `VisualViewport` 做贴底位移；`Menu / Sessions / New` 操作行、紧凑 workspace header 与其他公共控件保持原位，不跟随键盘做额外动画或跳变。
+- `Chat / Agent Runtime` 的移动端发送按钮支持在键盘保持打开时直接点按提交；首触发送立即进入当前 `sendPrompt` 链路，不需要先收键盘或补第二次点击。
+- `Chat / Agent Runtime` 的 fixed composer 不额外叠加 `bottom` 过渡动画；键盘回弹与输入区回贴底边时只消费 `VisualViewport` 的实时位置，避免补间动画与视口收缩/回弹叠加造成拖滞。
+- `Chat / Agent Runtime` 在输入框失焦后，若 `VisualViewport` 仍处于收缩态，必须继续保留当前键盘偏移并随视口恢复逐步释放；不允许先把 composer 闪回到底边，再被后续 viewport resize 顶回去。
 - `760px` 及以下的真手机宽度下，主导航抽屉、会话抽屉、头部按钮高度与间距继续压缩，避免头部按钮挤占可用阅读高度。
 - 小高度窄屏下，主导航抽屉仍需保留稳定的触摸滚动链：菜单内容滚动不把整个页面带离当前上下文，抽屉底部固定区域与菜单滚动区域边界清晰。
 - `1100px` 及以下时，`Chat / Agent Runtime` 头部固定提供 `Menu / Sessions / New` 操作行；`Menu` 打开主导航抽屉，`Sessions` 打开会话抽屉，`New` 直接创建当前路由的新会话，操作入口不得因空态、已有消息或 Inspector 状态而消失。

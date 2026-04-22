@@ -16,6 +16,8 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   const [sessionPaneOpen, setSessionPaneOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerShellRef = useRef<HTMLElement | null>(null);
+  const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const activeMessages = runtime.activeSession?.messages || [];
   const isEmptyState = activeMessages.length === 0;
   const isCompactRuntimeHeader = runtime.route === "chat" || runtime.route === "agent-runtime";
@@ -98,6 +100,18 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     focusComposerInputWithoutScroll();
   };
 
+  const submitDraft = () => {
+    void runtime.sendPrompt(runtime.draft);
+  };
+
+  const handleSubmitTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
+    if (!workbench.isMobileViewport) {
+      return;
+    }
+    event.preventDefault();
+    submitDraft();
+  };
+
   const toggleSessionPane = () => {
     if (!sessionPaneOpen) {
       workbench.closeMobileNav();
@@ -133,6 +147,87 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
       visualViewport?.removeEventListener("scroll", keepViewportAnchored);
     };
   }, [inputFocused, workbench.isMobileViewport]);
+
+  useLayoutEffect(() => {
+    const workspaceBodyNode = workspaceBodyRef.current;
+    const composerShellNode = composerShellRef.current;
+    if (!workspaceBodyNode) {
+      return;
+    }
+    if (!workbench.isMobileViewport || !composerShellNode) {
+      workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
+      workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
+      return;
+    }
+
+    const syncComposerInset = () => {
+      const workspaceRect = workspaceBodyNode.getBoundingClientRect();
+      const composerRect = composerShellNode.getBoundingClientRect();
+      workspaceBodyNode.style.setProperty(
+        "--runtime-composer-rest-inset",
+        `${Math.max(0, Math.ceil(composerRect.height))}px`,
+      );
+      workspaceBodyNode.style.setProperty(
+        "--runtime-composer-inset",
+        `${Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top))}px`,
+      );
+    };
+
+    let settleFrameID = 0;
+    let settleLateFrameID = 0;
+    let settleTimeoutID = 0;
+    const clearScheduledSync = () => {
+      if (settleFrameID) {
+        window.cancelAnimationFrame(settleFrameID);
+        settleFrameID = 0;
+      }
+      if (settleLateFrameID) {
+        window.cancelAnimationFrame(settleLateFrameID);
+        settleLateFrameID = 0;
+      }
+      if (settleTimeoutID) {
+        window.clearTimeout(settleTimeoutID);
+        settleTimeoutID = 0;
+      }
+    };
+    const scheduleComposerInsetSync = () => {
+      syncComposerInset();
+      clearScheduledSync();
+      settleFrameID = window.requestAnimationFrame(() => {
+        settleFrameID = 0;
+        syncComposerInset();
+        settleLateFrameID = window.requestAnimationFrame(() => {
+          settleLateFrameID = 0;
+          syncComposerInset();
+        });
+      });
+      settleTimeoutID = window.setTimeout(() => {
+        settleTimeoutID = 0;
+        syncComposerInset();
+      }, 260);
+    };
+
+    scheduleComposerInsetSync();
+
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => scheduleComposerInsetSync());
+    resizeObserver?.observe(composerShellNode);
+    window.addEventListener("resize", scheduleComposerInsetSync);
+    window.visualViewport?.addEventListener("resize", scheduleComposerInsetSync);
+    window.visualViewport?.addEventListener("scroll", scheduleComposerInsetSync);
+    composerShellNode.addEventListener("transitionend", scheduleComposerInsetSync);
+    return () => {
+      clearScheduledSync();
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleComposerInsetSync);
+      window.visualViewport?.removeEventListener("resize", scheduleComposerInsetSync);
+      window.visualViewport?.removeEventListener("scroll", scheduleComposerInsetSync);
+      composerShellNode.removeEventListener("transitionend", scheduleComposerInsetSync);
+      workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
+      workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
+    };
+  }, [workbench.isMobileViewport]);
 
   return (
     <RuntimeWorkspaceFrame
@@ -211,6 +306,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
         "data-conversation-route": runtime.route,
       }}
       workspaceBodyClassName="terminal-workspace-body conversation-workspace-body"
+      workspaceBodyRef={workspaceBodyRef}
       mobileHeader={workbench.isMobileViewport ? (
         <header className="terminal-mobile-header" data-conversation-mobile-header>
           <button
@@ -466,12 +562,12 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
         </section>
       )}
       workspaceFooter={(
-        <footer className="terminal-composer-shell conversation-composer-shell">
+        <footer ref={composerShellRef} className="terminal-composer-shell conversation-composer-shell">
           <form
             className="terminal-chat-form conversation-chat-form"
             onSubmit={(event) => {
               event.preventDefault();
-              void runtime.sendPrompt(runtime.draft);
+              submitDraft();
             }}
           >
             <label className="sr-only" htmlFor="conversationRuntimeInput">
@@ -496,6 +592,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
                 type="submit"
                 className="terminal-chat-submit conversation-chat-submit"
                 aria-label={composerSend}
+                onTouchStartCapture={handleSubmitTouchStartCapture}
               >
                 <span className="terminal-chat-form-button-icon" aria-hidden="true">
                   <svg viewBox="0 0 20 20" fill="none" focusable="false">

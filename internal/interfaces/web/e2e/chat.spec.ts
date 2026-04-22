@@ -917,6 +917,98 @@ test.describe("Chat composer", () => {
     expect(Math.abs((closed?.viewportBottom ?? 0) - (closed?.shellBottom ?? 0))).toBeLessThan(20);
   });
 
+  test("keeps chat chrome fixed while only the composer follows the mobile keyboard", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+    await page.goto("/chat#chat");
+    await loginIfNeeded(page);
+    await waitForAppReady(page);
+    await page.waitForSelector(".conversation-chat-form", { timeout: 20000 });
+    const input = page.locator(".conversation-composer-input");
+
+    const readMetrics = async () => page.evaluate(() => {
+      const mobileHeader = document.querySelector("[data-conversation-mobile-header]");
+      const workspaceHeader = document.querySelector(".conversation-workspace-head");
+      const composerShell = document.querySelector(".conversation-composer-shell");
+      const viewport = window.visualViewport;
+      if (
+        !(mobileHeader instanceof HTMLElement)
+        || !(workspaceHeader instanceof HTMLElement)
+        || !(composerShell instanceof HTMLElement)
+        || !viewport
+      ) {
+        return null;
+      }
+
+      const mobileHeaderRect = mobileHeader.getBoundingClientRect();
+      const workspaceHeaderRect = workspaceHeader.getBoundingClientRect();
+      const composerRect = composerShell.getBoundingClientRect();
+      return {
+        keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
+        viewportBottom: viewport.height + viewport.offsetTop,
+        mobileHeaderTop: mobileHeaderRect.top,
+        mobileHeaderBottom: mobileHeaderRect.bottom,
+        workspaceHeaderTop: workspaceHeaderRect.top,
+        workspaceHeaderBottom: workspaceHeaderRect.bottom,
+        composerTop: composerRect.top,
+        composerBottom: composerRect.bottom,
+      };
+    });
+
+    const baseline = await readMetrics();
+    expect(baseline).not.toBeNull();
+    expect(baseline?.keyboardOffset).toBe("0px");
+
+    await input.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+    await expect.poll(async () => {
+      const current = await readMetrics();
+      if (!current) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return current.composerBottom - current.viewportBottom;
+    }).toBeLessThanOrEqual(2);
+
+    const opened = await readMetrics();
+    expect(opened).not.toBeNull();
+    expect(opened?.keyboardOffset).toBe("312px");
+    expect(Math.abs((opened?.mobileHeaderTop ?? 0) - (baseline?.mobileHeaderTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.mobileHeaderBottom ?? 0) - (baseline?.mobileHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.workspaceHeaderTop ?? 0) - (baseline?.workspaceHeaderTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.workspaceHeaderBottom ?? 0) - (baseline?.workspaceHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
+    expect((baseline?.composerTop ?? 0) - (opened?.composerTop ?? 0)).toBeGreaterThan(120);
+
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    });
+    await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("0px");
+    await expect.poll(async () => {
+      const current = await readMetrics();
+      if (!current) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs(current.composerBottom - current.viewportBottom);
+    }).toBeLessThanOrEqual(20);
+
+    const closed = await readMetrics();
+    expect(closed).not.toBeNull();
+    expect(Math.abs((closed?.mobileHeaderTop ?? 0) - (baseline?.mobileHeaderTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((closed?.mobileHeaderBottom ?? 0) - (baseline?.mobileHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((closed?.workspaceHeaderTop ?? 0) - (baseline?.workspaceHeaderTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((closed?.workspaceHeaderBottom ?? 0) - (baseline?.workspaceHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((closed?.composerTop ?? 0) - (baseline?.composerTop ?? 0))).toBeLessThanOrEqual(20);
+  });
+
   test("keeps mobile route pages aligned to the visual viewport bottom", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 760, height: 980 });

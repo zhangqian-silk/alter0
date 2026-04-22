@@ -68,6 +68,9 @@ vi.mock("../features/shell/components/PrimaryNav", () => ({
       <button type="button" onClick={() => onNavigate("tasks")}>
         go tasks
       </button>
+      <button type="button" onClick={() => onNavigate("terminal")}>
+        go terminal
+      </button>
       <button type="button" onClick={() => onToggleLanguage()}>
         toggle language
       </button>
@@ -142,17 +145,21 @@ describe("WorkbenchApp", () => {
     expect(shell).not.toHaveClass("overlay-open");
   });
 
-  it("renders the terminal route without a duplicate page hero", async () => {
-    window.location.hash = "#terminal";
+  it("renders the terminal route as a direct runtime workspace frame without route-page wrappers", async () => {
     const { container } = render(<WorkbenchApp />);
+
+    fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "terminal");
     });
 
-    expect(container.querySelector(".route-view.terminal-route")).toBeInTheDocument();
-    expect(container.querySelector(".route-view.terminal-route > .route-head")).not.toBeInTheDocument();
-    expect(container.querySelector(".route-body.terminal-route-body")).toBeInTheDocument();
+    const paneShell = container.querySelector("[data-workbench-pane-shell]") as HTMLElement;
+    expect(paneShell).toBeInTheDocument();
+    expect(paneShell.firstElementChild).toBe(screen.getByTestId("route-body"));
+    expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "terminal");
+    expect(container.querySelector(".route-view.terminal-route")).not.toBeInTheDocument();
+    expect(container.querySelector(".route-body.terminal-route-body")).not.toBeInTheDocument();
   });
 
   it("installs and cleans up the mobile viewport sync controller at the app root", () => {
