@@ -7,8 +7,11 @@ export type WorkbenchContextValue = {
   navigate: (route: string) => void;
   isMobileViewport: boolean;
   mobileNavOpen: boolean;
+  mobileSessionPaneOpen: boolean;
   toggleMobileNav: () => void;
+  toggleMobileSessionPane: () => void;
   closeMobileNav: () => void;
+  closeMobileSessionPane: () => void;
 };
 
 export const WorkbenchContext = createContext<WorkbenchContextValue | null>(null);
