@@ -166,6 +166,16 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("-webkit-overflow-scrolling: auto;");
   });
 
+  it("keeps the conversation chat viewport in its own scroll container above the composer", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".conversation-chat-screen {");
+    expect(stylesheet).toContain("height: 100%;");
+    expect(stylesheet).toContain("min-height: 0;");
+    expect(stylesheet).toContain("padding: 18px 20px 18px;");
+  });
+
   it("drops blur-heavy mobile chrome so runtime surfaces stay responsive on phones", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");

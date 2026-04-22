@@ -96,9 +96,11 @@ describe("ConversationWorkspace", () => {
     runtimeMock.selectedModelLabel = "DeepSeek V3.2";
     runtimeMock.toolCount = 0;
     runtimeMock.skillCount = 0;
+    runtimeMock.draft = "";
     runtimeMock.createSession.mockClear();
     runtimeMock.focusSession.mockClear();
     runtimeMock.removeSession.mockClear();
+    runtimeMock.sendPrompt.mockClear();
   });
 
   it("keeps the compact header visible alongside terminal-style mobile actions for an empty chat workspace", () => {
@@ -106,6 +108,9 @@ describe("ConversationWorkspace", () => {
     renderWorkspace({ toggleMobileNav });
 
     expect(document.querySelector("[data-conversation-view='chat']")).toHaveClass("terminal-runtime-view");
+    expect(Array.from(document.querySelector("[data-conversation-view='chat']")?.children || []).map((node) =>
+      (node as HTMLElement).tagName.toLowerCase(),
+    )).toEqual(["aside", "section"]);
     expect(screen.getByTestId("conversation-session-pane")).toHaveClass(
       "terminal-session-pane",
       "conversation-session-pane",
@@ -122,6 +127,8 @@ describe("ConversationWorkspace", () => {
       "terminal-workspace-body",
       "conversation-workspace-body",
     );
+    expect(document.querySelector("[data-conversation-chat-screen]")?.closest(".conversation-console-panel"))
+      .toBe(document.querySelector(".conversation-workspace-body > .conversation-console-panel"));
 
     const mobileHeader = document.querySelector(".conversation-workspace-body > [data-conversation-mobile-header]") as HTMLElement;
     expect(mobileHeader).toBeInTheDocument();
@@ -313,6 +320,15 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByRole("button", { name: "Tools / MCP" })).toBeInTheDocument();
     expect(screen.queryByText("Chat")).not.toBeInTheDocument();
     expect(screen.queryByText("DeepSeek V3.2 · 0 / 0")).not.toBeInTheDocument();
+  });
+
+  it("submits the current draft value on the first send action", () => {
+    runtimeMock.draft = "ship the runtime refactor";
+
+    renderWorkspace({ isMobileViewport: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(runtimeMock.sendPrompt).toHaveBeenCalledWith("ship the runtime refactor");
   });
 
   it("keeps the agent-runtime header summary visible outside the mobile empty state", () => {
