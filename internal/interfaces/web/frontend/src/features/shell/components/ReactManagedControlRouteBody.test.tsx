@@ -271,6 +271,8 @@ describe("ReactManagedControlRouteBody", () => {
     expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Restart Service" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Live Configuration Control" })).toBeInTheDocument();
+    expect(screen.getByText("Runtime Healthy")).toBeInTheDocument();
     expect(screen.getByText("Last Restart")).toBeInTheDocument();
     expect(screen.getByText("Commit Hash")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Web & Queue" })).toBeInTheDocument();
@@ -423,11 +425,17 @@ describe("ReactManagedControlRouteBody", () => {
       expect(screen.getByRole("button", { name: "Restart Service" })).toBeInTheDocument();
     });
 
+    expect(screen.queryByRole("dialog", { name: "Restart the service now?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirm Restart" })).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Restart Service" }));
 
-    expect(
-      screen.getByLabelText("Sync remote master changes before restart"),
-    ).toBeChecked();
+    const restartDialog = screen.getByRole("dialog", { name: "Restart the service now?" });
+
+    expect(restartDialog).toBeInTheDocument();
+    expect(screen.getByLabelText("Sync remote master changes before restart")).toBeChecked();
+    expect(screen.getByRole("button", { name: "Confirm Restart" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Confirm Restart" }));
 
@@ -445,6 +453,7 @@ describe("ReactManagedControlRouteBody", () => {
     expect(
       screen.getByText("Syncing remote master and restarting service..."),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Restart the service now?" })).not.toBeInTheDocument();
   });
 
   it("renders cron jobs from the scheduler control API", async () => {

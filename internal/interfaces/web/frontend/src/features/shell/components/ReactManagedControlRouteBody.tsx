@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTime } from "../../../shared/time/format";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
@@ -222,6 +222,9 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
 type EnvironmentRouteCopy = {
   loading: string;
   loadFailed: (message: string) => string;
+  runtimePanelEyebrow: string;
+  runtimePanelTitle: string;
+  runtimePanelDescription: string;
   restartService: string;
   confirmRestart: string;
   cancelRestart: string;
@@ -288,12 +291,23 @@ type EnvironmentRouteCopy = {
   validationNone: string;
   copyValue: string;
   emptyEnvironments: string;
+  statusHealthyLabel: string;
+  statusHealthyDescription: string;
+  statusDraftLabel: string;
+  statusDraftDescription: (count: number) => string;
+  statusPendingLabel: string;
+  statusPendingDescription: (count: number) => string;
+  statusActivityLabel: string;
+  statusAttentionLabel: string;
 };
 
 const ENVIRONMENT_ROUTE_COPY: Record<LegacyShellLanguage, EnvironmentRouteCopy> = {
   en: {
     loading: "Loading environments...",
     loadFailed: (message) => `Load failed: ${message}`,
+    runtimePanelEyebrow: "Environment Runtime",
+    runtimePanelTitle: "Live Configuration Control",
+    runtimePanelDescription: "Inspect the active instance, review runtime metadata, and apply configuration updates from a single control surface.",
     restartService: "Restart Service",
     confirmRestart: "Confirm Restart",
     cancelRestart: "Cancel",
@@ -360,10 +374,23 @@ const ENVIRONMENT_ROUTE_COPY: Record<LegacyShellLanguage, EnvironmentRouteCopy> 
     validationNone: "No constraints",
     copyValue: "Copy value",
     emptyEnvironments: "No environment config available.",
+    statusHealthyLabel: "Runtime Healthy",
+    statusHealthyDescription: "The live instance is aligned with the saved environment configuration.",
+    statusDraftLabel: "Unsaved Changes",
+    statusDraftDescription: (count) =>
+      `${count} configuration ${count === 1 ? "change is" : "changes are"} staged locally and not saved yet.`,
+    statusPendingLabel: "Restart Pending",
+    statusPendingDescription: (count) =>
+      `${count} saved ${count === 1 ? "item is" : "items are"} waiting for a restart before the runtime adopts the new values.`,
+    statusActivityLabel: "Runtime Activity",
+    statusAttentionLabel: "Action Required",
   },
   zh: {
     loading: "正在加载环境配置...",
     loadFailed: (message) => `加载失败：${message}`,
+    runtimePanelEyebrow: "环境运行态",
+    runtimePanelTitle: "在线配置控制台",
+    runtimePanelDescription: "在同一块控制区内查看当前实例、运行时元数据，并完成配置更新与生效操作。",
     restartService: "重启服务",
     confirmRestart: "确认重启",
     cancelRestart: "取消",
@@ -430,7 +457,23 @@ const ENVIRONMENT_ROUTE_COPY: Record<LegacyShellLanguage, EnvironmentRouteCopy> 
     validationNone: "无约束",
     copyValue: "复制内容",
     emptyEnvironments: "暂无环境配置。",
+    statusHealthyLabel: "运行态正常",
+    statusHealthyDescription: "当前在线实例与已保存的环境配置保持一致。",
+    statusDraftLabel: "存在未保存变更",
+    statusDraftDescription: (count) => `当前有 ${count} 项配置变更仅保留在页面草稿中，尚未保存。`,
+    statusPendingLabel: "等待重启生效",
+    statusPendingDescription: (count) => `当前有 ${count} 项已保存配置等待重启后写入运行态。`,
+    statusActivityLabel: "运行态动态",
+    statusAttentionLabel: "需要处理",
   },
+};
+
+type EnvironmentToolbarStatusTone = "neutral" | "success" | "warning" | "error";
+
+type EnvironmentToolbarStatus = {
+  label: string;
+  message: string;
+  tone: EnvironmentToolbarStatusTone;
 };
 
 type FieldSpec = {
@@ -722,6 +765,8 @@ function ReactManagedEnvironmentRouteBody({
   const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
   const [syncRemoteMaster, setSyncRemoteMaster] = useState(true);
   const restartPollTimerRef = useRef<number | null>(null);
+  const restartDialogTitleID = useId();
+  const restartDialogDescriptionID = useId();
 
   useEffect(() => {
     const notice = consumeRuntimeRestartNotice();
@@ -737,6 +782,23 @@ function ReactManagedEnvironmentRouteBody({
       clearRestartPollTimer(restartPollTimerRef);
     };
   }, [revealSensitive]);
+
+  useEffect(() => {
+    if (!restartConfirmOpen) {
+      return undefined;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setRestartConfirmOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [restartConfirmOpen]);
 
   async function reloadEnvironmentState(nextStatusMessage = "", nextStatusKind: "success" | "error" | "" = "") {
     setLoading(true);
@@ -823,9 +885,15 @@ function ReactManagedEnvironmentRouteBody({
         timerRef: restartPollTimerRef,
       });
     } catch (restartError: unknown) {
+      setRestartConfirmOpen(false);
       setStatusMessage(copy.restartFailed(restartError instanceof Error ? restartError.message : "unknown_error"));
       setStatusKind("error");
     }
+  }
+
+  function openRestartConfirm() {
+    setSyncRemoteMaster(true);
+    setRestartConfirmOpen(true);
   }
 
   if (loading) {
@@ -841,11 +909,58 @@ function ReactManagedEnvironmentRouteBody({
   }
 
   const groupedItems = groupEnvironmentItems(items);
+  const dirtyCount = Object.keys(dirtyKeys).length;
+  const pendingRestartCount = items.reduce((count, item) => count + (item.pending_restart ? 1 : 0), 0);
+  const toolbarStatus = buildEnvironmentToolbarStatus({
+    copy,
+    dirtyCount,
+    pendingRestartCount,
+    statusKind,
+    statusMessage,
+  });
 
   return (
     <section className="environment-view">
       <div className="route-surface environment-toolbar">
-        <div className="environment-toolbar-main">
+        <div className="environment-toolbar-head">
+          <div className="environment-toolbar-copy">
+            <span className="environment-toolbar-eyebrow">{copy.runtimePanelEyebrow}</span>
+            <h3>{copy.runtimePanelTitle}</h3>
+            <p>{copy.runtimePanelDescription}</p>
+          </div>
+
+          <div className="environment-toolbar-actions">
+            <div className="environment-toolbar-action-group">
+              <button
+                className="environment-toolbar-button"
+                data-variant="quiet"
+                type="button"
+                onClick={() => setRevealSensitive((current) => !current)}
+              >
+                {revealSensitive ? copy.hideSensitive : copy.revealSensitive}
+              </button>
+              <button
+                className="environment-toolbar-button"
+                data-variant="quiet"
+                type="button"
+                onClick={() => void reloadEnvironmentState()}
+              >
+                {copy.reload}
+              </button>
+            </div>
+
+            <div className="environment-toolbar-action-group environment-toolbar-action-group-primary">
+              <button className="environment-toolbar-button" data-variant="restart" type="button" onClick={openRestartConfirm}>
+                {copy.restartService}
+              </button>
+              <button className="environment-toolbar-button" data-variant="primary" type="button" onClick={() => void handleSave()}>
+                {copy.saveChanges}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="environment-toolbar-panel">
           <div className="environment-runtime-meta">
             <div className="environment-runtime-meta-item">
               <span>{copy.lastRestart}</span>
@@ -860,15 +975,41 @@ function ReactManagedEnvironmentRouteBody({
               </strong>
             </div>
           </div>
-          {statusMessage ? (
-            <p className={`environment-status ${statusKind === "error" ? "is-error" : "is-success"}`}>
-              {statusMessage}
+
+          <div className={`environment-status-panel is-${toolbarStatus.tone}`}>
+            <span className="environment-status-label">{toolbarStatus.label}</span>
+            <p className={`environment-status ${toolbarStatus.tone === "error" ? "is-error" : toolbarStatus.tone === "success" ? "is-success" : toolbarStatus.tone === "warning" ? "is-warning" : ""}`}>
+              {toolbarStatus.message}
             </p>
-          ) : null}
-          {restartConfirmOpen ? (
-            <div className="environment-restart-confirm">
-              <p className="environment-restart-confirm-copy">{copy.restartConfirm}</p>
-              <p className="environment-restart-confirm-hint">{copy.restartConfirmDescription}</p>
+          </div>
+        </div>
+      </div>
+
+      {restartConfirmOpen ? (
+        <div
+          className="modal-backdrop"
+          data-modal-state="open"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setRestartConfirmOpen(false);
+            }
+          }}
+        >
+          <div
+            aria-describedby={restartDialogDescriptionID}
+            aria-labelledby={restartDialogTitleID}
+            aria-modal="true"
+            className="modal-dialog environment-restart-modal"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3 id={restartDialogTitleID}>{copy.restartConfirm}</h3>
+            </div>
+            <div className="modal-body">
+              <p className="environment-restart-confirm-hint" id={restartDialogDescriptionID}>
+                {copy.restartConfirmDescription}
+              </p>
               <label className="environment-restart-confirm-option">
                 <input
                   aria-label={copy.restartSyncMaster}
@@ -882,34 +1023,17 @@ function ReactManagedEnvironmentRouteBody({
                 </span>
               </label>
             </div>
-          ) : null}
-        </div>
-
-        <div className="route-card-actions environment-toolbar-actions">
-          <button type="button" onClick={() => setRevealSensitive((current) => !current)}>
-            {revealSensitive ? copy.hideSensitive : copy.revealSensitive}
-          </button>
-          <button type="button" onClick={() => void reloadEnvironmentState()}>
-            {copy.reload}
-          </button>
-          <button type="button" onClick={() => setRestartConfirmOpen((current) => !current)}>
-            {copy.restartService}
-          </button>
-          <button type="button" onClick={() => void handleSave()}>
-            {copy.saveChanges}
-          </button>
-          {restartConfirmOpen ? (
-            <>
+            <div className="modal-footer">
+              <button data-variant="secondary" type="button" onClick={() => setRestartConfirmOpen(false)}>
+                {copy.cancelRestart}
+              </button>
               <button type="button" onClick={() => void handleConfirmRestart()}>
                 {copy.confirmRestart}
               </button>
-              <button type="button" onClick={() => setRestartConfirmOpen(false)}>
-                {copy.cancelRestart}
-              </button>
-            </>
-          ) : null}
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="environment-modules">
         {Object.entries(groupedItems).map(([moduleName, moduleItems]) => (
@@ -1129,6 +1253,58 @@ function buildEnvironmentTags(item: EnvironmentRouteRecord, copy: EnvironmentRou
     formatEnvironmentSource(item.value_source, copy),
     item.definition?.hot_reload ? copy.hotReload : copy.statusDisabled,
   ];
+}
+
+function buildEnvironmentToolbarStatus({
+  copy,
+  dirtyCount,
+  pendingRestartCount,
+  statusKind,
+  statusMessage,
+}: {
+  copy: EnvironmentRouteCopy;
+  dirtyCount: number;
+  pendingRestartCount: number;
+  statusKind: "success" | "error" | "";
+  statusMessage: string;
+}): EnvironmentToolbarStatus {
+  if (statusKind === "error" && statusMessage) {
+    return {
+      label: copy.statusAttentionLabel,
+      message: statusMessage,
+      tone: "error",
+    };
+  }
+
+  if (statusMessage) {
+    return {
+      label: copy.statusActivityLabel,
+      message: statusMessage,
+      tone: "success",
+    };
+  }
+
+  if (dirtyCount > 0) {
+    return {
+      label: copy.statusDraftLabel,
+      message: copy.statusDraftDescription(dirtyCount),
+      tone: "neutral",
+    };
+  }
+
+  if (pendingRestartCount > 0) {
+    return {
+      label: copy.statusPendingLabel,
+      message: copy.statusPendingDescription(pendingRestartCount),
+      tone: "warning",
+    };
+  }
+
+  return {
+    label: copy.statusHealthyLabel,
+    message: copy.statusHealthyDescription,
+    tone: "neutral",
+  };
 }
 
 function formatEnvironmentApplyMode(value: unknown, copy: EnvironmentRouteCopy) {
