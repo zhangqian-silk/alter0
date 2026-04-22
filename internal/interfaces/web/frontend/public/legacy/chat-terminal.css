@@ -2423,14 +2423,13 @@
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-    padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) calc(132px + env(safe-area-inset-bottom));
+    padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) 20px;
     scroll-padding-top: 20px;
   }
 
   .terminal-jump-cluster {
-    bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-offset));
+    bottom: calc(var(--runtime-composer-rest-inset, var(--runtime-composer-inset, 0px)) + 24px);
     right: 12px;
-    transition: bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .terminal-log-row {
@@ -2540,8 +2539,6 @@
     padding: 0 10px calc(10px + env(safe-area-inset-bottom));
     z-index: 14;
     pointer-events: none;
-    transition: bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: bottom;
   }
 
   .terminal-composer-shell > * {

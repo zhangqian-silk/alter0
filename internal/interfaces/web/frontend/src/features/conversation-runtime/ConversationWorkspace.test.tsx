@@ -331,6 +331,15 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.sendPrompt).toHaveBeenCalledWith("ship the runtime refactor");
   });
 
+  it("submits immediately when the mobile send button is tapped", () => {
+    runtimeMock.draft = "ship the mobile tap path";
+
+    renderWorkspace({ isMobileViewport: true });
+
+    fireEvent.touchStart(screen.getByRole("button", { name: "Send" }));
+    expect(runtimeMock.sendPrompt).toHaveBeenCalledWith("ship the mobile tap path");
+  });
+
   it("keeps the agent-runtime header summary visible outside the mobile empty state", () => {
     runtimeMock.route = "agent-runtime";
     runtimeMock.activeSession = {

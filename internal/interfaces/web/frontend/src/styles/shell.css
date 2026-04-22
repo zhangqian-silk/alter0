@@ -2219,9 +2219,8 @@ body::after {
 
 @media (max-width: 760px) {
   .terminal-jump-cluster {
-    bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px));
+    bottom: calc(var(--runtime-composer-rest-inset, var(--runtime-composer-inset, 0px)) + 24px);
     right: 12px;
-    transition: bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .primary-nav {
@@ -3397,6 +3396,7 @@ body::after {
 }
 
 .conversation-workspace-body {
+  --runtime-composer-inset: 0px;
   min-width: 0;
   min-height: 100%;
   display: grid;
@@ -4014,6 +4014,12 @@ body::after {
     min-height: calc(var(--mobile-viewport-height) - 24px);
   }
 
+  [data-conversation-view] .conversation-chat-screen,
+  [data-terminal-view] .terminal-chat-screen {
+    height: calc(100% - var(--runtime-composer-inset, 0px));
+    max-height: calc(100% - var(--runtime-composer-inset, 0px));
+  }
+
   .conversation-workspace-head,
   .conversation-chat-screen,
   .conversation-composer-shell {
@@ -4079,6 +4085,10 @@ body::after {
 
   .terminal-runtime-view .conversation-chat-screen {
     padding-top: 18px;
+  }
+
+  [data-terminal-view] .terminal-chat-screen {
+    padding-bottom: 20px;
   }
 
   .conversation-workspace-head.is-compact {

@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { waitForAppReady } from "./helpers/guards/app-ready";
 import { loginIfNeeded } from "./helpers/guards/login";
 import { openTerminalRoute } from "./helpers/flows/routes";
+import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
 async function openRuntimeRoute(page: Page, hash: "#chat" | "#agent-runtime"): Promise<void> {
   await page.goto(`/chat${hash}`);
@@ -62,6 +63,36 @@ test.describe("Runtime workspace scaffold", () => {
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
   });
 
+  test("submits chat and terminal directly from the mobile send button while the keyboard is open", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+
+    await openRuntimeRoute(page, "#chat");
+    const chatInput = page.locator(".conversation-composer-input");
+    const chatSubmit = page.locator(".conversation-chat-submit");
+    await chatInput.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+    await chatInput.fill("tap send with keyboard open");
+    await chatSubmit.dispatchEvent("touchstart");
+    await expect(page.locator(".msg.user .msg-bubble").last()).toContainText("tap send with keyboard open");
+    await expect(chatInput).toHaveValue("");
+
+    await openTerminalRoute(page);
+    const terminalInput = page.locator(".terminal-composer-input");
+    const terminalSubmit = page.locator("[data-terminal-submit]");
+    await terminalInput.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+    await terminalInput.fill("pwd");
+    await terminalSubmit.dispatchEvent("touchstart");
+    await expect(terminalInput).toHaveValue("");
+  });
+
   test("keeps the agent runtime viewport above the composer", async ({ page }) => {
     await openRuntimeRoute(page, "#agent-runtime");
 
@@ -76,5 +107,128 @@ test.describe("Runtime workspace scaffold", () => {
     const metrics = await readTerminalViewportGap(page);
     expect(metrics).not.toBeNull();
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
+  });
+
+  test("keeps chat, agent runtime, and terminal viewports above the composer on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+
+    await openRuntimeRoute(page, "#chat");
+    let metrics = await readConversationViewportGap(page);
+    expect(metrics).not.toBeNull();
+    expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
+
+    await openRuntimeRoute(page, "#agent-runtime");
+    metrics = await readConversationViewportGap(page);
+    expect(metrics).not.toBeNull();
+    expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
+
+    await openTerminalRoute(page);
+    const terminalMetrics = await readTerminalViewportGap(page);
+    expect(terminalMetrics).not.toBeNull();
+    expect(terminalMetrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
+  });
+
+  test("restores chat and terminal viewport height after the mobile keyboard closes", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+
+    await openRuntimeRoute(page, "#chat");
+    const conversationInput = page.locator(".conversation-composer-input");
+    await conversationInput.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    });
+    await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("0px");
+    await expect.poll(async () => (await readConversationViewportGap(page))?.gap ?? Number.POSITIVE_INFINITY)
+      .toBeLessThanOrEqual(20);
+
+    await openTerminalRoute(page);
+    const terminalInput = page.locator(".terminal-composer-input");
+    await terminalInput.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    });
+    await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("0px");
+    await expect.poll(async () => (await readTerminalViewportGap(page))?.gap ?? Number.POSITIVE_INFINITY)
+      .toBeLessThanOrEqual(20);
+  });
+
+  test("holds keyboard offset until chat and terminal viewports actually recover after blur", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+
+    await openRuntimeRoute(page, "#chat");
+    const conversationInput = page.locator(".conversation-composer-input");
+    await conversationInput.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+
+    await setVisualViewport(page, { width: 430, height: 760, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("172px");
+
+    await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("0px");
+
+    await openTerminalRoute(page);
+    const terminalInput = page.locator(".terminal-composer-input");
+    await terminalInput.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+
+    await setVisualViewport(page, { width: 430, height: 760, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("172px");
+
+    await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("0px");
   });
 });
