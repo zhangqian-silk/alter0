@@ -358,4 +358,25 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("is-open");
     expect(closeMobileNav).toHaveBeenCalledTimes(1);
   });
+
+  it("uses preventScroll focus when the mobile composer is touched", async () => {
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+    });
+
+    const input = document.querySelector("[data-terminal-input]") as HTMLTextAreaElement;
+    const focusMock = vi.fn();
+    Object.defineProperty(input, "focus", {
+      configurable: true,
+      value: focusMock,
+    });
+
+    fireEvent.pointerDown(input, { pointerType: "touch" });
+
+    expect(focusMock).toHaveBeenCalledWith({ preventScroll: true });
+  });
 });

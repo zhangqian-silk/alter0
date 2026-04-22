@@ -63,7 +63,7 @@
 - `/chat` 与登录页的对外品牌文案统一使用 `Alter0`：浏览器标题、登录标题、导航品牌位、会话栏标题与欢迎区 tag 不再暴露小写服务名。
 - Terminal 路由页继续由 React 原生实现，会话栏、工作区头部、Process、输出区和 Composer 的状态与交互全部由 React 维护；旧版 Terminal 仅作为布局关系与 `terminal-*` DOM 契约参照，不恢复 legacy runtime 控制器或脚本接管。
 - 主导航、控制台与资产页默认以高密度信息架构呈现：导航组与条目间距压缩，控制面长列表优先使用表格或主从视图，不再把大量配置和任务详情平铺为低密度卡片矩阵。
-- 移动端 Web Shell 使用 `VisualViewport` 驱动的 `--mobile-viewport-height` 作为壳体高度来源，浏览器工具栏与键盘状态切换时不出现底部空白或内容裁切。
+- 移动端 Web Shell 使用 `VisualViewport` 驱动的 `--mobile-viewport-height` 与 `--keyboard-offset` 协调壳体和输入区：浏览器工具栏切换时壳体继续贴合可视区域，软键盘弹起时主工作区保持稳定高度，仅输入区按键盘偏移移动，不出现底部空白、内容裁切或整页上移。
 - Web Shell 的抽屉式单列布局仅在主视口宽度 `1100px` 及以下触发；高于该阈值时保留左侧固定主导航与右侧主面板。进入窄屏后主导航切换为贴边抽屉，`Chat / Agent Runtime` 会话列也在同一阈值切为独立左侧抽屉，由工作区头部的 `Sessions` 入口显式打开；`Terminal` 与其他 `page-mode` 页面继续保持单主面板；`760px` 及以下再进一步压缩按钮与间距，避免窄屏下出现不可触达区域。主导航抽屉和 Conversation 会话抽屉都必须独立承担纵向滚动，小高度视口下不允许出现菜单或会话列表被裁切且无法滑动的状态。
 - 窄屏主导航抽屉点击任一路由项后需立即关闭；页面切换完成后不得继续保留旧菜单层覆盖在目标页之上。
 - 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页与 `Terminal` 继续采用“两行头部 + 贴顶正文起始区”节奏，第一行承载抽屉入口与主操作，第二行承载当前标题；`Chat` 与 `Agent Runtime` 空态复用 terminal-style 顶部操作行并仅保留 `Menu / Sessions / New`，不再额外输出 `Chat / New Chat / Model 摘要` 或 `Agent / New Agent Session / Target 摘要` 头部文案，由欢迎区承接标题与说明，同时所有页面都不得在顶部遗留额外大块留白。

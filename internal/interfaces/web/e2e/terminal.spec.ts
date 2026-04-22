@@ -353,7 +353,7 @@ test.describe("Terminal route", () => {
     expect(metrics?.mobileViewportHeight).toBe("620px");
     expect(metrics?.keyboardOffset).toBe("312px");
     expect(metrics?.chatScrollable).toBe(true);
-    expect(metrics?.composerPosition).toBe("sticky");
+    expect(metrics?.composerPosition).toBe("fixed");
     expect(metrics?.composerBottomStyle).toBe("312px");
     expect(metrics?.composerBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
     expect(metrics?.composerTop ?? 0).toBeGreaterThanOrEqual((metrics?.viewportBottom ?? 0) - 220);
@@ -367,10 +367,53 @@ test.describe("Terminal route", () => {
     expect(scrolledMetrics?.composerBottom ?? 0).toBeLessThanOrEqual((scrolledMetrics?.viewportBottom ?? 0) + 2);
   });
 
-  test("keeps the mobile app shell height synced to the visual viewport", async ({ page, request }) => {
+  test("keeps the mobile terminal workspace fixed while only the composer follows the keyboard", async ({ page, request }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
-    await openReadyTerminalWorkspace(page, request, { scope: "mobile-shell-height" });
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-shell-height" });
+
+    await page.evaluate(() => {
+      (window as typeof window & { __alter0TerminalMaxScrollY?: number }).__alter0TerminalMaxScrollY = window.scrollY;
+      window.addEventListener("scroll", () => {
+        const next = Math.max(
+          (window as typeof window & { __alter0TerminalMaxScrollY?: number }).__alter0TerminalMaxScrollY || 0,
+          window.scrollY,
+        );
+        (window as typeof window & { __alter0TerminalMaxScrollY?: number }).__alter0TerminalMaxScrollY = next;
+      }, { passive: true });
+    });
+
+    const readShellMetrics = async () => page.evaluate(() => {
+      const appShell = document.querySelector(".app-shell");
+      const workspace = document.querySelector("[data-terminal-workspace]");
+      const composer = document.querySelector(".terminal-composer-shell");
+      const viewport = window.visualViewport;
+      if (
+        !(appShell instanceof HTMLElement) ||
+        !(workspace instanceof HTMLElement) ||
+        !(composer instanceof HTMLElement) ||
+        !viewport
+      ) {
+        return null;
+      }
+      return {
+        keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
+        viewportBottom: viewport.height + viewport.offsetTop,
+        windowScrollY: window.scrollY,
+        maxWindowScrollY: (window as typeof window & { __alter0TerminalMaxScrollY?: number }).__alter0TerminalMaxScrollY || 0,
+        shellHeight: appShell.getBoundingClientRect().height,
+        workspaceTop: workspace.getBoundingClientRect().top,
+        workspaceHeight: workspace.getBoundingClientRect().height,
+        composerBottom: composer.getBoundingClientRect().bottom,
+        composerPosition: window.getComputedStyle(composer).position,
+      };
+    });
+
+    const baseline = await readShellMetrics();
+    expect(baseline).not.toBeNull();
+    expect(baseline?.keyboardOffset).toBe("0px");
+
+    await terminalPage.composer().input().click();
 
     await setVisualViewport(page, { width: 430, height: 700, offsetTop: 0 });
 
@@ -378,21 +421,16 @@ test.describe("Terminal route", () => {
       getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim()
     )).toBe("700px");
 
-    const readShellMetrics = async () => page.evaluate(() => {
-      const appShell = document.querySelector(".app-shell");
-      const viewport = window.visualViewport;
-      if (!(appShell instanceof HTMLElement) || !viewport) {
-        return null;
-      }
-      return {
-        viewportHeight: viewport.height + viewport.offsetTop,
-        shellHeight: appShell.getBoundingClientRect().height,
-      };
-    });
-
     const metrics = await readShellMetrics();
     expect(metrics).not.toBeNull();
-    expect(Math.abs((metrics?.shellHeight ?? 0) - (metrics?.viewportHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(metrics?.keyboardOffset).toBe("232px");
+    expect(Math.abs((metrics?.shellHeight ?? 0) - (baseline?.shellHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((metrics?.workspaceTop ?? 0) - (baseline?.workspaceTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((metrics?.workspaceHeight ?? 0) - (baseline?.workspaceHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(metrics?.composerPosition).toBe("fixed");
+    expect(metrics?.windowScrollY ?? 0).toBeLessThanOrEqual(1);
+    expect(metrics?.maxWindowScrollY ?? 0).toBeLessThanOrEqual(1);
+    expect(metrics?.composerBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
 
     await setVisualViewport(page, { width: 430, height: 780, offsetTop: 0 });
     await expect.poll(async () => page.evaluate(() =>
@@ -401,7 +439,14 @@ test.describe("Terminal route", () => {
 
     const nextMetrics = await readShellMetrics();
     expect(nextMetrics).not.toBeNull();
-    expect(Math.abs((nextMetrics?.shellHeight ?? 0) - (nextMetrics?.viewportHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(nextMetrics?.keyboardOffset).toBe("152px");
+    expect(Math.abs((nextMetrics?.shellHeight ?? 0) - (baseline?.shellHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((nextMetrics?.workspaceTop ?? 0) - (baseline?.workspaceTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((nextMetrics?.workspaceHeight ?? 0) - (baseline?.workspaceHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(nextMetrics?.composerPosition).toBe("fixed");
+    expect(nextMetrics?.windowScrollY ?? 0).toBeLessThanOrEqual(1);
+    expect(nextMetrics?.maxWindowScrollY ?? 0).toBeLessThanOrEqual(1);
+    expect(nextMetrics?.composerBottom ?? 0).toBeLessThanOrEqual((nextMetrics?.viewportBottom ?? 0) + 2);
   });
 
   test("keeps input focus and draft across polling refresh", async ({ page, request }) => {

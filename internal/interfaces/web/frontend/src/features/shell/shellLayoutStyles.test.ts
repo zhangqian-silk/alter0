@@ -50,6 +50,7 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain("--mobile-viewport-height: 100dvh;");
     expect(stylesheet).toContain("--keyboard-offset: 0px;");
+    expect(stylesheet).toContain("height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px));");
     expect(stylesheet).toContain(".chat-pane:not(.page-mode) {");
     expect(stylesheet).toContain("height: min(100%, var(--mobile-viewport-height, 100dvh));");
     expect(stylesheet).toContain(".chat-pane.page-mode {");
@@ -262,12 +263,27 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("anchors the mobile terminal composer above the keyboard offset instead of stretching its footer padding", () => {
+  it("pins the mobile terminal composer to the viewport and reserves message space above it", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-shell\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?bottom:\s*var\(--keyboard-offset\);[\s\S]*?padding:\s*0 10px calc\(10px \+ env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset\)\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*var\(--keyboard-offset\);[\s\S]*?padding:\s*0 10px calc\(10px \+ env\(safe-area-inset-bottom\)\);[\s\S]*?transition:\s*bottom 220ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-jump-cluster\s*\{[\s\S]*?bottom:\s*calc\(168px \+ env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset\)\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-chat-screen\s*\{[\s\S]*?padding:\s*var\(--terminal-chat-screen-padding-top\) var\(--terminal-chat-screen-padding-x\) calc\(132px \+ env\(safe-area-inset-bottom\)\);/,
+    );
+  });
+
+  it("keeps the mobile terminal jump controls above the fixed composer in the primary shell stylesheet", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-jump-cluster\s*\{[\s\S]*?bottom:\s*calc\(168px \+ env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset, 0px\)\);[\s\S]*?right:\s*12px;[\s\S]*?transition:\s*bottom 220ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/,
     );
   });
 
