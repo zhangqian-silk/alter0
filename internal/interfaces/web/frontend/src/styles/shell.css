@@ -1751,9 +1751,9 @@ body::after {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
     padding: 0;
-    min-height: var(--mobile-viewport-height, 100dvh);
-    height: var(--mobile-viewport-height, 100dvh);
-    max-height: var(--mobile-viewport-height, 100dvh);
+    min-height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px));
+    height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px));
+    max-height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px));
     width: 100%;
     overflow: hidden;
   }
@@ -1939,6 +1939,12 @@ body::after {
 }
 
 @media (max-width: 760px) {
+  .terminal-jump-cluster {
+    bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px));
+    right: 12px;
+    transition: bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   .primary-nav {
     width: min(calc(100vw - 24px), 280px);
   }
@@ -2690,8 +2696,8 @@ body::after {
     display: block;
     grid-template-columns: minmax(0, 1fr);
     min-height: 0;
-    height: var(--mobile-viewport-height, 100dvh);
-    max-height: var(--mobile-viewport-height, 100dvh);
+    height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px));
+    max-height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px));
     overflow: hidden;
   }
 

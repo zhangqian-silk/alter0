@@ -169,7 +169,11 @@ func TestMobileTerminalComposerConsumesViewportInsetVariables(t *testing.T) {
 	terminalStyles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
 	terminalMarkers := []string{
 		"height: min(100%, var(--mobile-viewport-height, 100dvh));",
-		"padding: 0 10px calc(10px + env(safe-area-inset-bottom) + var(--keyboard-offset));",
+		"position: fixed;",
+		"bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-offset));",
+		"padding: 0 10px calc(10px + env(safe-area-inset-bottom));",
+		"transition: bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);",
+		"padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) calc(132px + env(safe-area-inset-bottom));",
 	}
 	for _, marker := range terminalMarkers {
 		if !strings.Contains(terminalStyles, marker) {
@@ -181,6 +185,8 @@ func TestMobileTerminalComposerConsumesViewportInsetVariables(t *testing.T) {
 func TestMobileRoutePagesConsumeViewportMetrics(t *testing.T) {
 	styles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
 	markers := []string{
+		".app-shell.info-mode {",
+		"height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset));",
 		".chat-pane.page-mode {",
 		"height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset)));",
 	}

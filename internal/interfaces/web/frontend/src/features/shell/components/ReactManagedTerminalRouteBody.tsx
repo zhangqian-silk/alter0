@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
@@ -727,6 +727,7 @@ export function ReactManagedTerminalRouteBody() {
     showBottom: false,
   });
   const chatScreenRef = useRef<HTMLDivElement | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
   const jumpSyncFrameRef = useRef<number | null>(null);
   const scrollRestoreSnapshotRef = useRef<{
@@ -750,6 +751,56 @@ export function ReactManagedTerminalRouteBody() {
       setSessionSheetOpen(false);
     }
   }, [workbench.isMobileViewport, workbench.mobileNavOpen]);
+
+  const focusComposerInputWithoutScroll = () => {
+    const node = composerInputRef.current;
+    if (!node) {
+      return;
+    }
+    try {
+      node.focus({ preventScroll: true });
+    } catch {
+      node.focus();
+    }
+  };
+
+  const handleComposerPointerDownCapture = (event: PointerEvent<HTMLTextAreaElement>) => {
+    if (!workbench.isMobileViewport || event.pointerType === "mouse" || inputFocused) {
+      return;
+    }
+    event.preventDefault();
+    focusComposerInputWithoutScroll();
+  };
+
+  const handleComposerTouchStartCapture = (event: TouchEvent<HTMLTextAreaElement>) => {
+    if (!workbench.isMobileViewport || inputFocused) {
+      return;
+    }
+    event.preventDefault();
+    focusComposerInputWithoutScroll();
+  };
+
+  useLayoutEffect(() => {
+    if (!workbench.isMobileViewport || !inputFocused) {
+      return;
+    }
+    const keepViewportAnchored = () => {
+      if (window.scrollX !== 0 || window.scrollY !== 0) {
+        window.scrollTo({ left: 0, top: 0, behavior: "auto" });
+      }
+    };
+    const frameID = window.requestAnimationFrame(keepViewportAnchored);
+    const visualViewport = window.visualViewport;
+    window.addEventListener("scroll", keepViewportAnchored, { passive: true });
+    visualViewport?.addEventListener("resize", keepViewportAnchored);
+    visualViewport?.addEventListener("scroll", keepViewportAnchored);
+    return () => {
+      window.cancelAnimationFrame(frameID);
+      window.removeEventListener("scroll", keepViewportAnchored);
+      visualViewport?.removeEventListener("resize", keepViewportAnchored);
+      visualViewport?.removeEventListener("scroll", keepViewportAnchored);
+    };
+  }, [inputFocused, workbench.isMobileViewport]);
 
   const captureScrollSnapshot = () => {
     const node = chatScreenRef.current;
@@ -1620,12 +1671,15 @@ export function ReactManagedTerminalRouteBody() {
               </label>
               <textarea
                 id="terminalRuntimeInput"
+                ref={composerInputRef}
                 value={inputValue}
                 className="terminal-composer-input"
                 placeholder={inputPlaceholder}
                 data-terminal-input
                 data-composer-input="terminal-runtime"
                 disabled={!canInput || submitting}
+                onPointerDownCapture={handleComposerPointerDownCapture}
+                onTouchStartCapture={handleComposerTouchStartCapture}
                 onChange={(event) => setInputValue(event.target.value)}
                 onFocus={() => setInputFocused(true)}
                 onBlur={() => setInputFocused(false)}
