@@ -147,3 +147,55 @@ func TestLoginFlowSetsCookieAndAllowsAccess(t *testing.T) {
 		t.Fatalf("expected protected resource success, got %d", accessRec.Code)
 	}
 }
+
+func TestLoginFlowSharesCookieAcrossPreviewSubdomains(t *testing.T) {
+	registry, err := newFileWorkspaceServiceRegistry("", "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	server := &Server{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		webLoginEnabled:  true,
+		webLoginPassword: "secret",
+		webSessionToken:  "token-1",
+		workspaceService: registry,
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", server.loginHandler)
+	protected := server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.Handle("/chat", protected)
+
+	form := url.Values{}
+	form.Set("password", "secret")
+	form.Set("next", "/chat")
+	loginReq := httptest.NewRequest(http.MethodPost, "https://alter0.cn/login", strings.NewReader(form.Encode()))
+	loginReq.Host = "alter0.cn"
+	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginRec := httptest.NewRecorder()
+	mux.ServeHTTP(loginRec, loginReq)
+
+	if loginRec.Code != http.StatusSeeOther {
+		t.Fatalf("expected %d, got %d", http.StatusSeeOther, loginRec.Code)
+	}
+	cookies := loginRec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatalf("expected session cookie after login")
+	}
+	if cookies[0].Domain != "alter0.cn" {
+		t.Fatalf("expected shared cookie domain alter0.cn, got %q", cookies[0].Domain)
+	}
+
+	accessReq := httptest.NewRequest(http.MethodGet, "https://63717262.alter0.cn/chat", nil)
+	accessReq.Host = "63717262.alter0.cn"
+	accessReq.Header.Set("Accept", "text/html")
+	accessReq.AddCookie(cookies[0])
+	accessRec := httptest.NewRecorder()
+	mux.ServeHTTP(accessRec, accessReq)
+
+	if accessRec.Code != http.StatusNoContent {
+		t.Fatalf("expected preview host access success, got %d", accessRec.Code)
+	}
+}

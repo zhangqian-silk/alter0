@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { ReactManagedTerminalRouteBody, resolveTerminalPollPlan } from "./ReactManagedTerminalRouteBody";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../../app/WorkbenchContext";
 
@@ -144,21 +145,61 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   function renderTerminalRouteBody(overrides: Partial<WorkbenchContextValue> = {}) {
-    const contextValue: WorkbenchContextValue = {
+    const baseContextValue: WorkbenchContextValue = {
       route: "terminal",
       language: "en",
       navigate: vi.fn(),
       isMobileViewport: false,
       mobileNavOpen: false,
+      mobileSessionPaneOpen: false,
       toggleMobileNav: vi.fn(),
+      toggleMobileSessionPane: vi.fn(),
       closeMobileNav: vi.fn(),
+      closeMobileSessionPane: vi.fn(),
       ...overrides,
     };
 
+    function TerminalRouteBodyHarness() {
+      const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(() => {
+        if (baseContextValue.mobileNavOpen) {
+          return "nav";
+        }
+        if (baseContextValue.mobileSessionPaneOpen) {
+          return "sessions";
+        }
+        return null;
+      });
+      const contextValue: WorkbenchContextValue = {
+        ...baseContextValue,
+        mobileNavOpen: mobilePanel === "nav",
+        mobileSessionPaneOpen: mobilePanel === "sessions",
+        toggleMobileNav: () => {
+          baseContextValue.toggleMobileNav();
+          setMobilePanel((current) => current === "nav" ? null : "nav");
+        },
+        toggleMobileSessionPane: () => {
+          baseContextValue.toggleMobileSessionPane();
+          setMobilePanel((current) => current === "sessions" ? null : "sessions");
+        },
+        closeMobileNav: () => {
+          baseContextValue.closeMobileNav();
+          setMobilePanel((current) => current === "nav" ? null : current);
+        },
+        closeMobileSessionPane: () => {
+          baseContextValue.closeMobileSessionPane();
+          setMobilePanel((current) => current === "sessions" ? null : current);
+        },
+      };
+
+      return (
+        <WorkbenchContext.Provider value={contextValue}>
+          <ReactManagedTerminalRouteBody />
+        </WorkbenchContext.Provider>
+      );
+    }
+
     return render(
-      <WorkbenchContext.Provider value={contextValue}>
-        <ReactManagedTerminalRouteBody />
-      </WorkbenchContext.Provider>,
+      <TerminalRouteBodyHarness />,
     );
   }
 
@@ -235,6 +276,11 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
     expect(document.querySelector(".terminal-session-select")).toBeInTheDocument();
     expect(document.querySelector(".terminal-session-list-delete")).toBeInTheDocument();
+    expect(within(document.querySelector("[data-terminal-session-pane]") as HTMLElement).getByRole("list")).toHaveAttribute(
+      "data-terminal-session-list",
+      "true",
+    );
+    expect(within(document.querySelector("[data-terminal-session-pane]") as HTMLElement).getAllByRole("listitem")).toHaveLength(1);
     expect(document.querySelector("[data-terminal-delete]")).not.toBeInTheDocument();
     expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("conversation-session-pane");
     expect(document.querySelector(".terminal-session-pane-shell")).toHaveClass("conversation-session-pane-shell");
@@ -535,11 +581,11 @@ describe("ReactManagedTerminalRouteBody", () => {
 
   it("renders mobile menu actions and links them to workbench navigation", async () => {
     const toggleMobileNav = vi.fn();
-    const closeMobileNav = vi.fn();
+    const toggleMobileSessionPane = vi.fn();
     renderTerminalRouteBody({
       isMobileViewport: true,
       toggleMobileNav,
-      closeMobileNav,
+      toggleMobileSessionPane,
     });
 
     await waitFor(() => {
@@ -571,7 +617,30 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
     expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("is-open");
-    expect(closeMobileNav).toHaveBeenCalledTimes(1);
+    expect(toggleMobileSessionPane).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the mobile session pane mutually exclusive with the menu overlay", async () => {
+    const toggleMobileNav = vi.fn();
+
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+      toggleMobileNav,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
+    });
+
+    const mobileHeader = document.querySelector("[data-terminal-mobile-header]") as HTMLElement;
+
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
+    expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("is-open");
+
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
+
+    expect(toggleMobileNav).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-terminal-session-pane]")).not.toHaveClass("is-open");
   });
 
   it("uses preventScroll focus when the mobile composer is touched", async () => {

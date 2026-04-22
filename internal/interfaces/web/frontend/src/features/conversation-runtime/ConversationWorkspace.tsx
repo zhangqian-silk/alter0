@@ -13,7 +13,6 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   const workbench = useWorkbenchContext();
   const runtime = useConversationRuntime();
   const copy = getLegacyShellCopy(language);
-  const [sessionPaneOpen, setSessionPaneOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
@@ -45,30 +44,28 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   const sessionCountLabel = language === "zh"
     ? `${runtime.sessionItems.length} 个会话`
     : `${runtime.sessionItems.length} sessions`;
+  const activeSessionBadgeLabel = language === "zh" ? "当前" : "Current";
+  const idleSessionBadgeLabel = language === "zh" ? "会话" : "Session";
+  const deleteSessionLabel = language === "zh" ? "删除" : "Delete";
+  const deleteSessionAriaLabel = language === "zh" ? "删除会话" : "Delete session";
   const composerMetaLabel = `${sessionCountLabel} · ${runtime.draft.length}/${10000}`;
 
   useEffect(() => {
-    if (!workbench.isMobileViewport || workbench.mobileNavOpen) {
-      setSessionPaneOpen(false);
-    }
-  }, [workbench.isMobileViewport, workbench.mobileNavOpen]);
-
-  useEffect(() => {
-    setSessionPaneOpen(false);
+    workbench.closeMobileSessionPane();
   }, [runtime.route]);
 
   const handleCreateSession = () => {
     runtime.createSession();
-    setSessionPaneOpen(false);
+    workbench.closeMobileSessionPane();
   };
 
   const handleFocusSession = (sessionID: string) => {
     runtime.focusSession(sessionID);
-    setSessionPaneOpen(false);
+    workbench.closeMobileSessionPane();
   };
 
   const handleRemoveSession = (sessionID: string) => {
-    setSessionPaneOpen(false);
+    workbench.closeMobileSessionPane();
     return runtime.removeSession(sessionID);
   };
 
@@ -110,13 +107,6 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     }
     event.preventDefault();
     submitDraft();
-  };
-
-  const toggleSessionPane = () => {
-    if (!sessionPaneOpen) {
-      workbench.closeMobileNav();
-    }
-    setSessionPaneOpen((current) => !current);
   };
 
   const capabilityGroups = useMemo(() => ({
@@ -233,16 +223,16 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     <RuntimeWorkspaceFrame
       rootClassName="conversation-runtime-view terminal-runtime-view"
       rootProps={{ "data-conversation-view": runtime.route }}
-      sessionPaneClassName={`terminal-session-pane conversation-session-pane${sessionPaneOpen ? " is-open" : ""}`}
+      sessionPaneClassName={`terminal-session-pane conversation-session-pane${workbench.isMobileViewport && workbench.mobileSessionPaneOpen ? " is-open" : ""}`}
       sessionPaneProps={{
         "data-conversation-session-pane": "",
-        "data-mobile-open": sessionPaneOpen ? "true" : "false",
+        "data-mobile-open": workbench.mobileSessionPaneOpen ? "true" : "false",
         "data-testid": "conversation-session-pane",
       }}
       sessionPaneBackdrop={{
         className: "terminal-session-pane-backdrop conversation-session-pane-backdrop",
         ariaLabel: copy.sessionClose,
-        onClick: () => setSessionPaneOpen(false),
+        onClick: workbench.closeMobileSessionPane,
       }}
       sessionPaneShellClassName="route-surface terminal-session-pane-shell conversation-session-pane-shell"
       sessionPaneContent={(
@@ -250,7 +240,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
           <div className="terminal-session-pane-head conversation-session-pane-head">
             <div className="terminal-session-pane-copy conversation-session-pane-copy">
               <strong>{sessionPaneTitle}</strong>
-              <span>{runtime.sessionItems.length}</span>
+              <span>{sessionCountLabel}</span>
             </div>
             <div className="terminal-session-pane-actions conversation-session-pane-actions">
               <button
@@ -264,36 +254,46 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
                 <button
                   className="terminal-session-pane-action conversation-session-pane-action"
                   type="button"
-                  onClick={() => setSessionPaneOpen(false)}
+                  onClick={workbench.closeMobileSessionPane}
                 >
                   {copy.sessionClose}
                 </button>
               ) : null}
             </div>
           </div>
-          <div className="conversation-session-list" data-conversation-session-list>
+          <div className="conversation-session-list menu-group" data-conversation-session-list role="list">
             {runtime.sessionItems.map((item) => (
               <div
                 key={item.id}
+                role="listitem"
                 className={item.active ? "conversation-session-card is-active" : "conversation-session-card"}
+                data-conversation-session-state={item.active ? "active" : "idle"}
               >
                 <button
-                  className="conversation-session-select"
+                  className={item.active ? "conversation-session-select menu-item active" : "conversation-session-select menu-item"}
                   type="button"
                   aria-current={item.active ? "true" : undefined}
                   onClick={() => handleFocusSession(item.id)}
                 >
+                  <span className="conversation-session-topline">
+                    <span
+                      className={item.active ? "conversation-session-badge is-active" : "conversation-session-badge"}
+                      data-conversation-session-badge={item.active ? "active" : "idle"}
+                    >
+                      {item.active ? activeSessionBadgeLabel : idleSessionBadgeLabel}
+                    </span>
+                    <span className="conversation-session-hash">#{item.shortHash}</span>
+                  </span>
                   <span className="conversation-session-title">{item.title}</span>
                   <span className="conversation-session-meta">{item.meta}</span>
-                  <span className="conversation-session-hash">#{item.shortHash}</span>
                 </button>
                 <button
                   className="conversation-session-delete"
                   type="button"
-                  aria-label={language === "zh" ? "删除会话" : "Delete session"}
+                  aria-label={deleteSessionAriaLabel}
                   onClick={() => void handleRemoveSession(item.id)}
                 >
-                  {language === "zh" ? "删除" : "Delete"}
+                  {deleteSessionLabel}
                 </button>
               </div>
             ))}
@@ -313,10 +313,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
             className="conversation-mobile-action terminal-inline-button is-quiet conversation-mobile-nav-toggle"
             type="button"
             aria-expanded={workbench.mobileNavOpen}
-            onClick={() => {
-              setSessionPaneOpen(false);
-              workbench.toggleMobileNav();
-            }}
+            onClick={workbench.toggleMobileNav}
           >
             {copy.chatMenu}
           </button>
@@ -324,8 +321,8 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
             <button
               className="conversation-mobile-action terminal-inline-button is-quiet conversation-mobile-session-toggle"
               type="button"
-              aria-expanded={sessionPaneOpen}
-              onClick={toggleSessionPane}
+              aria-expanded={workbench.mobileSessionPaneOpen}
+              onClick={workbench.toggleMobileSessionPane}
             >
               {copy.chatSessions}
             </button>

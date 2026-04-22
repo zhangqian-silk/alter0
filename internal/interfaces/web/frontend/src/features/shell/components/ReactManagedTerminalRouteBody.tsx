@@ -76,6 +76,8 @@ type TerminalStepDetailResponse = {
 type TerminalCopy = {
   sessions: string;
   sessionCount: (count: number) => string;
+  current: string;
+  sessionLabel: string;
   newShort: string;
   hideSessions: string;
   empty: string;
@@ -121,6 +123,8 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
   en: {
     sessions: "Sessions",
     sessionCount: (count) => `${count} sessions`,
+    current: "Current",
+    sessionLabel: "Session",
     newShort: "New",
     hideSessions: "Hide sessions",
     empty: "No terminal sessions yet.",
@@ -164,6 +168,8 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
   zh: {
     sessions: "会话列表",
     sessionCount: (count) => `${count} 个会话`,
+    current: "当前",
+    sessionLabel: "会话",
     newShort: "新建",
     hideSessions: "收起会话",
     empty: "暂时还没有终端会话。",
@@ -706,7 +712,6 @@ export function ReactManagedTerminalRouteBody() {
   const shellCopy = getLegacyShellCopy(workbench.language);
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionID, setActiveSessionID] = useState("");
-  const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
   const [metaOpen, setMetaOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -748,12 +753,6 @@ export function ReactManagedTerminalRouteBody() {
     scrollingActive,
     inputFocused,
   });
-
-  useEffect(() => {
-    if (!workbench.isMobileViewport || workbench.mobileNavOpen) {
-      setSessionSheetOpen(false);
-    }
-  }, [workbench.isMobileViewport, workbench.mobileNavOpen]);
 
   const focusComposerInputWithoutScroll = () => {
     const node = composerInputRef.current;
@@ -980,7 +979,7 @@ export function ReactManagedTerminalRouteBody() {
       sortSessions([nextSession, ...current.filter((session) => session.id !== nextSession.id)]),
     );
     setActiveSessionID(nextSession.id);
-    setSessionSheetOpen(false);
+    workbench.closeMobileSessionPane();
     setMetaOpen(false);
     setExpandedTurns({});
     setExpandedSteps({});
@@ -1123,7 +1122,7 @@ export function ReactManagedTerminalRouteBody() {
 
   const selectSession = async (sessionID: string) => {
     setActiveSessionID(sessionID);
-    setSessionSheetOpen(false);
+    workbench.closeMobileSessionPane();
     setMetaOpen(false);
     setExpandedTurns({});
     setExpandedSteps({});
@@ -1171,6 +1170,7 @@ export function ReactManagedTerminalRouteBody() {
         return next;
       });
       window.localStorage.removeItem(`terminal:${sessionID}`);
+      workbench.closeMobileSessionPane();
     } finally {
       setDeletingSessionID("");
     }
@@ -1284,10 +1284,7 @@ export function ReactManagedTerminalRouteBody() {
             className="nav-toggle conversation-mobile-action terminal-inline-button is-quiet"
             type="button"
             aria-expanded={workbench.mobileNavOpen}
-            onClick={() => {
-              setSessionSheetOpen(false);
-              workbench.toggleMobileNav();
-            }}
+            onClick={workbench.toggleMobileNav}
           >
             {shellCopy.chatMenu}
           </button>
@@ -1295,13 +1292,8 @@ export function ReactManagedTerminalRouteBody() {
             <button
               className="panel-toggle conversation-mobile-action terminal-inline-button is-quiet"
               type="button"
-              aria-expanded={sessionSheetOpen}
-              onClick={() => {
-                if (!sessionSheetOpen) {
-                  workbench.closeMobileNav();
-                }
-                setSessionSheetOpen((current) => !current);
-              }}
+              aria-expanded={workbench.mobileSessionPaneOpen}
+              onClick={workbench.toggleMobileSessionPane}
             >
               {copy.sessions}
             </button>
@@ -1315,12 +1307,12 @@ export function ReactManagedTerminalRouteBody() {
           </div>
         </header>
       ) : null}
-      sessionPaneClassName={`terminal-session-pane conversation-session-pane${sessionSheetOpen ? " is-open" : ""}`}
+      sessionPaneClassName={`terminal-session-pane conversation-session-pane${workbench.isMobileViewport && workbench.mobileSessionPaneOpen ? " is-open" : ""}`}
       sessionPaneProps={{ "data-terminal-session-pane": "" }}
       sessionPaneBackdrop={{
         className: "terminal-session-pane-backdrop conversation-session-pane-backdrop",
         ariaLabel: copy.hideSessions,
-        onClick: () => setSessionSheetOpen(false),
+        onClick: workbench.closeMobileSessionPane,
         buttonProps: { "data-terminal-session-pane-close": "" },
       }}
       sessionPaneShellClassName="route-surface terminal-session-pane-shell conversation-session-pane-shell"
@@ -1344,13 +1336,13 @@ export function ReactManagedTerminalRouteBody() {
                 className="terminal-session-pane-action conversation-session-pane-action terminal-session-pane-close"
                 type="button"
                 data-terminal-session-pane-close
-                onClick={() => setSessionSheetOpen(false)}
+                onClick={workbench.closeMobileSessionPane}
               >
                 {copy.hideSessions}
               </button>
             </div>
           </div>
-          <div className="terminal-session-list" data-terminal-session-list>
+          <div className="terminal-session-list conversation-session-list menu-group" data-terminal-session-list role="list">
             {loadError ? <p className="route-empty-panel">{loadError}</p> : null}
             {!loadError && !loading && sessions.length === 0 ? (
               <p className="route-empty-panel terminal-session-empty">{copy.empty}</p>
@@ -1360,33 +1352,45 @@ export function ReactManagedTerminalRouteBody() {
               return (
                 <div
                   key={session.id}
-                  className={`route-card terminal-session-card${active ? " active" : ""}`}
+                  role="listitem"
+                  className={`route-card terminal-session-card conversation-session-card${active ? " active is-active" : ""}`}
                   data-terminal-session-card={session.id}
                   data-terminal-session-status={normalizeStatus(session.status || "")}
                 >
                   <button
-                    className={`route-card-button terminal-session-select${active ? " active" : ""}`}
+                    className={`route-card-button terminal-session-select conversation-session-select menu-item${active ? " active" : ""}`}
                     type="button"
                     data-terminal-session-select={session.id}
                     aria-current={active ? "true" : undefined}
                     onClick={() => void selectSession(session.id)}
                   >
-                    <span className="terminal-session-head">
-                      <span className="route-card-title-copy">
-                        <span className="terminal-session-title">
-                          {normalizeText(session.title || session.id)}
-                        </span>
-                        <span className="terminal-session-meta">
-                          {sessionLastOutputLabel(session, copy)}
-                        </span>
+                    <span className="conversation-session-topline terminal-session-topline">
+                      <span
+                        className={active ? "conversation-session-badge is-active" : "conversation-session-badge"}
+                        data-terminal-session-activity={active ? "active" : "idle"}
+                      >
+                        {active ? copy.current : copy.sessionLabel}
                       </span>
                       <span className={`task-summary-status ${sessionStatusClassName(session.status || "")}`}>
                         {renderStatus(session.status || "", copy)}
                       </span>
                     </span>
+                    <span className="terminal-session-head">
+                      <span className="route-card-title-copy">
+                        <span className="terminal-session-title conversation-session-title">
+                          {normalizeText(session.title || session.id)}
+                        </span>
+                        <span className="terminal-session-meta conversation-session-meta">
+                          {sessionLastOutputLabel(session, copy)}
+                        </span>
+                        <span className="conversation-session-hash">
+                          #{normalizeText(session.terminal_session_id || session.id)}
+                        </span>
+                      </span>
+                    </span>
                   </button>
                   <button
-                    className="terminal-session-list-delete"
+                    className="terminal-session-list-delete conversation-session-delete"
                     type="button"
                     data-terminal-delete-session={session.id}
                     aria-label={copy.delete}
@@ -1433,8 +1437,8 @@ export function ReactManagedTerminalRouteBody() {
                 className="terminal-inline-button is-quiet"
                 type="button"
                 data-terminal-session-pane-toggle
-                aria-expanded={sessionSheetOpen}
-                onClick={() => setSessionSheetOpen((current) => !current)}
+                aria-expanded={workbench.isMobileViewport ? workbench.mobileSessionPaneOpen : true}
+                onClick={workbench.toggleMobileSessionPane}
               >
                 {copy.sessions}
               </button>

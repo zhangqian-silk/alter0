@@ -21,7 +21,9 @@ export function WorkbenchApp() {
   );
   const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());
   const [navCollapsed, setNavCollapsed] = useState(false);
-  const [navOpen, setNavOpen] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);
+  const navOpen = mobilePanel === "nav";
+  const sessionPaneOpen = mobilePanel === "sessions";
 
   useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
@@ -32,7 +34,7 @@ export function WorkbenchApp() {
       const mobile = isLegacyShellMobileViewport();
       setIsMobileViewport(mobile);
       if (!mobile) {
-        setNavOpen(false);
+        setMobilePanel(null);
       }
     };
     syncViewport();
@@ -52,9 +54,11 @@ export function WorkbenchApp() {
     }
     if (navOpen) {
       classNames.push("nav-open", "overlay-open");
+    } else if (sessionPaneOpen) {
+      classNames.push("overlay-open");
     }
     return classNames.join(" ");
-  }, [navCollapsed, navOpen]);
+  }, [navCollapsed, navOpen, sessionPaneOpen]);
 
   const contextValue = useMemo(() => ({
     route,
@@ -62,9 +66,12 @@ export function WorkbenchApp() {
     navigate,
     isMobileViewport,
     mobileNavOpen: navOpen,
-    toggleMobileNav: () => setNavOpen((current) => !current),
-    closeMobileNav: () => setNavOpen(false),
-  }), [route, language, navigate, isMobileViewport, navOpen]);
+    mobileSessionPaneOpen: sessionPaneOpen,
+    toggleMobileNav: () => setMobilePanel((current) => current === "nav" ? null : "nav"),
+    toggleMobileSessionPane: () => setMobilePanel((current) => current === "sessions" ? null : "sessions"),
+    closeMobileNav: () => setMobilePanel((current) => current === "nav" ? null : current),
+    closeMobileSessionPane: () => setMobilePanel((current) => current === "sessions" ? null : current),
+  }), [route, language, navigate, isMobileViewport, navOpen, sessionPaneOpen]);
 
   return (
     <WorkbenchContext.Provider value={contextValue}>
@@ -76,13 +83,13 @@ export function WorkbenchApp() {
           onNavigate={(nextRoute) => {
             navigate(nextRoute);
             if (isMobileViewport) {
-              setNavOpen(false);
+              setMobilePanel(null);
             }
           }}
           onToggleLanguage={() => setLanguage((current) => current === "zh" ? "en" : "zh")}
           onToggleNavCollapsed={() => {
             if (isMobileViewport) {
-              setNavOpen((current) => !current);
+              setMobilePanel((current) => current === "nav" ? null : "nav");
               return;
             }
             setNavCollapsed((current) => !current);
@@ -102,7 +109,7 @@ export function WorkbenchApp() {
                 language={language}
                 isMobileViewport={isMobileViewport}
                 mobileNavOpen={navOpen}
-                onToggleMobileNav={() => setNavOpen((current) => !current)}
+                onToggleMobileNav={() => setMobilePanel((current) => current === "nav" ? null : "nav")}
               />
             )}
           </div>
@@ -111,7 +118,7 @@ export function WorkbenchApp() {
           className="mobile-backdrop"
           type="button"
           aria-label="Close panels"
-          onClick={() => setNavOpen(false)}
+          onClick={() => setMobilePanel(null)}
         ></button>
       </div>
     </WorkbenchContext.Provider>
