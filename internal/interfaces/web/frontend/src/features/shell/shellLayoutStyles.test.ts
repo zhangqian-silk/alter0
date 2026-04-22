@@ -196,12 +196,10 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-card {");
-    expect(stylesheet).toContain("border-radius: 22px;");
-    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 249, 255, 0.94) 100%);");
-    expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-hash {");
-    expect(stylesheet).toContain("border-radius: 999px;");
+    expect(stylesheet).toContain("border-radius: 14px;");
+    expect(stylesheet).toContain("background: transparent;");
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-delete {");
-    expect(stylesheet).toContain("min-height: 28px;");
+    expect(stylesheet).toContain("min-height: auto;");
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-inspector {");
     expect(stylesheet).toContain("border-radius: 26px;");
     expect(stylesheet).toContain("box-shadow: 0 18px 36px -30px rgba(8, 37, 69, 0.2);");
@@ -332,8 +330,9 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
 
-    expect(stylesheet).toContain(".terminal-session-card.active::before {");
-    expect(stylesheet).toContain("background: linear-gradient(180deg, #38bdf8 0%, #2563eb 100%);");
+    expect(stylesheet).toContain(".terminal-session-card.active {");
+    expect(stylesheet).toContain("background: transparent;");
+    expect(stylesheet).toContain(".terminal-workspace-body,");
     expect(stylesheet).toContain("linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(243, 247, 251, 0.98) 100%)");
     expect(stylesheet).toContain("box-shadow: 0 30px 70px -54px rgba(15, 23, 42, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.82);");
     expect(stylesheet).toContain(".terminal-chat-form {");
