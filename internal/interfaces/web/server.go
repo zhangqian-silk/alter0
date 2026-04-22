@@ -865,7 +865,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 			s.renderLoginPage(w, "Incorrect password. Please try again.", nextPath)
 			return
 		}
-		http.SetCookie(w, &http.Cookie{
+		cookie := &http.Cookie{
 			Name:     webLoginCookieName,
 			Value:    s.webSessionToken,
 			Path:     "/",
@@ -873,7 +873,11 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 			Secure:   requestUsesHTTPS(r),
 			SameSite: http.SameSiteLaxMode,
 			MaxAge:   int(webLoginCookieTTL.Seconds()),
-		})
+		}
+		if domain := s.resolveLoginCookieDomain(r.Host); domain != "" {
+			cookie.Domain = domain
+		}
+		http.SetCookie(w, cookie)
 		http.Redirect(w, r, nextPath, http.StatusSeeOther)
 		return
 	default:
@@ -891,7 +895,7 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
+	cookie := &http.Cookie{
 		Name:     webLoginCookieName,
 		Value:    "",
 		Path:     "/",
@@ -899,7 +903,11 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		Secure:   requestUsesHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
-	})
+	}
+	if domain := s.resolveLoginCookieDomain(r.Host); domain != "" {
+		cookie.Domain = domain
+	}
+	http.SetCookie(w, cookie)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -995,6 +1003,21 @@ func (s *Server) isAuthenticated(r *http.Request) bool {
 		return false
 	}
 	return secureStringEqual(strings.TrimSpace(cookie.Value), strings.TrimSpace(s.webSessionToken))
+}
+
+func (s *Server) resolveLoginCookieDomain(host string) string {
+	if s == nil || s.workspaceService == nil {
+		return ""
+	}
+	baseDomain := normalizePreviewBaseDomain(s.workspaceService.baseDomain)
+	normalizedHost := normalizePreviewHost(host)
+	if baseDomain == "" || normalizedHost == "" {
+		return ""
+	}
+	if normalizedHost == baseDomain || strings.HasSuffix(normalizedHost, "."+baseDomain) {
+		return "." + baseDomain
+	}
+	return ""
 }
 
 func expectsHTMLNavigation(r *http.Request) bool {

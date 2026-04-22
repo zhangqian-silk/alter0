@@ -1991,6 +1991,25 @@ body::after {
   display: none;
 }
 
+.mobile-backdrop,
+.conversation-session-pane-backdrop {
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
+  outline: none;
+}
+
+.mobile-backdrop:focus,
+.mobile-backdrop:focus-visible,
+.mobile-backdrop:active,
+.conversation-session-pane-backdrop:focus,
+.conversation-session-pane-backdrop:focus-visible,
+.conversation-session-pane-backdrop:active {
+  outline: none;
+  box-shadow: none;
+}
+
 @media (max-width: 1360px) {
   :root {
     --shell-nav-width: clamp(196px, 19vw, 228px);
@@ -2049,14 +2068,20 @@ body::after {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
     z-index: 30;
-    transition: transform 180ms ease;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 170ms;
     touch-action: pan-y;
+    will-change: transform;
+    backface-visibility: hidden;
   }
 
   .primary-nav {
     width: min(76vw, 252px);
     z-index: 42;
-    transform: translateX(-102%);
+    transform: translate3d(calc(-100% - 18px), 0, 0);
     box-shadow: 0 14px 32px rgba(15, 24, 39, 0.18);
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
     overflow-y: auto;
@@ -2065,18 +2090,24 @@ body::after {
   }
 
   .session-pane {
-    transform: translateX(-102%);
+    transform: translate3d(calc(-100% - 18px), 0, 0);
     z-index: 43;
     box-shadow: 0 14px 32px rgba(15, 24, 39, 0.2);
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   .app-shell.nav-open .primary-nav {
-    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+    transform: translate3d(0, 0, 0);
+    transition-delay: 0s;
   }
 
   .app-shell.panel-open:not(.info-mode) .session-pane {
-    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+    transform: translate3d(0, 0, 0);
+    transition-delay: 0s;
   }
 
   .chat-pane {
@@ -2169,10 +2200,9 @@ body::after {
     z-index: 20;
     border: 0;
     background: rgba(6, 29, 52, 0.28);
-    backdrop-filter: blur(10px);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 240ms ease;
+    transition: opacity 220ms ease;
   }
 
   .app-shell.overlay-open .mobile-backdrop {
@@ -3269,13 +3299,14 @@ body::after {
 
 .conversation-session-pane-shell {
   min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 18px 0 12px;
-  border: 1px solid rgba(158, 198, 233, 0.82);
-  border-radius: 30px;
-  background: linear-gradient(180deg, rgba(248, 252, 255, 0.8) 0%, rgba(234, 245, 255, 0.72) 100%);
-  box-shadow: 0 28px 60px -46px rgba(8, 37, 69, 0.22);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(178, 207, 230, 0.84);
+  border-radius: 26px;
+  background: rgba(250, 253, 255, 0.98);
+  box-shadow: 0 24px 54px -44px rgba(8, 37, 69, 0.24);
 }
 
 .conversation-session-pane-backdrop {
@@ -3287,55 +3318,80 @@ body::after {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 14px 14px;
-  border-bottom: 1px solid rgba(168, 204, 235, 0.78);
+  padding: 14px 14px 10px;
+  border-bottom: 0;
+  background: transparent;
 }
 
 .conversation-session-pane-copy {
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .conversation-session-pane-copy strong {
   font-size: 15px;
-  color: #072843;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--shell-ink);
 }
 
 .conversation-session-pane-copy span {
-  font-size: 12px;
-  color: #6a86a3;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--shell-muted);
 }
 
 .conversation-session-pane-action {
-  border: 1px solid rgba(158, 198, 233, 0.82);
-  background: rgba(248, 252, 255, 0.82);
-  color: #1c4768;
+  border: 1px solid rgba(109, 160, 205, 0.16);
+  background: rgba(248, 252, 255, 0.88);
+  color: var(--shell-muted-strong);
   border-radius: 999px;
-  padding: 0 14px;
-  height: 34px;
+  padding: 0 15px;
+  height: 36px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
+}
+
+.conversation-session-pane-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(79, 136, 188, 0.24);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--shell-ink);
 }
 
 .conversation-session-pane-action.is-primary {
-  background: linear-gradient(180deg, #4ed4ff 0%, #0b78d6 100%);
+  background: linear-gradient(135deg, var(--shell-accent) 0%, var(--shell-accent-strong) 100%);
   color: white;
-  border-color: rgba(60, 183, 255, 0.3);
-  box-shadow: 0 18px 32px -22px rgba(11, 120, 214, 0.38);
+  border-color: rgba(37, 99, 235, 0.18);
+  box-shadow: 0 18px 28px -22px rgba(11, 120, 214, 0.64);
 }
 
 .conversation-session-pane-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px;
+  border: 1px solid rgba(108, 156, 201, 0.1);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(248, 252, 255, 0.72) 0%, rgba(236, 246, 255, 0.5) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .conversation-session-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 10px 4px;
+  gap: 6px;
+  min-height: 0;
+  margin: 0 10px 10px;
+  padding: 8px;
   overflow: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
 }
 
 .conversation-session-card {
@@ -3343,17 +3399,18 @@ body::after {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: start;
-  border: 1px solid rgba(174, 204, 233, 0.82);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.88);
-  padding: 12px;
-  box-shadow: 0 18px 28px -28px rgba(8, 37, 69, 0.16);
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: none;
+  transition: transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
 }
 
-.conversation-session-card.is-active {
-  border-color: rgba(60, 183, 255, 0.24);
-  background: linear-gradient(180deg, rgba(239, 249, 255, 0.96) 0%, rgba(248, 252, 255, 0.94) 100%);
-  box-shadow: inset 0 0 0 1px rgba(60, 183, 255, 0.12);
+.conversation-session-card:not(.is-active) .conversation-session-badge:not(.is-active) {
+  display: none;
 }
 
 .conversation-session-select,
@@ -3367,25 +3424,145 @@ body::after {
   min-width: 0;
   display: grid;
   gap: 6px;
+  width: 100%;
+  min-height: 0;
+  padding: 10px 12px;
   text-align: left;
+}
+
+.conversation-session-select.menu-item {
+  min-height: 0;
+  align-content: center;
+}
+
+.conversation-session-topline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--shell-muted);
+}
+
+.conversation-session-badge {
+  display: inline;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--shell-muted-strong);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.conversation-session-badge.is-active {
+  color: rgba(239, 249, 255, 0.86);
 }
 
 .conversation-session-title {
   font-size: 14px;
+  line-height: 1.35;
   font-weight: 700;
-  color: #072843;
+  letter-spacing: -0.02em;
+  color: var(--shell-ink);
 }
 
-.conversation-session-meta,
 .conversation-session-hash {
+  display: inline;
+  width: auto;
+  min-height: auto;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--shell-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  font-family: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", monospace;
+}
+
+.conversation-session-hash::before {
+  content: "•";
+  margin-right: 6px;
+  font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+}
+
+.conversation-session-meta {
+  color: var(--shell-muted);
   font-size: 12px;
-  color: #6a86a3;
+  line-height: 1.5;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .conversation-session-delete {
-  font-size: 12px;
+  align-self: center;
+  min-height: auto;
+  padding: 0 0 0 10px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
   font-weight: 700;
-  color: #4f6b86;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--shell-muted-strong);
+  box-shadow: none;
+  transition: color 180ms ease;
+}
+
+.conversation-session-delete:hover {
+  color: var(--shell-ink);
+}
+
+.conversation-session-card.is-active .conversation-session-title {
+  color: #eff9ff;
+}
+
+.conversation-session-card.is-active .conversation-session-meta,
+.conversation-session-card.is-active .conversation-session-badge,
+.conversation-session-card.is-active .conversation-session-hash,
+.conversation-session-card.is-active .conversation-session-delete {
+  color: rgba(239, 249, 255, 0.82);
+}
+
+.conversation-session-card.is-active .conversation-session-delete:hover {
+  color: #ffffff;
+}
+
+.conversation-session-card.is-active .task-summary-status {
+  border-color: rgba(239, 249, 255, 0.2);
+  background: rgba(239, 249, 255, 0.16);
+  color: #ffffff;
+}
+
+.conversation-session-select.menu-item.active .conversation-session-title {
+  color: #eff9ff;
+}
+
+.conversation-session-select.menu-item.active .conversation-session-meta,
+.conversation-session-select.menu-item.active .conversation-session-badge,
+.conversation-session-select.menu-item.active .conversation-session-hash,
+.conversation-session-select.menu-item.active .task-summary-status {
+  color: rgba(239, 249, 255, 0.82);
+}
+
+.conversation-session-select.menu-item.active .task-summary-status {
+  border-color: rgba(239, 249, 255, 0.2);
+  background: rgba(239, 249, 255, 0.16);
+}
+
+.conversation-session-select:focus-visible,
+.conversation-session-delete:focus-visible,
+.conversation-session-pane-action:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.56);
+  outline-offset: 2px;
 }
 
 .conversation-workspace {
@@ -3799,16 +3976,31 @@ body::after {
 
 .terminal-runtime-view .conversation-session-card {
   gap: 12px;
-  border-radius: 22px;
-  border-color: rgba(191, 219, 254, 0.88);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 249, 255, 0.94) 100%);
-  box-shadow: 0 20px 34px -30px rgba(8, 37, 69, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  border-radius: 14px;
+  border-color: transparent;
+  border-bottom-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
-.terminal-runtime-view .conversation-session-card.is-active {
-  border-color: rgba(59, 130, 246, 0.28);
-  background: linear-gradient(180deg, rgba(239, 246, 255, 0.98) 0%, rgba(248, 252, 255, 0.96) 100%);
-  box-shadow: 0 22px 36px -32px rgba(37, 99, 235, 0.3), inset 0 0 0 1px rgba(96, 165, 250, 0.18);
+.terminal-runtime-view .terminal-session-card {
+  padding: 12px;
+}
+
+.terminal-session-topline .task-summary-status {
+  margin-left: auto;
+}
+
+.terminal-session-head {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.terminal-session-card .route-card-title-copy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
 }
 
 .terminal-runtime-view .conversation-session-title {
@@ -3820,23 +4012,12 @@ body::after {
   line-height: 1.5;
 }
 
-.terminal-runtime-view .conversation-session-hash {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  min-height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(191, 219, 254, 0.82);
-  background: rgba(255, 255, 255, 0.82);
-}
-
 .terminal-runtime-view .conversation-session-delete {
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(191, 219, 254, 0.82);
-  background: rgba(248, 252, 255, 0.92);
+  min-height: auto;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
 }
 
 .terminal-runtime-view .conversation-inspector {
@@ -3943,20 +4124,33 @@ body::after {
     top: 0;
     left: 0;
     bottom: 0;
+    height: 100%;
+    max-height: 100%;
     width: min(88vw, 340px);
     max-width: 100vw;
     min-height: auto;
     border-right: 1px solid var(--shell-line);
     border-bottom: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
     z-index: 44;
-    transform: translateX(-102%);
-    transition: transform 180ms ease;
-    background: transparent;
-    box-shadow: none;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(calc(-100% - 24px));
+    transition:
+      transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 170ms;
+    background: linear-gradient(180deg, rgba(248, 252, 255, 0.86) 0%, rgba(233, 244, 255, 0.76) 100%);
+    box-shadow: 0 14px 32px rgba(15, 24, 39, 0.2);
+    will-change: transform;
+    backface-visibility: hidden;
   }
 
   .conversation-session-pane.is-open {
+    visibility: visible;
+    pointer-events: auto;
     transform: translateX(0);
+    transition-delay: 0s;
   }
 
   .conversation-session-pane-backdrop {
@@ -3965,10 +4159,9 @@ body::after {
     inset: 0;
     border: 0;
     background: rgba(6, 29, 52, 0.28);
-    backdrop-filter: none;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 180ms ease;
+    transition: opacity 220ms ease;
   }
 
   .conversation-session-pane.is-open .conversation-session-pane-backdrop {
@@ -3980,10 +4173,14 @@ body::after {
   .conversation-session-pane-shell {
     position: relative;
     z-index: 1;
-    width: min(88vw, 340px);
+    width: 100%;
     height: 100%;
+    max-height: 100%;
     backdrop-filter: none;
-    box-shadow: 0 14px 32px rgba(15, 24, 39, 0.2);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
   .conversation-mobile-actions {
@@ -4040,10 +4237,18 @@ body::after {
   }
 
   .conversation-session-pane-shell {
-    height: min(100%, var(--mobile-viewport-height));
-    max-height: var(--mobile-viewport-height);
-    border-radius: 0 24px 24px 0;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
     border-left: 0;
+  }
+
+  .conversation-session-pane-head {
+    padding: 16px 14px 14px;
+  }
+
+  .conversation-session-list {
+    padding: 10px 10px calc(16px + env(safe-area-inset-bottom));
   }
 
   .conversation-session-pane-head,

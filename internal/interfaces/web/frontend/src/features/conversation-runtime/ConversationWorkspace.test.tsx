@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import { ConversationWorkspace } from "./ConversationWorkspace";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../app/WorkbenchContext";
 
@@ -57,21 +58,61 @@ vi.mock("../shell/components/ChatMessageRegion", () => ({
 }));
 
 function renderWorkspace(overrides: Partial<WorkbenchContextValue> = {}) {
-  const contextValue: WorkbenchContextValue = {
+  const baseContextValue: WorkbenchContextValue = {
     route: "chat",
     language: "en",
     navigate: vi.fn(),
     isMobileViewport: true,
     mobileNavOpen: false,
+    mobileSessionPaneOpen: false,
     toggleMobileNav: vi.fn(),
+    toggleMobileSessionPane: vi.fn(),
     closeMobileNav: vi.fn(),
+    closeMobileSessionPane: vi.fn(),
     ...overrides,
   };
 
+  function ConversationWorkspaceHarness() {
+    const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(() => {
+      if (baseContextValue.mobileNavOpen) {
+        return "nav";
+      }
+      if (baseContextValue.mobileSessionPaneOpen) {
+        return "sessions";
+      }
+      return null;
+    });
+    const contextValue: WorkbenchContextValue = {
+      ...baseContextValue,
+      mobileNavOpen: mobilePanel === "nav",
+      mobileSessionPaneOpen: mobilePanel === "sessions",
+      toggleMobileNav: () => {
+        baseContextValue.toggleMobileNav();
+        setMobilePanel((current) => current === "nav" ? null : "nav");
+      },
+      toggleMobileSessionPane: () => {
+        baseContextValue.toggleMobileSessionPane();
+        setMobilePanel((current) => current === "sessions" ? null : "sessions");
+      },
+      closeMobileNav: () => {
+        baseContextValue.closeMobileNav();
+        setMobilePanel((current) => current === "nav" ? null : current);
+      },
+      closeMobileSessionPane: () => {
+        baseContextValue.closeMobileSessionPane();
+        setMobilePanel((current) => current === "sessions" ? null : current);
+      },
+    };
+
+    return (
+      <WorkbenchContext.Provider value={contextValue}>
+        <ConversationWorkspace language="en" />
+      </WorkbenchContext.Provider>
+    );
+  }
+
   return render(
-    <WorkbenchContext.Provider value={contextValue}>
-      <ConversationWorkspace language="en" />
-    </WorkbenchContext.Provider>,
+    <ConversationWorkspaceHarness />,
   );
 }
 
@@ -105,7 +146,8 @@ describe("ConversationWorkspace", () => {
 
   it("keeps the compact header visible alongside terminal-style mobile actions for an empty chat workspace", () => {
     const toggleMobileNav = vi.fn();
-    renderWorkspace({ toggleMobileNav });
+    const toggleMobileSessionPane = vi.fn();
+    renderWorkspace({ toggleMobileNav, toggleMobileSessionPane });
 
     expect(document.querySelector("[data-conversation-view='chat']")).toHaveClass("terminal-runtime-view");
     expect(Array.from(document.querySelector("[data-conversation-view='chat']")?.children || []).map((node) =>
@@ -115,6 +157,11 @@ describe("ConversationWorkspace", () => {
       "terminal-session-pane",
       "conversation-session-pane",
     );
+    expect(within(screen.getByTestId("conversation-session-pane")).getByRole("list")).toHaveAttribute(
+      "data-conversation-session-list",
+      "true",
+    );
+    expect(within(screen.getByTestId("conversation-session-pane")).getAllByRole("listitem")).toHaveLength(1);
     expect(document.querySelector(".conversation-session-pane-shell")).toHaveClass(
       "terminal-session-pane-shell",
       "conversation-session-pane-shell",
@@ -161,6 +208,7 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "true");
+    expect(toggleMobileSessionPane).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "New" }));
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
@@ -185,6 +233,20 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.click(within(screen.getByTestId("conversation-session-pane")).getByRole("button", { name: /New Chat/ }));
     expect(runtimeMock.focusSession).toHaveBeenCalledWith("session-1");
+    expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "false");
+  });
+
+  it("keeps the mobile session pane mutually exclusive with the menu overlay", () => {
+    const toggleMobileNav = vi.fn();
+
+    renderWorkspace({ toggleMobileNav });
+
+    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
+    expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+
+    expect(toggleMobileNav).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "false");
   });
 
