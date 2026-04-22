@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const mockIsLegacyShellMobileViewport = vi.fn(() => false);
 const mockViewportSyncDestroy = vi.fn();
@@ -143,6 +143,26 @@ describe("WorkbenchApp", () => {
     });
     expect(shell).not.toHaveClass("nav-open");
     expect(shell).not.toHaveClass("overlay-open");
+  });
+
+  it("renders a mobile route toolbar for managed page routes and uses it to open navigation", async () => {
+    window.location.hash = "#agent";
+    mockIsLegacyShellMobileViewport.mockReturnValue(true);
+    const { container } = render(<WorkbenchApp />);
+    const shell = container.querySelector(".app-shell");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "agent");
+    });
+
+    const mobileHeader = container.querySelector("[data-route-mobile-head]") as HTMLElement;
+    expect(mobileHeader).toBeInTheDocument();
+    expect(container.querySelector(".route-head h3")?.textContent).toBe("Agent 配置");
+
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
+
+    expect(shell).toHaveClass("nav-open");
+    expect(shell).toHaveClass("overlay-open");
   });
 
   it("renders the terminal route as a direct runtime workspace frame without route-page wrappers", async () => {

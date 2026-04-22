@@ -5,6 +5,7 @@ import { ConversationRuntimeProvider } from "../features/conversation-runtime/Co
 import { ConversationWorkspace } from "../features/conversation-runtime/ConversationWorkspace";
 import {
   getLegacyRouteHeadingCopy,
+  getLegacyShellCopy,
   normalizeLegacyShellLanguage,
   type LegacyShellLanguage,
 } from "../features/shell/legacyShellCopy";
@@ -96,7 +97,13 @@ export function WorkbenchApp() {
             ) : route === "terminal" ? (
               <ReactManagedRouteBody route={route} language={language} />
             ) : (
-              <RoutePageFrame route={route} language={language} />
+              <RoutePageFrame
+                route={route}
+                language={language}
+                isMobileViewport={isMobileViewport}
+                mobileNavOpen={navOpen}
+                onToggleMobileNav={() => setNavOpen((current) => !current)}
+              />
             )}
           </div>
         </main>
@@ -114,14 +121,33 @@ export function WorkbenchApp() {
 function RoutePageFrame({
   route,
   language,
+  isMobileViewport,
+  mobileNavOpen,
+  onToggleMobileNav,
 }: {
   route: string;
   language: LegacyShellLanguage;
+  isMobileViewport: boolean;
+  mobileNavOpen: boolean;
+  onToggleMobileNav: () => void;
 }) {
   const routeHeadingCopy = getLegacyRouteHeadingCopy(language, route);
+  const shellCopy = getLegacyShellCopy(language);
 
   return (
     <section className="route-view" data-route={route}>
+      {isMobileViewport ? (
+        <header className="route-mobile-head" data-route-mobile-head>
+          <button
+            className="nav-toggle conversation-mobile-action is-quiet"
+            type="button"
+            aria-expanded={mobileNavOpen}
+            onClick={onToggleMobileNav}
+          >
+            {shellCopy.chatMenu}
+          </button>
+        </header>
+      ) : null}
       <header className="route-head">
         <div className="route-copy">
           <h3>{routeHeadingCopy.title}</h3>
