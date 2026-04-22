@@ -44,6 +44,38 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("background: rgba(239, 246, 255, 0.92);");
   });
 
+  it("gives the environments runtime header a grouped control bar instead of a flat strip of equal-weight buttons", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".environment-toolbar-head {");
+    expect(stylesheet).toContain(".environment-toolbar-copy h3 {");
+    expect(stylesheet).toContain(".environment-toolbar-panel {");
+    expect(stylesheet).toContain("grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);");
+    expect(stylesheet).toContain(".environment-toolbar-action-group-primary {");
+    expect(stylesheet).toContain(".environment-toolbar-button[data-variant=\"primary\"] {");
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.environment-runtime-meta \{[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?\.environment-toolbar-action-group \{[\s\S]*?width:\s*100%;/,
+    );
+  });
+
+  it("renders restart confirmation as a centered popup on narrow screens instead of dropping to a bottom sheet", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".modal-backdrop {");
+    expect(stylesheet).toContain(".modal-dialog {");
+    expect(stylesheet).toContain("width: min(100%, 460px);");
+    expect(stylesheet).toContain("grid-template-rows: auto minmax(0, 1fr) auto;");
+    expect(stylesheet).toContain(".modal-footer button {");
+    expect(stylesheet).toContain("border-radius: 999px;");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(37, 99, 235, 0.96) 0%, rgba(29, 78, 216, 0.96) 100%);");
+    expect(stylesheet).toContain(".modal-footer button[data-variant=\"secondary\"] {");
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.modal-backdrop \{[\s\S]*?align-items:\s*center;[\s\S]*?padding:\s*16px;[\s\S]*?\.modal-dialog \{[\s\S]*?width:\s*min\(100%, 420px\);[\s\S]*?border-radius:\s*24px;/,
+    );
+  });
+
   it("binds mobile viewport css vars into chat and page-mode layouts", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
