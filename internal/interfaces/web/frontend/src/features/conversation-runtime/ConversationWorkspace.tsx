@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { ChatMessageRegion } from "../shell/components/ChatMessageRegion";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShellCopy";
@@ -13,9 +13,13 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   const runtime = useConversationRuntime();
   const copy = getLegacyShellCopy(language);
   const [sessionPaneOpen, setSessionPaneOpen] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const activeMessages = runtime.activeSession?.messages || [];
+  const isEmptyState = activeMessages.length === 0;
   const isCompactRuntimeHeader = runtime.route === "chat" || runtime.route === "agent-runtime";
-  const isMobileEmptyState = workbench.isMobileViewport && activeMessages.length === 0;
+  const isMobileEmptyState = workbench.isMobileViewport && isEmptyState;
+  const isMobileEmptyHeader = workbench.isMobileViewport && isEmptyState;
   const compactModelButtonLabel = isCompactRuntimeHeader && workbench.isMobileViewport ? copy.runtimeModelShort : copy.runtimeModel;
   const compactSecondaryButtonLabel = runtime.route === "agent-runtime"
     ? (isCompactRuntimeHeader && workbench.isMobileViewport ? copy.runtimeAgent : copy.runtimeAgentPick)
@@ -36,6 +40,10 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     ? (language === "zh" ? "Agent 会话" : "Agent sessions")
     : (language === "zh" ? "对话会话" : "Chat sessions");
   const mobileNewLabel = runtime.route === "agent-runtime" ? copy.sessionNewAgent : copy.sessionNewChat;
+  const sessionCountLabel = language === "zh"
+    ? `${runtime.sessionItems.length} 个会话`
+    : `${runtime.sessionItems.length} sessions`;
+  const composerMetaLabel = `${sessionCountLabel} · ${runtime.draft.length}/${10000}`;
 
   useEffect(() => {
     if (!workbench.isMobileViewport || workbench.mobileNavOpen) {
@@ -62,6 +70,34 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     return runtime.removeSession(sessionID);
   };
 
+  const focusComposerInputWithoutScroll = () => {
+    const node = composerInputRef.current;
+    if (!node) {
+      return;
+    }
+    try {
+      node.focus({ preventScroll: true });
+    } catch {
+      node.focus();
+    }
+  };
+
+  const handleComposerPointerDownCapture = (event: PointerEvent<HTMLTextAreaElement>) => {
+    if (!workbench.isMobileViewport || event.pointerType === "mouse" || inputFocused) {
+      return;
+    }
+    event.preventDefault();
+    focusComposerInputWithoutScroll();
+  };
+
+  const handleComposerTouchStartCapture = (event: TouchEvent<HTMLTextAreaElement>) => {
+    if (!workbench.isMobileViewport || inputFocused) {
+      return;
+    }
+    event.preventDefault();
+    focusComposerInputWithoutScroll();
+  };
+
   const toggleSessionPane = () => {
     if (!sessionPaneOpen) {
       workbench.closeMobileNav();
@@ -76,29 +112,54 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     availableSkills: runtime.skills.filter((item) => !item.active),
   }), [runtime.capabilities, runtime.skills]);
 
+  useLayoutEffect(() => {
+    if (!workbench.isMobileViewport || !inputFocused) {
+      return;
+    }
+    const keepViewportAnchored = () => {
+      if (window.scrollX !== 0 || window.scrollY !== 0) {
+        window.scrollTo({ left: 0, top: 0, behavior: "auto" });
+      }
+    };
+    const frameID = window.requestAnimationFrame(keepViewportAnchored);
+    const visualViewport = window.visualViewport;
+    window.addEventListener("scroll", keepViewportAnchored, { passive: true });
+    visualViewport?.addEventListener("resize", keepViewportAnchored);
+    visualViewport?.addEventListener("scroll", keepViewportAnchored);
+    return () => {
+      window.cancelAnimationFrame(frameID);
+      window.removeEventListener("scroll", keepViewportAnchored);
+      visualViewport?.removeEventListener("resize", keepViewportAnchored);
+      visualViewport?.removeEventListener("scroll", keepViewportAnchored);
+    };
+  }, [inputFocused, workbench.isMobileViewport]);
+
   return (
-    <section className="conversation-runtime-view" data-conversation-view={runtime.route}>
+    <section
+      className="conversation-runtime-view terminal-runtime-view"
+      data-conversation-view={runtime.route}
+    >
       <aside
-        className={`conversation-session-pane${sessionPaneOpen ? " is-open" : ""}`}
+        className={`terminal-session-pane conversation-session-pane${sessionPaneOpen ? " is-open" : ""}`}
         data-conversation-session-pane
         data-mobile-open={sessionPaneOpen ? "true" : "false"}
         data-testid="conversation-session-pane"
       >
         <button
-          className="conversation-session-pane-backdrop"
+          className="terminal-session-pane-backdrop conversation-session-pane-backdrop"
           type="button"
           aria-label={copy.sessionClose}
           onClick={() => setSessionPaneOpen(false)}
         ></button>
-        <div className="conversation-session-pane-shell">
-          <div className="conversation-session-pane-head">
-            <div className="conversation-session-pane-copy">
+        <div className="route-surface terminal-session-pane-shell conversation-session-pane-shell">
+          <div className="terminal-session-pane-head conversation-session-pane-head">
+            <div className="terminal-session-pane-copy conversation-session-pane-copy">
               <strong>{sessionPaneTitle}</strong>
               <span>{runtime.sessionItems.length}</span>
             </div>
-            <div className="conversation-session-pane-actions">
+            <div className="terminal-session-pane-actions conversation-session-pane-actions">
               <button
-                className="conversation-session-pane-action is-primary"
+                className="terminal-session-pane-action conversation-session-pane-action is-primary"
                 type="button"
                 onClick={handleCreateSession}
               >
@@ -106,7 +167,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
               </button>
               {workbench.isMobileViewport ? (
                 <button
-                  className="conversation-session-pane-action"
+                  className="terminal-session-pane-action conversation-session-pane-action"
                   type="button"
                   onClick={() => setSessionPaneOpen(false)}
                 >
@@ -146,11 +207,11 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
       </aside>
 
       <section
-        className="conversation-workspace"
+        className="terminal-workspace conversation-workspace"
         data-conversation-workspace
         data-conversation-route={runtime.route}
       >
-        <div className="conversation-workspace-body">
+        <div className="terminal-workspace-body conversation-workspace-body">
           {workbench.isMobileViewport ? (
             <header className="terminal-mobile-header" data-conversation-mobile-header>
               <button
@@ -184,43 +245,40 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
             </header>
           ) : null}
 
-          {!isMobileEmptyState || runtime.inspectorOpen ? (
-            <header className={`conversation-workspace-head${isCompactRuntimeHeader ? " is-compact" : ""}`}>
-              {!isMobileEmptyState ? (
-                <div className={`conversation-workspace-row${isCompactRuntimeHeader ? " is-compact" : ""}`}>
-                  <div className={`conversation-workspace-copy${isCompactRuntimeHeader ? " is-compact" : ""}`}>
-                    {!isCompactRuntimeHeader ? (
-                      <span className="conversation-workspace-eyebrow">
-                        {runtime.route === "agent-runtime" ? copy.runtimeAgent : "Chat"}
-                      </span>
-                    ) : null}
-                    <h4>{runtime.activeSession?.title || emptyStateTitle}</h4>
-                    {!isCompactRuntimeHeader ? (
-                      <span className="conversation-workspace-subcopy">
-                        {runtime.route === "agent-runtime"
-                          ? `${copy.runtimeAgent}: ${runtime.target.name || "-"}`
-                          : `${runtime.selectedModelLabel || "Default"} · ${runtime.toolCount} / ${runtime.skillCount}`}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="conversation-workspace-actions">
-                    <button
-                      className="terminal-inline-button"
-                      type="button"
-                      onClick={() => runtime.toggleInspector("model")}
-                    >
-                      {compactModelButtonLabel}
-                    </button>
-                    <button
-                      className="terminal-inline-button"
-                      type="button"
-                      onClick={() => runtime.toggleInspector(runtime.route === "agent-runtime" ? "target" : "capabilities")}
-                    >
-                      {compactSecondaryButtonLabel}
-                    </button>
-                  </div>
+          <header className={`terminal-workspace-head conversation-workspace-head${isCompactRuntimeHeader ? " is-compact" : ""}${isMobileEmptyHeader ? " is-mobile-empty" : ""}`}>
+              <div className={`terminal-workspace-row terminal-workspace-title-row conversation-workspace-row${isCompactRuntimeHeader ? " is-compact" : ""}${isMobileEmptyHeader ? " is-mobile-empty" : ""}`}>
+                <div className={`terminal-workspace-copy conversation-workspace-copy${isCompactRuntimeHeader ? " is-compact" : ""}${isMobileEmptyHeader ? " is-mobile-empty" : ""}`}>
+                  {!isCompactRuntimeHeader ? (
+                    <span className="terminal-workspace-eyebrow conversation-workspace-eyebrow">
+                      {runtime.route === "agent-runtime" ? copy.runtimeAgent : "Chat"}
+                    </span>
+                  ) : null}
+                  <h4>{runtime.activeSession?.title || emptyStateTitle}</h4>
+                  {!isCompactRuntimeHeader ? (
+                    <span className="terminal-workspace-subcopy conversation-workspace-subcopy">
+                      {runtime.route === "agent-runtime"
+                        ? `${copy.runtimeAgent}: ${runtime.target.name || "-"}`
+                        : `${runtime.selectedModelLabel || "Default"} · ${runtime.toolCount} / ${runtime.skillCount}`}
+                    </span>
+                  ) : null}
                 </div>
-              ) : null}
+                <div className={`terminal-workspace-actions conversation-workspace-actions${isMobileEmptyHeader ? " is-mobile-empty" : ""}`}>
+                  <button
+                    className="terminal-inline-button"
+                    type="button"
+                    onClick={() => runtime.toggleInspector("model")}
+                  >
+                    {compactModelButtonLabel}
+                  </button>
+                  <button
+                    className="terminal-inline-button"
+                    type="button"
+                    onClick={() => runtime.toggleInspector(runtime.route === "agent-runtime" ? "target" : "capabilities")}
+                  >
+                    {compactSecondaryButtonLabel}
+                  </button>
+                </div>
+              </div>
 
               {runtime.inspectorOpen ? (
                 <section className="conversation-inspector" data-conversation-inspector>
@@ -384,12 +442,14 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
                   ) : null}
                 </section>
               ) : null}
-            </header>
-          ) : null}
+          </header>
 
-          <section className="conversation-console-panel">
-            <div className="conversation-chat-screen" data-conversation-chat-screen>
-              {activeMessages.length ? (
+          <section className={`conversation-console-panel${isEmptyState ? " is-empty" : ""}`}>
+            <div
+              className={`terminal-chat-screen conversation-chat-screen${isEmptyState ? " is-empty" : ""}`}
+              data-conversation-chat-screen
+            >
+              {!isEmptyState ? (
                 <ChatMessageRegion
                   sessionId={runtime.activeSession?.id || ""}
                   messages={activeMessages}
@@ -405,9 +465,9 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
             </div>
           </section>
 
-          <footer className="conversation-composer-shell">
+          <footer className="terminal-composer-shell conversation-composer-shell">
             <form
-              className="conversation-chat-form"
+              className="terminal-chat-form conversation-chat-form"
               onSubmit={(event) => {
                 event.preventDefault();
                 void runtime.sendPrompt();
@@ -418,19 +478,34 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
               </label>
               <textarea
                 id="conversationRuntimeInput"
-                className="conversation-composer-input"
+                ref={composerInputRef}
+                className="terminal-composer-input conversation-composer-input"
                 value={runtime.draft}
                 maxLength={10000}
                 placeholder={composerPlaceholder}
+                onPointerDownCapture={handleComposerPointerDownCapture}
+                onTouchStartCapture={handleComposerTouchStartCapture}
                 onChange={(event) => runtime.setDraft(event.target.value)}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
               ></textarea>
-              <button type="submit" className="conversation-chat-submit">
-                {composerSend}
-              </button>
+              <div className="terminal-composer-tools">
+                <div className="terminal-composer-meta">{composerMetaLabel}</div>
+                <button
+                  type="submit"
+                  className="terminal-chat-submit conversation-chat-submit"
+                  aria-label={composerSend}
+                >
+                  <span className="terminal-chat-form-button-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20" fill="none" focusable="false">
+                      <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
+                      <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                  <span className="sr-only">{composerSend}</span>
+                </button>
+              </div>
             </form>
-            <div className="conversation-composer-meta">
-              {runtime.draft.length}/{10000}
-            </div>
           </footer>
         </div>
       </section>

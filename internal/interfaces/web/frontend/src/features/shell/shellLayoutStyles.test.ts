@@ -102,6 +102,71 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("font-size: 11px;");
   });
 
+  it("gives terminal-runtime pages a richer composer surface instead of the default terminal footer slab", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".terminal-runtime-view .terminal-composer-shell.conversation-composer-shell {");
+    expect(stylesheet).toContain("padding: 10px 16px 14px;");
+    expect(stylesheet).toContain(".terminal-runtime-view .terminal-chat-form.conversation-chat-form {");
+    expect(stylesheet).toContain("border-radius: 28px;");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(239, 247, 255, 0.96) 100%);");
+    expect(stylesheet).toContain(".terminal-runtime-view .terminal-composer-input.conversation-composer-input {");
+    expect(stylesheet).toContain("min-height: 88px;");
+    expect(stylesheet).toContain("font-size: 15px;");
+    expect(stylesheet).toContain(".terminal-runtime-view .terminal-chat-form .terminal-composer-meta {");
+    expect(stylesheet).toContain("min-height: 26px;");
+    expect(stylesheet).toContain(".terminal-runtime-view .terminal-chat-submit {");
+    expect(stylesheet).toContain("width: 40px;");
+    expect(stylesheet).toContain("height: 40px;");
+    expect(stylesheet).toContain("color: #2563eb;");
+  });
+
+  it("locks conversation empty states in place so mobile overscroll cannot drag the header away", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".conversation-console-panel.is-empty {");
+    expect(stylesheet).toContain("overflow: hidden;");
+    expect(stylesheet).toContain(".terminal-runtime-view .conversation-chat-screen.is-empty {");
+    expect(stylesheet).toContain("overscroll-behavior: none;");
+    expect(stylesheet).toContain("touch-action: none;");
+    expect(stylesheet).toContain("-webkit-overflow-scrolling: auto;");
+  });
+
+  it("drops blur-heavy mobile chrome so runtime surfaces stay responsive on phones", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain("@media (max-width: 1100px)");
+    expect(stylesheet).toContain("body::before,");
+    expect(stylesheet).toContain("body::after {");
+    expect(stylesheet).toContain("display: none;");
+    expect(stylesheet).toContain(".conversation-session-pane-backdrop {");
+    expect(stylesheet).toContain("backdrop-filter: none;");
+    expect(stylesheet).toContain(".conversation-session-pane-shell {");
+    expect(stylesheet).toContain("[data-conversation-view] .conversation-workspace-body {");
+    expect(stylesheet).toContain(".mobile-backdrop {");
+  });
+
+  it("polishes conversation runtime session cards and inspector panels to match the calmer workbench system", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-card {");
+    expect(stylesheet).toContain("border-radius: 22px;");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 249, 255, 0.94) 100%);");
+    expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-hash {");
+    expect(stylesheet).toContain("border-radius: 999px;");
+    expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-delete {");
+    expect(stylesheet).toContain("min-height: 28px;");
+    expect(stylesheet).toContain(".terminal-runtime-view .conversation-inspector {");
+    expect(stylesheet).toContain("border-radius: 26px;");
+    expect(stylesheet).toContain("box-shadow: 0 18px 36px -30px rgba(8, 37, 69, 0.2);");
+    expect(stylesheet).toContain(".terminal-runtime-view .conversation-check-item {");
+    expect(stylesheet).toContain("padding: 10px 12px;");
+  });
+
   it("uses a compact single-line chat workspace header instead of the old stacked copy block", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
@@ -114,6 +179,20 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("align-items: center;");
     expect(stylesheet).toContain("font-size: 18px;");
     expect(stylesheet).toContain("text-overflow: ellipsis;");
+  });
+
+  it("keeps mobile empty-state headers on a single terminal-style row while preserving visible title space", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".conversation-workspace-head.is-mobile-empty {");
+    expect(stylesheet).toContain(".conversation-workspace-row.is-mobile-empty {");
+    expect(stylesheet).toContain("display: grid;");
+    expect(stylesheet).toContain("grid-template-columns: minmax(0, 1fr) auto;");
+    expect(stylesheet).toContain(".conversation-workspace-copy.is-mobile-empty {");
+    expect(stylesheet).toContain("min-width: 0;");
+    expect(stylesheet).toContain(".conversation-workspace-actions.is-mobile-empty {");
+    expect(stylesheet).toContain("justify-content: flex-end;");
   });
 
   it("anchors narrow shell drawers to the viewport edges instead of floating them inside the desktop canvas", () => {
