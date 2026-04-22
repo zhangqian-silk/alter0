@@ -3,6 +3,7 @@ import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
 import { getLegacyShellCopy } from "../legacyShellCopy";
+import { RuntimeWorkspaceFrame } from "./RuntimeWorkspaceFrame";
 import { normalizeText, RouteFieldRow } from "./RouteBodyPrimitives";
 
 type TerminalStatus = "ready" | "busy" | "exited" | "failed" | "interrupted";
@@ -1183,8 +1184,10 @@ export function ReactManagedTerminalRouteBody() {
   const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
 
   return (
-    <section className="terminal-view conversation-runtime-view" data-terminal-view>
-      {workbench.isMobileViewport ? (
+    <RuntimeWorkspaceFrame
+      rootClassName="terminal-view conversation-runtime-view"
+      rootProps={{ "data-terminal-view": "" }}
+      leadingContent={workbench.isMobileViewport ? (
         <header className="terminal-mobile-header" data-terminal-mobile-header>
           <button
             className="nav-toggle conversation-mobile-action terminal-inline-button is-quiet"
@@ -1221,18 +1224,17 @@ export function ReactManagedTerminalRouteBody() {
           </div>
         </header>
       ) : null}
-      <aside
-        className={`terminal-session-pane conversation-session-pane${sessionSheetOpen ? " is-open" : ""}`}
-        data-terminal-session-pane
-      >
-        <button
-          className="terminal-session-pane-backdrop conversation-session-pane-backdrop"
-          type="button"
-          data-terminal-session-pane-close
-          aria-label={copy.hideSessions}
-          onClick={() => setSessionSheetOpen(false)}
-        ></button>
-        <div className="route-surface terminal-session-pane-shell conversation-session-pane-shell">
+      sessionPaneClassName={`terminal-session-pane conversation-session-pane${sessionSheetOpen ? " is-open" : ""}`}
+      sessionPaneProps={{ "data-terminal-session-pane": "" }}
+      sessionPaneBackdrop={{
+        className: "terminal-session-pane-backdrop conversation-session-pane-backdrop",
+        ariaLabel: copy.hideSessions,
+        onClick: () => setSessionSheetOpen(false),
+        buttonProps: { "data-terminal-session-pane-close": "" },
+      }}
+      sessionPaneShellClassName="route-surface terminal-session-pane-shell conversation-session-pane-shell"
+      sessionPaneContent={
+        <>
           <div className="terminal-session-pane-head conversation-session-pane-head">
             <div className="terminal-session-pane-copy conversation-session-pane-copy">
               <strong>{copy.sessions}</strong>
@@ -1306,92 +1308,93 @@ export function ReactManagedTerminalRouteBody() {
               );
             })}
           </div>
-        </div>
-      </aside>
-
-      <section
-        className="terminal-workspace conversation-workspace"
-        data-terminal-workspace
-        data-terminal-session-id={activeSession?.id || ""}
-        data-terminal-workspace-status={activeStatus}
-        data-terminal-workspace-live={isWorkspaceLive}
-      >
-        <div className="terminal-workspace-body conversation-workspace-body">
-          <header className="terminal-workspace-head conversation-workspace-head is-compact">
-            <div className="terminal-workspace-row terminal-workspace-title-row conversation-workspace-row is-compact">
-              <div className="terminal-workspace-copy conversation-workspace-copy is-compact">
-                <span className="terminal-workspace-eyebrow conversation-workspace-eyebrow">{copy.sessionRuntime}</span>
-                <h4>{activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}</h4>
-                <span className="terminal-workspace-subcopy conversation-workspace-subcopy">
-                  {activeSession ? sessionLastOutputLabel(activeSession, copy) : copy.empty}
+        </>
+      }
+      workspaceClassName="terminal-workspace conversation-workspace"
+      workspaceProps={{
+        "data-terminal-workspace": "",
+        "data-terminal-session-id": activeSession?.id || "",
+        "data-terminal-workspace-status": activeStatus,
+        "data-terminal-workspace-live": isWorkspaceLive,
+      }}
+      workspaceBodyClassName="terminal-workspace-body conversation-workspace-body"
+      workspaceHeader={
+        <header className="terminal-workspace-head conversation-workspace-head is-compact">
+          <div className="terminal-workspace-row terminal-workspace-title-row conversation-workspace-row is-compact">
+            <div className="terminal-workspace-copy conversation-workspace-copy is-compact">
+              <span className="terminal-workspace-eyebrow conversation-workspace-eyebrow">{copy.sessionRuntime}</span>
+              <h4>{activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}</h4>
+              <span className="terminal-workspace-subcopy conversation-workspace-subcopy">
+                {activeSession ? sessionLastOutputLabel(activeSession, copy) : copy.empty}
+              </span>
+            </div>
+            {activeSession ? (
+              <div className="terminal-runtime-state" data-terminal-runtime-state={activeStatus}>
+                <span className="terminal-runtime-state-dot"></span>
+                <span className="terminal-runtime-state-text">
+                  {renderStatus(activeSession.status || "", copy)}
                 </span>
               </div>
-              {activeSession ? (
-                <div className="terminal-runtime-state" data-terminal-runtime-state={activeStatus}>
-                  <span className="terminal-runtime-state-dot"></span>
-                  <span className="terminal-runtime-state-text">
-                    {renderStatus(activeSession.status || "", copy)}
-                  </span>
-                </div>
-              ) : null}
-              <div className="terminal-workspace-actions conversation-workspace-actions">
-                <button
-                  className="terminal-inline-button is-quiet"
-                  type="button"
-                  data-terminal-session-pane-toggle
-                  aria-expanded={sessionSheetOpen}
-                  onClick={() => setSessionSheetOpen((current) => !current)}
-                >
-                  {copy.sessions}
-                </button>
-                <button
-                  className="terminal-inline-button"
-                  type="button"
-                  data-terminal-meta-toggle
-                  aria-expanded={metaOpen}
-                  disabled={!activeSession}
-                  onClick={() => setMetaOpen((current) => !current)}
-                >
-                  {copy.details}
-                </button>
-                <button
-                  className="terminal-session-close"
-                  type="button"
-                  data-terminal-close
-                  disabled={!canClose || closing}
-                  onClick={() => void closeSession()}
-                >
-                  {copy.close}
-                </button>
-              </div>
-            </div>
-
-            {activeSession && metaOpen ? (
-              <section className="terminal-meta-panel" data-terminal-meta-panel>
-                <RouteFieldRow label={copy.session} value={activeSession.id} copyLabel={copy.session} mono />
-                <RouteFieldRow label={copy.shell} value={activeSession.shell} copyLabel={copy.shell} mono />
-                <RouteFieldRow label={copy.path} value={activeSession.working_dir} copyLabel={copy.path} mono multiline />
-                <RouteFieldRow label={copy.status} value={renderStatus(activeSession.status || "", copy)} copyLabel={copy.status} />
-                <RouteFieldRow label={copy.updatedAt} value={formatDateTime(activeSession.updated_at || activeSession.created_at)} copyLabel={copy.updatedAt} />
-              </section>
             ) : null}
-          </header>
+            <div className="terminal-workspace-actions conversation-workspace-actions">
+              <button
+                className="terminal-inline-button is-quiet"
+                type="button"
+                data-terminal-session-pane-toggle
+                aria-expanded={sessionSheetOpen}
+                onClick={() => setSessionSheetOpen((current) => !current)}
+              >
+                {copy.sessions}
+              </button>
+              <button
+                className="terminal-inline-button"
+                type="button"
+                data-terminal-meta-toggle
+                aria-expanded={metaOpen}
+                disabled={!activeSession}
+                onClick={() => setMetaOpen((current) => !current)}
+              >
+                {copy.details}
+              </button>
+              <button
+                className="terminal-session-close"
+                type="button"
+                data-terminal-close
+                disabled={!canClose || closing}
+                onClick={() => void closeSession()}
+              >
+                {copy.close}
+              </button>
+            </div>
+          </div>
 
-          <section className="terminal-console-panel" data-terminal-console-panel>
-            <div
-              className="terminal-chat-screen"
-              data-terminal-chat-screen
-              data-terminal-chat-status={activeStatus}
-              ref={chatScreenRef}
-              onScroll={handleScroll}
-            >
-              <div className="terminal-log-tree">
-                {!activeSession ? (
-                  <div className="terminal-log-empty">{loading ? copy.loading : copy.noSession}</div>
-                ) : turns.length === 0 ? (
-                  <div className="terminal-log-empty">{loading ? copy.loading : copy.noOutput}</div>
-                ) : (
-                  turns.map((turn) => {
+          {activeSession && metaOpen ? (
+            <section className="terminal-meta-panel" data-terminal-meta-panel>
+              <RouteFieldRow label={copy.session} value={activeSession.id} copyLabel={copy.session} mono />
+              <RouteFieldRow label={copy.shell} value={activeSession.shell} copyLabel={copy.shell} mono />
+              <RouteFieldRow label={copy.path} value={activeSession.working_dir} copyLabel={copy.path} mono multiline />
+              <RouteFieldRow label={copy.status} value={renderStatus(activeSession.status || "", copy)} copyLabel={copy.status} />
+              <RouteFieldRow label={copy.updatedAt} value={formatDateTime(activeSession.updated_at || activeSession.created_at)} copyLabel={copy.updatedAt} />
+            </section>
+          ) : null}
+        </header>
+      }
+      workspaceContent={
+        <section className="terminal-console-panel" data-terminal-console-panel>
+          <div
+            className="terminal-chat-screen"
+            data-terminal-chat-screen
+            data-terminal-chat-status={activeStatus}
+            ref={chatScreenRef}
+            onScroll={handleScroll}
+          >
+            <div className="terminal-log-tree">
+              {!activeSession ? (
+                <div className="terminal-log-empty">{loading ? copy.loading : copy.noSession}</div>
+              ) : turns.length === 0 ? (
+                <div className="terminal-log-empty">{loading ? copy.loading : copy.noOutput}</div>
+              ) : (
+                turns.map((turn) => {
                       const steps = Array.isArray(turn.steps) ? turn.steps : [];
                       const processOpen = expandedTurns[turn.id] ?? false;
                       const hasProcess = steps.length > 0 || normalizeStatus(turn.status || "") === "busy";
@@ -1584,134 +1587,134 @@ export function ReactManagedTerminalRouteBody() {
                             </div>
                           ) : null}
                         </article>
-                      );
-                  })
-                )}
-              </div>
+                    );
+                })
+              )}
             </div>
+          </div>
 
-            <div className="terminal-jump-cluster" aria-label="Turn navigation">
-              <button
-                className={jumpState.showTop ? "terminal-jump-control terminal-jump-top is-visible" : "terminal-jump-control terminal-jump-top"}
-                type="button"
-                data-terminal-jump-top
-                aria-label={copy.top}
-                title={copy.top}
-                onClick={() => {
-                  const node = chatScreenRef.current;
-                  if (node) {
-                    node.scrollTo({ top: 0, behavior: "smooth" });
-                  }
-                }}
-              >
-                <span className="terminal-jump-control-icon" aria-hidden="true">↑↑</span>
-              </button>
-              <button
-                className={jumpState.previousTurnID ? "terminal-jump-control terminal-jump-prev is-visible" : "terminal-jump-control terminal-jump-prev"}
-                type="button"
-                data-terminal-jump-prev
-                data-terminal-jump-target={jumpState.previousTurnID}
-                aria-label={copy.prev}
-                title={copy.prev}
-                onClick={() => scrollToTurn(jumpState.previousTurnID)}
-              >
-                <span className="terminal-jump-control-icon" aria-hidden="true">↑</span>
-              </button>
-              <button
-                className={jumpState.nextTurnID ? "terminal-jump-control terminal-jump-next is-visible" : "terminal-jump-control terminal-jump-next"}
-                type="button"
-                data-terminal-jump-next
-                data-terminal-jump-target={jumpState.nextTurnID}
-                aria-label={copy.next}
-                title={copy.next}
-                onClick={() => scrollToTurn(jumpState.nextTurnID)}
-              >
-                <span className="terminal-jump-control-icon" aria-hidden="true">↓</span>
-              </button>
-              <button
-                className={jumpState.showBottom ? "terminal-jump-control terminal-jump-bottom is-visible" : "terminal-jump-control terminal-jump-bottom"}
-                type="button"
-                data-terminal-jump-bottom
-                aria-label={copy.bottom}
-                title={copy.bottom}
-                onClick={() => {
-                  const node = chatScreenRef.current;
-                  if (node) {
-                    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-                  }
-                }}
-              >
-                <span className="terminal-jump-control-icon" aria-hidden="true">↓↓</span>
-              </button>
-            </div>
-          </section>
-
-          <footer className="terminal-composer-shell">
-            {composerNote ? (
-              <div
-                className="terminal-composer-note"
-                data-terminal-runtime-note
-                data-terminal-runtime-status={activeStatus}
-              >
-                {composerNote}
-              </div>
-            ) : null}
-
-            <form
-              className="terminal-chat-form"
-              data-terminal-input-form
-              data-composer-form="terminal-runtime"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitInput();
+          <div className="terminal-jump-cluster" aria-label="Turn navigation">
+            <button
+              className={jumpState.showTop ? "terminal-jump-control terminal-jump-top is-visible" : "terminal-jump-control terminal-jump-top"}
+              type="button"
+              data-terminal-jump-top
+              aria-label={copy.top}
+              title={copy.top}
+              onClick={() => {
+                const node = chatScreenRef.current;
+                if (node) {
+                  node.scrollTo({ top: 0, behavior: "smooth" });
+                }
               }}
             >
-              <label className="sr-only" htmlFor="terminalRuntimeInput">
-                {inputPlaceholder}
-              </label>
-              <textarea
-                id="terminalRuntimeInput"
-                ref={composerInputRef}
-                value={inputValue}
-                className="terminal-composer-input"
-                placeholder={inputPlaceholder}
-                data-terminal-input
-                data-composer-input="terminal-runtime"
-                disabled={!canInput || submitting}
-                onPointerDownCapture={handleComposerPointerDownCapture}
-                onTouchStartCapture={handleComposerTouchStartCapture}
-                onChange={(event) => setInputValue(event.target.value)}
-                onFocus={() => setInputFocused(true)}
-                onBlur={() => setInputFocused(false)}
-              ></textarea>
-              <div className="terminal-composer-tools">
-                <div
-                  className={sessions.length > 0 ? "terminal-composer-meta" : "terminal-composer-meta is-empty"}
-                  aria-hidden={sessions.length > 0 ? undefined : "true"}
-                >
-                  {sessions.length > 0 ? copy.sessionCount(sessions.length) : ""}
-                </div>
-                <button
-                  type="submit"
-                  id="terminalSendButton"
-                  data-terminal-submit
-                  data-composer-submit="terminal-runtime"
-                  aria-label={submitting ? copy.sending : copy.send}
-                  disabled={submitting || !canInput}
-                >
-                  <span className="terminal-chat-form-button-icon" aria-hidden="true">
-                    <svg viewBox="0 0 20 20" fill="none" focusable="false">
-                      <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
-                      <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                  <span className="sr-only">{submitting ? copy.sending : copy.send}</span>
-                </button>
+              <span className="terminal-jump-control-icon" aria-hidden="true">↑↑</span>
+            </button>
+            <button
+              className={jumpState.previousTurnID ? "terminal-jump-control terminal-jump-prev is-visible" : "terminal-jump-control terminal-jump-prev"}
+              type="button"
+              data-terminal-jump-prev
+              data-terminal-jump-target={jumpState.previousTurnID}
+              aria-label={copy.prev}
+              title={copy.prev}
+              onClick={() => scrollToTurn(jumpState.previousTurnID)}
+            >
+              <span className="terminal-jump-control-icon" aria-hidden="true">↑</span>
+            </button>
+            <button
+              className={jumpState.nextTurnID ? "terminal-jump-control terminal-jump-next is-visible" : "terminal-jump-control terminal-jump-next"}
+              type="button"
+              data-terminal-jump-next
+              data-terminal-jump-target={jumpState.nextTurnID}
+              aria-label={copy.next}
+              title={copy.next}
+              onClick={() => scrollToTurn(jumpState.nextTurnID)}
+            >
+              <span className="terminal-jump-control-icon" aria-hidden="true">↓</span>
+            </button>
+            <button
+              className={jumpState.showBottom ? "terminal-jump-control terminal-jump-bottom is-visible" : "terminal-jump-control terminal-jump-bottom"}
+              type="button"
+              data-terminal-jump-bottom
+              aria-label={copy.bottom}
+              title={copy.bottom}
+              onClick={() => {
+                const node = chatScreenRef.current;
+                if (node) {
+                  node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+                }
+              }}
+            >
+              <span className="terminal-jump-control-icon" aria-hidden="true">↓↓</span>
+            </button>
+          </div>
+        </section>
+      }
+      workspaceFooter={
+        <footer className="terminal-composer-shell">
+          {composerNote ? (
+            <div
+              className="terminal-composer-note"
+              data-terminal-runtime-note
+              data-terminal-runtime-status={activeStatus}
+            >
+              {composerNote}
+            </div>
+          ) : null}
+
+          <form
+            className="terminal-chat-form"
+            data-terminal-input-form
+            data-composer-form="terminal-runtime"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitInput();
+            }}
+          >
+            <label className="sr-only" htmlFor="terminalRuntimeInput">
+              {inputPlaceholder}
+            </label>
+            <textarea
+              id="terminalRuntimeInput"
+              ref={composerInputRef}
+              value={inputValue}
+              className="terminal-composer-input"
+              placeholder={inputPlaceholder}
+              data-terminal-input
+              data-composer-input="terminal-runtime"
+              disabled={!canInput || submitting}
+              onPointerDownCapture={handleComposerPointerDownCapture}
+              onTouchStartCapture={handleComposerTouchStartCapture}
+              onChange={(event) => setInputValue(event.target.value)}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+            ></textarea>
+            <div className="terminal-composer-tools">
+              <div
+                className={sessions.length > 0 ? "terminal-composer-meta" : "terminal-composer-meta is-empty"}
+                aria-hidden={sessions.length > 0 ? undefined : "true"}
+              >
+                {sessions.length > 0 ? copy.sessionCount(sessions.length) : ""}
               </div>
-            </form>
-          </footer>
-        </div>
-      </section>
-    </section>
+              <button
+                type="submit"
+                id="terminalSendButton"
+                data-terminal-submit
+                data-composer-submit="terminal-runtime"
+                aria-label={submitting ? copy.sending : copy.send}
+                disabled={submitting || !canInput}
+              >
+                <span className="terminal-chat-form-button-icon" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none" focusable="false">
+                    <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
+                    <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+                <span className="sr-only">{submitting ? copy.sending : copy.send}</span>
+              </button>
+            </div>
+          </form>
+        </footer>
+      }
+    />
   );
 }
