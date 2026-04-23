@@ -6,6 +6,7 @@ import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
 import {
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   readComposerImageFiles,
+  resolveComposerAttachmentPreviewURL,
   type ComposerImageAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 import { getLegacyShellCopy } from "../legacyShellCopy";
@@ -37,9 +38,12 @@ type TerminalTurn = {
 };
 
 type TerminalImageAttachment = {
+  id?: string;
   name: string;
   content_type: string;
-  data_url: string;
+  data_url?: string;
+  asset_url?: string;
+  preview_url?: string;
 };
 
 type TerminalSession = {
@@ -270,18 +274,101 @@ function normalizeTerminalDraftAttachments(value: unknown): ComposerImageAttachm
     const name = typeof record.name === "string" ? record.name.trim() : "";
     const contentType = typeof record.contentType === "string" ? record.contentType.trim() : "";
     const dataURL = typeof record.dataURL === "string" ? record.dataURL.trim() : "";
+    const assetURL = typeof record.assetURL === "string" ? record.assetURL.trim() : "";
+    const previewURL = typeof record.previewURL === "string" ? record.previewURL.trim() : "";
     const size = typeof record.size === "number" && Number.isFinite(record.size) ? record.size : 0;
-    if (!id || !dataURL || !contentType.startsWith("image/")) {
+    if (!id || !contentType.startsWith("image/") || (!dataURL && !assetURL && !previewURL)) {
       return [];
     }
     return [{
       id,
       name,
       contentType,
-      dataURL,
+      dataURL: dataURL || undefined,
+      assetURL: assetURL || undefined,
+      previewURL: previewURL || undefined,
       size,
     }];
   });
+}
+
+function normalizeAttachmentText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function serializeTerminalComposerAttachment(attachment: ComposerImageAttachment) {
+  if (attachment.assetURL) {
+    return {
+      id: attachment.id,
+      name: attachment.name,
+      content_type: attachment.contentType,
+      asset_url: attachment.assetURL,
+      preview_url: attachment.previewURL,
+    };
+  }
+  return {
+    id: attachment.id,
+    name: attachment.name,
+    content_type: attachment.contentType,
+    data_url: attachment.dataURL,
+    preview_data_url: attachment.previewDataURL,
+  };
+}
+
+async function uploadTerminalSessionAttachments(
+  apiClient: ReturnType<typeof createAPIClient>,
+  sessionID: string,
+  attachments: ComposerImageAttachment[],
+): Promise<ComposerImageAttachment[]> {
+  const existing = attachments.filter((attachment) => attachment.assetURL);
+  const pending = attachments.filter((attachment) => !attachment.assetURL && attachment.dataURL);
+  if (pending.length === 0) {
+    return existing;
+  }
+  const payload = await apiClient.post<{
+    items?: Array<{
+      id?: string;
+      name?: string;
+      content_type?: string;
+      size?: number;
+      asset_url?: string;
+      preview_url?: string;
+    }>;
+  }>(
+    `/api/sessions/${encodeURIComponent(sessionID)}/attachments`,
+    {
+      attachments: pending.map((attachment) => ({
+        name: attachment.name,
+        content_type: attachment.contentType,
+        data_url: attachment.dataURL,
+        preview_data_url: attachment.previewDataURL || attachment.dataURL,
+      })),
+    },
+  );
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  if (items.length !== pending.length) {
+    throw new Error("Failed to store image attachments.");
+  }
+  return [
+    ...existing,
+    ...items.map((item, index) => {
+      const fallback = pending[index];
+      const id = normalizeAttachmentText(item.id);
+      const assetURL = normalizeAttachmentText(item.asset_url);
+      const previewURL = normalizeAttachmentText(item.preview_url) || assetURL;
+      if (!id || !assetURL) {
+        throw new Error("Failed to store image attachments.");
+      }
+      return {
+        id,
+        name: normalizeAttachmentText(item.name) || fallback.name,
+        contentType: normalizeAttachmentText(item.content_type) || fallback.contentType,
+        size: typeof item.size === "number" && Number.isFinite(item.size) ? item.size : fallback.size,
+        assetURL,
+        previewURL,
+      };
+    }),
+  ];
 }
 
 function loadTerminalAttachmentDrafts(): Record<string, ComposerImageAttachment[]> {
@@ -790,6 +877,11 @@ export function ReactManagedTerminalRouteBody() {
   const [loadError, setLoadError] = useState("");
   const [inputValue, setInputValue] = useState("");
   const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ComposerImageAttachment[]>>(() => loadTerminalAttachmentDrafts());
+  const attachmentDraftsRef = useRef<Record<string, ComposerImageAttachment[]>>(attachmentDrafts);
+  const attachmentUploadPromisesRef = useRef<Record<string, {
+    pendingIDs: string[];
+    promise: Promise<ComposerImageAttachment[]>;
+  }>>({});
   const [composerAttachmentError, setComposerAttachmentError] = useState("");
   const [previewAttachment, setPreviewAttachment] = useState<ComposerImageAttachment | null>(null);
   const [scrollingActive, setScrollingActive] = useState(false);
@@ -862,6 +954,7 @@ export function ReactManagedTerminalRouteBody() {
       } else {
         delete next[key];
       }
+      attachmentDraftsRef.current = next;
       return next;
     });
   };
@@ -873,6 +966,7 @@ export function ReactManagedTerminalRouteBody() {
       }
       const next = { ...current };
       delete next[key];
+      attachmentDraftsRef.current = next;
       return next;
     });
   };
@@ -1293,13 +1387,43 @@ export function ReactManagedTerminalRouteBody() {
       );
       return;
     }
+    let uploadSessionID = "";
+    let uploadPromise: Promise<ComposerImageAttachment[]> | null = null;
     try {
       const attachments = await readComposerImageFiles(files);
-      updateDraftAttachments(activeDraftKey, (current) => [...current, ...attachments]);
+      let session = activeSession;
+      if (!session) {
+        session = await createSession();
+      }
+      if (!session) {
+        return;
+      }
+      updateDraftAttachments(session.id, (current) => [...current, ...attachments]);
+      uploadSessionID = session.id;
+      uploadPromise = uploadTerminalSessionAttachments(apiClient, session.id, attachments);
+      attachmentUploadPromisesRef.current[session.id] = {
+        pendingIDs: attachments.map((attachment) => attachment.id),
+        promise: uploadPromise,
+      };
+      const uploaded = await uploadPromise;
+      if (activeDraftKey !== session.id) {
+        clearDraftAttachments(activeDraftKey);
+      }
+      updateDraftAttachments(session.id, (current) => [
+        ...current.filter((item) => !attachments.some((pending) => pending.id === item.id)),
+        ...uploaded,
+      ]);
       setComposerAttachmentError("");
     } catch (error) {
       setComposerAttachmentError(error instanceof Error ? error.message : "Failed to add image.");
     } finally {
+      if (
+        uploadSessionID
+        && uploadPromise
+        && attachmentUploadPromisesRef.current[uploadSessionID]?.promise === uploadPromise
+      ) {
+        delete attachmentUploadPromisesRef.current[uploadSessionID];
+      }
       if (composerFileInputRef.current) {
         composerFileInputRef.current.value = "";
       }
@@ -1308,13 +1432,8 @@ export function ReactManagedTerminalRouteBody() {
 
   const submitInput = async () => {
     const content = inputValue.trim();
-    const attachments = draftAttachments.map((attachment) => ({
-      name: attachment.name,
-      content_type: attachment.contentType,
-      data_url: attachment.dataURL,
-    }));
     const draftKey = activeDraftKey;
-    if ((content === "" && attachments.length === 0) || submitting) {
+    if (submitting) {
       return;
     }
     setSubmitting(true);
@@ -1326,6 +1445,28 @@ export function ReactManagedTerminalRouteBody() {
       if (!session) {
         return;
       }
+      let nextDraftAttachments = attachmentDraftsRef.current[session.id] || attachmentDraftsRef.current[draftKey] || [];
+      const pendingUpload = attachmentUploadPromisesRef.current[session.id];
+      if (pendingUpload) {
+        const uploaded = await pendingUpload.promise.catch(() => null);
+        if (Array.isArray(uploaded) && uploaded.length > 0) {
+          nextDraftAttachments = [
+            ...nextDraftAttachments.filter((item) => !pendingUpload.pendingIDs.includes(item.id)),
+            ...uploaded,
+          ];
+        }
+      }
+      if (nextDraftAttachments.some((attachment) => !attachment.assetURL && attachment.dataURL)) {
+        nextDraftAttachments = await uploadTerminalSessionAttachments(apiClient, session.id, nextDraftAttachments);
+        updateDraftAttachments(session.id, () => nextDraftAttachments);
+        if (draftKey !== session.id) {
+          clearDraftAttachments(draftKey);
+        }
+      }
+      const attachments = nextDraftAttachments.map(serializeTerminalComposerAttachment);
+      if (content === "" && attachments.length === 0) {
+        return;
+      }
       const payload = await apiClient.post<TerminalSessionResponse>(
         `/api/terminal/sessions/${encodeURIComponent(session.id)}/input`,
         { input: content, attachments },
@@ -1333,6 +1474,9 @@ export function ReactManagedTerminalRouteBody() {
       window.localStorage.removeItem(`terminal:${session.id}`);
       setInputValue("");
       clearDraftAttachments(draftKey);
+      if (draftKey !== session.id) {
+        clearDraftAttachments(session.id);
+      }
       setComposerAttachmentError("");
       if (payload.session) {
         setSessions((current) =>
@@ -1645,20 +1789,38 @@ export function ReactManagedTerminalRouteBody() {
                           {turnAttachments.length > 0 ? (
                             <div className="message-image-grid terminal-turn-attachments">
                               {turnAttachments.map((attachment) => (
-                                <figure key={`${turn.id}:${attachment.name}:${attachment.data_url}`} className="message-image-card">
+                                <figure
+                                  key={`${turn.id}:${attachment.id || attachment.name}:${attachment.asset_url || attachment.data_url || ""}`}
+                                  className="message-image-card"
+                                >
                                   <button
                                     type="button"
                                     className="conversation-composer-attachment-preview"
                                     aria-label={`${copy.preview} ${attachment.name}`}
                                     onClick={() => setPreviewAttachment({
-                                      id: `${turn.id}:${attachment.name}`,
+                                      id: `${turn.id}:${attachment.id || attachment.name}`,
                                       name: attachment.name,
                                       contentType: attachment.content_type,
                                       dataURL: attachment.data_url,
+                                      assetURL: attachment.asset_url,
+                                      previewURL: attachment.preview_url,
                                       size: 0,
                                     })}
                                   >
-                                    <img src={attachment.data_url} alt={attachment.name} loading="lazy" decoding="async" />
+                                    <img
+                                      src={resolveComposerAttachmentPreviewURL({
+                                        id: `${turn.id}:${attachment.id || attachment.name}`,
+                                        name: attachment.name,
+                                        contentType: attachment.content_type,
+                                        dataURL: attachment.data_url,
+                                        assetURL: attachment.asset_url,
+                                        previewURL: attachment.preview_url,
+                                        size: 0,
+                                      })}
+                                      alt={attachment.name}
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
                                   </button>
                                   <figcaption>{attachment.name}</figcaption>
                                 </figure>
@@ -1955,7 +2117,7 @@ export function ReactManagedTerminalRouteBody() {
                       aria-label={`${copy.preview} ${attachment.name}`}
                       onClick={() => setPreviewAttachment(attachment)}
                     >
-                      <img src={attachment.dataURL} alt={attachment.name} loading="lazy" decoding="async" />
+                      <img src={resolveComposerAttachmentPreviewURL(attachment)} alt={attachment.name} loading="lazy" decoding="async" />
                     </button>
                     <button
                       type="button"
@@ -2047,7 +2209,7 @@ export function ReactManagedTerminalRouteBody() {
           >
             ×
           </button>
-          <img src={previewAttachment.dataURL} alt={previewAttachment.name} decoding="async" />
+          <img src={resolveComposerAttachmentPreviewURL(previewAttachment)} alt={previewAttachment.name} decoding="async" />
         </div>
       </div>
     ) : null}

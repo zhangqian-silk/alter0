@@ -306,7 +306,7 @@ func main() {
 		}),
 		orchapp.WithTaskSummaryMemory(taskSummaryMemory),
 	)
-	persistentOrchestrator := orchapp.NewSessionPersistenceService(baseOrchestrator, sessionHistory, idGen, logger)
+	persistentOrchestrator := orchapp.NewSessionPersistenceService(baseOrchestrator, sessionHistory, idGen, logger, mustGetwd())
 	orchestrator := orchapp.NewConcurrentService(
 		rootCtx,
 		persistentOrchestrator,

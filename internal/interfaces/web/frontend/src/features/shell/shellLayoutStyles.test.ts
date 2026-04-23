@@ -219,6 +219,19 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("white-space: nowrap;");
   });
 
+  it("renders attachment previews and message images with their original aspect ratios instead of square crops", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".conversation-composer-attachment-preview img {");
+    expect(stylesheet).toContain("max-height: 72px;");
+    expect(stylesheet).toContain("object-fit: contain;");
+    expect(stylesheet).toContain(".message-image-card img {");
+    expect(stylesheet).toContain("height: auto;");
+    expect(stylesheet).toContain("max-height: min(420px, 70vh);");
+    expect(stylesheet).not.toContain("aspect-ratio: 1.2 / 1;");
+  });
+
   it("uses a compact single-line chat workspace header instead of the old stacked copy block", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ChangeEvent, type MutableRefObject } from "react";
+import { flushSync } from "react-dom";
 import { APIClientError, createAPIClient } from "../../../shared/api/client";
 import { formatDateTime } from "../../../shared/time/format";
 import {
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   readComposerImageFiles,
+  resolveComposerAttachmentPreviewURL,
   type ComposerImageAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
@@ -129,9 +131,13 @@ type TaskTerminalInputResponse = {
 };
 
 type TaskComposerAttachmentRequest = {
+  id?: string;
   name: string;
   content_type: string;
-  data_url: string;
+  data_url?: string;
+  preview_data_url?: string;
+  asset_url?: string;
+  preview_url?: string;
 };
 
 type TaskRouteCopy = {
@@ -474,20 +480,103 @@ function decodeTaskRequestAttachments(metadata: Record<string, string> | undefin
       const name = typeof item?.name === "string" ? item.name.trim() : "";
       const contentType = typeof item?.content_type === "string" ? item.content_type.trim() : "";
       const dataURL = typeof item?.data_url === "string" ? item.data_url.trim() : "";
-      if (!dataURL || !contentType.startsWith("image/")) {
+      const assetURL = typeof item?.asset_url === "string" ? item.asset_url.trim() : "";
+      const previewURL = typeof item?.preview_url === "string" ? item.preview_url.trim() : "";
+      if (!contentType.startsWith("image/") || (!dataURL && !assetURL && !previewURL)) {
         return [];
       }
       return [{
         id: `task-request-${index}-${name || contentType}`,
         name,
         contentType,
-        dataURL,
-        size: dataURL.length,
+        dataURL: dataURL || undefined,
+        assetURL: assetURL || undefined,
+        previewURL: previewURL || undefined,
+        size: (dataURL || previewURL || assetURL).length,
       }];
     });
   } catch {
     return [];
   }
+}
+
+function normalizeAttachmentText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function serializeTaskComposerAttachment(attachment: ComposerImageAttachment): TaskComposerAttachmentRequest {
+  if (attachment.assetURL) {
+    return {
+      id: attachment.id,
+      name: attachment.name,
+      content_type: attachment.contentType,
+      asset_url: attachment.assetURL,
+      preview_url: attachment.previewURL,
+    };
+  }
+  return {
+    id: attachment.id,
+    name: attachment.name,
+    content_type: attachment.contentType,
+    data_url: attachment.dataURL,
+    preview_data_url: attachment.previewDataURL,
+  };
+}
+
+async function uploadTaskSessionAttachments(
+  apiClient: ReturnType<typeof createAPIClient>,
+  sessionID: string,
+  attachments: ComposerImageAttachment[],
+): Promise<ComposerImageAttachment[]> {
+  const existing = attachments.filter((attachment) => attachment.assetURL);
+  const pending = attachments.filter((attachment) => !attachment.assetURL && attachment.dataURL);
+  if (pending.length === 0) {
+    return existing;
+  }
+  const payload = await apiClient.post<{
+    items?: Array<{
+      id?: string;
+      name?: string;
+      content_type?: string;
+      size?: number;
+      asset_url?: string;
+      preview_url?: string;
+    }>;
+  }>(
+    `/api/sessions/${encodeURIComponent(sessionID)}/attachments`,
+    {
+      attachments: pending.map((attachment) => ({
+        name: attachment.name,
+        content_type: attachment.contentType,
+        data_url: attachment.dataURL,
+        preview_data_url: attachment.previewDataURL || attachment.dataURL,
+      })),
+    },
+  );
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  if (items.length !== pending.length) {
+    throw new Error("Failed to store image attachments.");
+  }
+  return [
+    ...existing,
+    ...items.map((item, index) => {
+      const fallback = pending[index];
+      const id = normalizeAttachmentText(item.id);
+      const assetURL = normalizeAttachmentText(item.asset_url);
+      const previewURL = normalizeAttachmentText(item.preview_url) || assetURL;
+      if (!id || !assetURL) {
+        throw new Error("Failed to store image attachments.");
+      }
+      return {
+        id,
+        name: normalizeAttachmentText(item.name) || fallback.name,
+        contentType: normalizeAttachmentText(item.content_type) || fallback.contentType,
+        size: typeof item.size === "number" && Number.isFinite(item.size) ? item.size : fallback.size,
+        assetURL,
+        previewURL,
+      };
+    }),
+  ];
 }
 
 export function ReactManagedTasksRouteBody({
@@ -529,6 +618,21 @@ export function ReactManagedTasksRouteBody({
   const [terminalSubmitting, setTerminalSubmitting] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const terminalAttachmentsRef = useRef<ComposerImageAttachment[]>([]);
+  const terminalAttachmentUploadRef = useRef<{
+    pendingIDs: string[];
+    promise: Promise<ComposerImageAttachment[]>;
+  } | null>(null);
+
+  const updateTerminalAttachments = (
+    updater: (current: ComposerImageAttachment[]) => ComposerImageAttachment[],
+  ) => {
+    setTerminalAttachments((current) => {
+      const next = updater(current);
+      terminalAttachmentsRef.current = next;
+      return next;
+    });
+  };
 
   useEffect(() => {
     persistTaskRouteFilters(activeFilters);
@@ -575,7 +679,8 @@ export function ReactManagedTasksRouteBody({
       setDetailState({ status: "idle", view: null, error: "" });
       setLogState({ items: [], status: copy.logsEmpty, cursor: 0 });
       setTerminalInput("");
-      setTerminalAttachments([]);
+      terminalAttachmentUploadRef.current = null;
+      updateTerminalAttachments(() => []);
       setTerminalAttachmentError("");
       setPreviewAttachment(null);
       return;
@@ -585,7 +690,8 @@ export function ReactManagedTasksRouteBody({
     closeLogStream(eventSourceRef);
     setDetailState({ status: "loading", view: null, error: "" });
     setLogState({ items: [], status: copy.logsEmpty, cursor: 0 });
-    setTerminalAttachments([]);
+    terminalAttachmentUploadRef.current = null;
+    updateTerminalAttachments(() => []);
     setTerminalAttachmentError("");
     setPreviewAttachment(null);
     setTerminalInput("");
@@ -660,7 +766,7 @@ export function ReactManagedTasksRouteBody({
       disposed = true;
       closeLogStream(eventSourceRef);
     };
-  }, [activeTaskID, apiClient, copy, detailReloadToken, terminalAnchorTaskID]);
+  }, [activeTaskID, apiClient, copy, detailReloadToken]);
 
   async function handleCopyTaskID(taskID: string) {
     if (!taskID || taskID === "-") {
@@ -704,12 +810,35 @@ export function ReactManagedTasksRouteBody({
       setTerminalAttachmentError(copy.attachmentLimit(MAX_COMPOSER_IMAGE_ATTACHMENTS));
       return;
     }
+    let attachments: ComposerImageAttachment[] = [];
+    let uploadPromise: Promise<ComposerImageAttachment[]> | null = null;
     try {
-      const attachments = await readComposerImageFiles(files);
+      attachments = await readComposerImageFiles(files);
+      updateTerminalAttachments((current) => [...current, ...attachments].slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS));
+      const sessionID = normalizeAttachmentText(detailView?.link?.terminal_session_id)
+        || normalizeAttachmentText(detailView?.task?.session_id)
+        || activeTaskID;
+      uploadPromise = uploadTaskSessionAttachments(apiClient, sessionID, attachments);
+      terminalAttachmentUploadRef.current = {
+        pendingIDs: attachments.map((attachment) => attachment.id),
+        promise: uploadPromise,
+      };
+      const uploaded = await uploadPromise;
       setTerminalAttachmentError("");
-      setTerminalAttachments((current) => [...current, ...attachments].slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS));
+      updateTerminalAttachments((current) => [
+        ...current.filter((item) => !attachments.some((pending) => pending.id === item.id)),
+        ...uploaded,
+      ].slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS));
     } catch (error: unknown) {
+      if (attachments.length > 0) {
+        updateTerminalAttachments((current) =>
+          current.filter((item) => !attachments.some((pending) => pending.id === item.id)));
+      }
       setTerminalAttachmentError(toErrorMessage(error, copy.unknownError));
+    } finally {
+      if (uploadPromise && terminalAttachmentUploadRef.current?.promise === uploadPromise) {
+        terminalAttachmentUploadRef.current = null;
+      }
     }
   }
 
@@ -718,11 +847,25 @@ export function ReactManagedTasksRouteBody({
       return;
     }
     const input = normalizeFilterValue(rawInput);
-    const attachments: TaskComposerAttachmentRequest[] = terminalAttachments.map((attachment) => ({
-      name: attachment.name,
-      content_type: attachment.contentType,
-      data_url: attachment.dataURL,
-    }));
+    const pendingUpload = terminalAttachmentUploadRef.current;
+    if (pendingUpload) {
+      const uploaded = await pendingUpload.promise.catch(() => null);
+      if (Array.isArray(uploaded) && uploaded.length > 0) {
+        updateTerminalAttachments((current) => [
+          ...current.filter((item) => !pendingUpload.pendingIDs.includes(item.id)),
+          ...uploaded,
+        ].slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS));
+      }
+    }
+    let resolvedAttachments = terminalAttachmentsRef.current;
+    if (resolvedAttachments.some((attachment) => !attachment.assetURL && attachment.dataURL)) {
+      const sessionID = normalizeAttachmentText(detailView?.link?.terminal_session_id)
+        || normalizeAttachmentText(detailView?.task?.session_id)
+        || activeTaskID;
+      resolvedAttachments = await uploadTaskSessionAttachments(apiClient, sessionID, resolvedAttachments);
+      updateTerminalAttachments(() => resolvedAttachments);
+    }
+    const attachments: TaskComposerAttachmentRequest[] = resolvedAttachments.map(serializeTaskComposerAttachment);
     if (!input && attachments.length === 0) {
       return;
     }
@@ -748,16 +891,23 @@ export function ReactManagedTasksRouteBody({
       const nextTaskID = normalizeFilterValue(payload.task_id);
       const nextAnchorTaskID = normalizeFilterValue(payload.anchor_task_id) || anchorTaskID;
       if (nextTaskID) {
-        setActiveTaskID(nextTaskID);
-        setDisplayTaskID(nextAnchorTaskID);
-        setTerminalAnchorTaskID(nextAnchorTaskID);
+        flushSync(() => {
+          setActiveTaskID(nextTaskID);
+          setDisplayTaskID(nextAnchorTaskID);
+          setTerminalAnchorTaskID(nextAnchorTaskID);
+        });
+      } else {
+        setDetailReloadToken((current) => current + 1);
       }
+      setTerminalInput("");
+      updateTerminalAttachments(() => []);
+      setTerminalAttachmentError("");
     } catch (error: unknown) {
       window.alert(toErrorMessage(error, copy.unknownError));
     } finally {
       setTerminalSubmitting(false);
       setTerminalInput("");
-      setTerminalAttachments([]);
+      updateTerminalAttachments(() => []);
       setTerminalAttachmentError("");
       setPreviewAttachment(null);
     }
@@ -1328,7 +1478,7 @@ export function ReactManagedTasksRouteBody({
                                 setPreviewAttachment(attachment);
                               }}
                             >
-                              <img src={attachment.dataURL} alt={attachment.name} loading="lazy" />
+                              <img src={resolveComposerAttachmentPreviewURL(attachment)} alt={attachment.name} loading="lazy" />
                             </button>
                           ))}
                         </div>
@@ -1403,16 +1553,15 @@ export function ReactManagedTasksRouteBody({
                                   setPreviewAttachment(attachment);
                                 }}
                               >
-                                <img src={attachment.dataURL} alt={attachment.name} loading="lazy" />
+                                <img src={resolveComposerAttachmentPreviewURL(attachment)} alt={attachment.name} loading="lazy" />
                               </button>
                               <button
                                 type="button"
                                 className="conversation-composer-attachment-remove"
                                 aria-label={`${copy.removeImage}: ${attachment.name}`}
                                 onClick={() => {
-                                  setTerminalAttachments((current) =>
-                                    current.filter((item) => item !== attachment),
-                                  );
+                                  updateTerminalAttachments((current) =>
+                                    current.filter((item) => item !== attachment));
                                   setTerminalAttachmentError("");
                                 }}
                               >
@@ -1499,7 +1648,7 @@ export function ReactManagedTasksRouteBody({
             </button>
             <img
               className="conversation-image-preview-image"
-              src={previewAttachment.dataURL}
+              src={resolveComposerAttachmentPreviewURL(previewAttachment)}
               alt={previewAttachment.name}
             />
           </div>

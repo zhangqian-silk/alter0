@@ -4002,8 +4002,10 @@ body::after {
 
 .conversation-composer-attachment {
   position: relative;
-  width: 72px;
-  height: 72px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: min(140px, 40vw);
   border-radius: 18px;
   overflow: hidden;
   border: 1px solid rgba(158, 198, 233, 0.84);
@@ -4011,21 +4013,24 @@ body::after {
 }
 
 .conversation-composer-attachment-preview {
-  display: block;
-  width: 100%;
-  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: 0;
   background: transparent;
   line-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .conversation-composer-attachment-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
   display: block;
+  width: auto;
+  height: auto;
+  max-width: min(140px, 40vw);
+  max-height: 72px;
+  object-fit: contain;
+  border-radius: 18px;
 }
 
 .conversation-composer-attachment-remove {
@@ -4145,8 +4150,10 @@ body::after {
 .message-image-card img {
   display: block;
   width: 100%;
-  aspect-ratio: 1.2 / 1;
-  object-fit: cover;
+  height: auto;
+  max-height: min(420px, 70vh);
+  object-fit: contain;
+  background: rgba(242, 249, 255, 0.96);
 }
 
 .message-image-card figcaption {

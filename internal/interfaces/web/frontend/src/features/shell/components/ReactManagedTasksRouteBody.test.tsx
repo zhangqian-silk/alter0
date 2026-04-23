@@ -279,6 +279,20 @@ describe("ReactManagedTasksRouteBody", () => {
       .mockResolvedValueOnce(jsonResponse({ items: [], has_more: false, next_cursor: 0 }))
       .mockResolvedValueOnce(
         jsonResponse({
+          items: [
+            {
+              id: "task-asset-1",
+              name: "diagram.svg",
+              content_type: "image/svg+xml",
+              size: 32,
+              asset_url: "/api/sessions/terminal-runtime-1/attachments/task-asset-1/original",
+              preview_url: "/api/sessions/terminal-runtime-1/attachments/task-asset-1/preview",
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
           task_id: "task-follow-up-1",
           anchor_task_id: "task-root-1",
         }, { status: 202 }),
@@ -345,7 +359,7 @@ describe("ReactManagedTasksRouteBody", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
         5,
-        "/api/control/tasks/task-follow-up-1",
+        "/api/control/tasks/task-root-1",
         expect.objectContaining({ method: "GET" }),
       );
     });
@@ -402,6 +416,20 @@ describe("ReactManagedTasksRouteBody", () => {
         }),
       )
       .mockResolvedValueOnce(jsonResponse({ items: [], has_more: false, next_cursor: 0 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "task-asset-1",
+              name: "diagram.svg",
+              content_type: "image/svg+xml",
+              size: 32,
+              asset_url: "/api/sessions/terminal-runtime-1/attachments/task-asset-1/original",
+              preview_url: "/api/sessions/terminal-runtime-1/attachments/task-asset-1/preview",
+            },
+          ],
+        }),
+      )
       .mockResolvedValueOnce(
         jsonResponse({
           task_id: "task-follow-up-1",
@@ -479,6 +507,17 @@ describe("ReactManagedTasksRouteBody", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
         4,
+        "/api/sessions/terminal-runtime-1/attachments",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.any(String),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        5,
         "/api/control/tasks/task-root-1/terminal/input",
         expect.objectContaining({
           method: "POST",
@@ -487,14 +526,16 @@ describe("ReactManagedTasksRouteBody", () => {
       );
     });
 
-    const requestInit = fetchMock.mock.calls[3]?.[1] as RequestInit | undefined;
+    const requestInit = fetchMock.mock.calls[4]?.[1] as RequestInit | undefined;
     const payload = JSON.parse(String(requestInit?.body || "{}"));
     expect(payload.input).toBe("");
     expect(payload.attachments).toHaveLength(1);
     expect(payload.attachments[0]).toMatchObject({
-      name: "diagram.svg",
-      content_type: "image/svg+xml",
+      id: "task-asset-1",
+      asset_url: "/api/sessions/terminal-runtime-1/attachments/task-asset-1/original",
+      preview_url: "/api/sessions/terminal-runtime-1/attachments/task-asset-1/preview",
     });
+    expect(payload.attachments[0].data_url).toBeUndefined();
 
     await waitFor(() => {
       expect(screen.getAllByAltText("diagram.svg").length).toBeGreaterThan(0);

@@ -161,6 +161,17 @@ type RuntimeProvider = {
   models: RuntimeModel[];
 };
 
+type SessionAttachmentUploadResponse = {
+  items?: Array<{
+    id?: string;
+    name?: string;
+    content_type?: string;
+    size?: number;
+    asset_url?: string;
+    preview_url?: string;
+  }>;
+};
+
 type ConversationRuntimeContextValue = {
   route: ConversationRoute;
   compact: boolean;
@@ -194,7 +205,7 @@ type ConversationRuntimeContextValue = {
   focusSession: (sessionID: string) => void;
   removeSession: (sessionID: string) => Promise<void>;
   setDraft: (value: string) => void;
-  addDraftAttachments: (attachments: ComposerImageAttachment[]) => void;
+  addDraftAttachments: (attachments: ComposerImageAttachment[]) => Promise<void>;
   removeDraftAttachment: (attachmentID: string) => void;
   clearDraftAttachments: () => void;
   sendPrompt: (prompt?: string) => Promise<void>;
@@ -327,8 +338,11 @@ function normalizeStoredAttachments(value: unknown): ComposerImageAttachment[] {
       const record = item as Record<string, unknown>;
       const id = normalizeText(record.id);
       const dataURL = normalizeText(record.data_url ?? record.dataURL);
+      const previewDataURL = normalizeText(record.preview_data_url ?? record.previewDataURL);
+      const assetURL = normalizeText(record.asset_url ?? record.assetURL);
+      const previewURL = normalizeText(record.preview_url ?? record.previewURL);
       const contentType = normalizeText(record.content_type ?? record.contentType);
-      if (!id || !dataURL || !contentType.startsWith("image/")) {
+      if (!id || !contentType.startsWith("image/") || (!dataURL && !assetURL && !previewURL)) {
         return null;
       }
       return {
@@ -336,7 +350,10 @@ function normalizeStoredAttachments(value: unknown): ComposerImageAttachment[] {
         name: normalizeText(record.name) || "image",
         contentType,
         size: Number.isFinite(Number(record.size)) ? Number(record.size) : 0,
-        dataURL,
+        dataURL: dataURL || undefined,
+        previewDataURL: previewDataURL || undefined,
+        assetURL: assetURL || undefined,
+        previewURL: previewURL || undefined,
       };
     })
     .filter((item): item is ComposerImageAttachment => item !== null);
@@ -484,7 +501,14 @@ function toPersistedSessions(sessionsByRoute: SessionsState): unknown[] {
         name: attachment.name,
         content_type: attachment.contentType,
         size: attachment.size,
-        data_url: attachment.dataURL,
+        asset_url: attachment.assetURL,
+        preview_url: attachment.previewURL,
+        ...(attachment.assetURL || attachment.previewURL
+          ? {}
+          : {
+              data_url: attachment.previewDataURL || attachment.dataURL,
+              preview_data_url: attachment.previewDataURL,
+            }),
       })),
       route: message.route,
       source: message.source,
@@ -586,6 +610,25 @@ function readResponsePayload(response: Response): Promise<unknown> {
       return {};
     }
   });
+}
+
+function serializeMessageAttachment(attachment: ComposerImageAttachment) {
+  if (attachment.assetURL) {
+    return {
+      id: attachment.id,
+      name: attachment.name,
+      content_type: attachment.contentType,
+      asset_url: attachment.assetURL,
+      preview_url: attachment.previewURL,
+    };
+  }
+  return {
+    id: attachment.id,
+    name: attachment.name,
+    content_type: attachment.contentType,
+    data_url: attachment.dataURL,
+    preview_data_url: attachment.previewDataURL,
+  };
 }
 
 function parseSSEBlock(block: string) {
@@ -857,11 +900,7 @@ export function ConversationRuntimeProvider({
         session_id: sessionID,
         channel_id: "web-default",
         content,
-        attachments: attachments.map((attachment) => ({
-          name: attachment.name,
-          content_type: attachment.contentType,
-          data_url: attachment.dataURL,
-        })),
+        attachments: attachments.map(serializeMessageAttachment),
         metadata: {
           "alter0.llm.provider_id": selection.providerID,
           "alter0.llm.model": selection.modelID,
@@ -912,11 +951,7 @@ export function ConversationRuntimeProvider({
         session_id: sessionID,
         channel_id: "web-default",
         content,
-        attachments: attachments.map((attachment) => ({
-          name: attachment.name,
-          content_type: attachment.contentType,
-          data_url: attachment.dataURL,
-        })),
+        attachments: attachments.map(serializeMessageAttachment),
         metadata: {
           "alter0.llm.provider_id": selection.providerID,
           "alter0.llm.model": selection.modelID,
@@ -1070,6 +1105,52 @@ export function ConversationRuntimeProvider({
         error: true,
       });
     }
+  };
+
+  const uploadDraftAttachments = async (
+    sessionID: string,
+    attachments: ComposerImageAttachment[],
+  ): Promise<ComposerImageAttachment[]> => {
+    const existing = attachments.filter((attachment) => attachment.assetURL);
+    const pending = attachments.filter((attachment) => !attachment.assetURL && attachment.dataURL);
+    if (pending.length === 0) {
+      return existing;
+    }
+    const payload = await apiClient.post<SessionAttachmentUploadResponse>(
+      `/api/sessions/${encodeURIComponent(sessionID)}/attachments`,
+      {
+        attachments: pending.map((attachment) => ({
+          name: attachment.name,
+          content_type: attachment.contentType,
+          data_url: attachment.dataURL,
+          preview_data_url: attachment.previewDataURL || attachment.dataURL,
+        })),
+      },
+    );
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    if (items.length !== pending.length) {
+      throw new Error("Failed to store image attachments.");
+    }
+    return [
+      ...existing,
+      ...items.map((item, index) => {
+        const fallback = pending[index];
+        const id = normalizeText(item.id);
+        const assetURL = normalizeText(item.asset_url);
+        const previewURL = normalizeText(item.preview_url);
+        if (!id || !assetURL) {
+          throw new Error("Failed to store image attachments.");
+        }
+        return {
+          id,
+          name: normalizeText(item.name) || fallback.name,
+          contentType: normalizeText(item.content_type) || fallback.contentType,
+          size: Number.isFinite(Number(item.size)) ? Number(item.size) : fallback.size,
+          assetURL,
+          previewURL: previewURL || assetURL,
+        };
+      }),
+    ];
   };
 
   useEffect(() => {
@@ -1263,15 +1344,16 @@ export function ConversationRuntimeProvider({
       setComposerDrafts(nextDrafts);
       persistComposerDrafts(nextDrafts);
     },
-    addDraftAttachments: (attachments: ComposerImageAttachment[]) => {
+    addDraftAttachments: async (attachments: ComposerImageAttachment[]) => {
       const normalized = normalizeStoredAttachments(attachments);
       if (normalized.length === 0) {
         return;
       }
       const session = ensureSession();
+      const uploaded = await uploadDraftAttachments(session.id, normalized);
       const existing = composerAttachmentDrafts[session.id] || [];
       const deduped = new Map<string, ComposerImageAttachment>();
-      [...existing, ...normalized].forEach((item) => {
+      [...existing, ...uploaded].forEach((item) => {
         deduped.set(item.id, item);
       });
       const nextAttachments = Array.from(deduped.values()).slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS);

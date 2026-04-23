@@ -5,6 +5,11 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -225,6 +230,88 @@ func TestSessionPersistenceServicePersistsStructuredProcessSteps(t *testing.T) {
 	}
 	if recorder.records[1].RouteResult.ProcessSteps[0].Title != "codex_exec" {
 		t.Fatalf("expected persisted step title codex_exec, got %+v", recorder.records[1].RouteResult.ProcessSteps[0])
+	}
+}
+
+func TestSessionPersistenceServiceLocalizesAssistantMarkdownImagesIntoSessionWorkspace(t *testing.T) {
+	t.Parallel()
+
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("fake-image"))
+	}))
+	defer imageServer.Close()
+
+	workspaceRoot := t.TempDir()
+	downstream := &stubPersistenceDownstream{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-image",
+			SessionID: "s-image",
+			Route:     shareddomain.RouteNL,
+			Output:    "Preview:\n\n![Generated image](" + imageServer.URL + "/generated.png)",
+			ProcessSteps: []shareddomain.ProcessStep{
+				{
+					Kind:   "observation",
+					Title:  "rendered",
+					Detail: "Step image ![Trace](" + imageServer.URL + "/trace.png)",
+					Status: "completed",
+				},
+			},
+		},
+	}
+	recorder := &spySessionRecorder{}
+	service := &SessionPersistenceService{
+		downstream:    downstream,
+		recorder:      recorder,
+		idGenerator:   &fixedIDGenerator{nextID: "assistant-image"},
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceRoot: workspaceRoot,
+		httpClient:    imageServer.Client(),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:   "msg-image",
+		SessionID:   "s-image",
+		Content:     "show the generated image",
+		ReceivedAt:  time.Date(2026, 4, 23, 6, 0, 0, 0, time.UTC),
+		TriggerType: shareddomain.TriggerTypeUser,
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TraceID:     "trace-image",
+	}
+
+	result, err := service.Handle(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+
+	expectedPrefix := "/api/sessions/s-image/attachments/assistant-"
+	if !strings.Contains(result.Output, expectedPrefix) {
+		t.Fatalf("expected localized assistant image URL in result output, got %q", result.Output)
+	}
+	if len(result.ProcessSteps) != 1 || !strings.Contains(result.ProcessSteps[0].Detail, expectedPrefix) {
+		t.Fatalf("expected localized process step image URL, got %+v", result.ProcessSteps)
+	}
+	if len(recorder.records) != 2 || !strings.Contains(recorder.records[1].Content, expectedPrefix) {
+		t.Fatalf("expected persisted assistant record to contain localized image URL, got %+v", recorder.records)
+	}
+
+	attachmentRoot := filepath.Join(workspaceRoot, ".alter0", "workspaces", "sessions", "s-image", "attachments")
+	entries, readErr := os.ReadDir(attachmentRoot)
+	if readErr != nil {
+		t.Fatalf("read attachment workspace: %v", readErr)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 localized assistant image assets, got %d", len(entries))
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			t.Fatalf("expected attachment asset dir, got %s", entry.Name())
+		}
+		matches, globErr := filepath.Glob(filepath.Join(attachmentRoot, entry.Name(), "original.*"))
+		if globErr != nil || len(matches) != 1 {
+			t.Fatalf("expected original image file for %s, got %v %v", entry.Name(), matches, globErr)
+		}
 	}
 }
 
