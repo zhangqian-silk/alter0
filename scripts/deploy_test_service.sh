@@ -29,7 +29,7 @@ EOF
 
 default_web_start_command() {
   local go_cache="${ALTER0_TEST_SERVICE_GOCACHE:-/tmp/alter0-go-cache}"
-  printf 'export GOCACHE=%q; exec go run ./cmd/alter0 --internal-runtime-child --web-addr "127.0.0.1:${PORT}"' "${go_cache}"
+  printf 'unset ALTER0_WEB_LOGIN_PASSWORD; export GOCACHE=%q; exec go run ./cmd/alter0 --internal-runtime-child --web-addr "127.0.0.1:${PORT}"' "${go_cache}"
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then

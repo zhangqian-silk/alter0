@@ -1,6 +1,7 @@
 package application_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -137,6 +138,12 @@ func TestServiceListStatusesMarksCurrentAndRefreshesQuota(t *testing.T) {
 	if active == nil || active.Managed == nil || active.Managed.Name != "work" {
 		t.Fatalf("active managed account = %+v, want work", active)
 	}
+	if active.Quota == nil || active.Quota.Plan != "enterprise" {
+		t.Fatalf("active quota = %+v, want enterprise plan", active.Quota)
+	}
+	if !active.Refreshed {
+		t.Fatalf("expected active quota to be marked refreshed")
+	}
 	if len(statuses) != 1 {
 		t.Fatalf("len(statuses) = %d, want 1", len(statuses))
 	}
@@ -148,6 +155,76 @@ func TestServiceListStatusesMarksCurrentAndRefreshesQuota(t *testing.T) {
 	}
 	if !statuses[0].Refreshed {
 		t.Fatalf("expected refreshed quota")
+	}
+}
+
+func TestServiceListStatusesRefreshesQuotaForUnmanagedCurrentAuth(t *testing.T) {
+	activeHome := filepath.Join(t.TempDir(), ".codex")
+	if err := os.MkdirAll(activeHome, 0o755); err != nil {
+		t.Fatalf("mkdir active home: %v", err)
+	}
+	raw := buildServiceOAuthAuth(t, serviceOAuthInput{
+		Name:      "CLI Account",
+		Email:     "cli@example.com",
+		UserID:    "user-cli",
+		AccountID: "acct-cli",
+		Plan:      "plus",
+		ExpiresAt: time.Date(2026, 4, 18, 8, 0, 0, 0, time.UTC),
+	})
+	if err := os.WriteFile(codexapp.AuthFilePath(activeHome), raw, 0o600); err != nil {
+		t.Fatalf("write active auth: %v", err)
+	}
+
+	store, err := localcodex.NewStore(filepath.Join(t.TempDir(), "accounts"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	refreshedRaw := buildServiceOAuthAuth(t, serviceOAuthInput{
+		Name:      "CLI Account",
+		Email:     "cli@example.com",
+		UserID:    "user-cli",
+		AccountID: "acct-cli",
+		Plan:      "enterprise",
+		ExpiresAt: time.Date(2026, 4, 19, 8, 0, 0, 0, time.UTC),
+	})
+	service := codexapp.NewService(codexapp.ServiceOptions{
+		Store:             store,
+		ResolveActiveHome: func() (string, error) { return activeHome, nil },
+		QueryQuota: func(rawAuth []byte, _ codexapp.QuotaQueryOptions) (*codexdomain.QuotaStatus, []byte, error) {
+			if !bytes.Equal(rawAuth, raw) {
+				t.Fatalf("unexpected raw auth payload")
+			}
+			return &codexdomain.QuotaStatus{
+				Hourly: codexdomain.QuotaWindow{RemainingPercent: 61},
+				Weekly: codexdomain.QuotaWindow{RemainingPercent: 84},
+				Plan:   "enterprise",
+				Refreshed: true,
+			}, refreshedRaw, nil
+		},
+	})
+
+	statuses, active, err := service.ListStatuses(context.Background())
+	if err != nil {
+		t.Fatalf("ListStatuses returned error: %v", err)
+	}
+	if len(statuses) != 0 {
+		t.Fatalf("len(statuses) = %d, want 0", len(statuses))
+	}
+	if active == nil || active.Live == nil || active.Live.AccountName != "CLI Account" {
+		t.Fatalf("active live account = %+v, want CLI Account", active)
+	}
+	if active.Quota == nil || active.Quota.Hourly.RemainingPercent != 61 || active.Quota.Weekly.RemainingPercent != 84 {
+		t.Fatalf("active quota = %+v, want live quota", active.Quota)
+	}
+	if active.Live.Plan != "enterprise" {
+		t.Fatalf("active live plan = %q, want enterprise", active.Live.Plan)
+	}
+	gotRaw, err := os.ReadFile(codexapp.AuthFilePath(activeHome))
+	if err != nil {
+		t.Fatalf("read active auth: %v", err)
+	}
+	if !bytes.Equal(gotRaw, refreshedRaw) {
+		t.Fatalf("active auth was not refreshed")
 	}
 }
 
@@ -286,7 +363,7 @@ func TestServiceRuntimeStatusReadsModelsAndReasoningFromAppServer(t *testing.T) 
 			if len(args) < 1 || args[0] != "app-server" {
 				t.Fatalf("command args = %v, want app-server", args)
 			}
-			reqs := decodeAppServerRequests(t, options.Stdin)
+			reqs := decodeInteractiveAppServerRequests(t, options.Stdin, options.Stdout)
 			method := appServerMethod(reqs)
 			switch method {
 			case "model/list":
@@ -393,6 +470,246 @@ func TestServiceRuntimeStatusReadsModelsAndReasoningFromAppServer(t *testing.T) 
 	}
 }
 
+func TestServiceRuntimeStatusInitializesAppServerBeforeModelList(t *testing.T) {
+	activeHome := filepath.Join(t.TempDir(), ".codex")
+	if err := os.MkdirAll(activeHome, 0o755); err != nil {
+		t.Fatalf("mkdir active home: %v", err)
+	}
+	raw := buildServiceOAuthAuth(t, serviceOAuthInput{
+		Name:      "Work Account",
+		Email:     "work@example.com",
+		UserID:    "user-work",
+		AccountID: "acct-work",
+		Plan:      "plus",
+		ExpiresAt: time.Date(2026, 4, 18, 8, 0, 0, 0, time.UTC),
+	})
+	if err := os.WriteFile(codexapp.AuthFilePath(activeHome), raw, 0o600); err != nil {
+		t.Fatalf("write active auth: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(activeHome, "config.toml"), []byte("model = \"gpt-5.4\"\n"), 0o600); err != nil {
+		t.Fatalf("write config.toml: %v", err)
+	}
+
+	store, err := localcodex.NewStore(filepath.Join(t.TempDir(), "accounts"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	service := codexapp.NewService(codexapp.ServiceOptions{
+		Store:             store,
+		Command:           "/usr/local/bin/codex",
+		ResolveActiveHome: func() (string, error) { return activeHome, nil },
+		RunCommand: func(_ context.Context, name string, args []string, options codexapp.CommandOptions) error {
+			if name != "/usr/local/bin/codex" {
+				t.Fatalf("command name = %q", name)
+			}
+			reqs := decodeInteractiveAppServerRequests(t, options.Stdin, options.Stdout)
+			method := appServerMethod(reqs)
+			writeAppServerResponse(t, options.Stdout, 1, map[string]any{
+				"userAgent": "alter0/0.114.0",
+			})
+			if !appServerRequestsInitialized(reqs) {
+				return nil
+			}
+			switch method {
+			case "model/list":
+				writeAppServerResponse(t, options.Stdout, 2, map[string]any{
+					"data": []map[string]any{
+						{
+							"id":                     "gpt-5.4",
+							"model":                  "gpt-5.4",
+							"displayName":            "gpt-5.4",
+							"description":            "Strong model for everyday coding.",
+							"hidden":                 false,
+							"isDefault":              true,
+							"defaultReasoningEffort": "medium",
+							"supportedReasoningEfforts": []map[string]any{
+								{"reasoningEffort": "low", "description": "Fast"},
+								{"reasoningEffort": "medium", "description": "Balanced"},
+								{"reasoningEffort": "high", "description": "Deep"},
+							},
+							"inputModalities": []string{"text"},
+						},
+					},
+				})
+			case "config/read":
+				writeAppServerResponse(t, options.Stdout, 2, map[string]any{
+					"config": map[string]any{
+						"model":                  "gpt-5.4",
+						"model_reasoning_effort": "medium",
+					},
+					"origins": map[string]any{
+						"model": map[string]any{
+							"name":    map[string]any{"type": "user", "file": filepath.Join(activeHome, "config.toml")},
+							"version": "sha256:test-version",
+						},
+						"model_reasoning_effort": map[string]any{
+							"name":    map[string]any{"type": "user", "file": filepath.Join(activeHome, "config.toml")},
+							"version": "sha256:test-version",
+						},
+					},
+				})
+			default:
+				t.Fatalf("unexpected app-server method %q", method)
+			}
+			return nil
+		},
+	})
+	if _, err := service.AddFromRaw("work", raw, false); err != nil {
+		t.Fatalf("AddFromRaw returned error: %v", err)
+	}
+
+	status, err := service.RuntimeStatus()
+	if err != nil {
+		t.Fatalf("RuntimeStatus returned error: %v", err)
+	}
+	if status.Model != "gpt-5.4" {
+		t.Fatalf("status.Model = %q, want gpt-5.4", status.Model)
+	}
+	if len(status.Models) != 1 || status.Models[0].ID != "gpt-5.4" {
+		t.Fatalf("status.Models = %+v, want gpt-5.4", status.Models)
+	}
+}
+
+func TestServiceRuntimeStatusWaitsForInitializeResponseBeforeNextRequest(t *testing.T) {
+	activeHome := filepath.Join(t.TempDir(), ".codex")
+	if err := os.MkdirAll(activeHome, 0o755); err != nil {
+		t.Fatalf("mkdir active home: %v", err)
+	}
+	raw := buildServiceOAuthAuth(t, serviceOAuthInput{
+		Name:      "Work Account",
+		Email:     "work@example.com",
+		UserID:    "user-work",
+		AccountID: "acct-work",
+		Plan:      "plus",
+		ExpiresAt: time.Date(2026, 4, 18, 8, 0, 0, 0, time.UTC),
+	})
+	if err := os.WriteFile(codexapp.AuthFilePath(activeHome), raw, 0o600); err != nil {
+		t.Fatalf("write active auth: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(activeHome, "config.toml"), []byte("model = \"gpt-5.4\"\n"), 0o600); err != nil {
+		t.Fatalf("write config.toml: %v", err)
+	}
+
+	store, err := localcodex.NewStore(filepath.Join(t.TempDir(), "accounts"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	service := codexapp.NewService(codexapp.ServiceOptions{
+		Store:             store,
+		Command:           "/usr/local/bin/codex",
+		ResolveActiveHome: func() (string, error) { return activeHome, nil },
+		RunCommand: func(_ context.Context, name string, args []string, options codexapp.CommandOptions) error {
+			if name != "/usr/local/bin/codex" {
+				t.Fatalf("command name = %q", name)
+			}
+			reader := bufio.NewReader(options.Stdin)
+			initializeLine, err := reader.ReadString('\n')
+			if err != nil {
+				t.Fatalf("read initialize request: %v", err)
+			}
+			initialize := map[string]any{}
+			if err := json.Unmarshal([]byte(strings.TrimSpace(initializeLine)), &initialize); err != nil {
+				t.Fatalf("decode initialize request: %v", err)
+			}
+			if method, _ := initialize["method"].(string); method != "initialize" {
+				t.Fatalf("initialize method = %q, want initialize", method)
+			}
+
+			nextLineCh := make(chan string, 1)
+			nextErrCh := make(chan error, 1)
+			go func() {
+				line, readErr := reader.ReadString('\n')
+				if readErr != nil {
+					nextErrCh <- readErr
+					return
+				}
+				nextLineCh <- line
+			}()
+
+			select {
+			case line := <-nextLineCh:
+				t.Fatalf("received next request before initialize response: %s", strings.TrimSpace(line))
+			case readErr := <-nextErrCh:
+				t.Fatalf("read next request before initialize response: %v", readErr)
+			case <-time.After(20 * time.Millisecond):
+			}
+
+			writeAppServerResponse(t, options.Stdout, 1, map[string]any{
+				"userAgent": "alter0/0.114.0",
+			})
+
+			initializedLine := <-nextLineCh
+			requestLine, err := reader.ReadString('\n')
+			if err != nil {
+				t.Fatalf("read app-server request: %v", err)
+			}
+			initialized := map[string]any{}
+			if err := json.Unmarshal([]byte(strings.TrimSpace(initializedLine)), &initialized); err != nil {
+				t.Fatalf("decode initialized notification: %v", err)
+			}
+			request := map[string]any{}
+			if err := json.Unmarshal([]byte(strings.TrimSpace(requestLine)), &request); err != nil {
+				t.Fatalf("decode app-server request: %v", err)
+			}
+			if method, _ := initialized["method"].(string); method != "notifications/initialized" {
+				t.Fatalf("initialized method = %q, want notifications/initialized", method)
+			}
+			switch method, _ := request["method"].(string); method {
+			case "model/list":
+				writeAppServerResponse(t, options.Stdout, 2, map[string]any{
+					"data": []map[string]any{
+						{
+							"id":                     "gpt-5.4",
+							"model":                  "gpt-5.4",
+							"displayName":            "gpt-5.4",
+							"description":            "Strong model",
+							"hidden":                 false,
+							"isDefault":              true,
+							"defaultReasoningEffort": "medium",
+							"supportedReasoningEfforts": []map[string]any{
+								{"reasoningEffort": "low", "description": "Fast"},
+								{"reasoningEffort": "medium", "description": "Balanced"},
+							},
+							"inputModalities": []string{"text"},
+						},
+					},
+				})
+			case "config/read":
+				writeAppServerResponse(t, options.Stdout, 2, map[string]any{
+					"config": map[string]any{
+						"model":                  "gpt-5.4",
+						"model_reasoning_effort": "medium",
+					},
+					"origins": map[string]any{
+						"model": map[string]any{
+							"name":    map[string]any{"type": "user", "file": filepath.Join(activeHome, "config.toml")},
+							"version": "sha256:test-version",
+						},
+						"model_reasoning_effort": map[string]any{
+							"name":    map[string]any{"type": "user", "file": filepath.Join(activeHome, "config.toml")},
+							"version": "sha256:test-version",
+						},
+					},
+				})
+			default:
+				t.Fatalf("unexpected app-server method %q", method)
+			}
+			return nil
+		},
+	})
+	if _, err := service.AddFromRaw("work", raw, false); err != nil {
+		t.Fatalf("AddFromRaw returned error: %v", err)
+	}
+
+	status, err := service.RuntimeStatus()
+	if err != nil {
+		t.Fatalf("RuntimeStatus returned error: %v", err)
+	}
+	if status.Model != "gpt-5.4" {
+		t.Fatalf("status.Model = %q, want gpt-5.4", status.Model)
+	}
+}
+
 func TestServiceUpdateRuntimeSettingsUsesAppServerBatchWrite(t *testing.T) {
 	activeHome := filepath.Join(t.TempDir(), ".codex")
 	if err := os.MkdirAll(activeHome, 0o755); err != nil {
@@ -412,7 +729,7 @@ func TestServiceUpdateRuntimeSettingsUsesAppServerBatchWrite(t *testing.T) {
 			if name != "codex" {
 				t.Fatalf("command name = %q", name)
 			}
-			reqs := decodeAppServerRequests(t, options.Stdin)
+			reqs := decodeInteractiveAppServerRequests(t, options.Stdin, options.Stdout)
 			method := appServerMethod(reqs)
 			switch method {
 			case "config/read":
@@ -553,12 +870,55 @@ func decodeAppServerRequests(t *testing.T, reader io.Reader) []map[string]any {
 	return requests
 }
 
+func decodeInteractiveAppServerRequests(t *testing.T, reader io.Reader, writer io.Writer) []map[string]any {
+	t.Helper()
+	buffered := bufio.NewReader(reader)
+	decodeRequestLine := func(line string) map[string]any {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			t.Fatalf("app-server request line is empty")
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+			t.Fatalf("decode app-server request %q: %v", trimmed, err)
+		}
+		return payload
+	}
+	readRequestLine := func(label string) map[string]any {
+		line, err := buffered.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read %s request: %v", label, err)
+		}
+		return decodeRequestLine(line)
+	}
+
+	initialize := readRequestLine("initialize")
+	writeAppServerResponse(t, writer, 1, map[string]any{
+		"userAgent": "alter0/0.114.0",
+	})
+	initialized := readRequestLine("initialized")
+	request := readRequestLine("method")
+	return []map[string]any{initialize, initialized, request}
+}
+
 func appServerMethod(requests []map[string]any) string {
 	if len(requests) == 0 {
 		return ""
 	}
 	method, _ := requests[len(requests)-1]["method"].(string)
 	return method
+}
+
+func appServerRequestsInitialized(requests []map[string]any) bool {
+	if len(requests) < 3 {
+		return false
+	}
+	initializeMethod, _ := requests[0]["method"].(string)
+	notificationMethod, _ := requests[1]["method"].(string)
+	requestMethod, _ := requests[2]["method"].(string)
+	return initializeMethod == "initialize" &&
+		notificationMethod == "notifications/initialized" &&
+		requestMethod != ""
 }
 
 func writeAppServerResponse(t *testing.T, writer io.Writer, id int, payload any) {

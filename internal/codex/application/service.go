@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -47,6 +48,9 @@ type CurrentStatus struct {
 	Live     *codexdomain.Snapshot `json:"live,omitempty"`
 	Managed  *Record               `json:"managed,omitempty"`
 	AuthPath string                `json:"auth_path,omitempty"`
+	Quota    *codexdomain.QuotaStatus `json:"quota,omitempty"`
+	Error    string                   `json:"error,omitempty"`
+	Refreshed bool                    `json:"refreshed"`
 }
 
 type RuntimeStatus struct {
@@ -155,7 +159,7 @@ type Service struct {
 
 type appServerRequest struct {
 	JSONRPC string `json:"jsonrpc"`
-	ID      int    `json:"id"`
+	ID      *int   `json:"id,omitempty"`
 	Method  string `json:"method"`
 	Params  any    `json:"params,omitempty"`
 }
@@ -388,8 +392,63 @@ func (s *Service) ListStatuses(ctx context.Context) ([]AccountStatus, *CurrentSt
 		}
 		items = append(items, item)
 	}
+	s.populateCurrentQuota(current, items)
 	_ = ctx
 	return items, current, nil
+}
+
+func (s *Service) populateCurrentQuota(current *CurrentStatus, items []AccountStatus) {
+	if current == nil {
+		return
+	}
+	if current.Managed != nil {
+		for _, item := range items {
+			if !strings.EqualFold(item.Record.Name, current.Managed.Name) {
+				continue
+			}
+			current.Quota = item.Quota
+			current.Error = item.Error
+			current.Refreshed = item.Refreshed
+			if current.Live != nil && strings.TrimSpace(current.Live.Plan) == "" && strings.TrimSpace(item.Record.Snapshot.Plan) != "" {
+				current.Live.Plan = strings.TrimSpace(item.Record.Snapshot.Plan)
+			}
+			return
+		}
+	}
+	if current.Live == nil || s.queryQuota == nil || strings.TrimSpace(current.AuthPath) == "" {
+		return
+	}
+	raw, err := os.ReadFile(current.AuthPath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			current.Error = fmt.Sprintf("read active auth.json: %v", err)
+		}
+		return
+	}
+	quota, updatedRaw, quotaErr := s.queryQuota(raw, QuotaQueryOptions{Now: s.now()})
+	if quotaErr != nil {
+		current.Error = quotaErr.Error()
+		return
+	}
+	current.Quota = quota
+	current.Refreshed = quota.Refreshed
+	if strings.TrimSpace(quota.Plan) != "" {
+		current.Live.Plan = strings.TrimSpace(quota.Plan)
+	}
+	if len(updatedRaw) == 0 {
+		return
+	}
+	updatedRaw = compactJSON(updatedRaw)
+	if writeErr := os.WriteFile(current.AuthPath, updatedRaw, 0o600); writeErr != nil {
+		current.Error = writeErr.Error()
+		return
+	}
+	if snapshot, snapshotErr := codexdomain.SnapshotFromRawAuth(updatedRaw); snapshotErr == nil {
+		current.Live = snapshot
+		if current.Quota != nil && strings.TrimSpace(current.Quota.Plan) != "" {
+			current.Live.Plan = strings.TrimSpace(current.Quota.Plan)
+		}
+	}
 }
 
 func (s *Service) RuntimeStatus() (*RuntimeStatus, error) {
@@ -800,70 +859,132 @@ func (s *Service) appServerConfigBatchWrite(ctx context.Context, activeHome stri
 }
 
 func (s *Service) appServerCall(ctx context.Context, activeHome string, method string, params any, destination any) error {
-	requests := []appServerRequest{
-		{
-			JSONRPC: "2.0",
-			ID:      1,
-			Method:  "initialize",
-			Params: appServerInitializeParams{
-				ClientInfo: appServerClientInfo{Name: "alter0", Version: "1.0"},
-			},
-		},
-		{
-			JSONRPC: "2.0",
-			ID:      2,
-			Method:  method,
-			Params:  params,
+	initializeID := 1
+	requestID := 2
+	initializeRequest := appServerRequest{
+		JSONRPC: "2.0",
+		ID:      &initializeID,
+		Method:  "initialize",
+		Params: appServerInitializeParams{
+			ClientInfo: appServerClientInfo{Name: "alter0", Version: "1.0"},
 		},
 	}
-	var stdin bytes.Buffer
-	for _, request := range requests {
-		if err := json.NewEncoder(&stdin).Encode(request); err != nil {
+	initializedNotification := appServerRequest{
+		JSONRPC: "2.0",
+		Method:  "notifications/initialized",
+		Params:  map[string]any{},
+	}
+	methodRequest := appServerRequest{
+		JSONRPC: "2.0",
+		ID:      &requestID,
+		Method:  method,
+		Params:  params,
+	}
+	stdinReader, stdinWriter := io.Pipe()
+	stdoutReader, stdoutWriter := io.Pipe()
+	var stderr bytes.Buffer
+	runErrCh := make(chan error, 1)
+	go func() {
+		runErr := s.runCommand(ctx, s.command, []string{"app-server", "--listen", "stdio://"}, CommandOptions{
+			Env:    withEnvValue(os.Environ(), "CODEX_HOME", activeHome),
+			Stdin:  stdinReader,
+			Stdout: stdoutWriter,
+			Stderr: &stderr,
+		})
+		_ = stdoutWriter.Close()
+		_ = stdinReader.Close()
+		runErrCh <- runErr
+	}()
+	defer func() {
+		_ = stdinWriter.Close()
+	}()
+
+	writeRequest := func(request appServerRequest) error {
+		if err := json.NewEncoder(stdinWriter).Encode(request); err != nil {
 			return fmt.Errorf("encode app-server request %s: %w", method, err)
 		}
+		return nil
 	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if err := s.runCommand(ctx, s.command, []string{"app-server", "--listen", "stdio://"}, CommandOptions{
-		Env:    withEnvValue(os.Environ(), "CODEX_HOME", activeHome),
-		Stdin:  &stdin,
-		Stdout: &stdout,
-		Stderr: &stderr,
-	}); err != nil {
+	waitRun := func() error {
+		err := <-runErrCh
+		if err == nil {
+			return nil
+		}
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = err.Error()
 		}
 		return fmt.Errorf("codex app-server %s: %s", method, message)
 	}
-	for _, line := range strings.Split(stdout.String(), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	scanner := bufio.NewScanner(stdoutReader)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	waitForResponse := func(expectedID int, destination any) (bool, error) {
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			response := appServerResponse{}
+			if err := json.Unmarshal([]byte(line), &response); err != nil {
+				continue
+			}
+			if response.ID != expectedID {
+				continue
+			}
+			if response.Error != nil {
+				return false, fmt.Errorf("codex app-server %s: %s", method, strings.TrimSpace(response.Error.Message))
+			}
+			if destination == nil {
+				return true, nil
+			}
+			if err := json.Unmarshal(response.Result, destination); err != nil {
+				return false, fmt.Errorf("decode app-server %s response: %w", method, err)
+			}
+			return true, nil
 		}
-		response := appServerResponse{}
-		if err := json.Unmarshal([]byte(line), &response); err != nil {
-			continue
+		if err := scanner.Err(); err != nil {
+			return false, fmt.Errorf("read app-server %s response: %w", method, err)
 		}
-		if response.ID != 2 {
-			continue
-		}
-		if response.Error != nil {
-			return fmt.Errorf("codex app-server %s: %s", method, strings.TrimSpace(response.Error.Message))
-		}
-		if destination == nil {
-			return nil
-		}
-		if err := json.Unmarshal(response.Result, destination); err != nil {
-			return fmt.Errorf("decode app-server %s response: %w", method, err)
-		}
-		return nil
+		return false, nil
 	}
-	message := strings.TrimSpace(stderr.String())
-	if message == "" {
-		message = "missing response"
+	if err := writeRequest(initializeRequest); err != nil {
+		return err
 	}
-	return fmt.Errorf("codex app-server %s: %s", method, message)
+	receivedInitialize, err := waitForResponse(initializeID, nil)
+	if err != nil {
+		return err
+	}
+	if !receivedInitialize {
+		if runErr := waitRun(); runErr != nil {
+			return runErr
+		}
+		return fmt.Errorf("codex app-server %s: missing initialize response", method)
+	}
+	if err := writeRequest(initializedNotification); err != nil {
+		return err
+	}
+	if err := writeRequest(methodRequest); err != nil {
+		return err
+	}
+	receivedTarget, err := waitForResponse(requestID, destination)
+	_ = stdinWriter.Close()
+	if err != nil {
+		if runErr := waitRun(); runErr != nil {
+			return runErr
+		}
+		return err
+	}
+	if runErr := waitRun(); runErr != nil {
+		return runErr
+	}
+	if !receivedTarget {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = "missing response"
+		}
+		return fmt.Errorf("codex app-server %s: %s", method, message)
+	}
+	return nil
 }
 
 func normalizeTextPointer(value *string) string {

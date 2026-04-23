@@ -118,11 +118,7 @@ func (m *workspaceServiceProcessManager) startProcessLocked(key string, entry wo
 
 	cmd := m.commandRunner("bash", "-lc", entry.StartCommand)
 	cmd.Dir = filepath.FromSlash(entry.Workdir)
-	cmd.Env = append(
-		os.Environ(),
-		fmt.Sprintf("PORT=%d", entry.Port),
-		fmt.Sprintf("ALTER0_SERVICE_PORT=%d", entry.Port),
-	)
+	cmd.Env = workspaceServiceProcessEnv(entry.Port)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
@@ -239,4 +235,26 @@ func workspaceServiceRuntimeDir(entry workspaceServiceRegistration) string {
 		entry.SessionID,
 		entry.ServiceID,
 	)
+}
+
+func workspaceServiceProcessEnv(port int) []string {
+	env := withoutEnvKey(os.Environ(), "ALTER0_WEB_LOGIN_PASSWORD")
+	env = append(env, fmt.Sprintf("PORT=%d", port))
+	env = append(env, fmt.Sprintf("ALTER0_SERVICE_PORT=%d", port))
+	return env
+}
+
+func withoutEnvKey(env []string, key string) []string {
+	prefix := strings.TrimSpace(key) + "="
+	if prefix == "=" {
+		return append([]string{}, env...)
+	}
+	filtered := make([]string, 0, len(env))
+	for _, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
 }
