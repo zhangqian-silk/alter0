@@ -508,6 +508,10 @@ func (s *Server) withWorkspaceServiceGateway(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if r.URL.Path == "/login" || r.URL.Path == "/logout" {
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		switch entry.ServiceType {
 		case workspaceServiceTypeFrontendDist:

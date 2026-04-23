@@ -234,6 +234,85 @@ func TestWorkspaceServiceGatewayStartsManagedHTTPServiceBeforeProxy(t *testing.T
 	}
 }
 
+func TestWorkspaceServiceGatewayLeavesWorkspaceLoginOnSharedGateway(t *testing.T) {
+	upstreamHits := []string{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits = append(upstreamHits, r.URL.Path)
+		_, _ = io.WriteString(w, "workspace upstream")
+	}))
+	defer upstream.Close()
+
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	entry, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:   "session-http-login",
+		ServiceID:   defaultWorkspaceServiceID,
+		ServiceType: workspaceServiceTypeHTTP,
+		UpstreamURL: upstream.URL,
+	})
+	if err != nil {
+		t.Fatalf("register workspace service: %v", err)
+	}
+
+	server := &Server{
+		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceService:  registry,
+		webLoginEnabled:   true,
+		webLoginPassword:  "secret",
+		webSessionToken:   "shared-token",
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", server.loginHandler)
+	mux.HandleFunc("/logout", server.logoutHandler)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+
+	handler := server.authMiddleware(server.withWorkspaceServiceGateway(mux))
+
+	loginReq := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("password=secret&next=%2F"))
+	loginReq.Host = entry.Host
+	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+
+	if loginRec.Code != http.StatusSeeOther {
+		t.Fatalf("expected login status %d, got %d: %s", http.StatusSeeOther, loginRec.Code, loginRec.Body.String())
+	}
+	if len(upstreamHits) != 0 {
+		t.Fatalf("expected workspace login to stay on shared gateway, got upstream hits %v", upstreamHits)
+	}
+	loginCookie := loginRec.Result().Cookies()
+	if len(loginCookie) != 1 {
+		t.Fatalf("expected shared login cookie, got %d cookies", len(loginCookie))
+	}
+	if loginCookie[0].Value != "shared-token" {
+		t.Fatalf("expected shared gateway token, got %q", loginCookie[0].Value)
+	}
+	if loginCookie[0].Domain != "alter0.cn" {
+		t.Fatalf("expected shared login cookie domain alter0.cn, got %q", loginCookie[0].Domain)
+	}
+
+	rootReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	rootReq.Host = entry.Host
+	rootReq.AddCookie(loginCookie[0])
+	rootRec := httptest.NewRecorder()
+	handler.ServeHTTP(rootRec, rootReq)
+
+	if rootRec.Code != http.StatusOK {
+		t.Fatalf("expected proxied root status %d, got %d: %s", http.StatusOK, rootRec.Code, rootRec.Body.String())
+	}
+	if len(upstreamHits) != 1 || upstreamHits[0] != "/" {
+		t.Fatalf("expected proxied workspace root after shared login, got upstream hits %v", upstreamHits)
+	}
+	if strings.TrimSpace(rootRec.Body.String()) != "workspace upstream" {
+		t.Fatalf("unexpected proxied root body %q", rootRec.Body.String())
+	}
+}
+
 func TestWorkspaceServiceGatewayServesRegisteredFrontendDist(t *testing.T) {
 	repoPath := preparePreviewRepo(t, "workspace frontend")
 	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
