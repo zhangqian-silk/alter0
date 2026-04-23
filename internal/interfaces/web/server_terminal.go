@@ -220,7 +220,11 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
 		}
-		attachments := normalizeMessageAttachments(req.Attachments)
+		attachments, err := s.normalizeConversationMessageAttachments(sessionID, req.Attachments)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 		input := strings.TrimSpace(req.Input)
 		if input == "" && len(attachments) > 0 {
 			input = defaultImageAttachmentContent(len(attachments))

@@ -50,4 +50,53 @@ describe("ChatMessageRegion", () => {
     expect(screen.queryByText("CHAT")).not.toBeInTheDocument();
     expect(screen.queryByText("MODEL")).not.toBeInTheDocument();
   });
+
+  it("renders assistant markdown images as lazy-loaded message media", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "Preview:\n\n![Generated diagram](https://cdn.example.com/generated-diagram.png)",
+          }),
+        ]}
+      />,
+    );
+
+    const image = screen.getByRole("img", { name: "Generated diagram" });
+    expect(image).toHaveAttribute("src", "https://cdn.example.com/generated-diagram.png");
+    expect(image).toHaveAttribute("loading", "lazy");
+    expect(image).toHaveAttribute("decoding", "async");
+  });
+
+  it("renders user image attachments from workspace preview URLs", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            id: "message-2",
+            role: "user",
+            text: "Inspect this diagram",
+            attachments: [
+              {
+                id: "image-1",
+                name: "diagram.png",
+                contentType: "image/png",
+                size: 1024,
+                previewURL: "/api/sessions/session-1/attachments/image-1/preview",
+                assetURL: "/api/sessions/session-1/attachments/image-1/original",
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    const image = screen.getByRole("img", { name: "diagram.png" });
+    expect(image).toHaveAttribute("src", "/api/sessions/session-1/attachments/image-1/preview");
+    expect(screen.getByText("diagram.png")).toBeInTheDocument();
+  });
 });

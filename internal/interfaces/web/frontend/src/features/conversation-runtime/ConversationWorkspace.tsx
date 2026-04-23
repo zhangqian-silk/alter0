@@ -7,6 +7,7 @@ import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShe
 import {
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   readComposerImageFiles,
+  resolveComposerAttachmentPreviewURL,
   type ComposerImageAttachment,
 } from "./composerImageAttachments";
 import { useConversationRuntime } from "./ConversationRuntimeProvider";
@@ -171,7 +172,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     }
     try {
       const attachments = await readComposerImageFiles(files);
-      runtime.addDraftAttachments(attachments);
+      await runtime.addDraftAttachments(attachments);
       setComposerAttachmentError("");
     } catch (error) {
       setComposerAttachmentError(error instanceof Error ? error.message : "Failed to add image.");
@@ -674,7 +675,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
                       aria-label={`${composerPreviewPrefix} ${attachment.name}`}
                       onClick={() => setPreviewAttachment(attachment)}
                     >
-                      <img src={attachment.dataURL} alt={attachment.name} loading="lazy" decoding="async" />
+                      <img src={resolveComposerAttachmentPreviewURL(attachment)} alt={attachment.name} loading="lazy" decoding="async" />
                     </button>
                     <button
                       type="button"
@@ -754,7 +755,7 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
             >
               ×
             </button>
-            <img src={previewAttachment.dataURL} alt={previewAttachment.name} decoding="async" />
+            <img src={resolveComposerAttachmentPreviewURL(previewAttachment)} alt={previewAttachment.name} decoding="async" />
           </div>
         </div>
       ) : null}

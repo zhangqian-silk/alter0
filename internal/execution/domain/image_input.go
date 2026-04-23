@@ -8,9 +8,13 @@ import (
 const UserImageAttachmentsMetadataKey = "alter0.user_input.image_attachments"
 
 type UserImageAttachment struct {
-	Name        string `json:"name"`
-	ContentType string `json:"content_type"`
-	DataURL     string `json:"data_url"`
+	ID            string `json:"id,omitempty"`
+	Name          string `json:"name"`
+	ContentType   string `json:"content_type"`
+	DataURL       string `json:"data_url,omitempty"`
+	WorkspacePath string `json:"workspace_path,omitempty"`
+	AssetURL      string `json:"asset_url,omitempty"`
+	PreviewURL    string `json:"preview_url,omitempty"`
 }
 
 func EncodeUserImageAttachments(items []UserImageAttachment) (string, error) {
@@ -46,16 +50,27 @@ func NormalizeUserImageAttachments(items []UserImageAttachment) []UserImageAttac
 	}
 	out := make([]UserImageAttachment, 0, len(items))
 	for _, item := range items {
+		id := strings.TrimSpace(item.ID)
 		name := strings.TrimSpace(item.Name)
 		contentType := strings.TrimSpace(item.ContentType)
 		dataURL := strings.TrimSpace(item.DataURL)
-		if !strings.HasPrefix(strings.ToLower(contentType), "image/") || dataURL == "" {
+		workspacePath := strings.TrimSpace(item.WorkspacePath)
+		assetURL := strings.TrimSpace(item.AssetURL)
+		previewURL := strings.TrimSpace(item.PreviewURL)
+		if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+			continue
+		}
+		if dataURL == "" && workspacePath == "" && assetURL == "" {
 			continue
 		}
 		out = append(out, UserImageAttachment{
-			Name:        name,
-			ContentType: contentType,
-			DataURL:     dataURL,
+			ID:            id,
+			Name:          name,
+			ContentType:   contentType,
+			DataURL:       dataURL,
+			WorkspacePath: workspacePath,
+			AssetURL:      assetURL,
+			PreviewURL:    previewURL,
 		})
 	}
 	if len(out) == 0 {

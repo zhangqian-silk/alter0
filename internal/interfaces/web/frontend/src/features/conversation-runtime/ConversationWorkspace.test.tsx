@@ -42,7 +42,7 @@ const runtimeMock = {
   removeSession: vi.fn().mockResolvedValue(undefined),
   setDraft: vi.fn(),
   draftAttachments: [],
-  addDraftAttachments: vi.fn(),
+  addDraftAttachments: vi.fn().mockResolvedValue(undefined),
   removeDraftAttachment: vi.fn(),
   clearDraftAttachments: vi.fn(),
   sendPrompt: vi.fn().mockResolvedValue(undefined),
@@ -293,7 +293,8 @@ describe("ConversationWorkspace", () => {
         name: "diagram.png",
         contentType: "image/png",
         size: 1024,
-        dataURL: "data:image/png;base64,abc123",
+        assetURL: "/api/sessions/session-1/attachments/image-1/original",
+        previewURL: "/api/sessions/session-1/attachments/image-1/preview",
       },
     ];
     renderWorkspace({ isMobileViewport: false });
@@ -301,6 +302,10 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByRole("button", { name: "Add image" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Preview diagram.png" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove diagram.png" })).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: "diagram.png" })[0]).toHaveAttribute(
+      "src",
+      "/api/sessions/session-1/attachments/image-1/preview",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Preview diagram.png" }));
     expect(screen.getByRole("dialog", { name: "diagram.png" })).toBeInTheDocument();

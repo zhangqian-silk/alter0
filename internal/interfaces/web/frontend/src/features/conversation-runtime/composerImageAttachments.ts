@@ -2,13 +2,17 @@ export const MAX_COMPOSER_IMAGE_ATTACHMENTS = 5;
 export const MAX_COMPOSER_IMAGE_BYTES = 5 * 1024 * 1024;
 export const MAX_COMPOSER_IMAGE_DIMENSION_PX = 1600;
 export const MAX_COMPOSER_IMAGE_DATA_URL_BYTES = 1_500_000;
+export const MAX_COMPOSER_IMAGE_PREVIEW_DIMENSION_PX = 240;
 
 export type ComposerImageAttachment = {
   id: string;
   name: string;
   contentType: string;
   size: number;
-  dataURL: string;
+  dataURL?: string;
+  previewDataURL?: string;
+  assetURL?: string;
+  previewURL?: string;
 };
 
 export async function readComposerImageFiles(files: FileList | File[]): Promise<ComposerImageAttachment[]> {
@@ -28,9 +32,18 @@ export async function readComposerImageFiles(files: FileList | File[]): Promise<
       contentType: optimized.contentType,
       size: optimized.size,
       dataURL: optimized.dataURL,
+      previewDataURL: optimized.previewDataURL,
     });
   }
   return attachments;
+}
+
+export function resolveComposerAttachmentPreviewURL(attachment: ComposerImageAttachment): string {
+  return attachment.previewURL
+    || attachment.assetURL
+    || attachment.previewDataURL
+    || attachment.dataURL
+    || "";
 }
 
 async function buildOptimizedImagePayload(file: File) {
@@ -40,6 +53,7 @@ async function buildOptimizedImagePayload(file: File) {
       contentType: file.type || "image/*",
       size: estimateDataURLBytes(dataURL),
       dataURL,
+      previewDataURL: dataURL,
     };
   }
 
@@ -70,7 +84,35 @@ async function buildOptimizedImagePayload(file: File) {
     contentType: extractDataURLContentType(dataURL) || preferredContentType,
     size,
     dataURL,
+    previewDataURL: await buildPreviewDataURL(dataURL, extractDataURLContentType(dataURL) || preferredContentType),
   };
+}
+
+async function buildPreviewDataURL(dataURL: string, contentType: string) {
+  try {
+    const image = await loadImageFromURL(dataURL);
+    const { width, height } = fitWithinBounds(
+      image.width,
+      image.height,
+      MAX_COMPOSER_IMAGE_PREVIEW_DIMENSION_PX,
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return dataURL;
+    }
+    context.drawImage(image.element, 0, 0, width, height);
+    const previewType = resolvePreferredContentType(contentType);
+    const previewDataURL = canvas.toDataURL(previewType, 0.7);
+    if (estimateDataURLBytes(previewDataURL) >= estimateDataURLBytes(dataURL)) {
+      return dataURL;
+    }
+    return previewDataURL;
+  } catch {
+    return dataURL;
+  }
 }
 
 function readFileAsDataURL(file: File): Promise<string> {
@@ -119,10 +161,15 @@ async function loadImageFromFile(file: File): Promise<{ element: HTMLImageElemen
   const objectURL = typeof URL.createObjectURL === "function"
     ? URL.createObjectURL(file)
     : await readFileAsDataURL(file);
+  return loadImageFromURL(objectURL, objectURL.startsWith("blob:"));
+}
+
+function loadImageFromURL(sourceURL: string, revokeAfterLoad = false): Promise<{ element: HTMLImageElement; width: number; height: number }> {
+  const objectURL = sourceURL;
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onerror = () => {
-      if (typeof URL.revokeObjectURL === "function" && objectURL.startsWith("blob:")) {
+      if (revokeAfterLoad && typeof URL.revokeObjectURL === "function") {
         URL.revokeObjectURL(objectURL);
       }
       reject(new Error("Failed to read image file."));
@@ -130,7 +177,7 @@ async function loadImageFromFile(file: File): Promise<{ element: HTMLImageElemen
     image.onload = () => {
       const width = image.naturalWidth || image.width;
       const height = image.naturalHeight || image.height;
-      if (typeof URL.revokeObjectURL === "function" && objectURL.startsWith("blob:")) {
+      if (revokeAfterLoad && typeof URL.revokeObjectURL === "function") {
         URL.revokeObjectURL(objectURL);
       }
       if (!width || !height) {

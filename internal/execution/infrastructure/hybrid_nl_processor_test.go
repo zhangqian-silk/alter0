@@ -475,6 +475,42 @@ func TestHybridNLProcessorIncludesImageAttachmentsInReactUserMessage(t *testing.
 	}
 }
 
+func TestHybridNLProcessorLoadsWorkspaceAttachmentFilesIntoReactUserMessage(t *testing.T) {
+	t.Parallel()
+
+	captureClient := &captureMessagePartsLLMClient{}
+	reactFactory := &stubReactFactory{client: captureClient}
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "describe image", testRuntimeMetadata())), reactFactory, nil)
+
+	file := filepath.Join(t.TempDir(), "diagram.png")
+	if err := os.WriteFile(file, []byte("fake"), 0o644); err != nil {
+		t.Fatalf("write workspace attachment: %v", err)
+	}
+
+	metadata := testRuntimeMetadata()
+	rawAttachments, err := execdomain.EncodeUserImageAttachments([]execdomain.UserImageAttachment{{
+		Name:          "diagram.png",
+		ContentType:   "image/png",
+		WorkspacePath: file,
+	}})
+	if err != nil {
+		t.Fatalf("EncodeUserImageAttachments() error = %v", err)
+	}
+	metadata[execdomain.UserImageAttachmentsMetadataKey] = rawAttachments
+
+	output, err := processor.Process(context.Background(), "describe image", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "已读取图片" {
+		t.Fatalf("Process() output = %q", output)
+	}
+	userMessage := captureClient.lastRequest.Messages[len(captureClient.lastRequest.Messages)-1]
+	if got := userMessage.Parts[1].ImageURL; got != "data:image/png;base64,ZmFrZQ==" {
+		t.Fatalf("expected workspace file converted to data URL, got %q", got)
+	}
+}
+
 func TestHybridNLProcessorDoesNotFallbackToCodexWhenImagesNeedVision(t *testing.T) {
 	reactErr := &testError{text: "vision model unavailable"}
 	reactFactory := &stubReactFactory{client: &failingLLMClient{err: reactErr}}

@@ -1307,6 +1307,22 @@ body {
   min-width: 0;
 }
 
+.assistant-inline-image-link {
+  display: inline-flex;
+  margin-top: 10px;
+  max-width: min(100%, 420px);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 16px 36px -28px rgba(15, 23, 42, 0.34);
+}
+
+.assistant-inline-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: rgba(148, 163, 184, 0.12);
+}
+
 .msg-meta {
   margin-top: 8px;
   color: var(--ink-muted);

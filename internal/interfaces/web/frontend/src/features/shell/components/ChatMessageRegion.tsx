@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { formatTimeLabel } from "../../../shared/time/format";
+import { resolveComposerAttachmentPreviewURL } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 
 export type ChatMessageSnapshot = {
@@ -11,7 +12,10 @@ export type ChatMessageSnapshot = {
     name: string;
     contentType: string;
     size: number;
-    dataURL: string;
+    dataURL?: string;
+    previewDataURL?: string;
+    assetURL?: string;
+    previewURL?: string;
   }>;
   route: string;
   source: string;
@@ -150,7 +154,7 @@ function UserMessageBody({ message }: { message: ChatMessageSnapshot }) {
         <div className="message-image-grid" data-message-image-grid={message.id}>
           {message.attachments.map((attachment) => (
             <figure key={attachment.id} className="message-image-card">
-              <img src={attachment.dataURL} alt={attachment.name} loading="lazy" decoding="async" />
+              <img src={resolveComposerAttachmentPreviewURL(attachment)} alt={attachment.name} loading="lazy" decoding="async" />
               <figcaption>{attachment.name}</figcaption>
             </figure>
           ))}
@@ -555,6 +559,18 @@ function renderMarkdownInline(content: string) {
     return token;
   };
 
+  rendered = rendered.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, altText: string, url: string) => {
+    const src = sanitizeMarkdownImageURL(url);
+    if (!src) {
+      return renderMarkdownInline(altText);
+    }
+    const alt = escapeHTML(altText.trim() || "Generated image");
+    return reserve(
+      `<a class="assistant-inline-image-link" href="${src}" target="_blank" rel="noreferrer noopener">`
+      + `<img class="assistant-inline-image" src="${src}" alt="${alt}" loading="lazy" decoding="async" />`
+      + "</a>",
+    );
+  });
   rendered = rendered.replace(/`([^`]+)`/g, (_, code: string) =>
     reserve(`<code class="chat-md-inline-code">${escapeHTML(code)}</code>`),
   );
@@ -585,6 +601,18 @@ function sanitizeMarkdownURL(rawURL: string) {
     return escapeHTML(normalized);
   }
   return "";
+}
+
+function sanitizeMarkdownImageURL(rawURL: string) {
+  const value = String(rawURL || "").trim();
+  if (!value) {
+    return "";
+  }
+  const normalized = value.replace(/^<|>$/g, "");
+  if (/^data:image\//i.test(normalized)) {
+    return escapeHTML(normalized);
+  }
+  return sanitizeMarkdownURL(normalized);
 }
 
 function escapeHTML(value: string) {

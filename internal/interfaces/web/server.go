@@ -251,9 +251,13 @@ type messageRequest struct {
 }
 
 type messageAttachmentRequest struct {
-	Name        string `json:"name"`
-	ContentType string `json:"content_type"`
-	DataURL     string `json:"data_url"`
+	ID             string `json:"id,omitempty"`
+	Name           string `json:"name"`
+	ContentType    string `json:"content_type"`
+	DataURL        string `json:"data_url,omitempty"`
+	PreviewDataURL string `json:"preview_data_url,omitempty"`
+	AssetURL       string `json:"asset_url,omitempty"`
+	PreviewURL     string `json:"preview_url,omitempty"`
 }
 
 type agentMessageRequest struct {
@@ -1834,7 +1838,7 @@ func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Request) {
-	sessionID, resource, ok := sessionResourceID(r.URL.Path)
+	sessionID, resource, resourceID, action, ok := sessionResourceID(r.URL.Path)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
@@ -1907,6 +1911,15 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 			items = items[:1]
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	case "attachments":
+		switch {
+		case resourceID == "" && action == "":
+			s.handleSessionAttachmentUpload(w, r, sessionID)
+		case resourceID != "" && (action == "original" || action == "preview"):
+			s.handleSessionAttachmentRead(w, r, sessionID, resourceID, action)
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
+		}
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
@@ -2236,7 +2249,18 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	attachments := normalizeMessageAttachments(req.Attachments)
+	terminalSessionID := strings.TrimSpace(baseTask.RequestMetadata[controlTaskTerminalSessionIDKey])
+	if terminalSessionID == "" {
+		terminalSessionID = strings.TrimSpace(baseTask.SessionID)
+	}
+	if terminalSessionID == "" {
+		terminalSessionID = strings.TrimSpace(baseTask.ID)
+	}
+	attachments, err := s.normalizeConversationMessageAttachments(terminalSessionID, req.Attachments)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	input := strings.TrimSpace(req.Input)
 	if input == "" && len(attachments) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input or attachments are required"})
@@ -2244,14 +2268,6 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 	}
 	if input == "" && len(attachments) > 0 {
 		input = defaultImageAttachmentContent(len(attachments))
-	}
-
-	terminalSessionID := strings.TrimSpace(baseTask.RequestMetadata[controlTaskTerminalSessionIDKey])
-	if terminalSessionID == "" {
-		terminalSessionID = strings.TrimSpace(baseTask.SessionID)
-	}
-	if terminalSessionID == "" {
-		terminalSessionID = strings.TrimSpace(baseTask.ID)
 	}
 
 	source := resolveControlTaskSource(baseTask)
@@ -4905,35 +4921,41 @@ func normalizeLLMProviderAPIKey(value string) string {
 	return trimmed
 }
 
-func sessionResourceID(path string) (string, string, bool) {
+func sessionResourceID(path string) (string, string, string, string, bool) {
 	const prefix = "/api/sessions/"
 	if !strings.HasPrefix(path, prefix) {
-		return "", "", false
+		return "", "", "", "", false
 	}
 	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
 	if trimmed == "" {
-		return "", "", false
+		return "", "", "", "", false
 	}
 	parts := strings.Split(trimmed, "/")
 	if len(parts) == 1 {
 		sessionID := strings.TrimSpace(parts[0])
 		if sessionID == "" {
-			return "", "", false
+			return "", "", "", "", false
 		}
-		return sessionID, "", true
-	}
-	if len(parts) != 2 {
-		return "", "", false
-	}
-	resource := strings.TrimSpace(parts[1])
-	if resource != "messages" && resource != "tasks" {
-		return "", "", false
+		return sessionID, "", "", "", true
 	}
 	sessionID := strings.TrimSpace(parts[0])
 	if sessionID == "" {
-		return "", "", false
+		return "", "", "", "", false
 	}
-	return sessionID, resource, true
+	resource := strings.TrimSpace(parts[1])
+	switch {
+	case len(parts) == 2 && (resource == "messages" || resource == "tasks" || resource == "attachments"):
+		return sessionID, resource, "", "", true
+	case len(parts) == 4 && resource == "attachments":
+		resourceID := strings.TrimSpace(parts[2])
+		action := strings.TrimSpace(parts[3])
+		if resourceID == "" || (action != "original" && action != "preview") {
+			return "", "", "", "", false
+		}
+		return sessionID, resource, resourceID, action, true
+	default:
+		return "", "", "", "", false
+	}
 }
 
 func resolveServerWorkspaceRoot() string {
@@ -5539,18 +5561,20 @@ func (s *Server) prepareProductMessage(r *http.Request, productID string) (share
 }
 
 func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.UnifiedMessage, int, error) {
-	attachments := normalizeMessageAttachments(req.Attachments)
+	sessionID := strings.TrimSpace(req.SessionID)
+	if sessionID == "" {
+		sessionID = s.idGenerator.NewID()
+	}
+	attachments, err := s.normalizeConversationMessageAttachments(sessionID, req.Attachments)
+	if err != nil {
+		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, err
+	}
 	content := strings.TrimSpace(req.Content)
 	if content == "" && len(attachments) == 0 {
 		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("content or attachments are required")
 	}
 	if content == "" && len(attachments) > 0 {
 		content = defaultImageAttachmentContent(len(attachments))
-	}
-
-	sessionID := strings.TrimSpace(req.SessionID)
-	if sessionID == "" {
-		sessionID = s.idGenerator.NewID()
 	}
 
 	channelID := strings.TrimSpace(req.ChannelID)
@@ -5592,21 +5616,6 @@ func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.Uni
 		CorrelationID: strings.TrimSpace(req.CorrelationID),
 		ReceivedAt:    time.Now().UTC(),
 	}, http.StatusOK, nil
-}
-
-func normalizeMessageAttachments(values []messageAttachmentRequest) []execdomain.UserImageAttachment {
-	if len(values) == 0 {
-		return nil
-	}
-	items := make([]execdomain.UserImageAttachment, 0, len(values))
-	for _, value := range values {
-		items = append(items, execdomain.UserImageAttachment{
-			Name:        strings.TrimSpace(value.Name),
-			ContentType: strings.TrimSpace(value.ContentType),
-			DataURL:     strings.TrimSpace(value.DataURL),
-		})
-	}
-	return execdomain.NormalizeUserImageAttachments(items)
 }
 
 func defaultImageAttachmentContent(count int) string {

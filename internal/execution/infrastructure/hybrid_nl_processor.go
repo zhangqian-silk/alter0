@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -183,7 +184,10 @@ func (p *HybridNLProcessor) processWithReact(
 	if err != nil {
 		return "", err
 	}
-	userMessage := buildUserInputMessage(content, metadata)
+	userMessage, err := buildUserInputMessage(content, metadata)
+	if err != nil {
+		return "", err
+	}
 	if emit == nil {
 		return agent.RunMessage(ctx, userMessage)
 	}
@@ -229,7 +233,10 @@ func (p *HybridNLProcessor) processWithAgent(
 	if err != nil {
 		return "", err
 	}
-	userMessage := buildUserInputMessage(content, metadata)
+	userMessage, err := buildUserInputMessage(content, metadata)
+	if err != nil {
+		return "", err
+	}
 	collector := newAgentProcessCollector()
 	state, err := agent.RunWithMessageState(ctx, userMessage, func(event llmdomain.ReActEvent) error {
 		processStep := collector.Consume(event)
@@ -263,15 +270,22 @@ func (p *HybridNLProcessor) processWithAgent(
 	return strings.TrimSpace(state.Answer), nil
 }
 
-func buildUserInputMessage(content string, metadata map[string]string) llmdomain.Message {
+func buildUserInputMessage(content string, metadata map[string]string) (llmdomain.Message, error) {
 	parts := []llmdomain.MessagePart{{
 		Type: llmdomain.MessagePartTypeText,
 		Text: strings.TrimSpace(content),
 	}}
 	for _, attachment := range execdomain.DecodeUserImageAttachments(metadata) {
+		imageURL, err := resolveUserAttachmentImageURL(attachment)
+		if err != nil {
+			return llmdomain.Message{}, err
+		}
+		if strings.TrimSpace(imageURL) == "" {
+			continue
+		}
 		parts = append(parts, llmdomain.MessagePart{
 			Type:     llmdomain.MessagePartTypeImage,
-			ImageURL: attachment.DataURL,
+			ImageURL: imageURL,
 			Name:     attachment.Name,
 		})
 	}
@@ -279,7 +293,26 @@ func buildUserInputMessage(content string, metadata map[string]string) llmdomain
 		Role:    "user",
 		Content: strings.TrimSpace(content),
 		Parts:   parts,
+	}, nil
+}
+
+func resolveUserAttachmentImageURL(attachment execdomain.UserImageAttachment) (string, error) {
+	if dataURL := strings.TrimSpace(attachment.DataURL); dataURL != "" {
+		return dataURL, nil
 	}
+	path := strings.TrimSpace(attachment.WorkspacePath)
+	if path == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read workspace attachment: %w", err)
+	}
+	contentType := strings.TrimSpace(attachment.ContentType)
+	if contentType == "" {
+		contentType = "image/*"
+	}
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
 func (p *HybridNLProcessor) executeModelTool(

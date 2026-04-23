@@ -134,6 +134,34 @@ describe("ReactManagedTerminalRouteBody", () => {
           },
         }));
       }
+      if (url === "/api/sessions/terminal-1/attachments" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "asset-terminal-1",
+              name: "terminal-shot.svg",
+              content_type: "image/svg+xml",
+              size: 32,
+              asset_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/original",
+              preview_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/preview",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/sessions/terminal-2/attachments" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "asset-terminal-2",
+              name: "diagram.svg",
+              content_type: "image/svg+xml",
+              size: 32,
+              asset_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/original",
+              preview_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/preview",
+            },
+          ],
+        }));
+      }
       return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
     }));
   });
@@ -417,10 +445,25 @@ describe("ReactManagedTerminalRouteBody", () => {
     await waitFor(() => {
       const fetchMock = vi.mocked(fetch);
       expect(fetchMock.mock.calls.some(([request, init]) =>
+        String(request) === "/api/sessions/terminal-1/attachments"
+        && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+      expect(fetchMock.mock.calls.some(([request, init]) =>
         String(request) === "/api/terminal/sessions/terminal-1/input"
         && String(init?.method || "GET").toUpperCase() === "POST"
         && JSON.parse(String(init?.body || "{}")).attachments?.length === 1)).toBe(true);
     });
+
+    const fetchMock = vi.mocked(fetch);
+    const inputCall = fetchMock.mock.calls.find(([request, init]) =>
+      String(request) === "/api/terminal/sessions/terminal-1/input"
+      && String(init?.method || "GET").toUpperCase() === "POST");
+    const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
+    expect(payload.attachments[0]).toMatchObject({
+      id: "asset-terminal-1",
+      asset_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/original",
+      preview_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/preview",
+    });
+    expect(payload.attachments[0].data_url).toBeUndefined();
   });
 
   it("loads step detail when expanding a process step", async () => {
@@ -516,6 +559,20 @@ describe("ReactManagedTerminalRouteBody", () => {
             updated_at: "2026-04-15T10:20:01Z",
             turns: [],
           },
+        }));
+      }
+      if (url === "/api/sessions/terminal-2/attachments" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "asset-terminal-2",
+              name: "diagram.svg",
+              content_type: "image/svg+xml",
+              size: 32,
+              asset_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/original",
+              preview_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/preview",
+            },
+          ],
         }));
       }
       return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
@@ -618,6 +675,20 @@ describe("ReactManagedTerminalRouteBody", () => {
           },
         }));
       }
+      if (url === "/api/sessions/terminal-2/attachments" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "asset-terminal-2",
+              name: "diagram.svg",
+              content_type: "image/svg+xml",
+              size: 32,
+              asset_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/original",
+              preview_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/preview",
+            },
+          ],
+        }));
+      }
       return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
     }));
 
@@ -657,9 +728,11 @@ describe("ReactManagedTerminalRouteBody", () => {
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
     expect(payload.attachments).toHaveLength(1);
     expect(payload.attachments[0]).toMatchObject({
-      name: "diagram.svg",
-      content_type: "image/svg+xml",
+      id: "asset-terminal-2",
+      asset_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/original",
+      preview_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/preview",
     });
+    expect(payload.attachments[0].data_url).toBeUndefined();
   });
 
   it("marks the first send as pending immediately while the terminal session is still being created", async () => {

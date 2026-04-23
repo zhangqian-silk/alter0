@@ -26,10 +26,12 @@ type sessionRecorder interface {
 }
 
 type SessionPersistenceService struct {
-	downstream  Orchestrator
-	recorder    sessionRecorder
-	idGenerator sharedapp.IDGenerator
-	logger      *slog.Logger
+	downstream    Orchestrator
+	recorder      sessionRecorder
+	idGenerator   sharedapp.IDGenerator
+	logger        *slog.Logger
+	workspaceRoot string
+	httpClient    assistantImageFetcher
 }
 
 type streamPersistenceOrchestrator interface {
@@ -45,20 +47,23 @@ func NewSessionPersistenceService(
 	recorder *sessionapp.Service,
 	idGenerator sharedapp.IDGenerator,
 	logger *slog.Logger,
+	workspaceRoot string,
 ) *SessionPersistenceService {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &SessionPersistenceService{
-		downstream:  downstream,
-		recorder:    recorder,
-		idGenerator: idGenerator,
-		logger:      logger,
+		downstream:    downstream,
+		recorder:      recorder,
+		idGenerator:   idGenerator,
+		logger:        logger,
+		workspaceRoot: strings.TrimSpace(workspaceRoot),
 	}
 }
 
 func (s *SessionPersistenceService) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
 	result, err := s.downstream.Handle(ctx, msg)
+	result = s.materializeAssistantImages(msg.SessionID, result)
 	s.persistResult(msg, result, err)
 	return result, err
 }
@@ -94,6 +99,7 @@ func (s *SessionPersistenceService) HandleStream(
 			}
 		}
 	}
+	result = s.materializeAssistantImages(msg.SessionID, result)
 	s.persistResult(msg, result, err)
 	return result, err
 }
