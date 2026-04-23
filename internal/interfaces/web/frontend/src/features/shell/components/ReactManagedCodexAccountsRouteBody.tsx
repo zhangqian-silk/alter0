@@ -34,6 +34,44 @@ type CurrentStatus = {
   auth_path?: string;
 };
 
+type RuntimeStatus = {
+  command?: string;
+  auth_path?: string;
+  config_path?: string;
+  has_auth?: boolean;
+  has_config?: boolean;
+  profile?: string;
+  model?: string;
+  reasoning_effort?: string;
+  model_origin?: RuntimeConfigOrigin | null;
+  reasoning_origin?: RuntimeConfigOrigin | null;
+  models?: RuntimeModel[];
+  current?: CurrentStatus | null;
+};
+
+type RuntimeConfigOrigin = {
+  key_path?: string;
+  file_path?: string;
+  version?: string;
+};
+
+type RuntimeReasoningMode = {
+  reasoning_effort?: string;
+  description?: string;
+};
+
+type RuntimeModel = {
+  id?: string;
+  model?: string;
+  display_name?: string;
+  description?: string;
+  hidden?: boolean;
+  is_default?: boolean;
+  default_reasoning_effort?: string;
+  supported_reasoning_effort?: RuntimeReasoningMode[];
+  input_modalities?: string[];
+};
+
 type LoginSession = {
   id?: string;
   account_name?: string;
@@ -45,6 +83,7 @@ type LoginSession = {
 type AccountResponse = {
   items?: AccountStatus[];
   active?: CurrentStatus | null;
+  runtime?: RuntimeStatus | null;
 };
 
 type RequestState =
@@ -59,22 +98,45 @@ type CodexAccountsCopy = {
   unmanagedCurrentHint: string;
   overview: string;
   managedAccounts: string;
+  currentCodex: string;
+  currentCodexSubtitle: string;
   operationsTitle: string;
   operationsSubtitle: string;
   loginSessionTitle: string;
   loginSessionEmpty: string;
   accountName: string;
+  model: string;
+  reasoningDepth: string;
+  modelHint: string;
+  reasoningHint: string;
   authFile: string;
   chooseFile: string;
   noFileSelected: string;
   overwrite: string;
   importAccount: string;
   startLogin: string;
+  applyRuntimeSettings: string;
   current: string;
   saved: string;
   activeAccount: string;
   managedCount: string;
   activePath: string;
+  runtimeState: string;
+  authState: string;
+  configState: string;
+  cliCommand: string;
+  configPath: string;
+  activeProfile: string;
+  modelSource: string;
+  reasoningSource: string;
+  authReady: string;
+  authMissing: string;
+  configReady: string;
+  configMissing: string;
+  runtimeReady: string;
+  runtimeNeedsAuth: string;
+  runtimeNeedsConfig: string;
+  codexDefault: string;
   quotaHourly: string;
   quotaWeekly: string;
   plan: string;
@@ -84,6 +146,7 @@ type CodexAccountsCopy = {
   switchTo: (name: string) => string;
   imported: string;
   switched: (name: string) => string;
+  runtimeSettingsUpdated: string;
   loginStarted: string;
   loginCompleted: string;
   loginFailed: string;
@@ -101,22 +164,45 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     unmanagedCurrentHint: "Current auth.json is active but not managed yet. Import it to create the first managed snapshot.",
     overview: "Runtime Overview",
     managedAccounts: "Managed Accounts",
+    currentCodex: "Current Codex",
+    currentCodexSubtitle: "Manage the active Codex runtime with live capabilities returned by Codex itself, including model and reasoning depth for upcoming CLI work.",
     operationsTitle: "Import or Add Account",
     operationsSubtitle: "Import an existing auth.json or start an isolated Codex login session without replacing the active runtime account immediately.",
     loginSessionTitle: "Login Session",
     loginSessionEmpty: "No login session started.",
     accountName: "Account Name",
+    model: "Model",
+    reasoningDepth: "Reasoning Depth",
+    modelHint: "Available models are loaded from the active Codex runtime.",
+    reasoningHint: "Reasoning depth follows the selected model's supported efforts.",
     authFile: "Auth File",
     chooseFile: "Choose auth.json",
     noFileSelected: "No file selected",
     overwrite: "Overwrite existing account",
     importAccount: "Import auth.json",
     startLogin: "Start Codex Login",
+    applyRuntimeSettings: "Apply Runtime Settings",
     current: "Current",
     saved: "Saved",
     activeAccount: "Active Account",
     managedCount: "Managed Count",
     activePath: "Active Auth Path",
+    runtimeState: "Runtime State",
+    authState: "Auth State",
+    configState: "Config State",
+    cliCommand: "CLI Command",
+    configPath: "Config Path",
+    activeProfile: "Active Profile",
+    modelSource: "Model Source",
+    reasoningSource: "Reasoning Source",
+    authReady: "Loaded",
+    authMissing: "Missing",
+    configReady: "Configured",
+    configMissing: "Using default",
+    runtimeReady: "Ready",
+    runtimeNeedsAuth: "Auth missing",
+    runtimeNeedsConfig: "Config default",
+    codexDefault: "Codex default",
     quotaHourly: "Hourly Remaining",
     quotaWeekly: "Weekly Remaining",
     plan: "Plan",
@@ -126,6 +212,7 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     switchTo: (name) => `Switch to ${name}`,
     imported: "Account imported.",
     switched: (name) => `Switched to ${name}.`,
+    runtimeSettingsUpdated: "Runtime settings updated.",
     loginStarted: "Login started.",
     loginCompleted: "Login completed.",
     loginFailed: "Login failed.",
@@ -141,22 +228,45 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     unmanagedCurrentHint: "当前 auth.json 已生效，但尚未纳入托管；导入后即可创建第一条托管快照。",
     overview: "运行时概览",
     managedAccounts: "托管账号",
+    currentCodex: "当前 Codex",
+    currentCodexSubtitle: "直接管理当前生效的 Codex 运行时，基于 Codex 实时返回的能力切换 model 与思考深度，并查看来源状态。",
     operationsTitle: "导入或新增账号",
     operationsSubtitle: "支持导入现有 auth.json，或启动隔离的 Codex 登录会话，新账号生成后不会立刻替换当前运行时认证。",
     loginSessionTitle: "登录会话",
     loginSessionEmpty: "当前还没有启动登录会话。",
     accountName: "账号名称",
+    model: "Model",
+    reasoningDepth: "思考深度",
+    modelHint: "可选 model 直接来自当前 Codex 运行时返回的能力列表。",
+    reasoningHint: "思考深度会跟随所选 model 的真实支持范围。",
     authFile: "Auth 文件",
     chooseFile: "选择 auth.json",
     noFileSelected: "未选择任何文件",
     overwrite: "覆盖同名账号",
     importAccount: "导入 auth.json",
     startLogin: "启动 Codex 登录",
+    applyRuntimeSettings: "应用运行时设置",
     current: "当前",
     saved: "已保存",
     activeAccount: "当前账号",
     managedCount: "托管数量",
     activePath: "当前生效 Auth 路径",
+    runtimeState: "运行状态",
+    authState: "认证状态",
+    configState: "配置状态",
+    cliCommand: "CLI 命令",
+    configPath: "配置路径",
+    activeProfile: "生效 Profile",
+    modelSource: "Model 来源",
+    reasoningSource: "思考深度来源",
+    authReady: "已加载",
+    authMissing: "缺失",
+    configReady: "已配置",
+    configMissing: "使用默认值",
+    runtimeReady: "就绪",
+    runtimeNeedsAuth: "缺少认证",
+    runtimeNeedsConfig: "使用默认配置",
+    codexDefault: "Codex 默认值",
     quotaHourly: "小时剩余额度",
     quotaWeekly: "周剩余额度",
     plan: "套餐",
@@ -166,6 +276,7 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     switchTo: (name) => `切换到 ${name}`,
     imported: "账号已导入。",
     switched: (name) => `已切换到 ${name}。`,
+    runtimeSettingsUpdated: "运行时设置已更新。",
     loginStarted: "登录已启动。",
     loginCompleted: "登录完成。",
     loginFailed: "登录失败。",
@@ -188,7 +299,10 @@ export function ReactManagedCodexAccountsRouteBody({
   const [requestState, setRequestState] = useState<RequestState>({ status: "loading", error: "" });
   const [accounts, setAccounts] = useState<AccountStatus[]>([]);
   const [active, setActive] = useState<CurrentStatus | null>(null);
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [name, setName] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedReasoning, setSelectedReasoning] = useState("");
   const [overwrite, setOverwrite] = useState(false);
   const [authFile, setAuthFile] = useState<File | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
@@ -208,8 +322,13 @@ export function ReactManagedCodexAccountsRouteBody({
     setRequestState({ status: "loading", error: "" });
     try {
       const payload = await apiClient.get<AccountResponse>("/api/control/codex/accounts");
+      const runtimeStatus = payload?.runtime ?? null;
+      const nextSelection = deriveRuntimeSelection(runtimeStatus);
       setAccounts(Array.isArray(payload?.items) ? payload.items : []);
       setActive(payload?.active ?? null);
+      setRuntime(runtimeStatus);
+      setSelectedModel(nextSelection.model);
+      setSelectedReasoning(nextSelection.reasoning);
       setStatusMessage(nextMessage);
       setStatusKind(nextKind);
       setRequestState({ status: "ready", error: "" });
@@ -252,6 +371,33 @@ export function ReactManagedCodexAccountsRouteBody({
     try {
       await apiClient.post(`/api/control/codex/accounts/${encodeURIComponent(accountName)}/switch`);
       await reloadAccounts(copy.switched(accountName), "success");
+    } catch (error: unknown) {
+      setStatusKind("error");
+      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
+    }
+  }
+
+  function onModelSelectionChange(nextModel: string) {
+    setSelectedModel(nextModel);
+    const nextRuntimeModel = findRuntimeModel(visibleRuntimeModels(runtime), nextModel);
+    const nextOptions = runtimeReasoningOptions(nextRuntimeModel, selectedReasoning);
+    const nextDefaultReasoning =
+      nextOptions.find((option) => normalizeText(option.reasoning_effort) === selectedReasoning)?.reasoning_effort ||
+      normalizeText(nextRuntimeModel?.default_reasoning_effort) ||
+      normalizeText(nextOptions[0]?.reasoning_effort);
+    setSelectedReasoning(nextDefaultReasoning);
+  }
+
+  async function onApplyRuntimeSettings() {
+    if (!selectedModel || !selectedReasoning) {
+      return;
+    }
+    try {
+      await apiClient.put<RuntimeStatus>("/api/control/codex/runtime", {
+        model: selectedModel.trim(),
+        reasoning_effort: selectedReasoning.trim(),
+      });
+      await reloadAccounts(copy.runtimeSettingsUpdated, "success");
     } catch (error: unknown) {
       setStatusKind("error");
       setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
@@ -316,6 +462,23 @@ export function ReactManagedCodexAccountsRouteBody({
   const accountsHint = accounts.length === 0 && active?.live && !active?.managed
     ? copy.unmanagedCurrentHint
     : copy.emptyHint;
+  const runtimeModels = visibleRuntimeModels(runtime);
+  const selectedRuntimeModel = findRuntimeModel(runtimeModels, selectedModel);
+  const selectedReasoningOptions = runtimeReasoningOptions(selectedRuntimeModel, selectedReasoning);
+  const selectedReasoningMode =
+    selectedReasoningOptions.find((option) => normalizeText(option.reasoning_effort) === selectedReasoning) ?? null;
+  const runtimeCurrentModel = findRuntimeModel(runtimeModels, normalizeText(runtime?.model));
+  const runtimeModel = runtimeCurrentModel ? formatRuntimeModelSummary(runtimeCurrentModel) : (normalizeText(runtime?.model) || copy.codexDefault);
+  const runtimeReasoning = formatReasoningEffort(runtime?.reasoning_effort) || copy.codexDefault;
+  const runtimeCommand = normalizeText(runtime?.command) || "-";
+  const runtimeConfigPath = normalizeText(runtime?.config_path) || "-";
+  const runtimeProfile = normalizeText(runtime?.profile) || copy.codexDefault;
+  const runtimeAuthState = runtime?.has_auth ? copy.authReady : copy.authMissing;
+  const runtimeConfigState = runtime?.has_config ? copy.configReady : copy.configMissing;
+  const runtimeState = runtime?.has_auth ? (runtime?.has_config ? copy.runtimeReady : copy.runtimeNeedsConfig) : copy.runtimeNeedsAuth;
+  const runtimeModelSource = formatRuntimeOrigin(runtime?.model_origin);
+  const runtimeReasoningSource = formatRuntimeOrigin(runtime?.reasoning_origin);
+  const canApplyRuntimeSettings = Boolean(selectedModel && selectedReasoning);
 
   return (
     <section className="codex-accounts-view">
@@ -350,6 +513,131 @@ export function ReactManagedCodexAccountsRouteBody({
 
       <div className="codex-accounts-workspace">
         <section className="codex-accounts-main route-surface">
+          <section className="codex-accounts-runtime-panel">
+            <div className="codex-accounts-section-head">
+              <div>
+                <h4>{copy.currentCodex}</h4>
+                <p>{copy.currentCodexSubtitle}</p>
+              </div>
+            </div>
+
+            <div className="codex-accounts-runtime-grid">
+              <div className="codex-account-metric">
+                <span>{copy.runtimeState}</span>
+                <strong>{runtimeState}</strong>
+              </div>
+              <div className="codex-account-metric">
+                <span>{copy.authState}</span>
+                <strong>{runtimeAuthState}</strong>
+              </div>
+              <div className="codex-account-metric">
+                <span>{copy.configState}</span>
+                <strong>{runtimeConfigState}</strong>
+              </div>
+              <div className="codex-account-metric">
+                <span>{copy.activeProfile}</span>
+                <strong>{runtimeProfile}</strong>
+              </div>
+            </div>
+
+            <div className="codex-accounts-runtime-details">
+              <div className="codex-accounts-runtime-detail">
+                <span>{copy.cliCommand}</span>
+                <strong title={runtimeCommand}>{runtimeCommand}</strong>
+              </div>
+              <div className="codex-accounts-runtime-detail">
+                <span>{copy.activePath}</span>
+                <strong title={activePath}>{activePath}</strong>
+              </div>
+              <div className="codex-accounts-runtime-detail">
+                <span>{copy.configPath}</span>
+                <strong title={runtimeConfigPath}>{runtimeConfigPath}</strong>
+              </div>
+              <div className="codex-accounts-runtime-detail">
+                <span>{copy.modelSource}</span>
+                <strong title={runtimeModelSource}>{runtimeModelSource}</strong>
+              </div>
+              <div className="codex-accounts-runtime-detail">
+                <span>{copy.reasoningSource}</span>
+                <strong title={runtimeReasoningSource}>{runtimeReasoningSource}</strong>
+              </div>
+            </div>
+
+            <form
+              className="codex-accounts-runtime-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onApplyRuntimeSettings();
+              }}
+            >
+              <div className="codex-accounts-runtime-controls">
+                <label className="codex-accounts-field">
+                  <span>{copy.model}</span>
+                  <select
+                    aria-label={copy.model}
+                    value={selectedModel}
+                    onChange={(event) => onModelSelectionChange(event.target.value)}
+                  >
+                    {runtimeModels.map((item) => {
+                      const value = runtimeModelKey(item);
+                      return (
+                        <option key={value} value={value}>
+                          {formatRuntimeModelSummary(item)}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+
+                <label className="codex-accounts-field">
+                  <span>{copy.reasoningDepth}</span>
+                  <select
+                    aria-label={copy.reasoningDepth}
+                    value={selectedReasoning}
+                    onChange={(event) => setSelectedReasoning(event.target.value)}
+                  >
+                    {selectedReasoningOptions.map((option) => {
+                      const value = normalizeText(option.reasoning_effort);
+                      return (
+                        <option key={value} value={value}>
+                          {formatReasoningOption(option)}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+              </div>
+
+              <div className="codex-accounts-runtime-hints">
+                <p className="codex-accounts-runtime-hint">{copy.modelHint}</p>
+                <p className="codex-accounts-runtime-hint">{copy.reasoningHint}</p>
+              </div>
+
+              <div className="codex-accounts-runtime-selection">
+                <div className="codex-accounts-runtime-current">
+                  <span>{copy.model}</span>
+                  <strong>{runtimeModel}</strong>
+                </div>
+                <div className="codex-accounts-runtime-current">
+                  <span>{copy.reasoningDepth}</span>
+                  <strong>{runtimeReasoning}</strong>
+                </div>
+                {selectedRuntimeModel && normalizeText(selectedRuntimeModel.description) ? (
+                  <p className="codex-accounts-runtime-note">{selectedRuntimeModel.description}</p>
+                ) : null}
+                {selectedReasoningMode && normalizeText(selectedReasoningMode.description) ? (
+                  <p className="codex-accounts-runtime-note">{selectedReasoningMode.description}</p>
+                ) : null}
+              </div>
+
+              <div className="codex-accounts-runtime-submit">
+                <button type="submit" className="route-primary-button" disabled={!canApplyRuntimeSettings}>
+                  {copy.applyRuntimeSettings}
+                </button>
+              </div>
+            </form>
+          </section>
+
           <div className="codex-accounts-section-head">
             <div>
               <h4>{copy.managedAccounts}</h4>
@@ -560,6 +848,18 @@ function CodexAccountsLoadingView({ copy }: { copy: CodexAccountsCopy }) {
         <section className="codex-accounts-main route-surface codex-accounts-skeleton-card">
           <div className="codex-accounts-section-head">
             <div>
+              <h4>{copy.currentCodex}</h4>
+              <p>{copy.loading}</p>
+            </div>
+          </div>
+          <div className="codex-accounts-skeleton-stack codex-accounts-runtime-skeleton" aria-hidden="true">
+            <span className="task-skeleton-line codex-accounts-skeleton-field" />
+            <span className="task-skeleton-line codex-accounts-skeleton-field" />
+            <span className="task-skeleton-line codex-accounts-skeleton-meta" />
+            <span className="task-skeleton-line codex-accounts-skeleton-button" />
+          </div>
+          <div className="codex-accounts-section-head">
+            <div>
               <h4>{copy.managedAccounts}</h4>
               <p>{copy.loading}</p>
             </div>
@@ -606,6 +906,88 @@ function CodexAccountsLoadingView({ copy }: { copy: CodexAccountsCopy }) {
       </div>
     </section>
   );
+}
+
+function deriveRuntimeSelection(runtime: RuntimeStatus | null) {
+  const models = visibleRuntimeModels(runtime);
+  const fallbackModel = models.find((item) => item.is_default) ?? models[0] ?? null;
+  const currentModel = normalizeText(runtime?.model);
+  const model = findRuntimeModel(models, currentModel) ? currentModel : runtimeModelKey(fallbackModel);
+  const selectedRuntimeModel = findRuntimeModel(models, model);
+  const currentReasoning = normalizeText(runtime?.reasoning_effort);
+  const options = runtimeReasoningOptions(selectedRuntimeModel, currentReasoning);
+  const reasoning = options.some((option) => normalizeText(option.reasoning_effort) === currentReasoning)
+    ? currentReasoning
+    : (normalizeText(selectedRuntimeModel?.default_reasoning_effort) || normalizeText(options[0]?.reasoning_effort));
+  return { model, reasoning };
+}
+
+function visibleRuntimeModels(runtime: RuntimeStatus | null) {
+  const currentModel = normalizeText(runtime?.model);
+  return Array.isArray(runtime?.models)
+    ? runtime.models.filter((item) => {
+      const value = runtimeModelKey(item);
+      return Boolean(value) && (!item.hidden || value === currentModel);
+    })
+    : [];
+}
+
+function findRuntimeModel(models: RuntimeModel[], value: string) {
+  return models.find((item) => runtimeModelKey(item) === value) ?? null;
+}
+
+function runtimeReasoningOptions(model: RuntimeModel | null, currentReasoning = "") {
+  const deduped = new Map<string, RuntimeReasoningMode>();
+  for (const option of model?.supported_reasoning_effort ?? []) {
+    const effort = normalizeText(option.reasoning_effort);
+    if (!effort) {
+      continue;
+    }
+    deduped.set(effort, option);
+  }
+  if (deduped.size > 0) {
+    return Array.from(deduped.values());
+  }
+  const fallback = normalizeText(model?.default_reasoning_effort) || normalizeText(currentReasoning);
+  return fallback ? [{ reasoning_effort: fallback }] : [];
+}
+
+function runtimeModelKey(model: RuntimeModel | null | undefined) {
+  return normalizeText(model?.model) || normalizeText(model?.id);
+}
+
+function formatRuntimeModelSummary(model: RuntimeModel | null | undefined) {
+  const label = normalizeText(model?.display_name) || runtimeModelKey(model) || "-";
+  const value = runtimeModelKey(model);
+  return value && value !== label ? `${label} (${value})` : label;
+}
+
+function formatReasoningOption(option: RuntimeReasoningMode | null | undefined) {
+  const effort = formatReasoningEffort(option?.reasoning_effort);
+  const description = normalizeText(option?.description);
+  return description ? `${effort} · ${description}` : effort;
+}
+
+function formatReasoningEffort(value: unknown) {
+  const effort = normalizeText(value).toLowerCase();
+  if (!effort) {
+    return "";
+  }
+  if (effort === "xhigh") {
+    return "Max";
+  }
+  return effort
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatRuntimeOrigin(origin: RuntimeConfigOrigin | null | undefined) {
+  const segments = [normalizeText(origin?.file_path), normalizeText(origin?.key_path)].filter(Boolean);
+  const version = normalizeText(origin?.version);
+  const base = segments.length > 0 ? segments.join(" · ") : "-";
+  return version ? `${base} (${version})` : base;
 }
 
 function renderPercent(value: number | null) {

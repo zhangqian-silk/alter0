@@ -49,6 +49,44 @@ type CurrentStatus struct {
 	AuthPath string                `json:"auth_path,omitempty"`
 }
 
+type RuntimeStatus struct {
+	Command            string               `json:"command,omitempty"`
+	AuthPath           string               `json:"auth_path,omitempty"`
+	ConfigPath         string               `json:"config_path,omitempty"`
+	HasAuth            bool                 `json:"has_auth"`
+	HasConfig          bool                 `json:"has_config"`
+	Profile            string               `json:"profile,omitempty"`
+	Model              string               `json:"model,omitempty"`
+	ReasoningEffort    string               `json:"reasoning_effort,omitempty"`
+	ModelOrigin        *RuntimeConfigOrigin `json:"model_origin,omitempty"`
+	ReasoningOrigin    *RuntimeConfigOrigin `json:"reasoning_origin,omitempty"`
+	Models             []RuntimeModel       `json:"models,omitempty"`
+	Current            *CurrentStatus       `json:"current,omitempty"`
+}
+
+type RuntimeConfigOrigin struct {
+	KeyPath  string `json:"key_path,omitempty"`
+	FilePath string `json:"file_path,omitempty"`
+	Version  string `json:"version,omitempty"`
+}
+
+type RuntimeModel struct {
+	ID                       string                 `json:"id,omitempty"`
+	Model                    string                 `json:"model,omitempty"`
+	DisplayName              string                 `json:"display_name,omitempty"`
+	Description              string                 `json:"description,omitempty"`
+	Hidden                   bool                   `json:"hidden"`
+	IsDefault                bool                   `json:"is_default"`
+	DefaultReasoningEffort   string                 `json:"default_reasoning_effort,omitempty"`
+	SupportedReasoningEffort []RuntimeReasoningMode `json:"supported_reasoning_effort,omitempty"`
+	InputModalities          []string               `json:"input_modalities,omitempty"`
+}
+
+type RuntimeReasoningMode struct {
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	Description     string `json:"description,omitempty"`
+}
+
 type LoginSessionStatus string
 
 const (
@@ -113,6 +151,86 @@ type Service struct {
 
 	mu           sync.RWMutex
 	loginSession map[string]LoginSession
+}
+
+type appServerRequest struct {
+	JSONRPC string `json:"jsonrpc"`
+	ID      int    `json:"id"`
+	Method  string `json:"method"`
+	Params  any    `json:"params,omitempty"`
+}
+
+type appServerResponse struct {
+	ID     int               `json:"id"`
+	Result json.RawMessage   `json:"result,omitempty"`
+	Error  *appServerError   `json:"error,omitempty"`
+}
+
+type appServerError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type appServerInitializeParams struct {
+	ClientInfo appServerClientInfo `json:"clientInfo"`
+}
+
+type appServerClientInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+type appServerModelListResponse struct {
+	Data []appServerModel `json:"data"`
+}
+
+type appServerModel struct {
+	ID                       string                      `json:"id"`
+	Model                    string                      `json:"model"`
+	DisplayName              string                      `json:"displayName"`
+	Description              string                      `json:"description"`
+	Hidden                   bool                        `json:"hidden"`
+	IsDefault                bool                        `json:"isDefault"`
+	DefaultReasoningEffort   string                      `json:"defaultReasoningEffort"`
+	SupportedReasoningEffort []appServerReasoningOption  `json:"supportedReasoningEfforts"`
+	InputModalities          []string                    `json:"inputModalities"`
+}
+
+type appServerReasoningOption struct {
+	ReasoningEffort string `json:"reasoningEffort"`
+	Description     string `json:"description"`
+}
+
+type appServerConfigReadResponse struct {
+	Config  appServerConfig                  `json:"config"`
+	Origins map[string]appServerConfigOrigin `json:"origins"`
+}
+
+type appServerConfig struct {
+	Model                 *string `json:"model"`
+	ModelReasoningEffort  *string `json:"model_reasoning_effort"`
+	Profile               *string `json:"profile"`
+}
+
+type appServerConfigOrigin struct {
+	Name    appServerConfigOriginName `json:"name"`
+	Version string                    `json:"version"`
+}
+
+type appServerConfigOriginName struct {
+	Type string `json:"type"`
+	File string `json:"file"`
+}
+
+type appServerConfigBatchWriteParams struct {
+	Edits            []appServerConfigEdit `json:"edits"`
+	ReloadUserConfig bool                  `json:"reloadUserConfig"`
+}
+
+type appServerConfigEdit struct {
+	KeyPath       string `json:"keyPath"`
+	MergeStrategy string `json:"mergeStrategy"`
+	Value         any    `json:"value"`
 }
 
 func NewService(options ServiceOptions) *Service {
@@ -274,6 +392,60 @@ func (s *Service) ListStatuses(ctx context.Context) ([]AccountStatus, *CurrentSt
 	return items, current, nil
 }
 
+func (s *Service) RuntimeStatus() (*RuntimeStatus, error) {
+	activeHome, err := s.resolveActiveHome()
+	if err != nil {
+		return nil, err
+	}
+	authPath := AuthFilePath(activeHome)
+	configPath := ConfigFilePath(activeHome)
+
+	hasAuth, err := fileExists(authPath)
+	if err != nil {
+		return nil, fmt.Errorf("stat active auth.json: %w", err)
+	}
+	hasConfig, err := fileExists(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("stat active config.toml: %w", err)
+	}
+	current, err := s.Current()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	models, err := s.appServerModels(ctx, activeHome)
+	if err != nil {
+		return nil, err
+	}
+	configRead, err := s.appServerConfigRead(ctx, activeHome)
+	if err != nil {
+		return nil, err
+	}
+	model := normalizeTextPointer(configRead.Config.Model)
+	if model == "" {
+		model = defaultRuntimeModel(models)
+	}
+	reasoningEffort := normalizeTextPointer(configRead.Config.ModelReasoningEffort)
+	if reasoningEffort == "" {
+		reasoningEffort = defaultRuntimeReasoningEffort(model, models)
+	}
+	return &RuntimeStatus{
+		Command:         s.command,
+		AuthPath:        authPath,
+		ConfigPath:      configPath,
+		HasAuth:         hasAuth,
+		HasConfig:       hasConfig,
+		Profile:         normalizeTextPointer(configRead.Config.Profile),
+		Model:           model,
+		ReasoningEffort: reasoningEffort,
+		ModelOrigin:     runtimeOriginFromMap(configRead.Origins, "model"),
+		ReasoningOrigin: runtimeOriginFromMap(configRead.Origins, "model_reasoning_effort"),
+		Models:          toRuntimeModels(models),
+		Current:         current,
+	}, nil
+}
+
 func (s *Service) Switch(name string) (*Record, string, error) {
 	if s.store == nil {
 		return nil, "", errors.New("codex account store is not configured")
@@ -329,6 +501,40 @@ func (s *Service) Switch(name string) (*Record, string, error) {
 	return record, backupPath, nil
 }
 
+func (s *Service) UpdateRuntimeSettings(model string, reasoningEffort string) (*RuntimeStatus, error) {
+	model = strings.TrimSpace(model)
+	reasoningEffort = strings.TrimSpace(reasoningEffort)
+	if model == "" {
+		return nil, fmt.Errorf("model is required")
+	}
+	if reasoningEffort == "" {
+		return nil, fmt.Errorf("reasoning_effort is required")
+	}
+
+	activeHome, err := s.resolveActiveHome()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	configRead, err := s.appServerConfigRead(ctx, activeHome)
+	if err != nil {
+		return nil, err
+	}
+	modelKeyPath := resolveRuntimeConfigKeyPath(runtimeOriginFromMap(configRead.Origins, "model"), normalizeTextPointer(configRead.Config.Profile), "model")
+	reasoningKeyPath := resolveRuntimeConfigKeyPath(runtimeOriginFromMap(configRead.Origins, "model_reasoning_effort"), normalizeTextPointer(configRead.Config.Profile), "model_reasoning_effort")
+	if err := s.appServerConfigBatchWrite(ctx, activeHome, appServerConfigBatchWriteParams{
+		Edits: []appServerConfigEdit{
+			{KeyPath: modelKeyPath, MergeStrategy: "upsert", Value: model},
+			{KeyPath: reasoningKeyPath, MergeStrategy: "upsert", Value: reasoningEffort},
+		},
+		ReloadUserConfig: true,
+	}); err != nil {
+		return nil, err
+	}
+	return s.RuntimeStatus()
+}
+
 func (s *Service) StartLoginSession(ctx context.Context, name string, overwrite bool) (LoginSession, error) {
 	if s.store == nil {
 		return LoginSession{}, errors.New("codex account store is not configured")
@@ -371,6 +577,15 @@ func (s *Service) runLoginSession(ctx context.Context, sessionID string, loginHo
 		session.Status = LoginSessionStatusRunning
 	})
 
+	if err := os.MkdirAll(loginHome, 0o755); err != nil {
+		s.updateLoginSession(sessionID, func(session *LoginSession) {
+			session.Status = LoginSessionStatusFailed
+			session.Error = fmt.Sprintf("prepare login home: %v", err)
+			session.CompletedAt = s.now()
+		})
+		return
+	}
+
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	stdoutWriter := io.Writer(&stdout)
@@ -382,7 +597,7 @@ func (s *Service) runLoginSession(ctx context.Context, sessionID string, loginHo
 		stderrWriter = io.MultiWriter(&stderr, s.loginStdout)
 	}
 	err := s.runCommand(ctx, s.command, []string{"login"}, CommandOptions{
-		Env:    append(os.Environ(), "CODEX_HOME="+loginHome),
+		Env:    withEnvValue(os.Environ(), "CODEX_HOME", loginHome),
 		Stdout: stdoutWriter,
 		Stderr: stderrWriter,
 	})
@@ -509,6 +724,10 @@ func AuthFilePath(home string) string {
 	return filepath.Join(home, "auth.json")
 }
 
+func ConfigFilePath(home string) string {
+	return filepath.Join(home, "config.toml")
+}
+
 func WriteFileWithBackup(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create dir %s: %w", filepath.Dir(path), err)
@@ -534,6 +753,193 @@ func WriteFileWithBackup(path string, content []byte) error {
 	}
 	_ = os.Remove(backup)
 	return nil
+}
+
+func fileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
+func withEnvValue(env []string, key string, value string) []string {
+	prefix := key + "="
+	filtered := make([]string, 0, len(env)+1)
+	for _, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return append(filtered, prefix+value)
+}
+
+func (s *Service) appServerModels(ctx context.Context, activeHome string) ([]appServerModel, error) {
+	var payload appServerModelListResponse
+	if err := s.appServerCall(ctx, activeHome, "model/list", map[string]any{}, &payload); err != nil {
+		return nil, err
+	}
+	return payload.Data, nil
+}
+
+func (s *Service) appServerConfigRead(ctx context.Context, activeHome string) (*appServerConfigReadResponse, error) {
+	var payload appServerConfigReadResponse
+	if err := s.appServerCall(ctx, activeHome, "config/read", map[string]any{}, &payload); err != nil {
+		return nil, err
+	}
+	return &payload, nil
+}
+
+func (s *Service) appServerConfigBatchWrite(ctx context.Context, activeHome string, params appServerConfigBatchWriteParams) error {
+	var payload map[string]any
+	return s.appServerCall(ctx, activeHome, "config/batchWrite", params, &payload)
+}
+
+func (s *Service) appServerCall(ctx context.Context, activeHome string, method string, params any, destination any) error {
+	requests := []appServerRequest{
+		{
+			JSONRPC: "2.0",
+			ID:      1,
+			Method:  "initialize",
+			Params: appServerInitializeParams{
+				ClientInfo: appServerClientInfo{Name: "alter0", Version: "1.0"},
+			},
+		},
+		{
+			JSONRPC: "2.0",
+			ID:      2,
+			Method:  method,
+			Params:  params,
+		},
+	}
+	var stdin bytes.Buffer
+	for _, request := range requests {
+		if err := json.NewEncoder(&stdin).Encode(request); err != nil {
+			return fmt.Errorf("encode app-server request %s: %w", method, err)
+		}
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := s.runCommand(ctx, s.command, []string{"app-server", "--listen", "stdio://"}, CommandOptions{
+		Env:    withEnvValue(os.Environ(), "CODEX_HOME", activeHome),
+		Stdin:  &stdin,
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("codex app-server %s: %s", method, message)
+	}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		response := appServerResponse{}
+		if err := json.Unmarshal([]byte(line), &response); err != nil {
+			continue
+		}
+		if response.ID != 2 {
+			continue
+		}
+		if response.Error != nil {
+			return fmt.Errorf("codex app-server %s: %s", method, strings.TrimSpace(response.Error.Message))
+		}
+		if destination == nil {
+			return nil
+		}
+		if err := json.Unmarshal(response.Result, destination); err != nil {
+			return fmt.Errorf("decode app-server %s response: %w", method, err)
+		}
+		return nil
+	}
+	message := strings.TrimSpace(stderr.String())
+	if message == "" {
+		message = "missing response"
+	}
+	return fmt.Errorf("codex app-server %s: %s", method, message)
+}
+
+func normalizeTextPointer(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func runtimeOriginFromMap(origins map[string]appServerConfigOrigin, key string) *RuntimeConfigOrigin {
+	origin, ok := origins[key]
+	if !ok {
+		return nil
+	}
+	return &RuntimeConfigOrigin{
+		KeyPath:  key,
+		FilePath: strings.TrimSpace(origin.Name.File),
+		Version:  strings.TrimSpace(origin.Version),
+	}
+}
+
+func resolveRuntimeConfigKeyPath(origin *RuntimeConfigOrigin, profile string, leaf string) string {
+	if origin != nil && strings.TrimSpace(origin.KeyPath) != "" {
+		return strings.TrimSpace(origin.KeyPath)
+	}
+	if strings.TrimSpace(profile) != "" {
+		return fmt.Sprintf("profiles.%s.%s", strings.TrimSpace(profile), leaf)
+	}
+	return leaf
+}
+
+func defaultRuntimeModel(models []appServerModel) string {
+	for _, model := range models {
+		if model.IsDefault {
+			return strings.TrimSpace(model.Model)
+		}
+	}
+	if len(models) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(models[0].Model)
+}
+
+func defaultRuntimeReasoningEffort(modelID string, models []appServerModel) string {
+	for _, model := range models {
+		if strings.EqualFold(strings.TrimSpace(model.Model), strings.TrimSpace(modelID)) ||
+			strings.EqualFold(strings.TrimSpace(model.ID), strings.TrimSpace(modelID)) {
+			return strings.TrimSpace(model.DefaultReasoningEffort)
+		}
+	}
+	return ""
+}
+
+func toRuntimeModels(items []appServerModel) []RuntimeModel {
+	models := make([]RuntimeModel, 0, len(items))
+	for _, item := range items {
+		efforts := make([]RuntimeReasoningMode, 0, len(item.SupportedReasoningEffort))
+		for _, effort := range item.SupportedReasoningEffort {
+			efforts = append(efforts, RuntimeReasoningMode{
+				ReasoningEffort: strings.TrimSpace(effort.ReasoningEffort),
+				Description:     strings.TrimSpace(effort.Description),
+			})
+		}
+		models = append(models, RuntimeModel{
+			ID:                       strings.TrimSpace(item.ID),
+			Model:                    strings.TrimSpace(item.Model),
+			DisplayName:              strings.TrimSpace(item.DisplayName),
+			Description:              strings.TrimSpace(item.Description),
+			Hidden:                   item.Hidden,
+			IsDefault:                item.IsDefault,
+			DefaultReasoningEffort:   strings.TrimSpace(item.DefaultReasoningEffort),
+			SupportedReasoningEffort: efforts,
+			InputModalities:          append([]string(nil), item.InputModalities...),
+		})
+	}
+	return models
 }
 
 func defaultRunCommand(ctx context.Context, name string, args []string, options CommandOptions) error {

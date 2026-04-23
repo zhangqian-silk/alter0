@@ -171,16 +171,6 @@ if [[ "${SERVICE_TYPE}" == "http" ]]; then
       WORKDIR="${REPO_PATH}"
     fi
     WORKDIR="$(cd "${WORKDIR}" && pwd)"
-    RUNTIME_DIR="${WORKDIR}/.alter0/test-services/${SESSION_ID}/${SERVICE_NAME}"
-    mkdir -p "${RUNTIME_DIR}"
-    LOG_FILE="${RUNTIME_DIR}/service.log"
-    PID_FILE="${RUNTIME_DIR}/service.pid"
-    if [[ -r "${PID_FILE}" ]]; then
-      PREVIOUS_PID="$(cat "${PID_FILE}")"
-      if [[ -n "${PREVIOUS_PID}" ]] && kill -0 "${PREVIOUS_PID}" 2>/dev/null; then
-        kill "${PREVIOUS_PID}" 2>/dev/null || true
-      fi
-    fi
     if [[ -z "${PORT}" ]]; then
       PORT="$(python3 - <<'PY'
 import socket
@@ -191,30 +181,7 @@ s.close()
 PY
 )"
     fi
-    : > "${LOG_FILE}"
-    (
-      cd "${WORKDIR}"
-      nohup env PORT="${PORT}" ALTER0_SERVICE_PORT="${PORT}" bash -lc "${START_COMMAND}" >>"${LOG_FILE}" 2>&1 &
-      echo $! > "${PID_FILE}"
-    )
-    PID="$(cat "${PID_FILE}")"
     UPSTREAM_URL="http://127.0.0.1:${PORT}"
-    HEALTH_URL="${UPSTREAM_URL}${HEALTH_PATH}"
-    HEALTHY=0
-    for _ in $(seq 1 40); do
-      if curl -fsS --max-time 2 "${HEALTH_URL}" >/dev/null 2>&1; then
-        HEALTHY=1
-        break
-      fi
-      sleep 0.5
-    done
-    if [[ "${HEALTHY}" != "1" ]]; then
-      if [[ -n "${PID}" ]] && kill -0 "${PID}" 2>/dev/null; then
-        kill "${PID}" 2>/dev/null || true
-      fi
-      echo "service failed health probe: ${HEALTH_URL}" >&2
-      exit 1
-    fi
   elif [[ -z "${UPSTREAM_URL}" ]]; then
     echo "http deployments require --upstream-url or --command" >&2
     exit 1
@@ -239,18 +206,28 @@ curl -sS \
   -D "${HEADERS_FILE}" \
   -o /dev/null
 
-PAYLOAD="$(python3 - "${SERVICE_TYPE}" "${REPO_PATH}" "${UPSTREAM_URL}" <<'PY'
+PAYLOAD="$(python3 - "${SERVICE_TYPE}" "${REPO_PATH}" "${UPSTREAM_URL}" "${START_COMMAND}" "${WORKDIR}" "${PORT}" "${HEALTH_PATH}" <<'PY'
 import json
 import sys
 
 service_type = sys.argv[1]
 repo_path = sys.argv[2]
 upstream_url = sys.argv[3]
+start_command = sys.argv[4]
+workdir = sys.argv[5]
+port = sys.argv[6]
+health_path = sys.argv[7]
 payload = {"service_type": service_type}
 if service_type == "frontend_dist":
     payload["repository_path"] = repo_path
 else:
-    payload["upstream_url"] = upstream_url
+    if start_command:
+        payload["start_command"] = start_command
+        payload["workdir"] = workdir
+        payload["port"] = int(port)
+        payload["health_path"] = health_path
+    else:
+        payload["upstream_url"] = upstream_url
 print(json.dumps(payload))
 PY
 )"
