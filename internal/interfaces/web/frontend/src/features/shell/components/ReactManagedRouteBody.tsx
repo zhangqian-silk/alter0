@@ -7,7 +7,6 @@ import { ReactManagedAgentRouteBody } from "./ReactManagedAgentRouteBody";
 import { ReactManagedCodexAccountsRouteBody } from "./ReactManagedCodexAccountsRouteBody";
 import { ReactManagedControlRouteBody } from "./ReactManagedControlRouteBody";
 import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
-import { ReactManagedProductsRouteBody } from "./ReactManagedProductsRouteBody";
 import { ReactManagedSessionsRouteBody } from "./ReactManagedSessionsRouteBody";
 import { ReactManagedTerminalRouteBody } from "./ReactManagedTerminalRouteBody";
 import { ReactManagedTasksRouteBody } from "./ReactManagedTasksRouteBody";
@@ -17,7 +16,6 @@ type RouteBodyRenderer = (props: { language: LegacyShellLanguage }) => React.JSX
 const REACT_MANAGED_ROUTE_BODY_RENDERERS: Record<ReactManagedRouteBodyRoute, RouteBodyRenderer> = {
   agent: ({ language }) => <ReactManagedAgentRouteBody language={language} />,
   terminal: () => <ReactManagedTerminalRouteBody />,
-  products: ({ language }) => <ReactManagedProductsRouteBody language={language} />,
   memory: ({ language }) => <ReactManagedMemoryRouteBody language={language} />,
   sessions: ({ language }) => <ReactManagedSessionsRouteBody language={language} />,
   tasks: ({ language }) => <ReactManagedTasksRouteBody language={language} />,

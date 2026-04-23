@@ -9,8 +9,8 @@
 ## 适用范围
 
 - `internal/interfaces/web/frontend` 下的页面、组件、样式与交互改动
-- `internal/interfaces/web/static/dist` 对应的 Web Shell、Chat、Agent、Terminal、Control、Memory、Sessions、Tasks、Products 等浏览器界面
-- 对外公开的 Product 页面、独立 HTML 空间和其他品牌展示型 Web 页面
+- `internal/interfaces/web/static/dist` 对应的 Web Shell、Chat、Agent、Terminal、Control、Memory、Sessions、Tasks 等浏览器界面
+- 对外公开页面、独立 HTML 空间和其他品牌展示型 Web 页面
 
 ## 产品默认视觉立场
 
@@ -22,7 +22,7 @@
 
 开始实现前，先确定以下四项：
 
-1. 页面类型：工作台页、对话页、详情页、配置页、公开 Product 页或独立宣传页
+1. 页面类型：工作台页、对话页、详情页、配置页、公开页面或独立宣传页
 2. 首屏主任务：阅读、输入、选择、筛选、比较、配置、执行或转化
 3. 视觉命题：页面的气质、材质感、信息密度和动效力度
 4. 内容结构：首屏、支撑区、细节区、收口动作分别承担什么职责
@@ -33,12 +33,12 @@
 
 ### 工作台与控制页
 
-- `Chat / Agent / Terminal / Memory / Sessions / Tasks / Models / Environments / Cron / Codex Accounts / Skills / MCP / Channels / Products Workspace` 默认采用工作台式信息架构。
+- `Chat / Agent / Terminal / Memory / Sessions / Tasks / Models / Environments / Cron / Codex Accounts / Skills / MCP / Channels` 默认采用工作台式信息架构。
 - 首屏优先暴露当前任务、列表、输入区、状态栏或配置区，不渲染额外 hero、品牌宣言、浮层徽章或装饰性摘要卡。
 - 默认使用克制配色、少量强调色、紧凑但可读的排版与稳定的阅读宽度。
 - 默认不使用大面积装饰渐变和过多投影，不把页面退化成“卡片墙”。
 
-### 公开 Product 页与独立 HTML 页面
+### 公开页面与独立 HTML 页面
 
 - 允许更强品牌叙事、图像主导和更鲜明的情绪氛围。
 - 首屏仍保持单一构图：品牌或产品名、一个主标题、一句支撑文案、一个主 CTA 组和一个主视觉平面。

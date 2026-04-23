@@ -40,6 +40,7 @@ describe("legacyShellConfig", () => {
 
     expect(agentStudioRoutes).toContain("agent");
     expect(agentStudioRoutes).toContain("memory");
+    expect(agentStudioRoutes).not.toContain("products");
     expect(agentStudioRoutes).not.toContain("configuration");
     expect(otherRoutes).not.toContain("configuration");
   });

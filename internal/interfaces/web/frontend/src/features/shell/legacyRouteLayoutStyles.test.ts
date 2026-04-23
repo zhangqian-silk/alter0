@@ -17,7 +17,7 @@ describe("legacy route layout stylesheet", () => {
     expect(stylesheet).toContain("grid-template-rows: auto minmax(260px, 1fr) auto;");
   });
 
-  it("keeps agent and product route primitives on the restrained workbench surface system", () => {
+  it("keeps agent route primitives on the restrained workbench surface system", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(
       resolve(currentDirectory, "../../../public/legacy/chat-routes.css"),
@@ -27,10 +27,6 @@ describe("legacy route layout stylesheet", () => {
     expect(stylesheet).toContain(".agent-route-card {");
     expect(stylesheet).toContain("border: 1px solid rgba(15, 23, 42, 0.08);");
     expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.94);");
-    expect(stylesheet).toContain(".product-workspace-chip-list span {");
-    expect(stylesheet).toContain("background: rgba(239, 246, 255, 0.92);");
-    expect(stylesheet).toContain(".product-workspace-detail-card {");
-    expect(stylesheet).toContain("background: rgba(248, 250, 252, 0.92);");
   });
 
   it("keeps task follow-up image attachments inside a stacked composer row", () => {

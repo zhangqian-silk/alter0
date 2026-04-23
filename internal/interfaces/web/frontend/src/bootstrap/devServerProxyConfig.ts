@@ -8,8 +8,7 @@ export const DEV_BACKEND_PROXY_PATHS = [
   "/logout",
   "/healthz",
   "/readyz",
-  "/metrics",
-  "/products"
+  "/metrics"
 ] as const;
 
 export function normalizeBackendProxyTarget(rawTarget: string | undefined): string {

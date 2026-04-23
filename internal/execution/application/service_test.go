@@ -396,7 +396,7 @@ func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
 		Metadata: map[string]string{
 			execdomain.AgentIDMetadataKey:           "travel-master",
 			execdomain.AgentNameMetadataKey:         "Travel Master Agent",
-			execdomain.AgentCapabilitiesMetadataKey: `["travel","product-master"]`,
+			execdomain.AgentCapabilitiesMetadataKey: `["travel"]`,
 		},
 	})
 	if err != nil {

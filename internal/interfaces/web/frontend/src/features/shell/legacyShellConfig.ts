@@ -22,7 +22,6 @@ export type IconName =
   | "chat"
   | "agent"
   | "terminal"
-  | "products"
   | "memory"
   | "skills"
   | "mcp"
@@ -47,7 +46,6 @@ export const NAV_GROUPS: NavGroup[] = [
     heading: "Agent Studio",
     items: [
       { label: "Profiles", route: "agent", abbr: "AG", icon: "agent" },
-      { label: "Products", route: "products", abbr: "PR", icon: "products" },
       { label: "Memory", route: "memory", abbr: "ME", icon: "memory" },
       { label: "Skills", route: "skills", abbr: "SK", icon: "skills" },
       { label: "MCP", route: "mcp", abbr: "MC", icon: "mcp" }
