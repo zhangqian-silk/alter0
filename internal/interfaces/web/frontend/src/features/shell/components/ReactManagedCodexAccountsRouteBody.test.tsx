@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ReactManagedCodexAccountsRouteBody } from "./ReactManagedCodexAccountsRouteBody";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
@@ -96,8 +96,8 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
               },
               current: true,
               quota: {
-                hourly: { remaining_percent: 80 },
-                weekly: { remaining_percent: 92 },
+                hourly: { remaining_percent: 80, reset_at: "2026-05-01T14:30:00Z" },
+                weekly: { remaining_percent: 92, reset_at: "2026-05-08T14:30:00Z" },
                 plan: "plus",
               },
             },
@@ -108,8 +108,8 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
               },
               current: false,
               quota: {
-                hourly: { remaining_percent: 70 },
-                weekly: { remaining_percent: 88 },
+                hourly: { remaining_percent: 70, reset_at: "2026-05-01T16:00:00Z" },
+                weekly: { remaining_percent: 88, reset_at: "2026-05-08T16:00:00Z" },
                 plan: "pro",
               },
             },
@@ -149,8 +149,8 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
               },
               current: true,
               quota: {
-                hourly: { remaining_percent: 70 },
-                weekly: { remaining_percent: 88 },
+                hourly: { remaining_percent: 70, reset_at: "2026-05-01T16:00:00Z" },
+                weekly: { remaining_percent: 88, reset_at: "2026-05-08T16:00:00Z" },
                 plan: "pro",
               },
             },
@@ -172,12 +172,28 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     await waitFor(() => {
       expect(screen.getByText("Managed Accounts")).toBeInTheDocument();
       expect(screen.getByText("Runtime Overview")).toBeInTheDocument();
-      expect(screen.getByText("Work Account")).toBeInTheDocument();
+      expect(screen.getAllByText("Work Account").length).toBeGreaterThan(0);
     });
 
     expect(screen.getAllByTestId("codex-account-card")).toHaveLength(2);
-    expect(screen.getByText("80%")).toBeInTheDocument();
-    expect(screen.getByText("92%")).toBeInTheDocument();
+    const overview = screen.getByText("Runtime Overview").closest(".codex-accounts-overview");
+    expect(overview).not.toBeNull();
+    const overviewQueries = within(overview as HTMLElement);
+    expect(overviewQueries.getByText("Work Account")).toBeInTheDocument();
+    expect(overviewQueries.getByText("plus")).toBeInTheDocument();
+    expect(overviewQueries.getByText("80%")).toBeInTheDocument();
+    expect(overviewQueries.getByText("92%")).toBeInTheDocument();
+    expect(overviewQueries.queryByText("/var/lib/alter0/.codex/auth.json")).not.toBeInTheDocument();
+    expect(overviewQueries.queryByText("Active Auth Path")).not.toBeInTheDocument();
+    expect(overviewQueries.getByRole("progressbar", { name: "Hourly Remaining" })).toHaveAttribute("aria-valuenow", "80");
+    expect(overviewQueries.getByRole("progressbar", { name: "Weekly Remaining" })).toHaveAttribute("aria-valuenow", "92");
+    expect(overviewQueries.getByText("2026-05-01 14:30 UTC")).toBeInTheDocument();
+    expect(overviewQueries.getByText("2026-05-08 14:30 UTC")).toBeInTheDocument();
+
+    const accountCards = screen.getAllByTestId("codex-account-card");
+    const firstCardQueries = within(accountCards[0] as HTMLElement);
+    expect(firstCardQueries.getByRole("progressbar", { name: "Hourly Remaining" })).toHaveAttribute("aria-valuenow", "80");
+    expect(firstCardQueries.getByText("2026-05-01 14:30 UTC")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Switch to Personal Account" }));
 
@@ -190,7 +206,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       "/api/control/codex/accounts/personal/switch",
       expect.objectContaining({ method: "POST" }),
     );
-    expect(screen.getByText("Personal Account")).toBeInTheDocument();
+    expect(screen.getAllByText("Personal Account").length).toBeGreaterThan(0);
   });
 
   it("imports an auth file and creates the managed account", async () => {
@@ -203,6 +219,12 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
             live: {
               account_name: "CLI Account",
               email: "cli@example.com",
+              plan: "plus",
+            },
+            quota: {
+              hourly: { remaining_percent: 61, reset_at: "2026-05-02T08:00:00Z" },
+              weekly: { remaining_percent: 84, reset_at: "2026-05-09T08:00:00Z" },
+              plan: "plus",
             },
             auth_path: "/var/lib/alter0/.codex/auth.json",
           },
@@ -241,6 +263,15 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
           .length,
       ).toBeGreaterThan(0);
     });
+    const overview = screen.getByText("Runtime Overview").closest(".codex-accounts-overview");
+    expect(overview).not.toBeNull();
+    const overviewQueries = within(overview as HTMLElement);
+    expect(overviewQueries.getByText("plus")).toBeInTheDocument();
+    expect(overviewQueries.getByText("61%")).toBeInTheDocument();
+    expect(overviewQueries.getByText("84%")).toBeInTheDocument();
+    expect(overviewQueries.queryByText("/var/lib/alter0/.codex/auth.json")).not.toBeInTheDocument();
+    expect(overviewQueries.getByText("2026-05-02 08:00 UTC")).toBeInTheDocument();
+    expect(overviewQueries.getByRole("progressbar", { name: "Hourly Remaining" })).toHaveAttribute("aria-valuenow", "61");
 
     const authFile = new File([`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`], "auth.json", { type: "application/json" });
     Object.defineProperty(authFile, "text", {
@@ -386,8 +417,10 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       expect(screen.getByText("Current Codex")).toBeInTheDocument();
       expect(screen.getByLabelText("Model")).toHaveValue("gpt-5.4");
       expect(screen.getByLabelText("Reasoning Depth")).toHaveValue("high");
-      expect(screen.getByText("/var/lib/alter0/.codex/config.toml")).toBeInTheDocument();
+      expect(screen.getByText("Runtime Details")).toBeInTheDocument();
     });
+    expect(screen.getAllByText("GPT-5.4 (gpt-5.4)")).toHaveLength(1);
+    expect(document.querySelectorAll(".codex-accounts-runtime-current")).toHaveLength(0);
 
     fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "gpt-5.4-mini" },
