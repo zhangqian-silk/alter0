@@ -323,8 +323,14 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".terminal-workspace-head")).toBeInTheDocument();
     expect(document.querySelector(".terminal-workspace-head")).toHaveClass("conversation-workspace-head");
     expect(document.querySelector(".terminal-workspace-head")).toHaveClass("is-compact");
+    expect(document.querySelector(".terminal-workspace-head")).toHaveClass("is-sticky");
+    expect(document.querySelector(".terminal-workspace-head")).toHaveAttribute("data-runtime-workspace-header", "true");
     expect(document.querySelector(".terminal-workspace-row")).toHaveClass("conversation-workspace-row", "is-compact");
     expect(document.querySelector(".terminal-workspace-copy")).toHaveClass("conversation-workspace-copy", "is-compact");
+    const workspaceHeader = document.querySelector(".terminal-workspace-head") as HTMLElement;
+    expect(within(workspaceHeader).getByRole("button", { name: "Ready" })).toBeDisabled();
+    expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(within(workspaceHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
     expect(document.querySelector("[data-terminal-close]")).not.toBeInTheDocument();
     expect(document.querySelector("[data-terminal-console-panel]")).toBeInTheDocument();
     expect(document.querySelector(".terminal-chat-form")).toBeInTheDocument();
@@ -337,6 +343,15 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
       "<li>/workspace/alter0</li>",
     );
+
+    fireEvent.click(within(workspaceHeader).getByRole("button", { name: "Details" }));
+    const metaPanel = document.querySelector("[data-terminal-meta-panel]") as HTMLElement;
+    expect(metaPanel).toBeInTheDocument();
+    expect(workspaceHeader.contains(metaPanel)).toBe(false);
+    expect(within(metaPanel).getByText("/workspace/alter0")).toBeInTheDocument();
+
+    fireEvent.click(document.querySelector("[data-runtime-details-backdrop='true']") as HTMLElement);
+    expect(document.querySelector("[data-terminal-meta-panel]")).not.toBeInTheDocument();
   });
 
   it("groups terminal sessions into recency sections in the shared sidebar", async () => {

@@ -203,10 +203,10 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-delete {");
     expect(stylesheet).toContain("min-height: auto;");
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-inspector {");
-    expect(stylesheet).toContain("border-radius: 26px;");
-    expect(stylesheet).toContain("box-shadow: 0 18px 36px -30px rgba(8, 37, 69, 0.2);");
+    expect(stylesheet).toContain("border-radius: 22px;");
+    expect(stylesheet).toContain("box-shadow: 0 16px 32px -28px rgba(8, 37, 69, 0.18);");
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-check-item {");
-    expect(stylesheet).toContain("padding: 10px 12px;");
+    expect(stylesheet).toContain("padding: 8px 10px;");
   });
 
   it("keeps the image upload control readable inside the composer tool row", () => {
@@ -244,6 +244,37 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("align-items: center;");
     expect(stylesheet).toContain("font-size: 18px;");
     expect(stylesheet).toContain("text-overflow: ellipsis;");
+  });
+
+  it("renders shared details panels as dense summary grids instead of loose stacked metadata", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".workspace-details-content {");
+    expect(stylesheet).toContain(".workspace-details-summary {");
+    expect(stylesheet).toContain("grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));");
+    expect(stylesheet).toContain(".workspace-details-panel .route-field-row {");
+    expect(stylesheet).toContain("grid-template-columns: minmax(64px, 82px) minmax(0, 1fr);");
+    expect(stylesheet).toContain(".workspace-details-panel .route-field-row > span:first-child {");
+    expect(stylesheet).toContain("text-transform: uppercase;");
+    expect(stylesheet).toContain(".workspace-details-panel .route-field-value.is-multiline {");
+    expect(stylesheet).toContain("padding: 6px 8px;");
+    expect(stylesheet).toContain(".workspace-details-panel .route-field-copy {");
+    expect(stylesheet).toContain("width: 22px;");
+  });
+
+  it("renders details as a top-layer floating panel with its own scroll container and dismiss backdrop", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".workspace-details-layer {");
+    expect(stylesheet).toContain("position: fixed;");
+    expect(stylesheet).toContain("z-index: 70;");
+    expect(stylesheet).toContain(".workspace-details-backdrop {");
+    expect(stylesheet).toContain(".workspace-details-panel {");
+    expect(stylesheet).toContain("max-height: min(64vh, calc(100dvh - 168px));");
+    expect(stylesheet).toContain("overflow: auto;");
+    expect(stylesheet).toContain("overscroll-behavior: contain;");
   });
 
   it("keeps mobile empty-state headers on a single terminal-style row while preserving visible title space", () => {

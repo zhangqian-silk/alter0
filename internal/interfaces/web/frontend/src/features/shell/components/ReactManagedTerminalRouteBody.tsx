@@ -11,6 +11,7 @@ import {
 } from "../../conversation-runtime/composerImageAttachments";
 import { getLegacyShellCopy } from "../legacyShellCopy";
 import { RuntimeWorkspaceFrame } from "./RuntimeWorkspaceFrame";
+import { RuntimeWorkspaceHeader } from "./RuntimeWorkspaceHeader";
 import { normalizeText, RouteFieldRow } from "./RouteBodyPrimitives";
 
 type TerminalStatus = "ready" | "busy" | "exited" | "failed" | "interrupted";
@@ -1713,56 +1714,35 @@ export function ReactManagedTerminalRouteBody() {
       workspaceBodyClassName="terminal-workspace-body conversation-workspace-body"
       workspaceBodyRef={workspaceBodyRef}
       workspaceHeader={
-        <header className="terminal-workspace-head conversation-workspace-head is-compact">
-          <div className="terminal-workspace-row terminal-workspace-title-row conversation-workspace-row is-compact">
-            <div className="terminal-workspace-copy conversation-workspace-copy is-compact">
-              <span className="terminal-workspace-eyebrow conversation-workspace-eyebrow">{copy.sessionRuntime}</span>
-              <h4>{activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}</h4>
-              <span className="terminal-workspace-subcopy conversation-workspace-subcopy">
-                {activeSession ? sessionLastOutputLabel(activeSession, copy) : copy.empty}
-              </span>
-            </div>
-            {activeSession ? (
-              <div className="terminal-runtime-state" data-terminal-runtime-state={activeStatus}>
-                <span className="terminal-runtime-state-dot"></span>
-                <span className="terminal-runtime-state-text">
-                  {renderStatus(activeSession.status || "", copy)}
-                </span>
+        <RuntimeWorkspaceHeader
+          title={activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}
+          statusLabel={renderStatus(activeSession?.status || "", copy)}
+          statusTone={activeStatus}
+          detailsLabel={copy.details}
+          detailsOpen={metaOpen}
+          onToggleDetails={() => setMetaOpen((current) => !current)}
+          detailsDisabled={!activeSession}
+          statusButtonProps={{
+            "data-terminal-runtime-state": activeStatus,
+          }}
+          detailsButtonProps={{
+            "data-terminal-meta-toggle": "",
+          }}
+          detailsPanelProps={{
+            "data-terminal-meta-panel": "",
+          }}
+          detailsContent={activeSession ? (
+            <section className="workspace-details-content terminal-session-details">
+              <div className="workspace-details-summary">
+                <RouteFieldRow label={copy.session} value={activeSession.id} copyLabel={copy.session} mono />
+                <RouteFieldRow label={copy.shell} value={activeSession.shell} copyLabel={copy.shell} mono />
+                <RouteFieldRow label={copy.path} value={activeSession.working_dir} copyLabel={copy.path} mono multiline />
+                <RouteFieldRow label={copy.status} value={renderStatus(activeSession.status || "", copy)} copyLabel={copy.status} />
+                <RouteFieldRow label={copy.updatedAt} value={formatDateTime(activeSession.updated_at || activeSession.created_at)} copyLabel={copy.updatedAt} />
               </div>
-            ) : null}
-            <div className="terminal-workspace-actions conversation-workspace-actions">
-              <button
-                className="terminal-inline-button is-quiet"
-                type="button"
-                data-terminal-session-pane-toggle
-                aria-expanded={workbench.isMobileViewport ? workbench.mobileSessionPaneOpen : true}
-                onClick={workbench.toggleMobileSessionPane}
-              >
-                {copy.sessions}
-              </button>
-              <button
-                className="terminal-inline-button"
-                type="button"
-                data-terminal-meta-toggle
-                aria-expanded={metaOpen}
-                disabled={!activeSession}
-                onClick={() => setMetaOpen((current) => !current)}
-              >
-                {copy.details}
-              </button>
-            </div>
-          </div>
-
-          {activeSession && metaOpen ? (
-            <section className="terminal-meta-panel" data-terminal-meta-panel>
-              <RouteFieldRow label={copy.session} value={activeSession.id} copyLabel={copy.session} mono />
-              <RouteFieldRow label={copy.shell} value={activeSession.shell} copyLabel={copy.shell} mono />
-              <RouteFieldRow label={copy.path} value={activeSession.working_dir} copyLabel={copy.path} mono multiline />
-              <RouteFieldRow label={copy.status} value={renderStatus(activeSession.status || "", copy)} copyLabel={copy.status} />
-              <RouteFieldRow label={copy.updatedAt} value={formatDateTime(activeSession.updated_at || activeSession.created_at)} copyLabel={copy.updatedAt} />
             </section>
           ) : null}
-        </header>
+        />
       }
       workspaceContent={
         <section className="terminal-console-panel" data-terminal-console-panel>

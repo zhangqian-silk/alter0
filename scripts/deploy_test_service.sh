@@ -32,6 +32,36 @@ default_web_start_command() {
   printf 'unset ALTER0_WEB_LOGIN_PASSWORD; export GOCACHE=%q; exec go run ./cmd/alter0 --internal-runtime-child --web-addr "127.0.0.1:${PORT}"' "${go_cache}"
 }
 
+base_host_from_url() {
+  python3 - "$1" <<'PY'
+import sys
+from urllib.parse import urlparse
+
+parsed = urlparse(sys.argv[1].strip())
+print(parsed.hostname or "")
+PY
+}
+
+merge_no_proxy_entries() {
+  python3 - "$@" <<'PY'
+import sys
+
+seen = set()
+merged = []
+for raw in sys.argv[1:]:
+    for item in raw.split(","):
+        value = item.strip()
+        if not value:
+            continue
+        lower = value.lower()
+        if lower in seen:
+            continue
+        seen.add(lower)
+        merged.append(value)
+print(",".join(merged))
+PY
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
@@ -123,6 +153,8 @@ if [[ "${SERVICE_TYPE}" != "frontend_dist" && "${SERVICE_TYPE}" != "http" ]]; th
 fi
 
 BASE_URL="${ALTER0_GATEWAY_BASE_URL:-https://alter0.cn}"
+BASE_HOST="$(base_host_from_url "${BASE_URL}")"
+CURL_NO_PROXY="$(merge_no_proxy_entries "${NO_PROXY:-${no_proxy:-}}" "${BASE_HOST}" ".${BASE_HOST}" "127.0.0.1" "localhost")"
 PASSWORD="${ALTER0_WEB_LOGIN_PASSWORD:-}"
 if [[ -z "${PASSWORD}" && -r /etc/alter0/alter0.env ]]; then
   set -a
@@ -196,6 +228,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+env NO_PROXY="${CURL_NO_PROXY}" no_proxy="${CURL_NO_PROXY}" HTTPS_PROXY= HTTP_PROXY= https_proxy= http_proxy= \
 curl -sS \
   -c "${COOKIE_JAR}" \
   -b "${COOKIE_JAR}" \
@@ -232,7 +265,8 @@ print(json.dumps(payload))
 PY
 )"
 
-HTTP_CODE="$(curl -sS \
+HTTP_CODE="$(env NO_PROXY="${CURL_NO_PROXY}" no_proxy="${CURL_NO_PROXY}" HTTPS_PROXY= HTTP_PROXY= https_proxy= http_proxy= \
+  curl -sS \
   -b "${COOKIE_JAR}" \
   -X PUT \
   -H "Content-Type: application/json" \

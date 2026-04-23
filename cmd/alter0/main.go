@@ -160,7 +160,10 @@ func main() {
 	if resolvedWebBindLocalhostOnly {
 		listenAddr = forceLoopbackListenAddr(listenAddr)
 	}
-	resolvedWebLoginPassword := strings.TrimSpace(control.ResolveEnvironmentString("web_login_password", strings.TrimSpace(*webLoginPassword)))
+	resolvedWebLoginPassword := resolveRuntimeChildWebLoginPassword(
+		*runtimeChild,
+		control.ResolveEnvironmentString("web_login_password", strings.TrimSpace(*webLoginPassword)),
+	)
 	ensureChildProcessWebLoginPassword(resolvedWebLoginPassword)
 
 	resolvedWorkerPoolSize := control.ResolveEnvironmentInt("worker_pool_size", *workerPoolSize)
@@ -436,6 +439,13 @@ func ensureChildProcessWebLoginPassword(password string) {
 		return
 	}
 	_ = os.Setenv("ALTER0_WEB_LOGIN_PASSWORD", trimmed)
+}
+
+func resolveRuntimeChildWebLoginPassword(runtimeChild bool, password string) string {
+	if runtimeChild {
+		return ""
+	}
+	return strings.TrimSpace(password)
 }
 
 func mergeNoProxyEntries(existing string, required ...string) string {
