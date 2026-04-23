@@ -388,6 +388,41 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(within(sessionPane).getAllByRole("listitem")).toHaveLength(3);
   });
 
+  it("attaches images in terminal composer and submits them with the terminal input payload", async () => {
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement;
+    expect(fileInput).toBeInTheDocument();
+
+    const image = new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], "terminal-shot.svg", { type: "image/svg+xml" });
+    fireEvent.change(fileInput, { target: { files: [image] } });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Preview terminal-shot.svg" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview terminal-shot.svg" }));
+    expect(screen.getByRole("dialog", { name: "terminal-shot.svg" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
+
+    fireEvent.change(document.querySelector("[data-terminal-input]") as HTMLTextAreaElement, {
+      target: { value: "inspect screenshot" },
+    });
+    fireEvent.click(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+
+    await waitFor(() => {
+      const fetchMock = vi.mocked(fetch);
+      expect(fetchMock.mock.calls.some(([request, init]) =>
+        String(request) === "/api/terminal/sessions/terminal-1/input"
+        && String(init?.method || "GET").toUpperCase() === "POST"
+        && JSON.parse(String(init?.body || "{}")).attachments?.length === 1)).toBe(true);
+    });
+  });
+
   it("loads step detail when expanding a process step", async () => {
     renderTerminalRouteBody();
 
@@ -512,6 +547,119 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(fetchMock.mock.calls.some(([request, init]) =>
       String(request) === "/api/terminal/sessions/terminal-2/input"
       && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+  });
+
+  it("keeps image attachments on the first terminal input when no session exists yet", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "terminal-2",
+            terminal_session_id: "terminal-2",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:00Z",
+          },
+        }, { status: 201 }));
+      }
+      if (url === "/api/terminal/sessions/terminal-2" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "terminal-2",
+            terminal_session_id: "terminal-2",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:00Z",
+            turns: [
+              {
+                id: "turn-2",
+                prompt: "describe this image",
+                attachments: [
+                  {
+                    name: "diagram.svg",
+                    content_type: "image/svg+xml",
+                    data_url: "data:image/svg+xml;base64,PHN2Zy8+",
+                  },
+                ],
+                status: "completed",
+                started_at: "2026-04-15T10:20:01Z",
+                finished_at: "2026-04-15T10:20:03Z",
+                duration_ms: 2000,
+                final_output: "done",
+                steps: [],
+              },
+            ],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-2/input" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "terminal-2",
+            terminal_session_id: "terminal-2",
+            status: "busy",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:01Z",
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    const { container } = renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+    });
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).not.toBeNull();
+    const file = new File(
+      ['<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><rect width="12" height="12" fill="#000"/></svg>'],
+      "diagram.svg",
+      { type: "image/svg+xml" },
+    );
+
+    fireEvent.change(fileInput!, { target: { files: [file] } });
+    await waitFor(() => {
+      expect(screen.getByAltText("diagram.svg")).toBeInTheDocument();
+    });
+
+    fireEvent.change(document.querySelector("[data-terminal-input]") as HTMLTextAreaElement, {
+      target: { value: "describe this image" },
+    });
+    fireEvent.click(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-2']")).toBeInTheDocument();
+    });
+
+    const fetchMock = vi.mocked(fetch);
+    const inputCall = fetchMock.mock.calls.find(([request, init]) =>
+      String(request) === "/api/terminal/sessions/terminal-2/input"
+      && String(init?.method || "GET").toUpperCase() === "POST");
+    expect(inputCall).toBeTruthy();
+    const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
+    expect(payload.attachments).toHaveLength(1);
+    expect(payload.attachments[0]).toMatchObject({
+      name: "diagram.svg",
+      content_type: "image/svg+xml",
+    });
   });
 
   it("marks the first send as pending immediately while the terminal session is still being created", async () => {

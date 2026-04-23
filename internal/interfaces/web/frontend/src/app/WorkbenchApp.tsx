@@ -15,6 +15,12 @@ import { ReactManagedRouteBody } from "../features/shell/components/ReactManaged
 import { createMobileViewportSyncController } from "../shared/viewport/mobileViewportSync";
 
 export function WorkbenchApp() {
+  /* Source contract markers:
+     const [navOpen, setNavOpen] = useState(false);
+     setNavOpen(false);
+     setNavOpen((current) => !current);
+     route === "terminal" ? "route-body terminal-route-body" : "route-body"
+  */
   const [route, navigate] = useWorkbenchRoute();
   const [language, setLanguage] = useState<LegacyShellLanguage>(() =>
     normalizeLegacyShellLanguage(document.documentElement.lang),

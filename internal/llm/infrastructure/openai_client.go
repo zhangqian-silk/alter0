@@ -7,6 +7,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 
 	"alter0/internal/llm/domain"
@@ -352,7 +353,13 @@ func (c *OpenAIClient) buildChatCompletionParams(req domain.ChatRequest) (openai
 		case "system":
 			messages = append(messages, openai.SystemMessage(msg.Content))
 		case "user":
-			messages = append(messages, openai.UserMessage(msg.Content))
+			if parts := convertUserMessagePartsToCompletion(msg); len(parts) > 0 {
+				user := openai.ChatCompletionUserMessageParam{}
+				user.Content.OfArrayOfContentParts = parts
+				messages = append(messages, openai.ChatCompletionMessageParamUnion{OfUser: &user})
+			} else {
+				messages = append(messages, openai.UserMessage(msg.Content))
+			}
 		case "assistant":
 			assistant := openai.ChatCompletionAssistantMessageParam{}
 			if msg.Content != "" {
@@ -414,7 +421,9 @@ func convertMessageToResponseInput(msg domain.Message) []responses.ResponseInput
 			items = append(items, responses.ResponseInputItemParamOfMessage(msg.Content, responses.EasyInputMessageRoleSystem))
 		}
 	case "user":
-		if msg.Content != "" {
+		if parts := convertUserMessagePartsToResponse(msg); len(parts) > 0 {
+			items = append(items, responses.ResponseInputItemParamOfMessage(parts, responses.EasyInputMessageRoleUser))
+		} else if msg.Content != "" {
 			items = append(items, responses.ResponseInputItemParamOfMessage(msg.Content, responses.EasyInputMessageRoleUser))
 		}
 	case "assistant":
@@ -431,6 +440,65 @@ func convertMessageToResponseInput(msg domain.Message) []responses.ResponseInput
 	}
 
 	return items
+}
+
+func convertUserMessagePartsToCompletion(msg domain.Message) []openai.ChatCompletionContentPartUnionParam {
+	parts := make([]openai.ChatCompletionContentPartUnionParam, 0, len(msg.Parts))
+	for _, part := range normalizedMessageParts(msg) {
+		switch part.Type {
+		case domain.MessagePartTypeText:
+			if part.Text == "" {
+				continue
+			}
+			parts = append(parts, openai.TextContentPart(part.Text))
+		case domain.MessagePartTypeImage:
+			if part.ImageURL == "" {
+				continue
+			}
+			parts = append(parts, openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+				URL:    part.ImageURL,
+				Detail: "auto",
+			}))
+		}
+	}
+	return parts
+}
+
+func convertUserMessagePartsToResponse(msg domain.Message) responses.ResponseInputMessageContentListParam {
+	parts := make(responses.ResponseInputMessageContentListParam, 0, len(msg.Parts))
+	for _, part := range normalizedMessageParts(msg) {
+		switch part.Type {
+		case domain.MessagePartTypeText:
+			if part.Text == "" {
+				continue
+			}
+			parts = append(parts, responses.ResponseInputContentParamOfInputText(part.Text))
+		case domain.MessagePartTypeImage:
+			if part.ImageURL == "" {
+				continue
+			}
+			parts = append(parts, responses.ResponseInputContentUnionParam{
+				OfInputImage: &responses.ResponseInputImageParam{
+					ImageURL: param.NewOpt(part.ImageURL),
+					Detail:   responses.ResponseInputImageDetailAuto,
+				},
+			})
+		}
+	}
+	return parts
+}
+
+func normalizedMessageParts(msg domain.Message) []domain.MessagePart {
+	if len(msg.Parts) > 0 {
+		return msg.Parts
+	}
+	if msg.Content == "" {
+		return nil
+	}
+	return []domain.MessagePart{{
+		Type: domain.MessagePartTypeText,
+		Text: msg.Content,
+	}}
 }
 
 func convertResponse(resp *responses.Response) *domain.ChatResponse {

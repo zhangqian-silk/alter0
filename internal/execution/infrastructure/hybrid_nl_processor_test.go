@@ -99,6 +99,44 @@ func (c *answerOnlyLLMClient) Close() error {
 	return nil
 }
 
+type captureMessagePartsLLMClient struct {
+	lastRequest llmdomain.ChatRequest
+}
+
+func (c *captureMessagePartsLLMClient) Chat(_ context.Context, req llmdomain.ChatRequest) (*llmdomain.ChatResponse, error) {
+	c.lastRequest = req
+	return &llmdomain.ChatResponse{
+		Message: llmdomain.Message{
+			Role:    "assistant",
+			Content: "已读取图片",
+		},
+	}, nil
+}
+
+func (c *captureMessagePartsLLMClient) ChatStream(_ context.Context, _ llmdomain.ChatRequest, _ func(llmdomain.StreamEvent) error) (*llmdomain.ChatResponse, error) {
+	return nil, nil
+}
+
+func (c *captureMessagePartsLLMClient) Close() error {
+	return nil
+}
+
+type failingLLMClient struct {
+	err error
+}
+
+func (c *failingLLMClient) Chat(_ context.Context, _ llmdomain.ChatRequest) (*llmdomain.ChatResponse, error) {
+	return nil, c.err
+}
+
+func (c *failingLLMClient) ChatStream(_ context.Context, _ llmdomain.ChatRequest, _ func(llmdomain.StreamEvent) error) (*llmdomain.ChatResponse, error) {
+	return nil, c.err
+}
+
+func (c *failingLLMClient) Close() error {
+	return nil
+}
+
 type delegatingLLMClient struct {
 	call int
 }
@@ -396,6 +434,72 @@ func TestHybridNLProcessorMarksCodexExecutionSource(t *testing.T) {
 	}
 	if got := metadata[execdomain.ExecutionSourceMetadataKey]; got != execdomain.ExecutionSourceCodexCLI {
 		t.Fatalf("expected execution source %q, got %q", execdomain.ExecutionSourceCodexCLI, got)
+	}
+}
+
+func TestHybridNLProcessorIncludesImageAttachmentsInReactUserMessage(t *testing.T) {
+	captureClient := &captureMessagePartsLLMClient{}
+	reactFactory := &stubReactFactory{client: captureClient}
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "describe image", testRuntimeMetadata())), reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	rawAttachments, err := execdomain.EncodeUserImageAttachments([]execdomain.UserImageAttachment{{
+		Name:        "diagram.png",
+		ContentType: "image/png",
+		DataURL:     "data:image/png;base64,ZmFrZQ==",
+	}})
+	if err != nil {
+		t.Fatalf("EncodeUserImageAttachments() error = %v", err)
+	}
+	metadata[execdomain.UserImageAttachmentsMetadataKey] = rawAttachments
+
+	output, err := processor.Process(context.Background(), "describe image", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "已读取图片" {
+		t.Fatalf("Process() output = %q", output)
+	}
+	if len(captureClient.lastRequest.Messages) < 2 {
+		t.Fatalf("expected system and user messages, got %+v", captureClient.lastRequest.Messages)
+	}
+	userMessage := captureClient.lastRequest.Messages[len(captureClient.lastRequest.Messages)-1]
+	if len(userMessage.Parts) != 2 {
+		t.Fatalf("expected text and image parts, got %+v", userMessage.Parts)
+	}
+	if userMessage.Parts[0].Type != llmdomain.MessagePartTypeText || userMessage.Parts[1].Type != llmdomain.MessagePartTypeImage {
+		t.Fatalf("unexpected message parts %+v", userMessage.Parts)
+	}
+	if userMessage.Parts[1].ImageURL != "data:image/png;base64,ZmFrZQ==" {
+		t.Fatalf("expected image data URL, got %+v", userMessage.Parts[1])
+	}
+}
+
+func TestHybridNLProcessorDoesNotFallbackToCodexWhenImagesNeedVision(t *testing.T) {
+	reactErr := &testError{text: "vision model unavailable"}
+	reactFactory := &stubReactFactory{client: &failingLLMClient{err: reactErr}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "describe image", testRuntimeMetadata())), reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	rawAttachments, err := execdomain.EncodeUserImageAttachments([]execdomain.UserImageAttachment{{
+		Name:        "diagram.png",
+		ContentType: "image/png",
+		DataURL:     "data:image/png;base64,ZmFrZQ==",
+	}})
+	if err != nil {
+		t.Fatalf("EncodeUserImageAttachments() error = %v", err)
+	}
+	metadata[execdomain.UserImageAttachmentsMetadataKey] = rawAttachments
+
+	output, err := processor.Process(context.Background(), "describe image", metadata)
+	if err != reactErr {
+		t.Fatalf("expected react error %v, got %v", reactErr, err)
+	}
+	if output != "" {
+		t.Fatalf("expected empty output when react fails with images, got %q", output)
+	}
+	if got := metadata[execdomain.ExecutionSourceMetadataKey]; got != "" {
+		t.Fatalf("expected no codex fallback execution source, got %q", got)
 	}
 }
 

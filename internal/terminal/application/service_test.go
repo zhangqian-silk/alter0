@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	execdomain "alter0/internal/execution/domain"
 	terminaldomain "alter0/internal/terminal/domain"
 )
 
@@ -31,12 +32,25 @@ func TestBuildCodexTurnArgsUsesResumeWhenThreadExists(t *testing.T) {
 		ShellArgs: []string{"--profile", "test"},
 	})
 
-	args := buildCodexTurnArgs(command, "thread-123", "reply exactly")
+	args := buildCodexTurnArgs(command, "thread-123", "reply exactly", nil)
 
 	got := strings.Join(args, " ")
 	for _, part := range []string{"--profile", "test", "exec", "resume", "--json", "--skip-git-repo-check", "thread-123", "reply exactly"} {
 		if !strings.Contains(got, part) {
 			t.Fatalf("expected args to contain %q, got %v", part, args)
+		}
+	}
+}
+
+func TestBuildCodexTurnArgsIncludesImageFlags(t *testing.T) {
+	command := resolveCodexCommand(Options{})
+
+	args := buildCodexTurnArgs(command, "", "inspect screenshot", []string{"/tmp/a.png", "/tmp/b.webp"})
+	got := strings.Join(args, " ")
+
+	for _, part := range []string{"-i /tmp/a.png", "-i /tmp/b.webp", "inspect screenshot"} {
+		if !strings.Contains(got, part) {
+			t.Fatalf("expected image args to contain %q, got %v", part, args)
 		}
 	}
 }
@@ -188,6 +202,48 @@ func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
 	}
 	if got := secondEntries[3].Text; got != "mock:second prompt" {
 		t.Fatalf("expected second reply, got %q", got)
+	}
+}
+
+func TestServiceInputWithAttachmentsPassesImageFlagsAndPersistsTurnAttachments(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-images",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	t.Setenv("TERMINAL_HELPER_EXPECT_IMAGE_COUNT", "1")
+	attachment := execdomain.UserImageAttachment{
+		Name:        "diagram.png",
+		ContentType: "image/png",
+		DataURL:     "data:image/png;base64,ZmFrZQ==",
+	}
+	if _, err := service.InputWithAttachments(InputRequest{
+		OwnerID:     "owner-images",
+		SessionID:   session.ID,
+		Input:       "inspect screenshot",
+		Attachments: []execdomain.UserImageAttachment{attachment},
+	}); err != nil {
+		t.Fatalf("input with attachments: %v", err)
+	}
+
+	_, entries := waitForSessionEntries(t, service, "owner-images", session.ID, 2)
+	if got := entries[1].Text; got != "mock:inspect screenshot" {
+		t.Fatalf("expected attached turn reply, got %q", got)
+	}
+
+	turns, err := service.ListTurns("owner-images", session.ID)
+	if err != nil {
+		t.Fatalf("list turns: %v", err)
+	}
+	if len(turns) != 1 || len(turns[0].Attachments) != 1 {
+		t.Fatalf("expected turn attachments to persist, got %+v", turns)
+	}
+	if turns[0].Attachments[0].DataURL != attachment.DataURL {
+		t.Fatalf("expected persisted attachment data url, got %+v", turns[0].Attachments[0])
 	}
 }
 
@@ -936,6 +992,23 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 		actualHome := filepath.Clean(strings.TrimSpace(os.Getenv("CODEX_HOME")))
 		expectedHome = filepath.Clean(expectedHome)
 		if actualHome != expectedHome {
+			os.Exit(2)
+		}
+	}
+	if expectedImageCount := strings.TrimSpace(os.Getenv("TERMINAL_HELPER_EXPECT_IMAGE_COUNT")); expectedImageCount != "" {
+		want := 0
+		fmt.Sscanf(expectedImageCount, "%d", &want)
+		have := 0
+		for index := 0; index < len(terminalArgs)-1; index += 1 {
+			if terminalArgs[index] != "-i" || index+1 >= len(terminalArgs) {
+				continue
+			}
+			have++
+			if _, err := os.Stat(terminalArgs[index+1]); err != nil {
+				os.Exit(2)
+			}
+		}
+		if have != want {
 			os.Exit(2)
 		}
 	}

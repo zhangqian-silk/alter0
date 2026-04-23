@@ -6,6 +6,7 @@ function buildAssistantMessage(overrides: Partial<ChatMessageSnapshot> = {}): Ch
     id: "message-1",
     role: "assistant",
     text: "Completed the update.",
+    attachments: [],
     route: "chat",
     source: "model",
     error: false,

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	execdomain "alter0/internal/execution/domain"
 	sessionapp "alter0/internal/session/application"
 	sessiondomain "alter0/internal/session/domain"
 	shareddomain "alter0/internal/shared/domain"
@@ -1050,6 +1051,63 @@ func TestControlTaskTerminalInputCreatesFollowUpTask(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"anchor_task_id":"task-root"`) {
 		t.Fatalf("expected terminal anchor task id in response, got %s", rec.Body.String())
+	}
+}
+
+func TestControlTaskTerminalInputAcceptsImageAttachments(t *testing.T) {
+	now := time.Date(2026, 3, 5, 11, 0, 0, 0, time.UTC)
+	taskSvc := &stubWebTaskService{
+		items: map[string]taskdomain.Task{
+			"task-1": {
+				ID:        "task-1",
+				SessionID: "session-a",
+				Status:    taskdomain.TaskStatusRunning,
+				CreatedAt: now,
+				UpdatedAt: now,
+				RequestMetadata: map[string]string{
+					taskapp.MetadataTaskUserIDKey:      "user-a",
+					taskapp.MetadataTaskCorrelationKey: "corr-a",
+					taskapp.MetadataTaskChannelTypeKey: "web",
+					taskapp.MetadataTaskChannelIDKey:   "web-default",
+					controlTaskTerminalSessionIDKey:    "terminal-a",
+					controlTaskTerminalInteractiveKey:  "true",
+					controlTaskTerminalParentIDKey:     "task-root",
+				},
+			},
+		},
+		submitTask: taskdomain.Task{
+			ID:        "task-2",
+			SessionID: "session-a",
+			Status:    taskdomain.TaskStatusQueued,
+		},
+	}
+	server := &Server{
+		tasks:       taskSvc,
+		idGenerator: &sequenceIDGenerator{ids: []string{"msg-followup", "trace-followup"}},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/tasks/task-1/terminal/input", strings.NewReader(`{
+		"input":"",
+		"reuse_task":true,
+		"attachments":[{"name":"diagram.png","content_type":"image/png","data_url":"data:image/png;base64,QUJD"}]
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.controlTaskItemHandler(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d", http.StatusAccepted, rec.Code)
+	}
+	if got := taskSvc.lastSubmitMsg.Content; got != "Attached image." {
+		t.Fatalf("expected default attachment content, got %q", got)
+	}
+	attachments := execdomain.DecodeUserImageAttachments(taskSvc.lastSubmitMsg.Metadata)
+	if len(attachments) != 1 {
+		t.Fatalf("expected one image attachment, got %+v", attachments)
+	}
+	if attachments[0].Name != "diagram.png" {
+		t.Fatalf("expected persisted attachment name, got %+v", attachments[0])
 	}
 }
 

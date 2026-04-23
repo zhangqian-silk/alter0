@@ -92,8 +92,23 @@ func (a *ReActAgent) Run(ctx context.Context, userMessage string) (string, error
 	return state.Answer, nil
 }
 
+func (a *ReActAgent) RunMessage(ctx context.Context, userMessage Message) (string, error) {
+	state, err := a.RunWithMessageState(ctx, userMessage, nil)
+	if err != nil {
+		return "", err
+	}
+	return state.Answer, nil
+}
+
 // RunWithState runs the ReAct loop and returns the final state.
 func (a *ReActAgent) RunWithState(ctx context.Context, userMessage string, onEvent func(ReActEvent) error) (*ReActState, error) {
+	return a.RunWithMessageState(ctx, Message{
+		Role:    "user",
+		Content: userMessage,
+	}, onEvent)
+}
+
+func (a *ReActAgent) RunWithMessageState(ctx context.Context, userMessage Message, onEvent func(ReActEvent) error) (*ReActState, error) {
 	state := &ReActState{
 		Messages: []Message{},
 	}
@@ -106,10 +121,7 @@ func (a *ReActAgent) RunWithState(ctx context.Context, userMessage string, onEve
 	})
 
 	// Add user message
-	state.Messages = append(state.Messages, Message{
-		Role:    "user",
-		Content: userMessage,
-	})
+	state.Messages = append(state.Messages, normalizeUserInputMessage(userMessage))
 
 	for state.Iteration < a.config.MaxIterations {
 		state.Iteration++
@@ -207,16 +219,20 @@ func (a *ReActAgent) RunWithState(ctx context.Context, userMessage string, onEve
 
 // RunStream runs the ReAct loop with streaming.
 func (a *ReActAgent) RunStream(ctx context.Context, userMessage string, onEvent func(ReActEvent) error) (string, error) {
+	return a.RunMessageStream(ctx, Message{
+		Role:    "user",
+		Content: userMessage,
+	}, onEvent)
+}
+
+func (a *ReActAgent) RunMessageStream(ctx context.Context, userMessage Message, onEvent func(ReActEvent) error) (string, error) {
 	if a != nil && a.config.Client != nil && len(a.config.Tools) == 0 {
 		messages := []Message{
 			{
 				Role:    "system",
 				Content: a.buildSystemPrompt(),
 			},
-			{
-				Role:    "user",
-				Content: userMessage,
-			},
+			normalizeUserInputMessage(userMessage),
 		}
 		state := &ReActState{
 			Messages: messages,
@@ -254,7 +270,7 @@ func (a *ReActAgent) RunStream(ctx context.Context, userMessage string, onEvent 
 		}
 		return state.Answer, nil
 	}
-	state, err := a.RunWithState(ctx, userMessage, onEvent)
+	state, err := a.RunWithMessageState(ctx, userMessage, onEvent)
 	if err != nil {
 		return "", err
 	}
@@ -304,6 +320,21 @@ func (a *ReActAgent) consumeLatestUserMessage(ctx context.Context) (string, bool
 
 func buildSupplementalUserMessage(message string) string {
 	return "Latest user message received while the task was running. Treat it as the newest instruction and incorporate it into the next step.\n\n" + strings.TrimSpace(message)
+}
+
+func normalizeUserInputMessage(message Message) Message {
+	normalized := Message{
+		Role:    "user",
+		Content: strings.TrimSpace(message.Content),
+		Parts:   message.Parts,
+	}
+	if len(normalized.Parts) == 0 && normalized.Content != "" {
+		normalized.Parts = []MessagePart{{
+			Type: MessagePartTypeText,
+			Text: normalized.Content,
+		}}
+	}
+	return normalized
 }
 
 func buildIterationLimitAnswer(state *ReActState) string {

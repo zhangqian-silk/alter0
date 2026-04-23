@@ -8,20 +8,28 @@ Usage: scripts/deploy_test_service.sh <session_id> [service_name] [options]
 Deploy or refresh a session-scoped test service on the shared alter0 gateway.
 
 Options:
-  --service-type <frontend_dist|http>  Deployment type. Auto-detected by flags when omitted.
+  --service-type <frontend_dist|http>  Deployment type. Default web deploy uses http full-stack preview.
   --repo-path <path>                   Git workspace path. Defaults to the current repo.
   --upstream-url <url>                 Existing HTTP upstream for service_type=http.
   --command <cmd>                      Start command for service_type=http. PORT is injected.
   --workdir <path>                     Working directory for --command.
   --port <number>                      Fixed local port for --command.
   --health-path <path>                 Health probe path after --command. Default: /
-  --skip-build                         Skip npm run build for frontend_dist.
+  --skip-build                         Skip the frontend build step when the deploy mode needs static assets.
   -h, --help                           Show this help.
 
 Environment:
   ALTER0_GATEWAY_BASE_URL       Shared runtime base URL. Default: https://alter0.cn
   ALTER0_WEB_LOGIN_PASSWORD     Login password. If unset, the script will try /etc/alter0/alter0.env
+  ALTER0_TEST_SERVICE_GOCACHE   Go build cache for default web full-stack preview. Default: /tmp/alter0-go-cache
+  ALTER0_TEST_SERVICE_WEB_COMMAND
+                                 Override default web full-stack start command.
 EOF
+}
+
+default_web_start_command() {
+  local go_cache="${ALTER0_TEST_SERVICE_GOCACHE:-/tmp/alter0-go-cache}"
+  printf 'export GOCACHE=%q; exec go run ./cmd/alter0 --internal-runtime-child --web-addr "127.0.0.1:${PORT}"' "${go_cache}"
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -50,6 +58,7 @@ WORKDIR=""
 PORT=""
 HEALTH_PATH="/"
 SKIP_BUILD=0
+DEFAULT_WEB_HTTP=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -101,6 +110,8 @@ REPO_PATH="$(cd "${REPO_PATH}" && pwd)"
 if [[ -z "${SERVICE_TYPE}" ]]; then
   if [[ -n "${UPSTREAM_URL}" || -n "${START_COMMAND}" ]]; then
     SERVICE_TYPE="http"
+  elif [[ "${SERVICE_NAME}" == "web" ]]; then
+    SERVICE_TYPE="http"
   else
     SERVICE_TYPE="frontend_dist"
   fi
@@ -129,7 +140,15 @@ RUNTIME_DIR=""
 LOG_FILE=""
 PID=""
 
-if [[ "${SERVICE_TYPE}" == "frontend_dist" ]]; then
+if [[ "${SERVICE_TYPE}" == "http" && -z "${UPSTREAM_URL}" && -z "${START_COMMAND}" && "${SERVICE_NAME}" == "web" ]]; then
+  DEFAULT_WEB_HTTP=1
+  START_COMMAND="${ALTER0_TEST_SERVICE_WEB_COMMAND:-$(default_web_start_command)}"
+  if [[ "${HEALTH_PATH}" == "/" ]]; then
+    HEALTH_PATH="/readyz"
+  fi
+fi
+
+if [[ "${SERVICE_TYPE}" == "frontend_dist" || "${DEFAULT_WEB_HTTP}" == "1" ]]; then
   if [[ ! -d "${REPO_PATH}/.git" && ! -f "${REPO_PATH}/.git" ]]; then
     echo "repository path is not a git workspace: ${REPO_PATH}" >&2
     exit 1
@@ -144,7 +163,9 @@ if [[ "${SERVICE_TYPE}" == "frontend_dist" ]]; then
     echo "missing built dist: ${REPO_PATH}/internal/interfaces/web/static/dist/index.html" >&2
     exit 1
   fi
-else
+fi
+
+if [[ "${SERVICE_TYPE}" == "http" ]]; then
   if [[ -n "${START_COMMAND}" ]]; then
     if [[ -z "${WORKDIR}" ]]; then
       WORKDIR="${REPO_PATH}"

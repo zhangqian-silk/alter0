@@ -63,19 +63,23 @@ func (d *scriptWorkspaceServiceDeployer) Deploy(ctx context.Context, req Workspa
 		return WorkspaceServiceDeployResult{}, err
 	}
 	scriptPath := filepath.Join(repoRoot, "scripts", "deploy_test_service.sh")
-	args := []string{scriptPath, strings.TrimSpace(req.SessionID), normalizeWorkspaceServiceID(req.ServiceID)}
-	serviceType := normalizeWorkspaceServiceType(req.ServiceType, req.UpstreamURL, req.StartCommand)
-	args = append(args, "--service-type", serviceType)
+	serviceID := normalizeWorkspaceServiceID(req.ServiceID)
+	args := []string{scriptPath, strings.TrimSpace(req.SessionID), serviceID}
 
 	repositoryPath, err := resolveWorkspaceServiceRepositoryPath(repoRoot, req.SessionID, req.RepositoryPath)
 	if err != nil {
 		return WorkspaceServiceDeployResult{}, err
 	}
-	if serviceType == workspaceServiceTypeFrontendDist {
-		args = append(args, "--repo-path", repositoryPath)
-		if req.SkipBuild {
+	args = append(args, "--repo-path", repositoryPath)
+
+	serviceType := normalizeWorkspaceServiceType(req.ServiceType)
+	if serviceType != "" {
+		args = append(args, "--service-type", serviceType)
+		if serviceType == workspaceServiceTypeFrontendDist && req.SkipBuild {
 			args = append(args, "--skip-build")
 		}
+	} else if req.SkipBuild {
+		args = append(args, "--skip-build")
 	}
 	if strings.TrimSpace(req.UpstreamURL) != "" {
 		args = append(args, "--upstream-url", strings.TrimSpace(req.UpstreamURL))
@@ -85,7 +89,7 @@ func (d *scriptWorkspaceServiceDeployer) Deploy(ctx context.Context, req Workspa
 	}
 	if strings.TrimSpace(req.Workdir) != "" {
 		args = append(args, "--workdir", strings.TrimSpace(req.Workdir))
-	} else if serviceType == workspaceServiceTypeHTTP && strings.TrimSpace(req.StartCommand) != "" {
+	} else if (serviceType == workspaceServiceTypeHTTP || serviceType == "") && strings.TrimSpace(req.StartCommand) != "" {
 		args = append(args, "--workdir", repositoryPath)
 	}
 	if req.Port > 0 {
@@ -109,7 +113,7 @@ func (d *scriptWorkspaceServiceDeployer) Deploy(ctx context.Context, req Workspa
 	return result, nil
 }
 
-func normalizeWorkspaceServiceType(value string, upstreamURL string, startCommand string) string {
+func normalizeWorkspaceServiceType(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
 	case workspaceServiceTypeFrontendDist:
@@ -117,10 +121,7 @@ func normalizeWorkspaceServiceType(value string, upstreamURL string, startComman
 	case workspaceServiceTypeHTTP:
 		return workspaceServiceTypeHTTP
 	}
-	if strings.TrimSpace(upstreamURL) != "" || strings.TrimSpace(startCommand) != "" {
-		return workspaceServiceTypeHTTP
-	}
-	return workspaceServiceTypeFrontendDist
+	return ""
 }
 
 func normalizeWorkspaceServiceID(value string) string {

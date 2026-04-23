@@ -3,14 +3,21 @@ package application
 import "time"
 
 type TurnSummary struct {
-	ID          string        `json:"id"`
-	Prompt      string        `json:"prompt"`
-	Status      string        `json:"status"`
-	StartedAt   time.Time     `json:"started_at,omitempty"`
-	FinishedAt  time.Time     `json:"finished_at,omitempty"`
-	DurationMS  int64         `json:"duration_ms,omitempty"`
-	FinalOutput string        `json:"final_output,omitempty"`
-	Steps       []StepSummary `json:"steps,omitempty"`
+	ID          string           `json:"id"`
+	Prompt      string           `json:"prompt"`
+	Attachments []TurnAttachment `json:"attachments,omitempty"`
+	Status      string           `json:"status"`
+	StartedAt   time.Time        `json:"started_at,omitempty"`
+	FinishedAt  time.Time        `json:"finished_at,omitempty"`
+	DurationMS  int64            `json:"duration_ms,omitempty"`
+	FinalOutput string           `json:"final_output,omitempty"`
+	Steps       []StepSummary    `json:"steps,omitempty"`
+}
+
+type TurnAttachment struct {
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	DataURL     string `json:"data_url"`
 }
 
 type StepSummary struct {

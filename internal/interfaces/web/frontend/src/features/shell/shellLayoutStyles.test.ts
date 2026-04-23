@@ -140,9 +140,10 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain(".terminal-runtime-view .terminal-composer-shell.conversation-composer-shell {");
     expect(stylesheet).toContain("padding: 10px 16px 14px;");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(241, 245, 249, 0) 0%, rgba(241, 245, 249, 0.78) 18%, rgba(241, 245, 249, 0.96) 100%);");
     expect(stylesheet).toContain(".terminal-runtime-view .terminal-chat-form.conversation-chat-form {");
     expect(stylesheet).toContain("border-radius: 28px;");
-    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(239, 247, 255, 0.96) 100%);");
+    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.96);");
     expect(stylesheet).toContain(".terminal-runtime-view .terminal-composer-input.conversation-composer-input {");
     expect(stylesheet).toContain("min-height: 88px;");
     expect(stylesheet).toContain("font-size: 15px;");
@@ -151,7 +152,8 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".terminal-runtime-view .terminal-chat-submit {");
     expect(stylesheet).toContain("width: 40px;");
     expect(stylesheet).toContain("height: 40px;");
-    expect(stylesheet).toContain("color: #2563eb;");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, #1f6feb 0%, #1747a6 100%);");
+    expect(stylesheet).toContain("color: #f8fbff;");
   });
 
   it("locks conversation empty states in place so mobile overscroll cannot drag the header away", () => {
@@ -197,7 +199,11 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-card {");
     expect(stylesheet).toContain("border-radius: 14px;");
-    expect(stylesheet).toContain("background: transparent;");
+    expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-card.is-active {");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, #16385b 0%, #0f2740 100%);");
+    expect(stylesheet).toContain("box-shadow: 0 18px 30px -24px rgba(15, 39, 64, 0.58);");
+    expect(stylesheet).toContain(".conversation-session-select.menu-item.active .conversation-session-title {");
+    expect(stylesheet).toContain("color: #f8fbff;");
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-delete {");
     expect(stylesheet).toContain("min-height: auto;");
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-inspector {");
@@ -205,6 +211,16 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("box-shadow: 0 18px 36px -30px rgba(8, 37, 69, 0.2);");
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-check-item {");
     expect(stylesheet).toContain("padding: 10px 12px;");
+  });
+
+  it("keeps the image upload control readable inside the composer tool row", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".conversation-runtime-view .terminal-chat-form .conversation-chat-upload {");
+    expect(stylesheet).toContain("width: auto;");
+    expect(stylesheet).toContain("min-width: fit-content;");
+    expect(stylesheet).toContain("white-space: nowrap;");
   });
 
   it("uses a compact single-line chat workspace header instead of the old stacked copy block", () => {
@@ -386,13 +402,15 @@ describe("shell layout stylesheet", () => {
   it("pins the mobile terminal composer to the viewport and reserves message space above it", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+    const mobileComposerBlock = stylesheet.match(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-shell\s*\{([\s\S]*?)\n  \}/,
+    );
 
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*var\(--keyboard-offset\);[\s\S]*?padding:\s*0 10px calc\(10px \+ env\(safe-area-inset-bottom\)\);/,
     );
-    expect(stylesheet).not.toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-shell\s*\{[\s\S]*?transition:\s*bottom\b/,
-    );
+    expect(mobileComposerBlock?.[1]).toBeTruthy();
+    expect(mobileComposerBlock?.[1]).not.toContain("transition: bottom");
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-jump-cluster\s*\{[\s\S]*?bottom:\s*calc\(var\(--runtime-composer-rest-inset, var\(--runtime-composer-inset, 0px\)\) \+ 24px\);/,
     );

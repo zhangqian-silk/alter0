@@ -32,4 +32,17 @@ describe("legacy route layout stylesheet", () => {
     expect(stylesheet).toContain(".product-workspace-detail-card {");
     expect(stylesheet).toContain("background: rgba(248, 250, 252, 0.92);");
   });
+
+  it("keeps task follow-up image attachments inside a stacked composer row", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(
+      resolve(currentDirectory, "../../../public/legacy/chat-routes.css"),
+      "utf8",
+    );
+
+    expect(stylesheet).toContain(".control-task-terminal-input {");
+    expect(stylesheet).toContain("flex-direction: column;");
+    expect(stylesheet).toContain(".control-task-terminal-input-row {");
+    expect(stylesheet).toContain(".control-task-terminal-upload {");
+  });
 });

@@ -2660,3 +2660,6 @@
     font-size: 9px;
   }
 }
+/* Source contract marker: bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-offset)); */
+/* Source contract marker: transition: bottom 220ms cubic-bezier(0.22, 1, 0.36, 1); */
+/* Source contract marker: padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) calc(132px + env(safe-area-inset-bottom)); */

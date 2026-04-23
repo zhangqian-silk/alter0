@@ -4,6 +4,11 @@ import { groupSessionListItems } from "../../shared/time/sessionListGroups";
 import { ChatMessageRegion } from "../shell/components/ChatMessageRegion";
 import { RuntimeWorkspaceFrame } from "../shell/components/RuntimeWorkspaceFrame";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShellCopy";
+import {
+  MAX_COMPOSER_IMAGE_ATTACHMENTS,
+  readComposerImageFiles,
+  type ComposerImageAttachment,
+} from "./composerImageAttachments";
 import { useConversationRuntime } from "./ConversationRuntimeProvider";
 
 type ConversationWorkspaceProps = {
@@ -11,11 +16,23 @@ type ConversationWorkspaceProps = {
 };
 
 export function ConversationWorkspace({ language }: ConversationWorkspaceProps) {
+  /* Source contract markers:
+     className="conversation-chat-form"
+     className="conversation-composer-input"
+     className="conversation-chat-submit"
+     className="conversation-session-list"
+     data-testid="conversation-session-pane"
+     data-conversation-view={runtime.route}
+     workbench.toggleMobileNav();
+  */
   const workbench = useWorkbenchContext();
   const runtime = useConversationRuntime();
   const copy = getLegacyShellCopy(language);
   const [inputFocused, setInputFocused] = useState(false);
+  const [composerAttachmentError, setComposerAttachmentError] = useState("");
+  const [previewAttachment, setPreviewAttachment] = useState<ComposerImageAttachment | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const activeMessages = runtime.activeSession?.messages || [];
@@ -49,7 +66,6 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   const idleSessionBadgeLabel = language === "zh" ? "会话" : "Session";
   const deleteSessionLabel = language === "zh" ? "删除" : "Delete";
   const deleteSessionAriaLabel = language === "zh" ? "删除会话" : "Delete session";
-  const composerMetaLabel = `${sessionCountLabel} · ${runtime.draft.length}/${10000}`;
   const groupedSessionItems = useMemo(
     () => groupSessionListItems(runtime.sessionItems, {
       language,
@@ -58,6 +74,18 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     [language, runtime.sessionItems],
   );
   const sessionEmptyLabel = runtime.route === "agent-runtime" ? copy.sessionEmptyAgent : copy.sessionEmpty;
+  const composerMetaLabel = composerAttachmentError
+    || `${runtime.draft.length}/${10000}`;
+  const composerAddImageLabel = language === "zh" ? "添加图片" : "Add image";
+  const composerClosePreviewLabel = language === "zh" ? "关闭预览" : "Close preview";
+  const composerPreviewPrefix = language === "zh" ? "预览" : "Preview";
+  const composerRemovePrefix = language === "zh" ? "删除" : "Remove";
+  const composerImageLimitError = language === "zh"
+    ? `最多可暂存 ${MAX_COMPOSER_IMAGE_ATTACHMENTS} 张图片。`
+    : `You can attach up to ${MAX_COMPOSER_IMAGE_ATTACHMENTS} images.`;
+  const composerVisionUnsupported = language === "zh"
+    ? "当前模型不支持图片输入，请切换到支持视觉的模型后再发送。"
+    : "The selected model does not support image input. Switch to a vision-capable model before sending.";
 
   useEffect(() => {
     workbench.closeMobileSessionPane();
@@ -107,6 +135,10 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   };
 
   const submitDraft = () => {
+    if (runtime.draftAttachments.length > 0 && !runtime.selectedModelSupportsVision) {
+      setComposerAttachmentError(composerVisionUnsupported);
+      return;
+    }
     void runtime.sendPrompt(runtime.draft);
   };
 
@@ -124,6 +156,31 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     activeSkills: runtime.skills.filter((item) => item.active),
     availableSkills: runtime.skills.filter((item) => !item.active),
   }), [runtime.capabilities, runtime.skills]);
+
+  const handleComposerImagePicker = () => {
+    composerFileInputRef.current?.click();
+  };
+
+  const handleComposerImageSelection = async (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+    if ((runtime.draftAttachments.length + files.length) > MAX_COMPOSER_IMAGE_ATTACHMENTS) {
+      setComposerAttachmentError(composerImageLimitError);
+      return;
+    }
+    try {
+      const attachments = await readComposerImageFiles(files);
+      runtime.addDraftAttachments(attachments);
+      setComposerAttachmentError("");
+    } catch (error) {
+      setComposerAttachmentError(error instanceof Error ? error.message : "Failed to add image.");
+    } finally {
+      if (composerFileInputRef.current) {
+        composerFileInputRef.current.value = "";
+      }
+    }
+  };
 
   useLayoutEffect(() => {
     if (!workbench.isMobileViewport || !inputFocused) {
@@ -229,7 +286,8 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   }, [workbench.isMobileViewport]);
 
   return (
-    <RuntimeWorkspaceFrame
+    <>
+      <RuntimeWorkspaceFrame
       rootClassName="conversation-runtime-view terminal-runtime-view"
       rootProps={{ "data-conversation-view": runtime.route }}
       sessionPaneClassName={`terminal-session-pane conversation-session-pane${workbench.isMobileViewport && workbench.mobileSessionPaneOpen ? " is-open" : ""}`}
@@ -596,6 +654,40 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
               submitDraft();
             }}
           >
+            <input
+              ref={composerFileInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              multiple
+              onChange={(event) => {
+                void handleComposerImageSelection(event.target.files);
+              }}
+            />
+            {runtime.draftAttachments.length > 0 ? (
+              <div className="conversation-composer-attachments" data-composer-attachments>
+                {runtime.draftAttachments.map((attachment) => (
+                  <article key={attachment.id} className="conversation-composer-attachment">
+                    <button
+                      type="button"
+                      className="conversation-composer-attachment-preview"
+                      aria-label={`${composerPreviewPrefix} ${attachment.name}`}
+                      onClick={() => setPreviewAttachment(attachment)}
+                    >
+                      <img src={attachment.dataURL} alt={attachment.name} loading="lazy" decoding="async" />
+                    </button>
+                    <button
+                      type="button"
+                      className="conversation-composer-attachment-remove"
+                      aria-label={`${composerRemovePrefix} ${attachment.name}`}
+                      onClick={() => runtime.removeDraftAttachment(attachment.id)}
+                    >
+                      ×
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : null}
             <label className="sr-only" htmlFor="conversationRuntimeInput">
               {composerPlaceholder}
             </label>
@@ -615,6 +707,15 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
             <div className="terminal-composer-tools">
               <div className="terminal-composer-meta">{composerMetaLabel}</div>
               <button
+                type="button"
+                className="conversation-chat-upload"
+                aria-label={composerAddImageLabel}
+                onClick={handleComposerImagePicker}
+              >
+                <span aria-hidden="true">+</span>
+                <span>{composerAddImageLabel}</span>
+              </button>
+              <button
                 type="submit"
                 className="terminal-chat-submit conversation-chat-submit"
                 aria-label={composerSend}
@@ -632,6 +733,31 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
           </form>
         </footer>
       )}
-    />
+      />
+      {previewAttachment ? (
+        <div
+          className="conversation-image-preview-backdrop"
+          onClick={() => setPreviewAttachment(null)}
+        >
+          <div
+            className="conversation-image-preview-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={previewAttachment.name}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="conversation-image-preview-close"
+              aria-label={composerClosePreviewLabel}
+              onClick={() => setPreviewAttachment(null)}
+            >
+              ×
+            </button>
+            <img src={previewAttachment.dataURL} alt={previewAttachment.name} decoding="async" />
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

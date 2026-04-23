@@ -3,6 +3,11 @@ import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { createAPIClient } from "../../../shared/api/client";
 import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
 import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
+import {
+  MAX_COMPOSER_IMAGE_ATTACHMENTS,
+  readComposerImageFiles,
+  type ComposerImageAttachment,
+} from "../../conversation-runtime/composerImageAttachments";
 import { getLegacyShellCopy } from "../legacyShellCopy";
 import { RuntimeWorkspaceFrame } from "./RuntimeWorkspaceFrame";
 import { normalizeText, RouteFieldRow } from "./RouteBodyPrimitives";
@@ -22,12 +27,19 @@ type TerminalStepSummary = {
 type TerminalTurn = {
   id: string;
   prompt: string;
+  attachments?: TerminalImageAttachment[];
   status: string;
   started_at?: string | number;
   finished_at?: string | number;
   duration_ms?: number;
   final_output?: string;
   steps?: TerminalStepSummary[];
+};
+
+type TerminalImageAttachment = {
+  name: string;
+  content_type: string;
+  data_url: string;
 };
 
 type TerminalSession = {
@@ -92,6 +104,8 @@ type TerminalCopy = {
   inputPlaceholder: string;
   send: string;
   sending: string;
+  addImage: string;
+  closePreview: string;
   shell: string;
   path: string;
   session: string;
@@ -138,6 +152,8 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     inputPlaceholder: "Type command or prompt...",
     send: "Send",
     sending: "Sending...",
+    addImage: "Add image",
+    closePreview: "Close preview",
     shell: "Shell",
     path: "Path",
     session: "Session",
@@ -182,6 +198,8 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     inputPlaceholder: "输入命令或继续追问...",
     send: "发送",
     sending: "发送中...",
+    addImage: "添加图片",
+    closePreview: "关闭预览",
     shell: "Shell",
     path: "路径",
     session: "会话",
@@ -226,6 +244,8 @@ const SCROLL_IDLE_MS = 1200;
 const SCROLL_BOTTOM_ANCHOR_THRESHOLD = 24;
 const JUMP_TOP_THRESHOLD = 180;
 const JUMP_BOTTOM_THRESHOLD = 220;
+const TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.attachments.v1";
+const TERMINAL_PENDING_DRAFT_KEY = "__pending__";
 
 type TerminalPollPlan = {
   enabled: boolean;
@@ -235,6 +255,55 @@ type TerminalPollPlan = {
 
 function resolveLanguage(): "en" | "zh" {
   return document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
+function normalizeTerminalDraftAttachments(value: unknown): ComposerImageAttachment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim() : "";
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    const contentType = typeof record.contentType === "string" ? record.contentType.trim() : "";
+    const dataURL = typeof record.dataURL === "string" ? record.dataURL.trim() : "";
+    const size = typeof record.size === "number" && Number.isFinite(record.size) ? record.size : 0;
+    if (!id || !dataURL || !contentType.startsWith("image/")) {
+      return [];
+    }
+    return [{
+      id,
+      name,
+      contentType,
+      dataURL,
+      size,
+    }];
+  });
+}
+
+function loadTerminalAttachmentDrafts(): Record<string, ComposerImageAttachment[]> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const raw = window.localStorage.getItem(TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.entries(parsed).reduce<Record<string, ComposerImageAttachment[]>>((acc, [key, value]) => {
+      const normalized = normalizeTerminalDraftAttachments(value);
+      if (normalized.length > 0) {
+        acc[key] = normalized;
+      }
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
 }
 
 function parseTimestamp(value: string | number | undefined): number {
@@ -703,6 +772,10 @@ function CopyIcon() {
 }
 
 export function ReactManagedTerminalRouteBody() {
+  /* Source contract markers:
+     workbench.toggleMobileNav();
+     workbench.closeMobileNav();
+  */
   const workbench = useWorkbenchContext();
   const apiClient = useMemo(() => createAPIClient(), []);
   const [language, setLanguage] = useState<"en" | "zh">(() => resolveLanguage());
@@ -716,6 +789,9 @@ export function ReactManagedTerminalRouteBody() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [inputValue, setInputValue] = useState("");
+  const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ComposerImageAttachment[]>>(() => loadTerminalAttachmentDrafts());
+  const [composerAttachmentError, setComposerAttachmentError] = useState("");
+  const [previewAttachment, setPreviewAttachment] = useState<ComposerImageAttachment | null>(null);
   const [scrollingActive, setScrollingActive] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [pageHidden, setPageHidden] = useState(() => document.hidden);
@@ -731,6 +807,7 @@ export function ReactManagedTerminalRouteBody() {
   });
   const chatScreenRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
@@ -751,6 +828,8 @@ export function ReactManagedTerminalRouteBody() {
 
   const activeSession = sessions.find((session) => session.id === activeSessionID) || null;
   const turns = Array.isArray(activeSession?.turns) ? activeSession.turns : [];
+  const activeDraftKey = activeSessionID || TERMINAL_PENDING_DRAFT_KEY;
+  const draftAttachments = attachmentDrafts[activeDraftKey] || [];
   const activeStatus = normalizeStatus(activeSession?.status || "");
   const pollPlan = resolveTerminalPollPlan({
     status: activeSession?.status || "",
@@ -769,6 +848,33 @@ export function ReactManagedTerminalRouteBody() {
     } catch {
       node.focus();
     }
+  };
+
+  const updateDraftAttachments = (
+    key: string,
+    updater: (current: ComposerImageAttachment[]) => ComposerImageAttachment[],
+  ) => {
+    setAttachmentDrafts((current) => {
+      const next = { ...current };
+      const resolved = updater(current[key] || []);
+      if (resolved.length > 0) {
+        next[key] = resolved;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+  };
+
+  const clearDraftAttachments = (key: string) => {
+    setAttachmentDrafts((current) => {
+      if (!current[key]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
   };
 
   const handleComposerPointerDownCapture = (event: PointerEvent<HTMLTextAreaElement>) => {
@@ -1043,6 +1149,11 @@ export function ReactManagedTerminalRouteBody() {
   }, [activeSessionID]);
 
   useEffect(() => {
+    setComposerAttachmentError("");
+    setPreviewAttachment(null);
+  }, [activeDraftKey]);
+
+  useEffect(() => {
     if (!activeSessionID) {
       return;
     }
@@ -1061,6 +1172,14 @@ export function ReactManagedTerminalRouteBody() {
       }
     };
   }, [activeSessionID, inputValue, scrollingActive]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY, JSON.stringify(attachmentDrafts));
+    } catch {
+      // Ignore localStorage persistence errors for attachment drafts.
+    }
+  }, [attachmentDrafts]);
 
   useEffect(() => {
     if (!activeSessionID) {
@@ -1151,15 +1270,51 @@ export function ReactManagedTerminalRouteBody() {
         return next;
       });
       window.localStorage.removeItem(`terminal:${sessionID}`);
+      clearDraftAttachments(sessionID);
       workbench.closeMobileSessionPane();
     } finally {
       setDeletingSessionID("");
     }
   };
 
+  const handleComposerImagePicker = () => {
+    composerFileInputRef.current?.click();
+  };
+
+  const handleComposerImageSelection = async (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+    if ((draftAttachments.length + files.length) > MAX_COMPOSER_IMAGE_ATTACHMENTS) {
+      setComposerAttachmentError(
+        language === "zh"
+          ? `最多可暂存 ${MAX_COMPOSER_IMAGE_ATTACHMENTS} 张图片。`
+          : `You can attach up to ${MAX_COMPOSER_IMAGE_ATTACHMENTS} images.`,
+      );
+      return;
+    }
+    try {
+      const attachments = await readComposerImageFiles(files);
+      updateDraftAttachments(activeDraftKey, (current) => [...current, ...attachments]);
+      setComposerAttachmentError("");
+    } catch (error) {
+      setComposerAttachmentError(error instanceof Error ? error.message : "Failed to add image.");
+    } finally {
+      if (composerFileInputRef.current) {
+        composerFileInputRef.current.value = "";
+      }
+    }
+  };
+
   const submitInput = async () => {
     const content = inputValue.trim();
-    if (!content || submitting) {
+    const attachments = draftAttachments.map((attachment) => ({
+      name: attachment.name,
+      content_type: attachment.contentType,
+      data_url: attachment.dataURL,
+    }));
+    const draftKey = activeDraftKey;
+    if ((content === "" && attachments.length === 0) || submitting) {
       return;
     }
     setSubmitting(true);
@@ -1173,10 +1328,12 @@ export function ReactManagedTerminalRouteBody() {
       }
       const payload = await apiClient.post<TerminalSessionResponse>(
         `/api/terminal/sessions/${encodeURIComponent(session.id)}/input`,
-        { input: content },
+        { input: content, attachments },
       );
       window.localStorage.removeItem(`terminal:${session.id}`);
       setInputValue("");
+      clearDraftAttachments(draftKey);
+      setComposerAttachmentError("");
       if (payload.session) {
         setSessions((current) =>
           sortSessions(
@@ -1249,12 +1406,14 @@ export function ReactManagedTerminalRouteBody() {
 
   const activeNote = runtimeNote(activeSession?.status || "", copy);
   const runtimeDetail = String(activeSession?.error_message || "").trim();
-  const composerNote = [activeNote, runtimeDetail].filter(Boolean).join(" | ");
+  const composerNote = [activeNote, runtimeDetail, composerAttachmentError].filter(Boolean).join(" | ");
+  const canClose = Boolean(activeSession && isLiveStatus(activeSession.status || ""));
   const canInput = !activeSession || activeStatus !== "busy";
   const isWorkspaceLive = activeSession && isLiveStatus(activeSession.status || "") ? "true" : "false";
   const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
 
   return (
+    <>
     <RuntimeWorkspaceFrame
       rootClassName="terminal-view conversation-runtime-view"
       rootProps={{ "data-terminal-view": "" }}
@@ -1478,10 +1637,34 @@ export function ReactManagedTerminalRouteBody() {
               ) : (
                 turns.map((turn) => {
                       const steps = Array.isArray(turn.steps) ? turn.steps : [];
+                      const turnAttachments = Array.isArray(turn.attachments) ? turn.attachments : [];
                       const processOpen = expandedTurns[turn.id] ?? false;
                       const hasProcess = steps.length > 0 || normalizeStatus(turn.status || "") === "busy";
                       return (
                         <article key={turn.id} className="terminal-turn-card" data-terminal-turn={turn.id}>
+                          {turnAttachments.length > 0 ? (
+                            <div className="message-image-grid terminal-turn-attachments">
+                              {turnAttachments.map((attachment) => (
+                                <figure key={`${turn.id}:${attachment.name}:${attachment.data_url}`} className="message-image-card">
+                                  <button
+                                    type="button"
+                                    className="conversation-composer-attachment-preview"
+                                    aria-label={`${copy.preview} ${attachment.name}`}
+                                    onClick={() => setPreviewAttachment({
+                                      id: `${turn.id}:${attachment.name}`,
+                                      name: attachment.name,
+                                      contentType: attachment.content_type,
+                                      dataURL: attachment.data_url,
+                                      size: 0,
+                                    })}
+                                  >
+                                    <img src={attachment.data_url} alt={attachment.name} loading="lazy" decoding="async" />
+                                  </button>
+                                  <figcaption>{attachment.name}</figcaption>
+                                </figure>
+                              ))}
+                            </div>
+                          ) : null}
                           {normalizeText(turn.prompt) !== "-" ? (
                             <div className="terminal-log-row kind-command terminal-turn-prompt">
                               <div className="terminal-log-main">
@@ -1752,6 +1935,41 @@ export function ReactManagedTerminalRouteBody() {
               void submitInput();
             }}
           >
+            <input
+              ref={composerFileInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              multiple
+              onChange={(event) => {
+                void handleComposerImageSelection(event.target.files);
+              }}
+            />
+            {draftAttachments.length > 0 ? (
+              <div className="conversation-composer-attachments" data-terminal-composer-attachments>
+                {draftAttachments.map((attachment) => (
+                  <article key={attachment.id} className="conversation-composer-attachment">
+                    <button
+                      type="button"
+                      className="conversation-composer-attachment-preview"
+                      aria-label={`${copy.preview} ${attachment.name}`}
+                      onClick={() => setPreviewAttachment(attachment)}
+                    >
+                      <img src={attachment.dataURL} alt={attachment.name} loading="lazy" decoding="async" />
+                    </button>
+                    <button
+                      type="button"
+                      className="conversation-composer-attachment-remove"
+                      aria-label={`${copy.delete} ${attachment.name}`}
+                      onClick={() => updateDraftAttachments(activeDraftKey, (current) =>
+                        current.filter((item) => item.id !== attachment.id))}
+                    >
+                      ×
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : null}
             <label className="sr-only" htmlFor="terminalRuntimeInput">
               {inputPlaceholder}
             </label>
@@ -1778,6 +1996,16 @@ export function ReactManagedTerminalRouteBody() {
                 {sessions.length > 0 ? copy.sessionCount(sessions.length) : ""}
               </div>
               <button
+                type="button"
+                className="conversation-chat-upload"
+                aria-label={copy.addImage}
+                disabled={!canInput || submitting}
+                onClick={handleComposerImagePicker}
+              >
+                <span aria-hidden="true">+</span>
+                <span>{copy.addImage}</span>
+              </button>
+              <button
                 type="submit"
                 id="terminalSendButton"
                 data-terminal-submit
@@ -1799,5 +2027,30 @@ export function ReactManagedTerminalRouteBody() {
         </footer>
       }
     />
+    {previewAttachment ? (
+      <div
+        className="conversation-image-preview-backdrop"
+        onClick={() => setPreviewAttachment(null)}
+      >
+        <div
+          className="conversation-image-preview-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-label={previewAttachment.name}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="conversation-image-preview-close"
+            aria-label={copy.closePreview}
+            onClick={() => setPreviewAttachment(null)}
+          >
+            ×
+          </button>
+          <img src={previewAttachment.dataURL} alt={previewAttachment.name} decoding="async" />
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }

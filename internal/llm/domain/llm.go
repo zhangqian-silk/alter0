@@ -8,9 +8,24 @@ import (
 type Message struct {
 	Role    string // "system", "user", "assistant", "tool"
 	Content string
+	Parts   []MessagePart
 	// For tool calls
 	ToolCalls  []ToolCall
 	ToolCallID string // For tool response messages
+}
+
+type MessagePartType string
+
+const (
+	MessagePartTypeText  MessagePartType = "text"
+	MessagePartTypeImage MessagePartType = "image"
+)
+
+type MessagePart struct {
+	Type     MessagePartType
+	Text     string
+	ImageURL string
+	Name     string
 }
 
 // ToolCall represents a tool call from the model.

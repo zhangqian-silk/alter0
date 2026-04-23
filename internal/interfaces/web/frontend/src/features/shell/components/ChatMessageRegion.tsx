@@ -6,6 +6,13 @@ export type ChatMessageSnapshot = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  attachments: Array<{
+    id: string;
+    name: string;
+    contentType: string;
+    size: number;
+    dataURL: string;
+  }>;
   route: string;
   source: string;
   error: boolean;
@@ -117,7 +124,7 @@ const ChatMessageArticle = memo(function ChatMessageArticle({
         {message.role === "assistant" ? (
           <AssistantMessageBody message={message} language={language} onToggleProcess={onToggleProcess} />
         ) : (
-          <MarkdownHTML html={renderMarkdownToHTML(message.text)} />
+          <UserMessageBody message={message} />
         )}
       </div>
       <div className="msg-meta">
@@ -135,6 +142,26 @@ const ChatMessageArticle = memo(function ChatMessageArticle({
     </article>
   );
 });
+
+function UserMessageBody({ message }: { message: ChatMessageSnapshot }) {
+  return (
+    <>
+      {message.attachments.length > 0 ? (
+        <div className="message-image-grid" data-message-image-grid={message.id}>
+          {message.attachments.map((attachment) => (
+            <figure key={attachment.id} className="message-image-card">
+              <img src={attachment.dataURL} alt={attachment.name} loading="lazy" decoding="async" />
+              <figcaption>{attachment.name}</figcaption>
+            </figure>
+          ))}
+        </div>
+      ) : null}
+      {message.text.trim() ? (
+        <MarkdownHTML html={renderMarkdownToHTML(message.text)} />
+      ) : null}
+    </>
+  );
+}
 
 function AssistantMessageBody({
   message,

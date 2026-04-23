@@ -45,6 +45,9 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if !strings.Contains(deployGuide, "deploy_test_service") || !strings.Contains(deployGuide, "workspace-services") {
 		t.Fatalf("expected deploy-test-service guide covers tool and gateway route, got %q", deployGuide)
 	}
+	if !strings.Contains(deployGuide, "service_type=http") || !strings.Contains(deployGuide, "frontend_dist") {
+		t.Fatalf("expected deploy-test-service guide covers full-stack web preview and static fallback, got %q", deployGuide)
+	}
 }
 
 func TestEnsureBuiltinSkillFilesSkipsWhenNoBuiltinFileBackedSkillExists(t *testing.T) {
