@@ -44,6 +44,24 @@ function RuntimeHarness() {
   );
 }
 
+function InspectorHarness() {
+  const runtime = useConversationRuntime();
+
+  return (
+    <div>
+      <button type="button" onClick={() => runtime.toggleInspector("model")}>
+        model
+      </button>
+      <button type="button" onClick={() => runtime.toggleInspector("target")}>
+        target
+      </button>
+      <output data-testid="inspector-state">
+        {runtime.inspectorOpen ? `${runtime.inspectorTab}:open` : `${runtime.inspectorTab}:closed`}
+      </output>
+    </div>
+  );
+}
+
 describe("ConversationRuntimeProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -215,5 +233,24 @@ describe("ConversationRuntimeProvider", () => {
       previewURL: "/api/sessions/session-1/attachments/image-1/preview",
     });
     expect(persistedDrafts["session-1"]?.[0]?.dataURL).toBeUndefined();
+  });
+
+  it("allows clicking the active inspector tab again to collapse the details body", async () => {
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <InspectorHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    expect(screen.getByTestId("inspector-state")).toHaveTextContent("model:closed");
+
+    fireEvent.click(screen.getByRole("button", { name: "target" }));
+    await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("target:open"));
+
+    fireEvent.click(screen.getByRole("button", { name: "target" }));
+    await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("target:closed"));
+
+    fireEvent.click(screen.getByRole("button", { name: "model" }));
+    await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("model:open"));
   });
 });

@@ -1382,10 +1382,16 @@ export function ConversationRuntimeProvider({
     },
     sendPrompt,
     toggleInspector: (tab) => {
-      if (tab) {
-        setInspectorTab(tab);
+      if (!tab) {
+        setInspectorOpen((current) => !current);
+        return;
       }
-      setInspectorOpen((current) => (tab ? true : !current));
+      if (tab === inspectorTab) {
+        setInspectorOpen((current) => !current);
+        return;
+      }
+      setInspectorTab(tab);
+      setInspectorOpen(true);
     },
     closeInspector: () => setInspectorOpen(false),
     selectTarget: (targetID: string) => {

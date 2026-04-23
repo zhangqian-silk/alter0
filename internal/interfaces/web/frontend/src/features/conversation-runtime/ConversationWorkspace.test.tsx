@@ -156,7 +156,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.sendPrompt.mockClear();
   });
 
-  it("keeps the compact header visible alongside terminal-style mobile actions for an empty chat workspace", () => {
+  it("keeps the shared workspace header visible alongside terminal-style mobile actions for an empty chat workspace", () => {
     const toggleMobileNav = vi.fn();
     const toggleMobileSessionPane = vi.fn();
     renderWorkspace({ toggleMobileNav, toggleMobileSessionPane });
@@ -214,11 +214,27 @@ describe("ConversationWorkspace", () => {
     expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();
+    const workspaceHeader = document.querySelector(".conversation-workspace-head") as HTMLElement;
+    expect(workspaceHeader).toHaveAttribute("data-runtime-workspace-header", "true");
+    expect(workspaceHeader).toHaveClass("is-sticky");
     expect(screen.getByRole("heading", { name: "New Chat" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Tools" })).toBeInTheDocument();
+    expect(within(workspaceHeader).getByRole("button", { name: "Ready" })).toBeDisabled();
+    expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+    expect(within(workspaceHeader).queryByRole("button", { name: "Tools" })).not.toBeInTheDocument();
     expect(screen.queryByText("DeepSeek V3.2 · 0 / 0")).not.toBeInTheDocument();
+    expect(screen.queryByText("DeepSeek V3.2")).not.toBeInTheDocument();
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "false");
+
+    fireEvent.click(within(workspaceHeader).getByRole("button", { name: "Details" }));
+    const detailsPanel = document.querySelector("[data-conversation-inspector]") as HTMLElement;
+    expect(detailsPanel).toBeInTheDocument();
+    expect(workspaceHeader.contains(detailsPanel)).toBe(false);
+    expect(screen.getByText("session-1")).toBeInTheDocument();
+    expect(screen.getByText("DeepSeek V3.2")).toBeInTheDocument();
+
+    fireEvent.click(document.querySelector("[data-runtime-details-backdrop='true']") as HTMLElement);
+    expect(document.querySelector("[data-conversation-inspector]")).not.toBeInTheDocument();
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
@@ -407,8 +423,10 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector(".conversation-chat-form .terminal-composer-meta")).toBeInTheDocument();
     expect(document.querySelector(".conversation-chat-submit .terminal-chat-form-button-icon svg")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Fix runtime shell" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Tools" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ready" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tools" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tools / MCP" })).not.toBeInTheDocument();
     expect(screen.queryByText("Chat")).not.toBeInTheDocument();
     expect(screen.queryByText("DeepSeek V3.2 · 0 / 0")).not.toBeInTheDocument();
@@ -441,8 +459,10 @@ describe("ConversationWorkspace", () => {
     expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "New Agent Session" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ready" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Agent" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Choose Agent" })).not.toBeInTheDocument();
     expect(screen.queryByText("Agent: Alter0")).not.toBeInTheDocument();
   });
@@ -476,8 +496,10 @@ describe("ConversationWorkspace", () => {
     renderWorkspace({ route: "agent-runtime" });
 
     expect(screen.getByRole("heading", { name: "Investigate release drift" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ready" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Agent" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Choose Agent" })).not.toBeInTheDocument();
     expect(screen.queryByText("Agent: Alter0")).not.toBeInTheDocument();
   });
@@ -494,8 +516,10 @@ describe("ConversationWorkspace", () => {
       "is-empty",
     );
     expect(screen.getByRole("heading", { name: "New Chat" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Tools / MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ready" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tools / MCP" })).not.toBeInTheDocument();
     expect(screen.queryByText("Chat")).not.toBeInTheDocument();
     expect(screen.queryByText("DeepSeek V3.2 · 0 / 0")).not.toBeInTheDocument();
   });
@@ -540,8 +564,20 @@ describe("ConversationWorkspace", () => {
     renderWorkspace({ route: "agent-runtime", isMobileViewport: false });
 
     expect(screen.getByRole("heading", { name: "Investigate release drift" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Choose Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ready" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Choose Agent" })).not.toBeInTheDocument();
     expect(screen.queryByText("Agent: Alter0")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    const detailsPanel = document.querySelector("[data-conversation-inspector]") as HTMLElement;
+    expect(detailsPanel).toBeInTheDocument();
+    expect(document.querySelector(".conversation-workspace-head")?.contains(detailsPanel)).toBe(false);
+    expect(screen.getByText("Alter0")).toBeInTheDocument();
+    expect(screen.getByText("DeepSeek V3.2")).toBeInTheDocument();
+
+    fireEvent.click(document.querySelector("[data-runtime-details-backdrop='true']") as HTMLElement);
+    expect(document.querySelector("[data-conversation-inspector]")).not.toBeInTheDocument();
   });
 });

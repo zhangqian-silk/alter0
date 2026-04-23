@@ -85,3 +85,12 @@ func TestEnsureChildProcessWebLoginPasswordSetsAndClearsEnv(t *testing.T) {
 		t.Fatalf("ALTER0_WEB_LOGIN_PASSWORD should be cleared, got %q", got)
 	}
 }
+
+func TestResolveRuntimeChildWebLoginPasswordDisablesChildLogin(t *testing.T) {
+	if got := resolveRuntimeChildWebLoginPassword(false, " secret "); got != "secret" {
+		t.Fatalf("non-child password = %q, want secret", got)
+	}
+	if got := resolveRuntimeChildWebLoginPassword(true, " secret "); got != "" {
+		t.Fatalf("runtime child password = %q, want empty", got)
+	}
+}

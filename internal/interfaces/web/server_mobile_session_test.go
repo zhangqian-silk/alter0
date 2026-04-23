@@ -74,16 +74,17 @@ func TestConversationSessionListShowsCompactMetadata(t *testing.T) {
 	}
 }
 
-func TestConversationInspectorUsesInlinePanel(t *testing.T) {
+func TestConversationDetailsUseSharedWorkspaceHeader(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx") +
-		readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
+		readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeWorkspaceHeader.tsx")
 	markers := []string{
-		"const [inspectorOpen, setInspectorOpen] = useState(false);",
+		"const [detailsOpen, setDetailsOpen] = useState(false);",
 		"toggleInspector: (tab) => {",
-		"setInspectorOpen((current) => (tab ? true : !current));",
-		`className="conversation-inspector"`,
+		`data-runtime-workspace-header="true"`,
+		`className="conversation-inspector conversation-session-details"`,
 		`data-conversation-inspector`,
-		"onClick={() => runtime.closeInspector()}",
+		"detailsOpen={detailsOpen}",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
