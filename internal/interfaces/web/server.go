@@ -193,7 +193,6 @@ type terminalService interface {
 	ListEntries(ownerID string, sessionID string, cursor int, limit int) (terminalapp.EntryPage, error)
 	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
 	InputWithAttachments(req terminalapp.InputRequest) (terminaldomain.Session, error)
-	Close(ownerID string, sessionID string) (terminaldomain.Session, error)
 	Delete(ownerID string, sessionID string) (terminaldomain.Session, error)
 }
 
@@ -234,13 +233,13 @@ type codexAccountLoginSessionCreateRequest struct {
 }
 
 type messageRequest struct {
-	SessionID     string            `json:"session_id"`
-	UserID        string            `json:"user_id,omitempty"`
-	ChannelID     string            `json:"channel_id,omitempty"`
-	CorrelationID string            `json:"correlation_id,omitempty"`
-	Content       string            `json:"content"`
+	SessionID     string                     `json:"session_id"`
+	UserID        string                     `json:"user_id,omitempty"`
+	ChannelID     string                     `json:"channel_id,omitempty"`
+	CorrelationID string                     `json:"correlation_id,omitempty"`
+	Content       string                     `json:"content"`
 	Attachments   []messageAttachmentRequest `json:"attachments,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	Metadata      map[string]string          `json:"metadata,omitempty"`
 }
 
 type messageAttachmentRequest struct {
@@ -250,24 +249,24 @@ type messageAttachmentRequest struct {
 }
 
 type agentMessageRequest struct {
-	AgentID       string            `json:"agent_id"`
-	SessionID     string            `json:"session_id"`
-	UserID        string            `json:"user_id,omitempty"`
-	ChannelID     string            `json:"channel_id,omitempty"`
-	CorrelationID string            `json:"correlation_id,omitempty"`
-	Content       string            `json:"content"`
+	AgentID       string                     `json:"agent_id"`
+	SessionID     string                     `json:"session_id"`
+	UserID        string                     `json:"user_id,omitempty"`
+	ChannelID     string                     `json:"channel_id,omitempty"`
+	CorrelationID string                     `json:"correlation_id,omitempty"`
+	Content       string                     `json:"content"`
 	Attachments   []messageAttachmentRequest `json:"attachments,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	Metadata      map[string]string          `json:"metadata,omitempty"`
 }
 
 type productMessageRequest struct {
-	SessionID     string            `json:"session_id"`
-	UserID        string            `json:"user_id,omitempty"`
-	ChannelID     string            `json:"channel_id,omitempty"`
-	CorrelationID string            `json:"correlation_id,omitempty"`
-	Content       string            `json:"content"`
+	SessionID     string                     `json:"session_id"`
+	UserID        string                     `json:"user_id,omitempty"`
+	ChannelID     string                     `json:"channel_id,omitempty"`
+	CorrelationID string                     `json:"correlation_id,omitempty"`
+	Content       string                     `json:"content"`
 	Attachments   []messageAttachmentRequest `json:"attachments,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	Metadata      map[string]string          `json:"metadata,omitempty"`
 }
 
 type travelGuideCreateRequest struct {

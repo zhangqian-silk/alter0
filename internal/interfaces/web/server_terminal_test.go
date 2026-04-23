@@ -92,12 +92,6 @@ func (s *stubWebTerminalService) InputWithAttachments(req terminalapp.InputReque
 	s.inputReq = req
 	return s.inputResp, s.inputErr
 }
-
-func (s *stubWebTerminalService) Close(ownerID string, sessionID string) (terminaldomain.Session, error) {
-	s.lastOwnerID = ownerID
-	s.lastID = sessionID
-	return s.closeResp, s.closeErr
-}
 func (s *stubWebTerminalService) Delete(ownerID string, sessionID string) (terminaldomain.Session, error) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
