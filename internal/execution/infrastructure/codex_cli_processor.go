@@ -70,15 +70,13 @@ type CodexCLIProcessor struct {
 }
 
 type codexExecutionPayload struct {
-	Protocol     string                              `json:"protocol"`
-	UserPrompt   string                              `json:"user_prompt"`
-	AgentContext *codexAgentContext                  `json:"agent_context,omitempty"`
-	Runtime      *execdomain.RuntimeContext          `json:"runtime_context,omitempty"`
-	Product      *execdomain.ProductContext          `json:"product_context,omitempty"`
-	Discovery    *execdomain.ProductDiscoveryContext `json:"product_discovery,omitempty"`
-	SkillPolicy  *execdomain.SkillContext            `json:"skill_context,omitempty"`
-	MCPPolicy    *execdomain.MCPContext              `json:"mcp_context,omitempty"`
-	MemoryPolicy *execdomain.MemoryContext           `json:"memory_context,omitempty"`
+	Protocol     string                     `json:"protocol"`
+	UserPrompt   string                     `json:"user_prompt"`
+	AgentContext *codexAgentContext         `json:"agent_context,omitempty"`
+	Runtime      *execdomain.RuntimeContext `json:"runtime_context,omitempty"`
+	SkillPolicy  *execdomain.SkillContext   `json:"skill_context,omitempty"`
+	MCPPolicy    *execdomain.MCPContext     `json:"mcp_context,omitempty"`
+	MemoryPolicy *execdomain.MemoryContext  `json:"memory_context,omitempty"`
 }
 
 type codexAgentContext struct {

@@ -15,7 +15,6 @@ const (
 	codexRuntimeDirName      = "codex-runtime"
 	codexRuntimeHomeDirName  = "codex-home"
 	codexRuntimeSkillsPath   = ".alter0/codex-runtime/skills.md"
-	codexRuntimeProductPath  = ".alter0/codex-runtime/product.md"
 	codexRuntimeRuntimePath  = ".alter0/codex-runtime/runtime.md"
 	codexRuntimeMemoryDir    = ".alter0/codex-runtime/memory"
 	codexRuntimeRecallPath   = ".alter0/codex-runtime/memory/recall.md"
@@ -88,17 +87,8 @@ func buildCodexRuntimeSpec(metadata map[string]string, workspaceDir string) (run
 	if err != nil {
 		return runtimeconfig.Spec{}, err
 	}
-	productContext, err := parseProductContext(metadata)
-	if err != nil {
-		return runtimeconfig.Spec{}, err
-	}
-	productDiscovery, err := parseProductDiscoveryContext(metadata)
-	if err != nil {
-		return runtimeconfig.Spec{}, err
-	}
-
-	files := make([]runtimeconfig.ManagedFile, 0, 6)
-	instructions := make([]string, 0, 6)
+	files := make([]runtimeconfig.ManagedFile, 0, 4)
+	instructions := make([]string, 0, 4)
 	if runtimeContext != nil {
 		files = append(files, runtimeconfig.ManagedFile{
 			RelativePath: codexRuntimeRuntimePath,
@@ -112,13 +102,6 @@ func buildCodexRuntimeSpec(metadata map[string]string, workspaceDir string) (run
 			Content:      renderSkillContextMarkdown(*skillContext),
 		})
 		instructions = append(instructions, "- Read `.alter0/codex-runtime/skills.md` for resolved skill rules, reusable guides, parameters, and constraints.")
-	}
-	if productContext != nil || productDiscovery != nil {
-		files = append(files, runtimeconfig.ManagedFile{
-			RelativePath: codexRuntimeProductPath,
-			Content:      renderProductContextMarkdown(productContext, productDiscovery),
-		})
-		instructions = append(instructions, "- Read `.alter0/codex-runtime/product.md` when the task is product-scoped.")
 	}
 	if memoryContext != nil {
 		files = append(files, renderMemoryContextFiles(*memoryContext)...)
@@ -191,36 +174,6 @@ func parseMemoryContext(metadata map[string]string) (*execdomain.MemoryContext, 
 		return nil, fmt.Errorf("invalid memory context metadata: %w", err)
 	}
 	if len(context.Files) == 0 && len(context.Recall) == 0 {
-		return nil, nil
-	}
-	return &context, nil
-}
-
-func parseProductContext(metadata map[string]string) (*execdomain.ProductContext, error) {
-	raw := strings.TrimSpace(metadataValue(metadata, execdomain.ProductContextMetadataKey))
-	if raw == "" {
-		return nil, nil
-	}
-	var context execdomain.ProductContext
-	if err := json.Unmarshal([]byte(raw), &context); err != nil {
-		return nil, fmt.Errorf("invalid product context metadata: %w", err)
-	}
-	if strings.TrimSpace(context.ProductID) == "" {
-		return nil, nil
-	}
-	return &context, nil
-}
-
-func parseProductDiscoveryContext(metadata map[string]string) (*execdomain.ProductDiscoveryContext, error) {
-	raw := strings.TrimSpace(metadataValue(metadata, execdomain.ProductDiscoveryMetadataKey))
-	if raw == "" {
-		return nil, nil
-	}
-	var context execdomain.ProductDiscoveryContext
-	if err := json.Unmarshal([]byte(raw), &context); err != nil {
-		return nil, fmt.Errorf("invalid product discovery metadata: %w", err)
-	}
-	if strings.TrimSpace(context.SelectedProduct) == "" && len(context.MatchedProducts) == 0 {
 		return nil, nil
 	}
 	return &context, nil
@@ -349,52 +302,6 @@ func renderSkillContextMarkdown(context execdomain.SkillContext) string {
 		}
 	}
 	return strings.Join(lines, "\n") + "\n"
-}
-
-func renderProductContextMarkdown(product *execdomain.ProductContext, discovery *execdomain.ProductDiscoveryContext) string {
-	lines := []string{"# Product Context", ""}
-	if product != nil {
-		lines = append(lines, "## Selected Product", "")
-		lines = append(lines, "- product_id: "+product.ProductID)
-		if strings.TrimSpace(product.Name) != "" {
-			lines = append(lines, "- name: "+product.Name)
-		}
-		if strings.TrimSpace(product.MasterAgentID) != "" {
-			lines = append(lines, "- master_agent_id: "+product.MasterAgentID)
-		}
-		if len(product.ArtifactTypes) > 0 {
-			lines = append(lines, "- artifact_types: "+strings.Join(product.ArtifactTypes, ", "))
-		}
-		if len(product.KnowledgeSources) > 0 {
-			lines = append(lines, "- knowledge_sources: "+strings.Join(product.KnowledgeSources, ", "))
-		}
-		lines = append(lines, "")
-	}
-	if discovery != nil {
-		lines = append(lines, "## Discovery", "")
-		if strings.TrimSpace(discovery.SelectedProduct) != "" {
-			lines = append(lines, "- selected_product_id: "+discovery.SelectedProduct)
-		}
-		if strings.TrimSpace(discovery.SelectionReason) != "" {
-			lines = append(lines, "- selection_reason: "+discovery.SelectionReason)
-		}
-		if len(discovery.MatchedProducts) > 0 {
-			lines = append(lines, "- matched_products: "+strings.Join(matchedProductIDs(discovery.MatchedProducts), ", "))
-		}
-	}
-	return strings.Join(lines, "\n") + "\n"
-}
-
-func matchedProductIDs(products []execdomain.ProductContext) []string {
-	items := make([]string, 0, len(products))
-	for _, product := range products {
-		if strings.TrimSpace(product.ProductID) == "" {
-			continue
-		}
-		items = append(items, product.ProductID)
-	}
-	sort.Strings(items)
-	return items
 }
 
 func renderMemoryContextFiles(context execdomain.MemoryContext) []runtimeconfig.ManagedFile {

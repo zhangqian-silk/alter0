@@ -128,7 +128,6 @@ func TestSidebarPageRouteRuntimeDependenciesPresent(t *testing.T) {
 	markers := []string{
 		"const REACT_MANAGED_ROUTE_BODY_RENDERERS",
 		`terminal: () => <ReactManagedTerminalRouteBody />`,
-		`products: ({ language }) => <ReactManagedProductsRouteBody language={language} />`,
 		`tasks: ({ language }) => <ReactManagedTasksRouteBody language={language} />`,
 		`channels: ({ language }) => <ReactManagedControlRouteBody route="channels" language={language} />`,
 		"if (!isReactManagedRouteBody(route)) {",
@@ -299,11 +298,10 @@ func TestWorkbenchConversationAndManagedRoutesPresent(t *testing.T) {
 }
 
 func TestWorkbenchRouteHeadingCopyRemainsCentralized(t *testing.T) {
-	source := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedProductsRouteBody.tsx") +
-		readWorkspaceFile(t, "frontend/src/features/shell/legacyShellCopy.ts")
+	source := readWorkspaceFile(t, "frontend/src/features/shell/legacyShellCopy.ts")
 	requiredMarkers := []string{
-		`title: "Products"`,
-		`subtitle: "Manage product workspaces, master agents, and reusable product context"`,
+		`tasks: "Tasks"`,
+		`tasks: "Observe runtime tasks with source, status, and timeline filters"`,
 		`tasks: "Tasks"`,
 		`Observe runtime tasks with source, status, and timeline filters`,
 	}
@@ -317,7 +315,6 @@ func TestWorkbenchRouteHeadingCopyRemainsCentralized(t *testing.T) {
 func TestWorkbenchRetiresManagedWorkflowLoaders(t *testing.T) {
 	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedRouteBody.tsx")
 	requiredMarkers := []string{
-		`products: ({ language }) => <ReactManagedProductsRouteBody language={language} />`,
 		`sessions: ({ language }) => <ReactManagedSessionsRouteBody language={language} />`,
 		`tasks: ({ language }) => <ReactManagedTasksRouteBody language={language} />`,
 	}

@@ -10,17 +10,25 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	index := map[string]string{}
 	tools := map[string][]string{}
 	skills := map[string][]string{}
+	entrypoints := map[string]bool{}
 	for _, agent := range agents {
 		index[agent.ID] = agent.SystemPrompt
 		tools[agent.ID] = agent.Tools
 		skills[agent.ID] = agent.Skills
+		entrypoints[agent.ID] = agent.EntryPoint
 	}
 
 	if prompt := index["travel-master"]; !strings.Contains(prompt, "codex_exec") || !strings.Contains(strings.ToLower(prompt), "assistant") {
 		t.Fatalf("expected travel-master prompt to describe assistant/codex execution, got %q", prompt)
 	}
+	if _, ok := index["product-builder"]; ok {
+		t.Fatalf("expected product-builder builtin agent to be removed")
+	}
 	if got := tools["travel-master"]; len(got) != 4 || got[0] != "codex_exec" {
 		t.Fatalf("expected travel-master tools to start with codex_exec, got %+v", got)
+	}
+	if !entrypoints["travel-master"] {
+		t.Fatalf("expected travel-master to be available as a runtime entrypoint")
 	}
 	for _, agentID := range []string{
 		"travel-city-guide",

@@ -2,8 +2,8 @@
 
 ## 覆盖范围
 
-- 登录保护、Chat 页面、静态资源、消息 JSON/SSE、Agent/Product 消息入口。
-- Control API：Channel、Capability、Skill、MCP、Agent、Product、Draft、Cron、Environment、Runtime、LLM Provider、Codex Accounts。
+- 登录保护、Chat 页面、静态资源、消息 JSON/SSE、Agent 消息入口。
+- Control API：Channel、Capability、Skill、MCP、Agent、Cron、Environment、Runtime、LLM Provider、Codex Accounts。
 - Workspace service 网关：`/api/control/workspace-services` 注册表、短哈希 Host 命中的 `frontend_dist` 构建分发，以及默认 `web` / 其他服务的 `http` 类型反向代理。
 - Session、Task、Memory Task、Terminal API 与产物下载/预览。
 - 前端模板/静态资源中的移动端、侧边栏、Composer、Terminal、Cron 可观测标识。

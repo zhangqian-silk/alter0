@@ -580,39 +580,6 @@ func TestHybridNLProcessorAgentModeSupportsDelegation(t *testing.T) {
 	}
 }
 
-func TestHybridNLProcessorAgentModeIncludesProductContext(t *testing.T) {
-	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)
-
-	productContext := execdomain.ProductContext{
-		Protocol:         execdomain.ProductContextProtocolVersion,
-		ProductID:        "travel",
-		Name:             "Travel",
-		MasterAgentID:    "travel-master",
-		ArtifactTypes:    []string{"city_guide", "itinerary", "map_layers"},
-		KnowledgeSources: []string{"city_profile", "poi_catalog", "metro_network", "food_catalog"},
-	}
-	rawProductContext, err := json.Marshal(productContext)
-	if err != nil {
-		t.Fatalf("marshal product context failed: %v", err)
-	}
-
-	metadata := testRuntimeMetadata()
-	metadata[execdomain.AgentIDMetadataKey] = "travel-master"
-	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
-	metadata[execdomain.ProductContextMetadataKey] = string(rawProductContext)
-
-	if _, err := processor.Process(context.Background(), "生成一个三日游攻略", metadata); err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "Resolved product context") {
-		t.Fatalf("expected product context section in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
-	}
-	if !strings.Contains(reactFactory.lastConfig.SystemPrompt, "city_profile") {
-		t.Fatalf("expected knowledge source in prompt, got %q", reactFactory.lastConfig.SystemPrompt)
-	}
-}
-
 func TestHybridNLProcessorAgentModeSupportsMemoryTools(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
 	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), reactFactory, nil)

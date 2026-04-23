@@ -174,15 +174,6 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal mcp context: %v", err)
 	}
-	rawProductContext, err := json.Marshal(execdomain.ProductContext{
-		Protocol:      execdomain.ProductContextProtocolVersion,
-		ProductID:     "travel",
-		Name:          "Travel",
-		MasterAgentID: "travel-master",
-	})
-	if err != nil {
-		t.Fatalf("marshal product context: %v", err)
-	}
 	processor := newTestProcessor("success", "reply: hello")
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
@@ -190,7 +181,6 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
 		execdomain.MemoryContextMetadataKey:    string(rawMemoryContext),
 		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
-		execdomain.ProductContextMetadataKey:   string(rawProductContext),
 	})
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
@@ -220,7 +210,6 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 	for _, expected := range []string{
 		".alter0/codex-runtime/runtime.md",
 		".alter0/codex-runtime/skills.md",
-		".alter0/codex-runtime/product.md",
 		".alter0/codex-runtime/memory/",
 	} {
 		if !strings.Contains(string(agentsText), expected) {
@@ -233,13 +222,6 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 	}
 	if !strings.Contains(string(skillText), "Summary") || !strings.Contains(string(skillText), "review the memory files before editing") {
 		t.Fatalf("unexpected runtime skills:\n%s", string(skillText))
-	}
-	productText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "product.md"))
-	if err != nil {
-		t.Fatalf("read runtime product: %v", err)
-	}
-	if !strings.Contains(string(productText), "travel") || !strings.Contains(string(productText), "travel-master") {
-		t.Fatalf("unexpected runtime product:\n%s", string(productText))
 	}
 	memoryText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "memory", "user_md.md"))
 	if err != nil {

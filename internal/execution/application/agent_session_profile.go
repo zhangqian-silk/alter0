@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -100,10 +99,6 @@ func renderAgentSessionProfile(
 	if workspacePath != "" {
 		lines = append(lines, "", "## Session Scope", "- workspace_path: "+workspacePath)
 	}
-	if productLines := renderAgentSessionProductContext(msg.Metadata); len(productLines) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, productLines...)
-	}
 	if strings.EqualFold(strings.TrimSpace(metadataValue(msg.Metadata, execdomain.AgentIDMetadataKey)), "coding") {
 		if codingLines := renderAgentSessionCodingContext(repoRoot, workspacePath, msg.SessionID); len(codingLines) > 0 {
 			lines = append(lines, "")
@@ -116,31 +111,6 @@ func renderAgentSessionProfile(
 	}
 	lines = append(lines, agentSessionProfileNotesEndMarker)
 	return strings.Join(lines, "\n")
-}
-
-func renderAgentSessionProductContext(metadata map[string]string) []string {
-	raw := strings.TrimSpace(metadataValue(metadata, execdomain.ProductContextMetadataKey))
-	if raw == "" {
-		return nil
-	}
-	context := execdomain.ProductContext{}
-	if err := json.Unmarshal([]byte(raw), &context); err != nil {
-		return nil
-	}
-	if strings.TrimSpace(context.ProductID) == "" {
-		return nil
-	}
-	lines := []string{
-		"## Product Context",
-		"- product_id: " + context.ProductID,
-	}
-	if name := strings.TrimSpace(context.Name); name != "" {
-		lines = append(lines, "- product_name: "+name)
-	}
-	if master := strings.TrimSpace(context.MasterAgentID); master != "" {
-		lines = append(lines, "- product_master_agent_id: "+master)
-	}
-	return lines
 }
 
 func renderAgentSessionCodingContext(repoRoot string, workspacePath string, sessionID string) []string {

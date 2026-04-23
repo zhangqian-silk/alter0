@@ -22,14 +22,14 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 ### Web Shell
 
 - 根路径 `/` 默认进入 Chat 工作台。
-- `/chat` 提供 Chat、Agent、Terminal、Product、Control 与 Memory 的统一 Web Shell。
+- `/chat` 提供 Chat、Agent、Terminal、Control 与 Memory 的统一 Web Shell。
 - Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`；该入口仅保留前端挂载容器与静态资源引用，由 React 渲染稳定的 shell DOM，并通过兼容样式层保持旧 DOM 契约。
 - `/chat` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 导航中的语言切换入口负责在英文与中文之间切换，并同步更新根节点语言标记。
 - 登录页在启用密码保护时继续作为统一入口，但视觉需与 Web Shell 保持一致：使用 `IBM Plex Sans + Sora` 字体、近白工作台卡片和安全入口说明文案，不保留独立的默认系统表单风格。
-- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace；`agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 `ReactManagedRouteBody` 接管。根壳层稳定暴露 `app-shell[data-workbench-route]`，各运行页与 route body 继续输出 `data-route / data-conversation-*` 作为样式与测试锚点；兼容层仅保留样式，不再通过 legacy 脚本接管 `/chat` 业务运行时。
+- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace；`agent / terminal / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 `ReactManagedRouteBody` 接管。根壳层稳定暴露 `app-shell[data-workbench-route]`，各运行页与 route body 继续输出 `data-route / data-conversation-*` 作为样式与测试锚点；兼容层仅保留样式，不再通过 legacy 脚本接管 `/chat` 业务运行时。
 - `channels / skills / mcp / models / cron-jobs` 共享控制台卡片页统一复用同一组响应式卡片网格；窄屏下标题区允许徽标下沉、字段行改为单列堆叠、底部标签区保持纵向拉伸，避免复制按钮、状态徽标与多行字段发生重叠或横向溢出。
 - Web Shell 的稳定界面基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime` 在主面板内部采用「会话列 + 时间线工作区 + 底部 Composer + 可切换 Inspector」结构，并直接复用 `Terminal` 的会话栏、工作区容器、工作区头部、聊天滚动区、Composer 与窄屏 `Menu / Sessions / New` 复合 class 语义；`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，状态与交互全部由 React 直接维护。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示额外品牌口号或实现状态；Conversation workspace 自身承担会话和运行态配置，不再叠加 bridge 期的 welcome/runtime sheet 双轨壳层；`Control / Sessions / Tasks / Memory / Terminal / Codex Accounts` 等 React 托管 route 页继续共享近白表面、浅灰辅助层与浅蓝选中态。
-- `Agent / Products` 与其他 React 托管页面共享同一表面体系：列表卡片、管理表单、托管字段块、workspace detail 卡与消息块使用一致的近白主表面、浅灰辅助层与浅蓝选中态。
+- `Agent` 与其他 React 托管页面共享同一表面体系：列表卡片、管理表单、托管字段块与消息块使用一致的近白主表面、浅灰辅助层与浅蓝选中态。
 - `/chat` 页面标题、登录页标题、导航品牌位、会话栏标题与欢迎区 tag 统一展示 `Alter0`，不再混用 `alter0` 小写品牌词。
 - Web Shell 的抽屉式单列工作台仅在主视口宽度 `1100px` 及以下触发；高于该阈值时保留左侧固定主导航与右侧主面板，避免只对聊天内容列做最大阅读宽度限制而让整体壳层失衡。
 - 进入窄屏工作台后，主导航切换为贴左侧视口边缘的全高抽屉；Conversation workspace 的会话列在同一 `1100px` 阈值收敛为与正文上下堆叠，不再作为独立浮层；`info-mode` 页面继续只保留主导航抽屉，避免壳层断点先切换而页面主体仍保留桌面列布局。
@@ -45,7 +45,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 ### Chat
 
 - `Chat` 默认绑定内置 `main` Agent `Alter0`。
-- `Chat` 面向通用对话入口，并允许在需要时调度专项 Agent 或 Product 总 Agent。
+- `Chat` 面向通用对话入口，并允许在需要时调度专项 Agent。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中调整，并作用于后续发送的消息。
 
 ### Agent 页面
@@ -74,7 +74,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `POST /api/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`。
 - `Terminal` 页面 Composer 与 `Tasks` 详情抽屉 follow-up terminal 输入也复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；前端草稿、预览与回显应优先消费这组引用，而不是在这些链路里长期保留原始 `data_url`。
 - assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
-- `GET /api/agents` 返回可进入的运行时 Agent。
+- `GET /api/agents` 返回可进入的运行时 Agent；当前内置入口包括 `main`、`coding`、`writing` 与 `travel-master`。
 - `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
 - `GET /api/sessions/{session_id}/messages` 查询会话消息。
 - `DELETE /api/sessions/{session_id}` 删除会话，并触发关联工作区和任务清理。

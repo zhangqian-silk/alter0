@@ -550,7 +550,7 @@ func writeSupervisorJSON(w http.ResponseWriter, status int, payload any) {
 }
 
 func resolveConfiguredListenAddr(ctx context.Context, requestedAddr string, requestedBindLocalhost bool) (string, error) {
-	controlStore, _, _, _, _, err := buildStorage(defaultStorageProfile)
+	controlStore, _, _, _, err := buildStorage(defaultStorageProfile)
 	if err != nil {
 		return "", err
 	}

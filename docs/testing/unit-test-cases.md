@@ -28,8 +28,6 @@
 - `internal/orchestration/application/TEST_CASES.md`
 - `internal/orchestration/domain/TEST_CASES.md`
 - `internal/orchestration/infrastructure/TEST_CASES.md`
-- `internal/product/application/TEST_CASES.md`
-- `internal/product/domain/TEST_CASES.md`
 - `internal/scheduler/application/TEST_CASES.md`
 - `internal/scheduler/domain/TEST_CASES.md`
 - `internal/session/application/TEST_CASES.md`
@@ -91,8 +89,8 @@
 
 用例范围：
 
-- 登录保护、Chat 页面、静态资源、消息 JSON/SSE、Agent/Product 消息入口。
-- Control API：Channel、Capability、Skill、MCP、Agent、Product、Draft、Cron、Environment、Runtime、LLM Provider。
+- 登录保护、Chat 页面、静态资源、消息 JSON/SSE、Agent 消息入口。
+- Control API：Channel、Capability、Skill、MCP、Agent、Cron、Environment、Runtime、LLM Provider。
 - Workspace service 注册表：`/api/control/workspace-services` 的注册、查询、删除，以及 `<session_short_hash>.alter0.cn` / `<service>.<session_short_hash>.alter0.cn` 命中后的前端构建分发和 HTTP 反向代理。
 
 边界：
@@ -167,30 +165,6 @@
 
 - 心跳持久化、任务超时续租和 Web 展示归属 Task 与接口层测试。
 - 执行端口、Skill、MCP、Memory Context 注入由 `internal/execution/application` 既有测试覆盖。
-
-## Product Domain
-
-### `internal/product/domain`
-
-覆盖文件：
-
-- `product_test.go`
-- `travel_guide_test.go`
-
-用例范围：
-
-- `Product.Normalized`：产品 ID、slug、状态、可见性、来源、主 Agent、版本默认值、标签、产物类型、知识源与 worker agent 去重排序。
-- `Product.Validate`：产品 ID 格式、名称、slug、状态、可见性、来源、版本、active Product 的主 Agent 约束。
-- `ProductDraftGenerateInput`：草稿生成输入的名称、目标、列表字段、生成模式默认值与合法模式。
-- `ProductDraft`：草稿 ID、Product、审核状态、主 Agent、worker matrix、发布目标的归一化与校验。
-- `ProductAgentDraft` 与 `ProductWorkerDraft`：Agent ID、名称、角色、默认迭代次数和 worker 优先级。
-- `TravelGuide`：travel product 默认绑定、城市、天数上限、内容、修订号、偏好列表归一化。
-- `TravelGuideCreateInput` 与 `TravelGuideReviseInput`：创建/修订输入的城市、天数默认值、14 天上限、可选天数字段不反向修改原始输入。
-
-边界：
-
-- Product CRUD、内置/托管来源、发布链路和 Travel 服务编排由 `internal/product/application` 覆盖。
-- HTML 页面、Workspace、公开 Product 接口由 `internal/interfaces/web` 覆盖。
 
 ## Task, Terminal & Workspace
 

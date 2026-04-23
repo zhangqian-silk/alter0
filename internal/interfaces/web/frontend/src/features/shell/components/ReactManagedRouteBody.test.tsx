@@ -70,7 +70,6 @@ describe("ReactManagedRouteBody", () => {
     expect(getReactManagedRouteBodyRoutes()).toEqual([
       "agent",
       "terminal",
-      "products",
       "memory",
       "sessions",
       "tasks",
@@ -84,7 +83,7 @@ describe("ReactManagedRouteBody", () => {
     ]);
     expect(isReactManagedRouteBody("agent")).toBe(true);
     expect(isReactManagedRouteBody("memory")).toBe(true);
-    expect(isReactManagedRouteBody("products")).toBe(true);
+    expect(isReactManagedRouteBody("products")).toBe(false);
     expect(isReactManagedRouteBody("codex-accounts")).toBe(true);
     expect(isReactManagedRouteBody("channels")).toBe(true);
     expect(isReactManagedRouteBody("skills")).toBe(true);

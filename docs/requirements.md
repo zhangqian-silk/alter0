@@ -2,7 +2,7 @@
 
 > Last update: 2026-04-23
 
-`alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `agent.execution.react`、`memory.files.injection`、`product.travel.workspace`。
+`alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `agent.execution.react`、`memory.files.injection`、`task.workspace.runtime`。
 
 状态说明：
 
@@ -18,7 +18,6 @@
 | Conversation & Session Experience | Chat、Agent 入口会话、SSE、历史、移动端、阅读与输入体验 | supported | [conversation-session-experience.md](requirements-details/conversation-session-experience.md) |
 | Agent Capability & Memory | Agent Catalog、ReAct、工具、Skills、MCP、Memory Files、长期记忆、上下文压缩 | supported | [agent-capability-memory.md](requirements-details/agent-capability-memory.md) |
 | Task, Terminal & Workspace | 异步任务、任务观测、任务日志、产物交付、Terminal 会话、独立工作区 | supported | [task-terminal-workspace.md](requirements-details/task-terminal-workspace.md) |
-| Product Domain | Product 目录、Draft Studio、Product 总 Agent、跨 Product 调度、Travel 产品域 | supported | [product-domain.md](requirements-details/product-domain.md) |
 | Control, Operations & Governance | 控制面配置、模型 Provider、Environments、部署基线、认证凭据、TDD 研发约束 | supported | [control-operations-governance.md](requirements-details/control-operations-governance.md) |
 
 ## Runtime & Orchestration
@@ -56,11 +55,11 @@
 - Web 前端所有时间显示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Cron 创建表单默认时区固定为 `Asia/Shanghai`。
 - Web 侧边栏、历史折叠、页面滚动隔离、克制冷灰工作台阅读主题、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
 - 会话侧栏中的 Session 列表需采用工作台式最近时间分组：按 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`）收口，并与主导航 `menu` 复用同一套分组容器、hover 与激活态视觉；条目按导航式线性关系排布，标题独立一行并在可用宽度内单行截断、摘要独立换行、短 hash 固定在条目下缘、删除动作以尾侧轻量文本操作收纳，不再拆出额外 footer 或胶囊操作区。
-- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；运行页共享同一套 slot 化 workspace scaffold，`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace，`terminal` 在保持原有交互与 DOM 契约的前提下直接挂在共享 `workbench-pane-shell` 下复用同一骨架，不再额外包裹 `route-view / route-body`，`agent / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 React 直接请求控制台或会话 API 渲染。壳层稳定暴露 `app-shell[data-workbench-route]` 与各视图自己的 `data-route / data-conversation-*` 作为样式钩子；`legacy` 资源仅保留兼容样式，不再保留 `LegacyWebShell / ReactRuntimeFacade / bridge / snapshot store`。
+- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；运行页共享同一套 slot 化 workspace scaffold，`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace，`terminal` 在保持原有交互与 DOM 契约的前提下直接挂在共享 `workbench-pane-shell` 下复用同一骨架，不再额外包裹 `route-view / route-body`，`agent / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 React 直接请求控制台或会话 API 渲染。壳层稳定暴露 `app-shell[data-workbench-route]` 与各视图自己的 `data-route / data-conversation-*` 作为样式钩子；`legacy` 资源仅保留兼容样式，不再保留 `LegacyWebShell / ReactRuntimeFacade / bridge / snapshot store`。
 - `/chat` 与 `/login` 默认以英文启动，HTML 根节点语言标记为 `en`；Web Shell 保留显式语言切换入口，切到中文后需同步更新壳层文案与 `document.documentElement.lang`。
 - 登录页需与工作台共享同一视觉基线：使用 `IBM Plex Sans + Sora` 字体组合、近白卡片表面与安全入口语气，避免退回默认系统登录页样式。
 - Web Shell 的稳定视觉基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime` 在主面板内部采用「会话列 + 主时间线工作区 + 底部 Composer + 可切换 Inspector」结构，并直接复用 `Terminal` 的会话栏、workspace body、chat screen、composer 与窄屏 `Menu / Sessions / New` 语义 class；`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，三者状态与交互全部由 React 直接维护。常规工作台页面保持近白表面、低对比边框、浅灰说明层和浅蓝选中态，不再为不同页面维持分散的高装饰视觉语言。
-- `Agent`、`Products` 与其他 React 托管页面共享同一 restrained workbench surface system：列表卡片、管理表单、托管字段块、workspace detail 卡与消息块使用一致的近白主表面、浅灰辅助层和浅蓝选中态。
+- `Agent` 与其他 React 托管页面共享同一 restrained workbench surface system：列表卡片、管理表单、托管字段块与消息块使用一致的近白主表面、浅灰辅助层和浅蓝选中态。
 - `/chat` 与登录页的对外品牌文案统一使用 `Alter0`：浏览器标题、登录标题、导航品牌位、会话栏标题与欢迎区 tag 不再暴露小写服务名。
 - Terminal 路由页继续由 React 原生实现，会话栏、工作区头部、Process、输出区和 Composer 的状态与交互全部由 React 维护；旧版 Terminal 仅作为布局关系与 `terminal-*` DOM 契约参照，不恢复 legacy runtime 控制器或脚本接管。
 - 主导航、控制台与资产页默认以高密度信息架构呈现：导航组与条目间距压缩，控制面长列表优先使用表格或主从视图，不再把大量配置和任务详情平铺为低密度卡片矩阵。
@@ -95,10 +94,10 @@
 
 稳定需求：
 
-- 运行时统一聚合内置 Agent 与用户管理 Agent；内置 Agent 包括 `main`、`coding`、`writing`、`product-builder` 与 Product 专属总 Agent。
-- Agent 采用 ReAct 执行链，负责理解用户目标、吸收 system prompt / Skill / Memory / Product Context，并把具体执行交给 `codex_exec`。
+- 运行时统一聚合内置 Agent 与用户管理 Agent；内置 Agent 包括 `main`、`coding`、`writing` 与 `travel-master`。
+- Agent 采用 ReAct 执行链，负责理解用户目标、吸收 system prompt / Skill / Memory 与运行时上下文，并把具体执行交给 `codex_exec`。
 - 稳定工具面包含 `codex_exec`、`search_memory`、`read_memory`、`write_memory` 与运行时收口工具 `complete`；允许委派的 Agent 可额外使用 `delegate_agent`。
-- `codex_exec` 通过 stdin 传递最终指令；存在可用 Provider 且进入 Agent / ReAct 链路时，仅向 Codex 下发当前步骤指令；不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时会为当前会话生成原生 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 `runtime_context`、`product_context`、`product_discovery`、`skill_context`、`mcp_context`、`memory_context` 编译成 Codex 原生运行配置与工作区事实。
+- `codex_exec` 通过 stdin 传递最终指令；存在可用 Provider 且进入 Agent / ReAct 链路时，仅向 Codex 下发当前步骤指令；不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时会为当前会话生成原生 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 `runtime_context`、`skill_context`、`mcp_context`、`memory_context` 编译成 Codex 原生运行配置与工作区事实。
 - Agent / ReAct 走 `openai-completions` 多轮工具调用时，assistant `tool_calls` 与后续 `tool` 结果的 `tool_call_id` 必须保持同轮关联，不能在 Provider 适配层丢失。
 - Agent Profile 支持名称、system prompt、max iterations、Provider/Model、工具白名单、Skills、MCP 与 Memory Files。
 - 每个 Agent 自动拥有私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`，用于沉淀可复用工作模式、输出结构、检查清单与稳定偏好。
@@ -122,7 +121,7 @@
 - Web 会话不直接暴露本地文件路径，产物通过引用、下载或预览接口交付。
 - 默认工作区按执行上下文隔离：Chat/Agent 使用 `.alter0/workspaces/sessions/<session_id>`，Task 使用其会话下的 `tasks/<task_id>`，Terminal 使用 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
 - Chat / Agent Runtime 的会话图片资产需要随 Session 工作区落盘：用户上传图片的原图与预览图统一写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，前端持久化与消息请求默认复用 `asset_url / preview_url` 引用；assistant 最终回复里的外链 markdown 图片也应在会话返回与落库前改写到同一路径下的本地附件 URL。
-- 直连 Codex 的 Chat / Agent / Product 会话会在各自工作区下额外维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Terminal 会话会在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
+- 直连 Codex 的 Chat / Agent 会话会在各自工作区下额外维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Terminal 会话会在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与步骤视图索引。
 - Terminal API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
 - Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/step 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
@@ -137,28 +136,13 @@
 - Terminal 移动端的 `terminal-chat-screen` 必须继续按当前 Composer 的真实遮挡高度动态收口；会话空态、长输出与 Process 阅读都要稳定停在输入区上沿，不允许被 fixed Composer 覆盖。
 - Terminal 移动端的四键阅读定位条只按静态 Composer footprint 停靠，不跟随软键盘位移动态上移；键盘弹起时按钮组保持原位，键盘收起或浏览器视口回弹后继续稳定停在 Composer 上沿之上，不得留下悬空残影。
 
-## Product Domain
-
-核心对象：`Product`、`ProductDraft`、`ProductAgentDraft`、`ProductMasterAgent`、`ProductWorkspace`、`ProductSpace`、`TravelGuide`、`ProductDiscovery`。
-
-稳定需求：
-
-- Product 是业务产品域的一等对象，用于承载产品定义、主 Agent、入口路由、知识源、产物类型、详情页空间与可选 supporting agents。
-- `Products` 页面提供 `Workspace` 与 `Studio` 视图；内置 Product 只读展示，用户管理 Product 支持新增、编辑、删除、停用、生成草稿、审核与发布。
-- Draft Studio 通过 `product-builder` 生成或扩展 Product 草稿；新草稿默认采用单主 Agent，把可复用领域规则沉淀到主 Agent system prompt 与 Skill。
-- 每个已发布 Product 绑定唯一 `master_agent_id`，Product 总 Agent 统一采用 Agent 协助 / Codex 执行模型，历史 supporting agents 仅做兼容保留。
-- 默认 `main` Agent 可做 Product 发现，并在执行型请求中自动切换到目标 Product 总 Agent，同时注入 Product Context 与路由元数据。
-- 已发布且公开的 Product 提供公共目录、详情、Workspace、Space 详情、独立 HTML 页面与 Product 消息执行入口。
-- `travel` 是首个内置 Product，绑定唯一 `travel-master`，支持城市页创建/修改、结构化攻略、独立 HTML 城市页、Workspace Chat 与 Agent 执行失败时的本地解析回退。
-- `travel-master` 使用私有 Skill `.alter0/agents/travel-master/SKILL.md` 沉淀城市页、行程、地铁、美食与地图输出规则；Agent / ReAct 路径由 `travel-master` 自身吸收这些规则，直连 Codex 路径则把它们编译到当前会话的 Native Runtime 资产；稳定偏好写入 Skill，一次性行程约束写入目标城市页数据。
-
 ## Control, Operations & Governance
 
 核心对象：`ChannelConfig`、`SkillConfig`、`AgentProfile`、`ModelProvider`、`EnvironmentConfig`、`CodexAccount`、`CodexLoginSession`、`RuntimeInstance`、`DeploymentBaseline`、`EngineeringPolicy`。
 
 稳定需求：
 
-- Control API 管理 Channel、Capability、Skill、MCP、Agent Profile、Product、Cron Job、Model Provider、Environment 与 Codex 多账号配置，并保留 Capability 生命周期审计。
+- Control API 管理 Channel、Capability、Skill、MCP、Agent Profile、Cron Job、Model Provider、Environment 与 Codex 多账号配置，并保留 Capability 生命周期审计。
 - 共享 Web 运行时需要支持通用 workspace service 注册：`GET /api/control/workspace-services` 查询注册表，`PUT /api/control/workspace-services/{session_id}` 绑定默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 绑定附加服务，`DELETE` 接口用于清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时，共享运行时需按注册类型分发前端构建或反向代理到目标 HTTP 服务。标准 `web` 部署默认应把当前会话后端启动命令注册给共享运行时托管，再以 `http` 方式绑定短哈希子域名，确保前端与 `/api/*` 同时来自当前分支；`frontend_dist` 仅作为静态预览模式保留。
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 OpenAI Compatible 与 OpenRouter Provider，支持 `/responses` 与 `/chat/completions`，支持 base URL、API Key 保留语义、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复。
