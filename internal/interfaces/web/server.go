@@ -113,6 +113,7 @@ type Server struct {
 	frontendDevOrigin string
 	frontendDevProxy  http.Handler
 	workspaceService  *workspaceServiceRegistry
+	workspaceRuntime  workspaceServiceRuntime
 	codexAccounts     codexAccountService
 }
 
@@ -210,6 +211,8 @@ type codexAccountService interface {
 	Switch(name string) (*codexapp.Record, string, error)
 	StartLoginSession(ctx context.Context, name string, overwrite bool) (codexapp.LoginSession, error)
 	GetLoginSession(id string) (codexapp.LoginSession, bool)
+	RuntimeStatus() (*codexapp.RuntimeStatus, error)
+	UpdateRuntimeSettings(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error)
 }
 
 type RuntimeRestartOptions struct {
@@ -230,6 +233,11 @@ type codexAccountCreateRequest struct {
 type codexAccountLoginSessionCreateRequest struct {
 	Name      string `json:"name"`
 	Overwrite bool   `json:"overwrite"`
+}
+
+type codexRuntimeUpdateRequest struct {
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoning_effort"`
 }
 
 type messageRequest struct {
@@ -721,6 +729,7 @@ func NewServer(
 		frontendDevOrigin: frontendDevOrigin,
 		frontendDevProxy:  newFrontendDevProxy(frontendDevOrigin, logger),
 		workspaceService:  workspaceServiceRegistry,
+		workspaceRuntime:  newWorkspaceServiceRuntime(logger),
 	}
 }
 
@@ -798,6 +807,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/codex/accounts", s.codexAccountCollectionHandler)
 	mux.HandleFunc("/api/control/codex/accounts/login-sessions", s.codexAccountLoginSessionCollectionHandler)
 	mux.HandleFunc("/api/control/codex/accounts/", s.codexAccountItemHandler)
+	mux.HandleFunc("/api/control/codex/runtime", s.codexRuntimeHandler)
 	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
 	mux.HandleFunc("/api/control/llm/providers/", s.llmProviderItemHandler)
 	mux.HandleFunc("/api/terminal/sessions", s.terminalSessionCollectionHandler)
@@ -4563,9 +4573,15 @@ func (s *Server) codexAccountCollectionHandler(w http.ResponseWriter, r *http.Re
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
+		runtimeStatus, err := s.codexAccounts.RuntimeStatus()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"items":  items,
-			"active": active,
+			"items":   items,
+			"active":  active,
+			"runtime": runtimeStatus,
 		})
 	case http.MethodPost:
 		var req codexAccountCreateRequest
@@ -4608,6 +4624,37 @@ func (s *Server) codexAccountLoginSessionCollectionHandler(w http.ResponseWriter
 		return
 	}
 	writeJSON(w, http.StatusAccepted, session)
+}
+
+func (s *Server) codexRuntimeHandler(w http.ResponseWriter, r *http.Request) {
+	if s.codexAccounts == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "codex account service unavailable"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		runtimeStatus, err := s.codexAccounts.RuntimeStatus()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, runtimeStatus)
+	case http.MethodPut:
+		var req codexRuntimeUpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		runtimeStatus, err := s.codexAccounts.UpdateRuntimeSettings(strings.TrimSpace(req.Model), strings.TrimSpace(req.ReasoningEffort))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, runtimeStatus)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
 }
 
 func (s *Server) codexAccountItemHandler(w http.ResponseWriter, r *http.Request) {

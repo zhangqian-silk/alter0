@@ -1623,7 +1623,12 @@
   min-width: 0;
 }
 
-.codex-accounts-main,
+.codex-accounts-main {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
 .codex-accounts-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1634,6 +1639,115 @@
   display: grid;
   gap: 18px;
   height: 100%;
+}
+
+.codex-accounts-runtime-panel {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(191, 219, 254, 0.82);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(239, 246, 255, 0.94) 100%);
+}
+
+.codex-accounts-runtime-grid,
+.codex-accounts-runtime-details {
+  display: grid;
+  gap: 12px;
+}
+
+.codex-accounts-runtime-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.codex-accounts-runtime-details {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.codex-accounts-runtime-detail {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(191, 219, 254, 0.72);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.codex-accounts-runtime-detail span,
+.codex-accounts-runtime-current span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.codex-accounts-runtime-detail strong {
+  color: var(--ink-strong);
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.codex-accounts-runtime-form {
+  display: grid;
+  gap: 14px;
+}
+
+.codex-accounts-runtime-controls,
+.codex-accounts-runtime-selection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.codex-accounts-runtime-selection {
+  align-items: start;
+}
+
+.codex-accounts-runtime-hints {
+  display: grid;
+  gap: 6px;
+}
+
+.codex-accounts-runtime-hint {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.codex-accounts-runtime-submit {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.codex-accounts-runtime-current {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(191, 219, 254, 0.72);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.codex-accounts-runtime-current strong {
+  color: var(--ink-strong);
+  font-size: 14px;
+}
+
+.codex-accounts-runtime-note {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.codex-accounts-runtime-skeleton {
+  margin-bottom: 6px;
 }
 
 .codex-account-badge {
@@ -1795,7 +1909,8 @@
   font-weight: 700;
 }
 
-.codex-accounts-field input[type="text"] {
+.codex-accounts-field input:not([type="checkbox"]):not([type="file"]),
+.codex-accounts-field select {
   width: 100%;
   min-height: 42px;
   border-radius: 12px;
@@ -1805,6 +1920,10 @@
   padding: 0 14px;
   font: inherit;
   box-sizing: border-box;
+}
+
+.codex-accounts-field select {
+  appearance: none;
 }
 
 .codex-accounts-file-picker {
@@ -2267,6 +2386,15 @@
     flex-direction: column;
     align-items: stretch;
   }
+
+  .codex-accounts-runtime-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .codex-accounts-runtime-grid,
+  .codex-accounts-runtime-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -2290,6 +2418,17 @@
   .codex-account-switch-button {
     width: 100%;
     min-width: 0;
+  }
+
+  .codex-accounts-runtime-grid,
+  .codex-accounts-runtime-details,
+  .codex-accounts-runtime-controls,
+  .codex-accounts-runtime-selection {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .codex-accounts-runtime-submit {
+    align-items: stretch;
   }
 }
 

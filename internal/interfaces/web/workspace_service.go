@@ -35,6 +35,10 @@ type workspaceServiceRegistration struct {
 	RepositoryPath string    `json:"repository_path,omitempty"`
 	DistPath       string    `json:"dist_path,omitempty"`
 	UpstreamURL    string    `json:"upstream_url,omitempty"`
+	StartCommand   string    `json:"start_command,omitempty"`
+	Workdir        string    `json:"workdir,omitempty"`
+	HealthPath     string    `json:"health_path,omitempty"`
+	Port           int       `json:"port,omitempty"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
@@ -44,6 +48,10 @@ type workspaceServiceRegistrationInput struct {
 	ServiceType    string
 	RepositoryPath string
 	UpstreamURL    string
+	StartCommand   string
+	Workdir        string
+	HealthPath     string
+	Port           int
 }
 
 type workspaceServiceRegistry struct {
@@ -58,6 +66,18 @@ type workspaceServiceRegistrationRequest struct {
 	ServiceType    string `json:"service_type"`
 	RepositoryPath string `json:"repository_path,omitempty"`
 	UpstreamURL    string `json:"upstream_url,omitempty"`
+	StartCommand   string `json:"start_command,omitempty"`
+	Workdir        string `json:"workdir,omitempty"`
+	HealthPath     string `json:"health_path,omitempty"`
+	Port           int    `json:"port,omitempty"`
+}
+
+type workspaceServiceResponse struct {
+	workspaceServiceRegistration
+	RuntimeDir string `json:"runtime_dir,omitempty"`
+	LogPath    string `json:"log_path,omitempty"`
+	PID        int    `json:"pid,omitempty"`
+	Status     string `json:"status,omitempty"`
 }
 
 func newFileWorkspaceServiceRegistry(path string, baseDomain string) (*workspaceServiceRegistry, error) {
@@ -206,11 +226,27 @@ func (r *workspaceServiceRegistry) Upsert(input workspaceServiceRegistrationInpu
 		entry.RepositoryPath = repositoryPath
 		entry.DistPath = distPath
 	case workspaceServiceTypeHTTP:
-		upstreamURL, err := normalizeWorkspaceServiceUpstreamURL(input.UpstreamURL)
-		if err != nil {
-			return workspaceServiceRegistration{}, err
+		if strings.TrimSpace(input.StartCommand) != "" {
+			workdir, err := normalizeWorkspaceServiceWorkdir(input.Workdir)
+			if err != nil {
+				return workspaceServiceRegistration{}, err
+			}
+			port, err := normalizeWorkspaceServicePort(input.Port)
+			if err != nil {
+				return workspaceServiceRegistration{}, err
+			}
+			entry.StartCommand = strings.TrimSpace(input.StartCommand)
+			entry.Workdir = workdir
+			entry.Port = port
+			entry.HealthPath = normalizeWorkspaceServiceHealthPath(input.HealthPath)
+			entry.UpstreamURL = fmt.Sprintf("http://127.0.0.1:%d", port)
+		} else {
+			upstreamURL, err := normalizeWorkspaceServiceUpstreamURL(input.UpstreamURL)
+			if err != nil {
+				return workspaceServiceRegistration{}, err
+			}
+			entry.UpstreamURL = upstreamURL
 		}
-		entry.UpstreamURL = upstreamURL
 	default:
 		return workspaceServiceRegistration{}, errors.New("unsupported workspace service type")
 	}
@@ -258,6 +294,20 @@ func (r *workspaceServiceRegistry) Delete(sessionID string, serviceID string) (b
 		return false, err
 	}
 	return true, nil
+}
+
+func workspaceServiceRegistrationToInput(entry workspaceServiceRegistration) workspaceServiceRegistrationInput {
+	return workspaceServiceRegistrationInput{
+		SessionID:      entry.SessionID,
+		ServiceID:      entry.ServiceID,
+		ServiceType:    entry.ServiceType,
+		RepositoryPath: entry.RepositoryPath,
+		UpstreamURL:    entry.UpstreamURL,
+		StartCommand:   entry.StartCommand,
+		Workdir:        entry.Workdir,
+		HealthPath:     entry.HealthPath,
+		Port:           entry.Port,
+	}
 }
 
 func (r *workspaceServiceRegistry) persistLocked() error {
@@ -327,6 +377,44 @@ func normalizeWorkspaceServiceUpstreamURL(raw string) (string, error) {
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func normalizeWorkspaceServiceWorkdir(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", errors.New("workdir is required when start_command is set")
+	}
+	absolutePath, err := filepath.Abs(trimmed)
+	if err != nil {
+		return "", err
+	}
+	normalizedPath := filepath.Clean(absolutePath)
+	info, err := os.Stat(normalizedPath)
+	if err != nil {
+		return "", errors.New("workdir does not exist")
+	}
+	if !info.IsDir() {
+		return "", errors.New("workdir must be a directory")
+	}
+	return filepath.ToSlash(normalizedPath), nil
+}
+
+func normalizeWorkspaceServicePort(value int) (int, error) {
+	if value <= 0 || value > 65535 {
+		return 0, errors.New("port must be between 1 and 65535 when start_command is set")
+	}
+	return value, nil
+}
+
+func normalizeWorkspaceServiceHealthPath(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(trimmed, "/") {
+		return "/" + trimmed
+	}
+	return trimmed
 }
 
 func buildWorkspaceServiceHost(shortHash string, serviceID string, baseDomain string) string {
@@ -428,7 +516,23 @@ func (s *Server) withWorkspaceServiceGateway(next http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		case workspaceServiceTypeHTTP:
-			s.serveWorkspaceHTTPService(w, r, entry)
+			effectiveEntry := entry
+			if s.workspaceRuntime != nil && isManagedWorkspaceService(entry) {
+				managedEntry, _, err := s.workspaceRuntime.EnsureStarted(entry)
+				if err != nil {
+					if s.logger != nil {
+						s.logger.Error("workspace service startup failed",
+							"session_id", entry.SessionID,
+							"service_id", entry.ServiceID,
+							"error", err.Error(),
+						)
+					}
+					http.Error(w, "workspace service unavailable", http.StatusBadGateway)
+					return
+				}
+				effectiveEntry = managedEntry
+			}
+			s.serveWorkspaceHTTPService(w, r, effectiveEntry)
 		default:
 			next.ServeHTTP(w, r)
 		}
@@ -514,6 +618,12 @@ func (s *Server) serveWorkspaceHTTPService(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Header.Set("X-Forwarded-Host", req.Host)
+		req.Host = target.Host
+	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, proxyErr error) {
 		if s != nil && s.logger != nil {
 			s.logger.Error("workspace service proxy failed",
@@ -568,19 +678,49 @@ func (s *Server) workspaceServiceItemHandler(w http.ResponseWriter, r *http.Requ
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
 		}
+		previous, hadPrevious := s.workspaceService.ResolveService(sessionID, serviceID)
 		item, err := s.workspaceService.Upsert(workspaceServiceRegistrationInput{
 			SessionID:      sessionID,
 			ServiceID:      serviceID,
 			ServiceType:    req.ServiceType,
 			RepositoryPath: req.RepositoryPath,
 			UpstreamURL:    req.UpstreamURL,
+			StartCommand:   req.StartCommand,
+			Workdir:        req.Workdir,
+			HealthPath:     req.HealthPath,
+			Port:           req.Port,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, item)
+		response := workspaceServiceResponse{workspaceServiceRegistration: item}
+		if s.workspaceRuntime != nil && isManagedWorkspaceService(item) {
+			managedEntry, runtimeStatus, runtimeErr := s.workspaceRuntime.EnsureStarted(item)
+			if runtimeErr != nil {
+				if hadPrevious {
+					_, _ = s.workspaceService.Upsert(workspaceServiceRegistrationToInput(previous))
+				} else {
+					_, _ = s.workspaceService.Delete(sessionID, serviceID)
+				}
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": runtimeErr.Error()})
+				return
+			}
+			response.workspaceServiceRegistration = managedEntry
+			response.RuntimeDir = runtimeStatus.RuntimeDir
+			response.LogPath = runtimeStatus.LogPath
+			response.PID = runtimeStatus.PID
+			response.Status = runtimeStatus.Status
+		}
+		writeJSON(w, http.StatusOK, response)
 	case http.MethodDelete:
+		item, found := s.workspaceService.ResolveService(sessionID, serviceID)
+		if found && s.workspaceRuntime != nil {
+			if err := s.workspaceRuntime.Stop(item); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+		}
 		deleted, err := s.workspaceService.Delete(sessionID, serviceID)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
