@@ -147,7 +147,7 @@
 - Models 控制面支持 OpenAI Compatible 与 OpenRouter Provider，支持 `/responses` 与 `/chat/completions`，支持 base URL、API Key 保留语义、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复。
 - `openai-completions` 适配层必须正确序列化 assistant `tool_calls` 与 tool output，兼容严格校验工具消息配对关系的上游 Provider。
 - Environments 页面支持 Web/Queue、Async Tasks、Terminal、Session Memory、Persistent Memory 与 LLM 运行参数可视化配置、敏感值显隐、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、候选二进制构建、readyz 探活与失败回滚。
-- Settings 页面提供 Codex Accounts 面板，使用运行时概览、当前 Codex 管理区、托管账号卡片列表与操作侧栏承载 `auth.json` 导入、独立登录会话、托管账号状态查看、当前运行时账号切换，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换；若当前运行中的 `auth.json` 尚未导入托管仓库，页面仍需展示该活动账号并提示其处于未托管状态，加载阶段需保留整页骨架布局，并在不同断点下持续暴露套餐、额度、当前 model、思考深度与切换入口。
+- Settings 页面提供 Codex Accounts 面板，使用高密度运行时概览、当前 Codex 管理区、托管账号列表与操作侧栏承载 `auth.json` 导入、独立登录会话、托管账号状态查看、当前运行时账号切换，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换；概览区采用当前账号主身份区配合套餐、小时/周剩余额度和托管数量的紧凑指标列，其中额度必须以进度条展示并附带 reset 时间，key/value 默认按同列对齐，概览本身不展示活动 auth 路径，维护类信息通过 `Runtime Details` 折叠区展开；当前 Codex 管理区仅保留一套可编辑的 model / 思考深度字段，不重复展示当前值摘要；托管账号区采用高密度行式列表，在不同断点下持续暴露账号身份、套餐、额度进度条、reset 时间、当前 model、思考深度与切换入口，并使用更平的控制台控件与分隔线布局代替嵌套胶囊和内嵌方框；若当前运行中的 `auth.json` 尚未导入托管仓库，页面仍需展示该活动账号并提示其处于未托管状态，且在 quota 已可用时继续展示该 live 账号的套餐与额度，加载阶段需保留整页骨架布局。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、统一 `HOME=/var/lib/alter0`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。
 - Node/Playwright 测试链路通过运行账户级工具链初始化，保证 Codex CLI 可执行 `internal/interfaces/web/frontend` 的构建与单测，以及 `internal/interfaces/web` 的 Playwright E2E。

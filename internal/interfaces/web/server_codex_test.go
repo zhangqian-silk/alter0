@@ -100,6 +100,11 @@ func TestCodexAccountCollectionHandlerListsAccounts(t *testing.T) {
 					}, &codexapp.CurrentStatus{
 						Managed:  &record,
 						AuthPath: "/var/lib/alter0/.codex/auth.json",
+						Quota: &codexdomain.QuotaStatus{
+							Hourly: codexdomain.QuotaWindow{RemainingPercent: 80},
+							Weekly: codexdomain.QuotaWindow{RemainingPercent: 92},
+							Plan:   "plus",
+						},
 					}, nil
 			},
 			runtimeStatus: func() (*codexapp.RuntimeStatus, error) {
@@ -149,6 +154,9 @@ func TestCodexAccountCollectionHandlerListsAccounts(t *testing.T) {
 	}
 	if payload.Active == nil || payload.Active.Managed == nil || payload.Active.Managed.Name != "work" {
 		t.Fatalf("unexpected active: %+v", payload.Active)
+	}
+	if payload.Active.Quota == nil || payload.Active.Quota.Plan != "plus" {
+		t.Fatalf("unexpected active quota: %+v", payload.Active)
 	}
 	if payload.Runtime == nil || payload.Runtime.Model != "gpt-5.4" || payload.Runtime.ReasoningEffort != "high" {
 		t.Fatalf("unexpected runtime: %+v", payload.Runtime)

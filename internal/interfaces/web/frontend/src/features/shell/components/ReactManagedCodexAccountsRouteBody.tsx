@@ -17,14 +17,21 @@ type LiveSnapshot = {
   plan?: string;
 };
 
+type QuotaWindow = {
+  remaining_percent?: number;
+  reset_at?: string;
+};
+
+type QuotaStatus = {
+  hourly?: QuotaWindow;
+  weekly?: QuotaWindow;
+  plan?: string;
+};
+
 type AccountStatus = {
   record?: AccountRecord;
   current?: boolean;
-  quota?: {
-    hourly?: { remaining_percent?: number };
-    weekly?: { remaining_percent?: number };
-    plan?: string;
-  };
+  quota?: QuotaStatus;
   error?: string;
 };
 
@@ -32,6 +39,9 @@ type CurrentStatus = {
   live?: LiveSnapshot | null;
   managed?: AccountRecord | null;
   auth_path?: string;
+  quota?: QuotaStatus;
+  error?: string;
+  refreshed?: boolean;
 };
 
 type RuntimeStatus = {
@@ -127,6 +137,7 @@ type CodexAccountsCopy = {
   cliCommand: string;
   configPath: string;
   activeProfile: string;
+  runtimeDetails: string;
   modelSource: string;
   reasoningSource: string;
   authReady: string;
@@ -139,6 +150,7 @@ type CodexAccountsCopy = {
   codexDefault: string;
   quotaHourly: string;
   quotaWeekly: string;
+  resetsAt: string;
   plan: string;
   state: string;
   sessionID: string;
@@ -165,9 +177,9 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     overview: "Runtime Overview",
     managedAccounts: "Managed Accounts",
     currentCodex: "Current Codex",
-    currentCodexSubtitle: "Manage the active Codex runtime with live capabilities returned by Codex itself, including model and reasoning depth for upcoming CLI work.",
+    currentCodexSubtitle: "Adjust the active runtime model and reasoning depth.",
     operationsTitle: "Import or Add Account",
-    operationsSubtitle: "Import an existing auth.json or start an isolated Codex login session without replacing the active runtime account immediately.",
+    operationsSubtitle: "Import auth.json or start an isolated Codex login session.",
     loginSessionTitle: "Login Session",
     loginSessionEmpty: "No login session started.",
     accountName: "Account Name",
@@ -193,6 +205,7 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     cliCommand: "CLI Command",
     configPath: "Config Path",
     activeProfile: "Active Profile",
+    runtimeDetails: "Runtime Details",
     modelSource: "Model Source",
     reasoningSource: "Reasoning Source",
     authReady: "Loaded",
@@ -205,6 +218,7 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     codexDefault: "Codex default",
     quotaHourly: "Hourly Remaining",
     quotaWeekly: "Weekly Remaining",
+    resetsAt: "Resets",
     plan: "Plan",
     state: "State",
     sessionID: "Session ID",
@@ -229,9 +243,9 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     overview: "运行时概览",
     managedAccounts: "托管账号",
     currentCodex: "当前 Codex",
-    currentCodexSubtitle: "直接管理当前生效的 Codex 运行时，基于 Codex 实时返回的能力切换 model 与思考深度，并查看来源状态。",
+    currentCodexSubtitle: "调整当前运行时的 model 与思考深度。",
     operationsTitle: "导入或新增账号",
-    operationsSubtitle: "支持导入现有 auth.json，或启动隔离的 Codex 登录会话，新账号生成后不会立刻替换当前运行时认证。",
+    operationsSubtitle: "导入 auth.json，或启动隔离的 Codex 登录会话。",
     loginSessionTitle: "登录会话",
     loginSessionEmpty: "当前还没有启动登录会话。",
     accountName: "账号名称",
@@ -257,6 +271,7 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     cliCommand: "CLI 命令",
     configPath: "配置路径",
     activeProfile: "生效 Profile",
+    runtimeDetails: "运行时详情",
     modelSource: "Model 来源",
     reasoningSource: "思考深度来源",
     authReady: "已加载",
@@ -269,6 +284,7 @@ const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
     codexDefault: "Codex 默认值",
     quotaHourly: "小时剩余额度",
     quotaWeekly: "周剩余额度",
+    resetsAt: "重置于",
     plan: "套餐",
     state: "状态",
     sessionID: "会话 ID",
@@ -452,13 +468,32 @@ export function ReactManagedCodexAccountsRouteBody({
     return <p className="route-error">{copy.loadFailed(requestState.error)}</p>;
   }
 
+  const activePath = normalizeText(active?.auth_path) || "-";
+  const currentManagedName = normalizeText(active?.managed?.name);
+  const currentAccountStatus =
+    accounts.find((item) => item.current) ??
+    accounts.find((item) => normalizeText(item.record?.name) === currentManagedName) ??
+    null;
   const activeAccount =
+    normalizeText(currentAccountStatus?.record?.snapshot?.account_name) ||
+    normalizeText(currentAccountStatus?.record?.snapshot?.email) ||
+    normalizeText(currentAccountStatus?.record?.name) ||
     normalizeText(active?.managed?.snapshot?.account_name) ||
     normalizeText(active?.live?.account_name) ||
     normalizeText(active?.live?.email) ||
     normalizeText(active?.managed?.name) ||
     "-";
-  const activePath = normalizeText(active?.auth_path) || "-";
+  const currentPlan =
+    normalizeText(currentAccountStatus?.quota?.plan) ||
+    normalizeText(currentAccountStatus?.record?.snapshot?.plan) ||
+    normalizeText(active?.managed?.snapshot?.plan) ||
+    normalizeText(active?.quota?.plan) ||
+    normalizeText(active?.live?.plan) ||
+    "-";
+  const currentHourlyWindow = currentAccountStatus?.quota?.hourly ?? active?.quota?.hourly;
+  const currentWeeklyWindow = currentAccountStatus?.quota?.weekly ?? active?.quota?.weekly;
+  const currentHourly = normalizePercent(currentHourlyWindow?.remaining_percent);
+  const currentWeekly = normalizePercent(currentWeeklyWindow?.remaining_percent);
   const accountsHint = accounts.length === 0 && active?.live && !active?.managed
     ? copy.unmanagedCurrentHint
     : copy.emptyHint;
@@ -467,9 +502,6 @@ export function ReactManagedCodexAccountsRouteBody({
   const selectedReasoningOptions = runtimeReasoningOptions(selectedRuntimeModel, selectedReasoning);
   const selectedReasoningMode =
     selectedReasoningOptions.find((option) => normalizeText(option.reasoning_effort) === selectedReasoning) ?? null;
-  const runtimeCurrentModel = findRuntimeModel(runtimeModels, normalizeText(runtime?.model));
-  const runtimeModel = runtimeCurrentModel ? formatRuntimeModelSummary(runtimeCurrentModel) : (normalizeText(runtime?.model) || copy.codexDefault);
-  const runtimeReasoning = formatReasoningEffort(runtime?.reasoning_effort) || copy.codexDefault;
   const runtimeCommand = normalizeText(runtime?.command) || "-";
   const runtimeConfigPath = normalizeText(runtime?.config_path) || "-";
   const runtimeProfile = normalizeText(runtime?.profile) || copy.codexDefault;
@@ -492,22 +524,40 @@ export function ReactManagedCodexAccountsRouteBody({
         <div className="codex-accounts-section-head">
           <div>
             <h4>{copy.overview}</h4>
-            <p>{copy.activePath}</p>
+            <p>{copy.currentCodexSubtitle}</p>
           </div>
         </div>
-        <div className="codex-accounts-summary-grid">
-          <article className="codex-accounts-summary-card">
+        <div className="codex-accounts-overview-shell">
+          <div className="codex-accounts-overview-primary">
             <span>{copy.activeAccount}</span>
             <strong title={activeAccount}>{activeAccount}</strong>
-          </article>
-          <article className="codex-accounts-summary-card">
-            <span>{copy.managedCount}</span>
-            <strong>{accounts.length}</strong>
-          </article>
-          <article className="codex-accounts-summary-card is-wide">
-            <span>{copy.activePath}</span>
-            <strong title={activePath}>{activePath}</strong>
-          </article>
+          </div>
+          <div className="codex-accounts-summary-grid">
+            <article className="codex-accounts-summary-card">
+              <span>{copy.plan}</span>
+              <strong>{currentPlan}</strong>
+            </article>
+            <article className="codex-accounts-summary-card is-meter">
+              <QuotaMeter
+                label={copy.quotaHourly}
+                resetLabel={copy.resetsAt}
+                value={currentHourly}
+                resetAt={currentHourlyWindow?.reset_at}
+              />
+            </article>
+            <article className="codex-accounts-summary-card is-meter">
+              <QuotaMeter
+                label={copy.quotaWeekly}
+                resetLabel={copy.resetsAt}
+                value={currentWeekly}
+                resetAt={currentWeeklyWindow?.reset_at}
+              />
+            </article>
+            <article className="codex-accounts-summary-card">
+              <span>{copy.managedCount}</span>
+              <strong>{accounts.length}</strong>
+            </article>
+          </div>
         </div>
       </div>
 
@@ -527,39 +577,8 @@ export function ReactManagedCodexAccountsRouteBody({
                 <strong>{runtimeState}</strong>
               </div>
               <div className="codex-account-metric">
-                <span>{copy.authState}</span>
-                <strong>{runtimeAuthState}</strong>
-              </div>
-              <div className="codex-account-metric">
-                <span>{copy.configState}</span>
-                <strong>{runtimeConfigState}</strong>
-              </div>
-              <div className="codex-account-metric">
                 <span>{copy.activeProfile}</span>
                 <strong>{runtimeProfile}</strong>
-              </div>
-            </div>
-
-            <div className="codex-accounts-runtime-details">
-              <div className="codex-accounts-runtime-detail">
-                <span>{copy.cliCommand}</span>
-                <strong title={runtimeCommand}>{runtimeCommand}</strong>
-              </div>
-              <div className="codex-accounts-runtime-detail">
-                <span>{copy.activePath}</span>
-                <strong title={activePath}>{activePath}</strong>
-              </div>
-              <div className="codex-accounts-runtime-detail">
-                <span>{copy.configPath}</span>
-                <strong title={runtimeConfigPath}>{runtimeConfigPath}</strong>
-              </div>
-              <div className="codex-accounts-runtime-detail">
-                <span>{copy.modelSource}</span>
-                <strong title={runtimeModelSource}>{runtimeModelSource}</strong>
-              </div>
-              <div className="codex-accounts-runtime-detail">
-                <span>{copy.reasoningSource}</span>
-                <strong title={runtimeReasoningSource}>{runtimeReasoningSource}</strong>
               </div>
             </div>
 
@@ -608,20 +627,7 @@ export function ReactManagedCodexAccountsRouteBody({
                 </label>
               </div>
 
-              <div className="codex-accounts-runtime-hints">
-                <p className="codex-accounts-runtime-hint">{copy.modelHint}</p>
-                <p className="codex-accounts-runtime-hint">{copy.reasoningHint}</p>
-              </div>
-
               <div className="codex-accounts-runtime-selection">
-                <div className="codex-accounts-runtime-current">
-                  <span>{copy.model}</span>
-                  <strong>{runtimeModel}</strong>
-                </div>
-                <div className="codex-accounts-runtime-current">
-                  <span>{copy.reasoningDepth}</span>
-                  <strong>{runtimeReasoning}</strong>
-                </div>
                 {selectedRuntimeModel && normalizeText(selectedRuntimeModel.description) ? (
                   <p className="codex-accounts-runtime-note">{selectedRuntimeModel.description}</p>
                 ) : null}
@@ -636,6 +642,40 @@ export function ReactManagedCodexAccountsRouteBody({
                 </button>
               </div>
             </form>
+
+            <details className="codex-accounts-runtime-details-panel">
+              <summary>{copy.runtimeDetails}</summary>
+              <div className="codex-accounts-runtime-details">
+                <div className="codex-accounts-runtime-detail">
+                  <span>{copy.authState}</span>
+                  <strong>{runtimeAuthState}</strong>
+                </div>
+                <div className="codex-accounts-runtime-detail">
+                  <span>{copy.configState}</span>
+                  <strong>{runtimeConfigState}</strong>
+                </div>
+                <div className="codex-accounts-runtime-detail">
+                  <span>{copy.cliCommand}</span>
+                  <strong title={runtimeCommand}>{runtimeCommand}</strong>
+                </div>
+                <div className="codex-accounts-runtime-detail">
+                  <span>{copy.activePath}</span>
+                  <strong title={activePath}>{activePath}</strong>
+                </div>
+                <div className="codex-accounts-runtime-detail">
+                  <span>{copy.configPath}</span>
+                  <strong title={runtimeConfigPath}>{runtimeConfigPath}</strong>
+                </div>
+                <div className="codex-accounts-runtime-detail">
+                  <span>{copy.modelSource}</span>
+                  <strong title={runtimeModelSource}>{runtimeModelSource}</strong>
+                </div>
+                <div className="codex-accounts-runtime-detail">
+                  <span>{copy.reasoningSource}</span>
+                  <strong title={runtimeReasoningSource}>{runtimeReasoningSource}</strong>
+                </div>
+              </div>
+            </details>
           </section>
 
           <div className="codex-accounts-section-head">
@@ -661,8 +701,10 @@ export function ReactManagedCodexAccountsRouteBody({
                 const title = normalizeText(snapshot.account_name) || managedName || "-";
                 const email = normalizeText(snapshot.email);
                 const plan = normalizeText(item.quota?.plan) || normalizeText(snapshot.plan) || "-";
-                const hourly = normalizePercent(item.quota?.hourly?.remaining_percent);
-                const weekly = normalizePercent(item.quota?.weekly?.remaining_percent);
+                const hourlyWindow = item.quota?.hourly;
+                const weeklyWindow = item.quota?.weekly;
+                const hourly = normalizePercent(hourlyWindow?.remaining_percent);
+                const weekly = normalizePercent(weeklyWindow?.remaining_percent);
                 const itemKey = `${managedName || title}:${plan}`;
 
                 return (
@@ -678,7 +720,7 @@ export function ReactManagedCodexAccountsRouteBody({
                         <span>{managedName || "-"}</span>
                         {email ? <p>{email}</p> : null}
                       </div>
-                      <span className={`codex-account-badge ${item.current ? "is-current" : "is-saved"}`}>
+                      <span className={`codex-account-state ${item.current ? "is-current" : "is-saved"}`}>
                         {item.current ? copy.current : copy.saved}
                       </span>
                     </div>
@@ -688,13 +730,21 @@ export function ReactManagedCodexAccountsRouteBody({
                         <span>{copy.plan}</span>
                         <strong>{plan}</strong>
                       </div>
-                      <div className="codex-account-metric">
-                        <span>{copy.quotaHourly}</span>
-                        <strong>{renderPercent(hourly)}</strong>
+                      <div className="codex-account-metric is-quota">
+                        <QuotaMeter
+                          label={copy.quotaHourly}
+                          resetLabel={copy.resetsAt}
+                          value={hourly}
+                          resetAt={hourlyWindow?.reset_at}
+                        />
                       </div>
-                      <div className="codex-account-metric">
-                        <span>{copy.quotaWeekly}</span>
-                        <strong>{renderPercent(weekly)}</strong>
+                      <div className="codex-account-metric is-quota">
+                        <QuotaMeter
+                          label={copy.quotaWeekly}
+                          resetLabel={copy.resetsAt}
+                          value={weekly}
+                          resetAt={weeklyWindow?.reset_at}
+                        />
                       </div>
                     </div>
 
@@ -824,6 +874,44 @@ export function ReactManagedCodexAccountsRouteBody({
   );
 }
 
+function QuotaMeter({
+  label,
+  resetLabel,
+  value,
+  resetAt,
+}: {
+  label: string;
+  resetLabel: string;
+  value: number | null;
+  resetAt?: string;
+}) {
+  const normalizedValue = value == null ? 0 : value;
+  const formattedResetAt = formatResetAt(resetAt);
+  return (
+    <div className="codex-quota-meter">
+      <div className="codex-quota-meter-head">
+        <span>{label}</span>
+        <strong>{renderPercent(value)}</strong>
+      </div>
+      <div
+        className="codex-quota-meter-track"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={normalizedValue}
+        aria-valuetext={renderPercent(value)}
+      >
+        <div className="codex-quota-meter-fill" style={{ width: `${normalizedValue}%` }} />
+      </div>
+      <div className="codex-quota-meter-meta">
+        <span>{resetLabel}</span>
+        <strong>{formattedResetAt}</strong>
+      </div>
+    </div>
+  );
+}
+
 function CodexAccountsLoadingView({ copy }: { copy: CodexAccountsCopy }) {
   return (
     <section className="codex-accounts-view codex-accounts-view-loading" aria-busy="true">
@@ -834,13 +922,20 @@ function CodexAccountsLoadingView({ copy }: { copy: CodexAccountsCopy }) {
             <p>{copy.loading}</p>
           </div>
         </div>
-        <div className="codex-accounts-summary-grid">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <article key={`summary-${index}`} className="codex-accounts-summary-card codex-accounts-skeleton-card">
-              <span className="task-skeleton-line codex-accounts-skeleton-label" aria-hidden="true" />
-              <strong className="task-skeleton-line codex-accounts-skeleton-value" aria-hidden="true" />
-            </article>
-          ))}
+        <div className="codex-accounts-overview-shell">
+          <div className="codex-accounts-overview-primary codex-accounts-skeleton-card" aria-hidden="true">
+            <span className="task-skeleton-line codex-accounts-skeleton-label" />
+            <strong className="task-skeleton-line codex-accounts-skeleton-value" />
+            <span className="task-skeleton-line codex-accounts-skeleton-meta" />
+          </div>
+          <div className="codex-accounts-summary-grid">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <article key={`summary-${index}`} className="codex-accounts-summary-card codex-accounts-skeleton-card">
+                <span className="task-skeleton-line codex-accounts-skeleton-label" aria-hidden="true" />
+                <strong className="task-skeleton-line codex-accounts-skeleton-value" aria-hidden="true" />
+              </article>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -992,6 +1087,23 @@ function formatRuntimeOrigin(origin: RuntimeConfigOrigin | null | undefined) {
 
 function renderPercent(value: number | null) {
   return value == null ? "-" : `${value}%`;
+}
+
+function formatResetAt(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) {
+    return "-";
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    return text;
+  }
+  const year = parsed.getUTCFullYear();
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getUTCDate()).padStart(2, "0");
+  const hours = String(parsed.getUTCHours()).padStart(2, "0");
+  const minutes = String(parsed.getUTCMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
 }
 
 function normalizePercent(value: unknown) {
