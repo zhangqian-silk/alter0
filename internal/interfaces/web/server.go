@@ -192,6 +192,8 @@ type terminalService interface {
 	GetStepDetail(ownerID string, sessionID string, turnID string, stepID string) (terminalapp.StepDetail, error)
 	ListEntries(ownerID string, sessionID string, cursor int, limit int) (terminalapp.EntryPage, error)
 	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
+	InputWithAttachments(req terminalapp.InputRequest) (terminaldomain.Session, error)
+	Close(ownerID string, sessionID string) (terminaldomain.Session, error)
 	Delete(ownerID string, sessionID string) (terminaldomain.Session, error)
 }
 
@@ -237,7 +239,14 @@ type messageRequest struct {
 	ChannelID     string            `json:"channel_id,omitempty"`
 	CorrelationID string            `json:"correlation_id,omitempty"`
 	Content       string            `json:"content"`
+	Attachments   []messageAttachmentRequest `json:"attachments,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+type messageAttachmentRequest struct {
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	DataURL     string `json:"data_url"`
 }
 
 type agentMessageRequest struct {
@@ -247,6 +256,7 @@ type agentMessageRequest struct {
 	ChannelID     string            `json:"channel_id,omitempty"`
 	CorrelationID string            `json:"correlation_id,omitempty"`
 	Content       string            `json:"content"`
+	Attachments   []messageAttachmentRequest `json:"attachments,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
@@ -256,6 +266,7 @@ type productMessageRequest struct {
 	ChannelID     string            `json:"channel_id,omitempty"`
 	CorrelationID string            `json:"correlation_id,omitempty"`
 	Content       string            `json:"content"`
+	Attachments   []messageAttachmentRequest `json:"attachments,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
@@ -325,9 +336,10 @@ type taskCreateResponse struct {
 }
 
 type controlTaskTerminalInputRequest struct {
-	Input        string `json:"input"`
-	ReuseTask    bool   `json:"reuse_task,omitempty"`
-	AnchorTaskID string `json:"anchor_task_id,omitempty"`
+	Input        string                     `json:"input"`
+	ReuseTask    bool                       `json:"reuse_task,omitempty"`
+	AnchorTaskID string                     `json:"anchor_task_id,omitempty"`
+	Attachments  []messageAttachmentRequest `json:"attachments,omitempty"`
 }
 
 type controlTaskTerminalInputResponse struct {
@@ -1231,35 +1243,38 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.countGateway(string(msg.ChannelType))
+	hasImageAttachments := len(execdomain.DecodeUserImageAttachments(msg.Metadata)) > 0
 	intent := s.classifyMessageIntent(msg.Content)
 	assessment := s.defaultComplexityAssessment()
 	if intent.Type == orchdomain.IntentTypeNL {
 		assessment = s.assessComplexity(msg)
 		msg = enrichMessageWithComplexityMetadata(msg, assessment)
-		if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
-			taskCard := buildTaskCard(msg, assessment, task)
-			if submitErr != nil {
-				s.logWebMessageFailure(msg, submitErr)
-				writeJSON(w, http.StatusInternalServerError, messageResponse{
+		if !hasImageAttachments {
+			if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
+				taskCard := buildTaskCard(msg, assessment, task)
+				if submitErr != nil {
+					s.logWebMessageFailure(msg, submitErr)
+					writeJSON(w, http.StatusInternalServerError, messageResponse{
+						Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+						ExecutionMode:            assessment.ExecutionMode,
+						EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
+						ComplexityLevel:          assessment.ComplexityLevel,
+						TaskCard:                 taskCard,
+						Error:                    submitErr.Error(),
+					})
+					return
+				}
+				writeJSON(w, http.StatusAccepted, messageResponse{
 					Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
+					TaskID:                   task.ID,
+					TaskStatus:               string(task.Status),
 					ExecutionMode:            assessment.ExecutionMode,
 					EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
 					ComplexityLevel:          assessment.ComplexityLevel,
 					TaskCard:                 taskCard,
-					Error:                    submitErr.Error(),
 				})
 				return
 			}
-			writeJSON(w, http.StatusAccepted, messageResponse{
-				Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
-				TaskID:                   task.ID,
-				TaskStatus:               string(task.Status),
-				ExecutionMode:            assessment.ExecutionMode,
-				EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-				ComplexityLevel:          assessment.ComplexityLevel,
-				TaskCard:                 taskCard,
-			})
-			return
 		}
 	}
 
@@ -1326,6 +1341,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	s.countGateway(string(msg.ChannelType))
+	hasImageAttachments := len(execdomain.DecodeUserImageAttachments(msg.Metadata)) > 0
 	if err := stream.Event("start", streamStartResponse{
 		MessageID: msg.MessageID,
 		SessionID: msg.SessionID,
@@ -1367,7 +1383,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	assessmentReady := false
 	assessmentCh := (<-chan taskapp.ComplexityAssessment)(nil)
 	cancelAssessment := func() {}
-	if intent.Type == orchdomain.IntentTypeNL && s.tasks != nil {
+	if intent.Type == orchdomain.IntentTypeNL && s.tasks != nil && !hasImageAttachments {
 		assessmentCtx, cancel := context.WithCancel(execCtx)
 		cancelAssessment = cancel
 		defer cancelAssessment()
@@ -2211,10 +2227,14 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	attachments := normalizeMessageAttachments(req.Attachments)
 	input := strings.TrimSpace(req.Input)
-	if input == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input is required"})
+	if input == "" && len(attachments) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input or attachments are required"})
 		return
+	}
+	if input == "" && len(attachments) > 0 {
+		input = defaultImageAttachmentContent(len(attachments))
 	}
 
 	terminalSessionID := strings.TrimSpace(baseTask.RequestMetadata[controlTaskTerminalSessionIDKey])
@@ -2246,6 +2266,12 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 	metadata[controlTaskTerminalSessionIDKey] = terminalSessionID
 	metadata[controlTaskTerminalParentIDKey] = strings.TrimSpace(baseTask.ID)
 	metadata[controlTaskTerminalInteractiveKey] = "true"
+	if rawAttachments, err := execdomain.EncodeUserImageAttachments(attachments); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid attachments"})
+		return
+	} else if rawAttachments != "" {
+		metadata[execdomain.UserImageAttachmentsMetadataKey] = rawAttachments
+	}
 
 	msg := shareddomain.UnifiedMessage{
 		MessageID:     sourceMessageID,
@@ -5396,6 +5422,7 @@ func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessa
 		ChannelID:     req.ChannelID,
 		CorrelationID: req.CorrelationID,
 		Content:       req.Content,
+		Attachments:   req.Attachments,
 		Metadata:      cloneStringMap(req.Metadata),
 	}
 	msg, statusCode, err := s.prepareMessageFromRequest(msgReq)
@@ -5449,6 +5476,7 @@ func (s *Server) prepareProductMessage(r *http.Request, productID string) (share
 		ChannelID:     req.ChannelID,
 		CorrelationID: req.CorrelationID,
 		Content:       req.Content,
+		Attachments:   req.Attachments,
 		Metadata:      cloneStringMap(req.Metadata),
 	}
 	msg, statusCode, err := s.prepareMessageFromRequest(msgReq)
@@ -5465,8 +5493,13 @@ func (s *Server) prepareProductMessage(r *http.Request, productID string) (share
 }
 
 func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.UnifiedMessage, int, error) {
-	if strings.TrimSpace(req.Content) == "" {
-		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("content is required")
+	attachments := normalizeMessageAttachments(req.Attachments)
+	content := strings.TrimSpace(req.Content)
+	if content == "" && len(attachments) == 0 {
+		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("content or attachments are required")
+	}
+	if content == "" && len(attachments) > 0 {
+		content = defaultImageAttachmentContent(len(attachments))
 	}
 
 	sessionID := strings.TrimSpace(req.SessionID)
@@ -5490,6 +5523,15 @@ func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.Uni
 		}
 		channelType = channel.Type
 	}
+	metadata := cloneStringMap(req.Metadata)
+	if rawAttachments, err := execdomain.EncodeUserImageAttachments(attachments); err != nil {
+		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("invalid attachments")
+	} else if rawAttachments != "" {
+		if metadata == nil {
+			metadata = map[string]string{}
+		}
+		metadata[execdomain.UserImageAttachmentsMetadataKey] = rawAttachments
+	}
 
 	return shareddomain.UnifiedMessage{
 		MessageID:     s.idGenerator.NewID(),
@@ -5498,12 +5540,34 @@ func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.Uni
 		ChannelID:     channelID,
 		ChannelType:   channelType,
 		TriggerType:   shareddomain.TriggerTypeUser,
-		Content:       req.Content,
-		Metadata:      req.Metadata,
+		Content:       content,
+		Metadata:      metadata,
 		TraceID:       s.idGenerator.NewID(),
 		CorrelationID: strings.TrimSpace(req.CorrelationID),
 		ReceivedAt:    time.Now().UTC(),
 	}, http.StatusOK, nil
+}
+
+func normalizeMessageAttachments(values []messageAttachmentRequest) []execdomain.UserImageAttachment {
+	if len(values) == 0 {
+		return nil
+	}
+	items := make([]execdomain.UserImageAttachment, 0, len(values))
+	for _, value := range values {
+		items = append(items, execdomain.UserImageAttachment{
+			Name:        strings.TrimSpace(value.Name),
+			ContentType: strings.TrimSpace(value.ContentType),
+			DataURL:     strings.TrimSpace(value.DataURL),
+		})
+	}
+	return execdomain.NormalizeUserImageAttachments(items)
+}
+
+func defaultImageAttachmentContent(count int) string {
+	if count <= 1 {
+		return "Attached image."
+	}
+	return fmt.Sprintf("Attached %d images.", count)
 }
 
 func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage, assessment taskapp.ComplexityAssessment) (taskdomain.Task, bool, error) {

@@ -66,12 +66,16 @@ func NewHybridNLProcessorWithCatalog(
 }
 
 func (p *HybridNLProcessor) Process(ctx context.Context, content string, metadata map[string]string) (string, error) {
+	hasImages := len(execdomain.DecodeUserImageAttachments(metadata)) > 0
 	engine := p.resolveEngine(metadata)
 	if engine == execdomain.ExecutionEngineAgent {
 		output, err := p.processWithAgent(ctx, content, metadata, nil)
 		if err == nil {
 			setExecutionSource(metadata, execdomain.ExecutionSourceModel)
 			return output, nil
+		}
+		if hasImages {
+			return "", err
 		}
 		p.logReactFallback(metadata, err)
 		output, codexErr := p.codex.Process(ctx, content, metadata)
@@ -85,6 +89,9 @@ func (p *HybridNLProcessor) Process(ctx context.Context, content string, metadat
 		if err == nil {
 			setExecutionSource(metadata, execdomain.ExecutionSourceModel)
 			return output, nil
+		}
+		if hasImages {
+			return "", err
 		}
 		p.logReactFallback(metadata, err)
 	}
@@ -101,12 +108,16 @@ func (p *HybridNLProcessor) ProcessStream(
 	metadata map[string]string,
 	emit func(event execdomain.StreamEvent) error,
 ) (string, error) {
+	hasImages := len(execdomain.DecodeUserImageAttachments(metadata)) > 0
 	engine := p.resolveEngine(metadata)
 	if engine == execdomain.ExecutionEngineAgent {
 		output, err := p.processWithAgent(ctx, content, metadata, emit)
 		if err == nil {
 			setExecutionSource(metadata, execdomain.ExecutionSourceModel)
 			return output, nil
+		}
+		if hasImages {
+			return "", err
 		}
 		p.logReactFallback(metadata, err)
 		output, codexErr := p.codex.ProcessStream(ctx, content, metadata, emit)
@@ -120,6 +131,9 @@ func (p *HybridNLProcessor) ProcessStream(
 		if err == nil {
 			setExecutionSource(metadata, execdomain.ExecutionSourceModel)
 			return output, nil
+		}
+		if hasImages {
+			return "", err
 		}
 		p.logReactFallback(metadata, err)
 	}
@@ -169,10 +183,11 @@ func (p *HybridNLProcessor) processWithReact(
 	if err != nil {
 		return "", err
 	}
+	userMessage := buildUserInputMessage(content, metadata)
 	if emit == nil {
-		return agent.Run(ctx, content)
+		return agent.RunMessage(ctx, userMessage)
 	}
-	return agent.RunStream(ctx, content, func(event llmdomain.ReActEvent) error {
+	return agent.RunMessageStream(ctx, userMessage, func(event llmdomain.ReActEvent) error {
 		if event.Type != "answer" || strings.TrimSpace(event.Delta) == "" {
 			return nil
 		}
@@ -214,8 +229,9 @@ func (p *HybridNLProcessor) processWithAgent(
 	if err != nil {
 		return "", err
 	}
+	userMessage := buildUserInputMessage(content, metadata)
 	collector := newAgentProcessCollector()
-	state, err := agent.RunWithState(ctx, content, func(event llmdomain.ReActEvent) error {
+	state, err := agent.RunWithMessageState(ctx, userMessage, func(event llmdomain.ReActEvent) error {
 		processStep := collector.Consume(event)
 		if emit != nil && processStep != nil {
 			if err := emit(execdomain.StreamEvent{
@@ -245,6 +261,25 @@ func (p *HybridNLProcessor) processWithAgent(
 	}
 	collector.Store(metadata)
 	return strings.TrimSpace(state.Answer), nil
+}
+
+func buildUserInputMessage(content string, metadata map[string]string) llmdomain.Message {
+	parts := []llmdomain.MessagePart{{
+		Type: llmdomain.MessagePartTypeText,
+		Text: strings.TrimSpace(content),
+	}}
+	for _, attachment := range execdomain.DecodeUserImageAttachments(metadata) {
+		parts = append(parts, llmdomain.MessagePart{
+			Type:     llmdomain.MessagePartTypeImage,
+			ImageURL: attachment.DataURL,
+			Name:     attachment.Name,
+		})
+	}
+	return llmdomain.Message{
+		Role:    "user",
+		Content: strings.TrimSpace(content),
+		Parts:   parts,
+	}
 }
 
 func (p *HybridNLProcessor) executeModelTool(
@@ -395,7 +430,7 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 		parts = append(parts, "Use write_memory only for durable user guidance, preference updates, naming conventions, or shorthand mappings that belong in the resolved memory files.")
 	}
 	if _, ok := allowedTools[toolDeployTestService]; ok {
-		parts = append(parts, "Use deploy_test_service when the user needs a session-scoped preview host or a separately routed test service on the shared gateway. Use web for the main short-hash host and a short service label such as api or docs for additional subdomains.")
+		parts = append(parts, "Use deploy_test_service when the user needs a session-scoped preview host or a separately routed test service on the shared gateway. Use web for the main short-hash host and a short service label such as api or docs for additional subdomains. Default web previews should stay full-stack so the subdomain serves the current branch backend as well as the latest frontend build.")
 	}
 	if custom := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey)); custom != "" {
 		parts = append(parts, "Agent profile system prompt:\n"+custom)

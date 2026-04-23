@@ -143,6 +143,135 @@ func TestOpenAIClientChatUsesResponsesAPI(t *testing.T) {
 	}
 }
 
+func TestOpenAIClientResponsesIncludesUserImageParts(t *testing.T) {
+	t.Parallel()
+
+	var requestBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if err := json.Unmarshal(body, &requestBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"resp_img",
+			"object":"response",
+			"model":"gpt-4o",
+			"output":[{"id":"msg_1","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done","annotations":[]}]}]
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient(OpenAIClientConfig{
+		APIKey:  "sk-test",
+		APIType: domain.ProviderAPITypeOpenAIResponses,
+		BaseURL: server.URL + "/v1",
+		Model:   "gpt-4o",
+	})
+
+	_, err := client.Chat(context.Background(), domain.ChatRequest{
+		Messages: []domain.Message{{
+			Role:    "user",
+			Content: "describe this image",
+			Parts: []domain.MessagePart{
+				{Type: domain.MessagePartTypeText, Text: "describe this image"},
+				{Type: domain.MessagePartTypeImage, ImageURL: "data:image/png;base64,ZmFrZQ=="},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("chat request failed: %v", err)
+	}
+
+	inputItems, ok := requestBody["input"].([]any)
+	if !ok || len(inputItems) != 1 {
+		t.Fatalf("expected one input item, got %#v", requestBody["input"])
+	}
+	item, ok := inputItems[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected message item map, got %#v", inputItems[0])
+	}
+	content, ok := item["content"].([]any)
+	if !ok || len(content) != 2 {
+		t.Fatalf("expected content list with text and image, got %#v", item["content"])
+	}
+	imagePart, ok := content[1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected image content map, got %#v", content[1])
+	}
+	if imagePart["type"] != "input_image" {
+		t.Fatalf("expected input_image part, got %#v", imagePart["type"])
+	}
+	if imagePart["image_url"] != "data:image/png;base64,ZmFrZQ==" {
+		t.Fatalf("expected data URL image, got %#v", imagePart["image_url"])
+	}
+}
+
+func TestOpenAIClientChatCompletionsIncludesUserImageParts(t *testing.T) {
+	t.Parallel()
+
+	var requestBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if err := json.Unmarshal(body, &requestBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl_img",
+			"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],
+			"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient(OpenAIClientConfig{
+		APIKey:  "sk-test",
+		APIType: domain.ProviderAPITypeOpenAICompletions,
+		BaseURL: server.URL + "/v1",
+		Model:   "gpt-4o",
+	})
+
+	_, err := client.Chat(context.Background(), domain.ChatRequest{
+		Messages: []domain.Message{{
+			Role: "user",
+			Parts: []domain.MessagePart{
+				{Type: domain.MessagePartTypeText, Text: "what is in this image"},
+				{Type: domain.MessagePartTypeImage, ImageURL: "data:image/png;base64,ZmFrZQ=="},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("chat request failed: %v", err)
+	}
+
+	messages, ok := requestBody["messages"].([]any)
+	if !ok || len(messages) != 1 {
+		t.Fatalf("expected one chat message, got %#v", requestBody["messages"])
+	}
+	userMessage, ok := messages[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected user message map, got %#v", messages[0])
+	}
+	content, ok := userMessage["content"].([]any)
+	if !ok || len(content) != 2 {
+		t.Fatalf("expected multipart user content, got %#v", userMessage["content"])
+	}
+	imagePart, ok := content[1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected image content map, got %#v", content[1])
+	}
+	if imagePart["type"] != "image_url" {
+		t.Fatalf("expected image_url part, got %#v", imagePart["type"])
+	}
+}
+
 func TestOpenAIClientChatStreamUsesResponsesAPI(t *testing.T) {
 	t.Parallel()
 

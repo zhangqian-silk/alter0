@@ -20,7 +20,8 @@ type terminalSessionCreateRequest struct {
 }
 
 type terminalSessionInputRequest struct {
-	Input string `json:"input"`
+	Input       string                     `json:"input"`
+	Attachments []messageAttachmentRequest `json:"attachments,omitempty"`
 }
 
 type terminalSessionRecoverRequest struct {
@@ -219,7 +220,17 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
 		}
-		session, err := s.terminals.Input(ownerID, sessionID, req.Input)
+		attachments := normalizeMessageAttachments(req.Attachments)
+		input := strings.TrimSpace(req.Input)
+		if input == "" && len(attachments) > 0 {
+			input = defaultImageAttachmentContent(len(attachments))
+		}
+		session, err := s.terminals.InputWithAttachments(terminalapp.InputRequest{
+			OwnerID:     ownerID,
+			SessionID:   sessionID,
+			Input:       input,
+			Attachments: attachments,
+		})
 		if err != nil {
 			s.writeTerminalError(w, err)
 			return

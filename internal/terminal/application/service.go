@@ -3,6 +3,7 @@ package application
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"alter0/internal/codex/infrastructure/runtimeconfig"
+	execdomain "alter0/internal/execution/domain"
 	sharedapp "alter0/internal/shared/application"
 	terminaldomain "alter0/internal/terminal/domain"
 )
@@ -29,6 +31,7 @@ const (
 	workspaceDirectoryName          = "workspaces"
 	workspaceTerminalDirName        = "terminal"
 	workspaceSessionsDirName        = "sessions"
+	terminalTurnAttachmentDirName   = "input-attachments"
 	terminalCodexHomeDirName        = "codex-home"
 	maxEntryPageLimit               = 200
 	terminalHostUnavailableMessage  = "terminal host unavailable"
@@ -68,6 +71,13 @@ type RecoverRequest struct {
 	CreatedAt         time.Time
 	LastOutputAt      time.Time
 	UpdatedAt         time.Time
+}
+
+type InputRequest struct {
+	OwnerID     string
+	SessionID   string
+	Input       string
+	Attachments []execdomain.UserImageAttachment
 }
 
 type EntryPage struct {
@@ -137,6 +147,7 @@ type runtimeSession struct {
 type runtimeTurn struct {
 	ID          string
 	Prompt      string
+	Attachments []TurnAttachment
 	Status      string
 	StartedAt   time.Time
 	FinishedAt  time.Time
@@ -429,18 +440,30 @@ func (s *Service) ListEntries(ownerID string, sessionID string, cursor int, limi
 }
 
 func (s *Service) Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error) {
-	item, err := s.getOwnedSession(ownerID, sessionID)
+	return s.InputWithAttachments(InputRequest{
+		OwnerID:   ownerID,
+		SessionID: sessionID,
+		Input:     input,
+	})
+}
+
+func (s *Service) InputWithAttachments(req InputRequest) (terminaldomain.Session, error) {
+	item, err := s.getOwnedSession(req.OwnerID, req.SessionID)
 	if err != nil {
 		if !errors.Is(err, ErrSessionNotFound) {
 			return terminaldomain.Session{}, err
 		}
-		item, err = s.restorePersistedOwnedSession(ownerID, sessionID)
+		item, err = s.restorePersistedOwnedSession(req.OwnerID, req.SessionID)
 		if err != nil {
 			return terminaldomain.Session{}, err
 		}
 	}
 
-	prompt := strings.TrimSpace(input)
+	attachments := normalizeTurnAttachments(req.Attachments)
+	prompt := strings.TrimSpace(req.Input)
+	if prompt == "" && len(attachments) > 0 {
+		prompt = defaultAttachmentPrompt(len(attachments))
+	}
 	if prompt == "" {
 		return terminaldomain.Session{}, ErrSessionInputRequired
 	}
@@ -479,13 +502,13 @@ func (s *Service) Input(ownerID string, sessionID string, input string) (termina
 	item.closedByUser = false
 	item.turnRunning = true
 	item.turnCancel = turnCancel
-	turn := item.beginTurnLocked(prompt, now)
+	turn := item.beginTurnLocked(prompt, attachments, now)
 	item.appendEntryLocked("input", prompt)
 	snapshot := item.summary
 	item.mu.Unlock()
 	s.persistSession(item)
 
-	go s.runTurn(item, turnCtx, turn.ID, prompt)
+	go s.runTurn(item, turnCtx, turn.ID, prompt, attachments)
 
 	return snapshot, nil
 }
@@ -570,10 +593,15 @@ func (s *Service) shutdown() {
 	}
 }
 
-func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID string, prompt string) {
+func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID string, prompt string, attachments []TurnAttachment) {
 	command := resolveCodexCommand(s.options)
 	threadID := item.thread()
-	args := buildCodexTurnArgs(command, threadID, prompt)
+	imagePaths, err := prepareTurnInputAttachments(item.workspaceDir(), turnID, attachments)
+	if err != nil {
+		s.finishTurn(item, turnID, fmt.Errorf("prepare input attachments: %w", err), "")
+		return
+	}
+	args := buildCodexTurnArgs(command, threadID, prompt, imagePaths)
 	runner := s.runner
 	if runner == nil {
 		runner = exec.CommandContext
@@ -941,14 +969,15 @@ func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtime
 	turn.promoteFinalOutput()
 }
 
-func (s *runtimeSession) beginTurnLocked(prompt string, now time.Time) *runtimeTurn {
+func (s *runtimeSession) beginTurnLocked(prompt string, attachments []TurnAttachment, now time.Time) *runtimeTurn {
 	s.nextTurnID++
 	turn := &runtimeTurn{
-		ID:        fmt.Sprintf("turn-%d", s.nextTurnID),
-		Prompt:    prompt,
-		Status:    "running",
-		StartedAt: now,
-		steps:     []*runtimeStep{},
+		ID:          fmt.Sprintf("turn-%d", s.nextTurnID),
+		Prompt:      prompt,
+		Attachments: cloneTurnAttachments(attachments),
+		Status:      "running",
+		StartedAt:   now,
+		steps:       []*runtimeStep{},
 	}
 	s.turns = append(s.turns, turn)
 	s.activeTurnID = turn.ID
@@ -1042,6 +1071,7 @@ func (t *runtimeTurn) summary() TurnSummary {
 	return TurnSummary{
 		ID:          t.ID,
 		Prompt:      t.Prompt,
+		Attachments: cloneTurnAttachments(t.Attachments),
 		Status:      normalizeFallbackStatus(t.Status),
 		StartedAt:   t.StartedAt,
 		FinishedAt:  t.FinishedAt,
@@ -1267,11 +1297,15 @@ func resolveCodexCommand(options Options) codexCommand {
 	}
 }
 
-func buildCodexTurnArgs(command codexCommand, threadID string, prompt string) []string {
+func buildCodexTurnArgs(command codexCommand, threadID string, prompt string, imagePaths []string) []string {
 	args := append([]string{}, command.globalArgs...)
 	args = append(args, "exec", "--enable", defaultLinuxSandboxBwrapFeature)
 	if strings.TrimSpace(threadID) != "" {
-		args = append(args, "resume", "--json", "--skip-git-repo-check", threadID, prompt)
+		args = append(args, "resume", "--json", "--skip-git-repo-check")
+		for _, imagePath := range imagePaths {
+			args = append(args, "-i", imagePath)
+		}
+		args = append(args, threadID, prompt)
 		return args
 	}
 	args = append(args,
@@ -1279,9 +1313,136 @@ func buildCodexTurnArgs(command codexCommand, threadID string, prompt string) []
 		"--color", "never",
 		"--skip-git-repo-check",
 		"--sandbox", defaultCodexSandbox,
-		prompt,
 	)
+	for _, imagePath := range imagePaths {
+		args = append(args, "-i", imagePath)
+	}
+	args = append(args, prompt)
 	return args
+}
+
+func cloneTurnAttachments(items []TurnAttachment) []TurnAttachment {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]TurnAttachment, 0, len(items))
+	for _, item := range items {
+		if strings.TrimSpace(item.ContentType) == "" || strings.TrimSpace(item.DataURL) == "" {
+			continue
+		}
+		out = append(out, TurnAttachment{
+			Name:        strings.TrimSpace(item.Name),
+			ContentType: strings.TrimSpace(item.ContentType),
+			DataURL:     strings.TrimSpace(item.DataURL),
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeTurnAttachments(items []execdomain.UserImageAttachment) []TurnAttachment {
+	if len(items) == 0 {
+		return nil
+	}
+	normalized := execdomain.NormalizeUserImageAttachments(items)
+	if len(normalized) == 0 {
+		return nil
+	}
+	out := make([]TurnAttachment, 0, len(normalized))
+	for _, item := range normalized {
+		out = append(out, TurnAttachment{
+			Name:        item.Name,
+			ContentType: item.ContentType,
+			DataURL:     item.DataURL,
+		})
+	}
+	return out
+}
+
+func defaultAttachmentPrompt(count int) string {
+	if count <= 1 {
+		return "Inspect the attached image."
+	}
+	return fmt.Sprintf("Inspect the attached %d images.", count)
+}
+
+func prepareTurnInputAttachments(workspaceDir string, turnID string, attachments []TurnAttachment) ([]string, error) {
+	if len(attachments) == 0 {
+		return nil, nil
+	}
+	if strings.TrimSpace(workspaceDir) == "" {
+		return nil, errors.New("terminal workspace is empty")
+	}
+	dir := filepath.Join(workspaceDir, terminalTurnAttachmentDirName, sanitizeWorkspaceSegment(turnID))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("prepare turn attachment dir: %w", err)
+	}
+	paths := make([]string, 0, len(attachments))
+	for index, attachment := range attachments {
+		filename := resolveTurnAttachmentFilename(index, attachment)
+		path := filepath.Join(dir, filename)
+		data, err := decodeAttachmentDataURL(attachment.DataURL)
+		if err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return nil, fmt.Errorf("write turn attachment: %w", err)
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
+}
+
+func resolveTurnAttachmentFilename(index int, attachment TurnAttachment) string {
+	name := sanitizeWorkspaceSegment(strings.TrimSpace(attachment.Name))
+	if name == "" {
+		name = fmt.Sprintf("image-%d%s", index+1, attachmentExtension(attachment.ContentType))
+	}
+	if filepath.Ext(name) == "" {
+		name += attachmentExtension(attachment.ContentType)
+	}
+	return name
+}
+
+func attachmentExtension(contentType string) string {
+	switch strings.ToLower(strings.TrimSpace(contentType)) {
+	case "image/png":
+		return ".png"
+	case "image/jpeg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	case "image/svg+xml":
+		return ".svg"
+	default:
+		return ".img"
+	}
+}
+
+func decodeAttachmentDataURL(raw string) ([]byte, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, errors.New("attachment data url is empty")
+	}
+	if !strings.HasPrefix(value, "data:") {
+		return nil, errors.New("attachment data url is invalid")
+	}
+	parts := strings.SplitN(value, ",", 2)
+	if len(parts) != 2 {
+		return nil, errors.New("attachment data url is invalid")
+	}
+	if !strings.HasSuffix(strings.ToLower(parts[0]), ";base64") {
+		return nil, errors.New("attachment data url is invalid")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("decode attachment data url: %w", err)
+	}
+	return decoded, nil
 }
 
 func buildCodexLabel(commandPath string, args []string) string {

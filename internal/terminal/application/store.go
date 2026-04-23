@@ -31,6 +31,7 @@ type persistedSessionRecord struct {
 type persistedTurnRecord struct {
 	ID          string                `json:"id"`
 	Prompt      string                `json:"prompt,omitempty"`
+	Attachments []TurnAttachment      `json:"attachments,omitempty"`
 	Status      string                `json:"status,omitempty"`
 	StartedAt   time.Time             `json:"started_at,omitempty"`
 	FinishedAt  time.Time             `json:"finished_at,omitempty"`
@@ -214,6 +215,7 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 		persistedTurn := persistedTurnRecord{
 			ID:          turn.ID,
 			Prompt:      turn.Prompt,
+			Attachments: cloneTurnAttachments(turn.Attachments),
 			Status:      turn.Status,
 			StartedAt:   turn.StartedAt,
 			FinishedAt:  turn.FinishedAt,
@@ -295,6 +297,7 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 		turn := &runtimeTurn{
 			ID:          turnRecord.ID,
 			Prompt:      turnRecord.Prompt,
+			Attachments: cloneTurnAttachments(turnRecord.Attachments),
 			Status:      turnRecord.Status,
 			StartedAt:   turnRecord.StartedAt,
 			FinishedAt:  turnRecord.FinishedAt,

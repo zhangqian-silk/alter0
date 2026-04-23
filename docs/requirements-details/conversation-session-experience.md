@@ -70,6 +70,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `POST /api/messages/stream` 处理 Chat 流式消息。
 - `POST /api/agent/messages` 处理指定 Agent 普通消息。
 - `POST /api/agent/messages/stream` 处理指定 Agent 流式消息。
+- 上述消息接口在 `content` 之外还接受 `attachments[]`，当前稳定支持图片 `data_url`、文件名与 MIME 类型；允许仅发送图片，服务端会补齐稳定占位文本并把图片载荷并入统一消息元数据。
 - `GET /api/agents` 返回可进入的运行时 Agent。
 - `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
 - `GET /api/sessions/{session_id}/messages` 查询会话消息。
@@ -92,6 +93,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 ### 持久化与恢复
 
 - 用户与助手消息主数据、路由结果、时间戳和来源字段必须持久化。
+- 用户消息中的图片附件需要和文本一起持久化到会话历史，页面刷新、切会话和本地草稿恢复后仍能继续预览或回看。
 - 页面刷新或服务重启后，用户可恢复最近会话与历史消息。
 - 删除会话时同步清理关联任务记录与会话工作区。
 - `Agent` 运行页会话列表为每个会话展示 8 位短 hash 标识；短 hash 用于前端列表辨识、预览域名映射与人工排障引用。
@@ -165,6 +167,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Conversation workspace 头部的标题、模型/Agent 按钮、Inspector 标签页和新会话入口需按当前路由与语言即时切换文案；这些壳层文案更新不得覆盖当前会话标题、副标题或消息内容。
 - `Chat / Agent Runtime` 的会话列、工作区外壳、聊天滚动区和输入区需输出 `terminal-* + conversation-*` 复合 class，确保两条运行页与 `Terminal` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
 - `Chat / Agent Runtime` 首页 Composer 采用单一紧凑主输入面：输入框、计数 meta 与发送按钮共处一张底部 surface，桌面与移动端都需压缩输入高度、外层留白与提交按钮体量，发送按钮直接复用 Terminal 的圆形 icon submit 皮肤；会话卡片与 Inspector 面板保持同一浅色 terminal-runtime 质感，不再出现首页输入区厚重、旁侧组件过轻或材质不一致的情况。空态工作区需锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
+- `Chat / Agent Runtime` Composer 支持最多 5 张图片附件；附件在输入区以缩略图展示，可单张预览和移除，并按会话草稿持久化。当前选中的模型若未声明视觉能力，带图发送必须直接阻止并提示切换模型。
 - 移动端 `Chat / Agent Runtime` 的会话抽屉遮罩、pane shell 与主工作区在 `1100px` 及以下需回落为静态表面，不保留模糊玻璃层或持续背景动效；性能优先级高于装饰层，确保真机滚动、抽屉开关和输入框聚焦不出现明显卡顿。
 - 根工作台仅在窄屏时使用主导航抽屉；运行页内部的会话列不作为独立抽屉复用，避免出现导航抽屉和会话浮层叠加。
 - 路由页头部的标题与副标题需按当前路由与语言即时切换文案；这些页头更新不得覆盖 route body 内已渲染的页面主体内容。

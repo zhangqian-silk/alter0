@@ -10,16 +10,22 @@ import {
 import { createAPIClient } from "../../shared/api/client";
 import type { LegacyShellLanguage } from "../shell/legacyShellCopy";
 import { MOBILE_VIEWPORT_BREAKPOINT_PX } from "../../shared/viewport/mobileViewport";
+import {
+  MAX_COMPOSER_IMAGE_ATTACHMENTS,
+  type ComposerImageAttachment,
+} from "./composerImageAttachments";
 
 const SESSION_STORAGE_KEY = "alter0.web.sessions.v3";
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
+const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 const STREAM_ENDPOINT = "/api/messages/stream";
 const AGENT_STREAM_ENDPOINT = "/api/agent/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const AGENT_FALLBACK_ENDPOINT = "/api/agent/messages";
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_TASK_POLL_INTERVAL_MS = 3000;
+const SESSION_STORAGE_DEBOUNCE_MS = 180;
 
 export type ConversationRoute = "chat" | "agent-runtime";
 
@@ -41,6 +47,7 @@ export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  attachments: ComposerImageAttachment[];
   route: string;
   source: string;
   error: boolean;
@@ -74,6 +81,7 @@ type ChatProviderModel = {
   id: string;
   name: string;
   is_enabled?: boolean;
+  supports_vision?: boolean;
 };
 
 type ChatProvider = {
@@ -122,6 +130,7 @@ type ChatTaskResponse = {
 type ActiveSessionState = Record<ConversationRoute, string>;
 type SessionsState = Record<ConversationRoute, ChatSession[]>;
 type ComposerDraftMap = Record<string, string>;
+type ComposerAttachmentDraftMap = Record<string, ComposerImageAttachment[]>;
 
 type RuntimeSelection = {
   id: string;
@@ -143,6 +152,7 @@ type RuntimeModel = {
   id: string;
   name: string;
   active: boolean;
+  supportsVision: boolean;
 };
 
 type RuntimeProvider = {
@@ -173,7 +183,9 @@ type ConversationRuntimeContextValue = {
   selectedProviderId: string;
   selectedModelId: string;
   selectedModelLabel: string;
+  selectedModelSupportsVision: boolean;
   providers: RuntimeProvider[];
+  draftAttachments: ComposerImageAttachment[];
   capabilities: RuntimeSelection[];
   skills: RuntimeSelection[];
   toolCount: number;
@@ -182,6 +194,9 @@ type ConversationRuntimeContextValue = {
   focusSession: (sessionID: string) => void;
   removeSession: (sessionID: string) => Promise<void>;
   setDraft: (value: string) => void;
+  addDraftAttachments: (attachments: ComposerImageAttachment[]) => void;
+  removeDraftAttachment: (attachmentID: string) => void;
+  clearDraftAttachments: () => void;
   sendPrompt: (prompt?: string) => Promise<void>;
   toggleInspector: (tab?: "target" | "model" | "capabilities" | "skills") => void;
   closeInspector: () => void;
@@ -281,6 +296,7 @@ function normalizeStoredMessage(item: unknown): ChatMessage | null {
     id,
     role,
     text: typeof record.text === "string" ? record.text : "",
+    attachments: normalizeStoredAttachments(record.attachments),
     route: normalizeText(record.route),
     source: normalizeText(record.source),
     error: Boolean(record.error),
@@ -297,6 +313,33 @@ function normalizeStoredMessage(item: unknown): ChatMessage | null {
     taskResultDelivered: Boolean(record.task_result_delivered),
     taskResultFor: normalizeText(record.task_result_for),
   };
+}
+
+function normalizeStoredAttachments(value: unknown): ComposerImageAttachment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const record = item as Record<string, unknown>;
+      const id = normalizeText(record.id);
+      const dataURL = normalizeText(record.data_url ?? record.dataURL);
+      const contentType = normalizeText(record.content_type ?? record.contentType);
+      if (!id || !dataURL || !contentType.startsWith("image/")) {
+        return null;
+      }
+      return {
+        id,
+        name: normalizeText(record.name) || "image",
+        contentType,
+        size: Number.isFinite(Number(record.size)) ? Number(record.size) : 0,
+        dataURL,
+      };
+    })
+    .filter((item): item is ComposerImageAttachment => item !== null);
 }
 
 function normalizeStoredSession(item: unknown): ChatSession | null {
@@ -384,6 +427,25 @@ function persistComposerDrafts(drafts: ComposerDraftMap) {
   writeJSONStorage(COMPOSER_DRAFT_STORAGE_KEY, drafts);
 }
 
+function loadComposerAttachmentDrafts(): ComposerAttachmentDraftMap {
+  const parsed = readJSONStorage<Record<string, unknown>>(COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY, {});
+  return Object.entries(parsed).reduce<ComposerAttachmentDraftMap>((acc, [key, value]) => {
+    const normalizedKey = normalizeText(key);
+    if (!normalizedKey) {
+      return acc;
+    }
+    const attachments = normalizeStoredAttachments(value);
+    if (attachments.length > 0) {
+      acc[normalizedKey] = attachments;
+    }
+    return acc;
+  }, {});
+}
+
+function persistComposerAttachmentDrafts(drafts: ComposerAttachmentDraftMap) {
+  writeJSONStorage(COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY, drafts);
+}
+
 function splitSessionsByRoute(sessions: ChatSession[]): SessionsState {
   return {
     chat: sessions.filter((session) => session.target.type !== "agent"),
@@ -417,6 +479,13 @@ function toPersistedSessions(sessionsByRoute: SessionsState): unknown[] {
       id: message.id,
       role: message.role,
       text: message.text,
+      attachments: message.attachments.map((attachment) => ({
+        id: attachment.id,
+        name: attachment.name,
+        content_type: attachment.contentType,
+        size: attachment.size,
+        data_url: attachment.dataURL,
+      })),
       route: message.route,
       source: message.source,
       error: message.error,
@@ -570,20 +639,51 @@ export function ConversationRuntimeProvider({
   const [mcps, setMcps] = useState<ChatCapability[]>([]);
   const [agents, setAgents] = useState<ChatAgent[]>([]);
   const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());
+  const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts());
   const [compact, setCompact] = useState(() => isCompactViewport());
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"target" | "model" | "capabilities" | "skills">("model");
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
+  const persistTimerRef = useRef<number>(0);
+  const pendingPersistSessionsRef = useRef<SessionsState | null>(null);
+  const pendingPersistActiveStateRef = useRef<ActiveSessionState | null>(null);
 
   const activeSessions = sessionsByRoute[route];
   const activeSessionID = activeSessionByRoute[route];
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
+  const activeDraftAttachments = activeSessionID ? composerAttachmentDrafts[activeSessionID] || [] : [];
 
-  const persistSessionsState = (nextSessionsByRoute: SessionsState, nextActiveState: ActiveSessionState) => {
+  const persistSessionsStateNow = (nextSessionsByRoute: SessionsState, nextActiveState: ActiveSessionState) => {
     writeJSONStorage(SESSION_STORAGE_KEY, toPersistedSessions(nextSessionsByRoute));
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
   };
+
+  const schedulePersistSessionsState = (nextSessionsByRoute: SessionsState, nextActiveState: ActiveSessionState) => {
+    pendingPersistSessionsRef.current = nextSessionsByRoute;
+    pendingPersistActiveStateRef.current = nextActiveState;
+    window.clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = window.setTimeout(() => {
+      persistTimerRef.current = 0;
+      const sessions = pendingPersistSessionsRef.current;
+      const activeState = pendingPersistActiveStateRef.current;
+      pendingPersistSessionsRef.current = null;
+      pendingPersistActiveStateRef.current = null;
+      if (!sessions || !activeState) {
+        return;
+      }
+      persistSessionsStateNow(sessions, activeState);
+    }, SESSION_STORAGE_DEBOUNCE_MS);
+  };
+
+  useEffect(() => () => {
+    window.clearTimeout(persistTimerRef.current);
+    const sessions = pendingPersistSessionsRef.current;
+    const activeState = pendingPersistActiveStateRef.current;
+    if (sessions && activeState) {
+      persistSessionsStateNow(sessions, activeState);
+    }
+  }, []);
 
   const ensureSession = (
     target?: Partial<ChatTarget> | null,
@@ -630,7 +730,7 @@ export function ConversationRuntimeProvider({
     const nextActiveState = { ...preferredActiveState, [route]: created.id };
     setSessionsByRoute(nextSessionsByRoute);
     setActiveSessionByRoute(nextActiveState);
-    persistSessionsState(nextSessionsByRoute, nextActiveState);
+    persistSessionsStateNow(nextSessionsByRoute, nextActiveState);
     return created;
   };
 
@@ -644,7 +744,7 @@ export function ConversationRuntimeProvider({
         session.id === sessionID ? updater(session) : session,
       );
       const nextState = { ...current, [routeKey]: nextSessions };
-      persistSessionsState(nextState, activeSessionByRoute);
+      schedulePersistSessionsState(nextState, activeSessionByRoute);
       return nextState;
     });
   };
@@ -657,6 +757,7 @@ export function ConversationRuntimeProvider({
     id: makeID("msg"),
     role,
     text,
+    attachments: patch.attachments || [],
     route: patch.route || "",
     source: patch.source || "",
     error: Boolean(patch.error),
@@ -699,7 +800,7 @@ export function ConversationRuntimeProvider({
   const focusSession = (sessionID: string) => {
     const nextActiveState = { ...activeSessionByRoute, [route]: sessionID };
     setActiveSessionByRoute(nextActiveState);
-    persistSessionsState(sessionsByRoute, nextActiveState);
+    persistSessionsStateNow(sessionsByRoute, nextActiveState);
   };
 
   const removeSession = async (sessionID: string) => {
@@ -719,12 +820,16 @@ export function ConversationRuntimeProvider({
           : activeSessionByRoute[route],
     };
     const nextDrafts = { ...composerDrafts };
+    const nextAttachmentDrafts = { ...composerAttachmentDrafts };
     delete nextDrafts[sessionID];
+    delete nextAttachmentDrafts[sessionID];
     setSessionsByRoute(nextSessionsByRoute);
     setActiveSessionByRoute(nextActiveState);
     setComposerDrafts(nextDrafts);
+    setComposerAttachmentDrafts(nextAttachmentDrafts);
     persistComposerDrafts(nextDrafts);
-    persistSessionsState(nextSessionsByRoute, nextActiveState);
+    persistComposerAttachmentDrafts(nextAttachmentDrafts);
+    persistSessionsStateNow(nextSessionsByRoute, nextActiveState);
   };
 
   const sendMessageFallback = async (
@@ -733,6 +838,7 @@ export function ConversationRuntimeProvider({
     target: ChatTarget,
     assistantMessageID: string,
     content: string,
+    attachments: ComposerImageAttachment[],
   ) => {
     const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
     const selection = resolveModelSelection(session, providers);
@@ -751,6 +857,11 @@ export function ConversationRuntimeProvider({
         session_id: sessionID,
         channel_id: "web-default",
         content,
+        attachments: attachments.map((attachment) => ({
+          name: attachment.name,
+          content_type: attachment.contentType,
+          data_url: attachment.dataURL,
+        })),
         metadata: {
           "alter0.llm.provider_id": selection.providerID,
           "alter0.llm.model": selection.modelID,
@@ -783,6 +894,7 @@ export function ConversationRuntimeProvider({
     target: ChatTarget,
     assistantMessageID: string,
     content: string,
+    attachments: ComposerImageAttachment[],
   ): Promise<StreamResult> => {
     const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
     const selection = resolveModelSelection(session, providers);
@@ -800,6 +912,11 @@ export function ConversationRuntimeProvider({
         session_id: sessionID,
         channel_id: "web-default",
         content,
+        attachments: attachments.map((attachment) => ({
+          name: attachment.name,
+          content_type: attachment.contentType,
+          data_url: attachment.dataURL,
+        })),
         metadata: {
           "alter0.llm.provider_id": selection.providerID,
           "alter0.llm.model": selection.modelID,
@@ -910,7 +1027,8 @@ export function ConversationRuntimeProvider({
 
   const sendPrompt = async (prompt: string = activeSessionID ? composerDrafts[activeSessionID] || "" : "") => {
     const content = prompt.trim().slice(0, MAX_COMPOSER_CHARS);
-    if (!content || (route === "agent-runtime" && !selectedAgentID)) {
+    const attachments = activeDraftAttachments;
+    if ((!content && attachments.length === 0) || (route === "agent-runtime" && !selectedAgentID)) {
       return;
     }
     const session = ensureSession(route === "agent-runtime"
@@ -920,7 +1038,7 @@ export function ConversationRuntimeProvider({
           name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
         }
       : defaultChatTarget());
-    const userMessage = createMessage("user", content, { at: Date.now() });
+    const userMessage = createMessage("user", content, { at: Date.now(), attachments });
     const assistantMessage = createMessage("assistant", "Thinking...", {
       status: "streaming",
       at: Date.now(),
@@ -928,12 +1046,15 @@ export function ConversationRuntimeProvider({
     appendMessage(route, session.id, userMessage);
     appendMessage(route, session.id, assistantMessage);
     const nextDrafts = { ...composerDrafts, [session.id]: "" };
+    const nextAttachmentDrafts = { ...composerAttachmentDrafts, [session.id]: [] };
     setComposerDrafts(nextDrafts);
+    setComposerAttachmentDrafts(nextAttachmentDrafts);
     persistComposerDrafts(nextDrafts);
+    persistComposerAttachmentDrafts(nextAttachmentDrafts);
     try {
-      const streamResult = await sendMessageStream(route, session.id, session.target, assistantMessage.id, content);
+      const streamResult = await sendMessageStream(route, session.id, session.target, assistantMessage.id, content, attachments);
       if (!streamResult.ok && streamResult.canFallback) {
-        await sendMessageFallback(route, session.id, session.target, assistantMessage.id, content);
+        await sendMessageFallback(route, session.id, session.target, assistantMessage.id, content, attachments);
       }
       if (!streamResult.ok && !streamResult.canFallback) {
         setAssistantMessage(route, session.id, assistantMessage.id, {
@@ -1070,6 +1191,7 @@ export function ConversationRuntimeProvider({
       active: session.id === activeSessionID,
     })),
     draft: activeSessionID ? composerDrafts[activeSessionID] || "" : "",
+    draftAttachments: activeDraftAttachments,
     target: currentTarget,
     lockedTarget: Boolean(activeSession?.messages.length),
     targetOptions: route === "agent-runtime"
@@ -1086,12 +1208,14 @@ export function ConversationRuntimeProvider({
     selectedProviderId: selection.providerID,
     selectedModelId: selection.modelID,
     selectedModelLabel: selectedModel?.name || selectedModel?.id || "Default",
+    selectedModelSupportsVision: selectedModel ? selectedModel.supports_vision !== false : true,
     providers: enabledProviders(providers).map((provider) => ({
       id: normalizeText(provider.id),
       name: normalizeText(provider.name) || normalizeText(provider.id),
       models: enabledModels(provider).map((model) => ({
         id: normalizeText(model.id),
         name: normalizeText(model.name) || normalizeText(model.id),
+        supportsVision: model.supports_vision !== false,
         active:
           normalizeText(provider.id) === selection.providerID
           && normalizeText(model.id) === selection.modelID,
@@ -1138,6 +1262,41 @@ export function ConversationRuntimeProvider({
       const nextDrafts = { ...composerDrafts, [session.id]: value.slice(0, MAX_COMPOSER_CHARS) };
       setComposerDrafts(nextDrafts);
       persistComposerDrafts(nextDrafts);
+    },
+    addDraftAttachments: (attachments: ComposerImageAttachment[]) => {
+      const normalized = normalizeStoredAttachments(attachments);
+      if (normalized.length === 0) {
+        return;
+      }
+      const session = ensureSession();
+      const existing = composerAttachmentDrafts[session.id] || [];
+      const deduped = new Map<string, ComposerImageAttachment>();
+      [...existing, ...normalized].forEach((item) => {
+        deduped.set(item.id, item);
+      });
+      const nextAttachments = Array.from(deduped.values()).slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS);
+      const nextDrafts = { ...composerAttachmentDrafts, [session.id]: nextAttachments };
+      setComposerAttachmentDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(nextDrafts);
+    },
+    removeDraftAttachment: (attachmentID: string) => {
+      const sessionID = activeSession?.id;
+      if (!sessionID) {
+        return;
+      }
+      const nextItems = (composerAttachmentDrafts[sessionID] || []).filter((item) => item.id !== attachmentID);
+      const nextDrafts = { ...composerAttachmentDrafts, [sessionID]: nextItems };
+      setComposerAttachmentDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(nextDrafts);
+    },
+    clearDraftAttachments: () => {
+      const sessionID = activeSession?.id;
+      if (!sessionID) {
+        return;
+      }
+      const nextDrafts = { ...composerAttachmentDrafts, [sessionID]: [] };
+      setComposerAttachmentDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(nextDrafts);
     },
     sendPrompt,
     toggleInspector: (tab) => {
@@ -1239,6 +1398,8 @@ export function ConversationRuntimeProvider({
     language,
     activeSessionID,
     composerDrafts,
+    composerAttachmentDrafts,
+    activeDraftAttachments,
     currentTarget,
     agents,
     selection.providerID,

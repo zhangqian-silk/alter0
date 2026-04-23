@@ -1,12 +1,18 @@
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type MutableRefObject } from "react";
 import { APIClientError, createAPIClient } from "../../../shared/api/client";
 import { formatDateTime } from "../../../shared/time/format";
+import {
+  MAX_COMPOSER_IMAGE_ATTACHMENTS,
+  readComposerImageFiles,
+  type ComposerImageAttachment,
+} from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 import { normalizeText, RouteTagSection } from "./RouteBodyPrimitives";
 
 const TASK_ROUTE_FILTERS_STORAGE_KEY = "alter0.web.tasks.route-filters.v1";
 const TASK_ROUTE_PAGE_SIZE = 20;
 const TASK_LOG_PAGE_SIZE = 200;
+const USER_IMAGE_ATTACHMENTS_METADATA_KEY = "alter0.user_input.image_attachments";
 
 type TaskRouteFilters = {
   sessionID: string;
@@ -72,6 +78,7 @@ type TaskControlView = {
     last_heartbeat_at?: string;
     timeout_at?: string;
     request_content?: string;
+    request_metadata?: Record<string, string>;
     error_code?: string;
     error_message?: string;
     result?: {
@@ -121,6 +128,12 @@ type TaskTerminalInputResponse = {
   error?: string;
 };
 
+type TaskComposerAttachmentRequest = {
+  name: string;
+  content_type: string;
+  data_url: string;
+};
+
 type TaskRouteCopy = {
   loading: string;
   loadFailed: (message: string) => string;
@@ -147,12 +160,17 @@ type TaskRouteCopy = {
   logsDisconnected: string;
   reconnect: string;
   replay: string;
+  requestTitle: string;
   terminalTitle: string;
   terminalInputPlaceholder: string;
   terminalSend: string;
   terminalSending: string;
   terminalHint: string;
   terminalFollowupNote: string;
+  addImage: string;
+  removeImage: string;
+  closePreview: string;
+  attachmentLimit: (count: number) => string;
   resultTitle: string;
   retry: string;
   cancel: string;
@@ -270,12 +288,17 @@ const TASK_ROUTE_COPY: Record<LegacyShellLanguage, TaskRouteCopy> = {
     logsDisconnected: "Log stream disconnected. You can reconnect.",
     reconnect: "Reconnect",
     replay: "Replay",
+    requestTitle: "Request",
     terminalTitle: "Terminal",
     terminalInputPlaceholder: "Type command or prompt...",
     terminalSend: "Send",
     terminalSending: "Sending...",
     terminalHint: "Supports follow-up interaction in the current terminal session.",
     terminalFollowupNote: "Each Send stays in the same Codex session thread.",
+    addImage: "Add image",
+    removeImage: "Remove image",
+    closePreview: "Close preview",
+    attachmentLimit: (count) => `Up to ${count} images.`,
     resultTitle: "Result Output",
     retry: "Retry",
     cancel: "Cancel",
@@ -362,12 +385,17 @@ const TASK_ROUTE_COPY: Record<LegacyShellLanguage, TaskRouteCopy> = {
     logsDisconnected: "日志流已断开，可手动重连。",
     reconnect: "重连",
     replay: "回放",
+    requestTitle: "请求输入",
     terminalTitle: "终端",
     terminalInputPlaceholder: "输入命令或追问继续交互...",
     terminalSend: "发送",
     terminalSending: "发送中...",
     terminalHint: "支持在当前终端会话中继续交互。",
     terminalFollowupNote: "每次发送都会继续复用同一个 Codex 会话线程。",
+    addImage: "添加图片",
+    removeImage: "移除图片",
+    closePreview: "关闭预览",
+    attachmentLimit: (count) => `最多上传 ${count} 张图片。`,
     resultTitle: "终态输出",
     retry: "重试",
     cancel: "取消",
@@ -430,6 +458,38 @@ const TASK_ROUTE_COPY: Record<LegacyShellLanguage, TaskRouteCopy> = {
   },
 };
 
+function decodeTaskRequestAttachments(metadata: Record<string, string> | undefined): ComposerImageAttachment[] {
+  const raw = typeof metadata?.[USER_IMAGE_ATTACHMENTS_METADATA_KEY] === "string"
+    ? metadata[USER_IMAGE_ATTACHMENTS_METADATA_KEY].trim()
+    : "";
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.flatMap((item, index) => {
+      const name = typeof item?.name === "string" ? item.name.trim() : "";
+      const contentType = typeof item?.content_type === "string" ? item.content_type.trim() : "";
+      const dataURL = typeof item?.data_url === "string" ? item.data_url.trim() : "";
+      if (!dataURL || !contentType.startsWith("image/")) {
+        return [];
+      }
+      return [{
+        id: `task-request-${index}-${name || contentType}`,
+        name,
+        contentType,
+        dataURL,
+        size: dataURL.length,
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
 export function ReactManagedTasksRouteBody({
   language,
 }: {
@@ -463,8 +523,12 @@ export function ReactManagedTasksRouteBody({
     cursor: 0,
   });
   const [terminalInput, setTerminalInput] = useState("");
+  const [terminalAttachments, setTerminalAttachments] = useState<ComposerImageAttachment[]>([]);
+  const [terminalAttachmentError, setTerminalAttachmentError] = useState("");
+  const [previewAttachment, setPreviewAttachment] = useState<ComposerImageAttachment | null>(null);
   const [terminalSubmitting, setTerminalSubmitting] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const composerFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     persistTaskRouteFilters(activeFilters);
@@ -511,6 +575,9 @@ export function ReactManagedTasksRouteBody({
       setDetailState({ status: "idle", view: null, error: "" });
       setLogState({ items: [], status: copy.logsEmpty, cursor: 0 });
       setTerminalInput("");
+      setTerminalAttachments([]);
+      setTerminalAttachmentError("");
+      setPreviewAttachment(null);
       return;
     }
 
@@ -518,6 +585,9 @@ export function ReactManagedTasksRouteBody({
     closeLogStream(eventSourceRef);
     setDetailState({ status: "loading", view: null, error: "" });
     setLogState({ items: [], status: copy.logsEmpty, cursor: 0 });
+    setTerminalAttachments([]);
+    setTerminalAttachmentError("");
+    setPreviewAttachment(null);
     setTerminalInput("");
 
     void apiClient
@@ -620,12 +690,40 @@ export function ReactManagedTasksRouteBody({
     }
   }
 
+  function handleAttachmentPicker() {
+    composerFileInputRef.current?.click();
+  }
+
+  async function handleAttachmentSelection(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (files.length === 0) {
+      return;
+    }
+    if (terminalAttachments.length + files.length > MAX_COMPOSER_IMAGE_ATTACHMENTS) {
+      setTerminalAttachmentError(copy.attachmentLimit(MAX_COMPOSER_IMAGE_ATTACHMENTS));
+      return;
+    }
+    try {
+      const attachments = await readComposerImageFiles(files);
+      setTerminalAttachmentError("");
+      setTerminalAttachments((current) => [...current, ...attachments].slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS));
+    } catch (error: unknown) {
+      setTerminalAttachmentError(toErrorMessage(error, copy.unknownError));
+    }
+  }
+
   async function handleTerminalSubmit(rawInput: string) {
     if (!activeTaskID) {
       return;
     }
     const input = normalizeFilterValue(rawInput);
-    if (!input) {
+    const attachments: TaskComposerAttachmentRequest[] = terminalAttachments.map((attachment) => ({
+      name: attachment.name,
+      content_type: attachment.contentType,
+      data_url: attachment.dataURL,
+    }));
+    if (!input && attachments.length === 0) {
       return;
     }
 
@@ -641,6 +739,7 @@ export function ReactManagedTasksRouteBody({
           },
           body: JSON.stringify({
             input,
+            attachments,
             reuse_task: true,
             anchor_task_id: anchorTaskID,
           }),
@@ -658,6 +757,9 @@ export function ReactManagedTasksRouteBody({
     } finally {
       setTerminalSubmitting(false);
       setTerminalInput("");
+      setTerminalAttachments([]);
+      setTerminalAttachmentError("");
+      setPreviewAttachment(null);
     }
   }
 
@@ -713,6 +815,7 @@ export function ReactManagedTasksRouteBody({
   const detailSource = detailView?.source;
   const detailActions = detailView?.actions;
   const detailLink = detailView?.link;
+  const requestAttachments = decodeTaskRequestAttachments(detailTask?.request_metadata);
   const selectedDisplayTaskID = normalizeFilterValue(displayTaskID) || activeTaskID;
   const detailTags = [
     formatTriggerType(detailSource?.trigger_type, copy),
@@ -721,7 +824,8 @@ export function ReactManagedTasksRouteBody({
   ].filter((item) => item !== "-");
 
   return (
-    <section className="control-task-view" data-control-task-view>
+    <>
+      <section className="control-task-view" data-control-task-view>
       <form
         className="task-filter-form page-filter-form control-task-filter-form"
         onSubmit={(event) => {
@@ -1205,6 +1309,33 @@ export function ReactManagedTasksRouteBody({
                     </button>
                   </div>
 
+                  {normalizeText(detailTask?.request_content) !== "-" || requestAttachments.length > 0 ? (
+                    <section className="task-detail-section">
+                      <h5>{copy.requestTitle}</h5>
+                      {normalizeText(detailTask?.request_content) !== "-" ? (
+                        <div className="control-task-result-output">
+                          <TaskResultOutput content={detailTask?.request_content} />
+                        </div>
+                      ) : null}
+                      {requestAttachments.length > 0 ? (
+                        <div className="message-image-grid control-task-request-attachments">
+                          {requestAttachments.map((attachment) => (
+                            <button
+                              key={attachment.id}
+                              type="button"
+                              className="message-image-card"
+                              onClick={() => {
+                                setPreviewAttachment(attachment);
+                              }}
+                            >
+                              <img src={attachment.dataURL} alt={attachment.name} loading="lazy" />
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : null}
+
                   <section className="task-detail-section">
                     <h5>{copy.terminalTitle}</h5>
                     <p className="control-task-log-state">{logState.status}</p>
@@ -1252,6 +1383,55 @@ export function ReactManagedTasksRouteBody({
                       }}
                     >
                       <input
+                        ref={composerFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        hidden
+                        onChange={(event) => {
+                          void handleAttachmentSelection(event);
+                        }}
+                      />
+                      {terminalAttachments.length > 0 ? (
+                        <div className="conversation-composer-attachments control-task-terminal-attachments">
+                          {terminalAttachments.map((attachment, index) => (
+                            <div key={`${attachment.name}:${index}`} className="conversation-composer-attachment">
+                              <button
+                                type="button"
+                                className="conversation-composer-attachment-preview"
+                                onClick={() => {
+                                  setPreviewAttachment(attachment);
+                                }}
+                              >
+                                <img src={attachment.dataURL} alt={attachment.name} loading="lazy" />
+                              </button>
+                              <button
+                                type="button"
+                                className="conversation-composer-attachment-remove"
+                                aria-label={`${copy.removeImage}: ${attachment.name}`}
+                                onClick={() => {
+                                  setTerminalAttachments((current) =>
+                                    current.filter((item) => item !== attachment),
+                                  );
+                                  setTerminalAttachmentError("");
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="control-task-terminal-input-row">
+                        <button
+                          type="button"
+                          className="control-task-terminal-upload"
+                          disabled={terminalSubmitting}
+                          onClick={handleAttachmentPicker}
+                        >
+                          {copy.addImage}
+                        </button>
+                      <input
                         type="text"
                         maxLength={6000}
                         placeholder={copy.terminalInputPlaceholder}
@@ -1261,10 +1441,14 @@ export function ReactManagedTasksRouteBody({
                           setTerminalInput(event.target.value);
                         }}
                       />
-                      <button type="submit" disabled={terminalSubmitting}>
-                        {terminalSubmitting ? copy.terminalSending : copy.terminalSend}
-                      </button>
+                        <button type="submit" disabled={terminalSubmitting}>
+                          {terminalSubmitting ? copy.terminalSending : copy.terminalSend}
+                        </button>
+                      </div>
                     </form>
+                    {terminalAttachmentError ? (
+                      <p className="control-task-terminal-note">{terminalAttachmentError}</p>
+                    ) : null}
                     <p className="control-task-terminal-hint">{copy.terminalHint}</p>
                     <p className="control-task-terminal-note">{copy.terminalFollowupNote}</p>
                   </section>
@@ -1281,7 +1465,47 @@ export function ReactManagedTasksRouteBody({
           </aside>
         </section>
       </section>
-    </section>
+      </section>
+      {previewAttachment ? (
+        <div
+          className="conversation-image-preview"
+          role="dialog"
+          aria-modal="true"
+          aria-label={previewAttachment.name || copy.addImage}
+          onClick={() => {
+            setPreviewAttachment(null);
+          }}
+        >
+          <button
+            type="button"
+            className="conversation-image-preview-backdrop"
+            aria-label={copy.closePreview}
+          />
+          <div
+            className="conversation-image-preview-panel"
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <button
+              type="button"
+              className="conversation-image-preview-close"
+              aria-label={copy.closePreview}
+              onClick={() => {
+                setPreviewAttachment(null);
+              }}
+            >
+              ×
+            </button>
+            <img
+              className="conversation-image-preview-image"
+              src={previewAttachment.dataURL}
+              alt={previewAttachment.name}
+            />
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 

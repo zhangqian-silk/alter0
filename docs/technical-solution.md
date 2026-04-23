@@ -1,6 +1,6 @@
 # Technical Solution
 
-> Last update: 2026-04-21
+> Last update: 2026-04-23
 
 `alter0` 的技术方案按与需求清单一致的领域模型维护。后续新增或调整需求时，技术方案必须落到对应领域与子域，不再按时间顺序、任务编号或零散专题堆叠。
 
@@ -75,8 +75,8 @@ CLI / Web / Cron
 - `internal/interfaces/web/frontend/src/shared/viewport/mobileViewport.ts` 负责移动端断点、键盘偏移阈值与 viewport baseline 计算，避免 Chat、Terminal 与 route 页重复维护软键盘占位逻辑。
 - `internal/interfaces/web/frontend/index.html`、`static/dist/index.html` 与登录页模板统一以 `html[lang="en"]` 启动；`src/app/WorkbenchApp.tsx` 通过写回 `document.documentElement.lang` 统一驱动中英文壳层文案切换。`renderLoginPage` 继续直接输出服务端 HTML，但视觉与文案已对齐工作台基线：复用 `IBM Plex Sans + Sora` 字体组合、近白卡片表面与安全入口 copy。
 - `internal/interfaces/web/frontend/src/app` 承载当前 Web Shell 的顶层壳层：`App.tsx` 只负责挂载 `WorkbenchApp`；`WorkbenchApp.tsx` 负责主导航、路由分派、语言切换与桌面/移动导航态，并让普通 `page-mode` 路由页在窄屏下通过 `data-route-mobile-head` 输出共享 `Menu` 入口；`routeState.ts` 负责 hash 路由解析与派发；`WorkbenchContext.tsx` 暴露当前 `route / language / navigate` 以及移动端主导航状态与开关。根壳层通过 `app-shell[data-workbench-route]` 输出当前路由，控制页继续通过 `data-route` 暴露页级钩子。
-- `internal/interfaces/web/frontend/src/features/conversation-runtime` 承载 `chat / agent-runtime` 的运行态：`ConversationRuntimeProvider.tsx` 负责会话创建/切换/删除、消息流、SSE 收口、任务轮询、草稿恢复、模型与能力项选择，并把 `createdAt` 透传给侧栏；`ConversationWorkspace.tsx` 通过 `features/shell/components/RuntimeWorkspaceFrame.tsx` 复用与 `Terminal` 相同的运行页骨架，把会话列、主时间线工作区、Composer 与 Inspector 作为 slot 注入，并在窄屏下通过独立 `data-conversation-mobile-header` 输出运行页自有的 `Menu / Sessions / New` 操作行、联动主导航与会话抽屉。当前实现让会话列、workspace body、chat screen 与 composer 同时挂载 `terminal-*` 与 `conversation-*` 复合 class，直接消费 Terminal 皮肤并保留 Conversation 级测试钩子；会话抽屉列表额外输出稳定 `role="list"` 语义，并通过共享分组逻辑收敛为 `Today / Yesterday / Earlier` 分段，把当前态 badge、标题、摘要、底部短 hash 与尾侧删除动作收敛到统一列表项骨架；`chat` 与 `agent-runtime` 空态都会抑制重复的 workspace summary row，把标题与说明完全交给欢迎区承接。运行页本身输出 `data-conversation-view / data-conversation-session-pane / data-conversation-workspace / data-conversation-chat-screen / data-conversation-inspector` 等稳定锚点，不再通过 bridge 或 snapshot store 回写业务状态。
-- `internal/interfaces/web/frontend/src/features/shell` 继续维护主导航、共享 copy、React 管理页和 route surface。`components/PrimaryNav.tsx` 负责路由高亮、导航折叠、tooltip 与语言切换；`components/ReactManagedRouteBody.tsx` 负责把 `agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks / codex-accounts` 分派到各自 React 页面。`ReactManagedTerminalRouteBody.tsx` 继续保持旧版 `terminal-*` DOM class 契约作为布局皮肤基线，但会话列表、工作区容器、工作区头部与窄屏顶部操作行额外复用 `ConversationWorkspace` 的工作台语义类，确保 Terminal 与 Chat / Agent Runtime 使用同一套表面和头部节奏；Terminal 的会话抽屉列表与 Conversation 一样输出 `role="list"` 语义，并复用同一份最近时间分组逻辑、当前态 badge、状态徽标、最近输出、底部短标识与尾侧删除动作；Terminal 的会话列表、详情轮询、step 展开、列表删除与 Markdown 输出仍全部由 React state 直接维护，并在窄屏下通过 `WorkbenchContext` 输出 `Menu / Sessions / New` 顶部操作行；控制页、Sessions、Tasks、Memory 与 Products 继续复用统一客户端和共享 surface 样式。
+- `internal/interfaces/web/frontend/src/features/conversation-runtime` 承载 `chat / agent-runtime` 的运行态：`ConversationRuntimeProvider.tsx` 负责会话创建/切换/删除、消息流、SSE 收口、任务轮询、文本草稿与图片附件草稿恢复、模型与能力项选择；`composerImageAttachments.ts` 负责图片文件读取、类型/体积约束与 data URL 生成；`ConversationWorkspace.tsx` 通过 `features/shell/components/RuntimeWorkspaceFrame.tsx` 复用与 `Terminal` 相同的运行页骨架，把会话列、主时间线工作区、Composer 与 Inspector 作为 slot 注入，并在窄屏下通过独立 `data-conversation-mobile-header` 输出运行页自有的 `Menu / Sessions / New` 操作行、联动主导航与会话抽屉。当前实现让会话列、workspace body、chat screen 与 composer 同时挂载 `terminal-*` 与 `conversation-*` 复合 class，直接消费 Terminal 皮肤并保留 Conversation 级测试钩子；会话抽屉列表额外输出稳定 `role="list"` 语义，并把当前态 badge、标题、摘要、短 hash 与尾侧删除动作收敛到统一列表项骨架；用户消息中的图片附件会和文本一起持久化到会话历史，并在消息区按缩略图回显；`chat` 与 `agent-runtime` 空态都会抑制重复的 workspace summary row，把标题与说明完全交给欢迎区承接。运行页本身输出 `data-conversation-view / data-conversation-session-pane / data-conversation-workspace / data-conversation-chat-screen / data-conversation-inspector` 等稳定锚点，不再通过 bridge 或 snapshot store 回写业务状态。
+- `internal/interfaces/web/frontend/src/features/shell` 继续维护主导航、共享 copy、React 管理页和 route surface。`components/PrimaryNav.tsx` 负责路由高亮、导航折叠、tooltip 与语言切换；`components/ReactManagedRouteBody.tsx` 负责把 `agent / terminal / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks / codex-accounts` 分派到各自 React 页面。`ReactManagedTerminalRouteBody.tsx` 继续保持旧版 `terminal-*` DOM class 契约作为布局皮肤基线，但会话列表、工作区容器、工作区头部与窄屏顶部操作行额外复用 `ConversationWorkspace` 的工作台语义类，确保 Terminal 与 Chat / Agent Runtime 使用同一套表面和头部节奏；Terminal 的会话抽屉列表与 Conversation 一样输出 `role="list"` 语义、当前态 badge、状态徽标、最近输出、短标识与尾侧删除动作；Terminal 的会话列表、详情轮询、step 展开、工作区关闭、列表删除与 Markdown 输出仍全部由 React state 直接维护，并在窄屏下通过 `WorkbenchContext` 输出 `Menu / Sessions / New` 顶部操作行；控制页、Sessions、Tasks、Memory 与 Products 继续复用统一客户端和共享 surface 样式。
 - `internal/interfaces/web/frontend/src/app/WorkbenchContext.tsx` 与 `WorkbenchApp.tsx` 统一维护移动端运行页面板状态：主导航抽屉与运行页 `Sessions` 抽屉收敛到同一个 `mobilePanel` 状态源，`mobileNavOpen` 与 `mobileSessionPaneOpen` 只作为派生视图暴露给 `ConversationWorkspace.tsx`、`ReactManagedTerminalRouteBody.tsx` 和壳层 backdrop。这样 `Menu / Sessions` 在移动端始终互斥，切路由、点遮罩或切会话时都通过同一条关闭路径收口，不再由各运行页各自维护独立开关。
 - `internal/interfaces/web/frontend/src/app/WorkbenchContext.tsx` 与 `WorkbenchApp.tsx` 统一维护移动端运行页面板状态：主导航抽屉与运行页 `Sessions` 抽屉收敛到同一个 `mobilePanel` 状态源，`mobileNavOpen` 与 `mobileSessionPaneOpen` 只作为派生视图暴露给 `ConversationWorkspace.tsx`、`ReactManagedTerminalRouteBody.tsx` 和壳层 backdrop。这样 `Menu / Sessions` 在移动端始终互斥，普通 `page-mode` 路由页新增的 `Menu` 入口也复用同一套状态切换与关闭路径，切路由、点遮罩或切会话时都通过同一条关闭链路收口，不再由各页面各自维护独立开关。
 - `ReactManagedTerminalRouteBody.tsx` 的提交链路在进入 `submitInput` 时会立即设置 `submitting`，哪怕当前还需要先 `createSession()`；这样首次点击发送按钮就会同步切到 `Sending...` 禁用态，再串行完成会话创建、输入提交、active session 刷新和滚动收口，避免用户把首击感知成无效点击或在 session 创建窗口内重复提交。
@@ -146,6 +146,7 @@ Web input
 - Web handler 测试覆盖会话创建、历史隔离、流式事件和取消语义。
 - 前端 E2E 覆盖 Chat、Agent、移动端输入、设置面板和长会话渲染。
 - 前端组件测试需覆盖 React 工作台的稳定契约，至少校验 `WorkbenchApp` 的 hash 路由、语言切换、移动端导航收口，以及 Conversation workspace 的会话列、消息区、Composer 和 Inspector 未被回归破坏。
+- 图片输入链路的最小稳定测试面包括：前端文件读取与限制、Composer 附件预览与移除、Web 消息接口对附件元数据的编码、`HybridNLProcessor` 对图片 part 的构造与禁回退约束、OpenAI Responses / Chat Completions 适配层对视觉内容的序列化。
 - `src/app/routeState.test.ts`、`src/app/WorkbenchApp.test.tsx`、`shellLayoutStyles.test.ts`、`legacyRouteLayoutStyles.test.ts` 与各 `ReactManaged*RouteBody.test.tsx` 共同覆盖路由解析、主导航状态、语言切换、Conversation runtime 入口、Agent/Terminal/Memory/Control/Tasks/Sessions/Products 页面取数与窄屏布局契约；Go 侧 `internal/interfaces/web/server_*_test.go` 继续通过源码与嵌入资产断言校验 `WorkbenchApp`、`ConversationRuntimeProvider`、`ConversationWorkspace`、`ReactManagedRouteBody`、共享样式和静态资源分发策略。
 - 回归测试优先覆盖空白会话重复、软键盘残留空白、整段列表重建、断流恢复与残留 `In Progress` 等高频问题。
 
@@ -176,9 +177,10 @@ Agent message
 - Agent 负责理解与驱动，具体文件、仓库、Shell、页面产出统一通过 `codex_exec`。
 - `codex_exec` 使用 stdin 传递执行指令，不通过命令行拼接长上下文。
 - 存在可用 Provider 且进入 Agent / ReAct 链路时，Agent 自身吸收 Skill、MCP、Memory、Product 与运行时上下文，只向 Codex 下发当前步骤的纯执行指令。
+- Web 上传的图片附件经 `internal/interfaces/web/server.go` 规范化后写入 `alter0.user_input.image_attachments` 元数据；`/api/messages`、`/api/agent/messages`、`/api/products/*/messages`、Control Task follow-up 输入都会复用这条编码逻辑。`internal/execution/infrastructure/hybrid_nl_processor.go` 会把这些附件解码成 `llmdomain.Message.Parts`，与文本 part 一起交给 ReAct / 直连模型链。带图请求不进入异步 Task，也不会在模型链失败后静默回退到 Codex CLI，避免把视觉请求错误降级为纯文本执行。
 - 不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，`internal/execution/infrastructure` 需要为当前会话编译原生 Codex Runtime：独立 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，并把启用的 MCP Server 渲染为原生 `mcp_servers.*` 配置。
 - Memory Files 注入需要携带路径、存在状态、可写性、内容快照和自动召回片段。
-- `internal/llm/infrastructure` 的 `openai-completions` 适配层需要把 assistant 历史消息中的 `tool_calls` 一并序列化，并与后续 `tool` 消息的 `tool_call_id` 保持稳定配对；否则 Provider 会把该轮请求判定为非法工具消息序列。
+- `internal/llm/domain.Message` 允许同时携带纯文本 `Content` 与结构化 `Parts`；`internal/llm/infrastructure/openai_client.go` 在 `openai-responses` 与 `openai-completions` 两条路径上都要把用户图片 part 序列化为官方视觉输入结构，同时继续保留 assistant `tool_calls` 与后续 `tool` 消息的 `tool_call_id` 稳定配对；否则 Provider 会把该轮请求判定为非法工具消息序列或直接丢失图片输入。
 - 私有 `AGENTS.md`、私有 Skill、Agent Session Profile 分别承担协作边界、可复用打法、会话画像职责，不混写一次性任务细节。
 - `search_memory`、`read_memory`、`write_memory` 只操作已解析进 `memory_context` 的记忆文件。
 - Agent Memory Web 聚合接口只读返回长期记忆、天级记忆、强制上下文与说明文档；任务摘要刷新走 Task summary 子域接口。
@@ -233,7 +235,9 @@ Terminal input
 - 直连 Codex 的 Chat / Agent / Product 会话在自身工作区下维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Terminal 会话在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Terminal 会话态与 turn/step 执行态分离，历史 `running / starting` 需要兼容归一。
 - Terminal 会话详情聚合 turn 摘要；step 明细按 `session_id / turn_id / step_id` 单独读取，避免会话列表一次性加载大块执行日志。
+- `internal/terminal/application/service.go` 在 `InputWithAttachments` 中把 Terminal 图片输入规范化为 turn 附件、在工作区 `input-attachments/` 下写入临时文件，并通过 `codex exec -i <file>` 或 `codex resume -i <file>` 继续当前线程；turn 摘要与持久化快照同步保留附件元数据，供 Terminal 历史区直接回显图片缩略图。
 - Terminal 应用层在 Codex CLI 返回远端 compact 失败时，会把当前会话的运行线程指针复位为初始 `terminal_session_id`，保留原工作区与日志，并让后续输入自动走新线程而不是继续 resume 已失效 thread。
+- `internal/interfaces/web/frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx` 与 `ReactManagedTasksRouteBody.tsx` 共同复用 `composerImageAttachments.ts` 处理图片读取、缩放和 data URL 生成；Terminal 页面在本地草稿里按会话保存附件，Task 详情抽屉在当前任务 follow-up 输入上维护附件预览和移除。`internal/interfaces/web/server_terminal.go` 直接把 Terminal `attachments[]` 转成 `terminalapp.InputRequest.Attachments`，而 `controlTaskTerminalInputHandler` 则把 follow-up 输入编码进统一消息元数据后交给 Task 服务。
 - Terminal 跨设备共享同一 Web 登录态下的服务端会话历史，不再按 browser client 分桶。
 - `chat-terminal.css` 在真手机宽度下允许 Terminal 工作区头部切换为多行排布：标题最多两行，状态与操作工具栏按可用宽度换行，避免横向溢出。
 - `WorkbenchApp` 在根壳层安装共享 `mobileViewportSync` controller，把 `VisualViewport` 变化稳定写入 `--mobile-viewport-height / --keyboard-offset`；移动端 App Shell 在键盘弹起期间保持基线高度，避免整个 workbench 被 `visualViewport` 收缩带着上移；Terminal 移动端 Composer 通过 `bottom: var(--keyboard-offset)` 贴住可见底边，而不是通过增大 footer padding 把输入区继续留在文档流里。
@@ -326,7 +330,7 @@ Environment restart
 - 独立登录会话通过临时 `CODEX_HOME` 执行 `codex login`，完成后再把新 `auth.json` 保存为托管账号，避免直接污染当前正在服务的运行时认证。
 - LLM 运行参数 `llm_temperature`、`llm_max_tokens`、`llm_react_max_iterations` 通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider 与模型能力约束。
 - Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换。
-- 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 会校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/assets/*` 与 `/legacy/*`；`http` 服务则把请求反向代理到注册的 upstream。
+- 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 会校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/assets/*` 与 `/legacy/*`；`http` 服务则把请求反向代理到注册的 upstream。默认 `scripts/deploy_test_service.sh <session_id>` 会为 `web` 合成一条本地后端启动命令，先构建前端产物，再把 `https://<session_short_hash>.alter0.cn` 整体代理到这份当前分支后端，从而让前端与 `/api/*` 保持同一版本。
 - Web 登录态继续由 `server.go` 的 `authMiddleware + loginHandler` 统一管理；当请求 Host 命中主域或其预览子域时，登录 cookie 会把 `Domain` 收敛到根域 `alter0.cn`，使主域工作台与短哈希预览 host 共享同一登录会话，而不是各自维护孤立 cookie。
 - systemd 基线统一 `HOME=/var/lib/alter0`，确保 Codex、gh、git signing、Node/Playwright 工具链使用同一运行账户上下文。
 - 提交签名问题不得通过关闭签名绕过。

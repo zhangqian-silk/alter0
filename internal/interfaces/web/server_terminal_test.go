@@ -36,6 +36,7 @@ type stubWebTerminalService struct {
 	lastOwnerID string
 	lastID      string
 	lastInput   string
+	inputReq    terminalapp.InputRequest
 }
 
 func (s *stubWebTerminalService) Create(req terminalapp.CreateRequest) (terminaldomain.Session, error) {
@@ -84,6 +85,19 @@ func (s *stubWebTerminalService) Input(ownerID string, sessionID string, input s
 	return s.inputResp, s.inputErr
 }
 
+func (s *stubWebTerminalService) InputWithAttachments(req terminalapp.InputRequest) (terminaldomain.Session, error) {
+	s.lastOwnerID = req.OwnerID
+	s.lastID = req.SessionID
+	s.lastInput = req.Input
+	s.inputReq = req
+	return s.inputResp, s.inputErr
+}
+
+func (s *stubWebTerminalService) Close(ownerID string, sessionID string) (terminaldomain.Session, error) {
+	s.lastOwnerID = ownerID
+	s.lastID = sessionID
+	return s.closeResp, s.closeErr
+}
 func (s *stubWebTerminalService) Delete(ownerID string, sessionID string) (terminaldomain.Session, error) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
@@ -161,6 +175,38 @@ func TestTerminalSessionItemHandlerWritesInput(t *testing.T) {
 	}
 	if service.lastInput != "pwd" {
 		t.Fatalf("expected input pwd, got %q", service.lastInput)
+	}
+}
+
+func TestTerminalSessionItemHandlerWritesImageAttachments(t *testing.T) {
+	service := &stubWebTerminalService{
+		inputResp: terminaldomain.Session{
+			ID:        "terminal-2",
+			OwnerID:   sharedTerminalClientID,
+			Title:     "terminal-2",
+			Status:    terminaldomain.SessionStatusBusy,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"attachments":[{"name":"diagram.png","content_type":"image/png","data_url":"data:image/png;base64,ZmFrZQ=="}]}`))
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if service.inputReq.Input != "Attached image." {
+		t.Fatalf("expected default image input, got %q", service.inputReq.Input)
+	}
+	if len(service.inputReq.Attachments) != 1 {
+		t.Fatalf("expected image attachments, got %+v", service.inputReq.Attachments)
+	}
+	if service.inputReq.Attachments[0].DataURL != "data:image/png;base64,ZmFrZQ==" {
+		t.Fatalf("expected attachment data url, got %+v", service.inputReq.Attachments[0])
 	}
 }
 

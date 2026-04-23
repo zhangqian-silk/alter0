@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { ConversationWorkspace } from "./ConversationWorkspace";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../app/WorkbenchContext";
@@ -31,6 +31,7 @@ const runtimeMock = {
   selectedProviderId: "",
   selectedModelId: "",
   selectedModelLabel: "DeepSeek V3.2",
+  selectedModelSupportsVision: true,
   providers: [],
   capabilities: [],
   skills: [],
@@ -40,6 +41,10 @@ const runtimeMock = {
   focusSession: vi.fn(),
   removeSession: vi.fn().mockResolvedValue(undefined),
   setDraft: vi.fn(),
+  draftAttachments: [],
+  addDraftAttachments: vi.fn(),
+  removeDraftAttachment: vi.fn(),
+  clearDraftAttachments: vi.fn(),
   sendPrompt: vi.fn().mockResolvedValue(undefined),
   toggleInspector: vi.fn(),
   closeInspector: vi.fn(),
@@ -137,12 +142,17 @@ describe("ConversationWorkspace", () => {
     ];
     runtimeMock.target = { type: "model", id: "raw-model", name: "Raw Model" };
     runtimeMock.selectedModelLabel = "DeepSeek V3.2";
+    runtimeMock.selectedModelSupportsVision = true;
     runtimeMock.toolCount = 0;
     runtimeMock.skillCount = 0;
     runtimeMock.draft = "";
     runtimeMock.createSession.mockClear();
     runtimeMock.focusSession.mockClear();
     runtimeMock.removeSession.mockClear();
+    runtimeMock.draftAttachments = [];
+    runtimeMock.addDraftAttachments.mockClear();
+    runtimeMock.removeDraftAttachment.mockClear();
+    runtimeMock.clearDraftAttachments.mockClear();
     runtimeMock.sendPrompt.mockClear();
   });
 
@@ -274,6 +284,53 @@ describe("ConversationWorkspace", () => {
     fireEvent.pointerDown(composerInput, { pointerType: "touch" });
 
     expect(focusSpy).toHaveBeenCalled();
+  });
+
+  it("renders draft image thumbnails with preview and remove actions", () => {
+    runtimeMock.draftAttachments = [
+      {
+        id: "image-1",
+        name: "diagram.png",
+        contentType: "image/png",
+        size: 1024,
+        dataURL: "data:image/png;base64,abc123",
+      },
+    ];
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(screen.getByRole("button", { name: "Add image" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview diagram.png" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove diagram.png" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview diagram.png" }));
+    expect(screen.getByRole("dialog", { name: "diagram.png" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
+    expect(screen.queryByRole("dialog", { name: "diagram.png" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove diagram.png" }));
+    expect(runtimeMock.removeDraftAttachment).toHaveBeenCalledWith("image-1");
+  });
+
+  it("forwards selected image files to the draft attachment handler", async () => {
+    renderWorkspace({ isMobileViewport: false });
+
+    const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement;
+    expect(fileInput).toBeInTheDocument();
+
+    const image = new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], "workspace-shot.svg", { type: "image/svg+xml" });
+    fireEvent.change(fileInput, { target: { files: [image] } });
+
+    await waitFor(() => {
+      expect(runtimeMock.addDraftAttachments).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("shows only the draft character count in composer meta", () => {
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(document.querySelector(".terminal-composer-meta")).toHaveTextContent("0/10000");
+    expect(document.querySelector(".terminal-composer-meta")).not.toHaveTextContent("1 sessions");
   });
 
   it("closes the mobile session pane after selecting a session", () => {

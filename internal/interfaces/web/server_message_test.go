@@ -189,6 +189,45 @@ func TestMessageHandlerJSONFallbackPath(t *testing.T) {
 	}
 }
 
+func TestMessageHandlerCarriesImageAttachmentsInMetadata(t *testing.T) {
+	t.Parallel()
+
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "ok",
+		},
+	}
+	server := newMessageTestServer(orchestrator)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/messages", strings.NewReader(`{
+		"session_id":"session-fixed",
+		"content":"请分析这张图",
+		"attachments":[
+			{
+				"name":"diagram.png",
+				"content_type":"image/png",
+				"data_url":"data:image/png;base64,ZmFrZQ=="
+			}
+		]
+	}`))
+	rec := httptest.NewRecorder()
+	server.messageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if orchestrator.lastMessage.Metadata == nil {
+		t.Fatalf("expected metadata to be populated")
+	}
+	raw := orchestrator.lastMessage.Metadata["alter0.user_input.image_attachments"]
+	if !strings.Contains(raw, `"name":"diagram.png"`) {
+		t.Fatalf("expected attachment metadata, got %q", raw)
+	}
+}
+
 func TestMessageStreamHandlerEmitsStartDeltaDone(t *testing.T) {
 	output := strings.Repeat("stream-", 10)
 	orchestrator := &stubWebOrchestrator{

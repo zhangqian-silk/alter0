@@ -74,6 +74,60 @@ func TestWorkspaceServiceGatewayProxiesRegisteredHTTPService(t *testing.T) {
 	}
 }
 
+func TestWorkspaceServiceGatewayProxiesRegisteredHTTPWebService(t *testing.T) {
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		if r.URL.Path != "/api/terminal/sessions" {
+			t.Fatalf("expected upstream path /api/terminal/sessions, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"items":[]}`)
+	}))
+	defer upstream.Close()
+
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	entry, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:   "session-http-web",
+		ServiceID:   defaultWorkspaceServiceID,
+		ServiceType: workspaceServiceTypeHTTP,
+		UpstreamURL: upstream.URL,
+	})
+	if err != nil {
+		t.Fatalf("register workspace service: %v", err)
+	}
+
+	server := &Server{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceService: registry,
+	}
+
+	handler := server.withWorkspaceServiceGateway(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions", nil)
+	req.Host = entry.Host
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !upstreamCalled {
+		t.Fatalf("expected root web host to proxy into upstream backend")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if got := rec.Header().Get("X-Alter0-Workspace-Service"); got != defaultWorkspaceServiceID {
+		t.Fatalf("expected workspace service header %q, got %q", defaultWorkspaceServiceID, got)
+	}
+	if strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
+		t.Fatalf("unexpected proxy body %q", rec.Body.String())
+	}
+}
+
 func TestWorkspaceServiceGatewayServesRegisteredFrontendDist(t *testing.T) {
 	repoPath := preparePreviewRepo(t, "workspace frontend")
 	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")

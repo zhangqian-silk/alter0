@@ -334,6 +334,7 @@ describe("ReactManagedTasksRouteBody", () => {
           method: "POST",
           body: JSON.stringify({
             input: "continue with next step",
+            attachments: [],
             reuse_task: true,
             anchor_task_id: "task-root-1",
           }),
@@ -347,6 +348,156 @@ describe("ReactManagedTasksRouteBody", () => {
         "/api/control/tasks/task-follow-up-1",
         expect.objectContaining({ method: "GET" }),
       );
+    });
+  });
+
+  it("attaches images in task terminal follow-up input", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              task_id: "task-root-1",
+              session_id: "session-runtime-1",
+              status: "running",
+              progress: 45,
+              trigger_type: "user",
+              channel_type: "web",
+              channel_id: "web-default",
+              updated_at: "2026-04-11T01:02:03Z",
+            },
+          ],
+          pagination: { page: 1, total: 1, has_next: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          task: {
+            id: "task-root-1",
+            session_id: "session-runtime-1",
+            status: "running",
+            phase: "executing",
+            progress: 45,
+            retry_count: 0,
+            created_at: "2026-04-11T00:59:00Z",
+            updated_at: "2026-04-11T01:02:03Z",
+            request_content: "generate timeline",
+          },
+          source: {
+            trigger_type: "user",
+            channel_type: "web",
+            channel_id: "web-default",
+          },
+          actions: {
+            retry: { enabled: false, reason: "", allowed_statuses: [] },
+            cancel: { enabled: true, reason: "", allowed_statuses: ["queued", "running"] },
+          },
+          link: {
+            task_id: "task-root-1",
+            session_id: "session-runtime-1",
+            terminal_session_id: "terminal-runtime-1",
+            task_detail_path: "/api/control/tasks/task-root-1",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [], has_more: false, next_cursor: 0 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          task_id: "task-follow-up-1",
+          anchor_task_id: "task-root-1",
+        }, { status: 202 }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          task: {
+            id: "task-follow-up-1",
+            session_id: "session-runtime-1",
+            status: "queued",
+            phase: "queued",
+            progress: 0,
+            retry_count: 0,
+            created_at: "2026-04-11T01:03:00Z",
+            updated_at: "2026-04-11T01:03:00Z",
+            request_content: "Attached image.",
+            request_metadata: {
+              "alter0.user_input.image_attachments": JSON.stringify([
+                {
+                  name: "diagram.svg",
+                  content_type: "image/svg+xml",
+                  data_url: "data:image/svg+xml;base64,PHN2Zy8+",
+                },
+              ]),
+            },
+          },
+          source: {
+            trigger_type: "user",
+            channel_type: "web",
+            channel_id: "web-default",
+          },
+          actions: {
+            retry: { enabled: false, reason: "", allowed_statuses: [] },
+            cancel: { enabled: true, reason: "", allowed_statuses: ["queued", "running"] },
+          },
+          link: {
+            task_id: "task-follow-up-1",
+            session_id: "session-runtime-1",
+            terminal_session_id: "terminal-runtime-1",
+            task_detail_path: "/api/control/tasks/task-follow-up-1",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [], has_more: false, next_cursor: 0 }));
+
+    const { container } = render(<ReactManagedTasksRouteBody language="en" />);
+
+    await screen.findByRole("button", { name: "task-root-1" });
+    fireEvent.click(screen.getByRole("button", { name: "task-root-1" }));
+    await screen.findByRole("button", { name: "Send" });
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).not.toBeNull();
+
+    const file = new File(
+      ['<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><rect width="12" height="12" fill="#000"/></svg>'],
+      "diagram.svg",
+      { type: "image/svg+xml" },
+    );
+
+    fireEvent.change(fileInput!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByAltText("diagram.svg")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByAltText("diagram.svg"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByLabelText("Close preview")[0]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        4,
+        "/api/control/tasks/task-root-1/terminal/input",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.any(String),
+        }),
+      );
+    });
+
+    const requestInit = fetchMock.mock.calls[3]?.[1] as RequestInit | undefined;
+    const payload = JSON.parse(String(requestInit?.body || "{}"));
+    expect(payload.input).toBe("");
+    expect(payload.attachments).toHaveLength(1);
+    expect(payload.attachments[0]).toMatchObject({
+      name: "diagram.svg",
+      content_type: "image/svg+xml",
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByAltText("diagram.svg").length).toBeGreaterThan(0);
     });
   });
 });
