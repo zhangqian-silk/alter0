@@ -74,6 +74,55 @@ func TestWorkspaceServiceGatewayProxiesRegisteredHTTPService(t *testing.T) {
 	}
 }
 
+func TestWorkspaceServiceGatewayRewritesProxyHostToUpstream(t *testing.T) {
+	var gotHost string
+	var gotForwardedHost string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		gotForwardedHost = r.Header.Get("X-Forwarded-Host")
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
+	}))
+	defer upstream.Close()
+
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	entry, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:   "session-http-host-rewrite",
+		ServiceID:   defaultWorkspaceServiceID,
+		ServiceType: workspaceServiceTypeHTTP,
+		UpstreamURL: upstream.URL,
+	})
+	if err != nil {
+		t.Fatalf("register workspace service: %v", err)
+	}
+
+	server := &Server{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceService: registry,
+	}
+	handler := server.withWorkspaceServiceGateway(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	req.Host = entry.Host
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	expectedUpstreamHost := strings.TrimPrefix(upstream.URL, "http://")
+	if gotHost != expectedUpstreamHost {
+		t.Fatalf("expected upstream host %q, got %q", expectedUpstreamHost, gotHost)
+	}
+	if gotForwardedHost != entry.Host {
+		t.Fatalf("expected x-forwarded-host %q, got %q", entry.Host, gotForwardedHost)
+	}
+}
+
 func TestWorkspaceServiceGatewayProxiesRegisteredHTTPWebService(t *testing.T) {
 	upstreamCalled := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +174,63 @@ func TestWorkspaceServiceGatewayProxiesRegisteredHTTPWebService(t *testing.T) {
 	}
 	if strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
 		t.Fatalf("unexpected proxy body %q", rec.Body.String())
+	}
+}
+
+func TestWorkspaceServiceGatewayStartsManagedHTTPServiceBeforeProxy(t *testing.T) {
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
+	}))
+	defer upstream.Close()
+
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	entry, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:    "session-managed-http",
+		ServiceID:    defaultWorkspaceServiceID,
+		ServiceType:  workspaceServiceTypeHTTP,
+		StartCommand: "go run ./cmd/alter0",
+		Workdir:      t.TempDir(),
+		Port:         19191,
+		HealthPath:   "/readyz",
+	})
+	if err != nil {
+		t.Fatalf("register managed workspace service: %v", err)
+	}
+
+	runtime := &stubWorkspaceServiceRuntime{
+		ensureStarted: func(entry workspaceServiceRegistration) (workspaceServiceRegistration, workspaceServiceRuntimeStatus, error) {
+			entry.UpstreamURL = upstream.URL
+			return entry, workspaceServiceRuntimeStatus{Status: "running"}, nil
+		},
+	}
+	server := &Server{
+		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceService:  registry,
+		workspaceRuntime:  runtime,
+	}
+
+	handler := server.withWorkspaceServiceGateway(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/runtime", nil)
+	req.Host = entry.Host
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if runtime.ensureCalls != 1 {
+		t.Fatalf("expected runtime ensureStarted to be called once, got %d", runtime.ensureCalls)
+	}
+	if !upstreamCalled {
+		t.Fatalf("expected managed upstream to be called")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
 	}
 }
 
@@ -250,6 +356,40 @@ func TestWorkspaceServiceRegistrationCRUD(t *testing.T) {
 	}
 }
 
+func TestWorkspaceServiceRegistrationStoresManagedHTTPCommandConfig(t *testing.T) {
+	workdir := t.TempDir()
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+
+	entry, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:    "session-command-http",
+		ServiceID:    "web",
+		ServiceType:  workspaceServiceTypeHTTP,
+		StartCommand: "go run ./cmd/alter0",
+		Workdir:      workdir,
+		Port:         18091,
+		HealthPath:   "/readyz",
+	})
+	if err != nil {
+		t.Fatalf("register managed workspace service: %v", err)
+	}
+
+	if entry.UpstreamURL != "http://127.0.0.1:18091" {
+		t.Fatalf("expected managed upstream url, got %+v", entry)
+	}
+	if entry.StartCommand != "go run ./cmd/alter0" {
+		t.Fatalf("expected start command to persist, got %+v", entry)
+	}
+	if entry.Workdir != filepath.ToSlash(workdir) {
+		t.Fatalf("expected normalized workdir, got %+v", entry)
+	}
+	if entry.Port != 18091 || entry.HealthPath != "/readyz" {
+		t.Fatalf("expected managed runtime metadata, got %+v", entry)
+	}
+}
+
 func preparePreviewRepo(t *testing.T, marker string) string {
 	t.Helper()
 
@@ -276,4 +416,27 @@ func preparePreviewRepo(t *testing.T, marker string) string {
 		t.Fatalf("write preview legacy asset: %v", err)
 	}
 	return repoPath
+}
+
+type stubWorkspaceServiceRuntime struct {
+	ensureCalls   int
+	stopped       []string
+	ensureStarted func(entry workspaceServiceRegistration) (workspaceServiceRegistration, workspaceServiceRuntimeStatus, error)
+	stop          func(entry workspaceServiceRegistration) error
+}
+
+func (s *stubWorkspaceServiceRuntime) EnsureStarted(entry workspaceServiceRegistration) (workspaceServiceRegistration, workspaceServiceRuntimeStatus, error) {
+	s.ensureCalls++
+	if s.ensureStarted != nil {
+		return s.ensureStarted(entry)
+	}
+	return entry, workspaceServiceRuntimeStatus{}, nil
+}
+
+func (s *stubWorkspaceServiceRuntime) Stop(entry workspaceServiceRegistration) error {
+	s.stopped = append(s.stopped, entry.SessionID+":"+entry.ServiceID)
+	if s.stop != nil {
+		return s.stop(entry)
+	}
+	return nil
 }

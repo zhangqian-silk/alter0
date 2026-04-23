@@ -21,6 +21,8 @@ type stubCodexAccountService struct {
 	switchAccount     func(name string) (*codexapp.Record, string, error)
 	startLoginSession func(ctx context.Context, name string, overwrite bool) (codexapp.LoginSession, error)
 	getLoginSession   func(id string) (codexapp.LoginSession, bool)
+	runtimeStatus     func() (*codexapp.RuntimeStatus, error)
+	updateSettings    func(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error)
 }
 
 func (s *stubCodexAccountService) ListStatuses(ctx context.Context) ([]codexapp.AccountStatus, *codexapp.CurrentStatus, error) {
@@ -58,6 +60,20 @@ func (s *stubCodexAccountService) GetLoginSession(id string) (codexapp.LoginSess
 	return codexapp.LoginSession{}, false
 }
 
+func (s *stubCodexAccountService) RuntimeStatus() (*codexapp.RuntimeStatus, error) {
+	if s.runtimeStatus != nil {
+		return s.runtimeStatus()
+	}
+	return nil, nil
+}
+
+func (s *stubCodexAccountService) UpdateRuntimeSettings(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error) {
+	if s.updateSettings != nil {
+		return s.updateSettings(model, reasoningEffort)
+	}
+	return nil, nil
+}
+
 func TestCodexAccountCollectionHandlerListsAccounts(t *testing.T) {
 	server := &Server{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -86,6 +102,30 @@ func TestCodexAccountCollectionHandlerListsAccounts(t *testing.T) {
 						AuthPath: "/var/lib/alter0/.codex/auth.json",
 					}, nil
 			},
+			runtimeStatus: func() (*codexapp.RuntimeStatus, error) {
+				return &codexapp.RuntimeStatus{
+					Command:         "/usr/local/bin/codex",
+					AuthPath:        "/var/lib/alter0/.codex/auth.json",
+					ConfigPath:      "/var/lib/alter0/.codex/config.toml",
+					HasAuth:         true,
+					HasConfig:       true,
+					Model:           "gpt-5.4",
+					ReasoningEffort: "high",
+					Models: []codexapp.RuntimeModel{
+						{
+							ID:                     "gpt-5.4",
+							Model:                  "gpt-5.4",
+							DisplayName:            "gpt-5.4",
+							DefaultReasoningEffort: "medium",
+							SupportedReasoningEffort: []codexapp.RuntimeReasoningMode{
+								{ReasoningEffort: "low"},
+								{ReasoningEffort: "medium"},
+								{ReasoningEffort: "high"},
+							},
+						},
+					},
+				}, nil
+			},
 		},
 	}
 
@@ -97,8 +137,9 @@ func TestCodexAccountCollectionHandlerListsAccounts(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var payload struct {
-		Items  []codexapp.AccountStatus `json:"items"`
-		Active *codexapp.CurrentStatus  `json:"active"`
+		Items   []codexapp.AccountStatus `json:"items"`
+		Active  *codexapp.CurrentStatus  `json:"active"`
+		Runtime *codexapp.RuntimeStatus  `json:"runtime"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -108,6 +149,9 @@ func TestCodexAccountCollectionHandlerListsAccounts(t *testing.T) {
 	}
 	if payload.Active == nil || payload.Active.Managed == nil || payload.Active.Managed.Name != "work" {
 		t.Fatalf("unexpected active: %+v", payload.Active)
+	}
+	if payload.Runtime == nil || payload.Runtime.Model != "gpt-5.4" || payload.Runtime.ReasoningEffort != "high" {
+		t.Fatalf("unexpected runtime: %+v", payload.Runtime)
 	}
 }
 
@@ -238,5 +282,52 @@ func TestCodexAccountItemHandlerSwitchesAccount(t *testing.T) {
 	}
 	if payload.BackupPath != "/tmp/auth-backup.json" {
 		t.Fatalf("payload.BackupPath = %q, want /tmp/auth-backup.json", payload.BackupPath)
+	}
+}
+
+func TestCodexRuntimeHandlerUpdatesModel(t *testing.T) {
+	var gotModel string
+	var gotReasoningEffort string
+	server := &Server{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		codexAccounts: &stubCodexAccountService{
+			updateSettings: func(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error) {
+				gotModel = model
+				gotReasoningEffort = reasoningEffort
+				return &codexapp.RuntimeStatus{
+					Command:         "codex",
+					AuthPath:        "/var/lib/alter0/.codex/auth.json",
+					ConfigPath:      "/var/lib/alter0/.codex/config.toml",
+					HasAuth:         true,
+					HasConfig:       true,
+					Model:           model,
+					ReasoningEffort: reasoningEffort,
+				}, nil
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/control/codex/runtime", strings.NewReader(`{"model":"gpt-5.4","reasoning_effort":"high"}`))
+	rec := httptest.NewRecorder()
+	server.codexRuntimeHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotModel != "gpt-5.4" {
+		t.Fatalf("gotModel = %q, want gpt-5.4", gotModel)
+	}
+	if gotReasoningEffort != "high" {
+		t.Fatalf("gotReasoningEffort = %q, want high", gotReasoningEffort)
+	}
+	var payload codexapp.RuntimeStatus
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode runtime response: %v", err)
+	}
+	if payload.Model != "gpt-5.4" {
+		t.Fatalf("payload.Model = %q, want gpt-5.4", payload.Model)
+	}
+	if payload.ReasoningEffort != "high" {
+		t.Fatalf("payload.ReasoningEffort = %q, want high", payload.ReasoningEffort)
 	}
 }

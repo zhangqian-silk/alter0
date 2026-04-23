@@ -292,8 +292,8 @@ Product request
 
 - `internal/control` 管理 Channel、Capability、Skill、MCP、Agent Profile 和 Environment 配置。
 - `internal/llm` 管理 Model Provider、上游 API type、OpenRouter 扩展与密钥状态。
-- `internal/codex/domain` 负责 `auth.json` 快照、身份识别与额度状态模型；`internal/codex/application` 负责账号导入、状态刷新、独立登录会话与活动账号切换；`internal/codex/infrastructure/localfile` 负责 `<active_codex_home>/alter0-accounts` 下的账号快照、备份与登录工作目录。
-- `internal/interfaces/web/frontend` 中的 `ReactManagedCodexAccountsRouteBody` 负责 Codex Accounts 控制面的运行时概览、账号卡片列表、导入/登录操作侧栏与登录会话展示，并复用 `/api/control/codex/accounts*` 控制接口完成刷新与切换；当前 live `auth.json` 未匹配托管快照时，前端需回退展示 `active.live` 快照并输出未托管提示，首次加载阶段则输出同构 skeleton 保持页面结构稳定；账号区按断点切换为多列卡片、全宽卡片区 + 双侧栏和单列卡片，避免额度与切换入口被横向滚动隐藏。
+- `internal/codex/domain` 负责 `auth.json` 快照、身份识别与额度状态模型；`internal/codex/application` 负责账号导入、状态刷新、独立登录会话、活动账号切换，以及通过 Codex app-server 的 `model/list`、`config/read`、`config/batchWrite` 读取真实运行时能力并更新 `model` / `model_reasoning_effort`；`internal/codex/infrastructure/localfile` 负责 `<active_codex_home>/alter0-accounts` 下的账号快照、备份与登录工作目录。
+- `internal/interfaces/web/frontend` 中的 `ReactManagedCodexAccountsRouteBody` 负责 Codex Accounts 控制面的运行时概览、当前 Codex 管理区、账号卡片列表、导入/登录操作侧栏与登录会话展示，并复用 `/api/control/codex/accounts*` 与 `/api/control/codex/runtime` 控制接口完成刷新、切换和运行时设置更新；当前 live `auth.json` 未匹配托管快照时，前端需回退展示 `active.live` 快照并输出未托管提示，首次加载阶段则输出同构 skeleton 保持页面结构稳定；当前 Codex 管理区从后端返回的 `runtime.models` 构建 model 选择器，并按所选 model 的 `supported_reasoning_effort` 联动思考深度选择器；账号区按断点切换为多列卡片、全宽卡片区 + 双侧栏和单列卡片，避免额度、当前 model、思考深度与切换入口被横向滚动隐藏。
 - `cmd/alter0` 管理启动、supervisor、重启、内置配置和运行时 metadata。
 - `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本；Node 初始化同时覆盖 `internal/interfaces/web` 与 `internal/interfaces/web/frontend`。
 - `docs/deployment` 承载 Nginx 与部署权限说明。
@@ -327,10 +327,12 @@ Environment restart
 - Environment registry 按 Web & Queue、Async Tasks、Terminal、Session Memory、Persistent Memory、LLM 模块声明 key、类型、默认值、校验规则、敏感性与生效方式。
 - Environment 配置更新写入 audit store，控制面按时间倒序读取变更记录。
 - Codex Accounts 服务固定解析当前活动 `CODEX_HOME`，未显式设置时回退到 `$HOME/.codex`；托管账号写入 `<active_codex_home>/alter0-accounts`，活动账号切换只替换 `<active_codex_home>/auth.json`。
+- Codex 运行时状态接口同时返回活动 `auth.json`、`config.toml`、CLI 命令、当前 profile、活动 model、思考深度、配置来源与 `model/list` 返回的可选 model 能力集；更新运行时设置时，后端先通过 `config/read` 解析当前生效 key path，再调用 `config/batchWrite` 更新 `model` 与 `model_reasoning_effort`，并触发 `reloadUserConfig` 让当前运行时立即生效。
 - 独立登录会话通过临时 `CODEX_HOME` 执行 `codex login`，完成后再把新 `auth.json` 保存为托管账号，避免直接污染当前正在服务的运行时认证。
+- 独立登录会话在执行 `codex login` 前需显式创建隔离 `CODEX_HOME`，并用覆盖语义注入环境变量，避免宿主进程已有 `CODEX_HOME` 影响登录结果落盘位置。
 - LLM 运行参数 `llm_temperature`、`llm_max_tokens`、`llm_react_max_iterations` 通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider 与模型能力约束。
 - Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换。
-- 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 会校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/assets/*` 与 `/legacy/*`；`http` 服务则把请求反向代理到注册的 upstream。默认 `scripts/deploy_test_service.sh <session_id>` 会为 `web` 合成一条本地后端启动命令，先构建前端产物，再把 `https://<session_short_hash>.alter0.cn` 整体代理到这份当前分支后端，从而让前端与 `/api/*` 保持同一版本。
+- 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 会校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/assets/*` 与 `/legacy/*`；`http` 服务既可反向代理到外部 upstream，也可由共享运行时按注册的 `start_command + workdir + port + health_path` 托管本地子进程。默认 `scripts/deploy_test_service.sh <session_id>` 会为 `web` 合成一条当前分支后端启动命令并注册给共享运行时，先构建前端产物，再让 `https://<session_short_hash>.alter0.cn` 整体代理到这份托管后端，从而让前端与 `/api/*` 保持同一版本。
 - Web 登录态继续由 `server.go` 的 `authMiddleware + loginHandler` 统一管理；当请求 Host 命中主域或其预览子域时，登录 cookie 会把 `Domain` 收敛到根域 `alter0.cn`，使主域工作台与短哈希预览 host 共享同一登录会话，而不是各自维护孤立 cookie。
 - systemd 基线统一 `HOME=/var/lib/alter0`，确保 Codex、gh、git signing、Node/Playwright 工具链使用同一运行账户上下文。
 - 提交签名问题不得通过关闭签名绕过。

@@ -158,12 +158,12 @@
 稳定需求：
 
 - Control API 管理 Channel、Capability、Skill、MCP、Agent Profile、Product、Cron Job、Model Provider、Environment 与 Codex 多账号配置，并保留 Capability 生命周期审计。
-- 共享 Web 运行时需要支持通用 workspace service 注册：`GET /api/control/workspace-services` 查询注册表，`PUT /api/control/workspace-services/{session_id}` 绑定默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 绑定附加服务，`DELETE` 接口用于清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时，共享运行时需按注册类型分发前端构建或反向代理到目标 HTTP 服务。标准 `web` 部署默认应启动当前会话后端并以 `http` 方式绑定短哈希子域名，确保前端与 `/api/*` 同时来自当前分支；`frontend_dist` 仅作为静态预览模式保留。
+- 共享 Web 运行时需要支持通用 workspace service 注册：`GET /api/control/workspace-services` 查询注册表，`PUT /api/control/workspace-services/{session_id}` 绑定默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 绑定附加服务，`DELETE` 接口用于清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时，共享运行时需按注册类型分发前端构建或反向代理到目标 HTTP 服务。标准 `web` 部署默认应把当前会话后端启动命令注册给共享运行时托管，再以 `http` 方式绑定短哈希子域名，确保前端与 `/api/*` 同时来自当前分支；`frontend_dist` 仅作为静态预览模式保留。
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 OpenAI Compatible 与 OpenRouter Provider，支持 `/responses` 与 `/chat/completions`，支持 base URL、API Key 保留语义、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复。
 - `openai-completions` 适配层必须正确序列化 assistant `tool_calls` 与 tool output，兼容严格校验工具消息配对关系的上游 Provider。
 - Environments 页面支持 Web/Queue、Async Tasks、Terminal、Session Memory、Persistent Memory 与 LLM 运行参数可视化配置、敏感值显隐、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、候选二进制构建、readyz 探活与失败回滚。
-- Settings 页面提供 Codex Accounts 面板，使用运行时概览、托管账号卡片列表与操作侧栏承载 `auth.json` 导入、独立登录会话、托管账号状态查看与当前运行时账号切换；若当前运行中的 `auth.json` 尚未导入托管仓库，页面仍需展示该活动账号并提示其处于未托管状态，加载阶段需保留整页骨架布局，并在不同断点下持续暴露套餐、额度与切换入口。
+- Settings 页面提供 Codex Accounts 面板，使用运行时概览、当前 Codex 管理区、托管账号卡片列表与操作侧栏承载 `auth.json` 导入、独立登录会话、托管账号状态查看、当前运行时账号切换，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换；若当前运行中的 `auth.json` 尚未导入托管仓库，页面仍需展示该活动账号并提示其处于未托管状态，加载阶段需保留整页骨架布局，并在不同断点下持续暴露套餐、额度、当前 model、思考深度与切换入口。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、统一 `HOME=/var/lib/alter0`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。
 - Node/Playwright 测试链路通过运行账户级工具链初始化，保证 Codex CLI 可执行 `internal/interfaces/web/frontend` 的构建与单测，以及 `internal/interfaces/web` 的 Playwright E2E。

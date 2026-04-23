@@ -11,6 +11,55 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
   });
 }
 
+function runtimeFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    command: "codex",
+    auth_path: "/var/lib/alter0/.codex/auth.json",
+    config_path: "/var/lib/alter0/.codex/config.toml",
+    has_auth: true,
+    has_config: true,
+    profile: "auto-max",
+    model: "gpt-5.4",
+    reasoning_effort: "high",
+    model_origin: {
+      key_path: "model",
+      file_path: "/var/lib/alter0/.codex/config.toml",
+      version: "user",
+    },
+    reasoning_origin: {
+      key_path: "model_reasoning_effort",
+      file_path: "/var/lib/alter0/.codex/config.toml",
+      version: "user",
+    },
+    models: [
+      {
+        id: "gpt-5.4",
+        model: "gpt-5.4",
+        display_name: "GPT-5.4",
+        description: "Balanced coding model",
+        is_default: true,
+        default_reasoning_effort: "high",
+        supported_reasoning_effort: [
+          { reasoning_effort: "medium", description: "Faster responses" },
+          { reasoning_effort: "high", description: "Balanced depth" },
+        ],
+      },
+      {
+        id: "gpt-5.4-mini",
+        model: "gpt-5.4-mini",
+        display_name: "GPT-5.4 Mini",
+        description: "Lower latency model",
+        default_reasoning_effort: "medium",
+        supported_reasoning_effort: [
+          { reasoning_effort: "low", description: "Lowest latency" },
+          { reasoning_effort: "medium", description: "Recommended default" },
+        ],
+      },
+    ],
+    ...overrides,
+  };
+}
+
 describe("ReactManagedCodexAccountsRouteBody", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
@@ -27,6 +76,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
     expect(screen.getByText("Runtime Overview")).toBeInTheDocument();
+    expect(screen.getByText("Current Codex")).toBeInTheDocument();
     expect(screen.getByText("Managed Accounts")).toBeInTheDocument();
     expect(screen.getByText("Import or Add Account")).toBeInTheDocument();
     expect(screen.getByText("Login Session")).toBeInTheDocument();
@@ -70,6 +120,9 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
             },
             auth_path: "/var/lib/alter0/.codex/auth.json",
           },
+          runtime: {
+            ...runtimeFixture(),
+          },
         }),
       )
       .mockResolvedValueOnce(
@@ -107,6 +160,9 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
               name: "personal",
             },
             auth_path: "/var/lib/alter0/.codex/auth.json",
+          },
+          runtime: {
+            ...runtimeFixture(),
           },
         }),
       );
@@ -150,6 +206,9 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
             },
             auth_path: "/var/lib/alter0/.codex/auth.json",
           },
+          runtime: {
+            ...runtimeFixture(),
+          },
         }),
       )
       .mockResolvedValueOnce(jsonResponse({ name: "work", snapshot: { account_name: "Work Account" } }, { status: 201 }))
@@ -165,6 +224,9 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
             },
           ],
           active: null,
+          runtime: {
+            ...runtimeFixture(),
+          },
         }),
       );
 
@@ -219,7 +281,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
   it("starts a login session and refreshes the session state", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ items: [], active: null }))
+      .mockResolvedValueOnce(jsonResponse({ items: [], active: null, runtime: null }))
       .mockResolvedValueOnce(
         jsonResponse({
           id: "login-1",
@@ -235,7 +297,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
           logs: "open browser",
         }),
       )
-      .mockResolvedValueOnce(jsonResponse({ items: [], active: null }));
+      .mockResolvedValueOnce(jsonResponse({ items: [], active: null, runtime: null }));
 
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
@@ -271,5 +333,88 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       expect.objectContaining({ method: "GET" }),
     );
     expect(screen.getByText("open browser")).toBeInTheDocument();
+  });
+
+  it("shows current codex runtime status and updates the active model and reasoning depth", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [],
+          active: {
+            managed: {
+              name: "work",
+              snapshot: { account_name: "Work Account" },
+            },
+            auth_path: "/var/lib/alter0/.codex/auth.json",
+          },
+          runtime: {
+            ...runtimeFixture(),
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          runtimeFixture({
+            model: "gpt-5.4-mini",
+            reasoning_effort: "low",
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [],
+          active: {
+            managed: {
+              name: "work",
+              snapshot: { account_name: "Work Account" },
+            },
+            auth_path: "/var/lib/alter0/.codex/auth.json",
+          },
+          runtime: {
+            ...runtimeFixture({
+              model: "gpt-5.4-mini",
+              reasoning_effort: "low",
+            }),
+          },
+        }),
+      );
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Current Codex")).toBeInTheDocument();
+      expect(screen.getByLabelText("Model")).toHaveValue("gpt-5.4");
+      expect(screen.getByLabelText("Reasoning Depth")).toHaveValue("high");
+      expect(screen.getByText("/var/lib/alter0/.codex/config.toml")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "gpt-5.4-mini" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Reasoning Depth")).toHaveValue("medium");
+    });
+
+    fireEvent.change(screen.getByLabelText("Reasoning Depth"), {
+      target: { value: "low" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply Runtime Settings" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Runtime settings updated.")).toBeInTheDocument();
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/control/codex/runtime",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ model: "gpt-5.4-mini", reasoning_effort: "low" }),
+      }),
+    );
+    expect(screen.getByLabelText("Model")).toHaveValue("gpt-5.4-mini");
+    expect(screen.getByLabelText("Reasoning Depth")).toHaveValue("low");
   });
 });
