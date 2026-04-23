@@ -3313,10 +3313,10 @@ body::after {
   grid-template-rows: auto minmax(0, 1fr);
   padding: 0;
   overflow: hidden;
-  border: 1px solid rgba(203, 213, 225, 0.82);
-  border-radius: 26px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 248, 252, 0.98) 100%);
-  box-shadow: 0 24px 54px -44px rgba(15, 23, 42, 0.24);
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(246, 249, 253, 0.98) 0%, rgba(241, 246, 251, 0.98) 100%);
+  box-shadow: 0 20px 42px -38px rgba(15, 23, 42, 0.16);
 }
 
 .conversation-session-pane-backdrop {
@@ -3435,15 +3435,6 @@ body::after {
   background: transparent;
   box-shadow: none;
   transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease;
-}
-
-.conversation-session-card.is-active {
-  background: linear-gradient(180deg, #16385b 0%, #0f2740 100%);
-  box-shadow: 0 18px 30px -24px rgba(15, 39, 64, 0.58);
-}
-
-.conversation-session-card:not(.is-active) .conversation-session-badge:not(.is-active) {
-  display: none;
 }
 
 .conversation-session-card:hover {
@@ -3612,17 +3603,13 @@ body::after {
 
 /* Source contract marker: .conversation-session-card.is-active { */
 .conversation-session-card.is-active .conversation-session-title {
-  color: #f8fbff;
+  color: var(--shell-ink);
 }
 
 .conversation-session-card.is-active .conversation-session-meta,
 .conversation-session-card.is-active .conversation-session-hash,
 .conversation-session-card.is-active .conversation-session-delete {
-  color: rgba(226, 236, 248, 0.84);
-}
-
-.conversation-session-card.is-active .conversation-session-delete:hover {
-  color: #ffffff;
+  color: rgba(51, 65, 85, 0.92);
 }
 
 .conversation-session-card.is-active .task-summary-status {
@@ -3633,22 +3620,6 @@ body::after {
 
 .conversation-session-empty {
   margin: 0;
-}
-
-.conversation-session-select.menu-item.active .conversation-session-title {
-  color: #f8fbff;
-}
-
-.conversation-session-select.menu-item.active .conversation-session-meta,
-.conversation-session-select.menu-item.active .conversation-session-badge,
-.conversation-session-select.menu-item.active .conversation-session-hash,
-.conversation-session-select.menu-item.active .task-summary-status {
-  color: rgba(226, 236, 248, 0.84);
-}
-
-.conversation-session-select.menu-item.active .task-summary-status {
-  border-color: rgba(239, 249, 255, 0.2);
-  background: rgba(239, 249, 255, 0.16);
 }
 
 .conversation-session-select:focus-visible,
@@ -4222,15 +4193,6 @@ body::after {
   border-radius: 18px;
 }
 
-.terminal-runtime-view .conversation-session-card:not(.is-active):hover {
-  background: rgba(241, 245, 249, 0.9);
-}
-
-.terminal-runtime-view .conversation-session-card.is-active {
-  background: linear-gradient(180deg, #16385b 0%, #0f2740 100%);
-  box-shadow: 0 18px 30px -24px rgba(15, 39, 64, 0.58);
-}
-
 .terminal-runtime-view .terminal-session-card {
   padding: 10px 10px 10px 12px;
 }
@@ -4257,12 +4219,10 @@ body::after {
 .terminal-runtime-view .conversation-session-title {
   font-size: 15px;
   line-height: 1.25;
-  color: #102a43;
 }
 
 .terminal-runtime-view .conversation-session-meta {
   line-height: 1.5;
-  color: #5b6f86;
 }
 
 .terminal-runtime-view .conversation-session-delete {

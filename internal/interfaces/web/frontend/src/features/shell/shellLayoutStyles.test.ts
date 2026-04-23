@@ -199,11 +199,7 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-card {");
     expect(stylesheet).toContain("border-radius: 14px;");
-    expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-card.is-active {");
-    expect(stylesheet).toContain("background: linear-gradient(180deg, #16385b 0%, #0f2740 100%);");
-    expect(stylesheet).toContain("box-shadow: 0 18px 30px -24px rgba(15, 39, 64, 0.58);");
-    expect(stylesheet).toContain(".conversation-session-select.menu-item.active .conversation-session-title {");
-    expect(stylesheet).toContain("color: #f8fbff;");
+    expect(stylesheet).toContain("background: transparent;");
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-delete {");
     expect(stylesheet).toContain("min-height: auto;");
     expect(stylesheet).toContain(".terminal-runtime-view .conversation-inspector {");
