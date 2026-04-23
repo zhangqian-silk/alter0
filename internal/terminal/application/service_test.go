@@ -410,45 +410,6 @@ func TestServiceRecoverIgnoresTerminalIdentityMismatchInSharedMode(t *testing.T)
 	}
 }
 
-func TestServiceInputResumesExitedSession(t *testing.T) {
-	service := newTestService("success")
-
-	session, err := service.Create(CreateRequest{
-		OwnerID: "owner-exit",
-	})
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-
-	if _, err := service.Input("owner-exit", session.ID, "first prompt"); err != nil {
-		t.Fatalf("first input: %v", err)
-	}
-	firstSnapshot, _ := waitForSessionEntries(t, service, "owner-exit", session.ID, 2)
-	if firstSnapshot.TerminalSessionID != "thread-first-prompt" {
-		t.Fatalf("expected first thread id, got %q", firstSnapshot.TerminalSessionID)
-	}
-
-	closed, err := service.Close("owner-exit", session.ID)
-	if err != nil {
-		t.Fatalf("close session: %v", err)
-	}
-	if closed.Status != terminaldomain.SessionStatusExited {
-		t.Fatalf("expected exited status after close, got %q", closed.Status)
-	}
-
-	if _, err := service.Input("owner-exit", session.ID, "resume prompt"); err != nil {
-		t.Fatalf("resume input: %v", err)
-	}
-
-	resumedSnapshot, resumedEntries := waitForSessionEntries(t, service, "owner-exit", session.ID, 5)
-	if resumedSnapshot.TerminalSessionID != "thread-first-prompt" {
-		t.Fatalf("expected resumed thread id, got %q", resumedSnapshot.TerminalSessionID)
-	}
-	if got := resumedEntries[4].Text; got != "mock:resume prompt" {
-		t.Fatalf("expected resumed reply, got %q", got)
-	}
-}
-
 func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 	baseDir := t.TempDir()
 	service := newTestServiceWithBaseDir("success", baseDir)

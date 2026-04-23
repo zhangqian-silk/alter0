@@ -152,11 +152,10 @@ test.describe("Terminal route", () => {
     const actions = page.locator(".terminal-workspace-actions");
     const status = page.locator(".terminal-runtime-state");
     const detailsButton = page.locator("[data-terminal-meta-toggle]");
-    const closeButton = page.locator("[data-terminal-close]");
 
     await expect(status).toBeVisible();
     await expect(detailsButton).toBeVisible();
-    await expect(closeButton).toBeVisible();
+    await expect(page.locator("[data-terminal-close]")).toHaveCount(0);
     await expect(page.locator("[data-terminal-delete]")).toHaveCount(0);
 
     const rowBox = await workspaceRow.boundingBox();
@@ -974,60 +973,6 @@ test.describe("Terminal route", () => {
     } finally {
       await inputHandle.dispose();
     }
-  });
-
-  test("keeps input available after close for same-session recovery", async ({ page, request }) => {
-    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "close" });
-
-    const composer = terminalPage.composer();
-    const input = composer.input();
-    const submit = composer.submitButton();
-    await input.fill("Reply with exactly: alter0-playwright");
-    await submit.click();
-    await expectComposerValue(composer, "");
-
-    await expect(terminalPage.chatScreen()).toContainText("alter0-playwright");
-
-    const closeButton = terminalPage.closeButton();
-    await expect(closeButton).toBeEnabled();
-    await closeButton.click();
-
-    await expect(terminalPage.workspace()).toContainText("Exited");
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-live", "false");
-    await expect(terminalPage.workspace()).toContainText("Codex session exited. Send a new input to continue in this session.");
-    await expect(input).toBeEnabled();
-    await expect(submit).toBeEnabled();
-    await expectComposerState(composer, { disabled: false });
-  });
-
-  test("clears exited hint immediately after resending in the same session", async ({ page, request }) => {
-    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "close-hint-on-resend" });
-
-    const composer = terminalPage.composer();
-    const input = composer.input();
-    const submit = composer.submitButton();
-    await input.fill("Reply with exactly: close-hint-ready");
-    await submit.click();
-    await expect(terminalPage.chatScreen()).toContainText("close-hint-ready");
-
-    const closeButton = terminalPage.closeButton();
-    await closeButton.click();
-
-    await expect(page.locator("[data-terminal-runtime-note]")).toContainText("Codex session exited. Send a new input to continue in this session.");
-
-    await page.route("**/api/terminal/sessions/*/input", async (route) => {
-      if (route.request().method() === "POST") {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-      await route.continue();
-    });
-
-    await input.fill("Reply with exactly: close-hint-recovered");
-    await submit.click();
-
-    await expect(page.locator("[data-terminal-runtime-note]")).toHaveCount(0);
-    await expect(terminalPage.workspace()).not.toContainText("Codex session exited. Send a new input to continue in this session.");
-    await expect(terminalPage.chatScreen()).toContainText("close-hint-recovered");
   });
 
   test("renders process and plain output with lazy-loaded step details", async ({ page, request }) => {

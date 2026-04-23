@@ -93,11 +93,12 @@ func TestWorkbenchAppOwnsRouteShellState(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/app/WorkbenchApp.tsx")
 	markers := []string{
 		"const [navCollapsed, setNavCollapsed] = useState(false);",
-		"const [navOpen, setNavOpen] = useState(false);",
+		`const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);`,
+		`const navOpen = mobilePanel === "nav";`,
 		`classNames.push("nav-open", "overlay-open")`,
 		`<div className={shellClassName} data-workbench-route={route}>`,
-		`route === "terminal" ? "route-body terminal-route-body" : "route-body"`,
 		`isConversationRoute(route) ? (`,
+		`route === "terminal" ? (`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
@@ -228,7 +229,7 @@ func TestPrimaryNavCollapseStateHooksPresent(t *testing.T) {
 	markers := []string{
 		"const [navCollapsed, setNavCollapsed] = useState(false);",
 		"setNavCollapsed((current) => !current);",
-		"setNavOpen((current) => !current);",
+		`setMobilePanel((current) => current === "nav" ? null : "nav");`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
@@ -252,13 +253,13 @@ func TestPrimaryNavCollapseStateHooksPresent(t *testing.T) {
 func TestConversationWorkspaceSessionSurfacePresent(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
 	markers := []string{
-		`data-conversation-view={runtime.route}`,
+		`"data-conversation-view": runtime.route`,
 		`data-conversation-session-pane`,
 		`data-conversation-session-list`,
 		`data-conversation-workspace`,
 		`data-conversation-chat-screen`,
 		`className="conversation-session-delete"`,
-		`#{item.shortHash}`,
+		`{item.shortHash}`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
@@ -370,7 +371,6 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 		"data-terminal-view",
 		"data-terminal-session-pane",
 		"data-terminal-create",
-		"data-terminal-close",
 		"data-terminal-delete",
 		"data-terminal-step-toggle",
 	}
@@ -385,7 +385,6 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 		".terminal-view {",
 		".terminal-session-card {",
 		".terminal-chat-form {",
-		".terminal-session-close {",
 	}
 	for _, marker := range styleMarkers {
 		if !strings.Contains(styles, marker) {

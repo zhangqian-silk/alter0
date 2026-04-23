@@ -152,9 +152,9 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 
 	workspaceSource := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
 	workspaceMarkers := []string{
-		`className="conversation-chat-form"`,
-		`className="conversation-composer-input"`,
-		`className="conversation-chat-submit"`,
+		`className="terminal-chat-form conversation-chat-form"`,
+		`className="terminal-composer-input conversation-composer-input"`,
+		`className="terminal-chat-submit conversation-chat-submit"`,
 		`maxLength={10000}`,
 	}
 	for _, marker := range workspaceMarkers {

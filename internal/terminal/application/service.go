@@ -490,33 +490,6 @@ func (s *Service) Input(ownerID string, sessionID string, input string) (termina
 	return snapshot, nil
 }
 
-func (s *Service) Close(ownerID string, sessionID string) (terminaldomain.Session, error) {
-	item, err := s.getOwnedSession(ownerID, sessionID)
-	if err != nil {
-		return terminaldomain.Session{}, err
-	}
-
-	item.mu.Lock()
-
-	now := time.Now().UTC()
-	item.closedByUser = true
-	if item.turnCancel != nil {
-		item.turnCancel()
-		item.turnCancel = nil
-	}
-	item.turnRunning = false
-	item.summary.Status = terminaldomain.SessionStatusExited
-	item.summary.ErrorMessage = ""
-	item.summary.ExitCode = nil
-	item.summary.UpdatedAt = now
-	item.summary.FinishedAt = now
-	item.appendEntryLocked("system", "codex session closed")
-	snapshot := item.summary
-	item.mu.Unlock()
-	s.persistSession(item)
-	return snapshot, nil
-}
-
 func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Session, error) {
 	item, err := s.getOwnedSession(ownerID, sessionID)
 	if err != nil {

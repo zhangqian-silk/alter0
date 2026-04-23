@@ -192,7 +192,6 @@ type terminalService interface {
 	GetStepDetail(ownerID string, sessionID string, turnID string, stepID string) (terminalapp.StepDetail, error)
 	ListEntries(ownerID string, sessionID string, cursor int, limit int) (terminalapp.EntryPage, error)
 	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
-	Close(ownerID string, sessionID string) (terminaldomain.Session, error)
 	Delete(ownerID string, sessionID string) (terminaldomain.Session, error)
 }
 

@@ -163,6 +163,7 @@ type ConversationRuntimeContextValue = {
     title: string;
     meta: string;
     shortHash: string;
+    createdAt: number;
     active: boolean;
   }>;
   draft: string;
@@ -1065,6 +1066,7 @@ export function ConversationRuntimeProvider({
       title: session.title,
       meta: buildSessionMeta(session, language),
       shortHash: hashShort(session.id),
+      createdAt: session.createdAt,
       active: session.id === activeSessionID,
     })),
     draft: activeSessionID ? composerDrafts[activeSessionID] || "" : "",
