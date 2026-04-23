@@ -276,6 +276,11 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
     expect(document.querySelector(".terminal-session-select")).toBeInTheDocument();
     expect(document.querySelector(".terminal-session-list-delete")).toBeInTheDocument();
+    expect(document.querySelector(".conversation-session-main")).toBeInTheDocument();
+    expect(document.querySelector(".conversation-session-title-row")).toBeInTheDocument();
+    expect(document.querySelector(".conversation-session-title-row")?.textContent).toContain("Workspace shell");
+    expect(document.querySelector(".conversation-session-summary-row")).toBeInTheDocument();
+    expect(document.querySelector(".conversation-session-bottomline")).toBeInTheDocument();
     expect(within(document.querySelector("[data-terminal-session-pane]") as HTMLElement).getByRole("list")).toHaveAttribute(
       "data-terminal-session-list",
       "true",
@@ -292,6 +297,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".terminal-workspace-head")).toHaveClass("is-compact");
     expect(document.querySelector(".terminal-workspace-row")).toHaveClass("conversation-workspace-row", "is-compact");
     expect(document.querySelector(".terminal-workspace-copy")).toHaveClass("conversation-workspace-copy", "is-compact");
+    expect(document.querySelector("[data-terminal-close]")).not.toBeInTheDocument();
     expect(document.querySelector("[data-terminal-console-panel]")).toBeInTheDocument();
     expect(document.querySelector(".terminal-chat-form")).toBeInTheDocument();
     expect(document.querySelector(".terminal-chat-form .terminal-composer-tools")).toBeInTheDocument();
@@ -303,6 +309,83 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
       "<li>/workspace/alter0</li>",
     );
+  });
+
+  it("groups terminal sessions into recency sections in the shared sidebar", async () => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(todayStart.getDate() - 1);
+    const earlierStart = new Date(todayStart);
+    earlierStart.setDate(todayStart.getDate() - 5);
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: new Date(todayStart.getTime() + (60 * 60 * 1000)).toISOString(),
+              updated_at: new Date(todayStart.getTime() + (2 * 60 * 60 * 1000)).toISOString(),
+            },
+            {
+              id: "terminal-2",
+              title: "Gemini parity review",
+              terminal_session_id: "terminal-2",
+              status: "busy",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: new Date(yesterdayStart.getTime() + (60 * 60 * 1000)).toISOString(),
+              updated_at: new Date(yesterdayStart.getTime() + (2 * 60 * 60 * 1000)).toISOString(),
+            },
+            {
+              id: "terminal-3",
+              title: "Older archival session",
+              terminal_session_id: "terminal-3",
+              status: "exited",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: new Date(earlierStart.getTime() + (60 * 60 * 1000)).toISOString(),
+              updated_at: new Date(earlierStart.getTime() + (2 * 60 * 60 * 1000)).toISOString(),
+            },
+          ],
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: new Date(todayStart.getTime() + (60 * 60 * 1000)).toISOString(),
+            updated_at: new Date(todayStart.getTime() + (2 * 60 * 60 * 1000)).toISOString(),
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
+    });
+
+    const sessionPane = document.querySelector("[data-terminal-session-pane]") as HTMLElement;
+    expect(within(sessionPane).getByText("Today")).toBeInTheDocument();
+    expect(within(sessionPane).getByText("Yesterday")).toBeInTheDocument();
+    expect(within(sessionPane).getByText("Earlier")).toBeInTheDocument();
+    expect(within(sessionPane).getAllByRole("listitem")).toHaveLength(3);
   });
 
   it("loads step detail when expanding a process step", async () => {

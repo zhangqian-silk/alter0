@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { createAPIClient } from "../../../shared/api/client";
+import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
 import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
 import { getLegacyShellCopy } from "../legacyShellCopy";
 import { RuntimeWorkspaceFrame } from "./RuntimeWorkspaceFrame";
@@ -86,7 +87,6 @@ type TerminalCopy = {
   exited: string;
   failed: string;
   interrupted: string;
-  close: string;
   delete: string;
   deleteConfirm: string;
   inputPlaceholder: string;
@@ -133,7 +133,6 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     exited: "Exited",
     failed: "Failed",
     interrupted: "Interrupted",
-    close: "Close",
     delete: "Delete",
     deleteConfirm: "Delete this terminal session?",
     inputPlaceholder: "Type command or prompt...",
@@ -178,7 +177,6 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     exited: "已退出",
     failed: "失败",
     interrupted: "已中断",
-    close: "关闭",
     delete: "删除",
     deleteConfirm: "确认删除这个终端会话？",
     inputPlaceholder: "输入命令或继续追问...",
@@ -714,7 +712,6 @@ export function ReactManagedTerminalRouteBody() {
   const [activeSessionID, setActiveSessionID] = useState("");
   const [metaOpen, setMetaOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [closing, setClosing] = useState(false);
   const [deletingSessionID, setDeletingSessionID] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -743,6 +740,14 @@ export function ReactManagedTerminalRouteBody() {
     anchoredToBottom: boolean;
   } | null>(null);
   const draftPersistTimerRef = useRef<number | null>(null);
+  const groupedSessions = useMemo(
+    () => groupSessionListItems(sessions, {
+      language,
+      getTimestamp: (session) =>
+        parseTimestamp(session.updated_at) || parseTimestamp(session.last_output_at) || parseTimestamp(session.created_at),
+    }),
+    [language, sessions],
+  );
 
   const activeSession = sessions.find((session) => session.id === activeSessionID) || null;
   const turns = Array.isArray(activeSession?.turns) ? activeSession.turns : [];
@@ -1131,30 +1136,6 @@ export function ReactManagedTerminalRouteBody() {
     await refreshActiveSession(sessionID);
   };
 
-  const closeSession = async () => {
-    if (!activeSession || closing) {
-      return;
-    }
-    setClosing(true);
-    try {
-      const payload = await apiClient.post<TerminalSessionResponse>(
-        `/api/terminal/sessions/${encodeURIComponent(activeSession.id)}/close`,
-        {},
-      );
-      if (payload.session) {
-        setSessions((current) =>
-          sortSessions(
-            current.map((session) =>
-              session.id === activeSession.id ? (payload.session as TerminalSession) : session,
-            ),
-          ),
-        );
-      }
-    } finally {
-      setClosing(false);
-    }
-  };
-
   const deleteSession = async (sessionID: string) => {
     if (!window.confirm(copy.deleteConfirm)) {
       return;
@@ -1269,9 +1250,8 @@ export function ReactManagedTerminalRouteBody() {
   const activeNote = runtimeNote(activeSession?.status || "", copy);
   const runtimeDetail = String(activeSession?.error_message || "").trim();
   const composerNote = [activeNote, runtimeDetail].filter(Boolean).join(" | ");
-  const canClose = Boolean(activeSession && isLiveStatus(activeSession.status || ""));
   const canInput = !activeSession || activeStatus !== "busy";
-  const isWorkspaceLive = canClose ? "true" : "false";
+  const isWorkspaceLive = activeSession && isLiveStatus(activeSession.status || "") ? "true" : "false";
   const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
 
   return (
@@ -1342,66 +1322,81 @@ export function ReactManagedTerminalRouteBody() {
               </button>
             </div>
           </div>
-          <div className="terminal-session-list conversation-session-list menu-group" data-terminal-session-list role="list">
+          <div className="terminal-session-list conversation-session-list menu" data-terminal-session-list role="list">
             {loadError ? <p className="route-empty-panel">{loadError}</p> : null}
-            {!loadError && !loading && sessions.length === 0 ? (
+            {!loadError && !loading && groupedSessions.length === 0 ? (
               <p className="route-empty-panel terminal-session-empty">{copy.empty}</p>
             ) : null}
-            {sessions.map((session) => {
-              const active = session.id === activeSessionID;
-              return (
-                <div
-                  key={session.id}
-                  role="listitem"
-                  className={`route-card terminal-session-card conversation-session-card${active ? " active is-active" : ""}`}
-                  data-terminal-session-card={session.id}
-                  data-terminal-session-status={normalizeStatus(session.status || "")}
-                >
-                  <button
-                    className={`route-card-button terminal-session-select conversation-session-select menu-item${active ? " active" : ""}`}
-                    type="button"
-                    data-terminal-session-select={session.id}
-                    aria-current={active ? "true" : undefined}
-                    onClick={() => void selectSession(session.id)}
-                  >
-                    <span className="conversation-session-topline terminal-session-topline">
-                      <span
-                        className={active ? "conversation-session-badge is-active" : "conversation-session-badge"}
-                        data-terminal-session-activity={active ? "active" : "idle"}
+            {groupedSessions.map((group) => (
+              <section key={group.key} className="conversation-session-group menu-group" aria-label={group.label}>
+                <h2 className="conversation-session-group-label">{group.label}</h2>
+                <div className="conversation-session-group-items">
+                  {group.items.map((session) => {
+                    const active = session.id === activeSessionID;
+                    return (
+                      <div
+                        key={session.id}
+                        role="listitem"
+                        className={`route-card terminal-session-card conversation-session-card${active ? " active is-active" : ""}`}
+                        data-terminal-session-card={session.id}
+                        data-terminal-session-status={normalizeStatus(session.status || "")}
                       >
-                        {active ? copy.current : copy.sessionLabel}
-                      </span>
-                      <span className={`task-summary-status ${sessionStatusClassName(session.status || "")}`}>
-                        {renderStatus(session.status || "", copy)}
-                      </span>
-                    </span>
-                    <span className="terminal-session-head">
-                      <span className="route-card-title-copy">
-                        <span className="terminal-session-title conversation-session-title">
-                          {normalizeText(session.title || session.id)}
-                        </span>
-                        <span className="terminal-session-meta conversation-session-meta">
-                          {sessionLastOutputLabel(session, copy)}
-                        </span>
-                        <span className="conversation-session-hash">
-                          #{normalizeText(session.terminal_session_id || session.id)}
-                        </span>
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    className="terminal-session-list-delete conversation-session-delete"
-                    type="button"
-                    data-terminal-delete-session={session.id}
-                    aria-label={copy.delete}
-                    disabled={deletingSessionID === session.id}
-                    onClick={() => void deleteSession(session.id)}
-                  >
-                    {copy.delete}
-                  </button>
+                        <button
+                          className={`route-card-button terminal-session-select conversation-session-select${active ? " active" : ""}`}
+                          type="button"
+                          data-terminal-session-select={session.id}
+                          aria-current={active ? "true" : undefined}
+                          onClick={() => void selectSession(session.id)}
+                        >
+                          <span className="conversation-session-main">
+                            <span className="conversation-session-topline terminal-session-topline">
+                              <span
+                                className={active ? "conversation-session-badge is-active" : "conversation-session-badge"}
+                                data-terminal-session-activity={active ? "active" : "idle"}
+                              >
+                                {active ? copy.current : copy.sessionLabel}
+                              </span>
+                              <span className={`task-summary-status ${sessionStatusClassName(session.status || "")}`}>
+                                {renderStatus(session.status || "", copy)}
+                              </span>
+                            </span>
+                            <span className="terminal-session-head">
+                              <span className="route-card-title-copy">
+                                <span className="conversation-session-title-row">
+                                  <span className="terminal-session-title conversation-session-title">
+                                    {normalizeText(session.title || session.id)}
+                                  </span>
+                                </span>
+                                <span className="conversation-session-summary-row">
+                                  <span className="terminal-session-meta conversation-session-meta">
+                                    {sessionLastOutputLabel(session, copy)}
+                                  </span>
+                                </span>
+                              </span>
+                            </span>
+                            <span className="conversation-session-bottomline">
+                              <span className="conversation-session-hash">
+                                {normalizeText(session.terminal_session_id || session.id)}
+                              </span>
+                            </span>
+                          </span>
+                        </button>
+                        <button
+                          className="terminal-session-list-delete conversation-session-delete"
+                          type="button"
+                          data-terminal-delete-session={session.id}
+                          aria-label={copy.delete}
+                          disabled={deletingSessionID === session.id}
+                          onClick={() => void deleteSession(session.id)}
+                        >
+                          {copy.delete}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </section>
+            ))}
           </div>
         </>
       }
@@ -1451,15 +1446,6 @@ export function ReactManagedTerminalRouteBody() {
                 onClick={() => setMetaOpen((current) => !current)}
               >
                 {copy.details}
-              </button>
-              <button
-                className="terminal-session-close"
-                type="button"
-                data-terminal-close
-                disabled={!canClose || closing}
-                onClick={() => void closeSession()}
-              >
-                {copy.close}
               </button>
             </div>
           </div>

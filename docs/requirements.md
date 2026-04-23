@@ -54,7 +54,7 @@
 - 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新。
 - Web 前端所有时间显示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Cron 创建表单默认时区固定为 `Asia/Shanghai`。
 - Web 侧边栏、历史折叠、页面滚动隔离、克制冷灰工作台阅读主题、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
-- 会话侧栏中的 Session 卡片需保持主仓库式紧凑结构：标题单行省略，摘要信息独立换行，短 hash 与复制/删除入口收纳在卡片下缘，不再拆出额外胶囊操作区。
+- 会话侧栏中的 Session 列表需采用工作台式最近时间分组：按 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`）收口，并与主导航 `menu` 复用同一套分组容器、hover 与激活态视觉；条目按导航式线性关系排布，标题独立一行并在可用宽度内单行截断、摘要独立换行、短 hash 固定在条目下缘、删除动作以尾侧轻量文本操作收纳，不再拆出额外 footer 或胶囊操作区。
 - Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；运行页共享同一套 slot 化 workspace scaffold，`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace，`terminal` 在保持原有交互与 DOM 契约的前提下直接挂在共享 `workbench-pane-shell` 下复用同一骨架，不再额外包裹 `route-view / route-body`，`agent / products / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 React 直接请求控制台或会话 API 渲染。壳层稳定暴露 `app-shell[data-workbench-route]` 与各视图自己的 `data-route / data-conversation-*` 作为样式钩子；`legacy` 资源仅保留兼容样式，不再保留 `LegacyWebShell / ReactRuntimeFacade / bridge / snapshot store`。
 - `/chat` 与 `/login` 默认以英文启动，HTML 根节点语言标记为 `en`；Web Shell 保留显式语言切换入口，切到中文后需同步更新壳层文案与 `document.documentElement.lang`。
 - 登录页需与工作台共享同一视觉基线：使用 `IBM Plex Sans + Sora` 字体组合、近白卡片表面与安全入口语气，避免退回默认系统登录页样式。
@@ -65,7 +65,7 @@
 - 主导航、控制台与资产页默认以高密度信息架构呈现：导航组与条目间距压缩，控制面长列表优先使用表格或主从视图，不再把大量配置和任务详情平铺为低密度卡片矩阵。
 - 移动端 Web Shell 使用 `VisualViewport` 驱动的 `--mobile-viewport-height` 与 `--keyboard-offset` 协调壳体和输入区：浏览器工具栏切换时壳体继续贴合可视区域，软键盘弹起时主工作区保持稳定高度，仅输入区按键盘偏移移动，不出现底部空白、内容裁切或整页上移。
 - 移动端运行页的 `Menu` 与 `Sessions` 抽屉必须保持统一开合语义：二者共用同一份当前面板状态，始终互斥；打开其一时立即关闭另一侧，点击遮罩、切换路由、切换会话或创建新会话后不得残留旧的展开层。
-- 移动端运行页的 `Menu / Sessions` 抽屉需优先保证真机稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不叠加多层位移、淡出或条目级顺序动画；抽屉内会话项统一采用「状态文本 / 标题 / 摘要 / 短标识 / 尾侧删除」结构，避免退回松散白卡片或过度胶囊化。
+- 移动端运行页的 `Menu / Sessions` 抽屉需优先保证真机稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不叠加多层位移、淡出或条目级顺序动画；抽屉内会话项按最近时间分组，并统一采用「状态文本 / 标题 / 摘要 / 底部短标识 / 尾侧删除」结构，避免退回松散白卡片或过度胶囊化。
 - 共享运行时的短哈希预览 host 与主域工作台必须落在同一登录保护边界内：`/login` 可直接在预览 host 打开，登录态 cookie 需对 `*.alter0.cn` 生效，避免主域与预览子域重复维护独立会话。
 - `Chat / Agent Runtime` 的移动端键盘弹出链路需与 `Terminal` 对齐：首次触摸输入框时使用 `preventScroll` 聚焦并在聚焦阶段持续锚定 `window.scrollY = 0`，不允许首次弹出软键盘时把公共操作行顶出可视区，也不允许因 `VisualViewport` 首次收缩造成页面整体分辨率/可视区域突变。
 - `Chat / Agent Runtime / Terminal` 在移动端采用固定底部 Composer 时，消息滚动区与空态工作区都必须按当前 Composer 的真实遮挡高度动态回收；对话、长输出与空态说明不得落到输入区下方，也不得依赖静态 padding 估算占位。
@@ -121,10 +121,10 @@
 - 默认工作区按执行上下文隔离：Chat/Agent 使用 `.alter0/workspaces/sessions/<session_id>`，Task 使用其会话下的 `tasks/<task_id>`，Terminal 使用 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
 - 直连 Codex 的 Chat / Agent / Product 会话会在各自工作区下额外维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Terminal 会话会在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与步骤视图索引。
-- Terminal API 支持会话创建、列表、恢复、输入、关闭、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
+- Terminal API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
 - Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/step 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
 - Terminal 恢复默认优先复用已持久化 Codex CLI 线程；若续写命中远端 compact 失败，则保留原会话历史与工作区，并在下一次输入时自动改用同会话下的新线程继续执行。
-- Terminal 工作区支持 `Close`，会话列表支持 `Delete`：关闭仅退出运行态，删除同步清理状态文件和独立工作区。
+- Terminal 会话删除统一从会话列表触发，`Delete` 会同步清理状态文件和独立工作区；工作区头部不再提供单独的 `Close` 入口。
 - Terminal 历史在同一 Web 登录态下跨设备共享，不按浏览器 client 标识隔离；不设置产品级会话数量上限或固定超时淘汰。
 - Terminal 移动端、输入稳定性、滚动导航、Process 折叠、一键复制、长输出阅读、轮询降频与缓存写入节奏作为 Terminal 子域体验要求维护。
 - Terminal 发送按钮首次点击必须立即进入 pending 反馈；若当前还没有 active session，前端允许先创建会话再继续发送，但首击期间按钮需同步切到 `Sending...` 与禁用态，避免重复点击和“第一次点击无反应”的错觉。

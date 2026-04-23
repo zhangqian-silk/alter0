@@ -46,12 +46,13 @@ func TestConversationSessionListShowsCompactMetadata(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
 	markers := []string{
 		`data-conversation-session-pane`,
-		`data-testid="conversation-session-pane"`,
-		`className="conversation-session-list"`,
+		`"data-testid": "conversation-session-pane"`,
+		`className="conversation-session-list menu"`,
 		`className="conversation-session-title"`,
 		`className="conversation-session-meta"`,
 		`className="conversation-session-hash"`,
-		"#{item.shortHash}",
+		`className="conversation-session-bottomline"`,
+		`{item.shortHash}`,
 		"runtime.sessionItems.length",
 	}
 	for _, marker := range markers {
@@ -110,10 +111,12 @@ func TestWorkbenchMobileNavOverlayStylesPresent(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/app/WorkbenchApp.tsx")
 	sourceMarkers := []string{
 		"const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());",
-		"const mobile = isLegacyShellMobileViewport();",
+		`const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);`,
+		`const navOpen = mobilePanel === "nav";`,
+		`const sessionPaneOpen = mobilePanel === "sessions";`,
 		`classNames.push("nav-open", "overlay-open")`,
 		"if (!mobile) {",
-		"setNavOpen(false);",
+		"setMobilePanel(null);",
 		"if (isMobileViewport) {",
 	}
 	for _, marker := range sourceMarkers {
@@ -170,10 +173,10 @@ func TestMobileTerminalComposerConsumesViewportInsetVariables(t *testing.T) {
 	terminalMarkers := []string{
 		"height: min(100%, var(--mobile-viewport-height, 100dvh));",
 		"position: fixed;",
-		"bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-offset));",
+		"bottom: var(--keyboard-offset);",
 		"padding: 0 10px calc(10px + env(safe-area-inset-bottom));",
-		"transition: bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);",
-		"padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) calc(132px + env(safe-area-inset-bottom));",
+		"gap: 6px;",
+		"padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) 20px;",
 	}
 	for _, marker := range terminalMarkers {
 		if !strings.Contains(terminalStyles, marker) {
@@ -237,8 +240,10 @@ func TestTerminalMobileActionsLinkWorkbenchNavAndSessionDrawer(t *testing.T) {
 		`const shellCopy = getLegacyShellCopy(workbench.language);`,
 		`className="terminal-mobile-header" data-terminal-mobile-header`,
 		`className="terminal-mobile-header-actions"`,
-		`workbench.toggleMobileNav();`,
-		`workbench.closeMobileNav();`,
+		`aria-expanded={workbench.mobileNavOpen}`,
+		`onClick={workbench.toggleMobileNav}`,
+		`aria-expanded={workbench.mobileSessionPaneOpen}`,
+		`onClick={workbench.toggleMobileSessionPane}`,
 		`{shellCopy.chatMenu}`,
 		`{copy.sessions}`,
 		`{copy.newShort}`,

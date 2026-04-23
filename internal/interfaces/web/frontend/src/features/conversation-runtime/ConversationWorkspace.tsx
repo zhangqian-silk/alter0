@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../app/WorkbenchContext";
+import { groupSessionListItems } from "../../shared/time/sessionListGroups";
 import { ChatMessageRegion } from "../shell/components/ChatMessageRegion";
 import { RuntimeWorkspaceFrame } from "../shell/components/RuntimeWorkspaceFrame";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShellCopy";
@@ -49,6 +50,14 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   const deleteSessionLabel = language === "zh" ? "删除" : "Delete";
   const deleteSessionAriaLabel = language === "zh" ? "删除会话" : "Delete session";
   const composerMetaLabel = `${sessionCountLabel} · ${runtime.draft.length}/${10000}`;
+  const groupedSessionItems = useMemo(
+    () => groupSessionListItems(runtime.sessionItems, {
+      language,
+      getTimestamp: (item) => item.createdAt,
+    }),
+    [language, runtime.sessionItems],
+  );
+  const sessionEmptyLabel = runtime.route === "agent-runtime" ? copy.sessionEmptyAgent : copy.sessionEmpty;
 
   useEffect(() => {
     workbench.closeMobileSessionPane();
@@ -261,41 +270,61 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
               ) : null}
             </div>
           </div>
-          <div className="conversation-session-list menu-group" data-conversation-session-list role="list">
-            {runtime.sessionItems.map((item) => (
-              <div
-                key={item.id}
-                role="listitem"
-                className={item.active ? "conversation-session-card is-active" : "conversation-session-card"}
-                data-conversation-session-state={item.active ? "active" : "idle"}
+          <div className="conversation-session-list menu" data-conversation-session-list role="list">
+            {groupedSessionItems.length === 0 ? <p className="route-empty-panel conversation-session-empty">{sessionEmptyLabel}</p> : null}
+            {groupedSessionItems.map((group) => (
+              <section
+                key={group.key}
+                className="conversation-session-group menu-group"
+                aria-label={group.label}
               >
-                <button
-                  className={item.active ? "conversation-session-select menu-item active" : "conversation-session-select menu-item"}
-                  type="button"
-                  aria-current={item.active ? "true" : undefined}
-                  onClick={() => handleFocusSession(item.id)}
-                >
-                  <span className="conversation-session-topline">
-                    <span
-                      className={item.active ? "conversation-session-badge is-active" : "conversation-session-badge"}
-                      data-conversation-session-badge={item.active ? "active" : "idle"}
+                <h2 className="conversation-session-group-label">{group.label}</h2>
+                <div className="conversation-session-group-items">
+                  {group.items.map((item) => (
+                    <div
+                      key={item.id}
+                      role="listitem"
+                      className={item.active ? "conversation-session-card is-active" : "conversation-session-card"}
+                      data-conversation-session-state={item.active ? "active" : "idle"}
                     >
-                      {item.active ? activeSessionBadgeLabel : idleSessionBadgeLabel}
-                    </span>
-                    <span className="conversation-session-hash">#{item.shortHash}</span>
-                  </span>
-                  <span className="conversation-session-title">{item.title}</span>
-                  <span className="conversation-session-meta">{item.meta}</span>
-                </button>
-                <button
-                  className="conversation-session-delete"
-                  type="button"
-                  aria-label={deleteSessionAriaLabel}
-                  onClick={() => void handleRemoveSession(item.id)}
-                >
-                  {deleteSessionLabel}
-                </button>
-              </div>
+                      <button
+                        className={item.active ? "conversation-session-select active" : "conversation-session-select"}
+                        type="button"
+                        aria-current={item.active ? "true" : undefined}
+                        onClick={() => handleFocusSession(item.id)}
+                      >
+                        <span className="conversation-session-main">
+                          <span className="conversation-session-topline">
+                            <span
+                              className={item.active ? "conversation-session-badge is-active" : "conversation-session-badge"}
+                              data-conversation-session-badge={item.active ? "active" : "idle"}
+                            >
+                              {item.active ? activeSessionBadgeLabel : idleSessionBadgeLabel}
+                            </span>
+                          </span>
+                          <span className="conversation-session-title-row">
+                            <span className="conversation-session-title">{item.title}</span>
+                          </span>
+                          <span className="conversation-session-summary-row">
+                            <span className="conversation-session-meta">{item.meta}</span>
+                          </span>
+                          <span className="conversation-session-bottomline">
+                            <span className="conversation-session-hash">{item.shortHash}</span>
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        className="conversation-session-delete"
+                        type="button"
+                        aria-label={deleteSessionAriaLabel}
+                        onClick={() => void handleRemoveSession(item.id)}
+                      >
+                        {deleteSessionLabel}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         </>

@@ -20,6 +20,7 @@ const runtimeMock = {
       title: "New Chat",
       meta: "now",
       shortHash: "abcd1234",
+      createdAt: Date.parse("2026-04-23T09:00:00Z"),
       active: true,
     },
   ],
@@ -130,6 +131,7 @@ describe("ConversationWorkspace", () => {
         title: "New Chat",
         meta: "now",
         shortHash: "abcd1234",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
       },
     ];
@@ -162,6 +164,11 @@ describe("ConversationWorkspace", () => {
       "true",
     );
     expect(within(screen.getByTestId("conversation-session-pane")).getAllByRole("listitem")).toHaveLength(1);
+    expect(document.querySelector(".conversation-session-main")).toBeInTheDocument();
+    expect(document.querySelector(".conversation-session-title-row")).toBeInTheDocument();
+    expect(document.querySelector(".conversation-session-title-row")?.textContent).toContain("New Chat");
+    expect(document.querySelector(".conversation-session-summary-row")).toBeInTheDocument();
+    expect(document.querySelector(".conversation-session-bottomline")).toBeInTheDocument();
     expect(document.querySelector(".conversation-session-pane-shell")).toHaveClass(
       "terminal-session-pane-shell",
       "conversation-session-pane-shell",
@@ -212,6 +219,50 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "New" }));
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("groups session rows into recency sections like a workspace sidebar", () => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(todayStart.getDate() - 1);
+    const earlierStart = new Date(todayStart);
+    earlierStart.setDate(todayStart.getDate() - 5);
+    runtimeMock.sessionItems = [
+      {
+        id: "session-1",
+        title: "Ship session sidebar refresh",
+        meta: "Chat · 12 messages · just now",
+        shortHash: "abcd1234",
+        createdAt: todayStart.getTime() + (2 * 60 * 60 * 1000),
+        active: true,
+      },
+      {
+        id: "session-2",
+        title: "Review Gemini layout notes",
+        meta: "Chat · 4 messages · 2 hr ago",
+        shortHash: "efgh5678",
+        createdAt: yesterdayStart.getTime() + (2 * 60 * 60 * 1000),
+        active: false,
+      },
+      {
+        id: "session-3",
+        title: "Archive older shell ideas",
+        meta: "Chat · 2 messages · 36 hr ago",
+        shortHash: "ijkl9012",
+        createdAt: earlierStart.getTime() + (2 * 60 * 60 * 1000),
+        active: false,
+      },
+    ];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    const sessionPane = screen.getByTestId("conversation-session-pane");
+    expect(within(sessionPane).getByText("Today")).toBeInTheDocument();
+    expect(within(sessionPane).getByText("Yesterday")).toBeInTheDocument();
+    expect(within(sessionPane).getByText("Earlier")).toBeInTheDocument();
+    expect(within(sessionPane).getAllByRole("button", { name: "Delete session" })).toHaveLength(3);
+    expect(within(sessionPane).getAllByRole("listitem")).toHaveLength(3);
   });
 
   it("focuses the mobile composer on first touch so keyboard handling matches terminal", () => {
@@ -269,6 +320,7 @@ describe("ConversationWorkspace", () => {
         title: "Fix runtime shell",
         meta: "now",
         shortHash: "abcd1234",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
       },
     ];
@@ -313,6 +365,7 @@ describe("ConversationWorkspace", () => {
         title: "New Agent Session",
         meta: "now",
         shortHash: "abcd1234",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
       },
     ];
@@ -352,6 +405,7 @@ describe("ConversationWorkspace", () => {
         title: "Investigate release drift",
         meta: "now",
         shortHash: "abcd1234",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
       },
     ];
@@ -415,6 +469,7 @@ describe("ConversationWorkspace", () => {
         title: "Investigate release drift",
         meta: "now",
         shortHash: "abcd1234",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
       },
     ];

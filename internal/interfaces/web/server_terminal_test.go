@@ -25,8 +25,6 @@ type stubWebTerminalService struct {
 	getOK       bool
 	inputResp   terminaldomain.Session
 	inputErr    error
-	closeResp   terminaldomain.Session
-	closeErr    error
 	deleteResp  terminaldomain.Session
 	deleteErr   error
 	turnsResp   []terminalapp.TurnSummary
@@ -84,12 +82,6 @@ func (s *stubWebTerminalService) Input(ownerID string, sessionID string, input s
 	s.lastID = sessionID
 	s.lastInput = input
 	return s.inputResp, s.inputErr
-}
-
-func (s *stubWebTerminalService) Close(ownerID string, sessionID string) (terminaldomain.Session, error) {
-	s.lastOwnerID = ownerID
-	s.lastID = sessionID
-	return s.closeResp, s.closeErr
 }
 
 func (s *stubWebTerminalService) Delete(ownerID string, sessionID string) (terminaldomain.Session, error) {
@@ -205,18 +197,8 @@ func TestTerminalSessionRecoverHandlerRestoresStoredSession(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionItemHandlerClosesSession(t *testing.T) {
-	service := &stubWebTerminalService{
-		closeResp: terminaldomain.Session{
-			ID:         "terminal-3",
-			OwnerID:    sharedTerminalClientID,
-			Title:      "terminal-3",
-			Status:     terminaldomain.SessionStatusExited,
-			CreatedAt:  time.Now().UTC(),
-			UpdatedAt:  time.Now().UTC(),
-			FinishedAt: time.Now().UTC(),
-		},
-	}
+func TestTerminalSessionItemHandlerRejectsRemovedCloseRoute(t *testing.T) {
+	service := &stubWebTerminalService{}
 	server := &Server{terminals: service}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-3/close", nil)
@@ -224,14 +206,11 @@ func TestTerminalSessionItemHandlerClosesSession(t *testing.T) {
 
 	server.terminalSessionItemHandler(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", rec.Code)
 	}
-	if service.lastOwnerID != sharedTerminalClientID {
-		t.Fatalf("expected shared owner, got %q", service.lastOwnerID)
-	}
-	if service.lastID != "terminal-3" {
-		t.Fatalf("expected session terminal-3, got %q", service.lastID)
+	if service.lastID != "" {
+		t.Fatalf("expected close route to bypass terminal service, got %q", service.lastID)
 	}
 }
 
