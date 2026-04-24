@@ -62,6 +62,25 @@ function InspectorHarness() {
   );
 }
 
+function ModelSelectionHarness() {
+  const runtime = useConversationRuntime();
+
+  return (
+    <div>
+      <button type="button" onClick={() => runtime.selectModel("alter0-codex", "codex")}>
+        select codex
+      </button>
+      <button type="button" onClick={() => void runtime.sendPrompt("Run this with Codex")}>
+        send with codex
+      </button>
+      <output data-testid="selected-model">{runtime.selectedModelLabel}</output>
+      <output data-testid="provider-list">
+        {runtime.providers.map((provider) => `${provider.name}:${provider.models.map((model) => model.name).join(",")}`).join("|")}
+      </output>
+    </div>
+  );
+}
+
 describe("ConversationRuntimeProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -252,5 +271,73 @@ describe("ConversationRuntimeProvider", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "model" }));
     await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("model:open"));
+  });
+
+  it("adds a Codex option for chat model selection and sends codex execution metadata", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/control/llm/providers":
+          return {
+            items: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                is_default: true,
+                default_model: "gpt-5.4",
+                models: [
+                  {
+                    id: "gpt-5.4",
+                    name: "GPT-5.4",
+                    is_enabled: true,
+                    supports_vision: true,
+                  },
+                ],
+              },
+            ],
+          };
+        case "/api/control/skills":
+        case "/api/control/mcps":
+        case "/api/agents":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: done\ndata: {"result":{"output":"done"}}\n\n'));
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ModelSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("provider-list")).toHaveTextContent("Codex:Codex"));
+
+    fireEvent.click(screen.getByRole("button", { name: "select codex" }));
+    await waitFor(() => expect(screen.getByTestId("selected-model")).toHaveTextContent("Codex"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send with codex" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      metadata?: Record<string, string>;
+    };
+    expect(request.metadata?.["alter0.execution.engine"]).toBe("codex");
+    expect(request.metadata?.["alter0.llm.provider_id"]).toBeUndefined();
+    expect(request.metadata?.["alter0.llm.model"]).toBeUndefined();
   });
 });

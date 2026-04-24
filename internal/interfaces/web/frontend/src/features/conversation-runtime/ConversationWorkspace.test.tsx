@@ -151,6 +151,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.target = { type: "model", id: "raw-model", name: "Raw Model" };
     runtimeMock.selectedModelLabel = "DeepSeek V3.2";
     runtimeMock.selectedModelSupportsVision = true;
+    runtimeMock.providers = [];
     runtimeMock.toolCount = 0;
     runtimeMock.skillCount = 0;
     runtimeMock.draft = "";
@@ -162,6 +163,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.removeDraftAttachment.mockClear();
     runtimeMock.clearDraftAttachments.mockClear();
     runtimeMock.sendPrompt.mockClear();
+    runtimeMock.selectModel.mockClear();
   });
 
   it("keeps the shared workspace header visible alongside terminal-style mobile actions for an empty chat workspace", () => {
@@ -282,6 +284,40 @@ describe("ConversationWorkspace", () => {
     expect(within(sessionPane).getByText("Earlier")).toBeInTheDocument();
     expect(within(sessionPane).getAllByRole("button", { name: "Delete session" })).toHaveLength(3);
     expect(within(sessionPane).getAllByRole("listitem")).toHaveLength(3);
+  });
+
+  it("shows a Codex chip in the chat model selector and forwards selection", () => {
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "model";
+    runtimeMock.providers = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        models: [
+          { id: "gpt-5.4", name: "GPT-5.4", supportsVision: true, active: false },
+        ],
+      },
+      {
+        id: "alter0-codex",
+        name: "Codex",
+        models: [
+          { id: "codex", name: "Codex", supportsVision: true, active: true },
+        ],
+      },
+    ];
+    runtimeMock.selectedProviderId = "alter0-codex";
+    runtimeMock.selectedModelId = "codex";
+    runtimeMock.selectedModelLabel = "Codex";
+
+    renderWorkspace({ isMobileViewport: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+
+    const codexButton = screen.getByRole("button", { name: "Codex" });
+    expect(codexButton).toBeInTheDocument();
+
+    fireEvent.click(codexButton);
+    expect(runtimeMock.selectModel).toHaveBeenCalledWith("alter0-codex", "codex");
   });
 
   it("focuses the mobile composer on first touch so keyboard handling matches terminal", () => {

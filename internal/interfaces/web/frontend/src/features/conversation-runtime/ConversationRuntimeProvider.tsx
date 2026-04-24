@@ -26,6 +26,12 @@ const AGENT_FALLBACK_ENDPOINT = "/api/agent/messages";
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_TASK_POLL_INTERVAL_MS = 3000;
 const SESSION_STORAGE_DEBOUNCE_MS = 180;
+const EXECUTION_ENGINE_METADATA_KEY = "alter0.execution.engine";
+const EXECUTION_ENGINE_CODEX = "codex";
+const LLM_PROVIDER_METADATA_KEY = "alter0.llm.provider_id";
+const LLM_MODEL_METADATA_KEY = "alter0.llm.model";
+const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
+const CODEX_RUNTIME_MODEL_ID = "codex";
 
 export type ConversationRoute = "chat" | "agent-runtime";
 
@@ -258,6 +264,36 @@ function normalizeChatTarget(target?: { type?: string; id?: string; name?: strin
 
 function defaultChatTarget(): ChatTarget {
   return normalizeChatTarget({ type: "model", id: "raw-model", name: "Raw Model" });
+}
+
+function isCodexRuntimeSelection(providerID: string, modelID: string): boolean {
+  return normalizeText(providerID) === CODEX_RUNTIME_PROVIDER_ID && normalizeText(modelID) === CODEX_RUNTIME_MODEL_ID;
+}
+
+function codexRuntimeProvider(): ChatProvider {
+  return {
+    id: CODEX_RUNTIME_PROVIDER_ID,
+    name: "Codex",
+    default_model: CODEX_RUNTIME_MODEL_ID,
+    models: [
+      {
+        id: CODEX_RUNTIME_MODEL_ID,
+        name: "Codex",
+        is_enabled: true,
+        supports_vision: true,
+      },
+    ],
+  };
+}
+
+function runtimeProvidersForRoute(route: ConversationRoute, providers: ChatProvider[]): ChatProvider[] {
+  if (route !== "chat") {
+    return providers;
+  }
+  if (providers.some((provider) => normalizeText(provider.id) === CODEX_RUNTIME_PROVIDER_ID)) {
+    return providers;
+  }
+  return [...providers, codexRuntimeProvider()];
 }
 
 function normalizeSelectionIDs(values: unknown): string[] {
@@ -591,6 +627,24 @@ function resolveModelSelection(session: ChatSession | null, providers: ChatProvi
   };
 }
 
+function buildMessageMetadata(
+  session: ChatSession | null,
+  selection: { providerID: string; modelID: string },
+): Record<string, string> {
+  const metadata: Record<string, string> = {
+    "alter0.agent.tools": JSON.stringify(session?.toolIDs || []),
+    "alter0.skills.include": JSON.stringify(session?.skillIDs || []),
+    "alter0.mcp.request.enable": JSON.stringify(session?.mcpIDs || []),
+  };
+  if (isCodexRuntimeSelection(selection.providerID, selection.modelID)) {
+    metadata[EXECUTION_ENGINE_METADATA_KEY] = EXECUTION_ENGINE_CODEX;
+    return metadata;
+  }
+  metadata[LLM_PROVIDER_METADATA_KEY] = selection.providerID;
+  metadata[LLM_MODEL_METADATA_KEY] = selection.modelID;
+  return metadata;
+}
+
 function normalizeTaskStatus(status: string): string {
   return normalizeText(status).toLowerCase() || "queued";
 }
@@ -696,6 +750,7 @@ export function ConversationRuntimeProvider({
   const activeSessionID = activeSessionByRoute[route];
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
   const activeDraftAttachments = activeSessionID ? composerAttachmentDrafts[activeSessionID] || [] : [];
+  const availableProviders = runtimeProvidersForRoute(route, providers);
 
   const persistSessionsStateNow = (nextSessionsByRoute: SessionsState, nextActiveState: ActiveSessionState) => {
     writeJSONStorage(SESSION_STORAGE_KEY, toPersistedSessions(nextSessionsByRoute));
@@ -884,7 +939,7 @@ export function ConversationRuntimeProvider({
     attachments: ComposerImageAttachment[],
   ) => {
     const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
-    const selection = resolveModelSelection(session, providers);
+    const selection = resolveModelSelection(session, runtimeProvidersForRoute(routeKey, providers));
     const body = await apiClient.post<{
       result?: {
         output?: string;
@@ -901,13 +956,7 @@ export function ConversationRuntimeProvider({
         channel_id: "web-default",
         content,
         attachments: attachments.map(serializeMessageAttachment),
-        metadata: {
-          "alter0.llm.provider_id": selection.providerID,
-          "alter0.llm.model": selection.modelID,
-          "alter0.agent.tools": JSON.stringify(session?.toolIDs || []),
-          "alter0.skills.include": JSON.stringify(session?.skillIDs || []),
-          "alter0.mcp.request.enable": JSON.stringify(session?.mcpIDs || []),
-        },
+        metadata: buildMessageMetadata(session, selection),
         ...(routeKey === "agent-runtime" ? { agent_id: target.id } : {}),
       },
     );
@@ -936,7 +985,7 @@ export function ConversationRuntimeProvider({
     attachments: ComposerImageAttachment[],
   ): Promise<StreamResult> => {
     const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
-    const selection = resolveModelSelection(session, providers);
+    const selection = resolveModelSelection(session, runtimeProvidersForRoute(routeKey, providers));
     let sawEvent = false;
     let sawDone = false;
     let output = "";
@@ -952,13 +1001,7 @@ export function ConversationRuntimeProvider({
         channel_id: "web-default",
         content,
         attachments: attachments.map(serializeMessageAttachment),
-        metadata: {
-          "alter0.llm.provider_id": selection.providerID,
-          "alter0.llm.model": selection.modelID,
-          "alter0.agent.tools": JSON.stringify(session?.toolIDs || []),
-          "alter0.skills.include": JSON.stringify(session?.skillIDs || []),
-          "alter0.mcp.request.enable": JSON.stringify(session?.mcpIDs || []),
-        },
+        metadata: buildMessageMetadata(session, selection),
         ...(routeKey === "agent-runtime" ? { agent_id: target.id } : {}),
       }),
     });
@@ -1245,8 +1288,8 @@ export function ConversationRuntimeProvider({
     return () => window.clearTimeout(pollTimerRef.current);
   }, [apiClient, pendingTasksVersion, sessionsByRoute]);
 
-  const selection = resolveModelSelection(activeSession, providers);
-  const selectedProvider = enabledProviders(providers).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
+  const selection = resolveModelSelection(activeSession, availableProviders);
+  const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
   const selectedModel = enabledModels(selectedProvider).find((model) => normalizeText(model.id) === selection.modelID) || null;
   const currentTarget = activeSession?.target || (route === "agent-runtime"
     ? normalizeChatTarget({
@@ -1290,7 +1333,7 @@ export function ConversationRuntimeProvider({
     selectedModelId: selection.modelID,
     selectedModelLabel: selectedModel?.name || selectedModel?.id || "Default",
     selectedModelSupportsVision: selectedModel ? selectedModel.supports_vision !== false : true,
-    providers: enabledProviders(providers).map((provider) => ({
+    providers: enabledProviders(availableProviders).map((provider) => ({
       id: normalizeText(provider.id),
       name: normalizeText(provider.name) || normalizeText(provider.id),
       models: enabledModels(provider).map((model) => ({
@@ -1494,7 +1537,7 @@ export function ConversationRuntimeProvider({
     selection.modelID,
     selectedModel?.name,
     selectedModel?.id,
-    providers,
+    availableProviders,
     mcps,
     skills,
     activeSessionByRoute,

@@ -32,4 +32,12 @@ describe("renderRuntimeMarkdownToHTML", () => {
     expect(html).toContain("<p>bad</p>");
     expect(html).toContain("<p>oops</p>");
   });
+
+  it("decodes html entities into readable text before rendering", () => {
+    const container = document.createElement("div");
+    container.innerHTML = renderRuntimeMarkdownToHTML("Chat &gt; Details &gt; Model &amp; Quota");
+
+    expect(container.textContent).toContain("Chat > Details > Model & Quota");
+    expect(container.textContent).not.toContain("&gt;");
+  });
 });
