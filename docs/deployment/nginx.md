@@ -1,6 +1,6 @@
 # Nginx 反向代理与登录保护
 
-本方案用于公网部署场景：`alter0` 仅监听本机回环地址，由 Nginx 对外暴露，并通过应用内登录页进行访问控制。若启用 Session 短哈希预览或附加测试服务，主域和通配子域都应转发到同一个共享运行时实例，由应用层按 Host 动态分发对应工作区服务。
+本方案用于公网部署场景：`alter0` 仅监听本机回环地址，由 Nginx 对外暴露，并通过应用内登录页进行访问控制。若启用 Session 短哈希预览或附加测试服务，主域和工作区子域都应转发到同一个共享运行时实例，由应用层按 Host 动态分发对应工作区服务。
 
 ## 1. 运行参数（最小安全基线）
 
@@ -28,7 +28,7 @@ go run ./cmd/alter0 \
 ```nginx
 server {
     listen 80;
-    server_name alter0.cn *.alter0.cn;
+    server_name alter0.cn *.alter0.cn *.travel.alter0.cn;
 
     client_max_body_size 20m;
 
@@ -50,9 +50,11 @@ server {
 ### Session 短哈希网关
 
 - 共享运行时支持把默认 `web` 服务映射到 `https://<session_short_hash>.alter0.cn`，并把附加服务映射到 `https://<service>.<session_short_hash>.alter0.cn`。
+- `travel` 服务是唯一例外，固定映射到 `https://<session_short_hash>.travel.alter0.cn`；示例配置里仍显式列出 `*.travel.alter0.cn`，便于运维侧直接识别这条公开攻略入口。
 - 动态注册通过 `PUT /api/control/workspace-services/{session_id}/{service_id}` 完成，仓库内提供 `scripts/deploy_test_service.sh` 作为标准入口。默认 `web` 部署会启动当前分支后端并把短哈希根子域名注册为 `http` 反代；只有显式 `--service-type frontend_dist` 时才使用纯静态前端分发。
 - Nginx 不需要为每个会话动态改配置，只需保证 `*.alter0.cn` 与主域一起回源到同一 `alter0` 进程。
-- 预览 host 的 `/login` 仍由同一个 `alter0` 进程处理；登录 cookie 需要对根域 `alter0.cn` 生效，这样主域与短哈希预览 host 能共享工作台登录态。
+- 标准预览 host 的 `/login` 仍由同一个 `alter0` 进程处理；登录 cookie 需要对根域 `alter0.cn` 生效，这样主域与短哈希预览 host 能共享工作台登录态。
+- `travel` host 为公开只读入口，不需要登录；共享运行时仅返回静态 HTML 和资源，不透传 `/api/*`、登录页或其他工作台路由。
 
 ## 3. 最简单密码配置方案
 

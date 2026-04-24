@@ -65,3 +65,41 @@ func TestAgentCapabilityRoundTripPreservesRuntimeCatalogFields(t *testing.T) {
 		t.Fatalf("unexpected capabilities: %+v", decoded.Capabilities)
 	}
 }
+
+func TestAgentCapabilityRoundTripPreservesSessionProfileFields(t *testing.T) {
+	agent := Agent{
+		ID:      "coding",
+		Name:    "Coding Agent",
+		Type:    CapabilityTypeAgent,
+		Enabled: true,
+		Scope:   CapabilityScopeGlobal,
+		SessionProfileFields: []AgentSessionProfileField{
+			{
+				Key:         "repository_path",
+				Label:       "Repository",
+				Description: "Dedicated repository workspace path",
+				ReadOnly:    true,
+			},
+			{
+				Key:      "branch",
+				Label:    "Branch",
+				ReadOnly: true,
+			},
+		},
+	}
+
+	decoded := AgentFromCapability(agent.AsCapability())
+
+	if len(decoded.SessionProfileFields) != 2 {
+		t.Fatalf("expected 2 session profile fields, got %+v", decoded.SessionProfileFields)
+	}
+	if decoded.SessionProfileFields[0].Key != "repository_path" || decoded.SessionProfileFields[0].Label != "Repository" {
+		t.Fatalf("unexpected first field: %+v", decoded.SessionProfileFields[0])
+	}
+	if decoded.SessionProfileFields[0].Description != "Dedicated repository workspace path" || !decoded.SessionProfileFields[0].ReadOnly {
+		t.Fatalf("unexpected first field metadata: %+v", decoded.SessionProfileFields[0])
+	}
+	if decoded.SessionProfileFields[1].Key != "branch" || decoded.SessionProfileFields[1].Label != "Branch" || !decoded.SessionProfileFields[1].ReadOnly {
+		t.Fatalf("unexpected second field: %+v", decoded.SessionProfileFields[1])
+	}
+}

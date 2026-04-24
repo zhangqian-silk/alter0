@@ -3,7 +3,7 @@ import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { formatDateTime } from "../../shared/time/format";
 import { groupSessionListItems } from "../../shared/time/sessionListGroups";
 import { buildChatTimelineItems } from "../shell/components/ChatMessageRegion";
-import { normalizeText } from "../shell/components/RouteBodyPrimitives";
+import { normalizeText, RouteFieldRow } from "../shell/components/RouteBodyPrimitives";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
 import { useRuntimeComposerViewportSync } from "../shell/components/useRuntimeComposerViewportSync";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShellCopy";
@@ -90,6 +90,8 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const modelInspectorOpen = runtime.inspectorOpen && runtime.inspectorTab === "model";
   const capabilitiesInspectorOpen = runtime.inspectorOpen && runtime.inspectorTab === "capabilities";
   const skillsInspectorOpen = runtime.inspectorOpen && runtime.inspectorTab === "skills";
+  const sessionProfileInspectorOpen = runtime.inspectorOpen && runtime.inspectorTab === "session-profile";
+  const sessionProfileFields = runtime.activeSessionProfile?.fields || runtime.activeAgent?.session_profile_fields || [];
 
   useEffect(() => {
     workbench.closeMobileSessionPane();
@@ -305,6 +307,11 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
             <button className={skillsInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("skills")}>
               {copy.runtimeSkills}
             </button>
+            {runtime.route === "agent-runtime" && sessionProfileFields.length > 0 ? (
+              <button className={sessionProfileInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("session-profile")}>
+                {language === "zh" ? "Session Profile" : "Session Profile"}
+              </button>
+            ) : null}
           </div>
 
           {targetInspectorOpen && runtime.route === "agent-runtime" ? (
@@ -403,6 +410,30 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
                       <span><strong>{item.name}</strong><small>{item.description}</small></span>
                     </label>
                   ))}
+                </div>
+              </section>
+            </div>
+          ) : null}
+
+          {sessionProfileInspectorOpen && runtime.route === "agent-runtime" ? (
+            <div className="conversation-inspector-sections">
+              <section className="conversation-inspector-section">
+                <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
+                <div className="workspace-details-summary">
+                  {sessionProfileFields.map((field) => {
+                    const value = runtime.activeSessionProfile?.attributes?.[field.key] || "-";
+                    return (
+                      <RouteFieldRow
+                        key={field.key}
+                        label={field.label}
+                        value={value}
+                        copyLabel={language === "zh" ? "复制值" : "Copy value"}
+                        copyable={field.readonly !== false}
+                        mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
+                        multiline={value.length > 48}
+                      />
+                    );
+                  })}
                 </div>
               </section>
             </div>

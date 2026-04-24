@@ -81,6 +81,19 @@ function ModelSelectionHarness() {
   );
 }
 
+function AgentSessionProfileHarness() {
+  const runtime = useConversationRuntime();
+  return (
+    <output data-testid="session-profile-state">
+      {JSON.stringify({
+        agentID: runtime.activeAgent?.id || "",
+        fields: runtime.activeSessionProfile?.fields || [],
+        attributes: runtime.activeSessionProfile?.attributes || {},
+      })}
+    </output>
+  );
+}
+
 describe("ConversationRuntimeProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -339,5 +352,98 @@ describe("ConversationRuntimeProvider", () => {
     expect(request.metadata?.["alter0.execution.engine"]).toBe("codex");
     expect(request.metadata?.["alter0.llm.provider_id"]).toBeUndefined();
     expect(request.metadata?.["alter0.llm.model"]).toBeUndefined();
+  });
+
+  it("loads agent session profile details for the active runtime session", async () => {
+    window.sessionStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "agent-session-1",
+          title: "Coding runtime",
+          titleAuto: false,
+          titleScore: 1,
+          createdAt: Date.parse("2026-04-23T03:30:00Z"),
+          targetType: "agent",
+          targetID: "coding",
+          targetName: "Coding Agent",
+          modelProviderID: "",
+          modelID: "",
+          toolIDs: [],
+          skillIDs: [],
+          mcpIDs: [],
+          messages: [],
+        },
+      ]),
+    );
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-session-1" }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            {
+              id: "coding",
+              name: "Coding Agent",
+              enabled: true,
+              session_profile_fields: [
+                { key: "repository_path", label: "Repository", readonly: true },
+                { key: "branch", label: "Branch", readonly: true },
+              ],
+            },
+          ],
+        };
+      }
+      if (path === "/api/agent/session-profile?agent_id=coding&session_id=agent-session-1") {
+        return {
+          agent_id: "coding",
+          session_id: "agent-session-1",
+          path: ".alter0/agents/coding/sessions/agent-session-1.md",
+          exists: true,
+          fields: [
+            { key: "repository_path", label: "Repository", readonly: true },
+            { key: "branch", label: "Branch", readonly: true },
+          ],
+          attributes: {
+            repository_path: "/workspace/alter0-remote",
+            branch: "feature/session-profile",
+          },
+        };
+      }
+      return { items: [] };
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <AgentSessionProfileHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      "/api/agent/session-profile?agent_id=coding&session_id=agent-session-1",
+    ));
+
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("session-profile-state").textContent || "{}") as {
+        agentID?: string;
+        fields?: Array<{ key?: string }>;
+        attributes?: Record<string, string>;
+      };
+      expect(payload.agentID).toBe("coding");
+      expect(payload.fields?.[0]?.key).toBe("repository_path");
+      expect(payload.attributes?.repository_path).toBe("/workspace/alter0-remote");
+      expect(payload.attributes?.branch).toBe("feature/session-profile");
+    });
   });
 });

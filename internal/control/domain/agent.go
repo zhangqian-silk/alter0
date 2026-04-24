@@ -22,6 +22,7 @@ const (
 	agentDelegatableMetadataKey   = "agent.delegatable"
 	agentUIRouteMetadataKey       = "agent.ui_route"
 	agentCapabilitiesMetadataKey  = "agent.capabilities"
+	agentSessionProfileFieldsKey  = "agent.session_profile_fields"
 )
 
 const (
@@ -34,28 +35,36 @@ const (
 )
 
 type Agent struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Type          CapabilityType    `json:"type"`
-	Enabled       bool              `json:"enabled"`
-	Scope         CapabilityScope   `json:"scope"`
-	Version       string            `json:"version"`
-	ProviderID    string            `json:"provider_id,omitempty"`
-	Model         string            `json:"model,omitempty"`
-	SystemPrompt  string            `json:"system_prompt,omitempty"`
-	MaxIterations int               `json:"max_iterations,omitempty"`
-	Tools         []string          `json:"tools,omitempty"`
-	Skills        []string          `json:"skills,omitempty"`
-	MCPs          []string          `json:"mcps,omitempty"`
-	MemoryFiles   []string          `json:"memory_files,omitempty"`
-	Source        string            `json:"source,omitempty"`
-	Kind          string            `json:"kind,omitempty"`
-	Description   string            `json:"description,omitempty"`
-	EntryPoint    bool              `json:"entrypoint,omitempty"`
-	Delegatable   bool              `json:"delegatable,omitempty"`
-	UIRoute       string            `json:"ui_route,omitempty"`
-	Capabilities  []string          `json:"capabilities,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	ID                   string                     `json:"id"`
+	Name                 string                     `json:"name"`
+	Type                 CapabilityType             `json:"type"`
+	Enabled              bool                       `json:"enabled"`
+	Scope                CapabilityScope            `json:"scope"`
+	Version              string                     `json:"version"`
+	ProviderID           string                     `json:"provider_id,omitempty"`
+	Model                string                     `json:"model,omitempty"`
+	SystemPrompt         string                     `json:"system_prompt,omitempty"`
+	MaxIterations        int                        `json:"max_iterations,omitempty"`
+	Tools                []string                   `json:"tools,omitempty"`
+	Skills               []string                   `json:"skills,omitempty"`
+	MCPs                 []string                   `json:"mcps,omitempty"`
+	MemoryFiles          []string                   `json:"memory_files,omitempty"`
+	SessionProfileFields []AgentSessionProfileField `json:"session_profile_fields,omitempty"`
+	Source               string                     `json:"source,omitempty"`
+	Kind                 string                     `json:"kind,omitempty"`
+	Description          string                     `json:"description,omitempty"`
+	EntryPoint           bool                       `json:"entrypoint,omitempty"`
+	Delegatable          bool                       `json:"delegatable,omitempty"`
+	UIRoute              string                     `json:"ui_route,omitempty"`
+	Capabilities         []string                   `json:"capabilities,omitempty"`
+	Metadata             map[string]string          `json:"metadata,omitempty"`
+}
+
+type AgentSessionProfileField struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+	ReadOnly    bool   `json:"readonly,omitempty"`
 }
 
 func (a Agent) AsCapability() Capability {
@@ -76,6 +85,7 @@ func (a Agent) AsCapability() Capability {
 	setAgentListMetadata(metadata, agentSkillsMetadataKey, a.Skills)
 	setAgentListMetadata(metadata, agentMCPsMetadataKey, a.MCPs)
 	setAgentListMetadata(metadata, agentMemoryFilesMetadataKey, a.MemoryFiles)
+	setAgentSessionProfileFieldsMetadata(metadata, a.SessionProfileFields)
 	setAgentMetadata(metadata, agentSourceMetadataKey, a.Source)
 	setAgentMetadata(metadata, agentKindMetadataKey, a.Kind)
 	setAgentMetadata(metadata, agentDescriptionMetadataKey, a.Description)
@@ -108,28 +118,29 @@ func AgentFromCapability(capability Capability) Agent {
 		}
 	}
 	agent := Agent{
-		ID:            normalized.ID,
-		Name:          normalized.Name,
-		Type:          normalized.Type,
-		Enabled:       normalized.Enabled,
-		Scope:         normalized.Scope,
-		Version:       normalized.Version,
-		ProviderID:    strings.TrimSpace(metadata[agentProviderIDMetadataKey]),
-		Model:         strings.TrimSpace(metadata[agentModelMetadataKey]),
-		SystemPrompt:  metadata[agentSystemPromptMetadataKey],
-		MaxIterations: maxIterations,
-		Tools:         parseAgentListMetadata(metadata[agentToolsMetadataKey]),
-		Skills:        parseAgentListMetadata(metadata[agentSkillsMetadataKey]),
-		MCPs:          parseAgentListMetadata(metadata[agentMCPsMetadataKey]),
-		MemoryFiles:   parseAgentListMetadata(metadata[agentMemoryFilesMetadataKey]),
-		Source:        normalizeAgentAttribute(metadata[agentSourceMetadataKey]),
-		Kind:          normalizeAgentAttribute(metadata[agentKindMetadataKey]),
-		Description:   strings.TrimSpace(metadata[agentDescriptionMetadataKey]),
-		EntryPoint:    parseAgentBoolMetadata(metadata[agentEntryPointMetadataKey]),
-		Delegatable:   parseAgentBoolMetadata(metadata[agentDelegatableMetadataKey]),
-		UIRoute:       strings.TrimSpace(metadata[agentUIRouteMetadataKey]),
-		Capabilities:  parseAgentListMetadata(metadata[agentCapabilitiesMetadataKey]),
-		Metadata:      metadata,
+		ID:                   normalized.ID,
+		Name:                 normalized.Name,
+		Type:                 normalized.Type,
+		Enabled:              normalized.Enabled,
+		Scope:                normalized.Scope,
+		Version:              normalized.Version,
+		ProviderID:           strings.TrimSpace(metadata[agentProviderIDMetadataKey]),
+		Model:                strings.TrimSpace(metadata[agentModelMetadataKey]),
+		SystemPrompt:         metadata[agentSystemPromptMetadataKey],
+		MaxIterations:        maxIterations,
+		Tools:                parseAgentListMetadata(metadata[agentToolsMetadataKey]),
+		Skills:               parseAgentListMetadata(metadata[agentSkillsMetadataKey]),
+		MCPs:                 parseAgentListMetadata(metadata[agentMCPsMetadataKey]),
+		MemoryFiles:          parseAgentListMetadata(metadata[agentMemoryFilesMetadataKey]),
+		SessionProfileFields: parseAgentSessionProfileFieldsMetadata(metadata[agentSessionProfileFieldsKey]),
+		Source:               normalizeAgentAttribute(metadata[agentSourceMetadataKey]),
+		Kind:                 normalizeAgentAttribute(metadata[agentKindMetadataKey]),
+		Description:          strings.TrimSpace(metadata[agentDescriptionMetadataKey]),
+		EntryPoint:           parseAgentBoolMetadata(metadata[agentEntryPointMetadataKey]),
+		Delegatable:          parseAgentBoolMetadata(metadata[agentDelegatableMetadataKey]),
+		UIRoute:              strings.TrimSpace(metadata[agentUIRouteMetadataKey]),
+		Capabilities:         parseAgentListMetadata(metadata[agentCapabilitiesMetadataKey]),
+		Metadata:             metadata,
 	}
 	delete(agent.Metadata, agentProviderIDMetadataKey)
 	delete(agent.Metadata, agentModelMetadataKey)
@@ -139,6 +150,7 @@ func AgentFromCapability(capability Capability) Agent {
 	delete(agent.Metadata, agentSkillsMetadataKey)
 	delete(agent.Metadata, agentMCPsMetadataKey)
 	delete(agent.Metadata, agentMemoryFilesMetadataKey)
+	delete(agent.Metadata, agentSessionProfileFieldsKey)
 	delete(agent.Metadata, agentSourceMetadataKey)
 	delete(agent.Metadata, agentKindMetadataKey)
 	delete(agent.Metadata, agentDescriptionMetadataKey)
@@ -202,6 +214,22 @@ func setAgentListMetadata(metadata map[string]string, key string, values []strin
 	metadata[key] = string(encoded)
 }
 
+func setAgentSessionProfileFieldsMetadata(metadata map[string]string, fields []AgentSessionProfileField) {
+	if metadata == nil {
+		return
+	}
+	normalized := normalizeAgentSessionProfileFields(fields)
+	if len(normalized) == 0 {
+		delete(metadata, agentSessionProfileFieldsKey)
+		return
+	}
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return
+	}
+	metadata[agentSessionProfileFieldsKey] = string(encoded)
+}
+
 func parseAgentListMetadata(raw string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -225,6 +253,18 @@ func parseAgentBoolMetadata(raw string) bool {
 	}
 }
 
+func parseAgentSessionProfileFieldsMetadata(raw string) []AgentSessionProfileField {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var fields []AgentSessionProfileField
+	if err := json.Unmarshal([]byte(trimmed), &fields); err != nil {
+		return nil
+	}
+	return normalizeAgentSessionProfileFields(fields)
+}
+
 func normalizeAgentAttribute(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
 }
@@ -246,6 +286,36 @@ func normalizeAgentList(values []string) []string {
 		}
 		seen[lookup] = struct{}{}
 		items = append(items, trimmed)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return items
+}
+
+func normalizeAgentSessionProfileFields(fields []AgentSessionProfileField) []AgentSessionProfileField {
+	if len(fields) == 0 {
+		return nil
+	}
+	items := make([]AgentSessionProfileField, 0, len(fields))
+	seen := map[string]struct{}{}
+	for _, field := range fields {
+		key := strings.TrimSpace(field.Key)
+		label := strings.TrimSpace(field.Label)
+		if key == "" || label == "" {
+			continue
+		}
+		lookup := strings.ToLower(key)
+		if _, ok := seen[lookup]; ok {
+			continue
+		}
+		seen[lookup] = struct{}{}
+		items = append(items, AgentSessionProfileField{
+			Key:         key,
+			Label:       label,
+			Description: strings.TrimSpace(field.Description),
+			ReadOnly:    field.ReadOnly,
+		})
 	}
 	if len(items) == 0 {
 		return nil

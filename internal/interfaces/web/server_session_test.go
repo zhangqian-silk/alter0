@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	agentapp "alter0/internal/agent/application"
+	controlapp "alter0/internal/control/application"
+	controldomain "alter0/internal/control/domain"
 	sessionapp "alter0/internal/session/application"
 	sessiondomain "alter0/internal/session/domain"
 	shareddomain "alter0/internal/shared/domain"
@@ -321,5 +324,73 @@ func TestSessionDeleteHandlerReturnsTaskDeleteFailure(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+}
+
+func TestAgentSessionProfileHandlerReturnsSchemaAndAttributes(t *testing.T) {
+	baseDir := t.TempDir()
+	profilePath := filepath.Join(baseDir, ".alter0", "agents", "coding", "sessions", "session-coding.md")
+	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
+		t.Fatalf("prepare session profile dir: %v", err)
+	}
+	content := `# Agent Session Profile
+
+<!-- alter0:agent-session:auto:start -->
+## Session Identity
+- agent_id: coding
+- session_id: session-coding
+
+## Instance Attributes
+- repository_path: /workspace/alter0-remote
+- branch: feature/session-profile
+- preview_subdomain: coding-run-42
+<!-- alter0:agent-session:auto:end -->
+
+## Notes
+<!-- alter0:agent-session:notes:start -->
+<!-- alter0:agent-session:notes:end -->
+`
+	if err := os.WriteFile(profilePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write session profile: %v", err)
+	}
+
+	control := controlapp.NewService()
+	server := &Server{
+		control:       control,
+		agents:        agentapp.NewCatalog(control),
+		workspaceRoot: baseDir,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/session-profile?agent_id=coding&session_id=session-coding", nil)
+	rec := httptest.NewRecorder()
+	server.agentSessionProfileHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		AgentID    string                                   `json:"agent_id"`
+		SessionID  string                                   `json:"session_id"`
+		Path       string                                   `json:"path"`
+		Exists     bool                                     `json:"exists"`
+		Fields     []controldomain.AgentSessionProfileField `json:"fields"`
+		Attributes map[string]string                        `json:"attributes"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if response.AgentID != "coding" || response.SessionID != "session-coding" || !response.Exists {
+		t.Fatalf("unexpected response envelope: %+v", response)
+	}
+	if len(response.Fields) < 4 {
+		t.Fatalf("expected builtin coding fields, got %+v", response.Fields)
+	}
+	if response.Attributes["repository_path"] != "/workspace/alter0-remote" {
+		t.Fatalf("expected repository_path attribute, got %+v", response.Attributes)
+	}
+	if response.Attributes["preview_subdomain"] != "coding-run-42" {
+		t.Fatalf("expected preview_subdomain attribute, got %+v", response.Attributes)
 	}
 }

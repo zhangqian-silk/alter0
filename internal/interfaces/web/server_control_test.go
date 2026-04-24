@@ -285,7 +285,7 @@ func TestRuntimeAgentCatalogListsBuiltinEntrypoints(t *testing.T) {
 		if item.ID == "coding" && item.Source == controldomain.AgentSourceBuiltin && item.EntryPoint {
 			foundCoding = true
 		}
-		if item.ID == "travel-master" && item.Source == controldomain.AgentSourceBuiltin && item.EntryPoint {
+		if item.ID == "travel" && item.Source == controldomain.AgentSourceBuiltin && item.EntryPoint {
 			foundTravel = true
 		}
 	}
@@ -293,7 +293,19 @@ func TestRuntimeAgentCatalogListsBuiltinEntrypoints(t *testing.T) {
 		t.Fatalf("expected builtin coding entrypoint in runtime list, got %+v", response.Items)
 	}
 	if !foundTravel {
-		t.Fatalf("expected builtin travel-master entrypoint in runtime list, got %+v", response.Items)
+		t.Fatalf("expected builtin travel entrypoint in runtime list, got %+v", response.Items)
+	}
+	for _, item := range response.Items {
+		if item.ID == "coding" {
+			if len(item.SessionProfileFields) < 4 {
+				t.Fatalf("expected coding session profile fields, got %+v", item.SessionProfileFields)
+			}
+		}
+		if item.ID == "travel" {
+			if len(item.SessionProfileFields) < 2 {
+				t.Fatalf("expected travel session profile fields, got %+v", item.SessionProfileFields)
+			}
+		}
 	}
 }
 

@@ -107,6 +107,13 @@ type ChatCapability = {
   enabled?: boolean;
 };
 
+type AgentSessionProfileField = {
+  key: string;
+  label: string;
+  description?: string;
+  readonly?: boolean;
+};
+
 type ChatAgent = {
   id: string;
   name: string;
@@ -115,6 +122,16 @@ type ChatAgent = {
   tools?: string[];
   skills?: string[];
   mcps?: string[];
+  session_profile_fields?: AgentSessionProfileField[];
+};
+
+type ChatAgentSessionProfile = {
+  agent_id: string;
+  session_id: string;
+  path: string;
+  exists: boolean;
+  fields: AgentSessionProfileField[];
+  attributes: Record<string, string>;
 };
 
 type ChatTaskResponse = {
@@ -182,7 +199,7 @@ type ConversationRuntimeContextValue = {
   route: ConversationRoute;
   compact: boolean;
   inspectorOpen: boolean;
-  inspectorTab: "target" | "model" | "capabilities" | "skills";
+  inspectorTab: "target" | "model" | "capabilities" | "skills" | "session-profile";
   sessions: ChatSession[];
   activeSession: ChatSession | null;
   sessionItems: Array<{
@@ -195,6 +212,8 @@ type ConversationRuntimeContextValue = {
   }>;
   draft: string;
   target: ChatTarget;
+  activeAgent: ChatAgent | null;
+  activeSessionProfile: ChatAgentSessionProfile | null;
   lockedTarget: boolean;
   targetOptions: RuntimeTargetOption[];
   selectedProviderId: string;
@@ -215,7 +234,7 @@ type ConversationRuntimeContextValue = {
   removeDraftAttachment: (attachmentID: string) => void;
   clearDraftAttachments: () => void;
   sendPrompt: (prompt?: string) => Promise<void>;
-  toggleInspector: (tab?: "target" | "model" | "capabilities" | "skills") => void;
+  toggleInspector: (tab?: "target" | "model" | "capabilities" | "skills" | "session-profile") => void;
   closeInspector: () => void;
   selectTarget: (targetID: string) => void;
   selectModel: (providerID: string, modelID: string) => void;
@@ -262,6 +281,86 @@ function normalizeChatTarget(target?: { type?: string; id?: string; name?: strin
   return { type, id, name };
 }
 
+function normalizeAgentSessionProfileField(item: unknown): AgentSessionProfileField | null {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const record = item as Record<string, unknown>;
+  const key = normalizeText(record.key);
+  const label = normalizeText(record.label);
+  if (!key || !label) {
+    return null;
+  }
+  return {
+    key,
+    label,
+    description: normalizeText(record.description) || undefined,
+    readonly: record.readonly === true,
+  };
+}
+
+function normalizeAgentSessionProfileFields(items: unknown): AgentSessionProfileField[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  const deduped = new Map<string, AgentSessionProfileField>();
+  items.forEach((item) => {
+    const field = normalizeAgentSessionProfileField(item);
+    if (!field || deduped.has(field.key.toLowerCase())) {
+      return;
+    }
+    deduped.set(field.key.toLowerCase(), field);
+  });
+  return Array.from(deduped.values());
+}
+
+function normalizeAgentSessionProfileAttributes(items: unknown): Record<string, string> {
+  if (!items || typeof items !== "object") {
+    return {};
+  }
+  return Object.entries(items as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
+    const normalizedKey = normalizeText(key);
+    const normalizedValue = normalizeText(value);
+    if (!normalizedKey || !normalizedValue) {
+      return acc;
+    }
+    acc[normalizedKey] = normalizedValue;
+    return acc;
+  }, {});
+}
+
+function normalizeAgentSessionProfile(
+  payload: unknown,
+  fallbackAgentID: string,
+  fallbackSessionID: string,
+  fallbackFields: AgentSessionProfileField[],
+): ChatAgentSessionProfile {
+  const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const fields = normalizeAgentSessionProfileFields(record.fields);
+  return {
+    agent_id: normalizeText(record.agent_id) || fallbackAgentID,
+    session_id: normalizeText(record.session_id) || fallbackSessionID,
+    path: normalizeText(record.path),
+    exists: record.exists === true,
+    fields: fields.length > 0 ? fields : fallbackFields,
+    attributes: normalizeAgentSessionProfileAttributes(record.attributes),
+  };
+}
+
+function buildFallbackAgentSessionProfile(agent: ChatAgent | null, sessionID: string): ChatAgentSessionProfile | null {
+  if (!agent || !sessionID) {
+    return null;
+  }
+  return {
+    agent_id: normalizeText(agent.id),
+    session_id: sessionID,
+    path: "",
+    exists: false,
+    fields: normalizeAgentSessionProfileFields(agent.session_profile_fields),
+    attributes: {},
+  };
+}
+
 function defaultChatTarget(): ChatTarget {
   return normalizeChatTarget({ type: "model", id: "raw-model", name: "Raw Model" });
 }
@@ -296,6 +395,26 @@ function runtimeProvidersForRoute(route: ConversationRoute, providers: ChatProvi
   return [...providers, codexRuntimeProvider()];
 }
 
+function normalizeChatAgent(item: unknown): ChatAgent | null {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const record = item as Record<string, unknown>;
+  const id = normalizeText(record.id);
+  if (!id) {
+    return null;
+  }
+  return {
+    id,
+    name: normalizeText(record.name) || id,
+    description: normalizeText(record.description) || undefined,
+    enabled: record.enabled !== false,
+    tools: normalizeSelectionIDs(record.tools),
+    skills: normalizeSelectionIDs(record.skills),
+    mcps: normalizeSelectionIDs(record.mcps),
+    session_profile_fields: normalizeAgentSessionProfileFields(record.session_profile_fields),
+  };
+}
 function normalizeSelectionIDs(values: unknown): string[] {
   if (!Array.isArray(values)) {
     return [];
@@ -735,11 +854,12 @@ export function ConversationRuntimeProvider({
   const [skills, setSkills] = useState<ChatCapability[]>([]);
   const [mcps, setMcps] = useState<ChatCapability[]>([]);
   const [agents, setAgents] = useState<ChatAgent[]>([]);
+  const [agentSessionProfiles, setAgentSessionProfiles] = useState<Record<string, ChatAgentSessionProfile>>({});
   const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());
   const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts());
   const [compact, setCompact] = useState(() => isCompactViewport());
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<"target" | "model" | "capabilities" | "skills">("model");
+  const [inspectorTab, setInspectorTab] = useState<"target" | "model" | "capabilities" | "skills" | "session-profile">("model");
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
   const persistTimerRef = useRef<number>(0);
@@ -751,6 +871,15 @@ export function ConversationRuntimeProvider({
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
   const activeDraftAttachments = activeSessionID ? composerAttachmentDrafts[activeSessionID] || [] : [];
   const availableProviders = runtimeProvidersForRoute(route, providers);
+  const activeAgent = activeSession?.target.type === "agent"
+    ? agents.find((agent) => normalizeText(agent.id) === normalizeText(activeSession.target.id)) || null
+    : null;
+  const activeSessionProfileKey = activeAgent && activeSession
+    ? `${normalizeText(activeAgent.id)}:${activeSession.id}`
+    : "";
+  const activeSessionProfile = activeSessionProfileKey
+    ? agentSessionProfiles[activeSessionProfileKey] || buildFallbackAgentSessionProfile(activeAgent, activeSession?.id || "")
+    : null;
 
   const persistSessionsStateNow = (nextSessionsByRoute: SessionsState, nextActiveState: ActiveSessionState) => {
     writeJSONStorage(SESSION_STORAGE_KEY, toPersistedSessions(nextSessionsByRoute));
@@ -1221,7 +1350,7 @@ export function ConversationRuntimeProvider({
       try {
         const agentPayload = await apiClient.get<{ items?: ChatAgent[] }>("/api/agents");
         const nextAgents = Array.isArray(agentPayload.items)
-          ? agentPayload.items.filter((agent) => agent.enabled !== false)
+          ? agentPayload.items.map(normalizeChatAgent).filter((agent): agent is ChatAgent => agent !== null && agent.enabled !== false)
           : [];
         setAgents(nextAgents);
         setSelectedAgentID((current) => current || normalizeText(nextAgents[0]?.id));
@@ -1230,6 +1359,49 @@ export function ConversationRuntimeProvider({
     };
     void loadCatalogs();
   }, [apiClient]);
+
+  useEffect(() => {
+    if (route !== "agent-runtime" || !activeSession || activeSession.target.type !== "agent") {
+      return;
+    }
+    const agentID = normalizeText(activeSession.target.id);
+    if (!agentID) {
+      return;
+    }
+    const profileKey = `${agentID}:${activeSession.id}`;
+    if (agentSessionProfiles[profileKey]) {
+      return;
+    }
+    const fallbackFields = normalizeAgentSessionProfileFields(
+      agents.find((agent) => normalizeText(agent.id) === agentID)?.session_profile_fields,
+    );
+    let cancelled = false;
+    void (async () => {
+      try {
+        const payload = await apiClient.get<ChatAgentSessionProfile>(
+          `/api/agent/session-profile?agent_id=${encodeURIComponent(agentID)}&session_id=${encodeURIComponent(activeSession.id)}`,
+        );
+        if (cancelled) {
+          return;
+        }
+        setAgentSessionProfiles((current) => ({
+          ...current,
+          [profileKey]: normalizeAgentSessionProfile(payload, agentID, activeSession.id, fallbackFields),
+        }));
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setAgentSessionProfiles((current) => ({
+          ...current,
+          [profileKey]: normalizeAgentSessionProfile({}, agentID, activeSession.id, fallbackFields),
+        }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSession, agentSessionProfiles, agents, apiClient, route]);
 
   useEffect(() => {
     ensureSession(route === "agent-runtime"
@@ -1298,6 +1470,9 @@ export function ConversationRuntimeProvider({
         name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
       })
     : defaultChatTarget());
+  const currentAgent = currentTarget.type === "agent"
+    ? agents.find((agent) => normalizeText(agent.id) === currentTarget.id) || null
+    : null;
 
   const contextValue = useMemo<ConversationRuntimeContextValue>(() => ({
     route,
@@ -1317,6 +1492,8 @@ export function ConversationRuntimeProvider({
     draft: activeSessionID ? composerDrafts[activeSessionID] || "" : "",
     draftAttachments: activeDraftAttachments,
     target: currentTarget,
+    activeAgent: currentAgent,
+    activeSessionProfile,
     lockedTarget: Boolean(activeSession?.messages.length),
     targetOptions: route === "agent-runtime"
       ? agents
@@ -1532,6 +1709,8 @@ export function ConversationRuntimeProvider({
     composerAttachmentDrafts,
     activeDraftAttachments,
     currentTarget,
+    currentAgent,
+    activeSessionProfile,
     agents,
     selection.providerID,
     selection.modelID,

@@ -131,8 +131,8 @@ func resolveAgentOwnedSkill(msg shareddomain.UnifiedMessage) (execdomain.SkillSp
 		agentName = agentID
 	}
 	agentCapabilities := parseList(metadataValue(msg.Metadata, execdomain.AgentCapabilitiesMetadataKey))
-	filePath := filepath.ToSlash(filepath.Join(".alter0", "agents", normalizedAgentID, "SKILL.md"))
-	_ = ensureAgentOwnedSkillFile(filePath, agentOwnedSkillDocument(agentID, agentName, agentCapabilities))
+	filePath := agentPrivateRelativePaths(agentID, "SKILL.md")[0]
+	_ = ensureAgentOwnedSkillFile(agentID, filePath, agentOwnedSkillDocument(agentID, agentName, agentCapabilities))
 	return execdomain.SkillSpec{
 		ID:          agentOwnedSkillID(normalizedAgentID),
 		Name:        agentName + " Skill",
@@ -297,7 +297,7 @@ func isTravelAgent(agentID string, agentName string, capabilities []string) bool
 	return strings.Contains(lookup, "travel")
 }
 
-func ensureAgentOwnedSkillFile(relativePath string, content string) error {
+func ensureAgentOwnedSkillFile(agentID string, relativePath string, content string) error {
 	repoRoot, err := resolveMemoryRepoRoot()
 	if err != nil {
 		return err
@@ -307,6 +307,13 @@ func ensureAgentOwnedSkillFile(relativePath string, content string) error {
 		return nil
 	} else if !os.IsNotExist(err) {
 		return err
+	}
+	for _, legacyPath := range agentPrivateRelativePaths(agentID, "SKILL.md")[1:] {
+		legacyAbsolutePath := filepath.Join(repoRoot, filepath.FromSlash(legacyPath))
+		if raw, err := os.ReadFile(legacyAbsolutePath); err == nil {
+			content = string(raw)
+			break
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
 		return err

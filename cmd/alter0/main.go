@@ -257,8 +257,10 @@ func main() {
 	llmService := llmapp.NewModelConfigService(llmStorage)
 
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
-	processor := execinfra.NewHybridNLProcessorWithCatalog(execinfra.NewCodexCLIProcessorWithCommand(resolvedCodexCommand), llmService, agentCatalog, logger)
-	executor := execapp.NewServiceWithSkills(processor, control, logger)
+	codexProcessor := execinfra.NewCodexCLIProcessorWithCommand(resolvedCodexCommand)
+	processor := execinfra.NewHybridNLProcessorWithCatalog(codexProcessor, llmService, agentCatalog, logger)
+	sessionProfileExtractor := execinfra.NewSessionProfileCodexExtractor(codexProcessor)
+	executor := execapp.NewServiceWithSkillsAndSessionProfileExtractor(processor, control, sessionProfileExtractor, logger)
 	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
 	taskSummaryRuntime := tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
 		DailyDir:    resolvedDailyMemoryDir,
