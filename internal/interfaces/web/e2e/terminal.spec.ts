@@ -47,7 +47,7 @@ test.describe("Terminal route", () => {
     await terminalPage.composer().input().fill("先拉取仓库");
     await terminalPage.composer().submitButton().click();
     await expect(page.locator(".terminal-session-title").first()).toContainText("先拉取仓库");
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
 
     await terminalPage.composer().input().fill("修改 terminal 和 agent 的会话标题");
     await terminalPage.composer().submitButton().click();
@@ -62,7 +62,7 @@ test.describe("Terminal route", () => {
     await openTerminalRoute(page);
 
     const terminalPage = createTerminalPage(page);
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
     await expect(terminalPage.workspace()).toContainText(session.id);
     await expect.poll(async () => {
       return await page.evaluate(() => window.localStorage.getItem("alter0.web.terminal.client.v1"));
@@ -73,7 +73,7 @@ test.describe("Terminal route", () => {
     });
     await page.reload();
 
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
     await expect(terminalPage.workspace()).toContainText(session.id);
     await expect(terminalPage.workspace()).not.toContainText("Codex runtime exited. Send a new input to recover this session.");
     await expect.poll(async () => {
@@ -105,7 +105,7 @@ test.describe("Terminal route", () => {
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-layout" });
 
     const routeHead = page.locator(".route-view.terminal-route > .route-head");
-    const mobileHeader = page.locator("[data-terminal-mobile-header]");
+    const mobileHeader = page.locator("[data-runtime-mobile-variant='terminal']");
     const workspaceHead = page.locator(".terminal-workspace-head");
     const workspaceSubcopy = page.locator(".terminal-workspace-subcopy");
     const mobileNewChat = mobileHeader.getByRole("button", { name: "New" });
@@ -222,16 +222,16 @@ test.describe("Terminal route", () => {
       }
       return Math.abs((current.shellHeight ?? 0) - (current.viewportHeight ?? 0));
     }).toBeLessThanOrEqual(2);
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
 
-    const previousSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    const previousSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
     await terminalPage.createButton().click();
 
     await expect.poll(async () => {
-      const currentSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+      const currentSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
       return Boolean(currentSessionID && currentSessionID !== previousSessionID);
     }).toBe(true);
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
 
     const nextMetrics = await readMetrics();
     expect(nextMetrics).not.toBeNull();
@@ -323,8 +323,8 @@ test.describe("Terminal route", () => {
     const readMetrics = async () => page.evaluate(() => {
       const viewport = window.visualViewport;
       const composer = document.querySelector(".terminal-composer-shell");
-      const workspace = document.querySelector("[data-terminal-workspace]");
-      const chatScreen = document.querySelector("[data-terminal-chat-screen]");
+      const workspace = document.querySelector("[data-runtime-workspace='terminal']");
+      const chatScreen = document.querySelector("[data-runtime-screen='terminal']");
       if (
         !(composer instanceof HTMLElement) ||
         !(workspace instanceof HTMLElement) ||
@@ -503,7 +503,7 @@ test.describe("Terminal route", () => {
 
     const readShellMetrics = async () => page.evaluate(() => {
       const appShell = document.querySelector(".app-shell");
-      const workspace = document.querySelector("[data-terminal-workspace]");
+      const workspace = document.querySelector("[data-runtime-workspace='terminal']");
       const composer = document.querySelector(".terminal-composer-shell");
       const viewport = window.visualViewport;
       if (
@@ -645,7 +645,7 @@ test.describe("Terminal route", () => {
 
       await expect.poll(async () => {
         return await page.evaluate((node) => {
-          const current = document.querySelector('[data-composer-input="terminal-runtime"]');
+          const current = document.querySelector('[data-composer-input="terminal"]');
           return Boolean(node && node.isConnected && current === node && document.activeElement === current);
         }, inputHandle);
       }).toBe(true);
@@ -710,7 +710,7 @@ test.describe("Terminal route", () => {
       await waitForTerminalPoll(page, session.id);
       await expect.poll(async () => {
         return await page.evaluate((node) => {
-          const current = document.querySelector("[data-terminal-chat-screen]");
+          const current = document.querySelector("[data-runtime-screen='terminal']");
           return Boolean(node && node.isConnected && current === node);
         }, chatHandle);
       }).toBe(true);
@@ -786,7 +786,7 @@ test.describe("Terminal route", () => {
       });
     };
 
-    await expect.poll(async () => await widthWithinFrame("[data-terminal-chat-screen]")).toBe(true);
+    await expect.poll(async () => await widthWithinFrame("[data-runtime-screen='terminal']")).toBe(true);
     await expect.poll(async () => await widthWithinFrame("[data-terminal-turn]")).toBe(true);
     await expect.poll(async () => await widthWithinFrame(".terminal-final-output")).toBe(true);
   });
@@ -810,7 +810,7 @@ test.describe("Terminal route", () => {
   test("deletes a historical session directly from the session list", async ({ page, request }) => {
     const { sessions, terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "list-delete-history", count: 2 });
 
-    const activeSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    const activeSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
     expect(activeSessionID).toBeTruthy();
     const historicalSession = sessions.find((session) => session.id !== activeSessionID);
     expect(historicalSession).toBeTruthy();
@@ -819,14 +819,14 @@ test.describe("Terminal route", () => {
     await terminalPage.sessionDeleteButton(String(historicalSession?.id || "")).click();
 
     await expect(terminalPage.sessionList().items()).toHaveCount(1);
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-session-id", String(activeSessionID));
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-session-id", String(activeSessionID));
     await expect(terminalPage.sessionDeleteButton(String(historicalSession?.id || ""))).toHaveCount(0);
   });
 
   test("switches to the next session when deleting the active session from the session list", async ({ page, request }) => {
     const { sessions, terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "list-delete-active", count: 2 });
 
-    const activeSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    const activeSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
     expect(activeSessionID).toBeTruthy();
     const nextSession = sessions.find((session) => session.id !== activeSessionID);
     expect(nextSession).toBeTruthy();
@@ -835,7 +835,7 @@ test.describe("Terminal route", () => {
     await terminalPage.sessionDeleteButton(String(activeSessionID)).click();
 
     await expect(terminalPage.sessionList().items()).toHaveCount(1);
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-session-id", String(nextSession?.id || ""));
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-session-id", String(nextSession?.id || ""));
     await expect(terminalPage.sessionDeleteButton(String(activeSessionID))).toHaveCount(0);
   });
 
@@ -843,7 +843,7 @@ test.describe("Terminal route", () => {
     await page.setViewportSize({ width: 430, height: 932 });
     const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-delete-sheet", count: 2 });
 
-    const previousSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    const previousSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
     expect(previousSessionID).toBeTruthy();
     await expect(terminalPage.sessionList().items()).toHaveCount(2);
 
@@ -852,7 +852,7 @@ test.describe("Terminal route", () => {
     page.once("dialog", (dialog) => dialog.accept());
     await terminalPage.sessionDeleteButton(String(previousSessionID)).click();
 
-    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-terminal-session-id")).not.toBe(previousSessionID);
+    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-runtime-session-id")).not.toBe(previousSessionID);
     await expect(terminalPage.sessionList().items()).toHaveCount(1);
     await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
     await expect(terminalPage.sessionPane()).toBeHidden();
@@ -869,7 +869,7 @@ test.describe("Terminal route", () => {
     await page.setViewportSize({ width: 430, height: 932 });
     const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-delete-height", count: 2 });
 
-    const activeSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    const activeSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
     expect(activeSessionID).toBeTruthy();
     await terminalPage.sessionPaneToggle().click();
     await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
@@ -882,9 +882,9 @@ test.describe("Terminal route", () => {
     const layoutMetrics = await page.evaluate(() => {
       const route = document.querySelector(".route-view.terminal-route");
       const routeBody = document.querySelector(".route-body.terminal-route-body");
-      const terminalView = document.querySelector("[data-terminal-view]");
+      const terminalView = document.querySelector("[data-runtime-view='terminal']");
       const terminalWorkspaceShell = document.querySelector(".terminal-workspace");
-      const workspace = document.querySelector("[data-terminal-workspace]");
+      const workspace = document.querySelector("[data-runtime-workspace='terminal']");
       if (!(route instanceof HTMLElement) || !(workspace instanceof HTMLElement)) {
         return null;
       }
@@ -956,7 +956,7 @@ test.describe("Terminal route", () => {
 
       await expect.poll(async () => {
         return await page.evaluate((node) => {
-          const current = document.querySelector('[data-composer-input="terminal-runtime"]');
+          const current = document.querySelector('[data-composer-input="terminal"]');
           return Boolean(
             node &&
             node.isConnected &&
@@ -1011,7 +1011,7 @@ test.describe("Terminal route", () => {
     ]);
 
     await expect.poll(() => stepDetailRequests).toBe(1);
-    const currentSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id");
+    const currentSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
     expect(currentSessionID).toBeTruthy();
     await expect(terminalPage.workspace()).not.toContainText("Path");
     await terminalPage.metaToggle().click();
@@ -1629,14 +1629,14 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.sessionList().items()).toHaveCount(2);
 
     const beforeOrder = await Promise.all(
-      [0, 1].map((index) => terminalPage.sessionList().itemAt(index).getAttribute("data-terminal-session-select"))
+      [0, 1].map((index) => terminalPage.sessionList().itemAt(index).getAttribute("data-runtime-session-select"))
     );
 
     await selectTerminalSession(page, olderSession.id);
     await page.waitForTimeout(1500);
 
     const afterOrder = await Promise.all(
-      [0, 1].map((index) => terminalPage.sessionList().itemAt(index).getAttribute("data-terminal-session-select"))
+      [0, 1].map((index) => terminalPage.sessionList().itemAt(index).getAttribute("data-runtime-session-select"))
     );
 
     expect(beforeOrder).toEqual([olderSession.id, newerSession.id]);
@@ -1697,8 +1697,8 @@ test.describe("Terminal route", () => {
   test("keeps interrupted sessions recoverable when runtime is unavailable", async ({ page }) => {
     const { terminalPage } = await openInterruptedTerminalWorkspace(page, { scope: "interrupted" });
 
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "interrupted");
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-live", "false");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "interrupted");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-live", "false");
     await expect(terminalPage.workspace()).toContainText("Interrupted");
     await expect(terminalPage.workspace()).toContainText("Codex runtime exited. Send a new input to recover this session.");
     await expect(terminalPage.composer().input()).toBeEnabled();
@@ -1720,15 +1720,15 @@ test.describe("Terminal route", () => {
 
     let pendingSessionID = "";
     await expect.poll(async () => {
-      pendingSessionID = await terminalPage.workspace().getAttribute("data-terminal-session-id") || "";
+      pendingSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id") || "";
       return pendingSessionID;
     }).toMatch(/^terminal-pending-/);
-    await expect(page.locator("[data-terminal-runtime-note]")).toHaveCount(0);
+    await expect(page.locator("[data-runtime-note='terminal']")).toHaveCount(0);
     await expect(terminalPage.workspace()).not.toContainText("Codex runtime exited. Send a new input to recover this session.");
 
-    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-terminal-session-id")).not.toBe(session.id);
-    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-terminal-session-id")).not.toBe(String(pendingSessionID));
-    await expect(page.locator("[data-terminal-runtime-note]")).toHaveCount(0);
+    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-runtime-session-id")).not.toBe(session.id);
+    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-runtime-session-id")).not.toBe(String(pendingSessionID));
+    await expect(page.locator("[data-runtime-note='terminal']")).toHaveCount(0);
   });
 
   test("recovers stored thread-backed sessions on load and first input", async ({ page }) => {
@@ -1766,8 +1766,8 @@ test.describe("Terminal route", () => {
     await openTerminalRoute(page);
 
     const terminalPage = createTerminalPage(page);
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-live", "true");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-live", "true");
     await expectComposerReady(terminalPage.composer());
     await terminalPage.metaToggle().click();
     await expect(terminalPage.workspace()).toContainText(threadID);
@@ -1777,7 +1777,7 @@ test.describe("Terminal route", () => {
     await terminalPage.composer().input().fill("Reply with exactly: recovered-after-reload");
     await terminalPage.composer().submitButton().click();
 
-    await expect(terminalPage.workspace()).toHaveAttribute("data-terminal-workspace-status", "ready");
+    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
     await expect(terminalPage.finalOutputs().last()).toContainText("recovered-after-reload");
   });
 });

@@ -52,6 +52,7 @@ export type RuntimeWorkspacePageController = {
     };
   };
   header: Omit<ComponentPropsWithoutRef<typeof RuntimeWorkspaceHeader>, "detailsContent"> & {
+    customHeaderContent?: ReactNode;
     detailsSummary?: RuntimeWorkspaceDetailsField[];
     detailsBody?: ReactNode;
     detailsClassName?: string;
@@ -69,6 +70,35 @@ export type RuntimeWorkspacePageController = {
 
 export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorkspacePageController }) {
   const detailsSummary = controller.header.detailsSummary || [];
+  const workspaceHeader = controller.header.customHeaderContent ?? (
+    <RuntimeWorkspaceHeader
+      {...controller.header}
+      detailsContent={controller.header.detailsBody || detailsSummary.length > 0 ? (
+        <section className={controller.header.detailsClassName || "workspace-details-content"}>
+          {detailsSummary.length > 0 ? (
+            <div className="workspace-details-summary">
+              {detailsSummary.map((field) => (
+                <RouteFieldRow
+                  key={`${field.label}:${String(field.value)}`}
+                  label={field.label}
+                  value={field.value}
+                  copyLabel={field.copyLabel}
+                  copyable={field.copyable}
+                  mono={field.mono}
+                  multiline={field.multiline}
+                />
+              ))}
+            </div>
+          ) : null}
+          {controller.header.detailsBody ? (
+            <div className="workspace-details-body">
+              {controller.header.detailsBody}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+    />
+  );
 
   return (
     <RuntimeWorkspaceShell
@@ -135,35 +165,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
           )}
         />
       )}
-      workspaceHeader={(
-        <RuntimeWorkspaceHeader
-          {...controller.header}
-          detailsContent={controller.header.detailsBody || detailsSummary.length > 0 ? (
-            <section className={controller.header.detailsClassName || "workspace-details-content"}>
-              {detailsSummary.length > 0 ? (
-                <div className="workspace-details-summary">
-                  {detailsSummary.map((field) => (
-                    <RouteFieldRow
-                      key={`${field.label}:${String(field.value)}`}
-                      label={field.label}
-                      value={field.value}
-                      copyLabel={field.copyLabel}
-                      copyable={field.copyable}
-                      mono={field.mono}
-                      multiline={field.multiline}
-                    />
-                  ))}
-                </div>
-              ) : null}
-              {controller.header.detailsBody ? (
-                <div className="workspace-details-body">
-                  {controller.header.detailsBody}
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-        />
-      )}
+      workspaceHeader={workspaceHeader}
       workspaceContent={(
         <RuntimeWorkspaceScreen {...controller.screen}>
           <RuntimeTimeline

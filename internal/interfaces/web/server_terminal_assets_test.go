@@ -8,10 +8,10 @@ import (
 func TestTerminalHelperModulesExposeExpectedMarkers(t *testing.T) {
 	files := map[string][]string{
 		"frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx": {
-			"data-terminal-session-pane",
-			"data-terminal-session-list",
-			"data-terminal-workspace",
-			"data-terminal-chat-screen",
+			"data-runtime-session-pane",
+			"data-runtime-session-list",
+			"data-runtime-workspace",
+			"data-runtime-screen",
 			"data-terminal-step-toggle",
 			"data-terminal-final-output",
 		},

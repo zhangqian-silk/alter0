@@ -253,11 +253,12 @@ func TestConversationWorkspaceSessionSurfacePresent(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx") +
 		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeWorkspacePage.tsx")
 	markers := []string{
-		`"data-conversation-view": runtime.route`,
-		`data-conversation-session-pane`,
-		`data-conversation-session-list`,
-		`data-conversation-workspace`,
-		`data-conversation-chat-screen`,
+		`"data-runtime-view": "conversation"`,
+		`"data-runtime-route": runtime.route`,
+		`data-runtime-session-pane`,
+		`data-runtime-session-list`,
+		`data-runtime-workspace`,
+		`data-runtime-screen`,
 		`deleteLabel: deleteSessionLabel,`,
 		`"runtime-session-delete"`,
 		`{item.shortHash}`,
@@ -270,7 +271,7 @@ func TestConversationWorkspaceSessionSurfacePresent(t *testing.T) {
 
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	styleMarkers := []string{
-		".conversation-runtime-view {",
+		`[data-runtime-view="conversation"] {`,
 		".runtime-workspace-session-pane {",
 		".runtime-workspace {",
 	}
@@ -369,10 +370,10 @@ func TestSidebarAgentMemoryTabStylesPresent(t *testing.T) {
 func TestSidebarTerminalModulePresent(t *testing.T) {
 	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
 	scriptMarkers := []string{
-		"data-terminal-view",
-		"data-terminal-session-pane",
-		"data-terminal-create",
-		"data-terminal-delete",
+		"data-runtime-view",
+		"data-runtime-session-pane",
+		"data-runtime-create-session",
+		"data-runtime-delete-session",
 		"data-terminal-step-toggle",
 	}
 	for _, marker := range scriptMarkers {
@@ -383,7 +384,7 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	styleMarkers := []string{
-		".terminal-runtime-view .runtime-session-card {",
+		`[data-runtime-view="terminal"] .runtime-session-card {`,
 		".runtime-session-card {",
 		".runtime-composer-form {",
 	}

@@ -29,23 +29,23 @@ export function createTerminalPage(page: Page): {
   sessionListContainer(): Locator;
   sessionDeleteButton(sessionID: string): Locator;
 } {
-  const composer = createComposerComponent(page, "terminal-runtime");
+  const composer = createComposerComponent(page, "terminal");
   const sessionList = createSessionListComponent(page, {
-    items: "[data-terminal-session-select]",
-    itemByValue: (sessionID: string) => `[data-terminal-session-select="${sessionID}"]`,
+    items: "[data-runtime-session-select]",
+    itemByValue: (sessionID: string) => `[data-runtime-session-select="${sessionID}"]`,
   });
   return {
-    createButton: () => page.locator(".terminal-mobile-header .mobile-new-chat:visible, #mobileNewChatButton:visible, [data-terminal-create]:visible").first(),
+    createButton: () => page.locator("[data-runtime-create-session='terminal']:visible").first(),
     composer: () => composer,
-    workspace: () => page.locator("[data-terminal-workspace]"),
-    chatScreen: () => page.locator("[data-terminal-chat-screen]"),
+    workspace: () => page.locator("[data-runtime-workspace='terminal']"),
+    chatScreen: () => page.locator("[data-runtime-screen='terminal']"),
     jumpTopButton: () => page.locator("[data-terminal-jump-top]"),
     jumpPrevButton: () => page.locator("[data-terminal-jump-prev]"),
     jumpNextButton: () => page.locator("[data-terminal-jump-next]"),
     jumpBottomButton: () => page.locator("[data-terminal-jump-bottom]"),
-    sessionPaneToggle: () => page.locator("#sessionToggle, [data-terminal-session-pane-toggle]").first(),
-    sessionPane: () => page.locator("[data-terminal-session-pane]"),
-    sessionPaneClose: () => page.locator("[data-terminal-session-pane-close]").first(),
+    sessionPaneToggle: () => page.getByRole("button", { name: "Sessions" }).first(),
+    sessionPane: () => page.locator("[data-runtime-session-pane='terminal']"),
+    sessionPaneClose: () => page.locator("[data-runtime-session-pane-close='terminal']").first(),
     metaToggle: () => page.locator("[data-terminal-meta-toggle]"),
     turnCards: () => page.locator("[data-terminal-turn]"),
     turnCard: (turnID: string) => page.locator(`[data-terminal-turn="${turnID}"]`),
@@ -58,7 +58,7 @@ export function createTerminalPage(page: Page): {
     stepToggle: (stepID: string) => page.locator(`[data-terminal-step-toggle="${stepID}"]`),
     finalOutputs: () => page.locator(".terminal-final-output"),
     sessionList: () => sessionList,
-    sessionListContainer: () => page.locator("[data-terminal-session-list]"),
-    sessionDeleteButton: (sessionID: string) => page.locator(`[data-terminal-delete-session="${sessionID}"]`),
+    sessionListContainer: () => page.locator("[data-runtime-session-list='terminal']"),
+    sessionDeleteButton: (sessionID: string) => page.locator(`[data-runtime-delete-session="${sessionID}"]`),
   };
 }

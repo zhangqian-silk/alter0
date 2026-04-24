@@ -8,13 +8,13 @@ async function openRuntimeRoute(page: Page, hash: "#chat" | "#agent-runtime"): P
   await page.goto(`/chat${hash}`);
   await loginIfNeeded(page);
   await waitForAppReady(page);
-  await page.waitForSelector(".conversation-chat-form", { timeout: 20000 });
+  await page.waitForSelector("[data-composer-form='conversation']", { timeout: 20000 });
 }
 
 async function readConversationViewportGap(page: Page) {
   return page.evaluate(() => {
-    const screen = document.querySelector(".conversation-chat-screen");
-    const composer = document.querySelector(".conversation-composer-shell");
+    const screen = document.querySelector("[data-runtime-screen='conversation']");
+    const composer = document.querySelector(".runtime-composer-shell");
     if (!(screen instanceof HTMLElement) || !(composer instanceof HTMLElement)) {
       return null;
     }
@@ -30,8 +30,8 @@ async function readConversationViewportGap(page: Page) {
 
 async function readTerminalViewportGap(page: Page) {
   return page.evaluate(() => {
-    const screen = document.querySelector(".terminal-chat-screen");
-    const composer = document.querySelector(".terminal-composer-shell");
+    const screen = document.querySelector("[data-runtime-screen='terminal']");
+    const composer = document.querySelector(".runtime-composer-shell");
     if (!(screen instanceof HTMLElement) || !(composer instanceof HTMLElement)) {
       return null;
     }
@@ -49,8 +49,8 @@ test.describe("Runtime workspace scaffold", () => {
   test("submits chat on the first click and keeps the chat viewport above the composer", async ({ page }) => {
     await openRuntimeRoute(page, "#chat");
 
-    const input = page.locator(".conversation-composer-input");
-    const submit = page.locator(".conversation-chat-submit");
+    const input = page.locator("[data-composer-input='conversation']");
+    const submit = page.locator("[data-composer-submit='conversation']");
 
     await input.fill("first click submit");
     await submit.click();
@@ -68,8 +68,8 @@ test.describe("Runtime workspace scaffold", () => {
     await page.setViewportSize({ width: 430, height: 932 });
 
     await openRuntimeRoute(page, "#chat");
-    const chatInput = page.locator(".conversation-composer-input");
-    const chatSubmit = page.locator(".conversation-chat-submit");
+    const chatInput = page.locator("[data-composer-input='conversation']");
+    const chatSubmit = page.locator("[data-composer-submit='conversation']");
     await chatInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
     await expect.poll(async () => page.evaluate(() =>
@@ -81,8 +81,8 @@ test.describe("Runtime workspace scaffold", () => {
     await expect(chatInput).toHaveValue("");
 
     await openTerminalRoute(page);
-    const terminalInput = page.locator(".terminal-composer-input");
-    const terminalSubmit = page.locator("[data-terminal-submit]");
+    const terminalInput = page.locator("[data-composer-input='terminal']");
+    const terminalSubmit = page.locator("[data-runtime-submit='terminal']");
     await terminalInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
     await expect.poll(async () => page.evaluate(() =>
@@ -133,7 +133,7 @@ test.describe("Runtime workspace scaffold", () => {
     await page.setViewportSize({ width: 430, height: 932 });
 
     await openRuntimeRoute(page, "#chat");
-    const conversationInput = page.locator(".conversation-composer-input");
+    const conversationInput = page.locator("[data-composer-input='conversation']");
     await conversationInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
     await expect.poll(async () => page.evaluate(() =>
@@ -153,7 +153,7 @@ test.describe("Runtime workspace scaffold", () => {
       .toBeLessThanOrEqual(20);
 
     await openTerminalRoute(page);
-    const terminalInput = page.locator(".terminal-composer-input");
+    const terminalInput = page.locator("[data-composer-input='terminal']");
     await terminalInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
     await expect.poll(async () => page.evaluate(() =>
@@ -178,7 +178,7 @@ test.describe("Runtime workspace scaffold", () => {
     await page.setViewportSize({ width: 430, height: 932 });
 
     await openRuntimeRoute(page, "#chat");
-    const conversationInput = page.locator(".conversation-composer-input");
+    const conversationInput = page.locator("[data-composer-input='conversation']");
     await conversationInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
     await expect.poll(async () => page.evaluate(() =>
@@ -205,7 +205,7 @@ test.describe("Runtime workspace scaffold", () => {
     )).toBe("0px");
 
     await openTerminalRoute(page);
-    const terminalInput = page.locator(".terminal-composer-input");
+    const terminalInput = page.locator("[data-composer-input='terminal']");
     await terminalInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
     await expect.poll(async () => page.evaluate(() =>

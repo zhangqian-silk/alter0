@@ -45,7 +45,7 @@ export async function openTerminalRoute(page: Page): Promise<void> {
     });
   }
   await expect(page).toHaveURL(/#terminal$/);
-  await expect(page.locator("[data-terminal-view]")).toBeVisible();
-  await expect(page.locator("[data-terminal-workspace]")).toBeVisible();
+  await expect(page.locator("[data-runtime-view='terminal']")).toBeVisible();
+  await expect(page.locator("[data-runtime-workspace='terminal']")).toBeVisible();
   await expectComposerReady(createTerminalPage(page).composer());
 }

@@ -48,7 +48,7 @@ func TestConversationSessionListShowsCompactMetadata(t *testing.T) {
 		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeWorkspacePage.tsx") +
 		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeSessionList.tsx")
 	markers := []string{
-		`data-conversation-session-pane`,
+		`data-runtime-session-pane`,
 		`"data-testid": "conversation-session-pane"`,
 		`"runtime-session-list"`,
 		`"runtime-session-title"`,
@@ -82,13 +82,12 @@ func TestConversationDetailsUseSharedWorkspaceHeader(t *testing.T) {
 		readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx") +
 		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeWorkspaceHeader.tsx")
 	markers := []string{
-		"const [detailsOpen, setDetailsOpen] = useState(false);",
 		"toggleInspector: (tab) => {",
 		`data-runtime-workspace-header="true"`,
-		`detailsClassName: "conversation-inspector conversation-session-details workspace-details-content",`,
-		`data-conversation-inspector`,
-		"detailsOpen,",
-		"onToggleDetails: () => setDetailsOpen((current) => !current),",
+		`data-runtime-header-kind="conversation"`,
+		`data-runtime-details-panel`,
+		`customHeaderContent: conversationHeader,`,
+		`className="conversation-inspector conversation-session-details workspace-details-content"`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
@@ -147,7 +146,7 @@ func TestWorkbenchMobileLayoutUsesConversationDrawer(t *testing.T) {
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	markers := []string{
 		"@media (max-width: 1100px) {",
-		".conversation-runtime-view {",
+		`[data-runtime-view="conversation"] {`,
 		"grid-template-columns: 1fr;",
 		".runtime-workspace-session-pane {",
 		"position: fixed;",
@@ -243,13 +242,15 @@ func TestTerminalMobileActionsLinkWorkbenchNavAndSessionDrawer(t *testing.T) {
 	markers := []string{
 		`const workbench = useWorkbenchContext();`,
 		`const shellCopy = getLegacyShellCopy(workbench.language);`,
-		`mobileHeaderClassName: "terminal-mobile-header",`,
-		`mobileHeaderProps: { "data-terminal-mobile-header": "" },`,
-		`mobileHeaderActionsClassName: "terminal-mobile-header-actions",`,
+		`mobileHeaderProps: { "data-runtime-mobile-variant": "terminal" },`,
+		`mobileNavButtonClassName: "nav-toggle is-quiet",`,
 		`mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },`,
 		`onMobileNav: workbench.toggleMobileNav,`,
+		`mobileSessionButtonClassName: "panel-toggle is-quiet",`,
 		`mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },`,
 		`onMobileSession: workbench.toggleMobileSessionPane,`,
+		`mobilePrimaryButtonClassName: "mobile-new-chat is-primary",`,
+		`mobilePrimaryButtonProps: { "data-runtime-create-session": "terminal" },`,
 		`mobileNavButtonLabel: shellCopy.chatMenu,`,
 		`mobileSessionButtonLabel: copy.sessions,`,
 		`mobilePrimaryButtonLabel: copy.newShort,`,

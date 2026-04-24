@@ -289,72 +289,76 @@ describe("ReactManagedTerminalRouteBody", () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-session-select='terminal-1']")).toBeInTheDocument();
     });
 
-    expect(document.querySelector("[data-terminal-view]")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-session-pane]")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-workspace]")).toHaveAttribute(
-      "data-terminal-session-id",
+    expect(document.querySelector("[data-runtime-view='terminal']")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute(
+      "data-runtime-session-id",
       "terminal-1",
     );
     await waitFor(() => {
       expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
     });
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-view]")).toHaveClass("terminal-runtime-view");
-    expect(document.querySelector("[data-terminal-view]")).not.toHaveClass("conversation-runtime-view");
+    expect(document.querySelector("[data-runtime-view='terminal']")).toHaveClass("runtime-workspace-view");
     expect(document.querySelector("[data-runtime-workspace-page='true']")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-session-select")).not.toBeInTheDocument();
-    expect(document.querySelector(".terminal-session-list-delete")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-select")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-delete")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-main")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-title-row")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-title-row")?.textContent).toContain("Workspace shell");
     expect(document.querySelector(".runtime-session-summary-row")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-bottomline")).toBeInTheDocument();
-    expect(within(document.querySelector("[data-terminal-session-pane]") as HTMLElement).getByRole("list")).toHaveAttribute(
-      "data-terminal-session-list",
-      "true",
+    expect(within(document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement).getByRole("list")).toHaveAttribute(
+      "data-runtime-session-list",
+      "terminal",
     );
-    expect(within(document.querySelector("[data-terminal-session-pane]") as HTMLElement).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement).getAllByRole("listitem")).toHaveLength(1);
     expect(document.querySelector("[data-terminal-delete]")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-workspace-shell")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-session-list]")).toHaveClass("runtime-session-list");
-    expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("runtime-workspace-session-pane");
-    expect(document.querySelector("[data-terminal-session-pane]")).not.toHaveClass("conversation-session-pane");
-    expect(document.querySelector(".terminal-session-pane-shell")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-list='terminal']")).toHaveClass(
+      "runtime-session-list",
+    );
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass(
+      "runtime-workspace-session-pane",
+    );
     expect(document.querySelector("[data-runtime-session-pane-head='true']")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-workspace]")).toHaveClass("runtime-workspace");
-    expect(document.querySelector(".runtime-workspace-body")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-workspace-body")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveClass("runtime-workspace");
+    expect(document.querySelector(".runtime-workspace-body")).not.toHaveClass("terminal-workspace-body");
+    expect(document.querySelector(".runtime-workspace-body")).not.toHaveClass("conversation-workspace-body");
     expect(document.querySelector(".runtime-workspace-head")).toBeInTheDocument();
     expect(document.querySelector(".runtime-workspace-head")).toHaveClass("is-compact");
     expect(document.querySelector(".runtime-workspace-head")).toHaveClass("is-sticky");
     expect(document.querySelector(".runtime-workspace-head")).toHaveAttribute("data-runtime-workspace-header", "true");
-    expect(document.querySelector("[data-terminal-chat-screen]")).toHaveClass("runtime-workspace-screen");
+    expect(document.querySelector("[data-runtime-screen='terminal']")).toHaveClass("runtime-workspace-screen");
     expect(document.querySelector("[data-runtime-timeline='true']")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-workspace-row")).toHaveClass("is-compact");
+    expect(document.querySelector(".runtime-workspace-row")).toHaveClass("runtime-workspace-title-row", "is-compact");
     expect(document.querySelector(".runtime-workspace-copy")).toHaveClass("is-compact");
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
-    expect(within(workspaceHeader).getByRole("button", { name: "Ready" })).toBeDisabled();
+    expect(within(workspaceHeader).getByText("Ready")).toBeInTheDocument();
     expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toBeInTheDocument();
-    expect(within(workspaceHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
+    expect(within(workspaceHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-close]")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-console-panel]")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-panel='terminal-console']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-form")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-composer-form")).not.toHaveClass("terminal-chat-form");
     expect(document.querySelector(".runtime-composer-form")).toHaveAttribute("data-runtime-composer", "true");
     expect(document.querySelector(".runtime-composer-input")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-composer-input")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-submit")).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-tools")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-composer-tools")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-meta")).toBeInTheDocument();
+    expect(document.querySelector("[data-composer-form='terminal']")).toHaveClass("runtime-composer-form");
+    expect(document.querySelector("[data-composer-input='terminal']")).toHaveClass("runtime-composer-input");
+    expect(document.querySelector("[data-runtime-submit='terminal']")).toHaveClass("runtime-composer-submit");
+    expect(document.querySelector(".terminal-composer-shell")).not.toBeInTheDocument();
+    expect(document.querySelector(".terminal-chat-form")).not.toBeInTheDocument();
+    expect(document.querySelector(".terminal-composer-input")).not.toBeInTheDocument();
+    expect(document.querySelector(".terminal-chat-submit")).not.toBeInTheDocument();
+    expect(document.querySelector(".terminal-composer-tools")).not.toBeInTheDocument();
     expect(document.querySelector(".terminal-composer-meta")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-attachment-strip='true']")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-submit]")).toHaveClass("runtime-composer-submit");
-    expect(document.querySelector("[data-terminal-submit]")).not.toHaveClass("terminal-chat-submit");
-    expect(document.querySelector("[data-terminal-submit] svg")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-submit='terminal'] svg")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-shell")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-toolbar")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-copy")).toBeInTheDocument();
@@ -371,13 +375,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(code.textContent).toBe("pwd");
 
     fireEvent.click(within(workspaceHeader).getByRole("button", { name: "Details" }));
-    const metaPanel = document.querySelector("[data-terminal-meta-panel]") as HTMLElement;
+    const metaPanel = document.querySelector("[data-runtime-details-panel='terminal']") as HTMLElement;
     expect(metaPanel).toBeInTheDocument();
-    expect(workspaceHeader.contains(metaPanel)).toBe(false);
+    expect(workspaceHeader.contains(metaPanel)).toBe(true);
     expect(within(metaPanel).getByText("/workspace/alter0")).toBeInTheDocument();
-
-    fireEvent.click(document.querySelector("[data-runtime-details-backdrop='true']") as HTMLElement);
-    expect(document.querySelector("[data-terminal-meta-panel]")).not.toBeInTheDocument();
   });
 
   it("renders terminal inline code without leaking HTML entities", async () => {
@@ -570,10 +571,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-session-select='terminal-1']")).toBeInTheDocument();
     });
 
-    const sessionPane = document.querySelector("[data-terminal-session-pane]") as HTMLElement;
+    const sessionPane = document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement;
     expect(within(sessionPane).getByText("Today")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Yesterday")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Earlier")).toBeInTheDocument();
@@ -584,7 +585,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
     });
 
     const fileInput = document.querySelector('input[type="file"][accept="image/*,.txt,.md,.json,.yaml,.yml,.csv,.log,.pdf"]') as HTMLInputElement;
@@ -603,10 +604,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(screen.getByRole("dialog", { name: "terminal-shot.svg" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
 
-    fireEvent.change(document.querySelector("[data-terminal-input]") as HTMLTextAreaElement, {
+    fireEvent.change(document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "inspect screenshot" },
     });
-    fireEvent.click(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+    fireEvent.click(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
 
     await waitFor(() => {
       const fetchMock = vi.mocked(fetch);
@@ -756,14 +757,14 @@ describe("ReactManagedTerminalRouteBody", () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-session-select='terminal-1']")).toBeInTheDocument();
     });
 
-    fireEvent.click(document.querySelector("[data-terminal-create]")!);
+    fireEvent.click(document.querySelector("[data-runtime-create-session='terminal']")!);
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-workspace]")).toHaveAttribute(
-        "data-terminal-session-id",
+      expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute(
+        "data-runtime-session-id",
         "terminal-2",
       );
     });
@@ -851,24 +852,24 @@ describe("ReactManagedTerminalRouteBody", () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
     });
 
-    fireEvent.change(document.querySelector("[data-terminal-input]") as HTMLTextAreaElement, {
+    fireEvent.change(document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "pwd" },
     });
-    fireEvent.click(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+    fireEvent.click(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-workspace]")).toHaveAttribute(
-        "data-terminal-session-id",
+      expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute(
+        "data-runtime-session-id",
         "terminal-2",
       );
     });
     await waitFor(() => {
       expect(document.querySelector("[data-terminal-turn='turn-2']")).toBeInTheDocument();
     });
-    expect(document.querySelector("[data-terminal-input]")).toHaveValue("");
+    expect(document.querySelector("[data-runtime-input='terminal']")).toHaveValue("");
 
     const fetchMock = vi.mocked(fetch);
     expect(fetchMock.mock.calls.some(([request, init]) =>
@@ -965,7 +966,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     const { container } = renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
     });
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement | null;
@@ -981,10 +982,10 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(screen.getByAltText("diagram.svg")).toBeInTheDocument();
     });
 
-    fireEvent.change(document.querySelector("[data-terminal-input]") as HTMLTextAreaElement, {
+    fireEvent.change(document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "describe this image" },
     });
-    fireEvent.click(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+    fireEvent.click(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
 
     await waitFor(() => {
       expect(document.querySelector("[data-terminal-turn='turn-2']")).toBeInTheDocument();
@@ -1055,16 +1056,16 @@ describe("ReactManagedTerminalRouteBody", () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
     });
 
-    fireEvent.change(document.querySelector("[data-terminal-input]") as HTMLTextAreaElement, {
+    fireEvent.change(document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "pwd" },
     });
-    fireEvent.click(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+    fireEvent.click(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
 
-    expect(document.querySelector("[data-terminal-submit]")).toBeDisabled();
-    expect(document.querySelector("[data-terminal-submit]")).toHaveAttribute("aria-label", "Sending...");
+    expect(document.querySelector("[data-runtime-submit='terminal']")).toBeDisabled();
+    expect(document.querySelector("[data-runtime-submit='terminal']")).toHaveAttribute("aria-label", "Sending...");
 
     resolveCreateSession?.(jsonResponse({
       session: {
@@ -1080,8 +1081,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     }, { status: 201 }));
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-workspace]")).toHaveAttribute(
-        "data-terminal-session-id",
+      expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute(
+        "data-runtime-session-id",
         "terminal-2",
       );
     });
@@ -1093,18 +1094,18 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
     });
 
-    const input = document.querySelector("[data-terminal-input]") as HTMLTextAreaElement;
+    const input = document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement;
     fireEvent.focus(input);
     fireEvent.change(input, {
       target: { value: "pwd" },
     });
-    fireEvent.touchStart(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+    fireEvent.touchStart(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-input]")).toHaveValue("");
+      expect(document.querySelector("[data-runtime-input='terminal']")).toHaveValue("");
     });
 
     const fetchMock = vi.mocked(fetch);
@@ -1124,7 +1125,7 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     const fetchMock = vi.mocked(fetch);
     const initialCallCount = fetchMock.mock.calls.length;
-    const chatScreen = document.querySelector("[data-terminal-chat-screen]") as HTMLDivElement;
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
 
     Object.defineProperty(chatScreen, "scrollHeight", {
       configurable: true,
@@ -1163,10 +1164,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-session-select='terminal-1']")).toBeInTheDocument();
     });
 
-    const mobileHeader = document.querySelector("[data-terminal-mobile-header]") as HTMLElement;
+    const mobileHeader = document.querySelector("[data-runtime-mobile-variant='terminal']") as HTMLElement;
     expect(mobileHeader).toHaveAttribute("data-runtime-mobile-header", "leading");
     expect(mobileHeader.querySelector(".nav-toggle")).toHaveClass(
       "runtime-workspace-mobile-action",
@@ -1188,7 +1189,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
-    expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("is-open");
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
     expect(toggleMobileSessionPane).toHaveBeenCalledTimes(1);
   });
 
@@ -1201,18 +1202,18 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-session-select='terminal-1']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-session-select='terminal-1']")).toBeInTheDocument();
     });
 
-    const mobileHeader = document.querySelector("[data-terminal-mobile-header]") as HTMLElement;
+    const mobileHeader = document.querySelector("[data-runtime-mobile-variant='terminal']") as HTMLElement;
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
-    expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("is-open");
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
 
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
-    expect(document.querySelector("[data-terminal-session-pane]")).not.toHaveClass("is-open");
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).not.toHaveClass("is-open");
   });
 
   it("uses preventScroll focus when the mobile composer is touched", async () => {
@@ -1221,10 +1222,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     await waitFor(() => {
-      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
     });
 
-    const input = document.querySelector("[data-terminal-input]") as HTMLTextAreaElement;
+    const input = document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement;
     const focusMock = vi.fn();
     Object.defineProperty(input, "focus", {
       configurable: true,

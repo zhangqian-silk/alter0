@@ -13,12 +13,12 @@ export async function waitForTerminalRepaint(page: Page, timeout = 5000): Promis
   try {
     try {
       await page.waitForFunction((node) => {
-        const current = document.querySelector('[data-composer-input="terminal-runtime"]');
+        const current = document.querySelector('[data-composer-input="terminal"]');
         return !node || !node.isConnected || current !== node;
       }, previousInput, { timeout });
     } catch {
       await page.waitForFunction(() => {
-        const current = document.querySelector('[data-composer-input="terminal-runtime"]');
+        const current = document.querySelector('[data-composer-input="terminal"]');
         return current instanceof HTMLTextAreaElement;
       }, null, { timeout: Math.min(timeout, 1200) });
     }
@@ -29,7 +29,7 @@ export async function waitForTerminalRepaint(page: Page, timeout = 5000): Promis
 }
 
 export async function waitForTerminalPoll(page: Page, sessionID: string, timeout = 5000): Promise<void> {
-  const activeSessionID = await createTerminalPage(page).workspace().getAttribute("data-terminal-session-id").catch(() => "");
+  const activeSessionID = await createTerminalPage(page).workspace().getAttribute("data-runtime-session-id").catch(() => "");
   if (activeSessionID === sessionID) {
     return;
   }

@@ -146,7 +146,10 @@ export function RuntimeWorkspaceHeader({
         ></button>
         <section
           id={detailsID}
-          className={joinClassNames("runtime-workspace-details-panel workspace-details-panel", detailsPanelClassName)}
+          className={joinClassNames(
+            "runtime-workspace-details-panel workspace-details-panel",
+            detailsPanelClassName,
+          )}
           style={{
             ...detailsPanelInlineStyle,
             ...detailsPanelStyle,

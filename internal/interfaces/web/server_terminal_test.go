@@ -384,12 +384,12 @@ func TestTerminalViewPreservesInputDraftAcrossPaint(t *testing.T) {
 		"window.localStorage.removeItem(`terminal:${sessionID}`);",
 		"window.localStorage.removeItem(`terminal:${session.id}`);",
 		"const timer = window.setTimeout(() => {",
-		"data-terminal-input-form",
-		"data-terminal-input",
-		"data-terminal-submit",
-		`"data-composer-form": "terminal-runtime"`,
-		`"data-composer-input": "terminal-runtime"`,
-		`"data-composer-submit": "terminal-runtime"`,
+		"data-runtime-input-form",
+		"data-runtime-input",
+		"data-runtime-submit",
+		`"data-composer-form": "terminal"`,
+		`"data-composer-input": "terminal"`,
+		`"data-composer-submit": "terminal"`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
