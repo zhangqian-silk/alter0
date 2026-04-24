@@ -1,16 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { formatDateTime } from "../../shared/time/format";
 import { groupSessionListItems } from "../../shared/time/sessionListGroups";
-import { ChatMessageRegion } from "../shell/components/ChatMessageRegion";
-import { normalizeText, RouteFieldRow } from "../shell/components/RouteBodyPrimitives";
-import { RuntimeWorkspaceFrame } from "../shell/components/RuntimeWorkspaceFrame";
-import { RuntimeWorkspaceHeader } from "../shell/components/RuntimeWorkspaceHeader";
+import { buildChatTimelineItems } from "../shell/components/ChatMessageRegion";
+import { normalizeText } from "../shell/components/RouteBodyPrimitives";
+import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
+import { useRuntimeComposerViewportSync } from "../shell/components/useRuntimeComposerViewportSync";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShellCopy";
 import {
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   readComposerImageFiles,
-  resolveComposerAttachmentPreviewURL,
   type ComposerImageAttachment,
 } from "./composerImageAttachments";
 import { useConversationRuntime } from "./ConversationRuntimeProvider";
@@ -19,16 +18,7 @@ type ConversationWorkspaceProps = {
   language: LegacyShellLanguage;
 };
 
-export function ConversationWorkspace({ language }: ConversationWorkspaceProps) {
-  /* Source contract markers:
-     className="conversation-chat-form"
-     className="conversation-composer-input"
-     className="conversation-chat-submit"
-     className="conversation-session-list"
-     data-testid="conversation-session-pane"
-     data-conversation-view={runtime.route}
-     workbench.toggleMobileNav();
-  */
+export function useConversationRuntimeController(language: LegacyShellLanguage): RuntimeWorkspacePageController {
   const workbench = useWorkbenchContext();
   const runtime = useConversationRuntime();
   const copy = getLegacyShellCopy(language);
@@ -200,580 +190,290 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
     }
   };
 
-  useLayoutEffect(() => {
-    if (!workbench.isMobileViewport || !inputFocused) {
-      return;
-    }
-    const keepViewportAnchored = () => {
-      if (window.scrollX !== 0 || window.scrollY !== 0) {
-        window.scrollTo({ left: 0, top: 0, behavior: "auto" });
-      }
-    };
-    const frameID = window.requestAnimationFrame(keepViewportAnchored);
-    const visualViewport = window.visualViewport;
-    window.addEventListener("scroll", keepViewportAnchored, { passive: true });
-    visualViewport?.addEventListener("resize", keepViewportAnchored);
-    visualViewport?.addEventListener("scroll", keepViewportAnchored);
-    return () => {
-      window.cancelAnimationFrame(frameID);
-      window.removeEventListener("scroll", keepViewportAnchored);
-      visualViewport?.removeEventListener("resize", keepViewportAnchored);
-      visualViewport?.removeEventListener("scroll", keepViewportAnchored);
-    };
-  }, [inputFocused, workbench.isMobileViewport]);
+  useRuntimeComposerViewportSync({
+    isMobileViewport: workbench.isMobileViewport,
+    inputFocused,
+    workspaceBodyRef,
+    composerShellRef,
+  });
 
-  useLayoutEffect(() => {
-    const workspaceBodyNode = workspaceBodyRef.current;
-    const composerShellNode = composerShellRef.current;
-    if (!workspaceBodyNode) {
-      return;
-    }
-    if (!workbench.isMobileViewport || !composerShellNode) {
-      workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
-      workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
-      return;
-    }
-
-    const syncComposerInset = () => {
-      const workspaceRect = workspaceBodyNode.getBoundingClientRect();
-      const composerRect = composerShellNode.getBoundingClientRect();
-      workspaceBodyNode.style.setProperty(
-        "--runtime-composer-rest-inset",
-        `${Math.max(0, Math.ceil(composerRect.height))}px`,
-      );
-      workspaceBodyNode.style.setProperty(
-        "--runtime-composer-inset",
-        `${Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top))}px`,
-      );
-    };
-
-    let settleFrameID = 0;
-    let settleLateFrameID = 0;
-    let settleTimeoutID = 0;
-    const clearScheduledSync = () => {
-      if (settleFrameID) {
-        window.cancelAnimationFrame(settleFrameID);
-        settleFrameID = 0;
-      }
-      if (settleLateFrameID) {
-        window.cancelAnimationFrame(settleLateFrameID);
-        settleLateFrameID = 0;
-      }
-      if (settleTimeoutID) {
-        window.clearTimeout(settleTimeoutID);
-        settleTimeoutID = 0;
-      }
-    };
-    const scheduleComposerInsetSync = () => {
-      syncComposerInset();
-      clearScheduledSync();
-      settleFrameID = window.requestAnimationFrame(() => {
-        settleFrameID = 0;
-        syncComposerInset();
-        settleLateFrameID = window.requestAnimationFrame(() => {
-          settleLateFrameID = 0;
-          syncComposerInset();
-        });
-      });
-      settleTimeoutID = window.setTimeout(() => {
-        settleTimeoutID = 0;
-        syncComposerInset();
-      }, 260);
-    };
-
-    scheduleComposerInsetSync();
-
-    const resizeObserver = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(() => scheduleComposerInsetSync());
-    resizeObserver?.observe(composerShellNode);
-    window.addEventListener("resize", scheduleComposerInsetSync);
-    window.visualViewport?.addEventListener("resize", scheduleComposerInsetSync);
-    window.visualViewport?.addEventListener("scroll", scheduleComposerInsetSync);
-    composerShellNode.addEventListener("transitionend", scheduleComposerInsetSync);
-    return () => {
-      clearScheduledSync();
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", scheduleComposerInsetSync);
-      window.visualViewport?.removeEventListener("resize", scheduleComposerInsetSync);
-      window.visualViewport?.removeEventListener("scroll", scheduleComposerInsetSync);
-      composerShellNode.removeEventListener("transitionend", scheduleComposerInsetSync);
-      workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
-      workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
-    };
-  }, [workbench.isMobileViewport]);
-
-  return (
-    <>
-      <RuntimeWorkspaceFrame
-      rootClassName="conversation-runtime-view terminal-runtime-view"
-      rootProps={{ "data-conversation-view": runtime.route }}
-      sessionPaneClassName={`terminal-session-pane conversation-session-pane${workbench.isMobileViewport && workbench.mobileSessionPaneOpen ? " is-open" : ""}`}
-      sessionPaneProps={{
+  return {
+    shell: {
+      rootClassName: "conversation-runtime-view",
+      rootProps: { "data-conversation-view": runtime.route },
+      sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen ? "is-open" : undefined,
+      sessionPaneProps: {
         "data-conversation-session-pane": "",
         "data-mobile-open": workbench.mobileSessionPaneOpen ? "true" : "false",
         "data-testid": "conversation-session-pane",
-      }}
-      sessionPaneBackdrop={{
-        className: "terminal-session-pane-backdrop conversation-session-pane-backdrop",
+      },
+      sessionPaneBackdrop: {
         ariaLabel: copy.sessionClose,
         onClick: workbench.closeMobileSessionPane,
-      }}
-      sessionPaneShellClassName="route-surface terminal-session-pane-shell conversation-session-pane-shell"
-      sessionPaneContent={(
-        <>
-          <div className="terminal-session-pane-head conversation-session-pane-head">
-            <div className="terminal-session-pane-copy conversation-session-pane-copy">
-              <strong>{sessionPaneTitle}</strong>
-              <span>{sessionCountLabel}</span>
-            </div>
-            <div className="terminal-session-pane-actions conversation-session-pane-actions">
-              <button
-                className="terminal-session-pane-action conversation-session-pane-action is-primary"
-                type="button"
-                onClick={handleCreateSession}
-              >
-                {workbench.isMobileViewport ? copy.terminalNewShort : mobileNewLabel}
+      },
+      sessionPanePrimaryActionClassName: "is-primary",
+      sessionPaneTitle,
+      sessionPaneCountLabel: sessionCountLabel,
+      sessionPanePrimaryActionLabel: workbench.isMobileViewport ? copy.terminalNewShort : mobileNewLabel,
+      onSessionPanePrimaryAction: handleCreateSession,
+      sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.sessionClose : undefined,
+      onSessionPaneSecondaryAction: workbench.isMobileViewport ? workbench.closeMobileSessionPane : undefined,
+      workspaceProps: {
+        "data-conversation-workspace": "",
+        "data-conversation-route": runtime.route,
+      },
+      workspaceBodyRef,
+      mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
+      mobileHeaderProps: { "data-conversation-mobile-header": "" },
+      mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
+      mobileNavButtonLabel: copy.chatMenu,
+      mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
+      onMobileNav: workbench.toggleMobileNav,
+      mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",
+      mobileSessionButtonLabel: copy.chatSessions,
+      mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
+      onMobileSession: workbench.toggleMobileSessionPane,
+      mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
+      mobilePrimaryButtonLabel: copy.terminalNewShort,
+      onMobilePrimary: handleCreateSession,
+    },
+    sessionList: {
+      groups: groupedSessionItems.map((group) => ({
+        ...group,
+        items: group.items.map((item) => ({
+          id: item.id,
+          active: item.active,
+          title: item.title,
+          meta: item.meta,
+          shortHash: item.shortHash,
+          activeLabel: activeSessionBadgeLabel,
+          idleLabel: idleSessionBadgeLabel,
+          onSelect: () => handleFocusSession(item.id),
+          onDelete: () => void handleRemoveSession(item.id),
+          deleteLabel: deleteSessionLabel,
+          deleteAriaLabel: deleteSessionAriaLabel,
+          shellClassName: item.active ? "runtime-session-card is-active" : "runtime-session-card",
+          shellProps: { "data-conversation-session-state": item.active ? "active" : "idle" },
+          buttonClassName: item.active ? "runtime-session-select active" : "runtime-session-select",
+        })),
+      })),
+      listProps: { "data-conversation-session-list": "true" },
+      emptyState: groupedSessionItems.length === 0 ? (
+        <p className="route-empty-panel conversation-session-empty">{sessionEmptyLabel}</p>
+      ) : null,
+    },
+    header: {
+      title: runtime.activeSession?.title || emptyStateTitle,
+      statusLabel: runtimeStatus.label,
+      statusTone: runtimeStatus.tone,
+      detailsLabel,
+      detailsOpen,
+      onToggleDetails: () => setDetailsOpen((current) => !current),
+      detailsDisabled: !runtime.activeSession,
+      mobileEmpty: isMobileEmptyHeader,
+      detailsPanelProps: {
+        "data-conversation-inspector": "",
+      },
+      detailsClassName: "conversation-inspector conversation-session-details workspace-details-content",
+      detailsSummary: runtime.activeSession ? [
+        { label: language === "zh" ? "会话" : "Session", value: runtime.activeSession.id, copyLabel: language === "zh" ? "会话" : "Session", mono: true },
+        { label: language === "zh" ? "路由" : "Route", value: routeLabel, copyLabel: language === "zh" ? "路由" : "Route" },
+        { label: language === "zh" ? "状态" : "Status", value: runtimeStatus.label, copyLabel: language === "zh" ? "状态" : "Status" },
+        { label: language === "zh" ? "短标识" : "Short hash", value: activeSessionItem?.shortHash || "-", copyLabel: language === "zh" ? "短标识" : "Short hash", mono: true },
+        { label: copy.runtimeModel, value: runtime.selectedModelLabel || copy.runtimeServiceDefault, copyLabel: copy.runtimeModel },
+        { label: copy.runtimeProvider, value: selectedProviderName, copyLabel: copy.runtimeProvider },
+        ...(runtime.route === "agent-runtime" ? [{ label: copy.runtimeAgent, value: runtime.target.name || "-", copyLabel: copy.runtimeAgent }] : []),
+        { label: language === "zh" ? "消息数" : "Messages", value: String(activeMessages.length), copyLabel: language === "zh" ? "消息数" : "Messages" },
+        { label: language === "zh" ? "创建时间" : "Created", value: activeSessionItem ? formatDateTime(activeSessionItem.createdAt) : "-", copyLabel: language === "zh" ? "创建时间" : "Created" },
+        { label: copy.runtimeToolsMcp, value: activeCapabilityNames, copyLabel: copy.runtimeToolsMcp, multiline: true },
+        { label: copy.runtimeSkills, value: activeSkillNames, copyLabel: copy.runtimeSkills, multiline: true },
+      ] : [],
+      detailsBody: runtime.activeSession ? (
+        <div className="conversation-inspector-body">
+          <div className="conversation-inspector-tabs">
+            {runtime.route === "agent-runtime" ? (
+              <button className={targetInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("target")}>
+                {copy.runtimeAgentPick}
               </button>
-              {workbench.isMobileViewport ? (
-                <button
-                  className="terminal-session-pane-action conversation-session-pane-action"
-                  type="button"
-                  onClick={workbench.closeMobileSessionPane}
-                >
-                  {copy.sessionClose}
-                </button>
-              ) : null}
-            </div>
+            ) : null}
+            <button className={modelInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("model")}>
+              {copy.runtimeModel}
+            </button>
+            <button className={capabilitiesInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("capabilities")}>
+              {copy.runtimeToolsMcp}
+            </button>
+            <button className={skillsInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("skills")}>
+              {copy.runtimeSkills}
+            </button>
           </div>
-          <div className="conversation-session-list menu" data-conversation-session-list role="list">
-            {groupedSessionItems.length === 0 ? <p className="route-empty-panel conversation-session-empty">{sessionEmptyLabel}</p> : null}
-            {groupedSessionItems.map((group) => (
-              <section
-                key={group.key}
-                className="conversation-session-group menu-group"
-                aria-label={group.label}
-              >
-                <h2 className="conversation-session-group-label">{group.label}</h2>
-                <div className="conversation-session-group-items">
-                  {group.items.map((item) => (
-                    <div
-                      key={item.id}
-                      role="listitem"
-                      className={item.active ? "conversation-session-card is-active" : "conversation-session-card"}
-                      data-conversation-session-state={item.active ? "active" : "idle"}
-                    >
+
+          {targetInspectorOpen && runtime.route === "agent-runtime" ? (
+            <div className="conversation-inspector-grid">
+              {runtime.targetOptions.map((item) => (
+                <button
+                  key={item.id}
+                  className={item.active ? "conversation-target-card is-active" : "conversation-target-card"}
+                  type="button"
+                  disabled={runtime.lockedTarget}
+                  onClick={() => runtime.selectTarget(item.id)}
+                >
+                  <strong>{item.name}</strong>
+                  <span>{item.subtitle}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {modelInspectorOpen ? (
+            <div className="conversation-inspector-sections">
+              {runtime.providers.map((provider) => (
+                <section key={provider.id} className="conversation-inspector-section">
+                  <strong>{provider.name}</strong>
+                  <div className="conversation-chip-list">
+                    {provider.models.map((model) => (
                       <button
-                        className={item.active ? "conversation-session-select active" : "conversation-session-select"}
+                        key={model.id}
+                        className={model.active ? "conversation-chip is-active" : "conversation-chip"}
                         type="button"
-                        aria-current={item.active ? "true" : undefined}
-                        onClick={() => handleFocusSession(item.id)}
+                        onClick={() => runtime.selectModel(provider.id, model.id)}
                       >
-                        <span className="conversation-session-main">
-                          <span className="conversation-session-topline">
-                            <span
-                              className={item.active ? "conversation-session-badge is-active" : "conversation-session-badge"}
-                              data-conversation-session-badge={item.active ? "active" : "idle"}
-                            >
-                              {item.active ? activeSessionBadgeLabel : idleSessionBadgeLabel}
-                            </span>
-                          </span>
-                          <span className="conversation-session-title-row">
-                            <span className="conversation-session-title">{item.title}</span>
-                          </span>
-                          <span className="conversation-session-summary-row">
-                            <span className="conversation-session-meta">{item.meta}</span>
-                          </span>
-                          <span className="conversation-session-bottomline">
-                            <span className="conversation-session-hash">{item.shortHash}</span>
-                          </span>
-                        </span>
+                        {model.name}
                       </button>
-                      <button
-                        className="conversation-session-delete"
-                        type="button"
-                        aria-label={deleteSessionAriaLabel}
-                        onClick={() => void handleRemoveSession(item.id)}
-                      >
-                        {deleteSessionLabel}
-                      </button>
-                    </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : null}
+
+          {capabilitiesInspectorOpen ? (
+            <div className="conversation-inspector-sections">
+              <section className="conversation-inspector-section">
+                <strong>{language === "zh" ? "已启用" : "Active"}</strong>
+                <div className="conversation-check-list">
+                  {capabilityGroups.activeCapabilities.map((item) => (
+                    <label key={item.id} className="conversation-check-item">
+                      <input
+                        type="checkbox"
+                        checked={item.active}
+                        onChange={(event) => runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
+                      />
+                      <span><strong>{item.name}</strong><small>{item.description}</small></span>
+                    </label>
                   ))}
                 </div>
               </section>
-            ))}
-          </div>
-        </>
-      )}
-      workspaceClassName="terminal-workspace conversation-workspace"
-      workspaceProps={{
-        "data-conversation-workspace": "",
-        "data-conversation-route": runtime.route,
-      }}
-      workspaceBodyClassName="terminal-workspace-body conversation-workspace-body"
-      workspaceBodyRef={workspaceBodyRef}
-      mobileHeader={workbench.isMobileViewport ? (
-        <header className="terminal-mobile-header" data-conversation-mobile-header>
-          <button
-            className="conversation-mobile-action terminal-inline-button is-quiet conversation-mobile-nav-toggle"
-            type="button"
-            aria-expanded={workbench.mobileNavOpen}
-            onClick={workbench.toggleMobileNav}
-          >
-            {copy.chatMenu}
-          </button>
-          <div className="terminal-mobile-header-actions">
-            <button
-              className="conversation-mobile-action terminal-inline-button is-quiet conversation-mobile-session-toggle"
-              type="button"
-              aria-expanded={workbench.mobileSessionPaneOpen}
-              onClick={workbench.toggleMobileSessionPane}
-            >
-              {copy.chatSessions}
-            </button>
-            <button
-              className="conversation-mobile-action terminal-inline-button is-primary conversation-mobile-new-session"
-              type="button"
-              onClick={handleCreateSession}
-            >
-              {copy.terminalNewShort}
-            </button>
-          </div>
-        </header>
-      ) : null}
-      workspaceHeader={(
-        <RuntimeWorkspaceHeader
-          title={runtime.activeSession?.title || emptyStateTitle}
-          statusLabel={runtimeStatus.label}
-          statusTone={runtimeStatus.tone}
-          detailsLabel={detailsLabel}
-          detailsOpen={detailsOpen}
-          onToggleDetails={() => setDetailsOpen((current) => !current)}
-          detailsDisabled={!runtime.activeSession}
-          mobileEmpty={isMobileEmptyHeader}
-          detailsPanelProps={{
-            "data-conversation-inspector": "",
-          }}
-          detailsContent={runtime.activeSession ? (
-            <section className="conversation-inspector conversation-session-details workspace-details-content">
-              <div className="conversation-inspector-meta workspace-details-summary">
-                <RouteFieldRow label={language === "zh" ? "会话" : "Session"} value={runtime.activeSession.id} copyLabel={language === "zh" ? "会话" : "Session"} mono />
-                <RouteFieldRow label={language === "zh" ? "路由" : "Route"} value={routeLabel} copyLabel={language === "zh" ? "路由" : "Route"} />
-                <RouteFieldRow label={language === "zh" ? "状态" : "Status"} value={runtimeStatus.label} copyLabel={language === "zh" ? "状态" : "Status"} />
-                <RouteFieldRow label={language === "zh" ? "短标识" : "Short hash"} value={activeSessionItem?.shortHash || "-"} copyLabel={language === "zh" ? "短标识" : "Short hash"} mono />
-                <RouteFieldRow label={copy.runtimeModel} value={runtime.selectedModelLabel || copy.runtimeServiceDefault} copyLabel={copy.runtimeModel} />
-                <RouteFieldRow label={copy.runtimeProvider} value={selectedProviderName} copyLabel={copy.runtimeProvider} />
-                {runtime.route === "agent-runtime" ? (
-                  <RouteFieldRow label={copy.runtimeAgent} value={runtime.target.name || "-"} copyLabel={copy.runtimeAgent} />
-                ) : null}
-                <RouteFieldRow label={language === "zh" ? "消息数" : "Messages"} value={String(activeMessages.length)} copyLabel={language === "zh" ? "消息数" : "Messages"} />
-                <RouteFieldRow
-                  label={language === "zh" ? "创建时间" : "Created"}
-                  value={activeSessionItem ? formatDateTime(activeSessionItem.createdAt) : "-"}
-                  copyLabel={language === "zh" ? "创建时间" : "Created"}
-                />
-                <RouteFieldRow label={copy.runtimeToolsMcp} value={activeCapabilityNames} copyLabel={copy.runtimeToolsMcp} multiline />
-                <RouteFieldRow label={copy.runtimeSkills} value={activeSkillNames} copyLabel={copy.runtimeSkills} multiline />
-              </div>
-
-              <div className="conversation-inspector-body workspace-details-body">
-                <div className="conversation-inspector-tabs">
-                  {runtime.route === "agent-runtime" ? (
-                    <button
-                      className={targetInspectorOpen ? "is-active" : ""}
-                      type="button"
-                      onClick={() => runtime.toggleInspector("target")}
-                    >
-                      {copy.runtimeAgentPick}
-                    </button>
-                  ) : null}
-                  <button
-                    className={modelInspectorOpen ? "is-active" : ""}
-                    type="button"
-                    onClick={() => runtime.toggleInspector("model")}
-                  >
-                    {copy.runtimeModel}
-                  </button>
-                  <button
-                    className={capabilitiesInspectorOpen ? "is-active" : ""}
-                    type="button"
-                    onClick={() => runtime.toggleInspector("capabilities")}
-                  >
-                    {copy.runtimeToolsMcp}
-                  </button>
-                  <button
-                    className={skillsInspectorOpen ? "is-active" : ""}
-                    type="button"
-                    onClick={() => runtime.toggleInspector("skills")}
-                  >
-                    {copy.runtimeSkills}
-                  </button>
+              <section className="conversation-inspector-section">
+                <strong>{language === "zh" ? "可选" : "Available"}</strong>
+                <div className="conversation-check-list">
+                  {capabilityGroups.availableCapabilities.map((item) => (
+                    <label key={item.id} className="conversation-check-item">
+                      <input
+                        type="checkbox"
+                        checked={item.active}
+                        onChange={(event) => runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
+                      />
+                      <span><strong>{item.name}</strong><small>{item.description}</small></span>
+                    </label>
+                  ))}
                 </div>
-
-                {targetInspectorOpen && runtime.route === "agent-runtime" ? (
-                  <div className="conversation-inspector-grid">
-                    {runtime.targetOptions.map((item) => (
-                      <button
-                        key={item.id}
-                        className={item.active ? "conversation-target-card is-active" : "conversation-target-card"}
-                        type="button"
-                        disabled={runtime.lockedTarget}
-                        onClick={() => runtime.selectTarget(item.id)}
-                      >
-                        <strong>{item.name}</strong>
-                        <span>{item.subtitle}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-
-                {modelInspectorOpen ? (
-                  <div className="conversation-inspector-sections">
-                    {runtime.providers.map((provider) => (
-                      <section key={provider.id} className="conversation-inspector-section">
-                        <strong>{provider.name}</strong>
-                        <div className="conversation-chip-list">
-                          {provider.models.map((model) => (
-                            <button
-                              key={model.id}
-                              className={model.active ? "conversation-chip is-active" : "conversation-chip"}
-                              type="button"
-                              onClick={() => runtime.selectModel(provider.id, model.id)}
-                            >
-                              {model.name}
-                            </button>
-                          ))}
-                        </div>
-                      </section>
-                    ))}
-                  </div>
-                ) : null}
-
-                {capabilitiesInspectorOpen ? (
-                  <div className="conversation-inspector-sections">
-                    <section className="conversation-inspector-section">
-                      <strong>{language === "zh" ? "已启用" : "Active"}</strong>
-                      <div className="conversation-check-list">
-                        {capabilityGroups.activeCapabilities.map((item) => (
-                          <label key={item.id} className="conversation-check-item">
-                            <input
-                              type="checkbox"
-                              checked={item.active}
-                              onChange={(event) =>
-                                runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
-                            />
-                            <span>
-                              <strong>{item.name}</strong>
-                              <small>{item.description}</small>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </section>
-                    <section className="conversation-inspector-section">
-                      <strong>{language === "zh" ? "可选" : "Available"}</strong>
-                      <div className="conversation-check-list">
-                        {capabilityGroups.availableCapabilities.map((item) => (
-                          <label key={item.id} className="conversation-check-item">
-                            <input
-                              type="checkbox"
-                              checked={item.active}
-                              onChange={(event) =>
-                                runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
-                            />
-                            <span>
-                              <strong>{item.name}</strong>
-                              <small>{item.description}</small>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </section>
-                  </div>
-                ) : null}
-
-                {skillsInspectorOpen ? (
-                  <div className="conversation-inspector-sections">
-                    <section className="conversation-inspector-section">
-                      <strong>{language === "zh" ? "已启用" : "Active"}</strong>
-                      <div className="conversation-check-list">
-                        {capabilityGroups.activeSkills.map((item) => (
-                          <label key={item.id} className="conversation-check-item">
-                            <input
-                              type="checkbox"
-                              checked={item.active}
-                              onChange={(event) => runtime.toggleSkill(item.id, event.target.checked)}
-                            />
-                            <span>
-                              <strong>{item.name}</strong>
-                              <small>{item.description}</small>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </section>
-                    <section className="conversation-inspector-section">
-                      <strong>{language === "zh" ? "可选" : "Available"}</strong>
-                      <div className="conversation-check-list">
-                        {capabilityGroups.availableSkills.map((item) => (
-                          <label key={item.id} className="conversation-check-item">
-                            <input
-                              type="checkbox"
-                              checked={item.active}
-                              onChange={(event) => runtime.toggleSkill(item.id, event.target.checked)}
-                            />
-                            <span>
-                              <strong>{item.name}</strong>
-                              <small>{item.description}</small>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </section>
-                  </div>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-        />
-      )}
-      workspaceContent={(
-        <section className={`conversation-console-panel${isEmptyState ? " is-empty" : ""}`}>
-          <div
-            className={`terminal-chat-screen conversation-chat-screen${isEmptyState ? " is-empty" : ""}`}
-            data-conversation-chat-screen
-          >
-            {!isEmptyState ? (
-              <ChatMessageRegion
-                sessionId={runtime.activeSession?.id || ""}
-                messages={activeMessages}
-                language={language}
-                onToggleProcess={runtime.toggleAgentProcess}
-              />
-            ) : (
-              <div className="conversation-empty-state">
-                <h5>{emptyStateTitle}</h5>
-                <p>{emptyStateDescription}</p>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-      workspaceFooter={(
-        <footer ref={composerShellRef} className="terminal-composer-shell conversation-composer-shell">
-          <form
-            className="terminal-chat-form conversation-chat-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitDraft();
-            }}
-          >
-            <input
-              ref={composerFileInputRef}
-              type="file"
-              accept="image/*"
-              hidden
-              multiple
-              onChange={(event) => {
-                void handleComposerImageSelection(event.target.files);
-              }}
-            />
-            {runtime.draftAttachments.length > 0 ? (
-              <div className="conversation-composer-attachments" data-composer-attachments>
-                {runtime.draftAttachments.map((attachment) => (
-                  <article key={attachment.id} className="conversation-composer-attachment">
-                    <button
-                      type="button"
-                      className="conversation-composer-attachment-preview"
-                      aria-label={`${composerPreviewPrefix} ${attachment.name}`}
-                      onClick={() => setPreviewAttachment(attachment)}
-                    >
-                      <img src={resolveComposerAttachmentPreviewURL(attachment)} alt={attachment.name} loading="lazy" decoding="async" />
-                    </button>
-                    <button
-                      type="button"
-                      className="conversation-composer-attachment-remove"
-                      aria-label={`${composerRemovePrefix} ${attachment.name}`}
-                      onClick={() => runtime.removeDraftAttachment(attachment.id)}
-                    >
-                      ×
-                    </button>
-                  </article>
-                ))}
-              </div>
-            ) : null}
-            <label className="sr-only" htmlFor="conversationRuntimeInput">
-              {composerPlaceholder}
-            </label>
-            <textarea
-              id="conversationRuntimeInput"
-              ref={composerInputRef}
-              className="terminal-composer-input conversation-composer-input"
-              value={runtime.draft}
-              maxLength={10000}
-              placeholder={composerPlaceholder}
-              onPointerDownCapture={handleComposerPointerDownCapture}
-              onTouchStartCapture={handleComposerTouchStartCapture}
-              onChange={(event) => runtime.setDraft(event.target.value)}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-            ></textarea>
-            <div className="terminal-composer-tools">
-              <div className="terminal-composer-meta">{composerMetaLabel}</div>
-              <button
-                type="button"
-                className="conversation-chat-upload"
-                aria-label={composerAddImageLabel}
-                onClick={handleComposerImagePicker}
-              >
-                <span aria-hidden="true">+</span>
-                <span>{composerAddImageLabel}</span>
-              </button>
-              <button
-                type="submit"
-                className="terminal-chat-submit conversation-chat-submit"
-                aria-label={composerSend}
-                onTouchStartCapture={handleSubmitTouchStartCapture}
-              >
-                <span className="terminal-chat-form-button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 20 20" fill="none" focusable="false">
-                    <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
-                    <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </span>
-                <span className="sr-only">{composerSend}</span>
-              </button>
+              </section>
             </div>
-          </form>
-        </footer>
-      )}
-      />
-      {previewAttachment ? (
-        <div
-          className="conversation-image-preview-backdrop"
-          onClick={() => setPreviewAttachment(null)}
-        >
-          <div
-            className="conversation-image-preview-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={previewAttachment.name}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="conversation-image-preview-close"
-              aria-label={composerClosePreviewLabel}
-              onClick={() => setPreviewAttachment(null)}
-            >
-              ×
-            </button>
-            <img src={resolveComposerAttachmentPreviewURL(previewAttachment)} alt={previewAttachment.name} decoding="async" />
-          </div>
+          ) : null}
+
+          {skillsInspectorOpen ? (
+            <div className="conversation-inspector-sections">
+              <section className="conversation-inspector-section">
+                <strong>{language === "zh" ? "已启用" : "Active"}</strong>
+                <div className="conversation-check-list">
+                  {capabilityGroups.activeSkills.map((item) => (
+                    <label key={item.id} className="conversation-check-item">
+                      <input type="checkbox" checked={item.active} onChange={(event) => runtime.toggleSkill(item.id, event.target.checked)} />
+                      <span><strong>{item.name}</strong><small>{item.description}</small></span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+              <section className="conversation-inspector-section">
+                <strong>{language === "zh" ? "可选" : "Available"}</strong>
+                <div className="conversation-check-list">
+                  {capabilityGroups.availableSkills.map((item) => (
+                    <label key={item.id} className="conversation-check-item">
+                      <input type="checkbox" checked={item.active} onChange={(event) => runtime.toggleSkill(item.id, event.target.checked)} />
+                      <span><strong>{item.name}</strong><small>{item.description}</small></span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-    </>
-  );
+      ) : null,
+    },
+    screen: {
+      panelClassName: `conversation-console-panel${isEmptyState ? " is-empty" : ""}`,
+      screenClassName: isEmptyState ? "is-empty" : undefined,
+      screenProps: { "data-conversation-chat-screen": "" },
+    },
+    timeline: {
+      items: buildChatTimelineItems({
+        messages: activeMessages,
+        language,
+        onToggleProcess: runtime.toggleAgentProcess,
+      }),
+      emptyState: (
+        <div className="conversation-empty-state">
+          <h5>{emptyStateTitle}</h5>
+          <p>{emptyStateDescription}</p>
+        </div>
+      ),
+    },
+    composer: {
+      shellRef: composerShellRef,
+      onSubmit: (event) => {
+        event.preventDefault();
+        submitDraft();
+      },
+      fileInputRef: composerFileInputRef,
+      onFileChange: (event) => {
+        void handleComposerImageSelection(event.target.files);
+      },
+      attachments: runtime.draftAttachments,
+      attachmentStripProps: { "data-composer-attachments": "" },
+      attachmentPreviewLabel: (attachment) => `${composerPreviewPrefix} ${attachment.name}`,
+      attachmentRemoveLabel: (attachment) => `${composerRemovePrefix} ${attachment.name}`,
+      previewAttachment,
+      onPreviewAttachmentChange: setPreviewAttachment,
+      onRemoveAttachment: (attachment) => runtime.removeDraftAttachment(attachment.id),
+      inputLabel: composerPlaceholder,
+      inputId: "conversationRuntimeInput",
+      inputRef: composerInputRef,
+      inputValue: runtime.draft,
+      inputProps: { maxLength: 10000, placeholder: composerPlaceholder },
+      onInputChange: runtime.setDraft,
+      onInputFocus: () => setInputFocused(true),
+      onInputBlur: () => setInputFocused(false),
+      onInputPointerDownCapture: handleComposerPointerDownCapture,
+      onInputTouchStartCapture: handleComposerTouchStartCapture,
+      metaContent: composerMetaLabel,
+      addImageLabel: composerAddImageLabel,
+      onAddImage: handleComposerImagePicker,
+      submitButtonProps: { onTouchStartCapture: handleSubmitTouchStartCapture },
+      submitLabel: composerSend,
+      submitIcon: (
+        <svg viewBox="0 0 20 20" fill="none" focusable="false">
+          <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
+          <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+      previewCloseLabel: composerClosePreviewLabel,
+    },
+  };
+}
+
+export function ConversationWorkspace({ language }: ConversationWorkspaceProps) {
+  const controller = useConversationRuntimeController(language);
+  return <RuntimeWorkspacePage controller={controller} />;
 }
 
 function capabilityListLabel(items: string[]) {

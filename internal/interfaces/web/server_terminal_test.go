@@ -387,9 +387,9 @@ func TestTerminalViewPreservesInputDraftAcrossPaint(t *testing.T) {
 		"data-terminal-input-form",
 		"data-terminal-input",
 		"data-terminal-submit",
-		"data-composer-form=\"terminal-runtime\"",
-		"data-composer-input=\"terminal-runtime\"",
-		"data-composer-submit=\"terminal-runtime\"",
+		`"data-composer-form": "terminal-runtime"`,
+		`"data-composer-input": "terminal-runtime"`,
+		`"data-composer-submit": "terminal-runtime"`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {

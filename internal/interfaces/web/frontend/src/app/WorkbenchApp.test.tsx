@@ -15,34 +15,18 @@ vi.mock("../shared/viewport/mobileViewportSync", () => ({
   createMobileViewportSyncController: () => mockCreateMobileViewportSyncController(),
 }));
 
-vi.mock("../features/conversation-runtime/ConversationRuntimeProvider", () => ({
-  ConversationRuntimeProvider: ({
-    route,
-    language,
-    children,
-  }: {
-    route: string;
-    language: string;
-    children: React.ReactNode;
-  }) => (
-    <div data-testid="conversation-provider" data-route={route} data-language={language}>
-      {children}
-    </div>
-  ),
-}));
-
-vi.mock("../features/conversation-runtime/ConversationWorkspace", () => ({
-  ConversationWorkspace: ({ language }: { language: string }) => (
-    <div data-testid="conversation-workspace" data-language={language}>
-      conversation workspace
-    </div>
-  ),
-}));
-
 vi.mock("../features/shell/components/ReactManagedRouteBody", () => ({
   ReactManagedRouteBody: ({ route, language }: { route: string; language: string }) => (
     <div data-testid="route-body" data-route={route} data-language={language}>
       {route}:{language}
+    </div>
+  ),
+}));
+
+vi.mock("../features/shell/components/RuntimeRouteHost", () => ({
+  RuntimeRouteHost: ({ route, language }: { route: string; language: string }) => (
+    <div data-testid="runtime-route-host" data-route={route} data-language={language}>
+      runtime:{route}:{language}
     </div>
   ),
 }));
@@ -101,8 +85,8 @@ describe("WorkbenchApp", () => {
   it("renders conversation routes through the conversation runtime and syncs language changes", async () => {
     const { container } = render(<WorkbenchApp />);
 
-    expect(screen.getByTestId("conversation-provider")).toHaveAttribute("data-route", "chat");
-    expect(screen.getByTestId("conversation-workspace")).toHaveAttribute("data-language", "en");
+    expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "chat");
+    expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-language", "en");
     expect(screen.queryByTestId("route-body")).not.toBeInTheDocument();
     expect(container.querySelector(".app-shell")).toHaveAttribute("data-workbench-route", "chat");
     expect(container.querySelector(".chat-pane")).toHaveAttribute("data-route", "chat");
@@ -122,7 +106,7 @@ describe("WorkbenchApp", () => {
     expect(screen.getByTestId("route-body")).toHaveAttribute("data-language", "zh");
     expect(container.querySelector(".app-shell")).toHaveAttribute("data-workbench-route", "tasks");
     expect(container.querySelector(".chat-pane")).toHaveAttribute("data-route", "tasks");
-    expect(screen.queryByTestId("conversation-provider")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("runtime-route-host")).not.toBeInTheDocument();
   });
 
   it("uses an overlay on mobile nav and closes it after route navigation", async () => {
@@ -171,13 +155,13 @@ describe("WorkbenchApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "terminal");
+      expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "terminal");
     });
 
     const paneShell = container.querySelector("[data-workbench-pane-shell]") as HTMLElement;
     expect(paneShell).toBeInTheDocument();
-    expect(paneShell.firstElementChild).toBe(screen.getByTestId("route-body"));
-    expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "terminal");
+    expect(paneShell.firstElementChild).toBe(screen.getByTestId("runtime-route-host"));
+    expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "terminal");
     expect(container.querySelector(".route-view.terminal-route")).not.toBeInTheDocument();
     expect(container.querySelector(".route-body.terminal-route-body")).not.toBeInTheDocument();
   });

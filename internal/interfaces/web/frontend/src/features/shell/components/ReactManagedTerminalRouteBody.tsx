@@ -10,9 +10,11 @@ import {
   type ComposerImageAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 import { getLegacyShellCopy } from "../legacyShellCopy";
-import { RuntimeWorkspaceFrame } from "./RuntimeWorkspaceFrame";
-import { RuntimeWorkspaceHeader } from "./RuntimeWorkspaceHeader";
-import { normalizeText, RouteFieldRow } from "./RouteBodyPrimitives";
+import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
+import type { RuntimeTimelineItem, RuntimeTimelineProcessStep } from "./RuntimeTimeline";
+import { normalizeText } from "./RouteBodyPrimitives";
+import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
+import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
 
 type TerminalStatus = "ready" | "busy" | "exited" | "failed" | "interrupted";
 
@@ -655,215 +657,7 @@ function syncJumpState(
   });
 }
 
-function MarkdownHTML({ html }: { html: string }) {
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-function renderMarkdownToHTML(value: string) {
-  const normalized = String(value ?? "").replace(/\r\n?/g, "\n");
-  if (!normalized.trim()) {
-    return "";
-  }
-  const tokens: Array<{ type: "markdown" | "code"; content: string; language?: string }> = [];
-  const fencePattern = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
-  let cursor = 0;
-  let match = fencePattern.exec(normalized);
-  while (match) {
-    if (match.index > cursor) {
-      tokens.push({ type: "markdown", content: normalized.slice(cursor, match.index) });
-    }
-    tokens.push({
-      type: "code",
-      language: String(match[1] || "").trim().toLowerCase(),
-      content: String(match[2] || "").replace(/\n$/, ""),
-    });
-    cursor = match.index + match[0].length;
-    match = fencePattern.exec(normalized);
-  }
-  if (cursor < normalized.length) {
-    tokens.push({ type: "markdown", content: normalized.slice(cursor) });
-  }
-  return tokens
-    .map((token) => {
-      if (token.type === "code") {
-        const languageClass = token.language ? ` class="language-${escapeHTML(token.language)}"` : "";
-        return `<pre class="chat-md-pre"><code${languageClass}>${escapeHTML(token.content)}</code></pre>`;
-      }
-      return renderMarkdownBlocks(token.content);
-    })
-    .join("");
-}
-
-function renderMarkdownBlocks(content: string) {
-  const lines = String(content || "").split("\n");
-  const html: string[] = [];
-  let paragraphLines: string[] = [];
-  let quoteLines: string[] = [];
-  let listType = "";
-  let listItems: string[] = [];
-
-  const flushParagraph = () => {
-    if (!paragraphLines.length) {
-      return;
-    }
-    html.push(`<p>${paragraphLines.map((line) => renderMarkdownInline(line)).join("<br>")}</p>`);
-    paragraphLines = [];
-  };
-
-  const flushQuote = () => {
-    if (!quoteLines.length) {
-      return;
-    }
-    html.push(`<blockquote>${renderMarkdownBlocks(quoteLines.join("\n"))}</blockquote>`);
-    quoteLines = [];
-  };
-
-  const flushList = () => {
-    if (!listType || !listItems.length) {
-      listType = "";
-      listItems = [];
-      return;
-    }
-    html.push(
-      `<${listType}>${listItems
-        .map((item) => `<li>${renderMarkdownInline(item)}</li>`)
-        .join("")}</${listType}>`,
-    );
-    listType = "";
-    listItems = [];
-  };
-
-  const flushAll = () => {
-    flushParagraph();
-    flushQuote();
-    flushList();
-  };
-
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) {
-      flushAll();
-      continue;
-    }
-
-    if (/^>\s?/.test(trimmed)) {
-      flushParagraph();
-      flushList();
-      quoteLines.push(trimmed.replace(/^>\s?/, ""));
-      continue;
-    }
-    flushQuote();
-
-    const unorderedMatch = /^[-*+]\s+(.+)$/.exec(trimmed);
-    if (unorderedMatch) {
-      flushParagraph();
-      if (listType && listType !== "ul") {
-        flushList();
-      }
-      listType = "ul";
-      listItems.push(unorderedMatch[1]);
-      continue;
-    }
-
-    const orderedMatch = /^(\d+)\.\s+(.+)$/.exec(trimmed);
-    if (orderedMatch) {
-      flushParagraph();
-      if (listType && listType !== "ol") {
-        flushList();
-      }
-      listType = "ol";
-      listItems.push(orderedMatch[2]);
-      continue;
-    }
-
-    flushList();
-
-    const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
-    if (headingMatch) {
-      flushParagraph();
-      const level = headingMatch[1].length;
-      html.push(`<h${level}>${renderMarkdownInline(headingMatch[2])}</h${level}>`);
-      continue;
-    }
-
-    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
-      flushParagraph();
-      html.push("<hr>");
-      continue;
-    }
-
-    paragraphLines.push(trimmed);
-  }
-
-  flushAll();
-  return html.join("");
-}
-
-function renderMarkdownInline(content: string) {
-  let rendered = String(content ?? "");
-  const placeholders: string[] = [];
-  const reserve = (html: string) => {
-    const token = `\u0000${placeholders.length}\u0000`;
-    placeholders.push(html);
-    return token;
-  };
-
-  rendered = rendered.replace(/`([^`]+)`/g, (_, code: string) =>
-    reserve(`<code class="chat-md-inline-code">${escapeHTML(code)}</code>`),
-  );
-  rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, url: string) => {
-    const href = sanitizeMarkdownURL(url);
-    if (!href) {
-      return reserve(renderMarkdownInline(label));
-    }
-    return reserve(
-      `<a href="${href}" target="_blank" rel="noreferrer noopener">${renderMarkdownInline(label)}</a>`,
-    );
-  });
-  rendered = rendered
-    .split(/(\u0000\d+\u0000)/g)
-    .map((part) => (/^\u0000\d+\u0000$/.test(part) ? part : escapeHTML(part)))
-    .join("");
-  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  rendered = rendered.replace(/__([^_]+)__/g, "<strong>$1</strong>");
-  rendered = rendered.replace(/(^|[\s(>])\*([^*\n]+)\*(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
-  rendered = rendered.replace(/(^|[\s(>])_([^_\n]+)_(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
-
-  return rendered.replace(/\u0000(\d+)\u0000/g, (_, index: string) => placeholders[Number(index)] || "");
-}
-
-function sanitizeMarkdownURL(rawURL: string) {
-  const value = String(rawURL || "").trim();
-  if (!value) {
-    return "";
-  }
-  const normalized = value.replace(/^<|>$/g, "");
-  if (/^(https?:|mailto:)/i.test(normalized) || normalized.startsWith("/") || normalized.startsWith("#")) {
-    return escapeHTML(normalized);
-  }
-  return "";
-}
-
-function escapeHTML(value: string) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => {
-    if (char === "&") return "&amp;";
-    if (char === "<") return "&lt;";
-    if (char === ">") return "&gt;";
-    if (char === '"') return "&quot;";
-    return "&#39;";
-  });
-}
-
-function CopyIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="9" width="12" height="12" rx="2"></rect>
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-    </svg>
-  );
-}
-
-export function ReactManagedTerminalRouteBody() {
+export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   /* Source contract markers:
      workbench.toggleMobileNav();
      workbench.closeMobileNav();
@@ -1000,108 +794,12 @@ export function ReactManagedTerminalRouteBody() {
     void submitInput();
   };
 
-  useLayoutEffect(() => {
-    if (!workbench.isMobileViewport || !inputFocused) {
-      return;
-    }
-    const keepViewportAnchored = () => {
-      if (window.scrollX !== 0 || window.scrollY !== 0) {
-        window.scrollTo({ left: 0, top: 0, behavior: "auto" });
-      }
-    };
-    const frameID = window.requestAnimationFrame(keepViewportAnchored);
-    const visualViewport = window.visualViewport;
-    window.addEventListener("scroll", keepViewportAnchored, { passive: true });
-    visualViewport?.addEventListener("resize", keepViewportAnchored);
-    visualViewport?.addEventListener("scroll", keepViewportAnchored);
-    return () => {
-      window.cancelAnimationFrame(frameID);
-      window.removeEventListener("scroll", keepViewportAnchored);
-      visualViewport?.removeEventListener("resize", keepViewportAnchored);
-      visualViewport?.removeEventListener("scroll", keepViewportAnchored);
-    };
-  }, [inputFocused, workbench.isMobileViewport]);
-
-  useLayoutEffect(() => {
-    const workspaceBodyNode = workspaceBodyRef.current;
-    const composerShellNode = composerShellRef.current;
-    if (!workspaceBodyNode) {
-      return;
-    }
-    if (!workbench.isMobileViewport || !composerShellNode) {
-      workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
-      workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
-      return;
-    }
-
-    const syncComposerInset = () => {
-      const workspaceRect = workspaceBodyNode.getBoundingClientRect();
-      const composerRect = composerShellNode.getBoundingClientRect();
-      workspaceBodyNode.style.setProperty(
-        "--runtime-composer-rest-inset",
-        `${Math.max(0, Math.ceil(composerRect.height))}px`,
-      );
-      workspaceBodyNode.style.setProperty(
-        "--runtime-composer-inset",
-        `${Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top))}px`,
-      );
-    };
-
-    let settleFrameID = 0;
-    let settleLateFrameID = 0;
-    let settleTimeoutID = 0;
-    const clearScheduledSync = () => {
-      if (settleFrameID) {
-        window.cancelAnimationFrame(settleFrameID);
-        settleFrameID = 0;
-      }
-      if (settleLateFrameID) {
-        window.cancelAnimationFrame(settleLateFrameID);
-        settleLateFrameID = 0;
-      }
-      if (settleTimeoutID) {
-        window.clearTimeout(settleTimeoutID);
-        settleTimeoutID = 0;
-      }
-    };
-    const scheduleComposerInsetSync = () => {
-      syncComposerInset();
-      clearScheduledSync();
-      settleFrameID = window.requestAnimationFrame(() => {
-        settleFrameID = 0;
-        syncComposerInset();
-        settleLateFrameID = window.requestAnimationFrame(() => {
-          settleLateFrameID = 0;
-          syncComposerInset();
-        });
-      });
-      settleTimeoutID = window.setTimeout(() => {
-        settleTimeoutID = 0;
-        syncComposerInset();
-      }, 260);
-    };
-
-    scheduleComposerInsetSync();
-
-    const resizeObserver = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(() => scheduleComposerInsetSync());
-    resizeObserver?.observe(composerShellNode);
-    window.addEventListener("resize", scheduleComposerInsetSync);
-    window.visualViewport?.addEventListener("resize", scheduleComposerInsetSync);
-    window.visualViewport?.addEventListener("scroll", scheduleComposerInsetSync);
-    composerShellNode.addEventListener("transitionend", scheduleComposerInsetSync);
-    return () => {
-      clearScheduledSync();
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", scheduleComposerInsetSync);
-      window.visualViewport?.removeEventListener("resize", scheduleComposerInsetSync);
-      window.visualViewport?.removeEventListener("scroll", scheduleComposerInsetSync);
-      composerShellNode.removeEventListener("transitionend", scheduleComposerInsetSync);
-      workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
-      workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
-    };
-  }, [workbench.isMobileViewport]);
+  useRuntimeComposerViewportSync({
+    isMobileViewport: workbench.isMobileViewport,
+    inputFocused,
+    workspaceBodyRef,
+    composerShellRef,
+  });
 
   const captureScrollSnapshot = () => {
     const node = chatScreenRef.current;
@@ -1556,647 +1254,474 @@ export function ReactManagedTerminalRouteBody() {
   const activeNote = runtimeNote(activeSession?.status || "", copy);
   const runtimeDetail = String(activeSession?.error_message || "").trim();
   const composerNote = [activeNote, runtimeDetail, composerAttachmentError].filter(Boolean).join(" | ");
-  const canClose = Boolean(activeSession && isLiveStatus(activeSession.status || ""));
   const canInput = !activeSession || activeStatus !== "busy";
   const isWorkspaceLive = activeSession && isLiveStatus(activeSession.status || "") ? "true" : "false";
   const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
-
-  return (
-    <>
-    <RuntimeWorkspaceFrame
-      rootClassName="terminal-view conversation-runtime-view"
-      rootProps={{ "data-terminal-view": "" }}
-      leadingContent={workbench.isMobileViewport ? (
-        <header className="terminal-mobile-header" data-terminal-mobile-header>
-          <button
-            className="nav-toggle conversation-mobile-action terminal-inline-button is-quiet"
-            type="button"
-            aria-expanded={workbench.mobileNavOpen}
-            onClick={workbench.toggleMobileNav}
-          >
-            {shellCopy.chatMenu}
-          </button>
-          <div className="terminal-mobile-header-actions">
-            <button
-              className="panel-toggle conversation-mobile-action terminal-inline-button is-quiet"
-              type="button"
-              aria-expanded={workbench.mobileSessionPaneOpen}
-              onClick={workbench.toggleMobileSessionPane}
-            >
-              {copy.sessions}
-            </button>
-            <button
-              className="mobile-new-chat conversation-mobile-action terminal-inline-button is-primary"
-              type="button"
-              onClick={() => void createSession()}
-            >
-              {copy.newShort}
-            </button>
-          </div>
-        </header>
-      ) : null}
-      sessionPaneClassName={`terminal-session-pane conversation-session-pane${workbench.isMobileViewport && workbench.mobileSessionPaneOpen ? " is-open" : ""}`}
-      sessionPaneProps={{ "data-terminal-session-pane": "" }}
-      sessionPaneBackdrop={{
-        className: "terminal-session-pane-backdrop conversation-session-pane-backdrop",
+  return {
+    shell: {
+      rootClassName: "terminal-view terminal-runtime-view",
+      rootProps: { "data-terminal-view": "" },
+      sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen ? "is-open" : undefined,
+      sessionPaneProps: { "data-terminal-session-pane": "" },
+      sessionPaneBackdrop: {
         ariaLabel: copy.hideSessions,
         onClick: workbench.closeMobileSessionPane,
         buttonProps: { "data-terminal-session-pane-close": "" },
-      }}
-      sessionPaneShellClassName="route-surface terminal-session-pane-shell conversation-session-pane-shell"
-      sessionPaneContent={
-        <>
-          <div className="terminal-session-pane-head conversation-session-pane-head">
-            <div className="terminal-session-pane-copy conversation-session-pane-copy">
-              <strong>{copy.sessions}</strong>
-              <span>{copy.sessionCount(sessions.length)}</span>
-            </div>
-            <div className="terminal-session-pane-actions conversation-session-pane-actions">
-              <button
-                className="terminal-session-pane-action conversation-session-pane-action is-primary"
-                type="button"
-                data-terminal-create
-                onClick={() => void createSession()}
-              >
-                {copy.newShort}
-              </button>
-              <button
-                className="terminal-session-pane-action conversation-session-pane-action terminal-session-pane-close"
-                type="button"
-                data-terminal-session-pane-close
-                onClick={workbench.closeMobileSessionPane}
-              >
-                {copy.hideSessions}
-              </button>
-            </div>
-          </div>
-          <div className="terminal-session-list conversation-session-list menu" data-terminal-session-list role="list">
-            {loadError ? <p className="route-empty-panel">{loadError}</p> : null}
-            {!loadError && !loading && groupedSessions.length === 0 ? (
-              <p className="route-empty-panel terminal-session-empty">{copy.empty}</p>
-            ) : null}
-            {groupedSessions.map((group) => (
-              <section key={group.key} className="conversation-session-group menu-group" aria-label={group.label}>
-                <h2 className="conversation-session-group-label">{group.label}</h2>
-                <div className="conversation-session-group-items">
-                  {group.items.map((session) => {
-                    const active = session.id === activeSessionID;
-                    return (
-                      <div
-                        key={session.id}
-                        role="listitem"
-                        className={`route-card terminal-session-card conversation-session-card${active ? " active is-active" : ""}`}
-                        data-terminal-session-card={session.id}
-                        data-terminal-session-status={normalizeStatus(session.status || "")}
-                      >
-                        <button
-                          className={`route-card-button terminal-session-select conversation-session-select${active ? " active" : ""}`}
-                          type="button"
-                          data-terminal-session-select={session.id}
-                          aria-current={active ? "true" : undefined}
-                          onClick={() => void selectSession(session.id)}
-                        >
-                          <span className="conversation-session-main">
-                            <span className="conversation-session-topline terminal-session-topline">
-                              <span
-                                className={active ? "conversation-session-badge is-active" : "conversation-session-badge"}
-                                data-terminal-session-activity={active ? "active" : "idle"}
-                              >
-                                {active ? copy.current : copy.sessionLabel}
-                              </span>
-                              <span className={`task-summary-status ${sessionStatusClassName(session.status || "")}`}>
-                                {renderStatus(session.status || "", copy)}
-                              </span>
-                            </span>
-                            <span className="terminal-session-head">
-                              <span className="route-card-title-copy">
-                                <span className="conversation-session-title-row">
-                                  <span className="terminal-session-title conversation-session-title">
-                                    {normalizeText(session.title || session.id)}
-                                  </span>
-                                </span>
-                                <span className="conversation-session-summary-row">
-                                  <span className="terminal-session-meta conversation-session-meta">
-                                    {sessionLastOutputLabel(session, copy)}
-                                  </span>
-                                </span>
-                              </span>
-                            </span>
-                            <span className="conversation-session-bottomline">
-                              <span className="conversation-session-hash">
-                                {normalizeText(session.terminal_session_id || session.id)}
-                              </span>
-                            </span>
-                          </span>
-                        </button>
-                        <button
-                          className="terminal-session-list-delete conversation-session-delete"
-                          type="button"
-                          data-terminal-delete-session={session.id}
-                          aria-label={copy.delete}
-                          disabled={deletingSessionID === session.id}
-                          onClick={() => void deleteSession(session.id)}
-                        >
-                          {copy.delete}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
-        </>
-      }
-      workspaceClassName="terminal-workspace conversation-workspace"
-      workspaceProps={{
+      },
+      sessionPanePrimaryActionProps: { "data-terminal-create": "" },
+      sessionPaneSecondaryActionProps: { "data-terminal-session-pane-close": "" },
+      sessionPaneTitle: copy.sessions,
+      sessionPaneCountLabel: copy.sessionCount(sessions.length),
+      sessionPanePrimaryActionLabel: copy.newShort,
+      onSessionPanePrimaryAction: () => void createSession(),
+      sessionPaneSecondaryActionLabel: copy.hideSessions,
+      onSessionPaneSecondaryAction: workbench.closeMobileSessionPane,
+      workspaceProps: {
         "data-terminal-workspace": "",
         "data-terminal-session-id": activeSession?.id || "",
         "data-terminal-workspace-status": activeStatus,
         "data-terminal-workspace-live": isWorkspaceLive,
-      }}
-      workspaceBodyClassName="terminal-workspace-body conversation-workspace-body"
-      workspaceBodyRef={workspaceBodyRef}
-      workspaceHeader={
-        <RuntimeWorkspaceHeader
-          title={activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}
-          statusLabel={renderStatus(activeSession?.status || "", copy)}
-          statusTone={activeStatus}
-          detailsLabel={copy.details}
-          detailsOpen={metaOpen}
-          onToggleDetails={() => setMetaOpen((current) => !current)}
-          detailsDisabled={!activeSession}
-          statusButtonProps={{
-            "data-terminal-runtime-state": activeStatus,
-          }}
-          detailsButtonProps={{
-            "data-terminal-meta-toggle": "",
-          }}
-          detailsPanelProps={{
-            "data-terminal-meta-panel": "",
-          }}
-          detailsContent={activeSession ? (
-            <section className="workspace-details-content terminal-session-details">
-              <div className="workspace-details-summary">
-                <RouteFieldRow label={copy.session} value={activeSession.id} copyLabel={copy.session} mono />
-                <RouteFieldRow label={copy.shell} value={activeSession.shell} copyLabel={copy.shell} mono />
-                <RouteFieldRow label={copy.path} value={activeSession.working_dir} copyLabel={copy.path} mono multiline />
-                <RouteFieldRow label={copy.status} value={renderStatus(activeSession.status || "", copy)} copyLabel={copy.status} />
-                <RouteFieldRow label={copy.updatedAt} value={formatDateTime(activeSession.updated_at || activeSession.created_at)} copyLabel={copy.updatedAt} />
-              </div>
-            </section>
+      },
+      workspaceBodyRef,
+      mobileHeaderPlacement: workbench.isMobileViewport ? "leading" : undefined,
+      mobileHeaderClassName: "terminal-mobile-header",
+      mobileHeaderProps: { "data-terminal-mobile-header": "" },
+      mobileNavButtonClassName: "nav-toggle is-quiet",
+      mobileNavButtonLabel: shellCopy.chatMenu,
+      mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
+      onMobileNav: workbench.toggleMobileNav,
+      mobileSessionButtonClassName: "panel-toggle is-quiet",
+      mobileSessionButtonLabel: copy.sessions,
+      mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
+      onMobileSession: workbench.toggleMobileSessionPane,
+      mobilePrimaryButtonClassName: "mobile-new-chat is-primary",
+      mobilePrimaryButtonLabel: copy.newShort,
+      onMobilePrimary: () => void createSession(),
+      mobileHeaderActionsClassName: "terminal-mobile-header-actions",
+    },
+    sessionList: {
+      groups: groupedSessions.map((group) => ({
+        ...group,
+        items: group.items.map((session) => {
+          const active = session.id === activeSessionID;
+          return {
+            id: session.id,
+            active,
+            title: normalizeText(session.title || session.id),
+            meta: sessionLastOutputLabel(session, copy),
+            shortHash: normalizeText(session.terminal_session_id || session.id),
+            activeLabel: copy.current,
+            idleLabel: copy.sessionLabel,
+            statusLabel: renderStatus(session.status || "", copy),
+            statusClassName: `task-summary-status ${sessionStatusClassName(session.status || "")}`,
+            onSelect: () => void selectSession(session.id),
+            onDelete: () => void deleteSession(session.id),
+            deleteLabel: copy.delete,
+            deleteAriaLabel: copy.delete,
+            deleting: deletingSessionID === session.id,
+            deleteProps: { "data-terminal-delete-session": session.id },
+            shellClassName: active ? "route-card runtime-session-card is-active" : "route-card runtime-session-card",
+            shellProps: {
+              "data-terminal-session-card": session.id,
+              "data-terminal-session-status": normalizeStatus(session.status || ""),
+            },
+            buttonClassName: active ? "route-card-button runtime-session-select active" : "route-card-button runtime-session-select",
+            buttonProps: { "data-terminal-session-select": session.id },
+          };
+        }),
+      })),
+      listClassName: "terminal-session-list",
+      listProps: { "data-terminal-session-list": "true" },
+      emptyState: (
+        <>
+          {loadError ? <p className="route-empty-panel">{loadError}</p> : null}
+          {!loadError && !loading && groupedSessions.length === 0 ? (
+            <p className="route-empty-panel terminal-session-empty">{copy.empty}</p>
           ) : null}
-        />
-      }
-      workspaceContent={
-        <section className="terminal-console-panel" data-terminal-console-panel>
-          <div
-            className="terminal-chat-screen"
-            data-terminal-chat-screen
-            data-terminal-chat-status={activeStatus}
-            ref={chatScreenRef}
-            onScroll={handleScroll}
-          >
-            <div className="terminal-log-tree">
-              {!activeSession ? (
-                <div className="terminal-log-empty">{loading ? copy.loading : copy.noSession}</div>
-              ) : turns.length === 0 ? (
-                <div className="terminal-log-empty">{loading ? copy.loading : copy.noOutput}</div>
-              ) : (
-                turns.map((turn) => {
-                      const steps = Array.isArray(turn.steps) ? turn.steps : [];
-                      const turnAttachments = Array.isArray(turn.attachments) ? turn.attachments : [];
-                      const processOpen = expandedTurns[turn.id] ?? false;
-                      const hasProcess = steps.length > 0 || normalizeStatus(turn.status || "") === "busy";
-                      return (
-                        <article key={turn.id} className="terminal-turn-card" data-terminal-turn={turn.id}>
-                          {turnAttachments.length > 0 ? (
-                            <div className="message-image-grid terminal-turn-attachments">
-                              {turnAttachments.map((attachment) => (
-                                <figure
-                                  key={`${turn.id}:${attachment.id || attachment.name}:${attachment.asset_url || attachment.data_url || ""}`}
-                                  className="message-image-card"
-                                >
-                                  <button
-                                    type="button"
-                                    className="conversation-composer-attachment-preview"
-                                    aria-label={`${copy.preview} ${attachment.name}`}
-                                    onClick={() => setPreviewAttachment({
-                                      id: `${turn.id}:${attachment.id || attachment.name}`,
-                                      name: attachment.name,
-                                      contentType: attachment.content_type,
-                                      dataURL: attachment.data_url,
-                                      assetURL: attachment.asset_url,
-                                      previewURL: attachment.preview_url,
-                                      size: 0,
-                                    })}
-                                  >
-                                    <img
-                                      src={resolveComposerAttachmentPreviewURL({
-                                        id: `${turn.id}:${attachment.id || attachment.name}`,
-                                        name: attachment.name,
-                                        contentType: attachment.content_type,
-                                        dataURL: attachment.data_url,
-                                        assetURL: attachment.asset_url,
-                                        previewURL: attachment.preview_url,
-                                        size: 0,
-                                      })}
-                                      alt={attachment.name}
-                                      loading="lazy"
-                                      decoding="async"
-                                    />
-                                  </button>
-                                  <figcaption>{attachment.name}</figcaption>
-                                </figure>
-                              ))}
-                            </div>
-                          ) : null}
-                          {normalizeText(turn.prompt) !== "-" ? (
-                            <div className="terminal-log-row kind-command terminal-turn-prompt">
-                              <div className="terminal-log-main">
-                                <span className="terminal-log-text">{turn.prompt}</span>
-                              </div>
-                              <span className="terminal-log-time">
-                                {formatTimeLabel(turn.started_at || turn.finished_at || Date.now())}
-                              </span>
-                            </div>
-                          ) : null}
-
-                          {hasProcess || normalizeText(turn.final_output) !== "-" ? (
-                            <div className="terminal-turn-surface">
-                              {hasProcess ? (
-                                <section
-                                  className={`terminal-process-shell${processOpen ? "" : " is-collapsed"}`}
-                                  data-terminal-process-shell={turn.id}
-                                >
-                                  <button
-                                    className="terminal-process-toggle"
-                                    type="button"
-                                    data-terminal-process-toggle={turn.id}
-                                    aria-expanded={processOpen}
-                                    onClick={() => toggleTurn(turn.id)}
-                                  >
-                                    <span className="terminal-step-toggle-icon" aria-hidden="true">
-                                      {processOpen ? "v" : ">"}
-                                    </span>
-                                    <span className="terminal-process-copy">
-                                      <span className="terminal-process-title">{copy.process}</span>
-                                      <span className="terminal-process-summary">
-                                        {copy.processSteps(steps.length)}
-                                      </span>
-                                    </span>
-                                    <span className="terminal-process-meta">
-                                      {durationLabel(turn.duration_ms)}
-                                    </span>
-                                  </button>
-                                  <div className="terminal-process-body" hidden={!processOpen}>
-                                    {steps.length ? (
-                                      steps.map((step) => {
-                                        const key = stepKey(turn.id, step.id);
-                                        const detail = stepDetails[key];
-                                        const error = stepErrors[key];
-                                        const expanded = Boolean(expandedSteps[key]);
-                                        const fallbackContent = String(step.preview || "").trim();
-                                        return (
-                                          <article
-                                            key={step.id}
-                                            className="terminal-step-item"
-                                            data-terminal-step-item={step.id}
-                                          >
-                                            <button
-                                              className="terminal-step-toggle"
-                                              type="button"
-                                              data-terminal-step-toggle={step.id}
-                                              aria-expanded={expanded}
-                                              onClick={() =>
-                                                void toggleStep(turn.id, step.id, Boolean(step.has_detail))
-                                              }
-                                            >
-                                              <span className="terminal-step-toggle-icon" aria-hidden="true">
-                                                {expanded ? "v" : ">"}
-                                              </span>
-                                              <span className="terminal-step-summary">
-                                                <span className="terminal-step-title">
-                                                  {normalizeText(step.preview || step.title || step.type)}
-                                                </span>
-                                              </span>
-                                              <span className="terminal-step-meta">
-                                                <span className="terminal-step-duration">
-                                                  {durationLabel(step.duration_ms)}
-                                                </span>
-                                                <span
-                                                  className={`terminal-step-status ${stepStatusClassName(step.status || "")}`}
-                                                >
-                                                  {renderStatus(step.status || "", copy)}
-                                                </span>
-                                              </span>
-                                            </button>
-                                            <div className="terminal-step-body" hidden={!expanded}>
-                                              <div className="terminal-step-detail">
-                                                {error ? (
-                                                  <div className="terminal-step-detail-state is-error">{error}</div>
-                                                ) : null}
-                                                {!error && detail?.blocks?.map((block, index) => {
-                                                  const blockType = String(block.type || "text")
-                                                    .trim()
-                                                    .toLowerCase();
-                                                  const blockTitle = String(block.title || "").trim();
-                                                  const blockFile = String(block.file || "").trim();
-                                                  const blockStatus = String(block.status || "").trim();
-                                                  const content = String(block.content || "");
-                                                  return (
-                                                    <section
-                                                      key={`${step.id}-${index}`}
-                                                      className={`route-surface-dark terminal-rich-block type-${blockType || "text"}`}
-                                                    >
-                                                      {blockTitle || blockFile || blockStatus ? (
-                                                        <div className="terminal-rich-head">
-                                                          <div className="terminal-rich-copy">
-                                                            {blockTitle ? <strong>{blockTitle}</strong> : null}
-                                                            {blockFile ? (
-                                                              <span>
-                                                                {blockFile}
-                                                                {block.start_line ? `:${block.start_line}` : ""}
-                                                              </span>
-                                                            ) : null}
-                                                          </div>
-                                                          {blockStatus ? (
-                                                            <div className="terminal-rich-meta">
-                                                              <span
-                                                                className={`terminal-step-status ${stepStatusClassName(blockStatus)}`}
-                                                              >
-                                                                {renderStatus(blockStatus, copy)}
-                                                              </span>
-                                                            </div>
-                                                          ) : null}
-                                                        </div>
-                                                      ) : null}
-                                                      <pre
-                                                        className={`terminal-rich-pre terminal-step-content${blockType === "diff" ? " terminal-diff-block" : ""}`}
-                                                      >
-                                                        <code>{content}</code>
-                                                      </pre>
-                                                    </section>
-                                                  );
-                                                })}
-                                                {!error && !detail?.blocks?.length && fallbackContent ? (
-                                                  <section className="route-surface-dark terminal-rich-block type-terminal">
-                                                    <pre className="terminal-rich-pre terminal-step-content">
-                                                      <code>{fallbackContent}</code>
-                                                    </pre>
-                                                  </section>
-                                                ) : null}
-                                                {!error &&
-                                                !detail?.blocks?.length &&
-                                                !fallbackContent &&
-                                                !step.has_detail ? (
-                                                  <div className="terminal-step-detail-state">
-                                                    {copy.noProcess}
-                                                  </div>
-                                                ) : null}
-                                              </div>
-                                            </div>
-                                          </article>
-                                        );
-                                      })
-                                    ) : (
-                                      <div className="terminal-process-empty">
-                                        {normalizeStatus(turn.status || "") === "busy"
-                                          ? copy.loading
-                                          : copy.noProcess}
-                                      </div>
-                                    )}
-                                  </div>
-                                </section>
-                              ) : null}
-
-                              {normalizeText(turn.final_output) !== "-" ? (
-                                <div
-                                  className="msg assistant terminal-final-output terminal-turn-output"
-                                  data-terminal-final-output={turn.id}
-                                >
-                                  <div className="msg-bubble">
-                                    <div className="terminal-final-text">
-                                      <div className="assistant-message-toolbar terminal-final-toolbar">
-                                        <button
-                                          className="route-field-copy assistant-message-copy terminal-final-copy"
-                                          type="button"
-                                          data-copy-value={turn.final_output}
-                                          title={copy.copy}
-                                          aria-label={copy.copy}
-                                        >
-                                          <CopyIcon />
-                                        </button>
-                                      </div>
-                                      <div className="terminal-final-rendered">
-                                        <MarkdownHTML html={renderMarkdownToHTML(turn.final_output || "")} />
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </article>
-                    );
-                })
-              )}
-            </div>
-          </div>
-
-          <div className="terminal-jump-cluster" aria-label="Turn navigation">
-            <button
-              className={jumpState.showTop ? "terminal-jump-control terminal-jump-top is-visible" : "terminal-jump-control terminal-jump-top"}
-              type="button"
-              data-terminal-jump-top
-              aria-label={copy.top}
-              title={copy.top}
-              onClick={() => {
-                const node = chatScreenRef.current;
-                if (node) {
-                  node.scrollTo({ top: 0, behavior: "smooth" });
-                }
-              }}
-            >
-              <span className="terminal-jump-control-icon" aria-hidden="true">↑↑</span>
-            </button>
-            <button
-              className={jumpState.previousTurnID ? "terminal-jump-control terminal-jump-prev is-visible" : "terminal-jump-control terminal-jump-prev"}
-              type="button"
-              data-terminal-jump-prev
-              data-terminal-jump-target={jumpState.previousTurnID}
-              aria-label={copy.prev}
-              title={copy.prev}
-              onClick={() => scrollToTurn(jumpState.previousTurnID)}
-            >
-              <span className="terminal-jump-control-icon" aria-hidden="true">↑</span>
-            </button>
-            <button
-              className={jumpState.nextTurnID ? "terminal-jump-control terminal-jump-next is-visible" : "terminal-jump-control terminal-jump-next"}
-              type="button"
-              data-terminal-jump-next
-              data-terminal-jump-target={jumpState.nextTurnID}
-              aria-label={copy.next}
-              title={copy.next}
-              onClick={() => scrollToTurn(jumpState.nextTurnID)}
-            >
-              <span className="terminal-jump-control-icon" aria-hidden="true">↓</span>
-            </button>
-            <button
-              className={jumpState.showBottom ? "terminal-jump-control terminal-jump-bottom is-visible" : "terminal-jump-control terminal-jump-bottom"}
-              type="button"
-              data-terminal-jump-bottom
-              aria-label={copy.bottom}
-              title={copy.bottom}
-              onClick={() => {
-                const node = chatScreenRef.current;
-                if (node) {
-                  node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-                }
-              }}
-            >
-              <span className="terminal-jump-control-icon" aria-hidden="true">↓↓</span>
-            </button>
-          </div>
-        </section>
-      }
-      workspaceFooter={
-        <footer ref={composerShellRef} className="terminal-composer-shell">
-          {composerNote ? (
-            <div
-              className="terminal-composer-note"
-              data-terminal-runtime-note
-              data-terminal-runtime-status={activeStatus}
-            >
-              {composerNote}
-            </div>
-          ) : null}
-
-          <form
-            className="terminal-chat-form"
-            data-terminal-input-form
-            data-composer-form="terminal-runtime"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitInput();
+        </>
+      ),
+    },
+    header: {
+      title: activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession,
+      statusLabel: renderStatus(activeSession?.status || "", copy),
+      statusTone: activeStatus,
+      detailsLabel: copy.details,
+      detailsOpen: metaOpen,
+      onToggleDetails: () => setMetaOpen((current) => !current),
+      detailsDisabled: !activeSession,
+      statusButtonProps: { "data-terminal-runtime-state": activeStatus },
+      detailsButtonProps: { "data-terminal-meta-toggle": "" },
+      detailsPanelProps: { className: "terminal-meta-panel", "data-terminal-meta-panel": "" },
+      detailsClassName: "workspace-details-content terminal-session-details",
+      detailsSummary: activeSession ? [
+        { label: copy.session, value: activeSession.id, copyLabel: copy.session, mono: true },
+        { label: copy.shell, value: activeSession.shell, copyLabel: copy.shell, mono: true },
+        { label: copy.path, value: activeSession.working_dir, copyLabel: copy.path, mono: true, multiline: true },
+        { label: copy.status, value: renderStatus(activeSession.status || "", copy), copyLabel: copy.status },
+        { label: copy.updatedAt, value: formatDateTime(activeSession.updated_at || activeSession.created_at), copyLabel: copy.updatedAt },
+      ] : [],
+    },
+    screen: {
+      panelClassName: "terminal-console-panel",
+      panelProps: { "data-terminal-console-panel": "" },
+      screenClassName: "terminal-chat-screen",
+      screenProps: {
+        "data-terminal-chat-screen": "",
+        "data-terminal-chat-status": activeStatus,
+        onScroll: handleScroll,
+      },
+      screenRef: chatScreenRef,
+    },
+    timeline: {
+      className: "terminal-log-tree",
+      items: buildTerminalTimelineItems({
+        turns,
+        expandedTurns,
+        expandedSteps,
+        stepDetails,
+        stepErrors,
+        copy,
+        onToggleTurn: toggleTurn,
+        onToggleStep: (turnID, stepID, hasDetail) => void toggleStep(turnID, stepID, hasDetail),
+        onPreviewAttachment: setPreviewAttachment,
+      }),
+      emptyState: !activeSession ? (
+        <div className="terminal-log-empty">{loading ? copy.loading : copy.noSession}</div>
+      ) : (
+        <div className="terminal-log-empty">{loading ? copy.loading : copy.noOutput}</div>
+      ),
+      overlay: (
+        <div className="terminal-jump-cluster" aria-label="Turn navigation">
+          <button
+            className={jumpState.showTop ? "terminal-jump-control terminal-jump-top is-visible" : "terminal-jump-control terminal-jump-top"}
+            type="button"
+            data-terminal-jump-top
+            aria-label={copy.top}
+            title={copy.top}
+            onClick={() => {
+              const node = chatScreenRef.current;
+              if (node) {
+                node.scrollTo({ top: 0, behavior: "smooth" });
+              }
             }}
           >
-            <input
-              ref={composerFileInputRef}
-              type="file"
-              accept="image/*"
-              hidden
-              multiple
-              onChange={(event) => {
-                void handleComposerImageSelection(event.target.files);
-              }}
-            />
-            {draftAttachments.length > 0 ? (
-              <div className="conversation-composer-attachments" data-terminal-composer-attachments>
-                {draftAttachments.map((attachment) => (
-                  <article key={attachment.id} className="conversation-composer-attachment">
-                    <button
-                      type="button"
-                      className="conversation-composer-attachment-preview"
-                      aria-label={`${copy.preview} ${attachment.name}`}
-                      onClick={() => setPreviewAttachment(attachment)}
-                    >
-                      <img src={resolveComposerAttachmentPreviewURL(attachment)} alt={attachment.name} loading="lazy" decoding="async" />
-                    </button>
-                    <button
-                      type="button"
-                      className="conversation-composer-attachment-remove"
-                      aria-label={`${copy.delete} ${attachment.name}`}
-                      onClick={() => updateDraftAttachments(activeDraftKey, (current) =>
-                        current.filter((item) => item.id !== attachment.id))}
-                    >
-                      ×
-                    </button>
-                  </article>
-                ))}
-              </div>
-            ) : null}
-            <label className="sr-only" htmlFor="terminalRuntimeInput">
-              {inputPlaceholder}
-            </label>
-            <textarea
-              id="terminalRuntimeInput"
-              ref={composerInputRef}
-              value={inputValue}
-              className="terminal-composer-input"
-              placeholder={inputPlaceholder}
-              data-terminal-input
-              data-composer-input="terminal-runtime"
-              disabled={!canInput || submitting}
-              onPointerDownCapture={handleComposerPointerDownCapture}
-              onTouchStartCapture={handleComposerTouchStartCapture}
-              onChange={(event) => setInputValue(event.target.value)}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-            ></textarea>
-            <div className="terminal-composer-tools">
-              <div
-                className={sessions.length > 0 ? "terminal-composer-meta" : "terminal-composer-meta is-empty"}
-                aria-hidden={sessions.length > 0 ? undefined : "true"}
-              >
-                {sessions.length > 0 ? copy.sessionCount(sessions.length) : ""}
-              </div>
-              <button
-                type="button"
-                className="conversation-chat-upload"
-                aria-label={copy.addImage}
-                disabled={!canInput || submitting}
-                onClick={handleComposerImagePicker}
-              >
-                <span aria-hidden="true">+</span>
-                <span>{copy.addImage}</span>
-              </button>
-              <button
-                type="submit"
-                id="terminalSendButton"
-                data-terminal-submit
-                data-composer-submit="terminal-runtime"
-                aria-label={submitting ? copy.sending : copy.send}
-                disabled={submitting || !canInput}
-                onTouchStartCapture={handleSubmitTouchStartCapture}
-              >
-                <span className="terminal-chat-form-button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 20 20" fill="none" focusable="false">
-                    <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
-                    <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </span>
-                <span className="sr-only">{submitting ? copy.sending : copy.send}</span>
-              </button>
-            </div>
-          </form>
-        </footer>
-      }
-    />
-    {previewAttachment ? (
-      <div
-        className="conversation-image-preview-backdrop"
-        onClick={() => setPreviewAttachment(null)}
-      >
-        <div
-          className="conversation-image-preview-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-label={previewAttachment.name}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="conversation-image-preview-close"
-            aria-label={copy.closePreview}
-            onClick={() => setPreviewAttachment(null)}
-          >
-            ×
+            <span className="terminal-jump-control-icon" aria-hidden="true">↑↑</span>
           </button>
-          <img src={resolveComposerAttachmentPreviewURL(previewAttachment)} alt={previewAttachment.name} decoding="async" />
+          <button
+            className={jumpState.previousTurnID ? "terminal-jump-control terminal-jump-prev is-visible" : "terminal-jump-control terminal-jump-prev"}
+            type="button"
+            data-terminal-jump-prev
+            data-terminal-jump-target={jumpState.previousTurnID}
+            aria-label={copy.prev}
+            title={copy.prev}
+            onClick={() => scrollToTurn(jumpState.previousTurnID)}
+          >
+            <span className="terminal-jump-control-icon" aria-hidden="true">↑</span>
+          </button>
+          <button
+            className={jumpState.nextTurnID ? "terminal-jump-control terminal-jump-next is-visible" : "terminal-jump-control terminal-jump-next"}
+            type="button"
+            data-terminal-jump-next
+            data-terminal-jump-target={jumpState.nextTurnID}
+            aria-label={copy.next}
+            title={copy.next}
+            onClick={() => scrollToTurn(jumpState.nextTurnID)}
+          >
+            <span className="terminal-jump-control-icon" aria-hidden="true">↓</span>
+          </button>
+          <button
+            className={jumpState.showBottom ? "terminal-jump-control terminal-jump-bottom is-visible" : "terminal-jump-control terminal-jump-bottom"}
+            type="button"
+            data-terminal-jump-bottom
+            aria-label={copy.bottom}
+            title={copy.bottom}
+            onClick={() => {
+              const node = chatScreenRef.current;
+              if (node) {
+                node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+              }
+            }}
+          >
+            <span className="terminal-jump-control-icon" aria-hidden="true">↓↓</span>
+          </button>
         </div>
-      </div>
-    ) : null}
-    </>
-  );
+      ),
+    },
+    composer: {
+      shellRef: composerShellRef,
+      note: composerNote,
+      noteProps: { "data-terminal-runtime-note": "", "data-terminal-runtime-status": activeStatus },
+      formProps: { "data-terminal-input-form": "", "data-composer-form": "terminal-runtime" },
+      onSubmit: (event) => {
+        event.preventDefault();
+        void submitInput();
+      },
+      fileInputRef: composerFileInputRef,
+      onFileChange: (event) => {
+        void handleComposerImageSelection(event.target.files);
+      },
+      attachments: draftAttachments,
+      attachmentStripProps: { "data-terminal-composer-attachments": "" },
+      attachmentPreviewLabel: (attachment) => `${copy.preview} ${attachment.name}`,
+      attachmentRemoveLabel: (attachment) => `${copy.delete} ${attachment.name}`,
+      previewAttachment,
+      onPreviewAttachmentChange: setPreviewAttachment,
+      onRemoveAttachment: (attachment) => updateDraftAttachments(activeDraftKey, (current) =>
+        current.filter((item) => item.id !== attachment.id)),
+      inputLabel: inputPlaceholder,
+      inputId: "terminalRuntimeInput",
+      inputRef: composerInputRef,
+      inputValue: inputValue,
+      inputProps: {
+        placeholder: inputPlaceholder,
+        "data-terminal-input": "",
+        "data-composer-input": "terminal-runtime",
+        disabled: !canInput || submitting,
+      },
+      onInputChange: setInputValue,
+      onInputFocus: () => setInputFocused(true),
+      onInputBlur: () => setInputFocused(false),
+      onInputPointerDownCapture: handleComposerPointerDownCapture,
+      onInputTouchStartCapture: handleComposerTouchStartCapture,
+      metaClassName: sessions.length > 0 ? undefined : "is-empty",
+      metaContent: sessions.length > 0 ? copy.sessionCount(sessions.length) : "",
+      metaProps: { "aria-hidden": sessions.length > 0 ? undefined : "true" },
+      addImageLabel: copy.addImage,
+      addImageButtonProps: { disabled: !canInput || submitting },
+      onAddImage: handleComposerImagePicker,
+      submitButtonProps: {
+        id: "terminalSendButton",
+        "data-terminal-submit": "",
+        "data-composer-submit": "terminal-runtime",
+        disabled: submitting || !canInput,
+        onTouchStartCapture: handleSubmitTouchStartCapture,
+      },
+      submitLabel: submitting ? copy.sending : copy.send,
+      submitIcon: (
+        <svg viewBox="0 0 20 20" fill="none" focusable="false">
+          <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
+          <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+      previewCloseLabel: copy.closePreview,
+    },
+  };
+}
+
+export function ReactManagedTerminalRouteBody() {
+  const controller = useTerminalRuntimeController();
+  return <RuntimeWorkspacePage controller={controller} />;
+}
+
+function buildTerminalTimelineItems({
+  turns,
+  expandedTurns,
+  expandedSteps,
+  stepDetails,
+  stepErrors,
+  copy,
+  onToggleTurn,
+  onToggleStep,
+  onPreviewAttachment,
+}: {
+  turns: TerminalTurn[];
+  expandedTurns: Record<string, boolean>;
+  expandedSteps: Record<string, boolean>;
+  stepDetails: Record<string, TerminalStepDetail>;
+  stepErrors: Record<string, string>;
+  copy: TerminalCopy;
+  onToggleTurn: (turnID: string) => void;
+  onToggleStep: (turnID: string, stepID: string, hasDetail: boolean) => void;
+  onPreviewAttachment: (attachment: ComposerImageAttachment | null) => void;
+}): RuntimeTimelineItem[] {
+  return turns.map((turn) => {
+    const steps = Array.isArray(turn.steps) ? turn.steps : [];
+    const turnAttachments = Array.isArray(turn.attachments) ? turn.attachments : [];
+    const processOpen = expandedTurns[turn.id] ?? false;
+    const hasProcess = steps.length > 0 || normalizeStatus(turn.status || "") === "busy";
+    const blocks = [];
+
+    if (turnAttachments.length > 0) {
+      blocks.push({
+        type: "attachments" as const,
+        galleryId: turn.id,
+        className: "terminal-turn-attachments",
+        items: turnAttachments.map((attachment) => {
+          const attachmentID = `${turn.id}:${attachment.id || attachment.name}`;
+          return {
+            key: `${attachmentID}:${attachment.asset_url || attachment.data_url || ""}`,
+            name: attachment.name,
+            src: resolveComposerAttachmentPreviewURL({
+              id: attachmentID,
+              name: attachment.name,
+              contentType: attachment.content_type,
+              dataURL: attachment.data_url,
+              assetURL: attachment.asset_url,
+              previewURL: attachment.preview_url,
+              size: 0,
+            }),
+            previewLabel: `${copy.preview} ${attachment.name}`,
+            onPreview: () => onPreviewAttachment({
+              id: attachmentID,
+              name: attachment.name,
+              contentType: attachment.content_type,
+              dataURL: attachment.data_url,
+              assetURL: attachment.asset_url,
+              previewURL: attachment.preview_url,
+              size: 0,
+            }),
+          };
+        }),
+      });
+    }
+
+    if (normalizeText(turn.prompt) !== "-") {
+      blocks.push({
+        type: "prompt" as const,
+        className: "terminal-log-row kind-command terminal-turn-prompt",
+        textClassName: "terminal-log-main",
+        timeClassName: "terminal-log-time",
+        text: turn.prompt,
+        timeLabel: formatTimeLabel(turn.started_at || turn.finished_at || Date.now()),
+      });
+    }
+
+    if (hasProcess) {
+      const processSteps: RuntimeTimelineProcessStep[] = steps.map((step) => {
+        const key = stepKey(turn.id, step.id);
+        const detail = stepDetails[key];
+        const error = stepErrors[key];
+        const expanded = Boolean(expandedSteps[key]);
+        const fallbackContent = String(step.preview || "").trim();
+        return {
+          id: step.id,
+          itemClassName: "terminal-step-item",
+          itemProps: { "data-terminal-step-item": step.id },
+          toggleClassName: "terminal-step-toggle",
+          toggleProps: {
+            "data-terminal-step-toggle": step.id,
+            onClick: () => onToggleStep(turn.id, step.id, Boolean(step.has_detail)),
+          },
+          title: normalizeText(step.preview || step.title || step.type),
+          meta: (
+            <span className="terminal-step-meta">
+              <span className="terminal-step-duration">
+                {durationLabel(step.duration_ms)}
+              </span>
+              <span className={`terminal-step-status ${stepStatusClassName(step.status || "")}`}>
+                {renderStatus(step.status || "", copy)}
+              </span>
+            </span>
+          ),
+          expanded,
+          onToggle: () => onToggleStep(turn.id, step.id, Boolean(step.has_detail)),
+          bodyClassName: "terminal-step-body",
+          detail: (
+            <div className="terminal-step-detail">
+              {error ? <div className="terminal-step-detail-state is-error">{error}</div> : null}
+              {!error && detail?.blocks?.map((block, index) => {
+                const blockType = String(block.type || "text").trim().toLowerCase();
+                const blockTitle = String(block.title || "").trim();
+                const blockFile = String(block.file || "").trim();
+                const blockStatus = String(block.status || "").trim();
+                const content = String(block.content || "");
+                return (
+                  <section
+                    key={`${step.id}-${index}`}
+                    className={`route-surface-dark terminal-rich-block type-${blockType || "text"}`}
+                  >
+                    {blockTitle || blockFile || blockStatus ? (
+                      <div className="terminal-rich-head">
+                        <div className="terminal-rich-copy">
+                          {blockTitle ? <strong>{blockTitle}</strong> : null}
+                          {blockFile ? (
+                            <span>
+                              {blockFile}
+                              {block.start_line ? `:${block.start_line}` : ""}
+                            </span>
+                          ) : null}
+                        </div>
+                        {blockStatus ? (
+                          <div className="terminal-rich-meta">
+                            <span className={`terminal-step-status ${stepStatusClassName(blockStatus)}`}>
+                              {renderStatus(blockStatus, copy)}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <pre className={`terminal-rich-pre terminal-step-content${blockType === "diff" ? " terminal-diff-block" : ""}`}>
+                      <code>{content}</code>
+                    </pre>
+                  </section>
+                );
+              })}
+              {!error && !detail?.blocks?.length && fallbackContent ? (
+                <section className="route-surface-dark terminal-rich-block type-terminal">
+                  <pre className="terminal-rich-pre terminal-step-content">
+                    <code>{fallbackContent}</code>
+                  </pre>
+                </section>
+              ) : null}
+              {!error && !detail?.blocks?.length && !fallbackContent && !step.has_detail ? (
+                <div className="terminal-step-detail-state">{copy.noProcess}</div>
+              ) : null}
+            </div>
+          ),
+        };
+      });
+
+      blocks.push({
+        type: "process" as const,
+        shellClassName: `terminal-process-shell${processOpen ? "" : " is-collapsed"}`,
+        shellProps: { "data-terminal-process-shell": turn.id },
+        toggleClassName: "terminal-process-toggle",
+        toggleProps: { "data-terminal-process-toggle": turn.id },
+        title: (
+          <>
+            <span className="terminal-step-toggle-icon" aria-hidden="true">
+              {processOpen ? "v" : ">"}
+            </span>
+            <span className="terminal-process-copy">
+              <span className="terminal-process-title">{copy.process}</span>
+              <span className="terminal-process-summary">{copy.processSteps(steps.length)}</span>
+            </span>
+          </>
+        ),
+        meta: <span className="terminal-process-meta">{durationLabel(turn.duration_ms)}</span>,
+        expanded: processOpen,
+        onToggle: () => onToggleTurn(turn.id),
+        bodyClassName: "terminal-process-body",
+        emptyState: (
+          <div className="terminal-process-empty">
+            {normalizeStatus(turn.status || "") === "busy" ? copy.loading : copy.noProcess}
+          </div>
+        ),
+        steps: processSteps,
+      });
+    }
+
+    if (normalizeText(turn.final_output) !== "-") {
+      blocks.push({
+        type: "markdown-shell" as const,
+        html: renderRuntimeMarkdownToHTML(turn.final_output || ""),
+        copyValue: turn.final_output,
+        copyLabel: copy.copy,
+        wrapperClassName: "msg assistant terminal-final-output terminal-turn-output",
+        wrapperProps: { "data-terminal-final-output": turn.id },
+        bubbleClassName: "msg-bubble",
+        className: "terminal-final-text",
+        toolbarClassName: "terminal-final-toolbar",
+        copyButtonClassName: "terminal-final-copy",
+        bodyClassName: "terminal-final-rendered",
+      });
+    }
+
+    return {
+      id: turn.id,
+      className: "terminal-turn-card",
+      articleProps: { "data-terminal-turn": turn.id },
+      blocks,
+    };
+  });
 }

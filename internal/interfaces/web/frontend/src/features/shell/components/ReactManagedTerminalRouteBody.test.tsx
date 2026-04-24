@@ -302,41 +302,64 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
     });
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-session-select")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-session-list-delete")).toBeInTheDocument();
-    expect(document.querySelector(".conversation-session-main")).toBeInTheDocument();
-    expect(document.querySelector(".conversation-session-title-row")).toBeInTheDocument();
-    expect(document.querySelector(".conversation-session-title-row")?.textContent).toContain("Workspace shell");
-    expect(document.querySelector(".conversation-session-summary-row")).toBeInTheDocument();
-    expect(document.querySelector(".conversation-session-bottomline")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-view]")).toHaveClass("terminal-runtime-view");
+    expect(document.querySelector("[data-terminal-view]")).not.toHaveClass("conversation-runtime-view");
+    expect(document.querySelector("[data-runtime-workspace-page='true']")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-session-select")).not.toBeInTheDocument();
+    expect(document.querySelector(".terminal-session-list-delete")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-main")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-title-row")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-title-row")?.textContent).toContain("Workspace shell");
+    expect(document.querySelector(".runtime-session-summary-row")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-bottomline")).toBeInTheDocument();
     expect(within(document.querySelector("[data-terminal-session-pane]") as HTMLElement).getByRole("list")).toHaveAttribute(
       "data-terminal-session-list",
       "true",
     );
     expect(within(document.querySelector("[data-terminal-session-pane]") as HTMLElement).getAllByRole("listitem")).toHaveLength(1);
     expect(document.querySelector("[data-terminal-delete]")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("conversation-session-pane");
-    expect(document.querySelector(".terminal-session-pane-shell")).toHaveClass("conversation-session-pane-shell");
-    expect(document.querySelector("[data-terminal-workspace]")).toHaveClass("conversation-workspace");
-    expect(document.querySelector(".terminal-workspace-body")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-workspace-body")).toHaveClass("conversation-workspace-body");
-    expect(document.querySelector(".terminal-workspace-head")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-workspace-head")).toHaveClass("conversation-workspace-head");
-    expect(document.querySelector(".terminal-workspace-head")).toHaveClass("is-compact");
-    expect(document.querySelector(".terminal-workspace-head")).toHaveClass("is-sticky");
-    expect(document.querySelector(".terminal-workspace-head")).toHaveAttribute("data-runtime-workspace-header", "true");
-    expect(document.querySelector(".terminal-workspace-row")).toHaveClass("conversation-workspace-row", "is-compact");
-    expect(document.querySelector(".terminal-workspace-copy")).toHaveClass("conversation-workspace-copy", "is-compact");
-    const workspaceHeader = document.querySelector(".terminal-workspace-head") as HTMLElement;
+    expect(document.querySelector(".runtime-workspace-shell")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-session-list]")).toHaveClass("runtime-session-list");
+    expect(document.querySelector("[data-terminal-session-pane]")).toHaveClass("runtime-workspace-session-pane");
+    expect(document.querySelector("[data-terminal-session-pane]")).not.toHaveClass("conversation-session-pane");
+    expect(document.querySelector(".terminal-session-pane-shell")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-pane-head='true']")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-workspace]")).toHaveClass("runtime-workspace");
+    expect(document.querySelector(".runtime-workspace-body")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-workspace-body")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-workspace-head")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-workspace-head")).toHaveClass("is-compact");
+    expect(document.querySelector(".runtime-workspace-head")).toHaveClass("is-sticky");
+    expect(document.querySelector(".runtime-workspace-head")).toHaveAttribute("data-runtime-workspace-header", "true");
+    expect(document.querySelector("[data-terminal-chat-screen]")).toHaveClass("runtime-workspace-screen");
+    expect(document.querySelector("[data-runtime-timeline='true']")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-workspace-row")).toHaveClass("is-compact");
+    expect(document.querySelector(".runtime-workspace-copy")).toHaveClass("is-compact");
+    const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(within(workspaceHeader).getByRole("button", { name: "Ready" })).toBeDisabled();
     expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
     expect(document.querySelector("[data-terminal-close]")).not.toBeInTheDocument();
     expect(document.querySelector("[data-terminal-console-panel]")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-chat-form")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-chat-form .terminal-composer-tools")).toBeInTheDocument();
-    expect(document.querySelector(".terminal-chat-form .terminal-composer-meta")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-composer-form")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-composer-form")).not.toHaveClass("terminal-chat-form");
+    expect(document.querySelector(".runtime-composer-form")).toHaveAttribute("data-runtime-composer", "true");
+    expect(document.querySelector(".runtime-composer-input")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-composer-input")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-composer-submit")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-composer-tools")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-composer-tools")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-composer-meta")).toBeInTheDocument();
+    expect(document.querySelector(".terminal-composer-meta")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-attachment-strip='true']")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-submit]")).toHaveClass("runtime-composer-submit");
+    expect(document.querySelector("[data-terminal-submit]")).not.toHaveClass("terminal-chat-submit");
     expect(document.querySelector("[data-terminal-submit] svg")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-shell")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-toolbar")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-copy")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-body")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered > .runtime-markdown-rendered")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
       "<h1>Workspace</h1>",
     );
@@ -511,9 +534,11 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Preview terminal-shot.svg" })).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-attachment-strip='true']")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Preview terminal-shot.svg" }));
+    expect(document.querySelector("[data-runtime-attachment-preview='true']")).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "terminal-shot.svg" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
 
@@ -977,19 +1002,17 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     const mobileHeader = document.querySelector("[data-terminal-mobile-header]") as HTMLElement;
+    expect(mobileHeader).toHaveAttribute("data-runtime-mobile-header", "leading");
     expect(mobileHeader.querySelector(".nav-toggle")).toHaveClass(
-      "conversation-mobile-action",
-      "terminal-inline-button",
+      "runtime-workspace-mobile-action",
       "is-quiet",
     );
     expect(mobileHeader.querySelector(".panel-toggle")).toHaveClass(
-      "conversation-mobile-action",
-      "terminal-inline-button",
+      "runtime-workspace-mobile-action",
       "is-quiet",
     );
     expect(mobileHeader.querySelector(".mobile-new-chat")).toHaveClass(
-      "conversation-mobile-action",
-      "terminal-inline-button",
+      "runtime-workspace-mobile-action",
       "is-primary",
     );
     expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();

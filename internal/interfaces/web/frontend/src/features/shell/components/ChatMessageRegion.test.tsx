@@ -31,6 +31,11 @@ describe("ChatMessageRegion", () => {
     const meta = article.querySelector(".msg-meta") as HTMLElement;
 
     expect(meta).toBeInTheDocument();
+    expect(article.querySelector(".runtime-markdown-shell")).toBeInTheDocument();
+    expect(article.querySelector(".runtime-markdown-toolbar")).toBeInTheDocument();
+    expect(article.querySelector(".runtime-markdown-copy")).toBeInTheDocument();
+    expect(article.querySelector(".runtime-markdown-body")).toBeInTheDocument();
+    expect(article.querySelector(".assistant-message-shell")).not.toBeInTheDocument();
     expect(within(meta).queryByText("CHAT")).not.toBeInTheDocument();
     expect(within(meta).queryByText("MODEL")).not.toBeInTheDocument();
     expect(within(meta).queryByText("Done")).not.toBeInTheDocument();
@@ -116,7 +121,39 @@ describe("ChatMessageRegion", () => {
     );
 
     const image = screen.getByRole("img", { name: "diagram.png" });
+    expect(document.querySelector("[data-runtime-attachment-gallery='message-2']")).toBeInTheDocument();
     expect(image).toHaveAttribute("src", "/api/sessions/session-1/attachments/image-1/preview");
     expect(screen.getByText("diagram.png")).toBeInTheDocument();
+  });
+
+  it("renders process answers through the shared runtime markdown body contract", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: [
+              "[agent] action: Inspect workspace",
+              "[agent] observation: Repository root detected.",
+              "",
+              "Final answer with `details`.",
+            ].join("\n"),
+            processSteps: [
+              {
+                id: "step-1",
+                title: "Inspect workspace",
+                detail: "Repository root detected.",
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    const answer = document.querySelector(".agent-process-answer") as HTMLElement;
+    expect(answer).toBeInTheDocument();
+    expect(answer).toHaveClass("runtime-markdown-body");
+    expect(answer.querySelector(".runtime-markdown-rendered")).toBeInTheDocument();
   });
 });
