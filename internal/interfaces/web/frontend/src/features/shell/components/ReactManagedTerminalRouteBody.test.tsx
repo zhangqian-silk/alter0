@@ -587,7 +587,7 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
     });
 
-    const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement;
+    const fileInput = document.querySelector('input[type="file"][accept="image/*,.txt,.md,.json,.yaml,.yml,.csv,.log,.pdf"]') as HTMLInputElement;
     expect(fileInput).toBeInTheDocument();
 
     const image = new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], "terminal-shot.svg", { type: "image/svg+xml" });
@@ -629,6 +629,110 @@ describe("ReactManagedTerminalRouteBody", () => {
       asset_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/original",
       preview_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/preview",
     });
+    expect(payload.attachments[0].data_url).toBeUndefined();
+  });
+
+  it("attaches files in terminal composer and submits them with stable asset references", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      if (url === "/api/sessions/terminal-1/attachments" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "asset-terminal-file-1",
+              name: "requirements.md",
+              content_type: "text/markdown",
+              size: 20,
+              asset_url: "/api/sessions/terminal-1/attachments/asset-terminal-file-1/original",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1/input" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "busy",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:30Z",
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-input]")).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["# Requirements"], "requirements.md", { type: "text/markdown" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("requirements.md")).toBeInTheDocument();
+    });
+
+    fireEvent.change(document.querySelector("[data-terminal-input]") as HTMLTextAreaElement, {
+      target: { value: "review the attached docs" },
+    });
+    fireEvent.click(document.querySelector("[data-terminal-submit]") as HTMLButtonElement);
+
+    await waitFor(() => {
+      const fetchMock = vi.mocked(fetch);
+      expect(fetchMock.mock.calls.some(([request, init]) =>
+        String(request) === "/api/terminal/sessions/terminal-1/input"
+        && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+    });
+
+    const fetchMock = vi.mocked(fetch);
+    const inputCall = fetchMock.mock.calls.find(([request, init]) =>
+      String(request) === "/api/terminal/sessions/terminal-1/input"
+      && String(init?.method || "GET").toUpperCase() === "POST");
+    const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
+    expect(payload.attachments[0]).toMatchObject({
+      id: "asset-terminal-file-1",
+      asset_url: "/api/sessions/terminal-1/attachments/asset-terminal-file-1/original",
+    });
+    expect(payload.attachments[0].preview_url).toBeUndefined();
     expect(payload.attachments[0].data_url).toBeUndefined();
   });
 

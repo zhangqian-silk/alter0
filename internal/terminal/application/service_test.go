@@ -55,6 +55,64 @@ func TestBuildCodexTurnArgsIncludesImageFlags(t *testing.T) {
 	}
 }
 
+func TestBuildCodexTurnPromptIncludesWorkspaceFiles(t *testing.T) {
+	prompt := buildCodexTurnPrompt("review the attached docs", []preparedTurnAttachment{
+		{
+			Name:        "requirements.md",
+			ContentType: "text/markdown",
+			PromptPath:  "input-attachments/turn-1/requirements.md",
+		},
+		{
+			Name:        "diagram.png",
+			ContentType: "image/png",
+			PromptPath:  "input-attachments/turn-1/diagram.png",
+			IsImage:     true,
+		},
+	})
+
+	if !strings.Contains(prompt, "Attached files are available in the workspace:") {
+		t.Fatalf("expected file attachment note, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "requirements.md (text/markdown): input-attachments/turn-1/requirements.md") {
+		t.Fatalf("expected markdown file path in prompt, got %q", prompt)
+	}
+	if strings.Contains(prompt, "diagram.png") {
+		t.Fatalf("expected image attachments to stay on CLI flags instead of prompt text, got %q", prompt)
+	}
+}
+
+func TestPrepareTurnInputAttachmentsUsesWorkspaceFilesWithoutDataURLs(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "source-requirements.md")
+	if err := os.WriteFile(sourcePath, []byte("# Requirements\n"), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	attachments, err := prepareTurnInputAttachments(workspaceDir, "turn-1", []TurnAttachment{
+		{
+			Name:          "requirements.md",
+			ContentType:   "text/markdown",
+			WorkspacePath: sourcePath,
+		},
+	})
+	if err != nil {
+		t.Fatalf("prepareTurnInputAttachments() error = %v", err)
+	}
+	if len(attachments) != 1 {
+		t.Fatalf("expected 1 prepared attachment, got %+v", attachments)
+	}
+	if attachments[0].PromptPath != filepath.ToSlash(filepath.Join(terminalTurnAttachmentDirName, "turn-1", "requirements.md")) {
+		t.Fatalf("unexpected prompt path %+v", attachments[0])
+	}
+	data, err := os.ReadFile(attachments[0].Path)
+	if err != nil {
+		t.Fatalf("read prepared attachment: %v", err)
+	}
+	if string(data) != "# Requirements\n" {
+		t.Fatalf("unexpected prepared attachment content %q", string(data))
+	}
+}
+
 func TestNormalizeOptionsParsesShellArgsLine(t *testing.T) {
 	options := normalizeOptions(Options{
 		Shell:         "bash",
@@ -216,7 +274,7 @@ func TestServiceInputWithAttachmentsPassesImageFlagsAndPersistsTurnAttachments(t
 	}
 
 	t.Setenv("TERMINAL_HELPER_EXPECT_IMAGE_COUNT", "1")
-	attachment := execdomain.UserImageAttachment{
+	attachment := execdomain.UserAttachment{
 		Name:        "diagram.png",
 		ContentType: "image/png",
 		DataURL:     "data:image/png;base64,ZmFrZQ==",
@@ -225,7 +283,7 @@ func TestServiceInputWithAttachmentsPassesImageFlagsAndPersistsTurnAttachments(t
 		OwnerID:     "owner-images",
 		SessionID:   session.ID,
 		Input:       "inspect screenshot",
-		Attachments: []execdomain.UserImageAttachment{attachment},
+		Attachments: []execdomain.UserAttachment{attachment},
 	}); err != nil {
 		t.Fatalf("input with attachments: %v", err)
 	}

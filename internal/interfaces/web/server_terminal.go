@@ -227,7 +227,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 		}
 		input := strings.TrimSpace(req.Input)
 		if input == "" && len(attachments) > 0 {
-			input = defaultImageAttachmentContent(len(attachments))
+			input = defaultAttachmentContent(attachments)
 		}
 		session, err := s.terminals.InputWithAttachments(terminalapp.InputRequest{
 			OwnerID:     ownerID,

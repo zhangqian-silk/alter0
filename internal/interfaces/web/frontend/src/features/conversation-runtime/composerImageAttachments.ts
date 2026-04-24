@@ -4,8 +4,9 @@ export const MAX_COMPOSER_IMAGE_DIMENSION_PX = 1600;
 export const MAX_COMPOSER_IMAGE_DATA_URL_BYTES = 1_500_000;
 export const MAX_COMPOSER_IMAGE_PREVIEW_DIMENSION_PX = 240;
 
-export type ComposerImageAttachment = {
+export type ComposerAttachment = {
   id: string;
+  kind: "image" | "file";
   name: string;
   contentType: string;
   size: number;
@@ -15,30 +16,63 @@ export type ComposerImageAttachment = {
   previewURL?: string;
 };
 
-export async function readComposerImageFiles(files: FileList | File[]): Promise<ComposerImageAttachment[]> {
+export type ComposerImageAttachment = ComposerAttachment & {
+  kind: "image";
+};
+
+export async function readComposerFiles(files: FileList | File[]): Promise<ComposerAttachment[]> {
   const selected = Array.from(files || []);
-  const attachments: ComposerImageAttachment[] = [];
+  const attachments: ComposerAttachment[] = [];
   for (const file of selected) {
-    if (!file.type.startsWith("image/")) {
-      throw new Error("Only image files are supported.");
+    if (file.type.startsWith("image/")) {
+      if (file.size > MAX_COMPOSER_IMAGE_BYTES) {
+        throw new Error("Each image must be 5 MB or smaller.");
+      }
+      const optimized = await buildOptimizedImagePayload(file);
+      attachments.push({
+        id: `composer-attachment-${Math.random().toString(36).slice(2, 10)}`,
+        kind: "image",
+        name: file.name || "image",
+        contentType: optimized.contentType,
+        size: optimized.size,
+        dataURL: optimized.dataURL,
+        previewDataURL: optimized.previewDataURL,
+      });
+      continue;
     }
-    if (file.size > MAX_COMPOSER_IMAGE_BYTES) {
-      throw new Error("Each image must be 5 MB or smaller.");
-    }
-    const optimized = await buildOptimizedImagePayload(file);
+    const dataURL = await readFileAsDataURL(file, "Failed to read file.");
     attachments.push({
-      id: `composer-image-${Math.random().toString(36).slice(2, 10)}`,
-      name: file.name || "image",
-      contentType: optimized.contentType,
-      size: optimized.size,
-      dataURL: optimized.dataURL,
-      previewDataURL: optimized.previewDataURL,
+      id: `composer-attachment-${Math.random().toString(36).slice(2, 10)}`,
+      kind: "file",
+      name: file.name || "file",
+      contentType: file.type || "application/octet-stream",
+      size: file.size,
+      dataURL,
     });
   }
   return attachments;
 }
 
-export function resolveComposerAttachmentPreviewURL(attachment: ComposerImageAttachment): string {
+export async function readComposerImageFiles(files: FileList | File[]): Promise<ComposerImageAttachment[]> {
+  const selected = Array.from(files || []);
+  for (const file of selected) {
+    if (!file.type.startsWith("image/")) {
+      throw new Error("Only image files are supported.");
+    }
+  }
+  const attachments = await readComposerFiles(selected);
+  return attachments.filter(isComposerImageAttachment);
+}
+
+export function isComposerImageAttachment(attachment: ComposerAttachment): attachment is ComposerImageAttachment {
+  return attachment.kind === "image" || attachment.contentType.startsWith("image/");
+}
+
+export function canPreviewComposerAttachment(attachment: ComposerAttachment): boolean {
+  return isComposerImageAttachment(attachment);
+}
+
+export function resolveComposerAttachmentPreviewURL(attachment: ComposerAttachment): string {
   return attachment.previewURL
     || attachment.assetURL
     || attachment.previewDataURL
@@ -48,7 +82,7 @@ export function resolveComposerAttachmentPreviewURL(attachment: ComposerImageAtt
 
 async function buildOptimizedImagePayload(file: File) {
   if (!shouldRasterizeImage(file.type)) {
-    const dataURL = await readFileAsDataURL(file);
+    const dataURL = await readFileAsDataURL(file, "Failed to read image file.");
     return {
       contentType: file.type || "image/*",
       size: estimateDataURLBytes(dataURL),
@@ -115,13 +149,13 @@ async function buildPreviewDataURL(dataURL: string, contentType: string) {
   }
 }
 
-function readFileAsDataURL(file: File): Promise<string> {
+function readFileAsDataURL(file: File, message: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read image file."));
+    reader.onerror = () => reject(new Error(message));
     reader.onload = () => {
       if (typeof reader.result !== "string" || reader.result.trim() === "") {
-        reject(new Error("Failed to read image file."));
+        reject(new Error(message));
         return;
       }
       resolve(reader.result);
@@ -160,7 +194,7 @@ function fitWithinBounds(width: number, height: number, maxDimension: number) {
 async function loadImageFromFile(file: File): Promise<{ element: HTMLImageElement; width: number; height: number }> {
   const objectURL = typeof URL.createObjectURL === "function"
     ? URL.createObjectURL(file)
-    : await readFileAsDataURL(file);
+    : await readFileAsDataURL(file, "Failed to read image file.");
   return loadImageFromURL(objectURL, objectURL.startsWith("blob:"));
 }
 

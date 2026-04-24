@@ -2,6 +2,66 @@ package domain
 
 import "testing"
 
+func TestEncodeDecodeUserAttachmentsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	raw, err := EncodeUserAttachments([]UserAttachment{
+		{
+			Name:          "requirements.md",
+			ContentType:   "text/markdown",
+			WorkspacePath: "/tmp/session-files/requirements.md",
+			AssetURL:      "/api/sessions/session-1/attachments/asset-1/original",
+		},
+	})
+	if err != nil {
+		t.Fatalf("EncodeUserAttachments() error = %v", err)
+	}
+
+	items := DecodeUserAttachments(map[string]string{
+		UserAttachmentsMetadataKey: raw,
+	})
+	if len(items) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(items))
+	}
+	if items[0].Name != "requirements.md" ||
+		items[0].ContentType != "text/markdown" ||
+		items[0].WorkspacePath != "/tmp/session-files/requirements.md" ||
+		items[0].AssetURL != "/api/sessions/session-1/attachments/asset-1/original" ||
+		items[0].Kind != UserAttachmentKindFile {
+		t.Fatalf("unexpected attachment %#v", items[0])
+	}
+}
+
+func TestDecodeUserImageAttachmentsFiltersGenericMetadata(t *testing.T) {
+	t.Parallel()
+
+	raw, err := EncodeUserAttachments([]UserAttachment{
+		{
+			Name:        "diagram.png",
+			ContentType: "image/png",
+			DataURL:     "data:image/png;base64,ZmFrZQ==",
+		},
+		{
+			Name:        "notes.txt",
+			ContentType: "text/plain",
+			DataURL:     "data:text/plain;base64,ZmFrZQ==",
+		},
+	})
+	if err != nil {
+		t.Fatalf("EncodeUserAttachments() error = %v", err)
+	}
+
+	items := DecodeUserImageAttachments(map[string]string{
+		UserAttachmentsMetadataKey: raw,
+	})
+	if len(items) != 1 {
+		t.Fatalf("expected only image attachment, got %#v", items)
+	}
+	if items[0].Name != "diagram.png" {
+		t.Fatalf("unexpected image attachment %#v", items[0])
+	}
+}
+
 func TestEncodeDecodeUserImageAttachmentsRoundTrip(t *testing.T) {
 	t.Parallel()
 

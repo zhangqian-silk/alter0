@@ -4,10 +4,11 @@ import { createAPIClient } from "../../../shared/api/client";
 import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
 import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
 import {
+  canPreviewComposerAttachment,
+  readComposerFiles,
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
-  readComposerImageFiles,
   resolveComposerAttachmentPreviewURL,
-  type ComposerImageAttachment,
+  type ComposerAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 import { getLegacyShellCopy } from "../legacyShellCopy";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
@@ -31,7 +32,7 @@ type TerminalStepSummary = {
 type TerminalTurn = {
   id: string;
   prompt: string;
-  attachments?: TerminalImageAttachment[];
+  attachments?: TerminalAttachment[];
   status: string;
   started_at?: string | number;
   finished_at?: string | number;
@@ -40,7 +41,7 @@ type TerminalTurn = {
   steps?: TerminalStepSummary[];
 };
 
-type TerminalImageAttachment = {
+type TerminalAttachment = {
   id?: string;
   name: string;
   content_type: string;
@@ -111,7 +112,9 @@ type TerminalCopy = {
   inputPlaceholder: string;
   send: string;
   sending: string;
-  addImage: string;
+  addAttachment: string;
+  addAttachmentAccept: string;
+  fileAttachmentLabel: string;
   closePreview: string;
   shell: string;
   path: string;
@@ -159,7 +162,9 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     inputPlaceholder: "Type command or prompt...",
     send: "Send",
     sending: "Sending...",
-    addImage: "Add image",
+    addAttachment: "Add attachment",
+    addAttachmentAccept: "image/*,.txt,.md,.json,.yaml,.yml,.csv,.log,.pdf",
+    fileAttachmentLabel: "File",
     closePreview: "Close preview",
     shell: "Shell",
     path: "Path",
@@ -205,7 +210,9 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     inputPlaceholder: "输入命令或继续追问...",
     send: "发送",
     sending: "发送中...",
-    addImage: "添加图片",
+    addAttachment: "添加附件",
+    addAttachmentAccept: "image/*,.txt,.md,.json,.yaml,.yml,.csv,.log,.pdf",
+    fileAttachmentLabel: "文件",
     closePreview: "关闭预览",
     shell: "Shell",
     path: "路径",
@@ -264,7 +271,7 @@ function resolveLanguage(): "en" | "zh" {
   return document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
-function normalizeTerminalDraftAttachments(value: unknown): ComposerImageAttachment[] {
+function normalizeTerminalDraftAttachments(value: unknown): ComposerAttachment[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -275,19 +282,23 @@ function normalizeTerminalDraftAttachments(value: unknown): ComposerImageAttachm
     const record = item as Record<string, unknown>;
     const id = typeof record.id === "string" ? record.id.trim() : "";
     const name = typeof record.name === "string" ? record.name.trim() : "";
+    const kind = record.kind === "file" ? "file" : "image";
     const contentType = typeof record.contentType === "string" ? record.contentType.trim() : "";
     const dataURL = typeof record.dataURL === "string" ? record.dataURL.trim() : "";
+    const previewDataURL = typeof record.previewDataURL === "string" ? record.previewDataURL.trim() : "";
     const assetURL = typeof record.assetURL === "string" ? record.assetURL.trim() : "";
     const previewURL = typeof record.previewURL === "string" ? record.previewURL.trim() : "";
     const size = typeof record.size === "number" && Number.isFinite(record.size) ? record.size : 0;
-    if (!id || !contentType.startsWith("image/") || (!dataURL && !assetURL && !previewURL)) {
+    if (!id || !contentType || (!dataURL && !assetURL && !previewURL)) {
       return [];
     }
     return [{
       id,
+      kind,
       name,
       contentType,
       dataURL: dataURL || undefined,
+      previewDataURL: previewDataURL || undefined,
       assetURL: assetURL || undefined,
       previewURL: previewURL || undefined,
       size,
@@ -299,7 +310,7 @@ function normalizeAttachmentText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function serializeTerminalComposerAttachment(attachment: ComposerImageAttachment) {
+function serializeTerminalComposerAttachment(attachment: ComposerAttachment) {
   if (attachment.assetURL) {
     return {
       id: attachment.id,
@@ -321,8 +332,8 @@ function serializeTerminalComposerAttachment(attachment: ComposerImageAttachment
 async function uploadTerminalSessionAttachments(
   apiClient: ReturnType<typeof createAPIClient>,
   sessionID: string,
-  attachments: ComposerImageAttachment[],
-): Promise<ComposerImageAttachment[]> {
+  attachments: ComposerAttachment[],
+): Promise<ComposerAttachment[]> {
   const existing = attachments.filter((attachment) => attachment.assetURL);
   const pending = attachments.filter((attachment) => !attachment.assetURL && attachment.dataURL);
   if (pending.length === 0) {
@@ -344,13 +355,13 @@ async function uploadTerminalSessionAttachments(
         name: attachment.name,
         content_type: attachment.contentType,
         data_url: attachment.dataURL,
-        preview_data_url: attachment.previewDataURL || attachment.dataURL,
+        preview_data_url: attachment.previewDataURL,
       })),
     },
   );
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (items.length !== pending.length) {
-    throw new Error("Failed to store image attachments.");
+    throw new Error("Failed to store attachments.");
   }
   return [
     ...existing,
@@ -360,21 +371,22 @@ async function uploadTerminalSessionAttachments(
       const assetURL = normalizeAttachmentText(item.asset_url);
       const previewURL = normalizeAttachmentText(item.preview_url) || assetURL;
       if (!id || !assetURL) {
-        throw new Error("Failed to store image attachments.");
+        throw new Error("Failed to store attachments.");
       }
       return {
         id,
+        kind: fallback.kind,
         name: normalizeAttachmentText(item.name) || fallback.name,
         contentType: normalizeAttachmentText(item.content_type) || fallback.contentType,
         size: typeof item.size === "number" && Number.isFinite(item.size) ? item.size : fallback.size,
         assetURL,
-        previewURL,
+        previewURL: fallback.kind === "image" ? previewURL : undefined,
       };
     }),
   ];
 }
 
-function loadTerminalAttachmentDrafts(): Record<string, ComposerImageAttachment[]> {
+function loadTerminalAttachmentDrafts(): Record<string, ComposerAttachment[]> {
   if (typeof window === "undefined") {
     return {};
   }
@@ -384,7 +396,7 @@ function loadTerminalAttachmentDrafts(): Record<string, ComposerImageAttachment[
       return {};
     }
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return Object.entries(parsed).reduce<Record<string, ComposerImageAttachment[]>>((acc, [key, value]) => {
+    return Object.entries(parsed).reduce<Record<string, ComposerAttachment[]>>((acc, [key, value]) => {
       const normalized = normalizeTerminalDraftAttachments(value);
       if (normalized.length > 0) {
         acc[key] = normalized;
@@ -675,14 +687,14 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [inputValue, setInputValue] = useState("");
-  const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ComposerImageAttachment[]>>(() => loadTerminalAttachmentDrafts());
-  const attachmentDraftsRef = useRef<Record<string, ComposerImageAttachment[]>>(attachmentDrafts);
+  const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ComposerAttachment[]>>(() => loadTerminalAttachmentDrafts());
+  const attachmentDraftsRef = useRef<Record<string, ComposerAttachment[]>>(attachmentDrafts);
   const attachmentUploadPromisesRef = useRef<Record<string, {
     pendingIDs: string[];
-    promise: Promise<ComposerImageAttachment[]>;
+    promise: Promise<ComposerAttachment[]>;
   }>>({});
   const [composerAttachmentError, setComposerAttachmentError] = useState("");
-  const [previewAttachment, setPreviewAttachment] = useState<ComposerImageAttachment | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<ComposerAttachment | null>(null);
   const [scrollingActive, setScrollingActive] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [pageHidden, setPageHidden] = useState(() => document.hidden);
@@ -743,7 +755,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
 
   const updateDraftAttachments = (
     key: string,
-    updater: (current: ComposerImageAttachment[]) => ComposerImageAttachment[],
+    updater: (current: ComposerAttachment[]) => ComposerAttachment[],
   ) => {
     setAttachmentDrafts((current) => {
       const next = { ...current };
@@ -1074,26 +1086,26 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     }
   };
 
-  const handleComposerImagePicker = () => {
+  const handleComposerAttachmentPicker = () => {
     composerFileInputRef.current?.click();
   };
 
-  const handleComposerImageSelection = async (files: FileList | null) => {
+  const handleComposerAttachmentSelection = async (files: FileList | null) => {
     if (!files || files.length === 0) {
       return;
     }
     if ((draftAttachments.length + files.length) > MAX_COMPOSER_IMAGE_ATTACHMENTS) {
       setComposerAttachmentError(
         language === "zh"
-          ? `最多可暂存 ${MAX_COMPOSER_IMAGE_ATTACHMENTS} 张图片。`
-          : `You can attach up to ${MAX_COMPOSER_IMAGE_ATTACHMENTS} images.`,
+          ? `最多可暂存 ${MAX_COMPOSER_IMAGE_ATTACHMENTS} 个附件。`
+          : `You can attach up to ${MAX_COMPOSER_IMAGE_ATTACHMENTS} files.`,
       );
       return;
     }
     let uploadSessionID = "";
-    let uploadPromise: Promise<ComposerImageAttachment[]> | null = null;
+    let uploadPromise: Promise<ComposerAttachment[]> | null = null;
     try {
-      const attachments = await readComposerImageFiles(files);
+      const attachments = await readComposerFiles(files);
       let session = activeSession;
       if (!session) {
         session = await createSession();
@@ -1118,7 +1130,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       ]);
       setComposerAttachmentError("");
     } catch (error) {
-      setComposerAttachmentError(error instanceof Error ? error.message : "Failed to add image.");
+      setComposerAttachmentError(error instanceof Error ? error.message : "Failed to add attachment.");
     } finally {
       if (
         uploadSessionID
@@ -1457,8 +1469,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         void submitInput();
       },
       fileInputRef: composerFileInputRef,
+      fileInputAccept: copy.addAttachmentAccept,
       onFileChange: (event) => {
-        void handleComposerImageSelection(event.target.files);
+        void handleComposerAttachmentSelection(event.target.files);
       },
       attachments: draftAttachments,
       attachmentStripProps: { "data-terminal-composer-attachments": "" },
@@ -1486,9 +1499,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       metaClassName: sessions.length > 0 ? undefined : "is-empty",
       metaContent: sessions.length > 0 ? copy.sessionCount(sessions.length) : "",
       metaProps: { "aria-hidden": sessions.length > 0 ? undefined : "true" },
-      addImageLabel: copy.addImage,
-      addImageButtonProps: { disabled: !canInput || submitting },
-      onAddImage: handleComposerImagePicker,
+      addAttachmentLabel: copy.addAttachment,
+      addAttachmentButtonProps: { disabled: !canInput || submitting },
+      onAddAttachment: handleComposerAttachmentPicker,
       submitButtonProps: {
         id: "terminalSendButton",
         "data-terminal-submit": "",
@@ -1532,27 +1545,29 @@ function buildTerminalTimelineItems({
   copy: TerminalCopy;
   onToggleTurn: (turnID: string) => void;
   onToggleStep: (turnID: string, stepID: string, hasDetail: boolean) => void;
-  onPreviewAttachment: (attachment: ComposerImageAttachment | null) => void;
+  onPreviewAttachment: (attachment: ComposerAttachment | null) => void;
 }): RuntimeTimelineItem[] {
   return turns.map((turn) => {
     const steps = Array.isArray(turn.steps) ? turn.steps : [];
     const turnAttachments = Array.isArray(turn.attachments) ? turn.attachments : [];
+    const imageAttachments = turnAttachments.filter((attachment) => attachment.content_type.startsWith("image/"));
     const processOpen = expandedTurns[turn.id] ?? false;
     const hasProcess = steps.length > 0 || normalizeStatus(turn.status || "") === "busy";
     const blocks = [];
 
-    if (turnAttachments.length > 0) {
+    if (imageAttachments.length > 0) {
       blocks.push({
         type: "attachments" as const,
         galleryId: turn.id,
         className: "terminal-turn-attachments",
-        items: turnAttachments.map((attachment) => {
+        items: imageAttachments.map((attachment) => {
           const attachmentID = `${turn.id}:${attachment.id || attachment.name}`;
           return {
             key: `${attachmentID}:${attachment.asset_url || attachment.data_url || ""}`,
             name: attachment.name,
             src: resolveComposerAttachmentPreviewURL({
               id: attachmentID,
+              kind: "image",
               name: attachment.name,
               contentType: attachment.content_type,
               dataURL: attachment.data_url,
@@ -1563,6 +1578,7 @@ function buildTerminalTimelineItems({
             previewLabel: `${copy.preview} ${attachment.name}`,
             onPreview: () => onPreviewAttachment({
               id: attachmentID,
+              kind: "image",
               name: attachment.name,
               contentType: attachment.content_type,
               dataURL: attachment.data_url,

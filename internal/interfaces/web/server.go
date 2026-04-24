@@ -2153,7 +2153,7 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 		return
 	}
 	if input == "" && len(attachments) > 0 {
-		input = defaultImageAttachmentContent(len(attachments))
+		input = defaultAttachmentContent(attachments)
 	}
 
 	source := resolveControlTaskSource(baseTask)
@@ -2177,11 +2177,14 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 	metadata[controlTaskTerminalSessionIDKey] = terminalSessionID
 	metadata[controlTaskTerminalParentIDKey] = strings.TrimSpace(baseTask.ID)
 	metadata[controlTaskTerminalInteractiveKey] = "true"
-	if rawAttachments, err := execdomain.EncodeUserImageAttachments(attachments); err != nil {
+	if rawAttachments, err := execdomain.EncodeUserAttachments(attachments); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid attachments"})
 		return
 	} else if rawAttachments != "" {
-		metadata[execdomain.UserImageAttachmentsMetadataKey] = rawAttachments
+		metadata[execdomain.UserAttachmentsMetadataKey] = rawAttachments
+		if rawImages, imageErr := execdomain.EncodeUserImageAttachments(execdomain.FilterUserImageAttachments(attachments)); imageErr == nil && rawImages != "" {
+			metadata[execdomain.UserImageAttachmentsMetadataKey] = rawImages
+		}
 	}
 
 	msg := shareddomain.UnifiedMessage{
@@ -4761,7 +4764,7 @@ func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.Uni
 		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("content or attachments are required")
 	}
 	if content == "" && len(attachments) > 0 {
-		content = defaultImageAttachmentContent(len(attachments))
+		content = defaultAttachmentContent(attachments)
 	}
 
 	channelID := strings.TrimSpace(req.ChannelID)
@@ -4781,13 +4784,16 @@ func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.Uni
 		channelType = channel.Type
 	}
 	metadata := cloneStringMap(req.Metadata)
-	if rawAttachments, err := execdomain.EncodeUserImageAttachments(attachments); err != nil {
+	if rawAttachments, err := execdomain.EncodeUserAttachments(attachments); err != nil {
 		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("invalid attachments")
 	} else if rawAttachments != "" {
 		if metadata == nil {
 			metadata = map[string]string{}
 		}
-		metadata[execdomain.UserImageAttachmentsMetadataKey] = rawAttachments
+		metadata[execdomain.UserAttachmentsMetadataKey] = rawAttachments
+		if rawImages, imageErr := execdomain.EncodeUserImageAttachments(execdomain.FilterUserImageAttachments(attachments)); imageErr == nil && rawImages != "" {
+			metadata[execdomain.UserImageAttachmentsMetadataKey] = rawImages
+		}
 	}
 
 	return shareddomain.UnifiedMessage{
@@ -4805,11 +4811,30 @@ func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.Uni
 	}, http.StatusOK, nil
 }
 
-func defaultImageAttachmentContent(count int) string {
-	if count <= 1 {
-		return "Attached image."
+func defaultAttachmentContent(attachments []execdomain.UserAttachment) string {
+	count := len(attachments)
+	if count <= 0 {
+		return ""
 	}
-	return fmt.Sprintf("Attached %d images.", count)
+	imageCount := 0
+	for _, attachment := range attachments {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(attachment.ContentType)), "image/") {
+			imageCount += 1
+		}
+	}
+	if imageCount == count {
+		if count <= 1 {
+			return "Attached image."
+		}
+		return fmt.Sprintf("Attached %d images.", count)
+	}
+	if count <= 1 {
+		return "Attached file."
+	}
+	if imageCount == 0 {
+		return fmt.Sprintf("Attached %d files.", count)
+	}
+	return fmt.Sprintf("Attached %d files, including %d images.", count, imageCount)
 }
 
 func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage, assessment taskapp.ComplexityAssessment) (taskdomain.Task, bool, error) {
