@@ -209,9 +209,9 @@ func TestWorkspaceServiceGatewayStartsManagedHTTPServiceBeforeProxy(t *testing.T
 		},
 	}
 	server := &Server{
-		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
-		workspaceService:  registry,
-		workspaceRuntime:  runtime,
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceService: registry,
+		workspaceRuntime: runtime,
 	}
 
 	handler := server.withWorkspaceServiceGateway(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -257,11 +257,11 @@ func TestWorkspaceServiceGatewayLeavesWorkspaceLoginOnSharedGateway(t *testing.T
 	}
 
 	server := &Server{
-		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
-		workspaceService:  registry,
-		webLoginEnabled:   true,
-		webLoginPassword:  "secret",
-		webSessionToken:   "shared-token",
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceService: registry,
+		webLoginEnabled:  true,
+		webLoginPassword: "secret",
+		webSessionToken:  "shared-token",
 	}
 
 	mux := http.NewServeMux()
@@ -363,6 +363,63 @@ func TestWorkspaceServiceGatewayServesRegisteredFrontendDist(t *testing.T) {
 	}
 	if got := strings.TrimSpace(assetRec.Body.String()); got != "console.log('workspace frontend');" {
 		t.Fatalf("unexpected asset body %q", got)
+	}
+}
+
+func TestWorkspaceServiceTravelHostIsPublicReadOnlyAndUsesTravelSubdomain(t *testing.T) {
+	repoPath := preparePreviewRepo(t, "travel workspace")
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	entry, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:      "session-travel-guide",
+		ServiceID:      "travel",
+		ServiceType:    workspaceServiceTypeFrontendDist,
+		RepositoryPath: repoPath,
+	})
+	if err != nil {
+		t.Fatalf("register travel workspace service: %v", err)
+	}
+	if !strings.Contains(entry.Host, ".travel.alter0.cn") || !strings.HasPrefix(entry.Host, entry.ShortHash+".") {
+		t.Fatalf("expected travel host format <short>.travel.alter0.cn, got %+v", entry)
+	}
+	if !entry.PublicReadOnly {
+		t.Fatalf("expected travel workspace service to be public read-only, got %+v", entry)
+	}
+
+	server := &Server{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceService: registry,
+		webLoginEnabled:  true,
+		webLoginPassword: "secret",
+		webSessionToken:  "shared-token",
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	})
+	handler := server.authMiddleware(server.withWorkspaceServiceGateway(mux))
+
+	rootReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	rootReq.Host = entry.Host
+	rootRec := httptest.NewRecorder()
+	handler.ServeHTTP(rootRec, rootReq)
+
+	if rootRec.Code != http.StatusOK {
+		t.Fatalf("expected public travel root status %d, got %d: %s", http.StatusOK, rootRec.Code, rootRec.Body.String())
+	}
+	if !strings.Contains(rootRec.Body.String(), "travel workspace") {
+		t.Fatalf("expected frontend html body, got %q", rootRec.Body.String())
+	}
+
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	apiReq.Host = entry.Host
+	apiRec := httptest.NewRecorder()
+	handler.ServeHTTP(apiRec, apiReq)
+
+	if apiRec.Code != http.StatusNotFound {
+		t.Fatalf("expected public travel host api path to stay read-only 404, got %d: %s", apiRec.Code, apiRec.Body.String())
 	}
 }
 

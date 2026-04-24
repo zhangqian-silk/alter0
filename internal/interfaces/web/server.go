@@ -377,19 +377,20 @@ type skillUpsertRequest struct {
 }
 
 type agentUpsertRequest struct {
-	Name          string            `json:"name"`
-	Enabled       *bool             `json:"enabled,omitempty"`
-	Scope         string            `json:"scope,omitempty"`
-	Version       string            `json:"version,omitempty"`
-	ProviderID    string            `json:"provider_id,omitempty"`
-	Model         string            `json:"model,omitempty"`
-	SystemPrompt  string            `json:"system_prompt,omitempty"`
-	MaxIterations int               `json:"max_iterations,omitempty"`
-	Tools         []string          `json:"tools,omitempty"`
-	Skills        []string          `json:"skills,omitempty"`
-	MCPs          []string          `json:"mcps,omitempty"`
-	MemoryFiles   []string          `json:"memory_files,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	Name                 string                                   `json:"name"`
+	Enabled              *bool                                    `json:"enabled,omitempty"`
+	Scope                string                                   `json:"scope,omitempty"`
+	Version              string                                   `json:"version,omitempty"`
+	ProviderID           string                                   `json:"provider_id,omitempty"`
+	Model                string                                   `json:"model,omitempty"`
+	SystemPrompt         string                                   `json:"system_prompt,omitempty"`
+	MaxIterations        int                                      `json:"max_iterations,omitempty"`
+	Tools                []string                                 `json:"tools,omitempty"`
+	Skills               []string                                 `json:"skills,omitempty"`
+	MCPs                 []string                                 `json:"mcps,omitempty"`
+	MemoryFiles          []string                                 `json:"memory_files,omitempty"`
+	SessionProfileFields []controldomain.AgentSessionProfileField `json:"session_profile_fields,omitempty"`
+	Metadata             map[string]string                        `json:"metadata,omitempty"`
 }
 
 type capabilityLifecycleRequest struct {
@@ -664,6 +665,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/messages", s.messageHandler)
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
 	mux.HandleFunc("/api/agents", s.runtimeAgentListHandler)
+	mux.HandleFunc("/api/agent/session-profile", s.agentSessionProfileHandler)
 	mux.HandleFunc("/api/agent/messages", s.agentMessageHandler)
 	mux.HandleFunc("/api/agent/messages/stream", s.agentMessageStreamHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
@@ -894,6 +896,10 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if s.isPublicWorkspaceReadOnlyHost(r.Host) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if isAuthExemptPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
@@ -909,6 +915,14 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
 	})
+}
+
+func (s *Server) isPublicWorkspaceReadOnlyHost(host string) bool {
+	if s == nil || s.workspaceService == nil {
+		return false
+	}
+	entry, ok := s.workspaceService.ResolveHost(host)
+	return ok && entry.PublicReadOnly
 }
 
 func (s *Server) isAuthenticated(r *http.Request) bool {
@@ -3316,17 +3330,18 @@ func (s *Server) agentListHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		created, err := s.control.SaveAgent(agentID, controldomain.Agent{
-			Name:          strings.TrimSpace(req.Name),
-			Type:          controldomain.CapabilityTypeAgent,
-			Enabled:       enabled,
-			Scope:         controldomain.CapabilityScope(strings.ToLower(strings.TrimSpace(req.Scope))),
-			SystemPrompt:  strings.TrimSpace(req.SystemPrompt),
-			MaxIterations: req.MaxIterations,
-			Tools:         req.Tools,
-			Skills:        req.Skills,
-			MCPs:          req.MCPs,
-			MemoryFiles:   req.MemoryFiles,
-			Metadata:      req.Metadata,
+			Name:                 strings.TrimSpace(req.Name),
+			Type:                 controldomain.CapabilityTypeAgent,
+			Enabled:              enabled,
+			Scope:                controldomain.CapabilityScope(strings.ToLower(strings.TrimSpace(req.Scope))),
+			SystemPrompt:         strings.TrimSpace(req.SystemPrompt),
+			MaxIterations:        req.MaxIterations,
+			Tools:                req.Tools,
+			Skills:               req.Skills,
+			MCPs:                 req.MCPs,
+			MemoryFiles:          req.MemoryFiles,
+			SessionProfileFields: req.SessionProfileFields,
+			Metadata:             req.Metadata,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -3344,21 +3359,22 @@ func buildAgentFromRequest(id string, req agentUpsertRequest) controldomain.Agen
 		enabled = *req.Enabled
 	}
 	return controldomain.Agent{
-		ID:            strings.TrimSpace(id),
-		Name:          strings.TrimSpace(req.Name),
-		Type:          controldomain.CapabilityTypeAgent,
-		Enabled:       enabled,
-		Scope:         controldomain.CapabilityScope(strings.ToLower(strings.TrimSpace(req.Scope))),
-		Version:       strings.TrimSpace(req.Version),
-		ProviderID:    strings.TrimSpace(req.ProviderID),
-		Model:         strings.TrimSpace(req.Model),
-		SystemPrompt:  strings.TrimSpace(req.SystemPrompt),
-		MaxIterations: req.MaxIterations,
-		Tools:         req.Tools,
-		Skills:        req.Skills,
-		MCPs:          req.MCPs,
-		MemoryFiles:   req.MemoryFiles,
-		Metadata:      req.Metadata,
+		ID:                   strings.TrimSpace(id),
+		Name:                 strings.TrimSpace(req.Name),
+		Type:                 controldomain.CapabilityTypeAgent,
+		Enabled:              enabled,
+		Scope:                controldomain.CapabilityScope(strings.ToLower(strings.TrimSpace(req.Scope))),
+		Version:              strings.TrimSpace(req.Version),
+		ProviderID:           strings.TrimSpace(req.ProviderID),
+		Model:                strings.TrimSpace(req.Model),
+		SystemPrompt:         strings.TrimSpace(req.SystemPrompt),
+		MaxIterations:        req.MaxIterations,
+		Tools:                req.Tools,
+		Skills:               req.Skills,
+		MCPs:                 req.MCPs,
+		MemoryFiles:          req.MemoryFiles,
+		SessionProfileFields: req.SessionProfileFields,
+		Metadata:             req.Metadata,
 	}
 }
 
@@ -4742,10 +4758,10 @@ func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessa
 	msg, statusCode, err := s.prepareMessageFromRequest(msgReq)
 	if err != nil {
 		return shareddomain.UnifiedMessage{}, "", statusCode, err
-		}
-		msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
-		return msg, agent.ID, http.StatusOK, nil
 	}
+	msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
+	return msg, agent.ID, http.StatusOK, nil
+}
 
 func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.UnifiedMessage, int, error) {
 	sessionID := strings.TrimSpace(req.SessionID)

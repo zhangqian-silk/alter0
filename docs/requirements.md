@@ -78,7 +78,7 @@
 - 窄屏主导航抽屉点击任一路由项后需立即关闭；页面切换完成后不得继续保留旧菜单层覆盖在目标页之上。
 - 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页与 `Terminal` 继续采用“两行头部 + 贴顶正文起始区”节奏，第一行承载抽屉入口与主操作，第二行承载当前标题；`Chat` 与 `Agent Runtime` 空态复用 terminal-style 顶部操作行，同时保留与 Terminal 对齐的单行紧凑 workspace header 显示当前会话标题、状态按钮与 `Details` 入口，但不再额外输出模型、工具或目标摘要文案；所有页面都不得在顶部遗留额外大块留白。
 - 窄屏 `Chat / Agent Runtime` 工作区头部固定保留 `Menu / Sessions / New` 三个入口；`Menu` 与壳层主导航抽屉共用同一开关状态，`Sessions` 单独控制 Conversation 会话抽屉，`New` 直接创建当前路由对应的新会话，不再出现移动端无导航入口或只能依赖正文内按钮切换会话的状态。
-- `Chat / Agent Runtime` 工作区头部固定为共享单行 header：仅保留会话标题、状态按钮和 `Details` 入口，不再在头部直接放置 `Model / Tools / MCP / Agent` 选择控件，也不重复展示 `Chat / Agent` 标签和目标摘要；模型、Agent、Tools / MCP、Skills 以及会话元数据统一在 `Details` 面板中展示和调整，面板首屏先以紧凑摘要栅格承载会话元数据，再承接页面专属配置区。`Chat` 的模型区除常规 LLM Provider / Model 外，还需额外提供内置 `Codex` 直选项，选中后仅影响后续消息，并把执行链显式切到 `Codex CLI`。`Details` 以顶层浮层形式打开，面板内部独立滚动，点击浮层外区域可关闭，且不得推动消息区或会话正文重新排版。
+- `Chat / Agent Runtime` 工作区头部固定为共享单行 header：仅保留会话标题、状态按钮和 `Details` 入口，不再在头部直接放置 `Model / Tools / MCP / Agent` 选择控件，也不重复展示 `Chat / Agent` 标签和目标摘要；模型、Agent、Tools / MCP、Skills 以及会话元数据统一在 `Details` 面板中展示和调整，面板首屏先以紧凑摘要栅格承载会话元数据，再承接页面专属配置区。`Chat` 的模型区除常规 LLM Provider / Model 外，还需额外提供内置 `Codex` 直选项，选中后仅影响后续消息，并把执行链显式切到 `Codex CLI`；Agent Runtime 的 `Details` 还需提供 `Session Profile` 视图，用于展示当前 Agent 预设字段和当前 Session 实例属性。`Details` 以顶层浮层形式打开，面板内部独立滚动，点击浮层外区域可关闭，且不得推动消息区或会话正文重新排版。
 - `Chat / Agent Runtime` 首页 Composer、会话卡片与 `Details` 面板需维持同一套浅色 terminal-runtime 表面系统：输入框作为单一紧凑主输入面，桌面与移动端都要控制输入高度、底部留白和发送按钮体量，发送按钮直接复用 Terminal 的圆形 icon submit 皮肤，meta 与发送按钮收敛到同一底部工具行，会话卡片和详情面板不再退回旧式轻表单或松散卡片观感；空态工作区禁止保留可拖拽滚动，不得把头部操作行或输入区顶出可视区。
 - `1100px` 及以下的移动工作台需优先保证真机滚动与抽屉切换流畅度：主工作区、Conversation/Terminal 抽屉遮罩、抽屉面板本体与运行页容器不得继续依赖大面积 `backdrop-filter`、持续背景光晕或其他会导致整页重绘的装饰层，统一保持静态浅色表面。
 - `Terminal` 窄屏工作区头部不得重复输出会话抽屉入口；`Sessions` 入口统一由壳层头部提供，工作区头部仅保留与当前会话直接相关的操作。
@@ -93,14 +93,16 @@
 
 稳定需求：
 
-- 运行时统一聚合内置 Agent 与用户管理 Agent；内置 Agent 包括 `main`、`coding`、`writing` 与 `travel-master`。
+- 运行时统一聚合内置 Agent 与用户管理 Agent；内置 Agent 包括 `main`、`coding`、`writing` 与 `travel`。
 - Agent 采用 ReAct 执行链，负责理解用户目标、吸收 system prompt / Skill / Memory 与运行时上下文，并把具体执行交给 `codex_exec`。
 - 稳定工具面包含 `codex_exec`、`search_memory`、`read_memory`、`write_memory` 与运行时收口工具 `complete`；允许委派的 Agent 可额外使用 `delegate_agent`。
+- `travel` 的显示名称为 `Travel Agent`；该 Agent 除正常对话答案外，还必须额外生成一份 HTML 旅游攻略，并发布到当前 Session 的公开只读子域名 `https://<session_short_hash>.travel.alter0.cn`。
 - `codex_exec` 通过 stdin 传递最终指令；存在可用 Provider 且进入 Agent / ReAct 链路时，仅向 Codex 下发当前步骤指令；不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时会为当前会话生成原生 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 `runtime_context`、`skill_context`、`mcp_context`、`memory_context` 编译成 Codex 原生运行配置与工作区事实。
 - Agent / ReAct 走 `openai-completions` 多轮工具调用时，assistant `tool_calls` 与后续 `tool` 结果的 `tool_call_id` 必须保持同轮关联，不能在 Provider 适配层丢失。
 - Agent Profile 支持名称、system prompt、max iterations、Provider/Model、工具白名单、Skills、MCP 与 Memory Files。
 - 每个 Agent 自动拥有私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`，用于沉淀可复用工作模式、输出结构、检查清单与稳定偏好。
 - Memory Files 支持 `USER.md`、`SOUL.md`、当前 Agent 私有 `AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory，并在注入时携带路径、存在状态、可写性、内容与自动召回片段。
+- `Agent Session Profile` 固定落在 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，由运行时自动维护并注入执行链路；该文件除会话画像外，还负责沉淀当前 Agent 当前 Session 的结构化实例属性。实例属性支持通过请求 metadata 增量更新；`coding` 默认自动维护仓库、分支和预览子域名等属性，`travel` 等专项 Agent 可维护 `city` 等领域属性。每个 Agent 还需支持独立的 Session Profile 预设字段定义，运行时与前端以同一字段集展示当前实例值。执行前还需有一条独立的旁路抽取链路，根据 Agent schema 从本轮自然语言更新可写字段，默认可退化为受限 Codex 窄调用。
 - 会话短期记忆、跨会话长期记忆、上下文压缩、天级记忆、强制上下文文件与任务摘要记忆统一构成 Memory 领域能力。
 - `Agent -> Memory` 页面提供长期记忆、天级记忆、强制要求、任务历史与说明文档的只读可视化入口，并支持任务摘要重建。
 
@@ -143,7 +145,7 @@
 
 - Control API 管理 Channel、Capability、Skill、MCP、Agent Profile、Cron Job、Model Provider、Environment 与 Codex 多账号配置，并保留 Capability 生命周期审计。
 - 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service` 与 `frontend-design` 四个内置 Skill；其中 `deploy-test-service` 固定落在 `.alter0/skills/deploy-test-service/SKILL.md`，`frontend-design` 固定落在 `docs/skills/frontend-design/SKILL.md`。
-- 共享 Web 运行时需要支持通用 workspace service 注册：`GET /api/control/workspace-services` 查询注册表，`PUT /api/control/workspace-services/{session_id}` 绑定默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 绑定附加服务，`DELETE` 接口用于清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时，共享运行时需按注册类型分发前端构建或反向代理到目标 HTTP 服务。标准 `web` 部署默认应把当前会话后端启动命令注册给共享运行时托管，再以 `http` 方式绑定短哈希子域名，确保前端与 `/api/*` 同时来自当前分支；`frontend_dist` 仅作为静态预览模式保留。
+- 共享 Web 运行时需要支持通用 workspace service 注册：`GET /api/control/workspace-services` 查询注册表，`PUT /api/control/workspace-services/{session_id}` 绑定默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 绑定附加服务，`DELETE` 接口用于清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时，共享运行时需按注册类型分发前端构建或反向代理到目标 HTTP 服务。`travel` 服务是唯一例外，固定命中 `https://<session_short_hash>.travel.alter0.cn`，且该 host 只读、免登录，只允许返回静态 HTML/资源。标准 `web` 部署默认应把当前会话后端启动命令注册给共享运行时托管，再以 `http` 方式绑定短哈希子域名，确保前端与 `/api/*` 同时来自当前分支；`frontend_dist` 仅作为静态预览模式保留。
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 OpenAI Compatible 与 OpenRouter Provider，支持 `/responses` 与 `/chat/completions`，支持 base URL、API Key 保留语义、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复。
 - `openai-completions` 适配层必须正确序列化 assistant `tool_calls` 与 tool output，兼容严格校验工具消息配对关系的上游 Provider。

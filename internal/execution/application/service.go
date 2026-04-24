@@ -12,11 +12,13 @@ import (
 )
 
 type Service struct {
-	processor      execdomain.NLProcessor
-	skillResolver  *skillContextResolver
-	mcpResolver    *mcpContextResolver
-	memoryResolver *memoryContextResolver
-	logger         *slog.Logger
+	processor               execdomain.NLProcessor
+	skillResolver           *skillContextResolver
+	mcpResolver             *mcpContextResolver
+	memoryResolver          *memoryContextResolver
+	sessionProfileExtractor SessionProfileExtractor
+	agentSource             agentProfileResolver
+	logger                  *slog.Logger
 }
 
 type streamProcessor interface {
@@ -57,13 +59,27 @@ func NewServiceWithSkills(
 	skillSource SkillCapabilitySource,
 	logger *slog.Logger,
 ) *Service {
-	return &Service{
-		processor:      processor,
-		skillResolver:  newSkillContextResolver(skillSource),
-		mcpResolver:    newMCPContextResolver(skillSource),
-		memoryResolver: newMemoryContextResolver(),
-		logger:         logger,
+	return NewServiceWithSkillsAndSessionProfileExtractor(processor, skillSource, nil, logger)
+}
+
+func NewServiceWithSkillsAndSessionProfileExtractor(
+	processor execdomain.NLProcessor,
+	skillSource SkillCapabilitySource,
+	extractor SessionProfileExtractor,
+	logger *slog.Logger,
+) *Service {
+	service := &Service{
+		processor:               processor,
+		skillResolver:           newSkillContextResolver(skillSource),
+		mcpResolver:             newMCPContextResolver(skillSource),
+		memoryResolver:          newMemoryContextResolver(),
+		sessionProfileExtractor: extractor,
+		logger:                  logger,
 	}
+	if resolver, ok := skillSource.(agentProfileResolver); ok {
+		service.agentSource = resolver
+	}
+	return service
 }
 
 func (s *Service) ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error) {
@@ -128,6 +144,7 @@ func (s *Service) executeNaturalLanguage(
 ) (string, map[string]string, error) {
 	content := strings.TrimSpace(msg.Content)
 	metadata := cloneMetadata(msg.Metadata)
+	canonicalizeAgentMetadata(s.agentSource, metadata)
 	attachRuntimeMetadata(msg, metadata)
 	resultMetadata := map[string]string{}
 
@@ -137,7 +154,10 @@ func (s *Service) executeNaturalLanguage(
 	if err := s.resolveMCPContext(msg, metadata, resultMetadata); err != nil {
 		return "", nil, err
 	}
-	if err := s.resolveMemoryContext(msg, metadata, resultMetadata); err != nil {
+	s.resolveSessionProfileAttributes(ctx, msg, metadata)
+	memoryMessage := msg
+	memoryMessage.Metadata = metadata
+	if err := s.resolveMemoryContext(memoryMessage, metadata, resultMetadata); err != nil {
 		return "", nil, err
 	}
 
@@ -168,6 +188,26 @@ func (s *Service) executeNaturalLanguage(
 		}
 	}
 	return output, resultMetadata, nil
+}
+
+func canonicalizeAgentMetadata(agentSource agentProfileResolver, metadata map[string]string) {
+	if len(metadata) == 0 {
+		return
+	}
+	agentID := strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey))
+	if agentID == "" {
+		return
+	}
+	if agentSource != nil {
+		if agent, ok := agentSource.ResolveAgent(agentID); ok {
+			metadata[execdomain.AgentIDMetadataKey] = strings.TrimSpace(agent.ID)
+			if strings.TrimSpace(agent.Name) != "" {
+				metadata[execdomain.AgentNameMetadataKey] = strings.TrimSpace(agent.Name)
+			}
+			return
+		}
+	}
+	metadata[execdomain.AgentIDMetadataKey] = strings.ToLower(agentID)
 }
 
 func attachAgentProcessMetadata(metadata map[string]string, resultMetadata map[string]string) {

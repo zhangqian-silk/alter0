@@ -26,6 +26,8 @@ const runtimeMock = {
   ],
   draft: "",
   target: { type: "model" as const, id: "raw-model", name: "Raw Model" },
+  activeAgent: null,
+  activeSessionProfile: null,
   lockedTarget: false,
   targetOptions: [],
   selectedProviderId: "",
@@ -133,6 +135,8 @@ function renderWorkspace(overrides: Partial<WorkbenchContextValue> = {}) {
 describe("ConversationWorkspace", () => {
   beforeEach(() => {
     runtimeMock.route = "chat";
+    runtimeMock.inspectorOpen = false;
+    runtimeMock.inspectorTab = "model";
     runtimeMock.activeSession = {
       id: "session-1",
       title: "New Chat",
@@ -149,6 +153,8 @@ describe("ConversationWorkspace", () => {
       },
     ];
     runtimeMock.target = { type: "model", id: "raw-model", name: "Raw Model" };
+    runtimeMock.activeAgent = null;
+    runtimeMock.activeSessionProfile = null;
     runtimeMock.selectedModelLabel = "DeepSeek V3.2";
     runtimeMock.selectedModelSupportsVision = true;
     runtimeMock.providers = [];
@@ -601,5 +607,63 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.click(document.querySelector("[data-runtime-details-backdrop='true']") as HTMLElement);
     expect(document.querySelector("[data-conversation-inspector]")).not.toBeInTheDocument();
+  });
+
+  it("shows agent session profile fields inside details for runtime sessions", () => {
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "session-profile";
+    runtimeMock.activeSession = {
+      id: "session-agent-1",
+      title: "Coding run",
+      messages: [],
+    };
+    runtimeMock.sessionItems = [
+      {
+        id: "session-agent-1",
+        title: "Coding run",
+        meta: "now",
+        shortHash: "ff12aa45",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
+        active: true,
+      },
+    ];
+    runtimeMock.target = { type: "agent", id: "coding", name: "Coding Agent" };
+    runtimeMock.activeAgent = {
+      id: "coding",
+      name: "Coding Agent",
+      description: "Dedicated coding agent",
+      session_profile_fields: [
+        { key: "repository_path", label: "Repository", readonly: true },
+        { key: "branch", label: "Branch", readonly: true },
+        { key: "preview_subdomain", label: "Preview Subdomain", readonly: true },
+      ],
+    };
+    runtimeMock.activeSessionProfile = {
+      agent_id: "coding",
+      session_id: "session-agent-1",
+      path: ".alter0/agents/coding/sessions/session-agent-1.md",
+      exists: true,
+      fields: [
+        { key: "repository_path", label: "Repository", readonly: true },
+        { key: "branch", label: "Branch", readonly: true },
+        { key: "preview_subdomain", label: "Preview Subdomain", readonly: true },
+      ],
+      attributes: {
+        repository_path: "/workspace/alter0-remote",
+        branch: "feature/session-profile-schema",
+        preview_subdomain: "coding-run-42",
+      },
+    };
+
+    renderWorkspace({ isMobileViewport: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+
+    expect(screen.getByRole("button", { name: "Session Profile" })).toBeInTheDocument();
+    expect(screen.getByText("Repository")).toBeInTheDocument();
+    expect(screen.getByText("/workspace/alter0-remote")).toBeInTheDocument();
+    expect(screen.getByText("feature/session-profile-schema")).toBeInTheDocument();
+    expect(screen.getByText("coding-run-42")).toBeInTheDocument();
   });
 });

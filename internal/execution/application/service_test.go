@@ -136,6 +136,7 @@ func TestExecuteNaturalLanguageReturnsExecutionSourceMetadata(t *testing.T) {
 type stubSkillSource struct {
 	items    []controldomain.Capability
 	mcpItems []controldomain.Capability
+	agents   map[string]controldomain.Agent
 }
 
 func (s *stubSkillSource) ListCapabilitiesByType(capabilityType controldomain.CapabilityType) []controldomain.Capability {
@@ -155,6 +156,30 @@ func (s *stubSkillSource) ListCapabilitiesByType(capabilityType controldomain.Ca
 	default:
 		return nil
 	}
+}
+
+func (s *stubSkillSource) ResolveAgent(id string) (controldomain.Agent, bool) {
+	if s == nil || s.agents == nil {
+		return controldomain.Agent{}, false
+	}
+	agent, ok := s.agents[id]
+	return agent, ok
+}
+
+type stubSessionProfileExtractor struct {
+	patch           map[string]string
+	lastRequest     SessionProfileExtractionRequest
+	invocationCount int
+}
+
+func (s *stubSessionProfileExtractor) ExtractPatch(_ context.Context, request SessionProfileExtractionRequest) (map[string]string, error) {
+	s.lastRequest = request
+	s.invocationCount++
+	out := map[string]string{}
+	for key, value := range s.patch {
+		out[key] = value
+	}
+	return out, nil
 }
 
 func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
@@ -394,8 +419,8 @@ func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
 		Content:     "create a travel guide",
 		TraceID:     "t-travel-agent-skill",
 		Metadata: map[string]string{
-			execdomain.AgentIDMetadataKey:           "travel-master",
-			execdomain.AgentNameMetadataKey:         "Travel Master Agent",
+			execdomain.AgentIDMetadataKey:           "travel",
+			execdomain.AgentNameMetadataKey:         "Travel Agent",
 			execdomain.AgentCapabilitiesMetadataKey: `["travel"]`,
 		},
 	})
@@ -408,8 +433,8 @@ func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
 		t.Fatalf("skill context size = %d, want 1", len(skillContext.Skills))
 	}
 	agentSkill := skillContext.Skills[0]
-	if agentSkill.FilePath != ".alter0/agents/travel-master/SKILL.md" {
-		t.Fatalf("travel agent skill file path = %q, want .alter0/agents/travel-master/SKILL.md", agentSkill.FilePath)
+	if agentSkill.FilePath != ".alter0/agents/travel/SKILL.md" {
+		t.Fatalf("travel agent skill file path = %q, want .alter0/agents/travel/SKILL.md", agentSkill.FilePath)
 	}
 	if !strings.Contains(agentSkill.Description, "travel agent") {
 		t.Fatalf("travel agent skill description = %q, want travel-specific description", agentSkill.Description)
@@ -418,7 +443,7 @@ func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
 		t.Fatalf("travel agent skill guide = %q, want travel-specific guidance", agentSkill.Guide)
 	}
 
-	skillPath := filepath.Join(root, ".alter0", "agents", "travel-master", "SKILL.md")
+	skillPath := filepath.Join(root, ".alter0", "agents", "travel", "SKILL.md")
 	data, err := os.ReadFile(skillPath)
 	if err != nil {
 		t.Fatalf("read travel agent skill file: %v", err)
@@ -761,6 +786,12 @@ func TestExecuteNaturalLanguageAgentSessionProfileCapturesCodingRepositoryContex
 		t.Fatalf("expected %s in memory context: %+v", memorySelectionAgentSession, memoryContext.Files)
 	}
 	for _, expected := range []string{
+		"## Instance Attributes",
+		"- repository_path: " + filepath.ToSlash(repoDir),
+		"- source_repository_path: " + filepath.ToSlash(root),
+		"- remote_repository: https://example.com/demo/repo.git",
+		"- branch: feat/session-memory",
+		"- preview_subdomain: " + buildAgentSessionShortHash("coding-session"),
 		"## Coding Context",
 		"- local_repository_path: " + filepath.ToSlash(repoDir),
 		"- source_repository_path: " + filepath.ToSlash(root),
@@ -772,6 +803,138 @@ func TestExecuteNaturalLanguageAgentSessionProfileCapturesCodingRepositoryContex
 		if !strings.Contains(sessionProfile.Content, expected) {
 			t.Fatalf("expected coding session profile to contain %q, got %q", expected, sessionProfile.Content)
 		}
+	}
+}
+
+func TestExecuteNaturalLanguageAgentSessionProfileMergesCustomInstanceAttributes(t *testing.T) {
+	root := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-travel-session-1",
+		SessionID:   "travel-session",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "plan tokyo",
+		TraceID:     "t-travel-session-1",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:                 "travel",
+			execdomain.AgentNameMetadataKey:               "Travel Agent",
+			execdomain.AgentInstanceAttributesMetadataKey: `{"city":"Tokyo","country":"Japan"}`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() first error = %v", err)
+	}
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-travel-session-2",
+		SessionID:   "travel-session",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "switch to osaka",
+		TraceID:     "t-travel-session-2",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:                                "travel",
+			execdomain.AgentNameMetadataKey:                              "Travel Agent",
+			execdomain.AgentInstanceAttributeMetadataPrefix + "city":     "Osaka",
+			execdomain.AgentInstanceAttributeMetadataPrefix + "district": "Namba",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() second error = %v", err)
+	}
+
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
+	sessionProfile, ok := findMemoryFileBySelection(memoryContext, memorySelectionAgentSession)
+	if !ok {
+		t.Fatalf("expected %s in memory context: %+v", memorySelectionAgentSession, memoryContext.Files)
+	}
+	for _, expected := range []string{
+		"## Instance Attributes",
+		"- city: Osaka",
+		"- country: Japan",
+		"- district: Namba",
+	} {
+		if !strings.Contains(sessionProfile.Content, expected) {
+			t.Fatalf("expected session profile to contain %q, got %q", expected, sessionProfile.Content)
+		}
+	}
+	if strings.Contains(sessionProfile.Content, "- city: Tokyo") {
+		t.Fatalf("expected latest city value to replace Tokyo, got %q", sessionProfile.Content)
+	}
+}
+
+func TestExecuteNaturalLanguageSessionProfileExtractorWritesSchemaFieldsBeforeMemoryInjection(t *testing.T) {
+	processor := &stubProcessor{output: "ok"}
+	extractor := &stubSessionProfileExtractor{
+		patch: map[string]string{
+			"city":       "东京",
+			"hotel_area": "上野",
+		},
+	}
+	source := &stubSkillSource{
+		agents: map[string]controldomain.Agent{
+			"travel": {
+				ID:   "travel",
+				Name: "Travel Agent",
+				SessionProfileFields: []controldomain.AgentSessionProfileField{
+					{Key: "city", Label: "City"},
+					{Key: "hotel_area", Label: "Hotel Area"},
+					{Key: "preview_subdomain", Label: "Preview Subdomain", ReadOnly: true},
+				},
+			},
+		},
+	}
+	service := NewServiceWithSkillsAndSessionProfileExtractor(processor, source, extractor, nil)
+
+	_, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "msg-travel-extract",
+		SessionID:   "session-travel-extract",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "这次去东京住在上野附近，待 4 天",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:   "travel",
+			execdomain.AgentNameMetadataKey: "Travel Agent",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+	if extractor.invocationCount != 1 {
+		t.Fatalf("expected extractor invoked once, got %d", extractor.invocationCount)
+	}
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
+	profile, ok := findMemoryFileBySelection(memoryContext, memorySelectionAgentSession)
+	if !ok {
+		t.Fatalf("expected agent session profile in memory context, got %+v", memoryContext.Files)
+	}
+	for _, expected := range []string{
+		"- city: 东京",
+		"- hotel_area: 上野",
+	} {
+		if !strings.Contains(profile.Content, expected) {
+			t.Fatalf("expected profile content to contain %q, got:\n%s", expected, profile.Content)
+		}
+	}
+	if strings.Contains(profile.Content, "preview_subdomain") {
+		t.Fatalf("expected readonly field to stay untouched, got:\n%s", profile.Content)
 	}
 }
 

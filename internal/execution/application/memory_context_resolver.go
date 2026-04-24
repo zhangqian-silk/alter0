@@ -146,9 +146,7 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 			Title:    "AGENTS.md",
 			Writable: true,
 			Paths: func(msg shareddomain.UnifiedMessage, _ time.Time) []string {
-				return []string{
-					filepath.ToSlash(filepath.Join(".alter0", "agents", normalizeMemoryAgentID(metadataValue(msg.Metadata, execdomain.AgentIDMetadataKey)), "AGENTS.md")),
-				}
+				return agentPrivateRelativePaths(metadataValue(msg.Metadata, execdomain.AgentIDMetadataKey), "AGENTS.md")
 			},
 		},
 		memorySelectionLongTerm: {

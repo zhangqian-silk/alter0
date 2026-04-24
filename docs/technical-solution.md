@@ -118,7 +118,9 @@ Web input
 - 开发态可通过 `ALTER0_WEB_FRONTEND_DEV_ORIGIN` 启用 Go -> Vite dev server 反向代理：`/chat` 直接转发到前端开发服务器，`/@vite/*`、`/@react-refresh`、`/src/*`、`/node_modules/*` 等运行时资源也由同一代理提供；Vite 侧再通过 `ALTER0_WEB_BACKEND_ORIGIN` 把 `/api`、登录和健康检查路径代理回 Go。
 - SSE 连接只负责回传，前端断连不得取消已进入 Agent 执行链的后端任务。
 - 会话标题升级、空白会话唯一性、历史折叠和页面滚动状态属于 Conversation 子域。
-- `GET /api/agents` 返回运行时可直接进入的入口 Agent；当前内置入口包括 `main`、`coding`、`writing` 与 `travel-master`，由 `agentCatalog.ListEntrypointAgents()` 统一输出。
+- `GET /api/agents` 返回运行时可直接进入的入口 Agent；当前内置入口包括 `main`、`coding`、`writing` 与 `travel`，由 `agentCatalog.ListEntrypointAgents()` 统一输出。Agent 响应同时携带 `session_profile_fields`，前端以此构建 Session Profile 详情骨架。
+- `travel` 的 display name 为 `Travel Agent`；内置配置同时启用 `deploy_test_service`，用于把额外生成的 HTML 旅游攻略发布到当前 Session 的公开只读子域名 `https://<session_short_hash>.travel.alter0.cn`。
+- `internal/execution/application.Service` 在 `MemoryContext` 注入前先执行 `SessionProfileExtractor` 旁路：依据 `agent_id` 解析 Agent schema、读取已有 profile 属性、抽取本轮自然语言的结构化 patch，再把结果转成 `alter0.agent.instance_attr.*` metadata 交给统一 profile 渲染链路。
 - `chat.js` 读取本地缓存时先归一残留 `streaming` 消息；无 `task_id` 的消息转失败态，带真实 `task_id` 的消息恢复到任务轮询链路。
 - Web 流式网关把 `shareddomain.StreamEvent` 映射为 SSE：输出事件写成 `delta`，结构化步骤事件写成 `process`，最终 `done` 继续携带完整 `process_steps` 用于收口与持久化恢复。
 - 流式连接异常收尾时优先保留已收到正文；只有在没有可用正文时才渲染带刷新提示的失败文案。
@@ -137,7 +139,7 @@ Web input
 - `agent-runtime` 会话列表前端按 `sha1(session_id)[:8]` 生成短 hash，展示在会话卡片内并通过统一 `data-copy-value` 复制链路写入剪贴板，保持与 Agent Session Profile / 预览域名使用的短标识一致。
 - Markdown 渲染必须避免原始 HTML 透传；长路径、代码块和 diff 只在内容块内部滚动。
 - `ChatMessageRegion.tsx` 统一负责 Conversation runtime 的消息正文与尾部元信息；已完成的 Chat 助手消息仅保留时间标签，运行中/排队/失败等瞬时状态才渲染状态胶囊，避免在每条回复后重复输出 route/source/status 胶囊。
-- `shell.css` 通过 `.runtime-workspace-head.is-sticky`、`.workspace-header-status` 和 `.workspace-header-details` 维护三条运行页共享的固定 workspace header 视觉状态：标题区吸顶、状态按钮按 `ready / busy / failed / interrupted / exited` 输出统一颜色反馈，`Details` 激活态与详情面板表面保持一致；`.workspace-details-layer / .workspace-details-backdrop / .workspace-details-panel` 负责把详情面板挂到顶层浮层、限制最大可视区域、提供点击外部关闭与独立滚动容器，`.workspace-details-content / .workspace-details-summary / .workspace-details-body` 则把首屏统一为紧凑摘要栅格、窄标签字段行与压缩复制控件，Conversation 与 Terminal 只在详情内容内部保留差异化组件。`ConversationRuntimeProvider.tsx` 的 `toggleInspector` 同时驱动详情面板内部 tab/按钮的展开与再次点击收起，避免当前 tab 只能单向展开。
+- `shell.css` 通过 `.runtime-workspace-head.is-sticky`、`.workspace-header-status` 和 `.workspace-header-details` 维护三条运行页共享的固定 workspace header 视觉状态：标题区吸顶、状态按钮按 `ready / busy / failed / interrupted / exited` 输出统一颜色反馈，`Details` 激活态与详情面板表面保持一致；`.workspace-details-layer / .workspace-details-backdrop / .workspace-details-panel` 负责把详情面板挂到顶层浮层、限制最大可视区域、提供点击外部关闭与独立滚动容器，`.workspace-details-content / .workspace-details-summary / .workspace-details-body` 则把首屏统一为紧凑摘要栅格、窄标签字段行与压缩复制控件，Conversation 与 Terminal 只在详情内容内部保留差异化组件。`ConversationRuntimeProvider.tsx` 的 `toggleInspector` 同时驱动详情面板内部 tab/按钮的展开与再次点击收起，Agent Runtime 额外通过 `session-profile` tab 呈现结构化实例属性，避免当前 tab 只能单向展开。
 - `ConversationWorkspace.tsx` 与 `ReactManagedTerminalRouteBody.tsx` 都已经退化为 controller + route wrapper：统一由 `RuntimeWorkspacePage.tsx` 产出紧凑工作区头部、会话列、时间线、`Details` 面板与 Composer，页面只负责注入会话数据、变体 class 和路由专属交互；Conversation 继续保留 `data-conversation-*` 钩子，Terminal 继续保留 `terminal-*` 钩子与布局变体，但公共 DOM 主契约已经收敛到 `runtime-workspace-* / runtime-composer-* / runtime-timeline-*`。
 - `ConversationWorkspace.tsx` 的移动端输入框继续复用 Terminal 已验证过的首次聚焦链路：`onPointerDownCapture / onTouchStartCapture` 在首次触摸时调用 `focus({ preventScroll: true })`，`useLayoutEffect` 在输入框聚焦期间监听 `window.scroll` 与 `visualViewport.resize/scroll`，把页面锚定回 `scrollY = 0`，避免首次弹出软键盘时公共操作行丢失、页面整体上移或测试环境下出现首帧分辨率跳变。
 - `shell.css` 在 `.terminal-runtime-view` 作用域下继续叠加 runtime 专属视觉修正：会话卡片、`Details` 面板、空态阅读区与 Composer 使用统一的浅色渐变 surface、圆角与阴影密度；首页 Composer 保持单一紧凑输入面，桌面与移动端分别收紧输入高度、外层留白和圆形 icon submit 尺寸，计数 meta 与 icon submit 收敛到同一工具行，而不直接照搬 Terminal footer slab 的材质。`ConversationWorkspace.tsx` 在空态为 console panel 与 chat screen 追加 `is-empty` class，`shell.css` 以 `overflow: hidden + overscroll-behavior: none` 锁住空态滚动，避免窄屏空页把头部操作行顶离可视区。
@@ -184,7 +186,8 @@ Agent message
 - 不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，`internal/execution/infrastructure` 需要为当前会话编译原生 Codex Runtime：独立 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，并把启用的 MCP Server 渲染为原生 `mcp_servers.*` 配置。
 - Memory Files 注入需要携带路径、存在状态、可写性、内容快照和自动召回片段。
 - `internal/llm/domain.Message` 允许同时携带纯文本 `Content` 与结构化 `Parts`；`internal/llm/infrastructure/openai_client.go` 在 `openai-responses` 与 `openai-completions` 两条路径上都要把用户图片 part 序列化为官方视觉输入结构，同时继续保留 assistant `tool_calls` 与后续 `tool` 消息的 `tool_call_id` 稳定配对；否则 Provider 会把该轮请求判定为非法工具消息序列或直接丢失图片输入。
-- 私有 `AGENTS.md`、私有 Skill、Agent Session Profile 分别承担协作边界、可复用打法、会话画像职责，不混写一次性任务细节。
+- 私有 `AGENTS.md`、私有 Skill、Agent Session Profile 分别承担协作边界、可复用打法、会话画像与实例属性职责，不混写一次性任务细节。
+- `internal/execution/application/agent_session_profile.go` 负责渲染和回写 `Agent Session Profile` 自动块：保留 `Notes` 人工区，自动维护 `Session Identity / Session Scope / Instance Attributes`。其中 `Instance Attributes` 统一合并历史已存在属性、请求 metadata 注入的增量属性，以及 `coding` 自动派生出的 `repository_path / branch / preview_subdomain` 等交付属性。`internal/execution/infrastructure/session_profile_codex_extractor.go` 提供受限 Codex fallback：只接收 schema、已有属性和最新用户消息，返回 JSON patch，不直接写文件。`internal/interfaces/web/agent_session_profile.go` 提供只读聚合接口，读取同一路径下的实例属性并与 Agent 预设字段定义拼装成前端 `Details` 视图数据。
 - `search_memory`、`read_memory`、`write_memory` 只操作已解析进 `memory_context` 的记忆文件。
 - Agent Memory Web 聚合接口只读返回长期记忆、天级记忆、强制上下文与说明文档；任务摘要刷新走 Task summary 子域接口。
 
@@ -300,7 +303,7 @@ Environment restart
 - 独立登录会话在执行 `codex login` 前需显式创建隔离 `CODEX_HOME`，并用覆盖语义注入环境变量，避免宿主进程已有 `CODEX_HOME` 影响登录结果落盘位置。
 - LLM 运行参数 `llm_temperature`、`llm_max_tokens`、`llm_react_max_iterations` 通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider 与模型能力约束。
 - Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换。
-- 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 会校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/assets/*` 与 `/legacy/*`；`http` 服务既可反向代理到外部 upstream，也可由共享运行时按注册的 `start_command + workdir + port + health_path` 托管本地子进程。默认 `scripts/deploy_test_service.sh <session_id>` 会为 `web` 合成一条当前分支后端启动命令并注册给共享运行时，先构建前端产物，再让 `https://<session_short_hash>.alter0.cn` 整体代理到这份托管后端，从而让前端与 `/api/*` 保持同一版本；这类内部托管的 runtime child 默认关闭自身 web 登录，只复用共享网关的登录态，不再在预览子域后端叠第二层鉴权。
+- 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 会校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/assets/*` 与 `/legacy/*`；`travel` 服务是唯一前端静态例外，固定命中 `https://<session_short_hash>.travel.alter0.cn`，共享运行时对该 host 只返回静态 HTML/资源并直接阻断 `/api/*` 与其他工作台路由。`http` 服务既可反向代理到外部 upstream，也可由共享运行时按注册的 `start_command + workdir + port + health_path` 托管本地子进程。默认 `scripts/deploy_test_service.sh <session_id>` 会为 `web` 合成一条当前分支后端启动命令并注册给共享运行时，先构建前端产物，再让 `https://<session_short_hash>.alter0.cn` 整体代理到这份托管后端，从而让前端与 `/api/*` 保持同一版本；这类内部托管的 runtime child 默认关闭自身 web 登录，只复用共享网关的登录态，不再在预览子域后端叠第二层鉴权。
 - Web 登录态继续由 `server.go` 的 `authMiddleware + loginHandler` 统一管理；当请求 Host 命中主域或其预览子域时，登录 cookie 会把 `Domain` 收敛到根域 `alter0.cn`，使主域工作台与短哈希预览 host 共享同一登录会话，而不是各自维护孤立 cookie。
 - systemd 基线统一 `HOME=/var/lib/alter0`，确保 Codex、gh、git signing、Node/Playwright 工具链使用同一运行账户上下文。
 - 提交签名问题不得通过关闭签名绕过。

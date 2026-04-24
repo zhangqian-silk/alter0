@@ -32,6 +32,7 @@ type workspaceServiceRegistration struct {
 	ShortHash      string    `json:"short_hash"`
 	Host           string    `json:"host"`
 	URL            string    `json:"url"`
+	PublicReadOnly bool      `json:"public_read_only,omitempty"`
 	RepositoryPath string    `json:"repository_path,omitempty"`
 	DistPath       string    `json:"dist_path,omitempty"`
 	UpstreamURL    string    `json:"upstream_url,omitempty"`
@@ -253,6 +254,7 @@ func (r *workspaceServiceRegistry) Upsert(input workspaceServiceRegistrationInpu
 
 	entry.Host = buildWorkspaceServiceHost(entry.ShortHash, serviceID, r.baseDomain)
 	entry.URL = "https://" + entry.Host
+	entry.PublicReadOnly = isPublicReadOnlyWorkspaceService(entry)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -421,10 +423,17 @@ func buildWorkspaceServiceHost(shortHash string, serviceID string, baseDomain st
 	if shortHash == "" {
 		return ""
 	}
+	if serviceID == "travel" {
+		return shortHash + ".travel." + baseDomain
+	}
 	if serviceID == "" || serviceID == defaultWorkspaceServiceID {
 		return shortHash + "." + baseDomain
 	}
 	return serviceID + "." + shortHash + "." + baseDomain
+}
+
+func isPublicReadOnlyWorkspaceService(entry workspaceServiceRegistration) bool {
+	return entry.ServiceType == workspaceServiceTypeFrontendDist && entry.ServiceID == "travel"
 }
 
 func shortSessionPreviewHash(sessionID string) string {
@@ -506,6 +515,13 @@ func (s *Server) withWorkspaceServiceGateway(next http.Handler) http.Handler {
 		entry, ok := s.workspaceService.ResolveHost(r.Host)
 		if !ok {
 			next.ServeHTTP(w, r)
+			return
+		}
+		if entry.PublicReadOnly {
+			if entry.ServiceType == workspaceServiceTypeFrontendDist && s.serveWorkspaceFrontendService(w, r, entry) {
+				return
+			}
+			http.NotFound(w, r)
 			return
 		}
 		if r.URL.Path == "/login" || r.URL.Path == "/logout" {
