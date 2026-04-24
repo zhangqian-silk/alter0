@@ -48,6 +48,18 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if !strings.Contains(deployGuide, "service_type=http") || !strings.Contains(deployGuide, "frontend_dist") {
 		t.Fatalf("expected deploy-test-service guide covers full-stack web preview and static fallback, got %q", deployGuide)
 	}
+
+	frontendDesign, ok := service.ResolveSkill("frontend-design")
+	if !ok {
+		t.Fatalf("expected frontend-design skill exists")
+	}
+	if got := frontendDesign.Metadata[builtinSkillFilePathKey]; got != "docs/skills/frontend-design/SKILL.md" {
+		t.Fatalf("frontend-design skill file path = %q, want docs/skills/frontend-design/SKILL.md", got)
+	}
+	frontendGuide := frontendDesign.Metadata[builtinSkillGuideKey]
+	if !strings.Contains(frontendGuide, "BOLD aesthetic direction") || !strings.Contains(frontendGuide, "Avoid generic fonts like Arial and Inter") {
+		t.Fatalf("expected frontend-design guide covers imported frontend direction, got %q", frontendGuide)
+	}
 }
 
 func TestEnsureBuiltinSkillFilesSkipsWhenNoBuiltinFileBackedSkillExists(t *testing.T) {

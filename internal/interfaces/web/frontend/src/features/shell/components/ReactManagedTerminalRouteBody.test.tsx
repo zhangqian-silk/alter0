@@ -366,6 +366,9 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
       "<li>/workspace/alter0</li>",
     );
+    const code = document.querySelector("[data-terminal-final-output='turn-1'] .chat-md-inline-code") as HTMLElement;
+    expect(code).toBeInTheDocument();
+    expect(code.textContent).toBe("pwd");
 
     fireEvent.click(within(workspaceHeader).getByRole("button", { name: "Details" }));
     const metaPanel = document.querySelector("[data-terminal-meta-panel]") as HTMLElement;
@@ -375,6 +378,68 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     fireEvent.click(document.querySelector("[data-runtime-details-backdrop='true']") as HTMLElement);
     expect(document.querySelector("[data-terminal-meta-panel]")).not.toBeInTheDocument();
+  });
+
+  it("renders terminal inline code without leaking HTML entities", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "explain",
+                status: "completed",
+                started_at: "2026-04-15T10:05:00Z",
+                finished_at: "2026-04-15T10:05:02Z",
+                duration_ms: 2000,
+                final_output: "链路：`请求接入 -> 召回 -> 粗排 -> 精排 -> 返回广告`",
+                steps: [],
+              },
+            ],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
+    });
+
+    const code = document.querySelector("[data-terminal-final-output='turn-1'] .chat-md-inline-code") as HTMLElement;
+    expect(code).toBeInTheDocument();
+    expect(code.textContent).toBe("请求接入 -> 召回 -> 粗排 -> 精排 -> 返回广告");
+    expect(code.innerHTML).toContain("-&gt;");
+    expect(code.innerHTML).not.toContain("&amp;gt;");
   });
 
   it("groups terminal sessions into recency sections in the shared sidebar", async () => {

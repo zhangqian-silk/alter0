@@ -2,7 +2,7 @@
 
 ## 覆盖范围
 
-- 内置 Skill 初始化与 file-backed Skill 文件处理。
+- 内置 Skill 初始化与 file-backed Skill 文件处理，包括 `deploy-test-service`、`frontend-design` 与 Agent 私有 `SKILL.md` 路径约束。
 - 运行时 PATH、NO_PROXY、Web 登录密码环境变量和内部启动参数过滤。
 - supervisor client 重启错误、探活地址归一与空响应错误。
 

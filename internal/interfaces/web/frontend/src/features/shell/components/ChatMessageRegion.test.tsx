@@ -75,6 +75,26 @@ describe("ChatMessageRegion", () => {
     expect(image).toHaveAttribute("decoding", "async");
   });
 
+  it("renders inline code without leaking HTML entities", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "链路：`请求接入 -> 召回 -> 粗排 -> 精排 -> 返回广告`",
+          }),
+        ]}
+      />,
+    );
+
+    const code = document.querySelector(".chat-md-inline-code") as HTMLElement;
+    expect(code).toBeInTheDocument();
+    expect(code.textContent).toBe("请求接入 -> 召回 -> 粗排 -> 精排 -> 返回广告");
+    expect(code.innerHTML).toContain("-&gt;");
+    expect(code.innerHTML).not.toContain("&amp;gt;");
+  });
+
   it("renders user image attachments from workspace preview URLs", () => {
     render(
       <ChatMessageRegion

@@ -1,6 +1,6 @@
 # Unit Test Cases
 
-> Last update: 2026-04-17
+> Last update: 2026-04-24
 
 本文件维护 Go 单元测试的领域覆盖口径。测试文件按 DDD 边界放置在对应包路径下：领域规则放在 `domain`，用例编排放在 `application`，CLI/Web 入口契约放在 `interfaces`，外部适配和基础设施契约放在 `infrastructure`。
 
@@ -210,6 +210,26 @@
 - 前端会话切换、草稿、滚动、移动端输入由 Playwright E2E 覆盖，见 `docs/testing/playwright.md`。
 
 ## Control, Operations & Governance
+
+### `cmd/alter0`
+
+覆盖文件：
+
+- `builtin_skills_test.go`
+- `main_test.go`
+- `supervisor_client_test.go`
+
+用例范围：
+
+- 内置 Skill 注册：`memory`、`deploy-test-service`、`frontend-design` 等默认 Skill 的描述、guide 与 file-backed 路径。
+- 启动阶段 file-backed Skill 文件校验，确保 `.alter0/skills/deploy-test-service/SKILL.md` 与 `docs/skills/frontend-design/SKILL.md` 可被当前仓库解析。
+- 运行时 PATH、NO_PROXY、Web 登录密码环境变量与内部启动参数过滤。
+- supervisor client 重启错误、探活地址归一与空响应错误。
+
+边界：
+
+- 本路径测试只覆盖启动命令、内置 Skill 装配与 runtime supervisor 边界，不启动真实长期服务。
+- 部署脚本、systemd、Nginx 与宿主签名凭据由 `docs/deployment` 与脚本级验证维护。
 
 ### `internal/llm/application`
 
