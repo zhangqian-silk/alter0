@@ -114,6 +114,7 @@
 
 ## 相关文档
 
+- [Frontend Design Skill](./skills/frontend-design/SKILL.md)
 - [前端彻底重构方案](./frontend-rebuild-plan.md)
 - [领域化技术方案](./technical-solution.md)
 - [Conversation & Session Experience](./requirements-details/conversation-session-experience.md)

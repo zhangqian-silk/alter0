@@ -72,6 +72,18 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join(".alter0", "skills", "deploy-test-service", "SKILL.md")),
 			},
 		},
+		{
+			ID:      "frontend-design",
+			Name:    "Frontend Design",
+			Enabled: true,
+			Scope:   controldomain.CapabilityScopeGlobal,
+			Metadata: map[string]string{
+				builtinSkillPriorityKey:    "740",
+				builtinSkillDescriptionKey: "Distinctive, production-grade frontend design rulebook for pages, components, and interface implementation.",
+				builtinSkillGuideKey:       frontendDesignSkillGuide(),
+				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join("docs", "skills", "frontend-design", "SKILL.md")),
+			},
+		},
 	}
 }
 
@@ -144,6 +156,17 @@ func deployTestServiceSkillGuide() string {
 		"- For custom services, deploy `service_type=http` with either an existing `upstream_url` or a `start_command` that boots the service inside the session workspace.",
 		"- Keep test-service deployment session-scoped. Reuse the current session's short-hash namespace instead of inventing ad-hoc domains.",
 		"- Prefer concise service labels and stable health paths so repeated redeploys land on the same routed host.",
+	}, "\n")
+}
+
+func frontendDesignSkillGuide() string {
+	return strings.Join([]string{
+		"# frontend design",
+		"",
+		"- Use this skill when the task is to build or revise a web page, component, application, or other frontend interface.",
+		"- Commit to a BOLD aesthetic direction before coding and keep one memorable visual idea coherent across typography, color, motion, composition, and surface treatment.",
+		"- Avoid generic fonts like Arial and Inter, cookie-cutter component layouts, and cliched purple-on-white AI styling.",
+		"- The canonical file-backed skill lives at `docs/skills/frontend-design/SKILL.md`; treat it as the reusable design rulebook for production-grade frontend implementation.",
 	}, "\n")
 }
 

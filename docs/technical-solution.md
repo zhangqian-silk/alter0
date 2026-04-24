@@ -288,6 +288,7 @@ Environment restart
 
 - Control 面只能管理运行时配置，不绕过编排层直接执行业务请求。
 - Skill 与 MCP 专用接口需要复用统一 Capability 数据结构；Capability 审计记录生命周期动作，供控制面按类型查询。
+- `cmd/alter0/builtin_skills.go` 负责注册内置 Skill，并在启动阶段校验所有 file-backed 内置 Skill 文件存在；当前 `deploy-test-service` 使用 `.alter0/skills/deploy-test-service/SKILL.md`，`frontend-design` 使用源码目录下的 `docs/skills/frontend-design/SKILL.md`。
 - Models 控制面需要保持空 API Key 语义、占位值过滤、禁用态恢复和默认 Provider 收敛。
 - Environment registry 按 Web & Queue、Async Tasks、Terminal、Session Memory、Persistent Memory、LLM 模块声明 key、类型、默认值、校验规则、敏感性与生效方式。
 - Environment 配置更新写入 audit store，控制面按时间倒序读取变更记录。
