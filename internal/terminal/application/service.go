@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,7 +78,7 @@ type InputRequest struct {
 	OwnerID     string
 	SessionID   string
 	Input       string
-	Attachments []execdomain.UserImageAttachment
+	Attachments []execdomain.UserAttachment
 }
 
 type EntryPage struct {
@@ -122,6 +123,14 @@ type codexExecItem struct {
 	AggregatedOutput string `json:"aggregated_output,omitempty"`
 	Status           string `json:"status,omitempty"`
 	ExitCode         *int   `json:"exit_code,omitempty"`
+}
+
+type preparedTurnAttachment struct {
+	Name        string
+	ContentType string
+	Path        string
+	PromptPath  string
+	IsImage     bool
 }
 
 type runtimeSession struct {
@@ -462,7 +471,7 @@ func (s *Service) InputWithAttachments(req InputRequest) (terminaldomain.Session
 	attachments := normalizeTurnAttachments(req.Attachments)
 	prompt := strings.TrimSpace(req.Input)
 	if prompt == "" && len(attachments) > 0 {
-		prompt = defaultAttachmentPrompt(len(attachments))
+		prompt = defaultAttachmentPrompt(attachments)
 	}
 	if prompt == "" {
 		return terminaldomain.Session{}, ErrSessionInputRequired
@@ -596,12 +605,17 @@ func (s *Service) shutdown() {
 func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID string, prompt string, attachments []TurnAttachment) {
 	command := resolveCodexCommand(s.options)
 	threadID := item.thread()
-	imagePaths, err := prepareTurnInputAttachments(item.workspaceDir(), turnID, attachments)
+	preparedAttachments, err := prepareTurnInputAttachments(item.workspaceDir(), turnID, attachments)
 	if err != nil {
 		s.finishTurn(item, turnID, fmt.Errorf("prepare input attachments: %w", err), "")
 		return
 	}
-	args := buildCodexTurnArgs(command, threadID, prompt, imagePaths)
+	args := buildCodexTurnArgs(
+		command,
+		threadID,
+		buildCodexTurnPrompt(prompt, preparedAttachments),
+		imagePathsFromPreparedTurnAttachments(preparedAttachments),
+	)
 	runner := s.runner
 	if runner == nil {
 		runner = exec.CommandContext
@@ -1321,19 +1335,60 @@ func buildCodexTurnArgs(command codexCommand, threadID string, prompt string, im
 	return args
 }
 
+func buildCodexTurnPrompt(prompt string, attachments []preparedTurnAttachment) string {
+	files := make([]preparedTurnAttachment, 0, len(attachments))
+	for _, attachment := range attachments {
+		if attachment.IsImage {
+			continue
+		}
+		files = append(files, attachment)
+	}
+	if len(files) == 0 {
+		return prompt
+	}
+	lines := []string{strings.TrimSpace(prompt), "", "Attached files are available in the workspace:"}
+	for _, attachment := range files {
+		lines = append(lines, fmt.Sprintf("- %s (%s): %s", attachment.Name, attachment.ContentType, attachment.PromptPath))
+	}
+	lines = append(lines, "Read the files directly from disk when needed.")
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func imagePathsFromPreparedTurnAttachments(items []preparedTurnAttachment) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.IsImage && strings.TrimSpace(item.Path) != "" {
+			out = append(out, item.Path)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func cloneTurnAttachments(items []TurnAttachment) []TurnAttachment {
 	if len(items) == 0 {
 		return nil
 	}
 	out := make([]TurnAttachment, 0, len(items))
 	for _, item := range items {
-		if strings.TrimSpace(item.ContentType) == "" || strings.TrimSpace(item.DataURL) == "" {
+		if strings.TrimSpace(item.ContentType) == "" {
+			continue
+		}
+		if strings.TrimSpace(item.DataURL) == "" && strings.TrimSpace(item.AssetURL) == "" && strings.TrimSpace(item.WorkspacePath) == "" {
 			continue
 		}
 		out = append(out, TurnAttachment{
-			Name:        strings.TrimSpace(item.Name),
-			ContentType: strings.TrimSpace(item.ContentType),
-			DataURL:     strings.TrimSpace(item.DataURL),
+			Name:          strings.TrimSpace(item.Name),
+			ContentType:   strings.TrimSpace(item.ContentType),
+			DataURL:       strings.TrimSpace(item.DataURL),
+			AssetURL:      strings.TrimSpace(item.AssetURL),
+			PreviewURL:    strings.TrimSpace(item.PreviewURL),
+			WorkspacePath: strings.TrimSpace(item.WorkspacePath),
 		})
 	}
 	if len(out) == 0 {
@@ -1342,33 +1397,55 @@ func cloneTurnAttachments(items []TurnAttachment) []TurnAttachment {
 	return out
 }
 
-func normalizeTurnAttachments(items []execdomain.UserImageAttachment) []TurnAttachment {
+func normalizeTurnAttachments(items []execdomain.UserAttachment) []TurnAttachment {
 	if len(items) == 0 {
 		return nil
 	}
-	normalized := execdomain.NormalizeUserImageAttachments(items)
+	normalized := execdomain.NormalizeUserAttachments(items)
 	if len(normalized) == 0 {
 		return nil
 	}
 	out := make([]TurnAttachment, 0, len(normalized))
 	for _, item := range normalized {
 		out = append(out, TurnAttachment{
-			Name:        item.Name,
-			ContentType: item.ContentType,
-			DataURL:     item.DataURL,
+			Name:          item.Name,
+			ContentType:   item.ContentType,
+			DataURL:       item.DataURL,
+			AssetURL:      item.AssetURL,
+			PreviewURL:    item.PreviewURL,
+			WorkspacePath: item.WorkspacePath,
 		})
 	}
 	return out
 }
 
-func defaultAttachmentPrompt(count int) string {
-	if count <= 1 {
-		return "Inspect the attached image."
+func defaultAttachmentPrompt(attachments []TurnAttachment) string {
+	count := len(attachments)
+	if count <= 0 {
+		return ""
 	}
-	return fmt.Sprintf("Inspect the attached %d images.", count)
+	imageCount := 0
+	for _, attachment := range attachments {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(attachment.ContentType)), "image/") {
+			imageCount += 1
+		}
+	}
+	if imageCount == count {
+		if count <= 1 {
+			return "Inspect the attached image."
+		}
+		return fmt.Sprintf("Inspect the attached %d images.", count)
+	}
+	if count <= 1 {
+		return "Review the attached file."
+	}
+	if imageCount == 0 {
+		return fmt.Sprintf("Review the attached %d files.", count)
+	}
+	return fmt.Sprintf("Review the attached %d files, including %d images.", count, imageCount)
 }
 
-func prepareTurnInputAttachments(workspaceDir string, turnID string, attachments []TurnAttachment) ([]string, error) {
+func prepareTurnInputAttachments(workspaceDir string, turnID string, attachments []TurnAttachment) ([]preparedTurnAttachment, error) {
 	if len(attachments) == 0 {
 		return nil, nil
 	}
@@ -1379,26 +1456,50 @@ func prepareTurnInputAttachments(workspaceDir string, turnID string, attachments
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("prepare turn attachment dir: %w", err)
 	}
-	paths := make([]string, 0, len(attachments))
+	items := make([]preparedTurnAttachment, 0, len(attachments))
 	for index, attachment := range attachments {
 		filename := resolveTurnAttachmentFilename(index, attachment)
 		path := filepath.Join(dir, filename)
-		data, err := decodeAttachmentDataURL(attachment.DataURL)
+		data, err := readTurnAttachmentBytes(attachment)
 		if err != nil {
 			return nil, err
 		}
 		if err := os.WriteFile(path, data, 0o644); err != nil {
 			return nil, fmt.Errorf("write turn attachment: %w", err)
 		}
-		paths = append(paths, path)
+		promptPath, err := filepath.Rel(workspaceDir, path)
+		if err != nil {
+			promptPath = path
+		}
+		items = append(items, preparedTurnAttachment{
+			Name:        strings.TrimSpace(attachment.Name),
+			ContentType: strings.TrimSpace(attachment.ContentType),
+			Path:        path,
+			PromptPath:  filepath.ToSlash(promptPath),
+			IsImage:     strings.HasPrefix(strings.ToLower(strings.TrimSpace(attachment.ContentType)), "image/"),
+		})
 	}
-	return paths, nil
+	return items, nil
+}
+
+func readTurnAttachmentBytes(attachment TurnAttachment) ([]byte, error) {
+	if dataURL := strings.TrimSpace(attachment.DataURL); dataURL != "" {
+		return decodeAttachmentDataURL(dataURL)
+	}
+	if workspacePath := strings.TrimSpace(attachment.WorkspacePath); workspacePath != "" {
+		data, err := os.ReadFile(workspacePath)
+		if err != nil {
+			return nil, fmt.Errorf("read workspace attachment: %w", err)
+		}
+		return data, nil
+	}
+	return nil, errors.New("attachment payload is empty")
 }
 
 func resolveTurnAttachmentFilename(index int, attachment TurnAttachment) string {
 	name := sanitizeWorkspaceSegment(strings.TrimSpace(attachment.Name))
 	if name == "" {
-		name = fmt.Sprintf("image-%d%s", index+1, attachmentExtension(attachment.ContentType))
+		name = fmt.Sprintf("attachment-%d%s", index+1, attachmentExtension(attachment.ContentType))
 	}
 	if filepath.Ext(name) == "" {
 		name += attachmentExtension(attachment.ContentType)
@@ -1419,7 +1520,11 @@ func attachmentExtension(contentType string) string {
 	case "image/svg+xml":
 		return ".svg"
 	default:
-		return ".img"
+		extensions, err := mime.ExtensionsByType(strings.TrimSpace(contentType))
+		if err == nil && len(extensions) > 0 {
+			return extensions[0]
+		}
+		return ".bin"
 	}
 }
 

@@ -103,7 +103,7 @@ func (s *Server) handleSessionAttachmentRead(w http.ResponseWriter, r *http.Requ
 	}
 	path := asset.WorkspacePath
 	contentType := asset.ContentType
-	if variant == "preview" {
+	if variant == "preview" && strings.TrimSpace(asset.PreviewPath) != "" {
 		path = asset.PreviewPath
 		contentType = readConversationPreviewContentType(sessionID, attachmentID, asset)
 	}
@@ -130,11 +130,11 @@ func readConversationPreviewContentType(sessionID string, attachmentID string, a
 	return asset.ContentType
 }
 
-func (s *Server) normalizeConversationMessageAttachments(sessionID string, values []messageAttachmentRequest) ([]execdomain.UserImageAttachment, error) {
+func (s *Server) normalizeConversationMessageAttachments(sessionID string, values []messageAttachmentRequest) ([]execdomain.UserAttachment, error) {
 	if len(values) == 0 {
 		return nil, nil
 	}
-	items := make([]execdomain.UserImageAttachment, 0, len(values))
+	items := make([]execdomain.UserAttachment, 0, len(values))
 	for _, value := range values {
 		item, err := s.materializeConversationAttachment(sessionID, value)
 		if err != nil {
@@ -142,16 +142,16 @@ func (s *Server) normalizeConversationMessageAttachments(sessionID string, value
 		}
 		items = append(items, item)
 	}
-	return execdomain.NormalizeUserImageAttachments(items), nil
+	return execdomain.NormalizeUserAttachments(items), nil
 }
 
-func (s *Server) materializeConversationAttachment(sessionID string, value messageAttachmentRequest) (execdomain.UserImageAttachment, error) {
+func (s *Server) materializeConversationAttachment(sessionID string, value messageAttachmentRequest) (execdomain.UserAttachment, error) {
 	if strings.TrimSpace(value.ID) != "" {
 		asset, err := s.resolveConversationAttachment(sessionID, value.ID)
 		if err != nil {
-			return execdomain.UserImageAttachment{}, err
+			return execdomain.UserAttachment{}, err
 		}
-		return execdomain.UserImageAttachment{
+		return execdomain.UserAttachment{
 			ID:            asset.ID,
 			Name:          asset.Name,
 			ContentType:   asset.ContentType,
@@ -161,10 +161,10 @@ func (s *Server) materializeConversationAttachment(sessionID string, value messa
 		}, nil
 	}
 	if strings.TrimSpace(value.DataURL) == "" {
-		return execdomain.UserImageAttachment{}, errors.New("attachment payload is required")
+		return execdomain.UserAttachment{}, errors.New("attachment payload is required")
 	}
 	if s == nil || strings.TrimSpace(s.workspaceRoot) == "" {
-		return execdomain.UserImageAttachment{
+		return execdomain.UserAttachment{
 			Name:        strings.TrimSpace(value.Name),
 			ContentType: strings.TrimSpace(value.ContentType),
 			DataURL:     strings.TrimSpace(value.DataURL),
@@ -172,9 +172,9 @@ func (s *Server) materializeConversationAttachment(sessionID string, value messa
 	}
 	asset, err := s.storeConversationAttachment(sessionID, value)
 	if err != nil {
-		return execdomain.UserImageAttachment{}, err
+		return execdomain.UserAttachment{}, err
 	}
-	return execdomain.UserImageAttachment{
+	return execdomain.UserAttachment{
 		ID:            asset.ID,
 		Name:          asset.Name,
 		ContentType:   asset.ContentType,
@@ -206,14 +206,6 @@ func (s *Server) storeConversationAttachment(sessionID string, value messageAtta
 		return conversationAttachmentAsset{}, err
 	}
 	previewDataURL := strings.TrimSpace(value.PreviewDataURL)
-	if previewDataURL == "" {
-		previewDataURL = strings.TrimSpace(value.DataURL)
-	}
-	previewData, err := decodeConversationAttachmentDataURL(previewDataURL)
-	if err != nil {
-		return conversationAttachmentAsset{}, err
-	}
-	previewContentType := conversationAttachmentContentType(previewDataURL, contentType)
 	assetID := sanitizeWorkspaceSegment(s.idGenerator.NewID())
 	if assetID == "" {
 		return conversationAttachmentAsset{}, errors.New("failed to allocate attachment id")
@@ -223,14 +215,24 @@ func (s *Server) storeConversationAttachment(sessionID string, value messageAtta
 		return conversationAttachmentAsset{}, fmt.Errorf("prepare attachment dir: %w", err)
 	}
 	originalFileName := conversationAttachmentFileName("original", contentType)
-	previewFileName := conversationAttachmentFileName("preview", previewContentType)
 	originalPath := filepath.Join(dir, originalFileName)
-	previewPath := filepath.Join(dir, previewFileName)
 	if err := os.WriteFile(originalPath, data, 0o644); err != nil {
 		return conversationAttachmentAsset{}, fmt.Errorf("write attachment file: %w", err)
 	}
-	if err := os.WriteFile(previewPath, previewData, 0o644); err != nil {
-		return conversationAttachmentAsset{}, fmt.Errorf("write attachment preview: %w", err)
+	previewFileName := ""
+	previewPath := ""
+	previewContentType := ""
+	if previewDataURL != "" {
+		previewData, err := decodeConversationAttachmentDataURL(previewDataURL)
+		if err != nil {
+			return conversationAttachmentAsset{}, err
+		}
+		previewContentType = conversationAttachmentContentType(previewDataURL, contentType)
+		previewFileName = conversationAttachmentFileName("preview", previewContentType)
+		previewPath = filepath.Join(dir, previewFileName)
+		if err := os.WriteFile(previewPath, previewData, 0o644); err != nil {
+			return conversationAttachmentAsset{}, fmt.Errorf("write attachment preview: %w", err)
+		}
 	}
 	manifest := conversationAttachmentManifest{
 		ID:                 assetID,
@@ -252,7 +254,7 @@ func (s *Server) storeConversationAttachment(sessionID string, value messageAtta
 		WorkspacePath: originalPath,
 		PreviewPath:   previewPath,
 		AssetURL:      conversationAttachmentURL(sessionID, assetID, "original"),
-		PreviewURL:    conversationAttachmentURL(sessionID, assetID, "preview"),
+		PreviewURL:    resolveConversationAttachmentPreviewURL(sessionID, assetID, previewPath),
 	}, nil
 }
 
@@ -268,9 +270,9 @@ func (s *Server) resolveConversationAttachment(sessionID string, attachmentID st
 		ContentType:   manifest.ContentType,
 		Size:          manifest.Size,
 		WorkspacePath: filepath.Join(dir, conversationAttachmentStoredFileName(manifest.OriginalFileName, "original", manifest.ContentType)),
-		PreviewPath:   filepath.Join(dir, conversationAttachmentStoredFileName(manifest.PreviewFileName, "preview", manifest.PreviewContentType)),
+		PreviewPath:   resolveConversationStoredPreviewPath(dir, manifest),
 		AssetURL:      conversationAttachmentURL(sessionID, manifest.ID, "original"),
-		PreviewURL:    conversationAttachmentURL(sessionID, manifest.ID, "preview"),
+		PreviewURL:    resolveConversationAttachmentPreviewURL(sessionID, manifest.ID, resolveConversationStoredPreviewPath(dir, manifest)),
 	}, nil
 }
 
@@ -307,6 +309,20 @@ func conversationAttachmentDir(baseDir string, sessionID string, attachmentID st
 
 func conversationAttachmentURL(sessionID string, attachmentID string, variant string) string {
 	return "/api/sessions/" + sanitizeWorkspaceSegment(sessionID) + "/attachments/" + sanitizeWorkspaceSegment(attachmentID) + "/" + variant
+}
+
+func resolveConversationStoredPreviewPath(dir string, manifest conversationAttachmentManifest) string {
+	if strings.TrimSpace(manifest.PreviewFileName) == "" {
+		return ""
+	}
+	return filepath.Join(dir, conversationAttachmentStoredFileName(manifest.PreviewFileName, "preview", manifest.PreviewContentType))
+}
+
+func resolveConversationAttachmentPreviewURL(sessionID string, attachmentID string, previewPath string) string {
+	if strings.TrimSpace(previewPath) == "" {
+		return conversationAttachmentURL(sessionID, attachmentID, "original")
+	}
+	return conversationAttachmentURL(sessionID, attachmentID, "preview")
 }
 
 func decodeConversationAttachmentDataURL(raw string) ([]byte, error) {
@@ -361,6 +377,12 @@ func conversationAttachmentFileExtension(contentType string) string {
 	normalized := strings.TrimSpace(contentType)
 	if normalized == "" {
 		return ""
+	}
+	switch strings.ToLower(normalized) {
+	case "text/markdown":
+		return ".md"
+	case "text/plain":
+		return ".txt"
 	}
 	extensions, err := mime.ExtensionsByType(normalized)
 	if err != nil || len(extensions) == 0 {

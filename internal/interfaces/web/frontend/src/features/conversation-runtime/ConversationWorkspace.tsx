@@ -487,8 +487,8 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       onInputPointerDownCapture: handleComposerPointerDownCapture,
       onInputTouchStartCapture: handleComposerTouchStartCapture,
       metaContent: composerMetaLabel,
-      addImageLabel: composerAddImageLabel,
-      onAddImage: handleComposerImagePicker,
+      addAttachmentLabel: composerAddImageLabel,
+      onAddAttachment: handleComposerImagePicker,
       submitButtonProps: { onTouchStartCapture: handleSubmitTouchStartCapture },
       submitLabel: composerSend,
       submitIcon: (

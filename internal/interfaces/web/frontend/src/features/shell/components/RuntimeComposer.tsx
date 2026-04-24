@@ -9,8 +9,9 @@ import {
   type TouchEventHandler,
 } from "react";
 import {
+  canPreviewComposerAttachment,
   resolveComposerAttachmentPreviewURL,
-  type ComposerImageAttachment,
+  type ComposerAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 
 function joinClassNames(...values: Array<string | undefined>) {
@@ -33,16 +34,17 @@ type RuntimeComposerProps = {
   };
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   fileInputRef?: Ref<HTMLInputElement>;
+  fileInputAccept?: string;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  attachments: ComposerImageAttachment[];
+  attachments: ComposerAttachment[];
   attachmentStripProps?: Omit<ComponentPropsWithoutRef<"div">, "children" | "className"> & {
     className?: string;
   };
-  attachmentPreviewLabel: (attachment: ComposerImageAttachment) => string;
-  attachmentRemoveLabel: (attachment: ComposerImageAttachment) => string;
-  previewAttachment: ComposerImageAttachment | null;
-  onPreviewAttachmentChange: (attachment: ComposerImageAttachment | null) => void;
-  onRemoveAttachment: (attachment: ComposerImageAttachment) => void;
+  attachmentPreviewLabel: (attachment: ComposerAttachment) => string;
+  attachmentRemoveLabel: (attachment: ComposerAttachment) => string;
+  previewAttachment: ComposerAttachment | null;
+  onPreviewAttachmentChange: (attachment: ComposerAttachment | null) => void;
+  onRemoveAttachment: (attachment: ComposerAttachment) => void;
   inputLabel: string;
   inputId: string;
   inputRef?: Ref<HTMLTextAreaElement>;
@@ -61,11 +63,11 @@ type RuntimeComposerProps = {
   metaProps?: Omit<ComponentPropsWithoutRef<"div">, "children" | "className"> & {
     className?: string;
   };
-  addImageLabel: string;
-  addImageButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "children" | "onClick" | "aria-label" | "className"> & {
+  addAttachmentLabel: string;
+  addAttachmentButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "children" | "onClick" | "aria-label" | "className"> & {
     className?: string;
   };
-  onAddImage: () => void;
+  onAddAttachment: () => void;
   submitButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "children" | "aria-label" | "className"> & {
     className?: string;
   };
@@ -84,6 +86,7 @@ export function RuntimeComposer({
   formProps,
   onSubmit,
   fileInputRef,
+  fileInputAccept,
   onFileChange,
   attachments,
   attachmentStripProps,
@@ -106,9 +109,9 @@ export function RuntimeComposer({
   metaClassName,
   metaContent,
   metaProps,
-  addImageLabel,
-  addImageButtonProps,
-  onAddImage,
+  addAttachmentLabel,
+  addAttachmentButtonProps,
+  onAddAttachment,
   submitButtonProps,
   submitLabel,
   submitIcon,
@@ -139,9 +142,9 @@ export function RuntimeComposer({
     ...metaRestProps
   } = metaProps || {};
   const {
-    className: addImageButtonPropsClassName,
-    ...addImageButtonRestProps
-  } = addImageButtonProps || {};
+    className: addAttachmentButtonPropsClassName,
+    ...addAttachmentButtonRestProps
+  } = addAttachmentButtonProps || {};
   const {
     className: submitButtonPropsClassName,
     ...submitButtonRestProps
@@ -178,7 +181,7 @@ export function RuntimeComposer({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept={fileInputAccept}
             hidden
             multiple
             onChange={onFileChange}
@@ -194,19 +197,29 @@ export function RuntimeComposer({
             >
               {attachments.map((attachment) => (
                 <article key={attachment.id} className="runtime-composer-attachment">
-                  <button
-                    type="button"
-                    className="runtime-composer-attachment-preview"
-                    aria-label={attachmentPreviewLabel(attachment)}
-                    onClick={() => onPreviewAttachmentChange(attachment)}
-                  >
-                    <img
-                      src={resolveComposerAttachmentPreviewURL(attachment)}
-                      alt={attachment.name}
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  </button>
+                  {canPreviewComposerAttachment(attachment) ? (
+                    <button
+                      type="button"
+                      className="runtime-composer-attachment-preview"
+                      aria-label={attachmentPreviewLabel(attachment)}
+                      onClick={() => onPreviewAttachmentChange(attachment)}
+                    >
+                      <img
+                        src={resolveComposerAttachmentPreviewURL(attachment)}
+                        alt={attachment.name}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </button>
+                  ) : (
+                    <div
+                      className="runtime-composer-attachment-preview runtime-composer-attachment-file"
+                      aria-label={attachmentPreviewLabel(attachment)}
+                    >
+                      <span aria-hidden="true">FILE</span>
+                      <strong>{attachment.name}</strong>
+                    </div>
+                  )}
                   <button
                     type="button"
                     className="runtime-composer-attachment-remove"
@@ -257,14 +270,14 @@ export function RuntimeComposer({
               type="button"
               className={joinClassNames(
                 "runtime-composer-upload",
-                addImageButtonPropsClassName,
+                addAttachmentButtonPropsClassName,
               )}
-              aria-label={addImageLabel}
-              onClick={onAddImage}
-              {...addImageButtonRestProps}
+              aria-label={addAttachmentLabel}
+              onClick={onAddAttachment}
+              {...addAttachmentButtonRestProps}
             >
               <span aria-hidden="true">+</span>
-              <span>{addImageLabel}</span>
+              <span>{addAttachmentLabel}</span>
             </button>
             <button
               type="submit"
@@ -283,7 +296,7 @@ export function RuntimeComposer({
           </div>
         </form>
       </footer>
-      {previewAttachment ? (
+      {previewAttachment && canPreviewComposerAttachment(previewAttachment) ? (
         <div
           className="runtime-image-preview-backdrop"
           data-runtime-attachment-preview="true"

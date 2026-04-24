@@ -94,6 +94,60 @@ func TestSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing
 	}
 }
 
+func TestSessionAttachmentHandlerStoresFilesWithoutPreviewVariant(t *testing.T) {
+	t.Parallel()
+
+	workspaceRoot := t.TempDir()
+	server := &Server{
+		idGenerator:   &sequenceIDGenerator{ids: []string{"asset-file-1"}},
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry:     observability.NewTelemetry(),
+		workspaceRoot: workspaceRoot,
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/session-files/attachments", strings.NewReader(`{
+		"attachments":[
+			{
+				"name":"requirements.md",
+				"content_type":"text/markdown",
+				"data_url":"data:text/markdown;base64,IyBSZXF1aXJlbWVudHMK"
+			}
+		]
+	}`))
+	rec := httptest.NewRecorder()
+	server.sessionMessageListHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var payload sessionAttachmentUploadResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 uploaded asset, got %+v", payload.Items)
+	}
+	if payload.Items[0].PreviewURL != payload.Items[0].AssetURL {
+		t.Fatalf("expected file preview url to fall back to original asset url, got %+v", payload.Items[0])
+	}
+
+	originalPath := filepath.Join(workspaceRoot, ".alter0", "workspaces", "sessions", "session-files", "attachments", "asset-file-1", "original.md")
+	if _, err := os.Stat(originalPath); err != nil {
+		t.Fatalf("expected original file attachment, got %v", err)
+	}
+
+	previewReq := httptest.NewRequest(http.MethodGet, payload.Items[0].PreviewURL, nil)
+	previewRec := httptest.NewRecorder()
+	server.sessionMessageListHandler(previewRec, previewReq)
+	if previewRec.Code != http.StatusOK {
+		t.Fatalf("expected preview asset 200, got %d", previewRec.Code)
+	}
+	if body := strings.TrimSpace(previewRec.Body.String()); body != "# Requirements" {
+		t.Fatalf("expected file preview body '# Requirements', got %q", body)
+	}
+}
+
 func TestMessageHandlerEncodesWorkspaceAttachmentReferences(t *testing.T) {
 	t.Parallel()
 

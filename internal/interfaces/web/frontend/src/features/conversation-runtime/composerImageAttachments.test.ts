@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_COMPOSER_IMAGE_BYTES,
+  readComposerFiles,
   readComposerImageFiles,
 } from "./composerImageAttachments";
 
@@ -10,6 +11,20 @@ afterEach(() => {
 });
 
 describe("readComposerImageFiles", () => {
+  it("reads non-image files into generic composer attachments", async () => {
+    const file = new File(["hello"], "notes.txt", { type: "text/plain" });
+
+    const attachments = await readComposerFiles([file]);
+
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({
+      kind: "file",
+      name: "notes.txt",
+      contentType: "text/plain",
+    });
+    expect(attachments[0].dataURL).toContain("data:text/plain;base64,");
+  });
+
   it("reads svg image files into composer attachments without rasterizing", async () => {
     const file = new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], "diagram.svg", { type: "image/svg+xml" });
 

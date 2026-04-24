@@ -15,9 +15,12 @@ type TurnSummary struct {
 }
 
 type TurnAttachment struct {
-	Name        string `json:"name"`
-	ContentType string `json:"content_type"`
-	DataURL     string `json:"data_url"`
+	Name          string `json:"name"`
+	ContentType   string `json:"content_type"`
+	DataURL       string `json:"data_url,omitempty"`
+	AssetURL      string `json:"asset_url,omitempty"`
+	PreviewURL    string `json:"preview_url,omitempty"`
+	WorkspacePath string `json:"-"`
 }
 
 type StepSummary struct {
