@@ -880,7 +880,6 @@ export function ConversationRuntimeProvider({
   const activeSessionProfile = activeSessionProfileKey
     ? agentSessionProfiles[activeSessionProfileKey] || buildFallbackAgentSessionProfile(activeAgent, activeSession?.id || "")
     : null;
-  const availableProviders = runtimeProvidersForRoute(route, providers);
 
   const persistSessionsStateNow = (nextSessionsByRoute: SessionsState, nextActiveState: ActiveSessionState) => {
     writeJSONStorage(SESSION_STORAGE_KEY, toPersistedSessions(nextSessionsByRoute));
