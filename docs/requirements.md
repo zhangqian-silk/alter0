@@ -78,7 +78,7 @@
 - 窄屏主导航抽屉点击任一路由项后需立即关闭；页面切换完成后不得继续保留旧菜单层覆盖在目标页之上。
 - 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页与 `Terminal` 继续采用“两行头部 + 贴顶正文起始区”节奏，第一行承载抽屉入口与主操作，第二行承载当前标题；`Chat` 与 `Agent Runtime` 空态复用 terminal-style 顶部操作行，同时保留与 Terminal 对齐的单行紧凑 workspace header 显示当前会话标题、状态按钮与 `Details` 入口，但不再额外输出模型、工具或目标摘要文案；所有页面都不得在顶部遗留额外大块留白。
 - 窄屏 `Chat / Agent Runtime` 工作区头部固定保留 `Menu / Sessions / New` 三个入口；`Menu` 与壳层主导航抽屉共用同一开关状态，`Sessions` 单独控制 Conversation 会话抽屉，`New` 直接创建当前路由对应的新会话，不再出现移动端无导航入口或只能依赖正文内按钮切换会话的状态。
-- `Chat / Agent Runtime` 工作区头部固定为共享单行 header：仅保留会话标题、状态按钮和 `Details` 入口，不再在头部直接放置 `Model / Tools / MCP / Agent` 选择控件，也不重复展示 `Chat / Agent` 标签和目标摘要；模型、Agent、Tools / MCP、Skills 以及会话元数据统一在 `Details` 面板中展示和调整，面板首屏先以紧凑摘要栅格承载会话元数据，再承接页面专属配置区。`Details` 以顶层浮层形式打开，面板内部独立滚动，点击浮层外区域可关闭，且不得推动消息区或会话正文重新排版。
+- `Chat / Agent Runtime` 工作区头部固定为共享单行 header：仅保留会话标题、状态按钮和 `Details` 入口，不再在头部直接放置 `Model / Tools / MCP / Agent` 选择控件，也不重复展示 `Chat / Agent` 标签和目标摘要；模型、Agent、Tools / MCP、Skills 以及会话元数据统一在 `Details` 面板中展示和调整，面板首屏先以紧凑摘要栅格承载会话元数据，再承接页面专属配置区。`Chat` 的模型区除常规 LLM Provider / Model 外，还需额外提供内置 `Codex` 直选项，选中后仅影响后续消息，并把执行链显式切到 `Codex CLI`。`Details` 以顶层浮层形式打开，面板内部独立滚动，点击浮层外区域可关闭，且不得推动消息区或会话正文重新排版。
 - `Chat / Agent Runtime` 首页 Composer、会话卡片与 `Details` 面板需维持同一套浅色 terminal-runtime 表面系统：输入框作为单一紧凑主输入面，桌面与移动端都要控制输入高度、底部留白和发送按钮体量，发送按钮直接复用 Terminal 的圆形 icon submit 皮肤，meta 与发送按钮收敛到同一底部工具行，会话卡片和详情面板不再退回旧式轻表单或松散卡片观感；空态工作区禁止保留可拖拽滚动，不得把头部操作行或输入区顶出可视区。
 - `1100px` 及以下的移动工作台需优先保证真机滚动与抽屉切换流畅度：主工作区、Conversation/Terminal 抽屉遮罩、抽屉面板本体与运行页容器不得继续依赖大面积 `backdrop-filter`、持续背景光晕或其他会导致整页重绘的装饰层，统一保持静态浅色表面。
 - `Terminal` 窄屏工作区头部不得重复输出会话抽屉入口；`Sessions` 入口统一由壳层头部提供，工作区头部仅保留与当前会话直接相关的操作。

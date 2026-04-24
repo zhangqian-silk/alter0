@@ -95,6 +95,25 @@ describe("ChatMessageRegion", () => {
     expect(code.innerHTML).not.toContain("&amp;gt;");
   });
 
+  it("decodes html entities in assistant markdown output", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "Open Chat &gt; Details &gt; Model to switch runtime.",
+          }),
+        ]}
+      />,
+    );
+
+    const article = document.querySelector("[data-message-id='message-1']") as HTMLElement;
+    expect(article).toBeInTheDocument();
+    expect(article.textContent).toContain("Open Chat > Details > Model to switch runtime.");
+    expect(article.textContent).not.toContain("&gt;");
+  });
+
   it("renders user image attachments from workspace preview URLs", () => {
     render(
       <ChatMessageRegion

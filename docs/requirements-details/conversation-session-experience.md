@@ -46,7 +46,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 - `Chat` 默认绑定内置 `main` Agent `Alter0`。
 - `Chat` 面向通用对话入口，并允许在需要时调度专项 Agent。
-- `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中调整，并作用于后续发送的消息。
+- `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中调整，并作用于后续发送的消息；其中 `Chat` 的 `Provider / Model` 选择器需额外暴露内置 `Codex` 项，允许用户不经过常规 LLM Provider 直接切到 `Codex CLI` 执行链。
 
 ### Agent 页面
 
@@ -179,7 +179,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 欢迎区与 Composer 面板在同一主工作区内采用主仓库式上下结构：欢迎区直接输出 `Alter0 workspace` tag、面向 repo / task / runtime 的默认标题与说明、target picker 与 prompt pills，Composer 独立贴底；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
 - 用户消息右对齐，宽度不超过消息区 80%，Chat / Agent / 路由消息区统一采用克制的冷灰工作台阅读主题；助手回复弱化厚重卡片层级，消息气泡、Process 区和阅读容器统一使用低对比边框、近白表面与有限强调色。
 - Chat 助手消息尾部默认只显示时间；仅当回复仍在生成、排队或失败时展示状态胶囊，不再为已完成消息重复展示 route/source/status 元信息。
-- Chat 与 Agent Runtime 工作区头部在进入会话态或桌面空态时收敛为共享单行标题区：只显示当前会话标题、状态按钮和 `Details` 入口，不再额外叠加 `Chat / Agent` 标签以及模型、工具或目标摘要；模型、Agent、Tools / MCP、Skills 与会话元数据统一放入 `Details` 面板，具体内容由各运行页自行实现，面板首屏先使用紧凑摘要栅格展示高频字段，再承接页内 tab 与配置区。`Details` 需以顶层浮层方式覆盖在工作区上方，内部独立滚动，浮层尺寸保持克制；页内 tab/按钮支持再次点击收起内容，点击浮层外区域或按 `Escape` 可关闭，打开时不得推动消息列表、输入区或对话正文重新布局。
+- Chat 与 Agent Runtime 工作区头部在进入会话态或桌面空态时收敛为共享单行标题区：只显示当前会话标题、状态按钮和 `Details` 入口，不再额外叠加 `Chat / Agent` 标签以及模型、工具或目标摘要；模型、Agent、Tools / MCP、Skills 与会话元数据统一放入 `Details` 面板，具体内容由各运行页自行实现，面板首屏先使用紧凑摘要栅格展示高频字段，再承接页内 tab 与配置区。`Chat` 的 model tab 除已启用 Provider 模型外，还需稳定展示一个可直接点击的 `Codex` chip；选中该项后，后续消息请求不再携带普通 `alter0.llm.provider_id / alter0.llm.model` 组合，而是显式写入 `alter0.execution.engine=codex`。`Details` 需以顶层浮层方式覆盖在工作区上方，内部独立滚动，浮层尺寸保持克制；页内 tab/按钮支持再次点击收起内容，点击浮层外区域或按 `Escape` 可关闭，打开时不得推动消息列表、输入区或对话正文重新布局。
 - 桌面宽屏下 Chat 消息列与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区统一保留 `960px` 最大阅读宽度，但外层工作台也必须同步收缩导航与间距，避免在中等桌面宽度下出现阅读区限宽而整体布局仍然拥挤、遮挡或越界。
 - Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致会话卡片、消息节点或 route 内容被清空重建。
 - React 壳层发出的主导航跳转、新建会话、欢迎区快捷提示、语言切换、导航折叠同步与会话历史折叠同步事件，必须由当前前端运行时在同一页面内完成确认、路由更新、快捷发送或会话创建，且不能要求用户重复点击或依赖额外脚本注入的全局函数。

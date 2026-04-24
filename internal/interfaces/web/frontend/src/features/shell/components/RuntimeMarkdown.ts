@@ -26,7 +26,7 @@ export function renderRuntimeMarkdownToHTML(value: string) {
     .map((token) => {
       if (token.type === "code") {
         const languageClass = token.language ? ` class="language-${escapeHTML(token.language)}"` : "";
-        return `<pre class="chat-md-pre"><code${languageClass}>${escapeHTML(token.content)}</code></pre>`;
+        return `<pre class="chat-md-pre"><code${languageClass}>${escapeHTML(decodeHTMLEntities(token.content))}</code></pre>`;
       }
       return renderMarkdownBlocks(token.content);
     })
@@ -139,7 +139,7 @@ function renderMarkdownBlocks(content: string) {
 }
 
 function renderMarkdownInline(content: string) {
-  let rendered = String(content ?? "");
+  let rendered = decodeHTMLEntities(String(content ?? ""));
   const placeholders: string[] = [];
   const markdownLinkPattern = /\[([^\]]+)\]\(((?:[^()]|\([^)]*\))+)\)/g;
   const markdownImagePattern = /!\[([^\]]*)\]\(((?:[^()]|\([^)]*\))+)\)/g;
@@ -216,5 +216,37 @@ function escapeHTML(value: string) {
     if (char === ">") return "&gt;";
     if (char === '"') return "&quot;";
     return "&#39;";
+  });
+}
+
+function decodeHTMLEntities(value: string) {
+  return String(value ?? "").replace(/&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);/g, (entity, token: string) => {
+    const normalized = String(token || "").toLowerCase();
+    switch (normalized) {
+      case "amp":
+        return "&";
+      case "lt":
+        return "<";
+      case "gt":
+        return ">";
+      case "quot":
+        return '"';
+      case "apos":
+      case "#39":
+        return "'";
+      case "nbsp":
+        return " ";
+      default:
+        break;
+    }
+    if (normalized.startsWith("#x")) {
+      const codePoint = Number.parseInt(normalized.slice(2), 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : entity;
+    }
+    if (normalized.startsWith("#")) {
+      const codePoint = Number.parseInt(normalized.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : entity;
+    }
+    return entity;
   });
 }

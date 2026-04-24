@@ -442,6 +442,67 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(code.innerHTML).not.toContain("&amp;gt;");
   });
 
+  it("decodes html entities in terminal final output", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "explain",
+                status: "completed",
+                started_at: "2026-04-15T10:05:00Z",
+                finished_at: "2026-04-15T10:05:02Z",
+                duration_ms: 2000,
+                final_output: "Use Chat &gt; Details &gt; Model to switch runtime.",
+                steps: [],
+              },
+            ],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
+    });
+
+    const output = document.querySelector("[data-terminal-final-output='turn-1']") as HTMLElement;
+    expect(output).toBeInTheDocument();
+    expect(output.textContent).toContain("Use Chat > Details > Model to switch runtime.");
+    expect(output.textContent).not.toContain("&gt;");
+  });
+
   it("groups terminal sessions into recency sections in the shared sidebar", async () => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
