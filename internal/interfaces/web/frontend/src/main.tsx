@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
-import "./styles/bridge.css";
+import "./styles/root.css";
 import "./styles/shell.css";
 
 const container = document.getElementById("frontend-root");

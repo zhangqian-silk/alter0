@@ -1264,13 +1264,13 @@ body {
   line-height: 1.68;
 }
 
-.agent-process-step-body > :first-child,
-.agent-process-answer > :first-child {
+.agent-process-step-body > .runtime-markdown-rendered > :first-child,
+.agent-process-answer > .runtime-markdown-rendered > :first-child {
   margin-top: 0;
 }
 
-.agent-process-step-body > :last-child,
-.agent-process-answer > :last-child {
+.agent-process-step-body > .runtime-markdown-rendered > :last-child,
+.agent-process-answer > .runtime-markdown-rendered > :last-child {
   margin-bottom: 0;
 }
 
@@ -1283,19 +1283,19 @@ body {
   display: block;
 }
 
-.assistant-message-shell {
+.runtime-markdown-shell {
   display: grid;
   gap: 8px;
 }
 
-.assistant-message-toolbar {
+.runtime-markdown-toolbar {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
 }
 
-.assistant-message-copy {
+.runtime-markdown-copy {
   width: 28px;
   height: 28px;
   border-radius: 999px;
@@ -1303,7 +1303,7 @@ body {
   box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.35);
 }
 
-.assistant-message-body {
+.runtime-markdown-body {
   min-width: 0;
 }
 
@@ -1925,7 +1925,7 @@ body {
     overscroll-behavior: none;
   }
 
-  .assistant-message-copy {
+  .runtime-markdown-copy {
     width: 26px;
     height: 26px;
   }

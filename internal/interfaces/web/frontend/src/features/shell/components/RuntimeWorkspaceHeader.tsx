@@ -59,6 +59,14 @@ export function RuntimeWorkspaceHeader({
     style: detailsPanelInlineStyle,
     ...detailsPanelRestProps
   } = detailsPanelProps || {};
+  const {
+    className: statusButtonClassName,
+    ...statusButtonRestProps
+  } = statusButtonProps || {};
+  const {
+    className: detailsButtonClassName,
+    ...detailsButtonRestProps
+  } = detailsButtonProps || {};
 
   useEffect(() => {
     if (!detailsOpen) {
@@ -138,7 +146,7 @@ export function RuntimeWorkspaceHeader({
         ></button>
         <section
           id={detailsID}
-          className={joinClassNames("terminal-meta-panel workspace-details-panel", detailsPanelClassName)}
+          className={joinClassNames("runtime-workspace-details-panel workspace-details-panel", detailsPanelClassName)}
           style={{
             ...detailsPanelInlineStyle,
             ...detailsPanelStyle,
@@ -156,7 +164,7 @@ export function RuntimeWorkspaceHeader({
     <header
       ref={headerRef}
       className={joinClassNames(
-        "terminal-workspace-head conversation-workspace-head is-compact is-sticky",
+        "runtime-workspace-head is-compact is-sticky",
         mobileEmpty ? "is-mobile-empty" : undefined,
         headerClassName,
       )}
@@ -165,13 +173,13 @@ export function RuntimeWorkspaceHeader({
     >
       <div
         className={joinClassNames(
-          "terminal-workspace-row terminal-workspace-title-row conversation-workspace-row is-compact",
+          "runtime-workspace-row runtime-workspace-title-row is-compact",
           mobileEmpty ? "is-mobile-empty" : undefined,
         )}
       >
         <div
           className={joinClassNames(
-            "terminal-workspace-copy conversation-workspace-copy is-compact",
+            "runtime-workspace-copy is-compact",
             mobileEmpty ? "is-mobile-empty" : undefined,
           )}
         >
@@ -179,26 +187,37 @@ export function RuntimeWorkspaceHeader({
         </div>
         <div
           className={joinClassNames(
-            "terminal-workspace-actions conversation-workspace-actions workspace-header-actions",
+            "runtime-workspace-actions workspace-header-actions",
             mobileEmpty ? "is-mobile-empty" : undefined,
           )}
         >
           <button
-            className={`terminal-inline-button is-quiet workspace-header-status is-${statusTone}`}
+            className={joinClassNames(
+              "runtime-workspace-button",
+              "is-quiet",
+              "workspace-header-status",
+              `is-${statusTone}`,
+              statusButtonClassName,
+            )}
             type="button"
             disabled
-            {...statusButtonProps}
+            {...statusButtonRestProps}
           >
             {statusLabel}
           </button>
           <button
-            className={`terminal-inline-button workspace-header-details${detailsOpen ? " is-active" : ""}`}
+            className={joinClassNames(
+              "runtime-workspace-button",
+              "workspace-header-details",
+              detailsOpen ? "is-active" : undefined,
+              detailsButtonClassName,
+            )}
             type="button"
             aria-expanded={detailsOpen}
             aria-controls={detailsID}
             disabled={detailsDisabled}
             onClick={onToggleDetails}
-            {...detailsButtonProps}
+            {...detailsButtonRestProps}
           >
             {detailsLabel}
           </button>

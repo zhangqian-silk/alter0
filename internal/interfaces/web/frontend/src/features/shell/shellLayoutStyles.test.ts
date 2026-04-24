@@ -110,17 +110,17 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".conversation-mobile-action {");
-    expect(stylesheet).toContain(".terminal-mobile-header .conversation-mobile-action {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-action {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-header .runtime-workspace-mobile-action {");
     expect(stylesheet).toContain("border-radius: 999px;");
     expect(stylesheet).toContain("font-size: 12px;");
     expect(stylesheet).toContain("font-weight: 700;");
     expect(stylesheet).toContain("background: rgba(248, 252, 255, 0.76);");
-    expect(stylesheet).toContain(".terminal-mobile-header .conversation-mobile-action.is-primary {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-header .runtime-workspace-mobile-action.is-primary {");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(239, 246, 255, 0.98) 0%, rgba(219, 234, 254, 0.92) 100%);");
     expect(stylesheet).toContain("box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 10px 20px -18px rgba(37, 99, 235, 0.32);");
-    expect(stylesheet).toContain(".conversation-workspace-body {");
-    expect(stylesheet).toContain("[data-conversation-view] .conversation-workspace-body {");
+    expect(stylesheet).toContain(".runtime-workspace-body {");
+    expect(stylesheet).toContain("[data-conversation-view] .runtime-workspace-body {");
     expect(stylesheet).toContain("grid-template-rows: auto auto minmax(0, 1fr) auto;");
   });
 
@@ -128,7 +128,7 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain("[data-conversation-view] .conversation-workspace-actions .terminal-inline-button {");
+    expect(stylesheet).toContain("[data-conversation-view] .runtime-workspace-actions .runtime-workspace-button {");
     expect(stylesheet).toContain("min-height: 32px;");
     expect(stylesheet).toContain("padding: 0 10px;");
     expect(stylesheet).toContain("font-size: 11px;");
@@ -138,18 +138,18 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".terminal-runtime-view .terminal-composer-shell.conversation-composer-shell {");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-composer-shell {");
     expect(stylesheet).toContain("padding: 10px 16px 14px;");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(241, 245, 249, 0) 0%, rgba(241, 245, 249, 0.78) 18%, rgba(241, 245, 249, 0.96) 100%);");
-    expect(stylesheet).toContain(".terminal-runtime-view .terminal-chat-form.conversation-chat-form {");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-composer-form {");
     expect(stylesheet).toContain("border-radius: 28px;");
     expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.96);");
-    expect(stylesheet).toContain(".terminal-runtime-view .terminal-composer-input.conversation-composer-input {");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-composer-input {");
     expect(stylesheet).toContain("min-height: 88px;");
     expect(stylesheet).toContain("font-size: 15px;");
-    expect(stylesheet).toContain(".terminal-runtime-view .terminal-chat-form .terminal-composer-meta {");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-composer-form .runtime-composer-meta {");
     expect(stylesheet).toContain("min-height: 26px;");
-    expect(stylesheet).toContain(".terminal-runtime-view .terminal-chat-submit {");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-composer-submit,");
     expect(stylesheet).toContain("width: 40px;");
     expect(stylesheet).toContain("height: 40px;");
     expect(stylesheet).toContain("background: linear-gradient(180deg, #1f6feb 0%, #1747a6 100%);");
@@ -162,7 +162,7 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain(".conversation-console-panel.is-empty {");
     expect(stylesheet).toContain("overflow: hidden;");
-    expect(stylesheet).toContain(".terminal-runtime-view .conversation-chat-screen.is-empty {");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-workspace-screen.is-empty {");
     expect(stylesheet).toContain("overscroll-behavior: none;");
     expect(stylesheet).toContain("touch-action: none;");
     expect(stylesheet).toContain("-webkit-overflow-scrolling: auto;");
@@ -172,7 +172,7 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".conversation-chat-screen {");
+    expect(stylesheet).toContain(".runtime-workspace-screen {");
     expect(stylesheet).toContain("height: 100%;");
     expect(stylesheet).toContain("min-height: 0;");
     expect(stylesheet).toContain("padding: 18px 20px 18px;");
@@ -186,26 +186,26 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("body::before,");
     expect(stylesheet).toContain("body::after {");
     expect(stylesheet).toContain("display: none;");
-    expect(stylesheet).toContain(".conversation-session-pane-backdrop {");
+    expect(stylesheet).toContain(".runtime-workspace-session-pane-backdrop {");
     expect(stylesheet).toContain("backdrop-filter: none;");
-    expect(stylesheet).toContain(".conversation-session-pane-shell {");
-    expect(stylesheet).toContain("[data-conversation-view] .conversation-workspace-body {");
+    expect(stylesheet).toContain(".runtime-workspace-session-pane-shell {");
+    expect(stylesheet).toContain("[data-conversation-view] .runtime-workspace-body {");
     expect(stylesheet).toContain(".mobile-backdrop {");
   });
 
-  it("polishes conversation runtime session cards and inspector panels to match the calmer workbench system", () => {
+  it("polishes runtime session cards and inspector panels to match the calmer workbench system", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-card {");
+    expect(stylesheet).toContain(".runtime-session-card {");
     expect(stylesheet).toContain("border-radius: 14px;");
     expect(stylesheet).toContain("background: transparent;");
-    expect(stylesheet).toContain(".terminal-runtime-view .conversation-session-delete {");
+    expect(stylesheet).toContain(".runtime-session-delete {");
     expect(stylesheet).toContain("min-height: auto;");
-    expect(stylesheet).toContain(".terminal-runtime-view .conversation-inspector {");
+    expect(stylesheet).toContain(".conversation-inspector {");
     expect(stylesheet).toContain("border-radius: 22px;");
-    expect(stylesheet).toContain("box-shadow: 0 16px 32px -28px rgba(8, 37, 69, 0.18);");
-    expect(stylesheet).toContain(".terminal-runtime-view .conversation-check-item {");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 248, 255, 0.94) 100%);");
+    expect(stylesheet).toContain(".conversation-check-item {");
     expect(stylesheet).toContain("padding: 8px 10px;");
   });
 
@@ -213,7 +213,7 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".conversation-runtime-view .terminal-chat-form .conversation-chat-upload {");
+    expect(stylesheet).toContain(".conversation-runtime-view .runtime-composer-form .runtime-composer-upload {");
     expect(stylesheet).toContain("width: auto;");
     expect(stylesheet).toContain("min-width: fit-content;");
     expect(stylesheet).toContain("white-space: nowrap;");
@@ -223,7 +223,7 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".conversation-composer-attachment-preview img {");
+    expect(stylesheet).toContain(".runtime-composer-attachment-preview img {");
     expect(stylesheet).toContain("max-height: 72px;");
     expect(stylesheet).toContain("object-fit: contain;");
     expect(stylesheet).toContain(".message-image-card img {");
@@ -236,11 +236,11 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toMatch(/\.conversation-workspace-row\.is-compact\s*\{[\s\S]*?flex-wrap:\s*nowrap;/);
-    expect(stylesheet).toMatch(/\.conversation-workspace-head\.is-compact\s*\{[\s\S]*?display:\s*block;/);
-    expect(stylesheet).toContain(".conversation-workspace-copy.is-compact {");
-    expect(stylesheet).toContain(".conversation-workspace-copy.is-compact h4 {");
-    expect(stylesheet).toContain(".conversation-workspace-row.is-compact .conversation-workspace-actions {");
+    expect(stylesheet).toMatch(/\.runtime-workspace-row\.is-compact\s*\{[\s\S]*?flex-wrap:\s*nowrap;/);
+    expect(stylesheet).toMatch(/\.runtime-workspace-head\.is-compact\s*\{[\s\S]*?display:\s*block;/);
+    expect(stylesheet).toContain(".runtime-workspace-copy.is-compact {");
+    expect(stylesheet).toContain(".runtime-workspace-copy.is-compact h4 {");
+    expect(stylesheet).toContain(".runtime-workspace-row.is-compact .runtime-workspace-actions {");
     expect(stylesheet).toContain("align-items: center;");
     expect(stylesheet).toContain("font-size: 18px;");
     expect(stylesheet).toContain("text-overflow: ellipsis;");
@@ -281,13 +281,13 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".conversation-workspace-head.is-mobile-empty {");
-    expect(stylesheet).toContain(".conversation-workspace-row.is-mobile-empty {");
+    expect(stylesheet).toContain(".runtime-workspace-head.is-mobile-empty {");
+    expect(stylesheet).toContain(".runtime-workspace-row.is-mobile-empty {");
     expect(stylesheet).toContain("display: grid;");
     expect(stylesheet).toContain("grid-template-columns: minmax(0, 1fr) auto;");
-    expect(stylesheet).toContain(".conversation-workspace-copy.is-mobile-empty {");
+    expect(stylesheet).toContain(".runtime-workspace-copy.is-mobile-empty {");
     expect(stylesheet).toContain("min-width: 0;");
-    expect(stylesheet).toContain(".conversation-workspace-actions.is-mobile-empty {");
+    expect(stylesheet).toContain(".runtime-workspace-actions.is-mobile-empty {");
     expect(stylesheet).toContain("justify-content: flex-end;");
   });
 
@@ -384,34 +384,34 @@ describe("shell layout stylesheet", () => {
 
   it("styles the terminal workspace like a restrained command center with layered session and composer surfaces", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
-    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".terminal-session-card.active {");
-    expect(stylesheet).toContain("background: transparent;");
-    expect(stylesheet).toContain(".terminal-workspace-body,");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-session-card {");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-workspace-screen {");
+    expect(stylesheet).toContain(".runtime-workspace-body {");
     expect(stylesheet).toContain("linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(243, 247, 251, 0.98) 100%)");
-    expect(stylesheet).toContain("box-shadow: 0 30px 70px -54px rgba(15, 23, 42, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.82);");
-    expect(stylesheet).toContain(".terminal-chat-form {");
-    expect(stylesheet).toContain("border-radius: 26px;");
-    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.9);");
+    expect(stylesheet).toContain("box-shadow: 0 34px 70px -54px rgba(15, 23, 42, 0.18);");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-composer-form {");
+    expect(stylesheet).toContain("border-radius: 28px;");
+    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.96);");
   });
 
   it("lays out the terminal composer as a single input surface with a footer tool row", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
-    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /\.terminal-chat-form\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/,
+      /\.runtime-composer-form\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) auto;/,
     );
-    expect(stylesheet).toContain(".terminal-composer-tools {");
-    expect(stylesheet).toContain("justify-content: space-between;");
-    expect(stylesheet).toContain(".terminal-chat-form .terminal-composer-meta {");
-    expect(stylesheet).toContain("border: 1px solid rgba(148, 163, 184, 0.28);");
-    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(239, 246, 255, 0.98) 0%, rgba(219, 234, 254, 0.98) 100%);");
-    expect(stylesheet).toContain("box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), 0 8px 16px -16px rgba(37, 99, 235, 0.36);");
-    expect(stylesheet).toContain(".terminal-chat-form-button-icon svg {");
-    expect(stylesheet).toContain("width: 20px;");
-    expect(stylesheet).toContain("transform: translateY(0.75px);");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-composer-form .runtime-composer-tools {");
+    expect(stylesheet).toContain("justify-content: flex-end;");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-composer-form .runtime-composer-meta {");
+    expect(stylesheet).toContain("border: 1px solid rgba(203, 213, 225, 0.86);");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, #1f6feb 0%, #1747a6 100%);");
+    expect(stylesheet).toContain("box-shadow: 0 14px 24px -18px rgba(23, 71, 166, 0.56);");
+    expect(stylesheet).toContain(".terminal-runtime-view .runtime-composer-submit .runtime-composer-submit-icon svg {");
+    expect(stylesheet).toContain("width: 18px;");
+    expect(stylesheet).toContain("transform: none;");
   });
 
   it("styles shared jump controls as arrow clusters for dialog surfaces", () => {
@@ -464,7 +464,7 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-conversation-view\] \.conversation-chat-screen,\s*\[data-terminal-view\] \.terminal-chat-screen\s*\{[\s\S]*?height:\s*calc\(100% - var\(--runtime-composer-inset, 0px\)\);[\s\S]*?max-height:\s*calc\(100% - var\(--runtime-composer-inset, 0px\)\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-conversation-view\] \.runtime-workspace-screen,\s*\[data-terminal-view\] \.terminal-chat-screen\s*\{[\s\S]*?height:\s*calc\(100% - var\(--runtime-composer-inset, 0px\)\);[\s\S]*?max-height:\s*calc\(100% - var\(--runtime-composer-inset, 0px\)\);/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-jump-cluster\s*\{[\s\S]*?bottom:\s*calc\(var\(--runtime-composer-rest-inset, var\(--runtime-composer-inset, 0px\)\) \+ 24px\);[\s\S]*?right:\s*12px;/,
@@ -474,22 +474,16 @@ describe("shell layout stylesheet", () => {
 
   it("keeps mobile terminal layouts on a single main surface instead of stacking nested rounded capsules", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
-    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-workspace-body(?:\.conversation-workspace-body)?\s*\{[\s\S]*?border-radius:\s*0;[\s\S]*?border-left:\s*0;[\s\S]*?border-right:\s*0;[\s\S]*?box-shadow:\s*none;/,
+      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-conversation-view\] \.runtime-workspace-body\s*\{[\s\S]*?border-radius:\s*0;[\s\S]*?border-left:\s*0;[\s\S]*?border-right:\s*0;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-chat-screen\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?background:\s*transparent;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-runtime-view \.runtime-composer-form\s*\{[\s\S]*?border-radius:\s*24px;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-chat-form\s*\{[\s\S]*?border-radius:\s*22px;/,
-    );
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-chat-form\s*\{[\s\S]*?backdrop-filter:\s*none;[\s\S]*?box-shadow:\s*0 12px 24px -20px rgba\(15, 23, 42, 0.12\);/,
-    );
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-chat-form button\s*\{[\s\S]*?box-shadow:\s*none;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-runtime-view \.runtime-composer-submit\s*,\s*\.terminal-runtime-view \.terminal-chat-submit\s*\{[\s\S]*?box-shadow:\s*none;/,
     );
   });
 });

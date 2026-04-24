@@ -19,12 +19,9 @@ type LegacyShellCopy = {
   workspaceModePage: string;
   workspaceModeTerminal: string;
   workspaceFocusLabel: string;
-  workspaceBridgeLabel: string;
-  workspaceBridgeValue: string;
   sessionHeader: string;
   sessionPaneLabel: string;
   sessionPanelEyebrow: string;
-  sessionPanelBridgeValue: string;
   sessionClose: string;
   sessionNewChat: string;
   sessionNewAgent: string;
@@ -41,7 +38,6 @@ type LegacyShellCopy = {
   composerEyebrow: string;
   composerTitle: string;
   composerDescription: string;
-  composerNote: string;
   runtimeTarget: string;
   runtimeAgent: string;
   runtimeAgentPick: string;
@@ -148,12 +144,9 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     workspaceModePage: "Operational page",
     workspaceModeTerminal: "Terminal runtime",
     workspaceFocusLabel: "Focus",
-    workspaceBridgeLabel: "Runtime",
-    workspaceBridgeValue: "Legacy bridge active",
     sessionHeader: "Work with Alter0",
     sessionPaneLabel: "Session control center",
     sessionPanelEyebrow: "Session control",
-    sessionPanelBridgeValue: "Live history",
     sessionClose: "Close",
     sessionNewChat: "New Chat",
     sessionNewAgent: "New Agent Run",
@@ -170,7 +163,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     composerEyebrow: "Compose",
     composerTitle: "Drive the next move",
     composerDescription: "Use the main composer for decisive instructions, follow-up context, or runtime tuning.",
-    composerNote: "Bridge-powered input, source-owned shell.",
     runtimeTarget: "Conversation Target",
     runtimeAgent: "Agent",
     runtimeAgentPick: "Choose Agent",
@@ -275,12 +267,9 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     workspaceModePage: "运营页面",
     workspaceModeTerminal: "终端运行态",
     workspaceFocusLabel: "焦点",
-    workspaceBridgeLabel: "运行时",
-    workspaceBridgeValue: "Legacy 桥接激活",
     sessionHeader: "与 Alter0 协作",
     sessionPaneLabel: "会话控制中心",
     sessionPanelEyebrow: "会话控制",
-    sessionPanelBridgeValue: "实时历史",
     sessionClose: "关闭",
     sessionNewChat: "新对话",
     sessionNewAgent: "新 Agent 会话",
@@ -297,7 +286,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     composerEyebrow: "输入区",
     composerTitle: "推动下一步执行",
     composerDescription: "主输入框用于发送明确指令、补充上下文，或结合运行时参数继续推进。",
-    composerNote: "桥接负责执行，壳层负责表达。",
     runtimeTarget: "会话目标",
     runtimeAgent: "Agent",
     runtimeAgentPick: "选择 Agent",

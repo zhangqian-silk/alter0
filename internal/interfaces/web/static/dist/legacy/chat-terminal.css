@@ -23,8 +23,7 @@
   display: none;
 }
 
-.terminal-session-pane-shell,
-.terminal-session-pane-shell.conversation-session-pane-shell {
+.terminal-session-pane-shell {
   position: relative;
   height: 100%;
   display: grid;
@@ -289,8 +288,7 @@
   margin: 0;
 }
 
-.terminal-workspace-body,
-.terminal-workspace-body.conversation-workspace-body {
+.terminal-workspace-body {
   position: relative;
   height: 100%;
   min-height: 0;
@@ -318,8 +316,7 @@
   pointer-events: none;
 }
 
-.terminal-workspace-head,
-.terminal-workspace-head.conversation-workspace-head {
+.terminal-workspace-head {
   position: relative;
   min-width: 0;
   display: grid;
@@ -1455,10 +1452,12 @@
   padding: 0;
 }
 
+.terminal-final-text .runtime-markdown-toolbar,
 .terminal-final-toolbar {
   margin-bottom: 8px;
 }
 
+.terminal-final-text .runtime-markdown-copy,
 .terminal-final-copy {
   background: rgba(255, 255, 255, 0.96);
 }
@@ -1475,11 +1474,11 @@
   text-size-adjust: 100%;
 }
 
-.terminal-final-rendered > :first-child {
+.terminal-final-rendered .runtime-markdown-rendered > :first-child {
   margin-top: 0;
 }
 
-.terminal-final-rendered > :last-child {
+.terminal-final-rendered .runtime-markdown-rendered > :last-child {
   margin-bottom: 0;
 }
 
@@ -2270,7 +2269,7 @@
     margin-left: auto;
   }
 
-  .terminal-session-pane.conversation-session-pane {
+  .terminal-session-pane {
     position: fixed;
     top: 0;
     left: 0;
@@ -2292,14 +2291,14 @@
     transition: transform 0.17s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.17s;
   }
 
-  .terminal-session-pane.conversation-session-pane.is-open {
+  .terminal-session-pane.is-open {
     pointer-events: auto;
     visibility: visible;
     transform: translateX(0);
     transition-delay: 0s;
   }
 
-  .terminal-session-pane.conversation-session-pane .terminal-session-pane-backdrop {
+  .terminal-session-pane .terminal-session-pane-backdrop {
     position: fixed;
     inset: 0;
     z-index: 0;
@@ -2312,12 +2311,12 @@
     pointer-events: none;
   }
 
-  .terminal-session-pane.conversation-session-pane.is-open .terminal-session-pane-backdrop {
+  .terminal-session-pane.is-open .terminal-session-pane-backdrop {
     opacity: 1;
     pointer-events: auto;
   }
 
-  .terminal-session-pane-shell.conversation-session-pane-shell {
+  .terminal-session-pane-shell {
     position: relative;
     left: auto;
     right: auto;
@@ -2353,8 +2352,7 @@
     padding: 0;
   }
 
-  .terminal-workspace-body,
-  .terminal-workspace-body.conversation-workspace-body {
+  .terminal-workspace-body {
     border-radius: 0;
     border-left: 0;
     border-right: 0;

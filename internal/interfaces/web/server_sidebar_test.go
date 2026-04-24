@@ -97,8 +97,8 @@ func TestWorkbenchAppOwnsRouteShellState(t *testing.T) {
 		`const navOpen = mobilePanel === "nav";`,
 		`classNames.push("nav-open", "overlay-open")`,
 		`<div className={shellClassName} data-workbench-route={route}>`,
-		`isConversationRoute(route) ? (`,
-		`route === "terminal" ? (`,
+		`isConversationRoute(route) || route === "terminal" ? (`,
+		`<RuntimeRouteHost route={route} language={language} />`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
@@ -250,14 +250,16 @@ func TestPrimaryNavCollapseStateHooksPresent(t *testing.T) {
 }
 
 func TestConversationWorkspaceSessionSurfacePresent(t *testing.T) {
-	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
+	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeWorkspacePage.tsx")
 	markers := []string{
 		`"data-conversation-view": runtime.route`,
 		`data-conversation-session-pane`,
 		`data-conversation-session-list`,
 		`data-conversation-workspace`,
 		`data-conversation-chat-screen`,
-		`className="conversation-session-delete"`,
+		`deleteLabel: deleteSessionLabel,`,
+		`"runtime-session-delete"`,
 		`{item.shortHash}`,
 	}
 	for _, marker := range markers {
@@ -269,8 +271,8 @@ func TestConversationWorkspaceSessionSurfacePresent(t *testing.T) {
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	styleMarkers := []string{
 		".conversation-runtime-view {",
-		".conversation-session-pane {",
-		".conversation-workspace {",
+		".runtime-workspace-session-pane {",
+		".runtime-workspace {",
 	}
 	for _, marker := range styleMarkers {
 		if !strings.Contains(styles, marker) {
@@ -281,12 +283,14 @@ func TestConversationWorkspaceSessionSurfacePresent(t *testing.T) {
 
 func TestWorkbenchConversationAndManagedRoutesPresent(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/app/WorkbenchApp.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeRouteHost.tsx") +
 		readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedRouteBody.tsx")
 	markers := []string{
 		"<ConversationRuntimeProvider route={route} language={language}>",
 		"<ConversationWorkspace language={language} />",
+		"<RuntimeRouteHost route={route} language={language} />",
 		"<ReactManagedRouteBody route={route} language={language} />",
-		"isConversationRoute(route)",
+		`isConversationRoute(route) || route === "terminal"`,
 		`agent: ({ language }) => <ReactManagedAgentRouteBody language={language} />`,
 		`memory: ({ language }) => <ReactManagedMemoryRouteBody language={language} />`,
 	}
@@ -377,11 +381,11 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 		}
 	}
 
-	styles := readEmbeddedAsset(t, "static/assets/chat.css")
+	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	styleMarkers := []string{
-		".terminal-view {",
-		".terminal-session-card {",
-		".terminal-chat-form {",
+		".terminal-runtime-view .runtime-session-card {",
+		".runtime-session-card {",
+		".runtime-composer-form {",
 	}
 	for _, marker := range styleMarkers {
 		if !strings.Contains(styles, marker) {

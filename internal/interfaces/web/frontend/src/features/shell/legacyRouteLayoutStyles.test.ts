@@ -41,4 +41,31 @@ describe("legacy route layout stylesheet", () => {
     expect(stylesheet).toContain(".control-task-terminal-input-row {");
     expect(stylesheet).toContain(".control-task-terminal-upload {");
   });
+
+  it("styles shared runtime markdown shells in chat-core without relying on assistant-specific wrappers", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(
+      resolve(currentDirectory, "../../../public/legacy/chat-core.css"),
+      "utf8",
+    );
+
+    expect(stylesheet).toContain(".runtime-markdown-shell {");
+    expect(stylesheet).toContain(".runtime-markdown-toolbar {");
+    expect(stylesheet).toContain(".runtime-markdown-copy {");
+    expect(stylesheet).toContain(".runtime-markdown-body {");
+    expect(stylesheet).toContain(".agent-process-step-body > .runtime-markdown-rendered > :first-child,");
+    expect(stylesheet).toContain(".agent-process-answer > .runtime-markdown-rendered > :last-child {");
+  });
+
+  it("styles terminal final output through runtime markdown wrappers", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(
+      resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"),
+      "utf8",
+    );
+
+    expect(stylesheet).toContain(".terminal-final-text .runtime-markdown-toolbar,");
+    expect(stylesheet).toContain(".terminal-final-rendered .runtime-markdown-rendered > :first-child {");
+    expect(stylesheet).toContain(".terminal-final-rendered .runtime-markdown-rendered > :last-child {");
+  });
 });

@@ -2,6 +2,12 @@ import { memo } from "react";
 import { formatTimeLabel } from "../../../shared/time/format";
 import { resolveComposerAttachmentPreviewURL } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
+import {
+  RuntimeTimeline,
+  type RuntimeTimelineItem,
+} from "./RuntimeTimeline";
+import { RuntimeMarkdownHTML } from "./RuntimeTimelinePrimitives";
+import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
 
 export type ChatMessageSnapshot = {
   id: string;
@@ -92,28 +98,33 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
   onToggleProcess?: (messageID: string) => void;
 }) {
   return (
-    <div className="message-list" data-message-session-id={sessionId}>
-      {messages.map((message) => (
-        <ChatMessageArticle
-          key={message.id}
-          message={message}
-          language={language}
-          onToggleProcess={onToggleProcess}
-        />
-      ))}
-    </div>
+    <RuntimeTimeline
+      className="message-list"
+      timelineProps={{ "data-message-session-id": sessionId }}
+      items={buildChatTimelineItems({ messages, language, onToggleProcess })}
+    />
   );
 });
 
-const ChatMessageArticle = memo(function ChatMessageArticle({
-  message,
+export function buildChatTimelineItems({
+  messages,
   language,
   onToggleProcess,
 }: {
-  message: ChatMessageSnapshot;
+  messages: ChatMessageSnapshot[];
   language: LegacyShellLanguage;
   onToggleProcess?: (messageID: string) => void;
 }) {
+  const copy = MESSAGE_COPY[language];
+  return messages.map((message) => buildChatTimelineItem(message, language, copy, onToggleProcess));
+}
+
+function buildChatTimelineItem(
+  message: ChatMessageSnapshot,
+  language: LegacyShellLanguage,
+  copy: MessageCopy,
+  onToggleProcess?: (messageID: string) => void,
+): RuntimeTimelineItem {
   const classNames = ["msg", message.role];
   if (message.error) {
     classNames.push("error");
@@ -122,73 +133,59 @@ const ChatMessageArticle = memo(function ChatMessageArticle({
     classNames.push("streaming");
   }
 
-  return (
-    <article className={classNames.join(" ")} data-message-id={message.id}>
-      <div className="msg-bubble">
-        {message.role === "assistant" ? (
-          <AssistantMessageBody message={message} language={language} onToggleProcess={onToggleProcess} />
-        ) : (
-          <UserMessageBody message={message} />
-        )}
-      </div>
-      <div className="msg-meta">
-        {message.role === "assistant" ? (
-          <>
-            {shouldShowAssistantStatus(message) ? (
-              <span className={`status-pill ${message.status || "done"}`}>
-                {assistantStatusLabel(message.status, language)}
-              </span>
-            ) : null}
-          </>
-        ) : null}
-        <span>{formatTimeLabel(message.at)}</span>
-      </div>
-    </article>
-  );
-});
-
-function UserMessageBody({ message }: { message: ChatMessageSnapshot }) {
-  return (
-    <>
-      {message.attachments.length > 0 ? (
-        <div className="message-image-grid" data-message-image-grid={message.id}>
-          {message.attachments.map((attachment) => (
-            <figure key={attachment.id} className="message-image-card">
-              <img src={resolveComposerAttachmentPreviewURL(attachment)} alt={attachment.name} loading="lazy" decoding="async" />
-              <figcaption>{attachment.name}</figcaption>
-            </figure>
-          ))}
-        </div>
+  const footer = (
+    <div className="msg-meta">
+      {message.role === "assistant" && shouldShowAssistantStatus(message) ? (
+        <span className={`status-pill ${message.status || "done"}`}>
+          {assistantStatusLabel(message.status, language)}
+        </span>
       ) : null}
-      {message.text.trim() ? (
-        <MarkdownHTML html={renderMarkdownToHTML(message.text)} />
-      ) : null}
-    </>
+      <span>{formatTimeLabel(message.at)}</span>
+    </div>
   );
-}
 
-function AssistantMessageBody({
-  message,
-  language,
-  onToggleProcess,
-}: {
-  message: ChatMessageSnapshot;
-  language: LegacyShellLanguage;
-  onToggleProcess?: (messageID: string) => void;
-}) {
-  const copy = MESSAGE_COPY[language];
+  if (message.role === "user") {
+    return {
+      id: message.id,
+      className: classNames.join(" "),
+      articleProps: { "data-message-id": message.id },
+      bubbleClassName: "msg-bubble",
+      blocks: [
+        {
+          type: "attachments",
+          galleryId: message.id,
+          items: message.attachments.map((attachment) => ({
+            key: attachment.id,
+            name: attachment.name,
+            src: resolveComposerAttachmentPreviewURL(attachment),
+          })),
+        },
+        ...(message.text.trim() ? [{
+          type: "rich-text" as const,
+          html: renderRuntimeMarkdownToHTML(message.text),
+        }] : []),
+      ],
+      footer,
+    };
+  }
+
   const parsed = resolveAgentExecutionContent(message, language);
   if (!parsed.steps.length) {
-    if (message.status === "streaming") {
-      return <MarkdownHTML html={renderMarkdownToHTML(message.text)} />;
-    }
-    return (
-      <AssistantFinalBody
-        contentHTML={renderMarkdownToHTML(message.text)}
-        copyValue={message.text.trim()}
-        copyLabel={copy.copyValue}
-      />
-    );
+    return {
+      id: message.id,
+      className: classNames.join(" "),
+      articleProps: { "data-message-id": message.id },
+    bubbleClassName: "msg-bubble",
+    blocks: message.status === "streaming"
+        ? [{ type: "rich-text", html: renderRuntimeMarkdownToHTML(message.text) }]
+        : [{
+          type: "markdown-shell",
+          html: renderRuntimeMarkdownToHTML(message.text),
+          copyValue: message.text.trim(),
+          copyLabel: copy.copyValue,
+        }],
+      footer,
+    };
   }
 
   const collapsed =
@@ -196,98 +193,55 @@ function AssistantMessageBody({
       ? message.agentProcessCollapsed
       : Boolean(parsed.answer.trim()) && message.status !== "streaming";
 
-  return (
-    <>
-      <section
-        className={`agent-process-shell ${collapsed ? "is-collapsed" : ""}`}
-        data-agent-process-shell={message.id}
-      >
-        <button
-          className="agent-process-toggle"
-          type="button"
-          data-agent-process-toggle={message.id}
-          aria-expanded={collapsed ? "false" : "true"}
-          onClick={() => onToggleProcess?.(message.id)}
-        >
-          <span className="agent-process-toggle-icon">{collapsed ? ">" : "v"}</span>
-          <span className="agent-process-copy">
-            <span className="agent-process-title">{copy.processLabel}</span>
-            <span className="agent-process-summary">{copy.processSteps(parsed.steps.length)}</span>
-          </span>
-        </button>
-        <div className="agent-process-body" hidden={collapsed}>
-          {parsed.steps.length ? (
-            parsed.steps.map((step, index) => (
-              <article key={step.id || `${step.title}-${index}`} className="agent-process-step">
-                <div className="agent-process-step-head">
-                  <span className="agent-process-step-index">{index + 1}</span>
-                  <span className="agent-process-step-title">
-                    {step.title || `${copy.processLabel} ${index + 1}`}
-                  </span>
-                </div>
-                {step.detail ? (
-                  <div className="agent-process-step-body">
-                    <MarkdownHTML html={renderMarkdownToHTML(step.detail)} />
-                  </div>
-                ) : null}
-              </article>
-            ))
-          ) : (
-            <div className="agent-process-empty">{copy.processEmpty}</div>
-          )}
-        </div>
-      </section>
-      {parsed.answer.trim() ? (
-        <AssistantFinalBody
-          contentHTML={`<div class="agent-process-answer">${renderMarkdownToHTML(parsed.answer)}</div>`}
-          copyValue={parsed.answer}
-          copyLabel={copy.copyValue}
-          className="agent-process-answer-shell"
-        />
-      ) : null}
-    </>
-  );
-}
-
-function AssistantFinalBody({
-  contentHTML,
-  copyValue,
-  copyLabel,
-  className = "",
-}: {
-  contentHTML: string;
-  copyValue: string;
-  copyLabel: string;
-  className?: string;
-}) {
-  if (!contentHTML.trim()) {
-    return null;
-  }
-
-  return (
-    <div className={`assistant-message-shell${className ? ` ${className}` : ""}`}>
-      <div className="assistant-message-toolbar">
-        {copyValue.trim() ? (
-          <button
-            className="route-field-copy assistant-message-copy"
-            type="button"
-            data-copy-value={copyValue}
-            title={copyLabel}
-            aria-label={copyLabel}
-          >
-            <CopyIcon />
-          </button>
-        ) : null}
-      </div>
-      <div className="assistant-message-body">
-        <MarkdownHTML html={contentHTML} />
-      </div>
-    </div>
-  );
-}
-
-function MarkdownHTML({ html }: { html: string }) {
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  return {
+    id: message.id,
+    className: classNames.join(" "),
+    articleProps: { "data-message-id": message.id },
+    bubbleClassName: "msg-bubble",
+    blocks: [
+      {
+        type: "process",
+        shellClassName: `agent-process-shell ${collapsed ? "is-collapsed" : ""}`,
+        shellProps: { "data-agent-process-shell": message.id },
+        toggleClassName: "agent-process-toggle",
+        toggleProps: { "data-agent-process-toggle": message.id },
+        title: (
+          <>
+            <span className="agent-process-toggle-icon">{collapsed ? ">" : "v"}</span>
+            <span className="agent-process-copy">
+              <span className="agent-process-title">{copy.processLabel}</span>
+              <span className="agent-process-summary">{copy.processSteps(parsed.steps.length)}</span>
+            </span>
+          </>
+        ),
+        expanded: !collapsed,
+        onToggle: () => onToggleProcess?.(message.id),
+        bodyClassName: "agent-process-body",
+        emptyState: <div className="agent-process-empty">{copy.processEmpty}</div>,
+        steps: parsed.steps.map((step, index) => ({
+          id: step.id || `${step.title}-${index}`,
+          itemClassName: "agent-process-step",
+          toggleable: false,
+          title: step.title || `${copy.processLabel} ${index + 1}`,
+          meta: <span className="agent-process-step-index">{index + 1}</span>,
+          expanded: true,
+          onToggle: () => undefined,
+          toggleClassName: "agent-process-step-head",
+          bodyClassName: "agent-process-step-body",
+          detail: step.detail ? <RuntimeMarkdownHTML html={renderRuntimeMarkdownToHTML(step.detail)} /> : null,
+        })),
+      },
+      ...(parsed.answer.trim() ? [{
+        type: "markdown-shell" as const,
+        html: renderRuntimeMarkdownToHTML(parsed.answer),
+        copyValue: parsed.answer,
+        copyLabel: copy.copyValue,
+        className: "agent-process-answer-shell",
+        bodyClassName: "agent-process-answer",
+      }] : []),
+    ],
+    footer,
+  };
 }
 
 function assistantStatusLabel(status: string, language: LegacyShellLanguage) {
@@ -408,228 +362,4 @@ function parseAgentExecutionText(value: string, language: LegacyShellLanguage) {
     steps,
     answer: answerLines.join("\n").trim(),
   };
-}
-
-function renderMarkdownToHTML(value: string) {
-  const normalized = String(value ?? "").replace(/\r\n?/g, "\n");
-  if (!normalized.trim()) {
-    return "";
-  }
-  const tokens: Array<{ type: "markdown" | "code"; content: string; language?: string }> = [];
-  const fencePattern = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
-  let cursor = 0;
-  let match = fencePattern.exec(normalized);
-  while (match) {
-    if (match.index > cursor) {
-      tokens.push({ type: "markdown", content: normalized.slice(cursor, match.index) });
-    }
-    tokens.push({
-      type: "code",
-      language: String(match[1] || "").trim().toLowerCase(),
-      content: String(match[2] || "").replace(/\n$/, ""),
-    });
-    cursor = match.index + match[0].length;
-    match = fencePattern.exec(normalized);
-  }
-  if (cursor < normalized.length) {
-    tokens.push({ type: "markdown", content: normalized.slice(cursor) });
-  }
-  return tokens
-    .map((token) => {
-      if (token.type === "code") {
-        const languageClass = token.language ? ` class="language-${escapeHTML(token.language)}"` : "";
-        return `<pre class="chat-md-pre"><code${languageClass}>${escapeHTML(token.content)}</code></pre>`;
-      }
-      return renderMarkdownBlocks(token.content);
-    })
-    .join("");
-}
-
-function renderMarkdownBlocks(content: string) {
-  const lines = String(content || "").split("\n");
-  const html: string[] = [];
-  let paragraphLines: string[] = [];
-  let quoteLines: string[] = [];
-  let listType = "";
-  let listItems: string[] = [];
-
-  const flushParagraph = () => {
-    if (!paragraphLines.length) {
-      return;
-    }
-    html.push(`<p>${paragraphLines.map((line) => renderMarkdownInline(line)).join("<br>")}</p>`);
-    paragraphLines = [];
-  };
-
-  const flushQuote = () => {
-    if (!quoteLines.length) {
-      return;
-    }
-    html.push(`<blockquote>${renderMarkdownBlocks(quoteLines.join("\n"))}</blockquote>`);
-    quoteLines = [];
-  };
-
-  const flushList = () => {
-    if (!listType || !listItems.length) {
-      listType = "";
-      listItems = [];
-      return;
-    }
-    html.push(
-      `<${listType}>${listItems
-        .map((item) => `<li>${renderMarkdownInline(item)}</li>`)
-        .join("")}</${listType}>`,
-    );
-    listType = "";
-    listItems = [];
-  };
-
-  const flushAll = () => {
-    flushParagraph();
-    flushQuote();
-    flushList();
-  };
-
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) {
-      flushAll();
-      continue;
-    }
-
-    if (/^>\s?/.test(trimmed)) {
-      flushParagraph();
-      flushList();
-      quoteLines.push(trimmed.replace(/^>\s?/, ""));
-      continue;
-    }
-    flushQuote();
-
-    const unorderedMatch = /^[-*+]\s+(.+)$/.exec(trimmed);
-    if (unorderedMatch) {
-      flushParagraph();
-      if (listType && listType !== "ul") {
-        flushList();
-      }
-      listType = "ul";
-      listItems.push(unorderedMatch[1]);
-      continue;
-    }
-
-    const orderedMatch = /^(\d+)\.\s+(.+)$/.exec(trimmed);
-    if (orderedMatch) {
-      flushParagraph();
-      if (listType && listType !== "ol") {
-        flushList();
-      }
-      listType = "ol";
-      listItems.push(orderedMatch[2]);
-      continue;
-    }
-
-    flushList();
-
-    const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
-    if (headingMatch) {
-      flushParagraph();
-      const level = headingMatch[1].length;
-      html.push(`<h${level}>${renderMarkdownInline(headingMatch[2])}</h${level}>`);
-      continue;
-    }
-
-    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
-      flushParagraph();
-      html.push("<hr>");
-      continue;
-    }
-
-    paragraphLines.push(trimmed);
-  }
-
-  flushAll();
-  return html.join("");
-}
-
-function renderMarkdownInline(content: string) {
-  let rendered = escapeHTML(String(content ?? ""));
-  const placeholders: string[] = [];
-  const reserve = (html: string) => {
-    const token = `\u0000${placeholders.length}\u0000`;
-    placeholders.push(html);
-    return token;
-  };
-
-  rendered = rendered.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, altText: string, url: string) => {
-    const src = sanitizeMarkdownImageURL(url);
-    if (!src) {
-      return renderMarkdownInline(altText);
-    }
-    const alt = escapeHTML(altText.trim() || "Generated image");
-    return reserve(
-      `<a class="assistant-inline-image-link" href="${src}" target="_blank" rel="noreferrer noopener">`
-      + `<img class="assistant-inline-image" src="${src}" alt="${alt}" loading="lazy" decoding="async" />`
-      + "</a>",
-    );
-  });
-  rendered = rendered.replace(/`([^`]+)`/g, (_, code: string) =>
-    reserve(`<code class="chat-md-inline-code">${escapeHTML(code)}</code>`),
-  );
-  rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, url: string) => {
-    const href = sanitizeMarkdownURL(url);
-    if (!href) {
-      return renderMarkdownInline(label);
-    }
-    return reserve(
-      `<a href="${href}" target="_blank" rel="noreferrer noopener">${renderMarkdownInline(label)}</a>`,
-    );
-  });
-  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  rendered = rendered.replace(/__([^_]+)__/g, "<strong>$1</strong>");
-  rendered = rendered.replace(/(^|[\s(>])\*([^*\n]+)\*(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
-  rendered = rendered.replace(/(^|[\s(>])_([^_\n]+)_(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
-
-  return rendered.replace(/\u0000(\d+)\u0000/g, (_, index: string) => placeholders[Number(index)] || "");
-}
-
-function sanitizeMarkdownURL(rawURL: string) {
-  const value = String(rawURL || "").trim();
-  if (!value) {
-    return "";
-  }
-  const normalized = value.replace(/^<|>$/g, "");
-  if (/^(https?:|mailto:)/i.test(normalized) || normalized.startsWith("/") || normalized.startsWith("#")) {
-    return escapeHTML(normalized);
-  }
-  return "";
-}
-
-function sanitizeMarkdownImageURL(rawURL: string) {
-  const value = String(rawURL || "").trim();
-  if (!value) {
-    return "";
-  }
-  const normalized = value.replace(/^<|>$/g, "");
-  if (/^data:image\//i.test(normalized)) {
-    return escapeHTML(normalized);
-  }
-  return sanitizeMarkdownURL(normalized);
-}
-
-function escapeHTML(value: string) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => {
-    if (char === "&") return "&amp;";
-    if (char === "<") return "&lt;";
-    if (char === ">") return "&gt;";
-    if (char === '"') return "&quot;";
-    return "&#39;";
-  });
-}
-
-function CopyIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="9" width="12" height="12" rx="2"></rect>
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-    </svg>
-  );
 }

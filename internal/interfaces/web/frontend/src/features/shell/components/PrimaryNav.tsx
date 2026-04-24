@@ -55,7 +55,7 @@ export function PrimaryNav({
   const showTimerRef = useRef(0);
   const hideTimerRef = useRef(0);
   const [tooltip, setTooltip] = useState<NavTooltipState | null>(null);
-  const tooltipId = "legacy-shell-nav-tooltip";
+  const tooltipId = "workbench-nav-tooltip";
 
   const clearShowTimer = () => {
     if (!showTimerRef.current) {

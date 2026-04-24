@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { WorkbenchContext } from "./WorkbenchContext";
 import { isConversationRoute, useWorkbenchRoute } from "./routeState";
-import { ConversationRuntimeProvider } from "../features/conversation-runtime/ConversationRuntimeProvider";
-import { ConversationWorkspace } from "../features/conversation-runtime/ConversationWorkspace";
 import {
   getLegacyRouteHeadingCopy,
   getLegacyShellCopy,
@@ -12,6 +10,7 @@ import {
 import { isLegacyShellMobileViewport } from "../features/shell/legacyShellState";
 import { PrimaryNav } from "../features/shell/components/PrimaryNav";
 import { ReactManagedRouteBody } from "../features/shell/components/ReactManagedRouteBody";
+import { RuntimeRouteHost } from "../features/shell/components/RuntimeRouteHost";
 import { createMobileViewportSyncController } from "../shared/viewport/mobileViewportSync";
 
 export function WorkbenchApp() {
@@ -103,12 +102,8 @@ export function WorkbenchApp() {
         />
         <main className="workbench-main">
           <div className="chat-pane page-mode workbench-pane-shell" data-route={route} data-workbench-pane-shell>
-            {isConversationRoute(route) ? (
-              <ConversationRuntimeProvider route={route} language={language}>
-                <ConversationWorkspace language={language} />
-              </ConversationRuntimeProvider>
-            ) : route === "terminal" ? (
-              <ReactManagedRouteBody route={route} language={language} />
+            {isConversationRoute(route) || route === "terminal" ? (
+              <RuntimeRouteHost route={route} language={language} />
             ) : (
               <RoutePageFrame
                 route={route}

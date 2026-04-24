@@ -32,8 +32,9 @@ func TestConversationRuntimeCreatesAndDeletesSessionsInReactState(t *testing.T) 
 		"runtime.createSession();",
 		"const handleRemoveSession = (sessionID: string) => {",
 		"return runtime.removeSession(sessionID);",
-		"onClick={handleCreateSession}",
-		"onClick={() => void handleRemoveSession(item.id)}",
+		"onSessionPanePrimaryAction: handleCreateSession,",
+		"onMobilePrimary: handleCreateSession,",
+		"onDelete: () => void handleRemoveSession(item.id),",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
@@ -43,15 +44,17 @@ func TestConversationRuntimeCreatesAndDeletesSessionsInReactState(t *testing.T) 
 }
 
 func TestConversationSessionListShowsCompactMetadata(t *testing.T) {
-	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
+	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeWorkspacePage.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeSessionList.tsx")
 	markers := []string{
 		`data-conversation-session-pane`,
 		`"data-testid": "conversation-session-pane"`,
-		`className="conversation-session-list menu"`,
-		`className="conversation-session-title"`,
-		`className="conversation-session-meta"`,
-		`className="conversation-session-hash"`,
-		`className="conversation-session-bottomline"`,
+		`"runtime-session-list"`,
+		`"runtime-session-title"`,
+		`"runtime-session-meta"`,
+		`"runtime-session-hash"`,
+		`"runtime-session-bottomline"`,
 		`{item.shortHash}`,
 		"runtime.sessionItems.length",
 	}
@@ -63,9 +66,9 @@ func TestConversationSessionListShowsCompactMetadata(t *testing.T) {
 
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	styleMarkers := []string{
-		".conversation-session-card {",
-		".conversation-session-card.is-active {",
-		".conversation-session-delete {",
+		".runtime-session-card {",
+		".runtime-session-card.is-active {",
+		".runtime-session-delete {",
 	}
 	for _, marker := range styleMarkers {
 		if !strings.Contains(styles, marker) {
@@ -82,9 +85,10 @@ func TestConversationDetailsUseSharedWorkspaceHeader(t *testing.T) {
 		"const [detailsOpen, setDetailsOpen] = useState(false);",
 		"toggleInspector: (tab) => {",
 		`data-runtime-workspace-header="true"`,
-		`className="conversation-inspector conversation-session-details"`,
+		`detailsClassName: "conversation-inspector conversation-session-details workspace-details-content",`,
 		`data-conversation-inspector`,
-		"detailsOpen={detailsOpen}",
+		"detailsOpen,",
+		"onToggleDetails: () => setDetailsOpen((current) => !current),",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
@@ -145,10 +149,10 @@ func TestWorkbenchMobileLayoutUsesConversationDrawer(t *testing.T) {
 		"@media (max-width: 1100px) {",
 		".conversation-runtime-view {",
 		"grid-template-columns: 1fr;",
-		".conversation-session-pane {",
+		".runtime-workspace-session-pane {",
 		"position: fixed;",
 		"width: min(88vw, 340px);",
-		".conversation-session-pane.is-open {",
+		".runtime-workspace-session-pane.is-open {",
 		"transform: translateX(0);",
 	}
 	for _, marker := range markers {
@@ -239,15 +243,16 @@ func TestTerminalMobileActionsLinkWorkbenchNavAndSessionDrawer(t *testing.T) {
 	markers := []string{
 		`const workbench = useWorkbenchContext();`,
 		`const shellCopy = getLegacyShellCopy(workbench.language);`,
-		`className="terminal-mobile-header" data-terminal-mobile-header`,
-		`className="terminal-mobile-header-actions"`,
-		`aria-expanded={workbench.mobileNavOpen}`,
-		`onClick={workbench.toggleMobileNav}`,
-		`aria-expanded={workbench.mobileSessionPaneOpen}`,
-		`onClick={workbench.toggleMobileSessionPane}`,
-		`{shellCopy.chatMenu}`,
-		`{copy.sessions}`,
-		`{copy.newShort}`,
+		`mobileHeaderClassName: "terminal-mobile-header",`,
+		`mobileHeaderProps: { "data-terminal-mobile-header": "" },`,
+		`mobileHeaderActionsClassName: "terminal-mobile-header-actions",`,
+		`mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },`,
+		`onMobileNav: workbench.toggleMobileNav,`,
+		`mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },`,
+		`onMobileSession: workbench.toggleMobileSessionPane,`,
+		`mobileNavButtonLabel: shellCopy.chatMenu,`,
+		`mobileSessionButtonLabel: copy.sessions,`,
+		`mobilePrimaryButtonLabel: copy.newShort,`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
