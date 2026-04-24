@@ -800,7 +800,7 @@ function renderMarkdownBlocks(content: string) {
 }
 
 function renderMarkdownInline(content: string) {
-  let rendered = escapeHTML(String(content ?? ""));
+  let rendered = String(content ?? "");
   const placeholders: string[] = [];
   const reserve = (html: string) => {
     const token = `\u0000${placeholders.length}\u0000`;
@@ -814,12 +814,16 @@ function renderMarkdownInline(content: string) {
   rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, url: string) => {
     const href = sanitizeMarkdownURL(url);
     if (!href) {
-      return renderMarkdownInline(label);
+      return reserve(renderMarkdownInline(label));
     }
     return reserve(
       `<a href="${href}" target="_blank" rel="noreferrer noopener">${renderMarkdownInline(label)}</a>`,
     );
   });
+  rendered = rendered
+    .split(/(\u0000\d+\u0000)/g)
+    .map((part) => (/^\u0000\d+\u0000$/.test(part) ? part : escapeHTML(part)))
+    .join("");
   rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   rendered = rendered.replace(/__([^_]+)__/g, "<strong>$1</strong>");
   rendered = rendered.replace(/(^|[\s(>])\*([^*\n]+)\*(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
