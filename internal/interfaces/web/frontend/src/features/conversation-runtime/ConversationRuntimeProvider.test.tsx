@@ -72,7 +72,11 @@ function InspectorHarness() {
         target
       </button>
       <output data-testid="inspector-state">
-        {runtime.inspectorOpen ? `${runtime.inspectorTab}:open` : `${runtime.inspectorTab}:closed`}
+        {[
+          runtime.inspectorTab,
+          runtime.inspectorOpen ? "details-open" : "details-closed",
+          runtime.inspectorTabOpen ? "tab-open" : "tab-closed",
+        ].join(":")}
       </output>
     </div>
   );
@@ -93,6 +97,38 @@ function ModelSelectionHarness() {
       <output data-testid="provider-list">
         {runtime.providers.map((provider) => `${provider.name}:${provider.models.map((model) => model.name).join(",")}`).join("|")}
       </output>
+      <output data-testid="target-list">
+        {runtime.targetOptions.map((agent) => agent.name).join("|")}
+      </output>
+    </div>
+  );
+}
+
+function AgentOptionsHarness() {
+  const runtime = useConversationRuntime();
+
+  return (
+    <output data-testid="agent-options">
+      {runtime.targetOptions.map((agent) => agent.name).join("|")}
+    </output>
+  );
+}
+
+function SkillOptionsHarness() {
+  const runtime = useConversationRuntime();
+
+  return (
+    <div>
+      <output data-testid="skill-options">
+        {JSON.stringify(runtime.skills.map((skill) => ({
+          id: skill.id,
+          name: skill.name,
+          active: skill.active,
+          locked: skill.locked,
+          visibility: skill.visibility,
+        })))}
+      </output>
+      <output data-testid="skill-count">{runtime.skillCount}</output>
     </div>
   );
 }
@@ -331,23 +367,23 @@ describe("ConversationRuntimeProvider", () => {
     expect(storedFile?.dataURL).toBeUndefined();
   });
 
-  it("allows clicking the active inspector tab again to collapse the details body", async () => {
+  it("allows clicking the active inspector tab again to collapse only that tab content", async () => {
     render(
       <ConversationRuntimeProvider route="agent-runtime" language="en">
         <InspectorHarness />
       </ConversationRuntimeProvider>,
     );
 
-    expect(screen.getByTestId("inspector-state")).toHaveTextContent("model:closed");
+    expect(screen.getByTestId("inspector-state")).toHaveTextContent("model:details-closed:tab-open");
 
     fireEvent.click(screen.getByRole("button", { name: "target" }));
-    await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("target:open"));
+    await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("target:details-open:tab-open"));
 
     fireEvent.click(screen.getByRole("button", { name: "target" }));
-    await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("target:closed"));
+    await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("target:details-open:tab-closed"));
 
     fireEvent.click(screen.getByRole("button", { name: "model" }));
-    await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("model:open"));
+    await waitFor(() => expect(screen.getByTestId("inspector-state")).toHaveTextContent("model:details-open:tab-open"));
   });
 
   it("adds a Codex option for chat model selection and sends codex execution metadata", async () => {
@@ -416,6 +452,212 @@ describe("ConversationRuntimeProvider", () => {
     expect(request.metadata?.["alter0.execution.engine"]).toBe("codex");
     expect(request.metadata?.["alter0.llm.provider_id"]).toBeUndefined();
     expect(request.metadata?.["alter0.llm.model"]).toBeUndefined();
+  });
+
+  it("adds a Codex option for agent-runtime model selection and sends codex execution metadata", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/control/llm/providers":
+          return {
+            items: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                is_default: true,
+                default_model: "gpt-5.4",
+                models: [
+                  {
+                    id: "gpt-5.4",
+                    name: "GPT-5.4",
+                    is_enabled: true,
+                    supports_vision: true,
+                  },
+                ],
+              },
+            ],
+          };
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "coding",
+                name: "Coding Agent",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: done\ndata: {"result":{"output":"done"}}\n\n'));
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <ModelSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("provider-list")).toHaveTextContent("Codex:Codex"));
+    await waitFor(() => expect(screen.getByTestId("target-list")).toHaveTextContent("Coding Agent"));
+
+    fireEvent.click(screen.getByRole("button", { name: "select codex" }));
+    await waitFor(() => expect(screen.getByTestId("selected-model")).toHaveTextContent("Codex"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send with codex" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/agent/messages/stream");
+    const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      agent_id?: string;
+      metadata?: Record<string, string>;
+    };
+    expect(request.agent_id).toBe("coding");
+    expect(request.metadata?.["alter0.execution.engine"]).toBe("codex");
+    expect(request.metadata?.["alter0.llm.provider_id"]).toBeUndefined();
+    expect(request.metadata?.["alter0.llm.model"]).toBeUndefined();
+  });
+
+  it("excludes the main Alter0 assistant from agent-runtime target options", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "main",
+                name: "Alter0",
+                enabled: true,
+              },
+              {
+                id: "coding",
+                name: "Coding Agent",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <AgentOptionsHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("agent-options")).toHaveTextContent("Coding Agent"));
+    expect(screen.getByTestId("agent-options")).not.toHaveTextContent("Alter0");
+  });
+
+  it("shows the active agent private skill as locked and keeps selectable skills public", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "travel",
+                name: "Travel Agent",
+                enabled: true,
+                capabilities: ["travel"],
+                skills: ["deploy-test-service"],
+              },
+            ],
+          };
+        case "/api/control/skills":
+          return {
+            items: [
+              {
+                id: "deploy-test-service",
+                name: "Deploy Test Service",
+                description: "Deploy verification workflow",
+                enabled: true,
+              },
+              {
+                id: "travel-city-rules",
+                name: "Travel City Rules",
+                description: "Private travel planning rules",
+                enabled: true,
+                metadata: { "skill.visibility": "agent-private" },
+              },
+              {
+                id: "frontend-design",
+                name: "Frontend Design",
+                description: "Shared frontend delivery standards",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <SkillOptionsHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("skill-options")).toHaveTextContent("agent-skill-travel"));
+
+    const skills = JSON.parse(screen.getByTestId("skill-options").textContent || "[]") as Array<{
+      id: string;
+      name: string;
+      active: boolean;
+      locked?: boolean;
+      visibility?: string;
+    }>;
+
+    expect(skills).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "agent-skill-travel",
+        name: "Travel Agent Skill",
+        active: true,
+        locked: true,
+        visibility: "agent-private",
+      }),
+      expect.objectContaining({
+        id: "deploy-test-service",
+        active: true,
+        locked: false,
+        visibility: "public",
+      }),
+      expect.objectContaining({
+        id: "frontend-design",
+        active: false,
+        locked: false,
+        visibility: "public",
+      }),
+    ]));
+    expect(skills.map((skill) => skill.id)).not.toContain("travel-city-rules");
+    expect(screen.getByTestId("skill-count")).toHaveTextContent("2");
   });
 
   it("loads agent session profile details for the active runtime session", async () => {

@@ -394,6 +394,52 @@ func TestExecuteNaturalLanguageInjectsAgentOwnedSkillAndCreatesRulebook(t *testi
 	}
 }
 
+func TestExecuteNaturalLanguageKeepsAgentOwnedSkillWhenExcluded(t *testing.T) {
+	root := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-agent-skill-excluded",
+		SessionID:   "s-agent-skill-excluded",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "keep the private agent skill active",
+		TraceID:     "t-agent-skill-excluded",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:   "coding",
+			execdomain.AgentNameMetadataKey: "Coding Agent",
+			skillExcludeFilterKey:           `["agent-skill-coding"]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+	if got := result.Metadata[resultSkillInjectedIDsKey]; got != "agent-skill-coding" {
+		t.Fatalf("skills injected ids = %q, want agent-skill-coding", got)
+	}
+
+	skillContext := decodeSkillContextFromMetadata(t, processor.lastMetadata)
+	if len(skillContext.Skills) != 1 {
+		t.Fatalf("skill context size = %d, want 1", len(skillContext.Skills))
+	}
+	if skillContext.Skills[0].ID != "agent-skill-coding" {
+		t.Fatalf("agent skill id = %q, want agent-skill-coding", skillContext.Skills[0].ID)
+	}
+}
+
 func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
 	root := t.TempDir()
 	previousWD, err := os.Getwd()

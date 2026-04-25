@@ -92,6 +92,9 @@ func (c *Catalog) ListEntrypointAgents() []controldomain.Agent {
 		if !item.Enabled || !item.EntryPoint {
 			continue
 		}
+		if item.Kind == controldomain.AgentKindMain || strings.EqualFold(strings.TrimSpace(item.ID), "main") {
+			continue
+		}
 		filtered = append(filtered, item)
 	}
 	return filtered
@@ -115,7 +118,9 @@ func (c *Catalog) ListDelegatableAgents(excludeID string) []controldomain.Agent 
 
 func ApplyProfileMetadata(metadata map[string]string, agent controldomain.Agent) map[string]string {
 	items := cloneStringMap(metadata)
-	items[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	if strings.TrimSpace(items[execdomain.ExecutionEngineMetadataKey]) == "" {
+		items[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	}
 	items[execdomain.AgentIDMetadataKey] = strings.TrimSpace(agent.ID)
 	items[execdomain.AgentNameMetadataKey] = strings.TrimSpace(agent.Name)
 	providerID := strings.TrimSpace(items[execdomain.LLMProviderIDMetadataKey])

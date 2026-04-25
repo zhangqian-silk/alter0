@@ -276,12 +276,12 @@ func TestRuntimeAgentCatalogListsBuiltinEntrypoints(t *testing.T) {
 	if len(response.Items) < 3 {
 		t.Fatalf("expected builtin agent entries, got %+v", response.Items)
 	}
-	if response.Items[0].ID != "main" || response.Items[0].Source != controldomain.AgentSourceBuiltin {
-		t.Fatalf("expected main builtin first, got %+v", response.Items[0])
-	}
 	foundCoding := false
 	foundTravel := false
 	for _, item := range response.Items {
+		if item.ID == "main" || item.Name == "Alter0" {
+			t.Fatalf("expected runtime agent list to exclude main Alter0 assistant, got %+v", response.Items)
+		}
 		if item.ID == "coding" && item.Source == controldomain.AgentSourceBuiltin && item.EntryPoint {
 			foundCoding = true
 		}

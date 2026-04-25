@@ -8,6 +8,7 @@ const runtimeMock = {
   compact: true,
   inspectorOpen: false,
   inspectorTab: "model" as const,
+  inspectorTabOpen: true,
   sessions: [],
   activeSession: {
     id: "session-1",
@@ -35,8 +36,22 @@ const runtimeMock = {
   selectedModelLabel: "DeepSeek V3.2",
   selectedModelSupportsVision: true,
   providers: [],
-  capabilities: [],
-  skills: [],
+  capabilities: [] as Array<{
+    id: string;
+    name: string;
+    description: string;
+    kind: "tool" | "mcp" | "skill";
+    active: boolean;
+  }>,
+  skills: [] as Array<{
+    id: string;
+    name: string;
+    description: string;
+    kind: "tool" | "mcp" | "skill";
+    active: boolean;
+    visibility?: "public" | "agent-private";
+    locked?: boolean;
+  }>,
   toolCount: 0,
   skillCount: 0,
   createSession: vi.fn(),
@@ -137,6 +152,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.route = "chat";
     runtimeMock.inspectorOpen = false;
     runtimeMock.inspectorTab = "model";
+    runtimeMock.inspectorTabOpen = true;
     runtimeMock.activeSession = {
       id: "session-1",
       title: "New Chat",
@@ -157,9 +173,12 @@ describe("ConversationWorkspace", () => {
     runtimeMock.activeSessionProfile = null;
     runtimeMock.inspectorOpen = false;
     runtimeMock.inspectorTab = "model";
+    runtimeMock.inspectorTabOpen = true;
     runtimeMock.selectedModelLabel = "DeepSeek V3.2";
     runtimeMock.selectedModelSupportsVision = true;
     runtimeMock.providers = [];
+    runtimeMock.capabilities = [];
+    runtimeMock.skills = [];
     runtimeMock.toolCount = 0;
     runtimeMock.skillCount = 0;
     runtimeMock.draft = "";
@@ -171,7 +190,10 @@ describe("ConversationWorkspace", () => {
     runtimeMock.removeDraftAttachment.mockClear();
     runtimeMock.clearDraftAttachments.mockClear();
     runtimeMock.sendPrompt.mockClear();
+    runtimeMock.toggleInspector.mockClear();
+    runtimeMock.closeInspector.mockClear();
     runtimeMock.selectModel.mockClear();
+    runtimeMock.toggleSkill.mockClear();
   });
 
   it("keeps the shared workspace header visible alongside terminal-style mobile actions for an empty chat workspace", () => {
@@ -312,6 +334,7 @@ describe("ConversationWorkspace", () => {
   it("shows a Codex chip in the chat model selector and forwards selection", () => {
     runtimeMock.inspectorOpen = true;
     runtimeMock.inspectorTab = "model";
+    runtimeMock.inspectorTabOpen = true;
     runtimeMock.providers = [
       {
         id: "openai",
@@ -341,6 +364,102 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.click(codexButton);
     expect(runtimeMock.selectModel).toHaveBeenCalledWith("alter0-codex", "codex");
+  });
+
+  it("keeps the details panel open when the active Model tab is clicked again", () => {
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "model";
+    runtimeMock.inspectorTabOpen = true;
+    runtimeMock.providers = [
+      {
+        id: "openrouter",
+        name: "OpenRouter",
+        models: [
+          { id: "deepseek-v3.2", name: "DeepSeek V3.2", supportsVision: true, active: true },
+        ],
+      },
+    ];
+
+    const view = renderWorkspace({ isMobileViewport: false });
+
+    const detailsPanel = document.querySelector("[data-runtime-details-panel='conversation']") as HTMLElement;
+    expect(detailsPanel).toBeInTheDocument();
+    expect(within(detailsPanel).getByText("Session")).toBeInTheDocument();
+    expect(within(detailsPanel).getByText("OpenRouter")).toBeInTheDocument();
+
+    fireEvent.click(within(detailsPanel).getByRole("button", { name: "Model" }));
+
+    expect(runtimeMock.toggleInspector).toHaveBeenCalledWith("model");
+
+    view.unmount();
+    runtimeMock.toggleInspector.mockClear();
+    runtimeMock.inspectorTabOpen = false;
+    renderWorkspace({ isMobileViewport: false });
+
+    const collapsedDetailsPanel = document.querySelector("[data-runtime-details-panel='conversation']") as HTMLElement;
+    expect(collapsedDetailsPanel).toBeInTheDocument();
+    expect(within(collapsedDetailsPanel).getByText("Session")).toBeInTheDocument();
+    expect(within(collapsedDetailsPanel).queryByText("OpenRouter")).not.toBeInTheDocument();
+    expect(within(collapsedDetailsPanel).getByRole("button", { name: "Model" })).not.toHaveClass("is-active");
+  });
+
+  it("keeps agent private skills locked and only lists public skills as available", () => {
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "skills";
+    runtimeMock.inspectorTabOpen = true;
+    runtimeMock.skills = [
+      {
+        id: "agent-skill-travel",
+        name: "Travel Agent Skill",
+        description: "Private reusable rulebook for travel pages",
+        kind: "skill",
+        active: true,
+        visibility: "agent-private",
+        locked: true,
+      },
+      {
+        id: "deploy-test-service",
+        name: "Deploy Test Service",
+        description: "Deploy verification workflow",
+        kind: "skill",
+        active: true,
+        visibility: "public",
+        locked: false,
+      },
+      {
+        id: "frontend-design",
+        name: "Frontend Design",
+        description: "Shared frontend delivery standards",
+        kind: "skill",
+        active: false,
+        visibility: "public",
+        locked: false,
+      },
+      {
+        id: "agent-skill-writing",
+        name: "Writing Agent Skill",
+        description: "Private reusable writing rules",
+        kind: "skill",
+        active: false,
+        visibility: "agent-private",
+        locked: true,
+      },
+    ];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    const travelLabel = screen.getByText("Travel Agent Skill").closest("label") as HTMLElement;
+    const privateCheckbox = within(travelLabel).getByRole("checkbox") as HTMLInputElement;
+    expect(privateCheckbox).toBeChecked();
+    expect(privateCheckbox).toBeDisabled();
+
+    fireEvent.click(privateCheckbox);
+    expect(runtimeMock.toggleSkill).not.toHaveBeenCalledWith("agent-skill-travel", false);
+
+    expect(screen.getByText("Deploy Test Service")).toBeInTheDocument();
+    expect(screen.getByText("Frontend Design")).toBeInTheDocument();
+    expect(screen.queryByText("Writing Agent Skill")).not.toBeInTheDocument();
   });
 
   it("focuses the mobile composer on first touch so keyboard handling matches terminal", () => {

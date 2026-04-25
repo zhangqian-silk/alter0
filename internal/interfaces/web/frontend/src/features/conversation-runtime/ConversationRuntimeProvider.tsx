@@ -106,6 +106,7 @@ type ChatCapability = {
   description?: string;
   scope?: string;
   enabled?: boolean;
+  metadata?: Record<string, string>;
 };
 
 type AgentSessionProfileField = {
@@ -123,6 +124,7 @@ type ChatAgent = {
   tools?: string[];
   skills?: string[];
   mcps?: string[];
+  capabilities?: string[];
   session_profile_fields?: AgentSessionProfileField[];
 };
 
@@ -162,6 +164,9 @@ type RuntimeSelection = {
   description: string;
   kind: "tool" | "mcp" | "skill";
   active: boolean;
+  visibility?: "public" | "agent-private";
+  locked?: boolean;
+  ownerAgentID?: string;
 };
 
 type RuntimeTargetOption = {
@@ -201,6 +206,7 @@ type ConversationRuntimeContextValue = {
   compact: boolean;
   inspectorOpen: boolean;
   inspectorTab: "target" | "model" | "capabilities" | "skills" | "session-profile";
+  inspectorTabOpen: boolean;
   sessions: ChatSession[];
   activeSession: ChatSession | null;
   sessionItems: Array<{
@@ -260,6 +266,52 @@ type StreamResult = {
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeRuntimeAgentID(value: unknown): string {
+  const normalized = normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+  return normalized || "unknown";
+}
+
+function agentHasCapability(agent: ChatAgent | null, capability: string): boolean {
+  const lookup = capability.toLowerCase();
+  return Boolean(agent?.capabilities?.some((item) => normalizeText(item).toLowerCase() === lookup));
+}
+
+function isTravelRuntimeAgent(agent: ChatAgent | null): boolean {
+  const id = normalizeText(agent?.id).toLowerCase();
+  const name = normalizeText(agent?.name).toLowerCase();
+  return id === "travel" || name.includes("travel") || agentHasCapability(agent, "travel");
+}
+
+function buildAgentPrivateSkill(route: ConversationRoute, agent: ChatAgent | null): RuntimeSelection | null {
+  if (route !== "agent-runtime" || !agent) {
+    return null;
+  }
+  const normalizedAgentID = normalizeRuntimeAgentID(agent.id);
+  const name = normalizeText(agent.name) || normalizeText(agent.id) || "Agent";
+  const description = isTravelRuntimeAgent(agent)
+    ? "Private reusable rulebook for the current travel agent's city-page structure, itinerary composition, rendering conventions, and stable travel preferences."
+    : "Private reusable rulebook for the current agent's execution patterns, output structure, domain heuristics, and stable preferences.";
+  return {
+    id: `agent-skill-${normalizedAgentID}`,
+    name: `${name} Skill`,
+    description,
+    kind: "skill",
+    active: true,
+    visibility: "agent-private",
+    locked: true,
+    ownerAgentID: normalizeText(agent.id),
+  };
+}
+
+function isPublicSkillCapability(skill: ChatCapability): boolean {
+  const metadata = skill.metadata || {};
+  const visibility = normalizeText(metadata["alter0.skill.visibility"] || metadata["skill.visibility"]).toLowerCase();
+  return visibility !== "agent-private" && visibility !== "private";
 }
 
 function makeID(prefix: string): string {
@@ -386,14 +438,20 @@ function codexRuntimeProvider(): ChatProvider {
   };
 }
 
-function runtimeProvidersForRoute(route: ConversationRoute, providers: ChatProvider[]): ChatProvider[] {
-  if (route !== "chat") {
-    return providers;
-  }
+function runtimeProviders(providers: ChatProvider[]): ChatProvider[] {
   if (providers.some((provider) => normalizeText(provider.id) === CODEX_RUNTIME_PROVIDER_ID)) {
     return providers;
   }
   return [...providers, codexRuntimeProvider()];
+}
+
+function isSelectableRuntimeAgent(agent: ChatAgent | null): agent is ChatAgent {
+  if (!agent || agent.enabled === false) {
+    return false;
+  }
+  const id = normalizeText(agent.id).toLowerCase();
+  const name = normalizeText(agent.name).toLowerCase();
+  return id !== "main" && id !== "alter0" && name !== "alter0";
 }
 
 function normalizeChatAgent(item: unknown): ChatAgent | null {
@@ -865,6 +923,7 @@ export function ConversationRuntimeProvider({
   const [compact, setCompact] = useState(() => isCompactViewport());
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"target" | "model" | "capabilities" | "skills" | "session-profile">("model");
+  const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
   const persistTimerRef = useRef<number>(0);
@@ -875,7 +934,7 @@ export function ConversationRuntimeProvider({
   const activeSessionID = activeSessionByRoute[route];
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
   const activeDraftAttachments = activeSessionID ? composerAttachmentDrafts[activeSessionID] || [] : [];
-  const availableProviders = runtimeProvidersForRoute(route, providers);
+  const availableProviders = runtimeProviders(providers);
   const activeAgent = activeSession?.target.type === "agent"
     ? agents.find((agent) => normalizeText(agent.id) === normalizeText(activeSession.target.id)) || null
     : null;
@@ -933,6 +992,28 @@ export function ConversationRuntimeProvider({
     );
     const existing = currentSessions[route].find((session) => session.id === preferredActiveState[route]) || null;
     if (existing) {
+      if (
+        route === "agent-runtime"
+        && targetValue.type === "agent"
+        && targetValue.id
+        && existing.target.id !== targetValue.id
+        && existing.messages.length === 0
+      ) {
+        const nextSession = {
+          ...existing,
+          target: targetValue,
+          toolIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.tools),
+          skillIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.skills),
+          mcpIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.mcps),
+        };
+        const nextSessionsByRoute = {
+          ...currentSessions,
+          [route]: currentSessions[route].map((session) => session.id === existing.id ? nextSession : session),
+        };
+        setSessionsByRoute(nextSessionsByRoute);
+        schedulePersistSessionsState(nextSessionsByRoute, preferredActiveState);
+        return nextSession;
+      }
       return existing;
     }
     const created: ChatSession = {
@@ -1073,7 +1154,7 @@ export function ConversationRuntimeProvider({
     attachments: ComposerAttachment[],
   ) => {
     const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
-    const selection = resolveModelSelection(session, runtimeProvidersForRoute(routeKey, providers));
+    const selection = resolveModelSelection(session, runtimeProviders(providers));
     const body = await apiClient.post<{
       result?: {
         output?: string;
@@ -1119,7 +1200,7 @@ export function ConversationRuntimeProvider({
     attachments: ComposerAttachment[],
   ): Promise<StreamResult> => {
     const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
-    const selection = resolveModelSelection(session, runtimeProvidersForRoute(routeKey, providers));
+    const selection = resolveModelSelection(session, runtimeProviders(providers));
     let sawEvent = false;
     let sawDone = false;
     let output = "";
@@ -1358,7 +1439,7 @@ export function ConversationRuntimeProvider({
       try {
         const agentPayload = await apiClient.get<{ items?: ChatAgent[] }>("/api/agents");
         const nextAgents = Array.isArray(agentPayload.items)
-          ? agentPayload.items.map(normalizeChatAgent).filter((agent): agent is ChatAgent => agent !== null && agent.enabled !== false)
+          ? agentPayload.items.map(normalizeChatAgent).filter(isSelectableRuntimeAgent)
           : [];
         setAgents(nextAgents);
         setSelectedAgentID((current) => current || normalizeText(nextAgents[0]?.id));
@@ -1487,6 +1568,7 @@ export function ConversationRuntimeProvider({
     compact,
     inspectorOpen,
     inspectorTab,
+    inspectorTabOpen,
     sessions: activeSessions,
     activeSession,
     sessionItems: activeSessions.map((session) => ({
@@ -1549,18 +1631,23 @@ export function ConversationRuntimeProvider({
         }))
         .filter((item) => item.id),
     ],
-    skills: skills
-      .filter((item) => item.enabled !== false)
-      .map((item) => ({
-        id: normalizeText(item.id),
-        name: normalizeText(item.name) || normalizeText(item.id),
-        description: normalizeText(item.description) || normalizeText(item.scope) || "Skill",
-        kind: "skill" as const,
-        active: Boolean(activeSession?.skillIDs.includes(normalizeText(item.id))),
-      }))
-      .filter((item) => item.id),
+    skills: [
+      buildAgentPrivateSkill(route, currentAgent),
+      ...skills
+        .filter((item) => item.enabled !== false && isPublicSkillCapability(item))
+        .map((item) => ({
+          id: normalizeText(item.id),
+          name: normalizeText(item.name) || normalizeText(item.id),
+          description: normalizeText(item.description) || normalizeText(item.scope) || "Skill",
+          kind: "skill" as const,
+          active: Boolean(activeSession?.skillIDs.includes(normalizeText(item.id))),
+          visibility: "public" as const,
+          locked: false,
+        }))
+        .filter((item) => item.id),
+    ].filter((item): item is RuntimeSelection => Boolean(item?.id)),
     toolCount: (activeSession?.toolIDs.length || 0) + (activeSession?.mcpIDs.length || 0),
-    skillCount: activeSession?.skillIDs.length || 0,
+    skillCount: (activeSession?.skillIDs.length || 0) + (buildAgentPrivateSkill(route, currentAgent) ? 1 : 0),
     createSession: () => {
       ensureSession(null, { ...activeSessionByRoute, [route]: "" });
     },
@@ -1611,14 +1698,22 @@ export function ConversationRuntimeProvider({
     sendPrompt,
     toggleInspector: (tab) => {
       if (!tab) {
-        setInspectorOpen((current) => !current);
+        setInspectorOpen((current) => {
+          const nextOpen = !current;
+          if (nextOpen) {
+            setInspectorTabOpen(true);
+          }
+          return nextOpen;
+        });
         return;
       }
       if (tab === inspectorTab) {
-        setInspectorOpen((current) => !current);
+        setInspectorOpen(true);
+        setInspectorTabOpen((current) => !current);
         return;
       }
       setInspectorTab(tab);
+      setInspectorTabOpen(true);
       setInspectorOpen(true);
     },
     closeInspector: () => setInspectorOpen(false),
@@ -1682,6 +1777,9 @@ export function ConversationRuntimeProvider({
       if (!value) {
         return;
       }
+      if (value === buildAgentPrivateSkill(route, currentAgent)?.id) {
+        return;
+      }
       const mutate = (items: string[]) =>
         checked
           ? normalizeSelectionIDs([...items, value])
@@ -1709,6 +1807,7 @@ export function ConversationRuntimeProvider({
     compact,
     inspectorOpen,
     inspectorTab,
+    inspectorTabOpen,
     activeSessions,
     activeSession,
     language,
