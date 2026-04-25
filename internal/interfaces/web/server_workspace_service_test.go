@@ -434,10 +434,17 @@ func TestWorkspaceServiceRegistrationCRUD(t *testing.T) {
 		workspaceService: registry,
 	}
 
+	putWebBody, err := json.Marshal(map[string]string{
+		"service_type":     "frontend_dist",
+		"repository_path": repoPath,
+	})
+	if err != nil {
+		t.Fatalf("marshal web registration: %v", err)
+	}
 	putWebReq := httptest.NewRequest(
 		http.MethodPut,
 		"/api/control/workspace-services/session-workspace-service",
-		strings.NewReader(`{"service_type":"frontend_dist","repository_path":"`+repoPath+`"}`),
+		strings.NewReader(string(putWebBody)),
 	)
 	putWebRec := httptest.NewRecorder()
 	server.workspaceServiceItemHandler(putWebRec, putWebReq)

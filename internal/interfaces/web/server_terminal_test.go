@@ -377,19 +377,21 @@ func TestTerminalSessionItemHandlerReturnsStepDetail(t *testing.T) {
 }
 
 func TestTerminalViewPreservesInputDraftAcrossPaint(t *testing.T) {
-	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
+	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeComposer.tsx")
 	markers := []string{
 		"window.localStorage.getItem(`terminal:${activeSessionID}`) || \"\"",
 		"window.localStorage.setItem(`terminal:${activeSessionID}`, inputValue);",
 		"window.localStorage.removeItem(`terminal:${sessionID}`);",
 		"window.localStorage.removeItem(`terminal:${session.id}`);",
 		"const timer = window.setTimeout(() => {",
-		"data-runtime-input-form",
-		"data-runtime-input",
-		"data-runtime-submit",
-		`"data-composer-form": "terminal"`,
-		`"data-composer-input": "terminal"`,
-		`"data-composer-submit": "terminal"`,
+		`runtimeKind: "terminal"`,
+		`data-runtime-composer-kind={runtimeKind}`,
+		`data-runtime-composer-input={runtimeKind}`,
+		`data-runtime-composer-submit={runtimeKind}`,
+		`data-composer-form={composerAlias}`,
+		`data-composer-input={composerAlias}`,
+		`data-composer-submit={composerAlias}`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {

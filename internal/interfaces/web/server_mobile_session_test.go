@@ -84,10 +84,10 @@ func TestConversationDetailsUseSharedWorkspaceHeader(t *testing.T) {
 	markers := []string{
 		"toggleInspector: (tab) => {",
 		`data-runtime-workspace-header="true"`,
-		`data-runtime-header-kind="conversation"`,
+		`headerProps: { "data-runtime-header-kind": "conversation" },`,
 		`data-runtime-details-panel`,
-		`customHeaderContent: conversationHeader,`,
-		`className="conversation-inspector conversation-session-details workspace-details-content"`,
+		`detailsSummary: conversationDetailsSummary,`,
+		`detailsClassName: "conversation-inspector conversation-session-details workspace-details-content"`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
@@ -243,13 +243,13 @@ func TestTerminalMobileActionsLinkWorkbenchNavAndSessionDrawer(t *testing.T) {
 		`const workbench = useWorkbenchContext();`,
 		`const shellCopy = getLegacyShellCopy(workbench.language);`,
 		`mobileHeaderProps: { "data-runtime-mobile-variant": "terminal" },`,
-		`mobileNavButtonClassName: "nav-toggle is-quiet",`,
+		`mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",`,
 		`mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },`,
 		`onMobileNav: workbench.toggleMobileNav,`,
-		`mobileSessionButtonClassName: "panel-toggle is-quiet",`,
+		`mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",`,
 		`mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },`,
 		`onMobileSession: workbench.toggleMobileSessionPane,`,
-		`mobilePrimaryButtonClassName: "mobile-new-chat is-primary",`,
+		`mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",`,
 		`mobilePrimaryButtonProps: { "data-runtime-create-session": "terminal" },`,
 		`mobileNavButtonLabel: shellCopy.chatMenu,`,
 		`mobileSessionButtonLabel: copy.sessions,`,
