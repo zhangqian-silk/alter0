@@ -34,6 +34,28 @@ describe("ReactManagedTerminalRouteBody", () => {
           ],
         }));
       }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "summary",
+              name: "Summary",
+              enabled: true,
+              metadata: {
+                "skill.description": "Summarize terminal work.",
+              },
+            },
+            {
+              id: "agent-private",
+              name: "Agent Private",
+              enabled: true,
+              metadata: {
+                "alter0.skill.visibility": "agent-private",
+              },
+            },
+          ],
+        }));
+      }
       if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
         return Promise.resolve(jsonResponse({
           session: {
@@ -1112,6 +1134,39 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(fetchMock.mock.calls.some(([request, init]) =>
       String(request) === "/api/terminal/sessions/terminal-1/input"
       && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+  });
+
+  it("lets terminal users choose public skills for the next input", async () => {
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-session-select='terminal-1']")).toBeInTheDocument();
+    });
+
+    const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
+    fireEvent.click(within(workspaceHeader).getByRole("button", { name: "Details" }));
+
+    const detailsPanel = await screen.findByTestId("terminal-skill-selector");
+    expect(within(detailsPanel).getByText("Summary")).toBeInTheDocument();
+    expect(within(detailsPanel).queryByText("Agent Private")).not.toBeInTheDocument();
+
+    fireEvent.click(within(detailsPanel).getByLabelText("Summary"));
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
+      target: { value: "summarize this workspace" },
+    });
+    fireEvent.click(document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toHaveValue("");
+    });
+
+    const fetchMock = vi.mocked(fetch);
+    const inputCall = fetchMock.mock.calls.find(([request, init]) =>
+      String(request) === "/api/terminal/sessions/terminal-1/input"
+      && String(init?.method || "GET").toUpperCase() === "POST");
+    expect(inputCall).toBeTruthy();
+    const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
+    expect(payload.skill_ids).toEqual(["summary"]);
   });
 
   it("does not refresh a ready session while the terminal output is being scrolled", async () => {

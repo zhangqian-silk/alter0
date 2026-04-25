@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	controldomain "alter0/internal/control/domain"
+	execdomain "alter0/internal/execution/domain"
 	terminalapp "alter0/internal/terminal/application"
 )
 
@@ -22,6 +24,7 @@ type terminalSessionCreateRequest struct {
 type terminalSessionInputRequest struct {
 	Input       string                     `json:"input"`
 	Attachments []messageAttachmentRequest `json:"attachments,omitempty"`
+	SkillIDs    []string                   `json:"skill_ids,omitempty"`
 }
 
 type terminalSessionRecoverRequest struct {
@@ -230,10 +233,11 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			input = defaultAttachmentContent(attachments)
 		}
 		session, err := s.terminals.InputWithAttachments(terminalapp.InputRequest{
-			OwnerID:     ownerID,
-			SessionID:   sessionID,
-			Input:       input,
-			Attachments: attachments,
+			OwnerID:      ownerID,
+			SessionID:    sessionID,
+			Input:        input,
+			Attachments:  attachments,
+			SkillContext: s.resolveTerminalSkillContext(req.SkillIDs),
 		})
 		if err != nil {
 			s.writeTerminalError(w, err)
@@ -266,6 +270,113 @@ func (s *Server) buildTerminalSessionDetail(ownerID string, session any) any {
 		sessionMap["turns"] = turns
 	}
 	return sessionMap
+}
+
+func (s *Server) resolveTerminalSkillContext(skillIDs []string) *execdomain.SkillContext {
+	include := normalizeTerminalSkillIDSet(skillIDs)
+	if len(include) == 0 || s.control == nil {
+		return nil
+	}
+	skills := make([]execdomain.SkillSpec, 0, len(include))
+	for _, capability := range s.control.ListCapabilitiesByType(controldomain.CapabilityTypeSkill) {
+		if !capability.Enabled || !isPublicTerminalSkillCapability(capability) {
+			continue
+		}
+		id := strings.TrimSpace(capability.ID)
+		if _, ok := include[id]; !ok {
+			continue
+		}
+		skills = append(skills, terminalSkillSpecFromCapability(capability))
+	}
+	if len(skills) == 0 {
+		return nil
+	}
+	return &execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills:   skills,
+	}
+}
+
+func normalizeTerminalSkillIDSet(values []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			out[trimmed] = struct{}{}
+		}
+	}
+	return out
+}
+
+func isPublicTerminalSkillCapability(capability controldomain.Capability) bool {
+	metadata := capability.Metadata
+	visibility := strings.ToLower(strings.TrimSpace(metadata["alter0.skill.visibility"]))
+	if visibility == "" {
+		visibility = strings.ToLower(strings.TrimSpace(metadata["skill.visibility"]))
+	}
+	return visibility != "agent-private" && visibility != "private"
+}
+
+func terminalSkillSpecFromCapability(capability controldomain.Capability) execdomain.SkillSpec {
+	metadata := capability.Metadata
+	description := strings.TrimSpace(metadata["skill.description"])
+	if description == "" {
+		description = strings.TrimSpace(capability.Name)
+	}
+	return execdomain.SkillSpec{
+		ID:          strings.TrimSpace(capability.ID),
+		Name:        strings.TrimSpace(capability.Name),
+		Description: description,
+		Guide:       strings.TrimSpace(metadata["skill.guide"]),
+		Priority:    parseTerminalSkillPriority(metadata["skill.priority"]),
+		Constraints: parseTerminalSkillList(metadata["skill.constraints"]),
+		Abilities:   parseTerminalSkillList(metadata["skill.abilities"]),
+		FilePath:    strings.TrimSpace(metadata["skill.file_path"]),
+		Writable:    parseTerminalSkillWritable(metadata["skill.writable"]),
+	}
+}
+
+func parseTerminalSkillPriority(raw string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 100
+	}
+	return value
+}
+
+func parseTerminalSkillWritable(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseTerminalSkillList(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var decoded []string
+	if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
+		return normalizeTerminalSkillStringList(decoded)
+	}
+	return normalizeTerminalSkillStringList(strings.Split(trimmed, ","))
+}
+
+func normalizeTerminalSkillStringList(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {

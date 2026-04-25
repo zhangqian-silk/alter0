@@ -81,6 +81,42 @@ func TestBuildCodexTurnPromptIncludesWorkspaceFiles(t *testing.T) {
 	}
 }
 
+func TestRenderTerminalSkillContextMarkdownIncludesSelectedSkills(t *testing.T) {
+	content := renderTerminalSkillContextMarkdown(&execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills: []execdomain.SkillSpec{{
+			ID:          "summary",
+			Name:        "Summary",
+			Description: "Summarize terminal work.",
+			Guide:       "Use concise structured summaries.",
+			FilePath:    ".alter0/skills/summary/SKILL.md",
+			Constraints: []string{"Keep output brief."},
+		}},
+	})
+
+	for _, want := range []string{
+		"# Skills",
+		"- protocol: alter0.skill-context/v1",
+		"## Summary",
+		"- id: summary",
+		"- file_path: .alter0/skills/summary/SKILL.md",
+		"Use concise structured summaries.",
+		"- Keep output brief.",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("expected skill markdown to contain %q, got:\n%s", want, content)
+		}
+	}
+}
+
+func TestRenderTerminalSkillContextMarkdownMarksEmptySelection(t *testing.T) {
+	content := renderTerminalSkillContextMarkdown(nil)
+
+	if !strings.Contains(content, "No skills selected for this Terminal turn.") {
+		t.Fatalf("expected empty skill selection marker, got:\n%s", content)
+	}
+}
+
 func TestPrepareTurnInputAttachmentsUsesWorkspaceFilesWithoutDataURLs(t *testing.T) {
 	workspaceDir := t.TempDir()
 	sourcePath := filepath.Join(workspaceDir, "source-requirements.md")

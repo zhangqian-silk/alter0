@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	controlapp "alter0/internal/control/application"
+	controldomain "alter0/internal/control/domain"
 	terminalapp "alter0/internal/terminal/application"
 	terminaldomain "alter0/internal/terminal/domain"
 )
@@ -201,6 +203,70 @@ func TestTerminalSessionItemHandlerWritesImageAttachments(t *testing.T) {
 	}
 	if service.inputReq.Attachments[0].DataURL != "data:image/png;base64,ZmFrZQ==" {
 		t.Fatalf("expected attachment data url, got %+v", service.inputReq.Attachments[0])
+	}
+}
+
+func TestTerminalSessionItemHandlerPassesSelectedSkills(t *testing.T) {
+	service := &stubWebTerminalService{
+		inputResp: terminaldomain.Session{
+			ID:        "terminal-2",
+			OwnerID:   sharedTerminalClientID,
+			Title:     "terminal-2",
+			Status:    terminaldomain.SessionStatusBusy,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertCapability(controldomain.Capability{
+		ID:      "summary",
+		Name:    "Summary",
+		Type:    controldomain.CapabilityTypeSkill,
+		Enabled: true,
+		Scope:   controldomain.CapabilityScopeGlobal,
+		Version: controldomain.DefaultCapabilityVersion,
+		Metadata: map[string]string{
+			"skill.description": "Summarize terminal work.",
+			"skill.guide":       "Use concise structured summaries.",
+			"skill.file_path":   ".alter0/skills/summary/SKILL.md",
+		},
+	}); err != nil {
+		t.Fatalf("upsert skill failed: %v", err)
+	}
+	if err := control.UpsertCapability(controldomain.Capability{
+		ID:      "private",
+		Name:    "Private",
+		Type:    controldomain.CapabilityTypeSkill,
+		Enabled: true,
+		Scope:   controldomain.CapabilityScopeGlobal,
+		Version: controldomain.DefaultCapabilityVersion,
+		Metadata: map[string]string{
+			"alter0.skill.visibility": "agent-private",
+		},
+	}); err != nil {
+		t.Fatalf("upsert private skill failed: %v", err)
+	}
+	server := &Server{terminals: service, control: control}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"input":"summarize","skill_ids":["summary","private","missing"]}`))
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if service.inputReq.SkillContext == nil {
+		t.Fatalf("expected skill context")
+	}
+	if len(service.inputReq.SkillContext.Skills) != 1 {
+		t.Fatalf("expected only public selected skill, got %+v", service.inputReq.SkillContext.Skills)
+	}
+	if service.inputReq.SkillContext.Skills[0].ID != "summary" {
+		t.Fatalf("expected summary skill, got %+v", service.inputReq.SkillContext.Skills[0])
+	}
+	if service.inputReq.SkillContext.Skills[0].Guide != "Use concise structured summaries." {
+		t.Fatalf("expected skill guide, got %+v", service.inputReq.SkillContext.Skills[0])
 	}
 }
 
