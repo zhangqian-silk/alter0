@@ -339,7 +339,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(within(workspaceHeader).getByText("Ready")).toBeInTheDocument();
     expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toBeInTheDocument();
-    expect(within(workspaceHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
+    expect(within(workspaceHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
     expect(document.querySelector("[data-terminal-close]")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-panel='terminal-console']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-form")).toBeInTheDocument();
@@ -347,10 +347,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".runtime-composer-input")).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-submit")).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-tools")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-composer-meta")).toBeInTheDocument();
-    expect(document.querySelector("[data-composer-form='terminal']")).toHaveClass("runtime-composer-form");
-    expect(document.querySelector("[data-composer-input='terminal']")).toHaveClass("runtime-composer-input");
-    expect(document.querySelector("[data-runtime-submit='terminal']")).toHaveClass("runtime-composer-submit");
+    expect(document.querySelector(".runtime-composer-meta")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-composer-form[data-runtime-composer-kind='terminal']")).toHaveClass("runtime-composer-form");
+    expect(document.querySelector("[data-runtime-composer-input='terminal']")).toHaveClass("runtime-composer-input");
+    expect(document.querySelector("[data-runtime-composer-submit='terminal']")).toHaveClass("runtime-composer-submit");
     expect(document.querySelector(".terminal-composer-shell")).not.toBeInTheDocument();
     expect(document.querySelector(".terminal-chat-form")).not.toBeInTheDocument();
     expect(document.querySelector(".terminal-composer-input")).not.toBeInTheDocument();
@@ -358,7 +358,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".terminal-composer-tools")).not.toBeInTheDocument();
     expect(document.querySelector(".terminal-composer-meta")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-attachment-strip='true']")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-runtime-submit='terminal'] svg")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-composer-submit='terminal'] svg")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-shell")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-toolbar")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-copy")).toBeInTheDocument();
@@ -377,7 +377,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     fireEvent.click(within(workspaceHeader).getByRole("button", { name: "Details" }));
     const metaPanel = document.querySelector("[data-runtime-details-panel='terminal']") as HTMLElement;
     expect(metaPanel).toBeInTheDocument();
-    expect(workspaceHeader.contains(metaPanel)).toBe(true);
+    expect(workspaceHeader.contains(metaPanel)).toBe(false);
     expect(within(metaPanel).getByText("/workspace/alter0")).toBeInTheDocument();
   });
 
@@ -585,7 +585,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
     });
 
     const fileInput = document.querySelector('input[type="file"][accept="image/*,.txt,.md,.json,.yaml,.yml,.csv,.log,.pdf"]') as HTMLInputElement;
@@ -604,10 +604,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(screen.getByRole("dialog", { name: "terminal-shot.svg" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
 
-    fireEvent.change(document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement, {
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "inspect screenshot" },
     });
-    fireEvent.click(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
+    fireEvent.click(document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement);
 
     await waitFor(() => {
       const fetchMock = vi.mocked(fetch);
@@ -852,13 +852,13 @@ describe("ReactManagedTerminalRouteBody", () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
     });
 
-    fireEvent.change(document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement, {
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "pwd" },
     });
-    fireEvent.click(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
+    fireEvent.click(document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement);
 
     await waitFor(() => {
       expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute(
@@ -869,7 +869,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     await waitFor(() => {
       expect(document.querySelector("[data-terminal-turn='turn-2']")).toBeInTheDocument();
     });
-    expect(document.querySelector("[data-runtime-input='terminal']")).toHaveValue("");
+    expect(document.querySelector("[data-runtime-composer-input='terminal']")).toHaveValue("");
 
     const fetchMock = vi.mocked(fetch);
     expect(fetchMock.mock.calls.some(([request, init]) =>
@@ -966,7 +966,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     const { container } = renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
     });
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement | null;
@@ -982,10 +982,10 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(screen.getByAltText("diagram.svg")).toBeInTheDocument();
     });
 
-    fireEvent.change(document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement, {
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "describe this image" },
     });
-    fireEvent.click(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
+    fireEvent.click(document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement);
 
     await waitFor(() => {
       expect(document.querySelector("[data-terminal-turn='turn-2']")).toBeInTheDocument();
@@ -1056,16 +1056,16 @@ describe("ReactManagedTerminalRouteBody", () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
-      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
     });
 
-    fireEvent.change(document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement, {
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "pwd" },
     });
-    fireEvent.click(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
+    fireEvent.click(document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement);
 
-    expect(document.querySelector("[data-runtime-submit='terminal']")).toBeDisabled();
-    expect(document.querySelector("[data-runtime-submit='terminal']")).toHaveAttribute("aria-label", "Sending...");
+    expect(document.querySelector("[data-runtime-composer-submit='terminal']")).toBeDisabled();
+    expect(document.querySelector("[data-runtime-composer-submit='terminal']")).toHaveAttribute("aria-label", "Sending...");
 
     resolveCreateSession?.(jsonResponse({
       session: {
@@ -1094,18 +1094,18 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     await waitFor(() => {
-      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
     });
 
-    const input = document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement;
+    const input = document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement;
     fireEvent.focus(input);
     fireEvent.change(input, {
       target: { value: "pwd" },
     });
-    fireEvent.touchStart(document.querySelector("[data-runtime-submit='terminal']") as HTMLButtonElement);
+    fireEvent.touchStart(document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(document.querySelector("[data-runtime-input='terminal']")).toHaveValue("");
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toHaveValue("");
     });
 
     const fetchMock = vi.mocked(fetch);
@@ -1168,16 +1168,16 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     const mobileHeader = document.querySelector("[data-runtime-mobile-variant='terminal']") as HTMLElement;
-    expect(mobileHeader).toHaveAttribute("data-runtime-mobile-header", "leading");
-    expect(mobileHeader.querySelector(".nav-toggle")).toHaveClass(
+    expect(mobileHeader).toHaveAttribute("data-runtime-mobile-header", "body");
+    expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toHaveClass(
       "runtime-workspace-mobile-action",
       "is-quiet",
     );
-    expect(mobileHeader.querySelector(".panel-toggle")).toHaveClass(
+    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toHaveClass(
       "runtime-workspace-mobile-action",
       "is-quiet",
     );
-    expect(mobileHeader.querySelector(".mobile-new-chat")).toHaveClass(
+    expect(within(mobileHeader).getByRole("button", { name: "New" })).toHaveClass(
       "runtime-workspace-mobile-action",
       "is-primary",
     );
@@ -1222,10 +1222,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     await waitFor(() => {
-      expect(document.querySelector("[data-runtime-input='terminal']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
     });
 
-    const input = document.querySelector("[data-runtime-input='terminal']") as HTMLTextAreaElement;
+    const input = document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement;
     const focusMock = vi.fn();
     Object.defineProperty(input, "focus", {
       configurable: true,

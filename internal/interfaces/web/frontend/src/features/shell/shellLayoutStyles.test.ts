@@ -121,6 +121,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 10px 20px -18px rgba(37, 99, 235, 0.32);");
     expect(stylesheet).toContain(".runtime-workspace-body {");
     expect(stylesheet).toContain("[data-runtime-view=\"conversation\"] .runtime-workspace-body {");
+    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-workspace-body {");
     expect(stylesheet).toContain("grid-template-rows: auto auto minmax(0, 1fr) auto;");
   });
 
@@ -150,10 +151,10 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-meta {");
     expect(stylesheet).toContain("min-height: 26px;");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-submit {");
-    expect(stylesheet).toContain("width: 40px;");
-    expect(stylesheet).toContain("height: 40px;");
-    expect(stylesheet).toContain("background: linear-gradient(180deg, #1f6feb 0%, #1747a6 100%);");
-    expect(stylesheet).toContain("color: #f8fbff;");
+    expect(stylesheet).toContain("width: 38px;");
+    expect(stylesheet).toContain("height: 38px;");
+    expect(stylesheet).toContain("background: rgba(238, 244, 249, 0.96);");
+    expect(stylesheet).toContain("color: #334155;");
   });
 
   it("locks conversation empty states in place so mobile overscroll cannot drag the header away", () => {
@@ -207,7 +208,7 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\],\s*\[data-runtime-view="terminal"\]\s*\{[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?padding:\s*0;[\s\S]*?gap:\s*0;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="terminal"\]\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\);/,
+      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body\s*\{[\s\S]*?grid-template-rows:\s*auto auto minmax\(0, 1fr\) auto;/,
     );
   });
 
@@ -224,10 +225,43 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-actions\s*\{[\s\S]*?display:\s*flex;[\s\S]*?margin-left:\s*auto;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-submit\s*\{[\s\S]*?width:\s*44px;[\s\S]*?min-width:\s*44px;[\s\S]*?padding:\s*0;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-submit\s*\{[\s\S]*?width:\s*36px;[\s\S]*?min-width:\s*36px;[\s\S]*?padding:\s*0;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-tools\s*\{[\s\S]*?flex-wrap:\s*nowrap;[\s\S]*?gap:\s*8px;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-tools\s*\{[\s\S]*?flex-wrap:\s*nowrap;[\s\S]*?gap:\s*10px;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-composer-form \.runtime-composer-tools\s*\{\s*justify-content:\s*space-between;/,
+    );
+  });
+
+  it("uses one polished mobile composer tray across chat, agent, and terminal runtime pages", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?padding:\s*12px 22px calc\(12px \+ env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset, 0px\)\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(246, 250, 255, 0\.16\) 0%, rgba\(246, 250, 255, 0\.94\) 34%, rgba\(250, 253, 255, 0\.98\) 100%\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[\s\S]*?padding:\s*12px 14px 10px;[\s\S]*?border-radius:\s*32px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.96\);[\s\S]*?box-shadow:\s*0 20px 42px -34px rgba\(8, 37, 69, 0\.24\), inset 0 1px 0 rgba\(255, 255, 255, 0\.94\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-input\s*\{[\s\S]*?height:\s*56px;[\s\S]*?min-height:\s*56px;[\s\S]*?resize:\s*none;[\s\S]*?background:\s*transparent;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-submit\s*\{[\s\S]*?background:\s*rgba\(238, 244, 249, 0\.96\);[\s\S]*?color:\s*#334155;[\s\S]*?box-shadow:\s*0 10px 20px -18px rgba\(15, 23, 42, 0\.28\);/,
+    );
+  });
+
+  it("keeps the mobile runtime top actions and workspace header as separated layers", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?padding:\s*18px 14px 14px;[\s\S]*?border-bottom:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(240, 252, 255, 0\.94\) 0%, rgba\(248, 252, 255, 0\.88\) 100%\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-head\s*\{[\s\S]*?padding-top:\s*18px;[\s\S]*?padding-bottom:\s*14px;[\s\S]*?border-bottom:\s*1px solid rgba\(202, 220, 235, 0\.7\);[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.92\);/,
     );
   });
 
@@ -251,7 +285,7 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain("[data-runtime-view=\"conversation\"] .runtime-composer-form .runtime-composer-upload {");
+    expect(stylesheet).toContain("[data-runtime-view=\"conversation\"] .runtime-composer-form .runtime-composer-upload,");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-upload {");
     expect(stylesheet).toContain("width: auto;");
     expect(stylesheet).toContain("min-width: fit-content;");
@@ -328,6 +362,24 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("min-width: 0;");
     expect(stylesheet).toContain(".runtime-workspace-actions.is-mobile-empty {");
     expect(stylesheet).toContain("justify-content: flex-end;");
+  });
+
+  it("keeps mobile conversation empty states aligned with the original chat baseline", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.conversation-empty-state\s*\{[\s\S]*?margin-left:\s*14px;[\s\S]*?padding:\s*126px 0 40px;[\s\S]*?align-self:\s*start;[\s\S]*?align-content:\s*start;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(246, 250, 255, 0\.16\) 0%, rgba\(246, 250, 255, 0\.94\) 34%, rgba\(250, 253, 255, 0\.98\) 100%\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-input\s*\{[\s\S]*?height:\s*56px;[\s\S]*?min-height:\s*56px;[\s\S]*?resize:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-submit\s*\{[\s\S]*?background:\s*rgba\(238, 244, 249, 0\.96\);[\s\S]*?color:\s*#334155;/,
+    );
   });
 
   it("anchors narrow shell drawers to the viewport edges instead of floating them inside the desktop canvas", () => {
@@ -446,9 +498,9 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("justify-content: flex-end;");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-meta {");
     expect(stylesheet).toContain("border: 1px solid rgba(203, 213, 225, 0.86);");
-    expect(stylesheet).toContain("background: linear-gradient(180deg, #1f6feb 0%, #1747a6 100%);");
-    expect(stylesheet).toContain("box-shadow: 0 14px 24px -18px rgba(23, 71, 166, 0.56);");
-    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-submit .runtime-composer-submit-icon svg {");
+    expect(stylesheet).toContain("background: rgba(238, 244, 249, 0.96);");
+    expect(stylesheet).toContain("box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.28);");
+    expect(stylesheet).toContain(".runtime-composer-submit .runtime-composer-submit-icon svg {");
     expect(stylesheet).toContain("width: 18px;");
     expect(stylesheet).toContain("transform: none;");
   });
@@ -516,13 +568,13 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body\s*\{[\s\S]*?border-radius:\s*0;[\s\S]*?border-left:\s*0;[\s\S]*?border-right:\s*0;[\s\S]*?box-shadow:\s*none;/,
+      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body\s*\{[\s\S]*?border-radius:\s*0;[\s\S]*?border-left:\s*0;[\s\S]*?border-right:\s*0;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-composer-form\s*\{[\s\S]*?border-radius:\s*24px;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-composer-form\s*\{[\s\S]*?border-radius:\s*32px;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-composer-submit\s*\{[\s\S]*?box-shadow:\s*none;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-composer-submit\s*\{[\s\S]*?box-shadow:\s*0 10px 20px -18px rgba\(15, 23, 42, 0\.28\);/,
     );
   });
 });

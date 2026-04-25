@@ -140,7 +140,7 @@ export function RuntimeWorkspaceHeader({
         <button
           type="button"
           className="workspace-details-backdrop"
-          aria-label={detailsLabel}
+          aria-label={`Close ${detailsLabel}`}
           data-runtime-details-backdrop="true"
           onClick={onToggleDetails}
         ></button>

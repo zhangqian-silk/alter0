@@ -13,7 +13,7 @@ import {
 import { getLegacyShellCopy } from "../legacyShellCopy";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
 import type { RuntimeTimelineItem, RuntimeTimelineProcessStep } from "./RuntimeTimeline";
-import { RouteFieldRow, normalizeText } from "./RouteBodyPrimitives";
+import { normalizeText } from "./RouteBodyPrimitives";
 import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
 import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
 
@@ -1269,63 +1269,17 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const canInput = !activeSession || activeStatus !== "busy";
   const isWorkspaceLive = activeSession && isLiveStatus(activeSession.status || "") ? "true" : "false";
   const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
-  const terminalHeader = (
-    <header
-      className="runtime-workspace-head is-compact is-sticky"
-      data-runtime-workspace-header="true"
-      data-runtime-header-kind="terminal"
-    >
-      <div className="runtime-workspace-row runtime-workspace-title-row is-compact">
-        <div className="runtime-workspace-copy is-compact">
-          <span className="runtime-workspace-eyebrow">{copy.sessionRuntime}</span>
-          <h4>{activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession}</h4>
-          <span className="runtime-workspace-subcopy">
-            {activeSession ? sessionLastOutputLabel(activeSession, copy) : copy.empty}
-          </span>
-        </div>
-        {activeSession ? (
-          <div className={`runtime-workspace-status is-${activeStatus}`} data-runtime-status-indicator={activeStatus}>
-            <span className="runtime-workspace-status-dot" aria-hidden="true"></span>
-            <span>{renderStatus(activeSession.status || "", copy)}</span>
-          </div>
-        ) : null}
-        <div className="runtime-workspace-actions workspace-header-actions">
-          <button
-            className="runtime-workspace-button is-quiet"
-            type="button"
-            aria-expanded={workbench.isMobileViewport ? workbench.mobileSessionPaneOpen : true}
-            onClick={workbench.toggleMobileSessionPane}
-          >
-            {copy.sessions}
-          </button>
-          <button
-            className={`runtime-workspace-button${metaOpen ? " is-active" : ""}`}
-            type="button"
-            data-runtime-details-toggle="terminal"
-            aria-expanded={metaOpen}
-            disabled={!activeSession}
-            onClick={() => setMetaOpen((current) => !current)}
-          >
-            {copy.details}
-          </button>
-        </div>
-      </div>
-
-      {activeSession && metaOpen ? (
-        <section className="runtime-workspace-meta-panel" data-runtime-details-panel="terminal">
-          <RouteFieldRow label={copy.session} value={activeSession.id} copyLabel={copy.session} mono />
-          <RouteFieldRow label={copy.shell} value={activeSession.shell} copyLabel={copy.shell} mono />
-          <RouteFieldRow label={copy.path} value={activeSession.working_dir} copyLabel={copy.path} mono multiline />
-          <RouteFieldRow label={copy.status} value={renderStatus(activeSession.status || "", copy)} copyLabel={copy.status} />
-          <RouteFieldRow
-            label={copy.updatedAt}
-            value={formatDateTime(activeSession.updated_at || activeSession.created_at)}
-            copyLabel={copy.updatedAt}
-          />
-        </section>
-      ) : null}
-    </header>
-  );
+  const terminalDetailsSummary = activeSession ? [
+    { label: copy.session, value: activeSession.id, copyLabel: copy.session, mono: true },
+    { label: copy.shell, value: activeSession.shell, copyLabel: copy.shell, mono: true },
+    { label: copy.path, value: activeSession.working_dir, copyLabel: copy.path, mono: true, multiline: true },
+    { label: copy.status, value: renderStatus(activeSession.status || "", copy), copyLabel: copy.status },
+    {
+      label: copy.updatedAt,
+      value: formatDateTime(activeSession.updated_at || activeSession.created_at),
+      copyLabel: copy.updatedAt,
+    },
+  ] : [];
   return {
     shell: {
       rootClassName: "runtime-workspace-view",
@@ -1356,17 +1310,17 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         "data-runtime-live": isWorkspaceLive,
       },
       workspaceBodyRef,
-      mobileHeaderPlacement: workbench.isMobileViewport ? "leading" : undefined,
+      mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
       mobileHeaderProps: { "data-runtime-mobile-variant": "terminal" },
-      mobileNavButtonClassName: "nav-toggle is-quiet",
+      mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
       mobileNavButtonLabel: shellCopy.chatMenu,
       mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
       onMobileNav: workbench.toggleMobileNav,
-      mobileSessionButtonClassName: "panel-toggle is-quiet",
+      mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",
       mobileSessionButtonLabel: copy.sessions,
       mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
       onMobileSession: workbench.toggleMobileSessionPane,
-      mobilePrimaryButtonClassName: "mobile-new-chat is-primary",
+      mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
       mobilePrimaryButtonLabel: copy.newShort,
       mobilePrimaryButtonProps: { "data-runtime-create-session": "terminal" },
       onMobilePrimary: () => void createSession(),
@@ -1418,13 +1372,18 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     },
     header: {
       title: activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession,
-      statusLabel: "",
-      statusTone: "ready",
-      detailsLabel: "",
-      detailsOpen: false,
-      onToggleDetails: () => undefined,
-      detailsDisabled: true,
-      customHeaderContent: terminalHeader,
+      statusLabel: activeSession ? renderStatus(activeSession.status || "", copy) : copy.ready,
+      statusTone: activeStatus,
+      detailsLabel: copy.details,
+      detailsOpen: metaOpen,
+      onToggleDetails: () => setMetaOpen((current) => !current),
+      detailsDisabled: !activeSession,
+      detailsSummary: terminalDetailsSummary,
+      detailsClassName: "runtime-workspace-meta-panel workspace-details-content",
+      headerProps: { "data-runtime-header-kind": "terminal" },
+      statusButtonProps: { "data-runtime-status-indicator": activeStatus },
+      detailsButtonProps: { "data-runtime-details-toggle": "terminal" },
+      detailsPanelProps: { "data-runtime-details-panel": "terminal" },
     },
     screen: {
       panelClassName: "terminal-console-panel",
@@ -1512,10 +1471,10 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       ),
     },
     composer: {
+      runtimeKind: "terminal",
       shellRef: composerShellRef,
       note: composerNote,
       noteProps: { "data-runtime-note": "terminal", "data-runtime-status": activeStatus },
-      formProps: { "data-runtime-input-form": "terminal", "data-composer-form": "terminal" },
       onSubmit: (event) => {
         event.preventDefault();
         void submitInput();
@@ -1539,8 +1498,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       inputValue: inputValue,
       inputProps: {
         placeholder: inputPlaceholder,
-        "data-runtime-input": "terminal",
-        "data-composer-input": "terminal",
         disabled: !canInput || submitting,
       },
       onInputChange: setInputValue,
@@ -1548,25 +1505,16 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       onInputBlur: () => setInputFocused(false),
       onInputPointerDownCapture: handleComposerPointerDownCapture,
       onInputTouchStartCapture: handleComposerTouchStartCapture,
-      metaContent: sessions.length > 0 ? copy.sessionCount(sessions.length) : "",
-      metaProps: { "aria-hidden": sessions.length > 0 ? undefined : "true" },
+      metaContent: undefined,
       addAttachmentLabel: copy.addAttachment,
       addAttachmentButtonProps: { disabled: !canInput || submitting },
       onAddAttachment: handleComposerAttachmentPicker,
       submitButtonProps: {
         id: "terminalSendButton",
-        "data-runtime-submit": "terminal",
-        "data-composer-submit": "terminal",
         disabled: submitting || !canInput,
         onTouchStartCapture: handleSubmitTouchStartCapture,
       },
       submitLabel: submitting ? copy.sending : copy.send,
-      submitIcon: (
-        <svg viewBox="0 0 20 20" fill="none" focusable="false">
-          <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
-          <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
       previewCloseLabel: copy.closePreview,
     },
   };
