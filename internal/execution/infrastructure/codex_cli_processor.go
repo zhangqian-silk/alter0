@@ -248,7 +248,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 	for _, dir := range resolveCodexAddDirs(metadata) {
 		args = append(args, "--add-dir", dir)
 	}
-	args = append(args, "--json", "--progress-cursor", "-")
+	args = append(args, "--json", "-")
 	procCtx, procCancel := context.WithCancel(ctx)
 	defer procCancel()
 
