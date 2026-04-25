@@ -50,13 +50,17 @@ export function useRuntimeComposerViewportSync({
     const syncComposerInset = () => {
       const workspaceRect = workspaceBodyNode.getBoundingClientRect();
       const composerRect = composerShellNode.getBoundingClientRect();
+      const restInset = Math.max(0, Math.ceil(composerRect.height));
+      const activeInset = inputFocused
+        ? Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top))
+        : 0;
       workspaceBodyNode.style.setProperty(
         "--runtime-composer-rest-inset",
-        `${Math.max(0, Math.ceil(composerRect.height))}px`,
+        `${restInset}px`,
       );
       workspaceBodyNode.style.setProperty(
         "--runtime-composer-inset",
-        `${Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top))}px`,
+        `${activeInset}px`,
       );
     };
 
@@ -114,5 +118,5 @@ export function useRuntimeComposerViewportSync({
       workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
       workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
     };
-  }, [composerShellRef, isMobileViewport, workspaceBodyRef]);
+  }, [composerShellRef, inputFocused, isMobileViewport, workspaceBodyRef]);
 }

@@ -923,13 +923,13 @@ test.describe("Chat composer", () => {
     await page.goto("/chat#chat");
     await loginIfNeeded(page);
     await waitForAppReady(page);
-    await page.waitForSelector(".conversation-chat-form", { timeout: 20000 });
-    const input = page.locator(".conversation-composer-input");
+    await page.waitForSelector("[data-composer-form='conversation']", { timeout: 20000 });
+    const input = page.locator("[data-composer-input='conversation']");
 
     const readMetrics = async () => page.evaluate(() => {
-      const mobileHeader = document.querySelector("[data-conversation-mobile-header]");
-      const workspaceHeader = document.querySelector(".conversation-workspace-head");
-      const composerShell = document.querySelector(".conversation-composer-shell");
+      const mobileHeader = document.querySelector("[data-runtime-mobile-variant='conversation']");
+      const workspaceHeader = document.querySelector("[data-runtime-workspace-header='true']");
+      const composerShell = document.querySelector(".runtime-composer-shell");
       const viewport = window.visualViewport;
       if (
         !(mobileHeader instanceof HTMLElement)

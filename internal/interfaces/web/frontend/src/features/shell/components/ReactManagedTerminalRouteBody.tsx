@@ -1269,19 +1269,34 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const canInput = !activeSession || activeStatus !== "busy";
   const isWorkspaceLive = activeSession && isLiveStatus(activeSession.status || "") ? "true" : "false";
   const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
+  const terminalDetailsSummary = activeSession ? [
+    { label: copy.session, value: activeSession.id, copyLabel: copy.session, mono: true },
+    { label: copy.shell, value: activeSession.shell, copyLabel: copy.shell, mono: true },
+    { label: copy.path, value: activeSession.working_dir, copyLabel: copy.path, mono: true, multiline: true },
+    { label: copy.status, value: renderStatus(activeSession.status || "", copy), copyLabel: copy.status },
+    {
+      label: copy.updatedAt,
+      value: formatDateTime(activeSession.updated_at || activeSession.created_at),
+      copyLabel: copy.updatedAt,
+    },
+  ] : [];
   return {
     shell: {
-      rootClassName: "terminal-view terminal-runtime-view",
-      rootProps: { "data-terminal-view": "" },
-      sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen ? "is-open" : undefined,
-      sessionPaneProps: { "data-terminal-session-pane": "" },
+      rootClassName: "runtime-workspace-view",
+      rootProps: { "data-runtime-view": "terminal" },
+      sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen
+        ? "is-open"
+        : undefined,
+      sessionPaneProps: { "data-runtime-session-pane": "terminal" },
       sessionPaneBackdrop: {
         ariaLabel: copy.hideSessions,
         onClick: workbench.closeMobileSessionPane,
-        buttonProps: { "data-terminal-session-pane-close": "" },
+        buttonProps: { "data-runtime-session-pane-close": "terminal" },
       },
-      sessionPanePrimaryActionProps: { "data-terminal-create": "" },
-      sessionPaneSecondaryActionProps: { "data-terminal-session-pane-close": "" },
+      sessionPanePrimaryActionClassName: "is-primary",
+      sessionPanePrimaryActionProps: { "data-runtime-create-session": "terminal" },
+      sessionPaneSecondaryActionClassName: "runtime-workspace-session-pane-close",
+      sessionPaneSecondaryActionProps: { "data-runtime-session-pane-close": "terminal" },
       sessionPaneTitle: copy.sessions,
       sessionPaneCountLabel: copy.sessionCount(sessions.length),
       sessionPanePrimaryActionLabel: copy.newShort,
@@ -1289,27 +1304,26 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       sessionPaneSecondaryActionLabel: copy.hideSessions,
       onSessionPaneSecondaryAction: workbench.closeMobileSessionPane,
       workspaceProps: {
-        "data-terminal-workspace": "",
-        "data-terminal-session-id": activeSession?.id || "",
-        "data-terminal-workspace-status": activeStatus,
-        "data-terminal-workspace-live": isWorkspaceLive,
+        "data-runtime-workspace": "terminal",
+        "data-runtime-session-id": activeSession?.id || "",
+        "data-runtime-status": activeStatus,
+        "data-runtime-live": isWorkspaceLive,
       },
       workspaceBodyRef,
-      mobileHeaderPlacement: workbench.isMobileViewport ? "leading" : undefined,
-      mobileHeaderClassName: "terminal-mobile-header",
-      mobileHeaderProps: { "data-terminal-mobile-header": "" },
-      mobileNavButtonClassName: "nav-toggle is-quiet",
+      mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
+      mobileHeaderProps: { "data-runtime-mobile-variant": "terminal" },
+      mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
       mobileNavButtonLabel: shellCopy.chatMenu,
       mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
       onMobileNav: workbench.toggleMobileNav,
-      mobileSessionButtonClassName: "panel-toggle is-quiet",
+      mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",
       mobileSessionButtonLabel: copy.sessions,
       mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
       onMobileSession: workbench.toggleMobileSessionPane,
-      mobilePrimaryButtonClassName: "mobile-new-chat is-primary",
+      mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
       mobilePrimaryButtonLabel: copy.newShort,
+      mobilePrimaryButtonProps: { "data-runtime-create-session": "terminal" },
       onMobilePrimary: () => void createSession(),
-      mobileHeaderActionsClassName: "terminal-mobile-header-actions",
     },
     sessionList: {
       groups: groupedSessions.map((group) => ({
@@ -1331,55 +1345,52 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
             deleteLabel: copy.delete,
             deleteAriaLabel: copy.delete,
             deleting: deletingSessionID === session.id,
-            deleteProps: { "data-terminal-delete-session": session.id },
-            shellClassName: active ? "route-card runtime-session-card is-active" : "route-card runtime-session-card",
+            deleteProps: { "data-runtime-delete-session": session.id },
+            shellClassName: active
+              ? "route-card runtime-session-card active is-active"
+              : "route-card runtime-session-card",
             shellProps: {
-              "data-terminal-session-card": session.id,
-              "data-terminal-session-status": normalizeStatus(session.status || ""),
+              "data-runtime-session-card": session.id,
+              "data-runtime-session-status": normalizeStatus(session.status || ""),
             },
-            buttonClassName: active ? "route-card-button runtime-session-select active" : "route-card-button runtime-session-select",
-            buttonProps: { "data-terminal-session-select": session.id },
+            buttonClassName: active
+              ? "route-card-button runtime-session-select active"
+              : "route-card-button runtime-session-select",
+            buttonProps: { "data-runtime-session-select": session.id },
           };
         }),
       })),
-      listClassName: "terminal-session-list",
-      listProps: { "data-terminal-session-list": "true" },
+      listProps: { "data-runtime-session-list": "terminal" },
       emptyState: (
         <>
           {loadError ? <p className="route-empty-panel">{loadError}</p> : null}
           {!loadError && !loading && groupedSessions.length === 0 ? (
-            <p className="route-empty-panel terminal-session-empty">{copy.empty}</p>
+            <p className="route-empty-panel">{copy.empty}</p>
           ) : null}
         </>
       ),
     },
     header: {
       title: activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession,
-      statusLabel: renderStatus(activeSession?.status || "", copy),
+      statusLabel: activeSession ? renderStatus(activeSession.status || "", copy) : copy.ready,
       statusTone: activeStatus,
       detailsLabel: copy.details,
       detailsOpen: metaOpen,
       onToggleDetails: () => setMetaOpen((current) => !current),
       detailsDisabled: !activeSession,
-      statusButtonProps: { "data-terminal-runtime-state": activeStatus },
-      detailsButtonProps: { "data-terminal-meta-toggle": "" },
-      detailsPanelProps: { className: "terminal-meta-panel", "data-terminal-meta-panel": "" },
-      detailsClassName: "workspace-details-content terminal-session-details",
-      detailsSummary: activeSession ? [
-        { label: copy.session, value: activeSession.id, copyLabel: copy.session, mono: true },
-        { label: copy.shell, value: activeSession.shell, copyLabel: copy.shell, mono: true },
-        { label: copy.path, value: activeSession.working_dir, copyLabel: copy.path, mono: true, multiline: true },
-        { label: copy.status, value: renderStatus(activeSession.status || "", copy), copyLabel: copy.status },
-        { label: copy.updatedAt, value: formatDateTime(activeSession.updated_at || activeSession.created_at), copyLabel: copy.updatedAt },
-      ] : [],
+      detailsSummary: terminalDetailsSummary,
+      detailsClassName: "runtime-workspace-meta-panel workspace-details-content",
+      headerProps: { "data-runtime-header-kind": "terminal" },
+      statusButtonProps: { "data-runtime-status-indicator": activeStatus },
+      detailsButtonProps: { "data-runtime-details-toggle": "terminal" },
+      detailsPanelProps: { "data-runtime-details-panel": "terminal" },
     },
     screen: {
       panelClassName: "terminal-console-panel",
-      panelProps: { "data-terminal-console-panel": "" },
-      screenClassName: "terminal-chat-screen",
+      panelProps: { "data-runtime-panel": "terminal-console" },
       screenProps: {
-        "data-terminal-chat-screen": "",
-        "data-terminal-chat-status": activeStatus,
+        "data-runtime-screen": "terminal",
+        "data-runtime-status": activeStatus,
         onScroll: handleScroll,
       },
       screenRef: chatScreenRef,
@@ -1460,10 +1471,10 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       ),
     },
     composer: {
+      runtimeKind: "terminal",
       shellRef: composerShellRef,
       note: composerNote,
-      noteProps: { "data-terminal-runtime-note": "", "data-terminal-runtime-status": activeStatus },
-      formProps: { "data-terminal-input-form": "", "data-composer-form": "terminal-runtime" },
+      noteProps: { "data-runtime-note": "terminal", "data-runtime-status": activeStatus },
       onSubmit: (event) => {
         event.preventDefault();
         void submitInput();
@@ -1474,7 +1485,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         void handleComposerAttachmentSelection(event.target.files);
       },
       attachments: draftAttachments,
-      attachmentStripProps: { "data-terminal-composer-attachments": "" },
+      attachmentStripProps: { "data-runtime-attachments": "terminal" },
       attachmentPreviewLabel: (attachment) => `${copy.preview} ${attachment.name}`,
       attachmentRemoveLabel: (attachment) => `${copy.delete} ${attachment.name}`,
       previewAttachment,
@@ -1487,8 +1498,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       inputValue: inputValue,
       inputProps: {
         placeholder: inputPlaceholder,
-        "data-terminal-input": "",
-        "data-composer-input": "terminal-runtime",
         disabled: !canInput || submitting,
       },
       onInputChange: setInputValue,
@@ -1496,26 +1505,16 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       onInputBlur: () => setInputFocused(false),
       onInputPointerDownCapture: handleComposerPointerDownCapture,
       onInputTouchStartCapture: handleComposerTouchStartCapture,
-      metaClassName: sessions.length > 0 ? undefined : "is-empty",
-      metaContent: sessions.length > 0 ? copy.sessionCount(sessions.length) : "",
-      metaProps: { "aria-hidden": sessions.length > 0 ? undefined : "true" },
+      metaContent: undefined,
       addAttachmentLabel: copy.addAttachment,
       addAttachmentButtonProps: { disabled: !canInput || submitting },
       onAddAttachment: handleComposerAttachmentPicker,
       submitButtonProps: {
         id: "terminalSendButton",
-        "data-terminal-submit": "",
-        "data-composer-submit": "terminal-runtime",
         disabled: submitting || !canInput,
         onTouchStartCapture: handleSubmitTouchStartCapture,
       },
       submitLabel: submitting ? copy.sending : copy.send,
-      submitIcon: (
-        <svg viewBox="0 0 20 20" fill="none" focusable="false">
-          <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
-          <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
       previewCloseLabel: copy.closePreview,
     },
   };

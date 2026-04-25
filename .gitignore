@@ -33,6 +33,7 @@ go.work.sum
 # temporary outputs, test artifacts, debug files
 output/
 test-results/
+.playwright-cli/
 node_modules/
 
 # local deploy/runtime artifacts

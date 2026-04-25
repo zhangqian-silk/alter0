@@ -155,8 +155,11 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeComposer.tsx")
 	workspaceMarkers := []string{
 		`<RuntimeWorkspacePage controller={controller} />`,
-		`rootClassName: "conversation-runtime-view"`,
-		`inputProps: { maxLength: 10000, placeholder: composerPlaceholder },`,
+		`rootClassName: "runtime-workspace-view"`,
+		`const composerAlias = runtimeKind === "terminal" ? "terminal" : "conversation";`,
+		`data-composer-form={composerAlias}`,
+		`data-composer-input={composerAlias}`,
+		`data-composer-submit={composerAlias}`,
 		`data-runtime-composer="true"`,
 		`"runtime-composer-input"`,
 		`"runtime-composer-submit"`,
@@ -167,11 +170,13 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 		}
 	}
 
-	terminalSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
+	terminalSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeComposer.tsx")
 	terminalMarkers := []string{
-		`"data-composer-form": "terminal-runtime"`,
-		`"data-composer-input": "terminal-runtime"`,
-		`"data-composer-submit": "terminal-runtime"`,
+		`runtimeKind: "terminal"`,
+		`data-composer-form={composerAlias}`,
+		`data-composer-input={composerAlias}`,
+		`data-composer-submit={composerAlias}`,
 	}
 	for _, marker := range terminalMarkers {
 		if !strings.Contains(terminalSource, marker) {

@@ -26,6 +26,7 @@ function RuntimeHarness() {
         onClick={() => void runtime.addDraftAttachments([
           {
             id: "local-image-1",
+            kind: "image",
             name: "trace.png",
             contentType: "image/png",
             size: 12,
@@ -35,6 +36,21 @@ function RuntimeHarness() {
         ])}
       >
         attach
+      </button>
+      <button
+        type="button"
+        onClick={() => void runtime.addDraftAttachments([
+          {
+            id: "local-file-1",
+            kind: "file",
+            name: "notes.md",
+            contentType: "text/markdown",
+            size: 14,
+            dataURL: "data:text/markdown;base64,IyBub3Rlcw==",
+          },
+        ])}
+      >
+        attach file
       </button>
       <button type="button" onClick={() => void runtime.sendPrompt("Inspect this image")}>
         send
@@ -265,6 +281,54 @@ describe("ConversationRuntimeProvider", () => {
       previewURL: "/api/sessions/session-1/attachments/image-1/preview",
     });
     expect(persistedDrafts["session-1"]?.[0]?.dataURL).toBeUndefined();
+  });
+
+  it("uploads draft files into the session workspace through the same attachment draft API", async () => {
+    apiClientMock.post.mockResolvedValueOnce({
+      items: [
+        {
+          id: "file-1",
+          name: "notes.md",
+          content_type: "text/markdown",
+          size: 14,
+          asset_url: "/api/sessions/session-1/attachments/file-1/original",
+        },
+      ],
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "attach file" }));
+
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      "/api/sessions/session-1/attachments",
+      {
+        attachments: [
+          {
+            name: "notes.md",
+            content_type: "text/markdown",
+            data_url: "data:text/markdown;base64,IyBub3Rlcw==",
+            preview_data_url: "data:text/markdown;base64,IyBub3Rlcw==",
+          },
+        ],
+      },
+    ));
+
+    const persistedDrafts = JSON.parse(
+      window.sessionStorage.getItem(COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY) || "{}",
+    ) as Record<string, Array<Record<string, string>>>;
+    const storedFile = persistedDrafts["session-1"]?.find((item) => item.id === "file-1");
+    expect(storedFile).toMatchObject({
+      id: "file-1",
+      kind: "file",
+      assetURL: "/api/sessions/session-1/attachments/file-1/original",
+    });
+    expect(storedFile?.previewURL).toBeUndefined();
+    expect(storedFile?.dataURL).toBeUndefined();
   });
 
   it("allows clicking the active inspector tab again to collapse the details body", async () => {

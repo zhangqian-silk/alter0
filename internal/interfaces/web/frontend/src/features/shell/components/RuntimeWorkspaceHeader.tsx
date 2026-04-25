@@ -140,13 +140,16 @@ export function RuntimeWorkspaceHeader({
         <button
           type="button"
           className="workspace-details-backdrop"
-          aria-label={detailsLabel}
+          aria-label={`Close ${detailsLabel}`}
           data-runtime-details-backdrop="true"
           onClick={onToggleDetails}
         ></button>
         <section
           id={detailsID}
-          className={joinClassNames("runtime-workspace-details-panel workspace-details-panel", detailsPanelClassName)}
+          className={joinClassNames(
+            "runtime-workspace-details-panel workspace-details-panel",
+            detailsPanelClassName,
+          )}
           style={{
             ...detailsPanelInlineStyle,
             ...detailsPanelStyle,

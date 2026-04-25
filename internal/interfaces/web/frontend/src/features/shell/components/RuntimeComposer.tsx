@@ -19,6 +19,7 @@ function joinClassNames(...values: Array<string | undefined>) {
 }
 
 type RuntimeComposerProps = {
+  runtimeKind: "chat" | "agent" | "terminal";
   shellRef?: Ref<HTMLElement>;
   shellClassName?: string;
   shellProps?: Omit<ComponentPropsWithoutRef<"footer">, "children" | "className"> & {
@@ -72,11 +73,21 @@ type RuntimeComposerProps = {
     className?: string;
   };
   submitLabel: string;
-  submitIcon: ReactNode;
+  submitIcon?: ReactNode;
   previewCloseLabel: string;
 };
 
+function DefaultRuntimeComposerSubmitIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false">
+      <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
+      <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function RuntimeComposer({
+  runtimeKind,
   shellRef,
   shellClassName,
   shellProps,
@@ -149,6 +160,7 @@ export function RuntimeComposer({
     className: submitButtonPropsClassName,
     ...submitButtonRestProps
   } = submitButtonProps || {};
+  const composerAlias = runtimeKind === "terminal" ? "terminal" : "conversation";
 
   return (
     <>
@@ -160,6 +172,7 @@ export function RuntimeComposer({
           shellPropsClassName,
         )}
         {...shellRestProps}
+        data-runtime-composer-kind={runtimeKind}
       >
         {note ? (
           <div
@@ -174,9 +187,11 @@ export function RuntimeComposer({
             "runtime-composer-form",
             formPropsClassName,
           )}
-          data-runtime-composer="true"
           onSubmit={onSubmit}
           {...formRestProps}
+          data-runtime-composer="true"
+          data-runtime-composer-kind={runtimeKind}
+          data-composer-form={composerAlias}
         >
           <input
             ref={fileInputRef}
@@ -242,13 +257,16 @@ export function RuntimeComposer({
               "runtime-composer-input",
               inputPropsClassName,
             )}
+            {...inputRestProps}
             value={inputValue}
             onPointerDownCapture={onInputPointerDownCapture}
             onTouchStartCapture={onInputTouchStartCapture}
             onChange={(event) => onInputChange(event.target.value)}
             onFocus={onInputFocus}
             onBlur={onInputBlur}
-            {...inputRestProps}
+            data-runtime-composer-input={runtimeKind}
+            data-composer-input={composerAlias}
+            data-terminal-input={runtimeKind === "terminal" ? "true" : undefined}
           ></textarea>
           <div
             className={joinClassNames(
@@ -256,25 +274,29 @@ export function RuntimeComposer({
               toolsClassName,
             )}
           >
-            <div
-              className={joinClassNames(
-                "runtime-composer-meta",
-                metaClassName,
-                metaPropsClassName,
-              )}
-              {...metaRestProps}
-            >
-              {metaContent}
-            </div>
+            {metaContent ? (
+              <div
+                className={joinClassNames(
+                  "runtime-composer-meta",
+                  metaClassName,
+                  metaPropsClassName,
+                )}
+                {...metaRestProps}
+              >
+                {metaContent}
+              </div>
+            ) : null}
             <button
               type="button"
               className={joinClassNames(
                 "runtime-composer-upload",
                 addAttachmentButtonPropsClassName,
               )}
+              {...addAttachmentButtonRestProps}
               aria-label={addAttachmentLabel}
               onClick={onAddAttachment}
-              {...addAttachmentButtonRestProps}
+              data-runtime-composer-upload={runtimeKind}
+              data-composer-upload={composerAlias}
             >
               <span aria-hidden="true">+</span>
               <span>{addAttachmentLabel}</span>
@@ -285,11 +307,14 @@ export function RuntimeComposer({
                 "runtime-composer-submit",
                 submitButtonPropsClassName,
               )}
-              aria-label={submitLabel}
               {...submitButtonRestProps}
+              aria-label={submitLabel}
+              data-runtime-composer-submit={runtimeKind}
+              data-composer-submit={composerAlias}
+              data-terminal-submit={runtimeKind === "terminal" ? "true" : undefined}
             >
               <span className="runtime-composer-submit-icon" aria-hidden="true">
-                {submitIcon}
+                {submitIcon ?? <DefaultRuntimeComposerSubmitIcon />}
               </span>
               <span className="sr-only">{submitLabel}</span>
             </button>
