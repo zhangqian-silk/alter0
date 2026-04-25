@@ -94,6 +94,21 @@ type TerminalStepDetailResponse = {
   step?: TerminalStepDetail;
 };
 
+type TerminalSkill = {
+  id?: string;
+  name?: string;
+  enabled?: boolean;
+  scope?: string;
+  metadata?: Record<string, string>;
+};
+
+type TerminalSkillSelection = {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+};
+
 type TerminalCopy = {
   sessions: string;
   sessionCount: (count: number) => string;
@@ -140,6 +155,9 @@ type TerminalCopy = {
   loading: string;
   noSession: string;
   metadata: string;
+  skills: string;
+  activeSkills: string;
+  noSkills: string;
   copy: string;
 };
 
@@ -190,6 +208,9 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     loading: "Loading...",
     noSession: "Create a terminal session to begin.",
     metadata: "Metadata",
+    skills: "Skills",
+    activeSkills: "Active skills",
+    noSkills: "No skills selected",
     copy: "Copy output",
   },
   zh: {
@@ -238,6 +259,9 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     loading: "加载中...",
     noSession: "先创建一个终端会话再开始。",
     metadata: "元数据",
+    skills: "技能",
+    activeSkills: "已启用技能",
+    noSkills: "未选择技能",
     copy: "复制输出",
   },
 };
@@ -308,6 +332,50 @@ function normalizeTerminalDraftAttachments(value: unknown): ComposerAttachment[]
 
 function normalizeAttachmentText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeSelectionIDs(values: unknown): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return Array.from(new Set(values.map((item) => normalizeAttachmentText(item)).filter(Boolean)));
+}
+
+function isPublicTerminalSkill(skill: TerminalSkill): boolean {
+  const metadata = skill.metadata || {};
+  const visibility = normalizeAttachmentText(metadata["alter0.skill.visibility"] || metadata["skill.visibility"]).toLowerCase();
+  return visibility !== "agent-private" && visibility !== "private";
+}
+
+function normalizeTerminalSkills(values: unknown): TerminalSkillSelection[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  const deduped = new Map<string, TerminalSkillSelection>();
+  values.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+    const skill = item as TerminalSkill;
+    if (skill.enabled === false || !isPublicTerminalSkill(skill)) {
+      return;
+    }
+    const id = normalizeAttachmentText(skill.id);
+    if (!id || deduped.has(id)) {
+      return;
+    }
+    const metadata = skill.metadata || {};
+    deduped.set(id, {
+      id,
+      name: normalizeAttachmentText(skill.name) || id,
+      description:
+        normalizeAttachmentText(metadata["skill.description"])
+        || normalizeAttachmentText(skill.scope)
+        || "Skill",
+      active: false,
+    });
+  });
+  return Array.from(deduped.values());
 }
 
 function serializeTerminalComposerAttachment(attachment: ComposerAttachment) {
@@ -688,6 +756,8 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const [loadError, setLoadError] = useState("");
   const [inputValue, setInputValue] = useState("");
   const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ComposerAttachment[]>>(() => loadTerminalAttachmentDrafts());
+  const [skills, setSkills] = useState<TerminalSkillSelection[]>([]);
+  const [selectedSkillIDs, setSelectedSkillIDs] = useState<string[]>([]);
   const attachmentDraftsRef = useRef<Record<string, ComposerAttachment[]>>(attachmentDrafts);
   const attachmentUploadPromisesRef = useRef<Record<string, {
     pendingIDs: string[];
@@ -734,6 +804,12 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const activeDraftKey = activeSessionID || TERMINAL_PENDING_DRAFT_KEY;
   const draftAttachments = attachmentDrafts[activeDraftKey] || [];
   const activeStatus = normalizeStatus(activeSession?.status || "");
+  const selectedSkillSet = useMemo(() => new Set(selectedSkillIDs), [selectedSkillIDs]);
+  const skillOptions = useMemo(
+    () => skills.map((skill) => ({ ...skill, active: selectedSkillSet.has(skill.id) })),
+    [selectedSkillSet, skills],
+  );
+  const activeSkillNames = skillOptions.filter((skill) => skill.active).map((skill) => skill.name).join(", ");
   const pollPlan = resolveTerminalPollPlan({
     status: activeSession?.status || "",
     pageHidden,
@@ -780,6 +856,18 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       attachmentDraftsRef.current = next;
       return next;
     });
+  };
+
+  const toggleSkill = (id: string, checked: boolean) => {
+    const value = normalizeAttachmentText(id);
+    if (!value) {
+      return;
+    }
+    setSelectedSkillIDs((current) =>
+      checked
+        ? normalizeSelectionIDs([...current, value])
+        : current.filter((item) => item !== value),
+    );
   };
 
   const handleComposerPointerDownCapture = (event: PointerEvent<HTMLTextAreaElement>) => {
@@ -922,6 +1010,32 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const payload = await apiClient.get<{ items?: TerminalSkill[] }>("/api/control/skills");
+        if (cancelled) {
+          return;
+        }
+        const nextSkills = normalizeTerminalSkills(payload.items);
+        setSkills(nextSkills);
+        setSelectedSkillIDs((current) => {
+          const available = new Set(nextSkills.map((skill) => skill.id));
+          return current.filter((id) => available.has(id));
+        });
+      } catch {
+        if (!cancelled) {
+          setSkills([]);
+          setSelectedSkillIDs([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1184,7 +1298,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       }
       const payload = await apiClient.post<TerminalSessionResponse>(
         `/api/terminal/sessions/${encodeURIComponent(session.id)}/input`,
-        { input: content, attachments },
+        { input: content, attachments, skill_ids: selectedSkillIDs },
       );
       window.localStorage.removeItem(`terminal:${session.id}`);
       setInputValue("");
@@ -1275,11 +1389,42 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     { label: copy.path, value: activeSession.working_dir, copyLabel: copy.path, mono: true, multiline: true },
     { label: copy.status, value: renderStatus(activeSession.status || "", copy), copyLabel: copy.status },
     {
+      label: copy.activeSkills,
+      value: activeSkillNames || copy.noSkills,
+      copyLabel: copy.activeSkills,
+      multiline: true,
+    },
+    {
       label: copy.updatedAt,
       value: formatDateTime(activeSession.updated_at || activeSession.created_at),
       copyLabel: copy.updatedAt,
     },
   ] : [];
+  const terminalDetailsBody = (
+    <section className="conversation-inspector-section terminal-skill-section" data-testid="terminal-skill-selector">
+      <strong>{copy.skills}</strong>
+      <div className="conversation-check-list">
+        {skillOptions.length > 0 ? skillOptions.map((skill) => (
+          <label className="conversation-check-item" key={skill.id}>
+            <input
+              type="checkbox"
+              value={skill.id}
+              checked={skill.active}
+              aria-label={skill.name}
+              data-runtime-toggle-item="terminal-skills"
+              onChange={(event) => toggleSkill(skill.id, event.target.checked)}
+            />
+            <span>
+              <strong>{skill.name}</strong>
+              <small>{skill.description}</small>
+            </span>
+          </label>
+        )) : (
+          <p className="route-empty-panel">{copy.noSkills}</p>
+        )}
+      </div>
+    </section>
+  );
   return {
     shell: {
       rootClassName: "runtime-workspace-view",
@@ -1379,6 +1524,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       onToggleDetails: () => setMetaOpen((current) => !current),
       detailsDisabled: !activeSession,
       detailsSummary: terminalDetailsSummary,
+      detailsBody: terminalDetailsBody,
       detailsClassName: "runtime-workspace-meta-panel workspace-details-content",
       headerProps: { "data-runtime-header-kind": "terminal" },
       statusButtonProps: { "data-runtime-status-indicator": activeStatus },

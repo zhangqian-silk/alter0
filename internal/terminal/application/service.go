@@ -75,10 +75,11 @@ type RecoverRequest struct {
 }
 
 type InputRequest struct {
-	OwnerID     string
-	SessionID   string
-	Input       string
-	Attachments []execdomain.UserAttachment
+	OwnerID      string
+	SessionID    string
+	Input        string
+	Attachments  []execdomain.UserAttachment
+	SkillContext *execdomain.SkillContext
 }
 
 type EntryPage struct {
@@ -517,7 +518,7 @@ func (s *Service) InputWithAttachments(req InputRequest) (terminaldomain.Session
 	item.mu.Unlock()
 	s.persistSession(item)
 
-	go s.runTurn(item, turnCtx, turn.ID, prompt, attachments)
+	go s.runTurn(item, turnCtx, turn.ID, prompt, attachments, cloneTerminalSkillContext(req.SkillContext))
 
 	return snapshot, nil
 }
@@ -602,7 +603,7 @@ func (s *Service) shutdown() {
 	}
 }
 
-func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID string, prompt string, attachments []TurnAttachment) {
+func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID string, prompt string, attachments []TurnAttachment, skillContext *execdomain.SkillContext) {
 	command := resolveCodexCommand(s.options)
 	threadID := item.thread()
 	preparedAttachments, err := prepareTurnInputAttachments(item.workspaceDir(), turnID, attachments)
@@ -626,7 +627,7 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 	cmd := runner(runCtx, command.path, args...)
 	if workspaceDir := item.workspaceDir(); workspaceDir != "" {
 		cmd.Dir = workspaceDir
-		env, runtimeErr := prepareTerminalCodexRuntime(workspaceDir)
+		env, runtimeErr := prepareTerminalCodexRuntime(workspaceDir, skillContext)
 		if runtimeErr != nil {
 			s.finishTurn(item, turnID, runtimeErr, "")
 			return
@@ -1370,6 +1371,36 @@ func imagePathsFromPreparedTurnAttachments(items []preparedTurnAttachment) []str
 	return out
 }
 
+func cloneTerminalSkillContext(input *execdomain.SkillContext) *execdomain.SkillContext {
+	if input == nil {
+		return nil
+	}
+	out := *input
+	if len(input.Skills) > 0 {
+		out.Skills = make([]execdomain.SkillSpec, 0, len(input.Skills))
+		for _, skill := range input.Skills {
+			cloned := skill
+			if len(skill.ParameterTemplate) > 0 {
+				cloned.ParameterTemplate = make(map[string]string, len(skill.ParameterTemplate))
+				for key, value := range skill.ParameterTemplate {
+					cloned.ParameterTemplate[key] = value
+				}
+			}
+			cloned.Constraints = append([]string{}, skill.Constraints...)
+			cloned.Abilities = append([]string{}, skill.Abilities...)
+			out.Skills = append(out.Skills, cloned)
+		}
+	}
+	if len(input.ResolvedParameters) > 0 {
+		out.ResolvedParameters = make(map[string]string, len(input.ResolvedParameters))
+		for key, value := range input.ResolvedParameters {
+			out.ResolvedParameters[key] = value
+		}
+	}
+	out.Conflicts = append([]execdomain.SkillConflict{}, input.Conflicts...)
+	return &out
+}
+
 func cloneTurnAttachments(items []TurnAttachment) []TurnAttachment {
 	if len(items) == 0 {
 		return nil
@@ -1695,15 +1726,74 @@ func resolveRecoveredThreadID(sessionID string, terminalSessionID string) string
 	return threadID
 }
 
-func prepareTerminalCodexRuntime(workspaceDir string) ([]string, error) {
+func prepareTerminalCodexRuntime(workspaceDir string, skillContext *execdomain.SkillContext) ([]string, error) {
 	prepared, err := runtimeconfig.Prepare(runtimeconfig.Spec{
 		RuntimeHome:  filepath.Join(workspaceDir, terminalCodexHomeDirName),
 		WorkspaceDir: workspaceDir,
+		ManagedFiles: []runtimeconfig.ManagedFile{{
+			RelativePath: ".alter0/codex-runtime/skills.md",
+			Content:      renderTerminalSkillContextMarkdown(skillContext),
+			Mode:         0o644,
+		}},
+		RootInstructions: "- Read `.alter0/codex-runtime/skills.md` before acting. Apply only the skills selected for the current Terminal turn.",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("prepare terminal codex runtime: %w", err)
 	}
 	return prepared.Env, nil
+}
+
+func renderTerminalSkillContextMarkdown(skillContext *execdomain.SkillContext) string {
+	lines := []string{"# Skills", ""}
+	if skillContext == nil || len(skillContext.Skills) == 0 {
+		lines = append(lines, "No skills selected for this Terminal turn.", "")
+		return strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
+	}
+	protocol := strings.TrimSpace(skillContext.Protocol)
+	if protocol == "" {
+		protocol = execdomain.SkillContextProtocolVersion
+	}
+	lines = append(lines, "- protocol: "+protocol, "")
+	for _, skill := range skillContext.Skills {
+		name := strings.TrimSpace(skill.Name)
+		if name == "" {
+			name = strings.TrimSpace(skill.ID)
+		}
+		if name == "" {
+			continue
+		}
+		lines = append(lines, "## "+name, "")
+		if strings.TrimSpace(skill.ID) != "" {
+			lines = append(lines, "- id: "+strings.TrimSpace(skill.ID))
+		}
+		if strings.TrimSpace(skill.Description) != "" {
+			lines = append(lines, "- description: "+strings.TrimSpace(skill.Description))
+		}
+		if strings.TrimSpace(skill.FilePath) != "" {
+			lines = append(lines, "- file_path: "+strings.TrimSpace(skill.FilePath))
+		}
+		if strings.TrimSpace(skill.Guide) != "" {
+			lines = append(lines, "", "### Guide", "", strings.TrimSpace(skill.Guide))
+		}
+		if len(skill.Constraints) > 0 {
+			lines = append(lines, "", "### Constraints")
+			for _, constraint := range skill.Constraints {
+				if strings.TrimSpace(constraint) != "" {
+					lines = append(lines, "- "+strings.TrimSpace(constraint))
+				}
+			}
+		}
+		if len(skill.Abilities) > 0 {
+			lines = append(lines, "", "### Abilities")
+			for _, ability := range skill.Abilities {
+				if strings.TrimSpace(ability) != "" {
+					lines = append(lines, "- "+strings.TrimSpace(ability))
+				}
+			}
+		}
+		lines = append(lines, "")
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
 }
 
 func resolveSessionWorkspacePath(baseDir string, sessionID string) (string, error) {
