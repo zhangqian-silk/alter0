@@ -396,6 +396,51 @@ func TestAgentMessageHandlerInjectsAgentProfileMetadata(t *testing.T) {
 	}
 }
 
+func TestAgentMessageHandlerPreservesExplicitCodexRuntimeSelection(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			SessionID: "session-fixed",
+			Route:     shareddomain.RouteNL,
+			Output:    "agent-ok",
+		},
+	}
+	control := newAgentControlForTests(t, controldomain.Agent{
+		ID:           "researcher",
+		Name:         "Researcher",
+		Type:         controldomain.CapabilityTypeAgent,
+		Enabled:      true,
+		Scope:        controldomain.CapabilityScopeGlobal,
+		Version:      "v1.0.0",
+		ProviderID:   "openai",
+		Model:        "gpt-4o",
+		SystemPrompt: "Execute first.",
+		Tools:        []string{"codex_exec"},
+	})
+	server := newMessageTestServer(orchestrator)
+	server.control = control
+	server.agents = agentapp.NewCatalog(control)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages", strings.NewReader(`{
+		"agent_id":"researcher",
+		"session_id":"session-fixed",
+		"content":"完成仓库整理",
+		"metadata":{"alter0.execution.engine":"codex"}
+	}`))
+	rec := httptest.NewRecorder()
+	server.agentMessageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if orchestrator.lastMessage.Metadata[execdomain.ExecutionEngineMetadataKey] != execdomain.ExecutionEngineCodex {
+		t.Fatalf("expected explicit codex execution engine to be preserved, got %+v", orchestrator.lastMessage.Metadata)
+	}
+	if orchestrator.lastMessage.Metadata[execdomain.AgentIDMetadataKey] != "researcher" {
+		t.Fatalf("expected agent profile metadata to remain injected, got %+v", orchestrator.lastMessage.Metadata)
+	}
+}
+
 func TestAgentMessageHandlerIgnoresCanceledRequestContext(t *testing.T) {
 	orchestrator := &stubWebOrchestrator{
 		result: shareddomain.OrchestrationResult{

@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-04-23
+> Last update: 2026-04-25
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `agent.execution.react`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -78,7 +78,7 @@
 - 窄屏主导航抽屉点击任一路由项后需立即关闭；页面切换完成后不得继续保留旧菜单层覆盖在目标页之上。
 - 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页与 `Terminal` 继续采用“两行头部 + 贴顶正文起始区”节奏，第一行承载抽屉入口与主操作，第二行承载当前标题；`Chat` 与 `Agent Runtime` 空态复用 terminal-style 顶部操作行，同时保留与 Terminal 对齐的单行紧凑 workspace header 显示当前会话标题、状态按钮与 `Details` 入口，但不再额外输出模型、工具或目标摘要文案；所有页面都不得在顶部遗留额外大块留白。
 - 窄屏 `Chat / Agent Runtime` 工作区头部固定保留 `Menu / Sessions / New` 三个入口；`Menu` 与壳层主导航抽屉共用同一开关状态，`Sessions` 单独控制 Conversation 会话抽屉，`New` 直接创建当前路由对应的新会话，不再出现移动端无导航入口或只能依赖正文内按钮切换会话的状态。
-- `Chat / Agent Runtime` 工作区头部固定为共享单行 header：仅保留会话标题、状态按钮和 `Details` 入口，不再在头部直接放置 `Model / Tools / MCP / Agent` 选择控件，也不重复展示 `Chat / Agent` 标签和目标摘要；模型、Agent、Tools / MCP、Skills 以及会话元数据统一在 `Details` 面板中展示和调整，面板首屏先以紧凑摘要栅格承载会话元数据，再承接页面专属配置区。`Chat` 的模型区除常规 LLM Provider / Model 外，还需额外提供内置 `Codex` 直选项，选中后仅影响后续消息，并把执行链显式切到 `Codex CLI`；Agent Runtime 的 `Details` 还需提供 `Session Profile` 视图，用于展示当前 Agent 预设字段和当前 Session 实例属性。`Details` 以顶层浮层形式打开，面板内部独立滚动，点击浮层外区域可关闭，且不得推动消息区或会话正文重新排版。
+- `Chat / Agent Runtime` 工作区头部固定为共享单行 header：仅保留会话标题、状态按钮和 `Details` 入口，不再在头部直接放置 `Model / Tools / MCP / Agent` 选择控件，也不重复展示 `Chat / Agent` 标签和目标摘要；模型、Agent、Tools / MCP、Skills 以及会话元数据统一在 `Details` 面板中展示和调整，面板首屏先以紧凑摘要栅格承载会话元数据，再承接页面专属配置区。两条运行页的模型区除常规 LLM Provider / Model 外，都需额外提供内置 `Codex` 直选项，选中后仅影响后续消息，并把执行链显式切到 `Codex CLI`；Agent Runtime 的 Agent 选择列表不展示 `Alter0/main` 主助手，并额外提供 `Session Profile` 视图，用于展示当前 Agent 预设字段和当前 Session 实例属性。Agent Runtime 的 `Skills` 面板需区分当前 Agent 私有 Skill 与公有 Skill：私有 Skill 固定展示为已启用且不可取消，公有 Skill 才进入可选列表；例如 `travel` 的旅游领域规则属于私有 Skill，`deploy-test-service` 这类部署基础能力属于公有 Skill。`Details` 以顶层浮层形式打开，面板内部独立滚动；再次点击当前 `Model / Tools / MCP / Skills / Session Profile` tab 只收起该 tab 的内容区并保留摘要与面板，点击浮层外区域或按 `Escape` 才关闭整个面板，且不得推动消息区或会话正文重新排版。
 - `Chat / Agent Runtime` 首页 Composer、会话卡片与 `Details` 面板需维持同一套浅色 terminal-runtime 表面系统：输入框作为单一紧凑主输入面，桌面与移动端都要控制输入高度、底部留白和发送按钮体量，发送按钮直接复用 Terminal 的圆形 icon submit 皮肤，meta 与发送按钮收敛到同一底部工具行，会话卡片和详情面板不再退回旧式轻表单或松散卡片观感；空态工作区禁止保留可拖拽滚动，不得把头部操作行或输入区顶出可视区。
 - `1100px` 及以下的移动工作台需优先保证真机滚动与抽屉切换流畅度：主工作区、Conversation/Terminal 抽屉遮罩、抽屉面板本体与运行页容器不得继续依赖大面积 `backdrop-filter`、持续背景光晕或其他会导致整页重绘的装饰层，统一保持静态浅色表面。
 - `Terminal` 窄屏工作区头部不得重复输出会话抽屉入口；`Sessions` 入口统一由壳层头部提供，工作区头部仅保留与当前会话直接相关的操作。
@@ -99,8 +99,8 @@
 - `travel` 的显示名称为 `Travel Agent`；该 Agent 除正常对话答案外，还必须额外生成一份 HTML 旅游攻略，并发布到当前 Session 的公开只读子域名 `https://<session_short_hash>.travel.alter0.cn`。
 - `codex_exec` 通过 stdin 传递最终指令；存在可用 Provider 且进入 Agent / ReAct 链路时，仅向 Codex 下发当前步骤指令；不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时会为当前会话生成原生 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 `runtime_context`、`skill_context`、`mcp_context`、`memory_context` 编译成 Codex 原生运行配置与工作区事实。
 - Agent / ReAct 走 `openai-completions` 多轮工具调用时，assistant `tool_calls` 与后续 `tool` 结果的 `tool_call_id` 必须保持同轮关联，不能在 Provider 适配层丢失。
-- Agent Profile 支持名称、system prompt、max iterations、Provider/Model、工具白名单、Skills、MCP 与 Memory Files。
-- 每个 Agent 自动拥有私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`，用于沉淀可复用工作模式、输出结构、检查清单与稳定偏好。
+- Agent Profile 支持名称、system prompt、max iterations、Provider/Model、工具白名单、公有 Skills、MCP 与 Memory Files。
+- 每个 Agent 自动拥有私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`，用于沉淀可复用工作模式、输出结构、检查清单与稳定偏好；私有 Skill 始终随当前 Agent 注入执行上下文，不受前端取消或 `alter0.skills.exclude` 排除影响。
 - Memory Files 支持 `USER.md`、`SOUL.md`、当前 Agent 私有 `AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory，并在注入时携带路径、存在状态、可写性、内容与自动召回片段。
 - `Agent Session Profile` 固定落在 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，由运行时自动维护并注入执行链路；该文件除会话画像外，还负责沉淀当前 Agent 当前 Session 的结构化实例属性。实例属性支持通过请求 metadata 增量更新；`coding` 默认自动维护仓库、分支和预览子域名等属性，`travel` 等专项 Agent 可维护 `city` 等领域属性。每个 Agent 还需支持独立的 Session Profile 预设字段定义，运行时与前端以同一字段集展示当前实例值。执行前还需有一条独立的旁路抽取链路，根据 Agent schema 从本轮自然语言更新可写字段，默认可退化为受限 Codex 窄调用。
 - 会话短期记忆、跨会话长期记忆、上下文压缩、天级记忆、强制上下文文件与任务摘要记忆统一构成 Memory 领域能力。

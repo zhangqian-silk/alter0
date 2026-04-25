@@ -83,7 +83,7 @@ func (r *skillContextResolver) Resolve(msg shareddomain.UnifiedMessage) skillRes
 		}
 		candidates = append(candidates, skill)
 	}
-	if hasAgentOwnedSkill && !matchesSkillFilter(agentOwnedSkill, excludeFilter) {
+	if hasAgentOwnedSkill {
 		candidates = append(candidates, agentOwnedSkill)
 	}
 

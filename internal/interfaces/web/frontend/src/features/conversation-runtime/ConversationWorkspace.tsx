@@ -77,11 +77,12 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     : "The selected model does not support image input. Switch to a vision-capable model before sending.";
   const compactStatusLabel = language === "zh" ? "就绪" : "Ready";
   const compactDetailsLabel = language === "zh" ? "详情" : "Details";
-  const targetInspectorOpen = runtime.inspectorOpen && runtime.inspectorTab === "target";
-  const modelInspectorOpen = runtime.inspectorOpen && runtime.inspectorTab === "model";
-  const capabilitiesInspectorOpen = runtime.inspectorOpen && runtime.inspectorTab === "capabilities";
-  const skillsInspectorOpen = runtime.inspectorOpen && runtime.inspectorTab === "skills";
-  const sessionProfileInspectorOpen = runtime.inspectorOpen && runtime.inspectorTab === "session-profile";
+  const inspectorTabOpen = runtime.inspectorOpen && runtime.inspectorTabOpen;
+  const targetInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "target";
+  const modelInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "model";
+  const capabilitiesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "capabilities";
+  const skillsInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "skills";
+  const sessionProfileInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "session-profile";
   const sessionProfileFields = runtime.activeSessionProfile?.fields || runtime.activeAgent?.session_profile_fields || [];
   const activeSessionItem = runtime.sessionItems.find((item) => item.active) || null;
   const routeLabel = runtime.route === "agent-runtime"
@@ -179,7 +180,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     activeCapabilities: runtime.capabilities.filter((item) => item.active),
     availableCapabilities: runtime.capabilities.filter((item) => !item.active),
     activeSkills: runtime.skills.filter((item) => item.active),
-    availableSkills: runtime.skills.filter((item) => !item.active),
+    availableSkills: runtime.skills.filter((item) => !item.active && item.visibility !== "agent-private"),
   }), [runtime.capabilities, runtime.skills]);
 
   const handleComposerAttachmentPicker = () => {
@@ -324,7 +325,16 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
                   <div className="conversation-check-list">
                     {capabilityGroups.activeSkills.map((item) => (
                       <label key={item.id} className="conversation-check-item">
-                        <input type="checkbox" checked={item.active} onChange={(event) => runtime.toggleSkill(item.id, event.target.checked)} />
+                        <input
+                          type="checkbox"
+                          checked={item.active}
+                          disabled={item.locked}
+                          onChange={(event) => {
+                            if (!item.locked) {
+                              runtime.toggleSkill(item.id, event.target.checked);
+                            }
+                          }}
+                        />
                         <span><strong>{item.name}</strong><small>{item.description}</small></span>
                       </label>
                     ))}
