@@ -28,9 +28,11 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain("background: #f4f7fb;");
+    expect(stylesheet).toContain("--shell-radius-xl: 14px;");
     expect(stylesheet).toContain("backdrop-filter: none;");
     expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.96);");
     expect(stylesheet).toContain("box-shadow: 0 10px 30px -26px rgba(15, 23, 42, 0.16);");
+    expect(stylesheet).not.toContain("border-radius: 999px;");
   });
 
   it("keeps shared route pages on the same restrained workbench surface system", () => {
@@ -68,11 +70,11 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("width: min(100%, 460px);");
     expect(stylesheet).toContain("grid-template-rows: auto minmax(0, 1fr) auto;");
     expect(stylesheet).toContain(".modal-footer button {");
-    expect(stylesheet).toContain("border-radius: 999px;");
+    expect(stylesheet).toContain("border-radius: 8px;");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(37, 99, 235, 0.96) 0%, rgba(29, 78, 216, 0.96) 100%);");
     expect(stylesheet).toContain(".modal-footer button[data-variant=\"secondary\"] {");
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.modal-backdrop \{[\s\S]*?align-items:\s*center;[\s\S]*?padding:\s*16px;[\s\S]*?\.modal-dialog \{[\s\S]*?width:\s*min\(100%, 420px\);[\s\S]*?border-radius:\s*24px;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.modal-backdrop \{[\s\S]*?align-items:\s*center;[\s\S]*?padding:\s*16px;[\s\S]*?\.modal-dialog \{[\s\S]*?width:\s*min\(100%, 420px\);[\s\S]*?border-radius:\s*12px;/,
     );
   });
 
@@ -112,7 +114,7 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain(".runtime-workspace-mobile-action {");
     expect(stylesheet).toContain(".runtime-workspace-mobile-header .runtime-workspace-mobile-action {");
-    expect(stylesheet).toContain("border-radius: 999px;");
+    expect(stylesheet).toContain("border-radius: 8px;");
     expect(stylesheet).toContain("font-size: 12px;");
     expect(stylesheet).toContain("font-weight: 700;");
     expect(stylesheet).toContain("background: rgba(248, 252, 255, 0.76);");
@@ -143,7 +145,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("padding: 10px 16px 14px;");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(241, 245, 249, 0) 0%, rgba(241, 245, 249, 0.78) 18%, rgba(241, 245, 249, 0.96) 100%);");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form {");
-    expect(stylesheet).toContain("border-radius: 28px;");
+    expect(stylesheet).toContain("border-radius: 12px;");
     expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.96);");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-input {");
     expect(stylesheet).toContain("min-height: 88px;");
@@ -178,7 +180,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("height: 100%;");
     expect(stylesheet).toContain("min-height: 0;");
     expect(stylesheet).toContain("padding: var(--terminal-chat-screen-padding-top) calc(var(--terminal-chat-screen-padding-x) + 4px) 26px;");
-    expect(stylesheet).toContain("border-radius: 28px;");
+    expect(stylesheet).toContain("border-radius: 12px;");
   });
 
   it("drops blur-heavy mobile chrome so runtime surfaces stay responsive on phones", () => {
@@ -243,7 +245,7 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?padding:\s*12px 22px calc\(12px \+ env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset, 0px\)\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(246, 250, 255, 0\.16\) 0%, rgba\(246, 250, 255, 0\.94\) 34%, rgba\(250, 253, 255, 0\.98\) 100%\);/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[\s\S]*?padding:\s*12px 14px 10px;[\s\S]*?border-radius:\s*32px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.96\);[\s\S]*?box-shadow:\s*0 20px 42px -34px rgba\(8, 37, 69, 0\.24\), inset 0 1px 0 rgba\(255, 255, 255, 0\.94\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[\s\S]*?padding:\s*12px 14px 10px;[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.96\);[\s\S]*?box-shadow:\s*0 20px 42px -34px rgba\(8, 37, 69, 0\.24\), inset 0 1px 0 rgba\(255, 255, 255, 0\.94\);/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-input\s*\{[\s\S]*?height:\s*56px;[\s\S]*?min-height:\s*56px;[\s\S]*?resize:\s*none;[\s\S]*?background:\s*transparent;/,
@@ -275,7 +277,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".runtime-session-delete {");
     expect(stylesheet).toContain("min-height: auto;");
     expect(stylesheet).toContain(".conversation-inspector {");
-    expect(stylesheet).toContain("border-radius: 22px;");
+    expect(stylesheet).toContain("border-radius: 12px;");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 248, 255, 0.94) 100%);");
     expect(stylesheet).toContain(".conversation-check-item {");
     expect(stylesheet).toContain("padding: 8px 10px;");
@@ -483,7 +485,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(243, 247, 251, 0.98) 100%)");
     expect(stylesheet).toContain("box-shadow: 0 34px 70px -54px rgba(15, 23, 42, 0.18);");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form {");
-    expect(stylesheet).toContain("border-radius: 28px;");
+    expect(stylesheet).toContain("border-radius: 12px;");
     expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.96);");
   });
 
@@ -571,7 +573,7 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body\s*\{[\s\S]*?border-radius:\s*0;[\s\S]*?border-left:\s*0;[\s\S]*?border-right:\s*0;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-composer-form\s*\{[\s\S]*?border-radius:\s*32px;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-composer-form\s*\{[\s\S]*?border-radius:\s*12px;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-composer-submit\s*\{[\s\S]*?box-shadow:\s*0 10px 20px -18px rgba\(15, 23, 42, 0\.28\);/,
