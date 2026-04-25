@@ -8,9 +8,10 @@ import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../sh
 import { useRuntimeComposerViewportSync } from "../shell/components/useRuntimeComposerViewportSync";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShellCopy";
 import {
+  isComposerImageAttachment,
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
-  readComposerImageFiles,
-  type ComposerImageAttachment,
+  readComposerFiles,
+  type ComposerAttachment,
 } from "./composerImageAttachments";
 import { useConversationRuntime } from "./ConversationRuntimeProvider";
 
@@ -24,7 +25,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const copy = getLegacyShellCopy(language);
   const [inputFocused, setInputFocused] = useState(false);
   const [composerAttachmentError, setComposerAttachmentError] = useState("");
-  const [previewAttachment, setPreviewAttachment] = useState<ComposerImageAttachment | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<ComposerAttachment | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
@@ -64,13 +65,13 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   );
   const sessionEmptyLabel = runtime.route === "agent-runtime" ? copy.sessionEmptyAgent : copy.sessionEmpty;
   const composerMetaLabel = composerAttachmentError || undefined;
-  const composerAddImageLabel = language === "zh" ? "添加图片" : "Add image";
+  const composerAddAttachmentLabel = language === "zh" ? "添加附件" : "Add attachment";
   const composerClosePreviewLabel = language === "zh" ? "关闭预览" : "Close preview";
   const composerPreviewPrefix = language === "zh" ? "预览" : "Preview";
   const composerRemovePrefix = language === "zh" ? "删除" : "Remove";
   const composerImageLimitError = language === "zh"
-    ? `最多可暂存 ${MAX_COMPOSER_IMAGE_ATTACHMENTS} 张图片。`
-    : `You can attach up to ${MAX_COMPOSER_IMAGE_ATTACHMENTS} images.`;
+    ? `最多可暂存 ${MAX_COMPOSER_IMAGE_ATTACHMENTS} 个附件。`
+    : `You can attach up to ${MAX_COMPOSER_IMAGE_ATTACHMENTS} attachments.`;
   const composerVisionUnsupported = language === "zh"
     ? "当前模型不支持图片输入，请切换到支持视觉的模型后再发送。"
     : "The selected model does not support image input. Switch to a vision-capable model before sending.";
@@ -159,7 +160,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   };
 
   const submitDraft = () => {
-    if (runtime.draftAttachments.length > 0 && !runtime.selectedModelSupportsVision) {
+    if (runtime.draftAttachments.some(isComposerImageAttachment) && !runtime.selectedModelSupportsVision) {
       setComposerAttachmentError(composerVisionUnsupported);
       return;
     }
@@ -181,11 +182,11 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     availableSkills: runtime.skills.filter((item) => !item.active),
   }), [runtime.capabilities, runtime.skills]);
 
-  const handleComposerImagePicker = () => {
+  const handleComposerAttachmentPicker = () => {
     composerFileInputRef.current?.click();
   };
 
-  const handleComposerImageSelection = async (files: FileList | null) => {
+  const handleComposerAttachmentSelection = async (files: FileList | null) => {
     if (!files || files.length === 0) {
       return;
     }
@@ -194,11 +195,11 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       return;
     }
     try {
-      const attachments = await readComposerImageFiles(files);
+      const attachments = await readComposerFiles(files);
       await runtime.addDraftAttachments(attachments);
       setComposerAttachmentError("");
     } catch (error) {
-      setComposerAttachmentError(error instanceof Error ? error.message : "Failed to add image.");
+      setComposerAttachmentError(error instanceof Error ? error.message : "Failed to add attachment.");
     } finally {
       if (composerFileInputRef.current) {
         composerFileInputRef.current.value = "";
@@ -485,9 +486,9 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
         submitDraft();
       },
       fileInputRef: composerFileInputRef,
-      fileInputAccept: "image/*",
+      fileInputAccept: "image/*,.txt,.md,.json,.yaml,.yml,.csv,.log,.pdf",
       onFileChange: (event) => {
-        void handleComposerImageSelection(event.target.files);
+        void handleComposerAttachmentSelection(event.target.files);
       },
       attachments: runtime.draftAttachments,
       attachmentStripProps: { "data-runtime-attachments": "conversation" },
@@ -510,8 +511,8 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       onInputPointerDownCapture: handleComposerPointerDownCapture,
       onInputTouchStartCapture: handleComposerTouchStartCapture,
       metaContent: composerMetaLabel,
-      addAttachmentLabel: composerAddImageLabel,
-      onAddAttachment: handleComposerImagePicker,
+      addAttachmentLabel: composerAddAttachmentLabel,
+      onAddAttachment: handleComposerAttachmentPicker,
       submitButtonProps: { onTouchStartCapture: handleSubmitTouchStartCapture },
       submitLabel: composerSend,
       previewCloseLabel: composerClosePreviewLabel,

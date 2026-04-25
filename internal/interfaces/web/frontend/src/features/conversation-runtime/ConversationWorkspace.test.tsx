@@ -358,6 +358,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.draftAttachments = [
       {
         id: "image-1",
+        kind: "image",
         name: "diagram.png",
         contentType: "image/png",
         size: 1024,
@@ -367,7 +368,7 @@ describe("ConversationWorkspace", () => {
     ];
     renderWorkspace({ isMobileViewport: false });
 
-    expect(screen.getByRole("button", { name: "Add image" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add attachment" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Preview diagram.png" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove diagram.png" })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: "diagram.png" })[0]).toHaveAttribute(
@@ -386,14 +387,14 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.removeDraftAttachment).toHaveBeenCalledWith("image-1");
   });
 
-  it("forwards selected image files to the draft attachment handler", async () => {
+  it("forwards selected files to the draft attachment handler", async () => {
     renderWorkspace({ isMobileViewport: false });
 
-    const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement;
+    const fileInput = document.querySelector('input[type="file"][accept*=".md"]') as HTMLInputElement;
     expect(fileInput).toBeInTheDocument();
 
-    const image = new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], "workspace-shot.svg", { type: "image/svg+xml" });
-    fireEvent.change(fileInput, { target: { files: [image] } });
+    const file = new File(["workspace notes"], "notes.md", { type: "text/markdown" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => {
       expect(runtimeMock.addDraftAttachments).toHaveBeenCalledTimes(1);
