@@ -592,6 +592,14 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 	}
+	if strings.HasPrefix(os.Getenv("CODEX_HELPER_MODE"), "stream-") {
+		for _, arg := range forwarded {
+			if arg == "--progress-cursor" {
+				_, _ = os.Stderr.WriteString("unexpected deprecated progress cursor flag")
+				os.Exit(2)
+			}
+		}
+	}
 	if !containsArgPair(forwarded, "--sandbox", defaultCodexSandboxMode) {
 		os.Exit(2)
 	}
