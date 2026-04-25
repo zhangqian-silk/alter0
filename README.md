@@ -544,8 +544,9 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 1. 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service` 与 `frontend-design` 四个内置 Skill。
 2. `memory` Skill 用于向 Agent / Codex 明确记忆文件的读取决策、写入路由、冲突优先级与禁止写入项，建议与 `memory_files` 一起启用。
 3. `deploy-test-service` 与 `frontend-design` 都是项目内置的 file-backed Skill，默认文件分别位于 `.alter0/skills/deploy-test-service/SKILL.md` 与 `docs/skills/frontend-design/SKILL.md`；前者约束会话级测试服务发布，后者约束前端页面、组件与应用实现的视觉方向、字体/配色/动效/构图质量。
-4. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `.alter0/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Agent Runtime 的 Skill 面板会展示当前 Agent 私有 Skill，但该项固定启用且不可取消；可选区只列出 `memory`、`deploy-test-service`、`frontend-design` 等公有 Skill。
-5. `travel` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食与地图输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
+4. `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service` 与 `frontend-design`，进入 Coding Agent Runtime 后即可继承仓库记忆、预览发布与前端设计规则。
+5. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `.alter0/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Agent Runtime 的 Skill 面板会展示当前 Agent 私有 Skill，但该项固定启用且不可取消；可选区只列出 `memory`、`deploy-test-service`、`frontend-design` 等公有 Skill。
+6. `travel` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食与地图输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
 
 ### Agent
 

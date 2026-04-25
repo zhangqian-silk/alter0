@@ -61,4 +61,7 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	if got := strings.Join(skills["coding"], ","); !strings.Contains(got, "deploy-test-service") {
 		t.Fatalf("expected coding agent skills to include deploy-test-service, got %+v", skills["coding"])
 	}
+	if got := strings.Join(skills["coding"], ","); !strings.Contains(got, "frontend-design") {
+		t.Fatalf("expected coding agent skills to include frontend-design, got %+v", skills["coding"])
+	}
 }
