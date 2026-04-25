@@ -46,7 +46,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 - `Chat` 默认绑定内置 `main` Agent `Alter0`。
 - `Chat` 面向通用对话入口，并允许在需要时调度专项 Agent。
-- `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中调整，并作用于后续发送的消息；其中 `Chat` 与 `Agent Runtime` 的 `Provider / Model` 选择器都需额外暴露内置 `Codex` 项，允许用户不经过常规 LLM Provider 直接切到 `Codex CLI` 执行链。Agent Runtime 的 `Skills` 面板需把当前 Agent 私有 Skill 固定展示为已启用且不可取消，未启用可选项只展示公有 Skill，不把其他 Agent 私有 Skill 暴露为可选项。
+- `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中调整，并作用于后续发送的消息；其中 `Chat` 与 `Agent Runtime` 的 `Provider / Model` 选择器都需额外暴露内置 `Codex` 项，允许用户不经过常规 LLM Provider 直接切到 `Codex CLI` 执行链。Agent Runtime 的 `Skills` 面板需把当前 Agent 私有 Skill 固定展示为已启用且不可取消，未启用可选项只展示公有 Skill，不把其他 Agent 私有 Skill 暴露为可选项；`coding` 默认启用 `frontend-design`，新建 Coding Agent 会话的 Skills 摘要应直接体现该前端设计规则。
 
 ### Agent 页面
 
