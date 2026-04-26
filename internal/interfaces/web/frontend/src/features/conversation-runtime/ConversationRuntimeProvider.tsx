@@ -1244,6 +1244,10 @@ export function ConversationRuntimeProvider({
         buffer = buffer.slice(splitIndex + 2);
         if (parsed) {
           sawEvent = true;
+          if (sawDone && parsed.event !== "done") {
+            splitIndex = buffer.indexOf("\n\n");
+            continue;
+          }
           if (parsed.event === "process") {
             patchSession(routeKey, sessionID, (currentSession) => {
               const nextMessages = currentSession.messages.map((message) =>
