@@ -151,6 +151,25 @@ function ActiveSessionTitleHarness() {
   return <output data-testid="active-session-title">{runtime.activeSession?.title || ""}</output>;
 }
 
+function MessageListHarness() {
+  const runtime = useConversationRuntime();
+  return (
+    <div>
+      <button type="button" onClick={() => void runtime.sendPrompt("Follow up prompt")}>
+        send followup
+      </button>
+      <output data-testid="message-list">
+        {JSON.stringify((runtime.activeSession?.messages || []).map((message) => ({
+          id: message.id,
+          role: message.role,
+          text: message.text,
+          status: message.status,
+        })))}
+      </output>
+    </div>
+  );
+}
+
 describe("ConversationRuntimeProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -296,6 +315,102 @@ describe("ConversationRuntimeProvider", () => {
 
     const sessionWritesAfterDone = setItemSpy.mock.calls.filter(([key]) => key === SESSION_STORAGE_KEY).length;
     expect(sessionWritesAfterDone).toBe(2);
+  });
+
+  it("keeps append-style history stable after a streamed reply is finalized", async () => {
+    window.sessionStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "session-append-style",
+          title: "Append style session",
+          titleAuto: false,
+          titleScore: 1,
+          createdAt: Date.parse("2026-04-23T03:30:00Z"),
+          targetType: "model",
+          targetID: "raw-model",
+          targetName: "Raw Model",
+          modelProviderID: "",
+          modelID: "",
+          toolIDs: [],
+          skillIDs: [],
+          mcpIDs: [],
+          messages: [
+            {
+              id: "message-user-old",
+              role: "user",
+              text: "Initial prompt",
+              attachments: [],
+              route: "nl",
+              source: "web-default",
+              error: false,
+              status: "",
+              at: Date.parse("2026-04-23T03:31:00Z"),
+              process_steps: [],
+            },
+            {
+              id: "message-assistant-old",
+              role: "assistant",
+              text: "Initial answer",
+              attachments: [],
+              route: "nl",
+              source: "codex_exec",
+              error: false,
+              status: "done",
+              at: Date.parse("2026-04-23T03:32:00Z"),
+              process_steps: [],
+            },
+          ],
+        },
+      ]),
+    );
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "session-append-style", "agent-runtime": "" }),
+    );
+
+    const encoder = new TextEncoder();
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        streamController = controller;
+      },
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "send followup" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      streamController?.enqueue(encoder.encode('event: done\ndata: {"result":{"output":"Fresh answer"}}\n\n'));
+      streamController?.enqueue(encoder.encode('event: process\ndata: {"process_step":{"kind":"tool","title":"late tool step"}}\n\n'));
+      streamController?.enqueue(encoder.encode('event: delta\ndata: {"delta":" should not reopen"}\n\n'));
+      streamController?.close();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const messages = JSON.parse(screen.getByTestId("message-list").textContent || "[]") as Array<{
+        role: string;
+        text: string;
+        status: string;
+      }>;
+      expect(messages).toHaveLength(4);
+      expect(messages[1]).toMatchObject({ role: "assistant", text: "Initial answer", status: "done" });
+      expect(messages[3]).toMatchObject({ role: "assistant", text: "Fresh answer", status: "done" });
+    });
   });
 
   it("uploads draft images into the session workspace before they are persisted locally", async () => {
