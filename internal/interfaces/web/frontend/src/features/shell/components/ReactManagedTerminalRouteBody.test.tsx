@@ -328,6 +328,9 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-runtime-workspace-page='true']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-select")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-delete")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-card")).not.toHaveClass("route-card");
+    expect(document.querySelector(".runtime-session-select")).not.toHaveClass("route-card-button");
+    expect(document.querySelector(".runtime-session-topline .task-summary-status")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-session-main")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-title-row")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-title-row")?.textContent).toContain("Workspace shell");
@@ -379,8 +382,14 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(screen.queryByRole("button", { name: "Quick tools" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mention" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Workspace tools" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Session" })).toBeInTheDocument();
-    expect(composerToolbarStart).toContainElement(screen.getByRole("button", { name: "Add attachment" }));
+    const sessionButton = screen.getByRole("button", { name: "Session" });
+    const addAttachmentButton = screen.getByRole("button", { name: "Add attachment" });
+    expect(sessionButton).toHaveClass("runtime-composer-utility");
+    expect(sessionButton).not.toHaveClass("is-pill");
+    expect(addAttachmentButton).toHaveClass("runtime-composer-upload");
+    expect(addAttachmentButton.querySelector(".runtime-composer-upload-icon svg")).toBeInTheDocument();
+    expect(addAttachmentButton.querySelector(".runtime-composer-upload-label")).toHaveClass("sr-only");
+    expect(composerToolbarStart).toContainElement(addAttachmentButton);
     expect(composerToolbarEnd).toContainElement(screen.getByRole("button", { name: "Send" }));
     expect(document.querySelector(".runtime-composer-meta")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-form[data-runtime-composer-kind='terminal']")).toHaveClass("runtime-composer-form");

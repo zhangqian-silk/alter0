@@ -86,10 +86,10 @@ type TerminalStepBlock = {
 function RuntimeSessionControlIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
-      <rect x="3" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="12" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="3" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="12" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="6" cy="6" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="14" cy="6" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="6" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="14" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
     </svg>
   );
 }
@@ -1501,24 +1501,18 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
             shortHash: normalizeText(session.terminal_session_id || session.id),
             activeLabel: copy.current,
             idleLabel: copy.sessionLabel,
-            statusLabel: renderStatus(session.status || "", copy),
-            statusClassName: `task-summary-status ${sessionStatusClassName(session.status || "")}`,
             onSelect: () => void selectSession(session.id),
             onDelete: () => void deleteSession(session.id),
             deleteLabel: copy.delete,
             deleteAriaLabel: copy.delete,
             deleting: deletingSessionID === session.id,
             deleteProps: { "data-runtime-delete-session": session.id },
-            shellClassName: active
-              ? "route-card runtime-session-card active is-active"
-              : "route-card runtime-session-card",
+            shellClassName: active ? "runtime-session-card is-active" : "runtime-session-card",
             shellProps: {
               "data-runtime-session-card": session.id,
               "data-runtime-session-status": normalizeStatus(session.status || ""),
             },
-            buttonClassName: active
-              ? "route-card-button runtime-session-select active"
-              : "route-card-button runtime-session-select",
+            buttonClassName: active ? "runtime-session-select active" : "runtime-session-select",
             buttonProps: { "data-runtime-session-select": session.id },
           };
         }),
@@ -1674,7 +1668,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
           key: "session",
           label: shellCopy.runtimeMobile,
           icon: <RuntimeSessionControlIcon />,
-          className: metaOpen ? "is-pill is-active" : "is-pill",
+          className: metaOpen ? "is-active" : undefined,
           onClick: () => setMetaOpen((current) => !current),
         },
       ],

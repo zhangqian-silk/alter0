@@ -101,6 +101,20 @@ function DefaultRuntimeComposerSubmitIcon() {
   );
 }
 
+function RuntimeComposerAttachIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false">
+      <path
+        d="m8.15 11.85 4.85-4.86a2.1 2.1 0 0 1 2.97 2.97l-6.18 6.18a3.6 3.6 0 0 1-5.09-5.09l6.35-6.36a5 5 0 0 1 7.07 7.08l-6.4 6.39"
+        stroke="currentColor"
+        strokeWidth="1.85"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function RuntimeComposer({
   runtimeKind,
   shellRef,
@@ -359,8 +373,10 @@ export function RuntimeComposer({
                 data-runtime-composer-upload={runtimeKind}
                 data-composer-upload={composerAlias}
               >
-                <span aria-hidden="true">+</span>
-                <span>{addAttachmentLabel}</span>
+                <span className="runtime-composer-upload-icon" aria-hidden="true">
+                  <RuntimeComposerAttachIcon />
+                </span>
+                <span className="runtime-composer-upload-label sr-only">{addAttachmentLabel}</span>
               </button>
               {metaContent ? (
                 <div

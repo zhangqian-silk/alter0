@@ -231,12 +231,6 @@ export function PrimaryNav({
   return (
     <aside className="primary-nav">
       <div className="brand">
-        <span className="brand-mark" aria-hidden="true">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none">
-            <rect x="1.5" y="1.5" width="25" height="25" rx="8" stroke="currentColor" strokeWidth="1.4" />
-            <path d="M8 18.5V9.5h4.75c1.3 0 2.28.29 2.95.88.67.59 1 1.4 1 2.45 0 .7-.17 1.31-.51 1.82-.34.51-.83.9-1.48 1.16l2.59 3.19H14.9l-2.18-2.82H10.4v2.82H8Zm2.4-4.82h2.12c.56 0 .99-.13 1.28-.38.29-.25.44-.62.44-1.08 0-.47-.15-.83-.44-1.08-.29-.25-.72-.37-1.28-.37H10.4v2.91Z" fill="currentColor" />
-          </svg>
-        </span>
         <div className="brand-copy">
           <strong>Alter0</strong>
         </div>

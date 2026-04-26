@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { PrimaryNav } from "./PrimaryNav";
 
 describe("PrimaryNav", () => {
-  it("renders the brand mark and locale controls in the expanded sidebar", () => {
+  it("renders text-only brand chrome and locale controls in the expanded sidebar", () => {
     const { container } = render(
       <PrimaryNav
         currentRoute="chat"
@@ -14,7 +14,8 @@ describe("PrimaryNav", () => {
       />,
     );
 
-    expect(container.querySelector(".brand-mark")).toBeInTheDocument();
+    expect(container.querySelector(".brand-mark")).not.toBeInTheDocument();
+    expect(screen.getByText("Alter0")).toBeInTheDocument();
     expect(container.querySelector(".nav-profile")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Language" })).toBeInTheDocument();
   });

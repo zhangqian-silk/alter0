@@ -40,7 +40,7 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".brand-mark {");
+    expect(stylesheet).not.toContain(".brand-mark {");
     expect(stylesheet).toContain(".nav-locale {");
     expect(stylesheet).toContain(".locale {");
     expect(stylesheet).toContain(".runtime-composer-body {");
@@ -304,15 +304,22 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("padding: 8px 10px;");
   });
 
-  it("keeps the image upload control readable inside the composer tool row", () => {
+  it("renders composer toolbar controls as compact square icon buttons", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
+    expect(stylesheet).toContain(".runtime-composer-utility,");
+    expect(stylesheet).toContain(".runtime-composer-submit,");
+    expect(stylesheet).toContain(".runtime-composer-upload {");
     expect(stylesheet).toContain("[data-runtime-view=\"conversation\"] .runtime-composer-form .runtime-composer-upload,");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-upload {");
-    expect(stylesheet).toContain("width: auto;");
-    expect(stylesheet).toContain("min-width: fit-content;");
-    expect(stylesheet).toContain("white-space: nowrap;");
+    expect(stylesheet).toContain("width: 38px;");
+    expect(stylesheet).toContain("height: 38px;");
+    expect(stylesheet).toContain("align-items: center;");
+    expect(stylesheet).toContain("justify-content: center;");
+    expect(stylesheet).toContain("border-radius: 8px;");
+    expect(stylesheet).toContain(".runtime-composer-upload-label {");
+    expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-session-topline .task-summary-status");
   });
 
   it("renders attachment previews and message images with their original aspect ratios instead of square crops", () => {
@@ -498,11 +505,12 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toContain(".app-shell[data-workbench-route=\"chat\"] .conversation-workspace .panel-toggle,");
   });
 
-  it("styles the terminal workspace like a restrained command center with layered session and composer surfaces", () => {
+  it("styles the terminal workspace like a restrained command center while reusing shared session cards", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-session-card {");
+    expect(stylesheet).toContain(".runtime-session-card {");
+    expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-session-card {");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-workspace-screen {");
     expect(stylesheet).toContain(".runtime-workspace-body {");
     expect(stylesheet).toContain("linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(243, 247, 251, 0.98) 100%)");

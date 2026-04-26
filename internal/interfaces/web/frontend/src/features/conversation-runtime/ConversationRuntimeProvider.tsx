@@ -588,7 +588,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
   }
   return {
     id,
-    title: normalizeText(record.title) || "New Chat",
+    title: normalizeText(record.title) || "New",
     titleAuto: record.titleAuto !== false,
     titleScore: Number.isFinite(Number(record.titleScore)) ? Number(record.titleScore) : 0,
     createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : Date.now(),
@@ -1018,7 +1018,7 @@ export function ConversationRuntimeProvider({
     }
     const created: ChatSession = {
       id: makeID("session"),
-      title: route === "agent-runtime" ? "New Agent Session" : "New Chat",
+      title: "New",
       titleAuto: true,
       titleScore: 0,
       createdAt: Date.now(),

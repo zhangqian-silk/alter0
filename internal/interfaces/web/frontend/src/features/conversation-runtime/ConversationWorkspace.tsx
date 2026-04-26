@@ -22,10 +22,10 @@ type ConversationWorkspaceProps = {
 function RuntimeSessionControlIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
-      <rect x="3" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="12" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="3" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="12" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="6" cy="6" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="14" cy="6" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="6" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="14" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
     </svg>
   );
 }
@@ -57,10 +57,8 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       : "Conversation, process, and delivery stay in a single timeline.");
   const composerPlaceholder = language === "zh" ? "输入消息，继续推进当前工作区..." : "Type a message to continue this workspace...";
   const composerSend = language === "zh" ? "发送" : "Send";
-  const sessionPaneTitle = runtime.route === "agent-runtime"
-    ? (language === "zh" ? "Agent 会话" : "Agent sessions")
-    : (language === "zh" ? "对话会话" : "Chat sessions");
-  const mobileNewLabel = runtime.route === "agent-runtime" ? copy.sessionNewAgent : copy.sessionNewChat;
+  const sessionPaneTitle = copy.terminalSessions;
+  const newSessionLabel = copy.terminalNewShort;
   const sessionCountLabel = language === "zh"
     ? `${runtime.sessionItems.length} 个会话`
     : `${runtime.sessionItems.length} sessions`;
@@ -455,7 +453,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       sessionPanePrimaryActionClassName: "is-primary",
       sessionPaneTitle,
       sessionPaneCountLabel: sessionCountLabel,
-      sessionPanePrimaryActionLabel: workbench.isMobileViewport ? copy.terminalNewShort : mobileNewLabel,
+      sessionPanePrimaryActionLabel: newSessionLabel,
       onSessionPanePrimaryAction: handleCreateSession,
       sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.sessionClose : undefined,
       onSessionPaneSecondaryAction: workbench.isMobileViewport ? workbench.closeMobileSessionPane : undefined,
@@ -471,11 +469,11 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
       onMobileNav: workbench.toggleMobileNav,
       mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",
-      mobileSessionButtonLabel: copy.chatSessions,
+      mobileSessionButtonLabel: copy.terminalSessions,
       mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
       onMobileSession: workbench.toggleMobileSessionPane,
       mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
-      mobilePrimaryButtonLabel: copy.terminalNewShort,
+      mobilePrimaryButtonLabel: newSessionLabel,
       onMobilePrimary: handleCreateSession,
     },
     sessionList: {
@@ -578,7 +576,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
           key: "session",
           label: copy.runtimeMobile,
           icon: <RuntimeSessionControlIcon />,
-          className: runtime.inspectorOpen ? "is-pill is-active" : "is-pill",
+          className: runtime.inspectorOpen ? "is-active" : undefined,
           onClick: () => runtime.toggleInspector(runtime.inspectorTab),
         },
       ],
