@@ -256,8 +256,8 @@ func TestCodexCLIProcessorPlainStrategySkipsNativeRuntimeAssets(t *testing.T) {
 	processor := newTestProcessor("success", "reply: hello")
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey:   "session-default",
-		execdomain.SkillContextMetadataKey:      string(rawSkillContext),
+		execdomain.RuntimeSessionIDMetadataKey:     "session-default",
+		execdomain.SkillContextMetadataKey:         string(rawSkillContext),
 		execdomain.CodexRuntimeStrategyMetadataKey: execdomain.CodexRuntimeStrategyPlain,
 	})
 	if err != nil {
@@ -272,6 +272,9 @@ func TestCodexCLIProcessorPlainStrategySkipsNativeRuntimeAssets(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(sessionWorkspace, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("expected plain strategy to skip runtime AGENTS, got err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "thread.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected plain strategy to skip codex thread state, got err=%v", err)
 	}
 }
 
@@ -486,6 +489,53 @@ func TestCodexCLIProcessorProcessStreamUsesSessionWorkspace(t *testing.T) {
 	}
 }
 
+func TestCodexCLIProcessorProcessStreamPersistsAndResumesNativeThread(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	metadata := map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "agent-fallback-session",
+	}
+	expectedFirstPrompt := mustBuildTestPrompt(t, "first prompt", metadata)
+	expectedSecondPrompt := mustBuildTestPrompt(t, "second prompt", metadata)
+	processor := newTestProcessor("stream-thread-success", expectedFirstPrompt)
+
+	output, err := processor.ProcessStream(context.Background(), "first prompt", metadata, nil)
+	if err != nil {
+		t.Fatalf("first ProcessStream() error = %v", err)
+	}
+	if output != "mock streamed response" {
+		t.Fatalf("first ProcessStream() output = %q, want %q", output, "mock streamed response")
+	}
+
+	threadPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "agent-fallback-session", ".alter0", "codex-runtime", "thread.json")
+	threadData, err := os.ReadFile(threadPath)
+	if err != nil {
+		t.Fatalf("read persisted codex thread: %v", err)
+	}
+	if !strings.Contains(string(threadData), "thread-agent-fallback") {
+		t.Fatalf("persisted thread state = %q, want thread id", string(threadData))
+	}
+
+	processor = newTestProcessor("stream-resume-success", expectedSecondPrompt)
+	output, err = processor.ProcessStream(context.Background(), "second prompt", metadata, nil)
+	if err != nil {
+		t.Fatalf("second ProcessStream() error = %v", err)
+	}
+	if output != "mock resumed response" {
+		t.Fatalf("second ProcessStream() output = %q, want %q", output, "mock resumed response")
+	}
+}
+
 func TestCodexCLIProcessorProcessRequiresWorkspaceContext(t *testing.T) {
 	processor := NewCodexCLIProcessor()
 
@@ -603,6 +653,13 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 	if !containsArgPair(forwarded, "--sandbox", defaultCodexSandboxMode) {
 		os.Exit(2)
 	}
+	mode := os.Getenv("CODEX_HELPER_MODE")
+	if mode == "stream-resume-success" && !containsArgSequence(forwarded, "resume", "--json", "thread-agent-fallback", "-") {
+		os.Exit(2)
+	}
+	if mode != "stream-resume-success" && containsArg(forwarded, "resume") {
+		os.Exit(2)
+	}
 
 	promptArg := forwarded[len(forwarded)-1]
 	prompt := promptArg
@@ -632,8 +689,6 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 	}
-
-	mode := os.Getenv("CODEX_HELPER_MODE")
 
 	outputPath := ""
 	for i := 0; i < len(forwarded)-1; i++ {
@@ -665,6 +720,14 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.delta\",\"item\":{\"type\":\"agent_message\",\"delta\":\"mock \"}}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock streamed response\"}}\n")
 		os.Exit(0)
+	case "stream-thread-success":
+		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\",\"thread_id\":\"thread-agent-fallback\"}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock streamed response\"}}\n")
+		os.Exit(0)
+	case "stream-resume-success":
+		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\",\"thread_id\":\"thread-agent-fallback\"}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock resumed response\"}}\n")
+		os.Exit(0)
 	case "stream-slow-success":
 		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\"}\n")
 		time.Sleep(80 * time.Millisecond)
@@ -686,6 +749,34 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 func containsArgPair(args []string, key string, value string) bool {
 	for i := 0; i < len(args)-1; i++ {
 		if args[i] == key && args[i+1] == value {
+			return true
+		}
+	}
+	return false
+}
+
+func containsArg(args []string, value string) bool {
+	for _, arg := range args {
+		if arg == value {
+			return true
+		}
+	}
+	return false
+}
+
+func containsArgSequence(args []string, values ...string) bool {
+	if len(values) == 0 {
+		return true
+	}
+	for index := 0; index <= len(args)-len(values); index++ {
+		matched := true
+		for offset, value := range values {
+			if args[index+offset] != value {
+				matched = false
+				break
+			}
+		}
+		if matched {
 			return true
 		}
 	}

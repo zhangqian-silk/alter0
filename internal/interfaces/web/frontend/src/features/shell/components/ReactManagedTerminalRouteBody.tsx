@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { createAPIClient } from "../../../shared/api/client";
+import { hashSessionIDShort } from "../../../shared/session/sessionHash";
 import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
 import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
 import {
@@ -1498,7 +1499,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
             active,
             title: normalizeText(session.title || session.id),
             meta: sessionLastOutputLabel(session, copy),
-            shortHash: normalizeText(session.terminal_session_id || session.id),
+            shortHash: hashSessionIDShort(normalizeText(session.id)),
             activeLabel: copy.current,
             idleLabel: copy.sessionLabel,
             onSelect: () => void selectSession(session.id),

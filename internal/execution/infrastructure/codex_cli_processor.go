@@ -69,6 +69,16 @@ type CodexCLIProcessor struct {
 	heartbeatInterval time.Duration
 }
 
+type codexThreadState struct {
+	Enabled bool
+	Path    string
+}
+
+type persistedCodexThreadState struct {
+	ThreadID  string    `json:"thread_id"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type codexExecutionPayload struct {
 	Protocol     string                     `json:"protocol"`
 	UserPrompt   string                     `json:"user_prompt"`
@@ -87,9 +97,10 @@ type codexAgentContext struct {
 }
 
 type codexJSONEvent struct {
-	Type    string          `json:"type"`
-	Message string          `json:"message,omitempty"`
-	Item    *codexEventItem `json:"item,omitempty"`
+	Type     string          `json:"type"`
+	Message  string          `json:"message,omitempty"`
+	ThreadID string          `json:"thread_id,omitempty"`
+	Item     *codexEventItem `json:"item,omitempty"`
 }
 
 type codexEventItem struct {
@@ -146,16 +157,9 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		runner = exec.CommandContext
 	}
 
-	args := []string{
-		"exec",
-		"--color", "never",
-		"--skip-git-repo-check",
-		"--sandbox", resolveCodexSandboxMode(metadata),
-	}
-	for _, dir := range resolveCodexAddDirs(metadata) {
-		args = append(args, "--add-dir", dir)
-	}
-	args = append(args, "-o", outputPath, "-")
+	threadState := resolveCodexThreadState(workspaceDir, metadata)
+	threadID := loadCodexThreadID(threadState)
+	args := buildCodexExecArgs(metadata, threadID, outputPath, false)
 	procCtx, procCancel := context.WithCancel(ctx)
 	defer procCancel()
 
@@ -199,6 +203,9 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 		}
 		return "", fmt.Errorf("codex command failed: %w: %s", waitErr, details)
 	}
+	if threadState.Enabled {
+		persistCodexThreadID(threadState, collectThreadIDFromOutput(stdout.String()))
+	}
 
 	rawOutput, err := os.ReadFile(outputPath)
 	if err != nil {
@@ -239,16 +246,9 @@ func (p *CodexCLIProcessor) ProcessStream(
 		runner = exec.CommandContext
 	}
 
-	args := []string{
-		"exec",
-		"--color", "never",
-		"--skip-git-repo-check",
-		"--sandbox", resolveCodexSandboxMode(metadata),
-	}
-	for _, dir := range resolveCodexAddDirs(metadata) {
-		args = append(args, "--add-dir", dir)
-	}
-	args = append(args, "--json", "-")
+	threadState := resolveCodexThreadState(workspaceDir, metadata)
+	threadID := loadCodexThreadID(threadState)
+	args := buildCodexExecArgs(metadata, threadID, "", true)
 	procCtx, procCancel := context.WithCancel(ctx)
 	defer procCancel()
 
@@ -281,7 +281,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 	}
 	stopHeartbeat := p.startHeartbeatReporter(procCtx, cmd)
 
-	output, scanErr := collectStreamOutput(stdoutPipe, emit)
+	output, threadID, scanErr := collectStreamOutput(stdoutPipe, emit)
 	if scanErr != nil {
 		procCancel()
 		_ = cmd.Wait()
@@ -296,6 +296,9 @@ func (p *CodexCLIProcessor) ProcessStream(
 			return "", fmt.Errorf("codex command failed: %w", waitErr)
 		}
 		return "", fmt.Errorf("codex command failed: %w: %s", waitErr, details)
+	}
+	if threadState.Enabled {
+		persistCodexThreadID(threadState, threadID)
 	}
 	result := strings.TrimSpace(output)
 	if result == "" {
@@ -345,6 +348,81 @@ func (p *CodexCLIProcessor) startHeartbeatReporter(ctx context.Context, cmd *exe
 	}
 }
 
+func buildCodexExecArgs(metadata map[string]string, threadID string, outputPath string, stream bool) []string {
+	args := []string{
+		"exec",
+		"--color", "never",
+		"--skip-git-repo-check",
+		"--sandbox", resolveCodexSandboxMode(metadata),
+	}
+	for _, dir := range resolveCodexAddDirs(metadata) {
+		args = append(args, "--add-dir", dir)
+	}
+	if strings.TrimSpace(outputPath) != "" {
+		args = append(args, "-o", outputPath)
+	}
+	if strings.TrimSpace(threadID) != "" {
+		args = append(args, "resume")
+		if stream {
+			args = append(args, "--json")
+		}
+		args = append(args, strings.TrimSpace(threadID), "-")
+		return args
+	}
+	if stream {
+		args = append(args, "--json")
+	}
+	args = append(args, "-")
+	return args
+}
+
+func resolveCodexThreadState(workspaceDir string, metadata map[string]string) codexThreadState {
+	if resolveCodexRuntimeStrategy(metadata) == execdomain.CodexRuntimeStrategyPlain {
+		return codexThreadState{}
+	}
+	trimmedWorkspace := strings.TrimSpace(workspaceDir)
+	if trimmedWorkspace == "" {
+		return codexThreadState{}
+	}
+	return codexThreadState{
+		Enabled: true,
+		Path:    filepath.Join(trimmedWorkspace, defaultWorkspaceRootDir, codexRuntimeDirName, "thread.json"),
+	}
+}
+
+func loadCodexThreadID(state codexThreadState) string {
+	if !state.Enabled || strings.TrimSpace(state.Path) == "" {
+		return ""
+	}
+	data, err := os.ReadFile(state.Path)
+	if err != nil {
+		return ""
+	}
+	record := persistedCodexThreadState{}
+	if err := json.Unmarshal(data, &record); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(record.ThreadID)
+}
+
+func persistCodexThreadID(state codexThreadState, threadID string) {
+	threadID = strings.TrimSpace(threadID)
+	if !state.Enabled || strings.TrimSpace(state.Path) == "" || threadID == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(state.Path), 0o755); err != nil {
+		return
+	}
+	data, err := json.MarshalIndent(persistedCodexThreadState{
+		ThreadID:  threadID,
+		UpdatedAt: time.Now().UTC(),
+	}, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(state.Path, append(data, '\n'), 0o600)
+}
+
 func isCodexProcessRunning(cmd *exec.Cmd) bool {
 	if cmd == nil || cmd.Process == nil {
 		return false
@@ -355,12 +433,13 @@ func isCodexProcessRunning(cmd *exec.Cmd) bool {
 func collectStreamOutput(
 	reader io.Reader,
 	emit func(event execdomain.StreamEvent) error,
-) (string, error) {
+) (string, string, error) {
 	scanner := bufio.NewScanner(reader)
 	// Allow larger JSONL events for long model outputs.
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
 	emittedOutput := ""
+	threadID := ""
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -370,8 +449,11 @@ func collectStreamOutput(
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue
 		}
+		if strings.TrimSpace(event.ThreadID) != "" {
+			threadID = strings.TrimSpace(event.ThreadID)
+		}
 		if fatalMessage := fatalCodexEventMessage(event.Message); fatalMessage != "" {
-			return "", fmt.Errorf("codex authentication failed: %s", fatalMessage)
+			return "", threadID, fmt.Errorf("codex authentication failed: %s", fatalMessage)
 		}
 		if event.Item == nil || event.Item.Type != "agent_message" {
 			continue
@@ -386,7 +468,7 @@ func collectStreamOutput(
 				continue
 			}
 			if err := emitStreamDelta(emit, delta); err != nil {
-				return "", err
+				return "", threadID, err
 			}
 			emittedOutput += delta
 		case "item.updated", "item.completed":
@@ -398,16 +480,33 @@ func collectStreamOutput(
 				continue
 			}
 			if err := emitStreamDelta(emit, nextDelta); err != nil {
-				return "", err
+				return "", threadID, err
 			}
 			emittedOutput += nextDelta
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("read codex stream output: %w", err)
+		return "", threadID, fmt.Errorf("read codex stream output: %w", err)
 	}
-	return emittedOutput, nil
+	return emittedOutput, threadID, nil
+}
+
+func collectThreadIDFromOutput(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "{") {
+			continue
+		}
+		event := codexJSONEvent{}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		if threadID := strings.TrimSpace(event.ThreadID); threadID != "" {
+			return threadID
+		}
+	}
+	return ""
 }
 
 func fatalCodexEventMessage(message string) string {

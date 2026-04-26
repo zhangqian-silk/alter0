@@ -336,6 +336,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".runtime-session-title-row")?.textContent).toContain("Workspace shell");
     expect(document.querySelector(".runtime-session-summary-row")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-bottomline")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-hash")?.textContent).toBe("c05eccbf");
+    expect(document.querySelector(".runtime-session-hash")?.textContent).not.toContain("terminal-1");
     expect(within(document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement).getByRole("list")).toHaveAttribute(
       "data-runtime-session-list",
       "terminal",

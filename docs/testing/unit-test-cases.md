@@ -1,6 +1,6 @@
 # Unit Test Cases
 
-> Last update: 2026-04-24
+> Last update: 2026-04-26
 
 本文件维护 Go 单元测试的领域覆盖口径。测试文件按 DDD 边界放置在对应包路径下：领域规则放在 `domain`，用例编排放在 `application`，CLI/Web 入口契约放在 `interfaces`，外部适配和基础设施契约放在 `infrastructure`。
 
@@ -147,6 +147,25 @@
 - 账号业务规则、切换策略与登录会话状态由 `internal/codex/application` 覆盖。
 
 ## Agent Capability & Memory
+
+### `internal/execution/infrastructure`
+
+覆盖文件：
+
+- `codex_cli_processor_test.go`
+- `hybrid_nl_processor_test.go`
+
+用例范围：
+
+- Codex CLI 同步与流式执行、错误、空输出、认证失败和运行态心跳。
+- 原生 Codex Runtime 资产生成、Session 工作区解析、repo root 与 session repo clone 模式。
+- 直连 Codex 路径解析 `thread.started.thread_id`，持久化 `.alter0/codex-runtime/thread.json`，后续同 Session 使用 `codex exec resume <thread_id> -` 续写。
+- Hybrid NL 的 Agent/ReAct/Codex 执行源、工具调用、委派与 Memory 工具。
+
+边界：
+
+- Web SSE 协议、会话落库与前端展示由 `internal/interfaces/web` 和前端测试覆盖。
+- Terminal 自身的 Codex thread 恢复由 `internal/terminal/application` 覆盖。
 
 ### `internal/execution/domain`
 

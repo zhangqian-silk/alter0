@@ -146,7 +146,8 @@ func TestWorkbenchMobileLayoutUsesConversationDrawer(t *testing.T) {
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	markers := []string{
 		"@media (max-width: 1100px) {",
-		`[data-runtime-view="conversation"] {`,
+		`[data-runtime-view="conversation"],`,
+		`[data-runtime-view="terminal"] {`,
 		"grid-template-columns: 1fr;",
 		".runtime-workspace-session-pane {",
 		"position: fixed;",

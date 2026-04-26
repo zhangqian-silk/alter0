@@ -271,7 +271,8 @@ func TestConversationWorkspaceSessionSurfacePresent(t *testing.T) {
 
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	styleMarkers := []string{
-		`[data-runtime-view="conversation"] {`,
+		`[data-runtime-view="conversation"],`,
+		`[data-runtime-view="terminal"] {`,
 		".runtime-workspace-session-pane {",
 		".runtime-workspace {",
 	}
@@ -384,7 +385,6 @@ func TestSidebarTerminalModulePresent(t *testing.T) {
 
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	styleMarkers := []string{
-		`[data-runtime-view="terminal"] .runtime-session-card {`,
 		".runtime-session-card {",
 		".runtime-composer-form {",
 	}

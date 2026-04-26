@@ -224,12 +224,15 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".mobile-backdrop {");
   });
 
-  it("keeps terminal workspace on the desktop split-pane layout instead of stacking the session list above the workspace", () => {
+  it("keeps terminal workspace on the shared desktop split-pane session width instead of stacking the list above the workspace", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="terminal"\]\s*\{[\s\S]*?grid-template-columns:\s*minmax\(280px, 320px\) minmax\(0, 1fr\);/,
+      /\[data-runtime-view="conversation"\],\s*\[data-runtime-view="terminal"\]\s*\{[\s\S]*?grid-template-columns:\s*minmax\(260px, 300px\) minmax\(0, 1fr\);/,
+    );
+    expect(stylesheet).not.toMatch(
+      /\[data-runtime-view="terminal"\]\s*\{\s*grid-template-columns:\s*minmax\(280px, 320px\) minmax\(0, 1fr\);/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\],\s*\[data-runtime-view="terminal"\]\s*\{[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?padding:\s*0;[\s\S]*?gap:\s*0;/,

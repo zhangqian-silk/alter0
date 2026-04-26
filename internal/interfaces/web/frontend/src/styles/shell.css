@@ -3301,17 +3301,10 @@ body::after {
 [data-runtime-view="terminal"] {
   min-height: 100%;
   display: grid;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
   gap: 18px;
   padding: 8px 16px 18px;
   align-items: stretch;
-}
-
-[data-runtime-view="conversation"] {
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
-}
-
-[data-runtime-view="terminal"] {
-  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
 }
 
 .runtime-workspace-session-pane {
