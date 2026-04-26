@@ -146,6 +146,11 @@ function AgentSessionProfileHarness() {
   );
 }
 
+function ActiveSessionTitleHarness() {
+  const runtime = useConversationRuntime();
+  return <output data-testid="active-session-title">{runtime.activeSession?.title || ""}</output>;
+}
+
 describe("ConversationRuntimeProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -194,6 +199,27 @@ describe("ConversationRuntimeProvider", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("creates blank chat and agent runtime sessions with the shared New title", async () => {
+    window.sessionStorage.clear();
+
+    const chatView = render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    expect(await screen.findByTestId("active-session-title")).toHaveTextContent("New");
+    chatView.unmount();
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <ActiveSessionTitleHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    expect(await screen.findByTestId("active-session-title")).toHaveTextContent("New");
   });
 
   it("does not rewrite stored sessions for streaming deltas after an image message is queued", async () => {

@@ -24,8 +24,6 @@ export type RuntimeWorkspaceSessionItem = {
   shortHash: string;
   activeLabel: string;
   idleLabel: string;
-  statusLabel?: string;
-  statusClassName?: string;
   onSelect: () => void;
   onDelete?: () => void;
   deleteLabel?: string;
@@ -134,9 +132,6 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
                     >
                       {item.active ? item.activeLabel : item.idleLabel}
                     </span>
-                    {item.statusLabel ? (
-                      <span className={item.statusClassName}>{item.statusLabel}</span>
-                    ) : null}
                   </span>
                   <span className="runtime-session-title-row">
                     <span className="runtime-session-title">{item.title}</span>
@@ -158,7 +153,8 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
                   onClick={item.onDelete}
                   {...item.deleteProps}
                 >
-                  {item.deleteLabel}
+                  <span aria-hidden="true">···</span>
+                  <span className="sr-only">{item.deleteLabel}</span>
                 </button>
               ) : null}
             </div>

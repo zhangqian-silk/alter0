@@ -23,8 +23,6 @@ type LegacyShellCopy = {
   sessionPaneLabel: string;
   sessionPanelEyebrow: string;
   sessionClose: string;
-  sessionNewChat: string;
-  sessionNewAgent: string;
   sessionRecent: string;
   sessionHistoryCollapse: string;
   sessionHistoryExpand: string;
@@ -148,15 +146,13 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     sessionPaneLabel: "Session control center",
     sessionPanelEyebrow: "Session control",
     sessionClose: "Close",
-    sessionNewChat: "New Chat",
-    sessionNewAgent: "New Agent Run",
     sessionRecent: "Recent Sessions",
     sessionHistoryCollapse: "Collapse",
     sessionHistoryExpand: "Expand",
     sessionListAriaLabel: "Conversation sessions",
     sessionAgentListAriaLabel: "Agent conversation sessions",
-    sessionEmpty: "No sessions yet. Click New Chat to start.",
-    sessionEmptyAgent: "No Agent sessions yet. Open Agent to start.",
+    sessionEmpty: "No sessions yet. Click New to start.",
+    sessionEmptyAgent: "No sessions yet. Click New to start.",
     promptDeckEyebrow: "Quick starts",
     promptDeckTitle: "Launch a strong first turn",
     promptDeckDescription: "Pick a prompt, refine the goal, or hand the runtime a clear operating angle.",
@@ -271,8 +267,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     sessionPaneLabel: "会话控制中心",
     sessionPanelEyebrow: "会话控制",
     sessionClose: "关闭",
-    sessionNewChat: "新对话",
-    sessionNewAgent: "新 Agent 会话",
     sessionRecent: "最近会话",
     sessionHistoryCollapse: "折叠",
     sessionHistoryExpand: "展开",

@@ -58,6 +58,21 @@ type RuntimeComposerProps = {
   onInputBlur?: FocusEventHandler<HTMLTextAreaElement>;
   onInputPointerDownCapture?: PointerEventHandler<HTMLTextAreaElement>;
   onInputTouchStartCapture?: TouchEventHandler<HTMLTextAreaElement>;
+  utilityButtons?: Array<{
+    key: string;
+    label: string;
+    icon?: ReactNode;
+    visibleLabel?: string;
+    onClick: () => void;
+    disabled?: boolean;
+    className?: string;
+    buttonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "children" | "className" | "onClick" | "aria-label" | "disabled">;
+  }>;
+  panelContent?: ReactNode;
+  panelClassName?: string;
+  panelProps?: Omit<ComponentPropsWithoutRef<"section">, "children" | "className"> & {
+    className?: string;
+  };
   toolsClassName?: string;
   metaClassName?: string;
   metaContent?: ReactNode;
@@ -82,6 +97,20 @@ function DefaultRuntimeComposerSubmitIcon() {
     <svg viewBox="0 0 20 20" fill="none" focusable="false">
       <path d="M10 14.75V5.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" />
       <path d="M5.75 9.5 10 5.25l4.25 4.25" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function RuntimeComposerAttachIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false">
+      <path
+        d="m8.15 11.85 4.85-4.86a2.1 2.1 0 0 1 2.97 2.97l-6.18 6.18a3.6 3.6 0 0 1-5.09-5.09l6.35-6.36a5 5 0 0 1 7.07 7.08l-6.4 6.39"
+        stroke="currentColor"
+        strokeWidth="1.85"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -116,6 +145,10 @@ export function RuntimeComposer({
   onInputBlur,
   onInputPointerDownCapture,
   onInputTouchStartCapture,
+  utilityButtons = [],
+  panelContent,
+  panelClassName,
+  panelProps,
   toolsClassName,
   metaClassName,
   metaContent,
@@ -149,6 +182,10 @@ export function RuntimeComposer({
     ...inputRestProps
   } = inputProps || {};
   const {
+    className: panelPropsClassName,
+    ...panelRestProps
+  } = panelProps || {};
+  const {
     className: metaPropsClassName,
     ...metaRestProps
   } = metaProps || {};
@@ -181,6 +218,18 @@ export function RuntimeComposer({
           >
             {note}
           </div>
+        ) : null}
+        {panelContent ? (
+          <section
+            className={joinClassNames(
+              "runtime-composer-panel",
+              panelClassName,
+              panelPropsClassName,
+            )}
+            {...panelRestProps}
+          >
+            {panelContent}
+          </section>
         ) : null}
         <form
           className={joinClassNames(
@@ -247,77 +296,126 @@ export function RuntimeComposer({
               ))}
             </div>
           ) : null}
-          <label className="sr-only" htmlFor={inputId}>
-            {inputLabel}
-          </label>
-          <textarea
-            id={inputId}
-            ref={inputRef}
-            className={joinClassNames(
-              "runtime-composer-input",
-              inputPropsClassName,
-            )}
-            {...inputRestProps}
-            value={inputValue}
-            onPointerDownCapture={onInputPointerDownCapture}
-            onTouchStartCapture={onInputTouchStartCapture}
-            onChange={(event) => onInputChange(event.target.value)}
-            onFocus={onInputFocus}
-            onBlur={onInputBlur}
-            data-runtime-composer-input={runtimeKind}
-            data-composer-input={composerAlias}
-            data-terminal-input={runtimeKind === "terminal" ? "true" : undefined}
-          ></textarea>
-          <div
-            className={joinClassNames(
-              "runtime-composer-tools",
-              toolsClassName,
-            )}
-          >
-            {metaContent ? (
-              <div
+          <div className="runtime-composer-body" data-runtime-composer-body={runtimeKind}>
+            <label className="sr-only" htmlFor={inputId}>
+              {inputLabel}
+            </label>
+            <textarea
+              id={inputId}
+              ref={inputRef}
+              className={joinClassNames(
+                "runtime-composer-input",
+                inputPropsClassName,
+              )}
+              {...inputRestProps}
+              value={inputValue}
+              onPointerDownCapture={onInputPointerDownCapture}
+              onTouchStartCapture={onInputTouchStartCapture}
+              onChange={(event) => onInputChange(event.target.value)}
+              onFocus={onInputFocus}
+              onBlur={onInputBlur}
+              data-runtime-composer-input={runtimeKind}
+              data-composer-input={composerAlias}
+              data-terminal-input={runtimeKind === "terminal" ? "true" : undefined}
+            ></textarea>
+          </div>
+          <div className="runtime-composer-toolbar" data-runtime-composer-toolbar={runtimeKind}>
+            <div className="runtime-composer-toolbar-start">
+              {utilityButtons.map((button) => {
+                const {
+                  key,
+                  label,
+                  icon,
+                  onClick,
+                  disabled = false,
+                  className,
+                  buttonProps,
+                } = button;
+                const {
+                  className: utilityButtonPropsClassName,
+                  ...utilityButtonRestProps
+                } = buttonProps || {};
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={joinClassNames(
+                      "runtime-composer-utility",
+                      className,
+                      utilityButtonPropsClassName,
+                    )}
+                    aria-label={label}
+                    disabled={disabled}
+                    onClick={onClick}
+                    data-runtime-composer-utility={key}
+                    {...utilityButtonRestProps}
+                  >
+                    {icon ? (
+                      <span className="runtime-composer-utility-icon" aria-hidden="true">{icon}</span>
+                    ) : null}
+                    {button.visibleLabel ? (
+                      <span className="runtime-composer-utility-label">{button.visibleLabel}</span>
+                    ) : (
+                      <span className="sr-only">{label}</span>
+                    )}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
                 className={joinClassNames(
-                  "runtime-composer-meta",
-                  metaClassName,
-                  metaPropsClassName,
+                  "runtime-composer-upload",
+                  addAttachmentButtonPropsClassName,
                 )}
-                {...metaRestProps}
+                {...addAttachmentButtonRestProps}
+                aria-label={addAttachmentLabel}
+                onClick={onAddAttachment}
+                data-runtime-composer-upload={runtimeKind}
+                data-composer-upload={composerAlias}
               >
-                {metaContent}
-              </div>
-            ) : null}
-            <button
-              type="button"
+                <span className="runtime-composer-upload-icon" aria-hidden="true">
+                  <RuntimeComposerAttachIcon />
+                </span>
+                <span className="runtime-composer-upload-label sr-only">{addAttachmentLabel}</span>
+              </button>
+              {metaContent ? (
+                <div
+                  className={joinClassNames(
+                    "runtime-composer-meta",
+                    metaClassName,
+                    metaPropsClassName,
+                  )}
+                  {...metaRestProps}
+                >
+                  {metaContent}
+                </div>
+              ) : null}
+            </div>
+            <div
               className={joinClassNames(
-                "runtime-composer-upload",
-                addAttachmentButtonPropsClassName,
+                "runtime-composer-toolbar-end",
+                "runtime-composer-tools",
+                toolsClassName,
               )}
-              {...addAttachmentButtonRestProps}
-              aria-label={addAttachmentLabel}
-              onClick={onAddAttachment}
-              data-runtime-composer-upload={runtimeKind}
-              data-composer-upload={composerAlias}
             >
-              <span aria-hidden="true">+</span>
-              <span>{addAttachmentLabel}</span>
-            </button>
-            <button
-              type="submit"
-              className={joinClassNames(
-                "runtime-composer-submit",
-                submitButtonPropsClassName,
-              )}
-              {...submitButtonRestProps}
-              aria-label={submitLabel}
-              data-runtime-composer-submit={runtimeKind}
-              data-composer-submit={composerAlias}
-              data-terminal-submit={runtimeKind === "terminal" ? "true" : undefined}
-            >
-              <span className="runtime-composer-submit-icon" aria-hidden="true">
-                {submitIcon ?? <DefaultRuntimeComposerSubmitIcon />}
-              </span>
-              <span className="sr-only">{submitLabel}</span>
-            </button>
+              <button
+                type="submit"
+                className={joinClassNames(
+                  "runtime-composer-submit",
+                  submitButtonPropsClassName,
+                )}
+                {...submitButtonRestProps}
+                aria-label={submitLabel}
+                data-runtime-composer-submit={runtimeKind}
+                data-composer-submit={composerAlias}
+                data-terminal-submit={runtimeKind === "terminal" ? "true" : undefined}
+              >
+                <span className="runtime-composer-submit-icon" aria-hidden="true">
+                  {submitIcon ?? <DefaultRuntimeComposerSubmitIcon />}
+                </span>
+                <span className="sr-only">{submitLabel}</span>
+              </button>
+            </div>
           </div>
         </form>
       </footer>

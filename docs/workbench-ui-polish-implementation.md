@@ -30,7 +30,7 @@
 
 当前三类运行页已经共用 React 工作台主骨架，不属于三套页面各自实现。`chat` 与 `agent-runtime` 通过 `ConversationWorkspace` 生成 `RuntimeWorkspacePageController`，`terminal` 通过 `ReactManagedTerminalRouteBody` 生成同一类型的 controller，最终都进入 `RuntimeWorkspacePage`，共享会话列、工作区头部、消息区、Details 和 Composer 的基础布局。
 
-移动端视觉高度一致是预期结果。窄屏下三类页面统一折叠为单列工作台，并复用 `Menu / Sessions / New`、移动端抽屉、Composer fixed 贴底和 `VisualViewport` 键盘约束。移动端不应为了强调页面差异重新引入独立壳层。
+移动端视觉高度一致是预期结果。窄屏下三类页面统一折叠为单列工作台，并复用顶部 `Menu / Sessions / New` 操作行、移动端抽屉、Composer fixed 贴底和 `VisualViewport` 键盘约束；底部工具栏再用单一四宫格入口承载 `Agent / Model / Tools / Skills` 配置。移动端不应为了强调页面差异重新引入独立壳层。
 
 PC 端仍存在差异，主要来自两类来源：
 
@@ -48,7 +48,7 @@ PC 端仍存在差异，主要来自两类来源：
 
 目标状态：
 
-- 品牌区展示 Alter0 字标与可识别图标位。
+- 品牌区展示 Alter0 字标，不渲染额外图形 logo。
 - 导航组保持 `Workspace / Agent Studio / Control / Settings` 信息结构。
 - Active 项使用浅蓝底、蓝色图标与文字，不使用胶囊外形。
 - 底部保留语言切换，新增用户身份区样式承载头像缩写、名称、邮箱和在线点。
@@ -83,9 +83,8 @@ PC 端仍存在差异，主要来自两类来源：
 目标状态：
 
 - 左侧显示当前会话标题，标题旁可显示轻量状态点和下拉提示。
-- 右侧操作固定为运行状态、`Workspace Flow`、`Details` 三组。
-- `Workspace Flow` 作为 Process / Timeline / workspace 流程视图入口；首版可映射到现有 `Details` 面板中的运行摘要或作为禁用态预留入口。
-- `Ready / Details / Workspace Flow` 均为低圆角矩形按钮，不使用胶囊。
+- 右侧操作固定为运行状态与 `Details` 两组。
+- `Ready / Details` 均为低圆角矩形按钮，不使用胶囊。
 - Header 在 PC 端保持单行，在窄屏允许换行或收缩。
 
 涉及文件：
@@ -115,8 +114,8 @@ PC 端仍存在差异，主要来自两类来源：
 目标状态：
 
 - Composer 改为上方输入区 + 下方工具栏的两层结构。
-- 左侧工具区支持图标按钮：快捷工具、mention、工具网格。
-- 右侧保留 `Attach` 文本按钮与蓝色 icon submit 按钮。
+- 左侧工具区保留正方形低圆角的会话设置与附件图标按钮；会话设置使用四点网格图标，附件使用回形针图标。
+- 右侧保留蓝色 icon submit 按钮。
 - 输入框、工具按钮和发送按钮保持低圆角矩形。
 - 移动端继续复用当前 fixed composer、键盘贴底和真实遮挡高度同步链路。
 
@@ -146,9 +145,9 @@ PC 端仍存在差异，主要来自两类来源：
 
 交付内容：
 
-1. 增加品牌图标位和用户身份区。
-2. 优化 active 导航项、分组标题和语言切换。
-3. 会话卡增加左侧 active 竖线与尾侧轻量操作。
+1. 保持纯文字品牌位和语言切换。
+2. 优化 active 导航项与分组标题。
+3. 会话卡增加左侧 active 竖线与尾侧轻量操作，并保持运行页新建入口统一为 `New`。
 
 测试要求：
 
@@ -159,7 +158,7 @@ PC 端仍存在差异，主要来自两类来源：
 
 交付内容：
 
-1. Header 右侧补齐 `Workspace Flow` 入口。
+1. Header 右侧统一为状态与 `Details` 两组控件。
 2. 空态背景改为轻网格与细线纹理。
 3. 空态文案和居中布局收敛到参考图的视觉重心。
 
@@ -210,7 +209,7 @@ PC 端仍存在差异，主要来自两类来源：
 2. PC 端按钮、标签、短 hash、上传、发送、详情与跳转控件均不是胶囊形态。
 3. 空态背景不影响标题和说明阅读。
 4. Composer 工具栏不遮挡输入内容，附件与发送按钮可见。
-5. 移动端 `Menu / Sessions / New`、workspace header 与 Composer 不重叠。
+5. 移动端顶部 `Menu / Sessions / New` 操作行、workspace header 与 Composer 不重叠。
 6. 打开/关闭 Details 后，消息区不被重新排版。
 
 ## 文档同步
@@ -228,7 +227,7 @@ PC 端仍存在差异，主要来自两类来源：
 
 1. 不在本轮引入新的图标库；若需要新增图标，优先复用现有 `NavIcon` 或轻量内联图标模式。
 2. 空态背景使用 CSS 实现，避免新增大位图资源和加载闪烁。
-3. `Workspace Flow` 首版不强行新增复杂业务面板；先明确入口、状态和可扩展位置。
+3. `Details` 浮层继续作为共享会话摘要入口，不在本轮并行扩展额外流程型按钮。
 4. Composer DOM 调整必须保持附件上传、草稿恢复、发送、移动端 touch submit 和 keyboard inset 行为不变。
 5. legacy CSS 仅保持兼容，不作为新视觉主实现入口。
 
