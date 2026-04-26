@@ -1240,25 +1240,20 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     const mobileHeader = document.querySelector("[data-runtime-mobile-variant='terminal']") as HTMLElement;
     expect(mobileHeader).toHaveAttribute("data-runtime-mobile-header", "body");
-    expect(within(mobileHeader).getByRole("button", { name: "Workspace actions" })).toHaveClass(
+    expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toHaveClass(
       "runtime-workspace-mobile-action",
-      "runtime-workspace-mobile-launcher",
     );
-    expect(within(mobileHeader).queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
-    expect(within(mobileHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
-    expect(within(mobileHeader).queryByRole("button", { name: "New" })).not.toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toHaveClass(
+      "runtime-workspace-mobile-action",
+    );
+    expect(within(mobileHeader).getByRole("button", { name: "New" })).toHaveClass(
+      "runtime-workspace-mobile-action",
+    );
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
-    const actionsPanel = screen.getByRole("dialog", { name: "Workspace actions" });
-    expect(within(actionsPanel).getByRole("button", { name: "Menu" })).toBeInTheDocument();
-    expect(within(actionsPanel).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
-    expect(within(actionsPanel).getByRole("button", { name: "New" })).toBeInTheDocument();
-
-    fireEvent.click(within(actionsPanel).getByRole("button", { name: "Menu" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Sessions" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
     expect(toggleMobileSessionPane).toHaveBeenCalledTimes(1);
   });
@@ -1277,12 +1272,10 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     const mobileHeader = document.querySelector("[data-runtime-mobile-variant='terminal']") as HTMLElement;
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Sessions" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Menu" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
 
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).not.toHaveClass("is-open");

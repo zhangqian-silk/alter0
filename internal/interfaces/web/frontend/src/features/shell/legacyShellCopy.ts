@@ -59,7 +59,6 @@ type LegacyShellCopy = {
   runtimeSkillsHint: string;
   runtimeMobile: string;
   runtimeMobileHint: string;
-  runtimeWorkspaceActions: string;
   runtimeActive: string;
   runtimeAvailable: string;
   runtimeCategoryTools: string;
@@ -185,7 +184,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     runtimeSkillsHint: "Select extra Skills for upcoming messages.",
     runtimeMobile: "Session",
     runtimeMobileHint: "Choose model, tools, and skills for upcoming messages.",
-    runtimeWorkspaceActions: "Workspace actions",
     runtimeActive: "Active",
     runtimeAvailable: "Available",
     runtimeCategoryTools: "Tools",
@@ -309,7 +307,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     runtimeSkillsHint: "为后续消息选择额外启用的技能。",
     runtimeMobile: "会话设置",
     runtimeMobileHint: "为后续消息集中选择模型、工具与技能。",
-    runtimeWorkspaceActions: "工作区操作",
     runtimeActive: "已启用",
     runtimeAvailable: "可启用",
     runtimeCategoryTools: "工具",

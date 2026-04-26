@@ -233,13 +233,15 @@ describe("ConversationWorkspace", () => {
     const mobileHeader = document.querySelector(".runtime-workspace-body > [data-runtime-mobile-variant='conversation']") as HTMLElement;
     expect(mobileHeader).toBeInTheDocument();
     expect(mobileHeader).toHaveAttribute("data-runtime-mobile-header", "body");
-    expect(within(mobileHeader).getByRole("button", { name: "Workspace actions" })).toHaveClass(
+    expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toHaveClass(
       "runtime-workspace-mobile-action",
-      "runtime-workspace-mobile-launcher",
     );
-    expect(within(mobileHeader).queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
-    expect(within(mobileHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
-    expect(within(mobileHeader).queryByRole("button", { name: "New" })).not.toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toHaveClass(
+      "runtime-workspace-mobile-action",
+    );
+    expect(within(mobileHeader).getByRole("button", { name: "New" })).toHaveClass(
+      "runtime-workspace-mobile-action",
+    );
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(workspaceHeader).toHaveAttribute("data-runtime-workspace-header", "true");
     expect(workspaceHeader).toHaveClass("is-sticky");
@@ -287,22 +289,14 @@ describe("ConversationWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Session" }));
     expect(runtimeMock.toggleInspector).toHaveBeenLastCalledWith("model");
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
-    const actionsPanel = screen.getByRole("dialog", { name: "Workspace actions" });
-    expect(within(actionsPanel).getByRole("button", { name: "Menu" })).toBeInTheDocument();
-    expect(within(actionsPanel).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
-    expect(within(actionsPanel).getByRole("button", { name: "New" })).toBeInTheDocument();
-
-    fireEvent.click(within(actionsPanel).getByRole("button", { name: "Menu" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Sessions" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "true");
     expect(toggleMobileSessionPane).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "New" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "New" }));
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
   });
 
@@ -539,8 +533,7 @@ describe("ConversationWorkspace", () => {
   it("closes the mobile session pane after selecting a session", () => {
     renderWorkspace();
 
-    fireEvent.click(screen.getByRole("button", { name: "Workspace actions" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "true");
 
     fireEvent.click(within(screen.getByTestId("conversation-session-pane")).getByRole("button", { name: /New Chat/ }));
@@ -553,12 +546,10 @@ describe("ConversationWorkspace", () => {
 
     renderWorkspace({ toggleMobileNav });
 
-    fireEvent.click(screen.getByRole("button", { name: "Workspace actions" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Sessions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Workspace actions" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
 
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "false");
@@ -639,7 +630,9 @@ describe("ConversationWorkspace", () => {
     const mobileHeader = document.querySelector(".runtime-workspace-body > [data-runtime-mobile-variant='conversation']") as HTMLElement;
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(mobileHeader).toBeInTheDocument();
-    expect(within(mobileHeader).getByRole("button", { name: "Workspace actions" })).toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "New Agent Session" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ready" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();

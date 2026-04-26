@@ -83,6 +83,17 @@ type TerminalStepBlock = {
   exit_code?: number | null;
 };
 
+function RuntimeSessionControlIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <rect x="3" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="12" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="3" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="12" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
 type TerminalStepDetail = {
   turn_id?: string;
   step?: TerminalStepSummary;
@@ -1464,7 +1475,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       workspaceBodyRef,
       mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
       mobileHeaderProps: { "data-runtime-mobile-variant": "terminal" },
-      mobileLauncherLabel: shellCopy.runtimeWorkspaceActions,
       mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
       mobileNavButtonLabel: shellCopy.chatMenu,
       mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
@@ -1663,7 +1673,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         {
           key: "session",
           label: shellCopy.runtimeMobile,
-          visibleLabel: shellCopy.runtimeMobile,
+          icon: <RuntimeSessionControlIcon />,
           className: metaOpen ? "is-pill is-active" : "is-pill",
           onClick: () => setMetaOpen((current) => !current),
         },

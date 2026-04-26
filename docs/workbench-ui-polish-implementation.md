@@ -30,7 +30,7 @@
 
 当前三类运行页已经共用 React 工作台主骨架，不属于三套页面各自实现。`chat` 与 `agent-runtime` 通过 `ConversationWorkspace` 生成 `RuntimeWorkspacePageController`，`terminal` 通过 `ReactManagedTerminalRouteBody` 生成同一类型的 controller，最终都进入 `RuntimeWorkspacePage`，共享会话列、工作区头部、消息区、Details 和 Composer 的基础布局。
 
-移动端视觉高度一致是预期结果。窄屏下三类页面统一折叠为单列工作台，并复用单一 `Workspace actions` 入口、移动端抽屉、Composer fixed 贴底和 `VisualViewport` 键盘约束；`Menu / Sessions / New` 只作为该入口展开后的动作项存在。移动端不应为了强调页面差异重新引入独立壳层。
+移动端视觉高度一致是预期结果。窄屏下三类页面统一折叠为单列工作台，并复用顶部 `Menu / Sessions / New` 操作行、移动端抽屉、Composer fixed 贴底和 `VisualViewport` 键盘约束；底部工具栏再用单一四宫格入口承载 `Agent / Model / Tools / Skills` 配置。移动端不应为了强调页面差异重新引入独立壳层。
 
 PC 端仍存在差异，主要来自两类来源：
 
@@ -209,7 +209,7 @@ PC 端仍存在差异，主要来自两类来源：
 2. PC 端按钮、标签、短 hash、上传、发送、详情与跳转控件均不是胶囊形态。
 3. 空态背景不影响标题和说明阅读。
 4. Composer 工具栏不遮挡输入内容，附件与发送按钮可见。
-5. 移动端 `Workspace actions` 浮层、workspace header 与 Composer 不重叠。
+5. 移动端顶部 `Menu / Sessions / New` 操作行、workspace header 与 Composer 不重叠。
 6. 打开/关闭 Details 后，消息区不被重新排版。
 
 ## 文档同步

@@ -19,6 +19,17 @@ type ConversationWorkspaceProps = {
   language: LegacyShellLanguage;
 };
 
+function RuntimeSessionControlIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <rect x="3" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="12" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="3" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="12" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
 export function useConversationRuntimeController(language: LegacyShellLanguage): RuntimeWorkspacePageController {
   const workbench = useWorkbenchContext();
   const runtime = useConversationRuntime();
@@ -455,7 +466,6 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       workspaceBodyRef,
       mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
       mobileHeaderProps: { "data-runtime-mobile-variant": "conversation" },
-      mobileLauncherLabel: copy.runtimeWorkspaceActions,
       mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
       mobileNavButtonLabel: copy.chatMenu,
       mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
@@ -567,7 +577,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
         {
           key: "session",
           label: copy.runtimeMobile,
-          visibleLabel: copy.runtimeMobile,
+          icon: <RuntimeSessionControlIcon />,
           className: runtime.inspectorOpen ? "is-pill is-active" : "is-pill",
           onClick: () => runtime.toggleInspector(runtime.inspectorTab),
         },
