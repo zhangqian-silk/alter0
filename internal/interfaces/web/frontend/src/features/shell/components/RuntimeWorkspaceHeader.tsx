@@ -146,6 +146,9 @@ export function RuntimeWorkspaceHeader({
         ></button>
         <section
           id={detailsID}
+          role="dialog"
+          aria-modal="true"
+          aria-label={detailsLabel}
           className={joinClassNames(
             "runtime-workspace-details-panel workspace-details-panel",
             detailsPanelClassName,

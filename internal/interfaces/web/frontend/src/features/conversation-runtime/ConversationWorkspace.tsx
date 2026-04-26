@@ -24,6 +24,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const runtime = useConversationRuntime();
   const copy = getLegacyShellCopy(language);
   const [inputFocused, setInputFocused] = useState(false);
+  const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
   const [composerAttachmentError, setComposerAttachmentError] = useState("");
   const [previewAttachment, setPreviewAttachment] = useState<ComposerAttachment | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -88,29 +89,14 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const routeLabel = runtime.route === "agent-runtime"
     ? (language === "zh" ? "Agent" : "Agent")
     : (language === "zh" ? "对话" : "Chat");
-  const selectedProviderName = runtime.providers.find((provider) => provider.id === runtime.selectedProviderId)?.name
-    || runtime.selectedProviderId
-    || copy.runtimeServiceDefault;
-  const activeCapabilityNames = runtime.capabilities
-    .filter((item) => item.active)
-    .map((item) => item.name)
-    .join(", ") || "-";
-  const activeSkillNames = runtime.skills
-    .filter((item) => item.active)
-    .map((item) => item.name)
-    .join(", ") || "-";
   const conversationDetailsSummary = runtime.activeSession ? [
     { label: language === "zh" ? "会话" : "Session", value: runtime.activeSession.id, copyLabel: language === "zh" ? "会话" : "Session", mono: true },
     { label: language === "zh" ? "路由" : "Route", value: routeLabel, copyLabel: language === "zh" ? "路由" : "Route" },
     { label: language === "zh" ? "状态" : "Status", value: compactStatusLabel, copyLabel: language === "zh" ? "状态" : "Status" },
     { label: language === "zh" ? "短标识" : "Short hash", value: activeSessionItem?.shortHash || "-", copyLabel: language === "zh" ? "短标识" : "Short hash", mono: true },
-    { label: copy.runtimeModel, value: runtime.selectedModelLabel || copy.runtimeServiceDefault, copyLabel: copy.runtimeModel },
-    { label: copy.runtimeProvider, value: selectedProviderName, copyLabel: copy.runtimeProvider },
     ...(runtime.route === "agent-runtime" ? [{ label: copy.runtimeAgent, value: runtime.target.name || "-", copyLabel: copy.runtimeAgent }] : []),
     { label: language === "zh" ? "消息数" : "Messages", value: String(activeMessages.length), copyLabel: language === "zh" ? "消息数" : "Messages" },
     { label: language === "zh" ? "创建时间" : "Created", value: activeSessionItem ? formatDateTime(activeSessionItem.createdAt) : "-", copyLabel: language === "zh" ? "创建时间" : "Created" },
-    { label: copy.runtimeToolsMcp, value: activeCapabilityNames, copyLabel: copy.runtimeToolsMcp, multiline: true },
-    { label: copy.runtimeSkills, value: activeSkillNames, copyLabel: copy.runtimeSkills, multiline: true },
   ] : [];
 
   useEffect(() => {
@@ -215,170 +201,226 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     composerShellRef,
   });
 
-  const conversationDetailsBody = (
-    <div className="conversation-inspector-body">
-            <div className="conversation-inspector-tabs">
-              {runtime.route === "agent-runtime" ? (
-                <button className={targetInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("target")}>
-                  {copy.runtimeAgentPick}
-                </button>
-              ) : null}
-              <button className={modelInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("model")}>
-                {copy.runtimeModel}
-              </button>
-              <button className={capabilitiesInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("capabilities")}>
-                {copy.runtimeToolsMcp}
-              </button>
-              <button className={skillsInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("skills")}>
-                {copy.runtimeSkills}
-              </button>
-              {runtime.route === "agent-runtime" && sessionProfileFields.length > 0 ? (
-                <button className={sessionProfileInspectorOpen ? "is-active" : ""} type="button" onClick={() => runtime.toggleInspector("session-profile")}>
-                  {language === "zh" ? "Session Profile" : "Session Profile"}
-                </button>
-              ) : null}
-              <button type="button" onClick={() => runtime.closeInspector()}>
-                {language === "zh" ? "关闭" : "Close"}
-              </button>
-            </div>
+  const sessionDetailsBody = runtime.route === "agent-runtime" && sessionProfileFields.length > 0 ? (
+    <div className="conversation-inspector-sections">
+      <section className="conversation-inspector-section">
+        <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
+        <div className="workspace-details-summary">
+          {sessionProfileFields.map((field) => {
+            const value = runtime.activeSessionProfile?.attributes?.[field.key] || "-";
+            return (
+              <RouteFieldRow
+                key={field.key}
+                label={field.label}
+                value={value}
+                copyLabel={language === "zh" ? "复制值" : "Copy value"}
+                copyable={field.readonly !== false}
+                mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
+                multiline={value.length > 48}
+              />
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  ) : null;
 
-            {targetInspectorOpen && runtime.route === "agent-runtime" ? (
-              <div className="conversation-inspector-grid">
-                {runtime.targetOptions.map((item) => (
+  const configPanelHint = targetInspectorOpen
+    ? copy.runtimeAgentHint
+    : modelInspectorOpen
+      ? copy.runtimeModelHint
+      : capabilitiesInspectorOpen
+        ? copy.runtimeToolsHint
+        : skillsInspectorOpen
+          ? copy.runtimeSkillsHint
+          : undefined;
+  const configPanelTabs = [
+    ...(runtime.route === "agent-runtime" ? [{
+      key: "target" as const,
+      label: copy.runtimeAgent,
+    }] : []),
+    {
+      key: "model" as const,
+      label: copy.runtimeModel,
+    },
+    {
+      key: "capabilities" as const,
+      label: copy.runtimeToolsShort,
+    },
+    {
+      key: "skills" as const,
+      label: copy.runtimeSkillsShort,
+    },
+  ];
+  const conversationComposerPanel = runtime.inspectorOpen && runtime.inspectorTabOpen ? (
+    <div
+      className="conversation-inspector runtime-composer-config-panel"
+      data-runtime-config-panel="conversation"
+      data-runtime-config-tab={runtime.inspectorTab}
+    >
+      <div className="runtime-composer-panel-head">
+        <strong>{copy.runtimeMobile}</strong>
+        <button type="button" className="runtime-composer-panel-close" onClick={() => runtime.closeInspector()}>
+          {language === "zh" ? "关闭" : "Close"}
+        </button>
+      </div>
+      {configPanelHint ? <p className="runtime-composer-panel-hint">{configPanelHint}</p> : null}
+      <div className="conversation-inspector-tabs" role="tablist" aria-label={copy.runtimeMobile}>
+        {configPanelTabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={runtime.inspectorTab === tab.key}
+            className={runtime.inspectorTab === tab.key ? "is-active" : undefined}
+            onClick={() => {
+              if (runtime.inspectorTab !== tab.key) {
+                runtime.toggleInspector(tab.key);
+              }
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {targetInspectorOpen && runtime.route === "agent-runtime" ? (
+        <div className="conversation-inspector-grid">
+          {runtime.targetOptions.map((item) => (
+            <button
+              key={item.id}
+              className={item.active ? "conversation-target-card is-active" : "conversation-target-card"}
+              type="button"
+              disabled={runtime.lockedTarget}
+              onClick={() => runtime.selectTarget(item.id)}
+            >
+              <strong>{item.name}</strong>
+              <span>{item.subtitle}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {modelInspectorOpen ? (
+        <div className="conversation-inspector-sections">
+          {runtime.providers.map((provider) => (
+            <section key={provider.id} className="conversation-inspector-section">
+              <strong>{provider.name}</strong>
+              <div className="conversation-chip-list">
+                {provider.models.map((model) => (
                   <button
-                    key={item.id}
-                    className={item.active ? "conversation-target-card is-active" : "conversation-target-card"}
+                    key={model.id}
+                    className={model.active ? "conversation-chip is-active" : "conversation-chip"}
                     type="button"
-                    disabled={runtime.lockedTarget}
-                    onClick={() => runtime.selectTarget(item.id)}
+                    onClick={() => runtime.selectModel(provider.id, model.id)}
                   >
-                    <strong>{item.name}</strong>
-                    <span>{item.subtitle}</span>
+                    {model.name}
                   </button>
                 ))}
               </div>
-            ) : null}
+            </section>
+          ))}
+        </div>
+      ) : null}
 
-            {modelInspectorOpen ? (
-              <div className="conversation-inspector-sections">
-                {runtime.providers.map((provider) => (
-                  <section key={provider.id} className="conversation-inspector-section">
-                    <strong>{provider.name}</strong>
-                    <div className="conversation-chip-list">
-                      {provider.models.map((model) => (
-                        <button
-                          key={model.id}
-                          className={model.active ? "conversation-chip is-active" : "conversation-chip"}
-                          type="button"
-                          onClick={() => runtime.selectModel(provider.id, model.id)}
-                        >
-                          {model.name}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            ) : null}
+      {capabilitiesInspectorOpen ? (
+        <div className="conversation-inspector-sections">
+          <section className="conversation-inspector-section">
+            <strong>{language === "zh" ? "已启用" : "Active"}</strong>
+            <div className="conversation-check-list">
+              {capabilityGroups.activeCapabilities.map((item) => (
+                <label key={item.id} className="conversation-check-item">
+                  <input
+                    type="checkbox"
+                    checked={item.active}
+                    onChange={(event) =>
+                      runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
+                  />
+                  <span><strong>{item.name}</strong><small>{item.description}</small></span>
+                </label>
+              ))}
+            </div>
+          </section>
+          <section className="conversation-inspector-section">
+            <strong>{language === "zh" ? "可选" : "Available"}</strong>
+            <div className="conversation-check-list">
+              {capabilityGroups.availableCapabilities.map((item) => (
+                <label key={item.id} className="conversation-check-item">
+                  <input
+                    type="checkbox"
+                    checked={item.active}
+                    onChange={(event) =>
+                      runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
+                  />
+                  <span><strong>{item.name}</strong><small>{item.description}</small></span>
+                </label>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
-            {capabilitiesInspectorOpen ? (
-              <div className="conversation-inspector-sections">
-                <section className="conversation-inspector-section">
-                  <strong>{language === "zh" ? "已启用" : "Active"}</strong>
-                  <div className="conversation-check-list">
-                    {capabilityGroups.activeCapabilities.map((item) => (
-                      <label key={item.id} className="conversation-check-item">
-                        <input
-                          type="checkbox"
-                          checked={item.active}
-                          onChange={(event) =>
-                            runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
-                        />
-                        <span><strong>{item.name}</strong><small>{item.description}</small></span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
-                <section className="conversation-inspector-section">
-                  <strong>{language === "zh" ? "可选" : "Available"}</strong>
-                  <div className="conversation-check-list">
-                    {capabilityGroups.availableCapabilities.map((item) => (
-                      <label key={item.id} className="conversation-check-item">
-                        <input
-                          type="checkbox"
-                          checked={item.active}
-                          onChange={(event) =>
-                            runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
-                        />
-                        <span><strong>{item.name}</strong><small>{item.description}</small></span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            ) : null}
+      {skillsInspectorOpen ? (
+        <div className="conversation-inspector-sections">
+          <section className="conversation-inspector-section">
+            <strong>{language === "zh" ? "已启用" : "Active"}</strong>
+            <div className="conversation-check-list">
+              {capabilityGroups.activeSkills.map((item) => (
+                <label key={item.id} className="conversation-check-item">
+                  <input
+                    type="checkbox"
+                    checked={item.active}
+                    disabled={item.locked}
+                    onChange={(event) => {
+                      if (!item.locked) {
+                        runtime.toggleSkill(item.id, event.target.checked);
+                      }
+                    }}
+                  />
+                  <span><strong>{item.name}</strong><small>{item.description}</small></span>
+                </label>
+              ))}
+            </div>
+          </section>
+          <section className="conversation-inspector-section">
+            <strong>{language === "zh" ? "可选" : "Available"}</strong>
+            <div className="conversation-check-list">
+              {capabilityGroups.availableSkills.map((item) => (
+                <label key={item.id} className="conversation-check-item">
+                  <input type="checkbox" checked={item.active} onChange={(event) => runtime.toggleSkill(item.id, event.target.checked)} />
+                  <span><strong>{item.name}</strong><small>{item.description}</small></span>
+                </label>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
-            {skillsInspectorOpen ? (
-              <div className="conversation-inspector-sections">
-                <section className="conversation-inspector-section">
-                  <strong>{language === "zh" ? "已启用" : "Active"}</strong>
-                  <div className="conversation-check-list">
-                    {capabilityGroups.activeSkills.map((item) => (
-                      <label key={item.id} className="conversation-check-item">
-                        <input
-                          type="checkbox"
-                          checked={item.active}
-                          disabled={item.locked}
-                          onChange={(event) => {
-                            if (!item.locked) {
-                              runtime.toggleSkill(item.id, event.target.checked);
-                            }
-                          }}
-                        />
-                        <span><strong>{item.name}</strong><small>{item.description}</small></span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
-                <section className="conversation-inspector-section">
-                  <strong>{language === "zh" ? "可选" : "Available"}</strong>
-                  <div className="conversation-check-list">
-                    {capabilityGroups.availableSkills.map((item) => (
-                      <label key={item.id} className="conversation-check-item">
-                        <input type="checkbox" checked={item.active} onChange={(event) => runtime.toggleSkill(item.id, event.target.checked)} />
-                        <span><strong>{item.name}</strong><small>{item.description}</small></span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            ) : null}
-
-            {sessionProfileInspectorOpen && runtime.route === "agent-runtime" ? (
-              <div className="conversation-inspector-sections">
-                <section className="conversation-inspector-section">
-                  <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
-                  <div className="workspace-details-summary">
-                    {sessionProfileFields.map((field) => {
-                      const value = runtime.activeSessionProfile?.attributes?.[field.key] || "-";
-                      return (
-                        <RouteFieldRow
-                          key={field.key}
-                          label={field.label}
-                          value={value}
-                          copyLabel={language === "zh" ? "复制值" : "Copy value"}
-                          copyable={field.readonly !== false}
-                          mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
-                          multiline={value.length > 48}
-                        />
-                      );
-                    })}
-                  </div>
-                </section>
-              </div>
-            ) : null}
+      {sessionProfileInspectorOpen && runtime.route === "agent-runtime" ? (
+        <div className="conversation-inspector-sections">
+          <section className="conversation-inspector-section">
+            <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
+            <div className="workspace-details-summary">
+              {sessionProfileFields.map((field) => {
+                const value = runtime.activeSessionProfile?.attributes?.[field.key] || "-";
+                return (
+                  <RouteFieldRow
+                    key={field.key}
+                    label={field.label}
+                    value={value}
+                    copyLabel={language === "zh" ? "复制值" : "Copy value"}
+                    copyable={field.readonly !== false}
+                    mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
+                    multiline={value.length > 48}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
-  );
+  ) : null;
 
   return {
     shell: {
@@ -413,6 +455,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       workspaceBodyRef,
       mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
       mobileHeaderProps: { "data-runtime-mobile-variant": "conversation" },
+      mobileLauncherLabel: copy.runtimeWorkspaceActions,
       mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
       mobileNavButtonLabel: copy.chatMenu,
       mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
@@ -455,17 +498,17 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       statusLabel: compactStatusLabel,
       statusTone: "ready",
       detailsLabel: compactDetailsLabel,
-      detailsOpen: runtime.inspectorOpen,
-      onToggleDetails: () => runtime.toggleInspector(),
+      detailsOpen: sessionDetailsOpen,
+      onToggleDetails: () => setSessionDetailsOpen((current) => !current),
       detailsDisabled: false,
       mobileEmpty: isMobileEmptyHeader,
       detailsClassName: "conversation-inspector conversation-session-details workspace-details-content",
       detailsSummary: conversationDetailsSummary,
-      detailsBody: runtime.activeSession ? conversationDetailsBody : null,
+      detailsBody: runtime.activeSession ? sessionDetailsBody : null,
       headerProps: { "data-runtime-header-kind": "conversation" },
       detailsPanelProps: {
         "data-runtime-details-panel": "conversation",
-        "data-conversation-inspector": "",
+        "data-conversation-session-details": "",
       },
     },
     screen: {
@@ -520,6 +563,19 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       onInputBlur: () => setInputFocused(false),
       onInputPointerDownCapture: handleComposerPointerDownCapture,
       onInputTouchStartCapture: handleComposerTouchStartCapture,
+      utilityButtons: [
+        {
+          key: "session",
+          label: copy.runtimeMobile,
+          visibleLabel: copy.runtimeMobile,
+          className: runtime.inspectorOpen ? "is-pill is-active" : "is-pill",
+          onClick: () => runtime.toggleInspector(runtime.inspectorTab),
+        },
+      ],
+      panelContent: conversationComposerPanel,
+      panelProps: {
+        "data-runtime-config-surface": "conversation",
+      },
       metaContent: composerMetaLabel,
       addAttachmentLabel: composerAddAttachmentLabel,
       onAddAttachment: handleComposerAttachmentPicker,

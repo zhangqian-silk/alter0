@@ -361,14 +361,27 @@ describe("ReactManagedTerminalRouteBody", () => {
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(within(workspaceHeader).getByText("Ready")).toBeInTheDocument();
     expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(within(workspaceHeader).queryByRole("button", { name: "Workspace Flow" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
     expect(document.querySelector("[data-terminal-close]")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-panel='terminal-console']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-form")).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-form")).toHaveAttribute("data-runtime-composer", "true");
+    expect(document.querySelector(".runtime-composer-body")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-composer-toolbar")).toBeInTheDocument();
+    const composerToolbarStart = document.querySelector(".runtime-composer-toolbar-start") as HTMLElement;
+    const composerToolbarEnd = document.querySelector(".runtime-composer-toolbar-end") as HTMLElement;
+    expect(composerToolbarStart).toBeInTheDocument();
+    expect(composerToolbarEnd).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-input")).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-submit")).toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-tools")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quick tools" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mention" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Workspace tools" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Session" })).toBeInTheDocument();
+    expect(composerToolbarStart).toContainElement(screen.getByRole("button", { name: "Add attachment" }));
+    expect(composerToolbarEnd).toContainElement(screen.getByRole("button", { name: "Send" }));
     expect(document.querySelector(".runtime-composer-meta")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-form[data-runtime-composer-kind='terminal']")).toHaveClass("runtime-composer-form");
     expect(document.querySelector("[data-runtime-composer-input='terminal']")).toHaveClass("runtime-composer-input");
@@ -401,6 +414,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(metaPanel).toBeInTheDocument();
     expect(workspaceHeader.contains(metaPanel)).toBe(false);
     expect(within(metaPanel).getByText("/workspace/alter0")).toBeInTheDocument();
+    expect(within(metaPanel).queryByText("Summary")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Session" }));
+    expect(screen.getByTestId("terminal-skill-selector")).toBeInTheDocument();
   });
 
   it("renders terminal inline code without leaking HTML entities", async () => {
@@ -1143,14 +1160,13 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(document.querySelector("[data-runtime-session-select='terminal-1']")).toBeInTheDocument();
     });
 
-    const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
-    fireEvent.click(within(workspaceHeader).getByRole("button", { name: "Details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session" }));
 
-    const detailsPanel = await screen.findByTestId("terminal-skill-selector");
-    expect(within(detailsPanel).getByText("Summary")).toBeInTheDocument();
-    expect(within(detailsPanel).queryByText("Agent Private")).not.toBeInTheDocument();
+    const configPanel = await screen.findByTestId("terminal-skill-selector");
+    expect(within(configPanel).getByText("Summary")).toBeInTheDocument();
+    expect(within(configPanel).queryByText("Agent Private")).not.toBeInTheDocument();
 
-    fireEvent.click(within(detailsPanel).getByLabelText("Summary"));
+    fireEvent.click(within(configPanel).getByLabelText("Summary"));
     fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "summarize this workspace" },
     });
@@ -1224,26 +1240,25 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     const mobileHeader = document.querySelector("[data-runtime-mobile-variant='terminal']") as HTMLElement;
     expect(mobileHeader).toHaveAttribute("data-runtime-mobile-header", "body");
-    expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toHaveClass(
+    expect(within(mobileHeader).getByRole("button", { name: "Workspace actions" })).toHaveClass(
       "runtime-workspace-mobile-action",
-      "is-quiet",
+      "runtime-workspace-mobile-launcher",
     );
-    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toHaveClass(
-      "runtime-workspace-mobile-action",
-      "is-quiet",
-    );
-    expect(within(mobileHeader).getByRole("button", { name: "New" })).toHaveClass(
-      "runtime-workspace-mobile-action",
-      "is-primary",
-    );
-    expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();
-    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
-    expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();
+    expect(within(mobileHeader).queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
+    expect(within(mobileHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
+    expect(within(mobileHeader).queryByRole("button", { name: "New" })).not.toBeInTheDocument();
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
+    const actionsPanel = screen.getByRole("dialog", { name: "Workspace actions" });
+    expect(within(actionsPanel).getByRole("button", { name: "Menu" })).toBeInTheDocument();
+    expect(within(actionsPanel).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
+    expect(within(actionsPanel).getByRole("button", { name: "New" })).toBeInTheDocument();
+
+    fireEvent.click(within(actionsPanel).getByRole("button", { name: "Menu" }));
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Sessions" }));
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
     expect(toggleMobileSessionPane).toHaveBeenCalledTimes(1);
   });
@@ -1262,10 +1277,12 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     const mobileHeader = document.querySelector("[data-runtime-mobile-variant='terminal']") as HTMLElement;
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Sessions" }));
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Workspace actions" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Workspace actions" })).getByRole("button", { name: "Menu" }));
 
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).not.toHaveClass("is-open");

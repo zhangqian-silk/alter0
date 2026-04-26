@@ -158,7 +158,8 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
                   onClick={item.onDelete}
                   {...item.deleteProps}
                 >
-                  {item.deleteLabel}
+                  <span aria-hidden="true">···</span>
+                  <span className="sr-only">{item.deleteLabel}</span>
                 </button>
               ) : null}
             </div>

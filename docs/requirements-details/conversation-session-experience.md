@@ -28,14 +28,14 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 登录页在启用密码保护时继续作为统一入口，但视觉需与 Web Shell 保持一致：使用 `IBM Plex Sans + Sora` 字体、近白工作台卡片和安全入口说明文案，不保留独立的默认系统表单风格。
 - Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace；`agent / terminal / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 `ReactManagedRouteBody` 接管。根壳层稳定暴露 `app-shell[data-workbench-route]`，各运行页与 route body 继续输出 `data-route / data-conversation-*` 作为样式与测试锚点；兼容层仅保留样式，不再通过 legacy 脚本接管 `/chat` 业务运行时。
 - `channels / skills / mcp / models / cron-jobs` 共享控制台卡片页统一复用同一组响应式卡片网格；窄屏下标题区允许徽标下沉、字段行改为单列堆叠、底部标签区保持纵向拉伸，避免复制按钮、状态徽标与多行字段发生重叠或横向溢出。
-- Web Shell 的稳定界面基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime / Terminal` 在主面板内部统一采用「会话列 + 时间线工作区 + 底部 Composer + 固定 workspace header」结构，并直接复用会话栏、工作区容器、工作区头部、聊天滚动区、Composer 与窄屏 `Menu / Sessions / New` 复合 class 语义；固定 header 只保留当前会话标题、状态按钮和 `Details` 入口，具体会话详情与页面差异化内容统一在 `Details` 面板内承载，面板首屏默认以紧凑摘要栅格承载会话元数据和高频配置。`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，状态与交互全部由 React 直接维护。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示额外品牌口号或实现状态；Conversation workspace 自身承担会话和运行态配置，不再叠加 bridge 期的 welcome/runtime sheet 双轨壳层；`Control / Sessions / Tasks / Memory / Terminal / Codex Accounts` 等 React 托管 route 页继续共享近白表面、浅灰辅助层与浅蓝选中态。
+- Web Shell 的稳定界面基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime / Terminal` 在主面板内部统一采用「会话列 + 时间线工作区 + 底部 Composer + 固定 workspace header」结构，并直接复用会话栏、工作区容器、工作区头部、聊天滚动区、Composer 与窄屏 `Workspace actions` 复合 class 语义；四宫格入口展开后集中承载 `Menu / Sessions / New`，固定 header 只保留当前会话标题、状态按钮和 `Details` 入口，具体会话详情与页面差异化内容统一在 `Details` 面板内承载，面板首屏默认以紧凑摘要栅格承载会话元数据和高频配置。`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，状态与交互全部由 React 直接维护。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示额外品牌口号或实现状态；Conversation workspace 自身承担会话和运行态配置，不再叠加 bridge 期的 welcome/runtime sheet 双轨壳层；`Control / Sessions / Tasks / Memory / Terminal / Codex Accounts` 等 React 托管 route 页继续共享近白表面、浅灰辅助层与浅蓝选中态。
 - `Agent` 与其他 React 托管页面共享同一表面体系：列表卡片、管理表单、托管字段块与消息块使用一致的近白主表面、浅灰辅助层与浅蓝选中态。
 - `/chat` 页面标题、登录页标题、导航品牌位、会话栏标题与欢迎区 tag 统一展示 `Alter0`，不再混用 `alter0` 小写品牌词。
 - Web Shell 的抽屉式单列工作台仅在主视口宽度 `1100px` 及以下触发；高于该阈值时保留左侧固定主导航与右侧主面板，避免只对聊天内容列做最大阅读宽度限制而让整体壳层失衡。
 - 进入窄屏工作台后，主导航切换为贴左侧视口边缘的全高抽屉；Conversation workspace 的会话列在同一 `1100px` 阈值收敛为与正文上下堆叠，不再作为独立浮层；`info-mode` 页面继续只保留主导航抽屉，避免壳层断点先切换而页面主体仍保留桌面列布局。
 - 窄屏主导航抽屉中的菜单区必须作为独立滚动容器保留纵向滚动能力；当视口高度不足以完整容纳全部导航分组时，用户仍需能滑到 `Settings` 分组与语言切换入口，不得出现底部菜单项被裁切且无法继续下滑的状态。
 - 窄屏主导航抽屉点击任一路由项后需立即收起；切页操作不会保留旧的菜单遮罩或抽屉层，用户进入目标页后直接看到新的正文区域。
-- 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页与 `Terminal` 工作区继续采用两行头部，第一行承载 `Menu / Sessions / New` 等抽屉入口；其中普通 `page-mode` 路由页至少要稳定提供 `Menu`，避免进入 `Tasks / Sessions / Models` 等信息页后失去主导航入口；第二行承载当前标题。`Chat` 与 `Agent Runtime` 空态也保留与 Terminal 对齐的单行紧凑 workspace header，在操作行下显示当前会话标题、状态按钮与 `Details` 入口，但不再展示模型、工具或目标摘要这类重复头部信息；所有页面正文都需贴近头部下沿起始，不得在顶部留下额外大块空白。
+- 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页与 `Terminal` 工作区继续采用两行头部，第一行承载 `Workspace actions` 或 `Menu` 等抽屉入口；其中普通 `page-mode` 路由页至少要稳定提供 `Menu`，避免进入 `Tasks / Sessions / Models` 等信息页后失去主导航入口；第二行承载当前标题。`Chat` 与 `Agent Runtime` 空态也保留与 Terminal 对齐的单行紧凑 workspace header，在操作行下显示当前会话标题、状态按钮与 `Details` 入口，但不再展示模型、工具或目标摘要这类重复头部信息；所有页面正文都需贴近头部下沿起始，不得在顶部留下额外大块空白。
 - `Chat` 空态欢迎区采用紧凑首屏节奏：桌面与中宽度下，欢迎 tag、标题、描述、target picker 与快捷提示需在 header 与 Composer 之间沿欢迎区中轴竖向居中展示；真窄屏继续贴近头部下沿起排。Composer 直接按自然文档流沿主工作区底边贴底排布；桌面与窄屏都不再通过自动顶距把 Composer 推到底边，避免欢迎区与输入区之间出现大块空白。
 - 桌面端主导航采用紧凑间距节奏，优先保证在常见笔记本高度下完整展示主要模块组；控制类与资产类路由优先使用高密度主从或表格视图，避免在宽屏上保留大块无效留白。
 - `static/dist/assets/*` 使用构建产物哈希文件名并返回长期 immutable 缓存；`/chat` 与 `static/dist/legacy/*` 下的兼容样式资源保持 `no-cache`，确保页面与样式能及时刷新到最新版本。
@@ -170,7 +170,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Session 历史区的会话列表需按最近时间分组为 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`），并与主导航 `menu` 复用同一套分组容器、hover 与激活态视觉；分组内条目保持主仓库式紧凑信息结构，按导航式线性关系排布：标题独立占一行并在可用宽度内单行截断，摘要信息单独换行，短 hash 固定在条目下缘，删除动作收纳在尾侧轻量文本操作中，不再额外挂出独立 footer 或胶囊操作面。
 - Conversation workspace 头部的标题、状态按钮、`Details` 标签页和新会话入口需按当前路由与语言即时切换文案；这些壳层文案更新不得覆盖当前会话标题或消息内容。
 - `Chat / Agent Runtime` 的会话列、工作区外壳、聊天滚动区和输入区需输出 `terminal-* + conversation-*` 复合 class，确保两条运行页与 `Terminal` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
-- `Chat / Agent Runtime` 首页 Composer 采用单一紧凑主输入面：输入框、计数 meta 与发送按钮共处一张底部 surface，桌面与移动端都需压缩输入高度、外层留白与提交按钮体量，发送按钮直接复用 Terminal 的紧凑 icon submit 皮肤；PC 端上传、发送、状态、详情、短 hash 与弹窗动作统一采用 8-14px 低圆角矩形，不使用胶囊按钮或胶囊标签；会话卡片与 `Details` 面板保持同一浅色 terminal-runtime 质感，不再出现首页输入区厚重、旁侧组件过轻或材质不一致的情况。空态工作区需锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
+- `Chat / Agent Runtime` 首页 Composer 采用双层紧凑主输入面：上层输入框独占主 surface，下层工具栏左侧提供工作区工具、附件与 meta，右侧收口发送按钮；桌面与移动端都需压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；发送按钮直接复用 Terminal 的紧凑 icon submit 皮肤；PC 端上传、发送、状态、详情、流程入口、短 hash 与弹窗动作统一采用 8-14px 低圆角矩形，不使用胶囊按钮或胶囊标签；会话卡片与 `Details` 面板保持同一浅色 terminal-runtime 质感，不再出现首页输入区厚重、旁侧组件过轻或材质不一致的情况。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
 - `Chat / Agent Runtime` Composer 支持最多 5 张图片附件；附件在输入区以缩略图展示，可单张预览和移除，并按会话草稿持久化。当前选中的模型若未声明视觉能力，带图发送必须直接阻止并提示切换模型。
 - 移动端 `Chat / Agent Runtime` 的会话抽屉遮罩、pane shell 与主工作区在 `1100px` 及以下需回落为静态表面，不保留模糊玻璃层或持续背景动效；性能优先级高于装饰层，确保真机滚动、抽屉开关和输入框聚焦不出现明显卡顿。
 - 根工作台仅在窄屏时使用主导航抽屉；运行页内部的会话列不作为独立抽屉复用，避免出现导航抽屉和会话浮层叠加。
@@ -179,7 +179,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 欢迎区与 Composer 面板在同一主工作区内采用主仓库式上下结构：欢迎区直接输出 `Alter0 workspace` tag、面向 repo / task / runtime 的默认标题与说明、target picker 与快捷提示，Composer 独立贴底；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
 - 用户消息右对齐，宽度不超过消息区 80%，Chat / Agent / 路由消息区统一采用克制的冷灰工作台阅读主题；助手回复弱化厚重卡片层级，消息气泡、Process 区和阅读容器统一使用低对比边框、近白表面与有限强调色。
 - Chat 助手消息尾部默认只显示时间；仅当回复仍在生成、排队或失败时展示紧凑状态标签，不再为已完成消息重复展示 route/source/status 元信息。
-- Chat 与 Agent Runtime 工作区头部在进入会话态或桌面空态时收敛为共享单行标题区：只显示当前会话标题、状态按钮和 `Details` 入口，不再额外叠加 `Chat / Agent` 标签以及模型、工具或目标摘要；模型、Agent、Tools / MCP、Skills 与会话元数据统一放入 `Details` 面板，具体内容由各运行页自行实现，面板首屏先使用紧凑摘要栅格展示高频字段，再承接页内 tab 与配置区。两条运行页的 model tab 除已启用 Provider 模型外，都需稳定展示一个可直接点击的 `Codex` chip；选中该项后，后续消息请求不再携带普通 `alter0.llm.provider_id / alter0.llm.model` 组合，而是显式写入 `alter0.execution.engine=codex`。Agent Runtime 的 Agent tab 不展示 `Alter0/main` 主助手，只展示专项内置 Agent 与用户管理 Agent；Skills tab 区分当前 Agent 私有 Skill 与公有 Skill，私有项固定启用且禁用取消交互，公有项按会话选择进入启用或可选列表。`Details` 需以顶层浮层方式覆盖在工作区上方，内部独立滚动，浮层尺寸保持克制；页内 tab/按钮支持再次点击只收起当前 tab 内容区并保留摘要与 `Details` 面板，点击浮层外区域或按 `Escape` 才关闭整个面板，打开时不得推动消息列表、输入区或对话正文重新布局。
+- Chat 与 Agent Runtime 工作区头部在进入会话态或桌面空态时收敛为共享单行标题区：只显示当前会话标题、状态按钮与 `Details` 入口，不再额外叠加 `Chat / Agent` 标签以及模型、工具或目标摘要。模型、Agent、Tools / MCP、Skills 与会话元数据统一放入 `Details` 面板，具体内容由各运行页自行实现，面板首屏先使用紧凑摘要栅格展示高频字段，再承接页内 tab 与配置区。两条运行页的 model tab 除已启用 Provider 模型外，都需稳定展示一个可直接点击的 `Codex` chip；选中该项后，后续消息请求不再携带普通 `alter0.llm.provider_id / alter0.llm.model` 组合，而是显式写入 `alter0.execution.engine=codex`。Agent Runtime 的 Agent tab 不展示 `Alter0/main` 主助手，只展示专项内置 Agent 与用户管理 Agent；Skills tab 区分当前 Agent 私有 Skill 与公有 Skill，私有项固定启用且禁用取消交互，公有项按会话选择进入启用或可选列表。`Details` 需以顶层浮层方式覆盖在工作区上方，内部独立滚动，浮层尺寸保持克制，并始终具备明确可见的 dialog 层级；页内 tab/按钮支持再次点击只收起当前 tab 内容区并保留摘要与 `Details` 面板，点击浮层外区域或按 `Escape` 才关闭整个面板，打开时不得推动消息列表、输入区或对话正文重新布局。
 - 桌面宽屏下 Chat 消息列与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区统一保留 `960px` 最大阅读宽度，但外层工作台也必须同步收缩导航与间距，避免在中等桌面宽度下出现阅读区限宽而整体布局仍然拥挤、遮挡或越界。
 - Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致会话卡片、消息节点或 route 内容被清空重建。
 - React 壳层发出的主导航跳转、新建会话、欢迎区快捷提示、语言切换、导航折叠同步与会话历史折叠同步事件，必须由当前前端运行时在同一页面内完成确认、路由更新、快捷发送或会话创建，且不能要求用户重复点击或依赖额外脚本注入的全局函数。
@@ -199,13 +199,13 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `Chat / Agent Runtime` 首次触摸输入框时需采用与 `Terminal` 相同的 `preventScroll` 聚焦策略，并在聚焦期间监听 `window.scroll + VisualViewport resize/scroll` 把页面锚定在 `scrollY = 0`；首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
 - `Chat / Agent Runtime` 的 fixed composer 在移动端必须把实际遮挡高度同步回工作区滚动面；`.conversation-chat-screen` 与空态欢迎区都需停在 composer 上沿，不能依赖静态底部 padding 估算占位，也不能出现底部输入框覆盖最后一段消息或说明文案。
 - `Chat / Agent Runtime` 在键盘收起和 composer 回弹到底边时，工作区滚动面也必须同步清理旧的遮挡高度；最后一屏消息、空态说明和阅读定位控件都不能在底边留下额外空白或残留占位。
-- `Chat / Agent Runtime` 在移动端键盘弹起和收回期间，仅允许 fixed composer 自身跟随 `VisualViewport` 做贴底位移；`Menu / Sessions / New` 操作行、紧凑 workspace header 与其他公共控件保持原位，不跟随键盘做额外动画或跳变。
+- `Chat / Agent Runtime` 在移动端键盘弹起和收回期间，仅允许 fixed composer 自身跟随 `VisualViewport` 做贴底位移；`Workspace actions` 入口、紧凑 workspace header 与其他公共控件保持原位，不跟随键盘做额外动画或跳变。
 - `Chat / Agent Runtime` 的移动端发送按钮支持在键盘保持打开时直接点按提交；首触发送立即进入当前 `sendPrompt` 链路，不需要先收键盘或补第二次点击。
 - `Chat / Agent Runtime` 的 fixed composer 不额外叠加 `bottom` 过渡动画；键盘回弹与输入区回贴底边时只消费 `VisualViewport` 的实时位置，避免补间动画与视口收缩/回弹叠加造成拖滞。
 - `Chat / Agent Runtime` 在输入框失焦后，若 `VisualViewport` 仍处于收缩态，必须继续保留当前键盘偏移并随视口恢复逐步释放；不允许先把 composer 闪回到底边，再被后续 viewport resize 顶回去。
 - `760px` 及以下的真手机宽度下，主导航抽屉、会话抽屉、头部按钮高度与间距继续压缩，避免头部按钮挤占可用阅读高度。
 - 小高度窄屏下，主导航抽屉仍需保留稳定的触摸滚动链：菜单内容滚动不把整个页面带离当前上下文，抽屉底部固定区域与菜单滚动区域边界清晰。
-- `1100px` 及以下时，`Chat / Agent Runtime` 头部固定提供 `Menu / Sessions / New` 操作行；`Menu` 打开主导航抽屉，`Sessions` 打开会话抽屉，`New` 直接创建当前路由的新会话，操作入口不得因空态、已有消息或 `Details` 状态而消失。
+- `1100px` 及以下时，`Chat / Agent Runtime` 头部固定提供单一四宫格 `Workspace actions` 入口；面板内承载 `Menu / Sessions / New`，分别打开主导航抽屉、会话抽屉与当前路由的新会话创建动作，操作入口不得因空态、已有消息或 `Details` 状态而消失。
 - `760px` 及以下时，欢迎区 tag、标题与描述的顶部节奏需继续压缩；普通 `page-mode` 路由页内容区与 `Terminal` 工作区也需沿用同一贴顶节奏，避免不同页面在窄屏下出现明显不一致的顶部留白。
 
 ### 会话设置

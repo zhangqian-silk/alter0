@@ -750,6 +750,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionID, setActiveSessionID] = useState("");
   const [metaOpen, setMetaOpen] = useState(false);
+  const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingSessionID, setDeletingSessionID] = useState("");
   const [loading, setLoading] = useState(true);
@@ -809,7 +810,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     () => skills.map((skill) => ({ ...skill, active: selectedSkillSet.has(skill.id) })),
     [selectedSkillSet, skills],
   );
-  const activeSkillNames = skillOptions.filter((skill) => skill.active).map((skill) => skill.name).join(", ");
   const pollPlan = resolveTerminalPollPlan({
     status: activeSession?.status || "",
     pageHidden,
@@ -1389,42 +1389,49 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     { label: copy.path, value: activeSession.working_dir, copyLabel: copy.path, mono: true, multiline: true },
     { label: copy.status, value: renderStatus(activeSession.status || "", copy), copyLabel: copy.status },
     {
-      label: copy.activeSkills,
-      value: activeSkillNames || copy.noSkills,
-      copyLabel: copy.activeSkills,
-      multiline: true,
-    },
-    {
       label: copy.updatedAt,
       value: formatDateTime(activeSession.updated_at || activeSession.created_at),
       copyLabel: copy.updatedAt,
     },
   ] : [];
-  const terminalDetailsBody = (
-    <section className="conversation-inspector-section terminal-skill-section" data-testid="terminal-skill-selector">
-      <strong>{copy.skills}</strong>
-      <div className="conversation-check-list">
-        {skillOptions.length > 0 ? skillOptions.map((skill) => (
-          <label className="conversation-check-item" key={skill.id}>
-            <input
-              type="checkbox"
-              value={skill.id}
-              checked={skill.active}
-              aria-label={skill.name}
-              data-runtime-toggle-item="terminal-skills"
-              onChange={(event) => toggleSkill(skill.id, event.target.checked)}
-            />
-            <span>
-              <strong>{skill.name}</strong>
-              <small>{skill.description}</small>
-            </span>
-          </label>
-        )) : (
-          <p className="route-empty-panel">{copy.noSkills}</p>
-        )}
+  const terminalConfigPanel = metaOpen ? (
+    <div
+      className="conversation-inspector runtime-composer-config-panel"
+      data-runtime-config-panel="terminal"
+      data-runtime-config-tab="skills"
+    >
+      <div className="runtime-composer-panel-head">
+        <strong>{shellCopy.runtimeMobile}</strong>
+        <button type="button" className="runtime-composer-panel-close" onClick={() => setMetaOpen(false)}>
+          {shellCopy.sessionClose}
+        </button>
       </div>
-    </section>
-  );
+      <p className="runtime-composer-panel-hint">{shellCopy.runtimeSkillsHint}</p>
+      <section className="conversation-inspector-section terminal-skill-section" data-testid="terminal-skill-selector">
+        <strong>{copy.skills}</strong>
+        <div className="conversation-check-list">
+          {skillOptions.length > 0 ? skillOptions.map((skill) => (
+            <label className="conversation-check-item" key={skill.id}>
+              <input
+                type="checkbox"
+                value={skill.id}
+                checked={skill.active}
+                aria-label={skill.name}
+                data-runtime-toggle-item="terminal-skills"
+                onChange={(event) => toggleSkill(skill.id, event.target.checked)}
+              />
+              <span>
+                <strong>{skill.name}</strong>
+                <small>{skill.description}</small>
+              </span>
+            </label>
+          )) : (
+            <p className="route-empty-panel">{copy.noSkills}</p>
+          )}
+        </div>
+      </section>
+    </div>
+  ) : null;
   return {
     shell: {
       rootClassName: "runtime-workspace-view",
@@ -1457,6 +1464,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       workspaceBodyRef,
       mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
       mobileHeaderProps: { "data-runtime-mobile-variant": "terminal" },
+      mobileLauncherLabel: shellCopy.runtimeWorkspaceActions,
       mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
       mobileNavButtonLabel: shellCopy.chatMenu,
       mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
@@ -1520,11 +1528,11 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       statusLabel: activeSession ? renderStatus(activeSession.status || "", copy) : copy.ready,
       statusTone: activeStatus,
       detailsLabel: copy.details,
-      detailsOpen: metaOpen,
-      onToggleDetails: () => setMetaOpen((current) => !current),
+      detailsOpen: sessionDetailsOpen,
+      onToggleDetails: () => setSessionDetailsOpen((current) => !current),
       detailsDisabled: !activeSession,
       detailsSummary: terminalDetailsSummary,
-      detailsBody: terminalDetailsBody,
+      detailsBody: null,
       detailsClassName: "runtime-workspace-meta-panel workspace-details-content",
       headerProps: { "data-runtime-header-kind": "terminal" },
       statusButtonProps: { "data-runtime-status-indicator": activeStatus },
@@ -1651,6 +1659,19 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       onInputBlur: () => setInputFocused(false),
       onInputPointerDownCapture: handleComposerPointerDownCapture,
       onInputTouchStartCapture: handleComposerTouchStartCapture,
+      utilityButtons: [
+        {
+          key: "session",
+          label: shellCopy.runtimeMobile,
+          visibleLabel: shellCopy.runtimeMobile,
+          className: metaOpen ? "is-pill is-active" : "is-pill",
+          onClick: () => setMetaOpen((current) => !current),
+        },
+      ],
+      panelContent: terminalConfigPanel,
+      panelProps: {
+        "data-runtime-config-surface": "terminal",
+      },
       metaContent: undefined,
       addAttachmentLabel: copy.addAttachment,
       addAttachmentButtonProps: { disabled: !canInput || submitting },

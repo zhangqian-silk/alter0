@@ -1,8 +1,19 @@
-import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
+import { useEffect, useId, useState, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "react";
 import { RuntimeWorkspaceFrame } from "./RuntimeWorkspaceFrame";
 
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
+}
+
+function RuntimeWorkspaceMobileLauncherIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <rect x="3" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="12" y="3" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="3" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="12" y="12" width="5" height="5" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
 }
 
 type RuntimeWorkspaceShellProps = {
@@ -38,6 +49,7 @@ type RuntimeWorkspaceShellProps = {
   mobileHeaderPlacement?: "leading" | "body";
   mobileHeaderClassName?: string;
   mobileHeaderProps?: Omit<ComponentPropsWithoutRef<"header">, "className" | "children">;
+  mobileLauncherLabel?: string;
   mobileNavButtonClassName?: string;
   mobileNavButtonLabel?: string;
   mobileNavButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "onClick">;
@@ -84,6 +96,7 @@ export function RuntimeWorkspaceShell({
   mobileHeaderPlacement,
   mobileHeaderClassName,
   mobileHeaderProps,
+  mobileLauncherLabel,
   mobileNavButtonClassName,
   mobileNavButtonLabel,
   mobileNavButtonProps,
@@ -101,59 +114,119 @@ export function RuntimeWorkspaceShell({
   workspaceContent,
   workspaceFooter,
 }: RuntimeWorkspaceShellProps) {
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const mobileActionsID = useId();
+  const resolvedMobileLauncherLabel = mobileLauncherLabel || "Workspace actions";
+  const hasMobileHeaderActions = Boolean(
+    mobileNavButtonLabel || mobileSessionButtonLabel || mobilePrimaryButtonLabel,
+  );
+
+  useEffect(() => {
+    if (!mobileHeaderPlacement || !hasMobileHeaderActions) {
+      setMobileActionsOpen(false);
+    }
+  }, [hasMobileHeaderActions, mobileHeaderPlacement]);
+
+  useEffect(() => {
+    if (!mobileActionsOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileActionsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileActionsOpen]);
+
+  const triggerMobileAction = (action?: () => void) => {
+    setMobileActionsOpen(false);
+    action?.();
+  };
+
   const mobileHeader = mobileHeaderPlacement ? (
     <header
       className={joinClassNames("runtime-workspace-mobile-header", mobileHeaderClassName)}
       data-runtime-mobile-header={mobileHeaderPlacement}
       {...mobileHeaderProps}
     >
-      {mobileNavButtonLabel ? (
+      {hasMobileHeaderActions ? (
         <button
           className={joinClassNames(
             "runtime-workspace-mobile-action",
-            mobileNavButtonClassName,
+            "runtime-workspace-mobile-launcher",
+            mobileActionsOpen ? "is-active" : undefined,
           )}
           type="button"
-          onClick={onMobileNav}
-          {...mobileNavButtonProps}
+          aria-label={resolvedMobileLauncherLabel}
+          aria-expanded={mobileActionsOpen}
+          aria-controls={mobileActionsID}
+          onClick={() => setMobileActionsOpen((current) => !current)}
         >
-          {mobileNavButtonLabel}
+          <RuntimeWorkspaceMobileLauncherIcon />
         </button>
       ) : null}
-      {(mobileSessionButtonLabel || mobilePrimaryButtonLabel) ? (
-        <div
-          className={joinClassNames(
-            "runtime-workspace-mobile-actions",
-            mobileHeaderActionsClassName,
-          )}
-        >
-          {mobileSessionButtonLabel ? (
-            <button
-              className={joinClassNames(
-                "runtime-workspace-mobile-action",
-                mobileSessionButtonClassName,
-              )}
-              type="button"
-              onClick={onMobileSession}
-              {...mobileSessionButtonProps}
-            >
-              {mobileSessionButtonLabel}
-            </button>
-          ) : null}
-          {mobilePrimaryButtonLabel ? (
-            <button
-              className={joinClassNames(
-                "runtime-workspace-mobile-action",
-                mobilePrimaryButtonClassName,
-              )}
-              type="button"
-              onClick={onMobilePrimary}
-              {...mobilePrimaryButtonProps}
-            >
-              {mobilePrimaryButtonLabel}
-            </button>
-          ) : null}
-        </div>
+      {mobileActionsOpen ? (
+        <>
+          <button
+            type="button"
+            className="runtime-workspace-mobile-sheet-backdrop"
+            aria-label={resolvedMobileLauncherLabel}
+            onClick={() => setMobileActionsOpen(false)}
+          ></button>
+          <div
+            id={mobileActionsID}
+            className={joinClassNames(
+              "runtime-workspace-mobile-sheet",
+              mobileHeaderActionsClassName,
+            )}
+            role="dialog"
+            aria-modal="true"
+            aria-label={resolvedMobileLauncherLabel}
+          >
+            {mobileNavButtonLabel ? (
+              <button
+                className={joinClassNames(
+                  "runtime-workspace-mobile-sheet-action",
+                  mobileNavButtonClassName,
+                )}
+                type="button"
+                onClick={() => triggerMobileAction(onMobileNav)}
+                {...mobileNavButtonProps}
+              >
+                {mobileNavButtonLabel}
+              </button>
+            ) : null}
+            {mobileSessionButtonLabel ? (
+              <button
+                className={joinClassNames(
+                  "runtime-workspace-mobile-sheet-action",
+                  mobileSessionButtonClassName,
+                )}
+                type="button"
+                onClick={() => triggerMobileAction(onMobileSession)}
+                {...mobileSessionButtonProps}
+              >
+                {mobileSessionButtonLabel}
+              </button>
+            ) : null}
+            {mobilePrimaryButtonLabel ? (
+              <button
+                className={joinClassNames(
+                  "runtime-workspace-mobile-sheet-action",
+                  "is-primary",
+                  mobilePrimaryButtonClassName,
+                )}
+                type="button"
+                onClick={() => triggerMobileAction(onMobilePrimary)}
+                {...mobilePrimaryButtonProps}
+              >
+                {mobilePrimaryButtonLabel}
+              </button>
+            ) : null}
+          </div>
+        </>
       ) : null}
     </header>
   ) : null;

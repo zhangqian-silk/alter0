@@ -29,10 +29,30 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain("background: #f4f7fb;");
     expect(stylesheet).toContain("--shell-radius-xl: 14px;");
-    expect(stylesheet).toContain("backdrop-filter: none;");
-    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.96);");
-    expect(stylesheet).toContain("box-shadow: 0 10px 30px -26px rgba(15, 23, 42, 0.16);");
+    expect(stylesheet).toContain("--shell-radius-sm: 8px;");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(248, 252, 255, 0.86) 0%, rgba(233, 244, 255, 0.76) 100%);");
+    expect(stylesheet).toContain("backdrop-filter: blur(20px);");
+    expect(stylesheet).toContain("box-shadow: 0 24px 64px -44px rgba(8, 37, 69, 0.24);");
     expect(stylesheet).not.toContain("border-radius: 999px;");
+  });
+
+  it("defines shared selectors for the nav chrome, details overlay, and composer toolbar", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".brand-mark {");
+    expect(stylesheet).toContain(".nav-locale {");
+    expect(stylesheet).toContain(".locale {");
+    expect(stylesheet).toContain(".runtime-composer-body {");
+    expect(stylesheet).toContain(".runtime-composer-toolbar {");
+    expect(stylesheet).toContain(".runtime-composer-toolbar-start {");
+    expect(stylesheet).toContain(".runtime-composer-toolbar-end {");
+    expect(stylesheet).toContain(".runtime-composer-utility {");
+    expect(stylesheet).toContain(".workspace-details-layer {");
+    expect(stylesheet).toContain("z-index: 130;");
+    expect(stylesheet).toContain(".workspace-details-panel {");
+    expect(stylesheet).toContain("border-radius: 14px;");
+    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.98);");
   });
 
   it("keeps shared route pages on the same restrained workbench surface system", () => {
@@ -113,14 +133,17 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain(".runtime-workspace-mobile-action {");
-    expect(stylesheet).toContain(".runtime-workspace-mobile-header .runtime-workspace-mobile-action {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-launcher {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-sheet {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-sheet-action {");
     expect(stylesheet).toContain("border-radius: 8px;");
     expect(stylesheet).toContain("font-size: 12px;");
     expect(stylesheet).toContain("font-weight: 700;");
     expect(stylesheet).toContain("background: rgba(248, 252, 255, 0.76);");
-    expect(stylesheet).toContain(".runtime-workspace-mobile-header .runtime-workspace-mobile-action.is-primary {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-launcher.is-active {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-sheet-action.is-primary {");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(239, 246, 255, 0.98) 0%, rgba(219, 234, 254, 0.92) 100%);");
-    expect(stylesheet).toContain("box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 10px 20px -18px rgba(37, 99, 235, 0.32);");
+    expect(stylesheet).toContain("box-shadow: 0 22px 48px -34px rgba(15, 23, 42, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.88);");
     expect(stylesheet).toContain(".runtime-workspace-body {");
     expect(stylesheet).toContain("[data-runtime-view=\"conversation\"] .runtime-workspace-body {");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-workspace-body {");
@@ -221,10 +244,10 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".runtime-workspace-mobile-header {");
     expect(stylesheet).toContain(".runtime-composer-tools {");
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?display:\s*flex;[\s\S]*?align-self:\s*start;[\s\S]*?justify-content:\s*space-between;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?display:\s*flex;[\s\S]*?align-self:\s*start;[\s\S]*?justify-content:\s*flex-end;[\s\S]*?position:\s*relative;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-actions\s*\{[\s\S]*?display:\s*flex;[\s\S]*?margin-left:\s*auto;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-panel\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?bottom:\s*calc\(env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset, 0px\) \+ 118px\);[\s\S]*?max-height:\s*min\(52vh, calc\(100dvh - 176px\)\);/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-submit\s*\{[\s\S]*?width:\s*36px;[\s\S]*?min-width:\s*36px;[\s\S]*?padding:\s*0;/,
@@ -233,7 +256,7 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-tools\s*\{[\s\S]*?flex-wrap:\s*nowrap;[\s\S]*?gap:\s*10px;/,
     );
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="terminal"\] \.runtime-composer-form \.runtime-composer-tools\s*\{\s*justify-content:\s*space-between;/,
+      /\[data-runtime-view="terminal"\] \.runtime-composer-form \.runtime-composer-tools\s*\{[\s\S]*?justify-content:\s*flex-end;/,
     );
   });
 
@@ -245,10 +268,10 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?padding:\s*12px 22px calc\(12px \+ env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset, 0px\)\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(246, 250, 255, 0\.16\) 0%, rgba\(246, 250, 255, 0\.94\) 34%, rgba\(250, 253, 255, 0\.98\) 100%\);/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[\s\S]*?padding:\s*12px 14px 10px;[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.96\);[\s\S]*?box-shadow:\s*0 20px 42px -34px rgba\(8, 37, 69, 0\.24\), inset 0 1px 0 rgba\(255, 255, 255, 0\.94\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[\s\S]*?padding:\s*14px 16px 12px;[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.96\);[\s\S]*?box-shadow:\s*0 20px 42px -34px rgba\(8, 37, 69, 0\.24\), inset 0 1px 0 rgba\(255, 255, 255, 0\.94\);/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-input\s*\{[\s\S]*?height:\s*56px;[\s\S]*?min-height:\s*56px;[\s\S]*?resize:\s*none;[\s\S]*?background:\s*transparent;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-input\s*\{[\s\S]*?width:\s*100%;[\s\S]*?height:\s*72px;[\s\S]*?min-height:\s*72px;[\s\S]*?resize:\s*none;[\s\S]*?background:\s*transparent;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-submit\s*\{[\s\S]*?background:\s*rgba\(238, 244, 249, 0\.96\);[\s\S]*?color:\s*#334155;[\s\S]*?box-shadow:\s*0 10px 20px -18px rgba\(15, 23, 42, 0\.28\);/,
@@ -262,6 +285,10 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?padding:\s*18px 14px 14px;[\s\S]*?border-bottom:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(240, 252, 255, 0\.94\) 0%, rgba\(248, 252, 255, 0\.88\) 100%\);/,
     );
+    expect(stylesheet).toContain(".runtime-workspace-mobile-sheet-backdrop {");
+    expect(stylesheet).toContain("z-index: 84;");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-sheet {");
+    expect(stylesheet).toContain("z-index: 85;");
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-head\s*\{[\s\S]*?padding-top:\s*18px;[\s\S]*?padding-bottom:\s*14px;[\s\S]*?border-bottom:\s*1px solid rgba\(202, 220, 235, 0\.7\);[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.92\);/,
     );
@@ -344,9 +371,11 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain(".workspace-details-layer {");
     expect(stylesheet).toContain("position: fixed;");
-    expect(stylesheet).toContain("z-index: 70;");
+    expect(stylesheet).toContain("z-index: 130;");
     expect(stylesheet).toContain(".workspace-details-backdrop {");
     expect(stylesheet).toContain(".workspace-details-panel {");
+    expect(stylesheet).toContain("border-radius: 14px;");
+    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.98);");
     expect(stylesheet).toContain("max-height: min(64vh, calc(100dvh - 168px));");
     expect(stylesheet).toContain("overflow: auto;");
     expect(stylesheet).toContain("overscroll-behavior: contain;");
@@ -377,7 +406,7 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(246, 250, 255, 0\.16\) 0%, rgba\(246, 250, 255, 0\.94\) 34%, rgba\(250, 253, 255, 0\.98\) 100%\);/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-input\s*\{[\s\S]*?height:\s*56px;[\s\S]*?min-height:\s*56px;[\s\S]*?resize:\s*none;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-input\s*\{[\s\S]*?width:\s*100%;[\s\S]*?height:\s*72px;[\s\S]*?min-height:\s*72px;[\s\S]*?resize:\s*none;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-submit\s*\{[\s\S]*?background:\s*rgba\(238, 244, 249, 0\.96\);[\s\S]*?color:\s*#334155;/,
@@ -493,9 +522,11 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toMatch(
-      /\.runtime-composer-form\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) auto;/,
-    );
+    expect(stylesheet).toContain(".runtime-composer-form {");
+    expect(stylesheet).toContain("padding: 14px 16px 12px;");
+    expect(stylesheet).toContain(".runtime-composer-input {");
+    expect(stylesheet).toContain("min-height: 96px;");
+    expect(stylesheet).toContain("padding: 12px 10px 10px;");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-tools {");
     expect(stylesheet).toContain("justify-content: flex-end;");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-meta {");
