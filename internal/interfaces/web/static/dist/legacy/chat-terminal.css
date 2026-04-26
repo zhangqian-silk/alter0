@@ -2452,6 +2452,7 @@
   }
 
   .terminal-jump-cluster {
+    position: fixed;
     bottom: calc(var(--runtime-composer-rest-inset, var(--runtime-composer-inset, 0px)) + 24px);
     right: 12px;
   }

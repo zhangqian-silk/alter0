@@ -33,7 +33,9 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(248, 252, 255, 0.86) 0%, rgba(233, 244, 255, 0.76) 100%);");
     expect(stylesheet).toContain("backdrop-filter: blur(20px);");
     expect(stylesheet).toContain("box-shadow: 0 24px 64px -44px rgba(8, 37, 69, 0.24);");
-    expect(stylesheet).not.toContain("border-radius: 999px;");
+    expect(stylesheet).toMatch(
+      /\.primary-nav,\s*\.session-pane,\s*\.chat-pane\s*\{[\s\S]*?border-radius:\s*var\(--shell-radius-xl\);/,
+    );
   });
 
   it("defines shared selectors for the nav chrome, details overlay, and composer toolbar", () => {
@@ -196,8 +198,12 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain(".runtime-workspace-panel {");
     expect(stylesheet).toContain(".runtime-workspace-screen {");
+    expect(stylesheet).toContain(".runtime-timeline {");
     expect(stylesheet).toContain("height: 100%;");
     expect(stylesheet).toContain("min-height: 0;");
+    expect(stylesheet).toContain("min-height: 100%;");
+    expect(stylesheet).toContain("align-content: start;");
+    expect(stylesheet).toContain("grid-auto-rows: max-content;");
     expect(stylesheet).toContain("padding: var(--terminal-chat-screen-padding-top) calc(var(--terminal-chat-screen-padding-x) + 4px) 26px;");
     expect(stylesheet).toContain("border-radius: 12px;");
   });
@@ -593,8 +599,9 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-screen,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-screen\s*\{[\s\S]*?height:\s*calc\(100% - var\(--runtime-composer-inset, 0px\)\);[\s\S]*?max-height:\s*calc\(100% - var\(--runtime-composer-inset, 0px\)\);/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-jump-cluster\s*\{[\s\S]*?bottom:\s*calc\(var\(--runtime-composer-rest-inset, var\(--runtime-composer-inset, 0px\)\) \+ 24px\);[\s\S]*?right:\s*12px;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-jump-cluster\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?bottom:\s*calc\(var\(--runtime-composer-rest-inset, var\(--runtime-composer-inset, 0px\)\) \+ 24px\);[\s\S]*?right:\s*12px;/,
     );
+    expect(stylesheet).toMatch(/\.terminal-jump-control\s*\{[\s\S]*?border-radius:\s*999px;/);
     expect(stylesheet).not.toContain("transition: bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);");
   });
 

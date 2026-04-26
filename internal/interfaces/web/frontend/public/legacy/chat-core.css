@@ -1224,6 +1224,7 @@ body {
 .agent-process-step {
   display: grid;
   gap: 8px;
+  min-width: 0;
   padding-left: 12px;
   border-left: 1px dashed rgba(148, 163, 184, 0.55);
 }
@@ -1233,6 +1234,11 @@ body {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.agent-process-step-head > span:last-child {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .agent-process-step-index {
@@ -1259,9 +1265,18 @@ body {
 }
 
 .agent-process-step-body {
+  min-width: 0;
+  width: 100%;
   color: var(--ink-soft);
   font-size: 14px;
   line-height: 1.68;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.agent-process-step-body > .runtime-markdown-rendered {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .agent-process-step-body > .runtime-markdown-rendered > :first-child,
@@ -1941,6 +1956,10 @@ body {
 
   .agent-process-step-head {
     align-items: flex-start;
+  }
+
+  .agent-process-step-body {
+    width: 100%;
   }
 
   .composer-shell {

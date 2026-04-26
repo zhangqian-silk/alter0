@@ -1733,4 +1733,229 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind
     await expect(restoredMessage.locator(".agent-process-step-title")).toContainText("codex_exec");
     await expect(restoredMessage.locator(".assistant-message-body")).toContainText("任务已完成");
   });
+
+  test("keeps structured agent process detail readable on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input || "");
+        if (url.includes("/api/agents")) {
+          return new Response(JSON.stringify({
+            items: [
+              {
+                id: "coding",
+                name: "Coding Agent",
+                description: "Coding workflow",
+                session_profile_fields: [],
+              },
+            ],
+          }), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        }
+        if (url.includes("/api/agent/messages/stream")) {
+          const encoder = new TextEncoder();
+          const body = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(`event: start
+data: {"message_id":"message-stream-steps-mobile","session_id":"session-agent-steps-mobile","channel_id":"web-default","trace_id":"trace-steps-mobile"}
+
+`));
+              controller.enqueue(encoder.encode(`event: delta
+data: {"delta":"[agent] action: codex_exec\\n"}
+
+`));
+              controller.enqueue(encoder.encode(`event: done
+data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind":"action","title":"codex_exec","detail":"需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。","status":"completed"}]}}
+
+`));
+              controller.close();
+            }
+          });
+          return new Response(body, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream"
+            }
+          });
+        }
+        return originalFetch(input, init);
+      };
+    });
+
+    await page.goto("/chat#agent-runtime");
+    await loginIfNeeded(page);
+    await waitForAppReady(page);
+    const input = page.locator("[data-composer-input='conversation']");
+    const submit = page.locator("[data-composer-submit='conversation']");
+    await expect(input).toBeVisible();
+    await expect(submit).toBeVisible();
+    await input.fill("帮我检查仓库同步情况");
+    await submit.click();
+    const assistantMessage = page.locator(".msg.assistant").last();
+    await expect(assistantMessage.locator(".agent-process-shell")).toBeVisible();
+    await assistantMessage.locator(".agent-process-body").evaluate((node) => {
+      if (node instanceof HTMLElement) {
+        node.hidden = false;
+        node.removeAttribute("hidden");
+      }
+    });
+
+    const processBody = assistantMessage.locator(".agent-process-step-body").first();
+    await expect(processBody).toContainText("需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中");
+
+    const metrics = await processBody.evaluate((node) => {
+      const detail = node instanceof HTMLElement ? node : null;
+      const rendered = detail?.querySelector(".runtime-markdown-rendered");
+      const step = detail?.closest(".agent-process-step");
+      const shell = detail?.closest(".agent-process-shell");
+      if (!detail || !(rendered instanceof HTMLElement) || !(step instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
+        return null;
+      }
+      const detailRect = detail.getBoundingClientRect();
+      const renderedRect = rendered.getBoundingClientRect();
+      const stepRect = step.getBoundingClientRect();
+      const shellRect = shell.getBoundingClientRect();
+      return {
+        detailWidth: detailRect.width,
+        renderedWidth: renderedRect.width,
+        stepWidth: stepRect.width,
+        shellWidth: shellRect.width,
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics?.detailWidth ?? 0).toBeGreaterThan(200);
+    expect(metrics?.renderedWidth ?? 0).toBeGreaterThan(200);
+    expect(metrics?.detailWidth ?? 0).toBeGreaterThan((metrics?.stepWidth ?? 0) * 0.7);
+    expect(metrics?.renderedWidth ?? 0).toBeGreaterThan((metrics?.shellWidth ?? 0) * 0.65);
+  });
+
+  test("keeps sparse mobile chat messages packed with their timestamps", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input || "");
+        if (url.includes("/api/agents")) {
+          return new Response(JSON.stringify({
+            items: [
+              {
+                id: "coding",
+                name: "Coding Agent",
+                description: "Coding workflow",
+                session_profile_fields: [],
+              },
+            ],
+          }), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        }
+        if (url.includes("/api/agent/messages/stream")) {
+          const encoder = new TextEncoder();
+          const body = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(`event: start
+data: {"message_id":"message-stream-sparse-mobile","session_id":"session-agent-sparse-mobile","channel_id":"web-default","trace_id":"trace-sparse-mobile"}
+
+`));
+              controller.enqueue(encoder.encode(`event: delta
+data: {"delta":"[agent] action: codex_exec\\n"}
+
+`));
+              controller.enqueue(encoder.encode(`event: done
+data: {"result":{"route":"nl","output":"Node 更偏应用层与生态速度，Go 更偏并发效率与部署稳定性。","process_steps":[{"kind":"action","title":"codex_exec","detail":"整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。","status":"completed"}]}}
+
+`));
+              controller.close();
+            }
+          });
+          return new Response(body, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream"
+            }
+          });
+        }
+        return originalFetch(input, init);
+      };
+    });
+
+    await page.goto("/chat#agent-runtime");
+    await loginIfNeeded(page);
+    await waitForAppReady(page);
+    const input = page.locator("[data-composer-input='conversation']");
+    const submit = page.locator("[data-composer-submit='conversation']");
+    await expect(input).toBeVisible();
+    await expect(submit).toBeVisible();
+    await input.fill("详细介绍下 node 和 go 的差异");
+    await submit.click();
+
+    const assistantMessage = page.locator(".msg.assistant").last();
+    await expect(assistantMessage.locator(".agent-process-shell")).toBeVisible();
+
+    const metrics = await page.evaluate(() => {
+      const timeline = document.querySelector(".runtime-timeline");
+      const userMessages = Array.from(document.querySelectorAll(".msg.user"));
+      const assistantMessages = Array.from(document.querySelectorAll(".msg.assistant"));
+      const user = userMessages[userMessages.length - 1];
+      const assistant = assistantMessages[assistantMessages.length - 1];
+      const userBubble = user?.querySelector(".msg-bubble");
+      const userMeta = user?.querySelector(".msg-meta");
+      const assistantProcess = assistant?.querySelector(".agent-process-shell");
+      const assistantAnswer = assistant?.querySelector(".agent-process-answer-shell");
+      const assistantMeta = assistant?.querySelector(".msg-meta");
+      if (
+        !(timeline instanceof HTMLElement)
+        || !(user instanceof HTMLElement)
+        || !(assistant instanceof HTMLElement)
+        || !(userBubble instanceof HTMLElement)
+        || !(userMeta instanceof HTMLElement)
+        || !(assistantProcess instanceof HTMLElement)
+        || !(assistantAnswer instanceof HTMLElement)
+        || !(assistantMeta instanceof HTMLElement)
+      ) {
+        return null;
+      }
+      const timelineStyle = getComputedStyle(timeline);
+      const userBubbleRect = userBubble.getBoundingClientRect();
+      const userMetaRect = userMeta.getBoundingClientRect();
+      const assistantProcessRect = assistantProcess.getBoundingClientRect();
+      const assistantAnswerRect = assistantAnswer.getBoundingClientRect();
+      const assistantMetaRect = assistantMeta.getBoundingClientRect();
+      const userRect = user.getBoundingClientRect();
+      const assistantRect = assistant.getBoundingClientRect();
+      return {
+        alignContent: timelineStyle.alignContent,
+        gridAutoRows: timelineStyle.gridAutoRows,
+        userGap: userMetaRect.top - userBubbleRect.bottom,
+        assistantGap: assistantMetaRect.top - assistantAnswerRect.bottom,
+        userExtraHeight: userRect.height - userBubbleRect.height,
+        assistantExtraHeight: assistantRect.height - assistantProcessRect.height - assistantAnswerRect.height,
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics?.alignContent).toBe("start");
+    expect(metrics?.gridAutoRows).toBe("max-content");
+    expect(metrics?.userGap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(12);
+    expect(metrics?.assistantGap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(12);
+    expect(metrics?.userExtraHeight ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(40);
+    expect(metrics?.assistantExtraHeight ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(56);
+  });
 });
