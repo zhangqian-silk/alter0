@@ -57,6 +57,20 @@ describe("legacy route layout stylesheet", () => {
     expect(stylesheet).toContain(".agent-process-answer > .runtime-markdown-rendered > :last-child {");
   });
 
+  it("keeps agent process detail content readable on narrow screens", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(
+      resolve(currentDirectory, "../../../public/legacy/chat-core.css"),
+      "utf8",
+    );
+
+    expect(stylesheet).toContain(".agent-process-step-head > span:last-child {");
+    expect(stylesheet).toContain(".agent-process-step-body > .runtime-markdown-rendered {");
+    expect(stylesheet).toContain("@media (max-width: 760px) {");
+    expect(stylesheet).toContain(".agent-process-step-body {");
+    expect(stylesheet).toContain("width: 100%;");
+  });
+
   it("styles terminal final output through runtime markdown wrappers", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(

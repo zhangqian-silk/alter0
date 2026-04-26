@@ -955,7 +955,6 @@ body::after {
   box-shadow: 0 10px 24px -22px rgba(15, 23, 42, 0.18);
   cursor: pointer;
   opacity: 0;
-  border-radius: 8px;
   background-clip: padding-box;
   box-sizing: border-box;
   transform: translateY(8px);
@@ -1068,7 +1067,7 @@ body::after {
   bottom: 18px;
   display: grid;
   gap: 12px;
-  z-index: 4;
+  z-index: 18;
 }
 
 .terminal-jump-control {
@@ -1076,7 +1075,7 @@ body::after {
   height: 46px;
   padding: 0;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 8px;
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: none;
   color: var(--shell-muted-strong);
@@ -2253,6 +2252,7 @@ body::after {
 
 @media (max-width: 760px) {
   .terminal-jump-cluster {
+    position: fixed;
     bottom: calc(var(--runtime-composer-rest-inset, var(--runtime-composer-inset, 0px)) + 24px);
     right: 12px;
   }
@@ -4351,10 +4351,13 @@ body::after {
 }
 
 .runtime-timeline {
-  height: 100%;
+  height: auto;
+  min-height: 100%;
   min-width: 0;
   display: grid;
   gap: 0;
+  align-content: start;
+  grid-auto-rows: max-content;
 }
 
 .runtime-workspace-screen.is-empty {

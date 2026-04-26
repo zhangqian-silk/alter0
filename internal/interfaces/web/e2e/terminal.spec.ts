@@ -441,24 +441,37 @@ test.describe("Terminal route", () => {
     });
 
     const readJumpMetrics = async () => page.evaluate(() => {
-      const composer = document.querySelector(".terminal-composer-shell");
+      const composer = document.querySelector(".runtime-composer-shell, .terminal-composer-shell");
       const cluster = document.querySelector(".terminal-jump-cluster");
-      if (!(composer instanceof HTMLElement) || !(cluster instanceof HTMLElement)) {
+      const jumpTop = document.querySelector("[data-terminal-jump-top]");
+      if (!(composer instanceof HTMLElement) || !(cluster instanceof HTMLElement) || !(jumpTop instanceof HTMLElement)) {
         return null;
       }
       const composerRect = composer.getBoundingClientRect();
       const clusterRect = cluster.getBoundingClientRect();
+      const jumpTopRect = jumpTop.getBoundingClientRect();
       return {
         keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
         composerTop: composerRect.top,
         clusterBottom: clusterRect.bottom,
         clusterBottomStyle: getComputedStyle(cluster).bottom,
+        clusterPosition: getComputedStyle(cluster).position,
+        clusterRight: Math.round(window.innerWidth - clusterRect.right),
+        buttonBottom: jumpTopRect.bottom,
+        buttonWidth: Math.round(jumpTopRect.width),
+        buttonHeight: Math.round(jumpTopRect.height),
+        buttonRadius: getComputedStyle(jumpTop).borderTopLeftRadius,
       };
     });
 
     const baseline = await readJumpMetrics();
     expect(baseline).not.toBeNull();
     expect(baseline?.keyboardOffset).toBe("0px");
+    expect(baseline?.clusterPosition).toBe("fixed");
+    expect(baseline?.clusterRight ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(16);
+    expect(baseline?.buttonBottom ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual((baseline?.composerTop ?? 0) - 12);
+    expect(baseline?.buttonWidth).toBe(baseline?.buttonHeight);
+    expect(baseline?.buttonRadius).toBe("999px");
     expect(baseline?.clusterBottom ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual((baseline?.composerTop ?? 0) - 12);
 
     await terminalPage.composer().input().click();
@@ -468,14 +481,23 @@ test.describe("Terminal route", () => {
     expect(raised).not.toBeNull();
     expect(raised?.keyboardOffset).toBe("312px");
     expect(raised?.clusterBottomStyle).toBe(baseline?.clusterBottomStyle);
+    expect(raised?.clusterPosition).toBe("fixed");
+    expect(raised?.clusterRight ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(16);
+    expect(raised?.buttonWidth).toBe(raised?.buttonHeight);
+    expect(raised?.buttonRadius).toBe("999px");
 
-    await terminalPage.chatScreen().click({ position: { x: 40, y: 40 } });
+    await terminalPage.composer().input().blur();
     await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
 
     const restored = await readJumpMetrics();
     expect(restored).not.toBeNull();
     expect(restored?.keyboardOffset).toBe("0px");
     expect(restored?.clusterBottomStyle).toBe(baseline?.clusterBottomStyle);
+    expect(restored?.clusterPosition).toBe("fixed");
+    expect(restored?.clusterRight ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(16);
+    expect(restored?.buttonBottom ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual((restored?.composerTop ?? 0) - 12);
+    expect(restored?.buttonWidth).toBe(restored?.buttonHeight);
+    expect(restored?.buttonRadius).toBe("999px");
     await expect.poll(async () => {
       const current = await readJumpMetrics();
       if (!current) {
