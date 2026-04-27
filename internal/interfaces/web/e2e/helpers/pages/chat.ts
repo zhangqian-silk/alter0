@@ -8,7 +8,7 @@ export function createChatPage(page: Page): {
   latestUserBubble(): Locator;
   sessionList(): SessionListComponent;
 } {
-  const composer = createComposerComponent(page, "chat-main", {
+  const composer = createComposerComponent(page, "conversation", {
     hasCounter: true,
   });
   const sessionList = createSessionListComponent(page, {

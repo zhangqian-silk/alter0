@@ -56,14 +56,43 @@ $prompt = ""
 $threadID = ""
 $isResume = $false
 
-if ($forwarded.Length -ge 3 -and $forwarded[1] -eq "resume") {
+$payloadArgs = @($forwarded[1..($forwarded.Length - 1)])
+$resumeIndex = 0
+while ($resumeIndex -lt $payloadArgs.Length) {
+  $option = $payloadArgs[$resumeIndex]
+  if ($option -eq "resume") {
+    break
+  }
+  if ($option -in @("--json", "--skip-git-repo-check", "--color", "never", "--sandbox", "danger-full-access")) {
+    $resumeIndex += 1
+    continue
+  }
+  if ($option -in @("--enable", "-i")) {
+    if ($resumeIndex + 1 -ge $payloadArgs.Length) {
+      break
+    }
+    $resumeIndex += 2
+    continue
+  }
+  if ($option.StartsWith("-")) {
+    $resumeIndex += 1
+    continue
+  }
+  break
+}
+
+if ($resumeIndex -lt $payloadArgs.Length -and $payloadArgs[$resumeIndex] -eq "resume") {
   $isResume = $true
-  $resumeArgs = @($forwarded[2..($forwarded.Length - 1)])
+  $resumeArgs = @($payloadArgs[($resumeIndex + 1)..($payloadArgs.Length - 1)])
   $threadIndex = 0
   while ($threadIndex -lt $resumeArgs.Length -and $resumeArgs[$threadIndex].StartsWith("-")) {
     $option = $resumeArgs[$threadIndex]
     if ($option -in @("--json", "--skip-git-repo-check")) {
       $threadIndex += 1
+      continue
+    }
+    if ($option -eq "-i") {
+      $threadIndex += 2
       continue
     }
     break

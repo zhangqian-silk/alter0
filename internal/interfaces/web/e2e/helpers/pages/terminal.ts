@@ -46,7 +46,7 @@ export function createTerminalPage(page: Page): {
     sessionPaneToggle: () => page.getByRole("button", { name: "Sessions" }).first(),
     sessionPane: () => page.locator("[data-runtime-session-pane='terminal']"),
     sessionPaneClose: () => page.locator("[data-runtime-session-pane-close='terminal']").first(),
-    metaToggle: () => page.locator("[data-terminal-meta-toggle]"),
+    metaToggle: () => page.getByRole("button", { name: "Details" }).first(),
     turnCards: () => page.locator("[data-terminal-turn]"),
     turnCard: (turnID: string) => page.locator(`[data-terminal-turn="${turnID}"]`),
     processToggles: () => page.locator("[data-terminal-process-toggle]"),

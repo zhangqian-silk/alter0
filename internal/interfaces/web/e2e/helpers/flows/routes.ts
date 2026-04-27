@@ -29,7 +29,8 @@ export async function openCronRoute(page: Page): Promise<void> {
     await page.goto("/chat#cron-jobs");
     await ensureAppReady(page);
   }
-  await expectComposerReady(createCronPage(page).composer());
+  await expect(page).toHaveURL(/#cron-jobs$/);
+  await expect(createCronPage(page).routeGrid()).toBeVisible();
 }
 
 export async function openTerminalRoute(page: Page): Promise<void> {
