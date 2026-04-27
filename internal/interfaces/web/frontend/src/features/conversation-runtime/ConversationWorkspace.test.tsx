@@ -771,6 +771,7 @@ describe("ConversationWorkspace", () => {
 
     expect(screen.getByRole("button", { name: "Session" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Deliverables" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Model" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Tools" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Skills" })).toBeInTheDocument();
@@ -839,5 +840,76 @@ describe("ConversationWorkspace", () => {
     expect(within(detailsPanel).getByText("/workspace/alter0-remote")).toBeInTheDocument();
     expect(within(detailsPanel).getByText("feature/session-profile-schema")).toBeInTheDocument();
     expect(within(detailsPanel).getByText("coding-run-42")).toBeInTheDocument();
+  });
+
+  it("shows the active agent delivery contract with resolved session outputs", () => {
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "deliverables";
+    runtimeMock.activeSession = {
+      id: "session-travel-1",
+      title: "Wuhan Guide",
+      messages: [],
+    };
+    runtimeMock.sessionItems = [
+      {
+        id: "session-travel-1",
+        title: "Wuhan Guide",
+        meta: "now",
+        shortHash: "wu42aa18",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
+        active: true,
+      },
+    ];
+    runtimeMock.target = { type: "agent", id: "travel", name: "Travel Agent" };
+    runtimeMock.activeAgent = {
+      id: "travel",
+      name: "Travel Agent",
+      description: "Travel planning specialist",
+      deliverables: [
+        {
+          id: "guide-markdown",
+          label: "Travel Guide",
+          description: "Structured city guide aligned with the current trip request.",
+          format: "markdown",
+          required: true,
+        },
+        {
+          id: "guide-html",
+          label: "HTML Guide",
+          description: "Published HTML guide for the current session.",
+          format: "html",
+          required: true,
+          session_attribute_key: "guide_html_url",
+        },
+      ],
+      session_profile_fields: [
+        { key: "guide_html_url", label: "Guide HTML URL", readonly: true },
+      ],
+    };
+    runtimeMock.activeSessionProfile = {
+      agent_id: "travel",
+      session_id: "session-travel-1",
+      path: ".alter0/agents/travel/sessions/session-travel-1.md",
+      exists: true,
+      fields: [
+        { key: "guide_html_url", label: "Guide HTML URL", readonly: true },
+      ],
+      attributes: {
+        guide_html_url: "https://wu42aa18.travel.alter0.cn",
+      },
+    };
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(screen.getByRole("tab", { name: "Deliverables" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+
+    const detailsPanel = document.querySelector("[data-runtime-details-panel='conversation']") as HTMLElement;
+    expect(within(detailsPanel).getAllByText("Delivery Contract")[0]).toBeInTheDocument();
+    expect(within(detailsPanel).getByText("Travel Guide")).toBeInTheDocument();
+    expect(within(detailsPanel).getByText("HTML Guide")).toBeInTheDocument();
+    expect(within(detailsPanel).getByText("https://wu42aa18.travel.alter0.cn")).toBeInTheDocument();
   });
 });

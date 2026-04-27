@@ -285,6 +285,32 @@ func TestHybridNLProcessorCodingAgentPromptEmphasizesCodexLoop(t *testing.T) {
 	}
 }
 
+func TestHybridNLProcessorIncludesAgentDeliverablesContract(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理攻略", testRuntimeMetadata())), reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentDeliverablesMetadataKey] = `[{"id":"guide-markdown","label":"Travel Guide","format":"markdown","required":true},{"id":"guide-html","label":"HTML Guide","format":"html","required":true,"session_attribute_key":"guide_html_url"}]`
+
+	if _, err := processor.Process(context.Background(), "整理武汉攻略", metadata); err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	prompt := reactFactory.lastConfig.SystemPrompt
+	for _, expected := range []string{
+		"Current delivery contract:",
+		"Travel Guide",
+		"HTML Guide",
+		"session attribute guide_html_url",
+		"Do not finish with only a conversational answer",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("expected deliverables prompt to contain %q, got %q", expected, prompt)
+		}
+	}
+}
+
 func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
 	processor := NewHybridNLProcessor(nil, reactFactory, nil)
@@ -316,6 +342,83 @@ func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) 
 	}
 	if output != "任务已完成" {
 		t.Fatalf("Process() output = %q, want %q", output, "任务已完成")
+	}
+}
+
+func TestHybridNLProcessorAgentCodexExecPreparesNativeRuntimeAssets(t *testing.T) {
+	rootDir := t.TempDir()
+	activeHome := filepath.Join(t.TempDir(), "active-codex-home")
+	if err := os.MkdirAll(activeHome, 0o755); err != nil {
+		t.Fatalf("mkdir active home: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(activeHome, "auth.json"), []byte(`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`), 0o600); err != nil {
+		t.Fatalf("write auth: %v", err)
+	}
+	t.Setenv("CODEX_HOME", activeHome)
+
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	rawSkillContext, err := json.Marshal(execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills: []execdomain.SkillSpec{
+			{
+				ID:          "travel-city-rules",
+				Name:        "Travel City Rules",
+				Description: "Reusable city-page rules.",
+				FilePath:    ".alter0/agents/travel/SKILL.md",
+				Guide:       "Read the file-backed city-page rulebook before composing the response.",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal skill context: %v", err)
+	}
+
+	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
+	processor := NewHybridNLProcessor(
+		newTestProcessor("success", "整理仓库", filepath.Join(".alter0", "workspaces", "sessions", "session-default")),
+		reactFactory,
+		nil,
+	)
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentToolsMetadataKey] = `["codex_exec"]`
+	metadata[execdomain.SkillContextMetadataKey] = string(rawSkillContext)
+
+	output, err := processor.Process(context.Background(), "完成武汉攻略整理", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "任务已完成" {
+		t.Fatalf("Process() output = %q, want %q", output, "任务已完成")
+	}
+
+	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default")
+	agentsText, err := os.ReadFile(filepath.Join(sessionWorkspace, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read runtime AGENTS: %v", err)
+	}
+	if !strings.Contains(string(agentsText), ".alter0/codex-runtime/skills.md") {
+		t.Fatalf("expected runtime AGENTS to reference skills.md, got:\n%s", string(agentsText))
+	}
+
+	skillText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "skills.md"))
+	if err != nil {
+		t.Fatalf("read runtime skills: %v", err)
+	}
+	if !strings.Contains(string(skillText), "Travel City Rules") || !strings.Contains(string(skillText), ".alter0/agents/travel/SKILL.md") {
+		t.Fatalf("unexpected runtime skills:\n%s", string(skillText))
 	}
 }
 

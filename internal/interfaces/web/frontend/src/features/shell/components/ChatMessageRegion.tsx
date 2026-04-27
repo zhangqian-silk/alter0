@@ -125,14 +125,6 @@ function buildChatTimelineItem(
   copy: MessageCopy,
   onToggleProcess?: (messageID: string) => void,
 ): RuntimeTimelineItem {
-  const classNames = ["msg", message.role];
-  if (message.error) {
-    classNames.push("error");
-  }
-  if (message.status === "streaming") {
-    classNames.push("streaming");
-  }
-
   const footer = (
     <div className="msg-meta">
       {message.role === "assistant" && shouldShowAssistantStatus(message) ? (
@@ -145,45 +137,60 @@ function buildChatTimelineItem(
   );
 
   if (message.role === "user") {
+    const blocks: RuntimeTimelineItem["blocks"] = [
+      {
+        type: "attachments",
+        galleryId: message.id,
+        className: "terminal-turn-attachments",
+        items: message.attachments.map((attachment) => ({
+          key: attachment.id,
+          name: attachment.name,
+          src: resolveComposerAttachmentPreviewURL(attachment),
+        })),
+      },
+    ];
+    if (message.text.trim()) {
+      blocks.push({
+        type: "prompt",
+        className: "terminal-log-row kind-command terminal-turn-prompt conversation-turn-prompt",
+        textClassName: "terminal-log-main",
+        timeClassName: "terminal-log-time",
+        text: message.text,
+        timeLabel: formatTimeLabel(message.at),
+      });
+    }
     return {
       id: message.id,
-      className: classNames.join(" "),
+      className: "terminal-turn-card conversation-turn-card conversation-turn-user",
       articleProps: { "data-message-id": message.id },
-      bubbleClassName: "msg-bubble",
-      blocks: [
-        {
-          type: "attachments",
-          galleryId: message.id,
-          items: message.attachments.map((attachment) => ({
-            key: attachment.id,
-            name: attachment.name,
-            src: resolveComposerAttachmentPreviewURL(attachment),
-          })),
-        },
-        ...(message.text.trim() ? [{
-          type: "rich-text" as const,
-          html: renderRuntimeMarkdownToHTML(message.text),
-        }] : []),
-      ],
-      footer,
+      blocks,
     };
   }
 
   const parsed = resolveAgentExecutionContent(message, language);
   if (!parsed.steps.length) {
+    const html = renderRuntimeMarkdownToHTML(message.text);
     return {
       id: message.id,
-      className: classNames.join(" "),
+      className: "terminal-turn-card conversation-turn-card conversation-turn-assistant",
       articleProps: { "data-message-id": message.id },
-    bubbleClassName: "msg-bubble",
-    blocks: message.status === "streaming"
-        ? [{ type: "rich-text", html: renderRuntimeMarkdownToHTML(message.text) }]
-        : [{
+      blocks: html.trim() ? [
+        {
           type: "markdown-shell",
-          html: renderRuntimeMarkdownToHTML(message.text),
-          copyValue: message.text.trim(),
+          html,
+          copyValue: message.status === "streaming" ? undefined : message.text.trim(),
           copyLabel: copy.copyValue,
-        }],
+          wrapperClassName: [
+            "terminal-final-output",
+            "conversation-final-output",
+            message.status === "streaming" ? "is-streaming" : "",
+            message.error ? "is-error" : "",
+          ].filter(Boolean).join(" "),
+          wrapperProps: { "data-conversation-final-output": message.id },
+          className: "terminal-final-text conversation-final-text",
+          bodyClassName: "terminal-final-rendered conversation-final-rendered",
+        },
+      ] : [],
       footer,
     };
   }
@@ -195,39 +202,38 @@ function buildChatTimelineItem(
 
   return {
     id: message.id,
-    className: classNames.join(" "),
+    className: "terminal-turn-card conversation-turn-card conversation-turn-assistant",
     articleProps: { "data-message-id": message.id },
-    bubbleClassName: "msg-bubble",
     blocks: [
       {
         type: "process",
-        shellClassName: `agent-process-shell ${collapsed ? "is-collapsed" : ""}`,
+        shellClassName: `terminal-process-shell conversation-process-shell ${collapsed ? "is-collapsed" : ""}`,
         shellProps: { "data-agent-process-shell": message.id },
-        toggleClassName: "agent-process-toggle",
+        toggleClassName: "terminal-process-toggle conversation-process-toggle",
         toggleProps: { "data-agent-process-toggle": message.id },
         title: (
           <>
-            <span className="agent-process-toggle-icon">{collapsed ? ">" : "v"}</span>
-            <span className="agent-process-copy">
-              <span className="agent-process-title">{copy.processLabel}</span>
-              <span className="agent-process-summary">{copy.processSteps(parsed.steps.length)}</span>
+            <span className="terminal-step-toggle-icon" aria-hidden="true">{collapsed ? ">" : "v"}</span>
+            <span className="terminal-process-copy">
+              <span className="terminal-process-title">{copy.processLabel}</span>
+              <span className="terminal-process-summary">{copy.processSteps(parsed.steps.length)}</span>
             </span>
           </>
         ),
         expanded: !collapsed,
         onToggle: () => onToggleProcess?.(message.id),
-        bodyClassName: "agent-process-body",
-        emptyState: <div className="agent-process-empty">{copy.processEmpty}</div>,
+        bodyClassName: "terminal-process-body conversation-process-body",
+        emptyState: <div className="terminal-process-empty conversation-process-empty">{copy.processEmpty}</div>,
         steps: parsed.steps.map((step, index) => ({
           id: step.id || `${step.title}-${index}`,
-          itemClassName: "agent-process-step",
+          itemClassName: "agent-process-step conversation-process-step",
           toggleable: false,
           title: step.title || `${copy.processLabel} ${index + 1}`,
           meta: <span className="agent-process-step-index">{index + 1}</span>,
           expanded: true,
           onToggle: () => undefined,
-          toggleClassName: "agent-process-step-head",
-          bodyClassName: "agent-process-step-body",
+          toggleClassName: "agent-process-step-head conversation-process-step-head",
+          bodyClassName: "agent-process-step-body conversation-process-step-body",
           detail: step.detail ? <RuntimeMarkdownHTML html={renderRuntimeMarkdownToHTML(step.detail)} /> : null,
         })),
       },
@@ -236,8 +242,10 @@ function buildChatTimelineItem(
         html: renderRuntimeMarkdownToHTML(parsed.answer),
         copyValue: parsed.answer,
         copyLabel: copy.copyValue,
-        className: "agent-process-answer-shell",
-        bodyClassName: "agent-process-answer",
+        wrapperClassName: "terminal-final-output conversation-final-output",
+        wrapperProps: { "data-conversation-final-output": message.id },
+        className: "terminal-final-text agent-process-answer-shell conversation-final-text",
+        bodyClassName: "terminal-final-rendered agent-process-answer conversation-final-rendered",
       }] : []),
     ],
     footer,

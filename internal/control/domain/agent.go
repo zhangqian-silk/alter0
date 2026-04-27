@@ -23,6 +23,7 @@ const (
 	agentUIRouteMetadataKey       = "agent.ui_route"
 	agentCapabilitiesMetadataKey  = "agent.capabilities"
 	agentSessionProfileFieldsKey  = "agent.session_profile_fields"
+	agentDeliverablesMetadataKey  = "agent.deliverables"
 )
 
 const (
@@ -57,6 +58,7 @@ type Agent struct {
 	Delegatable          bool                       `json:"delegatable,omitempty"`
 	UIRoute              string                     `json:"ui_route,omitempty"`
 	Capabilities         []string                   `json:"capabilities,omitempty"`
+	Deliverables         []AgentDeliverable         `json:"deliverables,omitempty"`
 	Metadata             map[string]string          `json:"metadata,omitempty"`
 }
 
@@ -65,6 +67,15 @@ type AgentSessionProfileField struct {
 	Label       string `json:"label"`
 	Description string `json:"description,omitempty"`
 	ReadOnly    bool   `json:"readonly,omitempty"`
+}
+
+type AgentDeliverable struct {
+	ID                  string `json:"id"`
+	Label               string `json:"label"`
+	Description         string `json:"description,omitempty"`
+	Format              string `json:"format,omitempty"`
+	Required            bool   `json:"required,omitempty"`
+	SessionAttributeKey string `json:"session_attribute_key,omitempty"`
 }
 
 func (a Agent) AsCapability() Capability {
@@ -93,6 +104,7 @@ func (a Agent) AsCapability() Capability {
 	setAgentBoolMetadata(metadata, agentDelegatableMetadataKey, a.Delegatable)
 	setAgentMetadata(metadata, agentUIRouteMetadataKey, a.UIRoute)
 	setAgentListMetadata(metadata, agentCapabilitiesMetadataKey, a.Capabilities)
+	setAgentDeliverablesMetadata(metadata, a.Deliverables)
 	return Capability{
 		ID:       a.ID,
 		Name:     a.Name,
@@ -140,6 +152,7 @@ func AgentFromCapability(capability Capability) Agent {
 		Delegatable:          parseAgentBoolMetadata(metadata[agentDelegatableMetadataKey]),
 		UIRoute:              strings.TrimSpace(metadata[agentUIRouteMetadataKey]),
 		Capabilities:         parseAgentListMetadata(metadata[agentCapabilitiesMetadataKey]),
+		Deliverables:         parseAgentDeliverablesMetadata(metadata[agentDeliverablesMetadataKey]),
 		Metadata:             metadata,
 	}
 	delete(agent.Metadata, agentProviderIDMetadataKey)
@@ -158,6 +171,7 @@ func AgentFromCapability(capability Capability) Agent {
 	delete(agent.Metadata, agentDelegatableMetadataKey)
 	delete(agent.Metadata, agentUIRouteMetadataKey)
 	delete(agent.Metadata, agentCapabilitiesMetadataKey)
+	delete(agent.Metadata, agentDeliverablesMetadataKey)
 	if len(agent.Metadata) == 0 {
 		agent.Metadata = nil
 	}
@@ -230,6 +244,22 @@ func setAgentSessionProfileFieldsMetadata(metadata map[string]string, fields []A
 	metadata[agentSessionProfileFieldsKey] = string(encoded)
 }
 
+func setAgentDeliverablesMetadata(metadata map[string]string, deliverables []AgentDeliverable) {
+	if metadata == nil {
+		return
+	}
+	normalized := normalizeAgentDeliverables(deliverables)
+	if len(normalized) == 0 {
+		delete(metadata, agentDeliverablesMetadataKey)
+		return
+	}
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return
+	}
+	metadata[agentDeliverablesMetadataKey] = string(encoded)
+}
+
 func parseAgentListMetadata(raw string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -263,6 +293,18 @@ func parseAgentSessionProfileFieldsMetadata(raw string) []AgentSessionProfileFie
 		return nil
 	}
 	return normalizeAgentSessionProfileFields(fields)
+}
+
+func parseAgentDeliverablesMetadata(raw string) []AgentDeliverable {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var deliverables []AgentDeliverable
+	if err := json.Unmarshal([]byte(trimmed), &deliverables); err != nil {
+		return nil
+	}
+	return normalizeAgentDeliverables(deliverables)
 }
 
 func normalizeAgentAttribute(raw string) string {
@@ -321,4 +363,61 @@ func normalizeAgentSessionProfileFields(fields []AgentSessionProfileField) []Age
 		return nil
 	}
 	return items
+}
+
+func normalizeAgentDeliverables(items []AgentDeliverable) []AgentDeliverable {
+	if len(items) == 0 {
+		return nil
+	}
+	normalized := make([]AgentDeliverable, 0, len(items))
+	seen := map[string]struct{}{}
+	for _, item := range items {
+		label := strings.TrimSpace(item.Label)
+		id := normalizeAgentDeliverableID(item.ID)
+		if id == "" {
+			id = normalizeAgentDeliverableID(label)
+		}
+		if id == "" || label == "" {
+			continue
+		}
+		lookup := strings.ToLower(id)
+		if _, ok := seen[lookup]; ok {
+			continue
+		}
+		seen[lookup] = struct{}{}
+		normalized = append(normalized, AgentDeliverable{
+			ID:                  id,
+			Label:               label,
+			Description:         strings.TrimSpace(item.Description),
+			Format:              strings.TrimSpace(item.Format),
+			Required:            item.Required,
+			SessionAttributeKey: strings.TrimSpace(item.SessionAttributeKey),
+		})
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func normalizeAgentDeliverableID(raw string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(raw))
+	if trimmed == "" {
+		return ""
+	}
+	var builder strings.Builder
+	lastHyphen := false
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+			lastHyphen = false
+			continue
+		}
+		if lastHyphen {
+			continue
+		}
+		builder.WriteRune('-')
+		lastHyphen = true
+	}
+	return strings.Trim(builder.String(), "-")
 }

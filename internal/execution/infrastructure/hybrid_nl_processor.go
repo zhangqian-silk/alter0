@@ -342,7 +342,6 @@ func (p *HybridNLProcessor) executeModelTool(
 			return nil, errors.New("codex_exec instruction is required")
 		}
 		codexMetadata := buildCodexExecMetadata(metadata)
-		codexMetadata[execdomain.CodexRuntimeStrategyMetadataKey] = execdomain.CodexRuntimeStrategyPlain
 		output, err := p.codex.Process(ctx, instruction, codexMetadata)
 		if err != nil {
 			return &llmdomain.ToolResult{
@@ -465,6 +464,9 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 	if agentName := strings.TrimSpace(metadataValue(metadata, execdomain.AgentNameMetadataKey)); agentName != "" {
 		parts = append(parts, "Current agent profile: "+agentName)
 	}
+	if deliverables := renderAgentDeliverablesInstruction(metadata); deliverables != "" {
+		parts = append(parts, deliverables)
+	}
 	if _, ok := allowedTools[toolDelegateAgent]; ok {
 		if targets := p.renderDelegationTargets(metadata); targets != "" {
 			parts = append(parts, targets)
@@ -485,6 +487,51 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 
 func isCodingAgent(metadata map[string]string) bool {
 	return strings.EqualFold(strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey)), "coding")
+}
+
+func renderAgentDeliverablesInstruction(metadata map[string]string) string {
+	raw := strings.TrimSpace(metadataValue(metadata, execdomain.AgentDeliverablesMetadataKey))
+	if raw == "" {
+		return ""
+	}
+	var deliverables []controldomain.AgentDeliverable
+	if err := json.Unmarshal([]byte(raw), &deliverables); err != nil || len(deliverables) == 0 {
+		return ""
+	}
+	lines := []string{
+		"Current delivery contract:",
+		"Do not finish with only a conversational answer when the active agent declares explicit deliverables. Drive execution until the required deliverables are produced or you can clearly explain the blocker.",
+	}
+	for _, item := range deliverables {
+		label := strings.TrimSpace(item.Label)
+		if label == "" {
+			continue
+		}
+		parts := make([]string, 0, 4)
+		if item.Required {
+			parts = append(parts, "required")
+		} else {
+			parts = append(parts, "optional")
+		}
+		if format := strings.TrimSpace(item.Format); format != "" {
+			parts = append(parts, format)
+		}
+		if field := strings.TrimSpace(item.SessionAttributeKey); field != "" {
+			parts = append(parts, "session attribute "+field)
+		}
+		line := "- " + label
+		if description := strings.TrimSpace(item.Description); description != "" {
+			line += ": " + description
+		}
+		if len(parts) > 0 {
+			line += " (" + strings.Join(parts, ", ") + ")"
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 2 {
+		return ""
+	}
+	return strings.Join(lines, "\n")
 }
 
 func renderMemoryContextInstruction(raw string) string {

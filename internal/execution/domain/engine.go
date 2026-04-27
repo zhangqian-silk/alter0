@@ -16,6 +16,7 @@ const (
 	AgentToolsMetadataKey                = "alter0.agent.tools"
 	AgentProcessStepsMetadataKey         = "alter0.agent.process_steps"
 	AgentCapabilitiesMetadataKey         = "alter0.agent.capabilities"
+	AgentDeliverablesMetadataKey         = "alter0.agent.deliverables"
 	AgentDelegatedByMetadataKey          = "alter0.agent.delegated_by"
 	AgentDelegationDepthMetadataKey      = "alter0.agent.delegation_depth"
 	CodexRuntimeStrategyMetadataKey      = "alter0.codex.runtime_strategy"

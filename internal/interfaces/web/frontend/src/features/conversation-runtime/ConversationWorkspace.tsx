@@ -19,6 +19,50 @@ type ConversationWorkspaceProps = {
   language: LegacyShellLanguage;
 };
 
+function renderAgentDeliverablesSection(
+  language: LegacyShellLanguage,
+  deliverables: Array<{
+    id?: string;
+    label?: string;
+    description?: string;
+    format?: string;
+    required?: boolean;
+    session_attribute_key?: string;
+  }>,
+  attributes: Record<string, string>,
+) {
+  if (!deliverables.length) {
+    return null;
+  }
+  return (
+    <section className="conversation-inspector-section">
+      <strong>{language === "zh" ? "交付契约" : "Delivery Contract"}</strong>
+      <div className="conversation-check-list">
+        {deliverables.map((deliverable) => {
+          const attributeKey = String(deliverable.session_attribute_key || "").trim();
+          const resolvedValue = attributeKey ? String(attributes[attributeKey] || "").trim() : "";
+          const stateLabel = resolvedValue
+            ? (language === "zh" ? "已关联" : "Linked")
+            : deliverable.required
+              ? (language === "zh" ? "必交付" : "Required")
+              : (language === "zh" ? "可选" : "Optional");
+          const formatLabel = String(deliverable.format || "").trim();
+          const meta = [stateLabel, formatLabel, resolvedValue].filter(Boolean).join(" · ");
+          const detail = [meta, String(deliverable.description || "").trim()].filter(Boolean).join(" · ");
+          return (
+            <div key={String(deliverable.id || deliverable.label)} className="conversation-check-item">
+              <span>
+                <strong>{String(deliverable.label || deliverable.id || "").trim()}</strong>
+                <small>{detail || (language === "zh" ? "无额外说明" : "No extra guidance")}</small>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function RuntimeSessionControlIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
@@ -94,7 +138,10 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const capabilitiesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "capabilities";
   const skillsInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "skills";
   const sessionProfileInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "session-profile";
+  const deliverablesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "deliverables";
   const sessionProfileFields = runtime.activeSessionProfile?.fields || runtime.activeAgent?.session_profile_fields || [];
+  const activeAgentDeliverables = runtime.activeAgent?.deliverables || [];
+  const sessionProfileAttributes = runtime.activeSessionProfile?.attributes || {};
   const activeSessionItem = runtime.sessionItems.find((item) => item.active) || null;
   const routeLabel = runtime.route === "agent-runtime"
     ? (language === "zh" ? "Agent" : "Agent")
@@ -231,27 +278,30 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     composerShellRef,
   });
 
-  const sessionDetailsBody = runtime.route === "agent-runtime" && sessionProfileFields.length > 0 ? (
+  const sessionDetailsBody = runtime.route === "agent-runtime" && (sessionProfileFields.length > 0 || activeAgentDeliverables.length > 0) ? (
     <div className="conversation-inspector-sections">
-      <section className="conversation-inspector-section">
-        <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
-        <div className="workspace-details-summary">
-          {sessionProfileFields.map((field) => {
-            const value = runtime.activeSessionProfile?.attributes?.[field.key] || "-";
-            return (
-              <RouteFieldRow
-                key={field.key}
-                label={field.label}
-                value={value}
-                copyLabel={language === "zh" ? "复制值" : "Copy value"}
-                copyable={field.readonly !== false}
-                mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
-                multiline={value.length > 48}
-              />
-            );
-          })}
-        </div>
-      </section>
+      {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
+      {sessionProfileFields.length > 0 ? (
+        <section className="conversation-inspector-section">
+          <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
+          <div className="workspace-details-summary">
+            {sessionProfileFields.map((field) => {
+              const value = sessionProfileAttributes[field.key] || "-";
+              return (
+                <RouteFieldRow
+                  key={field.key}
+                  label={field.label}
+                  value={value}
+                  copyLabel={language === "zh" ? "复制值" : "Copy value"}
+                  copyable={field.readonly !== false}
+                  mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
+                  multiline={value.length > 48}
+                />
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
     </div>
   ) : null;
 
@@ -261,6 +311,9 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       ? copy.runtimeModelHint
       : capabilitiesInspectorOpen
         ? copy.runtimeToolsHint
+        : deliverablesInspectorOpen
+          ? (language === "zh" ? "专项 Agent 会在这里声明本轮必须交付的最终产物。"
+            : "Specialist agents declare the required final deliverables for this run here.")
         : skillsInspectorOpen
           ? copy.runtimeSkillsHint
           : undefined;
@@ -268,6 +321,9 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     ...(runtime.route === "agent-runtime" ? [{
       key: "target" as const,
       label: copy.runtimeAgent,
+    }, {
+      key: "deliverables" as const,
+      label: language === "zh" ? "交付物" : "Deliverables",
     }] : []),
     {
       key: "model" as const,
@@ -315,19 +371,28 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       </div>
 
       {targetInspectorOpen && runtime.route === "agent-runtime" ? (
-        <div className="conversation-inspector-grid">
-          {runtime.targetOptions.map((item) => (
-            <button
-              key={item.id}
-              className={item.active ? "conversation-target-card is-active" : "conversation-target-card"}
-              type="button"
-              disabled={runtime.lockedTarget}
-              onClick={() => runtime.selectTarget(item.id)}
-            >
-              <strong>{item.name}</strong>
-              <span>{item.subtitle}</span>
-            </button>
-          ))}
+        <div className="conversation-inspector-sections">
+          <div className="conversation-inspector-grid">
+            {runtime.targetOptions.map((item) => (
+              <button
+                key={item.id}
+                className={item.active ? "conversation-target-card is-active" : "conversation-target-card"}
+                type="button"
+                disabled={runtime.lockedTarget}
+                onClick={() => runtime.selectTarget(item.id)}
+              >
+                <strong>{item.name}</strong>
+                <span>{item.subtitle}</span>
+              </button>
+            ))}
+          </div>
+          {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
+        </div>
+      ) : null}
+
+      {deliverablesInspectorOpen && runtime.route === "agent-runtime" ? (
+        <div className="conversation-inspector-sections">
+          {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
         </div>
       ) : null}
 
@@ -428,11 +493,12 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
 
       {sessionProfileInspectorOpen && runtime.route === "agent-runtime" ? (
         <div className="conversation-inspector-sections">
+          {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
           <section className="conversation-inspector-section">
             <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
             <div className="workspace-details-summary">
               {sessionProfileFields.map((field) => {
-                const value = runtime.activeSessionProfile?.attributes?.[field.key] || "-";
+                const value = sessionProfileAttributes[field.key] || "-";
                 return (
                   <RouteFieldRow
                     key={field.key}

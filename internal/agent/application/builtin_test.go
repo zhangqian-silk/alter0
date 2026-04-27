@@ -12,12 +12,14 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	tools := map[string][]string{}
 	skills := map[string][]string{}
 	entrypoints := map[string]bool{}
+	deliverables := map[string]int{}
 	for _, agent := range agents {
 		names[agent.ID] = agent.Name
 		index[agent.ID] = agent.SystemPrompt
 		tools[agent.ID] = agent.Tools
 		skills[agent.ID] = agent.Skills
 		entrypoints[agent.ID] = agent.EntryPoint
+		deliverables[agent.ID] = len(agent.Deliverables)
 	}
 
 	if prompt := index["travel"]; !strings.Contains(prompt, "codex_exec") || !strings.Contains(strings.ToLower(prompt), "assistant") {
@@ -43,6 +45,18 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	}
 	if !entrypoints["travel"] {
 		t.Fatalf("expected travel to be available as a runtime entrypoint")
+	}
+	if deliverables["main"] != 0 {
+		t.Fatalf("expected main agent to remain contract-light, got %d deliverables", deliverables["main"])
+	}
+	if deliverables["coding"] < 2 {
+		t.Fatalf("expected coding agent to declare delivery contract, got %d deliverables", deliverables["coding"])
+	}
+	if deliverables["writing"] < 1 {
+		t.Fatalf("expected writing agent to declare delivery contract, got %d deliverables", deliverables["writing"])
+	}
+	if deliverables["travel"] < 2 {
+		t.Fatalf("expected travel agent to declare delivery contract, got %d deliverables", deliverables["travel"])
 	}
 	for _, agentID := range []string{
 		"travel-city-guide",
