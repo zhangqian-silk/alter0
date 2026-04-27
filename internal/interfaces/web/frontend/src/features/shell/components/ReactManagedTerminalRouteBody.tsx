@@ -303,6 +303,8 @@ type TerminalPollPlan = {
   refreshActiveSession: boolean;
 };
 
+const DEFAULT_TERMINAL_SKILL_IDS = ["frontend-design", "deploy-test-service"] as const;
+
 function resolveLanguage(): "en" | "zh" {
   return document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
@@ -388,6 +390,11 @@ function normalizeTerminalSkills(values: unknown): TerminalSkillSelection[] {
     });
   });
   return Array.from(deduped.values());
+}
+
+function resolveDefaultTerminalSkillIDs(skills: TerminalSkillSelection[]): string[] {
+  const available = new Set(skills.map((skill) => skill.id));
+  return DEFAULT_TERMINAL_SKILL_IDS.filter((id) => available.has(id));
 }
 
 function serializeTerminalComposerAttachment(attachment: ComposerAttachment) {
@@ -1035,7 +1042,11 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         setSkills(nextSkills);
         setSelectedSkillIDs((current) => {
           const available = new Set(nextSkills.map((skill) => skill.id));
-          return current.filter((id) => available.has(id));
+          const nextSelected = current.filter((id) => available.has(id));
+          if (nextSelected.length > 0) {
+            return nextSelected;
+          }
+          return resolveDefaultTerminalSkillIDs(nextSkills);
         });
       } catch {
         if (!cancelled) {

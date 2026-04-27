@@ -538,6 +538,9 @@ func (s *Service) UpdateEnvironmentConfigs(values map[string]string, operator st
 		if err != nil {
 			return controldomain.EnvironmentUpdateResult{}, err
 		}
+		if err := validateEnvironmentConfigChange(key, normalizedValue); err != nil {
+			return controldomain.EnvironmentUpdateResult{}, err
+		}
 		currentValue, _ := s.desiredEnvironmentValueLocked(key)
 		if currentValue == normalizedValue {
 			continue
@@ -587,6 +590,13 @@ func (s *Service) UpdateEnvironmentConfigs(values map[string]string, operator st
 		NeedsRestart: requiresRestart,
 		RestartKeys:  restartKeys,
 	}, nil
+}
+
+func validateEnvironmentConfigChange(key string, value string) error {
+	if normalize(key) == "web_login_password" && strings.TrimSpace(value) == "" {
+		return fmt.Errorf("web_login_password is required; anonymous web access is disabled")
+	}
+	return nil
 }
 
 func (s *Service) ListEnvironmentAudits(revealSensitive bool) []controldomain.EnvironmentAudit {

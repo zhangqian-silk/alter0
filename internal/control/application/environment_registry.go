@@ -33,7 +33,7 @@ func defaultEnvironmentDefinitions() []controldomain.EnvironmentDefinition {
 			Key:          "web_login_password",
 			Name:         "Web Login Password",
 			Module:       "Web & Queue",
-			Description:  "Web 控制台登录密码。留空表示不启用登录页面；设置后，所有进入控制台的用户都必须先通过该密码验证。",
+			Description:  "Web 控制台登录密码。所有进入控制台与受保护预览工作区的用户都必须先通过该密码验证；静态只读公开 host 不受此项约束。",
 			Type:         controldomain.EnvironmentValueTypeString,
 			DefaultValue: "",
 			Sensitive:    true,

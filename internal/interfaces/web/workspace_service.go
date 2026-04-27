@@ -517,15 +517,15 @@ func (s *Server) withWorkspaceServiceGateway(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if r.URL.Path == "/login" || r.URL.Path == "/logout" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if entry.PublicReadOnly {
 			if entry.ServiceType == workspaceServiceTypeFrontendDist && s.serveWorkspaceFrontendService(w, r, entry) {
 				return
 			}
 			http.NotFound(w, r)
-			return
-		}
-		if r.URL.Path == "/login" || r.URL.Path == "/logout" {
-			next.ServeHTTP(w, r)
 			return
 		}
 
