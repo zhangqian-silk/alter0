@@ -448,16 +448,10 @@ func ensureChildProcessWebLoginPassword(password string) {
 }
 
 func resolveRuntimeChildWebLoginPassword(runtimeChild bool, password string) string {
-	if runtimeChild {
-		return ""
-	}
 	return strings.TrimSpace(password)
 }
 
 func validateRequiredWebLoginPassword(runtimeChild bool, password string) error {
-	if runtimeChild {
-		return nil
-	}
 	if strings.TrimSpace(password) == "" {
 		return fmt.Errorf("web_login_password is required; anonymous web access is disabled")
 	}

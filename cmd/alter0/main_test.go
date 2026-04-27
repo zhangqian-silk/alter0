@@ -86,12 +86,12 @@ func TestEnsureChildProcessWebLoginPasswordSetsAndClearsEnv(t *testing.T) {
 	}
 }
 
-func TestResolveRuntimeChildWebLoginPasswordDisablesChildLogin(t *testing.T) {
+func TestResolveRuntimeChildWebLoginPasswordKeepsGatewayPasswordForChild(t *testing.T) {
 	if got := resolveRuntimeChildWebLoginPassword(false, " secret "); got != "secret" {
 		t.Fatalf("non-child password = %q, want secret", got)
 	}
-	if got := resolveRuntimeChildWebLoginPassword(true, " secret "); got != "" {
-		t.Fatalf("runtime child password = %q, want empty", got)
+	if got := resolveRuntimeChildWebLoginPassword(true, " secret "); got != "secret" {
+		t.Fatalf("runtime child password = %q, want secret", got)
 	}
 }
 
@@ -99,8 +99,11 @@ func TestValidateRequiredWebLoginPasswordRequiresPasswordForGateway(t *testing.T
 	if err := validateRequiredWebLoginPassword(false, " secret "); err != nil {
 		t.Fatalf("expected non-child password to pass validation, got %v", err)
 	}
-	if err := validateRequiredWebLoginPassword(true, ""); err != nil {
-		t.Fatalf("expected runtime child to allow empty password, got %v", err)
+	if err := validateRequiredWebLoginPassword(true, " secret "); err != nil {
+		t.Fatalf("expected runtime child password to pass validation, got %v", err)
+	}
+	if err := validateRequiredWebLoginPassword(true, ""); err == nil {
+		t.Fatal("expected runtime child to reject empty web login password")
 	}
 	if err := validateRequiredWebLoginPassword(false, ""); err == nil {
 		t.Fatal("expected non-child runtime to reject empty web login password")
