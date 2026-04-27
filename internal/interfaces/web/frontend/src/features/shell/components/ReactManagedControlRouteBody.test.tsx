@@ -434,6 +434,9 @@ describe("ReactManagedControlRouteBody", () => {
 
     expect(restartDialog).toBeInTheDocument();
     expect(screen.getByLabelText("Sync remote master changes before restart")).toBeChecked();
+    expect(
+      screen.getByText("Recommended. Requires local branch master. Tracked local changes will be discarded; untracked files stay untouched."),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm Restart" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
 
