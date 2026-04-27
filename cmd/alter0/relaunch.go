@@ -205,7 +205,9 @@ func syncRemoteMasterBranch(workingDir string) error {
 		return fmt.Errorf("inspect git working tree: %w", err)
 	}
 	if status != "" {
-		return errors.New("sync remote master requires a clean tracked working tree")
+		if err := runCommandWithTimeout(gitStatusTimeout, repoDir, "git", "reset", "--hard", "HEAD"); err != nil {
+			return fmt.Errorf("discard tracked working tree changes: %w", err)
+		}
 	}
 
 	if err := runGitNetworkCommandWithRetry(repoDir, gitFetchTimeout, 2, "fetch", "--prune", "origin", "master"); err != nil {
