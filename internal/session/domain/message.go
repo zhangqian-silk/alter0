@@ -35,13 +35,14 @@ type MessageSource struct {
 }
 
 type MessageRecord struct {
-	MessageID   string        `json:"message_id"`
-	SessionID   string        `json:"session_id"`
-	Role        MessageRole   `json:"role"`
-	Content     string        `json:"content"`
-	Timestamp   time.Time     `json:"timestamp"`
-	RouteResult RouteResult   `json:"route_result,omitempty"`
-	Source      MessageSource `json:"source,omitempty"`
+	MessageID   string            `json:"message_id"`
+	SessionID   string            `json:"session_id"`
+	Role        MessageRole       `json:"role"`
+	Content     string            `json:"content"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Timestamp   time.Time         `json:"timestamp"`
+	RouteResult RouteResult       `json:"route_result,omitempty"`
+	Source      MessageSource     `json:"source,omitempty"`
 }
 
 type SessionSummary struct {

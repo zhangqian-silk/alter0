@@ -140,6 +140,7 @@ func (s *SessionPersistenceService) persistResult(
 			SessionID: msg.SessionID,
 			Role:      sessiondomain.MessageRoleUser,
 			Content:   msg.Content,
+			Metadata:  cloneSessionMessageMetadata(msg.Metadata),
 			Timestamp: userTimestamp,
 			Source:    source,
 			RouteResult: sessiondomain.RouteResult{
@@ -153,6 +154,7 @@ func (s *SessionPersistenceService) persistResult(
 			SessionID: msg.SessionID,
 			Role:      sessiondomain.MessageRoleAssistant,
 			Content:   assistantContent,
+			Metadata:  cloneSessionMessageMetadata(msg.Metadata),
 			Timestamp: assistantTimestamp,
 			Source:    source,
 			RouteResult: sessiondomain.RouteResult{
@@ -184,6 +186,17 @@ func (s *SessionPersistenceService) newAssistantMessageID(fallback string) strin
 		base = "assistant"
 	}
 	return base + "-assistant"
+}
+
+func cloneSessionMessageMetadata(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
 }
 
 func normalizePersistTimestamp(ts time.Time) time.Time {

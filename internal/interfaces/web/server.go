@@ -34,6 +34,7 @@ import (
 	schedulerapp "alter0/internal/scheduler/application"
 	schedulerdomain "alter0/internal/scheduler/domain"
 	sessionapp "alter0/internal/session/application"
+	sessiondomain "alter0/internal/session/domain"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 	"alter0/internal/shared/infrastructure/observability"
@@ -47,24 +48,30 @@ import (
 var webStaticFS embed.FS
 
 const (
-	controlTaskMetadataJobIDKey       = "job_id"
-	controlTaskMetadataJobNameKey     = "job_name"
-	controlTaskMetadataFiredAtKey     = "fired_at"
-	controlTaskTerminalParentIDKey    = "alter0.task.terminal_parent_id"
-	controlTaskTerminalSessionIDKey   = "alter0.task.terminal_session_id"
-	controlTaskTerminalInteractiveKey = "alter0.task.terminal_interactive"
-	codexSandboxMetadataKey           = "codex_sandbox"
-	codexSandboxDangerFullAccess      = "danger-full-access"
-	defaultControlTaskChannelID       = "web-default"
-	maxTaskArtifactCount              = 128
-	maxTaskArtifactSizeBytes          = 8 * 1024 * 1024
-	taskArtifactReadTimeout           = 3 * time.Second
-	webLoginCookieName                = "alter0_web_session"
-	webLoginCookieTTL                 = 24 * time.Hour
-	webPageCacheControl               = "no-cache"
-	bridgeStaticAssetCacheControl     = "no-cache"
-	immutableStaticAssetCacheControl  = "public, max-age=31536000, immutable"
-	frontendDevOriginEnvKey           = "ALTER0_WEB_FRONTEND_DEV_ORIGIN"
+	controlTaskMetadataJobIDKey                   = "job_id"
+	controlTaskMetadataJobNameKey                 = "job_name"
+	controlTaskMetadataFiredAtKey                 = "fired_at"
+	controlTaskTerminalParentIDKey                = "alter0.task.terminal_parent_id"
+	controlTaskTerminalSessionIDKey               = "alter0.task.terminal_session_id"
+	controlTaskTerminalInteractiveKey             = "alter0.task.terminal_interactive"
+	codexSandboxMetadataKey                       = "codex_sandbox"
+	codexSandboxDangerFullAccess                  = "danger-full-access"
+	defaultControlTaskChannelID                   = "web-default"
+	maxTaskArtifactCount                          = 128
+	maxTaskArtifactSizeBytes                      = 8 * 1024 * 1024
+	taskArtifactReadTimeout                       = 3 * time.Second
+	webLoginCookieName                            = "alter0_web_session"
+	webLoginCookieTTL                             = 24 * time.Hour
+	webPageCacheControl                           = "no-cache"
+	bridgeStaticAssetCacheControl                 = "no-cache"
+	immutableStaticAssetCacheControl              = "public, max-age=31536000, immutable"
+	frontendDevOriginEnvKey                       = "ALTER0_WEB_FRONTEND_DEV_ORIGIN"
+	conversationRuntimeExecutionEngineMetadataKey = "alter0.execution.engine"
+	conversationRuntimeExecutionEngineCodex       = "codex"
+	conversationRuntimeLLMProviderMetadataKey     = "alter0.llm.provider_id"
+	conversationRuntimeLLMModelMetadataKey        = "alter0.llm.model"
+	conversationRuntimeCodexProviderID            = "alter0-codex"
+	conversationRuntimeCodexModelID               = "codex"
 )
 
 var sseHeartbeatInterval = 15 * time.Second
@@ -263,6 +270,63 @@ type messageResponse struct {
 	ComplexityLevel          string                           `json:"complexity_level,omitempty"`
 	TaskCard                 *taskCardResponse                `json:"task_card,omitempty"`
 	Error                    string                           `json:"error,omitempty"`
+}
+
+type conversationRuntimeRoute string
+
+const (
+	conversationRuntimeRouteChat         conversationRuntimeRoute = "chat"
+	conversationRuntimeRouteAgentRuntime conversationRuntimeRoute = "agent-runtime"
+	conversationRuntimeTitleMaxRunes                              = 32
+	conversationRuntimeSessionPageSize                            = 200
+)
+
+type conversationRuntimeSessionCollectionResponse struct {
+	Items []conversationRuntimeSessionResponse `json:"items"`
+}
+
+type conversationRuntimeSessionItemResponse struct {
+	Session conversationRuntimeSessionResponse `json:"session"`
+}
+
+type conversationRuntimeSessionResponse struct {
+	ID              string                               `json:"id"`
+	Title           string                               `json:"title"`
+	TitleAuto       bool                                 `json:"title_auto"`
+	TitleScore      int                                  `json:"title_score"`
+	CreatedAt       time.Time                            `json:"created_at"`
+	TargetType      string                               `json:"target_type"`
+	TargetID        string                               `json:"target_id,omitempty"`
+	TargetName      string                               `json:"target_name,omitempty"`
+	ModelProviderID string                               `json:"model_provider_id,omitempty"`
+	ModelID         string                               `json:"model_id,omitempty"`
+	ToolIDs         []string                             `json:"tool_ids,omitempty"`
+	SkillIDs        []string                             `json:"skill_ids,omitempty"`
+	MCPIDs          []string                             `json:"mcp_ids,omitempty"`
+	Messages        []conversationRuntimeMessageResponse `json:"messages,omitempty"`
+}
+
+type conversationRuntimeMessageResponse struct {
+	ID           string                          `json:"id"`
+	Role         string                          `json:"role"`
+	Text         string                          `json:"text"`
+	Attachments  []conversationRuntimeAttachment `json:"attachments,omitempty"`
+	Route        string                          `json:"route,omitempty"`
+	Source       string                          `json:"source,omitempty"`
+	Error        bool                            `json:"error"`
+	Status       string                          `json:"status"`
+	At           time.Time                       `json:"at"`
+	ProcessSteps []shareddomain.ProcessStep      `json:"process_steps,omitempty"`
+	TaskID       string                          `json:"task_id,omitempty"`
+	TaskStatus   string                          `json:"task_status,omitempty"`
+}
+
+type conversationRuntimeAttachment struct {
+	ID          string `json:"id,omitempty"`
+	Name        string `json:"name,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
+	AssetURL    string `json:"asset_url,omitempty"`
+	PreviewURL  string `json:"preview_url,omitempty"`
 }
 
 type taskCreateResponse struct {
@@ -668,6 +732,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/agent/session-profile", s.agentSessionProfileHandler)
 	mux.HandleFunc("/api/agent/messages", s.agentMessageHandler)
 	mux.HandleFunc("/api/agent/messages/stream", s.agentMessageStreamHandler)
+	mux.HandleFunc("/api/conversation-runtime/sessions", s.conversationRuntimeSessionCollectionHandler)
+	mux.HandleFunc("/api/conversation-runtime/sessions/", s.conversationRuntimeSessionItemHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
 	mux.HandleFunc("/api/tasks", s.taskCollectionHandler)
@@ -1737,6 +1803,75 @@ func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.sessions.ListSessions(query))
 }
 
+func (s *Server) conversationRuntimeSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	route, ok := parseConversationRuntimeRoute(r.URL.Query().Get("route"))
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid runtime route"})
+		return
+	}
+
+	page := s.sessions.ListSessions(sessionapp.SessionQuery{
+		TriggerType: shareddomain.TriggerTypeUser,
+		ChannelType: shareddomain.ChannelTypeWeb,
+		Page:        1,
+		PageSize:    conversationRuntimeSessionPageSize,
+	})
+	items := make([]conversationRuntimeSessionResponse, 0, len(page.Items))
+	for _, summary := range page.Items {
+		detail, ok, err := s.loadConversationRuntimeSession(route, summary.SessionID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if ok {
+			items = append(items, detail)
+		}
+	}
+	writeJSON(w, http.StatusOK, conversationRuntimeSessionCollectionResponse{Items: items})
+}
+
+func (s *Server) conversationRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.sessions == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	sessionID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/conversation-runtime/sessions/"))
+	if sessionID == "" || strings.Contains(sessionID, "/") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid runtime session path"})
+		return
+	}
+	route, ok := parseConversationRuntimeRoute(r.URL.Query().Get("route"))
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid runtime route"})
+		return
+	}
+
+	session, matched, err := s.loadConversationRuntimeSession(route, sessionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if !matched {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "runtime session not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{Session: session})
+}
+
 func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID, resource, resourceID, action, ok := sessionResourceID(r.URL.Path)
 	if !ok {
@@ -1824,6 +1959,202 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
 	}
+}
+
+func (s *Server) loadConversationRuntimeSession(
+	route conversationRuntimeRoute,
+	sessionID string,
+) (conversationRuntimeSessionResponse, bool, error) {
+	page := s.sessions.ListMessages(sessionapp.MessageQuery{
+		SessionID: strings.TrimSpace(sessionID),
+		Page:      1,
+		PageSize:  conversationRuntimeSessionPageSize,
+	})
+	if len(page.Items) == 0 {
+		return conversationRuntimeSessionResponse{}, false, nil
+	}
+	session, ok := buildConversationRuntimeSession(route, page.Items)
+	if !ok {
+		return conversationRuntimeSessionResponse{}, false, nil
+	}
+	return session, true, nil
+}
+
+func parseConversationRuntimeRoute(raw string) (conversationRuntimeRoute, bool) {
+	switch conversationRuntimeRoute(strings.TrimSpace(raw)) {
+	case conversationRuntimeRouteChat:
+		return conversationRuntimeRouteChat, true
+	case conversationRuntimeRouteAgentRuntime:
+		return conversationRuntimeRouteAgentRuntime, true
+	default:
+		return "", false
+	}
+}
+
+func buildConversationRuntimeSession(
+	route conversationRuntimeRoute,
+	records []sessiondomain.MessageRecord,
+) (conversationRuntimeSessionResponse, bool) {
+	if len(records) == 0 {
+		return conversationRuntimeSessionResponse{}, false
+	}
+
+	sessionID := strings.TrimSpace(records[0].SessionID)
+	targetType, targetID, targetName := resolveConversationRuntimeTarget(records)
+	if route == conversationRuntimeRouteChat && targetType == "agent" {
+		return conversationRuntimeSessionResponse{}, false
+	}
+	if route == conversationRuntimeRouteAgentRuntime && targetType != "agent" {
+		return conversationRuntimeSessionResponse{}, false
+	}
+
+	title := deriveConversationRuntimeTitle(records)
+	modelProviderID, modelID := resolveConversationRuntimeModel(records)
+	toolIDs, skillIDs, mcpIDs := resolveConversationRuntimeCapabilities(records)
+	messages := make([]conversationRuntimeMessageResponse, 0, len(records))
+	for _, record := range records {
+		messages = append(messages, buildConversationRuntimeMessage(record))
+	}
+
+	return conversationRuntimeSessionResponse{
+		ID:              sessionID,
+		Title:           title,
+		TitleAuto:       false,
+		TitleScore:      1,
+		CreatedAt:       records[0].Timestamp.UTC(),
+		TargetType:      targetType,
+		TargetID:        targetID,
+		TargetName:      targetName,
+		ModelProviderID: modelProviderID,
+		ModelID:         modelID,
+		ToolIDs:         toolIDs,
+		SkillIDs:        skillIDs,
+		MCPIDs:          mcpIDs,
+		Messages:        messages,
+	}, true
+}
+
+func buildConversationRuntimeMessage(record sessiondomain.MessageRecord) conversationRuntimeMessageResponse {
+	status := "done"
+	isError := strings.TrimSpace(record.RouteResult.ErrorCode) != ""
+	if isError {
+		status = "error"
+	}
+	attachments := execdomain.DecodeUserAttachments(record.Metadata)
+	items := make([]conversationRuntimeAttachment, 0, len(attachments))
+	for _, attachment := range attachments {
+		items = append(items, conversationRuntimeAttachment{
+			ID:          strings.TrimSpace(attachment.ID),
+			Name:        strings.TrimSpace(attachment.Name),
+			ContentType: strings.TrimSpace(attachment.ContentType),
+			AssetURL:    strings.TrimSpace(attachment.AssetURL),
+			PreviewURL:  strings.TrimSpace(attachment.PreviewURL),
+		})
+	}
+	return conversationRuntimeMessageResponse{
+		ID:           strings.TrimSpace(record.MessageID),
+		Role:         string(record.Role),
+		Text:         strings.TrimSpace(record.Content),
+		Attachments:  items,
+		Route:        string(record.RouteResult.Route),
+		Source:       strings.TrimSpace(record.Source.AgentName),
+		Error:        isError,
+		Status:       status,
+		At:           record.Timestamp.UTC(),
+		ProcessSteps: append([]shareddomain.ProcessStep(nil), record.RouteResult.ProcessSteps...),
+		TaskID:       strings.TrimSpace(record.RouteResult.TaskID),
+		TaskStatus:   status,
+	}
+}
+
+func resolveConversationRuntimeTarget(records []sessiondomain.MessageRecord) (string, string, string) {
+	for idx := len(records) - 1; idx >= 0; idx-- {
+		source := records[idx].Source
+		agentID := strings.TrimSpace(source.AgentID)
+		if agentID == "" {
+			continue
+		}
+		agentName := strings.TrimSpace(source.AgentName)
+		if agentName == "" {
+			agentName = agentID
+		}
+		return "agent", agentID, agentName
+	}
+	return "model", "raw-model", "Raw Model"
+}
+
+func resolveConversationRuntimeModel(records []sessiondomain.MessageRecord) (string, string) {
+	for idx := len(records) - 1; idx >= 0; idx-- {
+		metadata := records[idx].Metadata
+		if strings.TrimSpace(metadata[conversationRuntimeExecutionEngineMetadataKey]) == conversationRuntimeExecutionEngineCodex {
+			return conversationRuntimeCodexProviderID, conversationRuntimeCodexModelID
+		}
+		providerID := strings.TrimSpace(metadata[conversationRuntimeLLMProviderMetadataKey])
+		modelID := strings.TrimSpace(metadata[conversationRuntimeLLMModelMetadataKey])
+		if providerID != "" || modelID != "" {
+			return providerID, modelID
+		}
+	}
+	return "", ""
+}
+
+func resolveConversationRuntimeCapabilities(records []sessiondomain.MessageRecord) ([]string, []string, []string) {
+	for idx := len(records) - 1; idx >= 0; idx-- {
+		metadata := records[idx].Metadata
+		if len(metadata) == 0 {
+			continue
+		}
+		return normalizeConversationRuntimeIDs(metadata["alter0.agent.tools"]),
+			normalizeConversationRuntimeIDs(metadata["alter0.skills.include"]),
+			normalizeConversationRuntimeIDs(metadata["alter0.mcp.request.enable"])
+	}
+	return nil, nil, nil
+}
+
+func normalizeConversationRuntimeIDs(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var items []string
+	if err := json.Unmarshal([]byte(trimmed), &items); err != nil {
+		return nil
+	}
+	deduped := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		value := strings.TrimSpace(item)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		deduped = append(deduped, value)
+	}
+	if len(deduped) == 0 {
+		return nil
+	}
+	return deduped
+}
+
+func deriveConversationRuntimeTitle(records []sessiondomain.MessageRecord) string {
+	for _, record := range records {
+		if record.Role != sessiondomain.MessageRoleUser {
+			continue
+		}
+		title := strings.TrimSpace(record.Content)
+		if title == "" {
+			continue
+		}
+		runes := []rune(title)
+		if len(runes) > conversationRuntimeTitleMaxRunes {
+			runes = runes[:conversationRuntimeTitleMaxRunes]
+		}
+		return string(runes)
+	}
+	return "New"
 }
 
 func (s *Server) taskCollectionHandler(w http.ResponseWriter, r *http.Request) {

@@ -810,6 +810,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     anchoredToBottom: boolean;
   } | null>(null);
   const draftPersistTimerRef = useRef<number | null>(null);
+  const mobileSubmitGestureLockRef = useRef(false);
   const groupedSessions = useMemo(
     () => groupSessionListItems(sessions, {
       language,
@@ -905,12 +906,38 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     focusComposerInputWithoutScroll();
   };
 
-  const handleSubmitTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
-    if (!workbench.isMobileViewport || submitting || !canInput) {
+  const releaseMobileSubmitGestureLock = () => {
+    window.setTimeout(() => {
+      mobileSubmitGestureLockRef.current = false;
+    }, 0);
+  };
+
+  const submitMobileInputOnPress = () => {
+    mobileSubmitGestureLockRef.current = true;
+    releaseMobileSubmitGestureLock();
+    void submitInput();
+  };
+
+  const handleSubmitPointerDownCapture = (event: PointerEvent<HTMLButtonElement>) => {
+    if (
+      !workbench.isMobileViewport
+      || event.pointerType === "mouse"
+      || submitting
+      || !canInput
+      || mobileSubmitGestureLockRef.current
+    ) {
       return;
     }
     event.preventDefault();
-    void submitInput();
+    submitMobileInputOnPress();
+  };
+
+  const handleSubmitTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
+    if (!workbench.isMobileViewport || submitting || !canInput || mobileSubmitGestureLockRef.current) {
+      return;
+    }
+    event.preventDefault();
+    submitMobileInputOnPress();
   };
 
   useRuntimeComposerViewportSync({
@@ -1695,6 +1722,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       submitButtonProps: {
         id: "terminalSendButton",
         disabled: submitting || !canInput,
+        onPointerDownCapture: handleSubmitPointerDownCapture,
         onTouchStartCapture: handleSubmitTouchStartCapture,
       },
       submitLabel: submitting ? copy.sending : copy.send,

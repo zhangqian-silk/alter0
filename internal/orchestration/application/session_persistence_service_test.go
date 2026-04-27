@@ -183,6 +183,52 @@ func TestSessionPersistenceServicePersistsTaskIDFromMetadata(t *testing.T) {
 	}
 }
 
+func TestSessionPersistenceServicePersistsRequestMetadata(t *testing.T) {
+	downstream := &stubPersistenceDownstream{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-meta",
+			SessionID: "s-meta",
+			Route:     shareddomain.RouteNL,
+			Output:    "done",
+		},
+	}
+	recorder := &spySessionRecorder{}
+	service := &SessionPersistenceService{
+		downstream:  downstream,
+		recorder:    recorder,
+		idGenerator: &fixedIDGenerator{nextID: "assistant-meta"},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:   "msg-meta",
+		SessionID:   "s-meta",
+		Content:     "question",
+		ReceivedAt:  time.Date(2026, 4, 11, 9, 0, 0, 0, time.UTC),
+		TriggerType: shareddomain.TriggerTypeUser,
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TraceID:     "trace-meta",
+		Metadata: map[string]string{
+			"alter0.llm.provider_id": "openai",
+			"alter0.skills.include":  `["frontend-design"]`,
+		},
+	}
+
+	if _, err := service.Handle(context.Background(), msg); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+	if len(recorder.records) != 2 {
+		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
+	}
+	if recorder.records[0].Metadata["alter0.llm.provider_id"] != "openai" {
+		t.Fatalf("expected user metadata to persist, got %+v", recorder.records[0].Metadata)
+	}
+	if recorder.records[1].Metadata["alter0.skills.include"] != `["frontend-design"]` {
+		t.Fatalf("expected assistant metadata to persist, got %+v", recorder.records[1].Metadata)
+	}
+}
+
 func TestSessionPersistenceServicePersistsStructuredProcessSteps(t *testing.T) {
 	downstream := &stubPersistenceDownstream{
 		result: shareddomain.OrchestrationResult{

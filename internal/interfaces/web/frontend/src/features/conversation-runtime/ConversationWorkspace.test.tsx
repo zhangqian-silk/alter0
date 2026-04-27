@@ -727,6 +727,18 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.sendPrompt).toHaveBeenCalledWith("ship the mobile tap path");
   });
 
+  it("submits when the mobile send button is pressed through touch pointer while the composer stays focused", () => {
+    runtimeMock.draft = "ship with keyboard open";
+
+    renderWorkspace({ isMobileViewport: true });
+
+    const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
+    fireEvent.focus(composerInput);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Send" }), { pointerType: "touch" });
+
+    expect(runtimeMock.sendPrompt).toHaveBeenCalledWith("ship with keyboard open");
+  });
+
   it("keeps the agent-runtime header summary visible outside the mobile empty state", () => {
     runtimeMock.route = "agent-runtime";
     runtimeMock.activeSession = {

@@ -16,6 +16,7 @@ import (
 	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
+	execdomain "alter0/internal/execution/domain"
 	sessionapp "alter0/internal/session/application"
 	sessiondomain "alter0/internal/session/domain"
 	shareddomain "alter0/internal/shared/domain"
@@ -286,6 +287,268 @@ func TestSessionDeleteHandlerRemovesHistoryTasksAndWorkspace(t *testing.T) {
 	}
 	if _, err := os.Stat(workspaceDir); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected workspace removed, got %v", err)
+	}
+}
+
+func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T) {
+	service := sessionapp.NewService()
+	base := time.Date(2026, 4, 26, 10, 0, 0, 0, time.UTC)
+	if err := service.Append(
+		sessiondomain.MessageRecord{
+			MessageID: "chat-user",
+			SessionID: "chat-session",
+			Role:      sessiondomain.MessageRoleUser,
+			Content:   "Inspect this repository",
+			Timestamp: base,
+			Source: sessiondomain.MessageSource{
+				TriggerType: shareddomain.TriggerTypeUser,
+				ChannelType: shareddomain.ChannelTypeWeb,
+				ChannelID:   "web-default",
+			},
+			Metadata: map[string]string{
+				"alter0.llm.provider_id":    "openai",
+				"alter0.llm.model":          "gpt-5.4",
+				"alter0.agent.tools":        `["memory"]`,
+				"alter0.skills.include":     `["frontend-design"]`,
+				"alter0.mcp.request.enable": `["filesystem"]`,
+			},
+		},
+		sessiondomain.MessageRecord{
+			MessageID: "chat-assistant",
+			SessionID: "chat-session",
+			Role:      sessiondomain.MessageRoleAssistant,
+			Content:   "Repository loaded.",
+			Timestamp: base.Add(time.Minute),
+			Source: sessiondomain.MessageSource{
+				TriggerType: shareddomain.TriggerTypeUser,
+				ChannelType: shareddomain.ChannelTypeWeb,
+				ChannelID:   "web-default",
+			},
+			RouteResult: sessiondomain.RouteResult{
+				Route: shareddomain.RouteNL,
+			},
+		},
+		sessiondomain.MessageRecord{
+			MessageID: "agent-user",
+			SessionID: "agent-session",
+			Role:      sessiondomain.MessageRoleUser,
+			Content:   "Ship the bug fix",
+			Timestamp: base.Add(2 * time.Minute),
+			Source: sessiondomain.MessageSource{
+				TriggerType: shareddomain.TriggerTypeUser,
+				ChannelType: shareddomain.ChannelTypeWeb,
+				ChannelID:   "web-default",
+				AgentID:     "coding",
+				AgentName:   "Coding Agent",
+			},
+			Metadata: map[string]string{
+				"alter0.execution.engine": "codex",
+				"alter0.skills.include":   `["deploy-test-service"]`,
+			},
+		},
+		sessiondomain.MessageRecord{
+			MessageID: "agent-assistant",
+			SessionID: "agent-session",
+			Role:      sessiondomain.MessageRoleAssistant,
+			Content:   "Patch applied.",
+			Timestamp: base.Add(3 * time.Minute),
+			Source: sessiondomain.MessageSource{
+				TriggerType: shareddomain.TriggerTypeUser,
+				ChannelType: shareddomain.ChannelTypeWeb,
+				ChannelID:   "web-default",
+				AgentID:     "coding",
+				AgentName:   "Coding Agent",
+			},
+			RouteResult: sessiondomain.RouteResult{
+				Route: shareddomain.RouteCommand,
+			},
+		},
+	); err != nil {
+		t.Fatalf("append records: %v", err)
+	}
+
+	server := &Server{
+		sessions: service,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions?route=chat", nil)
+	server.conversationRuntimeSessionCollectionHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload struct {
+		Items []struct {
+			ID              string   `json:"id"`
+			Title           string   `json:"title"`
+			TargetType      string   `json:"target_type"`
+			TargetID        string   `json:"target_id"`
+			ModelProviderID string   `json:"model_provider_id"`
+			ModelID         string   `json:"model_id"`
+			ToolIDs         []string `json:"tool_ids"`
+			SkillIDs        []string `json:"skill_ids"`
+			MCPIDs          []string `json:"mcp_ids"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 chat runtime session, got %d", len(payload.Items))
+	}
+	if payload.Items[0].ID != "chat-session" || payload.Items[0].TargetType != "model" {
+		t.Fatalf("unexpected chat item %+v", payload.Items[0])
+	}
+	if payload.Items[0].Title != "Inspect this repository" {
+		t.Fatalf("expected title from first user message, got %+v", payload.Items[0])
+	}
+	if payload.Items[0].ModelProviderID != "openai" || payload.Items[0].ModelID != "gpt-5.4" {
+		t.Fatalf("expected provider/model from metadata, got %+v", payload.Items[0])
+	}
+	if len(payload.Items[0].ToolIDs) != 1 || payload.Items[0].ToolIDs[0] != "memory" {
+		t.Fatalf("expected tool ids from metadata, got %+v", payload.Items[0].ToolIDs)
+	}
+	if len(payload.Items[0].SkillIDs) != 1 || payload.Items[0].SkillIDs[0] != "frontend-design" {
+		t.Fatalf("expected skill ids from metadata, got %+v", payload.Items[0].SkillIDs)
+	}
+	if len(payload.Items[0].MCPIDs) != 1 || payload.Items[0].MCPIDs[0] != "filesystem" {
+		t.Fatalf("expected mcp ids from metadata, got %+v", payload.Items[0].MCPIDs)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions?route=agent-runtime", nil)
+	server.conversationRuntimeSessionCollectionHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 agent runtime session, got %d", len(payload.Items))
+	}
+	if payload.Items[0].ID != "agent-session" || payload.Items[0].TargetType != "agent" || payload.Items[0].TargetID != "coding" {
+		t.Fatalf("unexpected agent item %+v", payload.Items[0])
+	}
+	if payload.Items[0].ModelProviderID != "alter0-codex" || payload.Items[0].ModelID != "codex" {
+		t.Fatalf("expected codex runtime model selection, got %+v", payload.Items[0])
+	}
+}
+
+func TestConversationRuntimeSessionItemHandlerReturnsMessagesAndAttachments(t *testing.T) {
+	service := sessionapp.NewService()
+	base := time.Date(2026, 4, 26, 10, 0, 0, 0, time.UTC)
+	rawAttachments, err := execdomain.EncodeUserAttachments([]execdomain.UserAttachment{
+		{
+			ID:          "asset-1",
+			Kind:        execdomain.UserAttachmentKindImage,
+			Name:        "diagram.png",
+			ContentType: "image/png",
+			AssetURL:    "/api/sessions/chat-session/attachments/asset-1/original",
+			PreviewURL:  "/api/sessions/chat-session/attachments/asset-1/preview",
+		},
+	})
+	if err != nil {
+		t.Fatalf("encode attachments: %v", err)
+	}
+	if err := service.Append(
+		sessiondomain.MessageRecord{
+			MessageID: "chat-user",
+			SessionID: "chat-session",
+			Role:      sessiondomain.MessageRoleUser,
+			Content:   "Inspect this repository",
+			Timestamp: base,
+			Source: sessiondomain.MessageSource{
+				TriggerType: shareddomain.TriggerTypeUser,
+				ChannelType: shareddomain.ChannelTypeWeb,
+				ChannelID:   "web-default",
+			},
+			Metadata: map[string]string{
+				execdomain.UserAttachmentsMetadataKey: rawAttachments,
+			},
+		},
+		sessiondomain.MessageRecord{
+			MessageID: "chat-assistant",
+			SessionID: "chat-session",
+			Role:      sessiondomain.MessageRoleAssistant,
+			Content:   "Repository loaded.",
+			Timestamp: base.Add(time.Minute),
+			Source: sessiondomain.MessageSource{
+				TriggerType: shareddomain.TriggerTypeUser,
+				ChannelType: shareddomain.ChannelTypeWeb,
+				ChannelID:   "web-default",
+			},
+			RouteResult: sessiondomain.RouteResult{
+				Route:     shareddomain.RouteNL,
+				ErrorCode: "",
+				ProcessSteps: []shareddomain.ProcessStep{
+					{
+						ID:     "step-1",
+						Kind:   "action",
+						Title:  "codex_exec",
+						Detail: "Checked git status",
+						Status: "completed",
+					},
+				},
+			},
+		},
+	); err != nil {
+		t.Fatalf("append records: %v", err)
+	}
+
+	server := &Server{
+		sessions: service,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions/chat-session?route=chat", nil)
+	server.conversationRuntimeSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload struct {
+		Session struct {
+			ID       string `json:"id"`
+			Messages []struct {
+				ID           string `json:"id"`
+				Role         string `json:"role"`
+				Text         string `json:"text"`
+				Status       string `json:"status"`
+				Error        bool   `json:"error"`
+				ProcessSteps []struct {
+					Title string `json:"title"`
+				} `json:"process_steps"`
+				Attachments []struct {
+					ID         string `json:"id"`
+					AssetURL   string `json:"asset_url"`
+					PreviewURL string `json:"preview_url"`
+				} `json:"attachments"`
+			} `json:"messages"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload.Session.ID != "chat-session" {
+		t.Fatalf("unexpected session id %q", payload.Session.ID)
+	}
+	if len(payload.Session.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(payload.Session.Messages))
+	}
+	if payload.Session.Messages[0].Attachments[0].PreviewURL != "/api/sessions/chat-session/attachments/asset-1/preview" {
+		t.Fatalf("expected user attachment preview url, got %+v", payload.Session.Messages[0].Attachments)
+	}
+	if payload.Session.Messages[1].Status != "done" || payload.Session.Messages[1].Error {
+		t.Fatalf("expected assistant message to restore as done, got %+v", payload.Session.Messages[1])
+	}
+	if len(payload.Session.Messages[1].ProcessSteps) != 1 || payload.Session.Messages[1].ProcessSteps[0].Title != "codex_exec" {
+		t.Fatalf("expected process steps, got %+v", payload.Session.Messages[1].ProcessSteps)
 	}
 }
 
