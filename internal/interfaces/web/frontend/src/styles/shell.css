@@ -4865,35 +4865,6 @@ body::after {
   background: linear-gradient(180deg, rgba(241, 245, 249, 0) 0%, rgba(241, 245, 249, 0.78) 18%, rgba(241, 245, 249, 0.96) 100%);
 }
 
-[data-runtime-view="terminal"] .runtime-composer-form {
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 24px 40px -34px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
-[data-runtime-view="terminal"] .runtime-composer-input {
-  min-height: 88px;
-  border-radius: 10px;
-  border-color: rgba(203, 213, 225, 0.92);
-  background: rgba(248, 250, 252, 0.96);
-  padding: 12px 16px;
-  font-size: 15px;
-  line-height: 1.58;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
-}
-
-[data-runtime-view="terminal"] .runtime-composer-input::placeholder {
-  color: #8aa0b6;
-}
-
-[data-runtime-view="terminal"] .runtime-composer-input:focus {
-  border-color: rgba(59, 130, 246, 0.34);
-  box-shadow: 0 0 0 4px rgba(191, 219, 254, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.94);
-}
-
 [data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-meta {
   display: inline-flex;
   align-items: center;
@@ -4910,26 +4881,6 @@ body::after {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-}
-
-[data-runtime-view="terminal"] .runtime-composer-submit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  min-width: 38px;
-  min-height: 38px;
-  border-color: rgba(15, 23, 42, 0.08);
-  background: rgba(238, 244, 249, 0.96);
-  color: #334155;
-  box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.28);
-}
-
-[data-runtime-view="terminal"] .runtime-composer-submit:hover:not(:disabled) {
-  border-color: rgba(15, 23, 42, 0.14);
-  background: rgba(226, 235, 244, 0.98);
-  box-shadow: 0 12px 22px -18px rgba(15, 23, 42, 0.32);
 }
 
 /* Workbench polish override */
@@ -5195,18 +5146,26 @@ body::after {
 
 .runtime-composer-form {
   gap: 8px;
-  padding: 14px 16px 12px;
-  border-color: rgba(226, 232, 240, 0.96);
+  padding: 16px 18px 14px;
+  border-color: rgba(218, 220, 224, 0.96);
+  border-radius: 28px;
   background: #fff;
-  box-shadow: 0 18px 34px -28px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 2px 8px rgba(60, 64, 67, 0.12);
 }
 
 .runtime-composer-input {
-  min-height: 96px;
+  min-height: 82px;
   border: 0;
   background: transparent;
   box-shadow: none;
-  padding: 12px 10px 10px;
+  padding: 10px 8px 8px;
+  outline: none;
+}
+
+.runtime-composer-input:focus {
+  border: 0;
+  box-shadow: none;
+  outline: none;
 }
 
 .runtime-composer-toolbar {
@@ -5251,18 +5210,17 @@ body::after {
   color: #64748b;
 }
 
-.runtime-composer-submit,
-[data-runtime-view="terminal"] .runtime-composer-submit {
-  border-color: #3b82f6;
-  background: linear-gradient(180deg, rgba(96, 165, 250, 1) 0%, rgba(59, 130, 246, 1) 100%);
-  color: #fff;
-  box-shadow: 0 16px 28px -20px rgba(59, 130, 246, 0.52);
+.runtime-composer-submit {
+  border-color: rgba(226, 232, 240, 0.96);
+  background: #f8fafc;
+  color: #334155;
+  box-shadow: none;
 }
 
-.runtime-composer-submit:hover:not(:disabled),
-[data-runtime-view="terminal"] .runtime-composer-submit:hover:not(:disabled) {
-  border-color: #2563eb;
-  background: linear-gradient(180deg, rgba(59, 130, 246, 1) 0%, rgba(37, 99, 235, 1) 100%);
+.runtime-composer-submit:hover:not(:disabled) {
+  border-color: rgba(203, 213, 225, 0.96);
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 @media (max-width: 1100px) {
@@ -5398,10 +5356,10 @@ body::after {
     grid-template-columns: 1fr;
     gap: 8px;
     padding: 14px 16px 12px;
-    border-radius: 12px;
-    border-color: rgba(158, 198, 233, 0.82);
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 20px 42px -34px rgba(8, 37, 69, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.94);
+    border-radius: 26px;
+    border-color: rgba(218, 220, 224, 0.96);
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(60, 64, 67, 0.12);
   }
 
   .runtime-composer-input {
@@ -5411,8 +5369,8 @@ body::after {
     max-height: 160px;
     resize: none;
     border: 0;
-    border-radius: 10px;
-    padding: 14px 14px 12px;
+    border-radius: 18px;
+    padding: 12px 10px 10px;
     background: transparent;
     line-height: 1.45;
     box-shadow: none;
@@ -5425,10 +5383,10 @@ body::after {
     min-height: 36px;
     padding: 0;
     border-radius: 8px;
-    border-color: rgba(15, 23, 42, 0.08);
-    background: rgba(238, 244, 249, 0.96);
+    border-color: rgba(226, 232, 240, 0.96);
+    background: #f8fafc;
     color: #334155;
-    box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.28);
+    box-shadow: none;
   }
 
   .runtime-workspace-session-pane-shell {
@@ -5609,30 +5567,10 @@ body::after {
 
   /* Source contract marker: bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-offset)); */
 
-  [data-runtime-view="terminal"] .runtime-composer-form {
-    gap: 8px;
-    padding: 14px 16px 12px;
-    border-radius: 12px;
-    border-color: rgba(158, 198, 233, 0.82);
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 20px 42px -34px rgba(8, 37, 69, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.94);
-  }
-
   [data-runtime-view="terminal"] .runtime-composer-shell {
     border-top: 1px solid rgba(202, 220, 235, 0.72);
     padding: 12px 22px calc(12px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px));
     background: linear-gradient(180deg, rgba(246, 250, 255, 0.16) 0%, rgba(246, 250, 255, 0.94) 34%, rgba(250, 253, 255, 0.98) 100%);
-  }
-
-  [data-runtime-view="terminal"] .runtime-composer-submit {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    min-height: 36px;
-    border-color: rgba(15, 23, 42, 0.08);
-    background: rgba(238, 244, 249, 0.96);
-    color: #334155;
-    box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.28);
   }
 
   [data-runtime-view="terminal"] .runtime-composer-note {
@@ -5640,21 +5578,6 @@ body::after {
     font-size: 11px;
     padding: 0 10px;
     border-radius: 14px;
-  }
-
-  [data-runtime-view="terminal"] .runtime-composer-input {
-    width: 100%;
-    height: 72px;
-    min-height: 72px;
-    max-height: 160px;
-    resize: none;
-    border: 0;
-    border-radius: 10px;
-    padding: 14px 14px 12px;
-    font: inherit;
-    line-height: 1.45;
-    background: transparent;
-    box-shadow: none;
   }
 
   [data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-meta {
@@ -5712,24 +5635,4 @@ body::after {
     background: linear-gradient(180deg, rgba(246, 250, 255, 0.16) 0%, rgba(246, 250, 255, 0.94) 34%, rgba(250, 253, 255, 0.98) 100%);
   }
 
-  [data-runtime-view="conversation"] .runtime-composer-input {
-    width: 100%;
-    height: 72px;
-    min-height: 72px;
-    max-height: 160px;
-    resize: none;
-    border: 0;
-    border-radius: 10px;
-    padding: 14px 14px 12px;
-    background: transparent;
-    line-height: 1.45;
-    box-shadow: none;
-  }
-
-  [data-runtime-view="conversation"] .runtime-composer-submit {
-    border-color: rgba(15, 23, 42, 0.08);
-    background: rgba(238, 244, 249, 0.96);
-    color: #334155;
-    box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.28);
-  }
 }
