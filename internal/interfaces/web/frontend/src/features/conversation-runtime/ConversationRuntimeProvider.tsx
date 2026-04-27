@@ -118,6 +118,15 @@ type AgentSessionProfileField = {
   readonly?: boolean;
 };
 
+type AgentDeliverable = {
+  id: string;
+  label: string;
+  description?: string;
+  format?: string;
+  required?: boolean;
+  session_attribute_key?: string;
+};
+
 type ChatAgent = {
   id: string;
   name: string;
@@ -128,6 +137,7 @@ type ChatAgent = {
   mcps?: string[];
   capabilities?: string[];
   session_profile_fields?: AgentSessionProfileField[];
+  deliverables?: AgentDeliverable[];
 };
 
 type ChatAgentSessionProfile = {
@@ -251,7 +261,7 @@ type ConversationRuntimeContextValue = {
   route: ConversationRoute;
   compact: boolean;
   inspectorOpen: boolean;
-  inspectorTab: "target" | "model" | "capabilities" | "skills" | "session-profile";
+  inspectorTab: "target" | "deliverables" | "model" | "capabilities" | "skills" | "session-profile";
   inspectorTabOpen: boolean;
   sessions: ChatSession[];
   activeSession: ChatSession | null;
@@ -287,7 +297,7 @@ type ConversationRuntimeContextValue = {
   removeDraftAttachment: (attachmentID: string) => void;
   clearDraftAttachments: () => void;
   sendPrompt: (prompt?: string) => Promise<void>;
-  toggleInspector: (tab?: "target" | "model" | "capabilities" | "skills" | "session-profile") => void;
+  toggleInspector: (tab?: "target" | "deliverables" | "model" | "capabilities" | "skills" | "session-profile") => void;
   closeInspector: () => void;
   selectTarget: (targetID: string) => void;
   selectModel: (providerID: string, modelID: string) => void;
@@ -404,6 +414,41 @@ function normalizeAgentSessionProfileFields(items: unknown): AgentSessionProfile
   return Array.from(deduped.values());
 }
 
+function normalizeAgentDeliverable(item: unknown): AgentDeliverable | null {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const record = item as Record<string, unknown>;
+  const id = normalizeText(record.id);
+  const label = normalizeText(record.label);
+  if (!id || !label) {
+    return null;
+  }
+  return {
+    id,
+    label,
+    description: normalizeText(record.description) || undefined,
+    format: normalizeText(record.format) || undefined,
+    required: record.required === true,
+    session_attribute_key: normalizeText(record.session_attribute_key) || undefined,
+  };
+}
+
+function normalizeAgentDeliverables(items: unknown): AgentDeliverable[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  const deduped = new Map<string, AgentDeliverable>();
+  items.forEach((item) => {
+    const deliverable = normalizeAgentDeliverable(item);
+    if (!deliverable || deduped.has(deliverable.id.toLowerCase())) {
+      return;
+    }
+    deduped.set(deliverable.id.toLowerCase(), deliverable);
+  });
+  return Array.from(deduped.values());
+}
+
 function normalizeAgentSessionProfileAttributes(items: unknown): Record<string, string> {
   if (!items || typeof items !== "object") {
     return {};
@@ -508,7 +553,9 @@ function normalizeChatAgent(item: unknown): ChatAgent | null {
     tools: normalizeSelectionIDs(record.tools),
     skills: normalizeSelectionIDs(record.skills),
     mcps: normalizeSelectionIDs(record.mcps),
+    capabilities: normalizeSelectionIDs(record.capabilities),
     session_profile_fields: normalizeAgentSessionProfileFields(record.session_profile_fields),
+    deliverables: normalizeAgentDeliverables(record.deliverables),
   };
 }
 function normalizeSelectionIDs(values: unknown): string[] {
@@ -996,7 +1043,7 @@ export function ConversationRuntimeProvider({
   const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts());
   const [compact, setCompact] = useState(() => isCompactViewport());
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<"target" | "model" | "capabilities" | "skills" | "session-profile">("model");
+  const [inspectorTab, setInspectorTab] = useState<"target" | "deliverables" | "model" | "capabilities" | "skills" | "session-profile">("model");
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);

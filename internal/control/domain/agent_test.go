@@ -103,3 +103,46 @@ func TestAgentCapabilityRoundTripPreservesSessionProfileFields(t *testing.T) {
 		t.Fatalf("unexpected second field: %+v", decoded.SessionProfileFields[1])
 	}
 }
+
+func TestAgentCapabilityRoundTripPreservesDeliverables(t *testing.T) {
+	agent := Agent{
+		ID:      "travel",
+		Name:    "Travel Agent",
+		Type:    CapabilityTypeAgent,
+		Enabled: true,
+		Scope:   CapabilityScopeGlobal,
+		Deliverables: []AgentDeliverable{
+			{
+				ID:                  "guide-markdown",
+				Label:               "Travel Guide",
+				Description:         "Structured city guide aligned with the current trip request.",
+				Format:              "markdown",
+				Required:            true,
+				SessionAttributeKey: "",
+			},
+			{
+				ID:                  "guide-html",
+				Label:               "HTML Guide",
+				Description:         "Published HTML travel guide for the current session.",
+				Format:              "html",
+				Required:            true,
+				SessionAttributeKey: "guide_html_url",
+			},
+		},
+	}
+
+	decoded := AgentFromCapability(agent.AsCapability())
+
+	if len(decoded.Deliverables) != 2 {
+		t.Fatalf("expected 2 deliverables, got %+v", decoded.Deliverables)
+	}
+	if decoded.Deliverables[0].ID != "guide-markdown" || decoded.Deliverables[0].Label != "Travel Guide" {
+		t.Fatalf("unexpected first deliverable: %+v", decoded.Deliverables[0])
+	}
+	if !decoded.Deliverables[0].Required || decoded.Deliverables[0].Format != "markdown" {
+		t.Fatalf("unexpected first deliverable metadata: %+v", decoded.Deliverables[0])
+	}
+	if decoded.Deliverables[1].SessionAttributeKey != "guide_html_url" {
+		t.Fatalf("unexpected second deliverable attribute binding: %+v", decoded.Deliverables[1])
+	}
+}

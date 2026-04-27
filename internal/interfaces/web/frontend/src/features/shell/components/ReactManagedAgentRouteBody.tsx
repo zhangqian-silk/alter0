@@ -17,6 +17,14 @@ type AgentRecord = {
   skills?: string[];
   mcps?: string[];
   memory_files?: string[];
+  deliverables?: Array<{
+    id?: string;
+    label?: string;
+    description?: string;
+    format?: string;
+    required?: boolean;
+    session_attribute_key?: string;
+  }>;
 };
 
 type CapabilityRecord = {
@@ -295,6 +303,7 @@ export function ReactManagedAgentRouteBody({
       skills: draft.skills,
       mcps: draft.mcps,
       memory_files: draft.memoryFiles,
+      deliverables: Array.isArray(selectedAgent?.deliverables) ? selectedAgent.deliverables : [],
     };
 
     try {

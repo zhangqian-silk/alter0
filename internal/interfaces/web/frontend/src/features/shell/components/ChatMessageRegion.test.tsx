@@ -31,10 +31,13 @@ describe("ChatMessageRegion", () => {
     const meta = article.querySelector(".msg-meta") as HTMLElement;
 
     expect(meta).toBeInTheDocument();
+    expect(article).toHaveClass("terminal-turn-card");
     expect(article.querySelector(".runtime-markdown-shell")).toBeInTheDocument();
     expect(article.querySelector(".runtime-markdown-toolbar")).toBeInTheDocument();
     expect(article.querySelector(".runtime-markdown-copy")).toBeInTheDocument();
     expect(article.querySelector(".runtime-markdown-body")).toBeInTheDocument();
+    expect(article.querySelector(".terminal-final-output")).toBeInTheDocument();
+    expect(article.querySelector(".msg-bubble")).not.toBeInTheDocument();
     expect(article.querySelector(".assistant-message-shell")).not.toBeInTheDocument();
     expect(within(meta).queryByText("CHAT")).not.toBeInTheDocument();
     expect(within(meta).queryByText("MODEL")).not.toBeInTheDocument();
@@ -139,7 +142,11 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
+    const article = document.querySelector("[data-message-id='message-2']") as HTMLElement;
     const image = screen.getByRole("img", { name: "diagram.png" });
+    expect(article).toHaveClass("terminal-turn-card");
+    expect(article.querySelector(".terminal-turn-prompt")).toBeInTheDocument();
+    expect(article.querySelector(".msg-bubble")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-attachment-gallery='message-2']")).toBeInTheDocument();
     expect(image).toHaveAttribute("src", "/api/sessions/session-1/attachments/image-1/preview");
     expect(screen.getByText("diagram.png")).toBeInTheDocument();
@@ -170,9 +177,12 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
+    const article = document.querySelector("[data-message-id='message-1']") as HTMLElement;
+    expect(article.querySelector(".terminal-process-shell")).toBeInTheDocument();
     const answer = document.querySelector(".agent-process-answer") as HTMLElement;
     expect(answer).toBeInTheDocument();
     expect(answer).toHaveClass("runtime-markdown-body");
     expect(answer.querySelector(".runtime-markdown-rendered")).toBeInTheDocument();
+    expect(article.querySelector(".msg-bubble")).not.toBeInTheDocument();
   });
 });

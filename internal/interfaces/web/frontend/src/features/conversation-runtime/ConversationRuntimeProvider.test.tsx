@@ -145,6 +145,15 @@ function AgentSessionProfileHarness() {
   );
 }
 
+function AgentDeliverablesHarness() {
+  const runtime = useConversationRuntime();
+  return (
+    <output data-testid="agent-deliverables">
+      {JSON.stringify(runtime.activeAgent?.deliverables || [])}
+    </output>
+  );
+}
+
 function ActiveSessionTitleHarness() {
   const runtime = useConversationRuntime();
   return <output data-testid="active-session-title">{runtime.activeSession?.title || ""}</output>;
@@ -1007,6 +1016,102 @@ describe("ConversationRuntimeProvider", () => {
       expect(payload.fields?.[0]?.key).toBe("repository_path");
       expect(payload.attributes?.repository_path).toBe("/workspace/alter0-remote");
       expect(payload.attributes?.branch).toBe("feature/session-profile");
+    });
+  });
+
+  it("loads explicit deliverable contracts for runtime agents", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "travel-session-1",
+          title: "Travel runtime",
+          titleAuto: false,
+          titleScore: 1,
+          createdAt: Date.parse("2026-04-23T03:30:00Z"),
+          targetType: "agent",
+          targetID: "travel",
+          targetName: "Travel Agent",
+          modelProviderID: "",
+          modelID: "",
+          toolIDs: [],
+          skillIDs: [],
+          mcpIDs: [],
+          messages: [],
+        },
+      ]),
+    );
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "travel-session-1" }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            {
+              id: "travel",
+              name: "Travel Agent",
+              enabled: true,
+              deliverables: [
+                {
+                  id: "guide-markdown",
+                  label: "Travel Guide",
+                  format: "markdown",
+                  required: true,
+                },
+                {
+                  id: "guide-html",
+                  label: "HTML Guide",
+                  format: "html",
+                  required: true,
+                  session_attribute_key: "guide_html_url",
+                },
+              ],
+            },
+          ],
+        };
+      }
+      if (path === "/api/agent/session-profile?agent_id=travel&session_id=travel-session-1") {
+        return {
+          agent_id: "travel",
+          session_id: "travel-session-1",
+          path: ".alter0/agents/travel/sessions/travel-session-1.md",
+          exists: true,
+          fields: [
+            { key: "guide_html_url", label: "Guide HTML URL", readonly: true },
+          ],
+          attributes: {
+            guide_html_url: "https://travel-session.travel.alter0.cn",
+          },
+        };
+      }
+      return { items: [] };
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <AgentDeliverablesHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("agent-deliverables").textContent || "[]") as Array<{
+        id?: string;
+        session_attribute_key?: string;
+      }>;
+      expect(payload).toHaveLength(2);
+      expect(payload[0]?.id).toBe("guide-markdown");
+      expect(payload[1]?.session_attribute_key).toBe("guide_html_url");
     });
   });
 });

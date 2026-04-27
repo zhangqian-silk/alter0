@@ -454,6 +454,7 @@ type agentUpsertRequest struct {
 	MCPs                 []string                                 `json:"mcps,omitempty"`
 	MemoryFiles          []string                                 `json:"memory_files,omitempty"`
 	SessionProfileFields []controldomain.AgentSessionProfileField `json:"session_profile_fields,omitempty"`
+	Deliverables         []controldomain.AgentDeliverable         `json:"deliverables,omitempty"`
 	Metadata             map[string]string                        `json:"metadata,omitempty"`
 }
 
@@ -3675,6 +3676,7 @@ func (s *Server) agentListHandler(w http.ResponseWriter, r *http.Request) {
 			MCPs:                 req.MCPs,
 			MemoryFiles:          req.MemoryFiles,
 			SessionProfileFields: req.SessionProfileFields,
+			Deliverables:         req.Deliverables,
 			Metadata:             req.Metadata,
 		})
 		if err != nil {
@@ -3708,6 +3710,7 @@ func buildAgentFromRequest(id string, req agentUpsertRequest) controldomain.Agen
 		MCPs:                 req.MCPs,
 		MemoryFiles:          req.MemoryFiles,
 		SessionProfileFields: req.SessionProfileFields,
+		Deliverables:         req.Deliverables,
 		Metadata:             req.Metadata,
 	}
 }

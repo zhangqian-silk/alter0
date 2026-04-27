@@ -300,10 +300,16 @@ func TestRuntimeAgentCatalogListsBuiltinEntrypoints(t *testing.T) {
 			if len(item.SessionProfileFields) < 4 {
 				t.Fatalf("expected coding session profile fields, got %+v", item.SessionProfileFields)
 			}
+			if len(item.Deliverables) < 2 {
+				t.Fatalf("expected coding deliverables in runtime list, got %+v", item.Deliverables)
+			}
 		}
 		if item.ID == "travel" {
 			if len(item.SessionProfileFields) < 2 {
 				t.Fatalf("expected travel session profile fields, got %+v", item.SessionProfileFields)
+			}
+			if len(item.Deliverables) < 2 {
+				t.Fatalf("expected travel deliverables in runtime list, got %+v", item.Deliverables)
 			}
 		}
 	}

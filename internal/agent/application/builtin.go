@@ -55,6 +55,29 @@ func builtinAgents() []controldomain.Agent {
 			Delegatable:  true,
 			UIRoute:      "",
 			Capabilities: []string{"coding"},
+			Deliverables: []controldomain.AgentDeliverable{
+				{
+					ID:          "code-changes",
+					Label:       "Code Changes",
+					Description: "Repository changes that implement the requested behavior in the dedicated session workspace.",
+					Format:      "code",
+					Required:    true,
+				},
+				{
+					ID:          "verification",
+					Label:       "Verification",
+					Description: "Test, build, or manual validation status matched to the requested scope.",
+					Format:      "test-report",
+					Required:    true,
+				},
+				{
+					ID:                  "preview-url",
+					Label:               "Preview URL",
+					Description:         "Preview or routed test-service URL when the change needs a user-facing environment.",
+					Format:              "url",
+					SessionAttributeKey: "preview_url",
+				},
+			},
 		},
 		{
 			ID:            "writing",
@@ -80,6 +103,16 @@ func builtinAgents() []controldomain.Agent {
 			Delegatable:  true,
 			UIRoute:      "",
 			Capabilities: []string{"writing"},
+			Deliverables: []controldomain.AgentDeliverable{
+				{
+					ID:                  "draft-document",
+					Label:               "Draft Document",
+					Description:         "User-facing draft or revision in the requested writing format.",
+					Format:              "markdown",
+					Required:            true,
+					SessionAttributeKey: "document_path",
+				},
+			},
 		},
 		{
 			ID:            controldomain.BuiltinTravelAgentID,
@@ -107,6 +140,23 @@ func builtinAgents() []controldomain.Agent {
 			Delegatable:  true,
 			UIRoute:      "",
 			Capabilities: []string{"travel"},
+			Deliverables: []controldomain.AgentDeliverable{
+				{
+					ID:          "travel-guide",
+					Label:       "Travel Guide",
+					Description: "Structured city guide aligned with the current trip request and session context.",
+					Format:      "markdown",
+					Required:    true,
+				},
+				{
+					ID:                  "guide-html",
+					Label:               "HTML Guide",
+					Description:         "Published HTML travel guide delivered on the session's public travel host.",
+					Format:              "html",
+					Required:            true,
+					SessionAttributeKey: "guide_html_url",
+				},
+			},
 		},
 	}
 }

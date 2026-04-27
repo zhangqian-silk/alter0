@@ -145,6 +145,7 @@ func ApplyProfileMetadata(metadata map[string]string, agent controldomain.Agent)
 	}
 	applyDefaultListMetadata(items, execdomain.AgentToolsMetadataKey, agent.Tools)
 	applyDefaultListMetadata(items, execdomain.AgentCapabilitiesMetadataKey, agent.Capabilities)
+	applyDefaultJSONMetadata(items, execdomain.AgentDeliverablesMetadataKey, agent.Deliverables)
 	applyDefaultListMetadata(items, "alter0.skills.include", agent.Skills)
 	applyDefaultListMetadata(items, "alter0.mcp.request.enable", agent.MCPs)
 	applyDefaultListMetadata(items, "alter0.memory.include", agent.MemoryFiles)
@@ -172,6 +173,21 @@ func applyDefaultListMetadata(items map[string]string, key string, values []stri
 	}
 }
 
+func applyDefaultJSONMetadata(items map[string]string, key string, value any) {
+	trimmedKey := strings.TrimSpace(key)
+	if trimmedKey == "" || value == nil {
+		return
+	}
+	if _, exists := items[trimmedKey]; exists {
+		return
+	}
+	raw, err := json.Marshal(value)
+	if err != nil || string(raw) == "null" || string(raw) == "[]" || string(raw) == "{}" {
+		return
+	}
+	items[trimmedKey] = string(raw)
+}
+
 func normalizeRuntimeAgent(agent controldomain.Agent) controldomain.Agent {
 	normalized := agent
 	normalized.ID = strings.TrimSpace(normalized.ID)
@@ -191,6 +207,7 @@ func normalizeRuntimeAgent(agent controldomain.Agent) controldomain.Agent {
 	normalized.MCPs = cloneStringList(normalized.MCPs)
 	normalized.MemoryFiles = cloneStringList(normalized.MemoryFiles)
 	normalized.Capabilities = cloneStringList(normalized.Capabilities)
+	normalized.Deliverables = cloneDeliverables(normalized.Deliverables)
 	normalized.Metadata = cloneStringMap(normalized.Metadata)
 	return normalized
 }
@@ -231,5 +248,14 @@ func cloneStringList(input []string) []string {
 	if len(out) == 0 {
 		return nil
 	}
+	return out
+}
+
+func cloneDeliverables(input []controldomain.AgentDeliverable) []controldomain.AgentDeliverable {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make([]controldomain.AgentDeliverable, len(input))
+	copy(out, input)
 	return out
 }
