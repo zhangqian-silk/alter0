@@ -39,8 +39,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `Chat` 空态欢迎区采用紧凑首屏节奏：桌面与中宽度下，欢迎 tag、标题、描述、target picker 与快捷提示需在 header 与 Composer 之间沿欢迎区中轴竖向居中展示；真窄屏继续贴近头部下沿起排。Composer 直接按自然文档流沿主工作区底边贴底排布；桌面与窄屏都不再通过自动顶距把 Composer 推到底边，避免欢迎区与输入区之间出现大块空白。
 - 桌面端主导航采用紧凑间距节奏，优先保证在常见笔记本高度下完整展示主要模块组；控制类与资产类路由优先使用高密度主从或表格视图，避免在宽屏上保留大块无效留白。
 - `static/dist/assets/*` 使用构建产物哈希文件名并返回长期 immutable 缓存；`/chat` 与 `static/dist/legacy/*` 下的兼容样式资源保持 `no-cache`，确保页面与样式能及时刷新到最新版本。
-- `/login` 在登录密码启用时提供登录入口；`/logout` 清理当前登录态并回到登录流程。
-- 登录密码未启用时，Web Shell 直接进入受保护页面；登录密码启用后，受保护页面和 API 使用同一登录态校验。
+- `/login` 提供统一登录入口；`/logout` 清理当前登录态并回到登录流程。
+- Web Shell、短哈希预览 host 与受保护 API 统一使用同一登录态校验；静态只读预览 host 保留匿名访问。
 
 ### Chat
 

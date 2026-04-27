@@ -396,6 +396,7 @@ func TestWorkspaceServiceTravelHostIsPublicReadOnlyAndUsesTravelSubdomain(t *tes
 		webSessionToken:  "shared-token",
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/login", server.loginHandler)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})

@@ -78,7 +78,7 @@ func main() {
 	webAddr := flag.String("web-addr", defaultWebAddr, "web server listen address")
 	webBindLocalhostOnly := flag.Bool("web-bind-localhost-only", true, "force web server to bind loopback only")
 	webLoginPasswordDefault := strings.TrimSpace(os.Getenv("ALTER0_WEB_LOGIN_PASSWORD"))
-	webLoginPassword := flag.String("web-login-password", webLoginPasswordDefault, "web login password (empty to disable login page)")
+	webLoginPassword := flag.String("web-login-password", webLoginPasswordDefault, "required web login password for the shared gateway")
 	workerPoolSize := flag.Int("worker-pool-size", 4, "global worker pool size")
 	maxQueueSize := flag.Int("max-queue-size", 128, "max waiting queue size")
 	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
@@ -159,6 +159,10 @@ func main() {
 	resolvedWebBindLocalhostOnly := resolveEnvironmentBool(control, "web_bind_localhost_only", *webBindLocalhostOnly)
 	if resolvedWebBindLocalhostOnly {
 		listenAddr = forceLoopbackListenAddr(listenAddr)
+	}
+	if err := validateRequiredWebLoginPassword(*runtimeChild, control.ResolveEnvironmentString("web_login_password", strings.TrimSpace(*webLoginPassword))); err != nil {
+		logger.Error("invalid web login configuration", slog.String("error", err.Error()))
+		os.Exit(2)
 	}
 	resolvedWebLoginPassword := resolveRuntimeChildWebLoginPassword(
 		*runtimeChild,
@@ -448,6 +452,16 @@ func resolveRuntimeChildWebLoginPassword(runtimeChild bool, password string) str
 		return ""
 	}
 	return strings.TrimSpace(password)
+}
+
+func validateRequiredWebLoginPassword(runtimeChild bool, password string) error {
+	if runtimeChild {
+		return nil
+	}
+	if strings.TrimSpace(password) == "" {
+		return fmt.Errorf("web_login_password is required; anonymous web access is disabled")
+	}
+	return nil
 }
 
 func mergeNoProxyEntries(existing string, required ...string) string {

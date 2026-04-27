@@ -65,7 +65,8 @@ flock -n 9 || {
 }
 
 if [[ -z "${WEB_LOGIN_PASSWORD}" ]]; then
-  echo "[WARN] ALTER0_WEB_LOGIN_PASSWORD is empty, login page is disabled."
+  echo "ALTER0_WEB_LOGIN_PASSWORD is required; anonymous web access is disabled." >&2
+  exit 1
 fi
 
 env GOSUMDB="${GOSUMDB:-sum.golang.org}" GOTOOLCHAIN="${GOTOOLCHAIN:-auto}" go build -o "${BUILD_OUTPUT}" ./cmd/alter0

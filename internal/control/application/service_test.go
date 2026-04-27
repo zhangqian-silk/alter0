@@ -128,6 +128,16 @@ func TestUnifiedSkillAndMCPStorage(t *testing.T) {
 	}
 }
 
+func TestUpdateEnvironmentConfigsRejectsEmptyWebLoginPassword(t *testing.T) {
+	service := NewService()
+
+	if _, err := service.UpdateEnvironmentConfigs(map[string]string{
+		"web_login_password": "",
+	}, "tester"); err == nil {
+		t.Fatal("expected empty web_login_password update to be rejected")
+	}
+}
+
 func TestEnvironmentConfigUpdateAndAudit(t *testing.T) {
 	service := NewService()
 	service.SetEnvironmentRuntime(map[string]string{

@@ -38,6 +38,22 @@ describe("ReactManagedTerminalRouteBody", () => {
         return Promise.resolve(jsonResponse({
           items: [
             {
+              id: "deploy-test-service",
+              name: "Deploy Test Service",
+              enabled: true,
+              metadata: {
+                "skill.description": "Publish the current session to the shared preview gateway.",
+              },
+            },
+            {
+              id: "frontend-design",
+              name: "Frontend Design",
+              enabled: true,
+              metadata: {
+                "skill.description": "Apply production-grade frontend design rules.",
+              },
+            },
+            {
               id: "summary",
               name: "Summary",
               enabled: true,
@@ -1174,6 +1190,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     fireEvent.click(screen.getByRole("button", { name: "Session" }));
 
     const configPanel = await screen.findByTestId("terminal-skill-selector");
+    expect(within(configPanel).getByLabelText("Deploy Test Service")).toBeChecked();
+    expect(within(configPanel).getByLabelText("Frontend Design")).toBeChecked();
     expect(within(configPanel).getByText("Summary")).toBeInTheDocument();
     expect(within(configPanel).queryByText("Agent Private")).not.toBeInTheDocument();
 
@@ -1193,7 +1211,7 @@ describe("ReactManagedTerminalRouteBody", () => {
       && String(init?.method || "GET").toUpperCase() === "POST");
     expect(inputCall).toBeTruthy();
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
-    expect(payload.skill_ids).toEqual(["summary"]);
+    expect(payload.skill_ids).toEqual(["frontend-design", "deploy-test-service", "summary"]);
   });
 
   it("does not refresh a ready session while the terminal output is being scrolled", async () => {
