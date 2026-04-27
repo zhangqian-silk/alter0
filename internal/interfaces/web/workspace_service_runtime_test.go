@@ -23,6 +23,9 @@ func TestWorkspaceServiceProcessEnvClearsInheritedWebLoginPassword(t *testing.T)
 	if value := lookupEnvValue(env, "ALTER0_RUNTIME_MANAGER"); value != "systemd" {
 		t.Fatalf("ALTER0_RUNTIME_MANAGER = %q, want systemd", value)
 	}
+	if value := lookupEnvValue(env, "ALTER0_WEB_REUSE_GATEWAY_AUTH"); value != "1" {
+		t.Fatalf("ALTER0_WEB_REUSE_GATEWAY_AUTH = %q, want 1", value)
+	}
 }
 
 func lookupEnvValue(env []string, key string) string {

@@ -93,6 +93,10 @@ func TestResolveRuntimeChildWebLoginPasswordKeepsGatewayPasswordForChild(t *test
 	if got := resolveRuntimeChildWebLoginPassword(true, " secret "); got != "secret" {
 		t.Fatalf("runtime child password = %q, want secret", got)
 	}
+	t.Setenv("ALTER0_WEB_REUSE_GATEWAY_AUTH", "1")
+	if got := resolveRuntimeChildWebLoginPassword(true, " secret "); got != "" {
+		t.Fatalf("workspace service child password = %q, want empty", got)
+	}
 }
 
 func TestValidateRequiredWebLoginPasswordRequiresPasswordForGateway(t *testing.T) {
@@ -107,5 +111,9 @@ func TestValidateRequiredWebLoginPasswordRequiresPasswordForGateway(t *testing.T
 	}
 	if err := validateRequiredWebLoginPassword(false, ""); err == nil {
 		t.Fatal("expected non-child runtime to reject empty web login password")
+	}
+	t.Setenv("ALTER0_WEB_REUSE_GATEWAY_AUTH", "1")
+	if err := validateRequiredWebLoginPassword(true, ""); err != nil {
+		t.Fatalf("expected workspace service child to allow empty web login password, got %v", err)
 	}
 }

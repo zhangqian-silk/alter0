@@ -448,14 +448,30 @@ func ensureChildProcessWebLoginPassword(password string) {
 }
 
 func resolveRuntimeChildWebLoginPassword(runtimeChild bool, password string) string {
+	if runtimeChild && reuseGatewayAuthEnabled() {
+		return ""
+	}
 	return strings.TrimSpace(password)
 }
 
 func validateRequiredWebLoginPassword(runtimeChild bool, password string) error {
+	if runtimeChild && reuseGatewayAuthEnabled() {
+		return nil
+	}
 	if strings.TrimSpace(password) == "" {
 		return fmt.Errorf("web_login_password is required; anonymous web access is disabled")
 	}
 	return nil
+}
+
+func reuseGatewayAuthEnabled() bool {
+	value := strings.TrimSpace(os.Getenv("ALTER0_WEB_REUSE_GATEWAY_AUTH"))
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func mergeNoProxyEntries(existing string, required ...string) string {
