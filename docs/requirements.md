@@ -58,6 +58,7 @@
 - Web 前端所有时间显示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Cron 创建表单默认时区固定为 `Asia/Shanghai`。
 - Web 侧边栏、历史折叠、页面滚动隔离、克制冷灰工作台阅读主题、PC 端低圆角非胶囊控件、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
 - 会话侧栏中的 Session 列表需采用工作台式最近时间分组：`Chat / Agent Runtime / Terminal` 统一使用 `Sessions` 栏标题与 `New` 新建入口，列表按 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`）收口，并与主导航 `menu` 复用同一套分组容器、hover、激活态视觉和桌面会话列宽；条目按导航式线性关系排布，标题独立一行并在可用宽度内单行截断、摘要独立换行、短 hash 固定在条目下缘、删除动作以尾侧轻量文本操作收纳，不再拆出额外 footer 或胶囊操作区。
+- `Chat / Agent Runtime` 的已发送会话必须以服务端 Session history 为恢复源，并在同一 Web 登录态下跨设备共享；未发送草稿与当前浏览器局部 UI 状态可继续本地保存，但不得阻断服务端会话摘要、配置和消息历史的恢复。
 - Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；运行页共享同一套 slot 化 workspace scaffold，`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace，`terminal` 在保持原有交互与 DOM 契约的前提下直接挂在共享 `workbench-pane-shell` 下复用同一骨架，不再额外包裹 `route-view / route-body`，`agent / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 React 直接请求控制台或会话 API 渲染。壳层稳定暴露 `app-shell[data-workbench-route]` 与各视图自己的 `data-route / data-conversation-*` 作为样式钩子；`legacy` 资源仅保留兼容样式，不再保留 `LegacyWebShell / ReactRuntimeFacade / bridge / snapshot store`。
 - `/chat` 与 `/login` 默认以英文启动，HTML 根节点语言标记为 `en`；Web Shell 保留显式语言切换入口，切到中文后需同步更新壳层文案与 `document.documentElement.lang`。
 - 登录页需与工作台共享同一视觉基线：使用 `IBM Plex Sans + Sora` 字体组合、近白卡片表面与安全入口语气，避免退回默认系统登录页样式。
@@ -75,7 +76,7 @@
 - `Chat / Agent Runtime / Terminal` 在移动端采用固定底部 Composer 时，消息滚动区与空态工作区都必须按当前 Composer 的真实遮挡高度动态回收；对话、长输出与空态说明不得落到输入区下方，也不得依赖静态 padding 估算占位。
 - `Chat / Agent Runtime / Terminal` 在移动端的 Composer 回弹到底边时，运行区必须继续跟随释放旧的遮挡高度；键盘收起、输入框失焦和视口回弹后，不允许遗留额外底部空白、悬空按钮或上一轮键盘高度对应的占位残影。
 - `Chat / Terminal` 在移动端键盘弹起与收回期间，只允许底部 Composer 按 `VisualViewport` 偏移贴住可见底边；顶部 `Menu / Sessions / New` 操作行、紧凑 workspace header 和 Terminal 四键定位条都保持原位，不跟随键盘位移做额外动画。
-- `Chat / Terminal` 的移动端发送按钮必须支持在软键盘保持打开时直接点按提交；首触发送不允许先消费成键盘收起或焦点切换，再要求第二次点击才真正发出请求。
+- `Chat / Terminal` 的移动端发送按钮必须支持在软键盘保持打开时直接点按提交；首触发送需覆盖 `pointerdown(touch)` 与 `touchstart` 提交链路，并在同一次触摸内去重，不允许先消费成键盘收起或焦点切换，再要求第二次点击才真正发出请求。
 - 运行页 Composer 的键盘跟随只依赖 `VisualViewport` 同步后的实时定位，不额外叠加 `bottom` 过渡动画；键盘收起与输入区回弹阶段应保持直接、稳定的回贴节奏。
 - 输入框 blur 后，若 `VisualViewport` 尚未恢复到最终高度，`--keyboard-offset` 不得提前清零；运行页应沿着实际视口回弹过程逐步释放键盘占位，避免底部输入区和正文区出现闪烁。
 - Web Shell 的抽屉式单列布局仅在主视口宽度 `1100px` 及以下触发；高于该阈值时保留左侧固定主导航与右侧主面板。进入窄屏后主导航切换为贴边抽屉，`Chat / Agent Runtime` 会话列也在同一阈值切为独立左侧抽屉，由工作区头部的 `Sessions` 入口显式打开；`Terminal` 与其他 `page-mode` 页面继续保持单主面板，但 `page-mode` 路由页标题上方必须稳定提供 `Menu` 入口；`760px` 及以下再进一步压缩按钮与间距，避免窄屏下出现不可触达区域。主导航抽屉和 Conversation 会话抽屉都必须独立承担纵向滚动，小高度视口下不允许出现菜单或会话列表被裁切且无法滑动的状态。

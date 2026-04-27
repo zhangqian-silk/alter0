@@ -17,7 +17,6 @@ import {
   type ComposerAttachment,
 } from "./composerImageAttachments";
 
-const SESSION_STORAGE_KEY = "alter0.web.sessions.v3";
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
@@ -25,9 +24,9 @@ const STREAM_ENDPOINT = "/api/messages/stream";
 const AGENT_STREAM_ENDPOINT = "/api/agent/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
 const AGENT_FALLBACK_ENDPOINT = "/api/agent/messages";
+const RUNTIME_SESSION_COLLECTION_ENDPOINT = "/api/conversation-runtime/sessions";
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_TASK_POLL_INTERVAL_MS = 3000;
-const SESSION_STORAGE_DEBOUNCE_MS = 180;
 const EXECUTION_ENGINE_METADATA_KEY = "alter0.execution.engine";
 const EXECUTION_ENGINE_CODEX = "codex";
 const LLM_PROVIDER_METADATA_KEY = "alter0.llm.provider_id";
@@ -83,6 +82,8 @@ type ChatSession = {
   skillIDs: string[];
   mcpIDs: string[];
   messages: ChatMessage[];
+  messagesLoaded?: boolean;
+  serverBacked?: boolean;
 };
 
 type ChatProviderModel = {
@@ -200,6 +201,50 @@ type SessionAttachmentUploadResponse = {
     asset_url?: string;
     preview_url?: string;
   }>;
+};
+
+type RuntimeSessionPayload = {
+  id?: string;
+  title?: string;
+  title_auto?: boolean;
+  title_score?: number;
+  created_at?: string | number;
+  target_type?: string;
+  target_id?: string;
+  target_name?: string;
+  model_provider_id?: string;
+  model_id?: string;
+  tool_ids?: string[];
+  skill_ids?: string[];
+  mcp_ids?: string[];
+  messages?: RuntimeMessagePayload[];
+};
+
+type RuntimeMessagePayload = {
+  id?: string;
+  role?: string;
+  text?: string;
+  attachments?: Array<{
+    id?: string;
+    name?: string;
+    content_type?: string;
+    asset_url?: string;
+    preview_url?: string;
+  }>;
+  route?: string;
+  source?: string;
+  error?: boolean;
+  status?: string;
+  at?: string | number;
+  process_steps?: Array<{
+    id?: string;
+    kind?: string;
+    title?: string;
+    detail?: string;
+    status?: string;
+  }>;
+  task_id?: string;
+  task_status?: string;
 };
 
 type ConversationRuntimeContextValue = {
@@ -619,17 +664,6 @@ function writeJSONStorage(key: string, value: unknown) {
   }
 }
 
-function loadStoredSessions(): ChatSession[] {
-  const parsed = readJSONStorage<unknown[]>(SESSION_STORAGE_KEY, []);
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-  return parsed
-    .map(normalizeStoredSession)
-    .filter((session): session is ChatSession => session !== null)
-    .sort((left, right) => right.createdAt - left.createdAt);
-}
-
 function loadActiveSessionState(): ActiveSessionState {
   const parsed = readJSONStorage<Record<string, string>>(ACTIVE_SESSION_STORAGE_KEY, {});
   return {
@@ -673,67 +707,113 @@ function persistComposerAttachmentDrafts(drafts: ComposerAttachmentDraftMap) {
   writeJSONStorage(COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY, drafts);
 }
 
-function splitSessionsByRoute(sessions: ChatSession[]): SessionsState {
+function normalizeDateValue(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return Date.now();
+}
+
+function normalizeRuntimeMessage(item: RuntimeMessagePayload): ChatMessage | null {
+  const id = normalizeText(item.id);
+  if (!id) {
+    return null;
+  }
+  const role = normalizeText(item.role) === "assistant" ? "assistant" : "user";
   return {
-    chat: sessions.filter((session) => session.target.type !== "agent"),
-    "agent-runtime": sessions.filter((session) => session.target.type === "agent"),
+    id,
+    role,
+    text: typeof item.text === "string" ? item.text : "",
+    attachments: Array.isArray(item.attachments)
+      ? item.attachments
+        .map((attachment) => {
+          const attachmentID = normalizeText(attachment.id);
+          const contentType = normalizeText(attachment.content_type);
+          const assetURL = normalizeText(attachment.asset_url);
+          const previewURL = normalizeText(attachment.preview_url);
+          if (!attachmentID || !contentType || !assetURL) {
+            return null;
+          }
+          return {
+            id: attachmentID,
+            kind: contentType.startsWith("image/") ? "image" as const : "file" as const,
+            name: normalizeText(attachment.name) || (contentType.startsWith("image/") ? "image" : "file"),
+            contentType,
+            size: 0,
+            assetURL,
+            previewURL: contentType.startsWith("image/") ? previewURL || assetURL : undefined,
+          };
+        })
+        .filter((attachment): attachment is ComposerAttachment => attachment !== null)
+      : [],
+    route: normalizeText(item.route),
+    source: normalizeText(item.source),
+    error: item.error === true,
+    status: normalizeText(item.status) || (role === "assistant" ? "done" : ""),
+    at: normalizeDateValue(item.at),
+    processSteps: normalizeProcessSteps(item.process_steps),
+    taskID: normalizeText(item.task_id),
+    taskStatus: normalizeText(item.task_status),
+    taskPending: false,
+    taskResultDelivered: false,
+    taskResultFor: "",
   };
 }
 
-function toPersistedSessions(sessionsByRoute: SessionsState): unknown[] {
-  const deduped = new Map<string, ChatSession>();
-  [...sessionsByRoute.chat, ...sessionsByRoute["agent-runtime"]].forEach((session) => {
-    const existing = deduped.get(session.id);
-    if (!existing || existing.createdAt <= session.createdAt) {
-      deduped.set(session.id, session);
-    }
+function normalizeRuntimeSession(item: RuntimeSessionPayload, previous?: ChatSession | null): ChatSession | null {
+  const id = normalizeText(item.id);
+  if (!id) {
+    return null;
+  }
+  const parsedMessages = Array.isArray(item.messages)
+    ? item.messages.map(normalizeRuntimeMessage).filter((message): message is ChatMessage => message !== null)
+    : null;
+  const messages = parsedMessages
+    ? (previous?.messages.length && parsedMessages.length < previous.messages.length
+      ? previous.messages
+      : parsedMessages)
+    : previous?.messages || [];
+  return {
+    id,
+    title: normalizeText(item.title) || previous?.title || "New",
+    titleAuto: item.title_auto !== false,
+    titleScore: Number.isFinite(Number(item.title_score)) ? Number(item.title_score) : previous?.titleScore || 0,
+    createdAt: normalizeDateValue(item.created_at),
+    target: normalizeChatTarget({
+      type: normalizeText(item.target_type) === "agent" ? "agent" : "model",
+      id: normalizeText(item.target_id),
+      name: normalizeText(item.target_name),
+    }),
+    modelProviderID: normalizeText(item.model_provider_id) || previous?.modelProviderID || "",
+    modelID: normalizeText(item.model_id) || previous?.modelID || "",
+    toolIDs: normalizeSelectionIDs(item.tool_ids || previous?.toolIDs || []),
+    skillIDs: normalizeSelectionIDs(item.skill_ids || previous?.skillIDs || []),
+    mcpIDs: normalizeSelectionIDs(item.mcp_ids || previous?.mcpIDs || []),
+    messages,
+    messagesLoaded: Array.isArray(item.messages) ? true : previous?.messagesLoaded,
+    serverBacked: true,
+  };
+}
+
+function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSession[]): ChatSession[] {
+  const merged = new Map<string, ChatSession>();
+  remote.forEach((session) => {
+    merged.set(session.id, session);
   });
-  return Array.from(deduped.values()).sort((left, right) => right.createdAt - left.createdAt).map((session) => ({
-    id: session.id,
-    title: session.title,
-    titleAuto: session.titleAuto,
-    titleScore: session.titleScore,
-    createdAt: session.createdAt,
-    targetType: session.target.type,
-    targetID: session.target.id,
-    targetName: session.target.name,
-    modelProviderID: session.modelProviderID,
-    modelID: session.modelID,
-    toolIDs: session.toolIDs,
-    skillIDs: session.skillIDs,
-    mcpIDs: session.mcpIDs,
-    messages: session.messages.map((message) => ({
-      id: message.id,
-      role: message.role,
-      text: message.text,
-      attachments: message.attachments.map((attachment) => ({
-        id: attachment.id,
-        name: attachment.name,
-        content_type: attachment.contentType,
-        size: attachment.size,
-        asset_url: attachment.assetURL,
-        preview_url: attachment.previewURL,
-        ...(attachment.assetURL || attachment.previewURL
-          ? {}
-          : {
-              data_url: attachment.previewDataURL || attachment.dataURL,
-              preview_data_url: attachment.previewDataURL,
-            }),
-      })),
-      route: message.route,
-      source: message.source,
-      error: message.error,
-      status: message.status,
-      at: message.at,
-      process_steps: message.processSteps,
-      agent_process_collapsed: message.agentProcessCollapsed,
-      task_id: message.taskID,
-      task_status: message.taskStatus,
-      task_pending: message.taskPending,
-      task_result_delivered: message.taskResultDelivered,
-      task_result_for: message.taskResultFor,
-    })),
-  }));
+  existing
+    .filter((session) => session.serverBacked !== true)
+    .forEach((session) => {
+      if (!merged.has(session.id)) {
+        merged.set(session.id, session);
+      }
+    });
+  return Array.from(merged.values()).sort((left, right) => right.createdAt - left.createdAt);
 }
 
 function formatRelativeTime(at: number, language: LegacyShellLanguage): string {
@@ -898,9 +978,11 @@ export function ConversationRuntimeProvider({
   children,
 }: ProviderProps) {
   const apiClient = useMemo(() => createAPIClient(), []);
-  const [sessionsByRoute, setSessionsByRoute] = useState<SessionsState>(() =>
-    splitSessionsByRoute(loadStoredSessions()),
-  );
+  const [sessionsByRoute, setSessionsByRoute] = useState<SessionsState>({ chat: [], "agent-runtime": [] });
+  const [sessionsLoadedByRoute, setSessionsLoadedByRoute] = useState<Record<ConversationRoute, boolean>>({
+    chat: false,
+    "agent-runtime": false,
+  });
   const [activeSessionByRoute, setActiveSessionByRoute] = useState<ActiveSessionState>(() =>
     loadActiveSessionState(),
   );
@@ -918,9 +1000,6 @@ export function ConversationRuntimeProvider({
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
-  const persistTimerRef = useRef<number>(0);
-  const pendingPersistSessionsRef = useRef<SessionsState | null>(null);
-  const pendingPersistActiveStateRef = useRef<ActiveSessionState | null>(null);
 
   const activeSessions = sessionsByRoute[route];
   const activeSessionID = activeSessionByRoute[route];
@@ -936,37 +1015,6 @@ export function ConversationRuntimeProvider({
   const activeSessionProfile = activeSessionProfileKey
     ? agentSessionProfiles[activeSessionProfileKey] || buildFallbackAgentSessionProfile(activeAgent, activeSession?.id || "")
     : null;
-
-  const persistSessionsStateNow = (nextSessionsByRoute: SessionsState, nextActiveState: ActiveSessionState) => {
-    writeJSONStorage(SESSION_STORAGE_KEY, toPersistedSessions(nextSessionsByRoute));
-    writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-  };
-
-  const schedulePersistSessionsState = (nextSessionsByRoute: SessionsState, nextActiveState: ActiveSessionState) => {
-    pendingPersistSessionsRef.current = nextSessionsByRoute;
-    pendingPersistActiveStateRef.current = nextActiveState;
-    window.clearTimeout(persistTimerRef.current);
-    persistTimerRef.current = window.setTimeout(() => {
-      persistTimerRef.current = 0;
-      const sessions = pendingPersistSessionsRef.current;
-      const activeState = pendingPersistActiveStateRef.current;
-      pendingPersistSessionsRef.current = null;
-      pendingPersistActiveStateRef.current = null;
-      if (!sessions || !activeState) {
-        return;
-      }
-      persistSessionsStateNow(sessions, activeState);
-    }, SESSION_STORAGE_DEBOUNCE_MS);
-  };
-
-  useEffect(() => () => {
-    window.clearTimeout(persistTimerRef.current);
-    const sessions = pendingPersistSessionsRef.current;
-    const activeState = pendingPersistActiveStateRef.current;
-    if (sessions && activeState) {
-      persistSessionsStateNow(sessions, activeState);
-    }
-  }, []);
 
   const ensureSession = (
     target?: Partial<ChatTarget> | null,
@@ -1003,7 +1051,6 @@ export function ConversationRuntimeProvider({
           [route]: currentSessions[route].map((session) => session.id === existing.id ? nextSession : session),
         };
         setSessionsByRoute(nextSessionsByRoute);
-        schedulePersistSessionsState(nextSessionsByRoute, preferredActiveState);
         return nextSession;
       }
       return existing;
@@ -1027,6 +1074,8 @@ export function ConversationRuntimeProvider({
         ? normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.mcps)
         : [],
       messages: [],
+      messagesLoaded: true,
+      serverBacked: false,
     };
     const nextSessionsByRoute: SessionsState = {
       ...currentSessions,
@@ -1035,7 +1084,7 @@ export function ConversationRuntimeProvider({
     const nextActiveState = { ...preferredActiveState, [route]: created.id };
     setSessionsByRoute(nextSessionsByRoute);
     setActiveSessionByRoute(nextActiveState);
-    persistSessionsStateNow(nextSessionsByRoute, nextActiveState);
+    writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
     return created;
   };
 
@@ -1044,14 +1093,12 @@ export function ConversationRuntimeProvider({
     sessionID: string,
     updater: (session: ChatSession) => ChatSession,
   ) => {
-    setSessionsByRoute((current) => {
-      const nextSessions = current[routeKey].map((session) =>
+    setSessionsByRoute((current) => ({
+      ...current,
+      [routeKey]: current[routeKey].map((session) =>
         session.id === sessionID ? updater(session) : session,
-      );
-      const nextState = { ...current, [routeKey]: nextSessions };
-      schedulePersistSessionsState(nextState, activeSessionByRoute);
-      return nextState;
-    });
+      ),
+    }));
   };
 
   const createMessage = (
@@ -1084,6 +1131,7 @@ export function ConversationRuntimeProvider({
         ? (message.text.slice(0, 32) || session.title)
         : session.title,
       titleAuto: session.titleAuto && message.role !== "user",
+      serverBacked: true,
       messages: [...session.messages, message],
     }));
   };
@@ -1105,7 +1153,7 @@ export function ConversationRuntimeProvider({
   const focusSession = (sessionID: string) => {
     const nextActiveState = { ...activeSessionByRoute, [route]: sessionID };
     setActiveSessionByRoute(nextActiveState);
-    persistSessionsStateNow(sessionsByRoute, nextActiveState);
+    writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
   };
 
   const removeSession = async (sessionID: string) => {
@@ -1134,7 +1182,7 @@ export function ConversationRuntimeProvider({
     setComposerAttachmentDrafts(nextAttachmentDrafts);
     persistComposerDrafts(nextDrafts);
     persistComposerAttachmentDrafts(nextAttachmentDrafts);
-    persistSessionsStateNow(nextSessionsByRoute, nextActiveState);
+    writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
   };
 
   const sendMessageFallback = async (
@@ -1410,6 +1458,21 @@ export function ConversationRuntimeProvider({
     ];
   };
 
+  const loadRuntimeSessions = async (routeKey: ConversationRoute) => {
+    const payload = await apiClient.get<{ items?: RuntimeSessionPayload[] }>(
+      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}?route=${encodeURIComponent(routeKey)}`,
+    );
+    const remoteSessions = (Array.isArray(payload.items) ? payload.items : [])
+      .map((item) => normalizeRuntimeSession(item))
+      .filter((session): session is ChatSession => session !== null);
+    setSessionsByRoute((current) => ({
+      ...current,
+      [routeKey]: mergeRuntimeSessions(remoteSessions, current[routeKey]),
+    }));
+    setSessionsLoadedByRoute((current) => ({ ...current, [routeKey]: true }));
+    return remoteSessions;
+  };
+
   useEffect(() => {
     const syncViewport = () => setCompact(isCompactViewport());
     window.addEventListener("resize", syncViewport);
@@ -1444,6 +1507,73 @@ export function ConversationRuntimeProvider({
     };
     void loadCatalogs();
   }, [apiClient]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const remoteSessions = await loadRuntimeSessions(route);
+        if (cancelled) {
+          return;
+        }
+        const preferredActiveID = normalizeText(activeSessionByRoute[route]);
+        const nextActiveID = remoteSessions.some((session) => session.id === preferredActiveID)
+          ? preferredActiveID
+          : remoteSessions[0]?.id || activeSessionByRoute[route];
+        if (nextActiveID && nextActiveID !== activeSessionByRoute[route]) {
+          const nextActiveState = { ...activeSessionByRoute, [route]: nextActiveID };
+          setActiveSessionByRoute(nextActiveState);
+          writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+        }
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setSessionsLoadedByRoute((current) => ({ ...current, [route]: true }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiClient, route]);
+
+  useEffect(() => {
+    if (!activeSession?.id || activeSession.serverBacked !== true || activeSession.messagesLoaded) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const payload = await apiClient.get<{ session?: RuntimeSessionPayload }>(
+          `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(activeSession.id)}?route=${encodeURIComponent(route)}`,
+        );
+        if (cancelled) {
+          return;
+        }
+        const hydrated = normalizeRuntimeSession(
+          payload.session || {},
+          sessionsByRoute[route].find((item) => item.id === activeSession.id) || null,
+        );
+        if (!hydrated) {
+          return;
+        }
+        setSessionsByRoute((current) => ({
+          ...current,
+          [route]: current[route]
+            .map((session) => (session.id === activeSession.id ? hydrated : session))
+            .sort((left, right) => right.createdAt - left.createdAt),
+        }));
+      } catch {
+        if (cancelled) {
+          return;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSession?.id, activeSession?.messagesLoaded, activeSession?.serverBacked, apiClient, route, sessionsByRoute]);
 
   useEffect(() => {
     if (route !== "agent-runtime" || !activeSession || activeSession.target.type !== "agent") {
@@ -1489,6 +1619,9 @@ export function ConversationRuntimeProvider({
   }, [activeSession, agentSessionProfiles, agents, apiClient, route]);
 
   useEffect(() => {
+    if (!sessionsLoadedByRoute[route] || sessionsByRoute[route].length > 0) {
+      return;
+    }
     ensureSession(route === "agent-runtime"
       ? {
           type: "agent",
@@ -1498,7 +1631,7 @@ export function ConversationRuntimeProvider({
       : defaultChatTarget());
     // Keep an active session available for the current runtime route.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, selectedAgentID, agents]);
+  }, [route, selectedAgentID, agents, sessionsByRoute, sessionsLoadedByRoute]);
 
   useEffect(() => {
     window.clearTimeout(pollTimerRef.current);
@@ -1738,19 +1871,15 @@ export function ConversationRuntimeProvider({
       }
     },
     selectModel: (providerID: string, modelID: string) => {
-      if (!activeSession) {
-        return;
-      }
-      patchSession(route, activeSession.id, (session) => ({
-        ...session,
+      const session = activeSession || ensureSession();
+      patchSession(route, session.id, (currentSession) => ({
+        ...currentSession,
         modelProviderID: normalizeText(providerID),
         modelID: normalizeText(modelID),
       }));
     },
     toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => {
-      if (!activeSession) {
-        return;
-      }
+      const session = activeSession || ensureSession();
       const value = normalizeText(id);
       if (!value) {
         return;
@@ -1759,16 +1888,14 @@ export function ConversationRuntimeProvider({
         checked
           ? normalizeSelectionIDs([...items, value])
           : items.filter((item) => item !== value);
-      patchSession(route, activeSession.id, (session) =>
+      patchSession(route, session.id, (currentSession) =>
         kind === "tool"
-          ? { ...session, toolIDs: mutate(session.toolIDs) }
-          : { ...session, mcpIDs: mutate(session.mcpIDs) },
+          ? { ...currentSession, toolIDs: mutate(currentSession.toolIDs) }
+          : { ...currentSession, mcpIDs: mutate(currentSession.mcpIDs) },
       );
     },
     toggleSkill: (id: string, checked: boolean) => {
-      if (!activeSession) {
-        return;
-      }
+      const session = activeSession || ensureSession();
       const value = normalizeText(id);
       if (!value) {
         return;
@@ -1780,9 +1907,9 @@ export function ConversationRuntimeProvider({
         checked
           ? normalizeSelectionIDs([...items, value])
           : items.filter((item) => item !== value);
-      patchSession(route, activeSession.id, (session) => ({
-        ...session,
-        skillIDs: mutate(session.skillIDs),
+      patchSession(route, session.id, (currentSession) => ({
+        ...currentSession,
+        skillIDs: mutate(currentSession.skillIDs),
       }));
     },
     toggleAgentProcess: (messageID: string) => {

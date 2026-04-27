@@ -311,6 +311,7 @@ func sanitizeRecord(record sessiondomain.MessageRecord) (sessiondomain.MessageRe
 	record.SessionID = strings.TrimSpace(record.SessionID)
 	record.Timestamp = normalizeTime(record.Timestamp)
 	record.Source = normalizeMessageSource(record.Source)
+	record.Metadata = cloneStringMap(record.Metadata)
 	if err := record.Validate(); err != nil {
 		return sessiondomain.MessageRecord{}, err
 	}
@@ -442,6 +443,7 @@ func cloneRecord(record sessiondomain.MessageRecord) sessiondomain.MessageRecord
 		SessionID: record.SessionID,
 		Role:      record.Role,
 		Content:   record.Content,
+		Metadata:  cloneStringMap(record.Metadata),
 		Timestamp: record.Timestamp,
 		RouteResult: sessiondomain.RouteResult{
 			Route:        record.RouteResult.Route,
@@ -461,6 +463,17 @@ func cloneRecord(record sessiondomain.MessageRecord) sessiondomain.MessageRecord
 			FiredAt:       record.Source.FiredAt,
 		},
 	}
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
 }
 
 func cloneRecords(records []sessiondomain.MessageRecord) []sessiondomain.MessageRecord {

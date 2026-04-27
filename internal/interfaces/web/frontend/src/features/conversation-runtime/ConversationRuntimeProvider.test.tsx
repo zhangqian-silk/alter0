@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ConversationRuntimeProvider, useConversationRuntime } from "./ConversationRuntimeProvider";
 
-const SESSION_STORAGE_KEY = "alter0.web.sessions.v3";
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 
@@ -175,27 +174,6 @@ describe("ConversationRuntimeProvider", () => {
     vi.clearAllMocks();
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify([
-        {
-          id: "session-1",
-          title: "Image session",
-          titleAuto: false,
-          titleScore: 1,
-          createdAt: Date.parse("2026-04-23T03:30:00Z"),
-          targetType: "model",
-          targetID: "raw-model",
-          targetName: "Raw Model",
-          modelProviderID: "",
-          modelID: "",
-          toolIDs: [],
-          skillIDs: [],
-          mcpIDs: [],
-          messages: [],
-        },
-      ]),
-    );
-    window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
       JSON.stringify({ chat: "session-1", "agent-runtime": "" }),
     );
@@ -214,6 +192,58 @@ describe("ConversationRuntimeProvider", () => {
         ],
       }),
     );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "session-1",
+                title: "Image session",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/session-1?route=chat":
+          return {
+            session: {
+              id: "session-1",
+              title: "Image session",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "model",
+              target_id: "raw-model",
+              target_name: "Raw Model",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+              messages: [],
+            },
+          };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return { items: [] };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+        case "/api/agents":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
   });
 
   afterEach(() => {
@@ -222,6 +252,19 @@ describe("ConversationRuntimeProvider", () => {
 
   it("creates blank chat and agent runtime sessions with the shared New title", async () => {
     window.sessionStorage.clear();
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+        case "/api/agents":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
 
     const chatView = render(
       <ConversationRuntimeProvider route="chat" language="en">
@@ -229,7 +272,7 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    expect(await screen.findByTestId("active-session-title")).toHaveTextContent("New");
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("New"));
     chatView.unmount();
 
     render(
@@ -238,7 +281,7 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    expect(await screen.findByTestId("active-session-title")).toHaveTextContent("New");
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("New"));
   });
 
   it("does not rewrite stored sessions for streaming deltas after an image message is queued", async () => {
@@ -261,8 +304,7 @@ describe("ConversationRuntimeProvider", () => {
         <RuntimeHarness />
       </ConversationRuntimeProvider>,
     );
-
-    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat"));
 
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
@@ -278,96 +320,101 @@ describe("ConversationRuntimeProvider", () => {
     expect(request.attachments?.[0]?.data_url).toBeUndefined();
 
     await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 220));
-    });
-
-    const sessionWritesAfterQueue = setItemSpy.mock.calls.filter(([key]) => key === SESSION_STORAGE_KEY).length;
-    expect(sessionWritesAfterQueue).toBe(1);
-    const latestQueuedSessionPayload = setItemSpy.mock.calls
-      .filter(([key]) => key === SESSION_STORAGE_KEY)
-      .at(-1)?.[1];
-    expect(typeof latestQueuedSessionPayload).toBe("string");
-    const queuedSessions = JSON.parse(String(latestQueuedSessionPayload)) as Array<{
-      messages?: Array<{ attachments?: Array<{ preview_url?: string; data_url?: string }> }>;
-    }>;
-    expect(queuedSessions[0]?.messages?.[0]?.attachments?.[0]?.preview_url).toBe("/api/sessions/session-1/attachments/image-1/preview");
-    expect(queuedSessions[0]?.messages?.[0]?.attachments?.[0]?.data_url).toBeUndefined();
-
-    await act(async () => {
       streamController?.enqueue(encoder.encode('event: delta\ndata: {"delta":"Analyzing"}\n\n'));
       await Promise.resolve();
-      await new Promise((resolve) => window.setTimeout(resolve, 220));
     });
 
     await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Analyzing"));
-
-    const sessionWritesAfterDelta = setItemSpy.mock.calls.filter(([key]) => key === SESSION_STORAGE_KEY).length;
-    expect(sessionWritesAfterDelta).toBe(1);
 
     await act(async () => {
       streamController?.enqueue(encoder.encode('event: done\ndata: {"result":{"output":"Analyzing complete"}}\n\n'));
       streamController?.close();
       await Promise.resolve();
-      await new Promise((resolve) => window.setTimeout(resolve, 220));
     });
 
     await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Analyzing complete"));
-
-    const sessionWritesAfterDone = setItemSpy.mock.calls.filter(([key]) => key === SESSION_STORAGE_KEY).length;
-    expect(sessionWritesAfterDone).toBe(2);
   });
 
   it("keeps append-style history stable after a streamed reply is finalized", async () => {
     window.sessionStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify([
-        {
-          id: "session-append-style",
-          title: "Append style session",
-          titleAuto: false,
-          titleScore: 1,
-          createdAt: Date.parse("2026-04-23T03:30:00Z"),
-          targetType: "model",
-          targetID: "raw-model",
-          targetName: "Raw Model",
-          modelProviderID: "",
-          modelID: "",
-          toolIDs: [],
-          skillIDs: [],
-          mcpIDs: [],
-          messages: [
-            {
-              id: "message-user-old",
-              role: "user",
-              text: "Initial prompt",
-              attachments: [],
-              route: "nl",
-              source: "web-default",
-              error: false,
-              status: "",
-              at: Date.parse("2026-04-23T03:31:00Z"),
-              process_steps: [],
-            },
-            {
-              id: "message-assistant-old",
-              role: "assistant",
-              text: "Initial answer",
-              attachments: [],
-              route: "nl",
-              source: "codex_exec",
-              error: false,
-              status: "done",
-              at: Date.parse("2026-04-23T03:32:00Z"),
-              process_steps: [],
-            },
-          ],
-        },
-      ]),
-    );
-    window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
       JSON.stringify({ chat: "session-append-style", "agent-runtime": "" }),
     );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "session-append-style",
+                title: "Append style session",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/session-append-style?route=chat":
+          return {
+            session: {
+              id: "session-append-style",
+              title: "Append style session",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "model",
+              target_id: "raw-model",
+              target_name: "Raw Model",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+              messages: [
+                {
+                  id: "message-user-old",
+                  role: "user",
+                  text: "Initial prompt",
+                  attachments: [],
+                  route: "nl",
+                  source: "web-default",
+                  error: false,
+                  status: "",
+                  at: "2026-04-23T03:31:00Z",
+                  process_steps: [],
+                },
+                {
+                  id: "message-assistant-old",
+                  role: "assistant",
+                  text: "Initial answer",
+                  attachments: [],
+                  route: "nl",
+                  source: "codex_exec",
+                  error: false,
+                  status: "done",
+                  at: "2026-04-23T03:32:00Z",
+                  process_steps: [],
+                },
+              ],
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+        case "/api/agents":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
 
     const encoder = new TextEncoder();
     let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
@@ -388,6 +435,11 @@ describe("ConversationRuntimeProvider", () => {
         <MessageListHarness />
       </ConversationRuntimeProvider>,
     );
+
+    await waitFor(() => {
+      const messages = JSON.parse(screen.getByTestId("message-list").textContent || "[]") as Array<{ role: string }>;
+      expect(messages).toHaveLength(2);
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "send followup" }));
 
@@ -432,6 +484,8 @@ describe("ConversationRuntimeProvider", () => {
         <RuntimeHarness />
       </ConversationRuntimeProvider>,
     );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat"));
 
     fireEvent.click(screen.getByRole("button", { name: "attach" }));
 
@@ -478,6 +532,8 @@ describe("ConversationRuntimeProvider", () => {
         <RuntimeHarness />
       </ConversationRuntimeProvider>,
     );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat"));
 
     fireEvent.click(screen.getByRole("button", { name: "attach file" }));
 
@@ -579,6 +635,7 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("provider-list")).toHaveTextContent("Codex:Codex"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat"));
 
     fireEvent.click(screen.getByRole("button", { name: "select codex" }));
     await waitFor(() => expect(screen.getByTestId("selected-model")).toHaveTextContent("Codex"));
@@ -716,6 +773,45 @@ describe("ConversationRuntimeProvider", () => {
   it("shows the active agent private skill as locked and keeps selectable skills public", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return {
+            items: [
+              {
+                id: "travel-session-1",
+                title: "Travel runtime",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "agent",
+                target_id: "travel",
+                target_name: "Travel Agent",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: ["deploy-test-service"],
+                mcp_ids: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/travel-session-1?route=agent-runtime":
+          return {
+            session: {
+              id: "travel-session-1",
+              title: "Travel runtime",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "travel",
+              target_name: "Travel Agent",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: ["deploy-test-service"],
+              mcp_ids: [],
+              messages: [],
+            },
+          };
         case "/api/agents":
           return {
             items: [
@@ -803,27 +899,6 @@ describe("ConversationRuntimeProvider", () => {
 
   it("loads agent session profile details for the active runtime session", async () => {
     window.sessionStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify([
-        {
-          id: "agent-session-1",
-          title: "Coding runtime",
-          titleAuto: false,
-          titleScore: 1,
-          createdAt: Date.parse("2026-04-23T03:30:00Z"),
-          targetType: "agent",
-          targetID: "coding",
-          targetName: "Coding Agent",
-          modelProviderID: "",
-          modelID: "",
-          toolIDs: [],
-          skillIDs: [],
-          mcpIDs: [],
-          messages: [],
-        },
-      ]),
-    );
-    window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
       JSON.stringify({ chat: "", "agent-runtime": "agent-session-1" }),
     );
@@ -836,6 +911,47 @@ describe("ConversationRuntimeProvider", () => {
       }
       if (path === "/api/control/mcps") {
         return { items: [] };
+      }
+      if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+        return {
+          items: [
+            {
+              id: "agent-session-1",
+              title: "Coding runtime",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "coding",
+              target_name: "Coding Agent",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+            },
+          ],
+        };
+      }
+      if (path === "/api/conversation-runtime/sessions/agent-session-1?route=agent-runtime") {
+        return {
+          session: {
+            id: "agent-session-1",
+            title: "Coding runtime",
+            title_auto: false,
+            title_score: 1,
+            created_at: "2026-04-23T03:30:00Z",
+            target_type: "agent",
+            target_id: "coding",
+            target_name: "Coding Agent",
+            model_provider_id: "",
+            model_id: "",
+            tool_ids: [],
+            skill_ids: [],
+            mcp_ids: [],
+            messages: [],
+          },
+        };
       }
       if (path === "/api/agents") {
         return {

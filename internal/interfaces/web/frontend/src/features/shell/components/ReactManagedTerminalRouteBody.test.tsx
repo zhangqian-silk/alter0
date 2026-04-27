@@ -1180,6 +1180,35 @@ describe("ReactManagedTerminalRouteBody", () => {
       && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
   });
 
+  it("submits when the mobile send button is pressed through touch pointer while the composer stays focused", async () => {
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
+    });
+
+    const input = document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, {
+      target: { value: "pwd" },
+    });
+    fireEvent.pointerDown(
+      document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement,
+      { pointerType: "touch" },
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toHaveValue("");
+    });
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls.some(([request, init]) =>
+      String(request) === "/api/terminal/sessions/terminal-1/input"
+      && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+  });
+
   it("lets terminal users choose public skills for the next input", async () => {
     renderTerminalRouteBody();
 

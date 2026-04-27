@@ -42,6 +42,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
+  const mobileSubmitGestureLockRef = useRef(false);
   const activeMessages = runtime.activeSession?.messages || [];
   const isEmptyState = activeMessages.length === 0;
   const isMobileEmptyHeader = workbench.isMobileViewport && isEmptyState;
@@ -163,12 +164,32 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     void runtime.sendPrompt(runtime.draft);
   };
 
-  const handleSubmitTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
-    if (!workbench.isMobileViewport) {
+  const releaseMobileSubmitGestureLock = () => {
+    window.setTimeout(() => {
+      mobileSubmitGestureLockRef.current = false;
+    }, 0);
+  };
+
+  const submitMobileDraftOnPress = () => {
+    mobileSubmitGestureLockRef.current = true;
+    releaseMobileSubmitGestureLock();
+    submitDraft();
+  };
+
+  const handleSubmitPointerDownCapture = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!workbench.isMobileViewport || event.pointerType === "mouse" || mobileSubmitGestureLockRef.current) {
       return;
     }
     event.preventDefault();
-    submitDraft();
+    submitMobileDraftOnPress();
+  };
+
+  const handleSubmitTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
+    if (!workbench.isMobileViewport || mobileSubmitGestureLockRef.current) {
+      return;
+    }
+    event.preventDefault();
+    submitMobileDraftOnPress();
   };
 
   const capabilityGroups = useMemo(() => ({
@@ -587,7 +608,10 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       metaContent: composerMetaLabel,
       addAttachmentLabel: composerAddAttachmentLabel,
       onAddAttachment: handleComposerAttachmentPicker,
-      submitButtonProps: { onTouchStartCapture: handleSubmitTouchStartCapture },
+      submitButtonProps: {
+        onPointerDownCapture: handleSubmitPointerDownCapture,
+        onTouchStartCapture: handleSubmitTouchStartCapture,
+      },
       submitLabel: composerSend,
       previewCloseLabel: composerClosePreviewLabel,
     },

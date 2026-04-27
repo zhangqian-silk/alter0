@@ -56,9 +56,10 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 ### Session 历史
 
-- Web 登录后，Chat/Agent 按目标 Agent 维护独立 Session 历史。
+- Web 登录后，Chat/Agent 按目标 Agent 维护独立 Session 历史，且已发送会话通过服务端 Session history 在同一 Web 登录态下跨设备共享。
 - 具备独立前端入口的 Agent 不进入通用 Agent 页面历史。
 - `Sessions` 系统页面可展示跨来源会话数据，但不作为 Chat/Agent 分栏依据。
+- 未发送文本草稿、附件草稿与当前浏览器中的临时空白会话允许继续本地保存；这些局部态不要求跨设备同步，但不能覆盖服务端已存在的会话摘要、配置与消息历史。
 
 ## 接口边界
 
@@ -75,6 +76,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `Terminal` 页面 Composer 与 `Tasks` 详情抽屉 follow-up terminal 输入也复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、预览与回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`。
 - assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
 - `GET /api/agents` 返回可进入 Agent Runtime 的专项 Agent；当前内置入口包括 `coding`、`writing` 与 `travel`，不包含绑定 Chat 默认入口的 `main / Alter0`。
+- `GET /api/conversation-runtime/sessions?route=chat|agent-runtime` 返回运行页会话摘要，至少包含标题、目标 Agent/Model、Tools / Skills / MCP 选择、创建时间与稳定 session id。
+- `GET /api/conversation-runtime/sessions/{session_id}?route=chat|agent-runtime` 返回单个运行页会话详情，至少包含历史消息、用户附件引用、结构化 `process_steps` 与当前恢复到的运行态配置。
 - `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
 - `GET /api/sessions/{session_id}/messages` 查询会话消息。
 - `DELETE /api/sessions/{session_id}` 删除会话，并触发关联工作区和任务清理。
@@ -95,9 +98,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 ### 持久化与恢复
 
-- 用户与助手消息主数据、路由结果、时间戳和来源字段必须持久化。
+- 用户与助手消息主数据、路由结果、时间戳、来源字段以及恢复运行页所需的请求 metadata 必须持久化。
 - 用户消息中的图片附件需要和文本一起进入会话时间线；页面刷新、切会话和最近会话恢复时保留稳定的图片预览资产，不重复持久化原始大图 payload。
-- 页面刷新或服务重启后，用户可恢复最近会话与历史消息。
+- 页面刷新、跨设备重开或服务重启后，用户可恢复最近会话与历史消息；恢复结果需保留当前 Session 的目标 Agent、Model 与 Tools / Skills / MCP 选择。
 - 删除会话时同步清理关联任务记录与会话工作区。
 - `Chat / Agent Runtime / Terminal` 会话侧栏统一使用 `Sessions` 标题与 `New` 新建入口；三条运行页会话列表为每个会话展示同一规则生成的 8 位短 hash 标识，短 hash 用于前端列表辨识、预览域名映射与人工排障引用。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表底部展示值。
 
@@ -118,6 +121,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 - `Chat / Agent Runtime` 在同一 Session 内保持追加式会话历史；每轮请求都要追加新的用户消息与新的助手消息占位，不得把后续回复继续回写到已完成的历史消息。
 - 单条 assistant 消息内部仍可按 `process / delta / done` 流式更新，但补丁目标只能是当前活跃的未完成消息；消息进入 `done` 或任务态后，迟到的 SSE 事件必须直接丢弃。
+- 运行页初始化时，服务端会话详情回填不得覆盖当前浏览器里已经新追加、但服务端详情请求发起时尚未落库的本地消息；本地新消息与流式更新优先级高于陈旧详情响应。
 - 已收到部分正文后若连接中断，前端保留已到达正文，并把该条消息收敛为失败态与可重试态。
 - 浏览器本地缓存中残留的 `streaming` 消息在页面恢复时必须立即归一：无任务标识的消息转为失败态，带任务标识的消息转为对应任务态并继续轮询。
 - 若流式连接在没有可用正文时失败，前端失败文案需明确提示刷新页面以恢复最新已保存回复。
@@ -204,7 +208,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `Chat / Agent Runtime` 的 fixed composer 在移动端必须把实际遮挡高度同步回工作区滚动面；`.conversation-chat-screen` 与空态欢迎区都需停在 composer 上沿，不能依赖静态底部 padding 估算占位，也不能出现底部输入框覆盖最后一段消息或说明文案。
 - `Chat / Agent Runtime` 在键盘收起和 composer 回弹到底边时，工作区滚动面也必须同步清理旧的遮挡高度；最后一屏消息、空态说明和阅读定位控件都不能在底边留下额外空白或残留占位。
 - `Chat / Agent Runtime` 在移动端键盘弹起和收回期间，仅允许 fixed composer 自身跟随 `VisualViewport` 做贴底位移；顶部 `Menu / Sessions / New` 操作行、紧凑 workspace header 与其他公共控件保持原位，不跟随键盘做额外动画或跳变。
-- `Chat / Agent Runtime` 的移动端发送按钮支持在键盘保持打开时直接点按提交；首触发送立即进入当前 `sendPrompt` 链路，不需要先收键盘或补第二次点击。
+- `Chat / Agent Runtime` 的移动端发送按钮支持在键盘保持打开时直接点按提交；首触发送需覆盖 `pointerdown(touch)` 与 `touchstart` 提交链路，并在同一次触摸内去重，立即进入当前 `sendPrompt` 链路，不需要先收键盘或补第二次点击。
 - `Chat / Agent Runtime` 的 fixed composer 不额外叠加 `bottom` 过渡动画；键盘回弹与输入区回贴底边时只消费 `VisualViewport` 的实时位置，避免补间动画与视口收缩/回弹叠加造成拖滞。
 - `Chat / Agent Runtime` 在输入框失焦后，若 `VisualViewport` 仍处于收缩态，必须继续保留当前键盘偏移并随视口恢复逐步释放；不允许先把 composer 闪回到底边，再被后续 viewport resize 顶回去。
 - `760px` 及以下的真手机宽度下，主导航抽屉、会话抽屉、头部按钮高度与间距继续压缩，避免头部按钮挤占可用阅读高度。
