@@ -241,6 +241,7 @@ func workspaceServiceProcessEnv(port int) []string {
 	env := withoutEnvKey(os.Environ(), "ALTER0_WEB_LOGIN_PASSWORD")
 	env = append(env, fmt.Sprintf("PORT=%d", port))
 	env = append(env, fmt.Sprintf("ALTER0_SERVICE_PORT=%d", port))
+	env = append(env, "ALTER0_WEB_REUSE_GATEWAY_AUTH=1")
 	return env
 }
 

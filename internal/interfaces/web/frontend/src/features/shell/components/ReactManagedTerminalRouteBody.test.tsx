@@ -13,6 +13,114 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
   });
 }
 
+type TerminalTurnFixture = {
+  id: string;
+  prompt?: string;
+  final_output?: string;
+};
+
+function installImmediateAnimationFrame() {
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+    window.setTimeout(() => callback(16), 0);
+    return 1;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+}
+
+function stubTerminalTurnsFetch(turns: TerminalTurnFixture[]) {
+  vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url === "/api/terminal/sessions" && method === "GET") {
+      return Promise.resolve(jsonResponse({
+        items: [
+          {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+          },
+        ],
+      }));
+    }
+    if (url === "/api/control/skills" && method === "GET") {
+      return Promise.resolve(jsonResponse({ items: [] }));
+    }
+    if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+      return Promise.resolve(jsonResponse({
+        session: {
+          id: "terminal-1",
+          title: "Workspace shell",
+          terminal_session_id: "terminal-1",
+          status: "ready",
+          shell: "codex exec",
+          working_dir: "/workspace/alter0",
+          created_at: "2026-04-15T10:00:00Z",
+          updated_at: "2026-04-15T10:10:00Z",
+          turns: turns.map((turn, index) => ({
+            id: turn.id,
+            prompt: turn.prompt || `prompt-${index + 1}`,
+            status: "completed",
+            started_at: `2026-04-15T10:0${index}:00Z`,
+            finished_at: `2026-04-15T10:0${index}:02Z`,
+            duration_ms: 2000,
+            final_output: turn.final_output || `output-${index + 1}`,
+            steps: [],
+          })),
+        },
+      }));
+    }
+    return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+  }));
+}
+
+function applyTerminalTurnMetrics(
+  chatScreen: HTMLDivElement,
+  layouts: Array<{ id: string; top: number; height: number }>,
+  options: {
+    clientHeight: number;
+    scrollHeight: number;
+    scrollTop: number;
+  },
+) {
+  Object.defineProperty(chatScreen, "clientHeight", {
+    configurable: true,
+    value: options.clientHeight,
+  });
+  Object.defineProperty(chatScreen, "scrollHeight", {
+    configurable: true,
+    value: options.scrollHeight,
+  });
+  Object.defineProperty(chatScreen, "scrollTop", {
+    configurable: true,
+    writable: true,
+    value: options.scrollTop,
+  });
+  chatScreen.scrollTo = vi.fn((value?: ScrollToOptions | number, y?: number) => {
+    const top = typeof value === "number" ? y : value?.top;
+    chatScreen.scrollTop = Number(top || 0);
+  }) as HTMLElement["scrollTo"];
+
+  layouts.forEach((layout) => {
+    const node = document.querySelector(`[data-terminal-turn="${layout.id}"]`) as HTMLElement | null;
+    if (!node) {
+      return;
+    }
+    Object.defineProperty(node, "offsetTop", {
+      configurable: true,
+      get: () => layout.top,
+    });
+    Object.defineProperty(node, "offsetHeight", {
+      configurable: true,
+      get: () => layout.height,
+    });
+  });
+}
+
 describe("ReactManagedTerminalRouteBody", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -1281,6 +1389,411 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(chatScreen.scrollTop).toBe(240);
     expect(chatScreen.scrollTop).toBe(240);
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
+  });
+
+  it("targets the visible turn for previous and the real next turn when only one terminal turn is visible", async () => {
+    installImmediateAnimationFrame();
+    stubTerminalTurnsFetch([
+      { id: "turn-1" },
+      { id: "turn-2" },
+      { id: "turn-3" },
+    ]);
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-3']")).toBeInTheDocument();
+    });
+
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+    applyTerminalTurnMetrics(chatScreen, [
+      { id: "turn-1", top: 0, height: 180 },
+      { id: "turn-2", top: 200, height: 180 },
+      { id: "turn-3", top: 400, height: 180 },
+    ], {
+      clientHeight: 150,
+      scrollHeight: 620,
+      scrollTop: 220,
+    });
+
+    fireEvent.scroll(chatScreen);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-2");
+      expect(document.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "turn-3");
+    });
+  });
+
+  it("targets the first and last visible turns when multiple terminal turns share the viewport", async () => {
+    installImmediateAnimationFrame();
+    stubTerminalTurnsFetch([
+      { id: "turn-1" },
+      { id: "turn-2" },
+      { id: "turn-3" },
+    ]);
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-3']")).toBeInTheDocument();
+    });
+
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+    applyTerminalTurnMetrics(chatScreen, [
+      { id: "turn-1", top: 0, height: 180 },
+      { id: "turn-2", top: 200, height: 180 },
+      { id: "turn-3", top: 400, height: 180 },
+    ], {
+      clientHeight: 140,
+      scrollHeight: 620,
+      scrollTop: 170,
+    });
+
+    fireEvent.scroll(chatScreen);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-1");
+      expect(document.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "turn-2");
+    });
+  });
+
+  it("hides the next jump control when the last terminal turn is the only visible turn", async () => {
+    installImmediateAnimationFrame();
+    stubTerminalTurnsFetch([
+      { id: "turn-1" },
+      { id: "turn-2" },
+      { id: "turn-3" },
+    ]);
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-3']")).toBeInTheDocument();
+    });
+
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+    applyTerminalTurnMetrics(chatScreen, [
+      { id: "turn-1", top: 0, height: 180 },
+      { id: "turn-2", top: 200, height: 180 },
+      { id: "turn-3", top: 400, height: 180 },
+    ], {
+      clientHeight: 140,
+      scrollHeight: 620,
+      scrollTop: 430,
+    });
+
+    fireEvent.scroll(chatScreen);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-3");
+    });
+    expect(document.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "");
+    expect(document.querySelector("[data-terminal-jump-next]")).not.toHaveClass("is-visible");
+  });
+
+  it("hides the next jump control when the viewport is already pinned to the terminal bottom", async () => {
+    installImmediateAnimationFrame();
+    stubTerminalTurnsFetch([
+      { id: "turn-1" },
+      { id: "turn-2" },
+      { id: "turn-3" },
+    ]);
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-3']")).toBeInTheDocument();
+    });
+
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+    applyTerminalTurnMetrics(chatScreen, [
+      { id: "turn-1", top: 0, height: 180 },
+      { id: "turn-2", top: 200, height: 180 },
+      { id: "turn-3", top: 400, height: 180 },
+    ], {
+      clientHeight: 220,
+      scrollHeight: 580,
+      scrollTop: 360,
+    });
+
+    fireEvent.scroll(chatScreen);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-2");
+    });
+    expect(document.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "");
+    expect(document.querySelector("[data-terminal-jump-next]")).not.toHaveClass("is-visible");
+  });
+
+  it("hides the next jump control once the last turn is already visible even if bottom remains available", async () => {
+    installImmediateAnimationFrame();
+    stubTerminalTurnsFetch([
+      { id: "turn-1" },
+      { id: "turn-2" },
+      { id: "turn-3" },
+    ]);
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-3']")).toBeInTheDocument();
+    });
+
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+    applyTerminalTurnMetrics(chatScreen, [
+      { id: "turn-1", top: 0, height: 180 },
+      { id: "turn-2", top: 200, height: 180 },
+      { id: "turn-3", top: 400, height: 180 },
+    ], {
+      clientHeight: 180,
+      scrollHeight: 720,
+      scrollTop: 290,
+    });
+
+    fireEvent.scroll(chatScreen);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-2");
+    });
+    expect(document.querySelector("[data-terminal-jump-bottom]")).toHaveClass("is-visible");
+    expect(document.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "");
+    expect(document.querySelector("[data-terminal-jump-next]")).not.toHaveClass("is-visible");
+  });
+
+  it("renders terminal jump controls with the original arrow glyphs", async () => {
+    installImmediateAnimationFrame();
+    stubTerminalTurnsFetch([
+      { id: "turn-1" },
+      { id: "turn-2" },
+      { id: "turn-3" },
+    ]);
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-3']")).toBeInTheDocument();
+    });
+
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+    applyTerminalTurnMetrics(chatScreen, [
+      { id: "turn-1", top: 0, height: 180 },
+      { id: "turn-2", top: 200, height: 180 },
+      { id: "turn-3", top: 400, height: 180 },
+    ], {
+      clientHeight: 150,
+      scrollHeight: 620,
+      scrollTop: 220,
+    });
+
+    fireEvent.scroll(chatScreen);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-2");
+      expect(document.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "turn-3");
+    });
+
+    [
+      "[data-terminal-jump-top]",
+      "[data-terminal-jump-prev]",
+      "[data-terminal-jump-next]",
+      "[data-terminal-jump-bottom]",
+    ].forEach((selector) => {
+      const button = document.querySelector(selector) as HTMLButtonElement | null;
+      expect(button).not.toBeNull();
+      expect(button?.textContent?.trim().length || 0).toBeGreaterThan(0);
+    });
+  });
+
+  it("hides the next jump control while a newly submitted terminal turn is still in flight", async () => {
+    installImmediateAnimationFrame();
+    let resolveInput: ((value: Response) => void) | null = null;
+
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "prompt-1",
+                status: "completed",
+                started_at: "2026-04-15T10:00:00Z",
+                finished_at: "2026-04-15T10:00:02Z",
+                duration_ms: 2000,
+                final_output: "output-1",
+                steps: [],
+              },
+              {
+                id: "turn-2",
+                prompt: "prompt-2",
+                status: "completed",
+                started_at: "2026-04-15T10:01:00Z",
+                finished_at: "2026-04-15T10:01:02Z",
+                duration_ms: 2000,
+                final_output: "output-2",
+                steps: [],
+              },
+              {
+                id: "turn-3",
+                prompt: "prompt-3",
+                status: "completed",
+                started_at: "2026-04-15T10:02:00Z",
+                finished_at: "2026-04-15T10:02:02Z",
+                duration_ms: 2000,
+                final_output: "output-3",
+                steps: [],
+              },
+            ],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1/input" && method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveInput = resolve;
+        });
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-3']")).toBeInTheDocument();
+    });
+
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+    applyTerminalTurnMetrics(chatScreen, [
+      { id: "turn-1", top: 0, height: 180 },
+      { id: "turn-2", top: 200, height: 180 },
+      { id: "turn-3", top: 400, height: 180 },
+    ], {
+      clientHeight: 150,
+      scrollHeight: 720,
+      scrollTop: 220,
+    });
+
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
+      target: { value: "continue" },
+    });
+    fireEvent.click(document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement);
+    fireEvent.scroll(chatScreen);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-2");
+    });
+    expect(document.querySelector("[data-terminal-jump-bottom]")).toHaveClass("is-visible");
+    expect(document.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "");
+    expect(document.querySelector("[data-terminal-jump-next]")).not.toHaveClass("is-visible");
+
+    resolveInput?.(jsonResponse({
+      session: {
+        id: "terminal-1",
+        title: "Workspace shell",
+        terminal_session_id: "terminal-1",
+        status: "busy",
+        shell: "codex exec",
+        working_dir: "/workspace/alter0",
+        created_at: "2026-04-15T10:00:00Z",
+        updated_at: "2026-04-15T10:10:30Z",
+      },
+    }));
+  });
+
+  it("reuses cached terminal turn anchors across scroll-only updates", async () => {
+    installImmediateAnimationFrame();
+    stubTerminalTurnsFetch([
+      { id: "turn-1" },
+      { id: "turn-2" },
+      { id: "turn-3" },
+    ]);
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-3']")).toBeInTheDocument();
+    });
+
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+    const offsetReadCount = { top: 0, height: 0 };
+    Object.defineProperty(chatScreen, "clientHeight", {
+      configurable: true,
+      value: 150,
+    });
+    Object.defineProperty(chatScreen, "scrollHeight", {
+      configurable: true,
+      value: 620,
+    });
+    Object.defineProperty(chatScreen, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 220,
+    });
+
+    [
+      { id: "turn-1", top: 0, height: 180 },
+      { id: "turn-2", top: 200, height: 180 },
+      { id: "turn-3", top: 400, height: 180 },
+    ].forEach((layout) => {
+      const node = document.querySelector(`[data-terminal-turn="${layout.id}"]`) as HTMLElement;
+      Object.defineProperty(node, "offsetTop", {
+        configurable: true,
+        get: () => {
+          offsetReadCount.top += 1;
+          return layout.top;
+        },
+      });
+      Object.defineProperty(node, "offsetHeight", {
+        configurable: true,
+        get: () => {
+          offsetReadCount.height += 1;
+          return layout.height;
+        },
+      });
+    });
+
+    fireEvent.scroll(chatScreen);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "turn-3");
+    });
+
+    const readsAfterFirstSync = { ...offsetReadCount };
+    chatScreen.scrollTop = 240;
+    fireEvent.scroll(chatScreen);
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "turn-3");
+    });
+
+    expect(offsetReadCount).toEqual(readsAfterFirstSync);
   });
 
   it("renders mobile menu actions and links them to workbench navigation", async () => {
