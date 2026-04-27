@@ -309,7 +309,7 @@ Environment restart
 - 独立登录会话通过临时 `CODEX_HOME` 执行 `codex login`，完成后再把新 `auth.json` 保存为托管账号，避免直接污染当前正在服务的运行时认证。
 - 独立登录会话在执行 `codex login` 前需显式创建隔离 `CODEX_HOME`，并用覆盖语义注入环境变量，避免宿主进程已有 `CODEX_HOME` 影响登录结果落盘位置。
 - LLM 运行参数 `llm_temperature`、`llm_max_tokens`、`llm_react_max_iterations` 通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider 与模型能力约束。
-- Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换。
+- Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换；当 `sync_remote_master=true` 时，只允许回滚 Git 已跟踪改动，不得清理未跟踪文件或目录。
 - 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 会校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/assets/*` 与 `/legacy/*`；`travel` 服务是唯一前端静态例外，固定命中 `https://<session_short_hash>.travel.alter0.cn`，共享运行时对该 host 只返回静态 HTML/资源并直接阻断 `/api/*` 与其他工作台路由。`http` 服务既可反向代理到外部 upstream，也可由共享运行时按注册的 `start_command + workdir + port + health_path` 托管本地子进程。默认 `scripts/deploy_test_service.sh <session_id>` 会为 `web` 合成一条当前分支后端启动命令并注册给共享运行时，先构建前端产物，再让 `https://<session_short_hash>.alter0.cn` 整体代理到这份托管后端，从而让前端与 `/api/*` 保持同一版本；这类内部托管的 runtime child 默认关闭自身 web 登录，只复用共享网关的登录态，不再在预览子域后端叠第二层鉴权。
 - Web 登录态继续由 `server.go` 的 `authMiddleware + loginHandler` 统一管理；当请求 Host 命中主域或其预览子域时，登录 cookie 会把 `Domain` 收敛到根域 `alter0.cn`，使主域工作台与短哈希预览 host 共享同一登录会话，而不是各自维护孤立 cookie。
 - systemd 基线统一 `HOME=/var/lib/alter0`，确保 Codex、gh、git signing、Node/Playwright 工具链使用同一运行账户上下文。
