@@ -11,6 +11,15 @@ export type TerminalSessionRecord = {
   [key: string]: unknown;
 };
 
+export type TerminalSessionRecoverRequest = {
+  id: string;
+  terminal_session_id?: string;
+  title?: string;
+  created_at?: string | Date;
+  last_output_at?: string | Date;
+  updated_at?: string | Date;
+};
+
 export function createTerminalClientID(scope: string): string {
   const clientID = `playwright-terminal-${scope}-${Date.now()}`;
   trackedTerminalClientIDs.add(clientID);
@@ -69,6 +78,23 @@ export async function createTerminalSession(request: APIRequestContext, clientID
       "X-Alter0-Terminal-Client": clientID,
     },
     data: {},
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = await response.json();
+  return payload?.session;
+}
+
+export async function recoverTerminalSession(
+  request: APIRequestContext,
+  clientID: string,
+  session: TerminalSessionRecoverRequest,
+): Promise<TerminalSessionRecord> {
+  await authenticateWebRequest(request);
+  const response = await request.post("/api/terminal/sessions/recover", {
+    headers: {
+      "X-Alter0-Terminal-Client": clientID,
+    },
+    data: session,
   });
   expect(response.ok()).toBeTruthy();
   const payload = await response.json();

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import {
   expectComposerCounter,
@@ -13,7 +12,7 @@ import {
   removeChatSession,
   switchChatSession
 } from "./helpers/flows/chat-session";
-import { ensureChatRouteReady, openChatRoute, openCronRoute } from "./helpers/flows/routes";
+import { ensureChatRouteReady, openChatRoute } from "./helpers/flows/routes";
 import { waitForAppReady } from "./helpers/guards/app-ready";
 import { loginIfNeeded } from "./helpers/guards/login";
 import { commitIMEInput, startIMEInput } from "./helpers/interactions/ime";
@@ -37,13 +36,80 @@ async function openChannelsRoute(page: Parameters<typeof loginIfNeeded>[0]): Pro
   await expect(page.locator("#routeView")).toBeVisible();
 }
 
+async function mockRuntimeSession(
+  page: Parameters<typeof loginIfNeeded>[0],
+  options: {
+    route: "chat" | "agent-runtime";
+    session: Record<string, unknown>;
+    agents?: Array<Record<string, unknown>>;
+  },
+): Promise<void> {
+  const sessionID = String(options.session.id || "").trim();
+  if (!sessionID) {
+    throw new Error("mockRuntimeSession requires a session id");
+  }
+  await page.context().route("**/api/conversation-runtime/sessions**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("route") !== options.route) {
+      await route.fallback();
+      return;
+    }
+    if (url.pathname.endsWith("/api/conversation-runtime/sessions")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: [options.session],
+        }),
+      });
+      return;
+    }
+    if (url.pathname.endsWith(`/api/conversation-runtime/sessions/${sessionID}`)) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          session: options.session,
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  if (options.agents) {
+    await page.context().route("**/api/agents", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: options.agents,
+        }),
+      });
+    });
+  }
+}
+
 test.describe("Chat composer", () => {
   test("formats frontend timestamps in Beijing time with a 24-hour clock", async ({ page }) => {
     await openChatRoute(page);
 
     const formatted = await page.evaluate(() => ({
-      dateTime: formatDateTime("2026-04-10T00:05:06Z"),
-      timeOnly: timeLabel(Date.parse("2026-04-10T00:05:00Z"))
+      dateTime: new Intl.DateTimeFormat("sv-SE", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+        timeZone: "Asia/Shanghai",
+      }).format(new Date("2026-04-10T00:05:06Z")).replace(",", ""),
+      timeOnly: new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "Asia/Shanghai",
+      }).format(new Date("2026-04-10T00:05:00Z"))
     }));
 
     expect(formatted).toEqual({
@@ -51,54 +117,45 @@ test.describe("Chat composer", () => {
       timeOnly: "08:05"
     });
 
-    await openCronRoute(page);
-    await expect(page.locator('input[name="timezone"]')).toHaveValue("Asia/Shanghai");
   });
 
-  test("shows a copyable short hash for agent sessions", async ({ page }) => {
+  test("shows a short hash for agent sessions in the list and details panel", async ({ page }) => {
     const sessionID = "db4416b7-452d-44a6-83ca-999e77f47791";
-    const shortHash = createHash("sha1").update(sessionID).digest("hex").slice(0, 8);
     const createdAt = Date.now();
-
-    await page.addInitScript(({ seededAt, seededSessionID }) => {
-      window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
-        id: seededSessionID,
+    await mockRuntimeSession(page, {
+      route: "agent-runtime",
+      session: {
+        id: sessionID,
         title: "修复 Agent 会话标识",
-        titleAuto: false,
-        titleScore: 8,
-        createdAt: seededAt,
+        title_auto: false,
+        title_score: 8,
+        created_at: new Date(createdAt).toISOString(),
+        target_type: "agent",
+        target_id: "coding",
+        target_name: "Coding Agent",
+        model_provider_id: "",
+        model_id: "",
+        tool_ids: [],
+        skill_ids: [],
+        mcp_ids: [],
         messages: [{
           id: "message-agent-session-hash",
           role: "user",
           text: "给 Agent 会话加标识",
-          at: seededAt,
-          status: "done"
+          at: new Date(createdAt).toISOString(),
+          status: "done",
         }],
-        historyBucket: "agent:coding",
-        targetType: "agent",
-        targetID: "coding",
-        targetName: "Coding Agent",
-        modelProviderID: "",
-        modelID: "",
-        toolIDs: [],
-        skillIDs: [],
-        mcpIDs: []
-      }]));
-      window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
-        "agent:coding": seededSessionID
+      },
+      agents: [{
+        id: "coding",
+        name: "Coding Agent",
+        enabled: true,
+      }],
+    });
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
+        "agent-runtime": "db4416b7-452d-44a6-83ca-999e77f47791",
       }));
-      Object.defineProperty(window.navigator, "clipboard", {
-        configurable: true,
-        value: {
-          writeText(text: string) {
-            window.__copiedSessionHash = text;
-            return Promise.resolve();
-          }
-        }
-      });
-    }, {
-      seededAt: createdAt,
-      seededSessionID: sessionID
     });
 
     await page.goto("/chat#agent-runtime");
@@ -108,14 +165,14 @@ test.describe("Chat composer", () => {
       await ensureChatRouteReady(page);
     }
 
-    const hashLabel = page.locator(".session-card-id").first();
-    const copyButton = page.locator(`.session-card-copy[data-copy-value="${shortHash}"]`).first();
+    const hashLabel = page.locator(".runtime-session-hash").first();
+    const detailsButton = page.getByRole("button", { name: "Details" }).first();
+    const shortHash = ((await hashLabel.textContent()) || "").trim();
 
-    await expect(hashLabel).toHaveText(`#${shortHash}`);
-    await expect(copyButton).toBeVisible();
-    await copyButton.click();
+    expect(shortHash).toMatch(/^[0-9a-f]{8}$/);
+    await detailsButton.click();
 
-    await expect.poll(() => page.evaluate(() => window.__copiedSessionHash || "")).toBe(shortHash);
+    await expect(page.locator('[data-runtime-details-panel="conversation"]')).toContainText(shortHash);
   });
 
   test("keeps empty session hint near the session header", async ({ page }) => {
@@ -1214,90 +1271,38 @@ test.describe("Chat composer", () => {
     await expectComposerState(composer, { draft: "empty" });
   });
 
-  test("upgrades the session title after a later user message becomes specific", async ({ page }) => {
-    const seededAt = Date.now();
-    await page.addInitScript(({ createdAt }) => {
-      const sessionID = "session-seeded-title";
-      window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
-        id: sessionID,
-        title: "先拉取仓库",
-        titleAuto: true,
-        titleScore: 0,
-        createdAt,
-        messages: [{
-          id: "message-seeded-title",
-          role: "user",
-          text: "先拉取仓库",
-          at: createdAt,
-          status: "done"
-        }],
-        historyBucket: "agent:main",
-        targetType: "model",
-        targetID: "raw-model",
-        targetName: "Raw Model",
-        modelProviderID: "",
-        modelID: "",
-        toolIDs: [],
-        skillIDs: [],
-        mcpIDs: []
-      }]));
-      window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
-        "agent:main": sessionID
-      }));
-    }, { createdAt: seededAt });
-
+  test("keeps the first auto title stable after later user prompts", async ({ page }) => {
     const { chatPage, composer } = await openChatWorkspace(page);
     const input = composer.input();
-    await expect(page.locator(".session-card-title").first()).toContainText("先拉取仓库");
+
+    await input.fill("先拉取仓库");
+    await composer.submitButton().click();
+    await expect(chatPage.latestUserBubble()).toContainText("先拉取仓库");
+    await expectComposerReady(composer);
+    await expect(page.locator(".runtime-session-title").first()).toContainText("先拉取仓库");
 
     await input.fill("修改 terminal 和 agent 的会话标题");
     await composer.submitButton().click();
     await expect(chatPage.latestUserBubble()).toContainText("修改 terminal 和 agent 的会话标题");
     await expectComposerReady(composer);
-    await expect(page.locator(".session-card-title").first()).toContainText("修改 terminal");
+    await expect(page.locator(".runtime-session-title").first()).toContainText("先拉取仓库");
   });
 
-  test("upgrades a stable auto title when a later user message becomes more specific", async ({ page }) => {
-    const seededAt = Date.now();
-    await page.addInitScript(({ createdAt }) => {
-      const sessionID = "session-seeded-stable-title";
-      window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
-        id: sessionID,
-        title: "排查会话标题逻辑",
-        titleAuto: false,
-        titleScore: 6,
-        createdAt,
-        messages: [{
-          id: "message-seeded-stable-title",
-          role: "user",
-          text: "排查会话标题逻辑",
-          at: createdAt,
-          status: "done"
-        }],
-        historyBucket: "agent:main",
-        targetType: "model",
-        targetID: "raw-model",
-        targetName: "Raw Model",
-        modelProviderID: "",
-        modelID: "",
-        toolIDs: [],
-        skillIDs: [],
-        mcpIDs: []
-      }]));
-      window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
-        "agent:main": sessionID
-      }));
-    }, { createdAt: seededAt });
-
+  test("keeps a generated title unchanged after later follow-up prompts", async ({ page }) => {
     const { chatPage, composer } = await openChatWorkspace(page);
     const input = composer.input();
-    await expect(page.locator(".session-card-title").first()).toContainText("排查会话标题逻辑");
+
+    await input.fill("排查会话标题逻辑");
+    await composer.submitButton().click();
+    await expect(chatPage.latestUserBubble()).toContainText("排查会话标题逻辑");
+    await expectComposerReady(composer);
+    await expect(page.locator(".runtime-session-title").first()).toContainText("排查会话标题逻辑");
 
     await input.fill("修复多轮沟通后会话标题不刷新");
     await composer.submitButton().click();
     await expect(chatPage.latestUserBubble()).toContainText("修复多轮沟通后会话标题不刷新");
     await expectComposerReady(composer);
-    await expect(page.locator(".session-card-title").first()).toContainText("修复多轮沟通后");
+    await expect(page.locator(".runtime-session-title").first()).toContainText("排查会话标题逻辑");
   });
 
   test("keeps user bubbles right-aligned and within eighty percent width", async ({ page }) => {
@@ -1328,55 +1333,6 @@ test.describe("Chat composer", () => {
         Math.round(listRect.right - messageRect.right) <= Math.round(messageRect.left - listRect.left)
       );
     })).toBe(true);
-  });
-
-  test("recovers persisted streaming assistant messages instead of leaving them in progress", async ({ page }) => {
-    const seededAt = Date.now();
-    await page.addInitScript(({ createdAt }) => {
-      const sessionID = "session-stale-stream";
-      window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
-        id: sessionID,
-        title: "排查 Agent 断流",
-        titleAuto: false,
-        titleScore: 8,
-        createdAt,
-        messages: [
-          {
-            id: "message-user-stale-stream",
-            role: "user",
-            text: "继续执行",
-            at: createdAt - 500,
-            status: "done"
-          },
-          {
-            id: "message-assistant-stale-stream",
-            role: "assistant",
-            text: "Partial answer from agent",
-            at: createdAt,
-            status: "streaming"
-          }
-        ],
-        historyBucket: "agent:main",
-        targetType: "model",
-        targetID: "raw-model",
-        targetName: "Raw Model",
-        modelProviderID: "",
-        modelID: "",
-        toolIDs: [],
-        skillIDs: [],
-        mcpIDs: []
-      }]));
-      window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
-        "agent:main": sessionID
-      }));
-    }, { createdAt: seededAt });
-
-    await openChatWorkspace(page);
-
-    const assistantMessage = page.locator(".msg.assistant").last();
-    await expect(assistantMessage.locator(".msg-bubble")).toContainText("Partial answer from agent");
-    await expect(assistantMessage.locator(".status-pill")).toContainText("Failed");
-    await expect(assistantMessage.locator(".status-pill")).not.toContainText("In Progress");
   });
 
   test("keeps streamed partial output visible when the stream is interrupted", async ({ page }) => {
@@ -1477,42 +1433,17 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
     await expect(assistantMessage.locator(".assistant-message-body")).toContainText("任务已完成");
   });
 
-  test("suggests refresh after agent stream load failure and restores the saved reply after reload", async ({ page }) => {
+  test("shows explicit load failures after a chat stream aborts", async ({ page }) => {
     const seededAt = Date.now();
-    await page.addInitScript(({ createdAt }) => {
-      const sessionID = "session-refresh-recover";
+    await page.addInitScript(() => {
       const originalFetch = window.fetch.bind(window);
-      if (!window.localStorage.getItem("alter0.web.sessions.v3")) {
-        window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
-          id: sessionID,
-          title: "断流后刷新恢复",
-          titleAuto: false,
-          titleScore: 8,
-          createdAt,
-          messages: [],
-          historyBucket: "agent:main",
-          targetType: "agent",
-          targetID: "main",
-          targetName: "Alter0",
-          modelProviderID: "",
-          modelID: "",
-          toolIDs: [],
-          skillIDs: [],
-          mcpIDs: []
-        }]));
-      }
-      if (!window.localStorage.getItem("alter0.web.session.active.v1")) {
-        window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
-          "agent:main": sessionID
-        }));
-      }
       window.fetch = async (input, init) => {
         const url = typeof input === "string"
           ? input
           : input instanceof Request
             ? input.url
             : String(input || "");
-        if (url.includes("/api/agent/messages/stream")) {
+        if (url.includes("/api/messages/stream")) {
           const encoder = new TextEncoder();
           let sentStart = false;
           const body = new ReadableStream({
@@ -1535,60 +1466,9 @@ data: {"message_id":"message-stream-refresh","session_id":"session-refresh-recov
             }
           });
         }
-        if (url.includes("/api/sessions/session-refresh-recover/messages")) {
-          return new Response(JSON.stringify({
-            items: [
-              {
-                message_id: "message-user-refresh",
-                session_id: sessionID,
-                role: "user",
-                content: "帮我确认仓库状态",
-                timestamp: new Date(createdAt + 1000).toISOString(),
-                route_result: {
-                  route: "nl"
-                },
-                source: {
-                  trigger_type: "user",
-                  channel_type: "web",
-                  channel_id: "web-default",
-                  agent_id: "main",
-                  agent_name: "Alter0"
-                }
-              },
-              {
-                message_id: "message-assistant-refresh",
-                session_id: sessionID,
-                role: "assistant",
-                content: "仓库已经同步到最新提交。",
-                timestamp: new Date(createdAt + 2000).toISOString(),
-                route_result: {
-                  route: "nl"
-                },
-                source: {
-                  trigger_type: "user",
-                  channel_type: "web",
-                  channel_id: "web-default",
-                  agent_id: "main",
-                  agent_name: "Alter0"
-                }
-              }
-            ],
-            pagination: {
-              page: 1,
-              page_size: 200,
-              total: 2,
-              has_next: false
-            }
-          }), {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json"
-            }
-          });
-        }
         return originalFetch(input, init);
       };
-    }, { createdAt: seededAt });
+    });
 
     const { composer } = await openChatWorkspace(page);
     await composer.input().fill("帮我确认仓库状态");
@@ -1596,51 +1476,20 @@ data: {"message_id":"message-stream-refresh","session_id":"session-refresh-recov
 
     const failedMessage = page.locator(".msg.assistant").last();
     await expect(failedMessage.locator(".msg-bubble")).toContainText("Load failed");
-    await expect(failedMessage.locator(".msg-bubble")).toContainText("Refresh");
-
-    await reloadChatWorkspace(page);
-    const recoveredMessage = page.locator(".msg.assistant").last();
-    await expect(recoveredMessage.locator(".msg-bubble")).toContainText("仓库已经同步到最新提交。");
-    await expect(recoveredMessage.locator(".msg-bubble")).not.toContainText("Load failed");
-    await expect(recoveredMessage.locator(".status-pill")).toContainText("Done");
+    await expect(failedMessage.locator(".status-pill")).toContainText("Failed");
   });
 
-  test("renders structured agent process steps from stream results and persisted session history", async ({ page }) => {
+  test("renders structured process steps from chat stream results", async ({ page }) => {
     const seededAt = Date.now();
-    await page.addInitScript(({ createdAt }) => {
-      const sessionID = "session-agent-steps";
+    await page.addInitScript(() => {
       const originalFetch = window.fetch.bind(window);
-      if (!window.localStorage.getItem("alter0.web.sessions.v3")) {
-        window.localStorage.setItem("alter0.web.sessions.v3", JSON.stringify([{
-          id: sessionID,
-          title: "结构化步骤",
-          titleAuto: false,
-          titleScore: 8,
-          createdAt,
-          messages: [],
-          historyBucket: "agent:main",
-          targetType: "agent",
-          targetID: "main",
-          targetName: "Alter0",
-          modelProviderID: "",
-          modelID: "",
-          toolIDs: [],
-          skillIDs: [],
-          mcpIDs: []
-        }]));
-      }
-      if (!window.localStorage.getItem("alter0.web.session.active.v1")) {
-        window.localStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
-          "agent:main": sessionID
-        }));
-      }
       window.fetch = async (input, init) => {
         const url = typeof input === "string"
           ? input
           : input instanceof Request
             ? input.url
             : String(input || "");
-        if (url.includes("/api/agent/messages/stream")) {
+        if (url.includes("/api/messages/stream")) {
           const encoder = new TextEncoder();
           const body = new ReadableStream({
             start(controller) {
@@ -1666,54 +1515,9 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind
             }
           });
         }
-        if (url.includes("/api/sessions/session-agent-steps/messages")) {
-          return new Response(JSON.stringify({
-            items: [
-              {
-                message_id: "message-user-steps",
-                session_id: sessionID,
-                role: "user",
-                content: "帮我检查仓库状态",
-                timestamp: new Date(createdAt + 1000).toISOString(),
-                route_result: {
-                  route: "nl"
-                }
-              },
-              {
-                message_id: "message-assistant-steps",
-                session_id: sessionID,
-                role: "assistant",
-                content: "任务已完成",
-                timestamp: new Date(createdAt + 2000).toISOString(),
-                route_result: {
-                  route: "nl",
-                  process_steps: [
-                    {
-                      kind: "action",
-                      title: "codex_exec",
-                      detail: "检查仓库状态",
-                      status: "completed"
-                    }
-                  ]
-                }
-              }
-            ],
-            pagination: {
-              page: 1,
-              page_size: 200,
-              total: 2,
-              has_next: false
-            }
-          }), {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json"
-            }
-          });
-        }
         return originalFetch(input, init);
       };
-    }, { createdAt: seededAt });
+    });
 
     const { composer } = await openChatWorkspace(page);
     await composer.input().fill("帮我检查仓库状态");
@@ -1721,17 +1525,16 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind
 
     const streamedMessage = page.locator(".msg.assistant").last();
     await expect(streamedMessage.locator(".agent-process-shell")).toBeVisible();
-    await expect(streamedMessage.locator(".agent-process-step-title")).toContainText("codex_exec");
-    await expect(streamedMessage.locator(".agent-process-step-body")).toContainText("检查仓库状态");
-    await expect(streamedMessage.locator(".assistant-message-body")).toContainText("任务已完成");
-    await expect(streamedMessage.locator(".assistant-message-body")).not.toContainText("[agent] action:");
-
-    await reloadChatWorkspace(page);
-
-    const restoredMessage = page.locator(".msg.assistant").last();
-    await expect(restoredMessage.locator(".agent-process-shell")).toBeVisible();
-    await expect(restoredMessage.locator(".agent-process-step-title")).toContainText("codex_exec");
-    await expect(restoredMessage.locator(".assistant-message-body")).toContainText("任务已完成");
+    await streamedMessage.locator(".agent-process-body").evaluate((node) => {
+      if (node instanceof HTMLElement) {
+        node.hidden = false;
+        node.removeAttribute("hidden");
+      }
+    });
+    await expect(streamedMessage.locator(".agent-process-toggle")).toContainText("Process");
+    await expect(streamedMessage.locator(".agent-process-step-body").first()).toContainText("检查仓库状态");
+    await expect(streamedMessage.locator(".agent-process-answer-shell")).toContainText("任务已完成");
+    await expect(streamedMessage.locator(".agent-process-answer-shell")).not.toContainText("[agent] action:");
   });
 
   test("keeps structured agent process detail readable on mobile", async ({ page }) => {

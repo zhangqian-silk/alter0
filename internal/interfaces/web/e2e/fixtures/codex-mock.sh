@@ -64,6 +64,29 @@ thread_id=""
 is_resume="false"
 
 shift
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    resume)
+      break
+      ;;
+    --enable|-i)
+      if [ "$#" -lt 2 ]; then
+        break
+      fi
+      shift 2
+      ;;
+    --json|--skip-git-repo-check|--color|never|--sandbox|danger-full-access)
+      shift
+      ;;
+    -*)
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 if [ "$#" -ge 1 ] && [ "$1" = "resume" ]; then
   is_resume="true"
   shift

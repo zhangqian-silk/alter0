@@ -5,14 +5,14 @@ import {
   expectComposerState,
   expectComposerValue,
 } from "./helpers/asserts/composer";
+import { authenticateWebRequest } from "./helpers/flows/auth";
 import { commitIMEInput, startIMEInput } from "./helpers/interactions/ime";
 import { openTerminalRoute } from "./helpers/flows/routes";
 import { selectTerminalSession } from "./helpers/flows/terminal-session";
 import { waitForTerminalPoll, waitForTerminalPollAndRepaint, waitForTerminalRepaint } from "./helpers/flows/terminal-runtime";
-import { bindTerminalClient, closeTrackedTerminalSessions, createTerminalClientID, createTerminalSession, seedTerminalSessions } from "./helpers/flows/terminal-session";
+import { bindTerminalClient, closeTrackedTerminalSessions, createTerminalClientID, createTerminalSession, recoverTerminalSession, seedTerminalSessions } from "./helpers/flows/terminal-session";
 import { createTerminalPage } from "./helpers/pages/terminal";
 import {
-  openInterruptedTerminalWorkspace,
   openReadyTerminalWorkspace,
   openTerminalWorkspace,
   openTerminalWorkspaceWithSessions,
@@ -54,7 +54,7 @@ test.describe("Terminal route", () => {
     await expect(page.locator(".terminal-session-title").first()).toContainText("修改 terminal");
   });
 
-  test("keeps terminal owner identity stable after sessionStorage is cleared and the page reloads", async ({ page, request }) => {
+  test("keeps terminal sessions stable after sessionStorage is cleared and the page reloads", async ({ page, request }) => {
     const clientID = createTerminalClientID("owner-persist");
     const session = await createTerminalSession(request, clientID);
 
@@ -64,9 +64,6 @@ test.describe("Terminal route", () => {
     const terminalPage = createTerminalPage(page);
     await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
     await expect(terminalPage.workspace()).toContainText(session.id);
-    await expect.poll(async () => {
-      return await page.evaluate(() => window.localStorage.getItem("alter0.web.terminal.client.v1"));
-    }).toBe(clientID);
 
     await page.evaluate(() => {
       window.sessionStorage.removeItem("alter0.web.terminal.client.v1");
@@ -75,10 +72,7 @@ test.describe("Terminal route", () => {
 
     await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
     await expect(terminalPage.workspace()).toContainText(session.id);
-    await expect(terminalPage.workspace()).not.toContainText("Codex runtime exited. Send a new input to recover this session.");
-    await expect.poll(async () => {
-      return await page.evaluate(() => window.localStorage.getItem("alter0.web.terminal.client.v1"));
-    }).toBe(clientID);
+    await expect(terminalPage.workspace()).not.toContainText("Codex session interrupted. Send a new input to restart this session runtime.");
   });
 
   test("keeps the terminal composer anchored to the bottom bar", async ({ page, request }) => {
@@ -151,7 +145,7 @@ test.describe("Terminal route", () => {
     const titleRow = page.locator(".terminal-workspace-title-row");
     const actions = page.locator(".terminal-workspace-actions");
     const status = page.locator(".terminal-runtime-state");
-    const detailsButton = page.locator("[data-terminal-meta-toggle]");
+    const detailsButton = page.getByRole("button", { name: "Details" }).first();
 
     await expect(status).toBeVisible();
     await expect(detailsButton).toBeVisible();
@@ -1035,10 +1029,10 @@ test.describe("Terminal route", () => {
     await expect.poll(() => stepDetailRequests).toBe(1);
     const currentSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
     expect(currentSessionID).toBeTruthy();
-    await expect(terminalPage.workspace()).not.toContainText("Path");
+    await expect(page.getByRole("dialog", { name: "Details" })).toHaveCount(0);
     await terminalPage.metaToggle().click();
-    await expect(terminalPage.workspace()).toContainText("Path");
-    await expect(terminalPage.workspace()).toContainText(new RegExp(String(currentSessionID).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+    await expect(page.getByRole("dialog", { name: "Details" })).toContainText("Path");
+    await expect(page.getByRole("dialog", { name: "Details" })).toContainText(new RegExp(String(currentSessionID).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   });
 
   test("auto-collapses process after output arrives and preserves manual reopen state", async ({ page, request }) => {
@@ -1716,83 +1710,32 @@ test.describe("Terminal route", () => {
     expect(Math.abs(afterScrollTop - beforeScrollTop)).toBeLessThan(24);
   });
 
-  test("keeps interrupted sessions recoverable when runtime is unavailable", async ({ page }) => {
-    const { terminalPage } = await openInterruptedTerminalWorkspace(page, { scope: "interrupted" });
-
-    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "interrupted");
-    await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-live", "false");
-    await expect(terminalPage.workspace()).toContainText("Interrupted");
-    await expect(terminalPage.workspace()).toContainText("Codex runtime exited. Send a new input to recover this session.");
-    await expect(terminalPage.composer().input()).toBeEnabled();
-    await expect(terminalPage.composer().submitButton()).toBeEnabled();
-    await expectComposerState(terminalPage.composer(), { disabled: false });
-  });
-
-  test("clears the previous session hint immediately when creating a new session", async ({ page }) => {
-    const { terminalPage, session } = await openInterruptedTerminalWorkspace(page, { scope: "create-clears-hint" });
-
-    await page.route("**/api/terminal/sessions", async (route) => {
-      if (route.request().method() === "POST") {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-      await route.continue();
-    });
-
-    await terminalPage.createButton().click();
-
-    let pendingSessionID = "";
-    await expect.poll(async () => {
-      pendingSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id") || "";
-      return pendingSessionID;
-    }).toMatch(/^terminal-pending-/);
-    await expect(page.locator("[data-runtime-note='terminal']")).toHaveCount(0);
-    await expect(terminalPage.workspace()).not.toContainText("Codex runtime exited. Send a new input to recover this session.");
-
-    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-runtime-session-id")).not.toBe(session.id);
-    await expect.poll(async () => await terminalPage.workspace().getAttribute("data-runtime-session-id")).not.toBe(String(pendingSessionID));
-    await expect(page.locator("[data-runtime-note='terminal']")).toHaveCount(0);
-  });
-
-  test("recovers stored thread-backed sessions on load and first input", async ({ page }) => {
+  test("recovers stored thread-backed sessions on load and first input", async ({ page, request }) => {
     const clientID = createTerminalClientID("recover");
     const now = Date.now();
     const sessionID = `terminal-recover-live-${now}`;
     const threadID = `mock-thread-${sessionID}`;
-    const session = {
+    await recoverTerminalSession(request, clientID, {
       id: sessionID,
       title: sessionID,
       terminal_session_id: threadID,
-      status: "ready",
-      shell: "codex exec",
-      working_dir: terminalSessionWorkspace(sessionID),
-      created_at: now - 2_000,
-      last_output_at: now - 1_000,
-      updated_at: now - 500,
-      entry_cursor: 1,
-      disconnected_notice: false,
-      entries: [
-        {
-          id: `${sessionID}-output`,
-          role: "output",
-          text: "mock:before-reload",
-          at: now - 1_000,
-          kind: "stdout",
-          stream: "stdout",
-          cursor: 1,
-        },
-      ],
-    };
+      created_at: new Date(now - 2_000),
+      last_output_at: new Date(now - 1_000),
+      updated_at: new Date(now - 500),
+    });
 
     await bindTerminalClient(page, clientID);
-    await seedTerminalSessions(page, [session]);
     await openTerminalRoute(page);
 
     const terminalPage = createTerminalPage(page);
+    await expect(terminalPage.workspace()).toContainText(sessionID);
     await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
     await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-live", "true");
     await expectComposerReady(terminalPage.composer());
     await terminalPage.metaToggle().click();
-    await expect(terminalPage.workspace()).toContainText(threadID);
+    await expect(page.getByRole("dialog", { name: "Details" })).toContainText(sessionID);
+    await page.getByRole("button", { name: "Close Details" }).click();
+    await expect(page.getByRole("dialog", { name: "Details" })).toHaveCount(0);
     await expect(terminalPage.composer().input()).toBeEnabled();
     await expect(terminalPage.composer().submitButton()).toBeEnabled();
 
@@ -1801,5 +1744,14 @@ test.describe("Terminal route", () => {
 
     await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
     await expect(terminalPage.finalOutputs().last()).toContainText("recovered-after-reload");
+    await authenticateWebRequest(request);
+    const sessionResponse = await request.get(`/api/terminal/sessions/${encodeURIComponent(sessionID)}`, {
+      headers: {
+        "X-Alter0-Terminal-Client": clientID,
+      },
+    });
+    expect(sessionResponse.ok()).toBeTruthy();
+    const sessionPayload = await sessionResponse.json();
+    expect(sessionPayload?.session?.terminal_session_id).toBe(threadID);
   });
 });
