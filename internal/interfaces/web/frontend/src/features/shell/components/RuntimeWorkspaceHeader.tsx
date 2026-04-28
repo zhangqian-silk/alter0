@@ -23,7 +23,7 @@ type RuntimeWorkspaceHeaderProps = {
   mobileEmpty?: boolean;
   detailsContent?: ReactNode;
   headerProps?: ComponentPropsWithoutRef<"header">;
-  statusButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "children" | "disabled">;
+  statusButtonProps?: Omit<ComponentPropsWithoutRef<"span">, "children">;
   detailsButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "children" | "aria-expanded" | "aria-controls" | "disabled" | "onClick">;
   detailsPanelProps?: ComponentPropsWithoutRef<"section">;
 };
@@ -189,7 +189,27 @@ export function RuntimeWorkspaceHeader({
             mobileEmpty ? "is-mobile-empty" : undefined,
           )}
         >
-          <h4 title={title}>{title}</h4>
+          <div className="runtime-workspace-title-leading">
+            <span
+              className={joinClassNames(
+                "workspace-header-status",
+                `is-${statusTone}`,
+                statusButtonClassName,
+              )}
+              role="img"
+              aria-label={statusLabel}
+              title={statusLabel}
+              data-runtime-header-signal-container={statusTone}
+              {...statusButtonRestProps}
+            >
+              <span
+                className={`runtime-session-signal is-${statusTone}`}
+                data-runtime-header-signal={statusTone}
+                aria-hidden="true"
+              ></span>
+            </span>
+            <h4 title={title}>{title}</h4>
+          </div>
         </div>
         <div
           className={joinClassNames(
@@ -197,20 +217,6 @@ export function RuntimeWorkspaceHeader({
             mobileEmpty ? "is-mobile-empty" : undefined,
           )}
         >
-          <button
-            className={joinClassNames(
-              "runtime-workspace-button",
-              "is-quiet",
-              "workspace-header-status",
-              `is-${statusTone}`,
-              statusButtonClassName,
-            )}
-            type="button"
-            disabled
-            {...statusButtonRestProps}
-          >
-            {statusLabel}
-          </button>
           <button
             className={joinClassNames(
               "runtime-workspace-button",

@@ -8,11 +8,19 @@ import (
 func TestWorkspaceServiceProcessEnvClearsInheritedWebLoginPassword(t *testing.T) {
 	t.Setenv("ALTER0_WEB_LOGIN_PASSWORD", "shared-gateway-password")
 	t.Setenv("ALTER0_RUNTIME_MANAGER", "systemd")
+	t.Setenv("ALTER0_INTERNAL_SUPERVISOR_ADDR", "http://127.0.0.1:19090")
+	t.Setenv("ALTER0_INTERNAL_SUPERVISOR_TOKEN", "token-1")
 
 	env := workspaceServiceProcessEnv(19191)
 
 	if value := lookupEnvValue(env, "ALTER0_WEB_LOGIN_PASSWORD"); value != "" {
 		t.Fatalf("ALTER0_WEB_LOGIN_PASSWORD = %q, want empty", value)
+	}
+	if value := lookupEnvValue(env, "ALTER0_INTERNAL_SUPERVISOR_ADDR"); value != "" {
+		t.Fatalf("ALTER0_INTERNAL_SUPERVISOR_ADDR = %q, want empty", value)
+	}
+	if value := lookupEnvValue(env, "ALTER0_INTERNAL_SUPERVISOR_TOKEN"); value != "" {
+		t.Fatalf("ALTER0_INTERNAL_SUPERVISOR_TOKEN = %q, want empty", value)
 	}
 	if value := lookupEnvValue(env, "PORT"); value != "19191" {
 		t.Fatalf("PORT = %q, want 19191", value)

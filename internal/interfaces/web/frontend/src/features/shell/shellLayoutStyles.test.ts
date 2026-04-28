@@ -201,6 +201,45 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("border-radius: 12px;");
   });
 
+  it("renders the shared session signal as a tiny dot with visible ripple pulses", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".runtime-session-signal {");
+    expect(stylesheet).toContain("width: 5px;");
+    expect(stylesheet).toContain("height: 5px;");
+    expect(stylesheet).toContain("animation: runtime-session-signal-breathe 1.9s ease-in-out infinite;");
+    expect(stylesheet).toContain(".runtime-session-signal::before,");
+    expect(stylesheet).toContain(".runtime-session-signal::after {");
+    expect(stylesheet).toContain("inset: -2px;");
+    expect(stylesheet).toContain("border: 1px solid color-mix(in srgb, var(--runtime-session-signal-core) 62%, rgba(255, 255, 255, 0));");
+    expect(stylesheet).toContain("animation: runtime-session-signal-ripple 1.9s cubic-bezier(0.22, 1, 0.36, 1) infinite;");
+    expect(stylesheet).toContain("animation-delay: 0.42s;");
+    expect(stylesheet).toContain("@keyframes runtime-session-signal-breathe {");
+    expect(stylesheet).toContain("@keyframes runtime-session-signal-ripple {");
+    expect(stylesheet).toContain("transform: scale(1.58);");
+  });
+
+  it("keeps the workspace header status as a borderless signal-only control", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".workspace-header-status {");
+    expect(stylesheet).toContain("display: inline-flex;");
+    expect(stylesheet).toContain("align-items: center;");
+    expect(stylesheet).toContain("justify-content: center;");
+    expect(stylesheet).toContain("min-width: 14px;");
+    expect(stylesheet).toContain("width: 16px;");
+    expect(stylesheet).toContain("height: 16px;");
+    expect(stylesheet).toContain("padding: 0;");
+    expect(stylesheet).toContain("border: 0;");
+    expect(stylesheet).toContain("background: transparent !important;");
+    expect(stylesheet).toContain("box-shadow: none;");
+    expect(stylesheet).toContain("min-height: auto;");
+    expect(stylesheet).toContain(".workspace-header-status .runtime-session-signal {");
+    expect(stylesheet).toContain("display: block;");
+  });
+
   it("drops blur-heavy mobile chrome so runtime surfaces stay responsive on phones", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");

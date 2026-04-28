@@ -448,14 +448,14 @@ func ensureChildProcessWebLoginPassword(password string) {
 }
 
 func resolveRuntimeChildWebLoginPassword(runtimeChild bool, password string) string {
-	if runtimeChild && reuseGatewayAuthEnabled() {
+	if runtimeChildSkipsWebLoginPassword(runtimeChild) {
 		return ""
 	}
 	return strings.TrimSpace(password)
 }
 
 func validateRequiredWebLoginPassword(runtimeChild bool, password string) error {
-	if runtimeChild && reuseGatewayAuthEnabled() {
+	if runtimeChildSkipsWebLoginPassword(runtimeChild) {
 		return nil
 	}
 	if strings.TrimSpace(password) == "" {
@@ -472,6 +472,14 @@ func reuseGatewayAuthEnabled() bool {
 	default:
 		return false
 	}
+}
+
+func runtimeChildUsesSupervisorControl() bool {
+	return strings.TrimSpace(os.Getenv(supervisorAddrEnv)) != "" && strings.TrimSpace(os.Getenv(supervisorTokenEnv)) != ""
+}
+
+func runtimeChildSkipsWebLoginPassword(runtimeChild bool) bool {
+	return runtimeChild && (reuseGatewayAuthEnabled() || !runtimeChildUsesSupervisorControl())
 }
 
 func mergeNoProxyEntries(existing string, required ...string) string {

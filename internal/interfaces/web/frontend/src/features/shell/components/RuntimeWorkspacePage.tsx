@@ -16,12 +16,16 @@ export type RuntimeWorkspaceDetailsField = {
   multiline?: boolean;
 };
 
+export type RuntimeWorkspaceSessionTone = "ready" | "busy" | "failed";
+
 export type RuntimeWorkspaceSessionItem = {
   id: string;
   active: boolean;
   title: string;
   meta: string;
   shortHash: string;
+  statusTone?: RuntimeWorkspaceSessionTone;
+  statusLabel?: string;
   activeLabel: string;
   idleLabel: string;
   onSelect: () => void;
@@ -127,10 +131,22 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
               >
                 <span className="runtime-session-main">
                   <span className="runtime-session-topline">
-                    <span
-                      className={item.active ? "runtime-session-badge is-active" : "runtime-session-badge"}
-                    >
-                      {item.active ? item.activeLabel : item.idleLabel}
+                    <span className="runtime-session-topline-leading">
+                      {item.statusTone ? (
+                        <>
+                          <span
+                            className={`runtime-session-signal is-${item.statusTone}`}
+                            data-runtime-session-signal={item.statusTone}
+                            aria-hidden="true"
+                          ></span>
+                          <span className="sr-only">{item.statusLabel || item.statusTone}</span>
+                        </>
+                      ) : null}
+                      <span
+                        className={item.active ? "runtime-session-badge is-active" : "runtime-session-badge"}
+                      >
+                        {item.active ? item.activeLabel : item.idleLabel}
+                      </span>
                     </span>
                   </span>
                   <span className="runtime-session-title-row">
