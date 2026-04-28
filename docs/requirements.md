@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-04-26
+> Last update: 2026-04-28
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `agent.execution.react`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -64,7 +64,7 @@
 - `Chat / Agent Runtime / Terminal` 的会话条目需在标题前展示轻量红黄绿波纹信号，并与 workspace header 的状态按钮共享同一状态语义：`Chat / Agent Runtime` 根据当前 assistant 消息状态、错误态和挂起任务推导 `ready / busy / failed`；Terminal 根据 `ready / busy / exited / interrupted` 映射到统一的红黄绿状态信号。workspace header 的状态按钮可见层只显示信号，状态名称仅保留给可访问性语义与悬浮提示。
 - Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；运行页共享同一套 slot 化 workspace scaffold，`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace，`terminal` 在保持原有交互与 DOM 契约的前提下直接挂在共享 `workbench-pane-shell` 下复用同一骨架，不再额外包裹 `route-view / route-body`，`agent / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 React 直接请求控制台或会话 API 渲染。壳层稳定暴露 `app-shell[data-workbench-route]` 与各视图自己的 `data-route / data-conversation-*` 作为样式钩子；`legacy` 资源仅保留兼容样式，不再保留 `LegacyWebShell / ReactRuntimeFacade / bridge / snapshot store`。
 - `/chat` 与 `/login` 默认以英文启动，HTML 根节点语言标记为 `en`；Web Shell 保留显式语言切换入口，切到中文后需同步更新壳层文案与 `document.documentElement.lang`。
-- 登录页需与工作台共享同一视觉基线：使用 `IBM Plex Sans + Sora` 字体组合、近白卡片表面与安全入口语气，避免退回默认系统登录页样式。
+- 登录页需与工作台共享同一视觉基线：使用 `IBM Plex Sans + Sora` 字体组合、近白卡片表面与安全入口语气，避免退回默认系统登录页样式；移动端按动态视口单屏收口，使用 safe-area 内边距消除额外页面留白，并默认避免整页垂直滚动。
 - Web Shell 的稳定视觉基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime / Terminal` 在主面板内部统一采用「会话列 + 主时间线工作区 + 底部 Composer + 固定 workspace header」结构，并直接复用会话栏、workspace body、chat screen、composer 与移动端顶部操作行语义 class；移动端顶部继续直接提供 `Menu / Sessions / New`；固定 workspace header 只保留会话标题、状态按钮与 `Details` 入口，具体会话详情与页面差异化配置统一放入 `Details` 面板，且面板首屏默认以紧凑摘要栅格承载高频字段。Composer 统一采用“上层输入区 + 下层工具栏”两层结构：左侧收口为正方形低圆角的四点网格会话设置入口与回形针附件按钮，配置在面板内部按 `Agent / Model / Tools / Skills` tab 切换，右侧只保留发送动作；输入区需要保持足够横向留白与可读宽度。`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，三者状态与交互全部由 React 直接维护。常规工作台页面保持近白表面、低对比边框、浅灰说明层和浅蓝选中态，不再为不同页面维持分散的高装饰视觉语言。
 - `Agent` 与其他 React 托管页面共享同一 restrained workbench surface system：列表卡片、管理表单、托管字段块与消息块使用一致的近白主表面、浅灰辅助层和浅蓝选中态。
 - `/chat` 与登录页的对外品牌文案统一使用 `Alter0`：浏览器标题、登录标题、导航品牌位、会话栏标题与欢迎区 tag 不再暴露小写服务名。
@@ -73,7 +73,7 @@
 - 移动端 Web Shell 使用 `VisualViewport` 驱动的 `--mobile-viewport-height` 与 `--keyboard-offset` 协调壳体和输入区：浏览器工具栏切换时壳体继续贴合可视区域，软键盘弹起时主工作区保持稳定高度，仅输入区按键盘偏移移动，不出现底部空白、内容裁切或整页上移。
 - 移动端运行页的 `Menu` 与 `Sessions` 抽屉必须保持统一开合语义：二者共用同一份当前面板状态，始终互斥；打开其一时立即关闭另一侧，点击遮罩、切换路由、切换会话或创建新会话后不得残留旧的展开层。
 - 移动端运行页的 `Menu / Sessions` 抽屉需优先保证真机稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不叠加多层位移、淡出或条目级顺序动画；抽屉内会话项按最近时间分组，并统一采用「状态文本 / 标题 / 摘要 / 底部短标识 / 尾侧删除」结构，避免退回松散白卡片或过度胶囊化。
-- 共享运行时的短哈希预览 host 与主域工作台必须落在同一登录保护边界内：`/login` 可直接在预览 host 打开，登录态 cookie 需对 `*.alter0.cn` 生效，避免主域与预览子域重复维护独立会话。
+- 共享运行时的短哈希预览 host 与主域工作台必须落在同一登录保护边界内：`/login` 可直接在预览 host 打开，但登录态按当前 host 独立维护，不再依赖 `*.alter0.cn` 根域共享 cookie。
 - 共享运行时采用 `supervisor -> web child` 进程模型时，主 Web child 必须继承非空 `web_login_password`；只有 workspace service 托管出来的预览后端允许通过专用运行时标记移除自身登录层，复用共享网关登录态。
 - `Chat / Agent Runtime` 的移动端键盘弹出链路需与 `Terminal` 对齐：首次触摸输入框时使用 `preventScroll` 聚焦并在聚焦阶段持续锚定 `window.scrollY = 0`，不允许首次弹出软键盘时把公共操作行顶出可视区，也不允许因 `VisualViewport` 首次收缩造成页面整体分辨率/可视区域突变。
 - `Chat / Agent Runtime / Terminal` 在移动端采用固定底部 Composer 时，消息滚动区与空态工作区都必须按当前 Composer 的真实遮挡高度动态回收；对话、长输出与空态说明不得落到输入区下方，也不得依赖静态 padding 估算占位。

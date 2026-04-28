@@ -148,7 +148,7 @@ func TestLoginFlowSetsCookieAndAllowsAccess(t *testing.T) {
 	}
 }
 
-func TestLoginFlowSharesCookieAcrossPreviewSubdomains(t *testing.T) {
+func TestLoginFlowUsesHostScopedCookieAndRejectsLegacySharedCookie(t *testing.T) {
 	registry, err := newFileWorkspaceServiceRegistry("", "alter0.cn")
 	if err != nil {
 		t.Fatalf("new workspace service registry: %v", err)
@@ -184,18 +184,43 @@ func TestLoginFlowSharesCookieAcrossPreviewSubdomains(t *testing.T) {
 	if len(cookies) == 0 {
 		t.Fatalf("expected session cookie after login")
 	}
-	if cookies[0].Domain != "alter0.cn" {
-		t.Fatalf("expected shared cookie domain alter0.cn, got %q", cookies[0].Domain)
+	var sessionCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == webLoginCookieName {
+			sessionCookie = cookie
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatalf("expected host-scoped session cookie %q", webLoginCookieName)
+	}
+	if sessionCookie.Domain != "" {
+		t.Fatalf("expected host-scoped cookie without domain, got %q", sessionCookie.Domain)
+	}
+
+	legacyCookieHeaderFound := false
+	for _, header := range loginRec.Header().Values("Set-Cookie") {
+		if strings.Contains(header, legacySharedWebLoginCookieName+"=") && strings.Contains(strings.ToLower(header), "domain=alter0.cn") {
+			legacyCookieHeaderFound = true
+			break
+		}
+	}
+	if !legacyCookieHeaderFound {
+		t.Fatalf("expected login response to clear legacy shared preview cookie")
 	}
 
 	accessReq := httptest.NewRequest(http.MethodGet, "https://63717262.alter0.cn/chat", nil)
 	accessReq.Host = "63717262.alter0.cn"
 	accessReq.Header.Set("Accept", "text/html")
-	accessReq.AddCookie(cookies[0])
+	accessReq.AddCookie(&http.Cookie{Name: legacySharedWebLoginCookieName, Value: "token-1"})
 	accessRec := httptest.NewRecorder()
 	mux.ServeHTTP(accessRec, accessReq)
 
-	if accessRec.Code != http.StatusNoContent {
-		t.Fatalf("expected preview host access success, got %d", accessRec.Code)
+	if accessRec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected preview host to reject legacy shared cookie, got %d", accessRec.Code)
+	}
+	location := accessRec.Header().Get("Location")
+	if !strings.HasPrefix(location, "/login?next=") {
+		t.Fatalf("expected preview host to redirect legacy shared cookie to login, got %q", location)
 	}
 }

@@ -60,7 +60,8 @@ const (
 	maxTaskArtifactCount                          = 128
 	maxTaskArtifactSizeBytes                      = 8 * 1024 * 1024
 	taskArtifactReadTimeout                       = 3 * time.Second
-	webLoginCookieName                            = "alter0_web_session"
+	webLoginCookieName                            = "alter0_web_session_host"
+	legacySharedWebLoginCookieName                = "alter0_web_session"
 	webLoginCookieTTL                             = 24 * time.Hour
 	webPageCacheControl                           = "no-cache"
 	bridgeStaticAssetCacheControl                 = "no-cache"
@@ -857,10 +858,8 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 			SameSite: http.SameSiteLaxMode,
 			MaxAge:   int(webLoginCookieTTL.Seconds()),
 		}
-		if domain := s.resolveLoginCookieDomain(r.Host); domain != "" {
-			cookie.Domain = domain
-		}
 		http.SetCookie(w, cookie)
+		s.clearLegacySharedLoginCookie(w, r)
 		http.Redirect(w, r, nextPath, http.StatusSeeOther)
 		return
 	default:
@@ -887,10 +886,8 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	}
-	if domain := s.resolveLoginCookieDomain(r.Host); domain != "" {
-		cookie.Domain = domain
-	}
 	http.SetCookie(w, cookie)
+	s.clearLegacySharedLoginCookie(w, r)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -906,7 +903,7 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Alter0 Login</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -914,9 +911,10 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
   <style>
     :root{color-scheme:light}
     *{box-sizing:border-box}
-    body{margin:0;min-height:100vh;background:#f4f7fb;background-image:linear-gradient(180deg,rgba(255,255,255,.84) 0%,rgba(244,247,251,.94) 52%,rgba(232,238,245,1) 100%),linear-gradient(rgba(148,163,184,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.05) 1px,transparent 1px);background-size:auto,32px 32px,32px 32px;color:#0f172a;font:15px/1.6 "IBM Plex Sans","Segoe UI",sans-serif}
-    .wrap{min-height:100vh;display:grid;place-items:center;padding:24px}
-    .card{width:min(100%,420px);display:grid;gap:18px;padding:24px;border:1px solid rgba(15,23,42,.08);border-radius:24px;background:rgba(255,255,255,.96);box-shadow:0 18px 42px -34px rgba(15,23,42,.18)}
+    html{height:100%;background:#f4f7fb}
+    body{margin:0;min-height:100vh;min-height:100dvh;overflow:hidden;overscroll-behavior:none;background:#f4f7fb;background-image:linear-gradient(180deg,rgba(255,255,255,.84) 0%,rgba(244,247,251,.94) 52%,rgba(232,238,245,1) 100%),linear-gradient(rgba(148,163,184,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.05) 1px,transparent 1px);background-size:auto,32px 32px,32px 32px;color:#0f172a;font:15px/1.6 "IBM Plex Sans","Segoe UI",sans-serif}
+    .wrap{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:max(18px,env(safe-area-inset-top)) 24px;padding-bottom:max(18px,env(safe-area-inset-bottom))}
+    .card{width:min(100%,420px);max-height:100%;display:grid;gap:18px;padding:24px;border:1px solid rgba(15,23,42,.08);border-radius:24px;background:rgba(255,255,255,.96);box-shadow:0 18px 42px -34px rgba(15,23,42,.18);overflow:auto}
     .eyebrow{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;border:1px solid rgba(37,99,235,.12);background:rgba(239,246,255,.92);color:#1d4ed8;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
     .copy{display:grid;gap:8px}
     h1{margin:0;font:700 28px/1.15 "Sora","IBM Plex Sans","Segoe UI",sans-serif;letter-spacing:-.03em}
@@ -930,6 +928,13 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
     button:hover{background:#1e40af;border-color:#1e40af}
     .alert{margin:0;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:14px;padding:12px 14px}
     .meta{font-size:13px;color:#64748b}
+    @media (max-width: 640px){
+      body{font-size:14px}
+      .wrap{padding:max(14px,env(safe-area-inset-top)) 14px;padding-bottom:max(14px,env(safe-area-inset-bottom))}
+      .card{gap:16px;padding:20px;border-radius:22px}
+      h1{font-size:24px}
+      p{line-height:1.55}
+    }
   </style>
 </head>
 <body>
@@ -1000,7 +1005,24 @@ func (s *Server) isAuthenticated(r *http.Request) bool {
 	return secureStringEqual(strings.TrimSpace(cookie.Value), strings.TrimSpace(s.webSessionToken))
 }
 
-func (s *Server) resolveLoginCookieDomain(host string) string {
+func (s *Server) clearLegacySharedLoginCookie(w http.ResponseWriter, r *http.Request) {
+	domain := s.resolveLegacySharedLoginCookieDomain(r.Host)
+	if domain == "" {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     legacySharedWebLoginCookieName,
+		Value:    "",
+		Path:     "/",
+		Domain:   domain,
+		HttpOnly: true,
+		Secure:   requestUsesHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+}
+
+func (s *Server) resolveLegacySharedLoginCookieDomain(host string) string {
 	if s == nil || s.workspaceService == nil {
 		return ""
 	}
@@ -1010,7 +1032,7 @@ func (s *Server) resolveLoginCookieDomain(host string) string {
 		return ""
 	}
 	if normalizedHost == baseDomain || strings.HasSuffix(normalizedHost, "."+baseDomain) {
-		return "." + baseDomain
+		return baseDomain
 	}
 	return ""
 }
