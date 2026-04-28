@@ -50,11 +50,7 @@ export function useRuntimeComposerViewportSync({
     const syncComposerInset = () => {
       const workspaceRect = workspaceBodyNode.getBoundingClientRect();
       const composerRect = composerShellNode.getBoundingClientRect();
-      const keyboardOffsetValue = Number.parseFloat(
-        window.getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset"),
-      );
-      const keyboardOffset = Number.isFinite(keyboardOffsetValue) ? keyboardOffsetValue : 0;
-      const restInset = Math.max(0, Math.ceil(composerRect.height - keyboardOffset));
+      const restInset = Math.max(0, Math.ceil(composerRect.height));
       const activeInset = inputFocused
         ? Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top))
         : 0;
