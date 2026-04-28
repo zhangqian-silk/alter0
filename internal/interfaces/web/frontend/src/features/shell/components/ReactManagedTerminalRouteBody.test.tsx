@@ -162,6 +162,14 @@ describe("ReactManagedTerminalRouteBody", () => {
               },
             },
             {
+              id: "artifact-preview",
+              name: "Artifact Preview",
+              enabled: true,
+              metadata: {
+                "skill.description": "Publish text, image, and code artifacts to a session preview subdomain.",
+              },
+            },
+            {
               id: "summary",
               name: "Summary",
               enabled: true,
@@ -1331,6 +1339,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     const configPanel = await screen.findByTestId("terminal-skill-selector");
     expect(within(configPanel).getByLabelText("Deploy Test Service")).toBeChecked();
     expect(within(configPanel).getByLabelText("Frontend Design")).toBeChecked();
+    expect(within(configPanel).getByLabelText("Artifact Preview")).toBeChecked();
     expect(within(configPanel).getByText("Summary")).toBeInTheDocument();
     expect(within(configPanel).queryByText("Agent Private")).not.toBeInTheDocument();
 
@@ -1350,7 +1359,7 @@ describe("ReactManagedTerminalRouteBody", () => {
       && String(init?.method || "GET").toUpperCase() === "POST");
     expect(inputCall).toBeTruthy();
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
-    expect(payload.skill_ids).toEqual(["frontend-design", "deploy-test-service", "summary"]);
+    expect(payload.skill_ids).toEqual(["frontend-design", "deploy-test-service", "artifact-preview", "summary"]);
   });
 
   it("does not refresh a ready session while the terminal output is being scrolled", async () => {

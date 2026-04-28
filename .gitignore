@@ -28,7 +28,20 @@ go.work.sum
 .env
 
 # local runtime persistence
-.alter0/
+.alter0/*
+!.alter0/agents/
+!.alter0/skills/
+.alter0/agents/*
+!.alter0/agents/*/
+.alter0/agents/*/*
+!.alter0/agents/*/SKILL.md
+.alter0/skills/*
+!.alter0/skills/*/
+.alter0/skills/*/*
+!.alter0/skills/*/SKILL.md
+!.alter0/skills/*/scripts/
+.alter0/skills/*/scripts/*
+!.alter0/skills/*/scripts/*.sh
 
 # temporary outputs, test artifacts, debug files
 output/

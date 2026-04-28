@@ -60,6 +60,21 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if !strings.Contains(frontendGuide, "BOLD aesthetic direction") || !strings.Contains(frontendGuide, "Avoid generic fonts like Arial and Inter") {
 		t.Fatalf("expected frontend-design guide covers imported frontend direction, got %q", frontendGuide)
 	}
+
+	artifactPreview, ok := service.ResolveSkill("artifact-preview")
+	if !ok {
+		t.Fatalf("expected artifact-preview skill exists")
+	}
+	if got := artifactPreview.Metadata[builtinSkillFilePathKey]; got != ".alter0/skills/artifact-preview/SKILL.md" {
+		t.Fatalf("artifact-preview skill file path = %q, want .alter0/skills/artifact-preview/SKILL.md", got)
+	}
+	artifactGuide := artifactPreview.Metadata[builtinSkillGuideKey]
+	if !strings.Contains(artifactGuide, "scripts/publish_preview_artifact.sh") || !strings.Contains(artifactGuide, "<service>.<short_hash>.alter0.cn") {
+		t.Fatalf("expected artifact-preview guide covers helper script and session subdomain host, got %q", artifactGuide)
+	}
+	if !strings.Contains(artifactGuide, "text") || !strings.Contains(artifactGuide, "image") || !strings.Contains(artifactGuide, "code") {
+		t.Fatalf("expected artifact-preview guide covers text, image, and code previews, got %q", artifactGuide)
+	}
 }
 
 func TestEnsureBuiltinSkillFilesSkipsWhenNoBuiltinFileBackedSkillExists(t *testing.T) {

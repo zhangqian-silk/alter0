@@ -36,8 +36,9 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 ### Skill
 
 - 支持 Skill 创建、更新、删除与列表查询。
-- 默认提供 `default-nl`、`memory`、`deploy-test-service` 与 `frontend-design`。
-- `deploy-test-service` 与 `frontend-design` 作为项目内置 file-backed Skill 由源码仓库直接承载并在启动时校验文件存在；当前路径分别为 `.alter0/skills/deploy-test-service/SKILL.md` 与 `docs/skills/frontend-design/SKILL.md`。
+- 默认提供 `default-nl`、`memory`、`deploy-test-service`、`frontend-design` 与 `artifact-preview`。
+- `deploy-test-service`、`frontend-design` 与 `artifact-preview` 作为项目内置 file-backed Skill 由源码仓库直接承载并在启动时校验文件存在；当前路径分别为 `.alter0/skills/deploy-test-service/SKILL.md`、`docs/skills/frontend-design/SKILL.md` 与 `.alter0/skills/artifact-preview/SKILL.md`。
+- `artifact-preview` 额外提供 `.alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>.<session_short_hash>.alter0.cn`。
 - Skill 协议支持文件路径与可写属性。
 - Agent 私有 file-backed Skill 由运行时自动注入，不要求出现在控制面内置 Skill 列表。
 
