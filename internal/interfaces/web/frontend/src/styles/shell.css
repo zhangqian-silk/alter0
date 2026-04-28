@@ -3504,6 +3504,89 @@ body::after {
   color: var(--shell-muted);
 }
 
+.runtime-session-topline-leading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.runtime-session-signal {
+  --runtime-session-signal-core: rgba(34, 197, 94, 0.96);
+  --runtime-session-signal-halo: rgba(34, 197, 94, 0.28);
+  position: relative;
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--runtime-session-signal-core);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.94),
+    0 0 0 1px color-mix(in srgb, var(--runtime-session-signal-halo) 54%, rgba(255, 255, 255, 0));
+  animation: runtime-session-signal-breathe 1.9s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.runtime-session-signal::before,
+.runtime-session-signal::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 1px solid color-mix(in srgb, var(--runtime-session-signal-core) 62%, rgba(255, 255, 255, 0));
+  opacity: 0;
+  transform: scale(0.55);
+  animation: runtime-session-signal-ripple 1.9s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.runtime-session-signal::before {
+  animation-delay: 0s;
+}
+
+.runtime-session-signal::after {
+  animation-delay: 0.42s;
+}
+
+.runtime-session-signal.is-busy {
+  --runtime-session-signal-core: rgba(245, 158, 11, 0.98);
+  --runtime-session-signal-halo: rgba(245, 158, 11, 0.3);
+}
+
+.runtime-session-signal.is-failed {
+  --runtime-session-signal-core: rgba(239, 68, 68, 0.98);
+  --runtime-session-signal-halo: rgba(239, 68, 68, 0.3);
+}
+
+@keyframes runtime-session-signal-breathe {
+  0%,
+  100% {
+    opacity: 0.82;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+@keyframes runtime-session-signal-ripple {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  20% {
+    opacity: 0.6;
+  }
+  70% {
+    opacity: 0.12;
+    transform: scale(1.82);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.58);
+  }
+}
+
 .runtime-session-badge {
   display: inline-flex;
   align-items: center;
@@ -3646,6 +3729,20 @@ body::after {
 .runtime-session-card.is-active .runtime-session-hash,
 .runtime-session-card.is-active .runtime-session-delete {
   color: rgba(51, 65, 85, 0.92);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runtime-session-signal {
+    animation: none;
+    transform: none;
+  }
+
+  .runtime-session-signal::before,
+  .runtime-session-signal::after {
+    animation: none;
+    opacity: 0.18;
+    transform: scale(1.1);
+  }
 }
 
 .conversation-session-empty {
@@ -3823,6 +3920,17 @@ body::after {
 }
 
 .runtime-workspace-copy.is-mobile-empty {
+  min-width: 0;
+}
+
+.runtime-workspace-title-leading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.runtime-workspace-title-leading h4 {
   min-width: 0;
 }
 
@@ -4006,9 +4114,26 @@ body::after {
 }
 
 .workspace-header-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  min-width: 14px;
+  min-height: 16px;
+  min-height: auto;
+  height: 16px;
+  height: auto;
+  padding: 0;
+  gap: 0;
   opacity: 1;
   cursor: default;
   pointer-events: none;
+  border: 0;
+  background: transparent !important;
+  box-shadow: none;
+  border-radius: 999px;
+  overflow: visible;
+  flex: 0 0 auto;
 }
 
 .workspace-header-status:disabled {
@@ -4016,28 +4141,54 @@ body::after {
 }
 
 .workspace-header-status.is-ready {
-  border-color: rgba(134, 239, 172, 0.9);
-  background: rgba(240, 253, 244, 0.96);
+  border: 0;
+  background: transparent !important;
   color: #166534;
 }
 
 .workspace-header-status.is-busy {
-  border-color: rgba(147, 197, 253, 0.9);
-  background: rgba(239, 246, 255, 0.96);
+  border: 0;
+  background: transparent !important;
   color: #1d4ed8;
 }
 
 .workspace-header-status.is-failed {
-  border-color: rgba(252, 165, 165, 0.9);
-  background: rgba(254, 242, 242, 0.96);
+  border: 0;
+  background: transparent !important;
   color: #b91c1c;
 }
 
 .workspace-header-status.is-interrupted,
 .workspace-header-status.is-exited {
-  border-color: rgba(203, 213, 225, 0.96);
-  background: rgba(248, 250, 252, 0.98);
+  border: 0;
+  background: transparent !important;
   color: #475569;
+}
+
+.workspace-header-status .runtime-session-signal {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.workspace-header-actions .workspace-header-status,
+[data-runtime-view="conversation"] .runtime-workspace-actions .workspace-header-status,
+.runtime-workspace-head[data-runtime-header-kind="terminal"] .workspace-header-actions .workspace-header-status {
+  min-width: 14px;
+  min-height: auto;
+  height: auto;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  background: transparent !important;
+  box-shadow: none;
+}
+
+.workspace-header-actions .workspace-header-status:hover,
+[data-runtime-view="conversation"] .runtime-workspace-actions .workspace-header-status:hover,
+.runtime-workspace-head[data-runtime-header-kind="terminal"] .workspace-header-actions .workspace-header-status:hover {
+  border: 0;
+  background: transparent !important;
+  box-shadow: none;
 }
 
 .workspace-header-details.is-active {
@@ -5094,12 +5245,18 @@ body::after {
 }
 
 .workspace-header-status {
-  gap: 7px;
+  min-width: 14px;
+  min-height: auto;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  background: transparent !important;
+  box-shadow: none;
 }
 
 .workspace-header-status.is-ready {
-  border-color: rgba(220, 252, 231, 0.96);
-  background: #fff;
+  border: 0;
+  background: transparent !important;
   color: #16a34a;
 }
 

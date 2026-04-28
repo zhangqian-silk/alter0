@@ -158,6 +158,13 @@ describe("ConversationWorkspace", () => {
       title: "New",
       messages: [],
     };
+    runtimeMock.sessions = [
+      {
+        id: "session-1",
+        title: "New",
+        messages: [],
+      },
+    ];
     runtimeMock.sessionItems = [
       {
         id: "session-1",
@@ -246,10 +253,15 @@ describe("ConversationWorkspace", () => {
     expect(workspaceHeader).toHaveAttribute("data-runtime-workspace-header", "true");
     expect(workspaceHeader).toHaveClass("is-sticky");
     expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
-    expect(within(workspaceHeader).getByRole("button", { name: "Ready" })).toHaveClass(
+    const statusIndicator = within(workspaceHeader).getByLabelText("Ready");
+    expect(statusIndicator).toHaveClass(
       "workspace-header-status",
       "is-ready",
     );
+    expect(statusIndicator).toHaveAttribute("data-runtime-header-signal-container", "ready");
+    expect(statusIndicator.querySelector("[data-runtime-header-signal='ready']")).toBeInTheDocument();
+    const titleLeading = workspaceHeader.querySelector(".runtime-workspace-title-leading") as HTMLElement;
+    expect(titleLeading.firstElementChild).toBe(statusIndicator);
     expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toHaveClass("workspace-header-details");
     expect(within(workspaceHeader).queryByRole("button", { name: "Workspace Flow" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
@@ -552,6 +564,92 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "false");
   });
 
+  it("maps a streaming conversation session to a busy status signal", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "Run deployment check",
+      messages: [
+        {
+          id: "message-1",
+          role: "assistant",
+          text: "Thinking...",
+          attachments: [],
+          route: "",
+          source: "",
+          error: false,
+          status: "streaming",
+          at: Date.parse("2026-04-23T09:02:00Z"),
+          processSteps: [],
+          taskID: "",
+          taskStatus: "",
+          taskPending: false,
+          taskResultDelivered: false,
+          taskResultFor: "",
+        },
+      ],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [
+      {
+        id: "session-1",
+        title: "Run deployment check",
+        meta: "now",
+        shortHash: "abcd1234",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
+        active: true,
+      },
+    ];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(document.querySelector("[data-runtime-session-card='session-1']")).toHaveAttribute("data-runtime-session-tone", "busy");
+    expect(document.querySelector("[data-runtime-session-signal='busy']")).toBeInTheDocument();
+    expect(screen.getByLabelText("Busy")).toBeInTheDocument();
+  });
+
+  it("maps a failed conversation session to a failed status signal", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "Fix failing request",
+      messages: [
+        {
+          id: "message-1",
+          role: "assistant",
+          text: "Request failed",
+          attachments: [],
+          route: "",
+          source: "",
+          error: true,
+          status: "error",
+          at: Date.parse("2026-04-23T09:02:00Z"),
+          processSteps: [],
+          taskID: "",
+          taskStatus: "",
+          taskPending: false,
+          taskResultDelivered: false,
+          taskResultFor: "",
+        },
+      ],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [
+      {
+        id: "session-1",
+        title: "Fix failing request",
+        meta: "now",
+        shortHash: "abcd1234",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
+        active: true,
+      },
+    ];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(document.querySelector("[data-runtime-session-card='session-1']")).toHaveAttribute("data-runtime-session-tone", "failed");
+    expect(document.querySelector("[data-runtime-session-signal='failed']")).toBeInTheDocument();
+    expect(screen.getByLabelText("Failed")).toBeInTheDocument();
+  });
+
   it("keeps the mobile session pane mutually exclusive with the menu overlay", () => {
     const toggleMobileNav = vi.fn();
 
@@ -608,7 +706,7 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector("[data-runtime-attachment-strip='true']")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-submit .runtime-composer-submit-icon svg")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Fix runtime shell" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ready" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Tools" })).not.toBeInTheDocument();
@@ -645,7 +743,7 @@ describe("ConversationWorkspace", () => {
     expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ready" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Agent" })).not.toBeInTheDocument();
@@ -685,7 +783,7 @@ describe("ConversationWorkspace", () => {
 
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(screen.getByRole("heading", { name: "Investigate release drift" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ready" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Agent" })).not.toBeInTheDocument();
@@ -701,7 +799,7 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector(".conversation-console-panel")).toHaveClass("is-empty");
     expect(document.querySelector("[data-runtime-screen='conversation']")).toHaveClass("runtime-workspace-screen", "is-empty");
     expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ready" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Tools / MCP" })).not.toBeInTheDocument();
@@ -764,7 +862,7 @@ describe("ConversationWorkspace", () => {
 
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(screen.getByRole("heading", { name: "Investigate release drift" })).toBeInTheDocument();
-    expect(within(workspaceHeader).getByRole("button", { name: "Ready" })).toBeInTheDocument();
+    expect(within(workspaceHeader).getByLabelText("Ready")).toBeInTheDocument();
     expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Choose Agent" })).not.toBeInTheDocument();

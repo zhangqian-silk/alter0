@@ -676,6 +676,17 @@ function sessionStatusClassName(status: string) {
   }
 }
 
+function sessionSignalTone(status: string): "ready" | "busy" | "failed" {
+  switch (normalizeStatus(status)) {
+    case "busy":
+      return "busy";
+    case "ready":
+      return "ready";
+    default:
+      return "failed";
+  }
+}
+
 function stepStatusClassName(status: string) {
   const normalized = normalizeText(status).toLowerCase();
   if (["busy", "running", "starting"].includes(normalized)) {
@@ -1622,12 +1633,15 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         ...group,
         items: group.items.map((session) => {
           const active = session.id === activeSessionID;
+          const tone = sessionSignalTone(session.status || "");
           return {
             id: session.id,
             active,
             title: normalizeText(session.title || session.id),
             meta: sessionLastOutputLabel(session, copy),
             shortHash: hashSessionIDShort(normalizeText(session.id)),
+            statusTone: tone,
+            statusLabel: renderStatus(session.status || "", copy),
             activeLabel: copy.current,
             idleLabel: copy.sessionLabel,
             onSelect: () => void selectSession(session.id),
@@ -1640,6 +1654,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
             shellProps: {
               "data-runtime-session-card": session.id,
               "data-runtime-session-status": normalizeStatus(session.status || ""),
+              "data-runtime-session-tone": tone,
             },
             buttonClassName: active ? "runtime-session-select active" : "runtime-session-select",
             buttonProps: { "data-runtime-session-select": session.id },

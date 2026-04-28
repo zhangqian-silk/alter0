@@ -86,7 +86,10 @@ func TestEnsureChildProcessWebLoginPasswordSetsAndClearsEnv(t *testing.T) {
 	}
 }
 
-func TestResolveRuntimeChildWebLoginPasswordKeepsGatewayPasswordForChild(t *testing.T) {
+func TestResolveRuntimeChildWebLoginPasswordKeepsGatewayPasswordForSupervisorChild(t *testing.T) {
+	t.Setenv(supervisorAddrEnv, "http://127.0.0.1:19090")
+	t.Setenv(supervisorTokenEnv, "token-1")
+
 	if got := resolveRuntimeChildWebLoginPassword(false, " secret "); got != "secret" {
 		t.Fatalf("non-child password = %q, want secret", got)
 	}
@@ -99,7 +102,19 @@ func TestResolveRuntimeChildWebLoginPasswordKeepsGatewayPasswordForChild(t *test
 	}
 }
 
+func TestResolveRuntimeChildWebLoginPasswordClearsPasswordForWorkspaceServiceChild(t *testing.T) {
+	t.Setenv(supervisorAddrEnv, "")
+	t.Setenv(supervisorTokenEnv, "")
+
+	if got := resolveRuntimeChildWebLoginPassword(true, " secret "); got != "" {
+		t.Fatalf("workspace service child password = %q, want empty", got)
+	}
+}
+
 func TestValidateRequiredWebLoginPasswordRequiresPasswordForGateway(t *testing.T) {
+	t.Setenv(supervisorAddrEnv, "http://127.0.0.1:19090")
+	t.Setenv(supervisorTokenEnv, "token-1")
+
 	if err := validateRequiredWebLoginPassword(false, " secret "); err != nil {
 		t.Fatalf("expected non-child password to pass validation, got %v", err)
 	}
@@ -113,6 +128,15 @@ func TestValidateRequiredWebLoginPasswordRequiresPasswordForGateway(t *testing.T
 		t.Fatal("expected non-child runtime to reject empty web login password")
 	}
 	t.Setenv("ALTER0_WEB_REUSE_GATEWAY_AUTH", "1")
+	if err := validateRequiredWebLoginPassword(true, ""); err != nil {
+		t.Fatalf("expected workspace service child to allow empty web login password, got %v", err)
+	}
+}
+
+func TestValidateRequiredWebLoginPasswordAllowsWorkspaceServiceChildWithoutPassword(t *testing.T) {
+	t.Setenv(supervisorAddrEnv, "")
+	t.Setenv(supervisorTokenEnv, "")
+
 	if err := validateRequiredWebLoginPassword(true, ""); err != nil {
 		t.Fatalf("expected workspace service child to allow empty web login password, got %v", err)
 	}

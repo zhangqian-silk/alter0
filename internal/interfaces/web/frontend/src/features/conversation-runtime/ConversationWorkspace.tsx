@@ -74,6 +74,62 @@ function RuntimeSessionControlIcon() {
   );
 }
 
+type ConversationSessionSignalTone = "ready" | "busy" | "failed";
+
+function normalizeConversationSessionMessageStatus(value: string) {
+  return normalizeText(value).toLowerCase();
+}
+
+function resolveConversationSessionSignalTone(session: {
+  messages?: Array<{
+    role?: string;
+    status?: string;
+    error?: boolean;
+    taskPending?: boolean;
+  }>;
+} | null | undefined): ConversationSessionSignalTone {
+  const messages = Array.isArray(session?.messages) ? session.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "assistant") {
+      continue;
+    }
+    const status = normalizeConversationSessionMessageStatus(message.status || "");
+    if (message.error || ["error", "failed", "canceled", "cancelled"].includes(status)) {
+      return "failed";
+    }
+    if (message.taskPending || ["streaming", "queued", "running", "in_progress", "inprogress"].includes(status)) {
+      return "busy";
+    }
+    return "ready";
+  }
+  return "ready";
+}
+
+function conversationSessionStatusLabel(
+  tone: ConversationSessionSignalTone,
+  language: LegacyShellLanguage,
+) {
+  if (language === "zh") {
+    switch (tone) {
+      case "busy":
+        return "进行中";
+      case "failed":
+        return "异常";
+      default:
+        return "就绪";
+    }
+  }
+  switch (tone) {
+    case "busy":
+      return "Busy";
+    case "failed":
+      return "Failed";
+    default:
+      return "Ready";
+  }
+}
+
 export function useConversationRuntimeController(language: LegacyShellLanguage): RuntimeWorkspacePageController {
   const workbench = useWorkbenchContext();
   const runtime = useConversationRuntime();
@@ -130,7 +186,6 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const composerVisionUnsupported = language === "zh"
     ? "当前模型不支持图片输入，请切换到支持视觉的模型后再发送。"
     : "The selected model does not support image input. Switch to a vision-capable model before sending.";
-  const compactStatusLabel = language === "zh" ? "就绪" : "Ready";
   const compactDetailsLabel = language === "zh" ? "详情" : "Details";
   const inspectorTabOpen = runtime.inspectorOpen && runtime.inspectorTabOpen;
   const targetInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "target";
@@ -143,13 +198,34 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const activeAgentDeliverables = runtime.activeAgent?.deliverables || [];
   const sessionProfileAttributes = runtime.activeSessionProfile?.attributes || {};
   const activeSessionItem = runtime.sessionItems.find((item) => item.active) || null;
+  const sessionStatusByID = useMemo(
+    () => Object.fromEntries(
+      runtime.sessions.map((session) => {
+        const tone = resolveConversationSessionSignalTone(session);
+        return [session.id, {
+          tone,
+          label: conversationSessionStatusLabel(tone, language),
+        }];
+      }),
+    ) as Record<string, { tone: ConversationSessionSignalTone; label: string }>,
+    [language, runtime.sessions],
+  );
+  const activeSessionStatus = activeSessionItem
+    ? sessionStatusByID[activeSessionItem.id] || {
+      tone: "ready" as const,
+      label: conversationSessionStatusLabel("ready", language),
+    }
+    : {
+      tone: "ready" as const,
+      label: conversationSessionStatusLabel("ready", language),
+    };
   const routeLabel = runtime.route === "agent-runtime"
     ? (language === "zh" ? "Agent" : "Agent")
     : (language === "zh" ? "对话" : "Chat");
   const conversationDetailsSummary = runtime.activeSession ? [
     { label: language === "zh" ? "会话" : "Session", value: runtime.activeSession.id, copyLabel: language === "zh" ? "会话" : "Session", mono: true },
     { label: language === "zh" ? "路由" : "Route", value: routeLabel, copyLabel: language === "zh" ? "路由" : "Route" },
-    { label: language === "zh" ? "状态" : "Status", value: compactStatusLabel, copyLabel: language === "zh" ? "状态" : "Status" },
+    { label: language === "zh" ? "状态" : "Status", value: activeSessionStatus.label, copyLabel: language === "zh" ? "状态" : "Status" },
     { label: language === "zh" ? "短标识" : "Short hash", value: activeSessionItem?.shortHash || "-", copyLabel: language === "zh" ? "短标识" : "Short hash", mono: true },
     ...(runtime.route === "agent-runtime" ? [{ label: copy.runtimeAgent, value: runtime.target.name || "-", copyLabel: copy.runtimeAgent }] : []),
     { label: language === "zh" ? "消息数" : "Messages", value: String(activeMessages.length), copyLabel: language === "zh" ? "消息数" : "Messages" },
@@ -567,6 +643,8 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       groups: groupedSessionItems.map((group) => ({
         ...group,
         items: group.items.map((item) => ({
+          statusTone: sessionStatusByID[item.id]?.tone || "ready",
+          statusLabel: sessionStatusByID[item.id]?.label || conversationSessionStatusLabel("ready", language),
           id: item.id,
           active: item.active,
           title: item.title,
@@ -579,7 +657,11 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
           deleteLabel: deleteSessionLabel,
           deleteAriaLabel: deleteSessionAriaLabel,
           shellClassName: item.active ? "runtime-session-card is-active" : "runtime-session-card",
-          shellProps: { "data-runtime-session-state": item.active ? "active" : "idle" },
+          shellProps: {
+            "data-runtime-session-state": item.active ? "active" : "idle",
+            "data-runtime-session-card": item.id,
+            "data-runtime-session-tone": sessionStatusByID[item.id]?.tone || "ready",
+          },
           buttonClassName: item.active ? "runtime-session-select active" : "runtime-session-select",
         })),
       })),
@@ -590,8 +672,8 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     },
     header: {
       title: runtime.activeSession?.title || emptyStateTitle,
-      statusLabel: compactStatusLabel,
-      statusTone: "ready",
+      statusLabel: activeSessionStatus.label,
+      statusTone: activeSessionStatus.tone,
       detailsLabel: compactDetailsLabel,
       detailsOpen: sessionDetailsOpen,
       onToggleDetails: () => setSessionDetailsOpen((current) => !current),

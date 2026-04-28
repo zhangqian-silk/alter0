@@ -42,6 +42,13 @@ describe("RuntimeWorkspaceHeader", () => {
   it("opens details in a dialog layer and closes it from the backdrop", () => {
     render(<RuntimeWorkspaceHeaderHarness />);
 
+    const statusIndicator = screen.getByLabelText("Ready");
+    expect(statusIndicator).toHaveClass("workspace-header-status", "is-ready");
+    expect(statusIndicator).toHaveAttribute("data-runtime-header-signal-container", "ready");
+    expect(statusIndicator.querySelector("[data-runtime-header-signal='ready']")).toBeInTheDocument();
+    const titleLeading = document.querySelector(".runtime-workspace-title-leading") as HTMLElement;
+    expect(titleLeading.firstElementChild).toBe(statusIndicator);
+
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
 
     expect(screen.getByRole("dialog", { name: "Details" })).toBeInTheDocument();

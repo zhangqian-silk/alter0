@@ -460,6 +460,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".runtime-session-title-row")?.textContent).toContain("Workspace shell");
     expect(document.querySelector(".runtime-session-summary-row")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-bottomline")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-card='terminal-1']")).toHaveAttribute("data-runtime-session-tone", "ready");
+    expect(document.querySelector("[data-runtime-session-signal='ready']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-hash")?.textContent).toBe("c05eccbf");
     expect(document.querySelector(".runtime-session-hash")?.textContent).not.toContain("terminal-1");
     expect(within(document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement).getByRole("list")).toHaveAttribute(
@@ -488,7 +490,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".runtime-workspace-row")).toHaveClass("runtime-workspace-title-row", "is-compact");
     expect(document.querySelector(".runtime-workspace-copy")).toHaveClass("is-compact");
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
-    expect(within(workspaceHeader).getByText("Ready")).toBeInTheDocument();
+    expect(within(workspaceHeader).getByLabelText("Ready")).toBeInTheDocument();
     expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Workspace Flow" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
