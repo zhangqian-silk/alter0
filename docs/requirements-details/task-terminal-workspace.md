@@ -125,7 +125,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Web Shell 中的 Terminal 路由页主体由 React 原生实现，运行区根节点直接挂在共享 `workbench-pane-shell` 下，不再额外经过 `route-view / route-body` 包裹，避免从 Chat/Agent Runtime 切换时出现布局与滚动容器跳变。
 - Terminal 页面直接请求 `/api/terminal/sessions`、`/api/terminal/sessions/{session_id}`、`/api/terminal/sessions/{session_id}/turns/{turn_id}/steps/{step_id}` 等接口，并在 React 内维护会话恢复、轮询、输入、删除、step 展开、滚动定位与本地草稿恢复。
 - Terminal 的 session pane 容器、workspace 容器与主视图外壳在 React rerender 期间必须保持稳定实例，不能因语言切换、hash 路由变化或壳层状态更新而清空正在运行的终端内容。
-- Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构，同时允许 Terminal 继续注入自身的状态按钮、详情面板、Process、跳转四键与 Composer 控件；详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
+- Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构，同时允许 Terminal 继续注入自身的状态按钮、详情面板、Process 与 Composer 控件；右侧跳转四键与 Chat / Agent Runtime 复用同一套外层滚动定位组件，但 Terminal 继续保留自身 `data-terminal-jump-*` 兼容钩子与定位边界；详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
 - React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、工作区头部、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管。
 - 移动端 Terminal Composer 在输入框聚焦且软键盘抬起后，必须按 `VisualViewport` 推导的键盘偏移直接上移到可见底边；长历史输出继续由 `terminal-chat-screen` 独立滚动，不允许通过增加 footer padding 或让 workspace 改走外层滚动把输入区挤出视口。
 - `DELETE /api/terminal/sessions/{session_id}` 删除 Terminal 会话与工作区。

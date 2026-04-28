@@ -43,6 +43,14 @@ function applyScrollableMetrics(
   container.scrollTo = scrollToMock;
 
   targets.forEach((target, index) => {
+    Object.defineProperty(target, "offsetTop", {
+      configurable: true,
+      value: targetTops[index],
+    });
+    Object.defineProperty(target, "offsetHeight", {
+      configurable: true,
+      value: 120,
+    });
     target.getBoundingClientRect = () => {
       const top = targetTops[index] - container.scrollTop;
       return {
@@ -120,6 +128,47 @@ describe("ScrollJumpStrip", () => {
     });
   });
 
+  it("applies terminal-style visible-range targeting for conversation timelines", async () => {
+    const containerRef = createRef<HTMLElement>();
+    const { container } = render(
+      <section ref={containerRef}>
+        <article data-message-id="message-1">message-1</article>
+        <article data-message-id="message-2">message-2</article>
+        <article data-message-id="message-3">message-3</article>
+        <article data-message-id="message-4">message-4</article>
+        <article data-message-id="message-5">message-5</article>
+        <ScrollJumpStrip
+          scope="chat"
+          language="zh"
+          containerRef={containerRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+        />
+      </section>,
+    );
+
+    const scrollContainer = container.firstElementChild as HTMLElement;
+    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-message-id]")];
+    applyScrollableMetrics(scrollContainer, targets, [0, 160, 320, 480, 640], {
+      clientHeight: 360,
+      scrollHeight: 920,
+    });
+
+    scrollContainer.scrollTop = 170;
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveAttribute(
+        "data-scroll-jump-target",
+        "message-2",
+      );
+      expect(container.querySelector("[data-scroll-jump-next='chat']")).toHaveAttribute(
+        "data-scroll-jump-target",
+        "message-4",
+      );
+    });
+  });
+
   it("assigns route anchor ids to visible sections before jumping", async () => {
     const containerRef = createRef<HTMLElement>();
     const { container } = render(
@@ -158,5 +207,41 @@ describe("ScrollJumpStrip", () => {
 
     const assignedTargets = targets.map((node) => node.getAttribute("data-scroll-jump-anchor"));
     expect(assignedTargets.every(Boolean)).toBe(true);
+  });
+
+  it("can render terminal jump controls with terminal-specific selectors", async () => {
+    const containerRef = createRef<HTMLElement>();
+    const { container } = render(
+      <section ref={containerRef}>
+        <article data-terminal-turn="turn-1">turn-1</article>
+        <article data-terminal-turn="turn-2">turn-2</article>
+        <article data-terminal-turn="turn-3">turn-3</article>
+        <ScrollJumpStrip
+          scope="terminal"
+          namespace="terminal"
+          language="en"
+          containerRef={containerRef}
+          itemSelector="[data-terminal-turn]"
+          itemAttribute="data-terminal-turn"
+        />
+      </section>,
+    );
+
+    const scrollContainer = container.firstElementChild as HTMLElement;
+    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-terminal-turn]")];
+    applyScrollableMetrics(scrollContainer, targets, [0, 300, 620], {
+      clientHeight: 260,
+      scrollHeight: 900,
+    });
+
+    scrollContainer.scrollTop = 320;
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-terminal-jump-top]")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-2");
+      expect(container.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "turn-3");
+      expect(container.querySelector("[data-terminal-jump-bottom]")).toHaveClass("is-visible");
+    });
   });
 });

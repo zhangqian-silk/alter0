@@ -1,18 +1,17 @@
-import { memo, useEffect, useId, useState, type RefObject } from "react";
+import { memo, useEffect, useId, useRef, useState, type ComponentPropsWithoutRef, type RefObject } from "react";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 
 type ScrollJumpStripProps = {
-  scope: "agent";
+  scope: "chat" | "agent" | "terminal";
+  namespace?: "scroll" | "terminal";
   language: LegacyShellLanguage;
   containerRef: RefObject<HTMLElement | null>;
   itemSelector: string;
   itemAttribute: string;
   targetOffset?: number;
-};
-
-type ScrollJumpEntry = {
-  id: string;
-  top: number;
+  watchKey?: string | number | boolean | null;
+  suppressNextTarget?: boolean;
+  onControlPointerDown?: ComponentPropsWithoutRef<"button">["onPointerDown"];
 };
 
 type ScrollJumpState = {
@@ -31,6 +30,7 @@ type ScrollJumpCopy = {
 
 const SCROLL_JUMP_TOP_THRESHOLD = 180;
 const SCROLL_JUMP_BOTTOM_THRESHOLD = 220;
+const SCROLL_BOTTOM_ANCHOR_THRESHOLD = 24;
 
 const SCROLL_JUMP_COPY: Record<LegacyShellLanguage, ScrollJumpCopy> = {
   en: {
@@ -65,14 +65,18 @@ function isVisibleJumpTarget(node: HTMLElement): boolean {
   return true;
 }
 
-function collectScrollJumpEntries(
+type TerminalJumpMeasurement = {
+  id: string;
+  top: number;
+  bottom: number;
+};
+
+function measureTerminalJumpEntries(
   container: HTMLElement,
   itemSelector: string,
   itemAttribute: string,
   idPrefix: string,
-): ScrollJumpEntry[] {
-  const containerRect = container.getBoundingClientRect();
-
+): TerminalJumpMeasurement[] {
   return [...container.querySelectorAll<HTMLElement>(itemSelector)]
     .filter((node) => isVisibleJumpTarget(node))
     .map((node, index) => {
@@ -81,31 +85,49 @@ function collectScrollJumpEntries(
       if (!existing) {
         node.setAttribute(itemAttribute, id);
       }
-
+      const top = node.offsetTop;
+      const height = Math.max(node.offsetHeight, 0);
       return {
         id,
-        top: Math.max(
-          container.scrollTop + node.getBoundingClientRect().top - containerRect.top,
-          0,
-        ),
+        top,
+        bottom: top + height,
       };
-    });
+    })
+    .filter((entry) => entry.id);
 }
 
-function resolveScrollJumpState(
+function resolveTerminalJumpState(
   container: HTMLElement | null,
   itemSelector: string,
   itemAttribute: string,
   idPrefix: string,
+  measurementCacheRef: RefObject<TerminalJumpMeasurement[] | null>,
+  measurementDirtyRef: RefObject<boolean>,
+  suppressNextTarget: boolean,
 ): ScrollJumpState {
   if (!container) {
+    measurementCacheRef.current = null;
+    measurementDirtyRef.current = true;
     return EMPTY_SCROLL_JUMP_STATE;
   }
 
-  const entries = collectScrollJumpEntries(container, itemSelector, itemAttribute, idPrefix);
   const scrollTop = Math.max(container.scrollTop, 0);
+  const viewportBottom = scrollTop + container.clientHeight;
   const remaining = Math.max(container.scrollHeight - scrollTop - container.clientHeight, 0);
+  const measureEntries = () => measureTerminalJumpEntries(container, itemSelector, itemAttribute, idPrefix);
+  let entries = !measurementDirtyRef.current && measurementCacheRef.current
+    ? measurementCacheRef.current
+    : measureEntries();
+  const cachedLastBottom = entries[entries.length - 1]?.bottom ?? 0;
 
+  if (!measurementDirtyRef.current && entries.length > 0 && scrollTop > cachedLastBottom) {
+    entries = measureEntries();
+    measurementCacheRef.current = entries;
+  }
+  if (measurementDirtyRef.current) {
+    measurementCacheRef.current = entries;
+    measurementDirtyRef.current = false;
+  }
   if (!entries.length) {
     return {
       previousID: "",
@@ -115,25 +137,48 @@ function resolveScrollJumpState(
     };
   }
 
-  const viewportAnchor = scrollTop + 24;
-  let currentIndex = 0;
+  let visibleEntries = entries.filter((entry) => entry.bottom > scrollTop && entry.top < viewportBottom);
+  if (!visibleEntries.length && !measurementDirtyRef.current) {
+    const remeasuredEntries = measureEntries();
+    if (remeasuredEntries.length > 0) {
+      entries = remeasuredEntries;
+      measurementCacheRef.current = remeasuredEntries;
+      visibleEntries = remeasuredEntries.filter((entry) => entry.bottom > scrollTop && entry.top < viewportBottom);
+    }
+  }
+  if (!visibleEntries.length) {
+    return {
+      previousID: "",
+      nextID: "",
+      showTop: scrollTop > SCROLL_JUMP_TOP_THRESHOLD,
+      showBottom: remaining > SCROLL_JUMP_BOTTOM_THRESHOLD,
+    };
+  }
 
-  for (let index = 0; index < entries.length; index += 1) {
-    const current = entries[index];
-    const next = entries[index + 1];
-    if (viewportAnchor < current.top) {
-      currentIndex = Math.max(index - 1, 0);
-      break;
-    }
-    currentIndex = index;
-    if (!next || viewportAnchor < next.top) {
-      break;
-    }
+  const previousID = visibleEntries[0]?.id || "";
+  const lastVisibleID = visibleEntries[visibleEntries.length - 1]?.id || "";
+  const lastVisibleIndex = lastVisibleID
+    ? entries.findIndex((entry) => entry.id === lastVisibleID)
+    : -1;
+  let nextID = "";
+
+  if (suppressNextTarget) {
+    nextID = "";
+  } else if (remaining <= SCROLL_BOTTOM_ANCHOR_THRESHOLD) {
+    nextID = "";
+  } else if (lastVisibleIndex >= 0 && lastVisibleIndex === entries.length - 1) {
+    nextID = "";
+  } else if (visibleEntries.length > 1) {
+    nextID = lastVisibleID;
+  } else {
+    const visibleID = visibleEntries[0]?.id || "";
+    const visibleIndex = entries.findIndex((entry) => entry.id === visibleID);
+    nextID = visibleIndex >= 0 ? entries[visibleIndex + 1]?.id || "" : "";
   }
 
   return {
-    previousID: currentIndex > 0 ? entries[currentIndex - 1]?.id || "" : "",
-    nextID: currentIndex < entries.length - 1 ? entries[currentIndex + 1]?.id || "" : "",
+    previousID,
+    nextID,
     showTop: scrollTop > SCROLL_JUMP_TOP_THRESHOLD,
     showBottom: remaining > SCROLL_JUMP_BOTTOM_THRESHOLD,
   };
@@ -162,27 +207,53 @@ function scrollContainerToTarget(
 
 export const ScrollJumpStrip = memo(function ScrollJumpStrip({
   scope,
+  namespace = "scroll",
   language,
   containerRef,
   itemSelector,
   itemAttribute,
   targetOffset = 12,
+  watchKey = null,
+  suppressNextTarget = false,
+  onControlPointerDown,
 }: ScrollJumpStripProps) {
   const copy = SCROLL_JUMP_COPY[language];
   const idPrefix = useId().replace(/:/g, "");
   const [state, setState] = useState<ScrollJumpState>(EMPTY_SCROLL_JUMP_STATE);
+  const measurementCacheRef = useRef<TerminalJumpMeasurement[] | null>(null);
+  const measurementDirtyRef = useRef(true);
+  const clusterClassName = namespace === "terminal" ? "terminal-jump-cluster" : "scroll-jump-strip";
+  const controlClassName = namespace === "terminal" ? "terminal-jump-control" : "scroll-jump-control";
+  const iconClassName = namespace === "terminal" ? "terminal-jump-control-icon" : "scroll-jump-control-icon";
+  const topDataAttr = namespace === "terminal" ? "data-terminal-jump-top" : "data-scroll-jump-top";
+  const prevDataAttr = namespace === "terminal" ? "data-terminal-jump-prev" : "data-scroll-jump-prev";
+  const nextDataAttr = namespace === "terminal" ? "data-terminal-jump-next" : "data-scroll-jump-next";
+  const bottomDataAttr = namespace === "terminal" ? "data-terminal-jump-bottom" : "data-scroll-jump-bottom";
+  const targetDataAttr = namespace === "terminal" ? "data-terminal-jump-target" : "data-scroll-jump-target";
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
       setState(EMPTY_SCROLL_JUMP_STATE);
+      measurementCacheRef.current = null;
+      measurementDirtyRef.current = true;
       return;
     }
 
     let frame = 0;
     const sync = () => {
       frame = 0;
-      setState(resolveScrollJumpState(container, itemSelector, itemAttribute, `${scope}-${idPrefix}`));
+      setState(
+        resolveTerminalJumpState(
+          container,
+          itemSelector,
+          itemAttribute,
+          `${scope}-${idPrefix}`,
+          measurementCacheRef,
+          measurementDirtyRef,
+          suppressNextTarget,
+        ),
+      );
     };
     const scheduleSync = () => {
       if (frame) {
@@ -210,16 +281,25 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
         window.cancelAnimationFrame(frame);
       }
     };
-  }, [containerRef, idPrefix, itemAttribute, itemSelector, scope]);
+  }, [containerRef, idPrefix, itemAttribute, itemSelector, scope, suppressNextTarget, watchKey]);
+
+  useEffect(() => {
+    measurementDirtyRef.current = true;
+  }, [itemAttribute, itemSelector, watchKey]);
 
   return (
-    <div className="scroll-jump-strip" data-scroll-jump-scope={scope} aria-label="Turn navigation">
+    <div
+      className={clusterClassName}
+      data-scroll-jump-scope={namespace === "scroll" ? scope : undefined}
+      aria-label="Turn navigation"
+    >
       <button
-        className={state.showTop ? "scroll-jump-control scroll-jump-top is-visible" : "scroll-jump-control scroll-jump-top"}
+        className={state.showTop ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-top" : "scroll-jump-top"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-top" : "scroll-jump-top"}`}
         type="button"
-        data-scroll-jump-top={scope}
+        {...{ [topDataAttr]: scope }}
         aria-label={copy.top}
         title={copy.top}
+        onPointerDown={onControlPointerDown}
         onClick={() => {
           const container = containerRef.current;
           if (!container) {
@@ -228,40 +308,41 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
           container.scrollTo({ top: 0, behavior: "smooth" });
         }}
       >
-        <span className="scroll-jump-control-icon" aria-hidden="true">↑↑</span>
+        <span className={iconClassName} aria-hidden="true">↑↑</span>
       </button>
       <button
-        className={state.previousID ? "scroll-jump-control scroll-jump-prev is-visible" : "scroll-jump-control scroll-jump-prev"}
+        className={state.previousID ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-prev" : "scroll-jump-prev"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-prev" : "scroll-jump-prev"}`}
         type="button"
-        data-scroll-jump-prev={scope}
-        data-scroll-jump-target={state.previousID}
+        {...{ [prevDataAttr]: scope, [targetDataAttr]: state.previousID }}
         aria-label={copy.prev}
         title={copy.prev}
+        onPointerDown={onControlPointerDown}
         onClick={() => {
           scrollContainerToTarget(containerRef.current, itemAttribute, state.previousID, targetOffset);
         }}
       >
-        <span className="scroll-jump-control-icon" aria-hidden="true">↑</span>
+        <span className={iconClassName} aria-hidden="true">↑</span>
       </button>
       <button
-        className={state.nextID ? "scroll-jump-control scroll-jump-next is-visible" : "scroll-jump-control scroll-jump-next"}
+        className={state.nextID ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-next" : "scroll-jump-next"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-next" : "scroll-jump-next"}`}
         type="button"
-        data-scroll-jump-next={scope}
-        data-scroll-jump-target={state.nextID}
+        {...{ [nextDataAttr]: scope, [targetDataAttr]: state.nextID }}
         aria-label={copy.next}
         title={copy.next}
+        onPointerDown={onControlPointerDown}
         onClick={() => {
           scrollContainerToTarget(containerRef.current, itemAttribute, state.nextID, targetOffset);
         }}
       >
-        <span className="scroll-jump-control-icon" aria-hidden="true">↓</span>
+        <span className={iconClassName} aria-hidden="true">↓</span>
       </button>
       <button
-        className={state.showBottom ? "scroll-jump-control scroll-jump-bottom is-visible" : "scroll-jump-control scroll-jump-bottom"}
+        className={state.showBottom ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-bottom" : "scroll-jump-bottom"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-bottom" : "scroll-jump-bottom"}`}
         type="button"
-        data-scroll-jump-bottom={scope}
+        {...{ [bottomDataAttr]: scope }}
         aria-label={copy.bottom}
         title={copy.bottom}
+        onPointerDown={onControlPointerDown}
         onClick={() => {
           const container = containerRef.current;
           if (!container) {
@@ -270,7 +351,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
           container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
         }}
       >
-        <span className="scroll-jump-control-icon" aria-hidden="true">↓↓</span>
+        <span className={iconClassName} aria-hidden="true">↓↓</span>
       </button>
     </div>
   );
