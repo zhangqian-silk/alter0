@@ -133,6 +133,30 @@ func TestLoginPageDefaultsToEnglishDocumentLanguage(t *testing.T) {
 	}
 }
 
+func TestLoginPageUsesMobileViewportSafeLayoutContract(t *testing.T) {
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	rec := httptest.NewRecorder()
+
+	server.renderLoginPage(rec, "", "/chat")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	markers := []string{
+		`width=device-width,initial-scale=1,viewport-fit=cover`,
+		`min-height:100dvh`,
+		`padding:max(18px,env(safe-area-inset-top))`,
+		`padding-bottom:max(18px,env(safe-area-inset-bottom))`,
+		`@media (max-width: 640px)`,
+	}
+	for _, marker := range markers {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("expected login page to include mobile layout marker %q", marker)
+		}
+	}
+}
+
 func TestChatComposerUsesReusableComponent(t *testing.T) {
 	runtimeSource := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx")
 	runtimeMarkers := []string{

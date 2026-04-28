@@ -145,7 +145,7 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 - `travel` 服务域名固定为 `https://<session_short_hash>.travel.alter0.cn`，且该 host 只读、免登录。
 - 控制面通过 `PUT /api/control/workspace-services/{session_id}` 或 `PUT /api/control/workspace-services/{session_id}/{service_id}` 注册当前会话工作区的前端构建目录或 HTTP upstream。
 - 删除或重绑服务时，通过 `DELETE /api/control/workspace-services/...` 或再次 `PUT` 完成更新。
-- 预览 host 继续沿用共享工作台登录保护：默认 `web` 短哈希 host 需要能直接打开 `/login`，并与主域共享根域登录 cookie；用户不应因为切到 `https://<session_short_hash>.alter0.cn` 而丢失已建立的工作台登录态。
+- 预览 host 继续沿用共享工作台登录保护：默认 `web` 短哈希 host 需要能直接打开 `/login`，但登录态按当前 host 独立维护，不与主域共享根域登录 cookie。
 
 ## Codex Accounts
 

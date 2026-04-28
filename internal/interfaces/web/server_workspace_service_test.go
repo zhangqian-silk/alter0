@@ -234,7 +234,7 @@ func TestWorkspaceServiceGatewayStartsManagedHTTPServiceBeforeProxy(t *testing.T
 	}
 }
 
-func TestWorkspaceServiceGatewayLeavesWorkspaceLoginOnSharedGateway(t *testing.T) {
+func TestWorkspaceServiceGatewayUsesHostScopedWorkspaceLogin(t *testing.T) {
 	upstreamHits := []string{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamHits = append(upstreamHits, r.URL.Path)
@@ -286,19 +286,29 @@ func TestWorkspaceServiceGatewayLeavesWorkspaceLoginOnSharedGateway(t *testing.T
 		t.Fatalf("expected workspace login to stay on shared gateway, got upstream hits %v", upstreamHits)
 	}
 	loginCookie := loginRec.Result().Cookies()
-	if len(loginCookie) != 1 {
-		t.Fatalf("expected shared login cookie, got %d cookies", len(loginCookie))
+	if len(loginCookie) == 0 {
+		t.Fatalf("expected host-scoped login cookie")
 	}
-	if loginCookie[0].Value != "shared-token" {
-		t.Fatalf("expected shared gateway token, got %q", loginCookie[0].Value)
+	var sessionCookie *http.Cookie
+	for _, cookie := range loginCookie {
+		if cookie.Name == webLoginCookieName {
+			sessionCookie = cookie
+			break
+		}
 	}
-	if loginCookie[0].Domain != "alter0.cn" {
-		t.Fatalf("expected shared login cookie domain alter0.cn, got %q", loginCookie[0].Domain)
+	if sessionCookie == nil {
+		t.Fatalf("expected host-scoped login cookie name %q", webLoginCookieName)
+	}
+	if sessionCookie.Value != "shared-token" {
+		t.Fatalf("expected shared gateway token, got %q", sessionCookie.Value)
+	}
+	if sessionCookie.Domain != "" {
+		t.Fatalf("expected host-scoped login cookie without domain, got %q", sessionCookie.Domain)
 	}
 
 	rootReq := httptest.NewRequest(http.MethodGet, "/", nil)
 	rootReq.Host = entry.Host
-	rootReq.AddCookie(loginCookie[0])
+	rootReq.AddCookie(sessionCookie)
 	rootRec := httptest.NewRecorder()
 	handler.ServeHTTP(rootRec, rootReq)
 
