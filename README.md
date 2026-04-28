@@ -191,7 +191,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - Terminal 会持久化 Codex CLI 线程标识与会话状态；会话态固定为 `ready / busy / exited / interrupted`，其中 `ready` 表示当前会话可继续交互、`busy` 表示当前轮正在执行；执行细节继续由 turn/step 维度的 `running / completed / failed / interrupted` 表示。运行态退出后保留原会话历史，继续发送即可在同一会话内恢复。
 - Terminal 新会话先使用占位标题；首条输入后会按输入内容自动命名。自动标题在早期多轮内会按更具体的后续输入继续升级，尤其覆盖“拉取仓库 / 分析仓库”等通用开场，避免列表里长期堆积低辨识度会话。
 - Terminal Composer 支持最多 5 个附件。图片附件继续保留缩略图预览、草稿缓存与 `asset_url / preview_url` 提交语义；常见文本/文档文件改为文件条目展示并复用同一附件上传接口，只提交稳定 `asset_url` 引用。发送时，图片会继续走 Codex CLI `-i` 输入，普通文件则写入会话工作区 `input-attachments/<turn_id>/` 并通过同轮 prompt 告知可读取路径；纯附件输入会自动补齐稳定占位文本。
-- Terminal 的 `Details` 面板支持选择控制面中启用且非私有的公有 Skill，选择结果随下一次 `/api/terminal/sessions/{id}/input` 请求以 `skill_ids` 发送；新 Terminal 会话首次加载 Skill 列表时默认勾选 `frontend-design` 与 `deploy-test-service`，用户后续仍可按会话手动调整。后端会把选中的 Skill 编译到当前 Terminal 工作区的 `.alter0/codex-runtime/skills.md` 和托管 `AGENTS.md` 指令块中，仅作用于后续 Terminal 输入。
+- Terminal 的 `Details` 面板支持选择控制面中启用且非私有的公有 Skill，选择结果随下一次 `/api/terminal/sessions/{id}/input` 请求以 `skill_ids` 发送；新 Terminal 会话首次加载 Skill 列表时默认勾选 `frontend-design`、`deploy-test-service` 与 `artifact-preview`，让前端实现规则、测试服务发布与静态产物子域名预览能力一并进入后续 Terminal 输入。后端会把选中的 Skill 编译到当前 Terminal 工作区的 `.alter0/codex-runtime/skills.md` 和托管 `AGENTS.md` 指令块中，仅作用于后续 Terminal 输入。
 - 同一 Terminal 会话在单次运行态中断或退出后，只记录一条对应状态提醒；恢复后若再次发生新的中断或退出，再按新的状态周期补充提醒。
 - Terminal 输入区上缘的运行态 hint 只服务于当前空闲会话；一旦用户重新发送恢复当前会话，或从旧会话切到 `New` 待创建态，旧的 `Exited / Interrupted / Failed` 提示会立即清空，不再在发送中残留。
 - Terminal 工作区头部仅保留 `Details` 等阅读辅助工具；会话删除统一从会话列表触发，`Delete` 会移除会话记录、持久化状态文件与该会话对应的独立工作区。
@@ -444,7 +444,7 @@ curl --noproxy '*' http://127.0.0.1:18088/readyz
 
 验证通过后，服务内由 `Codex CLI` 发起的 `git commit`、`git push`、`gh pr create`、`gh pr merge` 会复用这套运行账户级凭证与签名配置。
 
-对应 Nginx 配置与运行权限方案见：`docs/deployment/nginx.md`。若需要会话级预览或独立测试服务，请把 `alter0.cn` 与 `*.alter0.cn` 一并反向代理到同一共享运行时，再用 `scripts/deploy_test_service.sh <session_id> [service_name] ...` 注册当前会话服务。默认 `web` 会构建前端，并把当前分支后端启动命令注册给共享运行时托管，再把短哈希子域名注册为 `http` 反代；如只需要静态 UI 预览，可显式传 `--service-type frontend_dist`。
+对应 Nginx 配置与运行权限方案见：`docs/deployment/nginx.md`。若需要会话级预览或独立测试服务，请把 `alter0.cn` 与 `*.alter0.cn` 一并反向代理到同一共享运行时，再用 `scripts/deploy_test_service.sh <session_id> [service_name] ...` 注册当前会话服务。默认 `web` 会构建前端，并把当前分支后端启动命令注册给共享运行时托管，再把短哈希子域名注册为 `http` 反代；如只需要静态 UI 预览，可显式传 `--service-type frontend_dist`。若需要把文本、图片、代码等静态产物单独挂到附加子域名，可直接使用 `.alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh` 生成并发布 artifact 预览页。
 
 浏览器访问：
 
@@ -548,11 +548,11 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 
 说明：
 
-1. 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service` 与 `frontend-design` 四个内置 Skill。
+1. 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service`、`frontend-design` 与 `artifact-preview` 五个内置 Skill。
 2. `memory` Skill 用于向 Agent / Codex 明确记忆文件的读取决策、写入路由、冲突优先级与禁止写入项，建议与 `memory_files` 一起启用。
-3. `deploy-test-service` 与 `frontend-design` 都是项目内置的 file-backed Skill，默认文件分别位于 `.alter0/skills/deploy-test-service/SKILL.md` 与 `docs/skills/frontend-design/SKILL.md`；前者约束会话级测试服务发布，后者约束前端页面、组件与应用实现的视觉方向、字体/配色/动效/构图质量。
+3. `deploy-test-service`、`frontend-design` 与 `artifact-preview` 都是项目内置的 file-backed Skill，默认文件分别位于 `.alter0/skills/deploy-test-service/SKILL.md`、`docs/skills/frontend-design/SKILL.md` 与 `.alter0/skills/artifact-preview/SKILL.md`；其中 `artifact-preview` 额外提供 `.alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装成预览页并发布到会话级子域名。
 4. `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service` 与 `frontend-design`，进入 Coding Agent Runtime 后即可继承仓库记忆、预览发布与前端设计规则。
-5. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `.alter0/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Agent Runtime 的 Skill 面板会展示当前 Agent 私有 Skill，但该项固定启用且不可取消；可选区只列出 `memory`、`deploy-test-service`、`frontend-design` 等公有 Skill。
+5. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `.alter0/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Agent Runtime 的 Skill 面板会展示当前 Agent 私有 Skill，但该项固定启用且不可取消；可选区列出 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview` 等公有 Skill。
 6. `travel` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食与地图输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
 
 ### Agent

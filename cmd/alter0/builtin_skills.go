@@ -84,6 +84,18 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join("docs", "skills", "frontend-design", "SKILL.md")),
 			},
 		},
+		{
+			ID:      "artifact-preview",
+			Name:    "Artifact Preview",
+			Enabled: true,
+			Scope:   controldomain.CapabilityScopeGlobal,
+			Metadata: map[string]string{
+				builtinSkillPriorityKey:    "720",
+				builtinSkillDescriptionKey: "Publish text, image, and code artifacts as static preview pages on session-scoped subdomains.",
+				builtinSkillGuideKey:       artifactPreviewSkillGuide(),
+				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join(".alter0", "skills", "artifact-preview", "SKILL.md")),
+			},
+		},
 	}
 }
 
@@ -167,6 +179,18 @@ func frontendDesignSkillGuide() string {
 		"- Commit to a BOLD aesthetic direction before coding and keep one memorable visual idea coherent across typography, color, motion, composition, and surface treatment.",
 		"- Avoid generic fonts like Arial and Inter, cookie-cutter component layouts, and cliched purple-on-white AI styling.",
 		"- The canonical file-backed skill lives at `docs/skills/frontend-design/SKILL.md`; treat it as the reusable design rulebook for production-grade frontend implementation.",
+	}, "\n")
+}
+
+func artifactPreviewSkillGuide() string {
+	return strings.Join([]string{
+		"# artifact preview",
+		"",
+		"- Use this skill when the task is to publish text, image, or code artifacts to a session-scoped preview subdomain rather than a full application host.",
+		"- Stage the content as files in the current workspace, then run `bash .alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh <session_id> <service_name> --artifact <path> ...`.",
+		"- The helper script assembles a static preview page and deploys it through the shared gateway at `https://<service>.<short_hash>.alter0.cn`.",
+		"- Reuse stable service names so repeated deploys refresh the same preview URL instead of creating ad-hoc variants.",
+		"- For full-stack web apps or routed backend services, use `deploy_test_service` instead of this artifact-only preview flow.",
 	}, "\n")
 }
 

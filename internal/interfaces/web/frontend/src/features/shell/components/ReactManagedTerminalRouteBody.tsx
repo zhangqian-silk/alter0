@@ -309,7 +309,7 @@ type TerminalPollPlan = {
   refreshActiveSession: boolean;
 };
 
-const DEFAULT_TERMINAL_SKILL_IDS = ["frontend-design", "deploy-test-service"] as const;
+const DEFAULT_TERMINAL_SKILL_IDS = ["frontend-design", "deploy-test-service", "artifact-preview"] as const;
 
 function resolveLanguage(): "en" | "zh" {
   return document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en";
