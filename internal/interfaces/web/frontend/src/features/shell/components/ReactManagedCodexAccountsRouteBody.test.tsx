@@ -187,13 +187,13 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(overviewQueries.queryByText("Active Auth Path")).not.toBeInTheDocument();
     expect(overviewQueries.getByRole("progressbar", { name: "Hourly Remaining" })).toHaveAttribute("aria-valuenow", "80");
     expect(overviewQueries.getByRole("progressbar", { name: "Weekly Remaining" })).toHaveAttribute("aria-valuenow", "92");
-    expect(overviewQueries.getByText("2026-05-01 14:30 UTC")).toBeInTheDocument();
-    expect(overviewQueries.getByText("2026-05-08 14:30 UTC")).toBeInTheDocument();
+    expect(overviewQueries.getByText("2026-05-01 22:30")).toBeInTheDocument();
+    expect(overviewQueries.getByText("2026-05-08 22:30")).toBeInTheDocument();
 
     const accountCards = screen.getAllByTestId("codex-account-card");
     const firstCardQueries = within(accountCards[0] as HTMLElement);
     expect(firstCardQueries.getByRole("progressbar", { name: "Hourly Remaining" })).toHaveAttribute("aria-valuenow", "80");
-    expect(firstCardQueries.getByText("2026-05-01 14:30 UTC")).toBeInTheDocument();
+    expect(firstCardQueries.getByText("2026-05-01 22:30")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Switch to Personal Account" }));
 
@@ -270,7 +270,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(overviewQueries.getByText("61%")).toBeInTheDocument();
     expect(overviewQueries.getByText("84%")).toBeInTheDocument();
     expect(overviewQueries.queryByText("/var/lib/alter0/.codex/auth.json")).not.toBeInTheDocument();
-    expect(overviewQueries.getByText("2026-05-02 08:00 UTC")).toBeInTheDocument();
+    expect(overviewQueries.getByText("2026-05-02 16:00")).toBeInTheDocument();
     expect(overviewQueries.getByRole("progressbar", { name: "Hourly Remaining" })).toHaveAttribute("aria-valuenow", "61");
 
     const authFile = new File([`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`], "auth.json", { type: "application/json" });
