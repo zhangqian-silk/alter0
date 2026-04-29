@@ -51,8 +51,9 @@ export function useRuntimeComposerViewportSync({
       const workspaceRect = workspaceBodyNode.getBoundingClientRect();
       const composerRect = composerShellNode.getBoundingClientRect();
       const restInset = Math.max(0, Math.ceil(composerRect.height));
+      const overlapInset = Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top));
       const activeInset = inputFocused
-        ? Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top))
+        ? Math.max(0, overlapInset - restInset)
         : 0;
       workspaceBodyNode.style.setProperty(
         "--runtime-composer-rest-inset",
