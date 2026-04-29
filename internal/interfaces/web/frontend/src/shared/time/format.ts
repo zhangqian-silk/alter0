@@ -55,6 +55,25 @@ export function formatDateTime(value: TimeInput): string {
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
+export function formatDateTimeMinute(value: TimeInput): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (typeof value === "string" && !text) {
+    return "-";
+  }
+
+  const parts = resolveDisplayTimeParts(value, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+  if (!parts) {
+    return text || "-";
+  }
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
 function toValidDate(value: TimeInput): Date | null {
   if (value == null || value === "") {
     return null;
