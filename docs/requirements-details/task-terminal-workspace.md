@@ -128,6 +128,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构，同时允许 Terminal 继续注入自身的状态按钮、详情面板、Process、跳转四键与 Composer 控件；详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
 - React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、工作区头部、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管。
 - 移动端 Terminal Composer 在输入框聚焦且软键盘抬起后，必须按 `VisualViewport` 推导的键盘偏移直接上移到可见底边；长历史输出继续由 `terminal-chat-screen` 独立滚动，不允许通过增加 footer padding 或让 workspace 改走外层滚动把输入区挤出视口。
+- 移动端 Terminal 在键盘抬起期间，工作区正文只消费 Composer 相对静态位置额外上移的那段遮挡量；Terminal 不得把 Composer 自身的静态高度重复计入 viewport shrink，输入框上方不能残留一条与键盘高度等值的空白带。
 - `DELETE /api/terminal/sessions/{session_id}` 删除 Terminal 会话与工作区。
 - `GET /api/terminal/sessions/{session_id}/turns/{turn_id}/steps/{step_id}` 查询 Terminal step 明细。
 

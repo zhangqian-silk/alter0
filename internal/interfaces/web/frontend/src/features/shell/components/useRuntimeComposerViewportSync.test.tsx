@@ -20,9 +20,13 @@ function setRect(node: HTMLElement, rect: Pick<DOMRect, "top" | "bottom" | "heig
 function Harness({
   isMobileViewport,
   inputFocused,
+  workspaceRect = { top: 0, bottom: 640, height: 640 },
+  composerRect = { top: 520, bottom: 640, height: 120 },
 }: {
   isMobileViewport: boolean;
   inputFocused: boolean;
+  workspaceRect?: Pick<DOMRect, "top" | "bottom" | "height">;
+  composerRect?: Pick<DOMRect, "top" | "bottom" | "height">;
 }) {
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
@@ -39,7 +43,7 @@ function Harness({
       ref={(node) => {
         workspaceBodyRef.current = node;
         if (node) {
-          setRect(node, { top: 0, bottom: 640, height: 640 });
+          setRect(node, workspaceRect);
         }
       }}
       data-testid="workspace-body"
@@ -48,7 +52,7 @@ function Harness({
         ref={(node) => {
           composerShellRef.current = node;
           if (node) {
-            setRect(node, { top: 520, bottom: 640, height: 120 });
+            setRect(node, composerRect);
           }
         }}
         data-testid="composer-shell"
@@ -70,5 +74,20 @@ describe("useRuntimeComposerViewportSync", () => {
     const workspaceBody = document.querySelector("[data-testid='workspace-body']") as HTMLDivElement;
     expect(workspaceBody.style.getPropertyValue("--runtime-composer-rest-inset")).toBe("120px");
     expect(workspaceBody.style.getPropertyValue("--runtime-composer-inset")).toBe("0px");
+  });
+
+  it("only applies the lifted keyboard delta to the active inset when the composer stays in the document flow", () => {
+    render(
+      <Harness
+        isMobileViewport
+        inputFocused
+        workspaceRect={{ top: 0, bottom: 932, height: 932 }}
+        composerRect={{ top: 468, bottom: 620, height: 152 }}
+      />,
+    );
+
+    const workspaceBody = document.querySelector("[data-testid='workspace-body']") as HTMLDivElement;
+    expect(workspaceBody.style.getPropertyValue("--runtime-composer-rest-inset")).toBe("152px");
+    expect(workspaceBody.style.getPropertyValue("--runtime-composer-inset")).toBe("312px");
   });
 });
