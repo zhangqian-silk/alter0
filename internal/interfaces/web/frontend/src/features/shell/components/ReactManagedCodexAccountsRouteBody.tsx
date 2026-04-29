@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createAPIClient } from "../../../shared/api/client";
+import { formatDateTimeMinute } from "../../../shared/time/format";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 
 type AccountRecord = {
@@ -1090,20 +1091,7 @@ function renderPercent(value: number | null) {
 }
 
 function formatResetAt(value: unknown) {
-  const text = normalizeText(value);
-  if (!text) {
-    return "-";
-  }
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) {
-    return text;
-  }
-  const year = parsed.getUTCFullYear();
-  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(parsed.getUTCDate()).padStart(2, "0");
-  const hours = String(parsed.getUTCHours()).padStart(2, "0");
-  const minutes = String(parsed.getUTCMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+  return formatDateTimeMinute(normalizeText(value));
 }
 
 function normalizePercent(value: unknown) {
