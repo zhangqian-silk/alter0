@@ -29,6 +29,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace；`agent / terminal / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 `ReactManagedRouteBody` 接管。根壳层稳定暴露 `app-shell[data-workbench-route]`，各运行页与 route body 继续输出 `data-route / data-conversation-*` 作为样式与测试锚点；兼容层仅保留样式，不再通过 legacy 脚本接管 `/chat` 业务运行时。
 - `channels / skills / mcp / models / cron-jobs` 共享控制台卡片页统一复用同一组响应式卡片网格；窄屏下标题区允许徽标下沉、字段行改为单列堆叠、底部标签区保持纵向拉伸，避免复制按钮、状态徽标与多行字段发生重叠或横向溢出。
 - Web Shell 的稳定界面基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime / Terminal` 在主面板内部统一采用「会话列 + 时间线工作区 + 底部 Composer + 固定 workspace header」结构，并直接复用会话栏、工作区容器、工作区头部、聊天滚动区、Composer 与移动端顶部操作行复合 class 语义；顶部操作行直接承载 `Menu / Sessions / New`，固定 header 只保留当前会话标题、状态按钮和 `Details` 入口，具体会话详情与页面差异化内容统一在 `Details` 面板内承载，面板首屏默认以紧凑摘要栅格承载会话元数据和高频配置。`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，状态与交互全部由 React 直接维护。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示额外品牌口号或实现状态；Conversation workspace 自身承担会话和运行态配置，不再叠加 bridge 期的 welcome/runtime sheet 双轨壳层；`Control / Sessions / Tasks / Memory / Terminal / Codex Accounts` 等 React 托管 route 页继续共享近白表面、浅灰辅助层与浅蓝选中态。
+- `Chat / Agent Runtime` 的时间线工作区现在固定展示右侧四键阅读定位条，交互与 Terminal 一致，提供 `回到顶部 / 上一条 / 下一条 / 回到底部` 四个动作；定位目标统一按当前视口中的可见消息块动态计算：`上一条` 固定取最上可见块，`下一条` 在单条消息块可见时取真实下一条、在多条消息块同屏可见时取最下可见块，最后一条消息块已进入当前视口时隐藏 `下一条`；控件本身不进入普通 `page-mode` 路由页。
 - `Agent` 与其他 React 托管页面共享同一表面体系：列表卡片、管理表单、托管字段块与消息块使用一致的近白主表面、浅灰辅助层与浅蓝选中态。
 - `/chat` 页面标题、登录页标题、导航品牌位、会话栏标题与欢迎区 tag 统一展示 `Alter0`，不再混用 `alter0` 小写品牌词。
 - Web Shell 的抽屉式单列工作台仅在主视口宽度 `1100px` 及以下触发；高于该阈值时保留左侧固定主导航与右侧主面板，避免只对聊天内容列做最大阅读宽度限制而让整体壳层失衡。
@@ -195,7 +196,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 桌面宽屏下 Chat 消息列与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区统一保留 `960px` 最大阅读宽度，但外层工作台也必须同步收缩导航与间距，避免在中等桌面宽度下出现阅读区限宽而整体布局仍然拥挤、遮挡或越界。
 - Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致会话卡片、消息节点或 route 内容被清空重建。
 - React 壳层发出的主导航跳转、新建会话、欢迎区快捷提示、语言切换、导航折叠同步与会话历史折叠同步事件，必须由当前前端运行时在同一页面内完成确认、路由更新、快捷发送或会话创建，且不能要求用户重复点击或依赖额外脚本注入的全局函数。
-- `Agent` 运行态消息区与 `Terminal` 对话区提供与主仓库 Terminal 一致的右侧箭头四键阅读定位条 `回到顶部 / 上一条 / 下一条 / 回到底部`：滚动超过阈值后显示顶部与底部入口，上一条与下一条按钮按当前可见消息块或 Terminal turn 实时重算目标；内容折叠、展开或重排后，按钮显隐与目标需同步更新。普通 `Chat` 消息区与其他托管 route 页不再展示该控件。Terminal 移动端四键定位条固定停靠在工作区右侧、输入区上沿之上，四个按钮统一为独立圆形触达面，不得退回正文流内或压住底部输入区。
+- `Chat / Agent Runtime / Terminal` 提供与主仓库 Terminal 一致的右侧箭头四键阅读定位条 `回到顶部 / 上一条 / 下一条 / 回到底部`：滚动超过阈值后显示顶部与底部入口，上一条与下一条按钮按当前可见内容块或 Terminal turn 实时重算目标；三条运行页统一采用 terminal-style 规则，`上一条` 固定取最上可见块，`下一条` 在单条可见时取真实下一条、在多条同屏可见时取最下可见块，最后一条内容块已进入当前视口时隐藏 `下一条`；内容折叠、展开或重排后，按钮显隐与目标需同步更新。其他托管 route 页不展示该控件。Terminal 移动端四键定位条固定停靠在工作区右侧、输入区上沿之上，四个按钮统一为独立圆形触达面，不得退回正文流内或压住底部输入区。
 
 ## 移动端体验
 
@@ -250,4 +251,4 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 页面恢复后，本地缓存中的旧消息不得长期显示 `In Progress`。
 - 移动端软键盘弹起与收起后输入区贴底，无回顶和残留空白。
 - 长会话流式增量不触发整段消息列表重建。
-- `Agent` 运行态消息区与 `Terminal` 对话区的箭头四键阅读定位条可在滚动后稳定出现，并能把阅读位置跳到当前视口相邻的上一条或下一条内容；普通 `Chat` 消息区与其他托管 route 页不出现这组按钮。真机窄屏下，Terminal 四键需保持固定右侧停靠、位于输入区上沿之上，且每个按钮保持圆形。
+- `Chat / Agent Runtime / Terminal` 的箭头四键阅读定位条可在滚动后稳定出现，并能按 terminal-style 可见区规则把阅读位置跳到当前视口相邻的上一条或下一条内容；其他托管 route 页不出现这组按钮。真机窄屏下，Terminal 四键需保持固定右侧停靠、位于输入区上沿之上，且每个按钮保持圆形。

@@ -5,6 +5,7 @@ import { groupSessionListItems } from "../../shared/time/sessionListGroups";
 import { buildChatTimelineItems } from "../shell/components/ChatMessageRegion";
 import { normalizeText, RouteFieldRow } from "../shell/components/RouteBodyPrimitives";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
+import { ScrollJumpStrip } from "../shell/components/ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "../shell/components/useRuntimeComposerViewportSync";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShellCopy";
 import {
@@ -141,6 +142,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
+  const timelineScreenRef = useRef<HTMLDivElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const mobileSubmitGestureLockRef = useRef(false);
   const activeMessages = runtime.activeSession?.messages || [];
@@ -694,6 +696,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
         ? "is-empty"
         : undefined,
       screenProps: { "data-runtime-screen": "conversation" },
+      screenRef: timelineScreenRef,
     },
     timeline: {
       items: buildChatTimelineItems({
@@ -706,6 +709,16 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
           <h5>{emptyStateTitle}</h5>
           <p>{emptyStateDescription}</p>
         </div>
+      ),
+      overlay: (
+        <ScrollJumpStrip
+          scope={runtime.route === "agent-runtime" ? "agent" : "chat"}
+          language={language}
+          containerRef={timelineScreenRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+          watchKey={`${runtime.route}:${activeMessages.length}:${isEmptyState ? "empty" : "active"}`}
+        />
       ),
     },
     composer: {

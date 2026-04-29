@@ -318,6 +318,43 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
   });
 
+  it("renders the four shared jump buttons for chat timelines", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "New",
+      messages: [
+        { id: "message-1" },
+        { id: "message-2" },
+      ],
+    } as typeof runtimeMock.activeSession;
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(document.querySelector("[data-scroll-jump-top='chat']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-prev='chat']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-next='chat']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-bottom='chat']")).toBeInTheDocument();
+  });
+
+  it("renders the four shared jump buttons for agent timelines", () => {
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "Agent session",
+      messages: [
+        { id: "message-1" },
+        { id: "message-2" },
+      ],
+    } as typeof runtimeMock.activeSession;
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(document.querySelector("[data-scroll-jump-top='agent']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-prev='agent']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-next='agent']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-bottom='agent']")).toBeInTheDocument();
+  });
+
   it("groups session rows into recency sections like a workspace sidebar", () => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
