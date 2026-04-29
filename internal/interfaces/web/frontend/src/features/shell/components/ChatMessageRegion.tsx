@@ -229,6 +229,7 @@ function buildChatTimelineItem(
           itemClassName: "agent-process-step conversation-process-step",
           toggleable: false,
           title: step.title || `${copy.processLabel} ${index + 1}`,
+          titleClassName: "agent-process-step-title conversation-process-step-title",
           meta: <span className="agent-process-step-index">{index + 1}</span>,
           expanded: true,
           onToggle: () => undefined,
