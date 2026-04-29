@@ -302,10 +302,7 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?padding:\s*12px 22px calc\(12px \+ env\(safe-area-inset-bottom\)\);[\s\S]*?transform:\s*translateY\(calc\(var\(--keyboard-offset, 0px\) \* -1\)\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(246, 250, 255, 0\.16\) 0%, rgba\(246, 250, 255, 0\.94\) 34%, rgba\(250, 253, 255, 0\.98\) 100%\);/,
-    );
-    expect(stylesheet).not.toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?padding:\s*12px 22px calc\(12px \+ env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset, 0px\)\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?padding:\s*12px 22px calc\(12px \+ env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset, 0px\)\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(246, 250, 255, 0\.16\) 0%, rgba\(246, 250, 255, 0\.94\) 34%, rgba\(250, 253, 255, 0\.98\) 100%\);/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[\s\S]*?padding:\s*14px 16px 12px;[\s\S]*?border-radius:\s*26px;[\s\S]*?background:\s*#fff;[\s\S]*?box-shadow:\s*0 2px 8px rgba\(60, 64, 67, 0\.12\);/,
@@ -624,6 +621,37 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-composer-meta\s*\{[\s\S]*?display:\s*block;/,
     );
+  });
+
+  it("keeps terminal command bubbles from collapsing into character-by-character wraps on mobile", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"), "utf8");
+    const block = stylesheet.match(/\.terminal-log-text\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+
+    expect(block).toContain("white-space: pre-wrap;");
+    expect(block).toContain("word-break: normal;");
+    expect(block).toContain("overflow-wrap: break-word;");
+    expect(block).not.toContain("overflow-wrap: anywhere;");
+  });
+
+  it("keeps conversation process details on a readable full-width column instead of per-character wraps", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-core.css"), "utf8");
+    const bodyBlock = stylesheet.match(/\.agent-process-step-body,\s*\.conversation-process-step-body\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const markdownBlock = stylesheet.match(/\.agent-process-step-body\s*>\s*\.runtime-markdown-rendered,\s*\.conversation-process-step-body\s*>\s*\.runtime-markdown-rendered\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const titleBlock = stylesheet.match(/\.agent-process-step-title,\s*\.conversation-process-step-title\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+
+    expect(bodyBlock).toContain("width: 100%;");
+    expect(bodyBlock).toContain("overflow-wrap: break-word;");
+    expect(bodyBlock).toContain("word-break: normal;");
+    expect(bodyBlock).not.toContain("overflow-wrap: anywhere;");
+    expect(markdownBlock).toContain("width: 100%;");
+    expect(markdownBlock).toContain("overflow-wrap: break-word;");
+    expect(markdownBlock).toContain("word-break: normal;");
+    expect(titleBlock).toContain("width: 100%;");
+    expect(titleBlock).toContain("display: block;");
+    expect(titleBlock).toContain("overflow-wrap: break-word;");
+    expect(titleBlock).toContain("word-break: normal;");
   });
 
   it("pins the mobile terminal composer to the viewport and reserves message space above it", () => {

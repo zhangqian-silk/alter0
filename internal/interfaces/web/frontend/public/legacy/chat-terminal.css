@@ -679,8 +679,8 @@
 .terminal-log-text {
   color: var(--terminal-text-secondary);
   white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
@@ -1173,6 +1173,8 @@
 
 .terminal-step-title {
   display: block;
+  width: 100%;
+  min-width: 0;
   color: var(--terminal-text-primary);
   font-size: 12px;
   font-weight: 600;
@@ -1374,6 +1376,27 @@
   white-space: pre;
   overflow-x: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.terminal-step-richtext {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px;
+  color: var(--terminal-text-primary);
+  font-size: 12px;
+  line-height: 1.68;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.terminal-step-richtext > :first-child {
+  margin-top: 0;
+}
+
+.terminal-step-richtext > :last-child {
+  margin-bottom: 0;
 }
 
 .terminal-numbered-block,

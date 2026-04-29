@@ -64,10 +64,12 @@ describe("legacy route layout stylesheet", () => {
       "utf8",
     );
 
-    expect(stylesheet).toContain(".agent-process-step-head > span:last-child {");
-    expect(stylesheet).toContain(".agent-process-step-body > .runtime-markdown-rendered {");
+    expect(stylesheet).toContain(".agent-process-step-head > span:last-child,");
+    expect(stylesheet).toContain(".conversation-process-step-head > span:last-child {");
+    expect(stylesheet).toContain(".agent-process-step-body > .runtime-markdown-rendered,");
+    expect(stylesheet).toContain(".conversation-process-step-body > .runtime-markdown-rendered {");
     expect(stylesheet).toContain("@media (max-width: 760px) {");
-    expect(stylesheet).toContain(".agent-process-step-body {");
+    expect(stylesheet).toContain(".conversation-process-step-body {");
     expect(stylesheet).toContain("width: 100%;");
   });
 
@@ -81,5 +83,16 @@ describe("legacy route layout stylesheet", () => {
     expect(stylesheet).toContain(".terminal-final-text .runtime-markdown-toolbar,");
     expect(stylesheet).toContain(".terminal-final-rendered .runtime-markdown-rendered > :first-child {");
     expect(stylesheet).toContain(".terminal-final-rendered .runtime-markdown-rendered > :last-child {");
+  });
+
+  it("version-busts legacy runtime stylesheets so repeated preview deploys cannot reuse stale process CSS", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const html = readFileSync(resolve(currentDirectory, "../../../index.html"), "utf8");
+    const legacyEntry = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat.css"), "utf8");
+
+    expect(html).toContain('/legacy/chat.css?v=20260429-terminal-process-wrap');
+    expect(legacyEntry).toContain('@import url("./chat-core.css?v=20260429-terminal-process-wrap");');
+    expect(legacyEntry).toContain('@import url("./chat-routes.css?v=20260429-terminal-process-wrap");');
+    expect(legacyEntry).toContain('@import url("./chat-terminal.css?v=20260429-terminal-process-wrap");');
   });
 });

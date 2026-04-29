@@ -1,5 +1,5 @@
 export function renderRuntimeMarkdownToHTML(value: string) {
-  const normalized = String(value ?? "").replace(/\r\n?/g, "\n");
+  const normalized = normalizeRuntimeMarkdownInput(value);
   if (!normalized.trim()) {
     return "";
   }
@@ -31,6 +31,41 @@ export function renderRuntimeMarkdownToHTML(value: string) {
       return renderMarkdownBlocks(token.content);
     })
     .join("");
+}
+
+function normalizeRuntimeMarkdownInput(value: string) {
+  const normalized = String(value ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00AD]/g, "");
+
+  return normalized
+    .split(/\n{2,}/)
+    .map((paragraph) => collapseSingleGlyphLineBreaks(paragraph))
+    .join("\n\n");
+}
+
+function collapseSingleGlyphLineBreaks(paragraph: string) {
+  const lines = String(paragraph || "").split("\n");
+  const trimmedNonEmptyLines = lines.map((line) => line.trim()).filter(Boolean);
+  if (trimmedNonEmptyLines.length < 6) {
+    return paragraph;
+  }
+  const singleGlyphLines = trimmedNonEmptyLines.filter(isLikelySingleGlyphLine);
+  if (singleGlyphLines.length / trimmedNonEmptyLines.length < 0.8) {
+    return paragraph;
+  }
+  return trimmedNonEmptyLines.join("");
+}
+
+function isLikelySingleGlyphLine(line: string) {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/^[-*+#>]/.test(trimmed) || /^\d+\./.test(trimmed)) {
+    return false;
+  }
+  return Array.from(trimmed).length === 1;
 }
 
 function renderMarkdownBlocks(content: string) {

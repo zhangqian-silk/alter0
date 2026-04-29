@@ -125,7 +125,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Web Shell 中的 Terminal 路由页主体由 React 原生实现，运行区根节点直接挂在共享 `workbench-pane-shell` 下，不再额外经过 `route-view / route-body` 包裹，避免从 Chat/Agent Runtime 切换时出现布局与滚动容器跳变。
 - Terminal 页面直接请求 `/api/terminal/sessions`、`/api/terminal/sessions/{session_id}`、`/api/terminal/sessions/{session_id}/turns/{turn_id}/steps/{step_id}` 等接口，并在 React 内维护会话恢复、轮询、输入、删除、step 展开、滚动定位与本地草稿恢复。
 - Terminal 的 session pane 容器、workspace 容器与主视图外壳在 React rerender 期间必须保持稳定实例，不能因语言切换、hash 路由变化或壳层状态更新而清空正在运行的终端内容。
-- Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构，同时允许 Terminal 继续注入自身的状态按钮、详情面板、Process 与 Composer 控件；右侧跳转四键与 Chat / Agent Runtime 复用同一套外层滚动定位组件，但 Terminal 继续保留自身 `data-terminal-jump-*` 兼容钩子与定位边界；详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
+- Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构，同时允许 Terminal 继续注入自身的状态按钮、详情面板、Process、跳转四键与 Composer 控件；详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
 - React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、工作区头部、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管。
 - 移动端 Terminal Composer 在输入框聚焦且软键盘抬起后，必须按 `VisualViewport` 推导的键盘偏移直接上移到可见底边；长历史输出继续由 `terminal-chat-screen` 独立滚动，不允许通过增加 footer padding 或让 workspace 改走外层滚动把输入区挤出视口。
 - `DELETE /api/terminal/sessions/{session_id}` 删除 Terminal 会话与工作区。
@@ -186,11 +186,13 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Terminal 新会话先使用占位标题，早期多轮内可按更具体输入升级标题。
 - 输入区聚焦期间，轮询刷新不得销毁输入框、焦点、草稿和滚动位置。
 - Terminal 页面输入条支持通用附件体验：输入条采用“上层输入区 + 下层工具栏”的双层结构，工具栏左侧提供正方形低圆角的会话设置与回形针附件入口，右侧收口发送动作；输入区需保持足够横向留白，避免长命令或多段追问输入时出现压窄观感；选择图片后立即显示缩略图并支持点击预览，选择普通文件后显示文件条目与移除动作；发送后，图片会继续在历史区回显该轮缩略图，普通文件至少保留发送侧条目与执行侧 workspace 路径语义。
-- Terminal `Details` 面板在摘要字段后提供公有 Skill 选择区；勾选项作用于后续输入，不展示或允许取消 Agent 私有 Skill。新 Terminal 会话在首次加载公有 Skill 列表时默认勾选 `frontend-design`、`deploy-test-service` 与 `artifact-preview`，用于把前端规则、测试服务发布与静态产物子域名预览能力一起带入后续输入。用户后续调整只影响当前会话的后续输入。
+- Terminal `Details` 面板在摘要字段后提供公有 Skill 选择区；勾选项作用于后续输入，不展示或允许取消 Agent 私有 Skill。新 Terminal 会话在首次加载公有 Skill 列表时默认勾选 `frontend-design` 与 `deploy-test-service`，用户后续调整只影响当前会话的后续输入。
 - 移动端输入法候选确认后，只要输入框仍聚焦，页面不得立即重绘回顶。
 - Terminal 最终输出按 Chat 助手消息样式渲染，并继续使用浅蓝轻科幻主题下的冷色阅读容器与一键复制入口。
 - 同一轮最终输出出现后自动折叠对应 Process。
 - Markdown 链接按链接文本渲染，不直接暴露冗长 Markdown 源码或长路径。
+- Terminal `Process` 的步骤头采用固定三列契约：左侧独立展开图标列、中间标题主列、右侧耗时与状态列。说明类步骤标题只能在中间主列内单行截断，不能因为少渲染图标节点或错误交换 DOM 顺序而被塞进图标窄列。
+- Terminal `Process` 的步骤详情按内容语义分流：`terminal / diff / code` 等输出类块继续保留预格式化等宽阅读；`text / message / reasoning / plan / log` 等说明类块沿用运行页 markdown 富文本容器，并在展示前移除零宽断行字符、归一化“每字一行”的病态段落，保证历史详情、轮询恢复与新触发步骤都维持同一可读性。
 - Terminal 发送按钮在首次点击时必须立即切到 pending 反馈；若当前尚未存在 active session，前端先创建 Terminal 会话再发送输入，但按钮和可访问名称需在会话创建阶段就进入 `Sending...` 禁用态，避免用户误判首击无效并重复提交。
 - Terminal 会话栏、工作区、输入区、跳转控件与 Process 区统一采用浅蓝渐变背景、低对比玻璃感面板和冷色高亮，确保与 Chat / Agent 的整体视觉语言一致。
 - Terminal 桌面端维持旧版 master-detail 布局关系：左侧会话列表复用共享列表项与共享运行页会话列宽，承载轻量红黄绿波纹信号、标题、最近输出、由会话 id 派生的 8 位短标识与删除入口，列表底部不展示完整 `terminal_session_id`；右侧工作区头部收敛为标题、信号式状态按钮与 `Details` 工具栏，运行状态不在列表项内额外渲染独立徽标；Terminal route body 顶部不再额外挂载页面级说明 hero。
@@ -210,6 +212,9 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - 浏览器底部工具栏伸缩、软键盘收起或视口回弹后，底部输入条立即回贴可见底边。
 - 输入框聚焦时仅允许 Composer 自身按键盘偏移上移，不能把工作区整体撑高到可视视口之外；Terminal 主工作区的顶部位置与主体高度在键盘弹起期间保持稳定，长对话下输入框仍需保持可见、可聚焦、可提交。
 - Terminal 移动端需把 fixed Composer 的真实遮挡高度同步回 `terminal-chat-screen`；无论是空态、长输出还是 Process 展开态，最后一屏内容都必须停在输入区上沿，不允许再被底部输入条覆盖。
+- Terminal 移动端的命令与 prompt 气泡必须维持自然整词换行：shell 命令、路径、flag 与短参数块优先按空格或真实长单词边界换行，不允许把 `/usr/bin/bash -lc 'pwd'` 这类输入压成逐字或逐 token 断裂的碎行。
+- Terminal 移动端的 `Process` 步骤头同样必须保持独立图标列：展开箭头、标题和状态不互相挤占，长中文标题优先在主列内截断，不允许退化成“每行只剩一个字”的窄列显示。
+- Terminal 移动端的 `Process` 说明类步骤详情同样必须保持整列阅读宽度：中文说明、路径、命令片段和 markdown 文本在当前步骤容器内自然换行，不允许因 `<pre>` 预格式化或异常换行字符把正文压成逐字竖排窄列。
 - Terminal 移动端的 `Menu` 与 `Sessions` 抽屉共用同一份当前面板状态：从顶部操作行或工作区工具栏打开会话列表时，主导航抽屉必须立即收起；重新打开 `Menu` 时，会话列表也必须立即关闭，避免双层覆盖和残留展开态。
 - Terminal 会话抽屉内的条目统一采用工作台列表项语义：头部展示当前态信号，正文展示标题、最近输出和 8 位短标识，删除入口固定在尾侧；列表容器保持独立滚动并输出稳定 `role="list"` 语义，视觉层级保持克制，不使用多余胶囊装饰；PC 端状态、详情、发送、上传、短标识与跳转控件统一使用低圆角矩形节奏。
 - Terminal 在移动端键盘弹起和收回期间，除 Composer 外的公共控件都保持原位；工作区头部、状态区与右侧四键定位条不跟随键盘位移做额外动画。

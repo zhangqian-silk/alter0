@@ -18,6 +18,7 @@ export type RuntimeTimelineProcessStep = {
   toggleClassName?: string;
   toggleProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "onClick">;
   title: string;
+  titleClassName?: string;
   meta?: ReactNode;
   expanded: boolean;
   onToggle: () => void;
@@ -204,7 +205,7 @@ function RuntimeTimelineBlockNode({ block }: { block: RuntimeTimelineBlock }) {
                 {step.toggleable === false ? (
                   <div className={step.toggleClassName}>
                     {step.meta ? <span>{step.meta}</span> : null}
-                    <span>{step.title}</span>
+                    <span className={step.titleClassName}>{step.title}</span>
                   </div>
                 ) : (
                   <button
@@ -214,7 +215,10 @@ function RuntimeTimelineBlockNode({ block }: { block: RuntimeTimelineBlock }) {
                     onClick={step.onToggle}
                     {...step.toggleProps}
                   >
-                    <span>{step.title}</span>
+                    <span className="terminal-step-toggle-icon" aria-hidden="true">
+                      {step.expanded ? "v" : ">"}
+                    </span>
+                    <span className={step.titleClassName}>{step.title}</span>
                     {step.meta ? <span>{step.meta}</span> : null}
                   </button>
                 )}

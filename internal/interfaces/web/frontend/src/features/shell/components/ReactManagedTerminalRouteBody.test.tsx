@@ -162,14 +162,6 @@ describe("ReactManagedTerminalRouteBody", () => {
               },
             },
             {
-              id: "artifact-preview",
-              name: "Artifact Preview",
-              enabled: true,
-              metadata: {
-                "skill.description": "Publish text, image, and code artifacts to a session preview subdomain.",
-              },
-            },
-            {
               id: "summary",
               name: "Summary",
               enabled: true,
@@ -937,6 +929,118 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
   });
 
+  it("renders a dedicated terminal step toggle icon so the step title stays in the readable content column", async () => {
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-step-toggle='step-1']")).toBeInTheDocument();
+    });
+
+    const toggle = document.querySelector("[data-terminal-step-toggle='step-1']") as HTMLButtonElement;
+    const icon = toggle.querySelector(".terminal-step-toggle-icon");
+    const title = toggle.querySelector(".terminal-step-title");
+
+    expect(icon).toBeInTheDocument();
+    expect(icon).toHaveTextContent(">");
+    expect(title).toHaveTextContent("pwd");
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(toggle.querySelector(".terminal-step-toggle-icon")).toHaveTextContent("v");
+      expect(toggle.querySelector(".terminal-step-title")).toHaveTextContent("pwd");
+    });
+  });
+
+  it("renders terminal narrative step detail as readable text instead of preserving pathological per-glyph line breaks", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "summarize",
+                status: "completed",
+                started_at: "2026-04-15T10:05:00Z",
+                finished_at: "2026-04-15T10:05:02Z",
+                duration_ms: 2000,
+                final_output: "done",
+                steps: [
+                  {
+                    id: "step-1",
+                    title: "Explain local runtime constraints",
+                    type: "reasoning",
+                    status: "completed",
+                    duration_ms: 1000,
+                    preview: "先\n读\n取\n本\n地\n运\n行\n约\n束",
+                    has_detail: true,
+                  },
+                ],
+              },
+            ],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1/turns/turn-1/steps/step-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          step: {
+            turn_id: "turn-1",
+            blocks: [
+              {
+                type: "text",
+                title: "Reasoning",
+                content: "先\n读\n取\n本\n地\n运\n行\n约\n束，\n然\n后\n直\n接\n给\n出\n方\n案",
+              },
+            ],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-step-toggle='step-1']")).toBeInTheDocument();
+    });
+
+    fireEvent.click(document.querySelector("[data-terminal-step-toggle='step-1']")!);
+
+    await waitFor(() => {
+      const detail = document.querySelector(".terminal-step-detail .runtime-markdown-rendered") as HTMLElement;
+      expect(detail).toBeInTheDocument();
+      expect(detail.textContent).toContain("先读取本地运行约束，然后直接给出方案");
+      expect(document.querySelector(".terminal-step-content code")).not.toBeInTheDocument();
+    });
+  });
+
   it("creates a new terminal session through the React action bar", async () => {
     renderTerminalRouteBody();
 
@@ -1339,7 +1443,6 @@ describe("ReactManagedTerminalRouteBody", () => {
     const configPanel = await screen.findByTestId("terminal-skill-selector");
     expect(within(configPanel).getByLabelText("Deploy Test Service")).toBeChecked();
     expect(within(configPanel).getByLabelText("Frontend Design")).toBeChecked();
-    expect(within(configPanel).getByLabelText("Artifact Preview")).toBeChecked();
     expect(within(configPanel).getByText("Summary")).toBeInTheDocument();
     expect(within(configPanel).queryByText("Agent Private")).not.toBeInTheDocument();
 
@@ -1359,7 +1462,7 @@ describe("ReactManagedTerminalRouteBody", () => {
       && String(init?.method || "GET").toUpperCase() === "POST");
     expect(inputCall).toBeTruthy();
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
-    expect(payload.skill_ids).toEqual(["frontend-design", "deploy-test-service", "artifact-preview", "summary"]);
+    expect(payload.skill_ids).toEqual(["frontend-design", "deploy-test-service", "summary"]);
   });
 
   it("does not refresh a ready session while the terminal output is being scrolled", async () => {
