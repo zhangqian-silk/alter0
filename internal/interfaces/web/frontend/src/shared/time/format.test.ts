@@ -1,6 +1,7 @@
 import {
   FRONTEND_DISPLAY_TIME_ZONE,
   formatDateTime,
+  formatDateTimeMinute,
   formatTimeLabel
 } from "./format";
 
@@ -11,6 +12,10 @@ describe("shared time format", () => {
 
   it("formats absolute timestamps in Beijing time", () => {
     expect(formatDateTime("2026-04-11T01:05:06Z")).toBe("2026-04-11 09:05:06");
+  });
+
+  it("formats minute precision timestamps in Beijing time", () => {
+    expect(formatDateTimeMinute("2026-05-01T14:30:00Z")).toBe("2026-05-01 22:30");
   });
 
   it("formats time labels in Beijing time with h23 hour cycle", () => {
