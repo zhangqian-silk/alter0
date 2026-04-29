@@ -1159,7 +1159,8 @@ body {
   color: #9f1239;
 }
 
-.agent-process-shell {
+.agent-process-shell,
+.conversation-process-shell {
   display: grid;
   gap: 12px;
   margin-bottom: 14px;
@@ -1172,11 +1173,13 @@ body {
   box-shadow: 0 20px 36px -34px rgba(8, 37, 69, 0.2);
 }
 
-.agent-process-shell.is-collapsed {
+.agent-process-shell.is-collapsed,
+.conversation-process-shell.is-collapsed {
   gap: 0;
 }
 
-.agent-process-toggle {
+.agent-process-toggle,
+.conversation-process-toggle {
   width: 100%;
   border: none;
   background: transparent;
@@ -1216,29 +1219,38 @@ body {
   color: var(--ink-muted);
 }
 
-.agent-process-body {
+.agent-process-body,
+.conversation-process-body {
   display: grid;
   gap: 10px;
+  min-width: 0;
+  width: 100%;
 }
 
-.agent-process-step {
+.agent-process-step,
+.conversation-process-step {
   display: grid;
   gap: 8px;
   min-width: 0;
+  width: 100%;
   padding-left: 12px;
   border-left: 1px dashed rgba(148, 163, 184, 0.55);
 }
 
-.agent-process-step-head {
+.agent-process-step-head,
+.conversation-process-step-head {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
+  width: 100%;
 }
 
-.agent-process-step-head > span:last-child {
+.agent-process-step-head > span:last-child,
+.conversation-process-step-head > span:last-child {
   min-width: 0;
   flex: 1 1 auto;
+  width: 100%;
 }
 
 .agent-process-step-index {
@@ -1255,47 +1267,63 @@ body {
   justify-content: center;
 }
 
-.agent-process-step-title {
+.agent-process-step-title,
+.conversation-process-step-title {
+  display: block;
+  width: 100%;
   min-width: 0;
   font-size: 14px;
   line-height: 1.45;
   font-weight: 600;
   color: var(--ink-strong);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
-.agent-process-step-body {
+.agent-process-step-body,
+.conversation-process-step-body {
   min-width: 0;
   width: 100%;
   color: var(--ink-soft);
   font-size: 14px;
   line-height: 1.68;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
-.agent-process-step-body > .runtime-markdown-rendered {
+.agent-process-step-body > .runtime-markdown-rendered,
+.conversation-process-step-body > .runtime-markdown-rendered {
   min-width: 0;
+  display: block;
+  width: 100%;
   max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .agent-process-step-body > .runtime-markdown-rendered > :first-child,
+.conversation-process-step-body > .runtime-markdown-rendered > :first-child,
 .agent-process-answer > .runtime-markdown-rendered > :first-child {
   margin-top: 0;
 }
 
 .agent-process-step-body > .runtime-markdown-rendered > :last-child,
+.conversation-process-step-body > .runtime-markdown-rendered > :last-child,
 .agent-process-answer > .runtime-markdown-rendered > :last-child {
   margin-bottom: 0;
 }
 
-.agent-process-empty {
+.agent-process-empty,
+.conversation-process-empty {
   font-size: 14px;
   color: var(--ink-muted);
 }
 
-.agent-process-answer {
+.agent-process-answer,
+.conversation-process-answer {
   display: block;
+  min-width: 0;
+  width: 100%;
 }
 
 .runtime-markdown-shell {
@@ -1945,20 +1973,24 @@ body {
     height: 26px;
   }
 
-  .agent-process-shell {
+  .agent-process-shell,
+  .conversation-process-shell {
     padding: 11px 12px 12px;
     border-radius: 20px;
   }
 
-  .agent-process-step {
+  .agent-process-step,
+  .conversation-process-step {
     padding-left: 10px;
   }
 
-  .agent-process-step-head {
+  .agent-process-step-head,
+  .conversation-process-step-head {
     align-items: flex-start;
   }
 
-  .agent-process-step-body {
+  .agent-process-step-body,
+  .conversation-process-step-body {
     width: 100%;
   }
 
