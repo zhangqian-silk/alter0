@@ -8,6 +8,11 @@
 2. 再把控制面补齐（Skill/Channel/Cron 配置与治理）。
 3. 最后平滑演进到多执行器、多通道、多环境部署。
 
+## Project Defaults
+
+- Web 前端的所有时间显示统一固定为上海时间（`Asia/Shanghai`）与 24 小时制。
+- 该约定覆盖现有与后续新增的前端页面、组件、管理视图和运行态界面；浏览器本地时区不参与显示格式决策。
+
 ## Why alter0
 
 很多 Agent 项目在早期就耦合了大量能力，导致难以迭代。`alter0` 的原则是：
@@ -121,7 +126,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - `Chat / Agent Runtime / Terminal` 会话侧栏为每个会话展示同一规则生成的 8 位短 hash 标识，便于在预览地址、排障记录和跨端沟通中引用同一会话；完整会话 id 与 `terminal_session_id` 只作为接口、持久化和工作区隔离标识，不直接铺在列表底部。
 - 会话设置中连续勾选 `Skill / Tool / MCP` 时，当前滚动位置需保持稳定，不能在每次勾选后跳回顶部。
 - `Chat` 会话设置面板中的标题、说明与右侧标签在窄宽度下需保持可读：主标题按可用宽度截断，说明文案允许换行，避免发生重叠或互相覆盖。
-- Web 前端所有时间展示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Chat、Agent、Terminal、Task、Cron 等页面不再跟随浏览器本地时区漂移，Cron 表单默认时区固定为 `Asia/Shanghai`。
+- Web 前端所有时间展示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Chat、Agent、Terminal、Task、Cron 以及 Settings/Control 管理页都不再跟随浏览器本地时区漂移，Cron 表单默认时区固定为 `Asia/Shanghai`。
 - 移动端 `Chat / Agent` 输入区在软键盘弹起、收起与可视视口高度变化期间，会基于 `VisualViewport` 同步有效视口高度；App Shell 在键盘弹起时保持稳定基线高度，仅由输入区消费 `--keyboard-offset` 贴住可见底部，避免浏览器工具栏状态切换或输入聚焦把整个工作区一并顶起；仅在输入框实际聚焦且软键盘占位达到阈值时才追加键盘底部偏移，浏览器工具栏伸缩或键盘收起后不保留额外底部留白。
 - 移动端 `Chat / Agent Runtime` 的输入框首次触摸需与 `Terminal` 使用同一条聚焦链路：通过 `preventScroll` 聚焦 textarea，并在聚焦期间监听 `window.scroll + VisualViewport resize/scroll` 把页面锚定在 `scrollY = 0`，避免首次弹出键盘时把公共操作行顶出可视区或让页面分辨率/可视区域出现跳变。
 - 移动端 `page-mode` 路由页会同步消费 `VisualViewport` 高度；`Terminal` 与其他信息页在浏览器底部工具栏伸缩、软键盘收起或可视视口回弹后，页面底边需立即回贴可见视口，不保留额外底部空白。

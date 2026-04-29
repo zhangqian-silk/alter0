@@ -142,7 +142,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `Chat / Agent Runtime` 的消息时间线在内容较少时必须保持顶部收口；短用户消息、折叠后的 `Process` 卡片、最终回复与对应时间戳继续贴近各自消息块排布，不得因为时间线容器满高拉伸而出现大块垂直空白。
 - 助手最终回复提供一键复制；若消息含 Process，复制内容只包含最终正文。
 - `Agent Runtime` 需要把专项 Agent 的 deliverables contract 作为一等运行信息展示在 `Details` 中，而不是仅保留在系统 prompt 或隐式约定里；若交付物声明绑定了 Session Profile 实例属性键，前端需直接回显当前 URL/路径值。
-- 前端所有绝对时间与时分标签统一按北京时间（`Asia/Shanghai`）渲染，并固定采用 24 小时制；浏览器本地时区不参与显示格式决策。
+- 前端所有绝对时间与时分标签统一按北京时间（`Asia/Shanghai`）渲染，并固定采用 24 小时制；浏览器本地时区不参与显示格式决策，控制台管理页中的额度重置、运行时间等管理时间戳也必须复用同一口径。
 - Cron 表单中的默认时区固定为 `Asia/Shanghai`，不再读取浏览器 `resolvedOptions().timeZone` 作为初始值。
 
 ## 并发与分流
