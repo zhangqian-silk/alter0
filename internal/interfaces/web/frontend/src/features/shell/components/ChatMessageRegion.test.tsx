@@ -179,6 +179,9 @@ describe("ChatMessageRegion", () => {
 
     const article = document.querySelector("[data-message-id='message-1']") as HTMLElement;
     expect(article.querySelector(".terminal-process-shell")).toBeInTheDocument();
+    expect(article.querySelector(".conversation-process-body")).toBeInTheDocument();
+    expect(article.querySelector(".conversation-process-step-head")).toBeInTheDocument();
+    expect(article.querySelector(".agent-process-step-title")).toBeInTheDocument();
     const answer = document.querySelector(".agent-process-answer") as HTMLElement;
     expect(answer).toBeInTheDocument();
     expect(answer).toHaveClass("runtime-markdown-body");
