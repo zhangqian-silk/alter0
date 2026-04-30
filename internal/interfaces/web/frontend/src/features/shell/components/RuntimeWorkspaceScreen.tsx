@@ -14,6 +14,7 @@ type RuntimeWorkspaceScreenProps = {
     className?: string;
   };
   screenRef?: Ref<HTMLDivElement>;
+  overlay?: ReactNode;
   children: ReactNode;
 };
 
@@ -23,6 +24,7 @@ export function RuntimeWorkspaceScreen({
   screenClassName,
   screenProps,
   screenRef,
+  overlay,
   children,
 }: RuntimeWorkspaceScreenProps) {
   const {
@@ -46,6 +48,7 @@ export function RuntimeWorkspaceScreen({
       >
         {children}
       </div>
+      {overlay}
     </section>
   );
 }

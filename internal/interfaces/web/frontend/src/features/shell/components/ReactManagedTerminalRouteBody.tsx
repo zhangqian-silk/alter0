@@ -17,6 +17,7 @@ import type { RuntimeTimelineItem, RuntimeTimelineProcessStep } from "./RuntimeT
 import { RuntimeMarkdownHTML } from "./RuntimeTimelinePrimitives";
 import { normalizeText } from "./RouteBodyPrimitives";
 import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
+import { ScrollJumpStrip } from "./ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
 
 type TerminalStatus = "ready" | "busy" | "exited" | "failed" | "interrupted";
@@ -279,19 +280,6 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
   },
 };
 
-type JumpState = {
-  previousTurnID: string;
-  nextTurnID: string;
-  showTop: boolean;
-  showBottom: boolean;
-};
-
-type TerminalJumpMeasurement = {
-  id: string;
-  top: number;
-  bottom: number;
-};
-
 const POLL_INTERVAL_MS = 2000;
 const INTERACTION_POLL_INTERVAL_MS = 6000;
 const HIDDEN_POLL_INTERVAL_MS = 12000;
@@ -299,8 +287,6 @@ const IDLE_LIST_POLL_INTERVAL_MS = 12000;
 const HIDDEN_IDLE_LIST_POLL_INTERVAL_MS = 30000;
 const SCROLL_IDLE_MS = 1200;
 const SCROLL_BOTTOM_ANCHOR_THRESHOLD = 24;
-const JUMP_TOP_THRESHOLD = 180;
-const JUMP_BOTTOM_THRESHOLD = 220;
 const TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.attachments.v1";
 const TERMINAL_PENDING_DRAFT_KEY = "__pending__";
 
@@ -726,106 +712,6 @@ function sessionLastOutputLabel(
   return copy.lastOutput(formatDateTime(labelAt));
 }
 
-function syncJumpState(
-  chatScreenNode: HTMLDivElement | null,
-  measurementCacheRef: { current: TerminalJumpMeasurement[] | null },
-  measurementDirtyRef: { current: boolean },
-  suppressNextTurn: boolean,
-  setJumpState: (value: JumpState) => void,
-) {
-  if (!chatScreenNode) {
-    measurementCacheRef.current = null;
-    measurementDirtyRef.current = true;
-    setJumpState({
-      previousTurnID: "",
-      nextTurnID: "",
-      showTop: false,
-      showBottom: false,
-    });
-    return;
-  }
-  const scrollTop = Math.max(chatScreenNode.scrollTop, 0);
-  const viewportBottom = scrollTop + chatScreenNode.clientHeight;
-  const remaining = Math.max(chatScreenNode.scrollHeight - scrollTop - chatScreenNode.clientHeight, 0);
-  const measureEntries = () =>
-    [...chatScreenNode.querySelectorAll<HTMLElement>("[data-terminal-turn]")]
-      .map((node) => {
-        const id = node.getAttribute("data-terminal-turn") || "";
-        const top = node.offsetTop;
-        const height = Math.max(node.offsetHeight, 0);
-        return {
-          id,
-          top,
-          bottom: top + height,
-        };
-      })
-      .filter((entry) => entry.id);
-  let entries = !measurementDirtyRef.current && measurementCacheRef.current
-    ? measurementCacheRef.current
-    : measureEntries();
-  const cachedLastBottom = entries[entries.length - 1]?.bottom ?? 0;
-  if (!measurementDirtyRef.current && entries.length > 0 && scrollTop > cachedLastBottom) {
-    entries = measureEntries();
-    measurementCacheRef.current = entries;
-  }
-  if (measurementDirtyRef.current) {
-    measurementCacheRef.current = entries;
-    measurementDirtyRef.current = false;
-  }
-  if (!entries.length) {
-    setJumpState({
-      previousTurnID: "",
-      nextTurnID: "",
-      showTop: scrollTop > JUMP_TOP_THRESHOLD,
-      showBottom: remaining > JUMP_BOTTOM_THRESHOLD,
-    });
-    return;
-  }
-  let visibleEntries = entries.filter((entry) => entry.bottom > scrollTop && entry.top < viewportBottom);
-  if (!visibleEntries.length && !measurementDirtyRef.current) {
-    const remeasuredEntries = measureEntries();
-    if (remeasuredEntries.length > 0) {
-      entries = remeasuredEntries;
-      measurementCacheRef.current = remeasuredEntries;
-      visibleEntries = remeasuredEntries.filter((entry) => entry.bottom > scrollTop && entry.top < viewportBottom);
-    }
-  }
-  if (!visibleEntries.length) {
-    setJumpState({
-      previousTurnID: "",
-      nextTurnID: "",
-      showTop: scrollTop > JUMP_TOP_THRESHOLD,
-      showBottom: remaining > JUMP_BOTTOM_THRESHOLD,
-    });
-    return;
-  }
-  const previousTurnID = visibleEntries[0]?.id || "";
-  let nextTurnID = "";
-  const lastVisibleID = visibleEntries[visibleEntries.length - 1]?.id || "";
-  const lastVisibleIndex = lastVisibleID
-    ? entries.findIndex((entry) => entry.id === lastVisibleID)
-    : -1;
-  if (suppressNextTurn) {
-    nextTurnID = "";
-  } else if (remaining <= SCROLL_BOTTOM_ANCHOR_THRESHOLD) {
-    nextTurnID = "";
-  } else if (lastVisibleIndex >= 0 && lastVisibleIndex === entries.length - 1) {
-    nextTurnID = "";
-  } else if (visibleEntries.length > 1) {
-    nextTurnID = lastVisibleID;
-  } else {
-    const visibleID = visibleEntries[0]?.id || "";
-    const visibleIndex = entries.findIndex((entry) => entry.id === visibleID);
-    nextTurnID = visibleIndex >= 0 ? entries[visibleIndex + 1]?.id || "" : "";
-  }
-  setJumpState({
-    previousTurnID,
-    nextTurnID,
-    showTop: scrollTop > JUMP_TOP_THRESHOLD,
-    showBottom: remaining > JUMP_BOTTOM_THRESHOLD,
-  });
-}
-
 export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   /* Source contract markers:
      workbench.toggleMobileNav();
@@ -862,22 +748,12 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
   const [stepDetails, setStepDetails] = useState<Record<string, TerminalStepDetail>>({});
   const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
-  const [jumpState, setJumpState] = useState<JumpState>({
-    previousTurnID: "",
-    nextTurnID: "",
-    showTop: false,
-    showBottom: false,
-  });
   const chatScreenRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
-  const jumpSyncFrameRef = useRef<number | null>(null);
-  const jumpMeasurementCacheRef = useRef<TerminalJumpMeasurement[] | null>(null);
-  const jumpMeasurementDirtyRef = useRef(true);
-  const submittingRef = useRef(false);
   const scrollRestoreSnapshotRef = useRef<{
     top: number;
     anchoredToBottom: boolean;
@@ -1041,22 +917,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     }
     node.scrollTop = snapshot.anchoredToBottom ? node.scrollHeight : snapshot.top;
     scrollRestoreSnapshotRef.current = null;
-  };
-
-  const scheduleJumpStateSync = () => {
-    if (jumpSyncFrameRef.current !== null) {
-      return;
-    }
-    jumpSyncFrameRef.current = window.requestAnimationFrame(() => {
-      jumpSyncFrameRef.current = null;
-      syncJumpState(
-        chatScreenRef.current,
-        jumpMeasurementCacheRef,
-        jumpMeasurementDirtyRef,
-        submittingRef.current,
-        setJumpState,
-      );
-    });
   };
 
   const refreshList = async () => {
@@ -1278,27 +1138,13 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   }, [turns]);
 
   useLayoutEffect(() => {
-    jumpMeasurementDirtyRef.current = true;
     restoreScrollSnapshot();
-    scheduleJumpStateSync();
   }, [activeSessionID, turns, expandedTurns, expandedSteps, stepDetails, metaOpen]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      jumpMeasurementDirtyRef.current = true;
-      scheduleJumpStateSync();
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   useEffect(() => {
     return () => {
       if (scrollIdleTimerRef.current !== null) {
         window.clearTimeout(scrollIdleTimerRef.current);
-      }
-      if (jumpSyncFrameRef.current !== null) {
-        window.cancelAnimationFrame(jumpSyncFrameRef.current);
       }
       if (draftPersistTimerRef.current !== null) {
         window.clearTimeout(draftPersistTimerRef.current);
@@ -1404,11 +1250,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     if (submitting) {
       return;
     }
-    submittingRef.current = true;
     setSubmitting(true);
-    setJumpState((current) => current.nextTurnID
-      ? { ...current, nextTurnID: "" }
-      : current);
     let session = activeSession;
     try {
       if (!session) {
@@ -1464,18 +1306,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         const node = chatScreenRef.current;
         if (node) {
           node.scrollTop = node.scrollHeight;
-          jumpMeasurementDirtyRef.current = true;
-          syncJumpState(
-            node,
-            jumpMeasurementCacheRef,
-            jumpMeasurementDirtyRef,
-            submittingRef.current,
-            setJumpState,
-          );
         }
       });
     } finally {
-      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -1515,23 +1348,12 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       setScrollingActive(false);
       scrollIdleTimerRef.current = null;
     }, SCROLL_IDLE_MS);
-    scheduleJumpStateSync();
   };
 
   const handleJumpControlPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === "mouse") {
       event.preventDefault();
     }
-  };
-
-  const scrollToTurn = (turnID: string) => {
-    const chatNode = chatScreenRef.current;
-    const turnNode = chatNode?.querySelector<HTMLElement>(`[data-terminal-turn="${turnID}"]`) || null;
-    if (!chatNode || !turnNode) {
-      return;
-    }
-    chatNode.scrollTo({ top: Math.max(turnNode.offsetTop - 12, 0), behavior: "smooth" });
-    scheduleJumpStateSync();
   };
 
   const activeNote = runtimeNote(activeSession?.status || "", copy);
@@ -1722,64 +1544,17 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         <div className="terminal-log-empty">{loading ? copy.loading : copy.noOutput}</div>
       ),
       overlay: (
-        <div className="terminal-jump-cluster" aria-label="Turn navigation">
-          <button
-            className={jumpState.showTop ? "terminal-jump-control terminal-jump-top is-visible" : "terminal-jump-control terminal-jump-top"}
-            type="button"
-            data-terminal-jump-top
-            aria-label={copy.top}
-            title={copy.top}
-            onPointerDown={handleJumpControlPointerDown}
-            onClick={() => {
-              const node = chatScreenRef.current;
-              if (node) {
-                node.scrollTo({ top: 0, behavior: "smooth" });
-              }
-            }}
-          >
-            <span className="terminal-jump-control-icon" aria-hidden="true">↑↑</span>
-          </button>
-          <button
-            className={jumpState.previousTurnID ? "terminal-jump-control terminal-jump-prev is-visible" : "terminal-jump-control terminal-jump-prev"}
-            type="button"
-            data-terminal-jump-prev
-            data-terminal-jump-target={jumpState.previousTurnID}
-            aria-label={copy.prev}
-            title={copy.prev}
-            onPointerDown={handleJumpControlPointerDown}
-            onClick={() => scrollToTurn(jumpState.previousTurnID)}
-          >
-            <span className="terminal-jump-control-icon" aria-hidden="true">↑</span>
-          </button>
-          <button
-            className={jumpState.nextTurnID ? "terminal-jump-control terminal-jump-next is-visible" : "terminal-jump-control terminal-jump-next"}
-            type="button"
-            data-terminal-jump-next
-            data-terminal-jump-target={jumpState.nextTurnID}
-            aria-label={copy.next}
-            title={copy.next}
-            onPointerDown={handleJumpControlPointerDown}
-            onClick={() => scrollToTurn(jumpState.nextTurnID)}
-          >
-            <span className="terminal-jump-control-icon" aria-hidden="true">↓</span>
-          </button>
-          <button
-            className={jumpState.showBottom ? "terminal-jump-control terminal-jump-bottom is-visible" : "terminal-jump-control terminal-jump-bottom"}
-            type="button"
-            data-terminal-jump-bottom
-            aria-label={copy.bottom}
-            title={copy.bottom}
-            onPointerDown={handleJumpControlPointerDown}
-            onClick={() => {
-              const node = chatScreenRef.current;
-              if (node) {
-                node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-              }
-            }}
-          >
-            <span className="terminal-jump-control-icon" aria-hidden="true">↓↓</span>
-          </button>
-        </div>
+        <ScrollJumpStrip
+          scope="terminal"
+          namespace="terminal"
+          language={language}
+          containerRef={chatScreenRef}
+          itemSelector="[data-terminal-turn]"
+          itemAttribute="data-terminal-turn"
+          watchKey={`${activeSessionID}:${turns.length}:${Object.keys(expandedTurns).length}:${Object.keys(expandedSteps).length}:${Object.keys(stepDetails).length}:${metaOpen ? "meta" : "plain"}`}
+          suppressNextTarget={submitting}
+          onControlPointerDown={handleJumpControlPointerDown}
+        />
       ),
     },
     composer: {

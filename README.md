@@ -108,6 +108,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - `Chat / Agent Runtime` 统一使用 terminal-style workspace：左侧主导航之外，运行页内部固定为会话列、主时间线工作区、底部 Composer 与固定 workspace header；header 统一只保留当前会话标题、状态按钮与 `Details` 入口，`Details` 面板顶部先用紧凑摘要栅格承载会话元数据，再由各页面继续展开专属配置内容。消息、过程步骤与最终输出都落在同一时间线中推进，不再保留桥接期的欢迎区 / runtime sheet 双轨壳层。会话列、workspace、chat screen 与 composer 全部由共享的 `RuntimeWorkspaceShell / RuntimeComposer / RuntimeWorkspaceHeader / RuntimeTimeline` 直接渲染，运行页公共 DOM 以 `runtime-*` 为唯一主契约，三条运行页只在各自路由内注入数据和变体皮肤。
 - `Chat / Agent Runtime` 的 `Process` 阅读区在桌面与移动端都保持整列可读宽度：步骤标题与正文共享统一的缩放/换行约束，长中文句子、路径和命令说明优先在当前消息容器内换行，不允许在真机窄屏下塌缩成逐字竖排窄列；若历史或流式过程文本混入零宽断行字符，或被异常写成“每字一行”的病态段落，前端展示层需在渲染前做归一化修正。
 - `Chat / Agent Runtime` 的消息时间线在内容较少时仍需保持顶部收口：少量消息、短回复、折叠后的 `Process` 卡片与时间戳继续贴近各自消息块排布，不得因为满高时间线轨道被拉伸而出现大块垂直留白。
+- `Chat / Agent Runtime / Terminal` 的阅读定位条必须以悬浮 overlay 形式停靠在消息区右下角，不参与时间线正文排版；空白会话或少量消息场景下，消息区本身不得因为定位条占位而被额外撑高并出现无意义滚动。
 - `Chat / Agent Runtime` 的会话图片资产统一落在当前 Session 工作区：用户选图后前端通过 `POST /api/sessions/{session_id}/attachments` 把原图与预览图写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，随后消息请求、最近会话恢复与页面重开都只保留 `asset_url / preview_url` 引用；assistant 最终回复里的外链 markdown 图片也会在返回前下载进同一目录并改写成本地附件 URL，避免会话历史长期依赖远端外链或把原始大图 `data_url` 堆进浏览器存储。
 - `Chat / Agent Runtime` 首页 Composer 收敛为双层紧凑输入面：上层为单一主输入区，下层工具栏左侧提供正方形低圆角的会话设置与附件按钮，右侧提供紧凑 icon submit；桌面与移动端都压缩外层留白、输入高度和发送按钮体量，同时保持主输入区满宽铺开、具备足够横向留白和更高的可读输入面；发送按钮直接复用 Terminal 的紧凑 icon submit 皮肤；PC 端上传、发送、状态、详情和短标识控件都采用低圆角矩形，输入区、底部工具栏、会话卡片和 `Details` 面板沿同一套浅色 terminal-runtime 皮肤出图，不再混用默认 terminal footer slab 与旧式轻表单观感；空态工作区不允许保留可拖拽滚动，把头部和输入区顶离可视区。
 - `Chat / Agent Runtime` Composer 支持最多 5 张图片附件：前端按会话草稿缓存附件、提供缩略图预览与移除操作，用户消息时间线与最近会话恢复仅保留图片预览资产，不再重复持久化原始大图 payload；助手消息中的 markdown 图片会直接以内联图片方式懒加载显示。仅支持视觉输入的模型允许发送带图消息；图片请求不会切到异步 Task，也不会在模型链失败后静默降级到 Codex 文本执行。
@@ -129,9 +130,11 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - Web 前端所有时间展示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Chat、Agent、Terminal、Task、Cron 以及 Settings/Control 管理页都不再跟随浏览器本地时区漂移，Cron 表单默认时区固定为 `Asia/Shanghai`。
 - 移动端 `Chat / Agent` 输入区在软键盘弹起、收起与可视视口高度变化期间，会基于 `VisualViewport` 同步有效视口高度；App Shell 在键盘弹起时保持稳定基线高度，仅由输入区消费 `--keyboard-offset` 贴住可见底部，避免浏览器工具栏状态切换或输入聚焦把整个工作区一并顶起；仅在输入框实际聚焦且软键盘占位达到阈值时才追加键盘底部偏移，浏览器工具栏伸缩或键盘收起后不保留额外底部留白。
 - 移动端 `Chat / Agent Runtime` 的输入框首次触摸需与 `Terminal` 使用同一条聚焦链路：通过 `preventScroll` 聚焦 textarea，并在聚焦期间监听 `window.scroll + VisualViewport resize/scroll` 把页面锚定在 `scrollY = 0`，避免首次弹出键盘时把公共操作行顶出可视区或让页面分辨率/可视区域出现跳变。
+- 移动端 `Chat / Agent Runtime` 点击发送按钮时，会先让当前主输入框失焦，再沿原有提交流程发送当前草稿；软键盘回收阶段继续依赖 `VisualViewport` 的实际回弹逐步释放 `--keyboard-offset`，避免发送后键盘停留不收或 composer 悬空。
 - 移动端 `page-mode` 路由页会同步消费 `VisualViewport` 高度；`Terminal` 与其他信息页在浏览器底部工具栏伸缩、软键盘收起或可视视口回弹后，页面底边需立即回贴可见视口，不保留额外底部空白。
 - 移动端 `Terminal` 在输入框聚焦且软键盘抬起后，底部 Composer 会按 `VisualViewport` 推导出的 `--keyboard-offset` 直接上移到可见底边；Terminal 工作区主体保持原位，键盘弹起不会把页面整体向上推出；长历史输出继续留在 `terminal-chat-screen` 内独立滚动，不允许通过增大 footer padding 把输入区整体挤出屏幕。
-- 四键阅读定位条仅保留在 `Agent` 运行态消息区与 `Terminal` 对话区，采用与主仓库 Terminal 一致的右侧箭头四键：`回到顶部 / 上一条 / 下一条 / 回到底部`。普通 `Chat` 消息区与其他 `page-mode` 路由页不再展示这组按钮；滚动超出阈值后显示顶部与底部入口，并按当前视口中的可见消息块或 Terminal turn 动态计算上下目标。Terminal 的 `上一条` 固定指向当前视口中最靠上的可见 turn，`下一条` 在单条 turn 可见时指向它后面的真实下一条、在多条 turn 同屏可见时指向最靠下的可见 turn；但只要最后一条 turn 已经进入当前视口，无论底部剩余内容是否还存在，都隐藏 `下一条`，剩余阅读交给 `回到底部`。另外在新对话刚触发、提交请求尚未稳定到最新 turn 结构的瞬时阶段，`下一个` 也会先抑制显示，避免旧 turn 集合与新运行态交叠时出现短暂误判。这组按钮继续使用原有箭头字形，但按钮本体不参与正文文本选中或长按选中，只承载点击跳转。Terminal 移动端的四键定位条固定停靠在工作区右侧、输入区上沿之上，四个按钮统一为独立圆形，避免落回正文流内或压住输入区。
+- `Chat / Agent Runtime / Terminal` 统一使用同一套四键阅读定位条组件，承载 `回到顶部 / 上一条 / 下一条 / 回到底部` 四个动作，并按当前视口中的可见消息块或 Terminal turn 动态计算上下目标。Terminal 的 `上一条` 固定指向当前视口中最靠上的可见 turn，`下一条` 在单条 turn 可见时指向它后面的真实下一条、在多条 turn 同屏可见时指向最靠下的可见 turn；但只要最后一条 turn 已经进入当前视口，无论底部剩余内容是否还存在，都隐藏 `下一条`，剩余阅读交给 `回到底部`。`回到底部` 本身只在最后一条内容的底边仍位于视口外时显示；如果最后只剩容器 padding 或空白余量，不再保留伪底部跳转。这组按钮继续使用原有箭头字形，但按钮本体不参与正文文本选中或长按选中，只承载点击跳转。
+- `Chat / Agent Runtime / Terminal` 的四键阅读定位条统一使用独立圆形按钮外观与触摸反馈；移动端固定停靠在工作区右侧、输入区上沿之上，避免落回正文流内或压住输入区。
 - 移动端 `Chat / Agent` 的后台任务轮询会按页面可见性自动降频；页面隐藏时停止高频扫描，恢复前台后再立即补一次刷新，降低持续耗电与发热。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
 - `Alter0` 默认使用 ReAct 执行链，可直接完成通用任务，并在需要时调度专项 Agent。

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { ConversationWorkspace } from "./ConversationWorkspace";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../app/WorkbenchContext";
@@ -872,6 +872,27 @@ describe("ConversationWorkspace", () => {
     fireEvent.pointerDown(screen.getByRole("button", { name: "Send" }), { pointerType: "touch" });
 
     expect(runtimeMock.sendPrompt).toHaveBeenCalledWith("ship with keyboard open");
+  });
+
+  it("blurs the agent-runtime composer when the mobile send button is tapped", async () => {
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.target = { type: "agent", id: "alter0", name: "Alter0" };
+    runtimeMock.draft = "close the mobile keyboard";
+
+    renderWorkspace({ route: "agent-runtime", isMobileViewport: true });
+
+    const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
+    await act(async () => {
+      composerInput.focus();
+    });
+    expect(composerInput).toHaveFocus();
+
+    await act(async () => {
+      fireEvent.touchStart(screen.getByRole("button", { name: "Send" }));
+    });
+
+    expect(runtimeMock.sendPrompt).toHaveBeenCalledWith("close the mobile keyboard");
+    expect(composerInput).not.toHaveFocus();
   });
 
   it("keeps the agent-runtime header summary visible outside the mobile empty state", () => {
