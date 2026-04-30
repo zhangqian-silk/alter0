@@ -157,14 +157,29 @@ function resolveTerminalJumpState(
 
   const previousID = visibleEntries[0]?.id || "";
   const lastVisibleID = visibleEntries[visibleEntries.length - 1]?.id || "";
+  const firstEntryID = entries[0]?.id || "";
+  const lastEntryID = entries[entries.length - 1]?.id || "";
+  const firstEntryVisible = visibleEntries.some((entry) => entry.id === firstEntryID);
+  const lastEntryVisible = visibleEntries.some((entry) => entry.id === lastEntryID);
+  const firstEntryTop = entries[0]?.top ?? 0;
+  const lastEntryBottom = entries[entries.length - 1]?.bottom ?? 0;
+  const hasHiddenContentAbove = firstEntryTop < scrollTop;
+  const hasHiddenContentBelow = lastEntryBottom > viewportBottom;
   const lastVisibleIndex = lastVisibleID
     ? entries.findIndex((entry) => entry.id === lastVisibleID)
     : -1;
   let nextID = "";
+  let previousTargetID = "";
+
+  if (hasHiddenContentAbove) {
+    previousTargetID = previousID;
+  }
 
   if (suppressNextTarget) {
     nextID = "";
   } else if (remaining <= SCROLL_BOTTOM_ANCHOR_THRESHOLD) {
+    nextID = "";
+  } else if (lastEntryVisible) {
     nextID = "";
   } else if (lastVisibleIndex >= 0 && lastVisibleIndex === entries.length - 1) {
     nextID = "";
@@ -177,10 +192,10 @@ function resolveTerminalJumpState(
   }
 
   return {
-    previousID,
+    previousID: previousTargetID,
     nextID,
-    showTop: scrollTop > SCROLL_JUMP_TOP_THRESHOLD,
-    showBottom: remaining > SCROLL_JUMP_BOTTOM_THRESHOLD,
+    showTop: hasHiddenContentAbove && scrollTop > SCROLL_JUMP_TOP_THRESHOLD,
+    showBottom: hasHiddenContentBelow && remaining > SCROLL_JUMP_BOTTOM_THRESHOLD,
   };
 }
 

@@ -598,14 +598,18 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toContain("[data-runtime-view=\"conversation\"] .runtime-composer-submit {");
   });
 
-  it("styles shared jump controls as arrow clusters for dialog surfaces", () => {
+  it("styles shared jump controls as one round button set across chat, agent, and terminal", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
+    expect(stylesheet).toMatch(/\.runtime-workspace-panel\s*\{[\s\S]*?position:\s*relative;/);
     expect(stylesheet).toContain(".scroll-jump-strip {");
     expect(stylesheet).toContain(".scroll-jump-control {");
     expect(stylesheet).toContain(".scroll-jump-control.is-visible {");
     expect(stylesheet).toContain(".scroll-jump-control-icon {");
+    expect(stylesheet).toMatch(/\.scroll-jump-strip\s*\{[\s\S]*?position:\s*absolute;/);
+    expect(stylesheet).toMatch(/\.scroll-jump-control\s*\{[\s\S]*?border-radius:\s*999px;/);
+    expect(stylesheet).toMatch(/\.terminal-jump-control\s*\{[\s\S]*?border-radius:\s*999px;/);
   });
 
   it("keeps narrow terminal headers on one line and preserves composer meta visibility", () => {

@@ -265,6 +265,17 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     }
   };
 
+  const blurComposerInput = () => {
+    const node = composerInputRef.current;
+    if (!node) {
+      return;
+    }
+    if (document.activeElement !== node) {
+      return;
+    }
+    node.blur();
+  };
+
   const handleComposerPointerDownCapture = (event: PointerEvent<HTMLTextAreaElement>) => {
     if (!workbench.isMobileViewport || event.pointerType === "mouse" || inputFocused) {
       return;
@@ -298,6 +309,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   const submitMobileDraftOnPress = () => {
     mobileSubmitGestureLockRef.current = true;
     releaseMobileSubmitGestureLock();
+    blurComposerInput();
     submitDraft();
   };
 

@@ -179,13 +179,12 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
       )}
       workspaceHeader={workspaceHeader}
       workspaceContent={(
-        <RuntimeWorkspaceScreen {...controller.screen}>
+        <RuntimeWorkspaceScreen {...controller.screen} overlay={controller.timeline.overlay}>
           <RuntimeTimeline
             className={controller.timeline.className}
             timelineProps={controller.timeline.timelineProps}
             emptyState={controller.timeline.emptyState}
             items={controller.timeline.items}
-            overlay={controller.timeline.overlay}
           />
         </RuntimeWorkspaceScreen>
       )}

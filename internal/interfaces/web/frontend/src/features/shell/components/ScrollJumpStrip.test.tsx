@@ -9,6 +9,8 @@ function applyScrollableMetrics(
   options: {
     clientHeight: number;
     scrollHeight: number;
+    scrollTop?: number;
+    targetHeights?: number[];
   },
 ) {
   Object.defineProperty(container, "clientHeight", {
@@ -22,7 +24,7 @@ function applyScrollableMetrics(
   Object.defineProperty(container, "scrollTop", {
     configurable: true,
     writable: true,
-    value: 0,
+    value: options.scrollTop ?? 0,
   });
   container.getBoundingClientRect = () => ({
     x: 0,
@@ -43,13 +45,14 @@ function applyScrollableMetrics(
   container.scrollTo = scrollToMock;
 
   targets.forEach((target, index) => {
+    const height = options.targetHeights?.[index] ?? 120;
     Object.defineProperty(target, "offsetTop", {
       configurable: true,
       value: targetTops[index],
     });
     Object.defineProperty(target, "offsetHeight", {
       configurable: true,
-      value: 120,
+      value: height,
     });
     target.getBoundingClientRect = () => {
       const top = targetTops[index] - container.scrollTop;
@@ -57,10 +60,10 @@ function applyScrollableMetrics(
         x: 0,
         y: top,
         width: 280,
-        height: 120,
+        height,
         top,
         right: 280,
-        bottom: top + 120,
+        bottom: top + height,
         left: 0,
         toJSON: () => ({}),
       };
@@ -242,6 +245,111 @@ describe("ScrollJumpStrip", () => {
       expect(container.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-2");
       expect(container.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "turn-3");
       expect(container.querySelector("[data-terminal-jump-bottom]")).toHaveClass("is-visible");
+    });
+  });
+
+  it("keeps all jump controls hidden when every message already fits in the viewport", async () => {
+    const containerRef = createRef<HTMLElement>();
+    const { container } = render(
+      <section ref={containerRef}>
+        <article data-message-id="message-1">message-1</article>
+        <article data-message-id="message-2">message-2</article>
+        <ScrollJumpStrip
+          scope="chat"
+          language="zh"
+          containerRef={containerRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+        />
+      </section>,
+    );
+
+    const scrollContainer = container.firstElementChild as HTMLElement;
+    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-message-id]")];
+    applyScrollableMetrics(scrollContainer, targets, [0, 140], {
+      clientHeight: 520,
+      scrollHeight: 520,
+    });
+
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-top='chat']")).not.toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).not.toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-next='chat']")).not.toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-bottom='chat']")).not.toHaveClass("is-visible");
+    });
+  });
+
+  it("keeps the upward jump controls available while the first message is only partially visible", async () => {
+    const containerRef = createRef<HTMLElement>();
+    const { container } = render(
+      <section ref={containerRef}>
+        <article data-message-id="message-1">message-1</article>
+        <article data-message-id="message-2">message-2</article>
+        <article data-message-id="message-3">message-3</article>
+        <ScrollJumpStrip
+          scope="chat"
+          language="zh"
+          containerRef={containerRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+        />
+      </section>,
+    );
+
+    const scrollContainer = container.firstElementChild as HTMLElement;
+    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-message-id]")];
+    applyScrollableMetrics(scrollContainer, targets, [0, 430, 620], {
+      clientHeight: 320,
+      scrollHeight: 900,
+      scrollTop: 220,
+      targetHeights: [400, 120, 120],
+    });
+
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-top='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-next='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-bottom='chat']")).toHaveClass("is-visible");
+    });
+  });
+
+  it("hides the downward jump controls once the last message is fully visible and only blank space remains below", async () => {
+    const containerRef = createRef<HTMLElement>();
+    const { container } = render(
+      <section ref={containerRef}>
+        <article data-message-id="message-1">message-1</article>
+        <article data-message-id="message-2">message-2</article>
+        <article data-message-id="message-3">message-3</article>
+        <ScrollJumpStrip
+          scope="chat"
+          language="zh"
+          containerRef={containerRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+        />
+      </section>,
+    );
+
+    const scrollContainer = container.firstElementChild as HTMLElement;
+    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-message-id]")];
+    applyScrollableMetrics(scrollContainer, targets, [0, 220, 440], {
+      clientHeight: 220,
+      scrollHeight: 980,
+      scrollTop: 360,
+      targetHeights: [120, 120, 120],
+    });
+
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-top='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-next='chat']")).not.toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-bottom='chat']")).not.toHaveClass("is-visible");
     });
   });
 });
