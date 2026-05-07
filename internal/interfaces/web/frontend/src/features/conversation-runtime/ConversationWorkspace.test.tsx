@@ -364,6 +364,34 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector("[data-scroll-jump-bottom='agent']")).toBeInTheDocument();
   });
 
+  it("hides shared jump buttons while the mobile composer is focused", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "New",
+      messages: [
+        { id: "message-1" },
+        { id: "message-2" },
+      ],
+    } as typeof runtimeMock.activeSession;
+
+    renderWorkspace({ isMobileViewport: true });
+
+    const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
+    fireEvent.focus(composerInput);
+
+    expect(document.querySelector("[data-scroll-jump-top='chat']")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-prev='chat']")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-next='chat']")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-bottom='chat']")).not.toBeInTheDocument();
+
+    fireEvent.blur(composerInput);
+
+    expect(document.querySelector("[data-scroll-jump-top='chat']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-prev='chat']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-next='chat']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-bottom='chat']")).toBeInTheDocument();
+  });
+
   it("groups session rows into recency sections like a workspace sidebar", () => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -603,6 +631,18 @@ describe("ConversationWorkspace", () => {
     fireEvent.pointerDown(composerInput, { pointerType: "touch" });
 
     expect(focusSpy).toHaveBeenCalled();
+  });
+
+  it("marks the shared runtime composer input as plain text so mobile autofill bars stay off", () => {
+    renderWorkspace();
+
+    const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
+
+    expect(composerInput).toHaveAttribute("autocomplete", "off");
+    expect(composerInput).toHaveAttribute("autocorrect", "off");
+    expect(composerInput).toHaveAttribute("autocapitalize", "off");
+    expect(composerInput).toHaveAttribute("enterkeyhint", "send");
+    expect(composerInput).toHaveAttribute("spellcheck", "false");
   });
 
   it("renders draft image thumbnails with preview and remove actions", () => {

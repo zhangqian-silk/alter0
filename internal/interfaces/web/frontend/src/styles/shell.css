@@ -5711,6 +5711,8 @@ body::after {
   }
 
   .runtime-composer-shell {
+    position: relative;
+    z-index: 24;
     border-top: 1px solid rgba(202, 220, 235, 0.72);
     padding: 12px 22px calc(12px + env(safe-area-inset-bottom));
     transform: translateY(calc(var(--keyboard-offset, 0px) * -1));

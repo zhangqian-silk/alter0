@@ -152,6 +152,7 @@ function useConversationWorkspaceController(
   language: LegacyShellLanguage,
   sharedRefs: ConversationWorkspaceSharedRefs,
   composerNode: ReactNode,
+  inputFocused: boolean,
 ): RuntimeWorkspacePageController {
   const workbench = useWorkbenchContext();
   const runtime = useConversationRuntimeWorkspace();
@@ -327,7 +328,7 @@ function useConversationWorkspaceController(
     [emptyStateDescription, emptyStateTitle],
   );
   const timelineOverlay = useMemo(
-    () => (
+    () => (workbench.isMobileViewport && inputFocused ? null : (
       <ScrollJumpStrip
         scope={runtime.route === "agent-runtime" ? "agent" : "chat"}
         language={language}
@@ -336,8 +337,8 @@ function useConversationWorkspaceController(
         itemAttribute="data-message-id"
         watchKey={`${runtime.route}:${activeMessages.length}:${isEmptyState ? "empty" : "active"}`}
       />
-    ),
-    [activeMessages.length, isEmptyState, language, runtime.route],
+    )),
+    [activeMessages.length, inputFocused, isEmptyState, language, runtime.route, workbench.isMobileViewport],
   );
   const shell = useMemo(() => ({
     shell: {
@@ -469,15 +470,18 @@ function useConversationWorkspaceController(
 function ConversationComposerSection({
   language,
   workspaceBodyRef,
+  inputFocused,
+  onInputFocusedChange,
 }: {
   language: LegacyShellLanguage;
   workspaceBodyRef: { current: HTMLDivElement | null };
+  inputFocused: boolean;
+  onInputFocusedChange: (focused: boolean) => void;
 }) {
   const workbench = useWorkbenchContext();
   const runtime = useConversationRuntimeWorkspace();
   const composerRuntime = useConversationRuntimeComposer();
   const copy = getLegacyShellCopy(language);
-  const [inputFocused, setInputFocused] = useState(false);
   const [composerAttachmentError, setComposerAttachmentError] = useState("");
   const [previewAttachment, setPreviewAttachment] = useState<ComposerAttachment | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -850,8 +854,8 @@ function ConversationComposerSection({
         placeholder: composerPlaceholder,
       }}
       onInputChange={composerRuntime.setDraft}
-      onInputFocus={() => setInputFocused(true)}
-      onInputBlur={() => setInputFocused(false)}
+      onInputFocus={() => onInputFocusedChange(true)}
+      onInputBlur={() => onInputFocusedChange(false)}
       onInputPointerDownCapture={handleComposerPointerDownCapture}
       onInputTouchStartCapture={handleComposerTouchStartCapture}
       utilityButtons={[
@@ -883,16 +887,20 @@ function ConversationComposerSection({
 export function ConversationWorkspace({ language }: ConversationWorkspaceProps) {
   const timelineScreenRef = useRef<HTMLDivElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
   const composerNode = (
     <ConversationComposerSection
       language={language}
       workspaceBodyRef={workspaceBodyRef}
+      inputFocused={inputFocused}
+      onInputFocusedChange={setInputFocused}
     />
   );
   const controller = useConversationWorkspaceController(
     language,
     { timelineScreenRef, workspaceBodyRef },
     composerNode,
+    inputFocused,
   );
   return <RuntimeWorkspacePage controller={controller} />;
 }
