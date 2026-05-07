@@ -53,7 +53,10 @@
 - 同一会话内同步请求保持顺序一致，系统提供全局并发上限、排队与超时降级。
 - SSE 流式响应提供 `start / delta / done` 与保活帧；Agent 工具循环期间还需追加结构化 `process` 事件，把步骤状态实时推送到前端。已进入 Agent 执行链的请求不因浏览器断连、页面切换或前端取消而中断后端执行。
 - `Chat / Agent Runtime` 在同一会话内保持追加式历史：每次发送都新增一条 `user` 消息与对应 assistant 消息，流式事件只允许补丁当前未完成的 assistant 条目，已收口历史不得被后续 SSE 事件回写。
-- 流式连接中断时，前端保留已收到的正文并把消息收敛为失败态；若没有可用正文，失败提示需明确提示刷新，并在页面恢复时优先用服务端已持久化的会话消息覆盖本地失败态。本地缓存中残留的 `streaming` 消息不得长期停留在 `In Progress`。
+- 流式连接中断时，前端保留已收到的正文；若该条消息此前已收到 `start` 但尚未收到 `done`，前端需先回源当前会话详情，用服务端已持久化的消息覆盖本地占位态，而不是立即把同一请求重发一遍。只有恢复失败时才收敛为失败态；若没有可用正文，失败提示需明确提示刷新。本地缓存中残留的 `streaming` 消息不得长期停留在 `In Progress`。
+- 刷新页面时，`Chat / Agent Runtime` 必须优先保住当前活动会话：若服务端会话列表暂时尚未返回该 `session_id`，前端先从浏览器侧活动会话快照恢复当前条目与最近消息，再按 `session_id` 单独回源详情；在确认服务端不存在该会话前，不得直接把当前活动会话替换成新的空白 `New` 会话。
+- 刷新页面或切到其他会话后，`Chat / Agent Runtime` 仍需保住最近已知会话列表：浏览器侧最近会话快照至少覆盖当前活动会话之外的最近若干条会话；当服务端集合接口暂时漏掉其中某条会话时，侧栏不得立刻把该会话删除，而应继续保留本地条目并等待单会话详情或后续集合结果确认。
+- `Chat / Agent Runtime` 的会话存在性与恢复状态需由服务端会话 registry 承担第一责任：消息入口在请求开始、完成、失败时分别写入 `busy / ready / failed` 等稳定状态，运行页列表与单会话详情优先读取该 registry，再与 Session history 合并，避免因浏览器刷新、SSE 断链或前端本地状态丢失导致会话“消失”或直接 `load failed`。
 - Agent 执行过程需以结构化 `process_steps` 贯穿 SSE `done`、Task 结果与会话历史持久化，前端优先消费结构化步骤而不是依赖解析 `[agent] action / observation` 文本。
 - 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新。
 - `Chat / Agent Runtime` 的消息阅读结构统一采用 terminal-style timeline：用户消息按 prompt row、执行过程按可折叠 `Process`、最终回复按 markdown shell 展示，不再回退到传统左右气泡对话布局。
@@ -112,13 +115,16 @@
 - `main` 保持通用对话与编排入口；专项 Agent 默认按“对话入口 + 明确交付物契约”运行，不能只以一段普通对话回复视为完成。
 - Agent 采用 ReAct 执行链，负责理解用户目标、吸收 system prompt / Skill / Memory 与运行时上下文，并把具体执行交给 `codex_exec`。
 - 稳定工具面包含 `codex_exec`、`search_memory`、`read_memory`、`write_memory` 与运行时收口工具 `complete`；允许委派的 Agent 可额外使用 `delegate_agent`。
-- `travel` 的显示名称为 `Travel Agent`；该 Agent 除正常对话答案外，还必须额外生成一份 HTML 旅游攻略，并发布到当前 Session 的公开只读子域名 `https://<session_short_hash>.travel.alter0.cn`。
+- 当 `complete` 可用时，运行时必须要求 Agent 通过 `complete` 显式收口；普通 assistant 文本回复不能直接视为完成。
+- `travel` 的显示名称为 `Travel Agent`；该 Agent 除正常对话答案外，还必须额外生成一份 HTML 旅游攻略，并发布到当前 Session 的公开只读子域名 `https://travel-<session_short_hash>.alter0.cn`。只有当前请求已经在当前 Session 工作区根目录生成或更新了对应的 `index.html` 时，运行时才允许把这份静态攻略作为 `travel` 服务发布；运行时不得自动补写、伪造或代发 fallback 页面来冒充交付。新生成的攻略页必须同时满足桌面端与移动端可读、可浏览和稳定排版。内容结构上，HTML 需先列出分类推荐池，再制定行程计划；吃喝方向至少区分小吃、早点、特色菜、特色饮品并兼顾老字号与大众点评高分项，景点方向至少区分公园、博物馆、表演等类型，住宿方向需给出不同价格带或档位的热门酒店；在这些核心分类之外，Agent 还需根据城市实际情况灵活增补夜游、集市、游船、温泉、滑雪、庙会等城市特有分类；各类推荐必须附带明确数据来源。`guide_html_url` 只在 HTML 攻略已成功发布且公开只读 `travel` 服务已存在时才可作为交付结果暴露，不能预分配或伪造。
+- `travel` 的完成判定必须同时校验两项交付前提：当前 Session 工作区根目录存在 `index.html`，且当前 Session 已成功注册公开只读 `travel` 服务；缺失任一条件时，运行时必须拒绝 `complete` 成功收口。
+- 当 `travel` 先产出正文攻略、但当前 Session 工作区根目录尚未存在当前请求对应的 `index.html` 时，运行时必须直接把 HTML 交付视为阻塞，不得自动补写页面或代替 Agent 发布任何 fallback 页面。
 - `codex_exec` 通过 stdin 传递最终指令；存在可用 Provider 且进入 Agent / ReAct 链路时，仅向 Codex 下发当前步骤指令；不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时会为当前会话生成原生 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 `runtime_context`、`skill_context`、`mcp_context`、`memory_context` 编译成 Codex 原生运行配置与工作区事实，并持久化 Codex CLI thread id 用于后续同 Session 直连 Codex 续写。
 - Agent / ReAct 走 `openai-completions` 多轮工具调用时，assistant `tool_calls` 与后续 `tool` 结果的 `tool_call_id` 必须保持同轮关联，不能在 Provider 适配层丢失。
 - Agent Profile 支持名称、system prompt、max iterations、Provider/Model、工具白名单、公有 Skills、MCP 与 Memory Files。
 - 每个 Agent 自动拥有私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`，用于沉淀可复用工作模式、输出结构、检查清单与稳定偏好；私有 Skill 始终随当前 Agent 注入执行上下文，不受前端取消或 `alter0.skills.exclude` 排除影响。
 - Memory Files 支持 `USER.md`、`SOUL.md`、当前 Agent 私有 `AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory，并在注入时携带路径、存在状态、可写性、内容与自动召回片段。
-- `Agent Session Profile` 固定落在 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，由运行时自动维护并注入执行链路；该文件除会话画像外，还负责沉淀当前 Agent 当前 Session 的结构化实例属性。实例属性支持通过请求 metadata 增量更新；`coding` 默认自动维护仓库、分支和预览子域名等属性，`travel` 等专项 Agent 可维护 `city` 等领域属性。每个 Agent 还需支持独立的 Session Profile 预设字段定义，运行时与前端以同一字段集展示当前实例值。执行前还需有一条独立的旁路抽取链路，根据 Agent schema 从本轮自然语言更新可写字段，默认可退化为受限 Codex 窄调用。
+- `Agent Session Profile` 固定落在 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，由运行时自动维护并注入执行链路；该文件除会话画像外，还负责沉淀当前 Agent 当前 Session 的结构化实例属性。实例属性支持通过请求 metadata 增量更新；`coding` 默认自动维护仓库、分支和预览子域名等属性，`travel` 等专项 Agent 可维护 `city / district / days / hotel_area` 等领域属性。`guide_html_url` 作为 `travel` 的只读交付属性，不由执行侧 profile 文件预写，而由 Web 侧在检测到当前 Session 已存在公开只读 `travel` 服务后动态补齐。每个 Agent 还需支持独立的 Session Profile 预设字段定义，运行时与前端以同一字段集展示当前实例值。执行前还需有一条独立的旁路抽取链路，根据 Agent schema 从本轮自然语言更新可写字段，默认可退化为受限 Codex 窄调用。
 - 会话短期记忆、跨会话长期记忆、上下文压缩、天级记忆、强制上下文文件与任务摘要记忆统一构成 Memory 领域能力。
 - `Agent -> Memory` 页面提供长期记忆、天级记忆、强制要求、任务历史与说明文档的只读可视化入口，并支持任务摘要重建。
 
@@ -165,7 +171,7 @@
 
 - Control API 管理 Channel、Capability、Skill、MCP、Agent Profile、Cron Job、Model Provider、Environment 与 Codex 多账号配置，并保留 Capability 生命周期审计。
 - 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service` 与 `frontend-design` 四个内置 Skill；其中 `deploy-test-service` 固定落在 `.alter0/skills/deploy-test-service/SKILL.md`，`frontend-design` 固定落在 `docs/skills/frontend-design/SKILL.md`。`coding` 内置 Agent 默认启用 `memory`、`deploy-test-service` 与 `frontend-design`，用于覆盖仓库记忆、预览发布和前端页面/组件实现质量。
-- 共享 Web 运行时需要支持通用 workspace service 注册：`GET /api/control/workspace-services` 查询注册表，`PUT /api/control/workspace-services/{session_id}` 绑定默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 绑定附加服务，`DELETE` 接口用于清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>.<session_short_hash>.alter0.cn` 时，共享运行时需按注册类型分发前端构建或反向代理到目标 HTTP 服务。`travel` 服务是唯一例外，固定命中 `https://<session_short_hash>.travel.alter0.cn`，且该 host 只读、免登录，只允许返回静态 HTML/资源。标准 `web` 部署默认应把当前会话后端启动命令注册给共享运行时托管，再以 `http` 方式绑定短哈希子域名，确保前端与 `/api/*` 同时来自当前分支；`frontend_dist` 仅作为静态预览模式保留。
+- 共享 Web 运行时需要支持通用 workspace service 注册：`GET /api/control/workspace-services` 查询注册表，`PUT /api/control/workspace-services/{session_id}` 绑定默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 绑定附加服务，`DELETE` 接口用于清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>-<session_short_hash>.alter0.cn` 时，共享运行时需按注册类型分发前端构建或反向代理到目标 HTTP 服务。`travel` 服务是唯一例外，固定命中 `https://travel-<session_short_hash>.alter0.cn`，且该 host 只读、免登录，只允许返回静态 HTML/资源。标准 `web` 部署默认应把当前会话后端启动命令注册给共享运行时托管，再以 `http` 方式绑定短哈希子域名，确保前端与 `/api/*` 同时来自当前分支；`frontend_dist` 仅作为静态预览模式保留。
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 OpenAI Compatible 与 OpenRouter Provider，支持 `/responses` 与 `/chat/completions`，支持 base URL、API Key 保留语义、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复。
 - `openai-completions` 适配层必须正确序列化 assistant `tool_calls` 与 tool output，兼容严格校验工具消息配对关系的上游 Provider。

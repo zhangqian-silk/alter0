@@ -92,6 +92,31 @@ func TestCodexCLIProcessorProcessEmptyContent(t *testing.T) {
 	}
 }
 
+func TestBuildCodexPromptIncludesTravelAgentDeliveryRules(t *testing.T) {
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.AgentSystemPromptMetadataKey] = "Own travel delivery."
+	metadata[execdomain.AgentDeliverablesMetadataKey] = `[{"id":"guide-html","label":"HTML Guide","format":"html","required":true,"session_attribute_key":"guide_html_url"}]`
+
+	rendered, err := buildCodexPrompt("整理武汉攻略", metadata)
+	if err != nil {
+		t.Fatalf("buildCodexPrompt() error = %v", err)
+	}
+	for _, expected := range []string{
+		"session-aware execution assistant",
+		"Current delivery contract:",
+		"guide_html_url",
+		"index.html",
+		"travel-<session_short_hash>.alter0.cn",
+		"Own travel delivery.",
+		"整理武汉攻略",
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected prompt to contain %q, got %q", expected, rendered)
+		}
+	}
+}
+
 func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 	rootDir := t.TempDir()
 	activeHome := filepath.Join(t.TempDir(), "active-codex-home")

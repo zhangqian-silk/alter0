@@ -7,7 +7,7 @@ description: Deploy or refresh a session-scoped test service on the shared alter
 
 - Use this skill when the task needs a live preview or a separately routed test service without editing Nginx.
 - Default host: `https://<short_hash>.alter0.cn` for service `web`.
-- Additional hosts: `https://<service>.<short_hash>.alter0.cn`.
+- Additional hosts: `https://<service>-<short_hash>.alter0.cn`.
 
 ## Tool Contract
 
@@ -20,6 +20,8 @@ description: Deploy or refresh a session-scoped test service on the shared alter
 
 - Keep deployments inside the current session namespace. Reuse the current short hash instead of inventing custom domains.
 - Prefer stable `service_name` values such as `web`, `api`, `docs`, or `storybook` so repeated deploys update the same routed host.
+- Keep additional services on certificate-safe single-label subdomains under `*.alter0.cn`. Do not generate nested hosts such as `https://<service>.<short_hash>.alter0.cn` or `https://<short_hash>.travel.alter0.cn`.
 - For `start_command`, assume the deployer injects `PORT` and performs a health probe before registration.
 - The standard `scripts/deploy_test_service.sh <session_id>` path now defaults `web` to a full-stack preview. Use `--service-type frontend_dist` only when a static UI-only preview is intentional.
 - For frontend work, keep the preview build aligned with the current session repository workspace rather than a stale source checkout.
+- For public travel guides, deploy `service_name=travel` on `https://travel-<short_hash>.alter0.cn`. If the session workspace root already contains `index.html`, publish that root directly as the static artifact source.

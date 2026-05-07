@@ -9,6 +9,7 @@ import {
   type ComposerImageAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
+import { copyTextValue } from "./copyTextValue";
 import { normalizeText, RouteTagSection } from "./RouteBodyPrimitives";
 
 const TASK_ROUTE_FILTERS_STORAGE_KEY = "alter0.web.tasks.route-filters.v1";
@@ -772,9 +773,7 @@ export function ReactManagedTasksRouteBody({
     if (!taskID || taskID === "-") {
       return;
     }
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-      await navigator.clipboard.writeText(taskID);
-    }
+    await copyTextValue(taskID);
   }
 
   async function handleTaskAction(action: "retry" | "cancel") {

@@ -94,31 +94,32 @@ type intentInspector interface {
 }
 
 type Server struct {
-	addr              string
-	orchestrator      Orchestrator
-	telemetry         *observability.Telemetry
-	idGenerator       sharedapp.IDGenerator
-	control           *controlapp.Service
-	scheduler         *schedulerapp.Manager
-	sessions          sessionHistoryService
-	tasks             taskService
-	terminals         terminalService
-	runtime           runtimeRestarter
-	runtimeInfo       runtimeInfoProvider
-	memory            *agentMemoryService
-	llm               llmService
-	logger            *slog.Logger
-	webLoginPassword  string
-	webSessionToken   string
-	webLoginEnabled   bool
-	webBindLocalhost  bool
-	agents            agentCatalogService
-	workspaceRoot     string
-	frontendDevOrigin string
-	frontendDevProxy  http.Handler
-	workspaceService  *workspaceServiceRegistry
-	workspaceRuntime  workspaceServiceRuntime
-	codexAccounts     codexAccountService
+	addr                        string
+	orchestrator                Orchestrator
+	telemetry                   *observability.Telemetry
+	idGenerator                 sharedapp.IDGenerator
+	control                     *controlapp.Service
+	scheduler                   *schedulerapp.Manager
+	sessions                    sessionHistoryService
+	tasks                       taskService
+	terminals                   terminalService
+	runtime                     runtimeRestarter
+	runtimeInfo                 runtimeInfoProvider
+	memory                      *agentMemoryService
+	llm                         llmService
+	logger                      *slog.Logger
+	webLoginPassword            string
+	webSessionToken             string
+	webLoginEnabled             bool
+	webBindLocalhost            bool
+	agents                      agentCatalogService
+	workspaceRoot               string
+	frontendDevOrigin           string
+	frontendDevProxy            http.Handler
+	workspaceService            *workspaceServiceRegistry
+	conversationRuntimeSessions *conversationRuntimeSessionRegistry
+	workspaceRuntime            workspaceServiceRuntime
+	codexAccounts               codexAccountService
 }
 
 type llmService interface {
@@ -292,6 +293,7 @@ type conversationRuntimeSessionItemResponse struct {
 
 type conversationRuntimeSessionResponse struct {
 	ID              string                               `json:"id"`
+	Status          string                               `json:"status,omitempty"`
 	Title           string                               `json:"title"`
 	TitleAuto       bool                                 `json:"title_auto"`
 	TitleScore      int                                  `json:"title_score"`
@@ -672,29 +674,35 @@ func NewServer(
 	if err != nil && logger != nil {
 		logger.Error("failed to initialize workspace service registry", slog.String("error", err.Error()))
 	}
+	conversationRuntimeRegistryPath := filepath.Join(workspaceRoot, ".alter0", conversationRuntimeSessionRegistryFilename)
+	conversationRuntimeRegistry, err := newFileConversationRuntimeSessionRegistry(conversationRuntimeRegistryPath)
+	if err != nil && logger != nil {
+		logger.Error("failed to initialize conversation runtime session registry", slog.String("error", err.Error()))
+	}
 	return &Server{
-		addr:              addr,
-		orchestrator:      orchestrator,
-		telemetry:         telemetry,
-		idGenerator:       idGenerator,
-		control:           control,
-		scheduler:         scheduler,
-		sessions:          sessions,
-		tasks:             tasks,
-		terminals:         terminals,
-		memory:            newAgentMemoryService(memoryOptions),
-		llm:               llm,
-		logger:            logger,
-		webLoginPassword:  resolvedPassword,
-		webSessionToken:   webSessionToken,
-		webLoginEnabled:   resolvedPassword != "",
-		webBindLocalhost:  resolvedBindLocalhost,
-		agents:            agents,
-		workspaceRoot:     workspaceRoot,
-		frontendDevOrigin: frontendDevOrigin,
-		frontendDevProxy:  newFrontendDevProxy(frontendDevOrigin, logger),
-		workspaceService:  workspaceServiceRegistry,
-		workspaceRuntime:  newWorkspaceServiceRuntime(logger),
+		addr:                        addr,
+		orchestrator:                orchestrator,
+		telemetry:                   telemetry,
+		idGenerator:                 idGenerator,
+		control:                     control,
+		scheduler:                   scheduler,
+		sessions:                    sessions,
+		tasks:                       tasks,
+		terminals:                   terminals,
+		memory:                      newAgentMemoryService(memoryOptions),
+		llm:                         llm,
+		logger:                      logger,
+		webLoginPassword:            resolvedPassword,
+		webSessionToken:             webSessionToken,
+		webLoginEnabled:             resolvedPassword != "",
+		webBindLocalhost:            resolvedBindLocalhost,
+		agents:                      agents,
+		workspaceRoot:               workspaceRoot,
+		frontendDevOrigin:           frontendDevOrigin,
+		frontendDevProxy:            newFrontendDevProxy(frontendDevOrigin, logger),
+		workspaceService:            workspaceServiceRegistry,
+		conversationRuntimeSessions: conversationRuntimeRegistry,
+		workspaceRuntime:            newWorkspaceServiceRuntime(logger),
 	}
 }
 
@@ -1247,6 +1255,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
 		return
 	}
+	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteChat, msg)
 
 	s.countGateway(string(msg.ChannelType))
 	hasImageAttachments := len(execdomain.DecodeUserImageAttachments(msg.Metadata)) > 0
@@ -1259,6 +1268,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 			if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
 				taskCard := buildTaskCard(msg, assessment, task)
 				if submitErr != nil {
+					s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
 					s.logWebMessageFailure(msg, submitErr)
 					writeJSON(w, http.StatusInternalServerError, messageResponse{
 						Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
@@ -1290,6 +1300,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		result = attachComplexityMetadata(result, assessment, nil)
 	}
 	if err != nil {
+		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
 		case "command_failed", "nl_execution_failed":
@@ -1311,6 +1322,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusReady)
 
 	writeJSON(w, http.StatusOK, messageResponse{
 		Result:                   result,
@@ -1355,6 +1367,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		return
 	}
+	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteChat, msg)
 	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
 	stream.SetKeepAliveStop(stopKeepAlive)
 	defer stopKeepAlive()
@@ -1433,6 +1446,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 			result = attachComplexityMetadata(result, assessment, nil)
 		}
 		if handleErr != nil {
+			s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
 			s.logWebMessageFailure(msg, handleErr)
 			_ = stream.Event("error", streamErrorResponse{
 				Error:  handleErr.Error(),
@@ -1458,6 +1472,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
 			ComplexityLevel:          assessment.ComplexityLevel,
 		})
+		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusReady)
 	}
 
 	for {
@@ -1487,6 +1502,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 			taskCard := buildTaskCard(taskMsg, assessment, task)
 			result := asyncAcceptedResult(taskMsg, task, assessment, taskCard)
 			if submitErr != nil {
+				s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, taskMsg, conversationRuntimeSessionStatusFailed)
 				s.logWebMessageFailure(taskMsg, submitErr)
 				_ = stream.Event("error", streamErrorResponse{
 					Error:  submitErr.Error(),
@@ -1695,11 +1711,13 @@ func (s *Server) agentMessageHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
 		return
 	}
+	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteAgentRuntime, msg)
 
 	s.countGateway(string(msg.ChannelType))
 	execCtx, _ := executionContextForMessage(r.Context(), msg)
 	result, err := s.orchestrator.Handle(execCtx, msg)
 	if err != nil {
+		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteAgentRuntime, msg, conversationRuntimeSessionStatusFailed)
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
 		case "command_failed", "nl_execution_failed":
@@ -1718,6 +1736,7 @@ func (s *Server) agentMessageHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	s.markConversationRuntimeSessionFinished(conversationRuntimeRouteAgentRuntime, msg, conversationRuntimeSessionStatusReady)
 
 	writeJSON(w, http.StatusOK, messageResponse{Result: result})
 }
@@ -1756,6 +1775,7 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 	}); err != nil {
 		return
 	}
+	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteAgentRuntime, msg)
 	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
 	stream.SetKeepAliveStop(stopKeepAlive)
 	defer stopKeepAlive()
@@ -1786,6 +1806,7 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 		}
 	})
 	if handleErr != nil {
+		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteAgentRuntime, msg, conversationRuntimeSessionStatusFailed)
 		s.logWebMessageFailure(msg, handleErr)
 		_ = stream.Event("error", streamErrorResponse{
 			Error:  handleErr.Error(),
@@ -1806,6 +1827,7 @@ func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	_ = stream.Event("done", streamDoneResponse{Result: result})
+	s.markConversationRuntimeSessionFinished(conversationRuntimeRouteAgentRuntime, msg, conversationRuntimeSessionStatusReady)
 }
 
 func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
@@ -1848,7 +1870,7 @@ func (s *Server) conversationRuntimeSessionCollectionHandler(w http.ResponseWrit
 		Page:        1,
 		PageSize:    conversationRuntimeSessionPageSize,
 	})
-	items := make([]conversationRuntimeSessionResponse, 0, len(page.Items))
+	itemsByID := make(map[string]conversationRuntimeSessionResponse, len(page.Items))
 	for _, summary := range page.Items {
 		detail, ok, err := s.loadConversationRuntimeSession(route, summary.SessionID)
 		if err != nil {
@@ -1856,9 +1878,27 @@ func (s *Server) conversationRuntimeSessionCollectionHandler(w http.ResponseWrit
 			return
 		}
 		if ok {
-			items = append(items, detail)
+			itemsByID[detail.ID] = s.mergeConversationRuntimeSessionWithRegistry(route, detail)
 		}
 	}
+	for _, entry := range s.listConversationRuntimeRegistryEntries(route) {
+		if _, ok := itemsByID[entry.SessionID]; ok {
+			continue
+		}
+		itemsByID[entry.SessionID] = s.conversationRuntimeSessionResponseFromRegistryEntry(entry)
+	}
+	items := make([]conversationRuntimeSessionResponse, 0, len(itemsByID))
+	for _, item := range itemsByID {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left := conversationRuntimeSessionSortTime(items[i])
+		right := conversationRuntimeSessionSortTime(items[j])
+		if left.Equal(right) {
+			return items[i].ID < items[j].ID
+		}
+		return left.After(right)
+	})
 	writeJSON(w, http.StatusOK, conversationRuntimeSessionCollectionResponse{Items: items})
 }
 
@@ -1889,10 +1929,19 @@ func (s *Server) conversationRuntimeSessionItemHandler(w http.ResponseWriter, r 
 		return
 	}
 	if !matched {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "runtime session not found"})
+		registryEntry, ok := s.resolveConversationRuntimeRegistryEntry(route, sessionID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "runtime session not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{
+			Session: s.conversationRuntimeSessionResponseFromRegistryEntry(registryEntry),
+		})
 		return
 	}
-	writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{Session: session})
+	writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{
+		Session: s.mergeConversationRuntimeSessionWithRegistry(route, session),
+	})
 }
 
 func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Request) {
@@ -1919,6 +1968,10 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 			}
 		}
 		if err := s.sessions.DeleteSession(sessionID); err != nil && !errors.Is(err, sessionapp.ErrSessionNotFound) {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := s.deleteConversationRuntimeSessionRegistryEntry(sessionID); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -2003,6 +2056,123 @@ func (s *Server) loadConversationRuntimeSession(
 	return session, true, nil
 }
 
+func (s *Server) listConversationRuntimeRegistryEntries(route conversationRuntimeRoute) []conversationRuntimeSessionRegistryEntry {
+	if s == nil || s.conversationRuntimeSessions == nil {
+		return nil
+	}
+	return s.conversationRuntimeSessions.List(route)
+}
+
+func (s *Server) resolveConversationRuntimeRegistryEntry(route conversationRuntimeRoute, sessionID string) (conversationRuntimeSessionRegistryEntry, bool) {
+	if s == nil || s.conversationRuntimeSessions == nil {
+		return conversationRuntimeSessionRegistryEntry{}, false
+	}
+	return s.conversationRuntimeSessions.Resolve(route, sessionID)
+}
+
+func (s *Server) conversationRuntimeSessionResponseFromRegistryEntry(entry conversationRuntimeSessionRegistryEntry) conversationRuntimeSessionResponse {
+	return conversationRuntimeSessionResponse{
+		ID:              entry.SessionID,
+		Status:          normalizeConversationRuntimeSessionStatus(entry.Status),
+		Title:           entry.Title,
+		TitleAuto:       entry.TitleAuto,
+		TitleScore:      entry.TitleScore,
+		CreatedAt:       entry.CreatedAt.UTC(),
+		TargetType:      entry.TargetType,
+		TargetID:        entry.TargetID,
+		TargetName:      entry.TargetName,
+		ModelProviderID: entry.ModelProviderID,
+		ModelID:         entry.ModelID,
+		ToolIDs:         append([]string(nil), entry.ToolIDs...),
+		SkillIDs:        append([]string(nil), entry.SkillIDs...),
+		MCPIDs:          append([]string(nil), entry.MCPIDs...),
+	}
+}
+
+func (s *Server) mergeConversationRuntimeSessionWithRegistry(route conversationRuntimeRoute, session conversationRuntimeSessionResponse) conversationRuntimeSessionResponse {
+	entry, ok := s.resolveConversationRuntimeRegistryEntry(route, session.ID)
+	if !ok {
+		return session
+	}
+	merged := s.conversationRuntimeSessionResponseFromRegistryEntry(entry)
+	merged.Messages = session.Messages
+	if merged.Title == "" {
+		merged.Title = session.Title
+		merged.TitleAuto = session.TitleAuto
+		merged.TitleScore = session.TitleScore
+	}
+	if merged.CreatedAt.IsZero() {
+		merged.CreatedAt = session.CreatedAt
+	}
+	if merged.TargetType == "" {
+		merged.TargetType = session.TargetType
+		merged.TargetID = session.TargetID
+		merged.TargetName = session.TargetName
+	}
+	if merged.ModelProviderID == "" {
+		merged.ModelProviderID = session.ModelProviderID
+	}
+	if merged.ModelID == "" {
+		merged.ModelID = session.ModelID
+	}
+	if len(merged.ToolIDs) == 0 {
+		merged.ToolIDs = append([]string(nil), session.ToolIDs...)
+	}
+	if len(merged.SkillIDs) == 0 {
+		merged.SkillIDs = append([]string(nil), session.SkillIDs...)
+	}
+	if len(merged.MCPIDs) == 0 {
+		merged.MCPIDs = append([]string(nil), session.MCPIDs...)
+	}
+	if merged.Status == "" {
+		merged.Status = session.Status
+	}
+	return merged
+}
+
+func (s *Server) markConversationRuntimeSessionStarted(route conversationRuntimeRoute, msg shareddomain.UnifiedMessage) {
+	if s == nil || s.conversationRuntimeSessions == nil {
+		return
+	}
+	entry := buildConversationRuntimeRegistryEntryFromMessage(route, msg, conversationRuntimeSessionStatusBusy)
+	if _, err := s.conversationRuntimeSessions.Upsert(entry); err != nil && s.logger != nil {
+		s.logger.Error("failed to persist conversation runtime session start",
+			slog.String("session_id", msg.SessionID),
+			slog.String("route", string(route)),
+			slog.String("error", err.Error()),
+		)
+	}
+}
+
+func (s *Server) markConversationRuntimeSessionFinished(route conversationRuntimeRoute, msg shareddomain.UnifiedMessage, status string) {
+	if s == nil || s.conversationRuntimeSessions == nil {
+		return
+	}
+	entry := buildConversationRuntimeRegistryEntryFromMessage(route, msg, status)
+	if _, err := s.conversationRuntimeSessions.Upsert(entry); err != nil && s.logger != nil {
+		s.logger.Error("failed to persist conversation runtime session finish",
+			slog.String("session_id", msg.SessionID),
+			slog.String("route", string(route)),
+			slog.String("status", normalizeConversationRuntimeSessionStatus(status)),
+			slog.String("error", err.Error()),
+		)
+	}
+}
+
+func (s *Server) deleteConversationRuntimeSessionRegistryEntry(sessionID string) error {
+	if s == nil || s.conversationRuntimeSessions == nil {
+		return nil
+	}
+	return s.conversationRuntimeSessions.Delete(sessionID)
+}
+
+func conversationRuntimeSessionSortTime(item conversationRuntimeSessionResponse) time.Time {
+	if !item.CreatedAt.IsZero() {
+		return item.CreatedAt.UTC()
+	}
+	return time.Time{}
+}
+
 func parseConversationRuntimeRoute(raw string) (conversationRuntimeRoute, bool) {
 	switch conversationRuntimeRoute(strings.TrimSpace(raw)) {
 	case conversationRuntimeRouteChat:
@@ -2041,6 +2211,7 @@ func buildConversationRuntimeSession(
 
 	return conversationRuntimeSessionResponse{
 		ID:              sessionID,
+		Status:          deriveConversationRuntimeSessionStatus(records),
 		Title:           title,
 		TitleAuto:       false,
 		TitleScore:      1,
@@ -2055,6 +2226,20 @@ func buildConversationRuntimeSession(
 		MCPIDs:          mcpIDs,
 		Messages:        messages,
 	}, true
+}
+
+func deriveConversationRuntimeSessionStatus(records []sessiondomain.MessageRecord) string {
+	for idx := len(records) - 1; idx >= 0; idx-- {
+		record := records[idx]
+		if record.Role != sessiondomain.MessageRoleAssistant {
+			continue
+		}
+		if strings.TrimSpace(record.RouteResult.ErrorCode) != "" {
+			return conversationRuntimeSessionStatusFailed
+		}
+		return conversationRuntimeSessionStatusReady
+	}
+	return conversationRuntimeSessionStatusReady
 }
 
 func buildConversationRuntimeMessage(record sessiondomain.MessageRecord) conversationRuntimeMessageResponse {

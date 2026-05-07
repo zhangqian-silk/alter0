@@ -82,6 +82,7 @@ function normalizeConversationSessionMessageStatus(value: string) {
 }
 
 function resolveConversationSessionSignalTone(session: {
+  status?: string;
   messages?: Array<{
     role?: string;
     status?: string;
@@ -103,6 +104,13 @@ function resolveConversationSessionSignalTone(session: {
       return "busy";
     }
     return "ready";
+  }
+  const sessionStatus = normalizeConversationSessionMessageStatus(session?.status || "");
+  if (["error", "failed", "canceled", "cancelled"].includes(sessionStatus)) {
+    return "failed";
+  }
+  if (["streaming", "queued", "running", "in_progress", "inprogress", "busy"].includes(sessionStatus)) {
+    return "busy";
   }
   return "ready";
 }

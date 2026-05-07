@@ -38,7 +38,7 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 - 支持 Skill 创建、更新、删除与列表查询。
 - 默认提供 `default-nl`、`memory`、`deploy-test-service`、`frontend-design` 与 `artifact-preview`。
 - `deploy-test-service`、`frontend-design` 与 `artifact-preview` 作为项目内置 file-backed Skill 由源码仓库直接承载并在启动时校验文件存在；当前路径分别为 `.alter0/skills/deploy-test-service/SKILL.md`、`docs/skills/frontend-design/SKILL.md` 与 `.alter0/skills/artifact-preview/SKILL.md`。
-- `artifact-preview` 额外提供 `.alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>.<session_short_hash>.alter0.cn`。
+- `artifact-preview` 额外提供 `.alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>-<session_short_hash>.alter0.cn`。
 - Skill 协议支持文件路径与可写属性。
 - Agent 私有 file-backed Skill 由运行时自动注入，不要求出现在控制面内置 Skill 列表。
 
@@ -142,8 +142,8 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 - 共享运行时统一接收 `alter0.cn` 与 `*.alter0.cn` 的反向代理流量。
 - Session 短哈希域名固定使用 `sha1(session_id)` 的前 8 位短哈希。
 - 默认 `web` 服务域名格式为 `https://<session_short_hash>.alter0.cn`。
-- 附加服务域名格式为 `https://<service>.<session_short_hash>.alter0.cn`。
-- `travel` 服务域名固定为 `https://<session_short_hash>.travel.alter0.cn`，且该 host 只读、免登录。
+- 附加服务域名格式为 `https://<service>-<session_short_hash>.alter0.cn`。
+- `travel` 服务域名固定为 `https://travel-<session_short_hash>.alter0.cn`，且该 host 只读、免登录。
 - 控制面通过 `PUT /api/control/workspace-services/{session_id}` 或 `PUT /api/control/workspace-services/{session_id}/{service_id}` 注册当前会话工作区的前端构建目录或 HTTP upstream。
 - 删除或重绑服务时，通过 `DELETE /api/control/workspace-services/...` 或再次 `PUT` 完成更新。
 - 预览 host 继续沿用共享工作台登录保护：默认 `web` 短哈希 host 需要能直接打开 `/login`，但登录态按当前 host 独立维护，不与主域共享根域登录 cookie。

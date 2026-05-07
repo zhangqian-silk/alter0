@@ -221,10 +221,14 @@ func resolveAgentSessionInstanceAttributes(
 	for key, value := range parseAgentSessionMetadataAttributes(msg.Metadata) {
 		attributes[key] = value
 	}
-	if strings.EqualFold(strings.TrimSpace(metadataValue(msg.Metadata, execdomain.AgentIDMetadataKey)), "coding") {
+	agentID := strings.TrimSpace(metadataValue(msg.Metadata, execdomain.AgentIDMetadataKey))
+	if strings.EqualFold(agentID, "coding") {
 		for key, value := range resolveAgentSessionCodingAttributes(repoRoot, workspacePath, msg.SessionID) {
 			attributes[key] = value
 		}
+	}
+	if strings.EqualFold(agentID, "travel") {
+		delete(attributes, "guide_html_url")
 	}
 	if len(attributes) == 0 {
 		return nil
@@ -411,6 +415,14 @@ func buildAgentSessionPreviewURL(sessionID string) string {
 		return ""
 	}
 	return fmt.Sprintf("https://%s.%s", shortHash, agentSessionPreviewBaseDomain)
+}
+
+func buildAgentSessionTravelGuideURL(sessionID string) string {
+	shortHash := buildAgentSessionShortHash(sessionID)
+	if shortHash == "" {
+		return ""
+	}
+	return fmt.Sprintf("https://travel-%s.%s", shortHash, agentSessionPreviewBaseDomain)
 }
 
 func buildAgentSessionShortHash(sessionID string) string {

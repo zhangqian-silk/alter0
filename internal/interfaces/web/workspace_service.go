@@ -125,6 +125,10 @@ func (r *workspaceServiceRegistry) load() error {
 		}
 		item.SessionID = sessionID
 		item.ServiceID = serviceID
+		item.ShortHash = shortSessionPreviewHash(sessionID)
+		item.Host = buildWorkspaceServiceHost(item.ShortHash, serviceID, r.baseDomain)
+		item.URL = "https://" + item.Host
+		item.PublicReadOnly = isPublicReadOnlyWorkspaceService(item)
 		entries[workspaceServiceKey(sessionID, serviceID)] = item
 	}
 	r.entries = entries
@@ -220,7 +224,7 @@ func (r *workspaceServiceRegistry) Upsert(input workspaceServiceRegistrationInpu
 
 	switch serviceType {
 	case workspaceServiceTypeFrontendDist:
-		repositoryPath, distPath, err := resolvePreviewRepositoryPaths(input.RepositoryPath)
+		repositoryPath, distPath, err := resolvePreviewRepositoryPaths(input.RepositoryPath, serviceID)
 		if err != nil {
 			return workspaceServiceRegistration{}, err
 		}
@@ -423,13 +427,10 @@ func buildWorkspaceServiceHost(shortHash string, serviceID string, baseDomain st
 	if shortHash == "" {
 		return ""
 	}
-	if serviceID == "travel" {
-		return shortHash + ".travel." + baseDomain
-	}
 	if serviceID == "" || serviceID == defaultWorkspaceServiceID {
 		return shortHash + "." + baseDomain
 	}
-	return serviceID + "." + shortHash + "." + baseDomain
+	return serviceID + "-" + shortHash + "." + baseDomain
 }
 
 func isPublicReadOnlyWorkspaceService(entry workspaceServiceRegistration) bool {
@@ -445,7 +446,7 @@ func shortSessionPreviewHash(sessionID string) string {
 	return hex.EncodeToString(sum[:])[:8]
 }
 
-func resolvePreviewRepositoryPaths(rawRepositoryPath string) (string, string, error) {
+func resolvePreviewRepositoryPaths(rawRepositoryPath string, serviceID string) (string, string, error) {
 	repositoryPath := strings.TrimSpace(rawRepositoryPath)
 	if repositoryPath == "" {
 		return "", "", errors.New("repository_path is required")
@@ -455,6 +456,13 @@ func resolvePreviewRepositoryPaths(rawRepositoryPath string) (string, string, er
 		return "", "", err
 	}
 	repositoryPath = filepath.Clean(absoluteRepositoryPath)
+
+	if strings.EqualFold(strings.TrimSpace(serviceID), "travel") {
+		indexPath := filepath.Join(repositoryPath, "index.html")
+		if info, err := os.Stat(indexPath); err == nil && !info.IsDir() {
+			return filepath.ToSlash(repositoryPath), filepath.ToSlash(repositoryPath), nil
+		}
+	}
 
 	gitMarkerPath := filepath.Join(repositoryPath, ".git")
 	if info, statErr := os.Stat(gitMarkerPath); statErr != nil {

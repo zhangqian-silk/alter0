@@ -501,6 +501,26 @@ func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
 	if !strings.Contains(content, "day-by-day route planning") {
 		t.Fatalf("expected travel agent skill content to include travel page defaults, got %q", content)
 	}
+	if !strings.Contains(content, "desktop") || !strings.Contains(content, "mobile") {
+		t.Fatalf("expected travel agent skill content to enforce desktop and mobile compatibility, got %q", content)
+	}
+	if !strings.Contains(strings.ToLower(content), "before drafting the itinerary") {
+		t.Fatalf("expected travel agent skill content to require recommendation listing before itinerary planning, got %q", content)
+	}
+	for _, phrase := range []string{
+		"snacks, breakfast, signature dishes, and signature drinks",
+		"parks, museums, performances",
+		"popular hotels by budget range",
+		"data source",
+		"city-specific categories",
+		"guide_html_url",
+		"travel-<session_short_hash>.alter0.cn",
+		"single-label",
+	} {
+		if !strings.Contains(strings.ToLower(content), strings.ToLower(phrase)) {
+			t.Fatalf("expected travel agent skill content to include %q, got %q", phrase, content)
+		}
+	}
 }
 
 func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
@@ -981,6 +1001,118 @@ func TestExecuteNaturalLanguageSessionProfileExtractorWritesSchemaFieldsBeforeMe
 	}
 	if strings.Contains(profile.Content, "preview_subdomain") {
 		t.Fatalf("expected readonly field to stay untouched, got:\n%s", profile.Content)
+	}
+}
+
+func TestExecuteNaturalLanguageTravelSessionProfileDoesNotPreallocateGuideURL(t *testing.T) {
+	root := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-travel-guide-url",
+		SessionID:   "travel-guide-session",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "生成一篇武汉3天旅游攻略",
+		TraceID:     "t-travel-guide-url",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:   "travel",
+			execdomain.AgentNameMetadataKey: "Travel Agent",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
+	sessionProfile, ok := findMemoryFileBySelection(memoryContext, memorySelectionAgentSession)
+	if !ok {
+		t.Fatalf("expected %s in memory context: %+v", memorySelectionAgentSession, memoryContext.Files)
+	}
+	if strings.Contains(sessionProfile.Content, "guide_html_url") {
+		t.Fatalf("expected session profile to omit guide_html_url before publish, got %q", sessionProfile.Content)
+	}
+}
+
+func TestExecuteNaturalLanguageTravelSessionProfileStripsLegacyGuideURL(t *testing.T) {
+	root := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	profilePath := filepath.Join(root, ".alter0", "agents", "travel", "sessions", "travel-guide-session.md")
+	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
+		t.Fatalf("mkdir session profile dir: %v", err)
+	}
+	legacyProfile := `# Agent Session Profile
+
+<!-- alter0:agent-session:auto:start -->
+## Session Identity
+- agent_id: travel
+- session_id: travel-guide-session
+
+## Instance Attributes
+- guide_html_url: https://f4e04ab7.travel.alter0.cn
+<!-- alter0:agent-session:auto:end -->
+
+## Notes
+<!-- alter0:agent-session:notes:start -->
+<!-- alter0:agent-session:notes:end -->
+`
+	if err := os.WriteFile(profilePath, []byte(legacyProfile), 0o644); err != nil {
+		t.Fatalf("write legacy session profile: %v", err)
+	}
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-travel-guide-url",
+		SessionID:   "travel-guide-session",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "生成一篇武汉3天旅游攻略",
+		TraceID:     "t-travel-guide-url",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:   "travel",
+			execdomain.AgentNameMetadataKey: "Travel Agent",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+
+	raw, err := os.ReadFile(profilePath)
+	if err != nil {
+		t.Fatalf("read rewritten session profile: %v", err)
+	}
+	content := string(raw)
+	if strings.Contains(content, "https://f4e04ab7.travel.alter0.cn") {
+		t.Fatalf("expected legacy travel url to be rewritten, got %q", content)
+	}
+	if strings.Contains(content, "guide_html_url") {
+		t.Fatalf("expected session profile to strip stale guide_html_url until publish exists, got %q", content)
 	}
 }
 

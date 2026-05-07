@@ -48,6 +48,9 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if !strings.Contains(deployGuide, "service_type=http") || !strings.Contains(deployGuide, "frontend_dist") {
 		t.Fatalf("expected deploy-test-service guide covers full-stack web preview and static fallback, got %q", deployGuide)
 	}
+	if !strings.Contains(deployGuide, "single-label") || !strings.Contains(deployGuide, "*.alter0.cn") {
+		t.Fatalf("expected deploy-test-service guide to describe certificate-safe single-label subdomains, got %q", deployGuide)
+	}
 
 	frontendDesign, ok := service.ResolveSkill("frontend-design")
 	if !ok {
@@ -69,8 +72,11 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 		t.Fatalf("artifact-preview skill file path = %q, want .alter0/skills/artifact-preview/SKILL.md", got)
 	}
 	artifactGuide := artifactPreview.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(artifactGuide, "scripts/publish_preview_artifact.sh") || !strings.Contains(artifactGuide, "<service>.<short_hash>.alter0.cn") {
+	if !strings.Contains(artifactGuide, "scripts/publish_preview_artifact.sh") || !strings.Contains(artifactGuide, "<service>-<short_hash>.alter0.cn") {
 		t.Fatalf("expected artifact-preview guide covers helper script and session subdomain host, got %q", artifactGuide)
+	}
+	if !strings.Contains(artifactGuide, "single-label") || !strings.Contains(artifactGuide, "*.alter0.cn") {
+		t.Fatalf("expected artifact-preview guide to describe certificate-safe single-label subdomains, got %q", artifactGuide)
 	}
 	if !strings.Contains(artifactGuide, "text") || !strings.Contains(artifactGuide, "image") || !strings.Contains(artifactGuide, "code") {
 		t.Fatalf("expected artifact-preview guide covers text, image, and code previews, got %q", artifactGuide)

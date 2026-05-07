@@ -57,6 +57,7 @@ func (s *Server) agentSessionProfileHandler(w http.ResponseWriter, r *http.Reque
 	if err == nil {
 		response.Exists = true
 		response.Attributes = parseAgentSessionProfileAttributes(string(content))
+		response.Attributes = s.resolveAgentSessionProfileAttributes(agent.ID, sessionID, response.Attributes)
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -89,6 +90,29 @@ func parseAgentSessionProfileAttributes(content string) map[string]string {
 			continue
 		}
 		attributes[key] = value
+	}
+	if len(attributes) == 0 {
+		return nil
+	}
+	return attributes
+}
+
+func (s *Server) resolveAgentSessionProfileAttributes(agentID string, sessionID string, attributes map[string]string) map[string]string {
+	if !strings.EqualFold(strings.TrimSpace(agentID), "travel") {
+		if len(attributes) == 0 {
+			return nil
+		}
+		return attributes
+	}
+	if attributes == nil {
+		attributes = map[string]string{}
+	}
+	delete(attributes, "guide_html_url")
+	if s.workspaceService != nil {
+		entry, found := s.workspaceService.ResolveService(sessionID, "travel")
+		if found && entry.PublicReadOnly && strings.TrimSpace(entry.URL) != "" {
+			attributes["guide_html_url"] = strings.TrimSpace(entry.URL)
+		}
 	}
 	if len(attributes) == 0 {
 		return nil

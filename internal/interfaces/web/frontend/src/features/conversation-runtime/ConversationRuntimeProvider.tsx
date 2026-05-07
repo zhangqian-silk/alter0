@@ -18,6 +18,8 @@ import {
 } from "./composerImageAttachments";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
+const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
+const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 const STREAM_ENDPOINT = "/api/messages/stream";
@@ -33,6 +35,7 @@ const LLM_PROVIDER_METADATA_KEY = "alter0.llm.provider_id";
 const LLM_MODEL_METADATA_KEY = "alter0.llm.model";
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
+const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 
 export type ConversationRoute = "chat" | "agent-runtime";
 
@@ -71,6 +74,7 @@ export type ChatMessage = {
 
 type ChatSession = {
   id: string;
+  status: string;
   title: string;
   titleAuto: boolean;
   titleScore: number;
@@ -169,6 +173,8 @@ type ActiveSessionState = Record<ConversationRoute, string>;
 type SessionsState = Record<ConversationRoute, ChatSession[]>;
 type ComposerDraftMap = Record<string, string>;
 type ComposerAttachmentDraftMap = Record<string, ComposerAttachment[]>;
+type StoredActiveSessionSnapshotState = Partial<Record<ConversationRoute, unknown>>;
+type StoredRecentSessionSnapshotState = Partial<Record<ConversationRoute, unknown>>;
 
 type RuntimeSelection = {
   id: string;
@@ -215,6 +221,7 @@ type SessionAttachmentUploadResponse = {
 
 type RuntimeSessionPayload = {
   id?: string;
+  status?: string;
   title?: string;
   title_auto?: boolean;
   title_score?: number;
@@ -317,6 +324,7 @@ type ProviderProps = {
 type StreamResult = {
   ok: boolean;
   canFallback: boolean;
+  canRecover: boolean;
   error: string;
 };
 
@@ -672,6 +680,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
   }
   return {
     id,
+    status: normalizeText(record.status),
     title: normalizeText(record.title) || "New",
     titleAuto: record.titleAuto !== false,
     titleScore: Number.isFinite(Number(record.titleScore)) ? Number(record.titleScore) : 0,
@@ -689,6 +698,66 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     messages: Array.isArray(record.messages)
       ? record.messages.map(normalizeStoredMessage).filter((message): message is ChatMessage => message !== null)
       : [],
+    messagesLoaded: typeof record.messagesLoaded === "boolean" ? record.messagesLoaded : undefined,
+    serverBacked: typeof record.serverBacked === "boolean" ? record.serverBacked : undefined,
+  };
+}
+
+function normalizeStoredSessionList(value: unknown): ChatSession[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const merged = new Map<string, ChatSession>();
+  value.forEach((item) => {
+    const session = normalizeStoredSession(item);
+    if (!session) {
+      return;
+    }
+    merged.set(session.id, session);
+  });
+  return Array.from(merged.values()).sort((left, right) => right.createdAt - left.createdAt);
+}
+
+function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
+  return {
+    id: message.id,
+    role: message.role,
+    text: message.text,
+    attachments: message.attachments,
+    route: message.route,
+    source: message.source,
+    error: message.error,
+    status: message.status,
+    at: message.at,
+    process_steps: message.processSteps,
+    agent_process_collapsed: message.agentProcessCollapsed,
+    task_id: message.taskID,
+    task_status: message.taskStatus,
+    task_pending: message.taskPending,
+    task_result_delivered: message.taskResultDelivered,
+    task_result_for: message.taskResultFor,
+  };
+}
+
+function serializeStoredSession(session: ChatSession): Record<string, unknown> {
+  return {
+    id: session.id,
+    status: session.status,
+    title: session.title,
+    titleAuto: session.titleAuto,
+    titleScore: session.titleScore,
+    createdAt: session.createdAt,
+    targetType: session.target.type,
+    targetID: session.target.id,
+    targetName: session.target.name,
+    modelProviderID: session.modelProviderID,
+    modelID: session.modelID,
+    toolIDs: session.toolIDs,
+    skillIDs: session.skillIDs,
+    mcpIDs: session.mcpIDs,
+    messages: session.messages.map(serializeStoredMessage),
+    messagesLoaded: session.messagesLoaded,
+    serverBacked: session.serverBacked,
   };
 }
 
@@ -717,6 +786,47 @@ function loadActiveSessionState(): ActiveSessionState {
     chat: normalizeText(parsed.chat),
     "agent-runtime": normalizeText(parsed["agent-runtime"]),
   };
+}
+
+function loadActiveSessionSnapshots(): SessionsState {
+  const parsedActive = readJSONStorage<StoredActiveSessionSnapshotState>(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY, {});
+  const parsedRecent = readJSONStorage<StoredRecentSessionSnapshotState>(RECENT_SESSION_SNAPSHOT_STORAGE_KEY, {});
+  const mergeStoredRouteSessions = (routeKey: ConversationRoute) => {
+    const sessions = new Map<string, ChatSession>();
+    normalizeStoredSessionList(parsedRecent[routeKey]).forEach((session) => {
+      sessions.set(session.id, session);
+    });
+    const active = normalizeStoredSession(parsedActive[routeKey]);
+    if (active) {
+      sessions.set(active.id, active);
+    }
+    return Array.from(sessions.values()).sort((left, right) => right.createdAt - left.createdAt);
+  };
+  return {
+    chat: mergeStoredRouteSessions("chat"),
+    "agent-runtime": mergeStoredRouteSessions("agent-runtime"),
+  };
+}
+
+function persistActiveSessionSnapshots(activeState: ActiveSessionState, sessions: SessionsState) {
+  const payload: StoredActiveSessionSnapshotState = {};
+  const recentPayload: StoredRecentSessionSnapshotState = {};
+  (["chat", "agent-runtime"] as ConversationRoute[]).forEach((routeKey) => {
+    const activeID = normalizeText(activeState[routeKey]);
+    recentPayload[routeKey] = sessions[routeKey]
+      .slice(0, MAX_RECENT_SESSION_SNAPSHOTS)
+      .map((session) => serializeStoredSession(session));
+    if (!activeID) {
+      return;
+    }
+    const session = sessions[routeKey].find((item) => item.id === activeID);
+    if (!session) {
+      return;
+    }
+    payload[routeKey] = serializeStoredSession(session);
+  });
+  writeJSONStorage(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY, payload);
+  writeJSONStorage(RECENT_SESSION_SNAPSHOT_STORAGE_KEY, recentPayload);
 }
 
 function loadComposerDrafts(): ComposerDraftMap {
@@ -828,6 +938,7 @@ function normalizeRuntimeSession(item: RuntimeSessionPayload, previous?: ChatSes
     : previous?.messages || [];
   return {
     id,
+    status: normalizeText(item.status) || previous?.status || "",
     title: normalizeText(item.title) || previous?.title || "New",
     titleAuto: item.title_auto !== false,
     titleScore: Number.isFinite(Number(item.title_score)) ? Number(item.title_score) : previous?.titleScore || 0,
@@ -850,15 +961,28 @@ function normalizeRuntimeSession(item: RuntimeSessionPayload, previous?: ChatSes
 
 function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSession[]): ChatSession[] {
   const merged = new Map<string, ChatSession>();
+  const existingByID = new Map(existing.map((session) => [session.id, session]));
   remote.forEach((session) => {
-    merged.set(session.id, session);
+    const previous = existingByID.get(session.id);
+    merged.set(session.id, {
+      ...previous,
+      ...session,
+      status: session.status || previous?.status || "",
+      messages: session.messages.length > 0 ? session.messages : previous?.messages || [],
+      messagesLoaded:
+        typeof session.messagesLoaded === "boolean"
+          ? session.messagesLoaded
+          : previous?.messagesLoaded,
+      serverBacked:
+        typeof session.serverBacked === "boolean"
+          ? session.serverBacked
+          : previous?.serverBacked,
+    });
   });
   existing
-    .filter((session) => session.serverBacked !== true)
+    .filter((session) => !merged.has(session.id))
     .forEach((session) => {
-      if (!merged.has(session.id)) {
-        merged.set(session.id, session);
-      }
+      merged.set(session.id, session);
     });
   return Array.from(merged.values()).sort((left, right) => right.createdAt - left.createdAt);
 }
@@ -1025,7 +1149,7 @@ export function ConversationRuntimeProvider({
   children,
 }: ProviderProps) {
   const apiClient = useMemo(() => createAPIClient(), []);
-  const [sessionsByRoute, setSessionsByRoute] = useState<SessionsState>({ chat: [], "agent-runtime": [] });
+  const [sessionsByRoute, setSessionsByRoute] = useState<SessionsState>(() => loadActiveSessionSnapshots());
   const [sessionsLoadedByRoute, setSessionsLoadedByRoute] = useState<Record<ConversationRoute, boolean>>({
     chat: false,
     "agent-runtime": false,
@@ -1104,6 +1228,7 @@ export function ConversationRuntimeProvider({
     }
     const created: ChatSession = {
       id: makeID("session"),
+      status: "ready",
       title: "New",
       titleAuto: true,
       titleScore: 0,
@@ -1174,11 +1299,15 @@ export function ConversationRuntimeProvider({
   const appendMessage = (routeKey: ConversationRoute, sessionID: string, message: ChatMessage) => {
     patchSession(routeKey, sessionID, (session) => ({
       ...session,
+      status: message.role === "assistant" && message.error
+        ? "failed"
+        : message.role === "assistant" && (message.taskPending || normalizeTaskStatus(message.status) === "running")
+          ? "busy"
+          : session.status,
       title: session.titleAuto && message.role === "user"
         ? (message.text.slice(0, 32) || session.title)
         : session.title,
       titleAuto: session.titleAuto && message.role !== "user",
-      serverBacked: true,
       messages: [...session.messages, message],
     }));
   };
@@ -1191,6 +1320,13 @@ export function ConversationRuntimeProvider({
   ) => {
     patchSession(routeKey, sessionID, (session) => ({
       ...session,
+      status: normalizeText(patch.status) === "error"
+        ? "failed"
+        : patch.taskPending || normalizeTaskStatus(patch.taskStatus || patch.status || "") === "running"
+          ? "busy"
+          : normalizeText(patch.status) === "done"
+            ? "ready"
+            : session.status,
       messages: session.messages.map((message) =>
         message.id === messageID ? { ...message, ...patch } : message,
       ),
@@ -1278,6 +1414,77 @@ export function ConversationRuntimeProvider({
     }
   };
 
+  const hydrateRuntimeSession = async (routeKey: ConversationRoute, sessionID: string): Promise<ChatSession | null> => {
+    const payload = await apiClient.get<{ session?: RuntimeSessionPayload }>(
+      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(sessionID)}?route=${encodeURIComponent(routeKey)}`,
+    );
+    const hydrated = normalizeRuntimeSession(
+      payload.session || {},
+      sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null,
+    );
+    if (!hydrated) {
+      return null;
+    }
+    setSessionsByRoute((current) => ({
+      ...current,
+      [routeKey]: (
+        current[routeKey].some((session) => session.id === sessionID)
+          ? current[routeKey].map((session) => (session.id === sessionID ? hydrated : session))
+          : [hydrated, ...current[routeKey]]
+      ).sort((left, right) => right.createdAt - left.createdAt),
+    }));
+    return hydrated;
+  };
+
+  const recoverRuntimeSession = async (
+    routeKey: ConversationRoute,
+    sessionID: string,
+    attempts: number = 3,
+  ): Promise<ChatSession | null> => {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const hydrated = await hydrateRuntimeSession(routeKey, sessionID);
+        if (hydrated) {
+          return hydrated;
+        }
+      } catch {
+      }
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+    }
+    return null;
+  };
+
+  const recoverInterruptedStream = async (
+    routeKey: ConversationRoute,
+    sessionID: string,
+  ): Promise<boolean> => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const hydrated = await hydrateRuntimeSession(routeKey, sessionID);
+        const recovered = hydrated?.messages.some((message) => {
+          const text = normalizeText(message.text);
+          if (message.role !== "assistant") {
+            return false;
+          }
+          if (message.taskID) {
+            return true;
+          }
+          return message.status !== "streaming" && text !== "" && text.toLowerCase() !== "thinking...";
+        });
+        if (recovered) {
+          return true;
+        }
+      } catch {
+      }
+      if (attempt < 2) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+    }
+    return false;
+  };
+
   const sendMessageStream = async (
     routeKey: ConversationRoute,
     sessionID: string,
@@ -1312,6 +1519,7 @@ export function ConversationRuntimeProvider({
       return {
         ok: false,
         canFallback: true,
+        canRecover: false,
         error: normalizeText((failure as { error?: string } | null)?.error) || `HTTP ${response.status}`,
       };
     }
@@ -1393,7 +1601,12 @@ export function ConversationRuntimeProvider({
               status: "error",
               error: true,
             });
-            return { ok: false, canFallback: false, error: normalizeText(parsed.data.error) || "request failed" };
+            return {
+              ok: false,
+              canFallback: false,
+              canRecover: false,
+              error: normalizeText(parsed.data.error) || "request failed",
+            };
           }
         }
         splitIndex = buffer.indexOf("\n\n");
@@ -1405,6 +1618,7 @@ export function ConversationRuntimeProvider({
     return {
       ok: sawDone,
       canFallback: !sawEvent,
+      canRecover: sawEvent && !sawDone,
       error: sawDone ? "" : "stream interrupted",
     };
   };
@@ -1437,6 +1651,12 @@ export function ConversationRuntimeProvider({
     persistComposerAttachmentDrafts(nextAttachmentDrafts);
     try {
       const streamResult = await sendMessageStream(route, session.id, session.target, assistantMessage.id, content, attachments);
+      if (!streamResult.ok && streamResult.canRecover) {
+        const recovered = await recoverInterruptedStream(route, session.id);
+        if (recovered) {
+          return;
+        }
+      }
       if (!streamResult.ok && streamResult.canFallback) {
         await sendMessageFallback(route, session.id, session.target, assistantMessage.id, content, attachments);
       }
@@ -1521,6 +1741,10 @@ export function ConversationRuntimeProvider({
   };
 
   useEffect(() => {
+    persistActiveSessionSnapshots(activeSessionByRoute, sessionsByRoute);
+  }, [activeSessionByRoute, sessionsByRoute]);
+
+  useEffect(() => {
     const syncViewport = () => setCompact(isCompactViewport());
     window.addEventListener("resize", syncViewport);
     return () => window.removeEventListener("resize", syncViewport);
@@ -1564,7 +1788,13 @@ export function ConversationRuntimeProvider({
           return;
         }
         const preferredActiveID = normalizeText(activeSessionByRoute[route]);
-        const nextActiveID = remoteSessions.some((session) => session.id === preferredActiveID)
+        const recoveredSession = preferredActiveID && !remoteSessions.some((session) => session.id === preferredActiveID)
+          ? await recoverRuntimeSession(route, preferredActiveID)
+          : null;
+        if (cancelled) {
+          return;
+        }
+        const nextActiveID = remoteSessions.some((session) => session.id === preferredActiveID) || recoveredSession
           ? preferredActiveID
           : remoteSessions[0]?.id || activeSessionByRoute[route];
         if (nextActiveID && nextActiveID !== activeSessionByRoute[route]) {
