@@ -307,6 +307,11 @@ export function RuntimeComposer({
                 "runtime-composer-input",
                 inputPropsClassName,
               )}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              enterKeyHint="send"
               {...inputRestProps}
               value={inputValue}
               onPointerDownCapture={onInputPointerDownCapture}

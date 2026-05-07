@@ -227,7 +227,9 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - Chat 移动端输入区默认隐藏装饰性附注与字数计数，底部只保留输入框，以及同排的会话设置、附件与发送按钮；会话设置以独立底部面板承载 `Agent / Model / Tools / Skills` 标签，统一使用当前语言口径，避免中英混排，并在小屏与软键盘场景下维持完整可读与可滚动操作区。
 - Chat、Agent Runtime 与 Terminal 在移动端都会按当前 fixed composer 的实际遮挡高度回收消息视口；输入区贴底期间，消息列表、空态说明和长输出阅读都必须停在 composer 上沿，不允许再被底部输入框盖住。
 - Chat、Agent Runtime 与 Terminal 在软键盘收起、输入框失焦和 composer 回弹到底边的过程中，消息视口与跳转控件也要同步释放旧的底部占位；页面上不能残留上一轮键盘高度对应的空白带或悬空控件。
-- Chat、Agent Runtime 与 Terminal 在移动端键盘弹起和收回期间，只有 composer 自身允许跟随 `VisualViewport` 做贴底动画；顶部 `Menu / Sessions / New` 操作行、紧凑 workspace header 和 Terminal 右侧四键定位条都保持原位，不跟着键盘位移一起跳动。
+- Chat、Agent Runtime 与 Terminal 在移动端软键盘弹起期间，底部 Composer 必须始终位于运行页跳转控件之上；右侧四键定位条和消息阅读定位按钮在主输入框聚焦后需主动隐藏，待输入框失焦、键盘收起后再恢复，不能压到输入框、附件条或键盘上方。
+- Chat、Agent Runtime 与 Terminal 的主输入框在移动端按普通命令文本输入处理：运行页必须关闭系统自动填充、卡片、地址与密码类辅助条，避免 iOS 在键盘上沿额外挂出输入助手并露出底部残留页面层。
+- Chat、Agent Runtime 与 Terminal 在移动端键盘弹起和收回期间，只有 composer 自身允许跟随 `VisualViewport` 做贴底动画；顶部 `Menu / Sessions / New` 操作行与紧凑 workspace header 保持原位不跟着键盘位移一起跳动；阅读定位条在输入框聚焦期间隐藏，失焦后再回到原有停靠位。
 - Chat 与 Terminal 的移动端发送按钮在软键盘打开期间支持直接点按提交；发送动作需同时覆盖 `pointerdown(touch)` 与 `touchstart` 首触链路，并在同一次触摸内去重，避免先收起键盘、丢失焦点或要求第二次点击后才真正提交。
 - 运行页 composer 跟随键盘回弹时不再叠加额外的 `bottom` 补间过渡；可视视口收起后输入区会直接回贴底边，避免回弹拖滞或明显卡顿。
 - 输入框失焦后，如果 `VisualViewport` 还没恢复到最终高度，页面会继续保留上一段键盘偏移并随视口回弹逐步释放，不会先闪回到底边再被下一帧重新顶起。

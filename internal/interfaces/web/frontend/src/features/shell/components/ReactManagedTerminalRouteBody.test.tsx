@@ -1402,6 +1402,24 @@ describe("ReactManagedTerminalRouteBody", () => {
       && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
   });
 
+  it("marks the terminal composer input as plain text so mobile autofill bars stay off", async () => {
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
+    });
+
+    const input = document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement;
+
+    expect(input).toHaveAttribute("autocomplete", "off");
+    expect(input).toHaveAttribute("autocorrect", "off");
+    expect(input).toHaveAttribute("autocapitalize", "off");
+    expect(input).toHaveAttribute("enterkeyhint", "send");
+    expect(input).toHaveAttribute("spellcheck", "false");
+  });
+
   it("submits when the mobile send button is pressed through touch pointer while the composer stays focused", async () => {
     renderTerminalRouteBody({
       isMobileViewport: true,
@@ -1715,6 +1733,40 @@ describe("ReactManagedTerminalRouteBody", () => {
       const button = document.querySelector(selector) as HTMLButtonElement | null;
       expect(button).not.toBeNull();
       expect(button?.textContent?.trim().length || 0).toBeGreaterThan(0);
+    });
+  });
+
+  it("hides terminal jump controls while the mobile composer is focused", async () => {
+    installImmediateAnimationFrame();
+    stubTerminalTurnsFetch([
+      { id: "turn-1" },
+      { id: "turn-2" },
+      { id: "turn-3" },
+    ]);
+
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
+    });
+
+    const input = document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement;
+    fireEvent.focus(input);
+
+    expect(document.querySelector("[data-terminal-jump-top]")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-jump-prev]")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-jump-next]")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-jump-bottom]")).not.toBeInTheDocument();
+
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-jump-top]")).toBeInTheDocument();
+      expect(document.querySelector("[data-terminal-jump-prev]")).toBeInTheDocument();
+      expect(document.querySelector("[data-terminal-jump-next]")).toBeInTheDocument();
+      expect(document.querySelector("[data-terminal-jump-bottom]")).toBeInTheDocument();
     });
   });
 
