@@ -1543,7 +1543,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       ) : (
         <div className="terminal-log-empty">{loading ? copy.loading : copy.noOutput}</div>
       ),
-      overlay: (
+      overlay: workbench.isMobileViewport && inputFocused ? null : (
         <ScrollJumpStrip
           scope="terminal"
           namespace="terminal"

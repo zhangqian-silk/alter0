@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { formatDateTime } from "../../shared/time/format";
 import { groupSessionListItems } from "../../shared/time/sessionListGroups";
 import { buildChatTimelineItems } from "../shell/components/ChatMessageRegion";
 import { normalizeText, RouteFieldRow } from "../shell/components/RouteBodyPrimitives";
+import { RuntimeComposer } from "../shell/components/RuntimeComposer";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
 import { ScrollJumpStrip } from "../shell/components/ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "../shell/components/useRuntimeComposerViewportSync";
@@ -14,10 +15,18 @@ import {
   readComposerFiles,
   type ComposerAttachment,
 } from "./composerImageAttachments";
-import { useConversationRuntime } from "./ConversationRuntimeProvider";
+import {
+  useConversationRuntimeComposer,
+  useConversationRuntimeWorkspace,
+} from "./ConversationRuntimeProvider";
 
 type ConversationWorkspaceProps = {
   language: LegacyShellLanguage;
+};
+
+type ConversationWorkspaceSharedRefs = {
+  timelineScreenRef: { current: HTMLDivElement | null };
+  workspaceBodyRef: { current: HTMLDivElement | null };
 };
 
 function renderAgentDeliverablesSection(
@@ -139,20 +148,17 @@ function conversationSessionStatusLabel(
   }
 }
 
-export function useConversationRuntimeController(language: LegacyShellLanguage): RuntimeWorkspacePageController {
+function useConversationWorkspaceController(
+  language: LegacyShellLanguage,
+  sharedRefs: ConversationWorkspaceSharedRefs,
+  composerNode: ReactNode,
+  inputFocused: boolean,
+): RuntimeWorkspacePageController {
   const workbench = useWorkbenchContext();
-  const runtime = useConversationRuntime();
+  const runtime = useConversationRuntimeWorkspace();
   const copy = getLegacyShellCopy(language);
-  const [inputFocused, setInputFocused] = useState(false);
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
-  const [composerAttachmentError, setComposerAttachmentError] = useState("");
-  const [previewAttachment, setPreviewAttachment] = useState<ComposerAttachment | null>(null);
-  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const composerFileInputRef = useRef<HTMLInputElement | null>(null);
-  const composerShellRef = useRef<HTMLElement | null>(null);
-  const timelineScreenRef = useRef<HTMLDivElement | null>(null);
-  const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
-  const mobileSubmitGestureLockRef = useRef(false);
+  const { timelineScreenRef, workspaceBodyRef } = sharedRefs;
   const activeMessages = runtime.activeSession?.messages || [];
   const isEmptyState = activeMessages.length === 0;
   const isMobileEmptyHeader = workbench.isMobileViewport && isEmptyState;
@@ -166,8 +172,6 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     : (language === "zh"
       ? "对话、过程和交付结果都在同一条时间线里推进。"
       : "Conversation, process, and delivery stay in a single timeline.");
-  const composerPlaceholder = language === "zh" ? "输入消息，继续推进当前工作区..." : "Type a message to continue this workspace...";
-  const composerSend = language === "zh" ? "发送" : "Send";
   const sessionPaneTitle = copy.terminalSessions;
   const newSessionLabel = copy.terminalNewShort;
   const sessionCountLabel = language === "zh"
@@ -185,25 +189,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     [language, runtime.sessionItems],
   );
   const sessionEmptyLabel = runtime.route === "agent-runtime" ? copy.sessionEmptyAgent : copy.sessionEmpty;
-  const composerMetaLabel = composerAttachmentError || undefined;
-  const composerAddAttachmentLabel = language === "zh" ? "添加附件" : "Add attachment";
-  const composerClosePreviewLabel = language === "zh" ? "关闭预览" : "Close preview";
-  const composerPreviewPrefix = language === "zh" ? "预览" : "Preview";
-  const composerRemovePrefix = language === "zh" ? "删除" : "Remove";
-  const composerImageLimitError = language === "zh"
-    ? `最多可暂存 ${MAX_COMPOSER_IMAGE_ATTACHMENTS} 个附件。`
-    : `You can attach up to ${MAX_COMPOSER_IMAGE_ATTACHMENTS} attachments.`;
-  const composerVisionUnsupported = language === "zh"
-    ? "当前模型不支持图片输入，请切换到支持视觉的模型后再发送。"
-    : "The selected model does not support image input. Switch to a vision-capable model before sending.";
   const compactDetailsLabel = language === "zh" ? "详情" : "Details";
-  const inspectorTabOpen = runtime.inspectorOpen && runtime.inspectorTabOpen;
-  const targetInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "target";
-  const modelInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "model";
-  const capabilitiesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "capabilities";
-  const skillsInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "skills";
-  const sessionProfileInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "session-profile";
-  const deliverablesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "deliverables";
   const sessionProfileFields = runtime.activeSessionProfile?.fields || runtime.activeAgent?.session_profile_fields || [];
   const activeAgentDeliverables = runtime.activeAgent?.deliverables || [];
   const sessionProfileAttributes = runtime.activeSessionProfile?.attributes || {};
@@ -229,6 +215,42 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       tone: "ready" as const,
       label: conversationSessionStatusLabel("ready", language),
     };
+  const sessionListGroups = useMemo(
+    () => groupedSessionItems.map((group) => ({
+      ...group,
+      items: group.items.map((item) => ({
+        statusTone: sessionStatusByID[item.id]?.tone || "ready",
+        statusLabel: sessionStatusByID[item.id]?.label || conversationSessionStatusLabel("ready", language),
+        id: item.id,
+        active: item.active,
+        title: item.title,
+        meta: item.meta,
+        shortHash: item.shortHash,
+        activeLabel: activeSessionBadgeLabel,
+        idleLabel: idleSessionBadgeLabel,
+        onSelect: () => handleFocusSession(item.id),
+        onDelete: () => void handleRemoveSession(item.id),
+        deleteLabel: deleteSessionLabel,
+        deleteAriaLabel: deleteSessionAriaLabel,
+        shellClassName: item.active ? "runtime-session-card is-active" : "runtime-session-card",
+        shellProps: {
+          "data-runtime-session-state": item.active ? "active" : "idle",
+          "data-runtime-session-card": item.id,
+          "data-runtime-session-tone": sessionStatusByID[item.id]?.tone || "ready",
+        },
+        buttonClassName: item.active ? "runtime-session-select active" : "runtime-session-select",
+      })),
+    })),
+    [
+      activeSessionBadgeLabel,
+      deleteSessionAriaLabel,
+      deleteSessionLabel,
+      groupedSessionItems,
+      idleSessionBadgeLabel,
+      language,
+      sessionStatusByID,
+    ],
+  );
   const routeLabel = runtime.route === "agent-runtime"
     ? (language === "zh" ? "Agent" : "Agent")
     : (language === "zh" ? "对话" : "Chat");
@@ -246,20 +268,255 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     workbench.closeMobileSessionPane();
   }, [runtime.route]);
 
-  const handleCreateSession = () => {
+  const handleCreateSession = useCallback(() => {
     runtime.createSession();
     workbench.closeMobileSessionPane();
-  };
+  }, [runtime, workbench]);
 
-  const handleFocusSession = (sessionID: string) => {
+  const handleFocusSession = useCallback((sessionID: string) => {
     runtime.focusSession(sessionID);
     workbench.closeMobileSessionPane();
-  };
+  }, [runtime, workbench]);
 
-  const handleRemoveSession = (sessionID: string) => {
+  const handleRemoveSession = useCallback((sessionID: string) => {
     workbench.closeMobileSessionPane();
     return runtime.removeSession(sessionID);
-  };
+  }, [runtime, workbench]);
+
+  const sessionDetailsBody = runtime.route === "agent-runtime" && (sessionProfileFields.length > 0 || activeAgentDeliverables.length > 0) ? (
+    <div className="conversation-inspector-sections">
+      {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
+      {sessionProfileFields.length > 0 ? (
+        <section className="conversation-inspector-section">
+          <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
+          <div className="workspace-details-summary">
+            {sessionProfileFields.map((field) => {
+              const value = sessionProfileAttributes[field.key] || "-";
+              return (
+                <RouteFieldRow
+                  key={field.key}
+                  label={field.label}
+                  value={value}
+                  copyLabel={language === "zh" ? "复制值" : "Copy value"}
+                  copyable={field.readonly !== false}
+                  mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
+                  multiline={value.length > 48}
+                />
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  ) : null;
+
+  const timelineItems = useMemo(
+    () => buildChatTimelineItems({
+      messages: activeMessages,
+      language,
+      onToggleProcess: runtime.toggleAgentProcess,
+    }),
+    [activeMessages, language, runtime.toggleAgentProcess],
+  );
+  const timelineEmptyState = useMemo(
+    () => (
+      <div className="conversation-empty-state">
+        <h5>{emptyStateTitle}</h5>
+        <p>{emptyStateDescription}</p>
+      </div>
+    ),
+    [emptyStateDescription, emptyStateTitle],
+  );
+  const timelineOverlay = useMemo(
+    () => (workbench.isMobileViewport && inputFocused ? null : (
+      <ScrollJumpStrip
+        scope={runtime.route === "agent-runtime" ? "agent" : "chat"}
+        language={language}
+        containerRef={timelineScreenRef}
+        itemSelector="[data-message-id]"
+        itemAttribute="data-message-id"
+        watchKey={`${runtime.route}:${activeMessages.length}:${isEmptyState ? "empty" : "active"}`}
+      />
+    )),
+    [activeMessages.length, inputFocused, isEmptyState, language, runtime.route, workbench.isMobileViewport],
+  );
+  const shell = useMemo(() => ({
+    shell: {
+      rootClassName: "runtime-workspace-view",
+      rootProps: {
+        "data-runtime-view": "conversation",
+        "data-runtime-route": runtime.route,
+      },
+      sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen
+        ? "is-open"
+        : undefined,
+      sessionPaneProps: {
+        "data-runtime-session-pane": "conversation",
+        "data-mobile-open": workbench.mobileSessionPaneOpen ? "true" : "false",
+        "data-testid": "conversation-session-pane",
+      },
+      sessionPaneBackdrop: {
+        ariaLabel: copy.sessionClose,
+        onClick: workbench.closeMobileSessionPane,
+      },
+      sessionPanePrimaryActionClassName: "is-primary",
+      sessionPaneTitle,
+      sessionPaneCountLabel: sessionCountLabel,
+      sessionPanePrimaryActionLabel: newSessionLabel,
+      onSessionPanePrimaryAction: handleCreateSession,
+      sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.sessionClose : undefined,
+      onSessionPaneSecondaryAction: workbench.isMobileViewport ? workbench.closeMobileSessionPane : undefined,
+      workspaceProps: {
+        "data-runtime-workspace": "conversation",
+        "data-runtime-route": runtime.route,
+      },
+      workspaceBodyRef,
+      mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
+      mobileHeaderProps: { "data-runtime-mobile-variant": "conversation" },
+      mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
+      mobileNavButtonLabel: copy.chatMenu,
+      mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
+      onMobileNav: workbench.toggleMobileNav,
+      mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",
+      mobileSessionButtonLabel: copy.terminalSessions,
+      mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
+      onMobileSession: workbench.toggleMobileSessionPane,
+      mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
+      mobilePrimaryButtonLabel: newSessionLabel,
+      onMobilePrimary: handleCreateSession,
+    },
+  }), [
+    copy.chatMenu,
+    copy.sessionClose,
+    copy.terminalSessions,
+    handleCreateSession,
+    newSessionLabel,
+    runtime.route,
+    sessionCountLabel,
+    sessionPaneTitle,
+    workbench.closeMobileSessionPane,
+    workbench.isMobileViewport,
+    workbench.mobileNavOpen,
+    workbench.mobileSessionPaneOpen,
+    workbench.toggleMobileNav,
+    workbench.toggleMobileSessionPane,
+  ]);
+  const sessionList = useMemo(() => ({
+    sessionList: {
+      groups: sessionListGroups,
+      listProps: { "data-runtime-session-list": "conversation" },
+      emptyState: groupedSessionItems.length === 0 ? (
+        <p className="route-empty-panel">{sessionEmptyLabel}</p>
+      ) : null,
+    },
+  }), [groupedSessionItems.length, sessionEmptyLabel, sessionListGroups]);
+  const header = useMemo(() => ({
+    header: {
+      title: runtime.activeSession?.title || emptyStateTitle,
+      statusLabel: activeSessionStatus.label,
+      statusTone: activeSessionStatus.tone,
+      detailsLabel: compactDetailsLabel,
+      detailsOpen: sessionDetailsOpen,
+      onToggleDetails: () => setSessionDetailsOpen((current) => !current),
+      detailsDisabled: false,
+      mobileEmpty: isMobileEmptyHeader,
+      detailsClassName: "conversation-inspector conversation-session-details workspace-details-content",
+      detailsSummary: conversationDetailsSummary,
+      detailsBody: runtime.activeSession ? sessionDetailsBody : null,
+      headerProps: { "data-runtime-header-kind": "conversation" },
+      detailsPanelProps: {
+        "data-runtime-details-panel": "conversation",
+        "data-conversation-session-details": "",
+      },
+    },
+  }), [
+    activeSessionStatus.label,
+    activeSessionStatus.tone,
+    compactDetailsLabel,
+    emptyStateTitle,
+    isMobileEmptyHeader,
+    runtime.activeSession,
+    sessionDetailsBody,
+    sessionDetailsOpen,
+  ]);
+  const screen = useMemo(() => ({
+    screen: {
+      panelClassName: `conversation-console-panel${isEmptyState ? " is-empty" : ""}`,
+      screenClassName: isEmptyState
+        ? "is-empty"
+        : undefined,
+      screenProps: { "data-runtime-screen": "conversation" },
+      screenRef: timelineScreenRef,
+    },
+  }), [isEmptyState]);
+  const timeline = useMemo(() => ({
+    timeline: {
+      items: timelineItems,
+      emptyState: timelineEmptyState,
+      overlay: timelineOverlay,
+    },
+  }), [timelineEmptyState, timelineItems, timelineOverlay]);
+
+  return useMemo(() => ({
+    ...shell,
+    ...sessionList,
+    ...header,
+    ...screen,
+    ...timeline,
+    composerNode,
+  }), [composerNode, header, screen, sessionList, shell, timeline]);
+}
+
+function ConversationComposerSection({
+  language,
+  workspaceBodyRef,
+  inputFocused,
+  onInputFocusedChange,
+}: {
+  language: LegacyShellLanguage;
+  workspaceBodyRef: { current: HTMLDivElement | null };
+  inputFocused: boolean;
+  onInputFocusedChange: (focused: boolean) => void;
+}) {
+  const workbench = useWorkbenchContext();
+  const runtime = useConversationRuntimeWorkspace();
+  const composerRuntime = useConversationRuntimeComposer();
+  const copy = getLegacyShellCopy(language);
+  const [composerAttachmentError, setComposerAttachmentError] = useState("");
+  const [previewAttachment, setPreviewAttachment] = useState<ComposerAttachment | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const composerShellRef = useRef<HTMLElement | null>(null);
+  const mobileSubmitGestureLockRef = useRef(false);
+  const composerPlaceholder = language === "zh" ? "输入消息，继续推进当前工作区..." : "Type a message to continue this workspace...";
+  const composerSend = language === "zh" ? "发送" : "Send";
+  const composerMetaLabel = composerAttachmentError || undefined;
+  const composerAddAttachmentLabel = language === "zh" ? "添加附件" : "Add attachment";
+  const composerClosePreviewLabel = language === "zh" ? "关闭预览" : "Close preview";
+  const composerPreviewPrefix = language === "zh" ? "预览" : "Preview";
+  const composerRemovePrefix = language === "zh" ? "删除" : "Remove";
+  const composerImageLimitError = language === "zh"
+    ? `最多可暂存 ${MAX_COMPOSER_IMAGE_ATTACHMENTS} 个附件。`
+    : `You can attach up to ${MAX_COMPOSER_IMAGE_ATTACHMENTS} attachments.`;
+  const composerVisionUnsupported = language === "zh"
+    ? "当前模型不支持图片输入，请切换到支持视觉的模型后再发送。"
+    : "The selected model does not support image input. Switch to a vision-capable model before sending.";
+  const inspectorTabOpen = runtime.inspectorOpen && runtime.inspectorTabOpen;
+  const targetInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "target";
+  const modelInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "model";
+  const capabilitiesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "capabilities";
+  const skillsInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "skills";
+  const sessionProfileInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "session-profile";
+  const deliverablesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "deliverables";
+  const sessionProfileFields = runtime.activeSessionProfile?.fields || runtime.activeAgent?.session_profile_fields || [];
+  const activeAgentDeliverables = runtime.activeAgent?.deliverables || [];
+  const sessionProfileAttributes = runtime.activeSessionProfile?.attributes || {};
+  const capabilityGroups = useMemo(() => ({
+    activeCapabilities: runtime.capabilities.filter((item) => item.active),
+    availableCapabilities: runtime.capabilities.filter((item) => !item.active),
+    activeSkills: runtime.skills.filter((item) => item.active),
+    availableSkills: runtime.skills.filter((item) => !item.active && item.visibility !== "agent-private"),
+  }), [runtime.capabilities, runtime.skills]);
 
   const focusComposerInputWithoutScroll = () => {
     const node = composerInputRef.current;
@@ -275,10 +532,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
 
   const blurComposerInput = () => {
     const node = composerInputRef.current;
-    if (!node) {
-      return;
-    }
-    if (document.activeElement !== node) {
+    if (!node || document.activeElement !== node) {
       return;
     }
     node.blur();
@@ -301,11 +555,11 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
   };
 
   const submitDraft = () => {
-    if (runtime.draftAttachments.some(isComposerImageAttachment) && !runtime.selectedModelSupportsVision) {
+    if (composerRuntime.draftAttachments.some(isComposerImageAttachment) && !composerRuntime.selectedModelSupportsVision) {
       setComposerAttachmentError(composerVisionUnsupported);
       return;
     }
-    void runtime.sendPrompt(runtime.draft);
+    void composerRuntime.sendPrompt(composerRuntime.draft);
   };
 
   const releaseMobileSubmitGestureLock = () => {
@@ -337,28 +591,21 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     submitMobileDraftOnPress();
   };
 
-  const capabilityGroups = useMemo(() => ({
-    activeCapabilities: runtime.capabilities.filter((item) => item.active),
-    availableCapabilities: runtime.capabilities.filter((item) => !item.active),
-    activeSkills: runtime.skills.filter((item) => item.active),
-    availableSkills: runtime.skills.filter((item) => !item.active && item.visibility !== "agent-private"),
-  }), [runtime.capabilities, runtime.skills]);
-
-  const handleComposerAttachmentPicker = () => {
+  const handleComposerAttachmentPicker = useCallback(() => {
     composerFileInputRef.current?.click();
-  };
+  }, []);
 
-  const handleComposerAttachmentSelection = async (files: FileList | null) => {
+  const handleComposerAttachmentSelection = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) {
       return;
     }
-    if ((runtime.draftAttachments.length + files.length) > MAX_COMPOSER_IMAGE_ATTACHMENTS) {
+    if ((composerRuntime.draftAttachments.length + files.length) > MAX_COMPOSER_IMAGE_ATTACHMENTS) {
       setComposerAttachmentError(composerImageLimitError);
       return;
     }
     try {
       const attachments = await readComposerFiles(files);
-      await runtime.addDraftAttachments(attachments);
+      await composerRuntime.addDraftAttachments(attachments);
       setComposerAttachmentError("");
     } catch (error) {
       setComposerAttachmentError(error instanceof Error ? error.message : "Failed to add attachment.");
@@ -367,7 +614,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
         composerFileInputRef.current.value = "";
       }
     }
-  };
+  }, [composerImageLimitError, composerRuntime]);
 
   useRuntimeComposerViewportSync({
     isMobileViewport: workbench.isMobileViewport,
@@ -375,33 +622,6 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     workspaceBodyRef,
     composerShellRef,
   });
-
-  const sessionDetailsBody = runtime.route === "agent-runtime" && (sessionProfileFields.length > 0 || activeAgentDeliverables.length > 0) ? (
-    <div className="conversation-inspector-sections">
-      {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
-      {sessionProfileFields.length > 0 ? (
-        <section className="conversation-inspector-section">
-          <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
-          <div className="workspace-details-summary">
-            {sessionProfileFields.map((field) => {
-              const value = sessionProfileAttributes[field.key] || "-";
-              return (
-                <RouteFieldRow
-                  key={field.key}
-                  label={field.label}
-                  value={value}
-                  copyLabel={language === "zh" ? "复制值" : "Copy value"}
-                  copyable={field.readonly !== false}
-                  mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
-                  multiline={value.length > 48}
-                />
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-    </div>
-  ) : null;
 
   const configPanelHint = targetInspectorOpen
     ? copy.runtimeAgentHint
@@ -423,18 +643,9 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
       key: "deliverables" as const,
       label: language === "zh" ? "交付物" : "Deliverables",
     }] : []),
-    {
-      key: "model" as const,
-      label: copy.runtimeModel,
-    },
-    {
-      key: "capabilities" as const,
-      label: copy.runtimeToolsShort,
-    },
-    {
-      key: "skills" as const,
-      label: copy.runtimeSkillsShort,
-    },
+    { key: "model" as const, label: copy.runtimeModel },
+    { key: "capabilities" as const, label: copy.runtimeToolsShort },
+    { key: "skills" as const, label: copy.runtimeSkillsShort },
   ];
   const conversationComposerPanel = runtime.inspectorOpen && runtime.inspectorTabOpen ? (
     <div
@@ -526,8 +737,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
                   <input
                     type="checkbox"
                     checked={item.active}
-                    onChange={(event) =>
-                      runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
+                    onChange={(event) => runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
                   />
                   <span><strong>{item.name}</strong><small>{item.description}</small></span>
                 </label>
@@ -542,8 +752,7 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
                   <input
                     type="checkbox"
                     checked={item.active}
-                    onChange={(event) =>
-                      runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
+                    onChange={(event) => runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
                   />
                   <span><strong>{item.name}</strong><small>{item.description}</small></span>
                 </label>
@@ -616,164 +825,40 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
     </div>
   ) : null;
 
-  return {
-    shell: {
-      rootClassName: "runtime-workspace-view",
-      rootProps: {
-        "data-runtime-view": "conversation",
-        "data-runtime-route": runtime.route,
-      },
-      sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen
-        ? "is-open"
-        : undefined,
-      sessionPaneProps: {
-        "data-runtime-session-pane": "conversation",
-        "data-mobile-open": workbench.mobileSessionPaneOpen ? "true" : "false",
-        "data-testid": "conversation-session-pane",
-      },
-      sessionPaneBackdrop: {
-        ariaLabel: copy.sessionClose,
-        onClick: workbench.closeMobileSessionPane,
-      },
-      sessionPanePrimaryActionClassName: "is-primary",
-      sessionPaneTitle,
-      sessionPaneCountLabel: sessionCountLabel,
-      sessionPanePrimaryActionLabel: newSessionLabel,
-      onSessionPanePrimaryAction: handleCreateSession,
-      sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.sessionClose : undefined,
-      onSessionPaneSecondaryAction: workbench.isMobileViewport ? workbench.closeMobileSessionPane : undefined,
-      workspaceProps: {
-        "data-runtime-workspace": "conversation",
-        "data-runtime-route": runtime.route,
-      },
-      workspaceBodyRef,
-      mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
-      mobileHeaderProps: { "data-runtime-mobile-variant": "conversation" },
-      mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
-      mobileNavButtonLabel: copy.chatMenu,
-      mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
-      onMobileNav: workbench.toggleMobileNav,
-      mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",
-      mobileSessionButtonLabel: copy.terminalSessions,
-      mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
-      onMobileSession: workbench.toggleMobileSessionPane,
-      mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
-      mobilePrimaryButtonLabel: newSessionLabel,
-      onMobilePrimary: handleCreateSession,
-    },
-    sessionList: {
-      groups: groupedSessionItems.map((group) => ({
-        ...group,
-        items: group.items.map((item) => ({
-          statusTone: sessionStatusByID[item.id]?.tone || "ready",
-          statusLabel: sessionStatusByID[item.id]?.label || conversationSessionStatusLabel("ready", language),
-          id: item.id,
-          active: item.active,
-          title: item.title,
-          meta: item.meta,
-          shortHash: item.shortHash,
-          activeLabel: activeSessionBadgeLabel,
-          idleLabel: idleSessionBadgeLabel,
-          onSelect: () => handleFocusSession(item.id),
-          onDelete: () => void handleRemoveSession(item.id),
-          deleteLabel: deleteSessionLabel,
-          deleteAriaLabel: deleteSessionAriaLabel,
-          shellClassName: item.active ? "runtime-session-card is-active" : "runtime-session-card",
-          shellProps: {
-            "data-runtime-session-state": item.active ? "active" : "idle",
-            "data-runtime-session-card": item.id,
-            "data-runtime-session-tone": sessionStatusByID[item.id]?.tone || "ready",
-          },
-          buttonClassName: item.active ? "runtime-session-select active" : "runtime-session-select",
-        })),
-      })),
-      listProps: { "data-runtime-session-list": "conversation" },
-      emptyState: groupedSessionItems.length === 0 ? (
-        <p className="route-empty-panel">{sessionEmptyLabel}</p>
-      ) : null,
-    },
-    header: {
-      title: runtime.activeSession?.title || emptyStateTitle,
-      statusLabel: activeSessionStatus.label,
-      statusTone: activeSessionStatus.tone,
-      detailsLabel: compactDetailsLabel,
-      detailsOpen: sessionDetailsOpen,
-      onToggleDetails: () => setSessionDetailsOpen((current) => !current),
-      detailsDisabled: false,
-      mobileEmpty: isMobileEmptyHeader,
-      detailsClassName: "conversation-inspector conversation-session-details workspace-details-content",
-      detailsSummary: conversationDetailsSummary,
-      detailsBody: runtime.activeSession ? sessionDetailsBody : null,
-      headerProps: { "data-runtime-header-kind": "conversation" },
-      detailsPanelProps: {
-        "data-runtime-details-panel": "conversation",
-        "data-conversation-session-details": "",
-      },
-    },
-    screen: {
-      panelClassName: `conversation-console-panel${isEmptyState ? " is-empty" : ""}`,
-      screenClassName: isEmptyState
-        ? "is-empty"
-        : undefined,
-      screenProps: { "data-runtime-screen": "conversation" },
-      screenRef: timelineScreenRef,
-    },
-    timeline: {
-      items: buildChatTimelineItems({
-        messages: activeMessages,
-        language,
-        onToggleProcess: runtime.toggleAgentProcess,
-      }),
-      emptyState: (
-        <div className="conversation-empty-state">
-          <h5>{emptyStateTitle}</h5>
-          <p>{emptyStateDescription}</p>
-        </div>
-      ),
-      overlay: (
-        <ScrollJumpStrip
-          scope={runtime.route === "agent-runtime" ? "agent" : "chat"}
-          language={language}
-          containerRef={timelineScreenRef}
-          itemSelector="[data-message-id]"
-          itemAttribute="data-message-id"
-          watchKey={`${runtime.route}:${activeMessages.length}:${isEmptyState ? "empty" : "active"}`}
-        />
-      ),
-    },
-    composer: {
-      runtimeKind: runtime.route === "agent-runtime" ? "agent" : "chat",
-      shellRef: composerShellRef,
-      onSubmit: (event) => {
+  return (
+    <RuntimeComposer
+      runtimeKind={runtime.route === "agent-runtime" ? "agent" : "chat"}
+      shellRef={composerShellRef}
+      onSubmit={(event) => {
         event.preventDefault();
         submitDraft();
-      },
-      fileInputRef: composerFileInputRef,
-      fileInputAccept: "image/*,.txt,.md,.json,.yaml,.yml,.csv,.log,.pdf",
-      onFileChange: (event) => {
+      }}
+      fileInputRef={composerFileInputRef}
+      fileInputAccept="image/*,.txt,.md,.json,.yaml,.yml,.csv,.log,.pdf"
+      onFileChange={(event) => {
         void handleComposerAttachmentSelection(event.target.files);
-      },
-      attachments: runtime.draftAttachments,
-      attachmentStripProps: { "data-runtime-attachments": "conversation" },
-      attachmentPreviewLabel: (attachment) => `${composerPreviewPrefix} ${attachment.name}`,
-      attachmentRemoveLabel: (attachment) => `${composerRemovePrefix} ${attachment.name}`,
-      previewAttachment,
-      onPreviewAttachmentChange: setPreviewAttachment,
-      onRemoveAttachment: (attachment) => runtime.removeDraftAttachment(attachment.id),
-      inputLabel: composerPlaceholder,
-      inputId: "conversationRuntimeInput",
-      inputRef: composerInputRef,
-      inputValue: runtime.draft,
-      inputProps: {
+      }}
+      attachments={composerRuntime.draftAttachments}
+      attachmentStripProps={{ "data-runtime-attachments": "conversation" }}
+      attachmentPreviewLabel={(attachment) => `${composerPreviewPrefix} ${attachment.name}`}
+      attachmentRemoveLabel={(attachment) => `${composerRemovePrefix} ${attachment.name}`}
+      previewAttachment={previewAttachment}
+      onPreviewAttachmentChange={setPreviewAttachment}
+      onRemoveAttachment={(attachment) => composerRuntime.removeDraftAttachment(attachment.id)}
+      inputLabel={composerPlaceholder}
+      inputId="conversationRuntimeInput"
+      inputRef={composerInputRef}
+      inputValue={composerRuntime.draft}
+      inputProps={{
         maxLength: 10000,
         placeholder: composerPlaceholder,
-      },
-      onInputChange: runtime.setDraft,
-      onInputFocus: () => setInputFocused(true),
-      onInputBlur: () => setInputFocused(false),
-      onInputPointerDownCapture: handleComposerPointerDownCapture,
-      onInputTouchStartCapture: handleComposerTouchStartCapture,
-      utilityButtons: [
+      }}
+      onInputChange={composerRuntime.setDraft}
+      onInputFocus={() => onInputFocusedChange(true)}
+      onInputBlur={() => onInputFocusedChange(false)}
+      onInputPointerDownCapture={handleComposerPointerDownCapture}
+      onInputTouchStartCapture={handleComposerTouchStartCapture}
+      utilityButtons={[
         {
           key: "session",
           label: copy.runtimeMobile,
@@ -781,25 +866,41 @@ export function useConversationRuntimeController(language: LegacyShellLanguage):
           className: runtime.inspectorOpen ? "is-active" : undefined,
           onClick: () => runtime.toggleInspector(runtime.inspectorTab),
         },
-      ],
-      panelContent: conversationComposerPanel,
-      panelProps: {
+      ]}
+      panelContent={conversationComposerPanel}
+      panelProps={{
         "data-runtime-config-surface": "conversation",
-      },
-      metaContent: composerMetaLabel,
-      addAttachmentLabel: composerAddAttachmentLabel,
-      onAddAttachment: handleComposerAttachmentPicker,
-      submitButtonProps: {
+      }}
+      metaContent={composerMetaLabel}
+      addAttachmentLabel={composerAddAttachmentLabel}
+      onAddAttachment={handleComposerAttachmentPicker}
+      submitButtonProps={{
         onPointerDownCapture: handleSubmitPointerDownCapture,
         onTouchStartCapture: handleSubmitTouchStartCapture,
-      },
-      submitLabel: composerSend,
-      previewCloseLabel: composerClosePreviewLabel,
-    },
-  };
+      }}
+      submitLabel={composerSend}
+      previewCloseLabel={composerClosePreviewLabel}
+    />
+  );
 }
 
 export function ConversationWorkspace({ language }: ConversationWorkspaceProps) {
-  const controller = useConversationRuntimeController(language);
+  const timelineScreenRef = useRef<HTMLDivElement | null>(null);
+  const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
+  const composerNode = (
+    <ConversationComposerSection
+      language={language}
+      workspaceBodyRef={workspaceBodyRef}
+      inputFocused={inputFocused}
+      onInputFocusedChange={setInputFocused}
+    />
+  );
+  const controller = useConversationWorkspaceController(
+    language,
+    { timelineScreenRef, workspaceBodyRef },
+    composerNode,
+    inputFocused,
+  );
   return <RuntimeWorkspacePage controller={controller} />;
 }

@@ -111,6 +111,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - `Chat / Agent Runtime / Terminal` 的阅读定位条必须以悬浮 overlay 形式停靠在消息区右下角，不参与时间线正文排版；空白会话或少量消息场景下，消息区本身不得因为定位条占位而被额外撑高并出现无意义滚动。
 - `Chat / Agent Runtime` 的会话图片资产统一落在当前 Session 工作区：用户选图后前端通过 `POST /api/sessions/{session_id}/attachments` 把原图与预览图写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，随后消息请求、最近会话恢复与页面重开都只保留 `asset_url / preview_url` 引用；assistant 最终回复里的外链 markdown 图片也会在返回前下载进同一目录并改写成本地附件 URL，避免会话历史长期依赖远端外链或把原始大图 `data_url` 堆进浏览器存储。
 - `Chat / Agent Runtime` 首页 Composer 收敛为双层紧凑输入面：上层为单一主输入区，下层工具栏左侧提供正方形低圆角的会话设置与附件按钮，右侧提供紧凑 icon submit；桌面与移动端都压缩外层留白、输入高度和发送按钮体量，同时保持主输入区满宽铺开、具备足够横向留白和更高的可读输入面；发送按钮直接复用 Terminal 的紧凑 icon submit 皮肤；PC 端上传、发送、状态、详情和短标识控件都采用低圆角矩形，输入区、底部工具栏、会话卡片和 `Details` 面板沿同一套浅色 terminal-runtime 皮肤出图，不再混用默认 terminal footer slab 与旧式轻表单观感；空态工作区不允许保留可拖拽滚动，把头部和输入区顶离可视区。
+- `Chat / Agent Runtime` 的桌面端输入链路优先保证低延迟：草稿写入先更新当前输入态，再延迟落盘到浏览器草稿缓存；消息时间线、Markdown 输出与 Process 结构在仅有草稿变化时不得整段重建，避免长会话下输入时出现明显卡顿。
 - `Chat / Agent Runtime` Composer 支持最多 5 张图片附件：前端按会话草稿缓存附件、提供缩略图预览与移除操作，用户消息时间线与最近会话恢复仅保留图片预览资产，不再重复持久化原始大图 payload；助手消息中的 markdown 图片会直接以内联图片方式懒加载显示。仅支持视觉输入的模型允许发送带图消息；图片请求不会切到异步 Task，也不会在模型链失败后静默降级到 Codex 文本执行。
 - `Chat / Agent Runtime` 的会话侧栏与消息时间线现在以服务端恢复为准：运行页通过专用会话读取接口从持久化 Session history 恢复会话摘要、目标 Agent、Model、Tools / Skills / MCP 选择与历史消息；页面初始化中的详情回填若晚于本地新发消息，不得覆盖当前未完成或更新中的本地时间线。
 - `Chat / Agent Runtime` 刷新恢复采用“双层快照 + 服务端回源”策略：浏览器本地除当前活动会话外，还会保留最近会话列表的轻量快照；当服务端集合接口短暂漏掉某个刚创建或最近活跃的会话时，前端仍保留该会话在侧栏中的可见性，并继续按 `session_id` 单独回源详情，避免刷新其他会话后新会话从列表里瞬时消失。即使集合接口已经返回当前会话的摘要项，只要本地仍残留 `Thinking...`、`Load failed` 或其他流式失败态，运行页也会继续补拉单会话详情，并用服务端已持久化的 assistant 结果覆盖本地快照。
@@ -226,7 +227,9 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - Chat 移动端输入区默认隐藏装饰性附注与字数计数，底部只保留输入框，以及同排的会话设置、附件与发送按钮；会话设置以独立底部面板承载 `Agent / Model / Tools / Skills` 标签，统一使用当前语言口径，避免中英混排，并在小屏与软键盘场景下维持完整可读与可滚动操作区。
 - Chat、Agent Runtime 与 Terminal 在移动端都会按当前 fixed composer 的实际遮挡高度回收消息视口；输入区贴底期间，消息列表、空态说明和长输出阅读都必须停在 composer 上沿，不允许再被底部输入框盖住。
 - Chat、Agent Runtime 与 Terminal 在软键盘收起、输入框失焦和 composer 回弹到底边的过程中，消息视口与跳转控件也要同步释放旧的底部占位；页面上不能残留上一轮键盘高度对应的空白带或悬空控件。
-- Chat、Agent Runtime 与 Terminal 在移动端键盘弹起和收回期间，只有 composer 自身允许跟随 `VisualViewport` 做贴底动画；顶部 `Menu / Sessions / New` 操作行、紧凑 workspace header 和 Terminal 右侧四键定位条都保持原位，不跟着键盘位移一起跳动。
+- Chat、Agent Runtime 与 Terminal 在移动端软键盘弹起期间，底部 Composer 必须始终位于运行页跳转控件之上；右侧四键定位条和消息阅读定位按钮在主输入框聚焦后需主动隐藏，待输入框失焦、键盘收起后再恢复，不能压到输入框、附件条或键盘上方。
+- Chat、Agent Runtime 与 Terminal 的主输入框在移动端按普通命令文本输入处理：运行页必须关闭系统自动填充、卡片、地址与密码类辅助条，避免 iOS 在键盘上沿额外挂出输入助手并露出底部残留页面层。
+- Chat、Agent Runtime 与 Terminal 在移动端键盘弹起和收回期间，只有 composer 自身允许跟随 `VisualViewport` 做贴底动画；顶部 `Menu / Sessions / New` 操作行与紧凑 workspace header 保持原位不跟着键盘位移一起跳动；阅读定位条在输入框聚焦期间隐藏，失焦后再回到原有停靠位。
 - Chat 与 Terminal 的移动端发送按钮在软键盘打开期间支持直接点按提交；发送动作需同时覆盖 `pointerdown(touch)` 与 `touchstart` 首触链路，并在同一次触摸内去重，避免先收起键盘、丢失焦点或要求第二次点击后才真正提交。
 - 运行页 composer 跟随键盘回弹时不再叠加额外的 `bottom` 补间过渡；可视视口收起后输入区会直接回贴底边，避免回弹拖滞或明显卡顿。
 - 输入框失焦后，如果 `VisualViewport` 还没恢复到最终高度，页面会继续保留上一段键盘偏移并随视口回弹逐步释放，不会先闪回到底边再被下一帧重新顶起。

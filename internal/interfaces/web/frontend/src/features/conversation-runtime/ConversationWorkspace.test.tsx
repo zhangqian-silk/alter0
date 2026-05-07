@@ -3,6 +3,18 @@ import { useState } from "react";
 import { ConversationWorkspace } from "./ConversationWorkspace";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../app/WorkbenchContext";
 
+const { buildChatTimelineItemsMock } = vi.hoisted(() => ({
+  buildChatTimelineItemsMock: vi.fn(({ messages }: { messages: Array<{ id: string }> }) =>
+    messages.map((message) => ({
+      id: message.id,
+      className: "msg assistant",
+      articleProps: { "data-message-id": message.id },
+      bubbleClassName: "msg-bubble",
+      blocks: [],
+    })),
+  ),
+}));
+
 const runtimeMock = {
   route: "chat" as const,
   compact: true,
@@ -75,18 +87,13 @@ const runtimeMock = {
 
 vi.mock("./ConversationRuntimeProvider", () => ({
   useConversationRuntime: () => runtimeMock,
+  useConversationRuntimeWorkspace: () => runtimeMock,
+  useConversationRuntimeComposer: () => runtimeMock,
 }));
 
 vi.mock("../shell/components/ChatMessageRegion", () => ({
   ChatMessageRegion: () => <div data-testid="chat-message-region">messages</div>,
-  buildChatTimelineItems: ({ messages }: { messages: Array<{ id: string }> }) =>
-    messages.map((message) => ({
-      id: message.id,
-      className: "msg assistant",
-      articleProps: { "data-message-id": message.id },
-      bubbleClassName: "msg-bubble",
-      blocks: [],
-    })),
+  buildChatTimelineItems: buildChatTimelineItemsMock,
 }));
 
 function renderWorkspace(overrides: Partial<WorkbenchContextValue> = {}) {
@@ -202,6 +209,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.closeInspector.mockClear();
     runtimeMock.selectModel.mockClear();
     runtimeMock.toggleSkill.mockClear();
+    buildChatTimelineItemsMock.mockClear();
   });
 
   it("keeps the shared workspace header visible alongside terminal-style mobile actions for an empty chat workspace", () => {
@@ -356,6 +364,34 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector("[data-scroll-jump-bottom='agent']")).toBeInTheDocument();
   });
 
+  it("hides shared jump buttons while the mobile composer is focused", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "New",
+      messages: [
+        { id: "message-1" },
+        { id: "message-2" },
+      ],
+    } as typeof runtimeMock.activeSession;
+
+    renderWorkspace({ isMobileViewport: true });
+
+    const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
+    fireEvent.focus(composerInput);
+
+    expect(document.querySelector("[data-scroll-jump-top='chat']")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-prev='chat']")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-next='chat']")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-bottom='chat']")).not.toBeInTheDocument();
+
+    fireEvent.blur(composerInput);
+
+    expect(document.querySelector("[data-scroll-jump-top='chat']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-prev='chat']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-next='chat']")).toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-jump-bottom='chat']")).toBeInTheDocument();
+  });
+
   it("groups session rows into recency sections like a workspace sidebar", () => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -467,6 +503,66 @@ describe("ConversationWorkspace", () => {
     view.unmount();
   });
 
+  it("does not rebuild the timeline when only the composer draft changes", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "New",
+      messages: [
+        {
+          id: "message-1",
+          role: "assistant",
+          text: "Existing reply",
+          attachments: [],
+          route: "nl",
+          source: "codex_exec",
+          status: "done",
+          error: false,
+          at: Date.parse("2026-04-23T09:01:00Z"),
+          processSteps: [],
+          agentProcessCollapsed: false,
+          taskID: "",
+          taskStatus: "",
+          taskPending: false,
+          taskResultDelivered: false,
+          taskResultFor: "",
+        },
+      ],
+    };
+    runtimeMock.sessions = [
+      {
+        id: "session-1",
+        title: "New",
+        status: "ready",
+        messages: runtimeMock.activeSession.messages,
+      },
+    ];
+
+    const contextValue: WorkbenchContextValue = {
+      route: "chat",
+      language: "en",
+      navigate: vi.fn(),
+      isMobileViewport: false,
+      mobileNavOpen: false,
+      mobileSessionPaneOpen: false,
+      toggleMobileNav: vi.fn(),
+      toggleMobileSessionPane: vi.fn(),
+      closeMobileNav: vi.fn(),
+      closeMobileSessionPane: vi.fn(),
+    };
+    const tree = (
+      <WorkbenchContext.Provider value={contextValue}>
+        <ConversationWorkspace language="en" />
+      </WorkbenchContext.Provider>
+    );
+    const view = render(tree);
+    expect(buildChatTimelineItemsMock).toHaveBeenCalledTimes(1);
+
+    runtimeMock.draft = "draft update";
+    view.rerender(tree);
+
+    expect(buildChatTimelineItemsMock).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps agent private skills locked and only lists public skills as available", () => {
     runtimeMock.route = "agent-runtime";
     runtimeMock.inspectorOpen = true;
@@ -535,6 +631,18 @@ describe("ConversationWorkspace", () => {
     fireEvent.pointerDown(composerInput, { pointerType: "touch" });
 
     expect(focusSpy).toHaveBeenCalled();
+  });
+
+  it("marks the shared runtime composer input as plain text so mobile autofill bars stay off", () => {
+    renderWorkspace();
+
+    const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
+
+    expect(composerInput).toHaveAttribute("autocomplete", "off");
+    expect(composerInput).toHaveAttribute("autocorrect", "off");
+    expect(composerInput).toHaveAttribute("autocapitalize", "off");
+    expect(composerInput).toHaveAttribute("enterkeyhint", "send");
+    expect(composerInput).toHaveAttribute("spellcheck", "false");
   });
 
   it("renders draft image thumbnails with preview and remove actions", () => {

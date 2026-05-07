@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { useMemo, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { RuntimeComposer } from "./RuntimeComposer";
 import { RuntimeSessionList, type RuntimeSessionListGroup } from "./RuntimeSessionList";
 import { RouteFieldRow } from "./RouteBodyPrimitives";
@@ -67,12 +67,13 @@ export type RuntimeWorkspacePageController = {
     items: RuntimeTimelineItem[];
     overlay?: ReactNode;
   };
-  composer: ComponentPropsWithoutRef<typeof RuntimeComposer>;
+  composer?: ComponentPropsWithoutRef<typeof RuntimeComposer>;
+  composerNode?: ReactNode;
 };
 
 export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorkspacePageController }) {
   const detailsSummary = controller.header.detailsSummary || [];
-  const workspaceHeader = controller.header.customHeaderContent ?? (
+  const workspaceHeader = useMemo(() => controller.header.customHeaderContent ?? (
     <RuntimeWorkspaceHeader
       {...controller.header}
       detailsContent={controller.header.detailsBody || detailsSummary.length > 0 ? (
@@ -100,7 +101,85 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
         </section>
       ) : null}
     />
-  );
+  ), [controller.header, detailsSummary]);
+  const sessionPaneBody = useMemo(() => (
+    <RuntimeSessionList
+      groups={controller.sessionList.groups}
+      emptyState={controller.sessionList.emptyState}
+      listClassName={controller.sessionList.listClassName}
+      listProps={controller.sessionList.listProps}
+      renderItem={(item) => (
+        <div
+          key={item.id}
+          role="listitem"
+          className={item.shellClassName}
+          {...item.shellProps}
+        >
+          <button
+            className={item.buttonClassName}
+            type="button"
+            aria-current={item.active ? "true" : undefined}
+            onClick={item.onSelect}
+            {...item.buttonProps}
+          >
+            <span className="runtime-session-main">
+              <span className="runtime-session-topline">
+                <span className="runtime-session-topline-leading">
+                  {item.statusTone ? (
+                    <>
+                      <span
+                        className={`runtime-session-signal is-${item.statusTone}`}
+                        data-runtime-session-signal={item.statusTone}
+                        aria-hidden="true"
+                      ></span>
+                      <span className="sr-only">{item.statusLabel || item.statusTone}</span>
+                    </>
+                  ) : null}
+                  <span
+                    className={item.active ? "runtime-session-badge is-active" : "runtime-session-badge"}
+                  >
+                    {item.active ? item.activeLabel : item.idleLabel}
+                  </span>
+                </span>
+              </span>
+              <span className="runtime-session-title-row">
+                <span className="runtime-session-title">{item.title}</span>
+              </span>
+              <span className="runtime-session-summary-row">
+                <span className="runtime-session-meta">{item.meta}</span>
+              </span>
+              <span className="runtime-session-bottomline">
+                <span className="runtime-session-hash">{item.shortHash}</span>
+              </span>
+            </span>
+          </button>
+          {item.onDelete ? (
+            <button
+              className={item.deleteClassName || "runtime-session-delete"}
+              type="button"
+              aria-label={item.deleteAriaLabel || item.deleteLabel}
+              disabled={item.deleting}
+              onClick={item.onDelete}
+              {...item.deleteProps}
+            >
+              <span aria-hidden="true">···</span>
+              <span className="sr-only">{item.deleteLabel}</span>
+            </button>
+          ) : null}
+        </div>
+      )}
+    />
+  ), [controller.sessionList]);
+  const workspaceContent = useMemo(() => (
+    <RuntimeWorkspaceScreen {...controller.screen} overlay={controller.timeline.overlay}>
+      <RuntimeTimeline
+        className={controller.timeline.className}
+        timelineProps={controller.timeline.timelineProps}
+        emptyState={controller.timeline.emptyState}
+        items={controller.timeline.items}
+      />
+    </RuntimeWorkspaceScreen>
+  ), [controller.screen, controller.timeline]);
 
   return (
     <RuntimeWorkspaceShell
@@ -109,86 +188,10 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
         ...controller.shell.rootProps,
         "data-runtime-workspace-page": "true",
       }}
-      sessionPaneBody={(
-        <RuntimeSessionList
-          groups={controller.sessionList.groups}
-          emptyState={controller.sessionList.emptyState}
-          listClassName={controller.sessionList.listClassName}
-          listProps={controller.sessionList.listProps}
-          renderItem={(item) => (
-            <div
-              key={item.id}
-              role="listitem"
-              className={item.shellClassName}
-              {...item.shellProps}
-            >
-              <button
-                className={item.buttonClassName}
-                type="button"
-                aria-current={item.active ? "true" : undefined}
-                onClick={item.onSelect}
-                {...item.buttonProps}
-              >
-                <span className="runtime-session-main">
-                  <span className="runtime-session-topline">
-                    <span className="runtime-session-topline-leading">
-                      {item.statusTone ? (
-                        <>
-                          <span
-                            className={`runtime-session-signal is-${item.statusTone}`}
-                            data-runtime-session-signal={item.statusTone}
-                            aria-hidden="true"
-                          ></span>
-                          <span className="sr-only">{item.statusLabel || item.statusTone}</span>
-                        </>
-                      ) : null}
-                      <span
-                        className={item.active ? "runtime-session-badge is-active" : "runtime-session-badge"}
-                      >
-                        {item.active ? item.activeLabel : item.idleLabel}
-                      </span>
-                    </span>
-                  </span>
-                  <span className="runtime-session-title-row">
-                    <span className="runtime-session-title">{item.title}</span>
-                  </span>
-                  <span className="runtime-session-summary-row">
-                    <span className="runtime-session-meta">{item.meta}</span>
-                  </span>
-                  <span className="runtime-session-bottomline">
-                    <span className="runtime-session-hash">{item.shortHash}</span>
-                  </span>
-                </span>
-              </button>
-              {item.onDelete ? (
-                <button
-                  className={item.deleteClassName || "runtime-session-delete"}
-                  type="button"
-                  aria-label={item.deleteAriaLabel || item.deleteLabel}
-                  disabled={item.deleting}
-                  onClick={item.onDelete}
-                  {...item.deleteProps}
-                >
-                  <span aria-hidden="true">···</span>
-                  <span className="sr-only">{item.deleteLabel}</span>
-                </button>
-              ) : null}
-            </div>
-          )}
-        />
-      )}
+      sessionPaneBody={sessionPaneBody}
       workspaceHeader={workspaceHeader}
-      workspaceContent={(
-        <RuntimeWorkspaceScreen {...controller.screen} overlay={controller.timeline.overlay}>
-          <RuntimeTimeline
-            className={controller.timeline.className}
-            timelineProps={controller.timeline.timelineProps}
-            emptyState={controller.timeline.emptyState}
-            items={controller.timeline.items}
-          />
-        </RuntimeWorkspaceScreen>
-      )}
-      workspaceFooter={<RuntimeComposer {...controller.composer} />}
+      workspaceContent={workspaceContent}
+      workspaceFooter={controller.composerNode ?? (controller.composer ? <RuntimeComposer {...controller.composer} /> : null)}
     />
   );
 }
