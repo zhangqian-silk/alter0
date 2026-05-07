@@ -355,6 +355,11 @@ type StreamResult = {
   error: string;
 };
 
+type RuntimeRecoveryRequirement = {
+  requireMessages?: boolean;
+  requireStableAssistant?: boolean;
+};
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -624,6 +629,44 @@ function normalizeProcessSteps(values: unknown): ChatProcessStep[] {
       };
     })
     .filter((item): item is ChatProcessStep => item !== null);
+}
+
+function isStreamingPlaceholderText(text: string): boolean {
+  const normalized = normalizeText(text).toLowerCase();
+  return normalized === "" || normalized === "thinking...";
+}
+
+function isRecoverableAssistantMessage(message: ChatMessage): boolean {
+  if (message.role !== "assistant") {
+    return false;
+  }
+  return message.taskPending || message.error || normalizeTaskStatus(message.status) === "streaming" || isStreamingPlaceholderText(message.text);
+}
+
+function hasRecoverableAssistantState(messages: ChatMessage[]): boolean {
+  return messages.some((message) => isRecoverableAssistantMessage(message));
+}
+
+function hasPersistedAssistantState(messages: ChatMessage[]): boolean {
+  return messages.some((message) => {
+    if (message.role !== "assistant") {
+      return false;
+    }
+    if (message.taskID) {
+      return true;
+    }
+    return normalizeTaskStatus(message.status) !== "streaming" && !isStreamingPlaceholderText(message.text);
+  });
+}
+
+function shouldUseParsedMessages(previous: ChatMessage[], parsed: ChatMessage[]): boolean {
+  if (parsed.length >= previous.length) {
+    return true;
+  }
+  if (parsed.length < Math.max(0, previous.length - 1)) {
+    return false;
+  }
+  return hasRecoverableAssistantState(previous) && hasPersistedAssistantState(parsed);
 }
 
 function normalizeStoredMessage(item: unknown): ChatMessage | null {
@@ -959,7 +1002,7 @@ function normalizeRuntimeSession(item: RuntimeSessionPayload, previous?: ChatSes
     ? item.messages.map(normalizeRuntimeMessage).filter((message): message is ChatMessage => message !== null)
     : null;
   const messages = parsedMessages
-    ? (previous?.messages.length && parsedMessages.length < previous.messages.length
+    ? (previous?.messages.length && !shouldUseParsedMessages(previous.messages, parsedMessages)
       ? previous.messages
       : parsedMessages)
     : previous?.messages || [];
@@ -981,7 +1024,7 @@ function normalizeRuntimeSession(item: RuntimeSessionPayload, previous?: ChatSes
     skillIDs: normalizeSelectionIDs(item.skill_ids || previous?.skillIDs || []),
     mcpIDs: normalizeSelectionIDs(item.mcp_ids || previous?.mcpIDs || []),
     messages,
-    messagesLoaded: Array.isArray(item.messages) ? true : previous?.messagesLoaded,
+    messagesLoaded: Array.isArray(item.messages),
     serverBacked: true,
   };
 }
@@ -1198,6 +1241,8 @@ export function ConversationRuntimeProvider({
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
+  const sessionsByRouteRef = useRef(sessionsByRoute);
+  const recoveryPromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
   const composerDraftPersistTimerRef = useRef<number>(0);
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
@@ -1463,46 +1508,94 @@ export function ConversationRuntimeProvider({
     }
   };
 
+  const hydrateRuntimeSessionResponse = (
+    routeKey: ConversationRoute,
+    sessionID: string,
+    payload: { session?: RuntimeSessionPayload },
+  ): ChatSession | null => {
+    return normalizeRuntimeSession(
+      payload.session || {},
+      sessionsByRouteRef.current[routeKey].find((item) => item.id === sessionID) || null,
+    );
+  };
+
+  const upsertRuntimeSession = (routeKey: ConversationRoute, nextSession: ChatSession) => {
+    setSessionsByRoute((current) => {
+      const hasSession = current[routeKey].some((session) => session.id === nextSession.id);
+      const nextSessions = hasSession
+        ? current[routeKey].map((session) => (session.id === nextSession.id ? nextSession : session))
+        : [nextSession, ...current[routeKey]];
+      return {
+        ...current,
+        [routeKey]: nextSessions.sort((left, right) => right.createdAt - left.createdAt),
+      };
+    });
+  };
+
   const hydrateRuntimeSession = async (routeKey: ConversationRoute, sessionID: string): Promise<ChatSession | null> => {
     const payload = await apiClient.get<{ session?: RuntimeSessionPayload }>(
       `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(sessionID)}?route=${encodeURIComponent(routeKey)}`,
     );
-    const hydrated = normalizeRuntimeSession(
-      payload.session || {},
-      sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null,
-    );
-    if (!hydrated) {
-      return null;
-    }
-    setSessionsByRoute((current) => ({
-      ...current,
-      [routeKey]: (
-        current[routeKey].some((session) => session.id === sessionID)
-          ? current[routeKey].map((session) => (session.id === sessionID ? hydrated : session))
-          : [hydrated, ...current[routeKey]]
-      ).sort((left, right) => right.createdAt - left.createdAt),
-    }));
-    return hydrated;
+    return hydrateRuntimeSessionResponse(routeKey, sessionID, payload);
   };
 
   const recoverRuntimeSession = async (
     routeKey: ConversationRoute,
     sessionID: string,
+    requirements: RuntimeRecoveryRequirement = {},
     attempts: number = 3,
   ): Promise<ChatSession | null> => {
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        const hydrated = await hydrateRuntimeSession(routeKey, sessionID);
-        if (hydrated) {
-          return hydrated;
-        }
-      } catch {
-      }
-      if (attempt < attempts - 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-      }
+    const requirementKey = [
+      routeKey,
+      sessionID,
+      requirements.requireMessages === true ? "messages" : "any-messages",
+      requirements.requireStableAssistant === true ? "stable" : "any-state",
+      String(attempts),
+    ].join(":");
+    const inFlight = recoveryPromisesRef.current.get(requirementKey);
+    if (inFlight) {
+      return inFlight;
     }
-    return null;
+    const recoveryPromise = (async () => {
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+          const hydrated = await hydrateRuntimeSession(routeKey, sessionID);
+          if (
+            hydrated
+            && (!requirements.requireMessages || hydrated.messages.length > 0)
+            && (!requirements.requireStableAssistant || !hasRecoverableAssistantState(hydrated.messages))
+          ) {
+            upsertRuntimeSession(routeKey, hydrated);
+            return hydrated;
+          }
+        } catch {
+        }
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        }
+      }
+      return null;
+    })();
+    recoveryPromisesRef.current.set(requirementKey, recoveryPromise);
+    return recoveryPromise.finally(() => {
+      recoveryPromisesRef.current.delete(requirementKey);
+    });
+  };
+
+  const shouldAttemptServerRecovery = (
+    remoteSession: ChatSession | null,
+    localSession: ChatSession | null,
+  ): boolean => {
+    if (!remoteSession) {
+      return true;
+    }
+    if (remoteSession.messagesLoaded !== true) {
+      return true;
+    }
+    if (localSession && hasRecoverableAssistantState(localSession.messages)) {
+      return true;
+    }
+    return false;
   };
 
   const recoverInterruptedStream = async (
@@ -1523,6 +1616,7 @@ export function ConversationRuntimeProvider({
           return message.status !== "streaming" && text !== "" && text.toLowerCase() !== "thinking...";
         });
         if (recovered) {
+          upsertRuntimeSession(routeKey, hydrated);
           return true;
         }
       } catch {
@@ -1576,93 +1670,102 @@ export function ConversationRuntimeProvider({
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-      if (done) {
-        buffer += "\n\n";
-      }
-      let splitIndex = buffer.indexOf("\n\n");
-      while (splitIndex >= 0) {
-        const parsed = parseSSEBlock(buffer.slice(0, splitIndex).replace(/\r/g, ""));
-        buffer = buffer.slice(splitIndex + 2);
-        if (parsed) {
-          sawEvent = true;
-          if (sawDone && parsed.event !== "done") {
-            splitIndex = buffer.indexOf("\n\n");
-            continue;
-          }
-          if (parsed.event === "process") {
-            patchSession(routeKey, sessionID, (currentSession) => {
-              const nextMessages = currentSession.messages.map((message) =>
-                message.id === assistantMessageID
-                  ? {
-                      ...message,
-                      processSteps: normalizeProcessSteps([
-                        ...message.processSteps,
-                        parsed.data.process_step as Record<string, unknown>,
-                      ]),
-                      status: "streaming",
-                    }
-                  : message,
-              );
-              return { ...currentSession, messages: nextMessages };
-            });
-          }
-          if (parsed.event === "delta") {
-            const delta = typeof parsed.data.delta === "string" ? parsed.data.delta : "";
-            const nextRouteHint = normalizeText(parsed.data.route);
-            if (nextRouteHint) {
-              routeHint = nextRouteHint;
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+        if (done) {
+          buffer += "\n\n";
+        }
+        let splitIndex = buffer.indexOf("\n\n");
+        while (splitIndex >= 0) {
+          const parsed = parseSSEBlock(buffer.slice(0, splitIndex).replace(/\r/g, ""));
+          buffer = buffer.slice(splitIndex + 2);
+          if (parsed) {
+            sawEvent = true;
+            if (sawDone && parsed.event !== "done") {
+              splitIndex = buffer.indexOf("\n\n");
+              continue;
             }
-            if (delta) {
-              output += delta;
-              setAssistantMessage(routeKey, sessionID, assistantMessageID, {
-                text: output,
-                route: routeHint,
-                status: "streaming",
+            if (parsed.event === "process") {
+              patchSession(routeKey, sessionID, (currentSession) => {
+                const nextMessages = currentSession.messages.map((message) =>
+                  message.id === assistantMessageID
+                    ? {
+                        ...message,
+                        processSteps: normalizeProcessSteps([
+                          ...message.processSteps,
+                          parsed.data.process_step as Record<string, unknown>,
+                        ]),
+                        status: "streaming",
+                      }
+                    : message,
+                );
+                return { ...currentSession, messages: nextMessages };
               });
             }
-          }
-          if (parsed.event === "done") {
-            const result = (parsed.data.result as Record<string, unknown>) || {};
-            const taskID = normalizeText(parsed.data.task_id);
-            const taskStatus = normalizeText(parsed.data.task_status) || "done";
-            setAssistantMessage(routeKey, sessionID, assistantMessageID, {
-              text: normalizeText(result.output) || output || "No response",
-              route: normalizeText(result.route) || routeHint,
-              source: normalizeText((result.metadata as Record<string, string> | undefined)?.["alter0.execution.source"]),
-              processSteps: normalizeProcessSteps(result.process_steps),
-              taskID,
-              taskStatus,
-              taskPending: Boolean(taskID),
-              status: taskID ? taskStatus : "done",
-              error: false,
-            });
-            if (taskID) {
-              setPendingTasksVersion((value) => value + 1);
+            if (parsed.event === "delta") {
+              const delta = typeof parsed.data.delta === "string" ? parsed.data.delta : "";
+              const nextRouteHint = normalizeText(parsed.data.route);
+              if (nextRouteHint) {
+                routeHint = nextRouteHint;
+              }
+              if (delta) {
+                output += delta;
+                setAssistantMessage(routeKey, sessionID, assistantMessageID, {
+                  text: output,
+                  route: routeHint,
+                  status: "streaming",
+                });
+              }
             }
-            sawDone = true;
+            if (parsed.event === "done") {
+              const result = (parsed.data.result as Record<string, unknown>) || {};
+              const taskID = normalizeText(parsed.data.task_id);
+              const taskStatus = normalizeText(parsed.data.task_status) || "done";
+              setAssistantMessage(routeKey, sessionID, assistantMessageID, {
+                text: normalizeText(result.output) || output || "No response",
+                route: normalizeText(result.route) || routeHint,
+                source: normalizeText((result.metadata as Record<string, string> | undefined)?.["alter0.execution.source"]),
+                processSteps: normalizeProcessSteps(result.process_steps),
+                taskID,
+                taskStatus,
+                taskPending: Boolean(taskID),
+                status: taskID ? taskStatus : "done",
+                error: false,
+              });
+              if (taskID) {
+                setPendingTasksVersion((value) => value + 1);
+              }
+              sawDone = true;
+            }
+            if (parsed.event === "error") {
+              setAssistantMessage(routeKey, sessionID, assistantMessageID, {
+                text: normalizeText(parsed.data.error) || "Request failed",
+                status: "error",
+                error: true,
+              });
+              return {
+                ok: false,
+                canFallback: false,
+                canRecover: false,
+                error: normalizeText(parsed.data.error) || "request failed",
+              };
+            }
           }
-          if (parsed.event === "error") {
-            setAssistantMessage(routeKey, sessionID, assistantMessageID, {
-              text: normalizeText(parsed.data.error) || "Request failed",
-              status: "error",
-              error: true,
-            });
-            return {
-              ok: false,
-              canFallback: false,
-              canRecover: false,
-              error: normalizeText(parsed.data.error) || "request failed",
-            };
-          }
+          splitIndex = buffer.indexOf("\n\n");
         }
-        splitIndex = buffer.indexOf("\n\n");
+        if (done) {
+          break;
+        }
       }
-      if (done) {
-        break;
-      }
+    } catch (error) {
+      return {
+        ok: false,
+        canFallback: !sawEvent,
+        canRecover: sawEvent,
+        error: error instanceof Error ? error.message : "stream interrupted",
+      };
     }
     return {
       ok: sawDone,
@@ -1794,6 +1897,10 @@ export function ConversationRuntimeProvider({
   }, [activeSessionByRoute, sessionsByRoute]);
 
   useEffect(() => {
+    sessionsByRouteRef.current = sessionsByRoute;
+  }, [sessionsByRoute]);
+
+  useEffect(() => {
     const syncViewport = () => setCompact(isCompactViewport());
     window.addEventListener("resize", syncViewport);
     return () => window.removeEventListener("resize", syncViewport);
@@ -1837,11 +1944,27 @@ export function ConversationRuntimeProvider({
           return;
         }
         const preferredActiveID = normalizeText(activeSessionByRoute[route]);
-        const recoveredSession = preferredActiveID && !remoteSessions.some((session) => session.id === preferredActiveID)
-          ? await recoverRuntimeSession(route, preferredActiveID)
+        const localPreferredSession = preferredActiveID
+          ? sessionsByRoute[route].find((session) => session.id === preferredActiveID) || null
+          : null;
+        const remotePreferredSession = preferredActiveID
+          ? remoteSessions.find((session) => session.id === preferredActiveID) || null
+          : null;
+        const recoveredSession = preferredActiveID && shouldAttemptServerRecovery(remotePreferredSession, localPreferredSession)
+          ? await recoverRuntimeSession(
+              route,
+              preferredActiveID,
+              {
+                requireMessages: remotePreferredSession?.messagesLoaded !== true,
+                requireStableAssistant: hasRecoverableAssistantState(localPreferredSession?.messages || []),
+              },
+            )
           : null;
         if (cancelled) {
           return;
+        }
+        if (recoveredSession) {
+          upsertRuntimeSession(route, recoveredSession);
         }
         const nextActiveID = remoteSessions.some((session) => session.id === preferredActiveID) || recoveredSession
           ? preferredActiveID
@@ -1865,31 +1988,29 @@ export function ConversationRuntimeProvider({
   }, [apiClient, route]);
 
   useEffect(() => {
-    if (!activeSession?.id || activeSession.serverBacked !== true || activeSession.messagesLoaded) {
+    if (
+      !activeSession?.id
+      || activeSession.serverBacked !== true
+      || (activeSession.messagesLoaded && !hasRecoverableAssistantState(activeSession.messages))
+    ) {
       return;
     }
     let cancelled = false;
     void (async () => {
       try {
-        const payload = await apiClient.get<{ session?: RuntimeSessionPayload }>(
-          `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(activeSession.id)}?route=${encodeURIComponent(route)}`,
+        const hydrated = await recoverRuntimeSession(
+          route,
+          activeSession.id,
+          {
+            requireMessages: !activeSession.messagesLoaded,
+            requireStableAssistant: hasRecoverableAssistantState(activeSession.messages),
+          },
+          3,
         );
-        if (cancelled) {
+        if (cancelled || !hydrated) {
           return;
         }
-        const hydrated = normalizeRuntimeSession(
-          payload.session || {},
-          sessionsByRoute[route].find((item) => item.id === activeSession.id) || null,
-        );
-        if (!hydrated) {
-          return;
-        }
-        setSessionsByRoute((current) => ({
-          ...current,
-          [route]: current[route]
-            .map((session) => (session.id === activeSession.id ? hydrated : session))
-            .sort((left, right) => right.createdAt - left.createdAt),
-        }));
+        upsertRuntimeSession(route, hydrated);
       } catch {
         if (cancelled) {
           return;
@@ -1899,7 +2020,7 @@ export function ConversationRuntimeProvider({
     return () => {
       cancelled = true;
     };
-  }, [activeSession?.id, activeSession?.messagesLoaded, activeSession?.serverBacked, apiClient, route, sessionsByRoute]);
+  }, [activeSession, apiClient, route]);
 
   useEffect(() => {
     if (route !== "agent-runtime" || !activeSession || activeSession.target.type !== "agent") {

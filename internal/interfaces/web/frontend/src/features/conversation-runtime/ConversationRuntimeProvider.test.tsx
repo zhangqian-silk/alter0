@@ -963,6 +963,126 @@ describe("ConversationRuntimeProvider", () => {
     expect(apiClientMock.post).not.toHaveBeenCalled();
   });
 
+  it("recovers persisted agent-runtime responses when the stream reader throws after start", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-session-throw-1" }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "coding",
+                name: "Coding Agent",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return {
+            items: [
+              {
+                id: "agent-session-throw-1",
+                title: "Coding runtime",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "agent",
+                target_id: "coding",
+                target_name: "Coding Agent",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+                messages: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/agent-session-throw-1?route=agent-runtime":
+          return {
+            session: {
+              id: "agent-session-throw-1",
+              title: "Coding runtime",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "coding",
+              target_name: "Coding Agent",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+              messages: [
+                {
+                  id: "server-user-throw-1",
+                  role: "user",
+                  text: "Fix this flow",
+                  status: "done",
+                  at: "2026-04-23T03:31:00Z",
+                },
+                {
+                  id: "server-assistant-throw-1",
+                  role: "assistant",
+                  text: "Recovered after stream read failure",
+                  status: "done",
+                  route: "nl",
+                  at: "2026-04-23T03:31:06Z",
+                },
+              ],
+            },
+          };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const encoder = new TextEncoder();
+    let sentStart = false;
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({
+      pull(controller) {
+        if (!sentStart) {
+          sentStart = true;
+          controller.enqueue(encoder.encode('event: start\ndata: {"message_id":"server-assistant-throw-1","session_id":"agent-session-throw-1","channel_id":"web-default","trace_id":"trace-throw-1"}\n\n'));
+          return;
+        }
+        controller.error(new TypeError("Load failed"));
+      },
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/agents"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      "/api/conversation-runtime/sessions/agent-session-throw-1?route=agent-runtime",
+    ));
+    await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Recovered after stream read failure"));
+    expect(screen.getByTestId("assistant-text")).not.toHaveTextContent("Load failed");
+    expect(apiClientMock.post).not.toHaveBeenCalled();
+  });
+
   it("excludes the main Alter0 assistant from agent-runtime target options", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -1713,6 +1833,268 @@ describe("ConversationRuntimeProvider", () => {
       expect(payload).toHaveLength(2);
       expect(payload[1]?.text).toBe("HTML generated");
     });
+  });
+
+  it("reconciles a stored failed agent snapshot from session detail when the collection still only has summary data", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-recover-1" }),
+    );
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        "agent-runtime": {
+          id: "agent-recover-1",
+          status: "failed",
+          title: "Recover pending",
+          titleAuto: false,
+          titleScore: 1,
+          createdAt: Date.parse("2026-04-23T03:30:00Z"),
+          targetType: "agent",
+          targetID: "coding",
+          targetName: "Coding Agent",
+          messagesLoaded: true,
+          serverBacked: false,
+          messages: [
+            {
+              id: "local-user-1",
+              role: "user",
+              text: "Recover this response",
+              attachments: [],
+              at: Date.parse("2026-04-23T03:30:01Z"),
+            },
+            {
+              id: "local-assistant-1",
+              role: "assistant",
+              text: "Load failed",
+              attachments: [],
+              status: "error",
+              error: true,
+              at: Date.parse("2026-04-23T03:30:04Z"),
+            },
+          ],
+        },
+      }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+        return {
+          items: [
+            {
+              id: "agent-recover-1",
+              status: "ready",
+              title: "Recover pending",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "coding",
+              target_name: "Coding Agent",
+            },
+          ],
+        };
+      }
+      if (path === "/api/conversation-runtime/sessions/agent-recover-1?route=agent-runtime") {
+        return {
+          session: {
+            id: "agent-recover-1",
+            status: "ready",
+            title: "Recover pending",
+            title_auto: false,
+            title_score: 1,
+            created_at: "2026-04-23T03:30:00Z",
+            target_type: "agent",
+            target_id: "coding",
+            target_name: "Coding Agent",
+            messages: [
+              {
+                id: "server-user-1",
+                role: "user",
+                text: "Recover this response",
+                at: "2026-04-23T03:30:01Z",
+              },
+              {
+                id: "server-assistant-1",
+                role: "assistant",
+                text: "Recovered persisted agent result",
+                status: "done",
+                at: "2026-04-23T03:30:05Z",
+              },
+            ],
+          },
+        };
+      }
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            { id: "coding", name: "Coding Agent", enabled: true },
+          ],
+        };
+      }
+      return { items: [] };
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <ActiveSessionStatusHarness />
+        <MessageListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      "/api/conversation-runtime/sessions/agent-recover-1?route=agent-runtime",
+    ));
+    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready"));
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("message-list").textContent || "[]") as Array<{ text?: string; status?: string }>;
+      expect(payload).toHaveLength(2);
+      expect(payload[1]?.text).toBe("Recovered persisted agent result");
+      expect(payload[1]?.status).toBe("done");
+    });
+  });
+
+  it("keeps retrying active agent recovery when session detail initially returns only registry summary", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        ACTIVE_SESSION_STORAGE_KEY,
+        JSON.stringify({ chat: "", "agent-runtime": "agent-retry-1" }),
+      );
+      window.sessionStorage.setItem(
+        ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY,
+        JSON.stringify({
+          "agent-runtime": {
+            id: "agent-retry-1",
+            status: "failed",
+            title: "Retry pending",
+            titleAuto: false,
+            titleScore: 1,
+            createdAt: Date.parse("2026-04-23T03:30:00Z"),
+            targetType: "agent",
+            targetID: "coding",
+            targetName: "Coding Agent",
+            messagesLoaded: true,
+            serverBacked: false,
+            messages: [
+              {
+                id: "local-user-retry-1",
+                role: "user",
+                text: "Recover immediately after refresh",
+                attachments: [],
+                at: Date.parse("2026-04-23T03:30:01Z"),
+              },
+              {
+                id: "local-assistant-retry-1",
+                role: "assistant",
+                text: "Load failed",
+                attachments: [],
+                status: "error",
+                error: true,
+                at: Date.parse("2026-04-23T03:30:03Z"),
+              },
+            ],
+          },
+        }),
+      );
+
+      let detailCalls = 0;
+      apiClientMock.get.mockImplementation(async (path: string) => {
+        if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+          return {
+            items: [
+              {
+                id: "agent-retry-1",
+                status: "ready",
+                title: "Retry pending",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "agent",
+                target_id: "coding",
+                target_name: "Coding Agent",
+              },
+            ],
+          };
+        }
+        if (path === "/api/conversation-runtime/sessions/agent-retry-1?route=agent-runtime") {
+          detailCalls += 1;
+          if (detailCalls === 1) {
+            return {
+              session: {
+                id: "agent-retry-1",
+                status: "ready",
+                title: "Retry pending",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "agent",
+                target_id: "coding",
+                target_name: "Coding Agent",
+              },
+            };
+          }
+          return {
+            session: {
+              id: "agent-retry-1",
+              status: "ready",
+              title: "Retry pending",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "coding",
+              target_name: "Coding Agent",
+            },
+          };
+        }
+        if (path === "/api/control/llm/providers") {
+          return { items: [] };
+        }
+        if (path === "/api/control/skills") {
+          return { items: [] };
+        }
+        if (path === "/api/control/mcps") {
+          return { items: [] };
+        }
+        if (path === "/api/agents") {
+          return {
+            items: [
+              { id: "coding", name: "Coding Agent", enabled: true },
+            ],
+          };
+        }
+        return { items: [] };
+      });
+
+      render(
+        <ConversationRuntimeProvider route="agent-runtime" language="en">
+          <MessageListHarness />
+        </ConversationRuntimeProvider>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(detailCalls).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(detailCalls).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("preserves failed runtime status when recovery falls back to a registry-backed session detail", async () => {
