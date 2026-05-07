@@ -552,6 +552,123 @@ func TestConversationRuntimeSessionItemHandlerReturnsMessagesAndAttachments(t *t
 	}
 }
 
+func TestConversationRuntimeSessionCollectionHandlerIncludesRegistryBackedPendingSession(t *testing.T) {
+	registry, err := newFileConversationRuntimeSessionRegistry(filepath.Join(t.TempDir(), "conversation-runtime.json"))
+	if err != nil {
+		t.Fatalf("create registry: %v", err)
+	}
+
+	server := &Server{
+		sessions:                    sessionapp.NewService(),
+		conversationRuntimeSessions: registry,
+		logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		SessionID:  "agent-pending-registry",
+		Content:    "Generate the travel guide page",
+		ReceivedAt: time.Date(2026, 5, 6, 8, 0, 0, 0, time.UTC),
+		Metadata: map[string]string{
+			"alter0.execution.engine": "codex",
+			"alter0.agent.id":         "travel",
+			"alter0.agent.name":       "Travel Agent",
+			"alter0.skills.include":   `["deploy-test-service"]`,
+		},
+	}
+	server.markConversationRuntimeSessionStarted(conversationRuntimeRouteAgentRuntime, msg)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions?route=agent-runtime", nil)
+	server.conversationRuntimeSessionCollectionHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload struct {
+		Items []struct {
+			ID         string   `json:"id"`
+			Status     string   `json:"status"`
+			Title      string   `json:"title"`
+			TargetType string   `json:"target_type"`
+			TargetID   string   `json:"target_id"`
+			TargetName string   `json:"target_name"`
+			SkillIDs   []string `json:"skill_ids"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 registry-backed runtime session, got %d", len(payload.Items))
+	}
+	if payload.Items[0].ID != "agent-pending-registry" || payload.Items[0].Status != conversationRuntimeSessionStatusBusy {
+		t.Fatalf("unexpected registry-backed item %+v", payload.Items[0])
+	}
+	if payload.Items[0].TargetType != "agent" || payload.Items[0].TargetID != "travel" || payload.Items[0].TargetName != "Travel Agent" {
+		t.Fatalf("expected agent target metadata, got %+v", payload.Items[0])
+	}
+	if len(payload.Items[0].SkillIDs) != 1 || payload.Items[0].SkillIDs[0] != "deploy-test-service" {
+		t.Fatalf("expected skill ids from registry metadata, got %+v", payload.Items[0].SkillIDs)
+	}
+}
+
+func TestConversationRuntimeSessionItemHandlerFallsBackToRegistryWhileHistoryIsPending(t *testing.T) {
+	registry, err := newFileConversationRuntimeSessionRegistry(filepath.Join(t.TempDir(), "conversation-runtime.json"))
+	if err != nil {
+		t.Fatalf("create registry: %v", err)
+	}
+
+	server := &Server{
+		sessions:                    sessionapp.NewService(),
+		conversationRuntimeSessions: registry,
+		logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		SessionID:  "chat-pending-registry",
+		Content:    "Inspect this codebase",
+		ReceivedAt: time.Date(2026, 5, 6, 8, 5, 0, 0, time.UTC),
+		Metadata: map[string]string{
+			"alter0.llm.provider_id": "openai",
+			"alter0.llm.model":       "gpt-5.4",
+		},
+	}
+	server.markConversationRuntimeSessionStarted(conversationRuntimeRouteChat, msg)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions/chat-pending-registry?route=chat", nil)
+	server.conversationRuntimeSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload struct {
+		Session struct {
+			ID              string `json:"id"`
+			Status          string `json:"status"`
+			Title           string `json:"title"`
+			TargetType      string `json:"target_type"`
+			ModelProviderID string `json:"model_provider_id"`
+			ModelID         string `json:"model_id"`
+			Messages        []any  `json:"messages"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload.Session.ID != "chat-pending-registry" || payload.Session.Status != conversationRuntimeSessionStatusBusy {
+		t.Fatalf("unexpected session payload %+v", payload.Session)
+	}
+	if payload.Session.TargetType != "model" || payload.Session.ModelProviderID != "openai" || payload.Session.ModelID != "gpt-5.4" {
+		t.Fatalf("expected model metadata from registry, got %+v", payload.Session)
+	}
+	if len(payload.Session.Messages) != 0 {
+		t.Fatalf("expected no messages while history is pending, got %+v", payload.Session.Messages)
+	}
+}
+
 func TestSessionDeleteHandlerAllowsMissingHistory(t *testing.T) {
 	history := &stubSessionHistory{deleteErr: sessionapp.ErrSessionNotFound}
 	tasks := &stubSessionTaskService{}
@@ -655,5 +772,124 @@ func TestAgentSessionProfileHandlerReturnsSchemaAndAttributes(t *testing.T) {
 	}
 	if response.Attributes["preview_subdomain"] != "coding-run-42" {
 		t.Fatalf("expected preview_subdomain attribute, got %+v", response.Attributes)
+	}
+}
+
+func TestAgentSessionProfileHandlerStripsUnpublishedTravelGuideURL(t *testing.T) {
+	baseDir := t.TempDir()
+	profilePath := filepath.Join(baseDir, ".alter0", "agents", "travel", "sessions", "session-travel.md")
+	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
+		t.Fatalf("prepare session profile dir: %v", err)
+	}
+	content := `# Agent Session Profile
+
+<!-- alter0:agent-session:auto:start -->
+## Session Identity
+- agent_id: travel
+- session_id: session-travel
+
+## Instance Attributes
+- guide_html_url: https://f4e04ab7.travel.alter0.cn
+<!-- alter0:agent-session:auto:end -->
+
+## Notes
+<!-- alter0:agent-session:notes:start -->
+<!-- alter0:agent-session:notes:end -->
+`
+	if err := os.WriteFile(profilePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write session profile: %v", err)
+	}
+
+	control := controlapp.NewService()
+	server := &Server{
+		control:       control,
+		agents:        agentapp.NewCatalog(control),
+		workspaceRoot: baseDir,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/session-profile?agent_id=travel&session_id=session-travel", nil)
+	rec := httptest.NewRecorder()
+	server.agentSessionProfileHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Attributes map[string]string `json:"attributes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := response.Attributes["guide_html_url"]; got != "" {
+		t.Fatalf("expected unpublished travel guide url to be hidden, got %q", got)
+	}
+}
+
+func TestAgentSessionProfileHandlerReturnsPublishedTravelGuideURL(t *testing.T) {
+	baseDir := t.TempDir()
+	profilePath := filepath.Join(baseDir, ".alter0", "agents", "travel", "sessions", "session-travel.md")
+	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
+		t.Fatalf("prepare session profile dir: %v", err)
+	}
+	content := `# Agent Session Profile
+
+<!-- alter0:agent-session:auto:start -->
+## Session Identity
+- agent_id: travel
+- session_id: session-travel
+
+## Instance Attributes
+- city: 武汉
+<!-- alter0:agent-session:auto:end -->
+
+## Notes
+<!-- alter0:agent-session:notes:start -->
+<!-- alter0:agent-session:notes:end -->
+`
+	if err := os.WriteFile(profilePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write session profile: %v", err)
+	}
+
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	if _, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:      "session-travel",
+		ServiceID:      "travel",
+		ServiceType:    workspaceServiceTypeFrontendDist,
+		RepositoryPath: prepareTravelGuideWorkspace(t, "travel guide"),
+	}); err != nil {
+		t.Fatalf("register travel service: %v", err)
+	}
+
+	control := controlapp.NewService()
+	server := &Server{
+		control:          control,
+		agents:           agentapp.NewCatalog(control),
+		workspaceRoot:    baseDir,
+		workspaceService: registry,
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/session-profile?agent_id=travel&session_id=session-travel", nil)
+	rec := httptest.NewRecorder()
+	server.agentSessionProfileHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Attributes map[string]string `json:"attributes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	expectedURL := "https://" + buildWorkspaceServiceHost(shortSessionPreviewHash("session-travel"), "travel", "alter0.cn")
+	if got := response.Attributes["guide_html_url"]; got != expectedURL {
+		t.Fatalf("expected published travel guide url, got %q", got)
 	}
 }

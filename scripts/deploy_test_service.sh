@@ -81,6 +81,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_PATH_EXPLICIT=0
 SERVICE_TYPE=""
 UPSTREAM_URL=""
 START_COMMAND=""
@@ -98,6 +99,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --repo-path)
       REPO_PATH="${2:-}"
+      REPO_PATH_EXPLICIT=1
       shift 2
       ;;
     --upstream-url)
@@ -135,6 +137,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "${SERVICE_NAME}" == "travel" && "${REPO_PATH_EXPLICIT}" != "1" ]]; then
+  REPO_PATH="${SCRIPT_DIR}/../.alter0/workspaces/sessions/${SESSION_ID}"
+fi
 
 REPO_PATH="$(cd "${REPO_PATH}" && pwd)"
 if [[ -z "${SERVICE_TYPE}" ]]; then
@@ -181,19 +187,26 @@ if [[ "${SERVICE_TYPE}" == "http" && -z "${UPSTREAM_URL}" && -z "${START_COMMAND
 fi
 
 if [[ "${SERVICE_TYPE}" == "frontend_dist" || "${DEFAULT_WEB_HTTP}" == "1" ]]; then
-  if [[ ! -d "${REPO_PATH}/.git" && ! -f "${REPO_PATH}/.git" ]]; then
-    echo "repository path is not a git workspace: ${REPO_PATH}" >&2
-    exit 1
-  fi
-  if [[ "${SKIP_BUILD}" != "1" ]]; then
-    (
-      cd "${REPO_PATH}/internal/interfaces/web/frontend"
-      npm run build
-    )
-  fi
-  if [[ ! -f "${REPO_PATH}/internal/interfaces/web/static/dist/index.html" ]]; then
-    echo "missing built dist: ${REPO_PATH}/internal/interfaces/web/static/dist/index.html" >&2
-    exit 1
+  if [[ "${SERVICE_NAME}" == "travel" && "${SERVICE_TYPE}" == "frontend_dist" ]]; then
+    if [[ ! -f "${REPO_PATH}/index.html" ]]; then
+      echo "missing travel guide entrypoint: ${REPO_PATH}/index.html" >&2
+      exit 1
+    fi
+  else
+    if [[ ! -d "${REPO_PATH}/.git" && ! -f "${REPO_PATH}/.git" ]]; then
+      echo "repository path is not a git workspace: ${REPO_PATH}" >&2
+      exit 1
+    fi
+    if [[ "${SKIP_BUILD}" != "1" ]]; then
+      (
+        cd "${REPO_PATH}/internal/interfaces/web/frontend"
+        npm run build
+      )
+    fi
+    if [[ ! -f "${REPO_PATH}/internal/interfaces/web/static/dist/index.html" ]]; then
+      echo "missing built dist: ${REPO_PATH}/internal/interfaces/web/static/dist/index.html" >&2
+      exit 1
+    fi
   fi
 fi
 

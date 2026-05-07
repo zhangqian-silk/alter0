@@ -43,6 +43,12 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	if prompt := index["travel"]; !strings.Contains(strings.ToLower(prompt), "html") || !strings.Contains(prompt, "alter0.cn") {
 		t.Fatalf("expected travel prompt to require html guide and session subdomain deployment, got %q", prompt)
 	}
+	if prompt := strings.ToLower(index["travel"]); !strings.Contains(prompt, "desktop") || !strings.Contains(prompt, "mobile") {
+		t.Fatalf("expected travel prompt to require desktop and mobile compatibility, got %q", index["travel"])
+	}
+	if prompt := strings.ToLower(index["travel"]); !strings.Contains(prompt, "before drafting the itinerary") || !strings.Contains(prompt, "data source") || !strings.Contains(prompt, "city-specific") {
+		t.Fatalf("expected travel prompt to require recommendation listing before itinerary planning with flexible city-specific categories and data sources, got %q", index["travel"])
+	}
 	if !entrypoints["travel"] {
 		t.Fatalf("expected travel to be available as a runtime entrypoint")
 	}

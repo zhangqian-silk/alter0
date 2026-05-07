@@ -196,6 +196,21 @@ func (a *ReActAgent) RunWithMessageState(ctx context.Context, userMessage Messag
 				ToolCallID: state.Action.ID,
 			})
 		} else {
+			// When a finalizer tool is available, require the model to end through that tool
+			// so the runtime can validate delivery contracts before the loop finishes.
+			if a.hasTool("complete") {
+				state.Observation = "Runtime requirement: direct final answers are not allowed while the complete tool is available. Call complete with the final user-facing result, or use another tool if work remains."
+				state.Messages = append(state.Messages, resp.Message)
+				state.Messages = append(state.Messages, Message{
+					Role:    "user",
+					Content: state.Observation,
+				})
+				if onEvent != nil {
+					_ = onEvent(ReActEvent{Type: "observation", State: state})
+				}
+				continue
+			}
+
 			// No tool call, the model has provided an answer
 			state.Answer = resp.Message.Content
 			state.IsComplete = true
@@ -215,6 +230,22 @@ func (a *ReActAgent) RunWithMessageState(ctx context.Context, userMessage Messag
 		_ = onEvent(ReActEvent{Type: "answer", State: state})
 	}
 	return state, nil
+}
+
+func (a *ReActAgent) hasTool(name string) bool {
+	if a == nil {
+		return false
+	}
+	target := strings.TrimSpace(strings.ToLower(name))
+	if target == "" {
+		return false
+	}
+	for _, tool := range a.config.Tools {
+		if strings.EqualFold(strings.TrimSpace(tool.Name), target) {
+			return true
+		}
+	}
+	return false
 }
 
 // RunStream runs the ReAct loop with streaming.
@@ -291,7 +322,12 @@ func (a *ReActAgent) buildSystemPrompt() string {
 		}
 	}
 
-	return base + toolDescriptions + `
+	finalizerRule := ""
+	if a.hasTool("complete") {
+		finalizerRule = "\n\nWhen the complete tool is available, do not end with a plain assistant message. Use the complete tool for the final user-facing result so the runtime can validate completion."
+	}
+
+	return base + toolDescriptions + finalizerRule + `
 
 Use the ReAct (Reasoning + Acting) pattern:
 

@@ -12,6 +12,7 @@ const runtimeMock = {
   sessions: [],
   activeSession: {
     id: "session-1",
+    status: "ready",
     title: "New",
     messages: [],
   },
@@ -687,6 +688,32 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByLabelText("Failed")).toBeInTheDocument();
   });
 
+  it("maps a registry-backed failed status to a failed signal even before assistant messages load", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "failed",
+      title: "Travel publish blocked",
+      messages: [],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [
+      {
+        id: "session-1",
+        title: "Travel publish blocked",
+        meta: "now",
+        shortHash: "abcd1234",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
+        active: true,
+      },
+    ];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(document.querySelector("[data-runtime-session-card='session-1']")).toHaveAttribute("data-runtime-session-tone", "failed");
+    expect(document.querySelector("[data-runtime-session-signal='failed']")).toBeInTheDocument();
+    expect(screen.getByLabelText("Failed")).toBeInTheDocument();
+  });
+
   it("keeps the mobile session pane mutually exclusive with the menu overlay", () => {
     const toggleMobileNav = vi.fn();
 
@@ -1052,7 +1079,7 @@ describe("ConversationWorkspace", () => {
         { key: "guide_html_url", label: "Guide HTML URL", readonly: true },
       ],
       attributes: {
-        guide_html_url: "https://wu42aa18.travel.alter0.cn",
+        guide_html_url: "https://travel-wu42aa18.alter0.cn",
       },
     };
 
@@ -1066,6 +1093,68 @@ describe("ConversationWorkspace", () => {
     expect(within(detailsPanel).getAllByText("Delivery Contract")[0]).toBeInTheDocument();
     expect(within(detailsPanel).getByText("Travel Guide")).toBeInTheDocument();
     expect(within(detailsPanel).getByText("HTML Guide")).toBeInTheDocument();
-    expect(within(detailsPanel).getByText("https://wu42aa18.travel.alter0.cn")).toBeInTheDocument();
+    expect(within(detailsPanel).getByText("https://travel-wu42aa18.alter0.cn")).toBeInTheDocument();
+  });
+
+  it("copies readonly session profile values from the details panel", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText,
+      },
+    });
+
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "session-profile";
+    runtimeMock.activeSession = {
+      id: "session-travel-1",
+      title: "Wuhan Guide",
+      messages: [],
+    };
+    runtimeMock.sessionItems = [
+      {
+        id: "session-travel-1",
+        title: "Wuhan Guide",
+        meta: "now",
+        shortHash: "wu42aa18",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
+        active: true,
+      },
+    ];
+    runtimeMock.target = { type: "agent", id: "travel", name: "Travel Agent" };
+    runtimeMock.activeAgent = {
+      id: "travel",
+      name: "Travel Agent",
+      description: "Travel planning specialist",
+      deliverables: [],
+      session_profile_fields: [
+        { key: "guide_html_url", label: "Guide HTML URL", readonly: true },
+      ],
+    };
+    runtimeMock.activeSessionProfile = {
+      agent_id: "travel",
+      session_id: "session-travel-1",
+      path: ".alter0/agents/travel/sessions/session-travel-1.md",
+      exists: true,
+      fields: [
+        { key: "guide_html_url", label: "Guide HTML URL", readonly: true },
+      ],
+      attributes: {
+        guide_html_url: "https://travel-wu42aa18.alter0.cn",
+      },
+    };
+
+    renderWorkspace({ isMobileViewport: false });
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+
+    const detailsPanel = document.querySelector("[data-runtime-details-panel='conversation']") as HTMLElement;
+    const copyButtons = within(detailsPanel).getAllByRole("button", { name: "Copy value" });
+
+    fireEvent.click(copyButtons.at(-1) as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("https://travel-wu42aa18.alter0.cn");
+    });
   });
 });

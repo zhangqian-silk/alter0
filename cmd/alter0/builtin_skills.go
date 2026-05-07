@@ -162,12 +162,14 @@ func deployTestServiceSkillGuide() string {
 		"",
 		"- Use `deploy_test_service` when the user needs a session-scoped preview host or an additional routed test service without changing Nginx.",
 		"- Registrations land on `/api/control/workspace-services` and are routed by the shared gateway rather than per-service Nginx edits.",
-		"- Host routing is fixed at the gateway: `https://<short_hash>.alter0.cn` for the default `web` service, and `https://<service>.<short_hash>.alter0.cn` for additional services such as `api` or `docs`.",
+		"- Host routing is fixed at the gateway: `https://<short_hash>.alter0.cn` for the default `web` service, and `https://<service>-<short_hash>.alter0.cn` for additional services such as `api` or `docs`.",
 		"- Default `web` deploys should register `service_type=http` and boot the current session backend so the preview host serves both the latest frontend build and `/api/*` from the same branch.",
 		"- Use `service_type=frontend_dist` only for static-only UI previews. That mode serves built assets from `internal/interfaces/web/static/dist` but leaves `/api/*` on the shared runtime backend.",
 		"- For custom services, deploy `service_type=http` with either an existing `upstream_url` or a `start_command` that boots the service inside the session workspace.",
 		"- Keep test-service deployment session-scoped. Reuse the current session's short-hash namespace instead of inventing ad-hoc domains.",
 		"- Prefer concise service labels and stable health paths so repeated redeploys land on the same routed host.",
+		"- Keep additional services on certificate-safe single-label subdomains under `*.alter0.cn`. Do not generate nested hosts such as `https://<service>.<short_hash>.alter0.cn` or `https://<short_hash>.travel.alter0.cn`.",
+		"- For public travel guides, deploy `service_name=travel` on `https://travel-<short_hash>.alter0.cn`. Publish only the current session workspace root after the current request's `index.html` has been generated there; do not publish a stale or unrelated page as a fallback.",
 	}, "\n")
 }
 
@@ -188,7 +190,8 @@ func artifactPreviewSkillGuide() string {
 		"",
 		"- Use this skill when the task is to publish text, image, or code artifacts to a session-scoped preview subdomain rather than a full application host.",
 		"- Stage the content as files in the current workspace, then run `bash .alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh <session_id> <service_name> --artifact <path> ...`.",
-		"- The helper script assembles a static preview page and deploys it through the shared gateway at `https://<service>.<short_hash>.alter0.cn`.",
+		"- The helper script assembles a static preview page and deploys it through the shared gateway at `https://<service>-<short_hash>.alter0.cn`.",
+		"- Keep artifact preview hosts certificate-safe by staying on single-label subdomains covered by `*.alter0.cn`; do not use nested hosts such as `https://<service>.<short_hash>.alter0.cn`.",
 		"- Reuse stable service names so repeated deploys refresh the same preview URL instead of creating ad-hoc variants.",
 		"- For full-stack web apps or routed backend services, use `deploy_test_service` instead of this artifact-only preview flow.",
 	}, "\n")

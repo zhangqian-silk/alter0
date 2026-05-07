@@ -158,3 +158,83 @@ func TestReActAgentReturnsIterationLimitFallbackAfterToolObservation(t *testing.
 		t.Fatalf("expected last observation in answer, got %q", state.Answer)
 	}
 }
+
+type reactCompleteEnforcementClient struct {
+	call int
+}
+
+func (c *reactCompleteEnforcementClient) Chat(_ context.Context, req ChatRequest) (*ChatResponse, error) {
+	c.call++
+	switch c.call {
+	case 1:
+		return &ChatResponse{
+			Message: Message{
+				Role:    "assistant",
+				Content: "这里是最终答案，但我没有调用 complete。",
+			},
+		}, nil
+	case 2:
+		last := req.Messages[len(req.Messages)-1]
+		if last.Role != "user" || !strings.Contains(last.Content, "direct final answers are not allowed") {
+			return nil, &reactTestError{text: "missing complete-tool enforcement prompt"}
+		}
+		return &ChatResponse{
+			Message: Message{
+				Role: "assistant",
+				ToolCalls: []ToolCall{
+					{ID: "call-complete", Name: "complete", Arguments: `{"result":"已通过 complete 收口"}`},
+				},
+			},
+		}, nil
+	default:
+		return &ChatResponse{
+			Message: Message{
+				Role:    "assistant",
+				Content: "unexpected",
+			},
+		}, nil
+	}
+}
+
+func (c *reactCompleteEnforcementClient) ChatStream(_ context.Context, _ ChatRequest, _ func(StreamEvent) error) (*ChatResponse, error) {
+	return nil, nil
+}
+
+func (c *reactCompleteEnforcementClient) Close() error {
+	return nil
+}
+
+type reactCompleteToolExecutor struct{}
+
+func (e *reactCompleteToolExecutor) Execute(_ context.Context, toolCall ToolCall) (*ToolResult, error) {
+	return &ToolResult{
+		ToolCallID:  toolCall.ID,
+		Name:        toolCall.Name,
+		Result:      "已通过 complete 收口",
+		IsFinal:     true,
+		FinalAnswer: "已通过 complete 收口",
+	}, nil
+}
+
+func TestReActAgentRequiresCompleteToolWhenAvailable(t *testing.T) {
+	agent := NewReActAgent(ReActAgentConfig{
+		Client: &reactCompleteEnforcementClient{},
+		Model:  "test-model",
+		Tools: []Tool{
+			{Name: "complete", Description: "finish"},
+		},
+		ToolExecutor:  &reactCompleteToolExecutor{},
+		MaxIterations: 3,
+	})
+
+	state, err := agent.RunWithState(context.Background(), "初始请求", nil)
+	if err != nil {
+		t.Fatalf("RunWithState() error = %v", err)
+	}
+	if strings.TrimSpace(state.Answer) != "已通过 complete 收口" {
+		t.Fatalf("unexpected answer %q", state.Answer)
+	}
+	if !state.IsComplete {
+		t.Fatalf("expected state complete")
+	}
+}

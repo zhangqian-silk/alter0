@@ -81,6 +81,13 @@ func (p *HybridNLProcessor) Process(ctx context.Context, content string, metadat
 		p.logReactFallback(metadata, err)
 		output, codexErr := p.codex.Process(ctx, content, metadata)
 		if codexErr == nil {
+			output, codexErr = p.finalizeAgentOutput(ctx, content, output, metadata)
+			if codexErr != nil {
+				return "", codexErr
+			}
+			if err := validateAgentCompletion(metadata); err != nil {
+				return "", err
+			}
 			setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
 		}
 		return output, codexErr
@@ -98,6 +105,13 @@ func (p *HybridNLProcessor) Process(ctx context.Context, content string, metadat
 	}
 	output, err := p.codex.Process(ctx, content, metadata)
 	if err == nil {
+		output, err = p.finalizeAgentOutput(ctx, content, output, metadata)
+		if err != nil {
+			return "", err
+		}
+		if validateErr := validateAgentCompletion(metadata); validateErr != nil {
+			return "", validateErr
+		}
 		setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
 	}
 	return output, err
@@ -123,6 +137,13 @@ func (p *HybridNLProcessor) ProcessStream(
 		p.logReactFallback(metadata, err)
 		output, codexErr := p.codex.ProcessStream(ctx, content, metadata, emit)
 		if codexErr == nil {
+			output, codexErr = p.finalizeAgentOutput(ctx, content, output, metadata)
+			if codexErr != nil {
+				return "", codexErr
+			}
+			if err := validateAgentCompletion(metadata); err != nil {
+				return "", err
+			}
 			setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
 		}
 		return output, codexErr
@@ -140,6 +161,13 @@ func (p *HybridNLProcessor) ProcessStream(
 	}
 	output, err := p.codex.ProcessStream(ctx, content, metadata, emit)
 	if err == nil {
+		output, err = p.finalizeAgentOutput(ctx, content, output, metadata)
+		if err != nil {
+			return "", err
+		}
+		if validateErr := validateAgentCompletion(metadata); validateErr != nil {
+			return "", validateErr
+		}
 		setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
 	}
 	return output, err
@@ -367,6 +395,13 @@ func (p *HybridNLProcessor) executeModelTool(
 		if result == "" {
 			return nil, errors.New("complete result is required")
 		}
+		result, err := p.finalizeAgentOutput(ctx, result, result, metadata)
+		if err != nil {
+			return toolErrorResult(toolCall, err), nil
+		}
+		if err := validateAgentCompletion(metadata); err != nil {
+			return toolErrorResult(toolCall, err), nil
+		}
 		return &llmdomain.ToolResult{
 			ToolCallID:  toolCall.ID,
 			Name:        toolCall.Name,
@@ -443,6 +478,16 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 			parts = append(parts, codingContext)
 		}
 	}
+	if isTravelAgent(metadata) {
+		parts = append(parts,
+			"You are the dedicated travel assistant. The travel run is not complete until the conversational guide and the HTML guide deliverable both exist or a concrete blocker remains.",
+			"Your first concrete execution step should be a codex_exec instruction that creates or updates the current request's index.html travel guide in the session workspace root before you attempt to finish the run.",
+			"Do not publish, reuse, or claim delivery for a stale or unrelated page from another request or directory. If the current request's page is not ready, leave the travel publish step incomplete and state the blocker instead.",
+			"For the HTML travel guide, publish the current session workspace artifact through deploy_test_service using service_name `travel` and service_type `frontend_dist`.",
+			"Treat the public read-only host https://travel-<session_short_hash>.alter0.cn as the canonical guide_html_url deliverable. Publish only the session workspace root after the current request's index.html has been generated there.",
+			"The runtime will reject completion until both the session workspace root index.html exists and the current session has a published public read-only travel service.",
+		)
+	}
 	if _, ok := allowedTools[toolDelegateAgent]; ok {
 		parts = append(parts, "Use delegate_agent when a specialist agent is better suited for a coding or writing subtask and you need that agent to return a concrete result.")
 	}
@@ -485,8 +530,84 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 	return strings.Join(parts, "\n\n")
 }
 
+func validateAgentCompletion(metadata map[string]string) error {
+	if !isTravelAgent(metadata) {
+		return nil
+	}
+	return validateTravelAgentCompletion(metadata)
+}
+
+func validateTravelAgentCompletion(metadata map[string]string) error {
+	sessionID := strings.TrimSpace(metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey))
+	if sessionID == "" {
+		return errors.New("travel html guide is incomplete: runtime session id is missing")
+	}
+	repoRoot, err := resolveToolRepoRoot()
+	if err != nil {
+		return err
+	}
+	sessionWorkspace := filepath.FromSlash(buildCodingSessionWorkspacePath(repoRoot, sessionID))
+	if strings.TrimSpace(sessionWorkspace) == "" {
+		return errors.New("travel html guide is incomplete: session workspace is unavailable")
+	}
+	indexPath := filepath.Join(sessionWorkspace, "index.html")
+	if _, err := os.Stat(indexPath); err != nil {
+		return fmt.Errorf("travel html guide is incomplete: missing %s. Generate the html guide in the session workspace root before completing", filepath.ToSlash(indexPath))
+	}
+	serviceURL, ok, err := resolvePublishedWorkspaceServiceURL(repoRoot, sessionID, "travel")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("travel html guide is not published yet: deploy_test_service with service_name `travel` and service_type `frontend_dist` before completing")
+	}
+	if strings.TrimSpace(serviceURL) == "" {
+		return errors.New("travel html guide is not published yet: current travel service has no public url")
+	}
+	return nil
+}
+
+func resolvePublishedWorkspaceServiceURL(repoRoot string, sessionID string, serviceID string) (string, bool, error) {
+	registryPath := filepath.Join(repoRoot, ".alter0", "workspace-services.json")
+	raw, err := os.ReadFile(registryPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	var payload struct {
+		Items []struct {
+			SessionID      string `json:"session_id"`
+			ServiceID      string `json:"service_id"`
+			ServiceType    string `json:"service_type"`
+			URL            string `json:"url"`
+			PublicReadOnly bool   `json:"public_read_only"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return "", false, err
+	}
+	for _, item := range payload.Items {
+		if !strings.EqualFold(strings.TrimSpace(item.SessionID), sessionID) {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(item.ServiceID), serviceID) {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(item.ServiceType), workspaceServiceTypeFrontendDist) && (item.PublicReadOnly || strings.EqualFold(strings.TrimSpace(serviceID), "travel")) {
+			return strings.TrimSpace(item.URL), true, nil
+		}
+	}
+	return "", false, nil
+}
+
 func isCodingAgent(metadata map[string]string) bool {
 	return strings.EqualFold(strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey)), "coding")
+}
+
+func isTravelAgent(metadata map[string]string) bool {
+	return strings.EqualFold(strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey)), "travel")
 }
 
 func renderAgentDeliverablesInstruction(metadata map[string]string) string {

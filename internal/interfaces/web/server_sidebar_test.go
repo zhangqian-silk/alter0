@@ -20,6 +20,10 @@ func readEmbeddedAssetRaw(t *testing.T, path string) string {
 }
 
 func resolveEmbeddedAssetPath(assetPath string) string {
+	assetPath = strings.TrimSpace(assetPath)
+	if queryIndex := strings.Index(assetPath, "?"); queryIndex >= 0 {
+		assetPath = assetPath[:queryIndex]
+	}
 	if strings.HasPrefix(assetPath, "static/assets/") {
 		relativePath := strings.TrimPrefix(assetPath, "static/assets/")
 		return path.Join("static", "dist", "legacy", relativePath)

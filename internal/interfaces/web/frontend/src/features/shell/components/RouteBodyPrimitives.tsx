@@ -1,4 +1,5 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { copyTextValue } from "./copyTextValue";
 
 type RouteCardProps = {
   title: unknown;
@@ -104,18 +105,59 @@ export function RouteFieldRow({
           {safeValue}
         </strong>
         {copyable && safeValue !== "-" ? (
-          <button
-            className="route-field-copy"
-            type="button"
-            data-copy-value={safeValue}
-            title={copyLabel}
-            aria-label={copyLabel}
-          >
-            <CopyIcon />
-          </button>
+          <CopyValueButton value={safeValue} label={copyLabel} className="route-field-copy" />
         ) : null}
       </span>
     </p>
+  );
+}
+
+export function CopyValueButton({
+  value,
+  label,
+  className,
+}: {
+  value: string;
+  label?: string;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (resetTimerRef.current !== null) {
+      window.clearTimeout(resetTimerRef.current);
+    }
+  }, []);
+
+  const handleCopy = async () => {
+    const copiedSuccessfully = await copyTextValue(value);
+    if (!copiedSuccessfully) {
+      return;
+    }
+    setCopied(true);
+    if (resetTimerRef.current !== null) {
+      window.clearTimeout(resetTimerRef.current);
+    }
+    resetTimerRef.current = window.setTimeout(() => {
+      setCopied(false);
+      resetTimerRef.current = null;
+    }, 1200);
+  };
+
+  return (
+    <button
+      className={[className, copied ? "copied" : ""].filter(Boolean).join(" ")}
+      type="button"
+      data-copy-value={value}
+      title={label}
+      aria-label={label}
+      onClick={() => {
+        void handleCopy();
+      }}
+    >
+      <CopyIcon />
+    </button>
   );
 }
 

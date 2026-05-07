@@ -376,7 +376,7 @@ func TestWorkspaceServiceGatewayServesRegisteredFrontendDist(t *testing.T) {
 	}
 }
 
-func TestWorkspaceServiceTravelHostIsPublicReadOnlyAndUsesTravelSubdomain(t *testing.T) {
+func TestWorkspaceServiceTravelHostIsPublicReadOnlyAndUsesCertificateSafeSubdomain(t *testing.T) {
 	repoPath := preparePreviewRepo(t, "travel workspace")
 	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
 	if err != nil {
@@ -391,8 +391,8 @@ func TestWorkspaceServiceTravelHostIsPublicReadOnlyAndUsesTravelSubdomain(t *tes
 	if err != nil {
 		t.Fatalf("register travel workspace service: %v", err)
 	}
-	if !strings.Contains(entry.Host, ".travel.alter0.cn") || !strings.HasPrefix(entry.Host, entry.ShortHash+".") {
-		t.Fatalf("expected travel host format <short>.travel.alter0.cn, got %+v", entry)
+	if expected := "travel-" + entry.ShortHash + ".alter0.cn"; entry.Host != expected {
+		t.Fatalf("expected travel host format %q, got %+v", expected, entry)
 	}
 	if !entry.PublicReadOnly {
 		t.Fatalf("expected travel workspace service to be public read-only, got %+v", entry)
@@ -434,6 +434,120 @@ func TestWorkspaceServiceTravelHostIsPublicReadOnlyAndUsesTravelSubdomain(t *tes
 	}
 }
 
+func TestWorkspaceServiceCustomHostUsesSingleLabelCertificateSafeSubdomain(t *testing.T) {
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	entry, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:   "session-docs-preview",
+		ServiceID:   "docs",
+		ServiceType: workspaceServiceTypeHTTP,
+		UpstreamURL: "http://127.0.0.1:4010",
+	})
+	if err != nil {
+		t.Fatalf("register docs workspace service: %v", err)
+	}
+	if expected := "docs-" + entry.ShortHash + ".alter0.cn"; entry.Host != expected {
+		t.Fatalf("expected docs host format %q, got %+v", expected, entry)
+	}
+}
+
+func TestWorkspaceServiceGatewayUsesTravelSessionWorkspaceIndex(t *testing.T) {
+	travelPath := prepareTravelGuideWorkspace(t, "travel session workspace")
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	entry, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:      "session-travel-static",
+		ServiceID:      "travel",
+		ServiceType:    workspaceServiceTypeFrontendDist,
+		RepositoryPath: travelPath,
+	})
+	if err != nil {
+		t.Fatalf("register travel workspace service: %v", err)
+	}
+
+	server := &Server{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceService: registry,
+	}
+	handler := server.withWorkspaceServiceGateway(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.NotFound(w, nil)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Host = entry.Host
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "travel session workspace") {
+		t.Fatalf("expected travel workspace body, got %q", rec.Body.String())
+	}
+}
+
+func TestWorkspaceServiceRegistryLoadNormalizesLegacyHosts(t *testing.T) {
+	registryPath := filepath.Join(t.TempDir(), workspaceServiceRegistryFilename)
+	payload := `{
+  "items": [
+    {
+      "session_id": "session-travel-static",
+      "service_id": "travel",
+      "service_type": "frontend_dist",
+      "short_hash": "f4e04ab7",
+      "host": "f4e04ab7.travel.alter0.cn",
+      "url": "https://f4e04ab7.travel.alter0.cn",
+      "public_read_only": true,
+      "repository_path": "/tmp/travel",
+      "dist_path": "/tmp/travel",
+      "updated_at": "2026-04-29T10:30:26Z"
+    },
+    {
+      "session_id": "session-docs-preview",
+      "service_id": "docs",
+      "service_type": "http",
+      "short_hash": "cafe9911",
+      "host": "docs.cafe9911.alter0.cn",
+      "url": "https://docs.cafe9911.alter0.cn",
+      "upstream_url": "http://127.0.0.1:4010",
+      "updated_at": "2026-04-29T10:30:26Z"
+    }
+  ]
+}`
+	if err := os.WriteFile(registryPath, []byte(payload), 0o644); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+
+	registry, err := newFileWorkspaceServiceRegistry(registryPath, "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+
+	travel, ok := registry.ResolveService("session-travel-static", "travel")
+	if !ok {
+		t.Fatalf("expected travel entry to resolve")
+	}
+	expectedTravelHost := buildWorkspaceServiceHost(shortSessionPreviewHash("session-travel-static"), "travel", "alter0.cn")
+	expectedTravelURL := "https://" + expectedTravelHost
+	if travel.Host != expectedTravelHost || travel.URL != expectedTravelURL {
+		t.Fatalf("expected normalized travel host/url, got %+v", travel)
+	}
+
+	docs, ok := registry.ResolveService("session-docs-preview", "docs")
+	if !ok {
+		t.Fatalf("expected docs entry to resolve")
+	}
+	expectedDocsHost := buildWorkspaceServiceHost(shortSessionPreviewHash("session-docs-preview"), "docs", "alter0.cn")
+	expectedDocsURL := "https://" + expectedDocsHost
+	if docs.Host != expectedDocsHost || docs.URL != expectedDocsURL {
+		t.Fatalf("expected normalized docs host/url, got %+v", docs)
+	}
+}
+
 func TestWorkspaceServiceRegistrationCRUD(t *testing.T) {
 	repoPath := preparePreviewRepo(t, "workspace service")
 	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
@@ -446,7 +560,7 @@ func TestWorkspaceServiceRegistrationCRUD(t *testing.T) {
 	}
 
 	putWebBody, err := json.Marshal(map[string]string{
-		"service_type":     "frontend_dist",
+		"service_type":    "frontend_dist",
 		"repository_path": repoPath,
 	})
 	if err != nil {
@@ -570,6 +684,23 @@ func preparePreviewRepo(t *testing.T, marker string) string {
 		t.Fatalf("write preview legacy asset: %v", err)
 	}
 	return repoPath
+}
+
+func prepareTravelGuideWorkspace(t *testing.T, marker string) string {
+	t.Helper()
+
+	workspacePath := filepath.Join(t.TempDir(), "travel-guide")
+	assetsPath := filepath.Join(workspacePath, "assets")
+	if err := os.MkdirAll(assetsPath, 0o755); err != nil {
+		t.Fatalf("mkdir travel assets path: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspacePath, "index.html"), []byte("<!doctype html><title>"+marker+"</title>"), 0o644); err != nil {
+		t.Fatalf("write travel index: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(assetsPath, "guide.css"), []byte("body{}"), 0o644); err != nil {
+		t.Fatalf("write travel asset: %v", err)
+	}
+	return workspacePath
 }
 
 type stubWorkspaceServiceRuntime struct {

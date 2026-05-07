@@ -195,19 +195,12 @@ func (e *testError) Error() string {
 
 func TestHybridNLProcessorAgentModeExecutesCodexToolLoop(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
-	processor := NewHybridNLProcessor(newTestProcessor(
-		"success",
-		mustBuildTestPrompt(t, "整理仓库", map[string]string{
-			execdomain.RuntimeSessionIDMetadataKey: "session-default",
-			execdomain.AgentIDMetadataKey:          "researcher",
-		}),
-	), reactFactory, nil)
-
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "researcher"
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
 	metadata[execdomain.AgentSystemPromptMetadataKey] = "先执行，再汇报。"
 	metadata[execdomain.AgentToolsMetadataKey] = `["codex_exec"]`
+	processor := NewHybridNLProcessor(newTestProcessor("success", ""), reactFactory, nil)
 
 	output, err := processor.Process(context.Background(), "完成仓库整理", metadata)
 	if err != nil {
@@ -311,6 +304,31 @@ func TestHybridNLProcessorIncludesAgentDeliverablesContract(t *testing.T) {
 	}
 }
 
+func TestHybridNLProcessorTravelAgentIncludesTravelDeployGuidance(t *testing.T) {
+	reactFactory := &stubReactFactory{client: &answerOnlyLLMClient{}}
+	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理攻略", testRuntimeMetadata())), reactFactory, nil)
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentToolsMetadataKey] = `["codex_exec","deploy_test_service"]`
+
+	if _, err := processor.Process(context.Background(), "整理武汉攻略", metadata); err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	prompt := reactFactory.lastConfig.SystemPrompt
+	for _, expected := range []string{
+		"service_name `travel`",
+		"service_type `frontend_dist`",
+		"guide_html_url",
+		"travel-<session_short_hash>.alter0.cn",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("expected travel prompt to contain %q, got %q", expected, prompt)
+		}
+	}
+}
+
 func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) {
 	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
 	processor := NewHybridNLProcessor(nil, reactFactory, nil)
@@ -334,7 +352,7 @@ func TestHybridNLProcessorCodingAgentCodexExecUsesEffectivePrompt(t *testing.T) 
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
 	metadata[execdomain.AgentSystemPromptMetadataKey] = "Own coding delivery."
 
-	processor.codex = newTestProcessor("success", "整理仓库", filepath.Join(".alter0", "workspaces", "sessions", "session-default", "repo"))
+	processor.codex = newTestProcessor("success", "", filepath.Join(".alter0", "workspaces", "sessions", "session-default", "repo"))
 
 	output, err := processor.Process(context.Background(), "完成仓库整理", metadata)
 	if err != nil {
@@ -367,6 +385,19 @@ func TestHybridNLProcessorAgentCodexExecPreparesNativeRuntimeAssets(t *testing.T
 		_ = os.Chdir(previousWD)
 	})
 
+	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default")
+	if err := os.MkdirAll(sessionWorkspace, 0o755); err != nil {
+		t.Fatalf("mkdir session workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionWorkspace, "index.html"), []byte("<!doctype html><title>travel</title>"), 0o644); err != nil {
+		t.Fatalf("write travel index: %v", err)
+	}
+	registryPath := filepath.Join(rootDir, ".alter0", "workspace-services.json")
+	registryPayload := `{"items":[{"session_id":"session-default","service_id":"travel","service_type":"frontend_dist","url":"https://travel-4e8f5f54.alter0.cn","public_read_only":true}]}`
+	if err := os.WriteFile(registryPath, []byte(registryPayload), 0o644); err != nil {
+		t.Fatalf("write workspace service registry: %v", err)
+	}
+
 	rawSkillContext, err := json.Marshal(execdomain.SkillContext{
 		Protocol: execdomain.SkillContextProtocolVersion,
 		Skills: []execdomain.SkillSpec{
@@ -385,7 +416,7 @@ func TestHybridNLProcessorAgentCodexExecPreparesNativeRuntimeAssets(t *testing.T
 
 	reactFactory := &stubReactFactory{client: &scriptedLLMClient{}}
 	processor := NewHybridNLProcessor(
-		newTestProcessor("success", "整理仓库", filepath.Join(".alter0", "workspaces", "sessions", "session-default")),
+		newTestProcessor("success", "", filepath.Join(".alter0", "workspaces", "sessions", "session-default")),
 		reactFactory,
 		nil,
 	)
@@ -400,11 +431,10 @@ func TestHybridNLProcessorAgentCodexExecPreparesNativeRuntimeAssets(t *testing.T
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	if output != "任务已完成" {
-		t.Fatalf("Process() output = %q, want %q", output, "任务已完成")
+	if !strings.Contains(output, "任务已完成") || !strings.Contains(output, "https://travel-4e8f5f54.alter0.cn") {
+		t.Fatalf("Process() output = %q, want completion text plus guide url", output)
 	}
 
-	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default")
 	agentsText, err := os.ReadFile(filepath.Join(sessionWorkspace, "AGENTS.md"))
 	if err != nil {
 		t.Fatalf("read runtime AGENTS: %v", err)
@@ -419,6 +449,186 @@ func TestHybridNLProcessorAgentCodexExecPreparesNativeRuntimeAssets(t *testing.T
 	}
 	if !strings.Contains(string(skillText), "Travel City Rules") || !strings.Contains(string(skillText), ".alter0/agents/travel/SKILL.md") {
 		t.Fatalf("unexpected runtime skills:\n%s", string(skillText))
+	}
+}
+
+func TestHybridNLProcessorValidatesTravelCompletionAfterCodexFallback(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := NewHybridNLProcessor(newTestProcessor("success", ""), nil, nil)
+	processor.serviceDeployer = nil
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+
+	_, err = processor.Process(context.Background(), "整理武汉攻略", metadata)
+	if err == nil {
+		t.Fatal("Process() error = nil, want travel completion validation failure")
+	}
+	if !strings.Contains(err.Error(), "missing") || !strings.Contains(err.Error(), "index.html") {
+		t.Fatalf("expected missing index.html error, got %q", err.Error())
+	}
+}
+
+func TestHybridNLProcessorAllowsTravelCompletionAfterCodexFallbackWhenDeliverablesExist(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default")
+	if err := os.MkdirAll(sessionWorkspace, 0o755); err != nil {
+		t.Fatalf("mkdir session workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionWorkspace, "index.html"), []byte("<!doctype html><title>travel</title>"), 0o644); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+	registryPayload := `{"items":[{"session_id":"session-default","service_id":"travel","service_type":"frontend_dist","url":"https://travel-4e8f5f54.alter0.cn","public_read_only":true}]}`
+	if err := os.WriteFile(filepath.Join(rootDir, ".alter0", "workspace-services.json"), []byte(registryPayload), 0o644); err != nil {
+		t.Fatalf("write workspace service registry: %v", err)
+	}
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	processor := NewHybridNLProcessor(newTestProcessor("success", "", filepath.Join(".alter0", "workspaces", "sessions", "session-default")), nil, nil)
+
+	output, err := processor.Process(context.Background(), "整理武汉攻略", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if !strings.Contains(output, "mock response") || !strings.Contains(output, "https://travel-4e8f5f54.alter0.cn") {
+		t.Fatalf("Process() output = %q, want guide content plus published url", output)
+	}
+}
+
+func TestHybridNLProcessorValidatesTravelCompletionForDirectCodexEngine(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := NewHybridNLProcessor(newTestProcessor("success", ""), nil, nil)
+	processor.serviceDeployer = nil
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineCodex
+
+	_, err = processor.Process(context.Background(), "整理武汉攻略", metadata)
+	if err == nil {
+		t.Fatal("Process() error = nil, want travel completion validation failure on direct codex path")
+	}
+	if !strings.Contains(err.Error(), "missing") || !strings.Contains(err.Error(), "index.html") {
+		t.Fatalf("expected missing index.html error, got %q", err.Error())
+	}
+}
+
+func TestHybridNLProcessorDoesNotGenerateOrPublishFallbackTravelGuideForDirectCodexEngine(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	deployer := &stubWorkspaceServiceDeployer{
+		result: WorkspaceServiceDeployResult{
+			SessionID:   "session-default",
+			ServiceID:   "travel",
+			ServiceType: workspaceServiceTypeFrontendDist,
+			Host:        "travel-4e8f5f54.alter0.cn",
+			URL:         "https://travel-4e8f5f54.alter0.cn",
+			Status:      "deployed",
+		},
+	}
+	processor := NewHybridNLProcessor(newTestProcessor("success", ""), nil, nil)
+	processor.serviceDeployer = deployer
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineCodex
+
+	_, err = processor.Process(context.Background(), "整理武汉攻略", metadata)
+	if err == nil {
+		t.Fatal("Process() error = nil, want strict travel validation failure")
+	}
+
+	indexPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default", "index.html")
+	if _, statErr := os.Stat(indexPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no generated fallback index.html, stat err = %v", statErr)
+	}
+	if deployer.lastRequest.ServiceID != "" || deployer.lastRequest.SessionID != "" {
+		t.Fatalf("expected no publish attempt without a real guide, got %+v", deployer.lastRequest)
+	}
+}
+
+func TestHybridNLProcessorAllowsTravelCompletionForDirectCodexEngineWhenDeliverablesExist(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default")
+	if err := os.MkdirAll(sessionWorkspace, 0o755); err != nil {
+		t.Fatalf("mkdir session workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionWorkspace, "index.html"), []byte("<!doctype html><title>travel</title>"), 0o644); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+	registryPayload := `{"items":[{"session_id":"session-default","service_id":"travel","service_type":"frontend_dist","url":"https://travel-4e8f5f54.alter0.cn","public_read_only":true}]}`
+	if err := os.WriteFile(filepath.Join(rootDir, ".alter0", "workspace-services.json"), []byte(registryPayload), 0o644); err != nil {
+		t.Fatalf("write workspace service registry: %v", err)
+	}
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineCodex
+	processor := NewHybridNLProcessor(newTestProcessor("success", "", filepath.Join(".alter0", "workspaces", "sessions", "session-default")), nil, nil)
+
+	output, err := processor.Process(context.Background(), "整理武汉攻略", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if !strings.Contains(output, "mock response") || !strings.Contains(output, "https://travel-4e8f5f54.alter0.cn") {
+		t.Fatalf("Process() output = %q, want guide content plus published url", output)
 	}
 }
 

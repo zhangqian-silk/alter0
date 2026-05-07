@@ -559,7 +559,51 @@ func resolveStreamDelta(previous string, next string) string {
 }
 
 func buildCodexPrompt(prompt string, metadata map[string]string) (string, error) {
-	return strings.TrimSpace(prompt), nil
+	trimmedPrompt := strings.TrimSpace(prompt)
+	if trimmedPrompt == "" {
+		return "", errors.New("content is required")
+	}
+	sections := []string{}
+	if prelude := buildCodexAgentPromptPrelude(metadata); prelude != "" {
+		sections = append(sections, prelude)
+	}
+	sections = append(sections, trimmedPrompt)
+	return strings.Join(sections, "\n\n"), nil
+}
+
+func buildCodexAgentPromptPrelude(metadata map[string]string) string {
+	agentID := strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey))
+	if agentID == "" {
+		return ""
+	}
+	lines := []string{
+		"You are alter0's session-aware execution assistant.",
+		"Read AGENTS.md and the files under .alter0/codex-runtime/ before acting, then do the concrete workspace work instead of returning only a conversational answer.",
+		"Only stop when the active agent's required deliverables are actually produced or a concrete blocker remains.",
+	}
+	if custom := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey)); custom != "" {
+		lines = append(lines, "Agent profile system prompt:\n"+custom)
+	}
+	if deliverables := renderAgentDeliverablesInstruction(metadata); deliverables != "" {
+		lines = append(lines, deliverables)
+	}
+	if isTravelAgent(metadata) {
+		sessionID := strings.TrimSpace(metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey))
+		deployCommand := "bash scripts/deploy_test_service.sh <session_id> travel"
+		if sessionID != "" {
+			deployCommand = "bash scripts/deploy_test_service.sh " + sessionID + " travel"
+		}
+		lines = append(lines,
+			"You are the dedicated travel assistant. The run is incomplete until both the conversational guide and the HTML guide deliverable exist or a concrete blocker remains.",
+			"Create or update the current request's index.html in the session workspace root as an early concrete step.",
+			"Do not publish or reuse a stale or unrelated page from another request or directory. If the current page is not ready, keep the publish step blocked and state the blocker instead of fabricating delivery.",
+			"The HTML guide must remain usable on both desktop and mobile browsers.",
+			"Page structure is mandatory: first list the recommendation pool by category, then produce the final itinerary. Include explicit data sources for every recommendation group.",
+			"Publish the generated guide to the public read-only host https://travel-<session_short_hash>.alter0.cn via "+deployCommand+".",
+			"The task is incomplete unless the session workspace root contains index.html and the current session has a published public read-only travel service.",
+		)
+	}
+	return strings.Join(lines, "\n\n")
 }
 
 func buildCodexAgentContext(metadata map[string]string) *codexAgentContext {

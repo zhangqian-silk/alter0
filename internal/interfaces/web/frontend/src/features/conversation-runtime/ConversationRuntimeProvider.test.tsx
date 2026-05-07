@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ConversationRuntimeProvider, useConversationRuntime } from "./ConversationRuntimeProvider";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
+const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
+const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 
 const apiClientMock = {
@@ -157,6 +159,24 @@ function AgentDeliverablesHarness() {
 function ActiveSessionTitleHarness() {
   const runtime = useConversationRuntime();
   return <output data-testid="active-session-title">{runtime.activeSession?.title || ""}</output>;
+}
+
+function ActiveSessionStatusHarness() {
+  const runtime = useConversationRuntime();
+  return <output data-testid="active-session-status">{runtime.activeSession?.status || ""}</output>;
+}
+
+function SessionItemsHarness() {
+  const runtime = useConversationRuntime();
+  return (
+    <output data-testid="session-items">
+      {JSON.stringify(runtime.sessionItems.map((item) => ({
+        id: item.id,
+        title: item.title,
+        active: item.active,
+      })))}
+    </output>
+  );
 }
 
 function MessageListHarness() {
@@ -742,6 +762,120 @@ describe("ConversationRuntimeProvider", () => {
     expect(request.metadata?.["alter0.llm.model"]).toBeUndefined();
   });
 
+  it("recovers agent-runtime responses from session detail when the stream stops after start", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-session-1" }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "travel",
+                name: "Travel Agent",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return {
+            items: [
+              {
+                id: "agent-session-1",
+                title: "Travel runtime",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "agent",
+                target_id: "travel",
+                target_name: "Travel Agent",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+                messages: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/agent-session-1?route=agent-runtime":
+          return {
+            session: {
+              id: "agent-session-1",
+              title: "Travel runtime",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "travel",
+              target_name: "Travel Agent",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+              messages: [
+                {
+                  id: "server-user-1",
+                  role: "user",
+                  text: "Inspect this image",
+                  status: "done",
+                  at: "2026-04-23T03:31:00Z",
+                },
+                {
+                  id: "server-assistant-1",
+                  role: "assistant",
+                  text: "Recovered response",
+                  status: "done",
+                  route: "nl",
+                  at: "2026-04-23T03:31:05Z",
+                },
+              ],
+            },
+          };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: start\ndata: {"message_id":"server-assistant-1","session_id":"agent-session-1","channel_id":"web-default","trace_id":"trace-1"}\n\n'));
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/agents"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      "/api/conversation-runtime/sessions/agent-session-1?route=agent-runtime",
+    ));
+    await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Recovered response"));
+    expect(apiClientMock.post).not.toHaveBeenCalled();
+  });
+
   it("excludes the main Alter0 assistant from agent-runtime target options", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -1091,7 +1225,7 @@ describe("ConversationRuntimeProvider", () => {
             { key: "guide_html_url", label: "Guide HTML URL", readonly: true },
           ],
           attributes: {
-            guide_html_url: "https://travel-session.travel.alter0.cn",
+            guide_html_url: "https://travel-travel-session.alter0.cn",
           },
         };
       }
@@ -1113,5 +1247,459 @@ describe("ConversationRuntimeProvider", () => {
       expect(payload[0]?.id).toBe("guide-markdown");
       expect(payload[1]?.session_attribute_key).toBe("guide_html_url");
     });
+  });
+
+  it("restores the active runtime session snapshot while the remote list is temporarily empty", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-pending-1" }),
+    );
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        "agent-runtime": {
+          id: "agent-pending-1",
+          title: "Pending runtime",
+          titleAuto: false,
+          titleScore: 1,
+          createdAt: Date.parse("2026-04-23T03:30:00Z"),
+          targetType: "agent",
+          targetID: "coding",
+          targetName: "Coding Agent",
+          messagesLoaded: true,
+          serverBacked: false,
+          messages: [
+            {
+              id: "msg-user",
+              role: "user",
+              text: "Fix the regression",
+              attachments: [],
+              at: Date.parse("2026-04-23T03:30:01Z"),
+            },
+            {
+              id: "msg-assistant",
+              role: "assistant",
+              text: "Thinking...",
+              attachments: [],
+              status: "streaming",
+              at: Date.parse("2026-04-23T03:30:02Z"),
+            },
+          ],
+        },
+      }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+        return { items: [] };
+      }
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            { id: "coding", name: "Coding Agent", enabled: true },
+          ],
+        };
+      }
+      return { items: [] };
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title").textContent).toBe("Pending runtime"));
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("message-list").textContent || "[]") as Array<{ text?: string }>;
+      expect(payload).toHaveLength(2);
+      expect(payload[1]?.text).toBe("Thinking...");
+    });
+  });
+
+  it("hydrates the stored active runtime session by id when the collection response still misses it", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-pending-2" }),
+    );
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        "agent-runtime": {
+          id: "agent-pending-2",
+          title: "Pending runtime",
+          titleAuto: false,
+          titleScore: 1,
+          createdAt: Date.parse("2026-04-23T03:30:00Z"),
+          targetType: "agent",
+          targetID: "coding",
+          targetName: "Coding Agent",
+          messagesLoaded: true,
+          serverBacked: false,
+          messages: [
+            {
+              id: "msg-user",
+              role: "user",
+              text: "Fix the regression",
+              attachments: [],
+              at: Date.parse("2026-04-23T03:30:01Z"),
+            },
+          ],
+        },
+      }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+        return { items: [] };
+      }
+      if (path === "/api/conversation-runtime/sessions/agent-pending-2?route=agent-runtime") {
+        return {
+          session: {
+            id: "agent-pending-2",
+            title: "Recovered runtime",
+            title_auto: false,
+            title_score: 2,
+            created_at: "2026-04-23T03:30:00Z",
+            target_type: "agent",
+            target_id: "coding",
+            target_name: "Coding Agent",
+            messages: [
+              {
+                id: "msg-user",
+                role: "user",
+                text: "Fix the regression",
+                at: "2026-04-23T03:30:01Z",
+              },
+              {
+                id: "msg-assistant",
+                role: "assistant",
+                text: "Recovered from server",
+                status: "done",
+                at: "2026-04-23T03:30:04Z",
+              },
+            ],
+          },
+        };
+      }
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            { id: "coding", name: "Coding Agent", enabled: true },
+          ],
+        };
+      }
+      return { items: [] };
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      "/api/conversation-runtime/sessions/agent-pending-2?route=agent-runtime",
+    ));
+    await waitFor(() => expect(screen.getByTestId("active-session-title").textContent).toBe("Recovered runtime"));
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("message-list").textContent || "[]") as Array<{ text?: string }>;
+      expect(payload).toHaveLength(2);
+      expect(payload[1]?.text).toBe("Recovered from server");
+    });
+  });
+
+  it("keeps recently restored runtime sessions in the list when another refresh temporarily misses them", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-visible-2" }),
+    );
+    window.sessionStorage.setItem(
+      RECENT_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        "agent-runtime": [
+          {
+            id: "agent-visible-2",
+            title: "Visible current session",
+            titleAuto: false,
+            titleScore: 2,
+            createdAt: Date.parse("2026-04-23T03:40:00Z"),
+            targetType: "agent",
+            targetID: "coding",
+            targetName: "Coding Agent",
+            messagesLoaded: true,
+            serverBacked: true,
+            messages: [
+              {
+                id: "msg-visible-2",
+                role: "assistant",
+                text: "Current session reply",
+                attachments: [],
+                status: "done",
+                at: Date.parse("2026-04-23T03:40:02Z"),
+              },
+            ],
+          },
+          {
+            id: "agent-visible-1",
+            title: "Recently created session",
+            titleAuto: false,
+            titleScore: 2,
+            createdAt: Date.parse("2026-04-23T03:35:00Z"),
+            targetType: "agent",
+            targetID: "coding",
+            targetName: "Coding Agent",
+            messagesLoaded: true,
+            serverBacked: true,
+            messages: [
+              {
+                id: "msg-visible-1",
+                role: "assistant",
+                text: "Fresh HTML guide",
+                attachments: [],
+                status: "done",
+                at: Date.parse("2026-04-23T03:35:02Z"),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+        return {
+          items: [
+            {
+              id: "agent-visible-2",
+              title: "Visible current session",
+              title_auto: false,
+              title_score: 2,
+              created_at: "2026-04-23T03:40:00Z",
+              target_type: "agent",
+              target_id: "coding",
+              target_name: "Coding Agent",
+            },
+          ],
+        };
+      }
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            { id: "coding", name: "Coding Agent", enabled: true },
+          ],
+        };
+      }
+      return { items: [] };
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <SessionItemsHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("session-items").textContent || "[]") as Array<{
+        id?: string;
+        active?: boolean;
+      }>;
+      expect(payload).toHaveLength(2);
+      expect(payload.map((item) => item.id)).toEqual(["agent-visible-2", "agent-visible-1"]);
+      expect(payload.find((item) => item.id === "agent-visible-2")?.active).toBe(true);
+    });
+  });
+
+  it("hydrates the active runtime session from recent snapshots when the collection is still empty", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-visible-3" }),
+    );
+    window.sessionStorage.setItem(
+      RECENT_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        "agent-runtime": [
+          {
+            id: "agent-visible-3",
+            title: "Recovered from recent",
+            titleAuto: false,
+            titleScore: 2,
+            createdAt: Date.parse("2026-04-23T03:45:00Z"),
+            targetType: "agent",
+            targetID: "coding",
+            targetName: "Coding Agent",
+            messagesLoaded: false,
+            serverBacked: true,
+            messages: [],
+          },
+        ],
+      }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+        return { items: [] };
+      }
+      if (path === "/api/conversation-runtime/sessions/agent-visible-3?route=agent-runtime") {
+        return {
+          session: {
+            id: "agent-visible-3",
+            title: "Recovered from server",
+            title_auto: false,
+            title_score: 3,
+            created_at: "2026-04-23T03:45:00Z",
+            target_type: "agent",
+            target_id: "coding",
+            target_name: "Coding Agent",
+            messages: [
+              {
+                id: "msg-user-3",
+                role: "user",
+                text: "Build the travel page",
+                at: "2026-04-23T03:45:01Z",
+              },
+              {
+                id: "msg-assistant-3",
+                role: "assistant",
+                text: "HTML generated",
+                status: "done",
+                at: "2026-04-23T03:45:05Z",
+              },
+            ],
+          },
+        };
+      }
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            { id: "coding", name: "Coding Agent", enabled: true },
+          ],
+        };
+      }
+      return { items: [] };
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title").textContent).toBe("Recovered from server"));
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("message-list").textContent || "[]") as Array<{ text?: string }>;
+      expect(payload).toHaveLength(2);
+      expect(payload[1]?.text).toBe("HTML generated");
+    });
+  });
+
+  it("preserves failed runtime status when recovery falls back to a registry-backed session detail", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-failed-1" }),
+    );
+    window.sessionStorage.setItem(
+      RECENT_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        "agent-runtime": [
+          {
+            id: "agent-failed-1",
+            status: "failed",
+            title: "Travel failed",
+            titleAuto: false,
+            titleScore: 2,
+            createdAt: Date.parse("2026-04-23T03:45:00Z"),
+            targetType: "agent",
+            targetID: "travel",
+            targetName: "Travel Agent",
+            messagesLoaded: false,
+            serverBacked: true,
+            messages: [],
+          },
+        ],
+      }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+        return { items: [] };
+      }
+      if (path === "/api/conversation-runtime/sessions/agent-failed-1?route=agent-runtime") {
+        return {
+          session: {
+            id: "agent-failed-1",
+            status: "failed",
+            title: "Travel failed",
+            title_auto: false,
+            title_score: 3,
+            created_at: "2026-04-23T03:45:00Z",
+            target_type: "agent",
+            target_id: "travel",
+            target_name: "Travel Agent",
+          },
+        };
+      }
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            { id: "travel", name: "Travel Agent", enabled: true },
+          ],
+        };
+      }
+      return { items: [] };
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <ActiveSessionTitleHarness />
+        <ActiveSessionStatusHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title").textContent).toBe("Travel failed"));
+    await waitFor(() => expect(screen.getByTestId("active-session-status").textContent).toBe("failed"));
   });
 });

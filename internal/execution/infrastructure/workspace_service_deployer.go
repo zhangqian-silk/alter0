@@ -66,7 +66,7 @@ func (d *scriptWorkspaceServiceDeployer) Deploy(ctx context.Context, req Workspa
 	serviceID := normalizeWorkspaceServiceID(req.ServiceID)
 	args := []string{scriptPath, strings.TrimSpace(req.SessionID), serviceID}
 
-	repositoryPath, err := resolveWorkspaceServiceRepositoryPath(repoRoot, req.SessionID, req.RepositoryPath)
+	repositoryPath, err := resolveWorkspaceServiceRepositoryPath(repoRoot, req.SessionID, serviceID, req.RepositoryPath)
 	if err != nil {
 		return WorkspaceServiceDeployResult{}, err
 	}
@@ -132,7 +132,7 @@ func normalizeWorkspaceServiceID(value string) string {
 	return trimmed
 }
 
-func resolveWorkspaceServiceRepositoryPath(repoRoot string, sessionID string, raw string) (string, error) {
+func resolveWorkspaceServiceRepositoryPath(repoRoot string, sessionID string, serviceID string, raw string) (string, error) {
 	if trimmed := strings.TrimSpace(raw); trimmed != "" {
 		absolute, err := filepath.Abs(trimmed)
 		if err != nil {
@@ -143,6 +143,15 @@ func resolveWorkspaceServiceRepositoryPath(repoRoot string, sessionID string, ra
 	repoRoot = strings.TrimSpace(repoRoot)
 	if repoRoot == "" {
 		return "", fmt.Errorf("repository root unavailable")
+	}
+	if strings.EqualFold(strings.TrimSpace(serviceID), "travel") {
+		sessionWorkspace := buildCodingSessionWorkspacePath(repoRoot, sessionID)
+		if sessionWorkspace != "" {
+			indexPath := filepath.Join(filepath.FromSlash(sessionWorkspace), "index.html")
+			if _, err := os.Stat(indexPath); err == nil {
+				return filepath.ToSlash(sessionWorkspace), nil
+			}
+		}
 	}
 	sessionRepo := buildCodingSessionRepoWorkspacePath(repoRoot, sessionID)
 	if sessionRepo != "" {
