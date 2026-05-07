@@ -405,7 +405,7 @@ func TestHybridNLProcessorAgentCodexExecPreparesNativeRuntimeAssets(t *testing.T
 				ID:          "travel-city-rules",
 				Name:        "Travel City Rules",
 				Description: "Reusable city-page rules.",
-				FilePath:    ".alter0/agents/travel/SKILL.md",
+				FilePath:    "docs/agents/travel/SKILL.md",
 				Guide:       "Read the file-backed city-page rulebook before composing the response.",
 			},
 		},
@@ -447,7 +447,7 @@ func TestHybridNLProcessorAgentCodexExecPreparesNativeRuntimeAssets(t *testing.T
 	if err != nil {
 		t.Fatalf("read runtime skills: %v", err)
 	}
-	if !strings.Contains(string(skillText), "Travel City Rules") || !strings.Contains(string(skillText), ".alter0/agents/travel/SKILL.md") {
+	if !strings.Contains(string(skillText), "Travel City Rules") || !strings.Contains(string(skillText), "docs/agents/travel/SKILL.md") {
 		t.Fatalf("unexpected runtime skills:\n%s", string(skillText))
 	}
 }

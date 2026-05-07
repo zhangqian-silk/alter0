@@ -370,8 +370,8 @@ func TestExecuteNaturalLanguageInjectsAgentOwnedSkillAndCreatesRulebook(t *testi
 	if agentSkill.ID != "agent-skill-coding" {
 		t.Fatalf("agent skill id = %q, want agent-skill-coding", agentSkill.ID)
 	}
-	if agentSkill.FilePath != ".alter0/agents/coding/SKILL.md" {
-		t.Fatalf("agent skill file path = %q, want .alter0/agents/coding/SKILL.md", agentSkill.FilePath)
+	if agentSkill.FilePath != "docs/agents/coding/SKILL.md" {
+		t.Fatalf("agent skill file path = %q, want docs/agents/coding/SKILL.md", agentSkill.FilePath)
 	}
 	if !agentSkill.Writable {
 		t.Fatal("expected agent skill writable")
@@ -380,7 +380,7 @@ func TestExecuteNaturalLanguageInjectsAgentOwnedSkillAndCreatesRulebook(t *testi
 		t.Fatalf("agent skill guide = %q, want AGENTS.md boundary", agentSkill.Guide)
 	}
 
-	skillPath := filepath.Join(root, ".alter0", "agents", "coding", "SKILL.md")
+	skillPath := filepath.Join(root, "docs", "agents", "coding", "SKILL.md")
 	data, err := os.ReadFile(skillPath)
 	if err != nil {
 		t.Fatalf("read agent skill file: %v", err)
@@ -389,7 +389,7 @@ func TestExecuteNaturalLanguageInjectsAgentOwnedSkillAndCreatesRulebook(t *testi
 	if !strings.Contains(content, "# Coding Agent Skill") {
 		t.Fatalf("unexpected agent skill content: %q", content)
 	}
-	if !strings.Contains(content, ".alter0/agents/coding/AGENTS.md") {
+	if !strings.Contains(content, "docs/agents/coding/AGENTS.md") {
 		t.Fatalf("expected agent skill content to distinguish AGENTS.md, got %q", content)
 	}
 }
@@ -440,6 +440,60 @@ func TestExecuteNaturalLanguageKeepsAgentOwnedSkillWhenExcluded(t *testing.T) {
 	}
 }
 
+func TestExecuteNaturalLanguageDoesNotMigrateLegacyAgentOwnedSkill(t *testing.T) {
+	root := t.TempDir()
+	legacySkillPath := filepath.Join(root, ".alter0", "agents", "coding", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(legacySkillPath), 0o755); err != nil {
+		t.Fatalf("mkdir legacy skill dir: %v", err)
+	}
+	if err := os.WriteFile(legacySkillPath, []byte("# Legacy Skill\nlegacy runtime content"), 0o644); err != nil {
+		t.Fatalf("write legacy skill: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkills(processor, nil, nil)
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-agent-skill-no-legacy",
+		SessionID:   "s-agent-skill-no-legacy",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "use coding rules",
+		TraceID:     "t-agent-skill-no-legacy",
+		Metadata: map[string]string{
+			execdomain.AgentIDMetadataKey:   "coding",
+			execdomain.AgentNameMetadataKey: "Coding Agent",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+
+	projectSkillPath := filepath.Join(root, "docs", "agents", "coding", "SKILL.md")
+	data, err := os.ReadFile(projectSkillPath)
+	if err != nil {
+		t.Fatalf("read project skill file: %v", err)
+	}
+	content := string(data)
+	if strings.Contains(content, "legacy runtime content") {
+		t.Fatalf("expected project skill to ignore legacy runtime content, got %q", content)
+	}
+	if !strings.Contains(content, "# Coding Agent Skill") {
+		t.Fatalf("unexpected project skill content: %q", content)
+	}
+}
+
 func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
 	root := t.TempDir()
 	previousWD, err := os.Getwd()
@@ -479,8 +533,8 @@ func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
 		t.Fatalf("skill context size = %d, want 1", len(skillContext.Skills))
 	}
 	agentSkill := skillContext.Skills[0]
-	if agentSkill.FilePath != ".alter0/agents/travel/SKILL.md" {
-		t.Fatalf("travel agent skill file path = %q, want .alter0/agents/travel/SKILL.md", agentSkill.FilePath)
+	if agentSkill.FilePath != "docs/agents/travel/SKILL.md" {
+		t.Fatalf("travel agent skill file path = %q, want docs/agents/travel/SKILL.md", agentSkill.FilePath)
 	}
 	if !strings.Contains(agentSkill.Description, "travel agent") {
 		t.Fatalf("travel agent skill description = %q, want travel-specific description", agentSkill.Description)
@@ -489,7 +543,7 @@ func TestExecuteNaturalLanguageSeedsTravelAgentOwnedSkill(t *testing.T) {
 		t.Fatalf("travel agent skill guide = %q, want travel-specific guidance", agentSkill.Guide)
 	}
 
-	skillPath := filepath.Join(root, ".alter0", "agents", "travel", "SKILL.md")
+	skillPath := filepath.Join(root, "docs", "agents", "travel", "SKILL.md")
 	data, err := os.ReadFile(skillPath)
 	if err != nil {
 		t.Fatalf("read travel agent skill file: %v", err)
@@ -636,7 +690,7 @@ func TestExecuteNaturalLanguageAutoRecallsSelectedMemorySnippets(t *testing.T) {
 
 func TestExecuteNaturalLanguageInjectsAgentSpecificAgentsMD(t *testing.T) {
 	root := t.TempDir()
-	agentPath := filepath.Join(root, ".alter0", "agents", "researcher", "AGENTS.md")
+	agentPath := filepath.Join(root, "docs", "agents", "researcher", "AGENTS.md")
 	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
 		t.Fatalf("create agent memory dir: %v", err)
 	}
@@ -682,7 +736,7 @@ func TestExecuteNaturalLanguageInjectsAgentSpecificAgentsMD(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected %s in memory context: %+v", memorySelectionAgentsMD, memoryContext.Files)
 	}
-	if got := agentFile.Path; !strings.HasSuffix(got, "/.alter0/agents/researcher/AGENTS.md") {
+	if got := agentFile.Path; !strings.HasSuffix(got, "/docs/agents/researcher/AGENTS.md") {
 		t.Fatalf("unexpected agent AGENTS path: %q", got)
 	}
 	if got := agentFile.Content; got != "scope: researcher only" {
@@ -738,7 +792,7 @@ func TestExecuteNaturalLanguageReturnsMissingAgentSpecificAgentsMDPath(t *testin
 	if file.Exists {
 		t.Fatalf("expected missing agent AGENTS.md path, got %+v", file)
 	}
-	if got := file.Path; !strings.HasSuffix(got, "/.alter0/agents/writing-agent/AGENTS.md") {
+	if got := file.Path; !strings.HasSuffix(got, "/docs/agents/writing-agent/AGENTS.md") {
 		t.Fatalf("unexpected missing agent AGENTS path: %q", got)
 	}
 }
@@ -946,6 +1000,18 @@ func TestExecuteNaturalLanguageAgentSessionProfileMergesCustomInstanceAttributes
 }
 
 func TestExecuteNaturalLanguageSessionProfileExtractorWritesSchemaFieldsBeforeMemoryInjection(t *testing.T) {
+	root := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
 	processor := &stubProcessor{output: "ok"}
 	extractor := &stubSessionProfileExtractor{
 		patch: map[string]string{
@@ -968,7 +1034,7 @@ func TestExecuteNaturalLanguageSessionProfileExtractorWritesSchemaFieldsBeforeMe
 	}
 	service := NewServiceWithSkillsAndSessionProfileExtractor(processor, source, extractor, nil)
 
-	_, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "msg-travel-extract",
 		SessionID:   "session-travel-extract",
 		ChannelID:   "web-default",

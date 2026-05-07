@@ -41,6 +41,9 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected deploy-test-service skill exists")
 	}
+	if got := deploySkill.Metadata[builtinSkillFilePathKey]; got != "docs/skills/deploy-test-service/SKILL.md" {
+		t.Fatalf("deploy-test-service skill file path = %q, want docs/skills/deploy-test-service/SKILL.md", got)
+	}
 	deployGuide := deploySkill.Metadata[builtinSkillGuideKey]
 	if !strings.Contains(deployGuide, "deploy_test_service") || !strings.Contains(deployGuide, "workspace-services") {
 		t.Fatalf("expected deploy-test-service guide covers tool and gateway route, got %q", deployGuide)
@@ -68,11 +71,11 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected artifact-preview skill exists")
 	}
-	if got := artifactPreview.Metadata[builtinSkillFilePathKey]; got != ".alter0/skills/artifact-preview/SKILL.md" {
-		t.Fatalf("artifact-preview skill file path = %q, want .alter0/skills/artifact-preview/SKILL.md", got)
+	if got := artifactPreview.Metadata[builtinSkillFilePathKey]; got != "docs/skills/artifact-preview/SKILL.md" {
+		t.Fatalf("artifact-preview skill file path = %q, want docs/skills/artifact-preview/SKILL.md", got)
 	}
 	artifactGuide := artifactPreview.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(artifactGuide, "scripts/publish_preview_artifact.sh") || !strings.Contains(artifactGuide, "<service>-<short_hash>.alter0.cn") {
+	if !strings.Contains(artifactGuide, "docs/skills/artifact-preview/scripts/publish_preview_artifact.sh") || !strings.Contains(artifactGuide, "<service>-<short_hash>.alter0.cn") {
 		t.Fatalf("expected artifact-preview guide covers helper script and session subdomain host, got %q", artifactGuide)
 	}
 	if !strings.Contains(artifactGuide, "single-label") || !strings.Contains(artifactGuide, "*.alter0.cn") {

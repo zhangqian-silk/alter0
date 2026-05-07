@@ -69,7 +69,7 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillPriorityKey:    "760",
 				builtinSkillDescriptionKey: "Session-scoped preview and test-service deployment playbook for the shared alter0 gateway.",
 				builtinSkillGuideKey:       deployTestServiceSkillGuide(),
-				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join(".alter0", "skills", "deploy-test-service", "SKILL.md")),
+				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join("docs", "skills", "deploy-test-service", "SKILL.md")),
 			},
 		},
 		{
@@ -93,7 +93,7 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillPriorityKey:    "720",
 				builtinSkillDescriptionKey: "Publish text, image, and code artifacts as static preview pages on session-scoped subdomains.",
 				builtinSkillGuideKey:       artifactPreviewSkillGuide(),
-				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join(".alter0", "skills", "artifact-preview", "SKILL.md")),
+				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join("docs", "skills", "artifact-preview", "SKILL.md")),
 			},
 		},
 	}
@@ -189,7 +189,7 @@ func artifactPreviewSkillGuide() string {
 		"# artifact preview",
 		"",
 		"- Use this skill when the task is to publish text, image, or code artifacts to a session-scoped preview subdomain rather than a full application host.",
-		"- Stage the content as files in the current workspace, then run `bash .alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh <session_id> <service_name> --artifact <path> ...`.",
+		"- Stage the content as files in the current workspace, then run `bash docs/skills/artifact-preview/scripts/publish_preview_artifact.sh <session_id> <service_name> --artifact <path> ...`.",
 		"- The helper script assembles a static preview page and deploys it through the shared gateway at `https://<service>-<short_hash>.alter0.cn`.",
 		"- Keep artifact preview hosts certificate-safe by staying on single-label subdomains covered by `*.alter0.cn`; do not use nested hosts such as `https://<service>.<short_hash>.alter0.cn`.",
 		"- Reuse stable service names so repeated deploys refresh the same preview URL instead of creating ad-hoc variants.",

@@ -7,7 +7,7 @@ description: Publish text, image, and code artifacts as static preview pages on 
 
 - Use this skill when the deliverable is a previewable artifact bundle rather than a full application or routed backend service.
 - Materialize the content as files in the current workspace first. This flow is designed for text, images, code snippets, markdown, JSON, and similar static assets.
-- Publish with `bash .alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh <session_id> <service_name> --artifact <path> ...`.
+- Publish with `bash docs/skills/artifact-preview/scripts/publish_preview_artifact.sh <session_id> <service_name> --artifact <path> ...`.
 - The script builds a static index page under `.alter0/preview-artifacts/<service_name>/site/` and deploys it to `https://<service_name>-<short_hash>.alter0.cn`.
 - Keep artifact preview hosts certificate-safe by staying on single-label subdomains covered by `*.alter0.cn`; do not use nested hosts such as `https://<service>.<short_hash>.alter0.cn`.
 - Reuse stable `service_name` values so follow-up deploys refresh the same URL.
@@ -23,7 +23,7 @@ description: Publish text, image, and code artifacts as static preview pages on 
 ## Command Pattern
 
 ```bash
-bash .alter0/skills/artifact-preview/scripts/publish_preview_artifact.sh \
+bash docs/skills/artifact-preview/scripts/publish_preview_artifact.sh \
   "$SESSION_ID" docs-preview \
   --title "API Draft Preview" \
   --artifact docs/api-draft.md \

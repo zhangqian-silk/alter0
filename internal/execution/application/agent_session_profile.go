@@ -70,7 +70,7 @@ func agentSessionProfileRelativePaths(msg shareddomain.UnifiedMessage) []string 
 	if agentID == "" || sessionID == "" {
 		return nil
 	}
-	return agentPrivateRelativePaths(agentID, "sessions", sessionID+".md")
+	return agentRuntimeRelativePaths(agentID, "sessions", sessionID+".md")
 }
 
 func normalizeMemorySessionID(raw string) string {

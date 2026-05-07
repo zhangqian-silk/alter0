@@ -184,8 +184,8 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - `Chat / Agent Runtime` 在浏览器刷新前会把当前活动会话的轻量快照写入 `sessionStorage`；刷新后若服务端会话列表暂时还没返回该会话，前端先用本地快照保住当前会话与消息时间线，再按 `session_id` 补拉单会话详情，避免活跃会话短暂消失或被新的空白 `New` 会话顶替。
 - Agent 请求一旦进入后端执行链，浏览器侧任何交互事件都只影响当前连接状态，不影响 Agent 本身的执行与会话持久化；断开后重新进入历史即可查看最终结果。
 - 每个 Agent 可独立配置名称、system prompt、tool 白名单、公有 Skill 选择、MCP 选择与 Memory Files 选择。
-- Agent 可按 Profile 勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory；其中 `AGENTS.md` 固定解析为当前 `agent_id` 的私有文件 `.alter0/agents/<agent_id>/AGENTS.md`，不与其他 Agent 共享；`USER.md`、`SOUL.md`、长期/日记忆继续作为共享记忆注入执行链路。
-- 所有 Agent 还会自动携带一个私有、可维护的 file-backed Skill，默认文件为 `.alter0/agents/<agent_id>/SKILL.md`；它用于沉淀该 Agent 的可复用工作模式、输出结构、检查清单与稳定偏好，不需要在 Agent Profile 里手工勾选，也不会在 Agent Runtime 的 Skill 面板里被用户取消。
+- Agent 可按 Profile 勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory；其中 `AGENTS.md` 固定解析为当前 `agent_id` 的项目私有文件 `docs/agents/<agent_id>/AGENTS.md`，不与其他 Agent 共享；`USER.md`、`SOUL.md`、长期/日记忆继续作为共享记忆注入执行链路。
+- 所有 Agent 还会自动携带一个私有、可维护的 file-backed Skill，默认文件为 `docs/agents/<agent_id>/SKILL.md`；它用于沉淀该 Agent 的可复用工作模式、输出结构、检查清单与稳定偏好，不需要在 Agent Profile 里手工勾选，也不会在 Agent Runtime 的 Skill 面板里被用户取消。
 - `coding` Agent 的私有 `SKILL.md` 会进一步沉淀 Git 交付规则，例如 Session repo 完整 clone、认证签名提交、测试页部署成功后的快速 `gh` PR/merge 流程与交付汇报口径。
 - `AGENTS.md` 与私有 `SKILL.md` 职责分离：`AGENTS.md` 负责当前 Agent 的协作边界、仓库/工作区操作规则与交付约束；`SKILL.md` 负责该 Agent 自身的可复用打法、模板和长期偏好。一次性任务细节仍应留在当前任务或记忆文件，不写入 Skill。
 - 所有 Agent 会额外自动维护当前 Session 的私有画像文件 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，并以只读 `Agent Session Profile` 注入执行链路；该文件用于沉淀当前 Agent 在该 Session 内的稳定工作上下文与结构化实例属性。实例属性支持通过请求 metadata 增量写入，统一落在 `## Instance Attributes` 区块，适合承载 `travel` 场景的 `city / district / days / hotel_area` 一类会话态事实；`coding` 场景还会自动补齐 `repository_path / remote_repository / branch / base_branch / preview_url / preview_subdomain` 等仓库与预览属性。`travel` 的只读 `guide_html_url` 不再预先写入 profile 文件，而是仅在当前 Session 已成功发布公开只读 `travel` 服务时，由 Web 聚合层按实时注册结果补齐。每个 Agent 还可预设自己的 Session Profile 字段定义与显式 deliverables contract，内置 `coding`、`writing`、`travel` 已分别补齐仓库、写作、城市行程与最终交付物约束；当前 Agent 的 deliverables 会同步显示在 Agent Runtime `Details` 面板，并在存在 `session_attribute_key` 绑定时直接关联到当前 Session Profile 属性值。执行前运行时会先走一条旁路 `Session Profile` 抽取链路：优先基于字段 schema 从本轮自然语言提取可写字段，再把 patch 合并回 profile；默认实现使用受限 Codex 窄调用作为 fallback，而不是复用主 Agent 的长上下文会话。
@@ -264,7 +264,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 1. `travel` 的显示名称为 `Travel Agent`。
 2. `travel` 负责旅游任务的专项执行与结果收口，沿用统一的 “Agent 协助编排，Codex CLI 负责具体执行” 模型。
-3. 旅游领域的稳定规则继续沉淀在私有 file-backed Skill `.alter0/agents/travel/SKILL.md`，用于约束城市行程、地铁、美食与地图输出结构。
+3. 旅游领域的稳定规则继续沉淀在私有 file-backed Skill `docs/agents/travel/SKILL.md`，用于约束城市行程、地铁、美食与地图输出结构。
 4. `travel` 作为 Agent Runtime 可选入口直接出现在 `/api/agents` 列表中，支持用户显式切换到旅游专项执行链路。
 5. `travel` 在正常对话之外，还要求额外生成一份 HTML 格式的旅游攻略，并把它发布到当前 Session 的公开只读子域名 `https://travel-<session_short_hash>.alter0.cn`；该域名不需要登录。只有当前请求已经在当前 Session 工作区根目录生成或更新了对应的 `index.html` 时，才允许把这份静态攻略作为 `travel` 服务发布；运行时不会再伪造、补写或代发 fallback 页面，缺失或错误页面会直接阻断完成。新生成的攻略页必须同时兼容桌面端与移动端阅读。HTML 内容结构要求先按分类列出完整推荐池，再进入行程计划；吃喝需拆分小吃、早点、特色菜、特色饮品，并兼顾老字号与大众点评高分项，景点需区分公园、博物馆、表演等类型，住宿需给出不同价格带或档位的热门酒店；在此基础上允许按城市实际情况灵活补充夜游、集市、游船、温泉、滑雪、庙会等城市特有分类；各类推荐都要标注数据来源。
 
@@ -566,9 +566,9 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 
 1. 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service` 与 `frontend-design` 四个内置 Skill。
 2. `memory` Skill 用于向 Agent / Codex 明确记忆文件的读取决策、写入路由、冲突优先级与禁止写入项，建议与 `memory_files` 一起启用。
-3. `deploy-test-service` 与 `frontend-design` 都是项目内置的 file-backed Skill，默认文件分别位于 `.alter0/skills/deploy-test-service/SKILL.md` 与 `docs/skills/frontend-design/SKILL.md`；前者约束会话级测试服务发布，后者约束前端页面、组件与应用实现的视觉方向、字体/配色/动效/构图质量。
+3. `deploy-test-service`、`frontend-design` 与 `artifact-preview` 都是项目内置的 file-backed Skill，默认文件分别位于 `docs/skills/deploy-test-service/SKILL.md`、`docs/skills/frontend-design/SKILL.md` 与 `docs/skills/artifact-preview/SKILL.md`；`artifact-preview` 的发布脚本位于 `docs/skills/artifact-preview/scripts/publish_preview_artifact.sh`。
 4. `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service` 与 `frontend-design`，进入 Coding Agent Runtime 后即可继承仓库记忆、预览发布与前端设计规则。
-5. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `.alter0/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Agent Runtime 的 Skill 面板会展示当前 Agent 私有 Skill，但该项固定启用且不可取消；可选区只列出 `memory`、`deploy-test-service`、`frontend-design` 等公有 Skill。
+5. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `docs/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Agent Runtime 的 Skill 面板会展示当前 Agent 私有 Skill，但该项固定启用且不可取消；可选区只列出 `memory`、`deploy-test-service`、`frontend-design` 等公有 Skill。
 6. `travel` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食与地图输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
 
 ### Agent
@@ -627,8 +627,8 @@ curl -X POST http://127.0.0.1:18088/api/agent/messages \
 4. Agent 运行时固定采用“Codex CLI 负责具体执行、Agent 负责理解和驱动”的模式：稳定工具面包括 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，系统会自动补充收口工具 `complete`；允许委派的 Agent 可额外启用 `delegate_agent`；`coding` Agent 额外启用 `deploy_test_service`。`search_memory` 负责在已解析的记忆文件内按关键字检索历史偏好、缩写和上下文，再配合 `read_memory` / `write_memory` 做精读和更新。存在可用 Provider 且进入 Agent / ReAct 链路时，Agent 作为用户与 Codex 之间的代理层，在自身侧消化 system prompt、Skill、记忆与会话上下文，并只把当前执行所需的最小指令交给 `codex_exec`；不存在 Provider、Agent 初始化失败或 Terminal 直连 Codex 时，运行时会在当前会话工作区内生成独立 `codex-home/`、原生 `config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 MCP、Skill、Memory 与运行时信息直接编译成 Codex 原生运行配置。`coding` Agent 会优先把实质性开发与验证步骤交给 `codex_exec`，并按每轮执行结果继续推进后续步骤；仓库类执行默认切到当前 Session 独立的 repo 完整 clone `.alter0/workspaces/sessions/<session_id>/repo`，该 clone 自带自己的 `.git` 元数据并允许直接分支与提交，运行时同步维护源仓库路径、独立 repo clone 路径、活动分支、会话工作区、短哈希预览域名与 PR 交付规则。需要测试页面或附加测试服务时，完成实现后必须先通过 `/api/control/workspace-services/{session_id}/{service_id}` 或 `scripts/deploy_test_service.sh` 把当前工作区注册到对应短哈希域名再结束本轮交付；默认 `web` 路径会把当前分支后端启动命令交给共享运行时托管，再把子域名直接路由到这份后端。
 5. `Chat` 默认绑定 `main` Agent；`Agent` 页面作为其余入口 Agent 的统一运行页，并按目标 Agent 隔离维护独立会话历史；`Alter0/main` 不在 Agent 页面中作为可选 Agent 展示，具备独立前端入口的 Agent 不进入该页历史。
 6. Agent 的公有 Skill、MCP 与 Memory Files 选择会在执行前先解析为运行时上下文；当前 Agent 的私有 Skill 始终自动注入，不受前端取消或 `alter0.skills.exclude` 排除。Agent / ReAct 路径由 Agent 自身吸收这些规则并仅向 Codex 下发当前步骤指令；直连 Codex 路径则把解析结果编译到当前会话的原生 Codex Runtime 中，Memory Files 的自动召回片段会写入 `.alter0/codex-runtime/memory/recall.md` 等工作区文件。同一 Session 的短期记忆会在内存窗口不足时从持久化 session history 回填最近完成轮次。
-7. 内置 `memory` Skill 会明确记忆文件的读写逻辑：按任务类型决定先读哪些文件、按信息类型决定写入哪个文件、遇到冲突时按 `SOUL.md > AGENTS.md > 长期记忆 > 日记忆` 收敛；其中 `AGENTS.md` 固定为当前 Agent 的非共享规则文件 `.alter0/agents/<agent_id>/AGENTS.md`，`USER.md`、`SOUL.md` 与长期/日记忆继续共享；实际文件快照仍由 `memory_files` 注入提供。
-8. 每个 Agent 还会自动拿到自己的私有 Skill 文件 `.alter0/agents/<agent_id>/SKILL.md`；运行时会把它作为可写 Skill 上下文注入，Agent 需要在用户提出稳定、可复用、会影响后续该 Agent 行为的偏好时按需更新它，而不是把一次性任务细节写进去。
+7. 内置 `memory` Skill 会明确记忆文件的读写逻辑：按任务类型决定先读哪些文件、按信息类型决定写入哪个文件、遇到冲突时按 `SOUL.md > AGENTS.md > 长期记忆 > 日记忆` 收敛；其中 `AGENTS.md` 固定为当前 Agent 的非共享规则文件 `docs/agents/<agent_id>/AGENTS.md`，`USER.md`、`SOUL.md` 与长期/日记忆继续共享；实际文件快照仍由 `memory_files` 注入提供。
+8. 每个 Agent 还会自动拿到自己的私有 Skill 文件 `docs/agents/<agent_id>/SKILL.md`；运行时会把它作为可写 Skill 上下文注入，Agent 需要在用户提出稳定、可复用、会影响后续该 Agent 行为的偏好时按需更新它，而不是把一次性任务细节写进去。
 9. `memory_files` 当前支持：`user_md`、`soul_md`、`agents_md`、`memory_long_term`、`memory_daily_today`、`memory_daily_yesterday`。
 10. Memory Files 注入会携带文件内容、绝对路径、是否存在、最近更新时间；文件不存在时仍会暴露预期路径，便于 Agent 直接创建并写入。
 11. Web `Agent Profiles` 页面用于管理用户自定义 Agent Profile；内置 Agent 由服务托管；`Chat` 页面绑定 `Alter0`；`Agent` 页面作为其余专项入口 Agent 的通用交互入口。

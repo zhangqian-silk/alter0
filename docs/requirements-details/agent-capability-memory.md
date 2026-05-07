@@ -76,7 +76,7 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 - Skill 配置包含 `description`、`guide`、排序、启停状态、作用域、文件路径与可写属性。
 - 默认提供 `memory` Skill，说明记忆文件职责、读取决策、写入路由、冲突优先级与禁止写入项；公有 Skill 侧还提供 `deploy-test-service`、`frontend-design` 与 `artifact-preview`，分别覆盖测试服务发布、前端实现规则与静态产物预览发布。
 - `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service` 与 `frontend-design`，使仓库类任务稳定带上记忆、预览发布和前端设计规则；运行时仍可在 `Details > Skills` 中对公有 Skill 做会话级调整。
-- 每个 Agent 自动附带私有 file-backed Skill `.alter0/agents/<agent_id>/SKILL.md`。
+- 每个 Agent 自动附带私有 file-backed Skill `docs/agents/<agent_id>/SKILL.md`。
 - 私有 Skill 用于沉淀可复用工作模式、输出结构、检查清单、偏好和长期协作约束。
 - 一次性任务细节不得写入私有 Skill。
 
@@ -93,7 +93,7 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 
 - `USER.md`：共享用户信息与长期偏好。
 - `SOUL.md`：高优先级强制要求，冲突时覆盖普通记忆。
-- `AGENTS.md`：当前 Agent 私有规则文件，路径固定为 `.alter0/agents/<agent_id>/AGENTS.md`。
+- `AGENTS.md`：当前 Agent 私有规则文件，路径固定为 `docs/agents/<agent_id>/AGENTS.md`。
 - `MEMORY.md / memory.md`：共享长期记忆。
 - `memory/YYYY-MM-DD.md`：天级记忆。
 - `Agent Session Profile`：当前 Agent 当前 Session 的只读画像与实例属性文件，路径固定为 `.alter0/agents/<agent_id>/sessions/<session_id>.md`。

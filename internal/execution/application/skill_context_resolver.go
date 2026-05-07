@@ -264,7 +264,7 @@ func agentOwnedSkillDocument(agentID string, agentName string, capabilities []st
 			"",
 			"## Keep Out",
 			"",
-			"- Repository or workspace operating rules that belong in `.alter0/agents/" + normalizeMemoryAgentID(trimmedAgentID) + "/AGENTS.md`.",
+			"- Repository or workspace operating rules that belong in `docs/agents/" + normalizeMemoryAgentID(trimmedAgentID) + "/AGENTS.md`.",
 			"- One-off trip constraints, temporary dates, current-session notes, or single-city exceptions that should stay in the target guide data.",
 			"- Shared repository policy or non-travel reusable behavior that should live outside this travel-agent skill.",
 			"",
@@ -290,7 +290,7 @@ func agentOwnedSkillDocument(agentID string, agentName string, capabilities []st
 		"",
 		"## Keep Out",
 		"",
-		"- Repository or workspace operating rules that belong in `.alter0/agents/" + normalizeMemoryAgentID(trimmedAgentID) + "/AGENTS.md`.",
+		"- Repository or workspace operating rules that belong in `docs/agents/" + normalizeMemoryAgentID(trimmedAgentID) + "/AGENTS.md`.",
 		"- One-off task constraints, temporary facts, or current-session notes.",
 		"- Cross-agent shared domain rules that should live in a global or product-level skill instead.",
 		"",
@@ -322,13 +322,6 @@ func ensureAgentOwnedSkillFile(agentID string, relativePath string, content stri
 		return nil
 	} else if !os.IsNotExist(err) {
 		return err
-	}
-	for _, legacyPath := range agentPrivateRelativePaths(agentID, "SKILL.md")[1:] {
-		legacyAbsolutePath := filepath.Join(repoRoot, filepath.FromSlash(legacyPath))
-		if raw, err := os.ReadFile(legacyAbsolutePath); err == nil {
-			content = string(raw)
-			break
-		}
 	}
 	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
 		return err
