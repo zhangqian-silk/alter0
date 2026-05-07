@@ -13,6 +13,29 @@ func agentPrivatePathIDs(agentID string) []string {
 }
 
 func agentPrivateRelativePaths(agentID string, parts ...string) []string {
+	return agentProjectRelativePaths(agentID, parts...)
+}
+
+func agentProjectRelativePaths(agentID string, parts ...string) []string {
+	ids := agentPrivatePathIDs(agentID)
+	if len(ids) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(ids))
+	seen := map[string]struct{}{}
+	for _, id := range ids {
+		segments := append([]string{"docs", "agents", id}, parts...)
+		path := filepath.ToSlash(filepath.Join(segments...))
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	return paths
+}
+
+func agentRuntimeRelativePaths(agentID string, parts ...string) []string {
 	ids := agentPrivatePathIDs(agentID)
 	if len(ids) == 0 {
 		return nil

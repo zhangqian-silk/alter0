@@ -45,7 +45,7 @@
 | --- | --- | --- | --- | --- |
 | `SOUL.md` | 强制上下文、不可降级规则 | 人工维护 | 长期 | 是 |
 | `USER.md` | 用户画像、协作偏好、输出偏好 | 人工维护 | 长期 | 是 |
-| `.alter0/agents/<agent_id>/AGENTS.md` | 当前 Agent 私有的执行规范、协作规则与补充约束 | 人工维护 | 长期 | 否 |
+| `docs/agents/<agent_id>/AGENTS.md` | 当前 Agent 私有的执行规范、协作规则与补充约束 | 人工维护 | 长期 | 否 |
 | `.alter0/memory/long-term/MEMORY.md` | 长期记忆主存 | 系统升级写入、人工维护 | 长期 | 否 |
 | `.alter0/memory/YYYY-MM-DD.md` | 天级记忆日志 | 系统追加写入 | 天级滚动 | 否 |
 | `.alter0/tasks/{task_id}/meta.json` | 任务状态与基础元数据 | 系统写入 | 任务生命周期 | 否 |
@@ -57,7 +57,7 @@
 
 | 层级 | 名称 | 作用 | 主载体 | 默认写入方式 | 默认读取方式 |
 | --- | --- | --- | --- | --- | --- |
-| L0 | System Context | 注入身份、强制规则、协作约束 | `SOUL.md`、`USER.md`、`.alter0/agents/<agent_id>/AGENTS.md`、Agent Profile | 人工维护、控制面配置 | 每次请求固定注入 |
+| L0 | System Context | 注入身份、强制规则、协作约束 | `SOUL.md`、`USER.md`、`docs/agents/<agent_id>/AGENTS.md`、Agent Profile | 人工维护、控制面配置 | 每次请求固定注入 |
 | L1 | Session History | 保留当前会话真实交互轨迹 | 会话消息主表、流式事件、工具轨迹 | 请求追加写入 | 最近消息窗口 |
 | L2 | Session Summary | 承接长会话压缩结果与待办状态 | 会话摘要记录 | 系统自动压缩回写 | 每次请求按预算注入 |
 | L3 | Daily Memory | 沉淀当天事实、偏好候选、任务结果候选 | `.alter0/memory/YYYY-MM-DD.md` | 系统抽取写入 | 按时间和相关性召回 |
@@ -70,7 +70,7 @@
 
 1. `session`：仅当前 `session_id` 可见。
 2. `principal`：当前用户主体可见；单用户部署默认取 `default`。
-3. `agent_profile`：仅指定 `agent_id` 可见，例如 `.alter0/agents/<agent_id>/AGENTS.md`。
+3. `agent_profile`：仅指定 `agent_id` 可见，例如 `docs/agents/<agent_id>/AGENTS.md`。
 4. `workspace`：仅当前工作区或项目上下文可见。
 5. `global`：用于 `SOUL.md` 等高优先级强制上下文。
 
@@ -90,7 +90,7 @@
 | 平台保留安全边界 | 最高 | Chat、Agent |
 | `SOUL.md` | 最高 | Chat、Agent |
 | `USER.md` | 高 | Chat、Agent |
-| 当前 Agent 的 `.alter0/agents/<agent_id>/AGENTS.md` | 高 | Agent |
+| 当前 Agent 的 `docs/agents/<agent_id>/AGENTS.md` | 高 | Agent |
 | Agent Profile | 高 | Agent |
 | 运行时选择项（Provider / Model / Tools / Skills / MCP） | 高 | Chat、Agent |
 
@@ -101,7 +101,7 @@
 1. 平台保留安全边界与运行时提示。
 2. `SOUL.md`
 3. `USER.md`
-4. 当前 Agent 的 `.alter0/agents/<agent_id>/AGENTS.md`
+4. 当前 Agent 的 `docs/agents/<agent_id>/AGENTS.md`
 5. Agent Profile 专属上下文
 6. 本次请求的运行时选择项
 
@@ -110,7 +110,7 @@
 1. `SOUL.md` 冲突时优先于普通长期记忆、天级记忆与任务摘要。
 2. `Chat` 默认不注入 Agent Profile。
 3. `Agent` 每次执行必须注入当前 `agent_id` 对应 Profile。
-4. `AGENTS.md` 不跨 Agent 共享；不同 Agent 只能读取和维护各自 `.alter0/agents/<agent_id>/AGENTS.md`。
+4. `AGENTS.md` 不跨 Agent 共享；不同 Agent 只能读取和维护各自 `docs/agents/<agent_id>/AGENTS.md`。
 5. `system` 文件变更后立即影响新请求，不依赖记忆索引刷新。
 
 ## 8. 会话历史与压缩要求
@@ -307,7 +307,7 @@
 一次请求的上下文构建顺序应遵循以下逻辑：
 
 1. 注入平台保留 `system` 提示。
-2. 注入 `SOUL.md`、`USER.md`、当前 Agent 的 `.alter0/agents/<agent_id>/AGENTS.md` 与 Agent Profile。
+2. 注入 `SOUL.md`、`USER.md`、当前 Agent 的 `docs/agents/<agent_id>/AGENTS.md` 与 Agent Profile。
 3. 注入当前会话摘要。
 4. 注入最近消息窗口。
 5. 根据请求主题召回长期记忆、天级记忆与任务摘要。
@@ -346,7 +346,7 @@
 1. 长期记忆与天级记忆统一使用 Markdown 存储。
 2. 任务详情与原始日志继续使用 `.alter0/tasks/*` 结构。
 3. 会话主数据继续沿用现有 Session 存储模型。
-4. `SOUL.md`、`USER.md` 作为共享上下文文件单独维护；`AGENTS.md` 按 Agent 分散维护在 `.alter0/agents/<agent_id>/AGENTS.md`。
+4. `SOUL.md`、`USER.md` 作为共享上下文文件单独维护；`AGENTS.md` 按 Agent 分散维护在 `docs/agents/<agent_id>/AGENTS.md`。
 
 ### 15.2 派生索引要求
 

@@ -40,7 +40,7 @@ This file is the private reusable rulebook for the `travel` travel agent.
 
 ## Keep Out
 
-- Repository or workspace operating rules that belong in `.alter0/agents/travel/AGENTS.md`.
+- Repository or workspace operating rules that belong in `docs/agents/travel/AGENTS.md`.
 - One-off trip constraints, temporary dates, current-session notes, or single-city exceptions that should stay in the target guide data.
 - Shared repository policy or non-travel reusable behavior that should live outside this travel-agent skill.
 
