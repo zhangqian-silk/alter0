@@ -3,6 +3,18 @@ import { useState } from "react";
 import { ConversationWorkspace } from "./ConversationWorkspace";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../app/WorkbenchContext";
 
+const { buildChatTimelineItemsMock } = vi.hoisted(() => ({
+  buildChatTimelineItemsMock: vi.fn(({ messages }: { messages: Array<{ id: string }> }) =>
+    messages.map((message) => ({
+      id: message.id,
+      className: "msg assistant",
+      articleProps: { "data-message-id": message.id },
+      bubbleClassName: "msg-bubble",
+      blocks: [],
+    })),
+  ),
+}));
+
 const runtimeMock = {
   route: "chat" as const,
   compact: true,
@@ -75,18 +87,13 @@ const runtimeMock = {
 
 vi.mock("./ConversationRuntimeProvider", () => ({
   useConversationRuntime: () => runtimeMock,
+  useConversationRuntimeWorkspace: () => runtimeMock,
+  useConversationRuntimeComposer: () => runtimeMock,
 }));
 
 vi.mock("../shell/components/ChatMessageRegion", () => ({
   ChatMessageRegion: () => <div data-testid="chat-message-region">messages</div>,
-  buildChatTimelineItems: ({ messages }: { messages: Array<{ id: string }> }) =>
-    messages.map((message) => ({
-      id: message.id,
-      className: "msg assistant",
-      articleProps: { "data-message-id": message.id },
-      bubbleClassName: "msg-bubble",
-      blocks: [],
-    })),
+  buildChatTimelineItems: buildChatTimelineItemsMock,
 }));
 
 function renderWorkspace(overrides: Partial<WorkbenchContextValue> = {}) {
@@ -202,6 +209,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.closeInspector.mockClear();
     runtimeMock.selectModel.mockClear();
     runtimeMock.toggleSkill.mockClear();
+    buildChatTimelineItemsMock.mockClear();
   });
 
   it("keeps the shared workspace header visible alongside terminal-style mobile actions for an empty chat workspace", () => {
@@ -465,6 +473,66 @@ describe("ConversationWorkspace", () => {
     expect(within(detailsPanel).queryByText("OpenRouter")).not.toBeInTheDocument();
 
     view.unmount();
+  });
+
+  it("does not rebuild the timeline when only the composer draft changes", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "New",
+      messages: [
+        {
+          id: "message-1",
+          role: "assistant",
+          text: "Existing reply",
+          attachments: [],
+          route: "nl",
+          source: "codex_exec",
+          status: "done",
+          error: false,
+          at: Date.parse("2026-04-23T09:01:00Z"),
+          processSteps: [],
+          agentProcessCollapsed: false,
+          taskID: "",
+          taskStatus: "",
+          taskPending: false,
+          taskResultDelivered: false,
+          taskResultFor: "",
+        },
+      ],
+    };
+    runtimeMock.sessions = [
+      {
+        id: "session-1",
+        title: "New",
+        status: "ready",
+        messages: runtimeMock.activeSession.messages,
+      },
+    ];
+
+    const contextValue: WorkbenchContextValue = {
+      route: "chat",
+      language: "en",
+      navigate: vi.fn(),
+      isMobileViewport: false,
+      mobileNavOpen: false,
+      mobileSessionPaneOpen: false,
+      toggleMobileNav: vi.fn(),
+      toggleMobileSessionPane: vi.fn(),
+      closeMobileNav: vi.fn(),
+      closeMobileSessionPane: vi.fn(),
+    };
+    const tree = (
+      <WorkbenchContext.Provider value={contextValue}>
+        <ConversationWorkspace language="en" />
+      </WorkbenchContext.Provider>
+    );
+    const view = render(tree);
+    expect(buildChatTimelineItemsMock).toHaveBeenCalledTimes(1);
+
+    runtimeMock.draft = "draft update";
+    view.rerender(tree);
+
+    expect(buildChatTimelineItemsMock).toHaveBeenCalledTimes(1);
   });
 
   it("keeps agent private skills locked and only lists public skills as available", () => {

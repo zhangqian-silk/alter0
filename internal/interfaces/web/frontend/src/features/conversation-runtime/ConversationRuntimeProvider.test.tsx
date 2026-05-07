@@ -1,9 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ConversationRuntimeProvider, useConversationRuntime } from "./ConversationRuntimeProvider";
+import {
+  ConversationRuntimeProvider,
+  useConversationRuntime,
+  useConversationRuntimeComposer,
+  useConversationRuntimeWorkspace,
+} from "./ConversationRuntimeProvider";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
+const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 
 const apiClientMock = {
@@ -58,6 +64,36 @@ function RuntimeHarness() {
       </button>
       <output data-testid="assistant-text">{assistantMessage?.text || ""}</output>
     </div>
+  );
+}
+
+function DraftHarness() {
+  const runtime = useConversationRuntimeComposer();
+
+  return (
+    <div>
+      <button type="button" onClick={() => runtime.setDraft("draft update")}>
+        set draft
+      </button>
+      <output data-testid="draft-value">{runtime.draft}</output>
+    </div>
+  );
+}
+
+let workspaceRenderCount = 0;
+
+function WorkspaceRenderHarness() {
+  const runtime = useConversationRuntimeWorkspace();
+  workspaceRenderCount += 1;
+  return <output data-testid="workspace-render-title">{runtime.activeSession?.title || ""}</output>;
+}
+
+function ComposerDraftSetterHarness() {
+  const runtime = useConversationRuntimeComposer();
+  return (
+    <button type="button" onClick={() => runtime.setDraft("workspace split draft")}>
+      set composer draft
+    </button>
   );
 }
 
@@ -201,6 +237,7 @@ function MessageListHarness() {
 describe("ConversationRuntimeProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    workspaceRenderCount = 0;
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
@@ -591,6 +628,56 @@ describe("ConversationRuntimeProvider", () => {
     });
     expect(storedFile?.previewURL).toBeUndefined();
     expect(storedFile?.dataURL).toBeUndefined();
+  });
+
+  it("defers composer draft storage writes while the user is typing", async () => {
+    vi.useFakeTimers();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <DraftHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "set draft" }));
+    expect(screen.getByTestId("draft-value")).toHaveTextContent("draft update");
+
+    const composerDraftWrites = () =>
+      setItemSpy.mock.calls.filter(([key]) => key === COMPOSER_DRAFT_STORAGE_KEY);
+
+    expect(composerDraftWrites()).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(composerDraftWrites()).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+
+    expect(composerDraftWrites()).toHaveLength(1);
+    const storedDrafts = JSON.parse(String(composerDraftWrites()[0]?.[1]) || "{}") as Record<string, string>;
+    expect(Object.values(storedDrafts)).toContain("draft update");
+
+    vi.useRealTimers();
+  });
+
+  it("does not rerender workspace consumers when only the composer draft changes", async () => {
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <WorkspaceRenderHarness />
+        <ComposerDraftSetterHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("workspace-render-title")).toHaveTextContent("Image session"));
+    const settledRenderCount = workspaceRenderCount;
+
+    fireEvent.click(screen.getByRole("button", { name: "set composer draft" }));
+
+    expect(workspaceRenderCount).toBe(settledRenderCount);
   });
 
   it("allows clicking the active inspector tab again to collapse only that tab content", async () => {

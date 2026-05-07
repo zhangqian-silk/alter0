@@ -111,6 +111,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - `Chat / Agent Runtime / Terminal` 的阅读定位条必须以悬浮 overlay 形式停靠在消息区右下角，不参与时间线正文排版；空白会话或少量消息场景下，消息区本身不得因为定位条占位而被额外撑高并出现无意义滚动。
 - `Chat / Agent Runtime` 的会话图片资产统一落在当前 Session 工作区：用户选图后前端通过 `POST /api/sessions/{session_id}/attachments` 把原图与预览图写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，随后消息请求、最近会话恢复与页面重开都只保留 `asset_url / preview_url` 引用；assistant 最终回复里的外链 markdown 图片也会在返回前下载进同一目录并改写成本地附件 URL，避免会话历史长期依赖远端外链或把原始大图 `data_url` 堆进浏览器存储。
 - `Chat / Agent Runtime` 首页 Composer 收敛为双层紧凑输入面：上层为单一主输入区，下层工具栏左侧提供正方形低圆角的会话设置与附件按钮，右侧提供紧凑 icon submit；桌面与移动端都压缩外层留白、输入高度和发送按钮体量，同时保持主输入区满宽铺开、具备足够横向留白和更高的可读输入面；发送按钮直接复用 Terminal 的紧凑 icon submit 皮肤；PC 端上传、发送、状态、详情和短标识控件都采用低圆角矩形，输入区、底部工具栏、会话卡片和 `Details` 面板沿同一套浅色 terminal-runtime 皮肤出图，不再混用默认 terminal footer slab 与旧式轻表单观感；空态工作区不允许保留可拖拽滚动，把头部和输入区顶离可视区。
+- `Chat / Agent Runtime` 的桌面端输入链路优先保证低延迟：草稿写入先更新当前输入态，再延迟落盘到浏览器草稿缓存；消息时间线、Markdown 输出与 Process 结构在仅有草稿变化时不得整段重建，避免长会话下输入时出现明显卡顿。
 - `Chat / Agent Runtime` Composer 支持最多 5 张图片附件：前端按会话草稿缓存附件、提供缩略图预览与移除操作，用户消息时间线与最近会话恢复仅保留图片预览资产，不再重复持久化原始大图 payload；助手消息中的 markdown 图片会直接以内联图片方式懒加载显示。仅支持视觉输入的模型允许发送带图消息；图片请求不会切到异步 Task，也不会在模型链失败后静默降级到 Codex 文本执行。
 - `Chat / Agent Runtime` 的会话侧栏与消息时间线现在以服务端恢复为准：运行页通过专用会话读取接口从持久化 Session history 恢复会话摘要、目标 Agent、Model、Tools / Skills / MCP 选择与历史消息；页面初始化中的详情回填若晚于本地新发消息，不得覆盖当前未完成或更新中的本地时间线。
 - `Chat / Agent Runtime` 刷新恢复采用“双层快照 + 服务端回源”策略：浏览器本地除当前活动会话外，还会保留最近会话列表的轻量快照；当服务端集合接口短暂漏掉某个刚创建或最近活跃的会话时，前端仍保留该会话在侧栏中的可见性，并继续按 `session_id` 单独回源详情，避免刷新其他会话后新会话从列表里瞬时消失。
