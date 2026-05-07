@@ -1,4 +1,5 @@
 import {
+  useCallback,
   createContext,
   useContext,
   useEffect,
@@ -22,6 +23,7 @@ const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
+const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
 const STREAM_ENDPOINT = "/api/messages/stream";
 const AGENT_STREAM_ENDPOINT = "/api/agent/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
@@ -313,7 +315,32 @@ type ConversationRuntimeContextValue = {
   toggleAgentProcess: (messageID: string) => void;
 };
 
-const ConversationRuntimeContext = createContext<ConversationRuntimeContextValue | null>(null);
+type ConversationRuntimeWorkspaceContextValue = Omit<
+  ConversationRuntimeContextValue,
+  "draft"
+  | "draftAttachments"
+  | "setDraft"
+  | "addDraftAttachments"
+  | "removeDraftAttachment"
+  | "clearDraftAttachments"
+  | "sendPrompt"
+>;
+
+type ConversationRuntimeComposerContextValue = Pick<
+  ConversationRuntimeContextValue,
+  "route"
+  | "draft"
+  | "draftAttachments"
+  | "selectedModelSupportsVision"
+  | "setDraft"
+  | "addDraftAttachments"
+  | "removeDraftAttachment"
+  | "clearDraftAttachments"
+  | "sendPrompt"
+>;
+
+const ConversationRuntimeWorkspaceContext = createContext<ConversationRuntimeWorkspaceContextValue | null>(null);
+const ConversationRuntimeComposerContext = createContext<ConversationRuntimeComposerContextValue | null>(null);
 
 type ProviderProps = {
   route: ConversationRoute;
@@ -1171,12 +1198,15 @@ export function ConversationRuntimeProvider({
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
+  const composerDraftPersistTimerRef = useRef<number>(0);
+  const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
+  const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
 
   const activeSessions = sessionsByRoute[route];
   const activeSessionID = activeSessionByRoute[route];
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
   const activeDraftAttachments = activeSessionID ? composerAttachmentDrafts[activeSessionID] || [] : [];
-  const availableProviders = runtimeProviders(providers);
+  const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
   const activeAgent = activeSession?.target.type === "agent"
     ? agents.find((agent) => normalizeText(agent.id) === normalizeText(activeSession.target.id)) || null
     : null;
@@ -1187,7 +1217,26 @@ export function ConversationRuntimeProvider({
     ? agentSessionProfiles[activeSessionProfileKey] || buildFallbackAgentSessionProfile(activeAgent, activeSession?.id || "")
     : null;
 
-  const ensureSession = (
+  useEffect(() => {
+    latestComposerDraftsRef.current = composerDrafts;
+    window.clearTimeout(composerDraftPersistTimerRef.current);
+    composerDraftPersistTimerRef.current = window.setTimeout(() => {
+      persistComposerDrafts(latestComposerDraftsRef.current);
+      composerDraftPersistTimerRef.current = 0;
+    }, COMPOSER_DRAFT_PERSIST_DELAY_MS);
+    return () => window.clearTimeout(composerDraftPersistTimerRef.current);
+  }, [composerDrafts]);
+
+  useEffect(() => {
+    latestComposerAttachmentDraftsRef.current = composerAttachmentDrafts;
+  }, [composerAttachmentDrafts]);
+
+  useEffect(() => () => {
+    window.clearTimeout(composerDraftPersistTimerRef.current);
+    persistComposerDrafts(latestComposerDraftsRef.current);
+  }, []);
+
+  const ensureSession = useCallback((
     target?: Partial<ChatTarget> | null,
     preferredActiveState: ActiveSessionState = activeSessionByRoute,
     currentSessions: SessionsState = sessionsByRoute,
@@ -1258,9 +1307,9 @@ export function ConversationRuntimeProvider({
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
     return created;
-  };
+  }, [activeSessionByRoute, agents, route, selectedAgentID, sessionsByRoute]);
 
-  const patchSession = (
+  const patchSession = useCallback((
     routeKey: ConversationRoute,
     sessionID: string,
     updater: (session: ChatSession) => ChatSession,
@@ -1271,7 +1320,7 @@ export function ConversationRuntimeProvider({
         session.id === sessionID ? updater(session) : session,
       ),
     }));
-  };
+  }, []);
 
   const createMessage = (
     role: "user" | "assistant",
@@ -1296,7 +1345,7 @@ export function ConversationRuntimeProvider({
     taskResultFor: patch.taskResultFor || "",
   });
 
-  const appendMessage = (routeKey: ConversationRoute, sessionID: string, message: ChatMessage) => {
+  const appendMessage = useCallback((routeKey: ConversationRoute, sessionID: string, message: ChatMessage) => {
     patchSession(routeKey, sessionID, (session) => ({
       ...session,
       status: message.role === "assistant" && message.error
@@ -1310,9 +1359,9 @@ export function ConversationRuntimeProvider({
       titleAuto: session.titleAuto && message.role !== "user",
       messages: [...session.messages, message],
     }));
-  };
+  }, [patchSession]);
 
-  const setAssistantMessage = (
+  const setAssistantMessage = useCallback((
     routeKey: ConversationRoute,
     sessionID: string,
     messageID: string,
@@ -1331,15 +1380,15 @@ export function ConversationRuntimeProvider({
         message.id === messageID ? { ...message, ...patch } : message,
       ),
     }));
-  };
+  }, [patchSession]);
 
-  const focusSession = (sessionID: string) => {
+  const focusSession = useCallback((sessionID: string) => {
     const nextActiveState = { ...activeSessionByRoute, [route]: sessionID };
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-  };
+  }, [activeSessionByRoute, route]);
 
-  const removeSession = async (sessionID: string) => {
+  const removeSession = useCallback(async (sessionID: string) => {
     try {
       await apiClient.delete(`/api/sessions/${encodeURIComponent(sessionID)}`);
     } catch {
@@ -1355,8 +1404,8 @@ export function ConversationRuntimeProvider({
           ? nextSessionsByRoute[route][0]?.id || ""
           : activeSessionByRoute[route],
     };
-    const nextDrafts = { ...composerDrafts };
-    const nextAttachmentDrafts = { ...composerAttachmentDrafts };
+    const nextDrafts = { ...latestComposerDraftsRef.current };
+    const nextAttachmentDrafts = { ...latestComposerAttachmentDraftsRef.current };
     delete nextDrafts[sessionID];
     delete nextAttachmentDrafts[sessionID];
     setSessionsByRoute(nextSessionsByRoute);
@@ -1366,7 +1415,7 @@ export function ConversationRuntimeProvider({
     persistComposerDrafts(nextDrafts);
     persistComposerAttachmentDrafts(nextAttachmentDrafts);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-  };
+  }, [activeSessionByRoute, apiClient, route, sessionsByRoute]);
 
   const sendMessageFallback = async (
     routeKey: ConversationRoute,
@@ -1969,7 +2018,7 @@ export function ConversationRuntimeProvider({
     ? agents.find((agent) => normalizeText(agent.id) === currentTarget.id) || null
     : null;
 
-  const contextValue = useMemo<ConversationRuntimeContextValue>(() => ({
+  const workspaceValue = useMemo<ConversationRuntimeWorkspaceContextValue>(() => ({
     route,
     compact,
     inspectorOpen,
@@ -1985,8 +2034,6 @@ export function ConversationRuntimeProvider({
       createdAt: session.createdAt,
       active: session.id === activeSessionID,
     })),
-    draft: activeSessionID ? composerDrafts[activeSessionID] || "" : "",
-    draftAttachments: activeDraftAttachments,
     target: currentTarget,
     activeAgent: currentAgent,
     activeSessionProfile,
@@ -2059,49 +2106,6 @@ export function ConversationRuntimeProvider({
     },
     focusSession,
     removeSession,
-    setDraft: (value: string) => {
-      const session = ensureSession();
-      const nextDrafts = { ...composerDrafts, [session.id]: value.slice(0, MAX_COMPOSER_CHARS) };
-      setComposerDrafts(nextDrafts);
-      persistComposerDrafts(nextDrafts);
-    },
-    addDraftAttachments: async (attachments: ComposerAttachment[]) => {
-      const normalized = normalizeStoredAttachments(attachments);
-      if (normalized.length === 0) {
-        return;
-      }
-      const session = ensureSession();
-      const uploaded = await uploadDraftAttachments(session.id, normalized);
-      const existing = composerAttachmentDrafts[session.id] || [];
-      const deduped = new Map<string, ComposerAttachment>();
-      [...existing, ...uploaded].forEach((item) => {
-        deduped.set(item.id, item);
-      });
-      const nextAttachments = Array.from(deduped.values()).slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS);
-      const nextDrafts = { ...composerAttachmentDrafts, [session.id]: nextAttachments };
-      setComposerAttachmentDrafts(nextDrafts);
-      persistComposerAttachmentDrafts(nextDrafts);
-    },
-    removeDraftAttachment: (attachmentID: string) => {
-      const sessionID = activeSession?.id;
-      if (!sessionID) {
-        return;
-      }
-      const nextItems = (composerAttachmentDrafts[sessionID] || []).filter((item) => item.id !== attachmentID);
-      const nextDrafts = { ...composerAttachmentDrafts, [sessionID]: nextItems };
-      setComposerAttachmentDrafts(nextDrafts);
-      persistComposerAttachmentDrafts(nextDrafts);
-    },
-    clearDraftAttachments: () => {
-      const sessionID = activeSession?.id;
-      if (!sessionID) {
-        return;
-      }
-      const nextDrafts = { ...composerAttachmentDrafts, [sessionID]: [] };
-      setComposerAttachmentDrafts(nextDrafts);
-      persistComposerAttachmentDrafts(nextDrafts);
-    },
-    sendPrompt,
     toggleInspector: (tab) => {
       if (!tab) {
         setInspectorOpen((current) => {
@@ -2212,9 +2216,6 @@ export function ConversationRuntimeProvider({
     activeSession,
     language,
     activeSessionID,
-    composerDrafts,
-    composerAttachmentDrafts,
-    activeDraftAttachments,
     currentTarget,
     currentAgent,
     activeSessionProfile,
@@ -2228,20 +2229,97 @@ export function ConversationRuntimeProvider({
     skills,
     activeSessionByRoute,
     removeSession,
+  ]);
+
+  const composerValue = useMemo<ConversationRuntimeComposerContextValue>(() => ({
+    route,
+    draft: activeSessionID ? composerDrafts[activeSessionID] || "" : "",
+    draftAttachments: activeDraftAttachments,
+    selectedModelSupportsVision: selectedModel ? selectedModel.supports_vision !== false : true,
+    setDraft: (value: string) => {
+      const session = ensureSession();
+      const nextDrafts = { ...composerDrafts, [session.id]: value.slice(0, MAX_COMPOSER_CHARS) };
+      setComposerDrafts(nextDrafts);
+    },
+    addDraftAttachments: async (attachments: ComposerAttachment[]) => {
+      const normalized = normalizeStoredAttachments(attachments);
+      if (normalized.length === 0) {
+        return;
+      }
+      const session = ensureSession();
+      const uploaded = await uploadDraftAttachments(session.id, normalized);
+      const existing = composerAttachmentDrafts[session.id] || [];
+      const deduped = new Map<string, ComposerAttachment>();
+      [...existing, ...uploaded].forEach((item) => {
+        deduped.set(item.id, item);
+      });
+      const nextAttachments = Array.from(deduped.values()).slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS);
+      const nextDrafts = { ...composerAttachmentDrafts, [session.id]: nextAttachments };
+      setComposerAttachmentDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(nextDrafts);
+    },
+    removeDraftAttachment: (attachmentID: string) => {
+      const sessionID = activeSession?.id;
+      if (!sessionID) {
+        return;
+      }
+      const nextItems = (composerAttachmentDrafts[sessionID] || []).filter((item) => item.id !== attachmentID);
+      const nextDrafts = { ...composerAttachmentDrafts, [sessionID]: nextItems };
+      setComposerAttachmentDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(nextDrafts);
+    },
+    clearDraftAttachments: () => {
+      const sessionID = activeSession?.id;
+      if (!sessionID) {
+        return;
+      }
+      const nextDrafts = { ...composerAttachmentDrafts, [sessionID]: [] };
+      setComposerAttachmentDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(nextDrafts);
+    },
+    sendPrompt,
+  }), [
+    route,
+    activeSessionID,
+    composerDrafts,
+    activeDraftAttachments,
+    selectedModel,
+    ensureSession,
+    composerAttachmentDrafts,
+    activeSession,
     sendPrompt,
   ]);
 
   return (
-    <ConversationRuntimeContext.Provider value={contextValue}>
-      {children}
-    </ConversationRuntimeContext.Provider>
+    <ConversationRuntimeWorkspaceContext.Provider value={workspaceValue}>
+      <ConversationRuntimeComposerContext.Provider value={composerValue}>
+        {children}
+      </ConversationRuntimeComposerContext.Provider>
+    </ConversationRuntimeWorkspaceContext.Provider>
   );
 }
 
-export function useConversationRuntime() {
-  const value = useContext(ConversationRuntimeContext);
+export function useConversationRuntimeWorkspace() {
+  const value = useContext(ConversationRuntimeWorkspaceContext);
   if (!value) {
-    throw new Error("ConversationRuntimeContext is not available");
+    throw new Error("ConversationRuntimeWorkspaceContext is not available");
   }
   return value;
+}
+
+export function useConversationRuntimeComposer() {
+  const value = useContext(ConversationRuntimeComposerContext);
+  if (!value) {
+    throw new Error("ConversationRuntimeComposerContext is not available");
+  }
+  return value;
+}
+
+export function useConversationRuntime() {
+  const workspace = useConversationRuntimeWorkspace();
+  const composer = useConversationRuntimeComposer();
+  return useMemo<ConversationRuntimeContextValue>(() => ({
+    ...workspace,
+    ...composer,
+  }), [workspace, composer]);
 }

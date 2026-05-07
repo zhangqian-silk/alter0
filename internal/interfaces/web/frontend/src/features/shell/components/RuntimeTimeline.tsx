@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { memo, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import {
   RuntimeAttachmentGallery,
   RuntimeMarkdownHTML,
@@ -96,7 +96,7 @@ type RuntimeTimelineProps = {
   overlay?: ReactNode;
 };
 
-export function RuntimeTimeline({
+export const RuntimeTimeline = memo(function RuntimeTimeline({
   className,
   timelineProps,
   emptyState,
@@ -117,7 +117,7 @@ export function RuntimeTimeline({
       {overlay}
     </>
   );
-}
+});
 
 function RuntimeTimelineArticle({ item }: { item: RuntimeTimelineItem }) {
   const content = (
