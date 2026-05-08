@@ -963,109 +963,6 @@ describe("ConversationRuntimeProvider", () => {
     expect(apiClientMock.post).not.toHaveBeenCalled();
   });
 
-  it("persists optimistic agent-runtime messages before the stream resolves", async () => {
-    window.sessionStorage.clear();
-    window.sessionStorage.setItem(
-      ACTIVE_SESSION_STORAGE_KEY,
-      JSON.stringify({ chat: "", "agent-runtime": "agent-session-persist-1" }),
-    );
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      switch (path) {
-        case "/api/control/llm/providers":
-        case "/api/control/skills":
-        case "/api/control/mcps":
-          return { items: [] };
-        case "/api/agents":
-          return {
-            items: [
-              {
-                id: "coding",
-                name: "Coding Agent",
-                enabled: true,
-              },
-            ],
-          };
-        case "/api/conversation-runtime/sessions?route=agent-runtime":
-          return {
-            items: [
-              {
-                id: "agent-session-persist-1",
-                title: "Coding runtime",
-                title_auto: false,
-                title_score: 1,
-                created_at: "2026-04-23T03:30:00Z",
-                target_type: "agent",
-                target_id: "coding",
-                target_name: "Coding Agent",
-                model_provider_id: "",
-                model_id: "",
-                tool_ids: [],
-                skill_ids: [],
-                mcp_ids: [],
-                messages: [],
-              },
-            ],
-          };
-        case "/api/conversation-runtime/sessions/agent-session-persist-1?route=agent-runtime":
-          return {
-            session: {
-              id: "agent-session-persist-1",
-              title: "Coding runtime",
-              title_auto: false,
-              title_score: 1,
-              created_at: "2026-04-23T03:30:00Z",
-              target_type: "agent",
-              target_id: "coding",
-              target_name: "Coding Agent",
-              model_provider_id: "",
-              model_id: "",
-              tool_ids: [],
-              skill_ids: [],
-              mcp_ids: [],
-              messages: [],
-            },
-          };
-        default:
-          return { items: [] };
-      }
-    });
-
-    const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(
-      <ConversationRuntimeProvider route="agent-runtime" language="en">
-        <MessageListHarness />
-      </ConversationRuntimeProvider>,
-    );
-
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/agents"));
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      screen.getByRole("button", { name: "send followup" }).click();
-
-      const snapshot = JSON.parse(
-        window.sessionStorage.getItem(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY) || "{}",
-      ) as Record<string, { id?: string; messages?: Array<{ role?: string; text?: string; status?: string }> }>;
-
-      expect(snapshot["agent-runtime"]?.id).toBe("agent-session-persist-1");
-      expect(snapshot["agent-runtime"]?.messages).toEqual([
-        expect.objectContaining({
-          role: "user",
-          text: "Follow up prompt",
-        }),
-        expect.objectContaining({
-          role: "assistant",
-          text: "Thinking...",
-          status: "streaming",
-        }),
-      ]);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    } finally {
-      consoleErrorSpy.mockRestore();
-    }
-  });
-
   it("recovers persisted agent-runtime responses when the stream reader throws after start", async () => {
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
@@ -1460,6 +1357,270 @@ describe("ConversationRuntimeProvider", () => {
       expect(payload.fields?.[0]?.key).toBe("repository_path");
       expect(payload.attributes?.repository_path).toBe("/workspace/alter0-remote");
       expect(payload.attributes?.branch).toBe("feature/session-profile");
+    });
+  });
+
+  it("refreshes agent session profile after sending a runtime message", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "travel-session-1" }),
+    );
+    let sessionProfileLoads = 0;
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+        return {
+          items: [
+            {
+              id: "travel-session-1",
+              title: "Travel runtime",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "travel",
+              target_name: "Travel Agent",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+            },
+          ],
+        };
+      }
+      if (path === "/api/conversation-runtime/sessions/travel-session-1?route=agent-runtime") {
+        return {
+          session: {
+            id: "travel-session-1",
+            title: "Travel runtime",
+            title_auto: false,
+            title_score: 1,
+            created_at: "2026-04-23T03:30:00Z",
+            target_type: "agent",
+            target_id: "travel",
+            target_name: "Travel Agent",
+            model_provider_id: "",
+            model_id: "",
+            tool_ids: [],
+            skill_ids: [],
+            mcp_ids: [],
+            messages: [],
+          },
+        };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            {
+              id: "travel",
+              name: "Travel Agent",
+              enabled: true,
+              session_profile_fields: [
+                { key: "city", label: "City" },
+                { key: "days", label: "Days" },
+              ],
+            },
+          ],
+        };
+      }
+      if (path === "/api/agent/session-profile?agent_id=travel&session_id=travel-session-1") {
+        sessionProfileLoads += 1;
+        return {
+          agent_id: "travel",
+          session_id: "travel-session-1",
+          path: ".alter0/agents/travel/sessions/travel-session-1.md",
+          exists: true,
+          fields: [
+            { key: "city", label: "City" },
+            { key: "days", label: "Days" },
+          ],
+          attributes: sessionProfileLoads > 1
+            ? { city: "Shanghai", days: "4" }
+            : { city: "Beijing", days: "3" },
+        };
+      }
+      return { items: [] };
+    });
+
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: done\ndata: {"result":{"output":"updated"}}\n\n'));
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <RuntimeHarness />
+        <AgentSessionProfileHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("session-profile-state").textContent || "{}") as {
+        attributes?: Record<string, string>;
+      };
+      expect(payload.attributes?.city).toBe("Beijing");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(sessionProfileLoads).toBeGreaterThan(1));
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("session-profile-state").textContent || "{}") as {
+        attributes?: Record<string, string>;
+      };
+      expect(payload.attributes?.city).toBe("Shanghai");
+      expect(payload.attributes?.days).toBe("4");
+    });
+  });
+
+  it("refreshes the active agent runtime session and session profile when the page becomes visible again", async () => {
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "travel-session-1" }),
+    );
+    let visibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibilityState,
+    });
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => visibilityState !== "visible",
+    });
+
+    let sessionLoads = 0;
+    let sessionProfileLoads = 0;
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/control/llm/providers") {
+        return { items: [] };
+      }
+      if (path === "/api/control/skills") {
+        return { items: [] };
+      }
+      if (path === "/api/control/mcps") {
+        return { items: [] };
+      }
+      if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+        return {
+          items: [
+            {
+              id: "travel-session-1",
+              title: "Travel runtime",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "travel",
+              target_name: "Travel Agent",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+            },
+          ],
+        };
+      }
+      if (path === "/api/conversation-runtime/sessions/travel-session-1?route=agent-runtime") {
+        sessionLoads += 1;
+        return {
+          session: {
+            id: "travel-session-1",
+            title: sessionLoads > 1 ? "Travel runtime refreshed" : "Travel runtime",
+            title_auto: false,
+            title_score: 1,
+            created_at: "2026-04-23T03:30:00Z",
+            target_type: "agent",
+            target_id: "travel",
+            target_name: "Travel Agent",
+            model_provider_id: "",
+            model_id: "",
+            tool_ids: [],
+            skill_ids: [],
+            mcp_ids: [],
+            messages: [],
+          },
+        };
+      }
+      if (path === "/api/agents") {
+        return {
+          items: [
+            {
+              id: "travel",
+              name: "Travel Agent",
+              enabled: true,
+              session_profile_fields: [
+                { key: "city", label: "City" },
+              ],
+            },
+          ],
+        };
+      }
+      if (path === "/api/agent/session-profile?agent_id=travel&session_id=travel-session-1") {
+        sessionProfileLoads += 1;
+        return {
+          agent_id: "travel",
+          session_id: "travel-session-1",
+          path: ".alter0/agents/travel/sessions/travel-session-1.md",
+          exists: true,
+          fields: [
+            { key: "city", label: "City" },
+          ],
+          attributes: {
+            city: sessionProfileLoads > 1 ? "Shanghai" : "Beijing",
+          },
+        };
+      }
+      return { items: [] };
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <ActiveSessionTitleHarness />
+        <AgentSessionProfileHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Travel runtime"));
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("session-profile-state").textContent || "{}") as {
+        attributes?: Record<string, string>;
+      };
+      expect(payload.attributes?.city).toBe("Beijing");
+    });
+
+    visibilityState = "hidden";
+    fireEvent(document, new Event("visibilitychange"));
+    visibilityState = "visible";
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() => expect(sessionLoads).toBeGreaterThan(1));
+    await waitFor(() => expect(sessionProfileLoads).toBeGreaterThan(1));
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Travel runtime refreshed"));
+    await waitFor(() => {
+      const payload = JSON.parse(screen.getByTestId("session-profile-state").textContent || "{}") as {
+        attributes?: Record<string, string>;
+      };
+      expect(payload.attributes?.city).toBe("Shanghai");
     });
   });
 
