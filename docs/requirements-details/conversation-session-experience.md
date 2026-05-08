@@ -106,7 +106,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
 - `Chat / Agent Runtime` 需维护独立的服务端会话 registry，记录 `session_id -> route / title / target / model / capabilities / status / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
-- `Chat / Agent Runtime / Terminal` 会话侧栏统一使用 `Sessions` 标题与 `New` 新建入口；三条运行页会话列表为每个会话展示同一规则生成的 8 位短 hash 标识，短 hash 用于前端列表辨识、预览域名映射与人工排障引用。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表底部展示值。
+- `Chat / Agent Runtime / Terminal` 会话侧栏统一使用 `Sessions` 标题与 `New` 新建入口；三条运行页会话列表为每个会话展示同一规则生成的 8 位短 hash 标识，短 hash 用于前端列表辨识、预览域名映射与人工排障引用。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表底部展示值。桌面端会话侧栏需保持固定高度并独立承担纵向滚动，长列表不会把会话列、workspace header 或主时间线工作区整体向下撑长。
 - `Chat / Agent Runtime` 的会话列表项与 workspace header 状态按钮需要共享同一会话状态语义：前端按当前 assistant 消息与任务态派生 `ready / busy / failed`，并在列表项标题前展示轻量红黄绿波纹信号；其中 `streaming / queued / running / in_progress` 与挂起任务映射为黄色 `busy`，错误、失败、取消与显式 `message.error` 映射为红色 `failed`，其余稳定态映射为绿色 `ready`。workspace header 的状态按钮可见层只显示信号，且必须复用会话列表同一套中心点、描边与波纹规格；状态名称只保留给读屏与悬浮语义。
 
 ## 流式响应
@@ -127,7 +127,6 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `Chat / Agent Runtime` 在同一 Session 内保持追加式会话历史；每轮请求都要追加新的用户消息与新的助手消息占位，不得把后续回复继续回写到已完成的历史消息。
 - 单条 assistant 消息内部仍可按 `process / delta / done` 流式更新，但补丁目标只能是当前活跃的未完成消息；消息进入 `done` 或任务态后，迟到的 SSE 事件必须直接丢弃。
 - 运行页初始化时，服务端会话详情回填不得覆盖当前浏览器里已经新追加、但服务端详情请求发起时尚未落库的本地消息；本地新消息与流式更新优先级高于陈旧详情响应。
-- 发送动作一旦把本轮 `user` 消息与 assistant 占位追加到当前时间线，前端必须同步刷新浏览器中的活动会话快照；该快照不能只依赖异步 effect 在稍后落盘，否则“刚发送即刷新”会丢失当前轮输入。
 - 若运行页刷新后服务端会话集合接口暂时未包含当前活动 `session_id`，前端仍需保留本地恢复出的该条会话，并主动尝试按 `GET /api/conversation-runtime/sessions/{session_id}` 补拉详情；在单会话详情也确认不存在之前，不得立刻创建新的空白会话顶替当前活动会话。
 - 若运行页刷新后服务端会话集合接口暂时未包含某条最近会话，即使该会话当前并非活动会话，前端也不得立刻把它从 `Sessions` 列表移除；最近会话侧栏以本地快照和服务端结果合并视图为准，只有在用户显式删除或后续回源明确确认不存在时才允许消失。
 - 会话 registry 的状态更新链路需与 Terminal 类似由服务端驱动：消息入口在请求接收后立即标记当前会话为 `busy`，同步完成后标记为 `ready`，请求失败时标记为 `failed`；当 Session history 仍未对当前请求可见时，集合接口与单会话详情也必须先返回 registry 里的最近视图，而不是直接返回缺失或 404。
@@ -190,7 +189,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Chat 历史区支持折叠与展开，减少长对话阅读空间占用。
 - Conversation workspace 的新会话入口在 `agent-runtime` 路由下切换为 Agent 会话语义，并随语言切换同步更新。
 - Session 历史区的空态提示与列表可访问标签需按当前路由与语言即时切换文案；这些文案更新不得清空或重建 runtime 已注入的会话卡片节点。
-- Session 历史区的会话列表需按最近时间分组为 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`），并与主导航 `menu` 复用同一套分组容器、hover、激活态视觉和桌面会话列宽；分组内条目保持主仓库式紧凑信息结构，按导航式线性关系排布：标题独立占一行并在可用宽度内单行截断，摘要信息单独换行，短 hash 固定在条目下缘，删除动作收纳在尾侧轻量文本操作中，不再额外挂出独立 footer 或胶囊操作面。
+- Session 历史区的会话列表需按最近时间分组为 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`），并与主导航 `menu` 复用同一套分组容器、hover、激活态视觉和桌面会话列宽；分组内条目保持主仓库式紧凑信息结构，按导航式线性关系排布：标题独立占一行并在可用宽度内单行截断，摘要信息单独换行，短 hash 固定在条目下缘，删除动作收纳在尾侧轻量文本操作中，不再额外挂出独立 footer 或胶囊操作面。桌面端分组列表容器保持独立滚动，不允许随着会话数增加把整个运行页变成长页面。
 - Session 历史区的会话条目在标题前固定保留一枚轻量状态信号灯，并为读屏输出当前状态文案；状态灯仅承担提示作用，不替代条目正文信息，也不升级为高噪音动画或大面积着色块。
 - Conversation workspace 头部的标题、状态按钮、`Details` 标签页和新会话入口需按当前路由与语言即时切换文案；状态按钮同时反映当前活动会话派生状态，但可见层只显示信号，不再展示固定 `Ready` 或其他状态文案；该信号固定排在当前会话标题左侧，右侧工具区只保留 `Details` 入口；这些壳层文案更新不得覆盖当前会话标题或消息内容。
 - `Chat / Agent Runtime` 的会话列、工作区外壳、聊天滚动区和输入区需输出 `terminal-* + conversation-*` 复合 class，确保两条运行页与 `Terminal` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。

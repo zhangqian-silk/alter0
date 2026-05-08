@@ -11,6 +11,70 @@ async function openRuntimeRoute(page: Page, hash: "#chat" | "#agent-runtime"): P
   await page.waitForSelector("[data-composer-form='conversation']", { timeout: 20000 });
 }
 
+async function mockConversationRuntimeSessions(
+  page: Page,
+  options: {
+    route: "chat" | "agent-runtime";
+    sessions: Array<Record<string, unknown>>;
+    activeSessionID?: string;
+  },
+): Promise<void> {
+  const sessionByID = new Map(
+    options.sessions.map((session) => [String(session.id || "").trim(), session]),
+  );
+  const activeSessionID = String(
+    options.activeSessionID
+      || options.sessions[0]?.id
+      || "",
+  ).trim();
+
+  if (!activeSessionID) {
+    throw new Error("mockConversationRuntimeSessions requires at least one session");
+  }
+
+  await page.context().route("**/api/conversation-runtime/sessions**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("route") !== options.route) {
+      await route.fallback();
+      return;
+    }
+
+    if (url.pathname.endsWith("/api/conversation-runtime/sessions")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: options.sessions,
+        }),
+      });
+      return;
+    }
+
+    const requestedSessionID = url.pathname.split("/").pop() || "";
+    const session = sessionByID.get(requestedSessionID);
+    if (session) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ session }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.addInitScript((payload) => {
+    window.sessionStorage.setItem(
+      "alter0.web.session.active.v1",
+      JSON.stringify({ [payload.route]: payload.activeSessionID }),
+    );
+  }, {
+    route: options.route,
+    activeSessionID,
+  });
+}
+
 async function readConversationViewportGap(page: Page) {
   return page.evaluate(() => {
     const screen = document.querySelector("[data-runtime-screen='conversation']");
@@ -46,6 +110,60 @@ async function readTerminalViewportGap(page: Page) {
 }
 
 test.describe("Runtime workspace scaffold", () => {
+  test("keeps the desktop conversation session pane scrollable with a long session list", async ({ page }) => {
+    const now = Date.now();
+    const sessions = Array.from({ length: 20 }, (_, index) => {
+      const sessionID = `chat-scroll-${index + 1}`;
+      const createdAt = new Date(now - index * 60_000).toISOString();
+      return {
+        id: sessionID,
+        title: `Desktop scroll session ${index + 1}`,
+        created_at: createdAt,
+        updated_at: createdAt,
+        status: "ready",
+        messages: [
+          {
+            id: `message-${sessionID}`,
+            role: "user",
+            text: `session ${index + 1}`,
+            at: createdAt,
+            status: "done",
+          },
+        ],
+      };
+    });
+
+    await mockConversationRuntimeSessions(page, {
+      route: "chat",
+      sessions,
+      activeSessionID: sessions[0].id as string,
+    });
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await openRuntimeRoute(page, "#chat");
+
+    const sessionList = page.locator("[data-runtime-session-list='conversation']");
+    await expect(sessionList.locator("[role='listitem']")).toHaveCount(20);
+
+    const beforeScroll = await sessionList.evaluate((node) => {
+      const element = node as HTMLDivElement;
+      element.scrollTop = element.scrollHeight;
+      return {
+        scrollTop: element.scrollTop,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+      };
+    });
+
+    expect(beforeScroll.scrollHeight).toBeGreaterThan(beforeScroll.clientHeight);
+    expect(beforeScroll.scrollTop).toBeGreaterThan(0);
+
+    await sessionList.locator("[role='listitem']").last().click();
+
+    const afterScrollTop = await sessionList.evaluate((node) => (node as HTMLDivElement).scrollTop);
+    expect(afterScrollTop).toBeGreaterThan(0);
+    expect(Math.abs(afterScrollTop - beforeScroll.scrollTop)).toBeLessThan(40);
+  });
+
   test("submits chat on the first click and keeps the chat viewport above the composer", async ({ page }) => {
     await openRuntimeRoute(page, "#chat");
 
