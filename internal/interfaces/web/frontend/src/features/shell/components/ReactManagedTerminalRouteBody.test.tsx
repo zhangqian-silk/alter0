@@ -1402,6 +1402,79 @@ describe("ReactManagedTerminalRouteBody", () => {
       && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
   });
 
+  it("refreshes the terminal list and active session when the page becomes visible again", async () => {
+    let visibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibilityState,
+    });
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => visibilityState !== "visible",
+    });
+
+    let listLoads = 0;
+    let sessionLoads = 0;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        listLoads += 1;
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: listLoads > 1 ? "Workspace shell refreshed" : "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        sessionLoads += 1;
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: sessionLoads > 1 ? "Workspace shell refreshed" : "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Workspace shell").length).toBeGreaterThan(0);
+    });
+
+    visibilityState = "hidden";
+    fireEvent(document, new Event("visibilitychange"));
+    visibilityState = "visible";
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() => expect(listLoads).toBeGreaterThan(1));
+    await waitFor(() => expect(sessionLoads).toBeGreaterThan(1));
+    await waitFor(() => {
+      expect(screen.getAllByText("Workspace shell refreshed").length).toBeGreaterThan(0);
+    });
+  });
+
   it("marks the terminal composer input as plain text so mobile autofill bars stay off", async () => {
     renderTerminalRouteBody({
       isMobileViewport: true,
