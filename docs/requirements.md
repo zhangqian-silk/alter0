@@ -55,7 +55,6 @@
 - `Chat / Agent Runtime` 在同一会话内保持追加式历史：每次发送都新增一条 `user` 消息与对应 assistant 消息，流式事件只允许补丁当前未完成的 assistant 条目，已收口历史不得被后续 SSE 事件回写。
 - 流式连接中断时，前端保留已收到的正文；若该条消息此前已收到 `start` 但尚未收到 `done`，前端需先回源当前会话详情，用服务端已持久化的消息覆盖本地占位态，而不是立即把同一请求重发一遍。该恢复链路即使在服务端集合接口已返回当前会话摘要、但尚未附带完整消息时也必须继续触发。只有恢复失败时才收敛为失败态；若没有可用正文，失败提示需明确提示刷新。本地缓存中残留的 `streaming` 消息不得长期停留在 `In Progress`。
 - 刷新页面时，`Chat / Agent Runtime` 必须优先保住当前活动会话：若服务端会话列表暂时尚未返回该 `session_id`，前端先从浏览器侧活动会话快照恢复当前条目与最近消息，再按 `session_id` 单独回源详情；在确认服务端不存在该会话前，不得直接把当前活动会话替换成新的空白 `New` 会话。
-- `Chat / Agent Runtime` 的活动会话快照必须在发送动作落地时同步更新：用户消息一旦进入当前时间线，对应的 user message 与本轮 assistant 占位就要立刻写入浏览器活动快照，不能只依赖异步 effect 延后持久化，避免“刚发送就刷新”时本地恢复丢失这一轮输入。
 - 刷新页面或切到其他会话后，`Chat / Agent Runtime` 仍需保住最近已知会话列表：浏览器侧最近会话快照至少覆盖当前活动会话之外的最近若干条会话；当服务端集合接口暂时漏掉其中某条会话时，侧栏不得立刻把该会话删除，而应继续保留本地条目并等待单会话详情或后续集合结果确认。
 - `Chat / Agent Runtime` 的会话存在性与恢复状态需由服务端会话 registry 承担第一责任：消息入口在请求开始、完成、失败时分别写入 `busy / ready / failed` 等稳定状态，运行页列表与单会话详情优先读取该 registry，再与 Session history 合并，避免因浏览器刷新、SSE 断链或前端本地状态丢失导致会话“消失”或直接 `load failed`。
 - Agent 执行过程需以结构化 `process_steps` 贯穿 SSE `done`、Task 结果与会话历史持久化，前端优先消费结构化步骤而不是依赖解析 `[agent] action / observation` 文本。
@@ -69,7 +68,7 @@
 - `Chat / Agent Runtime` Composer 支持图片附件草稿、缩略图预览与消息内图片回显；最近会话恢复仅持久化消息图片预览资产，避免重复保留原始大图 payload；助手 markdown 图片需在消息区直接以内联图片懒加载显示。带图消息只允许走支持视觉输入的模型链路，不进入异步 Task，也不静默降级到 Codex 文本执行。
 - Web 前端所有时间显示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Chat、Agent、Terminal、Task、Cron 与 Settings/Control 管理页都必须复用同一显示口径，Cron 创建表单默认时区固定为 `Asia/Shanghai`。
 - Web 侧边栏、历史折叠、页面滚动隔离、克制冷灰工作台阅读主题、PC 端低圆角非胶囊控件、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
-- 会话侧栏中的 Session 列表需采用工作台式最近时间分组：`Chat / Agent Runtime / Terminal` 统一使用 `Sessions` 栏标题与 `New` 新建入口，列表按 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`）收口，并与主导航 `menu` 复用同一套分组容器、hover、激活态视觉和桌面会话列宽；条目按导航式线性关系排布，标题独立一行并在可用宽度内单行截断、摘要独立换行、短 hash 固定在条目下缘、删除动作以尾侧轻量文本操作收纳，不再拆出额外 footer 或胶囊操作区。
+- 会话侧栏中的 Session 列表需采用工作台式最近时间分组：`Chat / Agent Runtime / Terminal` 统一使用 `Sessions` 栏标题与 `New` 新建入口，列表按 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`）收口，并与主导航 `menu` 复用同一套分组容器、hover、激活态视觉和桌面会话列宽；条目按导航式线性关系排布，标题独立一行并在可用宽度内单行截断、摘要独立换行、短 hash 固定在条目下缘、删除动作以尾侧轻量文本操作收纳，不再拆出额外 footer 或胶囊操作区。桌面端会话列必须保持固定高度并独立滚动，长列表不得把 workspace 与正文滚动边界整体撑长。
 - `Chat / Agent Runtime` 的已发送会话必须以服务端 Session history 为恢复源，并在同一 Web 登录态下跨设备共享；未发送草稿与当前浏览器局部 UI 状态可继续本地保存，但不得阻断服务端会话摘要、配置和消息历史的恢复。
 - `Chat / Agent Runtime / Terminal` 的会话条目需在标题前展示轻量红黄绿波纹信号，并与 workspace header 的状态按钮共享同一状态语义：`Chat / Agent Runtime` 根据当前 assistant 消息状态、错误态和挂起任务推导 `ready / busy / failed`；Terminal 根据 `ready / busy / exited / interrupted` 映射到统一的红黄绿状态信号。workspace header 的状态按钮可见层只显示信号，状态名称仅保留给可访问性语义与悬浮提示。
 - Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；运行页共享同一套 slot 化 workspace scaffold，`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace，`terminal` 在保持原有交互与 DOM 契约的前提下直接挂在共享 `workbench-pane-shell` 下复用同一骨架，不再额外包裹 `route-view / route-body`，`agent / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 React 直接请求控制台或会话 API 渲染。壳层稳定暴露 `app-shell[data-workbench-route]` 与各视图自己的 `data-route / data-conversation-*` 作为样式钩子；`legacy` 资源仅保留兼容样式，不再保留 `LegacyWebShell / ReactRuntimeFacade / bridge / snapshot store`。
