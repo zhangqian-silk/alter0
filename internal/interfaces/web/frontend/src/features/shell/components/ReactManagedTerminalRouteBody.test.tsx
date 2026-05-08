@@ -1556,6 +1556,44 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(payload.skill_ids).toEqual(["frontend-design", "deploy-test-service", "summary"]);
   });
 
+  it("dismisses the terminal session panel when the composer input is pressed", async () => {
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Session" }));
+    expect(await screen.findByTestId("terminal-skill-selector")).toBeInTheDocument();
+
+    fireEvent.pointerDown(
+      document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement,
+      { pointerType: "mouse" },
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("terminal-skill-selector")).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens the terminal session panel on the first mobile touch while the composer is focused", async () => {
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
+    });
+
+    const input = document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement;
+    fireEvent.focus(input);
+    fireEvent.touchStart(screen.getByRole("button", { name: "Session" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("terminal-skill-selector")).toBeInTheDocument();
+    });
+  });
+
   it("does not refresh a ready session while the terminal output is being scrolled", async () => {
     renderTerminalRouteBody();
 

@@ -488,6 +488,7 @@ function ConversationComposerSection({
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
   const mobileSubmitGestureLockRef = useRef(false);
+  const mobileSessionGestureLockRef = useRef(false);
   const composerPlaceholder = language === "zh" ? "输入消息，继续推进当前工作区..." : "Type a message to continue this workspace...";
   const composerSend = language === "zh" ? "发送" : "Send";
   const composerMetaLabel = composerAttachmentError || undefined;
@@ -575,6 +576,23 @@ function ConversationComposerSection({
     submitDraft();
   };
 
+  const releaseMobileSessionGestureLock = () => {
+    window.setTimeout(() => {
+      mobileSessionGestureLockRef.current = false;
+    }, 0);
+  };
+
+  const toggleSessionInspector = () => {
+    runtime.toggleInspector(runtime.inspectorTab);
+  };
+
+  const openMobileSessionInspectorOnPress = () => {
+    mobileSessionGestureLockRef.current = true;
+    releaseMobileSessionGestureLock();
+    blurComposerInput();
+    toggleSessionInspector();
+  };
+
   const handleSubmitPointerDownCapture = (event: PointerEvent<HTMLButtonElement>) => {
     if (!workbench.isMobileViewport || event.pointerType === "mouse" || mobileSubmitGestureLockRef.current) {
       return;
@@ -589,6 +607,22 @@ function ConversationComposerSection({
     }
     event.preventDefault();
     submitMobileDraftOnPress();
+  };
+
+  const handleSessionUtilityPointerDownCapture = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!workbench.isMobileViewport || event.pointerType === "mouse" || mobileSessionGestureLockRef.current) {
+      return;
+    }
+    event.preventDefault();
+    openMobileSessionInspectorOnPress();
+  };
+
+  const handleSessionUtilityTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
+    if (!workbench.isMobileViewport || mobileSessionGestureLockRef.current) {
+      return;
+    }
+    event.preventDefault();
+    openMobileSessionInspectorOnPress();
   };
 
   const handleComposerAttachmentPicker = useCallback(() => {
@@ -864,10 +898,20 @@ function ConversationComposerSection({
           label: copy.runtimeMobile,
           icon: <RuntimeSessionControlIcon />,
           className: runtime.inspectorOpen ? "is-active" : undefined,
-          onClick: () => runtime.toggleInspector(runtime.inspectorTab),
+          onClick: () => {
+            if (mobileSessionGestureLockRef.current) {
+              return;
+            }
+            toggleSessionInspector();
+          },
+          buttonProps: {
+            onPointerDownCapture: handleSessionUtilityPointerDownCapture,
+            onTouchStartCapture: handleSessionUtilityTouchStartCapture,
+          },
         },
       ]}
       panelContent={conversationComposerPanel}
+      onPanelDismiss={() => runtime.closeInspector()}
       panelProps={{
         "data-runtime-config-surface": "conversation",
       }}
