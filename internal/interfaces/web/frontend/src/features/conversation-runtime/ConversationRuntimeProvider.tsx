@@ -12,6 +12,7 @@ import { createAPIClient } from "../../shared/api/client";
 import { hashSessionIDShort } from "../../shared/session/sessionHash";
 import type { LegacyShellLanguage } from "../shell/legacyShellCopy";
 import { MOBILE_VIEWPORT_BREAKPOINT_PX } from "../../shared/viewport/mobileViewport";
+import { usePageActivation } from "../../shared/visibility/usePageActivation";
 import {
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   isComposerImageAttachment,
@@ -38,6 +39,7 @@ const LLM_MODEL_METADATA_KEY = "alter0.llm.model";
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
+const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 
 export type ConversationRoute = "chat" | "agent-runtime";
 
@@ -1242,7 +1244,6 @@ export function ConversationRuntimeProvider({
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
   const sessionsByRouteRef = useRef(sessionsByRoute);
-  const activeSessionByRouteRef = useRef(activeSessionByRoute);
   const recoveryPromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
   const composerDraftPersistTimerRef = useRef<number>(0);
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
@@ -1277,22 +1278,9 @@ export function ConversationRuntimeProvider({
     latestComposerAttachmentDraftsRef.current = composerAttachmentDrafts;
   }, [composerAttachmentDrafts]);
 
-  useEffect(() => {
-    activeSessionByRouteRef.current = activeSessionByRoute;
-  }, [activeSessionByRoute]);
-
   useEffect(() => () => {
     window.clearTimeout(composerDraftPersistTimerRef.current);
     persistComposerDrafts(latestComposerDraftsRef.current);
-  }, []);
-
-  const persistRuntimeSnapshotsNow = useCallback((
-    nextSessions: SessionsState,
-    nextActiveState: ActiveSessionState = activeSessionByRouteRef.current,
-  ) => {
-    sessionsByRouteRef.current = nextSessions;
-    activeSessionByRouteRef.current = nextActiveState;
-    persistActiveSessionSnapshots(nextActiveState, nextSessions);
   }, []);
 
   const ensureSession = useCallback((
@@ -1330,7 +1318,6 @@ export function ConversationRuntimeProvider({
           [route]: currentSessions[route].map((session) => session.id === existing.id ? nextSession : session),
         };
         setSessionsByRoute(nextSessionsByRoute);
-        persistRuntimeSnapshotsNow(nextSessionsByRoute, preferredActiveState);
         return nextSession;
       }
       return existing;
@@ -1366,25 +1353,21 @@ export function ConversationRuntimeProvider({
     setSessionsByRoute(nextSessionsByRoute);
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-    persistRuntimeSnapshotsNow(nextSessionsByRoute, nextActiveState);
     return created;
-  }, [activeSessionByRoute, agents, persistRuntimeSnapshotsNow, route, selectedAgentID, sessionsByRoute]);
+  }, [activeSessionByRoute, agents, route, selectedAgentID, sessionsByRoute]);
 
   const patchSession = useCallback((
     routeKey: ConversationRoute,
     sessionID: string,
     updater: (session: ChatSession) => ChatSession,
   ) => {
-    const current = sessionsByRouteRef.current;
-    const nextState = {
+    setSessionsByRoute((current) => ({
       ...current,
       [routeKey]: current[routeKey].map((session) =>
         session.id === sessionID ? updater(session) : session,
       ),
-    };
-    persistRuntimeSnapshotsNow(nextState);
-    setSessionsByRoute(nextState);
-  }, [persistRuntimeSnapshotsNow]);
+    }));
+  }, []);
 
   const createMessage = (
     role: "user" | "assistant",
@@ -1450,8 +1433,7 @@ export function ConversationRuntimeProvider({
     const nextActiveState = { ...activeSessionByRoute, [route]: sessionID };
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-    persistRuntimeSnapshotsNow(sessionsByRouteRef.current, nextActiveState);
-  }, [activeSessionByRoute, persistRuntimeSnapshotsNow, route]);
+  }, [activeSessionByRoute, route]);
 
   const removeSession = useCallback(async (sessionID: string) => {
     try {
@@ -1480,8 +1462,33 @@ export function ConversationRuntimeProvider({
     persistComposerDrafts(nextDrafts);
     persistComposerAttachmentDrafts(nextAttachmentDrafts);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-    persistRuntimeSnapshotsNow(nextSessionsByRoute, nextActiveState);
-  }, [activeSessionByRoute, apiClient, persistRuntimeSnapshotsNow, route, sessionsByRoute]);
+  }, [activeSessionByRoute, apiClient, route, sessionsByRoute]);
+
+  const loadAgentSessionProfile = useCallback(async (agentID: string, sessionID: string) => {
+    const normalizedAgentID = normalizeText(agentID);
+    const normalizedSessionID = normalizeText(sessionID);
+    if (!normalizedAgentID || !normalizedSessionID) {
+      return;
+    }
+    const profileKey = `${normalizedAgentID}:${normalizedSessionID}`;
+    const fallbackFields = normalizeAgentSessionProfileFields(
+      agents.find((agent) => normalizeText(agent.id) === normalizedAgentID)?.session_profile_fields,
+    );
+    try {
+      const payload = await apiClient.get<ChatAgentSessionProfile>(
+        `/api/agent/session-profile?agent_id=${encodeURIComponent(normalizedAgentID)}&session_id=${encodeURIComponent(normalizedSessionID)}`,
+      );
+      setAgentSessionProfiles((current) => ({
+        ...current,
+        [profileKey]: normalizeAgentSessionProfile(payload, normalizedAgentID, normalizedSessionID, fallbackFields),
+      }));
+    } catch {
+      setAgentSessionProfiles((current) => ({
+        ...current,
+        [profileKey]: normalizeAgentSessionProfile({}, normalizedAgentID, normalizedSessionID, fallbackFields),
+      }));
+    }
+  }, [agents, apiClient]);
 
   const sendMessageFallback = async (
     routeKey: ConversationRoute,
@@ -1541,17 +1548,16 @@ export function ConversationRuntimeProvider({
   };
 
   const upsertRuntimeSession = (routeKey: ConversationRoute, nextSession: ChatSession) => {
-    const current = sessionsByRouteRef.current;
-    const hasSession = current[routeKey].some((session) => session.id === nextSession.id);
-    const nextSessions = hasSession
-      ? current[routeKey].map((session) => (session.id === nextSession.id ? nextSession : session))
-      : [nextSession, ...current[routeKey]];
-    const nextState = {
-      ...current,
-      [routeKey]: nextSessions.sort((left, right) => right.createdAt - left.createdAt),
-    };
-    persistRuntimeSnapshotsNow(nextState);
-    setSessionsByRoute(nextState);
+    setSessionsByRoute((current) => {
+      const hasSession = current[routeKey].some((session) => session.id === nextSession.id);
+      const nextSessions = hasSession
+        ? current[routeKey].map((session) => (session.id === nextSession.id ? nextSession : session))
+        : [nextSession, ...current[routeKey]];
+      return {
+        ...current,
+        [routeKey]: nextSessions.sort((left, right) => right.createdAt - left.createdAt),
+      };
+    });
   };
 
   const hydrateRuntimeSession = async (routeKey: ConversationRoute, sessionID: string): Promise<ChatSession | null> => {
@@ -1847,6 +1853,10 @@ export function ConversationRuntimeProvider({
         status: "error",
         error: true,
       });
+    } finally {
+      if (route === "agent-runtime" && session.target.type === "agent") {
+        await loadAgentSessionProfile(session.target.id, session.id);
+      }
     }
   };
 
@@ -1906,17 +1916,39 @@ export function ConversationRuntimeProvider({
     const remoteSessions = (Array.isArray(payload.items) ? payload.items : [])
       .map((item) => normalizeRuntimeSession(item))
       .filter((session): session is ChatSession => session !== null);
-    setSessionsByRoute((current) => {
-      const nextState = {
-        ...current,
-        [routeKey]: mergeRuntimeSessions(remoteSessions, current[routeKey]),
-      };
-      persistRuntimeSnapshotsNow(nextState);
-      return nextState;
-    });
+    setSessionsByRoute((current) => ({
+      ...current,
+      [routeKey]: mergeRuntimeSessions(remoteSessions, current[routeKey]),
+    }));
     setSessionsLoadedByRoute((current) => ({ ...current, [routeKey]: true }));
     return remoteSessions;
   };
+
+  const refreshCurrentRouteOnPageActive = useCallback(async () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
+
+    try {
+      await loadRuntimeSessions(route);
+    } catch {
+    }
+
+    if (activeSession?.id) {
+      try {
+        const hydrated = await hydrateRuntimeSession(route, activeSession.id);
+        if (hydrated) {
+          upsertRuntimeSession(route, hydrated);
+        }
+      } catch {
+      }
+      if (route === "agent-runtime" && activeSession.target.type === "agent") {
+        await loadAgentSessionProfile(activeSession.target.id, activeSession.id);
+      }
+    }
+
+    setPendingTasksVersion((value) => value + 1);
+  }, [activeSession, hydrateRuntimeSession, loadAgentSessionProfile, loadRuntimeSessions, route, upsertRuntimeSession]);
 
   useEffect(() => {
     persistActiveSessionSnapshots(activeSessionByRoute, sessionsByRoute);
@@ -1931,6 +1963,11 @@ export function ConversationRuntimeProvider({
     window.addEventListener("resize", syncViewport);
     return () => window.removeEventListener("resize", syncViewport);
   }, []);
+
+  usePageActivation({
+    debounceMs: PAGE_ACTIVE_REFRESH_DEBOUNCE_MS,
+    onActive: refreshCurrentRouteOnPageActive,
+  });
 
   useEffect(() => {
     const loadCatalogs = async () => {
@@ -2060,36 +2097,17 @@ export function ConversationRuntimeProvider({
     if (agentSessionProfiles[profileKey]) {
       return;
     }
-    const fallbackFields = normalizeAgentSessionProfileFields(
-      agents.find((agent) => normalizeText(agent.id) === agentID)?.session_profile_fields,
-    );
     let cancelled = false;
     void (async () => {
-      try {
-        const payload = await apiClient.get<ChatAgentSessionProfile>(
-          `/api/agent/session-profile?agent_id=${encodeURIComponent(agentID)}&session_id=${encodeURIComponent(activeSession.id)}`,
-        );
-        if (cancelled) {
-          return;
-        }
-        setAgentSessionProfiles((current) => ({
-          ...current,
-          [profileKey]: normalizeAgentSessionProfile(payload, agentID, activeSession.id, fallbackFields),
-        }));
-      } catch {
-        if (cancelled) {
-          return;
-        }
-        setAgentSessionProfiles((current) => ({
-          ...current,
-          [profileKey]: normalizeAgentSessionProfile({}, agentID, activeSession.id, fallbackFields),
-        }));
+      await loadAgentSessionProfile(agentID, activeSession.id);
+      if (cancelled) {
+        return;
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [activeSession, agentSessionProfiles, agents, apiClient, route]);
+  }, [activeSession, agentSessionProfiles, loadAgentSessionProfile, route]);
 
   useEffect(() => {
     if (!sessionsLoadedByRoute[route] || sessionsByRoute[route].length > 0) {
