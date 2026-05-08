@@ -157,6 +157,31 @@ func builtinAgents() []controldomain.Agent {
 					SessionAttributeKey: "guide_html_url",
 				},
 			},
+			CompletionChecks: []controldomain.AgentCompletionCheck{
+				{
+					ID:                "guide-html-file",
+					Label:             "Guide HTML File",
+					Description:       "Current session workspace root contains the generated HTML guide entrypoint.",
+					Type:              controldomain.AgentCompletionCheckTypeSessionFileExists,
+					Required:          true,
+					SessionPath:       "index.html",
+					FailureMessage:    "travel html guide is incomplete: missing {{session_file}}. Generate the html guide in the session workspace root before completing",
+					RepairInstruction: "Create or overwrite the current request's index.html travel guide in the session workspace root.",
+				},
+				{
+					ID:                    "guide-html-service",
+					Label:                 "Guide HTML Service",
+					Description:           "Current session has a published public read-only travel service with a public URL.",
+					Type:                  controldomain.AgentCompletionCheckTypeWorkspaceServicePublished,
+					Required:              true,
+					ServiceID:             "travel",
+					RequireServiceURL:     true,
+					RequirePublicReadOnly: true,
+					SessionAttributeKey:   "guide_html_url",
+					FailureMessage:        "travel html guide is not published yet: deploy_test_service with service_name `travel` and service_type `frontend_dist` before completing",
+					RepairInstruction:     "Publish the current session workspace root to the public read-only travel service after index.html exists.",
+				},
+			},
 		},
 	}
 }

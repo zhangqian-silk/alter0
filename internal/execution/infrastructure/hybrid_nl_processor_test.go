@@ -426,6 +426,7 @@ func TestHybridNLProcessorAgentCodexExecPreparesNativeRuntimeAssets(t *testing.T
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
 	metadata[execdomain.AgentToolsMetadataKey] = `["codex_exec"]`
 	metadata[execdomain.SkillContextMetadataKey] = string(rawSkillContext)
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
 
 	output, err := processor.Process(context.Background(), "完成武汉攻略整理", metadata)
 	if err != nil {
@@ -471,6 +472,7 @@ func TestHybridNLProcessorValidatesTravelCompletionAfterCodexFallback(t *testing
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "travel"
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
 
 	_, err = processor.Process(context.Background(), "整理武汉攻略", metadata)
 	if err == nil {
@@ -509,6 +511,7 @@ func TestHybridNLProcessorAllowsTravelCompletionAfterCodexFallbackWhenDeliverabl
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "travel"
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
 	processor := NewHybridNLProcessor(newTestProcessor("success", "", filepath.Join(".alter0", "workspaces", "sessions", "session-default")), nil, nil)
 
 	output, err := processor.Process(context.Background(), "整理武汉攻略", metadata)
@@ -517,6 +520,50 @@ func TestHybridNLProcessorAllowsTravelCompletionAfterCodexFallbackWhenDeliverabl
 	}
 	if !strings.Contains(output, "mock response") || !strings.Contains(output, "https://travel-4e8f5f54.alter0.cn") {
 		t.Fatalf("Process() output = %q, want guide content plus published url", output)
+	}
+}
+
+func TestHybridNLProcessorRepairsTravelCompletionAfterCodexFallback(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineAgent
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
+
+	sessionWorkspaceSuffix := filepath.Join(".alter0", "workspaces", "sessions", "session-default")
+	processor := NewHybridNLProcessor(newSequencedTestProcessor(
+		codexTestInvocation{
+			mode:              "success",
+			expectedPrompt:    "整理武汉攻略",
+			expectedWorkspace: sessionWorkspaceSuffix,
+		},
+		codexTestInvocation{
+			mode:                   "travel-repair-success",
+			expectedPromptContains: "Repair the missing required deliverables for the active agent now.",
+			expectedWorkspace:      sessionWorkspaceSuffix,
+		},
+	), nil, nil)
+
+	output, err := processor.Process(context.Background(), "整理武汉攻略", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if !strings.Contains(output, "mock response") || !strings.Contains(output, "https://travel-4e8f5f54.alter0.cn") {
+		t.Fatalf("Process() output = %q, want repaired guide content plus published url", output)
+	}
+	if _, statErr := os.Stat(filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default", "index.html")); statErr != nil {
+		t.Fatalf("expected repair flow to create index.html, stat err = %v", statErr)
 	}
 }
 
@@ -539,6 +586,7 @@ func TestHybridNLProcessorValidatesTravelCompletionForDirectCodexEngine(t *testi
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "travel"
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineCodex
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
 
 	_, err = processor.Process(context.Background(), "整理武汉攻略", metadata)
 	if err == nil {
@@ -549,7 +597,51 @@ func TestHybridNLProcessorValidatesTravelCompletionForDirectCodexEngine(t *testi
 	}
 }
 
-func TestHybridNLProcessorDoesNotGenerateOrPublishFallbackTravelGuideForDirectCodexEngine(t *testing.T) {
+func TestHybridNLProcessorRepairsTravelCompletionForDirectCodexEngine(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineCodex
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
+
+	sessionWorkspaceSuffix := filepath.Join(".alter0", "workspaces", "sessions", "session-default")
+	processor := NewHybridNLProcessor(newSequencedTestProcessor(
+		codexTestInvocation{
+			mode:              "success",
+			expectedPrompt:    "整理武汉攻略",
+			expectedWorkspace: sessionWorkspaceSuffix,
+		},
+		codexTestInvocation{
+			mode:                   "travel-repair-success",
+			expectedPromptContains: "Repair the missing required deliverables for the active agent now.",
+			expectedWorkspace:      sessionWorkspaceSuffix,
+		},
+	), nil, nil)
+
+	output, err := processor.Process(context.Background(), "整理武汉攻略", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if !strings.Contains(output, "mock response") || !strings.Contains(output, "https://travel-4e8f5f54.alter0.cn") {
+		t.Fatalf("Process() output = %q, want repaired guide content plus published url", output)
+	}
+	if _, statErr := os.Stat(filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default", "index.html")); statErr != nil {
+		t.Fatalf("expected repair flow to create index.html, stat err = %v", statErr)
+	}
+}
+
+func TestHybridNLProcessorKeepsTravelValidationBlockedWhenRepairDoesNotProduceArtifactsForDirectCodexEngine(t *testing.T) {
 	rootDir := t.TempDir()
 	previousWD, err := os.Getwd()
 	if err != nil {
@@ -578,18 +670,19 @@ func TestHybridNLProcessorDoesNotGenerateOrPublishFallbackTravelGuideForDirectCo
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "travel"
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineCodex
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
 
 	_, err = processor.Process(context.Background(), "整理武汉攻略", metadata)
 	if err == nil {
-		t.Fatal("Process() error = nil, want strict travel validation failure")
+		t.Fatal("Process() error = nil, want travel validation failure after ineffective repair")
 	}
 
 	indexPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default", "index.html")
 	if _, statErr := os.Stat(indexPath); !os.IsNotExist(statErr) {
-		t.Fatalf("expected no generated fallback index.html, stat err = %v", statErr)
+		t.Fatalf("expected repair to stay blocked without a real generated index.html, stat err = %v", statErr)
 	}
 	if deployer.lastRequest.ServiceID != "" || deployer.lastRequest.SessionID != "" {
-		t.Fatalf("expected no publish attempt without a real guide, got %+v", deployer.lastRequest)
+		t.Fatalf("expected no model-tool publish attempt outside codex repair flow, got %+v", deployer.lastRequest)
 	}
 }
 
@@ -621,6 +714,7 @@ func TestHybridNLProcessorAllowsTravelCompletionForDirectCodexEngineWhenDelivera
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "travel"
 	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineCodex
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
 	processor := NewHybridNLProcessor(newTestProcessor("success", "", filepath.Join(".alter0", "workspaces", "sessions", "session-default")), nil, nil)
 
 	output, err := processor.Process(context.Background(), "整理武汉攻略", metadata)
@@ -711,6 +805,52 @@ func TestHybridNLProcessorAgentModeAllowsHigherIterationLimit(t *testing.T) {
 	}
 	if reactFactory.lastConfig.MaxIterations != 48 {
 		t.Fatalf("expected max iterations 48, got %d", reactFactory.lastConfig.MaxIterations)
+	}
+}
+
+func TestHybridNLProcessorRepairsGenericAgentCompletionChecks(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "artifact-agent"
+	metadata[execdomain.ExecutionEngineMetadataKey] = execdomain.ExecutionEngineCodex
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = genericFileCompletionChecksJSON(t, "artifacts/final.md")
+
+	sessionWorkspaceSuffix := filepath.Join(".alter0", "workspaces", "sessions", "session-default")
+	processor := NewHybridNLProcessor(newSequencedTestProcessor(
+		codexTestInvocation{
+			mode:              "success",
+			expectedPrompt:    "整理交付物",
+			expectedWorkspace: sessionWorkspaceSuffix,
+		},
+		codexTestInvocation{
+			mode:                   "write-session-file-success",
+			expectedPromptContains: "Repair the missing required deliverables for the active agent now.",
+			expectedWorkspace:      sessionWorkspaceSuffix,
+			writeSessionFilePath:   "artifacts/final.md",
+			writeSessionFileBody:   "# done\n",
+		},
+	), nil, nil)
+
+	output, err := processor.Process(context.Background(), "整理交付物", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if !strings.Contains(output, "mock response") {
+		t.Fatalf("Process() output = %q, want original codex result retained", output)
+	}
+	if _, statErr := os.Stat(filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default", "artifacts", "final.md")); statErr != nil {
+		t.Fatalf("expected generic repair flow to create required artifact, stat err = %v", statErr)
 	}
 }
 
@@ -986,4 +1126,54 @@ func TestHybridNLProcessorExecutesMemorySearchReadWriteTools(t *testing.T) {
 	if readResult.IsError || !strings.Contains(readResult.Result, "alias") {
 		t.Fatalf("expected read_memory content, got %+v", readResult)
 	}
+}
+
+func travelCompletionChecksJSON(t *testing.T) string {
+	t.Helper()
+	return mustMarshalCompletionChecks(t, []controldomain.AgentCompletionCheck{
+		{
+			ID:                "guide-html-file",
+			Label:             "Guide HTML File",
+			Type:              controldomain.AgentCompletionCheckTypeSessionFileExists,
+			Required:          true,
+			SessionPath:       "index.html",
+			FailureMessage:    "travel html guide is incomplete: missing {{session_file}}. Generate the html guide in the session workspace root before completing",
+			RepairInstruction: "Create or overwrite the current request's index.html travel guide in the session workspace root.",
+		},
+		{
+			ID:                    "guide-html-service",
+			Label:                 "Guide HTML Service",
+			Type:                  controldomain.AgentCompletionCheckTypeWorkspaceServicePublished,
+			Required:              true,
+			ServiceID:             "travel",
+			RequireServiceURL:     true,
+			RequirePublicReadOnly: true,
+			FailureMessage:        "travel html guide is not published yet: deploy_test_service with service_name `travel` and service_type `frontend_dist` before completing",
+			RepairInstruction:     "Publish the current session workspace root to the public read-only travel service after index.html exists.",
+		},
+	})
+}
+
+func genericFileCompletionChecksJSON(t *testing.T, path string) string {
+	t.Helper()
+	return mustMarshalCompletionChecks(t, []controldomain.AgentCompletionCheck{
+		{
+			ID:                "required-artifact",
+			Label:             "Required Artifact",
+			Type:              controldomain.AgentCompletionCheckTypeSessionFileExists,
+			Required:          true,
+			SessionPath:       path,
+			FailureMessage:    "required artifact is missing: {{session_file}}",
+			RepairInstruction: "Create the required artifact file at {{session_file}} in the session workspace root.",
+		},
+	})
+}
+
+func mustMarshalCompletionChecks(t *testing.T, checks []controldomain.AgentCompletionCheck) string {
+	t.Helper()
+	raw, err := json.Marshal(checks)
+	if err != nil {
+		t.Fatalf("marshal completion checks failed: %v", err)
+	}
+	return string(raw)
 }

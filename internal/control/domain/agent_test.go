@@ -146,3 +146,54 @@ func TestAgentCapabilityRoundTripPreservesDeliverables(t *testing.T) {
 		t.Fatalf("unexpected second deliverable attribute binding: %+v", decoded.Deliverables[1])
 	}
 }
+
+func TestAgentCapabilityRoundTripPreservesCompletionChecks(t *testing.T) {
+	agent := Agent{
+		ID:      "travel",
+		Name:    "Travel Agent",
+		Type:    CapabilityTypeAgent,
+		Enabled: true,
+		Scope:   CapabilityScopeGlobal,
+		CompletionChecks: []AgentCompletionCheck{
+			{
+				ID:                "guide-html-file",
+				Label:             "Guide HTML File",
+				Type:              AgentCompletionCheckTypeSessionFileExists,
+				Required:          true,
+				SessionPath:       "index.html",
+				FailureMessage:    "missing session guide html",
+				RepairInstruction: "create the current request index.html in the session workspace root",
+			},
+			{
+				ID:                    "guide-html-service",
+				Label:                 "Guide HTML Service",
+				Type:                  AgentCompletionCheckTypeWorkspaceServicePublished,
+				Required:              true,
+				ServiceID:             "travel",
+				RequireServiceURL:     true,
+				RequirePublicReadOnly: true,
+				FailureMessage:        "missing published travel service",
+				RepairInstruction:     "publish the current session workspace root to the public travel service",
+				SessionAttributeKey:   "guide_html_url",
+			},
+		},
+	}
+
+	decoded := AgentFromCapability(agent.AsCapability())
+
+	if len(decoded.CompletionChecks) != 2 {
+		t.Fatalf("expected 2 completion checks, got %+v", decoded.CompletionChecks)
+	}
+	if decoded.CompletionChecks[0].Type != AgentCompletionCheckTypeSessionFileExists || decoded.CompletionChecks[0].SessionPath != "index.html" {
+		t.Fatalf("unexpected first completion check: %+v", decoded.CompletionChecks[0])
+	}
+	if decoded.CompletionChecks[1].Type != AgentCompletionCheckTypeWorkspaceServicePublished || decoded.CompletionChecks[1].ServiceID != "travel" {
+		t.Fatalf("unexpected second completion check: %+v", decoded.CompletionChecks[1])
+	}
+	if !decoded.CompletionChecks[1].RequireServiceURL || !decoded.CompletionChecks[1].RequirePublicReadOnly {
+		t.Fatalf("unexpected service completion check requirements: %+v", decoded.CompletionChecks[1])
+	}
+	if decoded.CompletionChecks[1].SessionAttributeKey != "guide_html_url" {
+		t.Fatalf("unexpected service completion check attribute binding: %+v", decoded.CompletionChecks[1])
+	}
+}

@@ -37,6 +37,18 @@ type HybridNLProcessor struct {
 	logger          *slog.Logger
 }
 
+type agentCompletionContext struct {
+	SessionID        string
+	RepoRoot         string
+	SessionWorkspace string
+	SessionAttrs     map[string]string
+}
+
+type agentCompletionFailure struct {
+	Check   controldomain.AgentCompletionCheck
+	Message string
+}
+
 func NewHybridNLProcessor(
 	codex *CodexCLIProcessor,
 	react reactAgentFactory,
@@ -81,13 +93,7 @@ func (p *HybridNLProcessor) Process(ctx context.Context, content string, metadat
 		p.logReactFallback(metadata, err)
 		output, codexErr := p.codex.Process(ctx, content, metadata)
 		if codexErr == nil {
-			output, codexErr = p.finalizeAgentOutput(ctx, content, output, metadata)
-			if codexErr != nil {
-				return "", codexErr
-			}
-			if err := validateAgentCompletion(metadata); err != nil {
-				return "", err
-			}
+			output, codexErr = p.finalizeValidatedOutput(ctx, content, output, metadata)
 			setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
 		}
 		return output, codexErr
@@ -105,13 +111,7 @@ func (p *HybridNLProcessor) Process(ctx context.Context, content string, metadat
 	}
 	output, err := p.codex.Process(ctx, content, metadata)
 	if err == nil {
-		output, err = p.finalizeAgentOutput(ctx, content, output, metadata)
-		if err != nil {
-			return "", err
-		}
-		if validateErr := validateAgentCompletion(metadata); validateErr != nil {
-			return "", validateErr
-		}
+		output, err = p.finalizeValidatedOutput(ctx, content, output, metadata)
 		setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
 	}
 	return output, err
@@ -137,13 +137,7 @@ func (p *HybridNLProcessor) ProcessStream(
 		p.logReactFallback(metadata, err)
 		output, codexErr := p.codex.ProcessStream(ctx, content, metadata, emit)
 		if codexErr == nil {
-			output, codexErr = p.finalizeAgentOutput(ctx, content, output, metadata)
-			if codexErr != nil {
-				return "", codexErr
-			}
-			if err := validateAgentCompletion(metadata); err != nil {
-				return "", err
-			}
+			output, codexErr = p.finalizeValidatedOutput(ctx, content, output, metadata)
 			setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
 		}
 		return output, codexErr
@@ -161,16 +155,41 @@ func (p *HybridNLProcessor) ProcessStream(
 	}
 	output, err := p.codex.ProcessStream(ctx, content, metadata, emit)
 	if err == nil {
-		output, err = p.finalizeAgentOutput(ctx, content, output, metadata)
-		if err != nil {
-			return "", err
-		}
-		if validateErr := validateAgentCompletion(metadata); validateErr != nil {
-			return "", validateErr
-		}
+		output, err = p.finalizeValidatedOutput(ctx, content, output, metadata)
 		setExecutionSource(metadata, execdomain.ExecutionSourceCodexCLI)
 	}
 	return output, err
+}
+
+func (p *HybridNLProcessor) finalizeValidatedOutput(
+	ctx context.Context,
+	content string,
+	output string,
+	metadata map[string]string,
+) (string, error) {
+	finalized, err := p.finalizeAgentOutput(ctx, content, output, metadata)
+	if err != nil {
+		return "", err
+	}
+	failures, validateErr := validateAgentCompletion(metadata)
+	if validateErr == nil {
+		return finalized, nil
+	}
+	repairedOutput, repaired, repairErr := p.repairAgentCompletion(ctx, content, finalized, metadata, failures)
+	if repairErr != nil {
+		return "", repairErr
+	}
+	if !repaired {
+		return "", validateErr
+	}
+	finalized, err = p.finalizeAgentOutput(ctx, content, repairedOutput, metadata)
+	if err != nil {
+		return "", err
+	}
+	if _, validateErr = validateAgentCompletion(metadata); validateErr != nil {
+		return "", validateErr
+	}
+	return finalized, nil
 }
 
 func (p *HybridNLProcessor) resolveEngine(metadata map[string]string) string {
@@ -399,8 +418,21 @@ func (p *HybridNLProcessor) executeModelTool(
 		if err != nil {
 			return toolErrorResult(toolCall, err), nil
 		}
-		if err := validateAgentCompletion(metadata); err != nil {
-			return toolErrorResult(toolCall, err), nil
+		if failures, validateErr := validateAgentCompletion(metadata); validateErr != nil {
+			repairedResult, repaired, repairErr := p.repairAgentCompletion(ctx, result, result, metadata, failures)
+			if repairErr != nil {
+				return toolErrorResult(toolCall, repairErr), nil
+			}
+			if !repaired {
+				return toolErrorResult(toolCall, validateErr), nil
+			}
+			result, err = p.finalizeAgentOutput(ctx, repairedResult, repairedResult, metadata)
+			if err != nil {
+				return toolErrorResult(toolCall, err), nil
+			}
+			if _, validateErr = validateAgentCompletion(metadata); validateErr != nil {
+				return toolErrorResult(toolCall, validateErr), nil
+			}
 		}
 		return &llmdomain.ToolResult{
 			ToolCallID:  toolCall.ID,
@@ -425,6 +457,79 @@ func (p *HybridNLProcessor) logReactFallback(metadata map[string]string, err err
 		slog.String("message_id", strings.TrimSpace(metadataValue(metadata, execdomain.RuntimeMessageIDMetadataKey))),
 		slog.String("error", strings.TrimSpace(err.Error())),
 	)
+}
+
+func (p *HybridNLProcessor) repairAgentCompletion(
+	ctx context.Context,
+	content string,
+	output string,
+	metadata map[string]string,
+	failures []agentCompletionFailure,
+) (string, bool, error) {
+	if p == nil || p.codex == nil || len(failures) == 0 {
+		return output, false, nil
+	}
+	repairPrompt, ok, err := buildAgentCompletionRepairPrompt(content, output, metadata, failures)
+	if err != nil {
+		return "", false, err
+	}
+	if !ok {
+		return output, false, nil
+	}
+	repairOutput, err := p.codex.Process(ctx, repairPrompt, metadata)
+	if err != nil {
+		return "", false, fmt.Errorf("agent completion repair failed after validation error: %w", err)
+	}
+	if strings.TrimSpace(output) != "" {
+		return output, true, nil
+	}
+	return repairOutput, true, nil
+}
+
+func buildAgentCompletionRepairPrompt(
+	content string,
+	output string,
+	metadata map[string]string,
+	failures []agentCompletionFailure,
+) (string, bool, error) {
+	if len(failures) == 0 {
+		return "", false, nil
+	}
+	completionContext, err := resolveAgentCompletionContext(metadata)
+	if err != nil {
+		return "", false, err
+	}
+	parts := []string{
+		"Repair the missing required deliverables for the active agent now.",
+		"Only work on the current session workspace and the missing delivery artifacts. Do not edit unrelated repository files.",
+	}
+	if strings.TrimSpace(completionContext.SessionWorkspace) != "" {
+		parts = append(parts, "Session workspace root: "+completionContext.SessionWorkspace)
+	}
+	repairLines := []string{}
+	for _, failure := range failures {
+		instruction := renderCompletionCheckTemplate(failure.Check.RepairInstruction, completionContext, failure.Check)
+		if strings.TrimSpace(instruction) == "" {
+			continue
+		}
+		repairLines = append(repairLines, "- "+strings.TrimSpace(failure.Check.Label)+": "+instruction)
+	}
+	if len(repairLines) == 0 {
+		return "", false, nil
+	}
+	blockerLines := make([]string, 0, len(failures))
+	for _, failure := range failures {
+		blockerLines = append(blockerLines, "- "+failure.Message)
+	}
+	parts = append(parts, "Current validation blockers:\n"+strings.Join(blockerLines, "\n"))
+	parts = append(parts, "Required repair actions:\n"+strings.Join(repairLines, "\n"))
+	if trimmedContent := strings.TrimSpace(content); trimmedContent != "" {
+		parts = append(parts, "Original user request:\n"+trimmedContent)
+	}
+	if trimmedOutput := strings.TrimSpace(output); trimmedOutput != "" {
+		parts = append(parts, "Current conversational guide draft:\n"+trimmedOutput)
+	}
+	return strings.Join(parts, "\n\n"), true, nil
 }
 
 func buildHybridReActSystemPrompt(metadata map[string]string) string {
@@ -530,51 +635,218 @@ func (p *HybridNLProcessor) buildAgentSystemPrompt(metadata map[string]string) s
 	return strings.Join(parts, "\n\n")
 }
 
-func validateAgentCompletion(metadata map[string]string) error {
-	if !isTravelAgent(metadata) {
-		return nil
+func validateAgentCompletion(metadata map[string]string) ([]agentCompletionFailure, error) {
+	failures, err := collectAgentCompletionFailures(metadata)
+	if err != nil {
+		return nil, err
 	}
-	return validateTravelAgentCompletion(metadata)
+	if len(failures) == 0 {
+		return nil, nil
+	}
+	if len(failures) == 1 {
+		return failures, errors.New(failures[0].Message)
+	}
+	lines := []string{"agent deliverables are incomplete:"}
+	for _, failure := range failures {
+		lines = append(lines, "- "+failure.Message)
+	}
+	return failures, errors.New(strings.Join(lines, "\n"))
 }
 
-func validateTravelAgentCompletion(metadata map[string]string) error {
+func collectAgentCompletionFailures(metadata map[string]string) ([]agentCompletionFailure, error) {
+	checks, err := parseAgentCompletionChecks(metadata)
+	if err != nil || len(checks) == 0 {
+		return nil, err
+	}
+	completionContext, err := resolveAgentCompletionContext(metadata)
+	if err != nil {
+		return nil, err
+	}
+	failures := make([]agentCompletionFailure, 0, len(checks))
+	for _, check := range checks {
+		if !check.Required {
+			continue
+		}
+		failed, message, err := evaluateCompletionCheck(check, completionContext)
+		if err != nil {
+			return nil, err
+		}
+		if failed {
+			failures = append(failures, agentCompletionFailure{Check: check, Message: message})
+		}
+	}
+	if len(failures) == 0 {
+		return nil, nil
+	}
+	return failures, nil
+}
+
+func resolveAgentCompletionContext(metadata map[string]string) (agentCompletionContext, error) {
 	sessionID := strings.TrimSpace(metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey))
 	if sessionID == "" {
-		return errors.New("travel html guide is incomplete: runtime session id is missing")
+		return agentCompletionContext{}, errors.New("agent completion check failed: runtime session id is missing")
 	}
 	repoRoot, err := resolveToolRepoRoot()
 	if err != nil {
-		return err
+		return agentCompletionContext{}, err
 	}
 	sessionWorkspace := filepath.FromSlash(buildCodingSessionWorkspacePath(repoRoot, sessionID))
 	if strings.TrimSpace(sessionWorkspace) == "" {
-		return errors.New("travel html guide is incomplete: session workspace is unavailable")
+		return agentCompletionContext{}, errors.New("agent completion check failed: session workspace is unavailable")
 	}
-	indexPath := filepath.Join(sessionWorkspace, "index.html")
-	if _, err := os.Stat(indexPath); err != nil {
-		return fmt.Errorf("travel html guide is incomplete: missing %s. Generate the html guide in the session workspace root before completing", filepath.ToSlash(indexPath))
-	}
-	serviceURL, ok, err := resolvePublishedWorkspaceServiceURL(repoRoot, sessionID, "travel")
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return errors.New("travel html guide is not published yet: deploy_test_service with service_name `travel` and service_type `frontend_dist` before completing")
-	}
-	if strings.TrimSpace(serviceURL) == "" {
-		return errors.New("travel html guide is not published yet: current travel service has no public url")
-	}
-	return nil
+	return agentCompletionContext{
+		SessionID:        sessionID,
+		RepoRoot:         repoRoot,
+		SessionWorkspace: sessionWorkspace,
+		SessionAttrs:     parseAgentInstanceAttributes(metadata),
+	}, nil
 }
 
-func resolvePublishedWorkspaceServiceURL(repoRoot string, sessionID string, serviceID string) (string, bool, error) {
+func evaluateCompletionCheck(check controldomain.AgentCompletionCheck, completionContext agentCompletionContext) (bool, string, error) {
+	switch check.Type {
+	case controldomain.AgentCompletionCheckTypeSessionFileExists:
+		target := filepath.Join(completionContext.SessionWorkspace, filepath.FromSlash(strings.Trim(strings.TrimSpace(check.SessionPath), "/")))
+		if _, err := os.Stat(target); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return true, renderCompletionCheckFailureMessage(check, completionContext, filepath.ToSlash(target), ""), nil
+			}
+			return false, "", err
+		}
+		return false, "", nil
+	case controldomain.AgentCompletionCheckTypeWorkspaceServicePublished:
+		entry, ok, err := resolvePublishedWorkspaceService(completionContext.RepoRoot, completionContext.SessionID, check.ServiceID)
+		if err != nil {
+			return false, "", err
+		}
+		if !ok {
+			return true, renderCompletionCheckFailureMessage(check, completionContext, "", ""), nil
+		}
+		if check.RequirePublicReadOnly && !entry.PublicReadOnly {
+			return true, renderCompletionCheckFailureMessage(check, completionContext, "", strings.TrimSpace(entry.URL)), nil
+		}
+		if check.RequireServiceURL && strings.TrimSpace(entry.URL) == "" {
+			return true, renderCompletionCheckFailureMessage(check, completionContext, "", ""), nil
+		}
+		return false, "", nil
+	case controldomain.AgentCompletionCheckTypeSessionAttributeNonEmpty:
+		value := strings.TrimSpace(completionContext.SessionAttrs[strings.TrimSpace(check.SessionAttributeKey)])
+		if value == "" {
+			return true, renderCompletionCheckFailureMessage(check, completionContext, "", ""), nil
+		}
+		return false, "", nil
+	default:
+		return false, "", nil
+	}
+}
+
+func parseAgentCompletionChecks(metadata map[string]string) ([]controldomain.AgentCompletionCheck, error) {
+	raw := strings.TrimSpace(metadataValue(metadata, execdomain.AgentCompletionChecksMetadataKey))
+	if raw == "" {
+		return nil, nil
+	}
+	var checks []controldomain.AgentCompletionCheck
+	if err := json.Unmarshal([]byte(raw), &checks); err != nil {
+		return nil, fmt.Errorf("invalid agent completion checks metadata: %w", err)
+	}
+	return checks, nil
+}
+
+func parseAgentInstanceAttributes(metadata map[string]string) map[string]string {
+	attributes := map[string]string{}
+	if len(metadata) == 0 {
+		return attributes
+	}
+	if raw := strings.TrimSpace(metadataValue(metadata, execdomain.AgentInstanceAttributesMetadataKey)); raw != "" {
+		var payload map[string]string
+		if err := json.Unmarshal([]byte(raw), &payload); err == nil {
+			for key, value := range payload {
+				normalizedKey := strings.TrimSpace(key)
+				normalizedValue := strings.TrimSpace(value)
+				if normalizedKey == "" || normalizedValue == "" {
+					continue
+				}
+				attributes[normalizedKey] = normalizedValue
+			}
+		}
+	}
+	for key, value := range metadata {
+		trimmedKey := strings.TrimSpace(key)
+		if !strings.HasPrefix(trimmedKey, execdomain.AgentInstanceAttributeMetadataPrefix) {
+			continue
+		}
+		attrKey := strings.TrimPrefix(trimmedKey, execdomain.AgentInstanceAttributeMetadataPrefix)
+		attrValue := strings.TrimSpace(value)
+		if strings.TrimSpace(attrKey) == "" || attrValue == "" {
+			continue
+		}
+		attributes[attrKey] = attrValue
+	}
+	return attributes
+}
+
+func renderCompletionCheckFailureMessage(
+	check controldomain.AgentCompletionCheck,
+	completionContext agentCompletionContext,
+	sessionFile string,
+	serviceURL string,
+) string {
+	if custom := renderCompletionCheckTemplate(check.FailureMessage, completionContext, check, sessionFile, serviceURL); strings.TrimSpace(custom) != "" {
+		return custom
+	}
+	switch check.Type {
+	case controldomain.AgentCompletionCheckTypeSessionFileExists:
+		return "required session file is missing: " + sessionFile
+	case controldomain.AgentCompletionCheckTypeWorkspaceServicePublished:
+		return "required workspace service is not published: " + strings.TrimSpace(check.ServiceID)
+	case controldomain.AgentCompletionCheckTypeSessionAttributeNonEmpty:
+		return "required session attribute is missing: " + strings.TrimSpace(check.SessionAttributeKey)
+	default:
+		return "required agent deliverable is incomplete: " + strings.TrimSpace(check.Label)
+	}
+}
+
+func renderCompletionCheckTemplate(
+	template string,
+	completionContext agentCompletionContext,
+	check controldomain.AgentCompletionCheck,
+	extraValues ...string,
+) string {
+	trimmed := strings.TrimSpace(template)
+	if trimmed == "" {
+		return ""
+	}
+	sessionFile := ""
+	serviceURL := ""
+	if len(extraValues) > 0 {
+		sessionFile = strings.TrimSpace(extraValues[0])
+	}
+	if len(extraValues) > 1 {
+		serviceURL = strings.TrimSpace(extraValues[1])
+	}
+	replacer := strings.NewReplacer(
+		"{{session_id}}", completionContext.SessionID,
+		"{{session_workspace}}", filepath.ToSlash(completionContext.SessionWorkspace),
+		"{{session_file}}", sessionFile,
+		"{{service_id}}", strings.TrimSpace(check.ServiceID),
+		"{{service_url}}", serviceURL,
+		"{{session_attribute_key}}", strings.TrimSpace(check.SessionAttributeKey),
+	)
+	return strings.TrimSpace(replacer.Replace(trimmed))
+}
+
+type publishedWorkspaceService struct {
+	URL            string
+	PublicReadOnly bool
+}
+
+func resolvePublishedWorkspaceService(repoRoot string, sessionID string, serviceID string) (publishedWorkspaceService, bool, error) {
 	registryPath := filepath.Join(repoRoot, ".alter0", "workspace-services.json")
 	raw, err := os.ReadFile(registryPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", false, nil
+			return publishedWorkspaceService{}, false, nil
 		}
-		return "", false, err
+		return publishedWorkspaceService{}, false, err
 	}
 	var payload struct {
 		Items []struct {
@@ -586,7 +858,7 @@ func resolvePublishedWorkspaceServiceURL(repoRoot string, sessionID string, serv
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return "", false, err
+		return publishedWorkspaceService{}, false, err
 	}
 	for _, item := range payload.Items {
 		if !strings.EqualFold(strings.TrimSpace(item.SessionID), sessionID) {
@@ -595,11 +867,20 @@ func resolvePublishedWorkspaceServiceURL(repoRoot string, sessionID string, serv
 		if !strings.EqualFold(strings.TrimSpace(item.ServiceID), serviceID) {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(item.ServiceType), workspaceServiceTypeFrontendDist) && (item.PublicReadOnly || strings.EqualFold(strings.TrimSpace(serviceID), "travel")) {
-			return strings.TrimSpace(item.URL), true, nil
-		}
+		return publishedWorkspaceService{
+			URL:            strings.TrimSpace(item.URL),
+			PublicReadOnly: item.PublicReadOnly,
+		}, true, nil
 	}
-	return "", false, nil
+	return publishedWorkspaceService{}, false, nil
+}
+
+func resolvePublishedWorkspaceServiceURL(repoRoot string, sessionID string, serviceID string) (string, bool, error) {
+	service, ok, err := resolvePublishedWorkspaceService(repoRoot, sessionID, serviceID)
+	if err != nil || !ok {
+		return "", ok, err
+	}
+	return strings.TrimSpace(service.URL), true, nil
 }
 
 func isCodingAgent(metadata map[string]string) bool {

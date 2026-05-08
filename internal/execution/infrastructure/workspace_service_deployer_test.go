@@ -173,7 +173,7 @@ func TestResolveWorkspaceServiceRepositoryPathDefaultsTravelToSessionWorkspace(t
 	}
 }
 
-func TestHybridNLProcessorBlocksTravelCompleteWithoutPublishedGuide(t *testing.T) {
+func TestHybridNLProcessorBlocksTravelCompleteWithoutPublishedGuideWhenRepairDoesNotProduceArtifacts(t *testing.T) {
 	repoRoot := t.TempDir()
 	previousWD, err := os.Getwd()
 	if err != nil {
@@ -187,11 +187,12 @@ func TestHybridNLProcessorBlocksTravelCompleteWithoutPublishedGuide(t *testing.T
 	})
 
 	processor := &HybridNLProcessor{
-		codex:           NewCodexCLIProcessor(),
+		codex:           newTestProcessor("success", "", filepath.Join(".alter0", "workspaces", "sessions", "session-default")),
 		serviceDeployer: &stubWorkspaceServiceDeployer{},
 	}
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
 
 	result, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
 		ID:        "complete-1",
@@ -205,7 +206,7 @@ func TestHybridNLProcessorBlocksTravelCompleteWithoutPublishedGuide(t *testing.T
 		t.Fatalf("expected complete to be blocked, got %+v", result)
 	}
 	if !strings.Contains(result.Result, "index.html") {
-		t.Fatalf("expected missing index.html guidance, got %q", result.Result)
+		t.Fatalf("expected missing index.html blocker after unsuccessful repair, got %q", result.Result)
 	}
 }
 
@@ -245,6 +246,7 @@ func TestHybridNLProcessorAllowsTravelCompleteAfterPublishedGuideExists(t *testi
 	}
 	metadata := testRuntimeMetadata()
 	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
 
 	result, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
 		ID:        "complete-2",
@@ -256,5 +258,46 @@ func TestHybridNLProcessorAllowsTravelCompleteAfterPublishedGuideExists(t *testi
 	}
 	if result.IsError || !result.IsFinal {
 		t.Fatalf("expected final success, got %+v", result)
+	}
+}
+
+func TestHybridNLProcessorRepairsTravelCompleteBeforeReturningFinalResult(t *testing.T) {
+	repoRoot := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(repoRoot); err != nil {
+		t.Fatalf("chdir repo root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &HybridNLProcessor{
+		codex: newSequencedTestProcessor(codexTestInvocation{
+			mode:                   "travel-repair-success",
+			expectedPromptContains: "Repair the missing required deliverables for the active agent now.",
+			expectedWorkspace:      filepath.Join(".alter0", "workspaces", "sessions", "session-default"),
+		}),
+		serviceDeployer: &stubWorkspaceServiceDeployer{},
+	}
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.AgentIDMetadataKey] = "travel"
+	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
+
+	result, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
+		ID:        "complete-3",
+		Name:      toolComplete,
+		Arguments: `{"result":"已完成武汉攻略"}`,
+	})
+	if err != nil {
+		t.Fatalf("executeModelTool() error = %v", err)
+	}
+	if result.IsError || !result.IsFinal {
+		t.Fatalf("expected final success after repair, got %+v", result)
+	}
+	if !strings.Contains(result.Result, "https://travel-4e8f5f54.alter0.cn") {
+		t.Fatalf("expected published guide url after repair, got %q", result.Result)
 	}
 }
