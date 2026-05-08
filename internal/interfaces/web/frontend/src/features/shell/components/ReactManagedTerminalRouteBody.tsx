@@ -4,6 +4,7 @@ import { createAPIClient } from "../../../shared/api/client";
 import { hashSessionIDShort } from "../../../shared/session/sessionHash";
 import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
 import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
+import { usePageActivation } from "../../../shared/visibility/usePageActivation";
 import {
   canPreviewComposerAttachment,
   readComposerFiles,
@@ -287,6 +288,7 @@ const IDLE_LIST_POLL_INTERVAL_MS = 12000;
 const HIDDEN_IDLE_LIST_POLL_INTERVAL_MS = 30000;
 const SCROLL_IDLE_MS = 1200;
 const SCROLL_BOTTOM_ANCHOR_THRESHOLD = 24;
+const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 const TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.attachments.v1";
 const TERMINAL_PENDING_DRAFT_KEY = "__pending__";
 
@@ -962,6 +964,15 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     return nextSession;
   };
 
+  const refreshTerminalOnPageActive = async () => {
+    await refreshList().catch(() => null);
+    if (!activeSessionID) {
+      return;
+    }
+    captureScrollSnapshot();
+    await refreshActiveSession(activeSessionID).catch(() => null);
+  };
+
   const createSession = async () => {
     const payload = await apiClient.post<TerminalSessionResponse>("/api/terminal/sessions", {});
     if (!payload.session) {
@@ -990,11 +1001,11 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const handleVisibilityChange = () => setPageHidden(document.hidden);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, []);
+  usePageActivation({
+    debounceMs: PAGE_ACTIVE_REFRESH_DEBOUNCE_MS,
+    onVisibilityChange: setPageHidden,
+    onActive: refreshTerminalOnPageActive,
+  });
 
   useEffect(() => {
     let cancelled = false;
