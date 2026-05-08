@@ -963,6 +963,109 @@ describe("ConversationRuntimeProvider", () => {
     expect(apiClientMock.post).not.toHaveBeenCalled();
   });
 
+  it("persists optimistic agent-runtime messages before the stream resolves", async () => {
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "", "agent-runtime": "agent-session-persist-1" }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "coding",
+                name: "Coding Agent",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return {
+            items: [
+              {
+                id: "agent-session-persist-1",
+                title: "Coding runtime",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "agent",
+                target_id: "coding",
+                target_name: "Coding Agent",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+                messages: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/agent-session-persist-1?route=agent-runtime":
+          return {
+            session: {
+              id: "agent-session-persist-1",
+              title: "Coding runtime",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "coding",
+              target_name: "Coding Agent",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+              messages: [],
+            },
+          };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <MessageListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/agents"));
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      screen.getByRole("button", { name: "send followup" }).click();
+
+      const snapshot = JSON.parse(
+        window.sessionStorage.getItem(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY) || "{}",
+      ) as Record<string, { id?: string; messages?: Array<{ role?: string; text?: string; status?: string }> }>;
+
+      expect(snapshot["agent-runtime"]?.id).toBe("agent-session-persist-1");
+      expect(snapshot["agent-runtime"]?.messages).toEqual([
+        expect.objectContaining({
+          role: "user",
+          text: "Follow up prompt",
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          text: "Thinking...",
+          status: "streaming",
+        }),
+      ]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it("recovers persisted agent-runtime responses when the stream reader throws after start", async () => {
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,

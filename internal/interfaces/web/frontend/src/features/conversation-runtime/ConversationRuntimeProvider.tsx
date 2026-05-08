@@ -1242,6 +1242,7 @@ export function ConversationRuntimeProvider({
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
   const sessionsByRouteRef = useRef(sessionsByRoute);
+  const activeSessionByRouteRef = useRef(activeSessionByRoute);
   const recoveryPromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
   const composerDraftPersistTimerRef = useRef<number>(0);
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
@@ -1276,9 +1277,22 @@ export function ConversationRuntimeProvider({
     latestComposerAttachmentDraftsRef.current = composerAttachmentDrafts;
   }, [composerAttachmentDrafts]);
 
+  useEffect(() => {
+    activeSessionByRouteRef.current = activeSessionByRoute;
+  }, [activeSessionByRoute]);
+
   useEffect(() => () => {
     window.clearTimeout(composerDraftPersistTimerRef.current);
     persistComposerDrafts(latestComposerDraftsRef.current);
+  }, []);
+
+  const persistRuntimeSnapshotsNow = useCallback((
+    nextSessions: SessionsState,
+    nextActiveState: ActiveSessionState = activeSessionByRouteRef.current,
+  ) => {
+    sessionsByRouteRef.current = nextSessions;
+    activeSessionByRouteRef.current = nextActiveState;
+    persistActiveSessionSnapshots(nextActiveState, nextSessions);
   }, []);
 
   const ensureSession = useCallback((
@@ -1316,6 +1330,7 @@ export function ConversationRuntimeProvider({
           [route]: currentSessions[route].map((session) => session.id === existing.id ? nextSession : session),
         };
         setSessionsByRoute(nextSessionsByRoute);
+        persistRuntimeSnapshotsNow(nextSessionsByRoute, preferredActiveState);
         return nextSession;
       }
       return existing;
@@ -1351,21 +1366,25 @@ export function ConversationRuntimeProvider({
     setSessionsByRoute(nextSessionsByRoute);
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+    persistRuntimeSnapshotsNow(nextSessionsByRoute, nextActiveState);
     return created;
-  }, [activeSessionByRoute, agents, route, selectedAgentID, sessionsByRoute]);
+  }, [activeSessionByRoute, agents, persistRuntimeSnapshotsNow, route, selectedAgentID, sessionsByRoute]);
 
   const patchSession = useCallback((
     routeKey: ConversationRoute,
     sessionID: string,
     updater: (session: ChatSession) => ChatSession,
   ) => {
-    setSessionsByRoute((current) => ({
+    const current = sessionsByRouteRef.current;
+    const nextState = {
       ...current,
       [routeKey]: current[routeKey].map((session) =>
         session.id === sessionID ? updater(session) : session,
       ),
-    }));
-  }, []);
+    };
+    persistRuntimeSnapshotsNow(nextState);
+    setSessionsByRoute(nextState);
+  }, [persistRuntimeSnapshotsNow]);
 
   const createMessage = (
     role: "user" | "assistant",
@@ -1431,7 +1450,8 @@ export function ConversationRuntimeProvider({
     const nextActiveState = { ...activeSessionByRoute, [route]: sessionID };
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-  }, [activeSessionByRoute, route]);
+    persistRuntimeSnapshotsNow(sessionsByRouteRef.current, nextActiveState);
+  }, [activeSessionByRoute, persistRuntimeSnapshotsNow, route]);
 
   const removeSession = useCallback(async (sessionID: string) => {
     try {
@@ -1460,7 +1480,8 @@ export function ConversationRuntimeProvider({
     persistComposerDrafts(nextDrafts);
     persistComposerAttachmentDrafts(nextAttachmentDrafts);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-  }, [activeSessionByRoute, apiClient, route, sessionsByRoute]);
+    persistRuntimeSnapshotsNow(nextSessionsByRoute, nextActiveState);
+  }, [activeSessionByRoute, apiClient, persistRuntimeSnapshotsNow, route, sessionsByRoute]);
 
   const sendMessageFallback = async (
     routeKey: ConversationRoute,
@@ -1520,16 +1541,17 @@ export function ConversationRuntimeProvider({
   };
 
   const upsertRuntimeSession = (routeKey: ConversationRoute, nextSession: ChatSession) => {
-    setSessionsByRoute((current) => {
-      const hasSession = current[routeKey].some((session) => session.id === nextSession.id);
-      const nextSessions = hasSession
-        ? current[routeKey].map((session) => (session.id === nextSession.id ? nextSession : session))
-        : [nextSession, ...current[routeKey]];
-      return {
-        ...current,
-        [routeKey]: nextSessions.sort((left, right) => right.createdAt - left.createdAt),
-      };
-    });
+    const current = sessionsByRouteRef.current;
+    const hasSession = current[routeKey].some((session) => session.id === nextSession.id);
+    const nextSessions = hasSession
+      ? current[routeKey].map((session) => (session.id === nextSession.id ? nextSession : session))
+      : [nextSession, ...current[routeKey]];
+    const nextState = {
+      ...current,
+      [routeKey]: nextSessions.sort((left, right) => right.createdAt - left.createdAt),
+    };
+    persistRuntimeSnapshotsNow(nextState);
+    setSessionsByRoute(nextState);
   };
 
   const hydrateRuntimeSession = async (routeKey: ConversationRoute, sessionID: string): Promise<ChatSession | null> => {
@@ -1884,10 +1906,14 @@ export function ConversationRuntimeProvider({
     const remoteSessions = (Array.isArray(payload.items) ? payload.items : [])
       .map((item) => normalizeRuntimeSession(item))
       .filter((session): session is ChatSession => session !== null);
-    setSessionsByRoute((current) => ({
-      ...current,
-      [routeKey]: mergeRuntimeSessions(remoteSessions, current[routeKey]),
-    }));
+    setSessionsByRoute((current) => {
+      const nextState = {
+        ...current,
+        [routeKey]: mergeRuntimeSessions(remoteSessions, current[routeKey]),
+      };
+      persistRuntimeSnapshotsNow(nextState);
+      return nextState;
+    });
     setSessionsLoadedByRoute((current) => ({ ...current, [routeKey]: true }));
     return remoteSessions;
   };
