@@ -760,6 +760,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   } | null>(null);
   const draftPersistTimerRef = useRef<number | null>(null);
   const mobileSubmitGestureLockRef = useRef(false);
+  const mobileSessionGestureLockRef = useRef(false);
   const groupedSessions = useMemo(
     () => groupSessionListItems(sessions, {
       language,
@@ -796,6 +797,14 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     } catch {
       node.focus();
     }
+  };
+
+  const blurComposerInput = () => {
+    const node = composerInputRef.current;
+    if (!node || document.activeElement !== node) {
+      return;
+    }
+    node.blur();
   };
 
   const updateDraftAttachments = (
@@ -867,6 +876,23 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     void submitInput();
   };
 
+  const releaseMobileSessionGestureLock = () => {
+    window.setTimeout(() => {
+      mobileSessionGestureLockRef.current = false;
+    }, 0);
+  };
+
+  const toggleSessionPanel = () => {
+    setMetaOpen((current) => !current);
+  };
+
+  const openMobileSessionPanelOnPress = () => {
+    mobileSessionGestureLockRef.current = true;
+    releaseMobileSessionGestureLock();
+    blurComposerInput();
+    toggleSessionPanel();
+  };
+
   const handleSubmitPointerDownCapture = (event: PointerEvent<HTMLButtonElement>) => {
     if (
       !workbench.isMobileViewport
@@ -887,6 +913,22 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     }
     event.preventDefault();
     submitMobileInputOnPress();
+  };
+
+  const handleSessionUtilityPointerDownCapture = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!workbench.isMobileViewport || event.pointerType === "mouse" || mobileSessionGestureLockRef.current) {
+      return;
+    }
+    event.preventDefault();
+    openMobileSessionPanelOnPress();
+  };
+
+  const handleSessionUtilityTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
+    if (!workbench.isMobileViewport || mobileSessionGestureLockRef.current) {
+      return;
+    }
+    event.preventDefault();
+    openMobileSessionPanelOnPress();
   };
 
   useRuntimeComposerViewportSync({
@@ -1598,10 +1640,20 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
           label: shellCopy.runtimeMobile,
           icon: <RuntimeSessionControlIcon />,
           className: metaOpen ? "is-active" : undefined,
-          onClick: () => setMetaOpen((current) => !current),
+          onClick: () => {
+            if (mobileSessionGestureLockRef.current) {
+              return;
+            }
+            toggleSessionPanel();
+          },
+          buttonProps: {
+            onPointerDownCapture: handleSessionUtilityPointerDownCapture,
+            onTouchStartCapture: handleSessionUtilityTouchStartCapture,
+          },
         },
       ],
       panelContent: terminalConfigPanel,
+      onPanelDismiss: () => setMetaOpen(false),
       panelProps: {
         "data-runtime-config-surface": "terminal",
       },

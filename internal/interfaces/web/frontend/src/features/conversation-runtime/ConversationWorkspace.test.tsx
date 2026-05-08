@@ -633,6 +633,38 @@ describe("ConversationWorkspace", () => {
     expect(focusSpy).toHaveBeenCalled();
   });
 
+  it("dismisses the session panel when the composer input is pressed", () => {
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "model";
+    runtimeMock.inspectorTabOpen = true;
+    runtimeMock.providers = [
+      {
+        id: "openrouter",
+        name: "OpenRouter",
+        models: [
+          { id: "deepseek-v3.2", name: "DeepSeek V3.2", supportsVision: true, active: true },
+        ],
+      },
+    ];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
+    fireEvent.pointerDown(composerInput, { pointerType: "mouse" });
+
+    expect(runtimeMock.closeInspector).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the session panel on the first mobile touch while the composer is focused", () => {
+    renderWorkspace({ isMobileViewport: true });
+
+    const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
+    fireEvent.focus(composerInput);
+    fireEvent.touchStart(screen.getByRole("button", { name: "Session" }));
+
+    expect(runtimeMock.toggleInspector).toHaveBeenLastCalledWith("model");
+  });
+
   it("marks the shared runtime composer input as plain text so mobile autofill bars stay off", () => {
     renderWorkspace();
 

@@ -1,4 +1,7 @@
 import {
+  useCallback,
+  useEffect,
+  useRef,
   type ChangeEvent,
   type ComponentPropsWithoutRef,
   type FocusEventHandler,
@@ -16,6 +19,17 @@ import {
 
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
+}
+
+function assignRef<T>(ref: Ref<T> | undefined, value: T) {
+  if (!ref) {
+    return;
+  }
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  ref.current = value;
 }
 
 type RuntimeComposerProps = {
@@ -70,6 +84,7 @@ type RuntimeComposerProps = {
   }>;
   panelContent?: ReactNode;
   panelClassName?: string;
+  onPanelDismiss?: () => void;
   panelProps?: Omit<ComponentPropsWithoutRef<"section">, "children" | "className"> & {
     className?: string;
   };
@@ -148,6 +163,7 @@ export function RuntimeComposer({
   utilityButtons = [],
   panelContent,
   panelClassName,
+  onPanelDismiss,
   panelProps,
   toolsClassName,
   metaClassName,
@@ -198,11 +214,44 @@ export function RuntimeComposer({
     ...submitButtonRestProps
   } = submitButtonProps || {};
   const composerAlias = runtimeKind === "terminal" ? "terminal" : "conversation";
+  const shellNodeRef = useRef<HTMLElement | null>(null);
+  const panelNodeRef = useRef<HTMLElement | null>(null);
+  const handleShellRef = useCallback((node: HTMLElement | null) => {
+    shellNodeRef.current = node;
+    assignRef(shellRef, node);
+  }, [shellRef]);
+  const handlePanelRef = useCallback((node: HTMLElement | null) => {
+    panelNodeRef.current = node;
+  }, []);
+
+  useEffect(() => {
+    if (!panelContent || !onPanelDismiss) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      const panelNode = panelNodeRef.current;
+      if (!panelNode || panelNode.contains(target)) {
+        return;
+      }
+      if (target instanceof Element && target.closest("[data-runtime-composer-utility]")) {
+        return;
+      }
+      onPanelDismiss();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [onPanelDismiss, panelContent]);
 
   return (
     <>
       <footer
-        ref={shellRef}
+        ref={handleShellRef}
         className={joinClassNames(
           "runtime-composer-shell",
           shellClassName,
@@ -221,6 +270,7 @@ export function RuntimeComposer({
         ) : null}
         {panelContent ? (
           <section
+            ref={handlePanelRef}
             className={joinClassNames(
               "runtime-composer-panel",
               panelClassName,
