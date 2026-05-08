@@ -24,6 +24,7 @@ const (
 	agentCapabilitiesMetadataKey  = "agent.capabilities"
 	agentSessionProfileFieldsKey  = "agent.session_profile_fields"
 	agentDeliverablesMetadataKey  = "agent.deliverables"
+	agentCompletionChecksKey      = "agent.completion_checks"
 )
 
 const (
@@ -59,6 +60,7 @@ type Agent struct {
 	UIRoute              string                     `json:"ui_route,omitempty"`
 	Capabilities         []string                   `json:"capabilities,omitempty"`
 	Deliverables         []AgentDeliverable         `json:"deliverables,omitempty"`
+	CompletionChecks     []AgentCompletionCheck     `json:"completion_checks,omitempty"`
 	Metadata             map[string]string          `json:"metadata,omitempty"`
 }
 
@@ -76,6 +78,27 @@ type AgentDeliverable struct {
 	Format              string `json:"format,omitempty"`
 	Required            bool   `json:"required,omitempty"`
 	SessionAttributeKey string `json:"session_attribute_key,omitempty"`
+}
+
+const (
+	AgentCompletionCheckTypeSessionFileExists         = "session_file_exists"
+	AgentCompletionCheckTypeWorkspaceServicePublished = "workspace_service_published"
+	AgentCompletionCheckTypeSessionAttributeNonEmpty  = "session_attribute_nonempty"
+)
+
+type AgentCompletionCheck struct {
+	ID                    string `json:"id"`
+	Label                 string `json:"label"`
+	Description           string `json:"description,omitempty"`
+	Type                  string `json:"type"`
+	Required              bool   `json:"required,omitempty"`
+	SessionPath           string `json:"session_path,omitempty"`
+	ServiceID             string `json:"service_id,omitempty"`
+	RequireServiceURL     bool   `json:"require_service_url,omitempty"`
+	RequirePublicReadOnly bool   `json:"require_public_read_only,omitempty"`
+	SessionAttributeKey   string `json:"session_attribute_key,omitempty"`
+	FailureMessage        string `json:"failure_message,omitempty"`
+	RepairInstruction     string `json:"repair_instruction,omitempty"`
 }
 
 func (a Agent) AsCapability() Capability {
@@ -105,6 +128,7 @@ func (a Agent) AsCapability() Capability {
 	setAgentMetadata(metadata, agentUIRouteMetadataKey, a.UIRoute)
 	setAgentListMetadata(metadata, agentCapabilitiesMetadataKey, a.Capabilities)
 	setAgentDeliverablesMetadata(metadata, a.Deliverables)
+	setAgentCompletionChecksMetadata(metadata, a.CompletionChecks)
 	return Capability{
 		ID:       a.ID,
 		Name:     a.Name,
@@ -153,6 +177,7 @@ func AgentFromCapability(capability Capability) Agent {
 		UIRoute:              strings.TrimSpace(metadata[agentUIRouteMetadataKey]),
 		Capabilities:         parseAgentListMetadata(metadata[agentCapabilitiesMetadataKey]),
 		Deliverables:         parseAgentDeliverablesMetadata(metadata[agentDeliverablesMetadataKey]),
+		CompletionChecks:     parseAgentCompletionChecksMetadata(metadata[agentCompletionChecksKey]),
 		Metadata:             metadata,
 	}
 	delete(agent.Metadata, agentProviderIDMetadataKey)
@@ -172,6 +197,7 @@ func AgentFromCapability(capability Capability) Agent {
 	delete(agent.Metadata, agentUIRouteMetadataKey)
 	delete(agent.Metadata, agentCapabilitiesMetadataKey)
 	delete(agent.Metadata, agentDeliverablesMetadataKey)
+	delete(agent.Metadata, agentCompletionChecksKey)
 	if len(agent.Metadata) == 0 {
 		agent.Metadata = nil
 	}
@@ -260,6 +286,22 @@ func setAgentDeliverablesMetadata(metadata map[string]string, deliverables []Age
 	metadata[agentDeliverablesMetadataKey] = string(encoded)
 }
 
+func setAgentCompletionChecksMetadata(metadata map[string]string, checks []AgentCompletionCheck) {
+	if metadata == nil {
+		return
+	}
+	normalized := normalizeAgentCompletionChecks(checks)
+	if len(normalized) == 0 {
+		delete(metadata, agentCompletionChecksKey)
+		return
+	}
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return
+	}
+	metadata[agentCompletionChecksKey] = string(encoded)
+}
+
 func parseAgentListMetadata(raw string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -305,6 +347,18 @@ func parseAgentDeliverablesMetadata(raw string) []AgentDeliverable {
 		return nil
 	}
 	return normalizeAgentDeliverables(deliverables)
+}
+
+func parseAgentCompletionChecksMetadata(raw string) []AgentCompletionCheck {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var checks []AgentCompletionCheck
+	if err := json.Unmarshal([]byte(trimmed), &checks); err != nil {
+		return nil
+	}
+	return normalizeAgentCompletionChecks(checks)
 }
 
 func normalizeAgentAttribute(raw string) string {
@@ -398,6 +452,64 @@ func normalizeAgentDeliverables(items []AgentDeliverable) []AgentDeliverable {
 		return nil
 	}
 	return normalized
+}
+
+func normalizeAgentCompletionChecks(items []AgentCompletionCheck) []AgentCompletionCheck {
+	if len(items) == 0 {
+		return nil
+	}
+	normalized := make([]AgentCompletionCheck, 0, len(items))
+	seen := map[string]struct{}{}
+	for _, item := range items {
+		label := strings.TrimSpace(item.Label)
+		id := normalizeAgentDeliverableID(item.ID)
+		if id == "" {
+			id = normalizeAgentDeliverableID(label)
+		}
+		checkType := strings.ToLower(strings.TrimSpace(item.Type))
+		if id == "" || label == "" || checkType == "" {
+			continue
+		}
+		lookup := strings.ToLower(id)
+		if _, ok := seen[lookup]; ok {
+			continue
+		}
+		if !isValidAgentCompletionCheck(item, checkType) {
+			continue
+		}
+		seen[lookup] = struct{}{}
+		normalized = append(normalized, AgentCompletionCheck{
+			ID:                    id,
+			Label:                 label,
+			Description:           strings.TrimSpace(item.Description),
+			Type:                  checkType,
+			Required:              item.Required,
+			SessionPath:           strings.Trim(strings.TrimSpace(item.SessionPath), "/"),
+			ServiceID:             strings.ToLower(strings.TrimSpace(item.ServiceID)),
+			RequireServiceURL:     item.RequireServiceURL,
+			RequirePublicReadOnly: item.RequirePublicReadOnly,
+			SessionAttributeKey:   strings.TrimSpace(item.SessionAttributeKey),
+			FailureMessage:        strings.TrimSpace(item.FailureMessage),
+			RepairInstruction:     strings.TrimSpace(item.RepairInstruction),
+		})
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func isValidAgentCompletionCheck(item AgentCompletionCheck, checkType string) bool {
+	switch checkType {
+	case AgentCompletionCheckTypeSessionFileExists:
+		return strings.TrimSpace(item.SessionPath) != ""
+	case AgentCompletionCheckTypeWorkspaceServicePublished:
+		return strings.TrimSpace(item.ServiceID) != ""
+	case AgentCompletionCheckTypeSessionAttributeNonEmpty:
+		return strings.TrimSpace(item.SessionAttributeKey) != ""
+	default:
+		return false
+	}
 }
 
 func normalizeAgentDeliverableID(raw string) string {

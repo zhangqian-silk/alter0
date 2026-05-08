@@ -13,6 +13,7 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	skills := map[string][]string{}
 	entrypoints := map[string]bool{}
 	deliverables := map[string]int{}
+	completionChecks := map[string]int{}
 	for _, agent := range agents {
 		names[agent.ID] = agent.Name
 		index[agent.ID] = agent.SystemPrompt
@@ -20,6 +21,7 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 		skills[agent.ID] = agent.Skills
 		entrypoints[agent.ID] = agent.EntryPoint
 		deliverables[agent.ID] = len(agent.Deliverables)
+		completionChecks[agent.ID] = len(agent.CompletionChecks)
 	}
 
 	if prompt := index["travel"]; !strings.Contains(prompt, "codex_exec") || !strings.Contains(strings.ToLower(prompt), "assistant") {
@@ -63,6 +65,9 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	}
 	if deliverables["travel"] < 2 {
 		t.Fatalf("expected travel agent to declare delivery contract, got %d deliverables", deliverables["travel"])
+	}
+	if completionChecks["travel"] < 2 {
+		t.Fatalf("expected travel agent to declare artifact completion checks, got %d checks", completionChecks["travel"])
 	}
 	for _, agentID := range []string{
 		"travel-city-guide",

@@ -116,13 +116,14 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 - `Agent Session Profile` 由运行时自动维护，Agent 可检索与读取，不可通过 `write_memory` 覆盖。
 - `coding` Agent 需要在实例属性里自动维护 `repository_path`、`source_repository_path`、`remote_repository`、`branch`、`base_branch`、`preview_url` 与 `preview_subdomain` 等稳定交付事实。
 - `travel` 与其他专项 Agent 的实例属性可按领域预设字段，例如 `city / district / days / hotel_area`，并允许在当前 Session 内继续维护对应键值；`travel` 还需要自动补齐只读 `guide_html_url`，用于承接 HTML 攻略交付物与 `Details > Deliverables` 的 URL 回填。
+- Agent 的交付约束需拆成两层：`deliverables` 用于前端展示与模型提示，`completion_checks` 用于运行时机器校验。后者至少支持 Session 工作区文件存在、workspace service 已发布且 URL 可用、Session 属性非空等确定性规则，并可绑定失败时的专门 Codex 修复指令。
 - `guide_html_url` 只在当前 Session 已成功发布公开只读 `travel` 服务后才可对外暴露；执行侧 profile 文件不得预写、伪造或保留过期链接冒充当前交付结果。
 - `travel` 生成 HTML 攻略时，桌面端与移动端兼容性属于同一条交付约束：不得只针对单一 viewport 优化并把另一端留给后续修补。
 - `travel` 生成 HTML 攻略时，内容编排默认先输出分类推荐池，再输出行程计划；不得直接跳到 day-by-day 安排而省略候选池。
 - 分类推荐池至少覆盖三组信息：吃喝按 `小吃 / 早点 / 特色菜 / 特色饮品` 分组并兼顾老字号与大众点评高分项，景点按 `公园 / 博物馆 / 表演` 等类型分组，住宿按不同价格带或档位列出热门酒店。
 - 上述三组属于默认核心结构，不是上限；若城市特征明确，`travel` 需要灵活补充夜游、集市、游船、温泉、滑雪、庙会等城市特有分类，而不是把所有目的地都压成同一模板。
 - 每组相关推荐都必须标注数据来源，来源可以是大众点评高分榜、官方景区资料、酒店预订平台榜单或页面中明确命名的其他检索来源。
-- `travel` 的 `complete` 成功前必须同时满足两个运行时前提：Session 工作区根目录已有 `index.html`，且当前 Session 已注册公开只读 `travel` 服务；否则运行时必须返回明确阻塞原因并继续要求补齐交付。
+- `travel` 的 `complete` 成功前必须通过自身声明的两项 `completion_checks`：Session 工作区根目录已有 `index.html`，且当前 Session 已注册公开只读 `travel` 服务；否则运行时必须返回明确阻塞原因并继续要求补齐交付。若首轮 `complete` 缺页或缺发布，运行时可再注入一轮仅面向当前 Session 工作区的专门 Codex 修复任务；只有修复轮真实补齐页面与发布后才允许收口。
 - Agent Runtime `Details` 需要提供 `Session Profile` 只读视图，按当前 Agent 预设字段顺序展示实例属性值。
 - 旁路抽取失败不能阻塞主执行链路；默认可退化为一次受限 Codex 窄调用，只返回 JSON patch，由运行时统一校验和落盘。
 - 稳定、可复用、影响后续行为的偏好可写入长期记忆、私有 `AGENTS.md` 或私有 Skill。

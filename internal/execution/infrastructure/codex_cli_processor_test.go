@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -639,6 +640,47 @@ func newTestProcessor(mode, expectedPrompt string, expectedWorkspaceSuffix ...st
 	}
 }
 
+type codexTestInvocation struct {
+	mode                   string
+	expectedPrompt         string
+	expectedPromptContains string
+	expectedWorkspace      string
+	writeSessionFilePath   string
+	writeSessionFileBody   string
+}
+
+func newSequencedTestProcessor(invocations ...codexTestInvocation) *CodexCLIProcessor {
+	var (
+		mu    sync.Mutex
+		index int
+	)
+	return &CodexCLIProcessor{
+		command: "codex",
+		runner: func(ctx context.Context, name string, args ...string) *exec.Cmd {
+			mu.Lock()
+			defer mu.Unlock()
+			if index >= len(invocations) {
+				return exec.CommandContext(ctx, os.Args[0], "-test.run=TestCodexCLIProcessorHelperProcess", "--", "unexpected")
+			}
+			invocation := invocations[index]
+			index++
+			cmdArgs := append([]string{"-test.run=TestCodexCLIProcessorHelperProcess", "--", name}, args...)
+			cmd := exec.CommandContext(ctx, os.Args[0], cmdArgs...)
+			cmd.Env = append(
+				os.Environ(),
+				"GO_WANT_CODEX_HELPER_PROCESS=1",
+				"CODEX_HELPER_MODE="+invocation.mode,
+				"CODEX_HELPER_EXPECT_PROMPT="+invocation.expectedPrompt,
+				"CODEX_HELPER_EXPECT_PROMPT_CONTAINS="+invocation.expectedPromptContains,
+				"CODEX_HELPER_EXPECT_WORKSPACE_SUFFIX="+invocation.expectedWorkspace,
+				"CODEX_HELPER_WRITE_SESSION_FILE_PATH="+invocation.writeSessionFilePath,
+				"CODEX_HELPER_WRITE_SESSION_FILE_BODY="+invocation.writeSessionFileBody,
+			)
+			return cmd
+		},
+	}
+}
+
 func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_CODEX_HELPER_PROCESS") != "1" {
 		return
@@ -652,18 +694,22 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		}
 	}
 	if separatorIndex < 0 || separatorIndex+1 >= len(os.Args) {
+		_, _ = os.Stderr.WriteString("missing forwarded args")
 		os.Exit(2)
 	}
 
 	forwarded := os.Args[separatorIndex+1:]
 	if len(forwarded) < 2 {
+		_, _ = os.Stderr.WriteString("forwarded args too short")
 		os.Exit(2)
 	}
 	if forwarded[0] != "codex" || forwarded[1] != "exec" {
+		_, _ = os.Stderr.WriteString("unexpected forwarded command")
 		os.Exit(2)
 	}
 	for _, arg := range forwarded {
 		if arg == "-a" || arg == "--ask-for-approval" {
+			_, _ = os.Stderr.WriteString("unexpected approval flag")
 			os.Exit(2)
 		}
 	}
@@ -676,13 +722,16 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		}
 	}
 	if !containsArgPair(forwarded, "--sandbox", defaultCodexSandboxMode) {
+		_, _ = os.Stderr.WriteString("missing sandbox flag")
 		os.Exit(2)
 	}
 	mode := os.Getenv("CODEX_HELPER_MODE")
 	if mode == "stream-resume-success" && !containsArgSequence(forwarded, "resume", "--json", "thread-agent-fallback", "-") {
+		_, _ = os.Stderr.WriteString("unexpected resume args")
 		os.Exit(2)
 	}
 	if mode != "stream-resume-success" && containsArg(forwarded, "resume") {
+		_, _ = os.Stderr.WriteString("unexpected resume mode")
 		os.Exit(2)
 	}
 
@@ -697,20 +746,29 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 	}
 	expectedPrompt := os.Getenv("CODEX_HELPER_EXPECT_PROMPT")
 	if expectedPrompt != "" && promptArg != "-" {
+		_, _ = os.Stderr.WriteString("expected stdin prompt")
 		os.Exit(2)
 	}
 	if expectedPrompt != "" && prompt != expectedPrompt {
+		_, _ = os.Stderr.WriteString("prompt mismatch")
+		os.Exit(2)
+	}
+	expectedPromptContains := os.Getenv("CODEX_HELPER_EXPECT_PROMPT_CONTAINS")
+	if expectedPromptContains != "" && !strings.Contains(prompt, expectedPromptContains) {
+		_, _ = os.Stderr.WriteString("prompt contains mismatch")
 		os.Exit(2)
 	}
 	expectedWorkspace := strings.TrimSpace(os.Getenv("CODEX_HELPER_EXPECT_WORKSPACE_SUFFIX"))
 	if expectedWorkspace != "" {
 		workingDir, err := os.Getwd()
 		if err != nil {
+			_, _ = os.Stderr.WriteString("missing working dir")
 			os.Exit(2)
 		}
 		actual := strings.ToLower(strings.ReplaceAll(filepath.Clean(workingDir), "\\", "/"))
 		expected := strings.ToLower(strings.ReplaceAll(filepath.Clean(expectedWorkspace), "\\", "/"))
 		if !strings.HasSuffix(actual, expected) {
+			_, _ = os.Stderr.WriteString("workspace mismatch")
 			os.Exit(2)
 		}
 	}
@@ -723,6 +781,7 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		}
 	}
 	if !strings.HasPrefix(mode, "stream-") && strings.TrimSpace(outputPath) == "" {
+		_, _ = os.Stderr.WriteString("missing output path")
 		os.Exit(2)
 	}
 
@@ -740,6 +799,47 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 	case "failure":
 		_, _ = os.Stderr.WriteString("mock failure")
 		os.Exit(19)
+	case "travel-repair-success":
+		workspaceDir, err := os.Getwd()
+		if err != nil {
+			os.Exit(2)
+		}
+		indexHTML := "<!doctype html><html><head><title>travel</title></head><body><main><h1>Travel Guide</h1></main></body></html>\n"
+		if writeErr := os.WriteFile(filepath.Join(workspaceDir, "index.html"), []byte(indexHTML), 0o644); writeErr != nil {
+			os.Exit(2)
+		}
+		registryDir := filepath.Clean(filepath.Join(workspaceDir, "..", "..", ".."))
+		if mkErr := os.MkdirAll(registryDir, 0o755); mkErr != nil {
+			os.Exit(2)
+		}
+		registryPayload := `{"items":[{"session_id":"session-default","service_id":"travel","service_type":"frontend_dist","url":"https://travel-4e8f5f54.alter0.cn","public_read_only":true}]}`
+		if writeErr := os.WriteFile(filepath.Join(registryDir, "workspace-services.json"), []byte(registryPayload), 0o644); writeErr != nil {
+			os.Exit(2)
+		}
+		_ = os.WriteFile(outputPath, []byte("repair completed\n"), 0o600)
+		os.Exit(0)
+	case "write-session-file-success":
+		workspaceDir, err := os.Getwd()
+		if err != nil {
+			os.Exit(2)
+		}
+		sessionPath := strings.TrimSpace(os.Getenv("CODEX_HELPER_WRITE_SESSION_FILE_PATH"))
+		if sessionPath == "" {
+			os.Exit(2)
+		}
+		body := os.Getenv("CODEX_HELPER_WRITE_SESSION_FILE_BODY")
+		target := filepath.Join(workspaceDir, filepath.FromSlash(sessionPath))
+		if mkErr := os.MkdirAll(filepath.Dir(target), 0o755); mkErr != nil {
+			os.Exit(2)
+		}
+		if body == "" {
+			body = "artifact generated\n"
+		}
+		if writeErr := os.WriteFile(target, []byte(body), 0o644); writeErr != nil {
+			os.Exit(2)
+		}
+		_ = os.WriteFile(outputPath, []byte("repair completed\n"), 0o600)
+		os.Exit(0)
 	case "stream-success":
 		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\"}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.delta\",\"item\":{\"type\":\"agent_message\",\"delta\":\"mock \"}}\n")
