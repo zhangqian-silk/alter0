@@ -23,6 +23,7 @@ type LegacyShellCopy = {
   sessionPaneLabel: string;
   sessionPanelEyebrow: string;
   sessionClose: string;
+  sessionHide: string;
   sessionRecent: string;
   sessionHistoryCollapse: string;
   sessionHistoryExpand: string;
@@ -146,6 +147,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     sessionPaneLabel: "Session control center",
     sessionPanelEyebrow: "Session control",
     sessionClose: "Close",
+    sessionHide: "Hide",
     sessionRecent: "Recent Sessions",
     sessionHistoryCollapse: "Collapse",
     sessionHistoryExpand: "Expand",
@@ -267,6 +269,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     sessionPaneLabel: "会话控制中心",
     sessionPanelEyebrow: "会话控制",
     sessionClose: "关闭",
+    sessionHide: "收起",
     sessionRecent: "最近会话",
     sessionHistoryCollapse: "折叠",
     sessionHistoryExpand: "展开",

@@ -3,7 +3,7 @@ import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { createAPIClient } from "../../../shared/api/client";
 import { hashSessionIDShort } from "../../../shared/session/sessionHash";
 import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
-import { formatDateTime, formatTimeLabel } from "../../../shared/time/format";
+import { formatDateTime, formatDateTimeMinute, formatTimeLabel } from "../../../shared/time/format";
 import { usePageActivation } from "../../../shared/visibility/usePageActivation";
 import {
   canPreviewComposerAttachment,
@@ -156,7 +156,6 @@ type TerminalCopy = {
   noProcess: string;
   noOutput: string;
   noOutputMeta: string;
-  lastOutput: (label: string) => string;
   top: string;
   prev: string;
   next: string;
@@ -183,7 +182,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     current: "Current",
     sessionLabel: "Session",
     newShort: "New",
-    hideSessions: "Hide sessions",
+    hideSessions: "Hide",
     empty: "No terminal sessions yet.",
     ready: "Ready",
     busy: "Busy",
@@ -209,7 +208,6 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     noProcess: "No execution details.",
     noOutput: "No output yet.",
     noOutputMeta: "No output yet.",
-    lastOutput: (label) => `Last output ${label}`,
     top: "Top",
     prev: "Prev",
     next: "Next",
@@ -234,7 +232,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     current: "当前",
     sessionLabel: "会话",
     newShort: "新建",
-    hideSessions: "收起会话",
+    hideSessions: "收起",
     empty: "暂时还没有终端会话。",
     ready: "就绪",
     busy: "执行中",
@@ -260,7 +258,6 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     noProcess: "暂无执行细节。",
     noOutput: "暂时还没有输出。",
     noOutputMeta: "暂无输出。",
-    lastOutput: (label) => `最近输出 ${label}`,
     top: "顶部",
     prev: "上一个",
     next: "下一个",
@@ -711,7 +708,7 @@ function sessionLastOutputLabel(
   if (labelAt <= 0) {
     return copy.noOutputMeta;
   }
-  return copy.lastOutput(formatDateTime(labelAt));
+  return formatDateTimeMinute(labelAt);
 }
 
 export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
@@ -1485,8 +1482,8 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       sessionPaneCountLabel: copy.sessionCount(sessions.length),
       sessionPanePrimaryActionLabel: copy.newShort,
       onSessionPanePrimaryAction: () => void createSession(),
-      sessionPaneSecondaryActionLabel: copy.hideSessions,
-      onSessionPaneSecondaryAction: workbench.closeMobileSessionPane,
+      sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.hideSessions : undefined,
+      onSessionPaneSecondaryAction: workbench.isMobileViewport ? workbench.closeMobileSessionPane : undefined,
       workspaceProps: {
         "data-runtime-workspace": "terminal",
         "data-runtime-session-id": activeSession?.id || "",

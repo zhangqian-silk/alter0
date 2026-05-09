@@ -5,6 +5,30 @@ function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
+function RuntimeSessionPaneAddIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <path d="M10 5.25v9.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+      <path d="M5.25 10h9.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function RuntimeSessionPaneHideIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <path
+        d="M2.5 10c1.9-3.2 4.42-4.8 7.5-4.8s5.6 1.6 7.5 4.8c-1.9 3.2-4.42 4.8-7.5 4.8S4.4 13.2 2.5 10Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <circle cx="10" cy="10" r="2.2" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M4 16 16 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 type RuntimeWorkspaceShellProps = {
   rootClassName?: string;
   rootProps?: ComponentPropsWithoutRef<"section">;
@@ -213,7 +237,10 @@ export function RuntimeWorkspaceShell({
                 onClick={onSessionPanePrimaryAction}
                 {...sessionPanePrimaryActionProps}
               >
-                {sessionPanePrimaryActionLabel}
+                <span className="runtime-workspace-session-pane-action-icon">
+                  <RuntimeSessionPaneAddIcon />
+                </span>
+                <span>{sessionPanePrimaryActionLabel}</span>
               </button>
               {sessionPaneSecondaryActionLabel && onSessionPaneSecondaryAction ? (
                 <button
@@ -225,7 +252,10 @@ export function RuntimeWorkspaceShell({
                   onClick={onSessionPaneSecondaryAction}
                   {...sessionPaneSecondaryActionProps}
                 >
-                  {sessionPaneSecondaryActionLabel}
+                  <span className="runtime-workspace-session-pane-action-icon">
+                    <RuntimeSessionPaneHideIcon />
+                  </span>
+                  <span>{sessionPaneSecondaryActionLabel}</span>
                 </button>
               ) : null}
             </div>

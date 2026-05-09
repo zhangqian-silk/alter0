@@ -7,6 +7,16 @@ import { RuntimeWorkspaceHeader } from "./RuntimeWorkspaceHeader";
 import { RuntimeWorkspaceScreen } from "./RuntimeWorkspaceScreen";
 import { RuntimeWorkspaceShell } from "./RuntimeWorkspaceShell";
 
+function RuntimeSessionMoreIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" focusable="false" aria-hidden="true">
+      <circle cx="5" cy="10" r="1.35" />
+      <circle cx="10" cy="10" r="1.35" />
+      <circle cx="15" cy="10" r="1.35" />
+    </svg>
+  );
+}
+
 export type RuntimeWorkspaceDetailsField = {
   label: string;
   value: unknown;
@@ -22,6 +32,7 @@ export type RuntimeWorkspaceSessionItem = {
   id: string;
   active: boolean;
   title: string;
+  contextLabel?: string;
   meta: string;
   shortHash: string;
   statusTone?: RuntimeWorkspaceSessionTone;
@@ -123,33 +134,29 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
             {...item.buttonProps}
           >
             <span className="runtime-session-main">
-              <span className="runtime-session-topline">
-                <span className="runtime-session-topline-leading">
-                  {item.statusTone ? (
-                    <>
-                      <span
-                        className={`runtime-session-signal is-${item.statusTone}`}
-                        data-runtime-session-signal={item.statusTone}
-                        aria-hidden="true"
-                      ></span>
-                      <span className="sr-only">{item.statusLabel || item.statusTone}</span>
-                    </>
-                  ) : null}
-                  <span
-                    className={item.active ? "runtime-session-badge is-active" : "runtime-session-badge"}
-                  >
-                    {item.active ? item.activeLabel : item.idleLabel}
-                  </span>
-                </span>
-              </span>
               <span className="runtime-session-title-row">
-                <span className="runtime-session-title">{item.title}</span>
+                <span className="sr-only">
+                  {item.active ? item.activeLabel : item.idleLabel}
+                  {item.statusLabel ? `, ${item.statusLabel}` : ""}
+                </span>
+                {item.statusTone ? (
+                  <span
+                    className={`runtime-session-signal is-${item.statusTone}`}
+                    data-runtime-session-signal={item.statusTone}
+                    aria-hidden="true"
+                  ></span>
+                ) : null}
+                <span className="runtime-session-title-copy">
+                  <span className="runtime-session-title">{item.title}</span>
+                  {item.contextLabel ? (
+                    <span className="runtime-session-context">{item.contextLabel}</span>
+                  ) : null}
+                </span>
               </span>
               <span className="runtime-session-summary-row">
                 <span className="runtime-session-meta">{item.meta}</span>
-              </span>
-              <span className="runtime-session-bottomline">
-                <span className="runtime-session-hash">{item.shortHash}</span>
+                <span className="runtime-session-meta-separator" aria-hidden="true">|</span>
+                <span className="runtime-session-hash">#{item.shortHash}</span>
               </span>
             </span>
           </button>
@@ -162,7 +169,9 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
               onClick={item.onDelete}
               {...item.deleteProps}
             >
-              <span aria-hidden="true">···</span>
+              <span className="runtime-session-delete-icon" aria-hidden="true">
+                <RuntimeSessionMoreIcon />
+              </span>
               <span className="sr-only">{item.deleteLabel}</span>
             </button>
           ) : null}

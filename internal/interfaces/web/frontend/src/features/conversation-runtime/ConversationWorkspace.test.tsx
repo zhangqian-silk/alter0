@@ -234,7 +234,10 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector(".runtime-session-title-row")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-title-row")?.textContent).toContain("New");
     expect(document.querySelector(".runtime-session-summary-row")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-bottomline")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-summary-row")).toHaveTextContent("now");
+    expect(document.querySelector(".runtime-session-summary-row")).toHaveTextContent("#abcd1234");
+    expect(document.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-badge")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-list='conversation']")).toHaveClass("runtime-session-list");
     expect(document.querySelector("[data-runtime-workspace='conversation']")).toHaveClass("runtime-workspace");
     expect(document.querySelector("[data-runtime-workspace-page='true']")).toBeInTheDocument();
@@ -243,6 +246,17 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector("[data-runtime-screen='conversation']")).toHaveClass("runtime-workspace-screen");
     expect(document.querySelector("[data-runtime-timeline='true']")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-pane-head='true']")).toBeInTheDocument();
+    const sessionPaneHead = document.querySelector("[data-runtime-session-pane-head='true']") as HTMLElement;
+    expect(Array.from(sessionPaneHead.children).map((node) => (node as HTMLElement).className)).toEqual([
+      "runtime-workspace-session-pane-copy",
+      "runtime-workspace-session-pane-actions",
+    ]);
+    const sessionPaneCopy = sessionPaneHead.querySelector(".runtime-workspace-session-pane-copy") as HTMLElement;
+    expect(sessionPaneCopy).toBeInTheDocument();
+    expect(within(sessionPaneCopy).getByText("Sessions")).toBeInTheDocument();
+    expect(within(sessionPaneCopy).getByText("1 sessions")).toBeInTheDocument();
+    expect(sessionPaneHead.textContent).toContain("New");
+    expect(sessionPaneHead.textContent).toContain("Hide");
     expect(document.querySelector("[data-runtime-screen='conversation']")?.closest(".conversation-console-panel"))
       .toBe(document.querySelector(".runtime-workspace-body > .conversation-console-panel"));
 
@@ -258,6 +272,10 @@ describe("ConversationWorkspace", () => {
     expect(within(mobileHeader).getByRole("button", { name: "New" })).toHaveClass(
       "runtime-workspace-mobile-action",
     );
+    const hideSessionsAction = within(screen.getByTestId("conversation-session-pane"))
+      .getAllByRole("button", { name: "Hide" })
+      .find((button) => button.classList.contains("runtime-workspace-session-pane-action"));
+    expect(hideSessionsAction).toHaveClass("runtime-workspace-session-pane-action");
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(workspaceHeader).toHaveAttribute("data-runtime-workspace-header", "true");
     expect(workspaceHeader).toHaveClass("is-sticky");
@@ -403,7 +421,7 @@ describe("ConversationWorkspace", () => {
       {
         id: "session-1",
         title: "Ship session sidebar refresh",
-        meta: "Chat · 12 messages · just now",
+        meta: "just now",
         shortHash: "abcd1234",
         createdAt: todayStart.getTime() + (2 * 60 * 60 * 1000),
         active: true,
@@ -411,7 +429,7 @@ describe("ConversationWorkspace", () => {
       {
         id: "session-2",
         title: "Review Gemini layout notes",
-        meta: "Chat · 4 messages · 2 hr ago",
+        meta: "2 hr ago",
         shortHash: "efgh5678",
         createdAt: yesterdayStart.getTime() + (2 * 60 * 60 * 1000),
         active: false,
@@ -419,7 +437,7 @@ describe("ConversationWorkspace", () => {
       {
         id: "session-3",
         title: "Archive older shell ideas",
-        meta: "Chat · 2 messages · 36 hr ago",
+        meta: "36 hr ago",
         shortHash: "ijkl9012",
         createdAt: earlierStart.getTime() + (2 * 60 * 60 * 1000),
         active: false,
@@ -438,6 +456,57 @@ describe("ConversationWorkspace", () => {
     expect(within(sessionPane).getByText("Earlier")).toBeInTheDocument();
     expect(within(sessionPane).getAllByRole("button", { name: "Delete session" })).toHaveLength(3);
     expect(within(sessionPane).getAllByRole("listitem")).toHaveLength(3);
+    const targetCard = within(sessionPane)
+      .getAllByRole("listitem")
+      .find((item) => item.textContent?.includes("Review Gemini layout notes")) as HTMLElement;
+    expect(targetCard).toBeInTheDocument();
+    expect(targetCard.querySelector(".runtime-session-title-row")).toBeInTheDocument();
+    expect(targetCard.querySelector(".runtime-session-summary-row")).toHaveTextContent("2 hr ago");
+    expect(targetCard.querySelector(".runtime-session-summary-row")).toHaveTextContent("#efgh5678");
+    expect(targetCard.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
+    expect(targetCard.querySelector(".runtime-session-badge")).not.toBeInTheDocument();
+  });
+
+  it("shows the concrete agent name inside agent-runtime session cards", () => {
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.target = { type: "agent", id: "coding", name: "Coding Agent" };
+    runtimeMock.activeAgent = {
+      id: "coding",
+      name: "Coding Agent",
+      description: "Handles repository work",
+      deliverables: [],
+      session_profile_fields: [],
+    };
+    runtimeMock.sessionItems = [
+      {
+        id: "agent-session-1",
+        title: "Refine preview deployment flow",
+        meta: "18 min ago",
+        contextLabel: "Coding Agent",
+        shortHash: "code7788",
+        createdAt: Date.parse("2026-04-23T11:18:00Z"),
+        active: true,
+      },
+    ];
+
+    renderWorkspace({ route: "agent-runtime", isMobileViewport: false });
+
+    const sessionPane = screen.getByTestId("conversation-session-pane");
+    const card = within(sessionPane).getAllByRole("listitem")[0] as HTMLElement;
+    expect(card.querySelector(".runtime-session-context")).toHaveTextContent("Coding Agent");
+    expect(card.querySelector(".runtime-session-summary-row")).toHaveTextContent("18 min ago");
+    expect(card.querySelector(".runtime-session-summary-row")).toHaveTextContent("#code7788");
+    expect(card.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
+    expect(card.querySelector(".runtime-session-title")).toHaveTextContent("Refine preview deployment flow");
+    const titleRow = card.querySelector(".runtime-session-title-row") as HTMLElement;
+    const titleCopy = card.querySelector(".runtime-session-title-copy") as HTMLElement;
+    expect(titleRow).toBeInTheDocument();
+    expect(titleCopy).toBeInTheDocument();
+    expect(titleRow.querySelector(".runtime-session-signal")).toBeInTheDocument();
+    expect(Array.from(titleCopy.children).map((node) => (node as HTMLElement).className)).toEqual([
+      "runtime-session-title",
+      "runtime-session-context",
+    ]);
   });
 
   it("shows a Codex chip in the chat model selector and forwards selection", () => {
