@@ -224,6 +224,7 @@ function useConversationWorkspaceController(
         id: item.id,
         active: item.active,
         title: item.title,
+        contextLabel: item.contextLabel,
         meta: item.meta,
         shortHash: item.shortHash,
         activeLabel: activeSessionBadgeLabel,
@@ -356,7 +357,7 @@ function useConversationWorkspaceController(
         "data-testid": "conversation-session-pane",
       },
       sessionPaneBackdrop: {
-        ariaLabel: copy.sessionClose,
+        ariaLabel: copy.sessionHide,
         onClick: workbench.closeMobileSessionPane,
       },
       sessionPanePrimaryActionClassName: "is-primary",
@@ -364,7 +365,7 @@ function useConversationWorkspaceController(
       sessionPaneCountLabel: sessionCountLabel,
       sessionPanePrimaryActionLabel: newSessionLabel,
       onSessionPanePrimaryAction: handleCreateSession,
-      sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.sessionClose : undefined,
+      sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.sessionHide : undefined,
       onSessionPaneSecondaryAction: workbench.isMobileViewport ? workbench.closeMobileSessionPane : undefined,
       workspaceProps: {
         "data-runtime-workspace": "conversation",
@@ -387,7 +388,7 @@ function useConversationWorkspaceController(
     },
   }), [
     copy.chatMenu,
-    copy.sessionClose,
+    copy.sessionHide,
     copy.terminalSessions,
     handleCreateSession,
     newSessionLabel,

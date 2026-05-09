@@ -201,13 +201,13 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("border-radius: 12px;");
   });
 
-  it("renders the shared session signal as a tiny dot with visible ripple pulses", () => {
+  it("renders the shared session signal as a soft status dot with visible ripple pulses", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain(".runtime-session-signal {");
-    expect(stylesheet).toContain("width: 5px;");
-    expect(stylesheet).toContain("height: 5px;");
+    expect(stylesheet).toContain("width: 9px;");
+    expect(stylesheet).toContain("height: 9px;");
     expect(stylesheet).toContain("animation: runtime-session-signal-breathe 1.9s ease-in-out infinite;");
     expect(stylesheet).toContain(".runtime-session-signal::before,");
     expect(stylesheet).toContain(".runtime-session-signal::after {");
@@ -334,15 +334,47 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain(".runtime-session-card {");
-    expect(stylesheet).toContain("border-radius: 14px;");
-    expect(stylesheet).toContain("background: transparent;");
+    expect(stylesheet).toContain("border-radius: 18px;");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(250, 252, 255, 0.98) 100%);");
     expect(stylesheet).toContain(".runtime-session-delete {");
-    expect(stylesheet).toContain("min-height: auto;");
+    expect(stylesheet).toContain("min-height: 42px;");
+    expect(stylesheet).toContain(".runtime-session-summary-row {");
+    expect(stylesheet).toContain(".runtime-session-meta-separator {");
+    expect(stylesheet).toContain(".runtime-workspace-session-pane-action-icon {");
+    expect(stylesheet).toContain(".runtime-session-title-copy {");
+    expect(stylesheet).toContain("flex: 1 1 auto;");
+    expect(stylesheet).toContain(".runtime-session-context {");
+    expect(stylesheet).toContain("font-size: 11px;");
     expect(stylesheet).toContain(".conversation-inspector {");
     expect(stylesheet).toContain("border-radius: 12px;");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 248, 255, 0.94) 100%);");
     expect(stylesheet).toContain(".conversation-check-item {");
     expect(stylesheet).toContain("padding: 8px 10px;");
+  });
+
+  it("keeps session drawer actions compact and aligned with the smaller mobile control size", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".runtime-workspace-session-pane-head {");
+    expect(stylesheet).toContain("justify-content: space-between;");
+    expect(stylesheet).toContain("flex-wrap: nowrap;");
+    expect(stylesheet).toContain(".runtime-workspace-session-pane-copy {");
+    expect(stylesheet).toContain("display: flex;");
+    expect(stylesheet).toContain("flex-direction: column;");
+    expect(stylesheet).toContain("align-items: flex-start;");
+    expect(stylesheet).toContain(".runtime-workspace-session-pane-actions {");
+    expect(stylesheet).toContain("margin-left: auto;");
+    expect(stylesheet).toContain(".runtime-workspace-session-pane-action {");
+    expect(stylesheet).toContain("min-height: 32px;");
+    expect(stylesheet).toContain("border-radius: 8px;");
+    expect(stylesheet).toContain("padding: 0 10px;");
+    expect(stylesheet).toContain("font-size: 11px;");
+    expect(stylesheet).toContain("width: min(calc(100vw - 12px), 360px);");
+    expect(stylesheet).toContain(".runtime-workspace-session-pane-copy strong {");
+    expect(stylesheet).toContain("font-size: 15px;");
+    expect(stylesheet).toContain(".runtime-workspace-session-pane-copy span {");
+    expect(stylesheet).toContain("font-size: 9.5px;");
   });
 
   it("renders composer toolbar controls as compact square icon buttons", () => {

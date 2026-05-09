@@ -459,10 +459,15 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".runtime-session-title-row")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-title-row")?.textContent).toContain("Workspace shell");
     expect(document.querySelector(".runtime-session-summary-row")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-bottomline")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-summary-row")?.textContent).not.toContain("Last output");
+    expect(document.querySelector(".runtime-session-summary-row")?.textContent).not.toContain("最近输出");
+    expect(document.querySelector(".runtime-session-summary-row")).toHaveTextContent("2026-04-15 18:10");
+    expect(document.querySelector(".runtime-session-summary-row")).toHaveTextContent("#c05eccbf");
+    expect(document.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-badge")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-card='terminal-1']")).toHaveAttribute("data-runtime-session-tone", "ready");
     expect(document.querySelector("[data-runtime-session-signal='ready']")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-hash")?.textContent).toBe("c05eccbf");
+    expect(document.querySelector(".runtime-session-hash")?.textContent).toBe("#c05eccbf");
     expect(document.querySelector(".runtime-session-hash")?.textContent).not.toContain("terminal-1");
     expect(within(document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement).getByRole("list")).toHaveAttribute(
       "data-runtime-session-list",
@@ -755,6 +760,12 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(within(sessionPane).getByText("Yesterday")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Earlier")).toBeInTheDocument();
     expect(within(sessionPane).getAllByRole("listitem")).toHaveLength(3);
+    const firstCard = within(sessionPane).getAllByRole("listitem")[0] as HTMLElement;
+    expect(firstCard.querySelector(".runtime-session-summary-row")?.textContent).not.toContain("Last output");
+    expect(firstCard.querySelector(".runtime-session-summary-row")?.textContent).not.toContain("最近输出");
+    expect(firstCard.querySelector(".runtime-session-summary-row")?.textContent).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
+    expect(firstCard.querySelector(".runtime-session-summary-row")).toHaveTextContent("#");
+    expect(firstCard.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
   });
 
   it("attaches images in terminal composer and submits them with the terminal input payload", async () => {

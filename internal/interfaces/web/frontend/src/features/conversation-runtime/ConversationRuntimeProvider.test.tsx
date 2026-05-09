@@ -210,6 +210,8 @@ function SessionItemsHarness() {
         id: item.id,
         title: item.title,
         active: item.active,
+        contextLabel: item.contextLabel,
+        meta: item.meta,
       })))}
     </output>
   );
@@ -2000,11 +2002,80 @@ describe("ConversationRuntimeProvider", () => {
       const payload = JSON.parse(screen.getByTestId("session-items").textContent || "[]") as Array<{
         id?: string;
         active?: boolean;
+        contextLabel?: string;
       }>;
       expect(payload).toHaveLength(2);
       expect(payload.map((item) => item.id)).toEqual(["agent-visible-2", "agent-visible-1"]);
       expect(payload.find((item) => item.id === "agent-visible-2")?.active).toBe(true);
+      expect(payload.find((item) => item.id === "agent-visible-2")?.contextLabel).toBe("Coding Agent");
     });
+  });
+
+  it("uses an absolute session timestamp so runtime cards avoid relative-time drift", async () => {
+      window.sessionStorage.setItem(
+        ACTIVE_SESSION_STORAGE_KEY,
+        JSON.stringify({ chat: "chat-visible-1", "agent-runtime": "" }),
+      );
+      window.sessionStorage.setItem(
+        RECENT_SESSION_SNAPSHOT_STORAGE_KEY,
+        JSON.stringify({
+          chat: [
+            {
+              id: "chat-visible-1",
+              title: "Review Gemini layout notes",
+              titleAuto: false,
+              titleScore: 2,
+              createdAt: Date.parse("2026-04-23T03:40:00Z"),
+              targetType: "model",
+              targetID: "raw-model",
+              targetName: "Raw Model",
+              messagesLoaded: true,
+              serverBacked: true,
+              messages: [
+                {
+                  id: "msg-chat-visible-1",
+                  role: "assistant",
+                  text: "Session reply",
+                  attachments: [],
+                  status: "done",
+                  at: Date.parse("2026-04-23T03:40:02Z"),
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      apiClientMock.get.mockImplementation(async (path: string) => {
+        if (path === "/api/conversation-runtime/sessions?route=chat") {
+          return { items: [] };
+        }
+        if (path === "/api/control/llm/providers") {
+          return { items: [] };
+        }
+        if (path === "/api/control/skills") {
+          return { items: [] };
+        }
+        if (path === "/api/control/mcps") {
+          return { items: [] };
+        }
+        return { items: [] };
+      });
+
+      render(
+        <ConversationRuntimeProvider route="chat" language="en">
+          <SessionItemsHarness />
+        </ConversationRuntimeProvider>,
+      );
+
+      await waitFor(() => {
+        const payload = JSON.parse(screen.getByTestId("session-items").textContent || "[]") as Array<{
+          id?: string;
+          meta?: string;
+        }>;
+        expect(payload).toHaveLength(1);
+        expect(payload[0]?.id).toBe("chat-visible-1");
+        expect(payload[0]?.meta).toBe("2026-04-23 11:40");
+      });
   });
 
   it("hydrates the active runtime session from recent snapshots when the collection is still empty", async () => {

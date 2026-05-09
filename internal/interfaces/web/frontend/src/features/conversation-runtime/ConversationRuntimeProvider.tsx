@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createAPIClient } from "../../shared/api/client";
 import { hashSessionIDShort } from "../../shared/session/sessionHash";
+import { formatDateTimeMinute } from "../../shared/time/format";
 import type { LegacyShellLanguage } from "../shell/legacyShellCopy";
 import { MOBILE_VIEWPORT_BREAKPOINT_PX } from "../../shared/viewport/mobileViewport";
 import { usePageActivation } from "../../shared/visibility/usePageActivation";
@@ -279,6 +280,7 @@ type ConversationRuntimeContextValue = {
   sessionItems: Array<{
     id: string;
     title: string;
+    contextLabel?: string;
     meta: string;
     shortHash: string;
     createdAt: number;
@@ -1072,12 +1074,23 @@ function formatRelativeTime(at: number, language: LegacyShellLanguage): string {
   return language === "zh" ? `${hours} 小时前` : `${hours} hr ago`;
 }
 
-function buildSessionMeta(session: ChatSession, language: LegacyShellLanguage): string {
-  const targetLabel = session.target.type === "agent" ? `Agent · ${session.target.name}` : "Chat";
-  const countLabel = language === "zh"
-    ? `${session.messages.length} 条消息`
-    : `${session.messages.length} messages`;
-  return `${targetLabel} · ${countLabel} · ${formatRelativeTime(session.createdAt, language)}`;
+function resolveSessionActivityAt(session: ChatSession): number {
+  const latestMessageAt = session.messages.reduce((latest, message) => {
+    return Math.max(latest, Number(message.at) || 0);
+  }, 0);
+  return Math.max(session.createdAt, latestMessageAt);
+}
+
+function buildSessionMeta(session: ChatSession, _language: LegacyShellLanguage): string {
+  return formatDateTimeMinute(resolveSessionActivityAt(session));
+}
+
+function buildSessionContextLabel(session: ChatSession): string | undefined {
+  if (session.target.type !== "agent") {
+    return undefined;
+  }
+  const name = normalizeText(session.target.name) || normalizeText(session.target.id);
+  return name || undefined;
 }
 
 function enabledModels(provider: ChatProvider | null | undefined): ChatProviderModel[] {
@@ -2194,6 +2207,7 @@ export function ConversationRuntimeProvider({
     sessionItems: activeSessions.map((session) => ({
       id: session.id,
       title: session.title,
+      contextLabel: buildSessionContextLabel(session),
       meta: buildSessionMeta(session, language),
       shortHash: hashSessionIDShort(session.id),
       createdAt: session.createdAt,
