@@ -207,6 +207,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.sendPrompt.mockClear();
     runtimeMock.toggleInspector.mockClear();
     runtimeMock.closeInspector.mockClear();
+    runtimeMock.selectTarget.mockClear();
     runtimeMock.selectModel.mockClear();
     runtimeMock.toggleSkill.mockClear();
     buildChatTimelineItemsMock.mockClear();
@@ -661,7 +662,16 @@ describe("ConversationWorkspace", () => {
         name: "Frontend Design",
         description: "Shared frontend delivery standards",
         kind: "skill",
-        active: false,
+        active: true,
+        visibility: "public",
+        locked: false,
+      },
+      {
+        id: "artifact-preview",
+        name: "Artifact Preview",
+        description: "Publish static artifacts to a preview subdomain",
+        kind: "skill",
+        active: true,
         visibility: "public",
         locked: false,
       },
@@ -688,7 +698,51 @@ describe("ConversationWorkspace", () => {
 
     expect(screen.getByText("Deploy Test Service")).toBeInTheDocument();
     expect(screen.getByText("Frontend Design")).toBeInTheDocument();
+    expect(screen.getByText("Artifact Preview")).toBeInTheDocument();
     expect(screen.queryByText("Writing Agent Skill")).not.toBeInTheDocument();
+  });
+
+  it("renders the mobile empty welcome state as a direct-pick agent list with short intros", () => {
+    runtimeMock.route = "agent-runtime";
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "New",
+      messages: [],
+    };
+    runtimeMock.target = { type: "agent", id: "travel", name: "Travel Agent" };
+    runtimeMock.targetOptions = [
+      {
+        type: "agent",
+        id: "travel",
+        name: "Travel Agent",
+        subtitle: "Travel planning specialist for route, itinerary, and guide delivery",
+        active: true,
+      },
+      {
+        type: "agent",
+        id: "writing",
+        name: "Writing Agent",
+        subtitle: "Structured writing specialist for product docs and launch content",
+        active: false,
+      },
+    ];
+
+    renderWorkspace({ route: "agent-runtime", isMobileViewport: true });
+
+    const agentPicker = screen.getByRole("radiogroup", { name: "Choose agent" });
+    expect(agentPicker).toBeInTheDocument();
+    expect(agentPicker).toHaveAttribute("data-agent-picker-layout", "list");
+    const travelOption = screen.getByRole("radio", { name: /Travel Agent/ });
+    const writingOption = screen.getByRole("radio", { name: /Writing Agent/ });
+    expect(travelOption).toHaveAttribute("aria-checked", "true");
+    expect(travelOption.querySelector("[data-agent-picker-icon='travel']")).toBeInTheDocument();
+    expect(writingOption.querySelector("[data-agent-picker-icon='writing']")).toBeInTheDocument();
+    expect(screen.getByText("Plan trips, routes, and guides")).toBeInTheDocument();
+    expect(screen.getByText("Draft docs, blogs, and product copy")).toBeInTheDocument();
+
+    fireEvent.click(writingOption);
+
+    expect(runtimeMock.selectTarget).toHaveBeenCalledWith("writing");
   });
 
   it("focuses the mobile composer on first touch so keyboard handling matches terminal", () => {

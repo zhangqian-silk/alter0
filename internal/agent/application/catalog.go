@@ -10,6 +10,8 @@ import (
 	execdomain "alter0/internal/execution/domain"
 )
 
+const defaultAgentMemorySearchTool = "search_memory"
+
 type ManagedAgentSource interface {
 	ResolveAgent(id string) (controldomain.Agent, bool)
 	ListAgents() []controldomain.Agent
@@ -203,7 +205,7 @@ func normalizeRuntimeAgent(agent controldomain.Agent) controldomain.Agent {
 	}
 	normalized.Description = strings.TrimSpace(normalized.Description)
 	normalized.UIRoute = strings.TrimSpace(normalized.UIRoute)
-	normalized.Tools = cloneStringList(normalized.Tools)
+	normalized.Tools = ensureDefaultAgentTools(cloneStringList(normalized.Tools))
 	normalized.Skills = cloneStringList(normalized.Skills)
 	normalized.MCPs = cloneStringList(normalized.MCPs)
 	normalized.MemoryFiles = cloneStringList(normalized.MemoryFiles)
@@ -211,6 +213,16 @@ func normalizeRuntimeAgent(agent controldomain.Agent) controldomain.Agent {
 	normalized.Deliverables = cloneDeliverables(normalized.Deliverables)
 	normalized.Metadata = cloneStringMap(normalized.Metadata)
 	return normalized
+}
+
+func ensureDefaultAgentTools(input []string) []string {
+	tools := append([]string(nil), input...)
+	for _, item := range tools {
+		if strings.EqualFold(strings.TrimSpace(item), defaultAgentMemorySearchTool) {
+			return tools
+		}
+	}
+	return append(tools, defaultAgentMemorySearchTool)
 }
 
 func cloneAgent(agent controldomain.Agent) controldomain.Agent {

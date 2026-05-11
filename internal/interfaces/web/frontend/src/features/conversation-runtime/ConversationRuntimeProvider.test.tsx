@@ -9,6 +9,7 @@ import {
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
+const LAST_SELECTED_AGENT_STORAGE_KEY = "alter0.web.agent-runtime.last-target.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 
@@ -151,6 +152,27 @@ function AgentOptionsHarness() {
   );
 }
 
+function AgentTargetSelectionHarness() {
+  const runtime = useConversationRuntime();
+
+  return (
+    <div>
+      <button type="button" onClick={() => runtime.selectTarget("writing")}>
+        select writing
+      </button>
+      <output data-testid="current-target">
+        {runtime.target.type}:{runtime.target.id}:{runtime.target.name}
+      </output>
+      <output data-testid="active-target-option">
+        {runtime.targetOptions.find((agent) => agent.active)?.id || ""}
+      </output>
+      <output data-testid="active-tool-ids">
+        {(runtime.activeSession?.toolIDs || []).join(",")}
+      </output>
+    </div>
+  );
+}
+
 function SkillOptionsHarness() {
   const runtime = useConversationRuntime();
 
@@ -167,6 +189,20 @@ function SkillOptionsHarness() {
       </output>
       <output data-testid="skill-count">{runtime.skillCount}</output>
     </div>
+  );
+}
+
+function CapabilityOptionsHarness() {
+  const runtime = useConversationRuntime();
+
+  return (
+    <output data-testid="capability-options">
+      {JSON.stringify(runtime.capabilities.map((capability) => ({
+        id: capability.id,
+        active: capability.active,
+        kind: capability.kind,
+      })))}
+    </output>
   );
 }
 
@@ -1140,7 +1176,7 @@ describe("ConversationRuntimeProvider", () => {
                 model_provider_id: "",
                 model_id: "",
                 tool_ids: [],
-                skill_ids: ["deploy-test-service"],
+                skill_ids: ["deploy-test-service", "frontend-design", "artifact-preview"],
                 mcp_ids: [],
               },
             ],
@@ -1159,7 +1195,7 @@ describe("ConversationRuntimeProvider", () => {
               model_provider_id: "",
               model_id: "",
               tool_ids: [],
-              skill_ids: ["deploy-test-service"],
+              skill_ids: ["deploy-test-service", "frontend-design", "artifact-preview"],
               mcp_ids: [],
               messages: [],
             },
@@ -1172,7 +1208,7 @@ describe("ConversationRuntimeProvider", () => {
                 name: "Travel Agent",
                 enabled: true,
                 capabilities: ["travel"],
-                skills: ["deploy-test-service"],
+                skills: ["deploy-test-service", "frontend-design", "artifact-preview"],
               },
             ],
           };
@@ -1196,6 +1232,12 @@ describe("ConversationRuntimeProvider", () => {
                 id: "frontend-design",
                 name: "Frontend Design",
                 description: "Shared frontend delivery standards",
+                enabled: true,
+              },
+              {
+                id: "artifact-preview",
+                name: "Artifact Preview",
+                description: "Publish static artifacts to a preview subdomain",
                 enabled: true,
               },
             ],
@@ -1240,13 +1282,207 @@ describe("ConversationRuntimeProvider", () => {
       }),
       expect.objectContaining({
         id: "frontend-design",
-        active: false,
+        active: true,
+        locked: false,
+        visibility: "public",
+      }),
+      expect.objectContaining({
+        id: "artifact-preview",
+        active: true,
         locked: false,
         visibility: "public",
       }),
     ]));
     expect(skills.map((skill) => skill.id)).not.toContain("travel-city-rules");
-    expect(screen.getByTestId("skill-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("skill-count")).toHaveTextContent("4");
+  });
+
+  it("restores the last selected agent for a new empty agent-runtime session", async () => {
+    window.sessionStorage.setItem(LAST_SELECTED_AGENT_STORAGE_KEY, "writing");
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "coding",
+                name: "Coding Agent",
+                enabled: true,
+              },
+              {
+                id: "writing",
+                name: "Writing Agent",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <AgentTargetSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("current-target")).toHaveTextContent("agent:writing:Writing Agent"));
+    expect(screen.getByTestId("active-target-option")).toHaveTextContent("writing");
+  });
+
+  it("defaults every agent-runtime session to include search_memory in tool ids", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "coding",
+                name: "Coding Agent",
+                enabled: true,
+                tools: ["codex_exec"],
+              },
+              {
+                id: "writing",
+                name: "Writing Agent",
+                enabled: true,
+                tools: ["codex_exec", "read_memory"],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <AgentTargetSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("current-target")).toHaveTextContent("agent:coding:Coding Agent"));
+    await waitFor(() => expect(screen.getByTestId("active-tool-ids")).toHaveTextContent("codex_exec,search_memory"));
+
+    fireEvent.click(screen.getByRole("button", { name: "select writing" }));
+
+    await waitFor(() => expect(screen.getByTestId("current-target")).toHaveTextContent("agent:writing:Writing Agent"));
+    await waitFor(() => expect(screen.getByTestId("active-tool-ids")).toHaveTextContent("codex_exec,read_memory,search_memory"));
+  });
+
+  it("shows search_memory as active in runtime capabilities when it is part of the default agent tools", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "coding",
+                name: "Coding Agent",
+                enabled: true,
+                tools: ["codex_exec", "search_memory"],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <AgentTargetSelectionHarness />
+        <CapabilityOptionsHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-tool-ids")).toHaveTextContent("codex_exec,search_memory"));
+    await waitFor(() => expect(screen.getByTestId("capability-options")).toHaveTextContent("search_memory"));
+
+    const capabilities = JSON.parse(screen.getByTestId("capability-options").textContent || "[]") as Array<{
+      id: string;
+      active: boolean;
+      kind: string;
+    }>;
+
+    expect(capabilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "search_memory",
+        active: true,
+        kind: "tool",
+      }),
+    ]));
+  });
+
+  it("persists the latest agent selection for the next new agent-runtime session", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        case "/api/agents":
+          return {
+            items: [
+              {
+                id: "coding",
+                name: "Coding Agent",
+                enabled: true,
+              },
+              {
+                id: "writing",
+                name: "Writing Agent",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const view = render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <AgentTargetSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("current-target")).toHaveTextContent("agent:coding:Coding Agent"));
+    fireEvent.click(screen.getByRole("button", { name: "select writing" }));
+    await waitFor(() => expect(screen.getByTestId("current-target")).toHaveTextContent("agent:writing:Writing Agent"));
+    expect(window.sessionStorage.getItem(LAST_SELECTED_AGENT_STORAGE_KEY)).toBe("writing");
+
+    view.unmount();
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <AgentTargetSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("current-target")).toHaveTextContent("agent:writing:Writing Agent"));
+    expect(screen.getByTestId("active-target-option")).toHaveTextContent("writing");
   });
 
   it("loads agent session profile details for the active runtime session", async () => {
