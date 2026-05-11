@@ -46,7 +46,7 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 
 ### 工具面
 
-- 稳定工具包括 `codex_exec`、`search_memory`、`read_memory`、`write_memory` 与运行时收口工具 `complete`。
+- 稳定工具包括 `codex_exec`、`search_memory`、`read_memory`、`write_memory` 与运行时收口工具 `complete`。所有 Agent 的默认工具集合都需补齐 `search_memory`，即使 Agent 自身只显式声明了其他工具。
 - 只要当前运行工具面提供 `complete`，Agent 就必须通过 `complete` 显式收口；普通 assistant 文本回复不得直接视为成功完成。
 - 允许委派的 Agent 可额外启用 `delegate_agent`。
 - `search_memory`、`read_memory`、`write_memory` 仅面向已解析进 `memory_context` 的记忆文件。
@@ -76,6 +76,7 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 - Skill 配置包含 `description`、`guide`、排序、启停状态、作用域、文件路径与可写属性。
 - 默认提供 `memory` Skill，说明记忆文件职责、读取决策、写入路由、冲突优先级与禁止写入项；公有 Skill 侧还提供 `deploy-test-service`、`frontend-design` 与 `artifact-preview`，分别覆盖测试服务发布、前端实现规则与静态产物预览发布。
 - `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service` 与 `frontend-design`，使仓库类任务稳定带上记忆、预览发布和前端设计规则；运行时仍可在 `Details > Skills` 中对公有 Skill 做会话级调整。
+- `travel` 内置 Agent 默认启用 `memory`、`deploy-test-service`、`frontend-design` 与 `artifact-preview`，使旅游任务稳定带上公开攻略发布、页面实现质量与静态产物预览发布规则；运行时仍可在 `Details > Skills` 中对公有 Skill 做会话级调整。
 - 每个 Agent 自动附带私有 file-backed Skill `docs/agents/<agent_id>/SKILL.md`。
 - 私有 Skill 用于沉淀可复用工作模式、输出结构、检查清单、偏好和长期协作约束。
 - 一次性任务细节不得写入私有 Skill。

@@ -23,6 +23,7 @@ import {
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
+const LAST_SELECTED_AGENT_STORAGE_KEY = "alter0.web.agent-runtime.last-target.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
@@ -41,6 +42,7 @@ const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
+const DEFAULT_AGENT_SEARCH_MEMORY_TOOL = "search_memory";
 
 export type ConversationRoute = "chat" | "agent-runtime";
 
@@ -594,13 +596,20 @@ function normalizeChatAgent(item: unknown): ChatAgent | null {
     name: normalizeText(record.name) || id,
     description: normalizeText(record.description) || undefined,
     enabled: record.enabled !== false,
-    tools: normalizeSelectionIDs(record.tools),
+    tools: ensureDefaultAgentToolIDs(normalizeSelectionIDs(record.tools)),
     skills: normalizeSelectionIDs(record.skills),
     mcps: normalizeSelectionIDs(record.mcps),
     capabilities: normalizeSelectionIDs(record.capabilities),
     session_profile_fields: normalizeAgentSessionProfileFields(record.session_profile_fields),
     deliverables: normalizeAgentDeliverables(record.deliverables),
   };
+}
+
+function ensureDefaultAgentToolIDs(items: string[]): string[] {
+  if (items.some((item) => normalizeText(item) === DEFAULT_AGENT_SEARCH_MEMORY_TOOL)) {
+    return items;
+  }
+  return [...items, DEFAULT_AGENT_SEARCH_MEMORY_TOOL];
 }
 function normalizeSelectionIDs(values: unknown): string[] {
   if (!Array.isArray(values)) {
@@ -860,6 +869,26 @@ function loadActiveSessionState(): ActiveSessionState {
     chat: normalizeText(parsed.chat),
     "agent-runtime": normalizeText(parsed["agent-runtime"]),
   };
+}
+
+function loadLastSelectedAgentID(): string {
+  try {
+    return normalizeText(window.sessionStorage.getItem(LAST_SELECTED_AGENT_STORAGE_KEY));
+  } catch {
+    return "";
+  }
+}
+
+function persistLastSelectedAgentID(agentID: string) {
+  try {
+    const normalized = normalizeText(agentID);
+    if (!normalized) {
+      window.sessionStorage.removeItem(LAST_SELECTED_AGENT_STORAGE_KEY);
+      return;
+    }
+    window.sessionStorage.setItem(LAST_SELECTED_AGENT_STORAGE_KEY, normalized);
+  } catch {
+  }
 }
 
 function loadActiveSessionSnapshots(): SessionsState {
@@ -1242,7 +1271,7 @@ export function ConversationRuntimeProvider({
   const [activeSessionByRoute, setActiveSessionByRoute] = useState<ActiveSessionState>(() =>
     loadActiveSessionState(),
   );
-  const [selectedAgentID, setSelectedAgentID] = useState("");
+  const [selectedAgentID, setSelectedAgentID] = useState(() => loadLastSelectedAgentID());
   const [providers, setProviders] = useState<ChatProvider[]>([]);
   const [skills, setSkills] = useState<ChatCapability[]>([]);
   const [mcps, setMcps] = useState<ChatCapability[]>([]);
@@ -1295,6 +1324,10 @@ export function ConversationRuntimeProvider({
     window.clearTimeout(composerDraftPersistTimerRef.current);
     persistComposerDrafts(latestComposerDraftsRef.current);
   }, []);
+
+  useEffect(() => {
+    persistLastSelectedAgentID(selectedAgentID);
+  }, [selectedAgentID]);
 
   const ensureSession = useCallback((
     target?: Partial<ChatTarget> | null,
@@ -1446,7 +1479,13 @@ export function ConversationRuntimeProvider({
     const nextActiveState = { ...activeSessionByRoute, [route]: sessionID };
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-  }, [activeSessionByRoute, route]);
+    if (route === "agent-runtime") {
+      const session = sessionsByRoute[route].find((item) => item.id === sessionID) || null;
+      if (session?.target.type === "agent") {
+        setSelectedAgentID(normalizeText(session.target.id));
+      }
+    }
+  }, [activeSessionByRoute, route, sessionsByRoute]);
 
   const removeSession = useCallback(async (sessionID: string) => {
     try {
@@ -2004,7 +2043,13 @@ export function ConversationRuntimeProvider({
           ? agentPayload.items.map(normalizeChatAgent).filter(isSelectableRuntimeAgent)
           : [];
         setAgents(nextAgents);
-        setSelectedAgentID((current) => current || normalizeText(nextAgents[0]?.id));
+        setSelectedAgentID((current) => {
+          const normalizedCurrent = normalizeText(current);
+          if (normalizedCurrent && nextAgents.some((agent) => normalizeText(agent.id) === normalizedCurrent)) {
+            return normalizedCurrent;
+          }
+          return normalizeText(nextAgents[0]?.id);
+        });
       } catch {
       }
     };
@@ -2121,6 +2166,51 @@ export function ConversationRuntimeProvider({
       cancelled = true;
     };
   }, [activeSession, agentSessionProfiles, loadAgentSessionProfile, route]);
+
+  useEffect(() => {
+    if (route !== "agent-runtime" || !activeSession || activeSession.target.type !== "agent") {
+      return;
+    }
+    const agentID = normalizeText(activeSession.target.id);
+    if (!agentID) {
+      return;
+    }
+    setSelectedAgentID((current) => normalizeText(current) === agentID ? current : agentID);
+  }, [activeSession, route]);
+
+  useEffect(() => {
+    if (
+      route !== "agent-runtime"
+      || !activeSession
+      || activeSession.target.type !== "agent"
+      || activeSession.messages.length > 0
+    ) {
+      return;
+    }
+    const normalizedSelectedAgentID = normalizeText(selectedAgentID);
+    if (!normalizedSelectedAgentID || normalizeText(activeSession.target.id) === normalizedSelectedAgentID) {
+      return;
+    }
+    const selectedAgent = agents.find((agent) => normalizeText(agent.id) === normalizedSelectedAgentID);
+    if (!selectedAgent) {
+      return;
+    }
+    patchSession(route, activeSession.id, (session) =>
+      session.messages.length > 0
+        ? session
+        : {
+            ...session,
+            target: normalizeChatTarget({
+              type: "agent",
+              id: normalizedSelectedAgentID,
+              name: normalizeText(selectedAgent.name) || normalizedSelectedAgentID,
+            }),
+            toolIDs: normalizeSelectionIDs(selectedAgent.tools),
+            skillIDs: normalizeSelectionIDs(selectedAgent.skills),
+            mcpIDs: normalizeSelectionIDs(selectedAgent.mcps),
+          },
+    );
+  }, [activeSession, agents, patchSession, route, selectedAgentID]);
 
   useEffect(() => {
     if (!sessionsLoadedByRoute[route] || sessionsByRoute[route].length > 0) {
@@ -2246,11 +2336,11 @@ export function ConversationRuntimeProvider({
     })),
     capabilities: [
       {
-        id: "memory",
+        id: DEFAULT_AGENT_SEARCH_MEMORY_TOOL,
         name: "Memory",
         description: "Search memory files",
         kind: "tool" as const,
-        active: Boolean(activeSession?.toolIDs.includes("memory")),
+        active: Boolean(activeSession?.toolIDs.includes(DEFAULT_AGENT_SEARCH_MEMORY_TOOL)),
       },
       ...mcps
         .filter((item) => item.enabled !== false)

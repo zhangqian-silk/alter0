@@ -42,6 +42,12 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	if got := strings.Join(skills["travel"], ","); !strings.Contains(got, "deploy-test-service") {
 		t.Fatalf("expected travel skills to include deploy-test-service, got %+v", skills["travel"])
 	}
+	if got := strings.Join(skills["travel"], ","); !strings.Contains(got, "frontend-design") {
+		t.Fatalf("expected travel skills to include frontend-design, got %+v", skills["travel"])
+	}
+	if got := strings.Join(skills["travel"], ","); !strings.Contains(got, "artifact-preview") {
+		t.Fatalf("expected travel skills to include artifact-preview, got %+v", skills["travel"])
+	}
 	if prompt := index["travel"]; !strings.Contains(strings.ToLower(prompt), "html") || !strings.Contains(prompt, "alter0.cn") {
 		t.Fatalf("expected travel prompt to require html guide and session subdomain deployment, got %q", prompt)
 	}

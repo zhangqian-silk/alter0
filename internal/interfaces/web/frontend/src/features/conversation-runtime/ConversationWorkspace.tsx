@@ -148,6 +148,118 @@ function conversationSessionStatusLabel(
   }
 }
 
+function buildAgentPickerMonogram(name: string) {
+  const parts = normalizeText(name).split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return "AG";
+  }
+  return parts.slice(0, 2).map((part) => part.slice(0, 1).toUpperCase()).join("");
+}
+
+function AgentPickerGlyph({
+  agentID,
+  fallbackName,
+}: {
+  agentID: string;
+  fallbackName: string;
+}) {
+  switch (normalizeText(agentID).toLowerCase()) {
+    case "main":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
+          <circle cx="12" cy="12" r="3.25" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M12 3.75v2.4M12 17.85v2.4M20.25 12h-2.4M6.15 12h-2.4M17.84 6.16l-1.7 1.69M7.86 16.14l-1.7 1.7M17.84 17.84l-1.7-1.7M7.86 7.86l-1.7-1.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case "coding":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
+          <path d="m9.1 7.25-4.2 4.75 4.2 4.75M14.9 7.25l4.2 4.75-4.2 4.75M13.2 5.75l-2.4 12.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "writing":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
+          <path d="m6.2 17.8 1.25-4.15L15.9 5.2a1.7 1.7 0 0 1 2.4 0l.5.5a1.7 1.7 0 0 1 0 2.4l-8.45 8.45Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M13.9 7.2 17 10.3M6.05 18h11.9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
+    case "travel":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
+          <path d="M20.2 8.7 13.95 11 11.7 4.8a1.05 1.05 0 0 0-1.98.08v7.1L4.25 14a1 1 0 0 0 .18 1.93l5.3.7v2.62l-1.8 1.05a.85.85 0 0 0 .43 1.58h2.9c.78 0 1.42-.63 1.42-1.42v-3.83l6.84-5.88a1.1 1.1 0 0 0-.32-1.85Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
+        </svg>
+      );
+    default:
+      return <span className="conversation-target-card-monogram">{buildAgentPickerMonogram(fallbackName)}</span>;
+  }
+}
+
+function summarizeAgentPickerSubtitle(text: string, language: LegacyShellLanguage) {
+  const normalized = normalizeText(text);
+  if (!normalized) {
+    return language === "zh" ? "可直接开始" : "Ready to start";
+  }
+  const firstSentence = normalized
+    .split(/[。.!?]/)
+    .map((part) => normalizeText(part))
+    .find(Boolean);
+  const concise = firstSentence || normalized;
+  if (concise.length <= 44) {
+    return concise;
+  }
+  return `${concise.slice(0, 41).trimEnd()}…`;
+}
+
+function resolveAgentPickerSubtitle(
+  agent: { id: string; subtitle: string },
+  language: LegacyShellLanguage,
+) {
+  const agentID = normalizeText(agent.id).toLowerCase();
+  if (language === "zh") {
+    switch (agentID) {
+      case "main":
+        return "统筹当前任务并分派合适的专家 Agent";
+      case "coding":
+        return "编写代码、排查问题并交付改动";
+      case "writing":
+        return "起草文档、文案与结构化内容";
+      case "travel":
+        return "规划行程、路线与城市指南";
+      default:
+        return summarizeAgentPickerSubtitle(agent.subtitle, language);
+    }
+  }
+  switch (agentID) {
+    case "main":
+      return "Coordinate the right specialist for the task";
+    case "coding":
+      return "Code, debug, and ship with confidence";
+    case "writing":
+      return "Draft docs, blogs, and product copy";
+    case "travel":
+      return "Plan trips, routes, and guides";
+    default:
+      return summarizeAgentPickerSubtitle(agent.subtitle, language);
+  }
+}
+
+function AgentPickerChevronIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" focusable="false" aria-hidden="true">
+      <path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AgentPickerCheckIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" focusable="false" aria-hidden="true">
+      <path d="m4.25 8.1 2.3 2.35 5.2-5.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function useConversationWorkspaceController(
   language: LegacyShellLanguage,
   sharedRefs: ConversationWorkspaceSharedRefs,
@@ -324,9 +436,52 @@ function useConversationWorkspaceController(
       <div className="conversation-empty-state">
         <h5>{emptyStateTitle}</h5>
         <p>{emptyStateDescription}</p>
+        {runtime.route === "agent-runtime" && runtime.targetOptions.length > 0 ? (
+          <div className="conversation-empty-targets">
+            <div
+              className={workbench.isMobileViewport
+                ? "conversation-empty-target-list"
+                : "conversation-inspector-grid conversation-empty-target-grid"}
+              role="radiogroup"
+              aria-label={language === "zh" ? "选择 Agent" : "Choose agent"}
+              data-agent-picker-layout={workbench.isMobileViewport ? "list" : "grid"}
+            >
+              {runtime.targetOptions.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={item.active}
+                  className={[
+                    "conversation-target-card",
+                    workbench.isMobileViewport ? "is-list-row" : "",
+                    item.active ? "is-active" : "",
+                  ].filter(Boolean).join(" ")}
+                  disabled={runtime.lockedTarget}
+                  onClick={() => runtime.selectTarget(item.id)}
+                >
+                  <span className="conversation-target-card-leading" aria-hidden="true">
+                    <span className="conversation-target-card-icon" data-agent-picker-icon={item.id}>
+                      <AgentPickerGlyph agentID={item.id} fallbackName={item.name} />
+                    </span>
+                  </span>
+                  <span className="conversation-target-card-copy">
+                    <strong>{item.name}</strong>
+                    <span>{resolveAgentPickerSubtitle(item, language)}</span>
+                  </span>
+                  <span className="conversation-target-card-trailing" aria-hidden="true">
+                    <span className={item.active ? "conversation-target-card-indicator is-active" : "conversation-target-card-indicator"}>
+                      {item.active ? <AgentPickerCheckIcon /> : <AgentPickerChevronIcon />}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     ),
-    [emptyStateDescription, emptyStateTitle],
+    [emptyStateDescription, emptyStateTitle, language, runtime.lockedTarget, runtime.route, runtime.selectTarget, runtime.targetOptions, workbench.isMobileViewport],
   );
   const timelineOverlay = useMemo(
     () => (workbench.isMobileViewport && inputFocused ? null : (
