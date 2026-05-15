@@ -3,12 +3,15 @@ import {
   isConversationRoute,
   navigateWorkbenchRoute,
   parseWorkbenchHashRoute,
+  readWorkbenchRouteSessionID,
+  writeWorkbenchRouteSessionID,
 } from "./routeState";
 
 describe("routeState", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     window.location.hash = "";
+    window.history.replaceState({}, "", "/");
   });
 
   it("keeps chat as the fallback route for empty and unknown hashes", () => {
@@ -37,5 +40,24 @@ describe("routeState", () => {
     expect(isConversationRoute("chat")).toBe(true);
     expect(isConversationRoute("agent-runtime")).toBe(true);
     expect(isConversationRoute("tasks")).toBe(false);
+  });
+
+  it("reads and writes route-specific session query parameters without clobbering the rest of the URL", () => {
+    window.history.replaceState({}, "", "/workspace?foo=bar&chat_session_id=session-chat-1#terminal");
+
+    expect(readWorkbenchRouteSessionID("chat")).toBe("session-chat-1");
+    expect(readWorkbenchRouteSessionID("terminal")).toBe("");
+
+    writeWorkbenchRouteSessionID("terminal", "terminal-9");
+
+    expect(window.location.search).toContain("foo=bar");
+    expect(window.location.search).toContain("chat_session_id=session-chat-1");
+    expect(window.location.search).toContain("terminal_session_id=terminal-9");
+    expect(window.location.hash).toBe("#terminal");
+
+    writeWorkbenchRouteSessionID("chat", "");
+
+    expect(window.location.search).not.toContain("chat_session_id=");
+    expect(window.location.search).toContain("terminal_session_id=terminal-9");
   });
 });

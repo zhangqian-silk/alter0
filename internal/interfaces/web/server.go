@@ -824,12 +824,13 @@ func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/chat", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, chatEntryPath(r.URL.RawQuery), http.StatusTemporaryRedirect)
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
+	nextPath := normalizeLoginNext(r.URL.Query().Get("next"))
 	if !s.webLoginEnabled {
-		http.Redirect(w, r, "/chat", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, nextPath, http.StatusTemporaryRedirect)
 		return
 	}
 	if r.URL.Path != "/login" {
@@ -837,7 +838,6 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nextPath := normalizeLoginNext(r.URL.Query().Get("next"))
 	switch r.Method {
 	case http.MethodGet:
 		s.renderLoginPage(w, "", nextPath)
@@ -1088,6 +1088,13 @@ func normalizeLoginNext(raw string) string {
 		return "/chat"
 	}
 	return candidate
+}
+
+func chatEntryPath(rawQuery string) string {
+	if strings.TrimSpace(rawQuery) == "" {
+		return "/chat"
+	}
+	return "/chat?" + rawQuery
 }
 
 func secureStringEqual(a string, b string) bool {

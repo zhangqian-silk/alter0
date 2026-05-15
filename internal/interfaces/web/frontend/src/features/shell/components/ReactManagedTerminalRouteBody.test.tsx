@@ -316,6 +316,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
     window.localStorage.clear();
+    window.history.replaceState({}, "", "/");
   });
 
   function renderTerminalRouteBody(overrides: Partial<WorkbenchContextValue> = {}) {
@@ -376,6 +377,88 @@ describe("ReactManagedTerminalRouteBody", () => {
       <TerminalRouteBodyHarness />,
     );
   }
+
+  it("prefers the terminal session query parameter on load and syncs it after session switches", async () => {
+    window.history.replaceState({}, "", "/?terminal_session_id=terminal-2#terminal");
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+            {
+              id: "terminal-2",
+              title: "Review shell",
+              terminal_session_id: "terminal-2",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0/review",
+              created_at: "2026-04-15T11:00:00Z",
+              updated_at: "2026-04-15T11:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-2" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "Review shell",
+            terminal_session_id: "terminal-2",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/review",
+            created_at: "2026-04-15T11:00:00Z",
+            updated_at: "2026-04-15T11:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    const view = renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-runtime-session-select="terminal-2"]')).toHaveClass("active");
+    });
+    expect(window.location.search).toContain("terminal_session_id=terminal-2");
+
+    fireEvent.click(view.container.querySelector('[data-runtime-session-select="terminal-1"]') as HTMLElement);
+
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-runtime-session-select="terminal-1"]')).toHaveClass("active");
+    });
+    expect(window.location.search).toContain("terminal_session_id=terminal-1");
+  });
 
   it("adapts terminal polling cadence to runtime status and interaction state", () => {
     expect(

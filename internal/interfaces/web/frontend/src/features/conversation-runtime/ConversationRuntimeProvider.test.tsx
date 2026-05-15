@@ -238,6 +238,21 @@ function ActiveSessionStatusHarness() {
   return <output data-testid="active-session-status">{runtime.activeSession?.status || ""}</output>;
 }
 
+function SessionFocusHarness() {
+  const runtime = useConversationRuntime();
+  return (
+    <div>
+      <button type="button" onClick={() => runtime.focusSession("session-1")}>
+        focus session 1
+      </button>
+      <button type="button" onClick={() => runtime.focusSession("session-2")}>
+        focus session 2
+      </button>
+      <output data-testid="active-session-id">{runtime.activeSession?.id || ""}</output>
+    </div>
+  );
+}
+
 function SessionItemsHarness() {
   const runtime = useConversationRuntime();
   return (
@@ -352,6 +367,7 @@ describe("ConversationRuntimeProvider", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    window.history.replaceState({}, "", "/");
   });
 
   it("creates blank chat and agent runtime sessions with the shared New title", async () => {
@@ -386,6 +402,94 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("New"));
+  });
+
+  it("prefers the route session query parameter on load and keeps it synced when focus changes", async () => {
+    window.history.replaceState({}, "", "/?chat_session_id=session-2#chat");
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "session-1",
+                title: "First session",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+              },
+              {
+                id: "session-2",
+                title: "Second session",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T04:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/session-2?route=chat":
+          return {
+            session: {
+              id: "session-2",
+              title: "Second session",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T04:30:00Z",
+              target_type: "model",
+              target_id: "raw-model",
+              target_name: "Raw Model",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+              messages: [],
+            },
+          };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+        case "/api/agents":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SessionFocusHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active-session-id")).toHaveTextContent("session-2");
+    });
+    expect(window.location.search).toContain("chat_session_id=session-2");
+
+    fireEvent.click(screen.getByRole("button", { name: "focus session 1" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active-session-id")).toHaveTextContent("session-1");
+    });
+    expect(window.location.search).toContain("chat_session_id=session-1");
   });
 
   it("does not rewrite stored sessions for streaming deltas after an image message is queued", async () => {

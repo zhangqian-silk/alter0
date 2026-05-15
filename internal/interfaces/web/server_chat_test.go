@@ -25,6 +25,22 @@ func TestRootHandlerRedirectsToChat(t *testing.T) {
 	}
 }
 
+func TestRootHandlerPreservesSessionQueryWhenRedirectingToChat(t *testing.T) {
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	req := httptest.NewRequest(http.MethodGet, "/?terminal_session_id=terminal-2&foo=bar", nil)
+	rec := httptest.NewRecorder()
+
+	server.rootHandler(rec, req)
+
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected status %d, got %d", http.StatusTemporaryRedirect, rec.Code)
+	}
+	location := rec.Header().Get("Location")
+	if location != "/chat?terminal_session_id=terminal-2&foo=bar" {
+		t.Fatalf("expected redirect location with original query, got %q", location)
+	}
+}
+
 func TestChatPageHandlerServesEmbeddedHTML(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	req := httptest.NewRequest(http.MethodGet, "/chat", nil)

@@ -224,3 +224,22 @@ func TestLoginFlowUsesHostScopedCookieAndRejectsLegacySharedCookie(t *testing.T)
 		t.Fatalf("expected preview host to redirect legacy shared cookie to login, got %q", location)
 	}
 }
+
+func TestLoginHandlerWithoutLoginEnabledPreservesNextPath(t *testing.T) {
+	server := &Server{
+		logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		webLoginEnabled: false,
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/login?next=%2Fchat%3Fchat_session_id%3Dsession-2", nil)
+	rec := httptest.NewRecorder()
+
+	server.loginHandler(rec, req)
+
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected %d, got %d", http.StatusTemporaryRedirect, rec.Code)
+	}
+	if location := rec.Header().Get("Location"); location != "/chat?chat_session_id=session-2" {
+		t.Fatalf("expected redirect to preserved next path, got %q", location)
+	}
+}
