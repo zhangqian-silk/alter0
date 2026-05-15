@@ -851,6 +851,101 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(firstCard.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
   });
 
+  it("keeps a deleted terminal session hidden when a later list refresh returns stale data", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+            {
+              id: "terminal-2",
+              title: "Older shell",
+              terminal_session_id: "terminal-2",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T09:00:00Z",
+              updated_at: "2026-04-15T09:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-2" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-2",
+            title: "Older shell",
+            terminal_session_id: "terminal-2",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T09:00:00Z",
+            updated_at: "2026-04-15T09:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-2" && method === "DELETE") {
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-session-select='terminal-2']")).toBeInTheDocument();
+    });
+
+    fireEvent.click(document.querySelector("[data-runtime-delete-session='terminal-2']") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-session-select='terminal-2']")).not.toBeInTheDocument();
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new FocusEvent("focus"));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-runtime-session-select]")).toHaveLength(1);
+    });
+    expect(document.querySelector("[data-runtime-session-select='terminal-2']")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute("data-runtime-session-id", "terminal-1");
+  });
+
   it("attaches images in terminal composer and submits them with the terminal input payload", async () => {
     renderTerminalRouteBody();
 
@@ -2198,6 +2293,84 @@ describe("ReactManagedTerminalRouteBody", () => {
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
     expect(toggleMobileSessionPane).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the mobile session pane open after deleting a session from the list", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const closeMobileSessionPane = vi.fn();
+
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+            {
+              id: "terminal-2",
+              title: "Older shell",
+              terminal_session_id: "terminal-2",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T09:00:00Z",
+              updated_at: "2026-04-15T09:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-2" && method === "DELETE") {
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+      mobileSessionPaneOpen: true,
+      closeMobileSessionPane,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-runtime-session-select]")).toHaveLength(2);
+    });
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
+
+    fireEvent.click(document.querySelector("[data-runtime-delete-session='terminal-2']") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-runtime-session-select]")).toHaveLength(1);
+    });
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
+    expect(document.querySelector("[data-runtime-session-select='terminal-2']")).not.toBeInTheDocument();
+    expect(closeMobileSessionPane).not.toHaveBeenCalled();
   });
 
   it("keeps the mobile session pane mutually exclusive with the menu overlay", async () => {

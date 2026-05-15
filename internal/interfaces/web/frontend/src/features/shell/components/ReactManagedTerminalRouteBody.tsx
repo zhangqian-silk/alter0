@@ -759,6 +759,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     anchoredToBottom: boolean;
   } | null>(null);
   const draftPersistTimerRef = useRef<number | null>(null);
+  const deletedSessionIDsRef = useRef<Set<string>>(new Set());
   const mobileSubmitGestureLockRef = useRef(false);
   const mobileSessionGestureLockRef = useRef(false);
   const groupedSessions = useMemo(
@@ -963,7 +964,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
 
   const refreshList = async () => {
     const payload = await apiClient.get<TerminalSessionsResponse>("/api/terminal/sessions");
-    const nextSessions = Array.isArray(payload.items) ? payload.items : [];
+    const nextSessions = (Array.isArray(payload.items) ? payload.items : []).filter(
+      (session) => !deletedSessionIDsRef.current.has(session.id),
+    );
     setSessions((current) => {
       const currentMap = new Map(current.map((session) => [session.id, session]));
       return sortSessions(
@@ -980,14 +983,14 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   };
 
   const refreshActiveSession = async (sessionID: string) => {
-    if (!sessionID) {
+    if (!sessionID || deletedSessionIDsRef.current.has(sessionID)) {
       return null;
     }
     const payload = await apiClient.get<TerminalSessionResponse>(
       `/api/terminal/sessions/${encodeURIComponent(sessionID)}`,
     );
     const nextSession = payload.session || null;
-    if (!nextSession) {
+    if (!nextSession || deletedSessionIDsRef.current.has(nextSession.id)) {
       return null;
     }
     setSessions((current) => {
@@ -1225,16 +1228,16 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     setDeletingSessionID(sessionID);
     try {
       await apiClient.delete(`/api/terminal/sessions/${encodeURIComponent(sessionID)}`);
+      deletedSessionIDsRef.current.add(sessionID);
       setSessions((current) => {
         const next = current.filter((session) => session.id !== sessionID);
-        if (activeSessionID === sessionID) {
-          setActiveSessionID(next[0]?.id || "");
-        }
+        setActiveSessionID((currentActiveSessionID) =>
+          currentActiveSessionID === sessionID ? next[0]?.id || "" : currentActiveSessionID,
+        );
         return next;
       });
       window.localStorage.removeItem(`terminal:${sessionID}`);
       clearDraftAttachments(sessionID);
-      workbench.closeMobileSessionPane();
     } finally {
       setDeletingSessionID("");
     }

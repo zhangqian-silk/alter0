@@ -855,7 +855,7 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.sessionDeleteButton(String(activeSessionID))).toHaveCount(0);
   });
 
-  test("keeps the mobile session sheet closed and interactive after deleting the active session", async ({ page, request }) => {
+  test("keeps the mobile session sheet open and interactive after deleting the active session", async ({ page, request }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-delete-sheet", count: 2 });
 
@@ -870,10 +870,6 @@ test.describe("Terminal route", () => {
 
     await expect.poll(async () => await terminalPage.workspace().getAttribute("data-runtime-session-id")).not.toBe(previousSessionID);
     await expect(terminalPage.sessionList().items()).toHaveCount(1);
-    await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
-    await expect(terminalPage.sessionPane()).toBeHidden();
-
-    await terminalPage.sessionPaneToggle().click();
     await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
     await expect(terminalPage.sessionPane()).toBeVisible();
     await terminalPage.sessionPaneClose().click();
