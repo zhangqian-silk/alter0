@@ -169,6 +169,9 @@ function AgentTargetSelectionHarness() {
       <output data-testid="active-tool-ids">
         {(runtime.activeSession?.toolIDs || []).join(",")}
       </output>
+      <output data-testid="active-skill-ids">
+        {(runtime.activeSession?.skillIDs || []).join(",")}
+      </output>
     </div>
   );
 }
@@ -1456,12 +1459,14 @@ describe("ConversationRuntimeProvider", () => {
                 name: "Coding Agent",
                 enabled: true,
                 tools: ["codex_exec"],
+                skills: ["deploy-test-service", "frontend-design", "code-reviewer", "brainstorming"],
               },
               {
                 id: "writing",
                 name: "Writing Agent",
                 enabled: true,
                 tools: ["codex_exec", "read_memory"],
+                skills: ["doc-coauthoring"],
               },
             ],
           };
@@ -1480,11 +1485,15 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("current-target")).toHaveTextContent("agent:coding:Coding Agent"));
     await waitFor(() => expect(screen.getByTestId("active-tool-ids")).toHaveTextContent("codex_exec,search_memory"));
+    await waitFor(() => expect(screen.getByTestId("active-skill-ids")).toHaveTextContent(
+      "deploy-test-service,frontend-design,code-reviewer,brainstorming",
+    ));
 
     fireEvent.click(screen.getByRole("button", { name: "select writing" }));
 
     await waitFor(() => expect(screen.getByTestId("current-target")).toHaveTextContent("agent:writing:Writing Agent"));
     await waitFor(() => expect(screen.getByTestId("active-tool-ids")).toHaveTextContent("codex_exec,read_memory,search_memory"));
+    await waitFor(() => expect(screen.getByTestId("active-skill-ids")).toHaveTextContent("doc-coauthoring"));
   });
 
   it("shows search_memory as active in runtime capabilities when it is part of the default agent tools", async () => {

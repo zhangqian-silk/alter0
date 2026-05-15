@@ -209,7 +209,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - Terminal 会持久化 Codex CLI 线程标识与会话状态；会话态固定为 `ready / busy / exited / interrupted`，其中 `ready` 表示当前会话可继续交互、`busy` 表示当前轮正在执行；执行细节继续由 turn/step 维度的 `running / completed / failed / interrupted` 表示。运行态退出后保留原会话历史，继续发送即可在同一会话内恢复。
 - Terminal 新会话先使用占位标题；首条输入后会按输入内容自动命名。自动标题在早期多轮内会按更具体的后续输入继续升级，尤其覆盖“拉取仓库 / 分析仓库”等通用开场，避免列表里长期堆积低辨识度会话。
 - Terminal Composer 支持最多 5 个附件。图片附件继续保留缩略图预览、草稿缓存与 `asset_url / preview_url` 提交语义；常见文本/文档文件改为文件条目展示并复用同一附件上传接口，只提交稳定 `asset_url` 引用。发送时，图片会继续走 Codex CLI `-i` 输入，普通文件则写入会话工作区 `input-attachments/<turn_id>/` 并通过同轮 prompt 告知可读取路径；纯附件输入会自动补齐稳定占位文本。
-- Terminal 的 `Details` 面板支持选择控制面中启用且非私有的公有 Skill，选择结果随下一次 `/api/terminal/sessions/{id}/input` 请求以 `skill_ids` 发送；新 Terminal 会话首次加载 Skill 列表时默认勾选 `frontend-design` 与 `deploy-test-service`，用户后续仍可按会话手动调整。后端会把选中的 Skill 编译到当前 Terminal 工作区的 `.alter0/codex-runtime/skills.md` 和托管 `AGENTS.md` 指令块中，仅作用于后续 Terminal 输入。
+- Terminal 的 `Details` 面板支持选择控制面中启用且非私有的公有 Skill，选择结果随下一次 `/api/terminal/sessions/{id}/input` 请求以 `skill_ids` 发送；当前服务内置公有 Skill 除 `default-nl` 与 `memory` 外，还包含 `deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。新 Terminal 会话首次加载 Skill 列表时，默认勾选这批公有 Skill 中除 `default-nl`、`memory` 外的全部可用项，用户后续仍可按会话手动调整。后端会把选中的 Skill 编译到当前 Terminal 工作区的 `.alter0/codex-runtime/skills.md` 和托管 `AGENTS.md` 指令块中，仅作用于后续 Terminal 输入。
 - 同一 Terminal 会话在单次运行态中断或退出后，只记录一条对应状态提醒；恢复后若再次发生新的中断或退出，再按新的状态周期补充提醒。
 - Terminal 输入区上缘的运行态 hint 只服务于当前空闲会话；一旦用户重新发送恢复当前会话，或从旧会话切到 `New` 待创建态，旧的 `Exited / Interrupted / Failed` 提示会立即清空，不再在发送中残留。
 - Terminal 工作区头部仅保留 `Details` 等阅读辅助工具；会话删除统一从会话列表触发，`Delete` 会移除会话记录、持久化状态文件与该会话对应的独立工作区。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表面板都保持现状不自动收起，便于连续清理多条会话；但这只兜住删除导致的那次被动收起，之后用户点 `Hide`、再次点 `Sessions` 或点击抽屉外部遮罩时，列表仍会正常关闭。前端同时会在后续列表轮询和 page-activation 补拉中继续屏蔽该会话，避免服务端短暂返回旧列表时已删除项又回弹到侧栏。
@@ -271,7 +271,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 1. `travel` 的显示名称为 `Travel Agent`。
 2. `travel` 负责旅游任务的专项执行与结果收口，沿用统一的 “Agent 协助编排，Codex CLI 负责具体执行” 模型。
 3. 旅游领域的稳定规则继续沉淀在私有 file-backed Skill `docs/agents/travel/SKILL.md`，用于约束城市行程、地铁、美食与地图输出结构。
-4. `travel` 作为 Agent Runtime 可选入口直接出现在 `/api/agents` 列表中，支持用户显式切换到旅游专项执行链路；新建 `travel` 会话默认勾选 `deploy-test-service`、`frontend-design` 与 `artifact-preview` 三个公有 Skill，分别覆盖公开攻略发布、页面实现质量与静态产物预览发布。
+4. `travel` 作为 Agent Runtime 可选入口直接出现在 `/api/agents` 列表中，支持用户显式切换到旅游专项执行链路；新建 `travel` 会话默认勾选 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`find-skills`、`ui-ux-pro-max` 与 `brainstorming`，分别覆盖记忆、公开攻略发布、页面实现质量、静态产物预览、文案协作、技能发现、交互设计与前期发散。
 5. `travel` 在正常对话之外，还要求额外生成一份 HTML 格式的旅游攻略，并把它发布到当前 Session 的公开只读子域名 `https://travel-<session_short_hash>.alter0.cn`；该域名不需要登录。只有当前请求已经在当前 Session 工作区根目录生成或更新了对应的 `index.html` 时，才允许把这份静态攻略作为 `travel` 服务发布；运行时不会再伪造、补写或代发 fallback 页面，但会在最终校验前追加一轮专门面向当前 Session 工作区的 Codex 修复任务，优先补齐 `index.html` 和 `travel` 发布缺口。修复轮只有在真实产出页面并完成发布后才会被视为成功，缺失或错误页面仍会直接阻断完成。新生成的攻略页必须同时兼容桌面端与移动端阅读。HTML 内容结构要求先按分类列出完整推荐池，再进入行程计划；吃喝需拆分小吃、早点、特色菜、特色饮品，并兼顾老字号与大众点评高分项，景点需区分公园、博物馆、表演等类型，住宿需给出不同价格带或档位的热门酒店；在此基础上允许按城市实际情况灵活补充夜游、集市、游船、温泉、滑雪、庙会等城市特有分类；各类推荐都要标注数据来源。
 
 ## Workspace Model
@@ -570,10 +570,10 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 
 说明：
 
-1. 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service` 与 `frontend-design` 四个内置 Skill。
+1. 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming` 内置 Skill。
 2. `memory` Skill 用于向 Agent / Codex 明确记忆文件的读取决策、写入路由、冲突优先级与禁止写入项，建议与 `memory_files` 一起启用。
-3. `deploy-test-service`、`frontend-design` 与 `artifact-preview` 都是项目内置的 file-backed Skill，默认文件分别位于 `docs/skills/deploy-test-service/SKILL.md`、`docs/skills/frontend-design/SKILL.md` 与 `docs/skills/artifact-preview/SKILL.md`；`artifact-preview` 的发布脚本位于 `docs/skills/artifact-preview/scripts/publish_preview_artifact.sh`。
-4. `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service` 与 `frontend-design`，进入 Coding Agent Runtime 后即可继承仓库记忆、预览发布与前端设计规则。
+3. 项目内置 Skill 全部由源码仓库直接承载。标准 skill 使用 `docs/skills/<skill_id>/SKILL.md` 作为 file-backed 主入口；其中 `artifact-preview` 的发布脚本位于 `docs/skills/artifact-preview/scripts/publish_preview_artifact.sh`。`code-simplifier` 与 `code-review` 两个 plugin-style 条目则分别以 `docs/skills/code-simplifier/agents/code-simplifier.md` 和 `docs/skills/code-review/commands/code-review.md` 作为 alter0 的 file-backed 注入入口，并保留各自 `.claude-plugin/plugin.json` 元数据。
+4. `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`，进入 Coding Agent Runtime 后即可同时继承仓库记忆、预览发布、前端设计、测试、评审、重构与协作文档规则。
 5. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `docs/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Agent Runtime 的 Skill 面板会展示当前 Agent 私有 Skill，但该项固定启用且不可取消；可选区只列出 `memory`、`deploy-test-service`、`frontend-design` 等公有 Skill。
 6. `travel` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食与地图输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
 

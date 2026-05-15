@@ -75,8 +75,8 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 
 - Skill 配置包含 `description`、`guide`、排序、启停状态、作用域、文件路径与可写属性。
 - 默认提供 `memory` Skill，说明记忆文件职责、读取决策、写入路由、冲突优先级与禁止写入项；公有 Skill 侧还提供 `deploy-test-service`、`frontend-design` 与 `artifact-preview`，分别覆盖测试服务发布、前端实现规则与静态产物预览发布。
-- `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service` 与 `frontend-design`，使仓库类任务稳定带上记忆、预览发布和前端设计规则；运行时仍可在 `Details > Skills` 中对公有 Skill 做会话级调整。
-- `travel` 内置 Agent 默认启用 `memory`、`deploy-test-service`、`frontend-design` 与 `artifact-preview`，使旅游任务稳定带上公开攻略发布、页面实现质量与静态产物预览发布规则；运行时仍可在 `Details > Skills` 中对公有 Skill 做会话级调整。
+- `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`，使仓库类任务稳定带上记忆、预览发布、前端设计、测试、评审、重构与协作文档规则；运行时仍可在 `Details > Skills` 中对公有 Skill 做会话级调整。
+- `travel` 内置 Agent 默认启用 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`find-skills`、`ui-ux-pro-max` 与 `brainstorming`，使旅游任务稳定带上记忆、公开攻略发布、页面实现质量、静态产物预览、文案协作、技能发现、交互设计与前期发散规则；运行时仍可在 `Details > Skills` 中对公有 Skill 做会话级调整。
 - 每个 Agent 自动附带私有 file-backed Skill `docs/agents/<agent_id>/SKILL.md`。
 - 私有 Skill 用于沉淀可复用工作模式、输出结构、检查清单、偏好和长期协作约束。
 - 一次性任务细节不得写入私有 Skill。

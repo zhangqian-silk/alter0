@@ -296,7 +296,7 @@ type TerminalPollPlan = {
   refreshActiveSession: boolean;
 };
 
-const DEFAULT_TERMINAL_SKILL_IDS = ["frontend-design", "deploy-test-service"] as const;
+const TERMINAL_DEFAULT_SKILL_EXCLUDE_IDS = new Set(["default-nl", "memory"]);
 const TERMINAL_NARRATIVE_BLOCK_TYPES = new Set(["text", "message", "reasoning", "plan", "log"]);
 
 function resolveLanguage(): "en" | "zh" {
@@ -387,8 +387,9 @@ function normalizeTerminalSkills(values: unknown): TerminalSkillSelection[] {
 }
 
 function resolveDefaultTerminalSkillIDs(skills: TerminalSkillSelection[]): string[] {
-  const available = new Set(skills.map((skill) => skill.id));
-  return DEFAULT_TERMINAL_SKILL_IDS.filter((id) => available.has(id));
+  return skills
+    .map((skill) => skill.id)
+    .filter((id) => !TERMINAL_DEFAULT_SKILL_EXCLUDE_IDS.has(id));
 }
 
 function serializeTerminalComposerAttachment(attachment: ComposerAttachment) {

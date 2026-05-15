@@ -170,6 +170,22 @@ describe("ReactManagedTerminalRouteBody", () => {
               },
             },
             {
+              id: "memory",
+              name: "Memory",
+              enabled: true,
+              metadata: {
+                "skill.description": "Memory routing rules.",
+              },
+            },
+            {
+              id: "default-nl",
+              name: "default-nl",
+              enabled: true,
+              metadata: {
+                "skill.description": "Default NL runtime policy.",
+              },
+            },
+            {
               id: "agent-private",
               name: "Agent Private",
               enabled: true,
@@ -1259,6 +1275,9 @@ describe("ReactManagedTerminalRouteBody", () => {
       if (url === "/api/terminal/sessions" && method === "GET") {
         return Promise.resolve(jsonResponse({ items: [] }));
       }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
       if (url === "/api/terminal/sessions" && method === "POST") {
         return Promise.resolve(jsonResponse({
           session: {
@@ -1364,6 +1383,9 @@ describe("ReactManagedTerminalRouteBody", () => {
       const url = String(input);
       const method = String(init?.method || "GET").toUpperCase();
       if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
         return Promise.resolve(jsonResponse({ items: [] }));
       }
       if (url === "/api/terminal/sessions" && method === "POST") {
@@ -1728,10 +1750,13 @@ describe("ReactManagedTerminalRouteBody", () => {
     const configPanel = await screen.findByTestId("terminal-skill-selector");
     expect(within(configPanel).getByLabelText("Deploy Test Service")).toBeChecked();
     expect(within(configPanel).getByLabelText("Frontend Design")).toBeChecked();
+    expect(within(configPanel).getByLabelText("Summary")).toBeChecked();
+    expect(within(configPanel).getByLabelText("Memory")).not.toBeChecked();
+    expect(within(configPanel).getByLabelText("default-nl")).not.toBeChecked();
     expect(within(configPanel).getByText("Summary")).toBeInTheDocument();
     expect(within(configPanel).queryByText("Agent Private")).not.toBeInTheDocument();
 
-    fireEvent.click(within(configPanel).getByLabelText("Summary"));
+    fireEvent.click(within(configPanel).getByLabelText("Memory"));
     fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "summarize this workspace" },
     });
@@ -1747,7 +1772,7 @@ describe("ReactManagedTerminalRouteBody", () => {
       && String(init?.method || "GET").toUpperCase() === "POST");
     expect(inputCall).toBeTruthy();
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
-    expect(payload.skill_ids).toEqual(["frontend-design", "deploy-test-service", "summary"]);
+    expect(payload.skill_ids).toEqual(["deploy-test-service", "frontend-design", "summary", "memory"]);
   });
 
   it("dismisses the terminal session panel when the composer input is pressed", async () => {
