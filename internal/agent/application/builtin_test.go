@@ -1,6 +1,7 @@
 package application
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -48,6 +49,20 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	if got := strings.Join(skills["travel"], ","); !strings.Contains(got, "artifact-preview") {
 		t.Fatalf("expected travel skills to include artifact-preview, got %+v", skills["travel"])
 	}
+	for _, skillID := range []string{
+		"memory",
+		"deploy-test-service",
+		"frontend-design",
+		"artifact-preview",
+		"doc-coauthoring",
+		"find-skills",
+		"ui-ux-pro-max",
+		"brainstorming",
+	} {
+		if !slices.Contains(skills["travel"], skillID) {
+			t.Fatalf("expected travel skills to include %s, got %+v", skillID, skills["travel"])
+		}
+	}
 	if prompt := index["travel"]; !strings.Contains(strings.ToLower(prompt), "html") || !strings.Contains(prompt, "alter0.cn") {
 		t.Fatalf("expected travel prompt to require html guide and session subdomain deployment, got %q", prompt)
 	}
@@ -94,5 +109,25 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	}
 	if got := strings.Join(skills["coding"], ","); !strings.Contains(got, "frontend-design") {
 		t.Fatalf("expected coding agent skills to include frontend-design, got %+v", skills["coding"])
+	}
+	for _, skillID := range []string{
+		"memory",
+		"deploy-test-service",
+		"frontend-design",
+		"artifact-preview",
+		"doc-coauthoring",
+		"fullstack-developer",
+		"code-reviewer",
+		"webapp-testing",
+		"find-skills",
+		"test-driven-development",
+		"ui-ux-pro-max",
+		"code-simplifier",
+		"code-review",
+		"brainstorming",
+	} {
+		if !slices.Contains(skills["coding"], skillID) {
+			t.Fatalf("expected coding skills to include %s, got %+v", skillID, skills["coding"])
+		}
 	}
 }

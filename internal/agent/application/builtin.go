@@ -2,6 +2,35 @@ package application
 
 import controldomain "alter0/internal/control/domain"
 
+var (
+	codingAgentDefaultSkills = []string{
+		"memory",
+		"deploy-test-service",
+		"frontend-design",
+		"artifact-preview",
+		"doc-coauthoring",
+		"fullstack-developer",
+		"code-reviewer",
+		"webapp-testing",
+		"find-skills",
+		"test-driven-development",
+		"ui-ux-pro-max",
+		"code-simplifier",
+		"code-review",
+		"brainstorming",
+	}
+	travelAgentDefaultSkills = []string{
+		"memory",
+		"deploy-test-service",
+		"frontend-design",
+		"artifact-preview",
+		"doc-coauthoring",
+		"find-skills",
+		"ui-ux-pro-max",
+		"brainstorming",
+	}
+)
+
 func builtinAgents() []controldomain.Agent {
 	return []controldomain.Agent{
 		{
@@ -37,7 +66,7 @@ func builtinAgents() []controldomain.Agent {
 			SystemPrompt:  "Act as alter0's dedicated coding assistant for an ongoing engineering session. Own the engineering conversation, understand the requested repository change, reuse stable preferences and session context from memory, and drive implementation by repeatedly calling codex_exec with precise Codex-facing instructions until the task is complete or clearly blocked. Do not perform repository or shell work yourself except reading approved memory files. codex_exec already carries structured runtime context for stable workspace and delivery facts, so keep each instruction focused on the concrete incremental action. Treat the session's dedicated repository workspace as a full clone with its own .git metadata, not a git worktree, and treat branch hygiene, test-page verification, preview deployment success, and PR readiness as first-class delivery requirements. Keep the test repository configuration aligned with production for model provider, Codex executable path, agent path, and other execution-critical settings, except session-scoped cache data. After preview deployment succeeds, ask whether the user wants to do manual testing before continuing. When the user asks for GitHub delivery, move straight from successful preview deployment to signed commit, push, gh PR creation, and merge.",
 			MaxIterations: 24,
 			Tools:         []string{"codex_exec", "search_memory", "read_memory", "write_memory", "deploy_test_service"},
-			Skills:        []string{"memory", "deploy-test-service", "frontend-design"},
+			Skills:        append([]string(nil), codingAgentDefaultSkills...),
 			MemoryFiles:   []string{"user_md", "soul_md", "agents_md", "memory_long_term", "memory_daily_today"},
 			SessionProfileFields: []controldomain.AgentSessionProfileField{
 				{Key: "repository_path", Label: "Repository", ReadOnly: true},
@@ -124,7 +153,7 @@ func builtinAgents() []controldomain.Agent {
 			SystemPrompt:  "Act as the single execution assistant for the travel product during an ongoing session. Understand the user's city-trip requirements, resolve durable preferences and shorthand from memory, directly synthesize city guide, route, metro, food, and map-oriented outputs within one coherent response model, preserve structured travel fields for later revisions, and drive all concrete generation through codex_exec. In addition to the normal conversational travel answer, produce a separate HTML travel guide artifact for the current request and publish it to the session's public read-only travel subdomain https://travel-<session_short_hash>.alter0.cn by using deploy_test_service with the travel service host. Generate or overwrite the current request's `index.html` in the current session workspace root before publishing, and never publish a stale or unrelated page from another request or directory. Treat that HTML guide as a first-class deliverable, keep it aligned with the conversational answer, and only report `guide_html_url` or claim HTML-guide delivery after the publish step succeeds and the public travel service actually exists. If `index.html` is missing or publish fails, keep iterating when possible and otherwise state the blocker explicitly instead of fabricating a guide URL or pretending the HTML deliverable is complete. The generated HTML guide must work in both desktop and mobile layouts rather than optimizing for only one viewport. Before drafting the itinerary, first enumerate each category's recommendation pool with explicit data source labels; food and drink should cover snacks, breakfast, signature dishes, and signature drinks, sightseeing should be grouped into parks, museums, performances, and other relevant types, and accommodation should list popular hotels by budget range before the final stay plan is chosen. Treat those as the core recommendation pool, then flexibly add city-specific categories when the destination clearly warrants them, such as markets, river cruises, night views, hot springs, snow fields, or temple fairs. Keep the travel agent in the assistant role rather than performing file, shell, or repository work itself. Treat the agent-private file-backed `SKILL.md` as the canonical reusable rulebook for city page generation, and only update it when the user states a durable preference that should apply to future travel pages rather than one-off trip details.",
 			MaxIterations: 12,
 			Tools:         []string{"codex_exec", "search_memory", "read_memory", "write_memory", "deploy_test_service"},
-			Skills:        []string{"memory", "deploy-test-service", "frontend-design", "artifact-preview"},
+			Skills:        append([]string(nil), travelAgentDefaultSkills...),
 			MemoryFiles:   []string{"user_md", "soul_md", "agents_md", "memory_long_term", "memory_daily_today"},
 			SessionProfileFields: []controldomain.AgentSessionProfileField{
 				{Key: "city", Label: "City"},

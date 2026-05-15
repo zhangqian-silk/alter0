@@ -37,6 +37,31 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 		t.Fatalf("did not expect legacy travel-page skill to remain registered")
 	}
 
+	expectedFileBackedSkills := map[string]string{
+		"deploy-test-service":     "docs/skills/deploy-test-service/SKILL.md",
+		"frontend-design":         "docs/skills/frontend-design/SKILL.md",
+		"artifact-preview":        "docs/skills/artifact-preview/SKILL.md",
+		"doc-coauthoring":         "docs/skills/doc-coauthoring/SKILL.md",
+		"fullstack-developer":     "docs/skills/fullstack-developer/SKILL.md",
+		"code-reviewer":           "docs/skills/code-reviewer/SKILL.md",
+		"webapp-testing":          "docs/skills/webapp-testing/SKILL.md",
+		"find-skills":             "docs/skills/find-skills/SKILL.md",
+		"test-driven-development": "docs/skills/test-driven-development/SKILL.md",
+		"ui-ux-pro-max":           "docs/skills/ui-ux-pro-max/SKILL.md",
+		"code-simplifier":         "docs/skills/code-simplifier/agents/code-simplifier.md",
+		"code-review":             "docs/skills/code-review/commands/code-review.md",
+		"brainstorming":           "docs/skills/brainstorming/SKILL.md",
+	}
+	for skillID, expectedPath := range expectedFileBackedSkills {
+		skill, ok := service.ResolveSkill(skillID)
+		if !ok {
+			t.Fatalf("expected %s skill exists", skillID)
+		}
+		if got := skill.Metadata[builtinSkillFilePathKey]; got != expectedPath {
+			t.Fatalf("%s skill file path = %q, want %s", skillID, got, expectedPath)
+		}
+	}
+
 	deploySkill, ok := service.ResolveSkill("deploy-test-service")
 	if !ok {
 		t.Fatalf("expected deploy-test-service skill exists")
@@ -83,6 +108,24 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	}
 	if !strings.Contains(artifactGuide, "text") || !strings.Contains(artifactGuide, "image") || !strings.Contains(artifactGuide, "code") {
 		t.Fatalf("expected artifact-preview guide covers text, image, and code previews, got %q", artifactGuide)
+	}
+
+	codeSimplifier, ok := service.ResolveSkill("code-simplifier")
+	if !ok {
+		t.Fatalf("expected code-simplifier skill exists")
+	}
+	codeSimplifierGuide := codeSimplifier.Metadata[builtinSkillGuideKey]
+	if !strings.Contains(codeSimplifierGuide, "preserving all functionality") || !strings.Contains(codeSimplifierGuide, "docs/skills/code-simplifier/agents/code-simplifier.md") {
+		t.Fatalf("expected code-simplifier guide covers simplification contract and canonical file, got %q", codeSimplifierGuide)
+	}
+
+	codeReview, ok := service.ResolveSkill("code-review")
+	if !ok {
+		t.Fatalf("expected code-review skill exists")
+	}
+	codeReviewGuide := codeReview.Metadata[builtinSkillGuideKey]
+	if !strings.Contains(codeReviewGuide, "pull request") || !strings.Contains(codeReviewGuide, "docs/skills/code-review/commands/code-review.md") {
+		t.Fatalf("expected code-review guide covers PR review workflow and canonical file, got %q", codeReviewGuide)
 	}
 }
 

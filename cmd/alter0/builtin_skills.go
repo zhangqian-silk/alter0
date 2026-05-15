@@ -96,6 +96,101 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join("docs", "skills", "artifact-preview", "SKILL.md")),
 			},
 		},
+		fileBackedBuiltinSkill(
+			"doc-coauthoring",
+			"Doc Coauthoring",
+			700,
+			"Document coauthoring guidance for collaborative drafting, editing, and review-ready long-form documents.",
+			docCoauthoringSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "doc-coauthoring", "SKILL.md")),
+		),
+		fileBackedBuiltinSkill(
+			"fullstack-developer",
+			"Fullstack Developer",
+			680,
+			"Full-stack delivery workflow for coordinated frontend, backend, data, and deployment changes.",
+			fullstackDeveloperSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "fullstack-developer", "SKILL.md")),
+		),
+		fileBackedBuiltinSkill(
+			"code-reviewer",
+			"Code Reviewer",
+			660,
+			"Structured code review guidance focused on bugs, risks, regressions, and review-ready findings.",
+			codeReviewerSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "code-reviewer", "SKILL.md")),
+		),
+		fileBackedBuiltinSkill(
+			"webapp-testing",
+			"Webapp Testing",
+			640,
+			"Browser-driven web application testing workflow for reproducible validation, debugging, and regression checks.",
+			webappTestingSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "webapp-testing", "SKILL.md")),
+		),
+		fileBackedBuiltinSkill(
+			"find-skills",
+			"Find Skills",
+			620,
+			"Skill discovery helper for locating relevant reusable skills when the current catalog is insufficient.",
+			findSkillsSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "find-skills", "SKILL.md")),
+		),
+		fileBackedBuiltinSkill(
+			"test-driven-development",
+			"Test-Driven Development",
+			600,
+			"Test-driven development workflow that starts from failing tests and drives implementation through the smallest safe increments.",
+			testDrivenDevelopmentSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "test-driven-development", "SKILL.md")),
+		),
+		fileBackedBuiltinSkill(
+			"ui-ux-pro-max",
+			"UI UX Pro Max",
+			580,
+			"High-fidelity UI and UX design guidance for stronger product interaction, layout, and visual execution.",
+			uiUxProMaxSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "ui-ux-pro-max", "SKILL.md")),
+		),
+		fileBackedBuiltinSkill(
+			"code-simplifier",
+			"Code Simplifier",
+			560,
+			"Simplifies and refines code for clarity, consistency, and maintainability while preserving all functionality.",
+			codeSimplifierSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "code-simplifier", "agents", "code-simplifier.md")),
+		),
+		fileBackedBuiltinSkill(
+			"code-review",
+			"Code Review",
+			540,
+			"Pull request review workflow that launches multiple review perspectives and filters findings by confidence.",
+			codeReviewSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "code-review", "commands", "code-review.md")),
+		),
+		fileBackedBuiltinSkill(
+			"brainstorming",
+			"Brainstorming",
+			520,
+			"Brainstorming workflow for framing ambiguous problems, exploring options, and converging on promising directions.",
+			brainstormingSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "brainstorming", "SKILL.md")),
+		),
+	}
+}
+
+func fileBackedBuiltinSkill(id string, name string, priority int, description string, guide string, filePath string) controldomain.Skill {
+	return controldomain.Skill{
+		ID:      id,
+		Name:    name,
+		Enabled: true,
+		Scope:   controldomain.CapabilityScopeGlobal,
+		Metadata: map[string]string{
+			builtinSkillPriorityKey:    fmt.Sprintf("%d", priority),
+			builtinSkillDescriptionKey: description,
+			builtinSkillGuideKey:       guide,
+			builtinSkillFilePathKey:    filePath,
+		},
 	}
 }
 
@@ -194,6 +289,96 @@ func artifactPreviewSkillGuide() string {
 		"- Keep artifact preview hosts certificate-safe by staying on single-label subdomains covered by `*.alter0.cn`; do not use nested hosts such as `https://<service>.<short_hash>.alter0.cn`.",
 		"- Reuse stable service names so repeated deploys refresh the same preview URL instead of creating ad-hoc variants.",
 		"- For full-stack web apps or routed backend services, use `deploy_test_service` instead of this artifact-only preview flow.",
+	}, "\n")
+}
+
+func docCoauthoringSkillGuide() string {
+	return strings.Join([]string{
+		"# doc coauthoring",
+		"",
+		"- Use this skill when the user needs collaborative drafting, restructuring, editing, or review passes for specs, proposals, READMEs, and other long-form documents.",
+		"- The canonical file-backed skill lives at `docs/skills/doc-coauthoring/SKILL.md`; read it for the full coauthoring workflow, editing passes, and review checkpoints.",
+	}, "\n")
+}
+
+func fullstackDeveloperSkillGuide() string {
+	return strings.Join([]string{
+		"# fullstack developer",
+		"",
+		"- Use this skill when the task spans frontend, backend, data, and delivery concerns and needs one coherent end-to-end implementation workflow.",
+		"- The canonical file-backed skill lives at `docs/skills/fullstack-developer/SKILL.md`; read it for the full-stack delivery checklist and execution sequence.",
+	}, "\n")
+}
+
+func codeReviewerSkillGuide() string {
+	return strings.Join([]string{
+		"# code reviewer",
+		"",
+		"- Use this skill when the user asks for a review and the primary goal is to find bugs, regressions, missing safeguards, and concrete engineering risks.",
+		"- The canonical file-backed skill lives at `docs/skills/code-reviewer/SKILL.md`; read it for the review framing, severity bar, and reporting structure.",
+	}, "\n")
+}
+
+func webappTestingSkillGuide() string {
+	return strings.Join([]string{
+		"# webapp testing",
+		"",
+		"- Use this skill when the task requires browser-driven validation, reproduction steps, regression checks, or systematic debugging of a web application.",
+		"- The canonical file-backed skill lives at `docs/skills/webapp-testing/SKILL.md`; read it for the testing workflow, scripts, and example automation patterns.",
+	}, "\n")
+}
+
+func findSkillsSkillGuide() string {
+	return strings.Join([]string{
+		"# find skills",
+		"",
+		"- Use this skill when the current runtime context is missing a reusable skill and you need to discover a better-fitting external skill or catalog entry first.",
+		"- The canonical file-backed skill lives at `docs/skills/find-skills/SKILL.md`; read it for the discovery workflow and selection criteria.",
+	}, "\n")
+}
+
+func testDrivenDevelopmentSkillGuide() string {
+	return strings.Join([]string{
+		"# test driven development",
+		"",
+		"- Use this skill when the task should be driven by failing tests first, followed by the smallest implementation that makes the tests pass.",
+		"- The canonical file-backed skill lives at `docs/skills/test-driven-development/SKILL.md`; read it for the red-green-refactor workflow and anti-patterns.",
+	}, "\n")
+}
+
+func uiUxProMaxSkillGuide() string {
+	return strings.Join([]string{
+		"# ui ux pro max",
+		"",
+		"- Use this skill when the task needs stronger product interaction design, higher-fidelity UI direction, or more deliberate UX execution than baseline implementation guidance.",
+		"- The canonical file-backed skill lives at `docs/skills/ui-ux-pro-max/SKILL.md`; read it for the full design direction and interface heuristics.",
+	}, "\n")
+}
+
+func codeSimplifierSkillGuide() string {
+	return strings.Join([]string{
+		"# code simplifier",
+		"",
+		"- Use this skill when the task is to simplify or refine recently modified code for clarity, consistency, and maintainability while preserving all functionality.",
+		"- This catalog entry originates from a plugin-style package. The canonical file-backed instructions for alter0 live at `docs/skills/code-simplifier/agents/code-simplifier.md`; plugin metadata remains in `docs/skills/code-simplifier/.claude-plugin/plugin.json`.",
+	}, "\n")
+}
+
+func codeReviewSkillGuide() string {
+	return strings.Join([]string{
+		"# code review",
+		"",
+		"- Use this skill when the task is to review a pull request with a structured workflow that gathers context, launches multiple review perspectives, and filters issues by confidence.",
+		"- This catalog entry originates from a plugin-style package. The canonical file-backed instructions for alter0 live at `docs/skills/code-review/commands/code-review.md`; plugin metadata remains in `docs/skills/code-review/.claude-plugin/plugin.json`.",
+	}, "\n")
+}
+
+func brainstormingSkillGuide() string {
+	return strings.Join([]string{
+		"# brainstorming",
+		"",
+		"- Use this skill when the problem is still ambiguous and the immediate need is to frame the space, generate alternatives, compare directions, and converge on a practical plan.",
+		"- The canonical file-backed skill lives at `docs/skills/brainstorming/SKILL.md`; read it for the full ideation workflow and companion materials.",
 	}, "\n")
 }
 
