@@ -12,6 +12,7 @@ import { createAPIClient } from "../../shared/api/client";
 import { hashSessionIDShort } from "../../shared/session/sessionHash";
 import { formatDateTimeMinute } from "../../shared/time/format";
 import type { LegacyShellLanguage } from "../shell/legacyShellCopy";
+import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../../app/routeState";
 import { MOBILE_VIEWPORT_BREAKPOINT_PX } from "../../shared/viewport/mobileViewport";
 import { usePageActivation } from "../../shared/visibility/usePageActivation";
 import {
@@ -866,8 +867,8 @@ function writeJSONStorage(key: string, value: unknown) {
 function loadActiveSessionState(): ActiveSessionState {
   const parsed = readJSONStorage<Record<string, string>>(ACTIVE_SESSION_STORAGE_KEY, {});
   return {
-    chat: normalizeText(parsed.chat),
-    "agent-runtime": normalizeText(parsed["agent-runtime"]),
+    chat: readWorkbenchRouteSessionID("chat") || normalizeText(parsed.chat),
+    "agent-runtime": readWorkbenchRouteSessionID("agent-runtime") || normalizeText(parsed["agent-runtime"]),
   };
 }
 
@@ -2005,6 +2006,11 @@ export function ConversationRuntimeProvider({
   useEffect(() => {
     persistActiveSessionSnapshots(activeSessionByRoute, sessionsByRoute);
   }, [activeSessionByRoute, sessionsByRoute]);
+
+  useEffect(() => {
+    writeWorkbenchRouteSessionID("chat", activeSessionByRoute.chat);
+    writeWorkbenchRouteSessionID("agent-runtime", activeSessionByRoute["agent-runtime"]);
+  }, [activeSessionByRoute]);
 
   useEffect(() => {
     sessionsByRouteRef.current = sessionsByRoute;

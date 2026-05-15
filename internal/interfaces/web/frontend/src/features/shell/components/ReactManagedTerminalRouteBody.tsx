@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../../app/WorkbenchContext";
+import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../../../app/routeState";
 import { createAPIClient } from "../../../shared/api/client";
 import { hashSessionIDShort } from "../../../shared/session/sessionHash";
 import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
@@ -722,7 +723,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const copy = TERMINAL_COPY[language];
   const shellCopy = getLegacyShellCopy(workbench.language);
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
-  const [activeSessionID, setActiveSessionID] = useState("");
+  const [activeSessionID, setActiveSessionID] = useState(() => readWorkbenchRouteSessionID("terminal"));
   const [metaOpen, setMetaOpen] = useState(false);
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1101,6 +1102,10 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    writeWorkbenchRouteSessionID("terminal", activeSessionID);
+  }, [activeSessionID]);
 
   useEffect(() => {
     if (!activeSessionID) {
