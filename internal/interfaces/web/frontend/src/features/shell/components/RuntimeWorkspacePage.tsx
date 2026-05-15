@@ -1,4 +1,4 @@
-import { useMemo, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { useMemo, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode, type TouchEvent } from "react";
 import { RuntimeComposer } from "./RuntimeComposer";
 import { RuntimeSessionList, type RuntimeSessionListGroup } from "./RuntimeSessionList";
 import { RouteFieldRow } from "./RouteBodyPrimitives";
@@ -15,6 +15,13 @@ function RuntimeSessionMoreIcon() {
       <circle cx="15" cy="10" r="1.35" />
     </svg>
   );
+}
+
+function swallowSessionDeleteGesture(
+  event: MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>,
+) {
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 export type RuntimeWorkspaceDetailsField = {
@@ -166,7 +173,12 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
               type="button"
               aria-label={item.deleteAriaLabel || item.deleteLabel}
               disabled={item.deleting}
-              onClick={item.onDelete}
+              onMouseDown={swallowSessionDeleteGesture}
+              onTouchStart={swallowSessionDeleteGesture}
+              onClick={(event) => {
+                swallowSessionDeleteGesture(event);
+                item.onDelete?.();
+              }}
               {...item.deleteProps}
             >
               <span className="runtime-session-delete-icon" aria-hidden="true">

@@ -858,6 +858,7 @@ test.describe("Terminal route", () => {
   test("keeps the mobile session sheet open and interactive after deleting the active session", async ({ page, request }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     const { terminalPage } = await openTerminalWorkspaceWithSessions(page, request, { scope: "mobile-delete-sheet", count: 2 });
+    const backdrop = page.locator(".mobile-backdrop");
 
     const previousSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
     expect(previousSessionID).toBeTruthy();
@@ -872,7 +873,8 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.sessionList().items()).toHaveCount(1);
     await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
     await expect(terminalPage.sessionPane()).toBeVisible();
-    await terminalPage.sessionPaneClose().click();
+    await expect(backdrop).toBeVisible();
+    await backdrop.dispatchEvent("click");
     await expect(terminalPage.sessionPane()).not.toHaveClass(/is-open/);
     await expect(terminalPage.sessionPane()).toBeHidden();
   });
@@ -889,15 +891,15 @@ test.describe("Terminal route", () => {
     await terminalPage.sessionDeleteButton(String(activeSessionID)).click();
 
     await expect.poll(async () => await terminalPage.sessionList().items().count()).toBe(1);
-    await expect(terminalPage.sessionPane()).toBeHidden();
+    await expect(terminalPage.sessionPane()).toHaveClass(/is-open/);
+    await expect(terminalPage.sessionPane()).toBeVisible();
 
     const layoutMetrics = await page.evaluate(() => {
-      const route = document.querySelector(".route-view.terminal-route");
-      const routeBody = document.querySelector(".route-body.terminal-route-body");
+      const paneShell = document.querySelector("[data-workbench-pane-shell]");
       const terminalView = document.querySelector("[data-runtime-view='terminal']");
       const terminalWorkspaceShell = document.querySelector(".terminal-workspace");
       const workspace = document.querySelector("[data-runtime-workspace='terminal']");
-      if (!(route instanceof HTMLElement) || !(workspace instanceof HTMLElement)) {
+      if (!(paneShell instanceof HTMLElement) || !(workspace instanceof HTMLElement)) {
         return null;
       }
       const rect = (node: Element | null) => {
@@ -912,13 +914,11 @@ test.describe("Terminal route", () => {
         };
       };
       return {
-        gap: Math.round(route.getBoundingClientRect().bottom - workspace.getBoundingClientRect().bottom),
+        gap: Math.round(paneShell.getBoundingClientRect().bottom - workspace.getBoundingClientRect().bottom),
         windowScrollY: Math.round(window.scrollY || 0),
-        routeScrollTop: Math.round(route.scrollTop || 0),
-        routeBodyScrollTop: routeBody instanceof HTMLElement ? Math.round(routeBody.scrollTop || 0) : null,
+        paneShellScrollTop: Math.round(paneShell.scrollTop || 0),
         terminalViewScrollTop: terminalView instanceof HTMLElement ? Math.round(terminalView.scrollTop || 0) : null,
-        route: rect(route),
-        routeBody: rect(routeBody),
+        paneShell: rect(paneShell),
         terminalView: rect(terminalView),
         terminalWorkspaceShell: rect(terminalWorkspaceShell),
         workspace: rect(workspace),
