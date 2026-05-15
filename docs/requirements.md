@@ -155,7 +155,7 @@
 - Terminal API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
 - Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/step 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
 - Terminal 恢复默认优先复用已持久化 Codex CLI 线程；若续写命中远端 compact 失败，则保留原会话历史与工作区，并在下一次输入时自动改用同会话下的新线程继续执行。
-- Terminal 会话删除统一从会话列表触发，`Delete` 会同步清理状态文件和独立工作区；工作区头部不再提供单独的 `Close` 入口。
+- Terminal 会话删除统一从会话列表触发，`Delete` 会同步清理状态文件和独立工作区；工作区头部不再提供单独的 `Close` 入口。删除成功后，当前会话列表或移动端 `Sessions` 抽屉保持删除前的展开状态，便于继续清理其他会话；前端在后续列表刷新、轮询和 page-activation 补偿刷新中也不得把该会话重新补回，直到服务端列表稳定反映删除结果。
 - Terminal 历史在同一 Web 登录态下跨设备共享，不按浏览器 client 标识隔离；不设置产品级会话数量上限或固定超时淘汰。
 - Terminal 移动端、输入稳定性、滚动导航、Process 折叠、一键复制、长输出阅读、轮询降频与缓存写入节奏作为 Terminal 子域体验要求维护。
 - Terminal 四键阅读定位条按当前视口中的可见 turn 集合计算目标：`上一条` 固定指向最上可见 turn；`下一条` 在单条 turn 可见时指向真实下一条、在多条 turn 同屏可见时指向最下可见 turn；最后一条 turn 单独可见时隐藏 `下一条`。
