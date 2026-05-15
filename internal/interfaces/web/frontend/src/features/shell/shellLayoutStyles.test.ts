@@ -272,6 +272,18 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body\s*\{[\s\S]*?grid-template-rows:\s*auto auto minmax\(0, 1fr\) auto;/,
     );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body > \.runtime-workspace-mobile-header,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body > \.runtime-workspace-mobile-header\s*\{[\s\S]*?grid-row:\s*1;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body > \.runtime-workspace-head,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body > \.runtime-workspace-head\s*\{[\s\S]*?grid-row:\s*2;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body > \.runtime-workspace-panel,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body > \.runtime-workspace-panel\s*\{[\s\S]*?grid-row:\s*3;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body > \.runtime-composer-shell,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body > \.runtime-composer-shell\s*\{[\s\S]*?grid-row:\s*4;[\s\S]*?align-self:\s*end;/,
+    );
   });
 
   it("keeps mobile runtime headers and composer controls on a compact single row instead of wrapping into oversized stacks", () => {
@@ -281,7 +293,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".runtime-workspace-mobile-header {");
     expect(stylesheet).toContain(".runtime-composer-tools {");
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?display:\s*flex;[\s\S]*?align-self:\s*start;[\s\S]*?justify-content:\s*space-between;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) auto;[\s\S]*?padding:\s*12px 14px 10px;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-panel\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?bottom:\s*calc\(env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset, 0px\) \+ 118px\);[\s\S]*?max-height:\s*min\(52vh, calc\(100dvh - 176px\)\);/,
@@ -305,7 +317,10 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?padding:\s*12px 22px calc\(12px \+ env\(safe-area-inset-bottom\)\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(246, 250, 255, 0\.16\) 0%, rgba\(246, 250, 255, 0\.94\) 34%, rgba\(250, 253, 255, 0\.98\) 100%\);/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[\s\S]*?padding:\s*14px 16px 12px;[\s\S]*?border-radius:\s*26px;[\s\S]*?background:\s*#fff;[\s\S]*?box-shadow:\s*0 2px 8px rgba\(60, 64, 67, 0\.12\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[^}]*?align-content:\s*start;[^}]*?padding:\s*14px 16px 12px;[^}]*?border-radius:\s*26px;[^}]*?background:\s*#fff;[^}]*?box-shadow:\s*0 2px 8px rgba\(60, 64, 67, 0\.12\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-body\s*\{[^}]*?align-self:\s*start;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-input\s*\{[\s\S]*?width:\s*100%;[\s\S]*?height:\s*72px;[\s\S]*?min-height:\s*72px;[\s\S]*?resize:\s*none;[\s\S]*?background:\s*transparent;/,
@@ -315,17 +330,18 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("keeps the mobile runtime top actions and workspace header as separated layers", () => {
+  it("collapses phone runtime chrome into one top workbar and moves details into the title control", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?padding:\s*18px 14px 14px;[\s\S]*?border-bottom:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(240, 252, 255, 0\.94\) 0%, rgba\(248, 252, 255, 0\.88\) 100%\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) auto;[\s\S]*?padding:\s*12px 14px 10px;/,
     );
-    expect(stylesheet).toContain(".runtime-workspace-mobile-actions {");
-    expect(stylesheet).toContain("margin-left: auto;");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-title {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-title-copy {");
+    expect(stylesheet).toContain(".runtime-workspace-mobile-title-text {");
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-head\s*\{[\s\S]*?padding-top:\s*18px;[\s\S]*?padding-bottom:\s*14px;[\s\S]*?border-bottom:\s*1px solid rgba\(202, 220, 235, 0\.7\);[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.92\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-head\.is-mobile-collapsed\s*\{[\s\S]*?display:\s*none;/,
     );
   });
 
@@ -474,7 +490,7 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.conversation-empty-state\s*\{[\s\S]*?margin-left:\s*14px;[\s\S]*?padding:\s*126px 0 40px;[\s\S]*?align-self:\s*start;[\s\S]*?align-content:\s*start;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.conversation-empty-state\s*\{[\s\S]*?margin-left:\s*0;[\s\S]*?padding:\s*24px 0 32px;[\s\S]*?align-self:\s*start;[\s\S]*?align-content:\s*start;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*1px solid rgba\(202, 220, 235, 0\.72\);[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(246, 250, 255, 0\.16\) 0%, rgba\(246, 250, 255, 0\.94\) 34%, rgba\(250, 253, 255, 0\.98\) 100%\);/,

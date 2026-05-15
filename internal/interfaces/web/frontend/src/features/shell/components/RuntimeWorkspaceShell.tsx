@@ -29,6 +29,8 @@ function RuntimeSessionPaneHideIcon() {
   );
 }
 
+type RuntimeWorkspaceMobileTitleTone = "ready" | "busy" | "failed" | "interrupted" | "exited";
+
 type RuntimeWorkspaceShellProps = {
   rootClassName?: string;
   rootProps?: ComponentPropsWithoutRef<"section">;
@@ -66,6 +68,12 @@ type RuntimeWorkspaceShellProps = {
   mobileNavButtonLabel?: string;
   mobileNavButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "onClick">;
   onMobileNav?: () => void;
+  mobileTitleButtonClassName?: string;
+  mobileTitleButtonLabel?: string;
+  mobileTitleStatusLabel?: string;
+  mobileTitleTone?: RuntimeWorkspaceMobileTitleTone;
+  mobileTitleButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "onClick">;
+  onMobileTitle?: () => void;
   mobileSessionButtonClassName?: string;
   mobileSessionButtonLabel?: string;
   mobileSessionButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "onClick">;
@@ -112,6 +120,12 @@ export function RuntimeWorkspaceShell({
   mobileNavButtonLabel,
   mobileNavButtonProps,
   onMobileNav,
+  mobileTitleButtonClassName,
+  mobileTitleButtonLabel,
+  mobileTitleStatusLabel,
+  mobileTitleTone,
+  mobileTitleButtonProps,
+  onMobileTitle,
   mobileSessionButtonClassName,
   mobileSessionButtonLabel,
   mobileSessionButtonProps,
@@ -142,6 +156,39 @@ export function RuntimeWorkspaceShell({
           {...mobileNavButtonProps}
         >
           {mobileNavButtonLabel}
+        </button>
+      ) : null}
+      {mobileTitleButtonLabel ? (
+        <button
+          className={joinClassNames(
+            "runtime-workspace-mobile-title",
+            mobileTitleButtonClassName,
+          )}
+          type="button"
+          onClick={onMobileTitle}
+          {...mobileTitleButtonProps}
+        >
+          <span className="runtime-workspace-mobile-title-copy">
+            {mobileTitleTone ? (
+              <span
+                className={joinClassNames(
+                  "workspace-header-status",
+                  `is-${mobileTitleTone}`,
+                )}
+                role="img"
+                aria-label={mobileTitleStatusLabel}
+                title={mobileTitleStatusLabel}
+                data-runtime-header-signal-container={mobileTitleTone}
+              >
+                <span
+                  className={`runtime-session-signal is-${mobileTitleTone}`}
+                  data-runtime-header-signal={mobileTitleTone}
+                  aria-hidden="true"
+                ></span>
+              </span>
+            ) : null}
+            <span className="runtime-workspace-mobile-title-text">{mobileTitleButtonLabel}</span>
+          </span>
         </button>
       ) : null}
       {(mobileSessionButtonLabel || mobilePrimaryButtonLabel) ? (

@@ -2292,7 +2292,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(offsetReadCount).toEqual(readsAfterFirstSync);
   });
 
-  it("renders mobile menu actions and links them to workbench navigation", async () => {
+  it("renders a single mobile runtime bar and links its controls to terminal navigation", async () => {
     const toggleMobileNav = vi.fn();
     const toggleMobileSessionPane = vi.fn();
     renderTerminalRouteBody({
@@ -2313,12 +2313,22 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toHaveClass(
       "runtime-workspace-mobile-action",
     );
-    expect(within(mobileHeader).getByRole("button", { name: "New" })).toHaveClass(
+    expect(mobileHeader.querySelector("[data-runtime-mobile-primary='terminal']")).toHaveClass(
       "runtime-workspace-mobile-action",
     );
+    const mobileTitle = mobileHeader.querySelector("[data-runtime-mobile-title='terminal']") as HTMLButtonElement;
+    expect(mobileTitle).toBeInTheDocument();
+    expect(mobileTitle).toHaveTextContent("Workspace shell");
+    expect(mobileTitle.querySelector("[data-runtime-header-signal='ready']")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-workspace-head")).toHaveClass("is-mobile-collapsed");
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(mobileTitle);
+    const metaPanel = document.querySelector("[data-runtime-details-panel='terminal']") as HTMLElement;
+    expect(metaPanel).toBeInTheDocument();
+    expect(within(metaPanel).getByText("/workspace/alter0")).toBeInTheDocument();
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
