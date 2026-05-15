@@ -54,6 +54,44 @@ const EMPTY_SCROLL_JUMP_STATE: ScrollJumpState = {
   showBottom: false,
 };
 
+function normalizeSelectionNode(node: Node | null): Node | null {
+  if (!node) {
+    return null;
+  }
+  return node.nodeType === Node.TEXT_NODE ? node.parentNode : node;
+}
+
+function hasActiveSelectionInsideContainer(container: HTMLElement | null): boolean {
+  if (!container || typeof document === "undefined" || typeof document.getSelection !== "function") {
+    return false;
+  }
+  const selection = document.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return false;
+  }
+
+  const selectionText = typeof selection.toString === "function"
+    ? selection.toString().trim()
+    : "";
+  if (!selectionText) {
+    return false;
+  }
+
+  const anchorNode = normalizeSelectionNode(selection.anchorNode);
+  const focusNode = normalizeSelectionNode(selection.focusNode);
+  if ((anchorNode && container.contains(anchorNode)) || (focusNode && container.contains(focusNode))) {
+    return true;
+  }
+
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    const commonAncestor = normalizeSelectionNode(selection.getRangeAt(index).commonAncestorContainer);
+    if (commonAncestor && container.contains(commonAncestor)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function isVisibleJumpTarget(node: HTMLElement): boolean {
   if (node.hidden) {
     return false;
@@ -235,6 +273,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
   const copy = SCROLL_JUMP_COPY[language];
   const idPrefix = useId().replace(/:/g, "");
   const [state, setState] = useState<ScrollJumpState>(EMPTY_SCROLL_JUMP_STATE);
+  const [selectionActive, setSelectionActive] = useState(false);
   const measurementCacheRef = useRef<TerminalJumpMeasurement[] | null>(null);
   const measurementDirtyRef = useRef(true);
   const clusterClassName = namespace === "terminal" ? "terminal-jump-cluster" : "scroll-jump-strip";
@@ -302,14 +341,32 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
     measurementDirtyRef.current = true;
   }, [itemAttribute, itemSelector, watchKey]);
 
+  useEffect(() => {
+    const syncSelectionState = () => {
+      setSelectionActive(hasActiveSelectionInsideContainer(containerRef.current));
+    };
+
+    syncSelectionState();
+    document.addEventListener("selectionchange", syncSelectionState);
+    return () => {
+      document.removeEventListener("selectionchange", syncSelectionState);
+    };
+  }, [containerRef]);
+
+  const showTop = !selectionActive && state.showTop;
+  const showPrevious = !selectionActive && Boolean(state.previousID);
+  const showNext = !selectionActive && Boolean(state.nextID);
+  const showBottom = !selectionActive && state.showBottom;
+
   return (
     <div
       className={clusterClassName}
       data-scroll-jump-scope={namespace === "scroll" ? scope : undefined}
+      data-scroll-jump-selection-active={selectionActive ? "true" : "false"}
       aria-label="Turn navigation"
     >
       <button
-        className={state.showTop ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-top" : "scroll-jump-top"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-top" : "scroll-jump-top"}`}
+        className={showTop ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-top" : "scroll-jump-top"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-top" : "scroll-jump-top"}`}
         type="button"
         {...{ [topDataAttr]: scope }}
         aria-label={copy.top}
@@ -326,7 +383,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
         <span className={iconClassName} aria-hidden="true">↑↑</span>
       </button>
       <button
-        className={state.previousID ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-prev" : "scroll-jump-prev"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-prev" : "scroll-jump-prev"}`}
+        className={showPrevious ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-prev" : "scroll-jump-prev"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-prev" : "scroll-jump-prev"}`}
         type="button"
         {...{ [prevDataAttr]: scope, [targetDataAttr]: state.previousID }}
         aria-label={copy.prev}
@@ -339,7 +396,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
         <span className={iconClassName} aria-hidden="true">↑</span>
       </button>
       <button
-        className={state.nextID ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-next" : "scroll-jump-next"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-next" : "scroll-jump-next"}`}
+        className={showNext ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-next" : "scroll-jump-next"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-next" : "scroll-jump-next"}`}
         type="button"
         {...{ [nextDataAttr]: scope, [targetDataAttr]: state.nextID }}
         aria-label={copy.next}
@@ -352,7 +409,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
         <span className={iconClassName} aria-hidden="true">↓</span>
       </button>
       <button
-        className={state.showBottom ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-bottom" : "scroll-jump-bottom"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-bottom" : "scroll-jump-bottom"}`}
+        className={showBottom ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-bottom" : "scroll-jump-bottom"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-bottom" : "scroll-jump-bottom"}`}
         type="button"
         {...{ [bottomDataAttr]: scope }}
         aria-label={copy.bottom}
