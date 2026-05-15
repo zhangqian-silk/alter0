@@ -74,6 +74,7 @@ export function WorkbenchApp() {
     mobileSessionPaneOpen: sessionPaneOpen,
     toggleMobileNav: () => setMobilePanel((current) => current === "nav" ? null : "nav"),
     toggleMobileSessionPane: () => setMobilePanel((current) => current === "sessions" ? null : "sessions"),
+    openMobileSessionPane: () => setMobilePanel("sessions"),
     closeMobileNav: () => setMobilePanel((current) => current === "nav" ? null : current),
     closeMobileSessionPane: () => setMobilePanel((current) => current === "sessions" ? null : current),
   }), [route, language, navigate, isMobileViewport, navOpen, sessionPaneOpen]);

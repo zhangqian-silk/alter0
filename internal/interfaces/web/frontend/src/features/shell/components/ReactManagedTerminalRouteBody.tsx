@@ -760,6 +760,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   } | null>(null);
   const draftPersistTimerRef = useRef<number | null>(null);
   const deletedSessionIDsRef = useRef<Set<string>>(new Set());
+  const restoreMobileSessionPaneRef = useRef(false);
   const mobileSubmitGestureLockRef = useRef(false);
   const mobileSessionGestureLockRef = useRef(false);
   const groupedSessions = useMemo(
@@ -1026,7 +1027,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       sortSessions([nextSession, ...current.filter((session) => session.id !== nextSession.id)]),
     );
     setActiveSessionID(nextSession.id);
-    workbench.closeMobileSessionPane();
+    closeMobileSessionPane();
     setMetaOpen(false);
     setExpandedTurns({});
     setExpandedSteps({});
@@ -1210,9 +1211,54 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     };
   }, []);
 
+  useEffect(() => {
+    if (
+      !restoreMobileSessionPaneRef.current
+      || !workbench.isMobileViewport
+      || workbench.mobileSessionPaneOpen
+    ) {
+      return;
+    }
+    restoreMobileSessionPaneRef.current = false;
+    workbench.openMobileSessionPane();
+  }, [
+    activeSessionID,
+    sessions.length,
+    workbench,
+  ]);
+
+  useEffect(() => {
+    if (
+      restoreMobileSessionPaneRef.current
+      && workbench.isMobileViewport
+      && workbench.mobileSessionPaneOpen
+      && !deletingSessionID
+    ) {
+      restoreMobileSessionPaneRef.current = false;
+    }
+  }, [
+    deletingSessionID,
+    sessions.length,
+    workbench.isMobileViewport,
+    workbench.mobileSessionPaneOpen,
+  ]);
+
+  const closeMobileSessionPane = () => {
+    restoreMobileSessionPaneRef.current = false;
+    workbench.closeMobileSessionPane();
+  };
+
+  const toggleMobileSessionPane = () => {
+    if (workbench.mobileSessionPaneOpen) {
+      closeMobileSessionPane();
+      return;
+    }
+    workbench.toggleMobileSessionPane();
+  };
+
   const selectSession = async (sessionID: string) => {
     setActiveSessionID(sessionID);
-    workbench.closeMobileSessionPane();
+    closeMobileSessionPane();
     setMetaOpen(false);
     setExpandedTurns({});
     setExpandedSteps({});
@@ -1225,6 +1271,8 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     if (!window.confirm(copy.deleteConfirm)) {
       return;
     }
+    const keepMobileSessionPaneOpen = workbench.isMobileViewport && workbench.mobileSessionPaneOpen;
+    restoreMobileSessionPaneRef.current = keepMobileSessionPaneOpen;
     setDeletingSessionID(sessionID);
     try {
       await apiClient.delete(`/api/terminal/sessions/${encodeURIComponent(sessionID)}`);
@@ -1479,7 +1527,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       sessionPaneProps: { "data-runtime-session-pane": "terminal" },
       sessionPaneBackdrop: {
         ariaLabel: copy.hideSessions,
-        onClick: workbench.closeMobileSessionPane,
+        onClick: closeMobileSessionPane,
         buttonProps: { "data-runtime-session-pane-close": "terminal" },
       },
       sessionPanePrimaryActionClassName: "is-primary",
@@ -1491,7 +1539,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       sessionPanePrimaryActionLabel: copy.newShort,
       onSessionPanePrimaryAction: () => void createSession(),
       sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.hideSessions : undefined,
-      onSessionPaneSecondaryAction: workbench.isMobileViewport ? workbench.closeMobileSessionPane : undefined,
+      onSessionPaneSecondaryAction: workbench.isMobileViewport ? closeMobileSessionPane : undefined,
       workspaceProps: {
         "data-runtime-workspace": "terminal",
         "data-runtime-session-id": activeSession?.id || "",
@@ -1508,7 +1556,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",
       mobileSessionButtonLabel: copy.sessions,
       mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
-      onMobileSession: workbench.toggleMobileSessionPane,
+      onMobileSession: toggleMobileSessionPane,
       mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
       mobilePrimaryButtonLabel: copy.newShort,
       mobilePrimaryButtonProps: { "data-runtime-create-session": "terminal" },

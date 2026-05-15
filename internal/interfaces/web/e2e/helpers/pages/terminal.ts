@@ -45,7 +45,7 @@ export function createTerminalPage(page: Page): {
     jumpBottomButton: () => page.locator("[data-terminal-jump-bottom]"),
     sessionPaneToggle: () => page.getByRole("button", { name: "Sessions" }).first(),
     sessionPane: () => page.locator("[data-runtime-session-pane='terminal']"),
-    sessionPaneClose: () => page.locator("[data-runtime-session-pane-close='terminal']").first(),
+    sessionPaneClose: () => page.locator("[data-runtime-session-pane-close='terminal']").last(),
     metaToggle: () => page.getByRole("button", { name: "Details" }).first(),
     turnCards: () => page.locator("[data-terminal-turn]"),
     turnCard: (turnID: string) => page.locator(`[data-terminal-turn="${turnID}"]`),

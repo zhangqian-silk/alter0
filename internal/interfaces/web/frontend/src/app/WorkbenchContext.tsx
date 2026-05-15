@@ -10,6 +10,7 @@ export type WorkbenchContextValue = {
   mobileSessionPaneOpen: boolean;
   toggleMobileNav: () => void;
   toggleMobileSessionPane: () => void;
+  openMobileSessionPane: () => void;
   closeMobileNav: () => void;
   closeMobileSessionPane: () => void;
 };
