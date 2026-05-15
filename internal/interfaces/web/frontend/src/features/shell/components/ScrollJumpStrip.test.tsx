@@ -352,4 +352,106 @@ describe("ScrollJumpStrip", () => {
       expect(container.querySelector("[data-scroll-jump-bottom='chat']")).not.toHaveClass("is-visible");
     });
   });
+
+  it("hides jump controls while the timeline has an active text selection and restores them after selection clears", async () => {
+    const selectionState = {
+      anchorNode: null as Node | null,
+      focusNode: null as Node | null,
+      rangeCount: 0,
+      isCollapsed: true,
+      text: "",
+    };
+    const rangeMock = {
+      commonAncestorContainer: null as Node | null,
+    } as Range;
+    const selectionMock = {
+      get anchorNode() {
+        return selectionState.anchorNode;
+      },
+      get focusNode() {
+        return selectionState.focusNode;
+      },
+      get rangeCount() {
+        return selectionState.rangeCount;
+      },
+      get isCollapsed() {
+        return selectionState.isCollapsed;
+      },
+      getRangeAt: vi.fn(() => rangeMock),
+      toString: () => selectionState.text,
+    } as unknown as Selection;
+    vi.spyOn(document, "getSelection").mockImplementation(() => selectionMock);
+
+    const containerRef = createRef<HTMLElement>();
+    const { container } = render(
+      <section ref={containerRef}>
+        <article data-message-id="message-1">message-1</article>
+        <article data-message-id="message-2">message-2</article>
+        <article data-message-id="message-3">message-3</article>
+        <ScrollJumpStrip
+          scope="chat"
+          language="zh"
+          containerRef={containerRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+        />
+      </section>,
+    );
+
+    const scrollContainer = container.firstElementChild as HTMLElement;
+    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-message-id]")];
+    applyScrollableMetrics(scrollContainer, targets, [0, 320, 640], {
+      clientHeight: 280,
+      scrollHeight: 920,
+      scrollTop: 360,
+    });
+
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-top='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-next='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-bottom='chat']")).toHaveClass("is-visible");
+    });
+
+    const selectedNode = targets[1]?.firstChild;
+    selectionState.anchorNode = selectedNode;
+    selectionState.focusNode = selectedNode;
+    selectionState.rangeCount = 1;
+    selectionState.isCollapsed = false;
+    selectionState.text = "message-2";
+    rangeMock.commonAncestorContainer = selectedNode;
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-top='chat']")).not.toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).not.toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-next='chat']")).not.toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-bottom='chat']")).not.toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-scope='chat']")).toHaveAttribute(
+        "data-scroll-jump-selection-active",
+        "true",
+      );
+    });
+
+    selectionState.anchorNode = null;
+    selectionState.focusNode = null;
+    selectionState.rangeCount = 0;
+    selectionState.isCollapsed = true;
+    selectionState.text = "";
+    rangeMock.commonAncestorContainer = null;
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-top='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-next='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-bottom='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-scope='chat']")).toHaveAttribute(
+        "data-scroll-jump-selection-active",
+        "false",
+      );
+    });
+  });
 });
