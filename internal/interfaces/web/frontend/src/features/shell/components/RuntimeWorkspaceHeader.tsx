@@ -21,6 +21,7 @@ type RuntimeWorkspaceHeaderProps = {
   onToggleDetails: () => void;
   detailsDisabled?: boolean;
   mobileEmpty?: boolean;
+  mobileCollapsed?: boolean;
   detailsContent?: ReactNode;
   headerProps?: ComponentPropsWithoutRef<"header">;
   statusButtonProps?: Omit<ComponentPropsWithoutRef<"span">, "children">;
@@ -41,6 +42,7 @@ export function RuntimeWorkspaceHeader({
   onToggleDetails,
   detailsDisabled = false,
   mobileEmpty = false,
+  mobileCollapsed = false,
   detailsContent,
   headerProps,
   statusButtonProps,
@@ -172,6 +174,7 @@ export function RuntimeWorkspaceHeader({
       className={joinClassNames(
         "runtime-workspace-head is-compact is-sticky",
         mobileEmpty ? "is-mobile-empty" : undefined,
+        mobileCollapsed ? "is-mobile-collapsed" : undefined,
         headerClassName,
       )}
       data-runtime-workspace-header="true"

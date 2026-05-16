@@ -213,7 +213,7 @@ describe("ConversationWorkspace", () => {
     buildChatTimelineItemsMock.mockClear();
   });
 
-  it("keeps the shared workspace header visible alongside terminal-style mobile actions for an empty chat workspace", () => {
+  it("uses a single mobile runtime bar and opens session details from the title control", () => {
     const toggleMobileNav = vi.fn();
     const toggleMobileSessionPane = vi.fn();
     renderWorkspace({ toggleMobileNav, toggleMobileSessionPane });
@@ -270,9 +270,13 @@ describe("ConversationWorkspace", () => {
     expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toHaveClass(
       "runtime-workspace-mobile-action",
     );
-    expect(within(mobileHeader).getByRole("button", { name: "New" })).toHaveClass(
+    expect(mobileHeader.querySelector("[data-runtime-mobile-primary='conversation']")).toHaveClass(
       "runtime-workspace-mobile-action",
     );
+    const mobileTitle = mobileHeader.querySelector("[data-runtime-mobile-title='conversation']") as HTMLButtonElement;
+    expect(mobileTitle).toBeInTheDocument();
+    expect(mobileTitle).toHaveTextContent("New");
+    expect(mobileTitle.querySelector("[data-runtime-header-signal='ready']")).toBeInTheDocument();
     const hideSessionsAction = within(screen.getByTestId("conversation-session-pane"))
       .getAllByRole("button", { name: "Hide" })
       .find((button) => button.classList.contains("runtime-workspace-session-pane-action"));
@@ -280,7 +284,7 @@ describe("ConversationWorkspace", () => {
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(workspaceHeader).toHaveAttribute("data-runtime-workspace-header", "true");
     expect(workspaceHeader).toHaveClass("is-sticky");
-    expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
+    expect(workspaceHeader).toHaveClass("is-mobile-collapsed");
     const statusIndicator = within(workspaceHeader).getByLabelText("Ready");
     expect(statusIndicator).toHaveClass(
       "workspace-header-status",
@@ -290,7 +294,6 @@ describe("ConversationWorkspace", () => {
     expect(statusIndicator.querySelector("[data-runtime-header-signal='ready']")).toBeInTheDocument();
     const titleLeading = workspaceHeader.querySelector(".runtime-workspace-title-leading") as HTMLElement;
     expect(titleLeading.firstElementChild).toBe(statusIndicator);
-    expect(within(workspaceHeader).getByRole("button", { name: "Details" })).toHaveClass("workspace-header-details");
     expect(within(workspaceHeader).queryByRole("button", { name: "Workspace Flow" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Tools / MCP" })).not.toBeInTheDocument();
@@ -326,7 +329,7 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector(".conversation-chat-submit")).not.toBeInTheDocument();
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "false");
 
-    fireEvent.click(within(workspaceHeader).getByRole("button", { name: "Details" }));
+    fireEvent.click(mobileTitle);
     const detailsPanel = document.querySelector("[data-runtime-details-panel='conversation']") as HTMLElement;
     expect(detailsPanel).toBeInTheDocument();
     expect(within(detailsPanel).getByText("Session")).toBeInTheDocument();
@@ -1033,7 +1036,7 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector("[data-runtime-attachment-strip='true']")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-composer-submit .runtime-composer-submit-icon svg")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Fix runtime shell" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Ready")).toBeInTheDocument();
+    expect(within(workspaceHeader).getByLabelText("Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Tools" })).not.toBeInTheDocument();
@@ -1065,13 +1068,15 @@ describe("ConversationWorkspace", () => {
 
     const mobileHeader = document.querySelector(".runtime-workspace-body > [data-runtime-mobile-variant='conversation']") as HTMLElement;
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
+    const mobileTitle = mobileHeader.querySelector("[data-runtime-mobile-title='conversation']") as HTMLButtonElement;
     expect(mobileHeader).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
-    expect(within(mobileHeader).getByRole("button", { name: "New" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Ready")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(mobileHeader.querySelector("[data-runtime-mobile-primary='conversation']")).toBeInTheDocument();
+    expect(mobileTitle).toBeInTheDocument();
+    expect(mobileTitle).toHaveTextContent("New");
+    expect(mobileTitle.querySelector("[data-runtime-header-signal='ready']")).toBeInTheDocument();
+    expect(workspaceHeader).toHaveClass("is-mobile-collapsed");
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Agent" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Choose Agent" })).not.toBeInTheDocument();
@@ -1110,7 +1115,7 @@ describe("ConversationWorkspace", () => {
 
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
     expect(screen.getByRole("heading", { name: "Investigate release drift" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Ready")).toBeInTheDocument();
+    expect(within(workspaceHeader).getByLabelText("Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Agent" })).not.toBeInTheDocument();
@@ -1126,7 +1131,7 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector(".conversation-console-panel")).toHaveClass("is-empty");
     expect(document.querySelector("[data-runtime-screen='conversation']")).toHaveClass("runtime-workspace-screen", "is-empty");
     expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Ready")).toBeInTheDocument();
+    expect(within(workspaceHeader).getByLabelText("Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
     expect(within(workspaceHeader).queryByRole("button", { name: "Tools / MCP" })).not.toBeInTheDocument();
