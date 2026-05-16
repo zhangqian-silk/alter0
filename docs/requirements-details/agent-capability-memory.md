@@ -60,6 +60,7 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 - 长上下文、Memory、Skill 与运行时结构化载荷不得直接拼入系统命令行参数。
 - 存在可用 Provider 且进入 Agent / ReAct 链路时，Agent 自身吸收 `runtime_context`、`skill_context`、`mcp_context`、`memory_context`，只向 Codex 下发当前步骤的纯执行指令。
 - 不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时必须为当前会话生成独立 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把上述上下文编译成 Codex 原生运行配置与工作区事实，并在 `.alter0/codex-runtime/thread.json` 持久化 Codex CLI thread id；后续同一 Session 再次进入直连 Codex 时，优先使用该 thread id 通过 `codex exec resume` 续写。
+- Agent Profile system prompt、Agent Runtime system prompt、直连 Codex prelude、托管 `AGENTS.md` 与 `runtime_context` 必须统一要求执行范围只限当前 Session 工作区及其专属 repo clone、附件和产物路径；未被当前任务显式点名的其他 Session、共享服务和工作区外仓库不得被修改。
 - 仓库类任务默认切到当前 Session 独立 repo 完整 clone `.alter0/workspaces/sessions/<session_id>/repo`，不使用 `git worktree`。
 - `coding` Agent 需要拿到源仓库路径、独立 repo clone 路径、远端地址、当前分支、会话工作区、预览域名与 PR 交付要求；Agent / ReAct 路径由 Agent 自身维护这些事实，直连 Codex 路径则写入 Native Runtime 资产。
 

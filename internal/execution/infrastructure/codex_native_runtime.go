@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	codexRuntimeDirName      = "codex-runtime"
-	codexRuntimeHomeDirName  = "codex-home"
-	codexRuntimeSkillsPath   = ".alter0/codex-runtime/skills.md"
-	codexRuntimeRuntimePath  = ".alter0/codex-runtime/runtime.md"
-	codexRuntimeMemoryDir    = ".alter0/codex-runtime/memory"
-	codexRuntimeRecallPath   = ".alter0/codex-runtime/memory/recall.md"
+	codexRuntimeDirName     = "codex-runtime"
+	codexRuntimeHomeDirName = "codex-home"
+	codexRuntimeSkillsPath  = ".alter0/codex-runtime/skills.md"
+	codexRuntimeRuntimePath = ".alter0/codex-runtime/runtime.md"
+	codexRuntimeMemoryDir   = ".alter0/codex-runtime/memory"
+	codexRuntimeRecallPath  = ".alter0/codex-runtime/memory/recall.md"
 )
 
 type preparedCodexInvocation struct {
@@ -227,6 +227,10 @@ func renderRuntimeContextMarkdown(context *execdomain.RuntimeContext) string {
 	}
 	if context.Workspace != nil {
 		lines = append(lines, "", "## Workspace")
+		lines = append(lines,
+			"- workspace_scope: current session only",
+			"- do_not_modify_outside_scope: true",
+		)
 		if strings.TrimSpace(context.Workspace.Mode) != "" {
 			lines = append(lines, "- mode: "+context.Workspace.Mode)
 		}

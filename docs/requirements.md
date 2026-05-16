@@ -126,6 +126,7 @@
 - `travel` 的完成判定必须同时校验两项交付前提：当前 Session 工作区根目录存在 `index.html`，且当前 Session 已成功注册公开只读 `travel` 服务；缺失任一条件时，运行时必须拒绝 `complete` 成功收口。
 - 当 `travel` 先产出正文攻略、但当前 Session 工作区根目录尚未存在当前请求对应的 `index.html` 时，运行时必须先把 HTML 交付视为阻塞；允许按当前 Session 范围额外触发一轮专门的 Codex 修复任务补齐 `index.html` 与 `travel` 发布，但不得自动补写页面或代替 Agent 发布任何伪造的 fallback 页面。若修复轮仍未产出真实页面或真实发布结果，最终状态必须保持阻塞。
 - `codex_exec` 通过 stdin 传递最终指令；存在可用 Provider 且进入 Agent / ReAct 链路时，仅向 Codex 下发当前步骤指令；不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时会为当前会话生成原生 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 `runtime_context`、`skill_context`、`mcp_context`、`memory_context` 编译成 Codex 原生运行配置与工作区事实，并持久化 Codex CLI thread id 用于后续同 Session 直连 Codex 续写。
+- Agent prompt、`complete` 前修复 prompt、直连 Codex prelude、托管 `AGENTS.md` 与 `runtime_context` 必须统一声明工作区边界：具体执行默认只允许发生在当前 Session 工作区及其专属 repo clone、附件和产物路径内，不得修改其他 Session、无关服务或工作区外仓库，除非当前任务明确把这些目标列为交付范围。
 - Agent / ReAct 走 `openai-completions` 多轮工具调用时，assistant `tool_calls` 与后续 `tool` 结果的 `tool_call_id` 必须保持同轮关联，不能在 Provider 适配层丢失。
 - Agent Profile 支持名称、system prompt、max iterations、Provider/Model、工具白名单、公有 Skills、MCP 与 Memory Files。
 - 每个 Agent 自动拥有私有 file-backed Skill `docs/agents/<agent_id>/SKILL.md`，用于沉淀可复用工作模式、输出结构、检查清单与稳定偏好；私有 Skill 始终随当前 Agent 注入执行上下文，不受前端取消或 `alter0.skills.exclude` 排除影响。
@@ -144,7 +145,7 @@
 - Task 需建立 `session_id`、`source_message_id`、`channel_type`、`trigger_type`、`correlation_id`、Cron 触发信息与产物引用的标准映射。
 - Task 观测台支持列表、详情抽屉、来源筛选、日志 SSE、游标续读、日志回补、retry/cancel、交互式续写、任务-会话双向跳转与完成结果回写。
 - Task 观测台桌面端优先采用左侧任务列表 + 右侧详情面板的主从布局，详情区承载元数据、日志、产物、控制动作与 follow-up terminal 输入。
-- Terminal 页面 Composer 支持最多 5 个附件，稳定覆盖图片与常见文本/文档文件：图片继续提供缩略图预览、纯图片发送与图片回显，并先写入当前 Session 工作区附件目录后仅提交 `asset_url / preview_url` 引用；普通文件同样先落到同一附件目录并只提交稳定附件引用，执行前再写入当前 Terminal 工作区 `input-attachments/<turn_id>/` 供 Codex 按路径读取。Terminal `Details` 面板支持选择控制面中启用且非私有的公有 Skill；新 Terminal 会话首次加载时默认勾选全部可用公有 Skill，仅排除 `default-nl` 与 `memory`，并在发送输入时把当前 `skill_ids` 编译进 Terminal 工作区的原生 Codex Runtime。Task 详情抽屉中的 follow-up terminal 输入当前稳定支持图片附件，并继续透传到统一消息元数据。
+- Terminal 页面 Composer 支持最多 5 个附件，稳定覆盖图片与常见文本/文档文件：图片继续提供缩略图预览、纯图片发送与图片回显，并先写入当前 Session 工作区附件目录后仅提交 `asset_url / preview_url` 引用；普通文件同样先落到同一附件目录并只提交稳定附件引用，执行前再写入当前 Terminal 工作区 `input-attachments/<turn_id>/` 供 Codex 按路径读取。Terminal `Details` 面板支持选择控制面中启用且非私有的公有 Skill；新 Terminal 会话首次加载时默认勾选全部可用公有 Skill，仅排除 `default-nl` 与 `memory`，并在发送输入时把当前 `skill_ids` 编译进 Terminal 工作区的原生 Codex Runtime。该运行时同样必须通过托管 `AGENTS.md` 与 `runtime_context` 约束 Codex 仅操作当前 Terminal 工作区及其派生文件，不得顺带修改其他会话、服务或工作区外仓库。Task 详情抽屉中的 follow-up terminal 输入当前稳定支持图片附件，并继续透传到统一消息元数据。
 - Task 记忆视图支持任务摘要、任务详情、日志下钻、产物引用与摘要重建，用于把历史任务纳入长期上下文召回；任务历史默认以表格承载摘要元数据，再通过详情侧栏查看长文本与日志/产物入口。
 - Codex CLI 长任务按心跳续租运行窗口；列表与详情展示 `Last Heartbeat` 和 `Timeout Window`。
 - Web 会话不直接暴露本地文件路径，产物通过引用、下载或预览接口交付。

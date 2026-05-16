@@ -254,6 +254,8 @@ func TestHybridNLProcessorCodingAgentPromptEmphasizesCodexLoop(t *testing.T) {
 		"You are alter0's session-aware execution assistant.",
 		"Act like the user's ongoing assistant for this session",
 		"codex_exec already carries structured contexts for stable execution facts",
+		"Only operate within the current session workspace",
+		"Do not modify other sessions, unrelated services, or repositories outside that workspace",
 		"agent session profile",
 		"You are the dedicated coding assistant.",
 		"Do not implement or verify changes yourself.",

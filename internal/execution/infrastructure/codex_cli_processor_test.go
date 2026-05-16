@@ -105,6 +105,8 @@ func TestBuildCodexPromptIncludesTravelAgentDeliveryRules(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"session-aware execution assistant",
+		"Only operate within the current session workspace",
+		"Do not modify other sessions, unrelated services, or repositories outside that workspace",
 		"Current delivery contract:",
 		"guide_html_url",
 		"index.html",
@@ -237,9 +239,22 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 		".alter0/codex-runtime/runtime.md",
 		".alter0/codex-runtime/skills.md",
 		".alter0/codex-runtime/memory/",
+		"Stay inside the current workspace scope.",
 	} {
 		if !strings.Contains(string(agentsText), expected) {
 			t.Fatalf("expected AGENTS to contain %q, got:\n%s", expected, string(agentsText))
+		}
+	}
+	runtimeText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "runtime.md"))
+	if err != nil {
+		t.Fatalf("read runtime context: %v", err)
+	}
+	for _, expected := range []string{
+		"workspace_scope: current session only",
+		"do_not_modify_outside_scope: true",
+	} {
+		if !strings.Contains(string(runtimeText), expected) {
+			t.Fatalf("expected runtime context to contain %q, got:\n%s", expected, string(runtimeText))
 		}
 	}
 	skillText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "skills.md"))

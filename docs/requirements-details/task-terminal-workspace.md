@@ -177,7 +177,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 - `Create` 创建会话并返回服务端会话身份、初始状态与最近输出时间。
 - `Recover` 接收已持久化会话身份与 Codex CLI 线程标识，用于在页面或运行态恢复时重建服务端会话视图。
-- `Input` 向指定 Terminal 会话追加用户输入，执行完成前会话进入 `busy`；输入支持文本、附件与公有 Skill 选择混合载荷。图片附件继续以视觉输入语义交给 Codex CLI，普通文件在执行前落到当前 Terminal 工作区 `input-attachments/<turn_id>/` 并通过 prompt 注入稳定读取路径；纯附件输入由服务端补齐稳定占位文本；`skill_ids[]` 仅接收控制面中启用且非 `agent-private/private` 的 Skill，并编译为当前 Terminal 工作区 `.alter0/codex-runtime/skills.md`。
+- `Input` 向指定 Terminal 会话追加用户输入，执行完成前会话进入 `busy`；输入支持文本、附件与公有 Skill 选择混合载荷。图片附件继续以视觉输入语义交给 Codex CLI，普通文件在执行前落到当前 Terminal 工作区 `input-attachments/<turn_id>/` 并通过 prompt 注入稳定读取路径；纯附件输入由服务端补齐稳定占位文本；`skill_ids[]` 仅接收控制面中启用且非 `agent-private/private` 的 Skill，并编译为当前 Terminal 工作区 `.alter0/codex-runtime/skills.md`。托管 `AGENTS.md` 与运行时上下文必须同步声明 Terminal 执行范围仅限当前 Terminal 工作区及其派生文件，不得越界改动其他会话、共享服务或工作区外仓库，除非当前输入明确以这些目标为本轮范围。
 - `Close` 退出当前运行态，保留会话记录、历史、线程标识和工作区。
 - `Delete` 删除 Terminal 会话主记录、状态文件和独立工作区。
 - 删除成功后接口返回 `204 No Content`，前端立即移除会话，不依赖改写后的状态对象。
