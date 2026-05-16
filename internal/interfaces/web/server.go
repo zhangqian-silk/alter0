@@ -1560,10 +1560,17 @@ func executionContextForMessage(ctx context.Context, msg shareddomain.UnifiedMes
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if !shouldDetachAgentExecution(msg.Metadata) {
+	if !shouldDetachWebConversationExecution(msg) {
 		return ctx, false
 	}
 	return context.WithoutCancel(ctx), true
+}
+
+func shouldDetachWebConversationExecution(msg shareddomain.UnifiedMessage) bool {
+	if msg.TriggerType == shareddomain.TriggerTypeUser && msg.ChannelType == shareddomain.ChannelTypeWeb {
+		return true
+	}
+	return shouldDetachAgentExecution(msg.Metadata)
 }
 
 func shouldDetachAgentExecution(metadata map[string]string) bool {
