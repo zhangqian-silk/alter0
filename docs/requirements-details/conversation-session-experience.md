@@ -103,6 +103,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 未发送文本草稿在桌面端输入期间允许延迟写回浏览器缓存；当前输入值、切换前 flush、刷新后的草稿恢复和发送结果必须保持一致，不能为了持久化把每次按键都绑定到同步存储写入。
 - 页面刷新、跨设备重开或服务重启后，用户可恢复最近会话与历史消息；恢复结果需保留当前 Session 的目标 Agent、Model 与 Tools / Skills / MCP 选择。
 - 页面刷新时，前端需先用浏览器侧保存的当前活动会话快照恢复最近一条活跃 `Chat / Agent Runtime` 会话，避免服务端列表短暂缺席时把当前会话清空或替换为新的空白会话；随后再按 `session_id` 回源单会话详情，用服务端最新结果覆盖本地快照。
+- `POST /api/messages`、`POST /api/messages/stream`、`POST /api/agent/messages` 与 `POST /api/agent/messages/stream` 在 Web 层接受请求后，后端执行与持久化不得再依赖浏览器连接持续存活；页面刷新、标签页切换、SSE 断开或前端取消只允许中断当前传输，不得直接取消本轮会话执行。
 - `Chat / Agent Runtime` 当前活动会话需稳定投影到 URL query：`chat` 写入 `chat_session_id`，`agent-runtime` 写入 `agent_session_id`。页面首次加载、刷新、手动粘贴当前链接或浏览器恢复标签页时，前端先读取对应 query 参数恢复目标会话；只有参数缺失或目标会话不存在时，才允许回退到浏览器快照与服务端列表默认项。
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
 - `Chat / Agent Runtime` 需维护独立的服务端会话 registry，记录 `session_id -> route / title / target / model / capabilities / status / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。

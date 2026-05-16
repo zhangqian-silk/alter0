@@ -330,6 +330,39 @@ func TestMessageStreamHandlerEmitsKeepAliveWhileWaiting(t *testing.T) {
 	}
 }
 
+func TestMessageStreamHandlerIgnoresCanceledRequestContextForWebConversation(t *testing.T) {
+	orchestrator := &stubWebStreamOrchestrator{
+		stubWebOrchestrator: stubWebOrchestrator{
+			result: shareddomain.OrchestrationResult{
+				MessageID: "message-generated",
+				SessionID: "session-fixed",
+				Route:     shareddomain.RouteNL,
+				Output:    "chat-ok",
+			},
+		},
+		events: []string{"part-1", "part-2"},
+	}
+	server := newMessageTestServer(orchestrator)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/stream", strings.NewReader(`{"session_id":"session-fixed","content":"hello"}`))
+	canceledCtx, cancel := context.WithCancel(req.Context())
+	cancel()
+	req = req.WithContext(canceledCtx)
+	rec := httptest.NewRecorder()
+
+	server.messageStreamHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if orchestrator.handleCount != 1 {
+		t.Fatalf("expected orchestrator handle count 1, got %d", orchestrator.handleCount)
+	}
+	if orchestrator.lastCtxErr != nil {
+		t.Fatalf("expected detached execution context, got %v", orchestrator.lastCtxErr)
+	}
+}
+
 func TestAgentMessageHandlerInjectsAgentProfileMetadata(t *testing.T) {
 	orchestrator := &stubWebOrchestrator{
 		result: shareddomain.OrchestrationResult{
