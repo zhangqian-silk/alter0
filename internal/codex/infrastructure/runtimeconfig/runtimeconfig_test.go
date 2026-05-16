@@ -101,6 +101,14 @@ func TestPrepareCopiesBaselineAuthAndCompilesManagedConfig(t *testing.T) {
 	if !strings.Contains(string(agentsFile), "Alter0 Codex Runtime") || !strings.Contains(string(agentsFile), ".alter0/codex-runtime/skills.md") {
 		t.Fatalf("unexpected AGENTS.md:\n%s", string(agentsFile))
 	}
+	for _, expected := range []string{
+		"Stay inside the current workspace scope.",
+		"Do not modify files, repositories, or services outside it",
+	} {
+		if !strings.Contains(string(agentsFile), expected) {
+			t.Fatalf("expected AGENTS.md to contain %q, got:\n%s", expected, string(agentsFile))
+		}
+	}
 }
 
 func TestPreparePreservesExistingAgentsFileOutsideManagedBlock(t *testing.T) {

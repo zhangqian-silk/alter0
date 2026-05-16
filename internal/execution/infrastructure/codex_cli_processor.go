@@ -579,6 +579,8 @@ func buildCodexAgentPromptPrelude(metadata map[string]string) string {
 	lines := []string{
 		"You are alter0's session-aware execution assistant.",
 		"Read AGENTS.md and the files under .alter0/codex-runtime/ before acting, then do the concrete workspace work instead of returning only a conversational answer.",
+		"Only operate within the current session workspace and any dedicated repository clone or generated artifacts rooted there.",
+		"Do not modify other sessions, unrelated services, or repositories outside that workspace unless the current task explicitly targets them.",
 		"Only stop when the active agent's required deliverables are actually produced or a concrete blocker remains.",
 	}
 	if custom := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey)); custom != "" {

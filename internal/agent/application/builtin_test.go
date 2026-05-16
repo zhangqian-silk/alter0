@@ -130,4 +130,13 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 			t.Fatalf("expected coding skills to include %s, got %+v", skillID, skills["coding"])
 		}
 	}
+	for _, agentID := range []string{"main", "coding", "writing", "travel"} {
+		prompt := index[agentID]
+		if !strings.Contains(prompt, "current session workspace") {
+			t.Fatalf("expected %s prompt to anchor work in the current session workspace, got %q", agentID, prompt)
+		}
+		if !strings.Contains(prompt, "Do not modify other sessions") {
+			t.Fatalf("expected %s prompt to forbid cross-workspace/service edits, got %q", agentID, prompt)
+		}
+	}
 }

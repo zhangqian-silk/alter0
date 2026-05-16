@@ -298,11 +298,18 @@ func writeManagedAgentsFile(workspaceDir string, instructions string) error {
 	if err != nil {
 		return err
 	}
+	managedInstructions := []string{
+		"- Stay inside the current workspace scope.",
+		"- Do not modify files, repositories, or services outside it unless the current task explicitly targets them.",
+	}
+	if trimmed := strings.TrimSpace(instructions); trimmed != "" {
+		managedInstructions = append(managedInstructions, trimmed)
+	}
 	block := strings.Join([]string{
 		managedAgentsStartMarker,
 		"## Alter0 Codex Runtime",
 		"",
-		strings.TrimSpace(instructions),
+		strings.Join(managedInstructions, "\n"),
 		managedAgentsEndMarker,
 	}, "\n")
 	content := upsertManagedBlock(existing, block, managedAgentsStartMarker, managedAgentsEndMarker)
