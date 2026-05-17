@@ -14,6 +14,7 @@ import {
 import {
   canPreviewComposerAttachment,
   resolveComposerAttachmentPreviewURL,
+  resolveComposerAttachmentViewerURL,
   type ComposerAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 
@@ -495,7 +496,7 @@ export function RuntimeComposer({
             >
               ×
             </button>
-            <img src={resolveComposerAttachmentPreviewURL(previewAttachment)} alt={previewAttachment.name} decoding="async" />
+            <img src={resolveComposerAttachmentViewerURL(previewAttachment)} alt={previewAttachment.name} decoding="async" />
           </div>
         </div>
       ) : null}

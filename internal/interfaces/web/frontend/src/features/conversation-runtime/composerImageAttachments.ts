@@ -80,6 +80,14 @@ export function resolveComposerAttachmentPreviewURL(attachment: ComposerAttachme
     || "";
 }
 
+export function resolveComposerAttachmentViewerURL(attachment: ComposerAttachment): string {
+  return attachment.assetURL
+    || attachment.dataURL
+    || attachment.previewURL
+    || attachment.previewDataURL
+    || "";
+}
+
 async function buildOptimizedImagePayload(file: File) {
   if (!shouldRasterizeImage(file.type)) {
     const dataURL = await readFileAsDataURL(file, "Failed to read image file.");

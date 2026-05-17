@@ -72,8 +72,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `POST /api/agent/messages` 处理指定 Agent 普通消息。
 - `POST /api/agent/messages/stream` 处理指定 Agent 流式消息。
 - 上述消息接口在 `content` 之外还接受 `attachments[]`；当前稳定支持两种图片输入：首次上传时携带 `data_url`、文件名与 MIME 类型，或在同一 Session 内复用已上传的 `id + asset_url + preview_url` 资产引用。允许仅发送图片，服务端会补齐稳定占位文本并把图片载荷并入统一消息元数据。
-- `POST /api/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`。
-- `Terminal` 页面 Composer 与 `Tasks` 详情抽屉 follow-up terminal 输入也复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、预览与回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`。
+- `POST /api/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`；其中 `preview_url` 只用于缩略图位，历史消息回显与预览弹层必须优先读取 `asset_url` 原图。
+- `Terminal` 页面 Composer 与 `Tasks` 详情抽屉 follow-up terminal 输入也复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、缩略预览与历史回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`；其中缩略位继续使用 `preview_url`，再次查看时统一切回 `asset_url`。
 - assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
 - `GET /api/agents` 返回可进入 Agent Runtime 的专项 Agent；当前内置入口包括 `coding`、`writing` 与 `travel`，不包含绑定 Chat 默认入口的 `main / Alter0`。
 - `GET /api/conversation-runtime/sessions?route=chat|agent-runtime` 返回运行页会话摘要，至少包含标题、目标 Agent/Model、Tools / Skills / MCP 选择、创建时间与稳定 session id。
@@ -99,7 +99,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 ### 持久化与恢复
 
 - 用户与助手消息主数据、路由结果、时间戳、来源字段以及恢复运行页所需的请求 metadata 必须持久化。
-- 用户消息中的图片附件需要和文本一起进入会话时间线；页面刷新、切会话和最近会话恢复时保留稳定的图片预览资产，不重复持久化原始大图 payload。
+- 用户消息中的图片附件需要和文本一起进入会话时间线；页面刷新、切会话和最近会话恢复时保留稳定的图片资产引用，不重复持久化原始大图 payload；时间线内图片与预览弹层再次查看时必须优先显示原图资源，避免缩略图被放大后失真。
 - 未发送文本草稿在桌面端输入期间允许延迟写回浏览器缓存；当前输入值、切换前 flush、刷新后的草稿恢复和发送结果必须保持一致，不能为了持久化把每次按键都绑定到同步存储写入。
 - 页面刷新、跨设备重开或服务重启后，用户可恢复最近会话与历史消息；恢复结果需保留当前 Session 的目标 Agent、Model 与 Tools / Skills / MCP 选择。
 - 页面刷新时，前端需先用浏览器侧保存的当前活动会话快照恢复最近一条活跃 `Chat / Agent Runtime` 会话，避免服务端列表短暂缺席时把当前会话清空或替换为新的空白会话；随后再按 `session_id` 回源单会话详情，用服务端最新结果覆盖本地快照。
@@ -197,7 +197,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `Chat / Agent Runtime` 的会话列、工作区外壳、聊天滚动区和输入区需输出 `terminal-* + conversation-*` 复合 class，确保两条运行页与 `Terminal` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
 - `Chat / Agent Runtime` 首页 Composer 采用双层紧凑主输入面：上层输入框独占主 surface，下层工具栏左侧提供正方形低圆角的会话设置、附件与必要 meta，右侧收口发送按钮；会话设置入口使用四点网格图标，附件入口使用回形针图标，文字 label 仅保留给可访问语义；桌面与移动端都需压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；发送按钮直接复用 Terminal 的紧凑 icon submit 皮肤；PC 端上传、发送、状态、详情、流程入口、短 hash 与弹窗动作统一采用 8-14px 低圆角矩形，不使用胶囊按钮或胶囊标签；会话卡片与 `Details` 面板保持同一浅色 terminal-runtime 质感，不再出现首页输入区厚重、旁侧组件过轻或材质不一致的情况；会话设置面板打开后，点击面板外任意区域都会立即关闭，点击主输入框时也需先收起面板再继续输入；移动端在输入框已聚焦时，首触 `Session` 入口就必须直接展开面板。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
 - `Chat / Agent Runtime` 在页面重新变为前台可见或浏览器重新把当前页激活时，必须复用运行页共享的 page-activation 补偿刷新链路：会话列表、当前活动会话详情与 pending task 状态都要立即回源；若当前页为 `Agent Runtime`，还需同时刷新当前 Agent 的 `Session Profile`，避免 `Details` 中的实例属性停留在后台前的旧值。
-- `Chat / Agent Runtime` Composer 支持最多 5 张图片附件；附件在输入区以缩略图展示，可单张预览和移除，并按会话草稿持久化。当前选中的模型若未声明视觉能力，带图发送必须直接阻止并提示切换模型。
+- `Chat / Agent Runtime` Composer 支持最多 5 张图片附件；附件在输入区以缩略图展示，可单张预览和移除，并按会话草稿持久化。缩略条继续使用预览图，但单张预览弹层必须优先显示原图。当前选中的模型若未声明视觉能力，带图发送必须直接阻止并提示切换模型。
 - 移动端 `Chat / Agent Runtime` 的会话抽屉遮罩、pane shell 与主工作区在 `1100px` 及以下需回落为静态表面，不保留模糊玻璃层或持续背景动效；性能优先级高于装饰层，确保真机滚动、抽屉开关和输入框聚焦不出现明显卡顿。
 - 根工作台仅在窄屏时使用主导航抽屉；运行页内部的会话列不作为独立抽屉复用，避免出现导航抽屉和会话浮层叠加。
 - 路由页头部的标题与副标题需按当前路由与语言即时切换文案；这些页头更新不得覆盖 route body 内已渲染的页面主体内容。

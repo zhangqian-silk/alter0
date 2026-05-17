@@ -3,6 +3,8 @@ import {
   MAX_COMPOSER_IMAGE_BYTES,
   readComposerFiles,
   readComposerImageFiles,
+  resolveComposerAttachmentPreviewURL,
+  resolveComposerAttachmentViewerURL,
 } from "./composerImageAttachments";
 
 afterEach(() => {
@@ -101,5 +103,22 @@ describe("readComposerImageFiles", () => {
     vi.spyOn(oversized, "size", "get").mockReturnValue(MAX_COMPOSER_IMAGE_BYTES + 1);
 
     await expect(readComposerImageFiles([oversized])).rejects.toThrow("Each image must be 5 MB or smaller.");
+  });
+
+  it("uses preview assets for thumbnails but original assets for full-resolution viewing", () => {
+    const attachment = {
+      id: "image-1",
+      kind: "image" as const,
+      name: "diagram.png",
+      contentType: "image/png",
+      size: 1024,
+      dataURL: "data:image/png;base64,ORIGINAL",
+      previewDataURL: "data:image/webp;base64,PREVIEW",
+      assetURL: "/api/sessions/session-1/attachments/image-1/original",
+      previewURL: "/api/sessions/session-1/attachments/image-1/preview",
+    };
+
+    expect(resolveComposerAttachmentPreviewURL(attachment)).toBe("/api/sessions/session-1/attachments/image-1/preview");
+    expect(resolveComposerAttachmentViewerURL(attachment)).toBe("/api/sessions/session-1/attachments/image-1/original");
   });
 });

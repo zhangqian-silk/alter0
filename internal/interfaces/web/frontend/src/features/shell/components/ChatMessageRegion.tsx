@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { formatTimeLabel } from "../../../shared/time/format";
-import { resolveComposerAttachmentPreviewURL } from "../../conversation-runtime/composerImageAttachments";
+import { resolveComposerAttachmentViewerURL } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 import {
   RuntimeTimeline,
@@ -145,7 +145,7 @@ function buildChatTimelineItem(
         items: message.attachments.map((attachment) => ({
           key: attachment.id,
           name: attachment.name,
-          src: resolveComposerAttachmentPreviewURL(attachment),
+          src: resolveComposerAttachmentViewerURL(attachment),
         })),
       },
     ];

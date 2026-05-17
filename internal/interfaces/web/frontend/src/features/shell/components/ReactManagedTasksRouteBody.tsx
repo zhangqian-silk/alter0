@@ -6,6 +6,7 @@ import {
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   readComposerImageFiles,
   resolveComposerAttachmentPreviewURL,
+  resolveComposerAttachmentViewerURL,
   type ComposerImageAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
@@ -1647,7 +1648,7 @@ export function ReactManagedTasksRouteBody({
             </button>
             <img
               className="conversation-image-preview-image"
-              src={resolveComposerAttachmentPreviewURL(previewAttachment)}
+              src={resolveComposerAttachmentViewerURL(previewAttachment)}
               alt={previewAttachment.name}
             />
           </div>

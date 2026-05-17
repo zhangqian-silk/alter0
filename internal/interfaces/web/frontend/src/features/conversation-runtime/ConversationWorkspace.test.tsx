@@ -827,7 +827,12 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Preview diagram.png" }));
     expect(document.querySelector("[data-runtime-attachment-preview='true']")).toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "diagram.png" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "diagram.png" });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole("img", { name: "diagram.png" })).toHaveAttribute(
+      "src",
+      "/api/sessions/session-1/attachments/image-1/original",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
     expect(screen.queryByRole("dialog", { name: "diagram.png" })).not.toBeInTheDocument();

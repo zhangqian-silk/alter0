@@ -117,7 +117,7 @@ describe("ChatMessageRegion", () => {
     expect(article.textContent).not.toContain("&gt;");
   });
 
-  it("renders user image attachments from workspace preview URLs", () => {
+  it("renders user image attachments from workspace original asset URLs", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
@@ -148,7 +148,7 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".terminal-turn-prompt")).toBeInTheDocument();
     expect(article.querySelector(".msg-bubble")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-attachment-gallery='message-2']")).toBeInTheDocument();
-    expect(image).toHaveAttribute("src", "/api/sessions/session-1/attachments/image-1/preview");
+    expect(image).toHaveAttribute("src", "/api/sessions/session-1/attachments/image-1/original");
     expect(screen.getByText("diagram.png")).toBeInTheDocument();
   });
 
