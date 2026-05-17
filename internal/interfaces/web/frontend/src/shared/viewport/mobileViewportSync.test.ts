@@ -120,4 +120,40 @@ describe("shared viewport mobileViewportSync", () => {
     controller.destroy();
     input.remove();
   });
+
+  it("re-syncs the recovered mobile viewport when the page returns to the foreground", () => {
+    const visualViewport = new MockVisualViewport(430, 932);
+    const input = document.createElement("textarea");
+    let visibilityState: DocumentVisibilityState = "visible";
+    document.body.appendChild(input);
+    setWindowSize(430, 932);
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    });
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibilityState,
+    });
+
+    const controller = createMobileViewportSyncController();
+
+    input.focus();
+    visualViewport.height = 620;
+    visualViewport.dispatchEvent(new Event("resize"));
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
+
+    input.blur();
+    visualViewport.height = 932;
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("932px");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("0px");
+
+    controller.destroy();
+    input.remove();
+  });
 });

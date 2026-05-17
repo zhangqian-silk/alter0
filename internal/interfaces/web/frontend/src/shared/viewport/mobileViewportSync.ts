@@ -45,11 +45,20 @@ export function createMobileViewportSyncController(
     root.style.setProperty("--mobile-viewport-height", result.cssVars.mobileViewportHeight);
     root.style.setProperty("--keyboard-offset", result.cssVars.keyboardOffset);
   };
+  const syncWhenVisible = () => {
+    if (doc.visibilityState === "hidden") {
+      return;
+    }
+    sync();
+  };
 
   sync();
   win.addEventListener("resize", sync);
+  win.addEventListener("focus", syncWhenVisible);
+  win.addEventListener("pageshow", syncWhenVisible);
   visualViewport?.addEventListener("resize", sync);
   visualViewport?.addEventListener("scroll", sync);
+  doc.addEventListener("visibilitychange", syncWhenVisible);
   doc.addEventListener("focusin", sync);
   doc.addEventListener("focusout", sync);
 
@@ -57,8 +66,11 @@ export function createMobileViewportSyncController(
     sync,
     destroy: () => {
       win.removeEventListener("resize", sync);
+      win.removeEventListener("focus", syncWhenVisible);
+      win.removeEventListener("pageshow", syncWhenVisible);
       visualViewport?.removeEventListener("resize", sync);
       visualViewport?.removeEventListener("scroll", sync);
+      doc.removeEventListener("visibilitychange", syncWhenVisible);
       doc.removeEventListener("focusin", sync);
       doc.removeEventListener("focusout", sync);
       root.style.setProperty("--mobile-viewport-height", "100dvh");
