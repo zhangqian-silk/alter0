@@ -65,7 +65,7 @@
 - `Chat / Agent Runtime` 的 `Process` 步骤在真机窄屏下仍需保持整列阅读宽度；长中文说明、路径和命令明细必须在消息容器内自然换行，不得塌缩成逐字竖排窄列；展示层还需容忍零宽断行字符和“每字一行”的异常历史文本，并在渲染前修正为可读段落。
 - `Chat / Agent Runtime` 的消息时间线在内容较少时仍需顶部收口：少量消息、短回复、折叠后的 `Process` 卡片与时间戳继续贴近各自消息块，不得被满高布局拉出大段垂直空白。
 - `Chat / Agent Runtime / Terminal` 的阅读定位条必须以悬浮 overlay 形式附着在消息区右下角，不得继续参与消息时间线的正常文档流；空白会话或少量消息时，不允许因为定位条占位把消息区额外撑高并制造伪滚动。
-- `Chat / Agent Runtime` Composer 支持图片附件草稿、缩略图预览与消息内图片回显；最近会话恢复仅持久化消息图片预览资产，避免重复保留原始大图 payload；助手 markdown 图片需在消息区直接以内联图片懒加载显示。带图消息只允许走支持视觉输入的模型链路，不进入异步 Task，也不静默降级到 Codex 文本执行。
+- `Chat / Agent Runtime` Composer 支持图片附件草稿、缩略图预览与消息内图片回显；最近会话恢复仅持久化稳定图片资产引用，避免重复保留原始大图 payload；缩略位继续使用预览图，但消息回显与再次查看必须优先读取原图资源。助手 markdown 图片需在消息区直接以内联图片懒加载显示。带图消息只允许走支持视觉输入的模型链路，不进入异步 Task，也不静默降级到 Codex 文本执行。
 - Web 前端所有时间显示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Chat、Agent、Terminal、Task、Cron 与 Settings/Control 管理页都必须复用同一显示口径，Cron 创建表单默认时区固定为 `Asia/Shanghai`。
 - Web 侧边栏、历史折叠、页面滚动隔离、克制冷灰工作台阅读主题、PC 端低圆角非胶囊控件、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护。
 - 会话侧栏中的 Session 列表需采用工作台式最近时间分组：`Chat / Agent Runtime / Terminal` 统一使用 `Sessions` 栏标题与 `New` 新建入口，移动端抽屉额外提供 `Hide / 收起` 动作；抽屉头部左侧允许将 `Sessions` 与总数拆为上下两行并把总数降为小号说明文字，右侧 `New / Hide` 继续保持同排，且按钮尺寸需与运行页其他紧凑控制按钮一致。列表按 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`）收口，并与主导航 `menu` 复用同一套分组容器、hover、激活态视觉和桌面会话列宽；条目采用独立卡片，标题独立一行并在可用宽度内单行截断，会话时间统一直接显示北京时间绝对时间到分钟，并与 8 位短 hash 保持在同一行元信息中，尾侧收口为方形更多操作按钮，不再拆出额外 footer、胶囊操作区、完整会话 id 行或 `Last output` 一类固定前缀。
@@ -145,12 +145,12 @@
 - Task 需建立 `session_id`、`source_message_id`、`channel_type`、`trigger_type`、`correlation_id`、Cron 触发信息与产物引用的标准映射。
 - Task 观测台支持列表、详情抽屉、来源筛选、日志 SSE、游标续读、日志回补、retry/cancel、交互式续写、任务-会话双向跳转与完成结果回写。
 - Task 观测台桌面端优先采用左侧任务列表 + 右侧详情面板的主从布局，详情区承载元数据、日志、产物、控制动作与 follow-up terminal 输入。
-- Terminal 页面 Composer 支持最多 5 个附件，稳定覆盖图片与常见文本/文档文件：图片继续提供缩略图预览、纯图片发送与图片回显，并先写入当前 Session 工作区附件目录后仅提交 `asset_url / preview_url` 引用；普通文件同样先落到同一附件目录并只提交稳定附件引用，执行前再写入当前 Terminal 工作区 `input-attachments/<turn_id>/` 供 Codex 按路径读取。Terminal `Details` 面板支持选择控制面中启用且非私有的公有 Skill；新 Terminal 会话首次加载时默认勾选全部可用公有 Skill，仅排除 `default-nl` 与 `memory`，并在发送输入时把当前 `skill_ids` 编译进 Terminal 工作区的原生 Codex Runtime。该运行时同样必须通过托管 `AGENTS.md` 与 `runtime_context` 约束 Codex 仅操作当前 Terminal 工作区及其派生文件，不得顺带修改其他会话、服务或工作区外仓库。Task 详情抽屉中的 follow-up terminal 输入当前稳定支持图片附件，并继续透传到统一消息元数据。
+- Terminal 页面 Composer 支持最多 5 个附件，稳定覆盖图片与常见文本/文档文件：图片继续提供缩略图预览、纯图片发送与图片回显，并先写入当前 Session 工作区附件目录后仅提交 `asset_url / preview_url` 引用；缩略位使用预览图，但 turn 历史与后续预览弹层再次查看时必须优先读取原图资源。普通文件同样先落到同一附件目录并只提交稳定附件引用，执行前再写入当前 Terminal 工作区 `input-attachments/<turn_id>/` 供 Codex 按路径读取。Terminal `Details` 面板支持选择控制面中启用且非私有的公有 Skill；新 Terminal 会话首次加载时默认勾选全部可用公有 Skill，仅排除 `default-nl` 与 `memory`，并在发送输入时把当前 `skill_ids` 编译进 Terminal 工作区的原生 Codex Runtime。该运行时同样必须通过托管 `AGENTS.md` 与 `runtime_context` 约束 Codex 仅操作当前 Terminal 工作区及其派生文件，不得顺带修改其他会话、服务或工作区外仓库。Task 详情抽屉中的 follow-up terminal 输入当前稳定支持图片附件，并继续透传到统一消息元数据。
 - Task 记忆视图支持任务摘要、任务详情、日志下钻、产物引用与摘要重建，用于把历史任务纳入长期上下文召回；任务历史默认以表格承载摘要元数据，再通过详情侧栏查看长文本与日志/产物入口。
 - Codex CLI 长任务按心跳续租运行窗口；列表与详情展示 `Last Heartbeat` 和 `Timeout Window`。
 - Web 会话不直接暴露本地文件路径，产物通过引用、下载或预览接口交付。
 - 默认工作区按执行上下文隔离：Chat/Agent 使用 `.alter0/workspaces/sessions/<session_id>`，Task 使用其会话下的 `tasks/<task_id>`，Terminal 使用 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
-- Chat / Agent Runtime 的会话图片资产需要随 Session 工作区落盘：用户上传图片的原图与预览图统一写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，前端持久化与消息请求默认复用 `asset_url / preview_url` 引用；assistant 最终回复里的外链 markdown 图片也应在会话返回与落库前改写到同一路径下的本地附件 URL。
+- Chat / Agent Runtime 的会话图片资产需要随 Session 工作区落盘：用户上传图片的原图与预览图统一写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，前端持久化与消息请求默认复用 `asset_url / preview_url` 引用；其中 `preview_url` 只服务缩略位，消息回显与再次查看统一优先读取 `asset_url` 原图。assistant 最终回复里的外链 markdown 图片也应在会话返回与落库前改写到同一路径下的本地附件 URL。
 - 直连 Codex 的 Chat / Agent 会话会在各自工作区下额外维护 `.alter0/codex-runtime/`、`.alter0/codex-runtime/codex-home/` 与 `.alter0/codex-runtime/thread.json`；Terminal 会话会在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与步骤视图索引。
 - Terminal API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
