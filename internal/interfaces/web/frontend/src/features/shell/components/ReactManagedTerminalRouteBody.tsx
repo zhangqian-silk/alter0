@@ -754,6 +754,8 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
+  const activeTimelineSessionRef = useRef("");
+  const timelineBottomPinnedSessionRef = useRef("");
   const scrollIdleTimerRef = useRef<number | null>(null);
   const scrollRestoreSnapshotRef = useRef<{
     top: number;
@@ -1175,6 +1177,43 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     }, pollPlan.interval);
     return () => window.clearTimeout(timer);
   }, [activeSession, activeSessionID, pollPlan.enabled, pollPlan.interval, pollPlan.refreshActiveSession, sessions]);
+
+  useLayoutEffect(() => {
+    if (activeTimelineSessionRef.current !== activeSessionID) {
+      activeTimelineSessionRef.current = activeSessionID;
+      timelineBottomPinnedSessionRef.current = "";
+    }
+    if (!activeSessionID) {
+      timelineBottomPinnedSessionRef.current = "";
+      return;
+    }
+    if (
+      timelineBottomPinnedSessionRef.current === activeSessionID
+      || turns.length === 0
+      || scrollRestoreSnapshotRef.current
+    ) {
+      return;
+    }
+
+    const node = chatScreenRef.current;
+    if (!node) {
+      return;
+    }
+    const pinToBottom = () => {
+      node.scrollTop = node.scrollHeight;
+    };
+    pinToBottom();
+    const pinnedTop = node.scrollTop;
+    const frame = window.requestAnimationFrame(() => {
+      if (node.scrollTop === pinnedTop) {
+        pinToBottom();
+      }
+    });
+    timelineBottomPinnedSessionRef.current = activeSessionID;
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [activeSessionID, turns.length]);
 
   useEffect(() => {
     setExpandedTurns((current) => {

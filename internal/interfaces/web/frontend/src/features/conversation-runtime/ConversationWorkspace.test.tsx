@@ -367,6 +367,112 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector("[data-scroll-jump-bottom='chat']")).toBeInTheDocument();
   });
 
+  it("opens an existing chat session pinned to the timeline bottom", async () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "Long running session",
+      messages: [
+        { id: "message-1" },
+        { id: "message-2" },
+      ],
+    } as typeof runtimeMock.activeSession;
+
+    renderWorkspace({ isMobileViewport: false });
+
+    const timelineScreen = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+    let scrollTop = 0;
+    Object.defineProperty(timelineScreen, "scrollHeight", {
+      configurable: true,
+      value: 960,
+    });
+    Object.defineProperty(timelineScreen, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value) => {
+        scrollTop = Number(value || 0);
+      },
+    });
+
+    await waitFor(() => expect(timelineScreen.scrollTop).toBe(960));
+  });
+
+  it("pins the timeline bottom again after switching into another chat session", async () => {
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop");
+    const scrollTopByElement = new WeakMap<Element, number>();
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this instanceof HTMLElement && this.getAttribute("data-runtime-screen") === "conversation" ? 880 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopByElement.get(this) || 0;
+      },
+      set(value) {
+        scrollTopByElement.set(this, Number(value || 0));
+      },
+    });
+    try {
+      runtimeMock.activeSession = {
+        id: "session-1",
+        title: "First session",
+        messages: [
+          { id: "message-1" },
+        ],
+      } as typeof runtimeMock.activeSession;
+
+      const view = renderWorkspace({ isMobileViewport: false });
+
+      let timelineScreen = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+
+      await waitFor(() => expect(timelineScreen.scrollTop).toBe(880));
+      timelineScreen.scrollTop = 120;
+      runtimeMock.activeSession = {
+        id: "session-2",
+        title: "Second session",
+        messages: [
+          { id: "message-2" },
+        ],
+      } as typeof runtimeMock.activeSession;
+
+      view.rerender(
+        <WorkbenchContext.Provider
+          value={{
+            route: "chat",
+            language: "en",
+            navigate: vi.fn(),
+            isMobileViewport: false,
+            mobileNavOpen: false,
+            mobileSessionPaneOpen: false,
+            toggleMobileNav: vi.fn(),
+            toggleMobileSessionPane: vi.fn(),
+            closeMobileNav: vi.fn(),
+            closeMobileSessionPane: vi.fn(),
+          }}
+        >
+          <ConversationWorkspace language="en" />
+        </WorkbenchContext.Provider>,
+      );
+
+      timelineScreen = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+      await waitFor(() => expect(timelineScreen.scrollTop).toBe(880));
+    } finally {
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLElement.prototype, "scrollHeight", originalScrollHeight);
+      } else {
+        delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+      }
+      if (originalScrollTop) {
+        Object.defineProperty(HTMLElement.prototype, "scrollTop", originalScrollTop);
+      } else {
+        delete (HTMLElement.prototype as { scrollTop?: number }).scrollTop;
+      }
+    }
+  });
+
   it("renders the four shared jump buttons for agent timelines", () => {
     runtimeMock.route = "agent-runtime";
     runtimeMock.activeSession = {

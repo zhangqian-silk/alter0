@@ -64,6 +64,7 @@
 - Agent 还需支持独立的 `completion_checks` 机器规则，用于把交付契约下沉为可执行的运行时产物检查。`deliverables` 负责用户可见契约与 prompt 约束，`completion_checks` 负责文件存在、公开 URL、workspace service 发布状态、Session 属性非空等确定性校验，并可在失败时声明一轮仅面向当前 Session 的 Codex 修复指令。
 - `Chat / Agent Runtime` 的 `Process` 步骤在真机窄屏下仍需保持整列阅读宽度；长中文说明、路径和命令明细必须在消息容器内自然换行，不得塌缩成逐字竖排窄列；展示层还需容忍零宽断行字符和“每字一行”的异常历史文本，并在渲染前修正为可读段落。
 - `Chat / Agent Runtime` 的消息时间线在内容较少时仍需顶部收口：少量消息、短回复、折叠后的 `Process` 卡片与时间戳继续贴近各自消息块，不得被满高布局拉出大段垂直空白。
+- `Chat / Agent Runtime / Terminal` 进入已有内容会话时默认定位到消息时间线或 Terminal 输出区底部，优先展示最新上下文；该初始定位仅在会话进入或切换时生效，不得在同一会话持续更新、轮询刷新或 Process 展开期间覆盖用户的历史阅读滚动。
 - `Chat / Agent Runtime / Terminal` 的阅读定位条必须以悬浮 overlay 形式附着在消息区右下角，不得继续参与消息时间线的正常文档流；空白会话或少量消息时，不允许因为定位条占位把消息区额外撑高并制造伪滚动。
 - `Chat / Agent Runtime` Composer 支持图片附件草稿、缩略图预览与消息内图片回显；最近会话恢复仅持久化稳定图片资产引用，避免重复保留原始大图 payload；缩略位继续使用预览图，但消息回显与再次查看必须优先读取原图资源。助手 markdown 图片需在消息区直接以内联图片懒加载显示。带图消息只允许走支持视觉输入的模型链路，不进入异步 Task，也不静默降级到 Codex 文本执行。
 - Web 前端所有时间显示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Chat、Agent、Terminal、Task、Cron 与 Settings/Control 管理页都必须复用同一显示口径，Cron 创建表单默认时区固定为 `Asia/Shanghai`。
