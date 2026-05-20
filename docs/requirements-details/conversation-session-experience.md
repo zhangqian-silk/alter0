@@ -152,6 +152,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - `Process` 步骤标题与正文在桌面和移动端都必须保持整列阅读宽度；长中文说明、路径、命令片段与 Markdown 文本优先在当前消息容器内自然换行，不得在真机窄屏下塌缩成逐字竖排窄列。
 - Conversation 展示层必须在渲染 `process_steps.title/detail` 与最终 markdown 前移除零宽断行字符，并对“每字一行”的病态段落做可读性归一化；该修正同时适用于流式消息、Task 回填和历史会话恢复。
 - `Chat / Agent Runtime` 的消息时间线在内容较少时必须保持顶部收口；短用户消息、折叠后的 `Process` 卡片、最终回复与对应时间戳继续贴近各自消息块排布，不得因为时间线容器满高拉伸而出现大块垂直空白。
+- `Chat / Agent Runtime` 打开已有消息的会话、刷新恢复当前会话或切换到其他会话后，时间线初始视口必须落到最新消息所在底部；若用户已经在同一会话内手动滚动阅读历史，后续流式 patch、Process 展开状态变化和草稿输入不得强制把视口拉回底部。
 - 助手最终回复提供一键复制；若消息含 Process，复制内容只包含最终正文。
 - `Agent Runtime` 需要把专项 Agent 的 deliverables contract 作为一等运行信息展示在 `Details` 中，而不是仅保留在系统 prompt 或隐式约定里；若交付物声明绑定了 Session Profile 实例属性键，前端需直接回显当前 URL/路径值。
 - 前端所有绝对时间与时分标签统一按北京时间（`Asia/Shanghai`）渲染，并固定采用 24 小时制；浏览器本地时区不参与显示格式决策，控制台管理页中的额度重置、运行时间等管理时间戳也必须复用同一口径。

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type TouchEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { formatDateTime } from "../../shared/time/format";
 import { groupSessionListItems } from "../../shared/time/sessionListGroups";
@@ -271,7 +271,10 @@ function useConversationWorkspaceController(
   const copy = getLegacyShellCopy(language);
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
   const { timelineScreenRef, workspaceBodyRef } = sharedRefs;
+  const activeTimelineSessionRef = useRef("");
+  const timelineBottomPinnedSessionRef = useRef("");
   const activeMessages = runtime.activeSession?.messages || [];
+  const activeSessionID = runtime.activeSession?.id || "";
   const isEmptyState = activeMessages.length === 0;
   const isMobileEmptyHeader = workbench.isMobileViewport && isEmptyState;
   const emptyStateTitle = runtime.route === "agent-runtime"
@@ -431,6 +434,38 @@ function useConversationWorkspaceController(
     }),
     [activeMessages, language, runtime.toggleAgentProcess],
   );
+  useLayoutEffect(() => {
+    if (activeTimelineSessionRef.current !== activeSessionID) {
+      activeTimelineSessionRef.current = activeSessionID;
+      timelineBottomPinnedSessionRef.current = "";
+    }
+    if (!activeSessionID) {
+      timelineBottomPinnedSessionRef.current = "";
+      return;
+    }
+    if (timelineBottomPinnedSessionRef.current === activeSessionID || timelineItems.length === 0) {
+      return;
+    }
+
+    const node = timelineScreenRef.current;
+    if (!node) {
+      return;
+    }
+    const pinToBottom = () => {
+      node.scrollTop = node.scrollHeight;
+    };
+    pinToBottom();
+    const pinnedTop = node.scrollTop;
+    const frame = window.requestAnimationFrame(() => {
+      if (node.scrollTop === pinnedTop) {
+        pinToBottom();
+      }
+    });
+    timelineBottomPinnedSessionRef.current = activeSessionID;
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [activeSessionID, timelineItems.length, timelineScreenRef]);
   const timelineEmptyState = useMemo(
     () => (
       <div className="conversation-empty-state">

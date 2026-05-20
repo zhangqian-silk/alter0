@@ -1853,6 +1853,49 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
   });
 
+  it("opens an existing terminal session pinned to the output bottom", async () => {
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop");
+    const scrollTopByElement = new WeakMap<Element, number>();
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this instanceof HTMLElement && this.getAttribute("data-runtime-screen") === "terminal" ? 920 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopByElement.get(this) || 0;
+      },
+      set(value) {
+        scrollTopByElement.set(this, Number(value || 0));
+      },
+    });
+
+    try {
+      renderTerminalRouteBody();
+
+      await waitFor(() => {
+        expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
+      });
+
+      const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+      await waitFor(() => expect(chatScreen.scrollTop).toBe(920));
+    } finally {
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLElement.prototype, "scrollHeight", originalScrollHeight);
+      } else {
+        delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+      }
+      if (originalScrollTop) {
+        Object.defineProperty(HTMLElement.prototype, "scrollTop", originalScrollTop);
+      } else {
+        delete (HTMLElement.prototype as { scrollTop?: number }).scrollTop;
+      }
+    }
+  });
+
   it("targets the visible turn for previous and the real next turn when only one terminal turn is visible", async () => {
     installImmediateAnimationFrame();
     stubTerminalTurnsFetch([
