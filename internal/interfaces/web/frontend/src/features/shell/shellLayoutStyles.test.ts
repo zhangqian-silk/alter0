@@ -534,6 +534,18 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("padding: 10px 12px calc(14px + env(safe-area-inset-bottom));");
   });
 
+  it("keeps mobile composer inputs at the iOS-safe 16px text size", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.composer textarea\s*\{[^}]*font-size:\s*16px;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-input\s*\{[^}]*font-size:\s*16px;/,
+    );
+  });
+
   it("keeps page-mode workbench shells stretched to the mobile viewport so terminal messages can scroll", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
