@@ -92,6 +92,7 @@
 - `Chat / Terminal` 在移动端键盘弹起与收回期间，只允许底部 Composer 按 `VisualViewport` 偏移贴住可见底边；顶部 `Menu / Sessions / New` 操作行与紧凑 workspace header 保持原位，不跟随键盘位移做额外动画。
 - `Chat / Agent Runtime / Terminal` 在移动端软键盘弹起期间，底部 Composer 必须保持为运行页最上层交互层；消息阅读定位按钮与 Terminal 四键定位条在主输入框聚焦后必须主动隐藏，待输入框失焦、键盘收起后再恢复，不得压到输入框、附件条或键盘上方。
 - `Chat / Agent Runtime / Terminal` 的主输入框在移动端必须显式关闭系统自动填充、卡片、地址与密码类输入辅助条；键盘上沿不得再额外挂出会暴露底部残留页面层的系统输入助手。
+- `Chat / Agent Runtime / Terminal` 的移动端主输入框必须保持不低于 16px 的可编辑文本字号，避免 iOS Safari 聚焦输入法时触发页面自动缩放、横向裁切或分辨率突变。
 - `Chat / Terminal` 的移动端发送按钮必须支持在软键盘保持打开时直接点按提交；首触发送需覆盖 `pointerdown(touch)` 与 `touchstart` 提交链路，并在同一次触摸内去重，不允许先消费成键盘收起或焦点切换，再要求第二次点击才真正发出请求。
 - `Chat / Agent Runtime / Terminal` 的四键阅读定位条需统一使用同一套共享实现与圆形按钮语言，不再为不同运行页维护分叉样式或独立跳转逻辑。
 - 运行页 Composer 的键盘跟随只依赖 `VisualViewport` 同步后的实时定位，不额外叠加 `bottom` 过渡动画；键盘收起与输入区回弹阶段应保持直接、稳定的回贴节奏。

@@ -2302,6 +2302,10 @@ body::after {
     padding: 10px 12px calc(14px + env(safe-area-inset-bottom));
   }
 
+  .composer textarea {
+    font-size: 16px;
+  }
+
   .nav-toggle,
   .panel-toggle,
   .mobile-new-chat {
@@ -3239,6 +3243,10 @@ body::after {
   .composer-shell {
     bottom: var(--keyboard-offset);
     padding: 10px 12px calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .composer textarea {
+    font-size: 16px;
   }
 
   .chat-header-copy p {
@@ -5777,6 +5785,7 @@ body::after {
     border-radius: 18px;
     padding: 12px 10px 10px;
     background: transparent;
+    font-size: 16px;
     line-height: 1.45;
     box-shadow: none;
   }
