@@ -661,6 +661,26 @@ function hasRecoverableAssistantState(messages: ChatMessage[]): boolean {
   return messages.some((message) => isRecoverableAssistantMessage(message));
 }
 
+function hasUnansweredLatestUserMessage(messages: ChatMessage[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "assistant") {
+      return false;
+    }
+    if (message.role === "user") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasRecoverableRuntimeState(session: ChatSession | null | undefined): boolean {
+  if (!session) {
+    return false;
+  }
+  return hasRecoverableAssistantState(session.messages) || hasUnansweredLatestUserMessage(session.messages);
+}
+
 function hasPersistedAssistantState(messages: ChatMessage[]): boolean {
   return messages.some((message) => {
     if (message.role !== "assistant") {
@@ -1649,7 +1669,7 @@ export function ConversationRuntimeProvider({
           if (
             hydrated
             && (!requirements.requireMessages || hydrated.messages.length > 0)
-            && (!requirements.requireStableAssistant || !hasRecoverableAssistantState(hydrated.messages))
+            && (!requirements.requireStableAssistant || hasPersistedAssistantState(hydrated.messages))
           ) {
             upsertRuntimeSession(routeKey, hydrated);
             return hydrated;
@@ -1678,7 +1698,10 @@ export function ConversationRuntimeProvider({
     if (remoteSession.messagesLoaded !== true) {
       return true;
     }
-    if (localSession && hasRecoverableAssistantState(localSession.messages)) {
+    if (hasRecoverableRuntimeState(localSession)) {
+      return true;
+    }
+    if (hasRecoverableRuntimeState(remoteSession)) {
       return true;
     }
     return false;
@@ -2088,7 +2111,7 @@ export function ConversationRuntimeProvider({
               preferredActiveID,
               {
                 requireMessages: remotePreferredSession?.messagesLoaded !== true,
-                requireStableAssistant: hasRecoverableAssistantState(localPreferredSession?.messages || []),
+                requireStableAssistant: hasRecoverableRuntimeState(localPreferredSession) || hasRecoverableRuntimeState(remotePreferredSession),
               },
             )
           : null;
@@ -2123,7 +2146,7 @@ export function ConversationRuntimeProvider({
     if (
       !activeSession?.id
       || activeSession.serverBacked !== true
-      || (activeSession.messagesLoaded && !hasRecoverableAssistantState(activeSession.messages))
+      || (activeSession.messagesLoaded && !hasRecoverableRuntimeState(activeSession))
     ) {
       return;
     }
@@ -2135,7 +2158,7 @@ export function ConversationRuntimeProvider({
           activeSession.id,
           {
             requireMessages: !activeSession.messagesLoaded,
-            requireStableAssistant: hasRecoverableAssistantState(activeSession.messages),
+            requireStableAssistant: hasRecoverableRuntimeState(activeSession),
           },
           3,
         );
