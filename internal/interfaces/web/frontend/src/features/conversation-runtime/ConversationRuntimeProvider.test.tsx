@@ -2865,6 +2865,180 @@ describe("ConversationRuntimeProvider", () => {
               target_type: "agent",
               target_id: "coding",
               target_name: "Coding Agent",
+              messages: [
+                {
+                  id: "server-user-retry-1",
+                  role: "user",
+                  text: "Recover immediately after refresh",
+                  at: "2026-04-23T03:30:01Z",
+                },
+                {
+                  id: "server-assistant-retry-1",
+                  role: "assistant",
+                  text: "Recovered after retry",
+                  status: "done",
+                  at: "2026-04-23T03:30:05Z",
+                },
+              ],
+            },
+          };
+        }
+        if (path === "/api/control/llm/providers") {
+          return { items: [] };
+        }
+        if (path === "/api/control/skills") {
+          return { items: [] };
+        }
+        if (path === "/api/control/mcps") {
+          return { items: [] };
+        }
+        if (path === "/api/agents") {
+          return {
+            items: [
+              { id: "coding", name: "Coding Agent", enabled: true },
+            ],
+          };
+        }
+        return { items: [] };
+      });
+
+      render(
+        <ConversationRuntimeProvider route="agent-runtime" language="en">
+          <MessageListHarness />
+        </ConversationRuntimeProvider>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(detailCalls).toBeGreaterThanOrEqual(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(detailCalls).toBeGreaterThanOrEqual(2);
+      const payload = JSON.parse(screen.getByTestId("message-list").textContent || "[]") as Array<{ text?: string }>;
+      expect(payload[1]?.text).toBe("Recovered after retry");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps recovering an active agent session when server history only has the latest user message", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        ACTIVE_SESSION_STORAGE_KEY,
+        JSON.stringify({ chat: "", "agent-runtime": "agent-user-only-1" }),
+      );
+      window.sessionStorage.setItem(
+        ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY,
+        JSON.stringify({
+          "agent-runtime": {
+            id: "agent-user-only-1",
+            status: "busy",
+            title: "User only pending",
+            titleAuto: false,
+            titleScore: 1,
+            createdAt: Date.parse("2026-04-23T03:30:00Z"),
+            targetType: "agent",
+            targetID: "coding",
+            targetName: "Coding Agent",
+            messagesLoaded: true,
+            serverBacked: true,
+            messages: [
+              {
+                id: "server-user-only-1",
+                role: "user",
+                text: "Continue this agent task",
+                attachments: [],
+                at: Date.parse("2026-04-23T03:30:01Z"),
+              },
+            ],
+          },
+        }),
+      );
+
+      let detailCalls = 0;
+      apiClientMock.get.mockImplementation(async (path: string) => {
+        if (path === "/api/conversation-runtime/sessions?route=agent-runtime") {
+          return {
+            items: [
+              {
+                id: "agent-user-only-1",
+                status: "busy",
+                title: "User only pending",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "agent",
+                target_id: "coding",
+                target_name: "Coding Agent",
+                messages: [
+                  {
+                    id: "server-user-only-1",
+                    role: "user",
+                    text: "Continue this agent task",
+                    at: "2026-04-23T03:30:01Z",
+                  },
+                ],
+              },
+            ],
+          };
+        }
+        if (path === "/api/conversation-runtime/sessions/agent-user-only-1?route=agent-runtime") {
+          detailCalls += 1;
+          if (detailCalls === 1) {
+            return {
+              session: {
+                id: "agent-user-only-1",
+                status: "busy",
+                title: "User only pending",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "agent",
+                target_id: "coding",
+                target_name: "Coding Agent",
+                messages: [
+                  {
+                    id: "server-user-only-1",
+                    role: "user",
+                    text: "Continue this agent task",
+                    at: "2026-04-23T03:30:01Z",
+                  },
+                ],
+              },
+            };
+          }
+          return {
+            session: {
+              id: "agent-user-only-1",
+              status: "ready",
+              title: "User only pending",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "agent",
+              target_id: "coding",
+              target_name: "Coding Agent",
+              messages: [
+                {
+                  id: "server-user-only-1",
+                  role: "user",
+                  text: "Continue this agent task",
+                  at: "2026-04-23T03:30:01Z",
+                },
+                {
+                  id: "server-assistant-user-only-1",
+                  role: "assistant",
+                  text: "Agent reply persisted",
+                  status: "done",
+                  at: "2026-04-23T03:30:05Z",
+                },
+              ],
             },
           };
         }
@@ -2900,10 +3074,16 @@ describe("ConversationRuntimeProvider", () => {
       expect(detailCalls).toBe(1);
 
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3000);
+        await vi.advanceTimersByTimeAsync(1000);
+        await Promise.resolve();
+        await Promise.resolve();
       });
 
+      const payload = JSON.parse(screen.getByTestId("message-list").textContent || "[]") as Array<{ text?: string; status?: string }>;
       expect(detailCalls).toBeGreaterThanOrEqual(2);
+      expect(payload).toHaveLength(2);
+      expect(payload[1]?.text).toBe("Agent reply persisted");
+      expect(payload[1]?.status).toBe("done");
     } finally {
       vi.useRealTimers();
     }
