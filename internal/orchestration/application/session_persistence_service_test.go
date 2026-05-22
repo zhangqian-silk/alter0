@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,13 +28,24 @@ func (s *stubPersistenceDownstream) Handle(_ context.Context, _ shareddomain.Uni
 }
 
 type spySessionRecorder struct {
+	mu      sync.Mutex
 	records []sessiondomain.MessageRecord
 	err     error
 }
 
 func (s *spySessionRecorder) Append(records ...sessiondomain.MessageRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.records = append(s.records, records...)
 	return s.err
+}
+
+func (s *spySessionRecorder) Records() []sessiondomain.MessageRecord {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]sessiondomain.MessageRecord(nil), s.records...)
 }
 
 type fixedIDGenerator struct {
@@ -42,6 +54,38 @@ type fixedIDGenerator struct {
 
 func (g *fixedIDGenerator) NewID() string {
 	return g.nextID
+}
+
+type blockingStreamPersistenceDownstream struct {
+	entered chan struct{}
+	release chan struct{}
+	result  shareddomain.OrchestrationResult
+	err     error
+}
+
+func (s *blockingStreamPersistenceDownstream) Handle(_ context.Context, _ shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+	return s.HandleStream(context.Background(), shareddomain.UnifiedMessage{}, nil)
+}
+
+func (s *blockingStreamPersistenceDownstream) HandleStream(
+	_ context.Context,
+	_ shareddomain.UnifiedMessage,
+	_ func(shareddomain.StreamEvent) error,
+) (shareddomain.OrchestrationResult, error) {
+	close(s.entered)
+	<-s.release
+	return s.result, s.err
+}
+
+func waitForPersistedRecordCount(recorder *spySessionRecorder, count int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if len(recorder.Records()) >= count {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return len(recorder.Records()) >= count
 }
 
 func TestSessionPersistenceServiceRecordsUserAndAssistantMessages(t *testing.T) {
@@ -92,6 +136,65 @@ func TestSessionPersistenceServiceRecordsUserAndAssistantMessages(t *testing.T) 
 	}
 	if recorder.records[0].Source.ChannelType != shareddomain.ChannelTypeWeb {
 		t.Fatalf("expected channel_type web, got %s", recorder.records[0].Source.ChannelType)
+	}
+}
+
+func TestSessionPersistenceServicePersistsUserMessageBeforeStreamCompletes(t *testing.T) {
+	downstream := &blockingStreamPersistenceDownstream{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+		result: shareddomain.OrchestrationResult{
+			MessageID: "msg-stream",
+			SessionID: "s-stream",
+			Route:     shareddomain.RouteNL,
+			Output:    "answer",
+		},
+	}
+	recorder := &spySessionRecorder{}
+	service := &SessionPersistenceService{
+		downstream:  downstream,
+		recorder:    recorder,
+		idGenerator: &fixedIDGenerator{nextID: "assistant-stream"},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	msg := shareddomain.UnifiedMessage{
+		MessageID:   "msg-stream",
+		SessionID:   "s-stream",
+		Content:     "question",
+		ReceivedAt:  time.Date(2026, 3, 3, 12, 30, 0, 0, time.UTC),
+		TriggerType: shareddomain.TriggerTypeUser,
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TraceID:     "trace-stream",
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.HandleStream(context.Background(), msg, nil)
+		done <- err
+	}()
+
+	<-downstream.entered
+	if !waitForPersistedRecordCount(recorder, 1, 250*time.Millisecond) {
+		close(downstream.release)
+		<-done
+		t.Fatalf("expected user message to be persisted before stream completes, got %+v", recorder.Records())
+	}
+
+	records := recorder.Records()
+	if records[0].Role != sessiondomain.MessageRoleUser {
+		close(downstream.release)
+		<-done
+		t.Fatalf("expected first persisted record to be user message, got %+v", records[0])
+	}
+
+	close(downstream.release)
+	if err := <-done; err != nil {
+		t.Fatalf("handle stream failed: %v", err)
+	}
+	if records := recorder.Records(); len(records) != 2 {
+		t.Fatalf("expected final user and assistant records, got %+v", records)
 	}
 }
 
