@@ -278,6 +278,7 @@ function MessageListHarness() {
       <button type="button" onClick={() => void runtime.sendPrompt("Follow up prompt")}>
         send followup
       </button>
+      <output data-testid="message-list-session-title">{runtime.activeSession?.title || ""}</output>
       <output data-testid="message-list">
         {JSON.stringify((runtime.activeSession?.messages || []).map((message) => ({
           id: message.id,
@@ -288,6 +289,29 @@ function MessageListHarness() {
       </output>
     </div>
   );
+}
+
+function storedChatSession(messages: Array<Record<string, unknown>>, patch: Record<string, unknown> = {}) {
+  return {
+    id: "session-merge-local",
+    status: "ready",
+    title: "Local pending session",
+    titleAuto: false,
+    titleScore: 1,
+    createdAt: Date.parse("2026-04-23T03:30:00Z"),
+    targetType: "model",
+    targetID: "raw-model",
+    targetName: "Raw Model",
+    modelProviderID: "",
+    modelID: "",
+    toolIDs: [],
+    skillIDs: [],
+    mcpIDs: [],
+    messages,
+    messagesLoaded: true,
+    serverBacked: true,
+    ...patch,
+  };
 }
 
 describe("ConversationRuntimeProvider", () => {
@@ -674,6 +698,109 @@ describe("ConversationRuntimeProvider", () => {
       expect(messages[1]).toMatchObject({ role: "assistant", text: "Initial answer", status: "done" });
       expect(messages[3]).toMatchObject({ role: "assistant", text: "Fresh answer", status: "done" });
     });
+  });
+
+  it("keeps locally appended messages when a session collection refresh returns a shorter history", async () => {
+    const localMessages = [
+      {
+        id: "message-user-old",
+        role: "user",
+        text: "Initial prompt",
+        at: Date.parse("2026-04-23T03:31:00Z"),
+      },
+      {
+        id: "message-assistant-old",
+        role: "assistant",
+        text: "Initial answer",
+        status: "done",
+        at: Date.parse("2026-04-23T03:32:00Z"),
+      },
+      {
+        id: "message-user-local",
+        role: "user",
+        text: "Fresh local prompt",
+        at: Date.parse("2026-04-23T03:33:00Z"),
+      },
+      {
+        id: "message-assistant-local",
+        role: "assistant",
+        text: "Thinking...",
+        status: "streaming",
+        at: Date.parse("2026-04-23T03:33:01Z"),
+      },
+    ];
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "session-merge-local", "agent-runtime": "" }),
+    );
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        chat: storedChatSession(localMessages),
+      }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "session-merge-local",
+                title: "Remote collection session",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+                messages: [
+                  {
+                    id: "message-user-old",
+                    role: "user",
+                    text: "Initial prompt",
+                    at: "2026-04-23T03:31:00Z",
+                  },
+                  {
+                    id: "message-assistant-old",
+                    role: "assistant",
+                    text: "Initial answer",
+                    status: "done",
+                    at: "2026-04-23T03:32:00Z",
+                  },
+                ],
+              },
+            ],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+        case "/api/agents":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-list-session-title")).toHaveTextContent("Remote collection session"));
+    const messages = JSON.parse(screen.getByTestId("message-list").textContent || "[]") as Array<{
+      id: string;
+      text: string;
+      status: string;
+    }>;
+    expect(messages).toHaveLength(4);
+    expect(messages[2]).toMatchObject({ id: "message-user-local", text: "Fresh local prompt" });
+    expect(messages[3]).toMatchObject({ id: "message-assistant-local", text: "Thinking...", status: "streaming" });
   });
 
   it("uploads draft images into the session workspace before they are persisted locally", async () => {
@@ -1588,7 +1715,7 @@ describe("ConversationRuntimeProvider", () => {
 
     view.unmount();
 
-    render(
+    const nextView = render(
       <ConversationRuntimeProvider route="agent-runtime" language="en">
         <AgentTargetSelectionHarness />
       </ConversationRuntimeProvider>,
@@ -1596,6 +1723,7 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("current-target")).toHaveTextContent("agent:writing:Writing Agent"));
     expect(screen.getByTestId("active-target-option")).toHaveTextContent("writing");
+    nextView.unmount();
   });
 
   it("loads agent session profile details for the active runtime session", async () => {

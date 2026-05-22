@@ -272,7 +272,7 @@ function useConversationWorkspaceController(
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
   const { timelineScreenRef, workspaceBodyRef } = sharedRefs;
   const activeTimelineSessionRef = useRef("");
-  const timelineBottomPinnedSessionRef = useRef("");
+  const previousTimelineItemCountRef = useRef(0);
   const activeMessages = runtime.activeSession?.messages || [];
   const activeSessionID = runtime.activeSession?.id || "";
   const isEmptyState = activeMessages.length === 0;
@@ -435,15 +435,18 @@ function useConversationWorkspaceController(
     [activeMessages, language, runtime.toggleAgentProcess],
   );
   useLayoutEffect(() => {
-    if (activeTimelineSessionRef.current !== activeSessionID) {
-      activeTimelineSessionRef.current = activeSessionID;
-      timelineBottomPinnedSessionRef.current = "";
-    }
+    const previousSessionID = activeTimelineSessionRef.current;
+    const previousItemCount = previousTimelineItemCountRef.current;
+    const sessionChanged = previousSessionID !== activeSessionID;
+    const appendedMessages = activeMessages.slice(previousItemCount);
+    const userMessageAppended = appendedMessages.some((message) => message.role === "user");
+    const messageAppended = !sessionChanged && activeSessionID && timelineItems.length > previousItemCount && userMessageAppended;
+    activeTimelineSessionRef.current = activeSessionID;
+    previousTimelineItemCountRef.current = timelineItems.length;
     if (!activeSessionID) {
-      timelineBottomPinnedSessionRef.current = "";
       return;
     }
-    if (timelineBottomPinnedSessionRef.current === activeSessionID || timelineItems.length === 0) {
+    if (timelineItems.length === 0 || (!sessionChanged && !messageAppended)) {
       return;
     }
 
@@ -461,11 +464,10 @@ function useConversationWorkspaceController(
         pinToBottom();
       }
     });
-    timelineBottomPinnedSessionRef.current = activeSessionID;
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeSessionID, timelineItems.length, timelineScreenRef]);
+  }, [activeMessages, activeSessionID, timelineItems.length, timelineScreenRef]);
   const timelineEmptyState = useMemo(
     () => (
       <div className="conversation-empty-state">

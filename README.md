@@ -108,14 +108,14 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - `Chat / Agent Runtime` 统一使用 terminal-style workspace：左侧主导航之外，运行页内部固定为会话列、主时间线工作区、底部 Composer 与固定 workspace header；header 统一只保留当前会话标题、状态按钮与 `Details` 入口，`Details` 面板顶部先用紧凑摘要栅格承载会话元数据，再由各页面继续展开专属配置内容。消息、过程步骤与最终输出都落在同一时间线中推进，不再保留桥接期的欢迎区 / runtime sheet 双轨壳层。会话列、workspace、chat screen 与 composer 全部由共享的 `RuntimeWorkspaceShell / RuntimeComposer / RuntimeWorkspaceHeader / RuntimeTimeline` 直接渲染，运行页公共 DOM 以 `runtime-*` 为唯一主契约，三条运行页只在各自路由内注入数据和变体皮肤。
 - `Chat / Agent Runtime` 的 `Process` 阅读区在桌面与移动端都保持整列可读宽度：步骤标题与正文共享统一的缩放/换行约束，长中文句子、路径和命令说明优先在当前消息容器内换行，不允许在真机窄屏下塌缩成逐字竖排窄列；若历史或流式过程文本混入零宽断行字符，或被异常写成“每字一行”的病态段落，前端展示层需在渲染前做归一化修正。
 - `Chat / Agent Runtime` 的消息时间线在内容较少时仍需保持顶部收口：少量消息、短回复、折叠后的 `Process` 卡片与时间戳继续贴近各自消息块排布，不得因为满高时间线轨道被拉伸而出现大块垂直留白。
-- `Chat / Agent Runtime / Terminal` 打开已有内容的会话或切换到其他会话时，消息时间线或 Terminal 输出区默认定位到最新内容所在的底部；同一会话后续流式更新、轮询刷新或 Process 展开不强制抢回滚动位置，保留用户阅读历史时的手动滚动状态。
+- `Chat / Agent Runtime / Terminal` 打开已有内容的会话或切换到其他会话时，消息时间线或 Terminal 输出区默认定位到最新内容所在的底部；同一会话内发送新消息后，当前活动时间线会跟随本轮新增消息回到底部，确保用户立即看到刚发出的用户消息和助手占位回复。后续流式 patch、轮询刷新或 Process 展开不强制抢回滚动位置，保留用户阅读历史时的手动滚动状态。
 - `Chat / Agent Runtime / Terminal` 的阅读定位条必须以悬浮 overlay 形式停靠在消息区右下角，不参与时间线正文排版；空白会话或少量消息场景下，消息区本身不得因为定位条占位而被额外撑高并出现无意义滚动。
 - `Chat / Agent Runtime` 的会话图片资产统一落在当前 Session 工作区：用户选图后前端通过 `POST /api/sessions/{session_id}/attachments` 把原图与预览图写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，随后消息请求、最近会话恢复与页面重开都只保留 `asset_url / preview_url` 引用；其中 `preview_url` 仅用于输入区、列表等缩略位，消息时间线回显与预览弹层必须优先读取 `asset_url` 原图，避免再次查看时被 240px 级预览图放大。assistant 最终回复里的外链 markdown 图片也会在返回前下载进同一目录并改写成本地附件 URL，避免会话历史长期依赖远端外链或把原始大图 `data_url` 堆进浏览器存储。
 - `Chat / Agent Runtime` 首页 Composer 收敛为双层紧凑输入面：上层为单一主输入区，下层工具栏左侧提供正方形低圆角的会话设置与附件按钮，右侧提供紧凑 icon submit；桌面与移动端都压缩外层留白、输入高度和发送按钮体量，同时保持主输入区满宽铺开、具备足够横向留白和更高的可读输入面；发送按钮直接复用 Terminal 的紧凑 icon submit 皮肤；PC 端上传、发送、状态、详情和短标识控件都采用低圆角矩形，输入区、底部工具栏、会话卡片和 `Details` 面板沿同一套浅色 terminal-runtime 皮肤出图，不再混用默认 terminal footer slab 与旧式轻表单观感；会话设置面板打开后，点击面板外任意区域都会立即关闭，点击主输入框时也先收起面板再继续输入；移动端在输入框已聚焦时，首触 `Session` 入口就必须直接打开面板，不允许出现先收键盘、再点第二次才能展开的状态；空态工作区不允许保留可拖拽滚动，把头部和输入区顶离可视区。
 - `Chat / Agent Runtime / Terminal` 移动端主输入框固定使用不低于 16px 的输入字号，避免 iOS Safari 在重新打开浏览器后聚焦输入法时触发页面自动缩放、横向裁切或分辨率突变。
 - `Chat / Agent Runtime` 的桌面端输入链路优先保证低延迟：草稿写入先更新当前输入态，再延迟落盘到浏览器草稿缓存；消息时间线、Markdown 输出与 Process 结构在仅有草稿变化时不得整段重建，避免长会话下输入时出现明显卡顿。
 - `Chat / Agent Runtime` Composer 支持最多 5 张图片附件：前端按会话草稿缓存附件、提供缩略图预览与移除操作，用户消息时间线与最近会话恢复仅保留稳定图片资产引用，不再重复持久化原始大图 payload；缩略条继续消费预览图，但再次查看、时间线回显与放大预览统一回到原图资源。助手消息中的 markdown 图片会直接以内联图片方式懒加载显示。仅支持视觉输入的模型允许发送带图消息；图片请求不会切到异步 Task，也不会在模型链失败后静默降级到 Codex 文本执行。
-- `Chat / Agent Runtime` 的会话侧栏与消息时间线现在以服务端恢复为准：运行页通过专用会话读取接口从持久化 Session history 恢复会话摘要、目标 Agent、Model、Tools / Skills / MCP 选择与历史消息；页面初始化中的详情回填若晚于本地新发消息，不得覆盖当前未完成或更新中的本地时间线。
+- `Chat / Agent Runtime` 的会话侧栏与消息时间线现在以服务端恢复为准：运行页通过专用会话读取接口从持久化 Session history 恢复会话摘要、目标 Agent、Model、Tools / Skills / MCP 选择与历史消息；页面初始化中的详情回填若晚于本地新发消息，或集合接口暂时只返回较短历史，不得覆盖当前未完成或更新中的本地时间线。
 - `Chat / Agent Runtime` 刷新恢复采用“双层快照 + 服务端回源”策略：浏览器本地除当前活动会话外，还会保留最近会话列表的轻量快照；当服务端集合接口短暂漏掉某个刚创建或最近活跃的会话时，前端仍保留该会话在侧栏中的可见性，并继续按 `session_id` 单独回源详情，避免刷新其他会话后新会话从列表里瞬时消失。即使集合接口已经返回当前会话的摘要项，只要本地仍残留 `Thinking...`、`Load failed` 或其他流式失败态，运行页也会继续补拉单会话详情，并用服务端已持久化的 assistant 结果覆盖本地快照。
 - `Chat / Agent Runtime` 的 Web 会话执行已与浏览器请求生命周期解耦：页面刷新、前端 SSE 断开或标签页短暂切走只会中断当前流式传输，不会取消服务端已接受的会话执行；刷新后的恢复继续优先按当前 `session_id` 回源服务端详情与状态 registry，避免本轮已发出的消息因为前端断连而整轮丢失。
 - `Chat / Agent Runtime / Terminal` 会把当前活动会话同步写入 URL query，用于刷新后的精确恢复：`chat` 使用 `chat_session_id`，`agent-runtime` 使用 `agent_session_id`，`terminal` 使用 `terminal_session_id`。切换会话时参数即时更新；刷新、前后台切换或直接打开当前 URL 时，前端优先按对应 query 参数恢复目标会话，再回退到本地快照与服务端列表默认项。
@@ -134,6 +134,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - Runtime 配置统一通过 workspace `Details` 面板切换，不再使用独立 bridge sheet；`Details` 默认先展示高密度摘要区，字段标签、复制按钮和多行内容按统一紧凑规格排列，并以顶层浮层方式覆盖在运行页上方，打开时不再推动消息区或对话框位置；浮层最大可视区域保持克制，内部 tab/按钮支持再次点击只收起当前配置内容且保留 `Details` 面板，点击浮层外区域或按 `Escape` 才关闭整个面板，移动端仍要求面板与输入区互不遮挡，切换时优先保证输入焦点、键盘占位和主动作可达。
 - `Agent` 选项卡片在会话设置中使用短摘要展示：优先显示 Agent description，并限制在简短可扫读的卡片文案内；完整 system prompt 不直接出现在选择面板里。
 - `Chat / Agent Runtime / Terminal` 会话侧栏为每个会话展示同一规则生成的 8 位短 hash 标识，便于在预览地址、排障记录和跨端沟通中引用同一会话；完整会话 id 与 `terminal_session_id` 只作为接口、持久化和工作区隔离标识，不直接铺在列表底部。
+- `Chat / Agent Runtime` 的消息请求被服务端接受后会立即把本轮 `user` 消息写入 Session history，assistant 结果在执行完成后追加；浏览器刷新、关闭或 SSE 断开不会让已发送的用户消息只停留在前端缓存里。
 - 会话设置中连续勾选 `Skill / Tool / MCP` 时，当前滚动位置需保持稳定，不能在每次勾选后跳回顶部。
 - `Chat` 会话设置面板中的标题、说明与右侧标签在窄宽度下需保持可读：主标题按可用宽度截断，说明文案允许换行，避免发生重叠或互相覆盖。
 - Web 前端所有时间展示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Chat、Agent、Terminal、Task、Cron 以及 Settings/Control 管理页都不再跟随浏览器本地时区漂移，Cron 表单默认时区固定为 `Asia/Shanghai`。

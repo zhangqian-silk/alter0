@@ -62,9 +62,10 @@ func NewSessionPersistenceService(
 }
 
 func (s *SessionPersistenceService) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+	s.persistUserMessage(msg)
 	result, err := s.downstream.Handle(ctx, msg)
 	result = s.materializeAssistantImages(msg.SessionID, result)
-	s.persistResult(msg, result, err)
+	s.persistAssistantResult(msg, result, err)
 	return result, err
 }
 
@@ -82,6 +83,7 @@ func (s *SessionPersistenceService) HandleStream(
 	msg shareddomain.UnifiedMessage,
 	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
+	s.persistUserMessage(msg)
 	var (
 		result shareddomain.OrchestrationResult
 		err    error
@@ -100,11 +102,44 @@ func (s *SessionPersistenceService) HandleStream(
 		}
 	}
 	result = s.materializeAssistantImages(msg.SessionID, result)
-	s.persistResult(msg, result, err)
+	s.persistAssistantResult(msg, result, err)
 	return result, err
 }
 
-func (s *SessionPersistenceService) persistResult(
+func (s *SessionPersistenceService) persistUserMessage(msg shareddomain.UnifiedMessage) {
+	if s.recorder == nil {
+		return
+	}
+
+	userTimestamp := normalizePersistTimestamp(msg.ReceivedAt)
+	taskID := ""
+	if len(msg.Metadata) > 0 {
+		taskID = strings.TrimSpace(msg.Metadata["task_id"])
+	}
+	source := buildSessionSource(msg)
+
+	persistErr := s.recorder.Append(sessiondomain.MessageRecord{
+		MessageID: msg.MessageID,
+		SessionID: msg.SessionID,
+		Role:      sessiondomain.MessageRoleUser,
+		Content:   msg.Content,
+		Metadata:  cloneSessionMessageMetadata(msg.Metadata),
+		Timestamp: userTimestamp,
+		Source:    source,
+		RouteResult: sessiondomain.RouteResult{
+			TaskID: taskID,
+		},
+	})
+	if persistErr != nil && s.logger != nil {
+		s.logger.Error("persist session user message failed",
+			slog.String("session_id", msg.SessionID),
+			slog.String("message_id", msg.MessageID),
+			slog.String("error", persistErr.Error()),
+		)
+	}
+}
+
+func (s *SessionPersistenceService) persistAssistantResult(
 	msg shareddomain.UnifiedMessage,
 	result shareddomain.OrchestrationResult,
 	err error,
@@ -134,39 +169,23 @@ func (s *SessionPersistenceService) persistResult(
 		taskID = strings.TrimSpace(msg.Metadata["task_id"])
 	}
 	source := buildSessionSource(msg)
-	persistErr := s.recorder.Append(
-		sessiondomain.MessageRecord{
-			MessageID: msg.MessageID,
-			SessionID: msg.SessionID,
-			Role:      sessiondomain.MessageRoleUser,
-			Content:   msg.Content,
-			Metadata:  cloneSessionMessageMetadata(msg.Metadata),
-			Timestamp: userTimestamp,
-			Source:    source,
-			RouteResult: sessiondomain.RouteResult{
-				Route:     result.Route,
-				ErrorCode: result.ErrorCode,
-				TaskID:    taskID,
-			},
+	persistErr := s.recorder.Append(sessiondomain.MessageRecord{
+		MessageID: assistantMessageID,
+		SessionID: msg.SessionID,
+		Role:      sessiondomain.MessageRoleAssistant,
+		Content:   assistantContent,
+		Metadata:  cloneSessionMessageMetadata(msg.Metadata),
+		Timestamp: assistantTimestamp,
+		Source:    source,
+		RouteResult: sessiondomain.RouteResult{
+			Route:        result.Route,
+			ErrorCode:    result.ErrorCode,
+			TaskID:       taskID,
+			ProcessSteps: append([]shareddomain.ProcessStep(nil), result.ProcessSteps...),
 		},
-		sessiondomain.MessageRecord{
-			MessageID: assistantMessageID,
-			SessionID: msg.SessionID,
-			Role:      sessiondomain.MessageRoleAssistant,
-			Content:   assistantContent,
-			Metadata:  cloneSessionMessageMetadata(msg.Metadata),
-			Timestamp: assistantTimestamp,
-			Source:    source,
-			RouteResult: sessiondomain.RouteResult{
-				Route:        result.Route,
-				ErrorCode:    result.ErrorCode,
-				TaskID:       taskID,
-				ProcessSteps: append([]shareddomain.ProcessStep(nil), result.ProcessSteps...),
-			},
-		},
-	)
+	})
 	if persistErr != nil && s.logger != nil {
-		s.logger.Error("persist session content failed",
+		s.logger.Error("persist session assistant message failed",
 			slog.String("session_id", msg.SessionID),
 			slog.String("message_id", msg.MessageID),
 			slog.String("error", persistErr.Error()),

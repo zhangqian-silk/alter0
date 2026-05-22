@@ -1068,11 +1068,16 @@ function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSession[]): C
   const existingByID = new Map(existing.map((session) => [session.id, session]));
   remote.forEach((session) => {
     const previous = existingByID.get(session.id);
+    const messages = previous && session.messagesLoaded === true && !shouldUseParsedMessages(previous.messages, session.messages)
+      ? previous.messages
+      : session.messages.length > 0 || session.messagesLoaded === true
+        ? session.messages
+        : previous?.messages || [];
     merged.set(session.id, {
       ...previous,
       ...session,
       status: session.status || previous?.status || "",
-      messages: session.messages.length > 0 ? session.messages : previous?.messages || [],
+      messages,
       messagesLoaded:
         typeof session.messagesLoaded === "boolean"
           ? session.messagesLoaded

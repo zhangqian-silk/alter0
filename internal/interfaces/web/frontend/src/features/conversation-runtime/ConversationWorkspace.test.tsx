@@ -96,7 +96,7 @@ vi.mock("../shell/components/ChatMessageRegion", () => ({
   buildChatTimelineItems: buildChatTimelineItemsMock,
 }));
 
-function renderWorkspace(overrides: Partial<WorkbenchContextValue> = {}) {
+function WorkspaceTestFrame({ overrides = {} }: { overrides?: Partial<WorkbenchContextValue> }) {
   const baseContextValue: WorkbenchContextValue = {
     route: "chat",
     language: "en",
@@ -111,47 +111,47 @@ function renderWorkspace(overrides: Partial<WorkbenchContextValue> = {}) {
     ...overrides,
   };
 
-  function ConversationWorkspaceHarness() {
-    const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(() => {
-      if (baseContextValue.mobileNavOpen) {
-        return "nav";
-      }
-      if (baseContextValue.mobileSessionPaneOpen) {
-        return "sessions";
-      }
-      return null;
-    });
-    const contextValue: WorkbenchContextValue = {
-      ...baseContextValue,
-      mobileNavOpen: mobilePanel === "nav",
-      mobileSessionPaneOpen: mobilePanel === "sessions",
-      toggleMobileNav: () => {
-        baseContextValue.toggleMobileNav();
-        setMobilePanel((current) => current === "nav" ? null : "nav");
-      },
-      toggleMobileSessionPane: () => {
-        baseContextValue.toggleMobileSessionPane();
-        setMobilePanel((current) => current === "sessions" ? null : "sessions");
-      },
-      closeMobileNav: () => {
-        baseContextValue.closeMobileNav();
-        setMobilePanel((current) => current === "nav" ? null : current);
-      },
-      closeMobileSessionPane: () => {
-        baseContextValue.closeMobileSessionPane();
-        setMobilePanel((current) => current === "sessions" ? null : current);
-      },
-    };
+  const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(() => {
+    if (baseContextValue.mobileNavOpen) {
+      return "nav";
+    }
+    if (baseContextValue.mobileSessionPaneOpen) {
+      return "sessions";
+    }
+    return null;
+  });
+  const contextValue: WorkbenchContextValue = {
+    ...baseContextValue,
+    mobileNavOpen: mobilePanel === "nav",
+    mobileSessionPaneOpen: mobilePanel === "sessions",
+    toggleMobileNav: () => {
+      baseContextValue.toggleMobileNav();
+      setMobilePanel((current) => current === "nav" ? null : "nav");
+    },
+    toggleMobileSessionPane: () => {
+      baseContextValue.toggleMobileSessionPane();
+      setMobilePanel((current) => current === "sessions" ? null : "sessions");
+    },
+    closeMobileNav: () => {
+      baseContextValue.closeMobileNav();
+      setMobilePanel((current) => current === "nav" ? null : current);
+    },
+    closeMobileSessionPane: () => {
+      baseContextValue.closeMobileSessionPane();
+      setMobilePanel((current) => current === "sessions" ? null : current);
+    },
+  };
 
-    return (
-      <WorkbenchContext.Provider value={contextValue}>
-        <ConversationWorkspace language="en" />
-      </WorkbenchContext.Provider>
-    );
-  }
+  return (
+    <WorkbenchContext.Provider value={contextValue}>
+      <ConversationWorkspace language="en" />
+    </WorkbenchContext.Provider>
+  );
+}
 
+function renderWorkspace(overrides: Partial<WorkbenchContextValue> = {}) {
   return render(
-    <ConversationWorkspaceHarness />,
+    <WorkspaceTestFrame overrides={overrides} />,
   );
 }
 
@@ -347,6 +347,131 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "New" }));
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the active timeline pinned to the bottom when new messages are appended", async () => {
+    let scrollHeightValue = 120;
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "New",
+      messages: [
+        { id: "message-1", role: "assistant" },
+      ],
+    };
+    runtimeMock.sessions = [
+      runtimeMock.activeSession,
+    ];
+
+    try {
+      const view = renderWorkspace();
+      const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement | null;
+      expect(screenNode).toBeTruthy();
+      if (!screenNode) {
+        return;
+      }
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screenNode.scrollTop).toBe(120);
+
+      screenNode.scrollTop = 32;
+      scrollHeightValue = 520;
+      runtimeMock.activeSession = {
+        ...runtimeMock.activeSession,
+        messages: [
+          { id: "message-1", role: "assistant" },
+          { id: "message-2", role: "user" },
+          { id: "message-3", role: "assistant" },
+        ],
+      };
+      runtimeMock.sessions = [
+        runtimeMock.activeSession,
+      ];
+
+      view.rerender(<WorkspaceTestFrame />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screenNode.scrollTop).toBe(520);
+    } finally {
+      if (scrollHeightDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);
+      } else {
+        delete (HTMLElement.prototype as unknown as { scrollHeight?: number }).scrollHeight;
+      }
+    }
+  });
+
+  it("does not pull the active timeline to the bottom for assistant-only appends", async () => {
+    let scrollHeightValue = 120;
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "New",
+      messages: [
+        { id: "message-1", role: "user" },
+        { id: "message-2", role: "assistant" },
+      ],
+    };
+    runtimeMock.sessions = [
+      runtimeMock.activeSession,
+    ];
+
+    try {
+      const view = renderWorkspace();
+      const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement | null;
+      expect(screenNode).toBeTruthy();
+      if (!screenNode) {
+        return;
+      }
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screenNode.scrollTop).toBe(120);
+
+      screenNode.scrollTop = 32;
+      scrollHeightValue = 520;
+      runtimeMock.activeSession = {
+        ...runtimeMock.activeSession,
+        messages: [
+          { id: "message-1", role: "user" },
+          { id: "message-2", role: "assistant" },
+          { id: "message-3", role: "assistant" },
+        ],
+      };
+      runtimeMock.sessions = [
+        runtimeMock.activeSession,
+      ];
+
+      view.rerender(<WorkspaceTestFrame />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screenNode.scrollTop).toBe(32);
+    } finally {
+      if (scrollHeightDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);
+      } else {
+        delete (HTMLElement.prototype as unknown as { scrollHeight?: number }).scrollHeight;
+      }
+    }
   });
 
   it("renders the four shared jump buttons for chat timelines", () => {
