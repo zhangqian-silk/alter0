@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-04-29
+> Last update: 2026-05-24
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `agent.execution.react`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -127,7 +127,7 @@
 - Agent 采用 ReAct 执行链，负责理解用户目标、吸收 system prompt / Skill / Memory 与运行时上下文，并把具体执行交给 `codex_exec`。
 - 稳定工具面包含 `codex_exec`、`search_memory`、`read_memory`、`write_memory` 与运行时收口工具 `complete`；允许委派的 Agent 可额外使用 `delegate_agent`。
 - 当 `complete` 可用时，运行时必须要求 Agent 通过 `complete` 显式收口；普通 assistant 文本回复不能直接视为完成。
-- `travel` 的显示名称为 `Travel Agent`；该 Agent 新建会话默认启用 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`find-skills`、`ui-ux-pro-max` 与 `brainstorming` 等公有 Skill，并继续强制注入自身私有 Skill。除正常对话答案外，`travel` 还必须额外生成一份 HTML 旅游攻略，并发布到当前 Session 的公开只读子域名 `https://travel-<session_short_hash>.alter0.cn`。`travel` 的运行时完成判定不再硬编码在执行器内部，而是通过 Agent 通用 `completion_checks` 声明“Session 工作区根目录存在 `index.html`”与“当前 Session 已成功发布公开只读 `travel` 服务且存在公开 URL”两项必过检查；运行时不得自动补写、伪造或代发 fallback 页面来冒充交付，但允许在最终收口前注入一轮仅作用于当前 Session 工作区的专门 Codex 修复任务，用于补齐缺失的 `index.html` 与 `travel` 发布。修复轮本身仍需真实生成页面并真实完成发布，不能伪造交付结果。新生成的攻略页必须同时满足桌面端与移动端可读、可浏览和稳定排版。内容结构上，HTML 需先列出分类推荐池，再制定行程计划；吃喝方向至少区分小吃、早点、特色菜、特色饮品并兼顾老字号与大众点评高分项，景点方向至少区分公园、博物馆、表演等类型，住宿方向需给出不同价格带或档位的热门酒店；在这些核心分类之外，Agent 还需根据城市实际情况灵活增补夜游、集市、游船、温泉、滑雪、庙会等城市特有分类；各类推荐必须附带明确数据来源。`guide_html_url` 只在 HTML 攻略已成功发布且公开只读 `travel` 服务已存在时才可作为交付结果暴露，不能预分配或伪造。
+- `travel` 的显示名称为 `Travel Agent`；该 Agent 新建会话默认启用 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`find-skills`、`ui-ux-pro-max` 与 `brainstorming` 等公有 Skill，并继续强制注入自身私有 Skill。除正常对话答案外，`travel` 还必须额外生成一份 HTML 旅游攻略，并发布到当前 Session 的公开只读子域名 `https://travel-<session_short_hash>.alter0.cn`。`travel` 的运行时完成判定不再硬编码在执行器内部，而是通过 Agent 通用 `completion_checks` 声明“Session 工作区根目录存在 `index.html`”与“当前 Session 已成功发布公开只读 `travel` 服务且存在公开 URL”两项必过检查；运行时不得自动补写、伪造或代发 fallback 页面来冒充交付，但允许在最终收口前注入一轮仅作用于当前 Session 工作区的专门 Codex 修复任务，用于补齐缺失的 `index.html` 与 `travel` 发布。修复轮本身仍需真实生成页面并真实完成发布，不能伪造交付结果。新生成的攻略页必须以移动端为主视口，优先保证手机单列阅读、触控操作、紧凑章节节奏、关键内容首屏可扫读和无横向溢出；PC 端作为辅助视口做渐进增强，保持可读、可浏览和稳定排版，但不得牺牲移动端体验。所有涉及路线的信息都应尽量提供路线图或路线卡表达，包括总体日程、每日路线、交通指南、步行段、换乘段、轮渡/船行段和地图提示；路线表达需用编号站点、连线路径、分段交通方式、预计步行/公交/轮渡时间和地标提示承载，缺少精确地理形态时也应提供示意路线卡。内容结构上，HTML 需先列出分类推荐池，再制定行程计划；吃喝方向至少区分小吃、早点、特色菜、特色饮品并兼顾老字号与大众点评高分项，景点方向至少区分公园、博物馆、表演等类型，住宿方向需给出不同价格带或档位的热门酒店；在这些核心分类之外，Agent 还需根据城市实际情况灵活增补夜游、集市、游船、温泉、滑雪、庙会等城市特有分类；各类推荐必须附带明确数据来源。`guide_html_url` 只在 HTML 攻略已成功发布且公开只读 `travel` 服务已存在时才可作为交付结果暴露，不能预分配或伪造。
 - `travel` 的完成判定必须同时校验两项交付前提：当前 Session 工作区根目录存在 `index.html`，且当前 Session 已成功注册公开只读 `travel` 服务；缺失任一条件时，运行时必须拒绝 `complete` 成功收口。
 - 当 `travel` 先产出正文攻略、但当前 Session 工作区根目录尚未存在当前请求对应的 `index.html` 时，运行时必须先把 HTML 交付视为阻塞；允许按当前 Session 范围额外触发一轮专门的 Codex 修复任务补齐 `index.html` 与 `travel` 发布，但不得自动补写页面或代替 Agent 发布任何伪造的 fallback 页面。若修复轮仍未产出真实页面或真实发布结果，最终状态必须保持阻塞。
 - `codex_exec` 通过 stdin 传递最终指令；存在可用 Provider 且进入 Agent / ReAct 链路时，仅向 Codex 下发当前步骤指令；不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时会为当前会话生成原生 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 `runtime_context`、`skill_context`、`mcp_context`、`memory_context` 编译成 Codex 原生运行配置与工作区事实，并持久化 Codex CLI thread id 用于后续同 Session 直连 Codex 续写。
