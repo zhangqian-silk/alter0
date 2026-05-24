@@ -60,7 +60,7 @@
 - 刷新页面或切到其他会话后，`Chat / Agent Runtime` 仍需保住最近已知会话列表：浏览器侧最近会话快照至少覆盖当前活动会话之外的最近若干条会话；当服务端集合接口暂时漏掉其中某条会话时，侧栏不得立刻把该会话删除，而应继续保留本地条目并等待单会话详情或后续集合结果确认。
 - `Chat / Agent Runtime` 的会话存在性与恢复状态需由服务端会话 registry 承担第一责任：消息入口在请求开始、完成、失败时分别写入 `busy / ready / failed` 等稳定状态，运行页列表与单会话详情优先读取该 registry，再与 Session history 合并，避免因浏览器刷新、SSE 断链或前端本地状态丢失导致会话“消失”或直接 `load failed`。
 - Agent 执行过程需以结构化 `process_steps` 贯穿 SSE `done`、Task 结果与会话历史持久化，前端优先消费结构化步骤而不是依赖解析 `[agent] action / observation` 文本。
-- 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新。
+- 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新；React 托管的普通页面也需对正文型字段提供同一安全 Markdown 渲染能力，覆盖 Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明与 Session Profile 非等宽字段。ID、路径、密钥、配置值、时间戳等元数据字段继续按纯文本或等宽字段展示。
 - `Chat / Agent Runtime` 的消息阅读结构统一采用 terminal-style timeline：用户消息按 prompt row、执行过程按可折叠 `Process`、最终回复按 markdown shell 展示，不再回退到传统左右气泡对话布局。
 - `Agent Runtime` 中除主助手外的专项 Agent 需显式声明 deliverables contract，作为本轮运行必须收口的最终交付物约束；前端在 `Details` 中直接展示这份契约，并在可用时关联当前 Session Profile 中的 URL/路径类实例属性。
 - Agent 还需支持独立的 `completion_checks` 机器规则，用于把交付契约下沉为可执行的运行时产物检查。`deliverables` 负责用户可见契约与 prompt 约束，`completion_checks` 负责文件存在、公开 URL、workspace service 发布状态、Session 属性非空等确定性校验，并可在失败时声明一轮仅面向当前 Session 的 Codex 修复指令。

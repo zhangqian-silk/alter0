@@ -180,6 +180,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 - 聊天气泡支持标题、列表、引用、链接、行内代码与代码块。
 - 助手消息中的 markdown 图片按消息媒体统一以内联图片显示，使用浏览器懒加载策略，并保持链接可直接打开原图。
+- React 托管页面的正文型内容统一复用运行页 Markdown 渲染器：Memory 长期/天级/强制/说明文档、Task 请求与结果、任务日志和产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明以及 Agent Runtime `Session Profile` 中的非等宽字段，都按 Markdown 正文渲染。ID、路径、密钥、配置值、时间戳和分支名等元数据保持纯文本或等宽展示，避免把机器标识误解析成富文本。
 - 原始 HTML 不直接透传。
 - 长路径、超长单词、代码块和 diff 只允许在内容块内部横向滚动，不撑破外层消息容器。
 

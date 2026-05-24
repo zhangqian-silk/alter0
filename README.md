@@ -87,6 +87,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 `Chat / Agent Runtime` 的消息区也已与 Terminal 时间线结构对齐：用户输入按 prompt row 展示，Agent 中间步骤按可折叠 `Process` 展示，最终答复直接进入带复制按钮的 markdown shell，不再使用传统左右对话气泡包装正文。
 `/chat` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 内可通过语言切换入口改为中文，运行时文案与 `document.documentElement.lang` 同步更新。登录页与工作台共享 `IBM Plex Sans + Sora` 字体基线、近白卡片表面与安全入口语气，不再保留独立的默认系统登录页观感。Web Shell 与受保护预览工作区统一要求密码登录，静态只读预览 host 保留免密访问。
 控制类与资产类页面默认采用更高信息密度的管理视图：`Profiles` 使用短字段并排的紧凑表单栅格与显式启用开关，`Tasks` 使用左侧任务列表 + 右侧运行详情的主从布局，`Memory` 的任务历史使用表格 + 详情侧栏，`Environments` 使用运行态工具栏 + 模块卡片栅格展示配置项，并在同页提供敏感值显隐、保存、重载、重启与审计视图，`Codex Accounts` 使用精简后的运行时概览条 + 当前 Codex 管理区 + 托管账号卡片列表 + 导入/登录操作侧栏：概览条优先展示当前账号、套餐、小时/周剩余额度与托管数量，维护类信息如 auth/config 路径、CLI 命令与配置来源收纳到 `Runtime Details` 折叠区；当前 Codex 管理区的 model 与思考深度选项直接来自 Codex app-server 返回的真实能力列表。`Channels / Skills / MCP / Models / Cron Jobs` 这组共享控制台卡片页统一复用稳定的响应式卡片网格，真窄屏下状态徽标会下沉到标题区下方、字段行改为单列展开，避免标题、徽标、复制按钮与多行字段互相挤压；`Agent` 的列表卡片、管理表单与详情区统一使用近白表面、浅灰说明层与浅蓝选中态。大屏保留“列表 + 侧栏”结构，中屏切换为全宽账号区 + 双侧栏，小屏回落为单列卡片，确保额度信息、当前 model、思考深度与切换入口始终可见。
+所有 React 托管页面的正文型内容统一支持安全 Markdown 渲染：消息最终回复、Process 说明、Terminal 输出、Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明与 Session Profile 的非等宽字段都会复用同一渲染器。渲染器支持标题、列表、引用、链接、图片、行内代码与代码块，并过滤 `javascript:` 等不安全链接；ID、路径、密钥、配置值、时间戳和其他元数据字段继续按纯文本或等宽字段展示。
 
 前端开发态支持双向代理联调：为 Go 服务设置 `ALTER0_WEB_FRONTEND_DEV_ORIGIN=http://127.0.0.1:5173` 后，访问 `http://127.0.0.1:18088/chat` 会转到 Vite dev server；为 Vite 设置 `ALTER0_WEB_BACKEND_ORIGIN=http://127.0.0.1:18088` 后，`npm run dev` 会把 `/api`、登录与健康检查请求代理回 Go 服务。
 

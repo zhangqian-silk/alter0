@@ -2,6 +2,7 @@ import { useContext, useEffect, useState } from "react";
 import { WorkbenchContext } from "../../../app/WorkbenchContext";
 import { createAPIClient } from "../../../shared/api/client";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
+import { RouteMarkdownContent } from "./RouteBodyPrimitives";
 
 const AGENT_ROUTE_STORAGE_KEY = "alter0.web.agent-route.v1";
 
@@ -386,7 +387,7 @@ export function ReactManagedAgentRouteBody({
                       {agent.enabled !== false ? "Enabled" : "Disabled"}
                     </span>
                   </div>
-                  <p className="agent-route-card-prompt">{normalizeText(agent.system_prompt)}</p>
+                  <RouteMarkdownContent className="agent-route-card-prompt" value={agent.system_prompt} />
                   <div className="agent-route-card-tags">
                     {buildAgentTagList(agent).map((tag) => (
                       <span key={`${agentID}-${tag}`}>{tag}</span>
@@ -613,7 +614,7 @@ function OptionSection({
               />
               <span className="agent-builder-option-copy">
                 <strong>{option.name}</strong>
-                {option.description ? <small>{option.description}</small> : null}
+                {option.description ? <RouteMarkdownContent className="agent-builder-option-description" value={option.description} /> : null}
               </span>
             </label>
           );

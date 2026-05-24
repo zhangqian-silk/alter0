@@ -11,7 +11,7 @@ import {
 } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 import { copyTextValue } from "./copyTextValue";
-import { normalizeText, RouteTagSection } from "./RouteBodyPrimitives";
+import { normalizeText, RouteMarkdownContent, RouteTagSection } from "./RouteBodyPrimitives";
 
 const TASK_ROUTE_FILTERS_STORAGE_KEY = "alter0.web.tasks.route-filters.v1";
 const TASK_ROUTE_PAGE_SIZE = 20;
@@ -1663,28 +1663,7 @@ function TaskResultOutput({ content }: { content: string | undefined }) {
   if (!text) {
     return <p>-</p>;
   }
-
-  const items = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const bullets = items.filter((line) => line.startsWith("- "));
-  if (bullets.length === items.length) {
-    return (
-      <ul>
-        {bullets.map((line) => (
-          <li key={line}>{line.replace(/^- /, "")}</li>
-        ))}
-      </ul>
-    );
-  }
-  return (
-    <>
-      {items.map((line) => (
-        <p key={line}>{line.replace(/^- /, "")}</p>
-      ))}
-    </>
-  );
+  return <RouteMarkdownContent value={text} />;
 }
 
 function normalizeFilterValue(value: unknown) {

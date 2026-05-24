@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTimeMinute } from "../../../shared/time/format";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
+import { RouteMarkdownContent } from "./RouteBodyPrimitives";
 
 type AccountRecord = {
   name?: string;
@@ -630,10 +631,10 @@ export function ReactManagedCodexAccountsRouteBody({
 
               <div className="codex-accounts-runtime-selection">
                 {selectedRuntimeModel && normalizeText(selectedRuntimeModel.description) ? (
-                  <p className="codex-accounts-runtime-note">{selectedRuntimeModel.description}</p>
+                  <RouteMarkdownContent className="codex-accounts-runtime-note" value={selectedRuntimeModel.description} />
                 ) : null}
                 {selectedReasoningMode && normalizeText(selectedReasoningMode.description) ? (
-                  <p className="codex-accounts-runtime-note">{selectedReasoningMode.description}</p>
+                  <RouteMarkdownContent className="codex-accounts-runtime-note" value={selectedReasoningMode.description} />
                 ) : null}
               </div>
 
@@ -861,7 +862,7 @@ export function ReactManagedCodexAccountsRouteBody({
                 {normalizeText(loginSession.logs) ? (
                   <div className="codex-accounts-logs">
                     <strong>{copy.loginLogs}</strong>
-                    <pre>{loginSession.logs}</pre>
+                    <RouteMarkdownContent className="codex-accounts-log-content" value={loginSession.logs} />
                   </div>
                 ) : null}
               </div>

@@ -31,6 +31,7 @@ export type RuntimeWorkspaceDetailsField = {
   copyable?: boolean;
   mono?: boolean;
   multiline?: boolean;
+  markdown?: boolean;
 };
 
 export type RuntimeWorkspaceSessionTone = "ready" | "busy" | "failed";
@@ -107,6 +108,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
                   copyable={field.copyable}
                   mono={field.mono}
                   multiline={field.multiline}
+                  markdown={field.markdown}
                 />
               ))}
             </div>

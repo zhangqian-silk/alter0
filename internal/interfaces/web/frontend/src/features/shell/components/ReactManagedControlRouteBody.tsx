@@ -10,6 +10,7 @@ import {
   normalizeText,
   RouteCard,
   RouteFieldRow,
+  RouteMarkdownContent,
   RouteTagSection,
 } from "./RouteBodyPrimitives";
 
@@ -484,6 +485,7 @@ type FieldSpec = {
   multiline?: boolean;
   preview?: boolean;
   clampLines?: number;
+  markdown?: boolean;
 };
 
 type RequestState =
@@ -529,6 +531,7 @@ const ROUTE_CONFIG: Record<ReactManagedControlRoute, RouteConfig> = {
         multiline: true,
         preview: true,
         clampLines: 3,
+        markdown: true,
       },
     ],
   },
@@ -609,6 +612,7 @@ const ROUTE_CONFIG: Record<ReactManagedControlRoute, RouteConfig> = {
         multiline: true,
         preview: true,
         clampLines: 3,
+        markdown: true,
       },
     ],
   },
@@ -631,6 +635,7 @@ const ROUTE_CONFIG: Record<ReactManagedControlRoute, RouteConfig> = {
         multiline: true,
         preview: true,
         clampLines: 2,
+        markdown: true,
       },
       { label: copy.fieldRetryLimit, value: (item as CronJobRouteRecord).task_config?.retry_limit },
     ],
@@ -1062,7 +1067,10 @@ function ReactManagedEnvironmentRouteBody({
                           </div>
                           <div className="environment-description">
                             <span>{copy.fieldDescription}</span>
-                            <p className="environment-description-text">{normalizeText(item.definition?.description)}</p>
+                            <RouteMarkdownContent
+                              className="environment-description-text"
+                              value={item.definition?.description}
+                            />
                           </div>
                           <label className="environment-input-row">
                             <span>{copy.currentValue}</span>
@@ -1094,7 +1102,7 @@ function ReactManagedEnvironmentRouteBody({
                               <RouteFieldRow label={copy.fieldDefault} value={item.definition?.default_value} copyLabel={copy.copyValue} mono multiline />
                               <RouteFieldRow label={copy.fieldCurrent} value={item.value} copyLabel={copy.copyValue} mono multiline />
                               <RouteFieldRow label={copy.fieldEffective} value={item.effective_value} copyLabel={copy.copyValue} mono multiline />
-                              <RouteFieldRow label={copy.validation} value={formatEnvironmentValidation(item, copy)} copyLabel={copy.copyValue} multiline />
+                              <RouteFieldRow label={copy.validation} value={formatEnvironmentValidation(item, copy)} copyLabel={copy.copyValue} multiline markdown />
                             </div>
                           </details>
                         </div>

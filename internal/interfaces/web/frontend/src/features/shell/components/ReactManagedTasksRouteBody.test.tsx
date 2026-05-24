@@ -190,6 +190,63 @@ describe("ReactManagedTasksRouteBody", () => {
     expect(screen.getByText("first point")).toBeInTheDocument();
   });
 
+  it("renders task request and result content as markdown", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              task_id: "task-markdown-1",
+              session_id: "session-markdown-1",
+              status: "success",
+              progress: 100,
+              updated_at: "2026-04-11T01:02:03Z",
+            },
+          ],
+          pagination: { page: 1, total: 1, has_next: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          task: {
+            id: "task-markdown-1",
+            session_id: "session-markdown-1",
+            task_type: "artifact",
+            status: "success",
+            progress: 100,
+            request_content: "## Request\nUse **markdown** and [docs](/docs).",
+            result: {
+              output: "### Result\n- **Done**\n- [Open](/chat#tasks)",
+            },
+          },
+          source: {},
+          actions: {},
+          link: {
+            task_id: "task-markdown-1",
+            session_id: "session-markdown-1",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [], has_more: false, next_cursor: 0 }));
+
+    const { container } = render(<ReactManagedTasksRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "task-markdown-1" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "task-markdown-1" }));
+
+    await waitFor(() => {
+      expect(container.querySelector(".control-task-result-output h2")).toHaveTextContent("Request");
+    });
+
+    expect(container.querySelector(".control-task-result-output h3")).toHaveTextContent("Result");
+    expect(container.querySelector(".control-task-result-output strong")).toHaveTextContent("markdown");
+    expect(container.querySelector('.control-task-result-output a[href="/chat#tasks"]')).toHaveTextContent("Open");
+  });
+
   it("converts datetime-local filters to RFC3339 query values", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

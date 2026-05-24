@@ -167,6 +167,7 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 
 - 前端 `Agent -> Memory` 提供长期记忆、天级记忆、强制要求、任务历史与说明文档入口。
 - Web Shell 桥接阶段中，`memory` 路由页主体由 React 直接请求 `/api/agent/memory` 与 `/api/memory/tasks*` 并渲染标签页、筛选表单、任务详情、日志、产物与只读记忆文档卡片；legacy runtime 不再托管该页主体 DOM。
+- Memory 页面中的长期记忆、天级记忆、强制要求与说明文档按安全 Markdown 正文渲染；任务详情中的日志与产物摘要同样支持 Markdown，路径、任务 ID、时间、状态等元数据继续以纯文本或等宽字段展示。
 - `GET /api/agent/memory` 返回长期记忆、天级记忆、强制上下文和说明文档的只读聚合视图。
 - 说明文档支持稳定查看 `USER.md`、`AGENTS.md`、`MEMORY.md`、`memory/YYYY-MM-DD.md`、`SOUL.md` 的职责说明与映射关系。
 - Memory 聚合接口默认只读展示，不提供在线编辑；非 GET 请求返回方法不允许。
