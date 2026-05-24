@@ -69,6 +69,15 @@ func TestBuiltinTravelAgentsUseAssistantCodexModel(t *testing.T) {
 	if prompt := strings.ToLower(index["travel"]); !strings.Contains(prompt, "desktop") || !strings.Contains(prompt, "mobile") {
 		t.Fatalf("expected travel prompt to require desktop and mobile compatibility, got %q", index["travel"])
 	}
+	if prompt := strings.ToLower(index["travel"]); !strings.Contains(prompt, "mobile-first") || !strings.Contains(prompt, "desktop as secondary") {
+		t.Fatalf("expected travel prompt to require mobile-first HTML layout with desktop as secondary, got %q", index["travel"])
+	}
+	if prompt := strings.ToLower(index["travel"]); !strings.Contains(prompt, "route map") || !strings.Contains(prompt, "numbered stops") || !strings.Contains(prompt, "travel segments") {
+		t.Fatalf("expected travel prompt to require an HTML route map with numbered stops and travel segments, got %q", index["travel"])
+	}
+	if prompt := strings.ToLower(index["travel"]); !strings.Contains(prompt, "all route-related sections") || !strings.Contains(prompt, "whenever feasible") {
+		t.Fatalf("expected travel prompt to require route visuals across all route-related sections whenever feasible, got %q", index["travel"])
+	}
 	if prompt := strings.ToLower(index["travel"]); !strings.Contains(prompt, "before drafting the itinerary") || !strings.Contains(prompt, "data source") || !strings.Contains(prompt, "city-specific") {
 		t.Fatalf("expected travel prompt to require recommendation listing before itinerary planning with flexible city-specific categories and data sources, got %q", index["travel"])
 	}

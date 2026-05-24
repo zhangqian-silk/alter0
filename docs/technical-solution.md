@@ -1,6 +1,6 @@
 # Technical Solution
 
-> Last update: 2026-04-26
+> Last update: 2026-05-24
 
 `alter0` 的技术方案按与需求清单一致的领域模型维护。后续新增或调整需求时，技术方案必须落到对应领域与子域，不再按时间顺序、任务编号或零散专题堆叠。
 
@@ -142,7 +142,7 @@ Web input
 - SSE 连接只负责回传，前端断连不得取消已被 Web 层接受的 `Chat / Agent Runtime` 后端任务。
 - 会话标题升级、空白会话唯一性、历史折叠和页面滚动状态属于 Conversation 子域。
 - `GET /api/agents` 返回 Agent Runtime 可直接进入的专项 Agent；当前内置入口包括 `coding`、`writing` 与 `travel`，由 `agentCatalog.ListEntrypointAgents()` 统一输出并排除 `main / Alter0` 主助手。Agent 响应同时携带 `session_profile_fields`、`deliverables` 与 `completion_checks`：前端使用前两者构建 Session Profile 与 Deliverables 详情骨架，运行时使用 `completion_checks` 执行机器校验与失败修复；控制面 Agent 读写接口也沿用同一字段集，避免用户管理 Agent 在更新时丢失既有产物契约与校验规则。
-- `travel` 的 display name 为 `Travel Agent`；内置配置同时启用 `deploy_test_service`，用于把额外生成的 HTML 旅游攻略发布到当前 Session 的公开只读子域名 `https://travel-<session_short_hash>.alter0.cn`。`travel` 不再依赖执行器内部的硬编码完成判定，而是通过 Agent 通用 `completion_checks` 声明两个必过检查：当前请求已经在 `travel` 会话工作区根目录生成或更新了对应的 `index.html`，且当前 Session 已发布公开只读 `travel` 服务并存在公开 URL。运行时不再自动生成、补写或代发 fallback HTML，但会在首轮收口缺页或缺发布时额外拉起一轮仅面向当前 Session 工作区的 Codex 修复任务；修复轮本身仍需产出真实页面与真实服务注册，不能伪造成功状态。生成规则层面同时要求该 HTML 在 desktop 与 mobile 两档都成立，并要求页面内容先输出分类推荐池、再输出最终 itinerary；推荐池至少覆盖吃喝、景点、住宿三类，其中吃喝拆分小吃/早点/特色菜/特色饮品并兼顾老字号与大众点评高分项，景点按公园/博物馆/表演等类型分组，住宿按价格带或档位列出热门酒店，同时为各组推荐显式保留数据来源标签。核心三类只是默认骨架，运行时 prompt 与 Agent 私有 Skill 还要引导模型根据城市特征扩展夜游、集市、游船、温泉、滑雪、庙会等 city-specific categories，避免模板化遗漏当地强信号内容。`travel` Agent 的 12 轮工具预算由 Agent 配置自身提供，而不是执行器里的专项默认分支。HTML 交付的完成条件不只依赖 prompt：运行时会拒绝任何未通过 `complete` 收口、或未通过所声明 `completion_checks` 的完成结果，`guide_html_url` 也只会在真实发布存在时对外暴露。
+- `travel` 的 display name 为 `Travel Agent`；内置配置同时启用 `deploy_test_service`，用于把额外生成的 HTML 旅游攻略发布到当前 Session 的公开只读子域名 `https://travel-<session_short_hash>.alter0.cn`。`travel` 不再依赖执行器内部的硬编码完成判定，而是通过 Agent 通用 `completion_checks` 声明两个必过检查：当前请求已经在 `travel` 会话工作区根目录生成或更新了对应的 `index.html`，且当前 Session 已发布公开只读 `travel` 服务并存在公开 URL。运行时不再自动生成、补写或代发 fallback HTML，但会在首轮收口缺页或缺发布时额外拉起一轮仅面向当前 Session 工作区的 Codex 修复任务；修复轮本身仍需产出真实页面与真实服务注册，不能伪造成功状态。生成规则层面要求该 HTML 采用 mobile-first 页面实现：默认结构先服务手机单列阅读、触控目标、紧凑章节节奏和横向溢出控制，desktop 作为 secondary viewport 通过更宽版心、支撑信息分组和层级增强渐进扩展；页面内容先输出分类推荐池、再输出最终 itinerary，并在 all route-related sections whenever feasible 渲染路线化结构。路线图或路线卡由真实 HTML/CSS 或 inline SVG 表达，不使用空占位图；总体路线、每日路线、交通指南、步行段、换乘段、轮渡/船行段和地图提示都应尽量包含 numbered stops、connected path、travel segments、预计步行/公交/轮渡耗时和地标提示，以便用户在手机上快速理解游览顺序。推荐池至少覆盖吃喝、景点、住宿三类，其中吃喝拆分小吃/早点/特色菜/特色饮品并兼顾老字号与大众点评高分项，景点按公园/博物馆/表演等类型分组，住宿按价格带或档位列出热门酒店，同时为各组推荐显式保留数据来源标签。核心三类只是默认骨架，运行时 prompt 与 Agent 私有 Skill 还要引导模型根据城市特征扩展夜游、集市、游船、温泉、滑雪、庙会等 city-specific categories，避免模板化遗漏当地强信号内容。`travel` Agent 的 12 轮工具预算由 Agent 配置自身提供，而不是执行器里的专项默认分支。HTML 交付的完成条件不只依赖 prompt：运行时会拒绝任何未通过 `complete` 收口、或未通过所声明 `completion_checks` 的完成结果，`guide_html_url` 也只会在真实发布存在时对外暴露。
 - `internal/execution/application.Service` 在 `MemoryContext` 注入前先执行 `SessionProfileExtractor` 旁路：依据 `agent_id` 解析 Agent schema、读取已有 profile 属性、抽取本轮自然语言的结构化 patch，再把结果转成 `alter0.agent.instance_attr.*` metadata 交给统一 profile 渲染链路。
 - `chat.js` 读取本地缓存时先归一残留 `streaming` 消息；无 `task_id` 的消息转失败态，带真实 `task_id` 的消息恢复到任务轮询链路。
 - Web 流式网关把 `shareddomain.StreamEvent` 映射为 SSE：输出事件写成 `delta`，结构化步骤事件写成 `process`，最终 `done` 继续携带完整 `process_steps` 用于收口与持久化恢复。
