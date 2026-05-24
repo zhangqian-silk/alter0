@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTime } from "../../../shared/time/format";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
-import { RouteCard, RouteFieldRow } from "./RouteBodyPrimitives";
+import { RouteCard, RouteFieldRow, RouteMarkdownContent } from "./RouteBodyPrimitives";
 
 type MemoryDocument = {
   exists?: boolean;
@@ -625,7 +625,7 @@ function MemoryDocumentCard({
         payload?.error ? (
           <p className="route-error">{copy.loadFailed(payload.error)}</p>
         ) : payload?.exists && normalizeText(payload.content) ? (
-          <pre className="memory-content">{normalizeText(payload.content)}</pre>
+          <RouteMarkdownContent className="memory-content" value={payload.content} />
         ) : (
           <p className="route-empty">{empty}</p>
         )
@@ -664,12 +664,12 @@ function MemorySpecificationCard({
               {sections.map((section) => (
                 <section key={section.title} className="memory-spec-section">
                   <h5 className="memory-spec-title">{section.title}</h5>
-                  <pre className="memory-content">{section.content.trim()}</pre>
+                  <RouteMarkdownContent className="memory-content" value={section.content.trim()} />
                 </section>
               ))}
             </div>
           ) : (
-            <pre className="memory-content">{content}</pre>
+            <RouteMarkdownContent className="memory-content" value={content} />
           )
         ) : (
           <p className="route-empty">{copy.noSpecification}</p>
@@ -780,7 +780,7 @@ function renderDailyCards(items: DailyMemoryItem[] | undefined, copy: Copy) {
         ) : normalizeText(item.content) ? (
           <>
             <p className="memory-summary"><span>{copy.summary}</span><strong>{summarizeMemoryContent(item.content)}</strong></p>
-            <pre className="memory-content">{normalizeText(item.content)}</pre>
+            <RouteMarkdownContent className="memory-content" value={item.content} />
           </>
         ) : (
           <p className="route-empty">{copy.noDaily}</p>
@@ -816,7 +816,7 @@ function renderLogs(logs: TaskLogsPayload | null, copy: Copy) {
             <span>{normalizeText(item.level)}</span>
             <span>{formatDateTime(item.created_at || item.timestamp)}</span>
           </div>
-          <pre className="task-detail-list-content">{normalizeText(item.message)}</pre>
+          <RouteMarkdownContent className="task-detail-list-content" value={item.message} />
         </li>
       ))}
     </ul>
@@ -842,7 +842,7 @@ function renderArtifacts(artifacts: TaskArtifactsPayload | null, copy: Copy) {
             <strong>{normalizeText(item.artifact_type || item.name)}</strong>
             <span>{formatDateTime(item.created_at)}</span>
           </div>
-          <p className="task-detail-list-content">{normalizeText(item.summary || item.content_type)}</p>
+          <RouteMarkdownContent className="task-detail-list-content" value={item.summary || item.content_type} />
         </li>
       ))}
     </ul>

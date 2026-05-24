@@ -408,6 +408,7 @@ function useConversationWorkspaceController(
           <div className="workspace-details-summary">
             {sessionProfileFields.map((field) => {
               const value = sessionProfileAttributes[field.key] || "-";
+              const mono = field.readonly === true || field.key.includes("path") || field.key.includes("branch");
               return (
                 <RouteFieldRow
                   key={field.key}
@@ -415,8 +416,9 @@ function useConversationWorkspaceController(
                   value={value}
                   copyLabel={language === "zh" ? "复制值" : "Copy value"}
                   copyable={field.readonly !== false}
-                  mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
+                  mono={mono}
                   multiline={value.length > 48}
+                  markdown={!mono}
                 />
               );
             })}
@@ -1049,6 +1051,7 @@ function ConversationComposerSection({
             <div className="workspace-details-summary">
               {sessionProfileFields.map((field) => {
                 const value = sessionProfileAttributes[field.key] || "-";
+                const mono = field.readonly === true || field.key.includes("path") || field.key.includes("branch");
                 return (
                   <RouteFieldRow
                     key={field.key}
@@ -1056,8 +1059,9 @@ function ConversationComposerSection({
                     value={value}
                     copyLabel={language === "zh" ? "复制值" : "Copy value"}
                     copyable={field.readonly !== false}
-                    mono={field.readonly === true || field.key.includes("path") || field.key.includes("branch")}
+                    mono={mono}
                     multiline={value.length > 48}
+                    markdown={!mono}
                   />
                 );
               })}

@@ -17,7 +17,7 @@ import { getLegacyShellCopy } from "../legacyShellCopy";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
 import type { RuntimeTimelineItem, RuntimeTimelineProcessStep } from "./RuntimeTimeline";
 import { RuntimeMarkdownHTML } from "./RuntimeTimelinePrimitives";
-import { normalizeText } from "./RouteBodyPrimitives";
+import { normalizeText, RouteMarkdownContent } from "./RouteBodyPrimitives";
 import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
 import { ScrollJumpStrip } from "./ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
@@ -1547,7 +1547,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
               />
               <span>
                 <strong>{skill.name}</strong>
-                <small>{skill.description}</small>
+                <RouteMarkdownContent className="terminal-skill-description" value={skill.description} />
               </span>
             </label>
           )) : (

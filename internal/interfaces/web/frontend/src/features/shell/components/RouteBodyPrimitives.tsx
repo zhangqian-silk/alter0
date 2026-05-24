@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { copyTextValue } from "./copyTextValue";
+import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
 
 type RouteCardProps = {
   title: unknown;
@@ -23,6 +24,7 @@ type RouteFieldRowProps = {
   multiline?: boolean;
   preview?: boolean;
   clampLines?: number;
+  markdown?: boolean;
 };
 
 export function RouteCard({
@@ -78,6 +80,7 @@ export function RouteFieldRow({
   multiline = false,
   preview = false,
   clampLines = 0,
+  markdown = false,
 }: RouteFieldRowProps) {
   const safeValue = normalizeText(value);
   const classNames = ["route-field-value"];
@@ -91,6 +94,9 @@ export function RouteFieldRow({
   if (preview || clampLines > 0) {
     classNames.push("is-preview");
   }
+  if (markdown) {
+    classNames.push("is-markdown");
+  }
 
   const style =
     clampLines > 0
@@ -98,17 +104,46 @@ export function RouteFieldRow({
       : undefined;
 
   return (
-    <p className="route-field-row">
+    <div className="route-field-row">
       <span>{label}</span>
       <span className="route-field-value-wrap">
-        <strong className={classNames.join(" ")} title={safeValue} style={style}>
-          {safeValue}
-        </strong>
+        {markdown && safeValue !== "-" ? (
+          <RouteMarkdownContent value={safeValue} className={classNames.join(" ")} style={style} />
+        ) : (
+          <strong className={classNames.join(" ")} title={safeValue} style={style}>
+            {safeValue}
+          </strong>
+        )}
         {copyable && safeValue !== "-" ? (
           <CopyValueButton value={safeValue} label={copyLabel} className="route-field-copy" />
         ) : null}
       </span>
-    </p>
+    </div>
+  );
+}
+
+export function RouteMarkdownContent({
+  value,
+  className = "",
+  title,
+  style,
+}: {
+  value: unknown;
+  className?: string;
+  title?: string;
+  style?: CSSProperties;
+}) {
+  const safeValue = normalizeText(value);
+  if (safeValue === "-") {
+    return <p className={className || undefined}>-</p>;
+  }
+  return (
+    <div
+      className={className || undefined}
+      title={title}
+      style={style}
+      dangerouslySetInnerHTML={{ __html: renderRuntimeMarkdownToHTML(safeValue) }}
+    />
   );
 }
 

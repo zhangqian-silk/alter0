@@ -84,9 +84,8 @@ describe("ReactManagedMemoryRouteBody", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Long-Term" }));
 
-    expect(document.querySelector(".memory-content")).toHaveTextContent(
-      /# Long-Term Memory\s+- key: value/,
-    );
+    expect(document.querySelector(".memory-content h1")).toHaveTextContent("Long-Term Memory");
+    expect(document.querySelector(".memory-content li")).toHaveTextContent("key: value");
     expect(screen.getByText("/memory/MEMORY.md")).toBeInTheDocument();
   });
 
@@ -230,6 +229,61 @@ describe("ReactManagedMemoryRouteBody", () => {
 
     expect(screen.getByText("Mapping")).toBeInTheDocument();
     expect(screen.getByText("Rules")).toBeInTheDocument();
-    expect(screen.getByText("- Keep memory concise")).toBeInTheDocument();
+    expect(screen.getByText("Keep memory concise")).toBeInTheDocument();
+  });
+
+  it("renders memory documents as markdown instead of raw preformatted text", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          long_term: {
+            exists: true,
+            path: "/memory/MEMORY.md",
+            updated_at: "2026-03-04T08:00:00Z",
+            content: "## Memory Rules\n- **Ship** durable notes\n- [Workspace](/chat)",
+          },
+          daily: {
+            directory: "/memory/daily",
+            items: [
+              {
+                date: "2026-03-04",
+                path: "/memory/daily/2026-03-04.md",
+                content: "### Daily\n- Follow up with [Tasks](/chat#tasks)",
+              },
+            ],
+          },
+          mandatory: {
+            exists: false,
+          },
+          specification: {
+            exists: false,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [],
+          pagination: { page: 1, total: 0, has_next: false },
+        }),
+      );
+
+    const { container } = render(<ReactManagedMemoryRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Long-Term" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Long-Term" }));
+
+    expect(container.querySelector(".memory-content h2")).toHaveTextContent("Memory Rules");
+    expect(container.querySelector(".memory-content strong")).toHaveTextContent("Ship");
+    expect(container.querySelector(".memory-content a")).toHaveAttribute("href", "/chat");
+    expect(container.querySelector(".memory-content pre")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Daily" }));
+
+    expect(container.querySelector(".memory-content h3")).toHaveTextContent("Daily");
+    expect(container.querySelector(".memory-content a")).toHaveAttribute("href", "/chat#tasks");
   });
 });

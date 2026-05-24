@@ -333,6 +333,123 @@
   font-size: 12px;
 }
 
+.route-field-value.is-markdown {
+  display: block;
+  white-space: normal;
+  text-overflow: clip;
+  overflow: hidden;
+  font-weight: 500;
+}
+
+.route-field-value.is-markdown.is-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--line-clamp, 3);
+  line-clamp: var(--line-clamp, 3);
+}
+
+.route-field-value.is-markdown > :first-child,
+.memory-content > :first-child,
+.task-detail-list-content > :first-child,
+.control-task-result-output > :first-child,
+.environment-description-text > :first-child,
+.codex-accounts-runtime-note > :first-child,
+.agent-route-card-prompt > :first-child,
+.agent-builder-option-description > :first-child,
+.terminal-skill-description > :first-child {
+  margin-top: 0;
+}
+
+.route-field-value.is-markdown > :last-child,
+.memory-content > :last-child,
+.task-detail-list-content > :last-child,
+.control-task-result-output > :last-child,
+.environment-description-text > :last-child,
+.codex-accounts-runtime-note > :last-child,
+.agent-route-card-prompt > :last-child,
+.agent-builder-option-description > :last-child,
+.terminal-skill-description > :last-child {
+  margin-bottom: 0;
+}
+
+.route-field-value.is-markdown h1,
+.route-field-value.is-markdown h2,
+.route-field-value.is-markdown h3,
+.memory-content h1,
+.memory-content h2,
+.memory-content h3,
+.task-detail-list-content h1,
+.task-detail-list-content h2,
+.task-detail-list-content h3,
+.control-task-result-output h1,
+.control-task-result-output h2,
+.control-task-result-output h3 {
+  margin: 0 0 8px;
+  color: var(--ink-strong);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.route-field-value.is-markdown p,
+.route-field-value.is-markdown ul,
+.route-field-value.is-markdown ol,
+.memory-content p,
+.memory-content ul,
+.memory-content ol,
+.task-detail-list-content p,
+.task-detail-list-content ul,
+.task-detail-list-content ol,
+.environment-description-text p,
+.environment-description-text ul,
+.environment-description-text ol,
+.codex-accounts-runtime-note p,
+.codex-accounts-runtime-note ul,
+.codex-accounts-runtime-note ol,
+.agent-route-card-prompt p,
+.agent-route-card-prompt ul,
+.agent-route-card-prompt ol,
+.agent-builder-option-description p,
+.agent-builder-option-description ul,
+.agent-builder-option-description ol,
+.terminal-skill-description p,
+.terminal-skill-description ul,
+.terminal-skill-description ol {
+  margin: 0 0 8px;
+}
+
+.route-field-value.is-markdown ul,
+.route-field-value.is-markdown ol,
+.memory-content ul,
+.memory-content ol,
+.task-detail-list-content ul,
+.task-detail-list-content ol,
+.environment-description-text ul,
+.environment-description-text ol,
+.codex-accounts-runtime-note ul,
+.codex-accounts-runtime-note ol,
+.agent-route-card-prompt ul,
+.agent-route-card-prompt ol,
+.agent-builder-option-description ul,
+.agent-builder-option-description ol,
+.terminal-skill-description ul,
+.terminal-skill-description ol {
+  padding-left: 18px;
+}
+
+.route-field-value.is-markdown a,
+.memory-content a,
+.task-detail-list-content a,
+.control-task-result-output a,
+.environment-description-text a,
+.codex-accounts-runtime-note a,
+.agent-route-card-prompt a,
+.agent-builder-option-description a,
+.terminal-skill-description a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 700;
+}
+
 .route-field-copy {
   width: 24px;
   height: 24px;
@@ -464,9 +581,8 @@
   padding: 10px 12px;
   max-height: 240px;
   overflow: auto;
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .memory-summary {
@@ -1395,6 +1511,13 @@
   margin: 0;
 }
 
+.agent-builder-option-description {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .agent-builder-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2186,7 +2309,7 @@
   font-size: 13px;
 }
 
-.codex-accounts-logs pre {
+.codex-accounts-log-content {
   margin: 0;
   padding: 14px;
   border-radius: 16px;
@@ -2195,8 +2318,13 @@
   font-size: 12px;
   line-height: 1.7;
   overflow-x: auto;
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
+}
+
+.codex-accounts-log-content pre {
+  margin: 0;
+  white-space: pre-wrap;
 }
 
 .agent-workspace {
@@ -3154,10 +3282,14 @@
   border-radius: 8px;
   padding: 10px 12px;
   background: var(--panel-muted);
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
   font-size: 11px;
   line-height: 1.6;
+}
+
+.task-detail-log-list pre {
+  white-space: pre-wrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
@@ -3445,6 +3577,15 @@
 
 .control-task-result-output strong {
   color: var(--ink-strong);
+}
+
+.control-task-result-output h1,
+.control-task-result-output h2,
+.control-task-result-output h3 {
+  margin: 0 0 8px;
+  color: var(--ink-strong);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 /* Models View Styles */
