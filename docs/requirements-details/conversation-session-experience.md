@@ -56,7 +56,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 ### Session 历史
 
-- Web 登录后，Chat/Agent 按目标 Agent 维护独立 Session 历史，且已发送会话通过服务端 Session history 在同一 Web 登录态下跨设备共享。
+- Web 登录后，Chat/Agent 已发送会话通过服务端 Session history 在同一 Web 登录态下跨设备共享；`Chat` 固定维护单一长期逻辑会话 `alter0-chat`，`Agent Runtime` 继续按目标 Agent 维护独立 Session 历史。
+- 本地 Session history 按会话类型拆分物理文件：`Chat` 的 `alter0-chat` 按北京时间 05:00 的归档日边界写入 `.alter0/sessions/_default/alter0-chat/<YYYY-MM-DD>.json` 或 `.md`；`Agent Runtime` 按目标 Agent 与会话身份写入 `.alter0/sessions/<agent_id>/<session_id>.json` 或 `.md`。缺少 Agent 来源的非 Chat 会话归入 `_default`；服务读取旧版 `.alter0/sessions.json` 或 `.alter0/sessions.md` 聚合文件时需立即重构为新的分文件布局，并删除旧聚合文件。
 - Chat/Agent Runtime 消息接口接受请求后，服务端先把本轮 `user` 消息写入 Session history，再进入同步或流式执行；assistant 回复在执行完成、失败或任务收口后追加写入。同一轮请求的浏览器关闭、刷新、SSE 断开或前端取消不会让用户已发送内容只留在浏览器缓存中。
 - 具备独立前端入口的 Agent 不进入通用 Agent 页面历史。
 - `Sessions` 系统页面可展示跨来源会话数据，但不作为 Chat/Agent 分栏依据。
@@ -105,7 +106,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 页面刷新、跨设备重开或服务重启后，用户可恢复最近会话与历史消息；恢复结果需保留当前 Session 的目标 Agent、Model 与 Tools / Skills / MCP 选择。
 - 页面刷新时，前端需先用浏览器侧保存的当前活动会话快照恢复最近一条活跃 `Chat / Agent Runtime` 会话，避免服务端列表短暂缺席时把当前会话清空或替换为新的空白会话；随后再按 `session_id` 回源单会话详情，用服务端最新结果覆盖本地快照。
 - `POST /api/messages`、`POST /api/messages/stream`、`POST /api/agent/messages` 与 `POST /api/agent/messages/stream` 在 Web 层接受请求后，后端执行与持久化不得再依赖浏览器连接持续存活；页面刷新、标签页切换、SSE 断开或前端取消只允许中断当前传输，不得直接取消本轮会话执行。
-- `Chat / Agent Runtime` 当前活动会话需稳定投影到 URL query：`chat` 写入 `chat_session_id`，`agent-runtime` 写入 `agent_session_id`。页面首次加载、刷新、手动粘贴当前链接或浏览器恢复标签页时，前端先读取对应 query 参数恢复目标会话；只有参数缺失或目标会话不存在时，才允许回退到浏览器快照与服务端列表默认项。
+- `Chat` 当前活动会话固定为 `alter0-chat`，不再写入或读取 `chat_session_id` 作为多会话入口；`Agent Runtime` 当前活动会话需稳定投影到 URL query：`agent-runtime` 写入 `agent_session_id`。页面首次加载、刷新、手动粘贴当前链接或浏览器恢复标签页时，`Agent Runtime` 先读取对应 query 参数恢复目标会话；只有参数缺失或目标会话不存在时，才允许回退到浏览器快照与服务端列表默认项。
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
 - `Chat / Agent Runtime` 需维护独立的服务端会话 registry，记录 `session_id -> route / title / target / model / capabilities / status / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
@@ -128,6 +129,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 ### 断流恢复
 
 - `Chat / Agent Runtime` 在同一 Session 内保持追加式会话历史；每轮请求都要追加新的用户消息与新的助手消息占位，不得把后续回复继续回写到已完成的历史消息。
+- `Chat` 固定使用单一长期逻辑会话 `alter0-chat`，页面初始化、发送消息、附件草稿、服务端回源和刷新恢复都围绕该会话进行；前端不得再把 URL、浏览器快照或服务端历史中的旧 Chat session 作为可切换会话入口。`Agent Runtime` 继续保留多 Agent、多 session 的运行态。
+- `Chat` 的长期历史按北京时间 05:00 作为归档日边界分文件存储；05:00 之前的消息归入前一归档日，05:00 及之后的消息归入当天归档日。该分文件规则只改变本地存储和迁移形态，不改变 `alter0-chat` 对外的逻辑 `session_id`。
+- `Chat` 直连 Codex 的 thread id 与同一归档日绑定，写入当前 Chat 工作区 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json`；归档日切换后，新文件不存在即代表新的 Codex 会话环境，运行时不得继续 resume 前一归档日的 Codex thread。
 - 单条 assistant 消息内部仍可按 `process / delta / done` 流式更新，但补丁目标只能是当前活跃的未完成消息；消息进入 `done` 或任务态后，迟到的 SSE 事件必须直接丢弃。
 - 运行页初始化时，服务端会话详情回填不得覆盖当前浏览器里已经新追加、但服务端详情请求发起时尚未落库的本地消息；本地新消息与流式更新优先级高于陈旧详情响应。
 - 若运行页刷新后服务端会话集合接口暂时未包含当前活动 `session_id`，前端仍需保留本地恢复出的该条会话，并主动尝试按 `GET /api/conversation-runtime/sessions/{session_id}` 补拉详情；在单会话详情也确认不存在之前，不得立刻创建新的空白会话顶替当前活动会话。

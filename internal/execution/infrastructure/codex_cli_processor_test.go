@@ -577,6 +577,131 @@ func TestCodexCLIProcessorProcessStreamPersistsAndResumesNativeThread(t *testing
 	}
 }
 
+func TestCodexCLIProcessorArchivesCanonicalChatThreadsByArchiveDay(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	restoreClock := setCodexThreadClockForTest(time.Date(2026, 5, 24, 20, 0, 0, 0, time.UTC))
+	metadata := map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "alter0-chat",
+	}
+	expectedFirstPrompt := mustBuildTestPrompt(t, "first chat prompt", metadata)
+	expectedSecondPrompt := mustBuildTestPrompt(t, "second chat prompt", metadata)
+	processor := newTestProcessor("stream-thread-success", expectedFirstPrompt)
+
+	output, err := processor.ProcessStream(context.Background(), "first chat prompt", metadata, nil)
+	if err != nil {
+		restoreClock()
+		t.Fatalf("first ProcessStream() error = %v", err)
+	}
+	if output != "mock streamed response" {
+		restoreClock()
+		t.Fatalf("first ProcessStream() output = %q, want %q", output, "mock streamed response")
+	}
+
+	firstThreadPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "alter0-chat", ".alter0", "codex-runtime", "threads", "2026-05-24.json")
+	firstThreadData, err := os.ReadFile(firstThreadPath)
+	if err != nil {
+		restoreClock()
+		t.Fatalf("read archived chat codex thread: %v", err)
+	}
+	if !strings.Contains(string(firstThreadData), "thread-agent-fallback") {
+		restoreClock()
+		t.Fatalf("archived thread state = %q, want thread id", string(firstThreadData))
+	}
+
+	restoreClock()
+	restoreClock = setCodexThreadClockForTest(time.Date(2026, 5, 24, 21, 30, 0, 0, time.UTC))
+	t.Cleanup(restoreClock)
+	processor = newTestProcessor("stream-thread-success", expectedSecondPrompt)
+	output, err = processor.ProcessStream(context.Background(), "second chat prompt", metadata, nil)
+	if err != nil {
+		t.Fatalf("second ProcessStream() error = %v", err)
+	}
+	if output != "mock streamed response" {
+		t.Fatalf("second ProcessStream() output = %q, want %q", output, "mock streamed response")
+	}
+	secondThreadPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "alter0-chat", ".alter0", "codex-runtime", "threads", "2026-05-25.json")
+	if _, err := os.Stat(secondThreadPath); err != nil {
+		t.Fatalf("expected new archive day thread file: %v", err)
+	}
+}
+
+func TestCodexCLIProcessorMigratesLegacyCanonicalChatThreadToArchiveDay(t *testing.T) {
+	rootDir := t.TempDir()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+	t.Cleanup(setCodexThreadClockForTest(time.Date(2026, 5, 24, 21, 30, 0, 0, time.UTC)))
+
+	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "alter0-chat")
+	legacyPath := filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "thread.json")
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
+		t.Fatalf("mkdir legacy thread dir: %v", err)
+	}
+	legacyPayload, err := json.MarshalIndent(persistedCodexThreadState{
+		ThreadID:  "thread-legacy-chat",
+		UpdatedAt: time.Date(2026, 5, 24, 20, 30, 0, 0, time.UTC),
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal legacy thread: %v", err)
+	}
+	if err := os.WriteFile(legacyPath, append(legacyPayload, '\n'), 0o600); err != nil {
+		t.Fatalf("write legacy thread: %v", err)
+	}
+
+	state := resolveCodexThreadState(sessionWorkspace, map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey: "alter0-chat",
+	})
+	if state.Path != filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "threads", "2026-05-25.json") {
+		t.Fatalf("unexpected current thread path %q", state.Path)
+	}
+	archivePath := filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "threads", "2026-05-24.json")
+	archiveData, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("read migrated legacy thread archive: %v", err)
+	}
+	if !strings.Contains(string(archiveData), "thread-legacy-chat") {
+		t.Fatalf("migrated archive state = %q, want legacy thread id", string(archiveData))
+	}
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy thread removed, stat error: %v", err)
+	}
+	if got := loadCodexThreadID(state); got != "" {
+		t.Fatalf("expected new archive day to start without resume thread, got %q", got)
+	}
+}
+
+func TestCodexCLIProcessorTreatsFallbackSessionIDAsCanonicalChatThread(t *testing.T) {
+	t.Cleanup(setCodexThreadClockForTest(time.Date(2026, 5, 24, 21, 30, 0, 0, time.UTC)))
+
+	sessionWorkspace := filepath.Join(t.TempDir(), ".alter0", "workspaces", "sessions", "alter0-chat")
+	state := resolveCodexThreadState(sessionWorkspace, map[string]string{
+		sessionIDMetadataFallback: "alter0-chat",
+	})
+
+	wantPath := filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "threads", "2026-05-25.json")
+	if state.Path != wantPath {
+		t.Fatalf("thread path = %q, want %q", state.Path, wantPath)
+	}
+}
+
 func TestCodexCLIProcessorProcessRequiresWorkspaceContext(t *testing.T) {
 	processor := NewCodexCLIProcessor()
 
@@ -921,4 +1046,14 @@ func containsArgSequence(args []string, values ...string) bool {
 		}
 	}
 	return false
+}
+
+func setCodexThreadClockForTest(now time.Time) func() {
+	previous := codexThreadNow
+	codexThreadNow = func() time.Time {
+		return now
+	}
+	return func() {
+		codexThreadNow = previous
+	}
 }

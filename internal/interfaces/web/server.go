@@ -48,6 +48,7 @@ import (
 var webStaticFS embed.FS
 
 const (
+	canonicalChatSessionID                        = sessiondomain.CanonicalChatSessionID
 	controlTaskMetadataJobIDKey                   = "job_id"
 	controlTaskMetadataJobNameKey                 = "job_name"
 	controlTaskMetadataFiredAtKey                 = "fired_at"
@@ -5276,7 +5277,7 @@ func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, i
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("invalid json body")
 	}
-	return s.prepareMessageFromRequest(req)
+	return s.prepareMessageFromRequest(req, canonicalChatSessionID)
 }
 
 func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessage, string, int, error) {
@@ -5313,7 +5314,7 @@ func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessa
 		Attachments:   req.Attachments,
 		Metadata:      cloneStringMap(req.Metadata),
 	}
-	msg, statusCode, err := s.prepareMessageFromRequest(msgReq)
+	msg, statusCode, err := s.prepareMessageFromRequest(msgReq, "")
 	if err != nil {
 		return shareddomain.UnifiedMessage{}, "", statusCode, err
 	}
@@ -5321,8 +5322,11 @@ func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessa
 	return msg, agent.ID, http.StatusOK, nil
 }
 
-func (s *Server) prepareMessageFromRequest(req messageRequest) (shareddomain.UnifiedMessage, int, error) {
+func (s *Server) prepareMessageFromRequest(req messageRequest, defaultSessionID string) (shareddomain.UnifiedMessage, int, error) {
 	sessionID := strings.TrimSpace(req.SessionID)
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(defaultSessionID)
+	}
 	if sessionID == "" {
 		sessionID = s.idGenerator.NewID()
 	}

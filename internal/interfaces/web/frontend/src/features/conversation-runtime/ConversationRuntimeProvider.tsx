@@ -41,6 +41,7 @@ const LLM_PROVIDER_METADATA_KEY = "alter0.llm.provider_id";
 const LLM_MODEL_METADATA_KEY = "alter0.llm.model";
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
+const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 const DEFAULT_AGENT_SEARCH_MEMORY_TOOL = "search_memory";
@@ -547,6 +548,21 @@ function defaultChatTarget(): ChatTarget {
   return normalizeChatTarget({ type: "model", id: "raw-model", name: "Raw Model" });
 }
 
+function normalizeRouteSessions(routeKey: ConversationRoute, sessions: ChatSession[]): ChatSession[] {
+  if (routeKey !== "chat") {
+    return sessions;
+  }
+  const canonical = sessions.find((session) => session.id === CANONICAL_CHAT_SESSION_ID) || sessions[0] || null;
+  if (!canonical) {
+    return [];
+  }
+  return [{
+    ...canonical,
+    id: CANONICAL_CHAT_SESSION_ID,
+    target: defaultChatTarget(),
+  }];
+}
+
 function isCodexRuntimeSelection(providerID: string, modelID: string): boolean {
   return normalizeText(providerID) === CODEX_RUNTIME_PROVIDER_ID && normalizeText(modelID) === CODEX_RUNTIME_MODEL_ID;
 }
@@ -887,7 +903,7 @@ function writeJSONStorage(key: string, value: unknown) {
 function loadActiveSessionState(): ActiveSessionState {
   const parsed = readJSONStorage<Record<string, string>>(ACTIVE_SESSION_STORAGE_KEY, {});
   return {
-    chat: readWorkbenchRouteSessionID("chat") || normalizeText(parsed.chat),
+    chat: CANONICAL_CHAT_SESSION_ID,
     "agent-runtime": readWorkbenchRouteSessionID("agent-runtime") || normalizeText(parsed["agent-runtime"]),
   };
 }
@@ -924,7 +940,10 @@ function loadActiveSessionSnapshots(): SessionsState {
     if (active) {
       sessions.set(active.id, active);
     }
-    return Array.from(sessions.values()).sort((left, right) => right.createdAt - left.createdAt);
+    return normalizeRouteSessions(
+      routeKey,
+      Array.from(sessions.values()).sort((left, right) => right.createdAt - left.createdAt),
+    );
   };
   return {
     chat: mergeStoredRouteSessions("chat"),
@@ -1369,7 +1388,8 @@ export function ConversationRuntimeProvider({
           }
         : defaultChatTarget()),
     );
-    const existing = currentSessions[route].find((session) => session.id === preferredActiveState[route]) || null;
+    const routeSessions = normalizeRouteSessions(route, currentSessions[route]);
+    const existing = routeSessions.find((session) => session.id === preferredActiveState[route]) || null;
     if (existing) {
       if (
         route === "agent-runtime"
@@ -1395,7 +1415,7 @@ export function ConversationRuntimeProvider({
       return existing;
     }
     const created: ChatSession = {
-      id: makeID("session"),
+      id: route === "chat" ? CANONICAL_CHAT_SESSION_ID : makeID("session"),
       status: "ready",
       title: "New",
       titleAuto: true,
@@ -1419,7 +1439,7 @@ export function ConversationRuntimeProvider({
     };
     const nextSessionsByRoute: SessionsState = {
       ...currentSessions,
-      [route]: [created, ...currentSessions[route]],
+      [route]: route === "chat" ? [created] : [created, ...currentSessions[route]],
     };
     const nextActiveState = { ...preferredActiveState, [route]: created.id };
     setSessionsByRoute(nextSessionsByRoute);
@@ -1502,11 +1522,12 @@ export function ConversationRuntimeProvider({
   }, [patchSession]);
 
   const focusSession = useCallback((sessionID: string) => {
-    const nextActiveState = { ...activeSessionByRoute, [route]: sessionID };
+    const resolvedSessionID = route === "chat" ? CANONICAL_CHAT_SESSION_ID : sessionID;
+    const nextActiveState = { ...activeSessionByRoute, [route]: resolvedSessionID };
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
     if (route === "agent-runtime") {
-      const session = sessionsByRoute[route].find((item) => item.id === sessionID) || null;
+      const session = sessionsByRoute[route].find((item) => item.id === resolvedSessionID) || null;
       if (session?.target.type === "agent") {
         setSelectedAgentID(normalizeText(session.target.id));
       }
@@ -1626,11 +1647,20 @@ export function ConversationRuntimeProvider({
   };
 
   const upsertRuntimeSession = (routeKey: ConversationRoute, nextSession: ChatSession) => {
+    const normalizedSession = routeKey === "chat"
+      ? { ...nextSession, id: CANONICAL_CHAT_SESSION_ID, target: defaultChatTarget() }
+      : nextSession;
     setSessionsByRoute((current) => {
-      const hasSession = current[routeKey].some((session) => session.id === nextSession.id);
+      if (routeKey === "chat") {
+        return {
+          ...current,
+          [routeKey]: [normalizedSession],
+        };
+      }
+      const hasSession = current[routeKey].some((session) => session.id === normalizedSession.id);
       const nextSessions = hasSession
-        ? current[routeKey].map((session) => (session.id === nextSession.id ? nextSession : session))
-        : [nextSession, ...current[routeKey]];
+        ? current[routeKey].map((session) => (session.id === normalizedSession.id ? normalizedSession : session))
+        : [normalizedSession, ...current[routeKey]];
       return {
         ...current,
         [routeKey]: nextSessions.sort((left, right) => right.createdAt - left.createdAt),
@@ -1997,12 +2027,13 @@ export function ConversationRuntimeProvider({
     const remoteSessions = (Array.isArray(payload.items) ? payload.items : [])
       .map((item) => normalizeRuntimeSession(item))
       .filter((session): session is ChatSession => session !== null);
+    const normalizedRemoteSessions = normalizeRouteSessions(routeKey, remoteSessions);
     setSessionsByRoute((current) => ({
       ...current,
-      [routeKey]: mergeRuntimeSessions(remoteSessions, current[routeKey]),
+      [routeKey]: normalizeRouteSessions(routeKey, mergeRuntimeSessions(normalizedRemoteSessions, current[routeKey])),
     }));
     setSessionsLoadedByRoute((current) => ({ ...current, [routeKey]: true }));
-    return remoteSessions;
+    return normalizedRemoteSessions;
   };
 
   const refreshCurrentRouteOnPageActive = useCallback(async () => {
@@ -2036,7 +2067,7 @@ export function ConversationRuntimeProvider({
   }, [activeSessionByRoute, sessionsByRoute]);
 
   useEffect(() => {
-    writeWorkbenchRouteSessionID("chat", activeSessionByRoute.chat);
+    writeWorkbenchRouteSessionID("chat", "");
     writeWorkbenchRouteSessionID("agent-runtime", activeSessionByRoute["agent-runtime"]);
   }, [activeSessionByRoute]);
 
