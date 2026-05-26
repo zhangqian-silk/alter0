@@ -97,6 +97,12 @@ func buildCodexRuntimeSpec(metadata map[string]string, workspaceDir string) (run
 		instructions = append(instructions, "- Read `.alter0/codex-runtime/runtime.md` for session workspace, repository, and preview scope.")
 	}
 	if skillContext != nil {
+		materializedSkillContext, skillFiles, err := materializeCodexSkillContextFiles(*skillContext)
+		if err != nil {
+			return runtimeconfig.Spec{}, err
+		}
+		skillContext = &materializedSkillContext
+		files = append(files, skillFiles...)
 		files = append(files, runtimeconfig.ManagedFile{
 			RelativePath: codexRuntimeSkillsPath,
 			Content:      renderSkillContextMarkdown(*skillContext),
@@ -121,6 +127,32 @@ func buildCodexRuntimeSpec(metadata map[string]string, workspaceDir string) (run
 		ManagedFiles:     files,
 		RootInstructions: rootInstructions,
 	}, nil
+}
+
+func materializeCodexSkillContextFiles(context execdomain.SkillContext) (execdomain.SkillContext, []runtimeconfig.ManagedFile, error) {
+	if len(context.Skills) == 0 {
+		return context, nil, nil
+	}
+	refs := make([]runtimeconfig.FileBackedSkillReference, 0, len(context.Skills))
+	for i, skill := range context.Skills {
+		refs = append(refs, runtimeconfig.FileBackedSkillReference{
+			Key:      fmt.Sprintf("%d", i),
+			ID:       skill.ID,
+			FilePath: skill.FilePath,
+		})
+	}
+	materialized, err := runtimeconfig.MaterializeFileBackedSkillReferences(refs)
+	if err != nil {
+		return context, nil, fmt.Errorf("materialize codex skill files: %w", err)
+	}
+	updated := context
+	updated.Skills = append([]execdomain.SkillSpec(nil), context.Skills...)
+	for i := range updated.Skills {
+		if filePath := materialized.FilePaths[fmt.Sprintf("%d", i)]; strings.TrimSpace(filePath) != "" {
+			updated.Skills[i].FilePath = filePath
+		}
+	}
+	return updated, materialized.ManagedFiles, nil
 }
 
 func resolveCodexRuntimeHome(metadata map[string]string, workspaceDir string) (string, error) {
