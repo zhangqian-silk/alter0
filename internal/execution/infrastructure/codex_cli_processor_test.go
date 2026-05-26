@@ -141,6 +141,15 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 	t.Cleanup(func() {
 		_ = os.Chdir(previousWD)
 	})
+	if err := os.MkdirAll(filepath.Join(rootDir, "docs", "skills", "summary", "references"), 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, "docs", "skills", "summary", "SKILL.md"), []byte("# Summary\n"), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, "docs", "skills", "summary", "references", "style.md"), []byte("brief\n"), 0o644); err != nil {
+		t.Fatalf("write skill reference: %v", err)
+	}
 
 	skillContext := execdomain.SkillContext{
 		Protocol: execdomain.SkillContextProtocolVersion,
@@ -150,6 +159,7 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 				Name:        "Summary",
 				Description: "summary docs",
 				Guide:       "review the memory files before editing",
+				FilePath:    "docs/skills/summary/SKILL.md",
 				Priority:    200,
 				ParameterTemplate: map[string]string{
 					"lang": "zh-CN",
@@ -263,6 +273,12 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 	}
 	if !strings.Contains(string(skillText), "Summary") || !strings.Contains(string(skillText), "review the memory files before editing") {
 		t.Fatalf("unexpected runtime skills:\n%s", string(skillText))
+	}
+	if !strings.Contains(string(skillText), "- file_path: .alter0/codex-runtime/skills/summary/SKILL.md") {
+		t.Fatalf("expected runtime skill file_path to point inside session workspace, got:\n%s", string(skillText))
+	}
+	if _, err := os.Stat(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "skills", "summary", "references", "style.md")); err != nil {
+		t.Fatalf("expected skill directory to be materialized into session workspace: %v", err)
 	}
 	memoryText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "memory", "user_md.md"))
 	if err != nil {
