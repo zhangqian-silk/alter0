@@ -64,7 +64,7 @@
 - `Chat / Agent Runtime` 的消息阅读结构统一采用 terminal-style timeline：用户消息按 prompt row、执行过程按可折叠 `Process`、最终回复按 markdown shell 展示，不再回退到传统左右气泡对话布局。
 - `Agent Runtime` 中除主助手外的专项 Agent 需显式声明 deliverables contract，作为本轮运行必须收口的最终交付物约束；前端在 `Details` 中直接展示这份契约，并在可用时关联当前 Session Profile 中的 URL/路径类实例属性。
 - Agent 还需支持独立的 `completion_checks` 机器规则，用于把交付契约下沉为可执行的运行时产物检查。`deliverables` 负责用户可见契约与 prompt 约束，`completion_checks` 负责文件存在、公开 URL、workspace service 发布状态、Session 属性非空等确定性校验，并可在失败时声明一轮仅面向当前 Session 的 Codex 修复指令。
-- `Chat / Agent Runtime` 的 `Process` 步骤在真机窄屏下仍需保持整列阅读宽度；长中文说明、路径和命令明细必须在消息容器内自然换行，不得塌缩成逐字竖排窄列；展示层还需容忍零宽断行字符和“每字一行”的异常历史文本，并在渲染前修正为可读段落。
+- `Chat / Agent Runtime / Terminal` 的 `Process` 步骤在真机窄屏下仍需保持整列阅读宽度；长中文说明、路径、错误日志、inline code 和命令明细必须在消息容器内自然换行或仅在内容块内部横向滚动，不得塌缩成逐字竖排窄列，也不得制造页面级横向滚动；展示层还需容忍零宽断行字符和“每字一行”的异常历史文本，并在渲染前修正为可读段落。
 - `Chat / Agent Runtime` 的消息时间线在内容较少时仍需顶部收口：少量消息、短回复、折叠后的 `Process` 卡片与时间戳继续贴近各自消息块，不得被满高布局拉出大段垂直空白。
 - `Chat / Agent Runtime / Terminal` 进入已有内容会话时默认定位到消息时间线或 Terminal 输出区底部，优先展示最新上下文；`Chat / Agent Runtime` 在同一活动会话发送新消息后也需回到底部展示新追加的用户消息与助手占位。除这类用户主动追加外，不得在同一会话持续更新、轮询刷新或 Process 展开期间覆盖用户的历史阅读滚动。
 - `Chat / Agent Runtime / Terminal` 的阅读定位条必须以悬浮 overlay 形式附着在消息区右下角，不得继续参与消息时间线的正常文档流；空白会话或少量消息时，不允许因为定位条占位把消息区额外撑高并制造伪滚动。

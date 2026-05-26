@@ -83,8 +83,8 @@ func TestConversationDesktopSessionPaneConstrainsHeightForScroll(t *testing.T) {
 		"[data-runtime-view=\"conversation\"],\n[data-runtime-view=\"terminal\"] {\n  min-height: 100%;\n  height: 100%;",
 		".runtime-workspace-session-pane {\n  background: transparent;\n  min-height: 0;\n  height: 100%;",
 		".runtime-workspace-session-pane-shell {\n  min-height: 0;\n  height: 100%;",
-		".runtime-workspace {\n  padding: 8px 0 18px;\n  min-width: 0;\n  min-height: 0;\n  height: 100%;",
-		".runtime-workspace-body {\n  --runtime-composer-inset: 0px;\n  min-width: 0;\n  min-height: 0;\n  height: 100%;",
+		".runtime-workspace {\n  padding: 8px 0 18px;\n  min-width: 0;\n  max-width: 100%;",
+		".runtime-workspace-body {\n  --runtime-composer-inset: 0px;\n  min-width: 0;\n  max-width: 100%;",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(styles, marker) {

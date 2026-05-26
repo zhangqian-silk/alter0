@@ -3808,14 +3808,17 @@ body::after {
 .runtime-workspace {
   padding: 8px 0 18px;
   min-width: 0;
+  max-width: 100%;
   min-height: 0;
   height: 100%;
   display: flex;
+  overflow: hidden;
 }
 
 .runtime-workspace-body {
   --runtime-composer-inset: 0px;
   min-width: 0;
+  max-width: 100%;
   min-height: 0;
   height: 100%;
   display: grid;
@@ -3829,6 +3832,8 @@ body::after {
 }
 
 .runtime-workspace-head {
+  min-width: 0;
+  max-width: 100%;
   padding: 18px 20px 14px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
   display: grid;
@@ -3957,6 +3962,8 @@ body::after {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .runtime-workspace-row.is-compact {
@@ -3997,6 +4004,7 @@ body::after {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .runtime-workspace-title-leading h4 {
@@ -4037,6 +4045,8 @@ body::after {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .runtime-workspace-row.is-compact .runtime-workspace-actions {
@@ -4762,6 +4772,9 @@ body::after {
 }
 
 .runtime-composer-shell {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   border-top: 1px solid rgba(168, 204, 235, 0.78);
   padding: 14px 18px 18px;
   display: grid;
@@ -4770,6 +4783,9 @@ body::after {
 }
 
 .runtime-composer-form {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: 1fr;
   align-content: start;
@@ -4807,6 +4823,8 @@ body::after {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .runtime-composer-toolbar-start {
@@ -4829,6 +4847,8 @@ body::after {
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .runtime-composer-utility,
@@ -5179,6 +5199,59 @@ body::after {
   font-size: 12px;
   line-height: 1.4;
   word-break: break-word;
+}
+
+[data-runtime-view="conversation"] .runtime-workspace-panel,
+[data-runtime-view="terminal"] .runtime-workspace-panel,
+[data-runtime-view="conversation"] .runtime-workspace-screen,
+[data-runtime-view="terminal"] .runtime-workspace-screen,
+[data-runtime-view="conversation"] .runtime-timeline,
+[data-runtime-view="terminal"] .runtime-timeline,
+[data-runtime-view="conversation"] .terminal-turn-card,
+[data-runtime-view="terminal"] .terminal-turn-card,
+[data-runtime-view="conversation"] .terminal-turn-surface,
+[data-runtime-view="terminal"] .terminal-turn-surface,
+[data-runtime-view="conversation"] .terminal-process-shell,
+[data-runtime-view="terminal"] .terminal-process-shell,
+[data-runtime-view="conversation"] .terminal-final-output,
+[data-runtime-view="terminal"] .terminal-final-output,
+[data-runtime-view="conversation"] .terminal-final-text,
+[data-runtime-view="terminal"] .terminal-final-text,
+[data-runtime-view="conversation"] .runtime-markdown-shell,
+[data-runtime-view="terminal"] .runtime-markdown-shell,
+[data-runtime-view="conversation"] .runtime-markdown-body,
+[data-runtime-view="terminal"] .runtime-markdown-body,
+[data-runtime-view="conversation"] .runtime-markdown-rendered,
+[data-runtime-view="terminal"] .runtime-markdown-rendered {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+[data-runtime-view="conversation"] .terminal-turn-prompt .terminal-log-main,
+[data-runtime-view="terminal"] .terminal-turn-prompt .terminal-log-main {
+  max-width: min(var(--user-message-max-width, 80%), calc(100% - 24px));
+  box-sizing: border-box;
+}
+
+[data-runtime-view="conversation"] .terminal-log-text,
+[data-runtime-view="terminal"] .terminal-log-text,
+[data-runtime-view="conversation"] .terminal-final-rendered,
+[data-runtime-view="terminal"] .terminal-final-rendered,
+[data-runtime-view="conversation"] .runtime-markdown-rendered,
+[data-runtime-view="terminal"] .runtime-markdown-rendered,
+[data-runtime-view="conversation"] .chat-md-inline-code,
+[data-runtime-view="terminal"] .chat-md-inline-code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+[data-runtime-view="conversation"] .terminal-final-rendered .chat-md-pre,
+[data-runtime-view="terminal"] .terminal-final-rendered .chat-md-pre {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
 }
 
 [data-runtime-view="terminal"] .runtime-workspace-screen {
@@ -5717,6 +5790,10 @@ body::after {
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 12px 14px 10px;
     border-bottom: 1px solid rgba(202, 220, 235, 0.72);
     background: linear-gradient(180deg, rgba(247, 250, 255, 0.96) 0%, rgba(252, 253, 255, 0.94) 100%);
@@ -5724,7 +5801,10 @@ body::after {
   }
 
   .runtime-workspace-mobile-title {
+    width: 100%;
     min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     justify-content: flex-start;
@@ -5924,6 +6004,9 @@ body::after {
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap;
   }
 
   .runtime-workspace-mobile-actions .runtime-workspace-mobile-action {
@@ -5980,6 +6063,9 @@ body::after {
   .runtime-workspace-screen {
     --terminal-chat-screen-padding-top: 12px;
     --terminal-chat-screen-padding-x: 12px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     min-height: 0;
     border: 0;
     border-radius: 0;
@@ -5992,6 +6078,8 @@ body::after {
   .runtime-composer-shell {
     position: relative;
     z-index: 24;
+    width: 100%;
+    max-width: 100%;
     border-top: 1px solid rgba(202, 220, 235, 0.72);
     padding: 12px 22px calc(12px + env(safe-area-inset-bottom));
     transform: translateY(calc(var(--keyboard-offset, 0px) * -1));

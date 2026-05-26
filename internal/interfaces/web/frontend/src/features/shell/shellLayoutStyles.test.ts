@@ -606,6 +606,26 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toContain(".app-shell[data-workbench-route=\"chat\"] .conversation-workspace .panel-toggle,");
   });
 
+  it("keeps runtime mobile shells and long terminal content from creating page-level horizontal overflow", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const rootStylesheet = readFileSync(resolve(currentDirectory, "../../styles/root.css"), "utf8");
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(rootStylesheet).toMatch(/html,\s*body,\s*#frontend-root\s*\{[\s\S]*?overflow-x:\s*hidden;/);
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.runtime-workspace-panel,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-panel,[\s\S]*?\.runtime-markdown-rendered\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.terminal-turn-prompt \.terminal-log-main,\s*\[data-runtime-view="terminal"\] \.terminal-turn-prompt \.terminal-log-main\s*\{[\s\S]*?max-width:\s*min\(var\(--user-message-max-width, 80%\), calc\(100% - 24px\)\);/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.terminal-log-text,\s*\[data-runtime-view="terminal"\] \.terminal-log-text,[\s\S]*?\.chat-md-inline-code\s*\{[\s\S]*?overflow-wrap:\s*anywhere;[\s\S]*?word-break:\s*break-word;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
+    );
+  });
+
   it("styles the terminal workspace like a restrained command center while reusing shared session cards", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
