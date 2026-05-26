@@ -97,6 +97,32 @@ func (g *sequenceIDGenerator) NewID() string {
 	return id
 }
 
+type stubAgentCatalog struct {
+	agents map[string]controldomain.Agent
+}
+
+func (s stubAgentCatalog) ResolveAgent(id string) (controldomain.Agent, bool) {
+	agent, ok := s.agents[strings.TrimSpace(id)]
+	return agent, ok
+}
+
+func (s stubAgentCatalog) ListEntrypointAgents() []controldomain.Agent {
+	items := make([]controldomain.Agent, 0, len(s.agents))
+	for _, agent := range s.agents {
+		items = append(items, agent)
+	}
+	return items
+}
+
+func (s stubAgentCatalog) ListDelegatableAgents(_ string) []controldomain.Agent {
+	return s.ListEntrypointAgents()
+}
+
+func (s stubAgentCatalog) IsBuiltinID(id string) bool {
+	_, ok := s.ResolveAgent(id)
+	return ok
+}
+
 func newMessageTestServer(orchestrator Orchestrator) *Server {
 	return &Server{
 		orchestrator: orchestrator,
@@ -184,6 +210,57 @@ func TestMessageHandlerJSONFallbackPath(t *testing.T) {
 	}
 	if orchestrator.lastMessage.ChannelID != "web-default" {
 		t.Fatalf("expected default channel, got %q", orchestrator.lastMessage.ChannelID)
+	}
+}
+
+func TestMessageHandlerUsesCanonicalChatSessionWhenRequestOmitsSessionID(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			Route:     shareddomain.RouteNL,
+			Output:    "ok",
+		},
+	}
+	server := newMessageTestServer(orchestrator)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/messages", strings.NewReader(`{"content":"hello"}`))
+	rec := httptest.NewRecorder()
+	server.messageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if orchestrator.lastMessage.SessionID != canonicalChatSessionID {
+		t.Fatalf("expected canonical chat session %q, got %q", canonicalChatSessionID, orchestrator.lastMessage.SessionID)
+	}
+}
+
+func TestAgentMessageHandlerStillGeneratesRuntimeSessionWhenRequestOmitsSessionID(t *testing.T) {
+	orchestrator := &stubWebOrchestrator{
+		result: shareddomain.OrchestrationResult{
+			MessageID: "message-generated",
+			Route:     shareddomain.RouteCommand,
+			Output:    "ok",
+		},
+	}
+	server := newMessageTestServer(orchestrator)
+	agent := controldomain.Agent{
+		ID:      "researcher",
+		Name:    "Researcher",
+		Enabled: true,
+	}
+	server.control = newAgentControlForTests(t, agent)
+	server.agents = stubAgentCatalog{agents: map[string]controldomain.Agent{agent.ID: agent}}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/messages", strings.NewReader(`{"agent_id":"researcher","content":"ship it"}`))
+	rec := httptest.NewRecorder()
+	server.agentMessageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if orchestrator.lastMessage.SessionID != "session-generated" {
+		t.Fatalf("expected generated agent session, got %q", orchestrator.lastMessage.SessionID)
 	}
 }
 

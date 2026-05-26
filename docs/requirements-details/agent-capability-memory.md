@@ -59,7 +59,7 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 - `codex_exec` 通过 stdin 传递最终指令，命令行参数仅保留 `-` 作为 prompt 占位。
 - 长上下文、Memory、Skill 与运行时结构化载荷不得直接拼入系统命令行参数。
 - 存在可用 Provider 且进入 Agent / ReAct 链路时，Agent 自身吸收 `runtime_context`、`skill_context`、`mcp_context`、`memory_context`，只向 Codex 下发当前步骤的纯执行指令。
-- 不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时必须为当前会话生成独立 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把上述上下文编译成 Codex 原生运行配置与工作区事实，并在 `.alter0/codex-runtime/thread.json` 持久化 Codex CLI thread id；后续同一 Session 再次进入直连 Codex 时，优先使用该 thread id 通过 `codex exec resume` 续写。
+- 不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，运行时必须为当前会话生成独立 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把上述上下文编译成 Codex 原生运行配置与工作区事实，并持久化 Codex CLI thread id。Agent Runtime 在 `.alter0/codex-runtime/thread.json` 持久化当前 Session 的 thread id，后续同一 Session 通过 `codex exec resume` 续写；Chat 固定逻辑会话 `alter0-chat` 在 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json` 按北京时间 05:00 归档日保存 thread id，进入新的归档日且文件不存在时创建新的 Codex 会话。
 - Agent Profile system prompt、Agent Runtime system prompt、直连 Codex prelude、托管 `AGENTS.md` 与 `runtime_context` 必须统一要求执行范围只限当前 Session 工作区及其专属 repo clone、附件和产物路径；未被当前任务显式点名的其他 Session、共享服务和工作区外仓库不得被修改。
 - 仓库类任务默认切到当前 Session 独立 repo 完整 clone `.alter0/workspaces/sessions/<session_id>/repo`，不使用 `git worktree`。
 - `coding` Agent 需要拿到源仓库路径、独立 repo clone 路径、远端地址、当前分支、会话工作区、预览域名与 PR 交付要求；Agent / ReAct 路径由 Agent 自身维护这些事实，直连 Codex 路径则写入 Native Runtime 资产。
@@ -145,6 +145,8 @@ Agent Capability & Memory 负责 Agent 定义、Agent Catalog、ReAct 执行、�
 - 跨会话长期记忆按用户或租户范围沉淀事实与偏好。
 - 召回结果按相关性、优先级与 token 预算注入。
 - 重要记忆可按 L1/L2/L3 分级管理，并按命中率与重要性迁移。
+- 长期记忆需要维护可重建的派生检索索引；Markdown 主存仍是真相源，索引仅承载关键词、作用域、时间与排序所需字段。
+- 主回复前需形成 Active Recall 摘要：在命中长期记忆时，将高相关条目压缩为短摘要和来源 entry id，作为隐藏上下文随本轮 prompt 注入，并在结果 metadata 中标记本轮使用了主动召回。
 
 ### 天级记忆
 

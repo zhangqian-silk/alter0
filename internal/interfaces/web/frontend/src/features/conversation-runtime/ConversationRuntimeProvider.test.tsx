@@ -321,19 +321,19 @@ describe("ConversationRuntimeProvider", () => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
-      JSON.stringify({ chat: "session-1", "agent-runtime": "" }),
+      JSON.stringify({ chat: "alter0-chat", "agent-runtime": "" }),
     );
     window.sessionStorage.setItem(
       COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY,
       JSON.stringify({
-        "session-1": [
+        "alter0-chat": [
           {
             id: "image-1",
             name: "trace.png",
             content_type: "image/png",
             size: 12,
-            asset_url: "/api/sessions/session-1/attachments/image-1/original",
-            preview_url: "/api/sessions/session-1/attachments/image-1/preview",
+            asset_url: "/api/sessions/alter0-chat/attachments/image-1/original",
+            preview_url: "/api/sessions/alter0-chat/attachments/image-1/preview",
           },
         ],
       }),
@@ -344,7 +344,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "session-1",
+                id: "alter0-chat",
                 title: "Image session",
                 title_auto: false,
                 title_score: 1,
@@ -360,10 +360,10 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/conversation-runtime/sessions/session-1?route=chat":
+        case "/api/conversation-runtime/sessions/alter0-chat?route=chat":
           return {
             session: {
-              id: "session-1",
+              id: "alter0-chat",
               title: "Image session",
               title_auto: false,
               title_score: 1,
@@ -431,7 +431,7 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("New"));
   });
 
-  it("prefers the route session query parameter on load and keeps it synced when focus changes", async () => {
+  it("keeps Chat pinned to the canonical long-term session", async () => {
     window.history.replaceState({}, "", "/?chat_session_id=session-2#chat");
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -507,16 +507,16 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("active-session-id")).toHaveTextContent("session-2");
+      expect(screen.getByTestId("active-session-id")).toHaveTextContent("alter0-chat");
     });
-    expect(window.location.search).toContain("chat_session_id=session-2");
+    expect(window.location.search).not.toContain("chat_session_id=");
 
     fireEvent.click(screen.getByRole("button", { name: "focus session 1" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("active-session-id")).toHaveTextContent("session-1");
+      expect(screen.getByTestId("active-session-id")).toHaveTextContent("alter0-chat");
     });
-    expect(window.location.search).toContain("chat_session_id=session-1");
+    expect(window.location.search).not.toContain("chat_session_id=");
   });
 
   it("does not rewrite stored sessions for streaming deltas after an image message is queued", async () => {
@@ -549,8 +549,8 @@ describe("ConversationRuntimeProvider", () => {
     };
     expect(request.attachments?.[0]).toMatchObject({
       id: "image-1",
-      asset_url: "/api/sessions/session-1/attachments/image-1/original",
-      preview_url: "/api/sessions/session-1/attachments/image-1/preview",
+      asset_url: "/api/sessions/alter0-chat/attachments/image-1/original",
+      preview_url: "/api/sessions/alter0-chat/attachments/image-1/preview",
     });
     expect(request.attachments?.[0]?.data_url).toBeUndefined();
 
