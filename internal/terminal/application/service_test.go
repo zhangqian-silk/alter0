@@ -117,6 +117,66 @@ func TestRenderTerminalSkillContextMarkdownMarksEmptySelection(t *testing.T) {
 	}
 }
 
+func TestPrepareTerminalCodexRuntimeMaterializesSelectedSkillFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(rootDir, "docs", "skills", "frontend-design", "scripts"), 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, "docs", "skills", "frontend-design", "SKILL.md"), []byte("# Frontend Design\n"), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, "docs", "skills", "frontend-design", "scripts", "helper.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write skill helper: %v", err)
+	}
+	activeHome := t.TempDir()
+	t.Setenv("CODEX_HOME", activeHome)
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	_, err = prepareTerminalCodexRuntime(workspaceDir, &execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills: []execdomain.SkillSpec{{
+			ID:       "frontend-design",
+			Name:     "Frontend Design",
+			FilePath: "docs/skills/frontend-design/SKILL.md",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("prepareTerminalCodexRuntime() error = %v", err)
+	}
+
+	materializedPath := filepath.Join(workspaceDir, ".alter0", "codex-runtime", "skills", "frontend-design", "SKILL.md")
+	materialized, err := os.ReadFile(materializedPath)
+	if err != nil {
+		t.Fatalf("read materialized skill file: %v", err)
+	}
+	if string(materialized) != "# Frontend Design\n" {
+		t.Fatalf("unexpected materialized skill file: %q", string(materialized))
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, ".alter0", "codex-runtime", "skills", "frontend-design", "scripts", "helper.sh")); err != nil {
+		t.Fatalf("expected skill helper directory to be materialized: %v", err)
+	}
+	skillsMarkdown, err := os.ReadFile(filepath.Join(workspaceDir, ".alter0", "codex-runtime", "skills.md"))
+	if err != nil {
+		t.Fatalf("read runtime skills markdown: %v", err)
+	}
+	if !strings.Contains(string(skillsMarkdown), "- file_path: .alter0/codex-runtime/skills/frontend-design/SKILL.md") {
+		t.Fatalf("expected runtime skill file_path to point inside workspace, got:\n%s", string(skillsMarkdown))
+	}
+	if strings.Contains(string(skillsMarkdown), "- file_path: docs/skills/frontend-design/SKILL.md") {
+		t.Fatalf("expected source-relative skill file_path to be rewritten, got:\n%s", string(skillsMarkdown))
+	}
+}
+
 func TestPrepareTurnInputAttachmentsUsesWorkspaceFilesWithoutDataURLs(t *testing.T) {
 	workspaceDir := t.TempDir()
 	sourcePath := filepath.Join(workspaceDir, "source-requirements.md")

@@ -45,6 +45,12 @@ const (
 	defaultCodexHeartbeatInterval    = time.Minute
 	codexHeartbeatSource             = "codex_cli"
 	codexGitPrepareTimeout           = 5 * time.Second
+	canonicalChatSessionID           = "alter0-chat"
+)
+
+var (
+	codexThreadNow             = time.Now
+	codexThreadArchiveLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
 )
 
 type codexAddDirRule struct {
@@ -384,9 +390,17 @@ func resolveCodexThreadState(workspaceDir string, metadata map[string]string) co
 	if trimmedWorkspace == "" {
 		return codexThreadState{}
 	}
+	runtimeDir := filepath.Join(trimmedWorkspace, defaultWorkspaceRootDir, codexRuntimeDirName)
+	if isCanonicalChatRuntimeSession(metadata) {
+		migrateLegacyCanonicalChatCodexThreadState(runtimeDir)
+		return codexThreadState{
+			Enabled: true,
+			Path:    filepath.Join(runtimeDir, "threads", codexThreadArchiveDay(codexThreadNow())+".json"),
+		}
+	}
 	return codexThreadState{
 		Enabled: true,
-		Path:    filepath.Join(trimmedWorkspace, defaultWorkspaceRootDir, codexRuntimeDirName, "thread.json"),
+		Path:    filepath.Join(runtimeDir, "thread.json"),
 	}
 }
 
@@ -415,12 +429,69 @@ func persistCodexThreadID(state codexThreadState, threadID string) {
 	}
 	data, err := json.MarshalIndent(persistedCodexThreadState{
 		ThreadID:  threadID,
-		UpdatedAt: time.Now().UTC(),
+		UpdatedAt: codexThreadNow().UTC(),
 	}, "", "  ")
 	if err != nil {
 		return
 	}
 	_ = os.WriteFile(state.Path, append(data, '\n'), 0o600)
+}
+
+func isCanonicalChatRuntimeSession(metadata map[string]string) bool {
+	return strings.EqualFold(
+		strings.TrimSpace(firstNonEmpty(
+			metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey),
+			metadataValue(metadata, sessionIDMetadataFallback),
+		)),
+		canonicalChatSessionID,
+	)
+}
+
+func migrateLegacyCanonicalChatCodexThreadState(runtimeDir string) {
+	runtimeDir = strings.TrimSpace(runtimeDir)
+	if runtimeDir == "" {
+		return
+	}
+	legacyPath := filepath.Join(runtimeDir, "thread.json")
+	data, err := os.ReadFile(legacyPath)
+	if err != nil {
+		return
+	}
+	record := persistedCodexThreadState{}
+	if err := json.Unmarshal(data, &record); err != nil {
+		return
+	}
+	if strings.TrimSpace(record.ThreadID) == "" {
+		_ = os.Remove(legacyPath)
+		return
+	}
+	archiveTime := record.UpdatedAt
+	if archiveTime.IsZero() {
+		if info, statErr := os.Stat(legacyPath); statErr == nil {
+			archiveTime = info.ModTime()
+		}
+	}
+	if archiveTime.IsZero() {
+		archiveTime = codexThreadNow()
+	}
+	archivePath := filepath.Join(runtimeDir, "threads", codexThreadArchiveDay(archiveTime)+".json")
+	if _, statErr := os.Stat(archivePath); os.IsNotExist(statErr) {
+		if mkErr := os.MkdirAll(filepath.Dir(archivePath), 0o755); mkErr == nil {
+			_ = os.WriteFile(archivePath, append(data, '\n'), 0o600)
+		}
+	}
+	_ = os.Remove(legacyPath)
+}
+
+func codexThreadArchiveDay(ts time.Time) string {
+	if ts.IsZero() {
+		ts = codexThreadNow()
+	}
+	local := ts.In(codexThreadArchiveLocation)
+	if local.Hour() < 5 {
+		local = local.AddDate(0, 0, -1)
+	}
+	return local.Format("2006-01-02")
 }
 
 func isCodexProcessRunning(cmd *exec.Cmd) bool {

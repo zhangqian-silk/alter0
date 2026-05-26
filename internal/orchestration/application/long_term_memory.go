@@ -61,6 +61,7 @@ type LongTermMemoryOptions struct {
 	MaxSnippet           int
 	InjectionTokenBudget int
 	PersistencePath      string
+	IndexPath            string
 	WritePolicy          LongTermMemoryWritePolicy
 	WriteBackFlush       time.Duration
 	DefaultTenantID      string
@@ -168,6 +169,7 @@ type longTermMemorySnapshot struct {
 	Hits              []longTermMemoryHit
 	TierHits          map[LongTermMemoryTier][]longTermMemoryHit
 	CandidateTierHits map[LongTermMemoryTier][]longTermMemoryHit
+	ActiveRecall      longTermMemoryActiveRecall
 	Promotions        []longTermMemoryMigration
 	Demotions         []longTermMemoryMigration
 	TokenBudget       int
@@ -180,6 +182,13 @@ type longTermMemoryMigration struct {
 	From    LongTermMemoryTier
 	To      LongTermMemoryTier
 	Reason  string
+}
+
+type longTermMemoryActiveRecall struct {
+	Summary   string
+	EntryIDs  []string
+	HitCount  int
+	TokenUsed int
 }
 
 func (s longTermMemorySnapshot) Metadata() map[string]string {
@@ -201,6 +210,10 @@ func (s longTermMemorySnapshot) Metadata() map[string]string {
 	if len(s.Hits) > 0 {
 		metadata["memory_long_term_scope_resolved"] = "true"
 	}
+	if strings.TrimSpace(s.ActiveRecall.Summary) != "" {
+		metadata["memory_active_recall"] = "true"
+		metadata["memory_active_recall_hit_count"] = strconv.Itoa(s.ActiveRecall.HitCount)
+	}
 	return metadata
 }
 
@@ -215,6 +228,7 @@ func (s longTermMemorySnapshot) ResultMetadata() map[string]string {
 		"memory_long_term_truncated":       strconv.FormatBool(s.Truncated),
 		"memory_long_term_promotion_count": strconv.Itoa(len(s.Promotions)),
 		"memory_long_term_demotion_count":  strconv.Itoa(len(s.Demotions)),
+		"memory_active_recall":             strconv.FormatBool(strings.TrimSpace(s.ActiveRecall.Summary) != ""),
 	}
 }
 
@@ -251,6 +265,27 @@ type longTermMemoryPersistentScope struct {
 	Entries  []longTermMemoryEntry `json:"entries"`
 }
 
+type longTermMemoryIndexState struct {
+	Protocol  string                    `json:"protocol"`
+	UpdatedAt string                    `json:"updated_at"`
+	Entries   []longTermMemoryIndexItem `json:"entries"`
+}
+
+type longTermMemoryIndexItem struct {
+	ID              string   `json:"id"`
+	TenantID        string   `json:"tenant_id"`
+	UserID          string   `json:"user_id"`
+	Tier            string   `json:"tier"`
+	Kind            string   `json:"kind"`
+	Key             string   `json:"key"`
+	Value           string   `json:"value"`
+	Tags            []string `json:"tags,omitempty"`
+	Status          string   `json:"status"`
+	SourceSessionID string   `json:"source_session_id,omitempty"`
+	UpdatedAt       string   `json:"updated_at,omitempty"`
+	Tokens          []string `json:"tokens,omitempty"`
+}
+
 func newLongTermMemoryStore(options LongTermMemoryOptions) *longTermMemoryStore {
 	normalized := normalizeLongTermMemoryOptions(options)
 	store := &longTermMemoryStore{
@@ -277,6 +312,9 @@ func normalizeLongTermMemoryOptions(options LongTermMemoryOptions) LongTermMemor
 	options.WritePolicy = normalizeLongTermMemoryWritePolicy(string(options.WritePolicy))
 	if options.WriteBackFlush <= 0 {
 		options.WriteBackFlush = defaultLongTermMemoryWriteBackFlush
+	}
+	if strings.TrimSpace(options.IndexPath) == "" && strings.TrimSpace(options.PersistencePath) != "" {
+		options.IndexPath = strings.TrimSuffix(options.PersistencePath, filepath.Ext(options.PersistencePath)) + ".index.json"
 	}
 	if strings.TrimSpace(options.DefaultTenantID) == "" {
 		options.DefaultTenantID = defaultLongTermMemoryTenantID
@@ -316,7 +354,7 @@ func (s *longTermMemoryStore) Flush() error {
 }
 
 func (s *longTermMemoryStore) schedulePersistLocked(now time.Time, force bool) {
-	if strings.TrimSpace(s.options.PersistencePath) == "" {
+	if strings.TrimSpace(s.options.PersistencePath) == "" && strings.TrimSpace(s.options.IndexPath) == "" {
 		return
 	}
 	s.dirty = true
@@ -339,6 +377,11 @@ func (s *longTermMemoryStore) schedulePersistLocked(now time.Time, force bool) {
 
 func (s *longTermMemoryStore) persistLocked(now time.Time, force bool) error {
 	if strings.TrimSpace(s.options.PersistencePath) == "" {
+		if err := s.persistIndexLocked(now); err != nil {
+			return err
+		}
+		s.dirty = false
+		s.lastFlushAt = now
 		return nil
 	}
 	if !force && !s.dirty {
@@ -386,9 +429,69 @@ func (s *longTermMemoryStore) persistLocked(now time.Time, force bool) error {
 	if err := os.Rename(tmpPath, path); err != nil {
 		return err
 	}
+	if err := s.persistIndexLocked(now); err != nil {
+		return err
+	}
 	s.dirty = false
 	s.lastFlushAt = now
 	return nil
+}
+
+func (s *longTermMemoryStore) persistIndexLocked(now time.Time) error {
+	path := strings.TrimSpace(s.options.IndexPath)
+	if path == "" {
+		return nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	state := longTermMemoryIndexState{
+		Protocol:  "alter0.long-term-memory-index/v1",
+		UpdatedAt: now.UTC().Format(time.RFC3339),
+		Entries:   make([]longTermMemoryIndexItem, 0),
+	}
+	scopeKeys := make([]string, 0, len(s.scopes))
+	for scopeKey := range s.scopes {
+		scopeKeys = append(scopeKeys, scopeKey)
+	}
+	sort.Strings(scopeKeys)
+	for _, scopeKey := range scopeKeys {
+		entries := copyLongTermMemoryEntries(s.scopes[scopeKey])
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].ID < entries[j].ID
+		})
+		for _, entry := range entries {
+			item := longTermMemoryIndexItem{
+				ID:              entry.ID,
+				TenantID:        entry.Scope.TenantID,
+				UserID:          entry.Scope.UserID,
+				Tier:            string(entry.Tier),
+				Kind:            string(entry.Kind),
+				Key:             entry.Key,
+				Value:           entry.Value,
+				Tags:            append([]string(nil), entry.Tags...),
+				Status:          string(entry.Status),
+				SourceSessionID: entry.SourceSessionID,
+				Tokens:          tokenizeLongTermMemory(strings.Join([]string{entry.Key, entry.Value, strings.Join(entry.Tags, " ")}, " ")),
+			}
+			if !entry.UpdatedAt.IsZero() {
+				item.UpdatedAt = entry.UpdatedAt.UTC().Format(time.RFC3339)
+			}
+			state.Entries = append(state.Entries, item)
+		}
+	}
+	payload, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, append(payload, '\n'), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 func (s *longTermMemoryStore) loadPersistentStateLocked() {
@@ -597,6 +700,7 @@ func (s *longTermMemoryStore) Snapshot(msg shareddomain.UnifiedMessage, query st
 		Hits:              hits,
 		TierHits:          tierHits,
 		CandidateTierHits: candidateTierHits,
+		ActiveRecall:      buildLongTermMemoryActiveRecall(hits, tokenUsed),
 		Promotions:        promotions,
 		Demotions:         demotions,
 		TokenBudget:       tokenBudget,
@@ -1381,6 +1485,11 @@ func renderLongTermMemorySection(snapshot longTermMemorySnapshot) string {
 	builder.WriteString(", demotions=")
 	builder.WriteString(strconv.Itoa(len(snapshot.Demotions)))
 	builder.WriteString("\n")
+	if strings.TrimSpace(snapshot.ActiveRecall.Summary) != "" {
+		builder.WriteString("Active recall: ")
+		builder.WriteString(snapshot.ActiveRecall.Summary)
+		builder.WriteByte('\n')
+	}
 	builder.WriteString("Relevant entries:\n")
 	for idx, hit := range snapshot.Hits {
 		builder.WriteString(fmt.Sprintf("%d) [%s/%s] %s: %s\n", idx+1, hit.Entry.Tier, hit.Entry.Kind, hit.Entry.Key, hit.Entry.Value))
@@ -1400,6 +1509,38 @@ func renderLongTermMemorySection(snapshot longTermMemorySnapshot) string {
 		builder.WriteByte('\n')
 	}
 	return builder.String()
+}
+
+func buildLongTermMemoryActiveRecall(hits []longTermMemoryHit, tokenUsed int) longTermMemoryActiveRecall {
+	if len(hits) == 0 {
+		return longTermMemoryActiveRecall{}
+	}
+	limit := len(hits)
+	if limit > 3 {
+		limit = 3
+	}
+	entryIDs := make([]string, 0, limit)
+	parts := make([]string, 0, limit)
+	for _, hit := range hits[:limit] {
+		entry := hit.Entry
+		if strings.TrimSpace(entry.ID) != "" {
+			entryIDs = append(entryIDs, entry.ID)
+		}
+		label := strings.TrimSpace(entry.Key)
+		value := strings.TrimSpace(entry.Value)
+		switch {
+		case label != "" && value != "":
+			parts = append(parts, label+": "+value)
+		case value != "":
+			parts = append(parts, value)
+		}
+	}
+	return longTermMemoryActiveRecall{
+		Summary:   normalizeSnippet(strings.Join(parts, "; "), defaultLongTermMemoryInjectionBudget),
+		EntryIDs:  entryIDs,
+		HitCount:  len(hits),
+		TokenUsed: tokenUsed,
+	}
 }
 
 func copyLongTermMemoryEntries(entries []longTermMemoryEntry) []longTermMemoryEntry {

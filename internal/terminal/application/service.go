@@ -1727,20 +1727,51 @@ func resolveRecoveredThreadID(sessionID string, terminalSessionID string) string
 }
 
 func prepareTerminalCodexRuntime(workspaceDir string, skillContext *execdomain.SkillContext) ([]string, error) {
+	materializedSkillContext, skillFiles, err := materializeTerminalSkillContextFiles(skillContext)
+	if err != nil {
+		return nil, err
+	}
+	managedFiles := append([]runtimeconfig.ManagedFile{}, skillFiles...)
+	managedFiles = append(managedFiles, runtimeconfig.ManagedFile{
+		RelativePath: ".alter0/codex-runtime/skills.md",
+		Content:      renderTerminalSkillContextMarkdown(materializedSkillContext),
+		Mode:         0o644,
+	})
 	prepared, err := runtimeconfig.Prepare(runtimeconfig.Spec{
-		RuntimeHome:  filepath.Join(workspaceDir, terminalCodexHomeDirName),
-		WorkspaceDir: workspaceDir,
-		ManagedFiles: []runtimeconfig.ManagedFile{{
-			RelativePath: ".alter0/codex-runtime/skills.md",
-			Content:      renderTerminalSkillContextMarkdown(skillContext),
-			Mode:         0o644,
-		}},
+		RuntimeHome:      filepath.Join(workspaceDir, terminalCodexHomeDirName),
+		WorkspaceDir:     workspaceDir,
+		ManagedFiles:     managedFiles,
 		RootInstructions: "- Read `.alter0/codex-runtime/skills.md` before acting. Apply only the skills selected for the current Terminal turn.",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("prepare terminal codex runtime: %w", err)
 	}
 	return prepared.Env, nil
+}
+
+func materializeTerminalSkillContextFiles(skillContext *execdomain.SkillContext) (*execdomain.SkillContext, []runtimeconfig.ManagedFile, error) {
+	if skillContext == nil || len(skillContext.Skills) == 0 {
+		return skillContext, nil, nil
+	}
+	refs := make([]runtimeconfig.FileBackedSkillReference, 0, len(skillContext.Skills))
+	for i, skill := range skillContext.Skills {
+		refs = append(refs, runtimeconfig.FileBackedSkillReference{
+			Key:      fmt.Sprintf("%d", i),
+			ID:       skill.ID,
+			FilePath: skill.FilePath,
+		})
+	}
+	materialized, err := runtimeconfig.MaterializeFileBackedSkillReferences(refs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("materialize terminal skill files: %w", err)
+	}
+	updated := cloneTerminalSkillContext(skillContext)
+	for i := range updated.Skills {
+		if filePath := materialized.FilePaths[fmt.Sprintf("%d", i)]; strings.TrimSpace(filePath) != "" {
+			updated.Skills[i].FilePath = filePath
+		}
+	}
+	return updated, materialized.ManagedFiles, nil
 }
 
 func renderTerminalSkillContextMarkdown(skillContext *execdomain.SkillContext) string {

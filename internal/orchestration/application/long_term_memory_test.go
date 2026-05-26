@@ -498,6 +498,87 @@ func TestLongTermMemoryWriteBackRequiresFlush(t *testing.T) {
 	}
 }
 
+func TestLongTermMemoryMaintainsSearchIndexForReloadedRecall(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "MEMORY.md")
+	indexPath := filepath.Join(dir, "memory-index.json")
+	options := LongTermMemoryOptions{
+		MaxEntriesPerScope:   24,
+		MaxHits:              6,
+		MaxSnippet:           200,
+		InjectionTokenBudget: 120,
+		PersistencePath:      path,
+		IndexPath:            indexPath,
+		WritePolicy:          longTermMemoryWritePolicyWriteThrough,
+	}
+	now := time.Date(2026, 3, 3, 18, 0, 0, 0, time.UTC)
+
+	store := newLongTermMemoryStore(options)
+	store.Record(longTermMessage("index-seed", "u-1", "tenant-a", "remember deploy target", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryKeyMetadataKey:      "preview-subdomain",
+		longTermMemoryValueMetadataKey:    "travel previews use travel-session.alter0.cn",
+		longTermMemoryTagsMetadataKey:     "preview,travel",
+	}), shareddomain.RouteNL, "")
+
+	indexData, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("read long-term memory index: %v", err)
+	}
+	indexText := string(indexData)
+	if !strings.Contains(indexText, "preview-subdomain") || !strings.Contains(indexText, "travel-session") {
+		t.Fatalf("expected durable search index to include memory terms, got %q", indexText)
+	}
+
+	reloaded := newLongTermMemoryStore(options)
+	query := longTermMessage("index-query", "u-1", "tenant-a", "what is the travel preview host?", now.Add(time.Minute), nil)
+	snapshot := reloaded.Snapshot(query, query.Content, query.ReceivedAt)
+	if len(snapshot.Hits) == 0 {
+		t.Fatalf("expected indexed memory hit after reload")
+	}
+	if snapshot.ActiveRecall.Summary == "" || !strings.Contains(snapshot.ActiveRecall.Summary, "travel") {
+		t.Fatalf("expected active recall summary from indexed hit, got %+v", snapshot.ActiveRecall)
+	}
+	if snapshot.Metadata()["memory_active_recall"] != "true" {
+		t.Fatalf("expected active recall metadata, got %+v", snapshot.Metadata())
+	}
+}
+
+func TestLongTermMemoryFlushPersistsWriteBackIndex(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "MEMORY.md")
+	indexPath := filepath.Join(dir, "memory-index.json")
+	options := LongTermMemoryOptions{
+		MaxEntriesPerScope: 24,
+		MaxHits:            6,
+		MaxSnippet:         200,
+		PersistencePath:    path,
+		IndexPath:          indexPath,
+		WritePolicy:        longTermMemoryWritePolicyWriteBack,
+		WriteBackFlush:     time.Hour,
+	}
+	now := time.Date(2026, 3, 3, 18, 30, 0, 0, time.UTC)
+
+	store := newLongTermMemoryStore(options)
+	store.Record(longTermMessage("index-wb", "u-1", "tenant-a", "remember timezone", now, map[string]string{
+		longTermMemoryStrategyMetadataKey: "add",
+		longTermMemoryKindMetadataKey:     "fact",
+		longTermMemoryKeyMetadataKey:      "timezone",
+		longTermMemoryValueMetadataKey:    "UTC+8",
+	}), shareddomain.RouteNL, "")
+
+	if _, err := os.Stat(indexPath); !os.IsNotExist(err) {
+		t.Fatalf("expected no index file before write-back flush, got err=%v", err)
+	}
+	if err := store.Flush(); err != nil {
+		t.Fatalf("flush write-back memory index: %v", err)
+	}
+	if _, err := os.Stat(indexPath); err != nil {
+		t.Fatalf("expected index file after flush: %v", err)
+	}
+}
+
 func longTermMessage(
 	sessionID string,
 	userID string,

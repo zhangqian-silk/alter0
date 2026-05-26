@@ -11,8 +11,9 @@ import (
 type MessageRole string
 
 const (
-	MessageRoleUser      MessageRole = "user"
-	MessageRoleAssistant MessageRole = "assistant"
+	MessageRoleUser        MessageRole = "user"
+	MessageRoleAssistant   MessageRole = "assistant"
+	CanonicalChatSessionID             = "alter0-chat"
 )
 
 type RouteResult struct {
