@@ -1515,6 +1515,96 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.finalOutputs().last()).toContainText("line 120");
   });
 
+  test("keeps long terminal prompts and logs inside the mobile viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const clientID = createTerminalClientID("mobile-long-log-wrap");
+    const now = Date.now();
+    const longPath = "/srv/alter0/app/.alter0/workspaces/terminal/sessions/terminal-20260524t122646.852115388-1020b2bb46d448ae/alter0/internal/execution/infrastructure/codex_cli_processor_test.go";
+    await bindTerminalClient(page, clientID);
+    await seedTerminalSessions(page, [
+      {
+        id: "terminal-mobile-long-log-wrap",
+        title: "继续补充实现下，chat每次归档时，将conversation会话id也归档。新创建对话文件时，也要创建对应codex会话。",
+        terminal_session_id: "terminal-mobile-long-log-wrap",
+        status: "exited",
+        shell: "codex exec",
+        working_dir: terminalSessionWorkspace("terminal-mobile-long-log-wrap"),
+        created_at: now - 4000,
+        updated_at: now - 1000,
+        last_output_at: now - 1000,
+        process_collapsed: { "turn-long-wrap": false },
+        output_collapsed: { "turn-long-wrap": false },
+        expanded_steps: {},
+        step_details: {},
+        step_loading: {},
+        step_errors: {},
+        step_search: {},
+        turns: [
+          {
+            id: "turn-long-wrap",
+            prompt: "继续补充实现下，chat每次归档时，将conversation会话id也归档。新创建对话文件时，也要创建对应codex会话。",
+            status: "completed",
+            started_at: now - 3200,
+            finished_at: now - 1200,
+            duration_ms: 2000,
+            final_output: [
+              "现在实现最小生产代码：为 Chat 的 Codex thread 解析增加路径迁移。",
+              `2026-05-25T15:41:01.670264Z ERROR codex_core::tools::router: apply_patch verification failed: Failed to find expected lines in ${longPath}: func TestCodexCLIProcessorProcessStreamPersistThreadForFallbackAgent(*testing.T)`,
+            ].join("\n\n"),
+            steps: [
+              {
+                id: "step-long-path",
+                title: `apply_patch ${longPath}`,
+                preview: `Failed to find expected lines in ${longPath}`,
+                status: "failed",
+                duration_ms: 1200,
+                started_at: now - 3000,
+                finished_at: now - 1800,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    await openTerminalRoute(page);
+
+    const terminalPage = createTerminalPage(page);
+    await expect(terminalPage.turnCard("turn-long-wrap")).toContainText("Failed to find expected lines");
+
+    const overflow = await page.evaluate(() => {
+      const viewportWidth = document.documentElement.clientWidth;
+      const pageOverflow = Math.max(
+        document.documentElement.scrollWidth,
+        document.body.scrollWidth,
+      ) - viewportWidth;
+      const overflowingNodes = Array.from(document.querySelectorAll<HTMLElement>(
+        [
+          "[data-runtime-mobile-header]",
+          "[data-terminal-turn]",
+          ".terminal-turn-prompt .terminal-log-main",
+          ".terminal-process-shell",
+          ".terminal-step-toggle",
+          ".terminal-final-output",
+          ".terminal-final-rendered",
+          ".runtime-composer-form",
+        ].join(","),
+      ))
+        .map((node) => {
+          const rect = node.getBoundingClientRect();
+          return {
+            className: node.className,
+            left: Math.floor(rect.left),
+            right: Math.ceil(rect.right),
+            width: Math.ceil(rect.width),
+          };
+        })
+        .filter((rect) => rect.left < -1 || rect.right > viewportWidth + 1);
+      return { pageOverflow, overflowingNodes };
+    });
+
+    expect(overflow).toEqual({ pageOverflow: 0, overflowingNodes: [] });
+  });
+
   test("keeps jump-to-bottom button hidden for short offset until new output arrives", async ({ page, request }) => {
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "jump-bottom-unread" });
     const composer = terminalPage.composer();
