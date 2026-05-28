@@ -83,7 +83,6 @@ ALTER0_CODEX_COMMAND='${CODEX_COMMAND}' \
 -codex-command '${CODEX_COMMAND}' \
 -web-addr '${WEB_ADDR}' \
 -web-bind-localhost-only='${WEB_BIND_LOCALHOST_ONLY}' \
--web-login-password '${WEB_LOGIN_PASSWORD}' \
 -daily-memory-dir '${STORAGE_DIR}/memory' \
 -long-term-memory-path '${STORAGE_DIR}/memory/long-term/MEMORY.md'"
 
