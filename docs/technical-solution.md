@@ -68,6 +68,7 @@ CLI / Web / Cron
 - `internal/session/application` 负责会话持久化、历史查询和删除清理。
 - `internal/interfaces/web` 负责 HTTP、SSE、Web 登录、页面路由和前端静态资源分发。
 - `internal/interfaces/web/frontend` 负责 Web Shell 的 Vite + React 构建、legacy DOM shell 渲染和 `static/dist` 产物输出。
+- `scripts/build_alter0_service.sh` 是服务二进制的统一构建入口：先在 `internal/interfaces/web/frontend` 执行 `npm run build`，校验 `static/dist/index.html` 中的哈希 JS/CSS 资产引用，再执行 `go build -o bin/alter0 ./cmd/alter0`。`start_alter0_service.sh`、`relaunch_service.sh` 与 `make build` 必须复用该入口，避免 Go 服务重建时嵌入过期前端产物。
 - `internal/interfaces/web/frontend/src/shared/api/client.ts` 负责统一 JSON 请求封装、错误收敛与登录失效回调，避免新前端页面继续散落原生 `fetch`。
 - `internal/interfaces/web/frontend/src/shared/session/sessionHash.ts` 负责运行页会话短标识生成；`Chat / Agent Runtime / Terminal` 的会话侧栏统一使用该入口把完整会话 id 派生为 8 位短 hash，完整会话 id 与 Terminal `terminal_session_id` 仅保留在接口、持久化、Details 与工作区路径语义中。
 - `internal/interfaces/web/frontend/src/shared/time/format.ts` 负责固定 `Asia/Shanghai` 的前端显示时区与标准时间格式，避免新旧页面时间口径漂移；管理页中需要分钟精度的额度重置、运行时间等时间戳也必须复用这里的共享格式器，而不是在页面组件里手写 UTC 文案。

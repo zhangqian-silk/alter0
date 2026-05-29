@@ -12,7 +12,7 @@
 - `features/shell` 负责主导航、共享 copy、运行页骨架与 React 管理页：`components/RuntimeWorkspaceFrame.tsx` 提供 `chat / agent-runtime / terminal` 复用的运行页骨架、侧栏/backdrop、工作区 body 与 slot 化头部/正文/底部区域；`RuntimeWorkspaceShell.tsx` 统一渲染 session pane 的 `New / Hide` 图标按钮与移动端抽屉壳层，并负责两行 `Sessions + 总数` copy 与右侧紧凑按钮的头部编排；`ReactManagedRouteBody` 统一分派 `agent / terminal / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks / codex-accounts`，其中 `ReactManagedTerminalRouteBody` 通过该骨架输出 `Menu / Sessions / New` 顶部操作行并接入 workbench 导航状态，并与 Conversation 共享最近时间分组的会话侧栏结构
 - 根壳层通过 `app-shell[data-workbench-route]` 暴露当前路由，运行页继续通过 `data-route / data-conversation-*` 暴露稳定锚点；`legacy` 资源仅保留兼容样式，不再通过 `/legacy/chat.js`、bridge 或 snapshot store 驱动业务运行时
 - `public/legacy` 当前仅保留兼容样式资源，并作为 legacy 样式来源输出到 `static/dist/legacy`
-- `npm run build` 输出到 `internal/interfaces/web/static/dist`
+- `npm run build` 输出到 `internal/interfaces/web/static/dist`；服务二进制的正式构建入口为仓库根目录的 `scripts/build_alter0_service.sh` / `make build`，会先运行该前端构建再执行 Go 构建
 - `npm run dev` 默认把 `/api`、`/login`、`/logout`、`/healthz`、`/readyz`、`/metrics` 代理到 `http://127.0.0.1:18088`；可通过 `ALTER0_WEB_BACKEND_ORIGIN` 覆盖后端地址
 - `src/shared/api/client.ts` 提供统一 JSON 请求、`204` 空响应、结构化错误与 `401` 登录失效钩子，后续 React 页面迁移统一复用该入口
 - `src/shared/time/format.ts` 提供统一北京时间格式化与默认时区常量，后续 Chat / Terminal / Task / Cron 页面统一复用该入口

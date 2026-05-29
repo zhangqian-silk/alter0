@@ -81,6 +81,8 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` 下的兼容样式资源保持 `no-cache`，确保页面与样式刷新及时；`static/dist/assets` 下带哈希的构建产物使用长期 immutable 缓存，减少重复下载。
 
+服务二进制构建统一通过 `scripts/build_alter0_service.sh` 收口：脚本会先执行 `internal/interfaces/web/frontend` 下的前端构建并校验 `static/dist/index.html` 引用了新的哈希 JS/CSS 产物，再执行 `go build` 生成服务二进制。`scripts/start_alter0_service.sh`、`scripts/relaunch_service.sh` 与 `make build` 都复用该入口，避免服务重启只拉取 Go 源码而继续嵌入旧前端产物。
+
 当前 Web Shell 使用单一 React 工作台：左侧固定主导航负责路由与语言切换，主工作区按运行态或控制页渲染具体内容；`chat`、`agent-runtime` 与 `terminal` 都收敛到统一的 workspace 骨架，运行页公共结构由共享的 `RuntimeWorkspaceShell / RuntimeComposer / RuntimeWorkspaceHeader` 链路直接产出，`agent / memory / channels / skills / mcp / models / environments / codex-accounts / cron-jobs / sessions / tasks` 等页面继续由 React 直接请求控制台或会话 API 渲染。此前用于 `/chat` 的 `LegacyWebShell / ReactRuntimeFacade / alter0:legacy-shell:* bridge / snapshot store` 已移除，`legacy` 资源仅保留样式兼容层，不再参与任何前端业务运行时。
 当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，顶部使用纯文字品牌位与语言切换，右侧主面板统一承载运行页和控制页。`Chat / Agent Runtime / Terminal` 的产品体验统一采用「会话列 + 主时间线工作区 + 底部 Composer + 固定 workspace header」的工作台结构；PC 端大部分控件统一采用 8-14px 的低圆角矩形节奏，状态、短 hash、上传、发送、详情与弹窗按钮保持克制的控制台质感，阅读定位按钮则允许使用更易触达的独立圆形样式。进入 `1100px` 及以下窄屏后，三条运行页继续在工作区顶部直接提供 `Menu / Sessions / New` 入口，会话列切为独立抽屉，不再和正文上下堆叠；普通 `page-mode` 路由页也会在标题上方补一行 `Menu` 入口，保证进入 `Tasks / Sessions / Models` 等信息页后仍能直接拉起主导航。到真手机宽度时，运行页顶层进一步收敛为单层 workbar：左侧保留 `Menu`，中间使用“状态信号 + 当前会话标题”的单行标题按钮，右侧承载 `Sessions / New`；`Details` 不再单独占据手机顶栏，而是通过点击中间标题直接打开。三条运行页共享同一套 runtime workspace 页面骨架、滚动区与单一圆角助手输入面板：主 textarea 透明融入白色输入 surface，底部工具行保留在同一面板内，左侧收口为正方形低圆角的会话设置与附件按钮，会话设置使用四点网格图标，附件使用回形针图标，配置面板内部再切换 `Agent / Model / Tools / Skills` 标签，右侧只保留深色紧凑 icon submit；桌面端输入面板按主阅读宽度居中，移动端保持键盘安全区与 16px 输入字号。会话侧栏统一显示 `Sessions` 标题、总数文案与 `New` 入口，移动端抽屉额外提供 `Hide / 收起` 动作，抽屉头部左侧改为两行 `Sessions + 总数` 文案，右侧 `New / Hide` 保持同排且尺寸与运行页其他紧凑控制按钮一致；列表按最近时间分组为 `Today / Yesterday / Earlier`，条目统一收敛为「红黄绿波纹信号 / 标题 / 单行时间与短 hash 元信息 / 尾侧更多按钮」的卡片式工作台列表项：`Chat / Agent Runtime` 会根据当前 assistant 消息或任务生命周期派生绿色 `Ready`、黄色 `Busy`、红色 `Failed`，`Terminal` 则把 `ready / busy / exited / interrupted` 映射为同一套红黄绿信号；Terminal 元信息行只显示时间和短 hash，不再拼 `Last output / 最近输出` 前缀；workspace header 的状态按钮与当前会话实际状态保持一致，但可见层只保留同一枚信号，状态名称仅保留给读屏与悬浮语义。空白 Chat / Agent Runtime 会话默认标题为 `New`，空态工作区使用低对比网格与细弧线背景，但不额外挂载 route hero 或营销式说明块；其中 `Agent Runtime` 会在欢迎区直接展示可点选 Agent 卡片，并记住浏览器内最近一次手动选择，供下一次新会话默认回填；移动端欢迎区改为单列 Agent 列表，每个条目使用更贴近能力语义的图标，并只保留一行简短介绍，欢迎区说明文字也会按列表宽度放宽，降低首屏决策噪音。Terminal 仅在终端路由内部叠加自己的布局皮肤与交互状态。控制类页面继续复用近白主表面、浅灰说明层和浅蓝选中态，不再派生独立的高装饰卡片系统；头部导航入口仅在 `1100px` 及以下切换为抽屉式交互，`760px` 及以下再压缩按钮与间距，保证真手机宽度下的可触达性。
 
@@ -356,6 +358,16 @@ go version
 
 ### Run Runtime
 
+构建生产服务二进制：
+
+```bash
+make build
+# or
+scripts/build_alter0_service.sh
+```
+
+该构建入口会先生成前端 `static/dist`，再构建 Go 服务。若只做本地开发态联调，可继续使用 `make run` 或 `go run`，并按需配合 Vite dev server。
+
 ```bash
 make
 # or
@@ -383,7 +395,7 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 
 1. 点击“重启服务”后会打开单一站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项展示，默认勾选。
 2. `sync_remote_master=false`：基于当前仓库状态构建候选二进制，并由 `supervisor` 完成子进程切换。
-3. `sync_remote_master=true`：先校验当前分支为 `master`，仅丢弃 Git 已跟踪的本地改动并保留未跟踪文件/目录，再执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后构建候选二进制并切换。
+3. `sync_remote_master=true`：先校验当前分支为 `master`，仅丢弃 Git 已跟踪的本地改动并保留未跟踪文件/目录，再执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后通过统一构建入口先重建前端 `static/dist`、再构建候选二进制并切换。
 4. 候选版本只有在 `/readyz` 探活通过后才会成为当前运行版本；若启动失败，会自动恢复上一运行版本。
 5. Git 或构建失败会直接返回到 Web 控制台，便于定位权限、凭据、快进合并失败等问题。
 6. `Environments` 工具栏会展示当前在线实例的最近启动时间与对应 `commit hash`，用于确认上次成功重启切换到的运行版本。
@@ -421,7 +433,7 @@ sudo ./scripts/setup_alter0_runtime_auth.sh
 sudo ./scripts/setup_alter0_runtime_node.sh
 ```
 
-该脚本会把带 `npm`/`npx`/`corepack` 的 Node 运行时安装到 `/var/lib/alter0/.local`，并默认在 `internal/interfaces/web` 与 `internal/interfaces/web/frontend` 目录预装 `npm ci`，随后安装 Playwright Chromium 浏览器，使服务运行账户在非交互式环境中也能同时执行前端构建、单测与 E2E 测试。
+该脚本会把带 `npm`/`npx`/`corepack` 的 Node 运行时安装到 `/var/lib/alter0/.local`，并默认在 `internal/interfaces/web` 与 `internal/interfaces/web/frontend` 目录预装 `npm ci`，随后安装 Playwright Chromium 浏览器，使服务运行账户在非交互式环境中也能同时执行前端构建、单测与 E2E 测试。正式服务启动与重启使用 `scripts/build_alter0_service.sh`，因此运行账户需要能在 `PATH` 中找到这套 Node 工具链。
 
 之所以默认落在 `/var/lib/alter0/.local`，是因为这里属于 `alter0` 服务运行账户自己的运行时目录：既不会污染系统全局 `/usr/local/bin`，也不依赖宿主机预装 `npm`。脚本会把实际安装目录中的 `node`、`npm`、`npx`、`corepack` 软链接到 `/var/lib/alter0/.local/bin`，再由服务启动时补齐该目录到 `PATH`，这样 `Codex CLI`、Web 子进程和手工切到 `alter0` 账户执行时看到的都是同一套稳定工具链。
 

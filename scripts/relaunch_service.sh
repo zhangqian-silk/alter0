@@ -95,7 +95,7 @@ if command -v git >/dev/null 2>&1; then
   git reset --hard "$REMOTE/$BRANCH"
 fi
 
-env GOSUMDB="${GOSUMDB:-sum.golang.org}" GOTOOLCHAIN="${GOTOOLCHAIN:-auto}" go build -o "$BUILD_OUTPUT" ./cmd/alter0
+"$REPO_DIR/scripts/build_alter0_service.sh"
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   if command -v sudo >/dev/null 2>&1; then
