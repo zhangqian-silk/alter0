@@ -1,8 +1,11 @@
 .DEFAULT_GOAL := run
 
-.PHONY: run start test help
+.PHONY: build run start test help
 
 WEB_ADDR ?= 127.0.0.1:18088
+
+build:
+	scripts/build_alter0_service.sh
 
 run:
 	go run ./cmd/alter0 -web-addr $(WEB_ADDR)
@@ -14,6 +17,7 @@ test:
 
 help:
 	@echo "Targets:"
+	@echo "  make build  Build frontend dist and Go service binary"
 	@echo "  make        Start alter0 service"
 	@echo "  make run    Start alter0 service"
 	@echo "  make run WEB_ADDR=127.0.0.1:<your-port>   Start with custom listen addr"

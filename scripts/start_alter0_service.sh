@@ -69,7 +69,7 @@ if [[ -z "${WEB_LOGIN_PASSWORD}" ]]; then
   exit 1
 fi
 
-env GOSUMDB="${GOSUMDB:-sum.golang.org}" GOTOOLCHAIN="${GOTOOLCHAIN:-auto}" go build -o "${BUILD_OUTPUT}" ./cmd/alter0
+"${REPO_DIR}/scripts/build_alter0_service.sh"
 
 CMD="env \
 GOSUMDB='${GOSUMDB:-sum.golang.org}' \
