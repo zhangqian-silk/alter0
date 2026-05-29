@@ -552,6 +552,16 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
     });
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
+    const terminalTurn = document.querySelector("[data-terminal-turn='turn-1']") as HTMLElement;
+    const terminalPrompt = terminalTurn.querySelector(".terminal-turn-prompt") as HTMLElement;
+    const terminalFinal = terminalTurn.querySelector("[data-terminal-final-output='turn-1']") as HTMLElement;
+    expect(terminalPrompt).toHaveClass("runtime-message", "runtime-message-user");
+    expect(terminalPrompt.querySelector(".runtime-message-bubble")).toBeInTheDocument();
+    expect(terminalPrompt.querySelector(".runtime-message-user-shell")).toBeInTheDocument();
+    expect(terminalFinal).toHaveClass("runtime-message", "runtime-message-assistant");
+    expect(terminalFinal.querySelector(".runtime-message-bubble")).toBeInTheDocument();
+    expect(terminalFinal.querySelector(".runtime-message-assistant-shell")).toBeInTheDocument();
+    expect(terminalTurn.querySelector(".terminal-log-time")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-view='terminal']")).toHaveClass("runtime-workspace-view");
     expect(document.querySelector("[data-runtime-workspace-page='true']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-select")).toBeInTheDocument();
@@ -1137,6 +1147,25 @@ describe("ReactManagedTerminalRouteBody", () => {
         "pwd\n/workspace/alter0",
       );
     });
+  });
+
+  it("renders terminal process as a compact thought disclosure", async () => {
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-process-toggle='turn-1']")).toBeInTheDocument();
+    });
+
+    const process = document.querySelector("[data-terminal-process-shell='turn-1']") as HTMLElement;
+    const toggle = document.querySelector("[data-terminal-process-toggle='turn-1']") as HTMLButtonElement;
+    expect(process).toHaveClass("is-collapsed");
+    expect(process).toHaveClass("runtime-thinking-shell");
+    expect(toggle).toHaveClass("runtime-thinking-toggle");
+    expect(toggle).toHaveTextContent("Thinking");
+    expect(toggle).not.toHaveTextContent("2s");
+    expect(toggle).not.toHaveTextContent("Process");
+    expect(toggle.querySelector(".terminal-process-meta")).not.toBeInTheDocument();
+    expect(toggle.querySelector(".terminal-step-toggle-icon")).toHaveTextContent(">");
   });
 
   it("renders a dedicated terminal step toggle icon so the step title stays in the readable content column", async () => {

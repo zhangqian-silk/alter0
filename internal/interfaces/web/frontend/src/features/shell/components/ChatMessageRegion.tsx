@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { formatTimeLabel } from "../../../shared/time/format";
 import { resolveComposerAttachmentViewerURL } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 import {
@@ -64,7 +63,7 @@ const MESSAGE_COPY: Record<LegacyShellLanguage, MessageCopy> = {
     statusSuccess: "Success",
     statusFailed: "Failed",
     statusDone: "Done",
-    processLabel: "Process",
+    processLabel: "Thinking",
     processSteps: (count) => `${count} steps`,
     processEmpty: "No execution details.",
     processObservation: "Observation",
@@ -78,7 +77,7 @@ const MESSAGE_COPY: Record<LegacyShellLanguage, MessageCopy> = {
     statusSuccess: "成功",
     statusFailed: "失败",
     statusDone: "完成",
-    processLabel: "过程",
+    processLabel: "已思考",
     processSteps: (count) => `${count} 步`,
     processEmpty: "暂无执行细节。",
     processObservation: "观察",
@@ -125,16 +124,13 @@ function buildChatTimelineItem(
   copy: MessageCopy,
   onToggleProcess?: (messageID: string) => void,
 ): RuntimeTimelineItem {
-  const footer = (
+  const footer = message.role === "assistant" && shouldShowAssistantStatus(message) ? (
     <div className="msg-meta">
-      {message.role === "assistant" && shouldShowAssistantStatus(message) ? (
         <span className={`status-pill ${message.status || "done"}`}>
           {assistantStatusLabel(message.status, language)}
         </span>
-      ) : null}
-      <span>{formatTimeLabel(message.at)}</span>
     </div>
-  );
+  ) : undefined;
 
   if (message.role === "user") {
     const blocks: RuntimeTimelineItem["blocks"] = [
@@ -156,13 +152,13 @@ function buildChatTimelineItem(
         textClassName: "terminal-log-main",
         timeClassName: "terminal-log-time",
         text: message.text,
-        timeLabel: formatTimeLabel(message.at),
       });
     }
     return {
       id: message.id,
-      className: "terminal-turn-card conversation-turn-card conversation-turn-user",
+      className: "msg user terminal-turn-card conversation-turn-card runtime-message runtime-message-user conversation-message conversation-turn-user is-user",
       articleProps: { "data-message-id": message.id },
+      bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-user-shell user-message-shell",
       blocks,
     };
   }
@@ -172,8 +168,9 @@ function buildChatTimelineItem(
     const html = renderRuntimeMarkdownToHTML(message.text);
     return {
       id: message.id,
-      className: "terminal-turn-card conversation-turn-card conversation-turn-assistant",
+      className: "msg assistant terminal-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
       articleProps: { "data-message-id": message.id },
+      bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
       blocks: html.trim() ? [
         {
           type: "markdown-shell",
@@ -202,14 +199,15 @@ function buildChatTimelineItem(
 
   return {
     id: message.id,
-    className: "terminal-turn-card conversation-turn-card conversation-turn-assistant",
+    className: "msg assistant terminal-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
     articleProps: { "data-message-id": message.id },
+    bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
     blocks: [
       {
         type: "process",
-        shellClassName: `terminal-process-shell conversation-process-shell ${collapsed ? "is-collapsed" : ""}`,
+        shellClassName: `runtime-thinking-shell terminal-process-shell conversation-process-shell ${collapsed ? "is-collapsed" : ""}`,
         shellProps: { "data-agent-process-shell": message.id },
-        toggleClassName: "terminal-process-toggle conversation-process-toggle",
+        toggleClassName: "runtime-thinking-toggle terminal-process-toggle conversation-process-toggle",
         toggleProps: { "data-agent-process-toggle": message.id },
         title: (
           <>

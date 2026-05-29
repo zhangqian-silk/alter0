@@ -29,6 +29,10 @@ type ConversationWorkspaceSharedRefs = {
   workspaceBodyRef: { current: HTMLDivElement | null };
 };
 
+const INITIAL_VISIBLE_CHAT_MESSAGES = 32;
+const CHAT_MESSAGE_LOAD_BATCH_SIZE = 32;
+const CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET = 32;
+
 function renderAgentDeliverablesSection(
   language: LegacyShellLanguage,
   deliverables: Array<{
@@ -272,9 +276,26 @@ function useConversationWorkspaceController(
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
   const { timelineScreenRef, workspaceBodyRef } = sharedRefs;
   const activeTimelineSessionRef = useRef("");
-  const previousTimelineItemCountRef = useRef(0);
+  const previousActiveMessageCountRef = useRef(0);
+  const pendingHistoryScrollRestoreRef = useRef<{
+    sessionID: string;
+    scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
+  const [timelineWindow, setTimelineWindow] = useState({
+    sessionID: "",
+    visibleCount: INITIAL_VISIBLE_CHAT_MESSAGES,
+  });
   const activeMessages = runtime.activeSession?.messages || [];
   const activeSessionID = runtime.activeSession?.id || "";
+  const visibleMessageCount = timelineWindow.sessionID === activeSessionID
+    ? timelineWindow.visibleCount
+    : INITIAL_VISIBLE_CHAT_MESSAGES;
+  const hiddenMessageCount = Math.max(0, activeMessages.length - visibleMessageCount);
+  const visibleMessages = useMemo(
+    () => hiddenMessageCount > 0 ? activeMessages.slice(-visibleMessageCount) : activeMessages,
+    [activeMessages, hiddenMessageCount, visibleMessageCount],
+  );
   const isEmptyState = activeMessages.length === 0;
   const isMobileEmptyHeader = workbench.isMobileViewport && isEmptyState;
   const emptyStateTitle = runtime.route === "agent-runtime"
@@ -430,21 +451,86 @@ function useConversationWorkspaceController(
 
   const timelineItems = useMemo(
     () => buildChatTimelineItems({
-      messages: activeMessages,
+      messages: visibleMessages,
       language,
       onToggleProcess: runtime.toggleAgentProcess,
     }),
-    [activeMessages, language, runtime.toggleAgentProcess],
+    [language, runtime.toggleAgentProcess, visibleMessages],
   );
+  const loadEarlierMessages = useCallback(() => {
+    if (!activeSessionID || hiddenMessageCount <= 0) {
+      return;
+    }
+    const node = timelineScreenRef.current;
+    pendingHistoryScrollRestoreRef.current = {
+      sessionID: activeSessionID,
+      scrollHeight: node?.scrollHeight || 0,
+      scrollTop: node?.scrollTop || 0,
+    };
+    setTimelineWindow((current) => {
+      const currentVisibleCount = current.sessionID === activeSessionID
+        ? current.visibleCount
+        : INITIAL_VISIBLE_CHAT_MESSAGES;
+      return {
+        sessionID: activeSessionID,
+        visibleCount: Math.min(
+          activeMessages.length,
+          currentVisibleCount + CHAT_MESSAGE_LOAD_BATCH_SIZE,
+        ),
+      };
+    });
+  }, [activeMessages.length, activeSessionID, hiddenMessageCount, timelineScreenRef]);
+  useEffect(() => {
+    setTimelineWindow((current) => {
+      if (current.sessionID === activeSessionID) {
+        return current;
+      }
+      return {
+        sessionID: activeSessionID,
+        visibleCount: INITIAL_VISIBLE_CHAT_MESSAGES,
+      };
+    });
+    pendingHistoryScrollRestoreRef.current = null;
+  }, [activeSessionID]);
+  useEffect(() => {
+    if (hiddenMessageCount <= 0) {
+      return undefined;
+    }
+    const node = timelineScreenRef.current;
+    if (!node) {
+      return undefined;
+    }
+    const handleScroll = () => {
+      if (node.scrollTop <= CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET) {
+        loadEarlierMessages();
+      }
+    };
+    node.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      node.removeEventListener("scroll", handleScroll);
+    };
+  }, [hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
+  useLayoutEffect(() => {
+    const pending = pendingHistoryScrollRestoreRef.current;
+    if (!pending || pending.sessionID !== activeSessionID) {
+      return;
+    }
+    const node = timelineScreenRef.current;
+    if (!node) {
+      return;
+    }
+    pendingHistoryScrollRestoreRef.current = null;
+    node.scrollTop = Math.max(0, node.scrollHeight - pending.scrollHeight + pending.scrollTop);
+  }, [activeSessionID, timelineItems.length, timelineScreenRef]);
   useLayoutEffect(() => {
     const previousSessionID = activeTimelineSessionRef.current;
-    const previousItemCount = previousTimelineItemCountRef.current;
+    const previousMessageCount = previousActiveMessageCountRef.current;
     const sessionChanged = previousSessionID !== activeSessionID;
-    const appendedMessages = activeMessages.slice(previousItemCount);
+    const appendedMessages = activeMessages.slice(previousMessageCount);
     const userMessageAppended = appendedMessages.some((message) => message.role === "user");
-    const messageAppended = !sessionChanged && activeSessionID && timelineItems.length > previousItemCount && userMessageAppended;
+    const messageAppended = !sessionChanged && activeSessionID && activeMessages.length > previousMessageCount && userMessageAppended;
     activeTimelineSessionRef.current = activeSessionID;
-    previousTimelineItemCountRef.current = timelineItems.length;
+    previousActiveMessageCountRef.current = activeMessages.length;
     if (!activeSessionID) {
       return;
     }
@@ -469,7 +555,7 @@ function useConversationWorkspaceController(
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeMessages, activeSessionID, timelineItems.length, timelineScreenRef]);
+  }, [activeMessages, activeMessages.length, activeSessionID, timelineItems.length, timelineScreenRef]);
   const timelineEmptyState = useMemo(
     () => (
       <div className="conversation-empty-state">
@@ -535,6 +621,29 @@ function useConversationWorkspaceController(
     )),
     [activeMessages.length, inputFocused, isEmptyState, language, runtime.route, workbench.isMobileViewport],
   );
+  const timelineTopContent = useMemo(() => {
+    if (hiddenMessageCount <= 0) {
+      return null;
+    }
+    const label = language === "zh" ? "加载更早消息" : "Load earlier messages";
+    const countLabel = language === "zh"
+      ? `还有 ${hiddenMessageCount} 条`
+      : `${hiddenMessageCount} earlier`;
+    return (
+      <div className="conversation-history-loader" data-conversation-history-loader="true">
+        <button
+          type="button"
+          className="conversation-history-loader-button"
+          aria-label={label}
+          data-conversation-load-earlier="true"
+          onClick={loadEarlierMessages}
+        >
+          <span>{label}</span>
+          <small aria-hidden="true">{countLabel}</small>
+        </button>
+      </div>
+    );
+  }, [hiddenMessageCount, language, loadEarlierMessages]);
   const shell = useMemo(() => ({
     shell: {
       rootClassName: "runtime-workspace-view",
@@ -663,10 +772,11 @@ function useConversationWorkspaceController(
   const timeline = useMemo(() => ({
     timeline: {
       items: timelineItems,
+      topContent: timelineTopContent,
       emptyState: timelineEmptyState,
       overlay: timelineOverlay,
     },
-  }), [timelineEmptyState, timelineItems, timelineOverlay]);
+  }), [timelineEmptyState, timelineItems, timelineOverlay, timelineTopContent]);
 
   return useMemo(() => ({
     ...shell,

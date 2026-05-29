@@ -7,7 +7,12 @@ import { installVisualViewportMock, setVisualViewport } from "./helpers/support/
 async function openRuntimeRoute(page: Page, hash: "#chat" | "#agent-runtime"): Promise<void> {
   await page.goto(`/chat${hash}`);
   await loginIfNeeded(page);
+  if (!page.url().includes(hash)) {
+    await page.goto(`/chat${hash}`);
+  }
   await waitForAppReady(page);
+  const expectedRoute = hash.slice(1);
+  await expect(page.locator("[data-runtime-view='conversation']")).toHaveAttribute("data-runtime-route", expectedRoute);
   await page.waitForSelector("[data-composer-form='conversation']", { timeout: 20000 });
 }
 
@@ -110,10 +115,10 @@ async function readTerminalViewportGap(page: Page) {
 }
 
 test.describe("Runtime workspace scaffold", () => {
-  test("keeps the desktop conversation session pane scrollable with a long session list", async ({ page }) => {
+  test("keeps the desktop agent runtime session pane scrollable with a long session list", async ({ page }) => {
     const now = Date.now();
     const sessions = Array.from({ length: 20 }, (_, index) => {
-      const sessionID = `chat-scroll-${index + 1}`;
+      const sessionID = `agent-scroll-${index + 1}`;
       const createdAt = new Date(now - index * 60_000).toISOString();
       return {
         id: sessionID,
@@ -121,6 +126,9 @@ test.describe("Runtime workspace scaffold", () => {
         created_at: createdAt,
         updated_at: createdAt,
         status: "ready",
+        target_type: "agent",
+        target_id: "coding",
+        target_name: "Coding Agent",
         messages: [
           {
             id: `message-${sessionID}`,
@@ -134,12 +142,12 @@ test.describe("Runtime workspace scaffold", () => {
     });
 
     await mockConversationRuntimeSessions(page, {
-      route: "chat",
+      route: "agent-runtime",
       sessions,
       activeSessionID: sessions[0].id as string,
     });
     await page.setViewportSize({ width: 1440, height: 960 });
-    await openRuntimeRoute(page, "#chat");
+    await openRuntimeRoute(page, "#agent-runtime");
 
     const sessionList = page.locator("[data-runtime-session-list='conversation']");
     await expect(sessionList.locator("[role='listitem']")).toHaveCount(20);

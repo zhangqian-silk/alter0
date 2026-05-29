@@ -56,6 +56,8 @@ export type RuntimeTimelineBlock =
   | {
       type: "prompt";
       className?: string;
+      bubbleClassName?: string;
+      bubbleProps?: ComponentPropsWithoutRef<"div">;
       textClassName?: string;
       timeClassName?: string;
       text: string;
@@ -92,6 +94,7 @@ type RuntimeTimelineProps = {
   className?: string;
   timelineProps?: Omit<ComponentPropsWithoutRef<"div">, "children" | "className">;
   emptyState?: ReactNode;
+  topContent?: ReactNode;
   items: RuntimeTimelineItem[];
   overlay?: ReactNode;
 };
@@ -100,6 +103,7 @@ export const RuntimeTimeline = memo(function RuntimeTimeline({
   className,
   timelineProps,
   emptyState,
+  topContent,
   items,
   overlay,
 }: RuntimeTimelineProps) {
@@ -110,9 +114,14 @@ export const RuntimeTimeline = memo(function RuntimeTimeline({
         data-runtime-timeline="true"
         {...timelineProps}
       >
-        {items.length === 0 ? emptyState : items.map((item) => (
-          <RuntimeTimelineArticle key={item.id} item={item} />
-        ))}
+        {items.length === 0 ? emptyState : (
+          <>
+            {topContent}
+            {items.map((item) => (
+              <RuntimeTimelineArticle key={item.id} item={item} />
+            ))}
+          </>
+        )}
       </div>
       {overlay}
     </>
@@ -177,12 +186,21 @@ function RuntimeTimelineBlockNode({ block }: { block: RuntimeTimelineBlock }) {
         </div>
       );
     case "prompt":
-      return (
-        <div className={block.className}>
+      const promptContent = (
+        <>
           <div className={block.textClassName}>
             <span className="terminal-log-text">{block.text}</span>
           </div>
           {block.timeLabel ? <span className={block.timeClassName}>{block.timeLabel}</span> : null}
+        </>
+      );
+      return (
+        <div className={block.className}>
+          {block.bubbleClassName ? (
+            <div className={block.bubbleClassName} {...block.bubbleProps}>
+              {promptContent}
+            </div>
+          ) : promptContent}
         </div>
       );
     case "process":

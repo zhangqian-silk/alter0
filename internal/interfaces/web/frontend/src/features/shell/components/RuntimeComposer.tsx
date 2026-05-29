@@ -463,6 +463,7 @@ export function RuntimeComposer({
                 {...submitButtonRestProps}
                 aria-label={submitLabel}
                 data-runtime-composer-submit={runtimeKind}
+                data-runtime-submit={runtimeKind}
                 data-composer-submit={composerAlias}
                 data-terminal-submit={runtimeKind === "terminal" ? "true" : undefined}
               >

@@ -4,7 +4,7 @@ import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../..
 import { createAPIClient } from "../../../shared/api/client";
 import { hashSessionIDShort } from "../../../shared/session/sessionHash";
 import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
-import { formatDateTime, formatDateTimeMinute, formatTimeLabel } from "../../../shared/time/format";
+import { formatDateTime, formatDateTimeMinute } from "../../../shared/time/format";
 import { usePageActivation } from "../../../shared/visibility/usePageActivation";
 import {
   canPreviewComposerAttachment,
@@ -204,7 +204,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     session: "Session",
     status: "Status",
     details: "Details",
-    process: "Process",
+    process: "Thinking",
     processSteps: (count) => `${count} steps`,
     noProcess: "No execution details.",
     noOutput: "No output yet.",
@@ -254,7 +254,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     session: "会话",
     status: "状态",
     details: "详情",
-    process: "过程",
+    process: "已思考",
     processSteps: (count) => `${count} 步`,
     noProcess: "暂无执行细节。",
     noOutput: "暂时还没有输出。",
@@ -1864,11 +1864,11 @@ function buildTerminalTimelineItems({
     if (normalizeText(turn.prompt) !== "-") {
       blocks.push({
         type: "prompt" as const,
-        className: "terminal-log-row kind-command terminal-turn-prompt",
+        className: "terminal-log-row kind-command terminal-turn-prompt runtime-message runtime-message-user",
+        bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-user-shell user-message-shell",
         textClassName: "terminal-log-main",
         timeClassName: "terminal-log-time",
         text: turn.prompt,
-        timeLabel: formatTimeLabel(turn.started_at || turn.finished_at || Date.now()),
       });
     }
 
@@ -1976,9 +1976,9 @@ function buildTerminalTimelineItems({
 
       blocks.push({
         type: "process" as const,
-        shellClassName: `terminal-process-shell${processOpen ? "" : " is-collapsed"}`,
+        shellClassName: `runtime-thinking-shell terminal-process-shell${processOpen ? "" : " is-collapsed"}`,
         shellProps: { "data-terminal-process-shell": turn.id },
-        toggleClassName: "terminal-process-toggle",
+        toggleClassName: "runtime-thinking-toggle terminal-process-toggle",
         toggleProps: { "data-terminal-process-toggle": turn.id },
         title: (
           <>
@@ -1991,7 +1991,6 @@ function buildTerminalTimelineItems({
             </span>
           </>
         ),
-        meta: <span className="terminal-process-meta">{durationLabel(turn.duration_ms)}</span>,
         expanded: processOpen,
         onToggle: () => onToggleTurn(turn.id),
         bodyClassName: "terminal-process-body",
@@ -2010,9 +2009,9 @@ function buildTerminalTimelineItems({
         html: renderRuntimeMarkdownToHTML(turn.final_output || ""),
         copyValue: turn.final_output,
         copyLabel: copy.copy,
-        wrapperClassName: "msg assistant terminal-final-output terminal-turn-output",
+        wrapperClassName: "msg assistant terminal-final-output terminal-turn-output runtime-message runtime-message-assistant",
         wrapperProps: { "data-terminal-final-output": turn.id },
-        bubbleClassName: "msg-bubble",
+        bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
         className: "terminal-final-text",
         toolbarClassName: "terminal-final-toolbar",
         copyButtonClassName: "terminal-final-copy",
