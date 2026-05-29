@@ -474,6 +474,40 @@ describe("ConversationWorkspace", () => {
     }
   });
 
+  it("renders long chat history progressively from the latest messages", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "Long running session",
+      messages: Array.from({ length: 65 }, (_, index) => ({
+        id: `message-${index + 1}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+      })),
+    } as typeof runtimeMock.activeSession;
+    runtimeMock.sessions = [
+      runtimeMock.activeSession,
+    ];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: expect.arrayContaining([
+        expect.objectContaining({ id: "message-34" }),
+        expect.objectContaining({ id: "message-65" }),
+      ]),
+    }));
+    expect(buildChatTimelineItemsMock.mock.lastCall?.[0].messages).toHaveLength(32);
+    expect(document.querySelector("[data-message-id='message-1']")).not.toBeInTheDocument();
+
+    const loadEarlier = screen.getByRole("button", { name: "Load earlier messages" });
+    expect(loadEarlier).toHaveAttribute("data-conversation-load-earlier", "true");
+
+    fireEvent.click(loadEarlier);
+
+    expect(buildChatTimelineItemsMock.mock.lastCall?.[0].messages).toHaveLength(64);
+    expect(document.querySelector("[data-message-id='message-2']")).toBeInTheDocument();
+    expect(document.querySelector("[data-message-id='message-1']")).not.toBeInTheDocument();
+  });
+
   it("renders the four shared jump buttons for chat timelines", () => {
     runtimeMock.activeSession = {
       id: "session-1",

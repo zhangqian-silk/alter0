@@ -83,6 +83,7 @@ export type RuntimeWorkspacePageController = {
     className?: string;
     timelineProps?: Omit<ComponentPropsWithoutRef<"div">, "children" | "className">;
     emptyState?: ReactNode;
+    topContent?: ReactNode;
     items: RuntimeTimelineItem[];
     overlay?: ReactNode;
   };
@@ -199,6 +200,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
         className={controller.timeline.className}
         timelineProps={controller.timeline.timelineProps}
         emptyState={controller.timeline.emptyState}
+        topContent={controller.timeline.topContent}
         items={controller.timeline.items}
       />
     </RuntimeWorkspaceScreen>
