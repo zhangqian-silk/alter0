@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { ChatMessageRegion, type ChatMessageSnapshot } from "./ChatMessageRegion";
 
 function buildAssistantMessage(overrides: Partial<ChatMessageSnapshot> = {}): ChatMessageSnapshot {
@@ -18,7 +18,7 @@ function buildAssistantMessage(overrides: Partial<ChatMessageSnapshot> = {}): Ch
 }
 
 describe("ChatMessageRegion", () => {
-  it("keeps completed chat assistant metadata minimal", () => {
+  it("hides completed chat assistant metadata and message timestamps", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
@@ -28,21 +28,25 @@ describe("ChatMessageRegion", () => {
     );
 
     const article = document.querySelector("[data-message-id='message-1']") as HTMLElement;
-    const meta = article.querySelector(".msg-meta") as HTMLElement;
-
-    expect(meta).toBeInTheDocument();
     expect(article).toHaveClass("terminal-turn-card");
+    expect(article).toHaveClass("conversation-message");
+    expect(article).toHaveClass("runtime-message");
+    expect(article).toHaveClass("runtime-message-assistant");
+    expect(article).toHaveClass("is-assistant");
     expect(article.querySelector(".runtime-markdown-shell")).toBeInTheDocument();
     expect(article.querySelector(".runtime-markdown-toolbar")).toBeInTheDocument();
     expect(article.querySelector(".runtime-markdown-copy")).toBeInTheDocument();
     expect(article.querySelector(".runtime-markdown-body")).toBeInTheDocument();
     expect(article.querySelector(".terminal-final-output")).toBeInTheDocument();
-    expect(article.querySelector(".msg-bubble")).not.toBeInTheDocument();
-    expect(article.querySelector(".assistant-message-shell")).not.toBeInTheDocument();
-    expect(within(meta).queryByText("CHAT")).not.toBeInTheDocument();
-    expect(within(meta).queryByText("MODEL")).not.toBeInTheDocument();
-    expect(within(meta).queryByText("Done")).not.toBeInTheDocument();
-    expect(meta.textContent).toContain("10:20");
+    expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
+    expect(article.querySelector(".assistant-message-shell")).toBeInTheDocument();
+    expect(article.querySelector(".runtime-message-bubble")).toBeInTheDocument();
+    expect(article.querySelector(".runtime-message-assistant-shell")).toBeInTheDocument();
+    expect(article.querySelector(".msg-meta")).not.toBeInTheDocument();
+    expect(article.textContent).not.toContain("CHAT");
+    expect(article.textContent).not.toContain("MODEL");
+    expect(article.textContent).not.toContain("Done");
+    expect(article.textContent).not.toContain("10:20");
   });
 
   it("keeps transient assistant status visible while a chat reply is still streaming", () => {
@@ -55,8 +59,34 @@ describe("ChatMessageRegion", () => {
     );
 
     expect(screen.getByText("In Progress")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("10:20");
     expect(screen.queryByText("CHAT")).not.toBeInTheDocument();
     expect(screen.queryByText("MODEL")).not.toBeInTheDocument();
+  });
+
+  it("hides user prompt timestamps in the shared conversation timeline", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            id: "message-2",
+            role: "user",
+            text: "Keep this compact",
+          }),
+        ]}
+      />,
+    );
+
+    const article = document.querySelector("[data-message-id='message-2']") as HTMLElement;
+    expect(article.querySelector(".terminal-turn-prompt")).toBeInTheDocument();
+    expect(article).toHaveClass("runtime-message");
+    expect(article).toHaveClass("runtime-message-user");
+    expect(article.querySelector(".runtime-message-bubble")).toBeInTheDocument();
+    expect(article.querySelector(".runtime-message-user-shell")).toBeInTheDocument();
+    expect(article.querySelector(".terminal-log-time")).not.toBeInTheDocument();
+    expect(article.textContent).not.toContain("10:20");
   });
 
   it("renders assistant markdown images as lazy-loaded message media", () => {
@@ -145,8 +175,11 @@ describe("ChatMessageRegion", () => {
     const article = document.querySelector("[data-message-id='message-2']") as HTMLElement;
     const image = screen.getByRole("img", { name: "diagram.png" });
     expect(article).toHaveClass("terminal-turn-card");
+    expect(article).toHaveClass("conversation-message");
+    expect(article).toHaveClass("is-user");
     expect(article.querySelector(".terminal-turn-prompt")).toBeInTheDocument();
-    expect(article.querySelector(".msg-bubble")).not.toBeInTheDocument();
+    expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
+    expect(article.querySelector(".user-message-shell")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-attachment-gallery='message-2']")).toBeInTheDocument();
     expect(image).toHaveAttribute("src", "/api/sessions/session-1/attachments/image-1/original");
     expect(screen.getByText("diagram.png")).toBeInTheDocument();
@@ -178,7 +211,9 @@ describe("ChatMessageRegion", () => {
     );
 
     const article = document.querySelector("[data-message-id='message-1']") as HTMLElement;
-    expect(article.querySelector(".terminal-process-shell")).toBeInTheDocument();
+    expect(article.querySelector(".terminal-process-shell")).toHaveClass("runtime-thinking-shell");
+    expect(article.querySelector(".terminal-process-toggle")).toHaveClass("runtime-thinking-toggle");
+    expect(article.querySelector(".terminal-process-toggle")).toHaveTextContent("Thinking");
     expect(article.querySelector(".conversation-process-body")).toBeInTheDocument();
     expect(article.querySelector(".conversation-process-step-head")).toBeInTheDocument();
     expect(article.querySelector(".agent-process-step-title")).toBeInTheDocument();
@@ -186,6 +221,37 @@ describe("ChatMessageRegion", () => {
     expect(answer).toBeInTheDocument();
     expect(answer).toHaveClass("runtime-markdown-body");
     expect(answer.querySelector(".runtime-markdown-rendered")).toBeInTheDocument();
-    expect(article.querySelector(".msg-bubble")).not.toBeInTheDocument();
+    expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
+  });
+
+  it("uses a compact localized thought disclosure for completed agent process details", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="zh"
+        messages={[
+          buildAssistantMessage({
+            text: "最终答案。",
+            processSteps: [
+              {
+                id: "step-1",
+                title: "检索资料",
+                detail: "完成。",
+              },
+            ],
+            agentProcessCollapsed: true,
+          }),
+        ]}
+      />,
+    );
+
+    const process = document.querySelector("[data-agent-process-shell='message-1']") as HTMLElement;
+    const toggle = process.querySelector("[data-agent-process-toggle='message-1']") as HTMLButtonElement;
+    expect(process).toHaveClass("runtime-thinking-shell");
+    expect(toggle).toHaveClass("runtime-thinking-toggle");
+    expect(process).toHaveClass("is-collapsed");
+    expect(toggle).toHaveTextContent("已思考");
+    expect(toggle).not.toHaveTextContent("过程");
+    expect(toggle.querySelector(".terminal-step-toggle-icon")).toHaveTextContent(">");
   });
 });
