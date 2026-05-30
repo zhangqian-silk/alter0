@@ -83,6 +83,56 @@ func TestAuthMiddlewareRedirectsChatWithoutHTMLAccept(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareUsesStablePageLoginNext(t *testing.T) {
+	server := &Server{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		webLoginEnabled:  true,
+		webLoginPassword: "secret",
+		webSessionToken:  "token-1",
+	}
+	handler := server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/agent-runtime?session_id=c15ece52&foo=bar", nil)
+	req.Header.Set("Accept", "text/html")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected %d, got %d", http.StatusTemporaryRedirect, rec.Code)
+	}
+	location := rec.Header().Get("Location")
+	if location != "/login?next=%2Fagent-runtime" {
+		t.Fatalf("expected compact page login redirect, got %q", location)
+	}
+}
+
+func TestAuthMiddlewareUsesTerminalPathLoginNext(t *testing.T) {
+	server := &Server{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		webLoginEnabled:  true,
+		webLoginPassword: "secret",
+		webSessionToken:  "token-1",
+	}
+	handler := server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/terminal?session_id=c15ece52", nil)
+	req.Header.Set("Accept", "text/html")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected %d, got %d", http.StatusTemporaryRedirect, rec.Code)
+	}
+	location := rec.Header().Get("Location")
+	if location != "/login?next=%2Fterminal" {
+		t.Fatalf("expected compact terminal login redirect, got %q", location)
+	}
+}
+
 func TestAuthMiddlewareAllowsFaviconWithoutSession(t *testing.T) {
 	server := &Server{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -231,7 +281,7 @@ func TestLoginHandlerWithoutLoginEnabledPreservesNextPath(t *testing.T) {
 		webLoginEnabled: false,
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/login?next=%2Fchat%3Fchat_session_id%3Dsession-2", nil)
+	req := httptest.NewRequest(http.MethodGet, "/login?next=%2Fagent-runtime%3Fsession_id%3Dsession-2", nil)
 	rec := httptest.NewRecorder()
 
 	server.loginHandler(rec, req)
@@ -239,7 +289,7 @@ func TestLoginHandlerWithoutLoginEnabledPreservesNextPath(t *testing.T) {
 	if rec.Code != http.StatusTemporaryRedirect {
 		t.Fatalf("expected %d, got %d", http.StatusTemporaryRedirect, rec.Code)
 	}
-	if location := rec.Header().Get("Location"); location != "/chat?chat_session_id=session-2" {
+	if location := rec.Header().Get("Location"); location != "/agent-runtime?session_id=session-2" {
 		t.Fatalf("expected redirect to preserved next path, got %q", location)
 	}
 }

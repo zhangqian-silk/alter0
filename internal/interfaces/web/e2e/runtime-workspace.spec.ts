@@ -4,15 +4,14 @@ import { loginIfNeeded } from "./helpers/guards/login";
 import { openTerminalRoute } from "./helpers/flows/routes";
 import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
-async function openRuntimeRoute(page: Page, hash: "#chat" | "#agent-runtime"): Promise<void> {
-  await page.goto(`/chat${hash}`);
+async function openRuntimeRoute(page: Page, route: "chat" | "agent-runtime"): Promise<void> {
+  await page.goto(`/${route}`);
   await loginIfNeeded(page);
-  if (!page.url().includes(hash)) {
-    await page.goto(`/chat${hash}`);
+  if (!new URL(page.url()).pathname.endsWith(`/${route}`)) {
+    await page.goto(`/${route}`);
   }
   await waitForAppReady(page);
-  const expectedRoute = hash.slice(1);
-  await expect(page.locator("[data-runtime-view='conversation']")).toHaveAttribute("data-runtime-route", expectedRoute);
+  await expect(page.locator("[data-runtime-view='conversation']")).toHaveAttribute("data-runtime-route", route);
   await page.waitForSelector("[data-composer-form='conversation']", { timeout: 20000 });
 }
 
@@ -147,7 +146,7 @@ test.describe("Runtime workspace scaffold", () => {
       activeSessionID: sessions[0].id as string,
     });
     await page.setViewportSize({ width: 1440, height: 960 });
-    await openRuntimeRoute(page, "#agent-runtime");
+    await openRuntimeRoute(page, "agent-runtime");
 
     const sessionList = page.locator("[data-runtime-session-list='conversation']");
     await expect(sessionList.locator("[role='listitem']")).toHaveCount(20);
@@ -173,7 +172,7 @@ test.describe("Runtime workspace scaffold", () => {
   });
 
   test("submits chat on the first click and keeps the chat viewport above the composer", async ({ page }) => {
-    await openRuntimeRoute(page, "#chat");
+    await openRuntimeRoute(page, "chat");
 
     const input = page.locator("[data-composer-input='conversation']");
     const submit = page.locator("[data-composer-submit='conversation']");
@@ -193,7 +192,7 @@ test.describe("Runtime workspace scaffold", () => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
 
-    await openRuntimeRoute(page, "#chat");
+    await openRuntimeRoute(page, "chat");
     const chatInput = page.locator("[data-composer-input='conversation']");
     const chatSubmit = page.locator("[data-composer-submit='conversation']");
     await chatInput.click();
@@ -220,7 +219,7 @@ test.describe("Runtime workspace scaffold", () => {
   });
 
   test("keeps the agent runtime viewport above the composer", async ({ page }) => {
-    await openRuntimeRoute(page, "#agent-runtime");
+    await openRuntimeRoute(page, "agent-runtime");
 
     const metrics = await readConversationViewportGap(page);
     expect(metrics).not.toBeNull();
@@ -238,12 +237,12 @@ test.describe("Runtime workspace scaffold", () => {
   test("keeps chat, agent runtime, and terminal viewports above the composer on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 932 });
 
-    await openRuntimeRoute(page, "#chat");
+    await openRuntimeRoute(page, "chat");
     let metrics = await readConversationViewportGap(page);
     expect(metrics).not.toBeNull();
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
 
-    await openRuntimeRoute(page, "#agent-runtime");
+    await openRuntimeRoute(page, "agent-runtime");
     metrics = await readConversationViewportGap(page);
     expect(metrics).not.toBeNull();
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
@@ -258,7 +257,7 @@ test.describe("Runtime workspace scaffold", () => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
 
-    await openRuntimeRoute(page, "#chat");
+    await openRuntimeRoute(page, "chat");
     const conversationInput = page.locator("[data-composer-input='conversation']");
     await conversationInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
@@ -303,7 +302,7 @@ test.describe("Runtime workspace scaffold", () => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
 
-    await openRuntimeRoute(page, "#chat");
+    await openRuntimeRoute(page, "chat");
     const conversationInput = page.locator("[data-composer-input='conversation']");
     await conversationInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });

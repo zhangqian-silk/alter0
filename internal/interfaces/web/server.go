@@ -78,6 +78,23 @@ const (
 
 var sseHeartbeatInterval = 15 * time.Second
 
+var workbenchPagePaths = map[string]struct{}{
+	"/chat":           {},
+	"/agent-runtime":  {},
+	"/terminal":       {},
+	"/agent":          {},
+	"/memory":         {},
+	"/skills":         {},
+	"/mcp":            {},
+	"/sessions":       {},
+	"/tasks":          {},
+	"/cron-jobs":      {},
+	"/channels":       {},
+	"/models":         {},
+	"/environments":   {},
+	"/codex-accounts": {},
+}
+
 type Orchestrator interface {
 	Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error)
 }
@@ -736,7 +753,9 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/login", s.loginHandler)
 	mux.HandleFunc("/logout", s.logoutHandler)
 	mux.HandleFunc("/", s.rootHandler)
-	mux.HandleFunc("/chat", s.chatPageHandler)
+	for path := range workbenchPagePaths {
+		mux.HandleFunc(path, s.chatPageHandler)
+	}
 	mux.HandleFunc("/api/messages", s.messageHandler)
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
 	mux.HandleFunc("/api/agents", s.runtimeAgentListHandler)
@@ -825,7 +844,7 @@ func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, chatEntryPath(r.URL.RawQuery), http.StatusTemporaryRedirect)
+	http.Redirect(w, r, "/chat", http.StatusTemporaryRedirect)
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -990,7 +1009,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if shouldRedirectToLogin(r) {
-			nextPath := normalizeLoginNext(r.URL.RequestURI())
+			nextPath := loginNextForRequest(r)
 			http.Redirect(w, r, "/login?next="+url.QueryEscape(nextPath), http.StatusTemporaryRedirect)
 			return
 		}
@@ -1069,7 +1088,11 @@ func shouldRedirectToLogin(r *http.Request) bool {
 
 func isInteractivePagePath(path string) bool {
 	normalized := strings.TrimSpace(path)
-	return normalized == "/" || normalized == "/chat"
+	if normalized == "/" {
+		return true
+	}
+	_, ok := workbenchPagePaths[normalized]
+	return ok
 }
 
 func isAuthExemptPath(path string) bool {
@@ -1091,11 +1114,14 @@ func normalizeLoginNext(raw string) string {
 	return candidate
 }
 
-func chatEntryPath(rawQuery string) string {
-	if strings.TrimSpace(rawQuery) == "" {
+func loginNextForRequest(r *http.Request) string {
+	if r == nil || r.URL == nil {
 		return "/chat"
 	}
-	return "/chat?" + rawQuery
+	if isInteractivePagePath(r.URL.Path) {
+		return normalizeLoginNext(r.URL.Path)
+	}
+	return normalizeLoginNext(r.URL.RequestURI())
 }
 
 func secureStringEqual(a string, b string) bool {
@@ -1114,7 +1140,7 @@ func requestUsesHTTPS(r *http.Request) bool {
 }
 
 func (s *Server) chatPageHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/chat" {
+	if _, ok := workbenchPagePaths[r.URL.Path]; !ok {
 		http.NotFound(w, r)
 		return
 	}

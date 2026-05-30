@@ -111,13 +111,14 @@ func TestWorkbenchAppOwnsRouteShellState(t *testing.T) {
 	}
 }
 
-func TestWorkbenchRouteStateHashNavigationPresent(t *testing.T) {
+func TestWorkbenchRouteStatePathNavigationPresent(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/app/routeState.ts")
 	markers := []string{
 		`export const DEFAULT_WORKBENCH_ROUTE = "chat";`,
 		"const KNOWN_ROUTES = new Set(",
-		"window.addEventListener(\"hashchange\", syncRoute);",
-		"window.dispatchEvent(new HashChangeEvent(\"hashchange\"));",
+		"nextURL.pathname = `/${normalized}`;",
+		"window.addEventListener(\"popstate\", syncRoute);",
+		"window.dispatchEvent(new PopStateEvent(\"popstate\"));",
 		"return route === \"chat\" || route === \"agent-runtime\";",
 	}
 	for _, marker := range markers {

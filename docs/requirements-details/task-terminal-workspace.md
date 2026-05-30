@@ -124,7 +124,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 - Web Shell 中的 Terminal 路由页主体由 React 原生实现，运行区根节点直接挂在共享 `workbench-pane-shell` 下，不再额外经过 `route-view / route-body` 包裹，避免从 Chat/Agent Runtime 切换时出现布局与滚动容器跳变。
 - Terminal 页面直接请求 `/api/terminal/sessions`、`/api/terminal/sessions/{session_id}`、`/api/terminal/sessions/{session_id}/turns/{turn_id}/steps/{step_id}` 等接口，并在 React 内维护会话恢复、轮询、输入、删除、step 展开、滚动定位与本地草稿恢复。
-- Terminal 的 session pane 容器、workspace 容器与主视图外壳在 React rerender 期间必须保持稳定实例，不能因语言切换、hash 路由变化或壳层状态更新而清空正在运行的终端内容。
+- Terminal 的 session pane 容器、workspace 容器与主视图外壳在 React rerender 期间必须保持稳定实例，不能因语言切换、path 路由变化或壳层状态更新而清空正在运行的终端内容。
 - Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构，同时允许 Terminal 继续注入自身的状态按钮、详情面板、Process、跳转四键与 Composer 控件；详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
 - React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、工作区头部、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管。
 - 移动端 Terminal Composer 在输入框聚焦且软键盘抬起后，必须按 `VisualViewport` 推导的键盘偏移直接上移到可见底边；长历史输出继续由 `terminal-chat-screen` 独立滚动，不允许通过增加 footer padding 或让 workspace 改走外层滚动把输入区挤出视口。
@@ -237,7 +237,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Terminal 打开已有 turn 的会话、刷新恢复当前会话或切换到其他已有输出会话后，`terminal-chat-screen` 初始视口必须落到最新输出所在底部；该定位只作用于会话进入阶段，后续轮询刷新、前后台恢复、Process 展开收起或用户正在滚动输出区时不得强制把视口拉回底部。
 - 页面从后台恢复到前台，或浏览器重新把当前 Terminal 页激活为可见页时，必须复用运行页共享的 page-activation 链路，立即补拉会话列表与当前活动会话详情，再回到对应状态下的轮询节奏。
 - Terminal 会话在列表中执行删除并确认成功后，前端必须保持当前会话列表面板状态不变；无论删除的是历史会话还是当前活动会话，都不得因为删除动作自动收起移动端 `Sessions` 抽屉或桌面侧栏上下文。该恢复只允许兜住删除造成的那一次被动收起，不能劫持用户后续的主动关闭；用户点击 `Hide`、再次点击 `Sessions` 按钮或点击抽屉外部遮罩后，面板必须正常关闭。同时继续在本地屏蔽该 `session_id`，即使后续轮询或 page-activation 补拉暂时返回陈旧列表，也不得把已删除项重新插回当前会话侧栏。
-- Terminal 当前活动会话需同步写入 URL query `terminal_session_id`；刷新、直接打开当前链接或浏览器恢复标签页时，前端先按该参数恢复指定 Terminal 会话，只有参数缺失或目标会话已不存在时，才允许回退到列表首项或本地草稿恢复逻辑。
+- Terminal 当前稳定入口为 `/terminal`，当前活动会话需同步写入 URL query `session_id=<8位短hash>`；刷新、直接打开 `/terminal?session_id=<8位短hash>` 或浏览器恢复标签页时，前端先按该参数恢复指定 Terminal 会话，只有参数缺失或目标会话已不存在时，才允许回退到列表首项或本地草稿恢复逻辑。
 - 滚动中的导航计算与位置测量合并到逐帧节奏，并复用稳定 turn 位置缓存；仅在 turn 列表、折叠态或布局尺寸变化后重测。
 - 浏览器侧会话缓存写入避开活跃滚动窗口，在滚动停顿后持久化。
 

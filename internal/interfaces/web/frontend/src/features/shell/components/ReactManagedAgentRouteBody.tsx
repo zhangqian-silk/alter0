@@ -416,7 +416,8 @@ export function ReactManagedAgentRouteBody({
                   workbench.navigate("agent-runtime");
                   return;
                 }
-                window.location.hash = "#agent-runtime";
+                window.history.pushState(window.history.state, "", "/agent-runtime");
+                window.dispatchEvent(new PopStateEvent("popstate"));
               }}
             >
               {copy.openAgent}

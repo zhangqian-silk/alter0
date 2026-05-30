@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEven
 import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../../../app/routeState";
 import { createAPIClient } from "../../../shared/api/client";
-import { hashSessionIDShort } from "../../../shared/session/sessionHash";
+import { hashSessionIDShort, resolveSessionIDReference } from "../../../shared/session/sessionHash";
 import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
 import { formatDateTime, formatDateTimeMinute } from "../../../shared/time/format";
 import { usePageActivation } from "../../../shared/visibility/usePageActivation";
@@ -776,6 +776,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   );
 
   const activeSession = sessions.find((session) => session.id === activeSessionID) || null;
+  const activeSessionResolvedID = activeSession?.id || "";
   const turns = Array.isArray(activeSession?.turns) ? activeSession.turns : [];
   const activeDraftKey = activeSessionID || TERMINAL_PENDING_DRAFT_KEY;
   const draftAttachments = attachmentDrafts[activeDraftKey] || [];
@@ -978,8 +979,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       );
     });
     setActiveSessionID((current) => {
-      if (nextSessions.some((session) => session.id === current)) {
-        return current;
+      const resolvedCurrent = resolveSessionIDReference(nextSessions, current);
+      if (resolvedCurrent) {
+        return resolvedCurrent;
       }
       return nextSessions[0]?.id || "";
     });
@@ -1013,11 +1015,11 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
 
   const refreshTerminalOnPageActive = async () => {
     await refreshList().catch(() => null);
-    if (!activeSessionID) {
+    if (!activeSession) {
       return;
     }
     captureScrollSnapshot();
-    await refreshActiveSession(activeSessionID).catch(() => null);
+    await refreshActiveSession(activeSession.id).catch(() => null);
   };
 
   const createSession = async () => {
@@ -1156,11 +1158,11 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   }, [attachmentDrafts]);
 
   useEffect(() => {
-    if (!activeSessionID) {
+    if (!activeSessionResolvedID) {
       return;
     }
-    void refreshActiveSession(activeSessionID);
-  }, [activeSessionID]);
+    void refreshActiveSession(activeSessionResolvedID);
+  }, [activeSessionResolvedID]);
 
   useEffect(() => {
     if (!activeSessionID || !activeSession || !pollPlan.enabled) {
@@ -1172,7 +1174,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       }
       void refreshList();
       if (pollPlan.refreshActiveSession) {
-        void refreshActiveSession(activeSessionID);
+        void refreshActiveSession(activeSession.id);
       }
     }, pollPlan.interval);
     return () => window.clearTimeout(timer);

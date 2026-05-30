@@ -569,7 +569,7 @@ func (s *Server) withWorkspaceServiceGateway(next http.Handler) http.Handler {
 
 func (s *Server) serveWorkspaceFrontendService(w http.ResponseWriter, r *http.Request, entry workspaceServiceRegistration) bool {
 	switch {
-	case r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "/chat"):
+	case r.Method == http.MethodGet && isInteractivePagePath(r.URL.Path):
 		s.serveWorkspaceFrontendPage(w, entry)
 		return true
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/assets/"):

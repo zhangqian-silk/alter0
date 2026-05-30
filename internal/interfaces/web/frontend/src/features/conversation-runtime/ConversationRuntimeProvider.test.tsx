@@ -5,6 +5,7 @@ import {
   useConversationRuntimeComposer,
   useConversationRuntimeWorkspace,
 } from "./ConversationRuntimeProvider";
+import { hashSessionIDShort } from "../../shared/session/sessionHash";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
@@ -432,7 +433,7 @@ describe("ConversationRuntimeProvider", () => {
   });
 
   it("keeps Chat pinned to the canonical long-term session", async () => {
-    window.history.replaceState({}, "", "/?chat_session_id=session-2#chat");
+    window.history.replaceState({}, "", "/chat?session_id=session-2");
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
         case "/api/conversation-runtime/sessions?route=chat":
@@ -509,14 +510,96 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("active-session-id")).toHaveTextContent("alter0-chat");
     });
-    expect(window.location.search).not.toContain("chat_session_id=");
+    expect(window.location.search).not.toContain("session_id=");
 
     fireEvent.click(screen.getByRole("button", { name: "focus session 1" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("active-session-id")).toHaveTextContent("alter0-chat");
     });
-    expect(window.location.search).not.toContain("chat_session_id=");
+    expect(window.location.search).not.toContain("session_id=");
+  });
+
+  it("restores agent-runtime sessions from short hash query parameters and keeps the URL compact", async () => {
+    window.history.replaceState({}, "", `/agent-runtime?session_id=${hashSessionIDShort("agent-session-2")}`);
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return {
+            items: [
+              {
+                id: "agent-session-1",
+                title: "First agent session",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "agent",
+                target_id: "coding",
+                target_name: "Coding",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+              },
+              {
+                id: "agent-session-2",
+                title: "Second agent session",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T04:30:00Z",
+                target_type: "agent",
+                target_id: "coding",
+                target_name: "Coding",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/agent-session-2?route=agent-runtime":
+          return {
+            session: {
+              id: "agent-session-2",
+              title: "Second agent session",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T04:30:00Z",
+              target_type: "agent",
+              target_id: "coding",
+              target_name: "Coding",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+              messages: [],
+            },
+          };
+        case "/api/agents":
+          return { items: [{ id: "coding", name: "Coding", enabled: true }] };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="agent-runtime" language="en">
+        <SessionFocusHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active-session-id")).toHaveTextContent("agent-session-2");
+    });
+    expect(window.location.search).toContain(`session_id=${hashSessionIDShort("agent-session-2")}`);
+    expect(window.location.search).not.toContain("session_id=agent-session-2");
   });
 
   it("does not rewrite stored sessions for streaming deltas after an image message is queued", async () => {
