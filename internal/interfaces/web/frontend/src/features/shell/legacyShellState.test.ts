@@ -1,7 +1,7 @@
 import {
   LEGACY_SHELL_MOBILE_BREAKPOINT_PX,
   isLegacyShellMobileViewport,
-  parseLegacyShellHashRoute,
+  parseLegacyShellPathRoute,
 } from "./legacyShellState";
 
 describe("legacyShellState", () => {
@@ -9,9 +9,10 @@ describe("legacyShellState", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps chat as the fallback route for unknown hash fragments", () => {
-    expect(parseLegacyShellHashRoute("#unknown")).toBe("chat");
-    expect(parseLegacyShellHashRoute("")).toBe("chat");
+  it("keeps chat as the fallback route for root and unknown paths", () => {
+    expect(parseLegacyShellPathRoute("/unknown")).toBe("chat");
+    expect(parseLegacyShellPathRoute("/")).toBe("chat");
+    expect(parseLegacyShellPathRoute("/tasks")).toBe("tasks");
   });
 
   it("keeps the mobile shell breakpoint aligned with the shared viewport threshold", () => {

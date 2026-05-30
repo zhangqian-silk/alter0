@@ -25,9 +25,9 @@ func TestRootHandlerRedirectsToChat(t *testing.T) {
 	}
 }
 
-func TestRootHandlerPreservesSessionQueryWhenRedirectingToChat(t *testing.T) {
+func TestRootHandlerRedirectsToChatWithoutQueryInference(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	req := httptest.NewRequest(http.MethodGet, "/?terminal_session_id=terminal-2&foo=bar", nil)
+	req := httptest.NewRequest(http.MethodGet, "/?session_id=terminal-2&foo=bar", nil)
 	rec := httptest.NewRecorder()
 
 	server.rootHandler(rec, req)
@@ -35,9 +35,8 @@ func TestRootHandlerPreservesSessionQueryWhenRedirectingToChat(t *testing.T) {
 	if rec.Code != http.StatusTemporaryRedirect {
 		t.Fatalf("expected status %d, got %d", http.StatusTemporaryRedirect, rec.Code)
 	}
-	location := rec.Header().Get("Location")
-	if location != "/chat?terminal_session_id=terminal-2&foo=bar" {
-		t.Fatalf("expected redirect location with original query, got %q", location)
+	if location := rec.Header().Get("Location"); location != "/chat" {
+		t.Fatalf("expected redirect location /chat, got %q", location)
 	}
 }
 
@@ -57,6 +56,54 @@ func TestChatPageHandlerServesEmbeddedHTML(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Alter0 Chat") {
 		t.Fatalf("expected chat page content")
+	}
+}
+
+func TestTerminalPageHandlerServesEmbeddedHTML(t *testing.T) {
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	req := httptest.NewRequest(http.MethodGet, "/terminal", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatPageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if !strings.Contains(rec.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("expected text/html response, got %q", rec.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(rec.Body.String(), "Alter0 Chat") {
+		t.Fatalf("expected workbench page content")
+	}
+}
+
+func TestWorkbenchPageHandlerServesAllCanonicalPagePaths(t *testing.T) {
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	for _, path := range []string{
+		"/agent-runtime",
+		"/agent",
+		"/memory",
+		"/skills",
+		"/mcp",
+		"/sessions",
+		"/tasks",
+		"/cron-jobs",
+		"/channels",
+		"/models",
+		"/environments",
+		"/codex-accounts",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+
+		server.chatPageHandler(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected %s to serve workbench HTML, got %d", path, rec.Code)
+		}
+		if !strings.Contains(rec.Header().Get("Content-Type"), "text/html") {
+			t.Fatalf("expected %s to return text/html, got %q", path, rec.Header().Get("Content-Type"))
+		}
 	}
 }
 

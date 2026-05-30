@@ -2,10 +2,11 @@ import {
   DEFAULT_WORKBENCH_ROUTE,
   isConversationRoute,
   navigateWorkbenchRoute,
-  parseWorkbenchHashRoute,
+  parseWorkbenchRoute,
   readWorkbenchRouteSessionID,
   writeWorkbenchRouteSessionID,
 } from "./routeState";
+import { hashSessionIDShort } from "../shared/session/sessionHash";
 
 describe("routeState", () => {
   afterEach(() => {
@@ -14,26 +15,52 @@ describe("routeState", () => {
     window.history.replaceState({}, "", "/");
   });
 
-  it("keeps chat as the fallback route for empty and unknown hashes", () => {
-    expect(parseWorkbenchHashRoute("")).toBe(DEFAULT_WORKBENCH_ROUTE);
-    expect(parseWorkbenchHashRoute("#unknown")).toBe(DEFAULT_WORKBENCH_ROUTE);
+  it("keeps chat as the fallback route for root and unknown paths", () => {
+    expect(parseWorkbenchRoute("/")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/unknown")).toBe(DEFAULT_WORKBENCH_ROUTE);
   });
 
-  it("writes the normalized route hash for known and unknown routes", () => {
+  it("maps every workbench page to its canonical path", () => {
+    expect(parseWorkbenchRoute("/chat")).toBe("chat");
+    expect(parseWorkbenchRoute("/agent-runtime")).toBe("agent-runtime");
+    expect(parseWorkbenchRoute("/terminal")).toBe("terminal");
+    expect(parseWorkbenchRoute("/agent")).toBe("agent");
+    expect(parseWorkbenchRoute("/memory")).toBe("memory");
+    expect(parseWorkbenchRoute("/skills")).toBe("skills");
+    expect(parseWorkbenchRoute("/mcp")).toBe("mcp");
+    expect(parseWorkbenchRoute("/sessions")).toBe("sessions");
+    expect(parseWorkbenchRoute("/tasks")).toBe("tasks");
+    expect(parseWorkbenchRoute("/cron-jobs")).toBe("cron-jobs");
+    expect(parseWorkbenchRoute("/channels")).toBe("channels");
+    expect(parseWorkbenchRoute("/models")).toBe("models");
+    expect(parseWorkbenchRoute("/environments")).toBe("environments");
+    expect(parseWorkbenchRoute("/codex-accounts")).toBe("codex-accounts");
+  });
+
+  it("writes canonical paths for all workspace routes", () => {
     navigateWorkbenchRoute("tasks");
-    expect(window.location.hash).toBe("#tasks");
+    expect(window.location.pathname).toBe("/tasks");
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("");
+
+    navigateWorkbenchRoute("terminal");
+    expect(window.location.pathname).toBe("/terminal");
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("");
 
     navigateWorkbenchRoute("not-a-route");
-    expect(window.location.hash).toBe("#chat");
+    expect(window.location.pathname).toBe("/chat");
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("");
   });
 
-  it("emits a hashchange event when navigating to the already active route", () => {
-    window.location.hash = "#tasks";
+  it("emits a route change event when navigating to the already active route", () => {
+    window.history.replaceState({}, "", "/tasks");
     const dispatchEventSpy = vi.spyOn(window, "dispatchEvent");
 
     navigateWorkbenchRoute("tasks");
 
-    expect(dispatchEventSpy).toHaveBeenCalledWith(expect.any(HashChangeEvent));
+    expect(dispatchEventSpy).toHaveBeenCalledWith(expect.any(PopStateEvent));
   });
 
   it("identifies conversation routes explicitly", () => {
@@ -42,22 +69,22 @@ describe("routeState", () => {
     expect(isConversationRoute("tasks")).toBe(false);
   });
 
-  it("reads and writes route-specific session query parameters without clobbering the rest of the URL", () => {
-    window.history.replaceState({}, "", "/workspace?foo=bar&chat_session_id=session-chat-1#terminal");
+  it("reads shared session query parameters and writes compact short hashes without clobbering other filters", () => {
+    window.history.replaceState({}, "", "/agent-runtime?foo=bar&session_id=session-agent-1");
 
-    expect(readWorkbenchRouteSessionID("chat")).toBe("session-chat-1");
-    expect(readWorkbenchRouteSessionID("terminal")).toBe("");
+    expect(readWorkbenchRouteSessionID("agent-runtime")).toBe("session-agent-1");
 
     writeWorkbenchRouteSessionID("terminal", "terminal-9");
 
     expect(window.location.search).toContain("foo=bar");
-    expect(window.location.search).toContain("chat_session_id=session-chat-1");
-    expect(window.location.search).toContain("terminal_session_id=terminal-9");
-    expect(window.location.hash).toBe("#terminal");
+    expect(window.location.search).toContain(`session_id=${hashSessionIDShort("terminal-9")}`);
+    expect(window.location.search).not.toContain("session_id=terminal-9");
+    expect(window.location.pathname).toBe("/terminal");
+    expect(window.location.hash).toBe("");
 
-    writeWorkbenchRouteSessionID("chat", "");
+    writeWorkbenchRouteSessionID("terminal", "");
 
-    expect(window.location.search).not.toContain("chat_session_id=");
-    expect(window.location.search).toContain("terminal_session_id=terminal-9");
+    expect(window.location.search).not.toContain("session_id=");
+    expect(window.location.search).toContain("foo=bar");
   });
 });

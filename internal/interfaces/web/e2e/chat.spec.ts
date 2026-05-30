@@ -26,11 +26,8 @@ import {
 import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
 async function openChannelsRoute(page: Parameters<typeof loginIfNeeded>[0]): Promise<void> {
-  await openChatRoute(page);
-  await page.evaluate(() => {
-    window.location.hash = "#channels";
-    window.dispatchEvent(new HashChangeEvent("hashchange"));
-  });
+  await page.goto("/channels");
+  await loginIfNeeded(page);
   await waitForAppReady(page);
   await expect.poll(async () => page.locator("#routeView").getAttribute("data-route")).toBe("channels");
   await expect(page.locator("#routeView")).toBeVisible();
@@ -158,10 +155,10 @@ test.describe("Chat composer", () => {
       }));
     });
 
-    await page.goto("/chat#agent-runtime");
+    await page.goto("/agent-runtime");
     await ensureChatRouteReady(page);
-    if (!page.url().includes("#agent-runtime")) {
-      await page.goto("/chat#agent-runtime");
+    if (!new URL(page.url()).pathname.endsWith("/agent-runtime")) {
+      await page.goto("/agent-runtime");
       await ensureChatRouteReady(page);
     }
 
@@ -510,11 +507,11 @@ test.describe("Chat composer", () => {
     expect(((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0)))).toBeLessThan(40);
   });
 
-  test("keeps the empty chat viewport pinned to the top when loading the #chat route", async ({
+  test("keeps the empty chat viewport pinned to the top when loading the chat route", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1024, height: 900 });
-    await page.goto("/chat#chat");
+    await page.goto("/chat");
     await ensureChatRouteReady(page);
 
     const header = page.locator(".chat-pane.empty-state .chat-header");
@@ -649,7 +646,7 @@ test.describe("Chat composer", () => {
   test("shows route jump controls on managed pages and jumps between sections", async ({ page }) => {
     await page.setViewportSize({ width: 760, height: 720 });
     await openChatWorkspace(page);
-    await page.goto("/chat#agent");
+    await page.goto("/agent");
     await expect(page.locator("#routeView[data-route='agent']")).toBeVisible();
 
     const routeView = page.locator("#routeView");
@@ -822,7 +819,7 @@ test.describe("Chat composer", () => {
   test("keeps agent option copy concise inside session settings", async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
     await openChatWorkspace(page);
-    await page.goto("/chat#agent-runtime");
+    await page.goto("/agent-runtime");
 
     const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
     await expect(runtimeToggle).toBeVisible();
@@ -838,7 +835,7 @@ test.describe("Chat composer", () => {
   test("keeps session settings scroll position while toggling skills", async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
     await openChatWorkspace(page);
-    await page.goto("/chat#agent-runtime");
+    await page.goto("/agent-runtime");
 
     const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
     await expect(runtimeToggle).toBeVisible();
@@ -977,7 +974,7 @@ test.describe("Chat composer", () => {
   test("keeps chat chrome fixed while only the composer follows the mobile keyboard", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
-    await page.goto("/chat#chat");
+    await page.goto("/chat");
     await loginIfNeeded(page);
     await waitForAppReady(page);
     await page.waitForSelector("[data-composer-form='conversation']", { timeout: 20000 });
@@ -1172,10 +1169,10 @@ test.describe("Chat composer", () => {
     await expectComposerState(composer, { draft: "dirty" });
 
     await clickWithUnsavedDialog(page, appShellPage.routeMenuItem("terminal"), "dismiss");
-    await expect(page).toHaveURL(/\/chat(?:#chat)?$/);
+    await expect(page).toHaveURL(/\/chat$/);
 
     await clickWithUnsavedDialog(page, appShellPage.routeMenuItem("terminal"), "accept");
-    await expect(page).toHaveURL(/#terminal$/);
+    await expect(page).toHaveURL(/\/terminal(?:\?.*)?$/);
   });
 
   test("restores draft and char count after reload", async ({ page }) => {
@@ -1594,7 +1591,7 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind
       };
     });
 
-    await page.goto("/chat#agent-runtime");
+    await page.goto("/agent-runtime");
     await loginIfNeeded(page);
     await waitForAppReady(page);
     const input = page.locator("[data-composer-input='conversation']");
@@ -1699,7 +1696,7 @@ data: {"result":{"route":"nl","output":"Node 更偏应用层与生态速度，Go
       };
     });
 
-    await page.goto("/chat#agent-runtime");
+    await page.goto("/agent-runtime");
     await loginIfNeeded(page);
     await waitForAppReady(page);
     const input = page.locator("[data-composer-input='conversation']");

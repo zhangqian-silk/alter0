@@ -249,7 +249,7 @@ describe("ReactManagedMemoryRouteBody", () => {
               {
                 date: "2026-03-04",
                 path: "/memory/daily/2026-03-04.md",
-                content: "### Daily\n- Follow up with [Tasks](/chat#tasks)",
+                content: "### Daily\n- Follow up with [Tasks](/tasks)",
               },
             ],
           },
@@ -284,6 +284,6 @@ describe("ReactManagedMemoryRouteBody", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Daily" }));
 
     expect(container.querySelector(".memory-content h3")).toHaveTextContent("Daily");
-    expect(container.querySelector(".memory-content a")).toHaveAttribute("href", "/chat#tasks");
+    expect(container.querySelector(".memory-content a")).toHaveAttribute("href", "/tasks");
   });
 });

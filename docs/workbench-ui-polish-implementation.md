@@ -9,7 +9,7 @@
 本轮优化保持以下稳定边界：
 
 1. 不重写 Web Shell 架构。
-2. 不改变 `/chat`、`chat / agent-runtime / terminal` 路由与 API 语义。
+2. 保持 `/chat` 工作台与 API 语义稳定，运行页和控制页统一使用独立 canonical path，Terminal 使用 `/terminal` 独立入口。
 3. 不恢复 legacy runtime 脚本接管。
 4. 不引入胶囊按钮、胶囊标签或 `border-radius: 999px` 控件。
 5. 不破坏 `1100px` 与 `760px` 两档窄屏断点、移动端抽屉、Composer 贴底和 `VisualViewport` 键盘链路。

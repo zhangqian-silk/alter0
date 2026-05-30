@@ -22,11 +22,11 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 ### Web Shell
 
 - 根路径 `/` 默认进入 Chat 工作台。
-- `/chat` 提供 Chat、Agent、Terminal、Control 与 Memory 的统一 Web Shell。
+- `/chat` 提供 Chat、Agent Runtime、Control 与 Memory 等统一 Web Shell；`/terminal` 提供 Terminal 独立 path 入口，并继续复用同一 Web Shell、登录态、主导航与运行页骨架。
 - Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`；该入口仅保留前端挂载容器与静态资源引用，由 React 渲染稳定的 shell DOM，并通过兼容样式层保持旧 DOM 契约。
 - `/chat` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 导航中的语言切换入口负责在英文与中文之间切换，并同步更新根节点语言标记。
 - 登录页在启用密码保护时继续作为统一入口，但视觉需与 Web Shell 保持一致：使用 `IBM Plex Sans + Sora` 字体、近白工作台卡片和安全入口说明文案，不保留独立的默认系统表单风格。
-- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 hash 路由、语言切换、主导航折叠/抽屉与运行页/控制页分派；`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace；`agent / terminal / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 `ReactManagedRouteBody` 接管。根壳层稳定暴露 `app-shell[data-workbench-route]`，各运行页与 route body 继续输出 `data-route / data-conversation-*` 作为样式与测试锚点；兼容层仅保留样式，不再通过 legacy 脚本接管 `/chat` 业务运行时。
+- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 `/chat`、`/agent-runtime`、`/terminal` 与其他 canonical path 路由、语言切换、主导航折叠/抽屉和运行页/控制页分派；`chat` 与 `agent-runtime` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace；`terminal` 通过 `/terminal` 独立 path 进入并继续由共享 runtime host 承载；`agent / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks` 等页面继续由 `ReactManagedRouteBody` 接管。根壳层稳定暴露 `app-shell[data-workbench-route]`，各运行页与 route body 继续输出 `data-route / data-conversation-*` 作为样式与测试锚点；兼容层仅保留样式，不再通过 legacy 脚本接管 `/chat` 业务运行时。
 - `channels / skills / mcp / models / cron-jobs` 共享控制台卡片页统一复用同一组响应式卡片网格；窄屏下标题区允许徽标下沉、字段行改为单列堆叠、底部标签区保持纵向拉伸，避免复制按钮、状态徽标与多行字段发生重叠或横向溢出。
 - Web Shell 的稳定界面基线收敛为两层：左侧固定主导航负责品牌、路由与语言切换，右侧主面板统一承载运行页和控制页；`Chat / Agent Runtime / Terminal` 在主面板内部统一采用「会话列 + 时间线工作区 + 底部 Composer + 固定 workspace header」结构，并直接复用会话栏、工作区容器、工作区头部、聊天滚动区、Composer 与移动端顶部操作行复合 class 语义。Composer 采用单一圆角助手输入面板，主 textarea 透明融入白色 surface，工具行留在同一面板底部，左侧为会话设置与附件按钮，右侧为深色紧凑发送按钮；桌面端按主阅读宽度居中，移动端保留键盘安全区与 16px 输入字号。到真手机宽度时，运行页顶层再收敛成单层 workbar：左侧 `Menu`，中间“状态信号 + 当前会话标题”标题按钮，右侧 `Sessions / New`；`Details` 不再独占手机顶栏，而是由中间标题按钮直接触发。桌面与中宽度的固定 header 继续保留当前会话标题、状态按钮和 `Details` 入口，具体会话详情与页面差异化内容统一在 `Details` 面板内承载，面板首屏默认以紧凑摘要栅格承载会话元数据和高频配置。`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，状态与交互全部由 React 直接维护。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示额外品牌口号或实现状态；Conversation workspace 自身承担会话和运行态配置，不再叠加 bridge 期的 welcome/runtime sheet 双轨壳层；`Control / Sessions / Tasks / Memory / Terminal / Codex Accounts` 等 React 托管 route 页继续共享近白表面、浅灰辅助层与浅蓝选中态。
 - `Agent` 与其他 React 托管页面共享同一表面体系：列表卡片、管理表单、托管字段块与消息块使用一致的近白主表面、浅灰辅助层与浅蓝选中态。
@@ -106,11 +106,11 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 页面刷新、跨设备重开或服务重启后，用户可恢复最近会话与历史消息；恢复结果需保留当前 Session 的目标 Agent、Model 与 Tools / Skills / MCP 选择。
 - 页面刷新时，前端需先用浏览器侧保存的当前活动会话快照恢复最近一条活跃 `Chat / Agent Runtime` 会话，避免服务端列表短暂缺席时把当前会话清空或替换为新的空白会话；随后再按 `session_id` 回源单会话详情，用服务端最新结果覆盖本地快照。
 - `POST /api/messages`、`POST /api/messages/stream`、`POST /api/agent/messages` 与 `POST /api/agent/messages/stream` 在 Web 层接受请求后，后端执行与持久化不得再依赖浏览器连接持续存活；页面刷新、标签页切换、SSE 断开或前端取消只允许中断当前传输，不得直接取消本轮会话执行。
-- `Chat` 当前活动会话固定为 `alter0-chat`，不再写入或读取 `chat_session_id` 作为多会话入口；`Agent Runtime` 当前活动会话需稳定投影到 URL query：`agent-runtime` 写入 `agent_session_id`。页面首次加载、刷新、手动粘贴当前链接或浏览器恢复标签页时，`Agent Runtime` 先读取对应 query 参数恢复目标会话；只有参数缺失或目标会话不存在时，才允许回退到浏览器快照与服务端列表默认项。
+- `Chat` 当前活动会话固定为 `alter0-chat`，不写入或读取 URL query 作为多会话入口；`Agent Runtime` 当前活动会话需稳定投影到 URL query：`/agent-runtime?session_id=<8位短hash>`。页面首次加载、刷新、手动粘贴当前链接或浏览器恢复标签页时，`Agent Runtime` 先读取 `session_id` 恢复目标会话；只有参数缺失或目标会话不存在时，才允许回退到浏览器快照与服务端列表默认项。
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
 - `Chat / Agent Runtime` 需维护独立的服务端会话 registry，记录 `session_id -> route / title / target / model / capabilities / status / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
-- `Chat / Agent Runtime / Terminal` 会话侧栏统一使用 `Sessions` 标题与 `New` 新建入口；移动端会话抽屉额外提供 `Hide` 收起动作。三条运行页会话列表为每个会话展示同一规则生成的 8 位短 hash 标识，短 hash 用于前端列表辨识、预览域名映射与人工排障引用。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表展示值。
+- `Chat / Agent Runtime / Terminal` 会话侧栏统一使用 `Sessions` 标题与 `New` 新建入口；移动端会话抽屉额外提供 `Hide` 收起动作。三条运行页会话列表为每个会话展示同一规则生成的 8 位短 hash 标识，短 hash 用于前端列表辨识、运行页 URL 恢复、预览域名映射与人工排障引用。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表或 URL 展示值。
 - `Chat / Agent Runtime` 的会话列表项与 workspace header 状态按钮需要共享同一会话状态语义：前端按当前 assistant 消息与任务态派生 `ready / busy / failed`，并在列表项标题前展示轻量红黄绿波纹信号；其中 `streaming / queued / running / in_progress` 与挂起任务映射为黄色 `busy`，错误、失败、取消与显式 `message.error` 映射为红色 `failed`，其余稳定态映射为绿色 `ready`。workspace header 的状态按钮可见层只显示信号，且必须复用会话列表同一套中心点、描边与波纹规格；状态名称只保留给读屏与悬浮语义。
 
 ## 流式响应

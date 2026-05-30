@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { createAPIClient } from "../../shared/api/client";
-import { hashSessionIDShort } from "../../shared/session/sessionHash";
+import { hashSessionIDShort, resolveSessionIDReference } from "../../shared/session/sessionHash";
 import { formatDateTimeMinute } from "../../shared/time/format";
 import type { LegacyShellLanguage } from "../shell/legacyShellCopy";
 import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../../app/routeState";
@@ -1337,7 +1337,8 @@ export function ConversationRuntimeProvider({
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
 
   const activeSessions = sessionsByRoute[route];
-  const activeSessionID = activeSessionByRoute[route];
+  const activeSessionReference = activeSessionByRoute[route];
+  const activeSessionID = resolveSessionIDReference(activeSessions, activeSessionReference) || activeSessionReference;
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
   const activeDraftAttachments = activeSessionID ? composerAttachmentDrafts[activeSessionID] || [] : [];
   const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
@@ -2067,9 +2068,12 @@ export function ConversationRuntimeProvider({
   }, [activeSessionByRoute, sessionsByRoute]);
 
   useEffect(() => {
-    writeWorkbenchRouteSessionID("chat", "");
+    if (route === "chat") {
+      writeWorkbenchRouteSessionID("chat", "");
+      return;
+    }
     writeWorkbenchRouteSessionID("agent-runtime", activeSessionByRoute["agent-runtime"]);
-  }, [activeSessionByRoute]);
+  }, [activeSessionByRoute, route]);
 
   useEffect(() => {
     sessionsByRouteRef.current = sessionsByRoute;
@@ -2129,7 +2133,11 @@ export function ConversationRuntimeProvider({
         if (cancelled) {
           return;
         }
-        const preferredActiveID = normalizeText(activeSessionByRoute[route]);
+        const preferredActiveReference = normalizeText(activeSessionByRoute[route]);
+        const preferredActiveID = resolveSessionIDReference(
+          [...remoteSessions, ...sessionsByRoute[route]],
+          preferredActiveReference,
+        ) || preferredActiveReference;
         const localPreferredSession = preferredActiveID
           ? sessionsByRoute[route].find((session) => session.id === preferredActiveID) || null
           : null;

@@ -23,29 +23,20 @@ export async function ensureChatRouteReady(page: Page): Promise<void> {
 }
 
 export async function openCronRoute(page: Page): Promise<void> {
-  await page.goto("/chat#cron-jobs");
+  await page.goto("/cron-jobs");
   await ensureAppReady(page);
-  if (!page.url().includes("#cron-jobs")) {
-    await page.goto("/chat#cron-jobs");
+  if (!new URL(page.url()).pathname.endsWith("/cron-jobs")) {
+    await page.goto("/cron-jobs");
     await ensureAppReady(page);
   }
-  await expect(page).toHaveURL(/#cron-jobs$/);
+  await expect(page).toHaveURL(/\/cron-jobs$/);
   await expect(createCronPage(page).routeGrid()).toBeVisible();
 }
 
 export async function openTerminalRoute(page: Page): Promise<void> {
-  await page.goto("/chat");
+  await page.goto("/terminal");
   await ensureAppReady(page);
-  if (!page.url().includes("#terminal")) {
-    await page.evaluate(() => {
-      if (window.location.hash !== "#terminal") {
-        window.location.hash = "#terminal";
-        return;
-      }
-      window.dispatchEvent(new HashChangeEvent("hashchange"));
-    });
-  }
-  await expect(page).toHaveURL(/#terminal$/);
+  await expect(page).toHaveURL(/\/terminal(?:\?.*)?$/);
   await expect(page.locator("[data-runtime-view='terminal']")).toBeVisible();
   await expect(page.locator("[data-runtime-workspace='terminal']")).toBeVisible();
   await expectComposerReady(createTerminalPage(page).composer());

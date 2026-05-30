@@ -69,7 +69,7 @@ import { WorkbenchApp } from "./WorkbenchApp";
 
 describe("WorkbenchApp", () => {
   beforeEach(() => {
-    window.location.hash = "#chat";
+    window.history.replaceState({}, "", "/chat");
     document.documentElement.lang = "en";
     mockIsLegacyShellMobileViewport.mockReturnValue(false);
     mockCreateMobileViewportSyncController.mockClear();
@@ -78,7 +78,7 @@ describe("WorkbenchApp", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
-    window.location.hash = "";
+    window.history.replaceState({}, "", "/");
     document.documentElement.lang = "en";
   });
 
@@ -130,7 +130,7 @@ describe("WorkbenchApp", () => {
   });
 
   it("renders a mobile route toolbar for managed page routes and uses it to open navigation", async () => {
-    window.location.hash = "#agent";
+    window.history.replaceState({}, "", "/agent");
     mockIsLegacyShellMobileViewport.mockReturnValue(true);
     const { container } = render(<WorkbenchApp />);
     const shell = container.querySelector(".app-shell");

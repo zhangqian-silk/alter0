@@ -217,7 +217,7 @@ describe("ReactManagedTasksRouteBody", () => {
             progress: 100,
             request_content: "## Request\nUse **markdown** and [docs](/docs).",
             result: {
-              output: "### Result\n- **Done**\n- [Open](/chat#tasks)",
+              output: "### Result\n- **Done**\n- [Open](/tasks)",
             },
           },
           source: {},
@@ -244,7 +244,7 @@ describe("ReactManagedTasksRouteBody", () => {
 
     expect(container.querySelector(".control-task-result-output h3")).toHaveTextContent("Result");
     expect(container.querySelector(".control-task-result-output strong")).toHaveTextContent("markdown");
-    expect(container.querySelector('.control-task-result-output a[href="/chat#tasks"]')).toHaveTextContent("Open");
+    expect(container.querySelector('.control-task-result-output a[href="/tasks"]')).toHaveTextContent("Open");
   });
 
   it("converts datetime-local filters to RFC3339 query values", async () => {

@@ -11,8 +11,8 @@ const LEGACY_SHELL_ROUTES = new Set(
   NAV_GROUPS.flatMap((group) => group.items.map((item) => item.route)),
 );
 
-export function parseLegacyShellHashRoute(hash: string = window.location.hash): string {
-  const normalized = hash.replace(/^#\/?/, "").trim().toLowerCase();
+export function parseLegacyShellPathRoute(pathname: string = window.location.pathname): string {
+  const normalized = pathname.replace(/^\/?/, "").replace(/\/+$/, "").trim().toLowerCase();
   if (!normalized) {
     return LEGACY_SHELL_DEFAULT_ROUTE;
   }
@@ -31,15 +31,15 @@ export function isLegacyShellMobileViewport(): boolean {
 }
 
 export function useLegacyShellRoute(): string {
-  const [route, setRoute] = useState(() => parseLegacyShellHashRoute());
+  const [route, setRoute] = useState(() => parseLegacyShellPathRoute());
 
   useEffect(() => {
     const syncRoute = () => {
-      setRoute(parseLegacyShellHashRoute());
+      setRoute(parseLegacyShellPathRoute());
     };
 
-    window.addEventListener("hashchange", syncRoute);
-    return () => window.removeEventListener("hashchange", syncRoute);
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
   }, []);
 
   return route;

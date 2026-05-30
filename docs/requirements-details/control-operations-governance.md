@@ -239,7 +239,7 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 ## 安全与认证
 
 - Web 登录密码启用后，未认证访问不能进入受保护页面和 API。
-- `/login` 使用统一登录态写入；`/logout` 清理登录态并返回登录流程。
+- `/login` 使用统一登录态写入；`/logout` 清理登录态并返回登录流程。任一工作台页面触发登录时只把当前 canonical path 作为回跳目标，不携带 query，避免在登录 URL、隐藏表单字段与页面提示中暴露 `session_id` 等会话级参数。
 - 共享运行时的主 Web child 必须继承同一份 `web_login_password`；只有 workspace service 托管的预览后端可以通过专用运行时环境标记移除自身登录层并复用共享网关登录态。
 - 服务账户缺少 Codex/OpenAI 认证时，Web 端快速返回认证失败，不长时间等待。
 - Codex Accounts 控制面不提供导出接口，也不暴露本地文件浏览能力。
