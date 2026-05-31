@@ -130,7 +130,7 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("presents runtime thinking as a compact ChatGPT-style disclosure instead of a process card", () => {
+  it("presents runtime thinking as an inline disclosure in the current message flow", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
@@ -149,9 +149,29 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /\.runtime-thinking-toggle \.terminal-process-title\s*\{[\s\S]*?text-transform:\s*none;[\s\S]*?letter-spacing:\s*0;[\s\S]*?color:\s*#7a7f87;/,
     );
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-thinking-shell \.terminal-process-body:not\(\[hidden\]\)\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?backdrop-filter:\s*blur\(26px\);/,
-    );
+    const mobileBreakpoint = stylesheet.slice(stylesheet.lastIndexOf("@media (max-width: 760px)"));
+    const mobileThinkingBlock = mobileBreakpoint.match(
+      /\.runtime-thinking-shell \.terminal-process-body:not\(\[hidden\]\)\s*\{([^}]*)\}/,
+    )?.[1] || "";
+    expect(mobileThinkingBlock).not.toContain("position: fixed;");
+    expect(mobileThinkingBlock).not.toContain("backdrop-filter:");
+    expect(mobileThinkingBlock).toContain("max-height: none;");
+    expect(mobileThinkingBlock).toContain("overflow: visible;");
+  });
+
+  it("keeps terminal runtime thinking expanded inline on mobile", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const mobileBreakpoint = stylesheet.slice(stylesheet.lastIndexOf("@media (max-width: 760px)"));
+    const terminalThinkingBlock = mobileBreakpoint.match(
+      /\[data-runtime-view="terminal"\] \.runtime-thinking-shell \.terminal-process-body:not\(\[hidden\]\)\s*\{([^}]*)\}/,
+    )?.[1] || "";
+
+    expect(terminalThinkingBlock).toContain("position: static;");
+    expect(terminalThinkingBlock).toContain("max-height: none;");
+    expect(terminalThinkingBlock).toContain("overflow: visible;");
+    expect(terminalThinkingBlock).not.toContain("position: fixed;");
+    expect(terminalThinkingBlock).not.toContain("backdrop-filter:");
   });
 
   it("keeps shared route pages on the same restrained workbench surface system", () => {
