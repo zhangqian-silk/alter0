@@ -17,6 +17,31 @@ function buildAssistantMessage(overrides: Partial<ChatMessageSnapshot> = {}): Ch
   };
 }
 
+function buildProcessSteps(): ChatMessageSnapshot["processSteps"] {
+  return [
+    {
+      id: "step-1",
+      title: "Inspect workspace",
+      detail: "Repository root detected.",
+    },
+    {
+      id: "step-2",
+      title: "Review runtime styles",
+      detail: "Located the mobile Thinking disclosure rules in `shell.css`.",
+    },
+    {
+      id: "step-3",
+      title: "Update inline expansion",
+      detail: "Kept process details inside the current assistant message flow.",
+    },
+    {
+      id: "step-4",
+      title: "Verify regression coverage",
+      detail: "Confirmed the style contract rejects fixed overlay Thinking panels.",
+    },
+  ];
+}
+
 describe("ChatMessageRegion", () => {
   it("hides completed chat assistant metadata and message timestamps", () => {
     render(
@@ -198,13 +223,7 @@ describe("ChatMessageRegion", () => {
               "",
               "Final answer with `details`.",
             ].join("\n"),
-            processSteps: [
-              {
-                id: "step-1",
-                title: "Inspect workspace",
-                detail: "Repository root detected.",
-              },
-            ],
+            processSteps: buildProcessSteps(),
           }),
         ]}
       />,
@@ -214,9 +233,13 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".terminal-process-shell")).toHaveClass("runtime-thinking-shell");
     expect(article.querySelector(".terminal-process-toggle")).toHaveClass("runtime-thinking-toggle");
     expect(article.querySelector(".terminal-process-toggle")).toHaveTextContent("Thinking");
+    expect(article.querySelector(".terminal-process-toggle")).toHaveTextContent("4 steps");
     expect(article.querySelector(".conversation-process-body")).toBeInTheDocument();
+    expect(article.querySelectorAll(".conversation-process-step")).toHaveLength(4);
     expect(article.querySelector(".conversation-process-step-head")).toBeInTheDocument();
     expect(article.querySelector(".agent-process-step-title")).toBeInTheDocument();
+    expect(article).toHaveTextContent("Review runtime styles");
+    expect(article).toHaveTextContent("Verify regression coverage");
     const answer = document.querySelector(".agent-process-answer") as HTMLElement;
     expect(answer).toBeInTheDocument();
     expect(answer).toHaveClass("runtime-markdown-body");
@@ -233,11 +256,10 @@ describe("ChatMessageRegion", () => {
           buildAssistantMessage({
             text: "最终答案。",
             processSteps: [
-              {
-                id: "step-1",
-                title: "检索资料",
-                detail: "完成。",
-              },
+              { id: "step-1", title: "检索资料", detail: "确认当前会话输入。" },
+              { id: "step-2", title: "检查样式", detail: "定位移动端展开规则。" },
+              { id: "step-3", title: "补充测试", detail: "覆盖多步骤思考过程。" },
+              { id: "step-4", title: "完成验证", detail: "确认折叠态文案稳定。" },
             ],
             agentProcessCollapsed: true,
           }),
@@ -251,6 +273,7 @@ describe("ChatMessageRegion", () => {
     expect(toggle).toHaveClass("runtime-thinking-toggle");
     expect(process).toHaveClass("is-collapsed");
     expect(toggle).toHaveTextContent("已思考");
+    expect(toggle).toHaveTextContent("4 步");
     expect(toggle).not.toHaveTextContent("过程");
     expect(toggle.querySelector(".terminal-step-toggle-icon")).toHaveTextContent(">");
   });

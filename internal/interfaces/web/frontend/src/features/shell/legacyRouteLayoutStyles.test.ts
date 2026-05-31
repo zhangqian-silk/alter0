@@ -73,6 +73,24 @@ describe("legacy route layout stylesheet", () => {
     expect(stylesheet).toContain("width: 100%;");
   });
 
+  it("keeps conversation process step indices vertically centered with titles", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(
+      resolve(currentDirectory, "../../../public/legacy/chat-core.css"),
+      "utf8",
+    );
+    const headBlock = stylesheet.match(/\.agent-process-step-head,\s*\.conversation-process-step-head\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const metaSlotBlock = stylesheet.match(/\.agent-process-step-head\s*>\s*span:first-child,\s*\.conversation-process-step-head\s*>\s*span:first-child\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const mobileBlock = stylesheet.match(/@media \(max-width: 760px\) \{[\s\S]*?\.agent-process-step-head,\s*\.conversation-process-step-head\s*\{([\s\S]*?)\n  \}/)?.[1] || "";
+
+    expect(headBlock).toContain("align-items: center;");
+    expect(metaSlotBlock).toContain("display: inline-flex;");
+    expect(metaSlotBlock).toContain("align-items: center;");
+    expect(metaSlotBlock).toContain("justify-content: center;");
+    expect(mobileBlock).toContain("align-items: center;");
+    expect(mobileBlock).not.toContain("align-items: flex-start;");
+  });
+
   it("styles terminal final output through runtime markdown wrappers", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(

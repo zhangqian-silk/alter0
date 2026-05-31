@@ -155,9 +155,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Agent `process` 事件到达后，前端需在 `done` 前实时更新当前助手消息的步骤面板，而不是等待最终正文收口后一次性生成过程展示。
 - Agent 消息中的 `Process` 优先使用服务端返回的结构化 `process_steps` 渲染；仅对缺失结构化步骤的历史消息保留文本解析兼容。
 - 结构化 `process_steps` 需要在 SSE `done`、Task 结果回填与会话历史恢复后保持一致，刷新页面不得把已完成消息重新退化为仅正文展示。
-- `Chat / Agent Runtime / Terminal` 的消息输出结构统一收敛到轻量 IM 式消息流：用户输入右对齐并使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制，助手回复左对齐并弱化为无边框正文阅读流，Agent 与 Terminal 中间步骤默认按 `Thinking / 已思考` 轻量披露行展示，展开后再进入步骤详情，移动端展开态使用底部磨砂 sheet；助手最终答复保留 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块；消息正文区不显示逐条时间，仅在进行中、排队、失败等非稳定状态下保留状态标签。新增运行页若呈现用户输入与助手输出，必须复用 `RuntimeTimeline` 与 `runtime-message / runtime-message-user / runtime-message-assistant / runtime-message-bubble` 契约，避免继续产生页面私有气泡格式。
+- `Chat / Agent Runtime / Terminal` 的消息输出结构统一收敛到轻量 IM 式消息流：用户输入右对齐并使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制，助手回复左对齐并弱化为无边框正文阅读流，Agent 与 Terminal 中间步骤默认按 `Thinking / 已思考` 轻量披露行展示，展开后在当前消息内进入步骤详情，移动端也保持同页内联展开；助手最终答复保留 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块；消息正文区不显示逐条时间，仅在进行中、排队、失败等非稳定状态下保留状态标签。新增运行页若呈现用户输入与助手输出，必须复用 `RuntimeTimeline` 与 `runtime-message / runtime-message-user / runtime-message-assistant / runtime-message-bubble` 契约，避免继续产生页面私有气泡格式。
 - 长会话默认只渲染最新一批消息；当顶部仍存在更早历史时，消息区需展示 `Load earlier messages / 加载更早消息` 入口，并在滚到顶部时自动按批次扩展更早消息。扩展历史时需保持当前阅读位置，不得强制跳回底部。
-- `Process` 步骤标题与正文在桌面和移动端都必须保持整列阅读宽度；长中文说明、路径、命令片段与 Markdown 文本优先在当前消息容器内自然换行，不得在真机窄屏下塌缩成逐字竖排窄列。
+- `Process` 步骤标题与正文在桌面和移动端都必须保持整列阅读宽度；步骤序号、展开图标、标题与状态信息需在同一行垂直居中；长中文说明、路径、命令片段与 Markdown 文本优先在当前消息容器内自然换行，不得在真机窄屏下塌缩成逐字竖排窄列。
 - Conversation 展示层必须在渲染 `process_steps.title/detail` 与最终 markdown 前移除零宽断行字符，并对“每字一行”的病态段落做可读性归一化；该修正同时适用于流式消息、Task 回填和历史会话恢复。
 - `Chat / Agent Runtime` 的消息时间线在内容较少时必须保持顶部收口；短用户消息、折叠后的 `Thinking / 已思考` 披露行、最终回复与对应状态标签继续贴近各自消息气泡排布，不得因为时间线容器满高拉伸而出现大块垂直空白。
 - `Chat / Agent Runtime` 打开已有消息的会话、刷新恢复当前会话或切换到其他会话后，时间线初始视口必须落到最新消息所在底部；当前活动会话内发送新消息后，时间线必须随新增消息回到底部，使本轮用户消息与助手占位立即可见；若用户已经在同一会话内手动滚动阅读历史，后续流式 patch、Process 展开状态变化和草稿输入不得强制把视口拉回底部。
@@ -191,7 +191,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 ### Process
 
-- Agent action / observation 与 Terminal 执行细节在前端收敛为可折叠 Process。
+- Agent action / observation 与 Terminal 执行细节在前端收敛为可折叠 Process，并统一在当前消息或 turn 内同页展开。
 - 最终答复出现后，Process 默认折叠，阅读焦点回到正文。
 - 用户手动展开或折叠后，在当前浏览器会话内保留状态。
 

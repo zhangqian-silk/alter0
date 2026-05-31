@@ -1246,6 +1246,14 @@ body {
   width: 100%;
 }
 
+.agent-process-step-head > span:first-child,
+.conversation-process-step-head > span:first-child {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .agent-process-step-head > span:last-child,
 .conversation-process-step-head > span:last-child {
   min-width: 0;
@@ -1986,7 +1994,7 @@ body {
 
   .agent-process-step-head,
   .conversation-process-step-head {
-    align-items: flex-start;
+    align-items: center;
   }
 
   .agent-process-step-body,

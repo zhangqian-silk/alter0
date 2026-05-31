@@ -1400,9 +1400,17 @@ data: {"message_id":"message-process-live","session_id":"session-process-live","
 data: {"process_step":{"id":"step-1","kind":"action","title":"codex_exec","status":"running"}}
 
 `));
+            controller.enqueue(encoder.encode(`event: process
+data: {"process_step":{"id":"step-2","kind":"analysis","title":"读取样式约束","detail":"检查 Thinking 披露入口在移动端的布局规则。","status":"running"}}
+
+`));
+            controller.enqueue(encoder.encode(`event: process
+data: {"process_step":{"id":"step-3","kind":"analysis","title":"准备回归验证","detail":"确认多步骤过程能在同一消息内连续展示。","status":"running"}}
+
+`));
             window.setTimeout(() => {
               controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"codex_exec","detail":"检查仓库状态","status":"completed"}]}}
+data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"codex_exec","detail":"检查仓库状态","status":"completed"},{"id":"step-2","kind":"analysis","title":"读取样式约束","detail":"检查 Thinking 披露入口在移动端的布局规则。","status":"completed"},{"id":"step-3","kind":"analysis","title":"准备回归验证","detail":"确认多步骤过程能在同一消息内连续展示。","status":"completed"}]}}
 
 `));
               controller.close();
@@ -1425,9 +1433,11 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
     const assistantMessage = page.locator(".msg.assistant").last();
     await expect(assistantMessage.locator(".agent-process-shell")).toBeVisible();
     await expect(assistantMessage.locator(".agent-process-step-title")).toContainText("codex_exec");
+    await expect(assistantMessage.locator(".agent-process-step-title")).toContainText("读取样式约束");
     await expect(assistantMessage.locator(".assistant-message-body")).toHaveCount(0);
 
     await expect(assistantMessage.locator(".assistant-message-body")).toContainText("任务已完成");
+    await expect(assistantMessage.locator(".agent-process-toggle")).toContainText("3 steps");
   });
 
   test("shows explicit load failures after a chat stream aborts", async ({ page }) => {
@@ -1499,7 +1509,7 @@ data: {"delta":"[agent] action: codex_exec\\n"}
 
 `));
               controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind":"action","title":"codex_exec","detail":"检查仓库状态","status":"completed"}]}}
+data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"读取运行状态","detail":"检查仓库状态、当前分支和工作区清洁度。","status":"completed"},{"id":"step-2","kind":"action","title":"定位 Thinking 样式","detail":"确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。","status":"completed"},{"id":"step-3","kind":"action","title":"调整展开方式","detail":"将过程详情保持在当前消息内联展开，不再脱离消息流。","status":"completed"},{"id":"step-4","kind":"action","title":"回归验证","detail":"补充样式断言并确认最终回复仍独立展示。","status":"completed"}]}}
 
 `));
               controller.close();
@@ -1528,8 +1538,11 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind
         node.removeAttribute("hidden");
       }
     });
-    await expect(streamedMessage.locator(".agent-process-toggle")).toContainText("Process");
+    await expect(streamedMessage.locator(".agent-process-toggle")).toContainText("Thinking");
+    await expect(streamedMessage.locator(".agent-process-toggle")).toContainText("4 steps");
+    await expect(streamedMessage.locator(".conversation-process-step")).toHaveCount(4);
     await expect(streamedMessage.locator(".agent-process-step-body").first()).toContainText("检查仓库状态");
+    await expect(streamedMessage.locator(".agent-process-step-body").nth(2)).toContainText("当前消息内联展开");
     await expect(streamedMessage.locator(".agent-process-answer-shell")).toContainText("任务已完成");
     await expect(streamedMessage.locator(".agent-process-answer-shell")).not.toContainText("[agent] action:");
   });
@@ -1574,7 +1587,7 @@ data: {"delta":"[agent] action: codex_exec\\n"}
 
 `));
               controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind":"action","title":"codex_exec","detail":"需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。","status":"completed"}]}}
+data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"mobile-step-1","kind":"action","title":"确认目标工作区","detail":"需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。","status":"completed"},{"id":"mobile-step-2","kind":"action","title":"读取前端契约","detail":"检查 Chat / Agent Runtime 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。","status":"completed"},{"id":"mobile-step-3","kind":"action","title":"调整移动端展开","detail":"移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。","status":"completed"},{"id":"mobile-step-4","kind":"action","title":"同步静态产物","detail":"重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。","status":"completed"},{"id":"mobile-step-5","kind":"action","title":"部署预览服务","detail":"通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。","status":"completed"},{"id":"mobile-step-6","kind":"action","title":"补充测试数据","detail":"增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。","status":"completed"}]}}
 
 `));
               controller.close();
@@ -1611,6 +1624,9 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"kind
 
     const processBody = assistantMessage.locator(".agent-process-step-body").first();
     await expect(processBody).toContainText("需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中");
+    await expect(assistantMessage.locator(".agent-process-toggle")).toContainText("6 steps");
+    await expect(assistantMessage.locator(".conversation-process-step")).toHaveCount(6);
+    await expect(assistantMessage.locator(".agent-process-step-body").nth(5)).toContainText("增加多步骤思考过程 fixture");
 
     const metrics = await processBody.evaluate((node) => {
       const detail = node instanceof HTMLElement ? node : null;
