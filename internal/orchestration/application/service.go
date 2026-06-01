@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	execdomain "alter0/internal/execution/domain"
 	orchdomain "alter0/internal/orchestration/domain"
 	sessionapp "alter0/internal/session/application"
 	sharedapp "alter0/internal/shared/application"
@@ -210,6 +211,9 @@ func (s *Service) handle(
 	}
 
 	intent := s.classifier.Classify(msg.Content)
+	if shouldBypassCommandRouting(msg.Metadata) {
+		intent = orchdomain.Intent{Type: orchdomain.IntentTypeNL}
+	}
 	switch intent.Type {
 	case orchdomain.IntentTypeCommand:
 		result.Route = shareddomain.RouteCommand
@@ -364,6 +368,16 @@ func isTerminalSessionContextOnly(metadata map[string]string) bool {
 	return strings.EqualFold(
 		strings.TrimSpace(metadata[terminalTaskTypeMetadataKey]),
 		terminalTaskTypeValue,
+	)
+}
+
+func shouldBypassCommandRouting(metadata map[string]string) bool {
+	if len(metadata) == 0 {
+		return false
+	}
+	return strings.EqualFold(
+		strings.TrimSpace(metadata[execdomain.ExecutionEngineMetadataKey]),
+		execdomain.ExecutionEngineCodex,
 	)
 }
 

@@ -68,6 +68,7 @@ type RuntimeComposerProps = {
   inputProps?: Omit<ComponentPropsWithoutRef<"textarea">, "id" | "ref" | "children" | "className" | "value" | "onChange"> & {
     className?: string;
   };
+  inputAssistContent?: ReactNode;
   onInputChange: (value: string) => void;
   onInputFocus?: FocusEventHandler<HTMLTextAreaElement>;
   onInputBlur?: FocusEventHandler<HTMLTextAreaElement>;
@@ -156,6 +157,7 @@ export function RuntimeComposer({
   inputRef,
   inputValue,
   inputProps,
+  inputAssistContent,
   onInputChange,
   onInputFocus,
   onInputBlur,
@@ -374,6 +376,11 @@ export function RuntimeComposer({
               data-composer-input={composerAlias}
               data-terminal-input={runtimeKind === "terminal" ? "true" : undefined}
             ></textarea>
+            {inputAssistContent ? (
+              <div className="runtime-composer-input-assist">
+                {inputAssistContent}
+              </div>
+            ) : null}
           </div>
           <div className="runtime-composer-toolbar" data-runtime-composer-toolbar={runtimeKind}>
             <div className="runtime-composer-toolbar-start">

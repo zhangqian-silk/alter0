@@ -3,6 +3,11 @@ import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { formatDateTime } from "../../shared/time/format";
 import { groupSessionListItems } from "../../shared/time/sessionListGroups";
 import { buildChatTimelineItems } from "../shell/components/ChatMessageRegion";
+import {
+  buildDraftWithCodexSlashCommand,
+  CODEX_SLASH_COMMANDS,
+  codexSlashCommandQuery,
+} from "../shell/components/codexSlashCommands";
 import { normalizeText, RouteFieldRow } from "../shell/components/RouteBodyPrimitives";
 import { RuntimeComposer } from "../shell/components/RuntimeComposer";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
@@ -32,6 +37,8 @@ type ConversationWorkspaceSharedRefs = {
 const INITIAL_VISIBLE_CHAT_MESSAGES = 32;
 const CHAT_MESSAGE_LOAD_BATCH_SIZE = 32;
 const CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET = 32;
+const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
+const CODEX_RUNTIME_MODEL_ID = "codex";
 
 function renderAgentDeliverablesSection(
   language: LegacyShellLanguage,
@@ -92,6 +99,10 @@ type ConversationSessionSignalTone = "ready" | "busy" | "failed";
 
 function normalizeConversationSessionMessageStatus(value: string) {
   return normalizeText(value).toLowerCase();
+}
+
+function isDirectCodexModelSelection(providerID: string, modelID: string) {
+  return normalizeText(providerID) === CODEX_RUNTIME_PROVIDER_ID && normalizeText(modelID) === CODEX_RUNTIME_MODEL_ID;
 }
 
 function resolveConversationSessionSignalTone(session: {
@@ -817,6 +828,7 @@ function ConversationComposerSection({
   const composerVisionUnsupported = language === "zh"
     ? "当前模型不支持图片输入，请切换到支持视觉的模型后再发送。"
     : "The selected model does not support image input. Switch to a vision-capable model before sending.";
+  const codexSlashCommandsLabel = language === "zh" ? "Codex 斜线命令" : "Codex slash commands";
   const inspectorTabOpen = runtime.inspectorOpen && runtime.inspectorTabOpen;
   const targetInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "target";
   const modelInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "model";
@@ -834,6 +846,14 @@ function ConversationComposerSection({
     activeSkills: runtime.skills.filter((item) => item.active),
     availableSkills: runtime.skills.filter((item) => !item.active && item.visibility !== "agent-private"),
   }), [runtime.capabilities, runtime.skills]);
+  const directCodexSelected = isDirectCodexModelSelection(
+    composerRuntime.selectedProviderId,
+    composerRuntime.selectedModelId,
+  );
+  const codexSlashQuery = directCodexSelected ? codexSlashCommandQuery(composerRuntime.draft) : "";
+  const codexSlashCommandCandidates = codexSlashQuery
+    ? CODEX_SLASH_COMMANDS.filter((item) => item.command.startsWith(codexSlashQuery))
+    : [];
 
   const focusComposerInputWithoutScroll = () => {
     const node = composerInputRef.current;
@@ -939,6 +959,11 @@ function ConversationComposerSection({
     }
     event.preventDefault();
     openMobileSessionInspectorOnPress();
+  };
+
+  const applyCodexSlashCommand = (command: string) => {
+    composerRuntime.setDraft(buildDraftWithCodexSlashCommand(composerRuntime.draft, command));
+    focusComposerInputWithoutScroll();
   };
 
   const handleComposerAttachmentPicker = useCallback(() => {
@@ -1176,6 +1201,28 @@ function ConversationComposerSection({
       ) : null}
     </div>
   ) : null;
+  const codexSlashCommandAssist = codexSlashCommandCandidates.length > 0 ? (
+    <div
+      className="runtime-composer-command-list"
+      role="listbox"
+      aria-label={codexSlashCommandsLabel}
+      data-runtime-composer-command-list="codex"
+    >
+      {codexSlashCommandCandidates.map((item) => (
+        <button
+          key={item.command}
+          type="button"
+          role="option"
+          className="runtime-composer-command-option"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => applyCodexSlashCommand(item.command)}
+        >
+          <strong>{item.command}</strong>
+          <span>{item.label[language]}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <RuntimeComposer
@@ -1205,6 +1252,7 @@ function ConversationComposerSection({
         maxLength: 10000,
         placeholder: composerPlaceholder,
       }}
+      inputAssistContent={codexSlashCommandAssist}
       onInputChange={composerRuntime.setDraft}
       onInputFocus={() => onInputFocusedChange(true)}
       onInputBlur={() => onInputFocusedChange(false)}

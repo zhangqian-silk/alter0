@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	execdomain "alter0/internal/execution/domain"
 	orchdomain "alter0/internal/orchestration/domain"
 	sessionapp "alter0/internal/session/application"
 	sessiondomain "alter0/internal/session/domain"
@@ -310,6 +311,49 @@ func TestHandleUnknownCommand(t *testing.T) {
 	}
 	if result.ErrorCode != "command_not_found" {
 		t.Fatalf("expected command_not_found, got %q", result.ErrorCode)
+	}
+}
+
+func TestHandleDirectCodexSlashInputBypassesCommandRouting(t *testing.T) {
+	registry := &stubRegistry{}
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{output: "codex response"}
+	service := NewService(
+		&stubClassifier{
+			intent: orchdomain.Intent{
+				Type:        orchdomain.IntentTypeCommand,
+				CommandName: "goal",
+				Args:        []string{"ship", "native", "slash", "support"},
+			},
+		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+
+	msg := validMessage("/goal ship native slash support")
+	msg.Metadata = map[string]string{
+		execdomain.ExecutionEngineMetadataKey: execdomain.ExecutionEngineCodex,
+	}
+	result, err := service.Handle(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Route != shareddomain.RouteNL {
+		t.Fatalf("expected nl route, got %s", result.Route)
+	}
+	if result.Output != "codex response" {
+		t.Fatalf("unexpected output: %q", result.Output)
+	}
+	if executor.called != 1 {
+		t.Fatalf("executor should be called exactly once, got %d", executor.called)
+	}
+	if executor.lastMessage.Content != "/goal ship native slash support" {
+		t.Fatalf("expected original slash input passed to executor, got %q", executor.lastMessage.Content)
+	}
+	if got := telemetry.errorCount[string(shareddomain.RouteCommand)]; got != 0 {
+		t.Fatalf("expected no command route error, got %d", got)
 	}
 }
 

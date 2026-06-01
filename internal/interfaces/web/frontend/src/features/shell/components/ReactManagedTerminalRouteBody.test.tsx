@@ -28,7 +28,7 @@ function installImmediateAnimationFrame() {
   vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
 }
 
-function stubTerminalTurnsFetch(turns: TerminalTurnFixture[]) {
+function stubTerminalTurnsFetch(turns: TerminalTurnFixture[], shell = "codex exec") {
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = String(init?.method || "GET").toUpperCase();
@@ -40,7 +40,7 @@ function stubTerminalTurnsFetch(turns: TerminalTurnFixture[]) {
             title: "Workspace shell",
             terminal_session_id: "terminal-1",
             status: "ready",
-            shell: "codex exec",
+            shell,
             working_dir: "/workspace/alter0",
             created_at: "2026-04-15T10:00:00Z",
             updated_at: "2026-04-15T10:10:00Z",
@@ -58,7 +58,7 @@ function stubTerminalTurnsFetch(turns: TerminalTurnFixture[]) {
           title: "Workspace shell",
           terminal_session_id: "terminal-1",
           status: "ready",
-          shell: "codex exec",
+          shell,
           working_dir: "/workspace/alter0",
           created_at: "2026-04-15T10:00:00Z",
           updated_at: "2026-04-15T10:10:00Z",
@@ -738,6 +738,60 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Session" }));
     expect(screen.getByTestId("terminal-skill-selector")).toBeInTheDocument();
+  });
+
+  it("shows Codex slash command candidates for an explicit Codex terminal session", async () => {
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute("data-runtime-session-id", "terminal-1");
+    });
+
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
+      target: { value: "/" },
+    });
+
+    const commandList = screen.getByRole("listbox", { name: "Codex slash commands" });
+    expect(commandList).toHaveAttribute("data-runtime-composer-command-list", "codex");
+    expect(within(commandList).getAllByRole("option").length).toBeGreaterThan(10);
+    expect(within(commandList).getByRole("option", { name: /\/goal/i })).toBeInTheDocument();
+    expect(within(commandList).getByRole("option", { name: /\/model/i })).toBeInTheDocument();
+    expect(within(commandList).getByRole("option", { name: /\/status/i })).toBeInTheDocument();
+    expect(within(commandList).queryByRole("option", { name: /\/permissions/i })).not.toBeInTheDocument();
+  });
+
+  it("applies a Codex slash command candidate in the terminal composer", async () => {
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute("data-runtime-session-id", "terminal-1");
+    });
+
+    const input = document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement;
+    fireEvent.change(input, {
+      target: { value: "/g ship terminal candidates" },
+    });
+    fireEvent.click(screen.getByRole("option", { name: /\/goal/i }));
+
+    expect(input.value).toBe("/goal ship terminal candidates");
+  });
+
+  it("does not show Codex slash command candidates for non-Codex terminal sessions", async () => {
+    stubTerminalTurnsFetch([], "bash");
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-composer-input='terminal']")).toBeInTheDocument();
+      expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute("data-runtime-session-id", "terminal-1");
+    });
+
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
+      target: { value: "/" },
+    });
+
+    expect(screen.queryByRole("listbox", { name: "Codex slash commands" })).not.toBeInTheDocument();
   });
 
   it("renders terminal inline code without leaking HTML entities", async () => {
