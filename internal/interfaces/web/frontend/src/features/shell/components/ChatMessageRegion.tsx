@@ -54,6 +54,12 @@ type MessageCopy = {
   copyValue: string;
 };
 
+const TIMELINE_ITEM_CACHE_LIMIT = 384;
+const timelineItemCache = new Map<string, { signature: string; item: RuntimeTimelineItem }>();
+const messageSignatureCache = new WeakMap<ChatMessageSnapshot, string>();
+const callbackCacheIDs = new WeakMap<NonNullable<BuildChatTimelineItemsOptions["onToggleProcess"]>, number>();
+let nextCallbackCacheID = 1;
+
 const MESSAGE_COPY: Record<LegacyShellLanguage, MessageCopy> = {
   en: {
     statusInProgress: "In Progress",
@@ -100,22 +106,101 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
     <RuntimeTimeline
       className="message-list"
       timelineProps={{ "data-message-session-id": sessionId }}
-      items={buildChatTimelineItems({ messages, language, onToggleProcess })}
+      items={buildChatTimelineItems({ cacheScope: sessionId, messages, language, onToggleProcess })}
     />
   );
 });
 
 export function buildChatTimelineItems({
+  cacheScope = "default",
   messages,
   language,
   onToggleProcess,
-}: {
+}: BuildChatTimelineItemsOptions) {
+  const callbackCacheID = resolveCallbackCacheID(onToggleProcess);
+  const copy = MESSAGE_COPY[language];
+  return messages.map((message) => {
+    const cacheKey = `${cacheScope}\u0000${language}\u0000${callbackCacheID}\u0000${message.id}`;
+    const signature = resolveChatTimelineItemSignature(message);
+    const cached = timelineItemCache.get(cacheKey);
+    if (cached?.signature === signature) {
+      return cached.item;
+    }
+    const item = buildChatTimelineItem(message, language, copy, onToggleProcess);
+    timelineItemCache.set(cacheKey, { signature, item });
+    trimTimelineItemCache();
+    return item;
+  });
+}
+
+type BuildChatTimelineItemsOptions = {
+  cacheScope?: string;
   messages: ChatMessageSnapshot[];
   language: LegacyShellLanguage;
   onToggleProcess?: (messageID: string) => void;
-}) {
-  const copy = MESSAGE_COPY[language];
-  return messages.map((message) => buildChatTimelineItem(message, language, copy, onToggleProcess));
+};
+
+function resolveCallbackCacheID(callback: BuildChatTimelineItemsOptions["onToggleProcess"]) {
+  if (!callback) {
+    return "none";
+  }
+  const cached = callbackCacheIDs.get(callback);
+  if (cached) {
+    return String(cached);
+  }
+  const next = nextCallbackCacheID;
+  nextCallbackCacheID += 1;
+  callbackCacheIDs.set(callback, next);
+  return String(next);
+}
+
+function trimTimelineItemCache() {
+  while (timelineItemCache.size > TIMELINE_ITEM_CACHE_LIMIT) {
+    const oldest = timelineItemCache.keys().next().value;
+    if (!oldest) {
+      return;
+    }
+    timelineItemCache.delete(oldest);
+  }
+}
+
+function resolveChatTimelineItemSignature(message: ChatMessageSnapshot) {
+  const cached = messageSignatureCache.get(message);
+  if (cached) {
+    return cached;
+  }
+  const signature = buildChatTimelineItemSignature(message);
+  messageSignatureCache.set(message, signature);
+  return signature;
+}
+
+function buildChatTimelineItemSignature(message: ChatMessageSnapshot) {
+  return JSON.stringify({
+    role: message.role,
+    text: message.text,
+    attachments: message.attachments.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.name,
+      contentType: attachment.contentType,
+      size: attachment.size,
+      dataURL: attachment.dataURL,
+      previewDataURL: attachment.previewDataURL,
+      assetURL: attachment.assetURL,
+      previewURL: attachment.previewURL,
+    })),
+    route: message.route,
+    source: message.source,
+    error: message.error,
+    status: message.status,
+    processSteps: message.processSteps.map((step) => ({
+      id: step.id,
+      kind: step.kind,
+      title: step.title,
+      detail: step.detail,
+      status: step.status,
+    })),
+    agentProcessCollapsed: message.agentProcessCollapsed,
+  });
 }
 
 function buildChatTimelineItem(

@@ -653,6 +653,62 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Analyzing complete"));
   });
 
+  it("coalesces high frequency streaming deltas before updating visible assistant text", async () => {
+    const encoder = new TextEncoder();
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        streamController = controller;
+      },
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        streamController?.enqueue(encoder.encode('event: delta\ndata: {"delta":"A"}\n\n'));
+        streamController?.enqueue(encoder.encode('event: delta\ndata: {"delta":"B"}\n\n'));
+        await Promise.resolve();
+      });
+
+      expect(screen.getByTestId("assistant-text")).not.toHaveTextContent("AB");
+
+      await act(async () => {
+        vi.advanceTimersByTime(60);
+        await Promise.resolve();
+      });
+
+      expect(screen.getByTestId("assistant-text")).toHaveTextContent("AB");
+
+      await act(async () => {
+        streamController?.enqueue(encoder.encode('event: done\ndata: {"result":{"output":"ABC"}}\n\n'));
+        streamController?.close();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(screen.getByTestId("assistant-text")).toHaveTextContent("ABC");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps append-style history stable after a streamed reply is finalized", async () => {
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
