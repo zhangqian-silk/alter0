@@ -14,6 +14,12 @@ import {
   type ComposerAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 import { getLegacyShellCopy } from "../legacyShellCopy";
+import {
+  buildDraftWithCodexSlashCommand,
+  CODEX_SLASH_COMMANDS,
+  codexSlashCommandQuery,
+  isCodexShellSession,
+} from "./codexSlashCommands";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
 import type { RuntimeTimelineItem, RuntimeTimelineProcessStep } from "./RuntimeTimeline";
 import { RuntimeMarkdownHTML } from "./RuntimeTimelinePrimitives";
@@ -1513,6 +1519,39 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       copyLabel: copy.updatedAt,
     },
   ] : [];
+  const codexSlashCommandsLabel = language === "zh" ? "Codex 斜线命令" : "Codex slash commands";
+  const terminalCodexSlashQuery = activeSession && isCodexShellSession(activeSession) && canInput && !submitting
+    ? codexSlashCommandQuery(inputValue)
+    : "";
+  const terminalCodexSlashCommandCandidates = terminalCodexSlashQuery
+    ? CODEX_SLASH_COMMANDS.filter((item) => item.command.startsWith(terminalCodexSlashQuery))
+    : [];
+  const applyTerminalCodexSlashCommand = (command: string) => {
+    setInputValue(buildDraftWithCodexSlashCommand(inputValue, command));
+    focusComposerInputWithoutScroll();
+  };
+  const terminalCodexSlashCommandAssist = terminalCodexSlashCommandCandidates.length > 0 ? (
+    <div
+      className="runtime-composer-command-list"
+      role="listbox"
+      aria-label={codexSlashCommandsLabel}
+      data-runtime-composer-command-list="codex"
+    >
+      {terminalCodexSlashCommandCandidates.map((item) => (
+        <button
+          key={item.command}
+          type="button"
+          role="option"
+          className="runtime-composer-command-option"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => applyTerminalCodexSlashCommand(item.command)}
+        >
+          <strong>{item.command}</strong>
+          <span>{item.label[language]}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
   const terminalConfigPanel = metaOpen ? (
     <div
       className="conversation-inspector runtime-composer-config-panel"
@@ -1737,6 +1776,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         placeholder: inputPlaceholder,
         disabled: !canInput || submitting,
       },
+      inputAssistContent: terminalCodexSlashCommandAssist,
       onInputChange: setInputValue,
       onInputFocus: () => setInputFocused(true),
       onInputBlur: () => setInputFocused(false),

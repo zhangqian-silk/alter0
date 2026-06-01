@@ -189,6 +189,8 @@ describe("ConversationWorkspace", () => {
     runtimeMock.inspectorOpen = false;
     runtimeMock.inspectorTab = "model";
     runtimeMock.inspectorTabOpen = true;
+    runtimeMock.selectedProviderId = "";
+    runtimeMock.selectedModelId = "";
     runtimeMock.selectedModelLabel = "DeepSeek V3.2";
     runtimeMock.selectedModelSupportsVision = true;
     runtimeMock.providers = [];
@@ -818,6 +820,46 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.click(codexButton);
     expect(runtimeMock.selectModel).toHaveBeenCalledWith("alter0-codex", "codex");
+  });
+
+  it("shows Codex slash command candidates when direct Codex input starts with slash", () => {
+    runtimeMock.selectedProviderId = "alter0-codex";
+    runtimeMock.selectedModelId = "codex";
+    runtimeMock.selectedModelLabel = "Codex";
+    runtimeMock.draft = "/";
+
+    renderWorkspace({ isMobileViewport: false });
+
+    const commandList = screen.getByRole("listbox", { name: "Codex slash commands" });
+    expect(commandList).toBeInTheDocument();
+    expect(within(commandList).getAllByRole("option").length).toBeGreaterThan(10);
+    expect(screen.getByRole("option", { name: /\/goal/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /\/model/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /\/status/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /\/permissions/ })).not.toBeInTheDocument();
+  });
+
+  it("applies a Codex slash command candidate to the composer draft", () => {
+    runtimeMock.selectedProviderId = "alter0-codex";
+    runtimeMock.selectedModelId = "codex";
+    runtimeMock.selectedModelLabel = "Codex";
+    runtimeMock.draft = "/g ship web suggestions";
+
+    renderWorkspace({ isMobileViewport: false });
+
+    fireEvent.click(screen.getByRole("option", { name: /\/goal/ }));
+
+    expect(runtimeMock.setDraft).toHaveBeenCalledWith("/goal ship web suggestions");
+  });
+
+  it("does not show Codex slash command candidates for regular model sessions", () => {
+    runtimeMock.selectedProviderId = "openrouter";
+    runtimeMock.selectedModelId = "deepseek-v3.2";
+    runtimeMock.draft = "/";
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(screen.queryByRole("listbox", { name: "Codex slash commands" })).not.toBeInTheDocument();
   });
 
   it("keeps session details separate from composer configuration panels", () => {
