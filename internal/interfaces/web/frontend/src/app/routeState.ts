@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
-import { NAV_GROUPS } from "../features/shell/legacyShellConfig";
+import { TOP_LEVEL_WORKBENCH_ROUTES } from "../features/shell/legacyShellConfig";
 import { sessionRouteToken } from "../shared/session/sessionHash";
 
 export const DEFAULT_WORKBENCH_ROUTE = "chat";
 export type WorkbenchSessionRoute = "chat" | "agent-runtime" | "terminal";
 
-const KNOWN_ROUTES = new Set(
-  NAV_GROUPS.flatMap((group) => group.items.map((item) => item.route)),
-);
+const KNOWN_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);
 const SESSION_QUERY_KEY = "session_id";
 
 export function parseWorkbenchRoute(

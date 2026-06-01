@@ -635,22 +635,23 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".runtime-session-main")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-title-row")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-title-row")?.textContent).toContain("Workspace shell");
-    expect(document.querySelector(".runtime-session-summary-row")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-summary-row")?.textContent).not.toContain("Last output");
-    expect(document.querySelector(".runtime-session-summary-row")?.textContent).not.toContain("最近输出");
-    expect(document.querySelector(".runtime-session-summary-row")).toHaveTextContent("2026-04-15 18:10");
-    expect(document.querySelector(".runtime-session-summary-row")).toHaveTextContent("#c05eccbf");
+    expect(document.querySelector(".runtime-session-summary-row")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-context")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-session-badge")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-card='terminal-1']")).toHaveAttribute("data-runtime-session-tone", "ready");
-    expect(document.querySelector("[data-runtime-session-signal='ready']")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-hash")?.textContent).toBe("#c05eccbf");
-    expect(document.querySelector(".runtime-session-hash")?.textContent).not.toContain("terminal-1");
-    expect(within(document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement).getByRole("list")).toHaveAttribute(
+    expect(document.querySelector("[data-runtime-session-card='terminal-1'] .runtime-session-signal")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-card='terminal-1'] .runtime-session-loading")).not.toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-hash")).not.toBeInTheDocument();
+    const sessionPane = document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement;
+    expect(sessionPane).toHaveClass("is-navigation-owned");
+    expect(sessionPane).toHaveAttribute("aria-hidden", "true");
+    expect(sessionPane).toHaveAttribute("data-session-pane-placement", "navigation");
+    expect(within(sessionPane).getByRole("list", { hidden: true })).toHaveAttribute(
       "data-runtime-session-list",
       "terminal",
     );
-    expect(within(document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(sessionPane).getAllByRole("listitem", { hidden: true })).toHaveLength(1);
     expect(document.querySelector("[data-terminal-delete]")).not.toBeInTheDocument();
     expect(document.querySelector(".runtime-workspace-shell")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-list='terminal']")).toHaveClass(
@@ -933,15 +934,19 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     const sessionPane = document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement;
+    expect(sessionPane).toHaveClass("is-navigation-owned");
+    expect(sessionPane).toHaveAttribute("aria-hidden", "true");
+    expect(sessionPane).toHaveAttribute("data-session-pane-placement", "navigation");
     expect(within(sessionPane).getByText("Today")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Yesterday")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Earlier")).toBeInTheDocument();
-    expect(within(sessionPane).getAllByRole("listitem")).toHaveLength(3);
-    const firstCard = within(sessionPane).getAllByRole("listitem")[0] as HTMLElement;
-    expect(firstCard.querySelector(".runtime-session-summary-row")?.textContent).not.toContain("Last output");
-    expect(firstCard.querySelector(".runtime-session-summary-row")?.textContent).not.toContain("最近输出");
-    expect(firstCard.querySelector(".runtime-session-summary-row")?.textContent).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
-    expect(firstCard.querySelector(".runtime-session-summary-row")).toHaveTextContent("#");
+    expect(within(sessionPane).getAllByRole("listitem", { hidden: true })).toHaveLength(3);
+    const firstCard = within(sessionPane).getAllByRole("listitem", { hidden: true })[0] as HTMLElement;
+    expect(firstCard.querySelector(".runtime-session-summary-row")).not.toBeInTheDocument();
+    expect(firstCard.querySelector(".runtime-session-context")).not.toBeInTheDocument();
+    expect(firstCard).not.toHaveTextContent("Last output");
+    expect(firstCard).not.toHaveTextContent("最近输出");
+    expect(firstCard).not.toHaveTextContent("#");
     expect(firstCard.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
   });
 
@@ -1465,9 +1470,11 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-runtime-composer-input='terminal']")).toHaveValue("");
 
     const fetchMock = vi.mocked(fetch);
-    expect(fetchMock.mock.calls.some(([request, init]) =>
-      String(request) === "/api/terminal/sessions/terminal-2/input"
-      && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([request, init]) =>
+        String(request) === "/api/terminal/sessions/terminal-2/input"
+        && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+    });
   });
 
   it("keeps image attachments on the first terminal input when no session exists yet", async () => {
@@ -2445,9 +2452,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toHaveClass(
       "runtime-workspace-mobile-action",
     );
-    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toHaveClass(
-      "runtime-workspace-mobile-action",
-    );
+    expect(within(mobileHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
     expect(mobileHeader.querySelector("[data-runtime-mobile-primary='terminal']")).toHaveClass(
       "runtime-workspace-mobile-action",
     );
@@ -2465,9 +2470,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(metaPanel).toBeInTheDocument();
     expect(within(metaPanel).getByText("/workspace/alter0")).toBeInTheDocument();
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
-    expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
-    expect(toggleMobileSessionPane).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).not.toHaveClass("is-open");
+    expect(toggleMobileSessionPane).not.toHaveBeenCalled();
   });
 
   it("keeps the mobile session pane open after deleting a session from the list", async () => {
@@ -2656,12 +2660,14 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     const mobileHeader = document.querySelector("[data-runtime-mobile-variant='terminal']") as HTMLElement;
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
-    expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
+    expect(within(mobileHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
+    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
+    expect(toggleMobileNav).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).not.toHaveClass("is-open");
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
 
-    expect(toggleMobileNav).toHaveBeenCalledTimes(1);
+    expect(toggleMobileNav).toHaveBeenCalledTimes(2);
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).not.toHaveClass("is-open");
   });
 

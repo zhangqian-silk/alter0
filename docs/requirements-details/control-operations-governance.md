@@ -31,7 +31,7 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 
 - 支持 Channel 创建、更新、删除与列表查询。
 - Channel 配置至少包含类型、启停状态和稳定标识。
-- Channels 入口归属 Settings 模块，旧直达路由保持兼容。
+- Channels 入口归属 Management 页内的 Settings 分组，旧直达路由保持兼容。
 
 ### Skill
 
@@ -61,7 +61,7 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 
 - Cron Job 控制面接口用于配置与触发记录查看；调度执行归属 Runtime & Orchestration。
 - Codex Accounts 控制面负责运行账户下的多账号快照管理、独立登录会话、状态查询与当前生效账号切换。
-- Web Shell 桥接阶段由 React 直接承接 `agent`、`channels`、`skills`、`mcp`、`models`、`environments`、`codex-accounts` 与 `cron-jobs` 八类控制台路由体的读取、加载、空态与错误态渲染；其中 `agent` 路由已由 React 承接托管 Agent 列表、表单编辑、保存、删除与进入运行页入口；legacy runtime 不再托管这些页面的主要 DOM。控制台页面中的描述、Cron 输入、Agent system prompt 摘要、Skill 说明、Codex 运行时说明与审计/配置说明类文本按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
+- Web Shell 由 `/management` 单页承接 `agent`、`memory`、`sessions`、`tasks`、`channels`、`skills`、`mcp`、`models`、`environments`、`codex-accounts` 与 `cron-jobs` 等管理能力的读取、加载、空态与错误态渲染；这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Agent Studio / Control / Settings` 分组切换。其中 `Profiles` 分区由 React 承接托管 Agent 列表、表单编辑、保存、删除与进入运行页入口；legacy runtime 不再托管这些页面的主要 DOM。控制台页面中的描述、Cron 输入、Agent system prompt 摘要、Skill 说明、Codex 运行时说明与审计/配置说明类文本按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
 
 ## 接口边界
 

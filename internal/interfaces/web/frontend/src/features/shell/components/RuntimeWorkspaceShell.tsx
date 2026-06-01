@@ -34,6 +34,7 @@ type RuntimeWorkspaceMobileTitleTone = "ready" | "busy" | "failed" | "interrupte
 type RuntimeWorkspaceShellProps = {
   rootClassName?: string;
   rootProps?: ComponentPropsWithoutRef<"section">;
+  sessionPanePlacement?: "workspace" | "navigation";
   sessionPaneClassName?: string;
   sessionPaneProps?: ComponentPropsWithoutRef<"aside">;
   sessionPaneBackdrop: {
@@ -91,6 +92,7 @@ type RuntimeWorkspaceShellProps = {
 export function RuntimeWorkspaceShell({
   rootClassName,
   rootProps,
+  sessionPanePlacement,
   sessionPaneClassName,
   sessionPaneProps,
   sessionPaneBackdrop,
@@ -236,9 +238,14 @@ export function RuntimeWorkspaceShell({
       leadingContent={mobileHeaderPlacement === "leading" ? mobileHeader : undefined}
       sessionPaneClassName={joinClassNames(
         "runtime-workspace-session-pane",
+        sessionPanePlacement === "navigation" ? "is-navigation-owned" : undefined,
         sessionPaneClassName,
       )}
-      sessionPaneProps={sessionPaneProps}
+      sessionPaneProps={{
+        ...sessionPaneProps,
+        "data-session-pane-placement": sessionPanePlacement || "workspace",
+        "aria-hidden": sessionPanePlacement === "navigation" ? "true" : sessionPaneProps?.["aria-hidden"],
+      }}
       sessionPaneBackdrop={{
         ...sessionPaneBackdrop,
         className: joinClassNames(

@@ -43,7 +43,7 @@ func TestConversationRuntimeCreatesAndDeletesSessionsInReactState(t *testing.T) 
 	}
 }
 
-func TestConversationSessionListShowsCompactMetadata(t *testing.T) {
+func TestConversationSessionListShowsTitleOnlyRowsWithBusyLoading(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx") +
 		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeWorkspacePage.tsx") +
 		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeSessionList.tsx")
@@ -52,15 +52,25 @@ func TestConversationSessionListShowsCompactMetadata(t *testing.T) {
 		`"data-testid": "conversation-session-pane"`,
 		`"runtime-session-list"`,
 		`"runtime-session-title"`,
-		`"runtime-session-meta"`,
-		`"runtime-session-hash"`,
-		`"runtime-session-summary-row"`,
-		`{item.shortHash}`,
+		`"runtime-session-loading"`,
+		`data-runtime-session-loading`,
+		`item.statusTone === "busy"`,
 		"runtime.sessionItems.length",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
 			t.Fatalf("expected source marker %q", marker)
+		}
+	}
+	forbiddenMarkers := []string{
+		`"runtime-session-meta"`,
+		`"runtime-session-hash"`,
+		`"runtime-session-summary-row"`,
+		`{item.shortHash}`,
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(source, marker) {
+			t.Fatalf("unexpected source marker %q", marker)
 		}
 	}
 
@@ -69,6 +79,8 @@ func TestConversationSessionListShowsCompactMetadata(t *testing.T) {
 		".runtime-session-card {",
 		".runtime-session-card.is-active {",
 		".runtime-session-delete {",
+		".runtime-session-loading {",
+		"@keyframes runtime-session-loading-spin {",
 	}
 	for _, marker := range styleMarkers {
 		if !strings.Contains(styles, marker) {
@@ -132,8 +144,9 @@ func TestWorkbenchMobileNavOverlayStylesPresent(t *testing.T) {
 	sourceMarkers := []string{
 		"const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());",
 		`const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);`,
+		"const runtimeSessionsUseNav = Boolean(visibleSessionRail);",
 		`const navOpen = mobilePanel === "nav";`,
-		`const sessionPaneOpen = mobilePanel === "sessions";`,
+		`const sessionPaneOpen = !runtimeSessionsUseNav && mobilePanel === "sessions";`,
 		`classNames.push("nav-open", "overlay-open")`,
 		"if (!mobile) {",
 		"setMobilePanel(null);",
@@ -263,24 +276,28 @@ func TestTerminalMobileActionsLinkWorkbenchNavAndSessionDrawer(t *testing.T) {
 		`mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",`,
 		`mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },`,
 		`onMobileNav: workbench.toggleMobileNav,`,
-		`mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",`,
-		`mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },`,
-		`const toggleMobileSessionPane = () => {`,
-		`if (workbench.mobileSessionPaneOpen) {`,
-		`workbench.closeMobileSessionPane();`,
-		`workbench.toggleMobileSessionPane();`,
-		`onMobileSession: toggleMobileSessionPane,`,
 		`mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",`,
 		`mobilePrimaryButtonProps: {`,
 		`"data-runtime-create-session": "terminal",`,
 		`"data-runtime-mobile-primary": "terminal",`,
 		`mobileNavButtonLabel: shellCopy.chatMenu,`,
-		`mobileSessionButtonLabel: copy.sessions,`,
 		`mobilePrimaryButtonLabel: copy.newShort,`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
 			t.Fatalf("expected source marker %q", marker)
+		}
+	}
+	forbiddenMarkers := []string{
+		`mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",`,
+		`mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },`,
+		`const toggleMobileSessionPane = () => {`,
+		`onMobileSession: toggleMobileSessionPane,`,
+		`mobileSessionButtonLabel: copy.sessions,`,
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(source, marker) {
+			t.Fatalf("unexpected source marker %q", marker)
 		}
 	}
 }

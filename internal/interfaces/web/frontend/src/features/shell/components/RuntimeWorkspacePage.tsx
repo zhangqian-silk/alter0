@@ -1,4 +1,5 @@
-import { useMemo, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode, type TouchEvent } from "react";
+import { useEffect, useMemo, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode, type TouchEvent } from "react";
+import { useWorkbenchContext, type WorkbenchSessionRail } from "../../../app/WorkbenchContext";
 import { RuntimeComposer } from "./RuntimeComposer";
 import { RuntimeSessionList, type RuntimeSessionListGroup } from "./RuntimeSessionList";
 import { RouteFieldRow } from "./RouteBodyPrimitives";
@@ -92,6 +93,10 @@ export type RuntimeWorkspacePageController = {
 };
 
 export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorkspacePageController }) {
+  const {
+    route,
+    setRuntimeSessionRail,
+  } = useWorkbenchContext();
   const detailsSummary = controller.header.detailsSummary || [];
   const workspaceHeader = useMemo(() => controller.header.customHeaderContent ?? (
     <RuntimeWorkspaceHeader
@@ -129,71 +134,91 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
       emptyState={controller.sessionList.emptyState}
       listClassName={controller.sessionList.listClassName}
       listProps={controller.sessionList.listProps}
-      renderItem={(item) => (
-        <div
-          key={item.id}
-          role="listitem"
-          className={item.shellClassName}
-          {...item.shellProps}
-        >
-          <button
-            className={item.buttonClassName}
-            type="button"
-            aria-current={item.active ? "true" : undefined}
-            onClick={item.onSelect}
-            {...item.buttonProps}
+      renderItem={(item) => {
+        const busy = item.statusTone === "busy";
+        return (
+          <div
+            key={item.id}
+            role="listitem"
+            className={item.shellClassName}
+            {...item.shellProps}
           >
-            <span className="runtime-session-main">
-              <span className="runtime-session-title-row">
-                <span className="sr-only">
-                  {item.active ? item.activeLabel : item.idleLabel}
-                  {item.statusLabel ? `, ${item.statusLabel}` : ""}
-                </span>
-                {item.statusTone ? (
-                  <span
-                    className={`runtime-session-signal is-${item.statusTone}`}
-                    data-runtime-session-signal={item.statusTone}
-                    aria-hidden="true"
-                  ></span>
-                ) : null}
-                <span className="runtime-session-title-copy">
-                  <span className="runtime-session-title">{item.title}</span>
-                  {item.contextLabel ? (
-                    <span className="runtime-session-context">{item.contextLabel}</span>
+            <button
+              className={item.buttonClassName}
+              type="button"
+              aria-current={item.active ? "true" : undefined}
+              onClick={item.onSelect}
+              {...item.buttonProps}
+            >
+              <span className="runtime-session-main">
+                <span className="runtime-session-title-row">
+                  <span className="sr-only">
+                    {item.active ? item.activeLabel : item.idleLabel}
+                    {busy && item.statusLabel ? `, ${item.statusLabel}` : ""}
+                  </span>
+                  <span className="runtime-session-title-copy">
+                    <span className="runtime-session-title">{item.title}</span>
+                  </span>
+                  {busy ? (
+                    <span
+                      className="runtime-session-loading"
+                      data-runtime-session-loading="busy"
+                      aria-hidden="true"
+                    ></span>
                   ) : null}
                 </span>
               </span>
-              <span className="runtime-session-summary-row">
-                <span className="runtime-session-meta">{item.meta}</span>
-                <span className="runtime-session-meta-separator" aria-hidden="true">|</span>
-                <span className="runtime-session-hash">#{item.shortHash}</span>
-              </span>
-            </span>
-          </button>
-          {item.onDelete ? (
-            <button
-              className={item.deleteClassName || "runtime-session-delete"}
-              type="button"
-              aria-label={item.deleteAriaLabel || item.deleteLabel}
-              disabled={item.deleting}
-              onMouseDown={swallowSessionDeleteGesture}
-              onTouchStart={swallowSessionDeleteGesture}
-              onClick={(event) => {
-                swallowSessionDeleteGesture(event);
-                item.onDelete?.();
-              }}
-              {...item.deleteProps}
-            >
-              <span className="runtime-session-delete-icon" aria-hidden="true">
-                <RuntimeSessionMoreIcon />
-              </span>
-              <span className="sr-only">{item.deleteLabel}</span>
             </button>
-          ) : null}
-        </div>
-      )}
+            {item.onDelete ? (
+              <button
+                className={item.deleteClassName || "runtime-session-delete"}
+                type="button"
+                aria-label={item.deleteAriaLabel || item.deleteLabel}
+                disabled={item.deleting}
+                onMouseDown={swallowSessionDeleteGesture}
+                onTouchStart={swallowSessionDeleteGesture}
+                onClick={(event) => {
+                  swallowSessionDeleteGesture(event);
+                  item.onDelete?.();
+                }}
+                {...item.deleteProps}
+              >
+                <span className="runtime-session-delete-icon" aria-hidden="true">
+                  <RuntimeSessionMoreIcon />
+                </span>
+                <span className="sr-only">{item.deleteLabel}</span>
+              </button>
+            ) : null}
+          </div>
+        );
+      }}
     />
   ), [controller.sessionList]);
+  const runtimeSessionRail = useMemo<WorkbenchSessionRail>(() => ({
+    route,
+    title: controller.shell.sessionPaneTitle,
+    countLabel: controller.shell.sessionPaneCountLabel,
+    primaryActionLabel: controller.shell.sessionPanePrimaryActionLabel,
+    onPrimaryAction: controller.shell.onSessionPanePrimaryAction,
+    primaryActionClassName: controller.shell.sessionPanePrimaryActionClassName,
+    primaryActionProps: controller.shell.sessionPanePrimaryActionProps,
+    body: sessionPaneBody,
+  }), [
+    controller.shell.onSessionPanePrimaryAction,
+    controller.shell.sessionPaneCountLabel,
+    controller.shell.sessionPanePrimaryActionClassName,
+    controller.shell.sessionPanePrimaryActionLabel,
+    controller.shell.sessionPanePrimaryActionProps,
+    controller.shell.sessionPaneTitle,
+    route,
+    sessionPaneBody,
+  ]);
+  useEffect(() => {
+    setRuntimeSessionRail?.(runtimeSessionRail);
+    return () => {
+      setRuntimeSessionRail?.(null);
+    };
+  }, [runtimeSessionRail, setRuntimeSessionRail]);
   const workspaceContent = useMemo(() => (
     <RuntimeWorkspaceScreen {...controller.screen} overlay={controller.timeline.overlay}>
       <RuntimeTimeline
@@ -209,6 +234,11 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
   return (
     <RuntimeWorkspaceShell
       {...controller.shell}
+      sessionPanePlacement="navigation"
+      sessionPaneProps={{
+        "data-runtime-session-pane": route,
+        ...controller.shell.sessionPaneProps,
+      }}
       rootProps={{
         ...controller.shell.rootProps,
         "data-runtime-workspace-page": "true",

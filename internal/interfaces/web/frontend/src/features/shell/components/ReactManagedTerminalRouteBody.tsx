@@ -1290,14 +1290,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     workbench.closeMobileSessionPane();
   };
 
-  const toggleMobileSessionPane = () => {
-    if (workbench.mobileSessionPaneOpen) {
-      closeMobileSessionPane();
-      return;
-    }
-    workbench.toggleMobileSessionPane();
-  };
-
   const selectSession = async (sessionID: string) => {
     setActiveSessionID(sessionID);
     closeMobileSessionPane();
@@ -1605,10 +1597,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         disabled: !activeSession,
       },
       onMobileTitle: () => setSessionDetailsOpen((current) => !current),
-      mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",
-      mobileSessionButtonLabel: copy.sessions,
-      mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
-      onMobileSession: toggleMobileSessionPane,
       mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
       mobilePrimaryButtonLabel: copy.newShort,
       mobilePrimaryButtonProps: {

@@ -19,6 +19,7 @@ type LegacyShellCopy = {
   workspaceModePage: string;
   workspaceModeTerminal: string;
   workspaceFocusLabel: string;
+  managementSectionsLabel: string;
   sessionHeader: string;
   sessionPaneLabel: string;
   sessionPanelEyebrow: string;
@@ -112,6 +113,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       models: "Models",
       environments: "Environments",
       "codex-accounts": "Codex Accounts",
+      management: "Management",
     },
     routeSubtitles: {
       chat: "Alter0 workspace for general-purpose conversations and orchestration",
@@ -130,6 +132,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       models: "Model capabilities",
       environments: "Environment and deployment settings",
       "codex-accounts": "Manage saved Codex auth snapshots, inspect quota status, and switch the active runtime account",
+      management: "Manage profiles, memory, sessions, tasks, model access, runtime settings, and saved Codex accounts from one control surface",
     },
     primaryNavLabel: "Primary workspace navigation",
     chatMenu: "Menu",
@@ -143,6 +146,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     workspaceModePage: "Operational page",
     workspaceModeTerminal: "Terminal runtime",
     workspaceFocusLabel: "Focus",
+    managementSectionsLabel: "Management sections",
     sessionHeader: "Work with Alter0",
     sessionPaneLabel: "Session control center",
     sessionPanelEyebrow: "Session control",
@@ -234,6 +238,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       models: "模型",
       environments: "环境",
       "codex-accounts": "Codex 账号",
+      management: "管理",
     },
     routeSubtitles: {
       chat: "默认 Alter0 对话工作区，适合通用任务与子 Agent 编排",
@@ -252,6 +257,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       models: "模型能力",
       environments: "环境与部署设置",
       "codex-accounts": "维护已保存的 Codex 认证快照，查看额度状态，并切换当前运行时账号",
+      management: "在同一管理页面维护 Agent 配置、记忆、会话、任务、模型接入、运行环境与 Codex 账号",
     },
     primaryNavLabel: "主工作区导航",
     chatMenu: "菜单",
@@ -265,6 +271,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     workspaceModePage: "运营页面",
     workspaceModeTerminal: "终端运行态",
     workspaceFocusLabel: "焦点",
+    managementSectionsLabel: "管理分区",
     sessionHeader: "与 Alter0 协作",
     sessionPaneLabel: "会话控制中心",
     sessionPanelEyebrow: "会话控制",

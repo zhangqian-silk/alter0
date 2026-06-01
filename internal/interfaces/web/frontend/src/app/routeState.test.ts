@@ -20,26 +20,27 @@ describe("routeState", () => {
     expect(parseWorkbenchRoute("/unknown")).toBe(DEFAULT_WORKBENCH_ROUTE);
   });
 
-  it("maps every workbench page to its canonical path", () => {
+  it("maps only the stable top-level workbench routes to canonical paths", () => {
     expect(parseWorkbenchRoute("/chat")).toBe("chat");
     expect(parseWorkbenchRoute("/agent-runtime")).toBe("agent-runtime");
     expect(parseWorkbenchRoute("/terminal")).toBe("terminal");
-    expect(parseWorkbenchRoute("/agent")).toBe("agent");
-    expect(parseWorkbenchRoute("/memory")).toBe("memory");
-    expect(parseWorkbenchRoute("/skills")).toBe("skills");
-    expect(parseWorkbenchRoute("/mcp")).toBe("mcp");
-    expect(parseWorkbenchRoute("/sessions")).toBe("sessions");
-    expect(parseWorkbenchRoute("/tasks")).toBe("tasks");
-    expect(parseWorkbenchRoute("/cron-jobs")).toBe("cron-jobs");
-    expect(parseWorkbenchRoute("/channels")).toBe("channels");
-    expect(parseWorkbenchRoute("/models")).toBe("models");
-    expect(parseWorkbenchRoute("/environments")).toBe("environments");
-    expect(parseWorkbenchRoute("/codex-accounts")).toBe("codex-accounts");
+    expect(parseWorkbenchRoute("/management")).toBe("management");
+    expect(parseWorkbenchRoute("/agent")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/memory")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/skills")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/mcp")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/sessions")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/tasks")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/cron-jobs")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/channels")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/models")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/environments")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/codex-accounts")).toBe(DEFAULT_WORKBENCH_ROUTE);
   });
 
-  it("writes canonical paths for all workspace routes", () => {
-    navigateWorkbenchRoute("tasks");
-    expect(window.location.pathname).toBe("/tasks");
+  it("writes canonical paths for top-level workspace routes only", () => {
+    navigateWorkbenchRoute("management");
+    expect(window.location.pathname).toBe("/management");
     expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("");
 
@@ -54,11 +55,18 @@ describe("routeState", () => {
     expect(window.location.hash).toBe("");
   });
 
+  it("does not preserve old management subpage paths as workbench routes", () => {
+    navigateWorkbenchRoute("codex-accounts");
+
+    expect(window.location.pathname).toBe("/chat");
+    expect(parseWorkbenchRoute("/codex-accounts")).toBe(DEFAULT_WORKBENCH_ROUTE);
+  });
+
   it("emits a route change event when navigating to the already active route", () => {
-    window.history.replaceState({}, "", "/tasks");
+    window.history.replaceState({}, "", "/management");
     const dispatchEventSpy = vi.spyOn(window, "dispatchEvent");
 
-    navigateWorkbenchRoute("tasks");
+    navigateWorkbenchRoute("management");
 
     expect(dispatchEventSpy).toHaveBeenCalledWith(expect.any(PopStateEvent));
   });
@@ -66,6 +74,7 @@ describe("routeState", () => {
   it("identifies conversation routes explicitly", () => {
     expect(isConversationRoute("chat")).toBe(true);
     expect(isConversationRoute("agent-runtime")).toBe(true);
+    expect(isConversationRoute("management")).toBe(false);
     expect(isConversationRoute("tasks")).toBe(false);
   });
 

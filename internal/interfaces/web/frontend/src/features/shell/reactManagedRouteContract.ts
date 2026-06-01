@@ -10,13 +10,8 @@ export const REACT_MANAGED_CONTROL_ROUTES = [
 export type ReactManagedControlRoute = (typeof REACT_MANAGED_CONTROL_ROUTES)[number];
 
 export const REACT_MANAGED_ROUTE_BODIES = [
-  "agent",
+  "management",
   "terminal",
-  "memory",
-  "sessions",
-  "tasks",
-  "codex-accounts",
-  ...REACT_MANAGED_CONTROL_ROUTES,
 ] as const;
 
 export type ReactManagedRouteBodyRoute = (typeof REACT_MANAGED_ROUTE_BODIES)[number];

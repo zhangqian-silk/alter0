@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   getReactManagedRouteBodyRoutes,
   isReactManagedRouteBody,
@@ -24,9 +24,24 @@ describe("ReactManagedRouteBody", () => {
     vi.unstubAllGlobals();
   });
 
-  it("treats memory as a react-managed route body", async () => {
+  it("renders management as the single react-managed management route and switches sections without changing paths", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [],
+        }),
+      )
       .mockResolvedValueOnce(
         jsonResponse({
           long_term: { exists: false },
@@ -42,57 +57,48 @@ describe("ReactManagedRouteBody", () => {
         }),
       );
 
-    expect(isReactManagedRouteBody("memory")).toBe(true);
+    expect(isReactManagedRouteBody("management")).toBe(true);
+    expect(isReactManagedRouteBody("memory")).toBe(false);
 
-    render(<ReactManagedRouteBody route="memory" language="en" />);
+    window.history.replaceState({}, "", "/management");
+    render(<ReactManagedRouteBody route="management" language="en" />);
+
+    expect(screen.getByRole("button", { name: "Profiles" })).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(screen.getByRole("button", { name: "Memory" }));
 
     await waitFor(() => {
       expect(screen.getByRole("tab", { name: "Task History" })).toBeInTheDocument();
     });
+    expect(window.location.pathname).toBe("/management");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
+      4,
       "/api/agent/memory",
       expect.objectContaining({ method: "GET" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+      5,
       "/api/memory/tasks?page=1&page_size=10",
       expect.objectContaining({ method: "GET" }),
     );
   });
 
-  it("treats tasks as a react-managed route body", () => {
-    expect(isReactManagedRouteBody("tasks")).toBe(true);
+  it("does not treat old management subpages as react-managed route bodies", () => {
+    expect(isReactManagedRouteBody("tasks")).toBe(false);
+    expect(isReactManagedRouteBody("agent")).toBe(false);
+    expect(isReactManagedRouteBody("codex-accounts")).toBe(false);
   });
 
   it("tracks the full set of routes now owned by React", () => {
     expect(getReactManagedRouteBodyRoutes()).toEqual([
-      "agent",
+      "management",
       "terminal",
-      "memory",
-      "sessions",
-      "tasks",
-      "codex-accounts",
-      "channels",
-      "skills",
-      "mcp",
-      "models",
-      "environments",
-      "cron-jobs",
     ]);
-    expect(isReactManagedRouteBody("agent")).toBe(true);
-    expect(isReactManagedRouteBody("memory")).toBe(true);
+    expect(isReactManagedRouteBody("management")).toBe(true);
+    expect(isReactManagedRouteBody("agent")).toBe(false);
+    expect(isReactManagedRouteBody("memory")).toBe(false);
     expect(isReactManagedRouteBody("products")).toBe(false);
-    expect(isReactManagedRouteBody("codex-accounts")).toBe(true);
-    expect(isReactManagedRouteBody("channels")).toBe(true);
-    expect(isReactManagedRouteBody("skills")).toBe(true);
-    expect(isReactManagedRouteBody("mcp")).toBe(true);
-    expect(isReactManagedRouteBody("models")).toBe(true);
-    expect(isReactManagedRouteBody("environments")).toBe(true);
-    expect(isReactManagedRouteBody("cron-jobs")).toBe(true);
-    expect(isReactManagedRouteBody("sessions")).toBe(true);
-    expect(isReactManagedRouteBody("tasks")).toBe(true);
     expect(isReactManagedRouteBody("terminal")).toBe(true);
   });
 });

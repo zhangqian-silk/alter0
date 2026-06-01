@@ -23,13 +23,40 @@ vi.mock("../features/shell/components/ReactManagedRouteBody", () => ({
   ),
 }));
 
-vi.mock("../features/shell/components/RuntimeRouteHost", () => ({
-  RuntimeRouteHost: ({ route, language }: { route: string; language: string }) => (
-    <div data-testid="runtime-route-host" data-route={route} data-language={language}>
-      runtime:{route}:{language}
-    </div>
-  ),
-}));
+vi.mock("../features/shell/components/RuntimeRouteHost", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  const { useWorkbenchContext } = await vi.importActual<typeof import("./WorkbenchContext")>("./WorkbenchContext");
+
+  return {
+    RuntimeRouteHost: ({ route, language }: { route: string; language: string }) => {
+      const {
+        setRuntimeSessionRail,
+        toggleMobileSessionPane,
+      } = useWorkbenchContext();
+
+      React.useEffect(() => {
+        setRuntimeSessionRail?.({
+          route,
+          title: "Sessions",
+          countLabel: "1 sessions",
+          primaryActionLabel: "New",
+          onPrimaryAction: vi.fn(),
+          body: <div data-testid="mock-session-rail-body">session rail body</div>,
+        });
+        return () => setRuntimeSessionRail?.(null);
+      }, [route, setRuntimeSessionRail]);
+
+      return (
+        <div data-testid="runtime-route-host" data-route={route} data-language={language}>
+          runtime:{route}:{language}
+          <button type="button" onClick={toggleMobileSessionPane}>
+            open sessions
+          </button>
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("../features/shell/components/PrimaryNav", () => ({
   PrimaryNav: ({
@@ -38,19 +65,29 @@ vi.mock("../features/shell/components/PrimaryNav", () => ({
     onNavigate,
     onToggleLanguage,
     onToggleNavCollapsed,
+    sessionRail,
   }: {
     currentRoute: string;
     language: string;
+    sessionRail?: { route: string } | null;
     onNavigate: (route: string) => void;
     onToggleLanguage: () => void;
     onToggleNavCollapsed: () => void;
   }) => (
-    <div data-testid="primary-nav" data-route={currentRoute} data-language={language}>
+    <div
+      data-testid="primary-nav"
+      data-route={currentRoute}
+      data-language={language}
+      data-session-rail-route={sessionRail?.route || ""}
+    >
       <button type="button" onClick={() => onNavigate("chat")}>
         go chat
       </button>
       <button type="button" onClick={() => onNavigate("tasks")}>
         go tasks
+      </button>
+      <button type="button" onClick={() => onNavigate("management")}>
+        go management
       </button>
       <button type="button" onClick={() => onNavigate("terminal")}>
         go terminal
@@ -98,14 +135,14 @@ describe("WorkbenchApp", () => {
     });
     expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-language", "zh");
 
-    fireEvent.click(screen.getByRole("button", { name: "go tasks" }));
+    fireEvent.click(screen.getByRole("button", { name: "go management" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "tasks");
+      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "management");
     });
     expect(screen.getByTestId("route-body")).toHaveAttribute("data-language", "zh");
-    expect(container.querySelector(".app-shell")).toHaveAttribute("data-workbench-route", "tasks");
-    expect(container.querySelector(".chat-pane")).toHaveAttribute("data-route", "tasks");
+    expect(container.querySelector(".app-shell")).toHaveAttribute("data-workbench-route", "management");
+    expect(container.querySelector(".chat-pane")).toHaveAttribute("data-route", "management");
     expect(screen.queryByTestId("runtime-route-host")).not.toBeInTheDocument();
   });
 
@@ -120,28 +157,46 @@ describe("WorkbenchApp", () => {
     expect(shell).toHaveClass("overlay-open");
     expect(shell).not.toHaveClass("nav-collapsed");
 
-    fireEvent.click(screen.getByRole("button", { name: "go tasks" }));
+    fireEvent.click(screen.getByRole("button", { name: "go management" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "tasks");
+      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "management");
     });
     expect(shell).not.toHaveClass("nav-open");
     expect(shell).not.toHaveClass("overlay-open");
   });
 
-  it("renders a mobile route toolbar for managed page routes and uses it to open navigation", async () => {
-    window.history.replaceState({}, "", "/agent");
+  it("opens the mobile primary nav when runtime sessions are owned by the left rail", async () => {
     mockIsLegacyShellMobileViewport.mockReturnValue(true);
     const { container } = render(<WorkbenchApp />);
     const shell = container.querySelector(".app-shell");
 
     await waitFor(() => {
-      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "agent");
+      expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
+    });
+    expect(shell).not.toHaveClass("nav-open");
+
+    fireEvent.click(screen.getByRole("button", { name: "open sessions" }));
+
+    expect(shell).toHaveClass("nav-open");
+    expect(shell).toHaveClass("overlay-open");
+    expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
+  });
+
+  it("renders auxiliary routes inside the unified management page frame", async () => {
+    window.history.replaceState({}, "", "/management");
+    mockIsLegacyShellMobileViewport.mockReturnValue(true);
+    const { container } = render(<WorkbenchApp />);
+    const shell = container.querySelector(".app-shell");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "management");
     });
 
     const mobileHeader = container.querySelector("[data-route-mobile-head]") as HTMLElement;
     expect(mobileHeader).toBeInTheDocument();
-    expect(container.querySelector(".route-head h3")?.textContent).toBe("Agent 配置");
+    expect(container.querySelector(".route-view")).toHaveAttribute("data-route-family", "management");
+    expect(container.querySelector(".route-head h3")?.textContent).toBe("Management");
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
 

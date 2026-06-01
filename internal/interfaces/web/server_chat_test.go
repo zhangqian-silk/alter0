@@ -81,17 +81,7 @@ func TestWorkbenchPageHandlerServesAllCanonicalPagePaths(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	for _, path := range []string{
 		"/agent-runtime",
-		"/agent",
-		"/memory",
-		"/skills",
-		"/mcp",
-		"/sessions",
-		"/tasks",
-		"/cron-jobs",
-		"/channels",
-		"/models",
-		"/environments",
-		"/codex-accounts",
+		"/management",
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
@@ -103,6 +93,19 @@ func TestWorkbenchPageHandlerServesAllCanonicalPagePaths(t *testing.T) {
 		}
 		if !strings.Contains(rec.Header().Get("Content-Type"), "text/html") {
 			t.Fatalf("expected %s to return text/html, got %q", path, rec.Header().Get("Content-Type"))
+		}
+	}
+}
+
+func TestWorkbenchInteractivePagePathsOnlyIncludeTopLevelRoutes(t *testing.T) {
+	for _, path := range []string{"/", "/chat", "/agent-runtime", "/terminal", "/management"} {
+		if !isInteractivePagePath(path) {
+			t.Fatalf("expected %s to be an interactive workbench path", path)
+		}
+	}
+	for _, path := range []string{"/agent", "/memory", "/tasks", "/models", "/codex-accounts"} {
+		if isInteractivePagePath(path) {
+			t.Fatalf("expected old management path %s to stop being an interactive workbench path", path)
 		}
 	}
 }
