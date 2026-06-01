@@ -226,19 +226,24 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByTestId("conversation-session-pane")).toHaveClass("runtime-workspace-session-pane");
     expect(screen.getByTestId("conversation-session-pane")).not.toHaveClass("terminal-session-pane");
     expect(screen.getByTestId("conversation-session-pane")).not.toHaveClass("conversation-session-pane");
-    expect(within(screen.getByTestId("conversation-session-pane")).getByRole("list")).toHaveAttribute(
+    expect(screen.getByTestId("conversation-session-pane")).toHaveClass("is-navigation-owned");
+    expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-session-pane-placement", "navigation");
+    expect(within(screen.getByTestId("conversation-session-pane")).getByRole("list", { hidden: true })).toHaveAttribute(
       "data-runtime-session-list",
       "conversation",
     );
-    expect(within(screen.getByTestId("conversation-session-pane")).getAllByRole("listitem")).toHaveLength(1);
-    expect(document.querySelector(".runtime-session-main")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-title-row")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-title-row")?.textContent).toContain("New");
-    expect(document.querySelector(".runtime-session-summary-row")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-summary-row")).toHaveTextContent("now");
-    expect(document.querySelector(".runtime-session-summary-row")).toHaveTextContent("#abcd1234");
-    expect(document.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-badge")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("conversation-session-pane")).getAllByRole("listitem", { hidden: true })).toHaveLength(1);
+    const sessionPane = screen.getByTestId("conversation-session-pane");
+    expect(sessionPane.querySelector(".runtime-session-main")).toBeInTheDocument();
+    expect(sessionPane.querySelector(".runtime-session-title-row")).toBeInTheDocument();
+    expect(sessionPane.querySelector(".runtime-session-title-row")?.textContent).toContain("New");
+    expect(sessionPane.querySelector(".runtime-session-summary-row")).not.toBeInTheDocument();
+    expect(sessionPane.querySelector(".runtime-session-context")).not.toBeInTheDocument();
+    expect(sessionPane.querySelector(".runtime-session-signal")).not.toBeInTheDocument();
+    expect(sessionPane.querySelector(".runtime-session-loading")).not.toBeInTheDocument();
+    expect(sessionPane.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
+    expect(sessionPane.querySelector(".runtime-session-badge")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-list='conversation']")).toHaveClass("runtime-session-list");
     expect(document.querySelector("[data-runtime-workspace='conversation']")).toHaveClass("runtime-workspace");
     expect(document.querySelector("[data-runtime-workspace-page='true']")).toBeInTheDocument();
@@ -247,7 +252,7 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector("[data-runtime-screen='conversation']")).toHaveClass("runtime-workspace-screen");
     expect(document.querySelector("[data-runtime-timeline='true']")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-pane-head='true']")).toBeInTheDocument();
-    const sessionPaneHead = document.querySelector("[data-runtime-session-pane-head='true']") as HTMLElement;
+    const sessionPaneHead = sessionPane.querySelector("[data-runtime-session-pane-head='true']") as HTMLElement;
     expect(Array.from(sessionPaneHead.children).map((node) => (node as HTMLElement).className)).toEqual([
       "runtime-workspace-session-pane-copy",
       "runtime-workspace-session-pane-actions",
@@ -267,9 +272,7 @@ describe("ConversationWorkspace", () => {
     expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toHaveClass(
       "runtime-workspace-mobile-action",
     );
-    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toHaveClass(
-      "runtime-workspace-mobile-action",
-    );
+    expect(within(mobileHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
     expect(mobileHeader.querySelector("[data-runtime-mobile-primary='conversation']")).toHaveClass(
       "runtime-workspace-mobile-action",
     );
@@ -278,7 +281,7 @@ describe("ConversationWorkspace", () => {
     expect(mobileTitle).toHaveTextContent("New");
     expect(mobileTitle.querySelector("[data-runtime-header-signal='ready']")).toBeInTheDocument();
     const hideSessionsAction = within(screen.getByTestId("conversation-session-pane"))
-      .getAllByRole("button", { name: "Hide" })
+      .getAllByRole("button", { name: "Hide", hidden: true })
       .find((button) => button.classList.contains("runtime-workspace-session-pane-action"));
     expect(hideSessionsAction).toHaveClass("runtime-workspace-session-pane-action");
     const workspaceHeader = document.querySelector(".runtime-workspace-head") as HTMLElement;
@@ -310,10 +313,8 @@ describe("ConversationWorkspace", () => {
     expect(screen.queryByRole("button", { name: "Quick tools" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mention" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Workspace tools" })).not.toBeInTheDocument();
-    const sessionButton = screen.getByRole("button", { name: "Session" });
     const addAttachmentButton = screen.getByRole("button", { name: "Add attachment" });
-    expect(sessionButton).toHaveClass("runtime-composer-utility");
-    expect(sessionButton).not.toHaveClass("is-pill");
+    expect(screen.queryByRole("button", { name: "Session" })).not.toBeInTheDocument();
     expect(addAttachmentButton).toHaveClass("runtime-composer-upload");
     expect(addAttachmentButton.querySelector(".runtime-composer-upload-icon svg")).toBeInTheDocument();
     expect(addAttachmentButton.querySelector(".runtime-composer-upload-label")).toHaveClass("sr-only");
@@ -335,15 +336,13 @@ describe("ConversationWorkspace", () => {
     expect(within(detailsPanel).getByText("Session")).toBeInTheDocument();
     expect(within(detailsPanel).queryByText("OpenRouter")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Session" }));
-    expect(runtimeMock.toggleInspector).toHaveBeenLastCalledWith("model");
+    expect(runtimeMock.toggleInspector).not.toHaveBeenCalled();
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(within(mobileHeader).getByRole("button", { name: "Sessions" }));
-    expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "true");
-    expect(toggleMobileSessionPane).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "false");
+    expect(toggleMobileSessionPane).not.toHaveBeenCalled();
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "New" }));
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
@@ -716,27 +715,32 @@ describe("ConversationWorkspace", () => {
     renderWorkspace({ isMobileViewport: false });
 
     const sessionPane = screen.getByTestId("conversation-session-pane");
+    expect(sessionPane).toHaveClass("is-navigation-owned");
+    expect(sessionPane).toHaveAttribute("aria-hidden", "true");
+    expect(sessionPane).toHaveAttribute("data-session-pane-placement", "navigation");
     expect(within(sessionPane).getByText("Sessions")).toBeInTheDocument();
-    expect(within(sessionPane).getByRole("button", { name: "New" })).toBeInTheDocument();
-    expect(within(sessionPane).queryByRole("button", { name: "New Chat" })).not.toBeInTheDocument();
-    expect(within(sessionPane).queryByRole("button", { name: "New Agent Run" })).not.toBeInTheDocument();
+    expect(within(sessionPane).getByRole("button", { name: "New", hidden: true })).toBeInTheDocument();
+    expect(within(sessionPane).queryByRole("button", { name: "New Chat", hidden: true })).not.toBeInTheDocument();
+    expect(within(sessionPane).queryByRole("button", { name: "New Agent Run", hidden: true })).not.toBeInTheDocument();
     expect(within(sessionPane).getByText("Today")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Yesterday")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Earlier")).toBeInTheDocument();
-    expect(within(sessionPane).getAllByRole("button", { name: "Delete session" })).toHaveLength(3);
-    expect(within(sessionPane).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(sessionPane).getAllByRole("button", { name: "Delete session", hidden: true })).toHaveLength(3);
+    expect(within(sessionPane).getAllByRole("listitem", { hidden: true })).toHaveLength(3);
     const targetCard = within(sessionPane)
-      .getAllByRole("listitem")
+      .getAllByRole("listitem", { hidden: true })
       .find((item) => item.textContent?.includes("Review Gemini layout notes")) as HTMLElement;
     expect(targetCard).toBeInTheDocument();
     expect(targetCard.querySelector(".runtime-session-title-row")).toBeInTheDocument();
-    expect(targetCard.querySelector(".runtime-session-summary-row")).toHaveTextContent("2 hr ago");
-    expect(targetCard.querySelector(".runtime-session-summary-row")).toHaveTextContent("#efgh5678");
+    expect(targetCard.querySelector(".runtime-session-summary-row")).not.toBeInTheDocument();
+    expect(targetCard.querySelector(".runtime-session-context")).not.toBeInTheDocument();
+    expect(targetCard).not.toHaveTextContent("2 hr ago");
+    expect(targetCard).not.toHaveTextContent("#efgh5678");
     expect(targetCard.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
     expect(targetCard.querySelector(".runtime-session-badge")).not.toBeInTheDocument();
   });
 
-  it("shows the concrete agent name inside agent-runtime session cards", () => {
+  it("keeps agent-runtime session cards title-only in the sidebar rail", () => {
     runtimeMock.route = "agent-runtime";
     runtimeMock.target = { type: "agent", id: "coding", name: "Coding Agent" };
     runtimeMock.activeAgent = {
@@ -761,20 +765,25 @@ describe("ConversationWorkspace", () => {
     renderWorkspace({ route: "agent-runtime", isMobileViewport: false });
 
     const sessionPane = screen.getByTestId("conversation-session-pane");
-    const card = within(sessionPane).getAllByRole("listitem")[0] as HTMLElement;
-    expect(card.querySelector(".runtime-session-context")).toHaveTextContent("Coding Agent");
-    expect(card.querySelector(".runtime-session-summary-row")).toHaveTextContent("18 min ago");
-    expect(card.querySelector(".runtime-session-summary-row")).toHaveTextContent("#code7788");
+    expect(sessionPane).toHaveClass("is-navigation-owned");
+    expect(sessionPane).toHaveAttribute("aria-hidden", "true");
+    expect(sessionPane).toHaveAttribute("data-session-pane-placement", "navigation");
+    const card = within(sessionPane).getAllByRole("listitem", { hidden: true })[0] as HTMLElement;
+    expect(card.querySelector(".runtime-session-context")).not.toBeInTheDocument();
+    expect(card.querySelector(".runtime-session-summary-row")).not.toBeInTheDocument();
+    expect(card).not.toHaveTextContent("Coding Agent");
+    expect(card).not.toHaveTextContent("18 min ago");
+    expect(card).not.toHaveTextContent("#code7788");
     expect(card.querySelector(".runtime-session-bottomline")).not.toBeInTheDocument();
     expect(card.querySelector(".runtime-session-title")).toHaveTextContent("Refine preview deployment flow");
     const titleRow = card.querySelector(".runtime-session-title-row") as HTMLElement;
     const titleCopy = card.querySelector(".runtime-session-title-copy") as HTMLElement;
     expect(titleRow).toBeInTheDocument();
     expect(titleCopy).toBeInTheDocument();
-    expect(titleRow.querySelector(".runtime-session-signal")).toBeInTheDocument();
+    expect(titleRow.querySelector(".runtime-session-signal")).not.toBeInTheDocument();
+    expect(titleRow.querySelector(".runtime-session-loading")).not.toBeInTheDocument();
     expect(Array.from(titleCopy.children).map((node) => (node as HTMLElement).className)).toEqual([
       "runtime-session-title",
-      "runtime-session-context",
     ]);
   });
 
@@ -1046,8 +1055,9 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.closeInspector).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the session panel on the first mobile touch while the composer is focused", () => {
-    renderWorkspace({ isMobileViewport: true });
+  it("opens the agent session panel on the first mobile touch while the composer is focused", () => {
+    runtimeMock.route = "agent-runtime";
+    renderWorkspace({ route: "agent-runtime", isMobileViewport: true });
 
     const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
     fireEvent.focus(composerInput);
@@ -1126,15 +1136,11 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector(".runtime-composer-meta")).not.toBeInTheDocument();
   });
 
-  it("closes the mobile session pane after selecting a session", () => {
-    renderWorkspace();
+  it("keeps the agent mobile workbar free of a separate Sessions button", () => {
+    runtimeMock.route = "agent-runtime";
+    renderWorkspace({ route: "agent-runtime" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
-    expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "true");
-
-    const sessionSelect = screen.getByTestId("conversation-session-pane").querySelector(".runtime-session-select") as HTMLButtonElement;
-    fireEvent.click(sessionSelect);
-    expect(runtimeMock.focusSession).toHaveBeenCalledWith("session-1");
+    expect(screen.queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "false");
   });
 
@@ -1176,8 +1182,10 @@ describe("ConversationWorkspace", () => {
 
     renderWorkspace({ isMobileViewport: false });
 
-    expect(document.querySelector("[data-runtime-session-card='session-1']")).toHaveAttribute("data-runtime-session-tone", "busy");
-    expect(document.querySelector("[data-runtime-session-signal='busy']")).toBeInTheDocument();
+    const card = document.querySelector("[data-runtime-session-card='session-1']") as HTMLElement;
+    expect(card).toHaveAttribute("data-runtime-session-tone", "busy");
+    expect(card.querySelector(".runtime-session-loading")).toBeInTheDocument();
+    expect(card.querySelector(".runtime-session-signal")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Busy")).toBeInTheDocument();
   });
 
@@ -1219,8 +1227,10 @@ describe("ConversationWorkspace", () => {
 
     renderWorkspace({ isMobileViewport: false });
 
-    expect(document.querySelector("[data-runtime-session-card='session-1']")).toHaveAttribute("data-runtime-session-tone", "failed");
-    expect(document.querySelector("[data-runtime-session-signal='failed']")).toBeInTheDocument();
+    const card = document.querySelector("[data-runtime-session-card='session-1']") as HTMLElement;
+    expect(card).toHaveAttribute("data-runtime-session-tone", "failed");
+    expect(card.querySelector(".runtime-session-loading")).not.toBeInTheDocument();
+    expect(card.querySelector(".runtime-session-signal")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Failed")).toBeInTheDocument();
   });
 
@@ -1245,21 +1255,22 @@ describe("ConversationWorkspace", () => {
 
     renderWorkspace({ isMobileViewport: false });
 
-    expect(document.querySelector("[data-runtime-session-card='session-1']")).toHaveAttribute("data-runtime-session-tone", "failed");
-    expect(document.querySelector("[data-runtime-session-signal='failed']")).toBeInTheDocument();
+    const card = document.querySelector("[data-runtime-session-card='session-1']") as HTMLElement;
+    expect(card).toHaveAttribute("data-runtime-session-tone", "failed");
+    expect(card.querySelector(".runtime-session-loading")).not.toBeInTheDocument();
+    expect(card.querySelector(".runtime-session-signal")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Failed")).toBeInTheDocument();
   });
 
-  it("keeps the mobile session pane mutually exclusive with the menu overlay", () => {
+  it("opens the agent mobile navigation through Menu without a duplicate Sessions action", () => {
     const toggleMobileNav = vi.fn();
 
-    renderWorkspace({ toggleMobileNav });
+    runtimeMock.route = "agent-runtime";
+    renderWorkspace({ route: "agent-runtime", toggleMobileNav });
 
-    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
-    expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "true");
+    expect(screen.queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Menu" }));
-
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("conversation-session-pane")).toHaveAttribute("data-mobile-open", "false");
   });
@@ -1341,7 +1352,7 @@ describe("ConversationWorkspace", () => {
     const mobileTitle = mobileHeader.querySelector("[data-runtime-mobile-title='conversation']") as HTMLButtonElement;
     expect(mobileHeader).toBeInTheDocument();
     expect(within(mobileHeader).getByRole("button", { name: "Menu" })).toBeInTheDocument();
-    expect(within(mobileHeader).getByRole("button", { name: "Sessions" })).toBeInTheDocument();
+    expect(within(mobileHeader).queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
     expect(mobileHeader.querySelector("[data-runtime-mobile-primary='conversation']")).toBeInTheDocument();
     expect(mobileTitle).toBeInTheDocument();
     expect(mobileTitle).toHaveTextContent("New");

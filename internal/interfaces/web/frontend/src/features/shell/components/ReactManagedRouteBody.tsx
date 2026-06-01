@@ -1,7 +1,9 @@
+import { useState, type ReactNode } from "react";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
+import { MANAGEMENT_DEFAULT_SECTION_ROUTE, MANAGEMENT_ROUTE_GROUPS, toI18nKey } from "../legacyShellConfig";
+import { getLegacyShellCopy } from "../legacyShellCopy";
 import {
   isReactManagedRouteBody,
-  type ReactManagedRouteBodyRoute,
 } from "../reactManagedRouteContract";
 import { ReactManagedAgentRouteBody } from "./ReactManagedAgentRouteBody";
 import { ReactManagedCodexAccountsRouteBody } from "./ReactManagedCodexAccountsRouteBody";
@@ -13,9 +15,8 @@ import { ReactManagedTasksRouteBody } from "./ReactManagedTasksRouteBody";
 
 type RouteBodyRenderer = (props: { language: LegacyShellLanguage }) => React.JSX.Element;
 
-const REACT_MANAGED_ROUTE_BODY_RENDERERS: Record<ReactManagedRouteBodyRoute, RouteBodyRenderer> = {
+const MANAGEMENT_ROUTE_BODY_RENDERERS: Record<string, RouteBodyRenderer> = {
   agent: ({ language }) => <ReactManagedAgentRouteBody language={language} />,
-  terminal: () => <ReactManagedTerminalRouteBody />,
   memory: ({ language }) => <ReactManagedMemoryRouteBody language={language} />,
   sessions: ({ language }) => <ReactManagedSessionsRouteBody language={language} />,
   tasks: ({ language }) => <ReactManagedTasksRouteBody language={language} />,
@@ -26,6 +27,10 @@ const REACT_MANAGED_ROUTE_BODY_RENDERERS: Record<ReactManagedRouteBodyRoute, Rou
   environments: ({ language }) => <ReactManagedControlRouteBody route="environments" language={language} />,
   "cron-jobs": ({ language }) => <ReactManagedControlRouteBody route="cron-jobs" language={language} />,
   "codex-accounts": ({ language }) => <ReactManagedCodexAccountsRouteBody language={language} />,
+};
+
+const REACT_MANAGED_ROUTE_BODY_RENDERERS: Record<"terminal", RouteBodyRenderer> = {
+  terminal: () => <ReactManagedTerminalRouteBody />,
 };
 
 export {
@@ -44,5 +49,48 @@ export function ReactManagedRouteBody({
     return null;
   }
 
-  return REACT_MANAGED_ROUTE_BODY_RENDERERS[route]({ language });
+  if (route === "terminal") {
+    return REACT_MANAGED_ROUTE_BODY_RENDERERS[route]({ language });
+  }
+
+  return <ManagementRouteBody language={language} />;
+}
+
+function ManagementRouteBody({
+  language,
+}: {
+  language: LegacyShellLanguage;
+}) {
+  const copy = getLegacyShellCopy(language);
+  const [selectedRoute, setSelectedRoute] = useState(MANAGEMENT_DEFAULT_SECTION_ROUTE);
+  const renderSelectedRouteBody = MANAGEMENT_ROUTE_BODY_RENDERERS[selectedRoute] ?? MANAGEMENT_ROUTE_BODY_RENDERERS[MANAGEMENT_DEFAULT_SECTION_ROUTE];
+  const children: ReactNode = renderSelectedRouteBody({ language });
+
+  return (
+    <section className="management-route-body" data-management-route={selectedRoute}>
+      <nav className="management-route-nav" aria-label={copy.managementSectionsLabel}>
+        {MANAGEMENT_ROUTE_GROUPS.map((group) => (
+          <section className="management-route-nav-group" key={group.heading}>
+            <h4 data-i18n={`nav.${toI18nKey(group.heading)}`}>{copy.headings[group.heading] ?? group.heading}</h4>
+            <div className="management-route-nav-items">
+              {group.items.map((item) => (
+                <button
+                  key={item.route}
+                  className={item.route === selectedRoute ? "management-route-tab is-active" : "management-route-tab"}
+                  type="button"
+                  aria-current={item.route === selectedRoute ? "page" : undefined}
+                  onClick={() => setSelectedRoute(item.route)}
+                >
+                  {copy.routes[item.route] ?? item.label}
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
+      </nav>
+      <div className="management-route-content" data-management-route-content={selectedRoute}>
+        {children}
+      </div>
+    </section>
+  );
 }

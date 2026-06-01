@@ -115,7 +115,7 @@ func TestWorkbenchRouteStatePathNavigationPresent(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/app/routeState.ts")
 	markers := []string{
 		`export const DEFAULT_WORKBENCH_ROUTE = "chat";`,
-		"const KNOWN_ROUTES = new Set(",
+		"const KNOWN_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);",
 		"nextURL.pathname = `/${normalized}`;",
 		"window.addEventListener(\"popstate\", syncRoute);",
 		"window.dispatchEvent(new PopStateEvent(\"popstate\"));",
@@ -266,11 +266,22 @@ func TestConversationWorkspaceSessionSurfacePresent(t *testing.T) {
 		`data-runtime-screen`,
 		`deleteLabel: deleteSessionLabel,`,
 		`"runtime-session-delete"`,
-		`{item.shortHash}`,
+		`"runtime-session-loading"`,
+		`item.statusTone === "busy"`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
 			t.Fatalf("expected source marker %q", marker)
+		}
+	}
+	forbiddenMarkers := []string{
+		`{item.shortHash}`,
+		`"runtime-session-summary-row"`,
+		`"runtime-session-context"`,
+	}
+	for _, marker := range forbiddenMarkers {
+		if strings.Contains(source, marker) {
+			t.Fatalf("unexpected source marker %q", marker)
 		}
 	}
 

@@ -33,6 +33,17 @@ export type IconName =
   | "environments"
   | "codex";
 
+export const MANAGEMENT_WORKBENCH_ROUTE = "management";
+export const TOP_LEVEL_WORKBENCH_ROUTES = [
+  "chat",
+  "agent-runtime",
+  "terminal",
+  MANAGEMENT_WORKBENCH_ROUTE,
+] as const;
+
+export type TopLevelWorkbenchRoute = (typeof TOP_LEVEL_WORKBENCH_ROUTES)[number];
+export const MANAGEMENT_DEFAULT_SECTION_ROUTE = "agent";
+
 export const NAV_GROUPS: NavGroup[] = [
   {
     heading: "Workspace",
@@ -41,7 +52,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Agent", route: "agent-runtime", abbr: "AR", icon: "agent" },
       { label: "Terminal", route: "terminal", abbr: "TE", icon: "terminal" }
     ]
-  },
+  }
+];
+
+export const MANAGEMENT_ROUTE_GROUPS: NavGroup[] = [
   {
     heading: "Agent Studio",
     items: [
@@ -71,6 +85,11 @@ export const NAV_GROUPS: NavGroup[] = [
   }
 ];
 
+export const ALL_WORKBENCH_ROUTE_GROUPS: NavGroup[] = [
+  ...NAV_GROUPS,
+  ...MANAGEMENT_ROUTE_GROUPS,
+];
+
 export const PROMPTS: PromptItem[] = [
   {
     i18n: "prompt.journey",
@@ -89,5 +108,5 @@ export function toI18nKey(value: string) {
 }
 
 export function getNavGroupForRoute(route: string): NavGroup | undefined {
-  return NAV_GROUPS.find((group) => group.items.some((item) => item.route === route));
+  return ALL_WORKBENCH_ROUTE_GROUPS.find((group) => group.items.some((item) => item.route === route));
 }

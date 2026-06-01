@@ -1,5 +1,16 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import type { LegacyShellLanguage } from "../features/shell/legacyShellCopy";
+
+export type WorkbenchSessionRail = {
+  route: string;
+  title: string;
+  countLabel: string;
+  primaryActionLabel: string;
+  onPrimaryAction: () => void;
+  body: ReactNode;
+  primaryActionClassName?: string;
+  primaryActionProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "onClick">;
+};
 
 export type WorkbenchContextValue = {
   route: string;
@@ -13,6 +24,7 @@ export type WorkbenchContextValue = {
   openMobileSessionPane: () => void;
   closeMobileNav: () => void;
   closeMobileSessionPane: () => void;
+  setRuntimeSessionRail?: (rail: WorkbenchSessionRail | null) => void;
 };
 
 export const WorkbenchContext = createContext<WorkbenchContextValue | null>(null);

@@ -79,20 +79,10 @@ const (
 var sseHeartbeatInterval = 15 * time.Second
 
 var workbenchPagePaths = map[string]struct{}{
-	"/chat":           {},
-	"/agent-runtime":  {},
-	"/terminal":       {},
-	"/agent":          {},
-	"/memory":         {},
-	"/skills":         {},
-	"/mcp":            {},
-	"/sessions":       {},
-	"/tasks":          {},
-	"/cron-jobs":      {},
-	"/channels":       {},
-	"/models":         {},
-	"/environments":   {},
-	"/codex-accounts": {},
+	"/chat":          {},
+	"/agent-runtime": {},
+	"/terminal":      {},
+	"/management":    {},
 }
 
 type Orchestrator interface {

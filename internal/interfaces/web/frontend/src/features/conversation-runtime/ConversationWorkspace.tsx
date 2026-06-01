@@ -690,10 +690,6 @@ function useConversationWorkspaceController(
         "data-runtime-mobile-title": "conversation",
       },
       onMobileTitle: () => setSessionDetailsOpen((current) => !current),
-      mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",
-      mobileSessionButtonLabel: copy.terminalSessions,
-      mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },
-      onMobileSession: workbench.toggleMobileSessionPane,
       mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
       mobilePrimaryButtonLabel: newSessionLabel,
       mobilePrimaryButtonProps: { "data-runtime-mobile-primary": "conversation" },
@@ -704,7 +700,6 @@ function useConversationWorkspaceController(
     activeSessionStatus.label,
     activeSessionStatus.tone,
     copy.sessionHide,
-    copy.terminalSessions,
     emptyStateTitle,
     handleCreateSession,
     newSessionLabel,
@@ -717,7 +712,6 @@ function useConversationWorkspaceController(
     workbench.mobileNavOpen,
     workbench.mobileSessionPaneOpen,
     workbench.toggleMobileNav,
-    workbench.toggleMobileSessionPane,
   ]);
   const sessionList = useMemo(() => ({
     sessionList: {
@@ -830,6 +824,7 @@ function ConversationComposerSection({
   const skillsInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "skills";
   const sessionProfileInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "session-profile";
   const deliverablesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "deliverables";
+  const showComposerSessionControl = runtime.route === "agent-runtime";
   const sessionProfileFields = runtime.activeSessionProfile?.fields || runtime.activeAgent?.session_profile_fields || [];
   const activeAgentDeliverables = runtime.activeAgent?.deliverables || [];
   const sessionProfileAttributes = runtime.activeSessionProfile?.attributes || {};
@@ -1215,7 +1210,7 @@ function ConversationComposerSection({
       onInputBlur={() => onInputFocusedChange(false)}
       onInputPointerDownCapture={handleComposerPointerDownCapture}
       onInputTouchStartCapture={handleComposerTouchStartCapture}
-      utilityButtons={[
+      utilityButtons={showComposerSessionControl ? [
         {
           key: "session",
           label: copy.runtimeMobile,
@@ -1232,7 +1227,7 @@ function ConversationComposerSection({
             onTouchStartCapture: handleSessionUtilityTouchStartCapture,
           },
         },
-      ]}
+      ] : []}
       panelContent={conversationComposerPanel}
       onPanelDismiss={() => runtime.closeInspector()}
       panelProps={{

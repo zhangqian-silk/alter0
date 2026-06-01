@@ -318,7 +318,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("border-radius: 12px;");
   });
 
-  it("renders the shared session signal as a soft status dot with visible ripple pulses", () => {
+  it("renders the shared header signal as a soft status dot with visible ripple pulses", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
@@ -373,12 +373,15 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".mobile-backdrop {");
   });
 
-  it("keeps terminal workspace on the shared desktop split-pane session width instead of stacking the list above the workspace", () => {
+  it("keeps runtime workspaces on one desktop content column after the primary nav owns the session list", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="conversation"\],\s*\[data-runtime-view="terminal"\]\s*\{[\s\S]*?grid-template-columns:\s*minmax\(260px, 300px\) minmax\(0, 1fr\);/,
+      /\[data-runtime-view="conversation"\],\s*\[data-runtime-view="terminal"\]\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/,
+    );
+    expect(stylesheet).toMatch(
+      /\.runtime-workspace-session-pane\.is-navigation-owned\s*\{[\s\S]*?display:\s*none;/,
     );
     expect(stylesheet).not.toMatch(
       /\[data-runtime-view="terminal"\]\s*\{\s*grid-template-columns:\s*minmax\(280px, 320px\) minmax\(0, 1fr\);/,
@@ -462,7 +465,7 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("polishes runtime session cards and inspector panels to match the calmer workbench system", () => {
+  it("keeps runtime session cards compact with title-only rows and busy loading", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
@@ -470,14 +473,16 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("border-radius: 18px;");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(250, 252, 255, 0.98) 100%);");
     expect(stylesheet).toContain(".runtime-session-delete {");
-    expect(stylesheet).toContain("min-height: 42px;");
-    expect(stylesheet).toContain(".runtime-session-summary-row {");
-    expect(stylesheet).toContain(".runtime-session-meta-separator {");
+    expect(stylesheet).toContain("min-height: 30px;");
+    expect(stylesheet).toContain(".runtime-session-loading {");
+    expect(stylesheet).toContain("animation: runtime-session-loading-spin 0.82s linear infinite;");
+    expect(stylesheet).toContain("@keyframes runtime-session-loading-spin {");
     expect(stylesheet).toContain(".runtime-workspace-session-pane-action-icon {");
     expect(stylesheet).toContain(".runtime-session-title-copy {");
     expect(stylesheet).toContain("flex: 1 1 auto;");
-    expect(stylesheet).toContain(".runtime-session-context {");
-    expect(stylesheet).toContain("font-size: 11px;");
+    expect(stylesheet).toContain(".nav-session-rail .runtime-session-summary-row {");
+    expect(stylesheet).toContain("display: none;");
+    expect(stylesheet).toContain(".nav-session-rail .runtime-session-context {");
     expect(stylesheet).toContain(".conversation-inspector {");
     expect(stylesheet).toContain("border-radius: 12px;");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 248, 255, 0.94) 100%);");
@@ -526,6 +531,48 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("border-radius: 8px;");
     expect(stylesheet).toContain(".runtime-composer-upload-label {");
     expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-session-topline .task-summary-status");
+  });
+
+  it("renders the navigation-owned session rail as a quiet title-only chat sidebar", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-card\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 28px;[\s\S]*?padding:\s*0 4px 0 10px;[\s\S]*?border-radius:\s*9px;[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*transparent;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-card\.is-active\s*\{[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*rgba\(37, 99, 235, 0\.08\);[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-title\s*\{[\s\S]*?font-size:\s*14px;[\s\S]*?letter-spacing:\s*0;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-delete\s*\{[\s\S]*?min-width:\s*28px;[\s\S]*?min-height:\s*28px;[\s\S]*?border-radius:\s*8px;[\s\S]*?opacity:\s*0;/,
+    );
+  });
+
+  it("gives the mobile primary nav a purpose-built clean drawer surface", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.primary-nav\s*\{[\s\S]*?width:\s*min\(86vw, 336px\);[\s\S]*?padding:\s*18px 18px calc\(16px \+ env\(safe-area-inset-bottom\)\);[\s\S]*?background:\s*#fff;[\s\S]*?box-shadow:\s*24px 0 48px -34px rgba\(15, 23, 42, 0\.46\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.primary-nav \.brand\s*\{[\s\S]*?min-height:\s*44px;[\s\S]*?padding:\s*0 2px 8px;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.primary-nav \.menu-item\s*\{[\s\S]*?min-height:\s*44px;[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*transparent;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.primary-nav \.nav-session-rail\s*\{[\s\S]*?max-height:\s*none;[\s\S]*?padding:\s*8px 0 0;[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.primary-nav \.nav-session-rail-copy span\s*\{[^}]*?display:\s*none;/,
+    );
   });
 
   it("renders attachment previews and message images with their original aspect ratios instead of square crops", () => {

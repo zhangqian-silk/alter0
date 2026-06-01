@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { NAV_GROUPS, toI18nKey } from "../legacyShellConfig";
+import type { WorkbenchSessionRail } from "../../../app/WorkbenchContext";
+import { MANAGEMENT_WORKBENCH_ROUTE, NAV_GROUPS, toI18nKey } from "../legacyShellConfig";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../legacyShellCopy";
 import { isLegacyShellMobileViewport } from "../legacyShellState";
 import { NavIcon } from "./NavIcon";
@@ -34,6 +35,7 @@ type PrimaryNavProps = {
   currentRoute: string;
   language: LegacyShellLanguage;
   navCollapsed: boolean;
+  sessionRail?: WorkbenchSessionRail | null;
   onNavigate: (route: string) => void;
   onToggleLanguage: () => void;
   onToggleNavCollapsed: () => void;
@@ -43,12 +45,15 @@ export function PrimaryNav({
   currentRoute,
   language,
   navCollapsed,
+  sessionRail,
   onNavigate,
   onToggleLanguage,
   onToggleNavCollapsed,
 }: PrimaryNavProps) {
   const copy = getLegacyShellCopy(language);
   const navToggleLabel = navCollapsed ? copy.navExpandLabel : copy.navCollapseLabel;
+  const managementLabel = copy.routeTitles.management ?? "Management";
+  const managementActive = currentRoute === MANAGEMENT_WORKBENCH_ROUTE;
   const collapseButtonRef = useRef<HTMLButtonElement | null>(null);
   const routeButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -76,6 +81,9 @@ export function PrimaryNav({
   const resolveTooltipText = (target: NavTooltipTarget): string => {
     if (target.kind === "collapse") {
       return navToggleLabel;
+    }
+    if (target.route === "management") {
+      return managementLabel;
     }
     return copy.routes[target.route] ?? target.route;
   };
@@ -229,7 +237,7 @@ export function PrimaryNav({
   }, [tooltip]);
 
   return (
-    <aside className="primary-nav">
+    <aside className={sessionRail && !navCollapsed ? "primary-nav has-session-rail" : "primary-nav"}>
       <div className="brand">
         <div className="brand-copy">
           <strong>Alter0</strong>
@@ -260,7 +268,6 @@ export function PrimaryNav({
             key={group.heading}
             className={group.bottom ? "menu-group menu-group-bottom" : "menu-group"}
           >
-            <h2 data-i18n={`nav.${toI18nKey(group.heading)}`}>{copy.headings[group.heading] ?? group.heading}</h2>
             {group.items.map((item) => (
               <button
                 key={item.route}
@@ -297,6 +304,70 @@ export function PrimaryNav({
           </section>
         ))}
       </nav>
+
+      {sessionRail && !navCollapsed ? (
+        <section className="nav-session-rail" data-nav-session-rail={sessionRail.route}>
+          <div className="nav-session-rail-head">
+            <div className="nav-session-rail-copy">
+              <strong>{sessionRail.title}</strong>
+              <span>{sessionRail.countLabel}</span>
+            </div>
+            <button
+              className={[
+                "nav-session-rail-action",
+                sessionRail.primaryActionClassName,
+              ].filter(Boolean).join(" ")}
+              type="button"
+              onClick={sessionRail.onPrimaryAction}
+              {...sessionRail.primaryActionProps}
+            >
+              <span className="nav-session-rail-action-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" focusable="false">
+                  <path d="M10 5.25v9.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  <path d="M5.25 10h9.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                </svg>
+              </span>
+              <span>{sessionRail.primaryActionLabel}</span>
+            </button>
+          </div>
+          <div className="nav-session-rail-body">
+            {sessionRail.body}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="nav-utility">
+        <button
+          className={managementActive ? "menu-item nav-management-item active" : "menu-item nav-management-item"}
+          type="button"
+          data-route="management"
+          data-abbr="MG"
+          aria-label={managementLabel}
+          aria-describedby={
+            tooltip?.visible &&
+            tooltip.target.kind === "route" &&
+            tooltip.target.route === "management"
+              ? tooltipId
+              : undefined
+          }
+          ref={(node) => {
+            routeButtonRefs.current.management = node;
+          }}
+          onMouseEnter={() => queueTooltip({ kind: "route", route: "management" })}
+          onMouseLeave={() => hideTooltip()}
+          onFocus={() => queueTooltip({ kind: "route", route: "management" }, true)}
+          onBlur={() => hideTooltip(true)}
+          onPointerDown={() => hideTooltip(true)}
+          onClick={() => onNavigate(MANAGEMENT_WORKBENCH_ROUTE)}
+        >
+          <span className="menu-icon" aria-hidden="true">
+            <NavIcon icon="channels" />
+          </span>
+          <span className="menu-label" data-i18n="nav.management">
+            {managementLabel}
+          </span>
+        </button>
+      </div>
 
       <div className="nav-locale">
         <button

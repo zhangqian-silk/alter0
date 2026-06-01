@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { WorkbenchContext } from "./WorkbenchContext";
+import { WorkbenchContext, type WorkbenchSessionRail } from "./WorkbenchContext";
 import { isConversationRoute, useWorkbenchRoute } from "./routeState";
 import {
   getLegacyRouteHeadingCopy,
@@ -27,8 +27,11 @@ export function WorkbenchApp() {
   const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);
+  const [runtimeSessionRail, setRuntimeSessionRail] = useState<WorkbenchSessionRail | null>(null);
+  const visibleSessionRail = runtimeSessionRail?.route === route ? runtimeSessionRail : null;
+  const runtimeSessionsUseNav = Boolean(visibleSessionRail);
   const navOpen = mobilePanel === "nav";
-  const sessionPaneOpen = mobilePanel === "sessions";
+  const sessionPaneOpen = !runtimeSessionsUseNav && mobilePanel === "sessions";
 
   useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
@@ -73,11 +76,22 @@ export function WorkbenchApp() {
     mobileNavOpen: navOpen,
     mobileSessionPaneOpen: sessionPaneOpen,
     toggleMobileNav: () => setMobilePanel((current) => current === "nav" ? null : "nav"),
-    toggleMobileSessionPane: () => setMobilePanel((current) => current === "sessions" ? null : "sessions"),
-    openMobileSessionPane: () => setMobilePanel("sessions"),
+    toggleMobileSessionPane: () => setMobilePanel((current) => {
+      if (runtimeSessionsUseNav) {
+        return current === "nav" ? null : "nav";
+      }
+      return current === "sessions" ? null : "sessions";
+    }),
+    openMobileSessionPane: () => setMobilePanel(runtimeSessionsUseNav ? "nav" : "sessions"),
     closeMobileNav: () => setMobilePanel((current) => current === "nav" ? null : current),
-    closeMobileSessionPane: () => setMobilePanel((current) => current === "sessions" ? null : current),
-  }), [route, language, navigate, isMobileViewport, navOpen, sessionPaneOpen]);
+    closeMobileSessionPane: () => setMobilePanel((current) => {
+      if (runtimeSessionsUseNav) {
+        return current === "nav" ? null : current;
+      }
+      return current === "sessions" ? null : current;
+    }),
+    setRuntimeSessionRail,
+  }), [route, language, navigate, isMobileViewport, navOpen, sessionPaneOpen, runtimeSessionsUseNav]);
 
   return (
     <WorkbenchContext.Provider value={contextValue}>
@@ -86,6 +100,7 @@ export function WorkbenchApp() {
           currentRoute={route}
           language={language}
           navCollapsed={navCollapsed}
+          sessionRail={visibleSessionRail}
           onNavigate={(nextRoute) => {
             navigate(nextRoute);
             if (isMobileViewport) {
@@ -140,11 +155,16 @@ function RoutePageFrame({
   mobileNavOpen: boolean;
   onToggleMobileNav: () => void;
 }) {
-  const routeHeadingCopy = getLegacyRouteHeadingCopy(language, route);
+  const isManagementRoute = route === "management";
+  const routeHeadingCopy = getLegacyRouteHeadingCopy(language, isManagementRoute ? "management" : route);
   const shellCopy = getLegacyShellCopy(language);
 
   return (
-    <section className="route-view" data-route={route}>
+    <section
+      className="route-view"
+      data-route={route}
+      data-route-family={isManagementRoute ? "management" : undefined}
+    >
       {isMobileViewport ? (
         <header className="route-mobile-head" data-route-mobile-head>
           <button
