@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { ChatMessageRegion, type ChatMessageSnapshot } from "./ChatMessageRegion";
+import { buildChatTimelineItems, ChatMessageRegion, type ChatMessageSnapshot } from "./ChatMessageRegion";
 
 function buildAssistantMessage(overrides: Partial<ChatMessageSnapshot> = {}): ChatMessageSnapshot {
   return {
@@ -43,6 +43,41 @@ function buildProcessSteps(): ChatMessageSnapshot["processSteps"] {
 }
 
 describe("ChatMessageRegion", () => {
+  it("reuses unchanged timeline items when only the active streaming message changes", () => {
+    const stableMessage = buildAssistantMessage({
+      id: "stable-message",
+      text: "Stable markdown with `code`.",
+    });
+    const firstItems = buildChatTimelineItems({
+      cacheScope: "streaming-cache-test",
+      language: "en",
+      messages: [
+        stableMessage,
+        buildAssistantMessage({
+          id: "streaming-message",
+          text: "A",
+          status: "streaming",
+        }),
+      ],
+    });
+
+    const nextItems = buildChatTimelineItems({
+      cacheScope: "streaming-cache-test",
+      language: "en",
+      messages: [
+        stableMessage,
+        buildAssistantMessage({
+          id: "streaming-message",
+          text: "AB",
+          status: "streaming",
+        }),
+      ],
+    });
+
+    expect(nextItems[0]).toBe(firstItems[0]);
+    expect(nextItems[1]).not.toBe(firstItems[1]);
+  });
+
   it("hides completed chat assistant metadata and message timestamps", () => {
     render(
       <ChatMessageRegion

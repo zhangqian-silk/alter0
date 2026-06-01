@@ -35,6 +35,7 @@ const AGENT_FALLBACK_ENDPOINT = "/api/agent/messages";
 const RUNTIME_SESSION_COLLECTION_ENDPOINT = "/api/conversation-runtime/sessions";
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_TASK_POLL_INTERVAL_MS = 3000;
+const STREAM_DELTA_FLUSH_INTERVAL_MS = 50;
 const EXECUTION_ENGINE_METADATA_KEY = "alter0.execution.engine";
 const EXECUTION_ENGINE_CODEX = "codex";
 const LLM_PROVIDER_METADATA_KEY = "alter0.llm.provider_id";
@@ -1782,6 +1783,7 @@ export function ConversationRuntimeProvider({
     let sawDone = false;
     let output = "";
     let routeHint = "";
+    let deltaFlushTimer = 0;
     const response = await fetch(routeKey === "agent-runtime" ? AGENT_STREAM_ENDPOINT : STREAM_ENDPOINT, {
       method: "POST",
       headers: {
@@ -1810,6 +1812,27 @@ export function ConversationRuntimeProvider({
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
+    const clearDeltaFlushTimer = () => {
+      if (!deltaFlushTimer) {
+        return;
+      }
+      window.clearTimeout(deltaFlushTimer);
+      deltaFlushTimer = 0;
+    };
+    const flushAssistantDelta = () => {
+      clearDeltaFlushTimer();
+      setAssistantMessage(routeKey, sessionID, assistantMessageID, {
+        text: output,
+        route: routeHint,
+        status: "streaming",
+      });
+    };
+    const scheduleAssistantDeltaFlush = () => {
+      if (deltaFlushTimer) {
+        return;
+      }
+      deltaFlushTimer = window.setTimeout(flushAssistantDelta, STREAM_DELTA_FLUSH_INTERVAL_MS);
+    };
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -1852,14 +1875,11 @@ export function ConversationRuntimeProvider({
               }
               if (delta) {
                 output += delta;
-                setAssistantMessage(routeKey, sessionID, assistantMessageID, {
-                  text: output,
-                  route: routeHint,
-                  status: "streaming",
-                });
+                scheduleAssistantDeltaFlush();
               }
             }
             if (parsed.event === "done") {
+              clearDeltaFlushTimer();
               const result = (parsed.data.result as Record<string, unknown>) || {};
               const taskID = normalizeText(parsed.data.task_id);
               const taskStatus = normalizeText(parsed.data.task_status) || "done";
@@ -1880,6 +1900,7 @@ export function ConversationRuntimeProvider({
               sawDone = true;
             }
             if (parsed.event === "error") {
+              clearDeltaFlushTimer();
               setAssistantMessage(routeKey, sessionID, assistantMessageID, {
                 text: normalizeText(parsed.data.error) || "Request failed",
                 status: "error",
@@ -1900,12 +1921,22 @@ export function ConversationRuntimeProvider({
         }
       }
     } catch (error) {
+      if (output) {
+        flushAssistantDelta();
+      } else {
+        clearDeltaFlushTimer();
+      }
       return {
         ok: false,
         canFallback: !sawEvent,
         canRecover: sawEvent,
         error: error instanceof Error ? error.message : "stream interrupted",
       };
+    }
+    if (!sawDone && output) {
+      flushAssistantDelta();
+    } else {
+      clearDeltaFlushTimer();
     }
     return {
       ok: sawDone,

@@ -149,8 +149,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 ### 渲染策略
 
-- Chat/Agent 消息区使用逐条 patch 与浏览器逐帧合并刷新。
-- 高频流式增量、Process 展开收起与任务状态回填不得导致整段消息列表重建。
+- Chat/Agent 消息区使用逐条 patch 与浏览器逐帧合并刷新；连续 SSE `delta` 文本增量需先在前端内存态累计，再按固定短窗口合并刷新可见 assistant 文本，`done / error / 中断恢复` 事件到达时立即清理待刷新任务并收口最终状态。
+- 高频流式增量、Process 展开收起与任务状态回填不得导致整段消息列表重建，也不得在长输出期间持续占满主线程导致导航、发送、详情和会话切换按钮失去响应。
+- 时间线装配需按单条消息缓存稳定渲染结果；当仅当前流式 assistant 消息变化时，未变化的历史消息不得重新生成 Markdown HTML、Process step 树或 runtime timeline item。
 - 仅有 Composer 草稿变化时，Conversation 时间线、Markdown 正文与 `Process` 展示不得重新解析或整段重建；性能热点需收敛在输入区本身。
 - Agent `process` 事件到达后，前端需在 `done` 前实时更新当前助手消息的步骤面板，而不是等待最终正文收口后一次性生成过程展示。
 - Agent 消息中的 `Process` 优先使用服务端返回的结构化 `process_steps` 渲染；仅对缺失结构化步骤的历史消息保留文本解析兼容。

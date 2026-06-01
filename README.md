@@ -164,7 +164,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 - 复杂度评估阶段会优先复用当前消息选中的 `Provider / Model`；未显式选择时，回退到默认 Provider 与默认模型。若 Chat 或 Agent Runtime 当前显式选择 `Codex`，前端会改写消息 metadata 为 `alter0.execution.engine=codex`，由执行层直接进入 `Codex CLI` 链路。
 - 默认走实时执行。
 - 流式对话会先直接启动回复；复杂度评估与回复并行进行。
-- `Chat / Agent` 消息区在流式增量、Agent `Process` 展开收起与任务状态回填期间采用逐条 patch，并把高频刷新合并到浏览器逐帧节奏，避免长会话中反复整段重建消息列表。
+- `Chat / Agent` 消息区在流式增量、Agent `Process` 展开收起与任务状态回填期间采用逐条 patch，并把连续 SSE 文本增量合并为短窗口刷新；时间线渲染按单条消息缓存稳定 Markdown 与 Process 装配结果，避免长输出时反复重建历史消息、Markdown 与消息列表，确保导航、发送、详情和会话切换按钮保持可响应。
 - `Chat / Agent Runtime` 在同一会话内继续按 `user -> assistant` 追加历史；SSE 只允许更新当前这条尚未收口的 assistant 消息，消息一旦进入 `done` 或任务态后不得再被迟到的流式事件改写。
 - Agent SSE 在工具循环期间会优先推送结构化 `process` 事件，按步骤实时更新 `Process` 面板；最终正文继续通过输出事件与 `done` 结果收口。
 - 流式连接在已收到正文后若中途断开，前端保留已到达的正文；若此前已收到 `start` 但尚未收到 `done`，前端需优先回源当前会话详情，用服务端已持久化的最终消息覆盖本地占位态，只在恢复失败时才收敛为失败态，避免同一条 Agent 请求被浏览器重复提交。

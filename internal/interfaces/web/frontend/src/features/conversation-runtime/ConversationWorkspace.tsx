@@ -288,6 +288,13 @@ function useConversationWorkspaceController(
   });
   const activeMessages = runtime.activeSession?.messages || [];
   const activeSessionID = runtime.activeSession?.id || "";
+  const toggleAgentProcessRef = useRef(runtime.toggleAgentProcess);
+  useEffect(() => {
+    toggleAgentProcessRef.current = runtime.toggleAgentProcess;
+  }, [runtime.toggleAgentProcess]);
+  const toggleAgentProcess = useCallback((messageID: string) => {
+    toggleAgentProcessRef.current(messageID);
+  }, []);
   const visibleMessageCount = timelineWindow.sessionID === activeSessionID
     ? timelineWindow.visibleCount
     : INITIAL_VISIBLE_CHAT_MESSAGES;
@@ -451,11 +458,12 @@ function useConversationWorkspaceController(
 
   const timelineItems = useMemo(
     () => buildChatTimelineItems({
+      cacheScope: activeSessionID,
       messages: visibleMessages,
       language,
-      onToggleProcess: runtime.toggleAgentProcess,
+      onToggleProcess: toggleAgentProcess,
     }),
-    [language, runtime.toggleAgentProcess, visibleMessages],
+    [activeSessionID, language, toggleAgentProcess, visibleMessages],
   );
   const loadEarlierMessages = useCallback(() => {
     if (!activeSessionID || hiddenMessageCount <= 0) {
