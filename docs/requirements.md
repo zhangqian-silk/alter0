@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-06-01
+> Last update: 2026-06-02
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `agent.execution.react`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -68,7 +68,7 @@
 - `Chat / Agent Runtime` 的消息时间线在内容较少时仍需顶部收口：少量消息、短回复、折叠后的 `Thinking / 已思考` 披露行与状态标签继续贴近各自消息气泡，不得被满高布局拉出大段垂直空白。
 - `Chat / Agent Runtime / Terminal` 进入已有内容会话时默认定位到消息时间线或 Terminal 输出区底部，优先展示最新上下文；`Chat / Agent Runtime` 在同一活动会话发送新消息后也需回到底部展示新追加的用户消息与助手占位。除这类用户主动追加外，不得在同一会话持续更新、轮询刷新或 Process 展开期间覆盖用户的历史阅读滚动。
 - `Chat / Agent Runtime / Terminal` 的阅读定位条必须以悬浮 overlay 形式附着在消息区右下角，不得继续参与消息时间线的正常文档流；空白会话或少量消息时，不允许因为定位条占位把消息区额外撑高并制造伪滚动。
-- `Chat / Agent Runtime` Composer 支持图片附件草稿、缩略图预览与消息内图片回显；最近会话恢复仅持久化稳定图片资产引用，避免重复保留原始大图 payload；缩略位继续使用预览图，但消息回显与再次查看必须优先读取原图资源。助手 markdown 图片需在消息区直接以内联图片懒加载显示。带图消息只允许走支持视觉输入的模型链路，不进入异步 Task，也不静默降级到 Codex 文本执行。
+- `Chat / Agent Runtime` Composer 支持图片附件草稿、输入框内 PC 剪贴板图片粘贴、缩略图预览与消息内图片回显；最近会话恢复仅持久化稳定图片资产引用，避免重复保留原始大图 payload；缩略位继续使用预览图，但消息回显与再次查看必须优先读取原图资源。助手 markdown 图片需在消息区直接以内联图片懒加载显示。带图消息只允许走支持视觉输入的模型链路，不进入异步 Task，也不静默降级到 Codex 文本执行。
 - Web 前端所有需要可见时间的管理视图、会话列表、详情面板与任务视图统一使用北京时间（`Asia/Shanghai`）与 24 小时制；`Chat / Agent Runtime / Terminal` 的消息正文区不显示逐条消息或 turn 时间。Cron 创建表单默认时区固定为 `Asia/Shanghai`。
 - Web 侧边栏、历史折叠、页面滚动隔离、克制冷灰工作台阅读主题、PC 端低圆角非胶囊控件、移动端轻量白色导航抽屉、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护；移动端运行页顶部 `Menu / 标题 / New` 控件必须像发送按钮一样支持首触执行，不得在输入框聚焦或软键盘打开时退化为先收键盘、第二次才响应。
 - Web 前端需提供受显式开关控制的点击诊断能力，用于记录事件目标、顶层命中元素、遮罩层状态、`preventDefault` 状态、当前焦点与主线程长任务；默认不启用，不影响正常交互路径。
@@ -153,7 +153,7 @@
 - Task 需建立 `session_id`、`source_message_id`、`channel_type`、`trigger_type`、`correlation_id`、Cron 触发信息与产物引用的标准映射。
 - Task 观测台支持列表、详情抽屉、来源筛选、日志 SSE、游标续读、日志回补、retry/cancel、交互式续写、任务-会话双向跳转与完成结果回写。
 - Task 观测台桌面端优先采用左侧任务列表 + 右侧详情面板的主从布局，详情区承载元数据、日志、产物、控制动作与 follow-up terminal 输入。
-- Terminal 页面 Composer 支持最多 5 个附件，稳定覆盖图片与常见文本/文档文件：图片继续提供缩略图预览、纯图片发送与图片回显，并先写入当前 Session 工作区附件目录后仅提交 `asset_url / preview_url` 引用；缩略位使用预览图，但 turn 历史与后续预览弹层再次查看时必须优先读取原图资源。普通文件同样先落到同一附件目录并只提交稳定附件引用，执行前再写入当前 Terminal 工作区 `input-attachments/<turn_id>/` 供 Codex 按路径读取。Terminal 当前活动会话的 shell 明确为 Codex 时，输入 `/` 需显示 Web 适用的 Codex CLI 斜线命令候选并支持点击补全；候选按命令作用分组顺序展示，并使用短动作说明；权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选，普通 shell 会话不显示 Codex 候选。Terminal 输出正文、Markdown 正文与代码结果必须保留浏览器原生文本选择能力，用户可直接手动选中并复制局部输出；移动端最终输出不得安装脚本长按选区、假选中态、浮动复制层、`contenteditable`、隐藏输入框或键盘编辑态兜底；阅读定位 overlay 不得截获正文拖选或长按选中。Terminal `Details` 面板支持选择控制面中启用且非私有的公有 Skill；新 Terminal 会话首次加载时默认勾选全部可用公有 Skill，仅排除 `default-nl` 与 `memory`，并在发送输入时把当前 `skill_ids` 编译进 Terminal 工作区的原生 Codex Runtime。该运行时同样必须通过托管 `AGENTS.md` 与 `runtime_context` 约束 Codex 仅操作当前 Terminal 工作区及其派生文件，不得顺带修改其他会话、服务或工作区外仓库。Task 详情抽屉中的 follow-up terminal 输入当前稳定支持图片附件，并继续透传到统一消息元数据。
+- Terminal 页面 Composer 支持最多 5 个附件，稳定覆盖图片与常见文本/文档文件：图片继续提供缩略图预览、纯图片发送与图片回显，并支持 PC 输入框内直接粘贴剪贴板图片；图片先写入当前 Session 工作区附件目录后仅提交 `asset_url / preview_url` 引用；缩略位使用预览图，但 turn 历史与后续预览弹层再次查看时必须优先读取原图资源。普通文件同样先落到同一附件目录并只提交稳定附件引用，执行前再写入当前 Terminal 工作区 `input-attachments/<turn_id>/` 供 Codex 按路径读取。Terminal 当前活动会话的 shell 明确为 Codex 时，输入 `/` 需显示 Web 适用的 Codex CLI 斜线命令候选并支持点击补全；候选按命令作用分组顺序展示，并使用短动作说明；权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选，普通 shell 会话不显示 Codex 候选。Terminal 输出正文、Markdown 正文与代码结果必须保留浏览器原生文本选择能力，用户可直接手动选中并复制局部输出；移动端最终输出不得安装脚本长按选区、假选中态、浮动复制层、`contenteditable`、隐藏输入框或键盘编辑态兜底；阅读定位 overlay 不得截获正文拖选或长按选中。Terminal `Details` 面板支持选择控制面中启用且非私有的公有 Skill；新 Terminal 会话首次加载时默认勾选全部可用公有 Skill，仅排除 `default-nl` 与 `memory`，并在发送输入时把当前 `skill_ids` 编译进 Terminal 工作区的原生 Codex Runtime。该运行时同样必须通过托管 `AGENTS.md` 与 `runtime_context` 约束 Codex 仅操作当前 Terminal 工作区及其派生文件，不得顺带修改其他会话、服务或工作区外仓库。Task 详情抽屉中的 follow-up terminal 输入当前稳定支持图片附件，并继续透传到统一消息元数据。
 - Task 记忆视图支持任务摘要、任务详情、日志下钻、产物引用与摘要重建，用于把历史任务纳入长期上下文召回；任务历史默认以表格承载摘要元数据，再通过详情侧栏查看长文本与日志/产物入口。
 - Codex CLI 长任务按心跳续租运行窗口；列表与详情展示 `Last Heartbeat` 和 `Timeout Window`。
 - Web 会话不直接暴露本地文件路径，产物通过引用、下载或预览接口交付。
