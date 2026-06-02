@@ -1297,6 +1297,7 @@ body::after {
   display: grid;
   gap: 12px;
   z-index: 18;
+  pointer-events: none;
 }
 
 .terminal-jump-control {
@@ -5046,18 +5047,16 @@ body::after {
 }
 
 .assistant-message-shell .runtime-markdown-toolbar {
-  order: 2;
   margin-top: 12px;
   margin-bottom: 0;
 }
 
 .assistant-message-shell .runtime-markdown-shell {
-  display: flex;
-  flex-direction: column;
+  display: block;
 }
 
 .assistant-message-shell .runtime-markdown-body {
-  order: 1;
+  display: block;
 }
 
 .assistant-message-shell .chat-md-pre {
@@ -5870,6 +5869,52 @@ body::after {
   padding-top: 24px;
   padding-left: 24px;
   padding-right: 24px;
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: auto;
+}
+
+[data-runtime-view="terminal"] .runtime-workspace-panel,
+[data-runtime-view="terminal"] .runtime-workspace-body,
+[data-runtime-view="terminal"] .runtime-workspace {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+[data-runtime-view="terminal"] .runtime-timeline {
+  display: block;
+}
+
+[data-runtime-view="terminal"] .terminal-final-output,
+[data-runtime-view="terminal"] .runtime-message-assistant,
+[data-runtime-view="terminal"] .runtime-message-assistant .runtime-message-bubble,
+[data-runtime-view="terminal"] .terminal-final-text,
+[data-runtime-view="terminal"] .runtime-markdown-shell {
+  display: block;
+}
+
+[data-runtime-view="terminal"] .terminal-final-text,
+[data-runtime-view="terminal"] .terminal-final-rendered,
+[data-runtime-view="terminal"] .runtime-markdown-body,
+[data-runtime-view="terminal"] .runtime-markdown-rendered,
+[data-runtime-view="terminal"] .runtime-markdown-rendered * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-touch-callout: default !important;
+  touch-action: auto;
+  cursor: text;
+}
+
+[data-runtime-view="terminal"] .runtime-markdown-body {
+  position: relative;
+}
+
+[data-runtime-view="terminal"] .runtime-timeline,
+[data-runtime-view="terminal"] .terminal-turn-card,
+[data-runtime-view="terminal"] .terminal-final-output,
+[data-runtime-view="terminal"] .runtime-message-bubble {
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 [data-runtime-view="terminal"] .runtime-workspace-screen.is-empty {

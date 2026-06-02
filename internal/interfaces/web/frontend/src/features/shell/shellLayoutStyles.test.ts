@@ -92,13 +92,13 @@ describe("shell layout stylesheet", () => {
       /\.runtime-message\.runtime-message-assistant \.runtime-message-bubble,\s*\.conversation-message\.is-assistant \.msg-bubble\s*\{[\s\S]*?width:\s*min\(100%, 860px\);[\s\S]*?max-width:\s*min\(100%, 860px\);[\s\S]*?background:\s*transparent;[\s\S]*?padding:\s*0;/,
     );
     expect(stylesheet).toMatch(
-      /\.assistant-message-shell \.runtime-markdown-shell\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex-direction:\s*column;/,
+      /\.assistant-message-shell \.runtime-markdown-shell\s*\{[\s\S]*?display:\s*block;/,
     );
     expect(stylesheet).toMatch(
-      /\.assistant-message-shell \.runtime-markdown-body\s*\{[\s\S]*?order:\s*1;/,
+      /\.assistant-message-shell \.runtime-markdown-body\s*\{[\s\S]*?display:\s*block;/,
     );
     expect(stylesheet).toMatch(
-      /\.assistant-message-shell \.runtime-markdown-toolbar\s*\{[\s\S]*?order:\s*2;[\s\S]*?margin-top:\s*12px;[\s\S]*?margin-bottom:\s*0;/,
+      /\.assistant-message-shell \.runtime-markdown-toolbar\s*\{[\s\S]*?margin-top:\s*12px;[\s\S]*?margin-bottom:\s*0;/,
     );
     expect(stylesheet).toMatch(
       /\.assistant-message-shell \.chat-md-pre\s*\{[\s\S]*?border-radius:\s*22px;[\s\S]*?background:\s*#f5f5f5;[\s\S]*?padding:\s*18px 20px;/,
@@ -854,6 +854,29 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(/\.scroll-jump-strip\s*\{[\s\S]*?position:\s*absolute;/);
     expect(stylesheet).toMatch(/\.scroll-jump-control\s*\{[\s\S]*?border-radius:\s*999px;/);
     expect(stylesheet).toMatch(/\.terminal-jump-control\s*\{[\s\S]*?border-radius:\s*999px;/);
+  });
+
+  it("keeps terminal output text selectable while preserving scroll controls", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-workspace-screen\s*\{[\s\S]*?user-select:\s*text;[\s\S]*?-webkit-user-select:\s*text;[\s\S]*?touch-action:\s*auto;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-workspace-panel,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-workspace\s*\{[\s\S]*?user-select:\s*text\s*!important;[\s\S]*?-webkit-user-select:\s*text\s*!important;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.terminal-final-rendered,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-markdown-rendered,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-markdown-rendered \*\s*\{[\s\S]*?user-select:\s*text\s*!important;[\s\S]*?-webkit-user-select:\s*text\s*!important;[\s\S]*?-webkit-touch-callout:\s*default\s*!important;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-timeline,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-message-bubble\s*\{[\s\S]*?user-select:\s*text\s*!important;[\s\S]*?-webkit-user-select:\s*text\s*!important;/,
+    );
+    expect(stylesheet).not.toContain('contenteditable="true"');
+    expect(stylesheet).not.toContain("-webkit-user-modify");
+    expect(stylesheet).not.toContain("caret-color: transparent");
+    expect(stylesheet).toMatch(/\.terminal-jump-cluster\s*\{[\s\S]*?pointer-events:\s*none;/);
+    expect(stylesheet).toMatch(/\.terminal-jump-control\s*\{[\s\S]*?touch-action:\s*manipulation;/);
   });
 
   it("keeps narrow terminal headers on one line and preserves composer meta visibility", () => {

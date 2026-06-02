@@ -93,6 +93,10 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 前端开发态支持双向代理联调：为 Go 服务设置 `ALTER0_WEB_FRONTEND_DEV_ORIGIN=http://127.0.0.1:5173` 后，访问 `http://127.0.0.1:18088/chat` 会转到 Vite dev server；为 Vite 设置 `ALTER0_WEB_BACKEND_ORIGIN=http://127.0.0.1:18088` 后，`npm run dev` 会把 `/api`、登录与健康检查请求代理回 Go 服务。
 
+前端交互诊断可通过 URL 参数 `?debug_clicks=1` 临时启用，也可在浏览器控制台设置 `localStorage.setItem("alter0.debug.clicks", "on")` 后刷新启用。开启后控制台会输出 `[alter0:click]` 事件链记录与 `[alter0:longtask]` 主线程长任务记录，用于定位移动端首点无效、遮罩吃点击、按钮被禁用或软键盘焦点链路问题；未开启时不注册全局事件监听。
+
+Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复制内容不会作为完整 DOM 属性写入页面，避免长日志、长命令输出在轮询和点击时额外放大页面体积。Terminal 输出正文、Markdown 正文与代码结果保持浏览器原生文本选择能力；移动端最终输出不安装脚本长按选区、假选中态、浮动复制层或编辑态兜底，长按复制由浏览器原生文本选择菜单承载。阅读定位按钮不会截获正文拖选或长按选中，用户可直接手动选中并复制输出片段。
+
 ## Built-in Commands
 
 1. `/help`：查看命令列表

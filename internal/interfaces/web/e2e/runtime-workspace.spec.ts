@@ -218,6 +218,27 @@ test.describe("Runtime workspace scaffold", () => {
     await expect(terminalInput).toHaveValue("");
   });
 
+  test("runs conversation mobile header actions from the first touch while the keyboard is open", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+    await openRuntimeRoute(page, "chat");
+
+    const chatInput = page.locator("[data-composer-input='conversation']");
+    await chatInput.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+
+    await page.locator("[data-runtime-mobile-title='conversation']").dispatchEvent("touchstart");
+    await expect(page.locator("[data-runtime-details-panel='conversation']")).toBeVisible();
+    await page.locator("[data-runtime-details-backdrop='true']").click();
+    await expect(page.locator("[data-runtime-details-panel='conversation']")).toHaveCount(0);
+
+    await page.locator(".conversation-mobile-nav-toggle").dispatchEvent("touchstart");
+    await expect(page.locator(".app-shell")).toHaveClass(/nav-open/);
+  });
+
   test("keeps the agent runtime viewport above the composer", async ({ page }) => {
     await openRuntimeRoute(page, "agent-runtime");
 

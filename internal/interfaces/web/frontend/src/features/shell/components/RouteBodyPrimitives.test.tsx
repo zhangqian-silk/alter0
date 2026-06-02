@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { RouteFieldRow } from "./RouteBodyPrimitives";
+import { CopyValueButton, RouteFieldRow } from "./RouteBodyPrimitives";
+import { RuntimeMarkdownShell } from "./RuntimeTimelinePrimitives";
 
 describe("RouteFieldRow", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("falls back to document copy when navigator.clipboard is unavailable", async () => {
@@ -51,5 +53,85 @@ describe("RouteFieldRow", () => {
     expect(container.querySelector(".route-field-value.is-markdown a")).toHaveAttribute("href", "/docs");
     expect(container.querySelector(".route-field-value.is-markdown")).not.toContainHTML("javascript:");
     expect(screen.getByText("bad")).toBeInTheDocument();
+  });
+
+  it("keeps long copy payloads out of DOM attributes while preserving clipboard writes", async () => {
+    const longValue = "terminal output line\n".repeat(512);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <CopyValueButton
+        value={longValue}
+        label="Copy output"
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Copy output" });
+    expect(button).not.toHaveAttribute("data-copy-value");
+
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(longValue);
+    });
+  });
+
+  it("renders markdown body before the copy toolbar so browser text selection follows visual order", () => {
+    const { container } = render(
+      <RuntimeMarkdownShell
+        html="<p>selectable terminal output</p>"
+        copyValue="selectable terminal output"
+        copyLabel="Copy output"
+      />,
+    );
+
+    const shell = container.querySelector(".runtime-markdown-shell");
+    expect(shell?.children.item(0)).toHaveClass("runtime-markdown-body");
+    expect(shell?.children.item(1)).toHaveClass("runtime-markdown-toolbar");
+  });
+
+  it("renders markdown output as static selectable text without entering edit mode", () => {
+    const { container } = render(
+      <RuntimeMarkdownShell
+        html="<p>selectable terminal output</p>"
+        copyValue="selectable terminal output"
+        copyLabel="Copy output"
+      />,
+    );
+
+    const rendered = container.querySelector(".runtime-markdown-rendered");
+    expect(rendered).not.toHaveAttribute("contenteditable");
+    expect(rendered).not.toHaveAttribute("aria-readonly");
+    expect(rendered).not.toHaveAttribute("inputmode");
+    expect(rendered).not.toHaveAttribute("tabindex");
+  });
+
+  it("does not install scripted touch selection controls on markdown output", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <RuntimeMarkdownShell
+        html="<p>selectable terminal output</p>"
+        copyValue="selectable terminal output"
+        copyLabel="Copy output"
+      />,
+    );
+
+    const rendered = container.querySelector(".runtime-markdown-rendered") as HTMLElement;
+    const touch = { clientX: 12, clientY: 18 };
+    const touchStart = new Event("touchstart", { bubbles: true, cancelable: true });
+    Object.defineProperty(touchStart, "touches", { value: [touch] });
+    Object.defineProperty(touchStart, "targetTouches", { value: [touch] });
+    Object.defineProperty(touchStart, "changedTouches", { value: [touch] });
+    fireEvent(rendered, touchStart);
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(container.querySelector(".runtime-touch-copy")).not.toBeInTheDocument();
+    expect(rendered).not.toHaveClass("is-touch-selected");
+    expect(rendered).not.toHaveAttribute("contenteditable");
+    expect(rendered).not.toHaveAttribute("inputmode");
   });
 });

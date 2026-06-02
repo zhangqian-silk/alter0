@@ -52,6 +52,7 @@ export function RuntimeWorkspaceHeader({
   const detailsID = useId();
   const headerRef = useRef<HTMLElement | null>(null);
   const [detailsPanelStyle, setDetailsPanelStyle] = useState<CSSProperties>({});
+  const detailsPanelStyleRef = useRef<CSSProperties>({});
   const {
     className: headerClassName,
     ...headerRestProps
@@ -108,11 +109,21 @@ export function RuntimeWorkspaceHeader({
         Math.min(rect.bottom > 0 ? rect.bottom + 8 : fallbackTop, Math.max(12, viewportHeight - 120)),
       );
 
-      setDetailsPanelStyle({
+      const nextStyle = {
         top: `${top}px`,
         left: `${left}px`,
         width: `${panelWidth}px`,
-      });
+      };
+      const currentStyle = detailsPanelStyleRef.current;
+      if (
+        currentStyle.top === nextStyle.top &&
+        currentStyle.left === nextStyle.left &&
+        currentStyle.width === nextStyle.width
+      ) {
+        return;
+      }
+      detailsPanelStyleRef.current = nextStyle;
+      setDetailsPanelStyle(nextStyle);
     };
 
     syncDetailsPanelPosition();

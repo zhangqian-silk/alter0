@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
+import { useEffect, useRef, type ComponentPropsWithoutRef, type PointerEvent, type ReactNode, type Ref, type TouchEvent } from "react";
 import { RuntimeWorkspaceFrame } from "./RuntimeWorkspaceFrame";
 
 function joinClassNames(...values: Array<string | undefined>) {
@@ -30,6 +30,8 @@ function RuntimeSessionPaneHideIcon() {
 }
 
 type RuntimeWorkspaceMobileTitleTone = "ready" | "busy" | "failed" | "interrupted" | "exited";
+type RuntimeWorkspaceMobileActionKey = "nav" | "title" | "session" | "primary";
+const MOBILE_ACTION_CLICK_SUPPRESS_MS = 700;
 
 type RuntimeWorkspaceShellProps = {
   rootClassName?: string;
@@ -141,6 +143,88 @@ export function RuntimeWorkspaceShell({
   workspaceContent,
   workspaceFooter,
 }: RuntimeWorkspaceShellProps) {
+  const mobileActionLocksRef = useRef<Record<RuntimeWorkspaceMobileActionKey, boolean>>({
+    nav: false,
+    title: false,
+    session: false,
+    primary: false,
+  });
+  const mobileActionLockTimersRef = useRef<Record<RuntimeWorkspaceMobileActionKey, number | null>>({
+    nav: null,
+    title: null,
+    session: null,
+    primary: null,
+  });
+  const releaseMobileActionLock = (key: RuntimeWorkspaceMobileActionKey) => {
+    mobileActionLocksRef.current[key] = false;
+    const timer = mobileActionLockTimersRef.current[key];
+    if (timer !== null) {
+      window.clearTimeout(timer);
+      mobileActionLockTimersRef.current[key] = null;
+    }
+  };
+  const triggerMobileActionFromPress = (key: RuntimeWorkspaceMobileActionKey, action: (() => void) | undefined) => {
+    if (!action || mobileActionLocksRef.current[key]) {
+      return;
+    }
+    mobileActionLocksRef.current[key] = true;
+    const existingTimer = mobileActionLockTimersRef.current[key];
+    if (existingTimer !== null) {
+      window.clearTimeout(existingTimer);
+    }
+    mobileActionLockTimersRef.current[key] = window.setTimeout(() => {
+      releaseMobileActionLock(key);
+    }, MOBILE_ACTION_CLICK_SUPPRESS_MS);
+    action();
+  };
+  const triggerMobileActionFromClick = (key: RuntimeWorkspaceMobileActionKey, action: (() => void) | undefined) => {
+    if (mobileActionLocksRef.current[key]) {
+      releaseMobileActionLock(key);
+      return;
+    }
+    action?.();
+  };
+  const createMobilePressHandlers = (
+    key: RuntimeWorkspaceMobileActionKey,
+    action: (() => void) | undefined,
+    props: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "onClick"> | undefined,
+  ) => {
+    const {
+      onPointerDownCapture,
+      onTouchStartCapture,
+      ...restProps
+    } = props || {};
+    return {
+      ...restProps,
+      onPointerDownCapture: (event: PointerEvent<HTMLButtonElement>) => {
+        onPointerDownCapture?.(event);
+        if (event.defaultPrevented || event.pointerType === "mouse") {
+          return;
+        }
+        event.preventDefault();
+        triggerMobileActionFromPress(key, action);
+      },
+      onTouchStartCapture: (event: TouchEvent<HTMLButtonElement>) => {
+        onTouchStartCapture?.(event);
+        if (event.defaultPrevented) {
+          return;
+        }
+        event.preventDefault();
+        triggerMobileActionFromPress(key, action);
+      },
+    };
+  };
+  const mobileNavPressProps = createMobilePressHandlers("nav", onMobileNav, mobileNavButtonProps);
+  const mobileTitlePressProps = createMobilePressHandlers("title", onMobileTitle, mobileTitleButtonProps);
+  const mobileSessionPressProps = createMobilePressHandlers("session", onMobileSession, mobileSessionButtonProps);
+  const mobilePrimaryPressProps = createMobilePressHandlers("primary", onMobilePrimary, mobilePrimaryButtonProps);
+  useEffect(() => () => {
+    for (const timer of Object.values(mobileActionLockTimersRef.current)) {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    }
+  }, []);
   const mobileHeader = mobileHeaderPlacement ? (
     <header
       className={joinClassNames("runtime-workspace-mobile-header", mobileHeaderClassName)}
@@ -154,8 +238,8 @@ export function RuntimeWorkspaceShell({
             mobileNavButtonClassName,
           )}
           type="button"
-          onClick={onMobileNav}
-          {...mobileNavButtonProps}
+          {...mobileNavPressProps}
+          onClick={() => triggerMobileActionFromClick("nav", onMobileNav)}
         >
           {mobileNavButtonLabel}
         </button>
@@ -167,8 +251,8 @@ export function RuntimeWorkspaceShell({
             mobileTitleButtonClassName,
           )}
           type="button"
-          onClick={onMobileTitle}
-          {...mobileTitleButtonProps}
+          {...mobileTitlePressProps}
+          onClick={() => triggerMobileActionFromClick("title", onMobileTitle)}
         >
           <span className="runtime-workspace-mobile-title-copy">
             {mobileTitleTone ? (
@@ -207,8 +291,8 @@ export function RuntimeWorkspaceShell({
                 mobileSessionButtonClassName,
               )}
               type="button"
-              onClick={onMobileSession}
-              {...mobileSessionButtonProps}
+              {...mobileSessionPressProps}
+              onClick={() => triggerMobileActionFromClick("session", onMobileSession)}
             >
               {mobileSessionButtonLabel}
             </button>
@@ -220,8 +304,8 @@ export function RuntimeWorkspaceShell({
                 mobilePrimaryButtonClassName,
               )}
               type="button"
-              onClick={onMobilePrimary}
-              {...mobilePrimaryButtonProps}
+              {...mobilePrimaryPressProps}
+              onClick={() => triggerMobileActionFromClick("primary", onMobilePrimary)}
             >
               {mobilePrimaryButtonLabel}
             </button>
