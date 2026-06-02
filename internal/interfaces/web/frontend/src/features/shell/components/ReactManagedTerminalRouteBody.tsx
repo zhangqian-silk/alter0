@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../../../app/routeState";
 import { createAPIClient } from "../../../shared/api/client";
@@ -1459,11 +1459,11 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     }
   };
 
-  const toggleTurn = (turnID: string) => {
+  const toggleTurn = useCallback((turnID: string) => {
     setExpandedTurns((current) => ({ ...current, [turnID]: !current[turnID] }));
-  };
+  }, []);
 
-  const toggleStep = async (turnID: string, stepID: string, hasDetail: boolean) => {
+  const toggleStep = useCallback(async (turnID: string, stepID: string, hasDetail: boolean) => {
     const key = stepKey(turnID, stepID);
     const nextExpanded = !expandedSteps[key];
     setExpandedSteps((current) => ({ ...current, [key]: nextExpanded }));
@@ -1483,7 +1483,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         [key]: error instanceof Error ? error.message : "unknown error",
       }));
     }
-  };
+  }, [activeSession, apiClient, expandedSteps, stepDetails]);
 
   const handleScroll = () => {
     setScrollingActive(true);
@@ -1590,6 +1590,27 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       </section>
     </div>
   ) : null;
+  const terminalTimelineItems = useMemo(() => buildTerminalTimelineItems({
+    turns,
+    expandedTurns,
+    expandedSteps,
+    stepDetails,
+    stepErrors,
+    copy,
+    onToggleTurn: toggleTurn,
+    onToggleStep: (turnID, stepID, hasDetail) => void toggleStep(turnID, stepID, hasDetail),
+    onPreviewAttachment: setPreviewAttachment,
+  }), [
+    copy,
+    expandedSteps,
+    expandedTurns,
+    stepDetails,
+    stepErrors,
+    toggleStep,
+    toggleTurn,
+    turns,
+  ]);
+
   return {
     shell: {
       rootClassName: "runtime-workspace-view",
@@ -1716,17 +1737,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     },
     timeline: {
       className: "terminal-log-tree",
-      items: buildTerminalTimelineItems({
-        turns,
-        expandedTurns,
-        expandedSteps,
-        stepDetails,
-        stepErrors,
-        copy,
-        onToggleTurn: toggleTurn,
-        onToggleStep: (turnID, stepID, hasDetail) => void toggleStep(turnID, stepID, hasDetail),
-        onPreviewAttachment: setPreviewAttachment,
-      }),
+      items: terminalTimelineItems,
       emptyState: !activeSession ? (
         <div className="terminal-log-empty">{loading ? copy.loading : copy.noSession}</div>
       ) : (

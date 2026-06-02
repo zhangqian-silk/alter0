@@ -917,6 +917,38 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(output.textContent).not.toContain("&gt;");
   });
 
+  it("copies long terminal output without mirroring the payload into DOM attributes", async () => {
+    const finalOutput = "terminal copy output\n".repeat(512);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    stubTerminalTurnsFetch([
+      {
+        id: "turn-long-copy",
+        prompt: "print long output",
+        final_output: finalOutput,
+      },
+    ]);
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-final-output='turn-long-copy']")).toBeInTheDocument();
+    });
+
+    const copyButton = document.querySelector("[data-terminal-final-output='turn-long-copy'] .runtime-markdown-copy") as HTMLButtonElement;
+    expect(copyButton).toBeInTheDocument();
+    expect(copyButton).not.toHaveAttribute("data-copy-value");
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(finalOutput);
+    });
+  });
+
   it("groups terminal sessions into recency sections in the shared sidebar", async () => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);

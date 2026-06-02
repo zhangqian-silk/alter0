@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { copyTextValue } from "./copyTextValue";
 import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
 
+const COPY_VALUE_DATA_ATTRIBUTE_LIMIT = 512;
+
 type RouteCardProps = {
   title: unknown;
   type: unknown;
@@ -184,7 +186,7 @@ export function CopyValueButton({
     <button
       className={[className, copied ? "copied" : ""].filter(Boolean).join(" ")}
       type="button"
-      data-copy-value={value}
+      data-copy-value={value.length <= COPY_VALUE_DATA_ATTRIBUTE_LIMIT ? value : undefined}
       title={label}
       aria-label={label}
       onClick={() => {

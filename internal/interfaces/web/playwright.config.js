@@ -10,6 +10,7 @@ const terminalShellFlags = isWindows
   ? `-task-terminal-shell "${codexMockShell}"`
   : `-task-terminal-shell "${codexMockShell}" -task-terminal-shell-args "${codexMockShellArgs}"`;
 const playwrightEnv = buildPlaywrightEnv(process.env);
+const chromiumExecutablePath = process.env.ALTER0_PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || "";
 
 process.env.ALTER0_WEB_LOGIN_PASSWORD = playwrightEnv.ALTER0_WEB_LOGIN_PASSWORD;
 process.env.ALTER0_PLAYWRIGHT_BROWSERS_PATH = playwrightEnv.ALTER0_PLAYWRIGHT_BROWSERS_PATH;
@@ -31,6 +32,9 @@ module.exports = {
   use: {
     baseURL,
     headless: true,
+    ...(chromiumExecutablePath
+      ? { launchOptions: { executablePath: chromiumExecutablePath } }
+      : {}),
     trace: "on-first-retry",
   },
   webServer: {

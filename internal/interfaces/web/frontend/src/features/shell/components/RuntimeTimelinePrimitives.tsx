@@ -83,6 +83,9 @@ export function RuntimeMarkdownShell({
 
   return (
     <div className={joinClassNames("runtime-markdown-shell", className)}>
+      <div className={joinClassNames("runtime-markdown-body", bodyClassName)}>
+        <RuntimeMarkdownHTML html={html} />
+      </div>
       <div className={joinClassNames("runtime-markdown-toolbar", toolbarClassName)}>
         {copyValue?.trim() ? (
           <CopyValueButton
@@ -95,9 +98,6 @@ export function RuntimeMarkdownShell({
             label={copyLabel}
           />
         ) : null}
-      </div>
-      <div className={joinClassNames("runtime-markdown-body", bodyClassName)}>
-        <RuntimeMarkdownHTML html={html} />
       </div>
     </div>
   );

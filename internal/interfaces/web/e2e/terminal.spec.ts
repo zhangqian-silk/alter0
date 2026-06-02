@@ -360,6 +360,38 @@ test.describe("Terminal route", () => {
     expect(scrolledMetrics?.composerBottom ?? 0).toBeLessThanOrEqual((scrolledMetrics?.viewportBottom ?? 0) + 2);
   });
 
+  test("runs terminal mobile header actions from the first touch while the keyboard is open", async ({ page, request }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-header-touch" });
+
+    await terminalPage.composer().input().click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+
+    const mobileTitleButton = page.locator("[data-runtime-mobile-title='terminal']");
+    await expect(mobileTitleButton).toBeVisible();
+    await expect(mobileTitleButton).toBeEnabled();
+    await mobileTitleButton.dispatchEvent("pointerdown", { pointerType: "touch" });
+    await expect(page.locator("[data-runtime-details-panel='terminal']")).toBeVisible();
+    await page.locator("[data-runtime-details-backdrop='true']").click();
+    await expect(page.locator("[data-runtime-details-panel='terminal']")).toHaveCount(0);
+
+    await page.locator(".conversation-mobile-nav-toggle").dispatchEvent("pointerdown", { pointerType: "touch" });
+    await expect(page.locator(".app-shell")).toHaveClass(/nav-open/);
+    await page.locator(".mobile-backdrop").dispatchEvent("click");
+    await expect(page.locator(".app-shell")).not.toHaveClass(/nav-open/);
+
+    const previousSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
+    await page.locator("[data-runtime-mobile-primary='terminal']").dispatchEvent("pointerdown", { pointerType: "touch" });
+    await expect.poll(async () => {
+      const currentSessionID = await terminalPage.workspace().getAttribute("data-runtime-session-id");
+      return Boolean(currentSessionID && currentSessionID !== previousSessionID);
+    }).toBe(true);
+  });
+
   test("keeps mobile terminal jump controls anchored in place while the keyboard opens and closes", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
@@ -1152,6 +1184,137 @@ test.describe("Terminal route", () => {
     await expect(terminalPage.finalOutputs().last()).toContainText("line 18");
     await expect(outputLink).toHaveText("requirements.md");
     await expect(outputLink).toHaveAttribute("href", "/srv/alter0/app/alter0/docs/requirements.md");
+  });
+
+  test("copies long terminal output without storing the payload in DOM attributes", async ({ page, request }) => {
+    const command = Array.from({ length: 64 }, (_, index) => `copyable terminal output line ${index + 1}`).join(" && ");
+    const expectedOutput = `mock: ${command}`;
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (value: string) => {
+            (window as typeof window & { __alter0CopiedText?: string }).__alter0CopiedText = value;
+          },
+        },
+      });
+    });
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "long-copy" });
+
+    await terminalPage.composer().input().fill(command);
+    await terminalPage.composer().submitButton().click();
+    await expect(terminalPage.finalOutputs().last()).toContainText("copyable terminal output line 64");
+
+    const copyButton = terminalPage.finalOutputs().last().locator(".runtime-markdown-copy");
+    await expect(copyButton).toBeVisible();
+    await expect(copyButton).not.toHaveAttribute("data-copy-value", /copyable terminal output/);
+
+    await copyButton.click();
+
+    await expect.poll(async () => page.evaluate(() =>
+      (window as typeof window & { __alter0CopiedText?: string }).__alter0CopiedText || ""
+    )).toBe(expectedOutput);
+  });
+
+  test("allows terminal output text selection on the rendered page", async ({ page, request }) => {
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "select-output" });
+
+    await terminalPage.composer().input().fill("selectable terminal output sample");
+    await terminalPage.composer().submitButton().click();
+    await expect(terminalPage.finalOutputs().last()).toContainText("selectable terminal output sample");
+
+    const selectionStyles = await terminalPage.finalOutputs().last().evaluate((node) => {
+      const rendered = node.querySelector(".terminal-final-rendered") as HTMLElement | null;
+      const markdown = node.querySelector(".runtime-markdown-rendered") as HTMLElement | null;
+      const screen = document.querySelector("[data-runtime-screen='terminal']") as HTMLElement | null;
+      return {
+        renderedUserSelect: rendered ? getComputedStyle(rendered).userSelect : "",
+        markdownUserSelect: markdown ? getComputedStyle(markdown).userSelect : "",
+        renderedWebkitUserSelect: rendered ? getComputedStyle(rendered).getPropertyValue("-webkit-user-select") : "",
+        markdownContentEditable: markdown?.getAttribute("contenteditable") || "",
+        markdownInputMode: markdown?.getAttribute("inputmode") || "",
+        screenTouchAction: screen ? getComputedStyle(screen).touchAction : "",
+      };
+    });
+
+    expect(selectionStyles.renderedUserSelect).toBe("text");
+    expect(selectionStyles.markdownUserSelect).toBe("text");
+    expect(selectionStyles.renderedWebkitUserSelect).toBe("text");
+    expect(selectionStyles.markdownContentEditable).toBe("");
+    expect(selectionStyles.markdownInputMode).toBe("");
+    expect(selectionStyles.screenTouchAction).toBe("auto");
+
+    const outputBox = await page.evaluate(() => {
+      const outputs = Array.from(document.querySelectorAll(".terminal-final-output .runtime-markdown-rendered"));
+      const rendered = outputs.at(-1);
+      if (!rendered) {
+        return null;
+      }
+      const paragraph = Array.from(rendered.querySelectorAll("p")).find((node) =>
+        node.textContent?.includes("selectable terminal output sample")
+      );
+      if (!paragraph) {
+        return null;
+      }
+      const rect = paragraph.getBoundingClientRect();
+      return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+    });
+    expect(outputBox).not.toBeNull();
+    if (!outputBox) {
+      throw new Error("terminal markdown output text is not visible");
+    }
+
+    const selectedOutput = await page.evaluate(() => {
+      const outputs = Array.from(document.querySelectorAll(".terminal-final-output .runtime-markdown-rendered"));
+      const rendered = outputs.at(-1);
+      if (!rendered) {
+        return "";
+      }
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(rendered);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return selection?.toString() || "";
+    });
+    expect(selectedOutput).toContain("selectable terminal output");
+  });
+
+  test("keeps terminal output free of scripted mobile touch selection controls", async ({ page, request }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+
+    const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-native-copy" });
+
+    await terminalPage.composer().input().fill("mobile native copy terminal output");
+    await terminalPage.composer().submitButton().click();
+
+    const output = terminalPage.finalOutputs().last();
+    await expect(output).toContainText("mobile native copy terminal output");
+
+    const rendered = output.locator(".runtime-markdown-rendered");
+    await expect(rendered).toBeVisible();
+    await expect(rendered).not.toHaveAttribute("contenteditable", /.+/);
+    await expect(rendered).not.toHaveAttribute("inputmode", /.+/);
+
+    await rendered.evaluate((node) => {
+      const touch = new Touch({
+        identifier: 1,
+        target: node,
+        clientX: 24,
+        clientY: 24,
+      });
+      node.dispatchEvent(new TouchEvent("touchstart", {
+        bubbles: true,
+        cancelable: true,
+        touches: [touch],
+        targetTouches: [touch],
+        changedTouches: [touch],
+      }));
+    });
+    await page.waitForTimeout(540);
+
+    await expect(output.locator(".runtime-touch-copy")).toHaveCount(0);
+    await expect(rendered).not.toHaveClass(/is-touch-selected/);
   });
 
   test("keeps terminal scroll position when user leaves bottom", async ({ page, request }) => {
