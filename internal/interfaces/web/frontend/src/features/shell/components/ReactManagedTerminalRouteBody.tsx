@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type TouchEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../../../app/routeState";
 import { createAPIClient } from "../../../shared/api/client";
@@ -8,6 +8,7 @@ import { formatDateTime, formatDateTimeMinute } from "../../../shared/time/forma
 import { usePageActivation } from "../../../shared/visibility/usePageActivation";
 import {
   canPreviewComposerAttachment,
+  getPastedComposerImageFiles,
   readComposerFiles,
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   resolveComposerAttachmentPreviewURL,
@@ -1335,7 +1336,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     composerFileInputRef.current?.click();
   };
 
-  const handleComposerAttachmentSelection = async (files: FileList | null) => {
+  const handleComposerAttachmentSelection = async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) {
       return;
     }
@@ -1388,6 +1389,15 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         composerFileInputRef.current.value = "";
       }
     }
+  };
+
+  const handleComposerInputPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageFiles = getPastedComposerImageFiles(event.clipboardData);
+    if (imageFiles.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    void handleComposerAttachmentSelection(imageFiles);
   };
 
   const submitInput = async () => {
@@ -1786,6 +1796,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       inputProps: {
         placeholder: inputPlaceholder,
         disabled: !canInput || submitting,
+        onPaste: handleComposerInputPaste,
       },
       inputAssistContent: terminalCodexSlashCommandAssist,
       onInputChange: setInputValue,

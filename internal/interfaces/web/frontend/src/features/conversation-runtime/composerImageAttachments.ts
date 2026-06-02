@@ -53,6 +53,20 @@ export async function readComposerFiles(files: FileList | File[]): Promise<Compo
   return attachments;
 }
 
+export function getPastedComposerImageFiles(clipboardData: DataTransfer | null): File[] {
+  if (!clipboardData) {
+    return [];
+  }
+  const fileItems = Array.from(clipboardData.items || [])
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null);
+  if (fileItems.length > 0) {
+    return fileItems;
+  }
+  return Array.from(clipboardData.files || []).filter((file) => file.type.startsWith("image/"));
+}
+
 export async function readComposerImageFiles(files: FileList | File[]): Promise<ComposerImageAttachment[]> {
   const selected = Array.from(files || []);
   for (const file of selected) {

@@ -1172,6 +1172,33 @@ describe("ConversationWorkspace", () => {
     });
   });
 
+  it("adds pasted image files from the composer input to draft attachments", async () => {
+    renderWorkspace({ isMobileViewport: false });
+
+    const composerInput = screen.getByLabelText("Type a message to continue this workspace...") as HTMLTextAreaElement;
+    const imageFile = new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], "clipboard-image.svg", {
+      type: "image/svg+xml",
+    });
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        files: [imageFile],
+      },
+    });
+
+    fireEvent(composerInput, pasteEvent);
+
+    await waitFor(() => {
+      expect(runtimeMock.addDraftAttachments).toHaveBeenCalledTimes(1);
+    });
+    expect(runtimeMock.addDraftAttachments.mock.calls[0]?.[0]?.[0]).toMatchObject({
+      kind: "image",
+      name: "clipboard-image.svg",
+      contentType: "image/svg+xml",
+    });
+    expect(pasteEvent.defaultPrevented).toBe(true);
+  });
+
   it("shows only the draft character count in composer meta", () => {
     renderWorkspace({ isMobileViewport: false });
 

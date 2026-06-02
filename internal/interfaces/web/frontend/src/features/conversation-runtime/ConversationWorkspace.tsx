@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type TouchEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type PointerEvent, type ReactNode, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { formatDateTime } from "../../shared/time/format";
 import { groupSessionListItems } from "../../shared/time/sessionListGroups";
@@ -17,6 +17,7 @@ import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShe
 import {
   isComposerImageAttachment,
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
+  getPastedComposerImageFiles,
   readComposerFiles,
   type ComposerAttachment,
 } from "./composerImageAttachments";
@@ -978,7 +979,7 @@ function ConversationComposerSection({
     composerFileInputRef.current?.click();
   }, []);
 
-  const handleComposerAttachmentSelection = useCallback(async (files: FileList | null) => {
+  const handleComposerAttachmentSelection = useCallback(async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) {
       return;
     }
@@ -998,6 +999,15 @@ function ConversationComposerSection({
       }
     }
   }, [composerImageLimitError, composerRuntime]);
+
+  const handleComposerInputPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageFiles = getPastedComposerImageFiles(event.clipboardData);
+    if (imageFiles.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    void handleComposerAttachmentSelection(imageFiles);
+  }, [handleComposerAttachmentSelection]);
 
   useRuntimeComposerViewportSync({
     isMobileViewport: workbench.isMobileViewport,
@@ -1258,6 +1268,7 @@ function ConversationComposerSection({
       inputValue={composerRuntime.draft}
       inputProps={{
         maxLength: 10000,
+        onPaste: handleComposerInputPaste,
         placeholder: composerPlaceholder,
       }}
       inputAssistContent={codexSlashCommandAssist}

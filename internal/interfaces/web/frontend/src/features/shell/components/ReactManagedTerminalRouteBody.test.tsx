@@ -1183,6 +1183,37 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(payload.attachments[0].data_url).toBeUndefined();
   });
 
+  it("adds pasted image files from the terminal composer input to attachments", async () => {
+    renderTerminalRouteBody();
+
+    const composerInput = await waitFor(() => {
+      const input = document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement | null;
+      expect(input).toBeInTheDocument();
+      expect(input).not.toBeDisabled();
+      return input as HTMLTextAreaElement;
+    });
+    const image = new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], "terminal-paste.svg", {
+      type: "image/svg+xml",
+    });
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        files: [image],
+      },
+    });
+
+    fireEvent(composerInput, pasteEvent);
+
+    await waitFor(() => {
+      const fetchMock = vi.mocked(fetch);
+      expect(fetchMock.mock.calls.some(([request, init]) =>
+        String(request) === "/api/sessions/terminal-1/attachments"
+        && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+      expect(screen.getByRole("button", { name: "Preview terminal-shot.svg" })).toBeInTheDocument();
+    });
+    expect(pasteEvent.defaultPrevented).toBe(true);
+  });
+
   it("attaches files in terminal composer and submits them with stable asset references", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
