@@ -89,7 +89,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 `Chat / Agent Runtime / Terminal` 的消息区采用轻量 IM 式消息流：用户消息右对齐并使用低对比浅灰紧凑气泡，气泡高度由较小的纵向 padding 与独立消息行高控制，助手消息左对齐并弱化为无边框正文阅读流，思考过程默认收敛为 `Thinking / 已思考` 一行内联披露入口，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情，移动端也保持同页内联展开；步骤序号与标题在同一行垂直居中，长说明继续在当前消息容器内自然换行。Chat / Agent Runtime / Terminal 最终回复统一使用稳定的运行页 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块，正文不安装脚本长按选区、假选中态或编辑态兜底；逐条消息时间不在正文区显示，仅在进行中、排队或失败时保留状态标签。长会话默认优先展示最新消息，顶部提供 `Load earlier messages / 加载更早消息`，滚到顶部也会按批次渐进加载更早历史。
 `/chat`、`/agent-runtime`、`/terminal`、`/management` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 内可通过语言切换入口改为中文，运行时文案与 `document.documentElement.lang` 同步更新。登录页与工作台共享 `IBM Plex Sans + Sora` 字体基线、近白卡片表面与安全入口语气，不再保留独立的默认系统登录页观感。Web Shell 与受保护预览工作区统一要求密码登录，静态只读预览 host 保留免密访问。访问任一工作台页面触发登录时，登录页只携带当前页面 path 作为稳定回跳入口，不携带 query；进入实际运行页后，`Agent Runtime / Terminal` 使用统一 `session_id=<8位短hash>` 恢复当前会话，不把完整会话 id 暴露在 URL 与页面提示中。
 控制类与资产类页面默认采用更高信息密度的管理视图：`Profiles` 使用短字段并排的紧凑表单栅格与显式启用开关，`Tasks` 使用左侧任务列表 + 右侧运行详情的主从布局，`Memory` 的任务历史使用表格 + 详情侧栏，`Environments` 使用运行态工具栏 + 模块卡片栅格展示配置项，并在同页提供敏感值显隐、保存、重载、重启与审计视图，`Codex Accounts` 使用精简后的运行时概览条 + 当前 Codex 管理区 + 托管账号卡片列表 + 导入/登录操作侧栏：概览条优先展示当前账号、套餐、小时/周剩余额度与托管数量，维护类信息如 auth/config 路径、CLI 命令与配置来源收纳到 `Runtime Details` 折叠区；当前 Codex 管理区的 model 与思考深度选项直接来自 Codex app-server 返回的真实能力列表。`Channels / Skills / MCP / Models / Cron Jobs` 这组共享控制台卡片页统一复用稳定的响应式卡片网格，真窄屏下状态徽标会下沉到标题区下方、字段行改为单列展开，避免标题、徽标、复制按钮与多行字段互相挤压；`Agent` 的列表卡片、管理表单与详情区统一使用近白表面、浅灰说明层与浅蓝选中态。大屏保留“列表 + 侧栏”结构，中屏切换为全宽账号区 + 双侧栏，小屏回落为单列卡片，确保额度信息、当前 model、思考深度与切换入口始终可见。
-所有 React 托管页面的正文型内容统一支持安全 Markdown 渲染：消息最终回复、Process 说明、Terminal 输出、Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明与 Session Profile 的非等宽字段都会复用同一安全解析器。Chat / Agent Runtime / Terminal 最终输出统一通过稳定的 `MessageMarkdownShell` 承载，markdown HTML 与 `dangerouslySetInnerHTML` 对象按内容缓存，父级无关重渲染不得替换已渲染文本节点，从而保持浏览器原生文本选择与复制菜单。渲染器支持标题、列表、引用、链接、图片、行内代码与代码块，并过滤 `javascript:` 等不安全链接；ID、路径、密钥、配置值、时间戳和其他元数据字段继续按纯文本或等宽字段展示。
+所有 React 托管页面的正文型内容统一支持安全 Markdown 渲染：消息最终回复、Process 说明、Terminal 输出、Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明与 Session Profile 的非等宽字段都会复用同一安全解析器。Chat / Agent Runtime / Terminal 最终输出统一通过稳定的 `MessageMarkdownShell` 承载，markdown HTML 与 `dangerouslySetInnerHTML` 对象按内容缓存，父级无关重渲染不得替换已渲染文本节点，从而保持浏览器原生文本选择与复制菜单。渲染器支持标题、列表、引用、链接、图片、表格、行内代码与代码块，并过滤 `javascript:` 等不安全链接；Markdown 表格在消息容器内以真实表格结构呈现，窄屏下只允许表格块内部横向滚动，不制造页面级横向滚动；ID、路径、密钥、配置值、时间戳和其他元数据字段继续按纯文本或等宽字段展示。
 
 前端开发态支持双向代理联调：为 Go 服务设置 `ALTER0_WEB_FRONTEND_DEV_ORIGIN=http://127.0.0.1:5173` 后，访问 `http://127.0.0.1:18088/chat` 会转到 Vite dev server；为 Vite 设置 `ALTER0_WEB_BACKEND_ORIGIN=http://127.0.0.1:18088` 后，`npm run dev` 会把 `/api`、登录与健康检查请求代理回 Go 服务。
 
@@ -177,7 +177,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - 若当前消息已进入 Agent 执行链，前端页面切换、标签页隐藏、SSE 断开或浏览器主动取消请求都不会中断后端执行；连接只负责回传，最终结果仍会落到会话历史。
 - 浏览器本地缓存里的历史消息若残留 `streaming` 状态，页面恢复时会自动收敛为失败态或任务态，不再把旧消息长期停留在 `In Progress`。
 - 若 Agent 流式连接在没有可用正文时中断，前端不会立即把浏览器读流错误当作最终回复；只要该轮消息已收到 `start`，运行页会先回源当前会话详情，用服务端已持久化的最终回复或失败状态覆盖本地 `Thinking...` / `Load failed`。只有在服务端也没有可恢复状态时，才收敛为明确提示刷新的失败文案。
-- 聊天气泡支持常用 Markdown 渲染，包括标题、列表、引用、链接、行内代码与代码块；原始 HTML 不直接透传。
+- 聊天气泡支持常用 Markdown 渲染，包括标题、列表、引用、链接、表格、行内代码与代码块；原始 HTML 不直接透传，宽表格在消息内部横向滚动。
 - Chat 消息会标注实际回复来源，用于区分当前内容来自模型执行链还是 `Codex CLI` 执行链。
 - Chat / Agent 助手最终回复提供一键复制入口；若同条消息包含 `Process`，复制内容仅包含最终正文，不包含折叠的执行细节。
 
