@@ -61,9 +61,13 @@ describe("ReactManagedRouteBody", () => {
     expect(isReactManagedRouteBody("memory")).toBe(false);
 
     window.history.replaceState({}, "", "/management");
-    render(<ReactManagedRouteBody route="management" language="en" />);
+    const { container } = render(<ReactManagedRouteBody route="management" language="en" />);
 
+    expect(container.querySelector(".management-route-body")).toHaveAttribute("data-management-route", "agent");
+    expect(container.querySelectorAll("[data-management-route-group]")).toHaveLength(3);
     expect(screen.getByRole("button", { name: "Profiles" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Profiles" }).querySelector(".management-route-tab-icon")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Profiles" }).querySelector(".management-route-tab-shortcut")).toHaveTextContent("AG");
 
     fireEvent.click(screen.getByRole("button", { name: "Memory" }));
 
@@ -71,6 +75,9 @@ describe("ReactManagedRouteBody", () => {
       expect(screen.getByRole("tab", { name: "Task History" })).toBeInTheDocument();
     });
     expect(window.location.pathname).toBe("/management");
+    expect(container.querySelector(".management-route-body")).toHaveAttribute("data-management-route", "memory");
+    expect(screen.getByRole("button", { name: "Memory" })).toHaveAttribute("aria-current", "page");
+    expect(container.querySelector(".management-route-content")).toHaveAttribute("data-management-route-content", "memory");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,

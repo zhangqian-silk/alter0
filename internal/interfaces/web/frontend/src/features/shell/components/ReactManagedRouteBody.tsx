@@ -12,6 +12,7 @@ import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
 import { ReactManagedSessionsRouteBody } from "./ReactManagedSessionsRouteBody";
 import { ReactManagedTerminalRouteBody } from "./ReactManagedTerminalRouteBody";
 import { ReactManagedTasksRouteBody } from "./ReactManagedTasksRouteBody";
+import { NavIcon } from "./NavIcon";
 
 type RouteBodyRenderer = (props: { language: LegacyShellLanguage }) => React.JSX.Element;
 
@@ -70,7 +71,7 @@ function ManagementRouteBody({
     <section className="management-route-body" data-management-route={selectedRoute}>
       <nav className="management-route-nav" aria-label={copy.managementSectionsLabel}>
         {MANAGEMENT_ROUTE_GROUPS.map((group) => (
-          <section className="management-route-nav-group" key={group.heading}>
+          <section className="management-route-nav-group" key={group.heading} data-management-route-group={toI18nKey(group.heading)}>
             <h4 data-i18n={`nav.${toI18nKey(group.heading)}`}>{copy.headings[group.heading] ?? group.heading}</h4>
             <div className="management-route-nav-items">
               {group.items.map((item) => (
@@ -81,7 +82,11 @@ function ManagementRouteBody({
                   aria-current={item.route === selectedRoute ? "page" : undefined}
                   onClick={() => setSelectedRoute(item.route)}
                 >
-                  {copy.routes[item.route] ?? item.label}
+                  <span className="management-route-tab-icon" aria-hidden="true">
+                    <NavIcon icon={item.icon} />
+                  </span>
+                  <span className="management-route-tab-label">{copy.routes[item.route] ?? item.label}</span>
+                  <span className="management-route-tab-shortcut" aria-hidden="true">{item.abbr}</span>
                 </button>
               ))}
             </div>
