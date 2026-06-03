@@ -100,9 +100,7 @@ describe("PrimaryNav", () => {
         onToggleNavCollapsed={vi.fn()}
         sessionRail={{
           route: "chat",
-          title: "Sessions",
           countLabel: "2 sessions",
-          primaryActionLabel: "New",
           onPrimaryAction: onCreate,
           body: (
             <div role="list">
@@ -127,6 +125,32 @@ describe("PrimaryNav", () => {
     expect(onCreate).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the runtime session rail chrome owned by the primary navigation", () => {
+    const onCreate = vi.fn();
+
+    render(
+      <PrimaryNav
+        currentRoute="terminal"
+        language="zh"
+        navCollapsed={false}
+        onNavigate={vi.fn()}
+        onToggleLanguage={vi.fn()}
+        onToggleNavCollapsed={vi.fn()}
+        sessionRail={{
+          route: "terminal",
+          countLabel: "2 个会话",
+          onPrimaryAction: onCreate,
+          body: <div role="list"><div role="listitem">New</div></div>,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("会话列表")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "新建" }));
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
   it("hides the runtime conversation list when the sidebar is collapsed", () => {
     const { container } = render(
       <PrimaryNav
@@ -138,9 +162,7 @@ describe("PrimaryNav", () => {
         onToggleNavCollapsed={vi.fn()}
         sessionRail={{
           route: "chat",
-          title: "Sessions",
           countLabel: "2 sessions",
-          primaryActionLabel: "New",
           onPrimaryAction: vi.fn(),
           body: <div>Design Review</div>,
         }}

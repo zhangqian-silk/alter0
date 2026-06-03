@@ -53,6 +53,8 @@ export function PrimaryNav({
   const copy = getLegacyShellCopy(language);
   const navToggleLabel = navCollapsed ? copy.navExpandLabel : copy.navCollapseLabel;
   const managementLabel = copy.routeTitles.management ?? "Management";
+  const sessionRailTitle = copy.terminalSessions;
+  const sessionRailPrimaryActionLabel = copy.terminalNewShort;
   const managementActive = currentRoute === MANAGEMENT_WORKBENCH_ROUTE;
   const collapseButtonRef = useRef<HTMLButtonElement | null>(null);
   const routeButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -309,7 +311,7 @@ export function PrimaryNav({
         <section className="nav-session-rail" data-nav-session-rail={sessionRail.route}>
           <div className="nav-session-rail-head">
             <div className="nav-session-rail-copy">
-              <strong>{sessionRail.title}</strong>
+              <strong>{sessionRailTitle}</strong>
               <span>{sessionRail.countLabel}</span>
             </div>
             <button
@@ -327,7 +329,7 @@ export function PrimaryNav({
                   <path d="M5.25 10h9.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                 </svg>
               </span>
-              <span>{sessionRail.primaryActionLabel}</span>
+              <span>{sessionRailPrimaryActionLabel}</span>
             </button>
           </div>
           <div className="nav-session-rail-body">

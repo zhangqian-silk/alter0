@@ -30,7 +30,7 @@
 
 当前三类运行页已经共用 React 工作台主骨架，不属于三套页面各自实现。`chat` 与 `agent-runtime` 通过 `ConversationWorkspace` 生成 `RuntimeWorkspacePageController`，`terminal` 通过 `ReactManagedTerminalRouteBody` 生成同一类型的 controller，最终都进入 `RuntimeWorkspacePage`，共享会话列、工作区头部、消息区、Details 和 Composer 的基础布局。
 
-移动端视觉高度一致是预期结果。窄屏下三类页面统一折叠为单列工作台，并复用顶部 `Menu / Sessions / New` 操作行、移动端抽屉、Composer fixed 贴底和 `VisualViewport` 键盘约束；底部工具栏再用单一四宫格入口承载 `Agent / Model / Tools / Skills` 配置。移动端不应为了强调页面差异重新引入独立壳层。
+移动端视觉高度一致是预期结果。窄屏下三类页面统一折叠为单列工作台，并复用顶部 `Menu / 标题 / New` 操作行、移动端主导航抽屉内的会话列表、Composer fixed 贴底和 `VisualViewport` 键盘约束；底部工具栏再用单一四宫格入口承载 `Agent / Model / Tools / Skills` 配置。移动端不应为了强调页面差异重新引入独立壳层。
 
 PC 端仍存在差异，主要来自两类来源：
 
@@ -41,8 +41,9 @@ PC 端仍存在差异，主要来自两类来源：
 
 1. `RuntimeWorkspacePage`、`RuntimeSessionList`、`RuntimeWorkspaceHeader`、`RuntimeTimeline`、`RuntimeComposer` 继续作为三页共同入口。
 2. `data-runtime-view="conversation"` 与 `data-runtime-view="terminal"` 只用于领域内容、状态文案和必要的布局微调，不用于定义两套 shell chrome。
-3. Terminal 的 `terminal-*` class 保留在 timeline 内容、process、step、output、jump controls 等领域块内；会话列表、Header、Composer 和主 surface 优先迁移到共享 runtime class。
-4. PC 端差异收敛不改变路由、数据结构、终端日志语义、附件上传、发送链路和移动端行为。
+3. Terminal 的 `terminal-*` class 保留在 timeline 内容、process、step、output、jump controls 等领域块内；会话列表、Header、Composer 和主 surface 优先迁移到共享 runtime class，其中 Header 的标题、状态按钮与 `Details` 按钮必须与 Chat 页面使用同一元素，不再保留 Terminal 专属 header selector。Terminal 状态提示只进入共享 Composer 工具栏 meta，不再增加 form 外层 note 行。
+4. 主导航按 route 缓存最近一次有效 session rail，切回已访问运行页时优先复用对应会话列表，避免公共 `Sessions / New` 区域在新页面注册前回退为空态或占位态。
+5. PC 端差异收敛不改变路由、数据结构、终端日志语义、附件上传、发送链路和移动端行为。
 
 ### 主导航
 
@@ -164,7 +165,7 @@ PC 端仍存在差异，主要来自两类来源：
 
 测试要求：
 
-- 更新 `RuntimeWorkspaceFrame.test.tsx` 或 `ConversationWorkspace.test.tsx`。
+- 更新 `RuntimeWorkspacePage.test.tsx`、`RuntimeWorkspaceFrame.test.tsx` 或 `ConversationWorkspace.test.tsx`。
 - 桌面截图验证标题、状态、详情、流程入口不重叠。
 
 ### 第四阶段：Composer 工具栏
@@ -209,7 +210,7 @@ PC 端仍存在差异，主要来自两类来源：
 2. PC 端按钮、标签、短 hash、上传、发送、详情与跳转控件均不是胶囊形态。
 3. 空态背景不影响标题和说明阅读。
 4. Composer 工具栏不遮挡输入内容，附件与发送按钮可见。
-5. 移动端顶部 `Menu / Sessions / New` 操作行、workspace header 与 Composer 不重叠。
+5. 移动端顶部 `Menu / 标题 / New` 操作行、workspace header 与 Composer 不重叠。
 6. 打开/关闭 Details 后，消息区不被重新排版。
 
 ## 文档同步

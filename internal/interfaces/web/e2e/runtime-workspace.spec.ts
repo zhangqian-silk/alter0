@@ -113,7 +113,46 @@ async function readTerminalViewportGap(page: Page) {
   });
 }
 
+async function readWorkspaceHeaderMetrics(page: Page) {
+  return page.evaluate(() => {
+    const header = document.querySelector("[data-runtime-workspace-header='true']");
+    const details = document.querySelector(".workspace-header-details");
+    const title = document.querySelector(".runtime-workspace-copy.is-compact h4");
+    if (!(header instanceof HTMLElement) || !(details instanceof HTMLElement) || !(title instanceof HTMLElement)) {
+      return null;
+    }
+    const headerRect = header.getBoundingClientRect();
+    const detailsRect = details.getBoundingClientRect();
+    const titleRect = title.getBoundingClientRect();
+    return {
+      headerHeight: Math.round(headerRect.height),
+      detailsHeight: Math.round(detailsRect.height),
+      detailsTop: Math.round(detailsRect.top - headerRect.top),
+      titleHeight: Math.round(titleRect.height),
+      titleTop: Math.round(titleRect.top - headerRect.top),
+    };
+  });
+}
+
 test.describe("Runtime workspace scaffold", () => {
+  test("keeps chat and terminal desktop workspace header dimensions aligned", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 960 });
+
+    await openRuntimeRoute(page, "chat");
+    const chatMetrics = await readWorkspaceHeaderMetrics(page);
+
+    await openTerminalRoute(page);
+    const terminalMetrics = await readWorkspaceHeaderMetrics(page);
+
+    expect(chatMetrics).not.toBeNull();
+    expect(terminalMetrics).not.toBeNull();
+    expect(terminalMetrics?.headerHeight).toBe(chatMetrics?.headerHeight);
+    expect(terminalMetrics?.detailsHeight).toBe(chatMetrics?.detailsHeight);
+    expect(terminalMetrics?.detailsTop).toBe(chatMetrics?.detailsTop);
+    expect(terminalMetrics?.titleHeight).toBe(chatMetrics?.titleHeight);
+    expect(terminalMetrics?.titleTop).toBe(chatMetrics?.titleTop);
+  });
+
   test("keeps the desktop agent runtime session pane scrollable with a long session list", async ({ page }) => {
     const now = Date.now();
     const sessions = Array.from({ length: 20 }, (_, index) => {
@@ -148,7 +187,10 @@ test.describe("Runtime workspace scaffold", () => {
     await page.setViewportSize({ width: 1440, height: 960 });
     await openRuntimeRoute(page, "agent-runtime");
 
-    const sessionList = page.locator("[data-runtime-session-list='conversation']");
+    const sessionList = page.locator(
+      "[data-nav-session-rail='agent-runtime'] [data-runtime-session-list='conversation']",
+    );
+    await expect(sessionList).toHaveCount(1);
     await expect(sessionList.locator("[role='listitem']")).toHaveCount(20);
 
     const beforeScroll = await sessionList.evaluate((node) => {

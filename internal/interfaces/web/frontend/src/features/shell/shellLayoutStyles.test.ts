@@ -57,6 +57,18 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.98);");
   });
 
+  it("renders runtime session empty states as lightweight navigation copy", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.route-empty-panel\s*\{[\s\S]*?min-height:\s*120px;[\s\S]*?padding:\s*18px 16px;[\s\S]*?border-radius:\s*12px;[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.primary-nav \.nav-session-rail \.route-empty-panel\s*\{[\s\S]*?min-height:\s*88px;[\s\S]*?padding:\s*14px 10px;[\s\S]*?border-radius:\s*10px;/,
+    );
+  });
+
   it("uses one assistant-style composer surface across runtime pages", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
@@ -315,27 +327,30 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("grid-template-rows: auto auto minmax(0, 1fr) auto;");
   });
 
-  it("keeps conversation runtime header controls denser than terminal workspace tools", () => {
+  it("keeps chat and terminal workspace header controls the same size", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain("[data-runtime-view=\"conversation\"] .runtime-workspace-actions .runtime-workspace-button {");
-    expect(stylesheet).toContain("min-height: 32px;");
-    expect(stylesheet).toContain("padding: 0 10px;");
-    expect(stylesheet).toContain("font-size: 11px;");
+    expect(stylesheet).not.toContain("[data-runtime-view=\"conversation\"] .runtime-workspace-actions .runtime-workspace-button {");
+    expect(stylesheet).toMatch(
+      /\.workspace-header-actions \.runtime-workspace-button\s*\{[\s\S]*?min-height:\s*32px;[\s\S]*?padding:\s*0 10px;[\s\S]*?font-size:\s*11px;/,
+    );
   });
 
-  it("keeps terminal-runtime footer placement while sharing composer core controls", () => {
+  it("keeps terminal-runtime footer chrome aligned with the shared composer surface", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-shell {");
-    expect(stylesheet).toContain("padding: 10px 16px 14px;");
-    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(241, 245, 249, 0) 0%, rgba(241, 245, 249, 0.78) 18%, rgba(241, 245, 249, 0.96) 100%);");
+    expect(stylesheet).not.toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-composer-shell\s*\{[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(241, 245, 249,/,
+    );
+    expect(stylesheet).not.toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-composer-shell\s*\{[\s\S]*?padding:\s*10px 16px 14px;/,
+    );
+    expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-composer-note {");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-meta {");
     expect(stylesheet).toContain("min-height: 26px;");
-    expect(stylesheet).toContain("width: 38px;");
-    expect(stylesheet).toContain("height: 38px;");
+    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-meta[data-runtime-status=\"failed\"]");
     expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-composer-input {");
     expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-composer-submit {");
   });
@@ -642,6 +657,7 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
+    expect(stylesheet).not.toContain('[data-runtime-header-kind="terminal"]');
     expect(stylesheet).toMatch(/\.runtime-workspace-row\.is-compact\s*\{[\s\S]*?flex-wrap:\s*nowrap;/);
     expect(stylesheet).toMatch(/\.runtime-workspace-head\.is-compact\s*\{[\s\S]*?display:\s*block;/);
     expect(stylesheet).toContain(".runtime-workspace-copy.is-compact {");

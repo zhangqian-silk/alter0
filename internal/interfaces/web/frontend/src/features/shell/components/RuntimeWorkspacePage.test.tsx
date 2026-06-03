@@ -97,9 +97,7 @@ describe("RuntimeWorkspacePage", () => {
     await waitFor(() => {
       expect(setRuntimeSessionRail).toHaveBeenCalledWith(expect.objectContaining({
         route: "chat",
-        title: "Sessions",
         countLabel: "1 sessions",
-        primaryActionLabel: "New",
       }));
     });
     const rail = setRuntimeSessionRail.mock.calls.at(-1)?.[0];
@@ -130,4 +128,5 @@ describe("RuntimeWorkspacePage", () => {
 
     expect(setRuntimeSessionRail).toHaveBeenLastCalledWith(null);
   });
+
 });
