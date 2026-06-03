@@ -622,7 +622,9 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(terminalPrompt.querySelector(".runtime-message-bubble")).toBeInTheDocument();
     expect(terminalPrompt.querySelector(".runtime-message-user-shell")).toBeInTheDocument();
     expect(terminalFinal).toHaveClass("runtime-message", "runtime-message-assistant");
+    expect(terminalFinal).not.toHaveClass("msg", "assistant");
     expect(terminalFinal.querySelector(".runtime-message-bubble")).toBeInTheDocument();
+    expect(terminalFinal.querySelector(".runtime-message-bubble")).not.toHaveClass("msg-bubble");
     expect(terminalFinal.querySelector(".runtime-message-assistant-shell")).toBeInTheDocument();
     expect(terminalTurn.querySelector(".terminal-log-time")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-view='terminal']")).toHaveClass("runtime-workspace-view");
@@ -715,11 +717,11 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".terminal-composer-meta")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-attachment-strip='true']")).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-composer-submit='terminal'] svg")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-shell")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-toolbar")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-copy")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-final-output='turn-1'] .runtime-markdown-body")).toBeInTheDocument();
-    expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered > .runtime-markdown-rendered")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .message-markdown-shell")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .message-markdown-toolbar")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .message-markdown-copy")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .message-markdown-body")).toBeInTheDocument();
+    expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered > .message-markdown-rendered")).toBeInTheDocument();
     expect(document.querySelector("[data-terminal-final-output='turn-1'] .terminal-final-rendered")).toContainHTML(
       "<h1>Workspace</h1>",
     );
@@ -1114,7 +1116,7 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(document.querySelector("[data-terminal-final-output='turn-long-copy']")).toBeInTheDocument();
     });
 
-    const copyButton = document.querySelector("[data-terminal-final-output='turn-long-copy'] .runtime-markdown-copy") as HTMLButtonElement;
+    const copyButton = document.querySelector("[data-terminal-final-output='turn-long-copy'] .message-markdown-copy") as HTMLButtonElement;
     expect(copyButton).toBeInTheDocument();
     expect(copyButton).not.toHaveAttribute("data-copy-value");
 
@@ -1347,9 +1349,9 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     const fetchMock = vi.mocked(fetch);
-    const inputCall = fetchMock.mock.calls.find(([request, init]) =>
+    const inputCall = fetchMock.mock.calls.filter(([request, init]) =>
       String(request) === "/api/terminal/sessions/terminal-1/input"
-      && String(init?.method || "GET").toUpperCase() === "POST");
+      && String(init?.method || "GET").toUpperCase() === "POST").at(-1);
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
     expect(payload.attachments[0]).toMatchObject({
       id: "asset-terminal-1",
@@ -1634,7 +1636,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     fireEvent.click(document.querySelector("[data-terminal-step-toggle='step-1']")!);
 
     await waitFor(() => {
-      const detail = document.querySelector(".terminal-step-detail .runtime-markdown-rendered") as HTMLElement;
+      const detail = document.querySelector(".terminal-step-detail .message-markdown-rendered") as HTMLElement;
       expect(detail).toBeInTheDocument();
       expect(detail.textContent).toContain("先读取本地运行约束，然后直接给出方案");
       expect(document.querySelector(".terminal-step-content code")).not.toBeInTheDocument();

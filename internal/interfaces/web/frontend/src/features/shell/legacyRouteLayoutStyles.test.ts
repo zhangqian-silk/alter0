@@ -49,12 +49,12 @@ describe("legacy route layout stylesheet", () => {
       "utf8",
     );
 
-    expect(stylesheet).toContain(".runtime-markdown-shell {");
-    expect(stylesheet).toContain(".runtime-markdown-toolbar {");
-    expect(stylesheet).toContain(".runtime-markdown-copy {");
-    expect(stylesheet).toContain(".runtime-markdown-body {");
-    expect(stylesheet).toContain(".agent-process-step-body > .runtime-markdown-rendered > :first-child,");
-    expect(stylesheet).toContain(".agent-process-answer > .runtime-markdown-rendered > :last-child {");
+    expect(stylesheet).toContain(".message-markdown-shell {");
+    expect(stylesheet).toContain(".message-markdown-toolbar {");
+    expect(stylesheet).toContain(".message-markdown-copy {");
+    expect(stylesheet).toContain(".message-markdown-body {");
+    expect(stylesheet).toContain(".agent-process-step-body > .message-markdown-rendered > :first-child,");
+    expect(stylesheet).toContain(".agent-process-answer > .message-markdown-rendered > :last-child {");
   });
 
   it("keeps agent process detail content readable on narrow screens", () => {
@@ -66,8 +66,8 @@ describe("legacy route layout stylesheet", () => {
 
     expect(stylesheet).toContain(".agent-process-step-head > span:last-child,");
     expect(stylesheet).toContain(".conversation-process-step-head > span:last-child {");
-    expect(stylesheet).toContain(".agent-process-step-body > .runtime-markdown-rendered,");
-    expect(stylesheet).toContain(".conversation-process-step-body > .runtime-markdown-rendered {");
+    expect(stylesheet).toContain(".agent-process-step-body > .message-markdown-rendered,");
+    expect(stylesheet).toContain(".conversation-process-step-body > .message-markdown-rendered {");
     expect(stylesheet).toContain("@media (max-width: 760px) {");
     expect(stylesheet).toContain(".conversation-process-step-body {");
     expect(stylesheet).toContain("width: 100%;");
@@ -98,9 +98,9 @@ describe("legacy route layout stylesheet", () => {
       "utf8",
     );
 
-    expect(stylesheet).toContain(".terminal-final-text .runtime-markdown-toolbar,");
-    expect(stylesheet).toContain(".terminal-final-rendered .runtime-markdown-rendered > :first-child {");
-    expect(stylesheet).toContain(".terminal-final-rendered .runtime-markdown-rendered > :last-child {");
+    expect(stylesheet).toContain(".terminal-final-text .message-markdown-toolbar,");
+    expect(stylesheet).toContain(".terminal-final-rendered .message-markdown-rendered > :first-child {");
+    expect(stylesheet).toContain(".terminal-final-rendered .message-markdown-rendered > :last-child {");
   });
 
   it("version-busts legacy runtime stylesheets so repeated preview deploys cannot reuse stale process CSS", () => {

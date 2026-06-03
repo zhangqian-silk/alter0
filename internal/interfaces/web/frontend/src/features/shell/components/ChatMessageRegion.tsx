@@ -5,8 +5,8 @@ import {
   RuntimeTimeline,
   type RuntimeTimelineItem,
 } from "./RuntimeTimeline";
-import { RuntimeMarkdownHTML } from "./RuntimeTimelinePrimitives";
-import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
+import { MessageMarkdownHTML } from "./MessageMarkdownShell";
+import { renderMessageMarkdownToHTML } from "./MessageMarkdown";
 
 export type ChatMessageSnapshot = {
   id: string;
@@ -250,16 +250,15 @@ function buildChatTimelineItem(
 
   const parsed = resolveAgentExecutionContent(message, language);
   if (!parsed.steps.length) {
-    const html = renderRuntimeMarkdownToHTML(message.text);
     return {
       id: message.id,
       className: "msg assistant terminal-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
       articleProps: { "data-message-id": message.id },
       bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
-      blocks: html.trim() ? [
+      blocks: message.text.trim() ? [
         {
-          type: "markdown-shell",
-          html,
+          type: "markdown-shell" as const,
+          markdown: message.text,
           copyValue: message.status === "streaming" ? undefined : message.text.trim(),
           copyLabel: copy.copyValue,
           wrapperClassName: [
@@ -318,19 +317,21 @@ function buildChatTimelineItem(
           onToggle: () => undefined,
           toggleClassName: "agent-process-step-head conversation-process-step-head",
           bodyClassName: "agent-process-step-body conversation-process-step-body",
-          detail: step.detail ? <RuntimeMarkdownHTML html={renderRuntimeMarkdownToHTML(step.detail)} /> : null,
+          detail: step.detail ? <MessageMarkdownHTML html={renderMessageMarkdownToHTML(step.detail)} /> : null,
         })),
       },
-      ...(parsed.answer.trim() ? [{
-        type: "markdown-shell" as const,
-        html: renderRuntimeMarkdownToHTML(parsed.answer),
-        copyValue: parsed.answer,
-        copyLabel: copy.copyValue,
-        wrapperClassName: "terminal-final-output conversation-final-output",
-        wrapperProps: { "data-conversation-final-output": message.id },
-        className: "terminal-final-text agent-process-answer-shell conversation-final-text",
-        bodyClassName: "terminal-final-rendered agent-process-answer conversation-final-rendered",
-      }] : []),
+      ...(parsed.answer.trim() ? [
+        {
+          type: "markdown-shell" as const,
+          markdown: parsed.answer,
+          copyValue: parsed.answer,
+          copyLabel: copy.copyValue,
+          wrapperClassName: "terminal-final-output conversation-final-output",
+          wrapperProps: { "data-conversation-final-output": message.id },
+          className: "terminal-final-text agent-process-answer-shell conversation-final-text",
+          bodyClassName: "terminal-final-rendered agent-process-answer conversation-final-rendered",
+        },
+      ] : []),
     ],
     footer,
   };

@@ -104,13 +104,13 @@ describe("shell layout stylesheet", () => {
       /\.runtime-message\.runtime-message-assistant \.runtime-message-bubble,\s*\.conversation-message\.is-assistant \.msg-bubble\s*\{[\s\S]*?width:\s*min\(100%, 860px\);[\s\S]*?max-width:\s*min\(100%, 860px\);[\s\S]*?background:\s*transparent;[\s\S]*?padding:\s*0;/,
     );
     expect(stylesheet).toMatch(
-      /\.assistant-message-shell \.runtime-markdown-shell\s*\{[\s\S]*?display:\s*block;/,
+      /\.assistant-message-shell \.message-markdown-shell\s*\{[\s\S]*?display:\s*block;/,
     );
     expect(stylesheet).toMatch(
-      /\.assistant-message-shell \.runtime-markdown-body\s*\{[\s\S]*?display:\s*block;/,
+      /\.assistant-message-shell \.message-markdown-body\s*\{[\s\S]*?display:\s*block;/,
     );
     expect(stylesheet).toMatch(
-      /\.assistant-message-shell \.runtime-markdown-toolbar\s*\{[\s\S]*?margin-top:\s*12px;[\s\S]*?margin-bottom:\s*0;/,
+      /\.assistant-message-shell \.message-markdown-toolbar\s*\{[\s\S]*?margin-top:\s*12px;[\s\S]*?margin-bottom:\s*0;/,
     );
     expect(stylesheet).toMatch(
       /\.assistant-message-shell \.chat-md-pre\s*\{[\s\S]*?border-radius:\s*22px;[\s\S]*?background:\s*#f5f5f5;[\s\S]*?padding:\s*18px 20px;/,
@@ -355,16 +355,18 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-composer-submit {");
   });
 
-  it("locks conversation empty states in place so mobile overscroll cannot drag the header away", () => {
+  it("locks conversation empty states in place without disabling terminal long-press selection", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain(".conversation-console-panel.is-empty {");
     expect(stylesheet).toContain("overflow: hidden;");
-    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-workspace-screen.is-empty {");
+    expect(stylesheet).toContain("[data-runtime-view=\"conversation\"] .runtime-workspace-screen.is-empty {");
     expect(stylesheet).toContain("overscroll-behavior: none;");
     expect(stylesheet).toContain("touch-action: none;");
     expect(stylesheet).toContain("-webkit-overflow-scrolling: auto;");
+    expect(stylesheet).not.toMatch(/(^|\n)\.runtime-workspace-screen\.is-empty\s*\{/);
+    expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-workspace-screen.is-empty {");
   });
 
   it("keeps the conversation chat viewport in its own scroll container above the composer", () => {
@@ -843,7 +845,7 @@ describe("shell layout stylesheet", () => {
 
     expect(rootStylesheet).toMatch(/html,\s*body,\s*#frontend-root\s*\{[\s\S]*?overflow-x:\s*hidden;/);
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="conversation"\] \.runtime-workspace-panel,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-panel,[\s\S]*?\.runtime-markdown-rendered\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
+      /\[data-runtime-view="conversation"\] \.message-markdown-shell,[\s\S]*?\[data-runtime-view="terminal"\] \.message-markdown-rendered\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
     );
     expect(stylesheet).toMatch(
       /\[data-runtime-view="conversation"\] \.terminal-turn-prompt \.terminal-log-main,\s*\[data-runtime-view="terminal"\] \.terminal-turn-prompt \.terminal-log-main\s*\{[\s\S]*?max-width:\s*min\(var\(--user-message-max-width, 80%\), calc\(100% - 24px\)\);/,
@@ -927,20 +929,32 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="terminal"\] \.runtime-workspace-screen\s*\{[\s\S]*?user-select:\s*text;[\s\S]*?-webkit-user-select:\s*text;[\s\S]*?touch-action:\s*auto;/,
+      /\[data-runtime-view="terminal"\]\s*\{[\s\S]*?user-select:\s*text;[\s\S]*?-webkit-user-select:\s*text;[\s\S]*?-webkit-touch-callout:\s*default;/,
     );
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="terminal"\] \.runtime-workspace-panel,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-workspace\s*\{[\s\S]*?user-select:\s*text\s*!important;[\s\S]*?-webkit-user-select:\s*text\s*!important;/,
+      /\[data-runtime-view="terminal"\] \.runtime-workspace-screen\s*\{[\s\S]*?user-select:\s*text;[\s\S]*?-webkit-user-select:\s*text;[\s\S]*?-webkit-touch-callout:\s*default;[\s\S]*?touch-action:\s*auto;/,
     );
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="terminal"\] \.terminal-final-rendered,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-markdown-rendered,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-markdown-rendered \*\s*\{[\s\S]*?user-select:\s*text\s*!important;[\s\S]*?-webkit-user-select:\s*text\s*!important;[\s\S]*?-webkit-touch-callout:\s*default\s*!important;/,
+      /\[data-runtime-view="terminal"\] \.runtime-workspace-panel,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-workspace\s*\{[\s\S]*?user-select:\s*text;[\s\S]*?-webkit-user-select:\s*text;[\s\S]*?-webkit-touch-callout:\s*default;/,
     );
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="terminal"\] \.runtime-timeline,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-message-bubble\s*\{[\s\S]*?user-select:\s*text\s*!important;[\s\S]*?-webkit-user-select:\s*text\s*!important;/,
+      /\[data-runtime-view="conversation"\] \.message-markdown-body,[\s\S]*?\[data-runtime-view="terminal"\] \.message-markdown-rendered \*\s*\{[\s\S]*?user-select:\s*text;[\s\S]*?-webkit-user-select:\s*text;[\s\S]*?-webkit-touch-callout:\s*default;/,
     );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.terminal-final-text,[\s\S]*?\[data-runtime-view="terminal"\] \.message-markdown-shell\s*\{[\s\S]*?display:\s*block;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-timeline,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-message-bubble\s*\{[\s\S]*?user-select:\s*text;[\s\S]*?-webkit-user-select:\s*text;[\s\S]*?-webkit-touch-callout:\s*default;[\s\S]*?touch-action:\s*auto;/,
+    );
+    expect(stylesheet).not.toMatch(/\[data-runtime-view="terminal"\] \.message-markdown-rendered \*\s*\{[\s\S]*?user-select:\s*text\s*!important;/);
+    expect(stylesheet).not.toMatch(/\[data-runtime-view="terminal"\] \.runtime-message-bubble\s*\{[\s\S]*?user-select:\s*text\s*!important;/);
     expect(stylesheet).not.toContain('contenteditable="true"');
     expect(stylesheet).not.toContain("-webkit-user-modify");
     expect(stylesheet).not.toContain("caret-color: transparent");
+    expect(stylesheet).not.toMatch(/\[data-runtime-view="terminal"\] \.runtime-workspace-screen\.is-empty\s*\{[\s\S]*?touch-action:\s*none;/);
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.message-markdown-copy\s*\{[\s\S]*?min-width:\s*40px;[\s\S]*?min-height:\s*40px;/,
+    );
     expect(stylesheet).toMatch(/\.terminal-jump-cluster\s*\{[\s\S]*?pointer-events:\s*none;/);
     expect(stylesheet).toMatch(/\.terminal-jump-control\s*\{[\s\S]*?touch-action:\s*manipulation;/);
   });
@@ -975,7 +989,7 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-core.css"), "utf8");
     const bodyBlock = stylesheet.match(/\.agent-process-step-body,\s*\.conversation-process-step-body\s*\{([\s\S]*?)\n\}/)?.[1] || "";
-    const markdownBlock = stylesheet.match(/\.agent-process-step-body\s*>\s*\.runtime-markdown-rendered,\s*\.conversation-process-step-body\s*>\s*\.runtime-markdown-rendered\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const markdownBlock = stylesheet.match(/\.agent-process-step-body\s*>\s*\.message-markdown-rendered,\s*\.conversation-process-step-body\s*>\s*\.message-markdown-rendered\s*\{([\s\S]*?)\n\}/)?.[1] || "";
     const titleBlock = stylesheet.match(/\.agent-process-step-title,\s*\.conversation-process-step-title\s*\{([\s\S]*?)\n\}/)?.[1] || "";
 
     expect(bodyBlock).toContain("width: 100%;");

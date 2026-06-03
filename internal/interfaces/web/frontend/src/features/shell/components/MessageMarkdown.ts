@@ -1,5 +1,5 @@
-export function renderRuntimeMarkdownToHTML(value: string) {
-  const normalized = normalizeRuntimeMarkdownInput(value);
+export function renderMessageMarkdownToHTML(value: string) {
+  const normalized = normalizeMessageMarkdownInput(value);
   if (!normalized.trim()) {
     return "";
   }
@@ -33,7 +33,7 @@ export function renderRuntimeMarkdownToHTML(value: string) {
     .join("");
 }
 
-function normalizeRuntimeMarkdownInput(value: string) {
+function normalizeMessageMarkdownInput(value: string) {
   const normalized = String(value ?? "")
     .replace(/\r\n?/g, "\n")
     .replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00AD]/g, "");

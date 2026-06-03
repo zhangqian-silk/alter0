@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { copyTextValue } from "./copyTextValue";
-import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
+import { renderMessageMarkdownToHTML } from "./MessageMarkdown";
 
 const COPY_VALUE_DATA_ATTRIBUTE_LIMIT = 512;
 
@@ -144,7 +144,7 @@ export function RouteMarkdownContent({
       className={className || undefined}
       title={title}
       style={style}
-      dangerouslySetInnerHTML={{ __html: renderRuntimeMarkdownToHTML(safeValue) }}
+      dangerouslySetInnerHTML={{ __html: renderMessageMarkdownToHTML(safeValue) }}
     />
   );
 }
