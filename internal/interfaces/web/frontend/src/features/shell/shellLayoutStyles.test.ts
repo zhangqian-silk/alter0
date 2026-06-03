@@ -185,6 +185,56 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("background: rgba(239, 246, 255, 0.92);");
   });
 
+  it("presents management sections as a desktop index and a scrollable mobile control strip", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\.management-route-body\s*\{[\s\S]*?grid-template-columns:\s*minmax\(218px, 254px\) minmax\(0, 1fr\);/,
+    );
+    expect(stylesheet).toMatch(
+      /\.route-body\[data-route="management"\]\s*\{[\s\S]*?display:\s*block;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.management-route-nav\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?border-radius:\s*12px;/,
+    );
+    expect(stylesheet).toContain(".management-route-tab-icon {");
+    expect(stylesheet).toContain(".management-route-tab-shortcut {");
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?\.management-route-body \{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);[\s\S]*?\.management-route-nav-items \{[\s\S]*?overflow-x:\s*auto;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.management-route-nav-items \{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);[\s\S]*?overflow:\s*visible;/,
+    );
+  });
+
+  it("applies one restrained surface system across every management subsection", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".management-route-content .route-card,");
+    expect(stylesheet).toContain(".management-route-content .route-surface,");
+    expect(stylesheet).toContain(".management-route-content .route-data-table-wrap,");
+    expect(stylesheet).toContain(".management-route-content .control-task-drawer-panel,");
+    expect(stylesheet).toContain(".management-route-content .environment-toolbar,");
+    expect(stylesheet).toContain(".management-route-content .codex-accounts-panel");
+    expect(stylesheet).toMatch(
+      /\.management-route-content \.route-card,[\s\S]*?\.management-route-content \.codex-accounts-panel\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(255, 255, 255, 0\.98\) 0%, rgba\(248, 250, 252, 0\.94\) 100%\);/,
+    );
+    expect(stylesheet).toMatch(
+      /\.management-route-content \.page-filter-form,\s*\.management-route-content \.task-filter-form\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.94\);/,
+    );
+    expect(stylesheet).toMatch(
+      /\.management-route-content \.route-data-table th,\s*\.management-route-content \.route-data-table td\s*\{[\s\S]*?padding:\s*10px 12px;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.management-route-content \.route-error\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(254, 242, 242, 0\.82\);/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.management-route-content \.route-card,[\s\S]*?\.management-route-content \.codex-accounts-panel \{[\s\S]*?padding:\s*16px;/,
+    );
+  });
+
   it("gives the environments runtime header a grouped control bar instead of a flat strip of equal-weight buttons", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
