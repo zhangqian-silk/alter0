@@ -294,6 +294,7 @@ const HIDDEN_IDLE_LIST_POLL_INTERVAL_MS = 30000;
 const SCROLL_IDLE_MS = 1200;
 const SCROLL_BOTTOM_ANCHOR_THRESHOLD = 24;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
+const TERMINAL_NEW_SESSION_PLACEHOLDER_ID = "terminal-new-placeholder";
 const TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.attachments.v1";
 const TERMINAL_PENDING_DRAFT_KEY = "__pending__";
 
@@ -1518,6 +1519,13 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const canInput = !activeSession || activeStatus !== "busy";
   const isWorkspaceLive = activeSession && isLiveStatus(activeSession.status || "") ? "true" : "false";
   const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
+  const showNewSessionPlaceholder = !loadError && sessions.length === 0;
+  const visibleSessionCount = showNewSessionPlaceholder ? 1 : sessions.length;
+  const activeSessionTitle = activeSession
+    ? normalizeText(activeSession.title || activeSession.id)
+    : showNewSessionPlaceholder
+      ? copy.newShort
+      : copy.noSession;
   const terminalDetailsSummary = activeSession ? [
     { label: copy.session, value: activeSession.id, copyLabel: copy.session, mono: true },
     { label: copy.shell, value: activeSession.shell, copyLabel: copy.shell, mono: true },
@@ -1639,7 +1647,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       sessionPaneSecondaryActionClassName: "runtime-workspace-session-pane-close",
       sessionPaneSecondaryActionProps: { "data-runtime-session-pane-close": "terminal" },
       sessionPaneTitle: copy.sessions,
-      sessionPaneCountLabel: copy.sessionCount(sessions.length),
+      sessionPaneCountLabel: copy.sessionCount(visibleSessionCount),
       sessionPanePrimaryActionLabel: copy.newShort,
       onSessionPanePrimaryAction: () => void createSession(),
       sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.hideSessions : undefined,
@@ -1658,13 +1666,13 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
       onMobileNav: workbench.toggleMobileNav,
       mobileTitleButtonClassName: "conversation-mobile-title-toggle",
-      mobileTitleButtonLabel: activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession,
+      mobileTitleButtonLabel: activeSessionTitle,
       mobileTitleStatusLabel: activeSession ? renderStatus(activeSession.status || "", copy) : copy.ready,
       mobileTitleTone: activeStatus,
       mobileTitleButtonProps: {
         "aria-haspopup": "dialog",
         "data-runtime-mobile-title": "terminal",
-        disabled: !activeSession,
+        disabled: !activeSession && !showNewSessionPlaceholder,
       },
       onMobileTitle: () => setSessionDetailsOpen((current) => !current),
       mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
@@ -1676,63 +1684,86 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       onMobilePrimary: () => void createSession(),
     },
     sessionList: {
-      groups: groupedSessions.map((group) => ({
-        ...group,
-        items: group.items.map((session) => {
-          const active = session.id === activeSessionID;
-          const tone = sessionSignalTone(session.status || "");
-          return {
-            id: session.id,
-            active,
-            title: normalizeText(session.title || session.id),
-            meta: sessionLastOutputLabel(session, copy),
-            shortHash: hashSessionIDShort(normalizeText(session.id)),
-            statusTone: tone,
-            statusLabel: renderStatus(session.status || "", copy),
-            activeLabel: copy.current,
-            idleLabel: copy.sessionLabel,
-            onSelect: () => void selectSession(session.id),
-            onDelete: () => void deleteSession(session.id),
-            deleteLabel: copy.delete,
-            deleteAriaLabel: copy.delete,
-            deleting: deletingSessionID === session.id,
-            deleteProps: { "data-runtime-delete-session": session.id },
-            shellClassName: active ? "runtime-session-card is-active" : "runtime-session-card",
-            shellProps: {
-              "data-runtime-session-card": session.id,
-              "data-runtime-session-status": normalizeStatus(session.status || ""),
-              "data-runtime-session-tone": tone,
-            },
-            buttonClassName: active ? "runtime-session-select active" : "runtime-session-select",
-            buttonProps: { "data-runtime-session-select": session.id },
-          };
-        }),
-      })),
+      groups: showNewSessionPlaceholder
+        ? [{
+            key: "terminal-new",
+            label: language === "zh" ? "今天" : "Today",
+            items: [{
+              id: TERMINAL_NEW_SESSION_PLACEHOLDER_ID,
+              active: true,
+              title: copy.newShort,
+              meta: copy.noOutputMeta,
+              shortHash: "",
+              statusTone: "ready",
+              statusLabel: copy.ready,
+              activeLabel: copy.current,
+              idleLabel: copy.sessionLabel,
+              onSelect: () => undefined,
+              shellClassName: "runtime-session-card is-active",
+              shellProps: {
+                "data-runtime-session-card": TERMINAL_NEW_SESSION_PLACEHOLDER_ID,
+                "data-runtime-session-status": "ready",
+                "data-runtime-session-tone": "ready",
+              },
+              buttonClassName: "runtime-session-select active",
+              buttonProps: { "data-runtime-session-select": TERMINAL_NEW_SESSION_PLACEHOLDER_ID },
+            }],
+          }]
+        : groupedSessions.map((group) => ({
+            ...group,
+            items: group.items.map((session) => {
+              const active = session.id === activeSessionID;
+              const tone = sessionSignalTone(session.status || "");
+              return {
+                id: session.id,
+                active,
+                title: normalizeText(session.title || session.id),
+                meta: sessionLastOutputLabel(session, copy),
+                shortHash: hashSessionIDShort(normalizeText(session.id)),
+                statusTone: tone,
+                statusLabel: renderStatus(session.status || "", copy),
+                activeLabel: copy.current,
+                idleLabel: copy.sessionLabel,
+                onSelect: () => void selectSession(session.id),
+                onDelete: () => void deleteSession(session.id),
+                deleteLabel: copy.delete,
+                deleteAriaLabel: copy.delete,
+                deleting: deletingSessionID === session.id,
+                deleteProps: { "data-runtime-delete-session": session.id },
+                shellClassName: active ? "runtime-session-card is-active" : "runtime-session-card",
+                shellProps: {
+                  "data-runtime-session-card": session.id,
+                  "data-runtime-session-status": normalizeStatus(session.status || ""),
+                  "data-runtime-session-tone": tone,
+                },
+                buttonClassName: active ? "runtime-session-select active" : "runtime-session-select",
+                buttonProps: { "data-runtime-session-select": session.id },
+              };
+            }),
+          })),
       listProps: { "data-runtime-session-list": "terminal" },
       emptyState: (
         <>
           {loadError ? <p className="route-empty-panel">{loadError}</p> : null}
-          {!loadError && !loading && groupedSessions.length === 0 ? (
+          {!loadError && !loading && !showNewSessionPlaceholder && groupedSessions.length === 0 ? (
             <p className="route-empty-panel">{copy.empty}</p>
           ) : null}
         </>
       ),
     },
     header: {
-      title: activeSession ? normalizeText(activeSession.title || activeSession.id) : copy.noSession,
+      title: activeSessionTitle,
       statusLabel: activeSession ? renderStatus(activeSession.status || "", copy) : copy.ready,
       statusTone: activeStatus,
       detailsLabel: copy.details,
       detailsOpen: sessionDetailsOpen,
       onToggleDetails: () => setSessionDetailsOpen((current) => !current),
-      detailsDisabled: !activeSession,
+      detailsDisabled: !activeSession && !showNewSessionPlaceholder,
       mobileCollapsed: workbench.isMobileViewport,
       detailsSummary: terminalDetailsSummary,
       detailsBody: null,
       detailsClassName: "runtime-workspace-meta-panel workspace-details-content",
-      headerProps: { "data-runtime-header-kind": "terminal" },
-      statusButtonProps: { "data-runtime-status-indicator": activeStatus },
-      detailsButtonProps: { "data-runtime-details-toggle": "terminal" },
+      headerProps: { "data-runtime-header-kind": "conversation" },
       detailsPanelProps: { "data-runtime-details-panel": "terminal" },
     },
     screen: {
@@ -1749,7 +1780,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       className: "terminal-log-tree",
       items: terminalTimelineItems,
       emptyState: !activeSession ? (
-        <div className="terminal-log-empty">{loading ? copy.loading : copy.noSession}</div>
+        <div className="terminal-log-empty">{loading ? copy.loading : showNewSessionPlaceholder ? copy.noOutput : copy.noSession}</div>
       ) : (
         <div className="terminal-log-empty">{loading ? copy.loading : copy.noOutput}</div>
       ),
@@ -1770,8 +1801,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     composer: {
       runtimeKind: "terminal",
       shellRef: composerShellRef,
-      note: composerNote,
-      noteProps: { "data-runtime-note": "terminal", "data-runtime-status": activeStatus },
       onSubmit: (event) => {
         event.preventDefault();
         void submitInput();
@@ -1827,7 +1856,8 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       panelProps: {
         "data-runtime-config-surface": "terminal",
       },
-      metaContent: undefined,
+      metaContent: composerNote || undefined,
+      metaProps: { "data-runtime-status": activeStatus },
       addAttachmentLabel: copy.addAttachment,
       addAttachmentButtonProps: { disabled: !canInput || submitting },
       onAddAttachment: handleComposerAttachmentPicker,

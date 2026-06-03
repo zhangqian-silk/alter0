@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { WorkbenchContext, type WorkbenchSessionRail } from "./WorkbenchContext";
 import { isConversationRoute, useWorkbenchRoute } from "./routeState";
 import {
@@ -27,8 +27,57 @@ export function WorkbenchApp() {
   const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);
-  const [runtimeSessionRail, setRuntimeSessionRail] = useState<WorkbenchSessionRail | null>(null);
-  const visibleSessionRail = runtimeSessionRail?.route === route ? runtimeSessionRail : null;
+  const [runtimeSessionRails, setRuntimeSessionRails] = useState<Record<string, WorkbenchSessionRail>>({});
+  const setRuntimeSessionRail = useCallback((rail: WorkbenchSessionRail | null) => {
+    if (!rail) {
+      return;
+    }
+    setRuntimeSessionRails((current) => {
+      if (current[rail.route] === rail) {
+        return current;
+      }
+      return {
+        ...current,
+        [rail.route]: rail,
+      };
+    });
+  }, []);
+  const runtimeRouteActive = isConversationRoute(route) || route === "terminal";
+  const fallbackSessionRail = useMemo<WorkbenchSessionRail | null>(() => {
+    if (!runtimeRouteActive) {
+      return null;
+    }
+    const newLabel = getLegacyShellCopy(language).terminalNewShort;
+    return {
+      route,
+      countLabel: language === "zh" ? "1 个会话" : "1 session",
+      onPrimaryAction: () => undefined,
+      primaryActionProps: {
+        disabled: true,
+        "aria-disabled": true,
+      },
+      body: (
+        <div className="runtime-session-list" data-runtime-session-list-placeholder="true">
+          <section className="runtime-session-group menu-group">
+            <div className="runtime-session-group-items" role="list">
+              <div role="listitem" className="runtime-session-card is-active">
+                <button className="runtime-session-select active" type="button" disabled>
+                  <span className="runtime-session-main">
+                    <span className="runtime-session-title-row">
+                      <span className="runtime-session-title-copy">
+                        <span className="runtime-session-title">{newLabel}</span>
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      ),
+    };
+  }, [language, route, runtimeRouteActive]);
+  const visibleSessionRail = runtimeRouteActive ? (runtimeSessionRails[route] ?? fallbackSessionRail) : null;
   const runtimeSessionsUseNav = Boolean(visibleSessionRail);
   const navOpen = mobilePanel === "nav";
   const sessionPaneOpen = !runtimeSessionsUseNav && mobilePanel === "sessions";

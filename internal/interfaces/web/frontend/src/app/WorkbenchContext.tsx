@@ -3,9 +3,7 @@ import type { LegacyShellLanguage } from "../features/shell/legacyShellCopy";
 
 export type WorkbenchSessionRail = {
   route: string;
-  title: string;
   countLabel: string;
-  primaryActionLabel: string;
   onPrimaryAction: () => void;
   body: ReactNode;
   primaryActionClassName?: string;

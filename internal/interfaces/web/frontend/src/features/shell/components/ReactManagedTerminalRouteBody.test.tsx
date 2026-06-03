@@ -668,6 +668,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector(".runtime-workspace-head")).toHaveClass("is-compact");
     expect(document.querySelector(".runtime-workspace-head")).toHaveClass("is-sticky");
     expect(document.querySelector(".runtime-workspace-head")).toHaveAttribute("data-runtime-workspace-header", "true");
+    expect(document.querySelector(".runtime-workspace-head")).toHaveAttribute("data-runtime-header-kind", "conversation");
     expect(document.querySelector("[data-runtime-screen='terminal']")).toHaveClass("runtime-workspace-screen");
     expect(document.querySelector("[data-runtime-timeline='true']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-workspace-row")).toHaveClass("runtime-workspace-title-row", "is-compact");
@@ -740,6 +741,180 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(screen.getByTestId("terminal-skill-selector")).toBeInTheDocument();
   });
 
+  it("shows a default New terminal session placeholder when the server list is empty", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-new-1",
+            title: "New",
+            terminal_session_id: "terminal-new-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-new-1",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:00Z",
+          },
+        }, { status: 201 }));
+      }
+      if (url === "/api/terminal/sessions/terminal-new-1/input" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-new-1",
+            title: "New",
+            terminal_session_id: "terminal-new-1",
+            status: "busy",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-new-1",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:21:00Z",
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-new-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-new-1",
+            title: "New",
+            terminal_session_id: "terminal-new-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-new-1",
+            created_at: "2026-04-15T10:20:00Z",
+            updated_at: "2026-04-15T10:20:00Z",
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    const view = renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-session-select='terminal-new-placeholder']")).toBeInTheDocument();
+    });
+
+    const sessionPane = document.querySelector("[data-runtime-session-pane='terminal']") as HTMLElement;
+    const placeholderItems = within(sessionPane).getAllByRole("listitem", { hidden: true });
+    expect(placeholderItems).toHaveLength(1);
+    expect(placeholderItems[0].querySelector(".runtime-session-title")).toHaveTextContent("New");
+    expect(within(sessionPane).queryByText("No terminal sessions yet.")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-card='terminal-new-placeholder']")).toHaveClass("is-active");
+    expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute("data-runtime-session-id", "");
+    expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Details" })).not.toBeDisabled();
+    expect(document.querySelector("[data-runtime-composer-input='terminal']")).toHaveAttribute("placeholder", "Type command or prompt...");
+
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
+      target: { value: "pwd" },
+    });
+    fireEvent.click(document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-session-select='terminal-new-1']")).toBeInTheDocument();
+    });
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls.some(([request, init]) =>
+      String(request) === "/api/terminal/sessions"
+      && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+    expect(fetchMock.mock.calls.some(([request, init]) =>
+      String(request) === "/api/terminal/sessions/terminal-new-1/input"
+      && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+    expect(view.container.querySelector("[data-runtime-session-select='terminal-new-placeholder']")).not.toBeInTheDocument();
+  });
+
+  it("keeps terminal status copy inside the shared composer form instead of adding an outer note row", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [{
+            id: "terminal-failed",
+            title: "Failed shell",
+            terminal_session_id: "terminal-failed",
+            status: "failed",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            error_message: "Command exited with code 1",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+          }],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-failed" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-failed",
+            title: "Failed shell",
+            terminal_session_id: "terminal-failed",
+            status: "failed",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            error_message: "Command exited with code 1",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    const view = renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Failed shell" })).toBeInTheDocument();
+    });
+
+    expect(view.container.querySelector("[data-runtime-note='terminal']")).not.toBeInTheDocument();
+    const toolbarMeta = view.container.querySelector(".runtime-composer-form .runtime-composer-meta");
+    expect(toolbarMeta).toBeInTheDocument();
+    expect(toolbarMeta).toHaveTextContent("The last runtime failed");
+    expect(toolbarMeta).toHaveTextContent("Command exited with code 1");
+  });
+
+  it("shows the default New terminal session placeholder while the server list is loading", async () => {
+    let resolveSessions: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return new Promise<Response>((resolve) => {
+          resolveSessions = () => resolve(jsonResponse({ items: [] }));
+        });
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    expect(document.querySelector("[data-runtime-session-select='terminal-new-placeholder']")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-card='terminal-new-placeholder']")).toHaveClass("is-active");
+    expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
+
+    resolveSessions?.();
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-session-select='terminal-new-placeholder']")).toBeInTheDocument();
+    });
+  });
+
   it("shows Codex slash command candidates for an explicit Codex terminal session", async () => {
     renderTerminalRouteBody();
 
@@ -773,7 +948,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     fireEvent.change(input, {
       target: { value: "/g ship terminal candidates" },
     });
-    fireEvent.click(screen.getByRole("option", { name: /\/goal/i }));
+    const goalOption = await screen.findByRole("option", { name: /\/goal/i });
+    fireEvent.click(goalOption);
 
     expect(input.value).toBe("/goal ship terminal candidates");
   });

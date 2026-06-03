@@ -6,6 +6,7 @@ const mockCreateMobileViewportSyncController = vi.fn(() => ({
   sync: vi.fn(),
   destroy: mockViewportSyncDestroy,
 }));
+let mockRuntimeRouteHostRegistersRail = true;
 
 vi.mock("../features/shell/legacyShellState", () => ({
   isLegacyShellMobileViewport: () => mockIsLegacyShellMobileViewport(),
@@ -35,13 +36,14 @@ vi.mock("../features/shell/components/RuntimeRouteHost", async () => {
       } = useWorkbenchContext();
 
       React.useEffect(() => {
+        if (!mockRuntimeRouteHostRegistersRail) {
+          return;
+        }
         setRuntimeSessionRail?.({
           route,
-          title: "Sessions",
           countLabel: "1 sessions",
-          primaryActionLabel: "New",
           onPrimaryAction: vi.fn(),
-          body: <div data-testid="mock-session-rail-body">session rail body</div>,
+          body: <div data-testid="mock-session-rail-body">session rail body:{route}</div>,
         });
         return () => setRuntimeSessionRail?.(null);
       }, [route, setRuntimeSessionRail]);
@@ -80,6 +82,9 @@ vi.mock("../features/shell/components/PrimaryNav", () => ({
       data-language={language}
       data-session-rail-route={sessionRail?.route || ""}
     >
+      <div data-testid="primary-nav-session-rail-body">
+        {sessionRail?.body || null}
+      </div>
       <button type="button" onClick={() => onNavigate("chat")}>
         go chat
       </button>
@@ -109,6 +114,7 @@ describe("WorkbenchApp", () => {
     window.history.replaceState({}, "", "/chat");
     document.documentElement.lang = "en";
     mockIsLegacyShellMobileViewport.mockReturnValue(false);
+    mockRuntimeRouteHostRegistersRail = true;
     mockCreateMobileViewportSyncController.mockClear();
     mockViewportSyncDestroy.mockClear();
   });
@@ -181,6 +187,42 @@ describe("WorkbenchApp", () => {
     expect(shell).toHaveClass("nav-open");
     expect(shell).toHaveClass("overlay-open");
     expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
+  });
+
+  it("keeps a stable session rail shell before the runtime route registers its list", () => {
+    mockRuntimeRouteHostRegistersRail = false;
+    window.history.replaceState({}, "", "/terminal");
+
+    render(<WorkbenchApp />);
+
+    expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-route", "terminal");
+    expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "terminal");
+  });
+
+  it("reuses the last registered rail body for a runtime route while that route re-registers", async () => {
+    render(<WorkbenchApp />);
+
+    fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "terminal");
+    });
+    expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:terminal");
+
+    fireEvent.click(screen.getByRole("button", { name: "go chat" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
+    });
+
+    mockRuntimeRouteHostRegistersRail = false;
+    fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "terminal");
+    });
+    expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:terminal");
+    expect(screen.getByTestId("primary-nav-session-rail-body")).not.toHaveTextContent("New");
   });
 
   it("renders auxiliary routes inside the unified management page frame", async () => {

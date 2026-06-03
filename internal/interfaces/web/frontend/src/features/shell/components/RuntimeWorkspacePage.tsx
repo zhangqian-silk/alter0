@@ -196,9 +196,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
   ), [controller.sessionList]);
   const runtimeSessionRail = useMemo<WorkbenchSessionRail>(() => ({
     route,
-    title: controller.shell.sessionPaneTitle,
     countLabel: controller.shell.sessionPaneCountLabel,
-    primaryActionLabel: controller.shell.sessionPanePrimaryActionLabel,
     onPrimaryAction: controller.shell.onSessionPanePrimaryAction,
     primaryActionClassName: controller.shell.sessionPanePrimaryActionClassName,
     primaryActionProps: controller.shell.sessionPanePrimaryActionProps,
@@ -207,9 +205,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
     controller.shell.onSessionPanePrimaryAction,
     controller.shell.sessionPaneCountLabel,
     controller.shell.sessionPanePrimaryActionClassName,
-    controller.shell.sessionPanePrimaryActionLabel,
     controller.shell.sessionPanePrimaryActionProps,
-    controller.shell.sessionPaneTitle,
     route,
     sessionPaneBody,
   ]);

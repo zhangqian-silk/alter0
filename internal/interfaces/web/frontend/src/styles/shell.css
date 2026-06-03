@@ -385,6 +385,24 @@ body::after {
   gap: 10px;
 }
 
+.nav-session-rail .route-empty-panel {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 18px 16px;
+  border: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.58);
+  color: var(--shell-muted-strong);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: center;
+  box-shadow: none;
+}
+
 .nav-session-rail .runtime-session-group.menu-group {
   padding: 0;
   border: 0;
@@ -4595,84 +4613,6 @@ body::after {
   gap: 8px;
 }
 
-.runtime-workspace-head[data-runtime-header-kind="terminal"] {
-  min-width: 0;
-  display: grid;
-  gap: 12px;
-  padding: 16px 20px 14px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(249, 251, 254, 0.8) 100%);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-row {
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-copy {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-  flex: 1 1 auto;
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-eyebrow {
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-copy h4 {
-  color: #0f172a;
-  font-size: 20px;
-  line-height: 1.12;
-  letter-spacing: -0.03em;
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-subcopy {
-  margin: 0;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .workspace-header-actions {
-  gap: 8px;
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-button {
-  min-height: 36px;
-  padding: 0 12px;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.78);
-  color: #24415b;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-button:hover {
-  border-color: rgba(37, 99, 235, 0.16);
-  background: rgba(248, 250, 252, 0.98);
-  box-shadow: 0 14px 30px -28px rgba(15, 23, 42, 0.22);
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-button.is-quiet {
-  border-color: rgba(148, 163, 184, 0.22);
-  background: rgba(248, 250, 252, 0.92);
-  color: #475569;
-}
-
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-button.is-quiet:hover {
-  border-color: rgba(100, 116, 139, 0.22);
-  background: rgba(241, 245, 249, 0.98);
-}
-
 .runtime-workspace-mobile-header {
   display: none;
 }
@@ -4807,7 +4747,7 @@ body::after {
   align-items: center;
 }
 
-[data-runtime-view="conversation"] .runtime-workspace-actions .runtime-workspace-button {
+.workspace-header-actions .runtime-workspace-button {
   min-height: 32px;
   padding: 0 10px;
   font-size: 11px;
@@ -4992,8 +4932,7 @@ body::after {
 }
 
 .workspace-header-actions .workspace-header-status,
-[data-runtime-view="conversation"] .runtime-workspace-actions .workspace-header-status,
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .workspace-header-actions .workspace-header-status {
+[data-runtime-view="conversation"] .runtime-workspace-actions .workspace-header-status {
   min-width: 14px;
   min-height: auto;
   height: auto;
@@ -5005,8 +4944,7 @@ body::after {
 }
 
 .workspace-header-actions .workspace-header-status:hover,
-[data-runtime-view="conversation"] .runtime-workspace-actions .workspace-header-status:hover,
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .workspace-header-actions .workspace-header-status:hover {
+[data-runtime-view="conversation"] .runtime-workspace-actions .workspace-header-status:hover {
   border: 0;
   background: transparent !important;
   box-shadow: none;
@@ -6175,32 +6113,17 @@ body::after {
   text-align: left;
 }
 
-[data-runtime-view="terminal"] .runtime-composer-note {
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.82);
-  color: #5b6f86;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-}
-
-[data-runtime-view="terminal"] .runtime-composer-note[data-runtime-status="interrupted"],
-[data-runtime-view="terminal"] .runtime-composer-note[data-runtime-status="failed"],
-[data-runtime-view="terminal"] .runtime-composer-note[data-runtime-status="error"] {
+[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="interrupted"],
+[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="failed"],
+[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="error"] {
   color: #991b1b;
   border-color: rgba(248, 113, 113, 0.22);
   background: rgba(254, 242, 242, 0.96);
 }
 
-[data-runtime-view="terminal"] .runtime-composer-note[data-runtime-status="exited"],
-[data-runtime-view="terminal"] .runtime-composer-note[data-runtime-status="canceled"],
-[data-runtime-view="terminal"] .runtime-composer-note[data-runtime-status="cancelled"] {
+[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="exited"],
+[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="canceled"],
+[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="cancelled"] {
   color: #9a3412;
   border-color: rgba(251, 191, 36, 0.22);
   background: rgba(255, 247, 237, 0.96);
@@ -6371,12 +6294,6 @@ body::after {
   max-width: 48ch;
   font-size: 15px;
   line-height: 1.65;
-}
-
-[data-runtime-view="terminal"] .runtime-composer-shell {
-  border-top: 0;
-  padding: 10px 16px 14px;
-  background: linear-gradient(180deg, rgba(241, 245, 249, 0) 0%, rgba(241, 245, 249, 0.78) 18%, rgba(241, 245, 249, 0.96) 100%);
 }
 
 [data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-meta {
@@ -6569,8 +6486,7 @@ body::after {
   color: #2563eb;
 }
 
-.runtime-workspace-head,
-.runtime-workspace-head[data-runtime-header-kind="terminal"] {
+.runtime-workspace-head {
   padding: 12px 16px 10px;
   border-bottom-color: rgba(226, 232, 240, 0.92);
   background: rgba(255, 255, 255, 0.96);
@@ -6578,8 +6494,7 @@ body::after {
   backdrop-filter: none;
 }
 
-.runtime-workspace-copy h4,
-.runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-copy h4 {
+.runtime-workspace-copy h4 {
   font-size: 17px;
   line-height: 1.18;
   letter-spacing: -0.02em;
@@ -7001,6 +6916,17 @@ body::after {
     gap: 8px;
   }
 
+  .primary-nav .nav-session-rail .route-empty-panel {
+    min-height: 88px;
+    padding: 14px 10px;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #0f172a;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.42;
+  }
+
   .primary-nav .nav-session-rail .runtime-session-group-label {
     margin-bottom: 5px;
     padding: 0 2px;
@@ -7219,46 +7145,6 @@ body::after {
     flex-wrap: nowrap;
   }
 
-  .runtime-workspace-head[data-runtime-header-kind="terminal"] {
-    padding: 12px 12px 10px;
-    gap: 8px;
-  }
-
-  .runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-row {
-    gap: 10px;
-  }
-
-  .runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-copy h4 {
-    font-size: 16px;
-    line-height: 1.18;
-  }
-
-  .runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-eyebrow,
-  .runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-subcopy {
-    display: none;
-  }
-
-  .runtime-workspace-head[data-runtime-header-kind="terminal"] .workspace-header-actions {
-    justify-content: flex-end;
-    flex-wrap: nowrap;
-    gap: 6px;
-  }
-
-  .runtime-workspace-head[data-runtime-header-kind="terminal"] .workspace-header-actions .runtime-workspace-button {
-    min-height: 32px;
-    padding: 0 10px;
-    font-size: 11px;
-    white-space: nowrap;
-  }
-
-  .runtime-workspace-head[data-runtime-header-kind="terminal"] .runtime-workspace-status {
-    min-height: 32px;
-    padding: 0 9px;
-    gap: 6px;
-    font-size: 11px;
-    white-space: nowrap;
-  }
-
   .runtime-workspace-row.is-compact.is-mobile-empty {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -7435,20 +7321,6 @@ body::after {
   }
 
   /* Source contract marker: bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-offset)); */
-
-  [data-runtime-view="terminal"] .runtime-composer-shell {
-    border-top: 0;
-    padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
-    transform: translateY(calc(var(--keyboard-offset, 0px) * -1));
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(250, 252, 255, 0.94) 48%, rgba(250, 252, 255, 0.98) 100%);
-  }
-
-  [data-runtime-view="terminal"] .runtime-composer-note {
-    min-height: 26px;
-    font-size: 11px;
-    padding: 0 10px;
-    border-radius: 14px;
-  }
 
   [data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-meta {
     display: inline-flex;

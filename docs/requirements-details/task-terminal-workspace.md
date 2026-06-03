@@ -125,8 +125,8 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Web Shell 中的 Terminal 路由页主体由 React 原生实现，运行区根节点直接挂在共享 `workbench-pane-shell` 下，不再额外经过 `route-view / route-body` 包裹，避免从 Chat/Agent Runtime 切换时出现布局与滚动容器跳变。
 - Terminal 页面直接请求 `/api/terminal/sessions`、`/api/terminal/sessions/{session_id}`、`/api/terminal/sessions/{session_id}/turns/{turn_id}/steps/{step_id}` 等接口，并在 React 内维护会话恢复、轮询、输入、删除、step 展开、滚动定位与本地草稿恢复。
 - Terminal 的 session pane 容器、workspace 容器与主视图外壳在 React rerender 期间必须保持稳定实例，不能因语言切换、path 路由变化或壳层状态更新而清空正在运行的终端内容。
-- Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构，同时允许 Terminal 继续注入自身的状态按钮、详情面板、Process、跳转四键与 Composer 控件；详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
-- React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、工作区头部、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管。
+- Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构；Terminal 只注入当前状态值、详情面板内容、Process、跳转四键与 Composer 控件，工作区标题、状态按钮和 `Details` 按钮必须使用 Chat/Agent Runtime 同一组共享 header 元素。详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
+- React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管；工作区头部仅复用共享 `RuntimeWorkspaceHeader` 元素，不再保留 Terminal 专属 header kind、标题元素或 details toggle。
 - 移动端 Terminal Composer 在输入框聚焦且软键盘抬起后，必须按 `VisualViewport` 推导的键盘偏移直接上移到可见底边；长历史输出继续由 `terminal-chat-screen` 独立滚动，不允许通过增加 footer padding 或让 workspace 改走外层滚动把输入区挤出视口。
 - 移动端 Terminal 在键盘抬起期间，工作区正文只消费 Composer 相对静态位置额外上移的那段遮挡量；Terminal 不得把 Composer 自身的静态高度重复计入 viewport shrink，输入框上方不能残留一条与键盘高度等值的空白带。
 - `DELETE /api/terminal/sessions/{session_id}` 删除 Terminal 会话与工作区。
@@ -186,7 +186,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 - Terminal 新会话先使用占位标题，早期多轮内可按更具体输入升级标题。
 - 输入区聚焦期间，轮询刷新不得销毁输入框、焦点、草稿和滚动位置。
-- Terminal 页面输入条支持通用附件体验：输入条采用“上层输入区 + 下层工具栏”的双层结构，工具栏左侧提供正方形低圆角的会话设置与回形针附件入口，右侧收口发送动作；输入区需保持足够横向留白，避免长命令或多段追问输入时出现压窄观感；选择图片或粘贴剪贴板图片后立即显示缩略图并支持点击预览，粘贴图片时仅拦截图片文件并进入附件草稿，普通文本粘贴继续保持 textarea 原生行为；选择普通文件后显示文件条目与移除动作；发送后，图片会继续在历史区回显该轮缩略图，普通文件至少保留发送侧条目与执行侧 workspace 路径语义。当前活动 Terminal 会话的 shell 明确为 Codex 时，输入以 `/` 开头需在 Composer 输入区下方展示 Web 适用的 Codex CLI 斜线命令候选，候选按命令作用分组顺序展示并使用短动作说明，支持点击补全当前斜线片段；权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选，非 Codex shell 会话不显示该候选。
+- Terminal 页面输入条支持通用附件体验：输入条采用“上层输入区 + 下层工具栏”的双层结构，并继承 `Chat / Agent Runtime` 的共享 Composer 外壳背景、底部留白与圆角 surface；工具栏左侧提供正方形低圆角的会话设置与回形针附件入口，右侧收口发送动作；失败、退出与附件错误提示进入工具栏 meta，不得在共享 Composer form 外额外渲染 Terminal 专属 note 行；输入区需保持足够横向留白，避免长命令或多段追问输入时出现压窄观感；选择图片或粘贴剪贴板图片后立即显示缩略图并支持点击预览，粘贴图片时仅拦截图片文件并进入附件草稿，普通文本粘贴继续保持 textarea 原生行为；选择普通文件后显示文件条目与移除动作；发送后，图片会继续在历史区回显该轮缩略图，普通文件至少保留发送侧条目与执行侧 workspace 路径语义。当前活动 Terminal 会话的 shell 明确为 Codex 时，输入以 `/` 开头需在 Composer 输入区下方展示 Web 适用的 Codex CLI 斜线命令候选，候选按命令作用分组顺序展示并使用短动作说明，支持点击补全当前斜线片段；权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选，非 Codex shell 会话不显示该候选。
 - Terminal `Details` 面板在摘要字段后提供公有 Skill 选择区；勾选项作用于后续输入，不展示或允许取消 Agent 私有 Skill。新 Terminal 会话在首次加载公有 Skill 列表时默认勾选全部可用公有 Skill，仅排除 `default-nl` 与 `memory`，用户后续调整只影响当前会话的后续输入。
 - 移动端输入法候选确认后，只要输入框仍聚焦，页面不得立即重绘回顶。
 - Terminal 最终输出按 Chat 助手消息样式渲染，并继续使用浅蓝轻科幻主题下的冷色阅读容器与一键复制入口；移动端最终输出需保持静态正文语义，由浏览器原生长按选中和复制菜单承载片段复制，不得安装脚本长按选区、假选中态、浮动复制层、输入框或编辑态兜底。
@@ -195,9 +195,10 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Terminal `Process` 的步骤头采用固定三列契约：左侧独立展开图标列、中间标题主列、右侧耗时与状态列。说明类步骤标题只能在中间主列内单行截断，不能因为少渲染图标节点或错误交换 DOM 顺序而被塞进图标窄列。
 - Terminal `Process` 的步骤详情按内容语义分流：`terminal / diff / code` 等输出类块继续保留预格式化等宽阅读；`text / message / reasoning / plan / log` 等说明类块沿用运行页 markdown 富文本容器，并在展示前移除零宽断行字符、归一化“每字一行”的病态段落，保证历史详情、轮询恢复与新触发步骤都维持同一可读性。
 - Terminal 发送按钮在首次点击时必须立即切到 pending 反馈；若当前尚未存在 active session，前端先创建 Terminal 会话再发送输入，但按钮和可访问名称需在会话创建阶段就进入 `Sending...` 禁用态，避免用户误判首击无效并重复提交。
-- Terminal 会话栏、工作区、输入区、跳转控件与 Process 区统一采用浅蓝渐变背景、低对比玻璃感面板和冷色高亮，确保与 Chat / Agent 的整体视觉语言一致。
-- Terminal 桌面端维持旧版 master-detail 布局关系：左侧会话列表复用共享列表项与共享运行页会话列宽，承载轻量红黄绿波纹信号、标题、单行时间与 8 位短标识元信息，以及尾侧更多按钮；元信息不再展示 `Last output / 最近输出` 这类固定前缀，也不展示完整 `terminal_session_id`。右侧工作区头部收敛为标题、信号式状态按钮与 `Details` 工具栏，运行状态不在列表项内额外渲染独立徽标；Terminal route body 顶部不再额外挂载页面级说明 hero。
-- Terminal React 版继续保留 `terminal-*` DOM class 与数据钩子，但会话栏、工作区容器、工作区头部和窄屏顶部 `Menu / Sessions / New` 操作行需与 Chat / Agent Runtime 复用同一套工作台表面语义，避免同属运行页却出现独立壳层节奏。
+- Terminal 会话栏、工作区、输入区、跳转控件与 Process 区统一采用浅蓝渐变背景、低对比面板和冷色高亮，确保与 Chat / Agent 的整体视觉语言一致；输入区外壳不得再使用比共享 Composer 更深的 Terminal 专属底色、更贴底的专属 padding 或外置状态提示行。
+- Terminal 桌面端维持旧版 master-detail 布局关系：左侧会话列表复用共享列表项与共享运行页会话列宽，承载标题、处理中 loading 和尾侧更多按钮；元信息不再展示 `Last output / 最近输出` 这类固定前缀，也不展示完整 `terminal_session_id`。右侧工作区头部直接复用共享标题、信号式状态按钮与 `Details` 工具栏，运行状态不在列表项内额外渲染独立徽标；Terminal route body 顶部不再额外挂载页面级说明 hero。
+- Terminal React 版继续保留 `terminal-*` DOM class 与数据钩子，但会话栏、工作区容器和窄屏顶部 `Menu / 标题 / New` 操作行需与 Chat / Agent Runtime 复用同一套工作台表面语义；工作区头部不得通过 Terminal 专属 selector 派生不同标题或 `Details` 按钮，避免同属运行页却出现独立壳层节奏。
+- Terminal 服务端会话列表加载完成且为空时，默认在共享会话列表中展示一条未持久化的 `New` 占位会话；该占位会话保持选中态并进入工作区，首次发送输入或添加附件时再创建真实 Terminal 会话并替换占位项。
 - `1100px` 及以下的窄屏 Terminal 页面中，会话抽屉入口统一由壳层头部 `Sessions` 按钮承接；Terminal 工作区头部不再重复渲染第二枚 `Sessions` 按钮，避免顶部操作区出现重复入口。
 - 窄屏 Terminal 会话抽屉头部左侧统一显示两行 `Sessions + 总数` 文案，右侧仅保留 `New / Hide` 紧凑按钮；`Hide` 不再带额外后缀说明，并与其他运行页头部按钮保持相同高度、字级与内边距。
 - Terminal 路由页沿用单层信息架构：页面级说明由工作区头部独占，不再在工作区上方叠加第二层 route hero 或重复简介。
@@ -205,10 +206,10 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 ### 移动端
 
 - Terminal 移动端采用紧凑 Header、独立滚动消息区与底部输入条。
-- Terminal 在 `1100px` 及以下窄屏下由 `ReactManagedTerminalRouteBody` 直接输出顶部 `Menu / Sessions / New` 操作行，分别打开主导航抽屉、会话抽屉与终端会话创建动作。
+- Terminal 在 `1100px` 及以下窄屏下通过共享运行页壳层输出顶部 `Menu / 标题 / New` 操作行：`Menu` 打开主导航抽屉，当前标题承接会话列表入口，`New` 触发终端会话创建动作。
 - Terminal 的 `Menu / Sessions` 抽屉在真机上优先保证稳定性；遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不再叠加多层位移、条目级顺序动画或整块白板式平推动画。
 - Terminal 窄屏消息阅读继续由 `terminal-chat-screen` 作为唯一纵向滚动容器；`workbench-main / chat-pane / terminal-view` 只负责提供满高和滚动隔离，不允许因高度未闭合或外层 `overflow: hidden` 造成消息页无法滑动。
-- 工作区头部收敛为会话标题、信号式状态按钮和紧凑工具栏；状态信号固定贴在会话标题左侧，右侧工具区只保留 `Details` 入口；`Details` 面板默认先展示高密度摘要字段，并以顶层浮层方式覆盖在工作区上方，面板内部独立滚动，点击浮层外区域或按 `Escape` 可关闭，打开时不得推动输出区或会话正文重新排版；真手机宽度下允许标题与工具栏换行，`Details` 不得被长标题挤出屏幕。
+- 工作区头部收敛为共享会话标题、信号式状态按钮和紧凑工具栏；状态信号固定贴在会话标题左侧，右侧工具区只保留共享 `Details` 入口，Terminal 不单独渲染不同规格的标题或详情按钮；`Details` 面板默认先展示高密度摘要字段，并以顶层浮层方式覆盖在工作区上方，面板内部独立滚动，点击浮层外区域或按 `Escape` 可关闭，打开时不得推动输出区或会话正文重新排版；真手机宽度下允许共享标题区按运行页 workbar 规则收缩，`Details` 不得被长标题挤出屏幕。
 - 长输出阅读取消消息与区块头部吸顶，保持自然文档流滚动。
 - 右侧低圆角四键组支持回到顶部、上一条、下一条与回到底部；`上一条` 固定指向当前视口中最上方的可见 turn，`下一条` 在单条 turn 可见时指向真实下一条、在多条 turn 同屏可见时指向最下方的可见 turn；但只要最后一条 turn 已经参与当前视口，无论底部剩余内容是否还存在，都隐藏 `下一条`，剩余阅读交给 `回到底部`。当用户刚触发一轮新对话、提交请求尚未稳定到最新 turn 结构时，`下一个` 还需额外先抑制显示，待 turn 结构稳定后再恢复正常计算。按钮本体不参与正文文本选中与长按选中，只提供点击跳转；当前 `terminal-chat-screen` 一旦存在有效文本选区，四键需立即隐藏，避免压住复制拖拽路径与选区手柄。
 - 浏览器底部工具栏伸缩、软键盘收起或视口回弹后，底部输入条立即回贴可见底边。
@@ -219,7 +220,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Terminal 移动端的命令与 prompt 气泡必须维持自然整词换行：shell 命令、路径、flag 与短参数块优先按空格或真实长单词边界换行，不允许把 `/usr/bin/bash -lc 'pwd'` 这类输入压成逐字或逐 token 断裂的碎行。
 - Terminal 移动端的 `Process` 步骤头同样必须保持独立图标列：展开箭头、标题和状态不互相挤占，长中文标题优先在主列内截断，不允许退化成“每行只剩一个字”的窄列显示。
 - Terminal 移动端的 `Process` 说明类步骤详情同样必须保持整列阅读宽度：中文说明、路径、命令片段和 markdown 文本在当前步骤容器内自然换行，不允许因 `<pre>` 预格式化或异常换行字符把正文压成逐字竖排窄列。
-- Terminal 移动端的顶部操作行、prompt 气泡、`Process` 容器、最终输出和 Composer 都必须绑定到当前运行页宽度；长路径、超长错误日志、inline code、pre/code 与 diff 只能在自身内容块内换行或内部横向滚动，不得制造页面级横向滚动，也不得把 `Menu / Sessions / New` 或输入区挤出可视宽度。
+- Terminal 移动端的顶部操作行、prompt 气泡、`Process` 容器、最终输出和 Composer 都必须绑定到当前运行页宽度；长路径、超长错误日志、inline code、pre/code 与 diff 只能在自身内容块内换行或内部横向滚动，不得制造页面级横向滚动，也不得把 `Menu / 标题 / New` 或输入区挤出可视宽度。
 - Terminal 移动端的 `Menu` 与 `Sessions` 抽屉共用同一份当前面板状态：从顶部操作行或工作区工具栏打开会话列表时，主导航抽屉必须立即收起；重新打开 `Menu` 时，会话列表也必须立即关闭，避免双层覆盖和残留展开态。
 - Terminal 会话抽屉内的条目统一采用工作台列表项语义：头部展示当前态信号，正文展示标题与同一行中的时间信息、8 位短标识，删除入口固定在尾侧；列表容器保持独立滚动并输出稳定 `role="list"` 语义，视觉层级保持克制，不使用多余胶囊装饰；PC 端状态、详情、发送、上传、短标识与跳转控件统一使用低圆角矩形节奏。
 - Terminal 在移动端键盘弹起和收回期间，除 Composer 外的公共控件都保持原位；工作区头部与状态区不跟随键盘位移做额外动画，右侧四键定位条在输入框聚焦期间隐藏。
