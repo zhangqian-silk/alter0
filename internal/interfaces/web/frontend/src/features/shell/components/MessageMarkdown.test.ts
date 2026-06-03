@@ -41,6 +41,29 @@ describe("renderMessageMarkdownToHTML", () => {
     expect(container.textContent).not.toContain("&gt;");
   });
 
+  it("renders pipe-delimited markdown tables as structured table blocks", () => {
+    const container = document.createElement("div");
+    container.innerHTML = renderMessageMarkdownToHTML([
+      "四个产品的用户记忆管理可以归成四种风格：",
+      "",
+      "| 产品 | 记忆模型 | 管理方式 | 关键取法 |",
+      "| --- | --- | --- | --- |",
+      "| ChatGPT | 平台托管的用户记忆 + 历史引用 | `Saved Memories` 是长期记忆；`Reference Chat History` 从过往对话中取相关上下文 | 用户可查看、删除、关闭临时聊天绕过记忆 |",
+      "| Claude Code | 本地 Markdown 指令 + 自动项目记忆 | `CLAUDE.md`、`.claude/rules/`、`~/.claude/CLAUDE.md` 管长期规则 | `/memory` 可审计 |",
+      "",
+      "表格后继续渲染普通段落。",
+    ].join("\n"));
+
+    const table = container.querySelector(".chat-md-table");
+    expect(table).not.toBeNull();
+    expect(container.querySelector(".chat-md-table-wrap")).toContainElement(table);
+    expect(container.querySelectorAll("thead th")).toHaveLength(4);
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(container.querySelector("tbody td code")).toHaveTextContent("Saved Memories");
+    expect(container.textContent).toContain("表格后继续渲染普通段落。");
+    expect(container.innerHTML).not.toContain("| --- | --- |");
+  });
+
   it("strips invisible break characters that would otherwise split process text at every glyph", () => {
     const container = document.createElement("div");
     container.innerHTML = renderMessageMarkdownToHTML("下\u200B面\u200B给\u200B出\u200B一\u200B条\u200B接\u200B入\u200B路\u200B径");
