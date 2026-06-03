@@ -92,6 +92,50 @@ describe("shared viewport mobileViewport", () => {
     expect(next.cssVars.keyboardOffset).toBe("0px");
   });
 
+  it("keeps the active keyboard inset through transient full-height visual viewport reports", () => {
+    const previous = {
+      ...createDefaultMobileViewportState(),
+      baselineHeight: 932,
+      width: 430,
+      height: 620,
+      keyboardOffset: 312,
+      lastAlignedAt: 1000
+    };
+
+    const transient = deriveMobileViewportState(previous, {
+      mobileViewport: true,
+      windowWidth: 430,
+      windowHeight: 932,
+      viewportWidth: 430,
+      viewportHeight: 932,
+      viewportOffsetTop: 0,
+      hasActiveInput: true,
+      currentTimeMS: 1120
+    });
+
+    expect(transient.state.height).toBe(620);
+    expect(transient.state.keyboardOffset).toBe(312);
+    expect(transient.cssVars).toEqual({
+      mobileViewportHeight: "620px",
+      keyboardOffset: "312px"
+    });
+
+    const settled = deriveMobileViewportState(previous, {
+      mobileViewport: true,
+      windowWidth: 430,
+      windowHeight: 932,
+      viewportWidth: 430,
+      viewportHeight: 932,
+      viewportOffsetTop: 0,
+      hasActiveInput: true,
+      currentTimeMS: 1260
+    });
+
+    expect(settled.state.height).toBe(932);
+    expect(settled.state.keyboardOffset).toBe(0);
+    expect(settled.cssVars.keyboardOffset).toBe("0px");
+  });
+
   it("resets the baseline when viewport width changes substantially", () => {
     const previous = {
       ...createDefaultMobileViewportState(),

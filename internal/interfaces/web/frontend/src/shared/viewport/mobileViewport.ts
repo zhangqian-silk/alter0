@@ -21,6 +21,7 @@ export type DeriveMobileViewportInput = {
   viewportHeight?: number;
   viewportOffsetTop?: number;
   hasActiveInput: boolean;
+  currentTimeMS?: number;
 };
 
 export type DeriveMobileViewportResult = {
@@ -83,6 +84,34 @@ export function deriveMobileViewportState(
     Math.round(input.viewportWidth ?? input.windowWidth),
   );
   const widthChanged = Math.abs(viewportWidth - previousState.width) > MOBILE_VIEWPORT_WIDTH_RESET_DELTA_PX;
+  const currentTimeMS = Number.isFinite(input.currentTimeMS) ? Number(input.currentTimeMS) : Date.now();
+  const keyboardRecentlyAligned =
+    previousState.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+    && (currentTimeMS - (previousState.lastAlignedAt || 0)) < MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS;
+  if (
+    input.hasActiveInput
+    && !widthChanged
+    && keyboardRecentlyAligned
+    && previousState.baselineHeight > 0
+    && previousState.height > 0
+    && effectiveHeight >= previousState.baselineHeight - 2
+  ) {
+    return {
+      state: {
+        ...previousState,
+        width: viewportWidth
+      },
+      cssVars: {
+        mobileViewportHeight: `${previousState.height}px`,
+        keyboardOffset: `${previousState.keyboardOffset}px`
+      },
+      changed: {
+        width: false,
+        height: false,
+        keyboardOffset: false
+      }
+    };
+  }
   const keyboardClosing =
     !input.hasActiveInput
     && previousState.keyboardOffset >= MOBILE_VIEWPORT_SYNC_THRESHOLD_PX
@@ -117,6 +146,9 @@ export function deriveMobileViewportState(
       width: viewportWidth,
       height: effectiveHeight,
       keyboardOffset,
+      lastAlignedAt: keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+        ? currentTimeMS
+        : previousState.lastAlignedAt
     },
     cssVars: {
       mobileViewportHeight: `${effectiveHeight}px`,
