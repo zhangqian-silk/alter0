@@ -1,11 +1,11 @@
-import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
+import { renderMessageMarkdownToHTML } from "./MessageMarkdown";
 
-describe("renderRuntimeMarkdownToHTML", () => {
-  it("renders markdown images, links, and fenced code through the shared runtime contract", () => {
-    const html = renderRuntimeMarkdownToHTML([
-      "# Runtime",
+describe("renderMessageMarkdownToHTML", () => {
+  it("renders markdown images, links, and fenced code through the shared message markdown contract", () => {
+    const html = renderMessageMarkdownToHTML([
+      "# Message",
       "",
-      "![Diagram](https://cdn.example.com/runtime-diagram.png)",
+      "![Diagram](https://cdn.example.com/message-diagram.png)",
       "",
       "Visit [workspace](/chat).",
       "",
@@ -22,7 +22,7 @@ describe("renderRuntimeMarkdownToHTML", () => {
   });
 
   it("drops unsafe urls while preserving readable fallback content", () => {
-    const html = renderRuntimeMarkdownToHTML([
+    const html = renderMessageMarkdownToHTML([
       "[bad](javascript:alert(1))",
       "",
       "![oops](javascript:alert(2))",
@@ -35,7 +35,7 @@ describe("renderRuntimeMarkdownToHTML", () => {
 
   it("decodes html entities into readable text before rendering", () => {
     const container = document.createElement("div");
-    container.innerHTML = renderRuntimeMarkdownToHTML("Chat &gt; Details &gt; Model &amp; Quota");
+    container.innerHTML = renderMessageMarkdownToHTML("Chat &gt; Details &gt; Model &amp; Quota");
 
     expect(container.textContent).toContain("Chat > Details > Model & Quota");
     expect(container.textContent).not.toContain("&gt;");
@@ -43,7 +43,7 @@ describe("renderRuntimeMarkdownToHTML", () => {
 
   it("strips invisible break characters that would otherwise split process text at every glyph", () => {
     const container = document.createElement("div");
-    container.innerHTML = renderRuntimeMarkdownToHTML("下\u200B面\u200B给\u200B出\u200B一\u200B条\u200B接\u200B入\u200B路\u200B径");
+    container.innerHTML = renderMessageMarkdownToHTML("下\u200B面\u200B给\u200B出\u200B一\u200B条\u200B接\u200B入\u200B路\u200B径");
 
     expect(container.textContent).toContain("下面给出一条接入路径");
     expect(container.textContent).not.toContain("\u200B");
@@ -51,7 +51,7 @@ describe("renderRuntimeMarkdownToHTML", () => {
 
   it("collapses pathological single-glyph line breaks back into a readable paragraph", () => {
     const container = document.createElement("div");
-    container.innerHTML = renderRuntimeMarkdownToHTML([
+    container.innerHTML = renderMessageMarkdownToHTML([
       "下",
       "面",
       "给",

@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-04-27
+> Last update: 2026-06-03
 
 ## 领域边界
 
@@ -161,10 +161,11 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Agent `process` 事件到达后，前端需在 `done` 前实时更新当前助手消息的步骤面板，而不是等待最终正文收口后一次性生成过程展示。
 - Agent 消息中的 `Process` 优先使用服务端返回的结构化 `process_steps` 渲染；仅对缺失结构化步骤的历史消息保留文本解析兼容。
 - 结构化 `process_steps` 需要在 SSE `done`、Task 结果回填与会话历史恢复后保持一致，刷新页面不得把已完成消息重新退化为仅正文展示。
-- `Chat / Agent Runtime / Terminal` 的消息输出结构统一收敛到轻量 IM 式消息流：用户输入右对齐并使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制，助手回复左对齐并弱化为无边框正文阅读流，Agent 与 Terminal 中间步骤默认按 `Thinking / 已思考` 轻量披露行展示，展开后在当前消息内进入步骤详情，移动端也保持同页内联展开；助手最终答复保留 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块；消息正文区不显示逐条时间，仅在进行中、排队、失败等非稳定状态下保留状态标签。新增运行页若呈现用户输入与助手输出，必须复用 `RuntimeTimeline` 与 `runtime-message / runtime-message-user / runtime-message-assistant / runtime-message-bubble` 契约，避免继续产生页面私有气泡格式。
+- `Chat / Agent Runtime / Terminal` 的消息输出结构统一收敛到轻量 IM 式消息流：用户输入右对齐并使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制，助手回复左对齐并弱化为无边框正文阅读流，Agent 与 Terminal 中间步骤默认按 `Thinking / 已思考` 轻量披露行展示，展开后在当前消息内进入步骤详情，移动端也保持同页内联展开；Chat / Agent Runtime / Terminal 助手最终答复统一使用稳定的运行页 markdown shell，正文先于复制工具栏渲染，复制动作位于正文下方，代码块独立呈现为浅灰内容块；消息正文区不显示逐条时间，仅在进行中、排队、失败等非稳定状态下保留状态标签。新增运行页若呈现用户输入与助手输出，必须复用 `RuntimeTimeline` 与 `runtime-message / runtime-message-user / runtime-message-assistant / runtime-message-bubble` 契约，避免继续产生页面私有气泡格式。
 - 长会话默认只渲染最新一批消息；当顶部仍存在更早历史时，消息区需展示 `Load earlier messages / 加载更早消息` 入口，并在滚到顶部时自动按批次扩展更早消息。扩展历史时需保持当前阅读位置，不得强制跳回底部。
 - `Process` 步骤标题与正文在桌面和移动端都必须保持整列阅读宽度；步骤序号、展开图标、标题与状态信息需在同一行垂直居中；长中文说明、路径、命令片段与 Markdown 文本优先在当前消息容器内自然换行，不得在真机窄屏下塌缩成逐字竖排窄列。
 - Conversation 展示层必须在渲染 `process_steps.title/detail` 与最终 markdown 前移除零宽断行字符，并对“每字一行”的病态段落做可读性归一化；该修正同时适用于流式消息、Task 回填和历史会话恢复。
+- Agent Runtime 与 Terminal 的最终 Markdown 输出不得复用需要额外 CSS 强制补丁的旧 shell 结构；其正文 DOM 必须保持普通静态文本语义，不绑定 `touchstart / pointerdown` 选区脚本，不设置 `contenteditable / inputmode / tabindex`，不创建浮动复制层或假选中 class。复制按钮只读取组件闭包中的原始文本，不把长 payload 镜像到 DOM 属性。
 - `Chat / Agent Runtime` 的消息时间线在内容较少时必须保持顶部收口；短用户消息、折叠后的 `Thinking / 已思考` 披露行、最终回复与对应状态标签继续贴近各自消息气泡排布，不得因为时间线容器满高拉伸而出现大块垂直空白。
 - `Chat / Agent Runtime` 打开已有消息的会话、刷新恢复当前会话或切换到其他会话后，时间线初始视口必须落到最新消息所在底部；当前活动会话内发送新消息后，时间线必须随新增消息回到底部，使本轮用户消息与助手占位立即可见；若用户已经在同一会话内手动滚动阅读历史，后续流式 patch、Process 展开状态变化和草稿输入不得强制把视口拉回底部。
 - 助手最终回复提供一键复制；若消息含 Process，复制内容只包含最终正文。
@@ -192,6 +193,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 聊天气泡支持标题、列表、引用、链接、行内代码与代码块。
 - 助手消息中的 markdown 图片按消息媒体统一以内联图片显示，使用浏览器懒加载策略，并保持链接可直接打开原图。
 - React 托管页面的正文型内容统一复用运行页 Markdown 渲染器：Memory 长期/天级/强制/说明文档、Task 请求与结果、任务日志和产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明以及 Agent Runtime `Session Profile` 中的非等宽字段，都按 Markdown 正文渲染。ID、路径、密钥、配置值、时间戳和分支名等元数据保持纯文本或等宽展示，避免把机器标识误解析成富文本。
+- Chat / Agent Runtime / Terminal final output 统一使用 `MessageMarkdownShell` 承载最终答复，解析规则、复制按钮、选择行为和 DOM 稳定性都由同一组件负责；相同 markdown 不得因父级无关重渲染反复写入 `innerHTML`，也不得依赖 Terminal 视图级 `user-select !important` 兜底。
 - 原始 HTML 不直接透传。
 - 长路径、超长单词、代码块和 diff 只允许在内容块内部横向滚动，不撑破外层消息容器。
 
@@ -225,7 +227,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 桌面宽屏下 Chat 消息列与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区统一保留 `960px` 最大阅读宽度，但外层工作台也必须同步收缩导航与间距，避免在中等桌面宽度下出现阅读区限宽而整体布局仍然拥挤、遮挡或越界。
 - Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致会话卡片、消息节点或 route 内容被清空重建。
 - React 壳层发出的主导航跳转、新建会话、欢迎区快捷提示、语言切换、导航折叠同步与会话历史折叠同步事件，必须由当前前端运行时在同一页面内完成确认、路由更新、快捷发送或会话创建，且不能要求用户重复点击或依赖额外脚本注入的全局函数。
-- `Chat / Agent Runtime / Terminal` 提供统一的右侧箭头四键阅读定位条 `回到顶部 / 上一条 / 下一条 / 回到底部`：滚动超过阈值后显示顶部与底部入口，上一条与下一条按钮按当前可见消息块或 Terminal turn 实时重算目标；内容折叠、展开或重排后，按钮显隐与目标需同步更新。`回到底部` 只在最后一条内容的底边仍位于视口外时显示；若最后只剩空白或底部 padding，不得继续显示伪底部跳转。移动端四键定位条固定停靠在工作区右侧、输入区上沿之上，四个按钮统一为独立圆形触达面，不得退回正文流内或压住底部输入区；当前消息滚动容器一旦存在有效文本选区，四键需立刻隐藏并释放命中区，待选区清空后再恢复。Terminal 输出正文、Markdown 正文和代码结果必须保持可选中文本语义，正文区域允许浏览器原生拖选、长按选中与复制；移动端最终输出不得安装脚本长按选区、假选中态、浮动复制层或编辑态兜底，避免覆盖浏览器原生复制菜单。
+- `Chat / Agent Runtime / Terminal` 提供统一的右侧箭头四键阅读定位条 `回到顶部 / 上一条 / 下一条 / 回到底部`：滚动超过阈值后显示顶部与底部入口，上一条与下一条按钮按当前可见消息块或 Terminal turn 实时重算目标；内容折叠、展开或重排后，按钮显隐与目标需同步更新。`回到底部` 只在最后一条内容的底边仍位于视口外时显示；若最后只剩空白或底部 padding，不得继续显示伪底部跳转。移动端四键定位条固定停靠在工作区右侧、输入区上沿之上，四个按钮统一为独立圆形触达面，不得退回正文流内或压住底部输入区；当前消息滚动容器一旦存在有效文本选区，四键需立刻隐藏并释放命中区，待选区清空后再恢复。Terminal 输出正文、Agent Runtime 最终 Markdown 正文和代码结果必须保持可选中文本语义，正文区域允许浏览器原生拖选、长按选中与复制；移动端最终输出不得安装脚本长按选区、假选中态、浮动复制层、编辑态兜底或视图级强制选择补丁，避免覆盖浏览器原生复制菜单。
 - 上述阅读定位条必须作为消息区 overlay 渲染，不参与 `.runtime-timeline` 或 `terminal-chat-screen` 的正文高度计算；空白会话、少量消息和短 turn 场景下，消息区不得因为按钮组自身占位出现额外滚动条或被拉出超出可视区的空白高度。
 
 ## 移动端体验

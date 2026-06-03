@@ -4073,6 +4073,12 @@ body::after {
   align-items: stretch;
 }
 
+[data-runtime-view="terminal"] {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
 .runtime-workspace-session-pane {
   background: transparent;
   min-height: 0;
@@ -5415,16 +5421,16 @@ body::after {
   line-height: 1.62;
 }
 
-.assistant-message-shell .runtime-markdown-toolbar {
+.assistant-message-shell .message-markdown-toolbar {
   margin-top: 12px;
   margin-bottom: 0;
 }
 
-.assistant-message-shell .runtime-markdown-shell {
+.assistant-message-shell .message-markdown-shell {
   display: block;
 }
 
-.assistant-message-shell .runtime-markdown-body {
+.assistant-message-shell .message-markdown-body {
   display: block;
 }
 
@@ -5517,7 +5523,7 @@ body::after {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
-.runtime-workspace-screen.is-empty {
+[data-runtime-view="conversation"] .runtime-workspace-screen.is-empty {
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: none;
@@ -6177,12 +6183,12 @@ body::after {
 [data-runtime-view="terminal"] .terminal-final-output,
 [data-runtime-view="conversation"] .terminal-final-text,
 [data-runtime-view="terminal"] .terminal-final-text,
-[data-runtime-view="conversation"] .runtime-markdown-shell,
-[data-runtime-view="terminal"] .runtime-markdown-shell,
-[data-runtime-view="conversation"] .runtime-markdown-body,
-[data-runtime-view="terminal"] .runtime-markdown-body,
-[data-runtime-view="conversation"] .runtime-markdown-rendered,
-[data-runtime-view="terminal"] .runtime-markdown-rendered {
+[data-runtime-view="conversation"] .message-markdown-shell,
+[data-runtime-view="terminal"] .message-markdown-shell,
+[data-runtime-view="conversation"] .message-markdown-body,
+[data-runtime-view="terminal"] .message-markdown-body,
+[data-runtime-view="conversation"] .message-markdown-rendered,
+[data-runtime-view="terminal"] .message-markdown-rendered {
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
@@ -6203,8 +6209,8 @@ body::after {
 [data-runtime-view="terminal"] .terminal-log-text,
 [data-runtime-view="conversation"] .terminal-final-rendered,
 [data-runtime-view="terminal"] .terminal-final-rendered,
-[data-runtime-view="conversation"] .runtime-markdown-rendered,
-[data-runtime-view="terminal"] .runtime-markdown-rendered,
+[data-runtime-view="conversation"] .message-markdown-rendered,
+[data-runtime-view="terminal"] .message-markdown-rendered,
 [data-runtime-view="conversation"] .chat-md-inline-code,
 [data-runtime-view="terminal"] .chat-md-inline-code {
   overflow-wrap: anywhere;
@@ -6225,14 +6231,16 @@ body::after {
   padding-right: 24px;
   user-select: text;
   -webkit-user-select: text;
+  -webkit-touch-callout: default;
   touch-action: auto;
 }
 
 [data-runtime-view="terminal"] .runtime-workspace-panel,
 [data-runtime-view="terminal"] .runtime-workspace-body,
 [data-runtime-view="terminal"] .runtime-workspace {
-  user-select: text !important;
-  -webkit-user-select: text !important;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
 }
 
 [data-runtime-view="terminal"] .runtime-timeline {
@@ -6243,39 +6251,44 @@ body::after {
 [data-runtime-view="terminal"] .runtime-message-assistant,
 [data-runtime-view="terminal"] .runtime-message-assistant .runtime-message-bubble,
 [data-runtime-view="terminal"] .terminal-final-text,
-[data-runtime-view="terminal"] .runtime-markdown-shell {
+[data-runtime-view="terminal"] .message-markdown-shell {
   display: block;
 }
 
-[data-runtime-view="terminal"] .terminal-final-text,
-[data-runtime-view="terminal"] .terminal-final-rendered,
-[data-runtime-view="terminal"] .runtime-markdown-body,
-[data-runtime-view="terminal"] .runtime-markdown-rendered,
-[data-runtime-view="terminal"] .runtime-markdown-rendered * {
-  user-select: text !important;
-  -webkit-user-select: text !important;
-  -webkit-touch-callout: default !important;
+[data-runtime-view="terminal"] .runtime-timeline,
+[data-runtime-view="terminal"] .terminal-log-tree,
+[data-runtime-view="terminal"] .terminal-turn-card,
+[data-runtime-view="terminal"] .terminal-turn-output,
+[data-runtime-view="terminal"] .terminal-final-output,
+[data-runtime-view="terminal"] .runtime-message,
+[data-runtime-view="terminal"] .runtime-message-bubble {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: auto;
+}
+
+[data-runtime-view="conversation"] .message-markdown-body,
+[data-runtime-view="terminal"] .message-markdown-body,
+[data-runtime-view="conversation"] .message-markdown-rendered,
+[data-runtime-view="terminal"] .message-markdown-rendered,
+[data-runtime-view="conversation"] .message-markdown-rendered *,
+[data-runtime-view="terminal"] .message-markdown-rendered * {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
   touch-action: auto;
   cursor: text;
 }
 
-[data-runtime-view="terminal"] .runtime-markdown-body {
+[data-runtime-view="terminal"] .message-markdown-body {
   position: relative;
 }
 
-[data-runtime-view="terminal"] .runtime-timeline,
-[data-runtime-view="terminal"] .terminal-turn-card,
-[data-runtime-view="terminal"] .terminal-final-output,
-[data-runtime-view="terminal"] .runtime-message-bubble {
-  user-select: text !important;
-  -webkit-user-select: text !important;
-}
-
-[data-runtime-view="terminal"] .runtime-workspace-screen.is-empty {
-  overflow: hidden;
-  overscroll-behavior: none;
-  touch-action: none;
-  -webkit-overflow-scrolling: auto;
+[data-runtime-view="terminal"] .message-markdown-copy {
+  min-width: 40px;
+  min-height: 40px;
+  touch-action: manipulation;
 }
 
 [data-runtime-view="terminal"] .conversation-empty-state {

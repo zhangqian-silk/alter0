@@ -1,10 +1,9 @@
 import { memo, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import {
   RuntimeAttachmentGallery,
-  RuntimeMarkdownHTML,
-  RuntimeMarkdownShell,
   type RuntimeAttachmentGalleryItem,
 } from "./RuntimeTimelinePrimitives";
+import { MessageMarkdownHTML, MessageMarkdownShell } from "./MessageMarkdownShell";
 
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -41,7 +40,7 @@ export type RuntimeTimelineBlock =
     }
   | {
       type: "markdown-shell";
-      html: string;
+      markdown: string;
       copyValue?: string;
       copyLabel?: string;
       wrapperClassName?: string;
@@ -160,11 +159,11 @@ function RuntimeTimelineBlockNode({ block }: { block: RuntimeTimelineBlock }) {
         />
       );
     case "rich-text":
-      return <RuntimeMarkdownHTML html={block.html} className={block.className} />;
+      return <MessageMarkdownHTML html={block.html} className={block.className} />;
     case "markdown-shell":
       const shell = (
-        <RuntimeMarkdownShell
-          html={block.html}
+        <MessageMarkdownShell
+          markdown={block.markdown}
           copyValue={block.copyValue}
           copyLabel={block.copyLabel}
           className={block.className}

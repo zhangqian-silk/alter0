@@ -23,9 +23,9 @@ import {
 } from "./codexSlashCommands";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
 import type { RuntimeTimelineItem, RuntimeTimelineProcessStep } from "./RuntimeTimeline";
-import { RuntimeMarkdownHTML } from "./RuntimeTimelinePrimitives";
+import { MessageMarkdownHTML } from "./MessageMarkdownShell";
 import { normalizeText, RouteMarkdownContent } from "./RouteBodyPrimitives";
-import { renderRuntimeMarkdownToHTML } from "./RuntimeMarkdown";
+import { renderMessageMarkdownToHTML } from "./MessageMarkdown";
 import { ScrollJumpStrip } from "./ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
 
@@ -2022,8 +2022,8 @@ function buildTerminalTimelineItems({
                       </div>
                     ) : null}
                     {narrativeBlock ? (
-                      <RuntimeMarkdownHTML
-                        html={renderRuntimeMarkdownToHTML(content)}
+                      <MessageMarkdownHTML
+                        html={renderMessageMarkdownToHTML(content)}
                         className="terminal-step-content terminal-step-richtext"
                       />
                     ) : (
@@ -2037,8 +2037,8 @@ function buildTerminalTimelineItems({
               {!error && !detail?.blocks?.length && fallbackContent ? (
                 <section className={`route-surface-dark terminal-rich-block type-${stepType || "text"}`}>
                   {isTerminalNarrativeBlockType(stepType) ? (
-                    <RuntimeMarkdownHTML
-                      html={renderRuntimeMarkdownToHTML(fallbackContent)}
+                    <MessageMarkdownHTML
+                      html={renderMessageMarkdownToHTML(fallbackContent)}
                       className="terminal-step-content terminal-step-richtext"
                     />
                   ) : (
@@ -2088,12 +2088,12 @@ function buildTerminalTimelineItems({
     if (normalizeText(turn.final_output) !== "-") {
       blocks.push({
         type: "markdown-shell" as const,
-        html: renderRuntimeMarkdownToHTML(turn.final_output || ""),
+        markdown: turn.final_output || "",
         copyValue: turn.final_output,
         copyLabel: copy.copy,
-        wrapperClassName: "msg assistant terminal-final-output terminal-turn-output runtime-message runtime-message-assistant",
+        wrapperClassName: "terminal-final-output terminal-turn-output runtime-message runtime-message-assistant",
         wrapperProps: { "data-terminal-final-output": turn.id },
-        bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
+        bubbleClassName: "runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
         className: "terminal-final-text",
         toolbarClassName: "terminal-final-toolbar",
         copyButtonClassName: "terminal-final-copy",

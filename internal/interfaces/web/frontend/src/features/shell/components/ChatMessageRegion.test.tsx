@@ -93,10 +93,10 @@ describe("ChatMessageRegion", () => {
     expect(article).toHaveClass("runtime-message");
     expect(article).toHaveClass("runtime-message-assistant");
     expect(article).toHaveClass("is-assistant");
-    expect(article.querySelector(".runtime-markdown-shell")).toBeInTheDocument();
-    expect(article.querySelector(".runtime-markdown-toolbar")).toBeInTheDocument();
-    expect(article.querySelector(".runtime-markdown-copy")).toBeInTheDocument();
-    expect(article.querySelector(".runtime-markdown-body")).toBeInTheDocument();
+    expect(article.querySelector(".message-markdown-shell")).toBeInTheDocument();
+    expect(article.querySelector(".message-markdown-toolbar")).toBeInTheDocument();
+    expect(article.querySelector(".message-markdown-copy")).toBeInTheDocument();
+    expect(article.querySelector(".message-markdown-body")).toBeInTheDocument();
     expect(article.querySelector(".terminal-final-output")).toBeInTheDocument();
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
     expect(article.querySelector(".assistant-message-shell")).toBeInTheDocument();
@@ -207,6 +207,30 @@ describe("ChatMessageRegion", () => {
     expect(article.textContent).not.toContain("&gt;");
   });
 
+  it("renders agent-runtime assistant output through the shared runtime markdown shell", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            route: "agent-runtime",
+            text: "Agent result with `selectable` markdown.",
+          }),
+        ]}
+      />,
+    );
+
+    const article = document.querySelector("[data-message-id='message-1']") as HTMLElement;
+    const output = article.querySelector("[data-conversation-final-output='message-1']") as HTMLElement;
+    expect(output).toBeInTheDocument();
+    expect(output.querySelector(".message-markdown-shell")).toBeInTheDocument();
+    expect(output.querySelector(".message-markdown-body")).toBeInTheDocument();
+    expect(output.querySelector(".message-markdown-toolbar")).toBeInTheDocument();
+    expect(output.querySelector(".message-markdown-rendered")).toBeInTheDocument();
+    expect(output.querySelector(".chat-md-inline-code")).toHaveTextContent("selectable");
+  });
+
   it("renders user image attachments from workspace original asset URLs", () => {
     render(
       <ChatMessageRegion
@@ -277,8 +301,8 @@ describe("ChatMessageRegion", () => {
     expect(article).toHaveTextContent("Verify regression coverage");
     const answer = document.querySelector(".agent-process-answer") as HTMLElement;
     expect(answer).toBeInTheDocument();
-    expect(answer).toHaveClass("runtime-markdown-body");
-    expect(answer.querySelector(".runtime-markdown-rendered")).toBeInTheDocument();
+    expect(answer).toHaveClass("message-markdown-body");
+    expect(answer.querySelector(".message-markdown-rendered")).toBeInTheDocument();
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
   });
 

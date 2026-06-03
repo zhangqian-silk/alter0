@@ -1475,12 +1475,12 @@
   padding: 0;
 }
 
-.terminal-final-text .runtime-markdown-toolbar,
+.terminal-final-text .message-markdown-toolbar,
 .terminal-final-toolbar {
   margin-bottom: 8px;
 }
 
-.terminal-final-text .runtime-markdown-copy,
+.terminal-final-text .message-markdown-copy,
 .terminal-final-copy {
   background: rgba(255, 255, 255, 0.96);
 }
@@ -1497,11 +1497,11 @@
   text-size-adjust: 100%;
 }
 
-.terminal-final-rendered .runtime-markdown-rendered > :first-child {
+.terminal-final-rendered .message-markdown-rendered > :first-child {
   margin-top: 0;
 }
 
-.terminal-final-rendered .runtime-markdown-rendered > :last-child {
+.terminal-final-rendered .message-markdown-rendered > :last-child {
   margin-bottom: 0;
 }
 

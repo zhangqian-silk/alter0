@@ -1,5 +1,3 @@
-import { CopyValueButton } from "./RouteBodyPrimitives";
-
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
 }
@@ -47,58 +45,6 @@ export function RuntimeAttachmentGallery({
           <figcaption>{item.name}</figcaption>
         </figure>
       ))}
-    </div>
-  );
-}
-
-export function RuntimeMarkdownHTML({ html, className }: { html: string; className?: string }) {
-  return (
-    <div
-      className={joinClassNames("runtime-markdown-rendered", className)}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  );
-}
-
-export function RuntimeMarkdownShell({
-  html,
-  copyValue,
-  copyLabel,
-  className,
-  toolbarClassName,
-  copyButtonClassName,
-  bodyClassName,
-}: {
-  html: string;
-  copyValue?: string;
-  copyLabel?: string;
-  className?: string;
-  toolbarClassName?: string;
-  copyButtonClassName?: string;
-  bodyClassName?: string;
-}) {
-  if (!html.trim()) {
-    return null;
-  }
-
-  return (
-    <div className={joinClassNames("runtime-markdown-shell", className)}>
-      <div className={joinClassNames("runtime-markdown-body", bodyClassName)}>
-        <RuntimeMarkdownHTML html={html} />
-      </div>
-      <div className={joinClassNames("runtime-markdown-toolbar", toolbarClassName)}>
-        {copyValue?.trim() ? (
-          <CopyValueButton
-            className={joinClassNames(
-              "runtime-markdown-copy",
-              "route-field-copy",
-              copyButtonClassName,
-            )}
-            value={copyValue}
-            label={copyLabel}
-          />
-        ) : null}
-      </div>
     </div>
   );
 }

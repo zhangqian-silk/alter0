@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CopyValueButton, RouteFieldRow } from "./RouteBodyPrimitives";
-import { RuntimeMarkdownShell } from "./RuntimeTimelinePrimitives";
+import { MessageMarkdownShell } from "./MessageMarkdownShell";
 
 describe("RouteFieldRow", () => {
   afterEach(() => {
@@ -82,28 +82,28 @@ describe("RouteFieldRow", () => {
 
   it("renders markdown body before the copy toolbar so browser text selection follows visual order", () => {
     const { container } = render(
-      <RuntimeMarkdownShell
-        html="<p>selectable terminal output</p>"
+      <MessageMarkdownShell
+        markdown="selectable terminal output"
         copyValue="selectable terminal output"
         copyLabel="Copy output"
       />,
     );
 
-    const shell = container.querySelector(".runtime-markdown-shell");
-    expect(shell?.children.item(0)).toHaveClass("runtime-markdown-body");
-    expect(shell?.children.item(1)).toHaveClass("runtime-markdown-toolbar");
+    const shell = container.querySelector(".message-markdown-shell");
+    expect(shell?.children.item(0)).toHaveClass("message-markdown-body");
+    expect(shell?.children.item(1)).toHaveClass("message-markdown-toolbar");
   });
 
   it("renders markdown output as static selectable text without entering edit mode", () => {
     const { container } = render(
-      <RuntimeMarkdownShell
-        html="<p>selectable terminal output</p>"
+      <MessageMarkdownShell
+        markdown="selectable terminal output"
         copyValue="selectable terminal output"
         copyLabel="Copy output"
       />,
     );
 
-    const rendered = container.querySelector(".runtime-markdown-rendered");
+    const rendered = container.querySelector(".message-markdown-rendered");
     expect(rendered).not.toHaveAttribute("contenteditable");
     expect(rendered).not.toHaveAttribute("aria-readonly");
     expect(rendered).not.toHaveAttribute("inputmode");
@@ -113,14 +113,14 @@ describe("RouteFieldRow", () => {
   it("does not install scripted touch selection controls on markdown output", () => {
     vi.useFakeTimers();
     const { container } = render(
-      <RuntimeMarkdownShell
-        html="<p>selectable terminal output</p>"
+      <MessageMarkdownShell
+        markdown="selectable terminal output"
         copyValue="selectable terminal output"
         copyLabel="Copy output"
       />,
     );
 
-    const rendered = container.querySelector(".runtime-markdown-rendered") as HTMLElement;
+    const rendered = container.querySelector(".message-markdown-rendered") as HTMLElement;
     const touch = { clientX: 12, clientY: 18 };
     const touchStart = new Event("touchstart", { bubbles: true, cancelable: true });
     Object.defineProperty(touchStart, "touches", { value: [touch] });
