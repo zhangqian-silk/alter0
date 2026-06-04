@@ -25,18 +25,18 @@ import (
 )
 
 const (
-	defaultCodexCommand             = "codex"
-	defaultCodexSandbox             = "danger-full-access"
-	defaultLinuxSandboxBwrapFeature = "use_linux_sandbox_bwrap"
-	defaultWorkspaceRootDirName     = ".alter0"
-	workspaceDirectoryName          = "workspaces"
-	workspaceTerminalDirName        = "terminal"
-	workspaceSessionsDirName        = "sessions"
-	terminalTurnAttachmentDirName   = "input-attachments"
-	terminalCodexHomeDirName        = "codex-home"
-	maxEntryPageLimit               = 200
-	terminalHostUnavailableMessage  = "terminal host unavailable"
-	terminalCompactionResetMessage  = "codex context compaction failed; next input will start a fresh runtime thread in the same workspace"
+	defaultCodexCommand               = "codex"
+	defaultCodexSandbox               = "danger-full-access"
+	defaultLinuxSandboxBwrapFeature   = "use_linux_sandbox_bwrap"
+	defaultWorkspaceRootDirName       = ".alter0"
+	workspaceDirectoryName            = "workspaces"
+	workspaceTerminalDirName          = "terminal"
+	workspaceSessionsDirName          = "sessions"
+	terminalTurnAttachmentDirName     = "input-attachments"
+	terminalCodexHomeDirName          = "codex-home"
+	maxEntryPageLimit                 = 200
+	terminalHostUnavailableMessage    = "terminal host unavailable"
+	terminalCompactionRecoveryMessage = "codex context compaction failed; next input will continue the previous runtime thread in the same workspace"
 )
 
 var (
@@ -907,14 +907,12 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	}
 
 	if isCodexCompactionFailure(stderrText, turnErr) {
-		item.threadID = ""
-		item.summary.TerminalSessionID = item.summary.ID
-		item.summary.ErrorMessage = terminalCompactionResetMessage
-		item.appendEntryLocked("system", "codex runtime thread reset after context compaction failure")
+		item.summary.ErrorMessage = terminalCompactionRecoveryMessage
+		item.appendEntryLocked("system", "codex previous runtime thread retained after context compaction failure")
 		if turn != nil {
 			turn.Status = "failed"
 			turn.FinishedAt = now
-			item.newSystemStepLocked(turn, "Thread reset", terminalCompactionResetMessage, now, "failed")
+			item.newSystemStepLocked(turn, "Compaction failed", terminalCompactionRecoveryMessage, now, "failed")
 			turn.promoteFinalOutput()
 		}
 		item.mu.Unlock()

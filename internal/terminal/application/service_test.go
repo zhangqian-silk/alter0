@@ -908,7 +908,7 @@ func TestServiceInputFailsFastOnCodexAuthError(t *testing.T) {
 	}
 }
 
-func TestServiceResetsThreadAfterCodexCompactionFailure(t *testing.T) {
+func TestServiceKeepsThreadAfterCodexCompactionFailure(t *testing.T) {
 	service := newTestService("compact-error")
 
 	session, err := service.Create(CreateRequest{
@@ -923,22 +923,22 @@ func TestServiceResetsThreadAfterCodexCompactionFailure(t *testing.T) {
 	}
 
 	failedSnapshot, failedEntries := waitForSessionError(t, service, "owner-compact", session.ID)
-	if failedSnapshot.TerminalSessionID != session.ID {
-		t.Fatalf("expected failed compaction to reset terminal session id to %q, got %q (error=%q, entries=%+v)", session.ID, failedSnapshot.TerminalSessionID, failedSnapshot.ErrorMessage, failedEntries)
+	if failedSnapshot.TerminalSessionID != "thread-first-prompt" {
+		t.Fatalf("expected failed compaction to keep terminal session id, got %q (error=%q, entries=%+v)", failedSnapshot.TerminalSessionID, failedSnapshot.ErrorMessage, failedEntries)
 	}
-	if !strings.Contains(failedSnapshot.ErrorMessage, "fresh runtime thread") {
+	if !strings.Contains(failedSnapshot.ErrorMessage, "continue the previous runtime thread") {
 		t.Fatalf("expected compaction recovery message, got %q", failedSnapshot.ErrorMessage)
 	}
 
-	foundResetEntry := false
+	foundRecoveryEntry := false
 	for _, entry := range failedEntries {
-		if strings.Contains(entry.Text, "thread reset after context compaction failure") {
-			foundResetEntry = true
+		if strings.Contains(entry.Text, "previous runtime thread retained after context compaction failure") {
+			foundRecoveryEntry = true
 			break
 		}
 	}
-	if !foundResetEntry {
-		t.Fatalf("expected thread reset entry, got %+v", failedEntries)
+	if !foundRecoveryEntry {
+		t.Fatalf("expected thread retention entry, got %+v", failedEntries)
 	}
 
 	if _, err := service.Input("owner-compact", session.ID, "second prompt"); err != nil {
@@ -946,8 +946,8 @@ func TestServiceResetsThreadAfterCodexCompactionFailure(t *testing.T) {
 	}
 
 	recoveredSnapshot, entries := waitForSessionEntries(t, service, "owner-compact", session.ID, 4)
-	if recoveredSnapshot.TerminalSessionID != "thread-second-prompt" {
-		t.Fatalf("expected fresh thread after compaction reset, got %q", recoveredSnapshot.TerminalSessionID)
+	if recoveredSnapshot.TerminalSessionID != "thread-first-prompt" {
+		t.Fatalf("expected previous thread after compaction failure, got %q", recoveredSnapshot.TerminalSessionID)
 	}
 	if got := entries[len(entries)-1].Text; got != "mock:second prompt" {
 		t.Fatalf("expected second prompt to run on fresh thread, got %q", got)
