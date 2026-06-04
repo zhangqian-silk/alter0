@@ -172,6 +172,57 @@ describe("ScrollJumpStrip", () => {
     });
   });
 
+  it("continues moving upward after the current visible item has been aligned", async () => {
+    const containerRef = createRef<HTMLElement>();
+    const { container } = render(
+      <section ref={containerRef}>
+        <article data-message-id="message-1">message-1</article>
+        <article data-message-id="message-2">message-2</article>
+        <article data-message-id="message-3">message-3</article>
+        <article data-message-id="message-4">message-4</article>
+        <ScrollJumpStrip
+          scope="chat"
+          language="zh"
+          containerRef={containerRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+        />
+      </section>,
+    );
+
+    const scrollContainer = container.firstElementChild as HTMLElement;
+    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-message-id]")];
+    applyScrollableMetrics(scrollContainer, targets, [0, 160, 320, 480], {
+      clientHeight: 260,
+      scrollHeight: 760,
+    });
+
+    scrollContainer.scrollTop = 170;
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveAttribute(
+        "data-scroll-jump-target",
+        "message-2",
+      );
+    });
+
+    fireEvent.click(container.querySelector("[data-scroll-jump-prev='chat']") as HTMLElement);
+
+    expect(scrollContainer.scrollTop).toBe(148);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveAttribute(
+        "data-scroll-jump-target",
+        "message-1",
+      );
+    });
+
+    fireEvent.click(container.querySelector("[data-scroll-jump-prev='chat']") as HTMLElement);
+
+    expect(scrollContainer.scrollTop).toBe(0);
+  });
+
   it("assigns route anchor ids to visible sections before jumping", async () => {
     const containerRef = createRef<HTMLElement>();
     const { container } = render(

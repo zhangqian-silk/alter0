@@ -7352,7 +7352,7 @@ body::after {
     max-width: 100%;
     border-top: 0;
     padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
-    transform: translateY(calc(var(--keyboard-offset, 0px) * -1));
+    bottom: var(--keyboard-offset, 0px);
     background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(250, 252, 255, 0.94) 48%, rgba(250, 252, 255, 0.98) 100%);
   }
 
