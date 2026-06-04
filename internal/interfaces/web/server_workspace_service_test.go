@@ -376,6 +376,44 @@ func TestWorkspaceServiceGatewayServesRegisteredFrontendDist(t *testing.T) {
 	}
 }
 
+func TestWorkspaceServiceFrontendPageVersionsImmutableAssetsFromContent(t *testing.T) {
+	repoPath := prepareVersionedPreviewRepo(t)
+	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
+	if err != nil {
+		t.Fatalf("new workspace service registry: %v", err)
+	}
+	entry, err := registry.Upsert(workspaceServiceRegistrationInput{
+		SessionID:      "session-versioned-frontend",
+		ServiceID:      defaultWorkspaceServiceID,
+		ServiceType:    workspaceServiceTypeFrontendDist,
+		RepositoryPath: repoPath,
+	})
+	if err != nil {
+		t.Fatalf("register workspace service: %v", err)
+	}
+	server := &Server{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceService: registry,
+	}
+	handler := server.withWorkspaceServiceGateway(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/chat", nil)
+	req.Host = entry.Host
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected chat status %d, got %d", http.StatusOK, rec.Code)
+	}
+	distPath := filepath.Join(repoPath, "internal", "interfaces", "web", "static", "dist")
+	body := rec.Body.String()
+	assertContains(t, body, `/assets/index-preview.js?v=`+fileContentVersionForTest(t, filepath.Join(distPath, "assets", "index-preview.js")))
+	assertContains(t, body, `/assets/index-preview.css?v=`+fileContentVersionForTest(t, filepath.Join(distPath, "assets", "index-preview.css")))
+	assertNotContains(t, body, `?v=stale`)
+}
+
 func TestWorkspaceServiceTravelHostIsPublicReadOnlyAndUsesCertificateSafeSubdomain(t *testing.T) {
 	repoPath := preparePreviewRepo(t, "travel workspace")
 	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
@@ -684,6 +722,40 @@ func preparePreviewRepo(t *testing.T, marker string) string {
 		t.Fatalf("write preview legacy asset: %v", err)
 	}
 	return repoPath
+}
+
+func prepareVersionedPreviewRepo(t *testing.T) string {
+	t.Helper()
+
+	repoPath := filepath.Join(t.TempDir(), "repo")
+	distPath := filepath.Join(repoPath, "internal", "interfaces", "web", "static", "dist")
+	assetsPath := filepath.Join(distPath, "assets")
+	if err := os.MkdirAll(assetsPath, 0o755); err != nil {
+		t.Fatalf("mkdir assets path: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, ".git"), []byte("gitdir: /tmp/mock\n"), 0o644); err != nil {
+		t.Fatalf("write git marker: %v", err)
+	}
+	index := `<!doctype html><script type="module" src="/assets/index-preview.js?v=stale"></script><link rel="stylesheet" href="/assets/index-preview.css?v=stale">`
+	if err := os.WriteFile(filepath.Join(distPath, "index.html"), []byte(index), 0o644); err != nil {
+		t.Fatalf("write preview html: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(assetsPath, "index-preview.js"), []byte("console.log('versioned preview');"), 0o644); err != nil {
+		t.Fatalf("write preview script: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(assetsPath, "index-preview.css"), []byte("body{color:#123456}"), 0o644); err != nil {
+		t.Fatalf("write preview stylesheet: %v", err)
+	}
+	return repoPath
+}
+
+func fileContentVersionForTest(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return shortContentHashForTest(content)
 }
 
 func prepareTravelGuideWorkspace(t *testing.T, marker string) string {

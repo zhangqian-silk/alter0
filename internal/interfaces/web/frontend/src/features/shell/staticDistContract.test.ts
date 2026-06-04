@@ -12,9 +12,6 @@ describe("static dist contract", () => {
 
     expect(scriptPath).toBeTruthy();
     expect(stylesheetPath).toBeTruthy();
-    expect(scriptPath?.[2]).toBe("20260604-md-table");
-    expect(stylesheetPath?.[2]).toBe("20260604-md-table");
-
     const script = readFileSync(resolve(distDirectory, scriptPath?.[1] || ""), "utf8");
     const stylesheet = readFileSync(resolve(distDirectory, stylesheetPath?.[1] || ""), "utf8");
 

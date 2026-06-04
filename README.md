@@ -79,7 +79,7 @@ internal/shared/domain             # UnifiedMessage / OrchestrationResult
 internal/shared/infrastructure     # ID、日志、metrics
 ```
 
-Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` 下的兼容样式资源保持 `no-cache`，确保页面与样式刷新及时；`static/dist/assets` 下带哈希的构建产物使用长期 immutable 缓存，减少重复下载。
+Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` 下的兼容样式资源保持 `no-cache`，确保页面与样式刷新及时；`static/dist/assets` 下带哈希的构建产物使用长期 immutable 缓存，减少重复下载。服务端在输出 Web Shell HTML 时会按实际 JS/CSS 内容自动为 `/assets/index-*.js|css` 注入 `?v=<content-hash>`，主服务重启、快进或 session 级预览服务刷新后，只要资产内容变化，浏览器就会请求新 URL，不依赖人工 cache-bust。
 
 服务二进制构建统一通过 `scripts/build_alter0_service.sh` 收口：脚本会先执行 `internal/interfaces/web/frontend` 下的前端构建并校验 `static/dist/index.html` 引用了新的哈希 JS/CSS 产物，再执行 `go build` 生成服务二进制。`scripts/start_alter0_service.sh`、`scripts/relaunch_service.sh` 与 `make build` 都复用该入口，避免服务重启只拉取 Go 源码而继续嵌入旧前端产物。
 

@@ -234,6 +234,7 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 - 初始化脚本默认在 `internal/interfaces/web` 与 `internal/interfaces/web/frontend` 预装 `npm ci`，确保 E2E、前端构建与前端单测共用同一运行账户工具链。
 - 服务启动时补齐 `/var/lib/alter0/.local/bin` 到 PATH，使 Codex CLI、Web 子进程和手工切换到账户后的执行环境一致。
 - 服务启动、服务重启与维护者手工构建二进制统一使用 `scripts/build_alter0_service.sh`：该入口先重建 `internal/interfaces/web/static/dist`，校验入口 HTML 引用了哈希 JS/CSS 资产，再构建 Go 服务二进制，确保 `go:embed` 使用的前端产物与当前分支源码一致。
+- Web Shell 入口 HTML 与 `frontend_dist` workspace preview HTML 在服务端输出前必须按实际 `/assets/index-*.js|css` 内容注入 `?v=<content-hash>`；`static/dist/assets` 可继续使用长期 immutable 缓存，但服务重启、代码快进或预览刷新后，资产内容变化必须产生新的浏览器 URL，避免旧 bundle 因客户端缓存继续生效。
 - Session 级测试服务的标准部署入口为 `scripts/deploy_test_service.sh`，它负责构建或注册工作区服务，并调用共享运行时的 workspace service 注册接口。默认 `scripts/deploy_test_service.sh <session_id>` 会先构建前端，再把当前分支 Web 后端的启动命令、工作目录、端口与健康检查路径注册给共享运行时托管，并把默认 `web` 短哈希域名绑定成 `http` 反代；如需纯静态 UI 预览，显式传 `--service-type frontend_dist`。
 
 ## 安全与认证

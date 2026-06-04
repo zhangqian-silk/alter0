@@ -69,6 +69,7 @@ CLI / Web / Cron
 - `internal/interfaces/web` 负责 HTTP、SSE、Web 登录、页面路由和前端静态资源分发。
 - `internal/interfaces/web/frontend` 负责 Web Shell 的 Vite + React 构建、legacy DOM shell 渲染和 `static/dist` 产物输出。
 - `scripts/build_alter0_service.sh` 是服务二进制的统一构建入口：先在 `internal/interfaces/web/frontend` 执行 `npm run build`，校验 `static/dist/index.html` 中的哈希 JS/CSS 资产引用，再执行 `go build -o bin/alter0 ./cmd/alter0`。`start_alter0_service.sh`、`relaunch_service.sh` 与 `make build` 必须复用该入口，避免 Go 服务重建时嵌入过期前端产物。
+- `internal/interfaces/web` 在输出主 Web Shell 与 `frontend_dist` workspace preview HTML 前，会扫描 `/assets/index-*.js|css` 引用，读取对应 JS/CSS 内容并注入 `?v=<content-hash>`；已有固定 `?v=` 会被服务端内容 hash 替换。页面继续使用 `no-cache`，构建资产继续使用长期 immutable 缓存，但重启、快进或预览刷新后只要资产内容变化，浏览器会命中新 URL，避免旧 bundle 因 immutable 缓存残留。
 - `internal/interfaces/web/frontend/src/shared/api/client.ts` 负责统一 JSON 请求封装、错误收敛与登录失效回调，避免新前端页面继续散落原生 `fetch`。
 - `internal/interfaces/web/frontend/src/shared/session/sessionHash.ts` 负责运行页会话短标识生成、短 hash 判定与短 hash 到完整会话 id 的前端列表解析；`Chat / Agent Runtime / Terminal` 的运行页 URL 参数统一使用该入口把完整会话 id 派生为 8 位短 hash，左侧会话列表不展示短 hash，完整会话 id 与 Terminal `terminal_session_id` 仅保留在接口、持久化、Details 与工作区路径语义中。
 - `internal/interfaces/web/frontend/src/shared/time/format.ts` 负责固定 `Asia/Shanghai` 的前端显示时区与标准时间格式，避免新旧页面时间口径漂移；管理页中需要分钟精度的额度重置、运行时间等时间戳也必须复用这里的共享格式器，而不是在页面组件里手写 UTC 文案。
@@ -186,6 +187,7 @@ Web input
 ### 验证策略
 
 - Web handler 测试覆盖会话创建、历史隔离、流式事件和取消语义。
+- Web static delivery 测试覆盖主 Web Shell 与 `frontend_dist` workspace preview 的内容 hash asset version 注入，确保长期 immutable asset 缓存不会在服务重启或预览刷新后继续命中旧 bundle。
 - 前端 E2E 覆盖 Chat、Agent、移动端输入、设置面板和长会话渲染。
 - 前端组件测试需覆盖 React 工作台的稳定契约，至少校验 `WorkbenchApp` 的 canonical path 路由、语言切换、移动端导航收口、左侧主导航会话列表，以及 Conversation / Terminal workspace 的固定 header、消息区、Composer 和 `Details` 面板未被回归破坏；Conversation 消息区还需覆盖轻量 IM 气泡 DOM 与样式契约、长历史最新优先渲染与加载更早批次。
 - `legacyRouteLayoutStyles.test.ts` 需继续对 `chat-core.css` 的 `Process` 阅读契约做源码断言，至少覆盖步骤标题收缩、正文整列宽度和 `max-width: 760px` 下的移动端可读性约束。
