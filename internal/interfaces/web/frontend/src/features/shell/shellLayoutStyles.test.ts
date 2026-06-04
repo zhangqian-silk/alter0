@@ -87,6 +87,19 @@ describe("shell layout stylesheet", () => {
     );
   });
 
+  it("moves the mobile runtime composer with bottom offset instead of a transform layer", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const mobileBreakpoint = stylesheet.slice(stylesheet.lastIndexOf("@media (max-width: 760px)"));
+    const runtimeComposerBlocks = Array.from(
+      mobileBreakpoint.matchAll(/\.runtime-composer-shell\s*\{([^}]*)\}/g),
+      (match) => match[1],
+    );
+
+    expect(runtimeComposerBlocks.some((block) => block.includes("bottom: var(--keyboard-offset, 0px);"))).toBe(true);
+    expect(runtimeComposerBlocks.join("\n")).not.toContain("transform:");
+  });
+
   it("keeps conversation bubbles compact instead of heavy card-like gradients", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
