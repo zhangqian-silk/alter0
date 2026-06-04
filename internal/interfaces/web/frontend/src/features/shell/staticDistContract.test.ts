@@ -7,14 +7,16 @@ describe("static dist contract", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const distDirectory = resolve(currentDirectory, "../../../../static/dist");
     const indexHTML = readFileSync(resolve(distDirectory, "index.html"), "utf8");
-    const scriptPath = indexHTML.match(/src="\/(assets\/index-[^"]+\.js)"/)?.[1];
-    const stylesheetPath = indexHTML.match(/href="\/(assets\/index-[^"]+\.css)"/)?.[1];
+    const scriptPath = indexHTML.match(/src="\/(assets\/index-[^"?]+\.js)(?:\?v=([^"]+))?"/);
+    const stylesheetPath = indexHTML.match(/href="\/(assets\/index-[^"?]+\.css)(?:\?v=([^"]+))?"/);
 
     expect(scriptPath).toBeTruthy();
     expect(stylesheetPath).toBeTruthy();
+    expect(scriptPath?.[2]).toBe("20260604-md-table");
+    expect(stylesheetPath?.[2]).toBe("20260604-md-table");
 
-    const script = readFileSync(resolve(distDirectory, scriptPath || ""), "utf8");
-    const stylesheet = readFileSync(resolve(distDirectory, stylesheetPath || ""), "utf8");
+    const script = readFileSync(resolve(distDirectory, scriptPath?.[1] || ""), "utf8");
+    const stylesheet = readFileSync(resolve(distDirectory, stylesheetPath?.[1] || ""), "utf8");
 
     expect(script).toContain("chat-md-table-wrap");
     expect(script).toContain("chat-md-table");
