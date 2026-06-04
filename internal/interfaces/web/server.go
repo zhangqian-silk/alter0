@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1149,6 +1150,7 @@ func (s *Server) chatPageHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "chat page unavailable", http.StatusInternalServerError)
 		return
 	}
+	content = versionWebShellAssetReferences(content, readEmbeddedWebDistAsset)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", webPageCacheControl)
@@ -1157,6 +1159,36 @@ func (s *Server) chatPageHandler(w http.ResponseWriter, r *http.Request) {
 
 func readWebShellPage() ([]byte, error) {
 	return webStaticFS.ReadFile("static/dist/index.html")
+}
+
+func readEmbeddedWebDistAsset(assetPath string) ([]byte, error) {
+	return webStaticFS.ReadFile(filepath.ToSlash(filepath.Join("static", "dist", assetPath)))
+}
+
+var webShellAssetReferencePattern = regexp.MustCompile(`((?:src|href)="\/)(assets\/index-[^"?]+\.(?:js|css))(?:\?v=[^"]*)?(")`)
+
+func versionWebShellAssetReferences(content []byte, readAsset func(string) ([]byte, error)) []byte {
+	if len(content) == 0 || readAsset == nil {
+		return content
+	}
+	html := string(content)
+	versioned := webShellAssetReferencePattern.ReplaceAllStringFunc(html, func(match string) string {
+		parts := webShellAssetReferencePattern.FindStringSubmatch(match)
+		if len(parts) != 4 {
+			return match
+		}
+		assetContent, err := readAsset(parts[2])
+		if err != nil || len(assetContent) == 0 {
+			return match
+		}
+		return parts[1] + parts[2] + "?v=" + shortAssetContentHash(assetContent) + parts[3]
+	})
+	return []byte(versioned)
+}
+
+func shortAssetContentHash(content []byte) string {
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 func webAssetFS(name string) (fs.FS, error) {

@@ -593,6 +593,10 @@ func (s *Server) serveWorkspaceFrontendPage(w http.ResponseWriter, entry workspa
 		http.Error(w, "workspace frontend page unavailable", http.StatusInternalServerError)
 		return
 	}
+	distPath := filepath.FromSlash(entry.DistPath)
+	content = versionWebShellAssetReferences(content, func(assetPath string) ([]byte, error) {
+		return os.ReadFile(filepath.Join(distPath, filepath.FromSlash(assetPath)))
+	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", webPageCacheControl)
 	w.Header().Set("X-Alter0-Workspace-Service", entry.ServiceID)
