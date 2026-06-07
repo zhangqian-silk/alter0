@@ -8,17 +8,24 @@ export const LEGACY_SHELL_MOBILE_BREAKPOINT_PX = MOBILE_VIEWPORT_BREAKPOINT_PX;
 
 const LEGACY_CHAT_ROUTES = new Set(["chat", "agent-runtime"]);
 const LEGACY_SHELL_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);
+const LEGACY_ROUTE_ALIASES: Record<string, string> = {
+  "agent-runtime": "chat",
+  management: "settings",
+};
 
 export function parseLegacyShellPathRoute(pathname: string = window.location.pathname): string {
   const normalized = pathname.replace(/^\/?/, "").replace(/\/+$/, "").trim().toLowerCase();
   if (!normalized) {
     return LEGACY_SHELL_DEFAULT_ROUTE;
   }
+  if (LEGACY_ROUTE_ALIASES[normalized]) {
+    return LEGACY_ROUTE_ALIASES[normalized];
+  }
   return LEGACY_SHELL_ROUTES.has(normalized) ? normalized : LEGACY_SHELL_DEFAULT_ROUTE;
 }
 
 export function isLegacyShellChatRoute(route: string): boolean {
-  return LEGACY_CHAT_ROUTES.has(route);
+  return LEGACY_CHAT_ROUTES.has(route) || route === "chat";
 }
 
 export function isLegacyShellMobileViewport(): boolean {

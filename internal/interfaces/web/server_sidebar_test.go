@@ -119,7 +119,7 @@ func TestWorkbenchRouteStatePathNavigationPresent(t *testing.T) {
 		"nextURL.pathname = `/${normalized}`;",
 		"window.addEventListener(\"popstate\", syncRoute);",
 		"window.dispatchEvent(new PopStateEvent(\"popstate\"));",
-		"return route === \"chat\" || route === \"agent-runtime\";",
+		"return route === \"chat\";",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {
@@ -214,7 +214,7 @@ func TestSidebarGroupTitlesHaveDedicatedI18NKeys(t *testing.T) {
 		`Workspace: "Workspace"`,
 		`Control: "Control"`,
 		`agent: "Profiles"`,
-		`"agent-runtime": "Agent"`,
+		`"agent-runtime": "Chat"`,
 		`Settings: "Settings"`,
 		`Workspace: "工作区"`,
 		`Control: "控制台"`,

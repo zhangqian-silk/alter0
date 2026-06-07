@@ -39,23 +39,66 @@
 
 ## Architecture
 
-系统由两条主线组成：
+系统由三条主线组成：
 
 1. Data Plane（执行面）
 - 负责处理消息通信与任务执行。
-- 路径：`Channel Adapter -> UnifiedMessage -> Orchestrator -> Executor`。
+- 路径：`Channel Adapter -> UnifiedMessage -> Orchestrator -> Runtime Resolver -> CLI Agent Runtime`。
 
 2. Control Plane（控制面）
-- 负责配置 `Channel / Skill / Agent / CronJob`。
+- 负责配置 `Channel / Skill / Model Provider / Codex Account / CronJob`。
 - 通过 API 管理运行时行为，不直接绕开编排层。
+
+3. Context Plane（上下文面）
+- 负责维护会话工作区、Skill 仓库、Markdown 记忆文件与定时记忆整理。
+- 会话内上下文压缩由实际 CLI Agent Runtime 管理；跨会话记忆由 alter0 的 Memory System 管理。
 
 核心链路：
 
 1. CLI/Web/定时任务输入统一转换为 `UnifiedMessage`。
 2. `IntentClassifier` 判断是命令还是自然语言。
 3. 命令交由 `CommandRegistry` 与 `CommandHandler` 执行。
-4. 自然语言请求交由 `ExecutionPort` 执行。
-5. 定时任务由 `SchedulerManager` 触发，并复用同一编排链路。
+4. 自然语言请求交由 Runtime Resolver 选择 CLI Agent Runtime。
+5. 已配置可用 Model Provider 时优先使用 `Claude Code + provider profile`，未配置或启动失败时兜底使用 `Codex Direct`。
+6. 定时任务由 `SchedulerManager` 触发，并复用同一编排链路。
+
+## Agent Runtime
+
+`alter0` 不自研多 Agent 执行框架，服务侧只负责会话、工作区、Skill、记忆与 CLI 运行时调度；具体任务执行交给成熟 CLI Agent：
+
+1. `Claude Code + configured provider`
+- 当控制面存在启用的 Model Provider 时作为首选运行时。
+- Provider 维护 `base_url / api_key / model / profile`，用于手动接入 Claude Code 可用的模型网关或供应商配置。
+- 每个会话使用隔离的 Claude 运行目录和 profile 环境，避免并发会话共享全局切换状态。
+
+2. `Codex Direct`
+- 当未配置 Model Provider，或 Claude Code provider 启动、鉴权、健康检查失败时作为兜底运行时。
+- 使用当前 Codex 登录态、托管账号与 Codex 配置。
+- 每个会话维护独立 `CODEX_HOME` 与 Codex thread。
+
+启动运行时前，服务会为当前会话工作区注入：
+
+- `AGENTS.md` 或 `CLAUDE.md`
+- 选中的 `skills/<skill_id>/SKILL.md`
+- `memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<date>.md` 与项目记忆
+- 当前会话、工作区、仓库、产物与边界说明
+
+## Skill And Memory
+
+Skill 作为产品能力仓库单独维护，不绑定固定业务 Agent。代码开发、旅行攻略、前端设计、部署预览、文档协作与记忆整理都通过 Skill 文件表达规则、流程与交付要求。
+
+Memory 使用简单 Markdown 文件作为主存：
+
+```text
+memory/
+  USER.md
+  MEMORY.md
+  daily/YYYY-MM-DD.md
+  projects/<project>.md
+  conversations/<conversation_id>/summary.md
+```
+
+用户显式要求“记住”时，CLI Agent 可更新对应记忆文件；会话内压缩由 Claude Code 或 Codex 自身处理；跨会话长期记忆由 Cron 定时启动同一 CLI Agent 并加载 `memory-maintenance` Skill 进行整理。
 
 ## Repository Layout
 
@@ -83,11 +126,12 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 服务二进制构建统一通过 `scripts/build_alter0_service.sh` 收口：脚本会先执行 `internal/interfaces/web/frontend` 下的前端构建并校验 `static/dist/index.html` 引用了新的哈希 JS/CSS 产物，再执行 `go build` 生成服务二进制。`scripts/start_alter0_service.sh`、`scripts/relaunch_service.sh` 与 `make build` 都复用该入口，避免服务重启只拉取 Go 源码而继续嵌入旧前端产物。
 
-当前 Web Shell 使用单一 React 工作台：左侧固定主导航保留 `Chat / Agent / Terminal` 三条主工作流入口，并在底部提供独立 `Management` 工具入口和语言切换；主工作区按运行态或统一管理页渲染具体内容。`chat`、`agent-runtime` 与 `terminal` 都收敛到统一的 workspace 骨架，运行页公共结构由共享的 `RuntimeWorkspaceShell / RuntimeComposer / RuntimeWorkspaceHeader` 链路直接产出；Terminal 的工作区标题、状态按钮与 `Details` 入口也直接复用 Chat/Agent 的共享 header 元素，只在详情面板内容和终端输出区保留领域差异。`agent / memory / channels / skills / mcp / models / environments / codex-accounts / cron-jobs / sessions / tasks` 等管理能力不再散落为一级导航，而是在同一个 Management 页面内通过分组切换继续由 React 直接请求控制台或会话 API 渲染。此前用于 `/chat` 的 `LegacyWebShell / ReactRuntimeFacade / alter0:legacy-shell:* bridge / snapshot store` 已移除，`legacy` 资源仅保留样式兼容层，不再参与任何前端业务运行时。
-当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，顶部使用纯文字品牌位，主工作流入口只展示 `Chat / Agent / Terminal`，底部固定 `Management` 进入合并管理页；当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内，列表项主体只展示会话标题，处理中会话在标题旁显示轻量 loading，其他状态不再显示行内状态灯、时间、短 hash 或 Agent 标签；运行页切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建，当前页只更新数量文案、列表内容和 `New` 动作绑定；主壳层按 route 缓存最近一次有效 rail body，切回已访问运行页时先复用该 route 的最近会话列表，再等待新页面完成注册，避免回落到占位列表造成闪烁；当 Terminal 服务端列表为空时，侧栏默认展示一条未持久化的 `New` 占位会话，首次发送或添加附件后再创建真实 Terminal session。右侧主面板只承载主时间线工作区、底部 Composer 与固定 workspace header，三条运行页的标题、状态信号按钮和 `Details` 按钮使用同一组元素与样式入口，Terminal 不再保留专属 header kind 或独立 details toggle 外观。PC 端大部分控件统一采用 8-14px 的低圆角矩形节奏，上传、发送、详情与弹窗按钮保持克制的控制台质感，阅读定位按钮则允许使用更易触达的独立圆形样式。进入 `1100px` 及以下窄屏后，运行页会话列表继续随左侧导航抽屉展示；`Chat / Agent Runtime / Terminal` 顶部都只保留 `Menu / New`，不再额外提供 `Sessions` 入口。真手机宽度下的左侧抽屉使用近白全高面板、平面菜单、细分割线与标题式会话列表，不再把会话区渲染成重卡片或玻璃面板。Management 管理页标题上方补一行 `Menu` 入口，页面内部用 `Agent Studio / Control / Settings` 分组切换区分 Profiles、Memory、Tasks、Sessions、Models、Environments、Codex Accounts 等能力；桌面端分组切换固定为左侧管理索引，入口带图标、短标识和浅蓝活动态，右侧保留全宽内容流；真手机宽度下分组入口改为双列按钮栅格，所有管理分区在首屏正文起始处直接可见。到真手机宽度时，运行页顶层进一步收敛为单层 workbar：左侧保留 `Menu`，中间使用“状态信号 + 当前会话标题”的单行标题按钮，右侧承载 `New`；`Details` 不再单独占据手机顶栏，而是通过点击中间标题直接打开。三条运行页共享同一套 runtime workspace 页面骨架、滚动区与单一圆角助手输入面板，Terminal 不再为输入区外壳叠加更深的专属背景、更低的底部留白或额外状态 note 行；Terminal 失败、退出和附件错误提示统一进入 Composer 工具栏 meta。控制类页面继续复用近白主表面、浅灰说明层和浅蓝选中态，不再派生独立的高装饰卡片系统；Management 每个子分区的列表卡片、表格、筛选条、主从详情、空态和错误态都统一使用 12px 以内低圆角、低对比边框、浅色状态面板和紧凑字段行，管理页内部分组切换在桌面与移动端都保持可触达和低噪音。
+当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Terminal / Settings` 三个稳定入口，主工作区按运行态或设置页渲染。`/chat` 是唯一对话入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；历史 `/agent-runtime` 会自动映射到 `/chat`，旧 Agent 会话会作为 Chat 会话继续展示和恢复。`/settings` 承接运行时、Skill、Memory、Workspaces 与 Schedules；历史 `/management` 会自动映射到 `/settings`。
 
-`Chat / Agent Runtime / Terminal` 的消息区采用轻量 IM 式消息流：用户消息右对齐并使用低对比浅灰紧凑气泡，气泡高度由较小的纵向 padding 与独立消息行高控制，助手消息左对齐并弱化为无边框正文阅读流，思考过程默认收敛为 `Thinking / 已思考` 一行内联披露入口，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情，移动端也保持同页内联展开；步骤序号与标题在同一行垂直居中，长说明继续在当前消息容器内自然换行。Chat / Agent Runtime / Terminal 最终回复统一使用稳定的运行页 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块，正文不安装脚本长按选区、假选中态或编辑态兜底；逐条消息时间不在正文区显示，仅在进行中、排队或失败时保留状态标签。长会话默认优先展示最新消息，顶部提供 `Load earlier messages / 加载更早消息`，滚到顶部也会按批次渐进加载更早历史。右侧阅读定位条支持连续 `上一条 / 下一条` 跳转：当前可见块被对齐到顶部偏移后，再点 `上一条` 会继续跳到它前一块，而不是停留在同一块。
-`/chat`、`/agent-runtime`、`/terminal`、`/management` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 内可通过语言切换入口改为中文，运行时文案与 `document.documentElement.lang` 同步更新。登录页与工作台共享 `IBM Plex Sans + Sora` 字体基线、近白卡片表面与安全入口语气，不再保留独立的默认系统登录页观感。Web Shell 与受保护预览工作区统一要求密码登录，静态只读预览 host 保留免密访问。访问任一工作台页面触发登录时，登录页只携带当前页面 path 作为稳定回跳入口，不携带 query；进入实际运行页后，`Agent Runtime / Terminal` 使用统一 `session_id=<8位短hash>` 恢复当前会话，不把完整会话 id 暴露在 URL 与页面提示中。
+当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。Settings 内部只保留紧凑分区：`Runtime` 管理 Model Provider 与 Codex Accounts，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Workspaces` 管理会话/任务工作区，`Schedules` 管理定时任务与触发记录。旧管理子页面不再作为一级路由展示。
+
+`Chat / Terminal` 的消息区采用轻量 IM 式消息流：用户消息右对齐并使用低对比紧凑气泡，助手消息左对齐为无边框正文阅读流，思考过程默认收敛为 `Thinking / 已思考` 内联披露入口，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情。最终回复统一使用稳定的运行页 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块，逐条消息时间不在正文区显示。长会话默认优先展示最新消息，顶部提供 `Load earlier messages / 加载更早消息`，滚到顶部也会按批次渐进加载更早历史；右侧阅读定位条支持连续 `上一条 / 下一条` 跳转。
+`/chat`、`/terminal`、`/settings` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 内可通过语言切换入口改为中文。登录页只携带当前 canonical path 作为稳定回跳入口，不携带 query。`Chat / Terminal` 使用统一 `session_id=<8位短hash>` 恢复当前会话，不把完整会话 id 暴露在 URL 与页面提示中。
 控制类与资产类页面默认采用更高信息密度的管理视图：`Profiles` 使用短字段并排的紧凑表单栅格与显式启用开关，`Tasks` 使用左侧任务列表 + 右侧运行详情的主从布局，`Memory` 的任务历史使用表格 + 详情侧栏，`Environments` 使用运行态工具栏 + 模块卡片栅格展示配置项，并在同页提供敏感值显隐、保存、重载、重启与审计视图，`Codex Accounts` 使用精简后的运行时概览条 + 当前 Codex 管理区 + 托管账号卡片列表 + 导入/登录操作侧栏：概览条优先展示当前账号、套餐、小时/周剩余额度与托管数量，维护类信息如 auth/config 路径、CLI 命令与配置来源收纳到 `Runtime Details` 折叠区；当前 Codex 管理区的 model 与思考深度选项直接来自 Codex app-server 返回的真实能力列表。`Channels / Skills / MCP / Models / Cron Jobs` 这组共享控制台卡片页统一复用稳定的响应式卡片网格，真窄屏下状态徽标会下沉到标题区下方、字段行改为单列展开，避免标题、徽标、复制按钮与多行字段互相挤压；`Agent` 的列表卡片、管理表单与详情区统一使用近白表面、浅灰说明层与浅蓝选中态。大屏保留“列表 + 侧栏”结构，中屏切换为全宽账号区 + 双侧栏，小屏回落为单列卡片，确保额度信息、当前 model、思考深度与切换入口始终可见。
 所有 React 托管页面的正文型内容统一支持安全 Markdown 渲染：消息最终回复、Process 说明、Terminal 输出、Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明与 Session Profile 的非等宽字段都会复用同一安全解析器。Chat / Agent Runtime / Terminal 最终输出统一通过稳定的 `MessageMarkdownShell` 承载，markdown HTML 与 `dangerouslySetInnerHTML` 对象按内容缓存，父级无关重渲染不得替换已渲染文本节点，从而保持浏览器原生文本选择与复制菜单。渲染器支持标题、列表、引用、链接、图片、表格、行内代码与代码块，并过滤 `javascript:` 等不安全链接；Markdown 表格在消息容器内以真实表格结构呈现，窄屏下只允许表格块内部横向滚动，不制造页面级横向滚动；ID、路径、密钥、配置值、时间戳和其他元数据字段继续按纯文本或等宽字段展示。
 
@@ -105,14 +149,14 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 
 ## Natural Language Handling
 
-自然语言请求按用户交互形态分为 `Chat`、`Agent` 与 `Terminal` 三类：
+自然语言请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 
 1. `Chat`
 - 面向 Web 会话消息。
 - 默认绑定内置 `Alter0`（`main`），作为通用对话入口。
-- Web 登录后，`Chat / Agent Runtime` 的已发送会话历史落到服务端 Session history，并在同一 Web 登录态下跨设备共享；`Chat` 固定使用单一长期逻辑会话 `alter0-chat`，不再按浏览器或页面入口创建多个 Chat 会话。本地文件存储会把该逻辑会话按北京时间 05:00 作为归档日边界拆到 `.alter0/sessions/_default/alter0-chat/<YYYY-MM-DD>.json` 或 `.md`；`Agent Runtime` 继续按 `.alter0/sessions/<agent_id>/<session_id>.json` 或 `.md` 拆分会话文件，缺少 Agent 来源的非 Chat 会话归入 `_default`。旧聚合文件在读取时自动重构为当前布局。带独立前端入口的 Agent 不进入通用 `Agent` 页的会话历史。未发送文本草稿、附件草稿与当前页局部选择继续按浏览器隔离，不跨设备同步。
-- `Chat` 打开后直接回到 `alter0-chat` 长期会话；`Agent Runtime` 新建会话先使用统一占位标题 `New`。自动标题在早期多轮内会按更具体的用户消息继续升级，尤其覆盖“拉取仓库 / 看仓库 / 分析仓库”一类通用开场，直到主题稳定。
-- `Chat / Agent Runtime` 统一使用 runtime workspace：运行页会话列表由左侧主导航直接展示，主工作区固定为主消息工作区、底部 Composer 与固定 workspace header；header 统一只保留当前会话标题、状态按钮与 `Details` 入口，`Details` 面板顶部先用紧凑摘要栅格承载会话元数据，再由各页面继续展开专属配置内容。消息、过程步骤与最终输出都在同一轻量 IM 式消息流中推进，不再保留桥接期的欢迎区 / runtime sheet 双轨壳层。会话列表、workspace、chat screen 与 composer 全部由共享的 `RuntimeWorkspaceShell / RuntimeComposer / RuntimeWorkspaceHeader / RuntimeTimeline` 直接渲染，运行页公共 DOM 以 `runtime-*` 为唯一主契约，三条运行页只在各自路由内注入数据和变体皮肤。
+- Web 登录后，`Chat` 的已发送会话历史落到服务端 Session history，并在同一 Web 登录态下跨设备共享。旧 `Agent Runtime` 会话在前端被合并到 Chat 会话列表，仍按原 `agent-runtime` source route 回源读取历史消息；旧聚合文件在读取时自动重构为当前分文件布局。未发送文本草稿、附件草稿与当前页局部选择继续按浏览器隔离。
+- `Chat` 新会话先使用统一占位标题 `New`，早期多轮内可按更具体输入自动升级标题。旧 `/agent-runtime?session_id=<短hash>` 入口会映射到 `/chat?session_id=<短hash>` 并恢复对应历史会话。
+- `Chat` 使用 runtime workspace：会话列表由左侧主导航直接展示，主工作区固定为主消息工作区、底部 Composer 与固定 workspace header；header 统一只保留当前会话标题、状态按钮与 `Details` 入口。消息、过程步骤与最终输出都在同一轻量 IM 式消息流中推进。
 - `Chat / Agent Runtime` 的 `Process` 阅读区在桌面与移动端都保持整列可读宽度：步骤标题与正文共享统一的缩放/换行约束，长中文句子、路径和命令说明优先在当前消息容器内换行，不允许在真机窄屏下塌缩成逐字竖排窄列；若历史或流式过程文本混入零宽断行字符，或被异常写成“每字一行”的病态段落，前端展示层需在渲染前做归一化修正。
 - `Chat / Agent Runtime` 的消息时间线在内容较少时仍需保持顶部收口：少量消息、短回复、折叠后的 `Thinking / 已思考` 披露行与状态标签继续贴近各自消息气泡排布，不得因为满高时间线轨道被拉伸而出现大块垂直留白。
 - `Chat / Agent Runtime / Terminal` 打开已有内容的会话或切换到其他会话时，消息时间线或 Terminal 输出区默认定位到最新内容所在的底部；同一会话内发送新消息后，当前活动时间线会跟随本轮新增消息回到底部，确保用户立即看到刚发出的用户消息和助手占位回复。后续流式 patch、轮询刷新或 Process 展开不强制抢回滚动位置，保留用户阅读历史时的手动滚动状态。
@@ -137,7 +181,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - 移动端运行页的左侧导航抽屉统一使用同一套面板开合语义：`Chat / Agent Runtime / Terminal` 都只通过 `Menu` 打开抽屉；点击遮罩、切换路由、切换会话或创建新会话后，不保留旧的抽屉覆盖层。
 - 移动端运行页的左侧导航抽屉在真机上优先保证稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不再叠加容易闪烁的多层位移、淡出或条目级顺序动画；抽屉内会话项按最近时间分组展示，统一收敛为标题与尾侧删除动作，只有处理中会话显示 loading。
 - `/chat`、登录页和主工作区品牌文案对外统一展示为 `Alter0`，浏览器标题、登录标题、导航品牌位、会话栏标题与欢迎区 tag 不再混用小写服务名。
-- `Chat / Agent Runtime` 的会话操作、模型选择、Agent 选择、交付契约、Tools / MCP 与 Skills 都收敛到工作台内部；两条运行页的 `Details > Model` 都额外内置 `Codex` 直选项，选中后后续消息会直接走 `Codex CLI` 执行链而不是普通 LLM Provider；Agent Runtime 的 Agent 选择列表不展示 `Alter0/main` 主助手，仅保留专项内置 Agent 与用户管理 Agent；专项 Agent 会通过 `Details > Deliverables` 显式声明本轮必须交付的最终产物，并在可用时直接绑定当前 Session Profile 中的 URL/路径类实例属性；Agent Runtime 的 `Details > Skills` 会把当前 Agent 私有 Skill 作为已启用且不可取消的固定项展示，剩余可勾选项只展示公有 Skill，例如 `travel` 的旅游领域规则属于私有 Skill，`deploy-test-service` 这类基础部署能力属于公有 Skill；窄屏下主导航仍走抽屉，小高度视口中导航分组、底部设置项与语言切换入口保持独立纵向滚动并全部可触达。
+- `Chat / Agent Runtime` 的会话操作、模型选择、Runtime Profile、交付契约、Tools / MCP 与 Skills 都收敛到工作台内部；两条运行页的 `Details > Model` 都额外内置 `Codex` 直选项，选中后后续消息会直接走 `Codex Direct`；Agent Runtime 通过业务入口预选 Skill 组合，`Details > Skills` 展示本轮可注入的公有 Skill，`Details > Memory` 展示当前会话命中的记忆摘要与项目上下文；窄屏下主导航仍走抽屉，小高度视口中导航分组、底部设置项与语言切换入口保持独立纵向滚动并全部可触达。
 - 窄屏主导航抽屉在点击路由项后会立即收起；切页后不保留覆盖在新页面上的菜单层，用户直接进入目标页内容区。
 - 左侧主导航内的 Session 列表保持工作台式紧凑结构：按最近时间分组，并与主导航 `menu` 复用同一套分组外壳、hover、激活态语言和桌面会话列宽；条目采用独立卡片，主体只保留标题且在可用宽度内单行截断，尾侧保留轻量更多操作按钮，不再展示摘要、短 hash、Agent 标签、完整会话 id、状态灯或额外 footer 区块。
 - Runtime 配置统一通过 workspace `Details` 面板切换，不再使用独立 bridge sheet；`Details` 默认先展示高密度摘要区，字段标签、复制按钮和多行内容按统一紧凑规格排列，并以顶层浮层方式覆盖在运行页上方，打开时不再推动消息区或对话框位置；浮层最大可视区域保持克制，内部 tab/按钮支持再次点击只收起当前配置内容且保留 `Details` 面板，点击浮层外区域或按 `Escape` 才关闭整个面板，移动端仍要求面板与输入区互不遮挡，切换时优先保证输入焦点、键盘占位和主动作可达。
@@ -157,11 +201,11 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - `Chat / Agent Runtime / Terminal` 的四键阅读定位条统一使用独立圆形按钮外观与触摸反馈；移动端固定停靠在工作区右侧、输入区上沿之上，避免落回正文流内或压住输入区。
 - 移动端 `Chat / Agent` 的后台任务轮询会按页面可见性自动降频；页面隐藏时停止高频扫描，恢复前台后再立即补一次刷新，降低持续耗电与发热。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
-- `Alter0` 默认使用 ReAct 执行链，可直接完成通用任务，并在需要时调度专项 Agent。
-- 选中的 Agent 工具会在模型调用时作为 function tools 注入；当前稳定工具集收敛为 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，以及仅对可委派 Agent 暴露的 `delegate_agent`。
+- 自然语言任务默认由 CLI Agent Runtime 执行；业务入口通过 Runtime Profile 预选 Skill 组合。
+- 选中的 Skill、MCP、Memory 摘要与工作区事实会在启动 CLI agent 前注入当前会话工作区。
 - `Models` 控制面支持同时维护 `OpenAI Compatible` 与 `OpenRouter` Provider；`OpenRouter` 可直接配置 `Site URL`、`App Name`、回退模型和 Provider 路由偏好，系统会分别注入官方请求头与请求体扩展字段。
 - `OpenAI Compatible` / `OpenRouter` Provider 均支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。`OpenRouter` 默认使用 `https://openrouter.ai/api/v1` 与 `openai-completions`。
-- 当 Agent / ReAct 在 `openai-completions` 路径下进入多轮工具调用时，运行时会保留 assistant `tool_calls` 与后续 `tool_call_id` 的完整关联，保证兼容要求严格校验工具消息顺序的 Provider。
+- 启用且健康的 Provider 会生成 Claude Code provider profile；显式选择 `Codex` 或 Provider 不可用时进入 Codex Direct。
 - `Models` 控制面保存 Provider 时，`api_key` 输入框留空表示保持现有密钥；若前端中间态传入占位值 `-`，服务端会按空值处理，不会把 `-` 持久化为真实凭据。
 - 历史 `model_config.json` 若残留缺失 `api_key` 的 Provider，加载阶段会自动收敛为禁用态并保留在 `Models` 控制面中，页面不会因旧配置直接返回 500；补齐密钥后可重新启用。
 - `Codex Accounts` 控制面位于 `Settings`，支持在同页查看紧凑化的运行时概览、当前 Codex 运行时状态、当前活动 profile、活动 model、思考深度、导入已有 `auth.json`、启动独立 `codex login` 会话、查看当前账号套餐/额度状态，并切换当前运行时生效账号；概览区采用“当前账号主身份区 + 套餐/小时额度/周额度/托管数量”紧凑指标列，其中小时/周额度以进度条展示剩余额度并附带 reset 时间，key/value 默认同列对齐，概览不再暴露活动 auth 路径，维护类信息统一通过 `Runtime Details` 折叠区展开；`Current Codex` 仅保留一套可编辑的 model / 思考深度字段，不再在选择器下重复展示当前值；托管账号区采用高密度行式列表，持续暴露账号身份、计划、额度进度条、reset 时间与切换入口，并用更平的控制台按钮/状态文本和分隔线式布局替代层层胶囊与内嵌方框；model 与思考深度的可选项来自 Codex app-server 的 `model/list`，当前生效值与来源来自 `config/read`，保存时通过 `config/batchWrite` 写回当前用户配置。当前运行中的 `auth.json` 若尚未纳入托管，会在概览与空态中明确标记为“已生效但未托管”；只要当前 live 账号成功拿到 quota，概览区仍直接展示该 live 账号的套餐与额度，加载阶段则保留完整面板骨架而不是退化成单行提示。
@@ -183,37 +227,19 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 
 2. `Agent`
 - 面向“持续协助并推进执行”的目标型任务。
-- 请求进入后会创建一个具备会话连续性的 ReAct 执行环，以当前任务为目标持续推进，并复用该 Agent 在当前 Session 内已经确认的稳定上下文。
-- 运行时统一维护 `Agent Catalog`：同时聚合系统内置 Agent 与用户管理的 Agent Profile。
-- 当前内置 Agent 包括：
-  - `main`：默认对话主 Agent `Alter0`，可调度专项 Agent
-  - `coding`：专项编码 Agent，负责理解开发需求、与用户保持交互，并通过 `codex_exec` 多轮推进代码修改、验证、预览页检查与结果收口
-  - `writing`：面向文档、文案与结构化写作
-- `travel`：负责旅游任务的专项执行、HTML 攻略产物和子域名交付
-- Web `Chat` 页面默认绑定 `Alter0`；`Agent` 页面提供统一 Agent 运行入口，用于承载未占用独立前端入口的专项内置 Agent 与用户管理 Agent，主助手 `Alter0/main` 不作为 Agent Runtime 可选项出现。
-- 除主助手 `Alter0/main` 外，专项 Agent 默认按“对话入口 + 明确交付物契约”运作：`coding` 需要收口代码变更与验证结论，`writing` 需要收口文稿结果，`travel` 需要同时收口正文攻略与已成功发布的 HTML 攻略交付。运行时将 `deliverables` 作为用户可见契约展示给前端与模型，同时用独立的 `completion_checks` 机器规则判断这些产物是否真的落盘、发布或可解析。
-- Agent 的职责收敛为“作为用户的持续助手并驱动执行”，而不是直接自己操作仓库或 Shell。稳定工具面以 `codex_exec` 为具体执行入口，`Alter0/main` 与其他允许委派的 Agent 可额外使用 `delegate_agent`，所有 Agent 默认都会补齐 `search_memory`，并可在已注入的记忆文件范围内使用 `search_memory`、`read_memory`、`write_memory` 维护长期偏好、缩写映射与稳定协作约束；`coding` 与 `travel` 还会启用 `deploy_test_service`，用于把当前 Session 工作区发布到共享运行时的短哈希网关。`search_memory` 用于按关键字跨记忆文件定位历史信息，再决定是否精读或更新具体文件。Agent 负责吸收用户意图、会话上下文、Agent 规则与记忆，并把它们转译成当前这一步的精确执行指令；这些 Agent 侧 prompt 与编排规则默认留在 Agent 自身，不直接透传给 Codex。当前稳定支持两种 Codex 执行策略：存在可用 LLM Provider 且进入 Agent / ReAct 链路时，Agent 负责吸收 Skill、MCP、Memory 与运行时上下文，只向 Codex 下发当前步骤的纯执行指令；不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 链路时，运行时会为该会话生成独立的 `CODEX_HOME`、原生 `config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*` 文件，把 MCP、Skill、Memory 与运行时信息编译成 Codex 原生运行配置与工作区事实，并把 Codex CLI 返回的 thread id 持久化到当前 Session 工作区。`Agent Runtime` 按 Session 继续使用 `.alter0/codex-runtime/thread.json` 续写同一 Codex 线程；`Chat` 的固定长期会话 `alter0-chat` 则按北京时间 05:00 的归档日边界写入 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json`，进入新归档日且尚无 thread 文件时会新建 Codex 线程。上述 Agent prompt、托管 `AGENTS.md` 与 Native Runtime 资产统一约束具体执行范围：默认只允许在当前 Session 工作区及其专属 repo clone、附件和产物路径内操作，不得修改其他 Session、无关服务或工作区外仓库，除非当前任务明确把这些目标作为本轮交付范围。`coding` Agent 的仓库类执行会优先落到当前 Session 独立的 repo 完整 clone：`.alter0/workspaces/sessions/<session_id>/repo`，该目录自带自己的 `.git` 元数据，不依赖 `git worktree`；运行时会把当前仓库远端地址、源仓库路径、独立 repo clone 路径、当前分支、会话工作区、短哈希预览域名与 PR 交付要求写入 Agent 上下文或直连 Codex 的 Native Runtime 资产。测试仓库的关键配置需要与正式服务保持一致，包括 model provider、Codex 执行路径、agent 路径等，只有会话缓存、会话历史等 session 级数据允许不同。涉及测试页面或独立测试服务时，`coding` 与 `travel` 都需要通过 `/api/control/workspace-services/{session_id}/{service_id}` 或脚本 `scripts/deploy_test_service.sh` 把当前 Session 工作区注册到共享运行时的动态网关；默认 `web` 服务映射到 `https://<session_short_hash>.alter0.cn`，共享运行时会按注册的启动命令托管当前分支后端，再让该子域名直连这份后端；附加服务默认映射到 `https://<service>-<session_short_hash>.alter0.cn`。其中 `travel` 服务固定映射到 `https://travel-<session_short_hash>.alter0.cn`，并且该 host 只读、免登录。只有显式指定 `service_type=frontend_dist` 时，才会发布纯静态前端预览。`travel` 在正常对话结果之外，还要求额外产出一份 HTML 旅游攻略，并发布到当前 Session 的公开 travel 子域名。部署成功后先由用户决定是否进行手动测试，再继续后续交付闭环。
-- 只要当前 Agent 工具面里存在 `complete`，模型就不得直接输出普通最终答案结束本轮；运行时会要求它显式调用 `complete`，从而在真正收口前统一校验交付物契约。
-- `travel` 的 HTML 交付链改为严格收口：`travel` 本身不再依赖硬编码完成判定，而是通过 Agent 通用 `completion_checks` 声明两个必过产物检查: 当前 Session 工作区根目录存在 `index.html`，且当前 Session 已成功发布公开只读 `travel` 子服务。运行时不再自动补写、伪造或代发 fallback 页面，但会在这些检查失败时按当前 Session 范围额外触发一轮专门的 Codex 修复任务。修复轮只有在真实生成页面并真实发布成功时才会收口；缺页、错页或发布失败仍会直接返回阻塞原因。新生成的旅游 HTML 以移动端为主视口，优先保证手机单列阅读、触控操作、紧凑章节节奏和无横向溢出；PC 端作为辅助视口做版心、层级和支撑信息分组增强。所有涉及路线的信息都尽量提供路线图或路线卡，用编号站点、连线路径、分段交通、预计耗时和地标提示表达游览顺序。
+- Agent Runtime 使用同一个 CLI Agent Runtime 执行任务，由 Claude Code 或 Codex CLI 承担任务推理、工具调用和会话内上下文压缩。
+- Runtime Resolver 按优先级选择执行器：存在启用且可用的 Model Provider 时启动 `Claude Code + provider profile`；未配置、不可用、鉴权失败或 Claude Code 启动失败时使用 `Codex Direct`。
+- `coding`、`travel`、`writing` 等入口是预选 Skill 组合和交付契约，不是单独执行框架。代码开发、旅行攻略、前端设计、部署预览、文档协作、测试、评审与记忆整理都由 `docs/skills/<skill_id>/SKILL.md` 表达规则。
+- 启动前，服务会在当前 Session 工作区注入 `CLAUDE.md` 或 `AGENTS.md`、选中 Skill、Memory 摘要、MCP 配置、仓库/附件/产物路径和可写边界。Claude Code 使用 `.alter0/claude-runtime/`，Codex Direct 使用 `.alter0/codex-runtime/` 与独立 `CODEX_HOME`。
+- 代码开发任务默认在当前 Session 工作区维护独立 repo clone，并在同一会话内复用仓库、分支、预览服务和交付状态。旅行任务通过 `travel` Skill 产出移动端优先的 HTML 攻略，并通过当前 Session 的只读 `travel` workspace service 暴露。
+- 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理；alter0 持久化消息、日志、结果和归档摘要，用于恢复、审计和跨会话记忆整理。
 - 预览短哈希 host 与主域工作台共用同一套登录保护；访问 `https://<session_short_hash>.alter0.cn` 时可直接打开该 host 自身的 `/login` 登录页，登录 cookie 会共享到 `*.alter0.cn`。主运行时的 `supervisor -> web child` 继续继承同一套 `web_login_password`，默认 `web` 全栈预览内部托管的 workspace service 子进程才会去掉第二层登录，避免主域与预览 host 各自重复登录。
-- 若 Agent 在 `max_iterations` 耗尽前仍未显式 `complete`，运行时会返回带有“达到迭代上限”说明和最后一次工具观察的最终答复，避免 Web 流式消息在 `codex_exec` 观察后空收口。
 - Agent 执行过程会在运行时产出结构化 `process_steps`，并通过实时 `process` SSE 事件、`done` 结果、Task 结果与会话历史一并返回；前端优先按结构化步骤渲染可折叠 `Process` 区块，仅对历史旧消息保留基于文本标记的兼容解析。
 - Agent 流式回复中的 `Process` 与最终正文在收口后继续同时保留；刷新页面或从服务端会话历史恢复时，结构化步骤不会因最终正文已落库而丢失。
 - `Chat / Agent Runtime` 在浏览器刷新前会把当前活动会话的轻量快照写入 `sessionStorage`；刷新后若服务端会话列表暂时还没返回该会话，前端先用本地快照保住当前会话与消息时间线，再按 `session_id` 补拉单会话详情，避免活跃会话短暂消失或被新的空白 `New` 会话顶替。
 - Agent 请求一旦进入后端执行链，浏览器侧任何交互事件都只影响当前连接状态，不影响 Agent 本身的执行与会话持久化；断开后重新进入历史即可查看最终结果。
-- 每个 Agent 可独立配置名称、system prompt、tool 白名单、公有 Skill 选择、MCP 选择与 Memory Files 选择。
-- Agent 可按 Profile 勾选 `USER.md`、`SOUL.md`、`AGENTS.md`、长期 `MEMORY.md / memory.md`、当天与前一天 Daily Memory；其中 `AGENTS.md` 固定解析为当前 `agent_id` 的项目私有文件 `docs/agents/<agent_id>/AGENTS.md`，不与其他 Agent 共享；`USER.md`、`SOUL.md`、长期/日记忆继续作为共享记忆注入执行链路。
-- 所有 Agent 还会自动携带一个私有、可维护的 file-backed Skill，默认文件为 `docs/agents/<agent_id>/SKILL.md`；它用于沉淀该 Agent 的可复用工作模式、输出结构、检查清单与稳定偏好，不需要在 Agent Profile 里手工勾选，也不会在 Agent Runtime 的 Skill 面板里被用户取消。
-- `coding` Agent 的私有 `SKILL.md` 会进一步沉淀 Git 交付规则，例如 Session repo 完整 clone、认证签名提交、测试页部署成功后的快速 `gh` PR/merge 流程与交付汇报口径。
-- `AGENTS.md` 与私有 `SKILL.md` 职责分离：`AGENTS.md` 负责当前 Agent 的协作边界、仓库/工作区操作规则与交付约束；`SKILL.md` 负责该 Agent 自身的可复用打法、模板和长期偏好。一次性任务细节仍应留在当前任务或记忆文件，不写入 Skill。
-- 所有 Agent 会额外自动维护当前 Session 的私有画像文件 `.alter0/agents/<agent_id>/sessions/<session_id>.md`，并以只读 `Agent Session Profile` 注入执行链路；该文件用于沉淀当前 Agent 在该 Session 内的稳定工作上下文与结构化实例属性。实例属性支持通过请求 metadata 增量写入，统一落在 `## Instance Attributes` 区块，适合承载 `travel` 场景的 `city / district / days / hotel_area` 一类会话态事实；`coding` 场景还会自动补齐 `repository_path / remote_repository / branch / base_branch / preview_url / preview_subdomain` 等仓库与预览属性。`travel` 的只读 `guide_html_url` 不再预先写入 profile 文件，而是仅在当前 Session 已成功发布公开只读 `travel` 服务时，由 Web 聚合层按实时注册结果补齐。每个 Agent 还可预设自己的 Session Profile 字段定义、显式 deliverables contract 与机器可执行 `completion_checks`；内置 `coding`、`writing`、`travel` 已分别补齐仓库、写作、城市行程与最终交付物约束。执行前运行时会先走一条旁路 `Session Profile` 抽取链路：优先基于字段 schema 从本轮自然语言提取可写字段，再把 patch 合并回 profile；默认实现使用受限 Codex 窄调用作为 fallback，而不是复用主 Agent 的长上下文会话。Agent Runtime 在首次进入会话与每轮消息收口后都会重新读取当前 Session Profile，保证 `Details` 中的 `city / days / hotel_area` 等实例属性自动回显最新值。
-- Agent 与 Chat 共用会话短期记忆链路：执行前优先使用进程内最近轮次；当会话因重启、跨天续聊或 TTL 淘汰导致内存窗口为空时，会从持久化 session history 回填最近完成轮次，再注入当前 prompt，保证 UI 可见的同一 Session 历史也能被模型用于指代解析和执行结果回顾。
-- Memory Files 解析后会基于本轮用户输入执行轻量自动召回，命中的片段以 `memory_context.recall[]` 注入 Agent prompt 与 `codex_exec` 结构化载荷；长期记忆会同步维护可重建 JSON 检索索引，并在主回复前把高相关命中压缩为 Active Recall 摘要注入 prompt。`search_memory`、`read_memory`、`write_memory` 继续用于二次检索、精读和受控写入。
-- 注入内容同时携带可写文件路径；Agent 只能在这些已解析出的记忆文件上使用 `search_memory`、`read_memory`、`write_memory` 做检索与持久化维护，其余具体文件与命令操作统一交给 `codex_exec`。
-- `codex_exec` 调用 `Codex CLI` 时通过 stdin 传递当前步骤的执行指令，命令行参数仅保留 `-` 作为 prompt 占位；Agent / ReAct 路径不再额外向 Codex 透传 Skill、MCP 或 Memory 结构化载荷，直连 Codex 路径则改为使用原生 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*` 承载这些运行时信息。`Agent Runtime` 在 `.alter0/codex-runtime/thread.json` 中保存当前 Codex thread id；`Chat` 在 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json` 中保存对应归档日的 Codex thread id。
-- Web 端将用户管理的 Agent Profile 放在 `Management > Profiles` 分区；系统内置 Agent 由服务注册，不能通过控制面覆盖或删除。
-- Agent 的 `id`、`version` 等系统字段由服务端统一生成和维护，管理页不要求用户手填。
-- `Agent Runtime` 继续保留独立执行入口与配置，并按当前选中 Agent 展示独立 Session 历史；带独立前端入口的 Agent 不进入该页历史。
+- Runtime Profile 支持名称、默认 Skill 组合、MCP、Memory 注入策略和业务入口标签；Web 端在 `Management > Profiles` 分区管理这些配置。
+- Agent Runtime 继续保留独立入口与会话历史，并按当前业务入口隔离 Session。
 
 3. `Terminal`
 - 面向交互式终端会话。
@@ -224,7 +250,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - Terminal 新会话先使用占位标题；首条输入后会按输入内容自动命名。自动标题在早期多轮内会按更具体的后续输入继续升级，尤其覆盖“拉取仓库 / 分析仓库”等通用开场，避免列表里长期堆积低辨识度会话。
 - Terminal Composer 支持最多 5 个附件。图片附件继续保留缩略图预览、草稿缓存与 `asset_url / preview_url` 提交语义，并支持在 PC 输入框内直接粘贴剪贴板图片；常见文本/文档文件改为文件条目展示并复用同一附件上传接口，只提交稳定 `asset_url` 引用。发送时，图片会继续走 Codex CLI `-i` 输入，普通文件则写入会话工作区 `input-attachments/<turn_id>/` 并通过同轮 prompt 告知可读取路径；纯附件输入会自动补齐稳定占位文本。
 - Terminal 当前活动会话的 shell 明确指向 Codex 时，输入 `/` 会在 Composer 下方弹出 Web 适用的 Codex CLI 斜线命令候选，覆盖 Apps、插件、hooks、上下文压缩、diff、记忆、skills、AGENTS.md、MCP、模型、计划、目标、后台终端、review 与 status 等命令；权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选；非 Codex shell 不显示该候选。
-- Terminal 的 `Details` 面板支持选择控制面中启用且非私有的公有 Skill，选择结果随下一次 `/api/terminal/sessions/{id}/input` 请求以 `skill_ids` 发送；当前服务内置公有 Skill 除 `default-nl` 与 `memory` 外，还包含 `deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。新 Terminal 会话首次加载 Skill 列表时，默认勾选这批公有 Skill 中除 `default-nl`、`memory` 外的全部可用项，用户后续仍可按会话手动调整。后端会把选中的 Skill 编译到当前 Terminal 工作区的 `.alter0/codex-runtime/skills.md` 和托管 `AGENTS.md` 指令块中，仅作用于后续 Terminal 输入；托管运行时说明会同时要求 Codex 仅在当前 Terminal 工作区及其派生文件内执行，不得改动其他会话、服务或工作区外仓库，除非当前输入明确把这些目标列为本轮范围。
+- Terminal 的 `Details` 面板支持选择控制面中启用且非私有的公有 Skill，选择结果随下一次 `/api/terminal/sessions/{id}/input` 请求以 `skill_ids` 发送；当前服务内置公有 Skill 除 `default-nl` 与 `memory` 外，还包含 `memory-maintenance`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。新 Terminal 会话首次加载 Skill 列表时，默认勾选这批公有 Skill 中除 `default-nl`、`memory` 外的全部可用项，用户后续仍可按会话手动调整。后端会把选中的 Skill 编译到当前 Terminal 工作区的 `.alter0/codex-runtime/skills.md` 和托管 `AGENTS.md` 指令块中，仅作用于后续 Terminal 输入；托管运行时说明会同时要求 Codex 仅在当前 Terminal 工作区及其派生文件内执行，不得改动其他会话、服务或工作区外仓库，除非当前输入明确把这些目标列为本轮范围。
 - 同一 Terminal 会话在单次运行态中断或退出后，只记录一条对应状态提醒；恢复后若再次发生新的中断或退出，再按新的状态周期补充提醒。
 - Terminal 输入区上缘的运行态 hint 只服务于当前空闲会话；一旦用户重新发送恢复当前会话，或从旧会话切到 `New` 待创建态，旧的 `Exited / Interrupted / Failed` 提示会立即清空，不再在发送中残留。
 - Terminal 工作区头部仅保留 `Details` 等阅读辅助工具；会话删除统一从左侧会话列表触发，`Delete` 会移除会话记录、持久化状态文件与该会话对应的独立工作区。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表面板都保持现状不自动收起，便于连续清理多条会话；之后用户点 `Menu` 或点击抽屉外部遮罩时，列表仍会正常关闭。前端同时会在后续列表轮询和 page-activation 补拉中继续屏蔽该会话，避免服务端短暂返回旧列表时已删除项又回弹到左侧列表。
@@ -310,8 +336,8 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 
 1. 工作区目录仅决定默认执行目录与运行时产物落点，不等同于文件系统权限收缩。
 2. 当前默认仍为 `danger-full-access`，因此是否可访问其他绝对路径，仍取决于宿主机环境与运行账户权限。
-3. 具体执行统一交给 `Codex CLI`，默认执行目录会落到当前 Chat / Agent / Task / Terminal 会话各自的独立工作区。
-4. Chat / Agent 执行链交给 `Codex CLI` 的最终指令通过 stdin 输入，避免不同操作系统在长上下文场景触发命令行长度限制；其中 Agent / ReAct 路径只传递当前步骤指令，直连 Codex 路径会为当前会话额外准备独立 `codex-home/`、原生 `config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`。Agent Runtime 按 Session 持久化 Codex thread id 用于续聊；Chat 按北京时间 05:00 归档日持久化 Codex thread id，新归档日自动开启新的 Codex 线程。
+3. 具体执行统一交给 CLI Agent Runtime，默认执行目录会落到当前 Chat / Agent / Task / Terminal 会话各自的独立工作区。
+4. Chat / Agent 执行链优先使用 `Claude Code + provider profile`，兜底使用 `Codex Direct`；两条路径都会在当前会话工作区准备运行时 home、Skill、Memory、MCP 和边界文件。Agent Runtime 按 Session 持久化 CLI agent 会话状态用于续聊；Chat 按北京时间 05:00 归档日持久化运行时状态，新归档日自动开启新的会话线程。
 
 其中 `Chat` 再细分为两种执行方式：
 
@@ -321,7 +347,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - `Chat / Agent` 的 SSE 流在长时间无增量输出时会持续发送保活帧，避免 Codex CLI 静默执行阶段被浏览器或代理提前断开连接。
 - 对已进入 Agent 执行链的消息，SSE 断开只会终止当前前端回传，不会取消后端执行。
 - 同一会话内的同步请求保持串行；当上一条同步执行尚未结束时，后续用户消息会继续等待并按序执行，不再因为默认队列等待时间直接返回 5 秒超时。
-- 对于启用 ReAct 多步执行的同步请求，执行中若同会话收到新的用户补充，后续迭代会自动吸收当前最新一条用户消息继续推进。
+- 对于仍在执行中的同步请求，同会话后续用户补充会按顺序排队，并在下一轮 CLI agent 输入中继续推进。
 
 2. `Async Task`
 - 适用于高复杂度、长耗时或产物型请求。
@@ -617,12 +643,10 @@ curl -X POST http://127.0.0.1:18088/api/control/agents \
   -d '{
     "name":"Researcher",
     "enabled":true,
-    "system_prompt":"先执行，再汇报；不要只给建议。",
-    "max_iterations":6,
-    "tools":["codex_exec","search_memory","read_memory","write_memory"],
-    "skills":["memory","summary"],
+    "description":"面向资料整理和结论交付的运行入口。",
+    "skills":["memory","doc-coauthoring","brainstorming"],
     "mcps":["github"],
-    "memory_files":["user_md","soul_md","agents_md","memory_long_term","memory_daily_today","memory_daily_yesterday"]
+    "memory_files":["user_md","memory_long_term","memory_daily_today","project_memory"]
   }'
 
 # 更新
@@ -631,12 +655,10 @@ curl -X PUT http://127.0.0.1:18088/api/control/agents/researcher \
   -d '{
     "name":"Researcher",
     "enabled":true,
-    "system_prompt":"先执行，再汇报；不要只给建议。",
-    "max_iterations":8,
-    "tools":["codex_exec","search_memory","read_memory","write_memory"],
-    "skills":["memory","summary"],
+    "description":"面向资料整理和结论交付的运行入口。",
+    "skills":["memory","doc-coauthoring","brainstorming","code-review"],
     "mcps":["github"],
-    "memory_files":["user_md","soul_md","agents_md","memory_long_term","memory_daily_today"]
+    "memory_files":["user_md","memory_long_term","memory_daily_today","project_memory"]
   }'
 
 # 使用指定 Agent 执行任务
@@ -652,17 +674,14 @@ curl -X POST http://127.0.0.1:18088/api/agent/messages \
 
 说明：
 
-1. Agent Profile 由控制面统一管理，运行时通过 `agent_id` 选择。
-2. 系统默认注册内置 `main`、`coding`、`writing`、`travel` Agent；其中 `main / Alter0` 绑定 Chat 默认入口，不进入 Agent Runtime 可选列表，其余专项入口通过统一 `Agent Catalog` 暴露给运行时与前端。
-3. 创建 Agent 时不需要手填 `id` 或 `version`；服务端会自动生成 Agent ID，并在每次更新时维护版本。若生成 ID 与内置 Agent 冲突，会自动跳过保留 ID。
-4. Agent 运行时固定采用“Codex CLI 负责具体执行、Agent 负责理解和驱动”的模式：稳定工具面包括 `codex_exec`、`search_memory`、`read_memory`、`write_memory`，系统会自动补充收口工具 `complete`；允许委派的 Agent 可额外启用 `delegate_agent`；`coding` Agent 额外启用 `deploy_test_service`。`search_memory` 负责在已解析的记忆文件内按关键字检索历史偏好、缩写和上下文，再配合 `read_memory` / `write_memory` 做精读和更新。存在可用 Provider 且进入 Agent / ReAct 链路时，Agent 作为用户与 Codex 之间的代理层，在自身侧消化 system prompt、Skill、记忆与会话上下文，并只把当前执行所需的最小指令交给 `codex_exec`；不存在 Provider、Agent 初始化失败或 Terminal 直连 Codex 时，运行时会在当前会话工作区内生成独立 `codex-home/`、原生 `config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，把 MCP、Skill、Memory 与运行时信息直接编译成 Codex 原生运行配置。Agent Runtime 使用 `.alter0/codex-runtime/thread.json` 保存当前 Codex thread id；Chat 使用 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json` 保存当前归档日的 Codex thread id。`coding` Agent 会优先把实质性开发与验证步骤交给 `codex_exec`，并按每轮执行结果继续推进后续步骤；仓库类执行默认切到当前 Session 独立的 repo 完整 clone `.alter0/workspaces/sessions/<session_id>/repo`，该 clone 自带自己的 `.git` 元数据并允许直接分支与提交，运行时同步维护源仓库路径、独立 repo clone 路径、活动分支、会话工作区、短哈希预览域名与 PR 交付规则。需要测试页面或附加测试服务时，完成实现后必须先通过 `/api/control/workspace-services/{session_id}/{service_id}` 或 `scripts/deploy_test_service.sh` 把当前工作区注册到对应短哈希域名再结束本轮交付；默认 `web` 路径会把当前分支后端启动命令交给共享运行时托管，再把子域名直接路由到这份后端。
-5. `Chat` 默认绑定 `main` Agent；`Agent` 页面作为其余入口 Agent 的统一运行页，并按目标 Agent 隔离维护独立会话历史；`Alter0/main` 不在 Agent 页面中作为可选 Agent 展示，具备独立前端入口的 Agent 不进入该页历史。
-6. Agent 的公有 Skill、MCP 与 Memory Files 选择会在执行前先解析为运行时上下文；当前 Agent 的私有 Skill 始终自动注入，不受前端取消或 `alter0.skills.exclude` 排除。Agent / ReAct 路径由 Agent 自身吸收这些规则并仅向 Codex 下发当前步骤指令；直连 Codex 路径则把解析结果编译到当前会话的原生 Codex Runtime 中，Memory Files 的自动召回片段会写入 `.alter0/codex-runtime/memory/recall.md` 等工作区文件。同一 Session 的短期记忆会在内存窗口不足时从持久化 session history 回填最近完成轮次。
-7. 内置 `memory` Skill 会明确记忆文件的读写逻辑：按任务类型决定先读哪些文件、按信息类型决定写入哪个文件、遇到冲突时按 `SOUL.md > AGENTS.md > 长期记忆 > 日记忆` 收敛；其中 `AGENTS.md` 固定为当前 Agent 的非共享规则文件 `docs/agents/<agent_id>/AGENTS.md`，`USER.md`、`SOUL.md` 与长期/日记忆继续共享；实际文件快照仍由 `memory_files` 注入提供。
-8. 每个 Agent 还会自动拿到自己的私有 Skill 文件 `docs/agents/<agent_id>/SKILL.md`；运行时会把它作为可写 Skill 上下文注入，Agent 需要在用户提出稳定、可复用、会影响后续该 Agent 行为的偏好时按需更新它，而不是把一次性任务细节写进去。
-9. `memory_files` 当前支持：`user_md`、`soul_md`、`agents_md`、`memory_long_term`、`memory_daily_today`、`memory_daily_yesterday`。
-10. Memory Files 注入会携带文件内容、绝对路径、是否存在、最近更新时间；文件不存在时仍会暴露预期路径，便于 Agent 直接创建并写入。
-11. Web `Agent Profiles` 页面用于管理用户自定义 Agent Profile；内置 Agent 由服务托管；`Chat` 页面绑定 `Alter0`；`Agent` 页面作为其余专项入口 Agent 的通用交互入口。
+1. Runtime Profile 由控制面统一管理，运行时通过业务入口或会话选择 Skill 组合。
+2. Agent Runtime 使用同一个 CLI Agent Runtime 执行任务；`coding`、`writing`、`travel` 等入口是默认 Skill 组合和交付契约。
+3. Runtime Resolver 优先使用已启用且健康的 `Claude Code + provider profile`；无可用 Provider 或 Claude Code 运行失败时使用 `Codex Direct`。
+4. 启动前会在当前 Session 工作区注入 `CLAUDE.md` 或 `AGENTS.md`、Skill 副本、Memory 摘要、MCP 配置、仓库/附件/产物路径和工作区边界。
+5. Skill 文件由 `docs/skills/<skill_id>/SKILL.md` 承载，业务能力通过 Skill 复用；用户可在会话级调整公有 Skill 选择。
+6. Memory Files 当前使用 `memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。
+7. 用户显式要求记住时，当前 CLI agent 可写入对应 Markdown 记忆；会话归档生成 summary；Cron 加载 `memory-maintenance` Skill 做长期整理。
+8. Web `Profiles` 页面用于管理 Runtime Profile；`Chat` 是通用入口，`Agent` 页面作为预选 Skill 入口的通用运行页。
 
 ### Cron Jobs
 

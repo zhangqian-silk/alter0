@@ -174,10 +174,10 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /\.runtime-thinking-toggle \.terminal-process-title\s*\{[\s\S]*?text-transform:\s*none;[\s\S]*?letter-spacing:\s*0;[\s\S]*?color:\s*#7a7f87;/,
     );
-    const mobileBreakpoint = stylesheet.slice(stylesheet.lastIndexOf("@media (max-width: 760px)"));
-    const mobileThinkingBlock = mobileBreakpoint.match(
-      /\.runtime-thinking-shell \.terminal-process-body:not\(\[hidden\]\)\s*\{([^}]*)\}/,
-    )?.[1] || "";
+    const mobileThinkingBlocks = Array.from(stylesheet.matchAll(
+      /\.runtime-thinking-shell \.terminal-process-body:not\(\[hidden\]\)\s*\{([^}]*)\}/g,
+    ));
+    const mobileThinkingBlock = mobileThinkingBlocks[mobileThinkingBlocks.length - 1]?.[1] || "";
     expect(mobileThinkingBlock).not.toContain("position: fixed;");
     expect(mobileThinkingBlock).not.toContain("backdrop-filter:");
     expect(mobileThinkingBlock).toContain("max-height: none;");
@@ -187,10 +187,10 @@ describe("shell layout stylesheet", () => {
   it("keeps terminal runtime thinking expanded inline on mobile", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
-    const mobileBreakpoint = stylesheet.slice(stylesheet.lastIndexOf("@media (max-width: 760px)"));
-    const terminalThinkingBlock = mobileBreakpoint.match(
-      /\[data-runtime-view="terminal"\] \.runtime-thinking-shell \.terminal-process-body:not\(\[hidden\]\)\s*\{([^}]*)\}/,
-    )?.[1] || "";
+    const terminalThinkingBlocks = Array.from(stylesheet.matchAll(
+      /\[data-runtime-view="terminal"\] \.runtime-thinking-shell \.terminal-process-body:not\(\[hidden\]\)\s*\{([^}]*)\}/g,
+    ));
+    const terminalThinkingBlock = terminalThinkingBlocks[terminalThinkingBlocks.length - 1]?.[1] || "";
 
     expect(terminalThinkingBlock).toContain("position: static;");
     expect(terminalThinkingBlock).toContain("max-height: none;");
@@ -632,6 +632,9 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /\.nav-session-rail \.runtime-session-delete\s*\{[\s\S]*?min-width:\s*28px;[\s\S]*?min-height:\s*28px;[\s\S]*?border-radius:\s*8px;[\s\S]*?opacity:\s*0;/,
     );
+    expect(stylesheet).toMatch(
+      /@media \(min-width: 761px\) \{[\s\S]*?\.primary-nav\.has-session-rail \.menu\s*\{[\s\S]*?flex:\s*0 0 clamp\(260px, 34vh, 312px\);[\s\S]*?overflow-y:\s*auto;/,
+    );
   });
 
   it("gives the mobile primary nav a purpose-built clean drawer surface", () => {
@@ -746,6 +749,19 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-submit\s*\{[\s\S]*?background:\s*#0f172a;[\s\S]*?color:\s*#fff;/,
     );
+  });
+
+  it("keeps the full page state layer for settings subpages and terminal live overlays", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain("/* UI UX Pro Max full page states layer */");
+    expect(stylesheet).toContain(".management-route-content[data-management-route-content=\"runtime\"] .settings-composite-section");
+    expect(stylesheet).toContain(".settings-composite-section[data-settings-section=\"workspaces\"]");
+    expect(stylesheet).toContain(".memory-tabs");
+    expect(stylesheet).toContain(".runtime-composer-command-list");
+    expect(stylesheet).toContain(".runtime-composer-panel[data-runtime-config-surface=\"terminal\"]");
+    expect(stylesheet).toContain(".terminal-skill-section .conversation-check-item:has(input:checked)");
   });
 
   it("anchors narrow shell drawers to the viewport edges instead of floating them inside the desktop canvas", () => {
@@ -976,6 +992,23 @@ describe("shell layout stylesheet", () => {
     );
     expect(stylesheet).toMatch(/\.terminal-jump-cluster\s*\{[\s\S]*?pointer-events:\s*none;/);
     expect(stylesheet).toMatch(/\.terminal-jump-control\s*\{[\s\S]*?touch-action:\s*manipulation;/);
+  });
+
+  it("renders terminal markdown answers with Codex-style readable prose instead of a dark card", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const codexLayer = stylesheet.slice(stylesheet.lastIndexOf("/* Codex-style terminal markdown final override */"));
+
+    expect(codexLayer).toContain('[data-runtime-view="terminal"] .terminal-final-output,');
+    expect(codexLayer).toContain("background: transparent;");
+    expect(codexLayer).toContain("color: #111827;");
+    expect(codexLayer).toMatch(
+      /\[data-runtime-view="terminal"\] \.chat-md-inline-code\s*\{[\s\S]*?background:\s*rgba\(175, 184, 193, 0\.22\);[\s\S]*?color:\s*#24292f;/,
+    );
+    expect(codexLayer).toMatch(
+      /\[data-runtime-view="terminal"\] \.chat-md-pre,[\s\S]*?background:\s*#f6f8fa;[\s\S]*?color:\s*#24292f;/,
+    );
+    expect(codexLayer).not.toContain("background: #111315;");
   });
 
   it("keeps narrow terminal headers on one line and preserves composer meta visibility", () => {

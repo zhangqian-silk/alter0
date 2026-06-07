@@ -103,7 +103,7 @@ func TestAuthMiddlewareUsesStablePageLoginNext(t *testing.T) {
 		t.Fatalf("expected %d, got %d", http.StatusTemporaryRedirect, rec.Code)
 	}
 	location := rec.Header().Get("Location")
-	if location != "/login?next=%2Fagent-runtime" {
+	if location != "/login?next=%2Fchat" {
 		t.Fatalf("expected compact page login redirect, got %q", location)
 	}
 }
@@ -289,7 +289,7 @@ func TestLoginHandlerWithoutLoginEnabledPreservesNextPath(t *testing.T) {
 	if rec.Code != http.StatusTemporaryRedirect {
 		t.Fatalf("expected %d, got %d", http.StatusTemporaryRedirect, rec.Code)
 	}
-	if location := rec.Header().Get("Location"); location != "/agent-runtime?session_id=session-2" {
+	if location := rec.Header().Get("Location"); location != "/chat" {
 		t.Fatalf("expected redirect to preserved next path, got %q", location)
 	}
 }

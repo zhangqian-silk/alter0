@@ -1,6 +1,6 @@
 # Task, Terminal & Workspace Requirements
 
-> Last update: 2026-06-03
+> Last update: 2026-06-06
 
 ## 领域边界
 
@@ -17,6 +17,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 | `TerminalSession` | Terminal 会话身份、标题、状态、工作区和 Codex 线程 |
 | `TerminalTurn` / `TerminalStep` | Terminal 执行轮次与步骤明细 |
 | `Workspace` | Chat、Agent、Task、Terminal 的默认执行目录 |
+| `RuntimeWorkspace` | CLI Agent Runtime 的上下文注入目录、运行时 home 与线程/会话状态 |
 | `RuntimeHeartbeat` | 长任务存活心跳与超时续租窗口 |
 
 ## 异步任务
@@ -140,6 +141,16 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Agent 仓库类执行：`.alter0/workspaces/sessions/<session_id>/repo`。
 - Async Task：`.alter0/workspaces/sessions/<session_id>/tasks/<task_id>`。
 - Terminal：`.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
+- Claude Code 运行时：当前 Session 工作区下的 `.alter0/claude-runtime/`，包含 `CLAUDE.md`、Skill 副本、Memory 注入摘要、provider profile 环境和会话状态。
+- Codex Direct 运行时：当前 Session 工作区下的 `.alter0/codex-runtime/`，包含 `AGENTS.md`、独立 `codex-home/`、Skill 副本、Memory 注入摘要、MCP 配置和 thread id。
+
+### 会话绑定
+
+- 每个 Chat / Agent Runtime 会话绑定一个稳定 Session 工作区；后续同一会话续写复用同一工作区与运行时状态。
+- Chat 的逻辑会话 `alter0-chat` 可按归档日维护 CLI agent thread 状态；Agent Runtime 的多会话按 `session_id` 独立维护。
+- 代码开发任务在当前 Session 工作区内维护独立 repo clone，复用同一会话内已确认的仓库、分支、预览服务和交付状态。
+- 旅行、文档、前端页面等产物型任务都把最终产物写入当前 Session 工作区，并通过 workspace service 或 ArtifactRef 暴露给用户。
+- Runtime 注入文件只服务当前会话，不跨 Session 共享写入；跨会话复用通过 Skill 仓库和 Memory 文件完成。
 
 ### 权限边界
 
@@ -245,7 +256,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 ## 依赖与边界
 
 - Conversation 负责普通 Chat/Agent 消息体验，Terminal 负责独立终端会话。
-- Agent 通过 `codex_exec` 进入工作区，Task 承接后台化执行。
+- CLI Agent Runtime 进入当前会话工作区，Task 承接后台化执行。
 
 ## 验收口径
 

@@ -1,4 +1,4 @@
-import { NAV_GROUPS, PROMPTS } from "./legacyShellConfig";
+import { MANAGEMENT_ROUTE_GROUPS, NAV_GROUPS, PROMPTS } from "./legacyShellConfig";
 
 describe("legacyShellConfig", () => {
   it("keeps the navigation groups in the shell order", () => {
@@ -21,16 +21,27 @@ describe("legacyShellConfig", () => {
     expect(uniqueRoutes.size).toBe(routes.length);
   });
 
-  it("keeps only chat, agent, and terminal as primary navigation routes", () => {
+  it("keeps only chat, terminal, and settings as primary navigation routes", () => {
     const workspaceRoutes = NAV_GROUPS[0].items.map((item) => item.route);
     const allRoutes = NAV_GROUPS.flatMap((group) => group.items.map((item) => item.route));
 
-    expect(workspaceRoutes).toEqual(["chat", "agent-runtime", "terminal"]);
-    expect(allRoutes).toEqual(["chat", "agent-runtime", "terminal"]);
-    expect(allRoutes).not.toContain("management");
+    expect(workspaceRoutes).toEqual(["chat", "terminal", "settings"]);
+    expect(allRoutes).toEqual(["chat", "terminal", "settings"]);
+    expect(allRoutes).not.toContain("agent-runtime");
     expect(allRoutes).not.toContain("memory");
     expect(allRoutes).not.toContain("tasks");
     expect(allRoutes).not.toContain("codex-accounts");
+  });
+
+  it("keeps service restart and update controls reachable inside settings", () => {
+    expect(MANAGEMENT_ROUTE_GROUPS[0].items.map((item) => item.route)).toEqual([
+      "runtime",
+      "environments",
+      "skills",
+      "memory",
+      "workspaces",
+      "schedules",
+    ]);
   });
 
   it("keeps welcome prompts available for the empty state", () => {

@@ -84,6 +84,7 @@ export type ChatMessage = {
 
 type ChatSession = {
   id: string;
+  sourceRoute?: ConversationRoute;
   status: string;
   title: string;
   titleAuto: boolean;
@@ -550,18 +551,12 @@ function defaultChatTarget(): ChatTarget {
 }
 
 function normalizeRouteSessions(routeKey: ConversationRoute, sessions: ChatSession[]): ChatSession[] {
-  if (routeKey !== "chat") {
-    return sessions;
-  }
-  const canonical = sessions.find((session) => session.id === CANONICAL_CHAT_SESSION_ID) || sessions[0] || null;
-  if (!canonical) {
-    return [];
-  }
-  return [{
-    ...canonical,
-    id: CANONICAL_CHAT_SESSION_ID,
-    target: defaultChatTarget(),
-  }];
+  void routeKey;
+  const merged = new Map<string, ChatSession>();
+  sessions.forEach((session) => {
+    merged.set(session.id, session);
+  });
+  return Array.from(merged.values()).sort((left, right) => right.createdAt - left.createdAt);
 }
 
 function isCodexRuntimeSelection(providerID: string, modelID: string): boolean {
@@ -801,6 +796,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
   }
   return {
     id,
+    sourceRoute: normalizeText(record.sourceRoute ?? record.source_route) === "agent-runtime" ? "agent-runtime" : "chat",
     status: normalizeText(record.status),
     title: normalizeText(record.title) || "New",
     titleAuto: record.titleAuto !== false,
@@ -863,6 +859,7 @@ function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
 function serializeStoredSession(session: ChatSession): Record<string, unknown> {
   return {
     id: session.id,
+    sourceRoute: session.sourceRoute,
     status: session.status,
     title: session.title,
     titleAuto: session.titleAuto,
@@ -904,7 +901,12 @@ function writeJSONStorage(key: string, value: unknown) {
 function loadActiveSessionState(): ActiveSessionState {
   const parsed = readJSONStorage<Record<string, string>>(ACTIVE_SESSION_STORAGE_KEY, {});
   return {
-    chat: CANONICAL_CHAT_SESSION_ID,
+    chat:
+      readWorkbenchRouteSessionID("chat")
+      || normalizeText(parsed.chat)
+      || readWorkbenchRouteSessionID("agent-runtime")
+      || normalizeText(parsed["agent-runtime"])
+      || CANONICAL_CHAT_SESSION_ID,
     "agent-runtime": readWorkbenchRouteSessionID("agent-runtime") || normalizeText(parsed["agent-runtime"]),
   };
 }
@@ -946,8 +948,15 @@ function loadActiveSessionSnapshots(): SessionsState {
       Array.from(sessions.values()).sort((left, right) => right.createdAt - left.createdAt),
     );
   };
+  const legacyAgentRuntimeSessions = mergeStoredRouteSessions("agent-runtime").map((session) => ({
+    ...session,
+    sourceRoute: session.sourceRoute || "agent-runtime" as const,
+  }));
   return {
-    chat: mergeStoredRouteSessions("chat"),
+    chat: normalizeRouteSessions("chat", [
+      ...mergeStoredRouteSessions("chat"),
+      ...legacyAgentRuntimeSessions,
+    ]),
     "agent-runtime": mergeStoredRouteSessions("agent-runtime"),
   };
 }
@@ -1067,7 +1076,11 @@ function normalizeRuntimeMessage(item: RuntimeMessagePayload): ChatMessage | nul
   };
 }
 
-function normalizeRuntimeSession(item: RuntimeSessionPayload, previous?: ChatSession | null): ChatSession | null {
+function normalizeRuntimeSession(
+  item: RuntimeSessionPayload,
+  previous?: ChatSession | null,
+  sourceRoute: ConversationRoute = "chat",
+): ChatSession | null {
   const id = normalizeText(item.id);
   if (!id) {
     return null;
@@ -1082,6 +1095,7 @@ function normalizeRuntimeSession(item: RuntimeSessionPayload, previous?: ChatSes
     : previous?.messages || [];
   return {
     id,
+    sourceRoute: previous?.sourceRoute || sourceRoute,
     status: normalizeText(item.status) || previous?.status || "",
     title: normalizeText(item.title) || previous?.title || "New",
     titleAuto: item.title_auto !== false,
@@ -1417,7 +1431,8 @@ export function ConversationRuntimeProvider({
       return existing;
     }
     const created: ChatSession = {
-      id: route === "chat" ? CANONICAL_CHAT_SESSION_ID : makeID("session"),
+      id: makeID("session"),
+      sourceRoute: route,
       status: "ready",
       title: "New",
       titleAuto: true,
@@ -1441,7 +1456,7 @@ export function ConversationRuntimeProvider({
     };
     const nextSessionsByRoute: SessionsState = {
       ...currentSessions,
-      [route]: route === "chat" ? [created] : [created, ...currentSessions[route]],
+      [route]: [created, ...currentSessions[route]],
     };
     const nextActiveState = { ...preferredActiveState, [route]: created.id };
     setSessionsByRoute(nextSessionsByRoute);
@@ -1524,7 +1539,7 @@ export function ConversationRuntimeProvider({
   }, [patchSession]);
 
   const focusSession = useCallback((sessionID: string) => {
-    const resolvedSessionID = route === "chat" ? CANONICAL_CHAT_SESSION_ID : sessionID;
+    const resolvedSessionID = sessionID;
     const nextActiveState = { ...activeSessionByRoute, [route]: resolvedSessionID };
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
@@ -1639,42 +1654,46 @@ export function ConversationRuntimeProvider({
 
   const hydrateRuntimeSessionResponse = (
     routeKey: ConversationRoute,
+    sourceRoute: ConversationRoute,
     sessionID: string,
     payload: { session?: RuntimeSessionPayload },
   ): ChatSession | null => {
     return normalizeRuntimeSession(
       payload.session || {},
       sessionsByRouteRef.current[routeKey].find((item) => item.id === sessionID) || null,
+      sourceRoute,
     );
   };
 
   const upsertRuntimeSession = (routeKey: ConversationRoute, nextSession: ChatSession) => {
-    const normalizedSession = routeKey === "chat"
-      ? { ...nextSession, id: CANONICAL_CHAT_SESSION_ID, target: defaultChatTarget() }
-      : nextSession;
+    const normalizedSession = { ...nextSession, sourceRoute: nextSession.sourceRoute || routeKey };
     setSessionsByRoute((current) => {
-      if (routeKey === "chat") {
-        return {
-          ...current,
-          [routeKey]: [normalizedSession],
-        };
-      }
       const hasSession = current[routeKey].some((session) => session.id === normalizedSession.id);
       const nextSessions = hasSession
         ? current[routeKey].map((session) => (session.id === normalizedSession.id ? normalizedSession : session))
         : [normalizedSession, ...current[routeKey]];
-      return {
+      const nextState = {
         ...current,
         [routeKey]: nextSessions.sort((left, right) => right.createdAt - left.createdAt),
       };
+      sessionsByRouteRef.current = nextState;
+      return nextState;
     });
   };
 
+  const resolveSessionSourceRoute = (routeKey: ConversationRoute, sessionID: string): ConversationRoute => {
+    if (routeKey !== "chat") {
+      return routeKey;
+    }
+    return sessionsByRouteRef.current[routeKey].find((session) => session.id === sessionID)?.sourceRoute || routeKey;
+  };
+
   const hydrateRuntimeSession = async (routeKey: ConversationRoute, sessionID: string): Promise<ChatSession | null> => {
+    const sourceRoute = resolveSessionSourceRoute(routeKey, sessionID);
     const payload = await apiClient.get<{ session?: RuntimeSessionPayload }>(
-      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(sessionID)}?route=${encodeURIComponent(routeKey)}`,
+      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(sessionID)}?route=${encodeURIComponent(sourceRoute)}`,
     );
-    return hydrateRuntimeSessionResponse(routeKey, sessionID, payload);
+    return hydrateRuntimeSessionResponse(routeKey, sourceRoute, sessionID, payload);
   };
 
   const recoverRuntimeSession = async (
@@ -2053,17 +2072,27 @@ export function ConversationRuntimeProvider({
   };
 
   const loadRuntimeSessions = async (routeKey: ConversationRoute) => {
-    const payload = await apiClient.get<{ items?: RuntimeSessionPayload[] }>(
-      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}?route=${encodeURIComponent(routeKey)}`,
-    );
-    const remoteSessions = (Array.isArray(payload.items) ? payload.items : [])
-      .map((item) => normalizeRuntimeSession(item))
-      .filter((session): session is ChatSession => session !== null);
-    const normalizedRemoteSessions = normalizeRouteSessions(routeKey, remoteSessions);
-    setSessionsByRoute((current) => ({
-      ...current,
-      [routeKey]: normalizeRouteSessions(routeKey, mergeRuntimeSessions(normalizedRemoteSessions, current[routeKey])),
+    const sourceRoutes: ConversationRoute[] = routeKey === "chat" ? ["chat", "agent-runtime"] : [routeKey];
+    const remoteSessionGroups = await Promise.all(sourceRoutes.map(async (sourceRoute) => {
+      const payload = await apiClient.get<{ items?: RuntimeSessionPayload[] }>(
+        `${RUNTIME_SESSION_COLLECTION_ENDPOINT}?route=${encodeURIComponent(sourceRoute)}`,
+      );
+      return (Array.isArray(payload.items) ? payload.items : [])
+        .map((item) => normalizeRuntimeSession(item, undefined, sourceRoute))
+        .filter((session): session is ChatSession => session !== null);
     }));
+    const remoteSessions = remoteSessionGroups.flat();
+    const normalizedRemoteSessions = normalizeRouteSessions(routeKey, remoteSessions);
+    const nextSessions = normalizeRouteSessions(
+      routeKey,
+      mergeRuntimeSessions(normalizedRemoteSessions, sessionsByRouteRef.current[routeKey]),
+    );
+    const nextState = {
+      ...sessionsByRouteRef.current,
+      [routeKey]: nextSessions,
+    };
+    sessionsByRouteRef.current = nextState;
+    setSessionsByRoute(nextState);
     setSessionsLoadedByRoute((current) => ({ ...current, [routeKey]: true }));
     return normalizedRemoteSessions;
   };
@@ -2100,7 +2129,7 @@ export function ConversationRuntimeProvider({
 
   useEffect(() => {
     if (route === "chat") {
-      writeWorkbenchRouteSessionID("chat", "");
+      writeWorkbenchRouteSessionID("chat", activeSessionByRoute.chat);
       return;
     }
     writeWorkbenchRouteSessionID("agent-runtime", activeSessionByRoute["agent-runtime"]);

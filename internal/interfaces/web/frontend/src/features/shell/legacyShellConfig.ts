@@ -31,56 +31,41 @@ export type IconName =
   | "channels"
   | "models"
   | "environments"
-  | "codex";
+  | "codex"
+  | "settings";
 
-export const MANAGEMENT_WORKBENCH_ROUTE = "management";
+export const SETTINGS_WORKBENCH_ROUTE = "settings";
+export const MANAGEMENT_WORKBENCH_ROUTE = SETTINGS_WORKBENCH_ROUTE;
 export const TOP_LEVEL_WORKBENCH_ROUTES = [
   "chat",
-  "agent-runtime",
   "terminal",
-  MANAGEMENT_WORKBENCH_ROUTE,
+  SETTINGS_WORKBENCH_ROUTE,
 ] as const;
 
 export type TopLevelWorkbenchRoute = (typeof TOP_LEVEL_WORKBENCH_ROUTES)[number];
-export const MANAGEMENT_DEFAULT_SECTION_ROUTE = "agent";
+export const MANAGEMENT_DEFAULT_SECTION_ROUTE = "runtime";
 
 export const NAV_GROUPS: NavGroup[] = [
   {
     heading: "Workspace",
     items: [
       { label: "Chat", route: "chat", abbr: "C", icon: "chat", active: true },
-      { label: "Agent", route: "agent-runtime", abbr: "AR", icon: "agent" },
-      { label: "Terminal", route: "terminal", abbr: "TE", icon: "terminal" }
+      { label: "Terminal", route: "terminal", abbr: "TE", icon: "terminal" },
+      { label: "Settings", route: SETTINGS_WORKBENCH_ROUTE, abbr: "SE", icon: "settings" }
     ]
   }
 ];
 
 export const MANAGEMENT_ROUTE_GROUPS: NavGroup[] = [
   {
-    heading: "Agent Studio",
-    items: [
-      { label: "Profiles", route: "agent", abbr: "AG", icon: "agent" },
-      { label: "Memory", route: "memory", abbr: "ME", icon: "memory" },
-      { label: "Skills", route: "skills", abbr: "SK", icon: "skills" },
-      { label: "MCP", route: "mcp", abbr: "MC", icon: "mcp" }
-    ]
-  },
-  {
-    heading: "Control",
-    items: [
-      { label: "Sessions", route: "sessions", abbr: "SE", icon: "sessions" },
-      { label: "Tasks", route: "tasks", abbr: "TS", icon: "tasks" },
-      { label: "Cron Jobs", route: "cron-jobs", abbr: "CR", icon: "cron" }
-    ]
-  },
-  {
     heading: "Settings",
-    bottom: true,
     items: [
-      { label: "Channels", route: "channels", abbr: "CH", icon: "channels" },
-      { label: "Models", route: "models", abbr: "MO", icon: "models" },
+      { label: "Runtime", route: "runtime", abbr: "RU", icon: "models" },
       { label: "Environments", route: "environments", abbr: "EN", icon: "environments" },
-      { label: "Codex Accounts", route: "codex-accounts", abbr: "CA", icon: "codex" }
+      { label: "Skills", route: "skills", abbr: "SK", icon: "skills" },
+      { label: "Memory", route: "memory", abbr: "ME", icon: "memory" },
+      { label: "Workspaces", route: "workspaces", abbr: "WO", icon: "sessions" },
+      { label: "Schedules", route: "schedules", abbr: "SC", icon: "cron" }
     ]
   }
 ];

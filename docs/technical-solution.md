@@ -1,6 +1,6 @@
 # Technical Solution
 
-> Last update: 2026-06-04
+> Last update: 2026-06-06
 
 `alter0` 的技术方案按与需求清单一致的领域模型维护。后续新增或调整需求时，技术方案必须落到对应领域与子域，不再按时间顺序、任务编号或零散专题堆叠。
 
@@ -16,11 +16,11 @@
 
 | 领域 | 主包/模块 | 技术方案重点 |
 | --- | --- | --- |
-| Runtime & Orchestration | `internal/interfaces`、`internal/shared`、`internal/orchestration`、`internal/execution/domain`、`internal/scheduler` | 统一消息、意图路由、执行端口、调度触发、观测与健康检查 |
+| Runtime & Orchestration | `internal/interfaces`、`internal/shared`、`internal/orchestration`、`internal/execution/domain`、`internal/scheduler` | 统一消息、意图路由、Runtime Resolver、CLI Agent Runtime、调度触发、观测与健康检查 |
 | Conversation & Session Experience | `internal/interfaces/web`、`internal/session`、Web static assets | Chat/Agent 会话、SSE、历史隔离、移动端视口、消息渲染 |
-| Agent Capability & Memory | `internal/agent`、`internal/execution`、`internal/llm`、`internal/orchestration` | Agent Catalog、ReAct、工具执行、Skills/MCP、Memory Context、上下文压缩 |
+| Agent Capability & Memory | `internal/agent`、`internal/execution`、`internal/orchestration`、`docs/skills`、`.alter0/memory` | CLI Agent 上下文注入、Skill 仓库、Memory Context、会话摘要、长期记忆、记忆维护任务 |
 | Task, Terminal & Workspace | `internal/task`、`internal/tasksummary`、`internal/terminal`、`.alter0/workspaces` | 异步任务、日志流、心跳、产物交付、Terminal 会话、工作区隔离 |
-| Control, Operations & Governance | `internal/control`、`internal/llm`、`internal/codex`、`cmd/alter0`、`scripts`、`docs/deployment` | 控制面配置、模型 Provider、Codex 多账号、运行时重启、部署凭据、测试与 TDD 约束 |
+| Control, Operations & Governance | `internal/control`、`internal/codex`、`cmd/alter0`、`scripts`、`docs/deployment` | 控制面配置、Model Provider、Claude Code provider profile、Codex 多账号、运行时重启、部署凭据、测试与 TDD 约束 |
 
 ## Runtime & Orchestration
 
@@ -40,6 +40,8 @@ CLI / Web / Cron
   -> UnifiedMessage
   -> Orchestrator
   -> CommandHandler | ExecutionPort
+  -> RuntimeResolver
+  -> Claude Code + provider profile | Codex Direct
   -> OrchestrationResult
   -> Interface response / Session persistence / Task handoff
 ```
@@ -50,7 +52,9 @@ CLI / Web / Cron
 - 命令路由优先于复杂度评估和模型执行；显式 `alter0.execution.engine=codex` 的消息会在编排层绕过命令路由，使 Codex CLI 内置斜线输入作为直连 Codex 内容进入 `ExecutionPort`。
 - Cron 触发不直接调用执行器，必须复用编排链路。
 - Cron runs 接口通过 Session history 按 `trigger_type=cron` 与 `job_id` 查询触发会话，不另建独立运行记录存储。
-- `ExecutionPort` 是自然语言执行能力的稳定边界，具体实现可替换。
+- `ExecutionPort` 是自然语言执行能力的稳定边界；具体执行由 `RuntimeResolver` 选择 CLI Agent Runtime。
+- `RuntimeResolver` 按优先级选择执行器：显式 `alter0.execution.engine=codex` 进入 `Codex Direct`；存在启用且健康的 Model Provider 时进入 `Claude Code + provider profile`；其余情况进入 `Codex Direct`。
+- Claude Code 运行前注入 `CLAUDE.md`、provider profile 环境、Skill、Memory、MCP 和工作区事实；Codex Direct 运行前注入 `AGENTS.md`、独立 `CODEX_HOME`、Skill、Memory、MCP 和工作区事实。
 - trace、session、message、correlation 字段贯穿日志、指标、会话与任务。
 
 ### 验证策略
@@ -171,8 +175,8 @@ Web input
 - `ConversationWorkspace` 负责运行页头部、`Details` 面板、消息区与 Composer 的排版，`ConversationRuntimeProvider` 负责 `compact` 断点感知、SSE 收口、任务轮询和草稿恢复；其中桌面端输入性能约束由 provider 的延迟草稿落盘与 workspace 的时间线 memoization 共同保证。Go 侧源码测试与前端组件测试共同约束这组契约。
 - `chat.js` 内所有前端时间展示统一走同一北京时间格式化器，固定 `timeZone=Asia/Shanghai`、`hourCycle=h23`；时间标签输出 `HH:mm`，绝对时间输出 `YYYY-MM-DD HH:mm:ss`；控制台与账户管理视图的分钟精度时间戳输出 `YYYY-MM-DD HH:mm`，同样由共享时间格式器负责。
 - Cron 创建表单默认时区直接复用同一前端常量 `Asia/Shanghai`，不再依赖浏览器本地时区探测。
-- `Chat / Agent Runtime / Terminal` 会话列表前端继续按 `hashSessionIDShort(session_id)` 生成 8 位短 hash，并作为运行页 URL query、Agent Session Profile 与预览域名使用的短标识口径；共享会话列表项不再展示短 hash，Terminal 不再把完整 `terminal_session_id` 填入 `shortHash` 字段。
-- `src/app/routeState.ts` 负责运行页路由与会话 query 协调：路由只解析 canonical path，不再使用 hash fragment；`Agent Runtime / Terminal` 统一维护 `session_id` 多会话恢复参数，写入时通过 `sessionRouteToken` 把完整会话 id 收敛为 8 位短 hash。`ConversationRuntimeProvider.tsx` 对 `chat` 始终使用 `alter0-chat`，不写会话 query；对 `agent-runtime` 在初始化时读取 `session_id`，通过服务端列表和本地快照把短 hash 解析为完整会话，再在会话 focus、创建、删除和服务端恢复后回写短 hash URL。`ReactManagedTerminalRouteBody.tsx` 对 Terminal 采用同一策略。query 缺失或目标会话不存在时，运行页才回退到 `sessionStorage` 快照与服务端列表默认项。
+- `Chat / Terminal` 会话列表前端继续按 `hashSessionIDShort(session_id)` 生成 8 位短 hash，并作为运行页 URL query、预览域名映射和排障记录引用；共享会话列表项不再展示短 hash，Terminal 不再把完整 `terminal_session_id` 填入 `shortHash` 字段。
+- `src/app/routeState.ts` 负责运行页路由与会话 query 协调：路由只解析 canonical path，不再使用 hash fragment；`/chat` 与 `/terminal` 统一维护 `session_id` 多会话恢复参数，写入时通过 `sessionRouteToken` 把完整会话 id 收敛为 8 位短 hash。`/agent-runtime` 兼容映射到 `/chat`，`/management` 兼容映射到 `/settings`。`ConversationRuntimeProvider.tsx` 在 Chat 初始化时同时读取 `route=chat` 与旧 `route=agent-runtime` 集合，把旧会话合并到 Chat 列表，并在单会话详情恢复时按 `sourceRoute` 回源旧 route。`ReactManagedTerminalRouteBody.tsx` 对 Terminal 采用同一短 hash 策略。query 缺失或目标会话不存在时，运行页才回退到 `sessionStorage` 快照与服务端列表默认项。
 - Markdown 渲染必须避免原始 HTML 透传；长路径、代码块和 diff 只在内容块内部滚动。`MessageMarkdown.ts` 作为 Web Shell 的共享安全 Markdown 渲染器，被 `ChatMessageRegion`、Terminal 步骤/最终输出、`RouteFieldRow` 的正文模式、Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Agent/Codex 说明与 Session Profile 非等宽字段共同复用；机器标识类字段继续走纯文本或等宽展示，不进入 Markdown 解析。
 - `ChatMessageRegion.tsx` 统一负责 Conversation runtime 的消息正文与尾部元信息；已完成的 Chat / Agent Runtime 助手消息不渲染尾部元信息，运行中/排队/失败等瞬时状态才渲染紧凑状态标签，且不再附带逐条时间，避免在每条回复后重复输出 route/source/status/time 标签。
 - `ChatMessageRegion.tsx` 与 `ReactManagedTerminalRouteBody.tsx` 通过共享 `RuntimeTimeline` process block 输出统一的 `runtime-thinking-shell / runtime-thinking-toggle` 思考披露入口；入口只渲染 `Thinking / 已思考` 与步骤数量，不传入 duration meta，`shell.css` 以透明、无边框、无阴影和内容宽度收缩样式覆盖旧 Process 卡片皮肤。
@@ -202,51 +206,44 @@ Web input
 
 ### 包边界
 
-- `internal/agent/application` 负责内置 Agent 与用户 Agent Catalog 聚合。
-- `internal/control/domain` 与 `internal/control/application` 负责 Agent Profile、Skill、MCP 的控制面配置。
-- `internal/execution/application` 负责运行时上下文解析，包括 Skill、MCP、Memory 和 Agent Session Profile。
-- `internal/execution/infrastructure` 负责 ReAct、Codex CLI、工具执行与模型适配实现。
-- `internal/orchestration/application` 负责会话记忆、长期记忆、压缩和任务摘要召回。
+- `internal/agent/application` 负责运行时入口清单、默认 Skill 组合和业务入口元数据。
+- `internal/control/domain` 与 `internal/control/application` 负责 Runtime Profile、Skill、MCP、Model Provider 与 Codex Accounts 的控制面配置。
+- `internal/execution/application` 负责 Runtime Context 解析，包括 Skill、MCP、Memory、工作区事实和交付要求。
+- `internal/execution/infrastructure` 负责 Claude Code 启动、Codex Direct 启动、运行日志解析、线程/会话状态持久化和错误收口。
+- `internal/orchestration/application` 负责会话摘要、长期记忆、天级记忆、项目记忆和任务摘要召回。
+- `docs/skills` 承载 file-backed Skill 仓库。
 
 ### 调用链路
 
 ```text
-Agent message
-  -> Agent Catalog / Profile resolution
-  -> Runtime context resolution
-  -> ReAct loop
-  -> ToolExecutor
-  -> codex_exec | memory tools | delegate_agent | complete
-  -> Final response + Process
+Natural language message
+  -> Runtime Profile / Skill selection
+  -> MemoryContext resolution
+  -> Workspace runtime injection
+  -> Claude Code + provider profile | Codex Direct
+  -> Final response + Process/logs
+  -> Session archive + memory maintenance inputs
 ```
 
 ### 技术约束
 
-- Agent 负责理解与驱动，具体文件、仓库、Shell、页面产出统一通过 `codex_exec`。
-- `codex_exec` 使用 stdin 传递执行指令，不通过命令行拼接长上下文。
-- 存在可用 Provider 且进入 Agent / ReAct 链路时，Agent 自身吸收 Skill、MCP、Memory 与运行时上下文，只向 Codex 下发当前步骤的纯执行指令。
-- `internal/llm/domain/react.go` 在工具面存在 `complete` 时禁止把普通 assistant 文本直接当作最终答案；模型若未调用 `complete` 就尝试结束，ReAct 循环会把该回复作为中间消息保留，并回注一条运行时纠偏提示，要求它继续使用工具直至显式收口。
-- `internal/storage/infrastructure/localfile.SessionStore` 使用分文件布局持久化 Chat / Agent Runtime 历史：`Agent Runtime` 保存时按 `MessageRecord.Source.AgentID` 与 `SessionID` 分组写入 `.alter0/sessions/<agent_id>/<session_id>.json` 或 `.md`，缺少 Agent 来源时写入 `_default` 分组；`Chat` 的固定长期会话 `alter0-chat` 则按北京时间 05:00 的归档日边界写入 `.alter0/sessions/_default/alter0-chat/<YYYY-MM-DD>.json` 或 `.md`，05:00 前消息归入前一归档日，05:00 及之后归入当天归档日。删除会话后保存全量快照会清理已不存在的会话文件。加载时扫描该目录布局，并读取旧版 `.alter0/sessions.json` / `.alter0/sessions.md` 聚合文件；当两种布局同时存在时按消息身份去重合并，随后立即把合并结果重写为新的分文件布局并删除旧聚合文件，避免迁移中断造成历史缺失。
+- 任务推理、工具调用和会话内压缩由 Claude Code 或 Codex CLI 自身完成；服务侧围绕运行时选择、上下文注入、日志解析、结果归档和记忆维护组织执行链路。
+- `internal/execution/application` 在启动前为当前会话生成 Runtime Context：选中 Skill、Memory 摘要、MCP、工作区路径、仓库路径、附件路径、产物路径、可写边界和交付要求。
+- Claude Code 路径在会话工作区生成 `.alter0/claude-runtime/`、`CLAUDE.md`、Skill 副本、Memory 注入摘要和 provider profile 环境。
+- Codex Direct 路径在会话工作区生成 `.alter0/codex-runtime/`、`AGENTS.md`、独立 `codex-home/`、Skill 副本、Memory 注入摘要和 thread id。
+- `internal/storage/infrastructure/localfile.SessionStore` 使用分文件布局持久化 Chat 历史：新 Chat 会话按 `session_id` 写入 `_default` 分组；历史 `alter0-chat` 归档日文件与旧 `agent-runtime` 分文件布局在读取时按消息身份去重合并到当前 Chat 会话模型。删除会话后保存全量快照会清理已不存在的会话文件。加载时扫描当前目录布局，并读取旧版 `.alter0/sessions.json` / `.alter0/sessions.md` 聚合文件；当多种布局同时存在时按消息身份去重合并，随后立即把合并结果重写为新的分文件布局并删除旧聚合文件，避免迁移中断造成历史缺失。
 - Web 上传的会话附件经 `internal/interfaces/web/server.go` 与 `session_attachment_store.go` 规范化后统一写入 `alter0.user_input.attachments`；图片附件额外保留兼容性的 `alter0.user_input.image_attachments`。`/api/sessions/{session_id}/attachments` 现在支持“原文件 + 可选预览”模型：图片仍落原图与预览图，普通文件只落原文件并让 `preview_url` 回退到 `asset_url`。Conversation runtime 消息接口随后只携带 `id + asset_url + preview_url` 引用，服务端再解析出工作区内的原图路径写入元数据；前端渲染层再按场景分流，缩略位读取 `preview_url`，回显与预览弹层读取 `asset_url`。assistant 最终回复中的 markdown 外链图片则由 `internal/orchestration/application/session_output_image_assets.go` 在 SessionPersistenceService 中做结果后处理：仅对可下载的 `http(s)` 图片做抓取，写入同一 Session 附件目录，并把 `result.Output / result.ProcessSteps[].Detail` 里的图片地址改写为 `/api/sessions/{session_id}/attachments/{asset_id}/original`。`/api/messages`、`/api/agent/messages`、Terminal 输入与 Control Task follow-up 输入都会复用同一附件目录与交付 URL。`internal/execution/infrastructure/hybrid_nl_processor.go` 继续只把图片子集解码成 `llmdomain.Message.Parts`；Terminal 侧普通文件则不进入多模态图片 part，而是在执行前写入 Terminal 工作区并通过 prompt 注入稳定路径，交给 Codex 读盘。带图请求不进入异步 Task，也不会在模型链失败后静默回退到 Codex CLI，避免把视觉请求错误降级为纯文本执行。
-- 不存在 Provider、Agent 初始化失败或请求直接进入 Terminal / 直连 Codex 时，`internal/execution/infrastructure` 需要为当前会话编译原生 Codex Runtime：独立 `CODEX_HOME/config.toml`、工作区 `AGENTS.md` 与 `.alter0/codex-runtime/*`，并把启用的 MCP Server 渲染为原生 `mcp_servers.*` 配置。`codex_cli_processor.go` 会解析 Codex JSONL 的 `thread.started.thread_id` 并写入当前 Session workspace；Agent Runtime 写入 `.alter0/codex-runtime/thread.json`，同一 Session 下次继续直连 Codex 时读取该文件并通过 `codex exec resume <thread_id> -` 从 stdin 续写 prompt；Chat 固定会话 `alter0-chat` 写入 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json`，归档日按北京时间 05:00 计算，新归档日文件不存在时直接启动新的 Codex thread。旧版 Chat `.alter0/codex-runtime/thread.json` 在读取时会按 `updated_at` 或文件 mtime 迁移到对应归档日文件，并移除旧文件。`internal/codex/infrastructure/runtimeconfig` 写入的托管 `AGENTS.md` 固定追加工作区范围约束，要求 Codex 只在当前工作区及其派生 repo clone/产物路径内执行，不得改动其他会话、服务或工作区外仓库，除非当前任务明确点名这些目标。
-- Memory Files 注入需要携带路径、存在状态、可写性、内容快照和自动召回片段。
-- `internal/orchestration/application.LongTermMemoryStore` 以 Markdown `PersistencePath` 作为长期记忆主存，并同步维护派生 JSON 索引；默认索引路径为同名 `.index.json`，也可通过 `LongTermMemoryOptions.IndexPath` 显式指定。索引记录 entry id、tenant/user scope、tier、kind、key/value、tags、状态、来源 Session、更新时间与关键词 tokens；索引不是事实源，重启时仍从 Markdown 主存恢复，后续写入或 `Flush()` 会重建索引。Snapshot 阶段会基于相关命中生成 `ActiveRecall`，把高相关条目压缩为短摘要、来源 entry id 与命中计数，并在 `[LONG TERM MEMORY]` 段落和结果 metadata 中标记本轮主动召回。
-- `internal/llm/domain.Message` 允许同时携带纯文本 `Content` 与结构化 `Parts`；`internal/llm/infrastructure/openai_client.go` 在 `openai-responses` 与 `openai-completions` 两条路径上都要把用户图片 part 序列化为官方视觉输入结构，同时继续保留 assistant `tool_calls` 与后续 `tool` 消息的 `tool_call_id` 稳定配对；否则 Provider 会把该轮请求判定为非法工具消息序列或直接丢失图片输入。
-- 私有 `AGENTS.md`、私有 Skill、Agent Session Profile 分别承担协作边界、可复用打法、会话画像与实例属性职责，不混写一次性任务细节；`skill_context_resolver` 对当前 Agent 私有 Skill 执行强制注入，即使请求 metadata 携带 `alter0.skills.exclude` 也不会移除该私有 Skill，前端锁定只是同一规则的交互表达。
-- `internal/execution/application/agent_session_profile.go` 负责渲染和回写 `Agent Session Profile` 自动块：保留 `Notes` 人工区，自动维护 `Session Identity / Session Scope / Instance Attributes`。其中 `Instance Attributes` 统一合并历史已存在属性、请求 metadata 注入的增量属性，以及 `coding` 自动派生出的 `repository_path / branch / preview_subdomain` 等交付属性；`travel` 只保留会话事实字段，不在执行侧预写 `guide_html_url`。`internal/execution/infrastructure/session_profile_codex_extractor.go` 提供受限 Codex fallback：只接收 schema、已有属性和最新用户消息，返回 JSON patch，不直接写文件。`internal/interfaces/web/agent_session_profile.go` 提供只读聚合接口，读取同一路径下的实例属性并与 Agent 预设字段定义拼装成前端 `Details` 视图数据；其中 `guide_html_url` 仅在 `workspaceService.ResolveService(session_id, "travel")` 命中公开只读 `travel` 服务时动态补齐，否则即使 profile 文件里残留旧值也会被隐藏。前端 `ConversationRuntimeProvider.tsx` 在 agent 会话首次打开与每轮消息收口后都会重新请求该接口，避免 `Session Profile` 因本地缓存停留在旧的 `city / days / hotel_area` 值。
-- `internal/agent/application/catalog.go` 会把 Agent 结构化 `deliverables[]` 与 `completion_checks[]` 分别通过 `alter0.agent.deliverables`、`alter0.agent.completion_checks` 注入执行 metadata；`internal/execution/infrastructure/hybrid_nl_processor.go` 在构造 Agent system prompt 时附加当前 delivery contract，并在 `complete`、Agent fallback Codex、direct Codex 成功返回后执行 `completion_checks` 驱动的通用产物校验。
-- `internal/agent/application/builtin.go`、`internal/execution/infrastructure/hybrid_nl_processor.go`、`internal/execution/infrastructure/codex_cli_processor.go` 与 `internal/execution/infrastructure/codex_native_runtime.go` 统一维护工作区隔离提示：内置 Agent system prompt、Provider/ReAct system prompt、Codex fallback prelude、托管 `AGENTS.md` 与 `runtime.md` 均要求把具体执行限定在当前 Session 工作区及其专属 repo clone、附件和产物路径内，并明确禁止顺带修改其他 Session、无关服务或工作区外仓库。
-- `internal/agent/application/catalog.go` 还负责统一 Agent tool 默认值：`normalizeRuntimeAgent` 会在内置 Agent 与托管 Agent 两侧都补齐 `search_memory`，同时保留显式工具顺序和去重结果，让 `/api/agents`、新建 Agent Runtime 会话和执行 metadata 的默认工具面保持一致。
-- `internal/execution/infrastructure/hybrid_nl_processor.go` 统一承担 Agent 通用产物检查、专门修复轮与 `travel` 公开 URL 回填：执行器先按 `completion_checks` 逐项校验 Session 文件、workspace service、Session 属性等确定性产物；若首轮结果未通过且相应 check 声明了 `repair_instruction`，执行器会复用当前 Session 工作区再触发一次专门的 Codex 修复 prompt，只允许围绕失败的产物检查完成补齐。修复轮若未真实落盘页面、未真实写入服务注册表或未补齐所需属性，最终状态仍保持阻塞。执行器不再自动固化正文攻略为 fallback HTML，也不会在没有 Codex 实际执行结果的前提下替 Agent 伪造发布结果；只有当注册表中已存在真实发布的 `travel` 服务时，才会把该公开 URL 追加回最终结果。
-- `search_memory`、`read_memory`、`write_memory` 只操作已解析进 `memory_context` 的记忆文件。
-- Agent Memory Web 聚合接口只读返回长期记忆、天级记忆、强制上下文与说明文档；任务摘要刷新走 Task summary 子域接口。
+- Memory Files 注入需要携带路径、存在状态、可写性、内容摘要、召回片段和截断标记。
+- Markdown 主存结构固定为 `memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。
+- 用户可见 Markdown 不写入 confidence、source、status、sensitivity 等机器元数据；检索索引可作为派生文件重建。
+- 用户显式记忆写入由当前 CLI agent 完成；会话归档由服务生成 `ConversationSummary`；长期整理由 Cron 启动 CLI agent 并加载 `memory-maintenance` Skill 完成。
+- Agent Memory Web 聚合接口只读返回长期记忆、天级记忆、项目记忆、会话摘要与说明文档；任务摘要刷新走 Task summary 子域接口。
 
 ### 验证策略
 
-- Agent Catalog 测试覆盖内置 Agent 与用户 Agent 聚合、保留 ID 冲突。
-- Execution 应用测试覆盖 Skill/MCP/Memory Context 注入，并约束当前 Agent 私有 Skill 不被 exclude 过滤。
-- Infrastructure 测试覆盖 `codex_exec` stdin、ReAct 迭代上限、Process 输出和工具错误收口。
-- Memory 测试覆盖短期回填、长期召回、Markdown 编解码、压缩和任务摘要深检索。
+- Execution 应用测试覆盖 Runtime Resolver、Skill/MCP/Memory Context 注入、工作区文件生成和 Provider 兜底。
+- Infrastructure 测试覆盖 Claude Code 启动参数、Codex Direct 运行目录、thread 状态持久化、日志解析和错误收口。
+- Memory 测试覆盖 Markdown 编解码、会话摘要、长期召回、Cron 整理输入和任务摘要深检索。
 
 ## Task, Terminal & Workspace
 
@@ -313,8 +310,8 @@ Terminal input
 
 ### 包边界
 
-- `internal/control` 管理 Channel、Capability、Skill、MCP、Agent Profile 和 Environment 配置。
-- `internal/llm` 管理 Model Provider、上游 API type、OpenRouter 扩展与密钥状态。
+- `internal/control` 管理 Channel、Capability、Skill、MCP、Runtime Profile、Model Provider 和 Environment 配置。
+- `internal/control` 中的 Model Provider 配置负责生成 Claude Code provider profile 所需的 base URL、API Key、model、profile 名称与健康状态。
 - `internal/codex/domain` 负责 `auth.json` 快照、身份识别与额度状态模型；`internal/codex/application` 负责账号导入、状态刷新、独立登录会话、活动账号切换，以及通过 Codex app-server 的 `model/list`、`config/read`、`config/batchWrite` 读取真实运行时能力并更新 `model` / `model_reasoning_effort`；`internal/codex/infrastructure/localfile` 负责 `<active_codex_home>/alter0-accounts` 下的账号快照、备份与登录工作目录。
 - `internal/interfaces/web/frontend` 中的 `ReactManagedCodexAccountsRouteBody` 负责 Codex Accounts 控制面的运行时概览、当前 Codex 管理区、账号列表、导入/登录操作侧栏与登录会话展示，并复用 `/api/control/codex/accounts*` 与 `/api/control/codex/runtime` 控制接口完成刷新、切换和运行时设置更新；概览区优先从当前账号状态抽取用户可读账号名、套餐与小时/周剩余额度，渲染为“主身份区 + 四项紧凑指标列”，其中额度卡使用带 `progressbar` 语义的进度条并展示后端返回的 `reset_at`，key/value 默认按同列对齐，活动路径不在概览区直出；运行时维护字段通过 `Runtime Details` 折叠区展开；当前 live `auth.json` 未匹配托管快照时，前端需回退展示 `active.live` 快照与 `active.quota`，并输出未托管提示，首次加载阶段则输出同构 skeleton 保持页面结构稳定；当前 Codex 管理区从后端返回的 `runtime.models` 构建 model 选择器，并按所选 model 的 `supported_reasoning_effort` 联动思考深度选择器，当前值不再在选择器下额外重复渲染；账号区按断点切换为桌面高密度行式列表、中屏全宽列表 + 双侧栏和窄屏单列紧凑列表，避免额度进度条、reset 时间、当前 model、思考深度与切换入口被横向滚动隐藏；账号状态文本和切换按钮采用扁平控制台样式，列表内部优先使用分隔线式布局而不是额外方框容器。
 - `cmd/alter0` 管理启动、supervisor、重启、内置配置和运行时 metadata。
@@ -329,7 +326,7 @@ Control UI / API
   -> Codex account service
   -> Local storage
   -> Runtime resolver
-  -> Execution / Agent / Scheduler
+  -> Execution / Scheduler
 ```
 
 ```text
@@ -347,9 +344,9 @@ Environment restart
 - Control 面只能管理运行时配置，不绕过编排层直接执行业务请求。
 - Skill 与 MCP 专用接口需要复用统一 Capability 数据结构；Capability 审计记录生命周期动作，供控制面按类型查询。
 - `cmd/alter0/builtin_skills.go` 负责注册内置 Skill，并在启动阶段校验所有 file-backed 内置 Skill 文件存在；当前内置集合包含 `deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。标准 skill 使用源码目录下的 `docs/skills/<skill_id>/SKILL.md`；plugin-style 的 `code-simplifier` 与 `code-review` 继续保留目录内 `.claude-plugin/plugin.json` 元数据，并分别以 `agents/code-simplifier.md`、`commands/code-review.md` 作为 alter0 的 file-backed 注入入口。
-- `internal/codex/infrastructure/runtimeconfig` 负责在 Codex runtime 准备阶段物化 file-backed Skill：按当前服务进程工作目录向上查找可读的 skill 文件，定位 `docs/skills/<skill_id>/` 或 `docs/agents/<agent_id>/` 根目录，把整个目录复制到当前会话工作区 `.alter0/codex-runtime/skills/<skill_id>/`，并将注入给 Codex 的 `file_path` 改写为工作区内副本。Terminal Runtime 与 Agent/Codex Native Runtime 共用该物化逻辑，保证 Codex 的实际 cwd 不是源码仓库根时仍可稳定读取完整 `SKILL.md` 与同目录脚本、参考文件。
-- `internal/agent/application/builtin.go` 中的 `coding` 内置 Agent 默认声明 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`；Agent Catalog 会把该列表写入运行时 metadata 的 `alter0.skills.include`，新建 Coding Agent 会话直接携带完整工程执行默认集，用户仍可通过会话级 Skill 面板调整后续消息的公有 Skill 选择。
-- `internal/agent/application/builtin.go` 中的 `travel` 内置 Agent 默认声明 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`find-skills`、`ui-ux-pro-max` 与 `brainstorming`；Agent Catalog 会把该列表写入运行时 metadata 的 `alter0.skills.include`，新建 Travel Agent 会话直接携带旅游执行默认集，用户仍可通过会话级 Skill 面板调整后续消息的公有 Skill 选择。
+- Runtime Context 物化器负责在 CLI agent 准备阶段复制 file-backed Skill：按当前服务进程工作目录向上查找可读的 skill 文件，定位 `docs/skills/<skill_id>/` 根目录，把整个目录复制到当前会话工作区。Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，并将注入上下文中的 `file_path` 改写为工作区内副本。
+- Runtime Profile 中的 `coding` 默认 Skill 组合包含 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。
+- Runtime Profile 中的 `travel` 默认 Skill 组合包含 `memory`、`memory-maintenance`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`find-skills`、`ui-ux-pro-max` 与 `brainstorming`。
 - Models 控制面需要保持空 API Key 语义、占位值过滤、禁用态恢复和默认 Provider 收敛。
 - Environment registry 按 Web & Queue、Async Tasks、Terminal、Session Memory、Persistent Memory、LLM 模块声明 key、类型、默认值、校验规则、敏感性与生效方式。
 - Environment 配置更新写入 audit store，控制面按时间倒序读取变更记录。
@@ -357,7 +354,7 @@ Environment restart
 - Codex 运行时状态接口同时返回活动 `auth.json`、`config.toml`、CLI 命令、当前 profile、活动 model、思考深度、配置来源与 `model/list` 返回的可选 model 能力集；更新运行时设置时，后端先通过 `config/read` 解析当前生效 key path，再调用 `config/batchWrite` 更新 `model` 与 `model_reasoning_effort`，并触发 `reloadUserConfig` 让当前运行时立即生效。
 - 独立登录会话通过临时 `CODEX_HOME` 执行 `codex login`，完成后再把新 `auth.json` 保存为托管账号，避免直接污染当前正在服务的运行时认证。
 - 独立登录会话在执行 `codex login` 前需显式创建隔离 `CODEX_HOME`，并用覆盖语义注入环境变量，避免宿主进程已有 `CODEX_HOME` 影响登录结果落盘位置。
-- LLM 运行参数 `llm_temperature`、`llm_max_tokens`、`llm_react_max_iterations` 通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider 与模型能力约束。
+- CLI Agent Runtime 运行参数通过 Environment 配置即时或重启后参与运行时解析，仍受 Provider、Claude Code 与 Codex CLI 实际能力约束。
 - Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换；当 `sync_remote_master=true` 时，只允许回滚 Git 已跟踪改动，不得清理未跟踪文件或目录。
 - 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 默认校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>-<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/terminal`、`/assets/*` 与 `/legacy/*`；`travel` 服务是唯一前端静态例外，固定命中 `https://travel-<session_short_hash>.alter0.cn`，当注册路径根目录已存在 `index.html` 时直接把该目录作为静态攻略根目录公开分发，并继续对该 host 只返回静态 HTML/资源、直接阻断 `/api/*` 与其他工作台路由。`http` 服务既可反向代理到外部 upstream，也可由共享运行时按注册的 `start_command + workdir + port + health_path` 托管本地子进程。默认 `scripts/deploy_test_service.sh <session_id>` 会为 `web` 合成一条当前分支后端启动命令并注册给共享运行时，先构建前端产物，再让 `https://<session_short_hash>.alter0.cn` 整体代理到这份托管后端，从而让前端与 `/api/*` 保持同一版本；当 `service_id=travel` 且未显式传入 `--repo-path` 时，脚本默认回退到当前 Session 工作区根目录，直接发布已生成的静态攻略页。由于线上证书只覆盖 `alter0.cn` 与 `*.alter0.cn`，附加服务必须保持单级子域名格式，不能再生成 `<service>.<short_hash>.alter0.cn` 或 `<short_hash>.travel.alter0.cn` 这类二级嵌套 host。共享运行时自己的 `supervisor -> web child` 继续继承 `web_login_password` 作为主登录边界，托管 workspace service 子进程启动前会剥离 `ALTER0_WEB_LOGIN_PASSWORD` 并注入 `ALTER0_WEB_REUSE_GATEWAY_AUTH=1`，使预览后端只复用共享网关登录态，不再叠第二层鉴权。
 - Web 登录态继续由 `server.go` 的 `authMiddleware + loginHandler` 统一管理；当请求 Host 命中主域或其预览子域时，登录 cookie 会把 `Domain` 收敛到根域 `alter0.cn`，使主域工作台与短哈希预览 host 共享同一登录会话，而不是各自维护孤立 cookie。交互页登录回跳通过 `loginNextForRequest` 归一化：`/` 与 `/chat` 只回跳到 `/chat`，`/terminal` 只回跳到 `/terminal`，其他 HTML 导航仍保留安全校验后的相对 Request URI；实际运行页的会话 query 由前端收敛为 8 位短 hash，避免会话级长 id 进入登录页和稳定页面 URL。
@@ -367,8 +364,8 @@ Environment restart
 
 ### 验证策略
 
-- Control 测试覆盖 Channel、Capability、Skill、MCP、Agent、Environment、Codex Accounts 配置持久化、Capability 审计和 Environment audit。
-- LLM 测试覆盖 Provider 创建、更新、缺失密钥恢复、默认项收敛和 OpenRouter 字段。
+- Control 测试覆盖 Channel、Capability、Skill、MCP、Runtime Profile、Environment、Codex Accounts 配置持久化、Capability 审计和 Environment audit。
+- Provider 测试覆盖创建、更新、缺失密钥恢复、默认项收敛、Claude Code profile 生成和 OpenRouter 字段。
 - Runtime supervisor 测试覆盖候选版本构建、readyz 切换、失败回滚和 metadata 展示。
 - 文档治理变更至少运行 Markdown 引用与空白检查；代码变更按 TDD 运行对应包或全量测试。
 - Go 单测新增或调整时，同步维护 `docs/testing/unit-test-cases.md` 与对应 Go 包路径下 `TEST_CASES.md` 的覆盖范围和边界说明。

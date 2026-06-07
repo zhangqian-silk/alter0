@@ -1,10 +1,10 @@
 # Control, Operations & Governance Requirements
 
-> Last update: 2026-04-24
+> Last update: 2026-06-06
 
 ## 领域边界
 
-Control, Operations & Governance 负责运行时配置管理、模型 Provider、环境配置、部署基线、运行时重启、认证凭据、工具链初始化与研发流程约束。它维护系统可治理性，不直接定义业务对话行为。
+Control, Operations & Governance 负责运行时配置管理、Model Provider、Claude Code provider profile、Codex Accounts、环境配置、部署基线、运行时重启、认证凭据、工具链初始化与研发流程约束。它维护系统可治理性，不直接定义业务对话行为。
 
 ## 核心对象
 
@@ -15,8 +15,9 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 | `CapabilityAudit` | Capability 创建、更新、启停和删除审计 |
 | `SkillConfig` | Skill 配置、启停与文件型属性 |
 | `MCPServer` | MCP Server 配置、启停与运行上下文注入来源 |
-| `AgentProfile` | 用户可维护 Agent Profile |
-| `ModelProvider` | LLM Provider、模型、接口类型与凭据状态 |
+| `RuntimeProfile` | CLI Agent Runtime 的默认执行配置、Skill 组合与上下文注入策略 |
+| `ModelProvider` | Claude Code provider profile 的模型、base URL、凭据状态与健康状态 |
+| `ClaudeProviderProfile` | 启动 Claude Code 时使用的 provider/profile、环境变量和模型选择 |
 | `EnvironmentConfig` | 运行参数、任务并发、Shell、Codex 命令等配置 |
 | `CodexAccount` | 托管的 Codex `auth.json` 快照与活动账号映射 |
 | `CodexLoginSession` | 独立 `codex login` 会话状态、日志与结果 |
@@ -31,13 +32,13 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 
 - 支持 Channel 创建、更新、删除与列表查询。
 - Channel 配置至少包含类型、启停状态和稳定标识。
-- Channels 入口归属 Management 页内的 Settings 分组，旧直达路由保持兼容。
+- Channels 作为兼容控制能力保留在 Settings 内部，不再作为一级入口展示。
 
 ### Skill
 
 - 支持 Skill 创建、更新、删除与列表查询。
 - 默认提供 `default-nl`、`memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。
-- 这些项目内置 file-backed Skill 都由源码仓库直接承载并在启动时校验文件存在；标准 skill 继续使用 `docs/skills/<skill_id>/SKILL.md`，`artifact-preview` 之外的附属脚本或参考文件与 skill 一同放在对应目录中；plugin-style 的 `code-simplifier` 与 `code-review` 保留 `.claude-plugin/plugin.json` 元数据，并分别以 `docs/skills/code-simplifier/agents/code-simplifier.md`、`docs/skills/code-review/commands/code-review.md` 作为 alter0 的注入入口。Codex 运行时会把本轮选中的可读 file-backed Skill 目录复制到当前会话工作区 `.alter0/codex-runtime/skills/<skill_id>/`，运行时上下文中的 `file_path` 指向该工作区内副本。
+- 这些项目内置 file-backed Skill 都由源码仓库直接承载并在启动时校验文件存在；标准 skill 继续使用 `docs/skills/<skill_id>/SKILL.md`，`artifact-preview` 之外的附属脚本或参考文件与 skill 一同放在对应目录中；plugin-style 的 `code-simplifier` 与 `code-review` 保留 `.claude-plugin/plugin.json` 元数据，并分别以 `docs/skills/code-simplifier/agents/code-simplifier.md`、`docs/skills/code-review/commands/code-review.md` 作为 alter0 的注入入口。CLI Agent Runtime 会把本轮选中的可读 file-backed Skill 目录复制到当前会话工作区，Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，运行时上下文中的 `file_path` 指向工作区内副本。
 - `artifact-preview` 额外提供 `docs/skills/artifact-preview/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>-<session_short_hash>.alter0.cn`。
 - Skill 协议支持文件路径与可写属性。
 - Agent 私有 file-backed Skill 由运行时自动注入，不要求出现在控制面内置 Skill 列表。
@@ -48,20 +49,20 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 - MCP 专用接口支持 MCP Server 创建或更新、列表查询、启用、禁用与删除。
 - Capability 与 MCP 生命周期变更必须写入审计记录，审计列表支持按 capability type 查询。
 - 旧 Skill/MCP 专用接口与统一 Capability 接口返回同一能力字段结构，避免前端维护两套协议。
-- Capability 控制面只负责配置生命周期；实际是否注入执行链仍由 Agent Profile、会话选择和运行时上下文解析决定。
+- Capability 控制面只负责配置生命周期；实际是否注入执行链由 Runtime Profile、会话选择和运行时上下文解析决定。
 
-### Agent Profile
+### Runtime Profile
 
-- 支持用户管理 Agent Profile 的创建、更新、启用、禁用与查询。
-- 内置 Agent 由服务注册，控制面不可覆盖或删除。
-- Agent Profile 的模型、工具、Skills、MCP 和 Memory Files 选择通过统一运行时上下文注入执行链。
-- Agent Profile 编辑页中的短字段优先采用并排栅格布局，`Enabled` 使用显式开关控件，不再把名称、迭代次数和启用状态拆成长纵向表单链。
+- 支持 Runtime Profile 的创建、更新、启用、禁用与查询。
+- Runtime Profile 维护默认 Skill 组合、MCP 选择、Memory 注入策略、执行边界说明与可选业务入口标签。
+- `coding`、`travel`、`writing` 等业务入口通过 Runtime Profile 预选 Skill，不改变底层 CLI Agent Runtime。
+- Runtime Profile 编辑页中的短字段优先采用并排栅格布局，`Enabled` 使用显式开关控件。
 
 ### Cron 与 Codex Accounts
 
 - Cron Job 控制面接口用于配置与触发记录查看；调度执行归属 Runtime & Orchestration。
 - Codex Accounts 控制面负责运行账户下的多账号快照管理、独立登录会话、状态查询与当前生效账号切换。
-- Web Shell 由 `/management` 单页承接 `agent`、`memory`、`sessions`、`tasks`、`channels`、`skills`、`mcp`、`models`、`environments`、`codex-accounts` 与 `cron-jobs` 等管理能力的读取、加载、空态与错误态渲染；这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Agent Studio / Control / Settings` 分组切换。桌面端分组切换作为左侧管理索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有管理分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Management 作用域下的 route surface：列表卡片、表格、筛选表单、主从详情、空态与错误态共享低圆角、低阴影、浅色状态面板和紧凑字段行。其中 `Profiles` 分区由 React 承接托管 Agent 列表、表单编辑、保存、删除与进入运行页入口；legacy runtime 不再托管这些页面的主要 DOM。控制台页面中的描述、Cron 输入、Agent system prompt 摘要、Skill 说明、Codex 运行时说明与审计/配置说明类文本按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
+- Web Shell 由 `/settings` 单页承接运行时、Skill、Memory、Workspaces 与 Schedules 能力的读取、加载、空态与错误态渲染；历史 `/management` 自动映射到 `/settings`。这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Runtime / Skills / Memory / Workspaces / Schedules` 分区切换。桌面端分区切换作为左侧设置索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有设置分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Settings 作用域下的 route surface：列表卡片、表格、筛选表单、主从详情、空态与错误态共享低圆角、低阴影、浅色状态面板和紧凑字段行。控制台页面中的描述、Cron 输入、Skill 说明、Codex 运行时说明与审计/配置说明类文本按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
 
 ## 接口边界
 
@@ -70,7 +71,7 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 - `GET /api/control/capabilities/audit` 查询 Capability 生命周期审计。
 - `GET /api/control/skills`、`PUT /api/control/skills/{skill_id}`、`POST /api/control/skills/{skill_id}`、`DELETE /api/control/skills/{skill_id}` 管理 Skill 兼容接口。
 - `GET /api/control/mcps`、`PUT /api/control/mcps/{mcp_id}`、`POST /api/control/mcps/{mcp_id}`、`DELETE /api/control/mcps/{mcp_id}` 管理 MCP 兼容接口。
-- `GET /api/control/agents`、`POST /api/control/agents`、`GET /api/control/agents/{agent_id}`、`PUT /api/control/agents/{agent_id}`、`DELETE /api/control/agents/{agent_id}` 管理用户 Agent Profile。
+- `GET /api/control/agents`、`POST /api/control/agents`、`GET /api/control/agents/{agent_id}`、`PUT /api/control/agents/{agent_id}`、`DELETE /api/control/agents/{agent_id}` 兼容管理用户 Runtime Profile。
 - `GET /api/control/environments` 与 `PUT /api/control/environments` 读取和更新 Environment 配置。
 - `GET /api/control/environments/audits` 查询 Environment 配置审计。
 - `GET /api/control/workspace-services`、`GET /api/control/workspace-services/{session_id}`、`PUT /api/control/workspace-services/{session_id}`、`GET /api/control/workspace-services/{session_id}/{service_id}`、`PUT /api/control/workspace-services/{session_id}/{service_id}`、`DELETE /api/control/workspace-services/{session_id}/{service_id}` 管理 Session 级 workspace service 注册表。
@@ -85,7 +86,8 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 
 - 支持 OpenAI Compatible Provider。
 - 支持 OpenRouter Provider。
-- Provider 支持启用、禁用、默认切换、模型列表、base URL 与 API type。
+- Provider 支持启用、禁用、默认切换、模型列表、base URL、API type、Claude Code profile 名称和健康状态。
+- 启用且健康的默认 Provider 作为自然语言任务的 Claude Code 首选运行来源。
 
 ### API type
 
@@ -109,8 +111,9 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 ### 会话级选择
 
 - Chat 发送区支持会话级 `Provider / Model` 选择。
-- 复杂度评估、同步执行、Agent/ReAct 执行优先复用当前消息选择。
-- 未显式选择时，回退到 Agent Profile，再回退到系统默认 Provider 与默认模型。
+- 当前消息显式选择 `Codex` 时，前端写入 `alter0.execution.engine=codex`，本轮进入 `Codex Direct`。
+- 当前消息选择具体 Provider / Model 时，Runtime Resolver 使用对应 Claude Code provider profile。
+- 未显式选择时，回退到 Runtime Profile，再回退到系统默认 Provider 与默认模型；无可用 Provider 时进入 `Codex Direct`。
 
 ## Environments
 
@@ -122,6 +125,7 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 - Web & Queue 配置覆盖 `web_addr`、`web_bind_localhost_only`、`web_login_password`、`worker_pool_size`、`max_queue_size` 与 `queue_timeout`。
 - Async Tasks 配置覆盖 `async_task_workers`、`async_task_timeout`、`async_task_max_retries`、`async_task_trigger_threshold` 与 `async_long_content_threshold`。
 - Terminal 配置覆盖 `task_terminal_shell`；启动参数可继续提供 shell args 作为运行态输入。
+- CLI Agent Runtime 配置覆盖 Claude Code 命令、Claude profile 目录、Codex 命令、运行时 home、工作区注入目录和健康检查超时。
 - Session Memory 配置覆盖 `session_memory_turns`、`session_memory_ttl`、`context_compression_threshold`、`context_compression_summary_tokens` 与 `context_compression_retain_turns`。
 - Persistent Memory 配置覆盖 `daily_memory_dir`、`long_term_memory_path`、`long_term_memory_write_policy`、`long_term_memory_writeback_flush`、`long_term_memory_token_budget` 与 `mandatory_context_file`。
 - LLM 配置覆盖 `llm_temperature`、`llm_max_tokens` 与 `llm_react_max_iterations`，并按配置项声明决定立即生效或重启后生效。
@@ -274,7 +278,7 @@ Control, Operations & Governance 负责运行时配置管理、模型 Provider�
 ## 依赖与边界
 
 - Control 面负责配置治理，不绕过 Runtime 编排链路直接执行任务。
-- Model Provider 属于控制与适配配置，具体执行错误收口归属 Agent 或 Runtime。
+- Model Provider 属于控制与适配配置，具体执行错误收口归属 Runtime。
 - 部署基线描述运行账户与宿主环境要求，不替代产品内鉴权和权限模型。
 
 ## 验收口径

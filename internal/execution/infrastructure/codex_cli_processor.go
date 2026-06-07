@@ -953,7 +953,13 @@ func resolveCodexSessionWorkspaceBase(metadata map[string]string) (string, error
 		return "", errors.New("workspace session context is required")
 	}
 
+	rootDir := strings.TrimSpace(firstNonEmpty(
+		metadataValue(metadata, codexWorkspaceRootDirMetadataKey),
+		os.Getenv(codexWorkspaceRootDirEnvKey),
+		".",
+	))
 	parts := []string{
+		rootDir,
 		defaultWorkspaceRootDir,
 		workspaceDirectoryName,
 		workspaceSessionsDirName,

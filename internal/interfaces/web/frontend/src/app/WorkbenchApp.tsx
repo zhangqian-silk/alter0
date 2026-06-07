@@ -27,19 +27,16 @@ export function WorkbenchApp() {
   const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);
-  const [runtimeSessionRails, setRuntimeSessionRails] = useState<Record<string, WorkbenchSessionRail>>({});
+  const [runtimeSessionRail, setRuntimeSessionRailState] = useState<WorkbenchSessionRail | null>(null);
   const setRuntimeSessionRail = useCallback((rail: WorkbenchSessionRail | null) => {
     if (!rail) {
       return;
     }
-    setRuntimeSessionRails((current) => {
-      if (current[rail.route] === rail) {
+    setRuntimeSessionRailState((current) => {
+      if (current === rail) {
         return current;
       }
-      return {
-        ...current,
-        [rail.route]: rail,
-      };
+      return rail;
     });
   }, []);
   const runtimeRouteActive = isConversationRoute(route) || route === "terminal";
@@ -77,7 +74,7 @@ export function WorkbenchApp() {
       ),
     };
   }, [language, route, runtimeRouteActive]);
-  const visibleSessionRail = runtimeRouteActive ? (runtimeSessionRails[route] ?? fallbackSessionRail) : null;
+  const visibleSessionRail = runtimeRouteActive ? (runtimeSessionRail ?? fallbackSessionRail) : null;
   const runtimeSessionsUseNav = Boolean(visibleSessionRail);
   const navOpen = mobilePanel === "nav";
   const sessionPaneOpen = !runtimeSessionsUseNav && mobilePanel === "sessions";
@@ -204,15 +201,15 @@ function RoutePageFrame({
   mobileNavOpen: boolean;
   onToggleMobileNav: () => void;
 }) {
-  const isManagementRoute = route === "management";
-  const routeHeadingCopy = getLegacyRouteHeadingCopy(language, isManagementRoute ? "management" : route);
+  const isSettingsRoute = route === "settings" || route === "management";
+  const routeHeadingCopy = getLegacyRouteHeadingCopy(language, isSettingsRoute ? "settings" : route);
   const shellCopy = getLegacyShellCopy(language);
 
   return (
     <section
       className="route-view"
       data-route={route}
-      data-route-family={isManagementRoute ? "management" : undefined}
+      data-route-family={isSettingsRoute ? "management" : undefined}
     >
       {isMobileViewport ? (
         <header className="route-mobile-head" data-route-mobile-head>

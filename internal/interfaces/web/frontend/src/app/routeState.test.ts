@@ -22,9 +22,10 @@ describe("routeState", () => {
 
   it("maps only the stable top-level workbench routes to canonical paths", () => {
     expect(parseWorkbenchRoute("/chat")).toBe("chat");
-    expect(parseWorkbenchRoute("/agent-runtime")).toBe("agent-runtime");
+    expect(parseWorkbenchRoute("/agent-runtime")).toBe("chat");
     expect(parseWorkbenchRoute("/terminal")).toBe("terminal");
-    expect(parseWorkbenchRoute("/management")).toBe("management");
+    expect(parseWorkbenchRoute("/settings")).toBe("settings");
+    expect(parseWorkbenchRoute("/management")).toBe("settings");
     expect(parseWorkbenchRoute("/agent")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/memory")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/skills")).toBe(DEFAULT_WORKBENCH_ROUTE);
@@ -39,8 +40,8 @@ describe("routeState", () => {
   });
 
   it("writes canonical paths for top-level workspace routes only", () => {
-    navigateWorkbenchRoute("management");
-    expect(window.location.pathname).toBe("/management");
+    navigateWorkbenchRoute("settings");
+    expect(window.location.pathname).toBe("/settings");
     expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("");
 
@@ -63,18 +64,18 @@ describe("routeState", () => {
   });
 
   it("emits a route change event when navigating to the already active route", () => {
-    window.history.replaceState({}, "", "/management");
+    window.history.replaceState({}, "", "/settings");
     const dispatchEventSpy = vi.spyOn(window, "dispatchEvent");
 
-    navigateWorkbenchRoute("management");
+    navigateWorkbenchRoute("settings");
 
     expect(dispatchEventSpy).toHaveBeenCalledWith(expect.any(PopStateEvent));
   });
 
   it("identifies conversation routes explicitly", () => {
     expect(isConversationRoute("chat")).toBe(true);
-    expect(isConversationRoute("agent-runtime")).toBe(true);
-    expect(isConversationRoute("management")).toBe(false);
+    expect(isConversationRoute("agent-runtime")).toBe(false);
+    expect(isConversationRoute("settings")).toBe(false);
     expect(isConversationRoute("tasks")).toBe(false);
   });
 
