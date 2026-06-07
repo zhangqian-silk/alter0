@@ -87,6 +87,19 @@ describe("shell layout stylesheet", () => {
     );
   });
 
+  it("moves the mobile runtime composer with bottom offset instead of a transform layer", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const mobileBreakpoint = stylesheet.slice(stylesheet.lastIndexOf("@media (max-width: 760px)"));
+    const runtimeComposerBlocks = Array.from(
+      mobileBreakpoint.matchAll(/\.runtime-composer-shell\s*\{([^}]*)\}/g),
+      (match) => match[1],
+    );
+
+    expect(runtimeComposerBlocks.some((block) => block.includes("bottom: var(--keyboard-offset, 0px);"))).toBe(true);
+    expect(runtimeComposerBlocks.join("\n")).not.toContain("transform:");
+  });
+
   it("keeps conversation bubbles compact instead of heavy card-like gradients", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
@@ -868,6 +881,12 @@ describe("shell layout stylesheet", () => {
     );
     expect(stylesheet).toMatch(
       /\[data-runtime-view="conversation"\] \.terminal-log-text,\s*\[data-runtime-view="terminal"\] \.terminal-log-text,[\s\S]*?\.chat-md-inline-code\s*\{[\s\S]*?overflow-wrap:\s*anywhere;[\s\S]*?word-break:\s*break-word;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.chat-md-table-wrap,\s*\[data-runtime-view="terminal"\] \.chat-md-table-wrap\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?overflow-x:\s*auto;[\s\S]*?-webkit-overflow-scrolling:\s*touch;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.chat-md-table th,\s*\.chat-md-table td\s*\{[\s\S]*?overflow-wrap:\s*normal;[\s\S]*?word-break:\s*normal;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,

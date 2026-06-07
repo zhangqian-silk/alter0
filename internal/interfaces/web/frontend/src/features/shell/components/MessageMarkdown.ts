@@ -68,6 +68,12 @@ function isLikelySingleGlyphLine(line: string) {
   return Array.from(trimmed).length === 1;
 }
 
+type MarkdownTableBlock = {
+  header: string[];
+  rows: string[][];
+  lineCount: number;
+};
+
 function renderMarkdownBlocks(content: string) {
   const lines = String(content || "").split("\n");
   const html: string[] = [];
@@ -113,7 +119,8 @@ function renderMarkdownBlocks(content: string) {
     flushList();
   };
 
-  for (const rawLine of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const rawLine = lines[lineIndex];
     const trimmed = rawLine.trim();
     if (!trimmed) {
       flushAll();
@@ -152,6 +159,14 @@ function renderMarkdownBlocks(content: string) {
 
     flushList();
 
+    const tableBlock = parseMarkdownTableBlock(lines, lineIndex);
+    if (tableBlock) {
+      flushParagraph();
+      html.push(renderMarkdownTableBlock(tableBlock));
+      lineIndex += tableBlock.lineCount - 1;
+      continue;
+    }
+
     const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
     if (headingMatch) {
       flushParagraph();
@@ -171,6 +186,89 @@ function renderMarkdownBlocks(content: string) {
 
   flushAll();
   return html.join("");
+}
+
+function parseMarkdownTableBlock(lines: string[], startIndex: number): MarkdownTableBlock | null {
+  const header = parseMarkdownTableRow(lines[startIndex]);
+  const separator = parseMarkdownTableRow(lines[startIndex + 1] || "");
+  if (!header || !separator || !isMarkdownTableSeparator(separator)) {
+    return null;
+  }
+
+  const rows: string[][] = [];
+  let cursor = startIndex + 2;
+  while (cursor < lines.length) {
+    const row = parseMarkdownTableRow(lines[cursor]);
+    if (!row || isMarkdownTableSeparator(row)) {
+      break;
+    }
+    rows.push(row);
+    cursor += 1;
+  }
+
+  return {
+    header,
+    rows,
+    lineCount: cursor - startIndex,
+  };
+}
+
+function parseMarkdownTableRow(line: string) {
+  const value = String(line || "").trim();
+  if (!value.includes("|")) {
+    return null;
+  }
+
+  const cells: string[] = [];
+  let cell = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    const nextChar = value[index + 1];
+    if (char === "\\" && nextChar === "|") {
+      cell += "|";
+      index += 1;
+      continue;
+    }
+    if (char === "|") {
+      cells.push(cell.trim());
+      cell = "";
+      continue;
+    }
+    cell += char;
+  }
+  cells.push(cell.trim());
+
+  if (cells[0] === "") {
+    cells.shift();
+  }
+  if (cells[cells.length - 1] === "") {
+    cells.pop();
+  }
+
+  return cells.length >= 2 ? cells : null;
+}
+
+function isMarkdownTableSeparator(cells: string[]) {
+  return cells.length >= 2 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+}
+
+function renderMarkdownTableBlock(table: MarkdownTableBlock) {
+  const columnCount = table.header.length;
+  const renderCell = (cell: string, tagName: "th" | "td") => `<${tagName}>${renderMarkdownInline(cell)}</${tagName}>`;
+  const normalizeRow = (row: string[]) => Array.from({ length: columnCount }, (_, index) => row[index] || "");
+  const header = normalizeRow(table.header).map((cell) => `<th scope="col">${renderMarkdownInline(cell)}</th>`).join("");
+  const body = table.rows
+    .map((row) => `<tr>${normalizeRow(row).map((cell) => renderCell(cell, "td")).join("")}</tr>`)
+    .join("");
+
+  return [
+    '<div class="chat-md-table-wrap">',
+    '<table class="chat-md-table">',
+    `<thead><tr>${header}</tr></thead>`,
+    `<tbody>${body}</tbody>`,
+    "</table>",
+    "</div>",
+  ].join("");
 }
 
 function renderMarkdownInline(content: string) {

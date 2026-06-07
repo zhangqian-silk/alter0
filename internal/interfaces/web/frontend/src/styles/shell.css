@@ -412,6 +412,7 @@ body {
 
   .runtime-composer-shell {
     padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+    bottom: var(--keyboard-offset, 0px);
   }
 
   .runtime-composer-form {
@@ -550,6 +551,10 @@ body {
 }
 
 @media (max-width: 760px) {
+  .runtime-composer-shell {
+    bottom: var(--keyboard-offset, 0px);
+  }
+
   [data-runtime-view="terminal"] .terminal-final-output {
     max-width: 100%;
   }
@@ -6713,6 +6718,44 @@ body::after {
   padding: 18px 20px;
 }
 
+.chat-md-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  margin: 10px 0 14px;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+
+.chat-md-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  color: #0f2f4d;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.chat-md-table th,
+.chat-md-table td {
+  min-width: 128px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.chat-md-table th {
+  background: rgba(241, 245, 249, 0.92);
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.chat-md-table td {
+  background: rgba(255, 255, 255, 0.7);
+}
+
 .runtime-thinking-shell.terminal-process-shell {
   margin: 0 0 12px;
   padding: 0;
@@ -7495,6 +7538,14 @@ body::after {
   max-width: 100%;
   box-sizing: border-box;
   overflow-x: auto;
+}
+
+[data-runtime-view="conversation"] .chat-md-table-wrap,
+[data-runtime-view="terminal"] .chat-md-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 [data-runtime-view="terminal"] .runtime-workspace-screen {
@@ -8586,7 +8637,7 @@ body::after {
     max-width: 100%;
     border-top: 0;
     padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
-    transform: translateY(calc(var(--keyboard-offset, 0px) * -1));
+    bottom: var(--keyboard-offset, 0px);
     background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(250, 252, 255, 0.94) 48%, rgba(250, 252, 255, 0.98) 100%);
   }
 
@@ -9220,6 +9271,10 @@ body {
 }
 
 @media (max-width: 760px) {
+  .runtime-composer-shell {
+    bottom: var(--keyboard-offset, 0px);
+  }
+
   [data-runtime-view="terminal"] .terminal-final-output {
     max-width: 100%;
   }

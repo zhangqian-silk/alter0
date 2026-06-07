@@ -1,10 +1,13 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -59,6 +62,28 @@ func TestChatPageHandlerServesEmbeddedHTML(t *testing.T) {
 	}
 }
 
+func TestChatPageHandlerVersionsImmutableAssetsFromContent(t *testing.T) {
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	req := httptest.NewRequest(http.MethodGet, "/chat", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatPageHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	scriptAsset, scriptVersion := extractVersionedAssetReferenceForTest(t, body, "js")
+	styleAsset, styleVersion := extractVersionedAssetReferenceForTest(t, body, "css")
+	if scriptVersion != embeddedAssetVersionForTest(t, scriptAsset) {
+		t.Fatalf("script asset %s version = %q", scriptAsset, scriptVersion)
+	}
+	if styleVersion != embeddedAssetVersionForTest(t, styleAsset) {
+		t.Fatalf("stylesheet asset %s version = %q", styleAsset, styleVersion)
+	}
+	assertNotContains(t, body, `?v=20260604-md-table`)
+}
+
 func TestTerminalPageHandlerServesEmbeddedHTML(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	req := httptest.NewRequest(http.MethodGet, "/terminal", nil)
@@ -74,6 +99,44 @@ func TestTerminalPageHandlerServesEmbeddedHTML(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Alter0 Chat") {
 		t.Fatalf("expected workbench page content")
+	}
+}
+
+func embeddedAssetVersionForTest(t *testing.T, assetPath string) string {
+	t.Helper()
+	content, err := webStaticFS.ReadFile("static/dist/" + assetPath)
+	if err != nil {
+		t.Fatalf("read embedded asset %s: %v", assetPath, err)
+	}
+	return shortContentHashForTest(content)
+}
+
+func extractVersionedAssetReferenceForTest(t *testing.T, content string, extension string) (string, string) {
+	t.Helper()
+	pattern := regexp.MustCompile(`/((?:assets/index-[^"?]+\.)` + regexp.QuoteMeta(extension) + `)\?v=([a-f0-9]{12})`)
+	match := pattern.FindStringSubmatch(content)
+	if len(match) != 3 {
+		t.Fatalf("expected versioned %s asset reference in %q", extension, content)
+	}
+	return match[1], match[2]
+}
+
+func shortContentHashForTest(content []byte) string {
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func assertContains(t *testing.T, content string, want string) {
+	t.Helper()
+	if !strings.Contains(content, want) {
+		t.Fatalf("expected content to contain %q", want)
+	}
+}
+
+func assertNotContains(t *testing.T, content string, want string) {
+	t.Helper()
+	if strings.Contains(content, want) {
+		t.Fatalf("expected content not to contain %q", want)
 	}
 }
 

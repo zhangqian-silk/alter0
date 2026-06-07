@@ -141,6 +141,7 @@ function resolveTerminalJumpState(
   idPrefix: string,
   measurementCacheRef: RefObject<TerminalJumpMeasurement[] | null>,
   measurementDirtyRef: RefObject<boolean>,
+  targetOffset: number,
   suppressNextTarget: boolean,
 ): ScrollJumpState {
   if (!container) {
@@ -203,6 +204,10 @@ function resolveTerminalJumpState(
   const lastEntryBottom = entries[entries.length - 1]?.bottom ?? 0;
   const hasHiddenContentAbove = firstEntryTop < scrollTop;
   const hasHiddenContentBelow = lastEntryBottom > viewportBottom;
+  const firstVisibleID = visibleEntries[0]?.id || "";
+  const firstVisibleIndex = firstVisibleID
+    ? entries.findIndex((entry) => entry.id === firstVisibleID)
+    : -1;
   const lastVisibleIndex = lastVisibleID
     ? entries.findIndex((entry) => entry.id === lastVisibleID)
     : -1;
@@ -210,7 +215,11 @@ function resolveTerminalJumpState(
   let previousTargetID = "";
 
   if (hasHiddenContentAbove) {
-    previousTargetID = previousID;
+    const firstVisibleTop = visibleEntries[0]?.top ?? scrollTop;
+    const firstVisibleAligned = firstVisibleTop >= scrollTop + targetOffset - 2;
+    previousTargetID = firstVisibleAligned && firstVisibleIndex > 0
+      ? entries[firstVisibleIndex - 1]?.id || ""
+      : previousID;
   }
 
   if (suppressNextTarget) {
@@ -305,6 +314,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
           `${scope}-${idPrefix}`,
           measurementCacheRef,
           measurementDirtyRef,
+          targetOffset,
           suppressNextTarget,
         ),
       );
@@ -335,7 +345,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
         window.cancelAnimationFrame(frame);
       }
     };
-  }, [containerRef, idPrefix, itemAttribute, itemSelector, scope, suppressNextTarget, watchKey]);
+  }, [containerRef, idPrefix, itemAttribute, itemSelector, scope, suppressNextTarget, targetOffset, watchKey]);
 
   useEffect(() => {
     measurementDirtyRef.current = true;
