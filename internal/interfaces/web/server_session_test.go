@@ -10,12 +10,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	agentapp "alter0/internal/agent/application"
-	controlapp "alter0/internal/control/application"
-	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
 	sessionapp "alter0/internal/session/application"
 	sessiondomain "alter0/internal/session/domain"
@@ -396,45 +394,48 @@ func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T)
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode payload: %v", err)
 	}
-	if len(payload.Items) != 1 {
-		t.Fatalf("expected 1 chat runtime session, got %d", len(payload.Items))
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected chat runtime sessions to include migrated legacy agent sessions, got %d", len(payload.Items))
 	}
-	if payload.Items[0].ID != "chat-session" || payload.Items[0].TargetType != "model" {
-		t.Fatalf("unexpected chat item %+v", payload.Items[0])
+	byID := map[string]struct {
+		ID              string   `json:"id"`
+		Title           string   `json:"title"`
+		TargetType      string   `json:"target_type"`
+		TargetID        string   `json:"target_id"`
+		ModelProviderID string   `json:"model_provider_id"`
+		ModelID         string   `json:"model_id"`
+		ToolIDs         []string `json:"tool_ids"`
+		SkillIDs        []string `json:"skill_ids"`
+		MCPIDs          []string `json:"mcp_ids"`
+	}{}
+	for _, item := range payload.Items {
+		byID[item.ID] = item
 	}
-	if payload.Items[0].Title != "Inspect this repository" {
-		t.Fatalf("expected title from first user message, got %+v", payload.Items[0])
+	chatItem := byID["chat-session"]
+	if chatItem.ID != "chat-session" || chatItem.TargetType != "model" {
+		t.Fatalf("unexpected chat item %+v", chatItem)
 	}
-	if payload.Items[0].ModelProviderID != "openai" || payload.Items[0].ModelID != "gpt-5.4" {
-		t.Fatalf("expected provider/model from metadata, got %+v", payload.Items[0])
+	if chatItem.Title != "Inspect this repository" {
+		t.Fatalf("expected title from first user message, got %+v", chatItem)
 	}
-	if len(payload.Items[0].ToolIDs) != 1 || payload.Items[0].ToolIDs[0] != "memory" {
-		t.Fatalf("expected tool ids from metadata, got %+v", payload.Items[0].ToolIDs)
+	if chatItem.ModelProviderID != "openai" || chatItem.ModelID != "gpt-5.4" {
+		t.Fatalf("expected provider/model from metadata, got %+v", chatItem)
 	}
-	if len(payload.Items[0].SkillIDs) != 1 || payload.Items[0].SkillIDs[0] != "frontend-design" {
-		t.Fatalf("expected skill ids from metadata, got %+v", payload.Items[0].SkillIDs)
+	if len(chatItem.ToolIDs) != 1 || chatItem.ToolIDs[0] != "memory" {
+		t.Fatalf("expected tool ids from metadata, got %+v", chatItem.ToolIDs)
 	}
-	if len(payload.Items[0].MCPIDs) != 1 || payload.Items[0].MCPIDs[0] != "filesystem" {
-		t.Fatalf("expected mcp ids from metadata, got %+v", payload.Items[0].MCPIDs)
+	if len(chatItem.SkillIDs) != 1 || chatItem.SkillIDs[0] != "frontend-design" {
+		t.Fatalf("expected skill ids from metadata, got %+v", chatItem.SkillIDs)
 	}
-
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions?route=agent-runtime", nil)
-	server.conversationRuntimeSessionCollectionHandler(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	if len(chatItem.MCPIDs) != 1 || chatItem.MCPIDs[0] != "filesystem" {
+		t.Fatalf("expected mcp ids from metadata, got %+v", chatItem.MCPIDs)
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode payload: %v", err)
+	agentItem := byID["agent-session"]
+	if agentItem.ID != "agent-session" || agentItem.TargetType != "agent" || agentItem.TargetID != "coding" {
+		t.Fatalf("unexpected migrated legacy agent item %+v", agentItem)
 	}
-	if len(payload.Items) != 1 {
-		t.Fatalf("expected 1 agent runtime session, got %d", len(payload.Items))
-	}
-	if payload.Items[0].ID != "agent-session" || payload.Items[0].TargetType != "agent" || payload.Items[0].TargetID != "coding" {
-		t.Fatalf("unexpected agent item %+v", payload.Items[0])
-	}
-	if payload.Items[0].ModelProviderID != "alter0-codex" || payload.Items[0].ModelID != "codex" {
-		t.Fatalf("expected codex runtime model selection, got %+v", payload.Items[0])
+	if agentItem.ModelProviderID != "alter0-codex" || agentItem.ModelID != "codex" {
+		t.Fatalf("expected codex runtime model selection, got %+v", agentItem)
 	}
 }
 
@@ -552,8 +553,31 @@ func TestConversationRuntimeSessionItemHandlerReturnsMessagesAndAttachments(t *t
 	}
 }
 
-func TestConversationRuntimeSessionCollectionHandlerIncludesRegistryBackedPendingSession(t *testing.T) {
-	registry, err := newFileConversationRuntimeSessionRegistry(filepath.Join(t.TempDir(), "conversation-runtime.json"))
+func TestConversationRuntimeSessionRegistryMigratesLegacyAgentRuntimeEntriesToChat(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "conversation-runtime.json")
+	if err := os.WriteFile(path, []byte(`{
+  "items": [
+    {
+      "session_id": "agent-pending-registry",
+      "route": "agent-runtime",
+      "status": "busy",
+      "title": "Generate the travel guide page",
+      "title_auto": false,
+      "title_score": 1,
+      "created_at": "2026-05-06T08:00:00Z",
+      "updated_at": "2026-05-06T08:00:01Z",
+      "target_type": "agent",
+      "target_id": "travel",
+      "target_name": "Travel Agent",
+      "model_provider_id": "alter0-codex",
+      "model_id": "codex",
+      "skill_ids": ["deploy-test-service"]
+    }
+  ]
+}`), 0o644); err != nil {
+		t.Fatalf("write legacy registry: %v", err)
+	}
+	registry, err := newFileConversationRuntimeSessionRegistry(path)
 	if err != nil {
 		t.Fatalf("create registry: %v", err)
 	}
@@ -564,21 +588,8 @@ func TestConversationRuntimeSessionCollectionHandlerIncludesRegistryBackedPendin
 		logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	msg := shareddomain.UnifiedMessage{
-		SessionID:  "agent-pending-registry",
-		Content:    "Generate the travel guide page",
-		ReceivedAt: time.Date(2026, 5, 6, 8, 0, 0, 0, time.UTC),
-		Metadata: map[string]string{
-			"alter0.execution.engine": "codex",
-			"alter0.agent.id":         "travel",
-			"alter0.agent.name":       "Travel Agent",
-			"alter0.skills.include":   `["deploy-test-service"]`,
-		},
-	}
-	server.markConversationRuntimeSessionStarted(conversationRuntimeRouteAgentRuntime, msg)
-
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions?route=agent-runtime", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions?route=chat", nil)
 	server.conversationRuntimeSessionCollectionHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -610,6 +621,13 @@ func TestConversationRuntimeSessionCollectionHandlerIncludesRegistryBackedPendin
 	}
 	if len(payload.Items[0].SkillIDs) != 1 || payload.Items[0].SkillIDs[0] != "deploy-test-service" {
 		t.Fatalf("expected skill ids from registry metadata, got %+v", payload.Items[0].SkillIDs)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read migrated registry: %v", err)
+	}
+	if strings.Contains(string(raw), `"route": "agent-runtime"`) {
+		t.Fatalf("expected legacy agent-runtime route to be rewritten to chat, got %s", string(raw))
 	}
 }
 
@@ -704,192 +722,5 @@ func TestSessionDeleteHandlerReturnsTaskDeleteFailure(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
-	}
-}
-
-func TestAgentSessionProfileHandlerReturnsSchemaAndAttributes(t *testing.T) {
-	baseDir := t.TempDir()
-	profilePath := filepath.Join(baseDir, ".alter0", "agents", "coding", "sessions", "session-coding.md")
-	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
-		t.Fatalf("prepare session profile dir: %v", err)
-	}
-	content := `# Agent Session Profile
-
-<!-- alter0:agent-session:auto:start -->
-## Session Identity
-- agent_id: coding
-- session_id: session-coding
-
-## Instance Attributes
-- repository_path: /workspace/alter0-remote
-- branch: feature/session-profile
-- preview_subdomain: coding-run-42
-<!-- alter0:agent-session:auto:end -->
-
-## Notes
-<!-- alter0:agent-session:notes:start -->
-<!-- alter0:agent-session:notes:end -->
-`
-	if err := os.WriteFile(profilePath, []byte(content), 0o644); err != nil {
-		t.Fatalf("write session profile: %v", err)
-	}
-
-	control := controlapp.NewService()
-	server := &Server{
-		control:       control,
-		agents:        agentapp.NewCatalog(control),
-		workspaceRoot: baseDir,
-		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/agent/session-profile?agent_id=coding&session_id=session-coding", nil)
-	rec := httptest.NewRecorder()
-	server.agentSessionProfileHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
-	}
-
-	var response struct {
-		AgentID    string                                   `json:"agent_id"`
-		SessionID  string                                   `json:"session_id"`
-		Path       string                                   `json:"path"`
-		Exists     bool                                     `json:"exists"`
-		Fields     []controldomain.AgentSessionProfileField `json:"fields"`
-		Attributes map[string]string                        `json:"attributes"`
-	}
-	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
-		t.Fatalf("decode response failed: %v", err)
-	}
-	if response.AgentID != "coding" || response.SessionID != "session-coding" || !response.Exists {
-		t.Fatalf("unexpected response envelope: %+v", response)
-	}
-	if len(response.Fields) < 4 {
-		t.Fatalf("expected builtin coding fields, got %+v", response.Fields)
-	}
-	if response.Attributes["repository_path"] != "/workspace/alter0-remote" {
-		t.Fatalf("expected repository_path attribute, got %+v", response.Attributes)
-	}
-	if response.Attributes["preview_subdomain"] != "coding-run-42" {
-		t.Fatalf("expected preview_subdomain attribute, got %+v", response.Attributes)
-	}
-}
-
-func TestAgentSessionProfileHandlerStripsUnpublishedTravelGuideURL(t *testing.T) {
-	baseDir := t.TempDir()
-	profilePath := filepath.Join(baseDir, ".alter0", "agents", "travel", "sessions", "session-travel.md")
-	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
-		t.Fatalf("prepare session profile dir: %v", err)
-	}
-	content := `# Agent Session Profile
-
-<!-- alter0:agent-session:auto:start -->
-## Session Identity
-- agent_id: travel
-- session_id: session-travel
-
-## Instance Attributes
-- guide_html_url: https://f4e04ab7.travel.alter0.cn
-<!-- alter0:agent-session:auto:end -->
-
-## Notes
-<!-- alter0:agent-session:notes:start -->
-<!-- alter0:agent-session:notes:end -->
-`
-	if err := os.WriteFile(profilePath, []byte(content), 0o644); err != nil {
-		t.Fatalf("write session profile: %v", err)
-	}
-
-	control := controlapp.NewService()
-	server := &Server{
-		control:       control,
-		agents:        agentapp.NewCatalog(control),
-		workspaceRoot: baseDir,
-		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/agent/session-profile?agent_id=travel&session_id=session-travel", nil)
-	rec := httptest.NewRecorder()
-	server.agentSessionProfileHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
-	}
-
-	var response struct {
-		Attributes map[string]string `json:"attributes"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if got := response.Attributes["guide_html_url"]; got != "" {
-		t.Fatalf("expected unpublished travel guide url to be hidden, got %q", got)
-	}
-}
-
-func TestAgentSessionProfileHandlerReturnsPublishedTravelGuideURL(t *testing.T) {
-	baseDir := t.TempDir()
-	profilePath := filepath.Join(baseDir, ".alter0", "agents", "travel", "sessions", "session-travel.md")
-	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
-		t.Fatalf("prepare session profile dir: %v", err)
-	}
-	content := `# Agent Session Profile
-
-<!-- alter0:agent-session:auto:start -->
-## Session Identity
-- agent_id: travel
-- session_id: session-travel
-
-## Instance Attributes
-- city: 武汉
-<!-- alter0:agent-session:auto:end -->
-
-## Notes
-<!-- alter0:agent-session:notes:start -->
-<!-- alter0:agent-session:notes:end -->
-`
-	if err := os.WriteFile(profilePath, []byte(content), 0o644); err != nil {
-		t.Fatalf("write session profile: %v", err)
-	}
-
-	registry, err := newFileWorkspaceServiceRegistry(filepath.Join(t.TempDir(), workspaceServiceRegistryFilename), "alter0.cn")
-	if err != nil {
-		t.Fatalf("new workspace service registry: %v", err)
-	}
-	if _, err := registry.Upsert(workspaceServiceRegistrationInput{
-		SessionID:      "session-travel",
-		ServiceID:      "travel",
-		ServiceType:    workspaceServiceTypeFrontendDist,
-		RepositoryPath: prepareTravelGuideWorkspace(t, "travel guide"),
-	}); err != nil {
-		t.Fatalf("register travel service: %v", err)
-	}
-
-	control := controlapp.NewService()
-	server := &Server{
-		control:          control,
-		agents:           agentapp.NewCatalog(control),
-		workspaceRoot:    baseDir,
-		workspaceService: registry,
-		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/agent/session-profile?agent_id=travel&session_id=session-travel", nil)
-	rec := httptest.NewRecorder()
-	server.agentSessionProfileHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
-	}
-
-	var response struct {
-		Attributes map[string]string `json:"attributes"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	expectedURL := "https://" + buildWorkspaceServiceHost(shortSessionPreviewHash("session-travel"), "travel", "alter0.cn")
-	if got := response.Attributes["guide_html_url"]; got != expectedURL {
-		t.Fatalf("expected published travel guide url, got %q", got)
 	}
 }

@@ -7,7 +7,7 @@ export function RuntimeRouteHost({
   route,
   language,
 }: {
-  route: "chat" | "agent-runtime" | "terminal";
+  route: "chat" | "terminal";
   language: LegacyShellLanguage;
 }) {
   if (route === "terminal") {

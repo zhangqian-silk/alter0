@@ -24,14 +24,11 @@ import {
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
-const LAST_SELECTED_AGENT_STORAGE_KEY = "alter0.web.agent-runtime.last-target.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
 const STREAM_ENDPOINT = "/api/messages/stream";
-const AGENT_STREAM_ENDPOINT = "/api/agent/messages/stream";
 const FALLBACK_ENDPOINT = "/api/messages";
-const AGENT_FALLBACK_ENDPOINT = "/api/agent/messages";
 const RUNTIME_SESSION_COLLECTION_ENDPOINT = "/api/conversation-runtime/sessions";
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_TASK_POLL_INTERVAL_MS = 3000;
@@ -45,9 +42,8 @@ const CODEX_RUNTIME_MODEL_ID = "codex";
 const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
-const DEFAULT_AGENT_SEARCH_MEMORY_TOOL = "search_memory";
 
-export type ConversationRoute = "chat" | "agent-runtime";
+export type ConversationRoute = "chat";
 
 type ChatTarget = {
   type: "model" | "agent";
@@ -126,44 +122,6 @@ type ChatCapability = {
   metadata?: Record<string, string>;
 };
 
-type AgentSessionProfileField = {
-  key: string;
-  label: string;
-  description?: string;
-  readonly?: boolean;
-};
-
-type AgentDeliverable = {
-  id: string;
-  label: string;
-  description?: string;
-  format?: string;
-  required?: boolean;
-  session_attribute_key?: string;
-};
-
-type ChatAgent = {
-  id: string;
-  name: string;
-  description?: string;
-  enabled?: boolean;
-  tools?: string[];
-  skills?: string[];
-  mcps?: string[];
-  capabilities?: string[];
-  session_profile_fields?: AgentSessionProfileField[];
-  deliverables?: AgentDeliverable[];
-};
-
-type ChatAgentSessionProfile = {
-  agent_id: string;
-  session_id: string;
-  path: string;
-  exists: boolean;
-  fields: AgentSessionProfileField[];
-  attributes: Record<string, string>;
-};
-
 type ChatTaskResponse = {
   id?: string;
   status?: string;
@@ -184,8 +142,8 @@ type ActiveSessionState = Record<ConversationRoute, string>;
 type SessionsState = Record<ConversationRoute, ChatSession[]>;
 type ComposerDraftMap = Record<string, string>;
 type ComposerAttachmentDraftMap = Record<string, ComposerAttachment[]>;
-type StoredActiveSessionSnapshotState = Partial<Record<ConversationRoute, unknown>>;
-type StoredRecentSessionSnapshotState = Partial<Record<ConversationRoute, unknown>>;
+type StoredActiveSessionSnapshotState = Record<string, unknown>;
+type StoredRecentSessionSnapshotState = Record<string, unknown>;
 
 type RuntimeSelection = {
   id: string;
@@ -193,17 +151,8 @@ type RuntimeSelection = {
   description: string;
   kind: "tool" | "mcp" | "skill";
   active: boolean;
-  visibility?: "public" | "agent-private";
+  visibility?: "public";
   locked?: boolean;
-  ownerAgentID?: string;
-};
-
-type RuntimeTargetOption = {
-  type: "agent";
-  id: string;
-  name: string;
-  subtitle: string;
-  active: boolean;
 };
 
 type RuntimeModel = {
@@ -279,7 +228,7 @@ type ConversationRuntimeContextValue = {
   route: ConversationRoute;
   compact: boolean;
   inspectorOpen: boolean;
-  inspectorTab: "target" | "deliverables" | "model" | "capabilities" | "skills" | "session-profile";
+  inspectorTab: "model" | "capabilities" | "skills";
   inspectorTabOpen: boolean;
   sessions: ChatSession[];
   activeSession: ChatSession | null;
@@ -294,10 +243,7 @@ type ConversationRuntimeContextValue = {
   }>;
   draft: string;
   target: ChatTarget;
-  activeAgent: ChatAgent | null;
-  activeSessionProfile: ChatAgentSessionProfile | null;
   lockedTarget: boolean;
-  targetOptions: RuntimeTargetOption[];
   selectedProviderId: string;
   selectedModelId: string;
   selectedModelLabel: string;
@@ -316,9 +262,8 @@ type ConversationRuntimeContextValue = {
   removeDraftAttachment: (attachmentID: string) => void;
   clearDraftAttachments: () => void;
   sendPrompt: (prompt?: string) => Promise<void>;
-  toggleInspector: (tab?: "target" | "deliverables" | "model" | "capabilities" | "skills" | "session-profile") => void;
+  toggleInspector: (tab?: "model" | "capabilities" | "skills") => void;
   closeInspector: () => void;
-  selectTarget: (targetID: string) => void;
   selectModel: (providerID: string, modelID: string) => void;
   toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => void;
   toggleSkill: (id: string, checked: boolean) => void;
@@ -353,7 +298,7 @@ const ConversationRuntimeWorkspaceContext = createContext<ConversationRuntimeWor
 const ConversationRuntimeComposerContext = createContext<ConversationRuntimeComposerContextValue | null>(null);
 
 type ProviderProps = {
-  route: ConversationRoute;
+  route: string;
   language: LegacyShellLanguage;
   children: ReactNode;
 };
@@ -374,44 +319,8 @@ function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeRuntimeAgentID(value: unknown): string {
-  const normalized = normalizeText(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^[-.]+|[-.]+$/g, "");
-  return normalized || "unknown";
-}
-
-function agentHasCapability(agent: ChatAgent | null, capability: string): boolean {
-  const lookup = capability.toLowerCase();
-  return Boolean(agent?.capabilities?.some((item) => normalizeText(item).toLowerCase() === lookup));
-}
-
-function isTravelRuntimeAgent(agent: ChatAgent | null): boolean {
-  const id = normalizeText(agent?.id).toLowerCase();
-  const name = normalizeText(agent?.name).toLowerCase();
-  return id === "travel" || name.includes("travel") || agentHasCapability(agent, "travel");
-}
-
-function buildAgentPrivateSkill(route: ConversationRoute, agent: ChatAgent | null): RuntimeSelection | null {
-  if (route !== "agent-runtime" || !agent) {
-    return null;
-  }
-  const normalizedAgentID = normalizeRuntimeAgentID(agent.id);
-  const name = normalizeText(agent.name) || normalizeText(agent.id) || "Agent";
-  const description = isTravelRuntimeAgent(agent)
-    ? "Private reusable rulebook for the current travel agent's city-page structure, itinerary composition, rendering conventions, and stable travel preferences."
-    : "Private reusable rulebook for the current agent's execution patterns, output structure, domain heuristics, and stable preferences.";
-  return {
-    id: `agent-skill-${normalizedAgentID}`,
-    name: `${name} Skill`,
-    description,
-    kind: "skill",
-    active: true,
-    visibility: "agent-private",
-    locked: true,
-    ownerAgentID: normalizeText(agent.id),
-  };
+function normalizeConversationRoute(_route: string): ConversationRoute {
+  return "chat";
 }
 
 function isPublicSkillCapability(skill: ChatCapability): boolean {
@@ -429,121 +338,6 @@ function normalizeChatTarget(target?: { type?: string; id?: string; name?: strin
   const id = normalizeText(target?.id) || (type === "agent" ? "" : "raw-model");
   const name = normalizeText(target?.name) || (type === "agent" ? id : "Raw Model");
   return { type, id, name };
-}
-
-function normalizeAgentSessionProfileField(item: unknown): AgentSessionProfileField | null {
-  if (!item || typeof item !== "object") {
-    return null;
-  }
-  const record = item as Record<string, unknown>;
-  const key = normalizeText(record.key);
-  const label = normalizeText(record.label);
-  if (!key || !label) {
-    return null;
-  }
-  return {
-    key,
-    label,
-    description: normalizeText(record.description) || undefined,
-    readonly: record.readonly === true,
-  };
-}
-
-function normalizeAgentSessionProfileFields(items: unknown): AgentSessionProfileField[] {
-  if (!Array.isArray(items)) {
-    return [];
-  }
-  const deduped = new Map<string, AgentSessionProfileField>();
-  items.forEach((item) => {
-    const field = normalizeAgentSessionProfileField(item);
-    if (!field || deduped.has(field.key.toLowerCase())) {
-      return;
-    }
-    deduped.set(field.key.toLowerCase(), field);
-  });
-  return Array.from(deduped.values());
-}
-
-function normalizeAgentDeliverable(item: unknown): AgentDeliverable | null {
-  if (!item || typeof item !== "object") {
-    return null;
-  }
-  const record = item as Record<string, unknown>;
-  const id = normalizeText(record.id);
-  const label = normalizeText(record.label);
-  if (!id || !label) {
-    return null;
-  }
-  return {
-    id,
-    label,
-    description: normalizeText(record.description) || undefined,
-    format: normalizeText(record.format) || undefined,
-    required: record.required === true,
-    session_attribute_key: normalizeText(record.session_attribute_key) || undefined,
-  };
-}
-
-function normalizeAgentDeliverables(items: unknown): AgentDeliverable[] {
-  if (!Array.isArray(items)) {
-    return [];
-  }
-  const deduped = new Map<string, AgentDeliverable>();
-  items.forEach((item) => {
-    const deliverable = normalizeAgentDeliverable(item);
-    if (!deliverable || deduped.has(deliverable.id.toLowerCase())) {
-      return;
-    }
-    deduped.set(deliverable.id.toLowerCase(), deliverable);
-  });
-  return Array.from(deduped.values());
-}
-
-function normalizeAgentSessionProfileAttributes(items: unknown): Record<string, string> {
-  if (!items || typeof items !== "object") {
-    return {};
-  }
-  return Object.entries(items as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
-    const normalizedKey = normalizeText(key);
-    const normalizedValue = normalizeText(value);
-    if (!normalizedKey || !normalizedValue) {
-      return acc;
-    }
-    acc[normalizedKey] = normalizedValue;
-    return acc;
-  }, {});
-}
-
-function normalizeAgentSessionProfile(
-  payload: unknown,
-  fallbackAgentID: string,
-  fallbackSessionID: string,
-  fallbackFields: AgentSessionProfileField[],
-): ChatAgentSessionProfile {
-  const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
-  const fields = normalizeAgentSessionProfileFields(record.fields);
-  return {
-    agent_id: normalizeText(record.agent_id) || fallbackAgentID,
-    session_id: normalizeText(record.session_id) || fallbackSessionID,
-    path: normalizeText(record.path),
-    exists: record.exists === true,
-    fields: fields.length > 0 ? fields : fallbackFields,
-    attributes: normalizeAgentSessionProfileAttributes(record.attributes),
-  };
-}
-
-function buildFallbackAgentSessionProfile(agent: ChatAgent | null, sessionID: string): ChatAgentSessionProfile | null {
-  if (!agent || !sessionID) {
-    return null;
-  }
-  return {
-    agent_id: normalizeText(agent.id),
-    session_id: sessionID,
-    path: "",
-    exists: false,
-    fields: normalizeAgentSessionProfileFields(agent.session_profile_fields),
-    attributes: {},
-  };
 }
 
 function defaultChatTarget(): ChatTarget {
@@ -586,44 +380,6 @@ function runtimeProviders(providers: ChatProvider[]): ChatProvider[] {
   return [...providers, codexRuntimeProvider()];
 }
 
-function isSelectableRuntimeAgent(agent: ChatAgent | null): agent is ChatAgent {
-  if (!agent || agent.enabled === false) {
-    return false;
-  }
-  const id = normalizeText(agent.id).toLowerCase();
-  const name = normalizeText(agent.name).toLowerCase();
-  return id !== "main" && id !== "alter0" && name !== "alter0";
-}
-
-function normalizeChatAgent(item: unknown): ChatAgent | null {
-  if (!item || typeof item !== "object") {
-    return null;
-  }
-  const record = item as Record<string, unknown>;
-  const id = normalizeText(record.id);
-  if (!id) {
-    return null;
-  }
-  return {
-    id,
-    name: normalizeText(record.name) || id,
-    description: normalizeText(record.description) || undefined,
-    enabled: record.enabled !== false,
-    tools: ensureDefaultAgentToolIDs(normalizeSelectionIDs(record.tools)),
-    skills: normalizeSelectionIDs(record.skills),
-    mcps: normalizeSelectionIDs(record.mcps),
-    capabilities: normalizeSelectionIDs(record.capabilities),
-    session_profile_fields: normalizeAgentSessionProfileFields(record.session_profile_fields),
-    deliverables: normalizeAgentDeliverables(record.deliverables),
-  };
-}
-
-function ensureDefaultAgentToolIDs(items: string[]): string[] {
-  if (items.some((item) => normalizeText(item) === DEFAULT_AGENT_SEARCH_MEMORY_TOOL)) {
-    return items;
-  }
-  return [...items, DEFAULT_AGENT_SEARCH_MEMORY_TOOL];
-}
 function normalizeSelectionIDs(values: unknown): string[] {
   if (!Array.isArray(values)) {
     return [];
@@ -796,7 +552,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
   }
   return {
     id,
-    sourceRoute: normalizeText(record.sourceRoute ?? record.source_route) === "agent-runtime" ? "agent-runtime" : "chat",
+    sourceRoute: "chat",
     status: normalizeText(record.status),
     title: normalizeText(record.title) || "New",
     titleAuto: record.titleAuto !== false,
@@ -904,67 +660,40 @@ function loadActiveSessionState(): ActiveSessionState {
     chat:
       readWorkbenchRouteSessionID("chat")
       || normalizeText(parsed.chat)
-      || readWorkbenchRouteSessionID("agent-runtime")
       || normalizeText(parsed["agent-runtime"])
       || CANONICAL_CHAT_SESSION_ID,
-    "agent-runtime": readWorkbenchRouteSessionID("agent-runtime") || normalizeText(parsed["agent-runtime"]),
   };
-}
-
-function loadLastSelectedAgentID(): string {
-  try {
-    return normalizeText(window.sessionStorage.getItem(LAST_SELECTED_AGENT_STORAGE_KEY));
-  } catch {
-    return "";
-  }
-}
-
-function persistLastSelectedAgentID(agentID: string) {
-  try {
-    const normalized = normalizeText(agentID);
-    if (!normalized) {
-      window.sessionStorage.removeItem(LAST_SELECTED_AGENT_STORAGE_KEY);
-      return;
-    }
-    window.sessionStorage.setItem(LAST_SELECTED_AGENT_STORAGE_KEY, normalized);
-  } catch {
-  }
 }
 
 function loadActiveSessionSnapshots(): SessionsState {
   const parsedActive = readJSONStorage<StoredActiveSessionSnapshotState>(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY, {});
   const parsedRecent = readJSONStorage<StoredRecentSessionSnapshotState>(RECENT_SESSION_SNAPSHOT_STORAGE_KEY, {});
-  const mergeStoredRouteSessions = (routeKey: ConversationRoute) => {
+  const mergeStoredRouteSessions = (routeKey: string) => {
     const sessions = new Map<string, ChatSession>();
     normalizeStoredSessionList(parsedRecent[routeKey]).forEach((session) => {
-      sessions.set(session.id, session);
+      sessions.set(session.id, { ...session, sourceRoute: "chat" });
     });
     const active = normalizeStoredSession(parsedActive[routeKey]);
     if (active) {
-      sessions.set(active.id, active);
+      sessions.set(active.id, { ...active, sourceRoute: "chat" });
     }
     return normalizeRouteSessions(
-      routeKey,
+      "chat",
       Array.from(sessions.values()).sort((left, right) => right.createdAt - left.createdAt),
     );
   };
-  const legacyAgentRuntimeSessions = mergeStoredRouteSessions("agent-runtime").map((session) => ({
-    ...session,
-    sourceRoute: session.sourceRoute || "agent-runtime" as const,
-  }));
   return {
     chat: normalizeRouteSessions("chat", [
       ...mergeStoredRouteSessions("chat"),
-      ...legacyAgentRuntimeSessions,
+      ...mergeStoredRouteSessions("agent-runtime"),
     ]),
-    "agent-runtime": mergeStoredRouteSessions("agent-runtime"),
   };
 }
 
 function persistActiveSessionSnapshots(activeState: ActiveSessionState, sessions: SessionsState) {
   const payload: StoredActiveSessionSnapshotState = {};
   const recentPayload: StoredRecentSessionSnapshotState = {};
-  (["chat", "agent-runtime"] as ConversationRoute[]).forEach((routeKey) => {
+  (["chat"] as ConversationRoute[]).forEach((routeKey) => {
     const activeID = normalizeText(activeState[routeKey]);
     recentPayload[routeKey] = sessions[routeKey]
       .slice(0, MAX_RECENT_SESSION_SNAPSHOTS)
@@ -1318,30 +1047,27 @@ function isCompactViewport(): boolean {
 }
 
 export function ConversationRuntimeProvider({
-  route,
+  route: rawRoute,
   language,
   children,
 }: ProviderProps) {
+  const route = normalizeConversationRoute(rawRoute);
   const apiClient = useMemo(() => createAPIClient(), []);
   const [sessionsByRoute, setSessionsByRoute] = useState<SessionsState>(() => loadActiveSessionSnapshots());
   const [sessionsLoadedByRoute, setSessionsLoadedByRoute] = useState<Record<ConversationRoute, boolean>>({
     chat: false,
-    "agent-runtime": false,
   });
   const [activeSessionByRoute, setActiveSessionByRoute] = useState<ActiveSessionState>(() =>
     loadActiveSessionState(),
   );
-  const [selectedAgentID, setSelectedAgentID] = useState(() => loadLastSelectedAgentID());
   const [providers, setProviders] = useState<ChatProvider[]>([]);
   const [skills, setSkills] = useState<ChatCapability[]>([]);
   const [mcps, setMcps] = useState<ChatCapability[]>([]);
-  const [agents, setAgents] = useState<ChatAgent[]>([]);
-  const [agentSessionProfiles, setAgentSessionProfiles] = useState<Record<string, ChatAgentSessionProfile>>({});
   const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());
   const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts());
   const [compact, setCompact] = useState(() => isCompactViewport());
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<"target" | "deliverables" | "model" | "capabilities" | "skills" | "session-profile">("model");
+  const [inspectorTab, setInspectorTab] = useState<"model" | "capabilities" | "skills">("model");
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const pollTimerRef = useRef<number>(0);
@@ -1357,16 +1083,6 @@ export function ConversationRuntimeProvider({
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
   const activeDraftAttachments = activeSessionID ? composerAttachmentDrafts[activeSessionID] || [] : [];
   const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
-  const activeAgent = activeSession?.target.type === "agent"
-    ? agents.find((agent) => normalizeText(agent.id) === normalizeText(activeSession.target.id)) || null
-    : null;
-  const activeSessionProfileKey = activeAgent && activeSession
-    ? `${normalizeText(activeAgent.id)}:${activeSession.id}`
-    : "";
-  const activeSessionProfile = activeSessionProfileKey
-    ? agentSessionProfiles[activeSessionProfileKey] || buildFallbackAgentSessionProfile(activeAgent, activeSession?.id || "")
-    : null;
-
   useEffect(() => {
     latestComposerDraftsRef.current = composerDrafts;
     window.clearTimeout(composerDraftPersistTimerRef.current);
@@ -1386,48 +1102,15 @@ export function ConversationRuntimeProvider({
     persistComposerDrafts(latestComposerDraftsRef.current);
   }, []);
 
-  useEffect(() => {
-    persistLastSelectedAgentID(selectedAgentID);
-  }, [selectedAgentID]);
-
   const ensureSession = useCallback((
     target?: Partial<ChatTarget> | null,
     preferredActiveState: ActiveSessionState = activeSessionByRoute,
     currentSessions: SessionsState = sessionsByRoute,
   ) => {
-    const targetValue = normalizeChatTarget(
-      target || (route === "agent-runtime"
-        ? {
-            type: "agent",
-            id: selectedAgentID,
-            name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
-          }
-        : defaultChatTarget()),
-    );
+    const targetValue = normalizeChatTarget(target || defaultChatTarget());
     const routeSessions = normalizeRouteSessions(route, currentSessions[route]);
     const existing = routeSessions.find((session) => session.id === preferredActiveState[route]) || null;
     if (existing) {
-      if (
-        route === "agent-runtime"
-        && targetValue.type === "agent"
-        && targetValue.id
-        && existing.target.id !== targetValue.id
-        && existing.messages.length === 0
-      ) {
-        const nextSession = {
-          ...existing,
-          target: targetValue,
-          toolIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.tools),
-          skillIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.skills),
-          mcpIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.mcps),
-        };
-        const nextSessionsByRoute = {
-          ...currentSessions,
-          [route]: currentSessions[route].map((session) => session.id === existing.id ? nextSession : session),
-        };
-        setSessionsByRoute(nextSessionsByRoute);
-        return nextSession;
-      }
       return existing;
     }
     const created: ChatSession = {
@@ -1441,15 +1124,9 @@ export function ConversationRuntimeProvider({
       target: targetValue,
       modelProviderID: "",
       modelID: "",
-      toolIDs: targetValue.type === "agent"
-        ? normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.tools)
-        : [],
-      skillIDs: targetValue.type === "agent"
-        ? normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.skills)
-        : [],
-      mcpIDs: targetValue.type === "agent"
-        ? normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === targetValue.id)?.mcps)
-        : [],
+      toolIDs: [],
+      skillIDs: [],
+      mcpIDs: [],
       messages: [],
       messagesLoaded: true,
       serverBacked: false,
@@ -1463,7 +1140,7 @@ export function ConversationRuntimeProvider({
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
     return created;
-  }, [activeSessionByRoute, agents, route, selectedAgentID, sessionsByRoute]);
+  }, [activeSessionByRoute, route, sessionsByRoute]);
 
   const patchSession = useCallback((
     routeKey: ConversationRoute,
@@ -1543,13 +1220,7 @@ export function ConversationRuntimeProvider({
     const nextActiveState = { ...activeSessionByRoute, [route]: resolvedSessionID };
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-    if (route === "agent-runtime") {
-      const session = sessionsByRoute[route].find((item) => item.id === resolvedSessionID) || null;
-      if (session?.target.type === "agent") {
-        setSelectedAgentID(normalizeText(session.target.id));
-      }
-    }
-  }, [activeSessionByRoute, route, sessionsByRoute]);
+  }, [activeSessionByRoute, route]);
 
   const removeSession = useCallback(async (sessionID: string) => {
     try {
@@ -1580,36 +1251,9 @@ export function ConversationRuntimeProvider({
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
   }, [activeSessionByRoute, apiClient, route, sessionsByRoute]);
 
-  const loadAgentSessionProfile = useCallback(async (agentID: string, sessionID: string) => {
-    const normalizedAgentID = normalizeText(agentID);
-    const normalizedSessionID = normalizeText(sessionID);
-    if (!normalizedAgentID || !normalizedSessionID) {
-      return;
-    }
-    const profileKey = `${normalizedAgentID}:${normalizedSessionID}`;
-    const fallbackFields = normalizeAgentSessionProfileFields(
-      agents.find((agent) => normalizeText(agent.id) === normalizedAgentID)?.session_profile_fields,
-    );
-    try {
-      const payload = await apiClient.get<ChatAgentSessionProfile>(
-        `/api/agent/session-profile?agent_id=${encodeURIComponent(normalizedAgentID)}&session_id=${encodeURIComponent(normalizedSessionID)}`,
-      );
-      setAgentSessionProfiles((current) => ({
-        ...current,
-        [profileKey]: normalizeAgentSessionProfile(payload, normalizedAgentID, normalizedSessionID, fallbackFields),
-      }));
-    } catch {
-      setAgentSessionProfiles((current) => ({
-        ...current,
-        [profileKey]: normalizeAgentSessionProfile({}, normalizedAgentID, normalizedSessionID, fallbackFields),
-      }));
-    }
-  }, [agents, apiClient]);
-
   const sendMessageFallback = async (
     routeKey: ConversationRoute,
     sessionID: string,
-    target: ChatTarget,
     assistantMessageID: string,
     content: string,
     attachments: ComposerAttachment[],
@@ -1625,17 +1269,13 @@ export function ConversationRuntimeProvider({
       };
       task_id?: string;
       task_status?: string;
-    }>(
-      routeKey === "agent-runtime" ? AGENT_FALLBACK_ENDPOINT : FALLBACK_ENDPOINT,
-      {
-        session_id: sessionID,
-        channel_id: "web-default",
-        content,
-        attachments: attachments.map(serializeMessageAttachment),
-        metadata: buildMessageMetadata(session, selection),
-        ...(routeKey === "agent-runtime" ? { agent_id: target.id } : {}),
-      },
-    );
+    }>(FALLBACK_ENDPOINT, {
+      session_id: sessionID,
+      channel_id: "web-default",
+      content,
+      attachments: attachments.map(serializeMessageAttachment),
+      metadata: buildMessageMetadata(session, selection),
+    });
     setAssistantMessage(routeKey, sessionID, assistantMessageID, {
       text: normalizeText(body?.result?.output) || "No response",
       route: normalizeText(body?.result?.route),
@@ -1681,19 +1321,11 @@ export function ConversationRuntimeProvider({
     });
   };
 
-  const resolveSessionSourceRoute = (routeKey: ConversationRoute, sessionID: string): ConversationRoute => {
-    if (routeKey !== "chat") {
-      return routeKey;
-    }
-    return sessionsByRouteRef.current[routeKey].find((session) => session.id === sessionID)?.sourceRoute || routeKey;
-  };
-
   const hydrateRuntimeSession = async (routeKey: ConversationRoute, sessionID: string): Promise<ChatSession | null> => {
-    const sourceRoute = resolveSessionSourceRoute(routeKey, sessionID);
     const payload = await apiClient.get<{ session?: RuntimeSessionPayload }>(
-      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(sessionID)}?route=${encodeURIComponent(sourceRoute)}`,
+      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(sessionID)}?route=${encodeURIComponent(routeKey)}`,
     );
-    return hydrateRuntimeSessionResponse(routeKey, sourceRoute, sessionID, payload);
+    return hydrateRuntimeSessionResponse(routeKey, routeKey, sessionID, payload);
   };
 
   const recoverRuntimeSession = async (
@@ -1791,7 +1423,6 @@ export function ConversationRuntimeProvider({
   const sendMessageStream = async (
     routeKey: ConversationRoute,
     sessionID: string,
-    target: ChatTarget,
     assistantMessageID: string,
     content: string,
     attachments: ComposerAttachment[],
@@ -1803,7 +1434,7 @@ export function ConversationRuntimeProvider({
     let output = "";
     let routeHint = "";
     let deltaFlushTimer = 0;
-    const response = await fetch(routeKey === "agent-runtime" ? AGENT_STREAM_ENDPOINT : STREAM_ENDPOINT, {
+    const response = await fetch(STREAM_ENDPOINT, {
       method: "POST",
       headers: {
         Accept: "text/event-stream",
@@ -1815,7 +1446,6 @@ export function ConversationRuntimeProvider({
         content,
         attachments: attachments.map(serializeMessageAttachment),
         metadata: buildMessageMetadata(session, selection),
-        ...(routeKey === "agent-runtime" ? { agent_id: target.id } : {}),
       }),
     });
     if (!response.ok || !response.body) {
@@ -1968,16 +1598,10 @@ export function ConversationRuntimeProvider({
   const sendPrompt = async (prompt: string = activeSessionID ? composerDrafts[activeSessionID] || "" : "") => {
     const content = prompt.trim().slice(0, MAX_COMPOSER_CHARS);
     const attachments = activeDraftAttachments;
-    if ((!content && attachments.length === 0) || (route === "agent-runtime" && !selectedAgentID)) {
+    if (!content && attachments.length === 0) {
       return;
     }
-    const session = ensureSession(route === "agent-runtime"
-      ? {
-          type: "agent",
-          id: selectedAgentID,
-          name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
-        }
-      : defaultChatTarget());
+    const session = ensureSession(defaultChatTarget());
     const userMessage = createMessage("user", content, { at: Date.now(), attachments });
     const assistantMessage = createMessage("assistant", "Thinking...", {
       status: "streaming",
@@ -1992,7 +1616,7 @@ export function ConversationRuntimeProvider({
     persistComposerDrafts(nextDrafts);
     persistComposerAttachmentDrafts(nextAttachmentDrafts);
     try {
-      const streamResult = await sendMessageStream(route, session.id, session.target, assistantMessage.id, content, attachments);
+      const streamResult = await sendMessageStream(route, session.id, assistantMessage.id, content, attachments);
       if (!streamResult.ok && streamResult.canRecover) {
         const recovered = await recoverInterruptedStream(route, session.id);
         if (recovered) {
@@ -2000,7 +1624,7 @@ export function ConversationRuntimeProvider({
         }
       }
       if (!streamResult.ok && streamResult.canFallback) {
-        await sendMessageFallback(route, session.id, session.target, assistantMessage.id, content, attachments);
+        await sendMessageFallback(route, session.id, assistantMessage.id, content, attachments);
       }
       if (!streamResult.ok && !streamResult.canFallback) {
         setAssistantMessage(route, session.id, assistantMessage.id, {
@@ -2015,10 +1639,6 @@ export function ConversationRuntimeProvider({
         status: "error",
         error: true,
       });
-    } finally {
-      if (route === "agent-runtime" && session.target.type === "agent") {
-        await loadAgentSessionProfile(session.target.id, session.id);
-      }
     }
   };
 
@@ -2072,16 +1692,12 @@ export function ConversationRuntimeProvider({
   };
 
   const loadRuntimeSessions = async (routeKey: ConversationRoute) => {
-    const sourceRoutes: ConversationRoute[] = routeKey === "chat" ? ["chat", "agent-runtime"] : [routeKey];
-    const remoteSessionGroups = await Promise.all(sourceRoutes.map(async (sourceRoute) => {
-      const payload = await apiClient.get<{ items?: RuntimeSessionPayload[] }>(
-        `${RUNTIME_SESSION_COLLECTION_ENDPOINT}?route=${encodeURIComponent(sourceRoute)}`,
-      );
-      return (Array.isArray(payload.items) ? payload.items : [])
-        .map((item) => normalizeRuntimeSession(item, undefined, sourceRoute))
-        .filter((session): session is ChatSession => session !== null);
-    }));
-    const remoteSessions = remoteSessionGroups.flat();
+    const payload = await apiClient.get<{ items?: RuntimeSessionPayload[] }>(
+      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}?route=${encodeURIComponent(routeKey)}`,
+    );
+    const remoteSessions = (Array.isArray(payload.items) ? payload.items : [])
+      .map((item) => normalizeRuntimeSession(item, undefined, routeKey))
+      .filter((session): session is ChatSession => session !== null);
     const normalizedRemoteSessions = normalizeRouteSessions(routeKey, remoteSessions);
     const nextSessions = normalizeRouteSessions(
       routeKey,
@@ -2115,24 +1731,17 @@ export function ConversationRuntimeProvider({
         }
       } catch {
       }
-      if (route === "agent-runtime" && activeSession.target.type === "agent") {
-        await loadAgentSessionProfile(activeSession.target.id, activeSession.id);
-      }
     }
 
     setPendingTasksVersion((value) => value + 1);
-  }, [activeSession, hydrateRuntimeSession, loadAgentSessionProfile, loadRuntimeSessions, route, upsertRuntimeSession]);
+  }, [activeSession, hydrateRuntimeSession, loadRuntimeSessions, route, upsertRuntimeSession]);
 
   useEffect(() => {
     persistActiveSessionSnapshots(activeSessionByRoute, sessionsByRoute);
   }, [activeSessionByRoute, sessionsByRoute]);
 
   useEffect(() => {
-    if (route === "chat") {
-      writeWorkbenchRouteSessionID("chat", activeSessionByRoute.chat);
-      return;
-    }
-    writeWorkbenchRouteSessionID("agent-runtime", activeSessionByRoute["agent-runtime"]);
+    writeWorkbenchRouteSessionID("chat", activeSessionByRoute.chat);
   }, [activeSessionByRoute, route]);
 
   useEffect(() => {
@@ -2164,21 +1773,6 @@ export function ConversationRuntimeProvider({
         ]);
         setSkills(Array.isArray(skillPayload.items) ? skillPayload.items : []);
         setMcps(Array.isArray(mcpPayload.items) ? mcpPayload.items : []);
-      } catch {
-      }
-      try {
-        const agentPayload = await apiClient.get<{ items?: ChatAgent[] }>("/api/agents");
-        const nextAgents = Array.isArray(agentPayload.items)
-          ? agentPayload.items.map(normalizeChatAgent).filter(isSelectableRuntimeAgent)
-          : [];
-        setAgents(nextAgents);
-        setSelectedAgentID((current) => {
-          const normalizedCurrent = normalizeText(current);
-          if (normalizedCurrent && nextAgents.some((agent) => normalizeText(agent.id) === normalizedCurrent)) {
-            return normalizedCurrent;
-          }
-          return normalizeText(nextAgents[0]?.id);
-        });
       } catch {
       }
     };
@@ -2277,88 +1871,13 @@ export function ConversationRuntimeProvider({
   }, [activeSession, apiClient, route]);
 
   useEffect(() => {
-    if (route !== "agent-runtime" || !activeSession || activeSession.target.type !== "agent") {
-      return;
-    }
-    const agentID = normalizeText(activeSession.target.id);
-    if (!agentID) {
-      return;
-    }
-    const profileKey = `${agentID}:${activeSession.id}`;
-    if (agentSessionProfiles[profileKey]) {
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      await loadAgentSessionProfile(agentID, activeSession.id);
-      if (cancelled) {
-        return;
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeSession, agentSessionProfiles, loadAgentSessionProfile, route]);
-
-  useEffect(() => {
-    if (route !== "agent-runtime" || !activeSession || activeSession.target.type !== "agent") {
-      return;
-    }
-    const agentID = normalizeText(activeSession.target.id);
-    if (!agentID) {
-      return;
-    }
-    setSelectedAgentID((current) => normalizeText(current) === agentID ? current : agentID);
-  }, [activeSession, route]);
-
-  useEffect(() => {
-    if (
-      route !== "agent-runtime"
-      || !activeSession
-      || activeSession.target.type !== "agent"
-      || activeSession.messages.length > 0
-    ) {
-      return;
-    }
-    const normalizedSelectedAgentID = normalizeText(selectedAgentID);
-    if (!normalizedSelectedAgentID || normalizeText(activeSession.target.id) === normalizedSelectedAgentID) {
-      return;
-    }
-    const selectedAgent = agents.find((agent) => normalizeText(agent.id) === normalizedSelectedAgentID);
-    if (!selectedAgent) {
-      return;
-    }
-    patchSession(route, activeSession.id, (session) =>
-      session.messages.length > 0
-        ? session
-        : {
-            ...session,
-            target: normalizeChatTarget({
-              type: "agent",
-              id: normalizedSelectedAgentID,
-              name: normalizeText(selectedAgent.name) || normalizedSelectedAgentID,
-            }),
-            toolIDs: normalizeSelectionIDs(selectedAgent.tools),
-            skillIDs: normalizeSelectionIDs(selectedAgent.skills),
-            mcpIDs: normalizeSelectionIDs(selectedAgent.mcps),
-          },
-    );
-  }, [activeSession, agents, patchSession, route, selectedAgentID]);
-
-  useEffect(() => {
     if (!sessionsLoadedByRoute[route] || sessionsByRoute[route].length > 0) {
       return;
     }
-    ensureSession(route === "agent-runtime"
-      ? {
-          type: "agent",
-          id: selectedAgentID,
-          name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
-        }
-      : defaultChatTarget());
+    ensureSession(defaultChatTarget());
     // Keep an active session available for the current runtime route.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, selectedAgentID, agents, sessionsByRoute, sessionsLoadedByRoute]);
+  }, [route, sessionsByRoute, sessionsLoadedByRoute]);
 
   useEffect(() => {
     window.clearTimeout(pollTimerRef.current);
@@ -2408,16 +1927,7 @@ export function ConversationRuntimeProvider({
   const selection = resolveModelSelection(activeSession, availableProviders);
   const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
   const selectedModel = enabledModels(selectedProvider).find((model) => normalizeText(model.id) === selection.modelID) || null;
-  const currentTarget = activeSession?.target || (route === "agent-runtime"
-    ? normalizeChatTarget({
-        type: "agent",
-        id: selectedAgentID,
-        name: agents.find((agent) => normalizeText(agent.id) === selectedAgentID)?.name || selectedAgentID,
-      })
-    : defaultChatTarget());
-  const currentAgent = currentTarget.type === "agent"
-    ? agents.find((agent) => normalizeText(agent.id) === currentTarget.id) || null
-    : null;
+  const currentTarget = activeSession?.target || defaultChatTarget();
 
   const workspaceValue = useMemo<ConversationRuntimeWorkspaceContextValue>(() => ({
     route,
@@ -2437,20 +1947,7 @@ export function ConversationRuntimeProvider({
       active: session.id === activeSessionID,
     })),
     target: currentTarget,
-    activeAgent: currentAgent,
-    activeSessionProfile,
     lockedTarget: Boolean(activeSession?.messages.length),
-    targetOptions: route === "agent-runtime"
-      ? agents
-          .filter((agent) => normalizeText(agent.id))
-          .map((agent) => ({
-            type: "agent" as const,
-            id: normalizeText(agent.id),
-            name: normalizeText(agent.name) || normalizeText(agent.id),
-            subtitle: normalizeText(agent.description) || "Agent",
-            active: normalizeText(agent.id) === currentTarget.id,
-          }))
-      : [],
     selectedProviderId: selection.providerID,
     selectedModelId: selection.modelID,
     selectedModelLabel: selectedModel?.name || selectedModel?.id || "Default",
@@ -2468,13 +1965,6 @@ export function ConversationRuntimeProvider({
       })),
     })),
     capabilities: [
-      {
-        id: DEFAULT_AGENT_SEARCH_MEMORY_TOOL,
-        name: "Memory",
-        description: "Search memory files",
-        kind: "tool" as const,
-        active: Boolean(activeSession?.toolIDs.includes(DEFAULT_AGENT_SEARCH_MEMORY_TOOL)),
-      },
       ...mcps
         .filter((item) => item.enabled !== false)
         .map((item) => ({
@@ -2487,7 +1977,6 @@ export function ConversationRuntimeProvider({
         .filter((item) => item.id),
     ],
     skills: [
-      buildAgentPrivateSkill(route, currentAgent),
       ...skills
         .filter((item) => item.enabled !== false && isPublicSkillCapability(item))
         .map((item) => ({
@@ -2502,7 +1991,7 @@ export function ConversationRuntimeProvider({
         .filter((item) => item.id),
     ].filter((item): item is RuntimeSelection => Boolean(item?.id)),
     toolCount: (activeSession?.toolIDs.length || 0) + (activeSession?.mcpIDs.length || 0),
-    skillCount: (activeSession?.skillIDs.length || 0) + (buildAgentPrivateSkill(route, currentAgent) ? 1 : 0),
+    skillCount: activeSession?.skillIDs.length || 0,
     createSession: () => {
       ensureSession(null, { ...activeSessionByRoute, [route]: "" });
     },
@@ -2529,30 +2018,6 @@ export function ConversationRuntimeProvider({
       setInspectorOpen(true);
     },
     closeInspector: () => setInspectorOpen(false),
-    selectTarget: (targetID: string) => {
-      if (route !== "agent-runtime") {
-        return;
-      }
-      const normalizedTarget = normalizeChatTarget({
-        type: "agent",
-        id: targetID,
-        name: agents.find((agent) => normalizeText(agent.id) === targetID)?.name || targetID,
-      });
-      setSelectedAgentID(normalizedTarget.id);
-      if (activeSessionID) {
-        patchSession(route, activeSessionID, (session) =>
-          session.messages.length > 0
-            ? session
-            : {
-                ...session,
-                target: normalizedTarget,
-                toolIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === normalizedTarget.id)?.tools),
-                skillIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === normalizedTarget.id)?.skills),
-                mcpIDs: normalizeSelectionIDs(agents.find((agent) => normalizeText(agent.id) === normalizedTarget.id)?.mcps),
-              },
-        );
-      }
-    },
     selectModel: (providerID: string, modelID: string) => {
       const session = activeSession || ensureSession();
       patchSession(route, session.id, (currentSession) => ({
@@ -2581,9 +2046,6 @@ export function ConversationRuntimeProvider({
       const session = activeSession || ensureSession();
       const value = normalizeText(id);
       if (!value) {
-        return;
-      }
-      if (value === buildAgentPrivateSkill(route, currentAgent)?.id) {
         return;
       }
       const mutate = (items: string[]) =>
@@ -2619,9 +2081,6 @@ export function ConversationRuntimeProvider({
     language,
     activeSessionID,
     currentTarget,
-    currentAgent,
-    activeSessionProfile,
-    agents,
     selection.providerID,
     selection.modelID,
     selectedModel?.name,

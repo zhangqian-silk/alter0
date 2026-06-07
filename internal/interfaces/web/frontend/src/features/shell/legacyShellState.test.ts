@@ -12,7 +12,7 @@ describe("legacyShellState", () => {
   it("keeps chat as the fallback route for root and unknown paths", () => {
     expect(parseLegacyShellPathRoute("/unknown")).toBe("chat");
     expect(parseLegacyShellPathRoute("/")).toBe("chat");
-    expect(parseLegacyShellPathRoute("/management")).toBe("management");
+    expect(parseLegacyShellPathRoute("/management")).toBe("settings");
     expect(parseLegacyShellPathRoute("/tasks")).toBe("chat");
   });
 

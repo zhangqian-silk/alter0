@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	execdomain "alter0/internal/execution/domain"
 	shareddomain "alter0/internal/shared/domain"
 )
 
@@ -82,14 +81,18 @@ func (r *conversationRuntimeSessionRegistry) load() error {
 	}
 
 	entries := make(map[string]conversationRuntimeSessionRegistryEntry, len(payload.Items))
+	needsRewrite := false
 	for _, item := range payload.Items {
 		sessionID := strings.TrimSpace(item.SessionID)
 		if sessionID == "" {
 			continue
 		}
-		route, ok := parseConversationRuntimeRoute(string(item.Route))
+		route, migrated, ok := parseStoredConversationRuntimeRoute(string(item.Route))
 		if !ok {
 			continue
+		}
+		if migrated {
+			needsRewrite = true
 		}
 		item.SessionID = sessionID
 		item.Route = route
@@ -101,6 +104,9 @@ func (r *conversationRuntimeSessionRegistry) load() error {
 		entries[conversationRuntimeSessionRegistryKey(route, sessionID)] = item
 	}
 	r.entries = entries
+	if needsRewrite {
+		return r.persistLocked()
+	}
 	return nil
 }
 
@@ -240,13 +246,11 @@ func (r *conversationRuntimeSessionRegistry) Delete(sessionID string) error {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	key := conversationRuntimeSessionRegistryKey(conversationRuntimeRouteChat, sessionID)
 	removed := false
-	for _, route := range []conversationRuntimeRoute{conversationRuntimeRouteChat, conversationRuntimeRouteAgentRuntime} {
-		key := conversationRuntimeSessionRegistryKey(route, sessionID)
-		if _, ok := r.entries[key]; ok {
-			delete(r.entries, key)
-			removed = true
-		}
+	if _, ok := r.entries[key]; ok {
+		delete(r.entries, key)
+		removed = true
 	}
 	if !removed {
 		return nil
@@ -299,7 +303,7 @@ func normalizeConversationRuntimeRegistryTarget(route conversationRuntimeRoute, 
 	normalizedType := strings.TrimSpace(targetType)
 	normalizedID := strings.TrimSpace(targetID)
 	normalizedName := strings.TrimSpace(targetName)
-	if route == conversationRuntimeRouteAgentRuntime {
+	if normalizedType == "agent" {
 		if normalizedID == "" {
 			normalizedID = "unknown"
 		}
@@ -373,14 +377,6 @@ func buildConversationRuntimeRegistryEntryFromMessage(route conversationRuntimeR
 }
 
 func resolveConversationRuntimeRegistryTargetFromMessage(route conversationRuntimeRoute, metadata map[string]string) (string, string, string) {
-	if route == conversationRuntimeRouteAgentRuntime {
-		agentID := strings.TrimSpace(metadata[execdomain.AgentIDMetadataKey])
-		agentName := strings.TrimSpace(metadata[execdomain.AgentNameMetadataKey])
-		if agentName == "" {
-			agentName = agentID
-		}
-		return normalizeConversationRuntimeRegistryTarget(route, "agent", agentID, agentName)
-	}
 	return normalizeConversationRuntimeRegistryTarget(route, "model", "raw-model", "Raw Model")
 }
 

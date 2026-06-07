@@ -8,7 +8,7 @@ import {
   CODEX_SLASH_COMMANDS,
   codexSlashCommandQuery,
 } from "../shell/components/codexSlashCommands";
-import { normalizeText, RouteFieldRow } from "../shell/components/RouteBodyPrimitives";
+import { normalizeText } from "../shell/components/RouteBodyPrimitives";
 import { RuntimeComposer } from "../shell/components/RuntimeComposer";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
 import { ScrollJumpStrip } from "../shell/components/ScrollJumpStrip";
@@ -40,61 +40,6 @@ const CHAT_MESSAGE_LOAD_BATCH_SIZE = 32;
 const CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET = 32;
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
-
-function renderAgentDeliverablesSection(
-  language: LegacyShellLanguage,
-  deliverables: Array<{
-    id?: string;
-    label?: string;
-    description?: string;
-    format?: string;
-    required?: boolean;
-    session_attribute_key?: string;
-  }>,
-  attributes: Record<string, string>,
-) {
-  if (!deliverables.length) {
-    return null;
-  }
-  return (
-    <section className="conversation-inspector-section">
-      <strong>{language === "zh" ? "交付契约" : "Delivery Contract"}</strong>
-      <div className="conversation-check-list">
-        {deliverables.map((deliverable) => {
-          const attributeKey = String(deliverable.session_attribute_key || "").trim();
-          const resolvedValue = attributeKey ? String(attributes[attributeKey] || "").trim() : "";
-          const stateLabel = resolvedValue
-            ? (language === "zh" ? "已关联" : "Linked")
-            : deliverable.required
-              ? (language === "zh" ? "必交付" : "Required")
-              : (language === "zh" ? "可选" : "Optional");
-          const formatLabel = String(deliverable.format || "").trim();
-          const meta = [stateLabel, formatLabel, resolvedValue].filter(Boolean).join(" · ");
-          const detail = [meta, String(deliverable.description || "").trim()].filter(Boolean).join(" · ");
-          return (
-            <div key={String(deliverable.id || deliverable.label)} className="conversation-check-item">
-              <span>
-                <strong>{String(deliverable.label || deliverable.id || "").trim()}</strong>
-                <small>{detail || (language === "zh" ? "无额外说明" : "No extra guidance")}</small>
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function RuntimeSessionControlIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
-      <circle cx="6" cy="6" r="2.25" stroke="currentColor" strokeWidth="1.7" />
-      <circle cx="14" cy="6" r="2.25" stroke="currentColor" strokeWidth="1.7" />
-      <circle cx="6" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
-      <circle cx="14" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
-    </svg>
-  );
-}
 
 type ConversationSessionSignalTone = "ready" | "busy" | "failed";
 
@@ -164,118 +109,6 @@ function conversationSessionStatusLabel(
   }
 }
 
-function buildAgentPickerMonogram(name: string) {
-  const parts = normalizeText(name).split(/\s+/).filter(Boolean);
-  if (parts.length === 0) {
-    return "AG";
-  }
-  return parts.slice(0, 2).map((part) => part.slice(0, 1).toUpperCase()).join("");
-}
-
-function AgentPickerGlyph({
-  agentID,
-  fallbackName,
-}: {
-  agentID: string;
-  fallbackName: string;
-}) {
-  switch (normalizeText(agentID).toLowerCase()) {
-    case "main":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
-          <circle cx="12" cy="12" r="3.25" stroke="currentColor" strokeWidth="1.8" />
-          <path d="M12 3.75v2.4M12 17.85v2.4M20.25 12h-2.4M6.15 12h-2.4M17.84 6.16l-1.7 1.69M7.86 16.14l-1.7 1.7M17.84 17.84l-1.7-1.7M7.86 7.86l-1.7-1.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      );
-    case "coding":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
-          <path d="m9.1 7.25-4.2 4.75 4.2 4.75M14.9 7.25l4.2 4.75-4.2 4.75M13.2 5.75l-2.4 12.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "writing":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
-          <path d="m6.2 17.8 1.25-4.15L15.9 5.2a1.7 1.7 0 0 1 2.4 0l.5.5a1.7 1.7 0 0 1 0 2.4l-8.45 8.45Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-          <path d="M13.9 7.2 17 10.3M6.05 18h11.9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        </svg>
-      );
-    case "travel":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
-          <path d="M20.2 8.7 13.95 11 11.7 4.8a1.05 1.05 0 0 0-1.98.08v7.1L4.25 14a1 1 0 0 0 .18 1.93l5.3.7v2.62l-1.8 1.05a.85.85 0 0 0 .43 1.58h2.9c.78 0 1.42-.63 1.42-1.42v-3.83l6.84-5.88a1.1 1.1 0 0 0-.32-1.85Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
-        </svg>
-      );
-    default:
-      return <span className="conversation-target-card-monogram">{buildAgentPickerMonogram(fallbackName)}</span>;
-  }
-}
-
-function summarizeAgentPickerSubtitle(text: string, language: LegacyShellLanguage) {
-  const normalized = normalizeText(text);
-  if (!normalized) {
-    return language === "zh" ? "可直接开始" : "Ready to start";
-  }
-  const firstSentence = normalized
-    .split(/[。.!?]/)
-    .map((part) => normalizeText(part))
-    .find(Boolean);
-  const concise = firstSentence || normalized;
-  if (concise.length <= 44) {
-    return concise;
-  }
-  return `${concise.slice(0, 41).trimEnd()}…`;
-}
-
-function resolveAgentPickerSubtitle(
-  agent: { id: string; subtitle: string },
-  language: LegacyShellLanguage,
-) {
-  const agentID = normalizeText(agent.id).toLowerCase();
-  if (language === "zh") {
-    switch (agentID) {
-      case "main":
-        return "统筹当前任务并分派合适的专家 Agent";
-      case "coding":
-        return "编写代码、排查问题并交付改动";
-      case "writing":
-        return "起草文档、文案与结构化内容";
-      case "travel":
-        return "规划行程、路线与城市指南";
-      default:
-        return summarizeAgentPickerSubtitle(agent.subtitle, language);
-    }
-  }
-  switch (agentID) {
-    case "main":
-      return "Coordinate the right specialist for the task";
-    case "coding":
-      return "Code, debug, and ship with confidence";
-    case "writing":
-      return "Draft docs, blogs, and product copy";
-    case "travel":
-      return "Plan trips, routes, and guides";
-    default:
-      return summarizeAgentPickerSubtitle(agent.subtitle, language);
-  }
-}
-
-function AgentPickerChevronIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" focusable="false" aria-hidden="true">
-      <path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function AgentPickerCheckIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" focusable="false" aria-hidden="true">
-      <path d="m4.25 8.1 2.3 2.35 5.2-5.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function useConversationWorkspaceController(
   language: LegacyShellLanguage,
   sharedRefs: ConversationWorkspaceSharedRefs,
@@ -317,16 +150,10 @@ function useConversationWorkspaceController(
   );
   const isEmptyState = activeMessages.length === 0;
   const isMobileEmptyHeader = workbench.isMobileViewport && isEmptyState;
-  const emptyStateTitle = runtime.route === "agent-runtime"
-    ? (language === "zh" ? "选择 Agent 并开始执行" : "Pick an agent and start a run")
-    : (language === "zh" ? "开始新的工作流" : "Start a new workspace flow");
-  const emptyStateDescription = runtime.route === "agent-runtime"
-    ? (language === "zh"
-      ? "会话、过程步骤和最终输出会按 Terminal 工作区方式持续沉淀。"
-      : "Sessions, process steps, and final output stay in one terminal-style workspace.")
-    : (language === "zh"
-      ? "对话、过程和交付结果都在同一条时间线里推进。"
-      : "Conversation, process, and delivery stay in a single timeline.");
+  const emptyStateTitle = language === "zh" ? "开始新的工作流" : "Start a new workspace flow";
+  const emptyStateDescription = language === "zh"
+    ? "对话、过程和交付结果都在同一条时间线里推进。"
+    : "Conversation, process, and delivery stay in a single timeline.";
   const sessionPaneTitle = copy.terminalSessions;
   const newSessionLabel = copy.terminalNewShort;
   const sessionCountLabel = language === "zh"
@@ -343,11 +170,8 @@ function useConversationWorkspaceController(
     }),
     [language, runtime.sessionItems],
   );
-  const sessionEmptyLabel = runtime.route === "agent-runtime" ? copy.sessionEmptyAgent : copy.sessionEmpty;
+  const sessionEmptyLabel = copy.sessionEmpty;
   const compactDetailsLabel = language === "zh" ? "详情" : "Details";
-  const sessionProfileFields = runtime.activeSessionProfile?.fields || runtime.activeAgent?.session_profile_fields || [];
-  const activeAgentDeliverables = runtime.activeAgent?.deliverables || [];
-  const sessionProfileAttributes = runtime.activeSessionProfile?.attributes || {};
   const activeSessionItem = runtime.sessionItems.find((item) => item.active) || null;
   const sessionStatusByID = useMemo(
     () => Object.fromEntries(
@@ -407,15 +231,12 @@ function useConversationWorkspaceController(
       sessionStatusByID,
     ],
   );
-  const routeLabel = runtime.route === "agent-runtime"
-    ? (language === "zh" ? "Agent" : "Agent")
-    : (language === "zh" ? "对话" : "Chat");
+  const routeLabel = language === "zh" ? "对话" : "Chat";
   const conversationDetailsSummary = runtime.activeSession ? [
     { label: language === "zh" ? "会话" : "Session", value: runtime.activeSession.id, copyLabel: language === "zh" ? "会话" : "Session", mono: true },
     { label: language === "zh" ? "路由" : "Route", value: routeLabel, copyLabel: language === "zh" ? "路由" : "Route" },
     { label: language === "zh" ? "状态" : "Status", value: activeSessionStatus.label, copyLabel: language === "zh" ? "状态" : "Status" },
     { label: language === "zh" ? "短标识" : "Short hash", value: activeSessionItem?.shortHash || "-", copyLabel: language === "zh" ? "短标识" : "Short hash", mono: true },
-    ...(runtime.route === "agent-runtime" ? [{ label: copy.runtimeAgent, value: runtime.target.name || "-", copyLabel: copy.runtimeAgent }] : []),
     { label: language === "zh" ? "消息数" : "Messages", value: String(activeMessages.length), copyLabel: language === "zh" ? "消息数" : "Messages" },
     { label: language === "zh" ? "创建时间" : "Created", value: activeSessionItem ? formatDateTime(activeSessionItem.createdAt) : "-", copyLabel: language === "zh" ? "创建时间" : "Created" },
   ] : [];
@@ -439,34 +260,7 @@ function useConversationWorkspaceController(
     return runtime.removeSession(sessionID);
   }, [runtime, workbench]);
 
-  const sessionDetailsBody = runtime.route === "agent-runtime" && (sessionProfileFields.length > 0 || activeAgentDeliverables.length > 0) ? (
-    <div className="conversation-inspector-sections">
-      {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
-      {sessionProfileFields.length > 0 ? (
-        <section className="conversation-inspector-section">
-          <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
-          <div className="workspace-details-summary">
-            {sessionProfileFields.map((field) => {
-              const value = sessionProfileAttributes[field.key] || "-";
-              const mono = field.readonly === true || field.key.includes("path") || field.key.includes("branch");
-              return (
-                <RouteFieldRow
-                  key={field.key}
-                  label={field.label}
-                  value={value}
-                  copyLabel={language === "zh" ? "复制值" : "Copy value"}
-                  copyable={field.readonly !== false}
-                  mono={mono}
-                  multiline={value.length > 48}
-                  markdown={!mono}
-                />
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-    </div>
-  ) : null;
+  const sessionDetailsBody = null;
 
   const timelineItems = useMemo(
     () => buildChatTimelineItems({
@@ -581,57 +375,14 @@ function useConversationWorkspaceController(
       <div className="conversation-empty-state">
         <h5>{emptyStateTitle}</h5>
         <p>{emptyStateDescription}</p>
-        {runtime.route === "agent-runtime" && runtime.targetOptions.length > 0 ? (
-          <div className="conversation-empty-targets">
-            <div
-              className={workbench.isMobileViewport
-                ? "conversation-empty-target-list"
-                : "conversation-inspector-grid conversation-empty-target-grid"}
-              role="radiogroup"
-              aria-label={language === "zh" ? "选择 Agent" : "Choose agent"}
-              data-agent-picker-layout={workbench.isMobileViewport ? "list" : "grid"}
-            >
-              {runtime.targetOptions.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={item.active}
-                  className={[
-                    "conversation-target-card",
-                    workbench.isMobileViewport ? "is-list-row" : "",
-                    item.active ? "is-active" : "",
-                  ].filter(Boolean).join(" ")}
-                  disabled={runtime.lockedTarget}
-                  onClick={() => runtime.selectTarget(item.id)}
-                >
-                  <span className="conversation-target-card-leading" aria-hidden="true">
-                    <span className="conversation-target-card-icon" data-agent-picker-icon={item.id}>
-                      <AgentPickerGlyph agentID={item.id} fallbackName={item.name} />
-                    </span>
-                  </span>
-                  <span className="conversation-target-card-copy">
-                    <strong>{item.name}</strong>
-                    <span>{resolveAgentPickerSubtitle(item, language)}</span>
-                  </span>
-                  <span className="conversation-target-card-trailing" aria-hidden="true">
-                    <span className={item.active ? "conversation-target-card-indicator is-active" : "conversation-target-card-indicator"}>
-                      {item.active ? <AgentPickerCheckIcon /> : <AgentPickerChevronIcon />}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </div>
     ),
-    [emptyStateDescription, emptyStateTitle, language, runtime.lockedTarget, runtime.route, runtime.selectTarget, runtime.targetOptions, workbench.isMobileViewport],
+    [emptyStateDescription, emptyStateTitle],
   );
   const timelineOverlay = useMemo(
     () => (workbench.isMobileViewport && inputFocused ? null : (
       <ScrollJumpStrip
-        scope={runtime.route === "agent-runtime" ? "agent" : "chat"}
+        scope="chat"
         language={language}
         containerRef={timelineScreenRef}
         itemSelector="[data-message-id]"
@@ -823,7 +574,6 @@ function ConversationComposerSection({
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
   const mobileSubmitGestureLockRef = useRef(false);
-  const mobileSessionGestureLockRef = useRef(false);
   const composerPlaceholder = language === "zh" ? "输入消息，继续推进当前工作区..." : "Type a message to continue this workspace...";
   const composerSend = language === "zh" ? "发送" : "Send";
   const composerMetaLabel = composerAttachmentError || undefined;
@@ -839,21 +589,14 @@ function ConversationComposerSection({
     : "The selected model does not support image input. Switch to a vision-capable model before sending.";
   const codexSlashCommandsLabel = language === "zh" ? "Codex 斜线命令" : "Codex slash commands";
   const inspectorTabOpen = runtime.inspectorOpen && runtime.inspectorTabOpen;
-  const targetInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "target";
   const modelInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "model";
   const capabilitiesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "capabilities";
   const skillsInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "skills";
-  const sessionProfileInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "session-profile";
-  const deliverablesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "deliverables";
-  const showComposerSessionControl = runtime.route === "agent-runtime";
-  const sessionProfileFields = runtime.activeSessionProfile?.fields || runtime.activeAgent?.session_profile_fields || [];
-  const activeAgentDeliverables = runtime.activeAgent?.deliverables || [];
-  const sessionProfileAttributes = runtime.activeSessionProfile?.attributes || {};
   const capabilityGroups = useMemo(() => ({
     activeCapabilities: runtime.capabilities.filter((item) => item.active),
     availableCapabilities: runtime.capabilities.filter((item) => !item.active),
     activeSkills: runtime.skills.filter((item) => item.active),
-    availableSkills: runtime.skills.filter((item) => !item.active && item.visibility !== "agent-private"),
+    availableSkills: runtime.skills.filter((item) => !item.active),
   }), [runtime.capabilities, runtime.skills]);
   const directCodexSelected = isDirectCodexModelSelection(
     composerRuntime.selectedProviderId,
@@ -921,23 +664,6 @@ function ConversationComposerSection({
     submitDraft();
   };
 
-  const releaseMobileSessionGestureLock = () => {
-    window.setTimeout(() => {
-      mobileSessionGestureLockRef.current = false;
-    }, 0);
-  };
-
-  const toggleSessionInspector = () => {
-    runtime.toggleInspector(runtime.inspectorTab);
-  };
-
-  const openMobileSessionInspectorOnPress = () => {
-    mobileSessionGestureLockRef.current = true;
-    releaseMobileSessionGestureLock();
-    blurComposerInput();
-    toggleSessionInspector();
-  };
-
   const handleSubmitPointerDownCapture = (event: PointerEvent<HTMLButtonElement>) => {
     if (!workbench.isMobileViewport || event.pointerType === "mouse" || mobileSubmitGestureLockRef.current) {
       return;
@@ -952,22 +678,6 @@ function ConversationComposerSection({
     }
     event.preventDefault();
     submitMobileDraftOnPress();
-  };
-
-  const handleSessionUtilityPointerDownCapture = (event: PointerEvent<HTMLButtonElement>) => {
-    if (!workbench.isMobileViewport || event.pointerType === "mouse" || mobileSessionGestureLockRef.current) {
-      return;
-    }
-    event.preventDefault();
-    openMobileSessionInspectorOnPress();
-  };
-
-  const handleSessionUtilityTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
-    if (!workbench.isMobileViewport || mobileSessionGestureLockRef.current) {
-      return;
-    }
-    event.preventDefault();
-    openMobileSessionInspectorOnPress();
   };
 
   const applyCodexSlashCommand = (command: string) => {
@@ -1016,26 +726,14 @@ function ConversationComposerSection({
     composerShellRef,
   });
 
-  const configPanelHint = targetInspectorOpen
-    ? copy.runtimeAgentHint
-    : modelInspectorOpen
+  const configPanelHint = modelInspectorOpen
       ? copy.runtimeModelHint
       : capabilitiesInspectorOpen
         ? copy.runtimeToolsHint
-        : deliverablesInspectorOpen
-          ? (language === "zh" ? "专项 Agent 会在这里声明本轮必须交付的最终产物。"
-            : "Specialist agents declare the required final deliverables for this run here.")
         : skillsInspectorOpen
           ? copy.runtimeSkillsHint
           : undefined;
   const configPanelTabs = [
-    ...(runtime.route === "agent-runtime" ? [{
-      key: "target" as const,
-      label: copy.runtimeAgent,
-    }, {
-      key: "deliverables" as const,
-      label: language === "zh" ? "交付物" : "Deliverables",
-    }] : []),
     { key: "model" as const, label: copy.runtimeModel },
     { key: "capabilities" as const, label: copy.runtimeToolsShort },
     { key: "skills" as const, label: copy.runtimeSkillsShort },
@@ -1071,32 +769,6 @@ function ConversationComposerSection({
           </button>
         ))}
       </div>
-
-      {targetInspectorOpen && runtime.route === "agent-runtime" ? (
-        <div className="conversation-inspector-sections">
-          <div className="conversation-inspector-grid">
-            {runtime.targetOptions.map((item) => (
-              <button
-                key={item.id}
-                className={item.active ? "conversation-target-card is-active" : "conversation-target-card"}
-                type="button"
-                disabled={runtime.lockedTarget}
-                onClick={() => runtime.selectTarget(item.id)}
-              >
-                <strong>{item.name}</strong>
-                <span>{item.subtitle}</span>
-              </button>
-            ))}
-          </div>
-          {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
-        </div>
-      ) : null}
-
-      {deliverablesInspectorOpen && runtime.route === "agent-runtime" ? (
-        <div className="conversation-inspector-sections">
-          {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
-        </div>
-      ) : null}
 
       {modelInspectorOpen ? (
         <div className="conversation-inspector-sections">
@@ -1191,32 +863,6 @@ function ConversationComposerSection({
         </div>
       ) : null}
 
-      {sessionProfileInspectorOpen && runtime.route === "agent-runtime" ? (
-        <div className="conversation-inspector-sections">
-          {renderAgentDeliverablesSection(language, activeAgentDeliverables, sessionProfileAttributes)}
-          <section className="conversation-inspector-section">
-            <strong>{language === "zh" ? "实例属性" : "Instance Attributes"}</strong>
-            <div className="workspace-details-summary">
-              {sessionProfileFields.map((field) => {
-                const value = sessionProfileAttributes[field.key] || "-";
-                const mono = field.readonly === true || field.key.includes("path") || field.key.includes("branch");
-                return (
-                  <RouteFieldRow
-                    key={field.key}
-                    label={field.label}
-                    value={value}
-                    copyLabel={language === "zh" ? "复制值" : "Copy value"}
-                    copyable={field.readonly !== false}
-                    mono={mono}
-                    multiline={value.length > 48}
-                    markdown={!mono}
-                  />
-                );
-              })}
-            </div>
-          </section>
-        </div>
-      ) : null}
     </div>
   ) : null;
   const codexSlashCommandAssist = codexSlashCommandCandidates.length > 0 ? (
@@ -1244,7 +890,7 @@ function ConversationComposerSection({
 
   return (
     <RuntimeComposer
-      runtimeKind={runtime.route === "agent-runtime" ? "agent" : "chat"}
+      runtimeKind="chat"
       shellRef={composerShellRef}
       onSubmit={(event) => {
         event.preventDefault();
@@ -1277,24 +923,7 @@ function ConversationComposerSection({
       onInputBlur={() => onInputFocusedChange(false)}
       onInputPointerDownCapture={handleComposerPointerDownCapture}
       onInputTouchStartCapture={handleComposerTouchStartCapture}
-      utilityButtons={showComposerSessionControl ? [
-        {
-          key: "session",
-          label: copy.runtimeMobile,
-          icon: <RuntimeSessionControlIcon />,
-          className: runtime.inspectorOpen ? "is-active" : undefined,
-          onClick: () => {
-            if (mobileSessionGestureLockRef.current) {
-              return;
-            }
-            toggleSessionInspector();
-          },
-          buttonProps: {
-            onPointerDownCapture: handleSessionUtilityPointerDownCapture,
-            onTouchStartCapture: handleSessionUtilityTouchStartCapture,
-          },
-        },
-      ] : []}
+      utilityButtons={[]}
       panelContent={conversationComposerPanel}
       onPanelDismiss={() => runtime.closeInspector()}
       panelProps={{

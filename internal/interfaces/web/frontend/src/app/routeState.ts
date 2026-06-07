@@ -3,7 +3,7 @@ import { TOP_LEVEL_WORKBENCH_ROUTES } from "../features/shell/legacyShellConfig"
 import { sessionRouteToken } from "../shared/session/sessionHash";
 
 export const DEFAULT_WORKBENCH_ROUTE = "chat";
-export type WorkbenchSessionRoute = "chat" | "agent-runtime" | "terminal";
+export type WorkbenchSessionRoute = "chat" | "terminal";
 
 const KNOWN_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);
 const LEGACY_ROUTE_ALIASES: Record<string, string> = {
@@ -56,7 +56,7 @@ export function useWorkbenchRoute(): [string, (route: string) => void] {
   return [route, navigateWorkbenchRoute];
 }
 
-export function isConversationRoute(route: string): route is "chat" | "agent-runtime" {
+export function isConversationRoute(route: string): route is "chat" {
   return route === "chat";
 }
 

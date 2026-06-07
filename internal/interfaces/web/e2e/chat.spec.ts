@@ -38,7 +38,6 @@ async function mockRuntimeSession(
   options: {
     route: "chat" | "agent-runtime";
     session: Record<string, unknown>;
-    agents?: Array<Record<string, unknown>>;
   },
 ): Promise<void> {
   const sessionID = String(options.session.id || "").trim();
@@ -73,17 +72,6 @@ async function mockRuntimeSession(
     }
     await route.fallback();
   });
-  if (options.agents) {
-    await page.context().route("**/api/agents", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          items: options.agents,
-        }),
-      });
-    });
-  }
 }
 
 test.describe("Chat composer", () => {
@@ -1341,7 +1329,7 @@ test.describe("Chat composer", () => {
           : input instanceof Request
             ? input.url
             : String(input || "");
-        if (!url.includes("/api/agent/messages/stream")) {
+        if (!url.includes("/api/messages/stream")) {
           return originalFetch(input, init);
         }
         const encoder = new TextEncoder();
@@ -1386,7 +1374,7 @@ data: {"delta":"Partial answer from stream"}
           : input instanceof Request
             ? input.url
             : String(input || "");
-        if (!url.includes("/api/agent/messages/stream")) {
+        if (!url.includes("/api/messages/stream")) {
           return originalFetch(input, init);
         }
         const encoder = new TextEncoder();
@@ -1557,24 +1545,7 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
           : input instanceof Request
             ? input.url
             : String(input || "");
-        if (url.includes("/api/agents")) {
-          return new Response(JSON.stringify({
-            items: [
-              {
-                id: "coding",
-                name: "Coding Agent",
-                description: "Coding workflow",
-                session_profile_fields: [],
-              },
-            ],
-          }), {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
-        }
-        if (url.includes("/api/agent/messages/stream")) {
+	        if (url.includes("/api/messages/stream")) {
           const encoder = new TextEncoder();
           const body = new ReadableStream({
             start(controller) {
@@ -1587,7 +1558,7 @@ data: {"delta":"[agent] action: codex_exec\\n"}
 
 `));
               controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"mobile-step-1","kind":"action","title":"确认目标工作区","detail":"需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。","status":"completed"},{"id":"mobile-step-2","kind":"action","title":"读取前端契约","detail":"检查 Chat / Agent Runtime 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。","status":"completed"},{"id":"mobile-step-3","kind":"action","title":"调整移动端展开","detail":"移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。","status":"completed"},{"id":"mobile-step-4","kind":"action","title":"同步静态产物","detail":"重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。","status":"completed"},{"id":"mobile-step-5","kind":"action","title":"部署预览服务","detail":"通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。","status":"completed"},{"id":"mobile-step-6","kind":"action","title":"补充测试数据","detail":"增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。","status":"completed"}]}}
+data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"mobile-step-1","kind":"action","title":"确认目标工作区","detail":"需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。","status":"completed"},{"id":"mobile-step-2","kind":"action","title":"读取前端契约","detail":"检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。","status":"completed"},{"id":"mobile-step-3","kind":"action","title":"调整移动端展开","detail":"移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。","status":"completed"},{"id":"mobile-step-4","kind":"action","title":"同步静态产物","detail":"重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。","status":"completed"},{"id":"mobile-step-5","kind":"action","title":"部署预览服务","detail":"通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。","status":"completed"},{"id":"mobile-step-6","kind":"action","title":"补充测试数据","detail":"增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。","status":"completed"}]}}
 
 `));
               controller.close();
@@ -1665,24 +1636,7 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
           : input instanceof Request
             ? input.url
             : String(input || "");
-        if (url.includes("/api/agents")) {
-          return new Response(JSON.stringify({
-            items: [
-              {
-                id: "coding",
-                name: "Coding Agent",
-                description: "Coding workflow",
-                session_profile_fields: [],
-              },
-            ],
-          }), {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
-        }
-        if (url.includes("/api/agent/messages/stream")) {
+	        if (url.includes("/api/messages/stream")) {
           const encoder = new TextEncoder();
           const body = new ReadableStream({
             start(controller) {

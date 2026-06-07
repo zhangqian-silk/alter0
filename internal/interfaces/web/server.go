@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	agentapp "alter0/internal/agent/application"
 	codexapp "alter0/internal/codex/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
@@ -249,17 +248,6 @@ type messageAttachmentRequest struct {
 	PreviewURL     string `json:"preview_url,omitempty"`
 }
 
-type agentMessageRequest struct {
-	AgentID       string                     `json:"agent_id"`
-	SessionID     string                     `json:"session_id"`
-	UserID        string                     `json:"user_id,omitempty"`
-	ChannelID     string                     `json:"channel_id,omitempty"`
-	CorrelationID string                     `json:"correlation_id,omitempty"`
-	Content       string                     `json:"content"`
-	Attachments   []messageAttachmentRequest `json:"attachments,omitempty"`
-	Metadata      map[string]string          `json:"metadata,omitempty"`
-}
-
 type taskCreateRequest struct {
 	SessionID       string            `json:"session_id"`
 	SourceMessageID string            `json:"source_message_id,omitempty"`
@@ -287,10 +275,10 @@ type messageResponse struct {
 type conversationRuntimeRoute string
 
 const (
-	conversationRuntimeRouteChat         conversationRuntimeRoute = "chat"
-	conversationRuntimeRouteAgentRuntime conversationRuntimeRoute = "agent-runtime"
-	conversationRuntimeTitleMaxRunes                              = 32
-	conversationRuntimeSessionPageSize                            = 200
+	conversationRuntimeRouteChat               conversationRuntimeRoute = "chat"
+	legacyConversationRuntimeRouteAgentRuntime                          = "agent-runtime"
+	conversationRuntimeTitleMaxRunes                                    = 32
+	conversationRuntimeSessionPageSize                                  = 200
 )
 
 type conversationRuntimeSessionCollectionResponse struct {
@@ -750,10 +738,6 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	mux.HandleFunc("/api/messages", s.messageHandler)
 	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
-	mux.HandleFunc("/api/agents", s.runtimeAgentListHandler)
-	mux.HandleFunc("/api/agent/session-profile", s.agentSessionProfileHandler)
-	mux.HandleFunc("/api/agent/messages", s.agentMessageHandler)
-	mux.HandleFunc("/api/agent/messages/stream", s.agentMessageStreamHandler)
 	mux.HandleFunc("/api/conversation-runtime/sessions", s.conversationRuntimeSessionCollectionHandler)
 	mux.HandleFunc("/api/conversation-runtime/sessions/", s.conversationRuntimeSessionItemHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
@@ -1652,20 +1636,7 @@ func executionContextForMessage(ctx context.Context, msg shareddomain.UnifiedMes
 }
 
 func shouldDetachWebConversationExecution(msg shareddomain.UnifiedMessage) bool {
-	if msg.TriggerType == shareddomain.TriggerTypeUser && msg.ChannelType == shareddomain.ChannelTypeWeb {
-		return true
-	}
-	return shouldDetachAgentExecution(msg.Metadata)
-}
-
-func shouldDetachAgentExecution(metadata map[string]string) bool {
-	if strings.TrimSpace(metadata[execdomain.AgentIDMetadataKey]) != "" {
-		return true
-	}
-	return strings.EqualFold(
-		strings.TrimSpace(metadata[execdomain.ExecutionEngineMetadataKey]),
-		execdomain.ExecutionEngineAgent,
-	)
+	return msg.TriggerType == shareddomain.TriggerTypeUser && msg.ChannelType == shareddomain.ChannelTypeWeb
 }
 
 func (s *Server) handleStreamMessage(
@@ -1797,136 +1768,6 @@ func (s *Server) flushPendingStreamEvents(
 			return drained
 		}
 	}
-}
-
-func (s *Server) agentMessageHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-
-	msg, _, statusCode, err := s.prepareAgentMessage(r)
-	if err != nil {
-		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-		return
-	}
-	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteAgentRuntime, msg)
-
-	s.countGateway(string(msg.ChannelType))
-	execCtx, _ := executionContextForMessage(r.Context(), msg)
-	result, err := s.orchestrator.Handle(execCtx, msg)
-	if err != nil {
-		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteAgentRuntime, msg, conversationRuntimeSessionStatusFailed)
-		statusCode := http.StatusBadRequest
-		switch result.ErrorCode {
-		case "command_failed", "nl_execution_failed":
-			statusCode = http.StatusInternalServerError
-		case "queue_timeout":
-			statusCode = http.StatusGatewayTimeout
-		case "rate_limited":
-			statusCode = http.StatusTooManyRequests
-		case "queue_canceled":
-			statusCode = http.StatusRequestTimeout
-		}
-		s.logWebMessageFailure(msg, err)
-		writeJSON(w, statusCode, messageResponse{
-			Result: result,
-			Error:  err.Error(),
-		})
-		return
-	}
-	s.markConversationRuntimeSessionFinished(conversationRuntimeRouteAgentRuntime, msg, conversationRuntimeSessionStatusReady)
-
-	writeJSON(w, http.StatusOK, messageResponse{Result: result})
-}
-
-func (s *Server) agentMessageStreamHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-
-	msg, _, statusCode, err := s.prepareAgentMessage(r)
-	if err != nil {
-		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-		return
-	}
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
-		return
-	}
-	execCtx, detachExecution := executionContextForMessage(r.Context(), msg)
-	stream := newExecutionSSEStream(newSSEStream(w, flusher), detachExecution)
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	s.countGateway(string(msg.ChannelType))
-	if err := stream.Event("start", streamStartResponse{
-		MessageID: msg.MessageID,
-		SessionID: msg.SessionID,
-		ChannelID: msg.ChannelID,
-		TraceID:   msg.TraceID,
-	}); err != nil {
-		return
-	}
-	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteAgentRuntime, msg)
-	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
-	stream.SetKeepAliveStop(stopKeepAlive)
-	defer stopKeepAlive()
-
-	handleStream := func(
-		callback func(event shareddomain.StreamEvent) error,
-	) (shareddomain.OrchestrationResult, error) {
-		if orchestrator, ok := s.orchestrator.(StreamOrchestrator); ok {
-			return orchestrator.HandleStream(execCtx, msg, callback)
-		}
-		return s.orchestrator.Handle(execCtx, msg)
-	}
-
-	result, handleErr := handleStream(func(event shareddomain.StreamEvent) error {
-		switch event.Type {
-		case shareddomain.StreamEventTypeOutput:
-			if strings.TrimSpace(event.Text) == "" {
-				return nil
-			}
-			return stream.Event("delta", streamDeltaResponse{Delta: event.Text})
-		case shareddomain.StreamEventTypeProcess:
-			if event.ProcessStep == nil {
-				return nil
-			}
-			return stream.Event("process", streamProcessResponse{ProcessStep: *event.ProcessStep})
-		default:
-			return nil
-		}
-	})
-	if handleErr != nil {
-		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteAgentRuntime, msg, conversationRuntimeSessionStatusFailed)
-		s.logWebMessageFailure(msg, handleErr)
-		_ = stream.Event("error", streamErrorResponse{
-			Error:  handleErr.Error(),
-			Result: result,
-		})
-		return
-	}
-
-	if _, ok := s.orchestrator.(StreamOrchestrator); !ok {
-		for _, chunk := range chunkText(result.Output, 24) {
-			if err := stream.Event("delta", streamDeltaResponse{
-				Delta: chunk,
-				Route: result.Route,
-			}); err != nil {
-				return
-			}
-		}
-	}
-
-	_ = stream.Event("done", streamDoneResponse{Result: result})
-	s.markConversationRuntimeSessionFinished(conversationRuntimeRouteAgentRuntime, msg, conversationRuntimeSessionStatusReady)
 }
 
 func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
@@ -2276,10 +2117,19 @@ func parseConversationRuntimeRoute(raw string) (conversationRuntimeRoute, bool) 
 	switch conversationRuntimeRoute(strings.TrimSpace(raw)) {
 	case conversationRuntimeRouteChat:
 		return conversationRuntimeRouteChat, true
-	case conversationRuntimeRouteAgentRuntime:
-		return conversationRuntimeRouteAgentRuntime, true
 	default:
 		return "", false
+	}
+}
+
+func parseStoredConversationRuntimeRoute(raw string) (conversationRuntimeRoute, bool, bool) {
+	switch strings.TrimSpace(raw) {
+	case string(conversationRuntimeRouteChat):
+		return conversationRuntimeRouteChat, false, true
+	case legacyConversationRuntimeRouteAgentRuntime:
+		return conversationRuntimeRouteChat, true, true
+	default:
+		return "", false, false
 	}
 }
 
@@ -2293,12 +2143,6 @@ func buildConversationRuntimeSession(
 
 	sessionID := strings.TrimSpace(records[0].SessionID)
 	targetType, targetID, targetName := resolveConversationRuntimeTarget(records)
-	if route == conversationRuntimeRouteChat && targetType == "agent" {
-		return conversationRuntimeSessionResponse{}, false
-	}
-	if route == conversationRuntimeRouteAgentRuntime && targetType != "agent" {
-		return conversationRuntimeSessionResponse{}, false
-	}
 
 	title := deriveConversationRuntimeTitle(records)
 	modelProviderID, modelID := resolveConversationRuntimeModel(records)
@@ -3934,18 +3778,6 @@ func (s *Server) mcpItemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) runtimeAgentListHandler(w http.ResponseWriter, r *http.Request) {
-	if s.agents == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent catalog unavailable"})
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": s.agents.ListEntrypointAgents()})
-}
-
 func (s *Server) agentListHandler(w http.ResponseWriter, r *http.Request) {
 	if s.control == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
@@ -5362,48 +5194,6 @@ func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, i
 		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("invalid json body")
 	}
 	return s.prepareMessageFromRequest(req, canonicalChatSessionID)
-}
-
-func (s *Server) prepareAgentMessage(r *http.Request) (shareddomain.UnifiedMessage, string, int, error) {
-	defer r.Body.Close()
-
-	var req agentMessageRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("invalid json body")
-	}
-	if strings.TrimSpace(req.AgentID) == "" {
-		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("agent_id is required")
-	}
-	if strings.TrimSpace(req.Content) == "" {
-		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("content is required")
-	}
-	if s.agents == nil {
-		return shareddomain.UnifiedMessage{}, "", http.StatusServiceUnavailable, errors.New("agent catalog unavailable")
-	}
-
-	agent, ok := s.agents.ResolveAgent(req.AgentID)
-	if !ok {
-		return shareddomain.UnifiedMessage{}, "", http.StatusNotFound, errors.New("agent not found")
-	}
-	if !agent.Enabled {
-		return shareddomain.UnifiedMessage{}, "", http.StatusBadRequest, errors.New("agent is disabled")
-	}
-
-	msgReq := messageRequest{
-		SessionID:     req.SessionID,
-		UserID:        req.UserID,
-		ChannelID:     req.ChannelID,
-		CorrelationID: req.CorrelationID,
-		Content:       req.Content,
-		Attachments:   req.Attachments,
-		Metadata:      cloneStringMap(req.Metadata),
-	}
-	msg, statusCode, err := s.prepareMessageFromRequest(msgReq, "")
-	if err != nil {
-		return shareddomain.UnifiedMessage{}, "", statusCode, err
-	}
-	msg.Metadata = agentapp.ApplyProfileMetadata(msg.Metadata, agent)
-	return msg, agent.ID, http.StatusOK, nil
 }
 
 func (s *Server) prepareMessageFromRequest(req messageRequest, defaultSessionID string) (shareddomain.UnifiedMessage, int, error) {
