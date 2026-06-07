@@ -79,10 +79,10 @@ describe("routeState", () => {
     expect(isConversationRoute("tasks")).toBe(false);
   });
 
-  it("reads shared session query parameters and writes compact short hashes without clobbering other filters", () => {
+  it("reads legacy agent-runtime session query parameters through Chat and writes compact short hashes without clobbering other filters", () => {
     window.history.replaceState({}, "", "/agent-runtime?foo=bar&session_id=session-agent-1");
 
-    expect(readWorkbenchRouteSessionID("agent-runtime")).toBe("session-agent-1");
+    expect(readWorkbenchRouteSessionID("chat")).toBe("session-agent-1");
 
     writeWorkbenchRouteSessionID("terminal", "terminal-9");
 

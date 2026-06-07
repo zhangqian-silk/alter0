@@ -413,10 +413,10 @@ export function ReactManagedAgentRouteBody({
               disabled={!selectedAgentID}
               onClick={() => {
                 if (workbench) {
-                  workbench.navigate("agent-runtime");
+                  workbench.navigate("chat");
                   return;
                 }
-                window.history.pushState(window.history.state, "", "/agent-runtime");
+                window.history.pushState(window.history.state, "", "/chat");
                 window.dispatchEvent(new PopStateEvent("popstate"));
               }}
             >

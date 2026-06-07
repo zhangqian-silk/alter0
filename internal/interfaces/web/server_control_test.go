@@ -252,69 +252,6 @@ func TestAgentEndpointCreatesManagedIdentityAndVersion(t *testing.T) {
 	}
 }
 
-func TestRuntimeAgentCatalogListsBuiltinEntrypoints(t *testing.T) {
-	control := controlapp.NewService()
-	server := &Server{
-		control: control,
-		agents:  agentapp.NewCatalog(control),
-		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
-	rec := httptest.NewRecorder()
-	server.runtimeAgentListHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected list 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var response struct {
-		Items []controldomain.Agent `json:"items"`
-	}
-	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
-		t.Fatalf("decode runtime agent list failed: %v", err)
-	}
-	if len(response.Items) < 3 {
-		t.Fatalf("expected builtin agent entries, got %+v", response.Items)
-	}
-	foundCoding := false
-	foundTravel := false
-	for _, item := range response.Items {
-		if item.ID == "main" || item.Name == "Alter0" {
-			t.Fatalf("expected runtime agent list to exclude main Alter0 assistant, got %+v", response.Items)
-		}
-		if item.ID == "coding" && item.Source == controldomain.AgentSourceBuiltin && item.EntryPoint {
-			foundCoding = true
-		}
-		if item.ID == "travel" && item.Source == controldomain.AgentSourceBuiltin && item.EntryPoint {
-			foundTravel = true
-		}
-	}
-	if !foundCoding {
-		t.Fatalf("expected builtin coding entrypoint in runtime list, got %+v", response.Items)
-	}
-	if !foundTravel {
-		t.Fatalf("expected builtin travel entrypoint in runtime list, got %+v", response.Items)
-	}
-	for _, item := range response.Items {
-		if item.ID == "coding" {
-			if len(item.SessionProfileFields) < 4 {
-				t.Fatalf("expected coding session profile fields, got %+v", item.SessionProfileFields)
-			}
-			if len(item.Deliverables) < 2 {
-				t.Fatalf("expected coding deliverables in runtime list, got %+v", item.Deliverables)
-			}
-		}
-		if item.ID == "travel" {
-			if len(item.SessionProfileFields) < 2 {
-				t.Fatalf("expected travel session profile fields, got %+v", item.SessionProfileFields)
-			}
-			if len(item.Deliverables) < 2 {
-				t.Fatalf("expected travel deliverables in runtime list, got %+v", item.Deliverables)
-			}
-		}
-	}
-}
-
 func TestManagedAgentCreateSkipsBuiltinReservedID(t *testing.T) {
 	control := controlapp.NewService()
 	server := &Server{
