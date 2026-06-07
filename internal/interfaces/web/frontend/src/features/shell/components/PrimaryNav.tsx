@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { WorkbenchSessionRail } from "../../../app/WorkbenchContext";
-import { MANAGEMENT_WORKBENCH_ROUTE, NAV_GROUPS, toI18nKey } from "../legacyShellConfig";
+import { NAV_GROUPS, toI18nKey } from "../legacyShellConfig";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../legacyShellCopy";
 import { isLegacyShellMobileViewport } from "../legacyShellState";
 import { NavIcon } from "./NavIcon";
@@ -52,10 +52,8 @@ export function PrimaryNav({
 }: PrimaryNavProps) {
   const copy = getLegacyShellCopy(language);
   const navToggleLabel = navCollapsed ? copy.navExpandLabel : copy.navCollapseLabel;
-  const managementLabel = copy.routeTitles.management ?? "Management";
   const sessionRailTitle = copy.terminalSessions;
   const sessionRailPrimaryActionLabel = copy.terminalNewShort;
-  const managementActive = currentRoute === MANAGEMENT_WORKBENCH_ROUTE;
   const collapseButtonRef = useRef<HTMLButtonElement | null>(null);
   const routeButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -83,9 +81,6 @@ export function PrimaryNav({
   const resolveTooltipText = (target: NavTooltipTarget): string => {
     if (target.kind === "collapse") {
       return navToggleLabel;
-    }
-    if (target.route === "management") {
-      return managementLabel;
     }
     return copy.routes[target.route] ?? target.route;
   };
@@ -337,39 +332,6 @@ export function PrimaryNav({
           </div>
         </section>
       ) : null}
-
-      <div className="nav-utility">
-        <button
-          className={managementActive ? "menu-item nav-management-item active" : "menu-item nav-management-item"}
-          type="button"
-          data-route="management"
-          data-abbr="MG"
-          aria-label={managementLabel}
-          aria-describedby={
-            tooltip?.visible &&
-            tooltip.target.kind === "route" &&
-            tooltip.target.route === "management"
-              ? tooltipId
-              : undefined
-          }
-          ref={(node) => {
-            routeButtonRefs.current.management = node;
-          }}
-          onMouseEnter={() => queueTooltip({ kind: "route", route: "management" })}
-          onMouseLeave={() => hideTooltip()}
-          onFocus={() => queueTooltip({ kind: "route", route: "management" }, true)}
-          onBlur={() => hideTooltip(true)}
-          onPointerDown={() => hideTooltip(true)}
-          onClick={() => onNavigate(MANAGEMENT_WORKBENCH_ROUTE)}
-        >
-          <span className="menu-icon" aria-hidden="true">
-            <NavIcon icon="channels" />
-          </span>
-          <span className="menu-label" data-i18n="nav.management">
-            {managementLabel}
-          </span>
-        </button>
-      </div>
 
       <div className="nav-locale">
         <button

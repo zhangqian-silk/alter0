@@ -17,8 +17,11 @@ import { NavIcon } from "./NavIcon";
 type RouteBodyRenderer = (props: { language: LegacyShellLanguage }) => React.JSX.Element;
 
 const MANAGEMENT_ROUTE_BODY_RENDERERS: Record<string, RouteBodyRenderer> = {
-  agent: ({ language }) => <ReactManagedAgentRouteBody language={language} />,
+  runtime: ({ language }) => <RuntimeSettingsSection language={language} />,
   memory: ({ language }) => <ReactManagedMemoryRouteBody language={language} />,
+  workspaces: ({ language }) => <WorkspaceSettingsSection language={language} />,
+  schedules: ({ language }) => <ReactManagedControlRouteBody route="cron-jobs" language={language} />,
+  agent: ({ language }) => <ReactManagedAgentRouteBody language={language} />,
   sessions: ({ language }) => <ReactManagedSessionsRouteBody language={language} />,
   tasks: ({ language }) => <ReactManagedTasksRouteBody language={language} />,
   channels: ({ language }) => <ReactManagedControlRouteBody route="channels" language={language} />,
@@ -55,6 +58,24 @@ export function ReactManagedRouteBody({
   }
 
   return <ManagementRouteBody language={language} />;
+}
+
+function RuntimeSettingsSection({ language }: { language: LegacyShellLanguage }) {
+  return (
+    <div className="settings-composite-section" data-settings-section="runtime">
+      <ReactManagedControlRouteBody route="models" language={language} />
+      <ReactManagedCodexAccountsRouteBody language={language} />
+    </div>
+  );
+}
+
+function WorkspaceSettingsSection({ language }: { language: LegacyShellLanguage }) {
+  return (
+    <div className="settings-composite-section" data-settings-section="workspaces">
+      <ReactManagedSessionsRouteBody language={language} />
+      <ReactManagedTasksRouteBody language={language} />
+    </div>
+  );
 }
 
 function ManagementRouteBody({

@@ -144,11 +144,11 @@ describe("WorkbenchApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "go management" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "management");
+      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "settings");
     });
     expect(screen.getByTestId("route-body")).toHaveAttribute("data-language", "zh");
-    expect(container.querySelector(".app-shell")).toHaveAttribute("data-workbench-route", "management");
-    expect(container.querySelector(".chat-pane")).toHaveAttribute("data-route", "management");
+    expect(container.querySelector(".app-shell")).toHaveAttribute("data-workbench-route", "settings");
+    expect(container.querySelector(".chat-pane")).toHaveAttribute("data-route", "settings");
     expect(screen.queryByTestId("runtime-route-host")).not.toBeInTheDocument();
   });
 
@@ -166,7 +166,7 @@ describe("WorkbenchApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "go management" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "management");
+      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "settings");
     });
     expect(shell).not.toHaveClass("nav-open");
     expect(shell).not.toHaveClass("overlay-open");
@@ -199,8 +199,13 @@ describe("WorkbenchApp", () => {
     expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "terminal");
   });
 
-  it("reuses the last registered rail body for a runtime route while that route re-registers", async () => {
+  it("uses one active runtime session rail when switching between chat and terminal", async () => {
     render(<WorkbenchApp />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
+    });
+    expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:chat");
 
     fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
 
@@ -214,15 +219,8 @@ describe("WorkbenchApp", () => {
     await waitFor(() => {
       expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
     });
-
-    mockRuntimeRouteHostRegistersRail = false;
-    fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "terminal");
-    });
-    expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:terminal");
-    expect(screen.getByTestId("primary-nav-session-rail-body")).not.toHaveTextContent("New");
+    expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:chat");
+    expect(screen.getByTestId("primary-nav-session-rail-body")).not.toHaveTextContent("session rail body:terminal");
   });
 
   it("renders auxiliary routes inside the unified management page frame", async () => {
@@ -232,13 +230,13 @@ describe("WorkbenchApp", () => {
     const shell = container.querySelector(".app-shell");
 
     await waitFor(() => {
-      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "management");
+      expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "settings");
     });
 
     const mobileHeader = container.querySelector("[data-route-mobile-head]") as HTMLElement;
     expect(mobileHeader).toBeInTheDocument();
     expect(container.querySelector(".route-view")).toHaveAttribute("data-route-family", "management");
-    expect(container.querySelector(".route-head h3")?.textContent).toBe("Management");
+    expect(container.querySelector(".route-head h3")?.textContent).toBe("Settings");
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
 

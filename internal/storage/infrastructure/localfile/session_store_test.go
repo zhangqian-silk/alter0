@@ -78,7 +78,7 @@ func TestSessionStoreMarkdownRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSessionStoreSavesAgentSessionsIntoSeparateFiles(t *testing.T) {
+func TestSessionStoreSavesConversationSessionsIntoDefaultFiles(t *testing.T) {
 	baseDir := t.TempDir()
 	store := NewSessionStore(baseDir, FormatJSON)
 	ts := time.Date(2026, 5, 24, 9, 0, 0, 0, time.UTC)
@@ -122,8 +122,8 @@ func TestSessionStoreSavesAgentSessionsIntoSeparateFiles(t *testing.T) {
 		t.Fatalf("save failed: %v", err)
 	}
 
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "coding", "session-coding.json"), []string{"coding-user-1", "coding-assistant-1"})
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "travel", "session-travel.json"), []string{"travel-user-1"})
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "session-coding.json"), []string{"coding-user-1", "coding-assistant-1"})
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "session-travel.json"), []string{"travel-user-1"})
 	if _, err := os.Stat(filepath.Join(baseDir, "sessions.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected aggregate sessions.json not to be written, stat error: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestSessionStoreSavesAgentSessionsIntoSeparateFiles(t *testing.T) {
 	}
 }
 
-func TestSessionStoreSplitsCanonicalChatSessionByArchiveDay(t *testing.T) {
+func TestSessionStoreSavesCanonicalChatSessionAsSingleLegacyCompatibleFile(t *testing.T) {
 	baseDir := t.TempDir()
 	store := NewSessionStore(baseDir, FormatJSON)
 	records := []sessiondomain.MessageRecord{
@@ -161,8 +161,7 @@ func TestSessionStoreSplitsCanonicalChatSessionByArchiveDay(t *testing.T) {
 		t.Fatalf("save failed: %v", err)
 	}
 
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "alter0-chat", "2026-05-23.json"), []string{"chat-before-cutoff"})
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "alter0-chat", "2026-05-24.json"), []string{"chat-after-cutoff"})
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "alter0-chat.json"), []string{"chat-before-cutoff", "chat-after-cutoff"})
 
 	loaded, err := store.Load(context.Background())
 	if err != nil {
@@ -173,10 +172,10 @@ func TestSessionStoreSplitsCanonicalChatSessionByArchiveDay(t *testing.T) {
 	}
 }
 
-func TestSessionStoreMigratesPreviousCanonicalChatSessionFileToArchiveDayDirectory(t *testing.T) {
+func TestSessionStoreMigratesPreviousCanonicalChatArchiveDayDirectoryToSingleFile(t *testing.T) {
 	baseDir := t.TempDir()
 	store := NewSessionStore(baseDir, FormatJSON)
-	previousPath := filepath.Join(baseDir, "sessions", "_default", "alter0-chat.json")
+	previousPath := filepath.Join(baseDir, "sessions", "_default", "alter0-chat", "2026-05-24.json")
 	previous := sessionState{
 		Messages: []sessiondomain.MessageRecord{
 			{
@@ -203,10 +202,47 @@ func TestSessionStoreMigratesPreviousCanonicalChatSessionFileToArchiveDayDirecto
 	if len(loaded) != 1 || loaded[0].MessageID != "chat-legacy-layout" {
 		t.Fatalf("unexpected loaded messages: %+v", loaded)
 	}
-	if _, err := os.Stat(previousPath); !os.IsNotExist(err) {
-		t.Fatalf("expected previous chat file removed, stat error: %v", err)
+	if _, err := os.Stat(filepath.Dir(previousPath)); !os.IsNotExist(err) {
+		t.Fatalf("expected previous chat archive directory removed, stat error: %v", err)
 	}
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "alter0-chat", "2026-05-24.json"), []string{"chat-legacy-layout"})
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "alter0-chat.json"), []string{"chat-legacy-layout"})
+}
+
+func TestSessionStoreMigratesPreviousAgentSessionDirectoryToDefaultConversationFile(t *testing.T) {
+	baseDir := t.TempDir()
+	store := NewSessionStore(baseDir, FormatJSON)
+	previousPath := filepath.Join(baseDir, "sessions", "coding", "session-coding.json")
+	previous := sessionState{
+		Messages: []sessiondomain.MessageRecord{
+			{
+				MessageID: "coding-legacy-layout",
+				SessionID: "session-coding",
+				Role:      sessiondomain.MessageRoleUser,
+				Content:   "legacy coding",
+				Timestamp: time.Date(2026, 5, 24, 2, 0, 0, 0, time.UTC),
+				Source:    sessiondomain.MessageSource{AgentID: "coding", AgentName: "Coding Agent"},
+			},
+		},
+	}
+	raw, err := json.MarshalIndent(previous, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal previous layout failed: %v", err)
+	}
+	if err := writeFile(previousPath, append(raw, '\n')); err != nil {
+		t.Fatalf("write previous layout failed: %v", err)
+	}
+
+	loaded, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	if len(loaded) != 1 || loaded[0].MessageID != "coding-legacy-layout" {
+		t.Fatalf("unexpected loaded messages: %+v", loaded)
+	}
+	if _, err := os.Stat(filepath.Dir(previousPath)); !os.IsNotExist(err) {
+		t.Fatalf("expected previous agent directory removed, stat error: %v", err)
+	}
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "session-coding.json"), []string{"coding-legacy-layout"})
 }
 
 func TestSessionStoreRemovesStaleSessionFilesOnSave(t *testing.T) {
@@ -248,10 +284,10 @@ func TestSessionStoreRemovesStaleSessionFilesOnSave(t *testing.T) {
 		t.Fatalf("second save failed: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(baseDir, "sessions", "travel", "session-delete.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(baseDir, "sessions", "_default", "session-delete.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected stale session file removed, stat error: %v", err)
 	}
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "coding", "session-keep.json"), []string{"m-1"})
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "session-keep.json"), []string{"m-1"})
 }
 
 func TestSessionStoreMigratesLegacyAggregateFileOnLoad(t *testing.T) {
@@ -285,7 +321,7 @@ func TestSessionStoreMigratesLegacyAggregateFileOnLoad(t *testing.T) {
 	if len(loaded) != 1 || loaded[0].MessageID != "legacy-m-1" {
 		t.Fatalf("unexpected legacy records: %+v", loaded)
 	}
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "coding", "legacy-session.json"), []string{"legacy-m-1"})
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "legacy-session.json"), []string{"legacy-m-1"})
 	if _, err := os.Stat(filepath.Join(baseDir, "sessions.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected legacy aggregate removed after migration, stat error: %v", err)
 	}
@@ -337,8 +373,8 @@ func TestSessionStoreMergesAndMigratesLayoutAndLegacyAggregateOnLoad(t *testing.
 	if !ids["layout-m-1"] || !ids["legacy-m-1"] {
 		t.Fatalf("expected both layout and legacy messages, got %+v", loaded)
 	}
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "coding", "layout-session.json"), []string{"layout-m-1"})
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "travel", "legacy-session.json"), []string{"legacy-m-1"})
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "layout-session.json"), []string{"layout-m-1"})
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "legacy-session.json"), []string{"legacy-m-1"})
 	if _, err := os.Stat(filepath.Join(baseDir, "sessions.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected legacy aggregate removed after merged migration, stat error: %v", err)
 	}

@@ -10,6 +10,7 @@ export const REACT_MANAGED_CONTROL_ROUTES = [
 export type ReactManagedControlRoute = (typeof REACT_MANAGED_CONTROL_ROUTES)[number];
 
 export const REACT_MANAGED_ROUTE_BODIES = [
+  "settings",
   "management",
   "terminal",
 ] as const;

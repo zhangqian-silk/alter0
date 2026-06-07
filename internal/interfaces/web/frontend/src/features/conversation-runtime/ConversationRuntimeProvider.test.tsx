@@ -432,7 +432,7 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("New"));
   });
 
-  it("keeps Chat pinned to the canonical long-term session", async () => {
+  it("restores and switches Chat sessions through the unified conversation list", async () => {
     window.history.replaceState({}, "", "/chat?session_id=session-2");
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -508,16 +508,96 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("active-session-id")).toHaveTextContent("alter0-chat");
+      expect(screen.getByTestId("active-session-id")).toHaveTextContent("session-2");
     });
-    expect(window.location.search).not.toContain("session_id=");
+    expect(window.location.search).toContain(`session_id=${hashSessionIDShort("session-2")}`);
 
     fireEvent.click(screen.getByRole("button", { name: "focus session 1" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("active-session-id")).toHaveTextContent("alter0-chat");
+      expect(screen.getByTestId("active-session-id")).toHaveTextContent("session-1");
     });
-    expect(window.location.search).not.toContain("session_id=");
+    expect(window.location.search).toContain(`session_id=${hashSessionIDShort("session-1")}`);
+  });
+
+  it("loads legacy agent-runtime sessions into Chat and hydrates them from the legacy source route", async () => {
+    window.sessionStorage.clear();
+    window.history.replaceState({}, "", `/chat?session_id=${hashSessionIDShort("agent-session-2")}`);
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return { items: [] };
+        case "/api/conversation-runtime/sessions?route=agent-runtime":
+          return {
+            items: [
+              {
+                id: "agent-session-2",
+                title: "Legacy coding session",
+                title_auto: false,
+                title_score: 1,
+                created_at: "2026-04-23T04:30:00Z",
+                target_type: "agent",
+                target_id: "coding",
+                target_name: "Coding Agent",
+                model_provider_id: "",
+                model_id: "",
+                tool_ids: [],
+                skill_ids: [],
+                mcp_ids: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/agent-session-2?route=agent-runtime":
+          return {
+            session: {
+              id: "agent-session-2",
+              title: "Legacy coding session",
+              title_auto: false,
+              title_score: 1,
+              created_at: "2026-04-23T04:30:00Z",
+              target_type: "agent",
+              target_id: "coding",
+              target_name: "Coding Agent",
+              model_provider_id: "",
+              model_id: "",
+              tool_ids: [],
+              skill_ids: [],
+              mcp_ids: [],
+              messages: [
+                {
+                  id: "msg-agent-2",
+                  role: "assistant",
+                  text: "Recovered legacy reply",
+                  status: "done",
+                  at: "2026-04-23T04:31:00Z",
+                },
+              ],
+            },
+          };
+        case "/api/agents":
+          return { items: [{ id: "coding", name: "Coding Agent", enabled: true }] };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-list-session-title")).toHaveTextContent("Legacy coding session");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("message-list")).toHaveTextContent("Recovered legacy reply");
+    });
+    expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions/agent-session-2?route=agent-runtime");
   });
 
   it("restores agent-runtime sessions from short hash query parameters and keeps the URL compact", async () => {

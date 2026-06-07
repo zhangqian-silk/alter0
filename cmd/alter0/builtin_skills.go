@@ -60,6 +60,14 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillGuideKey:       memorySkillGuide(),
 			},
 		},
+		fileBackedBuiltinSkill(
+			"memory-maintenance",
+			"Memory Maintenance",
+			780,
+			"Consolidate daily memory into long-term memory and keep durable memory files concise, stable, and non-duplicative.",
+			memoryMaintenanceSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "memory-maintenance", "SKILL.md")),
+		),
 		{
 			ID:      "deploy-test-service",
 			Name:    "Deploy Test Service",
@@ -248,6 +256,16 @@ func memorySkillGuide() string {
 		"- For daily memory, append concise dated notes or update the most relevant section without rewriting the whole file.",
 		"- Preserve existing structure when possible. Prefer surgical edits over full rewrites.",
 		"- If the request is just to answer a question and there is no explicit or implicit need to persist memory, do not write memory files.",
+	}, "\n")
+}
+
+func memoryMaintenanceSkillGuide() string {
+	return strings.Join([]string{
+		"# alter0 memory maintenance",
+		"",
+		"- Use `docs/skills/memory-maintenance/SKILL.md` as the canonical maintenance workflow.",
+		"- Consolidate daily memory into long-term memory only when a fact, preference, decision, or workflow has become stable.",
+		"- Keep daily memory useful for active work and keep long-term memory concise, deduplicated, and directly reusable.",
 	}, "\n")
 }
 

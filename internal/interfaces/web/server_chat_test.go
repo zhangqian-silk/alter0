@@ -80,8 +80,9 @@ func TestTerminalPageHandlerServesEmbeddedHTML(t *testing.T) {
 func TestWorkbenchPageHandlerServesAllCanonicalPagePaths(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	for _, path := range []string{
-		"/agent-runtime",
-		"/management",
+		"/chat",
+		"/terminal",
+		"/settings",
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
@@ -98,7 +99,7 @@ func TestWorkbenchPageHandlerServesAllCanonicalPagePaths(t *testing.T) {
 }
 
 func TestWorkbenchInteractivePagePathsOnlyIncludeTopLevelRoutes(t *testing.T) {
-	for _, path := range []string{"/", "/chat", "/agent-runtime", "/terminal", "/management"} {
+	for _, path := range []string{"/", "/chat", "/agent-runtime", "/terminal", "/management", "/settings"} {
 		if !isInteractivePagePath(path) {
 			t.Fatalf("expected %s to be an interactive workbench path", path)
 		}

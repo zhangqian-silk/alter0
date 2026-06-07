@@ -153,14 +153,18 @@
 覆盖文件：
 
 - `codex_cli_processor_test.go`
+- `claude_code_processor_test.go`
 - `hybrid_nl_processor_test.go`
+- `runtime_resolver_processor_test.go`
 
 用例范围：
 
 - Codex CLI 同步与流式执行、错误、空输出、认证失败和运行态心跳。
 - 原生 Codex Runtime 资产生成、Session 工作区解析、repo root 与 session repo clone 模式。
 - 直连 Codex 路径解析 `thread.started.thread_id`，持久化 `.alter0/codex-runtime/thread.json`，后续同 Session 使用 `codex exec resume <thread_id> -` 续写。
-- Hybrid NL 的 Agent/ReAct/Codex 执行源、工具调用、委派与 Memory 工具。
+- Claude Code 执行器的 provider 环境变量、`CLAUDE.md`、runtime/skill 文件注入与 file-backed Skill 工作区副本。
+- Runtime Resolver 的执行器选择：显式 Codex、可用 Provider 优先 Claude Code、Claude 失败兜底 Codex。
+- 既有 Hybrid NL 的 Agent/ReAct/Codex 执行源、工具调用、委派与 Memory 工具兼容行为。
 
 边界：
 

@@ -1,10 +1,10 @@
 # Runtime & Orchestration Requirements
 
-> Last update: 2026-06-01
+> Last update: 2026-06-06
 
 ## 领域边界
 
-Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，并为上层 Chat、Agent、Task、Terminal 提供统一消息、路由、执行端口、调度与观测底座。
+Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，并为上层 Chat、Agent Runtime、Task、Terminal 提供统一消息、路由、CLI Agent Runtime 选择、调度与观测底座。
 
 ## 核心对象
 
@@ -14,7 +14,9 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 | `OrchestrationResult` | 承载路由、输出、错误编码与执行摘要 |
 | `Intent` | 表达命令或自然语言意图 |
 | `Command` / `CommandHandler` | 承载内置命令与命令处理逻辑 |
-| `ExecutionPort` | 隔离自然语言执行实现，可对接 LLM、Agent、Codex CLI 或 Workflow |
+| `ExecutionPort` | 隔离自然语言执行契约，并把请求交给 Runtime Resolver |
+| `RuntimeResolver` | 根据 Provider、显式执行引擎、健康状态和入口上下文选择 CLI Agent Runtime |
+| `CLIAgentRuntime` | 表示 Claude Code 或 Codex Direct 的一次执行 |
 | `Channel` | 表示 CLI、Web、Scheduler 等输入通道 |
 | `SchedulerJob` | 表示可配置定时任务及其触发计划 |
 | `TraceContext` | 贯穿 trace、session、message、correlation 维度 |
@@ -48,7 +50,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 - 命令请求必须优先于复杂度评估执行，避免 `/help` 等命令进入模型或任务分流。
 - 当 `UnifiedMessage.Metadata` 显式声明 `alter0.execution.engine=codex` 时，斜线前缀输入不进入 alter0 `CommandRegistry`；该内容作为直连 Codex 会话输入原样交给 `ExecutionPort`，用于支持 Codex CLI 内置斜线命令。
 - Web 直连 Codex 会话的斜线命令候选属于前端输入辅助，不改变编排层路由语义；候选补全后的文本仍按原始用户输入进入统一消息链路。该辅助覆盖 Chat / Agent Runtime 的直连 Codex 模型选择，以及 Terminal 中 shell 明确为 Codex 的活动会话；候选集合按 Web 适用的 Codex CLI 斜线命令维护，并按命令作用分组顺序与短动作说明展示。权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选。
-- 自然语言请求进入 `ExecutionPort`，并按当前上下文决定同步、流式、Agent 或异步任务执行。
+- 自然语言请求进入 `ExecutionPort`，再由 `RuntimeResolver` 选择 `Claude Code + provider profile` 或 `Codex Direct`。
 
 ### 命令执行
 
@@ -58,8 +60,11 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 
 ### 自然语言执行
 
-- 执行端口只表达执行契约，不绑定具体模型或外部进程。
-- LLM、Agent、Codex CLI 和后续 Workflow 执行器都应通过端口或适配层接入。
+- 执行端口只表达执行契约，不直接绑定具体模型。
+- Runtime Resolver 按优先级执行：显式 `alter0.execution.engine=codex` 直接进入 `Codex Direct`；存在启用且健康的 Model Provider 时进入 `Claude Code + provider profile`；其余情况进入 `Codex Direct`。
+- Claude Code 运行时启动前需要注入 `CLAUDE.md`、provider profile、Skill、Memory、MCP 和工作区事实。
+- Codex Direct 运行时启动前需要注入 `AGENTS.md`、独立 `CODEX_HOME/config.toml`、Skill、Memory、MCP 和工作区事实。
+- 运行时执行结果统一回写 `OrchestrationResult`、Session history、Task 或 Cron run。
 - 执行错误需保留可诊断错误编码，供 Web、Task 与 Agent 收口使用。
 
 ## 调度能力
@@ -109,14 +114,15 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 ## 依赖与边界
 
 - Conversation 领域消费 Runtime 的消息与流式结果，不拥有编排路由规则。
-- Agent 领域消费 ExecutionPort 与结构化上下文，不直接改写通道模型。
+- Agent Capability & Memory 领域提供 Skill 与 Memory 注入上下文，不直接改写通道模型。
 - Task 领域可承接复杂度分流后的后台执行，但触发源仍来自统一消息。
-- 专项内置 Agent 通过统一 Agent 执行口接入执行链，不绕过 Orchestration。
+- 业务入口通过统一 CLI Agent Runtime 接入执行链，不绕过 Orchestration。
 
 ## 验收口径
 
 - CLI、Web、Cron 三类输入都能进入统一编排链路。
 - 命令请求不进入模型执行。
+- 自然语言请求能按 Provider 优先级进入 Claude Code 或 Codex Direct。
 - Cron 触发可在会话与任务视图中追踪来源。
 - 结构化日志、metrics、healthz、readyz 均可用。
 - 存储实现替换不要求改动 domain 对象。

@@ -40,6 +40,1278 @@
   --keyboard-offset: 0px;
 }
 
+/* UI UX Pro Max lightweight workbench refresh */
+:root {
+  --shell-bg: #f6f7f9;
+  --shell-bg-deep: #eef2f5;
+  --shell-surface: #ffffff;
+  --shell-surface-strong: #ffffff;
+  --shell-line: rgba(15, 23, 42, 0.09);
+  --shell-line-strong: rgba(15, 23, 42, 0.16);
+  --shell-ink: #111827;
+  --shell-muted: #667085;
+  --shell-muted-strong: #344054;
+  --shell-accent: #0f9f8f;
+  --shell-accent-strong: #087f73;
+  --shell-shadow: 0 18px 46px -38px rgba(15, 23, 42, 0.24);
+  --shell-shadow-soft: 0 12px 28px -24px rgba(15, 23, 42, 0.18);
+  --shell-radius-xl: 8px;
+  --shell-radius-lg: 8px;
+  --shell-radius-md: 8px;
+  --shell-radius-sm: 6px;
+  --bg-nav: #f8fafb;
+  --bg-session: #ffffff;
+  --bg-page: #f6f7f9;
+  --line-soft: rgba(15, 23, 42, 0.08);
+  --line-mid: rgba(15, 23, 42, 0.13);
+  --ink-strong: #111827;
+  --ink-body: #344054;
+  --ink-muted: #667085;
+  --accent: #0f9f8f;
+}
+
+body {
+  background: #f6f7f9;
+  background-image: linear-gradient(180deg, #ffffff 0%, #f6f7f9 42%, #eef2f5 100%);
+  color: var(--shell-ink);
+}
+
+.primary-nav,
+.chat-pane,
+.runtime-workspace,
+.runtime-workspace-body,
+.runtime-workspace-session-pane-shell,
+.management-route-nav,
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  border-color: var(--shell-line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.primary-nav {
+  background: #f8fafb;
+  border-right: 1px solid var(--shell-line);
+}
+
+.brand-copy strong {
+  color: #101828;
+  letter-spacing: 0;
+}
+
+.menu-item {
+  border-radius: 8px;
+  color: #475467;
+}
+
+.menu-item:hover {
+  background: #eef2f5;
+  color: #101828;
+}
+
+.menu-item.active {
+  background: rgba(15, 159, 143, 0.1);
+  color: var(--shell-accent-strong);
+}
+
+.nav-session-rail-action,
+.runtime-workspace-session-pane-action,
+.runtime-workspace-button,
+.management-route-tab,
+.management-route-content button,
+.management-route-content a,
+.runtime-composer-utility,
+.runtime-composer-upload,
+.runtime-composer-submit,
+.nav-locale-button,
+.nav-collapse {
+  border-radius: 8px;
+}
+
+.nav-session-rail .runtime-session-card,
+.runtime-session-card {
+  border-radius: 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.nav-session-rail .runtime-session-card:hover,
+.runtime-session-card:hover {
+  background: #f8fafc;
+}
+
+.nav-session-rail .runtime-session-card.is-active,
+.runtime-session-card.is-active {
+  border-color: rgba(15, 159, 143, 0.14);
+  background: rgba(15, 159, 143, 0.08);
+}
+
+.nav-session-rail .runtime-session-card::before,
+.runtime-session-card::before {
+  background: var(--shell-accent);
+}
+
+.runtime-workspace-head {
+  border-bottom-color: var(--shell-line);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.runtime-workspace-copy h4,
+.route-view h3,
+.management-route-content .route-card-title-copy h4,
+.management-route-content .agent-route-pane-copy h4,
+.management-route-content .control-task-drawer-head h4,
+.management-route-content .codex-accounts-section-head h4,
+.management-route-content .environment-toolbar-copy h3,
+.management-route-content .route-detail-panel-head h4 {
+  color: #101828;
+  letter-spacing: 0;
+}
+
+.runtime-workspace-status-dot,
+.runtime-session-signal.is-ready,
+.runtime-session-signal.is-busy,
+.workspace-header-status.is-ready .runtime-session-signal {
+  background: var(--shell-accent);
+}
+
+.runtime-composer-shell {
+  background: linear-gradient(180deg, rgba(246, 247, 249, 0) 0%, rgba(246, 247, 249, 0.94) 46%, #f6f7f9 100%);
+}
+
+.runtime-composer-form {
+  width: min(100%, 880px);
+  border-radius: 8px;
+  border-color: rgba(15, 23, 42, 0.13);
+  box-shadow: 0 18px 44px -34px rgba(15, 23, 42, 0.26);
+}
+
+.runtime-composer-input {
+  min-height: 72px;
+}
+
+.runtime-composer-submit {
+  border-color: #101828;
+  background: #101828;
+}
+
+.runtime-composer-submit:hover:not(:disabled) {
+  border-color: #1d2939;
+  background: #1d2939;
+}
+
+[data-runtime-view="terminal"] .runtime-workspace-screen {
+  background: #f5f7f8;
+}
+
+[data-runtime-view="terminal"] .runtime-timeline {
+  max-width: min(100%, 1120px);
+  margin-inline: auto;
+}
+
+[data-runtime-view="terminal"] .terminal-final-rendered,
+[data-runtime-view="terminal"] .terminal-final-output,
+[data-runtime-view="terminal"] .assistant-message-shell .message-markdown-shell,
+[data-runtime-view="terminal"] .runtime-message-assistant .runtime-message-bubble {
+  border-radius: 8px;
+  background: #111315;
+  color: #e5e7eb;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered,
+[data-runtime-view="terminal"] .message-markdown-rendered * {
+  color: inherit;
+}
+
+[data-runtime-view="terminal"] .chat-md-pre,
+[data-runtime-view="terminal"] pre {
+  border-radius: 8px;
+  background: #0b0d0f;
+  color: #e5e7eb;
+}
+
+[data-runtime-view="terminal"] .runtime-message-user .runtime-message-bubble,
+[data-runtime-view="terminal"] .user-message-shell .terminal-log-main {
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d2939;
+}
+
+.route-body[data-route="settings"],
+.route-view[data-route-family="management"] .route-body,
+.management-route-body {
+  width: 100%;
+}
+
+.management-route-body {
+  grid-template-columns: minmax(176px, 216px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.management-route-nav {
+  padding: 10px;
+}
+
+.management-route-tab {
+  min-height: 42px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  padding: 6px 8px;
+}
+
+.management-route-tab-shortcut {
+  display: none;
+}
+
+.management-route-tab.is-active {
+  border-color: rgba(15, 159, 143, 0.16);
+  background: rgba(15, 159, 143, 0.1);
+  color: var(--shell-accent-strong);
+  box-shadow: inset 3px 0 0 var(--shell-accent);
+}
+
+.management-route-tab-icon {
+  border-radius: 8px;
+  background: #f2f4f7;
+}
+
+.management-route-tab.is-active .management-route-tab-icon {
+  background: rgba(15, 159, 143, 0.12);
+}
+
+.management-route-content {
+  width: 100%;
+  gap: 14px;
+}
+
+.settings-composite-section {
+  display: grid;
+  gap: 14px;
+}
+
+.management-route-content > .settings-composite-section,
+.management-route-content > .route-master-detail,
+.management-route-content > .control-task-layout,
+.management-route-content > .task-history-view,
+.management-route-content > .codex-accounts-workspace,
+.management-route-content > .environment-view {
+  width: min(100%, 1080px);
+}
+
+.management-route-content .route-empty-panel {
+  width: min(100%, 620px);
+}
+
+.management-route-content[data-management-route-content="runtime"] .settings-composite-section {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  align-items: start;
+}
+
+.management-route-content[data-management-route-content="runtime"] .settings-composite-section > * {
+  min-width: 0;
+}
+
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  padding: 16px;
+}
+
+.management-route-content .route-field-row,
+.management-route-content .codex-accounts-runtime-detail,
+.management-route-content .environment-item,
+.management-route-content .codex-account-metric,
+.management-route-content .codex-accounts-summary-card,
+.management-route-content .agent-builder-managed-item {
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea,
+.runtime-composer-panel,
+.runtime-composer-attachment,
+.runtime-composer-command-option {
+  border-radius: 8px;
+}
+
+@media (max-width: 1100px) {
+  .primary-nav {
+    background: #fff;
+  }
+
+  .runtime-workspace-mobile-header {
+    border-bottom-color: var(--shell-line);
+    background: #ffffff;
+  }
+
+  .runtime-workspace-mobile-action,
+  .runtime-workspace-mobile-title {
+    min-height: 44px;
+    border-radius: 8px;
+  }
+
+  .management-route-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .route-view[data-route-family="management"] {
+    --route-padding-x: 12px;
+  }
+
+  .management-route-nav {
+    padding: 8px;
+  }
+
+  .management-route-nav-items {
+    grid-template-columns: repeat(5, minmax(58px, 1fr));
+    gap: 4px;
+  }
+
+  .management-route-tab {
+    min-height: 58px;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 4px;
+    padding: 6px 4px;
+    text-align: center;
+  }
+
+  .management-route-tab-label {
+    font-size: 11px;
+  }
+
+  .runtime-workspace-head {
+    padding-top: 12px;
+    padding-bottom: 10px;
+  }
+
+  .runtime-workspace-head .runtime-workspace-subcopy {
+    display: none;
+  }
+
+  .runtime-composer-shell {
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .runtime-composer-form {
+    border-radius: 8px;
+  }
+}
+
+/* Codex-style terminal markdown rendering */
+[data-runtime-view="terminal"] .terminal-final-output,
+[data-runtime-view="terminal"] .terminal-final-text,
+[data-runtime-view="terminal"] .terminal-final-rendered,
+[data-runtime-view="terminal"] .assistant-message-shell .message-markdown-shell,
+[data-runtime-view="terminal"] .runtime-message-assistant .runtime-message-bubble {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #111827;
+  box-shadow: none;
+}
+
+[data-runtime-view="terminal"] .terminal-final-output {
+  width: 100%;
+  max-width: min(100%, 900px);
+  justify-self: start;
+}
+
+[data-runtime-view="terminal"] .terminal-final-text {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+}
+
+[data-runtime-view="terminal"] .terminal-final-rendered {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1.68;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered,
+[data-runtime-view="terminal"] .message-markdown-rendered * {
+  color: inherit;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered > :first-child {
+  margin-top: 0;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered > :last-child {
+  margin-bottom: 0;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered p {
+  margin: 0 0 0.82em;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered h1,
+[data-runtime-view="terminal"] .message-markdown-rendered h2,
+[data-runtime-view="terminal"] .message-markdown-rendered h3,
+[data-runtime-view="terminal"] .message-markdown-rendered h4,
+[data-runtime-view="terminal"] .message-markdown-rendered h5,
+[data-runtime-view="terminal"] .message-markdown-rendered h6 {
+  margin: 1.1em 0 0.45em;
+  color: #0f172a;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered ul,
+[data-runtime-view="terminal"] .message-markdown-rendered ol {
+  margin: 0.45em 0 0.9em;
+  padding-left: 1.35em;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered li {
+  margin: 0.2em 0;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered blockquote {
+  margin: 0.9em 0;
+  padding: 0 0 0 12px;
+  border-left: 3px solid rgba(15, 23, 42, 0.18);
+  color: #475467;
+}
+
+[data-runtime-view="terminal"] .chat-md-inline-code {
+  display: inline;
+  padding: 0.08em 0.32em;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(175, 184, 193, 0.22);
+  color: #24292f;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.92em;
+  line-height: inherit;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+[data-runtime-view="terminal"] .chat-md-pre,
+[data-runtime-view="terminal"] .terminal-final-rendered .chat-md-pre {
+  max-width: 100%;
+  margin: 0.9em 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: #f6f8fa;
+  color: #24292f;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  box-shadow: none;
+}
+
+[data-runtime-view="terminal"] .chat-md-pre code {
+  color: inherit;
+  font: inherit;
+  white-space: pre;
+}
+
+[data-runtime-view="terminal"] .message-markdown-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+[data-runtime-view="terminal"] .message-markdown-copy {
+  background: #ffffff;
+  color: #475467;
+}
+
+@media (max-width: 760px) {
+  [data-runtime-view="terminal"] .terminal-final-output {
+    max-width: 100%;
+  }
+
+  [data-runtime-view="terminal"] .terminal-final-rendered {
+    font-size: 15px;
+    line-height: 1.64;
+  }
+
+  [data-runtime-view="terminal"] .chat-md-inline-code {
+    padding: 0.06em 0.25em;
+  }
+}
+
+@media (max-width: 760px) {
+  .runtime-thinking-shell .terminal-process-body:not([hidden]) {
+    max-height: none;
+    overflow: visible;
+  }
+
+  [data-runtime-view="terminal"] .runtime-thinking-shell .terminal-process-body:not([hidden]) {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* UI UX Pro Max full page states layer */
+.route-view[data-route-family="management"] .route-body {
+  display: block;
+  justify-items: stretch;
+}
+
+.management-route-body {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  align-items: start;
+  grid-template-columns: minmax(188px, 220px) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.management-route-nav {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.management-route-nav-group {
+  min-width: 0;
+  margin: 0 0 12px;
+}
+
+.management-route-nav-group:last-child {
+  margin-bottom: 0;
+}
+
+.management-route-nav-group h4 {
+  margin: 0;
+  padding: 8px 8px 6px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.management-route-nav-items {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.management-route-tab {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  padding: 6px 8px;
+  border-color: transparent;
+  background: transparent;
+  color: #475467;
+}
+
+.management-route-tab:hover {
+  border-color: rgba(15, 23, 42, 0.06);
+  background: #f2f4f7;
+  color: #101828;
+}
+
+.management-route-tab.is-active {
+  border-color: rgba(15, 159, 143, 0.16);
+  background: rgba(15, 159, 143, 0.1);
+  color: #087f73;
+  box-shadow: inset 3px 0 0 #0f9f8f;
+}
+
+.management-route-tab-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.management-route-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-route-content {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  align-items: start;
+  justify-items: stretch;
+}
+
+.management-route-content > * {
+  min-width: 0;
+  width: 100%;
+  max-width: 1120px;
+}
+
+.management-route-content > .settings-composite-section,
+.management-route-content > .route-master-detail,
+.management-route-content > .control-task-layout,
+.management-route-content > .task-history-view,
+.management-route-content > .control-task-view,
+.management-route-content > .session-history-view,
+.management-route-content > .memory-view,
+.management-route-content > .agent-studio-view,
+.management-route-content > .codex-accounts-view,
+.management-route-content > .codex-accounts-workspace,
+.management-route-content > .environment-view,
+.management-route-content > .control-route-grid {
+  max-width: 1120px;
+}
+
+.management-route-content[data-management-route-content="runtime"] .settings-composite-section {
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 14px;
+}
+
+.settings-composite-section[data-settings-section="workspaces"] {
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+}
+
+.control-route-grid {
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  align-items: stretch;
+  gap: 12px;
+}
+
+.control-route-grid .route-card {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel,
+.management-route-content .codex-accounts-overview,
+.management-route-content .codex-accounts-main,
+.management-route-content .agent-route-card,
+.management-route-content .codex-account-card,
+.management-route-content .session-route-card,
+.memory-panel,
+.task-detail-card {
+  border-radius: 8px;
+  border-color: rgba(15, 23, 42, 0.09);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 12px 28px -24px rgba(15, 23, 42, 0.18);
+}
+
+.management-route-content .route-card-head,
+.management-route-content .agent-route-pane-head,
+.management-route-content .control-task-drawer-head,
+.management-route-content .task-detail-head,
+.management-route-content .codex-accounts-section-head,
+.management-route-content .environment-toolbar-head {
+  gap: 10px;
+  align-items: start;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.management-route-content .route-field-row,
+.management-route-content .codex-accounts-runtime-detail,
+.management-route-content .environment-item,
+.management-route-content .codex-account-metric,
+.management-route-content .codex-accounts-summary-card,
+.management-route-content .agent-builder-managed-item,
+.management-route-content .task-detail-list-item {
+  min-width: 0;
+  border-radius: 8px;
+  border-color: rgba(15, 23, 42, 0.07);
+  background: #f8fafc;
+}
+
+.management-route-content .route-field-row {
+  grid-template-columns: minmax(82px, 112px) minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.management-route-content .route-field-row > span:first-child,
+.management-route-content .codex-accounts-field > span,
+.management-route-content .agent-builder-field > span,
+.management-route-content .agent-builder-wide > span,
+.management-route-content .task-filter-form label span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.management-route-content .route-field-value,
+.management-route-content .route-field-value-wrap,
+.management-route-content .route-field-value code,
+.management-route-content .task-summary-row-id,
+.management-route-content .task-summary-row-subline,
+.management-route-content .session-route-card,
+.management-route-content .memory-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.management-route-content .route-data-table-wrap {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.management-route-content .route-data-table {
+  min-width: 640px;
+}
+
+.management-route-content .route-data-table th,
+.management-route-content .route-data-table td {
+  padding: 9px 11px;
+  vertical-align: top;
+}
+
+.management-route-content .page-filter-form,
+.management-route-content .task-filter-form,
+.management-route-content .agent-builder-form,
+.management-route-content .codex-accounts-form,
+.management-route-content .codex-accounts-runtime-form {
+  border-radius: 8px;
+  border-color: rgba(15, 23, 42, 0.09);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea {
+  min-height: 38px;
+  border-radius: 8px;
+  border-color: rgba(15, 23, 42, 0.13);
+  background: #fff;
+}
+
+.management-route-content button,
+.management-route-content .route-primary-button,
+.management-route-content .task-filter-apply,
+.management-route-content .task-filter-reset,
+.management-route-content .task-summary-next {
+  min-height: 36px;
+  border-radius: 8px;
+}
+
+.memory-view {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.memory-tab {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.memory-tab.active {
+  border-color: rgba(15, 159, 143, 0.16);
+  background: rgba(15, 159, 143, 0.1);
+  color: #087f73;
+}
+
+.memory-panel {
+  min-width: 0;
+  padding: 16px;
+}
+
+.memory-summary {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 159, 143, 0.12);
+  border-radius: 8px;
+  background: rgba(15, 159, 143, 0.08);
+}
+
+.memory-summary span {
+  color: #087f73;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.memory-summary strong {
+  color: #101828;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.memory-spec-sections,
+.memory-daily-list,
+.task-detail-logs,
+.task-detail-artifacts {
+  display: grid;
+  gap: 10px;
+}
+
+.memory-spec-section,
+.task-detail-section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.task-summary-list {
+  gap: 8px;
+}
+
+.task-summary-row {
+  min-height: 64px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 12px;
+}
+
+.task-summary-row.active,
+.management-route-content .route-data-table tbody tr.is-active {
+  border-color: rgba(15, 159, 143, 0.18);
+  background: rgba(15, 159, 143, 0.08);
+}
+
+.task-summary-status,
+.status-badge,
+.agent-route-state,
+.codex-account-state {
+  border-radius: 999px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.codex-accounts-view,
+.codex-accounts-workspace,
+.codex-accounts-runtime-panel,
+.codex-accounts-overview-shell,
+.agent-studio-view,
+.control-task-layout,
+.task-history-view,
+.session-history-view,
+.environment-view {
+  min-width: 0;
+}
+
+.codex-accounts-summary-grid,
+.codex-accounts-runtime-grid,
+.codex-accounts-runtime-controls,
+.codex-account-card-metrics,
+.agent-builder-managed,
+.agent-builder-top-grid,
+.agent-builder-options {
+  gap: 10px;
+}
+
+.codex-accounts-runtime-selection,
+.control-task-terminal-screen,
+.control-task-result-output,
+.task-detail-meta,
+.task-detail-meta-fold-body {
+  border-radius: 8px;
+}
+
+.runtime-composer-body {
+  position: relative;
+}
+
+.runtime-composer-input-assist:not(:empty) {
+  min-height: 0;
+}
+
+.runtime-composer-command-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 42;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  max-height: min(320px, 42vh);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 22px 44px -32px rgba(15, 23, 42, 0.32);
+}
+
+.runtime-composer-command-option {
+  width: 100%;
+  min-height: 40px;
+  grid-template-columns: minmax(86px, auto) minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 10px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.runtime-composer-command-option:hover,
+.runtime-composer-command-option:focus-visible {
+  border-color: rgba(15, 159, 143, 0.16);
+  background: rgba(15, 159, 143, 0.08);
+  color: #087f73;
+}
+
+.runtime-composer-command-option strong {
+  color: #101828;
+  font-size: 12px;
+}
+
+.runtime-composer-command-option span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.runtime-composer-panel[data-runtime-config-surface="terminal"] {
+  width: min(100%, 880px);
+  max-height: min(420px, 46vh);
+  justify-self: center;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-color: rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 24px 48px -34px rgba(15, 23, 42, 0.32);
+}
+
+.runtime-composer-config-panel {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.runtime-composer-config-panel .runtime-composer-panel-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.terminal-skill-section {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.terminal-skill-section > strong {
+  color: #101828;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.terminal-skill-section .conversation-check-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 6px;
+}
+
+.terminal-skill-section .conversation-check-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-height: 58px;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.terminal-skill-section .conversation-check-item:has(input:checked) {
+  border-color: rgba(15, 159, 143, 0.22);
+  background: rgba(15, 159, 143, 0.08);
+}
+
+.terminal-skill-section .conversation-check-item input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: #0f9f8f;
+}
+
+.terminal-skill-section .conversation-check-item span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.terminal-skill-section .conversation-check-item strong {
+  min-width: 0;
+  color: #101828;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.terminal-skill-description {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+[data-runtime-view="terminal"] .runtime-composer-meta:not(.is-empty) {
+  max-width: min(42vw, 420px);
+  padding: 4px 8px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: #f8fafc;
+  overflow: hidden;
+  color: #667085;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-runtime-view="terminal"] .terminal-log-tree {
+  gap: 12px;
+}
+
+[data-runtime-view="terminal"] .terminal-final-rendered,
+[data-runtime-view="terminal"] .terminal-final-output,
+[data-runtime-view="terminal"] .assistant-message-shell .message-markdown-shell,
+[data-runtime-view="terminal"] .runtime-message-assistant .runtime-message-bubble {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #111315;
+}
+
+@media (max-width: 1100px) {
+  .management-route-body {
+    max-width: none;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .management-route-nav {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    max-height: none;
+  }
+
+  .management-route-content > *,
+  .management-route-content > .settings-composite-section,
+  .management-route-content > .route-master-detail,
+  .management-route-content > .control-task-layout,
+  .management-route-content > .task-history-view,
+  .management-route-content > .control-task-view,
+  .management-route-content > .session-history-view,
+  .management-route-content > .memory-view,
+  .management-route-content > .agent-studio-view,
+  .management-route-content > .codex-accounts-view,
+  .management-route-content > .codex-accounts-workspace,
+  .management-route-content > .environment-view,
+  .management-route-content > .control-route-grid {
+    max-width: none;
+  }
+
+  .management-route-content[data-management-route-content="runtime"] .settings-composite-section,
+  .settings-composite-section[data-settings-section="workspaces"],
+  .control-task-layout,
+  .agent-studio-view,
+  .codex-accounts-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .management-route-body {
+    gap: 10px;
+  }
+
+  .management-route-nav {
+    margin-inline: -4px;
+    padding: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .management-route-nav-group {
+    margin-bottom: 8px;
+  }
+
+  .management-route-nav-items {
+    display: flex;
+    grid-template-columns: none;
+    gap: 5px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+  }
+
+  .management-route-tab {
+    width: auto;
+    min-width: 82px;
+    max-width: 112px;
+    min-height: 48px;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    padding: 7px 8px;
+    box-shadow: none;
+    text-align: center;
+  }
+
+  .management-route-tab.is-active {
+    box-shadow: inset 0 -3px 0 #0f9f8f;
+  }
+
+  .management-route-tab-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .management-route-tab-label {
+    width: 100%;
+    font-size: 10.5px;
+  }
+
+  .management-route-content {
+    gap: 10px;
+  }
+
+  .management-route-content .route-card,
+  .management-route-content .route-surface,
+  .management-route-content .route-data-table-wrap,
+  .management-route-content .route-detail-panel,
+  .management-route-content .control-task-drawer-panel,
+  .management-route-content .task-summary-row,
+  .management-route-content .task-detail-placeholder,
+  .management-route-content .environment-toolbar,
+  .management-route-content .environment-module,
+  .management-route-content .environment-summary,
+  .management-route-content .environment-audits,
+  .management-route-content .codex-accounts-panel,
+  .management-route-content .codex-accounts-overview,
+  .management-route-content .codex-accounts-main,
+  .memory-panel,
+  .task-detail-card {
+    padding: 14px;
+  }
+
+  .control-route-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .management-route-content .route-field-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .management-route-content .route-data-table {
+    min-width: 560px;
+  }
+
+  .memory-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .memory-tab {
+    flex: 0 0 auto;
+    min-width: 88px;
+  }
+
+  .task-summary-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .runtime-composer-command-list {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(env(safe-area-inset-bottom) + var(--keyboard-offset, 0px) + 128px);
+    max-height: min(320px, 38vh);
+  }
+
+  .runtime-composer-panel[data-runtime-config-surface="terminal"] {
+    left: 12px;
+    right: 12px;
+    bottom: calc(env(safe-area-inset-bottom) + var(--keyboard-offset, 0px) + 120px);
+    width: auto;
+    max-height: min(52vh, calc(100dvh - 176px));
+  }
+
+  .terminal-skill-section .conversation-check-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-runtime-view="terminal"] .runtime-composer-meta:not(.is-empty) {
+    max-width: 36vw;
+  }
+
+  .runtime-thinking-shell .terminal-process-body:not([hidden]) {
+    max-height: none;
+    overflow: visible;
+  }
+
+  [data-runtime-view="terminal"] .runtime-thinking-shell .terminal-process-body:not([hidden]) {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 body {
   font-family: "IBM Plex Sans", "Noto Sans SC", "Segoe UI", sans-serif;
   color: var(--shell-ink);
@@ -6369,6 +7641,14 @@ body::after {
   gap: 14px;
 }
 
+@media (min-width: 761px) {
+  .primary-nav.has-session-rail .menu {
+    flex: 0 0 clamp(260px, 34vh, 312px);
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
 .menu-group {
   gap: 4px;
   padding: 0;
@@ -7417,4 +8697,539 @@ body::after {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(250, 252, 255, 0.94) 48%, rgba(250, 252, 255, 0.98) 100%);
   }
 
+}
+
+/* UI UX Pro Max final lightweight workbench layer */
+:root {
+  --shell-bg: #f6f7f9;
+  --shell-bg-deep: #eef2f5;
+  --shell-surface: #ffffff;
+  --shell-surface-strong: #ffffff;
+  --shell-line: rgba(15, 23, 42, 0.09);
+  --shell-line-strong: rgba(15, 23, 42, 0.16);
+  --shell-ink: #111827;
+  --shell-muted: #667085;
+  --shell-muted-strong: #344054;
+  --shell-accent: #0f9f8f;
+  --shell-accent-strong: #087f73;
+  --shell-shadow: 0 18px 46px -38px rgba(15, 23, 42, 0.24);
+  --shell-shadow-soft: 0 12px 28px -24px rgba(15, 23, 42, 0.18);
+  --shell-radius-xl: 8px;
+  --shell-radius-lg: 8px;
+  --shell-radius-md: 8px;
+  --shell-radius-sm: 6px;
+  --bg-nav: #f8fafb;
+  --bg-session: #ffffff;
+  --bg-page: #f6f7f9;
+  --line-soft: rgba(15, 23, 42, 0.08);
+  --line-mid: rgba(15, 23, 42, 0.13);
+  --ink-strong: #111827;
+  --ink-body: #344054;
+  --ink-muted: #667085;
+  --accent: #0f9f8f;
+}
+
+body {
+  background: #f6f7f9;
+  background-image: linear-gradient(180deg, #ffffff 0%, #f6f7f9 42%, #eef2f5 100%);
+  color: var(--shell-ink);
+}
+
+.primary-nav,
+.chat-pane,
+.runtime-workspace,
+.runtime-workspace-body,
+.runtime-workspace-session-pane-shell,
+.management-route-nav,
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  border-color: var(--shell-line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.primary-nav {
+  background: #f8fafb;
+  border-right: 1px solid var(--shell-line);
+}
+
+.brand-copy strong {
+  color: #101828;
+  letter-spacing: 0;
+}
+
+.menu-item {
+  border-radius: 8px;
+  color: #475467;
+}
+
+.menu-item:hover {
+  background: #eef2f5;
+  color: #101828;
+}
+
+.menu-item.active {
+  background: rgba(15, 159, 143, 0.1);
+  color: var(--shell-accent-strong);
+}
+
+.nav-session-rail-action,
+.runtime-workspace-session-pane-action,
+.runtime-workspace-button,
+.management-route-tab,
+.management-route-content button,
+.management-route-content a,
+.runtime-composer-utility,
+.runtime-composer-upload,
+.runtime-composer-submit,
+.nav-locale-button,
+.nav-collapse {
+  border-radius: 8px;
+}
+
+.nav-session-rail .runtime-session-card,
+.runtime-session-card {
+  border-radius: 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.nav-session-rail .runtime-session-card:hover,
+.runtime-session-card:hover {
+  background: #f8fafc;
+}
+
+.nav-session-rail .runtime-session-card.is-active,
+.runtime-session-card.is-active {
+  border-color: rgba(15, 159, 143, 0.14);
+  background: rgba(15, 159, 143, 0.08);
+}
+
+.nav-session-rail .runtime-session-card::before,
+.runtime-session-card::before {
+  background: var(--shell-accent);
+}
+
+.runtime-workspace-head {
+  border-bottom-color: var(--shell-line);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.runtime-workspace-copy h4,
+.route-view h3,
+.management-route-content .route-card-title-copy h4,
+.management-route-content .agent-route-pane-copy h4,
+.management-route-content .control-task-drawer-head h4,
+.management-route-content .codex-accounts-section-head h4,
+.management-route-content .environment-toolbar-copy h3,
+.management-route-content .route-detail-panel-head h4 {
+  color: #101828;
+  letter-spacing: 0;
+}
+
+.runtime-workspace-status-dot,
+.runtime-session-signal.is-ready,
+.runtime-session-signal.is-busy,
+.workspace-header-status.is-ready .runtime-session-signal {
+  background: var(--shell-accent);
+}
+
+.runtime-composer-shell {
+  background: linear-gradient(180deg, rgba(246, 247, 249, 0) 0%, rgba(246, 247, 249, 0.94) 46%, #f6f7f9 100%);
+}
+
+.runtime-composer-form {
+  width: min(100%, 880px);
+  border-radius: 8px;
+  border-color: rgba(15, 23, 42, 0.13);
+  box-shadow: 0 18px 44px -34px rgba(15, 23, 42, 0.26);
+}
+
+.runtime-composer-input {
+  min-height: 72px;
+}
+
+.runtime-composer-submit {
+  border-color: #101828;
+  background: #101828;
+}
+
+.runtime-composer-submit:hover:not(:disabled) {
+  border-color: #1d2939;
+  background: #1d2939;
+}
+
+[data-runtime-view="terminal"] .runtime-workspace-screen {
+  background: #f5f7f8;
+}
+
+[data-runtime-view="terminal"] .runtime-timeline {
+  max-width: min(100%, 1120px);
+  margin-inline: auto;
+}
+
+[data-runtime-view="terminal"] .terminal-final-rendered,
+[data-runtime-view="terminal"] .terminal-final-output,
+[data-runtime-view="terminal"] .assistant-message-shell .message-markdown-shell,
+[data-runtime-view="terminal"] .runtime-message-assistant .runtime-message-bubble {
+  border-radius: 8px;
+  background: #111315;
+  color: #e5e7eb;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered,
+[data-runtime-view="terminal"] .message-markdown-rendered * {
+  color: inherit;
+}
+
+[data-runtime-view="terminal"] .chat-md-pre,
+[data-runtime-view="terminal"] pre {
+  border-radius: 8px;
+  background: #0b0d0f;
+  color: #e5e7eb;
+}
+
+[data-runtime-view="terminal"] .runtime-message-user .runtime-message-bubble,
+[data-runtime-view="terminal"] .user-message-shell .terminal-log-main {
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d2939;
+}
+
+.route-body[data-route="settings"],
+.route-view[data-route-family="management"] .route-body,
+.management-route-body,
+.management-route-content {
+  width: 100%;
+}
+
+.route-view[data-route-family="management"] {
+  display: block;
+  align-items: stretch;
+}
+
+.route-view[data-route-family="management"] .route-head,
+.route-view[data-route-family="management"] .route-body {
+  width: 100%;
+  max-width: none;
+}
+
+.management-route-body {
+  grid-template-columns: minmax(176px, 216px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.management-route-nav {
+  padding: 10px;
+}
+
+.management-route-tab {
+  min-height: 42px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  padding: 6px 8px;
+}
+
+.management-route-tab-shortcut {
+  display: none;
+}
+
+.management-route-tab.is-active {
+  border-color: rgba(15, 159, 143, 0.16);
+  background: rgba(15, 159, 143, 0.1);
+  color: var(--shell-accent-strong);
+  box-shadow: inset 3px 0 0 var(--shell-accent);
+}
+
+.management-route-tab-icon {
+  border-radius: 8px;
+  background: #f2f4f7;
+}
+
+.management-route-tab.is-active .management-route-tab-icon {
+  background: rgba(15, 159, 143, 0.12);
+}
+
+.management-route-content {
+  width: 100%;
+  gap: 14px;
+}
+
+.settings-composite-section {
+  display: grid;
+  gap: 14px;
+}
+
+.management-route-content > .settings-composite-section,
+.management-route-content > .route-master-detail,
+.management-route-content > .control-task-layout,
+.management-route-content > .task-history-view,
+.management-route-content > .codex-accounts-workspace,
+.management-route-content > .environment-view {
+  width: min(100%, 1080px);
+}
+
+.management-route-content .route-empty-panel {
+  width: min(100%, 620px);
+}
+
+.management-route-content[data-management-route-content="runtime"] .settings-composite-section {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  align-items: start;
+}
+
+.management-route-content[data-management-route-content="runtime"] .settings-composite-section > * {
+  min-width: 0;
+}
+
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  padding: 16px;
+}
+
+.management-route-content .route-field-row,
+.management-route-content .codex-accounts-runtime-detail,
+.management-route-content .environment-item,
+.management-route-content .codex-account-metric,
+.management-route-content .codex-accounts-summary-card,
+.management-route-content .agent-builder-managed-item {
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea,
+.runtime-composer-panel,
+.runtime-composer-attachment,
+.runtime-composer-command-option {
+  border-radius: 8px;
+}
+
+@media (max-width: 1100px) {
+  .primary-nav {
+    background: #fff;
+  }
+
+  .runtime-workspace-mobile-header {
+    border-bottom-color: var(--shell-line);
+    background: #ffffff;
+  }
+
+  .runtime-workspace-mobile-action,
+  .runtime-workspace-mobile-title {
+    min-height: 44px;
+    border-radius: 8px;
+  }
+
+  .management-route-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .route-view[data-route-family="management"] {
+    --route-padding-x: 12px;
+  }
+
+  .management-route-nav {
+    padding: 8px;
+  }
+
+  .management-route-nav-items {
+    grid-template-columns: repeat(5, minmax(58px, 1fr));
+    gap: 4px;
+  }
+
+  .management-route-tab {
+    min-height: 58px;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 4px;
+    padding: 6px 4px;
+    text-align: center;
+  }
+
+  .management-route-tab-label {
+    font-size: 11px;
+  }
+
+  .runtime-workspace-head {
+    padding-top: 12px;
+    padding-bottom: 10px;
+  }
+
+  .runtime-workspace-head .runtime-workspace-subcopy {
+    display: none;
+  }
+
+  .runtime-composer-shell {
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .runtime-composer-form {
+    border-radius: 8px;
+  }
+}
+/* Codex-style terminal markdown final override */
+[data-runtime-view="terminal"] .terminal-final-output,
+[data-runtime-view="terminal"] .terminal-final-text,
+[data-runtime-view="terminal"] .terminal-final-rendered,
+[data-runtime-view="terminal"] .assistant-message-shell .message-markdown-shell,
+[data-runtime-view="terminal"] .runtime-message-assistant .runtime-message-bubble {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #111827;
+  box-shadow: none;
+}
+
+[data-runtime-view="terminal"] .terminal-final-output {
+  width: 100%;
+  max-width: min(100%, 900px);
+  justify-self: start;
+}
+
+[data-runtime-view="terminal"] .terminal-final-text {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+}
+
+[data-runtime-view="terminal"] .terminal-final-rendered {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1.68;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered,
+[data-runtime-view="terminal"] .message-markdown-rendered * {
+  color: inherit;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered > :first-child {
+  margin-top: 0;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered > :last-child {
+  margin-bottom: 0;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered p {
+  margin: 0 0 0.82em;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered h1,
+[data-runtime-view="terminal"] .message-markdown-rendered h2,
+[data-runtime-view="terminal"] .message-markdown-rendered h3,
+[data-runtime-view="terminal"] .message-markdown-rendered h4,
+[data-runtime-view="terminal"] .message-markdown-rendered h5,
+[data-runtime-view="terminal"] .message-markdown-rendered h6 {
+  margin: 1.1em 0 0.45em;
+  color: #0f172a;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered ul,
+[data-runtime-view="terminal"] .message-markdown-rendered ol {
+  margin: 0.45em 0 0.9em;
+  padding-left: 1.35em;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered li {
+  margin: 0.2em 0;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered blockquote {
+  margin: 0.9em 0;
+  padding: 0 0 0 12px;
+  border-left: 3px solid rgba(15, 23, 42, 0.18);
+  color: #475467;
+}
+
+[data-runtime-view="terminal"] .chat-md-inline-code {
+  display: inline;
+  padding: 0.08em 0.32em;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(175, 184, 193, 0.22);
+  color: #24292f;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.92em;
+  line-height: inherit;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+[data-runtime-view="terminal"] .chat-md-pre,
+[data-runtime-view="terminal"] .terminal-final-rendered .chat-md-pre {
+  max-width: 100%;
+  margin: 0.9em 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: #f6f8fa;
+  color: #24292f;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  box-shadow: none;
+}
+
+[data-runtime-view="terminal"] .chat-md-pre code {
+  color: inherit;
+  font: inherit;
+  white-space: pre;
+}
+
+[data-runtime-view="terminal"] .message-markdown-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+[data-runtime-view="terminal"] .message-markdown-copy {
+  background: #ffffff;
+  color: #475467;
+}
+
+@media (max-width: 760px) {
+  [data-runtime-view="terminal"] .terminal-final-output {
+    max-width: 100%;
+  }
+
+  [data-runtime-view="terminal"] .terminal-final-rendered {
+    font-size: 15px;
+    line-height: 1.64;
+  }
+
+  [data-runtime-view="terminal"] .chat-md-inline-code {
+    padding: 0.06em 0.25em;
+  }
 }

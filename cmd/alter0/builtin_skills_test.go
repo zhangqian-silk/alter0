@@ -38,6 +38,7 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	}
 
 	expectedFileBackedSkills := map[string]string{
+		"memory-maintenance":      "docs/skills/memory-maintenance/SKILL.md",
 		"deploy-test-service":     "docs/skills/deploy-test-service/SKILL.md",
 		"frontend-design":         "docs/skills/frontend-design/SKILL.md",
 		"artifact-preview":        "docs/skills/artifact-preview/SKILL.md",
@@ -60,6 +61,15 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 		if got := skill.Metadata[builtinSkillFilePathKey]; got != expectedPath {
 			t.Fatalf("%s skill file path = %q, want %s", skillID, got, expectedPath)
 		}
+	}
+
+	memoryMaintenance, ok := service.ResolveSkill("memory-maintenance")
+	if !ok {
+		t.Fatalf("expected memory-maintenance skill exists")
+	}
+	memoryMaintenanceGuide := memoryMaintenance.Metadata[builtinSkillGuideKey]
+	if !strings.Contains(memoryMaintenanceGuide, "daily memory") || !strings.Contains(memoryMaintenanceGuide, "long-term memory") {
+		t.Fatalf("expected memory-maintenance guide covers memory consolidation, got %q", memoryMaintenanceGuide)
 	}
 
 	deploySkill, ok := service.ResolveSkill("deploy-test-service")

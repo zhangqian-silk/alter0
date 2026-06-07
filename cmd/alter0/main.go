@@ -262,9 +262,14 @@ func main() {
 
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)
 	codexProcessor := execinfra.NewCodexCLIProcessorWithCommand(resolvedCodexCommand)
-	processor := execinfra.NewHybridNLProcessorWithCatalog(codexProcessor, llmService, agentCatalog, logger)
-	sessionProfileExtractor := execinfra.NewSessionProfileCodexExtractor(codexProcessor)
-	executor := execapp.NewServiceWithSkillsAndSessionProfileExtractor(processor, control, sessionProfileExtractor, logger)
+	claudeProcessor := execinfra.NewClaudeCodeProcessor()
+	processor := execinfra.NewRuntimeResolverProcessor(execinfra.RuntimeResolverOptions{
+		ProviderSource: llmService,
+		Claude:         claudeProcessor,
+		Codex:          codexProcessor,
+		Logger:         logger,
+	})
+	executor := execapp.NewServiceWithSkills(processor, control, logger)
 	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
 	taskSummaryRuntime := tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
 		DailyDir:    resolvedDailyMemoryDir,

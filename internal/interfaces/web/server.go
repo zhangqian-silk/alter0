@@ -83,6 +83,7 @@ var workbenchPagePaths = map[string]struct{}{
 	"/agent-runtime": {},
 	"/terminal":      {},
 	"/management":    {},
+	"/settings":      {},
 }
 
 type Orchestrator interface {
@@ -929,28 +930,33 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
   <style>
     :root{color-scheme:light}
     *{box-sizing:border-box}
-    html{height:100%;background:#f4f7fb}
-    body{margin:0;min-height:100vh;min-height:100dvh;overflow:hidden;overscroll-behavior:none;background:#f4f7fb;background-image:linear-gradient(180deg,rgba(255,255,255,.84) 0%,rgba(244,247,251,.94) 52%,rgba(232,238,245,1) 100%),linear-gradient(rgba(148,163,184,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.05) 1px,transparent 1px);background-size:auto,32px 32px,32px 32px;color:#0f172a;font:15px/1.6 "IBM Plex Sans","Segoe UI",sans-serif}
+    html{height:100%;background:#f6f7f9}
+    body{margin:0;min-height:100vh;min-height:100dvh;overflow:hidden;overscroll-behavior:none;background:#f6f7f9;background-image:linear-gradient(180deg,#fff 0%,#f6f7f9 48%,#eef2f5 100%);color:#101828;font:15px/1.6 "IBM Plex Sans","Segoe UI",sans-serif}
     .wrap{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:max(18px,env(safe-area-inset-top)) 24px;padding-bottom:max(18px,env(safe-area-inset-bottom))}
-    .card{width:min(100%,420px);max-height:100%;display:grid;gap:18px;padding:24px;border:1px solid rgba(15,23,42,.08);border-radius:24px;background:rgba(255,255,255,.96);box-shadow:0 18px 42px -34px rgba(15,23,42,.18);overflow:auto}
-    .eyebrow{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;border:1px solid rgba(37,99,235,.12);background:rgba(239,246,255,.92);color:#1d4ed8;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+    .card{width:min(100%,420px);max-height:100%;display:grid;gap:18px;padding:28px;border:1px solid rgba(15,23,42,.1);border-radius:8px;background:#fff;box-shadow:0 20px 46px -38px rgba(15,23,42,.28);overflow:auto}
+    .eyebrow{display:inline-flex;align-items:center;min-height:26px;width:max-content;padding:0 9px;border-radius:8px;border:1px solid rgba(15,159,143,.18);background:rgba(15,159,143,.08);color:#087f73;font-size:12px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
     .copy{display:grid;gap:8px}
-    h1{margin:0;font:700 28px/1.15 "Sora","IBM Plex Sans","Segoe UI",sans-serif;letter-spacing:-.03em}
-    p{margin:0;color:#475569}
-    .lede{color:#334155}
+    h1{margin:0;font:700 30px/1.12 "Sora","IBM Plex Sans","Segoe UI",sans-serif;letter-spacing:0}
+    p{margin:0;color:#667085}
+    .lede{color:#344054}
     .field{display:grid;gap:8px}
-    label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
-    input{height:44px;border:1px solid rgba(15,23,42,.1);border-radius:14px;padding:0 14px;background:rgba(255,255,255,.98);color:#0f172a;font:inherit}
-    input:focus{outline:2px solid rgba(96,165,250,.42);outline-offset:2px;border-color:rgba(37,99,235,.2)}
-    button{height:44px;border:1px solid #1d4ed8;background:#1d4ed8;color:#fff;border-radius:14px;font:inherit;font-weight:700;cursor:pointer}
-    button:hover{background:#1e40af;border-color:#1e40af}
-    .alert{margin:0;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:14px;padding:12px 14px}
-    .meta{font-size:13px;color:#64748b}
+    label{font-size:12px;font-weight:700;letter-spacing:.02em;color:#667085}
+    .password-control{position:relative}
+    input{width:100%;height:46px;border:1px solid rgba(15,23,42,.12);border-radius:8px;padding:0 46px 0 13px;background:#fff;color:#101828;font:inherit}
+    input:focus{outline:2px solid rgba(15,159,143,.32);outline-offset:2px;border-color:rgba(15,159,143,.34)}
+    .password-toggle{position:absolute;top:5px;right:5px;width:36px;height:36px;border:0;border-radius:8px;background:transparent;color:#667085;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+    .password-toggle:hover{background:#f2f4f7;color:#101828}
+    button[type=submit]{height:46px;border:1px solid #101828;background:#101828;color:#fff;border-radius:8px;font:inherit;font-weight:700;cursor:pointer}
+    button[type=submit]:hover{background:#1d2939;border-color:#1d2939}
+    .alert{min-height:44px;margin:0;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:8px;padding:10px 12px}
+    .status{display:flex;align-items:center;gap:8px;min-height:28px;color:#087f73;font-size:13px;font-weight:600}
+    .status-dot{width:8px;height:8px;border-radius:999px;background:#0f9f8f;box-shadow:0 0 0 3px rgba(15,159,143,.12)}
+    .meta{padding-top:14px;border-top:1px solid rgba(15,23,42,.08);font-size:13px;color:#667085}
     @media (max-width: 640px){
       body{font-size:14px}
       .wrap{padding:max(14px,env(safe-area-inset-top)) 14px;padding-bottom:max(14px,env(safe-area-inset-bottom))}
-      .card{gap:16px;padding:20px;border-radius:22px}
-      h1{font-size:24px}
+      .card{gap:16px;padding:20px;border-radius:8px}
+      h1{font-size:26px}
       p{line-height:1.55}
     }
   </style>
@@ -962,18 +968,35 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
       <div class="copy">
         <h1>Alter0 Console Login</h1>
         <p class="lede">Start in a secure Alter0 workspace.</p>
-        <p>Enter the access password to continue into chat, terminal, and control routes from one workbench.</p>
+        <p>Enter the access password to continue into chat, terminal, and settings from one private workbench.</p>
       </div>
       ` + alert + `
       <input type="hidden" name="next" value="` + html.EscapeString(nextPath) + `">
       <div class="field">
         <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <div class="password-control">
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>Show</button>
+        </div>
       </div>
+      <p class="status"><span class="status-dot" aria-hidden="true"></span>Ready.</p>
       <button type="submit">Sign in</button>
       <p class="meta">After sign-in, Alter0 returns to ` + html.EscapeString(nextPath) + `.</p>
     </form>
   </main>
+  <script>
+    const toggle = document.querySelector("[data-password-toggle]");
+    const input = document.querySelector("#password");
+    if (toggle && input) {
+      toggle.addEventListener("click", () => {
+        const hidden = input.type === "password";
+        input.type = hidden ? "text" : "password";
+        toggle.textContent = hidden ? "Hide" : "Show";
+        toggle.setAttribute("aria-label", hidden ? "Hide password" : "Show password");
+        input.focus();
+      });
+    }
+  </script>
 </body>
 </html>`
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1100,6 +1123,19 @@ func normalizeLoginNext(raw string) string {
 	}
 	if !strings.HasPrefix(candidate, "/") || strings.HasPrefix(candidate, "//") || strings.HasPrefix(candidate, "/login") {
 		return "/chat"
+	}
+	pathOnly := candidate
+	if index := strings.IndexAny(pathOnly, "?#"); index >= 0 {
+		pathOnly = pathOnly[:index]
+	}
+	switch pathOnly {
+	case "/agent-runtime":
+		return "/chat"
+	case "/management":
+		return "/settings"
+	}
+	if _, ok := workbenchPagePaths[pathOnly]; ok {
+		return pathOnly
 	}
 	return candidate
 }

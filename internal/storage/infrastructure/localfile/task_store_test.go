@@ -15,7 +15,7 @@ import (
 func TestTaskStorePersistsTaskLayoutRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	store := NewTaskStore(dir, FormatJSON)
-	base := time.Date(2026, 3, 4, 1, 2, 3, 0, time.UTC)
+	base := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
 	input := []taskdomain.Task{
 		{
 			ID:              "task-1",
@@ -140,7 +140,7 @@ func TestTaskStoreReadArtifactFromSnapshot(t *testing.T) {
 func TestTaskStoreAppendsLogsWithoutDuplication(t *testing.T) {
 	dir := t.TempDir()
 	store := NewTaskStore(dir, FormatJSON)
-	base := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	base := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
 
 	task := taskdomain.Task{
 		ID:              "task-2",

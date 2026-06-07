@@ -43,7 +43,7 @@ describe("PrimaryNav", () => {
     expect(onToggleNavCollapsed).toHaveBeenCalledTimes(1);
   });
 
-  it("limits the primary route surface to chat, agent, and terminal", () => {
+  it("limits the primary route surface to chat, terminal, and settings", () => {
     render(
       <PrimaryNav
         currentRoute="chat"
@@ -56,19 +56,20 @@ describe("PrimaryNav", () => {
     );
 
     expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Agent" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Terminal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Agent" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Memory" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tasks" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Codex Accounts" })).not.toBeInTheDocument();
   });
 
-  it("keeps management visible as a utility entry without expanding every management route", () => {
+  it("keeps settings visible as the single management entry", () => {
     const onNavigate = vi.fn();
 
     render(
       <PrimaryNav
-        currentRoute="management"
+        currentRoute="settings"
         language="en"
         navCollapsed={false}
         onNavigate={onNavigate}
@@ -77,14 +78,14 @@ describe("PrimaryNav", () => {
       />,
     );
 
-    const management = screen.getByRole("button", { name: "Management" });
+    const management = screen.getByRole("button", { name: "Settings" });
 
     expect(management).toBeInTheDocument();
     expect(management).toHaveClass("active");
 
     fireEvent.click(management);
 
-    expect(onNavigate).toHaveBeenCalledWith("management");
+    expect(onNavigate).toHaveBeenCalledWith("settings");
   });
 
   it("renders the active runtime conversation list directly in the left navigation", () => {

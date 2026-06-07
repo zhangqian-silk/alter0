@@ -185,8 +185,14 @@ func (s *SessionStore) loadSessionLayout() ([]sessiondomain.MessageRecord, bool,
 		if err := unmarshalPayload(s.format, raw, &state); err != nil {
 			return nil, true, needsRewrite, err
 		}
-		if isPreviousCanonicalChatSessionFile(path, state.Messages, s.format) {
-			needsRewrite = true
+		for _, message := range state.Messages {
+			if strings.TrimSpace(message.SessionID) == "" {
+				continue
+			}
+			if filepath.Clean(path) != filepath.Clean(s.sessionFilePath("", message.SessionID, "")) {
+				needsRewrite = true
+				break
+			}
 		}
 		items = append(items, state.Messages...)
 	}
@@ -238,17 +244,10 @@ func (s *SessionStore) cleanupRemovedSessionFiles(kept map[string]struct{}) erro
 }
 
 func (s *SessionStore) sessionFilePath(agentID string, sessionID string, archiveDay string) string {
-	if strings.TrimSpace(archiveDay) != "" {
-		return filepath.Join(
-			s.sessionsDir,
-			sanitizeSessionStoreSegment(resolveSessionAgentID(agentID)),
-			sanitizeSessionStoreSegment(sessionID),
-			sanitizeSessionStoreSegment(archiveDay)+"."+extension(s.format),
-		)
-	}
+	_, _ = agentID, archiveDay
 	return filepath.Join(
 		s.sessionsDir,
-		sanitizeSessionStoreSegment(resolveSessionAgentID(agentID)),
+		defaultSessionAgentDir,
 		sanitizeSessionStoreSegment(sessionID)+"."+extension(s.format),
 	)
 }
@@ -272,19 +271,8 @@ func groupSessionRecords(records []sessiondomain.MessageRecord) []groupedSession
 	for _, key := range order {
 		items := append([]sessiondomain.MessageRecord(nil), bySession[key]...)
 		sessionID := strings.TrimSpace(items[0].SessionID)
-		agentID := defaultSessionAgentDir
-		for _, item := range items {
-			if candidate := strings.TrimSpace(item.Source.AgentID); candidate != "" {
-				agentID = candidate
-				break
-			}
-		}
-		if isCanonicalChatSessionGroup(agentID, sessionID) {
-			groups = append(groups, groupCanonicalChatSessionRecords(agentID, sessionID, items)...)
-			continue
-		}
 		groups = append(groups, groupedSessionRecords{
-			agentID:   agentID,
+			agentID:   defaultSessionAgentDir,
 			sessionID: sessionID,
 			records:   items,
 		})
