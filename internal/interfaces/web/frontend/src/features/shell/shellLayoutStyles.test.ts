@@ -660,7 +660,70 @@ describe("shell layout stylesheet", () => {
       /\.nav-session-rail \.runtime-session-delete\s*\{[\s\S]*?min-width:\s*28px;[\s\S]*?min-height:\s*28px;[\s\S]*?border-radius:\s*8px;[\s\S]*?opacity:\s*0;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(min-width: 761px\) \{[\s\S]*?\.primary-nav\.has-session-rail \.menu\s*\{[\s\S]*?flex:\s*0 0 clamp\(260px, 34vh, 312px\);[\s\S]*?overflow-y:\s*auto;/,
+      /@media \(min-width: 761px\) \{[\s\S]*?\.primary-nav\.has-session-rail > \.menu\s*\{[\s\S]*?flex:\s*0 0 clamp\(260px, 34vh, 312px\);[\s\S]*?overflow-y:\s*auto;/,
+    );
+  });
+
+  it("keeps long navigation session titles from changing sidebar geometry", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*hidden;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail-body\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*hidden;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-list\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?overflow-x:\s*hidden;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-group,\s*\.nav-session-rail \.runtime-session-group-items\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?max-width:\s*100%;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-card\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
+    );
+  });
+
+  it("keeps the navigation session rail steady when new sessions are inserted", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail\s*\{[\s\S]*?grid-template-rows:\s*minmax\(38px, auto\) minmax\(0, 1fr\);[\s\S]*?contain:\s*layout paint;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail-head\s*\{[\s\S]*?min-height:\s*38px;[\s\S]*?flex:\s*0 0 auto;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail-body\s*\{[\s\S]*?contain:\s*layout;[\s\S]*?overflow-anchor:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-list\s*\{[\s\S]*?scrollbar-gutter:\s*stable both-edges;[\s\S]*?overflow-anchor:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-card\s*\{[\s\S]*?overflow-anchor:\s*none;/,
+    );
+  });
+
+  it("prevents scrollbar threshold changes from resizing the navigation session list", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\.primary-nav\.has-session-rail > \.brand\s*\{[\s\S]*?flex:\s*0 0 40px;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-list\s*\{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?overflow-y:\s*scroll;[\s\S]*?scrollbar-gutter:\s*stable both-edges;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-group\.menu-group\s*\{[\s\S]*?flex:\s*0 0 auto;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-group-items\s*\{[\s\S]*?display:\s*grid;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.primary-nav \.nav-session-rail \.runtime-session-list\s*\{[\s\S]*?height:\s*100%;[\s\S]*?flex:\s*1 1 auto;[\s\S]*?overflow-y:\s*scroll;[\s\S]*?overflow-x:\s*hidden;[\s\S]*?scrollbar-gutter:\s*stable both-edges;/,
     );
   });
 
