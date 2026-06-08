@@ -2,12 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { formatDateTime } from "../../shared/time/format";
 import { groupSessionListItems } from "../../shared/time/sessionListGroups";
-import { buildChatTimelineItems } from "../shell/components/ChatMessageRegion";
+import { buildChatTimelineItems, type ChatMessageSnapshot } from "../shell/components/ChatMessageRegion";
 import {
   buildDraftWithCodexSlashCommand,
   CODEX_SLASH_COMMANDS,
   codexSlashCommandQuery,
 } from "../shell/components/codexSlashCommands";
+import { conversationMarkdownSyntaxFixture } from "../shell/components/MessageMarkdownSyntaxFixture";
 import { normalizeText } from "../shell/components/RouteBodyPrimitives";
 import { RuntimeComposer } from "../shell/components/RuntimeComposer";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
@@ -40,6 +41,29 @@ const CHAT_MESSAGE_LOAD_BATCH_SIZE = 32;
 const CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET = 32;
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
+const MARKDOWN_SYNTAX_DEMO_QUERY_KEY = "markdown_demo";
+
+function shouldShowConversationMarkdownSyntaxDemo(route: string) {
+  if (route !== "chat" || typeof window === "undefined") {
+    return false;
+  }
+  return new URLSearchParams(window.location.search).get(MARKDOWN_SYNTAX_DEMO_QUERY_KEY) === "1";
+}
+
+function buildConversationMarkdownSyntaxDemoMessage(language: LegacyShellLanguage): ChatMessageSnapshot {
+  return {
+    id: "markdown-syntax-demo-assistant",
+    role: "assistant",
+    text: conversationMarkdownSyntaxFixture.markdown,
+    attachments: [],
+    route: "chat",
+    source: language === "zh" ? "Markdown 语法演示" : "Markdown syntax demo",
+    error: false,
+    status: "done",
+    at: Date.parse("2026-06-08T00:00:00Z"),
+    processSteps: [],
+  };
+}
 
 type ConversationSessionSignalTone = "ready" | "busy" | "failed";
 
@@ -133,6 +157,14 @@ function useConversationWorkspaceController(
   });
   const activeMessages = runtime.activeSession?.messages || [];
   const activeSessionID = runtime.activeSession?.id || "";
+  const showMarkdownSyntaxDemo = shouldShowConversationMarkdownSyntaxDemo(runtime.route);
+  const timelineMessages = useMemo(
+    () => showMarkdownSyntaxDemo ? [buildConversationMarkdownSyntaxDemoMessage(language)] : activeMessages,
+    [activeMessages, language, showMarkdownSyntaxDemo],
+  );
+  const timelineSessionID = showMarkdownSyntaxDemo
+    ? `${activeSessionID || "chat"}:markdown-demo`
+    : activeSessionID;
   const toggleAgentProcessRef = useRef(runtime.toggleAgentProcess);
   useEffect(() => {
     toggleAgentProcessRef.current = runtime.toggleAgentProcess;
@@ -140,15 +172,15 @@ function useConversationWorkspaceController(
   const toggleAgentProcess = useCallback((messageID: string) => {
     toggleAgentProcessRef.current(messageID);
   }, []);
-  const visibleMessageCount = timelineWindow.sessionID === activeSessionID
+  const visibleMessageCount = timelineWindow.sessionID === timelineSessionID
     ? timelineWindow.visibleCount
     : INITIAL_VISIBLE_CHAT_MESSAGES;
-  const hiddenMessageCount = Math.max(0, activeMessages.length - visibleMessageCount);
+  const hiddenMessageCount = Math.max(0, timelineMessages.length - visibleMessageCount);
   const visibleMessages = useMemo(
-    () => hiddenMessageCount > 0 ? activeMessages.slice(-visibleMessageCount) : activeMessages,
-    [activeMessages, hiddenMessageCount, visibleMessageCount],
+    () => hiddenMessageCount > 0 ? timelineMessages.slice(-visibleMessageCount) : timelineMessages,
+    [hiddenMessageCount, timelineMessages, visibleMessageCount],
   );
-  const isEmptyState = activeMessages.length === 0;
+  const isEmptyState = timelineMessages.length === 0;
   const isMobileEmptyHeader = workbench.isMobileViewport && isEmptyState;
   const emptyStateTitle = language === "zh" ? "开始新的工作流" : "Start a new workspace flow";
   const emptyStateDescription = language === "zh"
@@ -237,7 +269,7 @@ function useConversationWorkspaceController(
     { label: language === "zh" ? "路由" : "Route", value: routeLabel, copyLabel: language === "zh" ? "路由" : "Route" },
     { label: language === "zh" ? "状态" : "Status", value: activeSessionStatus.label, copyLabel: language === "zh" ? "状态" : "Status" },
     { label: language === "zh" ? "短标识" : "Short hash", value: activeSessionItem?.shortHash || "-", copyLabel: language === "zh" ? "短标识" : "Short hash", mono: true },
-    { label: language === "zh" ? "消息数" : "Messages", value: String(activeMessages.length), copyLabel: language === "zh" ? "消息数" : "Messages" },
+    { label: language === "zh" ? "消息数" : "Messages", value: String(timelineMessages.length), copyLabel: language === "zh" ? "消息数" : "Messages" },
     { label: language === "zh" ? "创建时间" : "Created", value: activeSessionItem ? formatDateTime(activeSessionItem.createdAt) : "-", copyLabel: language === "zh" ? "创建时间" : "Created" },
   ] : [];
 
@@ -264,48 +296,48 @@ function useConversationWorkspaceController(
 
   const timelineItems = useMemo(
     () => buildChatTimelineItems({
-      cacheScope: activeSessionID,
+      cacheScope: timelineSessionID,
       messages: visibleMessages,
       language,
       onToggleProcess: toggleAgentProcess,
     }),
-    [activeSessionID, language, toggleAgentProcess, visibleMessages],
+    [language, timelineSessionID, toggleAgentProcess, visibleMessages],
   );
   const loadEarlierMessages = useCallback(() => {
-    if (!activeSessionID || hiddenMessageCount <= 0) {
+    if (!timelineSessionID || hiddenMessageCount <= 0) {
       return;
     }
     const node = timelineScreenRef.current;
     pendingHistoryScrollRestoreRef.current = {
-      sessionID: activeSessionID,
+      sessionID: timelineSessionID,
       scrollHeight: node?.scrollHeight || 0,
       scrollTop: node?.scrollTop || 0,
     };
     setTimelineWindow((current) => {
-      const currentVisibleCount = current.sessionID === activeSessionID
+      const currentVisibleCount = current.sessionID === timelineSessionID
         ? current.visibleCount
         : INITIAL_VISIBLE_CHAT_MESSAGES;
       return {
-        sessionID: activeSessionID,
+        sessionID: timelineSessionID,
         visibleCount: Math.min(
-          activeMessages.length,
+          timelineMessages.length,
           currentVisibleCount + CHAT_MESSAGE_LOAD_BATCH_SIZE,
         ),
       };
     });
-  }, [activeMessages.length, activeSessionID, hiddenMessageCount, timelineScreenRef]);
+  }, [hiddenMessageCount, timelineMessages.length, timelineScreenRef, timelineSessionID]);
   useEffect(() => {
     setTimelineWindow((current) => {
-      if (current.sessionID === activeSessionID) {
+      if (current.sessionID === timelineSessionID) {
         return current;
       }
       return {
-        sessionID: activeSessionID,
+        sessionID: timelineSessionID,
         visibleCount: INITIAL_VISIBLE_CHAT_MESSAGES,
       };
     });
     pendingHistoryScrollRestoreRef.current = null;
-  }, [activeSessionID]);
+  }, [timelineSessionID]);
   useEffect(() => {
     if (hiddenMessageCount <= 0) {
       return undefined;
@@ -326,7 +358,7 @@ function useConversationWorkspaceController(
   }, [hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
   useLayoutEffect(() => {
     const pending = pendingHistoryScrollRestoreRef.current;
-    if (!pending || pending.sessionID !== activeSessionID) {
+    if (!pending || pending.sessionID !== timelineSessionID) {
       return;
     }
     const node = timelineScreenRef.current;
@@ -335,17 +367,17 @@ function useConversationWorkspaceController(
     }
     pendingHistoryScrollRestoreRef.current = null;
     node.scrollTop = Math.max(0, node.scrollHeight - pending.scrollHeight + pending.scrollTop);
-  }, [activeSessionID, timelineItems.length, timelineScreenRef]);
+  }, [timelineItems.length, timelineScreenRef, timelineSessionID]);
   useLayoutEffect(() => {
     const previousSessionID = activeTimelineSessionRef.current;
     const previousMessageCount = previousActiveMessageCountRef.current;
-    const sessionChanged = previousSessionID !== activeSessionID;
-    const appendedMessages = activeMessages.slice(previousMessageCount);
+    const sessionChanged = previousSessionID !== timelineSessionID;
+    const appendedMessages = timelineMessages.slice(previousMessageCount);
     const userMessageAppended = appendedMessages.some((message) => message.role === "user");
-    const messageAppended = !sessionChanged && activeSessionID && activeMessages.length > previousMessageCount && userMessageAppended;
-    activeTimelineSessionRef.current = activeSessionID;
-    previousActiveMessageCountRef.current = activeMessages.length;
-    if (!activeSessionID) {
+    const messageAppended = !sessionChanged && timelineSessionID && timelineMessages.length > previousMessageCount && userMessageAppended;
+    activeTimelineSessionRef.current = timelineSessionID;
+    previousActiveMessageCountRef.current = timelineMessages.length;
+    if (!timelineSessionID) {
       return;
     }
     if (timelineItems.length === 0 || (!sessionChanged && !messageAppended)) {
@@ -369,7 +401,7 @@ function useConversationWorkspaceController(
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeMessages, activeMessages.length, activeSessionID, timelineItems.length, timelineScreenRef]);
+  }, [timelineItems.length, timelineMessages, timelineMessages.length, timelineScreenRef, timelineSessionID]);
   const timelineEmptyState = useMemo(
     () => (
       <div className="conversation-empty-state">
@@ -387,10 +419,10 @@ function useConversationWorkspaceController(
         containerRef={timelineScreenRef}
         itemSelector="[data-message-id]"
         itemAttribute="data-message-id"
-        watchKey={`${runtime.route}:${activeMessages.length}:${isEmptyState ? "empty" : "active"}`}
+        watchKey={`${runtime.route}:${timelineMessages.length}:${isEmptyState ? "empty" : "active"}`}
       />
     )),
-    [activeMessages.length, inputFocused, isEmptyState, language, runtime.route, workbench.isMobileViewport],
+    [inputFocused, isEmptyState, language, runtime.route, timelineMessages.length, workbench.isMobileViewport],
   );
   const timelineTopContent = useMemo(() => {
     if (hiddenMessageCount <= 0) {

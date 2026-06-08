@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { ConversationWorkspace } from "./ConversationWorkspace";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../app/WorkbenchContext";
+import { conversationMarkdownSyntaxFixture } from "../shell/components/MessageMarkdownSyntaxFixture";
 
 const { buildChatTimelineItemsMock } = vi.hoisted(() => ({
   buildChatTimelineItemsMock: vi.fn(({ messages }: { messages: Array<{ id: string }> }) =>
@@ -151,6 +152,7 @@ function renderWorkspace(overrides: Partial<WorkbenchContextValue> = {}) {
 
 describe("ConversationWorkspace", () => {
   beforeEach(() => {
+    window.history.pushState({}, "", "/chat");
     runtimeMock.route = "chat";
     runtimeMock.compact = true;
     runtimeMock.inspectorOpen = false;
@@ -197,6 +199,60 @@ describe("ConversationWorkspace", () => {
     runtimeMock.selectModel.mockClear();
     runtimeMock.toggleSkill.mockClear();
     buildChatTimelineItemsMock.mockClear();
+  });
+
+  it("renders the markdown syntax demo timeline when the chat demo query is present", () => {
+    window.history.pushState({}, "", "/chat?markdown_demo=1");
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(buildChatTimelineItemsMock).toHaveBeenCalledWith(expect.objectContaining({
+      cacheScope: "session-1:markdown-demo",
+      language: "en",
+      messages: [
+        expect.objectContaining({
+          id: "markdown-syntax-demo-assistant",
+          role: "assistant",
+          text: conversationMarkdownSyntaxFixture.markdown,
+          status: "done",
+        }),
+      ],
+    }));
+    expect(document.querySelector(".conversation-empty-state")).not.toBeInTheDocument();
+  });
+
+  it("uses the markdown syntax demo query as an explicit non-persistent timeline preview", () => {
+    window.history.pushState({}, "", "/chat?markdown_demo=1");
+    runtimeMock.activeSession = {
+      id: "session-1",
+      title: "Existing",
+      messages: [
+        {
+          id: "real-message-1",
+          role: "assistant",
+          text: "Existing session message",
+          attachments: [],
+          route: "chat",
+          source: "chat",
+          error: false,
+          status: "done",
+          at: Date.parse("2026-04-23T09:00:00Z"),
+          processSteps: [],
+        },
+      ],
+    };
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(buildChatTimelineItemsMock).toHaveBeenCalledWith(expect.objectContaining({
+      cacheScope: "session-1:markdown-demo",
+      messages: [
+        expect.objectContaining({
+          id: "markdown-syntax-demo-assistant",
+          text: conversationMarkdownSyntaxFixture.markdown,
+        }),
+      ],
+    }));
   });
 
   it("renders the Chat workspace as the only conversation runtime route", () => {

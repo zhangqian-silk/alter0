@@ -1,4 +1,5 @@
 import { renderMessageMarkdownToHTML } from "./MessageMarkdown";
+import { conversationMarkdownSyntaxFixture } from "./MessageMarkdownSyntaxFixture";
 
 describe("renderMessageMarkdownToHTML", () => {
   it("renders markdown images, links, and fenced code through the shared message markdown contract", () => {
@@ -93,5 +94,37 @@ describe("renderMessageMarkdownToHTML", () => {
 
     expect(container.textContent).toContain("下面给出一条可落地的接入路径");
     expect(container.querySelectorAll("p")).toHaveLength(1);
+  });
+
+  it("renders the comprehensive conversation markdown syntax fixture", () => {
+    const container = document.createElement("div");
+    container.innerHTML = renderMessageMarkdownToHTML(conversationMarkdownSyntaxFixture.markdown);
+
+    for (const headingLevel of [1, 2, 3, 4, 5, 6]) {
+      expect(container.querySelector(`h${headingLevel}`)).toHaveTextContent(
+        conversationMarkdownSyntaxFixture.expected.headings[headingLevel - 1],
+      );
+    }
+
+    expect(container.querySelectorAll("p")).toHaveLength(conversationMarkdownSyntaxFixture.expected.paragraphCount);
+    expect(container.innerHTML).toContain("<br>");
+    expect(container.querySelectorAll("strong")).toHaveLength(conversationMarkdownSyntaxFixture.expected.strongCount);
+    expect(container.querySelectorAll("em")).toHaveLength(conversationMarkdownSyntaxFixture.expected.emphasisCount);
+    expect(container.querySelectorAll(".chat-md-inline-code")).toHaveLength(
+      conversationMarkdownSyntaxFixture.expected.inlineCodeCount,
+    );
+    expect(container.querySelectorAll("a[href]")).toHaveLength(conversationMarkdownSyntaxFixture.expected.linkCount);
+    expect(container.querySelectorAll(".assistant-inline-image")).toHaveLength(
+      conversationMarkdownSyntaxFixture.expected.imageCount,
+    );
+    expect(container.querySelectorAll("blockquote")).toHaveLength(conversationMarkdownSyntaxFixture.expected.blockquoteCount);
+    expect(container.querySelectorAll("ul")).toHaveLength(conversationMarkdownSyntaxFixture.expected.unorderedListCount);
+    expect(container.querySelectorAll("ol")).toHaveLength(conversationMarkdownSyntaxFixture.expected.orderedListCount);
+    expect(container.querySelectorAll("hr")).toHaveLength(conversationMarkdownSyntaxFixture.expected.horizontalRuleCount);
+    expect(container.querySelectorAll(".chat-md-pre")).toHaveLength(conversationMarkdownSyntaxFixture.expected.codeBlockCount);
+    expect(container.querySelectorAll(".chat-md-table")).toHaveLength(conversationMarkdownSyntaxFixture.expected.tableCount);
+    expect(Array.from(container.querySelectorAll(".chat-md-table tbody td"), (cell) => cell.textContent)).toContain("A | B");
+    expect(container.textContent).toContain("Raw HTML stays text: <mark>not trusted</mark>");
+    expect(container.innerHTML).not.toContain("<mark>not trusted</mark>");
   });
 });
