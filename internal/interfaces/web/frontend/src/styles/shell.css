@@ -569,6 +569,296 @@ body {
   }
 }
 
+/* Conversation reading-flow final override */
+[data-runtime-view="conversation"] .runtime-workspace-head {
+  border-bottom-color: transparent;
+  background: #fff;
+}
+
+[data-runtime-view="conversation"] .runtime-workspace-panel {
+  padding: 0 clamp(16px, 2.4vw, 32px) 14px;
+  background: #fff;
+}
+
+[data-runtime-view="conversation"] .runtime-workspace-screen {
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  padding: clamp(18px, 2.4vw, 32px) clamp(8px, 1.6vw, 20px) 28px;
+  box-shadow: none;
+}
+
+[data-runtime-view="conversation"] .runtime-timeline {
+  width: min(100%, 960px);
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+[data-runtime-view="conversation"] .runtime-message + .runtime-message,
+[data-runtime-view="conversation"] .conversation-message + .conversation-message {
+  margin-top: 18px;
+}
+
+[data-runtime-view="conversation"] .runtime-message.runtime-message-user .runtime-message-bubble,
+[data-runtime-view="conversation"] .conversation-message.is-user .msg-bubble {
+  max-width: min(78%, 620px);
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 18px;
+  border-bottom-right-radius: 6px;
+  background: #f4f4f4;
+  color: #1f2937;
+}
+
+[data-runtime-view="conversation"] .runtime-message.runtime-message-assistant .runtime-message-bubble,
+[data-runtime-view="conversation"] .conversation-message.is-assistant .msg-bubble {
+  width: min(100%, 800px);
+  max-width: min(100%, 800px);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+[data-runtime-view="conversation"] .conversation-message.is-assistant .msg-meta {
+  width: min(100%, 800px);
+}
+
+[data-runtime-view="conversation"] .assistant-message-shell .terminal-final-rendered {
+  font-size: 15.5px;
+  line-height: 1.72;
+  color: #1f2937;
+}
+
+[data-runtime-view="conversation"] .assistant-message-shell .message-markdown-shell,
+[data-runtime-view="conversation"] .assistant-message-shell .message-markdown-body {
+  display: block;
+  width: 100%;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered {
+  font-size: 15.5px;
+  line-height: 1.72;
+  color: #1f2937;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered * {
+  color: inherit;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered > :first-child {
+  margin-top: 0;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered > :last-child {
+  margin-bottom: 0;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered p {
+  margin: 0 0 0.86em;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered h1,
+[data-runtime-view="conversation"] .message-markdown-rendered h2,
+[data-runtime-view="conversation"] .message-markdown-rendered h3,
+[data-runtime-view="conversation"] .message-markdown-rendered h4,
+[data-runtime-view="conversation"] .message-markdown-rendered h5,
+[data-runtime-view="conversation"] .message-markdown-rendered h6 {
+  margin: 1.24em 0 0.48em;
+  color: #111827;
+  font-weight: 720;
+  line-height: 1.28;
+  letter-spacing: 0;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered h1 {
+  font-size: 1.34rem;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered h2 {
+  font-size: 1.18rem;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered h3 {
+  font-size: 1.05rem;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered h4,
+[data-runtime-view="conversation"] .message-markdown-rendered h5,
+[data-runtime-view="conversation"] .message-markdown-rendered h6 {
+  font-size: 1rem;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered ul,
+[data-runtime-view="conversation"] .message-markdown-rendered ol {
+  margin: 0.42em 0 0.92em;
+  padding-left: 1.38em;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered li {
+  margin: 0.26em 0;
+  padding-left: 0.08em;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered strong {
+  color: #111827;
+  font-weight: 720;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered a {
+  color: #0f766e;
+  text-decoration: underline;
+  text-decoration-color: rgba(15, 118, 110, 0.32);
+  text-underline-offset: 3px;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered blockquote {
+  margin: 0.92em 0;
+  padding: 0 0 0 13px;
+  border-left: 3px solid #d1d5db;
+  color: #4b5563;
+}
+
+[data-runtime-view="conversation"] .chat-md-inline-code {
+  display: inline;
+  padding: 0.08em 0.32em;
+  border: 0;
+  border-radius: 4px;
+  background: #f1f2f4;
+  color: #24292f;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.92em;
+  line-height: inherit;
+  white-space: break-spaces;
+}
+
+[data-runtime-view="conversation"] .chat-md-pre,
+[data-runtime-view="conversation"] .terminal-final-rendered .chat-md-pre {
+  max-width: 100%;
+  margin: 0.96em 0 1.04em;
+  padding: 13px 15px;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f7f7f8;
+  color: #24292f;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.58;
+  box-shadow: none;
+}
+
+[data-runtime-view="conversation"] .chat-md-pre code {
+  color: inherit;
+  font: inherit;
+  white-space: pre;
+}
+
+[data-runtime-view="conversation"] .chat-md-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  margin: 0.96em 0 1.08em;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+}
+
+[data-runtime-view="conversation"] .chat-md-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+[data-runtime-view="conversation"] .chat-md-table th,
+[data-runtime-view="conversation"] .chat-md-table td {
+  min-width: 128px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid #edf0f2;
+  text-align: left;
+  vertical-align: top;
+  background: transparent;
+}
+
+[data-runtime-view="conversation"] .chat-md-table th {
+  background: #f7f7f8;
+  color: #111827;
+  font-weight: 680;
+}
+
+[data-runtime-view="conversation"] .chat-md-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+[data-runtime-view="conversation"] .assistant-message-shell .message-markdown-toolbar {
+  margin-top: 8px;
+  margin-bottom: 0;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+[data-runtime-view="conversation"] .assistant-message-shell:hover .message-markdown-toolbar,
+[data-runtime-view="conversation"] .assistant-message-shell:focus-within .message-markdown-toolbar {
+  opacity: 1;
+}
+
+[data-runtime-view="conversation"] .message-markdown-copy {
+  min-height: 32px;
+  border-color: transparent;
+  background: transparent;
+  color: #6b7280;
+}
+
+[data-runtime-view="conversation"] .message-markdown-copy:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+@media (max-width: 760px) {
+  [data-runtime-view="conversation"] .runtime-workspace-panel {
+    padding: 0 10px 10px;
+  }
+
+  [data-runtime-view="conversation"] .runtime-workspace-screen {
+    padding: 16px 6px 24px;
+  }
+
+  [data-runtime-view="conversation"] .runtime-message.runtime-message-user .runtime-message-bubble,
+  [data-runtime-view="conversation"] .conversation-message.is-user .msg-bubble {
+    max-width: min(86%, 620px);
+  }
+
+  [data-runtime-view="conversation"] .runtime-message.runtime-message-assistant .runtime-message-bubble,
+  [data-runtime-view="conversation"] .conversation-message.is-assistant .msg-bubble,
+  [data-runtime-view="conversation"] .conversation-message.is-assistant .msg-meta {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  [data-runtime-view="conversation"] .message-markdown-rendered,
+  [data-runtime-view="conversation"] .assistant-message-shell .terminal-final-rendered {
+    font-size: 15px;
+    line-height: 1.66;
+  }
+
+  [data-runtime-view="conversation"] .chat-md-pre,
+  [data-runtime-view="conversation"] .terminal-final-rendered .chat-md-pre {
+    padding: 12px 13px;
+  }
+
+  [data-runtime-view="conversation"] .assistant-message-shell .message-markdown-toolbar {
+    opacity: 1;
+  }
+}
+
 @media (max-width: 760px) {
   .runtime-thinking-shell .terminal-process-body:not([hidden]) {
     max-height: none;

@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-06-06
+> Last update: 2026-06-07
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `runtime.execution.cli-agent`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -62,8 +62,9 @@
 - 刷新页面或切到其他会话后，`Chat` 仍需保住最近已知会话列表：浏览器侧最近会话快照至少覆盖当前活动会话之外的最近若干条会话；当服务端集合接口暂时漏掉其中某条会话时，左侧会话列表不得立刻把该会话删除，而应继续保留本地条目并等待单会话详情或后续集合结果确认。
 - `Chat` 的会话存在性与恢复状态需由服务端会话 registry 承担第一责任：消息入口在请求开始、完成、失败时分别写入 `busy / ready / failed` 等稳定状态，运行页列表与单会话详情优先读取该 registry，再与 Session history 合并，避免因浏览器刷新、SSE 断链或前端本地状态丢失导致会话“消失”或直接 `load failed`。
 - Agent 执行过程需以结构化 `process_steps` 贯穿 SSE `done`、Task 结果与会话历史持久化，前端优先消费结构化步骤而不是依赖解析 `[agent] action / observation` 文本。
-- 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新；Chat / Terminal 最终输出统一使用稳定的 `MessageMarkdownShell` 承载，正文先于复制工具栏渲染，不安装脚本长按选区、假选中态或编辑态兜底，且父级无关重渲染不得重写相同 markdown 的文本 DOM；React 托管的普通页面也需对正文型字段提供同一安全 Markdown 渲染能力，覆盖 Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明与 Session Profile 非等宽字段。Markdown 表格需渲染为真实表格结构并在消息容器内滚动；ID、路径、密钥、配置值、时间戳等元数据字段继续按纯文本或等宽字段展示。
-- `Chat / Terminal` 的消息阅读结构统一采用轻量 IM 式消息流：用户消息右对齐且使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制；助手消息左对齐并弱化为无边框正文阅读流，`Process` 默认收敛为 `Thinking / 已思考` 内联轻量披露行，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情，移动端也保持同页内联展开，最终 Markdown、图片与复制动作都收敛在对应消息区域内；Agent Runtime 与 Terminal 最终输出的 Markdown 正文必须是静态可选中文本，复制动作位于助手正文下方，代码块作为独立浅灰内容块呈现；消息正文区不显示逐条时间，只有进行中、排队、失败等状态保留紧凑状态标签；长历史默认优先渲染最新上下文，用户滚到顶部或点击 `Load earlier messages / 加载更早消息` 后按批次渐进加载更早消息。后续新增运行页若呈现用户/助手消息，也必须复用同一 `runtime-message-*` 消息外壳与 `RuntimeTimeline` block model，不再自建页面私有气泡系统。
+- 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新；Chat / Terminal 最终输出统一使用稳定的 `MessageMarkdownShell` 承载，正文先于复制工具栏渲染，不安装脚本长按选区、假选中态或编辑态兜底，且父级无关重渲染不得重写相同 markdown 的文本 DOM；React 托管的普通页面也需对正文型字段提供同一安全 Markdown 渲染能力，覆盖 Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明与 Session Profile 非等宽字段。Markdown 视觉需保持正文阅读节奏：标题紧凑、段落自然、列表缩进稳定，代码块与表格只保留弱边界，不形成厚重卡片层级；Markdown 表格需渲染为真实表格结构并在消息容器内滚动；ID、路径、密钥、配置值、时间戳等元数据字段继续按纯文本或等宽字段展示。
+- Chat 允许通过显式预览参数 `/chat?markdown_demo=1` 临时覆盖当前时间线视图并展示一条非持久化 assistant Markdown 语法覆盖样例；该入口只用于渲染验收，不写入会话历史，也不替代真实 Chat 会话恢复规则。
+- `Chat / Terminal` 的消息阅读结构统一采用轻量 IM 式消息流：用户消息右对齐且使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制；助手消息左对齐并弱化为无边框正文阅读流，Chat 正文工作区使用白底无框阅读面，不在消息区叠加明显面板边框、背景分界或卡片容器；`Process` 默认收敛为 `Thinking / 已思考` 内联轻量披露行，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情，移动端也保持同页内联展开，最终 Markdown、图片与复制动作都收敛在对应消息区域内；Terminal 最终输出的 Markdown 正文必须是静态可选中文本，复制动作位于助手正文下方，代码块作为独立浅灰内容块呈现；消息正文区不显示逐条时间，只有进行中、排队、失败等状态保留紧凑状态标签；长历史默认优先渲染最新上下文，用户滚到顶部或点击 `Load earlier messages / 加载更早消息` 后按批次渐进加载更早消息。后续新增运行页若呈现用户/助手消息，也必须复用同一 `runtime-message-*` 消息外壳与 `RuntimeTimeline` block model，不再自建页面私有气泡系统。
 - 专项 Agent 需显式声明 deliverables contract，作为底层 Agent/Skill 执行上下文中的最终交付物约束；Web Chat 不再提供独立 Agent Runtime 的 Deliverables 或 Session Profile 面板。
 - Agent 还需支持独立的 `completion_checks` 机器规则，用于把交付契约下沉为可执行的运行时产物检查。`deliverables` 负责用户可见契约与 prompt 约束，`completion_checks` 负责文件存在、公开 URL、workspace service 发布状态、Session 属性非空等确定性校验，并可在失败时声明一轮仅面向当前 Session 的 Codex 修复指令。
 - `Chat / Terminal` 的 `Process` 步骤在真机窄屏下仍需保持整列阅读宽度；步骤序号、展开图标、标题与状态信息需在同一行垂直居中；长中文说明、路径、错误日志、inline code、Markdown 表格和命令明细必须在消息容器内自然换行或仅在内容块内部横向滚动，不得塌缩成逐字竖排窄列，也不得制造页面级横向滚动；展示层还需容忍零宽断行字符和“每字一行”的异常历史文本，并在渲染前修正为可读段落。

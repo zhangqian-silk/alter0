@@ -155,6 +155,33 @@ describe("shell layout stylesheet", () => {
     );
   });
 
+  it("keeps the conversation message area as a borderless reading flow with polished markdown rhythm", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.runtime-workspace-screen\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?background:\s*#fff;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.runtime-message\.runtime-message-assistant \.runtime-message-bubble,\s*\[data-runtime-view="conversation"\] \.conversation-message\.is-assistant \.msg-bubble\s*\{[\s\S]*?width:\s*min\(100%, 800px\);[\s\S]*?background:\s*transparent;[\s\S]*?padding:\s*0;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.message-markdown-rendered\s*\{[\s\S]*?font-size:\s*15\.5px;[\s\S]*?line-height:\s*1\.72;[\s\S]*?color:\s*#1f2937;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.message-markdown-rendered h1,[\s\S]*?\[data-runtime-view="conversation"\] \.message-markdown-rendered h6\s*\{[\s\S]*?font-weight:\s*720;[\s\S]*?letter-spacing:\s*0;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.chat-md-pre,\s*\[data-runtime-view="conversation"\] \.terminal-final-rendered \.chat-md-pre\s*\{[\s\S]*?border:\s*1px solid #e5e7eb;[\s\S]*?border-radius:\s*10px;[\s\S]*?background:\s*#f7f7f8;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.chat-md-table-wrap\s*\{[\s\S]*?border:\s*1px solid #e5e7eb;[\s\S]*?border-radius:\s*10px;[\s\S]*?background:\s*#fff;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.chat-md-table th,\s*\[data-runtime-view="conversation"\] \.chat-md-table td\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-bottom:\s*1px solid #edf0f2;/,
+    );
+  });
+
   it("presents runtime thinking as an inline disclosure in the current message flow", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
