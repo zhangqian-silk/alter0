@@ -60,7 +60,7 @@ Agent Capability & Memory 负责 CLI Agent Runtime 的上下文注入、Skill �
 ### 业务 Skill
 
 - `coding` Skill 维护仓库分析、代码修改、测试验证、预览发布、PR 交付与工作区隔离规则。
-- `travel` Skill 维护城市行程、分类推荐池、路线表达、移动端 HTML 攻略、公开只读 `travel` 服务发布与交付检查。
+- `travel` Skill 维护城市行程、分类推荐池、路线表达、Codex 生成的行程地图图片、移动端 HTML 攻略、公开只读 `travel` 服务发布与交付检查。
 - `memory-maintenance` Skill 维护记忆整理规则，包括摘要合并、长期事实提炼、过期信息处理、冲突消解和项目记忆更新。
 - 业务入口可以预选一组 Skill；运行时仍以一个 CLI Agent 执行当前任务。
 

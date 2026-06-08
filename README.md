@@ -232,7 +232,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - Runtime Resolver 按优先级选择执行器：存在启用且可用的 Model Provider 时启动 `Claude Code + provider profile`；未配置、不可用、鉴权失败或 Claude Code 启动失败时使用 `Codex Direct`。
 - `coding`、`travel`、`writing` 等入口是预选 Skill 组合和交付契约，不是单独执行框架。代码开发、旅行攻略、前端设计、部署预览、文档协作、测试、评审与记忆整理都由 `docs/skills/<skill_id>/SKILL.md` 表达规则。
 - 启动前，服务会在当前 Session 工作区注入 `CLAUDE.md` 或 `AGENTS.md`、选中 Skill、Memory 摘要、MCP 配置、仓库/附件/产物路径和可写边界。Claude Code 使用 `.alter0/claude-runtime/`，Codex Direct 使用 `.alter0/codex-runtime/` 与独立 `CODEX_HOME`。
-- 代码开发任务默认在当前 Session 工作区维护独立 repo clone，并在同一会话内复用仓库、分支、预览服务和交付状态。旅行任务通过 `travel` Skill 产出移动端优先的 HTML 攻略，并通过当前 Session 的只读 `travel` workspace service 暴露。
+- 代码开发任务默认在当前 Session 工作区维护独立 repo clone，并在同一会话内复用仓库、分支、预览服务和交付状态。旅行任务通过 `travel` Skill 产出移动端优先的 HTML 攻略，按行程密度生成 Codex 行程地图图片，并通过当前 Session 的只读 `travel` workspace service 暴露。
 - 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理；alter0 持久化消息、日志、结果和归档摘要，用于恢复、审计和跨会话记忆整理。
 - 预览短哈希 host 与主域工作台共用同一套登录保护；访问 `https://<session_short_hash>.alter0.cn` 时可直接打开该 host 自身的 `/login` 登录页，登录 cookie 会共享到 `*.alter0.cn`。主运行时的 `supervisor -> web child` 继续继承同一套 `web_login_password`，默认 `web` 全栈预览内部托管的 workspace service 子进程才会去掉第二层登录，避免主域与预览 host 各自重复登录。
 - Agent 执行过程会在运行时产出结构化 `process_steps`，并通过实时 `process` SSE 事件、`done` 结果、Task 结果与会话历史一并返回；前端优先按结构化步骤渲染可折叠 `Process` 区块，仅对历史旧消息保留基于文本标记的兼容解析。
@@ -314,7 +314,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 2. `travel` 负责旅游任务的专项执行与结果收口，沿用统一的 “Agent 协助编排，Codex CLI 负责具体执行” 模型。
 3. 旅游领域的稳定规则继续沉淀在私有 file-backed Skill `docs/agents/travel/SKILL.md`，用于约束城市行程、地铁、美食与地图输出结构。
 4. `travel` 作为 Agent 管理域中的内置专项 Agent 保留，供 Control 与 CLI Agent Runtime 执行链路使用；其默认能力组合包含 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`find-skills`、`ui-ux-pro-max` 与 `brainstorming`，分别覆盖记忆、公开攻略发布、页面实现质量、静态产物预览、文案协作、技能发现、交互设计与前期发散。
-5. `travel` 在正常对话之外，还要求额外生成一份 HTML 格式的旅游攻略，并把它发布到当前 Session 的公开只读子域名 `https://travel-<session_short_hash>.alter0.cn`；该域名不需要登录。只有当前请求已经在当前 Session 工作区根目录生成或更新了对应的 `index.html` 时，才允许把这份静态攻略作为 `travel` 服务发布；运行时不会再伪造、补写或代发 fallback 页面，但会在最终校验前追加一轮专门面向当前 Session 工作区的 Codex 修复任务，优先补齐 `index.html` 和 `travel` 发布缺口。修复轮只有在真实产出页面并完成发布后才会被视为成功，缺失或错误页面仍会直接阻断完成。新生成的攻略页采用移动端优先布局：手机端单列阅读、触控操作、章节节奏、首屏扫描和横向溢出控制是主验收口径，桌面端作为辅助视口做渐进增强。HTML 内容结构要求先按分类列出完整推荐池，再进入行程计划；所有涉及路线的区域，包括总体日程、每日路线、交通指南、步行段、换乘段、轮渡/船行段和地图提示，都应尽量以编号站点、连线路径、分段交通、预计耗时和地标提示组成类似手账路线卡的可扫读结构。吃喝需拆分小吃、早点、特色菜、特色饮品，并兼顾老字号与大众点评高分项，景点需区分公园、博物馆、表演等类型，住宿需给出不同价格带或档位的热门酒店；在此基础上允许按城市实际情况灵活补充夜游、集市、游船、温泉、滑雪、庙会等城市特有分类；各类推荐都要标注数据来源。
+5. `travel` 在正常对话之外，还要求额外生成一份 HTML 格式的旅游攻略，并把它发布到当前 Session 的公开只读子域名 `https://travel-<session_short_hash>.alter0.cn`；该域名不需要登录。只有当前请求已经在当前 Session 工作区根目录生成或更新了对应的 `index.html` 时，才允许把这份静态攻略作为 `travel` 服务发布；运行时不会再伪造、补写或代发 fallback 页面，但会在最终校验前追加一轮专门面向当前 Session 工作区的 Codex 修复任务，优先补齐 `index.html` 和 `travel` 发布缺口。修复轮只有在真实产出页面并完成发布后才会被视为成功，缺失或错误页面仍会直接阻断完成。新生成的攻略页采用移动端优先布局：手机端单列阅读、触控操作、章节节奏、首屏扫描和横向溢出控制是主验收口径，桌面端作为辅助视口做渐进增强。HTML 内容结构要求先按分类列出完整推荐池，再进入行程计划；所有涉及路线的区域，包括总体日程、每日路线、交通指南、步行段、换乘段、轮渡/船行段和地图提示，都应尽量以编号站点、连线路径、分段交通、预计耗时和地标提示组成类似手账路线卡的可扫读结构。行程安排还需按内容密度生成真实图片资产：内容充足时按每天生成一张，轻量行程可把多天合成一张；图片采用手绘城市美食地图方向，以鸟瞰简化城市地图、柔和水彩、细腻线稿、暖色纸张纹理呈现行程经过的地标、美食、道路、交通提示和城市特色，并必须在最终 `index.html` 中通过稳定相对路径或内联数据可见嵌入到对应日程或路线区域，不得只生成图片文件、只保留 prompt 或依赖外链热图。以独立文件引用的图片需位于 `index.html` 同一静态发布根目录下，例如 `assets/travel-images/`，发布前需确认 `travel` 子域名能够加载并展示这些图片；缺图、断链或未发布图片均视为攻略未完成。吃喝需拆分小吃、早点、特色菜、特色饮品，并兼顾老字号与大众点评高分项，景点需区分公园、博物馆、表演等类型，住宿需给出不同价格带或档位的热门酒店；在此基础上允许按城市实际情况灵活补充夜游、集市、游船、温泉、滑雪、庙会等城市特有分类；各类推荐都要标注数据来源。
 
 ## Workspace Model
 
@@ -619,7 +619,7 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 3. 项目内置 Skill 全部由源码仓库直接承载。标准 skill 使用 `docs/skills/<skill_id>/SKILL.md` 作为 file-backed 主入口；其中 `artifact-preview` 的发布脚本位于 `docs/skills/artifact-preview/scripts/publish_preview_artifact.sh`。`code-simplifier` 与 `code-review` 两个 plugin-style 条目则分别以 `docs/skills/code-simplifier/agents/code-simplifier.md` 和 `docs/skills/code-review/commands/code-review.md` 作为 alter0 的 file-backed 注入入口，并保留各自 `.claude-plugin/plugin.json` 元数据。Codex 启动前会把本轮选中的可读 file-backed Skill 目录复制到当前工作区 `.alter0/codex-runtime/skills/<skill_id>/`，并将运行时 `file_path` 重写为该工作区内路径，保证 Terminal 与 Agent Runtime 不依赖源码仓库相对路径。
 4. `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`，进入 Coding Agent Runtime 后即可同时继承仓库记忆、预览发布、前端设计、测试、评审、重构与协作文档规则。
 5. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `docs/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Web `Agent Runtime` 的独立 Skill 面板已移除；Chat 只展示可由当前会话选择的公有 Skill。
-6. `travel` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食与地图输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
+6. `travel` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食、路线卡与 Codex 行程地图图片输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
 
 ### Agent
 

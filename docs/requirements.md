@@ -133,7 +133,7 @@
 - Runtime Resolver 按优先级选择执行器：已启用且健康的 Model Provider 使用 `Claude Code + provider profile`；未配置 Provider、Provider 不可用或 Claude Code 启动失败时使用 `Codex Direct`。
 - Product Skill 独立维护在 `docs/skills/<skill_id>/SKILL.md`，编码、旅行、前端设计、部署预览、文档协作、测试、评审与记忆整理都以 Skill 表达执行规则和交付要求。
 - 启动 CLI Agent 前，运行时按会话工作区生成 `AGENTS.md` 或 `CLAUDE.md`，同步选中 Skill 文件、Memory 文件、MCP 配置、会话事实、工作区边界、仓库路径与交付要求。
-- `coding`、`travel` 等业务领域作为 Skill 注入运行时；Agent Runtime 页面可按业务入口预选 Skill 组合，但执行层仍是同一个 CLI Agent Runtime。
+- `coding`、`travel` 等业务领域作为 Skill 注入运行时；Agent Runtime 页面可按业务入口预选 Skill 组合，但执行层仍是同一个 CLI Agent Runtime。`travel` 需把行程安排沉淀为移动端 HTML 攻略、路线化内容和按行程密度生成的 Codex 手绘地图图片资产。
 - Memory Files 支持 `USER.md`、长期 `MEMORY.md`、`daily/<YYYY-MM-DD>.md`、`projects/<project>.md` 与 `conversations/<conversation_id>/summary.md`。用户可见记忆文件保持 Markdown 主存，不在正文中暴露 confidence、source、status、sensitivity 等附加元数据。
 - 记忆更新由三条路径触发：用户显式要求记住时由当前 CLI Agent 写入；会话结束或归档时生成 `ConversationSummary`；Cron 定时启动同一 CLI Agent 并加载 `memory-maintenance` Skill，把会话摘要、日记忆和长期记忆合并整理。
 - 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理；alter0 保存原始消息、运行日志、结果与摘要，用于恢复、审计、跨会话召回和定时记忆整理。
