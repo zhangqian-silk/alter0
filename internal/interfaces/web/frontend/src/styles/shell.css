@@ -1872,10 +1872,12 @@ body::after {
 }
 
 .nav-session-rail {
+  width: 100%;
+  min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(38px, auto) minmax(0, 1fr);
   gap: 8px;
   margin-top: 0;
   padding: 6px 0 0;
@@ -1883,14 +1885,22 @@ body::after {
   border: 0;
   background: transparent;
   box-shadow: none;
+  overflow: hidden;
+  contain: layout paint;
 }
 
 .primary-nav.has-session-rail .nav-utility {
   margin-top: 0;
 }
 
+.primary-nav.has-session-rail > .brand {
+  flex: 0 0 40px;
+}
+
 .nav-session-rail-head {
   min-width: 0;
+  min-height: 38px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1942,14 +1952,25 @@ body::after {
 }
 
 .nav-session-rail-body {
+  width: 100%;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
+  contain: layout;
+  overflow-anchor: none;
 }
 
 .nav-session-rail .runtime-session-list {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
   height: 100%;
   padding: 0;
   gap: 10px;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  scrollbar-gutter: stable both-edges;
+  overflow-anchor: none;
 }
 
 .nav-session-rail .route-empty-panel {
@@ -1971,6 +1992,7 @@ body::after {
 }
 
 .nav-session-rail .runtime-session-group.menu-group {
+  flex: 0 0 auto;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1985,11 +2007,24 @@ body::after {
   letter-spacing: 0.12em;
 }
 
+.nav-session-rail .runtime-session-group,
 .nav-session-rail .runtime-session-group-items {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.nav-session-rail .runtime-session-group-items {
+  display: grid;
   gap: 6px;
+  overflow-anchor: none;
 }
 
 .nav-session-rail .runtime-session-card {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   grid-template-columns: minmax(0, 1fr) 28px;
   gap: 4px;
   padding: 0 4px 0 10px;
@@ -1997,6 +2032,7 @@ body::after {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
+  overflow-anchor: none;
 }
 
 .nav-session-rail .runtime-session-card::before {
@@ -2018,14 +2054,21 @@ body::after {
 }
 
 .nav-session-rail .runtime-session-select {
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
   padding: 9px 0;
 }
 
 .nav-session-rail .runtime-session-main {
+  max-width: 100%;
+  overflow: hidden;
   gap: 5px;
 }
 
 .nav-session-rail .runtime-session-title-row {
+  max-width: 100%;
+  overflow: hidden;
   gap: 8px;
 }
 
@@ -2040,6 +2083,8 @@ body::after {
 }
 
 .nav-session-rail .runtime-session-title-copy {
+  max-width: 100%;
+  overflow: hidden;
   gap: 2px;
 }
 
@@ -7983,7 +8028,7 @@ body::after {
 }
 
 @media (min-width: 761px) {
-  .primary-nav.has-session-rail .menu {
+  .primary-nav.has-session-rail > .menu {
     flex: 0 0 clamp(260px, 34vh, 312px);
     min-height: 0;
     overflow-y: auto;
@@ -8539,15 +8584,19 @@ body::after {
 
   .primary-nav .nav-session-rail-body {
     min-height: 0;
-    overflow-y: auto;
+    overflow: hidden;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
   }
 
   .primary-nav .nav-session-rail .runtime-session-list {
-    height: auto;
+    height: 100%;
     min-height: 0;
+    flex: 1 1 auto;
     gap: 8px;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    scrollbar-gutter: stable both-edges;
   }
 
   .primary-nav .nav-session-rail .route-empty-panel {
