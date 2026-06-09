@@ -1519,6 +1519,12 @@
   padding-left: 18px;
 }
 
+.terminal-final-rendered li > ul,
+.terminal-final-rendered li > ol {
+  margin: 6px 0 4px;
+  padding-left: 30px;
+}
+
 .terminal-final-rendered blockquote {
   border-left: 3px solid rgba(147, 197, 253, 0.54);
   padding-left: 12px;

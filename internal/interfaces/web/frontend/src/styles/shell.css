@@ -495,6 +495,12 @@ body {
   margin: 0.2em 0;
 }
 
+[data-runtime-view="terminal"] .message-markdown-rendered li > ul,
+[data-runtime-view="terminal"] .message-markdown-rendered li > ol {
+  margin: 0.32em 0 0.24em;
+  padding-left: 2em;
+}
+
 [data-runtime-view="terminal"] .message-markdown-rendered blockquote {
   margin: 0.9em 0;
   padding: 0 0 0 12px;
@@ -701,6 +707,12 @@ body {
   padding-left: 0.08em;
 }
 
+[data-runtime-view="conversation"] .message-markdown-rendered li > ul,
+[data-runtime-view="conversation"] .message-markdown-rendered li > ol {
+  margin: 0.34em 0 0.26em;
+  padding-left: 2.1em;
+}
+
 [data-runtime-view="conversation"] .message-markdown-rendered strong {
   color: #111827;
   font-weight: 720;
@@ -711,6 +723,12 @@ body {
   text-decoration: underline;
   text-decoration-color: rgba(15, 118, 110, 0.32);
   text-underline-offset: 3px;
+}
+
+[data-runtime-view="conversation"] .message-markdown-rendered a:not(.assistant-inline-image-link)::after {
+  content: " ↗";
+  font-size: 0.82em;
+  line-height: 1;
 }
 
 [data-runtime-view="conversation"] .message-markdown-rendered blockquote {
@@ -758,40 +776,49 @@ body {
 [data-runtime-view="conversation"] .chat-md-table-wrap {
   width: 100%;
   max-width: 100%;
-  margin: 0.96em 0 1.08em;
+  margin: 1.08em 0 1.18em;
   overflow-x: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #fff;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   box-sizing: border-box;
   -webkit-overflow-scrolling: touch;
 }
 
 [data-runtime-view="conversation"] .chat-md-table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
   color: #1f2937;
   font-size: 14px;
-  line-height: 1.48;
+  line-height: 1.5;
 }
 
 [data-runtime-view="conversation"] .chat-md-table th,
 [data-runtime-view="conversation"] .chat-md-table td {
-  min-width: 128px;
-  padding: 10px 12px;
+  min-width: 0;
+  padding: 13px 16px 13px 0;
   border: 0;
-  border-bottom: 1px solid #edf0f2;
+  border-bottom: 1px solid #e5e7eb;
   text-align: left;
   vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: normal;
   background: transparent;
 }
 
+[data-runtime-view="conversation"] .chat-md-table td :is(a, code),
+[data-runtime-view="conversation"] .chat-md-table th :is(a, code) {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
 [data-runtime-view="conversation"] .chat-md-table th {
-  background: #f7f7f8;
+  background: transparent;
   color: #111827;
-  font-weight: 680;
+  font-weight: 720;
 }
 
 [data-runtime-view="conversation"] .chat-md-table tbody tr:last-child td {
@@ -7102,39 +7129,51 @@ body::after {
 .chat-md-table-wrap {
   width: 100%;
   max-width: 100%;
-  margin: 10px 0 14px;
+  margin: 12px 0 16px;
   overflow-x: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-sizing: border-box;
 }
 
 .chat-md-table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
   border-collapse: collapse;
-  color: #0f2f4d;
+  color: #1f2937;
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .chat-md-table th,
 .chat-md-table td {
-  min-width: 128px;
-  padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
+  min-width: 0;
+  padding: 13px 16px 13px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
   text-align: left;
   vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  background: transparent;
+}
+
+.chat-md-table td :is(a, code),
+.chat-md-table th :is(a, code) {
+  white-space: nowrap;
   overflow-wrap: normal;
   word-break: normal;
 }
 
 .chat-md-table th {
-  background: rgba(241, 245, 249, 0.92);
-  color: #0f172a;
-  font-weight: 800;
+  background: transparent;
+  color: #111827;
+  font-weight: 720;
 }
 
-.chat-md-table td {
-  background: rgba(255, 255, 255, 0.7);
+.chat-md-table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .runtime-thinking-shell.terminal-process-shell {
@@ -9600,11 +9639,23 @@ body {
   margin: 0.2em 0;
 }
 
+[data-runtime-view="terminal"] .message-markdown-rendered li > ul,
+[data-runtime-view="terminal"] .message-markdown-rendered li > ol {
+  margin: 0.32em 0 0.24em;
+  padding-left: 2em;
+}
+
 [data-runtime-view="terminal"] .message-markdown-rendered blockquote {
   margin: 0.9em 0;
   padding: 0 0 0 12px;
   border-left: 3px solid rgba(15, 23, 42, 0.18);
   color: #475467;
+}
+
+[data-runtime-view="terminal"] .message-markdown-rendered a:not(.assistant-inline-image-link)::after {
+  content: " ↗";
+  font-size: 0.82em;
+  line-height: 1;
 }
 
 [data-runtime-view="terminal"] .chat-md-inline-code {
