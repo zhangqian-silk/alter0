@@ -302,11 +302,14 @@ func artifactPreviewSkillGuide() string {
 		"# artifact preview",
 		"",
 		"- Use this skill when the task is to publish text, image, or code artifacts to a session-scoped preview subdomain rather than a full application host.",
+		"- Use this skill for every static artifact that is intended to be shown to the user in a browser, including generated HTML pages, markdown previews, screenshots, image sets, text reports, JSON examples, code samples, and packaged review artifacts.",
 		"- Stage the content as files in the current workspace, then run `bash docs/skills/artifact-preview/scripts/publish_preview_artifact.sh <session_id> <service_name> --artifact <path> ...`.",
 		"- The helper script assembles a static preview page and deploys it through the shared gateway at `https://<service>-<short_hash>.alter0.cn`.",
 		"- Keep artifact preview hosts certificate-safe by staying on single-label subdomains covered by `*.alter0.cn`; do not use nested hosts such as `https://<service>.<short_hash>.alter0.cn`.",
 		"- Reuse stable service names so repeated deploys refresh the same preview URL instead of creating ad-hoc variants.",
 		"- For full-stack web apps or routed backend services, use `deploy_test_service` instead of this artifact-only preview flow.",
+		"- Never report server-local artifact links such as `/srv/...`, `.alter0/workspaces/...`, `file://...`, `localhost`, or `127.0.0.1` as user-openable deliverables.",
+		"- Do not finish with a local HTML/file path as the primary artifact. Publish it first, then return the deployed `https://*.alter0.cn` URL.",
 	}, "\n")
 }
 

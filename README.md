@@ -600,9 +600,10 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 1. 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming` 内置 Skill。
 2. `memory` Skill 用于向 Agent / Codex 明确记忆文件的读取决策、写入路由、冲突优先级与禁止写入项，建议与 `memory_files` 一起启用。
 3. 项目内置 Skill 全部由源码仓库直接承载。标准 skill 使用 `docs/skills/<skill_id>/SKILL.md` 作为 file-backed 主入口；其中 `artifact-preview` 的发布脚本位于 `docs/skills/artifact-preview/scripts/publish_preview_artifact.sh`。`code-simplifier` 与 `code-review` 两个 plugin-style 条目则分别以 `docs/skills/code-simplifier/agents/code-simplifier.md` 和 `docs/skills/code-review/commands/code-review.md` 作为 alter0 的 file-backed 注入入口，并保留各自 `.claude-plugin/plugin.json` 元数据。Codex 启动前会把本轮选中的可读 file-backed Skill 目录复制到当前工作区 `.alter0/codex-runtime/skills/<skill_id>/`，并将运行时 `file_path` 重写为该工作区内路径，保证 Terminal 与 Agent Runtime 不依赖源码仓库相对路径。
-4. `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`，进入 Coding Agent Runtime 后即可同时继承仓库记忆、预览发布、前端设计、测试、评审、重构与协作文档规则。
-5. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `docs/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Web `Agent Runtime` 的独立 Skill 面板已移除；Chat 只展示可由当前会话选择的公有 Skill。
-6. `travel` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食、路线卡与 Codex 行程地图图片输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
+4. `artifact-preview` 是所有静态用户可见产物的默认发布通道。Agent / Terminal 不得把 `/srv/...`、`.alter0/workspaces/...`、`file://`、`localhost` 或 `127.0.0.1` 作为用户可打开链接返回；HTML、Markdown 预览、截图、图片集合、文本报告、JSON 示例和代码样例等静态产物必须先发布到 `https://<service>-<short_hash>.alter0.cn` 后再作为交付入口。需要完整 Web 应用、后端路由或 API 联动时，使用 `deploy-test-service` 发布会话级服务地址。
+5. `coding` 内置 Agent 默认启用 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`，进入 Coding Agent Runtime 后即可同时继承仓库记忆、预览发布、前端设计、测试、评审、重构与协作文档规则。
+6. 每个 Agent 在运行时都会自动附带自己的私有 file-backed Skill，默认路径为 `docs/agents/<agent_id>/SKILL.md`；该 Skill 不出现在控制面内置列表里，但会稳定注入当前 Agent 的执行上下文，供 Agent 根据用户提出的长期偏好更新自己的可复用规则。Web `Agent Runtime` 的独立 Skill 面板已移除；Chat 只展示可由当前会话选择的公有 Skill。
+7. `travel` 的私有 `SKILL.md` 会预置 travel 城市页、行程、地铁、美食、路线卡与 Codex 行程地图图片输出规则，作为 travel agent 独占的可复用规则簿；稳定偏好写入该文件，一次性行程细节仍只保留在目标城市页数据中。
 
 ### Agent
 
@@ -649,7 +650,7 @@ curl -X POST http://127.0.0.1:18088/api/messages \
 1. Runtime Profile 由控制面统一管理，运行时通过业务入口或会话选择 Skill 组合。
 2. Web `Agent Runtime` 独立入口已移除；代码、写作、旅行等任务由 Chat 会话通过 Skill、MCP、Memory 与模型/Codex 选择进入同一底层执行链。
 3. Runtime Resolver 优先使用已启用且健康的 `Claude Code + provider profile`；无可用 Provider 或 Claude Code 运行失败时使用 `Codex Direct`。
-4. 启动前会在当前 Session 工作区注入 `CLAUDE.md` 或 `AGENTS.md`、Skill 副本、Memory 摘要、MCP 配置、仓库/附件/产物路径和工作区边界。
+4. 启动前会在当前 Session 工作区注入 `CLAUDE.md` 或 `AGENTS.md`、Skill 副本、Memory 摘要、MCP 配置、仓库/附件/产物路径和工作区边界；Codex Direct 的托管 `AGENTS.md` 同时约束用户可见产物必须先发布到会话预览或服务域名，不得把服务器本地路径作为用户验收入口。
 5. Skill 文件由 `docs/skills/<skill_id>/SKILL.md` 承载，业务能力通过 Skill 复用；用户可在会话级调整公有 Skill 选择。
 6. Memory Files 当前使用 `memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。
 7. 用户显式要求记住时，当前 CLI agent 可写入对应 Markdown 记忆；会话归档生成 summary；系统维护任务每日加载 `memory-maintenance` Skill 做长期整理。

@@ -39,7 +39,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - 支持 Skill 创建、更新、删除与列表查询。
 - 默认提供 `default-nl`、`memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。
 - 这些项目内置 file-backed Skill 都由源码仓库直接承载并在启动时校验文件存在；标准 skill 继续使用 `docs/skills/<skill_id>/SKILL.md`，`artifact-preview` 之外的附属脚本或参考文件与 skill 一同放在对应目录中；plugin-style 的 `code-simplifier` 与 `code-review` 保留 `.claude-plugin/plugin.json` 元数据，并分别以 `docs/skills/code-simplifier/agents/code-simplifier.md`、`docs/skills/code-review/commands/code-review.md` 作为 alter0 的注入入口。CLI Agent Runtime 会把本轮选中的可读 file-backed Skill 目录复制到当前会话工作区，Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，运行时上下文中的 `file_path` 指向工作区内副本。
-- `artifact-preview` 额外提供 `docs/skills/artifact-preview/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>-<session_short_hash>.alter0.cn`。
+- `artifact-preview` 额外提供 `docs/skills/artifact-preview/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>-<session_short_hash>.alter0.cn`。所有需要给用户浏览器查看的静态产物都必须通过该 skill 或等价会话预览服务发布，不得返回服务器本地路径、工作区内部路径、`file://`、`localhost` 或 `127.0.0.1` 作为用户入口；需要完整 Web 应用或后端路由时改用 `deploy-test-service`。
 - Skill 协议支持文件路径与可写属性。
 - Agent 私有 file-backed Skill 由运行时自动注入，不要求出现在控制面内置 Skill 列表。
 

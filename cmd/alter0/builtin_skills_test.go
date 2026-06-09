@@ -119,6 +119,9 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if !strings.Contains(artifactGuide, "text") || !strings.Contains(artifactGuide, "image") || !strings.Contains(artifactGuide, "code") {
 		t.Fatalf("expected artifact-preview guide covers text, image, and code previews, got %q", artifactGuide)
 	}
+	if !strings.Contains(artifactGuide, "local HTML/file path") || !strings.Contains(artifactGuide, "https://*.alter0.cn") {
+		t.Fatalf("expected artifact-preview guide to reject local artifact links, got %q", artifactGuide)
+	}
 
 	codeSimplifier, ok := service.ResolveSkill("code-simplifier")
 	if !ok {

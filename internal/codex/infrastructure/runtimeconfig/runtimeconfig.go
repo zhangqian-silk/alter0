@@ -301,6 +301,9 @@ func writeManagedAgentsFile(workspaceDir string, instructions string) error {
 	managedInstructions := []string{
 		"- Stay inside the current workspace scope.",
 		"- Do not modify files, repositories, or services outside it unless the current task explicitly targets them.",
+		"- This alter0 service runs on a standalone server. Do not present server-local paths, workspace-internal paths, `file://` URLs, `localhost` URLs, or `127.0.0.1` URLs as user-openable hyperlinks.",
+		"- Any artifact intended for the user to view in a browser must be published through the session-scoped preview/service flow first, then reported as an `https://*.alter0.cn` URL.",
+		"- For static user-facing artifacts, use the `artifact-preview` skill flow. For full-stack apps or routed backend previews, use the `deploy-test-service` flow.",
 	}
 	if trimmed := strings.TrimSpace(instructions); trimmed != "" {
 		managedInstructions = append(managedInstructions, trimmed)
