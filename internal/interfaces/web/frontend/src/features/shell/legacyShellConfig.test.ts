@@ -39,6 +39,7 @@ describe("legacyShellConfig", () => {
       "environments",
       "skills",
       "memory",
+      "maintenance",
       "workspaces",
       "schedules",
     ]);

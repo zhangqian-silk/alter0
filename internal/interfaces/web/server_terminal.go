@@ -166,6 +166,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			})
 			return
 		}
+		s.touchSessionActivity(sessionID)
 		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
 		return
 	}
@@ -243,6 +244,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			s.writeTerminalError(w, err)
 			return
 		}
+		s.touchSessionActivity(sessionID)
 		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})

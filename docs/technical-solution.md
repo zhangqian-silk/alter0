@@ -1,6 +1,6 @@
 # Technical Solution
 
-> Last update: 2026-06-07
+> Last update: 2026-06-08
 
 `alter0` 的技术方案按与需求清单一致的领域模型维护。后续新增或调整需求时，技术方案必须落到对应领域与子域，不再按时间顺序、任务编号或零散专题堆叠。
 
@@ -87,6 +87,8 @@ CLI / Web / Cron
 - `internal/interfaces/web/frontend/src/features/conversation-runtime` 承载 `chat` 运行态：`ConversationRuntimeProvider.tsx` 负责会话创建/切换/删除、消息流、SSE 收口、任务轮询、文本草稿与附件草稿恢复、模型与能力项选择，并在加载本地 snapshot、服务端 registry 与 Session history 时把历史 `agent-runtime` 会话迁移为当前 Chat 会话结构。`ConversationWorkspace.tsx` 不再渲染 Agent 选择器、Deliverables、Session Profile 或 Agent 私有 Skill 面板；历史会话的 `target_type=agent` 仅作为会话摘要元数据保留。Chat 仍在常规模型 Provider 列表外额外注入前端内置 `Codex` provider，选中后通过统一 message metadata builder 把请求改写为 `alter0.execution.engine=codex`。运行页会话列表与消息详情通过 `/api/conversation-runtime/sessions?route=chat` 与单会话详情接口恢复，浏览器只继续保存未发送草稿、附件草稿和当前页局部 UI 状态。
 - `ConversationRuntimeProvider.tsx` 只接受 `chat` conversation route：读取本地活动会话、最近快照、服务端集合、单会话详情和用户手动 focus 时都会使用 Chat 会话模型；历史 `agent-runtime` snapshot 与短 hash query 在加载时迁移为 Chat 会话并写回 `/chat?session_id=<短hash>`。
 - `internal/interfaces/web/conversation_runtime_session_registry.go` 维护服务端 Conversation Runtime session registry，持久化在 `.alter0/conversation-runtime-sessions.json`：它记录 `session_id + route` 维度的最小恢复视图、最近配置和 `busy / ready / failed` 状态。加载阶段会把历史 `route=agent-runtime` 项迁移为 `route=chat` 并重写 registry 文件；`messageHandler / messageStreamHandler` 在请求开始、完成、失败时更新这份 registry；`conversationRuntimeSessionCollectionHandler / conversationRuntimeSessionItemHandler` 则优先读取 registry，再与 Session history 聚合结果合并。这样即使 SSE 因浏览器刷新或客户端断链中断，只要服务端已经接受了请求，运行页列表和单会话详情仍能先返回稳定的服务端视图，而不是直接丢会话或返回 404。
+- `internal/session/application.Service` 在 Session summary 中输出 `last_active_at` 与 `pinned`。`SetSessionPinned` 持久化置顶 metadata，`TouchSession` 写入活跃时间 metadata，`CleanupInactiveSessions` 按固定阈值扫描会话并返回删除、置顶跳过和扫描统计；没有显式活跃时间的历史会话使用最后消息时间参与排序和清理判断。
+- `internal/interfaces/web/maintenance.go` 负责系统维护任务：服务启动时创建每日记忆维护与会话清理调度循环；`RunMemoryMaintenance` 通过编排入口发送系统消息并注入 `memory-maintenance` Skill；`RunSessionCleanup` 调用 Session application 清理超过 7 天不活跃且未置顶的会话，并同步删除任务关联、Conversation Runtime registry 与 Session workspace。
 - `ConversationRuntimeProvider.tsx` 的恢复判定同时识别两类未完成状态：本地或远端存在 `streaming / error / Thinking...` assistant，以及当前活动会话最后一条消息仍是 user。后者用于覆盖服务端已先持久化 user、但 assistant 结果尚未写入 Session history 的窗口期；恢复流程在要求稳定 assistant 时必须等到详情接口返回非占位 assistant、任务消息或失败态后才 upsert。
 - `internal/orchestration/application/SessionPersistenceService` 将会话落库拆为请求开始与结果收口两段：`Handle / HandleStream` 进入下游执行前先追加本轮 `user` 记录，执行完成后只追加 assistant 记录及 route、错误码、`process_steps`。Session history 因此不依赖浏览器连接生命周期，也不会因为 SSE 连接提前结束而丢失已发送用户消息。
 - `internal/interfaces/web/server.go` 的 `executionContextForMessage` 现在会对 `trigger_type=user + channel_type=web` 的会话消息统一使用 `context.WithoutCancel` 派生执行上下文；浏览器刷新或前端主动断开 SSE 只会结束当前 HTTP 连接，不再把 Chat 已接受请求连带取消。前端恢复链路继续依赖 Conversation Runtime registry 与 Session history 汇合视图补拉最终结果。
@@ -109,6 +111,7 @@ CLI / Web / Cron
 - `RuntimeWorkspaceScreen.tsx` 负责把运行页消息滚动面与 overlay 控件分层：时间线继续放在 `.runtime-workspace-screen` 内独立滚动，`ScrollJumpStrip` 与 `terminal-jump-cluster` 则挂到外层 `.runtime-workspace-panel` 作为悬浮层，避免按钮组继续参与消息流高度计算，把空白会话或短消息场景错误撑成可滚动区域。
 - `internal/interfaces/web/frontend/src/features/shell` 继续维护主导航、共享 copy、React 管理页和 route surface。`components/PrimaryNav.tsx` 负责路由高亮、导航折叠、tooltip、语言切换与当前运行页会话列表渲染，品牌区只渲染文字 `Alter0`，不再输出图形 logo 节点；`PrimaryNav` 固定持有运行页会话列表的 `Sessions` 标题与 `New` 按钮文案，`WorkbenchSessionRail` 类型只允许页面提供 `route / countLabel / body / onPrimaryAction` 与动作样式，避免页面切换时接管公共 chrome。`WorkbenchApp.tsx` 在当前 route 属于运行页但尚未收到对应 rail 数据时生成稳定 fallback rail，先保持主导航会话区与 `New` 占位项可见，真实 rail 注册后再更新数量、列表 body 和动作绑定；同时按 `route` 缓存最近一次有效 rail，切回已访问运行页时先复用该 route 的最近列表，不因旧页 cleanup 或新页首帧注册窗口回退到占位 rail。`components/ReactManagedRouteBody.tsx` 负责把 `management` 分派到合并管理页，再由页内分组切换挂载 Profiles、Control 与 Settings 相关 React 页面。`RuntimeWorkspaceHeader.tsx` 负责共享 `Chat / Terminal` 的固定 workspace header，只保留会话标题、状态按钮和 `Details` 入口，并把差异内容交给各页传入。`RuntimeWorkspaceShell.tsx` 在窄屏下输出运行页顶部操作行：`Chat / Terminal` 都传入 `Menu / New`，不再传入 `mobileSessionButtonLabel`。`RuntimeWorkspacePage.tsx` 把当前运行页的 session rail 数据注册到 `WorkbenchContext`；从 `Chat / Terminal` 互相切换时主导航公共 chrome 保持原位，不出现一帧空 rail。`ReactManagedTerminalRouteBody.tsx` 继续保持旧版 `terminal-*` DOM class 契约作为布局皮肤基线，但会话列表、工作区容器、工作区头部与窄屏顶部操作行额外复用 `ConversationWorkspace` 的工作台语义类，确保 Terminal 与 Chat 使用同一套表面和头部节奏；Terminal 的会话列表输出 `role="list"` 语义、卡片式标题和尾侧更多按钮，运行状态保留在 workspace header 与 `Details` 摘要中，不再在列表项内额外挂独立状态徽标、元信息或短标识。服务端列表为空或列表仍在加载时，Terminal 在 controller 内生成一条 `terminal-new-placeholder` 运行页占位 item 交给 `RuntimeWorkspacePage` 渲染，首次发送输入或添加附件时继续复用既有 `createSession()` 链路创建真实 Terminal session 并替换占位项；详情面板则先复用共享紧凑摘要栅格，再由 Terminal 自己补充会话字段和公有 Skill 选择区；Terminal 的会话列表、详情轮询、step 展开、列表删除、Skill 选择与 Markdown 输出仍全部由 React state 直接维护；控制页、Sessions、Tasks 与 Memory 继续复用统一客户端和共享 surface 样式。
 - `internal/interfaces/web/frontend/src/features/shell` 继续维护主导航、共享 copy、React 管理页和 route surface。`components/PrimaryNav.tsx` 负责路由高亮、导航折叠、tooltip、语言切换与当前运行页会话列表渲染，品牌区只渲染文字 `Alter0`，不再输出图形 logo 节点；`PrimaryNav` 固定持有运行页会话列表的 `Sessions` 标题与 `New` 按钮文案，`WorkbenchSessionRail` 类型只允许页面提供 `route / countLabel / body / onPrimaryAction` 与动作样式，避免页面切换时接管公共 chrome。`WorkbenchApp.tsx` 在当前 route 属于运行页但尚未收到对应 rail 数据时生成稳定 fallback rail，先保持主导航会话区与 `New` 占位项可见，真实 rail 注册后再更新数量、列表 body 和动作绑定；同时按 `route` 缓存最近一次有效 rail，切回已访问运行页时先复用该 route 的最近列表，不因旧页 cleanup 或新页首帧注册窗口回退到占位 rail。`components/ReactManagedRouteBody.tsx` 负责把 `management` 分派到合并管理页，再由页内分组切换挂载 Profiles、Control 与 Settings 相关 React 页面，并为 Management 分组按钮输出图标槽、文本槽与短标识槽。`RuntimeWorkspaceHeader.tsx` 负责共享 `Chat / Terminal` 的固定 workspace header，只保留会话标题、状态按钮和 `Details` 入口，并把差异内容交给各页传入。`RuntimeWorkspaceShell.tsx` 在窄屏下输出运行页顶部操作行：`Chat / Terminal` 都传入 `Menu / New`，不再传入 `mobileSessionButtonLabel`。`RuntimeWorkspacePage.tsx` 把当前运行页的 session rail 数据注册到 `WorkbenchContext`；从 `Chat / Terminal` 互相切换时主导航公共 chrome 保持原位，不出现一帧空 rail。`ReactManagedTerminalRouteBody.tsx` 继续保持旧版 `terminal-*` DOM class 契约作为布局皮肤基线，但会话列表、工作区容器、工作区头部与窄屏顶部操作行额外复用 `ConversationWorkspace` 的工作台语义类，确保 Terminal 与 Chat 使用同一套表面和头部节奏；Terminal 的会话列表输出 `role="list"` 语义、卡片式标题和尾侧更多按钮，运行状态保留在 workspace header 与 `Details` 摘要中，不再在列表项内额外挂独立状态徽标、元信息或短标识。服务端列表为空或列表仍在加载时，Terminal 在 controller 内生成一条 `terminal-new-placeholder` 运行页占位 item 交给 `RuntimeWorkspacePage` 渲染，首次发送输入或添加附件时继续复用既有 `createSession()` 链路创建真实 Terminal session 并替换占位项；详情面板则先复用共享紧凑摘要栅格，再由 Terminal 自己补充会话字段和公有 Skill 选择区；Terminal 的会话列表、详情轮询、step 展开、列表删除、Skill 选择与 Markdown 输出仍全部由 React state 直接维护；Profiles、Memory、Skills、MCP、Sessions、Tasks、Cron Jobs、Channels、Models、Environments、Codex Accounts 与控制页、Sessions、Tasks、Memory 继续复用 `.management-route-content` 作用域下的统一客户端和共享 surface 样式。
+- `ReactManagedMaintenanceRouteBody.tsx` 使用 `/api/maintenance`、`/api/maintenance/memory/run` 与 `/api/maintenance/sessions/cleanup` 渲染维护状态和手动运行入口；`ReactManagedSessionsRouteBody.tsx` 使用 `last_active_at / pinned` 字段展示最后活跃时间并通过 `/api/sessions/{session_id}/pin` 更新置顶。Maintenance、Sessions 与其他 Settings 分区共用 `.management-route-content` route surface 和 `RouteCard` action slot。
 - `internal/interfaces/web/frontend/src/app/WorkbenchContext.tsx` 与 `WorkbenchApp.tsx` 统一维护移动端运行页面板状态：运行页会话列表直接挂在主导航抽屉内，`Chat / Terminal` 移动 workbar 都只暴露 `Menu` 抽屉入口；普通 `page-mode` 路由页新增的 `Menu` 入口也复用同一套状态切换与关闭路径，切路由、点遮罩或切会话时都通过同一条关闭链路收口，不再由各页面各自维护独立开关。
 - `ReactManagedTerminalRouteBody.tsx` 的提交链路在进入 `submitInput` 时会立即设置 `submitting`，哪怕当前还需要先 `createSession()`；这样首次点击发送按钮就会同步切到 `Sending...` 禁用态，再串行完成会话创建、输入提交、active session 刷新和滚动收口，避免用户把首击感知成无效点击或在 session 创建窗口内重复提交。
 - `features/shell/components/RuntimeWorkspacePage.tsx` 与 `RuntimeWorkspaceShell.tsx` 为运行页共享 `workspaceBodyRef`、会话列表注册和移动端 workbar；`RuntimeWorkspaceHeader.tsx` 为 `Chat / Terminal` 输出同一组标题、状态按钮与 `Details` 按钮元素，Terminal 只传入状态值和详情面板内容，不再传入 Terminal 专属 header kind、状态按钮属性或 details toggle 外观；`RuntimeComposer.tsx` 为三条运行页输出同一套 composer shell 与 form surface，`shell.css` 只允许 Terminal 在 meta、Codex 候选和工具按钮上追加领域样式，不再通过 `[data-runtime-view="terminal"] .runtime-composer-shell` 覆盖更深背景或更低 padding，也不再为 Terminal 额外渲染 form 外层的 status note；`ReactManagedTerminalRouteBody.tsx` 将失败、退出和附件错误提示写入 `RuntimeComposer.metaContent`，与 Agent/Chat 工具栏 meta 保持同一结构。`ConversationWorkspace.tsx` 与 `ReactManagedTerminalRouteBody.tsx` 在移动端通过 `ResizeObserver + VisualViewport resize` 持续测量 Composer 的静态 footprint 与键盘抬起后的额外位移量：`--runtime-composer-rest-inset` 仅表示输入区自身高度，`--runtime-composer-inset` 只表示相对静态文档流额外抬起的那一段；`shell.css` 与 `public/legacy/chat-terminal.css` 再用这些变量收口 `.conversation-chat-screen` / `.terminal-chat-screen` 与 jump controls 的可见高度，保证 Chat 与 Terminal 的最后一屏内容稳定停在输入区上沿，同时不会在输入框上方重复留下键盘高度对应的空白带。
@@ -236,14 +239,14 @@ Natural language message
 - Memory Files 注入需要携带路径、存在状态、可写性、内容摘要、召回片段和截断标记。
 - Markdown 主存结构固定为 `memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。
 - 用户可见 Markdown 不写入 confidence、source、status、sensitivity 等机器元数据；检索索引可作为派生文件重建。
-- 用户显式记忆写入由当前 CLI agent 完成；会话归档由服务生成 `ConversationSummary`；长期整理由 Cron 启动 CLI agent 并加载 `memory-maintenance` Skill 完成。
+- 用户显式记忆写入由当前 CLI agent 完成；会话归档由服务生成 `ConversationSummary`；长期整理由系统维护任务启动 CLI agent 并加载 `memory-maintenance` Skill 完成。该维护任务状态由 Web `maintenanceService` 记录，并通过 Settings 的 Maintenance 分区展示。
 - Agent Memory Web 聚合接口只读返回长期记忆、天级记忆、项目记忆、会话摘要与说明文档；任务摘要刷新走 Task summary 子域接口。
 
 ### 验证策略
 
 - Execution 应用测试覆盖 Runtime Resolver、Skill/MCP/Memory Context 注入、工作区文件生成和 Provider 兜底。
 - Infrastructure 测试覆盖 Claude Code 启动参数、Codex Direct 运行目录、thread 状态持久化、日志解析和错误收口。
-- Memory 测试覆盖 Markdown 编解码、会话摘要、长期召回、Cron 整理输入和任务摘要深检索。
+- Memory 测试覆盖 Markdown 编解码、会话摘要、长期召回、系统维护整理输入和任务摘要深检索。
 
 ## Task, Terminal & Workspace
 
@@ -314,6 +317,7 @@ Terminal input
 - `internal/control` 中的 Model Provider 配置负责生成 Claude Code provider profile 所需的 base URL、API Key、model、profile 名称与健康状态。
 - `internal/codex/domain` 负责 `auth.json` 快照、身份识别与额度状态模型；`internal/codex/application` 负责账号导入、状态刷新、独立登录会话、活动账号切换，以及通过 Codex app-server 的 `model/list`、`config/read`、`config/batchWrite` 读取真实运行时能力并更新 `model` / `model_reasoning_effort`；`internal/codex/infrastructure/localfile` 负责 `<active_codex_home>/alter0-accounts` 下的账号快照、备份与登录工作目录。
 - `internal/interfaces/web/frontend` 中的 `ReactManagedCodexAccountsRouteBody` 负责 Codex Accounts 控制面的运行时概览、当前 Codex 管理区、账号列表、导入/登录操作侧栏与登录会话展示，并复用 `/api/control/codex/accounts*` 与 `/api/control/codex/runtime` 控制接口完成刷新、切换和运行时设置更新；概览区优先从当前账号状态抽取用户可读账号名、套餐与小时/周剩余额度，渲染为“主身份区 + 四项紧凑指标列”，其中额度卡使用带 `progressbar` 语义的进度条并展示后端返回的 `reset_at`，key/value 默认按同列对齐，活动路径不在概览区直出；运行时维护字段通过 `Runtime Details` 折叠区展开；当前 live `auth.json` 未匹配托管快照时，前端需回退展示 `active.live` 快照与 `active.quota`，并输出未托管提示，首次加载阶段则输出同构 skeleton 保持页面结构稳定；当前 Codex 管理区从后端返回的 `runtime.models` 构建 model 选择器，并按所选 model 的 `supported_reasoning_effort` 联动思考深度选择器，当前值不再在选择器下额外重复渲染；账号区按断点切换为桌面高密度行式列表、中屏全宽列表 + 双侧栏和窄屏单列紧凑列表，避免额度进度条、reset 时间、当前 model、思考深度与切换入口被横向滚动隐藏；账号状态文本和切换按钮采用扁平控制台样式，列表内部优先使用分隔线式布局而不是额外方框容器。
+- `internal/interfaces/web/maintenance.go` 与 `ReactManagedMaintenanceRouteBody.tsx` 共同承担内置维护任务控制面：后端暴露 `GET /api/maintenance`、`POST /api/maintenance/memory/run`、`POST /api/maintenance/sessions/cleanup`；前端只提供运行、重试和状态展示，不写入用户级调度配置。会话置顶通过 `POST /api/sessions/{session_id}/pin` 更新。
 - `cmd/alter0` 管理启动、supervisor、重启、内置配置和运行时 metadata。
 - `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本；Node 初始化同时覆盖 `internal/interfaces/web` 与 `internal/interfaces/web/frontend`。
 - `docs/deployment` 承载 Nginx 与部署权限说明。
@@ -342,6 +346,7 @@ Environment restart
 ### 技术约束
 
 - Control 面只能管理运行时配置，不绕过编排层直接执行业务请求。
+- Maintenance 控制面只管理系统内置维护任务的状态和手动触发；每日自动运行时间、7 天不活跃阈值、置顶保护和 queued/running 任务保护规则固定在服务端，不通过 Environment 或 Cron Job 暴露为用户配置。维护任务不可执行或后续资源清理失败时写入 `failed` 状态，不使用空运行成功作为兜底。
 - Skill 与 MCP 专用接口需要复用统一 Capability 数据结构；Capability 审计记录生命周期动作，供控制面按类型查询。
 - `cmd/alter0/builtin_skills.go` 负责注册内置 Skill，并在启动阶段校验所有 file-backed 内置 Skill 文件存在；当前内置集合包含 `deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。标准 skill 使用源码目录下的 `docs/skills/<skill_id>/SKILL.md`；plugin-style 的 `code-simplifier` 与 `code-review` 继续保留目录内 `.claude-plugin/plugin.json` 元数据，并分别以 `agents/code-simplifier.md`、`commands/code-review.md` 作为 alter0 的 file-backed 注入入口。
 - Runtime Context 物化器负责在 CLI agent 准备阶段复制 file-backed Skill：按当前服务进程工作目录向上查找可读的 skill 文件，定位 `docs/skills/<skill_id>/` 根目录，把整个目录复制到当前会话工作区。Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，并将注入上下文中的 `file_path` 改写为工作区内副本。
@@ -364,7 +369,8 @@ Environment restart
 
 ### 验证策略
 
-- Control 测试覆盖 Channel、Capability、Skill、MCP、Runtime Profile、Environment、Codex Accounts 配置持久化、Capability 审计和 Environment audit。
+- Control 测试覆盖 Channel、Capability、Skill、MCP、Runtime Profile、Environment、Codex Accounts、Maintenance 配置持久化、Capability 审计和 Environment audit。
+- Web 接口测试覆盖会话置顶、7 天不活跃清理、置顶跳过、queued/running 任务保护、workspace 删除、维护执行器不可用、资源清理失败和维护状态响应；前端组件测试覆盖 Maintenance 状态、手动清理、Sessions 最后活跃时间和置顶操作。
 - Provider 测试覆盖创建、更新、缺失密钥恢复、默认项收敛、Claude Code profile 生成和 OpenRouter 字段。
 - Runtime supervisor 测试覆盖候选版本构建、readyz 切换、失败回滚和 metadata 展示。
 - 文档治理变更至少运行 Markdown 引用与空白检查；代码变更按 TDD 运行对应包或全量测试。

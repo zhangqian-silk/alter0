@@ -17,6 +17,9 @@ const (
 	defaultPageSize = 20
 	maxPageSize     = 200
 	previewRuneSize = 72
+
+	sessionPinnedMetadataKey     = "alter0.session.pinned"
+	sessionLastActiveMetadataKey = "alter0.session.last_active_at"
 )
 
 type Store interface {
@@ -62,6 +65,20 @@ type SessionPage struct {
 type MessagePage struct {
 	Items      []sessiondomain.MessageRecord `json:"items"`
 	Pagination Pagination                    `json:"pagination"`
+}
+
+type CleanupInactiveSessionsOptions struct {
+	Now                 time.Time
+	InactiveDuration    time.Duration
+	ProtectedSessionIDs []string
+}
+
+type CleanupInactiveSessionsResult struct {
+	DeletedSessionIDs     []string `json:"deleted_session_ids"`
+	DeletedCount          int      `json:"deleted_count"`
+	SkippedPinnedCount    int      `json:"skipped_pinned_count"`
+	SkippedProtectedCount int      `json:"skipped_protected_count"`
+	ScannedCount          int      `json:"scanned_count"`
 }
 
 type Service struct {
@@ -171,28 +188,7 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 		if end <= start {
 			continue
 		}
-		first := s.records[indexes[start]]
-		last := s.records[indexes[end-1]]
-		source := s.resolveSessionSourceLocked(indexes)
-		summary := sessiondomain.SessionSummary{
-			SessionID:     first.SessionID,
-			MessageCount:  end - start,
-			StartedAt:     first.Timestamp,
-			LastMessageAt: last.Timestamp,
-			LastMessageID: last.MessageID,
-			LastRoute:     string(last.RouteResult.Route),
-			LastErrorCode: last.RouteResult.ErrorCode,
-			LastPreview:   summarizePreview(last.Content),
-			TriggerType:   source.TriggerType,
-			ChannelType:   source.ChannelType,
-			ChannelID:     source.ChannelID,
-			CorrelationID: source.CorrelationID,
-			AgentID:       source.AgentID,
-			AgentName:     source.AgentName,
-			JobID:         source.JobID,
-			JobName:       source.JobName,
-			FiredAt:       source.FiredAt,
-		}
+		summary := s.sessionSummaryLocked(indexes[start:end])
 		if !matchSessionSourceFilters(summary, triggerType, channelType, channelID, agentID, jobID) {
 			continue
 		}
@@ -203,10 +199,21 @@ func (s *Service) ListSessions(query SessionQuery) SessionPage {
 	}
 
 	sort.SliceStable(summaries, func(i, j int) bool {
-		if summaries[i].LastMessageAt.Equal(summaries[j].LastMessageAt) {
+		if summaries[i].Pinned != summaries[j].Pinned {
+			return summaries[i].Pinned
+		}
+		leftActive := summaries[i].LastActiveAt
+		rightActive := summaries[j].LastActiveAt
+		if leftActive.IsZero() {
+			leftActive = summaries[i].LastMessageAt
+		}
+		if rightActive.IsZero() {
+			rightActive = summaries[j].LastMessageAt
+		}
+		if leftActive.Equal(rightActive) {
 			return strings.ToLower(summaries[i].SessionID) < strings.ToLower(summaries[j].SessionID)
 		}
-		return summaries[i].LastMessageAt.After(summaries[j].LastMessageAt)
+		return leftActive.After(rightActive)
 	})
 
 	from, to := pageBounds(len(summaries), pagination.Page, pagination.PageSize)
@@ -306,6 +313,151 @@ func (s *Service) DeleteSession(sessionID string) error {
 	return nil
 }
 
+func (s *Service) SetSessionPinned(sessionID string, pinned bool) error {
+	key := normalizeKey(sessionID)
+	if key == "" {
+		return ErrSessionNotFound
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	indexes, ok := s.bySession[key]
+	if !ok || len(indexes) == 0 {
+		return ErrSessionNotFound
+	}
+
+	previousRecords := cloneRecords(s.records)
+	previousIndexes := cloneSessionIndexes(s.bySession)
+
+	for _, idx := range indexes {
+		metadata := cloneStringMap(s.records[idx].Metadata)
+		if metadata == nil {
+			metadata = map[string]string{}
+		}
+		if pinned {
+			metadata[sessionPinnedMetadataKey] = "true"
+		} else {
+			delete(metadata, sessionPinnedMetadataKey)
+		}
+		s.records[idx].Metadata = metadata
+	}
+
+	if err := s.storeLocked(); err != nil {
+		s.records = previousRecords
+		s.bySession = previousIndexes
+		return err
+	}
+	return nil
+}
+
+func (s *Service) TouchSession(sessionID string, at time.Time) error {
+	key := normalizeKey(sessionID)
+	if key == "" {
+		return ErrSessionNotFound
+	}
+	at = normalizeTime(at)
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	indexes, ok := s.bySession[key]
+	if !ok || len(indexes) == 0 {
+		return ErrSessionNotFound
+	}
+
+	previousRecords := cloneRecords(s.records)
+	previousIndexes := cloneSessionIndexes(s.bySession)
+
+	idx := indexes[len(indexes)-1]
+	metadata := cloneStringMap(s.records[idx].Metadata)
+	if metadata == nil {
+		metadata = map[string]string{}
+	}
+	metadata[sessionLastActiveMetadataKey] = at.Format(time.RFC3339)
+	s.records[idx].Metadata = metadata
+
+	if err := s.storeLocked(); err != nil {
+		s.records = previousRecords
+		s.bySession = previousIndexes
+		return err
+	}
+	return nil
+}
+
+func (s *Service) CleanupInactiveSessions(options CleanupInactiveSessionsOptions) (CleanupInactiveSessionsResult, error) {
+	now := normalizeTime(options.Now)
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if options.InactiveDuration <= 0 {
+		return CleanupInactiveSessionsResult{}, nil
+	}
+	cutoff := now.Add(-options.InactiveDuration)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	previousRecords := cloneRecords(s.records)
+	previousIndexes := cloneSessionIndexes(s.bySession)
+	result := CleanupInactiveSessionsResult{}
+	deleteKeys := map[string]struct{}{}
+	protectedKeys := map[string]struct{}{}
+	for _, sessionID := range options.ProtectedSessionIDs {
+		if key := normalizeKey(sessionID); key != "" {
+			protectedKeys[key] = struct{}{}
+		}
+	}
+
+	for key, indexes := range s.bySession {
+		if len(indexes) == 0 {
+			continue
+		}
+		result.ScannedCount++
+		summary := s.sessionSummaryLocked(indexes)
+		if summary.Pinned {
+			result.SkippedPinnedCount++
+			continue
+		}
+		if _, protected := protectedKeys[key]; protected {
+			result.SkippedProtectedCount++
+			continue
+		}
+		lastActive := summary.LastActiveAt
+		if lastActive.IsZero() {
+			lastActive = summary.LastMessageAt
+		}
+		if lastActive.IsZero() || !lastActive.Before(cutoff) {
+			continue
+		}
+		deleteKeys[key] = struct{}{}
+		result.DeletedSessionIDs = append(result.DeletedSessionIDs, summary.SessionID)
+	}
+	if len(deleteKeys) == 0 {
+		return result, nil
+	}
+
+	filtered := make([]sessiondomain.MessageRecord, 0, len(s.records))
+	for _, record := range s.records {
+		if _, remove := deleteKeys[normalizeKey(record.SessionID)]; remove {
+			continue
+		}
+		filtered = append(filtered, cloneRecord(record))
+	}
+	s.records = filtered
+	s.bySession = buildSessionIndexes(filtered)
+	if err := s.storeLocked(); err != nil {
+		s.records = previousRecords
+		s.bySession = previousIndexes
+		return CleanupInactiveSessionsResult{}, err
+	}
+	result.DeletedCount = len(result.DeletedSessionIDs)
+	return result, nil
+}
+
 func sanitizeRecord(record sessiondomain.MessageRecord) (sessiondomain.MessageRecord, error) {
 	record.MessageID = strings.TrimSpace(record.MessageID)
 	record.SessionID = strings.TrimSpace(record.SessionID)
@@ -377,6 +529,44 @@ func (s *Service) resolveSessionSourceLocked(indexes []int) sessiondomain.Messag
 	return sessiondomain.MessageSource{}
 }
 
+func (s *Service) sessionSummaryLocked(indexes []int) sessiondomain.SessionSummary {
+	first := s.records[indexes[0]]
+	last := s.records[indexes[len(indexes)-1]]
+	source := s.resolveSessionSourceLocked(indexes)
+	pinned := false
+	lastActive := last.Timestamp
+	for _, idx := range indexes {
+		record := s.records[idx]
+		if metadataBool(record.Metadata, sessionPinnedMetadataKey) {
+			pinned = true
+		}
+		if parsed := metadataTime(record.Metadata, sessionLastActiveMetadataKey); !parsed.IsZero() && parsed.After(lastActive) {
+			lastActive = parsed
+		}
+	}
+	return sessiondomain.SessionSummary{
+		SessionID:     first.SessionID,
+		MessageCount:  len(indexes),
+		StartedAt:     first.Timestamp,
+		LastMessageAt: last.Timestamp,
+		LastActiveAt:  lastActive,
+		LastMessageID: last.MessageID,
+		Pinned:        pinned,
+		LastRoute:     string(last.RouteResult.Route),
+		LastErrorCode: last.RouteResult.ErrorCode,
+		LastPreview:   summarizePreview(last.Content),
+		TriggerType:   source.TriggerType,
+		ChannelType:   source.ChannelType,
+		ChannelID:     source.ChannelID,
+		CorrelationID: source.CorrelationID,
+		AgentID:       source.AgentID,
+		AgentName:     source.AgentName,
+		JobID:         source.JobID,
+		JobName:       source.JobName,
+		FiredAt:       source.FiredAt,
+	}
+}
+
 func (s *Service) storeLocked() error {
 	if s.store == nil {
 		return nil
@@ -385,6 +575,27 @@ func (s *Service) storeLocked() error {
 		return fmt.Errorf("store session history: %w", err)
 	}
 	return nil
+}
+
+func metadataBool(metadata map[string]string, key string) bool {
+	switch strings.ToLower(strings.TrimSpace(metadata[key])) {
+	case "true", "1", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func metadataTime(metadata map[string]string, key string) time.Time {
+	raw := strings.TrimSpace(metadata[key])
+	if raw == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed.UTC()
 }
 
 func summarizePreview(content string) string {

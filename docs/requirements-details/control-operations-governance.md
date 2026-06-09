@@ -1,6 +1,6 @@
 # Control, Operations & Governance Requirements
 
-> Last update: 2026-06-06
+> Last update: 2026-06-08
 
 ## 领域边界
 
@@ -58,11 +58,13 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `coding`、`travel`、`writing` 等业务入口通过 Runtime Profile 预选 Skill，不改变底层 CLI Agent Runtime。
 - Runtime Profile 编辑页中的短字段优先采用并排栅格布局，`Enabled` 使用显式开关控件。
 
-### Cron 与 Codex Accounts
+### Cron、Maintenance 与 Codex Accounts
 
 - Cron Job 控制面接口用于配置与触发记录查看；调度执行归属 Runtime & Orchestration。
+- Maintenance 控制面展示系统内置维护任务，不提供复杂配置项。内置任务包括每日记忆维护和每日会话清理；前端提供状态、上次运行、下次运行、失败信息、手动运行和失败重试。记忆维护执行器不可用时必须返回失败状态，不得记录为空运行成功。
+- 会话清理固定使用超过 7 天不活跃的默认阈值，跳过置顶会话和仍有关联 queued/running 任务的会话；手动 `Clean up now` 与自动清理走同一后端服务，并返回扫描数量、删除数量、置顶跳过数量和任务保护数量。清理 Session history 后，关联任务、运行时 registry 或工作区删除失败时，本次维护状态必须标记为失败并返回错误信息。
 - Codex Accounts 控制面负责运行账户下的多账号快照管理、独立登录会话、状态查询与当前生效账号切换。
-- Web Shell 由 `/settings` 单页承接运行时、Skill、Memory、Workspaces 与 Schedules 能力的读取、加载、空态与错误态渲染；历史 `/management` 自动映射到 `/settings`。这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Runtime / Skills / Memory / Workspaces / Schedules` 分区切换。桌面端分区切换作为左侧设置索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有设置分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Settings 作用域下的 route surface：列表卡片、表格、筛选表单、主从详情、空态与错误态共享低圆角、低阴影、浅色状态面板和紧凑字段行。控制台页面中的描述、Cron 输入、Skill 说明、Codex 运行时说明与审计/配置说明类文本按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
+- Web Shell 由 `/settings` 单页承接运行时、Skill、Memory、Maintenance、Workspaces 与 Schedules 能力的读取、加载、空态与错误态渲染；历史 `/management` 自动映射到 `/settings`。这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Runtime / Skills / Memory / Maintenance / Workspaces / Schedules` 分区切换。桌面端分区切换作为左侧设置索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有设置分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Settings 作用域下的 route surface：列表卡片、表格、筛选表单、主从详情、空态与错误态共享低圆角、低阴影、浅色状态面板和紧凑字段行。控制台页面中的描述、Cron 输入、Skill 说明、Codex 运行时说明与审计/配置说明类文本按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
 
 ## 接口边界
 
@@ -79,6 +81,10 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `POST /api/control/runtime/restart` 请求 supervisor 重启。
 - `GET /api/control/codex/accounts`、`POST /api/control/codex/accounts`、`POST /api/control/codex/accounts/{account_name}/switch`、`POST /api/control/codex/accounts/login-sessions`、`GET /api/control/codex/accounts/login-sessions/{session_id}` 管理 Codex 多账号。
 - `GET /api/control/llm/providers`、`POST /api/control/llm/providers`、`GET /api/control/llm/providers/{provider_id}`、`PUT /api/control/llm/providers/{provider_id}`、`POST /api/control/llm/providers/{provider_id}`、`DELETE /api/control/llm/providers/{provider_id}` 管理 Model Provider。
+- `GET /api/maintenance` 查询内置维护任务状态。
+- `POST /api/maintenance/memory/run` 手动运行记忆维护。
+- `POST /api/maintenance/sessions/cleanup` 手动运行会话清理。
+- `POST /api/sessions/{session_id}/pin` 更新会话置顶状态，body 使用 `{"pinned": true|false}`。
 
 ## Model Provider
 

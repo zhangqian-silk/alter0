@@ -8,6 +8,7 @@ import {
 import { ReactManagedAgentRouteBody } from "./ReactManagedAgentRouteBody";
 import { ReactManagedCodexAccountsRouteBody } from "./ReactManagedCodexAccountsRouteBody";
 import { ReactManagedControlRouteBody } from "./ReactManagedControlRouteBody";
+import { ReactManagedMaintenanceRouteBody } from "./ReactManagedMaintenanceRouteBody";
 import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
 import { ReactManagedSessionsRouteBody } from "./ReactManagedSessionsRouteBody";
 import { ReactManagedTerminalRouteBody } from "./ReactManagedTerminalRouteBody";
@@ -19,6 +20,7 @@ type RouteBodyRenderer = (props: { language: LegacyShellLanguage }) => React.JSX
 const MANAGEMENT_ROUTE_BODY_RENDERERS: Record<string, RouteBodyRenderer> = {
   runtime: ({ language }) => <RuntimeSettingsSection language={language} />,
   memory: ({ language }) => <ReactManagedMemoryRouteBody language={language} />,
+  maintenance: ({ language }) => <ReactManagedMaintenanceRouteBody language={language} />,
   workspaces: ({ language }) => <WorkspaceSettingsSection language={language} />,
   schedules: ({ language }) => <ReactManagedControlRouteBody route="cron-jobs" language={language} />,
   agent: ({ language }) => <ReactManagedAgentRouteBody language={language} />,

@@ -90,7 +90,8 @@
 用例范围：
 
 - 登录保护、Chat 页面、静态资源、消息 JSON/SSE、Agent 消息入口。
-- Control API：Channel、Capability、Skill、MCP、Agent、Cron、Environment、Runtime、LLM Provider。
+- Control API：Channel、Capability、Skill、MCP、Agent、Cron、Environment、Runtime、LLM Provider、Maintenance。
+- Session API：历史列表、消息列表、删除、置顶、维护清理、置顶跳过、queued/running 任务保护、workspace 删除、维护执行器不可用和清理资源删除失败。
 - Workspace service 注册表：`/api/control/workspace-services` 的注册、查询、删除，以及 `<session_short_hash>.alter0.cn` / `<service>-<session_short_hash>.alter0.cn` 命中后的前端构建分发和 HTTP 反向代理；`travel` 服务额外覆盖 `travel-<session_short_hash>.alter0.cn` 的公开只读、免登录与 API 阻断。
 
 边界：
@@ -213,6 +214,24 @@
 - Terminal 会话态与 turn/step 领域规则由 `internal/terminal/domain` 和 `internal/terminal/application` 既有测试覆盖。
 
 ## Conversation & Session Experience
+
+### `internal/session/application`
+
+覆盖文件：
+
+- `service_test.go`
+
+用例范围：
+
+- 消息追加、按时间范围读取、会话列表分页和来源字段过滤。
+- 从 store 加载索引，store 失败时回滚。
+- 删除会话记录、索引更新和失败回滚。
+- 会话置顶 metadata、最后活跃时间刷新，以及超过固定不活跃阈值的会话清理；置顶会话和调用方传入的受保护会话跳过自动清理。
+
+边界：
+
+- `MessageRecord` 与 `MessageSource` 领域校验由 `internal/session/domain` 覆盖。
+- Web 会话 API、维护 API 与前端入口由 `internal/interfaces/web` 和前端组件测试覆盖。
 
 ### `internal/session/domain`
 

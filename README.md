@@ -50,7 +50,7 @@
 - 通过 API 管理运行时行为，不直接绕开编排层。
 
 3. Context Plane（上下文面）
-- 负责维护会话工作区、Skill 仓库、Markdown 记忆文件与定时记忆整理。
+- 负责维护会话工作区、Skill 仓库、Markdown 记忆文件与系统记忆整理任务。
 - 会话内上下文压缩由实际 CLI Agent Runtime 管理；跨会话记忆由 alter0 的 Memory System 管理。
 
 核心链路：
@@ -98,7 +98,7 @@ memory/
   conversations/<conversation_id>/summary.md
 ```
 
-用户显式要求“记住”时，CLI Agent 可更新对应记忆文件；会话内压缩由 Claude Code 或 Codex 自身处理；跨会话长期记忆由 Cron 定时启动同一 CLI Agent 并加载 `memory-maintenance` Skill 进行整理。
+用户显式要求“记住”时，CLI Agent 可更新对应记忆文件；会话内压缩由 Claude Code 或 Codex 自身处理；跨会话长期记忆由系统维护任务每日定时启动同一 CLI Agent 并加载 `memory-maintenance` Skill 进行整理。维护状态、上次运行、下次运行、变更文件与失败重试入口在 `Settings > Maintenance` 展示。
 
 ## Repository Layout
 
@@ -126,9 +126,9 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 服务二进制构建统一通过 `scripts/build_alter0_service.sh` 收口：脚本会先执行 `internal/interfaces/web/frontend` 下的前端构建并校验 `static/dist/index.html` 引用了新的哈希 JS/CSS 产物，再执行 `go build` 生成服务二进制。`scripts/start_alter0_service.sh`、`scripts/relaunch_service.sh` 与 `make build` 都复用该入口，避免服务重启只拉取 Go 源码而继续嵌入旧前端产物。
 
-当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Terminal / Settings` 三个稳定入口，主工作区按运行态或设置页渲染。`/chat` 是唯一对话入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；历史 `/agent-runtime` 会自动映射到 `/chat`，旧 Agent 会话会作为 Chat 会话继续展示和恢复。`/settings` 承接运行时、Skill、Memory、Workspaces 与 Schedules；历史 `/management` 会自动映射到 `/settings`。
+当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Terminal / Settings` 三个稳定入口，主工作区按运行态或设置页渲染。`/chat` 是唯一对话入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；历史 `/agent-runtime` 会自动映射到 `/chat`，旧 Agent 会话会作为 Chat 会话继续展示和恢复。`/settings` 承接运行时、Skill、Memory、Maintenance、Workspaces 与 Schedules；历史 `/management` 会自动映射到 `/settings`。
 
-当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。Settings 内部只保留紧凑分区：`Runtime` 管理 Model Provider 与 Codex Accounts，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Workspaces` 管理会话/任务工作区，`Schedules` 管理定时任务与触发记录。旧管理子页面不再作为一级路由展示。
+当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。Settings 内部只保留紧凑分区：`Runtime` 管理 Model Provider 与 Codex Accounts，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Maintenance` 管理自动记忆维护和会话清理，`Workspaces` 管理会话/任务工作区，`Schedules` 管理定时任务与触发记录。旧管理子页面不再作为一级路由展示。
 
 `Chat / Terminal` 的消息区采用轻量 IM 式消息流：用户消息右对齐并使用低对比紧凑气泡，助手消息左对齐为无边框正文阅读流，思考过程默认收敛为 `Thinking / 已思考` 内联披露入口，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情。最终回复统一使用稳定的运行页 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块，逐条消息时间不在正文区显示。长会话默认优先展示最新消息，顶部提供 `Load earlier messages / 加载更早消息`，滚到顶部也会按批次渐进加载更早历史；右侧阅读定位条支持连续 `上一条 / 下一条` 跳转。
 `/chat`、`/terminal`、`/settings` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 内可通过语言切换入口改为中文。登录页只携带当前 canonical path 作为稳定回跳入口，不携带 query。`Chat / Terminal` 使用统一 `session_id=<8位短hash>` 恢复当前会话，不把完整会话 id 暴露在 URL 与页面提示中。
@@ -156,6 +156,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - 面向 Web 会话消息。
 - 默认绑定内置 `Alter0`（`main`），作为通用对话入口。
 - Web 登录后，`Chat` 的已发送会话历史落到服务端 Session history，并在同一 Web 登录态下跨设备共享。旧 `Agent Runtime` 会话只作为历史兼容数据存在，加载时会迁移到当前 Chat 会话结构并通过 `route=chat` 读取；旧聚合文件在读取时自动重构为当前分文件布局。未发送文本草稿、附件草稿与当前页局部选择继续按浏览器隔离。
+- Session history 维护 `last_active_at` 与 `pinned`：发送消息、执行完成、打开会话详情、Terminal 输入与任务写回都会刷新活跃时间。系统每日自动清理超过 7 天不活跃的未置顶会话；手动置顶的会话不会被自动清理，仍有关联 queued/running 任务的会话会被保护到任务进入终态后再参与清理。`Settings > Sessions` 可查看最后活跃时间并切换置顶，`Settings > Maintenance` 可手动执行清理并查看删除、跳过置顶、任务保护、扫描数量与失败原因。
 - `Chat` 新会话先使用统一占位标题 `New`，早期多轮内可按更具体输入自动升级标题。旧 `/agent-runtime?session_id=<短hash>` 入口会映射到 `/chat?session_id=<短hash>` 并恢复对应历史会话。
 - `Chat` 使用 runtime workspace：会话列表由左侧主导航直接展示，主工作区固定为主消息工作区、底部 Composer 与固定 workspace header；header 统一只保留当前会话标题、状态按钮与 `Details` 入口。消息、过程步骤与最终输出都在同一轻量 IM 式消息流中推进。
 - `Chat` 的 `Process` 阅读区在桌面与移动端都保持整列可读宽度：步骤标题与正文共享统一的缩放/换行约束，长中文句子、路径和命令说明优先在当前消息容器内换行，不允许在真机窄屏下塌缩成逐字竖排窄列；若历史或流式过程文本混入零宽断行字符，或被异常写成“每字一行”的病态段落，前端展示层需在渲染前做归一化修正。
@@ -669,7 +670,7 @@ curl -X POST http://127.0.0.1:18088/api/messages \
 4. 启动前会在当前 Session 工作区注入 `CLAUDE.md` 或 `AGENTS.md`、Skill 副本、Memory 摘要、MCP 配置、仓库/附件/产物路径和工作区边界。
 5. Skill 文件由 `docs/skills/<skill_id>/SKILL.md` 承载，业务能力通过 Skill 复用；用户可在会话级调整公有 Skill 选择。
 6. Memory Files 当前使用 `memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。
-7. 用户显式要求记住时，当前 CLI agent 可写入对应 Markdown 记忆；会话归档生成 summary；Cron 加载 `memory-maintenance` Skill 做长期整理。
+7. 用户显式要求记住时，当前 CLI agent 可写入对应 Markdown 记忆；会话归档生成 summary；系统维护任务每日加载 `memory-maintenance` Skill 做长期整理。
 8. Web `Profiles` 页面用于管理 Runtime Profile；`Chat` 是通用入口，`Agent` 页面作为预选 Skill 入口的通用运行页。
 
 ### Cron Jobs

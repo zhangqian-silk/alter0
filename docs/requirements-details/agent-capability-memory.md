@@ -1,6 +1,6 @@
 # Agent Capability & Memory Requirements
 
-> Last update: 2026-06-06
+> Last update: 2026-06-08
 
 ## 领域边界
 
@@ -31,7 +31,7 @@ Agent Capability & Memory 负责 CLI Agent Runtime 的上下文注入、Skill �
 - 存在启用且健康的 Model Provider 时，运行时优先启动 `Claude Code + provider profile`。
 - Model Provider 未配置、不可用、鉴权失败或 Claude Code 启动失败时，运行时使用 `Codex Direct`。
 - Web 对话显式选择 `Codex` 或消息 metadata 声明 `alter0.execution.engine=codex` 时，本轮直接使用 `Codex Direct`。
-- Cron 任务、会话归档、记忆维护与普通用户消息复用同一运行时选择规则。
+- Cron 任务、会话归档、系统记忆维护与普通用户消息复用同一运行时选择规则。
 
 ### 运行时注入
 
@@ -96,8 +96,14 @@ memory/
 
 - 用户显式表达“记住”“以后都按这个来”“把这个作为偏好”时，当前 CLI agent 可直接更新目标记忆文件。
 - 会话完成或归档时，系统生成 `ConversationSummary`，记录目标、关键决策、已完成结果、未完成事项、文件/链接/任务引用和记忆候选。
-- Cron 定时启动 CLI Agent 并加载 `memory-maintenance` Skill，把会话摘要、天级记忆和项目记忆合并到长期记忆。
+- 系统维护任务每日定时启动 CLI Agent 并加载 `memory-maintenance` Skill，把会话摘要、天级记忆和项目记忆合并到长期记忆。该任务使用固定默认策略，不向用户暴露复杂调度或文件选择配置。
 - 任务完成后生成或刷新任务摘要，供 Memory 页面展示和后续召回。
+
+### 自动维护
+
+- 记忆维护任务固定作为系统维护能力运行，默认读取长期记忆、当日/昨日天级记忆、用户记忆、项目记忆与会话摘要候选。
+- 维护结果需记录运行状态、开始/完成时间、下次运行时间、变更文件、失败错误；CLI Agent Runtime 不可用时必须记录为失败，失败后可从 `Settings > Maintenance` 手动重试。
+- 手动执行记忆维护与每日自动维护走同一执行链路，均通过 CLI Agent Runtime 注入 `memory-maintenance` Skill，不提供额外文件范围或整理策略配置项。
 
 ### 摘要格式
 
@@ -142,5 +148,5 @@ memory/
 - 每次运行前都能在会话工作区看到对应 CLI agent 的上下文注入文件。
 - Skill 文件从独立仓库目录注入，不依赖固定业务 Agent 实现。
 - Memory Files 以 Markdown 主存存在，并能按会话、项目和日期被召回。
-- 用户显式记忆、会话归档摘要和 Cron 记忆维护三条写入路径可追踪。
+- 用户显式记忆、会话归档摘要和系统记忆维护三条写入路径可追踪。
 - Memory 页面能只读展示长期记忆、日记忆、项目记忆、会话摘要和任务摘要。

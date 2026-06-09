@@ -23,12 +23,17 @@ import (
 )
 
 type stubSessionHistory struct {
-	sessionPage      sessionapp.SessionPage
-	messagePage      sessionapp.MessagePage
-	lastSessionQuery sessionapp.SessionQuery
-	lastMessageQuery sessionapp.MessageQuery
-	deleteErr        error
-	lastDeletedID    string
+	sessionPage       sessionapp.SessionPage
+	messagePage       sessionapp.MessagePage
+	lastSessionQuery  sessionapp.SessionQuery
+	lastMessageQuery  sessionapp.MessageQuery
+	deleteErr         error
+	lastDeletedID     string
+	lastPinnedID      string
+	lastPinnedValue   bool
+	lastTouchedID     string
+	cleanupResult     sessionapp.CleanupInactiveSessionsResult
+	lastCleanupOption sessionapp.CleanupInactiveSessionsOptions
 }
 
 func (s *stubSessionHistory) ListSessions(query sessionapp.SessionQuery) sessionapp.SessionPage {
@@ -46,9 +51,26 @@ func (s *stubSessionHistory) DeleteSession(sessionID string) error {
 	return s.deleteErr
 }
 
+func (s *stubSessionHistory) SetSessionPinned(sessionID string, pinned bool) error {
+	s.lastPinnedID = sessionID
+	s.lastPinnedValue = pinned
+	return nil
+}
+
+func (s *stubSessionHistory) TouchSession(sessionID string, at time.Time) error {
+	s.lastTouchedID = sessionID
+	return nil
+}
+
+func (s *stubSessionHistory) CleanupInactiveSessions(options sessionapp.CleanupInactiveSessionsOptions) (sessionapp.CleanupInactiveSessionsResult, error) {
+	s.lastCleanupOption = options
+	return s.cleanupResult, nil
+}
+
 type stubSessionTaskService struct {
 	lastDeletedSessionID string
 	deleteErr            error
+	items                []taskdomain.Task
 }
 
 func (s *stubSessionTaskService) AssessComplexity(shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
@@ -67,8 +89,25 @@ func (s *stubSessionTaskService) Submit(shareddomain.UnifiedMessage) (taskdomain
 	return taskdomain.Task{}, nil
 }
 
-func (s *stubSessionTaskService) List(taskapp.ListQuery) taskapp.TaskPage {
-	return taskapp.TaskPage{}
+func (s *stubSessionTaskService) List(query taskapp.ListQuery) taskapp.TaskPage {
+	items := make([]taskdomain.Task, 0, len(s.items))
+	for _, item := range s.items {
+		if strings.TrimSpace(query.SessionID) != "" && item.SessionID != query.SessionID {
+			continue
+		}
+		if strings.TrimSpace(string(query.Status)) != "" && item.Status != query.Status {
+			continue
+		}
+		items = append(items, item)
+	}
+	return taskapp.TaskPage{
+		Items: items,
+		Pagination: taskapp.Pagination{
+			Page:     1,
+			PageSize: len(items),
+			Total:    len(items),
+		},
+	}
 }
 
 func (s *stubSessionTaskService) Get(string) (taskdomain.Task, bool) {
@@ -76,7 +115,7 @@ func (s *stubSessionTaskService) Get(string) (taskdomain.Task, bool) {
 }
 
 func (s *stubSessionTaskService) ListBySession(string) []taskdomain.Task {
-	return []taskdomain.Task{}
+	return append([]taskdomain.Task(nil), s.items...)
 }
 
 func (s *stubSessionTaskService) ListLogs(string, int, int) (taskapp.TaskLogPage, error) {
@@ -285,6 +324,164 @@ func TestSessionDeleteHandlerRemovesHistoryTasksAndWorkspace(t *testing.T) {
 	}
 	if _, err := os.Stat(workspaceDir); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected workspace removed, got %v", err)
+	}
+}
+
+func TestSessionPinHandlerUpdatesPinnedState(t *testing.T) {
+	history := &stubSessionHistory{}
+	server := &Server{
+		sessions: history,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/session-pin/pin", strings.NewReader(`{"pinned":true}`))
+	rec := httptest.NewRecorder()
+	server.sessionMessageListHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if history.lastPinnedID != "session-pin" || !history.lastPinnedValue {
+		t.Fatalf("expected pinned session-pin=true, got id=%q value=%v", history.lastPinnedID, history.lastPinnedValue)
+	}
+}
+
+func TestSessionCleanupHandlerDeletesInactiveSessionsAndWorkspaces(t *testing.T) {
+	baseDir := t.TempDir()
+	for _, sessionID := range []string{"old-a", "old-b"} {
+		workspaceDir := filepath.Join(baseDir, ".alter0", "workspaces", "sessions", sessionID)
+		if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+			t.Fatalf("prepare workspace: %v", err)
+		}
+	}
+	history := &stubSessionHistory{
+		cleanupResult: sessionapp.CleanupInactiveSessionsResult{
+			DeletedSessionIDs:  []string{"old-a", "old-b"},
+			DeletedCount:       2,
+			SkippedPinnedCount: 1,
+			ScannedCount:       4,
+		},
+	}
+	tasks := &stubSessionTaskService{}
+	server := &Server{
+		sessions:      history,
+		tasks:         tasks,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceRoot: baseDir,
+	}
+	server.ensureMaintenanceService()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/sessions/cleanup", nil)
+	rec := httptest.NewRecorder()
+	server.maintenanceSessionCleanupHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if history.lastCleanupOption.InactiveDuration != 7*24*time.Hour {
+		t.Fatalf("expected fixed 7 day inactive cleanup, got %+v", history.lastCleanupOption)
+	}
+	for _, sessionID := range []string{"old-a", "old-b"} {
+		if _, err := os.Stat(filepath.Join(baseDir, ".alter0", "workspaces", "sessions", sessionID)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected workspace %s removed, got %v", sessionID, err)
+		}
+	}
+	var body maintenanceRunResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.DeletedCount != 2 || body.SkippedPinnedCount != 1 {
+		t.Fatalf("unexpected cleanup body %+v", body)
+	}
+}
+
+func TestMaintenanceMemoryRunReportsUnavailableOrchestrator(t *testing.T) {
+	server := &Server{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	server.ensureMaintenanceService()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/memory/run", nil)
+	rec := httptest.NewRecorder()
+	server.maintenanceMemoryRunHandler(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusInternalServerError, rec.Code, rec.Body.String())
+	}
+	var body maintenanceRunResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Status != "failed" || !strings.Contains(body.Error, "memory maintenance unavailable") {
+		t.Fatalf("expected unavailable memory maintenance failure, got %+v", body)
+	}
+}
+
+func TestSessionCleanupHandlerReturnsTaskDeleteFailure(t *testing.T) {
+	history := &stubSessionHistory{
+		cleanupResult: sessionapp.CleanupInactiveSessionsResult{
+			DeletedSessionIDs: []string{"old-a"},
+			DeletedCount:      1,
+			ScannedCount:      1,
+		},
+	}
+	tasks := &stubSessionTaskService{deleteErr: errors.New("task delete failed")}
+	server := &Server{
+		sessions:      history,
+		tasks:         tasks,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		workspaceRoot: t.TempDir(),
+	}
+	server.ensureMaintenanceService()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/sessions/cleanup", nil)
+	rec := httptest.NewRecorder()
+	server.maintenanceSessionCleanupHandler(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusInternalServerError, rec.Code, rec.Body.String())
+	}
+	var body maintenanceRunResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Status != "failed" || !strings.Contains(body.Error, "task delete failed") {
+		t.Fatalf("expected task delete failure, got %+v", body)
+	}
+}
+
+func TestSessionCleanupHandlerProtectsSessionsWithActiveTasks(t *testing.T) {
+	history := &stubSessionHistory{}
+	tasks := &stubSessionTaskService{
+		items: []taskdomain.Task{
+			{ID: "task-queued", SessionID: "old-queued", Status: taskdomain.TaskStatusQueued},
+			{ID: "task-running", SessionID: "old-running", Status: taskdomain.TaskStatusRunning},
+			{ID: "task-success", SessionID: "old-success", Status: taskdomain.TaskStatusSuccess},
+		},
+	}
+	server := &Server{
+		sessions: history,
+		tasks:    tasks,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	server.ensureMaintenanceService()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/sessions/cleanup", nil)
+	rec := httptest.NewRecorder()
+	server.maintenanceSessionCleanupHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	protected := map[string]bool{}
+	for _, sessionID := range history.lastCleanupOption.ProtectedSessionIDs {
+		protected[sessionID] = true
+	}
+	if !protected["old-queued"] || !protected["old-running"] {
+		t.Fatalf("expected queued and running task sessions protected, got %+v", history.lastCleanupOption.ProtectedSessionIDs)
+	}
+	if protected["old-success"] {
+		t.Fatalf("expected terminal task session unprotected, got %+v", history.lastCleanupOption.ProtectedSessionIDs)
 	}
 }
 
