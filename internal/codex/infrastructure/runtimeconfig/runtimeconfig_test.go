@@ -104,6 +104,9 @@ func TestPrepareCopiesBaselineAuthAndCompilesManagedConfig(t *testing.T) {
 	for _, expected := range []string{
 		"Stay inside the current workspace scope.",
 		"Do not modify files, repositories, or services outside it",
+		"Do not present server-local paths",
+		"https://*.alter0.cn",
+		"artifact-preview",
 	} {
 		if !strings.Contains(string(agentsFile), expected) {
 			t.Fatalf("expected AGENTS.md to contain %q, got:\n%s", expected, string(agentsFile))
