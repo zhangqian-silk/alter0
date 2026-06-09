@@ -215,6 +215,15 @@ type RuntimeSessionPayload = {
   messages?: RuntimeMessagePayload[];
 };
 
+type RuntimeSessionConfigPatch = {
+  title: string;
+  model_provider_id: string;
+  model_id: string;
+  tool_ids: string[];
+  skill_ids: string[];
+  mcp_ids: string[];
+};
+
 type RuntimeMessagePayload = {
   id?: string;
   role?: string;
@@ -345,6 +354,23 @@ function isPublicSkillCapability(skill: ChatCapability): boolean {
   const metadata = skill.metadata || {};
   const visibility = normalizeText(metadata["alter0.skill.visibility"] || metadata["skill.visibility"]).toLowerCase();
   return visibility !== "agent-private" && visibility !== "private";
+}
+
+function defaultChatSkillIDs(skills: ChatCapability[]): string[] {
+  return normalizeSelectionIDs(
+    skills
+      .filter((item) => item.enabled !== false && isPublicSkillCapability(item))
+      .map((item) => normalizeText(item.id)),
+  );
+}
+
+function effectiveChatSkillIDs(selectedIDs: string[] | undefined, availableSkillIDs: string[] | null): string[] {
+  const normalized = normalizeSelectionIDs(selectedIDs || []);
+  if (availableSkillIDs === null) {
+    return normalized;
+  }
+  const available = new Set(availableSkillIDs);
+  return normalized.filter((item) => available.has(item));
 }
 
 function makeID(prefix: string): string {
@@ -976,10 +1002,11 @@ function resolveModelSelection(session: ChatSession | null, providers: ChatProvi
 function buildMessageMetadata(
   session: ChatSession | null,
   selection: { providerID: string; modelID: string },
+  skillIDs: string[] = session?.skillIDs || [],
 ): Record<string, string> {
   const metadata: Record<string, string> = {
     "alter0.agent.tools": JSON.stringify(session?.toolIDs || []),
-    "alter0.skills.include": JSON.stringify(session?.skillIDs || []),
+    "alter0.skills.include": JSON.stringify(skillIDs),
     "alter0.mcp.request.enable": JSON.stringify(session?.mcpIDs || []),
   };
   if (isCodexRuntimeSelection(selection.providerID, selection.modelID)) {
@@ -1080,6 +1107,7 @@ export function ConversationRuntimeProvider({
   );
   const [providers, setProviders] = useState<ChatProvider[]>([]);
   const [skills, setSkills] = useState<ChatCapability[]>([]);
+  const [skillCatalogLoaded, setSkillCatalogLoaded] = useState(false);
   const [mcps, setMcps] = useState<ChatCapability[]>([]);
   const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());
   const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts());
@@ -1102,6 +1130,14 @@ export function ConversationRuntimeProvider({
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
   const activeDraftAttachments = activeSessionID ? composerAttachmentDrafts[activeSessionID] || [] : [];
   const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
+  const availableSkillIDs = useMemo(
+    () => skillCatalogLoaded ? defaultChatSkillIDs(skills) : null,
+    [skillCatalogLoaded, skills],
+  );
+  const activeSkillIDs = useMemo(
+    () => effectiveChatSkillIDs(activeSession?.skillIDs, availableSkillIDs),
+    [activeSession?.skillIDs, availableSkillIDs],
+  );
   useEffect(() => {
     latestComposerDraftsRef.current = composerDrafts;
     window.clearTimeout(composerDraftPersistTimerRef.current);
@@ -1144,7 +1180,7 @@ export function ConversationRuntimeProvider({
       modelProviderID: "",
       modelID: "",
       toolIDs: [],
-      skillIDs: [],
+      skillIDs: defaultChatSkillIDs(skills),
       mcpIDs: [],
       messages: [],
       messagesLoaded: true,
@@ -1159,7 +1195,7 @@ export function ConversationRuntimeProvider({
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
     return created;
-  }, [activeSessionByRoute, route, sessionsByRoute]);
+  }, [activeSessionByRoute, route, sessionsByRoute, skills]);
 
   const patchSession = useCallback((
     routeKey: ConversationRoute,
@@ -1293,7 +1329,7 @@ export function ConversationRuntimeProvider({
       channel_id: "web-default",
       content,
       attachments: attachments.map(serializeMessageAttachment),
-      metadata: buildMessageMetadata(session, selection),
+      metadata: buildMessageMetadata(session, selection, effectiveChatSkillIDs(session?.skillIDs, availableSkillIDs)),
     });
     setAssistantMessage(routeKey, sessionID, assistantMessageID, {
       text: normalizeText(body?.result?.output) || "No response",
@@ -1324,7 +1360,7 @@ export function ConversationRuntimeProvider({
     );
   };
 
-  const upsertRuntimeSession = (routeKey: ConversationRoute, nextSession: ChatSession) => {
+  const upsertRuntimeSession = useCallback((routeKey: ConversationRoute, nextSession: ChatSession) => {
     const normalizedSession = { ...nextSession, sourceRoute: nextSession.sourceRoute || routeKey };
     setSessionsByRoute((current) => {
       const hasSession = current[routeKey].some((session) => session.id === normalizedSession.id);
@@ -1338,7 +1374,34 @@ export function ConversationRuntimeProvider({
       sessionsByRouteRef.current = nextState;
       return nextState;
     });
-  };
+  }, []);
+
+  const buildRuntimeSessionConfigPatch = (session: ChatSession): RuntimeSessionConfigPatch => ({
+    title: session.title,
+    model_provider_id: session.modelProviderID,
+    model_id: session.modelID,
+    tool_ids: normalizeSelectionIDs(session.toolIDs),
+    skill_ids: normalizeSelectionIDs(session.skillIDs),
+    mcp_ids: normalizeSelectionIDs(session.mcpIDs),
+  });
+
+  const persistRuntimeSessionConfig = useCallback(async (routeKey: ConversationRoute, session: ChatSession) => {
+    try {
+      const payload = await apiClient.patch<{ session?: RuntimeSessionPayload }>(
+        `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(session.id)}?route=${encodeURIComponent(routeKey)}`,
+        buildRuntimeSessionConfigPatch(session),
+      );
+      const hydrated = normalizeRuntimeSession(
+        payload.session || {},
+        sessionsByRouteRef.current[routeKey].find((item) => item.id === session.id) || session,
+        routeKey,
+      );
+      if (hydrated) {
+        upsertRuntimeSession(routeKey, hydrated);
+      }
+    } catch {
+    }
+  }, [apiClient, upsertRuntimeSession]);
 
   const hydrateRuntimeSession = async (routeKey: ConversationRoute, sessionID: string): Promise<ChatSession | null> => {
     const payload = await apiClient.get<{ session?: RuntimeSessionPayload }>(
@@ -1464,7 +1527,7 @@ export function ConversationRuntimeProvider({
         channel_id: "web-default",
         content,
         attachments: attachments.map(serializeMessageAttachment),
-        metadata: buildMessageMetadata(session, selection),
+        metadata: buildMessageMetadata(session, selection, effectiveChatSkillIDs(session?.skillIDs, availableSkillIDs)),
       }),
     });
     if (!response.ok || !response.body) {
@@ -1794,6 +1857,8 @@ export function ConversationRuntimeProvider({
         setSkills(Array.isArray(skillPayload.items) ? skillPayload.items : []);
         setMcps(Array.isArray(mcpPayload.items) ? mcpPayload.items : []);
       } catch {
+      } finally {
+        setSkillCatalogLoaded(true);
       }
     };
     void loadCatalogs();
@@ -1891,13 +1956,13 @@ export function ConversationRuntimeProvider({
   }, [activeSession, apiClient, route]);
 
   useEffect(() => {
-    if (!sessionsLoadedByRoute[route] || sessionsByRoute[route].length > 0) {
+    if (!sessionsLoadedByRoute[route] || !skillCatalogLoaded || sessionsByRoute[route].length > 0) {
       return;
     }
     ensureSession(defaultChatTarget());
     // Keep an active session available for the current runtime route.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, sessionsByRoute, sessionsLoadedByRoute]);
+  }, [route, sessionsByRoute, sessionsLoadedByRoute, skillCatalogLoaded]);
 
   useEffect(() => {
     window.clearTimeout(pollTimerRef.current);
@@ -2011,14 +2076,14 @@ export function ConversationRuntimeProvider({
           name: normalizeText(item.name) || normalizeText(item.id),
           description: normalizeText(item.description) || normalizeText(item.scope) || "Skill",
           kind: "skill" as const,
-          active: Boolean(activeSession?.skillIDs.includes(normalizeText(item.id))),
+          active: activeSkillIDs.includes(normalizeText(item.id)),
           visibility: "public" as const,
           locked: false,
         }))
         .filter((item) => item.id),
     ].filter((item): item is RuntimeSelection => Boolean(item?.id)),
     toolCount: (activeSession?.toolIDs.length || 0) + (activeSession?.mcpIDs.length || 0),
-    skillCount: activeSession?.skillIDs.length || 0,
+    skillCount: activeSkillIDs.length,
     createSession: () => {
       ensureSession(null, { ...activeSessionByRoute, [route]: "" });
     },
@@ -2047,11 +2112,17 @@ export function ConversationRuntimeProvider({
     closeInspector: () => setInspectorOpen(false),
     selectModel: (providerID: string, modelID: string) => {
       const session = activeSession || ensureSession();
-      patchSession(route, session.id, (currentSession) => ({
-        ...currentSession,
+      const nextSession = {
+        ...session,
         modelProviderID: normalizeText(providerID),
         modelID: normalizeText(modelID),
+      };
+      patchSession(route, session.id, (currentSession) => ({
+        ...currentSession,
+        modelProviderID: nextSession.modelProviderID,
+        modelID: nextSession.modelID,
       }));
+      void persistRuntimeSessionConfig(route, nextSession);
     },
     toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => {
       const session = activeSession || ensureSession();
@@ -2063,11 +2134,15 @@ export function ConversationRuntimeProvider({
         checked
           ? normalizeSelectionIDs([...items, value])
           : items.filter((item) => item !== value);
+      const nextSession = kind === "tool"
+        ? { ...session, toolIDs: mutate(session.toolIDs) }
+        : { ...session, mcpIDs: mutate(session.mcpIDs) };
       patchSession(route, session.id, (currentSession) =>
         kind === "tool"
           ? { ...currentSession, toolIDs: mutate(currentSession.toolIDs) }
           : { ...currentSession, mcpIDs: mutate(currentSession.mcpIDs) },
       );
+      void persistRuntimeSessionConfig(route, nextSession);
     },
     toggleSkill: (id: string, checked: boolean) => {
       const session = activeSession || ensureSession();
@@ -2075,14 +2150,22 @@ export function ConversationRuntimeProvider({
       if (!value) {
         return;
       }
+      if (availableSkillIDs !== null && !availableSkillIDs.includes(value)) {
+        return;
+      }
       const mutate = (items: string[]) =>
         checked
-          ? normalizeSelectionIDs([...items, value])
-          : items.filter((item) => item !== value);
+          ? normalizeSelectionIDs([...effectiveChatSkillIDs(items, availableSkillIDs), value])
+          : effectiveChatSkillIDs(items, availableSkillIDs).filter((item) => item !== value);
+      const nextSession = {
+        ...session,
+        skillIDs: mutate(session.skillIDs),
+      };
       patchSession(route, session.id, (currentSession) => ({
         ...currentSession,
         skillIDs: mutate(currentSession.skillIDs),
       }));
+      void persistRuntimeSessionConfig(route, nextSession);
     },
     toggleAgentProcess: (messageID: string) => {
       if (!activeSession) {
@@ -2116,6 +2199,7 @@ export function ConversationRuntimeProvider({
     mcps,
     skills,
     activeSessionByRoute,
+    persistRuntimeSessionConfig,
     removeSession,
   ]);
 

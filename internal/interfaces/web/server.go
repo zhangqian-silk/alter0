@@ -290,6 +290,15 @@ type conversationRuntimeSessionItemResponse struct {
 	Session conversationRuntimeSessionResponse `json:"session"`
 }
 
+type conversationRuntimeSessionPatchRequest struct {
+	Title           *string   `json:"title"`
+	ModelProviderID *string   `json:"model_provider_id"`
+	ModelID         *string   `json:"model_id"`
+	ToolIDs         *[]string `json:"tool_ids"`
+	SkillIDs        *[]string `json:"skill_ids"`
+	MCPIDs          *[]string `json:"mcp_ids"`
+}
+
 type conversationRuntimeSessionResponse struct {
 	ID              string                               `json:"id"`
 	Status          string                               `json:"status,omitempty"`
@@ -1871,7 +1880,7 @@ func (s *Server) conversationRuntimeSessionItemHandler(w http.ResponseWriter, r 
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
 		return
 	}
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodPatch {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
@@ -1884,6 +1893,10 @@ func (s *Server) conversationRuntimeSessionItemHandler(w http.ResponseWriter, r 
 	route, ok := parseConversationRuntimeRoute(r.URL.Query().Get("route"))
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid runtime route"})
+		return
+	}
+	if r.Method == http.MethodPatch {
+		s.patchConversationRuntimeSession(w, r, route, sessionID)
 		return
 	}
 
@@ -1907,6 +1920,84 @@ func (s *Server) conversationRuntimeSessionItemHandler(w http.ResponseWriter, r 
 	s.touchSessionActivity(sessionID)
 	writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{
 		Session: s.mergeConversationRuntimeSessionWithRegistry(route, session),
+	})
+}
+
+func (s *Server) patchConversationRuntimeSession(w http.ResponseWriter, r *http.Request, route conversationRuntimeRoute, sessionID string) {
+	if s.conversationRuntimeSessions == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "runtime session registry unavailable"})
+		return
+	}
+	defer r.Body.Close()
+
+	var req conversationRuntimeSessionPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+
+	entry := conversationRuntimeSessionRegistryEntry{
+		SessionID:  sessionID,
+		Route:      route,
+		Status:     conversationRuntimeSessionStatusReady,
+		Title:      "New",
+		TitleAuto:  true,
+		CreatedAt:  time.Now().UTC(),
+		TargetType: "model",
+		TargetID:   "raw-model",
+		TargetName: "Raw Model",
+	}
+	if current, ok := s.resolveConversationRuntimeRegistryEntry(route, sessionID); ok {
+		entry = current
+	} else if session, matched, err := s.loadConversationRuntimeSession(route, sessionID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	} else if matched {
+		entry = conversationRuntimeRegistryEntryFromSessionResponse(route, session)
+	}
+
+	if req.Title != nil {
+		title := strings.TrimSpace(*req.Title)
+		if title == "" {
+			title = "New"
+		}
+		entry.Title = title
+		entry.TitleAuto = false
+		entry.TitleScore = 1
+	}
+	if req.ModelProviderID != nil {
+		entry.ModelProviderID = strings.TrimSpace(*req.ModelProviderID)
+	}
+	if req.ModelID != nil {
+		entry.ModelID = strings.TrimSpace(*req.ModelID)
+	}
+	if req.ToolIDs != nil {
+		entry.ToolIDs = normalizeConversationRuntimeRegistryList(*req.ToolIDs)
+		if entry.ToolIDs == nil {
+			entry.ToolIDs = []string{}
+		}
+	}
+	if req.SkillIDs != nil {
+		entry.SkillIDs = normalizeConversationRuntimeRegistryList(*req.SkillIDs)
+		if entry.SkillIDs == nil {
+			entry.SkillIDs = []string{}
+		}
+	}
+	if req.MCPIDs != nil {
+		entry.MCPIDs = normalizeConversationRuntimeRegistryList(*req.MCPIDs)
+		if entry.MCPIDs == nil {
+			entry.MCPIDs = []string{}
+		}
+	}
+	entry.UpdatedAt = time.Now().UTC()
+
+	patched, err := s.conversationRuntimeSessions.Upsert(entry)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{
+		Session: s.conversationRuntimeSessionResponseFromRegistryEntry(patched),
 	})
 }
 
@@ -2130,6 +2221,27 @@ func (s *Server) conversationRuntimeSessionResponseFromRegistryEntry(entry conve
 		ToolIDs:         append([]string(nil), entry.ToolIDs...),
 		SkillIDs:        append([]string(nil), entry.SkillIDs...),
 		MCPIDs:          append([]string(nil), entry.MCPIDs...),
+	}
+}
+
+func conversationRuntimeRegistryEntryFromSessionResponse(route conversationRuntimeRoute, session conversationRuntimeSessionResponse) conversationRuntimeSessionRegistryEntry {
+	return conversationRuntimeSessionRegistryEntry{
+		SessionID:       strings.TrimSpace(session.ID),
+		Route:           route,
+		Status:          normalizeConversationRuntimeSessionStatus(session.Status),
+		Title:           strings.TrimSpace(session.Title),
+		TitleAuto:       session.TitleAuto,
+		TitleScore:      session.TitleScore,
+		CreatedAt:       session.CreatedAt.UTC(),
+		UpdatedAt:       time.Now().UTC(),
+		TargetType:      session.TargetType,
+		TargetID:        session.TargetID,
+		TargetName:      session.TargetName,
+		ModelProviderID: session.ModelProviderID,
+		ModelID:         session.ModelID,
+		ToolIDs:         append([]string(nil), session.ToolIDs...),
+		SkillIDs:        append([]string(nil), session.SkillIDs...),
+		MCPIDs:          append([]string(nil), session.MCPIDs...),
 	}
 }
 

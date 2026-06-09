@@ -266,7 +266,9 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByTestId("conversation-session-pane").querySelector(".runtime-session-summary-row")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add attachment" })).toHaveAttribute("data-runtime-composer-upload", "chat");
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("data-runtime-submit", "chat");
-    expect(screen.queryByRole("button", { name: "Session" })).not.toBeInTheDocument();
+    const sessionButton = screen.getByRole("button", { name: "Session" });
+    expect(sessionButton).toHaveClass("runtime-composer-utility");
+    expect(sessionButton).toHaveAttribute("data-runtime-composer-utility", "session");
 
     fireEvent.click(screen.getByRole("button", { name: "Menu" }));
     expect(toggleMobileNav).toHaveBeenCalledTimes(1);
@@ -323,6 +325,44 @@ describe("ConversationWorkspace", () => {
     expect(within(detailsPanel).queryByRole("tab", { name: "Agent" })).not.toBeInTheDocument();
     expect(within(detailsPanel).queryByRole("tab", { name: "Deliverables" })).not.toBeInTheDocument();
     expect(within(detailsPanel).queryByRole("tab", { name: "Session Profile" })).not.toBeInTheDocument();
+    expect(within(detailsPanel).queryByRole("tab", { name: "Skills" })).not.toBeInTheDocument();
+    expect(detailsPanel.querySelector("[data-runtime-config-panel='conversation-details']")).not.toBeInTheDocument();
+  });
+
+  it("lets Chat composer Session update public skill selections", () => {
+    runtimeMock.skills = [
+      { id: "frontend-design", name: "Frontend Design", description: "UI guidance", kind: "skill", active: false },
+    ];
+    renderWorkspace({ isMobileViewport: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "Session" }));
+    expect(runtimeMock.toggleInspector).toHaveBeenCalledWith();
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "skills";
+    renderWorkspace({ isMobileViewport: false });
+    const configPanel = document.querySelector("[data-runtime-config-panel='conversation']") as HTMLElement;
+    expect(configPanel).toBeInTheDocument();
+    fireEvent.click(within(configPanel).getByLabelText(/Frontend Design/));
+
+    expect(runtimeMock.toggleSkill).toHaveBeenCalledWith("frontend-design", true);
+  });
+
+  it("keeps Chat skill selections reachable from the mobile composer Session button", () => {
+    runtimeMock.skills = [
+      { id: "frontend-design", name: "Frontend Design", description: "UI guidance", kind: "skill", active: false },
+    ];
+    renderWorkspace({ isMobileViewport: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Session" }));
+    expect(runtimeMock.toggleInspector).toHaveBeenCalledWith();
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "skills";
+    renderWorkspace({ isMobileViewport: true });
+    const configPanel = document.querySelector("[data-runtime-config-panel='conversation']") as HTMLElement;
+    expect(configPanel).toBeInTheDocument();
+    fireEvent.click(within(configPanel).getByLabelText(/Frontend Design/));
+
+    expect(runtimeMock.toggleSkill).toHaveBeenCalledWith("frontend-design", true);
   });
 
   it("shows only public skill selections provided by the runtime context", () => {
@@ -366,11 +406,11 @@ describe("ConversationWorkspace", () => {
     expect(screen.queryByText("Travel Planner")).not.toBeInTheDocument();
   });
 
-  it("removes the Agent Runtime empty-state picker and composer session panel", () => {
+  it("removes the Agent Runtime empty-state picker while keeping the composer session control", () => {
     renderWorkspace({ isMobileViewport: true });
 
     expect(screen.queryByRole("radiogroup", { name: "Choose agent" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Session" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Session" })).toHaveAttribute("data-runtime-composer-utility", "session");
     expect(screen.getByRole("button", { name: "Add attachment" })).toBeInTheDocument();
   });
 
