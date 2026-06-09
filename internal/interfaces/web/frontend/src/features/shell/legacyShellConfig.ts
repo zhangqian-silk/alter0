@@ -64,6 +64,7 @@ export const MANAGEMENT_ROUTE_GROUPS: NavGroup[] = [
       { label: "Environments", route: "environments", abbr: "EN", icon: "environments" },
       { label: "Skills", route: "skills", abbr: "SK", icon: "skills" },
       { label: "Memory", route: "memory", abbr: "ME", icon: "memory" },
+      { label: "Maintenance", route: "maintenance", abbr: "MA", icon: "cron" },
       { label: "Workspaces", route: "workspaces", abbr: "WO", icon: "sessions" },
       { label: "Schedules", route: "schedules", abbr: "SC", icon: "cron" }
     ]

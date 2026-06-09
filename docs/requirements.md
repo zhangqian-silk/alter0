@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-06-07
+> Last update: 2026-06-08
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `runtime.execution.cli-agent`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -9,6 +9,7 @@
 - Web 前端所有需要可见时间的设置视图、会话列表、详情面板与任务视图统一固定为上海时间（`Asia/Shanghai`）与 24 小时制；`Chat / Terminal` 的消息正文区不显示逐条消息或 turn 时间。
 - 自然语言任务默认通过 CLI Agent Runtime 执行：存在启用且可用的 Model Provider 时优先使用 `Claude Code + provider profile`，未配置、不可用或鉴权失败时兜底使用 `Codex Direct`。
 - 服务侧负责会话、工作区、Skill 仓库、Markdown 记忆文件、运行时注入与结果归档；会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理，跨会话长期记忆由定时任务加载 `memory-maintenance` Skill 整理。
+- 系统维护任务不提供复杂配置项：记忆维护每日自动运行；会话清理默认每日清理超过 7 天不活跃且未置顶、无 queued/running 任务关联的会话，置顶会话始终跳过自动清理。
 
 状态说明：
 
@@ -78,9 +79,10 @@
 - Terminal 长输出复制必须保持可用且不放大 DOM 体积：复制 payload 不得完整写入 `data-*` 属性，长输出轮询、草稿输入和复制操作不得触发整段 Markdown 反复解析或相同 `innerHTML` 反复写入造成明显卡顿；`Chat / Terminal` 最终输出不得依靠全局 `user-select !important` 补丁维持选择能力，应通过统一稳定的 markdown shell 保留浏览器原生长按选中与复制菜单。
 - 当前运行页的 Session 列表需直接展示在左侧主导航内，采用工作台式最近时间分组：`Chat / Terminal` 统一使用 `Sessions` 栏标题与 `New` 新建入口；移动端会话列表随左侧主导航抽屉展示，两条运行页顶部都只通过 `Menu` 打开左侧导航抽屉。列表条目主体只展示标题并在可用宽度内单行截断，长标题不得撑开导航、分组、列表或卡片宽度；新增会话插入、列表刚好填满或跨过滚动阈值时，不得触发滚动锚点补偿、滚动槽宽度重算或重新分配 rail 头部高度，也不得造成 `Sessions / New` 区块在不同运行页之间跳动；处理中会话在标题旁显示 loading，其他状态不显示状态灯。
 - `Chat` 的已发送会话必须以服务端 Session history 为恢复源，并在同一 Web 登录态下跨设备共享；旧 `agent-runtime` 会话加载时迁移为 Chat 会话模型，详情恢复统一使用 `route=chat`。未发送草稿与当前浏览器局部 UI 状态可继续本地保存，但不得阻断服务端会话摘要、配置和消息历史的恢复。
+- Session history 必须维护 `last_active_at` 与 `pinned`。发送消息、assistant 收口、打开会话详情、Terminal 输入/输出和任务结果写回会刷新活跃时间；会话列表按置顶优先、最近活跃优先排序。系统默认清理超过 7 天不活跃且未置顶的会话，并同步移除 Session history、运行时 registry、会话附件/工作区和关联任务引用；仍有关联 queued/running 任务的会话在任务进入终态前跳过清理。
 - 本地 Session history 物理文件按会话拆分：新 Chat 会话使用自身 `session_id` 写入 `.alter0/sessions/_default/<session_id>.json` 或 `.md`；历史 `alter0-chat` 归档日文件与 `agent-runtime` 分文件布局在读取时合并到当前 Chat 会话模型；旧版 `.alter0/sessions.json` / `.alter0/sessions.md` 在读取时自动重构为新的分文件布局并移除旧聚合文件。
 - `Chat / Terminal` 的会话条目不展示 ready/failed/exited/interrupted 等行内状态灯；仅处理中会话在标题旁显示 loading。workspace header 的状态按钮继续共享当前会话状态语义，状态名称仅保留给可访问性语义与悬浮提示。
-- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 `/chat`、`/terminal`、`/settings` 三个稳定顶层路由、语言切换、主导航折叠/抽屉和运行页/设置页分派；`/agent-runtime` 兼容映射到 `/chat`，`/management` 兼容映射到 `/settings`。主导航只暴露 `Chat / Terminal / Settings`，Settings 内部按 `Runtime / Skills / Memory / Workspaces / Schedules` 分区渲染。壳层稳定暴露 `app-shell[data-workbench-route]`、Settings 页的 `data-route-family="management"` 与各视图自己的 `data-route / data-conversation-*` 作为样式钩子。
+- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 `/chat`、`/terminal`、`/settings` 三个稳定顶层路由、语言切换、主导航折叠/抽屉和运行页/设置页分派；`/agent-runtime` 兼容映射到 `/chat`，`/management` 兼容映射到 `/settings`。主导航只暴露 `Chat / Terminal / Settings`，Settings 内部按 `Runtime / Skills / Memory / Maintenance / Workspaces / Schedules` 分区渲染。壳层稳定暴露 `app-shell[data-workbench-route]`、Settings 页的 `data-route-family="management"` 与各视图自己的 `data-route / data-conversation-*` 作为样式钩子。
 - `/chat`、`/terminal` 与 `/login` 默认以英文启动，HTML 根节点语言标记为 `en`；Web Shell 保留显式语言切换入口，切到中文后需同步更新壳层文案与 `document.documentElement.lang`。
 - 登录页需与工作台共享同一视觉基线：使用 `IBM Plex Sans + Sora` 字体组合、近白卡片表面与安全入口语气，避免退回默认系统登录页样式。
 - Web Shell 的稳定视觉基线收敛为两层：左侧固定主导航负责品牌、`Chat / Terminal / Settings` 三条稳定入口、当前运行页 Session 列表、Management 工具入口与语言切换，右侧主面板统一承载运行页和 Management 管理页；`Chat / Terminal` 在主面板内部统一采用「主时间线工作区 + 底部 Composer + 固定 workspace header」结构，并直接复用 workspace body、chat screen、composer、消息气泡与移动端顶部操作行语义 class。`/agent-runtime` 仅作为旧 URL alias 进入 `/chat`，不再生成独立运行页、Agent 选择器、Deliverables 或 Session Profile 面板。
@@ -135,7 +137,7 @@
 - 启动 CLI Agent 前，运行时按会话工作区生成 `AGENTS.md` 或 `CLAUDE.md`，同步选中 Skill 文件、Memory 文件、MCP 配置、会话事实、工作区边界、仓库路径与交付要求。
 - `coding`、`travel` 等业务领域作为 Skill 注入运行时；Agent Runtime 页面可按业务入口预选 Skill 组合，但执行层仍是同一个 CLI Agent Runtime。`travel` 需把行程安排沉淀为移动端 HTML 攻略、路线化内容和按行程密度生成的 Codex 手绘地图图片资产。
 - Memory Files 支持 `USER.md`、长期 `MEMORY.md`、`daily/<YYYY-MM-DD>.md`、`projects/<project>.md` 与 `conversations/<conversation_id>/summary.md`。用户可见记忆文件保持 Markdown 主存，不在正文中暴露 confidence、source、status、sensitivity 等附加元数据。
-- 记忆更新由三条路径触发：用户显式要求记住时由当前 CLI Agent 写入；会话结束或归档时生成 `ConversationSummary`；Cron 定时启动同一 CLI Agent 并加载 `memory-maintenance` Skill，把会话摘要、日记忆和长期记忆合并整理。
+- 记忆更新由三条路径触发：用户显式要求记住时由当前 CLI Agent 写入；会话结束或归档时生成 `ConversationSummary`；系统维护任务每日启动同一 CLI Agent 并加载 `memory-maintenance` Skill，把会话摘要、日记忆和长期记忆合并整理。
 - 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理；alter0 保存原始消息、运行日志、结果与摘要，用于恢复、审计、跨会话召回和定时记忆整理。
 - `Agent -> Memory` 页面提供长期记忆、天级记忆、项目记忆、会话摘要与任务历史的只读可视化入口，并支持摘要重建。
 

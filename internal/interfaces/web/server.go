@@ -129,6 +129,7 @@ type Server struct {
 	conversationRuntimeSessions *conversationRuntimeSessionRegistry
 	workspaceRuntime            workspaceServiceRuntime
 	codexAccounts               codexAccountService
+	maintenance                 *maintenanceService
 }
 
 type llmService interface {
@@ -677,7 +678,7 @@ func NewServer(
 	if err != nil && logger != nil {
 		logger.Error("failed to initialize conversation runtime session registry", slog.String("error", err.Error()))
 	}
-	return &Server{
+	server := &Server{
 		addr:                        addr,
 		orchestrator:                orchestrator,
 		telemetry:                   telemetry,
@@ -702,6 +703,15 @@ func NewServer(
 		conversationRuntimeSessions: conversationRuntimeRegistry,
 		workspaceRuntime:            newWorkspaceServiceRuntime(logger),
 	}
+	server.ensureMaintenanceService()
+	return server
+}
+
+func (s *Server) ensureMaintenanceService() {
+	if s == nil || s.maintenance != nil {
+		return
+	}
+	s.maintenance = newMaintenanceService(s, s.idGenerator, s.logger)
 }
 
 func (s *Server) SetRuntimeRestarter(restarter runtimeRestarter) {
@@ -742,6 +752,9 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/conversation-runtime/sessions/", s.conversationRuntimeSessionItemHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
+	mux.HandleFunc("/api/maintenance", s.maintenanceStatusHandler)
+	mux.HandleFunc("/api/maintenance/memory/run", s.maintenanceMemoryRunHandler)
+	mux.HandleFunc("/api/maintenance/sessions/cleanup", s.maintenanceSessionCleanupHandler)
 	mux.HandleFunc("/api/tasks", s.taskCollectionHandler)
 	mux.HandleFunc("/api/tasks/", s.taskItemHandler)
 	mux.HandleFunc("/api/agent/memory", s.agentMemoryHandler)
@@ -791,6 +804,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if s.webLoginEnabled {
 		handler = s.authMiddleware(handler)
 	}
+	s.startMaintenanceScheduler(ctx)
 
 	server := &http.Server{
 		Addr:    s.addr,
@@ -1332,6 +1346,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteChat, msg)
+	s.touchSessionActivityAt(msg.SessionID, msg.ReceivedAt)
 
 	s.countGateway(string(msg.ChannelType))
 	hasImageAttachments := len(execdomain.DecodeUserImageAttachments(msg.Metadata)) > 0
@@ -1345,6 +1360,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 				taskCard := buildTaskCard(msg, assessment, task)
 				if submitErr != nil {
 					s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
+					s.touchSessionActivity(msg.SessionID)
 					s.logWebMessageFailure(msg, submitErr)
 					writeJSON(w, http.StatusInternalServerError, messageResponse{
 						Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
@@ -1365,6 +1381,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 					ComplexityLevel:          assessment.ComplexityLevel,
 					TaskCard:                 taskCard,
 				})
+				s.touchSessionActivity(msg.SessionID)
 				return
 			}
 		}
@@ -1377,6 +1394,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
+		s.touchSessionActivity(msg.SessionID)
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
 		case "command_failed", "nl_execution_failed":
@@ -1399,6 +1417,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusReady)
+	s.touchSessionActivity(msg.SessionID)
 
 	writeJSON(w, http.StatusOK, messageResponse{
 		Result:                   result,
@@ -1444,6 +1463,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteChat, msg)
+	s.touchSessionActivityAt(msg.SessionID, msg.ReceivedAt)
 	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
 	stream.SetKeepAliveStop(stopKeepAlive)
 	defer stopKeepAlive()
@@ -1523,6 +1543,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if handleErr != nil {
 			s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
+			s.touchSessionActivity(msg.SessionID)
 			s.logWebMessageFailure(msg, handleErr)
 			_ = stream.Event("error", streamErrorResponse{
 				Error:  handleErr.Error(),
@@ -1549,6 +1570,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 			ComplexityLevel:          assessment.ComplexityLevel,
 		})
 		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusReady)
+		s.touchSessionActivity(msg.SessionID)
 	}
 
 	for {
@@ -1579,6 +1601,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 			result := asyncAcceptedResult(taskMsg, task, assessment, taskCard)
 			if submitErr != nil {
 				s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, taskMsg, conversationRuntimeSessionStatusFailed)
+				s.touchSessionActivity(taskMsg.SessionID)
 				s.logWebMessageFailure(taskMsg, submitErr)
 				_ = stream.Event("error", streamErrorResponse{
 					Error:  submitErr.Error(),
@@ -1608,6 +1631,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 					ComplexityLevel:          assessment.ComplexityLevel,
 					TaskCard:                 taskCard,
 				})
+				s.touchSessionActivity(taskMsg.SessionID)
 				return
 			}
 		case streamResult := <-streamResultCh:
@@ -1874,14 +1898,28 @@ func (s *Server) conversationRuntimeSessionItemHandler(w http.ResponseWriter, r 
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "runtime session not found"})
 			return
 		}
+		s.touchSessionActivity(sessionID)
 		writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{
 			Session: s.conversationRuntimeSessionResponseFromRegistryEntry(registryEntry),
 		})
 		return
 	}
+	s.touchSessionActivity(sessionID)
 	writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{
 		Session: s.mergeConversationRuntimeSessionWithRegistry(route, session),
 	})
+}
+
+func (s *Server) touchSessionActivity(sessionID string) {
+	s.touchSessionActivityAt(sessionID, time.Now().UTC())
+}
+
+func (s *Server) touchSessionActivityAt(sessionID string, at time.Time) {
+	touchService, ok := s.sessions.(sessionTouchService)
+	if !ok {
+		return
+	}
+	_ = touchService.TouchSession(sessionID, at)
 }
 
 func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Request) {
@@ -1962,6 +2000,35 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 			items = items[:1]
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	case "pin":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		pinService, ok := s.sessions.(sessionPinService)
+		if !ok {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session pinning unavailable"})
+			return
+		}
+		var request struct {
+			Pinned *bool `json:"pinned"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid pin request"})
+			return
+		}
+		if request.Pinned == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pinned is required"})
+			return
+		}
+		if err := pinService.SetSessionPinned(sessionID, *request.Pinned); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"session_id": sessionID,
+			"pinned":     *request.Pinned,
+		})
 	case "attachments":
 		switch {
 		case resourceID == "" && action == "":
@@ -1975,6 +2042,43 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
 	}
+}
+
+func (s *Server) maintenanceStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	s.ensureMaintenanceService()
+	writeJSON(w, http.StatusOK, s.maintenance.Status(time.Now().UTC()))
+}
+
+func (s *Server) maintenanceMemoryRunHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	s.ensureMaintenanceService()
+	result := s.maintenance.RunMemoryMaintenance(r.Context(), time.Now().UTC())
+	status := http.StatusOK
+	if result.Status == "failed" {
+		status = http.StatusInternalServerError
+	}
+	writeJSON(w, status, result)
+}
+
+func (s *Server) maintenanceSessionCleanupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	s.ensureMaintenanceService()
+	result := s.maintenance.RunSessionCleanup(time.Now().UTC())
+	status := http.StatusOK
+	if result.Status == "failed" {
+		status = http.StatusInternalServerError
+	}
+	writeJSON(w, status, result)
 }
 
 func (s *Server) loadConversationRuntimeSession(
@@ -2377,6 +2481,7 @@ func (s *Server) taskCollectionHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
+		s.touchSessionActivity(msg.SessionID)
 
 		acceptedAt := task.AcceptedAt
 		if acceptedAt.IsZero() {
@@ -2702,6 +2807,7 @@ func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.touchSessionActivity(msg.SessionID)
 
 	anchorTaskID := ""
 	if req.ReuseTask {
@@ -4681,7 +4787,7 @@ func sessionResourceID(path string) (string, string, string, string, bool) {
 	}
 	resource := strings.TrimSpace(parts[1])
 	switch {
-	case len(parts) == 2 && (resource == "messages" || resource == "tasks" || resource == "attachments"):
+	case len(parts) == 2 && (resource == "messages" || resource == "tasks" || resource == "attachments" || resource == "pin"):
 		return sessionID, resource, "", "", true
 	case len(parts) == 4 && resource == "attachments":
 		resourceID := strings.TrimSpace(parts[2])

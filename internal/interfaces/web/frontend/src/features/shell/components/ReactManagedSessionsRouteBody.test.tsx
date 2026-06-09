@@ -130,4 +130,50 @@ describe("ReactManagedSessionsRouteBody", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("shows pinned sessions, last activity, and updates the pinned state", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              session_id: "session-pin",
+              channel_type: "web",
+              channel_id: "web-default",
+              last_message_id: "msg-pin",
+              updated_at: "2026-04-13T01:02:03Z",
+              last_active_at: "2026-04-14T03:04:05Z",
+              message_count: 4,
+              trigger_type: "user",
+              pinned: true,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ session_id: "session-pin", pinned: false }));
+
+    render(<ReactManagedSessionsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Pinned")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Last Active")).toBeInTheDocument();
+    expect(screen.getByText("2026-04-14 11:04:05")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        "/api/sessions/session-pin/pin",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ pinned: false }),
+        }),
+      );
+    });
+    expect(screen.getByRole("button", { name: "Pin" })).toBeInTheDocument();
+  });
 });

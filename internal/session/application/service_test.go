@@ -317,6 +317,123 @@ func TestServiceDeleteSessionRollsBackOnStoreFailure(t *testing.T) {
 	}
 }
 
+func TestServicePinnedSessionIsExcludedFromInactiveCleanup(t *testing.T) {
+	store := &stubStore{}
+	service, err := NewServiceWithStore(context.Background(), store)
+	if err != nil {
+		t.Fatalf("new service with store failed: %v", err)
+	}
+
+	now := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
+	if err := service.Append(
+		newRecord("m-old", "s-old", sessiondomain.MessageRoleUser, "old", now.Add(-8*24*time.Hour), shareddomain.RouteNL, ""),
+		newRecord("m-pinned", "s-pinned", sessiondomain.MessageRoleUser, "pinned", now.Add(-9*24*time.Hour), shareddomain.RouteNL, ""),
+		newRecord("m-active", "s-active", sessiondomain.MessageRoleUser, "active", now.Add(-2*24*time.Hour), shareddomain.RouteNL, ""),
+	); err != nil {
+		t.Fatalf("append failed: %v", err)
+	}
+	if err := service.SetSessionPinned("s-pinned", true); err != nil {
+		t.Fatalf("pin session failed: %v", err)
+	}
+
+	result, err := service.CleanupInactiveSessions(CleanupInactiveSessionsOptions{
+		Now:              now,
+		InactiveDuration: 7 * 24 * time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("cleanup failed: %v", err)
+	}
+	if result.DeletedCount != 1 || len(result.DeletedSessionIDs) != 1 || result.DeletedSessionIDs[0] != "s-old" {
+		t.Fatalf("expected only s-old deleted, got %+v", result)
+	}
+	if result.SkippedPinnedCount != 1 {
+		t.Fatalf("expected one pinned skip, got %+v", result)
+	}
+
+	sessions := service.ListSessions(SessionQuery{Page: 1, PageSize: 10})
+	ids := map[string]sessiondomain.SessionSummary{}
+	for _, item := range sessions.Items {
+		ids[item.SessionID] = item
+	}
+	if _, ok := ids["s-old"]; ok {
+		t.Fatalf("expected s-old removed, got %+v", sessions.Items)
+	}
+	if !ids["s-pinned"].Pinned {
+		t.Fatalf("expected pinned summary to stay pinned, got %+v", ids["s-pinned"])
+	}
+	if ids["s-active"].LastActiveAt.Before(now.Add(-3 * 24 * time.Hour)) {
+		t.Fatalf("expected active last_active_at, got %+v", ids["s-active"].LastActiveAt)
+	}
+}
+
+func TestServiceProtectedSessionIsExcludedFromInactiveCleanup(t *testing.T) {
+	store := &stubStore{}
+	service, err := NewServiceWithStore(context.Background(), store)
+	if err != nil {
+		t.Fatalf("new service with store failed: %v", err)
+	}
+
+	now := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
+	if err := service.Append(
+		newRecord("m-old", "s-old", sessiondomain.MessageRoleUser, "old", now.Add(-8*24*time.Hour), shareddomain.RouteNL, ""),
+		newRecord("m-protected", "s-protected", sessiondomain.MessageRoleUser, "protected", now.Add(-9*24*time.Hour), shareddomain.RouteNL, ""),
+	); err != nil {
+		t.Fatalf("append failed: %v", err)
+	}
+
+	result, err := service.CleanupInactiveSessions(CleanupInactiveSessionsOptions{
+		Now:                 now,
+		InactiveDuration:    7 * 24 * time.Hour,
+		ProtectedSessionIDs: []string{"s-protected"},
+	})
+	if err != nil {
+		t.Fatalf("cleanup failed: %v", err)
+	}
+	if result.DeletedCount != 1 || len(result.DeletedSessionIDs) != 1 || result.DeletedSessionIDs[0] != "s-old" {
+		t.Fatalf("expected only s-old deleted, got %+v", result)
+	}
+	if result.SkippedProtectedCount != 1 {
+		t.Fatalf("expected one protected skip, got %+v", result)
+	}
+
+	sessions := service.ListSessions(SessionQuery{Page: 1, PageSize: 10})
+	ids := map[string]sessiondomain.SessionSummary{}
+	for _, item := range sessions.Items {
+		ids[item.SessionID] = item
+	}
+	if _, ok := ids["s-old"]; ok {
+		t.Fatalf("expected s-old removed, got %+v", sessions.Items)
+	}
+	if _, ok := ids["s-protected"]; !ok {
+		t.Fatalf("expected protected session retained, got %+v", sessions.Items)
+	}
+}
+
+func TestServiceTouchSessionUpdatesLastActiveAt(t *testing.T) {
+	store := &stubStore{}
+	service, err := NewServiceWithStore(context.Background(), store)
+	if err != nil {
+		t.Fatalf("new service with store failed: %v", err)
+	}
+
+	base := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	touchedAt := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
+	if err := service.Append(newRecord("m-1", "s-touch", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteNL, "")); err != nil {
+		t.Fatalf("append failed: %v", err)
+	}
+	if err := service.TouchSession("s-touch", touchedAt); err != nil {
+		t.Fatalf("touch failed: %v", err)
+	}
+
+	sessions := service.ListSessions(SessionQuery{Page: 1, PageSize: 10})
+	if len(sessions.Items) != 1 {
+		t.Fatalf("expected one session, got %+v", sessions.Items)
+	}
+	if !sessions.Items[0].LastActiveAt.Equal(touchedAt) {
+		t.Fatalf("expected last_active_at %s, got %s", touchedAt, sessions.Items[0].LastActiveAt)
+	}
+}
+
 func newRecord(
 	messageID string,
 	sessionID string,

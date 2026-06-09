@@ -15,6 +15,7 @@ type RouteCardProps = {
   body?: ReactNode;
   footer?: ReactNode;
   footerClassName?: string;
+  actions?: ReactNode;
 };
 
 type RouteFieldRowProps = {
@@ -40,6 +41,7 @@ export function RouteCard({
   body,
   footer,
   footerClassName = "",
+  actions,
 }: RouteCardProps) {
   const classNames = ["route-card"];
   if (className) {
@@ -61,9 +63,12 @@ export function RouteCard({
             <h4 title={normalizeText(title)}>{normalizeText(title)}</h4>
           </div>
         </div>
-        <div className={enabled ? "status-badge" : "status-badge disabled"}>
-          <span className="status-dot"></span>
-          <span>{enabled ? statusEnabledLabel : statusDisabledLabel}</span>
+        <div className="route-card-head-actions">
+          <div className={enabled ? "status-badge" : "status-badge disabled"}>
+            <span className="status-dot"></span>
+            <span>{enabled ? statusEnabledLabel : statusDisabledLabel}</span>
+          </div>
+          {actions}
         </div>
       </div>
       {children ? <div className="route-meta">{children}</div> : null}

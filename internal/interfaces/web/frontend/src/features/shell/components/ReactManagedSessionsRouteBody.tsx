@@ -26,6 +26,7 @@ type SessionRouteRecord = {
   last_message_id?: string;
   updated_at?: string;
   last_message_at?: string;
+  last_active_at?: string;
   created_at?: string;
   started_at?: string;
   message_count?: number;
@@ -33,6 +34,7 @@ type SessionRouteRecord = {
   job_id?: string;
   job_name?: string;
   fired_at?: string;
+  pinned?: boolean;
 };
 
 type SessionRouteResponse = {
@@ -65,6 +67,7 @@ type SessionRouteCopy = {
   fieldChannelType: string;
   fieldLastMessageID: string;
   fieldUpdated: string;
+  fieldLastActive: string;
   fieldChannelID: string;
   fieldCreated: string;
   fieldMessages: string;
@@ -73,6 +76,10 @@ type SessionRouteCopy = {
   fieldJobName: string;
   fieldFiredAt: string;
   fieldTags: string;
+  pinned: string;
+  pin: string;
+  unpin: string;
+  pinFailed: (message: string) => string;
 };
 
 const SESSION_ROUTE_COPY: Record<LegacyShellLanguage, SessionRouteCopy> = {
@@ -102,6 +109,7 @@ const SESSION_ROUTE_COPY: Record<LegacyShellLanguage, SessionRouteCopy> = {
     fieldChannelType: "Channel Type",
     fieldLastMessageID: "Last Message ID",
     fieldUpdated: "Updated",
+    fieldLastActive: "Last Active",
     fieldChannelID: "Channel ID",
     fieldCreated: "Created",
     fieldMessages: "Messages",
@@ -110,6 +118,10 @@ const SESSION_ROUTE_COPY: Record<LegacyShellLanguage, SessionRouteCopy> = {
     fieldJobName: "Job Name",
     fieldFiredAt: "Fired At",
     fieldTags: "Tags",
+    pinned: "Pinned",
+    pin: "Pin",
+    unpin: "Unpin",
+    pinFailed: (message) => `Pin update failed: ${message}`,
   },
   zh: {
     loading: "加载中...",
@@ -137,6 +149,7 @@ const SESSION_ROUTE_COPY: Record<LegacyShellLanguage, SessionRouteCopy> = {
     fieldChannelType: "通道类型",
     fieldLastMessageID: "最近消息 ID",
     fieldUpdated: "更新时间",
+    fieldLastActive: "最后活跃",
     fieldChannelID: "通道 ID",
     fieldCreated: "创建时间",
     fieldMessages: "消息数",
@@ -145,6 +158,10 @@ const SESSION_ROUTE_COPY: Record<LegacyShellLanguage, SessionRouteCopy> = {
     fieldJobName: "作业名称",
     fieldFiredAt: "触发时间",
     fieldTags: "标签",
+    pinned: "已置顶",
+    pin: "置顶",
+    unpin: "取消置顶",
+    pinFailed: (message) => `置顶更新失败：${message}`,
   },
 };
 
@@ -174,6 +191,8 @@ export function ReactManagedSessionsRouteBody({
     items: [],
     error: "",
   });
+  const [pinningSessions, setPinningSessions] = useState<Record<string, boolean>>({});
+  const [pinError, setPinError] = useState("");
 
   useEffect(() => {
     let disposed = false;
@@ -319,12 +338,40 @@ export function ReactManagedSessionsRouteBody({
       <div className="task-summary-list">
         {state.status === "loading" ? <p className="route-loading">{copy.loading}</p> : null}
         {state.status === "error" ? <p className="route-error">{copy.loadFailed(state.error)}</p> : null}
+        {pinError ? <p className="route-error">{copy.pinFailed(pinError)}</p> : null}
         {state.status === "ready" && !state.items.length ? (
           <p className="route-empty">{copy.empty}</p>
         ) : null}
         {state.status === "ready"
           ? state.items.map((item) => (
-              <SessionRouteCard key={normalizeText(item.session_id)} item={item} copy={copy} />
+              <SessionRouteCard
+                key={normalizeText(item.session_id)}
+                item={item}
+                copy={copy}
+                pinning={Boolean(pinningSessions[normalizeText(item.session_id)])}
+                onPinnedChange={(sessionID, pinned) => {
+                  setPinError("");
+                  setPinningSessions((current) => ({ ...current, [sessionID]: true }));
+                  void createAPIClient()
+                    .post(`/api/sessions/${encodeURIComponent(sessionID)}/pin`, { pinned })
+                    .then(() => {
+                      setState((current) => ({
+                        ...current,
+                        items: current.items.map((candidate) =>
+                          normalizeText(candidate.session_id) === sessionID
+                            ? { ...candidate, pinned }
+                            : candidate,
+                        ),
+                      }));
+                    })
+                    .catch((error: unknown) => {
+                      setPinError(error instanceof Error ? error.message : "unknown_error");
+                    })
+                    .finally(() => {
+                      setPinningSessions((current) => ({ ...current, [sessionID]: false }));
+                    });
+                }}
+              />
             ))
           : null}
       </div>
@@ -335,9 +382,13 @@ export function ReactManagedSessionsRouteBody({
 function SessionRouteCard({
   item,
   copy,
+  pinning,
+  onPinnedChange,
 }: {
   item: SessionRouteRecord;
   copy: SessionRouteCopy;
+  pinning: boolean;
+  onPinnedChange: (sessionID: string, pinned: boolean) => void;
 }) {
   const sessionID = typeof item.session_id === "string" ? item.session_id : "";
   const channelType = typeof item.channel_type === "string" ? item.channel_type : "";
@@ -347,6 +398,10 @@ function SessionRouteCard({
     typeof item.updated_at === "string" && item.updated_at.trim()
       ? item.updated_at
       : item.last_message_at;
+  const lastActiveAt =
+    typeof item.last_active_at === "string" && item.last_active_at.trim()
+      ? item.last_active_at
+      : updatedAt;
   const createdAt =
     typeof item.created_at === "string" && item.created_at.trim()
       ? item.created_at
@@ -356,7 +411,11 @@ function SessionRouteCard({
   const jobID = typeof item.job_id === "string" ? item.job_id : "";
   const jobName = typeof item.job_name === "string" ? item.job_name : "";
   const firedAt = typeof item.fired_at === "string" ? item.fired_at : "";
+  const pinned = Boolean(item.pinned);
   const tags = [formatTriggerType(triggerType, copy), formatChannelType(channelType, copy)];
+  if (pinned) {
+    tags.unshift(copy.pinned);
+  }
   if (jobName) {
     tags.push(jobName);
   }
@@ -369,6 +428,18 @@ function SessionRouteCard({
       statusEnabledLabel={copy.statusEnabled}
       statusDisabledLabel={copy.statusDisabled}
       className="session-route-card"
+      actions={
+        sessionID ? (
+          <button
+            className="route-card-action"
+            type="button"
+            disabled={pinning}
+            onClick={() => onPinnedChange(sessionID, !pinned)}
+          >
+            {pinned ? copy.unpin : copy.pin}
+          </button>
+        ) : null
+      }
       body={
         <details className="session-route-detail">
           <summary>{copy.viewDetail}</summary>
@@ -389,6 +460,7 @@ function SessionRouteCard({
       <RouteFieldRow label={copy.fieldChannelType} value={formatChannelType(channelType, copy)} copyLabel={copy.copyValue} />
       <RouteFieldRow label={copy.fieldLastMessageID} value={lastMessageID} copyLabel={copy.copyValue} copyable mono />
       <RouteFieldRow label={copy.fieldUpdated} value={formatDateTime(updatedAt)} copyLabel={copy.copyValue} />
+      <RouteFieldRow label={copy.fieldLastActive} value={formatDateTime(lastActiveAt)} copyLabel={copy.copyValue} />
     </RouteCard>
   );
 }

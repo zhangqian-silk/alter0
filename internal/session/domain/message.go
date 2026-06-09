@@ -51,7 +51,9 @@ type SessionSummary struct {
 	MessageCount  int                      `json:"message_count"`
 	StartedAt     time.Time                `json:"started_at"`
 	LastMessageAt time.Time                `json:"last_message_at"`
+	LastActiveAt  time.Time                `json:"last_active_at"`
 	LastMessageID string                   `json:"last_message_id"`
+	Pinned        bool                     `json:"pinned,omitempty"`
 	LastRoute     string                   `json:"last_route,omitempty"`
 	LastErrorCode string                   `json:"last_error_code,omitempty"`
 	LastPreview   string                   `json:"last_preview"`
