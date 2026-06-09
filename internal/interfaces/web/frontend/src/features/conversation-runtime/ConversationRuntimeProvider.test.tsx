@@ -16,6 +16,7 @@ const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v
 const apiClientMock = {
   get: vi.fn(async () => ({ items: [] })),
   post: vi.fn(),
+  patch: vi.fn(),
   delete: vi.fn(),
 };
 
@@ -95,6 +96,27 @@ function ModelSelectionHarness() {
       <output data-testid="provider-list">
         {runtime.providers.map((provider) => `${provider.name}:${provider.models.map((model) => model.name).join(",")}`).join("|")}
       </output>
+    </div>
+  );
+}
+
+function SkillSelectionHarness() {
+  const runtime = useConversationRuntime();
+  const memorySkill = runtime.skills.find((item) => item.id === "memory");
+
+  return (
+    <div>
+      <button type="button" onClick={() => runtime.toggleSkill("memory", true)}>
+        enable memory
+      </button>
+      <button type="button" onClick={() => runtime.toggleSkill("memory", false)}>
+        disable memory
+      </button>
+      <button type="button" onClick={() => void runtime.sendPrompt("Run with selected skills")}>
+        send with skills
+      </button>
+      <output data-testid="memory-skill-state">{memorySkill?.active ? "active" : "inactive"}</output>
+      <output data-testid="skill-count">{runtime.skillCount}</output>
     </div>
   );
 }
@@ -252,6 +274,59 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("New"));
     expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat");
     expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=agent-runtime");
+  });
+
+  it("selects all public skills by default for a new blank Chat session", async () => {
+    window.sessionStorage.clear();
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+        case "/api/control/llm/providers":
+        case "/api/control/mcps":
+          return { items: [] };
+        case "/api/control/skills":
+          return {
+            items: [
+              {
+                id: "memory",
+                name: "Memory",
+                description: "Use workspace memory",
+                enabled: true,
+              },
+              {
+                id: "frontend-design",
+                name: "Frontend Design",
+                description: "UI guidance",
+                enabled: true,
+              },
+              {
+                id: "agent-private",
+                name: "Agent Private",
+                description: "Private skill",
+                enabled: true,
+                metadata: { "alter0.skill.visibility": "agent-private" },
+              },
+              {
+                id: "disabled-skill",
+                name: "Disabled Skill",
+                description: "Disabled",
+                enabled: false,
+              },
+            ],
+          };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SkillSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent(/^active$/));
+    expect(screen.getByTestId("skill-count")).toHaveTextContent(/^2$/);
   });
 
   it("loads migrated legacy agent sessions from the Chat route and hydrates them as Chat sessions", async () => {
@@ -438,6 +513,350 @@ describe("ConversationRuntimeProvider", () => {
     }));
     expect(requestBody?.metadata).not.toHaveProperty("alter0.llm.provider_id");
     expect(fetch).toHaveBeenCalledWith("/api/messages/stream", expect.any(Object));
+  });
+
+  it("persists Chat skill selections to the runtime session before the next message is sent", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "alter0-chat",
+                title: "Configurable session",
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                skill_ids: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/alter0-chat?route=chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Configurable session",
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "model",
+              target_id: "raw-model",
+              target_name: "Raw Model",
+              skill_ids: [],
+              messages: [],
+            },
+          };
+        case "/api/control/skills":
+          return {
+            items: [
+              {
+                id: "memory",
+                name: "Memory",
+                description: "Use workspace memory",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.patch.mockResolvedValue({
+      session: {
+        id: "alter0-chat",
+        title: "Configurable session",
+        created_at: "2026-04-23T03:30:00Z",
+        target_type: "model",
+        target_id: "raw-model",
+        target_name: "Raw Model",
+        skill_ids: ["memory"],
+        messages: [],
+      },
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SkillSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("inactive"));
+
+    fireEvent.click(screen.getByRole("button", { name: "enable memory" }));
+
+    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("active"));
+    await waitFor(() => expect(apiClientMock.patch).toHaveBeenCalledWith(
+      "/api/conversation-runtime/sessions/alter0-chat?route=chat",
+      expect.objectContaining({
+        skill_ids: ["memory"],
+        tool_ids: [],
+        mcp_ids: [],
+      }),
+    ));
+    expect(screen.getByTestId("skill-count")).toHaveTextContent("1");
+  });
+
+  it("keeps cleared Chat skill selections cleared after the runtime session patch response", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+        case "/api/conversation-runtime/sessions/alter0-chat?route=chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Configurable session",
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "model",
+              target_id: "raw-model",
+              target_name: "Raw Model",
+              skill_ids: ["memory"],
+              messages: [],
+            },
+            items: [
+              {
+                id: "alter0-chat",
+                title: "Configurable session",
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                skill_ids: ["memory"],
+              },
+            ],
+          };
+        case "/api/control/skills":
+          return {
+            items: [
+              {
+                id: "memory",
+                name: "Memory",
+                description: "Use workspace memory",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.patch.mockResolvedValue({
+      session: {
+        id: "alter0-chat",
+        title: "Configurable session",
+        created_at: "2026-04-23T03:30:00Z",
+        target_type: "model",
+        target_id: "raw-model",
+        target_name: "Raw Model",
+        messages: [],
+      },
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SkillSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("active"));
+
+    fireEvent.click(screen.getByRole("button", { name: "disable memory" }));
+
+    await waitFor(() => expect(apiClientMock.patch).toHaveBeenCalledWith(
+      "/api/conversation-runtime/sessions/alter0-chat?route=chat",
+      expect.objectContaining({
+        skill_ids: [],
+      }),
+    ));
+    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("inactive"));
+    expect(screen.getByTestId("skill-count")).toHaveTextContent("0");
+  });
+
+  it("drops unavailable skills from historical Chat sessions before the next message is sent", async () => {
+    let requestBody: Record<string, unknown> | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body || "{}"));
+      return {
+        ok: true,
+        body: {
+          getReader: () => {
+            const events = [
+              new TextEncoder().encode(`event: done\ndata: ${JSON.stringify({ result: { output: "Done" } })}\n\n`),
+            ];
+            return {
+              read: vi.fn(async () => {
+                const value = events.shift();
+                return value ? { done: false, value } : { done: true, value: undefined };
+              }),
+            };
+          },
+        },
+      };
+    }));
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "alter0-chat",
+                title: "Historical session",
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                skill_ids: ["memory", "deleted-skill"],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/alter0-chat?route=chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Historical session",
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "model",
+              target_id: "raw-model",
+              target_name: "Raw Model",
+              skill_ids: ["memory", "deleted-skill"],
+              messages: [],
+            },
+          };
+        case "/api/control/skills":
+          return {
+            items: [
+              {
+                id: "memory",
+                name: "Memory",
+                description: "Use workspace memory",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SkillSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent(/^active$/));
+    expect(screen.getByTestId("skill-count")).toHaveTextContent(/^1$/);
+
+    fireEvent.click(screen.getByRole("button", { name: "send with skills" }));
+
+    await waitFor(() => expect(requestBody?.metadata).toMatchObject({
+      "alter0.skills.include": JSON.stringify(["memory"]),
+    }));
+  });
+
+  it("sends newly checked skills from historical Chat sessions without a reload", async () => {
+    let requestBody: Record<string, unknown> | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body || "{}"));
+      return {
+        ok: true,
+        body: {
+          getReader: () => {
+            const events = [
+              new TextEncoder().encode(`event: done\ndata: ${JSON.stringify({ result: { output: "Done" } })}\n\n`),
+            ];
+            return {
+              read: vi.fn(async () => {
+                const value = events.shift();
+                return value ? { done: false, value } : { done: true, value: undefined };
+              }),
+            };
+          },
+        },
+      };
+    }));
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "alter0-chat",
+                title: "Historical session",
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                skill_ids: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/alter0-chat?route=chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Historical session",
+              created_at: "2026-04-23T03:30:00Z",
+              target_type: "model",
+              target_id: "raw-model",
+              target_name: "Raw Model",
+              skill_ids: [],
+              messages: [],
+            },
+          };
+        case "/api/control/skills":
+          return {
+            items: [
+              {
+                id: "memory",
+                name: "Memory",
+                description: "Use workspace memory",
+                enabled: true,
+              },
+            ],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.patch.mockResolvedValue({
+      session: {
+        id: "alter0-chat",
+        title: "Historical session",
+        created_at: "2026-04-23T03:30:00Z",
+        target_type: "model",
+        target_id: "raw-model",
+        target_name: "Raw Model",
+        skill_ids: ["memory"],
+        messages: [],
+      },
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SkillSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent(/^inactive$/));
+    fireEvent.click(screen.getByRole("button", { name: "enable memory" }));
+    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent(/^active$/));
+
+    fireEvent.click(screen.getByRole("button", { name: "send with skills" }));
+
+    await waitFor(() => expect(requestBody?.metadata).toMatchObject({
+      "alter0.skills.include": JSON.stringify(["memory"]),
+    }));
   });
 
   it("keeps locally appended messages when a session collection refresh returns a shorter history", async () => {

@@ -169,6 +169,9 @@ func (r *conversationRuntimeSessionRegistry) Upsert(entry conversationRuntimeSes
 
 	key := conversationRuntimeSessionRegistryKey(route, sessionID)
 	current, hadCurrent := r.entries[key]
+	toolIDsSpecified := entry.ToolIDs != nil
+	skillIDsSpecified := entry.SkillIDs != nil
+	mcpIDsSpecified := entry.MCPIDs != nil
 
 	normalized := entry
 	normalized.SessionID = sessionID
@@ -183,6 +186,15 @@ func (r *conversationRuntimeSessionRegistry) Upsert(entry conversationRuntimeSes
 	normalized.ToolIDs = normalizeConversationRuntimeRegistryList(entry.ToolIDs)
 	normalized.SkillIDs = normalizeConversationRuntimeRegistryList(entry.SkillIDs)
 	normalized.MCPIDs = normalizeConversationRuntimeRegistryList(entry.MCPIDs)
+	if normalized.ToolIDs == nil && toolIDsSpecified {
+		normalized.ToolIDs = []string{}
+	}
+	if normalized.SkillIDs == nil && skillIDsSpecified {
+		normalized.SkillIDs = []string{}
+	}
+	if normalized.MCPIDs == nil && mcpIDsSpecified {
+		normalized.MCPIDs = []string{}
+	}
 	if normalized.CreatedAt.IsZero() {
 		if hadCurrent && !current.CreatedAt.IsZero() {
 			normalized.CreatedAt = current.CreatedAt
@@ -208,13 +220,13 @@ func (r *conversationRuntimeSessionRegistry) Upsert(entry conversationRuntimeSes
 	if normalized.ModelID == "" && hadCurrent {
 		normalized.ModelID = current.ModelID
 	}
-	if len(normalized.ToolIDs) == 0 && hadCurrent {
+	if normalized.ToolIDs == nil && hadCurrent {
 		normalized.ToolIDs = append([]string(nil), current.ToolIDs...)
 	}
-	if len(normalized.SkillIDs) == 0 && hadCurrent {
+	if normalized.SkillIDs == nil && hadCurrent {
 		normalized.SkillIDs = append([]string(nil), current.SkillIDs...)
 	}
-	if len(normalized.MCPIDs) == 0 && hadCurrent {
+	if normalized.MCPIDs == nil && hadCurrent {
 		normalized.MCPIDs = append([]string(nil), current.MCPIDs...)
 	}
 	if normalized.TargetID == "" && hadCurrent {

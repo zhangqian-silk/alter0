@@ -75,6 +75,17 @@ function isDirectCodexModelSelection(providerID: string, modelID: string) {
   return normalizeText(providerID) === CODEX_RUNTIME_PROVIDER_ID && normalizeText(modelID) === CODEX_RUNTIME_MODEL_ID;
 }
 
+function RuntimeSessionControlIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <circle cx="6" cy="6" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="14" cy="6" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="6" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="14" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  );
+}
+
 function resolveConversationSessionSignalTone(session: {
   status?: string;
   messages?: Array<{
@@ -272,7 +283,6 @@ function useConversationWorkspaceController(
     { label: language === "zh" ? "消息数" : "Messages", value: String(timelineMessages.length), copyLabel: language === "zh" ? "消息数" : "Messages" },
     { label: language === "zh" ? "创建时间" : "Created", value: activeSessionItem ? formatDateTime(activeSessionItem.createdAt) : "-", copyLabel: language === "zh" ? "创建时间" : "Created" },
   ] : [];
-
   useEffect(() => {
     workbench.closeMobileSessionPane();
   }, [runtime.route]);
@@ -955,7 +965,15 @@ function ConversationComposerSection({
       onInputBlur={() => onInputFocusedChange(false)}
       onInputPointerDownCapture={handleComposerPointerDownCapture}
       onInputTouchStartCapture={handleComposerTouchStartCapture}
-      utilityButtons={[]}
+      utilityButtons={[
+        {
+          key: "session",
+          label: copy.runtimeMobile,
+          icon: <RuntimeSessionControlIcon />,
+          className: runtime.inspectorOpen ? "is-active" : undefined,
+          onClick: () => runtime.toggleInspector(),
+        },
+      ]}
       panelContent={conversationComposerPanel}
       onPanelDismiss={() => runtime.closeInspector()}
       panelProps={{

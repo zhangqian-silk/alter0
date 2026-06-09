@@ -884,6 +884,92 @@ func TestConversationRuntimeSessionItemHandlerFallsBackToRegistryWhileHistoryIsP
 	}
 }
 
+func TestConversationRuntimeSessionItemHandlerPatchesSessionConfiguration(t *testing.T) {
+	registry, err := newFileConversationRuntimeSessionRegistry(filepath.Join(t.TempDir(), "conversation-runtime.json"))
+	if err != nil {
+		t.Fatalf("create registry: %v", err)
+	}
+
+	server := &Server{
+		sessions:                    sessionapp.NewService(),
+		conversationRuntimeSessions: registry,
+		logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/conversation-runtime/sessions/chat-config?route=chat", strings.NewReader(`{
+		"title":"Configurable chat",
+		"model_provider_id":"openai",
+		"model_id":"gpt-5.4",
+		"tool_ids":["terminal"],
+		"skill_ids":["memory","frontend-design"],
+		"mcp_ids":["github"]
+	}`))
+	patchRec := httptest.NewRecorder()
+	server.conversationRuntimeSessionItemHandler(patchRec, patchReq)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("expected patch status %d, got %d: %s", http.StatusOK, patchRec.Code, patchRec.Body.String())
+	}
+
+	var patched struct {
+		Session struct {
+			ID              string   `json:"id"`
+			Title           string   `json:"title"`
+			ModelProviderID string   `json:"model_provider_id"`
+			ModelID         string   `json:"model_id"`
+			ToolIDs         []string `json:"tool_ids"`
+			SkillIDs        []string `json:"skill_ids"`
+			MCPIDs          []string `json:"mcp_ids"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(patchRec.Body.Bytes(), &patched); err != nil {
+		t.Fatalf("decode patched payload: %v", err)
+	}
+	if patched.Session.ID != "chat-config" || patched.Session.Title != "Configurable chat" {
+		t.Fatalf("unexpected patched session %+v", patched.Session)
+	}
+	if patched.Session.ModelProviderID != "openai" || patched.Session.ModelID != "gpt-5.4" {
+		t.Fatalf("expected patched model selection, got %+v", patched.Session)
+	}
+	if strings.Join(patched.Session.SkillIDs, ",") != "memory,frontend-design" {
+		t.Fatalf("expected patched skill ids, got %+v", patched.Session.SkillIDs)
+	}
+
+	clearReq := httptest.NewRequest(http.MethodPatch, "/api/conversation-runtime/sessions/chat-config?route=chat", strings.NewReader(`{
+		"skill_ids":[],
+		"mcp_ids":[]
+	}`))
+	clearRec := httptest.NewRecorder()
+	server.conversationRuntimeSessionItemHandler(clearRec, clearReq)
+	if clearRec.Code != http.StatusOK {
+		t.Fatalf("expected clear status %d, got %d: %s", http.StatusOK, clearRec.Code, clearRec.Body.String())
+	}
+
+	getRec := httptest.NewRecorder()
+	getReq := httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions/chat-config?route=chat", nil)
+	server.conversationRuntimeSessionItemHandler(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected get status %d, got %d: %s", http.StatusOK, getRec.Code, getRec.Body.String())
+	}
+
+	var loaded struct {
+		Session struct {
+			ID       string   `json:"id"`
+			ToolIDs  []string `json:"tool_ids"`
+			SkillIDs []string `json:"skill_ids"`
+			MCPIDs   []string `json:"mcp_ids"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &loaded); err != nil {
+		t.Fatalf("decode loaded payload: %v", err)
+	}
+	if len(loaded.Session.ToolIDs) != 1 || loaded.Session.ToolIDs[0] != "terminal" {
+		t.Fatalf("expected untouched tool ids to remain, got %+v", loaded.Session.ToolIDs)
+	}
+	if len(loaded.Session.SkillIDs) != 0 || len(loaded.Session.MCPIDs) != 0 {
+		t.Fatalf("expected skill and mcp ids to be cleared, got skills=%+v mcps=%+v", loaded.Session.SkillIDs, loaded.Session.MCPIDs)
+	}
+}
+
 func TestSessionDeleteHandlerAllowsMissingHistory(t *testing.T) {
 	history := &stubSessionHistory{deleteErr: sessionapp.ErrSessionNotFound}
 	tasks := &stubSessionTaskService{}
