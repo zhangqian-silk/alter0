@@ -25,7 +25,7 @@
 | Conversation & Session Experience | Chat、Terminal 运行入口、SSE、历史、移动端、阅读与输入体验 | supported | [conversation-session-experience.md](requirements-details/conversation-session-experience.md) |
 | Agent Capability & Memory | CLI Agent 注入、Skill 仓库、Memory Files、长期记忆、会话归档与定时整理 | supported | [agent-capability-memory.md](requirements-details/agent-capability-memory.md) |
 | Task, Terminal & Workspace | 异步任务、任务观测、任务日志、产物交付、Terminal 会话、独立工作区 | supported | [task-terminal-workspace.md](requirements-details/task-terminal-workspace.md) |
-| Control, Operations & Governance | 控制面配置、Model Provider、Claude Code provider profile、Codex Accounts、Environments、部署基线、认证凭据、TDD 研发约束 | supported | [control-operations-governance.md](requirements-details/control-operations-governance.md) |
+| Control, Operations & Governance | 控制面配置、Model Provider、Claude Code provider profile、Codex Runtime、Environments、部署基线、认证凭据、TDD 研发约束 | supported | [control-operations-governance.md](requirements-details/control-operations-governance.md) |
 
 ## Runtime & Orchestration
 
@@ -182,14 +182,14 @@
 
 稳定需求：
 
-- Control API 管理 Channel、Capability、Skill、MCP、Runtime Profile、Cron Job、Model Provider、Environment 与 Codex 多账号配置，并保留 Capability 生命周期审计。
+- Control API 管理 Channel、Capability、Skill、MCP、Runtime Profile、Cron Job、Model Provider、Environment 与 Codex Runtime 配置，并保留 Capability 生命周期审计。
 - 服务启动后默认提供 `default-nl`、`memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming` 内置 Skill；这些 skill 均由源码仓库直接承载在 `docs/skills/` 下，其中标准 skill 继续使用 `docs/skills/<skill_id>/SKILL.md` 作为 file-backed 入口，plugin-style 的 `code-simplifier` 与 `code-review` 则分别以 `agents/code-simplifier.md` 和 `commands/code-review.md` 作为 alter0 注入入口。Codex 运行前必须把本轮选中的可读 file-backed Skill 目录物化到当前会话工作区 `.alter0/codex-runtime/skills/<skill_id>/`，并将运行时 `file_path` 改写为物化后的工作区内路径。`coding` 内置 Agent 默认启用 `memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`，用于覆盖仓库记忆、预览发布、前端设计、测试、评审、重构与协作文档质量。
 - 共享 Web 运行时需要支持通用 workspace service 注册：`GET /api/control/workspace-services` 查询注册表，`PUT /api/control/workspace-services/{session_id}` 绑定默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 绑定附加服务，`DELETE` 接口用于清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>-<session_short_hash>.alter0.cn` 时，共享运行时需按注册类型分发前端构建或反向代理到目标 HTTP 服务。`travel` 服务是唯一例外，固定命中 `https://travel-<session_short_hash>.alter0.cn`，且该 host 只读、免登录，只允许返回静态 HTML/资源。标准 `web` 部署默认应把当前会话后端启动命令注册给共享运行时托管，再以 `http` 方式绑定短哈希子域名，确保前端与 `/api/*` 同时来自当前分支；`frontend_dist` 仅作为静态预览模式保留。
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 Claude Code provider profile 配置，包含 base URL、API Key 保留语义、model、profile、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复；启用且健康的 Provider 作为 Claude Code 首选运行来源。
-- Codex Accounts 作为 `Codex Direct` 的账号与模型管理来源，在无可用 Model Provider 或 Claude Code 运行失败时承接自然语言任务兜底执行。
+- Codex Runtime 作为 `Codex Direct` 的账号与模型管理来源，在无可用 Model Provider 或 Claude Code 运行失败时承接自然语言任务兜底执行。
 - Environments 页面支持 Web/Queue、Async Tasks、Terminal、Session Memory、Persistent Memory 与 LLM 运行参数可视化配置、敏感值显隐、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、仅丢弃 Git 已跟踪本地改动的重启前同步策略、候选二进制构建、readyz 探活与失败回滚。
-- Settings 页面提供 Codex Accounts 面板，使用高密度运行时概览、当前 Codex 管理区、托管账号列表与操作侧栏承载 `auth.json` 导入、独立登录会话、托管账号状态查看、当前运行时账号切换，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换；概览区采用当前账号主身份区配合套餐、小时/周剩余额度和托管数量的紧凑指标列，其中额度必须以进度条展示并附带 reset 时间，key/value 默认按同列对齐，概览本身不展示活动 auth 路径，维护类信息通过 `Runtime Details` 折叠区展开；当前 Codex 管理区仅保留一套可编辑的 model / 思考深度字段，不重复展示当前值摘要；托管账号区采用高密度行式列表，在不同断点下持续暴露账号身份、套餐、额度进度条、reset 时间、当前 model、思考深度与切换入口，并使用更平的控制台控件与分隔线布局代替嵌套胶囊和内嵌方框；若当前运行中的 `auth.json` 尚未导入托管仓库，页面仍需展示该活动账号并提示其处于未托管状态，且在 quota 已可用时继续展示该 live 账号的套餐与额度，加载阶段需保留整页骨架布局。
+- Settings 页面提供 Codex Runtime 面板，使用单一顶部面板承载当前服务运行账户的 Codex 身份快照、邮箱、计划、认证模式、hourly / weekly 额度、profile、LLM Provider 注册状态，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换。页面不展示 Account ID / User ID、保存名称、多账号导入/登录/切换入口、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。额度必须来自当前 `auth.json` 的实时 quota 刷新结果，model / 思考深度选择变更后仅实时写回当前用户配置中的 `model` 与 `model_reasoning_effort`。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、统一 `HOME=/var/lib/alter0`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。
 - Node/Playwright 测试链路通过运行账户级工具链初始化，保证 Codex CLI 可执行 `internal/interfaces/web/frontend` 的构建与单测，以及 `internal/interfaces/web` 的 Playwright E2E。

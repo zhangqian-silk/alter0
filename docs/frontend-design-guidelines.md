@@ -33,7 +33,7 @@
 
 ### 工作台与控制页
 
-- `Chat / Agent / Terminal / Memory / Sessions / Tasks / Models / Environments / Cron / Codex Accounts / Skills / MCP / Channels` 默认采用工作台式信息架构。
+- `Chat / Agent / Terminal / Memory / Sessions / Tasks / Models / Environments / Cron / Codex Runtime / Skills / MCP / Channels` 默认采用工作台式信息架构。
 - 首屏优先暴露当前任务、列表、输入区、状态栏或配置区，不渲染额外 hero、品牌宣言、浮层徽章或装饰性摘要卡。
 - 默认使用克制配色、少量强调色、紧凑但可读的排版与稳定的阅读宽度。
 - 默认不使用大面积装饰渐变和过多投影，不把页面退化成“卡片墙”。

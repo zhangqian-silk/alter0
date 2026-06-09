@@ -1010,6 +1010,8 @@ body {
 .management-route-content > .session-history-view,
 .management-route-content > .memory-view,
 .management-route-content > .agent-studio-view,
+.management-route-content > .codex-runtime-view,
+.management-route-content > .codex-runtime-workspace,
 .management-route-content > .codex-accounts-view,
 .management-route-content > .codex-accounts-workspace,
 .management-route-content > .environment-view,
@@ -1018,7 +1020,7 @@ body {
 }
 
 .management-route-content[data-management-route-content="runtime"] .settings-composite-section {
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -1059,6 +1061,10 @@ body {
 .management-route-content .environment-module,
 .management-route-content .environment-summary,
 .management-route-content .environment-audits,
+.management-route-content .codex-runtime-status-band,
+.management-route-content .codex-runtime-overview,
+.management-route-content .codex-runtime-main,
+.management-route-content .codex-runtime-panel,
 .management-route-content .codex-accounts-panel,
 .management-route-content .codex-accounts-overview,
 .management-route-content .codex-accounts-main,
@@ -1077,6 +1083,7 @@ body {
 .management-route-content .agent-route-pane-head,
 .management-route-content .control-task-drawer-head,
 .management-route-content .task-detail-head,
+.management-route-content .codex-runtime-section-head,
 .management-route-content .codex-accounts-section-head,
 .management-route-content .environment-toolbar-head {
   gap: 10px;
@@ -1086,6 +1093,8 @@ body {
 }
 
 .management-route-content .route-field-row,
+.management-route-content .codex-runtime-detail,
+.management-route-content .codex-runtime-kv-select,
 .management-route-content .codex-accounts-runtime-detail,
 .management-route-content .environment-item,
 .management-route-content .codex-account-metric,
@@ -1104,6 +1113,7 @@ body {
 }
 
 .management-route-content .route-field-row > span:first-child,
+.management-route-content .codex-runtime-kv-select > span,
 .management-route-content .codex-accounts-field > span,
 .management-route-content .agent-builder-field > span,
 .management-route-content .agent-builder-wide > span,
@@ -1144,6 +1154,7 @@ body {
 .management-route-content .page-filter-form,
 .management-route-content .task-filter-form,
 .management-route-content .agent-builder-form,
+.management-route-content .codex-runtime-quick-form,
 .management-route-content .codex-accounts-form,
 .management-route-content .codex-accounts-runtime-form {
   border-radius: 8px;
@@ -1273,6 +1284,13 @@ body {
   text-transform: none;
 }
 
+.codex-runtime-view,
+.codex-runtime-workspace,
+.codex-runtime-status-band,
+.codex-runtime-identity,
+.codex-runtime-main,
+.codex-runtime-side,
+.codex-runtime-panel,
 .codex-accounts-view,
 .codex-accounts-workspace,
 .codex-accounts-runtime-panel,
@@ -1283,6 +1301,532 @@ body {
 .session-history-view,
 .environment-view {
   min-width: 0;
+}
+
+.codex-runtime-view {
+  display: grid;
+  gap: 14px;
+}
+
+.codex-runtime-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  align-items: start;
+  gap: 14px;
+}
+
+.codex-runtime-main,
+.codex-runtime-panel,
+.codex-runtime-identity,
+.codex-runtime-overview,
+.codex-runtime-status-band {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.codex-runtime-side {
+  display: grid;
+  gap: 14px;
+}
+
+.codex-runtime-section-head {
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.codex-runtime-status-band {
+  gap: 12px;
+}
+
+.codex-runtime-status-band-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.codex-runtime-title-block {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.codex-runtime-title-block h4,
+.codex-runtime-title-block p {
+  margin: 0;
+}
+
+.codex-runtime-title-block p {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.codex-runtime-section-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.codex-runtime-section-head h4 {
+  margin: 0;
+}
+
+.codex-runtime-section-head p {
+  margin: 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.codex-runtime-identity-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.codex-runtime-account-pane {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px;
+  background: linear-gradient(90deg, rgba(236, 254, 255, 0.5), rgba(255, 255, 255, 0));
+}
+
+.codex-runtime-account-mark {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(15, 159, 143, 0.2);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(15, 159, 143, 0.55) 0 4px, transparent 5px),
+    radial-gradient(ellipse at 50% 70%, rgba(15, 159, 143, 0.5) 0 9px, transparent 10px),
+    rgba(236, 254, 255, 0.72);
+}
+
+.codex-runtime-account-primary {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.codex-runtime-account-primary span,
+.codex-runtime-meta-item span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.codex-runtime-account-primary strong {
+  min-width: 0;
+  color: #101828;
+  font-size: 15px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-runtime-account-primary p {
+  min-width: 0;
+  margin: 0;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-runtime-chip-row {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.codex-runtime-meta-item {
+  min-height: 54px;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #344054;
+  text-transform: none;
+}
+
+.codex-runtime-meta-item + .codex-runtime-meta-item {
+  border-left: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.codex-runtime-meta-item span {
+  font-size: 10.5px;
+}
+
+.codex-runtime-meta-item strong {
+  max-width: 150px;
+  color: #344054;
+  font-size: 11.5px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-runtime-status {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.codex-runtime-status.is-success {
+  color: #087f73;
+  background: rgba(15, 159, 143, 0.08);
+  border-color: rgba(15, 159, 143, 0.18);
+}
+
+.codex-runtime-status.is-error {
+  color: #b42318;
+  background: rgba(254, 243, 242, 0.92);
+  border-color: rgba(240, 68, 56, 0.2);
+}
+
+.codex-runtime-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.codex-runtime-ledger-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.codex-runtime-ledger-grid.is-editable {
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+}
+
+.codex-runtime-identity-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.codex-runtime-identity-grid .codex-runtime-detail {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+}
+
+.codex-runtime-kv-select {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.codex-runtime-kv-select span,
+.codex-runtime-detail span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.codex-runtime-detail strong {
+  min-width: 0;
+  color: #101828;
+  font-size: 13px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-runtime-kv-select {
+  position: relative;
+  border-color: rgba(15, 159, 143, 0.18);
+  background:
+    linear-gradient(90deg, rgba(15, 159, 143, 0.1), transparent 42%) top left / 100% 2px no-repeat,
+    #f8fafc;
+}
+
+.codex-runtime-kv-select select {
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  padding: 0 24px 0 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+  color: #101828;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.codex-runtime-kv-select select:focus {
+  outline: 2px solid rgba(15, 159, 143, 0.2);
+  outline-offset: 3px;
+}
+
+.codex-runtime-provider-note {
+  display: grid;
+  gap: 4px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.codex-runtime-provider-note strong {
+  color: #101828;
+  font-size: 13px;
+}
+
+.codex-runtime-provider-note span {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.codex-runtime-provider-note.is-empty {
+  border-color: rgba(14, 116, 144, 0.16);
+  background: rgba(236, 254, 255, 0.62);
+}
+
+.codex-runtime-quota-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.codex-runtime-quota-grid.is-compact {
+  gap: 8px;
+}
+
+.codex-runtime-quota-item {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.codex-runtime-quota-grid.is-compact .codex-runtime-quota-item {
+  gap: 7px;
+  padding: 9px 10px;
+  background: #fff;
+}
+
+.codex-runtime-quota-head,
+.codex-runtime-quota-reset {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.codex-runtime-quota-head span,
+.codex-runtime-quota-reset span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.codex-runtime-quota-head strong {
+  color: #101828;
+  font-size: 16px;
+  font-weight: 850;
+}
+
+.codex-runtime-quota-reset strong {
+  min-width: 0;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-runtime-quota-meter {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.codex-runtime-quota-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #0f9f8f;
+}
+
+.codex-runtime-quick-form {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.codex-runtime-checklist {
+  display: grid;
+  gap: 8px;
+}
+
+.codex-runtime-check-item {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.codex-runtime-check-item span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #98a2b3;
+}
+
+.codex-runtime-check-item.is-ready span {
+  background: #0f9f8f;
+}
+
+.codex-runtime-check-item.is-warning span {
+  background: #f97316;
+}
+
+.codex-runtime-check-item strong {
+  min-width: 0;
+  color: #344054;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.codex-runtime-details {
+  display: grid;
+  gap: 8px;
+}
+
+.codex-runtime-diagnostics-fold {
+  gap: 0;
+}
+
+.codex-runtime-diagnostics-fold > summary {
+  cursor: pointer;
+  list-style: none;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.codex-runtime-diagnostics-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.codex-runtime-diagnostics-fold > summary::after {
+  content: "+";
+  align-self: start;
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  color: #667085;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.codex-runtime-diagnostics-fold[open] {
+  gap: 10px;
+}
+
+.codex-runtime-diagnostics-fold[open] > summary {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.codex-runtime-diagnostics-fold[open] > summary::after {
+  content: "-";
+}
+
+.codex-runtime-detail {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(96px, 132px) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.codex-runtime-skeleton-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.codex-runtime-skeleton-label {
+  width: 44%;
+}
+
+.codex-runtime-skeleton-value {
+  width: 68%;
+}
+
+.codex-runtime-skeleton-field {
+  height: 38px;
+}
+
+.codex-runtime-skeleton-block {
+  height: 66px;
+}
+
+.codex-runtime-skeleton-button {
+  width: 168px;
+  height: 36px;
+  justify-self: end;
 }
 
 .codex-accounts-summary-grid,
@@ -1487,6 +2031,8 @@ body {
   .management-route-content > .session-history-view,
   .management-route-content > .memory-view,
   .management-route-content > .agent-studio-view,
+  .management-route-content > .codex-runtime-view,
+  .management-route-content > .codex-runtime-workspace,
   .management-route-content > .codex-accounts-view,
   .management-route-content > .codex-accounts-workspace,
   .management-route-content > .environment-view,
@@ -1498,8 +2044,21 @@ body {
   .settings-composite-section[data-settings-section="workspaces"],
   .control-task-layout,
   .agent-studio-view,
+  .codex-runtime-workspace,
   .codex-accounts-workspace {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .codex-runtime-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .codex-runtime-ledger-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .codex-runtime-identity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1570,6 +2129,11 @@ body {
   .management-route-content .environment-module,
   .management-route-content .environment-summary,
   .management-route-content .environment-audits,
+    .management-route-content .codex-runtime-status-band,
+    .management-route-content .codex-runtime-identity,
+  .management-route-content .codex-runtime-overview,
+  .management-route-content .codex-runtime-main,
+  .management-route-content .codex-runtime-panel,
   .management-route-content .codex-accounts-panel,
   .management-route-content .codex-accounts-overview,
   .management-route-content .codex-accounts-main,
@@ -1585,6 +2149,44 @@ body {
 
   .management-route-content .route-field-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .codex-runtime-summary-grid,
+  .codex-runtime-ledger-grid,
+  .codex-runtime-ledger-grid.is-editable,
+  .codex-runtime-identity-grid,
+  .codex-runtime-quota-grid,
+  .codex-runtime-quick-form,
+  .codex-runtime-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .codex-runtime-section-head,
+  .codex-runtime-status-band-head,
+  .codex-runtime-account-primary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .codex-runtime-identity-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .codex-runtime-account-pane {
+    padding: 14px 16px;
+  }
+
+  .codex-runtime-account-mark {
+    display: none;
+  }
+
+  .codex-runtime-meta-item {
+    min-height: 44px;
+    padding: 9px 10px;
+  }
+
+  .codex-runtime-chip-row {
+    justify-content: flex-start;
   }
 
   .management-route-content .route-data-table {

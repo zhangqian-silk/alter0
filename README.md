@@ -73,7 +73,7 @@
 
 2. `Codex Direct`
 - 当未配置 Model Provider，或 Claude Code provider 启动、鉴权、健康检查失败时作为兜底运行时。
-- 使用当前 Codex 登录态、托管账号与 Codex 配置。
+- 使用当前服务运行账户的 Codex 登录态、额度与 Codex 配置。
 - 每个会话维护独立 `CODEX_HOME` 与 Codex thread。
 
 启动运行时前，服务会为当前会话工作区注入：
@@ -128,11 +128,11 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Terminal / Settings` 三个稳定入口，主工作区按运行态或设置页渲染。`/chat` 是唯一对话入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；历史 `/agent-runtime` 会自动映射到 `/chat`，旧 Agent 会话会作为 Chat 会话继续展示和恢复。`/settings` 承接运行时、Skill、Memory、Maintenance、Workspaces 与 Schedules；历史 `/management` 会自动映射到 `/settings`。
 
-当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。Settings 内部只保留紧凑分区：`Runtime` 管理 Model Provider 与 Codex Accounts，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Maintenance` 管理自动记忆维护和会话清理，`Workspaces` 管理会话/任务工作区，`Schedules` 管理定时任务与触发记录。旧管理子页面不再作为一级路由展示。
+当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。Settings 内部只保留紧凑分区：`Runtime` 管理 Model Provider 与 Codex Runtime，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Maintenance` 管理自动记忆维护和会话清理，`Workspaces` 管理会话/任务工作区，`Schedules` 管理定时任务与触发记录。旧管理子页面不再作为一级路由展示。
 
 `Chat / Terminal` 的消息区采用轻量 IM 式消息流：用户消息右对齐并使用低对比紧凑气泡，助手消息左对齐为无边框正文阅读流，思考过程默认收敛为 `Thinking / 已思考` 内联披露入口，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情。最终回复统一使用稳定的运行页 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块，逐条消息时间不在正文区显示。长会话默认优先展示最新消息，顶部提供 `Load earlier messages / 加载更早消息`，滚到顶部也会按批次渐进加载更早历史；右侧阅读定位条支持连续 `上一条 / 下一条` 跳转。
 `/chat`、`/terminal`、`/settings` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 内可通过语言切换入口改为中文。登录页只携带当前 canonical path 作为稳定回跳入口，不携带 query。`Chat / Terminal` 使用统一 `session_id=<8位短hash>` 恢复当前会话，不把完整会话 id 暴露在 URL 与页面提示中。
-控制类与资产类页面默认采用更高信息密度的管理视图：`Profiles` 使用短字段并排的紧凑表单栅格与显式启用开关，`Tasks` 使用左侧任务列表 + 右侧运行详情的主从布局，`Memory` 的任务历史使用表格 + 详情侧栏，`Environments` 使用运行态工具栏 + 模块卡片栅格展示配置项，并在同页提供敏感值显隐、保存、重载、重启与审计视图，`Codex Accounts` 使用精简后的运行时概览条 + 当前 Codex 管理区 + 托管账号卡片列表 + 导入/登录操作侧栏：概览条优先展示当前账号、套餐、小时/周剩余额度与托管数量，维护类信息如 auth/config 路径、CLI 命令与配置来源收纳到 `Runtime Details` 折叠区；当前 Codex 管理区的 model 与思考深度选项直接来自 Codex app-server 返回的真实能力列表。`Channels / Skills / MCP / Models / Cron Jobs` 这组共享控制台卡片页统一复用稳定的响应式卡片网格，真窄屏下状态徽标会下沉到标题区下方、字段行改为单列展开，避免标题、徽标、复制按钮与多行字段互相挤压；`Agent` 的列表卡片、管理表单与详情区统一使用近白表面、浅灰说明层与浅蓝选中态。大屏保留“列表 + 侧栏”结构，中屏切换为全宽账号区 + 双侧栏，小屏回落为单列卡片，确保额度信息、当前 model、思考深度与切换入口始终可见。
+控制类与资产类页面默认采用更高信息密度的管理视图：`Profiles` 使用短字段并排的紧凑表单栅格与显式启用开关，`Tasks` 使用左侧任务列表 + 右侧运行详情的主从布局，`Memory` 的任务历史使用表格 + 详情侧栏，`Environments` 使用运行态工具栏 + 模块卡片栅格展示配置项，并在同页提供敏感值显隐、保存、重载、重启与审计视图，`Codex Runtime` 使用单一顶部面板展示当前服务运行账户的 Codex 身份、邮箱、计划、认证模式、profile、hourly / weekly 额度与 LLM Provider 注册状态；model / 思考深度直接做成面板内的一行 key-value 选择项并实时保存。页面不再展示多账号导入、登录、切换、Account ID、User ID、CLI 路径、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。`Channels / Skills / MCP / Models / Cron Jobs` 这组共享控制台卡片页统一复用稳定的响应式卡片网格，真窄屏下状态徽标会下沉到标题区下方、字段行改为单列展开，避免标题、徽标、复制按钮与多行字段互相挤压；`Agent` 的列表卡片、管理表单与详情区统一使用近白表面、浅灰说明层与浅蓝选中态。
 所有 React 托管页面的正文型内容统一支持安全 Markdown 渲染：消息最终回复、Process 说明、Terminal 输出、Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明与 Session Profile 的非等宽字段都会复用同一安全解析器。Chat / Terminal 最终输出统一通过稳定的 `MessageMarkdownShell` 承载，markdown HTML 与 `dangerouslySetInnerHTML` 对象按内容缓存，父级无关重渲染不得替换已渲染文本节点，从而保持浏览器原生文本选择与复制菜单。渲染器支持 ATX/Setext 标题、段落换行、强调、删除线、自动 URL/email 链接、列表、列表内引用与代码块、引用、图片、对齐表格、行内代码与代码块，并过滤 `javascript:` 等不安全链接；Markdown 视觉需保持正文阅读节奏，标题紧凑、段落自然，嵌套列表按 Markdown 缩进保留真实层级，普通链接显示外链箭头，代码块保留浅灰弱边界；Markdown 表格在消息容器内以真实表格结构呈现，只保留横向分割线、无外框卡片和表头灰底；短表格至少铺满消息宽度，普通长文本在单元格内自动换行，链接、URL 与代码保持不硬断开，只有真实不可断内容超宽时才在表格块内部横向滚动，不制造页面级横向滚动；ID、路径、密钥、配置值、时间戳和其他元数据字段继续按纯文本或等宽字段展示。
 Chat 支持显式演示入口 `/chat?markdown_demo=1`，用于在预览环境中直接展示一条非持久化 assistant Markdown 语法覆盖样例；该参数会临时覆盖当前时间线视图但不写入会话历史。样例涵盖当前渲染器支持的 ATX/Setext 标题、段落换行、强调、删除线、自动链接、图片、引用、嵌套列表、任务项、列表内引用与代码块、分割线、代码块、对齐表格与 raw HTML 转义；表格样例覆盖短字符、长中文、长 URL/代码和混合内容场景；折叠示例中的 HTML 标签按代码块展示，折叠内容本身按普通 Markdown 展示。
 
@@ -173,7 +173,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - `Chat` 刷新恢复采用“双层快照 + 服务端回源”策略：浏览器本地除当前活动会话外，还会保留最近会话列表的轻量快照；当服务端集合接口短暂漏掉某个刚创建或最近活跃的会话时，前端仍保留该会话在左侧列表中的可见性，并继续按 `session_id` 单独回源详情，避免刷新其他会话后新会话从列表里瞬时消失。即使集合接口已经返回当前会话的摘要项，只要本地仍残留 `Thinking...`、`Load failed` 或其他流式失败态，运行页也会继续补拉单会话详情，并用服务端已持久化的 assistant 结果覆盖本地快照。
 - `Chat` 已接受请求后若服务端历史暂时只有最新 `user` 消息，前端继续把当前活动会话视为待恢复状态并重试单会话详情，直到 assistant 回复、任务消息或失败态落库；该中间态不会被当成完整对话停止等待。
 - `Chat` 的 Web 会话执行已与浏览器请求生命周期解耦：页面刷新、前端 SSE 断开或标签页短暂切走只会中断当前流式传输，不会取消服务端已接受的会话执行；刷新后的恢复继续优先按当前 `session_id` 回源服务端详情与状态 registry，避免本轮已发出的消息因为前端断连而整轮丢失。
-- `Chat / Terminal` 会把当前活动会话同步写入 URL query，用于刷新后的精确恢复：`Chat` 使用 `/chat?session_id=<8位短hash>`，`Terminal` 使用 `/terminal?session_id=<8位短hash>`。历史 `/agent-runtime?session_id=<8位短hash>` 会先规范化到 `/chat?session_id=<8位短hash>` 再恢复对应历史会话。管理能力统一进入 `/management`，页内切换 Profiles、Memory、Tasks、Models、Codex Accounts 等分区时不改写工作台 path。
+- `Chat / Terminal` 会把当前活动会话同步写入 URL query，用于刷新后的精确恢复：`Chat` 使用 `/chat?session_id=<8位短hash>`，`Terminal` 使用 `/terminal?session_id=<8位短hash>`。历史 `/agent-runtime?session_id=<8位短hash>` 会先规范化到 `/chat?session_id=<8位短hash>` 再恢复对应历史会话。管理能力统一进入 `/management`，页内切换 Profiles、Memory、Tasks、Models、Codex Runtime 等分区时不改写工作台 path。
 - `Chat / Terminal` 在页面从后台回到前台，或浏览器重新把当前页激活为可见工作页时，共享 page-activation 刷新链路：`Chat` 会立即按当前路由补拉会话列表、当前活动会话详情和 pending task 状态；`Terminal` 会同步刷新会话列表与当前活动会话详情，避免后台期间的最新输出、标题或状态停留在旧视图。
 - `Chat` 现在额外维护服务端会话 registry：消息入口会先把当前会话写入服务端 `busy / ready / failed` 状态，再由运行页列表和详情接口优先消费这份 registry 并回源 Session history；即使浏览器刷新或 SSE 连接中断，服务端仍保留该会话的存在性、最近配置与恢复状态，不再把会话可见性完全交给客户端判断。
 - `Terminal` 页面 Composer 支持最多 5 个附件：图片继续提供缩略图预览与移除，常见文本/文档文件以文件条目展示；用户可通过附件按钮选择文件，也可在 PC 输入框内直接使用 `Ctrl+V` 粘贴剪贴板图片，普通文本粘贴继续保持原生输入行为。附件统一先写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，提交时仅发送稳定附件引用。图片继续映射为 Codex CLI `-i` 输入；普通文件会同步写入当前 Terminal 工作区 `input-attachments/<turn_id>/`，并在同轮 prompt 中注入可直接读取的 workspace 相对路径，供 Codex 按需直接读盘。Terminal turn 历史与 `Tasks` 详情抽屉里的图片再次查看时统一优先使用原图资源，缩略位仍保留预览图。`Tasks` 详情抽屉里的 follow-up terminal 输入当前稳定支持图片附件，并继续沿统一消息元数据透传。Terminal Codex CLI 远端 compact 失败时仅把当前 turn 标记失败，保留已持久化线程标识、会话历史和工作区；下一次输入继续 resume 同一运行线程。Terminal workspace header 继续显示当前会话状态信号，信号固定贴在会话标题左侧，右侧只保留 `Details`，状态名称仅保留给可访问性语义；左侧会话列表只在 `busy` 会话标题旁显示 loading，其余状态不显示行内状态灯。
@@ -210,7 +210,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - 启用且健康的 Provider 会生成 Claude Code provider profile；显式选择 `Codex` 或 Provider 不可用时进入 Codex Direct。
 - `Models` 控制面保存 Provider 时，`api_key` 输入框留空表示保持现有密钥；若前端中间态传入占位值 `-`，服务端会按空值处理，不会把 `-` 持久化为真实凭据。
 - 历史 `model_config.json` 若残留缺失 `api_key` 的 Provider，加载阶段会自动收敛为禁用态并保留在 `Models` 控制面中，页面不会因旧配置直接返回 500；补齐密钥后可重新启用。
-- `Codex Accounts` 控制面位于 `Settings`，支持在同页查看紧凑化的运行时概览、当前 Codex 运行时状态、当前活动 profile、活动 model、思考深度、导入已有 `auth.json`、启动独立 `codex login` 会话、查看当前账号套餐/额度状态，并切换当前运行时生效账号；概览区采用“当前账号主身份区 + 套餐/小时额度/周额度/托管数量”紧凑指标列，其中小时/周额度以进度条展示剩余额度并附带 reset 时间，key/value 默认同列对齐，概览不再暴露活动 auth 路径，维护类信息统一通过 `Runtime Details` 折叠区展开；`Current Codex` 仅保留一套可编辑的 model / 思考深度字段，不再在选择器下重复展示当前值；托管账号区采用高密度行式列表，持续暴露账号身份、计划、额度进度条、reset 时间与切换入口，并用更平的控制台按钮/状态文本和分隔线式布局替代层层胶囊与内嵌方框；model 与思考深度的可选项来自 Codex app-server 的 `model/list`，当前生效值与来源来自 `config/read`，保存时通过 `config/batchWrite` 写回当前用户配置。当前运行中的 `auth.json` 若尚未纳入托管，会在概览与空态中明确标记为“已生效但未托管”；只要当前 live 账号成功拿到 quota，概览区仍直接展示该 live 账号的套餐与额度，加载阶段则保留完整面板骨架而不是退化成单行提示。
+- `Codex Runtime` 控制面位于 `Settings`，只管理当前服务运行账户的 Codex Direct 配置。页面在单一顶部面板中展示当前 `auth.json` 解析出的账号名、邮箱、计划、认证模式、profile、hourly / weekly 额度与 LLM Provider 注册状态；model 与思考深度的可选项来自 Codex app-server 的 `model/list`，当前生效值来自 `config/read`，选择变更后立即通过 `config/batchWrite` 写回当前用户配置。前端不提供多账号导入、登录、保存或切换入口，不展示 Account ID / User ID、保存名称、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。
 - 默认 Provider 只会落在已启用配置上；若默认 Provider 被禁用、删除或历史配置已失效，系统会自动切换到下一可用 Provider，无可用项时清空默认值。
 - 复杂度评估阶段会优先复用当前消息选中的 `Provider / Model`；未显式选择时，回退到默认 Provider 与默认模型。若 Chat 或 Agent Runtime 当前显式选择 `Codex`，前端会改写消息 metadata 为 `alter0.execution.engine=codex`，由执行层直接进入 `Codex CLI` 链路；该直连链路中的 `/goal` 等斜线前缀输入会原样转发给 Codex，不触发 alter0 自身的命令注册表。Web 对话框在直连 Codex 且输入以 `/` 开头时会展示 Web 适用的 Codex CLI 斜线命令候选，覆盖 `/apps`、`/plugins`、`/compact`、`/diff`、`/mcp`、`/model`、`/goal`、`/status` 等命令；候选按命令作用分组顺序展示，并使用短动作说明。权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入 Web 候选。Terminal 在当前会话明确为 `codex` shell 时也提供同一候选补全，点击候选会补全当前命令前缀。
 - 默认走实时执行。
@@ -442,7 +442,7 @@ go run ./cmd/alter0 \
 
 若通过 `systemd` 运行，建议在服务环境中显式设置 `HOME=/var/lib/alter0`；启动脚本也会把历史 `HOME=/var/lib/alter0/codex-home` 归一到 `/var/lib/alter0`，确保 Codex 认证与运行态数据落在统一运行根目录。
 
-`Codex Accounts` 默认把托管账号、切换备份与登录会话目录写到当前活动 `CODEX_HOME` 下的 `alter0-accounts/`；未显式设置 `CODEX_HOME` 时，对应目录即 `$HOME/.codex/alter0-accounts/`。切换账号只替换当前活动 `auth.json`；当前 Codex 管理区通过 Codex app-server 读取真实运行时能力与配置来源，并通过用户配置写接口更新当前活动配置中的 `model` 与 `model_reasoning_effort`。
+`Codex Runtime` 固定读取当前活动 `CODEX_HOME` 下的 `auth.json` 与 `config.toml`；未显式设置 `CODEX_HOME` 时，对应目录即 `$HOME/.codex/`。Runtime 页面通过 Codex app-server 读取真实运行时能力与配置来源，并通过用户配置写接口更新当前活动配置中的 `model` 与 `model_reasoning_effort`。
 
 若服务需要自行提交签名 commit、创建 PR 或执行合并，还需在 root 下额外执行一次：
 
@@ -564,28 +564,9 @@ curl -X PUT http://127.0.0.1:18088/api/control/channels/web-default \
   -d '{"type":"web","enabled":true}'
 ```
 
-### Codex Accounts
+### Codex Runtime
 
 ```bash
-# 列出托管账号与当前活动账号
-curl http://127.0.0.1:18088/api/control/codex/accounts
-
-# 导入 auth.json
-curl -X POST http://127.0.0.1:18088/api/control/codex/accounts \
-  -H "Content-Type: application/json" \
-  -d '{"name":"work","auth_file_content":"{\"auth_mode\":\"apikey\",\"OPENAI_API_KEY\":\"sk-***\"}"}'
-
-# 启动独立登录会话
-curl -X POST http://127.0.0.1:18088/api/control/codex/accounts/login-sessions \
-  -H "Content-Type: application/json" \
-  -d '{"name":"fresh-account"}'
-
-# 查询登录会话状态
-curl http://127.0.0.1:18088/api/control/codex/accounts/login-sessions/login-123
-
-# 切换当前运行时账号
-curl -X POST http://127.0.0.1:18088/api/control/codex/accounts/work/switch
-
 # 查看当前 Codex 运行时
 curl http://127.0.0.1:18088/api/control/codex/runtime
 
@@ -597,9 +578,9 @@ curl -X PUT http://127.0.0.1:18088/api/control/codex/runtime \
 
 说明：
 
-1. 托管账号默认存储在当前活动 `CODEX_HOME` 下的 `alter0-accounts/` 目录；未设置 `CODEX_HOME` 时，即 `$HOME/.codex/alter0-accounts/`。
-2. 独立登录会话会使用隔离的临时 `CODEX_HOME` 执行 `codex login`，成功后再把生成的 `auth.json` 保存成托管账号，不会直接覆盖当前运行中的活动账号。
-3. 切换账号只替换当前活动 `auth.json`，并在需要时先生成备份文件；运行时设置更新通过 Codex app-server 写回当前用户配置中的 `model` 与 `model_reasoning_effort`，不会覆盖其他 Codex 配置项。
+1. Runtime 页面只读取服务运行账户当前活动 `CODEX_HOME` 的 `auth.json` 与 `config.toml`。
+2. 额度信息来自当前 `auth.json` 的 quota 刷新结果；页面不再使用旧账号列表接口作为额度来源。
+3. 运行时设置更新通过 Codex app-server 写回当前用户配置中的 `model` 与 `model_reasoning_effort`，不会覆盖其他 Codex 配置项。
 
 ### Skill
 

@@ -45,27 +45,27 @@ type AccountStatus struct {
 }
 
 type CurrentStatus struct {
-	Live     *codexdomain.Snapshot `json:"live,omitempty"`
-	Managed  *Record               `json:"managed,omitempty"`
-	AuthPath string                `json:"auth_path,omitempty"`
-	Quota    *codexdomain.QuotaStatus `json:"quota,omitempty"`
-	Error    string                   `json:"error,omitempty"`
-	Refreshed bool                    `json:"refreshed"`
+	Live      *codexdomain.Snapshot    `json:"live,omitempty"`
+	Managed   *Record                  `json:"managed,omitempty"`
+	AuthPath  string                   `json:"auth_path,omitempty"`
+	Quota     *codexdomain.QuotaStatus `json:"quota,omitempty"`
+	Error     string                   `json:"error,omitempty"`
+	Refreshed bool                     `json:"refreshed"`
 }
 
 type RuntimeStatus struct {
-	Command            string               `json:"command,omitempty"`
-	AuthPath           string               `json:"auth_path,omitempty"`
-	ConfigPath         string               `json:"config_path,omitempty"`
-	HasAuth            bool                 `json:"has_auth"`
-	HasConfig          bool                 `json:"has_config"`
-	Profile            string               `json:"profile,omitempty"`
-	Model              string               `json:"model,omitempty"`
-	ReasoningEffort    string               `json:"reasoning_effort,omitempty"`
-	ModelOrigin        *RuntimeConfigOrigin `json:"model_origin,omitempty"`
-	ReasoningOrigin    *RuntimeConfigOrigin `json:"reasoning_origin,omitempty"`
-	Models             []RuntimeModel       `json:"models,omitempty"`
-	Current            *CurrentStatus       `json:"current,omitempty"`
+	Command         string               `json:"command,omitempty"`
+	AuthPath        string               `json:"auth_path,omitempty"`
+	ConfigPath      string               `json:"config_path,omitempty"`
+	HasAuth         bool                 `json:"has_auth"`
+	HasConfig       bool                 `json:"has_config"`
+	Profile         string               `json:"profile,omitempty"`
+	Model           string               `json:"model,omitempty"`
+	ReasoningEffort string               `json:"reasoning_effort,omitempty"`
+	ModelOrigin     *RuntimeConfigOrigin `json:"model_origin,omitempty"`
+	ReasoningOrigin *RuntimeConfigOrigin `json:"reasoning_origin,omitempty"`
+	Models          []RuntimeModel       `json:"models,omitempty"`
+	Current         *CurrentStatus       `json:"current,omitempty"`
 }
 
 type RuntimeConfigOrigin struct {
@@ -165,9 +165,9 @@ type appServerRequest struct {
 }
 
 type appServerResponse struct {
-	ID     int               `json:"id"`
-	Result json.RawMessage   `json:"result,omitempty"`
-	Error  *appServerError   `json:"error,omitempty"`
+	ID     int             `json:"id"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *appServerError `json:"error,omitempty"`
 }
 
 type appServerError struct {
@@ -189,15 +189,15 @@ type appServerModelListResponse struct {
 }
 
 type appServerModel struct {
-	ID                       string                      `json:"id"`
-	Model                    string                      `json:"model"`
-	DisplayName              string                      `json:"displayName"`
-	Description              string                      `json:"description"`
-	Hidden                   bool                        `json:"hidden"`
-	IsDefault                bool                        `json:"isDefault"`
-	DefaultReasoningEffort   string                      `json:"defaultReasoningEffort"`
-	SupportedReasoningEffort []appServerReasoningOption  `json:"supportedReasoningEfforts"`
-	InputModalities          []string                    `json:"inputModalities"`
+	ID                       string                     `json:"id"`
+	Model                    string                     `json:"model"`
+	DisplayName              string                     `json:"displayName"`
+	Description              string                     `json:"description"`
+	Hidden                   bool                       `json:"hidden"`
+	IsDefault                bool                       `json:"isDefault"`
+	DefaultReasoningEffort   string                     `json:"defaultReasoningEffort"`
+	SupportedReasoningEffort []appServerReasoningOption `json:"supportedReasoningEfforts"`
+	InputModalities          []string                   `json:"inputModalities"`
 }
 
 type appServerReasoningOption struct {
@@ -211,9 +211,9 @@ type appServerConfigReadResponse struct {
 }
 
 type appServerConfig struct {
-	Model                 *string `json:"model"`
-	ModelReasoningEffort  *string `json:"model_reasoning_effort"`
-	Profile               *string `json:"profile"`
+	Model                *string `json:"model"`
+	ModelReasoningEffort *string `json:"model_reasoning_effort"`
+	Profile              *string `json:"profile"`
 }
 
 type appServerConfigOrigin struct {
@@ -471,6 +471,7 @@ func (s *Service) RuntimeStatus() (*RuntimeStatus, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.populateCurrentQuota(current, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	models, err := s.appServerModels(ctx, activeHome)
