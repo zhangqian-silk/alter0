@@ -247,6 +247,123 @@ describe("ReactManagedTasksRouteBody", () => {
     expect(container.querySelector('.control-task-result-output a[href="/tasks"]')).toHaveTextContent("Open");
   });
 
+  it("disconnects task output logs while hidden and reconnects on page activation", async () => {
+    let visibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibilityState,
+    });
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => visibilityState !== "visible",
+    });
+
+    class MockEventSource {
+      static instances: MockEventSource[] = [];
+
+      closed = false;
+      url: string;
+
+      constructor(url: string) {
+        this.url = url;
+        MockEventSource.instances.push(this);
+      }
+
+      addEventListener() {}
+
+      close() {
+        this.closed = true;
+      }
+    }
+
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              task_id: "task-output-1",
+              session_id: "session-output-1",
+              status: "running",
+              progress: 40,
+              updated_at: "2026-04-11T01:02:03Z",
+            },
+          ],
+          pagination: { page: 1, total: 1, has_next: false },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          task: {
+            id: "task-output-1",
+            session_id: "session-output-1",
+            status: "running",
+            phase: "executing",
+            progress: 40,
+            request_content: "stream output",
+          },
+          source: {},
+          actions: {},
+          link: { task_id: "task-output-1", session_id: "session-output-1" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ seq: 1, stage: "running", message: "first output" }],
+          has_more: false,
+          next_cursor: 2,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          task: {
+            id: "task-output-1",
+            session_id: "session-output-1",
+            status: "running",
+            phase: "executing",
+            progress: 55,
+            request_content: "stream output",
+          },
+          source: {},
+          actions: {},
+          link: { task_id: "task-output-1", session_id: "session-output-1" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ seq: 2, stage: "running", message: "resumed output" }],
+          has_more: false,
+          next_cursor: 3,
+        }),
+      );
+
+    render(<ReactManagedTasksRouteBody language="en" />);
+
+    await screen.findByRole("button", { name: "task-output-1" });
+    fireEvent.click(screen.getByRole("button", { name: "task-output-1" }));
+
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    expect(MockEventSource.instances[0].url).toBe("/api/control/tasks/task-output-1/logs/stream?cursor=2");
+
+    visibilityState = "hidden";
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() => expect(MockEventSource.instances[0].closed).toBe(true));
+
+    visibilityState = "visible";
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/control/tasks/task-output-1",
+      expect.objectContaining({ method: "GET" }),
+    ));
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(2));
+    expect(MockEventSource.instances[1].url).toBe("/api/control/tasks/task-output-1/logs/stream?cursor=3");
+  });
+
   it("converts datetime-local filters to RFC3339 query values", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

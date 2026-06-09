@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-06-08
+> Last update: 2026-06-09
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `runtime.execution.cli-agent`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -114,7 +114,7 @@
 - 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页继续采用“两行头部 + 贴顶正文起始区”节奏，第一行承载抽屉入口与主操作，第二行承载当前标题；`Chat / Terminal` 在真手机宽度下统一收敛为单层运行页 workbar，左侧保留 `Menu`，中间显示“状态信号 + 当前会话标题”的单行标题按钮，右侧固定承载 `New`，通过点击标题打开 `Details`，不再把 `Details` 作为独立顶部按钮或再叠一层 header。所有页面都不得在顶部遗留额外大块留白。
 - 窄屏 `Chat / Terminal` 工作区顶部固定保留统一运行页入口：三条运行页都通过 `Menu` 进入左侧主导航抽屉，`New` 直接创建当前路由对应的新会话；标题区需要稳定承载当前会话名和状态信号，并作为 `Details` 的直接触发入口，不再出现移动端无导航入口、标题缺席或只能依赖正文内按钮切换会话的状态。
 - `Chat / Terminal` 工作区头部固定为共享单行 header：桌面与中宽度继续保留会话标题、状态按钮和 `Details` 入口；真手机宽度则把 `Details` 下沉到中间标题按钮。模型、Tools / MCP、Skills、Memory 摘要以及会话元数据统一在 `Details` 面板中展示和调整，Terminal 在同一 Details 面板内容区补充终端会话字段与公有 Skill 选择。Chat 模型区除常规 Provider / Model 外，稳定提供内置 `Codex` 直选项，选中后仅影响后续消息，并把执行链显式切到 `Codex Direct`。`/agent-runtime` 不再提供独立目标选择、Deliverables、Session Profile 或 Agent 私有 Skill 配置面板。
-- `Chat / Terminal` 在页面从后台恢复到前台，或浏览器重新把当前页激活为可见页时，必须走同一套共享 page-activation 补偿刷新链路；`Chat` 需立即补拉会话列表、当前活动会话详情与 pending task 状态，`Terminal` 则需立即刷新会话列表与当前活动会话详情，使当前页状态在恢复可见后立刻与服务端对齐。
+- `Chat / Terminal` 在页面从后台恢复到前台，或浏览器重新把当前页激活为可见页时，必须走同一套共享 page-activation 补偿刷新链路；`Chat` 需立即补拉会话列表、当前活动会话详情与 pending task 状态，且页面隐藏时暂停 pending task 定时轮询；`Terminal` 则需立即刷新会话列表与当前活动会话详情，使当前页状态在恢复可见后立刻与服务端对齐。
 - `Chat` 是面向用户的唯一对话入口，工作台一级入口统一为 `/chat`、`/terminal`、`/settings`；`/agent-runtime` 仅兼容映射到 `/chat`。`Chat / Terminal` 的当前活动会话稳定反映到 URL query，统一写入 `session_id=<8位短hash>`；典型入口为 `/chat?session_id=<8位短hash>` 与 `/terminal?session_id=<8位短hash>`。历史 `/agent-runtime?session_id=<8位短hash>` 入口需规范化为 `/chat?session_id=<8位短hash>` 并恢复对应历史会话。
 - `Chat / Terminal` 首页 Composer、会话卡片与 `Details` 面板需维持同一套浅色 runtime 表面系统：Composer 采用单一圆角助手输入面板，主 textarea 无内边框并与底部工具行处在同一白色 surface 内；Chat 工具行不再显示 `Session` 设置入口，Agent Runtime 与 Terminal 工具行左侧继续提供正方形低圆角的会话设置、附件与必要 meta，右侧收口深色发送动作。桌面端按主阅读宽度居中，移动端控制输入高度、底部留白和发送按钮体量，并保持输入区具备足够横向留白；Terminal 不得为 Composer 外壳覆盖更深背景、更低底部 padding 或外层状态 note 行，失败、退出与附件错误提示需进入共享工具栏 meta。PC 端上传、发送、状态、详情、流程入口与弹窗动作统一采用低圆角矩形，不使用胶囊按钮或胶囊标签；会话卡片和详情面板不再退回旧式轻表单或松散卡片观感；空态工作区使用低对比网格与细弧线背景，同时禁止保留可拖拽滚动，不得把头部操作行或输入区顶出可视区。
 - `Chat` 的桌面端草稿输入必须保持低延迟：仅因未发送草稿变化时，不得同步重建整条消息时间线、Markdown 正文或 `Process` 结构；浏览器草稿缓存允许延迟落盘，但不得影响当前输入内容、会话切换后的草稿恢复与发送结果。
@@ -150,6 +150,7 @@
 - 高复杂度、长耗时或产物型请求可切换为异步 Task，先返回任务卡片，再通过任务视图、日志流与会话回写完成闭环。
 - Task 需建立 `session_id`、`source_message_id`、`channel_type`、`trigger_type`、`correlation_id`、Cron 触发信息与产物引用的标准映射。
 - Task 观测台支持列表、详情抽屉、来源筛选、日志 SSE、游标续读、日志回补、retry/cancel、交互式续写、任务-会话双向跳转与完成结果回写。
+- Task 详情输出日志页在后台不可见时需断开日志 SSE，页面恢复前台后补拉详情与日志并从最新 cursor 续接，避免后台持续处理日志事件。
 - Task 观测台桌面端优先采用左侧任务列表 + 右侧详情面板的主从布局，详情区承载元数据、日志、产物、控制动作与 follow-up terminal 输入。
 - Terminal 页面 Composer 支持最多 5 个附件，稳定覆盖图片与常见文本/文档文件：图片继续提供缩略图预览、纯图片发送与图片回显，并支持 PC 输入框内直接粘贴剪贴板图片；图片先写入当前 Session 工作区附件目录后仅提交 `asset_url / preview_url` 引用；缩略位使用预览图，但 turn 历史与后续预览弹层再次查看时必须优先读取原图资源。普通文件同样先落到同一附件目录并只提交稳定附件引用，执行前再写入当前 Terminal 工作区 `input-attachments/<turn_id>/` 供 Codex 按路径读取。Terminal 当前活动会话的 shell 明确为 Codex 时，输入 `/` 需显示 Web 适用的 Codex CLI 斜线命令候选并支持点击补全；候选按命令作用分组顺序展示，并使用短动作说明；权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选，普通 shell 会话不显示 Codex 候选。Terminal 输出正文、Markdown 正文与代码结果必须保留浏览器原生文本选择能力，用户可直接手动选中并复制局部输出；移动端最终输出不得安装脚本长按选区、假选中态、浮动复制层、`contenteditable`、隐藏输入框或键盘编辑态兜底；阅读定位 overlay 不得截获正文拖选或长按选中。Terminal `Details` 面板支持选择控制面中启用且非私有的公有 Skill；新 Terminal 会话首次加载时默认勾选全部可用公有 Skill，仅排除 `default-nl` 与 `memory`，并在发送输入时把当前 `skill_ids` 编译进 Terminal 工作区的原生 Codex Runtime。该运行时同样必须通过托管 `AGENTS.md` 与 `runtime_context` 约束 Codex 仅操作当前 Terminal 工作区及其派生文件，不得顺带修改其他会话、服务或工作区外仓库。Task 详情抽屉中的 follow-up terminal 输入当前稳定支持图片附件，并继续透传到统一消息元数据。
 - Task 记忆视图支持任务摘要、任务详情、日志下钻、产物引用与摘要重建，用于把历史任务纳入长期上下文召回；任务历史默认以表格承载摘要元数据，再通过详情侧栏查看长文本与日志/产物入口。
@@ -167,7 +168,7 @@
 - Terminal 移动端、输入稳定性、滚动导航、Process 折叠、一键复制、长输出阅读、轮询降频与缓存写入节奏作为 Terminal 子域体验要求维护。
 - Terminal 四键阅读定位条按当前视口中的可见 turn 集合计算目标：`上一条` 固定指向最上可见 turn；`下一条` 在单条 turn 可见时指向真实下一条、在多条 turn 同屏可见时指向最下可见 turn；最后一条 turn 单独可见时隐藏 `下一条`。
 - Terminal 发送按钮首次点击必须立即进入 pending 反馈；若当前还没有 active session，前端允许先创建会话再继续发送，但首击期间按钮需同步切到 `Sending...` 与禁用态，避免重复点击和“第一次点击无反应”的错觉。
-- Terminal 刷新节奏需按会话状态自适配：执行中的会话保留实时刷新，空闲会话收敛为低频轻量刷新；用户正在滚动阅读输出时，不得因明细轮询而打断当前滚动。
+- Terminal 刷新节奏需按会话状态自适配：执行中的会话保留实时刷新，空闲会话停止周期轮询并依靠页面激活补偿刷新；用户正在滚动阅读输出时，不得因明细轮询而打断当前滚动。
 - Terminal 窄屏消息页必须保持 `workbench-main -> chat-pane -> terminal-view -> terminal-chat-screen` 的闭合高度链，由 `terminal-chat-screen` 独立承担纵向滚动；外层容器不得因 `overflow: hidden` 或高度塌陷吃掉滚动。
 - Terminal 移动端在输入框聚焦且软键盘抬起后，Composer 必须按 `VisualViewport` 同步的键盘偏移直接贴住可见底边；长对话或长输出期间不得通过拉高 footer padding、改变滚动容器或破坏高度闭合链把输入区挤出屏幕。
 - Terminal 移动端的 `terminal-chat-screen` 必须继续按当前 Composer 的真实遮挡高度动态收口；会话空态、长输出与 Process 阅读都要稳定停在输入区上沿，不允许被 fixed Composer 覆盖。
@@ -189,7 +190,7 @@
 - Models 控制面支持 Claude Code provider profile 配置，包含 base URL、API Key 保留语义、model、profile、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复；启用且健康的 Provider 作为 Claude Code 首选运行来源。
 - Codex Runtime 作为 `Codex Direct` 的账号与模型管理来源，在无可用 Model Provider 或 Claude Code 运行失败时承接自然语言任务兜底执行。
 - Environments 页面支持 Web/Queue、Async Tasks、Terminal、Session Memory、Persistent Memory 与 LLM 运行参数可视化配置、敏感值显隐、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、仅丢弃 Git 已跟踪本地改动的重启前同步策略、候选二进制构建、readyz 探活与失败回滚。
-- Settings 页面提供 Codex Runtime 面板，使用单一顶部面板承载当前服务运行账户的 Codex 身份快照、邮箱、计划、认证模式、hourly / weekly 额度、profile、LLM Provider 注册状态，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换。页面不展示 Account ID / User ID、保存名称、多账号导入/登录/切换入口、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。额度必须来自当前 `auth.json` 的实时 quota 刷新结果，model / 思考深度选择变更后仅实时写回当前用户配置中的 `model` 与 `model_reasoning_effort`。
+- Settings 页面提供 Codex Runtime 面板，使用单一顶部面板承载当前服务运行账户的 Codex 身份快照、邮箱、计划、认证模式、hourly / weekly 额度、profile、LLM Provider 注册状态，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换。首屏加载时 Codex Runtime 状态与 LLM Provider 状态需并行读取。页面不展示 Account ID / User ID、保存名称、多账号导入/登录/切换入口、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。额度必须来自当前 `auth.json` 的实时 quota 刷新结果，model / 思考深度选择变更后仅实时写回当前用户配置中的 `model` 与 `model_reasoning_effort`。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、统一 `HOME=/var/lib/alter0`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。
 - Node/Playwright 测试链路通过运行账户级工具链初始化，保证 Codex CLI 可执行 `internal/interfaces/web/frontend` 的构建与单测，以及 `internal/interfaces/web` 的 Playwright E2E。

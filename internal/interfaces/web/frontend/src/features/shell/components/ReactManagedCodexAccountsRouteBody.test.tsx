@@ -172,6 +172,47 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     );
   });
 
+  it("loads runtime status and provider state in parallel", async () => {
+    const fetchMock = vi.mocked(fetch);
+    let resolveRuntime: ((value: Response) => void) | null = null;
+    let resolveProviders: ((value: Response) => void) | null = null;
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/control/codex/runtime") {
+        return new Promise<Response>((resolve) => {
+          resolveRuntime = resolve;
+        });
+      }
+      if (url === "/api/control/llm/providers") {
+        return new Promise<Response>((resolve) => {
+          resolveProviders = resolve;
+        });
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`));
+    });
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/control/codex/runtime",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/control/llm/providers",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    resolveRuntime?.(jsonResponse(runtimeFixture()));
+    resolveProviders?.(jsonResponse({ items: [] }));
+
+    await waitFor(() => {
+      expect(screen.getByText("No LLM providers registered. Codex Direct remains available.")).toBeInTheDocument();
+    });
+  });
+
   it("updates the active model and reasoning depth from the runtime-only endpoint", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

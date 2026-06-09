@@ -553,16 +553,16 @@ describe("ReactManagedTerminalRouteBody", () => {
         inputFocused: false,
       }),
     ).toEqual({
-      enabled: true,
-      interval: 12000,
+      enabled: false,
+      interval: 0,
       refreshActiveSession: false,
     });
 
     expect(
       resolveTerminalPollPlan({
         status: "ready",
-        pageHidden: false,
-        scrollingActive: true,
+        pageHidden: true,
+        scrollingActive: false,
         inputFocused: false,
       }),
     ).toEqual({
@@ -581,6 +581,19 @@ describe("ReactManagedTerminalRouteBody", () => {
     ).toEqual({
       enabled: true,
       interval: 2000,
+      refreshActiveSession: true,
+    });
+
+    expect(
+      resolveTerminalPollPlan({
+        status: "busy",
+        pageHidden: true,
+        scrollingActive: false,
+        inputFocused: false,
+      }),
+    ).toEqual({
+      enabled: true,
+      interval: 12000,
       refreshActiveSession: true,
     });
 
