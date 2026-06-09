@@ -201,7 +201,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - 移动端 `Terminal` 在输入框聚焦且软键盘抬起后，底部 Composer 会按 `VisualViewport` 推导出的 `--keyboard-offset` 直接上移到可见底边；Terminal 工作区主体保持原位，键盘弹起不会把页面整体向上推出；长历史输出继续留在 `terminal-chat-screen` 内独立滚动，不允许通过增大 footer padding 把输入区整体挤出屏幕。
 - `Chat / Terminal` 统一使用同一套四键阅读定位条组件，承载 `回到顶部 / 上一条 / 下一条 / 回到底部` 四个动作，并按当前视口中的可见消息块或 Terminal turn 动态计算上下目标。Terminal 的 `上一条` 固定指向当前视口中最靠上的可见 turn，`下一条` 在单条 turn 可见时指向它后面的真实下一条、在多条 turn 同屏可见时指向最靠下的可见 turn；但只要最后一条 turn 已经进入当前视口，无论底部剩余内容是否还存在，都隐藏 `下一条`，剩余阅读交给 `回到底部`。`回到底部` 本身只在最后一条内容的底边仍位于视口外时显示；如果最后只剩容器 padding 或空白余量，不再保留伪底部跳转。这组按钮继续使用原有箭头字形，但按钮本体不参与正文文本选中或长按选中；当消息区存在有效文本选区时，四键会自动隐藏，释放完整复制操作面。
 - `Chat / Terminal` 的四键阅读定位条统一使用独立圆形按钮外观与触摸反馈；移动端固定停靠在工作区右侧、输入区上沿之上，避免落回正文流内或压住输入区。
-- 移动端 `Chat / Agent` 的后台任务轮询会按页面可见性自动降频；页面隐藏时停止高频扫描，恢复前台后再立即补一次刷新，降低持续耗电与发热。
+- `Chat / Agent` 的后台任务轮询会按页面可见性自动收敛；页面隐藏时暂停 pending task 定时扫描，恢复前台后再立即补一次刷新，降低持续耗电、发热和后台请求耗时。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在会话过程中继续调整，并作用于后续发送的消息。
 - 自然语言任务默认由 CLI Agent Runtime 执行；业务入口通过 Runtime Profile 预选 Skill 组合。
 - 选中的 Skill、MCP、Memory 摘要与工作区事实会在启动 CLI agent 前注入当前会话工作区。
@@ -210,7 +210,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - 启用且健康的 Provider 会生成 Claude Code provider profile；显式选择 `Codex` 或 Provider 不可用时进入 Codex Direct。
 - `Models` 控制面保存 Provider 时，`api_key` 输入框留空表示保持现有密钥；若前端中间态传入占位值 `-`，服务端会按空值处理，不会把 `-` 持久化为真实凭据。
 - 历史 `model_config.json` 若残留缺失 `api_key` 的 Provider，加载阶段会自动收敛为禁用态并保留在 `Models` 控制面中，页面不会因旧配置直接返回 500；补齐密钥后可重新启用。
-- `Codex Runtime` 控制面位于 `Settings`，只管理当前服务运行账户的 Codex Direct 配置。页面在单一顶部面板中展示当前 `auth.json` 解析出的账号名、邮箱、计划、认证模式、profile、hourly / weekly 额度与 LLM Provider 注册状态；model 与思考深度的可选项来自 Codex app-server 的 `model/list`，当前生效值来自 `config/read`，选择变更后立即通过 `config/batchWrite` 写回当前用户配置。前端不提供多账号导入、登录、保存或切换入口，不展示 Account ID / User ID、保存名称、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。
+- `Codex Runtime` 控制面位于 `Settings`，只管理当前服务运行账户的 Codex Direct 配置。页面在单一顶部面板中展示当前 `auth.json` 解析出的账号名、邮箱、计划、认证模式、profile、hourly / weekly 额度与 LLM Provider 注册状态；model 与思考深度的可选项来自 Codex app-server 的 `model/list`，当前生效值来自 `config/read`，选择变更后立即通过 `config/batchWrite` 写回当前用户配置。前端首屏并行读取 Codex Runtime 状态与 LLM Provider 状态，避免互不依赖的接口串行拖慢设置页加载。前端不提供多账号导入、登录、保存或切换入口，不展示 Account ID / User ID、保存名称、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。
 - 默认 Provider 只会落在已启用配置上；若默认 Provider 被禁用、删除或历史配置已失效，系统会自动切换到下一可用 Provider，无可用项时清空默认值。
 - 复杂度评估阶段会优先复用当前消息选中的 `Provider / Model`；未显式选择时，回退到默认 Provider 与默认模型。若 Chat 或 Agent Runtime 当前显式选择 `Codex`，前端会改写消息 metadata 为 `alter0.execution.engine=codex`，由执行层直接进入 `Codex CLI` 链路；该直连链路中的 `/goal` 等斜线前缀输入会原样转发给 Codex，不触发 alter0 自身的命令注册表。Web 对话框在直连 Codex 且输入以 `/` 开头时会展示 Web 适用的 Codex CLI 斜线命令候选，覆盖 `/apps`、`/plugins`、`/compact`、`/diff`、`/mcp`、`/model`、`/goal`、`/status` 等命令；候选按命令作用分组顺序展示，并使用短动作说明。权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入 Web 候选。Terminal 在当前会话明确为 `codex` shell 时也提供同一候选补全，点击候选会补全当前命令前缀。
 - 默认走实时执行。
@@ -255,17 +255,17 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - Terminal 的 `Details` 面板支持选择控制面中启用且非私有的公有 Skill，选择结果随下一次 `/api/terminal/sessions/{id}/input` 请求以 `skill_ids` 发送；当前服务内置公有 Skill 除 `default-nl` 与 `memory` 外，还包含 `memory-maintenance`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。新 Terminal 会话首次加载 Skill 列表时，默认勾选这批公有 Skill 中除 `default-nl`、`memory` 外的全部可用项，用户后续仍可按会话手动调整。后端会把选中的 Skill 编译到当前 Terminal 工作区的 `.alter0/codex-runtime/skills.md` 和托管 `AGENTS.md` 指令块中，仅作用于后续 Terminal 输入；托管运行时说明会同时要求 Codex 仅在当前 Terminal 工作区及其派生文件内执行，不得改动其他会话、服务或工作区外仓库，除非当前输入明确把这些目标列为本轮范围。
 - 同一 Terminal 会话在单次运行态中断或退出后，只记录一条对应状态提醒；恢复后若再次发生新的中断或退出，再按新的状态周期补充提醒。
 - Terminal 输入区上缘的运行态 hint 只服务于当前空闲会话；一旦用户重新发送恢复当前会话，或从旧会话切到 `New` 待创建态，旧的 `Exited / Interrupted / Failed` 提示会立即清空，不再在发送中残留。
-- Terminal 工作区头部仅保留 `Details` 等阅读辅助工具；会话删除统一从左侧会话列表触发，`Delete` 会移除会话记录、持久化状态文件与该会话对应的独立工作区。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表面板都保持现状不自动收起，便于连续清理多条会话；之后用户点 `Menu` 或点击抽屉外部遮罩时，列表仍会正常关闭。前端同时会在后续列表轮询和 page-activation 补拉中继续屏蔽该会话，避免服务端短暂返回旧列表时已删除项又回弹到左侧列表。
+- Terminal 工作区头部仅保留 `Details` 等阅读辅助工具；会话删除统一从左侧会话列表触发，`Delete` 会移除会话记录、持久化状态文件与该会话对应的独立工作区。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表面板都保持现状不自动收起，便于连续清理多条会话；之后用户点 `Menu` 或点击抽屉外部遮罩时，列表仍会正常关闭。前端同时会在后续运行态轮询和 page-activation 补拉中继续屏蔽该会话，避免服务端短暂返回旧列表时已删除项又回弹到左侧列表。
 - Terminal 左侧会话列表复用共享会话列表项，标题与尾侧更多按钮在长标题与中英文混排场景下保持统一行距和尾侧对齐；`busy` 会话标题旁显示 loading，其他状态不显示行内状态。
 - 当前正在查看旧会话时点击 `New`，前端会先切入一个干净的待创建会话态；创建请求完成前不再沿用旧会话的 `Interrupted / Exited / Failed` 提示文案，也不继承旧会话残留的底部键盘留白。
 - 同一 Web 登录态下，手机与 PC 访问同一批 Terminal 会话历史；刷新或跨端切换后不再因设备标识不同而看到不同会话列表。
 - Terminal 不再设置产品级会话数量上限或固定超时淘汰策略。
 - 访问 Terminal 时，轮询刷新不会重建已聚焦输入框；移动端输入法每次确认词句后，若输入框仍保持聚焦，页面继续延迟重绘并保持当前位置，直到失焦后再刷新视图；桌面端在连续输入窗口内也会暂缓非必要工作区重绘，待输入停顿后自动补齐刷新。
 - Terminal 轮询刷新采用会话列表与工作区局部更新；当用户正在滚动输出区时，前端保留原消息滚动容器与滚动位置，不再按周期整块重建终端视图。
-- Terminal 轮询刷新按会话状态自适配：`busy` 会话继续保留实时刷新，但用户正在滚动输出区时暂停明细刷新；`ready` 会话改为低频、列表级刷新，不再在阅读过程中频繁重刷当前会话详情，避免滚动被打断。
+- Terminal 刷新按会话状态自适配：`busy` 会话继续保留实时刷新，但用户正在滚动输出区时暂停明细刷新；`ready` 会话不再维持周期轮询，改由页面重新可见或重新获得焦点时补拉列表与当前会话详情，避免空闲页面持续耗电。
 - Terminal 滚动状态同步会合并到浏览器逐帧刷新节奏内执行；上一条 / 下一条定位所需的 turn 位置在视图结构稳定时复用缓存，仅在 turn 列表、折叠态或布局尺寸变化后重测，避免在连续滑动中反复全量测量消息区。
 - Terminal 浏览器侧会话缓存采用滚动感知的延后持久化；输出持续增长时优先让出主线程给滚动与渲染，再在滚动停顿后写入本地存储。
-- Terminal 会按页面可见性、输入聚焦与滚动活跃度自动调整轮询频率；活跃阅读或输入期间降频，页面隐藏后进一步延长刷新周期；恢复前台后会先通过共享 page-activation 链路立即补拉当前列表与活动会话，再回到正常刷新节奏。
+- Terminal 会按页面可见性、输入聚焦与滚动活跃度自动调整刷新节奏；`busy` 会话在活跃阅读或输入期间降频，页面隐藏后进一步延长刷新周期；`ready` 会话停止周期刷新，恢复前台后通过共享 page-activation 链路立即补拉当前列表与活动会话。
 - Chat 与 Terminal 的消息流统一采用克制的冷灰工作台阅读主题：用户消息保留右对齐并使用浅灰低对比紧凑气泡，助手消息左对齐并弱化为无边框阅读块；Chat 正文工作区白底无框，靠阅读宽度、留白和角色对齐建立层级，不在消息区叠加明显边框、背景分界或卡片容器。思考过程只显示一行 `Thinking / 已思考` 披露入口，详情展开后再承载步骤内容；正文排版优先于装饰层级，用户消息与其后续回复继续保持更紧凑的同轮分组间距，长历史按最新优先和顶部渐进加载处理。后续新增运行页应复用同一 `runtime-message-*` 消息格式，不再单独定义气泡样式。
 - Chat 与 Terminal 的消息正文区不显示逐条时间；仅在回复仍处于生成、排队或失败等需要即时反馈的状态下显示紧凑状态标签，不再为已完成消息追加 route/source/status 标签。
 - Chat 工作区头部固定为共享单行 header：只保留会话标题、状态按钮和 `Details` 入口，不再在头部直接放置 `Model / Tools / MCP / Agent` 控件，也不重复展示运行页标签与目标摘要；运行时配置、会话元数据和页面专属详情统一放入 `Details` 面板，面板首屏先以紧凑摘要栅格提高信息密度，再承接 Chat 的模型、Tools / MCP 与公有 Skill 配置区。独立 Agent Runtime 的 `Deliverables`、`Session Profile` 与 Agent 私有 Skill 面板已移除。
@@ -358,6 +358,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - 落到 `Codex CLI` 的异步任务会维持运行态心跳：执行期每 1 分钟记录一次存活心跳，并把任务超时窗口按心跳续租，避免长时间运行但仍健康的会话被固定 90 秒窗口误杀。
 - 任务运行心跳仅用于后台执行存活与超时续租；浏览器侧流式连接保活由消息 SSE 通道单独负责。
 - `Tasks` 列表卡片会先展示轻量心跳摘要，`Tasks` 详情与 `Memory -> Tasks` 详情会同步展示 `Last Heartbeat / Timeout Window`，用于区分“仍在健康运行”与“长时间无心跳、即将超时”的后台任务。
+- `Tasks` 详情输出日志使用 SSE 读取最新日志；页面进入后台或标签页不可见时会主动断开日志流，恢复前台后重新拉取任务详情、回补日志并从最新 cursor 续接日志流，避免输出页在后台持续唤醒浏览器。
 - `Tasks` 详情抽屉中的日志流会把高频日志重绘合并到浏览器逐帧节奏内执行；连续输出时不再为每条日志事件同步整块重绘日志容器。
 - 异步任务完成后，回写到聊天区的是一轮精简后的结果摘要；完整终端输出、原始报错、代码片段与文件内容仅保留在任务详情、日志与产物中。
 

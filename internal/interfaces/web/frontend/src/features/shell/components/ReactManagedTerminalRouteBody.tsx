@@ -289,8 +289,6 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
 const POLL_INTERVAL_MS = 2000;
 const INTERACTION_POLL_INTERVAL_MS = 6000;
 const HIDDEN_POLL_INTERVAL_MS = 12000;
-const IDLE_LIST_POLL_INTERVAL_MS = 12000;
-const HIDDEN_IDLE_LIST_POLL_INTERVAL_MS = 30000;
 const SCROLL_IDLE_MS = 1200;
 const SCROLL_BOTTOM_ANCHOR_THRESHOLD = 24;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
@@ -574,16 +572,9 @@ export function resolveTerminalPollPlan(options: {
   }
 
   if (normalized === "ready") {
-    if (options.scrollingActive || options.inputFocused) {
-      return {
-        enabled: false,
-        interval: 0,
-        refreshActiveSession: false,
-      };
-    }
     return {
-      enabled: true,
-      interval: options.pageHidden ? HIDDEN_IDLE_LIST_POLL_INTERVAL_MS : IDLE_LIST_POLL_INTERVAL_MS,
+      enabled: false,
+      interval: 0,
       refreshActiveSession: false,
     };
   }

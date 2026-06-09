@@ -43,6 +43,24 @@ const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 
+type ChatTaskPollPlan = {
+  enabled: boolean;
+  interval: number;
+};
+
+export function resolveChatTaskPollPlan(options: { pendingCount: number; pageHidden: boolean }): ChatTaskPollPlan {
+  if (options.pendingCount <= 0 || options.pageHidden) {
+    return {
+      enabled: false,
+      interval: 0,
+    };
+  }
+  return {
+    enabled: true,
+    interval: CHAT_TASK_POLL_INTERVAL_MS,
+  };
+}
+
 export type ConversationRoute = "chat";
 
 type ChatTarget = {
@@ -1070,6 +1088,7 @@ export function ConversationRuntimeProvider({
   const [inspectorTab, setInspectorTab] = useState<"model" | "capabilities" | "skills">("model");
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
+  const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   const pollTimerRef = useRef<number>(0);
   const sessionsByRouteRef = useRef(sessionsByRoute);
   const recoveryPromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
@@ -1756,6 +1775,7 @@ export function ConversationRuntimeProvider({
 
   usePageActivation({
     debounceMs: PAGE_ACTIVE_REFRESH_DEBOUNCE_MS,
+    onVisibilityChange: setPageHidden,
     onActive: refreshCurrentRouteOnPageActive,
   });
 
@@ -1896,6 +1916,13 @@ export function ConversationRuntimeProvider({
     if (!pending.length) {
       return;
     }
+    const pollPlan = resolveChatTaskPollPlan({
+      pendingCount: pending.length,
+      pageHidden,
+    });
+    if (!pollPlan.enabled) {
+      return;
+    }
     pollTimerRef.current = window.setTimeout(async () => {
       for (const item of pending) {
         try {
@@ -1920,9 +1947,9 @@ export function ConversationRuntimeProvider({
         }
       }
       setPendingTasksVersion((value) => value + 1);
-    }, CHAT_TASK_POLL_INTERVAL_MS);
+    }, pollPlan.interval);
     return () => window.clearTimeout(pollTimerRef.current);
-  }, [apiClient, pendingTasksVersion, sessionsByRoute]);
+  }, [apiClient, pageHidden, pendingTasksVersion, sessionsByRoute]);
 
   const selection = resolveModelSelection(activeSession, availableProviders);
   const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;

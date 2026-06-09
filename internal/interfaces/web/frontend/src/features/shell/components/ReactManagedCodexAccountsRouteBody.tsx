@@ -188,8 +188,10 @@ export function ReactManagedCodexAccountsRouteBody({
   async function reloadRuntime(nextMessage = "", nextKind: "success" | "error" | "" = "") {
     setRequestState({ status: "loading", error: "" });
     try {
-      const runtimeStatus = await apiClient.get<RuntimeStatus>("/api/control/codex/runtime");
-      const providerPayload = await apiClient.get<LLMProviderResponse>("/api/control/llm/providers");
+      const [runtimeStatus, providerPayload] = await Promise.all([
+        apiClient.get<RuntimeStatus>("/api/control/codex/runtime"),
+        apiClient.get<LLMProviderResponse>("/api/control/llm/providers"),
+      ]);
       const nextSelection = deriveRuntimeSelection(runtimeStatus);
       setRuntime(runtimeStatus);
       setProviders(Array.isArray(providerPayload?.items) ? providerPayload.items : []);

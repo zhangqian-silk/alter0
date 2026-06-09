@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   ConversationRuntimeProvider,
+  resolveChatTaskPollPlan,
   useConversationRuntime,
   useConversationRuntimeComposer,
   useConversationRuntimeWorkspace,
@@ -212,6 +213,21 @@ describe("ConversationRuntimeProvider", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     window.history.replaceState({}, "", "/");
+  });
+
+  it("pauses pending task polling while the page is hidden", () => {
+    expect(resolveChatTaskPollPlan({ pendingCount: 0, pageHidden: false })).toEqual({
+      enabled: false,
+      interval: 0,
+    });
+    expect(resolveChatTaskPollPlan({ pendingCount: 1, pageHidden: false })).toEqual({
+      enabled: true,
+      interval: 3000,
+    });
+    expect(resolveChatTaskPollPlan({ pendingCount: 1, pageHidden: true })).toEqual({
+      enabled: false,
+      interval: 0,
+    });
   });
 
   it("creates blank Chat sessions and normalizes legacy agent-runtime route props to Chat", async () => {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type MutableRefObject } 
 import { flushSync } from "react-dom";
 import { APIClientError, createAPIClient } from "../../../shared/api/client";
 import { formatDateTime } from "../../../shared/time/format";
+import { usePageActivation } from "../../../shared/visibility/usePageActivation";
 import {
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   readComposerImageFiles,
@@ -16,6 +17,7 @@ import { normalizeText, RouteMarkdownContent, RouteTagSection } from "./RouteBod
 const TASK_ROUTE_FILTERS_STORAGE_KEY = "alter0.web.tasks.route-filters.v1";
 const TASK_ROUTE_PAGE_SIZE = 20;
 const TASK_LOG_PAGE_SIZE = 200;
+const TASK_PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 const USER_IMAGE_ATTACHMENTS_METADATA_KEY = "alter0.user_input.image_attachments";
 
 type TaskRouteFilters = {
@@ -618,6 +620,7 @@ export function ReactManagedTasksRouteBody({
   const [terminalAttachmentError, setTerminalAttachmentError] = useState("");
   const [previewAttachment, setPreviewAttachment] = useState<ComposerImageAttachment | null>(null);
   const [terminalSubmitting, setTerminalSubmitting] = useState(false);
+  const [pageHidden, setPageHidden] = useState(() => isDocumentHidden());
   const eventSourceRef = useRef<EventSource | null>(null);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const terminalAttachmentsRef = useRef<ComposerImageAttachment[]>([]);
@@ -675,6 +678,29 @@ export function ReactManagedTasksRouteBody({
     };
   }, [activeFilters, apiClient, copy.unknownError, page, listReloadToken]);
 
+  usePageActivation({
+    debounceMs: TASK_PAGE_ACTIVE_REFRESH_DEBOUNCE_MS,
+    onVisibilityChange: setPageHidden,
+    onActive: () => {
+      if (activeTaskID) {
+        setDetailReloadToken((current) => current + 1);
+        return;
+      }
+      setListReloadToken((current) => current + 1);
+    },
+  });
+
+  useEffect(() => {
+    if (!pageHidden) {
+      return;
+    }
+    closeLogStream(eventSourceRef);
+    setLogState((current) => ({
+      ...current,
+      status: current.items.length ? copy.logsDisconnected : current.status,
+    }));
+  }, [copy.logsDisconnected, pageHidden]);
+
   useEffect(() => {
     if (!activeTaskID) {
       closeLogStream(eventSourceRef);
@@ -718,6 +744,13 @@ export function ReactManagedTasksRouteBody({
           status: logs.items.length ? copy.logsStreaming : copy.logsEmpty,
           cursor: logs.cursor,
         });
+        if (isDocumentHidden()) {
+          setLogState((current) => ({
+            ...current,
+            status: current.items.length ? copy.logsDisconnected : current.status,
+          }));
+          return;
+        }
         startTaskLogStream({
           taskID: activeTaskID,
           cursor: logs.cursor,
@@ -1668,6 +1701,10 @@ function TaskResultOutput({ content }: { content: string | undefined }) {
 
 function normalizeFilterValue(value: unknown) {
   return String(value || "").trim();
+}
+
+function isDocumentHidden(): boolean {
+  return typeof document !== "undefined" && document.hidden;
 }
 
 function normalizeTaskRouteFilters(filters: TaskRouteFilters): TaskRouteFilters {
