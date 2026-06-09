@@ -164,7 +164,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - Agent 消息中的 `Process` 优先使用服务端返回的结构化 `process_steps` 渲染；仅对缺失结构化步骤的历史消息保留文本解析兼容。
 - 结构化 `process_steps` 需要在 SSE `done`、Task 结果回填与会话历史恢复后保持一致，刷新页面不得把已完成消息重新退化为仅正文展示。
 - `Chat / Terminal` 的消息输出结构统一收敛到轻量 IM 式消息流：用户输入右对齐并使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制，助手回复左对齐并弱化为无边框正文阅读流；Chat 消息阅读区使用白底无框正文面，视觉层级由阅读宽度、留白和角色对齐承担，不在对话区叠加明显边框、背景分界或卡片容器。Agent 与 Terminal 中间步骤默认按 `Thinking / 已思考` 轻量披露行展示，展开后在当前消息内进入步骤详情，移动端也保持同页内联展开；Chat / Terminal 助手最终答复统一使用稳定的运行页 markdown shell，正文先于复制工具栏渲染，复制动作位于正文下方，代码块独立呈现为浅灰内容块；消息正文区不显示逐条时间，仅在进行中、排队、失败等非稳定状态下保留状态标签。新增运行页若呈现用户输入与助手输出，必须复用 `RuntimeTimeline` 与 `runtime-message / runtime-message-user / runtime-message-assistant / runtime-message-bubble` 契约，避免继续产生页面私有气泡格式。
-- `Chat` 在显式访问 `/chat?markdown_demo=1` 时可临时覆盖当前时间线视图并注入一条非持久化 assistant Markdown 演示消息，用于预览环境验收标题、段落换行、强调、链接、图片、引用、列表、分割线、代码块、表格与 raw HTML 转义等当前支持语法；普通 `/chat` 不显示该样例，也不把该消息写入 Session history。
+- `Chat` 在显式访问 `/chat?markdown_demo=1` 时可临时覆盖当前时间线视图并注入一条非持久化 assistant Markdown 演示消息，用于预览环境验收 ATX/Setext 标题、段落换行、强调、删除线、自动链接、图片、引用、嵌套列表、任务项、列表内引用与代码块、分割线、代码块、对齐表格与 raw HTML 转义等当前支持语法；表格样例覆盖短字符、长中文、长 URL/代码和混合内容场景；折叠示例中的 HTML 标签按代码块展示，折叠内容本身按普通 Markdown 展示；普通 `/chat` 不显示该样例，也不把该消息写入 Session history。
 - 长会话默认只渲染最新一批消息；当顶部仍存在更早历史时，消息区需展示 `Load earlier messages / 加载更早消息` 入口，并在滚到顶部时自动按批次扩展更早消息。扩展历史时需保持当前阅读位置，不得强制跳回底部。
 - `Process` 步骤标题与正文在桌面和移动端都必须保持整列阅读宽度；步骤序号、展开图标、标题与状态信息需在同一行垂直居中；长中文说明、路径、命令片段与 Markdown 文本优先在当前消息容器内自然换行，不得在真机窄屏下塌缩成逐字竖排窄列。
 - Conversation 展示层必须在渲染 `process_steps.title/detail` 与最终 markdown 前移除零宽断行字符，并对“每字一行”的病态段落做可读性归一化；该修正同时适用于流式消息、Task 回填和历史会话恢复。
@@ -193,7 +193,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 
 ### Markdown 与安全
 
-- 聊天气泡支持标题、列表、引用、链接、行内代码与代码块；Markdown 排版按正文阅读节奏呈现，标题保持紧凑层级，段落和列表以自然行高与稳定缩进组织，代码块、引用和表格只保留弱边界，不把每段输出包装成厚重卡片。
+- 聊天气泡支持 ATX/Setext 标题、强调、删除线、自动 URL/email 链接、列表、列表内引用与代码块、引用、链接、行内代码、对齐表格与代码块；Markdown 排版按正文阅读节奏呈现，标题保持紧凑层级，段落和列表以自然行高与稳定缩进组织，嵌套列表按 Markdown 缩进保留真实层级，普通链接显示外链箭头，代码块和引用只保留弱边界；表格采用无外框卡片、无表头灰底的横线分隔样式，短表格至少铺满消息宽度，普通长文本在单元格内自动换行，链接、URL 与代码保持不硬断开，不把每段输出包装成厚重卡片。
 - 助手消息中的 markdown 图片按消息媒体统一以内联图片显示，使用浏览器懒加载策略，并保持链接可直接打开原图。
 - React 托管页面的正文型内容统一复用运行页 Markdown 渲染器：Memory 长期/天级/强制/说明文档、Task 请求与结果、任务日志和产物摘要、Control 描述、Cron 输入、Agent 说明、Codex 运行时说明以及 Agent Runtime `Session Profile` 中的非等宽字段，都按 Markdown 正文渲染。ID、路径、密钥、配置值、时间戳和分支名等元数据保持纯文本或等宽展示，避免把机器标识误解析成富文本。
 - Chat / Terminal final output 统一使用 `MessageMarkdownShell` 承载最终答复，解析规则、复制按钮、选择行为和 DOM 稳定性都由同一组件负责；相同 markdown 不得因父级无关重渲染反复写入 `innerHTML`，也不得依赖 Terminal 视图级 `user-select !important` 兜底。
@@ -224,7 +224,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 路由页头部的标题与副标题需按当前路由与语言即时切换文案；这些页头更新不得覆盖 route body 内已渲染的页面主体内容。
 - 已由 React 接管的工作台需在 DOM 上暴露稳定路由钩子：根壳层输出 `app-shell[data-workbench-route]`，运行页和控制页继续输出 `data-route / data-conversation-*` 标记；兼容层只能依据这些由 React 输出的钩子退让，不得继续维护独立白名单。
 - 欢迎区与 Composer 面板在同一主工作区内采用主仓库式上下结构：欢迎区直接输出 `Alter0 workspace` tag、面向 repo / task / runtime 的默认标题与说明、target picker 与快捷提示，Composer 独立贴底；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
-- 用户消息右对齐并使用浅灰低对比紧凑气泡，`Chat / Terminal` 统一采用克制的冷灰工作台阅读主题；助手回复弱化厚重卡片层级，默认呈现为无边框正文阅读流，Chat 正文工作区不显示明显外框或分隔背景；复制操作贴在正文下方，思考过程只保留一行内联可点披露入口，只展示步骤数量，不展示耗时，Process 详情、Markdown 表格和代码块只保留必要边界与有限强调色；表格在消息正文内以真实表格结构呈现，窄屏下只在表格块内部横向滚动。
+- 用户消息右对齐并使用浅灰低对比紧凑气泡，`Chat / Terminal` 统一采用克制的冷灰工作台阅读主题；助手回复弱化厚重卡片层级，默认呈现为无边框正文阅读流，Chat 正文工作区不显示明显外框或分隔背景；复制操作贴在正文下方，思考过程只保留一行内联可点披露入口，只展示步骤数量，不展示耗时，Process 详情和代码块只保留必要边界与有限强调色；Markdown 表格在消息正文内以真实表格结构呈现，采用横向分割线而不是卡片外框或表头色块，短表格不强制固定最小像素宽度，普通长文本在单元格内自动换行，窄屏下只有不可断内容超宽时才在表格块内部横向滚动。
 - `Chat / Terminal` 助手消息尾部默认不显示时间；仅当回复仍在生成、排队或失败时展示紧凑状态标签，不再为已完成消息重复展示 route/source/status 元信息。
 - Chat 与 Terminal 工作区头部在进入会话态或桌面空态时收敛为共享单行标题区：只显示当前会话标题、状态按钮与 `Details` 入口，不再额外叠加 `Chat / Agent / Terminal` 标签以及模型、工具或目标摘要，Terminal 也不得为标题或 `Details` 按钮派生单独元素。模型、Tools / MCP、Skills 与会话元数据统一放入 `Details` 或 Composer 配置面板，面板首屏先使用紧凑摘要栅格展示高频字段，再承接页内 tab 与配置区。Chat 的 model tab 除已启用 Provider 模型外，都需稳定展示一个可直接点击的 `Codex` chip；选中该项后，后续消息请求不再携带普通 `alter0.llm.provider_id / alter0.llm.model` 组合，而是显式写入 `alter0.execution.engine=codex`。独立 Agent Runtime 的 Agent、Deliverables、Session Profile 与 Agent 私有 Skill 配置区已移除。`Details` 需以顶层浮层方式覆盖在工作区上方，内部独立滚动，浮层尺寸保持克制，并始终具备明确可见的 dialog 层级；页内 tab/按钮支持再次点击只收起当前 tab 内容区并保留摘要与 `Details` 面板，点击浮层外区域或按 `Escape` 才关闭整个面板，打开时不得推动消息列表、输入区或对话正文重新布局。
 - 桌面宽屏下 Chat 消息列与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区统一保留 `960px` 最大阅读宽度，但外层工作台也必须同步收缩导航与间距，避免在中等桌面宽度下出现阅读区限宽而整体布局仍然拥挤、遮挡或越界。

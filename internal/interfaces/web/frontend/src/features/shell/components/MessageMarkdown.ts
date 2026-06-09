@@ -1,36 +1,83 @@
+import MarkdownIt from "markdown-it";
+
+const markdownRenderer = createMessageMarkdownRenderer();
+
 export function renderMessageMarkdownToHTML(value: string) {
   const normalized = normalizeMessageMarkdownInput(value);
   if (!normalized.trim()) {
     return "";
   }
-  const tokens: Array<{ type: "markdown" | "code"; content: string; language?: string }> = [];
-  const fencePattern = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
-  let cursor = 0;
-  let match = fencePattern.exec(normalized);
-  while (match) {
-    if (match.index > cursor) {
-      tokens.push({ type: "markdown", content: normalized.slice(cursor, match.index) });
+  return markdownRenderer.render(prepareMessageMarkdownForRendering(normalized)).trim();
+}
+
+function createMessageMarkdownRenderer() {
+  const renderer = new MarkdownIt({
+    breaks: true,
+    html: false,
+    linkify: true,
+  });
+  const defaultValidateLink = renderer.validateLink.bind(renderer);
+
+  renderer.validateLink = (url: string) => {
+    const normalized = normalizeMarkdownURL(url);
+    if (/^data:image\//i.test(normalized)) {
+      return true;
     }
-    tokens.push({
-      type: "code",
-      language: String(match[1] || "").trim().toLowerCase(),
-      content: String(match[2] || "").replace(/\n$/, ""),
-    });
-    cursor = match.index + match[0].length;
-    match = fencePattern.exec(normalized);
-  }
-  if (cursor < normalized.length) {
-    tokens.push({ type: "markdown", content: normalized.slice(cursor) });
-  }
-  return tokens
-    .map((token) => {
-      if (token.type === "code") {
-        const languageClass = token.language ? ` class="language-${escapeHTML(token.language)}"` : "";
-        return `<pre class="chat-md-pre"><code${languageClass}>${escapeHTML(decodeHTMLEntities(token.content))}</code></pre>`;
-      }
-      return renderMarkdownBlocks(token.content);
-    })
-    .join("");
+    return defaultValidateLink(url);
+  };
+
+  renderer.renderer.rules.fence = (tokens: MarkdownIt.Token[], index: number) => {
+    const token = tokens[index];
+    const language = normalizeMarkdownCodeLanguage(token.info);
+    const languageClass = language ? ` class="language-${escapeHTML(language)}"` : "";
+    return `<pre class="chat-md-pre"><code${languageClass}>${escapeHTML(decodeHTMLEntities(token.content).replace(/\n$/, ""))}</code></pre>`;
+  };
+
+  renderer.renderer.rules.code_block = (tokens: MarkdownIt.Token[], index: number) =>
+    `<pre class="chat-md-pre"><code>${escapeHTML(decodeHTMLEntities(tokens[index].content).replace(/\n$/, ""))}</code></pre>`;
+
+  renderer.renderer.rules.code_inline = (tokens: MarkdownIt.Token[], index: number) =>
+    `<code class="chat-md-inline-code">${escapeHTML(decodeHTMLEntities(tokens[index].content))}</code>`;
+
+  renderer.renderer.rules.s_open = () => "<del>";
+  renderer.renderer.rules.s_close = () => "</del>";
+
+  renderer.renderer.rules.link_open = (tokens: MarkdownIt.Token[], index: number, options, env, self) => {
+    const token = tokens[index];
+    const href = sanitizeMarkdownURL(token.attrGet("href") || "");
+    if (!href) {
+      token.attrSet("href", "#");
+    } else {
+      token.attrSet("href", href);
+    }
+    token.attrSet("target", "_blank");
+    token.attrSet("rel", "noreferrer noopener");
+    return self.renderToken(tokens, index, options);
+  };
+
+  renderer.renderer.rules.image = (tokens: MarkdownIt.Token[], index: number) => {
+    const token = tokens[index];
+    const src = sanitizeMarkdownImageURL(token.attrGet("src") || "");
+    const alt = token.content.trim() || token.attrGet("alt") || "Generated image";
+    if (!src) {
+      return escapeHTML(alt);
+    }
+    const safeAlt = escapeHTML(alt);
+    return [
+      `<a class="assistant-inline-image-link" href="${src}" target="_blank" rel="noreferrer noopener">`,
+      `<img class="assistant-inline-image" src="${src}" alt="${safeAlt}" loading="lazy" decoding="async" />`,
+      "</a>",
+    ].join("");
+  };
+
+  renderer.renderer.rules.table_open = () => '<div class="chat-md-table-wrap"><table class="chat-md-table">';
+  renderer.renderer.rules.table_close = () => "</table></div>";
+
+  return renderer;
+}
+
+function prepareMessageMarkdownForRendering(value: string) {
+  return stripTaskListMarkers(dropUnsafeMarkdownLinks(decodeHTMLEntities(value)));
 }
 
 function normalizeMessageMarkdownInput(value: string) {
@@ -68,278 +115,52 @@ function isLikelySingleGlyphLine(line: string) {
   return Array.from(trimmed).length === 1;
 }
 
-type MarkdownTableBlock = {
-  header: string[];
-  rows: string[][];
-  lineCount: number;
-};
+function stripTaskListMarkers(value: string) {
+  return String(value || "").replace(/^([ \t]*[-*+]\s+)\[(?:x|X| )\]\s+/gm, "$1");
+}
 
-function renderMarkdownBlocks(content: string) {
-  const lines = String(content || "").split("\n");
-  const html: string[] = [];
-  let paragraphLines: string[] = [];
-  let quoteLines: string[] = [];
-  let listType = "";
-  let listItems: string[] = [];
-
-  const flushParagraph = () => {
-    if (!paragraphLines.length) {
-      return;
-    }
-    html.push(`<p>${paragraphLines.map((line) => renderMarkdownInline(line)).join("<br>")}</p>`);
-    paragraphLines = [];
-  };
-
-  const flushQuote = () => {
-    if (!quoteLines.length) {
-      return;
-    }
-    html.push(`<blockquote>${renderMarkdownBlocks(quoteLines.join("\n"))}</blockquote>`);
-    quoteLines = [];
-  };
-
-  const flushList = () => {
-    if (!listType || !listItems.length) {
-      listType = "";
-      listItems = [];
-      return;
-    }
-    html.push(
-      `<${listType}>${listItems
-        .map((item) => `<li>${renderMarkdownInline(item)}</li>`)
-        .join("")}</${listType}>`,
+function dropUnsafeMarkdownLinks(value: string) {
+  return String(value || "")
+    .replace(/!\[([^\]]*)\]\(((?:[^()]|\([^)]*\))+)\)/g, (match, altText: string, url: string) =>
+      sanitizeMarkdownImageURL(url) ? match : altText,
+    )
+    .replace(
+      /\[([^\]]+)\]\(((?:[^()]|\([^)]*\))+)\)/g,
+      (match, label: string, url: string, offset: number, input: string) => {
+        if (input[offset - 1] === "!") {
+          return match;
+        }
+        return sanitizeMarkdownURL(url) ? match : label;
+      },
     );
-    listType = "";
-    listItems = [];
-  };
-
-  const flushAll = () => {
-    flushParagraph();
-    flushQuote();
-    flushList();
-  };
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const rawLine = lines[lineIndex];
-    const trimmed = rawLine.trim();
-    if (!trimmed) {
-      flushAll();
-      continue;
-    }
-
-    if (/^>\s?/.test(trimmed)) {
-      flushParagraph();
-      flushList();
-      quoteLines.push(trimmed.replace(/^>\s?/, ""));
-      continue;
-    }
-    flushQuote();
-
-    const unorderedMatch = /^[-*+]\s+(.+)$/.exec(trimmed);
-    if (unorderedMatch) {
-      flushParagraph();
-      if (listType && listType !== "ul") {
-        flushList();
-      }
-      listType = "ul";
-      listItems.push(unorderedMatch[1]);
-      continue;
-    }
-
-    const orderedMatch = /^(\d+)\.\s+(.+)$/.exec(trimmed);
-    if (orderedMatch) {
-      flushParagraph();
-      if (listType && listType !== "ol") {
-        flushList();
-      }
-      listType = "ol";
-      listItems.push(orderedMatch[2]);
-      continue;
-    }
-
-    flushList();
-
-    const tableBlock = parseMarkdownTableBlock(lines, lineIndex);
-    if (tableBlock) {
-      flushParagraph();
-      html.push(renderMarkdownTableBlock(tableBlock));
-      lineIndex += tableBlock.lineCount - 1;
-      continue;
-    }
-
-    const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
-    if (headingMatch) {
-      flushParagraph();
-      const level = headingMatch[1].length;
-      html.push(`<h${level}>${renderMarkdownInline(headingMatch[2])}</h${level}>`);
-      continue;
-    }
-
-    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
-      flushParagraph();
-      html.push("<hr>");
-      continue;
-    }
-
-    paragraphLines.push(trimmed);
-  }
-
-  flushAll();
-  return html.join("");
 }
 
-function parseMarkdownTableBlock(lines: string[], startIndex: number): MarkdownTableBlock | null {
-  const header = parseMarkdownTableRow(lines[startIndex]);
-  const separator = parseMarkdownTableRow(lines[startIndex + 1] || "");
-  if (!header || !separator || !isMarkdownTableSeparator(separator)) {
-    return null;
-  }
-
-  const rows: string[][] = [];
-  let cursor = startIndex + 2;
-  while (cursor < lines.length) {
-    const row = parseMarkdownTableRow(lines[cursor]);
-    if (!row || isMarkdownTableSeparator(row)) {
-      break;
-    }
-    rows.push(row);
-    cursor += 1;
-  }
-
-  return {
-    header,
-    rows,
-    lineCount: cursor - startIndex,
-  };
-}
-
-function parseMarkdownTableRow(line: string) {
-  const value = String(line || "").trim();
-  if (!value.includes("|")) {
-    return null;
-  }
-
-  const cells: string[] = [];
-  let cell = "";
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
-    const nextChar = value[index + 1];
-    if (char === "\\" && nextChar === "|") {
-      cell += "|";
-      index += 1;
-      continue;
-    }
-    if (char === "|") {
-      cells.push(cell.trim());
-      cell = "";
-      continue;
-    }
-    cell += char;
-  }
-  cells.push(cell.trim());
-
-  if (cells[0] === "") {
-    cells.shift();
-  }
-  if (cells[cells.length - 1] === "") {
-    cells.pop();
-  }
-
-  return cells.length >= 2 ? cells : null;
-}
-
-function isMarkdownTableSeparator(cells: string[]) {
-  return cells.length >= 2 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
-}
-
-function renderMarkdownTableBlock(table: MarkdownTableBlock) {
-  const columnCount = table.header.length;
-  const renderCell = (cell: string, tagName: "th" | "td") => `<${tagName}>${renderMarkdownInline(cell)}</${tagName}>`;
-  const normalizeRow = (row: string[]) => Array.from({ length: columnCount }, (_, index) => row[index] || "");
-  const header = normalizeRow(table.header).map((cell) => `<th scope="col">${renderMarkdownInline(cell)}</th>`).join("");
-  const body = table.rows
-    .map((row) => `<tr>${normalizeRow(row).map((cell) => renderCell(cell, "td")).join("")}</tr>`)
-    .join("");
-
-  return [
-    '<div class="chat-md-table-wrap">',
-    '<table class="chat-md-table">',
-    `<thead><tr>${header}</tr></thead>`,
-    `<tbody>${body}</tbody>`,
-    "</table>",
-    "</div>",
-  ].join("");
-}
-
-function renderMarkdownInline(content: string) {
-  let rendered = decodeHTMLEntities(String(content ?? ""));
-  const placeholders: string[] = [];
-  const markdownLinkPattern = /\[([^\]]+)\]\(((?:[^()]|\([^)]*\))+)\)/g;
-  const markdownImagePattern = /!\[([^\]]*)\]\(((?:[^()]|\([^)]*\))+)\)/g;
-  const reserve = (html: string) => {
-    const token = `\u0000${placeholders.length}\u0000`;
-    placeholders.push(html);
-    return token;
-  };
-
-  rendered = rendered.replace(markdownImagePattern, (_, altText: string, url: string) => {
-    const src = sanitizeMarkdownImageURL(url);
-    if (!src) {
-      return renderMarkdownInline(altText);
-    }
-    const alt = escapeHTML(altText.trim() || "Generated image");
-    return reserve(
-      `<a class="assistant-inline-image-link" href="${src}" target="_blank" rel="noreferrer noopener">`
-      + `<img class="assistant-inline-image" src="${src}" alt="${alt}" loading="lazy" decoding="async" />`
-      + "</a>",
-    );
-  });
-  rendered = rendered.replace(/`([^`]+)`/g, (_, code: string) =>
-    reserve(`<code class="chat-md-inline-code">${escapeHTML(code)}</code>`),
-  );
-  rendered = rendered.replace(markdownLinkPattern, (_, label: string, url: string) => {
-    const href = sanitizeMarkdownURL(url);
-    if (!href) {
-      return renderMarkdownInline(label);
-    }
-    return reserve(
-      `<a href="${href}" target="_blank" rel="noreferrer noopener">${renderMarkdownInline(label)}</a>`,
-    );
-  });
-  rendered = rendered
-    .split(/(\u0000\d+\u0000)/g)
-    .map((part) => (/^\u0000\d+\u0000$/.test(part) ? part : escapeHTML(part)))
-    .join("");
-  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  rendered = rendered.replace(/__([^_]+)__/g, "<strong>$1</strong>");
-  rendered = rendered.replace(/(^|[\s(>])\*([^*\n]+)\*(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
-  rendered = rendered.replace(/(^|[\s(>])_([^_\n]+)_(?=$|[\s).,!?:;<])/g, "$1<em>$2</em>");
-
-  return rendered.replace(/\u0000(\d+)\u0000/g, (_, index: string) => placeholders[Number(index)] || "");
+function normalizeMarkdownCodeLanguage(value: string) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "");
 }
 
 function sanitizeMarkdownURL(rawURL: string) {
-  const value = String(rawURL || "").trim();
-  if (!value) {
-    return "";
-  }
-  const normalized = value.replace(/^<|>$/g, "");
+  const normalized = normalizeMarkdownURL(rawURL);
   if (/^(https?:|mailto:)/i.test(normalized) || normalized.startsWith("/") || normalized.startsWith("#")) {
-    return escapeHTML(normalized);
+    return normalized;
   }
   return "";
 }
 
 function sanitizeMarkdownImageURL(rawURL: string) {
-  const value = String(rawURL || "").trim();
-  if (!value) {
-    return "";
-  }
-  const normalized = value.replace(/^<|>$/g, "");
+  const normalized = normalizeMarkdownURL(rawURL);
   if (/^data:image\//i.test(normalized)) {
-    return escapeHTML(normalized);
+    return normalized;
   }
   return sanitizeMarkdownURL(normalized);
+}
+
+function normalizeMarkdownURL(rawURL: string) {
+  return String(rawURL || "").trim().replace(/^<|>$/g, "");
 }
 
 function escapeHTML(value: string) {

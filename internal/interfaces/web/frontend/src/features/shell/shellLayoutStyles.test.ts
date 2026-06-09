@@ -174,11 +174,36 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /\[data-runtime-view="conversation"\] \.chat-md-pre,\s*\[data-runtime-view="conversation"\] \.terminal-final-rendered \.chat-md-pre\s*\{[\s\S]*?border:\s*1px solid #e5e7eb;[\s\S]*?border-radius:\s*10px;[\s\S]*?background:\s*#f7f7f8;/,
     );
+    const conversationTableWrapBlock = stylesheet.match(
+      /\[data-runtime-view="conversation"\] \.chat-md-table-wrap\s*\{([\s\S]*?)\n\}/,
+    )?.[1] || "";
+    expect(conversationTableWrapBlock).toContain("border: 0;");
+    expect(conversationTableWrapBlock).toContain("border-radius: 0;");
+    expect(conversationTableWrapBlock).toContain("background: transparent;");
+    const conversationTableBlock = stylesheet.match(
+      /\[data-runtime-view="conversation"\] \.chat-md-table\s*\{([\s\S]*?)\n\}/,
+    )?.[1] || "";
+    expect(conversationTableBlock).toContain("width: 100%;");
+    expect(conversationTableBlock).toContain("min-width: 100%;");
+    expect(conversationTableBlock).not.toContain("width: max-content;");
+    expect(conversationTableBlock).not.toContain("min-width: 520px;");
+    const conversationTableCellBlock = stylesheet.match(
+      /\[data-runtime-view="conversation"\] \.chat-md-table th,\s*\[data-runtime-view="conversation"\] \.chat-md-table td\s*\{([\s\S]*?)\n\}/,
+    )?.[1] || "";
+    expect(conversationTableCellBlock).toContain("border: 0;");
+    expect(conversationTableCellBlock).toContain("border-bottom: 1px solid #e5e7eb;");
+    expect(conversationTableCellBlock).toContain("overflow-wrap: anywhere;");
+    expect(conversationTableCellBlock).toContain("word-break: normal;");
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="conversation"\] \.chat-md-table-wrap\s*\{[\s\S]*?border:\s*1px solid #e5e7eb;[\s\S]*?border-radius:\s*10px;[\s\S]*?background:\s*#fff;/,
+      /\[data-runtime-view="conversation"\] \.chat-md-table td :is\(a, code\),\s*\[data-runtime-view="conversation"\] \.chat-md-table th :is\(a, code\)\s*\{[\s\S]*?white-space:\s*nowrap;[\s\S]*?overflow-wrap:\s*normal;/,
     );
+    const conversationTableHeaderBlock = stylesheet.match(
+      /\[data-runtime-view="conversation"\] \.chat-md-table th\s*\{([\s\S]*?)\n\}/,
+    )?.[1] || "";
+    expect(conversationTableHeaderBlock).toContain("background: transparent;");
+    expect(conversationTableHeaderBlock).toContain("font-weight: 720;");
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="conversation"\] \.chat-md-table th,\s*\[data-runtime-view="conversation"\] \.chat-md-table td\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-bottom:\s*1px solid #edf0f2;/,
+      /\[data-runtime-view="conversation"\] \.message-markdown-rendered a:not\(\.assistant-inline-image-link\)::after\s*\{[\s\S]*?content:\s*" ↗";/,
     );
   });
 
@@ -976,7 +1001,10 @@ describe("shell layout stylesheet", () => {
       /\[data-runtime-view="conversation"\] \.chat-md-table-wrap,\s*\[data-runtime-view="terminal"\] \.chat-md-table-wrap\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?overflow-x:\s*auto;[\s\S]*?-webkit-overflow-scrolling:\s*touch;/,
     );
     expect(stylesheet).toMatch(
-      /\.chat-md-table th,\s*\.chat-md-table td\s*\{[\s\S]*?overflow-wrap:\s*normal;[\s\S]*?word-break:\s*normal;/,
+      /\.chat-md-table th,\s*\.chat-md-table td\s*\{[\s\S]*?overflow-wrap:\s*anywhere;[\s\S]*?word-break:\s*normal;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.chat-md-table td :is\(a, code\),\s*\.chat-md-table th :is\(a, code\)\s*\{[\s\S]*?white-space:\s*nowrap;[\s\S]*?overflow-wrap:\s*normal;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
