@@ -195,9 +195,9 @@ func TestServiceListStatusesRefreshesQuotaForUnmanagedCurrentAuth(t *testing.T) 
 				t.Fatalf("unexpected raw auth payload")
 			}
 			return &codexdomain.QuotaStatus{
-				Hourly: codexdomain.QuotaWindow{RemainingPercent: 61},
-				Weekly: codexdomain.QuotaWindow{RemainingPercent: 84},
-				Plan:   "enterprise",
+				Hourly:    codexdomain.QuotaWindow{RemainingPercent: 61},
+				Weekly:    codexdomain.QuotaWindow{RemainingPercent: 84},
+				Plan:      "enterprise",
 				Refreshed: true,
 			}, refreshedRaw, nil
 		},
@@ -356,6 +356,20 @@ func TestServiceRuntimeStatusReadsModelsAndReasoningFromAppServer(t *testing.T) 
 		Store:             store,
 		Command:           "/usr/local/bin/codex",
 		ResolveActiveHome: func() (string, error) { return activeHome, nil },
+		QueryQuota: func(_ []byte, _ codexapp.QuotaQueryOptions) (*codexdomain.QuotaStatus, []byte, error) {
+			return &codexdomain.QuotaStatus{
+				Hourly: codexdomain.QuotaWindow{
+					RemainingPercent: 78,
+					ResetAt:          time.Date(2026, 6, 7, 15, 30, 0, 0, time.UTC),
+				},
+				Weekly: codexdomain.QuotaWindow{
+					RemainingPercent: 61,
+					ResetAt:          time.Date(2026, 6, 11, 2, 10, 0, 0, time.UTC),
+				},
+				Plan:      "prolite",
+				Refreshed: true,
+			}, nil, nil
+		},
 		RunCommand: func(_ context.Context, name string, args []string, options codexapp.CommandOptions) error {
 			if name != "/usr/local/bin/codex" {
 				t.Fatalf("command name = %q", name)
@@ -467,6 +481,15 @@ func TestServiceRuntimeStatusReadsModelsAndReasoningFromAppServer(t *testing.T) 
 	}
 	if status.Current == nil || status.Current.Managed == nil || status.Current.Managed.Name != "work" {
 		t.Fatalf("status.Current = %+v, want managed account work", status.Current)
+	}
+	if status.Current.Quota == nil {
+		t.Fatalf("status.Current.Quota is nil")
+	}
+	if status.Current.Quota.Hourly.RemainingPercent != 78 || status.Current.Quota.Weekly.RemainingPercent != 61 {
+		t.Fatalf("status.Current.Quota = %+v, want refreshed runtime quota", status.Current.Quota)
+	}
+	if status.Current.Quota.Plan != "prolite" || !status.Current.Refreshed {
+		t.Fatalf("status.Current quota metadata = %+v, refreshed=%v", status.Current.Quota, status.Current.Refreshed)
 	}
 }
 

@@ -65,7 +65,6 @@ export function ReactManagedRouteBody({
 function RuntimeSettingsSection({ language }: { language: LegacyShellLanguage }) {
   return (
     <div className="settings-composite-section" data-settings-section="runtime">
-      <ReactManagedControlRouteBody route="models" language={language} />
       <ReactManagedCodexAccountsRouteBody language={language} />
     </div>
   );

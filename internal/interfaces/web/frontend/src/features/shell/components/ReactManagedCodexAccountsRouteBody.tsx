@@ -1,50 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTimeMinute } from "../../../shared/time/format";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
-import { RouteMarkdownContent } from "./RouteBodyPrimitives";
-
-type AccountRecord = {
-  name?: string;
-  snapshot?: {
-    account_name?: string;
-    email?: string;
-    plan?: string;
-  };
-};
-
-type LiveSnapshot = {
-  account_name?: string;
-  email?: string;
-  plan?: string;
-};
-
-type QuotaWindow = {
-  remaining_percent?: number;
-  reset_at?: string;
-};
-
-type QuotaStatus = {
-  hourly?: QuotaWindow;
-  weekly?: QuotaWindow;
-  plan?: string;
-};
-
-type AccountStatus = {
-  record?: AccountRecord;
-  current?: boolean;
-  quota?: QuotaStatus;
-  error?: string;
-};
-
-type CurrentStatus = {
-  live?: LiveSnapshot | null;
-  managed?: AccountRecord | null;
-  auth_path?: string;
-  quota?: QuotaStatus;
-  error?: string;
-  refreshed?: boolean;
-};
 
 type RuntimeStatus = {
   command?: string;
@@ -58,7 +15,41 @@ type RuntimeStatus = {
   model_origin?: RuntimeConfigOrigin | null;
   reasoning_origin?: RuntimeConfigOrigin | null;
   models?: RuntimeModel[];
-  current?: CurrentStatus | null;
+  current?: RuntimeCurrentStatus | null;
+};
+
+type RuntimeCurrentStatus = {
+  live?: RuntimeAuthSnapshot | null;
+  managed?: RuntimeManagedRecord | null;
+  auth_path?: string;
+  quota?: RuntimeQuotaStatus | null;
+  error?: string;
+};
+
+type RuntimeManagedRecord = {
+  name?: string;
+  snapshot?: RuntimeAuthSnapshot | null;
+};
+
+type RuntimeAuthSnapshot = {
+  auth_mode?: string;
+  account_name?: string;
+  email?: string;
+  user_id?: string;
+  account_id?: string;
+  plan?: string;
+  last_refresh_at?: string;
+};
+
+type RuntimeQuotaStatus = {
+  hourly?: RuntimeQuotaWindow | null;
+  weekly?: RuntimeQuotaWindow | null;
+  plan?: string;
+};
+
+type RuntimeQuotaWindow = {
+  remaining_percent?: number;
+  reset_at?: string;
 };
 
 type RuntimeConfigOrigin = {
@@ -84,18 +75,14 @@ type RuntimeModel = {
   input_modalities?: string[];
 };
 
-type LoginSession = {
+type LLMProviderRecord = {
   id?: string;
-  account_name?: string;
-  status?: string;
-  logs?: string;
-  error?: string;
+  name?: string;
+  is_enabled?: boolean;
 };
 
-type AccountResponse = {
-  items?: AccountStatus[];
-  active?: CurrentStatus | null;
-  runtime?: RuntimeStatus | null;
+type LLMProviderResponse = {
+  items?: LLMProviderRecord[];
 };
 
 type RequestState =
@@ -103,203 +90,77 @@ type RequestState =
   | { status: "ready"; error: string }
   | { status: "error"; error: string };
 
-type CodexAccountsCopy = {
+type RuntimeCopy = {
   loading: string;
-  empty: string;
-  emptyHint: string;
-  unmanagedCurrentHint: string;
   overview: string;
-  managedAccounts: string;
-  currentCodex: string;
-  currentCodexSubtitle: string;
-  operationsTitle: string;
-  operationsSubtitle: string;
-  loginSessionTitle: string;
-  loginSessionEmpty: string;
-  accountName: string;
+  overviewSubtitle: string;
   model: string;
   reasoningDepth: string;
-  modelHint: string;
-  reasoningHint: string;
-  authFile: string;
-  chooseFile: string;
-  noFileSelected: string;
-  overwrite: string;
-  importAccount: string;
-  startLogin: string;
-  applyRuntimeSettings: string;
-  current: string;
-  saved: string;
-  activeAccount: string;
-  managedCount: string;
-  activePath: string;
-  runtimeState: string;
-  authState: string;
-  configState: string;
-  cliCommand: string;
-  configPath: string;
+  modelUnavailable: string;
+  reasoningUnavailable: string;
+  providerRegistered: (count: number) => string;
+  providersMissing: string;
+  providersMissingHint: string;
+  providersReadyHint: string;
   activeProfile: string;
-  runtimeDetails: string;
-  modelSource: string;
-  reasoningSource: string;
-  authReady: string;
-  authMissing: string;
-  configReady: string;
-  configMissing: string;
-  runtimeReady: string;
-  runtimeNeedsAuth: string;
-  runtimeNeedsConfig: string;
-  codexDefault: string;
+  identityName: string;
+  identityPlan: string;
+  identityAuthMode: string;
   quotaHourly: string;
   quotaWeekly: string;
-  resetsAt: string;
-  plan: string;
-  state: string;
-  sessionID: string;
-  sessionAccount: string;
-  switchTo: (name: string) => string;
-  imported: string;
-  switched: (name: string) => string;
-  runtimeSettingsUpdated: string;
-  loginStarted: string;
-  loginCompleted: string;
-  loginFailed: string;
-  loginLogs: string;
-  loginStatus: string;
+  quotaRemaining: string;
+  quotaResets: string;
+  codexDefault: string;
   loadFailed: (message: string) => string;
   actionFailed: (message: string) => string;
 };
 
-const CODEX_ACCOUNTS_COPY: Record<LegacyShellLanguage, CodexAccountsCopy> = {
+const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
   en: {
     loading: "Loading...",
-    empty: "No managed Codex accounts yet.",
-    emptyHint: "Import auth.json to create the first managed snapshot.",
-    unmanagedCurrentHint: "Current auth.json is active but not managed yet. Import it to create the first managed snapshot.",
-    overview: "Runtime Overview",
-    managedAccounts: "Managed Accounts",
-    currentCodex: "Current Codex",
-    currentCodexSubtitle: "Adjust the active runtime model and reasoning depth.",
-    operationsTitle: "Import or Add Account",
-    operationsSubtitle: "Import auth.json or start an isolated Codex login session.",
-    loginSessionTitle: "Login Session",
-    loginSessionEmpty: "No login session started.",
-    accountName: "Account Name",
+    overview: "Codex Runtime",
+    overviewSubtitle: "Identity, quota, and active runtime settings.",
     model: "Model",
     reasoningDepth: "Reasoning Depth",
-    modelHint: "Available models are loaded from the active Codex runtime.",
-    reasoningHint: "Reasoning depth follows the selected model's supported efforts.",
-    authFile: "Auth File",
-    chooseFile: "Choose auth.json",
-    noFileSelected: "No file selected",
-    overwrite: "Overwrite existing account",
-    importAccount: "Import auth.json",
-    startLogin: "Start Codex Login",
-    applyRuntimeSettings: "Apply Runtime Settings",
-    current: "Current",
-    saved: "Saved",
-    activeAccount: "Active Account",
-    managedCount: "Managed Count",
-    activePath: "Active Auth Path",
-    runtimeState: "Runtime State",
-    authState: "Auth State",
-    configState: "Config State",
-    cliCommand: "CLI Command",
-    configPath: "Config Path",
-    activeProfile: "Active Profile",
-    runtimeDetails: "Runtime Details",
-    modelSource: "Model Source",
-    reasoningSource: "Reasoning Source",
-    authReady: "Loaded",
-    authMissing: "Missing",
-    configReady: "Configured",
-    configMissing: "Using default",
-    runtimeReady: "Ready",
-    runtimeNeedsAuth: "Auth missing",
-    runtimeNeedsConfig: "Config default",
+    modelUnavailable: "No runtime models available",
+    reasoningUnavailable: "No reasoning modes available",
+    providerRegistered: (count) => `${count} registered provider${count === 1 ? "" : "s"}`,
+    providersMissing: "No LLM providers registered. Codex Direct remains available.",
+    providersMissingHint: "Provider-based execution is disabled until a provider appears in the Models registry.",
+    providersReadyHint: "Provider-based execution can be used by Chat and Agent sessions.",
+    activeProfile: "Profile",
+    identityName: "Account",
+    identityPlan: "Plan",
+    identityAuthMode: "Auth Mode",
+    quotaHourly: "Hourly",
+    quotaWeekly: "Weekly",
+    quotaRemaining: "Remaining",
+    quotaResets: "Resets",
     codexDefault: "Codex default",
-    quotaHourly: "Hourly Remaining",
-    quotaWeekly: "Weekly Remaining",
-    resetsAt: "Resets",
-    plan: "Plan",
-    state: "State",
-    sessionID: "Session ID",
-    sessionAccount: "Target Account",
-    switchTo: (name) => `Switch to ${name}`,
-    imported: "Account imported.",
-    switched: (name) => `Switched to ${name}.`,
-    runtimeSettingsUpdated: "Runtime settings updated.",
-    loginStarted: "Login started.",
-    loginCompleted: "Login completed.",
-    loginFailed: "Login failed.",
-    loginLogs: "Login Logs",
-    loginStatus: "Login Status",
     loadFailed: (message) => `Load failed: ${message}`,
     actionFailed: (message) => `Action failed: ${message}`,
   },
   zh: {
     loading: "加载中...",
-    empty: "暂无托管 Codex 账号。",
-    emptyHint: "导入 auth.json 后即可创建第一条托管快照。",
-    unmanagedCurrentHint: "当前 auth.json 已生效，但尚未纳入托管；导入后即可创建第一条托管快照。",
-    overview: "运行时概览",
-    managedAccounts: "托管账号",
-    currentCodex: "当前 Codex",
-    currentCodexSubtitle: "调整当前运行时的 model 与思考深度。",
-    operationsTitle: "导入或新增账号",
-    operationsSubtitle: "导入 auth.json，或启动隔离的 Codex 登录会话。",
-    loginSessionTitle: "登录会话",
-    loginSessionEmpty: "当前还没有启动登录会话。",
-    accountName: "账号名称",
+    overview: "Codex 运行时",
+    overviewSubtitle: "展示身份、额度与当前运行时设置。",
     model: "Model",
     reasoningDepth: "思考深度",
-    modelHint: "可选 model 直接来自当前 Codex 运行时返回的能力列表。",
-    reasoningHint: "思考深度会跟随所选 model 的真实支持范围。",
-    authFile: "Auth 文件",
-    chooseFile: "选择 auth.json",
-    noFileSelected: "未选择任何文件",
-    overwrite: "覆盖同名账号",
-    importAccount: "导入 auth.json",
-    startLogin: "启动 Codex 登录",
-    applyRuntimeSettings: "应用运行时设置",
-    current: "当前",
-    saved: "已保存",
-    activeAccount: "当前账号",
-    managedCount: "托管数量",
-    activePath: "当前生效 Auth 路径",
-    runtimeState: "运行状态",
-    authState: "认证状态",
-    configState: "配置状态",
-    cliCommand: "CLI 命令",
-    configPath: "配置路径",
-    activeProfile: "生效 Profile",
-    runtimeDetails: "运行时详情",
-    modelSource: "Model 来源",
-    reasoningSource: "思考深度来源",
-    authReady: "已加载",
-    authMissing: "缺失",
-    configReady: "已配置",
-    configMissing: "使用默认值",
-    runtimeReady: "就绪",
-    runtimeNeedsAuth: "缺少认证",
-    runtimeNeedsConfig: "使用默认配置",
+    modelUnavailable: "暂无运行时 model",
+    reasoningUnavailable: "暂无思考深度选项",
+    providerRegistered: (count) => `已注册 ${count} 个 Provider`,
+    providersMissing: "暂无 LLM Provider 注册；Codex Direct 仍可使用。",
+    providersMissingHint: "Provider 执行链需等 Models 注册表出现可用 Provider 后启用。",
+    providersReadyHint: "Chat 与 Agent 会话可使用 Provider 执行链。",
+    activeProfile: "Profile",
+    identityName: "账号",
+    identityPlan: "计划",
+    identityAuthMode: "认证模式",
+    quotaHourly: "小时额度",
+    quotaWeekly: "周额度",
+    quotaRemaining: "剩余",
+    quotaResets: "重置",
     codexDefault: "Codex 默认值",
-    quotaHourly: "小时剩余额度",
-    quotaWeekly: "周剩余额度",
-    resetsAt: "重置于",
-    plan: "套餐",
-    state: "状态",
-    sessionID: "会话 ID",
-    sessionAccount: "目标账号",
-    switchTo: (name) => `切换到 ${name}`,
-    imported: "账号已导入。",
-    switched: (name) => `已切换到 ${name}。`,
-    runtimeSettingsUpdated: "运行时设置已更新。",
-    loginStarted: "登录已启动。",
-    loginCompleted: "登录完成。",
-    loginFailed: "登录失败。",
-    loginLogs: "登录日志",
-    loginStatus: "登录状态",
     loadFailed: (message) => `加载失败：${message}`,
     actionFailed: (message) => `操作失败：${message}`,
   },
@@ -310,41 +171,28 @@ export function ReactManagedCodexAccountsRouteBody({
 }: {
   language: LegacyShellLanguage;
 }) {
-  const copy = CODEX_ACCOUNTS_COPY[language];
+  const copy = RUNTIME_COPY[language];
   const apiClient = createAPIClient();
-  const pollTimerRef = useRef<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [requestState, setRequestState] = useState<RequestState>({ status: "loading", error: "" });
-  const [accounts, setAccounts] = useState<AccountStatus[]>([]);
-  const [active, setActive] = useState<CurrentStatus | null>(null);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
-  const [name, setName] = useState("");
+  const [providers, setProviders] = useState<LLMProviderRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedReasoning, setSelectedReasoning] = useState("");
-  const [overwrite, setOverwrite] = useState(false);
-  const [authFile, setAuthFile] = useState<File | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [statusKind, setStatusKind] = useState<"success" | "error" | "">("");
-  const [loginSession, setLoginSession] = useState<LoginSession | null>(null);
 
   useEffect(() => {
-    void reloadAccounts();
-    return () => {
-      if (pollTimerRef.current != null) {
-        window.clearTimeout(pollTimerRef.current);
-      }
-    };
+    void reloadRuntime();
   }, []);
 
-  async function reloadAccounts(nextMessage = "", nextKind: "success" | "error" | "" = "") {
+  async function reloadRuntime(nextMessage = "", nextKind: "success" | "error" | "" = "") {
     setRequestState({ status: "loading", error: "" });
     try {
-      const payload = await apiClient.get<AccountResponse>("/api/control/codex/accounts");
-      const runtimeStatus = payload?.runtime ?? null;
+      const runtimeStatus = await apiClient.get<RuntimeStatus>("/api/control/codex/runtime");
+      const providerPayload = await apiClient.get<LLMProviderResponse>("/api/control/llm/providers");
       const nextSelection = deriveRuntimeSelection(runtimeStatus);
-      setAccounts(Array.isArray(payload?.items) ? payload.items : []);
-      setActive(payload?.active ?? null);
       setRuntime(runtimeStatus);
+      setProviders(Array.isArray(providerPayload?.items) ? providerPayload.items : []);
       setSelectedModel(nextSelection.model);
       setSelectedReasoning(nextSelection.reasoning);
       setStatusMessage(nextMessage);
@@ -358,43 +206,6 @@ export function ReactManagedCodexAccountsRouteBody({
     }
   }
 
-  async function onImportAuthFile() {
-    if (!authFile) {
-      setStatusKind("error");
-      setStatusMessage(copy.actionFailed(copy.authFile));
-      return;
-    }
-    try {
-      const authFileContent = await readFileAsText(authFile);
-      await apiClient.post("/api/control/codex/accounts", {
-        name: name.trim(),
-        overwrite,
-        auth_file_content: authFileContent,
-      });
-      setAuthFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-      await reloadAccounts(copy.imported, "success");
-    } catch (error: unknown) {
-      setStatusKind("error");
-      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
-    }
-  }
-
-  async function onSwitchAccount(accountName: string) {
-    if (!accountName) {
-      return;
-    }
-    try {
-      await apiClient.post(`/api/control/codex/accounts/${encodeURIComponent(accountName)}/switch`);
-      await reloadAccounts(copy.switched(accountName), "success");
-    } catch (error: unknown) {
-      setStatusKind("error");
-      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
-    }
-  }
-
   function onModelSelectionChange(nextModel: string) {
     setSelectedModel(nextModel);
     const nextRuntimeModel = findRuntimeModel(visibleRuntimeModels(runtime), nextModel);
@@ -404,58 +215,29 @@ export function ReactManagedCodexAccountsRouteBody({
       normalizeText(nextRuntimeModel?.default_reasoning_effort) ||
       normalizeText(nextOptions[0]?.reasoning_effort);
     setSelectedReasoning(nextDefaultReasoning);
+    void persistRuntimeSettings(nextModel, nextDefaultReasoning);
   }
 
-  async function onApplyRuntimeSettings() {
-    if (!selectedModel || !selectedReasoning) {
+  function onReasoningSelectionChange(nextReasoning: string) {
+    setSelectedReasoning(nextReasoning);
+    void persistRuntimeSettings(selectedModel, nextReasoning);
+  }
+
+  async function persistRuntimeSettings(model: string, reasoning: string) {
+    if (!model || !reasoning) {
       return;
     }
     try {
-      await apiClient.put<RuntimeStatus>("/api/control/codex/runtime", {
-        model: selectedModel.trim(),
-        reasoning_effort: selectedReasoning.trim(),
+      const runtimeStatus = await apiClient.put<RuntimeStatus>("/api/control/codex/runtime", {
+        model: model.trim(),
+        reasoning_effort: reasoning.trim(),
       });
-      await reloadAccounts(copy.runtimeSettingsUpdated, "success");
-    } catch (error: unknown) {
-      setStatusKind("error");
-      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
-    }
-  }
-
-  async function onStartLogin() {
-    try {
-      const session = await apiClient.post<LoginSession>("/api/control/codex/accounts/login-sessions", {
-        name: name.trim(),
-        overwrite,
-      });
-      setLoginSession(session);
-      setStatusKind("success");
-      setStatusMessage(copy.loginStarted);
-      if (session.id) {
-        await refreshLoginSession(session.id);
-      }
-    } catch (error: unknown) {
-      setStatusKind("error");
-      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
-    }
-  }
-
-  async function refreshLoginSession(sessionID: string) {
-    try {
-      const session = await apiClient.get<LoginSession>(`/api/control/codex/accounts/login-sessions/${encodeURIComponent(sessionID)}`);
-      setLoginSession(session);
-      if (session.status === "running") {
-        pollTimerRef.current = window.setTimeout(() => {
-          void refreshLoginSession(sessionID);
-        }, 1500);
-        return;
-      }
-      if (session.status === "succeeded") {
-        await reloadAccounts(copy.loginCompleted, "success");
-      } else if (session.status === "failed") {
-        setStatusKind("error");
-        setStatusMessage(copy.loginFailed);
-      }
+      const nextSelection = deriveRuntimeSelection(runtimeStatus);
+      setRuntime(runtimeStatus);
+      setSelectedModel(nextSelection.model);
+      setSelectedReasoning(nextSelection.reasoning);
+      setStatusMessage("");
+      setStatusKind("");
     } catch (error: unknown) {
       setStatusKind("error");
       setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
@@ -463,546 +245,222 @@ export function ReactManagedCodexAccountsRouteBody({
   }
 
   if (requestState.status === "loading") {
-    return <CodexAccountsLoadingView copy={copy} />;
+    return <RuntimeLoadingView copy={copy} />;
   }
 
   if (requestState.status === "error") {
     return <p className="route-error">{copy.loadFailed(requestState.error)}</p>;
   }
 
-  const activePath = normalizeText(active?.auth_path) || "-";
-  const currentManagedName = normalizeText(active?.managed?.name);
-  const currentAccountStatus =
-    accounts.find((item) => item.current) ??
-    accounts.find((item) => normalizeText(item.record?.name) === currentManagedName) ??
-    null;
-  const activeAccount =
-    normalizeText(currentAccountStatus?.record?.snapshot?.account_name) ||
-    normalizeText(currentAccountStatus?.record?.snapshot?.email) ||
-    normalizeText(currentAccountStatus?.record?.name) ||
-    normalizeText(active?.managed?.snapshot?.account_name) ||
-    normalizeText(active?.live?.account_name) ||
-    normalizeText(active?.live?.email) ||
-    normalizeText(active?.managed?.name) ||
-    "-";
-  const currentPlan =
-    normalizeText(currentAccountStatus?.quota?.plan) ||
-    normalizeText(currentAccountStatus?.record?.snapshot?.plan) ||
-    normalizeText(active?.managed?.snapshot?.plan) ||
-    normalizeText(active?.quota?.plan) ||
-    normalizeText(active?.live?.plan) ||
-    "-";
-  const currentHourlyWindow = currentAccountStatus?.quota?.hourly ?? active?.quota?.hourly;
-  const currentWeeklyWindow = currentAccountStatus?.quota?.weekly ?? active?.quota?.weekly;
-  const currentHourly = normalizePercent(currentHourlyWindow?.remaining_percent);
-  const currentWeekly = normalizePercent(currentWeeklyWindow?.remaining_percent);
-  const accountsHint = accounts.length === 0 && active?.live && !active?.managed
-    ? copy.unmanagedCurrentHint
-    : copy.emptyHint;
   const runtimeModels = visibleRuntimeModels(runtime);
-  const selectedRuntimeModel = findRuntimeModel(runtimeModels, selectedModel);
-  const selectedReasoningOptions = runtimeReasoningOptions(selectedRuntimeModel, selectedReasoning);
-  const selectedReasoningMode =
-    selectedReasoningOptions.find((option) => normalizeText(option.reasoning_effort) === selectedReasoning) ?? null;
-  const runtimeCommand = normalizeText(runtime?.command) || "-";
-  const runtimeConfigPath = normalizeText(runtime?.config_path) || "-";
+  const selectedReasoningOptions = runtimeReasoningOptions(findRuntimeModel(runtimeModels, selectedModel), selectedReasoning);
   const runtimeProfile = normalizeText(runtime?.profile) || copy.codexDefault;
-  const runtimeAuthState = runtime?.has_auth ? copy.authReady : copy.authMissing;
-  const runtimeConfigState = runtime?.has_config ? copy.configReady : copy.configMissing;
-  const runtimeState = runtime?.has_auth ? (runtime?.has_config ? copy.runtimeReady : copy.runtimeNeedsConfig) : copy.runtimeNeedsAuth;
-  const runtimeModelSource = formatRuntimeOrigin(runtime?.model_origin);
-  const runtimeReasoningSource = formatRuntimeOrigin(runtime?.reasoning_origin);
-  const canApplyRuntimeSettings = Boolean(selectedModel && selectedReasoning);
+  const runtimeIdentity = runtimeIdentityDetails(runtime);
+  const providerCount = providers.length;
 
   return (
-    <section className="codex-accounts-view">
+    <section className="codex-runtime-view">
       {statusMessage ? (
-        <p className={`codex-accounts-status ${statusKind === "error" ? "is-error" : "is-success"}`}>
+        <p className={`codex-runtime-status ${statusKind === "error" ? "is-error" : "is-success"}`}>
           {statusMessage}
         </p>
       ) : null}
 
-      <div className="codex-accounts-overview route-surface">
-        <div className="codex-accounts-section-head">
-          <div>
+      <section className="codex-runtime-status-band route-surface">
+        <div className="codex-runtime-status-band-head">
+          <div className="codex-runtime-title-block">
             <h4>{copy.overview}</h4>
-            <p>{copy.currentCodexSubtitle}</p>
+            <p>{copy.overviewSubtitle}</p>
           </div>
         </div>
-        <div className="codex-accounts-overview-shell">
-          <div className="codex-accounts-overview-primary">
-            <span>{copy.activeAccount}</span>
-            <strong title={activeAccount}>{activeAccount}</strong>
+
+        <div className="codex-runtime-identity-card">
+          <div className="codex-runtime-account-pane">
+            <div className="codex-runtime-account-primary">
+              <span>{copy.identityName}</span>
+              <strong>{runtimeIdentity.name}</strong>
+              <p>{runtimeIdentity.email}</p>
+            </div>
+            <span className="codex-runtime-account-mark" aria-hidden="true" />
           </div>
-          <div className="codex-accounts-summary-grid">
-            <article className="codex-accounts-summary-card">
-              <span>{copy.plan}</span>
-              <strong>{currentPlan}</strong>
-            </article>
-            <article className="codex-accounts-summary-card is-meter">
-              <QuotaMeter
-                label={copy.quotaHourly}
-                resetLabel={copy.resetsAt}
-                value={currentHourly}
-                resetAt={currentHourlyWindow?.reset_at}
-              />
-            </article>
-            <article className="codex-accounts-summary-card is-meter">
-              <QuotaMeter
-                label={copy.quotaWeekly}
-                resetLabel={copy.resetsAt}
-                value={currentWeekly}
-                resetAt={currentWeeklyWindow?.reset_at}
-              />
-            </article>
-            <article className="codex-accounts-summary-card">
-              <span>{copy.managedCount}</span>
-              <strong>{accounts.length}</strong>
-            </article>
+          <div
+            className="codex-runtime-chip-row"
+            aria-label={`${copy.identityPlan} ${copy.identityAuthMode} ${copy.activeProfile}`}
+          >
+            <RuntimeMetaItem label={copy.identityPlan} value={runtimeIdentity.plan} />
+            <RuntimeMetaItem label={copy.identityAuthMode} value={runtimeIdentity.authMode} />
+            <RuntimeMetaItem label={copy.activeProfile} value={runtimeProfile} />
           </div>
         </div>
-      </div>
 
-      <div className="codex-accounts-workspace">
-        <section className="codex-accounts-main route-surface">
-          <section className="codex-accounts-runtime-panel">
-            <div className="codex-accounts-section-head">
-              <div>
-                <h4>{copy.currentCodex}</h4>
-                <p>{copy.currentCodexSubtitle}</p>
-              </div>
-            </div>
-
-            <div className="codex-accounts-runtime-grid">
-              <div className="codex-account-metric">
-                <span>{copy.runtimeState}</span>
-                <strong>{runtimeState}</strong>
-              </div>
-              <div className="codex-account-metric">
-                <span>{copy.activeProfile}</span>
-                <strong>{runtimeProfile}</strong>
-              </div>
-            </div>
-
-            <form
-              className="codex-accounts-runtime-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void onApplyRuntimeSettings();
-              }}
+        <div className="codex-runtime-quick-form">
+          <div className="codex-runtime-ledger-grid is-editable">
+            <RuntimeSelectItem
+              label={copy.model}
+              value={selectedModel}
+              disabled={runtimeModels.length === 0}
+              onChange={onModelSelectionChange}
             >
-              <div className="codex-accounts-runtime-controls">
-                <label className="codex-accounts-field">
-                  <span>{copy.model}</span>
-                  <select
-                    aria-label={copy.model}
-                    value={selectedModel}
-                    onChange={(event) => onModelSelectionChange(event.target.value)}
-                  >
-                    {runtimeModels.map((item) => {
-                      const value = runtimeModelKey(item);
-                      return (
-                        <option key={value} value={value}>
-                          {formatRuntimeModelSummary(item)}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </label>
-
-                <label className="codex-accounts-field">
-                  <span>{copy.reasoningDepth}</span>
-                  <select
-                    aria-label={copy.reasoningDepth}
-                    value={selectedReasoning}
-                    onChange={(event) => setSelectedReasoning(event.target.value)}
-                  >
-                    {selectedReasoningOptions.map((option) => {
-                      const value = normalizeText(option.reasoning_effort);
-                      return (
-                        <option key={value} value={value}>
-                          {formatReasoningOption(option)}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </label>
-              </div>
-
-              <div className="codex-accounts-runtime-selection">
-                {selectedRuntimeModel && normalizeText(selectedRuntimeModel.description) ? (
-                  <RouteMarkdownContent className="codex-accounts-runtime-note" value={selectedRuntimeModel.description} />
-                ) : null}
-                {selectedReasoningMode && normalizeText(selectedReasoningMode.description) ? (
-                  <RouteMarkdownContent className="codex-accounts-runtime-note" value={selectedReasoningMode.description} />
-                ) : null}
-              </div>
-
-              <div className="codex-accounts-runtime-submit">
-                <button type="submit" className="route-primary-button" disabled={!canApplyRuntimeSettings}>
-                  {copy.applyRuntimeSettings}
-                </button>
-              </div>
-            </form>
-
-            <details className="codex-accounts-runtime-details-panel">
-              <summary>{copy.runtimeDetails}</summary>
-              <div className="codex-accounts-runtime-details">
-                <div className="codex-accounts-runtime-detail">
-                  <span>{copy.authState}</span>
-                  <strong>{runtimeAuthState}</strong>
-                </div>
-                <div className="codex-accounts-runtime-detail">
-                  <span>{copy.configState}</span>
-                  <strong>{runtimeConfigState}</strong>
-                </div>
-                <div className="codex-accounts-runtime-detail">
-                  <span>{copy.cliCommand}</span>
-                  <strong title={runtimeCommand}>{runtimeCommand}</strong>
-                </div>
-                <div className="codex-accounts-runtime-detail">
-                  <span>{copy.activePath}</span>
-                  <strong title={activePath}>{activePath}</strong>
-                </div>
-                <div className="codex-accounts-runtime-detail">
-                  <span>{copy.configPath}</span>
-                  <strong title={runtimeConfigPath}>{runtimeConfigPath}</strong>
-                </div>
-                <div className="codex-accounts-runtime-detail">
-                  <span>{copy.modelSource}</span>
-                  <strong title={runtimeModelSource}>{runtimeModelSource}</strong>
-                </div>
-                <div className="codex-accounts-runtime-detail">
-                  <span>{copy.reasoningSource}</span>
-                  <strong title={runtimeReasoningSource}>{runtimeReasoningSource}</strong>
-                </div>
-              </div>
-            </details>
-          </section>
-
-          <div className="codex-accounts-section-head">
-            <div>
-              <h4>{copy.managedAccounts}</h4>
-              <p>{accountsHint}</p>
-            </div>
+              {runtimeModels.length === 0 ? (
+                <option value="">{copy.modelUnavailable}</option>
+              ) : (
+                runtimeModels.map((item) => {
+                  const value = runtimeModelKey(item);
+                  return (
+                    <option key={value} value={value}>
+                      {formatRuntimeModelSummary(item)}
+                    </option>
+                  );
+                })
+              )}
+            </RuntimeSelectItem>
+            <RuntimeSelectItem
+              label={copy.reasoningDepth}
+              value={selectedReasoning}
+              disabled={selectedReasoningOptions.length === 0}
+              onChange={onReasoningSelectionChange}
+            >
+              {selectedReasoningOptions.length === 0 ? (
+                <option value="">{copy.reasoningUnavailable}</option>
+              ) : (
+                selectedReasoningOptions.map((option) => {
+                  const value = normalizeText(option.reasoning_effort);
+                  return (
+                    <option key={value} value={value}>
+                      {formatReasoningOption(option)}
+                    </option>
+                  );
+                })
+              )}
+            </RuntimeSelectItem>
           </div>
+        </div>
 
-          {accounts.length === 0 ? (
-            <div className="route-empty-panel codex-accounts-empty">
-              <div>
-                <strong>{copy.empty}</strong>
-                <p>{accountsHint}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="codex-accounts-list" role="list" aria-label={copy.managedAccounts}>
-              {accounts.map((item) => {
-                const account = item.record ?? {};
-                const snapshot = account.snapshot ?? {};
-                const managedName = normalizeText(account.name);
-                const title = normalizeText(snapshot.account_name) || managedName || "-";
-                const email = normalizeText(snapshot.email);
-                const plan = normalizeText(item.quota?.plan) || normalizeText(snapshot.plan) || "-";
-                const hourlyWindow = item.quota?.hourly;
-                const weeklyWindow = item.quota?.weekly;
-                const hourly = normalizePercent(hourlyWindow?.remaining_percent);
-                const weekly = normalizePercent(weeklyWindow?.remaining_percent);
-                const itemKey = `${managedName || title}:${plan}`;
+        <div className="codex-runtime-quota-grid is-compact">
+          <RuntimeQuotaItem label={copy.quotaHourly} copy={copy} window={runtime?.current?.quota?.hourly} />
+          <RuntimeQuotaItem label={copy.quotaWeekly} copy={copy} window={runtime?.current?.quota?.weekly} />
+        </div>
 
-                return (
-                  <article
-                    key={itemKey}
-                    className="codex-account-card"
-                    role="listitem"
-                    data-testid="codex-account-card"
-                  >
-                    <div className="codex-account-card-head">
-                      <div className="codex-accounts-account-cell">
-                        <strong>{title}</strong>
-                        <span>{managedName || "-"}</span>
-                        {email ? <p>{email}</p> : null}
-                      </div>
-                      <span className={`codex-account-state ${item.current ? "is-current" : "is-saved"}`}>
-                        {item.current ? copy.current : copy.saved}
-                      </span>
-                    </div>
-
-                    <div className="codex-account-card-metrics">
-                      <div className="codex-account-metric">
-                        <span>{copy.plan}</span>
-                        <strong>{plan}</strong>
-                      </div>
-                      <div className="codex-account-metric is-quota">
-                        <QuotaMeter
-                          label={copy.quotaHourly}
-                          resetLabel={copy.resetsAt}
-                          value={hourly}
-                          resetAt={hourlyWindow?.reset_at}
-                        />
-                      </div>
-                      <div className="codex-account-metric is-quota">
-                        <QuotaMeter
-                          label={copy.quotaWeekly}
-                          resetLabel={copy.resetsAt}
-                          value={weekly}
-                          resetAt={weeklyWindow?.reset_at}
-                        />
-                      </div>
-                    </div>
-
-                    {normalizeText(item.error) ? <p className="route-error">{normalizeText(item.error)}</p> : null}
-
-                    <div className="codex-account-card-actions">
-                      {item.current ? (
-                        <span className="codex-account-card-current">{copy.current}</span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="route-primary-button codex-account-switch-button"
-                          onClick={() => void onSwitchAccount(managedName)}
-                        >
-                          {copy.switchTo(title)}
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <aside className="codex-accounts-side">
-          <section className="codex-accounts-panel route-surface">
-            <div className="codex-accounts-section-head">
-              <div>
-                <h4>{copy.operationsTitle}</h4>
-                <p>{copy.operationsSubtitle}</p>
-              </div>
-            </div>
-
-            <form
-              className="codex-accounts-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void onImportAuthFile();
-              }}
-            >
-              <label className="codex-accounts-field">
-                <span>{copy.accountName}</span>
-                <input value={name} onChange={(event) => setName(event.target.value)} />
-              </label>
-
-              <div className="codex-accounts-field">
-                <span>{copy.authFile}</span>
-                <div className="codex-accounts-file-picker">
-                  <button
-                    type="button"
-                    className="route-primary-button codex-accounts-file-button"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {copy.chooseFile}
-                  </button>
-                  <span className="codex-accounts-file-name" title={authFile?.name || copy.noFileSelected}>
-                    {authFile?.name || copy.noFileSelected}
-                  </span>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  id="codex-account-auth-file"
-                  aria-label={copy.authFile}
-                  className="codex-accounts-file-input"
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={(event) => setAuthFile(event.target.files?.[0] ?? null)}
-                />
-              </div>
-
-              <label className="codex-accounts-checkbox">
-                <input
-                  type="checkbox"
-                  checked={overwrite}
-                  onChange={(event) => setOverwrite(event.target.checked)}
-                />
-                <span>{copy.overwrite}</span>
-              </label>
-
-              <div className="codex-accounts-actions">
-                <button type="submit" className="route-primary-button">{copy.importAccount}</button>
-                <button type="button" onClick={() => void onStartLogin()}>{copy.startLogin}</button>
-              </div>
-            </form>
-          </section>
-
-          <section className="codex-accounts-panel route-surface">
-            <div className="codex-accounts-section-head">
-              <div>
-                <h4>{copy.loginSessionTitle}</h4>
-                <p>{copy.loginStatus}</p>
-              </div>
-            </div>
-
-            {loginSession ? (
-              <div className="codex-accounts-session">
-                <div className="codex-accounts-session-grid">
-                  <div className="codex-accounts-session-item">
-                    <span>{copy.loginStatus}</span>
-                    <strong>{normalizeText(loginSession.status) || "-"}</strong>
-                  </div>
-                  <div className="codex-accounts-session-item">
-                    <span>{copy.sessionAccount}</span>
-                    <strong>{normalizeText(loginSession.account_name) || "-"}</strong>
-                  </div>
-                  <div className="codex-accounts-session-item">
-                    <span>{copy.sessionID}</span>
-                    <strong>{normalizeText(loginSession.id) || "-"}</strong>
-                  </div>
-                </div>
-                {normalizeText(loginSession.error) ? <p className="route-error">{normalizeText(loginSession.error)}</p> : null}
-                {normalizeText(loginSession.logs) ? (
-                  <div className="codex-accounts-logs">
-                    <strong>{copy.loginLogs}</strong>
-                    <RouteMarkdownContent className="codex-accounts-log-content" value={loginSession.logs} />
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <p className="route-empty">{copy.loginSessionEmpty}</p>
-            )}
-          </section>
-        </aside>
-      </div>
+        <div className={providerCount > 0 ? "codex-runtime-provider-note is-ready" : "codex-runtime-provider-note is-empty"}>
+          <strong>{providerCount > 0 ? copy.providerRegistered(providerCount) : copy.providersMissing}</strong>
+          <span>{providerCount > 0 ? copy.providersReadyHint : copy.providersMissingHint}</span>
+        </div>
+      </section>
     </section>
   );
 }
 
-function QuotaMeter({
-  label,
-  resetLabel,
-  value,
-  resetAt,
-}: {
-  label: string;
-  resetLabel: string;
-  value: number | null;
-  resetAt?: string;
-}) {
-  const normalizedValue = value == null ? 0 : value;
-  const formattedResetAt = formatResetAt(resetAt);
+function RuntimeLoadingView({ copy }: { copy: RuntimeCopy }) {
   return (
-    <div className="codex-quota-meter">
-      <div className="codex-quota-meter-head">
-        <span>{label}</span>
-        <strong>{renderPercent(value)}</strong>
-      </div>
-      <div
-        className="codex-quota-meter-track"
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={normalizedValue}
-        aria-valuetext={renderPercent(value)}
-      >
-        <div className="codex-quota-meter-fill" style={{ width: `${normalizedValue}%` }} />
-      </div>
-      <div className="codex-quota-meter-meta">
-        <span>{resetLabel}</span>
-        <strong>{formattedResetAt}</strong>
-      </div>
-    </div>
-  );
-}
-
-function CodexAccountsLoadingView({ copy }: { copy: CodexAccountsCopy }) {
-  return (
-    <section className="codex-accounts-view codex-accounts-view-loading" aria-busy="true">
-      <div className="codex-accounts-overview route-surface">
-        <div className="codex-accounts-section-head">
+    <section className="codex-runtime-view codex-runtime-view-loading" aria-busy="true">
+      <section className="codex-runtime-status-band route-surface codex-runtime-skeleton-card">
+        <div className="codex-runtime-status-band-head">
           <div>
             <h4>{copy.overview}</h4>
             <p>{copy.loading}</p>
           </div>
         </div>
-        <div className="codex-accounts-overview-shell">
-          <div className="codex-accounts-overview-primary codex-accounts-skeleton-card" aria-hidden="true">
-            <span className="task-skeleton-line codex-accounts-skeleton-label" />
-            <strong className="task-skeleton-line codex-accounts-skeleton-value" />
-            <span className="task-skeleton-line codex-accounts-skeleton-meta" />
-          </div>
-          <div className="codex-accounts-summary-grid">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <article key={`summary-${index}`} className="codex-accounts-summary-card codex-accounts-skeleton-card">
-                <span className="task-skeleton-line codex-accounts-skeleton-label" aria-hidden="true" />
-                <strong className="task-skeleton-line codex-accounts-skeleton-value" aria-hidden="true" />
-              </article>
-            ))}
-          </div>
+        <div className="codex-runtime-skeleton-stack codex-runtime-skeleton-ledger" aria-hidden="true">
+          <span className="task-skeleton-line codex-runtime-skeleton-field" />
+          <span className="task-skeleton-line codex-runtime-skeleton-field" />
+          <span className="task-skeleton-line codex-runtime-skeleton-block" />
         </div>
-      </div>
-
-      <div className="codex-accounts-workspace">
-        <section className="codex-accounts-main route-surface codex-accounts-skeleton-card">
-          <div className="codex-accounts-section-head">
-            <div>
-              <h4>{copy.currentCodex}</h4>
-              <p>{copy.loading}</p>
-            </div>
-          </div>
-          <div className="codex-accounts-skeleton-stack codex-accounts-runtime-skeleton" aria-hidden="true">
-            <span className="task-skeleton-line codex-accounts-skeleton-field" />
-            <span className="task-skeleton-line codex-accounts-skeleton-field" />
-            <span className="task-skeleton-line codex-accounts-skeleton-meta" />
-            <span className="task-skeleton-line codex-accounts-skeleton-button" />
-          </div>
-          <div className="codex-accounts-section-head">
-            <div>
-              <h4>{copy.managedAccounts}</h4>
-              <p>{copy.loading}</p>
-            </div>
-          </div>
-          <div className="route-empty-panel codex-accounts-empty codex-accounts-loading-panel">
-            <div className="codex-accounts-skeleton-stack" aria-hidden="true">
-              <span className="task-skeleton-line codex-accounts-skeleton-title" />
-              <span className="task-skeleton-line codex-accounts-skeleton-block" />
-              <span className="task-skeleton-line codex-accounts-skeleton-meta" />
-            </div>
-          </div>
-        </section>
-
-        <aside className="codex-accounts-side">
-          <section className="codex-accounts-panel route-surface codex-accounts-skeleton-card">
-            <div className="codex-accounts-section-head">
-              <div>
-                <h4>{copy.operationsTitle}</h4>
-                <p>{copy.loading}</p>
-              </div>
-            </div>
-            <div className="codex-accounts-skeleton-stack" aria-hidden="true">
-              <span className="task-skeleton-line codex-accounts-skeleton-title" />
-              <span className="task-skeleton-line codex-accounts-skeleton-field" />
-              <span className="task-skeleton-line codex-accounts-skeleton-field" />
-              <span className="task-skeleton-line codex-accounts-skeleton-field" />
-              <span className="task-skeleton-line codex-accounts-skeleton-button" />
-            </div>
-          </section>
-
-          <section className="codex-accounts-panel route-surface codex-accounts-skeleton-card">
-            <div className="codex-accounts-section-head">
-              <div>
-                <h4>{copy.loginSessionTitle}</h4>
-                <p>{copy.loading}</p>
-              </div>
-            </div>
-            <div className="codex-accounts-skeleton-stack" aria-hidden="true">
-              <span className="task-skeleton-line codex-accounts-skeleton-field" />
-              <span className="task-skeleton-line codex-accounts-skeleton-meta" />
-            </div>
-          </section>
-        </aside>
-      </div>
+      </section>
     </section>
   );
+}
+
+function RuntimeSelectItem({
+  label,
+  value,
+  disabled,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="codex-runtime-kv-select">
+      <span>{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function RuntimeQuotaItem({
+  label,
+  copy,
+  window,
+}: {
+  label: string;
+  copy: RuntimeCopy;
+  window?: RuntimeQuotaWindow | null;
+}) {
+  const percent = normalizeQuotaPercent(window?.remaining_percent);
+  const value = percent == null ? "-" : `${percent}%`;
+  const reset = formatDateTimeMinute(window?.reset_at);
+  return (
+    <article className="codex-runtime-quota-item">
+      <div className="codex-runtime-quota-head">
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      <div
+        className="codex-runtime-quota-meter"
+        role="progressbar"
+        aria-label={`${label} ${copy.quotaRemaining}`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent ?? 0}
+      >
+        <span style={{ width: `${percent ?? 0}%` }} />
+      </div>
+      <div className="codex-runtime-quota-reset">
+        <span>{copy.quotaResets}</span>
+        <strong>{reset}</strong>
+      </div>
+    </article>
+  );
+}
+
+function RuntimeMetaItem({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="codex-runtime-meta-item">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </span>
+  );
+}
+
+function runtimeIdentityDetails(runtime: RuntimeStatus | null) {
+  const live = runtime?.current?.live ?? null;
+  const managed = runtime?.current?.managed ?? null;
+  const snapshot = live ?? managed?.snapshot ?? null;
+  return {
+    name: normalizeText(snapshot?.account_name) || normalizeText(managed?.name) || "-",
+    email: normalizeText(snapshot?.email) || "-",
+    plan: normalizeText(runtime?.current?.quota?.plan) || normalizeText(snapshot?.plan) || "-",
+    authMode: normalizeText(snapshot?.auth_mode) || "-",
+  };
+}
+
+function normalizeQuotaPercent(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Math.max(0, Math.min(100, Math.round(parsed)));
 }
 
 function deriveRuntimeSelection(runtime: RuntimeStatus | null) {
@@ -1053,16 +511,18 @@ function runtimeModelKey(model: RuntimeModel | null | undefined) {
   return normalizeText(model?.model) || normalizeText(model?.id);
 }
 
+function runtimeModelDisplayName(model: RuntimeModel | null | undefined) {
+  return normalizeText(model?.display_name) || runtimeModelKey(model);
+}
+
 function formatRuntimeModelSummary(model: RuntimeModel | null | undefined) {
-  const label = normalizeText(model?.display_name) || runtimeModelKey(model) || "-";
+  const label = runtimeModelDisplayName(model) || "-";
   const value = runtimeModelKey(model);
   return value && value !== label ? `${label} (${value})` : label;
 }
 
 function formatReasoningOption(option: RuntimeReasoningMode | null | undefined) {
-  const effort = formatReasoningEffort(option?.reasoning_effort);
-  const description = normalizeText(option?.description);
-  return description ? `${effort} · ${description}` : effort;
+  return formatReasoningEffort(option?.reasoning_effort);
 }
 
 function formatReasoningEffort(value: unknown) {
@@ -1080,40 +540,6 @@ function formatReasoningEffort(value: unknown) {
     .join(" ");
 }
 
-function formatRuntimeOrigin(origin: RuntimeConfigOrigin | null | undefined) {
-  const segments = [normalizeText(origin?.file_path), normalizeText(origin?.key_path)].filter(Boolean);
-  const version = normalizeText(origin?.version);
-  const base = segments.length > 0 ? segments.join(" · ") : "-";
-  return version ? `${base} (${version})` : base;
-}
-
-function renderPercent(value: number | null) {
-  return value == null ? "-" : `${value}%`;
-}
-
-function formatResetAt(value: unknown) {
-  return formatDateTimeMinute(normalizeText(value));
-}
-
-function normalizePercent(value: unknown) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return null;
-  }
-  return Math.max(0, Math.min(100, Math.round(numeric)));
-}
-
 function normalizeText(value: unknown) {
   return String(value || "").trim();
-}
-
-async function readFileAsText(file: File) {
-  if (typeof file.text === "function") {
-    return file.text();
-  }
-  if (typeof file.arrayBuffer === "function") {
-    const buffer = await file.arrayBuffer();
-    return new TextDecoder().decode(buffer);
-  }
-  return String(file);
 }

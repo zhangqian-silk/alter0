@@ -66,10 +66,10 @@ Typing `/` should immediately narrow commands. Tapping a command inserts it and 
 ## Settings
 
 Product design:
-Settings is a compact control surface for the wrapper layer: model providers, skill repository, memory, workspaces/cleanup, and schedules. It should not behave like a large operations suite.
+Settings is a compact control surface for the wrapper layer: Codex runtime, model providers, skill repository, memory, workspaces/cleanup, and schedules. It should not behave like a large operations suite.
 
 PC UI:
-The desktop settings page uses a narrow section index and a content area. Runtime combines provider and account setup; Skills, Memory, Workspaces, and Schedules are reachable from the same compact settings page.
+The desktop settings page uses a narrow section index and a content area. Runtime combines Codex Direct health, model/reasoning configuration, provider registration state, readiness, and diagnostics. Skills, Memory, Workspaces, and Schedules are reachable from the same compact settings page.
 
 Mobile UI:
 The section index becomes a compact tab grid. Cards stack vertically, with short labels and visible health/status rows.
@@ -80,7 +80,7 @@ Each section should answer: what is configured, is it healthy, what is the next 
 ### Settings Subpages
 
 Runtime:
-Desktop uses a two-column layout: provider/model cards on the left and Codex runtime/account controls on the right. Mobile stacks the provider status, model selectors, and auth operations in that order.
+Desktop starts with the read-only Codex identity and quota card, then shows the compact overview, model configuration, readiness, and diagnostics. Mobile uses the same order so account and quota state are visible before runtime tuning. Codex authentication is service-account scoped and preserves the active identity display, but does not expose import, login, switching, IDs, or multi-account management controls in the UI.
 
 Skills:
 Desktop shows a responsive card grid with id, type, name, scope, and version. Mobile keeps one skill per row/card with field labels visible, because skill identifiers are often long.
@@ -95,7 +95,7 @@ Schedules:
 Desktop presents scheduled jobs as operational cards with schedule mode, timezone, prompt preview, and retry policy. Mobile keeps schedule cards single-column with status and next action visible.
 
 Compatibility subpages:
-Agents, Sessions, Tasks, Channels, MCP, Models, Environments, and Codex Accounts remain supported as historical settings entries. They share the same narrow settings rail, responsive card grid, form fields, tables, empty states, and status chip rules.
+Agents, Sessions, Tasks, Channels, MCP, Models, Environments, and Codex Runtime remain supported as settings entries. They share the same narrow settings rail, responsive card grid, form fields, tables, empty states, and status chip rules.
 
 ## Login
 

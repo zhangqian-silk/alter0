@@ -4,7 +4,7 @@
 
 ## 领域边界
 
-Control, Operations & Governance 负责运行时配置管理、Model Provider、Claude Code provider profile、Codex Accounts、环境配置、部署基线、运行时重启、认证凭据、工具链初始化与研发流程约束。它维护系统可治理性，不直接定义业务对话行为。
+Control, Operations & Governance 负责运行时配置管理、Model Provider、Claude Code provider profile、Codex Runtime、环境配置、部署基线、运行时重启、认证凭据、工具链初始化与研发流程约束。它维护系统可治理性，不直接定义业务对话行为。
 
 ## 核心对象
 
@@ -58,12 +58,12 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `coding`、`travel`、`writing` 等业务入口通过 Runtime Profile 预选 Skill，不改变底层 CLI Agent Runtime。
 - Runtime Profile 编辑页中的短字段优先采用并排栅格布局，`Enabled` 使用显式开关控件。
 
-### Cron、Maintenance 与 Codex Accounts
+### Cron、Maintenance 与 Codex Runtime
 
 - Cron Job 控制面接口用于配置与触发记录查看；调度执行归属 Runtime & Orchestration。
 - Maintenance 控制面展示系统内置维护任务，不提供复杂配置项。内置任务包括每日记忆维护和每日会话清理；前端提供状态、上次运行、下次运行、失败信息、手动运行和失败重试。记忆维护执行器不可用时必须返回失败状态，不得记录为空运行成功。
 - 会话清理固定使用超过 7 天不活跃的默认阈值，跳过置顶会话和仍有关联 queued/running 任务的会话；手动 `Clean up now` 与自动清理走同一后端服务，并返回扫描数量、删除数量、置顶跳过数量和任务保护数量。清理 Session history 后，关联任务、运行时 registry 或工作区删除失败时，本次维护状态必须标记为失败并返回错误信息。
-- Codex Accounts 控制面负责运行账户下的多账号快照管理、独立登录会话、状态查询与当前生效账号切换。
+- Codex Runtime 控制面负责展示服务运行账户当前 Codex 身份、额度、profile、活动 model、思考深度与 LLM Provider 注册状态，并允许直接更新当前 Codex 配置中的 model 与思考深度。
 - Web Shell 由 `/settings` 单页承接运行时、Skill、Memory、Maintenance、Workspaces 与 Schedules 能力的读取、加载、空态与错误态渲染；历史 `/management` 自动映射到 `/settings`。这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Runtime / Skills / Memory / Maintenance / Workspaces / Schedules` 分区切换。桌面端分区切换作为左侧设置索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有设置分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Settings 作用域下的 route surface：列表卡片、表格、筛选表单、主从详情、空态与错误态共享低圆角、低阴影、浅色状态面板和紧凑字段行。控制台页面中的描述、Cron 输入、Skill 说明、Codex 运行时说明与审计/配置说明类文本按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
 
 ## 接口边界
@@ -79,7 +79,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `GET /api/control/workspace-services`、`GET /api/control/workspace-services/{session_id}`、`PUT /api/control/workspace-services/{session_id}`、`GET /api/control/workspace-services/{session_id}/{service_id}`、`PUT /api/control/workspace-services/{session_id}/{service_id}`、`DELETE /api/control/workspace-services/{session_id}/{service_id}` 管理 Session 级 workspace service 注册表。
 - `GET /api/control/runtime` 读取在线实例信息。
 - `POST /api/control/runtime/restart` 请求 supervisor 重启。
-- `GET /api/control/codex/accounts`、`POST /api/control/codex/accounts`、`POST /api/control/codex/accounts/{account_name}/switch`、`POST /api/control/codex/accounts/login-sessions`、`GET /api/control/codex/accounts/login-sessions/{session_id}` 管理 Codex 多账号。
+- `GET /api/control/codex/runtime` 查询当前服务运行账户的 Codex 身份、额度、profile、model、思考深度与可选 model 能力；`PUT /api/control/codex/runtime` 更新当前 Codex 配置中的 `model` 与 `model_reasoning_effort`。
 - `GET /api/control/llm/providers`、`POST /api/control/llm/providers`、`GET /api/control/llm/providers/{provider_id}`、`PUT /api/control/llm/providers/{provider_id}`、`POST /api/control/llm/providers/{provider_id}`、`DELETE /api/control/llm/providers/{provider_id}` 管理 Model Provider。
 - `GET /api/maintenance` 查询内置维护任务状态。
 - `POST /api/maintenance/memory/run` 手动运行记忆维护。
@@ -158,34 +158,21 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - 删除或重绑服务时，通过 `DELETE /api/control/workspace-services/...` 或再次 `PUT` 完成更新。
 - 预览 host 继续沿用共享工作台登录保护：默认 `web` 短哈希 host 需要能直接打开 `/login`，但登录态按当前 host 独立维护，不与主域共享根域登录 cookie。
 
-## Codex Accounts
+## Codex Runtime
 
 ### 运行目录
 
 - 当前活动 `CODEX_HOME` 优先读取环境变量；未显式设置时，默认使用 `$HOME/.codex`。
-- 托管账号、认证备份与登录会话目录统一持久化到 `<active_codex_home>/alter0-accounts`。
-- 当前活动账号仍以 `<active_codex_home>/auth.json` 为准，切换账号只替换该文件，不改写其他 Codex 配置文件。
+- 当前活动账号以 `<active_codex_home>/auth.json` 为准；前端 Runtime 页面不提供多账号导入、登录或切换入口。
 - 当前 Codex 运行时管理通过 Codex app-server 读取与更新用户配置；稳定支持 `model` 与 `model_reasoning_effort` 两项运行时能力，实际可选值必须来自 Codex 返回的能力列表。
 
-### 新增与登录
+### 身份、额度与配置
 
-- 面板支持导入已有 `auth.json` 内容创建托管账号。
-- 面板支持启动独立的 `codex login` 会话；登录过程使用隔离的临时 `CODEX_HOME`，避免污染当前运行中的活动账号。
-- 登录会话完成后，把新生成的 `auth.json` 保存为托管账号；是否生效由用户显式切换决定。
-- 控制面默认展示运行时概览条、当前 Codex 管理区、托管账号高密度列表与导入/登录操作侧栏；概览区采用当前账号主身份区配合套餐、小时/周剩余额度与托管数量的紧凑指标列，小时/周额度必须以进度条呈现并显示 reset 时间，key/value 默认按同列对齐，概览本身不展示活动 auth 路径，当前 Codex 管理区需保留当前 profile、当前 model、当前思考深度和运行时状态，但 model / 思考深度只保留一套可编辑字段，不再在选择器下方重复展示当前值，CLI 命令、auth/config 状态、路径与配置来源统一收纳到 `Runtime Details` 折叠区，操作区需持续显示最近一次登录会话状态与日志。
-- 当 `<active_codex_home>/auth.json` 已存在但尚未匹配任何托管快照时，概览区仍需显示当前 live 账号身份；若 quota 已成功获取，概览区继续直接展示该 live 账号的套餐与额度，托管列表空态需明确提示“当前 auth 已生效但未托管”。
-- 控制面首次加载或刷新期间需保留概览、托管区与侧栏结构，用 skeleton 占位替代真实数据，避免整页收缩为单行提示。
-- 当前 Codex 管理区需允许直接切换活动 model 与思考深度，并在保存后刷新同页状态；前端只允许提交当前所选 model 实际支持的思考深度。
-- 托管账号区需按断点切换布局：大屏优先展示当前 Codex 管理区、行式账号列表与右侧操作栏，中屏切换为全宽账号区加下方双侧栏，窄屏回落为单列紧凑列表；套餐、小时/周额度进度条、reset 时间、当前 model、思考深度与切换按钮不得依赖横向滚动后才可见，状态展示与切换控件应避免使用多层胶囊式嵌套，并优先采用分隔线式而非内嵌方框布局。
-
-### 状态与切换
-
-- 账号列表展示托管快照里的账号名、邮箱、计划类型、当前激活标识与额度状态。
-- OAuth 账号状态刷新允许先用 `refresh_token` 刷新 access token，再查询额度接口。
-- 单个账号状态刷新失败不能阻断整个列表返回，错误信息按账号维度回显。
-- 切换前若当前活动 `auth.json` 与目标账号不同，系统需先生成备份文件用于追溯。
-- 若当前活动 `auth.json` 与目标账号属于同一身份且活动 token 更新更近，则优先用当前活动认证回写托管快照。
-- 当前 Codex 管理接口需返回活动 `auth.json`、`config.toml`、CLI 命令、当前 profile、活动 model、思考深度、配置来源与可选 model 列表，供前端直接展示“Ready / Auth missing / Config default”等运行态文案，并构建真实可选项。
+- 控制面默认展示单一 Runtime 面板：上方展示当前 Codex 身份快照、邮箱、计划、认证模式与 profile，下方展示可编辑 model / 思考深度和 hourly / weekly 额度。
+- 额度展示必须来自当前 `auth.json` 的 quota 刷新结果；quota 成功返回时即可展示具体剩余额度与 reset 时间，前端不再依赖旧账号列表接口。
+- 页面不展示 Account ID / User ID、保存名称、多账号管理动作、导入/登录操作侧栏、CLI 命令、auth/config 路径、独立就绪侧栏、诊断面板或由 auth/config 文件存在性推导的 Ready/Status 文案。
+- 当前 Codex 管理接口需返回活动 `auth.json`、当前 `auth.json` 身份快照、实时刷新后的 quota 信息、`config.toml`、当前 profile、活动 model、思考深度、配置来源与可选 model 列表，供前端直接展示身份、额度和真实可选项。
+- 当前 Codex 管理区需允许直接切换活动 model 与思考深度，选择变更后立即写回当前用户配置；前端只允许提交当前所选 model 实际支持的思考深度。
 
 ### 分发规则
 
@@ -253,7 +240,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `/login` 使用统一登录态写入；`/logout` 清理登录态并返回登录流程。任一工作台页面触发登录时只把当前 canonical path 作为回跳目标，不携带 query，避免在登录 URL、隐藏表单字段与页面提示中暴露 `session_id` 等会话级参数。
 - 共享运行时的主 Web child 必须继承同一份 `web_login_password`；只有 workspace service 托管的预览后端可以通过专用运行时环境标记移除自身登录层并复用共享网关登录态。
 - 服务账户缺少 Codex/OpenAI 认证时，Web 端快速返回认证失败，不长时间等待。
-- Codex Accounts 控制面不提供导出接口，也不暴露本地文件浏览能力。
+- Codex Runtime 控制面不提供导出接口，也不暴露本地文件浏览能力。
 - 本地路径不直接作为 Web 产物交付方式暴露给用户。
 
 ## 研发治理

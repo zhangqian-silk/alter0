@@ -18,6 +18,25 @@ function runtimeFixture(overrides: Record<string, unknown> = {}) {
     config_path: "/var/lib/alter0/.codex/config.toml",
     has_auth: true,
     has_config: true,
+    current: {
+      live: {
+        auth_mode: "oauth",
+        account_name: "qian zhang",
+        email: "qian@example.com",
+        user_id: "user-work",
+        account_id: "acct-work",
+        plan: "prolite",
+        last_refresh_at: "2026-06-07T14:29:00Z",
+      },
+      managed: {
+        name: "work",
+      },
+      quota: {
+        hourly: { remaining_percent: 78, reset_at: "2026-06-07T15:30:00Z" },
+        weekly: { remaining_percent: 61, reset_at: "2026-06-11T02:10:00Z" },
+        plan: "prolite",
+      },
+    },
     profile: "auto-max",
     model: "gpt-5.4",
     reasoning_effort: "high",
@@ -69,320 +88,102 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps the dashboard shell visible while loading", () => {
+  it("keeps the runtime shell visible while loading without account management surfaces", () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockImplementation(() => new Promise(() => {}));
 
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
-    expect(screen.getByText("Runtime Overview")).toBeInTheDocument();
-    expect(screen.getByText("Current Codex")).toBeInTheDocument();
-    expect(screen.getByText("Managed Accounts")).toBeInTheDocument();
-    expect(screen.getByText("Import or Add Account")).toBeInTheDocument();
-    expect(screen.getByText("Login Session")).toBeInTheDocument();
-    expect(screen.getAllByText("Loading...").length).toBeGreaterThan(0);
+    expect(screen.getByText("Codex Runtime")).toBeInTheDocument();
+    expect(screen.queryByText("Runtime Configuration")).not.toBeInTheDocument();
+    expect(screen.queryByText("Readiness")).not.toBeInTheDocument();
+    expect(screen.queryByText("Runtime Diagnostics")).not.toBeInTheDocument();
+    expect(screen.queryByText("Managed Accounts")).not.toBeInTheDocument();
+    expect(screen.queryByText("Import or Add Account")).not.toBeInTheDocument();
+    expect(screen.queryByText("Login Session")).not.toBeInTheDocument();
   });
 
-  it("loads codex account statuses and switches the active account", async () => {
+  it("loads the single codex runtime and shows unregistered LLM provider state", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [
-            {
-              record: {
-                name: "work",
-                snapshot: { account_name: "Work Account", email: "work@example.com", plan: "plus" },
-              },
-              current: true,
-              quota: {
-                hourly: { remaining_percent: 80, reset_at: "2026-05-01T14:30:00Z" },
-                weekly: { remaining_percent: 92, reset_at: "2026-05-08T14:30:00Z" },
-                plan: "plus",
-              },
-            },
-            {
-              record: {
-                name: "personal",
-                snapshot: { account_name: "Personal Account", email: "personal@example.com", plan: "pro" },
-              },
-              current: false,
-              quota: {
-                hourly: { remaining_percent: 70, reset_at: "2026-05-01T16:00:00Z" },
-                weekly: { remaining_percent: 88, reset_at: "2026-05-08T16:00:00Z" },
-                plan: "pro",
-              },
-            },
-          ],
-          active: {
-            managed: {
-              name: "work",
-            },
-            auth_path: "/var/lib/alter0/.codex/auth.json",
-          },
-          runtime: {
-            ...runtimeFixture(),
-          },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          account: {
-            name: "personal",
-            snapshot: { account_name: "Personal Account" },
-          },
-          backup_path: "/tmp/auth-backup.json",
-          active: {
-            managed: {
-              name: "personal",
-            },
-          },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [
-            {
-              record: {
-                name: "personal",
-                snapshot: { account_name: "Personal Account", email: "personal@example.com", plan: "pro" },
-              },
-              current: true,
-              quota: {
-                hourly: { remaining_percent: 70, reset_at: "2026-05-01T16:00:00Z" },
-                weekly: { remaining_percent: 88, reset_at: "2026-05-08T16:00:00Z" },
-                plan: "pro",
-              },
-            },
-          ],
-          active: {
-            managed: {
-              name: "personal",
-            },
-            auth_path: "/var/lib/alter0/.codex/auth.json",
-          },
-          runtime: {
-            ...runtimeFixture(),
-          },
-        }),
-      );
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }));
 
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Managed Accounts")).toBeInTheDocument();
-      expect(screen.getByText("Runtime Overview")).toBeInTheDocument();
-      expect(screen.getAllByText("Work Account").length).toBeGreaterThan(0);
+      expect(screen.getByText("Codex Runtime")).toBeInTheDocument();
+      expect(screen.getByText("No LLM providers registered. Codex Direct remains available.")).toBeInTheDocument();
     });
 
-    expect(screen.getAllByTestId("codex-account-card")).toHaveLength(2);
-    const overview = screen.getByText("Runtime Overview").closest(".codex-accounts-overview");
-    expect(overview).not.toBeNull();
-    const overviewQueries = within(overview as HTMLElement);
-    expect(overviewQueries.getByText("Work Account")).toBeInTheDocument();
-    expect(overviewQueries.getByText("plus")).toBeInTheDocument();
-    expect(overviewQueries.getByText("80%")).toBeInTheDocument();
-    expect(overviewQueries.getByText("92%")).toBeInTheDocument();
-    expect(overviewQueries.queryByText("/var/lib/alter0/.codex/auth.json")).not.toBeInTheDocument();
-    expect(overviewQueries.queryByText("Active Auth Path")).not.toBeInTheDocument();
-    expect(overviewQueries.getByRole("progressbar", { name: "Hourly Remaining" })).toHaveAttribute("aria-valuenow", "80");
-    expect(overviewQueries.getByRole("progressbar", { name: "Weekly Remaining" })).toHaveAttribute("aria-valuenow", "92");
-    expect(overviewQueries.getByText("2026-05-01 22:30")).toBeInTheDocument();
-    expect(overviewQueries.getByText("2026-05-08 22:30")).toBeInTheDocument();
+    const statusBand = screen.getByText("Codex Runtime").closest(".codex-runtime-status-band");
+    expect(statusBand).not.toBeNull();
+    const statusQueries = within(statusBand as HTMLElement);
+    expect(statusQueries.queryByText("Status")).not.toBeInTheDocument();
+    expect(statusQueries.queryByText("Ready")).not.toBeInTheDocument();
+    expect(statusQueries.getByText("qian zhang")).toBeInTheDocument();
+    expect(statusQueries.getByText("qian@example.com")).toBeInTheDocument();
+    expect(statusQueries.getByText("prolite")).toBeInTheDocument();
+    expect(statusQueries.getByText("oauth")).toBeInTheDocument();
+    expect(statusQueries.getByText("Profile")).toBeInTheDocument();
+    expect(statusQueries.getByText("auto-max")).toBeInTheDocument();
+    expect(statusQueries.getByText("78%")).toBeInTheDocument();
+    expect(statusQueries.getByText("61%")).toBeInTheDocument();
+    expect(statusQueries.getByText("2026-06-07 23:30")).toBeInTheDocument();
+    expect(statusQueries.getByText("2026-06-11 10:10")).toBeInTheDocument();
+    expect(statusQueries.getByLabelText("Model")).toHaveValue("gpt-5.4");
+    expect(statusQueries.getByLabelText("Reasoning Depth")).toHaveValue("high");
+    expect(statusQueries.getByRole("option", { name: "High" })).toBeInTheDocument();
+    expect(statusQueries.queryByText("Balanced depth")).not.toBeInTheDocument();
+    expect(statusQueries.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(statusBand?.querySelector(".codex-runtime-identity-card")).not.toBeNull();
+    expect(statusBand?.querySelector(".codex-runtime-status-pane")).toBeNull();
+    expect(statusBand?.querySelector(".codex-runtime-account-pane")).not.toBeNull();
+    expect(statusBand?.querySelector(".codex-runtime-account-strip")).toBeNull();
+    expect(statusBand?.querySelector(".codex-runtime-summary-item")).toBeNull();
+    expect(statusBand?.querySelector(".codex-runtime-kv-select")).not.toBeNull();
+    expect(screen.queryByText("Runtime Configuration")).not.toBeInTheDocument();
+    expect(document.querySelector(".codex-runtime-inline-config")).toBeNull();
+    expect(statusQueries.queryByText("Saved Name")).not.toBeInTheDocument();
+    expect(statusQueries.queryByText("Account ID")).not.toBeInTheDocument();
+    expect(statusQueries.queryByText("User ID")).not.toBeInTheDocument();
+    expect(statusQueries.queryByText("acct-work")).not.toBeInTheDocument();
+    expect(statusQueries.queryByText("user-work")).not.toBeInTheDocument();
+    expect(screen.queryByText("Codex Identity")).not.toBeInTheDocument();
+    expect(document.querySelector(".codex-runtime-overview")).toBeNull();
+    expect(document.querySelector(".codex-runtime-workspace")).toBeNull();
+    expect(screen.queryByText("Readiness")).not.toBeInTheDocument();
+    expect(screen.queryByText("Runtime Diagnostics")).not.toBeInTheDocument();
 
-    const accountCards = screen.getAllByTestId("codex-account-card");
-    const firstCardQueries = within(accountCards[0] as HTMLElement);
-    expect(firstCardQueries.getByRole("progressbar", { name: "Hourly Remaining" })).toHaveAttribute("aria-valuenow", "80");
-    expect(firstCardQueries.getByText("2026-05-01 22:30")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Switch to Personal Account" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Switched to personal.")).toBeInTheDocument();
-    });
+    expect(screen.getByLabelText("Model")).toHaveValue("gpt-5.4");
+    expect(screen.getByLabelText("Reasoning Depth")).toHaveValue("high");
+    expect(screen.queryByRole("button", { name: "Import auth.json" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start Codex Login" })).not.toBeInTheDocument();
 
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "/api/control/codex/accounts/personal/switch",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(screen.getAllByText("Personal Account").length).toBeGreaterThan(0);
-  });
-
-  it("imports an auth file and creates the managed account", async () => {
-    const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [],
-          active: {
-            live: {
-              account_name: "CLI Account",
-              email: "cli@example.com",
-              plan: "plus",
-            },
-            quota: {
-              hourly: { remaining_percent: 61, reset_at: "2026-05-02T08:00:00Z" },
-              weekly: { remaining_percent: 84, reset_at: "2026-05-09T08:00:00Z" },
-              plan: "plus",
-            },
-            auth_path: "/var/lib/alter0/.codex/auth.json",
-          },
-          runtime: {
-            ...runtimeFixture(),
-          },
-        }),
-      )
-      .mockResolvedValueOnce(jsonResponse({ name: "work", snapshot: { account_name: "Work Account" } }, { status: 201 }))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [
-            {
-              record: {
-                name: "work",
-                snapshot: { account_name: "Work Account", email: "work@example.com" },
-              },
-              current: false,
-            },
-          ],
-          active: null,
-          runtime: {
-            ...runtimeFixture(),
-          },
-        }),
-      );
-
-    render(<ReactManagedCodexAccountsRouteBody language="en" />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Choose auth.json" })).toBeInTheDocument();
-      expect(screen.getByText("No managed Codex accounts yet.")).toBeInTheDocument();
-      expect(screen.getByText("CLI Account")).toBeInTheDocument();
-      expect(
-        screen.getAllByText("Current auth.json is active but not managed yet. Import it to create the first managed snapshot.")
-          .length,
-      ).toBeGreaterThan(0);
-    });
-    const overview = screen.getByText("Runtime Overview").closest(".codex-accounts-overview");
-    expect(overview).not.toBeNull();
-    const overviewQueries = within(overview as HTMLElement);
-    expect(overviewQueries.getByText("plus")).toBeInTheDocument();
-    expect(overviewQueries.getByText("61%")).toBeInTheDocument();
-    expect(overviewQueries.getByText("84%")).toBeInTheDocument();
-    expect(overviewQueries.queryByText("/var/lib/alter0/.codex/auth.json")).not.toBeInTheDocument();
-    expect(overviewQueries.getByText("2026-05-02 16:00")).toBeInTheDocument();
-    expect(overviewQueries.getByRole("progressbar", { name: "Hourly Remaining" })).toHaveAttribute("aria-valuenow", "61");
-
-    const authFile = new File([`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`], "auth.json", { type: "application/json" });
-    Object.defineProperty(authFile, "text", {
-      value: () => Promise.resolve(`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`),
-    });
-
-    fireEvent.change(screen.getByLabelText("Account Name"), {
-      target: { value: "work" },
-    });
-    fireEvent.change(screen.getByLabelText("Auth File"), {
-      target: {
-        files: [authFile],
-      },
-    });
-
-    expect(screen.getByText("auth.json")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Import auth.json" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Account imported.")).toBeInTheDocument();
-    });
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "/api/control/codex/accounts",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          name: "work",
-          overwrite: false,
-          auth_file_content: `{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`,
-        }),
-      }),
-    );
-  });
-
-  it("starts a login session and refreshes the session state", async () => {
-    const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({ items: [], active: null, runtime: null }))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          id: "login-1",
-          account_name: "fresh",
-          status: "running",
-        }, { status: 202 }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          id: "login-1",
-          account_name: "fresh",
-          status: "succeeded",
-          logs: "open browser",
-        }),
-      )
-      .mockResolvedValueOnce(jsonResponse({ items: [], active: null, runtime: null }));
-
-    render(<ReactManagedCodexAccountsRouteBody language="en" />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Login Session")).toBeInTheDocument();
-      expect(screen.getByText("No login session started.")).toBeInTheDocument();
-      expect(screen.getByText("Runtime Overview")).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByLabelText("Account Name"), {
-      target: { value: "fresh" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Start Codex Login" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Login completed.")).toBeInTheDocument();
-    });
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "/api/control/codex/accounts/login-sessions",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          name: "fresh",
-          overwrite: false,
-        }),
-      }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      "/api/control/codex/accounts/login-sessions/login-1",
+      1,
+      "/api/control/codex/runtime",
       expect.objectContaining({ method: "GET" }),
     );
-    expect(screen.getByText("open browser")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/control/llm/providers",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 
-  it("shows current codex runtime status and updates the active model and reasoning depth", async () => {
+  it("updates the active model and reasoning depth from the runtime-only endpoint", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
+      .mockResolvedValueOnce(jsonResponse({ items: [{ id: "anthropic", name: "Anthropic", is_enabled: true }] }))
       .mockResolvedValueOnce(
-        jsonResponse({
-          items: [],
-          active: {
-            managed: {
-              name: "work",
-              snapshot: { account_name: "Work Account" },
-            },
-            auth_path: "/var/lib/alter0/.codex/auth.json",
-          },
-          runtime: {
-            ...runtimeFixture(),
-          },
-        }),
+        jsonResponse(
+          runtimeFixture({
+            model: "gpt-5.4-mini",
+            reasoning_effort: "medium",
+          }),
+        ),
       )
       .mockResolvedValueOnce(
         jsonResponse(
@@ -392,35 +193,15 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
           }),
         ),
       )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [],
-          active: {
-            managed: {
-              name: "work",
-              snapshot: { account_name: "Work Account" },
-            },
-            auth_path: "/var/lib/alter0/.codex/auth.json",
-          },
-          runtime: {
-            ...runtimeFixture({
-              model: "gpt-5.4-mini",
-              reasoning_effort: "low",
-            }),
-          },
-        }),
-      );
+      .mockResolvedValueOnce(jsonResponse({ items: [{ id: "anthropic", name: "Anthropic", is_enabled: true }] }));
 
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Current Codex")).toBeInTheDocument();
       expect(screen.getByLabelText("Model")).toHaveValue("gpt-5.4");
       expect(screen.getByLabelText("Reasoning Depth")).toHaveValue("high");
-      expect(screen.getByText("Runtime Details")).toBeInTheDocument();
+      expect(screen.getByText("1 registered provider")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("GPT-5.4 (gpt-5.4)")).toHaveLength(1);
-    expect(document.querySelectorAll(".codex-accounts-runtime-current")).toHaveLength(0);
 
     fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "gpt-5.4-mini" },
@@ -430,24 +211,59 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       expect(screen.getByLabelText("Reasoning Depth")).toHaveValue("medium");
     });
 
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "/api/control/codex/runtime",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ model: "gpt-5.4-mini", reasoning_effort: "medium" }),
+        }),
+      );
+    });
+
     fireEvent.change(screen.getByLabelText("Reasoning Depth"), {
       target: { value: "low" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Runtime Settings" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Runtime settings updated.")).toBeInTheDocument();
+      expect(screen.getByLabelText("Reasoning Depth")).toHaveValue("low");
     });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+      4,
       "/api/control/codex/runtime",
       expect.objectContaining({
         method: "PUT",
         body: JSON.stringify({ model: "gpt-5.4-mini", reasoning_effort: "low" }),
       }),
     );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/control/codex/accounts/"),
+      expect.anything(),
+    );
     expect(screen.getByLabelText("Model")).toHaveValue("gpt-5.4-mini");
     expect(screen.getByLabelText("Reasoning Depth")).toHaveValue("low");
+  });
+
+  it("renders missing auth without account login actions, status copy, or side diagnostics", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture({ has_auth: false, auth_path: "" })))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }));
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Codex Runtime")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Auth missing")).not.toBeInTheDocument();
+    expect(screen.queryByText("Status")).not.toBeInTheDocument();
+    expect(document.querySelector(".codex-runtime-status-pane")).toBeNull();
+    expect(screen.queryByText("Codex auth.json is not loaded.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Runtime Diagnostics")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Account Name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Auth File")).not.toBeInTheDocument();
   });
 });
