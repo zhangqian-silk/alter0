@@ -234,9 +234,19 @@ describe("WorkbenchApp", () => {
     });
 
     const mobileHeader = container.querySelector("[data-route-mobile-head]") as HTMLElement;
+    const routeHead = container.querySelector(".route-head") as HTMLElement;
     expect(mobileHeader).toBeInTheDocument();
     expect(container.querySelector(".route-view")).toHaveAttribute("data-route-family", "management");
+    expect(container.querySelector(".route-view")).toHaveClass("workbench-route-frame");
+    expect(routeHead).toHaveClass("workbench-title-head", "is-compact");
+    expect(routeHead).toHaveAttribute("data-workbench-title-head", "route");
+    expect(routeHead.querySelector(".workbench-title-leading")).toBeInTheDocument();
+    expect(routeHead.querySelector(".route-title-marker")).toBeInTheDocument();
     expect(container.querySelector(".route-head h3")?.textContent).toBe("Settings");
+    expect(mobileHeader.querySelector(".route-mobile-title h3")?.textContent).toBe("Settings");
+    expect(mobileHeader.querySelector(".route-mobile-head-spacer")).toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "Menu" }).querySelector("[data-route-mobile-icon='menu']")).toBeInTheDocument();
+    expect(within(mobileHeader).getByRole("button", { name: "Menu" }).querySelector(".route-mobile-action-label")).toHaveClass("sr-only");
 
     fireEvent.click(within(mobileHeader).getByRole("button", { name: "Menu" }));
 

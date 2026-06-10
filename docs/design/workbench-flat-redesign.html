@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alter0 Flat Workbench Redesign</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --nav: #f7f7f7;
+      --line: #eeeeee;
+      --ink: #202124;
+      --muted: #5f6368;
+      --soft: #f1f3f4;
+      --accent: #0f9f8f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #e9eef5;
+      color: var(--ink);
+      font-family: "Sora", "IBM Plex Sans", "Noto Sans SC", sans-serif;
+    }
+
+    .board {
+      display: grid;
+      gap: 24px;
+      padding: 24px;
+    }
+
+    .caption {
+      margin: 0 0 8px;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .desktop,
+    .mobile {
+      overflow: hidden;
+      background: var(--bg);
+      border: 0;
+      border-radius: 0;
+      box-shadow: 0 18px 36px -30px rgba(15, 23, 42, 0.35);
+    }
+
+    .desktop {
+      width: 1440px;
+      height: 820px;
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+    }
+
+    .mobile {
+      width: 390px;
+      height: 640px;
+    }
+
+    .nav {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      gap: 12px;
+      padding: 12px 8px;
+      background: var(--nav);
+      border-right: 1px solid var(--line);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 28px;
+      padding: 0 8px;
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .nav-item,
+    .history-row,
+    .icon-button {
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    .nav-item {
+      width: 100%;
+      min-height: 30px;
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      padding: 0 8px;
+      border-radius: 6px;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    .nav-item.active {
+      background: #ececec;
+      font-weight: 720;
+    }
+
+    .nav-section-title {
+      margin: 10px 8px 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .history {
+      min-height: 0;
+      overflow: hidden;
+      display: grid;
+      align-content: start;
+      gap: 3px;
+    }
+
+    .history-row {
+      min-width: 0;
+      min-height: 22px;
+      padding: 0 8px;
+      overflow: hidden;
+      color: #303134;
+      font-size: 12px;
+      text-align: left;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+
+    .main {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 42px minmax(0, 1fr);
+      background: #fff;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .top-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 720;
+    }
+
+    .signal {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .icon-button {
+      width: 36px;
+      height: 36px;
+      display: inline-grid;
+      place-items: center;
+      color: #3c4043;
+      cursor: pointer;
+    }
+
+    .icon-button:hover {
+      background: var(--soft);
+      border-radius: 6px;
+    }
+
+    .chat-empty {
+      display: grid;
+      place-items: center;
+      padding-bottom: 90px;
+      background:
+        radial-gradient(circle at 50% 46%, rgba(166, 214, 255, 0.5), rgba(255, 255, 255, 0) 21%),
+        #fff;
+    }
+
+    .prompt-stack {
+      display: grid;
+      gap: 22px;
+      justify-items: center;
+    }
+
+    .prompt-title {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 520;
+      letter-spacing: 0;
+    }
+
+    .composer {
+      width: min(460px, 64vw);
+      height: 46px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto 42px;
+      align-items: center;
+      padding: 0 4px;
+      border: 0;
+      border-radius: 999px;
+      background: #fff;
+      box-shadow: 0 8px 24px -20px rgba(15, 23, 42, 0.45), 0 1px 8px rgba(60, 64, 67, 0.14);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .settings-main {
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 190px minmax(0, 1fr);
+    }
+
+    .settings-index {
+      padding: 20px 8px;
+      border-right: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .settings-content {
+      overflow: auto;
+      padding: 36px 44px;
+      background: #fff;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 30px;
+      margin: 0 0 30px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tab {
+      padding: 0 0 12px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 14px;
+    }
+
+    .tab.active {
+      color: var(--accent);
+      box-shadow: inset 0 -2px 0 var(--accent);
+      font-weight: 720;
+    }
+
+    .section {
+      max-width: 940px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .section h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    .flat-panel {
+      display: grid;
+      gap: 16px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .runtime-summary {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .status-block,
+    .identity-block {
+      padding: 22px 20px;
+      min-height: 118px;
+    }
+
+    .status-block {
+      background: #f5fbfa;
+      color: var(--accent);
+      font-weight: 760;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border-bottom: 1px solid var(--line);
+    }
+
+    .metric {
+      padding: 18px 20px;
+      border-right: 1px solid var(--line);
+      display: grid;
+      gap: 6px;
+      font-size: 14px;
+    }
+
+    .metric:last-child {
+      border-right: 0;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mobile-head {
+      height: 48px;
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr) 48px;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .mobile-head .top-title {
+      justify-self: center;
+    }
+
+    .mobile-body {
+      height: calc(100% - 48px);
+      overflow: auto;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .mobile .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      margin-bottom: 28px;
+    }
+
+    .mobile .section h2 {
+      font-size: 23px;
+    }
+
+    .mobile .runtime-summary {
+      grid-template-columns: 1fr;
+    }
+
+    .mobile .metrics {
+      grid-template-columns: 1fr;
+    }
+
+    .mobile .metric {
+      border-right: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="board">
+    <section>
+      <p class="caption">Desktop Chat - flat shell, borderless content, focus on prompt</p>
+      <div class="desktop">
+        <aside class="nav">
+          <div class="brand"><span>Alter0</span><button class="icon-button">‹</button></div>
+          <div>
+            <button class="nav-item active"><span>◇</span><span>Chat</span></button>
+            <button class="nav-item"><span>›</span><span>Terminal</span></button>
+            <button class="nav-item"><span>⚙</span><span>Settings</span></button>
+          </div>
+          <div class="history">
+            <p class="nav-section-title">Recent</p>
+            <button class="history-row">WSL: Windows 上的 Linux 环境</button>
+            <button class="history-row">AI 界面优化建议</button>
+            <button class="history-row">OpenClaw vs. Hermes Agent 架构</button>
+            <button class="history-row">Git SSH 连接问题排查指南</button>
+            <button class="history-row">Go 代码潜在问题分析</button>
+          </div>
+          <div class="account"><span>silk</span><span>⚙</span></div>
+        </aside>
+        <main class="main">
+          <header class="topbar"><div class="top-title"><span class="signal"></span>New</div><button class="icon-button">i</button></header>
+          <div class="chat-empty">
+            <div class="prompt-stack">
+              <h1 class="prompt-title">silk, 需要我帮你做点什么?</h1>
+              <div class="composer"><span>＋</span><span>Ask Alter0</span><span>GPT-5.5</span><span>⌘</span></div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <section>
+      <p class="caption">Desktop Settings - no outer frame, no card borders, sections separated by rhythm</p>
+      <div class="desktop">
+        <aside class="nav">
+          <div class="brand"><span>Alter0</span><button class="icon-button">‹</button></div>
+          <div>
+            <button class="nav-item"><span>◇</span><span>Chat</span></button>
+            <button class="nav-item"><span>›</span><span>Terminal</span></button>
+            <button class="nav-item active"><span>⚙</span><span>Settings</span></button>
+          </div>
+          <div class="history"></div>
+          <div class="account"><span>silk</span><span>⚙</span></div>
+        </aside>
+        <main class="main">
+          <header class="topbar"><div class="top-title"><span class="signal"></span>Settings</div></header>
+          <div class="settings-main">
+            <aside class="settings-index">
+              <button class="nav-item active"><span>⟡</span><span>Runtime</span></button>
+              <button class="nav-item"><span>⌂</span><span>Environments</span></button>
+              <button class="nav-item"><span>▤</span><span>Skills</span></button>
+              <button class="nav-item"><span>○</span><span>Memory</span></button>
+              <button class="nav-item"><span>◷</span><span>Schedules</span></button>
+            </aside>
+            <section class="settings-content">
+              <div class="tabs">
+                <button class="tab active">Runtime</button>
+                <button class="tab">Environments</button>
+                <button class="tab">Skills</button>
+                <button class="tab">Memory</button>
+                <button class="tab">Schedules</button>
+              </div>
+              <div class="section">
+                <h2>Codex Runtime</h2>
+                <p style="margin:0;color:var(--muted)">Identity, quota, and active runtime settings.</p>
+                <div class="flat-panel">
+                  <div class="runtime-summary">
+                    <div class="status-block">✓ Ready<br><span style="color:var(--muted);font-weight:500">Status</span></div>
+                    <div class="identity-block">Account<br><strong>qian zhang</strong><br><span style="color:var(--muted)">zhangqian.000326@gmail.com</span></div>
+                  </div>
+                  <div class="metrics">
+                    <div class="metric"><span>Plan</span><strong>prolite</strong></div>
+                    <div class="metric"><span>Auth mode</span><strong>chatgpt</strong></div>
+                    <div class="metric"><span>Profile</span><strong>Codex default</strong></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <section>
+      <p class="caption">Mobile Settings - single flat toolbar, borderless icon buttons, content starts immediately</p>
+      <div class="mobile">
+        <header class="mobile-head">
+          <button class="icon-button">☰</button>
+          <div class="top-title"><span class="signal"></span>Settings</div>
+          <span></span>
+        </header>
+        <main class="mobile-body">
+          <div class="tabs">
+            <button class="tab active">Runtime</button>
+            <button class="tab">Skills</button>
+            <button class="tab">Memory</button>
+          </div>
+          <div class="section">
+            <h2>Codex Runtime</h2>
+            <p style="margin:0;color:var(--muted)">Identity, quota, and active runtime settings.</p>
+            <div class="flat-panel">
+              <div class="runtime-summary">
+                <div class="status-block">✓ Ready<br><span style="color:var(--muted);font-weight:500">Status</span></div>
+                <div class="identity-block">Account<br><strong>qian zhang</strong><br><span style="color:var(--muted)">zhangqian.000326@gmail.com</span></div>
+              </div>
+              <div class="metrics">
+                <div class="metric"><span>Model</span><strong>GPT-5.5</strong></div>
+                <div class="metric"><span>Reasoning depth</span><strong>High</strong></div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
