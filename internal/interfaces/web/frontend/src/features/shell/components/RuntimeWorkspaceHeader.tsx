@@ -183,7 +183,7 @@ export function RuntimeWorkspaceHeader({
     <header
       ref={headerRef}
       className={joinClassNames(
-        "runtime-workspace-head is-compact is-sticky",
+        "runtime-workspace-head workbench-title-head is-compact is-sticky",
         mobileEmpty ? "is-mobile-empty" : undefined,
         mobileCollapsed ? "is-mobile-collapsed" : undefined,
         headerClassName,

@@ -45,6 +45,19 @@ describe("RuntimeWorkspaceShell", () => {
     expect(onMobilePrimary).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps mobile edge actions as icon buttons with accessible labels", () => {
+    renderMobileShell({});
+
+    const mobileHeader = screen.getByRole("banner");
+    const menuButton = within(mobileHeader).getByRole("button", { name: "Menu" });
+    const newButton = within(mobileHeader).getByRole("button", { name: "New" });
+
+    expect(menuButton.querySelector("[data-runtime-mobile-icon='menu']")).toBeInTheDocument();
+    expect(menuButton.querySelector(".runtime-workspace-mobile-action-label")).toHaveClass("sr-only");
+    expect(newButton.querySelector("[data-runtime-mobile-icon='plus']")).toBeInTheDocument();
+    expect(newButton.querySelector(".runtime-workspace-mobile-action-label")).toHaveClass("sr-only");
+  });
+
   it("does not rerun a touch-triggered mobile header action from the follow-up click", () => {
     vi.useFakeTimers();
     const onMobilePrimary = vi.fn();

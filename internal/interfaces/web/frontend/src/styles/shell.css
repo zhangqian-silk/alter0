@@ -365,7 +365,7 @@ body {
 
   .runtime-workspace-mobile-action,
   .runtime-workspace-mobile-title {
-    min-height: 44px;
+    min-height: 48px;
     border-radius: 8px;
   }
 
@@ -572,6 +572,1005 @@ body {
 
   [data-runtime-view="terminal"] .chat-md-inline-code {
     padding: 0.06em 0.25em;
+  }
+}
+
+/* Gemini-style flat workbench reset */
+body {
+  background: #ffffff;
+  background-image: none;
+}
+
+.app-shell,
+.workbench-main,
+.chat-pane,
+.runtime-workspace,
+.runtime-workspace-body,
+.runtime-workspace-panel,
+.runtime-workspace-screen,
+.route-view[data-route-family="management"].workbench-route-frame {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #ffffff;
+}
+
+.app-shell {
+  gap: 0;
+  padding: 0;
+}
+
+.workbench-main {
+  min-width: 0;
+  padding: 0;
+}
+
+.primary-nav {
+  background: #f7f7f7;
+  border: 0;
+  border-right: 1px solid #eeeeee;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.primary-nav .brand,
+.primary-nav .nav-locale {
+  border: 0;
+}
+
+.menu-item,
+.nav-session-rail-action,
+.runtime-session-card,
+.runtime-session-select,
+.runtime-session-delete,
+.nav-locale-button,
+.nav-collapse,
+.workspace-header-actions .runtime-workspace-button,
+.runtime-workspace-button,
+.runtime-workspace-mobile-action,
+.runtime-workspace-mobile-title,
+.route-mobile-head .conversation-mobile-action,
+.runtime-composer-utility,
+.runtime-composer-upload,
+.runtime-composer-submit {
+  border: 0;
+  box-shadow: none;
+}
+
+.menu-item,
+.runtime-session-card,
+.runtime-session-delete,
+.management-route-tab {
+  border-radius: 6px;
+}
+
+.menu-item.active,
+.nav-session-rail .runtime-session-card.is-active,
+.runtime-session-card.is-active {
+  border-color: transparent;
+  background: #ececec;
+  color: #202124;
+  box-shadow: none;
+}
+
+.nav-session-rail-action,
+.nav-locale-button,
+.nav-collapse,
+.workspace-header-actions .runtime-workspace-button,
+.runtime-workspace-button,
+.runtime-workspace-mobile-action,
+.runtime-workspace-mobile-title,
+.route-mobile-head .conversation-mobile-action,
+.runtime-composer-utility,
+.runtime-composer-upload {
+  background: transparent;
+}
+
+.nav-session-rail-action:hover,
+.nav-locale-button:hover,
+.nav-collapse:hover,
+.runtime-session-card:hover,
+.workspace-header-actions .runtime-workspace-button:hover,
+.runtime-workspace-button:hover,
+.runtime-workspace-mobile-action:hover,
+.runtime-workspace-mobile-title:hover,
+.route-mobile-head .conversation-mobile-action:hover {
+  background: #eeeeee;
+}
+
+.runtime-workspace-head,
+.route-head.workbench-title-head.is-compact,
+.runtime-workspace-mobile-header,
+.route-view[data-route-family="management"] .route-mobile-head {
+  border-bottom: 1px solid #eeeeee;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.route-view[data-route-family="management"].workbench-route-frame,
+.route-view[data-route-family="management"] .route-head,
+.route-view[data-route-family="management"] .route-mobile-head,
+.route-view[data-route-family="management"] .route-body,
+.management-route-body,
+.management-route-nav,
+.management-route-content,
+.management-route-content > * {
+  animation: none;
+  transition: none;
+  transform: none;
+}
+
+[data-runtime-view="terminal"] .runtime-workspace-screen {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-body {
+  gap: 0;
+}
+
+.management-route-nav,
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-nav {
+  border-right: 1px solid #eeeeee;
+  background: #ffffff;
+}
+
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  background: transparent;
+}
+
+.management-route-tab {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.management-route-tab:hover {
+  border-color: transparent;
+  background: #f1f3f4;
+  box-shadow: none;
+}
+
+.management-route-tab.is-active {
+  border-color: transparent;
+  background: #ececec;
+  color: var(--shell-accent-strong);
+  box-shadow: inset 2px 0 0 var(--shell-accent);
+}
+
+.management-route-tab-icon,
+.management-route-tab.is-active .management-route-tab-icon,
+.management-route-tab-shortcut {
+  background: transparent;
+}
+
+.management-route-content .route-card-head,
+.management-route-content .agent-route-pane-head,
+.management-route-content .control-task-drawer-head,
+.management-route-content .task-detail-head,
+.management-route-content .codex-accounts-section-head,
+.management-route-content .environment-toolbar-head {
+  border-bottom: 1px solid #eeeeee;
+}
+
+.management-route-content .route-field-row,
+.management-route-content .codex-accounts-runtime-detail,
+.management-route-content .environment-item,
+.management-route-content .codex-account-metric,
+.management-route-content .codex-accounts-summary-card,
+.management-route-content .agent-builder-managed-item {
+  border: 0;
+  border-radius: 0;
+  background: #f8f9fa;
+  box-shadow: none;
+}
+
+.management-route-content .route-data-table-wrap {
+  overflow: auto;
+}
+
+.management-route-content .route-data-table th,
+.management-route-content .route-data-table td {
+  border-bottom: 1px solid #eeeeee;
+}
+
+.management-route-content .page-filter-form,
+.management-route-content .task-filter-form,
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea {
+  background: #f8f9fa;
+}
+
+.management-route-content .route-empty,
+.management-route-content .route-empty-panel,
+.management-route-content .task-empty-state,
+.nav-session-rail .route-empty-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.runtime-composer-form {
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px -20px rgba(15, 23, 42, 0.45), 0 1px 8px rgba(60, 64, 67, 0.14);
+}
+
+.runtime-composer-input {
+  border: 0;
+  box-shadow: none;
+}
+
+.runtime-message.runtime-message-user .runtime-message-bubble,
+.conversation-message.is-user .msg-bubble {
+  border: 0;
+  box-shadow: none;
+}
+
+.assistant-message-shell .chat-md-pre,
+[data-runtime-view="conversation"] .chat-md-pre,
+[data-runtime-view="terminal"] .chat-md-pre,
+[data-runtime-view="terminal"] .terminal-final-rendered .chat-md-pre {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.workspace-details-panel,
+.modal-dialog {
+  border: 0;
+  border-radius: 0;
+  box-shadow: 0 18px 42px -34px rgba(15, 23, 42, 0.32);
+}
+
+@media (max-width: 760px) {
+  .runtime-composer-shell {
+    bottom: var(--keyboard-offset, 0px);
+  }
+
+  .primary-nav {
+    border: 0;
+    border-right: 1px solid #eeeeee;
+    border-radius: 0;
+    box-shadow: 18px 0 36px -30px rgba(15, 23, 42, 0.35);
+  }
+
+  .management-route-body {
+    gap: 14px;
+  }
+
+  .management-route-nav,
+  .management-route-content .route-card,
+  .management-route-content .route-surface,
+  .management-route-content .route-data-table-wrap,
+  .management-route-content .route-detail-panel,
+  .management-route-content .control-task-drawer-panel,
+  .management-route-content .task-summary-row,
+  .management-route-content .task-detail-placeholder,
+  .management-route-content .environment-toolbar,
+  .management-route-content .environment-module,
+  .management-route-content .environment-summary,
+  .management-route-content .environment-audits,
+  .management-route-content .codex-accounts-panel {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .management-route-nav {
+    border-right: 0;
+    background: #ffffff;
+  }
+
+  .runtime-composer-form {
+    border: 0;
+    border-radius: 24px;
+  }
+}
+
+.conversation-empty-state::before {
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at center, rgba(191, 219, 254, 0.18) 0%, rgba(191, 219, 254, 0) 58%),
+    linear-gradient(rgba(226, 232, 240, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(226, 232, 240, 0.26) 1px, transparent 1px);
+  background-size: auto, 36px 36px, 36px 36px;
+  box-shadow: none;
+}
+
+.conversation-empty-state::after {
+  display: none;
+}
+
+.route-view[data-route-family="management"].workbench-route-frame,
+.route-view[data-route-family="management"] .route-head,
+.route-view[data-route-family="management"] .route-mobile-head,
+.route-view[data-route-family="management"] .route-body,
+.management-route-body,
+.management-route-nav,
+.management-route-content,
+.management-route-content > * {
+  animation: none;
+  transition: none;
+  transform: none;
+}
+
+.management-route-content .codex-runtime-identity-card,
+.management-route-content .codex-runtime-chip-row,
+.management-route-content .codex-runtime-quick-form,
+.management-route-content .codex-runtime-kv-select,
+.management-route-content .codex-runtime-quota-item,
+.management-route-content .codex-runtime-provider-note,
+.management-route-content .codex-runtime-provider-note.is-empty {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-content .codex-runtime-kv-select,
+.management-route-content .codex-runtime-quick-form .codex-runtime-kv-select,
+.management-route-content .codex-runtime-quota-item,
+.management-route-content .codex-runtime-provider-note,
+.management-route-content .codex-runtime-provider-note.is-empty {
+  background: #f8f9fa;
+}
+
+.management-route-content .codex-runtime-quick-form .codex-runtime-kv-select {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-content .codex-runtime-chip-row {
+  border-top: 1px solid #eeeeee;
+}
+
+/* Gemini-style flat workbench reset */
+body {
+  background: #ffffff;
+  background-image: none;
+}
+
+.app-shell,
+.workbench-main,
+.chat-pane,
+.runtime-workspace,
+.runtime-workspace-body,
+.runtime-workspace-panel,
+.runtime-workspace-screen,
+.route-view[data-route-family="management"].workbench-route-frame {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #ffffff;
+}
+
+.app-shell {
+  gap: 0;
+  padding: 0;
+}
+
+.workbench-main {
+  min-width: 0;
+  padding: 0;
+}
+
+.primary-nav {
+  background: #f7f7f7;
+  border: 0;
+  border-right: 1px solid #eeeeee;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.primary-nav .brand,
+.primary-nav .nav-locale {
+  border: 0;
+}
+
+.menu-item,
+.nav-session-rail-action,
+.runtime-session-card,
+.runtime-session-select,
+.runtime-session-delete,
+.nav-locale-button,
+.nav-collapse,
+.workspace-header-actions .runtime-workspace-button,
+.runtime-workspace-button,
+.runtime-workspace-mobile-action,
+.runtime-workspace-mobile-title,
+.route-mobile-head .conversation-mobile-action,
+.runtime-composer-utility,
+.runtime-composer-upload,
+.runtime-composer-submit {
+  border: 0;
+  box-shadow: none;
+}
+
+.menu-item,
+.runtime-session-card,
+.runtime-session-delete,
+.management-route-tab {
+  border-radius: 6px;
+}
+
+.menu-item.active,
+.nav-session-rail .runtime-session-card.is-active,
+.runtime-session-card.is-active {
+  border-color: transparent;
+  background: #ececec;
+  color: #202124;
+  box-shadow: none;
+}
+
+.nav-session-rail-action,
+.nav-locale-button,
+.nav-collapse,
+.workspace-header-actions .runtime-workspace-button,
+.runtime-workspace-button,
+.runtime-workspace-mobile-action,
+.runtime-workspace-mobile-title,
+.route-mobile-head .conversation-mobile-action,
+.runtime-composer-utility,
+.runtime-composer-upload {
+  background: transparent;
+}
+
+.nav-session-rail-action:hover,
+.nav-locale-button:hover,
+.nav-collapse:hover,
+.runtime-session-card:hover,
+.workspace-header-actions .runtime-workspace-button:hover,
+.runtime-workspace-button:hover,
+.runtime-workspace-mobile-action:hover,
+.runtime-workspace-mobile-title:hover,
+.route-mobile-head .conversation-mobile-action:hover {
+  background: #eeeeee;
+}
+
+.runtime-workspace-head,
+.route-head.workbench-title-head.is-compact,
+.runtime-workspace-mobile-header,
+.route-view[data-route-family="management"] .route-mobile-head {
+  border-bottom: 1px solid #eeeeee;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+[data-runtime-view="terminal"] .runtime-workspace-screen {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-body {
+  gap: 0;
+}
+
+.management-route-nav,
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-nav {
+  border-right: 1px solid #eeeeee;
+  background: #ffffff;
+}
+
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  background: transparent;
+}
+
+.management-route-tab {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.management-route-tab:hover {
+  border-color: transparent;
+  background: #f1f3f4;
+  box-shadow: none;
+}
+
+.management-route-tab.is-active {
+  border-color: transparent;
+  background: #ececec;
+  color: var(--shell-accent-strong);
+  box-shadow: inset 2px 0 0 var(--shell-accent);
+}
+
+.management-route-tab-icon,
+.management-route-tab.is-active .management-route-tab-icon,
+.management-route-tab-shortcut {
+  background: transparent;
+}
+
+.management-route-content .route-card-head,
+.management-route-content .agent-route-pane-head,
+.management-route-content .control-task-drawer-head,
+.management-route-content .task-detail-head,
+.management-route-content .codex-accounts-section-head,
+.management-route-content .environment-toolbar-head {
+  border-bottom: 1px solid #eeeeee;
+}
+
+.management-route-content .route-field-row,
+.management-route-content .codex-accounts-runtime-detail,
+.management-route-content .environment-item,
+.management-route-content .codex-account-metric,
+.management-route-content .codex-accounts-summary-card,
+.management-route-content .agent-builder-managed-item {
+  border: 0;
+  border-radius: 0;
+  background: #f8f9fa;
+  box-shadow: none;
+}
+
+.management-route-content .route-data-table-wrap {
+  overflow: auto;
+}
+
+.management-route-content .route-data-table th,
+.management-route-content .route-data-table td {
+  border-bottom: 1px solid #eeeeee;
+}
+
+.management-route-content .page-filter-form,
+.management-route-content .task-filter-form,
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea {
+  background: #f8f9fa;
+}
+
+.management-route-content .route-empty,
+.management-route-content .route-empty-panel,
+.management-route-content .task-empty-state,
+.nav-session-rail .route-empty-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.runtime-composer-form {
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px -20px rgba(15, 23, 42, 0.45), 0 1px 8px rgba(60, 64, 67, 0.14);
+}
+
+.runtime-composer-input {
+  border: 0;
+  box-shadow: none;
+}
+
+.runtime-message.runtime-message-user .runtime-message-bubble,
+.conversation-message.is-user .msg-bubble {
+  border: 0;
+  box-shadow: none;
+}
+
+.assistant-message-shell .chat-md-pre,
+[data-runtime-view="conversation"] .chat-md-pre,
+[data-runtime-view="terminal"] .chat-md-pre,
+[data-runtime-view="terminal"] .terminal-final-rendered .chat-md-pre {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.workspace-details-panel,
+.modal-dialog {
+  border: 0;
+  border-radius: 0;
+  box-shadow: 0 18px 42px -34px rgba(15, 23, 42, 0.32);
+}
+
+@media (max-width: 760px) {
+  .primary-nav {
+    border: 0;
+    border-right: 1px solid #eeeeee;
+    border-radius: 0;
+    box-shadow: 18px 0 36px -30px rgba(15, 23, 42, 0.35);
+  }
+
+  .management-route-body {
+    gap: 14px;
+  }
+
+  .management-route-nav,
+  .management-route-content .route-card,
+  .management-route-content .route-surface,
+  .management-route-content .route-data-table-wrap,
+  .management-route-content .route-detail-panel,
+  .management-route-content .control-task-drawer-panel,
+  .management-route-content .task-summary-row,
+  .management-route-content .task-detail-placeholder,
+  .management-route-content .environment-toolbar,
+  .management-route-content .environment-module,
+  .management-route-content .environment-summary,
+  .management-route-content .environment-audits,
+  .management-route-content .codex-accounts-panel {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .management-route-nav {
+    border-right: 0;
+    background: #ffffff;
+  }
+
+  .runtime-composer-form {
+    border: 0;
+    border-radius: 24px;
+  }
+}
+
+/* Gemini-style flat workbench reset */
+body {
+  background: #ffffff;
+  background-image: none;
+}
+
+.app-shell,
+.workbench-main,
+.chat-pane,
+.runtime-workspace,
+.runtime-workspace-body,
+.runtime-workspace-panel,
+.runtime-workspace-screen,
+.route-view[data-route-family="management"].workbench-route-frame {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #ffffff;
+}
+
+.app-shell {
+  gap: 0;
+  padding: 0;
+}
+
+.workbench-main {
+  min-width: 0;
+  padding: 0;
+}
+
+.primary-nav {
+  background: #f7f7f7;
+  border: 0;
+  border-right: 1px solid #eeeeee;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.primary-nav .brand,
+.primary-nav .nav-locale {
+  border: 0;
+}
+
+.menu-item,
+.nav-session-rail-action,
+.runtime-session-card,
+.runtime-session-select,
+.runtime-session-delete,
+.nav-locale-button,
+.nav-collapse {
+  border: 0;
+  box-shadow: none;
+}
+
+.menu-item,
+.runtime-session-card,
+.runtime-session-delete {
+  border-radius: 6px;
+}
+
+.menu-item.active,
+.nav-session-rail .runtime-session-card.is-active,
+.runtime-session-card.is-active {
+  border-color: transparent;
+  background: #ececec;
+  color: #202124;
+  box-shadow: none;
+}
+
+.nav-session-rail-action,
+.nav-locale-button,
+.nav-collapse {
+  background: transparent;
+}
+
+.nav-session-rail-action:hover,
+.nav-locale-button:hover,
+.nav-collapse:hover,
+.runtime-session-card:hover {
+  background: #eeeeee;
+}
+
+.runtime-workspace-head,
+.route-head.workbench-title-head.is-compact,
+.runtime-workspace-mobile-header,
+.route-view[data-route-family="management"] .route-mobile-head {
+  border-bottom: 1px solid #eeeeee;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.workspace-header-actions .runtime-workspace-button,
+.runtime-workspace-button {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workspace-header-actions .runtime-workspace-button:hover,
+.runtime-workspace-button:hover {
+  background: #f1f3f4;
+}
+
+.management-route-body {
+  gap: 0;
+}
+
+.management-route-nav {
+  border: 0;
+  border-right: 1px solid #eeeeee;
+  border-radius: 0;
+  box-shadow: none;
+  background: #ffffff;
+}
+
+.management-route-tab {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.management-route-tab:hover {
+  border-color: transparent;
+  background: #f1f3f4;
+  box-shadow: none;
+}
+
+.management-route-tab.is-active {
+  border-color: transparent;
+  background: #ececec;
+  color: var(--shell-accent-strong);
+  box-shadow: inset 2px 0 0 var(--shell-accent);
+}
+
+.management-route-tab-icon,
+.management-route-tab.is-active .management-route-tab-icon {
+  background: transparent;
+}
+
+.management-route-tab-shortcut {
+  background: transparent;
+}
+
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.management-route-content .route-card-head,
+.management-route-content .agent-route-pane-head,
+.management-route-content .control-task-drawer-head,
+.management-route-content .task-detail-head,
+.management-route-content .codex-accounts-section-head,
+.management-route-content .environment-toolbar-head {
+  border-bottom: 1px solid #eeeeee;
+}
+
+.management-route-content .route-field-row,
+.management-route-content .codex-accounts-runtime-detail,
+.management-route-content .environment-item,
+.management-route-content .codex-account-metric,
+.management-route-content .codex-accounts-summary-card,
+.management-route-content .agent-builder-managed-item {
+  border: 0;
+  border-radius: 0;
+  background: #f8f9fa;
+  box-shadow: none;
+}
+
+.management-route-content .route-data-table-wrap {
+  overflow: auto;
+}
+
+.management-route-content .route-data-table th,
+.management-route-content .route-data-table td {
+  border-bottom: 1px solid #eeeeee;
+}
+
+.management-route-content .page-filter-form,
+.management-route-content .task-filter-form,
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea {
+  background: #f8f9fa;
+}
+
+.management-route-content .route-empty,
+.management-route-content .route-empty-panel,
+.management-route-content .task-empty-state,
+.nav-session-rail .route-empty-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.runtime-composer-form {
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px -20px rgba(15, 23, 42, 0.45), 0 1px 8px rgba(60, 64, 67, 0.14);
+}
+
+.runtime-composer-input {
+  border: 0;
+  box-shadow: none;
+}
+
+.runtime-message.runtime-message-user .runtime-message-bubble,
+.conversation-message.is-user .msg-bubble {
+  border: 0;
+  box-shadow: none;
+}
+
+.assistant-message-shell .chat-md-pre,
+[data-runtime-view="conversation"] .chat-md-pre,
+[data-runtime-view="terminal"] .chat-md-pre,
+[data-runtime-view="terminal"] .terminal-final-rendered .chat-md-pre {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.workspace-details-panel,
+.modal-dialog {
+  border: 0;
+  border-radius: 0;
+  box-shadow: 0 18px 42px -34px rgba(15, 23, 42, 0.32);
+}
+
+@media (max-width: 760px) {
+  .primary-nav {
+    border: 0;
+    border-right: 1px solid #eeeeee;
+    border-radius: 0;
+    box-shadow: 18px 0 36px -30px rgba(15, 23, 42, 0.35);
+  }
+
+  .management-route-body {
+    gap: 14px;
+  }
+
+  .management-route-nav,
+  .management-route-content .route-card,
+  .management-route-content .route-surface,
+  .management-route-content .route-data-table-wrap,
+  .management-route-content .route-detail-panel,
+  .management-route-content .control-task-drawer-panel,
+  .management-route-content .task-summary-row,
+  .management-route-content .task-detail-placeholder,
+  .management-route-content .environment-toolbar,
+  .management-route-content .environment-module,
+  .management-route-content .environment-summary,
+  .management-route-content .environment-audits,
+  .management-route-content .codex-accounts-panel {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .management-route-nav {
+    border-right: 0;
+    background: #ffffff;
+  }
+
+  .runtime-composer-form {
+    border-radius: 24px;
   }
 }
 
@@ -9386,6 +10385,7 @@ body::after {
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
+    min-height: 48px;
     padding: 12px 14px 10px;
     border-bottom: 1px solid rgba(202, 220, 235, 0.72);
     background: linear-gradient(180deg, rgba(247, 250, 255, 0.96) 0%, rgba(252, 253, 255, 0.94) 100%);
@@ -10113,7 +11113,7 @@ body {
 
   .runtime-workspace-mobile-action,
   .runtime-workspace-mobile-title {
-    min-height: 44px;
+    min-height: 48px;
     border-radius: 8px;
   }
 
@@ -10164,6 +11164,254 @@ body {
 
   .runtime-composer-form {
     border-radius: 8px;
+  }
+}
+
+.workbench-title-head {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.workbench-title-leading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.route-view[data-route-family="management"].workbench-route-frame {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(243, 247, 251, 0.98) 100%);
+  box-shadow: 0 34px 70px -54px rgba(15, 23, 42, 0.18);
+}
+
+.route-view[data-route-family="management"] .route-mobile-head {
+  padding: 12px 12px 0;
+}
+
+.route-mobile-title,
+.route-mobile-head-spacer {
+  display: none;
+}
+
+.route-view[data-route-family="management"] .route-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 14px 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.runtime-workspace-head.is-compact,
+.route-head.workbench-title-head.is-compact {
+  min-height: 42px;
+  padding: 6px 12px;
+}
+
+.route-head.workbench-title-head.is-compact {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.route-copy.workbench-title-copy.is-compact {
+  min-width: 0;
+  display: grid;
+  gap: 0;
+}
+
+.route-title-leading.workbench-title-leading {
+  justify-content: flex-start;
+}
+
+.route-title-marker {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--shell-accent);
+  box-shadow: 0 0 0 4px rgba(15, 159, 143, 0.1);
+}
+
+.route-view h3 {
+  min-width: 0;
+  margin: 0;
+  color: #101828;
+  font-family: "Sora", "IBM Plex Sans", "Noto Sans SC", sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.runtime-workspace-copy.is-compact h4,
+.route-view h3 {
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.route-view[data-route-family="management"] h3 {
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.route-head.workbench-title-head.is-compact #routeSubtitle {
+  display: none;
+}
+
+.workspace-header-actions .runtime-workspace-button {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.route-view p#routeSubtitle {
+  min-width: 0;
+  max-width: 760px;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.route-view[data-route-family="management"] p#routeSubtitle {
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 760px) {
+  .route-view[data-route-family="management"] .route-mobile-head {
+    min-height: 48px;
+    padding: 6px 10px;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  }
+
+  .route-view[data-route-family="management"] .route-mobile-head .nav-toggle {
+    grid-area: auto;
+  }
+
+  .route-view[data-route-family="management"] .route-head.workbench-title-head.is-compact {
+    display: none;
+  }
+
+  .route-mobile-title {
+    min-width: 0;
+    display: inline-flex;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .route-mobile-head-spacer {
+    width: 36px;
+    height: 36px;
+    display: block;
+  }
+
+  .route-mobile-title h3 {
+    font-size: 15px;
+    line-height: 1.15;
+  }
+
+  .runtime-workspace-mobile-header {
+    min-height: 48px;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  .runtime-workspace-mobile-action,
+  .runtime-workspace-mobile-title {
+    min-height: 36px;
+    padding: 0 10px;
+  }
+
+  .route-mobile-head .runtime-workspace-mobile-action,
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action {
+    width: 36px;
+    min-width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .route-mobile-head .conversation-mobile-action {
+    width: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .route-mobile-head .conversation-mobile-action,
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action.is-quiet,
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action.is-primary,
+  .route-mobile-head .conversation-mobile-action.is-quiet {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .route-mobile-head .conversation-mobile-action:hover,
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action:hover {
+    background: rgba(15, 23, 42, 0.06);
+  }
+
+  .route-mobile-head .conversation-mobile-action:active,
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action:active {
+    background: rgba(15, 23, 42, 0.1);
+  }
+
+  .route-mobile-head .runtime-workspace-mobile-action svg,
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action svg,
+  .route-mobile-head .conversation-mobile-action svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+  }
+
+  .runtime-workspace-mobile-title-text {
+    font-size: 14px;
+  }
+
+  .route-head.workbench-title-head.is-compact {
+    min-height: 42px;
+    padding: 6px 12px;
+  }
+
+  .route-title-marker {
+    width: 6px;
+    height: 6px;
+    box-shadow: 0 0 0 3px rgba(15, 159, 143, 0.1);
+  }
+
+  .route-view[data-route-family="management"] h3 {
+    font-size: 15px;
   }
 }
 /* Codex-style terminal markdown final override */
@@ -10325,4 +11573,348 @@ body {
   [data-runtime-view="terminal"] .chat-md-inline-code {
     padding: 0.06em 0.25em;
   }
+}
+
+/* Gemini-style flat workbench reset */
+body {
+  background: #ffffff;
+  background-image: none;
+}
+
+.app-shell,
+.workbench-main,
+.chat-pane,
+.runtime-workspace,
+.runtime-workspace-body,
+.runtime-workspace-panel,
+.runtime-workspace-screen,
+.route-view[data-route-family="management"].workbench-route-frame {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #ffffff;
+}
+
+.app-shell {
+  gap: 0;
+  padding: 0;
+}
+
+.workbench-main {
+  min-width: 0;
+  padding: 0;
+}
+
+.primary-nav {
+  background: #f7f7f7;
+  border: 0;
+  border-right: 1px solid #eeeeee;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.primary-nav .brand,
+.primary-nav .nav-locale {
+  border: 0;
+}
+
+.menu-item,
+.nav-session-rail-action,
+.runtime-session-card,
+.runtime-session-select,
+.runtime-session-delete,
+.nav-locale-button,
+.nav-collapse,
+.workspace-header-actions .runtime-workspace-button,
+.runtime-workspace-button,
+.runtime-workspace-mobile-action,
+.runtime-workspace-mobile-title,
+.route-mobile-head .conversation-mobile-action,
+.runtime-composer-utility,
+.runtime-composer-upload,
+.runtime-composer-submit {
+  border: 0;
+  box-shadow: none;
+}
+
+.menu-item,
+.runtime-session-card,
+.runtime-session-delete,
+.management-route-tab {
+  border-radius: 6px;
+}
+
+.menu-item.active,
+.nav-session-rail .runtime-session-card.is-active,
+.runtime-session-card.is-active {
+  border-color: transparent;
+  background: #ececec;
+  color: #202124;
+  box-shadow: none;
+}
+
+.nav-session-rail-action,
+.nav-locale-button,
+.nav-collapse,
+.workspace-header-actions .runtime-workspace-button,
+.runtime-workspace-button,
+.runtime-workspace-mobile-action,
+.runtime-workspace-mobile-title,
+.route-mobile-head .conversation-mobile-action,
+.runtime-composer-utility,
+.runtime-composer-upload {
+  background: transparent;
+}
+
+.nav-session-rail-action:hover,
+.nav-locale-button:hover,
+.nav-collapse:hover,
+.runtime-session-card:hover,
+.workspace-header-actions .runtime-workspace-button:hover,
+.runtime-workspace-button:hover,
+.runtime-workspace-mobile-action:hover,
+.runtime-workspace-mobile-title:hover,
+.route-mobile-head .conversation-mobile-action:hover {
+  background: #eeeeee;
+}
+
+.runtime-workspace-head,
+.route-head.workbench-title-head.is-compact,
+.runtime-workspace-mobile-header,
+.route-view[data-route-family="management"] .route-mobile-head {
+  border-bottom: 1px solid #eeeeee;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+[data-runtime-view="terminal"] .runtime-workspace-screen {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-body {
+  gap: 0;
+}
+
+.management-route-nav,
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-nav {
+  border-right: 1px solid #eeeeee;
+  background: #ffffff;
+}
+
+.management-route-content .route-card,
+.management-route-content .route-surface,
+.management-route-content .route-data-table-wrap,
+.management-route-content .route-detail-panel,
+.management-route-content .control-task-drawer-panel,
+.management-route-content .task-summary-row,
+.management-route-content .task-detail-placeholder,
+.management-route-content .environment-toolbar,
+.management-route-content .environment-module,
+.management-route-content .environment-summary,
+.management-route-content .environment-audits,
+.management-route-content .codex-accounts-panel {
+  background: transparent;
+}
+
+.management-route-tab {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.management-route-tab:hover {
+  border-color: transparent;
+  background: #f1f3f4;
+  box-shadow: none;
+}
+
+.management-route-tab.is-active {
+  border-color: transparent;
+  background: #ececec;
+  color: var(--shell-accent-strong);
+  box-shadow: inset 2px 0 0 var(--shell-accent);
+}
+
+.management-route-tab-icon,
+.management-route-tab.is-active .management-route-tab-icon,
+.management-route-tab-shortcut {
+  background: transparent;
+}
+
+.management-route-content .route-card-head,
+.management-route-content .agent-route-pane-head,
+.management-route-content .control-task-drawer-head,
+.management-route-content .task-detail-head,
+.management-route-content .codex-accounts-section-head,
+.management-route-content .environment-toolbar-head {
+  border-bottom: 1px solid #eeeeee;
+}
+
+.management-route-content .route-field-row,
+.management-route-content .codex-accounts-runtime-detail,
+.management-route-content .environment-item,
+.management-route-content .codex-account-metric,
+.management-route-content .codex-accounts-summary-card,
+.management-route-content .agent-builder-managed-item {
+  border: 0;
+  border-radius: 0;
+  background: #f8f9fa;
+  box-shadow: none;
+}
+
+.management-route-content .route-data-table-wrap {
+  overflow: auto;
+}
+
+.management-route-content .route-data-table th,
+.management-route-content .route-data-table td {
+  border-bottom: 1px solid #eeeeee;
+}
+
+.management-route-content .page-filter-form,
+.management-route-content .task-filter-form,
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.management-route-content input,
+.management-route-content select,
+.management-route-content textarea {
+  background: #f8f9fa;
+}
+
+.management-route-content .route-empty,
+.management-route-content .route-empty-panel,
+.management-route-content .task-empty-state,
+.nav-session-rail .route-empty-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.runtime-composer-form {
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px -20px rgba(15, 23, 42, 0.45), 0 1px 8px rgba(60, 64, 67, 0.14);
+}
+
+.runtime-composer-input {
+  border: 0;
+  box-shadow: none;
+}
+
+.runtime-message.runtime-message-user .runtime-message-bubble,
+.conversation-message.is-user .msg-bubble {
+  border: 0;
+  box-shadow: none;
+}
+
+.assistant-message-shell .chat-md-pre,
+[data-runtime-view="conversation"] .chat-md-pre,
+[data-runtime-view="terminal"] .chat-md-pre,
+[data-runtime-view="terminal"] .terminal-final-rendered .chat-md-pre {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.workspace-details-panel,
+.modal-dialog {
+  border: 0;
+  border-radius: 0;
+  box-shadow: 0 18px 42px -34px rgba(15, 23, 42, 0.32);
+}
+
+@media (max-width: 760px) {
+  .primary-nav {
+    border: 0;
+    border-right: 1px solid #eeeeee;
+    border-radius: 0;
+    box-shadow: 18px 0 36px -30px rgba(15, 23, 42, 0.35);
+  }
+
+  .management-route-body {
+    gap: 14px;
+  }
+
+  .management-route-nav,
+  .management-route-content .route-card,
+  .management-route-content .route-surface,
+  .management-route-content .route-data-table-wrap,
+  .management-route-content .route-detail-panel,
+  .management-route-content .control-task-drawer-panel,
+  .management-route-content .task-summary-row,
+  .management-route-content .task-detail-placeholder,
+  .management-route-content .environment-toolbar,
+  .management-route-content .environment-module,
+  .management-route-content .environment-summary,
+  .management-route-content .environment-audits,
+  .management-route-content .codex-accounts-panel {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .management-route-nav {
+    border-right: 0;
+    background: #ffffff;
+  }
+
+  .runtime-composer-form {
+    border: 0;
+    border-radius: 24px;
+  }
+}
+
+.conversation-empty-state::before {
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at center, rgba(191, 219, 254, 0.18) 0%, rgba(191, 219, 254, 0) 58%),
+    linear-gradient(rgba(226, 232, 240, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(226, 232, 240, 0.26) 1px, transparent 1px);
+  background-size: auto, 36px 36px, 36px 36px;
+  box-shadow: none;
+}
+
+.conversation-empty-state::after {
+  display: none;
+}
+
+.route-view[data-route-family="management"].workbench-route-frame,
+.route-view[data-route-family="management"] .route-head,
+.route-view[data-route-family="management"] .route-mobile-head,
+.route-view[data-route-family="management"] .route-body,
+.management-route-body,
+.management-route-nav,
+.management-route-content,
+.management-route-content > * {
+  animation: none;
+  transition: none;
+  transform: none;
 }

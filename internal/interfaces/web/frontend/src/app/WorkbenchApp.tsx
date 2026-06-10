@@ -13,6 +13,16 @@ import { ReactManagedRouteBody } from "../features/shell/components/ReactManaged
 import { RuntimeRouteHost } from "../features/shell/components/RuntimeRouteHost";
 import { createMobileViewportSyncController } from "../shared/viewport/mobileViewportSync";
 
+function RouteMobileMenuIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true" data-route-mobile-icon="menu">
+      <path d="M4.5 6.25h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M4.5 10h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M4.5 13.75h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function WorkbenchApp() {
   /* Source contract markers:
      const [navOpen, setNavOpen] = useState(false);
@@ -207,7 +217,7 @@ function RoutePageFrame({
 
   return (
     <section
-      className="route-view"
+      className={isSettingsRoute ? "route-view workbench-route-frame" : "route-view"}
       data-route={route}
       data-route-family={isSettingsRoute ? "management" : undefined}
     >
@@ -219,13 +229,25 @@ function RoutePageFrame({
             aria-expanded={mobileNavOpen}
             onClick={onToggleMobileNav}
           >
-            {shellCopy.chatMenu}
+            <RouteMobileMenuIcon />
+            <span className="route-mobile-action-label sr-only">{shellCopy.chatMenu}</span>
           </button>
+          <div className="route-mobile-title workbench-title-leading">
+            <span className="route-title-marker" aria-hidden="true"></span>
+            <h3>{routeHeadingCopy.title}</h3>
+          </div>
+          <span className="route-mobile-head-spacer" aria-hidden="true"></span>
         </header>
       ) : null}
-      <header className="route-head">
-        <div className="route-copy">
-          <h3>{routeHeadingCopy.title}</h3>
+      <header
+        className="route-head workbench-title-head is-compact"
+        data-workbench-title-head="route"
+      >
+        <div className="route-copy workbench-title-copy is-compact">
+          <div className="route-title-leading workbench-title-leading">
+            <span className="route-title-marker" aria-hidden="true"></span>
+            <h3>{routeHeadingCopy.title}</h3>
+          </div>
           <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
         </div>
       </header>

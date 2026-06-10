@@ -29,6 +29,29 @@ function RuntimeSessionPaneHideIcon() {
   );
 }
 
+function RuntimeMobileMenuIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true" data-runtime-mobile-icon="menu">
+      <path d="M4.5 6.25h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M4.5 10h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M4.5 13.75h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function RuntimeMobilePlusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true" data-runtime-mobile-icon="plus">
+      <path d="M10 4.75v10.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+      <path d="M4.75 10h10.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function RuntimeMobileActionLabel({ label }: { label: string }) {
+  return <span className="runtime-workspace-mobile-action-label sr-only">{label}</span>;
+}
+
 type RuntimeWorkspaceMobileTitleTone = "ready" | "busy" | "failed" | "interrupted" | "exited";
 type RuntimeWorkspaceMobileActionKey = "nav" | "title" | "session" | "primary";
 const MOBILE_ACTION_CLICK_SUPPRESS_MS = 700;
@@ -241,7 +264,8 @@ export function RuntimeWorkspaceShell({
           {...mobileNavPressProps}
           onClick={() => triggerMobileActionFromClick("nav", onMobileNav)}
         >
-          {mobileNavButtonLabel}
+          <RuntimeMobileMenuIcon />
+          <RuntimeMobileActionLabel label={mobileNavButtonLabel} />
         </button>
       ) : null}
       {mobileTitleButtonLabel ? (
@@ -294,7 +318,8 @@ export function RuntimeWorkspaceShell({
               {...mobileSessionPressProps}
               onClick={() => triggerMobileActionFromClick("session", onMobileSession)}
             >
-              {mobileSessionButtonLabel}
+              <RuntimeMobileMenuIcon />
+              <RuntimeMobileActionLabel label={mobileSessionButtonLabel} />
             </button>
           ) : null}
           {mobilePrimaryButtonLabel ? (
@@ -307,7 +332,8 @@ export function RuntimeWorkspaceShell({
               {...mobilePrimaryPressProps}
               onClick={() => triggerMobileActionFromClick("primary", onMobilePrimary)}
             >
-              {mobilePrimaryButtonLabel}
+              <RuntimeMobilePlusIcon />
+              <RuntimeMobileActionLabel label={mobilePrimaryButtonLabel} />
             </button>
           ) : null}
         </div>

@@ -38,6 +38,42 @@ describe("shell layout stylesheet", () => {
     );
   });
 
+  it("applies the Gemini-style flat workbench reset after legacy rounded surfaces", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const flatReset = stylesheet.slice(stylesheet.lastIndexOf("/* Gemini-style flat workbench reset */"));
+
+    expect(flatReset).toContain("/* Gemini-style flat workbench reset */");
+    expect(stylesheet.lastIndexOf("/* Gemini-style flat workbench reset */")).toBeGreaterThan(
+      stylesheet.lastIndexOf("/* Codex-style terminal markdown final override */"),
+    );
+    expect(flatReset).toMatch(
+      /\.app-shell,\s*\.workbench-main,\s*\.chat-pane,\s*\.runtime-workspace,\s*\.runtime-workspace-body,\s*\.runtime-workspace-panel,\s*\.runtime-workspace-screen,\s*\.route-view\[data-route-family="management"\]\.workbench-route-frame\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(flatReset).toMatch(
+      /\.primary-nav\s*\{[\s\S]*?background:\s*#f7f7f7;[\s\S]*?border:\s*0;[\s\S]*?border-right:\s*1px solid #eeeeee;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(flatReset).toMatch(
+      /\.management-route-nav,\s*\.management-route-content \.route-card,\s*\.management-route-content \.route-surface,\s*\.management-route-content \.route-data-table-wrap,\s*\.management-route-content \.route-detail-panel,\s*\.management-route-content \.control-task-drawer-panel,\s*\.management-route-content \.task-summary-row,\s*\.management-route-content \.task-detail-placeholder,\s*\.management-route-content \.environment-toolbar,\s*\.management-route-content \.environment-module,\s*\.management-route-content \.environment-summary,\s*\.management-route-content \.environment-audits,\s*\.management-route-content \.codex-accounts-panel\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(flatReset).toMatch(
+      /\.runtime-composer-form\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*999px;/,
+    );
+    expect(flatReset).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.management-route-nav,\s*\.management-route-content \.route-card,[\s\S]*?\.management-route-content \.codex-accounts-panel\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
+    );
+  });
+
+  it("keeps the Settings route shell static without page-enter motion", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const flatReset = stylesheet.slice(stylesheet.lastIndexOf("/* Gemini-style flat workbench reset */"));
+
+    expect(flatReset).toMatch(
+      /\.route-view\[data-route-family="management"\]\.workbench-route-frame,\s*\.route-view\[data-route-family="management"\] \.route-head,\s*\.route-view\[data-route-family="management"\] \.route-mobile-head,\s*\.route-view\[data-route-family="management"\] \.route-body,\s*\.management-route-body,\s*\.management-route-nav,\s*\.management-route-content,\s*\.management-route-content > \*\s*\{[\s\S]*?animation:\s*none;[\s\S]*?transition:\s*none;[\s\S]*?transform:\s*none;/,
+    );
+  });
+
   it("defines shared selectors for the nav chrome, details overlay, and composer toolbar", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
@@ -90,14 +126,11 @@ describe("shell layout stylesheet", () => {
   it("moves the mobile runtime composer with bottom offset instead of a transform layer", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
-    const mobileBreakpoint = stylesheet.slice(stylesheet.lastIndexOf("@media (max-width: 760px)"));
-    const runtimeComposerBlocks = Array.from(
-      mobileBreakpoint.matchAll(/\.runtime-composer-shell\s*\{([^}]*)\}/g),
-      (match) => match[1],
-    );
 
-    expect(runtimeComposerBlocks.some((block) => block.includes("bottom: var(--keyboard-offset, 0px);"))).toBe(true);
-    expect(runtimeComposerBlocks.join("\n")).not.toContain("transform:");
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?bottom:\s*var\(--keyboard-offset, 0px\);/,
+    );
+    expect(stylesheet).not.toMatch(/\.runtime-composer-shell\s*\{[^}]*transform:/);
   });
 
   it("keeps conversation bubbles compact instead of heavy card-like gradients", () => {
@@ -398,7 +431,7 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).not.toContain("[data-runtime-view=\"conversation\"] .runtime-workspace-actions .runtime-workspace-button {");
     expect(stylesheet).toMatch(
-      /\.workspace-header-actions \.runtime-workspace-button\s*\{[\s\S]*?min-height:\s*32px;[\s\S]*?padding:\s*0 10px;[\s\S]*?font-size:\s*11px;/,
+      /\.workspace-header-actions \.runtime-workspace-button\s*\{[\s\S]*?min-height:\s*24px;[\s\S]*?padding:\s*0 8px;[\s\S]*?font-size:\s*10px;/,
     );
   });
 
@@ -545,7 +578,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".runtime-workspace-mobile-header {");
     expect(stylesheet).toContain(".runtime-composer-tools {");
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) auto;[\s\S]*?padding:\s*12px 14px 10px;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) auto;[\s\S]*?min-height:\s*48px;[\s\S]*?padding:\s*6px 10px;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-panel\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?bottom:\s*calc\(env\(safe-area-inset-bottom\) \+ var\(--keyboard-offset, 0px\) \+ 118px\);[\s\S]*?max-height:\s*min\(52vh, calc\(100dvh - 176px\)\);/,
@@ -791,6 +824,7 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).not.toContain('[data-runtime-header-kind="terminal"]');
+    expect(stylesheet).toContain(".workbench-title-head {");
     expect(stylesheet).toMatch(/\.runtime-workspace-row\.is-compact\s*\{[\s\S]*?flex-wrap:\s*nowrap;/);
     expect(stylesheet).toMatch(/\.runtime-workspace-head\.is-compact\s*\{[\s\S]*?display:\s*block;/);
     expect(stylesheet).toContain(".runtime-workspace-copy.is-compact {");
@@ -799,6 +833,51 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("align-items: center;");
     expect(stylesheet).toContain("font-size: 18px;");
     expect(stylesheet).toContain("text-overflow: ellipsis;");
+  });
+
+  it("aligns Settings route headings with the Chat and Terminal workspace header chrome", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".route-head.workbench-title-head.is-compact {");
+    expect(stylesheet).toContain(".route-title-leading.workbench-title-leading {");
+    expect(stylesheet).toContain(".route-title-marker {");
+    expect(stylesheet).toMatch(
+      /\.route-view\[data-route-family="management"\]\.workbench-route-frame\s*\{[\s\S]*?height:\s*100%;[\s\S]*?display:\s*flex;[\s\S]*?flex-direction:\s*column;[\s\S]*?padding:\s*0;[\s\S]*?border:\s*1px solid rgba\(203, 213, 225, 0\.88\);[\s\S]*?border-radius:\s*14px;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.route-view\[data-route-family="management"\] \.route-body\s*\{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;[\s\S]*?padding:\s*14px 12px;[\s\S]*?overflow-y:\s*auto;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.runtime-workspace-head\.is-compact,\s*\.route-head\.workbench-title-head\.is-compact\s*\{[\s\S]*?min-height:\s*42px;[\s\S]*?padding:\s*6px 12px;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.route-view\[data-route-family="management"\] \.route-mobile-head\s*\{[\s\S]*?grid-template-columns:\s*36px minmax\(0, 1fr\) 36px;[\s\S]*?min-height:\s*48px;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.route-view\[data-route-family="management"\] \.route-mobile-head \.nav-toggle\s*\{[\s\S]*?grid-area:\s*auto;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.route-mobile-head \.conversation-mobile-action,\s*\.runtime-workspace-mobile-header \.runtime-workspace-mobile-action\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header \.runtime-workspace-mobile-action\.is-quiet,\s*\.runtime-workspace-mobile-header \.runtime-workspace-mobile-action\.is-primary,\s*\.route-mobile-head \.conversation-mobile-action\.is-quiet\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.route-view\[data-route-family="management"\] \.route-head\.workbench-title-head\.is-compact\s*\{[\s\S]*?display:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.route-head\.workbench-title-head\.is-compact\s*\{[\s\S]*?border-bottom:\s*1px solid rgba\(226, 232, 240, 0\.9\);[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.98\);/,
+    );
+    expect(stylesheet).toMatch(
+      /\.runtime-workspace-copy\.is-compact h4,\s*\.route-view h3\s*\{[\s\S]*?font-size:\s*15px;[\s\S]*?line-height:\s*1\.15;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.route-head\.workbench-title-head\.is-compact #routeSubtitle\s*\{[\s\S]*?display:\s*none;/,
+    );
+    const routeTitleBlocks = Array.from(stylesheet.matchAll(/\.route-view h3\s*\{([\s\S]*?)\n\}/g));
+    const routeTitleBlock = routeTitleBlocks[routeTitleBlocks.length - 1]?.[1] || "";
+    expect(routeTitleBlock).not.toContain("letter-spacing: -0.04em;");
   });
 
   it("renders shared details panels as dense summary grids instead of loose stacked metadata", () => {
