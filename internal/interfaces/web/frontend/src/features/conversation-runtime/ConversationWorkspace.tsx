@@ -204,6 +204,8 @@ function useConversationWorkspaceController(
     : `${runtime.sessionItems.length} sessions`;
   const activeSessionBadgeLabel = language === "zh" ? "当前" : "Current";
   const idleSessionBadgeLabel = language === "zh" ? "会话" : "Session";
+  const viewSessionDetailsLabel = language === "zh" ? "详情" : "Details";
+  const viewSessionDetailsAriaLabel = language === "zh" ? "查看会话详情" : "View session details";
   const deleteSessionLabel = language === "zh" ? "删除" : "Delete";
   const deleteSessionAriaLabel = language === "zh" ? "删除会话" : "Delete session";
   const groupedSessionItems = useMemo(
@@ -237,6 +239,19 @@ function useConversationWorkspaceController(
       tone: "ready" as const,
       label: conversationSessionStatusLabel("ready", language),
     };
+  const handleFocusSession = useCallback((sessionID: string) => {
+    runtime.focusSession(sessionID);
+    workbench.closeMobileSessionPane();
+  }, [runtime, workbench]);
+  const handleViewSessionDetails = useCallback((sessionID: string) => {
+    runtime.focusSession(sessionID);
+    workbench.closeMobileSessionPane();
+    setSessionDetailsOpen(true);
+  }, [runtime, workbench]);
+  const handleRemoveSession = useCallback((sessionID: string) => {
+    workbench.closeMobileSessionPane();
+    return runtime.removeSession(sessionID);
+  }, [runtime, workbench]);
   const sessionListGroups = useMemo(
     () => groupedSessionItems.map((group) => ({
       ...group,
@@ -252,6 +267,9 @@ function useConversationWorkspaceController(
         activeLabel: activeSessionBadgeLabel,
         idleLabel: idleSessionBadgeLabel,
         onSelect: () => handleFocusSession(item.id),
+        onViewDetails: () => handleViewSessionDetails(item.id),
+        viewDetailsLabel: viewSessionDetailsLabel,
+        viewDetailsAriaLabel: viewSessionDetailsAriaLabel,
         onDelete: () => void handleRemoveSession(item.id),
         deleteLabel: deleteSessionLabel,
         deleteAriaLabel: deleteSessionAriaLabel,
@@ -269,9 +287,14 @@ function useConversationWorkspaceController(
       deleteSessionAriaLabel,
       deleteSessionLabel,
       groupedSessionItems,
+      handleFocusSession,
+      handleRemoveSession,
+      handleViewSessionDetails,
       idleSessionBadgeLabel,
       language,
       sessionStatusByID,
+      viewSessionDetailsAriaLabel,
+      viewSessionDetailsLabel,
     ],
   );
   const routeLabel = language === "zh" ? "对话" : "Chat";
@@ -290,16 +313,6 @@ function useConversationWorkspaceController(
   const handleCreateSession = useCallback(() => {
     runtime.createSession();
     workbench.closeMobileSessionPane();
-  }, [runtime, workbench]);
-
-  const handleFocusSession = useCallback((sessionID: string) => {
-    runtime.focusSession(sessionID);
-    workbench.closeMobileSessionPane();
-  }, [runtime, workbench]);
-
-  const handleRemoveSession = useCallback((sessionID: string) => {
-    workbench.closeMobileSessionPane();
-    return runtime.removeSession(sessionID);
   }, [runtime, workbench]);
 
   const sessionDetailsBody = null;

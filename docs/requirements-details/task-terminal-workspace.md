@@ -208,7 +208,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - Terminal `Process` 的步骤详情按内容语义分流：`terminal / diff / code` 等输出类块继续保留预格式化等宽阅读；`text / message / reasoning / plan / log` 等说明类块沿用运行页 markdown 富文本容器，并在展示前移除零宽断行字符、归一化“每字一行”的病态段落，保证历史详情、轮询恢复与新触发步骤都维持同一可读性。
 - Terminal 发送按钮在首次点击时必须立即切到 pending 反馈；若当前尚未存在 active session，前端先创建 Terminal 会话再发送输入，但按钮和可访问名称需在会话创建阶段就进入 `Sending...` 禁用态，避免用户误判首击无效并重复提交。
 - Terminal 会话栏、工作区、输入区、跳转控件与 Process 区统一采用扁平白底、浅灰辅助层、必要分割线和有限强调色，确保与 Chat / Agent 的整体视觉语言一致；输入区外壳不得再使用比共享 Composer 更深的 Terminal 专属底色、更贴底的专属 padding 或外置状态提示行。
-- Terminal 桌面端维持旧版 master-detail 布局关系：左侧会话列表复用共享列表项与共享运行页会话列宽，承载标题、处理中 loading 和尾侧更多按钮；元信息不再展示 `Last output / 最近输出` 这类固定前缀，也不展示完整 `terminal_session_id`。右侧工作区头部直接复用共享标题、信号式状态按钮与 `Details` 工具栏，运行状态不在列表项内额外渲染独立徽标；Terminal route body 顶部不再额外挂载页面级说明 hero。
+- Terminal 桌面端维持旧版 master-detail 布局关系：左侧会话列表复用共享列表项与共享运行页会话列宽，承载标题、处理中 loading 和尾侧详情与删除按钮；元信息不再展示 `Last output / 最近输出` 这类固定前缀，也不展示完整 `terminal_session_id`。右侧工作区头部直接复用共享标题、信号式状态按钮与 `Details` 工具栏，运行状态不在列表项内额外渲染独立徽标；Terminal route body 顶部不再额外挂载页面级说明 hero。
 - Terminal React 版继续保留 `terminal-*` DOM class 与数据钩子，但会话栏、工作区容器和窄屏顶部 `Menu / 标题 / New` 操作行需与 Chat / Agent Runtime 复用同一套工作台表面语义；工作区头部不得通过 Terminal 专属 selector 派生不同标题或 `Details` 按钮，避免同属运行页却出现独立壳层节奏。
 - Terminal 服务端会话列表加载完成且为空时，默认在共享会话列表中展示一条未持久化的 `New` 占位会话；该占位会话保持选中态并进入工作区，首次发送输入或添加附件时再创建真实 Terminal 会话并替换占位项。
 - `1100px` 及以下的窄屏 Terminal 页面中，会话抽屉入口统一由壳层头部 `Sessions` 按钮承接；Terminal 工作区头部不再重复渲染第二枚 `Sessions` 按钮，避免顶部操作区出现重复入口。

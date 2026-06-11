@@ -8,17 +8,28 @@ import { RuntimeWorkspaceHeader } from "./RuntimeWorkspaceHeader";
 import { RuntimeWorkspaceScreen } from "./RuntimeWorkspaceScreen";
 import { RuntimeWorkspaceShell } from "./RuntimeWorkspaceShell";
 
-function RuntimeSessionMoreIcon() {
+function RuntimeSessionDetailsIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="currentColor" focusable="false" aria-hidden="true">
-      <circle cx="5" cy="10" r="1.35" />
-      <circle cx="10" cy="10" r="1.35" />
-      <circle cx="15" cy="10" r="1.35" />
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.1" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M10 9.2v4.35" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
+      <circle cx="10" cy="6.35" r="0.9" fill="currentColor" />
     </svg>
   );
 }
 
-function swallowSessionDeleteGesture(
+function RuntimeSessionDeleteIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <path d="M6.2 7.6h7.6l-.55 7.3a1.6 1.6 0 0 1-1.6 1.48h-3.3a1.6 1.6 0 0 1-1.6-1.48L6.2 7.6Z" stroke="currentColor" strokeWidth="1.55" strokeLinejoin="round" />
+      <path d="M5 7.6h10" stroke="currentColor" strokeLinecap="round" strokeWidth="1.55" />
+      <path d="M8.2 5.1h3.6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.55" />
+      <path d="M8.85 10.1v3.45M11.15 10.1v3.45" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+    </svg>
+  );
+}
+
+function swallowSessionActionGesture(
   event: MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>,
 ) {
   event.preventDefault();
@@ -49,6 +60,11 @@ export type RuntimeWorkspaceSessionItem = {
   activeLabel: string;
   idleLabel: string;
   onSelect: () => void;
+  onViewDetails?: () => void;
+  viewDetailsLabel?: string;
+  viewDetailsAriaLabel?: string;
+  viewDetailsClassName?: string;
+  viewDetailsProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "aria-label" | "onClick">;
   onDelete?: () => void;
   deleteLabel?: string;
   deleteAriaLabel?: string;
@@ -169,25 +185,48 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
                 </span>
               </span>
             </button>
-            {item.onDelete ? (
-              <button
-                className={item.deleteClassName || "runtime-session-delete"}
-                type="button"
-                aria-label={item.deleteAriaLabel || item.deleteLabel}
-                disabled={item.deleting}
-                onMouseDown={swallowSessionDeleteGesture}
-                onTouchStart={swallowSessionDeleteGesture}
-                onClick={(event) => {
-                  swallowSessionDeleteGesture(event);
-                  item.onDelete?.();
-                }}
-                {...item.deleteProps}
-              >
-                <span className="runtime-session-delete-icon" aria-hidden="true">
-                  <RuntimeSessionMoreIcon />
-                </span>
-                <span className="sr-only">{item.deleteLabel}</span>
-              </button>
+            {item.onViewDetails || item.onDelete ? (
+              <span className="runtime-session-actions">
+                {item.onViewDetails ? (
+                  <button
+                    className={item.viewDetailsClassName || "runtime-session-action runtime-session-details"}
+                    type="button"
+                    aria-label={item.viewDetailsAriaLabel || item.viewDetailsLabel}
+                    onMouseDown={swallowSessionActionGesture}
+                    onTouchStart={swallowSessionActionGesture}
+                    onClick={(event) => {
+                      swallowSessionActionGesture(event);
+                      item.onViewDetails?.();
+                    }}
+                    {...item.viewDetailsProps}
+                  >
+                    <span className="runtime-session-action-icon" aria-hidden="true">
+                      <RuntimeSessionDetailsIcon />
+                    </span>
+                    <span className="sr-only">{item.viewDetailsLabel}</span>
+                  </button>
+                ) : null}
+                {item.onDelete ? (
+                  <button
+                    className={item.deleteClassName || "runtime-session-action runtime-session-delete"}
+                    type="button"
+                    aria-label={item.deleteAriaLabel || item.deleteLabel}
+                    disabled={item.deleting}
+                    onMouseDown={swallowSessionActionGesture}
+                    onTouchStart={swallowSessionActionGesture}
+                    onClick={(event) => {
+                      swallowSessionActionGesture(event);
+                      item.onDelete?.();
+                    }}
+                    {...item.deleteProps}
+                  >
+                    <span className="runtime-session-action-icon runtime-session-delete-icon" aria-hidden="true">
+                      <RuntimeSessionDeleteIcon />
+                    </span>
+                    <span className="sr-only">{item.deleteLabel}</span>
+                  </button>
+                ) : null}
+              </span>
             ) : null}
           </div>
         );

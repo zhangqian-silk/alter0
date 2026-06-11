@@ -622,6 +622,7 @@ body {
 .nav-session-rail-action,
 .runtime-session-card,
 .runtime-session-select,
+.runtime-session-action,
 .runtime-session-delete,
 .nav-locale-button,
 .nav-collapse,
@@ -639,6 +640,7 @@ body {
 
 .menu-item,
 .runtime-session-card,
+.runtime-session-action,
 .runtime-session-delete,
 .management-route-tab {
   border-radius: 6px;
@@ -1013,6 +1015,7 @@ body {
 .nav-session-rail-action,
 .runtime-session-card,
 .runtime-session-select,
+.runtime-session-action,
 .runtime-session-delete,
 .nav-locale-button,
 .nav-collapse,
@@ -1030,6 +1033,7 @@ body {
 
 .menu-item,
 .runtime-session-card,
+.runtime-session-action,
 .runtime-session-delete,
 .management-route-tab {
   border-radius: 6px;
@@ -1329,6 +1333,7 @@ body {
 .nav-session-rail-action,
 .runtime-session-card,
 .runtime-session-select,
+.runtime-session-action,
 .runtime-session-delete,
 .nav-locale-button,
 .nav-collapse {
@@ -1338,6 +1343,7 @@ body {
 
 .menu-item,
 .runtime-session-card,
+.runtime-session-action,
 .runtime-session-delete {
   border-radius: 6px;
 }
@@ -3661,7 +3667,7 @@ body::after {
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(0, 1fr) 60px;
   gap: 4px;
   padding: 0 4px 0 10px;
   border-radius: 9px;
@@ -3753,7 +3759,12 @@ body::after {
   font-size: 10px;
 }
 
-.nav-session-rail .runtime-session-delete {
+.nav-session-rail .runtime-session-actions {
+  min-width: 60px;
+  gap: 2px;
+}
+
+.nav-session-rail .runtime-session-action {
   min-width: 28px;
   min-height: 28px;
   border-radius: 8px;
@@ -3763,13 +3774,13 @@ body::after {
   opacity: 0;
 }
 
-.nav-session-rail .runtime-session-card:hover .runtime-session-delete,
-.nav-session-rail .runtime-session-card:focus-within .runtime-session-delete {
+.nav-session-rail .runtime-session-card:hover .runtime-session-action,
+.nav-session-rail .runtime-session-card:focus-within .runtime-session-action {
   opacity: 1;
 }
 
-.nav-session-rail .runtime-session-delete-icon,
-.nav-session-rail .runtime-session-delete-icon svg {
+.nav-session-rail .runtime-session-action-icon,
+.nav-session-rail .runtime-session-action-icon svg {
   width: 16px;
   height: 16px;
 }
@@ -7572,7 +7583,7 @@ body::after {
 }
 
 .runtime-session-select,
-.runtime-session-delete {
+.runtime-session-action {
   border: 0;
   background: transparent;
   color: inherit;
@@ -7774,9 +7785,17 @@ body::after {
   font-family: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", monospace;
 }
 
-.runtime-session-delete {
+.runtime-session-actions {
   align-self: center;
   justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 88px;
+}
+
+.runtime-session-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -7791,7 +7810,7 @@ body::after {
   transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
-.runtime-session-delete-icon {
+.runtime-session-action-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -7799,16 +7818,23 @@ body::after {
   height: 18px;
 }
 
-.runtime-session-delete-icon svg {
+.runtime-session-action-icon svg {
   width: 18px;
   height: 18px;
 }
 
-.runtime-session-delete:hover {
+.runtime-session-details:hover {
   color: #2563eb;
   border-color: rgba(191, 219, 254, 0.96);
   background: rgba(239, 246, 255, 0.98);
   box-shadow: 0 14px 28px -24px rgba(37, 99, 235, 0.22);
+}
+
+.runtime-session-delete:hover {
+  color: #dc2626;
+  border-color: rgba(254, 202, 202, 0.96);
+  background: rgba(254, 242, 242, 0.98);
+  box-shadow: 0 14px 28px -24px rgba(220, 38, 38, 0.22);
 }
 
 .runtime-session-card.is-active {
@@ -7828,7 +7854,7 @@ body::after {
 
 .runtime-session-card.is-active .runtime-session-meta,
 .runtime-session-card.is-active .runtime-session-hash,
-.runtime-session-card.is-active .runtime-session-delete {
+.runtime-session-card.is-active .runtime-session-action {
   color: rgba(51, 65, 85, 0.92);
 }
 
@@ -7851,7 +7877,7 @@ body::after {
 }
 
 .runtime-session-select:focus-visible,
-.runtime-session-delete:focus-visible,
+.runtime-session-action:focus-visible,
 .runtime-workspace-session-pane-action:focus-visible {
   outline: 2px solid rgba(96, 165, 250, 0.56);
   outline-offset: 2px;
@@ -9832,7 +9858,11 @@ body::after {
   padding: 18px 0;
 }
 
-.runtime-session-delete {
+.runtime-session-actions {
+  min-width: 88px;
+}
+
+.runtime-session-action {
   align-self: center;
   justify-self: center;
   min-width: 42px;
@@ -10330,7 +10360,11 @@ body::after {
     color: #1d4ed8;
   }
 
-  .primary-nav .nav-session-rail .runtime-session-delete {
+  .primary-nav .nav-session-rail .runtime-session-actions {
+    min-width: 60px;
+  }
+
+  .primary-nav .nav-session-rail .runtime-session-action {
     width: 28px;
     height: 28px;
     min-width: 28px;
@@ -11622,6 +11656,7 @@ body {
 .nav-session-rail-action,
 .runtime-session-card,
 .runtime-session-select,
+.runtime-session-action,
 .runtime-session-delete,
 .nav-locale-button,
 .nav-collapse,
@@ -11639,6 +11674,7 @@ body {
 
 .menu-item,
 .runtime-session-card,
+.runtime-session-action,
 .runtime-session-delete,
 .management-route-tab {
   border-radius: 6px;
