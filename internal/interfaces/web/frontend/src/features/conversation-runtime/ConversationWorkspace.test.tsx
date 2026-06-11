@@ -278,6 +278,23 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
   });
 
+  it("opens Chat session details from the session row without deleting the session", () => {
+    const closeMobileSessionPane = vi.fn();
+    renderWorkspace({ isMobileViewport: false, closeMobileSessionPane });
+
+    const sessionPane = screen.getByTestId("conversation-session-pane");
+    closeMobileSessionPane.mockClear();
+    fireEvent.click(within(sessionPane).getByRole("button", {
+      name: "View session details",
+      hidden: true,
+    }));
+
+    expect(runtimeMock.focusSession).toHaveBeenCalledWith("session-1");
+    expect(runtimeMock.removeSession).not.toHaveBeenCalled();
+    expect(closeMobileSessionPane).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-runtime-details-panel='conversation']")).toBeInTheDocument();
+  });
+
   it("renders Chat jump controls and timeline blocks", () => {
     runtimeMock.activeSession = {
       id: "session-1",

@@ -1300,6 +1300,11 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     await refreshActiveSession(sessionID);
   };
 
+  const viewSessionDetails = async (sessionID: string) => {
+    await selectSession(sessionID);
+    setSessionDetailsOpen(true);
+  };
+
   const deleteSession = async (sessionID: string) => {
     if (!window.confirm(copy.deleteConfirm)) {
       return;
@@ -1716,6 +1721,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
                 activeLabel: copy.current,
                 idleLabel: copy.sessionLabel,
                 onSelect: () => void selectSession(session.id),
+                onViewDetails: () => void viewSessionDetails(session.id),
+                viewDetailsLabel: copy.details,
+                viewDetailsAriaLabel: copy.details,
                 onDelete: () => void deleteSession(session.id),
                 deleteLabel: copy.delete,
                 deleteAriaLabel: copy.delete,

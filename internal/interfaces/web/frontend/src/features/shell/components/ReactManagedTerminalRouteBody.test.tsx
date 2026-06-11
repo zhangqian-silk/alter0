@@ -643,6 +643,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-runtime-view='terminal']")).toHaveClass("runtime-workspace-view");
     expect(document.querySelector("[data-runtime-workspace-page='true']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-select")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-details")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-delete")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-card")).not.toHaveClass("route-card");
     expect(document.querySelector(".runtime-session-select")).not.toHaveClass("route-card-button");

@@ -1,4 +1,4 @@
-import { render, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../../app/WorkbenchContext";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
 
@@ -65,7 +65,10 @@ function buildController(): RuntimeWorkspacePageController {
   };
 }
 
-function renderRuntimeWorkspacePage(setRuntimeSessionRail = vi.fn()) {
+function renderRuntimeWorkspacePage(
+  setRuntimeSessionRail = vi.fn(),
+  controller = buildController(),
+) {
   const contextValue: WorkbenchContextValue = {
     route: "chat",
     language: "en",
@@ -83,7 +86,7 @@ function renderRuntimeWorkspacePage(setRuntimeSessionRail = vi.fn()) {
 
   const view = render(
     <WorkbenchContext.Provider value={contextValue}>
-      <RuntimeWorkspacePage controller={buildController()} />
+      <RuntimeWorkspacePage controller={controller} />
     </WorkbenchContext.Provider>,
   );
 
@@ -127,6 +130,28 @@ describe("RuntimeWorkspacePage", () => {
     unmount();
 
     expect(setRuntimeSessionRail).toHaveBeenLastCalledWith(null);
+  });
+
+  it("keeps session details and delete as separate right-side actions", () => {
+    const controller = buildController();
+    const onViewDetails = vi.fn();
+    const onDelete = vi.fn();
+    Object.assign(controller.sessionList.groups[0].items[1], {
+      onViewDetails,
+      viewDetailsLabel: "Details",
+      viewDetailsAriaLabel: "View session details",
+      onDelete,
+      deleteLabel: "Delete",
+      deleteAriaLabel: "Delete session",
+    });
+
+    renderRuntimeWorkspacePage(vi.fn(), controller);
+
+    fireEvent.click(screen.getByRole("button", { name: "View session details", hidden: true }));
+
+    expect(onViewDetails).toHaveBeenCalledTimes(1);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Delete session", hidden: true })).toBeInTheDocument();
   });
 
 });

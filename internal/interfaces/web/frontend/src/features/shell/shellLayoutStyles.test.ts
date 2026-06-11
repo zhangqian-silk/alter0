@@ -706,7 +706,7 @@ describe("shell layout stylesheet", () => {
       /\.nav-session-rail\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(stylesheet).toMatch(
-      /\.nav-session-rail \.runtime-session-card\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 28px;[\s\S]*?padding:\s*0 4px 0 10px;[\s\S]*?border-radius:\s*9px;[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*transparent;/,
+      /\.nav-session-rail \.runtime-session-card\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 60px;[\s\S]*?padding:\s*0 4px 0 10px;[\s\S]*?border-radius:\s*9px;[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*transparent;/,
     );
     expect(stylesheet).toMatch(
       /\.nav-session-rail \.runtime-session-card\.is-active\s*\{[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*rgba\(37, 99, 235, 0\.08\);[\s\S]*?box-shadow:\s*none;/,
@@ -715,7 +715,10 @@ describe("shell layout stylesheet", () => {
       /\.nav-session-rail \.runtime-session-title\s*\{[\s\S]*?font-size:\s*14px;[\s\S]*?letter-spacing:\s*0;/,
     );
     expect(stylesheet).toMatch(
-      /\.nav-session-rail \.runtime-session-delete\s*\{[\s\S]*?min-width:\s*28px;[\s\S]*?min-height:\s*28px;[\s\S]*?border-radius:\s*8px;[\s\S]*?opacity:\s*0;/,
+      /\.nav-session-rail \.runtime-session-actions\s*\{[\s\S]*?min-width:\s*60px;[\s\S]*?gap:\s*2px;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-action\s*\{[\s\S]*?min-width:\s*28px;[\s\S]*?min-height:\s*28px;[\s\S]*?border-radius:\s*8px;[\s\S]*?opacity:\s*0;/,
     );
     expect(stylesheet).toMatch(
       /@media \(min-width: 761px\) \{[\s\S]*?\.primary-nav\.has-session-rail > \.menu\s*\{[\s\S]*?flex:\s*0 0 clamp\(260px, 34vh, 312px\);[\s\S]*?overflow-y:\s*auto;/,
