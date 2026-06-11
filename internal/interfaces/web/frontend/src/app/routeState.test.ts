@@ -56,6 +56,15 @@ describe("routeState", () => {
     expect(window.location.hash).toBe("");
   });
 
+  it("clears stale Chat session query when re-entering Chat from the primary route", () => {
+    window.history.replaceState({}, "", `/chat?foo=bar&session_id=${hashSessionIDShort("older-chat-session")}`);
+
+    navigateWorkbenchRoute("chat");
+
+    expect(window.location.pathname).toBe("/chat");
+    expect(window.location.search).toBe("?foo=bar");
+  });
+
   it("does not preserve old management subpage paths as workbench routes", () => {
     navigateWorkbenchRoute("codex-accounts");
 

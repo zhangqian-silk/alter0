@@ -385,6 +385,68 @@ describe("ConversationRuntimeProvider", () => {
     expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=agent-runtime");
   });
 
+  it("opens the latest Chat session when the route has no explicit session query", async () => {
+    window.history.replaceState({}, "", "/chat");
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "older-chat-session" }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "latest-chat-session",
+                title: "Latest chat",
+                created_at: "2026-06-11T05:40:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                messages: [],
+              },
+              {
+                id: "older-chat-session",
+                title: "Older chat",
+                created_at: "2026-06-10T05:40:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                messages: [],
+              },
+            ],
+          };
+        case "/api/conversation-runtime/sessions/latest-chat-session?route=chat":
+          return {
+            session: {
+              id: "latest-chat-session",
+              title: "Latest chat",
+              created_at: "2026-06-11T05:40:00Z",
+              target_type: "model",
+              target_id: "raw-model",
+              target_name: "Raw Model",
+              messages: [],
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Latest chat"));
+    expect(window.location.search).toBe("");
+  });
+
   it("merges legacy local agent-runtime snapshots into the Chat session bucket", async () => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(

@@ -109,7 +109,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 页面刷新、跨设备重开或服务重启后，用户可恢复最近会话与历史消息；恢复结果需保留当前 Session 的目标 Agent、Model 与 Tools / Skills / MCP 选择。
 - 页面刷新时，前端需先用浏览器侧保存的当前活动会话快照恢复最近一条活跃 `Chat` 会话，避免服务端列表短暂缺席时把当前会话清空或替换为新的空白会话；随后再按 `session_id` 回源单会话详情，用服务端最新结果覆盖本地快照。
 - `POST /api/messages` 与 `POST /api/messages/stream` 在 Web 层接受请求后，后端执行与持久化不得再依赖浏览器连接持续存活；页面刷新、标签页切换、SSE 断开或前端取消只允许中断当前传输，不得直接取消本轮会话执行。
-- `Chat` 当前活动会话需稳定投影到 URL query：`/chat?session_id=<8位短hash>`。页面首次加载、刷新、手动粘贴当前链接或浏览器恢复标签页时，Chat 先读取 `session_id` 恢复目标会话；历史 `/agent-runtime?session_id=<8位短hash>` 入口映射到 `/chat?session_id=<8位短hash>` 后按同一规则恢复。
+- `Chat` 的 URL query 只表达显式会话恢复：页面首次加载、刷新、手动粘贴 `/chat?session_id=<8位短hash>` 或浏览器恢复带 query 的标签页时，Chat 先读取 `session_id` 恢复目标会话。访问 `/chat` 或从主导航切回 `Chat` 时，工作台清理旧 `session_id`，并按服务端会话列表与本地最近快照的合并结果打开最新会话，避免上一次活动会话被 query 或 sessionStorage 固定。历史 `/agent-runtime?session_id=<8位短hash>` 入口继续按 Chat 会话恢复对应历史会话。
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
 - `Chat` 需维护独立的服务端会话 registry，记录 `session_id -> route / title / target / model / capabilities / status / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。

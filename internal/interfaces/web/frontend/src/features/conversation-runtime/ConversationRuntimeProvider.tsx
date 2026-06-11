@@ -1275,6 +1275,7 @@ export function ConversationRuntimeProvider({
     const nextActiveState = { ...activeSessionByRoute, [route]: resolvedSessionID };
     setActiveSessionByRoute(nextActiveState);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+    writeWorkbenchRouteSessionID(route, resolvedSessionID);
   }, [activeSessionByRoute, route]);
 
   const removeSession = useCallback(async (sessionID: string) => {
@@ -1823,10 +1824,6 @@ export function ConversationRuntimeProvider({
   }, [activeSessionByRoute, sessionsByRoute]);
 
   useEffect(() => {
-    writeWorkbenchRouteSessionID("chat", activeSessionByRoute.chat);
-  }, [activeSessionByRoute, route]);
-
-  useEffect(() => {
     sessionsByRouteRef.current = sessionsByRoute;
   }, [sessionsByRoute]);
 
@@ -1872,13 +1869,16 @@ export function ConversationRuntimeProvider({
         if (cancelled) {
           return;
         }
-        const preferredActiveReference = normalizeText(activeSessionByRoute[route]);
+        const explicitRouteSessionReference = readWorkbenchRouteSessionID(route);
+        const preferredActiveReference = explicitRouteSessionReference
+          || sessionsByRouteRef.current[route][0]?.id
+          || normalizeText(activeSessionByRoute[route]);
         const preferredActiveID = resolveSessionIDReference(
-          [...remoteSessions, ...sessionsByRoute[route]],
+          [...remoteSessions, ...sessionsByRouteRef.current[route]],
           preferredActiveReference,
         ) || preferredActiveReference;
         const localPreferredSession = preferredActiveID
-          ? sessionsByRoute[route].find((session) => session.id === preferredActiveID) || null
+          ? sessionsByRouteRef.current[route].find((session) => session.id === preferredActiveID) || null
           : null;
         const remotePreferredSession = preferredActiveID
           ? remoteSessions.find((session) => session.id === preferredActiveID) || null
@@ -1901,7 +1901,7 @@ export function ConversationRuntimeProvider({
         }
         const nextActiveID = remoteSessions.some((session) => session.id === preferredActiveID) || recoveredSession
           ? preferredActiveID
-          : remoteSessions[0]?.id || activeSessionByRoute[route];
+          : sessionsByRouteRef.current[route][0]?.id || activeSessionByRoute[route];
         if (nextActiveID && nextActiveID !== activeSessionByRoute[route]) {
           const nextActiveState = { ...activeSessionByRoute, [route]: nextActiveID };
           setActiveSessionByRoute(nextActiveState);
@@ -1919,6 +1919,28 @@ export function ConversationRuntimeProvider({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiClient, route]);
+
+  useEffect(() => {
+    const syncActiveSessionFromRoute = () => {
+      const explicitRouteSessionReference = readWorkbenchRouteSessionID(route);
+      const nextActiveID = explicitRouteSessionReference
+        ? resolveSessionIDReference(sessionsByRouteRef.current[route], explicitRouteSessionReference) || explicitRouteSessionReference
+        : sessionsByRouteRef.current[route][0]?.id || "";
+      if (!nextActiveID) {
+        return;
+      }
+      setActiveSessionByRoute((current) => {
+        if (current[route] === nextActiveID) {
+          return current;
+        }
+        const nextActiveState = { ...current, [route]: nextActiveID };
+        writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+        return nextActiveState;
+      });
+    };
+    window.addEventListener("popstate", syncActiveSessionFromRoute);
+    return () => window.removeEventListener("popstate", syncActiveSessionFromRoute);
+  }, [route]);
 
   useEffect(() => {
     if (

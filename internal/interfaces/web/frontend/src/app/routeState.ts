@@ -29,7 +29,7 @@ export function navigateWorkbenchRoute(route: string): void {
   const nextURL = new URL(window.location.href);
   nextURL.pathname = `/${normalized}`;
   nextURL.hash = "";
-  if (normalized !== currentRoute) {
+  if (normalized !== currentRoute || normalized === "chat") {
     nextURL.searchParams.delete(SESSION_QUERY_KEY);
   }
   const nextLocation = `${nextURL.pathname}${nextURL.search}${nextURL.hash}`;

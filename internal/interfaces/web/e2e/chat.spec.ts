@@ -74,7 +74,101 @@ async function mockRuntimeSession(
   });
 }
 
+function hashSessionIDShort(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
+}
+
+async function mockChatRuntimeSessions(
+  page: Parameters<typeof loginIfNeeded>[0],
+  sessions: Array<Record<string, unknown>>,
+): Promise<void> {
+  await page.context().route("**/api/conversation-runtime/sessions**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("route") !== "chat") {
+      await route.fallback();
+      return;
+    }
+    if (url.pathname.endsWith("/api/conversation-runtime/sessions")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: sessions }),
+      });
+      return;
+    }
+    const session = sessions.find((item) => url.pathname.endsWith(
+      `/api/conversation-runtime/sessions/${encodeURIComponent(String(item.id || ""))}`,
+    ));
+    if (session) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ session }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+}
+
 test.describe("Chat composer", () => {
+  for (const scenario of [
+    { name: "desktop", width: 1280, height: 900, mobile: false },
+    { name: "mobile", width: 390, height: 844, mobile: true },
+  ]) {
+    test(`opens the latest Chat session after stale query re-entry on ${scenario.name}`, async ({ page }) => {
+      const latestSession = {
+        id: "latest-chat-session",
+        title: "Latest chat",
+        title_auto: false,
+        title_score: 10,
+        created_at: "2026-06-11T05:40:00Z",
+        target_type: "model",
+        target_id: "raw-model",
+        target_name: "Raw Model",
+        messages: [],
+      };
+      const olderSession = {
+        id: "older-chat-session",
+        title: "Older chat",
+        title_auto: false,
+        title_score: 8,
+        created_at: "2026-06-10T05:40:00Z",
+        target_type: "model",
+        target_id: "raw-model",
+        target_name: "Raw Model",
+        messages: [],
+      };
+
+      await page.setViewportSize({ width: scenario.width, height: scenario.height });
+      await mockChatRuntimeSessions(page, [latestSession, olderSession]);
+      await page.addInitScript((sessionID) => {
+        window.sessionStorage.setItem("alter0.web.session.active.v1", JSON.stringify({ chat: sessionID }));
+      }, olderSession.id);
+
+      await page.goto("/chat");
+      await ensureChatRouteReady(page);
+      await page.goto(`/chat?session_id=${hashSessionIDShort(olderSession.id)}`);
+      await ensureChatRouteReady(page);
+      const navRail = page.locator('[data-nav-session-rail="chat"]');
+      await expect(navRail.locator(`[data-runtime-session-card="${olderSession.id}"]`)).toHaveClass(/is-active/);
+
+      if (scenario.mobile) {
+        await page.getByRole("button", { name: "Menu" }).click();
+      }
+      await page.locator('button[data-route="chat"]').click();
+
+      await expect(page).toHaveURL(/\/chat$/);
+      await expect(navRail.locator(`[data-runtime-session-card="${latestSession.id}"]`)).toHaveClass(/is-active/);
+      await expect(page.locator(".runtime-workspace-head h4")).toContainText(String(latestSession.title));
+    });
+  }
+
   test("formats frontend timestamps in Beijing time with a 24-hour clock", async ({ page }) => {
     await openChatRoute(page);
 

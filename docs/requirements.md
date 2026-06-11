@@ -49,7 +49,7 @@
 
 - `Chat` 是唯一对话入口，默认绑定内置 `main` Agent `Alter0`，并通过会话级 Skill、Memory、MCP 与模型选择承载代码、旅行、写作等专项任务。新空白 Chat 会话默认勾选全部可用公有 Skill，用户后续可按会话手动取消或调整；历史会话恢复时，已删除或禁用的 Skill 必须按当前公有 Skill 目录实时剔除，新增勾选必须无需刷新即可作用于后续消息。显式选择 `Codex` 时，Web 对话框支持 Codex CLI 内置斜线命令候选；Terminal 当前活动会话明确为 Codex shell 时，Composer 同样提供该候选。
 - Web 登录态下，Chat 会话历史统一进入服务端 Session history；旧 `agent-runtime` 会话在读取阶段迁移为当前 Chat 会话结构，并统一通过 `route=chat` 进入列表与详情恢复。
-- `Chat / Terminal` 运行页需生成同一规则的 8 位短 hash 标识，作为会话级引用、URL 恢复参数与人工排障的稳定标识符；左侧会话列表不展示短 hash，完整会话 id 与 Terminal `terminal_session_id` 只作为接口、持久化和工作区隔离标识，不直接作为列表或 URL 展示值。
+- `Chat / Terminal` 运行页需生成同一规则的 8 位短 hash 标识，作为会话级引用、显式 URL 恢复参数与人工排障的稳定标识符；左侧会话列表不展示短 hash，完整会话 id 与 Terminal `terminal_session_id` 只作为接口、持久化和工作区隔离标识，不直接作为列表或 URL 展示值。`Chat` 主入口在无显式 `session_id` 时默认打开最新会话，主导航切回 Chat 时不得沿用旧 query 或浏览器上次活动会话锚点。
 - Web 入口稳定提供根路径到 Chat 的默认进入、`/chat`、`/terminal`、`/settings`、`/login` 与 `/logout`；`/agent-runtime` 兼容映射到 `/chat`，`/management` 兼容映射到 `/settings`。受保护页面、受保护预览工作区与 API 统一走同一登录态校验。访问工作台页面触发登录时，登录回跳只保留 canonical path，不携带会话级长 query。仅静态只读 host 保留匿名访问。
 - 新会话先使用统一占位标题 `New`，早期多轮内可根据更具体输入自动升级标题，避免长期保留“拉取仓库”“分析仓库”等低辨识度名称。
 - 新对话空白会话保持唯一；已有空白会话时，`New` 复用并聚焦该会话。
