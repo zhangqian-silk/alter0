@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-06-09
+> Last update: 2026-06-11
 
 ## 领域边界
 
@@ -121,6 +121,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 ### SSE 语义
 
 - 流式接口返回 `start / delta / done` 等事件；Agent 工具循环期间还需返回结构化 `process` 事件。
+- Chat 发送后立即展示本地 running 过程步骤；收到后端 `process` 事件后，本地步骤需被真实执行步骤替换，避免空白等待期没有 `Thinking / 已思考` 入口。
+- 直连 Codex 的流式 `agent_message` 按输出频道区分正文与过程：`final` 或旧版无频道消息进入 assistant 最终正文，`commentary` 作为结构化 `process_steps` 进入消息内联 `Thinking / 已思考` 披露区，其他非最终频道不得作为 `delta` 或最终 `output` 写入会话正文。
+- Chat 显式选择 `Codex` 且消息包含图片附件时，服务端需把已上传并落盘的原图路径传给 Codex CLI `-i` 参数；前端提示词不需要再描述“图片已存在”才能触发图片读取。
 - 长时间无模型增量时，SSE 通道持续发送保活帧。
 - 复杂度评估可与首段回复并行进行。
 

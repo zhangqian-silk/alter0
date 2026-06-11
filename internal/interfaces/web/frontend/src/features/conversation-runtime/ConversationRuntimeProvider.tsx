@@ -33,6 +33,7 @@ const RUNTIME_SESSION_COLLECTION_ENDPOINT = "/api/conversation-runtime/sessions"
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_TASK_POLL_INTERVAL_MS = 3000;
 const STREAM_DELTA_FLUSH_INTERVAL_MS = 50;
+const LOCAL_STREAM_PROCESS_STEP_ID = "local-stream-start";
 const EXECUTION_ENGINE_METADATA_KEY = "alter0.execution.engine";
 const EXECUTION_ENGINE_CODEX = "codex";
 const LLM_PROVIDER_METADATA_KEY = "alter0.llm.provider_id";
@@ -460,6 +461,20 @@ function normalizeProcessSteps(values: unknown): ChatProcessStep[] {
 function isStreamingPlaceholderText(text: string): boolean {
   const normalized = normalizeText(text).toLowerCase();
   return normalized === "" || normalized === "thinking...";
+}
+
+function createLocalStreamProcessStep(): ChatProcessStep {
+  return {
+    id: LOCAL_STREAM_PROCESS_STEP_ID,
+    kind: "analysis",
+    title: "Thinking",
+    detail: "",
+    status: "running",
+  };
+}
+
+function removeLocalStreamProcessStep(steps: ChatProcessStep[]): ChatProcessStep[] {
+  return steps.filter((step) => step.id !== LOCAL_STREAM_PROCESS_STEP_ID);
 }
 
 function isRecoverableAssistantMessage(message: ChatMessage): boolean {
@@ -1586,14 +1601,14 @@ export function ConversationRuntimeProvider({
               patchSession(routeKey, sessionID, (currentSession) => {
                 const nextMessages = currentSession.messages.map((message) =>
                   message.id === assistantMessageID
-                    ? {
-                        ...message,
-                        processSteps: normalizeProcessSteps([
-                          ...message.processSteps,
-                          parsed.data.process_step as Record<string, unknown>,
-                        ]),
-                        status: "streaming",
-                      }
+	                    ? {
+	                        ...message,
+	                        processSteps: normalizeProcessSteps([
+	                          ...removeLocalStreamProcessStep(message.processSteps),
+	                          parsed.data.process_step as Record<string, unknown>,
+	                        ]),
+	                        status: "streaming",
+	                      }
                     : message,
                 );
                 return { ...currentSession, messages: nextMessages };
@@ -1686,10 +1701,11 @@ export function ConversationRuntimeProvider({
     }
     const session = ensureSession(defaultChatTarget());
     const userMessage = createMessage("user", content, { at: Date.now(), attachments });
-    const assistantMessage = createMessage("assistant", "Thinking...", {
-      status: "streaming",
-      at: Date.now(),
-    });
+	    const assistantMessage = createMessage("assistant", "", {
+	      status: "streaming",
+	      at: Date.now(),
+	      processSteps: [createLocalStreamProcessStep()],
+	    });
     appendMessage(route, session.id, userMessage);
     appendMessage(route, session.id, assistantMessage);
     const nextDrafts = { ...composerDrafts, [session.id]: "" };

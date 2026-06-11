@@ -13,6 +13,7 @@ import (
 	"time"
 
 	execdomain "alter0/internal/execution/domain"
+	shareddomain "alter0/internal/shared/domain"
 )
 
 func TestCodexCLIProcessorProcessSuccess(t *testing.T) {
@@ -459,6 +460,33 @@ func TestBuildCodexExecMetadataUsesSessionRepoCloneForCodingAgent(t *testing.T) 
 	}
 }
 
+func TestBuildCodexExecArgsIncludesWorkspaceImageAttachments(t *testing.T) {
+	imagePath := filepath.Join(t.TempDir(), "diagram.png")
+	if err := os.WriteFile(imagePath, []byte("fake image"), 0o644); err != nil {
+		t.Fatalf("write image: %v", err)
+	}
+	rawImages, err := execdomain.EncodeUserImageAttachments([]execdomain.UserImageAttachment{{
+		Name:          "diagram.png",
+		ContentType:   "image/png",
+		WorkspacePath: imagePath,
+	}})
+	if err != nil {
+		t.Fatalf("EncodeUserImageAttachments() error = %v", err)
+	}
+	metadata := map[string]string{
+		execdomain.UserImageAttachmentsMetadataKey: rawImages,
+	}
+
+	args := buildCodexExecArgs(metadata, "", "", true)
+	assertArgPair(t, args, "-i", imagePath)
+
+	resumeArgs := buildCodexExecArgs(metadata, "thread-1", "", true)
+	assertArgPair(t, resumeArgs, "-i", imagePath)
+	if !containsArgSequence(resumeArgs, "resume", "--json", "-i", imagePath, "thread-1", "-") {
+		t.Fatalf("resume args = %+v, want image before thread prompt", resumeArgs)
+	}
+}
+
 func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
 	processor := newTestProcessor("stream-success", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 	deltas := make([]string, 0, 2)
@@ -475,6 +503,100 @@ func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
 	}
 	if len(deltas) == 0 {
 		t.Fatalf("expected stream deltas, got none")
+	}
+}
+
+func TestCodexCLIProcessorProcessStreamStoresCommentaryAsProcessSteps(t *testing.T) {
+	metadata := map[string]string{
+		execdomain.RuntimeSessionIDMetadataKey:     "stream-commentary-session",
+		execdomain.CodexRuntimeStrategyMetadataKey: execdomain.CodexRuntimeStrategyPlain,
+	}
+	processor := newTestProcessor("stream-commentary-success", mustBuildTestPrompt(t, "reply: hello", metadata))
+	var deltas []string
+	var processSteps []shareddomain.ProcessStep
+
+	output, err := processor.ProcessStream(context.Background(), "reply: hello", metadata, func(event execdomain.StreamEvent) error {
+		switch event.Type {
+		case execdomain.StreamEventTypeOutput:
+			deltas = append(deltas, event.Text)
+		case execdomain.StreamEventTypeProcess:
+			if event.ProcessStep != nil {
+				processSteps = append(processSteps, *event.ProcessStep)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ProcessStream() error = %v", err)
+	}
+	if output != "最终回复" {
+		t.Fatalf("ProcessStream() output = %q, want final answer only", output)
+	}
+	if got := strings.Join(deltas, ""); got != "最终回复" {
+		t.Fatalf("stream deltas = %q, want final answer only", got)
+	}
+	if len(processSteps) != 1 {
+		t.Fatalf("process steps emitted = %d, want 1", len(processSteps))
+	}
+	if !strings.Contains(processSteps[0].Detail, "我会先确认工作区。现在开始处理。") {
+		t.Fatalf("process step detail = %q, want commentary text", processSteps[0].Detail)
+	}
+	rawSteps := strings.TrimSpace(metadata[execdomain.AgentProcessStepsMetadataKey])
+	if rawSteps == "" {
+		t.Fatal("expected process steps metadata to be stored")
+	}
+	var storedSteps []shareddomain.ProcessStep
+	if err := json.Unmarshal([]byte(rawSteps), &storedSteps); err != nil {
+		t.Fatalf("unmarshal stored process steps: %v", err)
+	}
+	if len(storedSteps) != 1 {
+		t.Fatalf("stored process steps = %d, want 1", len(storedSteps))
+	}
+	if storedSteps[0].Detail != processSteps[0].Detail {
+		t.Fatalf("stored process step detail = %q, want emitted detail %q", storedSteps[0].Detail, processSteps[0].Detail)
+	}
+}
+
+func TestCollectStreamOutputKeepsCommentaryOutOfFinalAnswer(t *testing.T) {
+	var deltas []string
+	output, threadID, _, err := collectStreamOutput(strings.NewReader(strings.Join([]string{
+		`{"type":"thread.started","thread_id":"thread-1"}`,
+		`{"type":"item.delta","item":{"type":"agent_message","channel":"commentary","delta":"我会先确认工作区。" }}`,
+		`{"type":"item.completed","item":{"type":"agent_message","channel":"commentary","text":"我会先确认工作区。现在开始处理。" }}`,
+		`{"type":"item.delta","item":{"type":"agent_message","channel":"final","delta":"最终" }}`,
+		`{"type":"item.completed","item":{"type":"agent_message","channel":"final","text":"最终回复" }}`,
+	}, "\n")), func(event execdomain.StreamEvent) error {
+		deltas = append(deltas, event.Text)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("collectStreamOutput() error = %v", err)
+	}
+	if threadID != "thread-1" {
+		t.Fatalf("collectStreamOutput() threadID = %q, want thread-1", threadID)
+	}
+	if output != "最终回复" {
+		t.Fatalf("collectStreamOutput() output = %q, want final answer only", output)
+	}
+	if got := strings.Join(deltas, ""); got != "最终回复" {
+		t.Fatalf("stream deltas = %q, want final answer only", got)
+	}
+}
+
+func TestCollectStreamOutputDeduplicatesCommentaryProcessStep(t *testing.T) {
+	_, _, processSteps, err := collectStreamOutput(strings.NewReader(strings.Join([]string{
+		`{"type":"item.updated","item":{"id":"msg-commentary","type":"agent_message","channel":"commentary","text":"正在读取上下文" }}`,
+		`{"type":"item.completed","item":{"id":"msg-commentary","type":"agent_message","channel":"commentary","text":"正在读取上下文" }}`,
+		`{"type":"item.completed","item":{"type":"agent_message","channel":"final","text":"完成" }}`,
+	}, "\n")), nil)
+	if err != nil {
+		t.Fatalf("collectStreamOutput() error = %v", err)
+	}
+	if len(processSteps) != 1 {
+		t.Fatalf("process steps = %d, want 1", len(processSteps))
+	}
+	if processSteps[0].Detail != "正在读取上下文" {
+		t.Fatalf("process step detail = %q, want latest commentary", processSteps[0].Detail)
 	}
 }
 
@@ -886,10 +1008,6 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		_, _ = os.Stderr.WriteString("unexpected resume args")
 		os.Exit(2)
 	}
-	if mode != "stream-resume-success" && containsArg(forwarded, "resume") {
-		_, _ = os.Stderr.WriteString("unexpected resume mode")
-		os.Exit(2)
-	}
 
 	promptArg := forwarded[len(forwarded)-1]
 	prompt := promptArg
@@ -1001,6 +1119,13 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.delta\",\"item\":{\"type\":\"agent_message\",\"delta\":\"mock \"}}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock streamed response\"}}\n")
 		os.Exit(0)
+	case "stream-commentary-success":
+		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\",\"thread_id\":\"thread-commentary\"}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"item.delta\",\"item\":{\"id\":\"msg-commentary\",\"type\":\"agent_message\",\"channel\":\"commentary\",\"delta\":\"我会先确认工作区。\"}}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"id\":\"msg-commentary\",\"type\":\"agent_message\",\"channel\":\"commentary\",\"text\":\"我会先确认工作区。现在开始处理。\"}}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"item.delta\",\"item\":{\"type\":\"agent_message\",\"channel\":\"final\",\"delta\":\"最终\"}}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"channel\":\"final\",\"text\":\"最终回复\"}}\n")
+		os.Exit(0)
 	case "stream-thread-success":
 		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\",\"thread_id\":\"thread-agent-fallback\"}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock streamed response\"}}\n")
@@ -1034,6 +1159,13 @@ func containsArgPair(args []string, key string, value string) bool {
 		}
 	}
 	return false
+}
+
+func assertArgPair(t *testing.T, args []string, key string, value string) {
+	t.Helper()
+	if !containsArgPair(args, key, value) {
+		t.Fatalf("args = %+v, want %s %s", args, key, value)
+	}
 }
 
 func containsArg(args []string, value string) bool {

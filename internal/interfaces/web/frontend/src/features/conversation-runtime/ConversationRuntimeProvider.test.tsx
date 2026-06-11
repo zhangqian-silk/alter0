@@ -55,6 +55,8 @@ function RuntimeHarness() {
         send
       </button>
       <output data-testid="assistant-text">{assistantMessage?.text || ""}</output>
+      <output data-testid="assistant-process-count">{assistantMessage?.processSteps.length || 0}</output>
+      <output data-testid="assistant-process-status">{assistantMessage?.processSteps[0]?.status || ""}</output>
     </div>
   );
 }
@@ -515,6 +517,23 @@ describe("ConversationRuntimeProvider", () => {
         ],
       },
     ));
+  });
+
+  it("shows a running Thinking step immediately after sending a chat prompt", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions/alter0-chat?route=chat"));
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(screen.getByTestId("assistant-process-count")).toHaveTextContent("1"));
+    expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
+    expect(screen.getByTestId("assistant-process-status")).toHaveTextContent("running");
   });
 
   it("allows clicking the active inspector tab again to collapse only that tab content", async () => {

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	execdomain "alter0/internal/execution/domain"
+	shareddomain "alter0/internal/shared/domain"
 )
 
 const (
@@ -110,9 +111,11 @@ type codexJSONEvent struct {
 }
 
 type codexEventItem struct {
-	Type  string `json:"type"`
-	Text  string `json:"text,omitempty"`
-	Delta string `json:"delta,omitempty"`
+	ID      string `json:"id,omitempty"`
+	Type    string `json:"type"`
+	Channel string `json:"channel,omitempty"`
+	Text    string `json:"text,omitempty"`
+	Delta   string `json:"delta,omitempty"`
 }
 
 func NewCodexCLIProcessor() *CodexCLIProcessor {
@@ -287,7 +290,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 	}
 	stopHeartbeat := p.startHeartbeatReporter(procCtx, cmd)
 
-	output, threadID, scanErr := collectStreamOutput(stdoutPipe, emit)
+	output, threadID, processSteps, scanErr := collectStreamOutput(stdoutPipe, emit)
 	if scanErr != nil {
 		procCancel()
 		_ = cmd.Wait()
@@ -306,6 +309,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 	if threadState.Enabled {
 		persistCodexThreadID(threadState, threadID)
 	}
+	storeCodexProcessSteps(metadata, processSteps)
 	result := strings.TrimSpace(output)
 	if result == "" {
 		return "", errors.New("codex returned empty output")
@@ -367,10 +371,14 @@ func buildCodexExecArgs(metadata map[string]string, threadID string, outputPath 
 	if strings.TrimSpace(outputPath) != "" {
 		args = append(args, "-o", outputPath)
 	}
+	imagePaths := resolveCodexImageInputPaths(metadata)
 	if strings.TrimSpace(threadID) != "" {
 		args = append(args, "resume")
 		if stream {
 			args = append(args, "--json")
+		}
+		for _, imagePath := range imagePaths {
+			args = append(args, "-i", imagePath)
 		}
 		args = append(args, strings.TrimSpace(threadID), "-")
 		return args
@@ -378,8 +386,35 @@ func buildCodexExecArgs(metadata map[string]string, threadID string, outputPath 
 	if stream {
 		args = append(args, "--json")
 	}
+	for _, imagePath := range imagePaths {
+		args = append(args, "-i", imagePath)
+	}
 	args = append(args, "-")
 	return args
+}
+
+func resolveCodexImageInputPaths(metadata map[string]string) []string {
+	attachments := execdomain.DecodeUserImageAttachments(metadata)
+	if len(attachments) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(attachments))
+	seen := map[string]struct{}{}
+	for _, attachment := range attachments {
+		path := strings.TrimSpace(attachment.WorkspacePath)
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	return paths
 }
 
 func resolveCodexThreadState(workspaceDir string, metadata map[string]string) codexThreadState {
@@ -504,13 +539,14 @@ func isCodexProcessRunning(cmd *exec.Cmd) bool {
 func collectStreamOutput(
 	reader io.Reader,
 	emit func(event execdomain.StreamEvent) error,
-) (string, string, error) {
+) (string, string, []shareddomain.ProcessStep, error) {
 	scanner := bufio.NewScanner(reader)
 	// Allow larger JSONL events for long model outputs.
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
 	emittedOutput := ""
 	threadID := ""
+	processSteps := []shareddomain.ProcessStep{}
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -524,9 +560,19 @@ func collectStreamOutput(
 			threadID = strings.TrimSpace(event.ThreadID)
 		}
 		if fatalMessage := fatalCodexEventMessage(event.Message); fatalMessage != "" {
-			return "", threadID, fmt.Errorf("codex authentication failed: %s", fatalMessage)
+			return "", threadID, processSteps, fmt.Errorf("codex authentication failed: %s", fatalMessage)
 		}
 		if event.Item == nil || event.Item.Type != "agent_message" {
+			continue
+		}
+		if processStep := codexAgentMessageProcessStep(event.Type, event.Item, len(processSteps)+1); processStep != nil {
+			processSteps = append(processSteps, *processStep)
+			if err := emitCodexProcessStep(emit, processStep); err != nil {
+				return "", threadID, processSteps, err
+			}
+			continue
+		}
+		if !isFinalCodexAgentMessage(event.Item) {
 			continue
 		}
 
@@ -539,7 +585,7 @@ func collectStreamOutput(
 				continue
 			}
 			if err := emitStreamDelta(emit, delta); err != nil {
-				return "", threadID, err
+				return "", threadID, processSteps, err
 			}
 			emittedOutput += delta
 		case "item.updated", "item.completed":
@@ -551,16 +597,78 @@ func collectStreamOutput(
 				continue
 			}
 			if err := emitStreamDelta(emit, nextDelta); err != nil {
-				return "", threadID, err
+				return "", threadID, processSteps, err
 			}
 			emittedOutput += nextDelta
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", threadID, fmt.Errorf("read codex stream output: %w", err)
+		return "", threadID, processSteps, fmt.Errorf("read codex stream output: %w", err)
 	}
-	return emittedOutput, threadID, nil
+	return emittedOutput, threadID, processSteps, nil
+}
+
+func isFinalCodexAgentMessage(item *codexEventItem) bool {
+	if item == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(item.Channel)) {
+	case "", "final":
+		return true
+	default:
+		return false
+	}
+}
+
+func codexAgentMessageProcessStep(eventType string, item *codexEventItem, sequence int) *shareddomain.ProcessStep {
+	if item == nil || isFinalCodexAgentMessage(item) {
+		return nil
+	}
+	if strings.ToLower(strings.TrimSpace(item.Channel)) != "commentary" {
+		return nil
+	}
+	switch eventType {
+	case "item.completed":
+	default:
+		return nil
+	}
+	detail := strings.TrimSpace(item.Text)
+	if detail == "" {
+		return nil
+	}
+	id := strings.TrimSpace(item.ID)
+	if id == "" {
+		id = fmt.Sprintf("codex-commentary-%d", sequence)
+	}
+	return &shareddomain.ProcessStep{
+		ID:     id,
+		Kind:   "analysis",
+		Title:  "执行过程",
+		Detail: detail,
+		Status: "completed",
+	}
+}
+
+func emitCodexProcessStep(emit func(event execdomain.StreamEvent) error, step *shareddomain.ProcessStep) error {
+	if emit == nil || step == nil {
+		return nil
+	}
+	return emit(execdomain.StreamEvent{
+		Type:        execdomain.StreamEventTypeProcess,
+		ProcessStep: step,
+	})
+}
+
+func storeCodexProcessSteps(metadata map[string]string, steps []shareddomain.ProcessStep) {
+	if metadata == nil || len(steps) == 0 {
+		return
+	}
+	raw, err := json.Marshal(steps)
+	if err != nil {
+		return
+	}
+	metadata[execdomain.AgentProcessStepsMetadataKey] = string(raw)
 }
 
 func collectThreadIDFromOutput(output string) string {
