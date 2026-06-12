@@ -519,11 +519,11 @@ func TestSessionPersistenceServicePersistsCronSourceMetadata(t *testing.T) {
 	}
 }
 
-func TestSessionPersistenceServicePersistsAgentSourceMetadata(t *testing.T) {
+func TestSessionPersistenceServicePersistsRuntimeSourceMetadata(t *testing.T) {
 	downstream := &stubPersistenceDownstream{
 		result: shareddomain.OrchestrationResult{
-			MessageID: "msg-agent",
-			SessionID: "s-agent",
+			MessageID: "msg-runtime",
+			SessionID: "s-runtime",
 			Route:     shareddomain.RouteNL,
 			Output:    "done",
 		},
@@ -532,23 +532,20 @@ func TestSessionPersistenceServicePersistsAgentSourceMetadata(t *testing.T) {
 	service := &SessionPersistenceService{
 		downstream:  downstream,
 		recorder:    recorder,
-		idGenerator: &fixedIDGenerator{nextID: "assistant-agent"},
+		idGenerator: &fixedIDGenerator{nextID: "assistant-runtime"},
 		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	msg := shareddomain.UnifiedMessage{
-		MessageID:   "msg-agent",
-		SessionID:   "s-agent",
+		MessageID:   "msg-runtime",
+		SessionID:   "s-runtime",
 		Content:     "整理仓库",
 		ReceivedAt:  time.Date(2026, 3, 5, 11, 0, 0, 0, time.UTC),
 		TriggerType: shareddomain.TriggerTypeUser,
 		ChannelID:   "web-default",
 		ChannelType: shareddomain.ChannelTypeWeb,
-		TraceID:     "trace-agent",
-		Metadata: map[string]string{
-			"alter0.agent.id":   "researcher",
-			"alter0.agent.name": "Research Agent",
-		},
+		TraceID:     "trace-web",
+		Metadata:    map[string]string{},
 	}
 
 	if _, err := service.Handle(context.Background(), msg); err != nil {
@@ -556,12 +553,5 @@ func TestSessionPersistenceServicePersistsAgentSourceMetadata(t *testing.T) {
 	}
 	if len(recorder.records) != 2 {
 		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
-	}
-	source := recorder.records[0].Source
-	if source.AgentID != "researcher" {
-		t.Fatalf("expected agent_id researcher, got %s", source.AgentID)
-	}
-	if source.AgentName != "Research Agent" {
-		t.Fatalf("expected agent_name Research Agent, got %s", source.AgentName)
 	}
 }

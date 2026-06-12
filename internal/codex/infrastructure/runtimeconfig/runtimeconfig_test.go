@@ -94,34 +94,34 @@ func TestPrepareCopiesBaselineAuthAndCompilesManagedConfig(t *testing.T) {
 		t.Fatalf("unexpected skill file: %q", string(skillFile))
 	}
 
-	agentsFile, err := os.ReadFile(filepath.Join(workspaceDir, "AGENTS.md"))
+	rootInstructionsFile, err := os.ReadFile(filepath.Join(workspaceDir, "AGENTS.md"))
 	if err != nil {
-		t.Fatalf("read AGENTS.md: %v", err)
+		t.Fatalf("read root instructions.md: %v", err)
 	}
-	if !strings.Contains(string(agentsFile), "Alter0 Codex Runtime") || !strings.Contains(string(agentsFile), ".alter0/codex-runtime/skills.md") {
-		t.Fatalf("unexpected AGENTS.md:\n%s", string(agentsFile))
+	if !strings.Contains(string(rootInstructionsFile), "Alter0 Codex Runtime") || !strings.Contains(string(rootInstructionsFile), ".alter0/codex-runtime/skills.md") {
+		t.Fatalf("unexpected root instructions file:\n%s", string(rootInstructionsFile))
 	}
 	for _, expected := range []string{
 		"Stay inside the current workspace scope.",
 		"Do not modify files, repositories, or services outside it",
 		"Do not present server-local paths",
 		"https://*.alter0.cn",
-		"artifact-preview",
+		"preview-publish",
 	} {
-		if !strings.Contains(string(agentsFile), expected) {
-			t.Fatalf("expected AGENTS.md to contain %q, got:\n%s", expected, string(agentsFile))
+		if !strings.Contains(string(rootInstructionsFile), expected) {
+			t.Fatalf("expected root instructions file to contain %q, got:\n%s", expected, string(rootInstructionsFile))
 		}
 	}
 }
 
-func TestPreparePreservesExistingAgentsFileOutsideManagedBlock(t *testing.T) {
+func TestPreparePreservesExistingRootInstructionsFileOutsideManagedBlock(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
 	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
 		t.Fatalf("mkdir workspace: %v", err)
 	}
 	existing := "# Repo Policy\n\n- Keep tests updated.\n"
 	if err := os.WriteFile(filepath.Join(workspaceDir, "AGENTS.md"), []byte(existing), 0o644); err != nil {
-		t.Fatalf("write existing AGENTS: %v", err)
+		t.Fatalf("write existing root instructions: %v", err)
 	}
 
 	_, err := Prepare(Spec{
@@ -133,15 +133,15 @@ func TestPreparePreservesExistingAgentsFileOutsideManagedBlock(t *testing.T) {
 		t.Fatalf("Prepare() error = %v", err)
 	}
 
-	agentsFile, err := os.ReadFile(filepath.Join(workspaceDir, "AGENTS.md"))
+	rootInstructionsFile, err := os.ReadFile(filepath.Join(workspaceDir, "AGENTS.md"))
 	if err != nil {
-		t.Fatalf("read AGENTS.md: %v", err)
+		t.Fatalf("read root instructions.md: %v", err)
 	}
-	agentsText := string(agentsFile)
-	if !strings.Contains(agentsText, "Repo Policy") {
-		t.Fatalf("expected original AGENTS content preserved, got:\n%s", agentsText)
+	rootInstructionsText := string(rootInstructionsFile)
+	if !strings.Contains(rootInstructionsText, "Repo Policy") {
+		t.Fatalf("expected original AGENTS content preserved, got:\n%s", rootInstructionsText)
 	}
-	if !strings.Contains(agentsText, managedAgentsStartMarker) {
-		t.Fatalf("expected managed block in AGENTS.md, got:\n%s", agentsText)
+	if !strings.Contains(rootInstructionsText, managedRootInstructionsStartMarker) {
+		t.Fatalf("expected managed block in AGENTS.md, got:\n%s", rootInstructionsText)
 	}
 }

@@ -12,13 +12,11 @@ import (
 )
 
 type Service struct {
-	processor               execdomain.NLProcessor
-	skillResolver           *skillContextResolver
-	mcpResolver             *mcpContextResolver
-	memoryResolver          *memoryContextResolver
-	sessionProfileExtractor SessionProfileExtractor
-	agentSource             agentProfileResolver
-	logger                  *slog.Logger
+	processor      execdomain.NLProcessor
+	skillResolver  *skillContextResolver
+	mcpResolver    *mcpContextResolver
+	memoryResolver *memoryContextResolver
+	logger         *slog.Logger
 }
 
 type streamProcessor interface {
@@ -59,7 +57,13 @@ func NewServiceWithSkills(
 	skillSource SkillCapabilitySource,
 	logger *slog.Logger,
 ) *Service {
-	return NewServiceWithSkillsAndSessionProfileExtractor(processor, skillSource, nil, logger)
+	return &Service{
+		processor:      processor,
+		skillResolver:  newSkillContextResolver(skillSource),
+		mcpResolver:    newMCPContextResolver(skillSource),
+		memoryResolver: newMemoryContextResolver(),
+		logger:         logger,
+	}
 }
 
 func NewServiceWithSkillsAndMemoryOptions(
@@ -68,28 +72,8 @@ func NewServiceWithSkillsAndMemoryOptions(
 	logger *slog.Logger,
 	memoryOptions MemoryContextOptions,
 ) *Service {
-	service := NewServiceWithSkillsAndSessionProfileExtractor(processor, skillSource, nil, logger)
+	service := NewServiceWithSkills(processor, skillSource, logger)
 	service.memoryResolver = newMemoryContextResolver(memoryOptions)
-	return service
-}
-
-func NewServiceWithSkillsAndSessionProfileExtractor(
-	processor execdomain.NLProcessor,
-	skillSource SkillCapabilitySource,
-	extractor SessionProfileExtractor,
-	logger *slog.Logger,
-) *Service {
-	service := &Service{
-		processor:               processor,
-		skillResolver:           newSkillContextResolver(skillSource),
-		mcpResolver:             newMCPContextResolver(skillSource),
-		memoryResolver:          newMemoryContextResolver(),
-		sessionProfileExtractor: extractor,
-		logger:                  logger,
-	}
-	if resolver, ok := skillSource.(agentProfileResolver); ok {
-		service.agentSource = resolver
-	}
 	return service
 }
 
@@ -155,7 +139,6 @@ func (s *Service) executeNaturalLanguage(
 ) (string, map[string]string, error) {
 	content := strings.TrimSpace(msg.Content)
 	metadata := cloneMetadata(msg.Metadata)
-	canonicalizeAgentMetadata(s.agentSource, metadata)
 	attachRuntimeMetadata(msg, metadata)
 	resultMetadata := map[string]string{}
 
@@ -165,7 +148,6 @@ func (s *Service) executeNaturalLanguage(
 	if err := s.resolveMCPContext(msg, metadata, resultMetadata); err != nil {
 		return "", nil, err
 	}
-	s.resolveSessionProfileAttributes(ctx, msg, metadata)
 	memoryMessage := msg
 	memoryMessage.Metadata = metadata
 	if err := s.resolveMemoryContext(memoryMessage, metadata, resultMetadata); err != nil {
@@ -178,7 +160,7 @@ func (s *Service) executeNaturalLanguage(
 			if err != nil {
 				return "", nil, err
 			}
-			attachAgentProcessMetadata(metadata, resultMetadata)
+			attachProcessMetadata(metadata, resultMetadata)
 			attachExecutionSourceMetadata(metadata, resultMetadata)
 			return output, resultMetadata, nil
 		}
@@ -188,7 +170,7 @@ func (s *Service) executeNaturalLanguage(
 	if err != nil {
 		return "", nil, err
 	}
-	attachAgentProcessMetadata(metadata, resultMetadata)
+	attachProcessMetadata(metadata, resultMetadata)
 	attachExecutionSourceMetadata(metadata, resultMetadata)
 	if streamHandler != nil && strings.TrimSpace(output) != "" {
 		if err := streamHandler(execdomain.StreamEvent{
@@ -201,32 +183,12 @@ func (s *Service) executeNaturalLanguage(
 	return output, resultMetadata, nil
 }
 
-func canonicalizeAgentMetadata(agentSource agentProfileResolver, metadata map[string]string) {
-	if len(metadata) == 0 {
-		return
-	}
-	agentID := strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey))
-	if agentID == "" {
-		return
-	}
-	if agentSource != nil {
-		if agent, ok := agentSource.ResolveAgent(agentID); ok {
-			metadata[execdomain.AgentIDMetadataKey] = strings.TrimSpace(agent.ID)
-			if strings.TrimSpace(agent.Name) != "" {
-				metadata[execdomain.AgentNameMetadataKey] = strings.TrimSpace(agent.Name)
-			}
-			return
-		}
-	}
-	metadata[execdomain.AgentIDMetadataKey] = strings.ToLower(agentID)
-}
-
-func attachAgentProcessMetadata(metadata map[string]string, resultMetadata map[string]string) {
-	raw := strings.TrimSpace(metadata[execdomain.AgentProcessStepsMetadataKey])
+func attachProcessMetadata(metadata map[string]string, resultMetadata map[string]string) {
+	raw := strings.TrimSpace(metadata[execdomain.ProcessStepsMetadataKey])
 	if raw == "" {
 		return
 	}
-	resultMetadata[execdomain.AgentProcessStepsMetadataKey] = raw
+	resultMetadata[execdomain.ProcessStepsMetadataKey] = raw
 }
 
 func attachExecutionSourceMetadata(metadata map[string]string, resultMetadata map[string]string) {
@@ -238,7 +200,7 @@ func attachExecutionSourceMetadata(metadata map[string]string, resultMetadata ma
 }
 
 func parseProcessStepsMetadata(metadata map[string]string) []shareddomain.ProcessStep {
-	raw := strings.TrimSpace(metadata[execdomain.AgentProcessStepsMetadataKey])
+	raw := strings.TrimSpace(metadata[execdomain.ProcessStepsMetadataKey])
 	if raw == "" {
 		return nil
 	}

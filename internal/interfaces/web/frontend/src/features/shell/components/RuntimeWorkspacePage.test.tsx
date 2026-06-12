@@ -37,7 +37,7 @@ function buildController(): RuntimeWorkspacePageController {
               id: "session-2",
               active: false,
               title: "Ready Notes",
-              contextLabel: "Research Agent",
+              contextLabel: "Research Runtime",
               meta: "1 hr ago",
               shortHash: "b2c3d4e5",
               activeLabel: "Active",

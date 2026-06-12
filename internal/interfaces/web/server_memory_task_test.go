@@ -29,7 +29,7 @@ func TestMemoryTaskCollectionHandlerFiltersByStatusTypeAndTime(t *testing.T) {
 	}
 	server := &Server{
 		tasks:  taskSvc,
-		memory: newAgentMemoryService(AgentMemoryOptions{}),
+		memory: newMemoryContextService(MemoryContextOptions{}),
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
@@ -87,7 +87,7 @@ func TestMemoryTaskDetailAndRebuildSummaryEndpoints(t *testing.T) {
 
 	server := &Server{
 		tasks: taskSvc,
-		memory: newAgentMemoryService(AgentMemoryOptions{
+		memory: newMemoryContextService(MemoryContextOptions{
 			DailyDir:           filepath.Join(root, "memory"),
 			TaskSummaryRuntime: runtimeStore,
 		}),
@@ -150,7 +150,7 @@ func TestMemoryTaskLogsEndpointReturnsRebuildHintWhenUnavailable(t *testing.T) {
 				"task-missing-logs": newMemoryTask("task-missing-logs", "task", taskdomain.TaskStatusSuccess, time.Now().UTC()),
 			},
 		},
-		memory: newAgentMemoryService(AgentMemoryOptions{}),
+		memory: newMemoryContextService(MemoryContextOptions{}),
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 

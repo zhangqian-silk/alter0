@@ -14,7 +14,6 @@ type CapabilityType string
 const (
 	CapabilityTypeSkill CapabilityType = "skill"
 	CapabilityTypeMCP   CapabilityType = "mcp"
-	CapabilityTypeAgent CapabilityType = "agent"
 )
 
 type CapabilityScope string
@@ -93,7 +92,7 @@ func (c Capability) Validate() error {
 
 func (t CapabilityType) IsSupported() bool {
 	switch t {
-	case CapabilityTypeSkill, CapabilityTypeMCP, CapabilityTypeAgent:
+	case CapabilityTypeSkill, CapabilityTypeMCP:
 		return true
 	default:
 		return false

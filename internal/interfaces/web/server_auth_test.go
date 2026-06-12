@@ -94,7 +94,7 @@ func TestAuthMiddlewareUsesStablePageLoginNext(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/agent-runtime?session_id=c15ece52&foo=bar", nil)
+	req := httptest.NewRequest(http.MethodGet, "/chat?session_id=c15ece52&foo=bar", nil)
 	req.Header.Set("Accept", "text/html")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -281,7 +281,7 @@ func TestLoginHandlerWithoutLoginEnabledPreservesNextPath(t *testing.T) {
 		webLoginEnabled: false,
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/login?next=%2Fagent-runtime%3Fsession_id%3Dsession-2", nil)
+	req := httptest.NewRequest(http.MethodGet, "/login?next=%2Fchat%3Fsession_id%3Dsession-2", nil)
 	rec := httptest.NewRecorder()
 
 	server.loginHandler(rec, req)

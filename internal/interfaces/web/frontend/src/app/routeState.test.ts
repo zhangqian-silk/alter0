@@ -22,11 +22,10 @@ describe("routeState", () => {
 
   it("maps only the stable top-level workbench routes to canonical paths", () => {
     expect(parseWorkbenchRoute("/chat")).toBe("chat");
-    expect(parseWorkbenchRoute("/agent-runtime")).toBe("chat");
     expect(parseWorkbenchRoute("/terminal")).toBe("terminal");
     expect(parseWorkbenchRoute("/settings")).toBe("settings");
     expect(parseWorkbenchRoute("/management")).toBe("settings");
-    expect(parseWorkbenchRoute("/agent")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/skill")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/memory")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/skills")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/mcp")).toBe(DEFAULT_WORKBENCH_ROUTE);
@@ -83,15 +82,14 @@ describe("routeState", () => {
 
   it("identifies conversation routes explicitly", () => {
     expect(isConversationRoute("chat")).toBe(true);
-    expect(isConversationRoute("agent-runtime")).toBe(false);
     expect(isConversationRoute("settings")).toBe(false);
     expect(isConversationRoute("tasks")).toBe(false);
   });
 
-  it("reads legacy agent-runtime session query parameters through Chat and writes compact short hashes without clobbering other filters", () => {
-    window.history.replaceState({}, "", "/agent-runtime?foo=bar&session_id=session-agent-1");
+  it("reads Chat session query parameters and writes compact short hashes without clobbering other filters", () => {
+    window.history.replaceState({}, "", "/chat?foo=bar&session_id=session-chat-1");
 
-    expect(readWorkbenchRouteSessionID("chat")).toBe("session-agent-1");
+    expect(readWorkbenchRouteSessionID("chat")).toBe("session-chat-1");
 
     writeWorkbenchRouteSessionID("terminal", "terminal-9");
 

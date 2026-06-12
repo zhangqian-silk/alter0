@@ -2,7 +2,7 @@ import { memo, useEffect, useId, useRef, useState, type ComponentPropsWithoutRef
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 
 type ScrollJumpStripProps = {
-  scope: "chat" | "agent" | "terminal";
+  scope: "chat" | "terminal";
   namespace?: "scroll" | "terminal";
   language: LegacyShellLanguage;
   containerRef: RefObject<HTMLElement | null>;

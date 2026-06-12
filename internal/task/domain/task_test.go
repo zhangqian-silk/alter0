@@ -44,7 +44,7 @@ func TestTaskSummaryZeroAndValidate(t *testing.T) {
 
 	summary := TaskSummary{
 		TaskID:     "task-1",
-		TaskType:   "coding",
+		TaskType:   "implementation",
 		Goal:       "ship tests",
 		Result:     "done",
 		Status:     TaskStatusSuccess,
@@ -95,7 +95,7 @@ func TestTaskValidateAcceptsMessageIDFallbackAndNestedObjects(t *testing.T) {
 	}
 	task.TaskSummary = TaskSummary{
 		TaskID:     task.ID,
-		TaskType:   "coding",
+		TaskType:   "implementation",
 		Goal:       "ship tests",
 		Result:     "done",
 		Status:     TaskStatusSuccess,

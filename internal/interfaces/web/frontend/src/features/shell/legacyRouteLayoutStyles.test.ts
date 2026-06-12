@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 describe("legacy route layout stylesheet", () => {
-  it("drops the agent runtime split panes to a single column before the shell switches to drawer mode", () => {
+  it("drops the chat split panes to a single column before the shell switches to drawer mode", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(
       resolve(currentDirectory, "../../../public/legacy/chat-routes.css"),
@@ -11,20 +11,20 @@ describe("legacy route layout stylesheet", () => {
     );
 
     expect(stylesheet).toContain("@media (max-width: 1100px) {");
-    expect(stylesheet).toContain(".agent-route-layout {");
+    expect(stylesheet).toContain(".skill-route-layout {");
     expect(stylesheet).toContain("grid-template-columns: minmax(0, 1fr);");
-    expect(stylesheet).toContain(".agent-workspace {");
+    expect(stylesheet).toContain(".skill-workspace {");
     expect(stylesheet).toContain("grid-template-rows: auto minmax(260px, 1fr) auto;");
   });
 
-  it("keeps agent route primitives on the restrained workbench surface system", () => {
+  it("keeps skill route primitives on the restrained workbench surface system", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(
       resolve(currentDirectory, "../../../public/legacy/chat-routes.css"),
       "utf8",
     );
 
-    expect(stylesheet).toContain(".agent-route-card {");
+    expect(stylesheet).toContain(".skill-route-card {");
     expect(stylesheet).toContain("border: 1px solid rgba(15, 23, 42, 0.08);");
     expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.94);");
   });
@@ -53,20 +53,20 @@ describe("legacy route layout stylesheet", () => {
     expect(stylesheet).toContain(".message-markdown-toolbar {");
     expect(stylesheet).toContain(".message-markdown-copy {");
     expect(stylesheet).toContain(".message-markdown-body {");
-    expect(stylesheet).toContain(".agent-process-step-body > .message-markdown-rendered > :first-child,");
-    expect(stylesheet).toContain(".agent-process-answer > .message-markdown-rendered > :last-child {");
+    expect(stylesheet).toContain(".conversation-process-step-body > .message-markdown-rendered > :first-child,");
+    expect(stylesheet).toContain(".conversation-process-answer > .message-markdown-rendered > :last-child {");
   });
 
-  it("keeps agent process detail content readable on narrow screens", () => {
+  it("keeps skill process detail content readable on narrow screens", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(
       resolve(currentDirectory, "../../../public/legacy/chat-core.css"),
       "utf8",
     );
 
-    expect(stylesheet).toContain(".agent-process-step-head > span:last-child,");
+    expect(stylesheet).toContain(".conversation-process-step-head > span:last-child,");
     expect(stylesheet).toContain(".conversation-process-step-head > span:last-child {");
-    expect(stylesheet).toContain(".agent-process-step-body > .message-markdown-rendered,");
+    expect(stylesheet).toContain(".conversation-process-step-body > .message-markdown-rendered,");
     expect(stylesheet).toContain(".conversation-process-step-body > .message-markdown-rendered {");
     expect(stylesheet).toContain("@media (max-width: 760px) {");
     expect(stylesheet).toContain(".conversation-process-step-body {");
@@ -79,9 +79,9 @@ describe("legacy route layout stylesheet", () => {
       resolve(currentDirectory, "../../../public/legacy/chat-core.css"),
       "utf8",
     );
-    const headBlock = stylesheet.match(/\.agent-process-step-head,\s*\.conversation-process-step-head\s*\{([\s\S]*?)\n\}/)?.[1] || "";
-    const metaSlotBlock = stylesheet.match(/\.agent-process-step-head\s*>\s*span:first-child,\s*\.conversation-process-step-head\s*>\s*span:first-child\s*\{([\s\S]*?)\n\}/)?.[1] || "";
-    const mobileBlock = stylesheet.match(/@media \(max-width: 760px\) \{[\s\S]*?\.agent-process-step-head,\s*\.conversation-process-step-head\s*\{([\s\S]*?)\n  \}/)?.[1] || "";
+    const headBlock = stylesheet.match(/\.conversation-process-step-head,\s*\.conversation-process-step-head\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const metaSlotBlock = stylesheet.match(/\.conversation-process-step-head\s*>\s*span:first-child,\s*\.conversation-process-step-head\s*>\s*span:first-child\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const mobileBlock = stylesheet.match(/@media \(max-width: 760px\) \{[\s\S]*?\.conversation-process-step-head,\s*\.conversation-process-step-head\s*\{([\s\S]*?)\n  \}/)?.[1] || "";
 
     expect(headBlock).toContain("align-items: center;");
     expect(metaSlotBlock).toContain("display: inline-flex;");

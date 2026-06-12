@@ -167,7 +167,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toContain("background: linear-gradient(180deg, rgba(229, 242, 255, 0.98)");
   });
 
-  it("defines shared runtime message bubbles for chat, agent, terminal, and future runtime pages", () => {
+  it("defines shared runtime message bubbles for chat and terminal, and future runtime pages", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
@@ -594,7 +594,7 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("uses one polished mobile composer tray across chat, agent, and terminal runtime pages", () => {
+  it("uses one polished mobile composer tray across chat and terminal runtime pages", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
@@ -1145,7 +1145,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toContain("[data-runtime-view=\"conversation\"] .runtime-composer-submit {");
   });
 
-  it("styles shared jump controls as one round button set across chat, agent, and terminal", () => {
+  it("styles shared jump controls as one round button set across chat and terminal", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
@@ -1240,9 +1240,9 @@ describe("shell layout stylesheet", () => {
   it("keeps conversation process details on a readable full-width column instead of per-character wraps", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-core.css"), "utf8");
-    const bodyBlock = stylesheet.match(/\.agent-process-step-body,\s*\.conversation-process-step-body\s*\{([\s\S]*?)\n\}/)?.[1] || "";
-    const markdownBlock = stylesheet.match(/\.agent-process-step-body\s*>\s*\.message-markdown-rendered,\s*\.conversation-process-step-body\s*>\s*\.message-markdown-rendered\s*\{([\s\S]*?)\n\}/)?.[1] || "";
-    const titleBlock = stylesheet.match(/\.agent-process-step-title,\s*\.conversation-process-step-title\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const bodyBlock = stylesheet.match(/\.conversation-process-step-body,\s*\.conversation-process-step-body\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const markdownBlock = stylesheet.match(/\.conversation-process-step-body\s*>\s*\.message-markdown-rendered,\s*\.conversation-process-step-body\s*>\s*\.message-markdown-rendered\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    const titleBlock = stylesheet.match(/\.conversation-process-step-title,\s*\.conversation-process-step-title\s*\{([\s\S]*?)\n\}/)?.[1] || "";
 
     expect(bodyBlock).toContain("width: 100%;");
     expect(bodyBlock).toContain("overflow-wrap: break-word;");

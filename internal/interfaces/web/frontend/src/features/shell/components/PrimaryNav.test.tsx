@@ -58,7 +58,7 @@ describe("PrimaryNav", () => {
     expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Terminal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Agent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Skill" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Memory" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tasks" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Codex Accounts" })).not.toBeInTheDocument();

@@ -147,8 +147,8 @@ describe("ReactManagedTerminalRouteBody", () => {
         return Promise.resolve(jsonResponse({
           items: [
             {
-              id: "deploy-test-service",
-              name: "Deploy Test Service",
+              id: "preview-publish",
+              name: "Preview Publish",
               enabled: true,
               metadata: {
                 "skill.description": "Publish the current session to the shared preview gateway.",
@@ -179,19 +179,11 @@ describe("ReactManagedTerminalRouteBody", () => {
               },
             },
             {
-              id: "default-nl",
-              name: "default-nl",
+              id: "private",
+              name: "Private",
               enabled: true,
               metadata: {
-                "skill.description": "Default NL runtime policy.",
-              },
-            },
-            {
-              id: "agent-private",
-              name: "Agent Private",
-              enabled: true,
-              metadata: {
-                "alter0.skill.visibility": "agent-private",
+                "alter0.skill.visibility": "private",
               },
             },
           ],
@@ -2227,13 +2219,12 @@ describe("ReactManagedTerminalRouteBody", () => {
     fireEvent.click(screen.getByRole("button", { name: "Session" }));
 
     const configPanel = await screen.findByTestId("terminal-skill-selector");
-    expect(within(configPanel).getByLabelText("Deploy Test Service")).toBeChecked();
+    expect(within(configPanel).getByLabelText("Preview Publish")).toBeChecked();
     expect(within(configPanel).getByLabelText("Frontend Design")).toBeChecked();
     expect(within(configPanel).getByLabelText("Summary")).toBeChecked();
     expect(within(configPanel).getByLabelText("Memory")).not.toBeChecked();
-    expect(within(configPanel).getByLabelText("default-nl")).not.toBeChecked();
     expect(within(configPanel).getByText("Summary")).toBeInTheDocument();
-    expect(within(configPanel).queryByText("Agent Private")).not.toBeInTheDocument();
+    expect(within(configPanel).queryByText("Private")).not.toBeInTheDocument();
 
     fireEvent.click(within(configPanel).getByLabelText("Memory"));
     fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
@@ -2251,7 +2242,7 @@ describe("ReactManagedTerminalRouteBody", () => {
       && String(init?.method || "GET").toUpperCase() === "POST");
     expect(inputCall).toBeTruthy();
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
-    expect(payload.skill_ids).toEqual(["deploy-test-service", "frontend-design", "summary", "memory"]);
+    expect(payload.skill_ids).toEqual(["preview-publish", "frontend-design", "summary", "memory"]);
   });
 
   it("dismisses the terminal session panel when the composer input is pressed", async () => {

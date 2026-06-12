@@ -11,7 +11,7 @@
 当前 Go 包路径均已补齐 `TEST_CASES.md`：
 
 - `cmd/alter0/TEST_CASES.md`
-- `internal/agent/application/TEST_CASES.md`
+- `internal/runtime/application/TEST_CASES.md`
 - `internal/codex/application/TEST_CASES.md`
 - `internal/codex/domain/TEST_CASES.md`
 - `internal/codex/infrastructure/localfile/TEST_CASES.md`
@@ -89,9 +89,9 @@
 
 用例范围：
 
-- 登录保护、Chat 页面、静态资源、消息 JSON/SSE、Agent 消息入口。
-- Control API：Channel、Capability、Skill、MCP、Agent、Cron、Cron 内置任务保护、Environment、Runtime、LLM Provider、Maintenance。
-- Session API：历史列表、消息列表、删除、置顶、Terminal 会话置顶、维护清理、Terminal 自动清理、置顶跳过、queued/running 任务保护、Terminal busy 保护、workspace 删除、维护执行器不可用和清理资源删除失败。
+- 登录保护、Chat 页面、静态资源、消息 JSON/SSE、Skill 消息入口。
+- Control API：Channel、Capability、Skill、MCP、Skill、Cron、Environment、Runtime、LLM Provider、Maintenance。
+- Session API：历史列表、消息列表、删除、置顶、维护清理、置顶跳过、queued/running 任务保护、workspace 删除、维护执行器不可用和清理资源删除失败。
 - Workspace service 注册表：`/api/control/workspace-services` 的注册、查询、删除，以及 `<session_short_hash>.alter0.cn` / `<service>-<session_short_hash>.alter0.cn` 命中后的前端构建分发和 HTTP 反向代理；`travel` 服务额外覆盖 `travel-<session_short_hash>.alter0.cn` 的公开只读、免登录与 API 阻断。
 
 边界：
@@ -147,7 +147,7 @@
 
 - 账号业务规则、切换策略与登录会话状态由 `internal/codex/application` 覆盖。
 
-## Agent Capability & Memory
+## Skill & Memory
 
 ### `internal/execution/infrastructure`
 
@@ -165,7 +165,7 @@
 - 直连 Codex 路径解析 `thread.started.thread_id`，持久化 `.alter0/codex-runtime/thread.json`，后续同 Session 使用 `codex exec resume <thread_id> -` 续写。
 - Claude Code 执行器的 provider 环境变量、`CLAUDE.md`、runtime/skill 文件注入与 file-backed Skill 工作区副本。
 - Runtime Resolver 的执行器选择：显式 Codex、可用 Provider 优先 Claude Code、Claude 失败兜底 Codex。
-- 既有 Hybrid NL 的 Agent/ReAct/Codex 执行源、工具调用、委派与 Memory 工具兼容行为。
+- 既有 Hybrid NL 的 Skill/ReAct/Codex 执行源、工具调用、委派与 Memory 工具兼容行为。
 
 边界：
 
@@ -211,7 +211,7 @@
 边界：
 
 - 任务生命周期、复杂度分流、并发、心跳续租、retry/cancel、日志流和删除清理由 `internal/task/application` 与 Web 测试覆盖。
-- Terminal 会话态、置顶持久化、置顶优先排序与 turn/step 领域规则由 `internal/terminal/domain` 和 `internal/terminal/application` 既有测试覆盖。
+- Terminal 会话态与 turn/step 领域规则由 `internal/terminal/domain` 和 `internal/terminal/application` 既有测试覆盖。
 
 ## Conversation & Session Experience
 
@@ -226,7 +226,7 @@
 - 消息追加、按时间范围读取、会话列表分页和来源字段过滤。
 - 从 store 加载索引，store 失败时回滚。
 - 删除会话记录、索引更新和失败回滚。
-- 会话置顶 metadata、最后活跃时间刷新，以及超过固定不活跃阈值的会话清理；置顶会话、调用方传入的受保护会话和运行中的 Terminal 会话跳过自动清理。
+- 会话置顶 metadata、最后活跃时间刷新，以及超过固定不活跃阈值的会话清理；置顶会话和调用方传入的受保护会话跳过自动清理。
 
 边界：
 
@@ -263,8 +263,8 @@
 
 用例范围：
 
-- 内置 Skill 注册：`memory`、`deploy-test-service`、`frontend-design`、`artifact-preview` 等默认 Skill 的描述、guide 与 file-backed 路径。
-- 启动阶段 file-backed Skill 文件校验，确保 `docs/skills/deploy-test-service/SKILL.md`、`docs/skills/frontend-design/SKILL.md` 与 `docs/skills/artifact-preview/SKILL.md` 可被当前仓库解析。
+- 内置 Skill 注册：`memory`、`preview-publish`、`frontend-design`、`travel` 等默认 Skill 的描述、guide 与 file-backed 路径，并验证 `memory-maintenance` 为系统维护专用私有 Skill。
+- 启动阶段 file-backed Skill 文件校验，确保 `docs/skills/preview-publish/SKILL.md`、`docs/skills/frontend-design/SKILL.md`、`docs/skills/memory-maintenance/SKILL.md` 与 `docs/skills/travel/SKILL.md` 可被当前仓库解析。
 - 运行时 PATH、NO_PROXY、Web 登录密码环境变量与内部启动参数过滤。
 - supervisor client 重启错误、探活地址归一、空响应错误，以及 `sync_remote_master` 仅丢弃 tracked 改动并保留 untracked 工作区内容。
 

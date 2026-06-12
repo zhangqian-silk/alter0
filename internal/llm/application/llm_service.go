@@ -23,6 +23,6 @@ type LLMService interface {
 	GetClient(ctx context.Context, providerID string) (domain.LLMClient, error)
 	GetDefaultClient(ctx context.Context) (domain.LLMClient, error)
 
-	// Agent creation
-	GetReActAgent(ctx context.Context, providerID string, config domain.ReActAgentConfig) (*domain.ReActAgent, error)
+	// ReAct runner creation
+	GetReActRunner(ctx context.Context, providerID string, config domain.ReActRunnerConfig) (*domain.ReActRunner, error)
 }

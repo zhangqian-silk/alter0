@@ -171,7 +171,7 @@ body {
 .runtime-workspace-copy h4,
 .route-view h3,
 .management-route-content .route-card-title-copy h4,
-.management-route-content .agent-route-pane-copy h4,
+.management-route-content .skill-route-pane-copy h4,
 .management-route-content .control-task-drawer-head h4,
 .management-route-content .codex-accounts-section-head h4,
 .management-route-content .environment-toolbar-copy h3,
@@ -339,7 +339,7 @@ body {
 .management-route-content .environment-item,
 .management-route-content .codex-account-metric,
 .management-route-content .codex-accounts-summary-card,
-.management-route-content .agent-builder-managed-item {
+.management-route-content .skill-builder-managed-item {
   border-radius: 8px;
   background: #f8fafc;
 }
@@ -776,7 +776,7 @@ body {
 }
 
 .management-route-content .route-card-head,
-.management-route-content .agent-route-pane-head,
+.management-route-content .skill-route-pane-head,
 .management-route-content .control-task-drawer-head,
 .management-route-content .task-detail-head,
 .management-route-content .codex-accounts-section-head,
@@ -789,7 +789,7 @@ body {
 .management-route-content .environment-item,
 .management-route-content .codex-account-metric,
 .management-route-content .codex-accounts-summary-card,
-.management-route-content .agent-builder-managed-item {
+.management-route-content .skill-builder-managed-item {
   border: 0;
   border-radius: 0;
   background: #f8f9fa;
@@ -1156,7 +1156,7 @@ body {
 }
 
 .management-route-content .route-card-head,
-.management-route-content .agent-route-pane-head,
+.management-route-content .skill-route-pane-head,
 .management-route-content .control-task-drawer-head,
 .management-route-content .task-detail-head,
 .management-route-content .codex-accounts-section-head,
@@ -1169,7 +1169,7 @@ body {
 .management-route-content .environment-item,
 .management-route-content .codex-account-metric,
 .management-route-content .codex-accounts-summary-card,
-.management-route-content .agent-builder-managed-item {
+.management-route-content .skill-builder-managed-item {
   border: 0;
   border-radius: 0;
   background: #f8f9fa;
@@ -1451,7 +1451,7 @@ body {
 }
 
 .management-route-content .route-card-head,
-.management-route-content .agent-route-pane-head,
+.management-route-content .skill-route-pane-head,
 .management-route-content .control-task-drawer-head,
 .management-route-content .task-detail-head,
 .management-route-content .codex-accounts-section-head,
@@ -1464,7 +1464,7 @@ body {
 .management-route-content .environment-item,
 .management-route-content .codex-account-metric,
 .management-route-content .codex-accounts-summary-card,
-.management-route-content .agent-builder-managed-item {
+.management-route-content .skill-builder-managed-item {
   border: 0;
   border-radius: 0;
   background: #f8f9fa;
@@ -2014,7 +2014,7 @@ body {
 .management-route-content > .control-task-view,
 .management-route-content > .session-history-view,
 .management-route-content > .memory-view,
-.management-route-content > .agent-studio-view,
+.management-route-content > .skill-studio-view,
 .management-route-content > .codex-runtime-view,
 .management-route-content > .codex-runtime-workspace,
 .management-route-content > .codex-accounts-view,
@@ -2073,7 +2073,7 @@ body {
 .management-route-content .codex-accounts-panel,
 .management-route-content .codex-accounts-overview,
 .management-route-content .codex-accounts-main,
-.management-route-content .agent-route-card,
+.management-route-content .skill-route-card,
 .management-route-content .codex-account-card,
 .management-route-content .session-route-card,
 .memory-panel,
@@ -2085,7 +2085,7 @@ body {
 }
 
 .management-route-content .route-card-head,
-.management-route-content .agent-route-pane-head,
+.management-route-content .skill-route-pane-head,
 .management-route-content .control-task-drawer-head,
 .management-route-content .task-detail-head,
 .management-route-content .codex-runtime-section-head,
@@ -2104,7 +2104,7 @@ body {
 .management-route-content .environment-item,
 .management-route-content .codex-account-metric,
 .management-route-content .codex-accounts-summary-card,
-.management-route-content .agent-builder-managed-item,
+.management-route-content .skill-builder-managed-item,
 .management-route-content .task-detail-list-item {
   min-width: 0;
   border-radius: 8px;
@@ -2120,8 +2120,8 @@ body {
 .management-route-content .route-field-row > span:first-child,
 .management-route-content .codex-runtime-kv-select > span,
 .management-route-content .codex-accounts-field > span,
-.management-route-content .agent-builder-field > span,
-.management-route-content .agent-builder-wide > span,
+.management-route-content .skill-builder-field > span,
+.management-route-content .skill-builder-wide > span,
 .management-route-content .task-filter-form label span {
   color: #667085;
   font-size: 11px;
@@ -2158,7 +2158,7 @@ body {
 
 .management-route-content .page-filter-form,
 .management-route-content .task-filter-form,
-.management-route-content .agent-builder-form,
+.management-route-content .skill-builder-form,
 .management-route-content .codex-runtime-quick-form,
 .management-route-content .codex-accounts-form,
 .management-route-content .codex-accounts-runtime-form {
@@ -2282,7 +2282,7 @@ body {
 
 .task-summary-status,
 .status-badge,
-.agent-route-state,
+.skill-route-state,
 .codex-account-state {
   border-radius: 999px;
   letter-spacing: 0;
@@ -2300,7 +2300,7 @@ body {
 .codex-accounts-workspace,
 .codex-accounts-runtime-panel,
 .codex-accounts-overview-shell,
-.agent-studio-view,
+.skill-studio-view,
 .control-task-layout,
 .task-history-view,
 .session-history-view,
@@ -2838,9 +2838,9 @@ body {
 .codex-accounts-runtime-grid,
 .codex-accounts-runtime-controls,
 .codex-account-card-metrics,
-.agent-builder-managed,
-.agent-builder-top-grid,
-.agent-builder-options {
+.skill-builder-managed,
+.skill-builder-top-grid,
+.skill-builder-options {
   gap: 10px;
 }
 
@@ -3035,7 +3035,7 @@ body {
   .management-route-content > .control-task-view,
   .management-route-content > .session-history-view,
   .management-route-content > .memory-view,
-  .management-route-content > .agent-studio-view,
+  .management-route-content > .skill-studio-view,
   .management-route-content > .codex-runtime-view,
   .management-route-content > .codex-runtime-workspace,
   .management-route-content > .codex-accounts-view,
@@ -3048,7 +3048,7 @@ body {
   .management-route-content[data-management-route-content="runtime"] .settings-composite-section,
   .settings-composite-section[data-settings-section="workspaces"],
   .control-task-layout,
-  .agent-studio-view,
+  .skill-studio-view,
   .codex-runtime-workspace,
   .codex-accounts-workspace {
     grid-template-columns: minmax(0, 1fr);
@@ -4967,7 +4967,7 @@ body::after {
 
 .management-route-content .route-card:hover,
 .management-route-content .task-summary-row:hover,
-.management-route-content .agent-route-card:hover,
+.management-route-content .skill-route-card:hover,
 .management-route-content .codex-account-card:hover {
   transform: none;
   border-color: rgba(37, 99, 235, 0.14);
@@ -4975,7 +4975,7 @@ body::after {
 }
 
 .management-route-content .route-card-head,
-.management-route-content .agent-route-pane-head,
+.management-route-content .skill-route-pane-head,
 .management-route-content .control-task-drawer-head,
 .management-route-content .task-detail-head,
 .management-route-content .codex-accounts-section-head,
@@ -5023,7 +5023,7 @@ body::after {
 }
 
 .management-route-content .route-card-title-copy h4,
-.management-route-content .agent-route-pane-copy h4,
+.management-route-content .skill-route-pane-copy h4,
 .management-route-content .control-task-drawer-head h4,
 .management-route-content .codex-accounts-section-head h4,
 .management-route-content .environment-toolbar-copy h3,
@@ -5036,7 +5036,7 @@ body::after {
 }
 
 .management-route-content .route-card-title-meta,
-.management-route-content .agent-route-pane-copy p,
+.management-route-content .skill-route-pane-copy p,
 .management-route-content .control-task-drawer-head p,
 .management-route-content .codex-accounts-section-head p,
 .management-route-content .environment-toolbar-copy p {
@@ -5048,7 +5048,7 @@ body::after {
 
 .management-route-content .route-meta,
 .management-route-content .route-card-body,
-.management-route-content .agent-builder-form,
+.management-route-content .skill-builder-form,
 .management-route-content .codex-accounts-form,
 .management-route-content .codex-accounts-runtime-form,
 .management-route-content .environment-card-body,
@@ -5065,9 +5065,9 @@ body::after {
 }
 
 .management-route-content .task-filter-form label span,
-.management-route-content .agent-builder-field > span,
-.management-route-content .agent-builder-wide > span,
-.management-route-content .agent-builder-toggle > span,
+.management-route-content .skill-builder-field > span,
+.management-route-content .skill-builder-wide > span,
+.management-route-content .skill-builder-toggle > span,
 .management-route-content .codex-accounts-field > span,
 .management-route-content .environment-input-row span {
   color: var(--shell-muted);
@@ -5078,9 +5078,9 @@ body::after {
 
 .management-route-content .task-filter-form input,
 .management-route-content .task-filter-form select,
-.management-route-content .agent-builder-form input,
-.management-route-content .agent-builder-form textarea,
-.management-route-content .agent-builder-form select,
+.management-route-content .skill-builder-form input,
+.management-route-content .skill-builder-form textarea,
+.management-route-content .skill-builder-form select,
 .management-route-content .codex-accounts-form input,
 .management-route-content .codex-accounts-form select,
 .management-route-content .codex-accounts-runtime-form select,
@@ -5120,7 +5120,7 @@ body::after {
 .management-route-content .environment-item,
 .management-route-content .codex-account-metric,
 .management-route-content .codex-accounts-summary-card,
-.management-route-content .agent-builder-managed-item {
+.management-route-content .skill-builder-managed-item {
   border-radius: 8px;
   background: rgba(248, 250, 252, 0.78);
 }
@@ -5149,7 +5149,7 @@ body::after {
   line-height: 1.55;
 }
 
-.management-route-content .agent-studio-view,
+.management-route-content .skill-studio-view,
 .management-route-content .codex-accounts-workspace,
 .management-route-content .control-task-layout,
 .management-route-content .task-history-view,
@@ -5157,7 +5157,7 @@ body::after {
   gap: 16px;
 }
 
-.management-route-content .agent-route-card,
+.management-route-content .skill-route-card,
 .management-route-content .codex-account-card {
   border-radius: 10px;
   border-color: rgba(15, 23, 42, 0.08);
@@ -5165,7 +5165,7 @@ body::after {
   box-shadow: none;
 }
 
-.management-route-content .agent-route-card.is-active,
+.management-route-content .skill-route-card.is-active,
 .management-route-content .task-summary-row.active,
 .management-route-content .codex-account-state.is-current {
   border-color: rgba(37, 99, 235, 0.18);
@@ -5840,37 +5840,37 @@ body::after {
   min-height: 100%;
 }
 
-.agent-builder-top-grid {
+.skill-builder-top-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.5fr) minmax(160px, 0.4fr);
   gap: 14px;
   align-items: end;
 }
 
-.agent-builder-field {
+.skill-builder-field {
   display: grid;
   gap: 8px;
 }
 
-.agent-builder-toggle {
+.skill-builder-toggle {
   display: grid;
   gap: 10px;
   align-content: start;
 }
 
-.agent-builder-switch {
+.skill-builder-switch {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
 }
 
-.agent-builder-switch input {
+.skill-builder-switch input {
   position: absolute;
   opacity: 0;
   pointer-events: none;
 }
 
-.agent-builder-switch-track {
+.skill-builder-switch-track {
   position: relative;
   display: inline-flex;
   width: 54px;
@@ -5881,7 +5881,7 @@ body::after {
   transition: background-color 180ms ease;
 }
 
-.agent-builder-switch-thumb {
+.skill-builder-switch-thumb {
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -5890,11 +5890,11 @@ body::after {
   transition: transform 180ms ease;
 }
 
-.agent-builder-switch input:checked + .agent-builder-switch-track {
+.skill-builder-switch input:checked + .skill-builder-switch-track {
   background: linear-gradient(135deg, var(--shell-accent) 0%, var(--shell-accent-strong) 100%);
 }
 
-.agent-builder-switch input:checked + .agent-builder-switch-track .agent-builder-switch-thumb {
+.skill-builder-switch input:checked + .skill-builder-switch-track .skill-builder-switch-thumb {
   transform: translateX(24px);
 }
 
@@ -5947,7 +5947,7 @@ body::after {
   .route-master-detail,
   .task-history-view,
   .control-task-layout,
-  .agent-builder-top-grid {
+  .skill-builder-top-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -7292,7 +7292,7 @@ body::after {
   }
 
   .management-route-content .route-card-head,
-  .management-route-content .agent-route-pane-head,
+  .management-route-content .skill-route-pane-head,
   .management-route-content .control-task-drawer-head,
   .management-route-content .task-detail-head,
   .management-route-content .codex-accounts-section-head,
@@ -7312,7 +7312,7 @@ body::after {
   .management-route-content .codex-accounts-runtime-controls,
   .management-route-content .codex-accounts-summary-grid,
   .management-route-content .codex-account-card-metrics,
-  .management-route-content .agent-builder-managed {
+  .management-route-content .skill-builder-managed {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -10953,7 +10953,7 @@ body {
 .runtime-workspace-copy h4,
 .route-view h3,
 .management-route-content .route-card-title-copy h4,
-.management-route-content .agent-route-pane-copy h4,
+.management-route-content .skill-route-pane-copy h4,
 .management-route-content .control-task-drawer-head h4,
 .management-route-content .codex-accounts-section-head h4,
 .management-route-content .environment-toolbar-copy h3,
@@ -11133,7 +11133,7 @@ body {
 .management-route-content .environment-item,
 .management-route-content .codex-account-metric,
 .management-route-content .codex-accounts-summary-card,
-.management-route-content .agent-builder-managed-item {
+.management-route-content .skill-builder-managed-item {
   border-radius: 8px;
   background: #f8fafc;
 }
@@ -11809,7 +11809,7 @@ body {
 }
 
 .management-route-content .route-card-head,
-.management-route-content .agent-route-pane-head,
+.management-route-content .skill-route-pane-head,
 .management-route-content .control-task-drawer-head,
 .management-route-content .task-detail-head,
 .management-route-content .codex-accounts-section-head,
@@ -11822,7 +11822,7 @@ body {
 .management-route-content .environment-item,
 .management-route-content .codex-account-metric,
 .management-route-content .codex-accounts-summary-card,
-.management-route-content .agent-builder-managed-item {
+.management-route-content .skill-builder-managed-item {
   border: 0;
   border-radius: 0;
   background: #f8f9fa;

@@ -93,7 +93,7 @@ var sessionTitleActionWords = []string{
 
 var sessionTitleTechnicalWords = []string{
 	"terminal",
-	"agent",
+
 	"chat",
 	"session",
 	"title",

@@ -213,12 +213,9 @@ func TestSidebarGroupTitlesHaveDedicatedI18NKeys(t *testing.T) {
 	scriptMarkers := []string{
 		`Workspace: "Workspace"`,
 		`Control: "Control"`,
-		`agent: "Profiles"`,
-		`"agent-runtime": "Chat"`,
 		`Settings: "Settings"`,
 		`Workspace: "工作区"`,
 		`Control: "控制台"`,
-		`agent: "配置"`,
 		`Settings: "设置"`,
 	}
 	for _, marker := range scriptMarkers {
@@ -309,7 +306,6 @@ func TestWorkbenchConversationAndManagedRoutesPresent(t *testing.T) {
 		"<RuntimeRouteHost route={route} language={language} />",
 		"<ReactManagedRouteBody route={route} language={language} />",
 		`isConversationRoute(route) || route === "terminal"`,
-		`agent: ({ language }) => <ReactManagedAgentRouteBody language={language} />`,
 		`memory: ({ language }) => <ReactManagedMemoryRouteBody language={language} />`,
 	}
 	for _, marker := range markers {
@@ -360,26 +356,6 @@ func TestWorkbenchRetiresManagedControlLoaders(t *testing.T) {
 	for _, marker := range requiredMarkers {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("expected script marker %q", marker)
-		}
-	}
-}
-
-func TestSidebarAgentMemoryTabStylesPresent(t *testing.T) {
-	styles := readEmbeddedAsset(t, "static/assets/chat.css")
-	markers := []string{
-		".agent-studio-view {",
-		".agent-route-card {",
-		".agent-builder-form {",
-		".agent-builder-option {",
-		".memory-view {",
-		".memory-tabs {",
-		".memory-tab.active {",
-		".memory-content {",
-		".memory-spec-sections {",
-	}
-	for _, marker := range markers {
-		if !strings.Contains(styles, marker) {
-			t.Fatalf("expected style marker %q", marker)
 		}
 	}
 }

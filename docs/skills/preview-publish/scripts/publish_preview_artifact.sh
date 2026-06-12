@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: docs/skills/artifact-preview/scripts/publish_preview_artifact.sh <session_id> [service_name] [options]
+Usage: docs/skills/preview-publish/scripts/publish_preview_artifact.sh <session_id> [service_name] [options]
 
 Build and deploy a static preview page for text, image, and code artifacts.
 

@@ -276,7 +276,7 @@ export function ReactManagedMemoryRouteBody({
       setRequestState({ status: "loading", error: "" });
       try {
         const [memory, tasks] = await Promise.all([
-          apiClient.get<MemoryPayload>("/api/agent/memory"),
+          apiClient.get<MemoryPayload>("/api/memory/context"),
           apiClient.get<TaskListPayload>(buildTaskHistoryQuery(DEFAULT_TASK_FILTERS, 1)),
         ]);
         if (disposed) {

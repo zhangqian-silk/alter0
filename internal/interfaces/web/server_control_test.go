@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 	schedulerapp "alter0/internal/scheduler/application"
@@ -139,7 +138,7 @@ func TestCapabilityUnifiedAPI(t *testing.T) {
 		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	putReq := httptest.NewRequest(http.MethodPut, "/api/control/capabilities/skill/default-nl", strings.NewReader(`{"name":"Default NL","version":"v1.0.0","scope":"global"}`))
+	putReq := httptest.NewRequest(http.MethodPut, "/api/control/capabilities/skill/sample-skill", strings.NewReader(`{"name":"Sample Skill","version":"v1.0.0","scope":"global"}`))
 	putRec := httptest.NewRecorder()
 	server.capabilityItemHandler(putRec, putReq)
 	if putRec.Code != http.StatusOK {
@@ -158,143 +157,15 @@ func TestCapabilityUnifiedAPI(t *testing.T) {
 	if err := json.NewDecoder(listRec.Body).Decode(&listResp); err != nil {
 		t.Fatalf("decode capability list failed: %v", err)
 	}
-	if len(listResp.Items) != 1 || listResp.Items[0].ID != "default-nl" {
+	if len(listResp.Items) != 1 || listResp.Items[0].ID != "sample-skill" {
 		t.Fatalf("unexpected capability list: %+v", listResp.Items)
 	}
 
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/control/capabilities/skill/default-nl", nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/control/capabilities/skill/sample-skill", nil)
 	deleteRec := httptest.NewRecorder()
 	server.capabilityItemHandler(deleteRec, deleteReq)
 	if deleteRec.Code != http.StatusOK {
 		t.Fatalf("expected capability delete 200, got %d", deleteRec.Code)
-	}
-}
-
-func TestAgentEndpointCreatesManagedIdentityAndVersion(t *testing.T) {
-	control := controlapp.NewService()
-	server := &Server{
-		control: control,
-		agents:  agentapp.NewCatalog(control),
-		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	createReq := httptest.NewRequest(http.MethodPost, "/api/control/agents", strings.NewReader(`{
-		"name":"Researcher",
-		"enabled":true,
-		"system_prompt":"Execute first, summarize later.",
-		"max_iterations":8,
-		"tools":["codex_exec"],
-		"skills":["summary"],
-		"mcps":["github"]
-	}`))
-	createRec := httptest.NewRecorder()
-	server.agentListHandler(createRec, createReq)
-	if createRec.Code != http.StatusCreated {
-		t.Fatalf("expected create 201, got %d: %s", createRec.Code, createRec.Body.String())
-	}
-
-	var agent controldomain.Agent
-	if err := json.NewDecoder(createRec.Body).Decode(&agent); err != nil {
-		t.Fatalf("decode create response failed: %v", err)
-	}
-	if agent.Type != controldomain.CapabilityTypeAgent {
-		t.Fatalf("expected type agent, got %s", agent.Type)
-	}
-	if agent.ID != "researcher" {
-		t.Fatalf("expected generated id researcher, got %s", agent.ID)
-	}
-	if agent.Version != "v1.0.0" {
-		t.Fatalf("expected managed version v1.0.0, got %s", agent.Version)
-	}
-	if agent.MaxIterations != 8 {
-		t.Fatalf("expected max_iterations 8, got %d", agent.MaxIterations)
-	}
-	if len(agent.Tools) != 1 || agent.Tools[0] != "codex_exec" {
-		t.Fatalf("unexpected tools: %+v", agent.Tools)
-	}
-
-	updateReq := httptest.NewRequest(http.MethodPut, "/api/control/agents/researcher", strings.NewReader(`{
-		"name":"Researcher",
-		"enabled":true,
-		"system_prompt":"Execute directly and close the loop.",
-		"max_iterations":10,
-		"tools":["codex_exec"],
-		"skills":["summary"],
-		"mcps":["github"]
-	}`))
-	updateRec := httptest.NewRecorder()
-	server.agentItemHandler(updateRec, updateReq)
-	if updateRec.Code != http.StatusOK {
-		t.Fatalf("expected update 200, got %d: %s", updateRec.Code, updateRec.Body.String())
-	}
-	if err := json.NewDecoder(updateRec.Body).Decode(&agent); err != nil {
-		t.Fatalf("decode update response failed: %v", err)
-	}
-	if agent.Version != "v1.0.1" {
-		t.Fatalf("expected managed version bump v1.0.1, got %s", agent.Version)
-	}
-	if agent.ProviderID != "" || agent.Model != "" {
-		t.Fatalf("expected provider/model to be empty, got %+v", agent)
-	}
-
-	listReq := httptest.NewRequest(http.MethodGet, "/api/control/agents", nil)
-	listRec := httptest.NewRecorder()
-	server.agentListHandler(listRec, listReq)
-	if listRec.Code != http.StatusOK {
-		t.Fatalf("expected list 200, got %d", listRec.Code)
-	}
-	var listResp struct {
-		Items []controldomain.Agent `json:"items"`
-	}
-	if err := json.NewDecoder(listRec.Body).Decode(&listResp); err != nil {
-		t.Fatalf("decode list response failed: %v", err)
-	}
-	if len(listResp.Items) != 1 || listResp.Items[0].ID != "researcher" {
-		t.Fatalf("unexpected list items: %+v", listResp.Items)
-	}
-}
-
-func TestManagedAgentCreateSkipsBuiltinReservedID(t *testing.T) {
-	control := controlapp.NewService()
-	server := &Server{
-		control: control,
-		agents:  agentapp.NewCatalog(control),
-		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	createReq := httptest.NewRequest(http.MethodPost, "/api/control/agents", strings.NewReader(`{
-		"name":"Coding",
-		"enabled":true
-	}`))
-	createRec := httptest.NewRecorder()
-	server.agentListHandler(createRec, createReq)
-
-	if createRec.Code != http.StatusCreated {
-		t.Fatalf("expected create 201, got %d: %s", createRec.Code, createRec.Body.String())
-	}
-	var agent controldomain.Agent
-	if err := json.NewDecoder(createRec.Body).Decode(&agent); err != nil {
-		t.Fatalf("decode create response failed: %v", err)
-	}
-	if agent.ID != "coding-2" {
-		t.Fatalf("expected managed agent id coding-2 to avoid builtin collision, got %s", agent.ID)
-	}
-}
-
-func TestBuiltinAgentCannotBeOverwrittenFromControlEndpoint(t *testing.T) {
-	control := controlapp.NewService()
-	server := &Server{
-		control: control,
-		agents:  agentapp.NewCatalog(control),
-		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	req := httptest.NewRequest(http.MethodPut, "/api/control/agents/main", strings.NewReader(`{"name":"Main Override","enabled":true}`))
-	rec := httptest.NewRecorder()
-	server.agentItemHandler(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected builtin overwrite rejection 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

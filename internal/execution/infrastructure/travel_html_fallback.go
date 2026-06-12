@@ -7,13 +7,13 @@ import (
 	execdomain "alter0/internal/execution/domain"
 )
 
-func (p *HybridNLProcessor) finalizeAgentOutput(
+func (p *HybridNLProcessor) finalizeDeliveryOutput(
 	_ context.Context,
 	_ string,
 	output string,
 	metadata map[string]string,
 ) (string, error) {
-	if !isTravelAgent(metadata) {
+	if !isTravelSkillRun(metadata) {
 		return output, nil
 	}
 	guideURL, err := resolveCurrentTravelGuideURL(metadata)

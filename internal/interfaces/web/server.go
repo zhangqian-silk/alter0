@@ -79,11 +79,10 @@ const (
 var sseHeartbeatInterval = 15 * time.Second
 
 var workbenchPagePaths = map[string]struct{}{
-	"/chat":          {},
-	"/agent-runtime": {},
-	"/terminal":      {},
-	"/management":    {},
-	"/settings":      {},
+	"/chat":       {},
+	"/terminal":   {},
+	"/management": {},
+	"/settings":   {},
 }
 
 type Orchestrator interface {
@@ -114,14 +113,13 @@ type Server struct {
 	terminals                   terminalService
 	runtime                     runtimeRestarter
 	runtimeInfo                 runtimeInfoProvider
-	memory                      *agentMemoryService
+	memory                      *memoryContextService
 	llm                         llmService
 	logger                      *slog.Logger
 	webLoginPassword            string
 	webSessionToken             string
 	webLoginEnabled             bool
 	webBindLocalhost            bool
-	agents                      agentCatalogService
 	workspaceRoot               string
 	frontendDevOrigin           string
 	frontendDevProxy            http.Handler
@@ -142,13 +140,6 @@ type llmService interface {
 	RemoveProvider(ctx context.Context, providerID string) error
 	SetDefaultProvider(ctx context.Context, providerID string) error
 	EnableProvider(ctx context.Context, providerID string, enabled bool) error
-}
-
-type agentCatalogService interface {
-	ResolveAgent(id string) (controldomain.Agent, bool)
-	ListEntrypointAgents() []controldomain.Agent
-	ListDelegatableAgents(excludeID string) []controldomain.Agent
-	IsBuiltinID(id string) bool
 }
 
 type sessionHistoryService interface {
@@ -277,10 +268,9 @@ type messageResponse struct {
 type conversationRuntimeRoute string
 
 const (
-	conversationRuntimeRouteChat               conversationRuntimeRoute = "chat"
-	legacyConversationRuntimeRouteAgentRuntime                          = "agent-runtime"
-	conversationRuntimeTitleMaxRunes                                    = 32
-	conversationRuntimeSessionPageSize                                  = 200
+	conversationRuntimeRouteChat       conversationRuntimeRoute = "chat"
+	conversationRuntimeTitleMaxRunes                            = 32
+	conversationRuntimeSessionPageSize                          = 200
 )
 
 type conversationRuntimeSessionCollectionResponse struct {
@@ -451,24 +441,6 @@ type skillUpsertRequest struct {
 	Scope    string            `json:"scope,omitempty"`
 	Version  string            `json:"version,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
-}
-
-type agentUpsertRequest struct {
-	Name                 string                                   `json:"name"`
-	Enabled              *bool                                    `json:"enabled,omitempty"`
-	Scope                string                                   `json:"scope,omitempty"`
-	Version              string                                   `json:"version,omitempty"`
-	ProviderID           string                                   `json:"provider_id,omitempty"`
-	Model                string                                   `json:"model,omitempty"`
-	SystemPrompt         string                                   `json:"system_prompt,omitempty"`
-	MaxIterations        int                                      `json:"max_iterations,omitempty"`
-	Tools                []string                                 `json:"tools,omitempty"`
-	Skills               []string                                 `json:"skills,omitempty"`
-	MCPs                 []string                                 `json:"mcps,omitempty"`
-	MemoryFiles          []string                                 `json:"memory_files,omitempty"`
-	SessionProfileFields []controldomain.AgentSessionProfileField `json:"session_profile_fields,omitempty"`
-	Deliverables         []controldomain.AgentDeliverable         `json:"deliverables,omitempty"`
-	Metadata             map[string]string                        `json:"metadata,omitempty"`
 }
 
 type capabilityLifecycleRequest struct {
@@ -661,10 +633,9 @@ func NewServer(
 	sessions sessionHistoryService,
 	tasks taskService,
 	terminals terminalService,
-	memoryOptions AgentMemoryOptions,
+	memoryOptions MemoryContextOptions,
 	securityOptions WebSecurityOptions,
 	llm llmService,
-	agents agentCatalogService,
 	logger *slog.Logger,
 ) *Server {
 	resolvedPassword := strings.TrimSpace(securityOptions.LoginPassword)
@@ -700,14 +671,13 @@ func NewServer(
 		sessions:                    sessions,
 		tasks:                       tasks,
 		terminals:                   terminals,
-		memory:                      newAgentMemoryService(memoryOptions),
+		memory:                      newMemoryContextService(memoryOptions),
 		llm:                         llm,
 		logger:                      logger,
 		webLoginPassword:            resolvedPassword,
 		webSessionToken:             webSessionToken,
 		webLoginEnabled:             resolvedPassword != "",
 		webBindLocalhost:            resolvedBindLocalhost,
-		agents:                      agents,
 		workspaceRoot:               workspaceRoot,
 		frontendDevOrigin:           frontendDevOrigin,
 		frontendDevProxy:            newFrontendDevProxy(frontendDevOrigin, logger),
@@ -770,7 +740,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/maintenance/sessions/cleanup", s.maintenanceSessionCleanupHandler)
 	mux.HandleFunc("/api/tasks", s.taskCollectionHandler)
 	mux.HandleFunc("/api/tasks/", s.taskItemHandler)
-	mux.HandleFunc("/api/agent/memory", s.agentMemoryHandler)
+	mux.HandleFunc("/api/memory/context", s.memoryContextHandler)
 	mux.HandleFunc("/api/memory/tasks", s.memoryTaskCollectionHandler)
 	mux.HandleFunc("/api/memory/tasks/", s.memoryTaskItemHandler)
 	mux.HandleFunc("/api/control/tasks", s.controlTaskCollectionHandler)
@@ -790,8 +760,6 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/skills/", s.skillItemHandler)
 	mux.HandleFunc("/api/control/mcps", s.mcpListHandler)
 	mux.HandleFunc("/api/control/mcps/", s.mcpItemHandler)
-	mux.HandleFunc("/api/control/agents", s.agentListHandler)
-	mux.HandleFunc("/api/control/agents/", s.agentItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)
 	mux.HandleFunc("/api/control/cron/jobs/", s.cronJobItemHandler)
 	mux.HandleFunc("/api/control/codex/accounts", s.codexAccountCollectionHandler)
@@ -1139,8 +1107,6 @@ func normalizeLoginNext(raw string) string {
 		pathOnly = pathOnly[:index]
 	}
 	switch pathOnly {
-	case "/agent-runtime":
-		return "/chat"
 	case "/management":
 		return "/settings"
 	}
@@ -2346,8 +2312,6 @@ func parseStoredConversationRuntimeRoute(raw string) (conversationRuntimeRoute, 
 	switch strings.TrimSpace(raw) {
 	case string(conversationRuntimeRouteChat):
 		return conversationRuntimeRouteChat, false, true
-	case legacyConversationRuntimeRouteAgentRuntime:
-		return conversationRuntimeRouteChat, true, true
 	default:
 		return "", false, false
 	}
@@ -2439,7 +2403,7 @@ func buildConversationRuntimeMessage(record sessiondomain.MessageRecord) convers
 		Text:         strings.TrimSpace(record.Content),
 		Attachments:  items,
 		Route:        string(record.RouteResult.Route),
-		Source:       strings.TrimSpace(record.Source.AgentName),
+		Source:       strings.TrimSpace(record.Source.JobName),
 		Error:        isError,
 		Status:       status,
 		At:           record.Timestamp.UTC(),
@@ -2450,18 +2414,6 @@ func buildConversationRuntimeMessage(record sessiondomain.MessageRecord) convers
 }
 
 func resolveConversationRuntimeTarget(records []sessiondomain.MessageRecord) (string, string, string) {
-	for idx := len(records) - 1; idx >= 0; idx-- {
-		source := records[idx].Source
-		agentID := strings.TrimSpace(source.AgentID)
-		if agentID == "" {
-			continue
-		}
-		agentName := strings.TrimSpace(source.AgentName)
-		if agentName == "" {
-			agentName = agentID
-		}
-		return "agent", agentID, agentName
-	}
 	return "model", "raw-model", "Raw Model"
 }
 
@@ -2486,7 +2438,7 @@ func resolveConversationRuntimeCapabilities(records []sessiondomain.MessageRecor
 		if len(metadata) == 0 {
 			continue
 		}
-		return normalizeConversationRuntimeIDs(metadata["alter0.agent.tools"]),
+		return nil,
 			normalizeConversationRuntimeIDs(metadata["alter0.skills.include"]),
 			normalizeConversationRuntimeIDs(metadata["alter0.mcp.request.enable"])
 	}
@@ -3189,13 +3141,13 @@ func (s *Server) streamTaskLogs(w http.ResponseWriter, r *http.Request, taskID s
 	}
 }
 
-func (s *Server) agentMemoryHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) memoryContextHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 	if s.memory == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent memory unavailable"})
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "memory context unavailable"})
 		return
 	}
 	writeJSON(w, http.StatusOK, s.memory.Snapshot())
@@ -3310,7 +3262,7 @@ func (s *Server) memoryTaskItemHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"items": artifactItems})
 	case action == "rebuild-summary" && r.Method == http.MethodPost:
 		if s.memory == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent memory unavailable"})
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "memory context unavailable"})
 			return
 		}
 		item, exists := s.tasks.Get(taskID)
@@ -3867,7 +3819,7 @@ func (s *Server) capabilityListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	capabilityType := controldomain.CapabilityType(filterType)
 	if !capabilityType.IsSupported() {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill, mcp or agent"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill or mcp"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListCapabilitiesByType(capabilityType)})
@@ -3888,7 +3840,7 @@ func (s *Server) capabilityAuditListHandler(w http.ResponseWriter, r *http.Reque
 	if filterType != "" {
 		capabilityType := controldomain.CapabilityType(filterType)
 		if !capabilityType.IsSupported() {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill, mcp or agent"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill or mcp"})
 			return
 		}
 		filtered := make([]controldomain.CapabilityAudit, 0, len(items))
@@ -4009,177 +3961,6 @@ func (s *Server) mcpItemHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
-}
-
-func (s *Server) agentListHandler(w http.ResponseWriter, r *http.Request) {
-	if s.control == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListAgents()})
-	case http.MethodPost:
-		defer r.Body.Close()
-		var req agentUpsertRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
-			return
-		}
-		enabled := true
-		if req.Enabled != nil {
-			enabled = *req.Enabled
-		}
-		agentID, err := s.nextManagedAgentID(strings.TrimSpace(req.Name))
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		created, err := s.control.SaveAgent(agentID, controldomain.Agent{
-			Name:                 strings.TrimSpace(req.Name),
-			Type:                 controldomain.CapabilityTypeAgent,
-			Enabled:              enabled,
-			Scope:                controldomain.CapabilityScope(strings.ToLower(strings.TrimSpace(req.Scope))),
-			SystemPrompt:         strings.TrimSpace(req.SystemPrompt),
-			MaxIterations:        req.MaxIterations,
-			Tools:                req.Tools,
-			Skills:               req.Skills,
-			MCPs:                 req.MCPs,
-			MemoryFiles:          req.MemoryFiles,
-			SessionProfileFields: req.SessionProfileFields,
-			Deliverables:         req.Deliverables,
-			Metadata:             req.Metadata,
-		})
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusCreated, created)
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func buildAgentFromRequest(id string, req agentUpsertRequest) controldomain.Agent {
-	enabled := true
-	if req.Enabled != nil {
-		enabled = *req.Enabled
-	}
-	return controldomain.Agent{
-		ID:                   strings.TrimSpace(id),
-		Name:                 strings.TrimSpace(req.Name),
-		Type:                 controldomain.CapabilityTypeAgent,
-		Enabled:              enabled,
-		Scope:                controldomain.CapabilityScope(strings.ToLower(strings.TrimSpace(req.Scope))),
-		Version:              strings.TrimSpace(req.Version),
-		ProviderID:           strings.TrimSpace(req.ProviderID),
-		Model:                strings.TrimSpace(req.Model),
-		SystemPrompt:         strings.TrimSpace(req.SystemPrompt),
-		MaxIterations:        req.MaxIterations,
-		Tools:                req.Tools,
-		Skills:               req.Skills,
-		MCPs:                 req.MCPs,
-		MemoryFiles:          req.MemoryFiles,
-		SessionProfileFields: req.SessionProfileFields,
-		Deliverables:         req.Deliverables,
-		Metadata:             req.Metadata,
-	}
-}
-
-func (s *Server) agentItemHandler(w http.ResponseWriter, r *http.Request) {
-	if s.control == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
-		return
-	}
-
-	agentID, ok := resourceID(r.URL.Path, "/api/control/agents/")
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent path"})
-		return
-	}
-
-	switch r.Method {
-	case http.MethodPut:
-		if s.agents != nil && s.agents.IsBuiltinID(agentID) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "builtin agents are managed by the service and cannot be overwritten"})
-			return
-		}
-		defer r.Body.Close()
-		var req agentUpsertRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
-			return
-		}
-		saved, err := s.control.SaveAgent(agentID, buildAgentFromRequest(agentID, req))
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, saved)
-	case http.MethodPost:
-		s.applyCapabilityLifecycle(w, r, agentID, controldomain.CapabilityTypeAgent)
-	case http.MethodDelete:
-		if s.agents != nil && s.agents.IsBuiltinID(agentID) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "builtin agents are managed by the service and cannot be deleted"})
-			return
-		}
-		if !s.control.DeleteAgent(agentID) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "agent not found"})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func (s *Server) nextManagedAgentID(name string) (string, error) {
-	base := agentIDBase(name)
-	if base == "" {
-		return "", errors.New("capability name is required")
-	}
-	candidate := base
-	for index := 2; ; index++ {
-		if !s.agentIDExists(candidate) {
-			return candidate, nil
-		}
-		candidate = fmt.Sprintf("%s-%d", base, index)
-	}
-}
-
-func agentIDBase(name string) string {
-	trimmed := strings.TrimSpace(strings.ToLower(name))
-	if trimmed == "" {
-		return ""
-	}
-	var builder strings.Builder
-	lastHyphen := false
-	for _, r := range trimmed {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			builder.WriteRune(r)
-			lastHyphen = false
-			continue
-		}
-		if !lastHyphen {
-			builder.WriteByte('-')
-			lastHyphen = true
-		}
-	}
-	return strings.Trim(builder.String(), "-")
-}
-
-func (s *Server) agentIDExists(id string) bool {
-	if s.agents != nil {
-		if _, ok := s.agents.ResolveAgent(id); ok {
-			return true
-		}
-	}
-	if s.control != nil {
-		if _, ok := s.control.ResolveAgent(id); ok {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *Server) upsertTypedCapability(w http.ResponseWriter, r *http.Request, capabilityID string, forcedType controldomain.CapabilityType) {
@@ -5156,7 +4937,6 @@ func parseSessionQuery(r *http.Request) (sessionapp.SessionQuery, int, error) {
 		PageSize:  pageSize,
 		ChannelID: strings.TrimSpace(r.URL.Query().Get("channel_id")),
 		MessageID: strings.TrimSpace(r.URL.Query().Get("message_id")),
-		AgentID:   strings.TrimSpace(r.URL.Query().Get("agent_id")),
 		JobID:     strings.TrimSpace(r.URL.Query().Get("job_id")),
 	}
 	rawTriggerType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("trigger_type")))

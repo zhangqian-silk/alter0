@@ -89,18 +89,10 @@ type persistedCodexThreadState struct {
 type codexExecutionPayload struct {
 	Protocol     string                     `json:"protocol"`
 	UserPrompt   string                     `json:"user_prompt"`
-	AgentContext *codexAgentContext         `json:"agent_context,omitempty"`
 	Runtime      *execdomain.RuntimeContext `json:"runtime_context,omitempty"`
 	SkillPolicy  *execdomain.SkillContext   `json:"skill_context,omitempty"`
 	MCPPolicy    *execdomain.MCPContext     `json:"mcp_context,omitempty"`
 	MemoryPolicy *execdomain.MemoryContext  `json:"memory_context,omitempty"`
-}
-
-type codexAgentContext struct {
-	Protocol    string `json:"protocol"`
-	AgentID     string `json:"agent_id,omitempty"`
-	AgentName   string `json:"agent_name,omitempty"`
-	DelegatedBy string `json:"delegated_by,omitempty"`
 }
 
 type codexJSONEvent struct {
@@ -565,14 +557,14 @@ func collectStreamOutput(
 		if event.Item == nil || event.Item.Type != "agent_message" {
 			continue
 		}
-		if processStep := codexAgentMessageProcessStep(event.Type, event.Item, len(processSteps)+1); processStep != nil {
+		if processStep := codexRuntimeMessageProcessStep(event.Type, event.Item, len(processSteps)+1); processStep != nil {
 			processSteps = append(processSteps, *processStep)
 			if err := emitCodexProcessStep(emit, processStep); err != nil {
 				return "", threadID, processSteps, err
 			}
 			continue
 		}
-		if !isFinalCodexAgentMessage(event.Item) {
+		if !isFinalCodexRuntimeMessage(event.Item) {
 			continue
 		}
 
@@ -609,7 +601,7 @@ func collectStreamOutput(
 	return emittedOutput, threadID, processSteps, nil
 }
 
-func isFinalCodexAgentMessage(item *codexEventItem) bool {
+func isFinalCodexRuntimeMessage(item *codexEventItem) bool {
 	if item == nil {
 		return false
 	}
@@ -621,8 +613,8 @@ func isFinalCodexAgentMessage(item *codexEventItem) bool {
 	}
 }
 
-func codexAgentMessageProcessStep(eventType string, item *codexEventItem, sequence int) *shareddomain.ProcessStep {
-	if item == nil || isFinalCodexAgentMessage(item) {
+func codexRuntimeMessageProcessStep(eventType string, item *codexEventItem, sequence int) *shareddomain.ProcessStep {
+	if item == nil || isFinalCodexRuntimeMessage(item) {
 		return nil
 	}
 	if strings.ToLower(strings.TrimSpace(item.Channel)) != "commentary" {
@@ -668,7 +660,7 @@ func storeCodexProcessSteps(metadata map[string]string, steps []shareddomain.Pro
 	if err != nil {
 		return
 	}
-	metadata[execdomain.AgentProcessStepsMetadataKey] = string(raw)
+	metadata[execdomain.ProcessStepsMetadataKey] = string(raw)
 }
 
 func collectThreadIDFromOutput(output string) string {
@@ -743,39 +735,37 @@ func buildCodexPrompt(prompt string, metadata map[string]string) (string, error)
 		return "", errors.New("content is required")
 	}
 	sections := []string{}
-	if prelude := buildCodexAgentPromptPrelude(metadata); prelude != "" {
+	if prelude := buildCodexDeliveryPromptPrelude(metadata); prelude != "" {
 		sections = append(sections, prelude)
 	}
 	sections = append(sections, trimmedPrompt)
 	return strings.Join(sections, "\n\n"), nil
 }
 
-func buildCodexAgentPromptPrelude(metadata map[string]string) string {
-	agentID := strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey))
-	if agentID == "" {
+func buildCodexDeliveryPromptPrelude(metadata map[string]string) string {
+	if strings.TrimSpace(metadataValue(metadata, execdomain.DeliverablesMetadataKey)) == "" &&
+		strings.TrimSpace(metadataValue(metadata, execdomain.CompletionChecksMetadataKey)) == "" &&
+		!isTravelSkillRun(metadata) {
 		return ""
 	}
 	lines := []string{
-		"You are alter0's session-aware execution assistant.",
+		"You are alter0's session-aware execution runtime.",
 		"Read AGENTS.md and the files under .alter0/codex-runtime/ before acting, then do the concrete workspace work instead of returning only a conversational answer.",
 		"Only operate within the current session workspace and any dedicated repository clone or generated artifacts rooted there.",
 		"Do not modify other sessions, unrelated services, or repositories outside that workspace unless the current task explicitly targets them.",
-		"Only stop when the active agent's required deliverables are actually produced or a concrete blocker remains.",
+		"Only stop when the required deliverables are actually produced or a concrete blocker remains.",
 	}
-	if custom := strings.TrimSpace(metadataValue(metadata, execdomain.AgentSystemPromptMetadataKey)); custom != "" {
-		lines = append(lines, "Agent profile system prompt:\n"+custom)
-	}
-	if deliverables := renderAgentDeliverablesInstruction(metadata); deliverables != "" {
+	if deliverables := renderDeliverablesInstruction(metadata); deliverables != "" {
 		lines = append(lines, deliverables)
 	}
-	if isTravelAgent(metadata) {
+	if isTravelSkillRun(metadata) {
 		sessionID := strings.TrimSpace(metadataValue(metadata, execdomain.RuntimeSessionIDMetadataKey))
 		deployCommand := "bash scripts/deploy_test_service.sh <session_id> travel"
 		if sessionID != "" {
 			deployCommand = "bash scripts/deploy_test_service.sh " + sessionID + " travel"
 		}
 		lines = append(lines,
-			"You are the dedicated travel assistant. The run is incomplete until both the conversational guide and the HTML guide deliverable exist or a concrete blocker remains.",
+			"The travel skill run is incomplete until both the conversational guide and the HTML guide deliverable exist or a concrete blocker remains.",
 			"Create or update the current request's index.html in the session workspace root as an early concrete step.",
 			"Do not publish or reuse a stale or unrelated page from another request or directory. If the current page is not ready, keep the publish step blocked and state the blocker instead of fabricating delivery.",
 			"The HTML guide must remain usable on both desktop and mobile browsers.",
@@ -785,21 +775,6 @@ func buildCodexAgentPromptPrelude(metadata map[string]string) string {
 		)
 	}
 	return strings.Join(lines, "\n\n")
-}
-
-func buildCodexAgentContext(metadata map[string]string) *codexAgentContext {
-	agentID := strings.TrimSpace(metadataValue(metadata, execdomain.AgentIDMetadataKey))
-	agentName := strings.TrimSpace(metadataValue(metadata, execdomain.AgentNameMetadataKey))
-	delegatedBy := strings.TrimSpace(metadataValue(metadata, execdomain.AgentDelegatedByMetadataKey))
-	if agentID == "" && agentName == "" && delegatedBy == "" {
-		return nil
-	}
-	return &codexAgentContext{
-		Protocol:    "alter0.agent-context/v1",
-		AgentID:     agentID,
-		AgentName:   agentName,
-		DelegatedBy: delegatedBy,
-	}
 }
 
 func buildCodexRuntimeContext(metadata map[string]string) *execdomain.RuntimeContext {
@@ -821,10 +796,6 @@ func buildCodexRuntimeContext(metadata map[string]string) *execdomain.RuntimeCon
 	}
 	if repository := buildCodexRuntimeRepository(metadata); repository != nil {
 		context.Repository = repository
-		hasContent = true
-	}
-	if preview := buildCodexRuntimePreview(metadata, sessionID); preview != nil {
-		context.Preview = preview
 		hasContent = true
 	}
 	if !hasContent {
@@ -849,9 +820,9 @@ func buildCodexRuntimeWorkspace(metadata map[string]string, sessionID string) *e
 		}
 	}
 	if sourceRepoRoot != "" && sessionID != "" {
-		workspace.SessionPath = buildCodingSessionWorkspacePath(sourceRepoRoot, sessionID)
+		workspace.SessionPath = buildSessionWorkspacePath(sourceRepoRoot, sessionID)
 		if mode == codexWorkspaceModeSessionRepo {
-			workspace.RepositoryPath = buildCodingSessionRepoWorkspacePath(sourceRepoRoot, sessionID)
+			workspace.RepositoryPath = buildSessionRepoWorkspacePath(sourceRepoRoot, sessionID)
 		}
 	}
 	if workspace.SessionPath != "" && taskID != "" {
@@ -865,15 +836,8 @@ func buildCodexRuntimeWorkspace(metadata map[string]string, sessionID string) *e
 
 func buildCodexRuntimeRepository(metadata map[string]string) *execdomain.RuntimeRepository {
 	sourceRepoRoot := strings.TrimSpace(metadataValue(metadata, codexWorktreeSourceRootKey))
-	if sourceRepoRoot == "" && !isCodingAgent(metadata) {
-		return nil
-	}
 	if sourceRepoRoot == "" {
-		repoRoot, err := resolveToolRepoRoot()
-		if err != nil {
-			return nil
-		}
-		sourceRepoRoot = repoRoot
+		return nil
 	}
 
 	repository := &execdomain.RuntimeRepository{
@@ -889,20 +853,6 @@ func buildCodexRuntimeRepository(metadata map[string]string) *execdomain.Runtime
 		return nil
 	}
 	return repository
-}
-
-func buildCodexRuntimePreview(metadata map[string]string, sessionID string) *execdomain.RuntimePreviewRule {
-	if !isCodingAgent(metadata) {
-		return nil
-	}
-	previewURL := buildPreviewURLForSession(sessionID)
-	if previewURL == "" {
-		return nil
-	}
-	return &execdomain.RuntimePreviewRule{
-		URL:                  previewURL,
-		RequiredOnCompletion: true,
-	}
 }
 
 func metadataValue(metadata map[string]string, key string) string {

@@ -159,8 +159,8 @@ func (s *ModelConfigService) GetDefaultClient(ctx context.Context) (domain.LLMCl
 	return s.GetClient(ctx, "")
 }
 
-// GetReActAgent creates a ReAct agent with the specified provider and tools.
-func (s *ModelConfigService) GetReActAgent(ctx context.Context, providerID string, config domain.ReActAgentConfig) (*domain.ReActAgent, error) {
+// GetReActRunner creates a ReAct runner with the specified provider and tools.
+func (s *ModelConfigService) GetReActRunner(ctx context.Context, providerID string, config domain.ReActRunnerConfig) (*domain.ReActRunner, error) {
 	client, err := s.GetClient(ctx, providerID)
 	if err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func (s *ModelConfigService) GetReActAgent(ctx context.Context, providerID strin
 		config.Model = provider.DefaultModel
 	}
 
-	return domain.NewReActAgent(config), nil
+	return domain.NewReActRunner(config), nil
 }
 
 // CreateDefaultConfig creates a default configuration with common providers.

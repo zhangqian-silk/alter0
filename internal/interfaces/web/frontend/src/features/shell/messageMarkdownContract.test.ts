@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 describe("message markdown rendering contract", () => {
-  it("uses one shared generic markdown shell for chat, agent runtime, and terminal", () => {
+  it("uses one shared generic markdown shell for chat, chat, and terminal", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const sourceRoot = resolve(currentDirectory, "../..");
     const files = [

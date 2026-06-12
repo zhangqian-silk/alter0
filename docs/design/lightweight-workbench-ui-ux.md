@@ -1,6 +1,6 @@
 # Lightweight Workbench UI/UX Design
 
-This design pass keeps Alter0 as a thin, private wrapper around strong agents such as Claude Code and Codex. The interface should feel closer to a focused AI workbench than an admin console: few routes, direct actions, readable state, and low visual noise.
+This design pass keeps Alter0 as a thin, private wrapper around strong CLI runtimes such as Claude Code and Codex. The interface should feel closer to a focused AI workbench than an admin console: few routes, direct actions, readable state, and low visual noise.
 
 Generated reference boards:
 
@@ -24,7 +24,7 @@ Generated reference boards:
 ## Chat
 
 Product design:
-Chat is the default entry for user intent, memory-aware conversations, and agent orchestration. It should not look like a management page; it is the place where the user asks for outcomes and the system chooses the right skills.
+Chat is the default entry for user intent, memory-aware conversations, and runtime orchestration. It should not look like a management page; it is the place where the user asks for outcomes and the system chooses the right skills.
 
 PC UI:
 The desktop layout keeps the left navigation and session rail visible, then gives the timeline a wide, calm reading column. The top area remains compact with model/status/details controls. The composer is the main action surface and uses a simple input plus compact tool/skill controls.
@@ -95,7 +95,7 @@ Schedules:
 Desktop presents scheduled jobs as operational cards with schedule mode, timezone, prompt preview, and retry policy. Mobile keeps schedule cards single-column with status and next action visible.
 
 Compatibility subpages:
-Agents, Sessions, Tasks, Channels, MCP, Models, Environments, and Codex Runtime remain supported as settings entries. They share the same narrow settings rail, responsive card grid, form fields, tables, empty states, and status chip rules.
+Sessions, Tasks, Channels, Skills, MCP, Models, Environments, and Codex Runtime remain supported as settings entries. They share the same narrow settings rail, responsive card grid, form fields, tables, empty states, and status chip rules.
 
 ## Login
 

@@ -63,7 +63,7 @@ Conventional Commits: `<type>(<scope>): <description>`
 
 - 当任务涉及 Web 页面、组件、交互界面或前端体验调整时，默认同时满足产品可用性、工程可维护性与明确视觉方向，不接受仅把通用组件拼成页面的交付。
 - 开始实现前，先确定页面类型、核心用户任务、首屏主叙事和视觉基调；同一页面只保留一个主视觉重点，不把多个模块、统计、说明、次级操作同时堆进首屏。
-- `alter0` 默认是高密度工作台产品而不是营销落地页：`Chat / Agent / Terminal / Control / Memory / Sessions / Tasks / Environments / Products Workspace` 等后台型页面优先采用克制、稳定、可长时间阅读的工作台界面，不引入浮夸 hero、漂浮徽章、无意义装饰插画或过度品牌宣言。
+- `alter0` 默认是高密度工作台产品而不是营销落地页：`Chat / Terminal / Control / Memory / Sessions / Tasks / Environments / Products Workspace` 等后台型页面优先采用克制、稳定、可长时间阅读的工作台界面，不引入浮夸 hero、漂浮徽章、无意义装饰插画或过度品牌宣言。
 - 面向公开 Product 页面、独立 HTML 空间或确有品牌表达需求的前台页面时，允许使用更强视觉叙事，但首屏仍需保持单一构图、清晰品牌信号、短文案和单个主 CTA 组，不把卡片拼贴、统计条、徽章云或多组并列卖点塞进 hero。
 - 排版必须有明确层级与风格，不使用 `Inter`、`Roboto`、`Arial`、默认 system stack 作为首选方案；优先建立显示字体与正文字体配对，并通过 `CSS variables` 或设计令牌统一字号、字重、行高、间距和颜色角色。
 - 配色与视觉氛围必须成体系；优先先定义 `background / surface / text / muted / accent / border` 等稳定令牌，再落到组件；避免泛用紫色渐变、随机高饱和点缀和缺少上下文的“AI 感”背景。
@@ -72,7 +72,7 @@ Conventional Commits: `<type>(<scope>): <description>`
 - 文案使用产品语言，不把提示词、设计说明或实现说明暴露到界面中；每个 section 只承担一个职责，标题、说明、主操作不重复表达同一信息。
 - 动效只服务层级建立、状态切换和操作反馈；优先使用少量高价值动画，避免持续分散注意力的装饰性 motion。固定元素、浮层、抽屉和底部面板必须在桌面与移动端都避开正文、按钮和输入区，不得遮挡关键内容。
 - 前端实现优先复用现有 `internal/interfaces/web/frontend` 壳层、断点、`route-head`、阅读宽度、移动端抽屉与 `VisualViewport` 约束；不得为了单页视觉效果破坏稳定 DOM 契约、窄屏贴顶节奏、桌面三栏工作台或输入区贴底行为。
-- `Chat` 空态、`Agent` 运行态、`Terminal` 工作区和各类控制页继续遵守当前稳定信息架构：不重复渲染 route hero、workspace hero、品牌口号或大块说明区；首屏应优先让用户进入消息阅读、输入、列表筛选或主操作，而不是先阅读装饰性头图。
+- `Chat` 空态、`Chat` 运行态、`Terminal` 工作区和各类控制页继续遵守当前稳定信息架构：不重复渲染 route hero、workspace hero、品牌口号或大块说明区；首屏应优先让用户进入消息阅读、输入、列表筛选或主操作，而不是先阅读装饰性头图。
 - 涉及前端改动时，交付前至少完成桌面与移动端两档验证；若变更影响布局、交互层、滚动、输入区、抽屉、固定元素或视觉层级，还需补充对应测试或人工验证，确保首屏构图、可读性和可触达性同时成立。
 
 ## Skills 使用规范
@@ -90,6 +90,6 @@ Conventional Commits: `<type>(<scope>): <description>`
 
 - 当前 alter0 服务运行在独立服务器中，面向用户展示的链接必须是用户浏览器可访问的公网或会话预览地址。
 - 不得把服务器本地路径、工作区内部路径、`file://`、`localhost`、`127.0.0.1` 或 `/srv/alter0/...` 这类地址作为用户可打开的超链接返回。
-- 所有需要展示给用户查看的静态产物，包括 HTML、Markdown 预览、截图、图片集合、文本报告、JSON 示例和代码样例，必须先通过 `artifact-preview` skill 发布到会话级 `https://<service>-<short_hash>.alter0.cn` 预览地址后再返回。
-- 需要完整 Web 应用、后端路由或 API 联动的产物，必须使用 `deploy-test-service` 发布到会话级服务地址后再返回。
+- 所有需要展示给用户查看的静态产物，包括 HTML、Markdown 预览、截图、图片集合、文本报告、JSON 示例和代码样例，必须先通过 `preview-publish` skill 发布到会话级 `https://<service>-<short_hash>.alter0.cn` 预览地址后再返回。
+- 需要完整 Web 应用、后端路由或 API 联动的产物，必须使用 `preview-publish` 发布到会话级服务地址后再返回。
 - 若发布失败，交付说明只报告具体阻塞；本地文件路径只能作为内部实现细节，不得作为用户验收入口。

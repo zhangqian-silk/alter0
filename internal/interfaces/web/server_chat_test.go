@@ -162,12 +162,12 @@ func TestWorkbenchPageHandlerServesAllCanonicalPagePaths(t *testing.T) {
 }
 
 func TestWorkbenchInteractivePagePathsOnlyIncludeTopLevelRoutes(t *testing.T) {
-	for _, path := range []string{"/", "/chat", "/agent-runtime", "/terminal", "/management", "/settings"} {
+	for _, path := range []string{"/", "/chat", "/terminal", "/management", "/settings"} {
 		if !isInteractivePagePath(path) {
 			t.Fatalf("expected %s to be an interactive workbench path", path)
 		}
 	}
-	for _, path := range []string{"/agent", "/memory", "/tasks", "/models", "/codex-accounts"} {
+	for _, path := range []string{"/legacy-profile", "/memory", "/tasks", "/models", "/codex-accounts"} {
 		if isInteractivePagePath(path) {
 			t.Fatalf("expected old management path %s to stop being an interactive workbench path", path)
 		}

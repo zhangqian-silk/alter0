@@ -36,7 +36,7 @@ async function openChannelsRoute(page: Parameters<typeof loginIfNeeded>[0]): Pro
 async function mockRuntimeSession(
   page: Parameters<typeof loginIfNeeded>[0],
   options: {
-    route: "chat" | "agent-runtime";
+    route: "chat" | "chat";
     session: Record<string, unknown>;
   },
 ): Promise<void> {
@@ -198,49 +198,44 @@ test.describe("Chat composer", () => {
 
   });
 
-  test("shows a short hash for agent sessions in the list and details panel", async ({ page }) => {
+  test("shows a short hash for chat sessions in the list and details panel", async ({ page }) => {
     const sessionID = "db4416b7-452d-44a6-83ca-999e77f47791";
     const createdAt = Date.now();
     await mockRuntimeSession(page, {
-      route: "agent-runtime",
+      route: "chat",
       session: {
         id: sessionID,
-        title: "修复 Agent 会话标识",
+        title: "修复 Skill 会话标识",
         title_auto: false,
         title_score: 8,
         created_at: new Date(createdAt).toISOString(),
-        target_type: "agent",
-        target_id: "coding",
-        target_name: "Coding Agent",
+        target_type: "skill",
+        target_id: "implementation",
+        target_name: "Implementation Skill",
         model_provider_id: "",
         model_id: "",
         tool_ids: [],
         skill_ids: [],
         mcp_ids: [],
         messages: [{
-          id: "message-agent-session-hash",
+          id: "message-skill-session-hash",
           role: "user",
-          text: "给 Agent 会话加标识",
+          text: "给 Skill 会话加标识",
           at: new Date(createdAt).toISOString(),
           status: "done",
         }],
       },
-      agents: [{
-        id: "coding",
-        name: "Coding Agent",
-        enabled: true,
-      }],
     });
     await page.addInitScript(() => {
       window.sessionStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
-        "agent-runtime": "db4416b7-452d-44a6-83ca-999e77f47791",
+        "chat": "db4416b7-452d-44a6-83ca-999e77f47791",
       }));
     });
 
-    await page.goto("/agent-runtime");
+    await page.goto("/chat");
     await ensureChatRouteReady(page);
-    if (!new URL(page.url()).pathname.endsWith("/agent-runtime")) {
-      await page.goto("/agent-runtime");
+    if (!new URL(page.url()).pathname.endsWith("/chat")) {
+      await page.goto("/chat");
       await ensureChatRouteReady(page);
     }
 
@@ -728,8 +723,8 @@ test.describe("Chat composer", () => {
   test("shows route jump controls on managed pages and jumps between sections", async ({ page }) => {
     await page.setViewportSize({ width: 760, height: 720 });
     await openChatWorkspace(page);
-    await page.goto("/agent");
-    await expect(page.locator("#routeView[data-route='agent']")).toBeVisible();
+    await page.goto("/skill");
+    await expect(page.locator("#routeView[data-route='skill']")).toBeVisible();
 
     const routeView = page.locator("#routeView");
     const jumpTopButton = page.locator("[data-scroll-jump-top='route']");
@@ -898,26 +893,26 @@ test.describe("Chat composer", () => {
     await expect(appShell).not.toHaveClass(/overlay-open/);
   });
 
-  test("keeps agent option copy concise inside session settings", async ({ page }) => {
+  test("keeps skill option copy concise inside session settings", async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
     await openChatWorkspace(page);
-    await page.goto("/agent-runtime");
+    await page.goto("/chat");
 
     const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
     await expect(runtimeToggle).toBeVisible();
     await runtimeToggle.click();
 
-    const codingOption = page.locator("[data-runtime-target-id='coding']").first();
+    const codingOption = page.locator("[data-runtime-target-id='implementation']").first();
     await expect(codingOption).toBeVisible();
-    await expect(codingOption).toContainText("Coding Agent");
-    await expect(codingOption).toContainText("Dedicated coding agent");
-    await expect(codingOption).not.toContainText("Act as alter0's dedicated coding user proxy");
+    await expect(codingOption).toContainText("Implementation Skill");
+    await expect(codingOption).toContainText("Implementation guidance skill");
+    await expect(codingOption).not.toContainText("Act as alter0's dedicated implementation user proxy");
   });
 
   test("keeps session settings scroll position while toggling skills", async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
     await openChatWorkspace(page);
-    await page.goto("/agent-runtime");
+    await page.goto("/chat");
 
     const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
     await expect(runtimeToggle).toBeVisible();
@@ -1360,9 +1355,9 @@ test.describe("Chat composer", () => {
     await expectComposerReady(composer);
     await expect(page.locator(".runtime-session-title").first()).toContainText("先拉取仓库");
 
-    await input.fill("修改 terminal 和 agent 的会话标题");
+    await input.fill("修改 terminal 和 skill 的会话标题");
     await composer.submitButton().click();
-    await expect(chatPage.latestUserBubble()).toContainText("修改 terminal 和 agent 的会话标题");
+    await expect(chatPage.latestUserBubble()).toContainText("修改 terminal 和 skill 的会话标题");
     await expectComposerReady(composer);
     await expect(page.locator(".runtime-session-title").first()).toContainText("先拉取仓库");
   });
@@ -1459,7 +1454,7 @@ data: {"delta":"Partial answer from stream"}
     await expect(assistantMessage.locator(".status-pill")).toContainText("Failed");
   });
 
-  test("shows structured process steps before the agent stream is done", async ({ page }) => {
+  test("shows structured process steps before the skill stream is done", async ({ page }) => {
     await page.addInitScript(() => {
       const originalFetch = window.fetch.bind(window);
       window.fetch = async (input, init) => {
@@ -1513,13 +1508,13 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
     await composer.submitButton().click();
 
     const assistantMessage = page.locator(".msg.assistant").last();
-    await expect(assistantMessage.locator(".agent-process-shell")).toBeVisible();
-    await expect(assistantMessage.locator(".agent-process-step-title")).toContainText("codex_exec");
-    await expect(assistantMessage.locator(".agent-process-step-title")).toContainText("读取样式约束");
+    await expect(assistantMessage.locator(".conversation-process-shell")).toBeVisible();
+    await expect(assistantMessage.locator(".conversation-process-step-title")).toContainText("codex_exec");
+    await expect(assistantMessage.locator(".conversation-process-step-title")).toContainText("读取样式约束");
     await expect(assistantMessage.locator(".assistant-message-body")).toHaveCount(0);
 
     await expect(assistantMessage.locator(".assistant-message-body")).toContainText("任务已完成");
-    await expect(assistantMessage.locator(".agent-process-toggle")).toContainText("3 steps");
+    await expect(assistantMessage.locator(".conversation-process-toggle")).toContainText("3 steps");
   });
 
   test("shows explicit load failures after a chat stream aborts", async ({ page }) => {
@@ -1583,11 +1578,11 @@ data: {"message_id":"message-stream-refresh","session_id":"session-refresh-recov
           const body = new ReadableStream({
             start(controller) {
               controller.enqueue(encoder.encode(`event: start
-data: {"message_id":"message-stream-steps","session_id":"session-agent-steps","channel_id":"web-default","trace_id":"trace-steps"}
+data: {"message_id":"message-stream-steps","session_id":"session-skill-steps","channel_id":"web-default","trace_id":"trace-steps"}
 
 `));
               controller.enqueue(encoder.encode(`event: delta
-data: {"delta":"[agent] action: codex_exec\\n"}
+data: {"delta":"[process] action: codex_exec\\n"}
 
 `));
               controller.enqueue(encoder.encode(`event: done
@@ -1613,23 +1608,23 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
     await composer.submitButton().click();
 
     const streamedMessage = page.locator(".msg.assistant").last();
-    await expect(streamedMessage.locator(".agent-process-shell")).toBeVisible();
-    await streamedMessage.locator(".agent-process-body").evaluate((node) => {
+    await expect(streamedMessage.locator(".conversation-process-shell")).toBeVisible();
+    await streamedMessage.locator(".conversation-process-body").evaluate((node) => {
       if (node instanceof HTMLElement) {
         node.hidden = false;
         node.removeAttribute("hidden");
       }
     });
-    await expect(streamedMessage.locator(".agent-process-toggle")).toContainText("Thinking");
-    await expect(streamedMessage.locator(".agent-process-toggle")).toContainText("4 steps");
+    await expect(streamedMessage.locator(".conversation-process-toggle")).toContainText("Thinking");
+    await expect(streamedMessage.locator(".conversation-process-toggle")).toContainText("4 steps");
     await expect(streamedMessage.locator(".conversation-process-step")).toHaveCount(4);
-    await expect(streamedMessage.locator(".agent-process-step-body").first()).toContainText("检查仓库状态");
-    await expect(streamedMessage.locator(".agent-process-step-body").nth(2)).toContainText("当前消息内联展开");
-    await expect(streamedMessage.locator(".agent-process-answer-shell")).toContainText("任务已完成");
-    await expect(streamedMessage.locator(".agent-process-answer-shell")).not.toContainText("[agent] action:");
+    await expect(streamedMessage.locator(".conversation-process-step-body").first()).toContainText("检查仓库状态");
+    await expect(streamedMessage.locator(".conversation-process-step-body").nth(2)).toContainText("当前消息内联展开");
+    await expect(streamedMessage.locator(".conversation-process-answer-shell")).toContainText("任务已完成");
+    await expect(streamedMessage.locator(".conversation-process-answer-shell")).not.toContainText("[process] action:");
   });
 
-  test("keeps structured agent process detail readable on mobile", async ({ page }) => {
+  test("keeps structured skill process detail readable on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
       const originalFetch = window.fetch.bind(window);
@@ -1644,11 +1639,11 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
           const body = new ReadableStream({
             start(controller) {
               controller.enqueue(encoder.encode(`event: start
-data: {"message_id":"message-stream-steps-mobile","session_id":"session-agent-steps-mobile","channel_id":"web-default","trace_id":"trace-steps-mobile"}
+data: {"message_id":"message-stream-steps-mobile","session_id":"session-skill-steps-mobile","channel_id":"web-default","trace_id":"trace-steps-mobile"}
 
 `));
               controller.enqueue(encoder.encode(`event: delta
-data: {"delta":"[agent] action: codex_exec\\n"}
+data: {"delta":"[process] action: codex_exec\\n"}
 
 `));
               controller.enqueue(encoder.encode(`event: done
@@ -1669,7 +1664,7 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
       };
     });
 
-    await page.goto("/agent-runtime");
+    await page.goto("/chat");
     await loginIfNeeded(page);
     await waitForAppReady(page);
     const input = page.locator("[data-composer-input='conversation']");
@@ -1679,25 +1674,25 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
     await input.fill("帮我检查仓库同步情况");
     await submit.click();
     const assistantMessage = page.locator(".msg.assistant").last();
-    await expect(assistantMessage.locator(".agent-process-shell")).toBeVisible();
-    await assistantMessage.locator(".agent-process-body").evaluate((node) => {
+    await expect(assistantMessage.locator(".conversation-process-shell")).toBeVisible();
+    await assistantMessage.locator(".conversation-process-body").evaluate((node) => {
       if (node instanceof HTMLElement) {
         node.hidden = false;
         node.removeAttribute("hidden");
       }
     });
 
-    const processBody = assistantMessage.locator(".agent-process-step-body").first();
+    const processBody = assistantMessage.locator(".conversation-process-step-body").first();
     await expect(processBody).toContainText("需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中");
-    await expect(assistantMessage.locator(".agent-process-toggle")).toContainText("6 steps");
+    await expect(assistantMessage.locator(".conversation-process-toggle")).toContainText("6 steps");
     await expect(assistantMessage.locator(".conversation-process-step")).toHaveCount(6);
-    await expect(assistantMessage.locator(".agent-process-step-body").nth(5)).toContainText("增加多步骤思考过程 fixture");
+    await expect(assistantMessage.locator(".conversation-process-step-body").nth(5)).toContainText("增加多步骤思考过程 fixture");
 
     const metrics = await processBody.evaluate((node) => {
       const detail = node instanceof HTMLElement ? node : null;
       const rendered = detail?.querySelector(".runtime-markdown-rendered");
-      const step = detail?.closest(".agent-process-step");
-      const shell = detail?.closest(".agent-process-shell");
+      const step = detail?.closest(".conversation-process-step");
+      const shell = detail?.closest(".conversation-process-shell");
       if (!detail || !(rendered instanceof HTMLElement) || !(step instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
         return null;
       }
@@ -1735,11 +1730,11 @@ data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":
           const body = new ReadableStream({
             start(controller) {
               controller.enqueue(encoder.encode(`event: start
-data: {"message_id":"message-stream-sparse-mobile","session_id":"session-agent-sparse-mobile","channel_id":"web-default","trace_id":"trace-sparse-mobile"}
+data: {"message_id":"message-stream-sparse-mobile","session_id":"session-skill-sparse-mobile","channel_id":"web-default","trace_id":"trace-sparse-mobile"}
 
 `));
               controller.enqueue(encoder.encode(`event: delta
-data: {"delta":"[agent] action: codex_exec\\n"}
+data: {"delta":"[process] action: codex_exec\\n"}
 
 `));
               controller.enqueue(encoder.encode(`event: done
@@ -1760,7 +1755,7 @@ data: {"result":{"route":"nl","output":"Node 更偏应用层与生态速度，Go
       };
     });
 
-    await page.goto("/agent-runtime");
+    await page.goto("/chat");
     await loginIfNeeded(page);
     await waitForAppReady(page);
     const input = page.locator("[data-composer-input='conversation']");
@@ -1771,7 +1766,7 @@ data: {"result":{"route":"nl","output":"Node 更偏应用层与生态速度，Go
     await submit.click();
 
     const assistantMessage = page.locator(".msg.assistant").last();
-    await expect(assistantMessage.locator(".agent-process-shell")).toBeVisible();
+    await expect(assistantMessage.locator(".conversation-process-shell")).toBeVisible();
 
     const metrics = await page.evaluate(() => {
       const timeline = document.querySelector(".runtime-timeline");
@@ -1781,8 +1776,8 @@ data: {"result":{"route":"nl","output":"Node 更偏应用层与生态速度，Go
       const assistant = assistantMessages[assistantMessages.length - 1];
       const userBubble = user?.querySelector(".msg-bubble");
       const userMeta = user?.querySelector(".msg-meta");
-      const assistantProcess = assistant?.querySelector(".agent-process-shell");
-      const assistantAnswer = assistant?.querySelector(".agent-process-answer-shell");
+      const assistantProcess = assistant?.querySelector(".conversation-process-shell");
+      const assistantAnswer = assistant?.querySelector(".conversation-process-answer-shell");
       const assistantMeta = assistant?.querySelector(".msg-meta");
       if (
         !(timeline instanceof HTMLElement)

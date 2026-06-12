@@ -4,7 +4,7 @@
 
 ## 领域边界
 
-Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流、产物交付、会话式终端代理和执行工作区隔离。它接收 Runtime、Conversation、Agent 的执行请求，并提供可追踪、可恢复、可回放的运行态。
+Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流、产物交付、会话式终端代理和执行工作区隔离。它接收 Runtime、Conversation、Skill 的执行请求，并提供可追踪、可恢复、可回放的运行态。
 
 ## 核心对象
 
@@ -16,8 +16,8 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 | `ArtifactRef` | Web 可访问产物引用 |
 | `TerminalSession` | Terminal 会话身份、标题、状态、工作区和 Codex 线程 |
 | `TerminalTurn` / `TerminalStep` | Terminal 执行轮次与步骤明细 |
-| `Workspace` | Chat、Agent、Task、Terminal 的默认执行目录 |
-| `RuntimeWorkspace` | CLI Agent Runtime 的上下文注入目录、运行时 home 与线程/会话状态 |
+| `Workspace` | Chat、Task、Terminal 的默认执行目录 |
+| `RuntimeWorkspace` | CLI Runtime 的上下文注入目录、运行时 home 与线程/会话状态 |
 | `RuntimeHeartbeat` | 长任务存活心跳与超时续租窗口 |
 
 ## 异步任务
@@ -76,7 +76,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 ## 任务记忆视图
 
-- `Agent -> Memory` 的任务历史面板复用 Task 领域数据，支持按状态、类型、时间与分页查询任务摘要。
+- `Skill -> Memory` 的任务历史面板复用 Task 领域数据，支持按状态、类型、时间与分页查询任务摘要。
 - 任务历史列表默认以高密度表格展示，任务详情通过侧栏读取摘要、来源字段、状态、时间戳、日志入口和产物入口。
 - 任务日志下钻支持游标分页读取，缺失日志时返回稳定错误并保留任务详情可读。
 - 任务摘要缺失或需要刷新时，支持对单个任务触发摘要重建。
@@ -124,10 +124,10 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 ### Terminal Web Shell
 
-- Web Shell 中的 Terminal 路由页主体由 React 原生实现，运行区根节点直接挂在共享 `workbench-pane-shell` 下，不再额外经过 `route-view / route-body` 包裹，避免从 Chat/Agent Runtime 切换时出现布局与滚动容器跳变。
+- Web Shell 中的 Terminal 路由页主体由 React 原生实现，运行区根节点直接挂在共享 `workbench-pane-shell` 下，不再额外经过 `route-view / route-body` 包裹，避免从 Chat/Chat 切换时出现布局与滚动容器跳变。
 - Terminal 页面直接请求 `/api/terminal/sessions`、`/api/terminal/sessions/{session_id}`、`/api/terminal/sessions/{session_id}/turns/{turn_id}/steps/{step_id}` 等接口，并在 React 内维护会话恢复、轮询、输入、删除、step 展开、滚动定位与本地草稿恢复。
 - Terminal 的 session pane 容器、workspace 容器与主视图外壳在 React rerender 期间必须保持稳定实例，不能因语言切换、path 路由变化或壳层状态更新而清空正在运行的终端内容。
-- Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构；Terminal 只注入当前状态值、详情面板内容、Process、跳转四键与 Composer 控件，工作区标题、状态按钮和 `Details` 按钮必须使用 Chat/Agent Runtime 同一组共享 header 元素。详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
+- Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构；Terminal 只注入当前状态值、详情面板内容、Process、跳转四键与 Composer 控件，工作区标题、状态按钮和 `Details` 按钮必须使用 Chat/Chat 同一组共享 header 元素。详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
 - React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管；工作区头部仅复用共享 `RuntimeWorkspaceHeader` 元素，不再保留 Terminal 专属 header kind、标题元素或 details toggle。
 - 移动端 Terminal Composer 在输入框聚焦且软键盘抬起后，必须按 `VisualViewport` 推导的键盘偏移直接上移到可见底边；长历史输出继续由 `terminal-chat-screen` 独立滚动，不允许通过增加 footer padding 或让 workspace 改走外层滚动把输入区挤出视口。
 - 移动端 Terminal 在键盘抬起期间，工作区正文只消费 Composer 相对静态位置额外上移的那段遮挡量；Terminal 不得把 Composer 自身的静态高度重复计入 viewport shrink，输入框上方不能残留一条与键盘高度等值的空白带。
@@ -138,8 +138,8 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 ### 默认目录
 
-- Chat / Agent：`.alter0/workspaces/sessions/<session_id>`。
-- Agent 仓库类执行：`.alter0/workspaces/sessions/<session_id>/repo`。
+- Chat：`.alter0/workspaces/sessions/<session_id>`。
+- Skill 仓库类执行：`.alter0/workspaces/sessions/<session_id>/repo`。
 - Async Task：`.alter0/workspaces/sessions/<session_id>/tasks/<task_id>`。
 - Terminal：`.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
 - Claude Code 运行时：当前 Session 工作区下的 `.alter0/claude-runtime/`，包含 `CLAUDE.md`、Skill 副本、Memory 注入摘要、provider profile 环境和会话状态。
@@ -147,8 +147,8 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 ### 会话绑定
 
-- 每个 Chat / Agent Runtime 会话绑定一个稳定 Session 工作区；后续同一会话续写复用同一工作区与运行时状态。
-- Chat 的逻辑会话 `alter0-chat` 可按归档日维护 CLI agent thread 状态；Agent Runtime 的多会话按 `session_id` 独立维护。
+- 每个 Chat / Chat 会话绑定一个稳定 Session 工作区；后续同一会话续写复用同一工作区与运行时状态。
+- Chat 的逻辑会话 `alter0-chat` 可按归档日维护 CLI runtime thread 状态；Chat 的多会话按 `session_id` 独立维护。
 - 代码开发任务在当前 Session 工作区内维护独立 repo clone，复用同一会话内已确认的仓库、分支、预览服务和交付状态。
 - 旅行、文档、前端页面等产物型任务都把最终产物写入当前 Session 工作区，并通过 workspace service 或 ArtifactRef 暴露给用户。
 - Runtime 注入文件只服务当前会话，不跨 Session 共享写入；跨会话复用通过 Skill 仓库和 Memory 文件完成。
@@ -189,7 +189,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 - `Create` 创建会话并返回服务端会话身份、初始状态与最近输出时间。
 - `Recover` 接收已持久化会话身份与 Codex CLI 线程标识，用于在页面或运行态恢复时重建服务端会话视图。
-- `Input` 向指定 Terminal 会话追加用户输入，执行完成前会话进入 `busy`；输入支持文本、附件与公有 Skill 选择混合载荷。图片附件继续以视觉输入语义交给 Codex CLI，普通文件在执行前落到当前 Terminal 工作区 `input-attachments/<turn_id>/` 并通过 prompt 注入稳定读取路径；纯附件输入由服务端补齐稳定占位文本；`skill_ids[]` 仅接收控制面中启用且非 `agent-private/private` 的 Skill，并编译为当前 Terminal 工作区 `.alter0/codex-runtime/skills.md`。若选中 Skill 携带可读 file-backed 路径，运行时需同步把对应 Skill 目录复制到 `.alter0/codex-runtime/skills/<skill_id>/`，并把 `skills.md` 中的 `file_path` 改写为该工作区内副本路径。托管 `AGENTS.md` 与运行时上下文必须同步声明 Terminal 执行范围仅限当前 Terminal 工作区及其派生文件，不得越界改动其他会话、共享服务或工作区外仓库，除非当前输入明确以这些目标为本轮范围。
+- `Input` 向指定 Terminal 会话追加用户输入，执行完成前会话进入 `busy`；输入支持文本、附件与 Skill 选择混合载荷。图片附件继续以视觉输入语义交给 Codex CLI，普通文件在执行前落到当前 Terminal 工作区 `input-attachments/<turn_id>/` 并通过 prompt 注入稳定读取路径；纯附件输入由服务端补齐稳定占位文本；`skill_ids[]` 仅接收控制面中启用的 Skill，并编译为当前 Terminal 工作区 `.alter0/codex-runtime/skills.md`。若选中 Skill 携带可读 file-backed 路径，运行时需同步把对应 Skill 目录复制到 `.alter0/codex-runtime/skills/<skill_id>/`，并把 `skills.md` 中的 `file_path` 改写为该工作区内副本路径。托管 `AGENTS.md` 与运行时上下文必须同步声明 Terminal 执行范围仅限当前 Terminal 工作区及其派生文件，不得越界改动其他会话、共享服务或工作区外仓库，除非当前输入明确以这些目标为本轮范围。
 - `Close` 退出当前运行态，保留会话记录、历史、线程标识和工作区。
 - `Delete` 删除 Terminal 会话主记录、状态文件和独立工作区。
 - 删除成功后接口返回 `204 No Content`，前端立即移除会话，不依赖改写后的状态对象。
@@ -199,18 +199,18 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 - Terminal 新会话先使用占位标题，早期多轮内可按更具体输入升级标题。
 - 输入区聚焦期间，轮询刷新不得销毁输入框、焦点、草稿和滚动位置。
-- Terminal 页面输入条支持通用附件体验：输入条采用“上层输入区 + 下层工具栏”的双层结构，并继承 `Chat / Agent Runtime` 的共享 Composer 胶囊背景、底部留白与无边框 surface；工具栏左侧提供无边框会话设置与回形针图标入口，右侧收口发送动作；失败、退出与附件错误提示进入工具栏 meta，不得在共享 Composer form 外额外渲染 Terminal 专属 note 行；输入区需保持足够横向留白，避免长命令或多段追问输入时出现压窄观感；选择图片或粘贴剪贴板图片后立即显示缩略图并支持点击预览，粘贴图片时仅拦截图片文件并进入附件草稿，普通文本粘贴继续保持 textarea 原生行为；选择普通文件后显示文件条目与移除动作；发送后，图片会继续在历史区回显该轮缩略图，普通文件至少保留发送侧条目与执行侧 workspace 路径语义。当前活动 Terminal 会话的 shell 明确为 Codex 时，输入以 `/` 开头需在 Composer 输入区下方展示 Web 适用的 Codex CLI 斜线命令候选，候选按命令作用分组顺序展示并使用短动作说明，支持点击补全当前斜线片段；权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选，非 Codex shell 会话不显示该候选。
-- Terminal `Details` 面板在摘要字段后提供公有 Skill 选择区；勾选项作用于后续输入，不展示或允许取消 Agent 私有 Skill。新 Terminal 会话在首次加载公有 Skill 列表时默认勾选全部可用公有 Skill，仅排除 `default-nl` 与 `memory`，用户后续调整只影响当前会话的后续输入。
+- Terminal 页面输入条支持通用附件体验：输入条采用“上层输入区 + 下层工具栏”的双层结构，并继承 `Chat / Chat` 的共享 Composer 胶囊背景、底部留白与无边框 surface；工具栏左侧提供无边框会话设置与回形针图标入口，右侧收口发送动作；失败、退出与附件错误提示进入工具栏 meta，不得在共享 Composer form 外额外渲染 Terminal 专属 note 行；输入区需保持足够横向留白，避免长命令或多段追问输入时出现压窄观感；选择图片或粘贴剪贴板图片后立即显示缩略图并支持点击预览，粘贴图片时仅拦截图片文件并进入附件草稿，普通文本粘贴继续保持 textarea 原生行为；选择普通文件后显示文件条目与移除动作；发送后，图片会继续在历史区回显该轮缩略图，普通文件至少保留发送侧条目与执行侧 workspace 路径语义。当前活动 Terminal 会话的 shell 明确为 Codex 时，输入以 `/` 开头需在 Composer 输入区下方展示 Web 适用的 Codex CLI 斜线命令候选，候选按命令作用分组顺序展示并使用短动作说明，支持点击补全当前斜线片段；权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选，非 Codex shell 会话不显示该候选。
+- Terminal `Details` 面板在摘要字段后提供统一 Skill 选择区；勾选项作用于后续输入。新 Terminal 会话在首次加载 Skill 列表时默认勾选全部可用公有 Skill，仅排除 `memory`，用户后续调整只影响当前会话的后续输入。
 - 移动端输入法候选确认后，只要输入框仍聚焦，页面不得立即重绘回顶。
-- Terminal 最终输出按 Chat 助手消息样式渲染，并与 Chat / Agent Runtime 共用稳定的 `MessageMarkdownShell` 承载正文与一键复制入口；正文 DOM 先于复制工具栏渲染，复制 payload 保留在组件闭包内，不写入长 DOM 属性，相同 markdown 在父级无关重渲染期间不得替换已渲染文本节点。移动端最终输出需保持静态正文语义，由浏览器原生长按选中和复制菜单承载片段复制，不得安装脚本长按选区、假选中态、浮动复制层、输入框、编辑态兜底或视图级强制选择补丁。
+- Terminal 最终输出按 Chat 助手消息样式渲染，并与 Chat / Chat 共用稳定的 `MessageMarkdownShell` 承载正文与一键复制入口；正文 DOM 先于复制工具栏渲染，复制 payload 保留在组件闭包内，不写入长 DOM 属性，相同 markdown 在父级无关重渲染期间不得替换已渲染文本节点。移动端最终输出需保持静态正文语义，由浏览器原生长按选中和复制菜单承载片段复制，不得安装脚本长按选区、假选中态、浮动复制层、输入框、编辑态兜底或视图级强制选择补丁。
 - 同一轮最终输出出现后自动折叠对应 Process。
 - Markdown 链接按链接文本渲染，不直接暴露冗长 Markdown 源码或长路径。
 - Terminal `Process` 的步骤头采用固定三列契约：左侧独立展开图标列、中间标题主列、右侧耗时与状态列。说明类步骤标题只能在中间主列内单行截断，不能因为少渲染图标节点或错误交换 DOM 顺序而被塞进图标窄列。
 - Terminal `Process` 的步骤详情按内容语义分流：`terminal / diff / code` 等输出类块继续保留预格式化等宽阅读；`text / message / reasoning / plan / log` 等说明类块沿用运行页 markdown 富文本容器，并在展示前移除零宽断行字符、归一化“每字一行”的病态段落，保证历史详情、轮询恢复与新触发步骤都维持同一可读性。
 - Terminal 发送按钮在首次点击时必须立即切到 pending 反馈；若当前尚未存在 active session，前端先创建 Terminal 会话再发送输入，但按钮和可访问名称需在会话创建阶段就进入 `Sending...` 禁用态，避免用户误判首击无效并重复提交。
-- Terminal 会话栏、工作区、输入区、跳转控件与 Process 区统一采用扁平白底、浅灰辅助层、必要分割线和有限强调色，确保与 Chat / Agent 的整体视觉语言一致；输入区外壳不得再使用比共享 Composer 更深的 Terminal 专属底色、更贴底的专属 padding 或外置状态提示行。
+- Terminal 会话栏、工作区、输入区、跳转控件与 Process 区统一采用扁平白底、浅灰辅助层、必要分割线和有限强调色，确保与 Chat 的整体视觉语言一致；输入区外壳不得再使用比共享 Composer 更深的 Terminal 专属底色、更贴底的专属 padding 或外置状态提示行。
 - Terminal 桌面端维持旧版 master-detail 布局关系：左侧会话列表复用共享列表项与共享运行页会话列宽，承载标题、处理中 loading 和尾侧详情与删除按钮；元信息不再展示 `Last output / 最近输出` 这类固定前缀，也不展示完整 `terminal_session_id`。右侧工作区头部直接复用共享标题、信号式状态按钮与 `Details` 工具栏，运行状态不在列表项内额外渲染独立徽标；Terminal route body 顶部不再额外挂载页面级说明 hero。
-- Terminal React 版继续保留 `terminal-*` DOM class 与数据钩子，但会话栏、工作区容器和窄屏顶部 `Menu / 标题 / New` 操作行需与 Chat / Agent Runtime 复用同一套工作台表面语义；工作区头部不得通过 Terminal 专属 selector 派生不同标题或 `Details` 按钮，避免同属运行页却出现独立壳层节奏。
+- Terminal React 版继续保留 `terminal-*` DOM class 与数据钩子，但会话栏、工作区容器和窄屏顶部 `Menu / 标题 / New` 操作行需与 Chat 复用同一套工作台表面语义；工作区头部不得通过 Terminal 专属 selector 派生不同标题或 `Details` 按钮，避免同属运行页却出现独立壳层节奏。
 - Terminal 服务端会话列表加载完成且为空时，默认在共享会话列表中展示一条未持久化的 `New` 占位会话；该占位会话保持选中态并进入工作区，首次发送输入或添加附件时再创建真实 Terminal 会话并替换占位项。
 - `1100px` 及以下的窄屏 Terminal 页面中，会话抽屉入口统一由壳层头部 `Sessions` 按钮承接；Terminal 工作区头部不再重复渲染第二枚 `Sessions` 按钮，避免顶部操作区出现重复入口。
 - 窄屏 Terminal 会话抽屉头部左侧统一显示两行 `Sessions + 总数` 文案，右侧仅保留 `New / Hide` 紧凑按钮；`Hide` 不再带额外后缀说明，并与其他运行页头部按钮保持相同高度、字级与内边距。
@@ -257,8 +257,8 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 ## 依赖与边界
 
-- Conversation 负责普通 Chat/Agent 消息体验，Terminal 负责独立终端会话。
-- CLI Agent Runtime 进入当前会话工作区，Task 承接后台化执行。
+- Conversation 负责普通 Chat 消息体验，Terminal 负责独立终端会话。
+- CLI Runtime 进入当前会话工作区，Task 承接后台化执行。
 
 ## 验收口径
 

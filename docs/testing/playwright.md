@@ -140,7 +140,7 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 ### Shared Runtime Workspace
 
 - `chat` 首次点击发送即提交当前草稿
-- `chat / agent-runtime / terminal` 的正文滚动区与底部 Composer 保持独立边界，不出现正文被输入区遮挡
+- `chat / chat / terminal` 的正文滚动区与底部 Composer 保持独立边界，不出现正文被输入区遮挡
 
 ## 维护约束
 

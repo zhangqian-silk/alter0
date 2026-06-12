@@ -62,7 +62,7 @@ const runtimeMock = {
     description: string;
     kind: "tool" | "mcp" | "skill";
     active: boolean;
-    visibility?: "public" | "agent-private";
+    visibility?: "public" | "private";
     locked?: boolean;
   }>,
   toolCount: 0,
@@ -82,7 +82,7 @@ const runtimeMock = {
   selectModel: vi.fn(),
   toggleCapability: vi.fn(),
   toggleSkill: vi.fn(),
-  toggleAgentProcess: vi.fn(),
+  toggleProcess: vi.fn(),
 };
 
 vi.mock("./ConversationRuntimeProvider", () => ({
@@ -353,7 +353,7 @@ describe("ConversationWorkspace", () => {
     }));
   });
 
-  it("keeps Details focused on Chat metadata without Agent Runtime panels", () => {
+  it("keeps Details focused on Chat metadata without Chat panels", () => {
     runtimeMock.providers = [
       {
         id: "alter0-codex",
@@ -374,7 +374,7 @@ describe("ConversationWorkspace", () => {
     expect(detailsPanel).toBeInTheDocument();
     expect(within(detailsPanel).getByText("Session")).toBeInTheDocument();
     expect(within(detailsPanel).getByText("Chat")).toBeInTheDocument();
-    expect(within(detailsPanel).queryByRole("tab", { name: "Agent" })).not.toBeInTheDocument();
+    expect(within(detailsPanel).queryByRole("tab", { name: "Skill" })).not.toBeInTheDocument();
     expect(within(detailsPanel).queryByRole("tab", { name: "Deliverables" })).not.toBeInTheDocument();
     expect(within(detailsPanel).queryByRole("tab", { name: "Session Profile" })).not.toBeInTheDocument();
     expect(within(detailsPanel).queryByRole("tab", { name: "Skills" })).not.toBeInTheDocument();
@@ -427,21 +427,21 @@ describe("ConversationWorkspace", () => {
     renderWorkspace({ isMobileViewport: false });
 
     expect(screen.getByText("Frontend Design")).toBeInTheDocument();
-    expect(screen.queryByText("Writing Agent Skill")).not.toBeInTheDocument();
+    expect(screen.queryByText("Writing Skill Skill")).not.toBeInTheDocument();
   });
 
-  it("keeps legacy agent sessions as normal Chat session rows", () => {
+  it("keeps legacy chat sessions as normal Chat session rows", () => {
     runtimeMock.activeSession = {
-      id: "legacy-agent-1",
+      id: "legacy-skill-1",
       status: "ready",
       title: "Travel Plan",
       messages: [],
-      target: { type: "agent", id: "travel", name: "Travel Planner" },
+      target: { type: "skill", id: "travel", name: "Travel Skill" },
     };
     runtimeMock.sessions = [runtimeMock.activeSession];
     runtimeMock.sessionItems = [
       {
-        id: "legacy-agent-1",
+        id: "legacy-skill-1",
         title: "Travel Plan",
         meta: "2026-04-23 17:00",
         shortHash: "zzzz1111",
@@ -457,13 +457,13 @@ describe("ConversationWorkspace", () => {
     const sessionPane = screen.getByTestId("conversation-session-pane");
     expect(within(sessionPane).getByText("Travel Plan")).toBeInTheDocument();
     expect(sessionPane.querySelector(".runtime-session-context")).not.toBeInTheDocument();
-    expect(screen.queryByText("Travel Planner")).not.toBeInTheDocument();
+    expect(screen.queryByText("Travel Skill")).not.toBeInTheDocument();
   });
 
-  it("removes the Agent Runtime empty-state picker while keeping the composer session control", () => {
+  it("removes the Chat empty-state picker while keeping the composer session control", () => {
     renderWorkspace({ isMobileViewport: true });
 
-    expect(screen.queryByRole("radiogroup", { name: "Choose agent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Choose skill" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Session" })).toHaveAttribute("data-runtime-composer-utility", "session");
     expect(screen.getByRole("button", { name: "Add attachment" })).toBeInTheDocument();
   });

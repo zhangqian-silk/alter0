@@ -38,9 +38,24 @@ func TestCapabilityValidateVersionRule(t *testing.T) {
 	}
 }
 
+func TestCapabilityValidateRejectsUnsupportedType(t *testing.T) {
+	capability := Capability{
+		ID:      "researcher",
+		Name:    "Researcher",
+		Type:    CapabilityType("worker"),
+		Enabled: true,
+		Scope:   CapabilityScopeGlobal,
+		Version: DefaultCapabilityVersion,
+	}
+
+	if err := capability.Validate(); err == nil {
+		t.Fatal("expected unsupported capability type to be rejected")
+	}
+}
+
 func TestSkillValidateUsesUnifiedModel(t *testing.T) {
 	skill := Skill{
-		ID:      "default-nl",
+		ID:      "sample-skill",
 		Name:    "Default NL",
 		Enabled: true,
 	}

@@ -2,16 +2,11 @@ package infrastructure
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
-
-	execdomain "alter0/internal/execution/domain"
-	llmdomain "alter0/internal/llm/domain"
 )
 
 type stubWorkspaceServiceDeployer struct {
@@ -26,72 +21,6 @@ func (s *stubWorkspaceServiceDeployer) Deploy(_ context.Context, req WorkspaceSe
 		return WorkspaceServiceDeployResult{}, s.err
 	}
 	return s.result, nil
-}
-
-func TestHybridNLProcessorBuildAgentToolsIncludesDeployTestService(t *testing.T) {
-	processor := NewHybridNLProcessor(newTestProcessor("success", mustBuildTestPrompt(t, "整理仓库", testRuntimeMetadata())), nil, nil)
-
-	metadata := testRuntimeMetadata()
-	metadata["alter0.agent.tools"] = `["deploy_test_service"]`
-
-	tools := processor.buildAgentTools(metadata)
-	toolNames := []string{}
-	for _, item := range tools {
-		toolNames = append(toolNames, item.Name)
-	}
-	if !strings.Contains(strings.Join(toolNames, ","), toolDeployTestService) {
-		t.Fatalf("expected deploy_test_service in %+v", toolNames)
-	}
-}
-
-func TestHybridNLProcessorExecutesDeployTestServiceTool(t *testing.T) {
-	deployer := &stubWorkspaceServiceDeployer{
-		result: WorkspaceServiceDeployResult{
-			SessionID:   "session-default",
-			ServiceID:   "docs",
-			ServiceType: workspaceServiceTypeHTTP,
-			Host:        "docs.4e8f5f54.alter0.cn",
-			URL:         "https://docs.4e8f5f54.alter0.cn",
-			UpstreamURL: "http://127.0.0.1:19191",
-			Status:      "deployed",
-		},
-	}
-	processor := &HybridNLProcessor{
-		codex:           NewCodexCLIProcessor(),
-		serviceDeployer: deployer,
-	}
-
-	metadata := testRuntimeMetadata()
-	result, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
-		ID:   "deploy-1",
-		Name: toolDeployTestService,
-		Arguments: `{
-			"service_name":"docs",
-			"service_type":"http",
-			"upstream_url":"http://127.0.0.1:19191",
-			"health_path":"/healthz"
-		}`,
-	})
-	if err != nil {
-		t.Fatalf("deploy_test_service error = %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("expected success, got %+v", result)
-	}
-	if deployer.lastRequest.SessionID != "session-default" {
-		t.Fatalf("expected session-default, got %+v", deployer.lastRequest)
-	}
-	if deployer.lastRequest.ServiceID != "docs" || deployer.lastRequest.ServiceType != workspaceServiceTypeHTTP {
-		t.Fatalf("unexpected request %+v", deployer.lastRequest)
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(result.Result), &payload); err != nil {
-		t.Fatalf("unmarshal tool result: %v", err)
-	}
-	if payload["url"] != "https://docs.4e8f5f54.alter0.cn" {
-		t.Fatalf("unexpected tool payload %+v", payload)
-	}
 }
 
 func TestWorkspaceServiceDeployerLeavesDefaultWebPreviewModeToScript(t *testing.T) {
@@ -156,7 +85,7 @@ func TestWorkspaceServiceDeployerPreservesExplicitFrontendDistMode(t *testing.T)
 
 func TestResolveWorkspaceServiceRepositoryPathDefaultsTravelToSessionWorkspace(t *testing.T) {
 	repoRoot := t.TempDir()
-	sessionWorkspace := buildCodingSessionWorkspacePath(repoRoot, "travel-session")
+	sessionWorkspace := buildSessionWorkspacePath(repoRoot, "travel-session")
 	if err := os.MkdirAll(sessionWorkspace, 0o755); err != nil {
 		t.Fatalf("mkdir session workspace: %v", err)
 	}
@@ -170,134 +99,5 @@ func TestResolveWorkspaceServiceRepositoryPathDefaultsTravelToSessionWorkspace(t
 	}
 	if repositoryPath != filepath.ToSlash(sessionWorkspace) {
 		t.Fatalf("expected session workspace path %q, got %q", filepath.ToSlash(sessionWorkspace), repositoryPath)
-	}
-}
-
-func TestHybridNLProcessorBlocksTravelCompleteWithoutPublishedGuideWhenRepairDoesNotProduceArtifacts(t *testing.T) {
-	repoRoot := t.TempDir()
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(repoRoot); err != nil {
-		t.Fatalf("chdir repo root: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-
-	processor := &HybridNLProcessor{
-		codex:           newTestProcessor("success", "", filepath.Join(".alter0", "workspaces", "sessions", "session-default")),
-		serviceDeployer: &stubWorkspaceServiceDeployer{},
-	}
-	metadata := testRuntimeMetadata()
-	metadata[execdomain.AgentIDMetadataKey] = "travel"
-	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
-
-	result, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
-		ID:        "complete-1",
-		Name:      toolComplete,
-		Arguments: `{"result":"已完成武汉攻略"}`,
-	})
-	if err != nil {
-		t.Fatalf("executeModelTool() error = %v", err)
-	}
-	if !result.IsError {
-		t.Fatalf("expected complete to be blocked, got %+v", result)
-	}
-	if !strings.Contains(result.Result, "index.html") {
-		t.Fatalf("expected missing index.html blocker after unsuccessful repair, got %q", result.Result)
-	}
-}
-
-func TestHybridNLProcessorAllowsTravelCompleteAfterPublishedGuideExists(t *testing.T) {
-	repoRoot := t.TempDir()
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(repoRoot); err != nil {
-		t.Fatalf("chdir repo root: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-
-	sessionID := "session-default"
-	sessionWorkspace := buildCodingSessionWorkspacePath(repoRoot, sessionID)
-	if err := os.MkdirAll(sessionWorkspace, 0o755); err != nil {
-		t.Fatalf("mkdir session workspace: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(sessionWorkspace, "index.html"), []byte("<!doctype html><title>travel</title>"), 0o644); err != nil {
-		t.Fatalf("write index.html: %v", err)
-	}
-	registryDir := filepath.Join(repoRoot, ".alter0")
-	if err := os.MkdirAll(registryDir, 0o755); err != nil {
-		t.Fatalf("mkdir registry dir: %v", err)
-	}
-	registryPayload := `{"items":[{"session_id":"session-default","service_id":"travel","service_type":"frontend_dist","url":"https://travel-4e8f5f54.alter0.cn","public_read_only":true}]}`
-	if err := os.WriteFile(filepath.Join(registryDir, "workspace-services.json"), []byte(registryPayload), 0o644); err != nil {
-		t.Fatalf("write registry: %v", err)
-	}
-
-	processor := &HybridNLProcessor{
-		codex:           NewCodexCLIProcessor(),
-		serviceDeployer: &stubWorkspaceServiceDeployer{},
-	}
-	metadata := testRuntimeMetadata()
-	metadata[execdomain.AgentIDMetadataKey] = "travel"
-	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
-
-	result, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
-		ID:        "complete-2",
-		Name:      toolComplete,
-		Arguments: `{"result":"已完成武汉攻略，并已发布 HTML"} `,
-	})
-	if err != nil {
-		t.Fatalf("executeModelTool() error = %v", err)
-	}
-	if result.IsError || !result.IsFinal {
-		t.Fatalf("expected final success, got %+v", result)
-	}
-}
-
-func TestHybridNLProcessorRepairsTravelCompleteBeforeReturningFinalResult(t *testing.T) {
-	repoRoot := t.TempDir()
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(repoRoot); err != nil {
-		t.Fatalf("chdir repo root: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-
-	processor := &HybridNLProcessor{
-		codex: newSequencedTestProcessor(codexTestInvocation{
-			mode:                   "travel-repair-success",
-			expectedPromptContains: "Repair the missing required deliverables for the active agent now.",
-			expectedWorkspace:      filepath.Join(".alter0", "workspaces", "sessions", "session-default"),
-		}),
-		serviceDeployer: &stubWorkspaceServiceDeployer{},
-	}
-	metadata := testRuntimeMetadata()
-	metadata[execdomain.AgentIDMetadataKey] = "travel"
-	metadata[execdomain.AgentCompletionChecksMetadataKey] = travelCompletionChecksJSON(t)
-
-	result, err := processor.executeModelTool(context.Background(), metadata, llmdomain.ToolCall{
-		ID:        "complete-3",
-		Name:      toolComplete,
-		Arguments: `{"result":"已完成武汉攻略"}`,
-	})
-	if err != nil {
-		t.Fatalf("executeModelTool() error = %v", err)
-	}
-	if result.IsError || !result.IsFinal {
-		t.Fatalf("expected final success after repair, got %+v", result)
-	}
-	if !strings.Contains(result.Result, "https://travel-4e8f5f54.alter0.cn") {
-		t.Fatalf("expected published guide url after repair, got %q", result.Result)
 	}
 }

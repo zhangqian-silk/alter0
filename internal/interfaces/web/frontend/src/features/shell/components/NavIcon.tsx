@@ -8,20 +8,6 @@ export function NavIcon({ icon }: { icon: IconName }) {
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
       );
-    case "agent":
-      return (
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 3v3"></path>
-          <path d="M18.364 5.636 16.95 7.05"></path>
-          <path d="M21 12h-3"></path>
-          <path d="m18.364 18.364-1.414-1.414"></path>
-          <path d="M12 21v-3"></path>
-          <path d="m7.05 16.95-1.414 1.414"></path>
-          <path d="M6 12H3"></path>
-          <path d="M7.05 7.05 5.636 5.636"></path>
-          <circle cx="12" cy="12" r="4"></circle>
-        </svg>
-      );
     case "terminal":
       return (
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
